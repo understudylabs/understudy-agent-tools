@@ -51,6 +51,16 @@ Do not train on validation or heldout test rows. Do not start hosted training,
 upload datasets, or publish adapters without exact approval in the current
 thread.
 
+## Training Readiness
+
+Use [`../../docs/methodology-framework.md`](../../docs/methodology-framework.md)
+for the public "training last" rule.
+
+Do not train until cheaper levers have been tested or ruled out: output/schema
+control, parser or renderer repair, prompt/context compression, route
+compatibility, local/open-weight smoke, small live comparison, and heldout
+validation.
+
 ## Intake
 
 1. Inspect the measured baseline, failure taxonomy, candidate-card evidence, or
@@ -106,6 +116,9 @@ run_understudy train validate --dry-run --local
   and interpretation rules.
 - [`../understudy-evaluate/SKILL.md`](../understudy-evaluate/SKILL.md)
   - baseline evidence and split-aware measurement.
+- [`../understudy-optimize/SKILL.md`](../understudy-optimize/SKILL.md)
+  - lower-cost prompt, route, parser, and output-control interventions before
+    training.
 
 ## Output Standard
 

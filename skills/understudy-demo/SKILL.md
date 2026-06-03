@@ -18,6 +18,9 @@ Understudy at the developer's repo, find likely AI workloads, and produce a
 local Workload Card draft. Bundled fixture replay is a fallback when no local
 repo is available.
 
+For repo-scanning details, route through
+[`../understudy-workload-discovery/SKILL.md`](../understudy-workload-discovery/SKILL.md).
+
 Do not use this skill for a real workload comparison after the developer has
 provided prompts, traces, datasets, or eval artifacts. Route those requests to
 [`../understudy-evaluate/SKILL.md`](../understudy-evaluate/SKILL.md).
@@ -83,7 +86,7 @@ run_understudy demo scan --repo .
 This writes under:
 
 ```text
-.understudy/demo/
+.understudy/workload-discovery/
 ```
 
 4. Review the top candidates. Look for provider/model usage, prompts, eval
@@ -113,6 +116,8 @@ Load deeper material only when needed:
 
 - [`../understudy-evaluate/SKILL.md`](../understudy-evaluate/SKILL.md) for
   real workload comparisons.
+- [`../understudy-workload-discovery/SKILL.md`](../understudy-workload-discovery/SKILL.md)
+  for reusable local repo scan and Workload Card behavior.
 - [`../understudy-provider-keys/SKILL.md`](../understudy-provider-keys/SKILL.md)
   for local key setup after the replay path.
 - [`../understudy-model-lookup/SKILL.md`](../understudy-model-lookup/SKILL.md)

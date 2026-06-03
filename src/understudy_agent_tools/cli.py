@@ -53,12 +53,31 @@ PROMPT_PATTERN = re.compile(r"\b(prompt|system_message|system prompt|messages\s*
 EVAL_PATTERN = re.compile(r"\b(eval|benchmark|golden|fixture|test[_-]?prompt|rubric)\b", re.IGNORECASE)
 LATENCY_PATTERN = re.compile(r"\b(latency|timeout|duration|elapsed|p95|p99|slow)\b", re.IGNORECASE)
 COST_PATTERN = re.compile(r"\b(cost|price|pricing|token|usage|input_tokens|output_tokens)\b", re.IGNORECASE)
+EXPLICIT_PROVIDER_PATTERN = re.compile(
+    r"\bprovider\s*[:=]\s*[\"']?([a-z0-9_-]+)[\"']?",
+    re.IGNORECASE,
+)
+WORKLOAD_SHAPE_PATTERNS = {
+    "agentic": re.compile(r"\b(agent|tool_call|tool calls|function_call|function calls)\b", re.IGNORECASE),
+    "classification": re.compile(r"\b(classif|intent|label|category|sentiment)\b", re.IGNORECASE),
+    "coding": re.compile(r"\b(code|coder|coding|codex|repository|diff|patch)\b", re.IGNORECASE),
+    "extraction": re.compile(r"\b(extract|parse|invoice|receipt|attachment|pdf|email)\b", re.IGNORECASE),
+    "multimodal": re.compile(r"\b(image|vision|audio|video|ocr|multimodal)\b", re.IGNORECASE),
+    "rag": re.compile(r"\b(rag|retrieval|embedding|vector|search|rank|rerank)\b", re.IGNORECASE),
+    "structured-output": re.compile(r"\b(json|schema|structured|pydantic|zod)\b", re.IGNORECASE),
+    "summarization": re.compile(r"\b(summary|summarize|summarization)\b", re.IGNORECASE),
+}
 
 ROADMAP_SURFACES: dict[str, dict[str, str]] = {
     "demo": {
         "skill": "skills/understudy-demo/SKILL.md",
         "why": "Local repo workload discovery before provider spend.",
         "next": "Expand static scan signals and add richer Workload Card validation.",
+    },
+    "workload-discovery": {
+        "skill": "skills/understudy-workload-discovery/SKILL.md",
+        "why": "Find and rank local repo AI workload candidates before evaluation.",
+        "next": "Add workload type classification and richer candidate-card fields.",
     },
     "evaluate": {
         "skill": "skills/understudy-evaluate/SKILL.md",
@@ -129,6 +148,14 @@ def _scan_repo(repo: Path) -> list[dict[str, object]]:
         provider_hits = sorted(
             provider for provider, pattern in PROVIDER_PATTERNS.items() if pattern.search(text)
         )
+        explicit_provider_match = EXPLICIT_PROVIDER_PATTERN.search(text)
+        explicit_provider = explicit_provider_match.group(1).lower() if explicit_provider_match else None
+        if explicit_provider and explicit_provider not in provider_hits:
+            provider_hits.insert(0, explicit_provider)
+        elif explicit_provider in provider_hits:
+            provider_hits = [explicit_provider] + [
+                provider for provider in provider_hits if provider != explicit_provider
+            ]
         models = sorted({match.group(0) for match in MODEL_PATTERN.finditer(text)})
         prompt_lines = _line_hits(text, PROMPT_PATTERN)
         eval_lines = _line_hits(text, EVAL_PATTERN)
@@ -168,6 +195,7 @@ def _scan_repo(repo: Path) -> list[dict[str, object]]:
                 "score": score,
                 "signals": signals,
                 "providers": provider_hits,
+                "explicit_provider": explicit_provider,
                 "models": models[:10],
                 "evidence_lines": {
                     "prompt": prompt_lines[:8],
@@ -184,8 +212,16 @@ def _scan_repo(repo: Path) -> list[dict[str, object]]:
     return ranked
 
 
-def _demo_dir(repo: Path) -> Path:
-    return repo / ".understudy" / "demo"
+def _artifact_dir(repo: Path, capability: str) -> Path:
+    return repo / ".understudy" / capability
+
+
+def _repo_metadata(repo: Path) -> dict[str, str]:
+    return {
+        "display_name": repo.name,
+        "path": ".",
+        "path_kind": "repo-relative",
+    }
 
 
 def _write_json(path: Path, payload: object) -> None:
@@ -193,84 +229,166 @@ def _write_json(path: Path, payload: object) -> None:
     path.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
 
 
-def _load_candidates(repo: Path) -> list[dict[str, object]]:
-    path = _demo_dir(repo) / "workload-candidates.json"
+def _load_candidates(repo: Path, capability: str) -> list[dict[str, object]]:
+    path = _artifact_dir(repo, capability) / "workload-candidates.json"
     if not path.exists():
         return []
     payload = json.loads(path.read_text(encoding="utf-8"))
     return list(payload.get("candidates", []))
 
 
-def cmd_demo(args: argparse.Namespace) -> int:
+def _classify_workload_shape(candidate: dict[str, object], repo: Path) -> list[str]:
+    path_value = candidate.get("path")
+    if not isinstance(path_value, str):
+        return []
+    path = repo / path_value
+    try:
+        text = path.read_text(encoding="utf-8")
+    except (OSError, UnicodeDecodeError):
+        text = path_value
+    shapes = [
+        shape for shape, pattern in WORKLOAD_SHAPE_PATTERNS.items() if pattern.search(text)
+    ]
+    return shapes or ["general-llm"]
+
+
+def _infer_eval_inputs(candidates: list[dict[str, object]]) -> list[str]:
+    eval_inputs: list[str] = []
+    for candidate in candidates:
+        signals = candidate.get("signals", [])
+        path = candidate.get("path")
+        if isinstance(path, str) and isinstance(signals, list) and "eval" in signals:
+            eval_inputs.append(path)
+    return eval_inputs[:10]
+
+
+def _run_scan(args: argparse.Namespace, capability: str) -> int:
     repo = Path(args.repo).expanduser().resolve()
     if not repo.exists() or not repo.is_dir():
         raise SystemExit(f"repo does not exist or is not a directory: {repo}")
 
-    if args.demo_action == "scan":
-        candidates = _scan_repo(repo)
-        payload = {
-            "schema_version": "understudy.demo.workload_candidates.v1",
-            "repo": str(repo),
-            "mode": "local-only",
-            "notes": [
-                "Static scan only; no provider calls, uploads, model downloads, or secret inspection.",
-                "Review candidates before turning any source code into an eval artifact.",
-            ],
-            "candidates": candidates,
-        }
-        output = _demo_dir(repo) / "workload-candidates.json"
-        _write_json(output, payload)
-        if args.json:
-            print(json.dumps(payload, indent=2, sort_keys=True))
-        else:
-            print(f"wrote {output}")
-            print(f"found {len(candidates)} workload candidate(s)")
-            for candidate in candidates[:5]:
-                providers = ", ".join(candidate["providers"]) or "unknown-provider"
-                signals = ", ".join(candidate["signals"])
-                print(f"- {candidate['id']}: {candidate['path']} ({providers}; {signals})")
-        return 0
+    candidates = _scan_repo(repo)
+    payload = {
+        "schema_version": "understudy.workload_candidates.v1",
+        "capability": capability,
+        "repo": _repo_metadata(repo),
+        "mode": "local-only",
+        "notes": [
+            "Static scan only; no provider calls, uploads, model downloads, or secret inspection.",
+            "Review candidates before turning any source code into an eval artifact.",
+        ],
+        "candidates": candidates,
+    }
+    output = _artifact_dir(repo, capability) / "workload-candidates.json"
+    _write_json(output, payload)
+    if args.json:
+        print(json.dumps(payload, indent=2, sort_keys=True))
+    else:
+        print(f"wrote {output}")
+        print(f"found {len(candidates)} workload candidate(s)")
+        for candidate in candidates[:5]:
+            providers = ", ".join(candidate["providers"]) or "unknown-provider"
+            signals = ", ".join(candidate["signals"])
+            print(f"- {candidate['id']}: {candidate['path']} ({providers}; {signals})")
+    return 0
 
-    if args.demo_action == "plan":
-        candidates = _load_candidates(repo)
-        if not candidates:
-            raise SystemExit("no workload candidates found; run `understudy-tools demo scan --repo .` first")
-        selected = next(
-            (candidate for candidate in candidates if candidate["id"] == args.candidate),
-            candidates[0],
+
+def _run_plan(args: argparse.Namespace, capability: str) -> int:
+    repo = Path(args.repo).expanduser().resolve()
+    if not repo.exists() or not repo.is_dir():
+        raise SystemExit(f"repo does not exist or is not a directory: {repo}")
+
+    candidates = _load_candidates(repo, capability)
+    if not candidates:
+        raise SystemExit(
+            f"no workload candidates found; run `understudy-tools {capability} scan --repo .` first"
         )
-        plan = {
-            "schema_version": "understudy.demo.workload_card.v1",
-            "candidate_id": selected["id"],
-            "source_path": selected["path"],
-            "mode": "local-only",
-            "inferred_signals": selected["signals"],
-            "inferred_providers": selected["providers"],
-            "inferred_models": selected["models"],
-            "approval_required_before": [
-                "sending source, prompts, traces, or eval rows to any provider",
-                "running live model calls",
-                "downloading local models",
-                "submitting hosted benchmarks or training jobs",
-            ],
-            "recommended_next_steps": [
-                "confirm the workload owner and success metric",
-                "create 10-30 representative public-safe test cases",
-                "record current latency, cost, and quality baseline",
-                "choose a local, existing-key, or hosted candidate route",
-                "prepare blind pairwise review if quality is qualitative",
-            ],
-        }
-        output = _demo_dir(repo) / "workload-card.json"
-        _write_json(output, plan)
-        if args.json:
-            print(json.dumps(plan, indent=2, sort_keys=True))
-        else:
-            print(f"wrote {output}")
-            print(f"planned {selected['id']}: {selected['path']}")
-            print("next: confirm success metric and representative test cases")
-        return 0
+    selected = next(
+        (candidate for candidate in candidates if candidate["id"] == args.candidate),
+        candidates[0],
+    )
+    providers = selected.get("providers", [])
+    models = selected.get("models", [])
+    baseline = {
+        "provider": providers[0] if providers else None,
+        "model": models[0] if models else None,
+        "latency_ms": None,
+        "input_tokens": None,
+        "output_tokens": None,
+        "cost_usd": None,
+    }
+    plan = {
+        "schema_version": "understudy.workload_card.v1",
+        "workload_id": "workload-001",
+        "workload_name": None,
+        "owner": None,
+        "candidate_id": selected["id"],
+        "source_path": selected["path"],
+        "mode": "local-only",
+        "workload_shape": _classify_workload_shape(selected, repo),
+        "value_lens": ["quality", "latency", "cost"],
+        "success_metric": None,
+        "baseline": baseline,
+        "data_class": "source-metadata-only",
+        "split_boundary": {
+            "train": None,
+            "dev": None,
+            "holdout": None,
+        },
+        "evaluation_inputs": _infer_eval_inputs(candidates),
+        "promotion_gate": None,
+        "fallback_route": None,
+        "route_requirements": {
+            "privacy_boundary": "local-only until explicit approval",
+            "latency_target_ms": None,
+            "structured_output_required": "structured-output" in _classify_workload_shape(selected, repo),
+            "tool_calling_required": "agentic" in _classify_workload_shape(selected, repo),
+            "pricing_source_required_before_hosted_recommendation": True,
+            "supplier_profile_required_before_hosted_recommendation": True,
+        },
+        "inferred_signals": selected["signals"],
+        "inferred_providers": providers,
+        "inferred_models": models,
+        "approval_gates": [
+            "sending source, prompts, traces, or eval rows to any provider",
+            "running live model calls",
+            "downloading local models",
+            "submitting hosted benchmarks or training jobs",
+        ],
+        "recommended_next_steps": [
+            "confirm the workload owner and success metric",
+            "create 10-30 representative public-safe test cases",
+            "record current latency, cost, and quality baseline",
+            "choose a local, existing-key, or hosted candidate route",
+            "prepare blind pairwise review if quality is qualitative",
+        ],
+    }
+    output = _artifact_dir(repo, capability) / "workload-card.json"
+    _write_json(output, plan)
+    if args.json:
+        print(json.dumps(plan, indent=2, sort_keys=True))
+    else:
+        print(f"wrote {output}")
+        print(f"planned {selected['id']}: {selected['path']}")
+        print("next: confirm success metric and representative test cases")
+    return 0
 
+
+def cmd_demo(args: argparse.Namespace) -> int:
+    if args.demo_action == "scan":
+        return _run_scan(args, "workload-discovery")
+    if args.demo_action == "plan":
+        return _run_plan(args, "workload-discovery")
+    return cmd_roadmap_surface(args)
+
+
+def cmd_workload_discovery(args: argparse.Namespace) -> int:
+    if args.discovery_action == "scan":
+        return _run_scan(args, "workload-discovery")
+    if args.discovery_action == "plan":
+        return _run_plan(args, "workload-discovery")
+    args.surface = "workload-discovery"
+    args.action = "status"
     return cmd_roadmap_surface(args)
 
 
@@ -370,8 +488,24 @@ def build_parser() -> argparse.ArgumentParser:
     demo_parser.add_argument("--json", action="store_true")
     demo_parser.set_defaults(func=cmd_demo, surface="demo", action="status")
 
+    discovery_parser = subparsers.add_parser(
+        "workload-discovery",
+        help="Find and plan local repo AI workload candidates.",
+    )
+    discovery_parser.add_argument(
+        "discovery_action",
+        nargs="?",
+        default="status",
+        choices=["status", "scan", "plan"],
+        help="Scan a local repo for AI workload candidates or plan the first Workload Card.",
+    )
+    discovery_parser.add_argument("--repo", default=".", help="Local repository to inspect.")
+    discovery_parser.add_argument("--candidate", default="", help="Candidate id from workload-candidates.json.")
+    discovery_parser.add_argument("--json", action="store_true")
+    discovery_parser.set_defaults(func=cmd_workload_discovery, surface="workload-discovery", action="status")
+
     for surface, spec in ROADMAP_SURFACES.items():
-        if surface == "demo":
+        if surface in {"demo", "workload-discovery"}:
             continue
         surface_parser = subparsers.add_parser(
             surface,

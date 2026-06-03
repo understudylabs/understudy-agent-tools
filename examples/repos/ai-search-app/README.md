@@ -11,5 +11,11 @@ understudy-tools demo scan --repo .
 understudy-tools demo plan --repo .
 ```
 
+Both commands write local artifacts under:
+
+```text
+.understudy/workload-discovery/
+```
+
 The fixture is synthetic. It contains no customer data, private prompts, real
 traces, provider keys, or production URLs.

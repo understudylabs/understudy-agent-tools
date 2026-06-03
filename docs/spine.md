@@ -21,7 +21,10 @@ Default path:
 
 ```text
 understudy -> local repo workload discovery -> live evaluation -> optimize -> train/handoff
+  -> decision/value report -> public-safe publishing
 ```
 
 The lab path is always available for longer research work where hypotheses,
 budgets, outcomes, and next actions should compound.
+
+The method contract lives in [`methodology-framework.md`](methodology-framework.md).

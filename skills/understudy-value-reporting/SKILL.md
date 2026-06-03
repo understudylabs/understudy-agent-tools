@@ -45,6 +45,16 @@ Value reports must distinguish measured savings from scenario analysis. Do not
 claim production savings, user impact, SLA improvement, or replacement
 readiness without the artifact path and split boundary that support it.
 
+## Evidence Ladder
+
+Use [`../../docs/methodology-framework.md`](../../docs/methodology-framework.md)
+as the public evidence ladder.
+
+Every value report must include result type, sample size, split boundary,
+baseline route, candidate route, cost basis, latency basis, and caveats. If the
+evidence is below heldout validation, label replacement readiness as a
+hypothesis or next-step recommendation, not a fact.
+
 ## Intake
 
 1. Inspect the measured result packet, comparison report, eval summary, or
