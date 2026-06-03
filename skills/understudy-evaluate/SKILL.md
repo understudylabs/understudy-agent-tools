@@ -1,22 +1,27 @@
 ---
 name: understudy-evaluate
-description: Use when comparing prompts, traces, datasets, scorers, routes, or model candidates with local-first evaluation evidence.
+description: Use when comparing prompts, traces, datasets, scorers, routes, local models, provider models, or candidate outputs to find measurable cost, latency, quality, reliability, or portability value.
 metadata:
   understudy:
     mode: interactive
-    safety: local-first
+    safety: value-first
     cli_required: true
 ---
 
 # Understudy Evaluate
 
-Use this skill when the developer asks to evaluate a workload or compare
-quality, latency, reliability, cost, scorers, prompts, routes, or model
-candidates.
+Use this skill when the developer needs a credible answer to: "Can this workload
+run cheaper, faster, more reliably, or more portably without unacceptable quality
+loss?"
+
+Evaluation is the first value moment. Do not turn it into a checklist of
+cost-free probes. Start from the user's real workload when available, establish
+baseline economics, choose the fastest useful candidate path, and run the
+smallest comparison that can change a decision.
 
 Do not use this skill for optimization after a measured baseline exists. Route
 those requests to [`../understudy-optimize/SKILL.md`](../understudy-optimize/SKILL.md).
-For fine-tuning, SFT, adapter, or training-data requests, route to
+For SFT, adapters, preference data, or training handoff, route to
 [`../understudy-train/SKILL.md`](../understudy-train/SKILL.md).
 
 ## Resolve CLI
@@ -27,93 +32,136 @@ then define the `run_understudy` shell function from that shared resource.
 If `run_understudy` returns 127, activate
 [`../understudy-bootstrap/SKILL.md`](../understudy-bootstrap/SKILL.md).
 
+## Value Posture
+
+Prefer the path that produces decision-grade evidence soonest:
+
+- existing eval suite, traces, logs, prompt set, or app route over a toy fixture;
+- local replay when it can estimate quality or regression risk;
+- public local/open models when they can expose cost or latency upside;
+- existing provider keys when the developer has them and approves a capped run;
+- Understudy inference when it reduces setup time or avoids per-provider glue;
+- a small live comparison when replay cannot answer the economic question.
+
+Be explicit about economics:
+
+- current model or route;
+- input/output token shape or request volume;
+- latency target and observed latency;
+- cost/request or cost/month estimate;
+- quality gate and acceptable regression band;
+- candidate route, model, or runner;
+- decision the eval will unlock.
+
 ## Safety Gates
 
-Default to local-only, no-upload, no-spend work. Prefer local artifacts,
-synthetic fixtures, replay data, and dry-run plans before live provider calls.
+Default storage is local. Do not upload source files, prompts, traces, outputs,
+datasets, repo paths, private notes, provider keys, or secrets unless the
+developer explicitly approves that exact action in the current thread.
 
-Do not upload source files, prompts, traces, outputs, datasets, repo paths,
-private notes, provider keys, or secrets unless the developer explicitly
-approves that exact action in the current thread.
+Configured provider keys and Understudy API keys are usable only after approval
+for a named, capped action. Before live calls, hosted runs, uploads, benchmark
+submission, model downloads, or training, require:
 
-Treat configured provider keys as local machine state, not permission to spend.
-Before live calls, hosted jobs, uploads, benchmark submission, or training,
-require:
+- named provider, model, registry, or hosted surface;
+- estimated or capped spend, or estimated download size;
+- exact artifact or data class being sent or downloaded;
+- visible output path under `.understudy/`;
+- dry-run, preview, or local plan when available.
 
-- named provider or hosted surface;
-- estimated or capped budget;
-- exact artifacts or data class being sent;
-- reviewed dry-run or preview artifact;
-- visible output path under `.understudy/`.
-
-Keep split boundaries explicit. Do not inspect heldout labels or tune prompts,
-scorers, renderers, or routes against heldout rows.
+Keep split boundaries explicit. Do not tune prompts, scorers, renderers, or
+routes on heldout rows.
 
 ## Intake
 
-1. Inspect the real local workload source: trace store, dataset, eval report,
-   repo script, prompt set, scorer, or synthetic fixture.
-2. Identify the decision: baseline measurement, route comparison, scorer
-   validation, regression check, or readiness gate.
-3. Record row count, split names, metric definitions, candidate routes, and
-   known missing data before running comparisons.
-4. Run the smallest no-spend status, validation, replay, or dry-run command.
-5. Summarize current state before proposing paid, hosted, or upload steps.
+1. Identify the value target: cost, latency, quality, reliability, portability,
+   local privacy, or model availability.
+2. Inspect the real workload source: trace store, logs, eval report, dataset,
+   prompt set, app route, scorer, or benchmark script.
+3. Capture baseline facts: incumbent route, sample size, metric, latency,
+   cost/request, error rate, and known failure modes.
+4. Identify candidate paths: local model, public model download, existing
+   provider key, Understudy inference, replay, or managed provider.
+5. Choose the smallest comparison that can change the decision.
+
+Ask at most one clarifying question if the workload source or approval boundary
+is ambiguous.
 
 ## Flow
 
-1. Check local CLI health and available evaluation surfaces:
+1. Check the CLI and evaluation surface:
 
 ```sh
 run_understudy --help
 run_understudy evaluate --help
 ```
 
-2. If the workload already has local artifacts, inspect or validate them before
-   creating new runs:
+2. Inspect existing artifacts before creating new work:
 
 ```sh
 run_understudy evaluate status --local
 run_understudy evaluate validate --dry-run
 ```
 
-3. If local artifacts are missing, start with fixtures or a replay-only dry run:
+3. If there is a plausible local/open candidate, inspect model fit before
+benchmarking:
+
+```sh
+run_understudy local-models doctor --local --dry-run
+run_understudy model lookup --local --dry-run
+```
+
+4. If replay can answer the question, run a local comparison first:
 
 ```sh
 run_understudy evaluate run --dry-run --local
 ```
 
-4. Read generated artifacts under:
+5. If replay cannot answer the value question and the developer has approved a
+capped live run, use the smallest live sample that can establish direction.
+Record actual spend, latency, output validity, and quality deltas.
+
+6. Read generated artifacts under:
 
 ```text
 .understudy/evaluate/
+.understudy/model-lookup/
+.understudy/local-models/
 ```
 
-5. Separate catalog facts from measured results. A model card, route config, or
-   provider listing is not evaluation evidence.
+7. Report the result as a decision, not just a score: promote candidate,
+optimize next, download/run a local model, use Understudy inference, expand the
+sample, or stop because the economics do not justify more work.
 
-6. Report failures as actionable inputs: parser mismatch, missing labels,
-   scorer drift, context-window mismatch, token-cap mismatch, route error,
-   sample-size gap, or spend/upload gate.
+## Failure Triage
 
-## References
+Before blaming model quality, classify failures:
 
-Load deeper material only when needed:
+- context-window or token-cap mismatch;
+- parser or schema failure;
+- route or provider error;
+- scorer/rubric mismatch;
+- missing labels or weak sample size;
+- latency bottleneck outside inference;
+- incompatible tool-call or structured-output format;
+- true quality regression.
 
-- [`reference.md`](reference.md) - detailed command matrix, artifact contract,
-  and interpretation rules.
-- [`../understudy-model-lookup/SKILL.md`](../understudy-model-lookup/SKILL.md)
-  - model capability and route compatibility checks before benchmarking.
-- [`../understudy-optimize/SKILL.md`](../understudy-optimize/SKILL.md)
-  - post-baseline improvement loop.
+Route model fit questions to
+[`../understudy-model-lookup/SKILL.md`](../understudy-model-lookup/SKILL.md).
+Route local runner questions to
+[`../understudy-local-models/SKILL.md`](../understudy-local-models/SKILL.md).
+Route post-baseline improvement to
+[`../understudy-optimize/SKILL.md`](../understudy-optimize/SKILL.md).
 
 ## Output Standard
 
 End with:
 
+- baseline route, candidate route, and value target;
 - what was inspected or run;
 - artifact paths created or read;
-- result type: dry-run, replay, fake-provider, validation, heldout, or live;
-- metric definitions, sample size, split boundary, and caveats;
-- approval-gated next step, if any;
+- result type: dry-run, local smoke, replay, validation, heldout, or live;
+- sample size, metric definitions, latency, cost, and quality caveats;
+- decision unlocked or still blocked;
+- spend/upload/download approval boundary, if any;
 - one recommended command.
