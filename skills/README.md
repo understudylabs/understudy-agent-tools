@@ -1,17 +1,39 @@
-# Skill Library
+# Understudy Skill Library
 
-The library uses progressive disclosure.
+This library uses progressive disclosure: start with the entrypoint, then load
+one specialist skill only when the developer's intent requires it.
 
-Start with `understudy/SKILL.md`. Read a specialist skill only after the user
-intent requires it.
+## Entry Point
 
-Initial specialist skills:
+- [`understudy`](understudy/SKILL.md) routes demo, evaluation, optimization,
+  training handoff, lab notes, local proxying, provider keys, and model lookup.
 
-- `understudy-demo`
-- `understudy-evaluate`
-- `understudy-optimize`
-- `understudy-train`
-- `understudy-lab`
-- `understudy-local-proxy`
-- `understudy-provider-keys`
-- `understudy-model-lookup`
+## Specialist Skills
+
+- [`understudy-demo`](understudy-demo/SKILL.md) shows the product loop with
+  local replay, bundled fixtures, and no provider spend.
+- [`understudy-evaluate`](understudy-evaluate/SKILL.md) compares prompts,
+  traces, eval rows, datasets, or candidate models with explicit split
+  boundaries.
+- [`understudy-optimize`](understudy-optimize/SKILL.md) improves a measured
+  workload while protecting holdout evidence.
+- [`understudy-train`](understudy-train/SKILL.md) prepares SFT, preference, RL,
+  adapter, or hosted-training handoffs.
+- [`understudy-lab`](understudy-lab/SKILL.md) records longer experiment loops,
+  budgets, artifacts, decisions, and next actions.
+- [`understudy-local-proxy`](understudy-local-proxy/SKILL.md) handles local
+  OpenAI-compatible proxying, trace capture, and replay.
+- [`understudy-provider-keys`](understudy-provider-keys/SKILL.md) handles local
+  credential setup and status checks.
+- [`understudy-model-lookup`](understudy-model-lookup/SKILL.md) inspects model
+  availability, runner compatibility, and local-vs-remote options.
+
+## Public Safety
+
+Default to local-only, no-upload, no-spend work. Public examples should use
+synthetic fixtures, local `.understudy/` artifacts, public provider docs, or
+public open-source projects.
+
+Do not include customer names, domains, raw prompts, raw completions, traces,
+secrets, private notes, internal runbooks, or hosted-control details in public
+skills.
