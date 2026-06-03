@@ -11,3 +11,6 @@ dist/
 !.env.example
 
 .tmp/
+
+# Local planning notes that may include sensitive extraction context.
+docs/skill-externalization-plan.md
