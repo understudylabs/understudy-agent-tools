@@ -125,6 +125,15 @@ Route by value path:
   [`../understudy-provider-keys/SKILL.md`](../understudy-provider-keys/SKILL.md).
 - SFT, preference data, RL trajectories, adapters, LoRA, or hosted training
   handoff: read [`../understudy-train/SKILL.md`](../understudy-train/SKILL.md).
+- ROI, savings, replacement readiness, or business value reporting from
+  measured evidence: read
+  [`../understudy-value-reporting/SKILL.md`](../understudy-value-reporting/SKILL.md).
+- Public-safe result summaries, announcements, or shareable writeups: read
+  [`../understudy-publish-results/SKILL.md`](../understudy-publish-results/SKILL.md).
+- Report design, evidence visual hierarchy, or terse analytical prose: read
+  [`../understudy-tufte/SKILL.md`](../understudy-tufte/SKILL.md).
+- Removing generic AI prose or overclaims from public text: read
+  [`../understudy-deslop/SKILL.md`](../understudy-deslop/SKILL.md).
 - Multi-run research, hypotheses, budgets, experiment notes, or stop/go
   decisions: read [`../understudy-lab/SKILL.md`](../understudy-lab/SKILL.md).
 
@@ -134,7 +143,15 @@ If more than one route applies, use this order:
 2. try local/public candidate evidence when plausible;
 3. use existing or Understudy API keys for capped live evidence when needed;
 4. optimize only after a baseline;
-5. train only after simpler levers stop moving the measured gate.
+5. train only after simpler levers stop moving the measured gate;
+6. report or publish only from labeled evidence with caveats.
+
+## Method Contract
+
+Use [`../../docs/methodology-framework.md`](../../docs/methodology-framework.md)
+as the public evidence ladder and artifact contract. Do not claim a model,
+route, or training path wins unless the evidence level, sample size, split
+boundary, cost basis, latency basis, and caveats are explicit.
 
 ## Output Standard
 

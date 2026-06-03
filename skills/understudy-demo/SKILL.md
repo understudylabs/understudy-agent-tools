@@ -86,7 +86,7 @@ run_understudy demo scan --repo .
 This writes under:
 
 ```text
-.understudy/demo/
+.understudy/workload-discovery/
 ```
 
 4. Review the top candidates. Look for provider/model usage, prompts, eval

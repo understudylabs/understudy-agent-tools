@@ -169,16 +169,14 @@ them in separate rows: external benchmark context vs measured workload evidence.
 
 Do not publish:
 
-- customer prompts, traces, schemas, labels, rubrics, or outputs;
-- exact route-promotion recipes;
-- private provider negotiations or capacity tactics;
-- internal control-plane or storage details;
-- private margin by customer;
-- patent-sensitive orchestration sequencing.
+- customer artifacts or identifiers;
+- proprietary routing, optimization, or orchestration details;
+- internal control-plane, storage, or credential details;
+- non-public commercial terms or provider arrangements.
 
 Public profiles may say "Understudy should compare local/open-weight and
 frontier routes on the user's workload." They should not reveal private
-replacement-loop mechanics.
+implementation mechanics.
 
 ## Public Source Starter Set
 

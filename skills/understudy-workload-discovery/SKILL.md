@@ -78,7 +78,7 @@ run_understudy demo scan --repo .
 This writes:
 
 ```text
-.understudy/demo/workload-candidates.json
+.understudy/workload-discovery/workload-candidates.json
 ```
 
 3. Review the top candidates by likely value. Prefer candidates with multiple
@@ -100,10 +100,16 @@ run_understudy demo plan --repo .
 This writes:
 
 ```text
-.understudy/demo/workload-card.json
+.understudy/workload-discovery/workload-card.json
 ```
 
-5. Route based on the candidate:
+5. Treat the Workload Card as the handoff object. It should carry source
+metadata only by default: workload shape, value lens, baseline placeholders,
+data class, split boundary placeholders, route requirements, approval gates,
+and next steps. It must not copy prompt bodies, completions, trace payloads, or
+dataset rows by default.
+
+6. Route based on the candidate:
 
 - quality comparison or existing eval rows:
   [`../understudy-evaluate/SKILL.md`](../understudy-evaluate/SKILL.md);
@@ -118,7 +124,7 @@ This writes:
 - post-baseline improvement:
   [`../understudy-optimize/SKILL.md`](../understudy-optimize/SKILL.md).
 
-6. If no candidate is found, explain that the static scan is not proof of
+7. If no candidate is found, explain that the static scan is not proof of
 absence. Ask for the likely AI entrypoint, route, prompt file, eval harness, or
 provider wrapper.
 
@@ -128,6 +134,12 @@ Load deeper material only when needed:
 
 - [`../../docs/tool-migration-map.md`](../../docs/tool-migration-map.md) for
   the public migration boundary.
+- [`../../docs/methodology-framework.md`](../../docs/methodology-framework.md)
+  for the public evidence ladder and method contract.
+- [`../../docs/workload-card-template.md`](../../docs/workload-card-template.md)
+  for the Workload Card fields.
+- [`../../docs/route-decision-packet-template.md`](../../docs/route-decision-packet-template.md)
+  for the next route-selection artifact.
 - [`../../examples/repos/ai-search-app/README.md`](../../examples/repos/ai-search-app/README.md)
   for a synthetic repo that demonstrates this journey.
 

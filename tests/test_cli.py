@@ -58,19 +58,23 @@ input_tokens = 1200
     scan_out = capsys.readouterr().out
     assert "found 1 workload candidate" in scan_out
 
-    candidates_path = repo / ".understudy" / "demo" / "workload-candidates.json"
+    candidates_path = repo / ".understudy" / "workload-discovery" / "workload-candidates.json"
     payload = json.loads(candidates_path.read_text(encoding="utf-8"))
-    assert payload["schema_version"] == "understudy.demo.workload_candidates.v1"
+    assert payload["schema_version"] == "understudy.workload_candidates.v1"
+    assert payload["repo"]["path"] == "."
     assert payload["candidates"][0]["path"] == "search.py"
     assert "openrouter" in payload["candidates"][0]["providers"]
 
     assert main(["demo", "plan", "--repo", str(repo)]) == 0
     plan_out = capsys.readouterr().out
     assert "planned candidate-001" in plan_out
-    card_path = repo / ".understudy" / "demo" / "workload-card.json"
+    card_path = repo / ".understudy" / "workload-discovery" / "workload-card.json"
     card = json.loads(card_path.read_text(encoding="utf-8"))
-    assert card["schema_version"] == "understudy.demo.workload_card.v1"
-    assert "running live model calls" in card["approval_required_before"]
+    assert card["schema_version"] == "understudy.workload_card.v1"
+    assert card["baseline"]["provider"] == "openrouter"
+    assert card["data_class"] == "source-metadata-only"
+    assert card["split_boundary"] == {"train": None, "dev": None, "holdout": None}
+    assert "running live model calls" in card["approval_gates"]
 
 
 def test_workload_discovery_alias(tmp_path, capsys) -> None:
@@ -88,3 +92,10 @@ def test_workload_discovery_alias(tmp_path, capsys) -> None:
     assert main(["workload-discovery", "plan", "--repo", str(repo)]) == 0
     plan_out = capsys.readouterr().out
     assert "planned candidate-001" in plan_out
+    card = json.loads(
+        (repo / ".understudy" / "workload-discovery" / "workload-card.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    assert "route_requirements" in card
+    assert "general-llm" not in card["workload_shape"]

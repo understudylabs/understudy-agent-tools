@@ -35,6 +35,16 @@ one specialist skill only when the developer's intent requires it.
 - [`understudy-local-models`](understudy-local-models/SKILL.md) checks MLX,
   Apple Silicon, Ollama, and local runner readiness before local inference or
   route comparisons.
+- [`understudy-value-reporting`](understudy-value-reporting/SKILL.md) turns
+  measured evidence into conservative value reports.
+- [`understudy-publish-results`](understudy-publish-results/SKILL.md) prepares
+  public-safe result summaries.
+- [`understudy-tufte`](understudy-tufte/SKILL.md) improves report structure,
+  analytical hierarchy, and concise evidence presentation.
+- [`understudy-deslop`](understudy-deslop/SKILL.md) removes generic AI prose
+  and overclaims from public-facing text.
+- [`understudy-bootstrap`](understudy-bootstrap/SKILL.md) handles public setup
+  checks when the CLI cannot be found.
 
 ## Public Safety
 

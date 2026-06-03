@@ -72,6 +72,16 @@ submission, model downloads, or training, require:
 Keep split boundaries explicit. Do not tune prompts, scorers, renderers, or
 routes on heldout rows.
 
+## Evidence Ladder
+
+Use [`../../docs/methodology-framework.md`](../../docs/methodology-framework.md)
+as the public evidence ladder.
+
+Do not claim replacement readiness from static scans, fixture smokes, or
+dry-runs. Evaluation reports must label the result type, sample size, split
+boundary, baseline route, candidate route, cost basis, latency basis, and
+caveats.
+
 ## Intake
 
 1. Identify the value target: cost, latency, quality, reliability, portability,
@@ -152,6 +162,8 @@ Route local runner questions to
 [`../understudy-local-models/SKILL.md`](../understudy-local-models/SKILL.md).
 Route post-baseline improvement to
 [`../understudy-optimize/SKILL.md`](../understudy-optimize/SKILL.md).
+Route decision/value reporting to
+[`../understudy-value-reporting/SKILL.md`](../understudy-value-reporting/SKILL.md).
 
 ## Output Standard
 

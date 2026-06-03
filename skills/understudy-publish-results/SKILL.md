@@ -46,6 +46,16 @@ Public result drafts must not include customer names, domains, raw prompts,
 raw completions, trace rows, private repo paths, internal runbook names, or
 unverified current vendor claims.
 
+## Evidence Ladder
+
+Use [`../../docs/methodology-framework.md`](../../docs/methodology-framework.md)
+as the public evidence ladder.
+
+Public summaries must separate measured facts, scenario analysis, and future
+plans. Do not publish "best," "faster," "cheaper," "production-ready," or
+"replacement" claims without the supporting artifact path, evidence level,
+date, sample size, split boundary, and caveats.
+
 ## Intake
 
 1. Inspect the local result artifacts and identify the measured workload,

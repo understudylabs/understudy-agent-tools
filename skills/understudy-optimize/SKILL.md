@@ -49,6 +49,15 @@ require:
 Never tune on heldout rows. Preserve validation and heldout boundaries in every
 candidate card, score artifact, and recommendation.
 
+## Evidence Ladder
+
+Use [`../../docs/methodology-framework.md`](../../docs/methodology-framework.md)
+as the public evidence ladder.
+
+Do not promote a candidate from optimizer output alone. A promotion claim needs
+a baseline comparison, split refs, failure taxonomy, cost and latency deltas,
+fallback route, demotion trigger, and caveats.
+
 ## Intake
 
 1. Inspect the current baseline report, candidate card, decision packet, eval
@@ -106,6 +115,8 @@ Load deeper material only when needed:
   and interpretation rules.
 - [`../understudy-evaluate/SKILL.md`](../understudy-evaluate/SKILL.md)
   - baseline and comparison measurement.
+- [`../understudy-value-reporting/SKILL.md`](../understudy-value-reporting/SKILL.md)
+  - decision/value reporting from measured evidence.
 
 ## Output Standard
 
