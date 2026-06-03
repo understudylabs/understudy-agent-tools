@@ -20,7 +20,7 @@ specialist skill or run the corresponding script.
 Default path:
 
 ```text
-understudy -> replay/demo -> live evaluation -> optimize -> train/handoff
+understudy -> local repo workload discovery -> live evaluation -> optimize -> train/handoff
 ```
 
 The lab path is always available for longer research work where hypotheses,

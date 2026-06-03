@@ -45,7 +45,7 @@ That prints the public spine and points agents at `skills/understudy/SKILL.md`.
 `skills/understudy/SKILL.md` is the fat public entrypoint. It routes to
 specialist skills by intent:
 
-- replay/demo
+- local repo workload discovery/demo
 - evaluate
 - optimize
 - train/handoff
@@ -55,8 +55,17 @@ specialist skills by intent:
 - model lookup
 - local models and MLX readiness
 
-The default sequence is replay first, then live evidence, then optimization or
-training only after the user has a measured baseline.
+The default sequence is local repo workload discovery first, then a Workload
+Card draft, then live evidence only after the user approves the provider,
+budget cap, and data class.
+
+Try the public synthetic journey:
+
+```bash
+cd examples/repos/ai-search-app
+understudy-tools demo scan --repo .
+understudy-tools demo plan --repo .
+```
 
 ## Public boundary
 

@@ -2,16 +2,63 @@ from __future__ import annotations
 
 import argparse
 import json
+import re
 from pathlib import Path
 
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
+SCAN_EXCLUDE_DIRS = {
+    ".git",
+    ".hg",
+    ".mypy_cache",
+    ".pytest_cache",
+    ".ruff_cache",
+    ".understudy",
+    ".venv",
+    "__pycache__",
+    "dist",
+    "node_modules",
+}
+SCAN_EXTENSIONS = {
+    ".js",
+    ".jsx",
+    ".md",
+    ".mjs",
+    ".py",
+    ".rs",
+    ".ts",
+    ".tsx",
+    ".txt",
+    ".yaml",
+    ".yml",
+}
+PROVIDER_PATTERNS = {
+    "anthropic": re.compile(r"\b(anthropic|claude)\b", re.IGNORECASE),
+    "aws-bedrock": re.compile(r"\b(bedrock|aws\s*bedrock)\b", re.IGNORECASE),
+    "fireworks": re.compile(r"\bfireworks\b", re.IGNORECASE),
+    "gcp-vertex": re.compile(r"\b(vertexai|vertex\s*ai|google\.cloud\.aiplatform)\b", re.IGNORECASE),
+    "gemini": re.compile(r"\b(gemini|google\s+genai)\b", re.IGNORECASE),
+    "lilac": re.compile(r"\blilac\b", re.IGNORECASE),
+    "openai": re.compile(r"\b(openai|gpt-[A-Za-z0-9_.-]+)\b", re.IGNORECASE),
+    "openrouter": re.compile(r"\bopenrouter\b", re.IGNORECASE),
+    "prime-intellect": re.compile(r"\bprime\s*intellect\b", re.IGNORECASE),
+    "tinker": re.compile(r"\btinker\b", re.IGNORECASE),
+}
+MODEL_PATTERN = re.compile(
+    r"\b(?:gpt-[A-Za-z0-9_.-]+|claude-[A-Za-z0-9_.-]+|gemini-[A-Za-z0-9_.-]+|"
+    r"gemma-[A-Za-z0-9_.-]+|glm-[A-Za-z0-9_.-]+|kimi-[A-Za-z0-9_.-]+)\b",
+    re.IGNORECASE,
+)
+PROMPT_PATTERN = re.compile(r"\b(prompt|system_message|system prompt|messages\s*=)\b", re.IGNORECASE)
+EVAL_PATTERN = re.compile(r"\b(eval|benchmark|golden|fixture|test[_-]?prompt|rubric)\b", re.IGNORECASE)
+LATENCY_PATTERN = re.compile(r"\b(latency|timeout|duration|elapsed|p95|p99|slow)\b", re.IGNORECASE)
+COST_PATTERN = re.compile(r"\b(cost|price|pricing|token|usage|input_tokens|output_tokens)\b", re.IGNORECASE)
 
 ROADMAP_SURFACES: dict[str, dict[str, str]] = {
     "demo": {
         "skill": "skills/understudy-demo/SKILL.md",
-        "why": "Replay-first onboarding with bundled or synthetic examples.",
-        "next": "Port a no-provider fixture replay from understudy-agent.",
+        "why": "Local repo workload discovery before provider spend.",
+        "next": "Expand static scan signals and add richer Workload Card validation.",
     },
     "evaluate": {
         "skill": "skills/understudy-evaluate/SKILL.md",
@@ -49,6 +96,182 @@ ROADMAP_SURFACES: dict[str, dict[str, str]] = {
         "next": "Port redacted presence checks only; never print secret values.",
     },
 }
+
+
+def _scan_files(repo: Path) -> list[Path]:
+    files: list[Path] = []
+    for path in sorted(repo.rglob("*")):
+        if not path.is_file():
+            continue
+        relative_parts = path.relative_to(repo).parts
+        if any(part in SCAN_EXCLUDE_DIRS for part in relative_parts):
+            continue
+        if path.suffix.lower() not in SCAN_EXTENSIONS:
+            continue
+        if path.stat().st_size > 250_000:
+            continue
+        files.append(path)
+    return files
+
+
+def _line_hits(text: str, pattern: re.Pattern[str]) -> list[int]:
+    return [index for index, line in enumerate(text.splitlines(), start=1) if pattern.search(line)]
+
+
+def _scan_repo(repo: Path) -> list[dict[str, object]]:
+    candidates: list[dict[str, object]] = []
+    for path in _scan_files(repo):
+        try:
+            text = path.read_text(encoding="utf-8")
+        except UnicodeDecodeError:
+            continue
+
+        provider_hits = sorted(
+            provider for provider, pattern in PROVIDER_PATTERNS.items() if pattern.search(text)
+        )
+        models = sorted({match.group(0) for match in MODEL_PATTERN.finditer(text)})
+        prompt_lines = _line_hits(text, PROMPT_PATTERN)
+        eval_lines = _line_hits(text, EVAL_PATTERN)
+        latency_lines = _line_hits(text, LATENCY_PATTERN)
+        cost_lines = _line_hits(text, COST_PATTERN)
+
+        score = (
+            len(provider_hits) * 3
+            + min(len(models), 5) * 2
+            + min(len(prompt_lines), 3)
+            + min(len(eval_lines), 3)
+            + min(len(latency_lines), 2)
+            + min(len(cost_lines), 2)
+        )
+        if score < 3:
+            continue
+
+        relative = path.relative_to(repo)
+        signals: list[str] = []
+        if provider_hits:
+            signals.append("provider")
+        if models:
+            signals.append("model")
+        if prompt_lines:
+            signals.append("prompt")
+        if eval_lines:
+            signals.append("eval")
+        if latency_lines:
+            signals.append("latency")
+        if cost_lines:
+            signals.append("cost")
+
+        candidates.append(
+            {
+                "id": "",
+                "path": str(relative),
+                "score": score,
+                "signals": signals,
+                "providers": provider_hits,
+                "models": models[:10],
+                "evidence_lines": {
+                    "prompt": prompt_lines[:8],
+                    "eval": eval_lines[:8],
+                    "latency": latency_lines[:8],
+                    "cost": cost_lines[:8],
+                },
+            }
+        )
+
+    ranked = sorted(candidates, key=lambda item: (-int(item["score"]), str(item["path"])))
+    for index, candidate in enumerate(ranked, start=1):
+        candidate["id"] = f"candidate-{index:03d}"
+    return ranked
+
+
+def _demo_dir(repo: Path) -> Path:
+    return repo / ".understudy" / "demo"
+
+
+def _write_json(path: Path, payload: object) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(json.dumps(payload, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+
+
+def _load_candidates(repo: Path) -> list[dict[str, object]]:
+    path = _demo_dir(repo) / "workload-candidates.json"
+    if not path.exists():
+        return []
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    return list(payload.get("candidates", []))
+
+
+def cmd_demo(args: argparse.Namespace) -> int:
+    repo = Path(args.repo).expanduser().resolve()
+    if not repo.exists() or not repo.is_dir():
+        raise SystemExit(f"repo does not exist or is not a directory: {repo}")
+
+    if args.demo_action == "scan":
+        candidates = _scan_repo(repo)
+        payload = {
+            "schema_version": "understudy.demo.workload_candidates.v1",
+            "repo": str(repo),
+            "mode": "local-only",
+            "notes": [
+                "Static scan only; no provider calls, uploads, model downloads, or secret inspection.",
+                "Review candidates before turning any source code into an eval artifact.",
+            ],
+            "candidates": candidates,
+        }
+        output = _demo_dir(repo) / "workload-candidates.json"
+        _write_json(output, payload)
+        if args.json:
+            print(json.dumps(payload, indent=2, sort_keys=True))
+        else:
+            print(f"wrote {output}")
+            print(f"found {len(candidates)} workload candidate(s)")
+            for candidate in candidates[:5]:
+                providers = ", ".join(candidate["providers"]) or "unknown-provider"
+                signals = ", ".join(candidate["signals"])
+                print(f"- {candidate['id']}: {candidate['path']} ({providers}; {signals})")
+        return 0
+
+    if args.demo_action == "plan":
+        candidates = _load_candidates(repo)
+        if not candidates:
+            raise SystemExit("no workload candidates found; run `understudy-tools demo scan --repo .` first")
+        selected = next(
+            (candidate for candidate in candidates if candidate["id"] == args.candidate),
+            candidates[0],
+        )
+        plan = {
+            "schema_version": "understudy.demo.workload_card.v1",
+            "candidate_id": selected["id"],
+            "source_path": selected["path"],
+            "mode": "local-only",
+            "inferred_signals": selected["signals"],
+            "inferred_providers": selected["providers"],
+            "inferred_models": selected["models"],
+            "approval_required_before": [
+                "sending source, prompts, traces, or eval rows to any provider",
+                "running live model calls",
+                "downloading local models",
+                "submitting hosted benchmarks or training jobs",
+            ],
+            "recommended_next_steps": [
+                "confirm the workload owner and success metric",
+                "create 10-30 representative public-safe test cases",
+                "record current latency, cost, and quality baseline",
+                "choose a local, existing-key, or hosted candidate route",
+                "prepare blind pairwise review if quality is qualitative",
+            ],
+        }
+        output = _demo_dir(repo) / "workload-card.json"
+        _write_json(output, plan)
+        if args.json:
+            print(json.dumps(plan, indent=2, sort_keys=True))
+        else:
+            print(f"wrote {output}")
+            print(f"planned {selected['id']}: {selected['path']}")
+            print("next: confirm success metric and representative test cases")
+        return 0
+
+    return cmd_roadmap_surface(args)
 
 
 def _spine() -> dict[str, object]:
@@ -134,7 +357,22 @@ def build_parser() -> argparse.ArgumentParser:
     skills.add_argument("--json", action="store_true")
     skills.set_defaults(func=cmd_skills)
 
+    demo_parser = subparsers.add_parser("demo", help="Find and plan a local repo workload demo.")
+    demo_parser.add_argument(
+        "demo_action",
+        nargs="?",
+        default="status",
+        choices=["status", "scan", "plan"],
+        help="Scan a local repo for AI workload candidates or plan the first workload card.",
+    )
+    demo_parser.add_argument("--repo", default=".", help="Local repository to inspect.")
+    demo_parser.add_argument("--candidate", default="", help="Candidate id from workload-candidates.json.")
+    demo_parser.add_argument("--json", action="store_true")
+    demo_parser.set_defaults(func=cmd_demo, surface="demo", action="status")
+
     for surface, spec in ROADMAP_SURFACES.items():
+        if surface == "demo":
+            continue
         surface_parser = subparsers.add_parser(
             surface,
             help=f"Planned public surface: {spec['why']}",

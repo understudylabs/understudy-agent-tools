@@ -11,8 +11,9 @@ one specialist skill only when the developer's intent requires it.
 
 ## Specialist Skills
 
-- [`understudy-demo`](understudy-demo/SKILL.md) shows the product loop with
-  local replay, bundled fixtures, and no provider spend.
+- [`understudy-demo`](understudy-demo/SKILL.md) scans a local repo for AI
+  workload candidates, drafts a Workload Card, and falls back to synthetic
+  fixtures when no local workload is available.
 - [`understudy-evaluate`](understudy-evaluate/SKILL.md) compares prompts,
   traces, eval rows, datasets, or candidate models with explicit split
   boundaries.

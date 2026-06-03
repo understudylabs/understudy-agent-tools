@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import json
+
 from understudy_agent_tools.cli import main
 
 
@@ -34,3 +36,37 @@ def test_keys_roadmap_surface(capsys) -> None:
     assert main(["keys", "doctor", "--redacted"]) == 0
     out = capsys.readouterr().out
     assert "keys: planned" in out
+
+
+def test_demo_scan_and_plan(tmp_path, capsys) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    source = repo / "search.py"
+    source.write_text(
+        """
+SYSTEM_PROMPT = "rank search results"
+model = "gpt-4o-mini"
+provider = "openrouter"
+latency_budget_ms = 500
+input_tokens = 1200
+""",
+        encoding="utf-8",
+    )
+
+    assert main(["demo", "scan", "--repo", str(repo)]) == 0
+    scan_out = capsys.readouterr().out
+    assert "found 1 workload candidate" in scan_out
+
+    candidates_path = repo / ".understudy" / "demo" / "workload-candidates.json"
+    payload = json.loads(candidates_path.read_text(encoding="utf-8"))
+    assert payload["schema_version"] == "understudy.demo.workload_candidates.v1"
+    assert payload["candidates"][0]["path"] == "search.py"
+    assert "openrouter" in payload["candidates"][0]["providers"]
+
+    assert main(["demo", "plan", "--repo", str(repo)]) == 0
+    plan_out = capsys.readouterr().out
+    assert "planned candidate-001" in plan_out
+    card_path = repo / ".understudy" / "demo" / "workload-card.json"
+    card = json.loads(card_path.read_text(encoding="utf-8"))
+    assert card["schema_version"] == "understudy.demo.workload_card.v1"
+    assert "running live model calls" in card["approval_required_before"]
