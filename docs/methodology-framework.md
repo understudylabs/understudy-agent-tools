@@ -59,6 +59,9 @@ Required public-safe fields:
 Do not copy prompt bodies, completions, trace payloads, dataset rows, customer
 names, private repo paths, or secrets into the card by default.
 
+Provider integration patterns live in
+[`provider-integration-cookbook.md`](provider-integration-cookbook.md).
+
 ## Context Triage
 
 Before calling a candidate model weak, check whether the workload fits the
@@ -153,4 +156,4 @@ provenance, split boundaries, upload approval, budget cap, and a fallback route.
 - Pairwise judging: [MT-Bench and Chatbot Arena](https://arxiv.org/abs/2306.05685) and [position-bias study](https://arxiv.org/abs/2406.07791).
 - Long context: [RULER](https://arxiv.org/abs/2404.06654).
 - Local models: [MLX LM](https://github.com/ml-explore/mlx-lm) and [MLX](https://github.com/ml-explore/mlx).
-- Provider and partner docs: [Fireworks fine-tuning](https://fireworks.ai/docs/fine-tuning/finetuning-intro), [OpenRouter models API](https://openrouter.ai/docs/api/api-reference/models/get-models), [Prime Intellect Verifiers](https://docs.primeintellect.ai/verifiers), [Prime Intellect training](https://primeintellect.mintlify.app/verifiers/training), [Tinker Verifiers RL](https://tinker-docs.thinkingmachines.ai/cookbook/recipes/verifiers-rl/), and [Artificial Analysis API](https://artificialanalysis.ai/api-reference/beta).
+- Provider and partner docs: [Fireworks docs](https://docs.fireworks.ai/), [Fireworks serverless overview](https://docs.fireworks.ai/serverless/overview), [OpenRouter models API](https://openrouter.ai/docs/api/api-reference/models/get-models), [Prime Intellect Verifiers](https://docs.primeintellect.ai/verifiers/overview), [Prime Intellect training](https://docs.primeintellect.ai/verifiers/training), [Tinker Verifiers RL](https://tinker-docs.thinkingmachines.ai/cookbook/recipes/verifiers-rl/), and [Artificial Analysis API](https://artificialanalysis.ai/api-reference/beta).

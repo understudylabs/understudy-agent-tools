@@ -37,6 +37,9 @@ one specialist skill only when the developer's intent requires it.
   OpenAI-compatible proxying, trace capture, and replay.
 - [`understudy-provider-keys`](understudy-provider-keys/SKILL.md) handles local
   credential setup and status checks.
+- [`understudy-provider-integrations`](understudy-provider-integrations/SKILL.md)
+  maps workloads to provider cookbooks, route decisions, and partner
+  methodologies without approving spend.
 - [`understudy-model-lookup`](understudy-model-lookup/SKILL.md) inspects model
   availability, runner compatibility, and local-vs-remote options.
 - [`understudy-local-models`](understudy-local-models/SKILL.md) checks MLX,

@@ -104,6 +104,11 @@ ROADMAP_SURFACES: dict[str, dict[str, str]] = {
         "why": "Apple Silicon, MLX, Ollama, and local runner readiness before live comparison.",
         "next": "Port local hardware inventory and dry-run runner checks without private workloads.",
     },
+    "provider-integrations": {
+        "skill": "skills/understudy-provider-integrations/SKILL.md",
+        "why": "Provider cookbook mapping and route-decision planning before live calls.",
+        "next": "Port redacted key readiness, model lookup, supplier profile refresh, and route-decision packet generation.",
+    },
     "proxy": {
         "skill": "skills/understudy-local-proxy/SKILL.md",
         "why": "Local OpenAI-compatible routing and trace-capture setup.",

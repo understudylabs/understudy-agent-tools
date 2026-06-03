@@ -131,6 +131,9 @@ Route by value path:
 - Provider key, Understudy API key, redacted credential status, or spend-ready
   setup: read
   [`../understudy-provider-keys/SKILL.md`](../understudy-provider-keys/SKILL.md).
+- Provider integration strategy, partner cookbooks, route methodology, or which
+  provider lane fits a Workload Card: read
+  [`../understudy-provider-integrations/SKILL.md`](../understudy-provider-integrations/SKILL.md).
 - SFT, preference data, RL trajectories, adapters, LoRA, or hosted training
   handoff: read [`../understudy-train/SKILL.md`](../understudy-train/SKILL.md).
 - ROI, savings, replacement readiness, or business value reporting from

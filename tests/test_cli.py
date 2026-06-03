@@ -33,6 +33,13 @@ def test_local_models_roadmap_surface(capsys) -> None:
     assert "skills/understudy-local-models/SKILL.md" in out
 
 
+def test_provider_integrations_roadmap_surface(capsys) -> None:
+    assert main(["provider-integrations", "status"]) == 0
+    out = capsys.readouterr().out
+    assert "provider-integrations: planned" in out
+    assert "skills/understudy-provider-integrations/SKILL.md" in out
+
+
 def test_keys_roadmap_surface(capsys) -> None:
     assert main(["keys", "doctor", "--redacted"]) == 0
     out = capsys.readouterr().out
