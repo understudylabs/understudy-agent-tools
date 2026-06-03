@@ -1,0 +1,19 @@
+[project]
+name = "understudy-agent-tools"
+version = "0.1.0"
+description = "Public MIT-licensed agent tools and skills for local-first AI workload evaluation."
+readme = "README.md"
+requires-python = ">=3.10"
+license = { text = "MIT" }
+authors = [{ name = "Understudy Labs" }]
+dependencies = []
+
+[project.scripts]
+understudy-tools = "understudy_agent_tools.cli:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
