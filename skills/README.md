@@ -6,7 +6,8 @@ one specialist skill only when the developer's intent requires it.
 ## Entry Point
 
 - [`understudy`](understudy/SKILL.md) routes demo, evaluation, optimization,
-  training handoff, lab notes, local proxying, provider keys, and model lookup.
+  training handoff, lab notes, local proxying, provider keys, model lookup, and
+  local-model readiness.
 
 ## Specialist Skills
 
@@ -27,6 +28,9 @@ one specialist skill only when the developer's intent requires it.
   credential setup and status checks.
 - [`understudy-model-lookup`](understudy-model-lookup/SKILL.md) inspects model
   availability, runner compatibility, and local-vs-remote options.
+- [`understudy-local-models`](understudy-local-models/SKILL.md) checks MLX,
+  Apple Silicon, Ollama, and local runner readiness before local inference or
+  route comparisons.
 
 ## Public Safety
 

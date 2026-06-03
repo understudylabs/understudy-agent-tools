@@ -53,6 +53,7 @@ specialist skills by intent:
 - local proxy
 - provider keys
 - model lookup
+- local models and MLX readiness
 
 The default sequence is replay first, then live evidence, then optimization or
 training only after the user has a measured baseline.
