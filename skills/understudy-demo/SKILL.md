@@ -1,6 +1,6 @@
 ---
 name: understudy-demo
-description: Use when a developer wants a first-run Understudy demo or product walkthrough using local replay, bundled fixtures, and no provider spend.
+description: Use when a developer wants a first-run Understudy demo that scans a local repo for AI workload candidates before any provider spend.
 metadata:
   understudy:
     mode: automatic
@@ -12,6 +12,11 @@ metadata:
 
 Use this skill when the developer asks for a demo, first run, product
 walkthrough, or quick explanation of the Understudy replacement loop.
+
+The preferred first value moment is local repo workload discovery: point
+Understudy at the developer's repo, find likely AI workloads, and produce a
+local Workload Card draft. Bundled fixture replay is a fallback when no local
+repo is available.
 
 Do not use this skill for a real workload comparison after the developer has
 provided prompts, traces, datasets, or eval artifacts. Route those requests to
@@ -33,8 +38,9 @@ Do not upload source files, prompts, traces, outputs, datasets, repo paths,
 private notes, provider keys, or secrets unless the developer explicitly
 approves that exact action in the current thread.
 
-Use bundled or synthetic examples only. Do not ask for provider keys before
-showing a local replay unless the developer explicitly skips the replay path.
+Use local static inspection, bundled examples, or synthetic examples only. Do
+not ask for provider keys before showing a local repo scan or fixture replay
+unless the developer explicitly skips local discovery.
 
 Treat configured provider keys as local machine state, not permission to spend.
 Before live calls, hosted jobs, uploads, benchmark submission, or training,
@@ -48,10 +54,11 @@ require:
 
 ## Intake
 
-1. Confirm whether the developer wants a product demo or a real workload run.
-2. Inspect local CLI availability and any bundled demo commands.
-3. Run the smallest no-spend status or replay command before proposing live
-   work.
+1. Confirm the local repo path to inspect. Default to the current working
+   directory if the developer is already inside a repo.
+2. Inspect local CLI availability and demo commands.
+3. Run the smallest no-spend static scan before proposing live work.
+4. If no repo is available, fall back to a bundled or synthetic fixture.
 
 ## Flow
 
@@ -61,25 +68,44 @@ require:
 run_understudy --help
 ```
 
-2. Prefer a bundled demo, doctor, or replay command exposed by the installed
-   CLI. If the exact demo command is not obvious, inspect help first:
+2. Inspect demo help:
 
 ```sh
 run_understudy demo --help
 ```
 
-3. Run a local replay or fixture-only demo that writes under:
+3. Scan the local repo for AI workload candidates:
+
+```sh
+run_understudy demo scan --repo .
+```
+
+This writes under:
 
 ```text
 .understudy/demo/
 ```
 
-4. Explain the replacement loop using only generated or bundled evidence:
-   baseline, candidate, quality signal, cost or latency signal, failure
-   clusters, and next action.
+4. Review the top candidates. Look for provider/model usage, prompts, eval
+   harnesses, latency/cost hints, qualitative review needs, or trace capture
+   points.
 
-5. Offer a live evaluation only after the local replay is understood and the
+5. Create the first local Workload Card draft:
+
+```sh
+run_understudy demo plan --repo .
+```
+
+6. Explain the replacement loop using only generated local evidence:
+   workload candidate, inferred baseline, candidate routes, quality signal,
+   cost or latency signal, stakeholder review surface, and next action.
+
+7. Offer a live evaluation only after the local scan is understood and the
    developer approves the provider, budget cap, and data class.
+
+8. If no candidate is found, use a bundled synthetic fixture repo or ask the
+   developer which local code path contains AI calls. Do not pretend an empty
+   scan proves there is no workload.
 
 ## References
 
@@ -91,6 +117,8 @@ Load deeper material only when needed:
   for local key setup after the replay path.
 - [`../understudy-model-lookup/SKILL.md`](../understudy-model-lookup/SKILL.md)
   for candidate availability or compatibility questions.
+- [`../../examples/repos/ai-search-app/README.md`](../../examples/repos/ai-search-app/README.md)
+  for the public synthetic repo journey when no local workload is available.
 
 ## Output Standard
 

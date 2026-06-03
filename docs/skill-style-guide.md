@@ -66,7 +66,8 @@ Allowed:
 Not allowed:
 
 - customer names, domains, volumes, traces, prompts, labels, or completions;
-- internal Super Admin, WorkOS, R2, D1, pool-secret, or hosted-control details;
+- internal admin surfaces, identity-provider wiring, storage internals, database
+  internals, capacity secrets, or hosted-control details;
 - private customer replacement runbooks;
 - aggressive internal spend heuristics;
 - uncited current claims about vendor pricing, model support, ownership, or API

@@ -9,5 +9,11 @@ Public model lookup should stay evidence-scoped:
 - verify runner, tokenizer, adapter, modality, context window, and route shape;
 - do not send workload payloads while checking compatibility.
 
+Use the public model analysis docs when writing or interpreting model profiles:
+
+- [`../../docs/model-analysis-style-guide.md`](../../docs/model-analysis-style-guide.md)
+- [`../../docs/model-analysis-profile-template.md`](../../docs/model-analysis-profile-template.md)
+- [`../../docs/model-analysis-profiles.md`](../../docs/model-analysis-profiles.md)
+
 Add provider-specific instructions here only after checking current public
 provider documentation.
