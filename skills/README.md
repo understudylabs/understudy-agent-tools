@@ -14,6 +14,9 @@ one specialist skill only when the developer's intent requires it.
 - [`understudy-demo`](understudy-demo/SKILL.md) scans a local repo for AI
   workload candidates, drafts a Workload Card, and falls back to synthetic
   fixtures when no local workload is available.
+- [`understudy-workload-discovery`](understudy-workload-discovery/SKILL.md)
+  finds and ranks AI workload candidates in a local repo before evaluation,
+  provider changes, or optimization.
 - [`understudy-evaluate`](understudy-evaluate/SKILL.md) compares prompts,
   traces, eval rows, datasets, or candidate models with explicit split
   boundaries.

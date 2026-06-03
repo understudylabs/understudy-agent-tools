@@ -60,6 +60,11 @@ ROADMAP_SURFACES: dict[str, dict[str, str]] = {
         "why": "Local repo workload discovery before provider spend.",
         "next": "Expand static scan signals and add richer Workload Card validation.",
     },
+    "workload-discovery": {
+        "skill": "skills/understudy-workload-discovery/SKILL.md",
+        "why": "Find and rank local repo AI workload candidates before evaluation.",
+        "next": "Add workload type classification and richer candidate-card fields.",
+    },
     "evaluate": {
         "skill": "skills/understudy-evaluate/SKILL.md",
         "why": "Local-first workload measurement with explicit split boundaries.",
@@ -274,6 +279,20 @@ def cmd_demo(args: argparse.Namespace) -> int:
     return cmd_roadmap_surface(args)
 
 
+def cmd_workload_discovery(args: argparse.Namespace) -> int:
+    demo_args = argparse.Namespace(
+        demo_action=args.discovery_action,
+        repo=args.repo,
+        candidate=args.candidate,
+        json=args.json,
+        surface="workload-discovery",
+        action="status",
+    )
+    if args.discovery_action in {"scan", "plan"}:
+        return cmd_demo(demo_args)
+    return cmd_roadmap_surface(demo_args)
+
+
 def _spine() -> dict[str, object]:
     return {
         "name": "understudy-agent-tools",
@@ -370,8 +389,24 @@ def build_parser() -> argparse.ArgumentParser:
     demo_parser.add_argument("--json", action="store_true")
     demo_parser.set_defaults(func=cmd_demo, surface="demo", action="status")
 
+    discovery_parser = subparsers.add_parser(
+        "workload-discovery",
+        help="Find and plan local repo AI workload candidates.",
+    )
+    discovery_parser.add_argument(
+        "discovery_action",
+        nargs="?",
+        default="status",
+        choices=["status", "scan", "plan"],
+        help="Scan a local repo for AI workload candidates or plan the first Workload Card.",
+    )
+    discovery_parser.add_argument("--repo", default=".", help="Local repository to inspect.")
+    discovery_parser.add_argument("--candidate", default="", help="Candidate id from workload-candidates.json.")
+    discovery_parser.add_argument("--json", action="store_true")
+    discovery_parser.set_defaults(func=cmd_workload_discovery, surface="workload-discovery", action="status")
+
     for surface, spec in ROADMAP_SURFACES.items():
-        if surface == "demo":
+        if surface in {"demo", "workload-discovery"}:
             continue
         surface_parser = subparsers.add_parser(
             surface,

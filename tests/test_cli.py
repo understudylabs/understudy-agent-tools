@@ -16,6 +16,7 @@ def test_skills_command(capsys) -> None:
     assert main(["skills"]) == 0
     out = capsys.readouterr().out
     assert "skills/understudy" in out
+    assert "skills/understudy-workload-discovery" in out
 
 
 def test_roadmap_surface_status(capsys) -> None:
@@ -70,3 +71,20 @@ input_tokens = 1200
     card = json.loads(card_path.read_text(encoding="utf-8"))
     assert card["schema_version"] == "understudy.demo.workload_card.v1"
     assert "running live model calls" in card["approval_required_before"]
+
+
+def test_workload_discovery_alias(tmp_path, capsys) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    (repo / "agent.ts").write_text(
+        'const model = "gemini-2.5-pro"; const prompt = "summarize"; const provider = "gemini";',
+        encoding="utf-8",
+    )
+
+    assert main(["workload-discovery", "scan", "--repo", str(repo)]) == 0
+    out = capsys.readouterr().out
+    assert "candidate-001" in out
+
+    assert main(["workload-discovery", "plan", "--repo", str(repo)]) == 0
+    plan_out = capsys.readouterr().out
+    assert "planned candidate-001" in plan_out

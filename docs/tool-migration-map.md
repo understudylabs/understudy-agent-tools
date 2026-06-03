@@ -17,7 +17,8 @@ runtime behavior explicit and safe.
 
 | Surface | Public skill | Migrate first | Why | Keep private or deferred |
 | --- | --- | --- | --- | --- |
-| `demo` | `skills/understudy-demo/SKILL.md` | Local repo workload scan, Workload Card draft, and synthetic fixture fallback. | Gives new users a no-spend proof that Understudy can find value in their own code. | Customer demos, private traces, hosted account flows. |
+| `workload-discovery` | `skills/understudy-workload-discovery/SKILL.md` | Local repo workload scan, candidate ranking, and Workload Card draft. | Gives users a no-spend way to find value in their own code before choosing an eval or provider route. | Customer traces, private prompts, hosted account flows, internal prioritization heuristics. |
+| `demo` | `skills/understudy-demo/SKILL.md` | Workload discovery walkthrough and synthetic fixture fallback. | Gives new users a no-spend proof that Understudy can find value in their own code. | Customer demos, private traces, hosted account flows. |
 | `evaluate` | `skills/understudy-evaluate/SKILL.md` | Artifact validation, split checks, dry-run eval planning, synthetic scorer examples. | Latency-sensitive users need quality evidence before route changes. | Customer labels, raw prompts, heldout data, hosted benchmark submissions. |
 | `model` | `skills/understudy-model-lookup/SKILL.md` | Local metadata inspection, public model-card lookup, route-shape dry runs. | Prevents false blame on model quality when the issue is token cap, parser, route, or context mismatch. | Uncited current availability claims, private provider configs. |
 | `local-models` | `skills/understudy-local-models/SKILL.md` | Apple Silicon inventory, MLX/Ollama/llama.cpp/Transformers readiness checks, synthetic smoke artifacts. | Local candidates matter for latency, no-upload workflows, and DevOps-light experimentation. | Customer workload replay, model downloads without approval, hosted fallback execution. |

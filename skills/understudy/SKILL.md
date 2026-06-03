@@ -100,6 +100,9 @@ hosted-control details in public skill output.
 
 Route by value path:
 
+- Find opportunities in a local repo, scan code for AI workloads, or choose
+  what to evaluate first: read
+  [`../understudy-workload-discovery/SKILL.md`](../understudy-workload-discovery/SKILL.md).
 - "Show me quickly," first-run proof, or no workload yet: read
   [`../understudy-demo/SKILL.md`](../understudy-demo/SKILL.md).
 - Existing prompts, traces, eval rows, reports, datasets, or candidate
