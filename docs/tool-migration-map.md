@@ -18,7 +18,7 @@ runtime behavior explicit and safe.
 | Surface | Public skill | Migrate first | Why | Keep private or deferred |
 | --- | --- | --- | --- | --- |
 | `demo` | `skills/understudy-demo/SKILL.md` | Bundled fixture replay and first-run walkthrough. | Gives new users a no-spend proof of the loop. | Customer demos, private traces, hosted account flows. |
-| `evaluate` | `skills/understudy-evaluate/SKILL.md` | Artifact validation, split checks, dry-run eval planning, synthetic scorer examples. | Workgrounds-style users need quality evidence before route changes. | Customer labels, raw prompts, heldout data, hosted benchmark submissions. |
+| `evaluate` | `skills/understudy-evaluate/SKILL.md` | Artifact validation, split checks, dry-run eval planning, synthetic scorer examples. | Latency-sensitive users need quality evidence before route changes. | Customer labels, raw prompts, heldout data, hosted benchmark submissions. |
 | `model` | `skills/understudy-model-lookup/SKILL.md` | Local metadata inspection, public model-card lookup, route-shape dry runs. | Prevents false blame on model quality when the issue is token cap, parser, route, or context mismatch. | Uncited current availability claims, private provider configs. |
 | `local-models` | `skills/understudy-local-models/SKILL.md` | Apple Silicon inventory, MLX/Ollama/llama.cpp/Transformers readiness checks, synthetic smoke artifacts. | Local candidates matter for latency, no-upload workflows, and DevOps-light experimentation. | Customer workload replay, model downloads without approval, hosted fallback execution. |
 | `proxy` | `skills/understudy-local-proxy/SKILL.md` | Local OpenAI-compatible doctor, base URL inspection, fake-provider request path. | Teams need to prove routing and trace capture before touching production apps. | Hosted gateway internals, production routing policy, remote telemetry. |
@@ -27,9 +27,9 @@ runtime behavior explicit and safe.
 | `train` | `skills/understudy-train/SKILL.md` | Export preview, split validation, provenance and redaction checks. | Training handoff needs clean data boundaries before any upload. | Provider upload flows, customer trajectories, internal training scripts. |
 | reporting skills | `skills/understudy-publish-results/SKILL.md`, `skills/understudy-value-reporting/SKILL.md`, `skills/understudy-tufte/SKILL.md` | Public summary templates, caveat language, synthetic reports. | Non-engineers need readable evidence and blind review artifacts. | Customer names, private deck formats, private commercial claims. |
 
-## Workgrounds-Shaped Gap
+## Latency-First User Shape
 
-The June 3, 2026 Workgrounds workshop highlighted a common user shape:
+A recent developer workshop highlighted a common user shape:
 
 - speed matters more than cost in the current phase;
 - AI search latency can be dominated by inference time;

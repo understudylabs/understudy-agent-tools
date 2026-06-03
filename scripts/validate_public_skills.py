@@ -3,6 +3,7 @@ from __future__ import annotations
 
 import argparse
 import re
+import subprocess
 import sys
 from pathlib import Path
 
@@ -29,6 +30,7 @@ SECRET_PATTERNS = [
     re.compile(r"AKIA[0-9A-Z]{16}"),
     re.compile(r"-----BEGIN (?:RSA |OPENSSH |EC )?PRIVATE KEY-----"),
 ]
+PUBLIC_DOC_DIRS = ["docs"]
 
 
 def parse_frontmatter(text: str) -> tuple[dict[str, str], str] | None:
@@ -106,9 +108,36 @@ def validate_skill(path: Path) -> list[str]:
     return errors
 
 
+def validate_public_markdown(path: Path) -> list[str]:
+    errors: list[str] = []
+    text = path.read_text(encoding="utf-8")
+    for term in PRIVATE_TERMS:
+        if term in text:
+            errors.append(f"{path}: contains private review term {term!r}")
+    for pattern in SECRET_PATTERNS:
+        if pattern.search(text):
+            errors.append(f"{path}: contains secret-shaped text matching {pattern.pattern}")
+    return errors
+
+
+def is_gitignored(path: Path) -> bool:
+    result = subprocess.run(
+        ["git", "check-ignore", "--quiet", str(path)],
+        cwd=Path.cwd(),
+        check=False,
+    )
+    return result.returncode == 0
+
+
 def main() -> int:
     parser = argparse.ArgumentParser(description="Validate public Understudy skills.")
     parser.add_argument("paths", nargs="*", default=["skills"])
+    parser.add_argument(
+        "--docs",
+        nargs="*",
+        default=PUBLIC_DOC_DIRS,
+        help="Markdown doc directories to scan for public-safety terms.",
+    )
     args = parser.parse_args()
 
     roots = [Path(p) for p in args.paths]
@@ -124,6 +153,15 @@ def main() -> int:
     all_errors: list[str] = []
     for skill_dir in skill_dirs:
         all_errors.extend(validate_skill(skill_dir))
+    for doc_root_arg in args.docs:
+        doc_root = Path(doc_root_arg)
+        if doc_root.is_file() and doc_root.suffix == ".md":
+            if not is_gitignored(doc_root):
+                all_errors.extend(validate_public_markdown(doc_root))
+        elif doc_root.is_dir():
+            for doc_path in sorted(doc_root.rglob("*.md")):
+                if not is_gitignored(doc_path):
+                    all_errors.extend(validate_public_markdown(doc_path))
 
     for error in all_errors:
         print(error)
