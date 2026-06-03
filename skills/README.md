@@ -20,6 +20,13 @@ one specialist skill only when the developer's intent requires it.
 - [`understudy-evaluate`](understudy-evaluate/SKILL.md) compares prompts,
   traces, eval rows, datasets, or candidate models with explicit split
   boundaries.
+- [`understudy-latency-triage`](understudy-latency-triage/SKILL.md) separates
+  inference, context, routing, retry, streaming, and app latency.
+- [`understudy-output-control`](understudy-output-control/SKILL.md) separates
+  parser, JSON/schema, tool-call, and output-contract failures from model
+  reasoning failures.
+- [`understudy-blind-review`](understudy-blind-review/SKILL.md) prepares
+  anonymized pairwise review packets for qualitative outputs.
 - [`understudy-optimize`](understudy-optimize/SKILL.md) improves a measured
   workload while protecting holdout evidence.
 - [`understudy-train`](understudy-train/SKILL.md) prepares SFT, preference, RL,
@@ -37,6 +44,8 @@ one specialist skill only when the developer's intent requires it.
   route comparisons.
 - [`understudy-value-reporting`](understudy-value-reporting/SKILL.md) turns
   measured evidence into conservative value reports.
+- [`understudy-decision-packet`](understudy-decision-packet/SKILL.md) turns
+  measured evidence into promote, hold, rerun, train, or publish decisions.
 - [`understudy-publish-results`](understudy-publish-results/SKILL.md) prepares
   public-safe result summaries.
 - [`understudy-tufte`](understudy-tufte/SKILL.md) improves report structure,

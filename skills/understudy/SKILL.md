@@ -108,6 +108,14 @@ Route by value path:
 - Existing prompts, traces, eval rows, reports, datasets, or candidate
   comparison: read
   [`../understudy-evaluate/SKILL.md`](../understudy-evaluate/SKILL.md).
+- Slow AI workflows, inference latency, provider queueing, retries, streaming,
+  or context-size bottlenecks: read
+  [`../understudy-latency-triage/SKILL.md`](../understudy-latency-triage/SKILL.md).
+- JSON, schema, parser, tool-call, formatting, or output-contract failures:
+  read [`../understudy-output-control/SKILL.md`](../understudy-output-control/SKILL.md).
+- Qualitative candidate-vs-incumbent comparison, stakeholder review, or blind
+  A/B packets: read
+  [`../understudy-blind-review/SKILL.md`](../understudy-blind-review/SKILL.md).
 - Reduce cost or latency after a measured baseline, or improve quality,
   parsing, routing, prompts, or reliability: read
   [`../understudy-optimize/SKILL.md`](../understudy-optimize/SKILL.md).
@@ -128,6 +136,9 @@ Route by value path:
 - ROI, savings, replacement readiness, or business value reporting from
   measured evidence: read
   [`../understudy-value-reporting/SKILL.md`](../understudy-value-reporting/SKILL.md).
+- Promote, hold, rerun, optimize, train, or publish decisions from measured
+  evidence: read
+  [`../understudy-decision-packet/SKILL.md`](../understudy-decision-packet/SKILL.md).
 - Public-safe result summaries, announcements, or shareable writeups: read
   [`../understudy-publish-results/SKILL.md`](../understudy-publish-results/SKILL.md).
 - Report design, evidence visual hierarchy, or terse analytical prose: read

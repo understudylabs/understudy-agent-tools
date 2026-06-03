@@ -47,6 +47,9 @@ specialist skills by intent:
 
 - local repo workload discovery/demo
 - evaluate
+- latency triage
+- output control
+- blind review
 - optimize
 - train/handoff
 - lab/research notebook
@@ -55,6 +58,7 @@ specialist skills by intent:
 - model lookup
 - local models and MLX readiness
 - value reporting and public-safe result publishing
+- decision packets
 
 The reusable front door for real repos is
 `skills/understudy-workload-discovery/SKILL.md`; `understudy-demo` uses that
