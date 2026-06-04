@@ -21,8 +21,8 @@ Default path:
 
 ```text
 understudy -> capture/import or workload discovery -> Workload Card
-  -> route decision -> evaluation -> optimize -> train/handoff
-  -> decision/value report -> public-safe publishing
+  -> Route Decision Packet -> conservative Value Report -> evaluation
+  -> optimize -> train/handoff -> decision packet -> public-safe publishing
 ```
 
 The lab path is always available for longer research work where hypotheses,

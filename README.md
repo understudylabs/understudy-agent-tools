@@ -60,6 +60,7 @@ specialist skills by intent:
 - provider integrations and partner cookbooks
 - model lookup
 - local models and MLX readiness
+- route decisions and conservative value reports
 - value reporting and public-safe result publishing
 - decision packets
 
@@ -71,9 +72,10 @@ workload in source code. `understudy-demo` uses that same journey for first-run
 walkthroughs.
 
 The default sequence is local repo workload discovery first, then a Workload
-Card draft, then live evidence only after the user approves the provider,
-budget cap, and data class. The public methodology contract is documented in
-`docs/methodology-framework.md`.
+Card draft, then a Route Decision Packet and conservative Value Report before
+live evidence. Live calls, uploads, downloads, hosted jobs, or training require
+approval for the provider, budget cap, and data class. The public methodology
+contract is documented in `docs/methodology-framework.md`.
 
 Try the public synthetic journey:
 
@@ -81,6 +83,8 @@ Try the public synthetic journey:
 cd examples/repos/ai-search-app
 understudy-tools demo scan --repo .
 understudy-tools demo plan --repo .
+understudy-tools route-decision plan --workload-card .understudy/workload-discovery/workload-card.json
+understudy-tools value report --workload-card .understudy/workload-discovery/workload-card.json --route-decision .understudy/route-decision/route-decision-packet.json --requests-per-month 10000
 ```
 
 ## Public boundary
