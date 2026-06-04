@@ -87,6 +87,14 @@ understudy-tools route-decision plan --workload-card .understudy/workload-discov
 understudy-tools value report --workload-card .understudy/workload-discovery/workload-card.json --route-decision .understudy/route-decision/route-decision-packet.json --requests-per-month 10000
 ```
 
+For quick scenario sizing before a measured eval, pass explicit overrides:
+
+```bash
+understudy-tools value report --workload-card .understudy/workload-discovery/workload-card.json --route-decision .understudy/route-decision/route-decision-packet.json --requests-per-month 10000 --baseline-cost-usd 0.012 --candidate-cost-usd 0.004
+```
+
+Overrides are planning inputs, not public savings claims.
+
 ## Public boundary
 
 Read the full policies:
