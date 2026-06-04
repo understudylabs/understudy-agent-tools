@@ -30,7 +30,8 @@ python -m pip install -e .
 understudy-tools --help
 ```
 
-No provider calls, uploads, or telemetry run by default.
+No provider calls, uploads, model downloads, secret-value inspection, or
+telemetry run by default.
 
 ## First command
 
@@ -83,6 +84,14 @@ understudy-tools demo plan --repo .
 ```
 
 ## Public boundary
+
+Read the full policies:
+
+- [`docs/privacy-and-data-boundaries.md`](docs/privacy-and-data-boundaries.md)
+- [`docs/security.md`](docs/security.md)
+- [`docs/telemetry.md`](docs/telemetry.md)
+- [`docs/oss-release-boundary.md`](docs/oss-release-boundary.md)
+- [`docs/release-checklist.md`](docs/release-checklist.md)
 
 Do not commit:
 

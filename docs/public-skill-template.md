@@ -45,6 +45,13 @@ require:
 - dry-run or preview artifact reviewed first;
 - visible output path under `.understudy/`.
 
+## Data Boundary
+
+Name the data class this skill touches. Default to source metadata and local
+artifacts only. If the skill may touch prompts, completions, traces, eval rows,
+datasets, source snippets, secrets, or model artifacts, require explicit
+approval before reading, printing, uploading, or committing them.
+
 ## Intake
 
 1. Inspect the real local artifact, repo, report, trace, or workload profile.
@@ -92,6 +99,15 @@ Use local-only examples first:
 
 Examples must write to `.understudy/<capability>/` and must not require
 provider keys, uploads, or paid calls by default.
+
+## Validation
+
+Run local-only checks:
+
+```sh
+python3 scripts/validate_public_skills.py --repo
+python3 scripts/doctor.py
+```
 
 ## Output Standard
 

@@ -13,6 +13,14 @@ KEY = re.compile(r"^([A-Za-z_][A-Za-z0-9_-]*)\s*:\s*(.*)$")
 NAME = re.compile(r"^[a-z0-9-]+$")
 ALLOWED_TOP_LEVEL = {"name", "description", "license", "allowed-tools", "metadata"}
 PRIVATE_TERMS = [
+    "/Users/luis/",
+    "/understudy-agent/",
+    "understudy-agent/",
+    "understudy-platform",
+    "understudy-knowledge",
+    "raw-notes",
+    "private/runbooks",
+    ".smithers",
     "Fullcast",
     "Cedar",
     "Workgrounds",
@@ -27,9 +35,40 @@ PRIVATE_TERMS = [
 ]
 SECRET_PATTERNS = [
     re.compile(r"sk-[A-Za-z0-9_-]{20,}"),
+    re.compile(r"sk-ant-[A-Za-z0-9_-]{20,}"),
+    re.compile(r"gh[pousr]_[A-Za-z0-9_]{20,}"),
+    re.compile(r"xox[baprs]-[A-Za-z0-9-]{20,}"),
+    re.compile(r"AIza[0-9A-Za-z_-]{20,}"),
+    re.compile(r"Bearer\s+[A-Za-z0-9._-]{20,}", re.IGNORECASE),
+    re.compile(r"eyJ[A-Za-z0-9_-]{20,}\.[A-Za-z0-9_-]{20,}\.[A-Za-z0-9_-]{10,}"),
     re.compile(r"AKIA[0-9A-Z]{16}"),
-    re.compile(r"-----BEGIN (?:RSA |OPENSSH |EC )?PRIVATE KEY-----"),
+    re.compile(r"-----BEGIN [A-Z ]*PRIVATE KEY-----"),
 ]
+RAW_PAYLOAD_PATTERNS = [
+    re.compile(r"\braw_prompt\b", re.IGNORECASE),
+    re.compile(r"\braw_completion\b", re.IGNORECASE),
+    re.compile(r"\btrace_payload\b", re.IGNORECASE),
+]
+PRODUCTION_URL_PATTERNS = [
+    re.compile(r"https://(?:api|app|admin|dashboard)\.understudy(?:labs)?\."),
+]
+SCAN_EXTENSIONS = {
+    ".json",
+    ".jsonl",
+    ".md",
+    ".py",
+    ".sh",
+    ".toml",
+    ".ts",
+    ".tsx",
+    ".txt",
+    ".yaml",
+    ".yml",
+}
+REPO_SCAN_EXCLUDE = {
+    Path("scripts/validate_public_skills.py"),
+    Path("tests/test_validate_public_skills.py"),
+}
 PUBLIC_DOC_DIRS = ["docs"]
 
 
@@ -108,7 +147,7 @@ def validate_skill(path: Path) -> list[str]:
     return errors
 
 
-def validate_public_markdown(path: Path) -> list[str]:
+def validate_public_text(path: Path) -> list[str]:
     errors: list[str] = []
     text = path.read_text(encoding="utf-8")
     for term in PRIVATE_TERMS:
@@ -117,7 +156,17 @@ def validate_public_markdown(path: Path) -> list[str]:
     for pattern in SECRET_PATTERNS:
         if pattern.search(text):
             errors.append(f"{path}: contains secret-shaped text matching {pattern.pattern}")
+    for pattern in RAW_PAYLOAD_PATTERNS:
+        if pattern.search(text):
+            errors.append(f"{path}: contains raw payload marker matching {pattern.pattern}")
+    for pattern in PRODUCTION_URL_PATTERNS:
+        if pattern.search(text):
+            errors.append(f"{path}: contains production/control-plane URL matching {pattern.pattern}")
     return errors
+
+
+def validate_public_markdown(path: Path) -> list[str]:
+    return validate_public_text(path)
 
 
 def is_gitignored(path: Path) -> bool:
@@ -129,14 +178,46 @@ def is_gitignored(path: Path) -> bool:
     return result.returncode == 0
 
 
+def git_tracked_files() -> list[Path]:
+    result = subprocess.run(
+        ["git", "ls-files"],
+        cwd=Path.cwd(),
+        check=True,
+        text=True,
+        capture_output=True,
+    )
+    return [Path(line) for line in result.stdout.splitlines() if line.strip()]
+
+
+def validate_public_repo() -> list[str]:
+    errors: list[str] = []
+    for path in git_tracked_files():
+        if path in REPO_SCAN_EXCLUDE:
+            continue
+        if path.suffix.lower() not in SCAN_EXTENSIONS:
+            continue
+        if not path.exists() or is_gitignored(path):
+            continue
+        try:
+            errors.extend(validate_public_text(path))
+        except UnicodeDecodeError:
+            continue
+    return errors
+
+
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Validate public Understudy skills.")
+    parser = argparse.ArgumentParser(description="Validate public Understudy skills and release text.")
     parser.add_argument("paths", nargs="*", default=["skills"])
     parser.add_argument(
         "--docs",
         nargs="*",
         default=PUBLIC_DOC_DIRS,
         help="Markdown doc directories to scan for public-safety terms.",
+    )
+    parser.add_argument(
+        "--repo",
+        action="store_true",
+        help="Scan every tracked text file for public-release safety patterns.",
     )
     args = parser.parse_args()
 
@@ -157,11 +238,13 @@ def main() -> int:
         doc_root = Path(doc_root_arg)
         if doc_root.is_file() and doc_root.suffix == ".md":
             if not is_gitignored(doc_root):
-                all_errors.extend(validate_public_markdown(doc_root))
+                all_errors.extend(validate_public_text(doc_root))
         elif doc_root.is_dir():
             for doc_path in sorted(doc_root.rglob("*.md")):
                 if not is_gitignored(doc_path):
-                    all_errors.extend(validate_public_markdown(doc_path))
+                    all_errors.extend(validate_public_text(doc_path))
+    if args.repo:
+        all_errors.extend(validate_public_repo())
 
     for error in all_errors:
         print(error)

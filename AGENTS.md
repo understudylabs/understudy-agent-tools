@@ -19,6 +19,14 @@ OSS from the first commit.
   incident notes.
 - Examples must use synthetic data or small public fixtures.
 
+Read these before extraction, release, or public docs work:
+
+- [`docs/privacy-and-data-boundaries.md`](docs/privacy-and-data-boundaries.md)
+- [`docs/security.md`](docs/security.md)
+- [`docs/telemetry.md`](docs/telemetry.md)
+- [`docs/oss-release-boundary.md`](docs/oss-release-boundary.md)
+- [`docs/release-checklist.md`](docs/release-checklist.md)
+
 ## Architecture
 
 Keep one layer per spine:
@@ -48,3 +56,11 @@ When importing code from private Understudy repos:
 3. Add or preserve license metadata for vendored code.
 4. Add a smoke test or dry-run command.
 5. Keep the commit scoped to one spine.
+
+Before opening a PR that changes skills, docs, examples, scripts, package
+metadata, or vendored files, run:
+
+```sh
+python3 scripts/validate_public_skills.py --repo
+python3 scripts/doctor.py
+```
