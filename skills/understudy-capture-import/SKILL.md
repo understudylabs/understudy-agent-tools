@@ -48,7 +48,16 @@ run_understudy capture-import scan --repo .
 ```
 
 2. Review `.understudy/capture-import/capture-sources.json`.
-3. Pick one source candidate and classify it:
+3. If payload shape matters, write a bounded local preview:
+
+```sh
+run_understudy capture-import preview --repo . --source-id source-001 --limit 25
+```
+
+The preview default is 25 records and the cap is 200 records. Records are
+written under `.understudy/capture-import/`, not printed to the terminal.
+
+4. Pick one source candidate and classify it:
    - `ai-call-site`
    - `eval-fixture`
    - `prompt-template`
@@ -56,8 +65,8 @@ run_understudy capture-import scan --repo .
    - `jsonl-data`
    - `tabular-data`
    - `markdown-notes`
-4. Record data class, redaction needs, split boundary, owner, and approval gates.
-5. Create or update a Workload Card before evaluation.
+5. Record data class, redaction needs, split boundary, owner, and approval gates.
+6. Create or update a Workload Card before evaluation.
 
 ## Output Standard
 

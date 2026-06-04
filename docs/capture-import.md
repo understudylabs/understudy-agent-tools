@@ -25,13 +25,21 @@ private repo paths.
 
 ```sh
 understudy-tools capture-import scan --repo .
+understudy-tools capture-import preview --repo . --source-id source-001 --limit 25
 ```
 
-The command writes:
+The commands write:
 
 ```text
 .understudy/capture-import/capture-sources.json
+.understudy/capture-import/preview-source-001.json
+.understudy/capture-import/redaction-manifest.json
 ```
+
+Preview supports JSONL, JSON, CSV, YAML, Markdown, and plain text. The default
+limit is 25 records and the maximum is 200 records. String fields are truncated
+to 500 characters by default. Preview records are written to local artifacts,
+not printed to the terminal.
 
 ## Payload Boundary
 

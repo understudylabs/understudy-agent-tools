@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import argparse
+import csv
 import json
 import re
 from pathlib import Path
@@ -77,6 +78,9 @@ CAPTURE_EXTENSION_KINDS = {
     ".yaml": "yaml-config",
     ".yml": "yaml-config",
 }
+CAPTURE_PREVIEW_DEFAULT_LIMIT = 25
+CAPTURE_PREVIEW_MAX_LIMIT = 200
+CAPTURE_PREVIEW_DEFAULT_MAX_CHARS = 500
 EXPLICIT_PROVIDER_PATTERN = re.compile(
     r"\bprovider\s*[:=]\s*[\"']?([a-z0-9_-]+)[\"']?",
     re.IGNORECASE,
@@ -324,6 +328,85 @@ def _load_candidates(repo: Path, capability: str) -> list[dict[str, object]]:
     return list(payload.get("candidates", []))
 
 
+def _load_capture_sources(repo: Path) -> list[dict[str, object]]:
+    path = _artifact_dir(repo, "capture-import") / "capture-sources.json"
+    if not path.exists():
+        return []
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    return list(payload.get("sources", []))
+
+
+def _truncate_value(value: object, max_chars: int) -> object:
+    if isinstance(value, dict):
+        return {str(key): _truncate_value(item, max_chars) for key, item in value.items()}
+    if isinstance(value, list):
+        return [_truncate_value(item, max_chars) for item in value]
+    if isinstance(value, str) and len(value) > max_chars:
+        return value[:max_chars] + "...[truncated]"
+    return value
+
+
+def _preview_jsonl(path: Path, limit: int, max_chars: int) -> tuple[list[object], list[str]]:
+    records: list[object] = []
+    warnings: list[str] = []
+    for line_number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), start=1):
+        if len(records) >= limit:
+            break
+        if not line.strip():
+            continue
+        try:
+            records.append(_truncate_value(json.loads(line), max_chars))
+        except json.JSONDecodeError as exc:
+            warnings.append(f"line {line_number}: invalid JSONL row: {exc.msg}")
+            records.append({"line": line_number, "text": _truncate_value(line, max_chars)})
+    return records, warnings
+
+
+def _preview_json(path: Path, limit: int, max_chars: int) -> tuple[list[object], list[str]]:
+    payload = json.loads(path.read_text(encoding="utf-8"))
+    if isinstance(payload, list):
+        records = payload[:limit]
+    elif isinstance(payload, dict):
+        records = [payload]
+    else:
+        records = [payload]
+    return [_truncate_value(record, max_chars) for record in records], []
+
+
+def _preview_csv(path: Path, limit: int, max_chars: int) -> tuple[list[object], list[str]]:
+    records: list[object] = []
+    with path.open("r", encoding="utf-8", newline="") as handle:
+        reader = csv.DictReader(handle)
+        for row in reader:
+            if len(records) >= limit:
+                break
+            records.append(_truncate_value(dict(row), max_chars))
+    return records, []
+
+
+def _preview_text(path: Path, limit: int, max_chars: int) -> tuple[list[object], list[str]]:
+    records = []
+    for line_number, line in enumerate(path.read_text(encoding="utf-8").splitlines(), start=1):
+        if len(records) >= limit:
+            break
+        if line.strip():
+            records.append({"line": line_number, "text": _truncate_value(line, max_chars)})
+    return records, []
+
+
+def _preview_source_file(path: Path, limit: int, max_chars: int) -> tuple[list[object], list[str]]:
+    suffix = path.suffix.lower()
+    if suffix == ".jsonl":
+        return _preview_jsonl(path, limit, max_chars)
+    if suffix == ".json":
+        return _preview_json(path, limit, max_chars)
+    if suffix == ".csv":
+        return _preview_csv(path, limit, max_chars)
+    if suffix in {".yaml", ".yml", ".md", ".txt"}:
+        return _preview_text(path, limit, max_chars)
+    raise ValueError(f"unsupported preview source type: {suffix or '<none>'}")
+
+
 def _classify_workload_shape(candidate: dict[str, object], repo: Path) -> list[str]:
     path_value = candidate.get("path")
     if not isinstance(path_value, str):
@@ -381,6 +464,8 @@ def _run_scan(args: argparse.Namespace, capability: str) -> int:
 
 
 def cmd_capture_import(args: argparse.Namespace) -> int:
+    if args.capture_action == "preview":
+        return _run_capture_preview(args)
     if args.capture_action != "scan":
         args.surface = "capture-import"
         args.action = "status"
@@ -417,6 +502,84 @@ def cmd_capture_import(args: argparse.Namespace) -> int:
         for source in sources[:5]:
             kinds = ", ".join(source["source_kinds"])
             print(f"- {source['id']}: {source['path']} ({kinds})")
+    return 0
+
+
+def _run_capture_preview(args: argparse.Namespace) -> int:
+    repo = Path(args.repo).expanduser().resolve()
+    if not repo.exists() or not repo.is_dir():
+        raise SystemExit(f"repo does not exist or is not a directory: {repo}")
+    limit = max(1, min(args.limit, CAPTURE_PREVIEW_MAX_LIMIT))
+    max_chars = max(80, args.max_chars)
+
+    sources = _load_capture_sources(repo)
+    if not sources:
+        raise SystemExit("no capture sources found; run `understudy-tools capture-import scan --repo .` first")
+    selected = next((source for source in sources if source.get("id") == args.source_id), None)
+    if selected is None:
+        available = ", ".join(str(source.get("id")) for source in sources[:10])
+        raise SystemExit(f"source id not found: {args.source_id}. Available: {available}")
+
+    source_path = repo / str(selected["path"])
+    if not source_path.exists():
+        raise SystemExit(f"source file does not exist: {selected['path']}")
+    records, warnings = _preview_source_file(source_path, limit, max_chars)
+    preview = {
+        "schema_version": "understudy.capture_preview.v1",
+        "capability": "capture-import",
+        "mode": "local-only",
+        "source_id": selected["id"],
+        "source_path": selected["path"],
+        "source_kinds": selected.get("source_kinds", []),
+        "data_class": "local-preview",
+        "limit_requested": args.limit,
+        "limit_applied": limit,
+        "max_chars_per_field": max_chars,
+        "record_count": len(records),
+        "records": records,
+        "warnings": warnings,
+        "approval_gates": [
+            "uploading preview records",
+            "sending preview records to a provider",
+            "committing preview records",
+            "using preview records for hosted jobs or training",
+        ],
+        "notes": [
+            "Preview records are local artifacts and may contain private payloads.",
+            "Review and redact before converting records into public fixtures or provider-bound eval inputs.",
+        ],
+    }
+    output = _artifact_dir(repo, "capture-import") / f"preview-{selected['id']}.json"
+    _write_json(output, preview)
+
+    manifest = {
+        "schema_version": "understudy.redaction_manifest.v1",
+        "capability": "capture-import",
+        "source_id": selected["id"],
+        "source_path": selected["path"],
+        "status": "stub",
+        "data_class": "local-preview",
+        "review_required": True,
+        "fields_to_review": [],
+        "redaction_rules": [],
+        "approval_required_before": [
+            "upload",
+            "provider call",
+            "hosted job",
+            "training handoff",
+            "public commit",
+        ],
+    }
+    manifest_path = _artifact_dir(repo, "capture-import") / "redaction-manifest.json"
+    _write_json(manifest_path, manifest)
+
+    if args.json:
+        print(json.dumps(preview, indent=2, sort_keys=True))
+    else:
+        print(f"wrote {output}")
+        print(f"wrote {manifest_path}")
+        print(f"previewed {len(records)} record(s) from {selected['id']} with local-only boundaries")
+        print("records were written to the preview artifact, not printed to the terminal")
     return 0
 
 
@@ -692,10 +855,23 @@ def build_parser() -> argparse.ArgumentParser:
         "capture_action",
         nargs="?",
         default="status",
-        choices=["status", "scan"],
+        choices=["status", "scan", "preview"],
         help="Scan a local repo for importable workload evidence sources.",
     )
     capture_parser.add_argument("--repo", default=".", help="Local repository to inspect.")
+    capture_parser.add_argument("--source-id", default="source-001", help="Source id from capture-sources.json.")
+    capture_parser.add_argument(
+        "--limit",
+        type=int,
+        default=CAPTURE_PREVIEW_DEFAULT_LIMIT,
+        help=f"Preview record limit, capped at {CAPTURE_PREVIEW_MAX_LIMIT}.",
+    )
+    capture_parser.add_argument(
+        "--max-chars",
+        type=int,
+        default=CAPTURE_PREVIEW_DEFAULT_MAX_CHARS,
+        help="Maximum characters per string field in preview artifacts.",
+    )
     capture_parser.add_argument("--json", action="store_true")
     capture_parser.set_defaults(func=cmd_capture_import, surface="capture-import", action="status")
 

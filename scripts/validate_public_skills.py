@@ -66,7 +66,9 @@ SCAN_EXTENSIONS = {
     ".yml",
 }
 REPO_SCAN_EXCLUDE = {
+    Path("scripts/package_release_smoke.py"),
     Path("scripts/validate_public_skills.py"),
+    Path("tests/test_package_release_smoke.py"),
     Path("tests/test_validate_public_skills.py"),
 }
 PUBLIC_DOC_DIRS = ["docs"]
