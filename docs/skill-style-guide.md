@@ -43,7 +43,9 @@ metadata:
 
 ## Safety Language
 
-Every skill must say what is local-only and what requires explicit approval.
+Every skill must say what is local-only, which data class it touches, and what
+requires explicit approval. The canonical policy is
+[`privacy-and-data-boundaries.md`](privacy-and-data-boundaries.md).
 
 Use this standard rule:
 
