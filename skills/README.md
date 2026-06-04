@@ -17,6 +17,9 @@ one specialist skill only when the developer's intent requires it.
 - [`understudy-workload-discovery`](understudy-workload-discovery/SKILL.md)
   finds and ranks AI workload candidates in a local repo before evaluation,
   provider changes, or optimization.
+- [`understudy-capture-import`](understudy-capture-import/SKILL.md) finds local
+  traces, eval fixtures, prompt files, logs, datasets, and benchmark artifacts
+  before payload extraction or evaluation.
 - [`understudy-evaluate`](understudy-evaluate/SKILL.md) compares prompts,
   traces, eval rows, datasets, or candidate models with explicit split
   boundaries.

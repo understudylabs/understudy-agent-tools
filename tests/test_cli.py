@@ -99,3 +99,28 @@ def test_workload_discovery_alias(tmp_path, capsys) -> None:
     )
     assert "route_requirements" in card
     assert "general-llm" not in card["workload_shape"]
+
+
+def test_capture_import_scan_metadata_only(tmp_path, capsys) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    (repo / "evals.jsonl").write_text(
+        '{"input":"synthetic request","expected":"synthetic answer","latency_ms":900}\n',
+        encoding="utf-8",
+    )
+    (repo / "client.py").write_text(
+        'provider = "openai"\nmodel = "gpt-4o-mini"\nSYSTEM_PROMPT = "Use synthetic examples only."\n',
+        encoding="utf-8",
+    )
+
+    assert main(["capture-import", "scan", "--repo", str(repo)]) == 0
+    out = capsys.readouterr().out
+    assert "capture/import source candidate" in out
+
+    payload_path = repo / ".understudy" / "capture-import" / "capture-sources.json"
+    payload = json.loads(payload_path.read_text(encoding="utf-8"))
+    assert payload["schema_version"] == "understudy.capture_sources.v1"
+    assert payload["mode"] == "local-only"
+    assert len(payload["sources"]) == 2
+    assert all(source["data_class"] == "metadata-only" for source in payload["sources"])
+    assert all(source["approval_required_before_payload_read"] for source in payload["sources"])
