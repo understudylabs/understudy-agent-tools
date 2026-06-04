@@ -543,6 +543,65 @@ def _build_redaction_manifest(source: dict[str, object], records: list[object]) 
     }
 
 
+def _load_capture_preview(repo: Path, source_id: str) -> dict[str, object]:
+    path = _artifact_dir(repo, "capture-import") / f"preview-{source_id}.json"
+    if not path.exists():
+        raise SystemExit(
+            f"preview artifact not found for {source_id}; run `understudy-tools capture-import preview --repo . --source-id {source_id}` first"
+        )
+    return json.loads(path.read_text(encoding="utf-8"))
+
+
+def _load_redaction_manifest(repo: Path) -> dict[str, object]:
+    path = _artifact_dir(repo, "capture-import") / "redaction-manifest.json"
+    if not path.exists():
+        raise SystemExit("redaction manifest not found; run `understudy-tools capture-import preview --repo .` first")
+    return json.loads(path.read_text(encoding="utf-8"))
+
+
+def _infer_workload_shape_from_capture(
+    source: dict[str, object],
+    preview: dict[str, object],
+    manifest: dict[str, object],
+) -> list[str]:
+    kinds = set(str(kind) for kind in source.get("source_kinds", []))
+    fields = {
+        str(field.get("field_path", "")).lower()
+        for field in manifest.get("fields", [])
+        if isinstance(field, dict)
+    }
+    shapes: list[str] = []
+    if {"jsonl-data", "tabular-data", "eval-fixture"} & kinds:
+        shapes.append("evaluation-dataset")
+    if {"prompt-template", "trace-or-log"} & kinds:
+        shapes.append("llm-replay")
+    if "ai-call-site" in kinds:
+        shapes.append("app-route")
+    field_blob = " ".join(fields)
+    if any(token in field_blob for token in ["label", "category", "class"]):
+        shapes.append("classification")
+    if any(token in field_blob for token in ["input", "expected", "output", "prompt", "completion"]):
+        shapes.append("structured-output")
+    return sorted(set(shapes)) or ["general-llm"]
+
+
+def _approval_gates_from_manifest(manifest: dict[str, object]) -> list[str]:
+    action_counts = manifest.get("action_counts") if isinstance(manifest.get("action_counts"), dict) else {}
+    gates = [
+        "sending preview records, source payloads, prompts, traces, or eval rows to any provider",
+        "running live model calls",
+        "downloading local models",
+        "submitting hosted benchmarks or training jobs",
+    ]
+    if int(action_counts.get("drop", 0) or 0) > 0:
+        gates.insert(0, "removing secret-like fields before any export")
+    if int(action_counts.get("hash", 0) or 0) > 0:
+        gates.insert(0, "hashing identifier-like fields before any export")
+    if int(action_counts.get("review", 0) or 0) > 0:
+        gates.insert(0, "reviewing content-like fields before any export")
+    return gates
+
+
 def _classify_workload_shape(candidate: dict[str, object], repo: Path) -> list[str]:
     path_value = candidate.get("path")
     if not isinstance(path_value, str):
@@ -602,6 +661,8 @@ def _run_scan(args: argparse.Namespace, capability: str) -> int:
 def cmd_capture_import(args: argparse.Namespace) -> int:
     if args.capture_action == "preview":
         return _run_capture_preview(args)
+    if args.capture_action == "workload-card":
+        return _run_capture_workload_card(args)
     if args.capture_action != "scan":
         args.surface = "capture-import"
         args.action = "status"
@@ -699,6 +760,93 @@ def _run_capture_preview(args: argparse.Namespace) -> int:
         print(f"wrote {manifest_path}")
         print(f"previewed {len(records)} record(s) from {selected['id']} with local-only boundaries")
         print("records were written to the preview artifact, not printed to the terminal")
+    return 0
+
+
+def _run_capture_workload_card(args: argparse.Namespace) -> int:
+    repo = Path(args.repo).expanduser().resolve()
+    if not repo.exists() or not repo.is_dir():
+        raise SystemExit(f"repo does not exist or is not a directory: {repo}")
+    sources = _load_capture_sources(repo)
+    if not sources:
+        raise SystemExit("no capture sources found; run `understudy-tools capture-import scan --repo .` first")
+    selected = next((source for source in sources if source.get("id") == args.source_id), None)
+    if selected is None:
+        available = ", ".join(str(source.get("id")) for source in sources[:10])
+        raise SystemExit(f"source id not found: {args.source_id}. Available: {available}")
+
+    preview = _load_capture_preview(repo, args.source_id)
+    manifest = _load_redaction_manifest(repo)
+    if manifest.get("source_id") != args.source_id:
+        raise SystemExit(
+            f"redaction manifest is for {manifest.get('source_id')}, not {args.source_id}; rerun capture-import preview"
+        )
+
+    source_path = str(selected["path"])
+    preview_path = f".understudy/capture-import/preview-{args.source_id}.json"
+    manifest_path = ".understudy/capture-import/redaction-manifest.json"
+    card = {
+        "schema_version": "understudy.workload_card.v1",
+        "workload_id": args.workload_id,
+        "workload_name": args.workload_name,
+        "owner": None,
+        "candidate_id": None,
+        "source_id": args.source_id,
+        "source_path": source_path,
+        "mode": "local-only",
+        "workload_shape": _infer_workload_shape_from_capture(selected, preview, manifest),
+        "value_lens": ["quality", "latency", "cost"],
+        "success_metric": None,
+        "baseline": {
+            "provider": None,
+            "model": None,
+            "latency_ms": None,
+            "input_tokens": None,
+            "output_tokens": None,
+            "cost_usd": None,
+        },
+        "data_class": "local-preview-metadata",
+        "split_boundary": {
+            "train": None,
+            "dev": None,
+            "holdout": None,
+        },
+        "evaluation_inputs": [source_path],
+        "capture_import": {
+            "source_id": args.source_id,
+            "source_kinds": selected.get("source_kinds", []),
+            "capture_sources": ".understudy/capture-import/capture-sources.json",
+            "preview_artifact": preview_path,
+            "redaction_manifest": manifest_path,
+            "preview_record_count": preview.get("record_count"),
+            "redaction_action_counts": manifest.get("action_counts", {}),
+        },
+        "promotion_gate": None,
+        "fallback_route": None,
+        "route_requirements": {
+            "privacy_boundary": "local-only until explicit approval",
+            "latency_target_ms": None,
+            "structured_output_required": "structured-output"
+            in _infer_workload_shape_from_capture(selected, preview, manifest),
+            "tool_calling_required": False,
+            "pricing_source_required_before_hosted_recommendation": True,
+            "supplier_profile_required_before_hosted_recommendation": True,
+        },
+        "approval_gates": _approval_gates_from_manifest(manifest),
+        "recommended_next_steps": [
+            "review redaction manifest actions",
+            "confirm success metric and split boundary",
+            "run route-decision plan before provider calls",
+        ],
+    }
+    output = _artifact_dir(repo, "workload-discovery") / "workload-card.json"
+    _write_json(output, card)
+    if args.json:
+        print(json.dumps(card, indent=2, sort_keys=True))
+    else:
+        print(f"wrote {output}")
+        print(f"planned {args.source_id}: {source_path}")
+        print("next: understudy-tools route-decision plan --workload-card .understudy/workload-discovery/workload-card.json")
     return 0
 
 
@@ -981,11 +1129,13 @@ def build_parser() -> argparse.ArgumentParser:
         "capture_action",
         nargs="?",
         default="status",
-        choices=["status", "scan", "preview"],
+        choices=["status", "scan", "preview", "workload-card"],
         help="Scan a local repo for importable workload evidence sources.",
     )
     capture_parser.add_argument("--repo", default=".", help="Local repository to inspect.")
     capture_parser.add_argument("--source-id", default="source-001", help="Source id from capture-sources.json.")
+    capture_parser.add_argument("--workload-id", default="workload-001")
+    capture_parser.add_argument("--workload-name", default=None)
     capture_parser.add_argument(
         "--limit",
         type=int,

@@ -68,7 +68,11 @@ per field path, but does not mutate records.
    - `tabular-data`
    - `markdown-notes`
 5. Record data class, redaction needs, split boundary, owner, and approval gates.
-6. Create or update a Workload Card before evaluation.
+6. Create or update a Workload Card before evaluation:
+
+```sh
+run_understudy capture-import workload-card --repo . --source-id source-001
+```
 
 ## Output Standard
 

@@ -83,6 +83,9 @@ Try the public synthetic journey:
 cd examples/repos/ai-search-app
 understudy-tools demo scan --repo .
 understudy-tools demo plan --repo .
+understudy-tools capture-import scan --repo .
+understudy-tools capture-import preview --repo . --source-id source-003 --limit 25
+understudy-tools capture-import workload-card --repo . --source-id source-003
 understudy-tools route-decision plan --workload-card .understudy/workload-discovery/workload-card.json
 understudy-tools value report --workload-card .understudy/workload-discovery/workload-card.json --route-decision .understudy/route-decision/route-decision-packet.json --requests-per-month 10000
 ```

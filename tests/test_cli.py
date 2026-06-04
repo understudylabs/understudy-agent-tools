@@ -280,3 +280,43 @@ def test_capture_import_preview_limit_is_capped(tmp_path, capsys) -> None:
     assert preview["limit_requested"] == 500
     assert preview["limit_applied"] == 200
     assert preview["record_count"] == 200
+
+
+def test_capture_import_workload_card_from_preview(tmp_path, capsys) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    (repo / "evals.jsonl").write_text(
+        json.dumps(
+            {
+                "email": "user@example.test",
+                "input": "synthetic request",
+                "expected_label": "approve",
+                "latency_ms": 250,
+                "api_key": "synthetic-secret-placeholder",
+            }
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    assert main(["capture-import", "scan", "--repo", str(repo)]) == 0
+    capsys.readouterr()
+    assert main(["capture-import", "preview", "--repo", str(repo), "--source-id", "source-001"]) == 0
+    capsys.readouterr()
+    assert main(["capture-import", "workload-card", "--repo", str(repo), "--source-id", "source-001"]) == 0
+    out = capsys.readouterr().out
+    assert "route-decision plan" in out
+
+    card_path = repo / ".understudy" / "workload-discovery" / "workload-card.json"
+    card = json.loads(card_path.read_text(encoding="utf-8"))
+    assert card["schema_version"] == "understudy.workload_card.v1"
+    assert card["source_id"] == "source-001"
+    assert card["data_class"] == "local-preview-metadata"
+    assert card["evaluation_inputs"] == ["evals.jsonl"]
+    assert card["capture_import"]["preview_artifact"] == ".understudy/capture-import/preview-source-001.json"
+    assert card["capture_import"]["redaction_manifest"] == ".understudy/capture-import/redaction-manifest.json"
+    assert card["capture_import"]["redaction_action_counts"]["drop"] == 1
+    assert "classification" in card["workload_shape"]
+    assert "reviewing content-like fields before any export" in card["approval_gates"]
+    assert "hashing identifier-like fields before any export" in card["approval_gates"]
+    assert "removing secret-like fields before any export" in card["approval_gates"]

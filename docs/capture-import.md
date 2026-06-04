@@ -26,6 +26,7 @@ private repo paths.
 ```sh
 understudy-tools capture-import scan --repo .
 understudy-tools capture-import preview --repo . --source-id source-001 --limit 25
+understudy-tools capture-import workload-card --repo . --source-id source-001
 ```
 
 The commands write:
@@ -34,6 +35,7 @@ The commands write:
 .understudy/capture-import/capture-sources.json
 .understudy/capture-import/preview-source-001.json
 .understudy/capture-import/redaction-manifest.json
+.understudy/workload-discovery/workload-card.json
 ```
 
 Preview supports JSONL, JSON, CSV, YAML, Markdown, and plain text. The default
@@ -71,4 +73,6 @@ Before reading payload rows or converting a source into eval fixtures, record:
 
 Choose one source candidate and create a Workload Card. Use
 [`workload-card-template.md`](workload-card-template.md) and keep source payloads
-out of the card unless explicitly approved.
+out of the card unless explicitly approved. The generated card references the
+preview and redaction manifest as local artifacts and recommends route-decision
+planning before provider calls.
