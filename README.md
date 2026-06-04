@@ -55,6 +55,7 @@ specialist skills by intent:
 - lab/research notebook
 - local proxy
 - provider keys
+- provider integrations and partner cookbooks
 - model lookup
 - local models and MLX readiness
 - value reporting and public-safe result publishing

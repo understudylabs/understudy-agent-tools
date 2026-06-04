@@ -11,8 +11,9 @@ metadata:
 # Understudy Provider Keys
 
 Use this skill when the developer needs to check, configure, rotate, or verify
-local provider credentials for Anthropic, OpenAI, Gemini, Fireworks, Together,
-Hugging Face, or another SDK-compatible provider.
+local provider credentials for Fireworks, OpenRouter, Prime Intellect, Tinker,
+GCP/Vertex, AWS/Bedrock, Lilac, Understudy inference, or a direct frontier API
+route such as OpenAI, Anthropic, or Gemini.
 
 Do not use this skill to change app routing or proxy behavior. Route local
 gateway work to
@@ -77,8 +78,13 @@ ANTHROPIC_API_KEY=<present or missing>
 OPENAI_API_KEY=<present or missing>
 GOOGLE_API_KEY=<present or missing>
 FIREWORKS_API_KEY=<present or missing>
-TOGETHER_API_KEY=<present or missing>
-HF_TOKEN=<present or missing>
+OPENROUTER_API_KEY=<present or missing>
+PRIME_API_KEY=<present or missing>
+TINKER_API_KEY=<present or missing>
+GOOGLE_APPLICATION_CREDENTIALS=<present or missing path only>
+AWS_PROFILE=<present or missing>
+LILAC_API_KEY=<present or missing>
+UNDERSTUDY_API_KEY=<present or missing>
 ```
 
 4. If a key is missing, ask the developer to enter it through a terminal prompt
