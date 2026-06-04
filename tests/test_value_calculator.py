@@ -79,3 +79,33 @@ def test_value_report_missing_route_decision_hint(tmp_path) -> None:
             tmp_path / ".understudy" / "route-decision" / "route-decision-packet.json",
             None,
         )
+
+
+def test_value_report_scenario_overrides_are_labeled(tmp_path) -> None:
+    card_path = tmp_path / ".understudy" / "workload-discovery" / "workload-card.json"
+    _write_card(card_path)
+    _, route_path = build_route_decision(card_path)
+    output_path = tmp_path / "custom" / "value.json"
+
+    report, output = build_value_report(
+        card_path,
+        route_path,
+        10_000,
+        overrides={
+            "baseline_cost_usd": 0.012,
+            "baseline_latency_ms": 900.0,
+            "candidate_cost_usd": 0.004,
+            "candidate_latency_ms": 300.0,
+        },
+        output_path=output_path,
+    )
+
+    assert output == output_path
+    assert output.exists()
+    assert report["scenario_basis"] == "override"
+    assert report["decision"] == "evaluate-scenario-first"
+    assert report["scenario"]["baseline_monthly_cost_usd"] == pytest.approx(120.0)
+    assert report["scenario"]["candidate_monthly_cost_usd"] == pytest.approx(40.0)
+    assert report["scenario"]["monthly_savings_usd"] == pytest.approx(80.0)
+    assert report["scenario"]["latency_delta_ms"] == pytest.approx(600.0)
+    assert any("scenario override only" in caveat for caveat in report["caveats"])

@@ -81,10 +81,19 @@ input_tokens = 1200
             str(route_path),
             "--requests-per-month",
             "10000",
+            "--baseline-cost-usd",
+            "0.012",
+            "--candidate-cost-usd",
+            "0.004",
+            "--output",
+            str(repo / ".understudy" / "value" / "scenario.json"),
         ]
     ) == 0
     value_out = capsys.readouterr().out
     assert "savings: not claimed" in value_out
+    scenario = json.loads((repo / ".understudy" / "value" / "scenario.json").read_text(encoding="utf-8"))
+    assert scenario["scenario_basis"] == "override"
+    assert scenario["scenario"]["monthly_savings_usd"] == 80.0
 
 
 def test_demo_scan_and_plan(tmp_path, capsys) -> None:

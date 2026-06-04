@@ -724,6 +724,13 @@ def cmd_value(args: argparse.Namespace) -> int:
         Path(args.workload_card).expanduser().resolve(),
         Path(args.route_decision).expanduser().resolve(),
         args.requests_per_month,
+        overrides={
+            "baseline_cost_usd": args.baseline_cost_usd,
+            "baseline_latency_ms": args.baseline_latency_ms,
+            "candidate_cost_usd": args.candidate_cost_usd,
+            "candidate_latency_ms": args.candidate_latency_ms,
+        },
+        output_path=Path(args.output).expanduser().resolve() if args.output else None,
     )
     if args.json:
         print(json.dumps(report, indent=2, sort_keys=True))
@@ -916,6 +923,11 @@ def build_parser() -> argparse.ArgumentParser:
         help="Path to a Route Decision Packet JSON artifact.",
     )
     value_parser.add_argument("--requests-per-month", type=int, default=None)
+    value_parser.add_argument("--baseline-cost-usd", type=float, default=None)
+    value_parser.add_argument("--baseline-latency-ms", type=float, default=None)
+    value_parser.add_argument("--candidate-cost-usd", type=float, default=None)
+    value_parser.add_argument("--candidate-latency-ms", type=float, default=None)
+    value_parser.add_argument("--output", default=None, help="Optional output path for the value report.")
     value_parser.add_argument("--json", action="store_true")
     value_parser.set_defaults(func=cmd_value, surface="value", action="status")
 
