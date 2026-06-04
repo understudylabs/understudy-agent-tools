@@ -41,6 +41,20 @@ limit is 25 records and the maximum is 200 records. String fields are truncated
 to 500 characters by default. Preview records are written to local artifacts,
 not printed to the terminal.
 
+The redaction manifest inspects preview field names and recommends one action
+per field:
+
+- `keep` for operational fields such as `latency_ms`, `score`, `label`, or
+  `category`;
+- `review` for content-like fields such as `input`, `prompt`, `output`,
+  `completion`, `message`, or `text`;
+- `hash` for identifier-like fields such as `email`, `domain`, `user_id`, or
+  `account_id`;
+- `drop` for secret-like fields such as `api_key`, `token`, `authorization`,
+  `password`, or `secret`.
+
+These are recommendations only. Preview does not mutate records.
+
 ## Payload Boundary
 
 Before reading payload rows or converting a source into eval fixtures, record:

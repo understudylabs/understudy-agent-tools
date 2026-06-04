@@ -191,9 +191,11 @@ def test_capture_import_preview_jsonl_is_bounded_and_local(tmp_path, capsys) -> 
             [
                 json.dumps(
                     {
+                        "email": f"user{index}@example.test",
                         "input": f"synthetic request {index}",
                         "expected": "synthetic answer " + ("x" * 120),
                         "latency_ms": 900 + index,
+                        "api_key": "synthetic-secret-placeholder",
                     }
                 )
                 for index in range(30)
@@ -234,7 +236,14 @@ def test_capture_import_preview_jsonl_is_bounded_and_local(tmp_path, capsys) -> 
     manifest_path = repo / ".understudy" / "capture-import" / "redaction-manifest.json"
     manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
     assert manifest["schema_version"] == "understudy.redaction_manifest.v1"
+    assert manifest["status"] == "recommended"
     assert manifest["review_required"] is True
+    actions = {field["field_path"]: field["recommended_action"] for field in manifest["fields"]}
+    assert actions["api_key"] == "drop"
+    assert actions["email"] == "hash"
+    assert actions["input"] == "review"
+    assert actions["latency_ms"] == "keep"
+    assert manifest["action_counts"]["drop"] == 1
 
 
 def test_capture_import_preview_limit_is_capped(tmp_path, capsys) -> None:

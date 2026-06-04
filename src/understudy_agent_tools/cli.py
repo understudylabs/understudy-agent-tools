@@ -81,6 +81,52 @@ CAPTURE_EXTENSION_KINDS = {
 CAPTURE_PREVIEW_DEFAULT_LIMIT = 25
 CAPTURE_PREVIEW_MAX_LIMIT = 200
 CAPTURE_PREVIEW_DEFAULT_MAX_CHARS = 500
+REDACTION_DROP_FIELDS = {
+    "api_key",
+    "apikey",
+    "authorization",
+    "bearer",
+    "client_secret",
+    "credential",
+    "password",
+    "secret",
+    "token",
+}
+REDACTION_HASH_FIELDS = {
+    "account",
+    "account_id",
+    "customer_id",
+    "domain",
+    "email",
+    "phone",
+    "session_id",
+    "tenant_id",
+    "user",
+    "user_id",
+}
+REDACTION_REVIEW_FIELDS = {
+    "completion",
+    "content",
+    "input",
+    "message",
+    "messages",
+    "output",
+    "prompt",
+    "question",
+    "response",
+    "system",
+    "text",
+}
+REDACTION_KEEP_FIELDS = {
+    "category",
+    "expected_label",
+    "label",
+    "latency",
+    "latency_ms",
+    "score",
+    "split",
+    "status",
+}
 EXPLICIT_PROVIDER_PATTERN = re.compile(
     r"\bprovider\s*[:=]\s*[\"']?([a-z0-9_-]+)[\"']?",
     re.IGNORECASE,
@@ -407,6 +453,96 @@ def _preview_source_file(path: Path, limit: int, max_chars: int) -> tuple[list[o
     raise ValueError(f"unsupported preview source type: {suffix or '<none>'}")
 
 
+def _normalize_field_name(path: str) -> str:
+    return path.rsplit(".", 1)[-1].replace("-", "_").lower()
+
+
+def _iter_field_paths(value: object, prefix: str = "$") -> list[tuple[str, object]]:
+    if isinstance(value, dict):
+        fields: list[tuple[str, object]] = []
+        for key, item in value.items():
+            child = f"{prefix}.{key}" if prefix != "$" else str(key)
+            fields.extend(_iter_field_paths(item, child))
+        return fields
+    if isinstance(value, list):
+        fields = []
+        for item in value[:3]:
+            child = f"{prefix}[]"
+            fields.extend(_iter_field_paths(item, child))
+        return fields
+    return [(prefix, value)]
+
+
+def _classify_redaction_action(field_path: str) -> tuple[str, str]:
+    field = _normalize_field_name(field_path)
+    if field in REDACTION_DROP_FIELDS or any(token in field for token in ["secret", "token", "password"]):
+        return "drop", "secret-like field name"
+    if field in REDACTION_HASH_FIELDS or field.endswith("_id") or "email" in field:
+        return "hash", "identifier-like field name"
+    if field in REDACTION_REVIEW_FIELDS or any(token in field for token in ["prompt", "completion", "message"]):
+        return "review", "content-like field name"
+    if field in REDACTION_KEEP_FIELDS or field.endswith("_ms") or field in {"id", "index"}:
+        return "keep", "operational metric or label field"
+    return "review", "unclassified field"
+
+
+def _build_redaction_manifest(source: dict[str, object], records: list[object]) -> dict[str, object]:
+    field_stats: dict[str, dict[str, object]] = {}
+    for record in records:
+        for field_path, value in _iter_field_paths(record):
+            stats = field_stats.setdefault(
+                field_path,
+                {
+                    "field_path": field_path,
+                    "sample_count": 0,
+                    "value_types": set(),
+                },
+            )
+            stats["sample_count"] = int(stats["sample_count"]) + 1
+            stats["value_types"].add(type(value).__name__)
+
+    fields = []
+    for field_path, stats in sorted(field_stats.items()):
+        action, reason = _classify_redaction_action(field_path)
+        fields.append(
+            {
+                "field_path": field_path,
+                "recommended_action": action,
+                "reason": reason,
+                "sample_count": stats["sample_count"],
+                "value_types": sorted(stats["value_types"]),
+            }
+        )
+
+    action_counts = {
+        action: sum(1 for field in fields if field["recommended_action"] == action)
+        for action in ["keep", "review", "hash", "drop"]
+    }
+    return {
+        "schema_version": "understudy.redaction_manifest.v1",
+        "capability": "capture-import",
+        "source_id": source["id"],
+        "source_path": source["path"],
+        "status": "recommended",
+        "data_class": "local-preview",
+        "review_required": True,
+        "record_count": len(records),
+        "action_counts": action_counts,
+        "fields": fields,
+        "approval_required_before": [
+            "upload",
+            "provider call",
+            "hosted job",
+            "training handoff",
+            "public commit",
+        ],
+        "notes": [
+            "Recommendations are based on field names and preview shape only.",
+            "No records were mutated; review before exporting fixtures or provider-bound inputs.",
+        ],
+    }
+
+
 def _classify_workload_shape(candidate: dict[str, object], repo: Path) -> list[str]:
     path_value = candidate.get("path")
     if not isinstance(path_value, str):
@@ -552,24 +688,7 @@ def _run_capture_preview(args: argparse.Namespace) -> int:
     output = _artifact_dir(repo, "capture-import") / f"preview-{selected['id']}.json"
     _write_json(output, preview)
 
-    manifest = {
-        "schema_version": "understudy.redaction_manifest.v1",
-        "capability": "capture-import",
-        "source_id": selected["id"],
-        "source_path": selected["path"],
-        "status": "stub",
-        "data_class": "local-preview",
-        "review_required": True,
-        "fields_to_review": [],
-        "redaction_rules": [],
-        "approval_required_before": [
-            "upload",
-            "provider call",
-            "hosted job",
-            "training handoff",
-            "public commit",
-        ],
-    }
+    manifest = _build_redaction_manifest(selected, records)
     manifest_path = _artifact_dir(repo, "capture-import") / "redaction-manifest.json"
     _write_json(manifest_path, manifest)
 
