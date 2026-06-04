@@ -46,6 +46,7 @@ That prints the public spine and points agents at `skills/understudy/SKILL.md`.
 specialist skills by intent:
 
 - local repo workload discovery/demo
+- capture/import from existing AI calls, traces, evals, prompts, logs, and data
 - evaluate
 - latency triage
 - output control
@@ -62,8 +63,11 @@ specialist skills by intent:
 - decision packets
 
 The reusable front door for real repos is
-`skills/understudy-workload-discovery/SKILL.md`; `understudy-demo` uses that
-same journey for first-run walkthroughs.
+`skills/understudy-capture-import/SKILL.md` when the user already has traces,
+evals, prompts, logs, or datasets, and
+`skills/understudy-workload-discovery/SKILL.md` when the user wants to find the
+workload in source code. `understudy-demo` uses that same journey for first-run
+walkthroughs.
 
 The default sequence is local repo workload discovery first, then a Workload
 Card draft, then live evidence only after the user approves the provider,

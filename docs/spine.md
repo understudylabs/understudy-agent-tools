@@ -20,7 +20,8 @@ specialist skill or run the corresponding script.
 Default path:
 
 ```text
-understudy -> local repo workload discovery -> live evaluation -> optimize -> train/handoff
+understudy -> capture/import or workload discovery -> Workload Card
+  -> route decision -> evaluation -> optimize -> train/handoff
   -> decision/value report -> public-safe publishing
 ```
 

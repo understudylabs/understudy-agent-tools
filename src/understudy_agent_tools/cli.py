@@ -22,8 +22,11 @@ SCAN_EXCLUDE_DIRS = {
 SCAN_EXTENSIONS = {
     ".js",
     ".jsx",
+    ".csv",
     ".md",
     ".mjs",
+    ".json",
+    ".jsonl",
     ".py",
     ".rs",
     ".ts",
@@ -53,6 +56,24 @@ PROMPT_PATTERN = re.compile(r"\b(prompt|system_message|system prompt|messages\s*
 EVAL_PATTERN = re.compile(r"\b(eval|benchmark|golden|fixture|test[_-]?prompt|rubric)\b", re.IGNORECASE)
 LATENCY_PATTERN = re.compile(r"\b(latency|timeout|duration|elapsed|p95|p99|slow)\b", re.IGNORECASE)
 COST_PATTERN = re.compile(r"\b(cost|price|pricing|token|usage|input_tokens|output_tokens)\b", re.IGNORECASE)
+CAPTURE_SOURCE_PATTERNS = {
+    "ai-call-site": re.compile(
+        r"\b(openai|anthropic|gemini|bedrock|fireworks|openrouter|chat\.completions|responses\.create|generateContent)\b",
+        re.IGNORECASE,
+    ),
+    "eval-fixture": re.compile(r"\b(eval|benchmark|golden|fixture|expected|assert)\b", re.IGNORECASE),
+    "prompt-template": re.compile(r"\b(prompt|system_message|system prompt|messages\s*=|jinja|handlebars)\b", re.IGNORECASE),
+    "trace-or-log": re.compile(r"\b(trace|span|run_id|request_id|input_tokens|output_tokens|latency_ms)\b", re.IGNORECASE),
+}
+CAPTURE_EXTENSION_KINDS = {
+    ".csv": "tabular-data",
+    ".json": "json-data",
+    ".jsonl": "jsonl-data",
+    ".md": "markdown-notes",
+    ".txt": "text-notes",
+    ".yaml": "yaml-config",
+    ".yml": "yaml-config",
+}
 EXPLICIT_PROVIDER_PATTERN = re.compile(
     r"\bprovider\s*[:=]\s*[\"']?([a-z0-9_-]+)[\"']?",
     re.IGNORECASE,
@@ -78,6 +99,11 @@ ROADMAP_SURFACES: dict[str, dict[str, str]] = {
         "skill": "skills/understudy-workload-discovery/SKILL.md",
         "why": "Find and rank local repo AI workload candidates before evaluation.",
         "next": "Add workload type classification and richer candidate-card fields.",
+    },
+    "capture-import": {
+        "skill": "skills/understudy-capture-import/SKILL.md",
+        "why": "Find local traces, eval fixtures, prompt files, logs, and datasets before building a Workload Card.",
+        "next": "Add format-specific import previews and redaction manifests before payload extraction.",
     },
     "evaluate": {
         "skill": "skills/understudy-evaluate/SKILL.md",
@@ -217,6 +243,54 @@ def _scan_repo(repo: Path) -> list[dict[str, object]]:
     return ranked
 
 
+def _classify_capture_source(path: Path, text: str) -> list[str]:
+    kinds = []
+    extension_kind = CAPTURE_EXTENSION_KINDS.get(path.suffix.lower())
+    if extension_kind:
+        kinds.append(extension_kind)
+    for kind, pattern in CAPTURE_SOURCE_PATTERNS.items():
+        if pattern.search(text) or pattern.search(str(path)):
+            kinds.append(kind)
+    return sorted(set(kinds))
+
+
+def _scan_capture_sources(repo: Path) -> list[dict[str, object]]:
+    sources: list[dict[str, object]] = []
+    for path in _scan_files(repo):
+        try:
+            text = path.read_text(encoding="utf-8")
+        except UnicodeDecodeError:
+            continue
+        kinds = _classify_capture_source(path, text)
+        if not kinds:
+            continue
+        line_hits = {
+            kind: _line_hits(text, CAPTURE_SOURCE_PATTERNS[kind])[:8]
+            for kind in CAPTURE_SOURCE_PATTERNS
+            if CAPTURE_SOURCE_PATTERNS[kind].search(text)
+        }
+        relative = path.relative_to(repo)
+        sources.append(
+            {
+                "id": "",
+                "path": str(relative),
+                "source_kinds": kinds,
+                "data_class": "metadata-only",
+                "bytes": path.stat().st_size,
+                "evidence_lines": line_hits,
+                "import_status": "candidate",
+                "approval_required_before_payload_read": True,
+            }
+        )
+    ranked = sorted(
+        sources,
+        key=lambda item: (-len(item["source_kinds"]), str(item["path"])),
+    )
+    for index, source in enumerate(ranked, start=1):
+        source["id"] = f"source-{index:03d}"
+    return ranked
+
+
 def _artifact_dir(repo: Path, capability: str) -> Path:
     return repo / ".understudy" / capability
 
@@ -295,6 +369,46 @@ def _run_scan(args: argparse.Namespace, capability: str) -> int:
             providers = ", ".join(candidate["providers"]) or "unknown-provider"
             signals = ", ".join(candidate["signals"])
             print(f"- {candidate['id']}: {candidate['path']} ({providers}; {signals})")
+    return 0
+
+
+def cmd_capture_import(args: argparse.Namespace) -> int:
+    if args.capture_action != "scan":
+        args.surface = "capture-import"
+        args.action = "status"
+        return cmd_roadmap_surface(args)
+
+    repo = Path(args.repo).expanduser().resolve()
+    if not repo.exists() or not repo.is_dir():
+        raise SystemExit(f"repo does not exist or is not a directory: {repo}")
+
+    sources = _scan_capture_sources(repo)
+    payload = {
+        "schema_version": "understudy.capture_sources.v1",
+        "capability": "capture-import",
+        "repo": _repo_metadata(repo),
+        "mode": "local-only",
+        "notes": [
+            "Static metadata scan only; no provider calls, uploads, model downloads, or secret inspection.",
+            "Payload import requires explicit approval plus a redaction and data-boundary plan.",
+        ],
+        "sources": sources,
+        "recommended_next_steps": [
+            "review source candidates and remove private or irrelevant files",
+            "choose one source to convert into a Workload Card",
+            "define data class, redaction needs, split boundary, and approval gates before reading payload rows",
+        ],
+    }
+    output = _artifact_dir(repo, "capture-import") / "capture-sources.json"
+    _write_json(output, payload)
+    if args.json:
+        print(json.dumps(payload, indent=2, sort_keys=True))
+    else:
+        print(f"wrote {output}")
+        print(f"found {len(sources)} capture/import source candidate(s)")
+        for source in sources[:5]:
+            kinds = ", ".join(source["source_kinds"])
+            print(f"- {source['id']}: {source['path']} ({kinds})")
     return 0
 
 
@@ -509,8 +623,23 @@ def build_parser() -> argparse.ArgumentParser:
     discovery_parser.add_argument("--json", action="store_true")
     discovery_parser.set_defaults(func=cmd_workload_discovery, surface="workload-discovery", action="status")
 
+    capture_parser = subparsers.add_parser(
+        "capture-import",
+        help="Find local traces, eval fixtures, prompt files, logs, and datasets.",
+    )
+    capture_parser.add_argument(
+        "capture_action",
+        nargs="?",
+        default="status",
+        choices=["status", "scan"],
+        help="Scan a local repo for importable workload evidence sources.",
+    )
+    capture_parser.add_argument("--repo", default=".", help="Local repository to inspect.")
+    capture_parser.add_argument("--json", action="store_true")
+    capture_parser.set_defaults(func=cmd_capture_import, surface="capture-import", action="status")
+
     for surface, spec in ROADMAP_SURFACES.items():
-        if surface in {"demo", "workload-discovery"}:
+        if surface in {"demo", "workload-discovery", "capture-import"}:
             continue
         surface_parser = subparsers.add_parser(
             surface,

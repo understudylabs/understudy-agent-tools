@@ -7,9 +7,9 @@ mechanics.
 ## Journey
 
 ```text
-local repo -> Workload Card -> Route Decision Packet -> evaluation plan
-  -> latency/output triage -> pairwise or deterministic review
-  -> Decision Packet -> report or handoff
+local repo or artifact -> capture/import scan -> Workload Card
+  -> Route Decision Packet -> evaluation plan -> latency/output triage
+  -> pairwise or deterministic review -> Decision Packet -> report or handoff
 ```
 
 The user should see useful local value before any spend, upload, model
@@ -38,6 +38,11 @@ The Workload Card is the first reusable artifact. It should be source-metadata
 only by default.
 
 Template: [`workload-card-template.md`](workload-card-template.md).
+
+When the user already has traces, eval fixtures, prompts, logs, datasets, or
+benchmarks, start with [`capture-import.md`](capture-import.md). The capture
+scan is metadata-only until the user approves payload reading, redaction, and
+data-boundary handling.
 
 Required public-safe fields:
 
