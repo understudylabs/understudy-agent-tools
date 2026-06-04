@@ -56,6 +56,8 @@ run_understudy capture-import preview --repo . --source-id source-001 --limit 25
 
 The preview default is 25 records and the cap is 200 records. Records are
 written under `.understudy/capture-import/`, not printed to the terminal.
+The generated redaction manifest recommends `keep`, `review`, `hash`, or `drop`
+per field path, but does not mutate records.
 
 4. Pick one source candidate and classify it:
    - `ai-call-site`
