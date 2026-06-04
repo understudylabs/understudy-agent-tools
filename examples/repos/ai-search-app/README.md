@@ -9,12 +9,16 @@ Run from this directory:
 ```sh
 understudy-tools demo scan --repo .
 understudy-tools demo plan --repo .
+understudy-tools route-decision plan --workload-card .understudy/workload-discovery/workload-card.json
+understudy-tools value report --workload-card .understudy/workload-discovery/workload-card.json --route-decision .understudy/route-decision/route-decision-packet.json --requests-per-month 10000
 ```
 
 Both commands write local artifacts under:
 
 ```text
 .understudy/workload-discovery/
+.understudy/route-decision/
+.understudy/value/
 ```
 
 The fixture is synthetic. It contains no customer data, private prompts, real

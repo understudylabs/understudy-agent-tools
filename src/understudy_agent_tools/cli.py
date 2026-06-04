@@ -5,6 +5,9 @@ import json
 import re
 from pathlib import Path
 
+from understudy_agent_tools.route_decision import build_route_decision
+from understudy_agent_tools.value_calculator import build_value_report
+
 
 REPO_ROOT = Path(__file__).resolve().parents[2]
 SCAN_EXCLUDE_DIRS = {
@@ -144,6 +147,11 @@ ROADMAP_SURFACES: dict[str, dict[str, str]] = {
         "skill": "skills/understudy-provider-keys/SKILL.md",
         "why": "Redacted local provider-key status and safe setup guidance.",
         "next": "Port redacted presence checks only; never print secret values.",
+    },
+    "value": {
+        "skill": "skills/understudy-value-reporting/SKILL.md",
+        "why": "Conservative value reporting from measured evidence.",
+        "next": "Expand beyond baseline-only scenario math after eval evidence lands.",
     },
 }
 
@@ -511,6 +519,59 @@ def cmd_workload_discovery(args: argparse.Namespace) -> int:
     return cmd_roadmap_surface(args)
 
 
+def cmd_route_decision(args: argparse.Namespace) -> int:
+    if args.route_action != "plan":
+        payload = {
+            "surface": "route-decision",
+            "status": "implemented",
+            "default_mode": "local-only",
+            "skill": "docs/route-decision-packet-template.md",
+            "why": "Turn a Workload Card into a conservative route shortlist before live calls.",
+            "next_migration": "Add supplier profile refresh and pricing source lookup.",
+            "migration_plan": "docs/tool-migration-map.md",
+        }
+        if args.json:
+            print(json.dumps(payload, indent=2, sort_keys=True))
+        else:
+            print(f"{payload['surface']}: {payload['status']}")
+            print(f"Skill: {payload['skill']}")
+            print(f"Why: {payload['why']}")
+            print(f"Next migration: {payload['next_migration']}")
+            print(f"Plan: {payload['migration_plan']}")
+        return 0
+
+    packet, output = build_route_decision(Path(args.workload_card).expanduser().resolve())
+    if args.json:
+        print(json.dumps(packet, indent=2, sort_keys=True))
+    else:
+        print(f"wrote {output}")
+        print(f"decision: {packet['decision']}")
+        print(f"candidate routes: {len(packet['candidate_routes'])}")
+        print(f"next: {packet['recommended_next_command']}")
+    return 0
+
+
+def cmd_value(args: argparse.Namespace) -> int:
+    if args.value_action != "report":
+        args.surface = "value"
+        args.action = "status"
+        return cmd_roadmap_surface(args)
+
+    report, output = build_value_report(
+        Path(args.workload_card).expanduser().resolve(),
+        Path(args.route_decision).expanduser().resolve(),
+        args.requests_per_month,
+    )
+    if args.json:
+        print(json.dumps(report, indent=2, sort_keys=True))
+    else:
+        print(f"wrote {output}")
+        print(f"decision: {report['decision']}")
+        print("savings: not claimed without measured candidate evidence")
+        print(f"next: {report['recommended_next_command']}")
+    return 0
+
+
 def _spine() -> dict[str, object]:
     return {
         "name": "understudy-agent-tools",
@@ -638,8 +699,52 @@ def build_parser() -> argparse.ArgumentParser:
     capture_parser.add_argument("--json", action="store_true")
     capture_parser.set_defaults(func=cmd_capture_import, surface="capture-import", action="status")
 
+    route_parser = subparsers.add_parser(
+        "route-decision",
+        help="Create a conservative route decision packet from a Workload Card.",
+    )
+    route_parser.add_argument(
+        "route_action",
+        nargs="?",
+        default="status",
+        choices=["status", "plan"],
+        help="Plan route candidates from an existing Workload Card.",
+    )
+    route_parser.add_argument(
+        "--workload-card",
+        default=".understudy/workload-discovery/workload-card.json",
+        help="Path to a Workload Card JSON artifact.",
+    )
+    route_parser.add_argument("--json", action="store_true")
+    route_parser.set_defaults(func=cmd_route_decision, surface="route-decision", action="status")
+
+    value_parser = subparsers.add_parser(
+        "value",
+        help="Create a conservative value report from measured artifacts.",
+    )
+    value_parser.add_argument(
+        "value_action",
+        nargs="?",
+        default="status",
+        choices=["status", "report"],
+        help="Create a value report from a Workload Card and Route Decision Packet.",
+    )
+    value_parser.add_argument(
+        "--workload-card",
+        default=".understudy/workload-discovery/workload-card.json",
+        help="Path to a Workload Card JSON artifact.",
+    )
+    value_parser.add_argument(
+        "--route-decision",
+        default=".understudy/route-decision/route-decision-packet.json",
+        help="Path to a Route Decision Packet JSON artifact.",
+    )
+    value_parser.add_argument("--requests-per-month", type=int, default=None)
+    value_parser.add_argument("--json", action="store_true")
+    value_parser.set_defaults(func=cmd_value, surface="value", action="status")
+
     for surface, spec in ROADMAP_SURFACES.items():
-        if surface in {"demo", "workload-discovery", "capture-import"}:
+        if surface in {"demo", "workload-discovery", "capture-import", "value"}:
             continue
         surface_parser = subparsers.add_parser(
             surface,

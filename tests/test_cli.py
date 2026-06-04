@@ -46,6 +46,47 @@ def test_keys_roadmap_surface(capsys) -> None:
     assert "keys: planned" in out
 
 
+def test_route_decision_and_value_commands(tmp_path, capsys) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    (repo / "search.py").write_text(
+        """
+SYSTEM_PROMPT = "rank search results"
+model = "gpt-4o-mini"
+provider = "openrouter"
+latency_budget_ms = 500
+input_tokens = 1200
+""",
+        encoding="utf-8",
+    )
+
+    assert main(["workload-discovery", "scan", "--repo", str(repo)]) == 0
+    capsys.readouterr()
+    assert main(["workload-discovery", "plan", "--repo", str(repo)]) == 0
+    capsys.readouterr()
+
+    card_path = repo / ".understudy" / "workload-discovery" / "workload-card.json"
+    assert main(["route-decision", "plan", "--workload-card", str(card_path)]) == 0
+    route_out = capsys.readouterr().out
+    assert "decision:" in route_out
+
+    route_path = repo / ".understudy" / "route-decision" / "route-decision-packet.json"
+    assert main(
+        [
+            "value",
+            "report",
+            "--workload-card",
+            str(card_path),
+            "--route-decision",
+            str(route_path),
+            "--requests-per-month",
+            "10000",
+        ]
+    ) == 0
+    value_out = capsys.readouterr().out
+    assert "savings: not claimed" in value_out
+
+
 def test_demo_scan_and_plan(tmp_path, capsys) -> None:
     repo = tmp_path / "repo"
     repo.mkdir()
