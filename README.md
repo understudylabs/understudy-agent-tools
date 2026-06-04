@@ -97,6 +97,12 @@ Read the full policies:
 - [`docs/oss-release-boundary.md`](docs/oss-release-boundary.md)
 - [`docs/release-checklist.md`](docs/release-checklist.md)
 
+Release archives should pass:
+
+```bash
+python3 scripts/package_release_smoke.py
+```
+
 Do not commit:
 
 - customer names, domains, prompts, completions, traces, or datasets

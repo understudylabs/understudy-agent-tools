@@ -6,6 +6,7 @@ Run this before tagging or publishing a package.
 
 ```sh
 python3 scripts/validate_public_skills.py --repo
+python3 scripts/package_release_smoke.py
 python3 scripts/doctor.py
 uv run --with pytest python -m pytest
 git ls-files
@@ -24,5 +25,12 @@ git ls-files
 
 ## Package Smoke
 
-Before publishing a package, build the archive and inspect its contents for
-ignored files, local artifacts, private paths, and secret-shaped strings.
+Before publishing a package, run:
+
+```sh
+python3 scripts/package_release_smoke.py
+```
+
+It builds wheel/sdist archives into a temporary directory and inspects their
+contents for ignored files, local artifacts, private paths, raw payload markers,
+production/control-plane URLs, and secret-shaped strings.
