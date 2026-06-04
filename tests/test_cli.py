@@ -172,3 +172,93 @@ def test_capture_import_scan_metadata_only(tmp_path, capsys) -> None:
     assert len(payload["sources"]) == 2
     assert all(source["data_class"] == "metadata-only" for source in payload["sources"])
     assert all(source["approval_required_before_payload_read"] for source in payload["sources"])
+
+
+def test_capture_import_preview_jsonl_is_bounded_and_local(tmp_path, capsys) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    (repo / "evals.jsonl").write_text(
+        "\n".join(
+            [
+                json.dumps(
+                    {
+                        "input": f"synthetic request {index}",
+                        "expected": "synthetic answer " + ("x" * 120),
+                        "latency_ms": 900 + index,
+                    }
+                )
+                for index in range(30)
+            ]
+        )
+        + "\n",
+        encoding="utf-8",
+    )
+
+    assert main(["capture-import", "scan", "--repo", str(repo)]) == 0
+    capsys.readouterr()
+    assert main(
+        [
+            "capture-import",
+            "preview",
+            "--repo",
+            str(repo),
+            "--source-id",
+            "source-001",
+            "--limit",
+            "10",
+            "--max-chars",
+            "80",
+        ]
+    ) == 0
+    out = capsys.readouterr().out
+    assert "records were written to the preview artifact" in out
+
+    preview_path = repo / ".understudy" / "capture-import" / "preview-source-001.json"
+    preview = json.loads(preview_path.read_text(encoding="utf-8"))
+    assert preview["schema_version"] == "understudy.capture_preview.v1"
+    assert preview["data_class"] == "local-preview"
+    assert preview["record_count"] == 10
+    assert preview["limit_applied"] == 10
+    assert preview["records"][0]["expected"].endswith("...[truncated]")
+    assert "uploading preview records" in preview["approval_gates"]
+
+    manifest_path = repo / ".understudy" / "capture-import" / "redaction-manifest.json"
+    manifest = json.loads(manifest_path.read_text(encoding="utf-8"))
+    assert manifest["schema_version"] == "understudy.redaction_manifest.v1"
+    assert manifest["review_required"] is True
+
+
+def test_capture_import_preview_limit_is_capped(tmp_path, capsys) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    (repo / "rows.csv").write_text(
+        "input,expected,latency_ms\n"
+        + "\n".join(f"synthetic request {index},synthetic answer {index},{index}" for index in range(250))
+        + "\n",
+        encoding="utf-8",
+    )
+
+    assert main(["capture-import", "scan", "--repo", str(repo)]) == 0
+    capsys.readouterr()
+    assert main(
+        [
+            "capture-import",
+            "preview",
+            "--repo",
+            str(repo),
+            "--source-id",
+            "source-001",
+            "--limit",
+            "500",
+        ]
+    ) == 0
+    capsys.readouterr()
+
+    preview = json.loads(
+        (repo / ".understudy" / "capture-import" / "preview-source-001.json").read_text(
+            encoding="utf-8"
+        )
+    )
+    assert preview["limit_requested"] == 500
+    assert preview["limit_applied"] == 200
+    assert preview["record_count"] == 200
