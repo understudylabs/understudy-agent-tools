@@ -1,0 +1,18 @@
+{
+  "name": "understudy-skills",
+  "owner": {
+    "name": "Understudy Labs"
+  },
+  "metadata": {
+    "description": "Claude Code skills for improving LLM apps with Understudy — trace, evaluate, optimize, compare, deploy.",
+    "version": "0.1.0"
+  },
+  "plugins": [
+    {
+      "name": "understudy",
+      "description": "Improve LLM apps and agents from real traces — cost/latency/quality, evals, GEPA, model comparison, and routing.",
+      "source": "./",
+      "strict": true
+    }
+  ]
+}
