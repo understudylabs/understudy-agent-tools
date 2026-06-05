@@ -1,9 +1,6 @@
 """DSPy-program lane tests. Skips when dspy is absent (optional install)."""
 from __future__ import annotations
 
-import sys
-from pathlib import Path
-
 import pytest
 
 pytest.importorskip("dspy")
@@ -11,9 +8,7 @@ pytest.importorskip("dspy")
 import dspy  # noqa: E402
 from dspy.utils import DummyLM  # noqa: E402
 
-_SCRIPTS = Path(__file__).resolve().parents[1] / "skills" / "validate-and-optimize" / "scripts"
-sys.path.insert(0, str(_SCRIPTS))
-
+# `validate-and-optimize/scripts` is on sys.path via tests/conftest.py.
 from dspy_program import (  # noqa: E402
     build_program,
     build_signature,
