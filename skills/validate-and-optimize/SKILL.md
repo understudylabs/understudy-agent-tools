@@ -58,6 +58,23 @@ of optimizing.
 - If holdout is touched accidentally, mark the result contaminated and create a
   new split contract before claiming progress.
 
+## Before You Optimize
+
+Confirm these before spending GEPA budget — full detail, model defaults, and
+validator kinds in [`reference.md`](reference.md):
+
+- **Headroom** — `baseline.json` must show failing-but-promptable rows. No
+  incumbent failures → nothing to optimize. A strong model fails them too →
+  task beyond frontier; stop.
+- **Models** — student = a cheap candidate; `reflection_lm` = a strong frontier
+  model (optional, but a weak one caps quality). Both run on the developer's own
+  keys; no account.
+- **Verifier boundary** — optimize the offline validator only; RL
+  verifiers/environments are a later rung, out of scope here.
+- **Stopping rule** — if the scorer saturates to 1.0 fast, the surface is too
+  easy; strengthen the metric, don't claim. If GEPA stalls with headroom left,
+  recommend the next rung (SFT/distillation); this skill does not train.
+
 ## Flow
 
 1. Inspect the required artifacts and confirm they describe the same workload.
@@ -68,7 +85,9 @@ of optimizing.
    candidate model comparison, or GEPA.
 4. For GEPA execution, use the upstream `gepa` package behind uv-first
    detect-and-prompt install guidance. Do not auto-install packages, vendor
-   GEPA, or depend on a full private runtime.
+   GEPA, or depend on a full private runtime. GEPA's edge is natural-language
+   feedback: the metric must return a diagnosis of *why* each failing row failed
+   and what to change, not a bare score — bland feedback wastes the optimizer.
 5. Keep deterministic work in this skill's scripts and templates. Follow
    [`../../docs/validate-and-optimize-contract.md`](../../docs/validate-and-optimize-contract.md)
    for adapter, metric feedback, and claim packet details.

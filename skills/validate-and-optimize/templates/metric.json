@@ -11,6 +11,8 @@
     "callable": null,
     "command": "python validate.py",
     "kind": "command",
-    "schema_path": null
-  }
+    "schema_path": null,
+    "rubric_path": null
+  },
+  "verifier_environment_id": null
 }

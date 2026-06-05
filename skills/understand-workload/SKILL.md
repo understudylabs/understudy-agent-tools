@@ -58,10 +58,31 @@ enough provenance for another agent to repeat the step without guessing.
    If the harness needs a local proxy, bootstrap repair, or provider-key
    presence check, route to the existing public setup skill for that recovery
    path before claiming the baseline is runnable.
-3. Confirm the scoring metric and validator.
+   Model preflight: record whether the intended candidate/student model
+   supports the workload's required capabilities (tool-calling,
+   structured-output, vision, reasoning toggle) and whether its context window
+   fits the workload's longest input. A context-window mismatch is a silent
+   failure mode that later surfaces as confusing zero scores.
+3. Confirm the scoring metric and validator (the load-bearing step).
    Write `metric.json` with the primary metric, pass/fail threshold,
-   tie-breakers, validator command or callable, and failure taxonomy. If the
-   metric or validator is unclear, stop and ask one concrete question.
+   tie-breakers, validator, failure taxonomy, and `approved: true` only after a
+   human confirms it. The metric is the real game: optimizing a *proxy* metric
+   instead of the real validator is how prior runs scored 0/12. Record the
+   validator `kind` and follow its rule:
+   - `unit-test` / `golden` / `custom-command` — runs a deterministic check; the
+     feedback is the assertion or diff that failed.
+   - `schema` (e.g. Zod/JSON-schema `safeParse`) — keep `schema_pass` separate
+     from `quality_pass`; a valid-shape, valid-enum output must not be failed
+     merely for not matching a teacher trace verbatim.
+   - `rubric` — a confirmed criteria list (each criterion: id, description,
+     review type); auto-generated rubrics need human approval.
+   - `llm-judge` — must debias position with a swapped two-pass score
+     (`(r_ab − r_ba + 2) / 4`); never single-pass.
+   - `human-review` — a blind, order-randomized packet; report judge-vs-human
+     agreement separately from candidate preference.
+   Whatever the kind, the metric must emit **natural-language feedback that
+   diagnoses why** an output failed and what to change — not just a scalar.
+   If the metric or validator is unclear, stop and ask one concrete question.
 4. Freeze splits.
    Write `splits.json` with train/dev/holdout names, sizes, source refs,
    deterministic split seed or frozen row ids, and an explicit "no holdout
@@ -72,6 +93,9 @@ enough provenance for another agent to repeat the step without guessing.
    sample size, score, latency basis, cost basis if available, failures, and
    caveats. It must also include `harness_sha256`, `metric_sha256`, and
    `splits_sha256` for the exact artifacts used by the rerun.
+   Record the per-row (or per-cluster) pass/fail set, not just an aggregate
+   score, so the next step can see whether optimization **headroom** exists —
+   i.e. rows the incumbent fails that a stronger model could fix.
 
 ## Flow
 
