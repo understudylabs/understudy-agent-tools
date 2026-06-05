@@ -9,12 +9,14 @@ const allowedTopLevel = new Set(["name", "description", "license", "allowed-tool
 const mvpPublicSkillNames = [
   "understudy",
   "capture-evidence",
+  "optimize-api-workflow",
   "optimize-workload",
   "use-understudy-gateway",
   "prepare-verifier-handoff",
 ];
 const mvpRouterTargets = [
   "../capture-evidence/SKILL.md",
+  "../optimize-api-workflow/SKILL.md",
   "../optimize-workload/SKILL.md",
   "../use-understudy-gateway/SKILL.md",
   "../prepare-verifier-handoff/SKILL.md",
