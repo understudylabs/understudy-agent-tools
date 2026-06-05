@@ -3,16 +3,28 @@ import { spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import { describe, it } from "node:test";
 
-const cli = ["node", "dist/bin.js"];
+const cli = ["node", resolve("dist/bin.js")];
 const uvAvailable = spawnSync("uv", ["--version"], { encoding: "utf8" }).status === 0;
 
 function run(args) {
   return spawnSync(cli[0], [cli[1], ...args], {
     cwd: process.cwd(),
     encoding: "utf8",
+  });
+}
+
+function runWithHome(args, home, cwd = process.cwd()) {
+  return spawnSync(cli[0], [cli[1], ...args], {
+    cwd,
+    encoding: "utf8",
+    env: {
+      ...process.env,
+      HOME: home,
+      USERPROFILE: home,
+    },
   });
 }
 
@@ -268,6 +280,63 @@ describe("understudy CLI", () => {
     assert.equal(payload.runtime, "node");
     assert.equal(payload.ok, true);
     assert.deepEqual(payload.missing, []);
+  });
+
+  it("status exits non-zero when local config is malformed", () => {
+    const home = mkdtempSync(join(tmpdir(), "understudy-status-home-"));
+    const repo = mkdtempSync(join(tmpdir(), "understudy-status-repo-"));
+    try {
+      mkdirSync(join(repo, ".understudy"), { recursive: true });
+      writeFileSync(join(repo, ".understudy", "config.json"), "{not-json}\n");
+      const result = runWithHome(["status", "--json"], home, repo);
+      assert.equal(result.status, 1);
+      assert.match(result.stderr, /Failed to parse/);
+    } finally {
+      rmSync(home, { recursive: true, force: true });
+      rmSync(repo, { recursive: true, force: true });
+    }
+  });
+
+  it("per-org logout preserves top-level credential metadata", () => {
+    const home = mkdtempSync(join(tmpdir(), "understudy-logout-home-"));
+    try {
+      const configDir = join(home, ".understudy");
+      mkdirSync(configDir, { recursive: true });
+      writeFileSync(
+        join(configDir, "credentials.json"),
+        `${JSON.stringify(
+          {
+            api_key: "sk_test_top_level",
+            gateway_url: "https://api.understudylabs.com",
+            user_id: "user_test",
+            email: "agent@example.com",
+            signup_intent_id: "signup_test",
+            orgs: {
+              org_remove: {
+                api_key: "sk_test_remove",
+                gateway_url: "https://api.understudylabs.com",
+              },
+              org_keep: {
+                api_key: "sk_test_keep",
+                gateway_url: "https://api.understudylabs.com",
+              },
+            },
+          },
+          null,
+          2,
+        )}\n`,
+      );
+      const result = runWithHome(["logout", "--org", "org_remove", "--json"], home);
+      assert.equal(result.status, 0, result.stderr);
+      const credentials = JSON.parse(readFileSync(join(configDir, "credentials.json"), "utf8"));
+      assert.equal(credentials.api_key, "sk_test_top_level");
+      assert.equal(credentials.user_id, "user_test");
+      assert.equal(credentials.email, "agent@example.com");
+      assert.ok(!credentials.orgs.org_remove);
+      assert.equal(credentials.orgs.org_keep.api_key, "sk_test_keep");
+    } finally {
+      rmSync(home, { recursive: true, force: true });
+    }
   });
 
   it("writes local-only understand check metadata", () =>

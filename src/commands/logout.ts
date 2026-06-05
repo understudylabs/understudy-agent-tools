@@ -96,7 +96,7 @@ function runLogout(opts: LogoutOpts, json: boolean): void {
     return;
   }
 
-  writeCredentials({ orgs: remaining });
+  writeCredentials({ ...existing, orgs: remaining });
   if (json) {
     process.stdout.write(
       `${JSON.stringify({ ok: true, org: opts.org, removed: true })}\n`,

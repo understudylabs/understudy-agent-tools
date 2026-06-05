@@ -46,9 +46,9 @@ export function registerWorkflowCommand(program: Command): void {
     .option("--run-id <id>", "Durable run id to pass to the workflow runner.")
     .option("--input <json-or-path>", "JSON string or path to a JSON input file.", "{}")
     .option("--format <format>", "Runner output format.", "json")
-    .option("--smithers-bin <path>", "Smithers runner binary.", "smithers")
+    .option("--runner-bin <path>", "Smithers-compatible runner binary.", "smithers")
     .option("--dry-run", "Print the runner command without executing it.")
-    .action((template: string, options: { runId?: string; input: string; format: string; smithersBin: string; dryRun?: boolean }) => {
+    .action((template: string, options: { runId?: string; input: string; format: string; runnerBin: string; dryRun?: boolean }) => {
       runWorkflowTemplate(template, options);
     });
 }
@@ -77,7 +77,7 @@ function readWorkflowTemplates(): WorkflowTemplate[] {
 
 function runWorkflowTemplate(
   templateId: string,
-  options: { runId?: string; input: string; format: string; smithersBin: string; dryRun?: boolean },
+  options: { runId?: string; input: string; format: string; runnerBin: string; dryRun?: boolean },
 ): void {
   const template = readWorkflowTemplates().find((candidate) => candidate.id === templateId);
   if (!template) {
@@ -91,20 +91,20 @@ function runWorkflowTemplate(
   args.push("--input", input, "--format", options.format);
 
   if (options.dryRun) {
-    process.stdout.write(`${options.smithersBin} ${args.map(shellQuote).join(" ")}\n`);
+    process.stdout.write(`${options.runnerBin} ${args.map(shellQuote).join(" ")}\n`);
     return;
   }
 
-  const result = spawnSync(options.smithersBin, args, {
+  const result = spawnSync(options.runnerBin, args, {
     cwd: process.cwd(),
     encoding: "utf8",
     stdio: "inherit",
   });
   if (result.error) {
     const suffix = result.error.message.includes("ENOENT")
-      ? " Install Smithers or pass --smithers-bin <path>."
+      ? " Install a Smithers-compatible runner or pass --runner-bin <path>."
       : "";
-    throw new Error(`Unable to run ${options.smithersBin}.${suffix}`);
+    throw new Error(`Unable to run ${options.runnerBin}.${suffix}`);
   }
   if (typeof result.status === "number" && result.status !== 0) {
     process.exitCode = result.status;

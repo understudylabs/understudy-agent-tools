@@ -12,4 +12,4 @@ understudy workflow run optimize-gepa --run-id optimize-smoke --input '{"repo":"
 ```
 
 The base CLI does not install Smithers as a hard dependency. Use a local
-`smithers` binary or pass `--smithers-bin <path>`.
+`smithers` binary or pass `--runner-bin <path>`.

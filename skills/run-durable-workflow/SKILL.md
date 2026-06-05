@@ -40,7 +40,7 @@ node dist/bin.js workflow list
 
 The base CLI does not install Smithers as a hard dependency. If
 `understudy workflow run ...` reports that no runner is available, install or
-provide a Smithers-compatible runner and pass `--smithers-bin <path>`.
+provide a Smithers-compatible runner and pass `--runner-bin <path>`.
 
 ## Flow
 

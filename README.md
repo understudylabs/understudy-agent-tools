@@ -200,7 +200,7 @@ understudy workflow run optimize-gepa --run-id optimize-smoke --input '{"repo":"
 ```
 
 The base package does not install Smithers as a hard dependency. Provide a
-local runner with `--smithers-bin <path>` when needed.
+local runner with `--runner-bin <path>` when needed.
 
 For the exact before/after functionality ledger, see
 [`docs/current-functionality.md`](docs/current-functionality.md).

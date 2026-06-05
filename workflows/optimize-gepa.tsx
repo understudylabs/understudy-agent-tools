@@ -42,7 +42,7 @@ const { Workflow, Task, Sequence, smithers, outputs } = createSmithers(
     adapter: adapterSchema,
     output: outputSchema,
   },
-  { dbPath: process.env.UNDERSTUDY_WORKFLOW_DB ?? ".understudy/workflows/smithers.db" },
+  { dbPath: process.env.UNDERSTUDY_WORKFLOW_DB ?? ".understudy/workflows/workflow.db" },
 );
 
 export default smithers((ctx) => {

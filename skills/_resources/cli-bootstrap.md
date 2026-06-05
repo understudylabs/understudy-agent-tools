@@ -8,10 +8,6 @@ run_understudy() {
     understudy "$@"
     return $?
   fi
-  if command -v understudy >/dev/null 2>&1; then
-    understudy "$@"
-    return $?
-  fi
   return 127
 }
 ```

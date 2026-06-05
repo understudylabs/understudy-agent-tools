@@ -17,7 +17,7 @@ export function registerStatusCommand(program: Command): void {
     .command("status")
     .description("Print the active Understudy org, project, key suffix, and gateway URL.")
     .action(function (this: Command) {
-      runStatus(isJsonMode(this));
+      process.exitCode = runStatus(isJsonMode(this));
     });
 }
 
