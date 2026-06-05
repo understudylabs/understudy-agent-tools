@@ -7,13 +7,26 @@ the upstream `gepa` adapter protocol so `gepa.optimize` can evolve a prompt:
     evaluate(batch, candidate, capture_traces) -> EvaluationBatch
     make_reflective_dataset(candidate, eval_batch, components_to_update) -> Mapping
 
-`candidate` is `dict[str, str]` — named text components (default `{"prompt": ...}`).
+`candidate` is `dict[str, str]` — the named text components GEPA evolves
+(`{"prompt": ...}` for a single prompt; multiple keys for a multi-step pipeline,
+e.g. `{"planner_prompt": ..., "solver_prompt": ...}`).
+
+**Turn model — single-turn and multi-turn both work, because `infer` *is* the
+system.** The adapter does not assume one prompt → one string. It hands the
+whole `candidate` dict to the injected `infer`, which runs the workload however
+it actually runs — a single completion, or a multi-turn agent / tool-use loop —
+and returns whatever the workload produces (a string, or a full trajectory).
+`metric` then scores that output, which for multi-turn means scoring a trajectory
+(tool-call sequence, final-state validation). The only thing out of scope here is
+a **stateful RL environment** (interactive reward); that's the verifier rung,
+deferred (see the skill's reference.md).
 
 Inference and scoring are **injected** so the adapter is provider-agnostic and
 unit-testable without gepa or network:
-- `infer(rendered_prompt, example) -> output_text` — runs the candidate on the
-  developer's own keys. Wire this to the tool's provider/route plumbing
-  (`route_decision.py`); it is the substantive remaining integration.
+- `infer(candidate, example) -> output` — runs the workload (single- or
+  multi-turn) on the developer's own keys, wiring the candidate's components in
+  wherever the system uses them. Wire to the tool's provider/route plumbing
+  (`route_decision.py`); this is the substantive remaining integration.
 - `metric(example, output) -> (score, feedback)` — the human-confirmed validator
   from `metric.json`. `feedback` is the natural-language diagnosis GEPA reflects
   on; it must say *why* the output failed and what to change, not a bare score.
@@ -28,28 +41,17 @@ from typing import Any, Callable
 from gepa import EvaluationBatch  # lazy: only import this module when gepa is present
 
 Example = dict[str, Any]
-InferFn = Callable[[str, Example], str]
-MetricFn = Callable[[Example, str], "tuple[float, str]"]
-RenderFn = Callable[[str, Example], str]
+Output = Any  # a string (single-turn) or a trajectory (multi-turn)
+InferFn = Callable[[dict[str, str], Example], Output]
+MetricFn = Callable[[Example, Output], "tuple[float, str]"]
 
 
 class UnderstudyGepaAdapter:
     """Adapter conforming to `gepa.GEPAAdapter`."""
 
-    def __init__(
-        self,
-        *,
-        infer: InferFn,
-        metric: MetricFn,
-        render: RenderFn | None = None,
-        component: str = "prompt",
-    ) -> None:
+    def __init__(self, *, infer: InferFn, metric: MetricFn) -> None:
         self._infer = infer
         self._metric = metric
-        # Default render is identity: the candidate prompt is sent as-is. Provide
-        # a real template renderer when the workload interpolates example inputs.
-        self._render = render or (lambda template, _example: template)
-        self._component = component
 
     def evaluate(
         self,
@@ -57,13 +59,13 @@ class UnderstudyGepaAdapter:
         candidate: dict[str, str],
         capture_traces: bool = False,
     ) -> "EvaluationBatch":
-        prompt = candidate[self._component]
-        outputs: list[str] = []
+        outputs: list[Output] = []
         scores: list[float] = []
         trajectories: list[dict[str, Any]] | None = [] if capture_traces else None
         for example in batch:
-            rendered = self._render(prompt, example)
-            output = self._infer(rendered, example)
+            # `infer` owns how the candidate's components drive the workload —
+            # one call or a full multi-turn loop — and returns its output.
+            output = self._infer(candidate, example)
             score, feedback = self._metric(example, output)
             outputs.append(output)
             scores.append(float(score))
@@ -71,7 +73,7 @@ class UnderstudyGepaAdapter:
                 trajectories.append(
                     {
                         "example": example,
-                        "prompt": rendered,
+                        "candidate": candidate,
                         "output": output,
                         "score": float(score),
                         "feedback": feedback,
