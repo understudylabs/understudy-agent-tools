@@ -4,6 +4,8 @@ import argparse
 import csv
 import json
 import re
+from collections.abc import Callable
+from dataclasses import dataclass
 from pathlib import Path
 
 from understudy_agent_tools.artifact_contract import (
@@ -14,6 +16,13 @@ from understudy_agent_tools.artifact_contract import (
     validate_metric_contract,
 )
 from understudy_agent_tools.route_decision import build_route_decision
+from understudy_agent_tools.surfaces import (
+    EXPLICIT_SURFACES,
+    ROADMAP_ACTIONS,
+    ROADMAP_SURFACES,
+    roadmap_payload,
+    spine_payload,
+)
 from understudy_agent_tools.value_calculator import build_value_report
 
 
@@ -149,69 +158,6 @@ WORKLOAD_SHAPE_PATTERNS = {
     "rag": re.compile(r"\b(rag|retrieval|embedding|vector|search|rank|rerank)\b", re.IGNORECASE),
     "structured-output": re.compile(r"\b(json|schema|structured|pydantic|zod)\b", re.IGNORECASE),
     "summarization": re.compile(r"\b(summary|summarize|summarization)\b", re.IGNORECASE),
-}
-
-ROADMAP_SURFACES: dict[str, dict[str, str]] = {
-    "demo": {
-        "skill": "appendix/understudy-demo/SKILL.md",
-        "why": "Local repo workload discovery before provider spend.",
-        "next": "Expand static scan signals and add richer Workload Card validation.",
-    },
-    "workload-discovery": {
-        "skill": "appendix/understudy-workload-discovery/SKILL.md",
-        "why": "Find and rank local repo AI workload candidates before evaluation.",
-        "next": "Add workload type classification and richer candidate-card fields.",
-    },
-    "capture-import": {
-        "skill": "appendix/understudy-capture-import/SKILL.md",
-        "why": "Find local traces, eval fixtures, prompt files, logs, and datasets before building a Workload Card.",
-        "next": "Add format-specific import previews and redaction manifests before payload extraction.",
-    },
-    "evaluate": {
-        "skill": "appendix/understudy-evaluate/SKILL.md",
-        "why": "Local-first workload measurement with explicit split boundaries.",
-        "next": "Port artifact validation and dry-run eval planning before live runners.",
-    },
-    "optimize": {
-        "skill": "appendix/understudy-optimize/SKILL.md",
-        "why": "Post-baseline prompt, route, parser, and candidate improvement.",
-        "next": "Port local dry-run planning before any optimizer implementation.",
-    },
-    "train": {
-        "skill": "appendix/understudy-train/SKILL.md",
-        "why": "Local training handoff: provenance, split validation, and export previews.",
-        "next": "Port export-preview and validation stubs before hosted provider flows.",
-    },
-    "model": {
-        "skill": "appendix/understudy-model-lookup/SKILL.md",
-        "why": "Compatibility checks before benchmark or replacement claims.",
-        "next": "Port local metadata inspection and public model-card lookup helpers.",
-    },
-    "local-models": {
-        "skill": "appendix/understudy-local-models/SKILL.md",
-        "why": "Apple Silicon, MLX, Ollama, and local runner readiness before live comparison.",
-        "next": "Port local hardware inventory and dry-run runner checks without private workloads.",
-    },
-    "provider-integrations": {
-        "skill": "appendix/understudy-provider-integrations/SKILL.md",
-        "why": "Provider cookbook mapping and route-decision planning before live calls.",
-        "next": "Port redacted key readiness, model lookup, supplier profile refresh, and route-decision packet generation.",
-    },
-    "proxy": {
-        "skill": "appendix/understudy-local-proxy/SKILL.md",
-        "why": "Local OpenAI-compatible routing and trace-capture setup.",
-        "next": "Port local fixture proxy checks without hosted-control-plane details.",
-    },
-    "keys": {
-        "skill": "appendix/understudy-provider-keys/SKILL.md",
-        "why": "Redacted local provider-key status and safe setup guidance.",
-        "next": "Port redacted presence checks only; never print secret values.",
-    },
-    "value": {
-        "skill": "appendix/understudy-value-reporting/SKILL.md",
-        "why": "Conservative value reporting from measured evidence.",
-        "next": "Expand beyond baseline-only scenario math after eval evidence lands.",
-    },
 }
 
 
@@ -1367,24 +1313,8 @@ def cmd_validate_and_optimize(args: argparse.Namespace) -> int:
     return 1 if args.validate_optimize_action == "run" else 0
 
 
-def _spine() -> dict[str, object]:
-    return {
-        "name": "understudy-agent-tools",
-        "license": "MIT",
-        "spines": [
-            {"name": "cli", "path": "src/understudy_agent_tools"},
-            {"name": "scripts", "path": "scripts"},
-            {"name": "skills", "path": "skills"},
-            {"name": "vendor", "path": "vendor"},
-            {"name": "docs", "path": "docs"},
-        ],
-        "entrypoint_skill": "skills/understudy/SKILL.md",
-        "default_mode": "local-only",
-    }
-
-
 def cmd_spine(args: argparse.Namespace) -> int:
-    spine = _spine()
+    spine = spine_payload()
     if args.json:
         print(json.dumps(spine, indent=2, sort_keys=True))
         return 0
@@ -1409,23 +1339,9 @@ def cmd_skills(args: argparse.Namespace) -> int:
     return 0
 
 
-def _roadmap_payload(surface: str) -> dict[str, str]:
-    spec = ROADMAP_SURFACES[surface]
-    return {
-        "surface": surface,
-        "status": "planned",
-        "implemented": "false",
-        "default_mode": "local-only",
-        "skill": spec["skill"],
-        "why": spec["why"],
-        "next_migration": spec["next"],
-        "migration_plan": "docs/tool-migration-map.md",
-    }
-
-
 def cmd_roadmap_surface(args: argparse.Namespace) -> int:
-    payload = _roadmap_payload(args.surface)
-    if args.action in {"status", "doctor", "lookup", "route", "validate", "run", "plan", "start", "export"}:
+    payload = roadmap_payload(args.surface)
+    if args.action in ROADMAP_ACTIONS:
         if args.json:
             print(json.dumps(payload, indent=2, sort_keys=True))
         else:
@@ -1438,225 +1354,270 @@ def cmd_roadmap_surface(args: argparse.Namespace) -> int:
     raise ValueError(f"unsupported action: {args.action}")
 
 
-def build_parser() -> argparse.ArgumentParser:
-    parser = argparse.ArgumentParser(prog="understudy-tools")
-    subparsers = parser.add_subparsers(dest="command", required=True)
+# --- Reusable argument groups --------------------------------------------
+# Each adds a fixed block of arguments to a subparser. Argument *order* is
+# preserved (it drives --help output), so commands compose these in the order
+# the original hand-written parsers used.
 
-    spine = subparsers.add_parser("spine", help="Show the public repo spine.")
-    spine.add_argument("--json", action="store_true")
-    spine.set_defaults(func=cmd_spine)
+ArgBuilder = Callable[[argparse.ArgumentParser], None]
 
-    skills = subparsers.add_parser("skills", help="List bundled skills.")
-    skills.add_argument("--json", action="store_true")
-    skills.set_defaults(func=cmd_skills)
 
-    demo_parser = subparsers.add_parser("demo", help="Find and plan a local repo workload demo.")
-    demo_parser.add_argument(
-        "demo_action",
-        nargs="?",
-        default="status",
-        choices=["status", "scan", "plan"],
-        help="Scan a local repo for AI workload candidates or plan the first workload card.",
-    )
-    demo_parser.add_argument("--repo", default=".", help="Local repository to inspect.")
-    demo_parser.add_argument("--candidate", default="", help="Candidate id from workload-candidates.json.")
-    demo_parser.add_argument("--json", action="store_true")
-    demo_parser.set_defaults(func=cmd_demo, surface="demo", action="status")
+def _add_repo(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument("--repo", default=".", help="Local repository to inspect.")
 
-    discovery_parser = subparsers.add_parser(
-        "workload-discovery",
-        help="Find and plan local repo AI workload candidates.",
-    )
-    discovery_parser.add_argument(
-        "discovery_action",
-        nargs="?",
-        default="status",
-        choices=["status", "scan", "plan"],
-        help="Scan a local repo for AI workload candidates or plan the first Workload Card.",
-    )
-    discovery_parser.add_argument("--repo", default=".", help="Local repository to inspect.")
-    discovery_parser.add_argument("--candidate", default="", help="Candidate id from workload-candidates.json.")
-    discovery_parser.add_argument("--json", action="store_true")
-    discovery_parser.set_defaults(func=cmd_workload_discovery, surface="workload-discovery", action="status")
 
-    understand_parser = subparsers.add_parser(
-        "understand",
-        help="User-facing MVP spine for repo understanding and Workload Card creation.",
-    )
-    understand_parser.add_argument(
-        "understand_action",
-        nargs="?",
-        default="status",
-        choices=["status", "scan", "preview", "workload-card", "plan"],
-        help="Scan repo signals, preview capture sources, or create a Workload Card.",
-    )
-    understand_parser.add_argument("--repo", default=".", help="Local repository to inspect.")
-    understand_parser.add_argument("--candidate", default="", help="Candidate id from workload-candidates.json.")
-    understand_parser.add_argument("--source-id", default="source-001", help="Source id from capture-sources.json.")
-    understand_parser.add_argument("--workload-id", default="workload-001")
-    understand_parser.add_argument("--workload-name", default=None)
-    understand_parser.add_argument(
+def _add_candidate(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument("--candidate", default="", help="Candidate id from workload-candidates.json.")
+
+
+def _add_json(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument("--json", action="store_true")
+
+
+def _add_source_workload(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument("--source-id", default="source-001", help="Source id from capture-sources.json.")
+    parser.add_argument("--workload-id", default="workload-001")
+    parser.add_argument("--workload-name", default=None)
+
+
+def _add_preview(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument(
         "--limit",
         type=int,
         default=CAPTURE_PREVIEW_DEFAULT_LIMIT,
         help=f"Preview record limit, capped at {CAPTURE_PREVIEW_MAX_LIMIT}.",
     )
-    understand_parser.add_argument(
+    parser.add_argument(
         "--max-chars",
         type=int,
         default=CAPTURE_PREVIEW_DEFAULT_MAX_CHARS,
         help="Maximum characters per string field in preview artifacts.",
     )
-    understand_parser.add_argument("--json", action="store_true")
-    understand_parser.set_defaults(func=cmd_understand, surface="understand", action="status")
 
-    capture_parser = subparsers.add_parser(
-        "capture-import",
-        help="Find local traces, eval fixtures, prompt files, logs, and datasets.",
-    )
-    capture_parser.add_argument(
-        "capture_action",
-        nargs="?",
-        default="status",
-        choices=["status", "scan", "preview", "workload-card"],
-        help="Scan a local repo for importable workload evidence sources.",
-    )
-    capture_parser.add_argument("--repo", default=".", help="Local repository to inspect.")
-    capture_parser.add_argument("--source-id", default="source-001", help="Source id from capture-sources.json.")
-    capture_parser.add_argument("--workload-id", default="workload-001")
-    capture_parser.add_argument("--workload-name", default=None)
-    capture_parser.add_argument(
-        "--limit",
-        type=int,
-        default=CAPTURE_PREVIEW_DEFAULT_LIMIT,
-        help=f"Preview record limit, capped at {CAPTURE_PREVIEW_MAX_LIMIT}.",
-    )
-    capture_parser.add_argument(
-        "--max-chars",
-        type=int,
-        default=CAPTURE_PREVIEW_DEFAULT_MAX_CHARS,
-        help="Maximum characters per string field in preview artifacts.",
-    )
-    capture_parser.add_argument("--json", action="store_true")
-    capture_parser.set_defaults(func=cmd_capture_import, surface="capture-import", action="status")
 
-    route_parser = subparsers.add_parser(
-        "route-decision",
-        help="Create a conservative route decision packet from a Workload Card.",
-    )
-    route_parser.add_argument(
-        "route_action",
-        nargs="?",
-        default="status",
-        choices=["status", "plan"],
-        help="Plan route candidates from an existing Workload Card.",
-    )
-    route_parser.add_argument(
+def _add_workload_card(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument(
         "--workload-card",
         default=".understudy/workload-discovery/workload-card.json",
         help="Path to a Workload Card JSON artifact.",
     )
-    route_parser.add_argument("--json", action="store_true")
-    route_parser.set_defaults(func=cmd_route_decision, surface="route-decision", action="status")
 
-    value_parser = subparsers.add_parser(
-        "value",
-        help="Create a conservative value report from measured artifacts.",
-    )
-    value_parser.add_argument(
-        "value_action",
-        nargs="?",
-        default="status",
-        choices=["status", "report"],
-        help="Create a value report from a Workload Card and Route Decision Packet.",
-    )
-    value_parser.add_argument(
-        "--workload-card",
-        default=".understudy/workload-discovery/workload-card.json",
-        help="Path to a Workload Card JSON artifact.",
-    )
-    value_parser.add_argument(
+
+def _add_route_decision_path(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument(
         "--route-decision",
         default=".understudy/route-decision/route-decision-packet.json",
         help="Path to a Route Decision Packet JSON artifact.",
     )
-    value_parser.add_argument("--requests-per-month", type=int, default=None)
-    value_parser.add_argument("--baseline-cost-usd", type=float, default=None)
-    value_parser.add_argument("--baseline-latency-ms", type=float, default=None)
-    value_parser.add_argument("--candidate-cost-usd", type=float, default=None)
-    value_parser.add_argument("--candidate-latency-ms", type=float, default=None)
-    value_parser.add_argument("--output", default=None, help="Optional output path for the value report.")
-    value_parser.add_argument("--json", action="store_true")
-    value_parser.set_defaults(func=cmd_value, surface="value", action="status")
 
-    validate_optimize_parser = subparsers.add_parser(
+
+def _add_economics(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument("--requests-per-month", type=int, default=None)
+    parser.add_argument("--baseline-cost-usd", type=float, default=None)
+    parser.add_argument("--baseline-latency-ms", type=float, default=None)
+    parser.add_argument("--candidate-cost-usd", type=float, default=None)
+    parser.add_argument("--candidate-latency-ms", type=float, default=None)
+
+
+def _add_output(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument("--output", default=None, help="Optional output path for the value report.")
+
+
+def _add_validate_artifacts(parser: argparse.ArgumentParser) -> None:
+    paths = default_understand_artifact_paths()
+    parser.add_argument("--harness", default=paths["harness"], help="Path to required harness.json.")
+    parser.add_argument("--metric", default=paths["metric"], help="Path to required metric.json.")
+    parser.add_argument("--splits", default=paths["splits"], help="Path to required splits.json.")
+    parser.add_argument("--baseline", default=paths["baseline"], help="Path to required baseline.json.")
+
+
+def _action_arg(dest: str, choices: list[str], default: str, help_text: str) -> ArgBuilder:
+    """Builder for an optional positional `action` argument (per-command dest)."""
+
+    def add(parser: argparse.ArgumentParser) -> None:
+        parser.add_argument(dest, nargs="?", default=default, choices=choices, help=help_text)
+
+    return add
+
+
+def _add_roadmap_flags(parser: argparse.ArgumentParser) -> None:
+    parser.add_argument("--json", action="store_true")
+    parser.add_argument("--local", action="store_true", help=argparse.SUPPRESS)
+    parser.add_argument("--dry-run", action="store_true", help=argparse.SUPPRESS)
+    parser.add_argument("--redacted", action="store_true", help=argparse.SUPPRESS)
+
+
+# --- Declarative command registry ----------------------------------------
+# One spec per real command. The parser, defaults, and (for roadmap surfaces)
+# the stub commands all derive from this single source. Adding a command means
+# adding a spec — not editing parser plumbing.
+
+
+@dataclass(frozen=True)
+class CommandSpec:
+    name: str
+    help: str
+    handler: Callable[[argparse.Namespace], int]
+    builders: tuple[ArgBuilder, ...] = ()
+    defaults: dict[str, object] | None = None
+
+
+COMMAND_SPECS: tuple[CommandSpec, ...] = (
+    CommandSpec("spine", "Show the public repo spine.", cmd_spine, (_add_json,)),
+    CommandSpec("skills", "List bundled skills.", cmd_skills, (_add_json,)),
+    CommandSpec(
+        "demo",
+        "Find and plan a local repo workload demo.",
+        cmd_demo,
+        (
+            _action_arg(
+                "demo_action",
+                ["status", "scan", "plan"],
+                "status",
+                "Scan a local repo for AI workload candidates or plan the first workload card.",
+            ),
+            _add_repo,
+            _add_candidate,
+            _add_json,
+        ),
+        {"surface": "demo", "action": "status"},
+    ),
+    CommandSpec(
+        "workload-discovery",
+        "Find and plan local repo AI workload candidates.",
+        cmd_workload_discovery,
+        (
+            _action_arg(
+                "discovery_action",
+                ["status", "scan", "plan"],
+                "status",
+                "Scan a local repo for AI workload candidates or plan the first Workload Card.",
+            ),
+            _add_repo,
+            _add_candidate,
+            _add_json,
+        ),
+        {"surface": "workload-discovery", "action": "status"},
+    ),
+    CommandSpec(
+        "understand",
+        "User-facing MVP spine for repo understanding and Workload Card creation.",
+        cmd_understand,
+        (
+            _action_arg(
+                "understand_action",
+                ["status", "scan", "preview", "workload-card", "plan"],
+                "status",
+                "Scan repo signals, preview capture sources, or create a Workload Card.",
+            ),
+            _add_repo,
+            _add_candidate,
+            _add_source_workload,
+            _add_preview,
+            _add_json,
+        ),
+        {"surface": "understand", "action": "status"},
+    ),
+    CommandSpec(
+        "capture-import",
+        "Find local traces, eval fixtures, prompt files, logs, and datasets.",
+        cmd_capture_import,
+        (
+            _action_arg(
+                "capture_action",
+                ["status", "scan", "preview", "workload-card"],
+                "status",
+                "Scan a local repo for importable workload evidence sources.",
+            ),
+            _add_repo,
+            _add_source_workload,
+            _add_preview,
+            _add_json,
+        ),
+        {"surface": "capture-import", "action": "status"},
+    ),
+    CommandSpec(
+        "route-decision",
+        "Create a conservative route decision packet from a Workload Card.",
+        cmd_route_decision,
+        (
+            _action_arg(
+                "route_action",
+                ["status", "plan"],
+                "status",
+                "Plan route candidates from an existing Workload Card.",
+            ),
+            _add_workload_card,
+            _add_json,
+        ),
+        {"surface": "route-decision", "action": "status"},
+    ),
+    CommandSpec(
+        "value",
+        "Create a conservative value report from measured artifacts.",
+        cmd_value,
+        (
+            _action_arg(
+                "value_action",
+                ["status", "report"],
+                "status",
+                "Create a value report from a Workload Card and Route Decision Packet.",
+            ),
+            _add_workload_card,
+            _add_route_decision_path,
+            _add_economics,
+            _add_output,
+            _add_json,
+        ),
+        {"surface": "value", "action": "status"},
+    ),
+    CommandSpec(
         "validate-and-optimize",
-        help="Validate eval artifacts and write a dry-run optimizer proof packet.",
-    )
-    validate_optimize_parser.add_argument(
-        "validate_optimize_action",
-        nargs="?",
-        default="dry-run",
-        choices=["status", "dry-run", "proof-packet", "run"],
-        help="Dry-run validation, write a proof packet, or refuse live optimizer execution.",
-    )
-    validate_optimize_parser.add_argument("--repo", default=".", help="Local repository to inspect.")
-    validate_optimize_parser.add_argument(
-        "--workload-card",
-        default=".understudy/workload-discovery/workload-card.json",
-        help="Path to a Workload Card JSON artifact.",
-    )
-    validate_optimize_parser.add_argument(
-        "--harness",
-        default=default_understand_artifact_paths()["harness"],
-        help="Path to required harness.json.",
-    )
-    validate_optimize_parser.add_argument(
-        "--metric",
-        default=default_understand_artifact_paths()["metric"],
-        help="Path to required metric.json.",
-    )
-    validate_optimize_parser.add_argument(
-        "--splits",
-        default=default_understand_artifact_paths()["splits"],
-        help="Path to required splits.json.",
-    )
-    validate_optimize_parser.add_argument(
-        "--baseline",
-        default=default_understand_artifact_paths()["baseline"],
-        help="Path to required baseline.json.",
-    )
-    validate_optimize_parser.add_argument("--requests-per-month", type=int, default=None)
-    validate_optimize_parser.add_argument("--baseline-cost-usd", type=float, default=None)
-    validate_optimize_parser.add_argument("--baseline-latency-ms", type=float, default=None)
-    validate_optimize_parser.add_argument("--candidate-cost-usd", type=float, default=None)
-    validate_optimize_parser.add_argument("--candidate-latency-ms", type=float, default=None)
-    validate_optimize_parser.add_argument("--json", action="store_true")
-    validate_optimize_parser.set_defaults(
-        func=cmd_validate_and_optimize,
-        surface="validate-and-optimize",
-        action="dry-run",
-    )
+        "Validate eval artifacts and write a dry-run optimizer proof packet.",
+        cmd_validate_and_optimize,
+        (
+            _action_arg(
+                "validate_optimize_action",
+                ["status", "dry-run", "proof-packet", "run"],
+                "dry-run",
+                "Dry-run validation, write a proof packet, or refuse live optimizer execution.",
+            ),
+            _add_repo,
+            _add_workload_card,
+            _add_validate_artifacts,
+            _add_economics,
+            _add_json,
+        ),
+        {"surface": "validate-and-optimize", "action": "dry-run"},
+    ),
+)
 
+
+def build_parser() -> argparse.ArgumentParser:
+    parser = argparse.ArgumentParser(prog="understudy-tools")
+    subparsers = parser.add_subparsers(dest="command", required=True)
+
+    for spec in COMMAND_SPECS:
+        sub = subparsers.add_parser(spec.name, help=spec.help)
+        for builder in spec.builders:
+            builder(sub)
+        sub.set_defaults(func=spec.handler, **(spec.defaults or {}))
+
+    # Roadmap surfaces without a real handler yet: auto-generate stub commands
+    # from the surface registry (data lives in surfaces.py).
+    roadmap_action = _action_arg(
+        "action",
+        list(ROADMAP_ACTIONS),
+        "status",
+        "Roadmap action stub. All actions report planned status until runtime code lands.",
+    )
     for surface, spec in ROADMAP_SURFACES.items():
-        if surface in {"demo", "workload-discovery", "capture-import", "value"}:
+        if surface in EXPLICIT_SURFACES:
             continue
-        surface_parser = subparsers.add_parser(
-            surface,
-            help=f"Planned public surface: {spec['why']}",
-        )
-        surface_parser.add_argument(
-            "action",
-            nargs="?",
-            default="status",
-            choices=["status", "doctor", "lookup", "route", "validate", "run", "plan", "start", "export"],
-            help="Roadmap action stub. All actions report planned status until runtime code lands.",
-        )
-        surface_parser.add_argument("--json", action="store_true")
-        surface_parser.add_argument("--local", action="store_true", help=argparse.SUPPRESS)
-        surface_parser.add_argument("--dry-run", action="store_true", help=argparse.SUPPRESS)
-        surface_parser.add_argument("--redacted", action="store_true", help=argparse.SUPPRESS)
-        surface_parser.set_defaults(func=cmd_roadmap_surface, surface=surface)
+        sub = subparsers.add_parser(surface, help=f"Planned public surface: {spec['why']}")
+        roadmap_action(sub)
+        _add_roadmap_flags(sub)
+        sub.set_defaults(func=cmd_roadmap_surface, surface=surface)
 
     return parser
 
