@@ -69,8 +69,9 @@ validator kinds in [`reference.md`](reference.md):
   incumbent failures → nothing to optimize. A strong model fails them too →
   task beyond frontier; stop.
 - **Models** — student = a cheap candidate; `reflection_lm` = a strong frontier
-  model (optional, but a weak one caps quality). Both run on the developer's own
-  keys; no account.
+  model (optional, but a weak one caps quality). **Inference defaults to
+  Understudy** (run `understudy login`); falls back to the developer's own
+  provider keys if they'd rather not register. See reference.md → Inference.
 - **Verifier boundary** — optimize the offline validator only; RL
   verifiers/environments are a later rung, out of scope here.
 - **Stopping rule** — if the scorer saturates to 1.0 fast, the surface is too
