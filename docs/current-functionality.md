@@ -10,11 +10,11 @@ for:
 | Area | Former commands | Status after replacement |
 | --- | --- | --- |
 | Public spine | `spine`, `skills` | Kept in TypeScript. |
-| Local workload discovery | `demo scan`, `demo plan`, `workload-discovery scan`, `workload-discovery plan` | Restored as metadata-only `understand check` and `understand workload-card`. |
+| Local workload discovery | `demo scan`, `demo plan`, `workload-discovery scan`, `workload-discovery plan` | Restored as metadata-only `understand check` and `capture evidence-card`. |
 | Capture/import | `capture-import scan`, `capture-import preview`, `capture-import workload-card` | Restored in TypeScript as metadata-only local scan, bounded preview, and workload-card artifacts. |
 | Route decision | `route-decision plan --workload-card ...` | Restored in TypeScript. Emits the JSON contract from `docs/route-decision-packet-template.md` with conservative evaluate-first routes only. |
 | Value report | `value report` | Restored in TypeScript. Emits conservative value reports only from measured evidence or explicit overrides. |
-| Validate/optimize proof gates | Python helper scripts under `skills/validate-and-optimize/scripts/` | Restored as deterministic TypeScript gates plus `uv`-orchestrated optimizer adapters. Python remains runtime-only for GEPA/DSPy packages. |
+| Validate/optimize proof gates | Python helper scripts under `skills/optimize-workload/scripts/` | Restored as deterministic TypeScript gates plus `uv`-orchestrated optimizer adapters. Python remains runtime-only for GEPA/DSPy packages. |
 | Public validation/release smoke | Python scripts in `scripts/` | Replaced with Node scripts. |
 
 ## What Works Now
@@ -30,17 +30,17 @@ understudy-tools capture-import scan --repo .
 understudy-tools capture-import preview --repo . --limit 10
 understudy-tools capture-import workload-card --repo .
 understudy-tools understand check --repo .
-understudy-tools understand workload-card --repo .
+understudy-tools capture evidence-card --repo .
 understudy-tools route-decision plan --workload-card .understudy/workload-discovery/workload-card.json
-understudy-tools validate-and-optimize --uv
-understudy-tools validate-and-optimize check --repo .
-understudy-tools validate-and-optimize dry-run --repo .
-understudy-tools validate-and-optimize rubric score --repo . --rubric rubric.json --output-text "..."
-understudy-tools validate-and-optimize dspy scaffold --repo . --samples samples.json --input-keys question --output-keys answer
-understudy-tools validate-and-optimize dspy parity --repo . --samples samples.json --input-keys question --output-keys answer --baseline-score 1.0
-understudy-tools validate-and-optimize dspy gepa --repo . --samples samples.json --input-keys question --output-keys answer --model gpt-4o-mini --execute
-understudy-tools validate-and-optimize adapter run --repo . --adapter eval-input-gepa --manifest eval-input-manifest.json --execute
-understudy-tools validate-and-optimize run --repo . --backend uv-gepa --execute
+understudy-tools optimize-workload --uv
+understudy-tools optimize-workload check --repo .
+understudy-tools optimize-workload dry-run --repo .
+understudy-tools optimize-workload rubric score --repo . --rubric rubric.json --output-text "..."
+understudy-tools optimize-workload dspy scaffold --repo . --samples samples.json --input-keys question --output-keys answer
+understudy-tools optimize-workload dspy parity --repo . --samples samples.json --input-keys question --output-keys answer --baseline-score 1.0
+understudy-tools optimize-workload dspy gepa --repo . --samples samples.json --input-keys question --output-keys answer --model gpt-4o-mini --execute
+understudy-tools optimize-workload adapter run --repo . --adapter eval-input-gepa --manifest eval-input-manifest.json --execute
+understudy-tools optimize-workload run --repo . --backend uv-gepa --execute
 understudy-tools value report --workload-card .understudy/workload-discovery/workload-card.json --route-decision .understudy/route-decision/route-decision-packet.json --requests-per-month 10000
 ```
 
@@ -57,7 +57,7 @@ The understand commands are local-only. They do not upload data, call providers,
 or read prompt/eval payloads. They write metadata artifacts to:
 
 ```text
-.understudy/understand-workload/check.json
+.understudy/capture-evidence/check.json
 .understudy/workload-discovery/workload-card.json
 ```
 
@@ -79,39 +79,40 @@ The public workflow now lives in the MVP skill tree:
 
 ```text
 skills/understudy/SKILL.md
-skills/understand-workload/SKILL.md
-skills/validate-and-optimize/SKILL.md
+skills/capture-evidence/SKILL.md
+skills/optimize-workload/SKILL.md
+skills/use-understudy-gateway/SKILL.md
 ```
 
 Agents should use those skills to inspect local artifacts and guide users, but
 they should not claim that removed Python commands still exist.
 
-`validate-and-optimize check` reads `.understudy/understand-workload/`
+`optimize-workload check` reads `.understudy/capture-evidence/`
 artifacts, fails closed on missing files, invalid JSON, stale baseline hashes,
 unapproved metrics, proxy-only metrics, or contaminated proof packets, and never
 runs an optimizer. `dry-run` performs the same gates and writes
-`.understudy/validate-and-optimize/proof-packet.json` without provider calls,
+`.understudy/optimize-workload/proof-packet.json` without provider calls,
 package installs, or live optimizer execution.
 
 The optimizer helpers are TypeScript-orchestrated and `uv`-backed. The CLI
 generates a small runtime script under
-`.understudy/validate-and-optimize/uv-runtime/`, then uses `uv run --no-project`
+`.understudy/optimize-workload/uv-runtime/`, then uses `uv run --no-project`
 for Python-native packages. Rubric scoring and DSPy scaffold/parity can run
 without provider calls. The GEPA path verifies that `gepa.optimize` and
 `GEPAAdapter` are importable. The first live adapter is
-`validate-and-optimize dspy gepa --execute`: it resolves the authenticated
+`optimize-workload dspy gepa --execute`: it resolves the authenticated
 Understudy gateway key, passes it into the local `uv` runtime as environment,
 configures DSPy against the gateway, runs train/dev rows only, excludes holdout,
-and writes `.understudy/validate-and-optimize/candidate.json` plus
+and writes `.understudy/optimize-workload/candidate.json` plus
 `proof-packet.json`.
 
 The generic adapter registry is exposed through
-`validate-and-optimize adapter run`. The first registry-backed non-DSPy adapter
+`optimize-workload adapter run`. The first registry-backed non-DSPy adapter
 is `eval-input-gepa`: it reads a manifest with `rows`, `inputs`, or
 `inputs_path`, supports exact-match label scoring plus a minimal tool-call
 objective, runs upstream `gepa.optimize` through `uv`, excludes holdout rows,
 and writes `eval-input-candidate.json`, `proof-packet.json`, and an adapter
-result under `.understudy/validate-and-optimize/eval-input-gepa/`. Without a
+result under `.understudy/optimize-workload/eval-input-gepa/`. Without a
 model, this path makes no provider calls.
 
 ## Next CLI Restores

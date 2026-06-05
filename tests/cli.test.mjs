@@ -41,8 +41,8 @@ function hashJson(value) {
 function withValidateFixtureRepo(overrides, fn) {
   const repo = mkdtempSync(join(tmpdir(), "understudy-validate-"));
   try {
-    const understandDir = join(repo, ".understudy", "understand-workload");
-    const optimizeDir = join(repo, ".understudy", "validate-and-optimize");
+    const understandDir = join(repo, ".understudy", "capture-evidence");
+    const optimizeDir = join(repo, ".understudy", "optimize-workload");
     mkdirSync(understandDir, { recursive: true });
     mkdirSync(optimizeDir, { recursive: true });
 
@@ -128,7 +128,7 @@ function withValueFixtureRepo({ measured = false } = {}, fn) {
         input_tokens: 1200,
         output_tokens: 200,
         cost_usd: measured ? 0.012 : null,
-        rerun_artifact: measured ? ".understudy/understand-workload/baseline.json" : null,
+        rerun_artifact: measured ? ".understudy/capture-evidence/baseline.json" : null,
         harness_sha256: measured ? "harness-sha" : null,
         metric_sha256: measured ? "metric-sha" : null,
         splits_sha256: measured ? "splits-sha" : null,
@@ -149,7 +149,7 @@ function withValueFixtureRepo({ measured = false } = {}, fn) {
               cost_usd_per_request: 0.006,
               latency_ms: 500,
               quality_delta: 0.01,
-              validation_artifact: ".understudy/validate-and-optimize/candidate.json",
+              validation_artifact: ".understudy/optimize-workload/candidate.json",
               validated_on_holdout: true,
               candidate_sha256: "candidate-sha",
               pricing_basis: "synthetic public fixture",
@@ -242,8 +242,9 @@ describe("understudy-tools CLI", () => {
     const result = run(["skills", "--list"]);
     assert.equal(result.status, 0, result.stderr);
     assert.match(result.stdout, /understudy/);
-    assert.match(result.stdout, /understand-workload/);
-    assert.match(result.stdout, /validate-and-optimize/);
+    assert.match(result.stdout, /capture-evidence/);
+    assert.match(result.stdout, /optimize-workload/);
+    assert.match(result.stdout, /use-understudy-gateway/);
   });
 
   it("inspects one skill", () => {
@@ -272,7 +273,7 @@ describe("understudy-tools CLI", () => {
       assert.deepEqual(payload.signals.package_scripts, ["test"]);
       assert.match(payload.signals.likely_harnesses[0].path, /agent\.test\.mjs/);
 
-      const artifact = JSON.parse(readFileSync(join(repo, ".understudy", "understand-workload", "check.json"), "utf8"));
+      const artifact = JSON.parse(readFileSync(join(repo, ".understudy", "capture-evidence", "check.json"), "utf8"));
       assert.equal(artifact.schema_version, "understudy.understand_check.v1");
       assert.equal(artifact.artifacts.workload_card, ".understudy/workload-discovery/workload-card.json");
     }));
@@ -289,7 +290,7 @@ describe("understudy-tools CLI", () => {
       assert.equal(payload.harness.environment.provider_keys_required, false);
       assert.equal(payload.harness.environment.network_required, false);
       assert.equal(payload.baseline.rerun_required, true);
-      assert.equal(payload.discovery.check_artifact, ".understudy/understand-workload/check.json");
+      assert.equal(payload.discovery.check_artifact, ".understudy/capture-evidence/check.json");
 
       const artifact = JSON.parse(
         readFileSync(join(repo, ".understudy", "workload-discovery", "workload-card.json"), "utf8"),
@@ -316,7 +317,7 @@ describe("understudy-tools CLI", () => {
       assert.deepEqual(payload.readiness.pricing_sources_checked, []);
       assert.equal(payload.candidate_routes[0].kind, "local");
       assert.equal(payload.candidate_routes[0].approval_required, false);
-      assert.match(payload.recommended_next_command, /understudy-tools validate-and-optimize check/);
+      assert.match(payload.recommended_next_command, /understudy-tools optimize-workload check/);
       const saved = JSON.parse(readFileSync(join(repo, ".understudy", "route-decision", "route-decision-packet.json"), "utf8"));
       assert.equal(saved.schema_version, "understudy.route_decision_packet.v1");
     }));
@@ -364,19 +365,30 @@ describe("understudy-tools CLI", () => {
     }));
 
   it("prints the uv optimizer guide", () => {
-    const result = run(["validate-and-optimize", "--uv"]);
+    const result = run(["optimize-workload", "--uv"]);
     assert.equal(result.status, 0, result.stderr);
     assert.match(result.stdout, /uv venv \.understudy\/venvs\/optimize/);
     assert.match(result.stdout, /gepa/);
     assert.match(result.stdout, /dspy/);
-    assert.match(result.stdout, /skills\/validate-and-optimize\/SKILL\.md/);
+    assert.match(result.stdout, /skills\/optimize-workload\/SKILL\.md/);
   });
 
-  it("passes validate-and-optimize check for fresh approved artifacts", () =>
+  it("keeps old workflow command names as compatibility aliases", () => {
+    const understand = run(["understand", "check", "--repo", "."]);
+    assert.equal(understand.status, 0, understand.stderr);
+    const understandPayload = JSON.parse(understand.stdout);
+    assert.equal(understandPayload.artifacts.check, ".understudy/capture-evidence/check.json");
+
+    const optimize = run(["validate-and-optimize", "--uv"]);
+    assert.equal(optimize.status, 0, optimize.stderr);
+    assert.match(optimize.stdout, /optimize-workload/);
+  });
+
+  it("passes optimize-workload check for fresh approved artifacts", () =>
     withValidateFixtureRepo({}, (repo) => {
-      const result = run(["validate-and-optimize", "check", "--repo", repo]);
+      const result = run(["optimize-workload", "check", "--repo", repo]);
       assert.equal(result.status, 0, result.stderr);
-      assert.match(result.stdout, /validate-and-optimize passed/);
+      assert.match(result.stdout, /optimize-workload passed/);
       assert.match(result.stdout, /PASS fresh-baseline/);
     }));
 
@@ -391,18 +403,18 @@ describe("understudy-tools CLI", () => {
         },
       },
       (repo) => {
-        const result = run(["validate-and-optimize", "check", "--repo", repo]);
+        const result = run(["optimize-workload", "check", "--repo", repo]);
         assert.notEqual(result.status, 0);
         assert.match(result.stdout, /FAIL fresh-baseline/);
-        assert.match(result.stdout, /route back to understand-workload/);
+        assert.match(result.stdout, /route back to capture-evidence/);
       },
     ));
 
   it("blocks missing artifacts with the missing path", () =>
     withValidateFixtureRepo({ missing: ["baseline.json"] }, (repo) => {
-      const result = run(["validate-and-optimize", "check", "--repo", repo]);
+      const result = run(["optimize-workload", "check", "--repo", repo]);
       assert.notEqual(result.status, 0);
-      assert.match(result.stdout, /Missing \.understudy\/understand-workload\/baseline\.json/);
+      assert.match(result.stdout, /Missing \.understudy\/capture-evidence\/baseline\.json/);
     }));
 
   it("blocks unapproved metrics", () => {
@@ -414,7 +426,7 @@ describe("understudy-tools CLI", () => {
       feedback: { required: true, source: "validator_failure" },
     };
     return withValidateFixtureRepo({ metric }, (repo) => {
-      const result = run(["validate-and-optimize", "check", "--repo", repo]);
+      const result = run(["optimize-workload", "check", "--repo", repo]);
       assert.notEqual(result.status, 0);
       assert.match(result.stdout, /FAIL approved-metric/);
     });
@@ -429,7 +441,7 @@ describe("understudy-tools CLI", () => {
       feedback: { required: true, source: "validator_failure" },
     };
     return withValidateFixtureRepo({ metric }, (repo) => {
-      const result = run(["validate-and-optimize", "check", "--repo", repo]);
+      const result = run(["optimize-workload", "check", "--repo", repo]);
       assert.notEqual(result.status, 0);
       assert.match(result.stdout, /FAIL proxy-only/);
     });
@@ -437,7 +449,7 @@ describe("understudy-tools CLI", () => {
 
   it("blocks contaminated proof packets", () =>
     withValidateFixtureRepo({ proofPacket: { status: "contaminated", contaminated: true } }, (repo) => {
-      const result = run(["validate-and-optimize", "check", "--repo", repo]);
+      const result = run(["optimize-workload", "check", "--repo", repo]);
       assert.notEqual(result.status, 0);
       assert.match(result.stdout, /FAIL proof-packet/);
       assert.match(result.stdout, /new split contract/);
@@ -445,11 +457,11 @@ describe("understudy-tools CLI", () => {
 
   it("writes a dry-run proof packet without live optimizer execution", () =>
     withValidateFixtureRepo({}, (repo) => {
-      const result = run(["validate-and-optimize", "dry-run", "--repo", repo, "--backend", "uv-gepa", "--budget-usd", "10"]);
+      const result = run(["optimize-workload", "dry-run", "--repo", repo, "--backend", "uv-gepa", "--budget-usd", "10"]);
       assert.equal(result.status, 0, result.stderr);
-      assert.match(result.stdout, /proof-packet: \.understudy\/validate-and-optimize\/proof-packet\.json/);
+      assert.match(result.stdout, /proof-packet: \.understudy\/optimize-workload\/proof-packet\.json/);
       const packet = JSON.parse(
-        readFileSync(join(repo, ".understudy", "validate-and-optimize", "proof-packet.json"), "utf8"),
+        readFileSync(join(repo, ".understudy", "optimize-workload", "proof-packet.json"), "utf8"),
       );
       assert.equal(packet.mode, "dry-run");
       assert.equal(packet.backend, "uv-gepa");
@@ -460,25 +472,25 @@ describe("understudy-tools CLI", () => {
       assert.equal(packet.status, "ready");
     }));
 
-  it("refuses validate-and-optimize run when deterministic gates are missing", () =>
+  it("refuses optimize-workload run when deterministic gates are missing", () =>
     withFixtureRepo((repo) => {
-      const result = run(["validate-and-optimize", "run", "--repo", repo, "--backend", "uv-gepa", "--budget-usd", "10"]);
+      const result = run(["optimize-workload", "run", "--repo", repo, "--backend", "uv-gepa", "--budget-usd", "10"]);
       assert.equal(result.status, 1);
-      assert.match(result.stdout, /FAIL required-artifacts: Missing \.understudy\/understand-workload\/harness\.json/);
+      assert.match(result.stdout, /FAIL required-artifacts: Missing \.understudy\/capture-evidence\/harness\.json/);
       assert.match(result.stdout, /run: blocked/);
       assert.match(result.stdout, /Pass --execute only after explicit approval/);
     }));
 
   it("scaffolds uv-gepa run metadata but refuses live optimizer execution", () =>
     withValidateFixtureRepo({}, (repo) => {
-      const result = run(["validate-and-optimize", "run", "--repo", repo, "--backend", "uv-gepa", "--budget-usd", "10"]);
+      const result = run(["optimize-workload", "run", "--repo", repo, "--backend", "uv-gepa", "--budget-usd", "10"]);
       assert.equal(result.status, 1);
-      assert.match(result.stdout, /validate-and-optimize passed/);
+      assert.match(result.stdout, /optimize-workload passed/);
       assert.match(result.stdout, /run: blocked/);
       assert.match(result.stdout, /Pass --execute only after explicit approval/);
 
       const packet = JSON.parse(
-        readFileSync(join(repo, ".understudy", "validate-and-optimize", "proof-packet.json"), "utf8"),
+        readFileSync(join(repo, ".understudy", "optimize-workload", "proof-packet.json"), "utf8"),
       );
       assert.equal(packet.mode, "run");
       assert.equal(packet.status, "blocked");
@@ -494,7 +506,7 @@ describe("understudy-tools CLI", () => {
   it("scores a rubric through the local uv runtime without provider calls", () =>
     withOptimizerFixtureRepo(({ repo, rubricPath }) => {
       const result = run([
-        "validate-and-optimize",
+        "optimize-workload",
         "rubric",
         "score",
         "--repo",
@@ -517,7 +529,7 @@ describe("understudy-tools CLI", () => {
   it("scaffolds a DSPy signature through the local uv runtime without installing packages", () =>
     withOptimizerFixtureRepo(({ repo, samplesPath }) => {
       const result = run([
-        "validate-and-optimize",
+        "optimize-workload",
         "dspy",
         "scaffold",
         "--repo",
@@ -540,7 +552,7 @@ describe("understudy-tools CLI", () => {
   it("passes DSPy ChainOfThought parity through the local uv runtime", () =>
     withOptimizerFixtureRepo(({ repo, samplesPath }) => {
       const result = run([
-        "validate-and-optimize",
+        "optimize-workload",
         "dspy",
         "parity",
         "--repo",
@@ -566,7 +578,7 @@ describe("understudy-tools CLI", () => {
   it("fails DSPy parity when the scaffold diverges from baseline", () =>
     withOptimizerFixtureRepo(({ repo, samplesPath }) => {
       const result = run([
-        "validate-and-optimize",
+        "optimize-workload",
         "dspy",
         "parity",
         "--repo",
@@ -594,7 +606,7 @@ describe("understudy-tools CLI", () => {
   it("blocks the live DSPy GEPA adapter unless execution is explicit", () =>
     withOptimizerFixtureRepo(({ repo, samplesPath }) => {
       const result = run([
-        "validate-and-optimize",
+        "optimize-workload",
         "dspy",
         "gepa",
         "--repo",
@@ -619,7 +631,7 @@ describe("understudy-tools CLI", () => {
   it("blocks a registry optimizer adapter unless execution is explicit", () =>
     withOptimizerFixtureRepo(({ repo, evalInputManifestPath }) => {
       const result = run([
-        "validate-and-optimize",
+        "optimize-workload",
         "adapter",
         "run",
         "--repo",
@@ -640,7 +652,7 @@ describe("understudy-tools CLI", () => {
   it("runs the eval-input GEPA adapter through uv without provider calls", () =>
     withOptimizerFixtureRepo(({ repo, evalInputManifestPath }) => {
       const result = run([
-        "validate-and-optimize",
+        "optimize-workload",
         "adapter",
         "run",
         "--repo",
@@ -662,12 +674,12 @@ describe("understudy-tools CLI", () => {
       assert.equal(payload.holdout_count_excluded, 1);
 
       const candidate = JSON.parse(
-        readFileSync(join(repo, ".understudy", "validate-and-optimize", "eval-input-candidate.json"), "utf8"),
+        readFileSync(join(repo, ".understudy", "optimize-workload", "eval-input-candidate.json"), "utf8"),
       );
       assert.equal(candidate.schema_version, "understudy.eval_input_gepa_candidate.v1");
       assert.equal(candidate.holdout_count_excluded, 1);
       const proof = JSON.parse(
-        readFileSync(join(repo, ".understudy", "validate-and-optimize", "proof-packet.json"), "utf8"),
+        readFileSync(join(repo, ".understudy", "optimize-workload", "proof-packet.json"), "utf8"),
       );
       assert.equal(proof.mode, "eval-input-gepa");
       assert.equal(proof.provider_calls, false);

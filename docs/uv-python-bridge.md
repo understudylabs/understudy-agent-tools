@@ -30,8 +30,8 @@ A bridge command should follow this shape:
 6. TypeScript parses the JSON, writes durable `.understudy/` artifacts, and
    keeps user-facing output concise.
 
-The current implementation is `src/validate-and-optimize.ts`: it generates
-`.understudy/validate-and-optimize/uv-runtime/optimizer_runtime.py`, then uses
+The current implementation is `src/optimize-workload.ts`: it generates
+`.understudy/optimize-workload/uv-runtime/optimizer_runtime.py`, then uses
 `uv run --no-project` for rubric scoring, DSPy scaffold/parity, and GEPA/DSPy
 import checks.
 

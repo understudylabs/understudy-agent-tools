@@ -1,4 +1,4 @@
-# Understand Workload — reference
+# Capture Evidence — reference
 
 Deep detail for [`SKILL.md`](SKILL.md). Discovery and capture/import are now
 skill-led until TypeScript commands are restored. See

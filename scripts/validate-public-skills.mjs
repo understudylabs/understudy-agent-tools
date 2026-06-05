@@ -6,8 +6,12 @@ import { spawnSync } from "node:child_process";
 import { validatePublicText } from "./public-safety.mjs";
 
 const allowedTopLevel = new Set(["name", "description", "license", "allowed-tools", "metadata"]);
-const mvpPublicSkillNames = ["understudy", "understand-workload", "validate-and-optimize"];
-const mvpRouterTargets = ["../understand-workload/SKILL.md", "../validate-and-optimize/SKILL.md"];
+const mvpPublicSkillNames = ["understudy", "capture-evidence", "optimize-workload", "use-understudy-gateway"];
+const mvpRouterTargets = [
+  "../capture-evidence/SKILL.md",
+  "../optimize-workload/SKILL.md",
+  "../use-understudy-gateway/SKILL.md",
+];
 const namePattern = /^[a-z0-9-]+$/;
 
 function parseArgs(argv) {
@@ -182,10 +186,10 @@ function validateSkill(path) {
       }
     }
   }
-  if ((name.endsWith("optimize") || name === "validate-and-optimize") && !hasMeasuredBaselineGate(text.toLowerCase())) {
+  if ((name.endsWith("optimize") || name === "optimize-workload") && !hasMeasuredBaselineGate(text.toLowerCase())) {
     errors.push(`${skillMd}: optimizer skill must require a measured baseline gate`);
   }
-  if (name === "understand-workload" && requiresRegisterAuthBeforeLocalAnalysis(text)) {
+  if (name === "capture-evidence" && requiresRegisterAuthBeforeLocalAnalysis(text)) {
     errors.push(`${skillMd}: must not require register/auth before OSS local analysis`);
   }
   if (mvpPublicSkillNames.includes(name) && hasSavingsClaimWithoutClaimPacket(text)) {

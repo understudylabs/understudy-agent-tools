@@ -1,5 +1,5 @@
 ---
-name: validate-and-optimize
+name: optimize-workload
 description: Use after fresh workload artifacts exist to validate candidates, run train/dev-only GEPA optimization, preserve holdout boundaries, and make conservative claims.
 metadata:
   understudy:
@@ -8,10 +8,10 @@ metadata:
     cli_required: false
 ---
 
-# Validate And Optimize
+# Optimize Workload
 
 Use this worker only after the workload has fresh local artifacts from
-`understand-workload`. Validation and optimization must be evidence-led and
+`capture-evidence`. Validation and optimization must be evidence-led and
 split-safe.
 
 ## Safety Gates
@@ -34,10 +34,10 @@ output path under `.understudy/`.
 Refuse to optimize unless all required artifacts are present and fresh:
 
 ```text
-.understudy/understand-workload/harness.json
-.understudy/understand-workload/metric.json
-.understudy/understand-workload/splits.json
-.understudy/understand-workload/baseline.json
+.understudy/capture-evidence/harness.json
+.understudy/capture-evidence/metric.json
+.understudy/capture-evidence/splits.json
+.understudy/capture-evidence/baseline.json
 ```
 
 Fresh means generated for the same workload, metric, split contract, and
@@ -46,7 +46,7 @@ incumbent baseline in the current task context. Freshness is hash-bound:
 `splits_sha256`, and those values must match the current `harness.json`,
 `metric.json`, and `splits.json`. If freshness is ambiguous or hashes do not
 match, route back to
-[`../understand-workload/SKILL.md`](../understand-workload/SKILL.md) instead
+[`../capture-evidence/SKILL.md`](../capture-evidence/SKILL.md) instead
 of optimizing.
 
 ## Split Rules
@@ -91,7 +91,7 @@ validator kinds in [`reference.md`](reference.md):
 4. For GEPA/DSPy execution, use a small local `uv` environment only after
    explicit approval. Do not vendor GEPA/DSPy or depend on a full private
    runtime. The CLI owns a registry-backed adapter wrapper:
-   `validate-and-optimize adapter run --adapter <name> ... --execute`.
+   `optimize-workload adapter run --adapter <name> ... --execute`.
    `eval-input-gepa` runs upstream GEPA locally without provider calls unless a
    model-backed path is explicitly selected. `dspy gepa --execute` resolves the
    Understudy API key, passes it to the child process through environment only,
@@ -99,7 +99,7 @@ validator kinds in [`reference.md`](reference.md):
    feedback: the metric must return a diagnosis of *why* each failing row failed
    and what to change, not a bare score — bland feedback wastes the optimizer.
 5. Keep deterministic work in the TypeScript CLI and this skill's templates. Follow
-   [`../../docs/validate-and-optimize-contract.md`](../../docs/validate-and-optimize-contract.md)
+   [`../../docs/optimize-workload-contract.md`](../../docs/optimize-workload-contract.md)
    for adapter, metric feedback, and claim packet details.
 6. When GEPA is available and explicitly approved, run train/dev-only and
    record the command, model/deployment, metric-call budget, seed, selected
@@ -112,7 +112,7 @@ validator kinds in [`reference.md`](reference.md):
 Write optimization and validation artifacts under:
 
 ```text
-.understudy/validate-and-optimize/
+.understudy/optimize-workload/
 ```
 
 The previous Python helper scripts have been removed with the Python CLI
@@ -124,8 +124,8 @@ proxy-only validation.
 Use the CLI guide before creating a local optimizer env:
 
 ```bash
-understudy-tools validate-and-optimize --uv
-understudy-tools validate-and-optimize adapter run --repo . --adapter eval-input-gepa --manifest eval-input-manifest.json --execute
+understudy-tools optimize-workload --uv
+understudy-tools optimize-workload adapter run --repo . --adapter eval-input-gepa --manifest eval-input-manifest.json --execute
 ```
 
 If approved, keep Python isolated under ignored local runtime state:
@@ -140,7 +140,7 @@ uv pip install --python .understudy/venvs/optimize/bin/python 'gepa>=0.0.27,<0.1
 Do not claim savings without:
 
 ```text
-.understudy/validate-and-optimize/claim.json
+.understudy/optimize-workload/claim.json
 ```
 
 `claim.json` must cite `harness.json`, `metric.json`, `splits.json`,

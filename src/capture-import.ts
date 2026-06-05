@@ -158,8 +158,8 @@ export function buildWorkloadCard(repoInput: string, now = new Date()): Workload
     source_kinds,
     recommended_next_steps: [
       "Confirm which metadata-only sources belong to the workload.",
-      "Create or update the understand-workload harness, metric, splits, and baseline artifacts.",
-      "Run validate-and-optimize only after the workload contract is hash-bound.",
+      "Create or update the capture-evidence harness, metric, splits, and baseline artifacts.",
+      "Run optimize-workload only after the workload contract is hash-bound.",
     ],
     evidence_paths: [
       ".understudy/capture-import/capture-sources.json",

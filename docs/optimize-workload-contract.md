@@ -1,6 +1,6 @@
-# Validate And Optimize Contract
+# Optimize Workload Contract
 
-This is the implementation contract for the public `validate-and-optimize`
+This is the implementation contract for the public `optimize-workload`
 step. It extends:
 
 - [`spine.md`](spine.md)
@@ -12,13 +12,13 @@ Runtime order:
 
 ```text
 understudy
-  -> understand-workload
-  -> validate-and-optimize
+  -> capture-evidence
+  -> optimize-workload
 ```
 
-`understand-workload` owns harness attachment, environment capture,
+`capture-evidence` owns harness attachment, environment capture,
 metric/validator confirmation, split freezing, and incumbent baseline rerun.
-`validate-and-optimize` consumes those artifacts read-only, refuses stale or
+`optimize-workload` consumes those artifacts read-only, refuses stale or
 unapproved inputs, runs optimization only on train/dev, and creates a
 `claim.json` only after sealed holdout validation.
 
@@ -34,7 +34,7 @@ future Python-native ports from `understudy-agent`.
 Use `uv` when possible:
 
 ```bash
-understudy-tools validate-and-optimize --uv
+understudy-tools optimize-workload --uv
 uv venv .understudy/venvs/optimize
 uv pip install --python .understudy/venvs/optimize/bin/python 'gepa>=0.0.27,<0.1' 'dspy>=3.0.0'
 ```
@@ -46,18 +46,18 @@ touched holdout data.
 
 ## Required Artifacts
 
-`validate-and-optimize` consumes these files from
-`.understudy/understand-workload/`:
+`optimize-workload` consumes these files from
+`.understudy/capture-evidence/`:
 
 | File | Owner | Purpose |
 | --- | --- | --- |
-| `harness.json` | `understand-workload` | Workload command, entrypoint, timeout, env names, runner notes. |
-| `environment.json` | `understand-workload` | Runtime, package manager, lockfile status, hardware, required env var names without values. |
-| `metric.json` | `understand-workload` | Human-confirmed validator, score, threshold, feedback function, approval state. |
-| `splits.json` | `understand-workload` | Frozen train/dev/holdout row ids or source refs. |
-| `baseline.json` | `understand-workload` | Incumbent rerun result plus `harness_sha256`, `metric_sha256`, and `splits_sha256`. |
+| `harness.json` | `capture-evidence` | Workload command, entrypoint, timeout, env names, runner notes. |
+| `environment.json` | `capture-evidence` | Runtime, package manager, lockfile status, hardware, required env var names without values. |
+| `metric.json` | `capture-evidence` | Human-confirmed validator, score, threshold, feedback function, approval state. |
+| `splits.json` | `capture-evidence` | Frozen train/dev/holdout row ids or source refs. |
+| `baseline.json` | `capture-evidence` | Incumbent rerun result plus `harness_sha256`, `metric_sha256`, and `splits_sha256`. |
 
-`validate-and-optimize` writes to `.understudy/validate-and-optimize/`:
+`optimize-workload` writes to `.understudy/optimize-workload/`:
 
 | File | Purpose |
 | --- | --- |
@@ -124,20 +124,20 @@ packages and executes the selected adapter.
 Future TypeScript commands should follow this behavior:
 
 ```bash
-understudy-tools validate-and-optimize dry-run --repo .
-understudy-tools validate-and-optimize run --repo . --budget-usd 10
-understudy-tools validate-and-optimize rubric score --repo . --rubric rubric.json --output-text "..."
-understudy-tools validate-and-optimize dspy scaffold --repo . --samples samples.json --input-keys question --output-keys answer
-understudy-tools validate-and-optimize dspy parity --repo . --samples samples.json --input-keys question --output-keys answer --baseline-score 1.0
-understudy-tools validate-and-optimize dspy gepa --repo . --samples samples.json --input-keys question --output-keys answer --model gpt-4o-mini --execute
-understudy-tools validate-and-optimize adapter run --repo . --adapter eval-input-gepa --manifest eval-input-manifest.json --execute
+understudy-tools optimize-workload dry-run --repo .
+understudy-tools optimize-workload run --repo . --budget-usd 10
+understudy-tools optimize-workload rubric score --repo . --rubric rubric.json --output-text "..."
+understudy-tools optimize-workload dspy scaffold --repo . --samples samples.json --input-keys question --output-keys answer
+understudy-tools optimize-workload dspy parity --repo . --samples samples.json --input-keys question --output-keys answer --baseline-score 1.0
+understudy-tools optimize-workload dspy gepa --repo . --samples samples.json --input-keys question --output-keys answer --model gpt-4o-mini --execute
+understudy-tools optimize-workload adapter run --repo . --adapter eval-input-gepa --manifest eval-input-manifest.json --execute
 ```
 
 Required behavior:
 
 - Missing artifact: exit non-zero with the missing path.
 - Invalid JSON: exit non-zero with the parser error.
-- Hash mismatch: exit non-zero and route back to `understand-workload`.
+- Hash mismatch: exit non-zero and route back to `capture-evidence`.
 - Unapproved metric: exit non-zero and ask for metric confirmation.
 - Missing optimizer package: print install guidance and stop.
 - Dry run: write `proof-packet.json` without provider calls or package installs.

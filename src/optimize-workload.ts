@@ -6,7 +6,7 @@ import { join, relative, resolve } from "node:path";
 import { DEFAULT_GATEWAY_URL } from "./config/defaults.js";
 import { readCredentials } from "./config/credentials.js";
 import { readProjectConfig } from "./config/index.js";
-import { optimizerRuntimeSource } from "./validate-and-optimize/runtime-source.js";
+import { optimizerRuntimeSource } from "./optimize-workload/runtime-source.js";
 
 type GateStatus = "pass" | "fail";
 
@@ -60,8 +60,8 @@ type ProofPacketArtifact = {
   holdout_accessed_during_optimization?: unknown;
 };
 
-const understandDir = ".understudy/understand-workload";
-const optimizeDir = ".understudy/validate-and-optimize";
+const understandDir = ".understudy/capture-evidence";
+const optimizeDir = ".understudy/optimize-workload";
 const runtimeDir = join(optimizeDir, "uv-runtime");
 const requiredArtifacts = ["harness.json", "environment.json", "metric.json", "splits.json", "baseline.json"] as const;
 
@@ -277,7 +277,7 @@ function parseBudgetUsd(budgetUsd: string | undefined): number | null {
   return parsed;
 }
 
-export function validateAndOptimizeCheck(repoInput: string): GateResult {
+export function optimizeWorkloadCheck(repoInput: string): GateResult {
   const repo = resolve(repoInput);
   const checks: GateCheck[] = [];
   const hashes: GateResult["hashes"] = {};
@@ -309,7 +309,7 @@ export function validateAndOptimizeCheck(repoInput: string): GateResult {
   if (checks.some((check) => check.status === "fail")) {
     return { ok: false, repo, checks, hashes };
   }
-  checks.push(pass("required-artifacts", "All required understand-workload artifacts are present."));
+  checks.push(pass("required-artifacts", "All required capture-evidence artifacts are present."));
   checks.push(pass("valid-json", "All required artifacts parse as JSON."));
 
   hashes.harness_sha256 = sha256(rawByArtifact.get("harness.json") ?? "");
@@ -325,7 +325,7 @@ export function validateAndOptimizeCheck(repoInput: string): GateResult {
 
   for (const [field, actual] of expectedHashes) {
     if (!isString(baseline?.[field]) || baseline[field] !== actual) {
-      checks.push(fail("fresh-baseline", `${field} mismatch; route back to understand-workload before optimizing.`));
+      checks.push(fail("fresh-baseline", `${field} mismatch; route back to capture-evidence before optimizing.`));
     }
   }
   if (!checks.some((check) => check.name === "fresh-baseline" && check.status === "fail")) {
@@ -386,7 +386,7 @@ export function writeDryRunProofPacket(
   const proofPacketPath = join(repo, optimizeDir, "proof-packet.json");
   mkdirSync(join(repo, optimizeDir), { recursive: true });
   const packet = {
-    schema_version: "understudy.validate-and-optimize.proof.v1",
+    schema_version: "understudy.optimize-workload.proof.v1",
     mode: "dry-run",
     status: result.ok ? "ready" : "blocked",
     repo: ".",
@@ -427,7 +427,7 @@ export function writeUvGepaRunScaffold(repoInput: string, result: GateResult, op
     };
   }
   const packet = {
-    schema_version: "understudy.validate-and-optimize.proof.v1",
+    schema_version: "understudy.optimize-workload.proof.v1",
     mode: "run",
     status: execute && result.ok && execution.exit_code === 0 ? "ready-for-adapter" : "blocked",
     repo: ".",
@@ -542,7 +542,7 @@ export function runOptimizerAdapter(options: AdapterRunOptions): Record<string, 
 }
 
 export function printGateResult(result: GateResult): void {
-  console.log(`validate-and-optimize ${result.ok ? "passed" : "blocked"}`);
+  console.log(`optimize-workload ${result.ok ? "passed" : "blocked"}`);
   console.log(`repo: ${result.repo}`);
   for (const check of result.checks) {
     const marker = check.status === "pass" ? "PASS" : "FAIL";

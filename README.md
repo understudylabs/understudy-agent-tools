@@ -97,27 +97,28 @@ the user is not authenticated.
 
 ## Skill Rule
 
-`skills/understudy/SKILL.md` is the public MVP entrypoint. It routes to exactly
-one worker:
+`skills/understudy/SKILL.md` is the public entrypoint. It routes to exactly one
+capability worker:
 
-- `skills/understand-workload/SKILL.md`
-- `skills/validate-and-optimize/SKILL.md`
+- `skills/capture-evidence/SKILL.md`
+- `skills/optimize-workload/SKILL.md`
+- `skills/use-understudy-gateway/SKILL.md`
 
-Everything else was cut from the discovered surface until real usage proves it
+Everything else stays outside the discovered surface until real usage proves it
 belongs back. This keeps the first win small: pin the workload, preserve the
-metric/split/baseline contract, then validate or optimize without leaking data
-or making unsupported claims.
+metric/split/baseline contract, run approved durable CLI workflows when needed,
+then validate or optimize without leaking data or making unsupported claims.
 
 The MVP artifact contract is:
 
 ```text
-.understudy/understand-workload/harness.json
-.understudy/understand-workload/environment.json
-.understudy/understand-workload/metric.json
-.understudy/understand-workload/splits.json
-.understudy/understand-workload/baseline.json
-.understudy/validate-and-optimize/candidate.json
-.understudy/validate-and-optimize/claim.json
+.understudy/capture-evidence/harness.json
+.understudy/capture-evidence/environment.json
+.understudy/capture-evidence/metric.json
+.understudy/capture-evidence/splits.json
+.understudy/capture-evidence/baseline.json
+.understudy/optimize-workload/candidate.json
+.understudy/optimize-workload/claim.json
 ```
 
 `baseline.json` must carry `harness_sha256`, `metric_sha256`, and
@@ -128,7 +129,7 @@ savings, latency, quality, or route-superiority claim is publishable.
 
 Optimizer implementation stays upstream. Do not vendor GEPA or add the full
 private runtime as a dependency. The implementation contract is documented in
-[`docs/validate-and-optimize-contract.md`](docs/validate-and-optimize-contract.md).
+[`docs/optimize-workload-contract.md`](docs/optimize-workload-contract.md).
 The TypeScript-to-`uv` Python bridge pattern is documented in
 [`docs/uv-python-bridge.md`](docs/uv-python-bridge.md).
 
@@ -147,7 +148,7 @@ keys
 setup
 setup-code
 run
-validate-and-optimize
+optimize-workload
 ```
 
 Full-runtime command names such as `gateway`, `browser`, `channels`,
@@ -160,7 +161,7 @@ For GEPA/DSPy work, the CLI stays as the guide and gate surface while Python is
 used only for small local optimizer environments:
 
 ```bash
-understudy-tools validate-and-optimize --uv
+understudy-tools optimize-workload --uv
 uv venv .understudy/venvs/optimize
 uv pip install --python .understudy/venvs/optimize/bin/python 'gepa>=0.0.27,<0.1' 'dspy>=3.0.0'
 ```

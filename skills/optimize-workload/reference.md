@@ -1,7 +1,7 @@
-# Validate And Optimize — reference
+# Optimize Workload — reference
 
 Deep detail for [`SKILL.md`](SKILL.md). Read this when actually running an
-optimization. See also [`../../docs/validate-and-optimize-contract.md`](../../docs/validate-and-optimize-contract.md)
+optimization. See also [`../../docs/optimize-workload-contract.md`](../../docs/optimize-workload-contract.md)
 (adapter + claim packet) and [`../../docs/optimize-references.md`](../../docs/optimize-references.md)
 (papers).
 
@@ -36,7 +36,7 @@ GEPA uses two models. Keep them distinct:
   inexpensive model per provider (e.g. Fireworks `qwen3-8b`, Anthropic
   `claude-haiku`, OpenAI `gpt-4.1-mini`, Gemini `flash`, Lilac `gemma-4-31b`).
   It must clear the model preflight (capabilities + context window) recorded by
-  `understand-workload`.
+  `capture-evidence`.
 - **`reflection_lm`** — the strong model that reads failures and proposes better
   prompts. Use a **frontier-tier** model (e.g. Gemini Pro, Claude Opus, GPT-5).
   It is optional: `None` falls back to weaker heuristic reflection — acceptable
@@ -128,7 +128,7 @@ artifact before any live call.
 Three ways to optimize, picked by commitment and workload shape:
 
 1. **Eval-input adapter lane.** The CLI can run
-   `validate-and-optimize adapter run --adapter eval-input-gepa --manifest ...`
+   `optimize-workload adapter run --adapter eval-input-gepa --manifest ...`
    through a local `uv` runtime. It reads a local manifest, excludes holdout
    rows, invokes upstream `gepa.optimize`, and writes
    `eval-input-candidate.json` plus `proof-packet.json`. This is the pattern for

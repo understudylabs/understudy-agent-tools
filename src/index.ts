@@ -15,7 +15,7 @@ import { registerRunCommand } from "./commands/run.js";
 import { registerSetupCodeCommand } from "./commands/setup-code.js";
 import { registerSetupCommand } from "./commands/setup.js";
 import { registerStatusCommand } from "./commands/status.js";
-import { registerValidateAndOptimizeCommand } from "./commands/validate-and-optimize.js";
+import { registerOptimizeWorkloadCommand } from "./commands/optimize-workload.js";
 
 export const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 
@@ -90,8 +90,9 @@ function printSpine(): void {
   console.log("");
   console.log("MVP spine:");
   console.log("1. skills/understudy/SKILL.md routes the local-first workflow.");
-  console.log("2. skills/understand-workload/SKILL.md pins harness, metric, splits, and baseline.");
-  console.log("3. skills/validate-and-optimize/SKILL.md validates freshness before optimization claims.");
+  console.log("2. skills/capture-evidence/SKILL.md pins harness, metric, splits, and baseline.");
+  console.log("3. skills/optimize-workload/SKILL.md validates freshness before optimization claims.");
+  console.log("4. skills/use-understudy-gateway/SKILL.md runs authenticated gateway workflows when approved.");
   console.log("");
   console.log("Appendix skills remain available by path, but are not part of the discovered MVP surface.");
 }
@@ -311,10 +312,13 @@ export function buildProgram(): Command {
   registerRunCommand(program);
   registerCompanionCommand(program);
 
-  const understand = program.command("understand").description("Run local-only workload understanding commands");
+  const understand = program
+    .command("capture-evidence")
+    .alias("understand")
+    .description("Run local-only workload evidence capture commands");
   understand
     .command("check")
-    .description("Inspect local repo metadata and write .understudy/understand-workload/check.json")
+    .description("Inspect local repo metadata and write .understudy/capture-evidence/check.json")
     .requiredOption("--repo <path>", "Local repository path")
     .action((options: { repo: string }) => {
       printJson(runUnderstandCheck(options.repo));
@@ -327,7 +331,7 @@ export function buildProgram(): Command {
       printJson(runUnderstandWorkloadCard(options.repo));
     });
 
-  registerValidateAndOptimizeCommand(program);
+  registerOptimizeWorkloadCommand(program);
 
   registerCaptureImportCommands(program);
   registerRouteDecisionCommands(program);

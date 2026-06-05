@@ -22,7 +22,7 @@ specialist skill or run the corresponding script.
 The OSS MVP loop is:
 
 ```text
-understand workload -> attach harness/environment
+capture evidence -> attach harness/environment
   -> confirm metric/validator/holdout -> rerun baseline
   -> validate and optimize -> value report
 ```
@@ -49,7 +49,7 @@ they are rerun under the confirmed harness and splits.
 The rerun must be bound to the exact local artifacts. `baseline.json` includes
 `harness_sha256`, `metric_sha256`, and `splits_sha256`; if the current artifact
 hashes do not match those fields, the validation gate fails closed and the
-developer returns to workload understanding.
+developer returns to evidence capture.
 
 GEPA and other optimizers may use train/dev only. Holdout is reserved for final
 validation and claim support, not optimizer feedback.
@@ -72,7 +72,7 @@ Optimizer algorithm logic should stay upstream. The public tools may invoke
 `gepa`/`dspy` only through approval-gated `uv` bridge commands, then use
 TypeScript-owned adapters, metric feedback, and artifact gates. Do not port GEPA
 or depend on a full private runtime. See
-[`validate-and-optimize-contract.md`](validate-and-optimize-contract.md).
+[`optimize-workload-contract.md`](optimize-workload-contract.md).
 
 Default public path:
 

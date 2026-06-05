@@ -1,5 +1,5 @@
 ---
-name: understand-workload
+name: capture-evidence
 description: Use when an AI workload needs local harness capture, environment attachment, metric and validator confirmation, frozen splits, and an incumbent baseline before optimization.
 metadata:
   understudy:
@@ -8,7 +8,7 @@ metadata:
     cli_required: false
 ---
 
-# Understand Workload
+# Capture Evidence
 
 Use this worker when the developer has not yet produced current local evidence
 for the workload, or when any core artifact is missing, stale, ambiguous, or
@@ -34,7 +34,7 @@ scope. Prefer metadata, paths, hashes, counts, schemas, and redacted examples.
 
 ## Goal
 
-Create or refresh these artifacts under `.understudy/understand-workload/`:
+Create or refresh these artifacts under `.understudy/capture-evidence/`:
 
 ```text
 harness.json
@@ -121,5 +121,5 @@ End with:
 - workload source inspected;
 - artifact paths created or refreshed;
 - metric, validator, split boundary, and incumbent baseline status;
-- result type: workload-understanding or blocked;
+- result type: evidence-capture or blocked;
 - one recommended next local command or action.

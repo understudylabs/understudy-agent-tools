@@ -9,25 +9,25 @@ import {
   runOptimizerAdapter,
   scaffoldDspyProgram,
   scoreRubricWithUv,
-  validateAndOptimizeCheck,
+  optimizeWorkloadCheck,
   writeDryRunProofPacket,
   writeUvGepaRunScaffold,
-} from "../validate-and-optimize.js";
+} from "../optimize-workload.js";
 
 function printJson(payload: unknown): void {
   console.log(JSON.stringify(payload, null, 2));
 }
 
 function printOptimizeGuide(): void {
-  console.log("validate-and-optimize");
+  console.log("optimize-workload");
   console.log("");
   console.log("This repo keeps workflow in skills and the public CLI. Python is only for small, local optimizer envs.");
   console.log("");
   console.log("Required local artifacts:");
-  console.log("- .understudy/understand-workload/harness.json");
-  console.log("- .understudy/understand-workload/metric.json");
-  console.log("- .understudy/understand-workload/splits.json");
-  console.log("- .understudy/understand-workload/baseline.json");
+  console.log("- .understudy/capture-evidence/harness.json");
+  console.log("- .understudy/capture-evidence/metric.json");
+  console.log("- .understudy/capture-evidence/splits.json");
+  console.log("- .understudy/capture-evidence/baseline.json");
   console.log("");
   console.log("uv setup for GEPA/DSPy experiments:");
   console.log("  uv venv .understudy/venvs/optimize");
@@ -38,46 +38,46 @@ function printOptimizeGuide(): void {
   console.log("- BYO provider keys are allowed, but secret values must stay local and must not be printed.");
   console.log("- No provider calls, uploads, downloads, hosted jobs, or package installs without approval.");
   console.log("");
-  console.log("Skill entrypoint: skills/validate-and-optimize/SKILL.md");
+  console.log("Skill entrypoint: skills/optimize-workload/SKILL.md");
 }
 
 function splitKeys(value: string | undefined): string[] | undefined {
   return value?.split(",").map((item) => item.trim()).filter(Boolean);
 }
 
-export function registerValidateAndOptimizeCommand(program: Command): void {
-  const validateAndOptimize = program
-    .command("validate-and-optimize")
-    .alias("optimize")
+export function registerOptimizeWorkloadCommand(program: Command): void {
+  const optimizeWorkload = program
+    .command("optimize-workload")
+    .aliases(["validate-and-optimize", "optimize"])
     .description("Validate deterministic optimizer artifact gates");
-  validateAndOptimize
+  optimizeWorkload
     .option("--uv", "Show uv-based optimizer environment guidance")
     .action(printOptimizeGuide);
-  validateAndOptimize
+  optimizeWorkload
     .command("check")
-    .description("Check local understand-workload artifacts before optimization")
+    .description("Check local capture-evidence artifacts before optimization")
     .requiredOption("--repo <path>", "Repository to inspect")
     .action((options: { repo: string }) => {
-      const result = validateAndOptimizeCheck(options.repo);
+      const result = optimizeWorkloadCheck(options.repo);
       printGateResult(result);
       if (!result.ok) {
         process.exitCode = 1;
       }
     });
-  validateAndOptimize
+  optimizeWorkload
     .command("dry-run")
     .description("Write a deterministic proof packet without optimizer execution")
     .requiredOption("--repo <path>", "Repository to inspect")
     .option("--backend <name>", "Optimizer backend scaffold", "uv-gepa")
     .option("--budget-usd <amount>", "Optional capped budget to record")
     .action((options: { repo: string; backend?: string; budgetUsd?: string }) => {
-      const result = writeDryRunProofPacket(options.repo, validateAndOptimizeCheck(options.repo), options);
+      const result = writeDryRunProofPacket(options.repo, optimizeWorkloadCheck(options.repo), options);
       printGateResult(result);
       if (!result.ok) {
         process.exitCode = 1;
       }
     });
-  validateAndOptimize
+  optimizeWorkload
     .command("run")
     .description("Validate gates, scaffold uv-gepa metadata, and refuse live execution")
     .requiredOption("--repo <path>", "Repository to inspect")
@@ -85,7 +85,7 @@ export function registerValidateAndOptimizeCommand(program: Command): void {
     .option("--budget-usd <amount>", "Optional capped budget to record")
     .option("--execute", "After explicit approval, invoke uv to import GEPA/DSPy without provider calls")
     .action((options: { repo: string; backend?: string; budgetUsd?: string; execute?: boolean }) => {
-      const gateResult = validateAndOptimizeCheck(options.repo);
+      const gateResult = optimizeWorkloadCheck(options.repo);
       const result = writeUvGepaRunScaffold(options.repo, gateResult, options);
       printGateResult(result);
       if (options.execute && result.ok) {
@@ -110,7 +110,7 @@ export function registerValidateAndOptimizeCommand(program: Command): void {
       process.exitCode = 1;
     });
 
-  const rubric = validateAndOptimize.command("rubric").description("Run local rubric reward helpers through uv");
+  const rubric = optimizeWorkload.command("rubric").description("Run local rubric reward helpers through uv");
   rubric
     .command("score")
     .description("Score text against a rubric using an injected judge verdict")
@@ -126,7 +126,7 @@ export function registerValidateAndOptimizeCommand(program: Command): void {
       }
     });
 
-  const dspy = validateAndOptimize.command("dspy").description("Scaffold and parity-check DSPy programs through uv");
+  const dspy = optimizeWorkload.command("dspy").description("Scaffold and parity-check DSPy programs through uv");
   dspy
     .command("scaffold")
     .description("Create a DSPy signature/program scaffold summary from local samples")
@@ -221,7 +221,7 @@ export function registerValidateAndOptimizeCommand(program: Command): void {
       },
     );
 
-  const adapter = validateAndOptimize.command("adapter").description("Run registry-backed optimizer adapters through uv");
+  const adapter = optimizeWorkload.command("adapter").description("Run registry-backed optimizer adapters through uv");
   adapter
     .command("run")
     .description("Run a uv optimizer adapter such as eval-input-gepa or dspy-gepa")

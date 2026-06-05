@@ -268,13 +268,13 @@ def dspy_gepa(args: argparse.Namespace) -> None:
         "baseline_first_feedback": baseline_feedback.feedback,
         "optimized_program_class": optimized.__class__.__name__,
     }
-    optimize_dir = Path(args.repo) / ".understudy" / "validate-and-optimize"
+    optimize_dir = Path(args.repo) / ".understudy" / "optimize-workload"
     optimize_dir.mkdir(parents=True, exist_ok=True)
     candidate_path = optimize_dir / "candidate.json"
     proof_path = optimize_dir / "proof-packet.json"
     candidate_path.write_text(json.dumps(candidate, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     proof = {
-        "schema_version": "understudy.validate-and-optimize.proof.v1",
+        "schema_version": "understudy.optimize-workload.proof.v1",
         "mode": "dspy-gepa",
         "status": "candidate-created",
         "backend": "uv-gepa",
@@ -285,7 +285,7 @@ def dspy_gepa(args: argparse.Namespace) -> None:
         "holdout_accessed_during_optimization": False,
         "train_count": len(trainset),
         "dev_count": len(devset),
-        "candidate": ".understudy/validate-and-optimize/candidate.json",
+        "candidate": ".understudy/optimize-workload/candidate.json",
     }
     proof_path.write_text(json.dumps(proof, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     emit({
@@ -302,8 +302,8 @@ def dspy_gepa(args: argparse.Namespace) -> None:
         "dev_count": len(devset),
         "holdout_count_excluded": holdout_count,
         "max_metric_calls": int(args.max_metric_calls),
-        "candidate_path": ".understudy/validate-and-optimize/candidate.json",
-        "proof_packet_path": ".understudy/validate-and-optimize/proof-packet.json",
+        "candidate_path": ".understudy/optimize-workload/candidate.json",
+        "proof_packet_path": ".understudy/optimize-workload/proof-packet.json",
     })
 
 
@@ -532,7 +532,7 @@ def eval_input_gepa(args: argparse.Namespace) -> None:
         seed=0,
     )
     best_candidate = getattr(result, "best_candidate", None) or {"eval_input_policy": seed_policy}
-    optimize_dir = Path(args.repo) / ".understudy" / "validate-and-optimize"
+    optimize_dir = Path(args.repo) / ".understudy" / "optimize-workload"
     run_dir = optimize_dir / "eval-input-gepa"
     run_dir.mkdir(parents=True, exist_ok=True)
     candidate = {
@@ -553,7 +553,7 @@ def eval_input_gepa(args: argparse.Namespace) -> None:
     result_path = run_dir / "result.json"
     candidate_path.write_text(json.dumps(candidate, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     proof = {
-        "schema_version": "understudy.validate-and-optimize.proof.v1",
+        "schema_version": "understudy.optimize-workload.proof.v1",
         "mode": "eval-input-gepa",
         "status": "candidate-created",
         "backend": "uv-gepa",
@@ -565,7 +565,7 @@ def eval_input_gepa(args: argparse.Namespace) -> None:
         "train_count": len(train_rows),
         "dev_count": len(dev_rows),
         "holdout_count_excluded": holdout_count,
-        "candidate": ".understudy/validate-and-optimize/eval-input-candidate.json",
+        "candidate": ".understudy/optimize-workload/eval-input-candidate.json",
     }
     proof_path.write_text(json.dumps(proof, indent=2, sort_keys=True) + "\n", encoding="utf-8")
     result_path.write_text(json.dumps({
@@ -583,9 +583,9 @@ def eval_input_gepa(args: argparse.Namespace) -> None:
         "dev_count": len(dev_rows),
         "holdout_count_excluded": holdout_count,
         "max_metric_calls": int(args.max_metric_calls),
-        "candidate_path": ".understudy/validate-and-optimize/eval-input-candidate.json",
-        "proof_packet_path": ".understudy/validate-and-optimize/proof-packet.json",
-        "result_path": ".understudy/validate-and-optimize/eval-input-gepa/result.json",
+        "candidate_path": ".understudy/optimize-workload/eval-input-candidate.json",
+        "proof_packet_path": ".understudy/optimize-workload/proof-packet.json",
+        "result_path": ".understudy/optimize-workload/eval-input-gepa/result.json",
     })
 
 

@@ -15,7 +15,7 @@ public repository.
 The OSS MVP path should work without registration:
 
 ```text
-understand workload -> attach harness/environment
+capture evidence -> attach harness/environment
   -> confirm metric/validator/holdout -> rerun baseline
   -> validate and optimize -> value report
 ```
@@ -63,7 +63,7 @@ into this repo. Public commands may prompt for the upstream `gepa` package when
 the developer explicitly requests optimization, but they should keep the
 Understudy-specific work in public adapters, metric feedback, local artifact
 gates, and report writers. See
-[`validate-and-optimize-contract.md`](validate-and-optimize-contract.md).
+[`optimize-workload-contract.md`](optimize-workload-contract.md).
 
 ## Safer Replacement Language
 

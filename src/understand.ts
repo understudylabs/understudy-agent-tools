@@ -247,7 +247,7 @@ function writeJson(path: string, payload: unknown): void {
 export function runUnderstandCheck(repoInput: string): UnderstandCheck {
   const repo = ensureRepo(repoInput);
   const packageJson = readPackageJson(repo);
-  const checkRel = ".understudy/understand-workload/check.json";
+  const checkRel = ".understudy/capture-evidence/check.json";
   const cardRel = ".understudy/workload-discovery/workload-card.json";
   const signals = {
     ...collectRepoSignals(repo),

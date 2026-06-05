@@ -227,7 +227,7 @@ export function buildValueReport(options: ValueReportOptions): { report: JsonObj
       "public savings claims",
     ],
     caveats,
-    recommended_next_command: "understudy-tools validate-and-optimize check --repo .",
+    recommended_next_command: "understudy-tools optimize-workload check --repo .",
   };
 
   const outputPath = resolve(options.output ?? defaultOutputPath(workloadCardPath));
