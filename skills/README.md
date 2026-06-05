@@ -20,7 +20,8 @@ execution; skills tell the agent what to inspect, gate, monitor, and report.
   optimizes cross-application REST/API workflow agents such as
   AutomationBench-style tasks: seeded state, fixed API schemas, policy docs,
   request logs, final-state validators, and side-effect safety before any RL
-  handoff.
+  handoff. (Artifact schemas, AutomationBench mapping, A/B procedure, and GEPA
+  bridge in its [`reference.md`](optimize-api-workflow/reference.md).)
 - [`optimize-workload`](optimize-workload/SKILL.md) refuses stale
   artifacts, preserves train/dev/holdout boundaries, writes dry-run proof
   packets, and requires `claim.json` before public claims. (Evaluate, optimize,

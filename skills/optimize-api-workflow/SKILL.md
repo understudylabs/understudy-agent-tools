@@ -23,6 +23,10 @@ is not RL training. Route to
 only after local evidence shows that model choice and prompt/route optimization
 cannot satisfy a stateful policy-learning requirement.
 
+When executing, read [`reference.md`](reference.md) for concrete artifact
+schemas, AutomationBench command mapping, model A/B, GEPA bridging, and
+workload-card fill values.
+
 ## Safety Gates
 
 Default to the cheapest path that still reaches a decision. Get explicit
