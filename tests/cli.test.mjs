@@ -7,6 +7,7 @@ import { join } from "node:path";
 import { describe, it } from "node:test";
 
 const cli = ["node", "dist/bin.js"];
+const uvAvailable = spawnSync("uv", ["--version"], { encoding: "utf8" }).status === 0;
 
 function run(args) {
   return spawnSync(cli[0], [cli[1], ...args], {
@@ -503,7 +504,7 @@ describe("understudy-tools CLI", () => {
       assert.equal(packet.claim_json_created, false);
     }));
 
-  it("scores a rubric through the local uv runtime without provider calls", () =>
+  it("scores a rubric through the local uv runtime without provider calls", { skip: !uvAvailable }, () =>
     withOptimizerFixtureRepo(({ repo, rubricPath }) => {
       const result = run([
         "optimize-workload",
@@ -526,7 +527,7 @@ describe("understudy-tools CLI", () => {
       assert.match(payload.feedback, /Rubric gaps/);
     }));
 
-  it("scaffolds a DSPy signature through the local uv runtime without installing packages", () =>
+  it("scaffolds a DSPy signature through the local uv runtime without installing packages", { skip: !uvAvailable }, () =>
     withOptimizerFixtureRepo(({ repo, samplesPath }) => {
       const result = run([
         "optimize-workload",
@@ -549,7 +550,7 @@ describe("understudy-tools CLI", () => {
       assert.equal(payload.parity_required_before_gepa, true);
     }));
 
-  it("passes DSPy ChainOfThought parity through the local uv runtime", () =>
+  it("passes DSPy ChainOfThought parity through the local uv runtime", { skip: !uvAvailable }, () =>
     withOptimizerFixtureRepo(({ repo, samplesPath }) => {
       const result = run([
         "optimize-workload",
@@ -575,7 +576,7 @@ describe("understudy-tools CLI", () => {
       assert.equal(payload.provider_calls, false);
     }));
 
-  it("fails DSPy parity when the scaffold diverges from baseline", () =>
+  it("fails DSPy parity when the scaffold diverges from baseline", { skip: !uvAvailable }, () =>
     withOptimizerFixtureRepo(({ repo, samplesPath }) => {
       const result = run([
         "optimize-workload",
@@ -649,7 +650,7 @@ describe("understudy-tools CLI", () => {
       assert.equal(payload.optimizer_execution, false);
     }));
 
-  it("runs the eval-input GEPA adapter through uv without provider calls", () =>
+  it("runs the eval-input GEPA adapter through uv without provider calls", { skip: !uvAvailable }, () =>
     withOptimizerFixtureRepo(({ repo, evalInputManifestPath }) => {
       const result = run([
         "optimize-workload",
@@ -829,12 +830,26 @@ describe("understudy-tools CLI", () => {
       const result = run(["capture-import", "workload-card", "--repo", repo, "--json"]);
       assert.equal(result.status, 0, result.stderr);
       const card = JSON.parse(result.stdout);
-      assert.equal(card.source_count, 6);
-      assert.equal(card.source_kinds["jsonl-data"], 1);
-      assert.equal(card.source_kinds["csv-data"], 1);
-      assert.ok(card.evidence_paths.includes(".understudy/capture-import/redaction-manifest.json"));
+      assert.equal(card.schema_version, "understudy.workload_card.v1");
+      assert.equal(card.discovery.source_count, 6);
+      assert.equal(card.discovery.source_kinds["jsonl-data"], 1);
+      assert.equal(card.discovery.source_kinds["csv-data"], 1);
+      assert.ok(card.discovery.evidence_paths.includes(".understudy/capture-import/redaction-manifest.json"));
 
       const saved = JSON.parse(readFileSync(join(repo, ".understudy", "capture-import", "workload-card.json"), "utf8"));
-      assert.equal(saved.source_count, 6);
+      assert.equal(saved.schema_version, "understudy.workload_card.v1");
+      assert.equal(saved.discovery.source_count, 6);
+
+      const route = run([
+        "route-decision",
+        "plan",
+        "--workload-card",
+        join(repo, ".understudy", "capture-import", "workload-card.json"),
+        "--json",
+      ]);
+      assert.equal(route.status, 0, route.stderr);
+      const packet = JSON.parse(route.stdout);
+      assert.equal(packet.schema_version, "understudy.route_decision_packet.v1");
+      assert.equal(packet.constraints.data_class, "source-metadata-only");
     }));
 });

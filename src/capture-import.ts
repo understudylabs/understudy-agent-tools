@@ -48,12 +48,80 @@ export type CapturePreview = {
 };
 
 export type WorkloadCard = {
-  generated_at: string;
-  repo: string;
-  source_count: number;
-  source_kinds: Record<CaptureSourceKind, number>;
-  recommended_next_steps: string[];
-  evidence_paths: string[];
+  schema_version: "understudy.workload_card.v1";
+  workload_id: string;
+  workload_name: string | null;
+  owner: null;
+  candidate_id: string;
+  source_path: string | null;
+  mode: "local-only";
+  workload_shape: string[];
+  value_lens: string[];
+  success_metric: null;
+  validator: {
+    name: string | null;
+    type: "unit" | "golden" | "llm-judge" | "human-review" | "custom";
+    source_path: string | null;
+    approval_required_for_payload_access: true;
+  };
+  harness: {
+    name: string | null;
+    command: string | null;
+    source_path: string | null;
+    environment: {
+      runtime: string | null;
+      dependencies_lockfile: string | null;
+      provider_keys_required: false;
+      network_required: false;
+    };
+  };
+  baseline: {
+    provider: null;
+    model: null;
+    latency_ms: null;
+    input_tokens: null;
+    output_tokens: null;
+    cost_usd: null;
+    rerun_required: true;
+    rerun_reason: string;
+    rerun_artifact: null;
+    harness_sha256: null;
+    metric_sha256: null;
+    splits_sha256: null;
+  };
+  data_class: "source-metadata-only";
+  split_boundary: {
+    train: null;
+    dev: null;
+    holdout: null;
+  };
+  evaluation_inputs: CaptureSource[];
+  promotion_gate: null;
+  fallback_route: null;
+  route_requirements: {
+    privacy_boundary: "local-only until explicit approval";
+    latency_target_ms: null;
+    structured_output_required: boolean;
+    tool_calling_required: boolean;
+    pricing_source_required_before_hosted_recommendation: true;
+    supplier_profile_required_before_hosted_recommendation: true;
+  };
+  optimization_rules: {
+    gepa_uses_train_dev_only: true;
+    holdout_reserved_for_final_validation: true;
+  };
+  approval_gates: string[];
+  discovery: {
+    generated_at: string;
+    generated_from: "understudy-tools capture-import scan";
+    repo: string;
+    source_count: number;
+    source_kinds: Record<CaptureSourceKind, number>;
+    recommended_next_steps: string[];
+    evidence_paths: string[];
+    capture_sources: string;
+    redaction_manifest: string;
+  };
 };
 
 const ignoredDirs = new Set([
@@ -152,19 +220,92 @@ export function buildWorkloadCard(repoInput: string, now = new Date()): Workload
     source_kinds[source.kind] += 1;
   }
   const card: WorkloadCard = {
-    generated_at: now.toISOString(),
-    repo,
-    source_count: manifest.source_count,
-    source_kinds,
-    recommended_next_steps: [
-      "Confirm which metadata-only sources belong to the workload.",
-      "Create or update the capture-evidence harness, metric, splits, and baseline artifacts.",
-      "Run optimize-workload only after the workload contract is hash-bound.",
+    schema_version: "understudy.workload_card.v1",
+    workload_id: "capture-import",
+    workload_name: null,
+    owner: null,
+    candidate_id: "metadata-discovery",
+    source_path: null,
+    mode: "local-only",
+    workload_shape: ["metadata-discovered"],
+    value_lens: ["quality", "cost", "latency"],
+    success_metric: null,
+    validator: {
+      name: null,
+      type: "custom",
+      source_path: null,
+      approval_required_for_payload_access: true,
+    },
+    harness: {
+      name: null,
+      command: null,
+      source_path: null,
+      environment: {
+        runtime: null,
+        dependencies_lockfile: null,
+        provider_keys_required: false,
+        network_required: false,
+      },
+    },
+    baseline: {
+      provider: null,
+      model: null,
+      latency_ms: null,
+      input_tokens: null,
+      output_tokens: null,
+      cost_usd: null,
+      rerun_required: true,
+      rerun_reason: "capture-import records metadata only; measure the incumbent after capture-evidence artifacts exist",
+      rerun_artifact: null,
+      harness_sha256: null,
+      metric_sha256: null,
+      splits_sha256: null,
+    },
+    data_class: "source-metadata-only",
+    split_boundary: {
+      train: null,
+      dev: null,
+      holdout: null,
+    },
+    evaluation_inputs: manifest.sources,
+    promotion_gate: null,
+    fallback_route: null,
+    route_requirements: {
+      privacy_boundary: "local-only until explicit approval",
+      latency_target_ms: null,
+      structured_output_required: manifest.sources.some((source) => source.kind === "jsonl-data" || source.kind === "app-route"),
+      tool_calling_required: manifest.sources.some((source) => source.kind === "provider-trace"),
+      pricing_source_required_before_hosted_recommendation: true,
+      supplier_profile_required_before_hosted_recommendation: true,
+    },
+    optimization_rules: {
+      gepa_uses_train_dev_only: true,
+      holdout_reserved_for_final_validation: true,
+    },
+    approval_gates: [
+      "reading source, prompts, traces, eval rows, or customer data",
+      "running live model calls",
+      "downloading local models",
+      "submitting hosted benchmarks or training jobs",
     ],
-    evidence_paths: [
-      ".understudy/capture-import/capture-sources.json",
-      ".understudy/capture-import/redaction-manifest.json",
-    ],
+    discovery: {
+      generated_at: now.toISOString(),
+      generated_from: "understudy-tools capture-import scan",
+      repo,
+      source_count: manifest.source_count,
+      source_kinds,
+      recommended_next_steps: [
+        "Confirm which metadata-only sources belong to the workload.",
+        "Create or update the capture-evidence harness, metric, splits, and baseline artifacts.",
+        "Run optimize-workload only after the workload contract is hash-bound.",
+      ],
+      evidence_paths: [
+        ".understudy/capture-import/capture-sources.json",
+        ".understudy/capture-import/redaction-manifest.json",
+      ],
+      capture_sources: ".understudy/capture-import/capture-sources.json",
+      redaction_manifest: ".understudy/capture-import/redaction-manifest.json",
+    },
   };
   writeJson(join(artifactDir(repo), "workload-card.json"), card);
   return card;

@@ -199,7 +199,7 @@ function registerCaptureImportCommands(program: Command): void {
         console.log(JSON.stringify(card, null, 2));
         return;
       }
-      console.log(`capture-import workload-card: ${card.source_count} source(s) summarized`);
+      console.log(`capture-import workload-card: ${card.discovery.source_count} source(s) summarized`);
       console.log("artifact: .understudy/capture-import/workload-card.json");
     });
 }

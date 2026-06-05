@@ -7,6 +7,9 @@ provider calls.
 Run from this repo after building the CLI:
 
 ```sh
+understudy-tools optimize-workload check \
+  --repo cookbook/optimize-eval-input-gepa
+
 understudy-tools optimize-workload adapter run \
   --repo cookbook/optimize-eval-input-gepa \
   --adapter eval-input-gepa \
@@ -14,6 +17,12 @@ understudy-tools optimize-workload adapter run \
   --max-metric-calls 2 \
   --execute
 ```
+
+The public validator writes temporary hash-bound capture artifacts before this
+check, then runs the adapter against the copied cookbook. A real workload should
+provide its own `.understudy/capture-evidence/harness.json`,
+`environment.json`, `metric.json`, `splits.json`, and `baseline.json` before
+optimization.
 
 Expected artifacts:
 

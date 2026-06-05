@@ -45,7 +45,8 @@ function npmPackFiles() {
 }
 
 function textErrors(name, path) {
-  if (!existsSync(path) || !textExtensions.has(extname(path).toLowerCase())) {
+  const extension = extname(path).toLowerCase();
+  if (!existsSync(path) || (!textExtensions.has(extension) && extension !== ".map")) {
     return [];
   }
   const text = readFileSync(path, "utf8");

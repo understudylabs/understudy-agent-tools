@@ -600,16 +600,18 @@ function runUvPython(
     },
     maxBuffer: 10 * 1024 * 1024,
   });
+  const stdout = result.stdout?.trim() ?? "";
+  const stderr = result.stderr?.trim() ?? "";
   let parsed: unknown = null;
-  if (result.stdout.trim()) {
-    parsed = parseJsonFromNoisyStdout(result.stdout);
+  if (stdout) {
+    parsed = parseJsonFromNoisyStdout(stdout);
   }
   return {
     attempted: true,
     command: ["uv", ...uvArgs],
-    exit_code: result.status,
-    stdout: result.stdout.trim(),
-    stderr: result.stderr.trim(),
+    exit_code: result.status ?? 127,
+    stdout,
+    stderr: stderr || (result.error ? result.error.message : ""),
     json: parsed,
   };
 }
