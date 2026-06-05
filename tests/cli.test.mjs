@@ -1,7 +1,8 @@
 import assert from "node:assert/strict";
-import { spawnSync } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { createServer } from "node:http";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { describe, it } from "node:test";
@@ -25,6 +26,34 @@ function runWithHome(args, home, cwd = process.cwd()) {
       HOME: home,
       USERPROFILE: home,
     },
+  });
+}
+
+function runWithHomeAsync(args, home, cwd = process.cwd()) {
+  return new Promise((resolveRun) => {
+    const child = spawn(cli[0], [cli[1], ...args], {
+      cwd,
+      env: {
+        ...process.env,
+        HOME: home,
+        USERPROFILE: home,
+        UNDERSTUDY_TELEMETRY: "0",
+      },
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+    let stdout = "";
+    let stderr = "";
+    child.stdout.setEncoding("utf8");
+    child.stderr.setEncoding("utf8");
+    child.stdout.on("data", (chunk) => {
+      stdout += chunk;
+    });
+    child.stderr.on("data", (chunk) => {
+      stderr += chunk;
+    });
+    child.on("close", (status) => {
+      resolveRun({ status, stdout, stderr });
+    });
   });
 }
 
@@ -120,6 +149,63 @@ function withCaptureFixtureRepo(fn) {
   } finally {
     rmSync(repo, { recursive: true, force: true });
   }
+}
+
+async function withMockGateway(handler, fn) {
+  const requests = [];
+  const server = createServer(async (req, res) => {
+    const chunks = [];
+    for await (const chunk of req) {
+      chunks.push(chunk);
+    }
+    const bodyText = Buffer.concat(chunks).toString("utf8");
+    const record = {
+      method: req.method,
+      url: req.url,
+      headers: req.headers,
+      body: bodyText ? JSON.parse(bodyText) : null,
+    };
+    requests.push(record);
+    try {
+      const response = await handler(record);
+      res.statusCode = response.status ?? 200;
+      res.setHeader("content-type", "application/json");
+      res.end(JSON.stringify(response.body ?? {}));
+    } catch (error) {
+      res.statusCode = 500;
+      res.setHeader("content-type", "application/json");
+      res.end(JSON.stringify({ message: error instanceof Error ? error.message : String(error) }));
+    }
+  });
+  await new Promise((resolveListen) => server.listen(0, "127.0.0.1", resolveListen));
+  const address = server.address();
+  const gatewayUrl = `http://127.0.0.1:${address.port}`;
+  try {
+    return await fn({ gatewayUrl, requests });
+  } finally {
+    await new Promise((resolveClose) => server.close(resolveClose));
+  }
+}
+
+function writeTestCredentials(home, gatewayUrl) {
+  const configDir = join(home, ".understudy");
+  mkdirSync(configDir, { recursive: true });
+  writeFileSync(
+    join(configDir, "credentials.json"),
+    `${JSON.stringify(
+      {
+        gateway_url: gatewayUrl,
+        orgs: {
+          org_test: {
+            api_key: "sk_test_workloads",
+            gateway_url: gatewayUrl,
+          },
+        },
+      },
+      null,
+      2,
+    )}\n`,
+  );
 }
 
 function withValueFixtureRepo({ measured = false } = {}, fn) {
@@ -760,11 +846,90 @@ describe("understudy CLI", () => {
     assert.match(root.stdout, /models/);
     assert.match(root.stdout, /workloads/);
 
+    const create = run(["workloads", "create", "--help"]);
+    assert.equal(create.status, 0, create.stderr);
+    assert.match(create.stdout, /--project-id/);
+    assert.match(create.stdout, /--from-card/);
+
     const route = run(["workloads", "route", "--help"]);
     assert.equal(route.status, 0, route.stderr);
     assert.match(route.stdout, /--model-id/);
     assert.match(route.stdout, /--traffic-pct/);
     assert.match(route.stdout, /--clear/);
+  });
+
+  it("registers a local workload card on the gateway", async () => {
+    const home = mkdtempSync(join(tmpdir(), "understudy-workloads-home-"));
+    const repo = mkdtempSync(join(tmpdir(), "understudy-workloads-repo-"));
+    try {
+      const card = {
+        schema_version: "understudy.workload_card.v1",
+        workload_id: "workload-001",
+        workload_name: "Synthetic workflow",
+        workload_shape: ["api-workflow"],
+        data_class: "source-metadata-only",
+      };
+      const cardPath = join(repo, "workload-card.json");
+      writeFileSync(cardPath, `${JSON.stringify(card, null, 2)}\n`);
+
+      await withMockGateway(
+        (request) => {
+          if (request.url === "/v1/agent/events") {
+            return { body: { ok: true } };
+          }
+          assert.equal(request.method, "POST");
+          assert.equal(request.url, "/admin/v1/orgs/org_test/projects/proj_test/workloads");
+          assert.equal(request.headers.authorization, "Bearer sk_test_workloads");
+          assert.equal(request.body.workload_card.schema_version, "understudy.workload_card.v1");
+          assert.equal(request.body.workload_card.workload_id, "workload-001");
+          assert.equal(request.body.source.kind, "workload_card");
+          return {
+            status: 201,
+            body: {
+              workload_id: "wl_server_123",
+              project_id: "proj_test",
+              created: true,
+            },
+          };
+        },
+        async ({ gatewayUrl, requests }) => {
+          writeTestCredentials(home, gatewayUrl);
+          const result = await runWithHomeAsync(
+            ["--json", "workloads", "create", "--project-id", "proj_test", "--from-card", cardPath],
+            home,
+            repo,
+          );
+          assert.equal(result.status, 0, result.stderr);
+          const payload = JSON.parse(result.stdout);
+          assert.equal(payload.workload_id, "wl_server_123");
+          assert.equal(payload.project_id, "proj_test");
+          assert.ok(requests.some((request) => request.url === "/admin/v1/orgs/org_test/projects/proj_test/workloads"));
+        },
+      );
+    } finally {
+      rmSync(home, { recursive: true, force: true });
+      rmSync(repo, { recursive: true, force: true });
+    }
+  });
+
+  it("refuses to register a malformed workload card", () => {
+    const home = mkdtempSync(join(tmpdir(), "understudy-workloads-home-"));
+    const repo = mkdtempSync(join(tmpdir(), "understudy-workloads-repo-"));
+    try {
+      const cardPath = join(repo, "workload-card.json");
+      writeFileSync(cardPath, "{\"schema_version\":\"wrong\"}\n");
+      writeTestCredentials(home, "http://127.0.0.1:1");
+      const result = runWithHome(
+        ["--json", "workloads", "create", "--project-id", "proj_test", "--from-card", cardPath],
+        home,
+        repo,
+      );
+      assert.equal(result.status, 1);
+      assert.match(result.stderr, /expected schema_version understudy\.workload_card\.v1/);
+    } finally {
+      rmSync(home, { recursive: true, force: true });
+      rmSync(repo, { recursive: true, force: true });
+    }
   });
 
   it("scans capture/import sources with metadata only and writes a redaction manifest", () =>

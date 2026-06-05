@@ -68,9 +68,10 @@ node dist/bin.js status --json
 
 4. For frontier-vs-Understudy A/B routing, list public model IDs and set a
    bounded workload route — see the **A/B model routing** recipe below for the
-   commands and the split mechanics. The agent must not expose or ask for
-   supplier/provider details; the app keeps calling the normal gateway path while
-   the control-plane route decides the split.
+   commands and the split mechanics. Register the local Workload Card first if
+   the gateway does not know the workload yet. The agent must not expose or ask
+   for supplier/provider details; the app keeps calling the normal gateway path
+   while the control-plane route decides the split.
 
 5. Run the local command through the gateway wrapper only after approval:
 
@@ -95,7 +96,17 @@ comparing a workload's quality and cost across the split.
    understudy models list --json
    ```
 
-2. Route a workload to a model at a traffic percentage — a per-request split
+2. Register the local Workload Card if this workload is not already known by the
+   gateway:
+
+   ```sh
+   understudy workloads create --project-id <project-id> \
+     --from-card .understudy/workload-discovery/workload-card.json
+   ```
+
+   The command returns the server-assigned workload id used by `route`.
+
+3. Route a workload to a model at a traffic percentage — a per-request split
    where that share goes to the routed model and the rest stays on passthrough.
    Pick a bounded share (e.g. 30%) to keep the comparison small.
 
@@ -106,7 +117,7 @@ comparing a workload's quality and cost across the split.
    Clearing the route (`--clear` in place of the model/traffic flags) returns the
    workload to full passthrough.
 
-3. Run the eval through the gateway so the routed model serves its share. Any
+4. Run the eval through the gateway so the routed model serves its share. Any
    local command works; an eval harness like a verifiers `vf-eval` run is typical.
 
    ```sh

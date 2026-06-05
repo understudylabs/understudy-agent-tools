@@ -85,13 +85,17 @@ rules below apply to every upload, spend, credential, deploy, or route change.
    editing hardcoded call sites: a model swap, a routed traffic split, a prompt
    variant, or a parser fix is usually enough. Editing call sites directly is the
    last resort and must be reversible.
-3. **Register / route the improved behavior through the inference layer.** Use
-   the workloads route API to send a bounded share of traffic to the improved
-   model. The app keeps calling the normal gateway path; the control-plane route
-   decides the split. The traffic percentage is a per-request share.
+3. **Register / route the improved behavior through the inference layer.**
+   Register the local Workload Card if the gateway does not know this workload
+   yet, then use the workloads route API to send a bounded share of traffic to
+   the improved model. The app keeps calling the normal gateway path; the
+   control-plane route decides the split. The traffic percentage is a per-request
+   share.
 
    ```sh
    understudy models list --json
+   understudy workloads create --project-id <project-id> \
+     --from-card .understudy/workload-discovery/workload-card.json
    understudy workloads route <workload-id> --project-id <project-id> --model-id glm-5.1 --traffic-pct 10
    ```
 

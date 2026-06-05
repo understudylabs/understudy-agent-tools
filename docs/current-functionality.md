@@ -28,6 +28,7 @@ understudy skills --search gateway
 understudy skills --inspect understudy
 understudy doctor
 understudy models list --json
+understudy workloads create --project-id <project-id> --from-card .understudy/workload-discovery/workload-card.json
 understudy workloads route <workload-id> --project-id <project-id> --model-id glm-5.1 --traffic-pct 10
 understudy workloads route <workload-id> --project-id <project-id> --clear
 understudy setup-code --client openai --file src/client.ts --json
