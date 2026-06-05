@@ -28,6 +28,8 @@ The Python CLI prototype and skill-local Python helper scripts have been
 removed. The repo surface is now skills plus TypeScript CLI. Python is still
 allowed for small local optimizer environments because GEPA/DSPy are
 Python-native, but those envs are runtime state, not repo infrastructure.
+Use the bridge contract in [`uv-python-bridge.md`](uv-python-bridge.md) for any
+future Python-native ports from `understudy-agent`.
 
 Use `uv` when possible:
 

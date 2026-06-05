@@ -129,6 +129,8 @@ savings, latency, quality, or route-superiority claim is publishable.
 Optimizer implementation stays upstream. Do not vendor GEPA or add the full
 private runtime as a dependency. The implementation contract is documented in
 [`docs/validate-and-optimize-contract.md`](docs/validate-and-optimize-contract.md).
+The TypeScript-to-`uv` Python bridge pattern is documented in
+[`docs/uv-python-bridge.md`](docs/uv-python-bridge.md).
 
 ## Runtime Commands
 

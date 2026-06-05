@@ -39,6 +39,27 @@ Keep one layer per spine:
 
 The CLI is a router. Scripts and skills should remain independently readable.
 
+## TypeScript + uv Python Bridge
+
+This repo is TypeScript-first. Port product behavior from
+`understudy-agent` into TypeScript when it affects CLI UX, auth, command
+routing, safety gates, artifacts, or public docs.
+
+Python is allowed only as isolated runtime glue for Python-native workload
+logic such as GEPA, DSPy, eval harnesses, rubric helpers, dataset transforms,
+or future training/export adapters. Use the bridge pattern:
+
+1. TypeScript owns the command, flags, validation, approval gates, and artifact
+   paths.
+2. TypeScript invokes Python with `uv run --no-project` or an ignored local
+   `.understudy/` runtime.
+3. Python receives file paths or JSON, returns structured JSON on stdout, and
+   never becomes an importable package in this repo.
+4. Do not add `pyproject.toml`, `uv.lock`, `src/understudy_agent_tools/`, or
+   checked-in `.py` product modules without a deliberate architecture change.
+
+See [`docs/uv-python-bridge.md`](docs/uv-python-bridge.md).
+
 ## Skills
 
 The public entrypoint is `skills/understudy/SKILL.md`.
