@@ -59,8 +59,8 @@ interface StatusCheckedEvent {
 }
 
 interface ControlPlaneEvent {
-  resource: "api_keys" | "projects";
-  action: "listed" | "created" | "revoked" | "switched" | "deleted";
+  resource: "api_keys" | "projects" | "models" | "workload_routes";
+  action: "listed" | "created" | "revoked" | "switched" | "deleted" | "updated" | "cleared";
   orgId: string | null;
   projectSlug?: string | null;
   resultCount?: number;

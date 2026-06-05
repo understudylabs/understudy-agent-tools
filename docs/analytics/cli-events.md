@@ -37,6 +37,9 @@ an API key.
 | `cli_api_keys_listed` | User inspected org API keys. | `org_id`, `result_count` |
 | `cli_api_keys_created` | User minted another org key. | `org_id` |
 | `cli_api_keys_revoked` | User revoked an org key. | `org_id` |
+| `cli_models_listed` | User or agent inspected public Understudy model IDs. | `org_id`, `result_count` |
+| `cli_workload_routes_updated` | User or agent routed a workload percentage to an Understudy model. | `org_id`, `result_count` |
+| `cli_workload_routes_cleared` | User or agent cleared a workload model route. | `org_id` |
 | `cli_run_started` | CLI injected credentials into a child process. | `command_kind`, `auth_source`, `org_id`, `project_slug` |
 | `cli_run_completed` | Authenticated work completed successfully. | `command_kind`, `duration_ms`, `exit_code`, `org_id`, `project_slug` |
 | `cli_run_failed` | Authenticated child process failed. | `command_kind`, `duration_ms`, `exit_code`, `org_id`, `project_slug` |

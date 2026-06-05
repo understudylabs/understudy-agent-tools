@@ -137,17 +137,19 @@ Three ways to optimize, picked by commitment and workload shape:
 2. **In-place prompt optimization.** A future adapter should run the developer's
    real workload via an injected `infer` function and evolve the prompt or route
    component they already ship. Truest to production, lowest commitment.
-3. **Program lane (opt-in).** The CLI can scaffold a reusable DSPy program
-   summary, run DSPy parity from local samples, then run the approval-gated
-   `dspy gepa --execute` adapter against the Understudy gateway. Full GEPA
-   optimization over that program is gated by parity: the scaffolded program
-   must reproduce the incumbent baseline before optimization, or you optimize a
-   reconstruction that diverges from production.
+3. **Program lane (opt-in).** The agent can scaffold a reusable DSPy program
+   from local samples using the cookbook/workflow pattern, verify parity, then
+   run the approval-gated `adapter run --adapter dspy-gepa --execute` path
+   against the Understudy gateway. Full GEPA optimization over that program is
+   gated by parity: the scaffolded program must reproduce the incumbent
+   baseline before optimization, or you optimize a reconstruction that diverges
+   from production.
 
 ## Rubric Reward (the OSS half of the verifier rung)
 
-The CLI can turn a human-confirmed `rubric.json` plus an injected or approved
-judge verdict into `(score, feedback)` — a graded metric richer than pass/fail.
+The agent can turn a human-confirmed `rubric.json` plus an injected or approved
+judge verdict into `(score, feedback)` using a local script or workflow template
+when the workload needs a graded metric richer than pass/fail.
 Pointwise scoring surfaces failing-criterion rationales as feedback. Pairwise
 scoring and human-agreement calibration remain future hardening before trusting
 a rubric judge for claims. The rubric + judgment is OSS-native and valuable on

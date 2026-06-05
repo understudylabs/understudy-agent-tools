@@ -3,7 +3,7 @@
 This is the implementation contract for the public `optimize-workload`
 step. It extends:
 
-- [`spine.md`](spine.md)
+- [`methodology-framework.md`](methodology-framework.md)
 - [`oss-release-boundary.md`](oss-release-boundary.md)
 - [`workload-card-template.md`](workload-card-template.md)
 - [`value-report-template.md`](value-report-template.md)
@@ -40,9 +40,8 @@ uv pip install --python .understudy/venvs/optimize/bin/python 'gepa>=0.0.27,<0.1
 ```
 
 Do not create the env, install packages, or run provider calls without explicit
-approval. Until TypeScript gates land, agents must inspect the local artifacts
-directly and fail closed on missing files, stale hashes, unapproved metrics, or
-touched holdout data.
+approval. TypeScript gates and skill-led inspection must fail closed on missing
+files, stale hashes, unapproved metrics, or touched holdout data.
 
 ## Required Artifacts
 
@@ -126,10 +125,7 @@ Future TypeScript commands should follow this behavior:
 ```bash
 understudy optimize-workload dry-run --repo .
 understudy optimize-workload run --repo . --budget-usd 10
-understudy optimize-workload rubric score --repo . --rubric rubric.json --output-text "..."
-understudy optimize-workload dspy scaffold --repo . --samples samples.json --input-keys question --output-keys answer
-understudy optimize-workload dspy parity --repo . --samples samples.json --input-keys question --output-keys answer --baseline-score 1.0
-understudy optimize-workload dspy gepa --repo . --samples samples.json --input-keys question --output-keys answer --model gpt-4o-mini --execute
+understudy optimize-workload adapter run --repo . --adapter dspy-gepa --samples samples.json --input-keys question --output-keys answer --model gpt-4o-mini --execute
 understudy optimize-workload adapter run --repo . --adapter eval-input-gepa --manifest eval-input-manifest.json --execute
 ```
 
@@ -141,14 +137,13 @@ Required behavior:
 - Unapproved metric: exit non-zero and ask for metric confirmation.
 - Missing optimizer package: print install guidance and stop.
 - Dry run: write `proof-packet.json` without provider calls or package installs.
-- Rubric score: use an injected judge verdict or approved judge path; never hide
-  provider calls.
-- DSPy scaffold/parity: use local samples and `DummyLM`/configured local runtime;
-  parity must pass before GEPA touches a reconstruction.
-- DSPy GEPA adapter: require `--execute`, require an explicit model/deployment,
-  resolve the Understudy API key without printing it, pass auth only through the
-  child environment, run train/dev rows only, exclude holdout rows, and write a
-  candidate/proof packet with `provider_calls: true`.
+- Rubric scoring and DSPy scaffold/parity: keep as skill/cookbook/workflow
+  guidance unless a concrete adapter needs executable support.
+- DSPy GEPA adapter: expose through `adapter run`, require `--execute`, require
+  an explicit model/deployment, resolve the Understudy API key without printing
+  it, pass auth only through the child environment, run train/dev rows only,
+  exclude holdout rows, and write a candidate/proof packet with
+  `provider_calls: true`.
 - Eval-input GEPA adapter: require `--execute`, read a local manifest with
   `rows`, `inputs`, or `inputs_path`, support exact-match label and tool-call
   objectives, invoke upstream `gepa.optimize` through `uv`, run train/dev rows

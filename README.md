@@ -7,7 +7,7 @@ optimization planning, gateway handoff, and agent-led implementation. The CLI is
 thin TypeScript/Node: durable shortcuts, auth, artifact checks, and runtime
 wrappers that a coding agent can monitor.
 
-The OSS MVP loop is local-first:
+The OSS MVP loop is local-first and skill-led:
 
 ```text
 capture evidence -> attach harness/environment
@@ -15,10 +15,9 @@ capture evidence -> attach harness/environment
   -> optimize workload -> conservative claim packet
 ```
 
-Registration is not required for that loop. Hosted gateway, browser, channel,
-daemon, and desktop-runtime commands belong to the full Understudy runtime and
-will move here only when they are intentionally extracted for this public
-tools surface.
+Registration is not required for that loop. Hosted gateway access is available
+after `understudy login`; browser, channel, daemon, and desktop-runtime
+commands remain outside this public CLI until intentionally extracted.
 
 ## Shape
 
@@ -61,6 +60,7 @@ with `UNDERSTUDY_TELEMETRY=0`.
 understudy spine
 understudy skills --list
 understudy skills --search gateway
+understudy workflow list
 understudy doctor
 ```
 
@@ -76,6 +76,8 @@ understudy login --email you@company.com
 understudy status --json
 understudy projects list --json
 understudy keys list --json
+understudy models list --json
+understudy workloads route <workload-id> --project-id <project-id> --model-id glm-5.1 --traffic-pct 10
 understudy run -- npm run your-local-script
 ```
 
@@ -84,6 +86,11 @@ returned `sk_*` in `~/.understudy/credentials.json` with mode `600` and writes a
 repo-local `.understudy/config.json` when the platform returns a default
 project. `run` injects `UNDERSTUDY_API_KEY` and `UNDERSTUDY_GATEWAY_URL` only
 into the child process; do not copy secrets into repo files or chat output.
+`models list` shows public Understudy model IDs only. `workloads route` writes
+control-plane route config, so the application keeps calling the normal gateway
+while a percentage of traffic goes to the selected Understudy model and the
+rest remains passthrough/frontier. Clear the route with
+`understudy workloads route <workload-id> --project-id <project-id> --clear`.
 
 If the coding agent has an approved native email connector, it may complete the
 email-code prompt by reading the fresh Understudy sign-in email directly. The
@@ -115,7 +122,7 @@ Current examples:
 - `cookbook/optimize-eval-input-gepa`
 - `cookbook/gateway-openai-typescript`
 
-## Skill Rule
+## Skill Tree
 
 `skills/understudy/SKILL.md` is the public entrypoint. It routes to exactly one
 capability worker:
@@ -124,34 +131,17 @@ capability worker:
 - `skills/optimize-workload/SKILL.md`
 - `skills/use-understudy-gateway/SKILL.md`
 - `skills/prepare-verifier-handoff/SKILL.md`
+- `skills/run-durable-workflow/SKILL.md`
 
 Everything else stays outside the discovered surface until real usage proves it
-belongs back. This keeps the first win small: pin the workload, preserve the
-metric/split/baseline contract, run approved durable CLI workflows when needed,
-then validate or optimize without leaking data or making unsupported claims.
+belongs back. See [`skills/README.md`](skills/README.md) for the current
+hierarchy and [`docs/current-functionality.md`](docs/current-functionality.md)
+for the migration ledger.
 
 `prepare-verifier-handoff` is intentionally handoff-only. It is for workloads
 that need a future Understudy verifier/RL-environment release or an external
 partner path after local validation and prompt optimization are insufficient.
 Prime Intellect Verifiers is the current preferred referral for that rung.
-
-The MVP artifact contract is:
-
-```text
-.understudy/capture-evidence/harness.json
-.understudy/capture-evidence/environment.json
-.understudy/capture-evidence/metric.json
-.understudy/capture-evidence/splits.json
-.understudy/capture-evidence/baseline.json
-.understudy/optimize-workload/candidate.json
-.understudy/optimize-workload/claim.json
-```
-
-`baseline.json` must carry `harness_sha256`, `metric_sha256`, and
-`splits_sha256` for the exact artifacts used by the incumbent rerun. A later
-change to any of those artifacts makes the baseline stale. `claim.json` must
-cite the same hash-bound contract plus the frozen candidate hash before any
-savings, latency, quality, or route-superiority claim is publishable.
 
 Optimizer implementation stays upstream. Do not vendor GEPA or add the full
 private runtime as a dependency. The implementation contract is documented in
@@ -159,7 +149,7 @@ private runtime as a dependency. The implementation contract is documented in
 The TypeScript-to-`uv` Python bridge pattern is documented in
 [`docs/uv-python-bridge.md`](docs/uv-python-bridge.md).
 
-## Runtime Commands
+## CLI Surface
 
 The TypeScript CLI currently owns the public tools surface:
 
@@ -171,6 +161,9 @@ login
 status
 projects
 keys
+models
+workloads
+workflow
 setup
 setup-code
 run
@@ -197,6 +190,17 @@ uv pip install --python .understudy/venvs/optimize/bin/python 'gepa>=0.0.27,<0.1
 
 That environment is local runtime state. It is not package infrastructure and
 must not be committed.
+
+For multi-step, approval-gated work, the CLI can launch packaged
+Smithers-compatible workflow templates:
+
+```bash
+understudy workflow list
+understudy workflow run optimize-gepa --run-id optimize-smoke --input '{"repo":".","execute":false}'
+```
+
+The base package does not install Smithers as a hard dependency. Provide a
+local runner with `--smithers-bin <path>` when needed.
 
 For the exact before/after functionality ledger, see
 [`docs/current-functionality.md`](docs/current-functionality.md).

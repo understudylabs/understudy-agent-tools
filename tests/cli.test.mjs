@@ -511,114 +511,26 @@ describe("understudy CLI", () => {
       assert.equal(packet.claim_json_created, false);
     }));
 
-  it("scores a rubric through the local uv runtime without provider calls", { skip: !uvAvailable }, () =>
-    withOptimizerFixtureRepo(({ repo, rubricPath }) => {
-      const result = run([
-        "optimize-workload",
-        "rubric",
-        "score",
-        "--repo",
-        repo,
-        "--rubric",
-        rubricPath,
-        "--output-text",
-        "synthetic answer",
-        "--judge-verdict",
-        "SCORE: 0.5\nNeeds more detail.",
-      ]);
-      assert.equal(result.status, 0, result.stderr);
-      const payload = JSON.parse(result.stdout);
-      assert.equal(payload.schema_version, "understudy.rubric_score.v1");
-      assert.equal(payload.score, 0.5);
-      assert.equal(payload.provider_calls, false);
-      assert.match(payload.feedback, /Rubric gaps/);
-    }));
+  it("keeps rubric and DSPy teaching commands out of the CLI", () => {
+    const rubric = run(["optimize-workload", "rubric", "score"]);
+    assert.notEqual(rubric.status, 0);
+    assert.match(rubric.stderr, /unknown command|too many arguments/i);
 
-  it("scaffolds a DSPy signature through the local uv runtime without installing packages", { skip: !uvAvailable }, () =>
+    const dspy = run(["optimize-workload", "dspy", "scaffold"]);
+    assert.notEqual(dspy.status, 0);
+    assert.match(dspy.stderr, /unknown command|too many arguments/i);
+  });
+
+  it("blocks the live DSPy GEPA registry adapter unless execution is explicit", () =>
     withOptimizerFixtureRepo(({ repo, samplesPath }) => {
       const result = run([
         "optimize-workload",
-        "dspy",
-        "scaffold",
+        "adapter",
+        "run",
         "--repo",
         repo,
-        "--samples",
-        samplesPath,
-        "--input-keys",
-        "question",
-        "--output-keys",
-        "answer",
-      ]);
-      assert.equal(result.status, 0, result.stderr);
-      const payload = JSON.parse(result.stdout);
-      assert.equal(payload.schema_version, "understudy.dspy_scaffold.v1");
-      assert.equal(payload.signature, "question -> answer");
-      assert.equal(payload.sample_count, 2);
-      assert.equal(payload.parity_required_before_gepa, true);
-    }));
-
-  it("passes DSPy ChainOfThought parity through the local uv runtime", { skip: !uvAvailable }, () =>
-    withOptimizerFixtureRepo(({ repo, samplesPath }) => {
-      const result = run([
-        "optimize-workload",
-        "dspy",
-        "parity",
-        "--repo",
-        repo,
-        "--samples",
-        samplesPath,
-        "--input-keys",
-        "question",
-        "--output-keys",
-        "answer",
-        "--baseline-score",
-        "1.0",
-        "--module",
-        "cot",
-      ]);
-      assert.equal(result.status, 0, result.stderr);
-      const payload = JSON.parse(result.stdout);
-      assert.equal(payload.schema_version, "understudy.dspy_parity.v1");
-      assert.equal(payload.parity, true);
-      assert.equal(payload.provider_calls, false);
-    }));
-
-  it("fails DSPy parity when the scaffold diverges from baseline", { skip: !uvAvailable }, () =>
-    withOptimizerFixtureRepo(({ repo, samplesPath }) => {
-      const result = run([
-        "optimize-workload",
-        "dspy",
-        "parity",
-        "--repo",
-        repo,
-        "--samples",
-        samplesPath,
-        "--input-keys",
-        "question",
-        "--output-keys",
-        "answer",
-        "--baseline-score",
-        "1.0",
-        "--dummy-answers",
-        '[{"answer":"wrong"},{"answer":"wrong"}]',
-        "--tolerance",
-        "0",
-      ]);
-      assert.equal(result.status, 1);
-      const payload = JSON.parse(result.stdout);
-      assert.equal(payload.schema_version, "understudy.dspy_parity.v1");
-      assert.equal(payload.parity, false);
-      assert.equal(payload.program_score, 0);
-    }));
-
-  it("blocks the live DSPy GEPA adapter unless execution is explicit", () =>
-    withOptimizerFixtureRepo(({ repo, samplesPath }) => {
-      const result = run([
-        "optimize-workload",
-        "dspy",
-        "gepa",
-        "--repo",
-        repo,
+        "--adapter",
+        "dspy-gepa",
         "--samples",
         samplesPath,
         "--input-keys",
@@ -803,6 +715,42 @@ describe("understudy CLI", () => {
     assert.equal(payload.skill, "skills/onboard/setup-code.md");
     assert.equal(payload.recipe, "skills/onboard/openai-typescript.md");
     assert.equal(payload.file_hint, "src/client.ts");
+  });
+
+  it("exposes model routing commands in the public CLI", () => {
+    const root = run(["--help"]);
+    assert.equal(root.status, 0, root.stderr);
+    assert.match(root.stdout, /models/);
+    assert.match(root.stdout, /workloads/);
+
+    const route = run(["workloads", "route", "--help"]);
+    assert.equal(route.status, 0, route.stderr);
+    assert.match(route.stdout, /--model-id/);
+    assert.match(route.stdout, /--traffic-pct/);
+    assert.match(route.stdout, /--clear/);
+  });
+
+  it("lists and dry-runs packaged workflow templates", () => {
+    const list = run(["workflow", "list", "--json"]);
+    assert.equal(list.status, 0, list.stderr);
+    const payload = JSON.parse(list.stdout);
+    assert.equal(payload.templates[0].id, "optimize-gepa");
+    assert.match(payload.templates[0].path, /workflows\/optimize-gepa\.tsx/);
+
+    const dry = run([
+      "workflow",
+      "run",
+      "optimize-gepa",
+      "--run-id",
+      "optimize-smoke",
+      "--input",
+      "{\"repo\":\".\",\"execute\":false}",
+      "--dry-run",
+    ]);
+    assert.equal(dry.status, 0, dry.stderr);
+    assert.match(dry.stdout, /smithers up/);
+    assert.match(dry.stdout, /workflows\/optimize-gepa\.tsx/);
+    assert.match(dry.stdout, /--run-id optimize-smoke/);
   });
 
   it("scans capture/import sources with metadata only and writes a redaction manifest", () =>

@@ -12,12 +12,14 @@ const mvpPublicSkillNames = [
   "optimize-workload",
   "use-understudy-gateway",
   "prepare-verifier-handoff",
+  "run-durable-workflow",
 ];
 const mvpRouterTargets = [
   "../capture-evidence/SKILL.md",
   "../optimize-workload/SKILL.md",
   "../use-understudy-gateway/SKILL.md",
   "../prepare-verifier-handoff/SKILL.md",
+  "../run-durable-workflow/SKILL.md",
 ];
 const namePattern = /^[a-z0-9-]+$/;
 

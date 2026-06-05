@@ -65,37 +65,6 @@ const optimizeDir = ".understudy/optimize-workload";
 const runtimeDir = join(optimizeDir, "uv-runtime");
 const requiredArtifacts = ["harness.json", "environment.json", "metric.json", "splits.json", "baseline.json"] as const;
 
-type RubricScoreOptions = {
-  repo: string;
-  rubric: string;
-  outputText: string;
-  judgeVerdict?: string;
-};
-
-type DspyScaffoldOptions = {
-  repo: string;
-  samples: string;
-  inputKeys: string[];
-  outputKeys: string[];
-  module?: string;
-};
-
-type DspyParityOptions = DspyScaffoldOptions & {
-  baselineScore: string;
-  dummyAnswers?: string;
-  tolerance?: string;
-};
-
-type DspyGepaOptions = DspyScaffoldOptions & {
-  model: string;
-  execute?: boolean;
-  maxMetricCalls?: string;
-  splitKey?: string;
-  trainSplit?: string;
-  devSplit?: string;
-  maxTokens?: string;
-};
-
 type AdapterRunOptions = {
   repo: string;
   adapter: string;
@@ -450,67 +419,6 @@ export function writeUvGepaRunScaffold(repoInput: string, result: GateResult, op
   };
   writeFileSync(proofPacketPath, `${JSON.stringify(packet, null, 2)}\n`);
   return { ...result, proofPacketPath: rel(repo, proofPacketPath) };
-}
-
-export function scoreRubricWithUv(options: RubricScoreOptions): Record<string, unknown> {
-  const repo = resolve(options.repo);
-  const runtimePath = writeOptimizerRuntime(repo);
-  return runUvPython(repo, runtimePath, [
-    "rubric-score",
-    "--rubric",
-    resolve(options.rubric),
-    "--output-text",
-    options.outputText,
-    "--judge-verdict",
-    options.judgeVerdict ?? "SCORE: 1.0\nAll rubric criteria satisfied.",
-  ]);
-}
-
-export function scaffoldDspyProgram(options: DspyScaffoldOptions): Record<string, unknown> {
-  const repo = resolve(options.repo);
-  const runtimePath = writeOptimizerRuntime(repo);
-  return runUvPython(repo, runtimePath, [
-    "dspy-scaffold",
-    "--samples",
-    resolve(options.samples),
-    "--input-keys",
-    options.inputKeys.join(","),
-    "--output-keys",
-    options.outputKeys.join(","),
-    "--module",
-    options.module ?? "predict",
-  ]);
-}
-
-export function parityCheckDspyProgram(options: DspyParityOptions): Record<string, unknown> {
-  const repo = resolve(options.repo);
-  const runtimePath = writeOptimizerRuntime(repo);
-  const args = [
-    "dspy-parity",
-    "--samples",
-    resolve(options.samples),
-    "--input-keys",
-    options.inputKeys.join(","),
-    "--output-keys",
-    options.outputKeys.join(","),
-    "--baseline-score",
-    options.baselineScore,
-    "--tolerance",
-    options.tolerance ?? "0.05",
-    "--module",
-    options.module ?? "predict",
-  ];
-  if (options.dummyAnswers) {
-    args.push("--dummy-answers", options.dummyAnswers);
-  }
-  return runUvPython(repo, runtimePath, args, ["dspy>=3.0.0"]);
-}
-
-export function runDspyGepaAdapter(options: DspyGepaOptions): Record<string, unknown> {
-  return runOptimizerAdapter({
-    ...options,
-    adapter: "dspy-gepa",
-  });
 }
 
 export function runOptimizerAdapter(options: AdapterRunOptions): Record<string, unknown> {

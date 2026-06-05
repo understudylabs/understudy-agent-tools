@@ -26,7 +26,12 @@ understudy spine
 understudy skills --list
 understudy skills --search gateway
 understudy skills --inspect understudy
+understudy workflow list
+understudy workflow run optimize-gepa --run-id optimize-smoke --input '{"repo":".","execute":false}' --dry-run
 understudy doctor
+understudy models list --json
+understudy workloads route <workload-id> --project-id <project-id> --model-id glm-5.1 --traffic-pct 10
+understudy workloads route <workload-id> --project-id <project-id> --clear
 understudy setup-code --client openai --file src/client.ts --json
 understudy capture-import scan --repo .
 understudy capture-import preview --repo . --limit 10
@@ -37,10 +42,7 @@ understudy route-decision plan --workload-card .understudy/workload-discovery/wo
 understudy optimize-workload --uv
 understudy optimize-workload check --repo .
 understudy optimize-workload dry-run --repo .
-understudy optimize-workload rubric score --repo . --rubric rubric.json --output-text "..."
-understudy optimize-workload dspy scaffold --repo . --samples samples.json --input-keys question --output-keys answer
-understudy optimize-workload dspy parity --repo . --samples samples.json --input-keys question --output-keys answer --baseline-score 1.0
-understudy optimize-workload dspy gepa --repo . --samples samples.json --input-keys question --output-keys answer --model gpt-4o-mini --execute
+understudy optimize-workload adapter run --repo . --adapter dspy-gepa --samples samples.json --input-keys question --output-keys answer --model gpt-4o-mini --execute
 understudy optimize-workload adapter run --repo . --adapter eval-input-gepa --manifest eval-input-manifest.json --execute
 understudy optimize-workload run --repo . --backend uv-gepa --execute
 understudy value report --workload-card .understudy/workload-discovery/workload-card.json --route-decision .understudy/route-decision/route-decision-packet.json --requests-per-month 10000
@@ -85,6 +87,7 @@ skills/capture-evidence/SKILL.md
 skills/optimize-workload/SKILL.md
 skills/use-understudy-gateway/SKILL.md
 skills/prepare-verifier-handoff/SKILL.md
+skills/run-durable-workflow/SKILL.md
 ```
 
 Agents should use those skills to inspect local artifacts and guide users, but
@@ -94,6 +97,17 @@ they should not claim that removed Python commands still exist.
 surface. It helps agents recognize workloads that need stateful RL
 verifier/environment training, preserve the local evidence packet, and refer to
 Prime Intellect Verifiers as the current preferred external path.
+
+`use-understudy-gateway` includes the public model-routing workflow. Agents can
+list routeable Understudy model IDs without supplier/provider details, set a
+traffic percentage for a project workload, and clear that route. Application
+code still calls the normal gateway path; the control plane decides what
+percentage goes to the selected Understudy model and what remains
+passthrough/frontier.
+
+`run-durable-workflow` covers packaged Smithers-compatible workflow templates.
+The CLI lists and launches templates such as `optimize-gepa`, but Smithers
+itself remains an optional runner rather than a base package dependency.
 
 `optimize-workload check` reads `.understudy/capture-evidence/`
 artifacts, fails closed on missing files, invalid JSON, stale baseline hashes,
@@ -105,14 +119,15 @@ package installs, or live optimizer execution.
 The optimizer helpers are TypeScript-orchestrated and `uv`-backed. The CLI
 generates a small runtime script under
 `.understudy/optimize-workload/uv-runtime/`, then uses `uv run --no-project`
-for Python-native packages. Rubric scoring and DSPy scaffold/parity can run
-without provider calls. The GEPA path verifies that `gepa.optimize` and
-`GEPAAdapter` are importable. The first live adapter is
-`optimize-workload dspy gepa --execute`: it resolves the authenticated
-Understudy gateway key, passes it into the local `uv` runtime as environment,
-configures DSPy against the gateway, runs train/dev rows only, excludes holdout,
-and writes `.understudy/optimize-workload/candidate.json` plus
-`proof-packet.json`.
+for Python-native packages. Rubric and DSPy scaffold/parity guidance now lives
+in skills, cookbooks, and workflow templates rather than first-class CLI
+commands. The GEPA path verifies that `gepa.optimize` and `GEPAAdapter` are
+importable. The live DSPy adapter is exposed through
+`optimize-workload adapter run --adapter dspy-gepa --execute`: it resolves the
+authenticated Understudy gateway key, passes it into the local `uv` runtime as
+environment, configures DSPy against the gateway, runs train/dev rows only,
+excludes holdout, and writes `.understudy/optimize-workload/candidate.json`
+plus `proof-packet.json`.
 
 The generic adapter registry is exposed through
 `optimize-workload adapter run`. The first registry-backed non-DSPy adapter

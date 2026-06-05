@@ -1,6 +1,6 @@
 ---
 name: use-understudy-gateway
-description: Use when a developer wants authenticated Understudy inference, project/key management, gateway-backed local commands, or durable CLI execution that an agent can monitor.
+description: Use when a developer wants authenticated Understudy inference, project/key management, public model routing, gateway-backed local commands, or durable CLI execution that an agent can monitor.
 metadata:
   understudy:
     mode: interactive
@@ -16,7 +16,8 @@ the agent monitors status and artifacts.
 
 The local evidence loop does not require auth. Route here only when the
 developer explicitly asks for Understudy inference, gateway routing, project/key
-management, hosted execution, or an authenticated cookbook.
+management, workload route configuration, hosted execution, or an authenticated
+cookbook.
 
 ## Safety Gates
 
@@ -65,13 +66,30 @@ node dist/bin.js status --json
    understudy keys list --json
    ```
 
-4. Run the local command through the gateway wrapper only after approval:
+4. For frontier-vs-Understudy A/B routing, list public model IDs and set a
+   bounded workload route:
+
+   ```sh
+   understudy models list --json
+   understudy workloads route <workload-id> --project-id <project-id> --model-id glm-5.1 --traffic-pct 10
+   ```
+
+   The agent must not expose or ask for supplier/provider details. The
+   application keeps calling the normal gateway path; the control-plane route
+   decides what percentage goes to the selected Understudy model and what
+   remains passthrough/frontier. To clear the route:
+
+   ```sh
+   understudy workloads route <workload-id> --project-id <project-id> --clear
+   ```
+
+5. Run the local command through the gateway wrapper only after approval:
 
    ```sh
    understudy run -- <local command>
    ```
 
-5. Monitor the command output and local artifacts. For optimization work, route
+6. Monitor the command output and local artifacts. For optimization work, route
    back to [`../optimize-workload/SKILL.md`](../optimize-workload/SKILL.md) once
    the gateway-backed run has produced candidate/proof evidence.
 
@@ -81,6 +99,7 @@ End with:
 
 - auth status without revealing secrets;
 - project/key readiness;
+- model route status when configured;
 - command run or blocked;
 - whether provider calls or hosted execution were approved;
 - local artifact path or next CLI command to monitor.

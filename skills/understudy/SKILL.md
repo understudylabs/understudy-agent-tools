@@ -26,19 +26,16 @@ Default to the cheapest path that still reaches an optimization outcome — not 
 zero spend (a skipped improvement has real opportunity cost). Get the
 developer's explicit approval before any upload, hosted run, or provider spend.
 
-Do not upload source files, prompts, traces, outputs, datasets, repo paths,
-private notes, provider keys, or secrets unless the developer explicitly
-approves that exact action in the current thread.
-
 Do not ask the developer to register, authenticate, paste secrets, or configure
 provider keys before the local evidence loop has identified a concrete need.
 When that concrete need exists, route through `understudy login --email`
 instead of asking for a pasted key.
 
-Public examples must use synthetic fixtures, local `.understudy/` artifacts, or
-user-provided local files. Do not include customer names, private domains, raw
-prompts, raw completions, private traces, secrets, internal runbooks, or hosted
-control-plane details in public skill output.
+Follow the repo public boundary in
+[`../../docs/privacy-and-data-boundaries.md`](../../docs/privacy-and-data-boundaries.md):
+do not upload, print, commit, or transmit prompts, completions, traces, labels,
+datasets, repo paths, secrets, or private notes without explicit approval for
+that exact data class and action.
 
 ## Route
 
@@ -59,6 +56,10 @@ Route to one worker:
   verifier or environment, and the developer needs a future-release or partner
   handoff rather than another local optimizer run, read
   [`../prepare-verifier-handoff/SKILL.md`](../prepare-verifier-handoff/SKILL.md).
+- If the developer needs a durable, approval-gated, pause/resume workflow that
+  stitches CLI gates with GEPA/DSPy, gateway routing, verifier handoff, or
+  other long-running adapter work, read
+  [`../run-durable-workflow/SKILL.md`](../run-durable-workflow/SKILL.md).
 
 When in doubt, route to `capture-evidence`. Optimization without a current
 harness, metric, split contract, and incumbent baseline creates false progress.

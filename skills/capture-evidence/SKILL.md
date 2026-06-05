@@ -24,13 +24,12 @@ Default to the cheapest path that still reaches an optimization outcome — not 
 zero spend (a skipped improvement has real opportunity cost). Get the
 developer's explicit approval before any upload, hosted run, or provider spend.
 
-Do not upload source files, prompts, traces, outputs, datasets, repo paths,
-private notes, provider keys, or secrets unless the developer explicitly
-approves that exact action in the current thread.
-
-Do not read, print, commit, or transmit raw prompts, completions, traces, labels,
-or datasets unless the developer explicitly approves the exact data class and
-scope. Prefer metadata, paths, hashes, counts, schemas, and redacted examples.
+Follow the repo public boundary in
+[`../../docs/privacy-and-data-boundaries.md`](../../docs/privacy-and-data-boundaries.md).
+Prefer metadata, paths, hashes, counts, schemas, and redacted examples. Do not
+read, print, commit, upload, or transmit raw prompts, completions, traces,
+labels, datasets, repo paths, secrets, or private notes without explicit
+approval for that exact data class and action.
 
 ## Goal
 

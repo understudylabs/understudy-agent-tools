@@ -4,78 +4,12 @@ from __future__ import annotations
 import argparse
 import json
 import os
-import re
-from dataclasses import dataclass
 from pathlib import Path
 from typing import Any
 
 
 def emit(payload: dict[str, Any]) -> None:
     print(json.dumps(payload, indent=2, sort_keys=True))
-
-
-@dataclass(frozen=True)
-class Criterion:
-    id: str
-    description: str
-    weight: float = 1.0
-
-
-def load_criteria(rubric: dict[str, Any]) -> list[Criterion]:
-    raw = rubric.get("criteria")
-    if not isinstance(raw, list) or not raw:
-        raise ValueError("rubric must have a non-empty criteria list")
-    out: list[Criterion] = []
-    for index, item in enumerate(raw, 1):
-        if not isinstance(item, dict):
-            raise ValueError(f"criterion {index} must be an object")
-        cid = str(item.get("id") or f"criterion_{index}")
-        description = str(item.get("description") or "").strip()
-        if not description:
-            raise ValueError(f"criterion {cid} needs a description")
-        out.append(Criterion(cid, description, float(item.get("weight", 1.0))))
-    return out
-
-
-def extract_score(verdict: str) -> float:
-    match = re.search(r"score\s*[:=]\s*([01](?:\.\d+)?)", verdict, re.IGNORECASE)
-    if match:
-        return max(0.0, min(1.0, float(match.group(1))))
-    if re.search(r"\bpass\b", verdict, re.IGNORECASE):
-        return 1.0
-    if re.search(r"\bfail\b", verdict, re.IGNORECASE):
-        return 0.0
-    return 0.0
-
-
-def rubric_score(args: argparse.Namespace) -> None:
-    rubric = json.loads(Path(args.rubric).read_text(encoding="utf-8"))
-    criteria = load_criteria(rubric)
-    rows = []
-    weighted_sum = 0.0
-    total_weight = 0.0
-    for criterion in criteria:
-        score = extract_score(args.judge_verdict)
-        rows.append({
-            "id": criterion.id,
-            "score": score,
-            "weight": criterion.weight,
-            "rationale": args.judge_verdict.strip(),
-        })
-        weighted_sum += score * criterion.weight
-        total_weight += criterion.weight
-    score = weighted_sum / total_weight if total_weight else 0.0
-    failing = [row for row in rows if row["score"] < 1.0]
-    feedback = "All rubric criteria satisfied." if not failing else "Rubric gaps:\n" + "\n".join(
-        f"- [{row['id']} {row['score']:.2f}] {row['rationale']}" for row in failing
-    )
-    emit({
-        "schema_version": "understudy.rubric_score.v1",
-        "score": score,
-        "feedback": feedback,
-        "per_criterion": rows,
-        "provider_calls": False,
-    })
 
 
 def split_keys(value: str) -> list[str]:
@@ -89,72 +23,6 @@ def load_rows(path: str) -> list[dict[str, Any]]:
     if isinstance(raw, dict) and isinstance(raw.get("rows"), list):
         return raw["rows"]
     raise ValueError("samples must be a JSON list or object with rows")
-
-
-def dspy_scaffold(args: argparse.Namespace) -> None:
-    rows = load_rows(args.samples)
-    input_keys = split_keys(args.input_keys)
-    output_keys = split_keys(args.output_keys)
-    if not input_keys or not output_keys:
-        raise ValueError("input and output keys are required")
-    missing = sorted({
-        key
-        for row in rows
-        for key in [*input_keys, *output_keys]
-        if key not in row
-    })
-    emit({
-        "schema_version": "understudy.dspy_scaffold.v1",
-        "module": args.module,
-        "signature": f"{', '.join(input_keys)} -> {', '.join(output_keys)}",
-        "sample_count": len(rows),
-        "missing_keys": missing,
-        "parity_required_before_gepa": True,
-    })
-
-
-def dspy_parity(args: argparse.Namespace) -> None:
-    import dspy
-    from dspy.utils import DummyLM
-
-    rows = load_rows(args.samples)
-    input_keys = split_keys(args.input_keys)
-    output_keys = split_keys(args.output_keys)
-    dummy_answers = json.loads(args.dummy_answers) if args.dummy_answers else [
-        {key: row[key] for key in output_keys} for row in rows
-    ]
-    if args.module == "cot":
-        normalized_answers = []
-        for answer in dummy_answers:
-            if isinstance(answer, dict):
-                normalized = dict(answer)
-                normalized.setdefault("reasoning", "Synthetic parity reasoning.")
-                normalized_answers.append(normalized)
-            else:
-                normalized_answers.append(answer)
-        dummy_answers = normalized_answers
-    dspy.configure(lm=DummyLM(dummy_answers))
-    signature = dspy.Signature(f"{', '.join(input_keys)} -> {', '.join(output_keys)}")
-    program = dspy.ChainOfThought(signature) if args.module == "cot" else dspy.Predict(signature)
-    scores: list[float] = []
-    for row in rows:
-        prediction = program(**{key: row[key] for key in input_keys})
-        row_scores = [1.0 if getattr(prediction, key, None) == row[key] else 0.0 for key in output_keys]
-        scores.append(sum(row_scores) / len(row_scores))
-    program_score = sum(scores) / len(scores) if scores else 0.0
-    baseline_score = float(args.baseline_score)
-    tolerance = float(args.tolerance)
-    delta = program_score - baseline_score
-    emit({
-        "schema_version": "understudy.dspy_parity.v1",
-        "parity": delta >= -tolerance,
-        "program_score": program_score,
-        "baseline_score": baseline_score,
-        "delta": delta,
-        "tolerance": tolerance,
-        "n": len(rows),
-        "provider_calls": False,
-    })
 
 
 def normalize_gateway_url(value: str) -> str:
@@ -612,29 +480,6 @@ def gepa_smoke(args: argparse.Namespace) -> None:
 def main() -> None:
     parser = argparse.ArgumentParser()
     sub = parser.add_subparsers(dest="command", required=True)
-
-    rubric = sub.add_parser("rubric-score")
-    rubric.add_argument("--rubric", required=True)
-    rubric.add_argument("--output-text", required=True)
-    rubric.add_argument("--judge-verdict", required=True)
-    rubric.set_defaults(func=rubric_score)
-
-    scaffold = sub.add_parser("dspy-scaffold")
-    scaffold.add_argument("--samples", required=True)
-    scaffold.add_argument("--input-keys", required=True)
-    scaffold.add_argument("--output-keys", required=True)
-    scaffold.add_argument("--module", default="predict")
-    scaffold.set_defaults(func=dspy_scaffold)
-
-    parity = sub.add_parser("dspy-parity")
-    parity.add_argument("--samples", required=True)
-    parity.add_argument("--input-keys", required=True)
-    parity.add_argument("--output-keys", required=True)
-    parity.add_argument("--baseline-score", required=True)
-    parity.add_argument("--tolerance", default="0.05")
-    parity.add_argument("--module", default="predict")
-    parity.add_argument("--dummy-answers", default=None)
-    parity.set_defaults(func=dspy_parity)
 
     gepa = sub.add_parser("gepa-smoke")
     gepa.add_argument("--repo", required=True)

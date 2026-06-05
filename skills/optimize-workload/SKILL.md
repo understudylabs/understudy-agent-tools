@@ -20,14 +20,13 @@ Default to the cheapest path that still reaches an optimization outcome — not 
 zero spend (a skipped improvement has real opportunity cost). Get the
 developer's explicit approval before any upload, hosted run, or provider spend.
 
-Do not upload source files, prompts, traces, outputs, datasets, repo paths,
-private notes, provider keys, or secrets unless the developer explicitly
-approves that exact action in the current thread.
-
 Do not run live provider calls, hosted jobs, model downloads, uploads,
 benchmark submissions, or training without a named surface, capped spend or
 download size, exact data class, reviewed dry-run or local plan, and visible
-output path under `.understudy/`.
+output path under `.understudy/`. Follow the repo public boundary in
+[`../../docs/privacy-and-data-boundaries.md`](../../docs/privacy-and-data-boundaries.md)
+for prompts, completions, traces, labels, datasets, repo paths, secrets, and
+private notes.
 
 ## Refusal Gate
 
@@ -93,11 +92,12 @@ validator kinds in [`reference.md`](reference.md):
    runtime. The CLI owns a registry-backed adapter wrapper:
    `optimize-workload adapter run --adapter <name> ... --execute`.
    `eval-input-gepa` runs upstream GEPA locally without provider calls unless a
-   model-backed path is explicitly selected. `dspy gepa --execute` resolves the
-   Understudy API key, passes it to the child process through environment only,
-   and runs train/dev rows through the gateway. GEPA's edge is natural-language
-   feedback: the metric must return a diagnosis of *why* each failing row failed
-   and what to change, not a bare score — bland feedback wastes the optimizer.
+   model-backed path is explicitly selected. `adapter run --adapter dspy-gepa
+   --execute` resolves the Understudy API key, passes it to the child process
+   through environment only, and runs train/dev rows through the gateway. GEPA's
+   edge is natural-language feedback: the metric must return a diagnosis of
+   *why* each failing row failed and what to change, not a bare score — bland
+   feedback wastes the optimizer.
 5. Keep deterministic work in the TypeScript CLI and this skill's templates. Follow
    [`../../docs/optimize-workload-contract.md`](../../docs/optimize-workload-contract.md)
    for adapter, metric feedback, and claim packet details.

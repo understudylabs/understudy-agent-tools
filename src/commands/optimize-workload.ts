@@ -3,12 +3,8 @@ import { readFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 
 import {
-  parityCheckDspyProgram,
   printGateResult,
-  runDspyGepaAdapter,
   runOptimizerAdapter,
-  scaffoldDspyProgram,
-  scoreRubricWithUv,
   optimizeWorkloadCheck,
   writeDryRunProofPacket,
   writeUvGepaRunScaffold,
@@ -109,117 +105,6 @@ export function registerOptimizeWorkloadCommand(program: Command): void {
       );
       process.exitCode = 1;
     });
-
-  const rubric = optimizeWorkload.command("rubric").description("Run local rubric reward helpers through uv");
-  rubric
-    .command("score")
-    .description("Score text against a rubric using an injected judge verdict")
-    .requiredOption("--repo <path>", "Repository to use for local uv runtime")
-    .requiredOption("--rubric <path>", "Rubric JSON with criteria")
-    .requiredOption("--output-text <text>", "Output text to score")
-    .option("--judge-verdict <text>", "Injected judge verdict; no provider calls are made")
-    .action((options: { repo: string; rubric: string; outputText: string; judgeVerdict?: string }) => {
-      const result = scoreRubricWithUv(options);
-      printJson(result.json ?? result);
-      if (result.exit_code !== 0) {
-        process.exitCode = 1;
-      }
-    });
-
-  const dspy = optimizeWorkload.command("dspy").description("Scaffold and parity-check DSPy programs through uv");
-  dspy
-    .command("scaffold")
-    .description("Create a DSPy signature/program scaffold summary from local samples")
-    .requiredOption("--repo <path>", "Repository to use for local uv runtime")
-    .requiredOption("--samples <path>", "JSON samples as an array or { rows: [...] }")
-    .requiredOption("--input-keys <keys>", "Comma-separated input keys")
-    .requiredOption("--output-keys <keys>", "Comma-separated output keys")
-    .option("--module <name>", "predict or cot", "predict")
-    .action((options: { repo: string; samples: string; inputKeys: string; outputKeys: string; module?: string }) => {
-      const result = scaffoldDspyProgram({
-        ...options,
-        inputKeys: splitKeys(options.inputKeys) ?? [],
-        outputKeys: splitKeys(options.outputKeys) ?? [],
-      });
-      printJson(result.json ?? result);
-      if (result.exit_code !== 0) {
-        process.exitCode = 1;
-      }
-    });
-  dspy
-    .command("parity")
-    .description("Run a DSPy DummyLM parity check before GEPA")
-    .requiredOption("--repo <path>", "Repository to use for local uv runtime")
-    .requiredOption("--samples <path>", "JSON samples as an array or { rows: [...] }")
-    .requiredOption("--input-keys <keys>", "Comma-separated input keys")
-    .requiredOption("--output-keys <keys>", "Comma-separated output keys")
-    .requiredOption("--baseline-score <number>", "Incumbent baseline score")
-    .option("--dummy-answers <json>", "Optional JSON list of DummyLM answers")
-    .option("--tolerance <number>", "Allowed score delta below baseline", "0.05")
-    .option("--module <name>", "predict or cot", "predict")
-    .action(
-      (options: {
-        repo: string;
-        samples: string;
-        inputKeys: string;
-        outputKeys: string;
-        baselineScore: string;
-        dummyAnswers?: string;
-        tolerance?: string;
-        module?: string;
-      }) => {
-        const result = parityCheckDspyProgram({
-          ...options,
-          inputKeys: splitKeys(options.inputKeys) ?? [],
-          outputKeys: splitKeys(options.outputKeys) ?? [],
-        });
-        printJson(result.json ?? result);
-        if (result.exit_code !== 0 || (result.json as { parity?: boolean } | null)?.parity === false) {
-          process.exitCode = 1;
-        }
-      },
-    );
-  dspy
-    .command("gepa")
-    .description("Run a DSPy GEPA adapter with Understudy gateway inference")
-    .requiredOption("--repo <path>", "Repository to use for local uv runtime")
-    .requiredOption("--samples <path>", "JSON samples as an array or { rows: [...] }")
-    .requiredOption("--input-keys <keys>", "Comma-separated input keys")
-    .requiredOption("--output-keys <keys>", "Comma-separated output keys")
-    .requiredOption("--model <name>", "Understudy gateway deployment/model name")
-    .option("--module <name>", "predict or cot", "predict")
-    .option("--max-metric-calls <number>", "GEPA metric-call budget", "3")
-    .option("--split-key <field>", "Sample split field", "split")
-    .option("--train-split <value>", "Train split value", "train")
-    .option("--dev-split <value>", "Dev split value", "dev")
-    .option("--max-tokens <number>", "Per-call max token cap", "256")
-    .option("--execute", "After explicit approval, use Understudy inference and run GEPA")
-    .action(
-      (options: {
-        repo: string;
-        samples: string;
-        inputKeys: string;
-        outputKeys: string;
-        model: string;
-        module?: string;
-        maxMetricCalls?: string;
-        splitKey?: string;
-        trainSplit?: string;
-        devSplit?: string;
-        maxTokens?: string;
-        execute?: boolean;
-      }) => {
-        const result = runDspyGepaAdapter({
-          ...options,
-          inputKeys: splitKeys(options.inputKeys) ?? [],
-          outputKeys: splitKeys(options.outputKeys) ?? [],
-        });
-        printJson(result.json ?? result);
-        if (result.attempted === false || (result.exit_code !== undefined && result.exit_code !== 0)) {
-          process.exitCode = 1;
-        }
-      },
-    );
 
   const adapter = optimizeWorkload.command("adapter").description("Run registry-backed optimizer adapters through uv");
   adapter
