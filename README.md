@@ -43,7 +43,7 @@ node dist/bin.js --help
 After package publication:
 
 ```bash
-npm install -g @understudylabs/agent-tools
+npm install -g @understudylabs/understudy-agent-tools
 understudy-tools spine
 ```
 
@@ -60,6 +60,40 @@ understudy-tools doctor
 
 `spine` prints the public workflow and points agents at
 `skills/understudy/SKILL.md`.
+
+## First Auth Journey
+
+The first hosted journey is intentionally narrow:
+
+```bash
+understudy-tools login --email you@company.com
+understudy-tools status --json
+understudy-tools projects list --json
+understudy-tools keys list --json
+understudy-tools run -- npm run your-local-script
+```
+
+`login --email` uses the Understudy email-code registration flow. It stores the
+returned `sk_*` in `~/.understudy/credentials.json` with mode `600` and writes a
+repo-local `.understudy/config.json` when the platform returns a default
+project. `run` injects `UNDERSTUDY_API_KEY` and `UNDERSTUDY_GATEWAY_URL` only
+into the child process; do not copy secrets into repo files or chat output.
+
+If the coding agent has an approved native email connector, it may complete the
+email-code prompt by reading the fresh Understudy sign-in email directly. The
+agent should search only for the current login email, use the code once, and not
+print the code or retain it in artifacts.
+
+For agent-led onboarding, run:
+
+```bash
+understudy-tools setup
+```
+
+Then ask the coding agent to convert the current repo to Understudy or add a
+thin GEPA/DSPy optimizer. The installed onboarding skill starts by checking
+`understudy-tools status --json` and stops with a clear login instruction if
+the user is not authenticated.
 
 ## Skill Rule
 
@@ -104,6 +138,13 @@ The TypeScript CLI currently owns the public tools surface:
 spine
 skills
 doctor
+login
+status
+projects
+keys
+setup
+setup-code
+run
 validate-and-optimize
 ```
 

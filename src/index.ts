@@ -15,6 +15,15 @@ import {
 import { buildWorkloadCard, previewCaptureImport, scanCaptureImport } from "./capture-import.js";
 import { planRouteDecision } from "./route-decision.js";
 import { buildValueReport } from "./value-report.js";
+import { registerKeysCommand } from "./commands/keys.js";
+import { registerCompanionCommand } from "./commands/companion.js";
+import { registerLoginCommand } from "./commands/login.js";
+import { registerLogoutCommand } from "./commands/logout.js";
+import { registerProjectsCommand } from "./commands/projects.js";
+import { registerRunCommand } from "./commands/run.js";
+import { registerSetupCodeCommand } from "./commands/setup-code.js";
+import { registerSetupCommand } from "./commands/setup.js";
+import { registerStatusCommand } from "./commands/status.js";
 
 export const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 
@@ -150,6 +159,10 @@ function printJson(payload: unknown): void {
   console.log(JSON.stringify(payload, null, 2));
 }
 
+function commandJsonEnabled(program: Command, options: { json?: boolean }): boolean {
+  return options.json === true || program.optsWithGlobals<{ json?: boolean }>().json === true;
+}
+
 function parsePositiveInteger(value: string): number {
   const parsed = Number.parseInt(value, 10);
   if (!Number.isFinite(parsed) || parsed < 1) {
@@ -178,7 +191,7 @@ function registerCaptureImportCommands(program: Command): void {
     .option("--json", "Output JSON")
     .action((options: { repo: string; json?: boolean }) => {
       const manifest = scanCaptureImport(options.repo);
-      if (options.json) {
+      if (commandJsonEnabled(program, options)) {
         console.log(JSON.stringify(manifest, null, 2));
         return;
       }
@@ -196,7 +209,7 @@ function registerCaptureImportCommands(program: Command): void {
     .option("--json", "Output JSON")
     .action((options: { repo: string; sourceId: string; limit: number; json?: boolean }) => {
       const preview = previewCaptureImport(options.repo, options.sourceId, options.limit);
-      if (options.json) {
+      if (commandJsonEnabled(program, options)) {
         console.log(JSON.stringify(preview, null, 2));
         return;
       }
@@ -212,7 +225,7 @@ function registerCaptureImportCommands(program: Command): void {
     .option("--json", "Output JSON")
     .action((options: { repo: string; json?: boolean }) => {
       const card = buildWorkloadCard(options.repo);
-      if (options.json) {
+      if (commandJsonEnabled(program, options)) {
         console.log(JSON.stringify(card, null, 2));
         return;
       }
@@ -234,7 +247,7 @@ function registerRouteDecisionCommands(program: Command): void {
     .option("--json", "Output JSON")
     .action((options: { workloadCard: string; output?: string; json?: boolean }) => {
       const { packet, outputPath } = planRouteDecision(options.workloadCard, options.output);
-      if (options.json) {
+      if (commandJsonEnabled(program, options)) {
         printJson(packet);
         return;
       }
@@ -301,7 +314,8 @@ export function buildProgram(): Command {
   program
     .name("understudy-tools")
     .description("Public Understudy agent tools and skill-library CLI")
-    .version(readPackageVersion());
+    .version(readPackageVersion())
+    .option("--json", "Emit machine-readable JSON when supported");
 
   program.command("spine").description("Print the public MVP workflow spine").action(printSpine);
 
@@ -317,6 +331,16 @@ export function buildProgram(): Command {
   });
 
   program.command("doctor").description("Run local repository diagnostics").option("--json", "Output JSON").action(printDoctorJson);
+
+  registerLoginCommand(program);
+  registerLogoutCommand(program);
+  registerStatusCommand(program);
+  registerKeysCommand(program);
+  registerProjectsCommand(program);
+  registerSetupCommand(program);
+  registerSetupCodeCommand(program);
+  registerRunCommand(program);
+  registerCompanionCommand(program);
 
   const understand = program.command("understand").description("Run local-only workload understanding commands");
   understand

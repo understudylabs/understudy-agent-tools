@@ -20,6 +20,30 @@ developer already has, create auditable local artifacts, and only cross into
 upload, hosted execution, provider spend, or model downloads after explicit
 approval in the current thread.
 
+## First Hosted Journey
+
+If the developer asks for Understudy inference, gateway routing, project/key
+management, hosted execution, or an authenticated cookbook, use the CLI-owned
+auth path:
+
+```bash
+understudy-tools login --email <developer-email>
+understudy-tools status --json
+understudy-tools projects list --json
+understudy-tools keys list --json
+understudy-tools run -- <local command>
+```
+
+`login --email` performs the email-code registration flow and stores credentials
+outside the repo. `status --json` is the machine-readable readiness check.
+`run` injects `UNDERSTUDY_API_KEY` and `UNDERSTUDY_GATEWAY_URL` only into the
+child process. Never read, print, paste, or hand-write the `sk_*` value.
+
+If the current agent has an approved native email connector, it may reduce
+signup friction by searching narrowly for the fresh Understudy sign-in email,
+reading the one-time code, and entering it into the waiting CLI prompt. Do not
+print the code, store it in artifacts, or search unrelated mail.
+
 ## Safety Gates
 
 Default to the cheapest path that still reaches an optimization outcome — not to
@@ -32,6 +56,8 @@ approves that exact action in the current thread.
 
 Do not ask the developer to register, authenticate, paste secrets, or configure
 provider keys before the local evidence loop has identified a concrete need.
+When that concrete need exists, route through `understudy-tools login --email`
+instead of asking for a pasted key.
 
 Public examples must use synthetic fixtures, local `.understudy/` artifacts, or
 user-provided local files. Do not include customer names, private domains, raw
