@@ -327,7 +327,7 @@ async function resolveCompanionPath(noDownload: boolean): Promise<string> {
   if (installed) return installed;
 
   if (noDownload) {
-    throw new Error("Companion app is not installed. Run `understudy-tools companion open` without --offline.");
+    throw new Error("Companion app is not installed. Run `understudy companion open` without --offline.");
   }
 
   return downloadCompanion();

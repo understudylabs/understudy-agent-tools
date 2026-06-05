@@ -47,7 +47,7 @@ After package publication:
 
 ```bash
 npm install -g @understudylabs/understudy-agent-tools
-understudy-tools spine
+understudy spine
 ```
 
 No provider calls, uploads, model downloads, secret-value inspection, hosted
@@ -56,9 +56,9 @@ jobs, or telemetry run by default.
 ## First Commands
 
 ```bash
-understudy-tools spine
-understudy-tools skills --list
-understudy-tools doctor
+understudy spine
+understudy skills --list
+understudy doctor
 ```
 
 `spine` prints the public workflow and points agents at
@@ -69,11 +69,11 @@ understudy-tools doctor
 The first hosted journey is intentionally narrow:
 
 ```bash
-understudy-tools login --email you@company.com
-understudy-tools status --json
-understudy-tools projects list --json
-understudy-tools keys list --json
-understudy-tools run -- npm run your-local-script
+understudy login --email you@company.com
+understudy status --json
+understudy projects list --json
+understudy keys list --json
+understudy run -- npm run your-local-script
 ```
 
 `login --email` uses the Understudy email-code registration flow. It stores the
@@ -90,12 +90,12 @@ print the code or retain it in artifacts.
 For agent-led onboarding, run:
 
 ```bash
-understudy-tools setup
+understudy setup
 ```
 
 Then ask the coding agent to convert the current repo to Understudy or add a
 thin GEPA/DSPy optimizer. The installed onboarding skill starts by checking
-`understudy-tools status --json` and stops with a clear login instruction if
+`understudy status --json` and stops with a clear login instruction if
 the user is not authenticated.
 
 ## Cookbook Examples
@@ -184,7 +184,7 @@ For GEPA/DSPy work, the CLI stays as the guide and gate surface while Python is
 used only for small local optimizer environments:
 
 ```bash
-understudy-tools optimize-workload --uv
+understudy optimize-workload --uv
 uv venv .understudy/venvs/optimize
 uv pip install --python .understudy/venvs/optimize/bin/python 'gepa>=0.0.27,<0.1' 'dspy>=3.0.0'
 ```

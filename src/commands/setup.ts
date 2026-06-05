@@ -37,7 +37,7 @@ interface SetupOpts {
 }
 
 /**
- * `understudy-tools setup` — install the agent-onboarding skill into the user's
+ * `understudy setup` — install the agent-onboarding skill into the user's
  * coding-agent skill directory.
  *
  * Today this targets Claude Code only (`.claude/skills/<name>/SKILL.md`
@@ -48,7 +48,7 @@ interface SetupOpts {
  *
  * The skill content (master task + per-target recipes) is shipped
  * inside the CLI at `dist/skills/` (copied from repo-root `skills/`
- * by the build script). This means a user who just installed `understudy-tools` via
+ * by the build script). This means a user who just installed `understudy` via
  * curl or npm has the latest skill content embedded — no separate
  * download, no network dependency at install time.
  */
@@ -154,7 +154,7 @@ async function runSetup(cmd: Command, opts: SetupOpts): Promise<void> {
  *     doesn't (developer ran `setup` straight against `src/` via tsx
  *     without rebuilding), fall back to the repo-root `skills/`.
  *
- * The fallback is what makes `understudy-tools setup` work for *contributors* before
+ * The fallback is what makes `understudy setup` work for *contributors* before
  * they remember to run `pnpm run build`. End users only ever hit the
  * first path.
  */

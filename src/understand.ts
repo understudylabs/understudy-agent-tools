@@ -103,7 +103,7 @@ type WorkloadCard = {
   approval_gates: string[];
   discovery: {
     check_artifact: string;
-    generated_from: "understudy-tools understand check";
+    generated_from: "understudy understand check";
     signals: UnderstandCheck["signals"];
   };
 };
@@ -367,7 +367,7 @@ export function runUnderstandWorkloadCard(repoInput: string): WorkloadCard {
     approval_gates: approvalGates,
     discovery: {
       check_artifact: check.artifacts.check,
-      generated_from: "understudy-tools understand check",
+      generated_from: "understudy understand check",
       signals: check.signals,
     },
   };

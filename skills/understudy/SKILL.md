@@ -32,7 +32,7 @@ approves that exact action in the current thread.
 
 Do not ask the developer to register, authenticate, paste secrets, or configure
 provider keys before the local evidence loop has identified a concrete need.
-When that concrete need exists, route through `understudy-tools login --email`
+When that concrete need exists, route through `understudy login --email`
 instead of asking for a pasted key.
 
 Public examples must use synthetic fixtures, local `.understudy/` artifacts, or

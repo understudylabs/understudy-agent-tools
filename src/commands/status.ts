@@ -7,7 +7,7 @@ import { isJsonMode } from "../internal/output.js";
 import { trackStatusChecked } from "../internal/telemetry.js";
 
 /**
- * `understudy-tools status` — print active org, project, key suffix, and
+ * `understudy status` — print active org, project, key suffix, and
  * gateway URL. Reads local config only; performs no I/O beyond the
  * filesystem. Safe to use on any machine, including fresh ones with
  * no config (prints a clear "not signed in" message and exits 0).
@@ -69,12 +69,12 @@ export function runStatus(json = false): 0 | 1 {
     trackStatusChecked({ configured: false, signedIn: false });
     if (json) {
       process.stdout.write(
-        `${JSON.stringify({ ok: true, configured: false, signed_in: false, hint: "Run `understudy-tools login`." })}\n`,
+        `${JSON.stringify({ ok: true, configured: false, signed_in: false, hint: "Run `understudy login`." })}\n`,
       );
       return 0;
     }
     process.stdout.write(
-      `${kleur.yellow("not signed in")} — run ${kleur.bold("understudy-tools login")} to sign in or register.\n`,
+      `${kleur.yellow("not signed in")} — run ${kleur.bold("understudy login")} to sign in or register.\n`,
     );
     return 0;
   }

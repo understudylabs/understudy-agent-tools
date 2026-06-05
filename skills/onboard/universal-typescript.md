@@ -76,7 +76,7 @@ If unsure which shape applies, look at what method the code calls:
 
 Whatever the client sends as its main API key — `apiKey`, `api_key`,
 `Authorization: Bearer ...`, `x-api-key: ...` — change the source to
-`process.env.UNDERSTUDY_API_KEY` (the `sk_*` stored by `understudy-tools login`).
+`process.env.UNDERSTUDY_API_KEY` (the `sk_*` stored by `understudy login`).
 
 If the client requires a non-empty string at construction time and you
 want a graceful fallback when `UNDERSTUDY_API_KEY` is unset, use

@@ -34,7 +34,7 @@ future Python-native ports from `understudy-agent`.
 Use `uv` when possible:
 
 ```bash
-understudy-tools optimize-workload --uv
+understudy optimize-workload --uv
 uv venv .understudy/venvs/optimize
 uv pip install --python .understudy/venvs/optimize/bin/python 'gepa>=0.0.27,<0.1' 'dspy>=3.0.0'
 ```
@@ -124,13 +124,13 @@ packages and executes the selected adapter.
 Future TypeScript commands should follow this behavior:
 
 ```bash
-understudy-tools optimize-workload dry-run --repo .
-understudy-tools optimize-workload run --repo . --budget-usd 10
-understudy-tools optimize-workload rubric score --repo . --rubric rubric.json --output-text "..."
-understudy-tools optimize-workload dspy scaffold --repo . --samples samples.json --input-keys question --output-keys answer
-understudy-tools optimize-workload dspy parity --repo . --samples samples.json --input-keys question --output-keys answer --baseline-score 1.0
-understudy-tools optimize-workload dspy gepa --repo . --samples samples.json --input-keys question --output-keys answer --model gpt-4o-mini --execute
-understudy-tools optimize-workload adapter run --repo . --adapter eval-input-gepa --manifest eval-input-manifest.json --execute
+understudy optimize-workload dry-run --repo .
+understudy optimize-workload run --repo . --budget-usd 10
+understudy optimize-workload rubric score --repo . --rubric rubric.json --output-text "..."
+understudy optimize-workload dspy scaffold --repo . --samples samples.json --input-keys question --output-keys answer
+understudy optimize-workload dspy parity --repo . --samples samples.json --input-keys question --output-keys answer --baseline-score 1.0
+understudy optimize-workload dspy gepa --repo . --samples samples.json --input-keys question --output-keys answer --model gpt-4o-mini --execute
+understudy optimize-workload adapter run --repo . --adapter eval-input-gepa --manifest eval-input-manifest.json --execute
 ```
 
 Required behavior:

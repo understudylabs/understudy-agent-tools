@@ -4,7 +4,7 @@
   "description": "Public Understudy agent tools CLI and skill library.",
   "type": "module",
   "bin": {
-    "understudy-tools": "dist/bin.js"
+    "understudy": "dist/bin.js"
   },
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",

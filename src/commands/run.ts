@@ -26,7 +26,7 @@ interface RunOpts {
 }
 
 /**
- * `understudy-tools run -- <command>` — run an arbitrary child command with the
+ * `understudy run -- <command>` — run an arbitrary child command with the
  * authenticated Understudy key injected into that process only.
  *
  * This is the agent-first bridge: skills can execute local inference
@@ -39,7 +39,7 @@ export function registerRunCommand(program: Command): void {
     .description("Run a command with the authenticated Understudy API key injected.")
     .allowUnknownOption(true)
     .option("--companion", "Show the local companion while the command runs.")
-    .argument("<command...>", "Command to run after --, for example: understudy-tools run -- npm run gepa")
+    .argument("<command...>", "Command to run after --, for example: understudy run -- npm run gepa")
     .action(async function (this: Command, command: string[], opts: RunOpts) {
       await runAction(this, () => runWithUnderstudyEnv(command, opts, isJsonMode(this)));
     });
@@ -53,7 +53,7 @@ async function runWithUnderstudyEnv(
   const resolved = resolveRunEnv();
   const [bin, ...args] = command;
   if (!bin) {
-    throw new Error("Usage: understudy-tools run -- <command>");
+    throw new Error("Usage: understudy run -- <command>");
   }
 
   const startedAt = Date.now();
@@ -150,7 +150,7 @@ function resolveRunEnv(): ResolvedRunEnv {
   const config = readProjectConfig();
   const credentials = readCredentials();
   if (!credentials) {
-    throw new Error("Not signed in. Run `understudy-tools login` once, then re-run this command.");
+    throw new Error("Not signed in. Run `understudy login` once, then re-run this command.");
   }
 
   const orgCredentials = config ? credentials.orgs[config.org_id] : undefined;
@@ -161,7 +161,7 @@ function resolveRunEnv(): ResolvedRunEnv {
     DEFAULT_GATEWAY_URL;
 
   if (!apiKey) {
-    throw new Error("Not signed in. Run `understudy-tools login` once, then re-run this command.");
+    throw new Error("Not signed in. Run `understudy login` once, then re-run this command.");
   }
 
   return {

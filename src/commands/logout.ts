@@ -8,7 +8,7 @@ import { globalCredentialsPath } from "../config/paths.js";
 import { isJsonMode } from "../internal/output.js";
 
 /**
- * `understudy-tools logout` — clear local credentials.
+ * `understudy logout` — clear local credentials.
  *
  * Default behavior removes `~/.understudy/credentials.json` entirely
  * (logs out of every org). `--org <id>` clears just one org's entry

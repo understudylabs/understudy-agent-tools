@@ -2,7 +2,7 @@
 
 The first public shape is deliberately small and local-first:
 
-1. `understudy-tools spine` tells agents where to start.
+1. `understudy spine` tells agents where to start.
 2. `skills/understudy/SKILL.md` routes by intent.
 3. Specialist skills point to cookbook examples and thin CLI shortcuts.
 4. Vendor shims are explicit and licensed.
@@ -30,15 +30,15 @@ capture evidence -> attach harness/environment
 
 Registration is not a hard gate, but it is the **default path for inference**.
 Optimization and evaluation always need a model, so by default the lanes use
-**Understudy inference** — run `understudy-tools login --email <email>` — and fall back to the
+**Understudy inference** — run `understudy login --email <email>` — and fall back to the
 developer's own provider keys if they'd rather not register. Everything else in
 the OSS loop (Workload Card, baseline rerun plan, validation plan, optimization
 plan, and conservative Value Report) stays reachable without an account; once a
 team wants credits, projects, gateway routing, or hosted execution, the
-`understudy-tools login/status/projects/keys/run` path is the front door.
+`understudy login/status/projects/keys/run` path is the front door.
 
 The gateway endpoint is configuration, never hardcoded in the public package:
-`UNDERSTUDY_GATEWAY_URL` (set by `understudy-tools login` / env) supplies it.
+`UNDERSTUDY_GATEWAY_URL` (set by `understudy login` / env) supplies it.
 Understudy routing needs both the credential and that base; either missing
 falls back to the developer's provider keys if the developer chooses BYO.
 

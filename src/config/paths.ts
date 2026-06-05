@@ -35,7 +35,7 @@ export const GLOBAL_COMPANION_STATE_FILE = "companion.json";
  *
  * This is the same pattern as `package.json` / `.git` lookup — the CLI
  * should "just work" from any subdirectory of a repo that's been
- * signed in with `understudy-tools login`.
+ * signed in with `understudy login`.
  */
 export function findProjectRoot(startDir: string = process.cwd()): string {
   let current = resolve(startDir);

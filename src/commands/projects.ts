@@ -37,7 +37,7 @@ interface OrgOpt {
 }
 
 /**
- * `understudy-tools projects [list|create|switch|delete]` — project CRUD against the
+ * `understudy projects [list|create|switch|delete]` — project CRUD against the
  * admin API at `/admin/v1/orgs/:org_id/projects`.
  *
  * Org is resolved from `~/.understudy/credentials.json`. If multiple
@@ -111,7 +111,7 @@ async function runList(cmd: Command, opts: OrgOpt): Promise<void> {
 
   if (res.data.projects.length === 0) {
     process.stdout.write(
-      `${kleur.gray("No projects in this org.")} Run ${kleur.cyan("understudy-tools projects create <slug>")} to create one.\n`,
+      `${kleur.gray("No projects in this org.")} Run ${kleur.cyan("understudy projects create <slug>")} to create one.\n`,
     );
     return;
   }
@@ -214,7 +214,7 @@ async function runSwitch(
 
   if (!found) {
     throw new Error(
-      `No project with slug "${slug}" in org ${auth.orgId}. Run \`understudy-tools projects list\` to see what's available.`,
+      `No project with slug "${slug}" in org ${auth.orgId}. Run \`understudy projects list\` to see what's available.`,
     );
   }
 

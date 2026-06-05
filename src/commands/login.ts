@@ -122,7 +122,7 @@ async function runLogin(opts: LoginOpts, json: boolean): Promise<void> {
   }
 
   throw new Error(
-    "Run `understudy-tools login --email <email>` to sign in with an email code.",
+    "Run `understudy login --email <email>` to sign in with an email code.",
   );
 }
 
@@ -132,7 +132,7 @@ function runManualLogin(
 ): AgentClaimResponse {
   if (!opts.apiKey || !opts.org || !opts.project) {
     throw new Error(
-      "Manual login requires --api-key, --org, and --project. For normal sign-in, run `understudy-tools login` with no flags.",
+      "Manual login requires --api-key, --org, and --project. For normal sign-in, run `understudy login` with no flags.",
     );
   }
   if (!opts.apiKey.startsWith("sk_")) {

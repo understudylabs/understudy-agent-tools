@@ -139,7 +139,7 @@ export function resolveAuth(orgId?: string): ResolvedAuth {
     const chosen = credentials ? resolveOrgId(credentials, orgId) : orgId;
     if (!chosen) {
       throw new Error(
-        "UNDERSTUDY_API_KEY is set, but no org is configured. Pass --org or run `understudy-tools login` in this repo.",
+        "UNDERSTUDY_API_KEY is set, but no org is configured. Pass --org or run `understudy login` in this repo.",
       );
     }
     return {
@@ -152,7 +152,7 @@ export function resolveAuth(orgId?: string): ResolvedAuth {
 
   if (!credentials) {
     throw new Error(
-      "No Understudy credentials found. Run `understudy-tools login` to create ~/.understudy/credentials.json.",
+      "No Understudy credentials found. Run `understudy login` to create ~/.understudy/credentials.json.",
     );
   }
 
@@ -183,14 +183,14 @@ function resolveOrgId(
   const orgs = Object.keys(credentials.orgs);
   if (orgs.length === 0 && !orgId) {
     throw new Error(
-      "Credentials file exists but contains no orgs. Run `understudy-tools login` to add one.",
+      "Credentials file exists but contains no orgs. Run `understudy login` to add one.",
     );
   }
 
   if (orgId) {
     if (orgs.length > 0 && !credentials.orgs[orgId]) {
       throw new Error(
-        `No credentials for org_id=${orgId} in ~/.understudy/credentials.json. Run \`understudy-tools login\` to sign in to this org.`,
+        `No credentials for org_id=${orgId} in ~/.understudy/credentials.json. Run \`understudy login\` to sign in to this org.`,
       );
     }
     return orgId;
@@ -203,7 +203,7 @@ function resolveOrgId(
       `Multiple orgs in credentials (${orgs.join(", ")}). Pass --org to disambiguate.`,
     );
   }
-  throw new Error("No Understudy org configured. Run `understudy-tools login`.");
+  throw new Error("No Understudy org configured. Run `understudy login`.");
 }
 
 /**

@@ -7,8 +7,8 @@ without provider calls.
 Run from this repo:
 
 ```sh
-understudy-tools capture-evidence check --repo cookbook/capture-evidence-node
-understudy-tools capture-evidence workload-card --repo cookbook/capture-evidence-node
+understudy capture-evidence check --repo cookbook/capture-evidence-node
+understudy capture-evidence workload-card --repo cookbook/capture-evidence-node
 ```
 
 Expected artifacts:

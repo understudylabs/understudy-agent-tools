@@ -117,8 +117,8 @@ approval-gated next step. This is the same gate `claim.json` enforces.
 
 Optimization may need inference, but the public tools repo must not inspect
 secret values or run provider calls without explicit approval. Use
-`understudy-tools login --email <developer-email>` plus
-`understudy-tools run -- <local command>` for the Understudy inference path, or
+`understudy login --email <developer-email>` plus
+`understudy run -- <local command>` for the Understudy inference path, or
 record BYO provider-key readiness only as redacted presence/source metadata.
 Keep the selected provider, model, budget, and data class in the local run
 artifact before any live call.

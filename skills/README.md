@@ -21,7 +21,7 @@ execution; skills tell the agent what to inspect, gate, monitor, and report.
   packets, and requires `claim.json` before public claims. (Evaluate, optimize,
   and decide folded into its [`reference.md`](optimize-workload/reference.md).)
 - [`use-understudy-gateway`](use-understudy-gateway/SKILL.md) handles
-  authenticated gateway inference, project/key readiness, `understudy-tools
+  authenticated gateway inference, project/key readiness, `understudy
   run`, and monitored durable CLI execution.
 - [`prepare-verifier-handoff`](prepare-verifier-handoff/SKILL.md) is a
   future-release stub for stateful RL verifier/environment handoffs. It does not

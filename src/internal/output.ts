@@ -72,7 +72,7 @@ export async function runAction(
 
 /**
  * Emit either JSON or a human-readable line. Convenience for commands
- * that need to print a small fixed payload (e.g. `understudy-tools logout` -> `{ ok }`).
+ * that need to print a small fixed payload (e.g. `understudy logout` -> `{ ok }`).
  */
 export function emitResult(
   cmd: Command,

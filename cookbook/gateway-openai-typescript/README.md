@@ -7,12 +7,12 @@ call.
 Use the gateway capability first:
 
 ```sh
-understudy-tools status --json
-understudy-tools login --email you@example.com
-understudy-tools run -- npm run your-local-script
+understudy status --json
+understudy login --email you@example.com
+understudy run -- npm run your-local-script
 ```
 
-Inside the child process, `understudy-tools run` injects
+Inside the child process, `understudy run` injects
 `UNDERSTUDY_API_KEY` and `UNDERSTUDY_GATEWAY_URL`. The application keeps its
 own upstream provider key in its existing environment variable.
 

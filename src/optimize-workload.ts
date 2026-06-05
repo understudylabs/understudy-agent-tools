@@ -565,7 +565,7 @@ function resolveOptimizerAuth(repo: string): OptimizerAuth {
 
   const credentials = readCredentials();
   if (!credentials) {
-    throw new Error("Not signed in. Run `understudy-tools login` once, then re-run this command.");
+    throw new Error("Not signed in. Run `understudy login` once, then re-run this command.");
   }
   const config = readProjectConfig(repo);
   const orgCredentials = config ? credentials.orgs[config.org_id] : undefined;
@@ -574,7 +574,7 @@ function resolveOptimizerAuth(repo: string): OptimizerAuth {
   const apiKey = entry?.api_key ?? credentials.api_key;
   const gatewayUrl = entry?.gateway_url ?? credentials.gateway_url ?? DEFAULT_GATEWAY_URL;
   if (!apiKey) {
-    throw new Error("Not signed in. Run `understudy-tools login` once, then re-run this command.");
+    throw new Error("Not signed in. Run `understudy login` once, then re-run this command.");
   }
   return { apiKey, gatewayUrl, source: "stored" };
 }

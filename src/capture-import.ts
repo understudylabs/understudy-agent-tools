@@ -113,7 +113,7 @@ export type WorkloadCard = {
   approval_gates: string[];
   discovery: {
     generated_at: string;
-    generated_from: "understudy-tools capture-import scan";
+    generated_from: "understudy capture-import scan";
     repo: string;
     source_count: number;
     source_kinds: Record<CaptureSourceKind, number>;
@@ -290,7 +290,7 @@ export function buildWorkloadCard(repoInput: string, now = new Date()): Workload
     ],
     discovery: {
       generated_at: now.toISOString(),
-      generated_from: "understudy-tools capture-import scan",
+      generated_from: "understudy capture-import scan",
       repo,
       source_count: manifest.source_count,
       source_kinds,

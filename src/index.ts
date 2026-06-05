@@ -282,7 +282,7 @@ function registerDeferredRuntimeCommand(program: Command, name: string, descript
 export function buildProgram(): Command {
   const program = new Command();
   program
-    .name("understudy-tools")
+    .name("understudy")
     .description("Public Understudy agent tools and skill-library CLI")
     .version(readPackageVersion())
     .option("--json", "Emit machine-readable JSON when supported");

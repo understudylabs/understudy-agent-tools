@@ -7,10 +7,10 @@ provider calls.
 Run from this repo after building the CLI:
 
 ```sh
-understudy-tools optimize-workload check \
+understudy optimize-workload check \
   --repo cookbook/optimize-eval-input-gepa
 
-understudy-tools optimize-workload adapter run \
+understudy optimize-workload adapter run \
   --repo cookbook/optimize-eval-input-gepa \
   --adapter eval-input-gepa \
   --manifest cookbook/optimize-eval-input-gepa/eval-input-manifest.json \

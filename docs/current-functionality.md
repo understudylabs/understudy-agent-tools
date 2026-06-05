@@ -22,26 +22,26 @@ for:
 The TypeScript CLI currently executes:
 
 ```bash
-understudy-tools spine
-understudy-tools skills --list
-understudy-tools skills --inspect understudy
-understudy-tools doctor
-understudy-tools capture-import scan --repo .
-understudy-tools capture-import preview --repo . --limit 10
-understudy-tools capture-import workload-card --repo .
-understudy-tools capture-evidence check --repo .
-understudy-tools capture-evidence workload-card --repo .
-understudy-tools route-decision plan --workload-card .understudy/workload-discovery/workload-card.json
-understudy-tools optimize-workload --uv
-understudy-tools optimize-workload check --repo .
-understudy-tools optimize-workload dry-run --repo .
-understudy-tools optimize-workload rubric score --repo . --rubric rubric.json --output-text "..."
-understudy-tools optimize-workload dspy scaffold --repo . --samples samples.json --input-keys question --output-keys answer
-understudy-tools optimize-workload dspy parity --repo . --samples samples.json --input-keys question --output-keys answer --baseline-score 1.0
-understudy-tools optimize-workload dspy gepa --repo . --samples samples.json --input-keys question --output-keys answer --model gpt-4o-mini --execute
-understudy-tools optimize-workload adapter run --repo . --adapter eval-input-gepa --manifest eval-input-manifest.json --execute
-understudy-tools optimize-workload run --repo . --backend uv-gepa --execute
-understudy-tools value report --workload-card .understudy/workload-discovery/workload-card.json --route-decision .understudy/route-decision/route-decision-packet.json --requests-per-month 10000
+understudy spine
+understudy skills --list
+understudy skills --inspect understudy
+understudy doctor
+understudy capture-import scan --repo .
+understudy capture-import preview --repo . --limit 10
+understudy capture-import workload-card --repo .
+understudy capture-evidence check --repo .
+understudy capture-evidence workload-card --repo .
+understudy route-decision plan --workload-card .understudy/workload-discovery/workload-card.json
+understudy optimize-workload --uv
+understudy optimize-workload check --repo .
+understudy optimize-workload dry-run --repo .
+understudy optimize-workload rubric score --repo . --rubric rubric.json --output-text "..."
+understudy optimize-workload dspy scaffold --repo . --samples samples.json --input-keys question --output-keys answer
+understudy optimize-workload dspy parity --repo . --samples samples.json --input-keys question --output-keys answer --baseline-score 1.0
+understudy optimize-workload dspy gepa --repo . --samples samples.json --input-keys question --output-keys answer --model gpt-4o-mini --execute
+understudy optimize-workload adapter run --repo . --adapter eval-input-gepa --manifest eval-input-manifest.json --execute
+understudy optimize-workload run --repo . --backend uv-gepa --execute
+understudy value report --workload-card .understudy/workload-discovery/workload-card.json --route-decision .understudy/route-decision/route-decision-packet.json --requests-per-month 10000
 ```
 
 The Node package validates itself with:

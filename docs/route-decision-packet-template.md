@@ -42,7 +42,7 @@ existing-key, hosted open-weight, frontier, or Understudy route.
       "external_prior_only": true
     }
   ],
-  "recommended_next_command": "understudy-tools optimize-workload check --repo .",
+  "recommended_next_command": "understudy optimize-workload check --repo .",
   "approval_required_before": [
     "live model calls",
     "model downloads",

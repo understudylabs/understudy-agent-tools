@@ -36,7 +36,7 @@ interface OrgOpt {
 }
 
 /**
- * `understudy-tools keys [list|create|revoke <id>]` — org-level API key management
+ * `understudy keys [list|create|revoke <id>]` — org-level API key management
  * against the admin API at `/admin/v1/orgs/:org_id/api_keys`.
  *
  * `keys create` prints the new sk_* value exactly once on success.
@@ -102,7 +102,7 @@ async function runList(cmd: Command, opts: OrgOpt): Promise<void> {
 
   if (res.data.keys.length === 0) {
     process.stdout.write(
-      `${kleur.gray("No API keys in this org.")} Run ${kleur.cyan("understudy-tools keys create")} to mint one.\n`,
+      `${kleur.gray("No API keys in this org.")} Run ${kleur.cyan("understudy keys create")} to mint one.\n`,
     );
     return;
   }

@@ -23,7 +23,7 @@ management, hosted execution, or an authenticated cookbook.
 Do not ask the developer to paste an API key. Use the CLI registration flow and
 let the CLI store credentials outside the repo.
 
-Do not print, commit, or write `sk_*` values into artifacts. `understudy-tools
+Do not print, commit, or write `sk_*` values into artifacts. `understudy
 run` injects `UNDERSTUDY_API_KEY` and `UNDERSTUDY_GATEWAY_URL` only into the
 child process environment.
 
@@ -32,7 +32,7 @@ developer approving the exact command, data class, and spend or download bound.
 
 ## Resolve CLI
 
-Prefer the installed `understudy-tools` binary. If it is unavailable inside a
+Prefer the installed `understudy` binary. If it is unavailable inside a
 repo checkout, run through the package script:
 
 ```sh
@@ -45,13 +45,13 @@ node dist/bin.js status --json
 1. Check whether auth is already configured:
 
    ```sh
-   understudy-tools status --json
+   understudy status --json
    ```
 
 2. If not signed in, run the email-code flow:
 
    ```sh
-   understudy-tools login --email <developer-email>
+   understudy login --email <developer-email>
    ```
 
    If the current agent has an approved native email connector, it may search
@@ -61,14 +61,14 @@ node dist/bin.js status --json
 3. Confirm project/key readiness:
 
    ```sh
-   understudy-tools projects list --json
-   understudy-tools keys list --json
+   understudy projects list --json
+   understudy keys list --json
    ```
 
 4. Run the local command through the gateway wrapper only after approval:
 
    ```sh
-   understudy-tools run -- <local command>
+   understudy run -- <local command>
    ```
 
 5. Monitor the command output and local artifacts. For optimization work, route

@@ -231,7 +231,7 @@ function withOptimizerFixtureRepo(fn) {
   }
 }
 
-describe("understudy-tools CLI", () => {
+describe("understudy CLI", () => {
   it("prints the public spine", () => {
     const result = run(["spine"]);
     assert.equal(result.status, 0, result.stderr);
@@ -318,7 +318,7 @@ describe("understudy-tools CLI", () => {
       assert.deepEqual(payload.readiness.pricing_sources_checked, []);
       assert.equal(payload.candidate_routes[0].kind, "local");
       assert.equal(payload.candidate_routes[0].approval_required, false);
-      assert.match(payload.recommended_next_command, /understudy-tools optimize-workload check/);
+      assert.match(payload.recommended_next_command, /understudy optimize-workload check/);
       const saved = JSON.parse(readFileSync(join(repo, ".understudy", "route-decision", "route-decision-packet.json"), "utf8"));
       assert.equal(saved.schema_version, "understudy.route_decision_packet.v1");
     }));

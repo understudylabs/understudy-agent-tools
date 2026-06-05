@@ -49,7 +49,7 @@ const IGNORE_DIRS = new Set([
 const MAX_FILES = 2000;
 
 /**
- * `understudy-tools setup-code` — detect an Anthropic or OpenAI SDK init in the
+ * `understudy setup-code` — detect an Anthropic or OpenAI SDK init in the
  * user's codebase and patch it to route through the Understudy gateway.
  *
  * Limitations (documented in `--help`):
@@ -458,7 +458,7 @@ function buildReplacement(det: Detection): string {
     }
     existing = existing.trim();
     if (linesToEmit.length === 0) {
-      // Fully idempotent — second `understudy-tools setup-code` against an already-
+      // Fully idempotent — second `understudy setup-code` against an already-
       // patched site touches nothing.
       return `new ${ctor}({ ${existing} })`;
     }

@@ -19,9 +19,9 @@ env var — the patch *depends* on it.
 <<EXECUTION_MODE>>
 
 - **The CLI owns auth.** The skill does not register users, mint keys, or read
-  `~/.understudy/credentials.json` directly. Use `understudy-tools status --json` to decide
+  `~/.understudy/credentials.json` directly. Use `understudy status --json` to decide
   whether the user is signed in. If not signed in, stop and print exactly:
-  `Run 'understudy-tools login' once, then re-run me.`
+  `Run 'understudy login' once, then re-run me.`
 - **Secrets are transient.** If a script needs an Understudy key, load it via
   the authenticated CLI/runtime path or require `UNDERSTUDY_API_KEY` in the
   process environment. Do not paste the `sk_*` into source, `.env.example`,
@@ -32,35 +32,35 @@ env var — the patch *depends* on it.
 - **One SDK, one language per run.** If the repo has both Anthropic and
   OpenAI calls, ask the user which one to convert first and stop until they
   answer. Do not convert both in the same run.
-- **Use the `understudy-tools` CLI for every stateful operation.** Auth, org/project
-  binding, key access, and code patching all go through `understudy-tools`. Do not write
+- **Use the `understudy` CLI for every stateful operation.** Auth, org/project
+  binding, key access, and code patching all go through `understudy`. Do not write
   to `.understudy/config.json` or `~/.understudy/credentials.json` by hand,
   and do not call the gateway API directly to mint keys.
 - **Make project binding automatic.** After auth, use the project already
-  written by `understudy-tools login`. If the repo is not bound yet, reuse the user's first
-  existing project from `understudy-tools projects list --json`; if there are no projects,
+  written by `understudy login`. If the repo is not bound yet, reuse the user's first
+  existing project from `understudy projects list --json`; if there are no projects,
   create and switch to `rehearsal`. Do not interrupt the user for project
   choice in the MVP flow.
 - **Project identity lives in `.understudy/config.json`, not env vars.**
-  `understudy-tools login` writes this file when the platform returns a default project;
-  `understudy-tools projects switch <slug>` updates it later. Do not introduce
+  `understudy login` writes this file when the platform returns a default project;
+  `understudy projects switch <slug>` updates it later. Do not introduce
   `UNDERSTUDY_PROJECT_ID` as a required env var when the config file already
   carries the value.
 - **The app must still run when `UNDERSTUDY_API_KEY` is unset.** Fail soft
   with a clear error from the SDK, not from your patched init code. The user
   will set the key later.
-- **Abort if the user is not authenticated.** `understudy-tools login` starts
+- **Abort if the user is not authenticated.** `understudy login` starts
   email-code auth and may require a human/code handoff unless an approved native
-  email connector is available. If `understudy-tools status --json` reports not logged in, stop and
-  print exactly: `Run 'understudy-tools login' once, then re-run me.` Do not try to script
+  email connector is available. If `understudy status --json` reports not logged in, stop and
+  print exactly: `Run 'understudy login' once, then re-run me.` Do not try to script
   around it.
-- **Don't guess CLI flags.** Run `understudy-tools --help` or `understudy-tools <subcommand> --help` if
+- **Don't guess CLI flags.** Run `understudy --help` or `understudy <subcommand> --help` if
   you're unsure. The CLI is the source of truth, not your prior knowledge.
 - **Don't add evals, scorers, or extra instrumentation** unless the user
   explicitly asked for them. This task is "route traffic through the
   gateway," not "build an observability platform."
 - **If the project is already onboarded, don't duplicate work.** If
-  `.understudy/config.json` exists and `understudy-tools status --json` reports a project
+  `.understudy/config.json` exists and `understudy status --json` reports a project
   bound and a key present, jump to the verification step.
 
 ## Execution Requirements
@@ -77,29 +77,29 @@ Before you touch any file:
 
 ### 1. Verify CLI presence and authentication
 
-Confirm the `understudy-tools` CLI is on PATH:
+Confirm the `understudy` CLI is on PATH:
 
 ```bash
-command -v understudy-tools >/dev/null 2>&1 && understudy-tools --version || echo "understudy-tools CLI not installed"
+command -v understudy >/dev/null 2>&1 && understudy --version || echo "understudy CLI not installed"
 ```
 
-If `understudy-tools` is missing, instruct the user to install it
+If `understudy` is missing, instruct the user to install it
 (`npm install -g @understudylabs/understudy-agent-tools`) and stop.
 
 Then check auth state via the machine-readable status:
 
 ```bash
-understudy-tools status --json
+understudy status --json
 ```
 
 If the JSON reports `signed_in: false` (or the equivalent error), print
-the exact line `Run 'understudy-tools login' once, then re-run me.` and stop. Do not retry
+the exact line `Run 'understudy login' once, then re-run me.` and stop. Do not retry
 in a loop.
 
 If the user asks you to complete login and you have an approved native email
-connector, you may run `understudy-tools login --email <developer-email>`, wait
+connector, you may run `understudy login --email <developer-email>`, wait
 for the one-time-code prompt, search only for the fresh Understudy sign-in
-email, enter the code, and continue with `understudy-tools status --json`.
+email, enter the code, and continue with `understudy status --json`.
 Do not print the code or save it anywhere.
 
 If the user's request is a cookbook task rather than a gateway conversion,
@@ -169,32 +169,32 @@ Stop and ask only if:
 ### 3. Bind the repo to a project
 
 If `.understudy/config.json` already exists at the repo root and
-`understudy-tools status --json` reports a project, skip to step 4. The repo is already
+`understudy status --json` reports a project, skip to step 4. The repo is already
 bound.
 
 Otherwise, list the projects available in the user's active org:
 
 ```bash
-understudy-tools projects list --json
+understudy projects list --json
 ```
 
 If the response contains one or more non-deleted projects, take the first
 project's `slug` and run:
 
 ```bash
-understudy-tools projects switch <slug> --json
+understudy projects switch <slug> --json
 ```
 
 If the response contains no projects, create the default onboarding project
 and bind the repo to it:
 
 ```bash
-understudy-tools projects create rehearsal --name "Rehearsal" --json
-understudy-tools projects switch rehearsal --json
+understudy projects create rehearsal --name "Rehearsal" --json
+understudy projects switch rehearsal --json
 ```
 
-If multiple orgs are available and no `--org` is set, `understudy-tools projects list`,
-`understudy-tools projects create`, or `understudy-tools projects switch` will exit with a clear error
+If multiple orgs are available and no `--org` is set, `understudy projects list`,
+`understudy projects create`, or `understudy projects switch` will exit with a clear error
 listing org IDs. Surface that error verbatim and ask which org to use before
 retrying with `--org <id>`.
 
@@ -216,7 +216,7 @@ moving on. They should see exactly which lines you changed.
 
 After patching, the runtime needs two env vars:
 
-- `UNDERSTUDY_API_KEY` — the `sk_*` key that `understudy-tools login` stored. The patched
+- `UNDERSTUDY_API_KEY` — the `sk_*` key that `understudy login` stored. The patched
   client sends this as its primary auth header.
 - The user's existing upstream provider env var (`ANTHROPIC_API_KEY` or
   `OPENAI_API_KEY`) — **stays as-is**. The patched client reads it and
@@ -254,7 +254,7 @@ diagnose in this order:
   `OPENAI_API_KEY`) actually set in the shell the app runs in? The patched
   code reads it and forwards it as `x-understudy-upstream-key`. Empty value
   → gateway has no upstream to call → 400.
-- Is `UNDERSTUDY_API_KEY` set, and does it match `understudy-tools status --json`? A
+- Is `UNDERSTUDY_API_KEY` set, and does it match `understudy status --json`? A
   stale or missing `sk_*` returns 401.
 - Is `baseURL` correct for the SDK? The Anthropic SDK expects
   `$UNDERSTUDY_GATEWAY_URL` (no trailing `/v1` — the SDK appends
@@ -285,5 +285,5 @@ Tell the user, in plain prose:
 - App-level instrumentation (function-level spans, custom metadata) beyond
   what the gateway sees on the wire is future work. Do **not** install any
   client-side SDK as part of this run.
-- For anything else, point them at `understudy-tools --help` and `understudy-tools <subcommand>
+- For anything else, point them at `understudy --help` and `understudy <subcommand>
   --help`. The CLI is the source of truth.

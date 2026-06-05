@@ -99,12 +99,12 @@ export function buildValueReport(options: ValueReportOptions): { report: JsonObj
   const workloadCard = loadJson(
     workloadCardPath,
     "Workload Card",
-    "Run `understudy-tools understand workload-card --repo .` first.",
+    "Run `understudy understand workload-card --repo .` first.",
   );
   const routeDecision = loadJson(
     routeDecisionPath,
     "Route Decision Packet",
-    "Run `understudy-tools route-decision plan --workload-card .understudy/workload-discovery/workload-card.json` first.",
+    "Run `understudy route-decision plan --workload-card .understudy/workload-discovery/workload-card.json` first.",
   );
 
   if (workloadCard.schema_version !== "understudy.workload_card.v1") {
@@ -227,7 +227,7 @@ export function buildValueReport(options: ValueReportOptions): { report: JsonObj
       "public savings claims",
     ],
     caveats,
-    recommended_next_command: "understudy-tools optimize-workload check --repo .",
+    recommended_next_command: "understudy optimize-workload check --repo .",
   };
 
   const outputPath = resolve(options.output ?? defaultOutputPath(workloadCardPath));

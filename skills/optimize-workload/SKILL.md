@@ -71,8 +71,8 @@ validator kinds in [`reference.md`](reference.md):
 - **Models** — student = a cheap candidate; `reflection_lm` = a strong frontier
   model (optional, but a weak one caps quality). **Inference defaults to
   Understudy** after explicit approval:
-  `understudy-tools login --email <developer-email>`, then
-  `understudy-tools run -- <local command>`. Fall back to the developer's own
+  `understudy login --email <developer-email>`, then
+  `understudy run -- <local command>`. Fall back to the developer's own
   provider keys only if they choose BYO. See reference.md → Inference.
 - **Verifier boundary** — optimize the offline validator only; RL
   verifiers/environments are a later rung, out of scope here.
@@ -124,8 +124,8 @@ proxy-only validation.
 Use the CLI guide before creating a local optimizer env:
 
 ```bash
-understudy-tools optimize-workload --uv
-understudy-tools optimize-workload adapter run --repo . --adapter eval-input-gepa --manifest eval-input-manifest.json --execute
+understudy optimize-workload --uv
+understudy optimize-workload adapter run --repo . --adapter eval-input-gepa --manifest eval-input-manifest.json --execute
 ```
 
 If approved, keep Python isolated under ignored local runtime state:
