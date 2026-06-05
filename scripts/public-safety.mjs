@@ -42,8 +42,12 @@ export const rawPayloadPatterns = [
 ];
 
 export const productionUrlPatterns = [
-  /https:\/\/(?:api|app|admin|dashboard)\.understudy(?:labs)?\./,
+  /https:\/\/(?:api|app|admin|dashboard)\.understudy(?:labs)?\.com\b/,
 ];
+
+export const allowedProductionUrls = new Set([
+  "https://api.understudylabs.com",
+]);
 
 export const textExtensions = new Set([
   ".json",
@@ -85,8 +89,11 @@ export function validatePublicText(path, { privateLabel = "private review term" 
     }
   }
   for (const pattern of productionUrlPatterns) {
-    if (pattern.test(text)) {
-      errors.push(`${path}: contains production/control-plane URL matching ${pattern.source}`);
+    for (const match of text.matchAll(new RegExp(pattern.source, pattern.flags.includes("g") ? pattern.flags : `${pattern.flags}g`))) {
+      const url = match[0].replace(/\/+$/, "");
+      if (!allowedProductionUrls.has(url)) {
+        errors.push(`${path}: contains production/control-plane URL matching ${pattern.source}`);
+      }
     }
   }
   return errors;

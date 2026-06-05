@@ -1,4 +1,4 @@
-export const DEFAULT_GATEWAY_URL = ["https://api", "understudylabs", "com"].join(".");
+export const DEFAULT_GATEWAY_URL = "https://api.understudylabs.com";
 
 export const CLI_NAME = "understudy-tools";
 export const REPO_SLUG = "understudylabs/understudy-agent-tools";
