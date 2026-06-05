@@ -1,183 +1,91 @@
 ---
 name: understudy
-description: Use when a developer asks to use Understudy, reduce AI cost or latency, evaluate or optimize an AI workload, prepare training data, run local/open models, set up capture or proxying, inspect model options, or run a first demo. Route to the narrow specialist skill before running commands.
+description: Use when a developer asks Understudy to understand, evaluate, validate, or optimize an AI workload. This MVP router only chooses between workload understanding and validation/optimization.
 metadata:
   understudy:
     mode: automatic
-    safety: value-first
+    safety: local-first
     cli_required: false
 ---
 
 # Understudy
 
-Use this as the public entrypoint for Understudy. The job is to help the
-developer reach measured value quickly: lower cost, lower latency, equal or
-better quality, cleaner evals, or a credible next experiment.
+Use this as the public MVP entrypoint for Understudy. It is only an
+orchestrator: identify the developer's current stage, then load exactly one
+worker skill.
 
-Local-first means start from the user's machine and artifacts. It does not mean
-"only run cost-free checks." If value is likely, guide the developer toward the
-fastest reasonable path: reuse existing provider keys, use an Understudy API key,
-download a public model, run a local MLX/Ollama smoke, or route through a local
-proxy. Ask for approval only at the boundary where spend, upload, or hosted
-execution begins.
-
-Do not use this skill as a full runbook. Route to the narrow specialist skill,
-then follow that skill's CLI, value, and safety instructions.
-
-## Resolve CLI
-
-Do not resolve the CLI in this router unless setup status is the user's actual
-request.
-
-When a routed specialist skill requires the CLI, open and read
-[`../_resources/cli-bootstrap.md`](../_resources/cli-bootstrap.md), then define
-the `run_understudy` shell function from that shared resource.
-
-If `run_understudy` returns 127, route to
-[`../understudy-bootstrap/SKILL.md`](../understudy-bootstrap/SKILL.md). Do not
-stop at "CLI unavailable" if a local install or bootstrap path can move the user
-forward.
-
-## Operating Posture
-
-Optimize for useful evidence, not ritual caution.
-
-- Prefer the user's real workload over synthetic demos when they have one.
-- Prefer an existing eval suite, trace store, prompt set, dataset, or app route
-  over creating a toy benchmark.
-- Prefer local replay and local models when they can answer the economic
-  question quickly.
-- Prefer existing API keys when the user already has them and approves a capped
-  run.
-- Prefer Understudy inference when it saves integration time, provides better
-  routing evidence, or avoids bespoke provider glue.
-- Prefer public open models such as Gemma/Qwen/Llama-class candidates when a
-  download or local smoke can expose a real cost or latency opportunity.
-
-Be concrete about value:
-
-- current route, model, latency, cost/request, and failure rate;
-- candidate route or model;
-- expected savings or speedup hypothesis;
-- quality gate and sample size;
-- next command and approval boundary.
+The OSS loop is local-first and does not require registration, auth, provider
+keys, an Understudy account, or hosted gateway access. Start from files the
+developer already has, create auditable local artifacts, and only cross into
+upload, hosted execution, provider spend, or model downloads after explicit
+approval in the current thread.
 
 ## Safety Gates
 
-Default storage is local. Never upload source files, prompts, traces, outputs,
-datasets, repo paths, private notes, provider keys, or secrets unless the
-developer explicitly approves that exact action in the current thread.
+Default to local-only, no-upload, no-spend work.
 
-Provider keys and Understudy API keys are useful tools, not automatic
-permission. Before live calls, hosted jobs, model downloads, uploads, benchmark
-submission, or training, require:
+Do not upload source files, prompts, traces, outputs, datasets, repo paths,
+private notes, provider keys, or secrets unless the developer explicitly
+approves that exact action in the current thread.
 
-- named provider, model, registry, or hosted surface;
-- estimated or capped spend, or estimated download size;
-- exact artifact or data class being sent or downloaded;
-- reviewed dry-run, preview, or local plan when available;
-- visible output path under `.understudy/`.
+Do not ask the developer to register, authenticate, paste secrets, or configure
+provider keys before the local evidence loop has identified a concrete need.
 
-Do not ask the user to paste secrets into chat. Inspect configured key presence
-only through redacted local status checks.
+Public examples must use synthetic fixtures, local `.understudy/` artifacts, or
+user-provided local files. Do not include customer names, private domains, raw
+prompts, raw completions, private traces, secrets, internal runbooks, or hosted
+control-plane details in public skill output.
 
-Keep public examples synthetic or user-provided. Do not include customer names,
-domains, private runbooks, raw prompts, raw completions, secrets, or internal
-hosted-control details in public skill output.
+## Route
 
-## Intake
+Route to one worker:
 
-1. Identify the economic target: cost, latency, quality, reliability,
-   portability, local privacy, or training handoff.
-2. Identify the real workload source: app route, prompt, trace store, eval rows,
-   logs, dataset, report, model comparison, or existing benchmark.
-3. Identify current and candidate routes: incumbent model/provider, existing
-   API keys, Understudy key, local runner, public model, or managed provider.
-4. Ask at most one clarifying question when the next action is ambiguous.
-5. Route to the smallest specialist skill that can create useful evidence.
+- If the workload is not yet pinned down, the harness is stale or missing, the
+  scoring metric is ambiguous, split boundaries are not frozen, or the
+  incumbent baseline has not been rerun, read
+  [`../understand-workload/SKILL.md`](../understand-workload/SKILL.md).
+- If fresh workload artifacts already exist and the developer wants to validate,
+  improve, optimize, compare candidates, or claim readiness, read
+  [`../validate-and-optimize/SKILL.md`](../validate-and-optimize/SKILL.md).
 
-## Flow
+When in doubt, route to `understand-workload`. Optimization without a current
+harness, metric, split contract, and incumbent baseline creates false progress.
 
-Route by value path:
+## MVP Artifact Contract
 
-- Find opportunities in a local repo, scan code for AI workloads, or choose
-  what to evaluate first: read
-  [`../understudy-workload-discovery/SKILL.md`](../understudy-workload-discovery/SKILL.md).
-- Existing AI calls, trace stores, eval fixtures, prompt files, logs, datasets,
-  JSONL/CSV, or benchmark artifacts that need import triage: read
-  [`../understudy-capture-import/SKILL.md`](../understudy-capture-import/SKILL.md).
-- "Show me quickly," first-run proof, or no workload yet: read
-  [`../understudy-demo/SKILL.md`](../understudy-demo/SKILL.md).
-- Existing prompts, traces, eval rows, reports, datasets, or candidate
-  comparison: read
-  [`../understudy-evaluate/SKILL.md`](../understudy-evaluate/SKILL.md).
-- Slow AI workflows, inference latency, provider queueing, retries, streaming,
-  or context-size bottlenecks: read
-  [`../understudy-latency-triage/SKILL.md`](../understudy-latency-triage/SKILL.md).
-- JSON, schema, parser, tool-call, formatting, or output-contract failures:
-  read [`../understudy-output-control/SKILL.md`](../understudy-output-control/SKILL.md).
-- Qualitative candidate-vs-incumbent comparison, stakeholder review, or blind
-  A/B packets: read
-  [`../understudy-blind-review/SKILL.md`](../understudy-blind-review/SKILL.md).
-- Reduce cost or latency after a measured baseline, or improve quality,
-  parsing, routing, prompts, or reliability: read
-  [`../understudy-optimize/SKILL.md`](../understudy-optimize/SKILL.md).
-- MLX, Apple Silicon, Ollama, llama.cpp, public local models, model downloads,
-  quantization, memory fit, or local inference latency: read
-  [`../understudy-local-models/SKILL.md`](../understudy-local-models/SKILL.md).
-- Model availability, tokenizer/context/tool-call/logprob compatibility, or
-  local-vs-remote candidate choice: read
-  [`../understudy-model-lookup/SKILL.md`](../understudy-model-lookup/SKILL.md).
-- Local OpenAI-compatible proxy, app routing, trace capture, or replay through a
-  local endpoint: read
-  [`../understudy-local-proxy/SKILL.md`](../understudy-local-proxy/SKILL.md).
-- Provider key, Understudy API key, redacted credential status, or spend-ready
-  setup: read
-  [`../understudy-provider-keys/SKILL.md`](../understudy-provider-keys/SKILL.md).
-- Provider integration strategy, partner cookbooks, route methodology, or which
-  provider lane fits a Workload Card: read
-  [`../understudy-provider-integrations/SKILL.md`](../understudy-provider-integrations/SKILL.md).
-- SFT, preference data, RL trajectories, adapters, LoRA, or hosted training
-  handoff: read [`../understudy-train/SKILL.md`](../understudy-train/SKILL.md).
-- ROI, savings, replacement readiness, or business value reporting from
-  measured evidence: read
-  [`../understudy-value-reporting/SKILL.md`](../understudy-value-reporting/SKILL.md).
-- Promote, hold, rerun, optimize, train, or publish decisions from measured
-  evidence: read
-  [`../understudy-decision-packet/SKILL.md`](../understudy-decision-packet/SKILL.md).
-- Public-safe result summaries, announcements, or shareable writeups: read
-  [`../understudy-publish-results/SKILL.md`](../understudy-publish-results/SKILL.md).
-- Report design, evidence visual hierarchy, or terse analytical prose: read
-  [`../understudy-tufte/SKILL.md`](../understudy-tufte/SKILL.md).
-- Removing generic AI prose or overclaims from public text: read
-  [`../understudy-deslop/SKILL.md`](../understudy-deslop/SKILL.md).
-- Multi-run research, hypotheses, budgets, experiment notes, or stop/go
-  decisions: read [`../understudy-lab/SKILL.md`](../understudy-lab/SKILL.md).
+The public MVP skill tree uses these local artifacts:
 
-If more than one route applies, use this order:
+```text
+.understudy/understand-workload/harness.json
+.understudy/understand-workload/environment.json
+.understudy/understand-workload/metric.json
+.understudy/understand-workload/splits.json
+.understudy/understand-workload/baseline.json
+.understudy/validate-and-optimize/candidate.json
+.understudy/validate-and-optimize/claim.json
+```
 
-1. evaluate the real workload;
-2. try local/public candidate evidence when plausible;
-3. use existing or Understudy API keys for capped live evidence when needed;
-4. optimize only after a baseline;
-5. train only after simpler levers stop moving the measured gate;
-6. report or publish only from labeled evidence with caveats.
+`understand-workload` creates or refreshes the first five artifacts.
+`validate-and-optimize` may only optimize from fresh copies of
+`harness.json`, `metric.json`, `splits.json`, and `baseline.json`.
 
-## Method Contract
+Freshness is hash-bound, not a presence check. `baseline.json` must include
+`harness_sha256`, `metric_sha256`, and `splits_sha256` computed from the
+confirmed artifacts it measured. Any later change to the harness, metric,
+validator, or splits routes back to `understand-workload` for a new incumbent
+baseline.
 
-Use [`../../docs/methodology-framework.md`](../../docs/methodology-framework.md)
-as the public evidence ladder and artifact contract. Do not claim a model,
-route, or training path wins unless the evidence level, sample size, split
-boundary, cost basis, latency basis, and caveats are explicit.
+The old public skills for bootstrap, provider keys, and local proxy remain
+recovery routes when setup is missing. Keep them out of first discovery, but
+route to them if a confirmed harness requires a proxy, a redacted provider-key
+check, or install repair before the baseline can run.
 
 ## Output Standard
 
 End with:
 
-- economic target and current best next route;
-- specialist skill used or recommended;
-- what was inspected or run;
-- artifact paths created or read;
-- result type: demo, dry-run, local smoke, replay, validation, heldout, or live;
-- spend/upload/download approval boundary, if any;
-- one recommended command.
+- worker skill used or recommended;
+- artifacts inspected, created, or still missing;
+- result type: workload-understanding, validation, optimization, or blocked;
+- approval boundary for any upload, spend, hosted execution, or download;
+- one recommended next command or local action.

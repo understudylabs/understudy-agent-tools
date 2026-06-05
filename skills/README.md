@@ -5,9 +5,18 @@ one specialist skill only when the developer's intent requires it.
 
 ## Entry Point
 
-- [`understudy`](understudy/SKILL.md) routes demo, evaluation, optimization,
-  training handoff, lab notes, local proxying, provider keys, model lookup, and
-  local-model readiness.
+- [`understudy`](understudy/SKILL.md) routes the MVP journey to workload
+  understanding or validation/optimization, with legacy setup skills kept as
+  recovery paths when the harness needs them.
+
+## MVP Worker Skills
+
+- [`understand-workload`](understand-workload/SKILL.md) attaches the local
+  harness/environment, confirms the metric and validator, freezes splits, and
+  reruns the incumbent baseline.
+- [`validate-and-optimize`](validate-and-optimize/SKILL.md) refuses stale
+  artifacts, preserves train/dev/holdout boundaries, writes dry-run proof
+  packets, and requires `claim.json` before public claims.
 
 ## Specialist Skills
 

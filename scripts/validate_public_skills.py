@@ -12,6 +12,15 @@ FRONTMATTER = re.compile(r"^---\n(.*?)\n---\n", re.DOTALL)
 KEY = re.compile(r"^([A-Za-z_][A-Za-z0-9_-]*)\s*:\s*(.*)$")
 NAME = re.compile(r"^[a-z0-9-]+$")
 ALLOWED_TOP_LEVEL = {"name", "description", "license", "allowed-tools", "metadata"}
+MVP_PUBLIC_SKILL_NAMES = (
+    "understudy",
+    "understand-workload",
+    "validate-and-optimize",
+)
+MVP_ROUTER_TARGETS = (
+    "../understand-workload/SKILL.md",
+    "../validate-and-optimize/SKILL.md",
+)
 PRIVATE_TERMS = [
     "/Users/luis/",
     "/understudy-agent/",
@@ -52,6 +61,27 @@ RAW_PAYLOAD_PATTERNS = [
 PRODUCTION_URL_PATTERNS = [
     re.compile(r"https://(?:api|app|admin|dashboard)\.understudy(?:labs)?\."),
 ]
+SAVINGS_CLAIM_PATTERNS = [
+    re.compile(r"\bclaim(?:s|ed|ing)?\s+(?:\w+\s+){0,4}savings\b", re.IGNORECASE),
+    re.compile(r"\bsavings\s+claim(?:s|ed|ing)?\b", re.IGNORECASE),
+    re.compile(r"\bguarantee(?:s|d|ing)?\s+(?:\w+\s+){0,4}savings\b", re.IGNORECASE),
+]
+GEPA_HOLDOUT_PATTERNS = [
+    re.compile(
+        r"\bGEPA\b[^.\n]*(?:may|can|should|must|will|use|uses|using|run|runs|running|tune|tunes|tuning)"
+        r"[^.\n]*\bholdout\b",
+        re.IGNORECASE,
+    ),
+    re.compile(
+        r"\bholdout\b[^.\n]*(?:for|with|in|during)[^.\n]*\bGEPA\b",
+        re.IGNORECASE,
+    ),
+    re.compile(
+        r"\bGEPA\b[^.\n]*\b(touch|touches|touching|mutate|mutates|mutating|train|trains|training)"
+        r"[^.\n]*\bholdout\b",
+        re.IGNORECASE,
+    ),
+]
 SCAN_EXTENSIONS = {
     ".json",
     ".jsonl",
@@ -72,6 +102,15 @@ REPO_SCAN_EXCLUDE = {
     Path("tests/test_validate_public_skills.py"),
 }
 PUBLIC_DOC_DIRS = ["docs"]
+
+
+def validate_mvp_public_skill_surface(skills_root: Path = Path("skills")) -> list[str]:
+    errors: list[str] = []
+    for name in MVP_PUBLIC_SKILL_NAMES:
+        skill_md = skills_root / name / "SKILL.md"
+        if not skill_md.exists():
+            errors.append(f"{skill_md}: missing MVP public skill")
+    return errors
 
 
 def parse_frontmatter(text: str) -> tuple[dict[str, str], str] | None:
@@ -145,8 +184,80 @@ def validate_skill(path: Path) -> list[str]:
     for pattern in SECRET_PATTERNS:
         if pattern.search(text):
             errors.append(f"{skill_md}: contains secret-shaped text matching {pattern.pattern}")
+    errors.extend(validate_mvp_skill_contract(path, skill_md, text))
 
     return errors
+
+
+def validate_mvp_skill_contract(path: Path, skill_md: Path, text: str) -> list[str]:
+    errors: list[str] = []
+    name = path.name
+    lower_text = text.lower()
+
+    if name == "understudy":
+        for target in MVP_ROUTER_TARGETS:
+            if target not in text:
+                errors.append(f"{skill_md}: MVP router must link to {target}")
+
+    if name.endswith("optimize") or name == "validate-and-optimize":
+        if not _has_measured_baseline_gate(lower_text):
+            errors.append(f"{skill_md}: optimizer skill must require a measured baseline gate")
+
+    if name == "understand-workload" and _requires_register_auth_before_oss_local_analysis(text):
+        errors.append(f"{skill_md}: must not require register/auth before OSS local analysis")
+
+    if name in MVP_PUBLIC_SKILL_NAMES and _has_savings_claim_without_claim_packet(text):
+        errors.append(f"{skill_md}: savings claims must require a claim packet")
+
+    if _has_unsafe_gepa_holdout_access(text):
+        errors.append(f"{skill_md}: GEPA must not touch holdout data")
+
+    return errors
+
+
+def _has_measured_baseline_gate(lower_text: str) -> bool:
+    gate_words = ("measured", "gate", "before", "required", "require", "do not", "must")
+    for match in re.finditer(r"\bbaseline\b", lower_text):
+        window = lower_text[max(0, match.start() - 160) : match.end() + 280]
+        if any(word in window for word in gate_words):
+            return True
+    return False
+
+
+def _requires_register_auth_before_oss_local_analysis(text: str) -> bool:
+    paragraphs = re.split(r"\n\s*\n", text.lower())
+    for paragraph in paragraphs:
+        has_oss = "oss" in paragraph or "open-source" in paragraph
+        has_local_analysis = "local analysis" in paragraph or "local analyzer" in paragraph
+        has_register_auth = "register" in paragraph and "auth" in paragraph
+        has_boundary = "before" in paragraph or "required" in paragraph or "requires" in paragraph
+        has_negation = "does not require" in paragraph or "do not require" in paragraph
+        if has_oss and has_local_analysis and has_register_auth and has_boundary and not has_negation:
+            return True
+    return False
+
+
+def _has_savings_claim_without_claim_packet(text: str) -> bool:
+    lower_text = text.lower()
+    if "claim packet" in lower_text or "claim.json" in lower_text:
+        return False
+    for pattern in SAVINGS_CLAIM_PATTERNS:
+        for match in pattern.finditer(text):
+            window = text[max(0, match.start() - 80) : match.end()].lower()
+            if any(negation in window for negation in ("do not", "don't", "never", "must not", "cannot")):
+                continue
+            return True
+    return False
+
+
+def _has_unsafe_gepa_holdout_access(text: str) -> bool:
+    for pattern in GEPA_HOLDOUT_PATTERNS:
+        for match in pattern.finditer(text):
+            window = text[max(0, match.start() - 80) : match.end()].lower()
+            if any(negation in window for negation in ("must not", "do not", "never", "cannot", "may not")):
+                continue
+            return True
+    return False
 
 
 def validate_public_text(path: Path) -> list[str]:
@@ -234,6 +345,9 @@ def main() -> int:
             )
 
     all_errors: list[str] = []
+    for root in roots:
+        if root.name == "skills" and root.is_dir():
+            all_errors.extend(validate_mvp_public_skill_surface(root))
     for skill_dir in skill_dirs:
         all_errors.extend(validate_skill(skill_dir))
     for doc_root_arg in args.docs:

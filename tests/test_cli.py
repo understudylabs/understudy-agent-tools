@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 
+from understudy_agent_tools.artifact_contract import canonical_json_sha256
 from understudy_agent_tools.cli import main
 
 
@@ -179,6 +180,8 @@ def test_capture_import_scan_metadata_only(tmp_path, capsys) -> None:
     assert payload["schema_version"] == "understudy.capture_sources.v1"
     assert payload["mode"] == "local-only"
     assert len(payload["sources"]) == 2
+    assert payload["sources"][0]["path"] == "evals.jsonl"
+    assert payload["sources"][0]["preview_supported"] is True
     assert all(source["data_class"] == "metadata-only" for source in payload["sources"])
     assert all(source["approval_required_before_payload_read"] for source in payload["sources"])
 
@@ -320,3 +323,124 @@ def test_capture_import_workload_card_from_preview(tmp_path, capsys) -> None:
     assert "reviewing content-like fields before any export" in card["approval_gates"]
     assert "hashing identifier-like fields before any export" in card["approval_gates"]
     assert "removing secret-like fields before any export" in card["approval_gates"]
+
+
+def write_validate_artifacts(repo, *, stale: bool = False) -> None:
+    artifacts = repo / ".understudy" / "understand-workload"
+    artifacts.mkdir(parents=True)
+    harness = {
+        "schema_version": "understudy.harness.v1",
+        "command": "python -m pytest tests/eval_fixture.py",
+        "validator": "tests/eval_fixture.py::validate",
+    }
+    metric = {
+        "schema_version": "understudy.metric.v1",
+        "primary_metric": "exact_match",
+        "threshold": 0.95,
+    }
+    splits = {
+        "schema_version": "understudy.splits.v1",
+        "train": {"count": 8},
+        "dev": {"count": 2},
+        "holdout": {"count": 2},
+        "holdout_mutation_allowed": False,
+    }
+    baseline = {
+        "schema_version": "understudy.baseline.v1",
+        "command": "python -m pytest tests/eval_fixture.py --incumbent",
+        "split": "dev",
+        "sample_size": 2,
+        "score": 0.5,
+        "harness_sha256": canonical_json_sha256(harness),
+        "metric_sha256": canonical_json_sha256(metric),
+        "splits_sha256": "stale" if stale else canonical_json_sha256(splits),
+    }
+    for name, payload in {
+        "harness": harness,
+        "metric": metric,
+        "splits": splits,
+        "baseline": baseline,
+    }.items():
+        (artifacts / f"{name}.json").write_text(
+            json.dumps(payload, indent=2, sort_keys=True) + "\n",
+            encoding="utf-8",
+        )
+
+
+def write_minimal_workload_card(repo) -> None:
+    card_dir = repo / ".understudy" / "workload-discovery"
+    card_dir.mkdir(parents=True)
+    card = {
+        "schema_version": "understudy.workload_card.v1",
+        "workload_id": "workload-001",
+        "workload_shape": ["classification"],
+        "value_lens": ["quality", "cost"],
+        "data_class": "synthetic-fixture",
+        "evaluation_inputs": ["tests/eval_fixture.jsonl"],
+        "baseline": {
+            "provider": "openai",
+            "model": "gpt-4o-mini",
+            "latency_ms": 250,
+            "cost_usd": 0.01,
+        },
+        "route_requirements": {
+            "privacy_boundary": "local-only until explicit approval",
+            "tool_calling_required": False,
+        },
+        "approval_gates": ["live model calls", "uploads", "hosted jobs"],
+    }
+    (card_dir / "workload-card.json").write_text(
+        json.dumps(card, indent=2, sort_keys=True) + "\n",
+        encoding="utf-8",
+    )
+
+
+def test_validate_and_optimize_blocks_without_required_artifacts(tmp_path, capsys) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+
+    assert main(["validate-and-optimize", "dry-run", "--repo", str(repo)]) == 2
+    out = capsys.readouterr().out
+    assert "blocked: missing or invalid required artifact" in out
+
+    blockers_path = repo / ".understudy" / "validate-and-optimize" / "blockers.json"
+    blockers = json.loads(blockers_path.read_text(encoding="utf-8"))
+    assert blockers["status"] == "blocked"
+    assert {blocker["name"] for blocker in blockers["blockers"]} == {
+        "harness",
+        "metric",
+        "splits",
+        "baseline",
+    }
+
+
+def test_validate_and_optimize_blocks_stale_baseline_hash(tmp_path, capsys) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    write_validate_artifacts(repo, stale=True)
+
+    assert main(["validate-and-optimize", "dry-run", "--repo", str(repo), "--json"]) == 2
+    payload = json.loads(capsys.readouterr().out)
+
+    assert payload["artifact_contract"]["schema_version"] == "understudy.artifact_contract.v1"
+    assert any(blocker["name"] == "splits" for blocker in payload["blockers"])
+    assert any("hash does not match" in blocker["reason"] for blocker in payload["blockers"])
+
+
+def test_validate_and_optimize_writes_proof_packet_for_fresh_artifacts(tmp_path, capsys) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    write_validate_artifacts(repo)
+    write_minimal_workload_card(repo)
+
+    assert main(["validate-and-optimize", "dry-run", "--repo", str(repo)]) == 0
+    out = capsys.readouterr().out
+    assert "GEPA optimizer execution refused" in out
+
+    proof_path = repo / ".understudy" / "validate-and-optimize" / "proof-packet.json"
+    proof = json.loads(proof_path.read_text(encoding="utf-8"))
+    assert proof["status"] == "refused_optimizer_execution"
+    assert proof["artifact_contract"]["baseline_expected_hashes"]["splits"] == proof[
+        "artifact_contract"
+    ]["artifacts"]["splits"]["sha256"]
+    assert proof["optimizer"]["externalized"] is False

@@ -8,6 +8,18 @@ CLI with a large progressive-disclosure skill library: agents start from one
 entrypoint, then reveal only the script, playbook, or vendor shim needed for
 the current job.
 
+The OSS MVP loop is local-first:
+
+```text
+understand workload -> attach harness/environment
+  -> confirm metric/validator/holdout -> rerun baseline
+  -> validate and optimize -> value report
+```
+
+Registration is not required for that loop. `register` and `login` belong to
+the CLI or hosted upsell path when a team wants credits, projects, and gateway
+routing.
+
 ## Shape
 
 One layer per spine:
@@ -72,10 +84,36 @@ workload in source code. `understudy-demo` uses that same journey for first-run
 walkthroughs.
 
 The default sequence is local repo workload discovery first, then a Workload
-Card draft, then a Route Decision Packet and conservative Value Report before
-live evidence. Live calls, uploads, downloads, hosted jobs, or training require
-approval for the provider, budget cap, and data class. The public methodology
-contract is documented in `docs/methodology-framework.md`.
+Card draft, harness/environment attachment, metric/validator/holdout
+confirmation, baseline rerun, validation and optimization, then a Route
+Decision Packet and conservative Value Report. Live calls, uploads, downloads,
+hosted jobs, or training require approval for the provider, budget cap, and
+data class. GEPA uses train/dev only; holdout is reserved for final validation.
+Do not publish savings, latency, quality, or route-superiority claims without a
+claim packet. The public methodology contract is documented in
+`docs/methodology-framework.md`.
+
+The MVP artifact contract is shared across skills, CLI gates, tests, and docs:
+
+```text
+.understudy/understand-workload/harness.json
+.understudy/understand-workload/environment.json
+.understudy/understand-workload/metric.json
+.understudy/understand-workload/splits.json
+.understudy/understand-workload/baseline.json
+.understudy/validate-and-optimize/claim.json
+```
+
+`baseline.json` must carry `harness_sha256`, `metric_sha256`, and
+`splits_sha256` for the exact artifacts used by the incumbent rerun. A later
+change to any of those artifacts makes the baseline stale. `claim.json` must
+cite the same hash-bound contract plus the frozen candidate hash before any
+savings, latency, quality, or route-superiority claim is publishable.
+
+Optimizer and evaluator implementations remain canonical in the Understudy
+runtime. This public CLI should shell out to that runner when it is released;
+until then, it writes dry-run proof packets and refuses live GEPA execution
+instead of porting a second optimizer.
 
 Try the public synthetic journey:
 
@@ -97,6 +135,12 @@ understudy-tools value report --workload-card .understudy/workload-discovery/wor
 ```
 
 Overrides are planning inputs, not public savings claims.
+
+Hosted upsell path, after the local evidence loop shows a reason to continue:
+
+```text
+register/login -> credits/project -> gateway routing
+```
 
 ## Public boundary
 
