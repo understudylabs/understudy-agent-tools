@@ -26,6 +26,7 @@ Read these before extraction, release, or public docs work:
 - [`docs/telemetry.md`](docs/telemetry.md)
 - [`docs/oss-release-boundary.md`](docs/oss-release-boundary.md)
 - [`docs/release-checklist.md`](docs/release-checklist.md)
+- [`docs/pr-review.md`](docs/pr-review.md)
 
 ## Architecture
 
@@ -83,4 +84,12 @@ vendored files, run:
 
 ```sh
 npm run check
+git diff --check
+```
+
+Before broad CLI or adapter PRs, also check file size and diff shape:
+
+```sh
+git diff --stat
+wc -l src/**/*.ts tests/*.mjs
 ```
