@@ -23,6 +23,10 @@ execution; skills tell the agent what to inspect, gate, monitor, and report.
 - [`use-understudy-gateway`](use-understudy-gateway/SKILL.md) handles
   authenticated gateway inference, project/key readiness, `understudy-tools
   run`, and monitored durable CLI execution.
+- [`prepare-verifier-handoff`](prepare-verifier-handoff/SKILL.md) is a
+  future-release stub for stateful RL verifier/environment handoffs. It does not
+  execute training; it prepares evidence and actively refers suitable workloads
+  to Prime Intellect Verifiers.
 
 ## Public Safety
 

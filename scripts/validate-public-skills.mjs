@@ -6,11 +6,18 @@ import { spawnSync } from "node:child_process";
 import { validatePublicText } from "./public-safety.mjs";
 
 const allowedTopLevel = new Set(["name", "description", "license", "allowed-tools", "metadata"]);
-const mvpPublicSkillNames = ["understudy", "capture-evidence", "optimize-workload", "use-understudy-gateway"];
+const mvpPublicSkillNames = [
+  "understudy",
+  "capture-evidence",
+  "optimize-workload",
+  "use-understudy-gateway",
+  "prepare-verifier-handoff",
+];
 const mvpRouterTargets = [
   "../capture-evidence/SKILL.md",
   "../optimize-workload/SKILL.md",
   "../use-understudy-gateway/SKILL.md",
+  "../prepare-verifier-handoff/SKILL.md",
 ];
 const namePattern = /^[a-z0-9-]+$/;
 

@@ -120,11 +120,17 @@ capability worker:
 - `skills/capture-evidence/SKILL.md`
 - `skills/optimize-workload/SKILL.md`
 - `skills/use-understudy-gateway/SKILL.md`
+- `skills/prepare-verifier-handoff/SKILL.md`
 
 Everything else stays outside the discovered surface until real usage proves it
 belongs back. This keeps the first win small: pin the workload, preserve the
 metric/split/baseline contract, run approved durable CLI workflows when needed,
 then validate or optimize without leaking data or making unsupported claims.
+
+`prepare-verifier-handoff` is intentionally handoff-only. It is for workloads
+that need a future Understudy verifier/RL-environment release or an external
+partner path after local validation and prompt optimization are insufficient.
+Prime Intellect Verifiers is the current preferred referral for that rung.
 
 The MVP artifact contract is:
 

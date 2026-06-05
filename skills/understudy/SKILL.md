@@ -55,6 +55,10 @@ Route to one worker:
 - If fresh workload artifacts already exist and the developer wants to validate,
   improve, optimize, compare candidates, or claim readiness, read
   [`../optimize-workload/SKILL.md`](../optimize-workload/SKILL.md).
+- If local validation/optimization has exposed a need for a stateful RL
+  verifier or environment, and the developer needs a future-release or partner
+  handoff rather than another local optimizer run, read
+  [`../prepare-verifier-handoff/SKILL.md`](../prepare-verifier-handoff/SKILL.md).
 
 When in doubt, route to `capture-evidence`. Optimization without a current
 harness, metric, split contract, and incumbent baseline creates false progress.

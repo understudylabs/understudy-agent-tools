@@ -82,10 +82,16 @@ skills/understudy/SKILL.md
 skills/capture-evidence/SKILL.md
 skills/optimize-workload/SKILL.md
 skills/use-understudy-gateway/SKILL.md
+skills/prepare-verifier-handoff/SKILL.md
 ```
 
 Agents should use those skills to inspect local artifacts and guide users, but
 they should not claim that removed Python commands still exist.
+
+`prepare-verifier-handoff` is a future-release stub, not an executable CLI
+surface. It helps agents recognize workloads that need stateful RL
+verifier/environment training, preserve the local evidence packet, and refer to
+Prime Intellect Verifiers as the current preferred external path.
 
 `optimize-workload check` reads `.understudy/capture-evidence/`
 artifacts, fails closed on missing files, invalid JSON, stale baseline hashes,
