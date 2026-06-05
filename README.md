@@ -25,7 +25,6 @@ tools surface.
 | --- | --- | --- |
 | CLI | `src/` | TypeScript command router and stable public interface. |
 | Skills | `skills/` | MVP progressive-disclosure agent playbooks. |
-| Appendix | `appendix/` | Preserved draft skills outside the discovered MVP surface. |
 | Docs | `docs/` | Public methodology and release-boundary notes. |
 | Scripts | `scripts/` | Repo hygiene checks, not product CLI code. |
 | Vendor | `vendor/` | Vendored or mirrored compatibility shims, with license metadata. |
@@ -70,8 +69,8 @@ one worker:
 - `skills/understand-workload/SKILL.md`
 - `skills/validate-and-optimize/SKILL.md`
 
-Everything else remains in `appendix/` until real usage proves it belongs back
-in discovery. This keeps the first win small: pin the workload, preserve the
+Everything else was cut from the discovered surface until real usage proves it
+belongs back. This keeps the first win small: pin the workload, preserve the
 metric/split/baseline contract, then validate or optimize without leaking data
 or making unsupported claims.
 
@@ -125,6 +124,9 @@ uv pip install --python .understudy/venvs/optimize/bin/python 'gepa>=0.0.27,<0.1
 
 That environment is local runtime state. It is not package infrastructure and
 must not be committed.
+
+For the exact before/after functionality ledger, see
+[`docs/current-functionality.md`](docs/current-functionality.md).
 
 ## Public Boundary
 

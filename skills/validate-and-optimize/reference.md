@@ -89,10 +89,8 @@ untrusted task code.
 
 ## Folded steps: evaluate · optimize · decide
 
-These three were folded in from former standalone skills; full originals in
-[`appendix/understudy-evaluate`](../../appendix/understudy-evaluate/SKILL.md),
-[`appendix/understudy-optimize`](../../appendix/understudy-optimize/SKILL.md),
-[`appendix/understudy-decision-packet`](../../appendix/understudy-decision-packet/SKILL.md).
+These steps are now skill-led until TypeScript commands are restored. See
+[`../../docs/current-functionality.md`](../../docs/current-functionality.md).
 
 **Evaluate (measure before changing).** Prefer an existing eval suite / traces /
 app route over a toy fixture; replay locally when it can estimate quality or

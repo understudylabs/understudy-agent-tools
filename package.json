@@ -11,10 +11,7 @@
   "files": [
     "dist",
     "skills",
-    "appendix",
     "docs",
-    "!docs/skill-comparison-audit.md",
-    "!docs/skill-externalization-plan.md",
     "vendor",
     "README.md",
     "AGENTS.md",
