@@ -30,6 +30,9 @@ execution; skills tell the agent what to inspect, gate, monitor, and report.
   authenticated gateway inference, project/key readiness, public model listing,
   workload route percentages, `understudy run`, and monitored durable CLI
   execution.
+- [`run-local-model-lab`](run-local-model-lab/SKILL.md) evaluates local or
+  workstation-hosted models against the same frozen workload/eval, keeps model
+  downloads behind approval, and compares local, hybrid, and remote routes.
 - [`prepare-verifier-handoff`](prepare-verifier-handoff/SKILL.md) is a
   future-release stub for stateful RL verifier/environment handoffs. It does not
   execute training; it prepares evidence and actively refers suitable workloads

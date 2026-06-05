@@ -96,6 +96,10 @@ Identify the developer's current stage and load exactly one:
   gateway trace capture, project/key management, model A/B via route traffic %,
   `understudy run`, or registering an improved route →
   [`../use-understudy-gateway/SKILL.md`](../use-understudy-gateway/SKILL.md).
+- **Local model experiment / local-only route** — evaluate a local or
+  workstation-hosted model through the same frozen workload/eval, choose a
+  runtime, compare local vs remote, or satisfy ZDR / no-upload constraints →
+  [`../run-local-model-lab/SKILL.md`](../run-local-model-lab/SKILL.md).
 - **Single-output optimization** — fresh artifacts exist and the developer wants
   to validate, optimize (GEPA), compare candidates, or claim readiness →
   [`../optimize-workload/SKILL.md`](../optimize-workload/SKILL.md).
