@@ -7,7 +7,6 @@ import { buildWorkloadCard, previewCaptureImport, scanCaptureImport } from "./ca
 import { planRouteDecision } from "./route-decision.js";
 import { buildValueReport } from "./value-report.js";
 import { registerKeysCommand } from "./commands/keys.js";
-import { registerCompanionCommand } from "./commands/companion.js";
 import { registerLoginCommand } from "./commands/login.js";
 import { registerLogoutCommand } from "./commands/logout.js";
 import { registerProjectsCommand } from "./commands/projects.js";
@@ -310,7 +309,6 @@ export function buildProgram(): Command {
   registerSetupCommand(program);
   registerSetupCodeCommand(program);
   registerRunCommand(program);
-  registerCompanionCommand(program);
 
   const understand = program
     .command("capture-evidence")

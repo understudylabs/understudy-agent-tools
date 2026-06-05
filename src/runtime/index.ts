@@ -63,7 +63,7 @@ export function requireUnderstudyEnv(): UnderstudyEnv {
 }
 
 /**
- * Non-throwing companion to `requireUnderstudyEnv`. Writes a single
+ * Non-throwing variant of `requireUnderstudyEnv`. Writes a single
  * warning line to stderr when config is missing or invalid and
  * returns `null`. Intended for app startup to surface configuration
  * issues without crashing.

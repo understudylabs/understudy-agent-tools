@@ -3,7 +3,6 @@ import { spawn } from "node:child_process";
 import { Command } from "commander";
 import kleur from "kleur";
 
-import { launchCompanion } from "./companion.js";
 import { DEFAULT_GATEWAY_URL } from "../config/defaults.js";
 import { readCredentials } from "../config/credentials.js";
 import { readProjectConfig } from "../config/index.js";
@@ -21,10 +20,6 @@ interface ResolvedRunEnv {
   source: "env" | "stored";
 }
 
-interface RunOpts {
-  companion?: boolean;
-}
-
 /**
  * `understudy run -- <command>` — run an arbitrary child command with the
  * authenticated Understudy key injected into that process only.
@@ -38,16 +33,14 @@ export function registerRunCommand(program: Command): void {
     .command("run")
     .description("Run a command with the authenticated Understudy API key injected.")
     .allowUnknownOption(true)
-    .option("--companion", "Show the local companion while the command runs.")
     .argument("<command...>", "Command to run after --, for example: understudy run -- npm run gepa")
-    .action(async function (this: Command, command: string[], opts: RunOpts) {
-      await runAction(this, () => runWithUnderstudyEnv(command, opts, isJsonMode(this)));
+    .action(async function (this: Command, command: string[]) {
+      await runAction(this, () => runWithUnderstudyEnv(command, isJsonMode(this)));
     });
 }
 
 async function runWithUnderstudyEnv(
   command: string[],
-  opts: RunOpts,
   json: boolean,
 ): Promise<void> {
   const resolved = resolveRunEnv();
@@ -84,7 +77,6 @@ async function runWithUnderstudyEnv(
     );
   }
 
-  const companion = opts.companion ? await launchCompanion() : null;
   const child = spawn(bin, args, {
     env: {
       ...process.env,
@@ -94,21 +86,16 @@ async function runWithUnderstudyEnv(
     stdio: "inherit",
   });
 
-  let exitCode: number;
-  try {
-    exitCode = await new Promise<number>((resolvePromise, rejectPromise) => {
-      child.on("error", rejectPromise);
-      child.on("close", (code, signal) => {
-        if (signal) {
-          resolvePromise(1);
-          return;
-        }
-        resolvePromise(code ?? 0);
-      });
+  const exitCode = await new Promise<number>((resolvePromise, rejectPromise) => {
+    child.on("error", rejectPromise);
+    child.on("close", (code, signal) => {
+      if (signal) {
+        resolvePromise(1);
+        return;
+      }
+      resolvePromise(code ?? 0);
     });
-  } finally {
-    companion?.close();
-  }
+  });
 
   if (exitCode !== 0) {
     process.exitCode = exitCode;

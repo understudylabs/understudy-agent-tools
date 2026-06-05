@@ -1,21 +1,48 @@
 # Telemetry
 
-There is no telemetry in this repository today.
+Understudy Agent Tools emits a small authenticated CLI telemetry stream after a
+developer signs in. The goal is to understand whether a developer or coding
+agent reaches useful Understudy inference.
 
-By default, Understudy Agent Tools do not send usage events, prompts,
-completions, traces, source snippets, datasets, repo paths, provider keys, or
-local model metadata to Understudy or any provider.
+No telemetry is sent before credentials exist. Local-only capture, scan, doctor,
+skills, cookbook, and optimizer dry-run commands do not require auth and do not
+send telemetry unless they call an authenticated command path.
 
-## Future Telemetry Rules
+Disable telemetry with:
 
-If telemetry is added later, it must be:
+```sh
+UNDERSTUDY_TELEMETRY=0
+```
 
-- opt-in;
-- documented in this file before release;
-- categorical by default;
-- free of prompts, completions, traces, source snippets, secrets, private repo
-  paths, and customer identifiers;
-- easy to disable.
+## Destination
 
-Any future telemetry schema should list every field, purpose, destination,
-retention expectation, and whether it can contain user content.
+Events are sent to the configured Understudy gateway:
+
+```text
+POST /v1/agent/events
+```
+
+The platform forwards accepted events to product analytics. The CLI never sends
+events directly to PostHog.
+
+## Data Boundary
+
+Telemetry must not include prompts, completions, traces, source snippets,
+datasets, private repo paths, provider keys, secret values, or local model
+metadata.
+
+Allowed fields are categorical or operational:
+
+- event name and event version;
+- anonymous install id from `~/.understudy/telemetry.json`;
+- CLI version placeholder;
+- platform and architecture;
+- org id, project slug, user id, and signup intent id when already known from
+  credentials/config;
+- command category, exit code, duration, and result counts.
+
+Secret-shaped string values are stripped before sending.
+
+## Events
+
+See [`analytics/cli-events.md`](analytics/cli-events.md).

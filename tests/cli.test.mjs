@@ -788,6 +788,16 @@ describe("understudy CLI", () => {
     assert.match(result.stdout, /deferred to the full Understudy runtime/);
   });
 
+  it("routes setup-code to the onboarding skill instead of patching files", () => {
+    const result = run(["setup-code", "--client", "openai", "--file", "src/client.ts", "--json"]);
+    assert.equal(result.status, 0, result.stderr);
+    const payload = JSON.parse(result.stdout);
+    assert.equal(payload.mode, "skill-routed");
+    assert.equal(payload.skill, "skills/onboard/setup-code.md");
+    assert.equal(payload.recipe, "skills/onboard/openai-typescript.md");
+    assert.equal(payload.file_hint, "src/client.ts");
+  });
+
   it("scans capture/import sources with metadata only and writes a redaction manifest", () =>
     withCaptureFixtureRepo((repo) => {
       const result = run(["capture-import", "scan", "--repo", repo, "--json"]);

@@ -26,6 +26,7 @@ understudy spine
 understudy skills --list
 understudy skills --inspect understudy
 understudy doctor
+understudy setup-code --client openai --file src/client.ts --json
 understudy capture-import scan --repo .
 understudy capture-import preview --repo . --limit 10
 understudy capture-import workload-card --repo .

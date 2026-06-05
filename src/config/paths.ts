@@ -24,10 +24,6 @@ export const GLOBAL_CREDENTIALS_FILE = "credentials.json";
 
 export const GLOBAL_TELEMETRY_FILE = "telemetry.json";
 
-export const GLOBAL_COMPANION_DIR = "companion";
-
-export const GLOBAL_COMPANION_STATE_FILE = "companion.json";
-
 /**
  * Walk upward from `startDir` looking for the nearest directory that
  * contains a `.understudy/` folder. If none exists, fall back to
@@ -68,12 +64,4 @@ export function globalCredentialsPath(): string {
 
 export function globalTelemetryPath(): string {
   return join(globalConfigDir(), GLOBAL_TELEMETRY_FILE);
-}
-
-export function globalCompanionDir(): string {
-  return join(globalConfigDir(), GLOBAL_COMPANION_DIR);
-}
-
-export function globalCompanionStatePath(): string {
-  return join(globalConfigDir(), GLOBAL_COMPANION_STATE_FILE);
 }

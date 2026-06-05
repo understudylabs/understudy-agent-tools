@@ -17,8 +17,9 @@ polish; it is keeping the OSS surface small, local-first, and easy to review.
 
 ## Public Boundary
 
-- No uploads, provider calls, telemetry, hosted jobs, package installs, or model
-  downloads happen without an explicit user action.
+- No uploads, provider calls, hosted jobs, package installs, or model downloads
+  happen without an explicit user action. Authenticated product telemetry must
+  stay within `docs/telemetry.md` and honor `UNDERSTUDY_TELEMETRY=0`.
 - Secret values never appear in docs, logs, tests, fixtures, generated packets,
   or PR descriptions.
 - Examples and tests use synthetic data or small public fixtures.

@@ -50,8 +50,10 @@ npm install -g @understudylabs/understudy-agent-tools
 understudy spine
 ```
 
-No provider calls, uploads, model downloads, secret-value inspection, hosted
-jobs, or telemetry run by default.
+No provider calls, uploads, model downloads, secret-value inspection, or hosted
+jobs run by default. After authentication, the CLI emits bounded product
+telemetry documented in [`docs/telemetry.md`](docs/telemetry.md); disable it
+with `UNDERSTUDY_TELEMETRY=0`.
 
 ## First Commands
 
@@ -173,6 +175,10 @@ setup-code
 run
 optimize-workload
 ```
+
+`setup-code` is skill-routed. It does not patch files directly; it tells the
+coding agent to use `skills/onboard/setup-code.md` and the matching framework
+recipe.
 
 Full-runtime command names such as `gateway`, `browser`, `channels`,
 `schedule`, `daemon`, `agent`, and `chat` are intentionally deferred. They are
