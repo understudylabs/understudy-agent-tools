@@ -1,0 +1,27 @@
+{
+  "schema_version": "understudy.rubric.v1",
+  "approved": false,
+  "judge": {
+    "mode": "pointwise",
+    "debias": "swapped_two_pass",
+    "model": "frontier-tier"
+  },
+  "aggregation": "weighted_mean",
+  "criteria": [
+    {
+      "id": "faithful",
+      "description": "The answer is grounded in the provided inputs with no fabricated facts.",
+      "weight": 2.0
+    },
+    {
+      "id": "complete",
+      "description": "The answer addresses every part of the request.",
+      "weight": 1.0
+    },
+    {
+      "id": "format",
+      "description": "The output matches the required schema/format.",
+      "weight": 1.0
+    }
+  ]
+}
