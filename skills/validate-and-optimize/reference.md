@@ -58,20 +58,20 @@ optimizer.
 
 ## Validator Kinds
 
-`metric.json`'s `validator.kind` selects how a candidate is scored. Each must
-produce `(score, feedback)`:
+`metric.json`'s `validator.kind` dispatches the runner; each kind must produce
+`(score, feedback)`. Invocation fields (`command`, `callable`, `schema_path`,
+`rubric_path`) say *how* to run it:
 
-- `unit-test` / `golden` / `custom-command` — deterministic check; feedback is
-  the failing assertion or diff.
+- `command` / `callable` — run a deterministic check (a unit test, golden-output
+  diff, or any script/function); feedback is the failing assertion or diff.
 - `schema` (Zod / JSON-schema `safeParse`) — separate `schema_pass` from
   `quality_pass`; a valid-shape, valid-enum output must not be failed merely for
   not matching a teacher trace verbatim (the proxy-strict-match trap).
-- `rubric` — confirmed criteria list (id, description, review type); auto-drafted
-  rubrics need human approval.
-- `llm-judge` / `rubric` — implemented in `rubric_reward.py`. Must debias
-  position with the swapped two-pass score (`(r_ab − r_ba + 1)/2` for [0,1] judge
-  scores; the internal judge uses `÷4` on a [-1,1] scale); never single-pass.
-  Gate on `judge_human_agreement` before trusting the judge.
+- `rubric` / `llm-judge` — graded scoring via `scripts/rubric_reward.py` against a
+  confirmed criteria list. Debias position with the swapped two-pass score
+  (`(r_ab − r_ba + 1)/2` for [0,1] judge scores; the internal judge uses `÷4` on a
+  [-1,1] scale); never single-pass. Auto-drafted rubrics need human approval; gate
+  on `judge_human_agreement` before trusting the judge.
 - `human-review` — blind, order-randomized packet.
 
 `kind: proxy` is rejected by the gate. If only a proxy is available, run
