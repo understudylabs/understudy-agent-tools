@@ -1,6 +1,6 @@
 ---
 name: understudy-evaluate
-description: Use when comparing prompts, traces, datasets, scorers, routes, local models, provider models, or candidate outputs to find measurable cost, latency, quality, reliability, or portability value.
+description: Advanced/standalone, ungated comparison of prompts, traces, datasets, scorers, routes, or models for exploratory measurement. For claim-safe evaluation prefer `validate-and-optimize` (baseline/holdout/claim gates). Use this only for ad-hoc measurement that will NOT produce a savings or readiness claim.
 metadata:
   understudy:
     mode: interactive

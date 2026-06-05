@@ -1,6 +1,6 @@
 # Public Spine
 
-The first public shape is deliberately small:
+The first public shape is deliberately small and local-first:
 
 1. `understudy-tools spine` tells agents where to start.
 2. `skills/understudy/SKILL.md` routes by intent.
@@ -17,12 +17,63 @@ Agents should not expose every command at once. The user starts with a broad
 goal, the fat skill selects a path, and only then should the agent read the
 specialist skill or run the corresponding script.
 
-Default path:
+## MVP Spine
+
+The OSS MVP loop is:
+
+```text
+understand workload -> attach harness/environment
+  -> confirm metric/validator/holdout -> rerun baseline
+  -> validate and optimize -> value report
+```
+
+Registration is not an OSS MVP gate. `register` and `login` belong to the CLI
+or hosted upsell path when a team wants credits, projects, gateway routing, or
+hosted execution. The public repo must still let a developer reach a Workload
+Card, baseline rerun plan, validation plan, optimization plan, and conservative
+Value Report without creating an account.
+
+Baseline rerun is required after the harness, environment, metric, validator,
+or split boundary changes. Pre-existing benchmark numbers can inform intake,
+but they are not the baseline for route, optimization, or value decisions until
+they are rerun under the confirmed harness and splits.
+
+The rerun must be bound to the exact local artifacts. `baseline.json` includes
+`harness_sha256`, `metric_sha256`, and `splits_sha256`; if the current artifact
+hashes do not match those fields, the validation gate fails closed and the
+developer returns to workload understanding.
+
+GEPA and other optimizers may use train/dev only. Holdout is reserved for final
+validation and claim support, not optimizer feedback.
+
+No savings, latency, or quality claim should be published without a claim
+packet that names the workload, harness, split boundary, baseline rerun,
+candidate run, sample size, pricing basis, and caveats.
+
+Hosted upsell path:
+
+```text
+register/login -> credits/project -> gateway routing
+```
+
+Hosted routing can use the same Workload Card and Value Report artifacts, but
+it starts after explicit account/project setup and approval for spend, uploads,
+or production traffic.
+
+Optimizer algorithm logic should stay upstream. The public tools may prompt the
+developer to install `gepa` for explicit optimization runs, then use
+skill-local adapters, metric feedback, and artifact gates. Do not port GEPA or
+depend on a full private runtime. See
+[`validate-and-optimize-contract.md`](validate-and-optimize-contract.md).
+
+Default public path:
 
 ```text
 understudy -> capture/import or workload discovery -> Workload Card
-  -> Route Decision Packet -> conservative Value Report -> evaluation
-  -> optimize -> train/handoff -> decision packet -> public-safe publishing
+  -> harness/environment attachment -> metric/validator/holdout confirmation
+  -> baseline rerun -> validation and optimization plan
+  -> Route Decision Packet -> conservative Value Report
+  -> decision packet -> public-safe publishing only with a claim packet
 ```
 
 The lab path is always available for longer research work where hypotheses,

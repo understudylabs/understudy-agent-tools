@@ -12,6 +12,21 @@ public repository.
 - repo-relative artifact schemas;
 - public-safe examples with no real customer payloads.
 
+The OSS MVP path should work without registration:
+
+```text
+understand workload -> attach harness/environment
+  -> confirm metric/validator/holdout -> rerun baseline
+  -> validate and optimize -> value report
+```
+
+`register` and `login` are allowed only as CLI or hosted upsell language, not
+as a gate for the OSS MVP. The hosted path is:
+
+```text
+register/login -> credits/project -> gateway routing
+```
+
 ## Keep Private
 
 - customer names, domains, volumes, prompts, completions, labels, or traces;
@@ -30,11 +45,31 @@ public repository.
 4. Replace private provider terms with public source links.
 5. Preserve public model ids, provider names, and dated public source URLs when
    they are necessary for reproducibility.
-6. Add a local smoke test or dry-run.
-7. Run the public repo validator before opening a PR.
+6. Confirm the metric, validator, and holdout boundary before any optimization
+   or route comparison.
+7. Rerun the baseline after harness, environment, metric, validator, or split
+   changes. Store `harness_sha256`, `metric_sha256`, and `splits_sha256` in
+   `baseline.json` so stale baselines fail by hash, not by file presence.
+8. Keep GEPA and other optimizers on train/dev only; reserve holdout for final
+   validation and claim support.
+9. Require a claim packet before publishing savings, latency, quality, or
+   route-superiority claims. `claim.json` must cite the hash-bound baseline
+   contract and the frozen candidate hash.
+10. Add a local smoke test or dry-run.
+11. Run the public repo validator before opening a PR.
+
+Do not port private optimizer, evaluator, or workload-compiler implementations
+into this repo. Public commands may prompt for the upstream `gepa` package when
+the developer explicitly requests optimization, but they should keep the
+Understudy-specific work in public adapters, metric feedback, local artifact
+gates, and report writers. See
+[`validate-and-optimize-contract.md`](validate-and-optimize-contract.md).
 
 ## Safer Replacement Language
 
 Use `workload-001`, `example customer`, `synthetic support ticket`, `public
 fixture`, or `repo-relative path` instead of real customer, account, or private
 repo identifiers.
+
+Use `scenario sizing`, `measured baseline rerun`, `candidate validation`, and
+`claim packet required` instead of unsupported savings language.

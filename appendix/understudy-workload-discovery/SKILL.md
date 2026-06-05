@@ -1,6 +1,6 @@
 ---
 name: understudy-workload-discovery
-description: Use when a developer wants to find AI workload opportunities in a local repo before evaluating, optimizing, changing providers, or running a demo.
+description: Advanced/standalone repo scan for AI workload opportunities and call sites. For the default journey prefer `understand-workload`, which scans AND produces the gated harness/metric/splits/baseline artifacts. Use this only for a quick standalone opportunity scan that does not need the full workload-understanding pass.
 metadata:
   understudy:
     mode: automatic

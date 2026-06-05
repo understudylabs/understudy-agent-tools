@@ -1,6 +1,6 @@
 ---
 name: understudy-capture-import
-description: Use when finding or importing local AI calls, traces, eval fixtures, prompt files, logs, datasets, or existing benchmark artifacts into an Understudy workflow.
+description: Advanced/standalone import of local AI calls, traces, eval fixtures, prompt files, logs, datasets, or benchmark artifacts. For the default journey prefer `understand-workload`, which imports as part of producing the gated artifacts. Use this only to import sources without the full workload-understanding pass.
 metadata:
   understudy:
     mode: interactive
@@ -68,7 +68,11 @@ per field path, but does not mutate records.
    - `tabular-data`
    - `markdown-notes`
 5. Record data class, redaction needs, split boundary, owner, and approval gates.
-6. Create or update a Workload Card before evaluation.
+6. Create or update a Workload Card before evaluation:
+
+```sh
+run_understudy capture-import workload-card --repo . --source-id source-001
+```
 
 ## Output Standard
 
