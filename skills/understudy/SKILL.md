@@ -103,6 +103,10 @@ Identify the developer's current stage and load exactly one:
 - **Single-output optimization** — fresh artifacts exist and the developer wants
   to validate, optimize (GEPA), compare candidates, or claim readiness →
   [`../optimize-workload/SKILL.md`](../optimize-workload/SKILL.md).
+- **API workflow optimization** — multi-step REST/API agent that discovers
+  endpoints, follows policy docs, mutates state, and must pass final-state
+  validators (AutomationBench-style) →
+  [`../optimize-api-workflow/SKILL.md`](../optimize-api-workflow/SKILL.md).
 - **Agentic / tool-use optimization** — multi-turn agent that calls tools (e.g.
   web search); evaluate, A/B-compare models, or optimize its prompt/route →
   [`../optimize-agentic-search/SKILL.md`](../optimize-agentic-search/SKILL.md)
@@ -111,9 +115,10 @@ Identify the developer's current stage and load exactly one:
   the agent must *learn* multi-step behavior →
   [`../prepare-verifier-handoff/SKILL.md`](../prepare-verifier-handoff/SKILL.md).
 
-Multi-turn or tool-use alone is NOT a handoff: agentic evaluation, A/B, and
-prompt/route optimization stay local in `optimize-agentic-search`. Only RL/
-policy *training* routes to `prepare-verifier-handoff`. When in doubt, route to
+Multi-turn or tool-use alone is NOT a handoff: agentic evaluation, API-workflow
+evaluation, A/B, and prompt/route optimization stay local in
+`optimize-agentic-search` or `optimize-api-workflow`. Only RL/policy *training*
+routes to `prepare-verifier-handoff`. When in doubt, route to
 `capture-evidence` — optimizing without a current harness/metric/split/baseline
 creates false progress.
 

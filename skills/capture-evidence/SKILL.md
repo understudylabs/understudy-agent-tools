@@ -83,6 +83,10 @@ enough provenance for another agent to repeat the step without guessing.
      agreement separately from candidate preference.
    Whatever the kind, the metric must emit **natural-language feedback that
    diagnoses why** an output failed and what to change — not just a scalar.
+   For API workflow benchmarks, record final-state correctness, policy
+   compliance, data accuracy, endpoint discovery, required-write completion,
+   forbidden-write avoidance, unnecessary calls/retries, schema validity, and
+   recoverable errors as separate axes before collapsing to an overall score.
    If the metric or validator is unclear, stop and ask one concrete question.
 4. Freeze splits.
    Write `splits.json` with train/dev/holdout names, sizes, source refs,
@@ -105,8 +109,12 @@ model/provider/harness/eval state, then surface that inventory before building
 anything. The deep inspection checklist (call sites by SDK family, env vars,
 tracing, CI) and the eval-harness discover-then-build playbook live in
 [`reference.md`](reference.md). For cross-cutting objective/constraint framing,
-read [`../understudy/reference.md`](../understudy/reference.md). For multi-turn /
-tool-use / agentic workloads, route the eval to
+read [`../understudy/reference.md`](../understudy/reference.md). For multi-step
+REST/API workflows that mutate state, route to
+[`../optimize-api-workflow/SKILL.md`](../optimize-api-workflow/SKILL.md) so the
+agent records reset/seed state, API schemas, policy docs, request logs, and
+final-state validators as part of the harness. For multi-turn / tool-use /
+agentic search workloads, route the eval to
 [`../optimize-agentic-search/SKILL.md`](../optimize-agentic-search/SKILL.md)
 instead of building a single-output harness.
 
