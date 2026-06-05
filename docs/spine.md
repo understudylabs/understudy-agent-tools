@@ -27,11 +27,20 @@ understand workload -> attach harness/environment
   -> validate and optimize -> value report
 ```
 
-Registration is not an OSS MVP gate. `register` and `login` belong to the CLI
-or hosted upsell path when a team wants credits, projects, gateway routing, or
-hosted execution. The public repo must still let a developer reach a Workload
-Card, baseline rerun plan, validation plan, optimization plan, and conservative
-Value Report without creating an account.
+Registration is not a hard gate, but it is the **default path for inference**.
+Optimization and evaluation always need a model, so by default the lanes use
+**Understudy inference** — run `understudy login` — and fall back to the
+developer's own provider keys if they'd rather not register. Everything else in
+the OSS loop (Workload Card, baseline rerun plan, validation plan, optimization
+plan, and conservative Value Report) stays reachable without an account; once a
+team wants credits, projects, gateway routing, or hosted execution, `register`
+is the path.
+
+The gateway endpoint is configuration, never hardcoded in the public package:
+`UNDERSTUDY_API_BASE` (set by `understudy login` / env) supplies it, so no
+hosted URL ships in this repo (see `oss-release-boundary.md`). Understudy
+routing needs both the credential and that base; either missing falls back to
+the developer's provider keys.
 
 Baseline rerun is required after the harness, environment, metric, validator,
 or split boundary changes. Pre-existing benchmark numbers can inform intake,

@@ -58,19 +58,20 @@ optimizer.
 
 ## Validator Kinds
 
-`metric.json`'s `validator.kind` selects how a candidate is scored. Each must
-produce `(score, feedback)`:
+`metric.json`'s `validator.kind` dispatches the runner; each kind must produce
+`(score, feedback)`. Invocation fields (`command`, `callable`, `schema_path`,
+`rubric_path`) say *how* to run it:
 
-- `unit-test` / `golden` / `custom-command` — deterministic check; feedback is
-  the failing assertion or diff.
+- `command` / `callable` — run a deterministic check (a unit test, golden-output
+  diff, or any script/function); feedback is the failing assertion or diff.
 - `schema` (Zod / JSON-schema `safeParse`) — separate `schema_pass` from
   `quality_pass`; a valid-shape, valid-enum output must not be failed merely for
   not matching a teacher trace verbatim (the proxy-strict-match trap).
-- `rubric` — confirmed criteria list (id, description, review type); auto-drafted
-  rubrics need human approval.
-- `llm-judge` — must debias position with a swapped two-pass score
-  `(r_ab − r_ba + 2) / 4`; never single-pass. Report judge-vs-human agreement
-  separately from candidate preference.
+- `rubric` / `llm-judge` — graded scoring via `scripts/rubric_reward.py` against a
+  confirmed criteria list. Debias position with the swapped two-pass score
+  (`(r_ab − r_ba + 1)/2` for [0,1] judge scores; the internal judge uses `÷4` on a
+  [-1,1] scale); never single-pass. Auto-drafted rubrics need human approval; gate
+  on `judge_human_agreement` before trusting the judge.
 - `human-review` — blind, order-randomized packet.
 
 `kind: proxy` is rejected by the gate. If only a proxy is available, run
@@ -113,3 +114,46 @@ holdout/live validation, mark promotion as **blocked** — emit an optimization
 lead, not a win. The decision packet records: decision + evidence level,
 baseline vs candidate, artifact paths, caveats / missing evidence, and the
 approval-gated next step. This is the same gate `claim.json` enforces.
+
+## Inference (Understudy-first, BYO fallback)
+
+Optimization always needs inference, so the **default is Understudy inference**.
+`understudy_agent_tools.inference.resolve_backend()` checks for an Understudy
+credential (`UNDERSTUDY_API_KEY` env, then the `Understudy-credentials` keychain
+blob — same resolution as the agent CLI) and, if present, routes model calls
+through the Understudy gateway (one credential, all providers, credit-metered).
+
+When not logged in, the lane **recommends `understudy login`** and falls back to
+the developer's own provider keys — so login is the expected default, not a hard
+gate; BYO stays supported for the register-averse. `build_dspy_lm(model)` /
+`dspy_program.resolve_lm(model)` apply this default for the DSPy lane; the
+in-place adapter's `infer` uses the same backend. The credential is never logged
+(`login_status()` returns only a boolean + source).
+
+## Optimization Lanes
+
+Two ways to optimize, picked by commitment and workload shape:
+
+1. **In-place prompt optimization (default).** `scripts/_adapter.py`'s
+   `UnderstudyGepaAdapter` runs the developer's *real* workload via an injected
+   `infer` (single call or multi-turn agent loop) and evolves the prompt(s) they
+   already ship. Truest to production, lowest commitment, no DSPy. For MCP /
+   tool-use agents, prefer gepa's built-in `mcp_adapter` / `terminal_bench_adapter`
+   over hand-rolling.
+2. **DSPy-program lane (opt-in).** `scripts/dspy_program.py` scaffolds a DSPy
+   program from the Workload Card + samples, then `dspy.GEPA` optimizes it
+   natively — instructions across predictors + bootstrapped few-shot demos, and
+   `dspy.ReAct` for multi-turn. Richer, but the user must adopt the program as
+   runtime, and it is **gated by `parity_check`**: the scaffolded program must
+   reproduce the incumbent baseline on holdout before GEPA runs, or you optimize a
+   reconstruction that diverges from production.
+
+## Rubric Reward (the OSS half of the verifier rung)
+
+`scripts/rubric_reward.py` turns a human-confirmed `rubric.json` + an injected
+LLM judge into `(score, feedback)` — a graded `metric` (richer than pass/fail)
+usable directly by either lane. `score_pointwise` weights per-criterion judgments
+and surfaces failing-criterion rationales as feedback; `score_pairwise` debiases
+position; `judge_human_agreement` is the calibration gate before trusting a
+rubric judge. The rubric + judgment is OSS-native and valuable on its own; **RL
+training over the reward stays hosted** (the verifier boundary above).
