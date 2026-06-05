@@ -153,62 +153,62 @@ WORKLOAD_SHAPE_PATTERNS = {
 
 ROADMAP_SURFACES: dict[str, dict[str, str]] = {
     "demo": {
-        "skill": "skills/understudy-demo/SKILL.md",
+        "skill": "appendix/understudy-demo/SKILL.md",
         "why": "Local repo workload discovery before provider spend.",
         "next": "Expand static scan signals and add richer Workload Card validation.",
     },
     "workload-discovery": {
-        "skill": "skills/understudy-workload-discovery/SKILL.md",
+        "skill": "appendix/understudy-workload-discovery/SKILL.md",
         "why": "Find and rank local repo AI workload candidates before evaluation.",
         "next": "Add workload type classification and richer candidate-card fields.",
     },
     "capture-import": {
-        "skill": "skills/understudy-capture-import/SKILL.md",
+        "skill": "appendix/understudy-capture-import/SKILL.md",
         "why": "Find local traces, eval fixtures, prompt files, logs, and datasets before building a Workload Card.",
         "next": "Add format-specific import previews and redaction manifests before payload extraction.",
     },
     "evaluate": {
-        "skill": "skills/understudy-evaluate/SKILL.md",
+        "skill": "appendix/understudy-evaluate/SKILL.md",
         "why": "Local-first workload measurement with explicit split boundaries.",
         "next": "Port artifact validation and dry-run eval planning before live runners.",
     },
     "optimize": {
-        "skill": "skills/understudy-optimize/SKILL.md",
+        "skill": "appendix/understudy-optimize/SKILL.md",
         "why": "Post-baseline prompt, route, parser, and candidate improvement.",
         "next": "Port local dry-run planning before any optimizer implementation.",
     },
     "train": {
-        "skill": "skills/understudy-train/SKILL.md",
+        "skill": "appendix/understudy-train/SKILL.md",
         "why": "Local training handoff: provenance, split validation, and export previews.",
         "next": "Port export-preview and validation stubs before hosted provider flows.",
     },
     "model": {
-        "skill": "skills/understudy-model-lookup/SKILL.md",
+        "skill": "appendix/understudy-model-lookup/SKILL.md",
         "why": "Compatibility checks before benchmark or replacement claims.",
         "next": "Port local metadata inspection and public model-card lookup helpers.",
     },
     "local-models": {
-        "skill": "skills/understudy-local-models/SKILL.md",
+        "skill": "appendix/understudy-local-models/SKILL.md",
         "why": "Apple Silicon, MLX, Ollama, and local runner readiness before live comparison.",
         "next": "Port local hardware inventory and dry-run runner checks without private workloads.",
     },
     "provider-integrations": {
-        "skill": "skills/understudy-provider-integrations/SKILL.md",
+        "skill": "appendix/understudy-provider-integrations/SKILL.md",
         "why": "Provider cookbook mapping and route-decision planning before live calls.",
         "next": "Port redacted key readiness, model lookup, supplier profile refresh, and route-decision packet generation.",
     },
     "proxy": {
-        "skill": "skills/understudy-local-proxy/SKILL.md",
+        "skill": "appendix/understudy-local-proxy/SKILL.md",
         "why": "Local OpenAI-compatible routing and trace-capture setup.",
         "next": "Port local fixture proxy checks without hosted-control-plane details.",
     },
     "keys": {
-        "skill": "skills/understudy-provider-keys/SKILL.md",
+        "skill": "appendix/understudy-provider-keys/SKILL.md",
         "why": "Redacted local provider-key status and safe setup guidance.",
         "next": "Port redacted presence checks only; never print secret values.",
     },
     "value": {
-        "skill": "skills/understudy-value-reporting/SKILL.md",
+        "skill": "appendix/understudy-value-reporting/SKILL.md",
         "why": "Conservative value reporting from measured evidence.",
         "next": "Expand beyond baseline-only scenario math after eval evidence lands.",
     },

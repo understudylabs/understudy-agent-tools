@@ -85,3 +85,31 @@ scope** here: they need hosted training and are never executed by this OSS tool.
 `metric.json` may carry an optional `verifier_environment_id` that *points at*
 such an environment for later use, but this skill never runs it and never imports
 untrusted task code.
+
+## Folded steps: evaluate · optimize · decide
+
+These three were folded in from former standalone skills; full originals in
+[`appendix/understudy-evaluate`](../../appendix/understudy-evaluate/SKILL.md),
+[`appendix/understudy-optimize`](../../appendix/understudy-optimize/SKILL.md),
+[`appendix/understudy-decision-packet`](../../appendix/understudy-decision-packet/SKILL.md).
+
+**Evaluate (measure before changing).** Prefer an existing eval suite / traces /
+app route over a toy fixture; replay locally when it can estimate quality or
+regression risk. State, for the workload: current route, token shape / volume,
+latency target vs observed, cost/request, quality gate + acceptable regression
+band, and the candidate route. A small live comparison only when replay can't
+answer the economic question (and only under the approval gate). Inference for
+evaluation follows the same Understudy-first default as optimization.
+
+**Optimize (cheapest intervention first).** Climb the evidence ladder: prompt
+prefill/repair → parser/schema repair → context trimming → route/candidate
+swap → GEPA. Confirm metric, incumbent route, split boundaries, sample size, and
+failure taxonomy first; run the smallest dry-run before any paid step; match the
+intervention to the *observed* failure class, not a guess.
+
+**Decide (turn evidence into one call).** Classify the evidence level, then pick
+**exactly one**: promote, hold, rerun, optimize, train, or publish. Below
+holdout/live validation, mark promotion as **blocked** — emit an optimization
+lead, not a win. The decision packet records: decision + evidence level,
+baseline vs candidate, artifact paths, caveats / missing evidence, and the
+approval-gated next step. This is the same gate `claim.json` enforces.

@@ -18,8 +18,10 @@ def test_spine_command(capsys) -> None:
 def test_skills_command(capsys) -> None:
     assert main(["skills"]) == 0
     out = capsys.readouterr().out
+    # The discovered surface is the 3 MVP skills; the rest live in appendix/.
     assert "skills/understudy" in out
-    assert "skills/understudy-workload-discovery" in out
+    assert "skills/understand-workload" in out
+    assert "skills/validate-and-optimize" in out
 
 
 def test_roadmap_surface_status(capsys) -> None:
@@ -33,14 +35,14 @@ def test_local_models_roadmap_surface(capsys) -> None:
     assert main(["local-models", "doctor", "--local", "--dry-run"]) == 0
     out = capsys.readouterr().out
     assert "local-models: planned" in out
-    assert "skills/understudy-local-models/SKILL.md" in out
+    assert "appendix/understudy-local-models/SKILL.md" in out
 
 
 def test_provider_integrations_roadmap_surface(capsys) -> None:
     assert main(["provider-integrations", "status"]) == 0
     out = capsys.readouterr().out
     assert "provider-integrations: planned" in out
-    assert "skills/understudy-provider-integrations/SKILL.md" in out
+    assert "appendix/understudy-provider-integrations/SKILL.md" in out
 
 
 def test_keys_roadmap_surface(capsys) -> None:

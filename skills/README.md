@@ -1,80 +1,40 @@
 # Understudy Skill Library
 
-This library uses progressive disclosure: start with the entrypoint, then load
-one specialist skill only when the developer's intent requires it.
+This library uses progressive disclosure: start with the entrypoint, load one
+worker only when the developer's intent requires it. The MVP is **three skills**
+so the first win isn't a maze.
 
 ## Entry Point
 
-- [`understudy`](understudy/SKILL.md) routes the MVP journey to workload
-  understanding or validation/optimization, with legacy setup skills kept as
-  recovery paths when the harness needs them.
+- [`understudy`](understudy/SKILL.md) — orchestrator. Routes the journey to
+  workload understanding or validation/optimization, and into the appendix for
+  setup/recovery when a confirmed harness needs it.
 
 ## MVP Worker Skills
 
 - [`understand-workload`](understand-workload/SKILL.md) attaches the local
   harness/environment, confirms the metric and validator, freezes splits, and
-  reruns the incumbent baseline.
+  reruns the incumbent baseline. (Discovery + capture/import folded into its
+  [`reference.md`](understand-workload/reference.md).)
 - [`validate-and-optimize`](validate-and-optimize/SKILL.md) refuses stale
   artifacts, preserves train/dev/holdout boundaries, writes dry-run proof
-  packets, and requires `claim.json` before public claims.
+  packets, and requires `claim.json` before public claims. (Evaluate, optimize,
+  and decide folded into its [`reference.md`](validate-and-optimize/reference.md).)
 
-## Specialist Skills
+## Appendix
 
-- [`understudy-demo`](understudy-demo/SKILL.md) scans a local repo for AI
-  workload candidates, drafts a Workload Card, and falls back to synthetic
-  fixtures when no local workload is available.
-- [`understudy-workload-discovery`](understudy-workload-discovery/SKILL.md)
-  finds and ranks AI workload candidates in a local repo before evaluation,
-  provider changes, or optimization.
-- [`understudy-capture-import`](understudy-capture-import/SKILL.md) finds local
-  traces, eval fixtures, prompt files, logs, datasets, and benchmark artifacts
-  before payload extraction or evaluation.
-- [`understudy-evaluate`](understudy-evaluate/SKILL.md) compares prompts,
-  traces, eval rows, datasets, or candidate models with explicit split
-  boundaries.
-- [`understudy-latency-triage`](understudy-latency-triage/SKILL.md) separates
-  inference, context, routing, retry, streaming, and app latency.
-- [`understudy-output-control`](understudy-output-control/SKILL.md) separates
-  parser, JSON/schema, tool-call, and output-contract failures from model
-  reasoning failures.
-- [`understudy-blind-review`](understudy-blind-review/SKILL.md) prepares
-  anonymized pairwise review packets for qualitative outputs.
-- [`understudy-optimize`](understudy-optimize/SKILL.md) improves a measured
-  workload while protecting holdout evidence.
-- [`understudy-train`](understudy-train/SKILL.md) prepares SFT, preference, RL,
-  adapter, or hosted-training handoffs.
-- [`understudy-lab`](understudy-lab/SKILL.md) records longer experiment loops,
-  budgets, artifacts, decisions, and next actions.
-- [`understudy-local-proxy`](understudy-local-proxy/SKILL.md) handles local
-  OpenAI-compatible proxying, trace capture, and replay.
-- [`understudy-provider-keys`](understudy-provider-keys/SKILL.md) handles local
-  credential setup and status checks.
-- [`understudy-provider-integrations`](understudy-provider-integrations/SKILL.md)
-  maps workloads to provider cookbooks, route decisions, and partner
-  methodologies without approving spend.
-- [`understudy-model-lookup`](understudy-model-lookup/SKILL.md) inspects model
-  availability, runner compatibility, and local-vs-remote options.
-- [`understudy-local-models`](understudy-local-models/SKILL.md) checks MLX,
-  Apple Silicon, Ollama, and local runner readiness before local inference or
-  route comparisons.
-- [`understudy-value-reporting`](understudy-value-reporting/SKILL.md) turns
-  measured evidence into conservative value reports.
-- [`understudy-decision-packet`](understudy-decision-packet/SKILL.md) turns
-  measured evidence into promote, hold, rerun, train, or publish decisions.
-- [`understudy-publish-results`](understudy-publish-results/SKILL.md) prepares
-  public-safe result summaries.
-- [`understudy-tufte`](understudy-tufte/SKILL.md) improves report structure,
-  analytical hierarchy, and concise evidence presentation.
-- [`understudy-deslop`](understudy-deslop/SKILL.md) removes generic AI prose
-  and overclaims from public-facing text.
-- [`understudy-bootstrap`](understudy-bootstrap/SKILL.md) handles public setup
-  checks when the CLI cannot be found.
+Setup, first-touch, and adjacent tooling skills are kept in
+[`../appendix/`](../appendix/README.md) — real and working, but outside the MVP
+discovered surface. Promote one back under `skills/` (and into discovery) as
+real usage shows we need it.
 
 ## Public Safety
 
-Default to local-only, no-upload, no-spend work. Public examples should use
-synthetic fixtures, local `.understudy/` artifacts, public provider docs, or
-public open-source projects.
+Default to the cheapest path that still reaches an optimization outcome — not to
+zero spend (a skipped improvement has real opportunity cost). Get explicit
+approval before any upload, hosted run, or provider spend. Public examples
+should use synthetic fixtures, local `.understudy/` artifacts, public provider
+docs, or public open-source projects.
 
 Do not include customer names, domains, raw prompts, raw completions, traces,
 secrets, private notes, internal runbooks, or hosted-control details in public

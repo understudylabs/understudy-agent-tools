@@ -77,10 +77,12 @@ confirmed artifacts it measured. Any later change to the harness, metric,
 validator, or splits routes back to `understand-workload` for a new incumbent
 baseline.
 
-The old public skills for bootstrap, provider keys, and local proxy remain
-recovery routes when setup is missing. Keep them out of first discovery, but
-route to them if a confirmed harness requires a proxy, a redacted provider-key
-check, or install repair before the baseline can run.
+Setup and adjacent tooling live in `appendix/` (not part of MVP discovery — see
+`appendix/README.md`). Route into them by path when a confirmed harness needs
+them — e.g. `appendix/understudy-bootstrap` (install repair),
+`appendix/understudy-provider-keys` (a redacted provider-key check),
+`appendix/understudy-local-proxy` (a gateway/proxy), or `appendix/understudy-demo`
+(a no-data first-touch walkthrough) — before the baseline can run.
 
 ## Output Standard
 
