@@ -102,6 +102,21 @@ equivalents to type themselves:
 /reload-plugins
 ```
 
+## Safety Gates
+
+Local-first and free: adding a local marketplace and installing from it makes no
+provider calls, uploads, spend, or credential changes — do not require login,
+auth, or keys for this skill. The `claude plugin` commands only register
+repo-local skills.
+
+- Confirm before running if the developer asked you only to *show* the commands;
+  otherwise the install is low-risk and may run in the background.
+- You **must not** claim you activated the plugin. `/reload-plugins` and the
+  interactive `/plugin …` commands are user-typed — surface them and wait.
+- Never edit `settings.json` / `settings.local.json` `enabledPlugins` by hand to
+  force-enable; use the documented `claude plugin` CLI so the install is
+  reversible with `claude plugin uninstall`.
+
 ## Output Standard
 
 End with: whether the plugin was already installed / just installed / shown for
