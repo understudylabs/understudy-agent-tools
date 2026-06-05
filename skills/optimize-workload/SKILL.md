@@ -140,8 +140,9 @@ record the candidate model, objective, and the `pins` copied from
 `claim.json` there. The `optimize-workload` CLI still emits scratch artifacts
 (`eval-input-candidate.json`, `proof-packet.json`, adapter outputs) under
 `.understudy/optimize-workload/`; treat those as working state and freeze the
-selected candidate into the experiment directory. An experiment-aware CLI is a
-tracked follow-up.
+selected candidate into the experiment directory. Use `understudy experiments
+new` to open an experiment (it pins the current baseline) and `understudy next`
+to see the current loop step.
 
 The previous Python helper scripts have been removed with the Python CLI
 prototype. Use the TypeScript CLI gates first, and still inspect artifacts
