@@ -66,14 +66,17 @@ of optimizing.
 3. Select the cheapest intervention that matches the observed failure mode:
    prompt repair, parser/schema repair, context trimming, route change,
    candidate model comparison, or GEPA.
-4. For GEPA or eval execution, use the canonical Understudy runner once it is
-   available as a shell-out from this public surface. Do not port a second GEPA
-   or evaluator implementation into this skill tree. Until that shell-out is
-   wired, write a dry-run proof packet and refuse optimizer execution.
-5. When GEPA is available, run train/dev-only and record the command, budget,
-   seed, variant count, selected candidate, and rejected variants.
-6. Freeze the candidate before any holdout validation.
-7. Run holdout only once the candidate is frozen, and record score, failures,
+4. For GEPA execution, use the upstream `gepa` package behind uv-first
+   detect-and-prompt install guidance. Do not auto-install packages, vendor
+   GEPA, or depend on a full private runtime.
+5. Keep deterministic work in this skill's scripts and templates. Follow
+   [`../../docs/validate-and-optimize-contract.md`](../../docs/validate-and-optimize-contract.md)
+   for adapter, metric feedback, and claim packet details.
+6. When GEPA is available and explicitly approved, run train/dev-only and
+   record the command, budget, seed, variant count, selected candidate, and
+   rejected variants.
+7. Freeze the candidate before any holdout validation.
+8. Run holdout only once the candidate is frozen, and record score, failures,
    latency basis, cost basis, fallback route, demotion trigger, and caveats.
 
 Write optimization and validation artifacts under:

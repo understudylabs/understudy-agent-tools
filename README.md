@@ -110,10 +110,11 @@ change to any of those artifacts makes the baseline stale. `claim.json` must
 cite the same hash-bound contract plus the frozen candidate hash before any
 savings, latency, quality, or route-superiority claim is publishable.
 
-Optimizer and evaluator implementations remain canonical in the Understudy
-runtime. This public CLI should shell out to that runner when it is released;
-until then, it writes dry-run proof packets and refuses live GEPA execution
-instead of porting a second optimizer.
+Optimizer implementation stays upstream. This repo should use the public
+`gepa` package when an optimization run is explicitly requested, while shipping
+the Understudy adapter, metric/feedback contract, and gates. Do not vendor GEPA
+or add the full private runtime as a dependency. The implementation contract is
+[`docs/validate-and-optimize-contract.md`](docs/validate-and-optimize-contract.md).
 
 Try the public synthetic journey:
 

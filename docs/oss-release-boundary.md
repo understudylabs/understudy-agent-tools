@@ -58,10 +58,12 @@ register/login -> credits/project -> gateway routing
 10. Add a local smoke test or dry-run.
 11. Run the public repo validator before opening a PR.
 
-Do not port private GEPA, evaluator, or workload-compiler implementations into
-this repo. Public commands should shell out to the canonical Understudy runtime
-when that surface is released, and should fail closed or write dry-run proof
-packets until then.
+Do not port private optimizer, evaluator, or workload-compiler implementations
+into this repo. Public commands may prompt for the upstream `gepa` package when
+the developer explicitly requests optimization, but they should keep the
+Understudy-specific work in public adapters, metric feedback, local artifact
+gates, and report writers. See
+[`validate-and-optimize-contract.md`](validate-and-optimize-contract.md).
 
 ## Safer Replacement Language
 

@@ -60,9 +60,11 @@ Hosted routing can use the same Workload Card and Value Report artifacts, but
 it starts after explicit account/project setup and approval for spend, uploads,
 or production traffic.
 
-Optimizer and evaluator logic should stay in the canonical Understudy runtime.
-The public tools may shell out to that runtime once released, but they should
-not port a parallel GEPA or eval implementation into this repo.
+Optimizer algorithm logic should stay upstream. The public tools may prompt the
+developer to install `gepa` for explicit optimization runs, then use
+skill-local adapters, metric feedback, and artifact gates. Do not port GEPA or
+depend on a full private runtime. See
+[`validate-and-optimize-contract.md`](validate-and-optimize-contract.md).
 
 Default public path:
 
