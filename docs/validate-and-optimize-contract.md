@@ -1,7 +1,7 @@
 # Validate And Optimize Contract
 
-This is the implementation contract for the OSS `validate-and-optimize` step.
-It extends, rather than replaces:
+This is the implementation contract for the public `validate-and-optimize`
+step. It extends:
 
 - [`spine.md`](spine.md)
 - [`oss-release-boundary.md`](oss-release-boundary.md)
@@ -22,66 +22,25 @@ metric/validator confirmation, split freezing, and incumbent baseline rerun.
 unapproved inputs, runs optimization only on train/dev, and creates a
 `claim.json` only after sealed holdout validation.
 
-## Optimizer Boundary
+## Runtime Model
 
-Do not implement the GEPA algorithm in this repo.
+The Python CLI prototype and skill-local Python helper scripts have been
+removed. The repo surface is now skills plus TypeScript CLI. Python is still
+allowed for small local optimizer environments because GEPA/DSPy are
+Python-native, but those envs are runtime state, not repo infrastructure.
 
-For the lean public toolchain, depend on the upstream `gepa` package when an
-optimization run is requested. The public tool should ship the Understudy
-adapter, metric/feedback contract, local artifact gates, and report writers.
-It should not depend on the full private runtime, and it should not vendor or
-copy the optimizer.
-
-The GEPA docs describe the package as a public API for optimizing text
-artifacts with LLM-guided evolution. They expose `gepa.optimize`, the
-`GEPAAdapter` protocol, and the `optimize_anything` API. DSPy also exposes
-`dspy.GEPA`; keep DSPy optional for users who are already optimizing DSPy
-programs.
-
-References:
-
-- GEPA API overview: <https://gepa-ai.github.io/gepa/api/>
-- GEPA adapter guide: <https://gepa-ai.github.io/gepa/guides/adapters/>
-- GEPA quickstart: <https://gepa-ai.github.io/gepa/guides/quickstart/>
-- DSPy GEPA overview: <https://github.com/stanfordnlp/dspy/blob/main/docs/docs/api/optimizers/GEPA/overview.md>
-
-Forward compatibility: keep optimizer execution behind a small local interface,
-for example `Optimizer.run(...)`, so a future hosted or bundled backend can be
-added without changing the artifact contract or skill.
-
-## Install Ergonomics
-
-`gepa` is not a hard dependency of `understudy-agent-tools`.
-
-On the first non-dry-run optimize request:
-
-1. Try to import `gepa`.
-2. If it is missing, print an install command and stop.
-3. Do not install packages automatically.
-
-Use `uv` first:
+Use `uv` when possible:
 
 ```bash
-uv pip install 'gepa>=0.0.27,<0.1'
+understudy-tools validate-and-optimize --uv
+uv venv .understudy/venvs/optimize
+uv pip install --python .understudy/venvs/optimize/bin/python 'gepa>=0.0.27,<0.1' 'dspy>=3.0.0'
 ```
 
-If `uv` is blocked or unavailable, show a plain Python fallback:
-
-```bash
-python3 -m venv .venv
-. .venv/bin/activate
-pip install 'gepa>=0.0.27,<0.1'
-```
-
-DSPy mode is optional and explicit:
-
-```bash
-uv pip install 'dspy>=3.0.0'
-```
-
-The version ceiling is intentional. The adapter API is the surface this repo
-will code against, so unexpected upstream API shifts should fail by install
-range rather than silently changing behavior.
+Do not create the env, install packages, or run provider calls without explicit
+approval. Until TypeScript gates land, agents must inspect the local artifacts
+directly and fail closed on missing files, stale hashes, unapproved metrics, or
+touched holdout data.
 
 ## Required Artifacts
 
@@ -111,9 +70,6 @@ and `splits.json`; fail closed if they do not match the values in
 
 ## Metric With Feedback
 
-GEPA can only optimize the objective it is given. The load-bearing Understudy
-artifact is therefore `metric.json`, not the optimizer package.
-
 `metric.json` must include:
 
 ```json
@@ -136,13 +92,6 @@ artifact is therefore `metric.json`, not the optimizer package.
 }
 ```
 
-The runtime contract is:
-
-```python
-def metric(example, prediction) -> MetricResult:
-    return MetricResult(score=score, feedback=feedback_text)
-```
-
 Rules:
 
 - Refuse optimization when `metric.json.approved` is not `true`.
@@ -150,103 +99,25 @@ Rules:
 - Feedback is required and must describe the actual validator failure.
 - If only a proxy metric exists, run diagnostic mode only and do not emit
   `claim.json`.
-- `kind` dispatches the runner: `command`/`callable` run a check; `schema` does a
-  safeParse (separate `schema_pass` from `quality_pass`); `rubric`/`llm-judge`
-  use `scripts/rubric_reward.py` (graded; debias position with a swapped
-  two-pass score); `human-review` is a blind packet. `kind: proxy` is rejected.
+- Holdout rows, labels, validators, thresholds, and sampling are immutable once
+  optimization begins.
 
-## Eval Input Adapter
+## Optimizer Boundary
 
-The adapter maps local traces or datasets into GEPA examples:
+Do not implement the GEPA algorithm in this repo. Depend on upstream optimizer
+packages only inside an approval-gated local `uv` env, and do not auto-install
+packages. The public tool should own the adapter, feedback contract, local
+artifact gates, and report writers.
 
-```json
-{
-  "id": "row-001",
-  "inputs": {},
-  "target": {},
-  "metadata": {
-    "source_ref": "evals.jsonl:1"
-  }
-}
-```
-
-Accepted MVP sources:
-
-- JSONL
-- JSON
-- CSV
-- local trace exports that have already been previewed and redacted
-
-Raw prompts, completions, labels, traces, and dataset rows stay local. The
-public tool should prefer path refs, row ids, hashes, counts, and schemas in
-reports.
-
-## GEPA Adapter
-
-For custom adapter mode, implement the upstream `GEPAAdapter` protocol:
-
-```python
-class UnderstudyGepaAdapter:
-    def evaluate(self, batch, candidate, capture_traces=False):
-        ...
-
-    def make_reflective_dataset(self, candidate, eval_batch, components_to_update):
-        ...
-```
-
-The adapter:
-
-- runs candidates through the approved harness;
-- scores outputs through the confirmed metric;
-- captures trajectories only for train/dev;
-- uses validator feedback to build reflective datasets;
-- never sends holdout examples into GEPA.
-
-For simple prompt-only MVPs, prefer the upstream `optimize_anything` or default
-GEPA APIs when they are enough. Use a custom adapter only when the harness needs
-batch control, trace capture, or custom reflective-dataset formatting.
-
-## Skill-Local Bundle
-
-Keep deterministic implementation details near the skill:
-
-```text
-skills/validate-and-optimize/
-  SKILL.md            thin routing prose (Before-You-Optimize gates)
-  reference.md        deep detail: lanes, model selection, validator kinds, inference
-  templates/          candidate.json, claim.json, eval.json, metric.json, rubric.json
-  examples/           fresh-baseline-dry-run/, stale-baseline/
-  scripts/
-    _common.py        shared artifact IO + gate helpers
-    check_freshness.py / validate_metric.py / validate_claim.py   hard gates
-    prepare_examples.py                                           eval-input adapter
-    gepa_run.py                                                   run gate + (dry-run today)
-    _adapter.py       in-place lane: UnderstudyGepaAdapter (single + multi-turn)
-    dspy_program.py   opt-in DSPy-program lane: scaffold + parity_check + dspy.GEPA
-    rubric_reward.py  rubric/llm-judge reward -> (score, feedback)
-```
-
-Inference is resolved **Understudy-first** by
-`understudy_agent_tools.inference.resolve_backend()` (login -> gateway; else BYO
-provider keys); the gateway base is config (`UNDERSTUDY_API_BASE`), never a
-hosted URL in the package. Two optimization lanes: **in-place** (default,
-`_adapter.py`, truest to prod) and **DSPy-program** (opt-in, `dspy_program.py`,
-gated by `parity_check`). See reference.md.
-
-The CLI should remain a thin wrapper around these proven scripts. Do not move
-the whole workflow into top-level CLI code.
+GEPA, when used, receives train/dev examples only. Holdout validation happens
+after the candidate is frozen.
 
 ## CLI Behavior
 
-The existing dry-run command may stay:
+Future TypeScript commands should follow this behavior:
 
 ```bash
 understudy-tools validate-and-optimize dry-run --repo .
-```
-
-Future non-dry-run behavior:
-
-```bash
 understudy-tools validate-and-optimize run --repo . --budget-usd 10
 ```
 
@@ -256,7 +127,7 @@ Required behavior:
 - Invalid JSON: exit non-zero with the parser error.
 - Hash mismatch: exit non-zero and route back to `understand-workload`.
 - Unapproved metric: exit non-zero and ask for metric confirmation.
-- Missing `gepa`: print uv-first install guidance and stop.
+- Missing optimizer package: print install guidance and stop.
 - Dry run: write `proof-packet.json` without provider calls or package installs.
 - Holdout access during optimization: mark the run contaminated and require a
   new split contract before any claim.
@@ -291,22 +162,13 @@ Required behavior:
 Do not emit `claim.json` from train/dev evidence, proxy metrics, stale
 baselines, or unfrozen candidates.
 
-## Build Order
-
-1. Add skill-local templates and examples.
-2. Add skill-local `check_freshness.py` and claim validator.
-3. Add `prepare_examples.py` for JSONL/JSON/CSV.
-4. Add dry-run report/proof scripts.
-5. Add `gepa_run.py` behind detect-and-prompt install guidance.
-6. Wire the top-level CLI only after the scripts are stable.
-
 ## Definition Of Done
 
 - The skill refuses every missing, stale, unapproved, or proxy-only gate.
 - Dry run writes a proof packet without provider calls or installs.
-- GEPA, when installed and explicitly run, sees train/dev only.
+- Optimizer runs, when explicitly approved, see train/dev only.
 - Holdout validation happens only after the candidate is frozen.
 - `claim.json` is produced only for a holdout-validated result with matching
   hashes and caveats.
-- No account, hosted gateway, full private runtime, hard `gepa` dependency, or
-  auto-install is required.
+- No account, hosted gateway, full private runtime, hard optimizer dependency,
+  or auto-install is required.

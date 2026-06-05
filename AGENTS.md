@@ -31,8 +31,8 @@ Read these before extraction, release, or public docs work:
 
 Keep one layer per spine:
 
-- CLI: `src/understudy_agent_tools/`
-- scripts: `scripts/`
+- CLI: `src/`
+- scripts: `scripts/` for repo hygiene only, not product CLI code
 - skills: `skills/`
 - vendor shims: `vendor/`
 - docs: `docs/`
@@ -57,10 +57,9 @@ When importing code from private Understudy repos:
 4. Add a smoke test or dry-run command.
 5. Keep the commit scoped to one spine.
 
-Before opening a PR that changes skills, docs, examples, scripts, package
-metadata, or vendored files, run:
+Before opening a PR that changes skills, docs, scripts, package metadata, or
+vendored files, run:
 
 ```sh
-python3 scripts/validate_public_skills.py --repo
-python3 scripts/doctor.py
+npm run check
 ```

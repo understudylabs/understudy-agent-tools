@@ -140,8 +140,8 @@ Load deeper material only when needed:
   for the Workload Card fields.
 - [`../../docs/route-decision-packet-template.md`](../../docs/route-decision-packet-template.md)
   for the next route-selection artifact.
-- [`../../examples/repos/ai-search-app/README.md`](../../examples/repos/ai-search-app/README.md)
-  for a synthetic repo that demonstrates this journey.
+- [`../../docs/workload-card-template.md`](../../docs/workload-card-template.md)
+  for the Workload Card shape used after this scan.
 
 ## Output Standard
 

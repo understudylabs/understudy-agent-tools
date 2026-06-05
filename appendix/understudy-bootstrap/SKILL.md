@@ -41,7 +41,7 @@ submission, or training.
 1. Confirm the working directory and the operating system shell.
 2. Check whether `understudy` or `understudy-tools` is already on `PATH`.
 3. Check for local project files that indicate a public installation path, such
-   as `pyproject.toml`, `package.json`, or a checked-in README.
+   as `package.json` or a checked-in README.
 4. Prefer project-local commands over global installs.
 
 ## Flow
@@ -60,22 +60,14 @@ command -v understudy-tools
 ls
 ```
 
-3. If the current directory is a Python project, prefer a local runner or
-   editable development install documented by the project:
-
-```sh
-python -m pip --version
-python -m pip show understudy understudy-tools
-```
-
-4. If the current directory is a Node project, inspect scripts before running
+3. If the current directory is a Node project, inspect scripts before running
    installs:
 
 ```sh
 npm pkg get scripts
 ```
 
-5. After any setup step, re-define the shared helper:
+4. After any setup step, re-define the shared helper:
 
 ```sh
 run_understudy() {

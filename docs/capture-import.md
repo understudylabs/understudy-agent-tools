@@ -21,15 +21,13 @@ private repo paths.
 | `tabular-data` | CSV exports, score sheets, human review rows | eval input preview |
 | `markdown-notes` | public-safe requirements, rubrics, acceptance criteria | rubric draft |
 
-## Command
+## Command Status
 
-```sh
-understudy-tools capture-import scan --repo .
-understudy-tools capture-import preview --repo . --source-id source-001 --limit 25
-understudy-tools capture-import workload-card --repo . --source-id source-001
-```
+The Python implementation of these commands was removed during the
+TypeScript/Node CLI replacement. Keep this document as the command contract for
+the next TypeScript implementation.
 
-The commands write:
+The future commands should write:
 
 ```text
 .understudy/capture-import/capture-sources.json

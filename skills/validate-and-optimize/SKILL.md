@@ -86,12 +86,12 @@ validator kinds in [`reference.md`](reference.md):
 3. Select the cheapest intervention that matches the observed failure mode:
    prompt repair, parser/schema repair, context trimming, route change,
    candidate model comparison, or GEPA.
-4. For GEPA execution, use the upstream `gepa` package behind uv-first
-   detect-and-prompt install guidance. Do not auto-install packages, vendor
-   GEPA, or depend on a full private runtime. GEPA's edge is natural-language
-   feedback: the metric must return a diagnosis of *why* each failing row failed
-   and what to change, not a bare score — bland feedback wastes the optimizer.
-5. Keep deterministic work in this skill's scripts and templates. Follow
+4. For GEPA/DSPy execution, use a small local `uv` environment only after
+   explicit approval. Do not auto-install packages, vendor GEPA/DSPy, or depend
+   on a full private runtime. GEPA's edge is natural-language feedback: the
+   metric must return a diagnosis of *why* each failing row failed and what to
+   change, not a bare score — bland feedback wastes the optimizer.
+5. Keep deterministic work in the TypeScript CLI and this skill's templates. Follow
    [`../../docs/validate-and-optimize-contract.md`](../../docs/validate-and-optimize-contract.md)
    for adapter, metric feedback, and claim packet details.
 6. When GEPA is available and explicitly approved, run train/dev-only and
@@ -107,18 +107,23 @@ Write optimization and validation artifacts under:
 .understudy/validate-and-optimize/
 ```
 
-Use the bundled deterministic scripts before any optimizer work:
+The previous Python helper scripts have been removed with the Python CLI
+prototype. Until the TypeScript gates land, inspect the artifacts directly and
+block on stale hashes, missing metric feedback, unapproved provider calls, or
+proxy-only validation.
+
+Use the CLI guide before creating a local optimizer env:
 
 ```bash
-python3 skills/validate-and-optimize/scripts/check_freshness.py --repo .
-python3 skills/validate-and-optimize/scripts/validate_metric.py --repo .
-python3 skills/validate-and-optimize/scripts/gepa_run.py --repo . --dry-run
-python3 skills/validate-and-optimize/scripts/validate_claim.py --repo .
+understudy-tools validate-and-optimize --uv
 ```
 
-`check_freshness.py` and `validate_metric.py` are hard gates. GEPA missing is
-an install prompt; metric missing, unapproved, proxy-only, or feedback-free is
-a product stop.
+If approved, keep Python isolated under ignored local runtime state:
+
+```bash
+uv venv .understudy/venvs/optimize
+uv pip install --python .understudy/venvs/optimize/bin/python 'gepa>=0.0.27,<0.1' 'dspy>=3.0.0'
+```
 
 ## Claim Rules
 

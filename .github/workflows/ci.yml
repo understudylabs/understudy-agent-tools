@@ -11,21 +11,14 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
-      - name: Install uv
-        uses: astral-sh/setup-uv@v5
+      - name: Setup Node
+        uses: actions/setup-node@v4
         with:
-          python-version: "3.13"
+          node-version: "22"
+          cache: npm
 
-      # Public skill surface: frontmatter present, thin SKILL.md (deep material
-      # in reference.md / references/), no leaked private material.
-      - name: Validate public skills
-        run: uv run python scripts/validate_public_skills.py
+      - name: Install dependencies
+        run: npm ci
 
-      # Unit + CLI + gate tests (pythonpath=["."] in pyproject lets the suite
-      # import scripts.*).
-      - name: Tests
-        run: uv run --with pytest pytest -q
-
-      # Build sdist + wheel and inspect the archives.
-      - name: Release smoke
-        run: uv run python scripts/package_release_smoke.py
+      - name: Node checks
+        run: npm run check

@@ -5,10 +5,7 @@ Run this before tagging or publishing a package.
 ## Required Checks
 
 ```sh
-python3 scripts/validate_public_skills.py --repo
-python3 scripts/package_release_smoke.py
-python3 scripts/doctor.py
-uv run --with pytest python -m pytest
+npm run check
 git ls-files
 ```
 
@@ -19,7 +16,6 @@ git ls-files
 - no private planning docs;
 - no private repo paths or local usernames;
 - no raw prompts, completions, trace payloads, customer names, or domains;
-- examples are synthetic or clearly public;
 - vendored files are covered by `vendor/MANIFEST.md`;
 - README links to privacy, security, telemetry, and OSS boundary docs.
 
@@ -28,9 +24,9 @@ git ls-files
 Before publishing a package, run:
 
 ```sh
-python3 scripts/package_release_smoke.py
+npm run package:smoke
 ```
 
-It builds wheel/sdist archives into a temporary directory and inspects their
-contents for ignored files, local artifacts, private paths, raw payload markers,
-production/control-plane URLs, and secret-shaped strings.
+It runs `npm pack --dry-run --json` and inspects the included files for local
+artifacts, private paths, raw payload markers, production/control-plane URLs,
+and secret-shaped strings.

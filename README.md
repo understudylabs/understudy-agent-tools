@@ -1,99 +1,81 @@
 # understudy-agent-tools
 
-Public, MIT-licensed agent tools for local-first AI workload evaluation,
-optimization, and handoff.
+Public, MIT-licensed Understudy agent tools and skill library.
 
-This repo is the open-source tools spine for Understudy. The goal is a single
-CLI with a large progressive-disclosure skill library: agents start from one
-entrypoint, then reveal only the script, playbook, or vendor shim needed for
-the current job.
+This repo is the public tools surface for local-first AI workload evaluation,
+validation, optimization planning, and handoff. The Python CLI prototype has
+been removed; the CLI source of truth is now TypeScript/Node.
 
 The OSS MVP loop is local-first:
 
 ```text
 understand workload -> attach harness/environment
   -> confirm metric/validator/holdout -> rerun baseline
-  -> validate and optimize -> value report
+  -> validate and optimize -> conservative claim packet
 ```
 
-Registration is not required for that loop. `register` and `login` belong to
-the CLI or hosted upsell path when a team wants credits, projects, and gateway
-routing.
+Registration is not required for that loop. Hosted gateway, browser, channel,
+daemon, and desktop-runtime commands belong to the full Understudy runtime and
+will move here only when they are intentionally extracted for this public
+tools surface.
 
 ## Shape
 
-One layer per spine:
-
 | Spine | Path | Purpose |
 | --- | --- | --- |
-| CLI | `src/understudy_agent_tools/` | Thin command router and stable public interface. |
-| Scripts | `scripts/` | Small executable utilities the CLI can call. |
-| Skills | `skills/` | Progressive-disclosure agent playbooks. |
+| CLI | `src/` | TypeScript command router and stable public interface. |
+| Skills | `skills/` | MVP progressive-disclosure agent playbooks. |
+| Appendix | `appendix/` | Preserved draft skills outside the discovered MVP surface. |
+| Docs | `docs/` | Public methodology and release-boundary notes. |
+| Scripts | `scripts/` | Repo hygiene checks, not product CLI code. |
 | Vendor | `vendor/` | Vendored or mirrored compatibility shims, with license metadata. |
-| Docs | `docs/` | Public architecture and extraction notes. |
 
-The CLI should stay boring. Durable behavior lives in scripts or small Python
-modules that are easy to inspect, test, vendor, and call from an agent.
+The CLI should stay boring. Durable public behavior belongs in TypeScript
+commands or in short skills that route agents to auditable local artifacts.
 
-## Install locally
+## Install Locally
 
 ```bash
-python -m pip install -e .
-understudy-tools --help
+npm install
+npm run build
+node dist/bin.js --help
 ```
 
-No provider calls, uploads, model downloads, secret-value inspection, or
-telemetry run by default.
-
-## First command
+After package publication:
 
 ```bash
+npm install -g @understudylabs/agent-tools
 understudy-tools spine
 ```
 
-That prints the public spine and points agents at `skills/understudy/SKILL.md`.
+No provider calls, uploads, model downloads, secret-value inspection, hosted
+jobs, or telemetry run by default.
 
-## Skill rule
+## First Commands
 
-`skills/understudy/SKILL.md` is the fat public entrypoint. It routes to
-specialist skills by intent:
+```bash
+understudy-tools spine
+understudy-tools skills --list
+understudy-tools doctor
+```
 
-- local repo workload discovery/demo
-- capture/import from existing AI calls, traces, evals, prompts, logs, and data
-- evaluate
-- latency triage
-- output control
-- blind review
-- optimize
-- train/handoff
-- lab/research notebook
-- local proxy
-- provider keys
-- provider integrations and partner cookbooks
-- model lookup
-- local models and MLX readiness
-- route decisions and conservative value reports
-- value reporting and public-safe result publishing
-- decision packets
+`spine` prints the public workflow and points agents at
+`skills/understudy/SKILL.md`.
 
-The reusable front door for real repos is
-`skills/understudy-capture-import/SKILL.md` when the user already has traces,
-evals, prompts, logs, or datasets, and
-`skills/understudy-workload-discovery/SKILL.md` when the user wants to find the
-workload in source code. `understudy-demo` uses that same journey for first-run
-walkthroughs.
+## Skill Rule
 
-The default sequence is local repo workload discovery first, then a Workload
-Card draft, harness/environment attachment, metric/validator/holdout
-confirmation, baseline rerun, validation and optimization, then a Route
-Decision Packet and conservative Value Report. Live calls, uploads, downloads,
-hosted jobs, or training require approval for the provider, budget cap, and
-data class. GEPA uses train/dev only; holdout is reserved for final validation.
-Do not publish savings, latency, quality, or route-superiority claims without a
-claim packet. The public methodology contract is documented in
-`docs/methodology-framework.md`.
+`skills/understudy/SKILL.md` is the public MVP entrypoint. It routes to exactly
+one worker:
 
-The MVP artifact contract is shared across skills, CLI gates, tests, and docs:
+- `skills/understand-workload/SKILL.md`
+- `skills/validate-and-optimize/SKILL.md`
+
+Everything else remains in `appendix/` until real usage proves it belongs back
+in discovery. This keeps the first win small: pin the workload, preserve the
+metric/split/baseline contract, then validate or optimize without leaking data
+or making unsupported claims.
+
+The MVP artifact contract is:
 
 ```text
 .understudy/understand-workload/harness.json
@@ -101,6 +83,7 @@ The MVP artifact contract is shared across skills, CLI gates, tests, and docs:
 .understudy/understand-workload/metric.json
 .understudy/understand-workload/splits.json
 .understudy/understand-workload/baseline.json
+.understudy/validate-and-optimize/candidate.json
 .understudy/validate-and-optimize/claim.json
 ```
 
@@ -110,40 +93,40 @@ change to any of those artifacts makes the baseline stale. `claim.json` must
 cite the same hash-bound contract plus the frozen candidate hash before any
 savings, latency, quality, or route-superiority claim is publishable.
 
-Optimizer implementation stays upstream. This repo should use the public
-`gepa` package when an optimization run is explicitly requested, while shipping
-the Understudy adapter, metric/feedback contract, and gates. Do not vendor GEPA
-or add the full private runtime as a dependency. The implementation contract is
+Optimizer implementation stays upstream. Do not vendor GEPA or add the full
+private runtime as a dependency. The implementation contract is documented in
 [`docs/validate-and-optimize-contract.md`](docs/validate-and-optimize-contract.md).
 
-Try the public synthetic journey:
+## Runtime Commands
 
-```bash
-cd examples/repos/ai-search-app
-understudy-tools demo scan --repo .
-understudy-tools demo plan --repo .
-understudy-tools capture-import scan --repo .
-understudy-tools capture-import preview --repo . --source-id source-003 --limit 25
-understudy-tools capture-import workload-card --repo . --source-id source-003
-understudy-tools route-decision plan --workload-card .understudy/workload-discovery/workload-card.json
-understudy-tools value report --workload-card .understudy/workload-discovery/workload-card.json --route-decision .understudy/route-decision/route-decision-packet.json --requests-per-month 10000
-```
-
-For quick scenario sizing before a measured eval, pass explicit overrides:
-
-```bash
-understudy-tools value report --workload-card .understudy/workload-discovery/workload-card.json --route-decision .understudy/route-decision/route-decision-packet.json --requests-per-month 10000 --baseline-cost-usd 0.012 --candidate-cost-usd 0.004
-```
-
-Overrides are planning inputs, not public savings claims.
-
-Hosted upsell path, after the local evidence loop shows a reason to continue:
+The TypeScript CLI currently owns the public tools surface:
 
 ```text
-register/login -> credits/project -> gateway routing
+spine
+skills
+doctor
+validate-and-optimize
 ```
 
-## Public boundary
+Full-runtime command names such as `gateway`, `browser`, `channels`,
+`schedule`, `daemon`, `agent`, and `chat` are intentionally deferred. They are
+recognized as placeholders so the migration path from the full Understudy CLI
+is explicit, but this repo should not silently pull in hosted, browser,
+desktop, messaging, or daemon behavior.
+
+For GEPA/DSPy work, the CLI stays as the guide and gate surface while Python is
+used only for small local optimizer environments:
+
+```bash
+understudy-tools validate-and-optimize --uv
+uv venv .understudy/venvs/optimize
+uv pip install --python .understudy/venvs/optimize/bin/python 'gepa>=0.0.27,<0.1' 'dspy>=3.0.0'
+```
+
+That environment is local runtime state. It is not package infrastructure and
+must not be committed.
+
+## Public Boundary
 
 Read the full policies:
 
@@ -156,7 +139,7 @@ Read the full policies:
 Release archives should pass:
 
 ```bash
-python3 scripts/package_release_smoke.py
+npm run check
 ```
 
 Do not commit:
@@ -168,9 +151,9 @@ Do not commit:
 
 Do commit:
 
-- local-only scripts
+- local-only TypeScript CLI code
 - public agent skills
-- examples using synthetic or bundled data
+- synthetic templates and docs
 - vendored shims with license metadata
 - reproducible command outputs that do not contain private payloads
 

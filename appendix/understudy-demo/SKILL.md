@@ -122,8 +122,8 @@ Load deeper material only when needed:
   for local key setup after the replay path.
 - [`../understudy-model-lookup/SKILL.md`](../understudy-model-lookup/SKILL.md)
   for candidate availability or compatibility questions.
-- [`../../examples/repos/ai-search-app/README.md`](../../examples/repos/ai-search-app/README.md)
-  for the public synthetic repo journey when no local workload is available.
+- [`../../docs/tool-migration-map.md`](../../docs/tool-migration-map.md)
+  for the public migration boundary when no local workload is available.
 
 ## Output Standard
 
