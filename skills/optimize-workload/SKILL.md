@@ -126,11 +126,22 @@ validator kinds in [`reference.md`](reference.md):
 8. Run holdout only once the candidate is frozen, and record score, failures,
    latency basis, cost basis, fallback route, demotion trigger, and caveats.
 
-Write optimization and validation artifacts under:
+The home of record for an optimization run is the **active experiment**
+directory (see the Experiment section of
+[`../understudy/SKILL.md`](../understudy/SKILL.md) for the record shape):
 
 ```text
-.understudy/optimize-workload/
+.understudy/experiments/<exp-id>/      # experiment.json, candidate.json, claim.json
 ```
+
+Open or reuse an experiment before optimizing (`experiments/active` names it),
+record the candidate model, objective, and the `pins` copied from
+`baseline.json`'s hash-chain, then freeze the chosen `candidate.json` and the
+`claim.json` there. The `optimize-workload` CLI still emits scratch artifacts
+(`eval-input-candidate.json`, `proof-packet.json`, adapter outputs) under
+`.understudy/optimize-workload/`; treat those as working state and freeze the
+selected candidate into the experiment directory. An experiment-aware CLI is a
+tracked follow-up.
 
 The previous Python helper scripts have been removed with the Python CLI
 prototype. Use the TypeScript CLI gates first, and still inspect artifacts
@@ -157,7 +168,7 @@ uv pip install --python .understudy/venvs/optimize/bin/python 'gepa>=0.0.27,<0.1
 Do not claim savings without:
 
 ```text
-.understudy/optimize-workload/claim.json
+.understudy/experiments/<exp-id>/claim.json
 ```
 
 `claim.json` must cite `harness.json`, `metric.json`, `splits.json`,
