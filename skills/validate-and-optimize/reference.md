@@ -68,9 +68,10 @@ produce `(score, feedback)`:
   not matching a teacher trace verbatim (the proxy-strict-match trap).
 - `rubric` — confirmed criteria list (id, description, review type); auto-drafted
   rubrics need human approval.
-- `llm-judge` — must debias position with a swapped two-pass score
-  `(r_ab − r_ba + 2) / 4`; never single-pass. Report judge-vs-human agreement
-  separately from candidate preference.
+- `llm-judge` / `rubric` — implemented in `rubric_reward.py`. Must debias
+  position with the swapped two-pass score (`(r_ab − r_ba + 1)/2` for [0,1] judge
+  scores; the internal judge uses `÷4` on a [-1,1] scale); never single-pass.
+  Gate on `judge_human_agreement` before trusting the judge.
 - `human-review` — blind, order-randomized packet.
 
 `kind: proxy` is rejected by the gate. If only a proxy is available, run
@@ -113,3 +114,31 @@ holdout/live validation, mark promotion as **blocked** — emit an optimization
 lead, not a win. The decision packet records: decision + evidence level,
 baseline vs candidate, artifact paths, caveats / missing evidence, and the
 approval-gated next step. This is the same gate `claim.json` enforces.
+
+## Optimization Lanes
+
+Two ways to optimize, picked by commitment and workload shape:
+
+1. **In-place prompt optimization (default).** `scripts/_adapter.py`'s
+   `UnderstudyGepaAdapter` runs the developer's *real* workload via an injected
+   `infer` (single call or multi-turn agent loop) and evolves the prompt(s) they
+   already ship. Truest to production, lowest commitment, no DSPy. For MCP /
+   tool-use agents, prefer gepa's built-in `mcp_adapter` / `terminal_bench_adapter`
+   over hand-rolling.
+2. **DSPy-program lane (opt-in).** `scripts/dspy_program.py` scaffolds a DSPy
+   program from the Workload Card + samples, then `dspy.GEPA` optimizes it
+   natively — instructions across predictors + bootstrapped few-shot demos, and
+   `dspy.ReAct` for multi-turn. Richer, but the user must adopt the program as
+   runtime, and it is **gated by `parity_check`**: the scaffolded program must
+   reproduce the incumbent baseline on holdout before GEPA runs, or you optimize a
+   reconstruction that diverges from production.
+
+## Rubric Reward (the OSS half of the verifier rung)
+
+`scripts/rubric_reward.py` turns a human-confirmed `rubric.json` + an injected
+LLM judge into `(score, feedback)` — a graded `metric` (richer than pass/fail)
+usable directly by either lane. `score_pointwise` weights per-criterion judgments
+and surfaces failing-criterion rationales as feedback; `score_pairwise` debiases
+position; `judge_human_agreement` is the calibration gate before trusting a
+rubric judge. The rubric + judgment is OSS-native and valuable on its own; **RL
+training over the reward stays hosted** (the verifier boundary above).
