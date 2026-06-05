@@ -1,6 +1,6 @@
 ---
 name: understudy-optimize
-description: Use when improving a measured workload through prompt, routing, repair, candidate-search, or cost-quality changes.
+description: Advanced/standalone, ungated optimization of a workload through prompt, routing, repair, or candidate-search. For the default journey prefer `validate-and-optimize`, which enforces baseline rerun, holdout seal, and a claim packet. Use this only when you deliberately want exploratory optimization outside those gates.
 metadata:
   understudy:
     mode: interactive

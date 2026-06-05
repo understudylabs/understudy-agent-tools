@@ -1,6 +1,6 @@
 ---
 name: understudy-decision-packet
-description: Use when turning evaluation or optimization evidence into a promote, hold, rerun, train, or publish decision with caveats.
+description: Advanced/standalone formatting of existing evidence into a promote, hold, rerun, train, or publish note. For the gated MVP claim prefer `validate-and-optimize`, which emits the hash-bound claim packet. Use this only to write up a decision from evidence you already trust.
 metadata:
   understudy:
     mode: reporting
