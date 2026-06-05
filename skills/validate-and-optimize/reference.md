@@ -125,13 +125,19 @@ artifact before any live call.
 
 ## Optimization Lanes
 
-Two ways to optimize, picked by commitment and workload shape:
+Three ways to optimize, picked by commitment and workload shape:
 
-1. **In-place prompt optimization (default).** A future TypeScript adapter runs
-   the developer's real workload via an injected `infer` function and evolves
-   the prompt or route component they already ship. Truest to production, lowest
-   commitment.
-2. **Program lane (opt-in).** The CLI can scaffold a reusable DSPy program
+1. **Eval-input adapter lane.** The CLI can run
+   `validate-and-optimize adapter run --adapter eval-input-gepa --manifest ...`
+   through a local `uv` runtime. It reads a local manifest, excludes holdout
+   rows, invokes upstream `gepa.optimize`, and writes
+   `eval-input-candidate.json` plus `proof-packet.json`. This is the pattern for
+   future Python-native adapter ports: TypeScript handles CLI/auth/artifacts;
+   Python stays inside the ignored uv runtime.
+2. **In-place prompt optimization.** A future adapter should run the developer's
+   real workload via an injected `infer` function and evolve the prompt or route
+   component they already ship. Truest to production, lowest commitment.
+3. **Program lane (opt-in).** The CLI can scaffold a reusable DSPy program
    summary, run DSPy parity from local samples, then run the approval-gated
    `dspy gepa --execute` adapter against the Understudy gateway. Full GEPA
    optimization over that program is gated by parity: the scaffolded program

@@ -90,7 +90,10 @@ validator kinds in [`reference.md`](reference.md):
    candidate model comparison, or GEPA.
 4. For GEPA/DSPy execution, use a small local `uv` environment only after
    explicit approval. Do not vendor GEPA/DSPy or depend on a full private
-   runtime. The CLI's live `dspy gepa --execute` adapter resolves the
+   runtime. The CLI owns a registry-backed adapter wrapper:
+   `validate-and-optimize adapter run --adapter <name> ... --execute`.
+   `eval-input-gepa` runs upstream GEPA locally without provider calls unless a
+   model-backed path is explicitly selected. `dspy gepa --execute` resolves the
    Understudy API key, passes it to the child process through environment only,
    and runs train/dev rows through the gateway. GEPA's edge is natural-language
    feedback: the metric must return a diagnosis of *why* each failing row failed
@@ -121,6 +124,7 @@ Use the CLI guide before creating a local optimizer env:
 
 ```bash
 understudy-tools validate-and-optimize --uv
+understudy-tools validate-and-optimize adapter run --repo . --adapter eval-input-gepa --manifest eval-input-manifest.json --execute
 ```
 
 If approved, keep Python isolated under ignored local runtime state:

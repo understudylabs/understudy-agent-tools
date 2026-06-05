@@ -114,6 +114,11 @@ artifact gates, and report writers.
 GEPA, when used, receives train/dev examples only. Holdout validation happens
 after the candidate is frozen.
 
+Adapter execution is registry-backed. The TypeScript CLI validates options,
+resolves approval/auth boundaries, writes the small Python runtime, and invokes
+`uv run --no-project`; the Python side only imports Python-native optimizer
+packages and executes the selected adapter.
+
 ## CLI Behavior
 
 Future TypeScript commands should follow this behavior:
@@ -125,6 +130,7 @@ understudy-tools validate-and-optimize rubric score --repo . --rubric rubric.jso
 understudy-tools validate-and-optimize dspy scaffold --repo . --samples samples.json --input-keys question --output-keys answer
 understudy-tools validate-and-optimize dspy parity --repo . --samples samples.json --input-keys question --output-keys answer --baseline-score 1.0
 understudy-tools validate-and-optimize dspy gepa --repo . --samples samples.json --input-keys question --output-keys answer --model gpt-4o-mini --execute
+understudy-tools validate-and-optimize adapter run --repo . --adapter eval-input-gepa --manifest eval-input-manifest.json --execute
 ```
 
 Required behavior:
@@ -143,6 +149,12 @@ Required behavior:
   resolve the Understudy API key without printing it, pass auth only through the
   child environment, run train/dev rows only, exclude holdout rows, and write a
   candidate/proof packet with `provider_calls: true`.
+- Eval-input GEPA adapter: require `--execute`, read a local manifest with
+  `rows`, `inputs`, or `inputs_path`, support exact-match label and tool-call
+  objectives, invoke upstream `gepa.optimize` through `uv`, run train/dev rows
+  only, exclude holdout rows, and write `eval-input-candidate.json` plus a
+  proof packet. It must report `provider_calls: false` unless an explicit
+  model-backed path is added and approved.
 - Holdout access during optimization: mark the run contaminated and require a
   new split contract before any claim.
 

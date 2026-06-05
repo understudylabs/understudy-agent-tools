@@ -13,8 +13,8 @@ for:
 | Local workload discovery | `demo scan`, `demo plan`, `workload-discovery scan`, `workload-discovery plan` | Restored as metadata-only `understand check` and `understand workload-card`. |
 | Capture/import | `capture-import scan`, `capture-import preview`, `capture-import workload-card` | Restored in TypeScript as metadata-only local scan, bounded preview, and workload-card artifacts. |
 | Route decision | `route-decision plan --workload-card ...` | Restored in TypeScript. Emits the JSON contract from `docs/route-decision-packet-template.md` with conservative evaluate-first routes only. |
-| Value report | `value report` | Removed. Template remains in `docs/value-report-template.md`. |
-| Validate/optimize proof gates | Python helper scripts under `skills/validate-and-optimize/scripts/` | Restored as deterministic TypeScript gates for `check` and `dry-run`; live optimizer execution remains intentionally absent. |
+| Value report | `value report` | Restored in TypeScript. Emits conservative value reports only from measured evidence or explicit overrides. |
+| Validate/optimize proof gates | Python helper scripts under `skills/validate-and-optimize/scripts/` | Restored as deterministic TypeScript gates plus `uv`-orchestrated optimizer adapters. Python remains runtime-only for GEPA/DSPy packages. |
 | Public validation/release smoke | Python scripts in `scripts/` | Replaced with Node scripts. |
 
 ## What Works Now
@@ -39,7 +39,9 @@ understudy-tools validate-and-optimize rubric score --repo . --rubric rubric.jso
 understudy-tools validate-and-optimize dspy scaffold --repo . --samples samples.json --input-keys question --output-keys answer
 understudy-tools validate-and-optimize dspy parity --repo . --samples samples.json --input-keys question --output-keys answer --baseline-score 1.0
 understudy-tools validate-and-optimize dspy gepa --repo . --samples samples.json --input-keys question --output-keys answer --model gpt-4o-mini --execute
+understudy-tools validate-and-optimize adapter run --repo . --adapter eval-input-gepa --manifest eval-input-manifest.json --execute
 understudy-tools validate-and-optimize run --repo . --backend uv-gepa --execute
+understudy-tools value report --workload-card .understudy/workload-discovery/workload-card.json --route-decision .understudy/route-decision/route-decision-packet.json --requests-per-month 10000
 ```
 
 The Node package validates itself with:
@@ -103,12 +105,21 @@ configures DSPy against the gateway, runs train/dev rows only, excludes holdout,
 and writes `.understudy/validate-and-optimize/candidate.json` plus
 `proof-packet.json`.
 
+The generic adapter registry is exposed through
+`validate-and-optimize adapter run`. The first registry-backed non-DSPy adapter
+is `eval-input-gepa`: it reads a manifest with `rows`, `inputs`, or
+`inputs_path`, supports exact-match label scoring plus a minimal tool-call
+objective, runs upstream `gepa.optimize` through `uv`, excludes holdout rows,
+and writes `eval-input-candidate.json`, `proof-packet.json`, and an adapter
+result under `.understudy/validate-and-optimize/eval-input-gepa/`. Without a
+model, this path makes no provider calls.
+
 ## Next CLI Restores
 
 Restore executable functionality in this order:
 
-1. Additional workload adapters that follow the same TypeScript-orchestrated
-   `uv` pattern.
+1. More registry adapters that follow the same TypeScript-orchestrated `uv`
+   pattern.
 2. Claim validation and holdout-finalization command.
 
 Each restore should be TypeScript-first. Python is acceptable only as a small

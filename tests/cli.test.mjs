@@ -174,6 +174,7 @@ function withOptimizerFixtureRepo(fn) {
   try {
     const rubricPath = join(repo, "rubric.json");
     const samplesPath = join(repo, "samples.json");
+    const evalInputManifestPath = join(repo, "eval-input-manifest.json");
     writeFileSync(
       rubricPath,
       JSON.stringify(
@@ -191,7 +192,39 @@ function withOptimizerFixtureRepo(fn) {
       samplesPath,
       JSON.stringify([{ question: "q1", answer: "a1" }, { question: "q2", answer: "a2" }], null, 2),
     );
-    return fn({ repo, rubricPath, samplesPath });
+    writeFileSync(
+      evalInputManifestPath,
+      JSON.stringify(
+        {
+          schema_version: "understudy.eval_input_manifest.v1",
+          labels: ["refund", "technical"],
+          seed_policy: "Choose the label that appears in the request.",
+          rows: [
+            {
+              input_id: "train-1",
+              split: "train",
+              request: { query: "refund requested for duplicate charge" },
+              expected: { label: "refund" },
+            },
+            {
+              input_id: "dev-1",
+              split: "dev",
+              request: { query: "technical failure in deployment" },
+              expected: { label: "technical" },
+            },
+            {
+              input_id: "holdout-1",
+              split: "holdout",
+              request: { query: "refund policy question" },
+              expected: { label: "refund" },
+            },
+          ],
+        },
+        null,
+        2,
+      ),
+    );
+    return fn({ repo, rubricPath, samplesPath, evalInputManifestPath });
   } finally {
     rmSync(repo, { recursive: true, force: true });
   }
@@ -581,6 +614,64 @@ describe("understudy-tools CLI", () => {
       assert.equal(payload.status, "blocked");
       assert.equal(payload.provider_calls, false);
       assert.equal(payload.optimizer_execution, false);
+    }));
+
+  it("blocks a registry optimizer adapter unless execution is explicit", () =>
+    withOptimizerFixtureRepo(({ repo, evalInputManifestPath }) => {
+      const result = run([
+        "validate-and-optimize",
+        "adapter",
+        "run",
+        "--repo",
+        repo,
+        "--adapter",
+        "eval-input-gepa",
+        "--manifest",
+        evalInputManifestPath,
+      ]);
+      assert.equal(result.status, 1);
+      const payload = JSON.parse(result.stdout);
+      assert.equal(payload.schema_version, "understudy.eval_input_gepa_adapter.v1");
+      assert.equal(payload.status, "blocked");
+      assert.equal(payload.provider_calls, false);
+      assert.equal(payload.optimizer_execution, false);
+    }));
+
+  it("runs the eval-input GEPA adapter through uv without provider calls", () =>
+    withOptimizerFixtureRepo(({ repo, evalInputManifestPath }) => {
+      const result = run([
+        "validate-and-optimize",
+        "adapter",
+        "run",
+        "--repo",
+        repo,
+        "--adapter",
+        "eval-input-gepa",
+        "--manifest",
+        evalInputManifestPath,
+        "--max-metric-calls",
+        "2",
+        "--execute",
+      ]);
+      assert.equal(result.status, 0, result.stderr);
+      const payload = JSON.parse(result.stdout);
+      assert.equal(payload.schema_version, "understudy.eval_input_gepa_adapter.v1");
+      assert.equal(payload.status, "candidate-created");
+      assert.equal(payload.provider_calls, false);
+      assert.equal(payload.optimizer_execution, true);
+      assert.equal(payload.holdout_count_excluded, 1);
+
+      const candidate = JSON.parse(
+        readFileSync(join(repo, ".understudy", "validate-and-optimize", "eval-input-candidate.json"), "utf8"),
+      );
+      assert.equal(candidate.schema_version, "understudy.eval_input_gepa_candidate.v1");
+      assert.equal(candidate.holdout_count_excluded, 1);
+      const proof = JSON.parse(
+        readFileSync(join(repo, ".understudy", "validate-and-optimize", "proof-packet.json"), "utf8"),
+      );
+      assert.equal(proof.mode, "eval-input-gepa");
+      assert.equal(proof.provider_calls, false);
+      assert.equal(proof.holdout_accessed_during_optimization, false);
     }));
 
   it("writes a measured-evidence value report without making provider calls", () =>
