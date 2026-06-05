@@ -880,15 +880,15 @@ describe("understudy CLI", () => {
           assert.equal(request.method, "POST");
           assert.equal(request.url, "/admin/v1/orgs/org_test/projects/proj_test/workloads");
           assert.equal(request.headers.authorization, "Bearer sk_test_workloads");
-          assert.equal(request.body.workload_card.schema_version, "understudy.workload_card.v1");
-          assert.equal(request.body.workload_card.workload_id, "workload-001");
-          assert.equal(request.body.source.kind, "workload_card");
+          assert.equal(request.body.name, "workload-001");
+          assert.equal(request.body.capture_enabled, false);
           return {
             status: 201,
             body: {
-              workload_id: "wl_server_123",
+              id: "wl_server_123",
               project_id: "proj_test",
-              created: true,
+              name: "workload-001",
+              capture_enabled: false,
             },
           };
         },
@@ -901,9 +901,11 @@ describe("understudy CLI", () => {
           );
           assert.equal(result.status, 0, result.stderr);
           const payload = JSON.parse(result.stdout);
-          assert.equal(payload.workload_id, "wl_server_123");
+          assert.equal(payload.id, "wl_server_123");
           assert.equal(payload.project_id, "proj_test");
-          assert.ok(requests.some((request) => request.url === "/admin/v1/orgs/org_test/projects/proj_test/workloads"));
+          assert.ok(
+            requests.some((request) => request.url === "/admin/v1/orgs/org_test/projects/proj_test/workloads"),
+          );
         },
       );
     } finally {

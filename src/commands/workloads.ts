@@ -24,10 +24,11 @@ const WorkloadCardSchema = z.object({
 }).passthrough();
 
 const CreateWorkloadResponseSchema = z.object({
-  workload_id: z.string().optional(),
-  id: z.string().optional(),
+  id: z.string(),
   project_id: z.string().optional(),
-  created: z.boolean().optional(),
+  name: z.string().optional(),
+  capture_enabled: z.boolean().optional(),
+  created_at: z.string().optional(),
 }).passthrough();
 
 interface OrgOpt {
@@ -84,19 +85,13 @@ async function runCreate(cmd: Command, opts: CreateOpts): Promise<void> {
       orgId: auth.orgId,
       method: "POST",
       body: {
-        workload_card: card,
-        source: {
-          kind: "workload_card",
-          path: opts.fromCard,
-        },
+        name: workloadNameFromCard(card),
+        capture_enabled: false,
       },
     },
     CreateWorkloadResponseSchema,
   );
-  const workloadId = res.data.workload_id ?? res.data.id;
-  if (!workloadId) {
-    throw new Error("Gateway response did not include workload_id.");
-  }
+  const workloadId = res.data.id;
   trackControlPlaneAction({
     resource: "workloads",
     action: "created",
@@ -189,4 +184,13 @@ function readWorkloadCard(path: string): z.infer<typeof WorkloadCardSchema> {
       cause,
     });
   }
+}
+
+function workloadNameFromCard(card: z.infer<typeof WorkloadCardSchema>): string {
+  const raw = (card.workload_id || card.workload_name || "workload").toLowerCase();
+  const normalized = raw.replace(/[^a-z0-9_-]+/g, "-").replace(/^-+/, "").slice(0, 63);
+  if (!/^[a-z0-9][a-z0-9_-]{0,62}$/.test(normalized)) {
+    throw new Error(`Workload card has no routable workload name: ${card.workload_id}`);
+  }
+  return normalized;
 }
