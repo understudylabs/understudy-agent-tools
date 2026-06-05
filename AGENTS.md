@@ -26,18 +26,43 @@ Read these before extraction, release, or public docs work:
 - [`docs/telemetry.md`](docs/telemetry.md)
 - [`docs/oss-release-boundary.md`](docs/oss-release-boundary.md)
 - [`docs/release-checklist.md`](docs/release-checklist.md)
+- [`docs/pr-review.md`](docs/pr-review.md)
 
 ## Architecture
 
 Keep one layer per spine:
 
-- CLI: `src/`
+- CLI: `src/` for thin durable shortcuts, auth, artifact checks, and runtime wrappers
 - scripts: `scripts/` for repo hygiene only, not product CLI code
 - skills: `skills/`
+- cookbook: `cookbook/` for bundled synthetic examples agents can copy and test
 - vendor shims: `vendor/`
 - docs: `docs/`
 
-The CLI is a router. Scripts and skills should remain independently readable.
+The CLI should stay thin. Skills and cookbooks explain the capability; the CLI
+only makes durable product shortcuts reliable enough for an agent to monitor.
+
+## TypeScript + uv Python Bridge
+
+This repo is skills-first and TypeScript-backed. Port product behavior from
+`understudy-agent` into TypeScript only when it affects auth, command routing,
+durable execution, artifact checks, or public safety boundaries. Put workflow
+judgment and implementation guidance in skills, cookbook examples, and docs.
+
+Python is allowed only as isolated runtime glue for Python-native workload
+logic such as GEPA, DSPy, eval harnesses, rubric helpers, dataset transforms,
+or future training/export adapters. Use the bridge pattern:
+
+1. TypeScript owns the command, flags, validation, approval gates, and artifact
+   paths.
+2. TypeScript invokes Python with `uv run --no-project` or an ignored local
+   `.understudy/` runtime.
+3. Python receives file paths or JSON, returns structured JSON on stdout, and
+   never becomes an importable package in this repo.
+4. Do not add `pyproject.toml`, `uv.lock`, `src/understudy_agent_tools/`, or
+   checked-in `.py` product modules without a deliberate architecture change.
+
+See [`docs/uv-python-bridge.md`](docs/uv-python-bridge.md).
 
 ## Skills
 
@@ -62,4 +87,12 @@ vendored files, run:
 
 ```sh
 npm run check
+git diff --check
+```
+
+Before broad CLI or adapter PRs, also check file size and diff shape:
+
+```sh
+git diff --stat
+wc -l src/**/*.ts tests/*.mjs
 ```

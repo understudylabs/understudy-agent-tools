@@ -1,6 +1,6 @@
 # Optimize — references
 
-Curated, public sources behind the `validate-and-optimize` skill. Keep this
+Curated, public sources behind the `optimize-workload` skill. Keep this
 short and high-signal; it is the "where these ideas come from" list, not a
 literature review.
 

@@ -131,18 +131,9 @@ Recommended fields:
 Artificial Analysis, provider catalogs, and supplier pricing are priors. They
 help choose what to try first; they do not replace workload-specific evals.
 
-## Decision Packet
-
-Template: [`decision-packet-template.md`](decision-packet-template.md).
-
 Value reports use [`value-report-template.md`](value-report-template.md).
 Scenario overrides can size opportunity before a measured eval, but they are
 not evidence of savings, speedup, or quality until validated on the workload.
-
-The Decision Packet owns the final recommendation. It should not hide weak
-evidence behind confident prose. If the result is a dry-run, replay, or small
-validation, the decision should usually be `rerun`, `optimize`, or `evaluate`
-rather than `promote`.
 
 ## Training Last
 

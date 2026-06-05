@@ -1,36 +1,38 @@
 # understudy-agent-tools
 
-Public, MIT-licensed Understudy agent tools and skill library.
+Public, MIT-licensed Understudy skill library, cookbook, and thin CLI.
 
-This repo is the public tools surface for local-first AI workload evaluation,
-validation, optimization planning, and handoff. The Python CLI prototype has
-been removed; the CLI source of truth is now TypeScript/Node.
+This repo is the public skills surface for local-first AI workload evaluation,
+optimization planning, gateway handoff, and agent-led implementation. The CLI is
+thin TypeScript/Node: durable shortcuts, auth, artifact checks, and runtime
+wrappers that a coding agent can monitor.
 
-The OSS MVP loop is local-first:
+The OSS MVP loop is local-first and skill-led:
 
 ```text
-understand workload -> attach harness/environment
+capture evidence -> attach harness/environment
   -> confirm metric/validator/holdout -> rerun baseline
-  -> validate and optimize -> conservative claim packet
+  -> optimize workload -> conservative claim packet
 ```
 
-Registration is not required for that loop. Hosted gateway, browser, channel,
-daemon, and desktop-runtime commands belong to the full Understudy runtime and
-will move here only when they are intentionally extracted for this public
-tools surface.
+Registration is not required for that loop. Hosted gateway access is available
+after `understudy login`; browser, channel, daemon, and desktop-runtime
+commands remain outside this public CLI until intentionally extracted.
 
 ## Shape
 
 | Spine | Path | Purpose |
 | --- | --- | --- |
-| CLI | `src/` | TypeScript command router and stable public interface. |
+| CLI | `src/` | Thin TypeScript shortcuts for auth, artifact checks, and durable runs. |
 | Skills | `skills/` | MVP progressive-disclosure agent playbooks. |
+| Cookbook | `cookbook/` | Bundled synthetic examples for agents to copy, run, and adapt. |
 | Docs | `docs/` | Public methodology and release-boundary notes. |
 | Scripts | `scripts/` | Repo hygiene checks, not product CLI code. |
 | Vendor | `vendor/` | Vendored or mirrored compatibility shims, with license metadata. |
 
-The CLI should stay boring. Durable public behavior belongs in TypeScript
-commands or in short skills that route agents to auditable local artifacts.
+The CLI should stay boring. Workflow judgment belongs in skills and cookbooks;
+durable shortcuts belong in TypeScript only when the agent needs reliable
+execution, auth injection, artifact writes, or a safety gate.
 
 ## Install Locally
 
@@ -43,60 +45,109 @@ node dist/bin.js --help
 After package publication:
 
 ```bash
-npm install -g @understudylabs/agent-tools
-understudy-tools spine
+npm install -g @understudylabs/understudy-agent-tools
+understudy spine
 ```
 
-No provider calls, uploads, model downloads, secret-value inspection, hosted
-jobs, or telemetry run by default.
+No provider calls, uploads, model downloads, secret-value inspection, or hosted
+jobs run by default. After authentication, the CLI emits bounded product
+telemetry documented in [`docs/telemetry.md`](docs/telemetry.md); disable it
+with `UNDERSTUDY_TELEMETRY=0`.
 
 ## First Commands
 
 ```bash
-understudy-tools spine
-understudy-tools skills --list
-understudy-tools doctor
+understudy spine
+understudy skills --list
+understudy skills --search gateway
+understudy doctor
 ```
 
 `spine` prints the public workflow and points agents at
 `skills/understudy/SKILL.md`.
 
-## Skill Rule
+## First Auth Journey
 
-`skills/understudy/SKILL.md` is the public MVP entrypoint. It routes to exactly
-one worker:
+The first hosted journey is intentionally narrow:
 
-- `skills/understand-workload/SKILL.md`
-- `skills/validate-and-optimize/SKILL.md`
-
-Everything else was cut from the discovered surface until real usage proves it
-belongs back. This keeps the first win small: pin the workload, preserve the
-metric/split/baseline contract, then validate or optimize without leaking data
-or making unsupported claims.
-
-The MVP artifact contract is:
-
-```text
-.understudy/understand-workload/harness.json
-.understudy/understand-workload/environment.json
-.understudy/understand-workload/metric.json
-.understudy/understand-workload/splits.json
-.understudy/understand-workload/baseline.json
-.understudy/validate-and-optimize/candidate.json
-.understudy/validate-and-optimize/claim.json
+```bash
+understudy login --email you@company.com
+understudy status --json
+understudy projects list --json
+understudy keys list --json
+understudy models list --json
+understudy workloads route <workload-id> --project-id <project-id> --model-id glm-5.1 --traffic-pct 10
+understudy run -- npm run your-local-script
 ```
 
-`baseline.json` must carry `harness_sha256`, `metric_sha256`, and
-`splits_sha256` for the exact artifacts used by the incumbent rerun. A later
-change to any of those artifacts makes the baseline stale. `claim.json` must
-cite the same hash-bound contract plus the frozen candidate hash before any
-savings, latency, quality, or route-superiority claim is publishable.
+`login --email` uses the Understudy email-code registration flow. It stores the
+returned `sk_*` in `~/.understudy/credentials.json` with mode `600` and writes a
+repo-local `.understudy/config.json` when the platform returns a default
+project. `run` injects `UNDERSTUDY_API_KEY` and `UNDERSTUDY_GATEWAY_URL` only
+into the child process; do not copy secrets into repo files or chat output.
+`models list` shows public Understudy model IDs only. `workloads route` writes
+control-plane route config, so the application keeps calling the normal gateway
+while a percentage of traffic goes to the selected Understudy model and the
+rest remains passthrough/frontier. Clear the route with
+`understudy workloads route <workload-id> --project-id <project-id> --clear`.
+
+If the coding agent has an approved native email connector, it may complete the
+email-code prompt by reading the fresh Understudy sign-in email directly. The
+agent should search only for the current login email, use the code once, and not
+print the code or retain it in artifacts.
+
+For agent-led onboarding, run:
+
+```bash
+understudy setup
+```
+
+Then ask the coding agent to convert the current repo to Understudy or add a
+thin GEPA/DSPy optimizer. The installed onboarding skill starts by checking
+`understudy status --json` and stops with a clear login instruction if
+the user is not authenticated.
+
+## Cookbook Examples
+
+Cookbooks are bundled with the package and smoke-tested:
+
+```bash
+npm run cookbook:validate
+```
+
+Current examples:
+
+- `cookbook/capture-evidence-node`
+- `cookbook/optimize-eval-input-gepa`
+- `cookbook/gateway-openai-typescript`
+
+## Skill Tree
+
+`skills/understudy/SKILL.md` is the public entrypoint. It routes to exactly one
+capability worker:
+
+- `skills/capture-evidence/SKILL.md`
+- `skills/optimize-workload/SKILL.md`
+- `skills/use-understudy-gateway/SKILL.md`
+- `skills/prepare-verifier-handoff/SKILL.md`
+
+Everything else stays outside the discovered surface until real usage proves it
+belongs back. See [`skills/README.md`](skills/README.md) for the current
+hierarchy and [`docs/current-functionality.md`](docs/current-functionality.md)
+for the migration ledger.
+
+`prepare-verifier-handoff` is intentionally handoff-only. It is for workloads
+that need a future Understudy verifier/RL-environment release or an external
+partner path after local validation and prompt optimization are insufficient.
+Prime Intellect Verifiers is the current preferred referral for that rung.
 
 Optimizer implementation stays upstream. Do not vendor GEPA or add the full
 private runtime as a dependency. The implementation contract is documented in
-[`docs/validate-and-optimize-contract.md`](docs/validate-and-optimize-contract.md).
+[`docs/optimize-workload-contract.md`](docs/optimize-workload-contract.md).
+The TypeScript-to-`uv` Python bridge pattern is documented in
+[`docs/uv-python-bridge.md`](docs/uv-python-bridge.md).
 
-## Runtime Commands
+## CLI Surface
 
 The TypeScript CLI currently owns the public tools surface:
 
@@ -104,20 +155,32 @@ The TypeScript CLI currently owns the public tools surface:
 spine
 skills
 doctor
-validate-and-optimize
+login
+status
+projects
+keys
+models
+workloads
+setup
+setup-code
+run
+optimize-workload
 ```
 
+`setup-code` is skill-routed. It does not patch files directly; it tells the
+coding agent to use `skills/onboard/setup-code.md` and the matching framework
+recipe.
+
 Full-runtime command names such as `gateway`, `browser`, `channels`,
-`schedule`, `daemon`, `agent`, and `chat` are intentionally deferred. They are
-recognized as placeholders so the migration path from the full Understudy CLI
-is explicit, but this repo should not silently pull in hosted, browser,
-desktop, messaging, or daemon behavior.
+`schedule`, `daemon`, `agent`, and `chat` are not registered in this public
+CLI. Use `understudy skills --search <query>` to find the relevant capability
+skill or cookbook instead.
 
 For GEPA/DSPy work, the CLI stays as the guide and gate surface while Python is
 used only for small local optimizer environments:
 
 ```bash
-understudy-tools validate-and-optimize --uv
+understudy optimize-workload --uv
 uv venv .understudy/venvs/optimize
 uv pip install --python .understudy/venvs/optimize/bin/python 'gepa>=0.0.27,<0.1' 'dspy>=3.0.0'
 ```

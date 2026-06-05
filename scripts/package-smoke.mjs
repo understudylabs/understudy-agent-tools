@@ -3,7 +3,14 @@
 import { existsSync, readFileSync } from "node:fs";
 import { extname } from "node:path";
 import { spawnSync } from "node:child_process";
-import { privateTerms, productionUrlPatterns, rawPayloadPatterns, secretPatterns, textExtensions } from "./public-safety.mjs";
+import {
+  allowedProductionUrls,
+  privateTerms,
+  productionUrlPatterns,
+  rawPayloadPatterns,
+  secretPatterns,
+  textExtensions,
+} from "./public-safety.mjs";
 
 const forbiddenMemberParts = [
   ".understudy/",
@@ -25,6 +32,13 @@ const forbiddenMemberParts = [
   ".py",
 ];
 
+const requiredPackageMembers = [
+  "cookbook/README.md",
+  "cookbook/capture-evidence-node/README.md",
+  "cookbook/optimize-eval-input-gepa/eval-input-manifest.json",
+  "cookbook/gateway-openai-typescript/src/client.ts",
+];
+
 function npmPackFiles() {
   const result = spawnSync("npm", ["pack", "--dry-run", "--json"], { encoding: "utf8" });
   if (result.status !== 0) {
@@ -38,7 +52,8 @@ function npmPackFiles() {
 }
 
 function textErrors(name, path) {
-  if (!existsSync(path) || !textExtensions.has(extname(path).toLowerCase())) {
+  const extension = extname(path).toLowerCase();
+  if (!existsSync(path) || (!textExtensions.has(extension) && extension !== ".map")) {
     return [];
   }
   const text = readFileSync(path, "utf8");
@@ -48,16 +63,31 @@ function textErrors(name, path) {
       errors.push(`${name}: contains private release term ${JSON.stringify(term)}`);
     }
   }
-  for (const pattern of [...secretPatterns, ...rawPayloadPatterns, ...productionUrlPatterns]) {
+  for (const pattern of [...secretPatterns, ...rawPayloadPatterns]) {
     if (pattern.test(text)) {
       errors.push(`${name}: contains unsafe text matching ${pattern.source}`);
+    }
+  }
+  for (const pattern of productionUrlPatterns) {
+    for (const match of text.matchAll(new RegExp(pattern.source, pattern.flags.includes("g") ? pattern.flags : `${pattern.flags}g`))) {
+      const url = match[0].replace(/\/+$/, "");
+      if (!allowedProductionUrls.has(url)) {
+        errors.push(`${name}: contains unsafe text matching ${pattern.source}`);
+      }
     }
   }
   return errors;
 }
 
 const errors = [];
-for (const entry of npmPackFiles()) {
+const packageFiles = npmPackFiles();
+const packagePaths = new Set(packageFiles.map((entry) => entry.path));
+for (const required of requiredPackageMembers) {
+  if (!packagePaths.has(required)) {
+    errors.push(`package/${required}: required cookbook file missing from package`);
+  }
+}
+for (const entry of packageFiles) {
   const path = entry.path;
   const packageName = `package/${path}`;
   for (const forbidden of forbiddenMemberParts) {

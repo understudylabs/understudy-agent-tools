@@ -11,7 +11,7 @@ workload" to "measurable workload":
 3. confirm the metric, validator, and holdout boundary;
 4. rerun the baseline before any optimization or value claim.
 
-The measured artifacts live under `.understudy/understand-workload/`. The
+The measured artifacts live under `.understudy/capture-evidence/`. The
 incumbent baseline rerun writes `baseline.json` with `harness_sha256`,
 `metric_sha256`, and `splits_sha256` for the exact `harness.json`,
 `metric.json`, and `splits.json` it used.

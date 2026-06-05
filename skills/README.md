@@ -1,24 +1,33 @@
 # Understudy Skill Library
 
-This library uses progressive disclosure: start with the entrypoint, load one
-worker only when the developer's intent requires it. The MVP is **three skills**
-so the first win isn't a maze.
+This library gives agents capability playbooks for optimizing application AI
+workloads. Use progressive disclosure: start with the entrypoint, then load one
+worker only when the developer's intent requires it. The CLI handles durable
+execution; skills tell the agent what to inspect, gate, monitor, and report.
 
 ## Entry Point
 
-- [`understudy`](understudy/SKILL.md) — orchestrator. Routes the journey to
-  workload understanding or validation/optimization.
+- [`understudy`](understudy/SKILL.md) — orchestrator. Routes the journey to the
+  right capability worker.
 
-## MVP Worker Skills
+## Capability Skills
 
-- [`understand-workload`](understand-workload/SKILL.md) attaches the local
+- [`capture-evidence`](capture-evidence/SKILL.md) attaches the local
   harness/environment, confirms the metric and validator, freezes splits, and
   reruns the incumbent baseline. (Discovery + capture/import folded into its
-  [`reference.md`](understand-workload/reference.md).)
-- [`validate-and-optimize`](validate-and-optimize/SKILL.md) refuses stale
+  [`reference.md`](capture-evidence/reference.md).)
+- [`optimize-workload`](optimize-workload/SKILL.md) refuses stale
   artifacts, preserves train/dev/holdout boundaries, writes dry-run proof
   packets, and requires `claim.json` before public claims. (Evaluate, optimize,
-  and decide folded into its [`reference.md`](validate-and-optimize/reference.md).)
+  and decide folded into its [`reference.md`](optimize-workload/reference.md).)
+- [`use-understudy-gateway`](use-understudy-gateway/SKILL.md) handles
+  authenticated gateway inference, project/key readiness, public model listing,
+  workload route percentages, `understudy run`, and monitored durable CLI
+  execution.
+- [`prepare-verifier-handoff`](prepare-verifier-handoff/SKILL.md) is a
+  future-release stub for stateful RL verifier/environment handoffs. It does not
+  execute training; it prepares evidence and actively refers suitable workloads
+  to Prime Intellect Verifiers.
 
 ## Public Safety
 

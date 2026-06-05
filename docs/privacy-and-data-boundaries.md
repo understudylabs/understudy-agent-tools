@@ -3,7 +3,9 @@
 Understudy Agent Tools are local-first by default.
 
 By default, the CLI and skills do not upload files, call providers, inspect
-secret values, download models, submit hosted jobs, or send telemetry.
+secret values, download models, or submit hosted jobs. After authentication,
+the CLI may send bounded product telemetry as documented in
+[`telemetry.md`](telemetry.md); set `UNDERSTUDY_TELEMETRY=0` to disable it.
 
 ## Data Classes
 
@@ -48,4 +50,5 @@ payloads, source snippets, and eval rows require opt-in handling.
 - source snippets;
 - private repo paths;
 - customer names or domains;
-- telemetry.
+- prompts, completions, traces, source snippets, datasets, private repo paths,
+  provider keys, secret values, or local model metadata in telemetry.
