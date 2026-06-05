@@ -106,12 +106,47 @@ swap → GEPA. Confirm metric, incumbent route, split boundaries, sample size, a
 failure taxonomy first; run the smallest dry-run before any paid step; match the
 intervention to the *observed* failure class, not a guess.
 
+## Optimization-Target Menu
+
+The ladder above is *how* you change. This menu is *what* you change. Before
+spending budget, pick the **cheapest target that matches the observed failure
+mode** — changing a tool description is far cheaper than swapping the model.
+State the chosen target and the failure mode it addresses in the run artifact:
+
+- **System prompt** — instructions, role, constraints applied to every call.
+  Cheap; first stop for instruction-following or formatting misses.
+- **User prompt template** — the per-row scaffold around inputs. For misses
+  driven by phrasing, missing fields, or weak few-shot framing.
+- **Tool descriptions** — names, arg docs, and when-to-use text. For wrong-tool,
+  bad-argument, or redundant-call failures in an agentic workload.
+- **Routing policy** — which model/route a request takes. For failures
+  concentrated on a request class a different route handles better.
+- **Model choice** — the student model itself. Higher commitment; only after
+  cheaper targets stall and headroom remains.
+- **Context-window strategy** — what gets packed and trimmed. For truncation,
+  lost-in-the-middle, or cost-from-bloat failures.
+- **Retrieval parameters** — top-k, chunking, reranking, query construction. For
+  missing-evidence or irrelevant-context failures in a RAG workload.
+- **Retry strategy** — retry count, backoff, and reformulation on failure. For
+  intermittent parse or transient-error failures, not systematic quality misses.
+
 **Decide (turn evidence into one call).** Classify the evidence level, then pick
 **exactly one**: promote, hold, rerun, optimize, train, or publish. Below
 holdout/live validation, mark promotion as **blocked** — emit an optimization
 lead, not a win. The decision packet records: decision + evidence level,
 baseline vs candidate, artifact paths, caveats / missing evidence, and the
 approval-gated next step. This is the same gate `claim.json` enforces.
+
+Two principles hold across every target and lane:
+
+- **Keep a candidate history.** Record each candidate you try — target chosen,
+  variant, score, and why it was kept or rejected — so the trail is auditable
+  and a regression can be rolled back to a known-good prior. Do not overwrite
+  prior candidates; append.
+- **Never claim an improvement without measured before/after evidence.** A delta
+  is only real when baseline and candidate were scored on the same metric and
+  split, and the numbers are tied to the hash-bound `claim.json` contract (see
+  SKILL.md → Claim Rules). No before/after, no claim — only a lead.
 
 ## Inference Boundary
 

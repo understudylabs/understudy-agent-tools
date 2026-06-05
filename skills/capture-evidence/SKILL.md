@@ -100,6 +100,16 @@ enough provenance for another agent to repeat the step without guessing.
 
 ## Flow
 
+Inspect the repo first to find where LLM calls happen and the current
+model/provider/harness/eval state, then surface that inventory before building
+anything. The deep inspection checklist (call sites by SDK family, env vars,
+tracing, CI) and the eval-harness discover-then-build playbook live in
+[`reference.md`](reference.md). For cross-cutting objective/constraint framing,
+read [`../understudy/reference.md`](../understudy/reference.md). For multi-turn /
+tool-use / agentic workloads, route the eval to
+[`../optimize-agentic-search/SKILL.md`](../optimize-agentic-search/SKILL.md)
+instead of building a single-output harness.
+
 Start from the real local workload:
 
 - app route, eval suite, trace export, benchmark fixture, prompt set, dataset,

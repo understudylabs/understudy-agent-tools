@@ -14,8 +14,8 @@ Use this worker when the developer wants to run an application workload through
 Understudy-managed inference or needs the CLI to execute a durable command while
 the agent monitors status and artifacts.
 
-The local evidence loop does not require auth. Route here only when the
-developer explicitly asks for Understudy inference, gateway routing, project/key
+The local evidence loop does not require auth. Route here only when the developer
+explicitly asks for Understudy inference, gateway routing, project/key
 management, workload route configuration, hosted execution, or an authenticated
 cookbook.
 
@@ -24,17 +24,17 @@ cookbook.
 Do not ask the developer to paste an API key. Use the CLI registration flow and
 let the CLI store credentials outside the repo.
 
-Do not print, commit, or write `sk_*` values into artifacts. `understudy
-run` injects `UNDERSTUDY_API_KEY` and `UNDERSTUDY_GATEWAY_URL` only into the
-child process environment.
+Do not print, commit, or write `sk_*` values into artifacts. `understudy run`
+injects `UNDERSTUDY_API_KEY` and `UNDERSTUDY_GATEWAY_URL` only into the child
+process environment.
 
 Do not run provider calls, uploads, hosted jobs, or model downloads without the
 developer approving the exact command, data class, and spend or download bound.
 
 ## Resolve CLI
 
-Prefer the installed `understudy` binary. If it is unavailable inside a
-repo checkout, run through the package script:
+Prefer the installed `understudy` binary. If it is unavailable inside a repo
+checkout, run through the package script:
 
 ```sh
 npm run build
@@ -55,9 +55,9 @@ node dist/bin.js status --json
    understudy login --email <developer-email>
    ```
 
-   If the current agent has an approved native email connector, it may search
-   narrowly for the fresh Understudy sign-in email, read the one-time code, and
-   enter it into the waiting CLI prompt. Do not print or persist the code.
+   An agent with an approved native email connector may search narrowly for the
+   fresh sign-in email and enter the one-time code into the waiting CLI prompt.
+   Do not print or persist the code.
 
 3. Confirm project/key readiness:
 
@@ -67,21 +67,10 @@ node dist/bin.js status --json
    ```
 
 4. For frontier-vs-Understudy A/B routing, list public model IDs and set a
-   bounded workload route:
-
-   ```sh
-   understudy models list --json
-   understudy workloads route <workload-id> --project-id <project-id> --model-id glm-5.1 --traffic-pct 10
-   ```
-
-   The agent must not expose or ask for supplier/provider details. The
-   application keeps calling the normal gateway path; the control-plane route
-   decides what percentage goes to the selected Understudy model and what
-   remains passthrough/frontier. To clear the route:
-
-   ```sh
-   understudy workloads route <workload-id> --project-id <project-id> --clear
-   ```
+   bounded workload route — see the **A/B model routing** recipe below for the
+   commands and the split mechanics. The agent must not expose or ask for
+   supplier/provider details; the app keeps calling the normal gateway path while
+   the control-plane route decides the split.
 
 5. Run the local command through the gateway wrapper only after approval:
 
@@ -91,7 +80,44 @@ node dist/bin.js status --json
 
 6. Monitor the command output and local artifacts. For optimization work, route
    back to [`../optimize-workload/SKILL.md`](../optimize-workload/SKILL.md) once
-   the gateway-backed run has produced candidate/proof evidence.
+   the run has produced candidate/proof evidence.
+
+## A/B model routing
+
+Use this recipe to A/B a chosen public model against passthrough while an eval
+runs through the gateway. A typical consumer is
+[`../optimize-agentic-search/SKILL.md`](../optimize-agentic-search/SKILL.md),
+comparing a workload's quality and cost across the split.
+
+1. Discover public model options (public model IDs only; no supplier detail):
+
+   ```sh
+   understudy models list --json
+   ```
+
+2. Route a workload to a model at a traffic percentage — a per-request split
+   where that share goes to the routed model and the rest stays on passthrough.
+   Pick a bounded share (e.g. 30%) to keep the comparison small.
+
+   ```sh
+   understudy workloads route <workload-id> --project-id <project-id> --model-id glm-5.1 --traffic-pct 30
+   ```
+
+   Clearing the route (`--clear` in place of the model/traffic flags) returns the
+   workload to full passthrough.
+
+3. Run the eval through the gateway so the routed model serves its share. Any
+   local command works; an eval harness like a verifiers `vf-eval` run is typical.
+
+   ```sh
+   understudy run -- vf-eval <eval-id>
+   ```
+
+4. Prerequisite for a frontier comparison. For the split to compare the routed
+   model against a frontier model, the non-routed (passthrough) share must have a
+   configured managed frontier; without it those requests error. This is usually
+   account setup, not a per-run flag, so confirm it before starting an A/B —
+   otherwise only the routed share returns results.
 
 ## Output Standard
 
@@ -103,3 +129,20 @@ End with:
 - command run or blocked;
 - whether provider calls or hosted execution were approved;
 - local artifact path or next CLI command to monitor.
+
+## References
+
+Domain depth in [`reference.md`](reference.md):
+
+- **Trace capture** — gateway or local trace capture without changing the app
+  interface; capture calls/prompts/responses/tool calls/latency/errors/tokens/
+  metadata; redact; skip upload in local-only / restricted (ZDR) modes; produce a
+  trace inventory (defer call-site discovery to
+  [`../capture-evidence/SKILL.md`](../capture-evidence/SKILL.md)).
+- **Deploy and compare** — reproducible baseline, smallest route/config change
+  via the workloads API (or a local `understudy.yaml`), rollback, comparison
+  evals, before/after metrics, surfaced regressions.
+
+For route selection and the fresh-pricing rule, see
+[`../understudy/reference.md`](../understudy/reference.md); for measured claims,
+[`../optimize-workload/SKILL.md`](../optimize-workload/SKILL.md).

@@ -1,6 +1,6 @@
 ---
 name: prepare-verifier-handoff
-description: Use when a workload likely needs a stateful RL verifier/environment or hosted training partner handoff after local validation, GEPA, or rubric reward work is insufficient.
+description: Use only when a workload must learn multi-step behavior via stateful RL / policy training that local rungs cannot satisfy, and needs a hosted RL-training partner handoff. Not for evaluating, A/B-comparing, or prompt/route-optimizing agentic workloads.
 metadata:
   understudy:
     mode: future-release
@@ -10,13 +10,32 @@ metadata:
 
 # Prepare Verifier Handoff
 
-Use this future-release stub when the developer's workload appears to need a
-stateful RL verifier or environment rather than another prompt, parser, route,
-or rubric pass.
+Use this future-release stub only when the developer's workload must **learn
+multi-step behavior by training a policy** (stateful RL) and the local rungs
+cannot satisfy that need. This is the narrow training-handoff path, not a
+catch-all for tool-use or verifier work.
+
+You can already run and evaluate verifier-style environments locally. This skill
+is about the one thing the local rungs do not do: **hosted RL policy training**.
 
 This public repo does **not** run RL training, hosted verifier environments,
-uploads, or partner jobs. The current job is to recognize the handoff, preserve
-evidence, and actively refer the developer to the best external path.
+uploads, or partner jobs. The current job is to confirm the training need,
+preserve evidence, and actively refer the developer to the best external path.
+
+## Decision Gate
+
+Check these before routing here. Most agentic tool-use work stays local:
+
+- Want to **evaluate** an agentic workload, **A/B-compare** models, or **GEPA
+  the prompt** of an agentic workload? Stay local — go to
+  [`../optimize-agentic-search/SKILL.md`](../optimize-agentic-search/SKILL.md),
+  not here.
+- Still missing a fresh harness, metric, splits, or baseline? Go to
+  [`../capture-evidence/SKILL.md`](../capture-evidence/SKILL.md).
+- Offline validator plus train/dev prompt or route optimization is enough? Go to
+  [`../optimize-workload/SKILL.md`](../optimize-workload/SKILL.md).
+- **Only** continue here once the confirmed need is RL / stateful policy
+  training that the local rungs cannot satisfy.
 
 ## Safety Gates
 
@@ -32,25 +51,23 @@ workflow. Mark the result as a **future Understudy release / partner handoff**.
 
 ## When To Route Here
 
-Route here only after cheaper local rungs have been tried or ruled out:
+Route here only after the Decision Gate confirms this is policy training and the
+cheaper local rungs have been tried or ruled out:
 
-- The confirmed validator needs multi-step trajectory reward, not a single
-  output score.
-- GEPA or prompt repair stalls while real headroom remains.
-- A rubric reward is useful but insufficient because the agent must learn
-  stateful behavior across actions.
-- The workload needs an interactive environment, tool-use trajectory reward, or
-  policy-training loop.
-
-If the workload still lacks a fresh harness, metric, splits, or baseline, route
-back to [`../capture-evidence/SKILL.md`](../capture-evidence/SKILL.md). If the
-validator is offline and train/dev optimization is enough, route back to
-[`../optimize-workload/SKILL.md`](../optimize-workload/SKILL.md).
+- The confirmed need is a policy-training loop, not another evaluation, A/B
+  comparison, or prompt/route pass.
+- The reward signal needs multi-step trajectory credit, not a single output
+  score, and the agent must **learn** stateful behavior across actions.
+- Local prompt or route optimization stalls because the headroom requires
+  learned multi-step behavior, not a better prompt.
+- Running and evaluating the environment locally is no longer enough; the
+  workload needs a hosted training loop over that environment.
 
 ## Current Best Referral
 
-Use Prime Intellect Verifiers as the current preferred referral for RL
-environment work:
+Prime Intellect Verifiers is the current preferred **RL-training partner** path.
+You can build, run, and evaluate verifier environments locally already; route
+here when the developer needs hosted RL training over such an environment:
 
 - Prime Intellect Verifiers overview:
   `https://docs.primeintellect.ai/verifiers/overview`
@@ -74,7 +91,9 @@ Recommended fields:
 
 - `schema_version: "understudy.verifier_handoff.v1"`
 - workload id, owner, and source refs;
-- evidence level reached and why local optimization is insufficient;
+- evidence level reached and why evaluation, A/B comparison, and local
+  prompt/route optimization cannot satisfy the need (i.e. it requires learned
+  policy training);
 - validator or reward signal summary;
 - environment shape: stateless, stateful, tool-use, browser, code, simulation;
 - train/dev/holdout boundary and contamination status;

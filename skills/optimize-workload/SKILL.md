@@ -73,8 +73,15 @@ validator kinds in [`reference.md`](reference.md):
   `understudy login --email <developer-email>`, then
   `understudy run -- <local command>`. Fall back to the developer's own
   provider keys only if they choose BYO. See reference.md → Inference.
-- **Verifier boundary** — optimize the offline validator only; RL
-  verifiers/environments are a later rung, out of scope here.
+- **Scope boundary** — optimizing the prompt, route, or parser of a workload's
+  policy model is in scope, including an *agentic / tool-use* policy. Treat one
+  full agent rollout as the unit and the rubric as the metric. Only RL
+  *trajectory/policy training* and stateful verifier environments are out of
+  scope; that is the handoff in
+  [`../prepare-verifier-handoff/SKILL.md`](../prepare-verifier-handoff/SKILL.md).
+  For agentic eval/optimization, set up the rollout harness and rubric in
+  [`../optimize-agentic-search/SKILL.md`](../optimize-agentic-search/SKILL.md)
+  first, then return here for the GEPA prompt pass.
 - **Stopping rule** — if the scorer saturates to 1.0 fast, the surface is too
   easy; strengthen the metric, don't claim. If GEPA stalls with headroom left,
   recommend the next rung (SFT/distillation); this skill does not train.
@@ -86,7 +93,12 @@ validator kinds in [`reference.md`](reference.md):
    basis, cost basis if available, and failure taxonomy.
 3. Select the cheapest intervention that matches the observed failure mode:
    prompt repair, parser/schema repair, context trimming, route change,
-   candidate model comparison, or GEPA.
+   candidate model comparison, or GEPA. Pick the cheapest *target* that matches
+   the failure too — see [`reference.md`](reference.md) → Optimization-Target
+   Menu for the full list. For an agentic workload, treat latency
+   and cost per rollout as first-class objectives alongside the rubric score —
+   tool-call count, redundant calls, and wasted context are common, optimizable
+   failure modes, not just quality misses.
 4. For GEPA/DSPy execution, use a small local `uv` environment only after
    explicit approval. Do not vendor GEPA/DSPy or depend on a full private
    runtime. The CLI owns a registry-backed adapter wrapper:
@@ -97,7 +109,12 @@ validator kinds in [`reference.md`](reference.md):
    through environment only, and runs train/dev rows through the gateway. GEPA's
    edge is natural-language feedback: the metric must return a diagnosis of
    *why* each failing row failed and what to change, not a bare score — bland
-   feedback wastes the optimizer.
+   feedback wastes the optimizer. For an agentic workload this means the
+   per-criterion rubric must emit, per failing row, a short natural-language
+   note tied to the rollout — e.g. "called search 6 times for a fact on the
+   first result page; tighten the stop condition" or "answer omitted the date
+   filter the question required; add it to the query plan" — rather than a bare
+   `0`.
 5. Keep deterministic work in the TypeScript CLI and this skill's templates. Follow
    [`../../docs/optimize-workload-contract.md`](../../docs/optimize-workload-contract.md)
    for adapter, metric feedback, and claim packet details.
@@ -149,7 +166,10 @@ Do not claim savings without:
 baseline contract, plus `baseline_sha256` and the frozen candidate hash. It
 must also include sample size, split used, score delta, latency basis, cost
 basis, price assumptions, request-volume assumption, confidence level, caveats,
-fallback route, and demotion trigger.
+fallback route, and demotion trigger. For an agentic workload, latency and cost
+basis are per-rollout and mandatory, not optional: report the delta in tool-call
+count and end-to-end rollout cost alongside the rubric delta, so a quality gain
+bought with more calls or higher latency is visible rather than hidden.
 
 No claim may imply replacement readiness, production readiness, or recurring
 savings unless those fields are present and the holdout evidence supports the

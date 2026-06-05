@@ -20,6 +20,12 @@ execution; skills tell the agent what to inspect, gate, monitor, and report.
   artifacts, preserves train/dev/holdout boundaries, writes dry-run proof
   packets, and requires `claim.json` before public claims. (Evaluate, optimize,
   and decide folded into its [`reference.md`](optimize-workload/reference.md).)
+- [`optimize-agentic-search`](optimize-agentic-search/SKILL.md) evaluates and
+  optimizes agentic / tool-use workloads (multi-turn tool-calling loops such as
+  agentic search): holds tools fixed, A/B-tests the policy model on quality,
+  latency, and cost through the gateway, and routes prompt tuning to
+  `optimize-workload` — before any RL handoff. (Verifier-env→artifact bridge and
+  determinism notes in its [`reference.md`](optimize-agentic-search/reference.md).)
 - [`use-understudy-gateway`](use-understudy-gateway/SKILL.md) handles
   authenticated gateway inference, project/key readiness, public model listing,
   workload route percentages, `understudy run`, and monitored durable CLI
