@@ -58,10 +58,10 @@ with `UNDERSTUDY_TELEMETRY=0`.
 
 The skills in [`skills/`](skills/) ship as a Claude Code plugin, declared in
 [`.claude-plugin/`](.claude-plugin/) (`plugin.json` + `marketplace.json`).
-Installing it registers the eight worker skills (`understudy`,
+Installing it registers all nine invocable skills (`understudy`,
 `capture-evidence`, `use-understudy-gateway`, `run-local-model-lab`,
 `optimize-workload`, `optimize-api-workflow`, `optimize-agentic-search`,
-`prepare-verifier-handoff`) as invocable skills.
+`prepare-verifier-handoff`, `install-plugin`).
 
 From a clone of this repo:
 

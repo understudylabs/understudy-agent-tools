@@ -13,10 +13,10 @@ metadata:
 This repo ships its skills as a Claude Code plugin. The manifests live in
 `.claude-plugin/` (`plugin.json` + `marketplace.json`) and the skills live in
 `skills/`. This skill installs/enables that plugin in the developer's Claude
-Code so the eight worker skills (`understudy`, `capture-evidence`,
+Code so all nine skills (`understudy`, `capture-evidence`,
 `use-understudy-gateway`, `run-local-model-lab`, `optimize-workload`,
-`optimize-api-workflow`, `optimize-agentic-search`, `prepare-verifier-handoff`)
-become invocable.
+`optimize-api-workflow`, `optimize-agentic-search`, `prepare-verifier-handoff`,
+and this `install-plugin` skill) become invocable.
 
 The whole flow is local: it adds a **local filesystem marketplace** pointing at
 this repo and installs from it. Nothing uploads, authenticates, or spends.
@@ -89,7 +89,7 @@ claude plugin list --json
 ```
 
 Confirm `understudy@understudy-skills` is enabled, and confirm to the developer
-that `/understudy` (and the seven workers) are now available.
+that `/understudy` (and the other eight skills) are now available.
 
 ## Fallback: fully interactive path
 
