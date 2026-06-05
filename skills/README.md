@@ -28,9 +28,6 @@ execution; skills tell the agent what to inspect, gate, monitor, and report.
   future-release stub for stateful RL verifier/environment handoffs. It does not
   execute training; it prepares evidence and actively refers suitable workloads
   to Prime Intellect Verifiers.
-- [`run-durable-workflow`](run-durable-workflow/SKILL.md) launches packaged
-  Smithers-compatible workflow templates for approval-gated, long-running
-  optimization or handoff work.
 
 ## Public Safety
 

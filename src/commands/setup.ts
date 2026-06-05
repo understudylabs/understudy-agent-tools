@@ -81,9 +81,9 @@ async function runSetup(cmd: Command, opts: SetupOpts): Promise<void> {
   mkdirSync(destRoot, { recursive: true });
   mkdirSync(join(destRoot, "references"), { recursive: true });
 
-  // Write the master SKILL.md = frontmatter + onboard-task.md content.
+  // Write the master SKILL.md = frontmatter + focused setup-code recipe.
   const taskBody = readFileSync(
-    join(skillsSource, "onboard-task.md"),
+    join(skillsSource, "onboard", "setup-code.md"),
     "utf8",
   );
   const skillPath = join(destRoot, "SKILL.md");
@@ -162,14 +162,14 @@ function locateSkillsSource(): string {
   const here = dirname(fileURLToPath(import.meta.url));
   // Try `dist/skills/` (the shipping layout).
   const distSkills = join(here, "..", "skills");
-  if (existsSync(join(distSkills, "onboard-task.md"))) {
+  if (existsSync(join(distSkills, "onboard", "setup-code.md"))) {
     return distSkills;
   }
   // Fall back to repo-root `skills/` — useful only when running this
   // command straight from `src/` via tsx in the contributor's
   // checkout. Goes up: src/commands/ → src/ → repo root.
   const repoSkills = join(here, "..", "..", "skills");
-  if (existsSync(join(repoSkills, "onboard-task.md"))) {
+  if (existsSync(join(repoSkills, "onboard", "setup-code.md"))) {
     return repoSkills;
   }
   throw new Error(

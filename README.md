@@ -60,7 +60,6 @@ with `UNDERSTUDY_TELEMETRY=0`.
 understudy spine
 understudy skills --list
 understudy skills --search gateway
-understudy workflow list
 understudy doctor
 ```
 
@@ -131,7 +130,6 @@ capability worker:
 - `skills/optimize-workload/SKILL.md`
 - `skills/use-understudy-gateway/SKILL.md`
 - `skills/prepare-verifier-handoff/SKILL.md`
-- `skills/run-durable-workflow/SKILL.md`
 
 Everything else stays outside the discovered surface until real usage proves it
 belongs back. See [`skills/README.md`](skills/README.md) for the current
@@ -163,7 +161,6 @@ projects
 keys
 models
 workloads
-workflow
 setup
 setup-code
 run
@@ -190,17 +187,6 @@ uv pip install --python .understudy/venvs/optimize/bin/python 'gepa>=0.0.27,<0.1
 
 That environment is local runtime state. It is not package infrastructure and
 must not be committed.
-
-For multi-step, approval-gated work, the CLI can launch packaged
-Smithers-compatible workflow templates:
-
-```bash
-understudy workflow list
-understudy workflow run optimize-gepa --run-id optimize-smoke --input '{"repo":".","execute":false}'
-```
-
-The base package does not install Smithers as a hard dependency. Provide a
-local runner with `--runner-bin <path>` when needed.
 
 For the exact before/after functionality ledger, see
 [`docs/current-functionality.md`](docs/current-functionality.md).

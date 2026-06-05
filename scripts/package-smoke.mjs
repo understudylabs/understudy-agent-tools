@@ -37,7 +37,6 @@ const requiredPackageMembers = [
   "cookbook/capture-evidence-node/README.md",
   "cookbook/optimize-eval-input-gepa/eval-input-manifest.json",
   "cookbook/gateway-openai-typescript/src/client.ts",
-  "workflows/optimize-gepa.tsx",
 ];
 
 function npmPackFiles() {

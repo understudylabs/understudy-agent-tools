@@ -26,8 +26,6 @@ understudy spine
 understudy skills --list
 understudy skills --search gateway
 understudy skills --inspect understudy
-understudy workflow list
-understudy workflow run optimize-gepa --run-id optimize-smoke --input '{"repo":".","execute":false}' --dry-run
 understudy doctor
 understudy models list --json
 understudy workloads route <workload-id> --project-id <project-id> --model-id glm-5.1 --traffic-pct 10
@@ -87,7 +85,6 @@ skills/capture-evidence/SKILL.md
 skills/optimize-workload/SKILL.md
 skills/use-understudy-gateway/SKILL.md
 skills/prepare-verifier-handoff/SKILL.md
-skills/run-durable-workflow/SKILL.md
 ```
 
 Agents should use those skills to inspect local artifacts and guide users, but
@@ -105,10 +102,6 @@ code still calls the normal gateway path; the control plane decides what
 percentage goes to the selected Understudy model and what remains
 passthrough/frontier.
 
-`run-durable-workflow` covers packaged Smithers-compatible workflow templates.
-The CLI lists and launches templates such as `optimize-gepa`, but Smithers
-itself remains an optional runner rather than a base package dependency.
-
 `optimize-workload check` reads `.understudy/capture-evidence/`
 artifacts, fails closed on missing files, invalid JSON, stale baseline hashes,
 unapproved metrics, proxy-only metrics, or contaminated proof packets, and never
@@ -120,8 +113,7 @@ The optimizer helpers are TypeScript-orchestrated and `uv`-backed. The CLI
 generates a small runtime script under
 `.understudy/optimize-workload/uv-runtime/`, then uses `uv run --no-project`
 for Python-native packages. Rubric and DSPy scaffold/parity guidance now lives
-in skills, cookbooks, and workflow templates rather than first-class CLI
-commands. The GEPA path verifies that `gepa.optimize` and `GEPAAdapter` are
+in skills and cookbooks rather than first-class CLI commands. The GEPA path verifies that `gepa.optimize` and `GEPAAdapter` are
 importable. The live DSPy adapter is exposed through
 `optimize-workload adapter run --adapter dspy-gepa --execute`: it resolves the
 authenticated Understudy gateway key, passes it into the local `uv` runtime as

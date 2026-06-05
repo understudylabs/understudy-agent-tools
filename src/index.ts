@@ -16,7 +16,6 @@ import { registerSetupCodeCommand } from "./commands/setup-code.js";
 import { registerSetupCommand } from "./commands/setup.js";
 import { registerStatusCommand } from "./commands/status.js";
 import { registerOptimizeWorkloadCommand } from "./commands/optimize-workload.js";
-import { registerWorkflowCommand } from "./commands/workflow.js";
 import { registerWorkloadsCommand } from "./commands/workloads.js";
 
 export const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
@@ -398,7 +397,6 @@ export function buildProgram(): Command {
   registerModelsCommand(program);
   registerProjectsCommand(program);
   registerWorkloadsCommand(program);
-  registerWorkflowCommand(program);
   registerSetupCommand(program);
   registerSetupCodeCommand(program);
   registerRunCommand(program);

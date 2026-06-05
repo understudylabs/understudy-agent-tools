@@ -33,8 +33,8 @@ A bridge command should follow this shape:
 
 The current implementation is `src/optimize-workload.ts`: it generates
 `.understudy/optimize-workload/uv-runtime/optimizer_runtime.py`, then uses
-`uv run --no-project` for rubric scoring, DSPy scaffold/parity, and GEPA/DSPy
-import checks.
+`uv run --no-project` for GEPA/DSPy import checks and approved optimizer
+adapters.
 
 ## Non-goals
 

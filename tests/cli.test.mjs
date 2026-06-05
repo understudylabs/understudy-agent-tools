@@ -799,29 +799,6 @@ describe("understudy CLI", () => {
     assert.match(route.stdout, /--clear/);
   });
 
-  it("lists and dry-runs packaged workflow templates", () => {
-    const list = run(["workflow", "list", "--json"]);
-    assert.equal(list.status, 0, list.stderr);
-    const payload = JSON.parse(list.stdout);
-    assert.equal(payload.templates[0].id, "optimize-gepa");
-    assert.match(payload.templates[0].path, /workflows\/optimize-gepa\.tsx/);
-
-    const dry = run([
-      "workflow",
-      "run",
-      "optimize-gepa",
-      "--run-id",
-      "optimize-smoke",
-      "--input",
-      "{\"repo\":\".\",\"execute\":false}",
-      "--dry-run",
-    ]);
-    assert.equal(dry.status, 0, dry.stderr);
-    assert.match(dry.stdout, /smithers up/);
-    assert.match(dry.stdout, /workflows\/optimize-gepa\.tsx/);
-    assert.match(dry.stdout, /--run-id optimize-smoke/);
-  });
-
   it("scans capture/import sources with metadata only and writes a redaction manifest", () =>
     withCaptureFixtureRepo((repo) => {
       const result = run(["capture-import", "scan", "--repo", repo, "--json"]);

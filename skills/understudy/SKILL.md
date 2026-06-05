@@ -56,10 +56,6 @@ Route to one worker:
   verifier or environment, and the developer needs a future-release or partner
   handoff rather than another local optimizer run, read
   [`../prepare-verifier-handoff/SKILL.md`](../prepare-verifier-handoff/SKILL.md).
-- If the developer needs a durable, approval-gated, pause/resume workflow that
-  stitches CLI gates with GEPA/DSPy, gateway routing, verifier handoff, or
-  other long-running adapter work, read
-  [`../run-durable-workflow/SKILL.md`](../run-durable-workflow/SKILL.md).
 
 When in doubt, route to `capture-evidence`. Optimization without a current
 harness, metric, split contract, and incumbent baseline creates false progress.
