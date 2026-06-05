@@ -457,33 +457,9 @@ def eval_input_gepa(args: argparse.Namespace) -> None:
     })
 
 
-def gepa_smoke(args: argparse.Namespace) -> None:
-    import dspy
-    import gepa
-    import inspect
-    optimize_signature = str(inspect.signature(gepa.optimize)) if hasattr(gepa, "optimize") else None
-    emit({
-        "schema_version": "understudy.uv_gepa_smoke.v1",
-        "gepa_imported": True,
-        "dspy_imported": True,
-        "gepa_optimize_available": hasattr(gepa, "optimize"),
-        "gepa_adapter_available": hasattr(gepa, "GEPAAdapter"),
-        "gepa_optimize_signature": optimize_signature,
-        "gepa_version": getattr(gepa, "__version__", None),
-        "dspy_version": getattr(dspy, "__version__", None),
-        "provider_calls": False,
-        "optimizer_execution": False,
-        "repo": args.repo,
-    })
-
-
 def main() -> None:
     parser = argparse.ArgumentParser()
     sub = parser.add_subparsers(dest="command", required=True)
-
-    gepa = sub.add_parser("gepa-smoke")
-    gepa.add_argument("--repo", required=True)
-    gepa.set_defaults(func=gepa_smoke)
 
     dspy_gepa_parser = sub.add_parser("dspy-gepa")
     dspy_gepa_parser.add_argument("--repo", required=True)

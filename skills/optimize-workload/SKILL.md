@@ -124,7 +124,7 @@ proxy-only validation.
 Use the CLI guide before creating a local optimizer env:
 
 ```bash
-understudy optimize-workload --uv
+understudy skills --search gepa
 understudy optimize-workload adapter run --repo . --adapter eval-input-gepa --manifest eval-input-manifest.json --execute
 ```
 

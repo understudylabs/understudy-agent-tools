@@ -15,16 +15,19 @@ const requiredExamples = [
   "optimize-eval-input-gepa",
   "gateway-openai-typescript",
 ];
-const uvAvailable = spawnSync("uv", ["--version"], { encoding: "utf8" }).status === 0;
+const uvAvailable =
+  process.env.UNDERSTUDY_TEST_NO_UV === "1" ? false : spawnSync("uv", ["--version"], { encoding: "utf8" }).status === 0;
 
 function runCli(args, options = {}) {
+  const expectedStatus = options.expectedStatus ?? 0;
+  const { expectedStatus: _expectedStatus, ...spawnOptions } = options;
   const result = spawnSync("node", ["dist/bin.js", ...args], {
     cwd: process.cwd(),
     encoding: "utf8",
     maxBuffer: 10 * 1024 * 1024,
-    ...options,
+    ...spawnOptions,
   });
-  assert.equal(result.status, 0, result.stderr || result.stdout);
+  assert.equal(result.status, expectedStatus, result.stderr || result.stdout);
   return result;
 }
 
@@ -173,17 +176,20 @@ if (uvAvailable) {
     writeCaptureEvidenceArtifacts(optimizeRepo);
     runCli(["optimize-workload", "check", "--repo", optimizeRepo]);
     const manifest = join(optimizeRepo, "eval-input-manifest.json");
-    const result = runCli([
-      "optimize-workload",
-      "adapter",
-      "run",
-      "--repo",
-      optimizeRepo,
-      "--adapter",
-      "eval-input-gepa",
-      "--manifest",
-      manifest,
-    ]);
+    const result = runCli(
+      [
+        "optimize-workload",
+        "adapter",
+        "run",
+        "--repo",
+        optimizeRepo,
+        "--adapter",
+        "eval-input-gepa",
+        "--manifest",
+        manifest,
+      ],
+      { expectedStatus: 1 },
+    );
     const payload = JSON.parse(result.stdout);
     assert.equal(payload.schema_version, "understudy.eval_input_gepa_adapter.v1");
     assert.equal(payload.status, "blocked");

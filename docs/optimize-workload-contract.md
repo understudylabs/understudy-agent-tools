@@ -34,7 +34,7 @@ future Python-native ports from `understudy-agent`.
 Use `uv` when possible:
 
 ```bash
-understudy optimize-workload --uv
+understudy skills --search gepa
 uv venv .understudy/venvs/optimize
 uv pip install --python .understudy/venvs/optimize/bin/python 'gepa>=0.0.27,<0.1' 'dspy>=3.0.0'
 ```
@@ -124,7 +124,6 @@ Future TypeScript commands should follow this behavior:
 
 ```bash
 understudy optimize-workload dry-run --repo .
-understudy optimize-workload run --repo . --budget-usd 10
 understudy optimize-workload adapter run --repo . --adapter dspy-gepa --samples samples.json --input-keys question --output-keys answer --model gpt-4o-mini --execute
 understudy optimize-workload adapter run --repo . --adapter eval-input-gepa --manifest eval-input-manifest.json --execute
 ```
@@ -137,6 +136,8 @@ Required behavior:
 - Unapproved metric: exit non-zero and ask for metric confirmation.
 - Missing optimizer package: print install guidance and stop.
 - Dry run: write `proof-packet.json` without provider calls or package installs.
+- Generic optimizer smoke/scaffold commands stay out of the CLI. Use named
+  adapters for real execution and skills/cookbook recipes for setup guidance.
 - Rubric scoring and DSPy scaffold/parity: keep as skill/cookbook
   guidance unless a concrete adapter needs executable support.
 - DSPy GEPA adapter: expose through `adapter run`, require `--execute`, require

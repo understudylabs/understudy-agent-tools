@@ -37,12 +37,11 @@ understudy capture-import workload-card --repo .
 understudy capture-evidence check --repo .
 understudy capture-evidence workload-card --repo .
 understudy route-decision plan --workload-card .understudy/workload-discovery/workload-card.json
-understudy optimize-workload --uv
+understudy skills --search gepa
 understudy optimize-workload check --repo .
 understudy optimize-workload dry-run --repo .
 understudy optimize-workload adapter run --repo . --adapter dspy-gepa --samples samples.json --input-keys question --output-keys answer --model gpt-4o-mini --execute
 understudy optimize-workload adapter run --repo . --adapter eval-input-gepa --manifest eval-input-manifest.json --execute
-understudy optimize-workload run --repo . --backend uv-gepa --execute
 understudy value report --workload-card .understudy/workload-discovery/workload-card.json --route-decision .understudy/route-decision/route-decision-packet.json --requests-per-month 10000
 ```
 
@@ -112,9 +111,10 @@ package installs, or live optimizer execution.
 The optimizer helpers are TypeScript-orchestrated and `uv`-backed. The CLI
 generates a small runtime script under
 `.understudy/optimize-workload/uv-runtime/`, then uses `uv run --no-project`
-for Python-native packages. Rubric and DSPy scaffold/parity guidance now lives
-in skills and cookbooks rather than first-class CLI commands. The GEPA path verifies that `gepa.optimize` and `GEPAAdapter` are
-importable. The live DSPy adapter is exposed through
+for Python-native packages. Rubric, smoke-test, and DSPy scaffold/parity
+guidance lives in skills and cookbooks rather than first-class CLI commands.
+GEPA execution is exposed through named adapters. The live DSPy adapter is
+exposed through
 `optimize-workload adapter run --adapter dspy-gepa --execute`: it resolves the
 authenticated Understudy gateway key, passes it into the local `uv` runtime as
 environment, configures DSPy against the gateway, runs train/dev rows only,

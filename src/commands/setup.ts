@@ -18,19 +18,6 @@ import { trackSetupCompleted } from "../internal/telemetry.js";
 
 const SKILL_NAME = "understudy-onboard";
 
-/**
- * The frontmatter Claude Code uses to decide when to invoke this skill.
- * The `description` is the routing hint — sharper trigger phrases here
- * = better skill match rate. Test against actual phrasings users use
- * before tweaking.
- */
-const SKILL_FRONTMATTER = `---
-name: ${SKILL_NAME}
-description: Convert an existing application to route LLM calls through the Understudy gateway at UNDERSTUDY_GATEWAY_URL, or add thin Understudy cookbooks such as a DSPy-style GEPA prompt optimizer. Use when the user asks to "convert to Understudy", "set up Understudy in this repo", "route through Understudy", "siphon traffic to Understudy", "add GEPA", "optimize this prompt", "improve this eval", or any similar phrasing about wiring up Understudy or using an Understudy API key from an agent. Detects the SDK or framework in use (raw Anthropic SDK, raw OpenAI SDK, Mastra, Vercel AI SDK, LangChain, LlamaIndex, DSPy/GEPA, or anything else that speaks Anthropic/OpenAI wire shape) and applies the matching recipe.
----
-
-`;
-
 interface SetupOpts {
   global?: boolean;
   force?: boolean;
@@ -82,19 +69,23 @@ async function runSetup(cmd: Command, opts: SetupOpts): Promise<void> {
   mkdirSync(join(destRoot, "references"), { recursive: true });
 
   // Write the master SKILL.md = frontmatter + focused setup-code recipe.
+  const frontmatter = readFileSync(
+    join(skillsSource, "onboard", "frontmatter.md"),
+    "utf8",
+  );
   const taskBody = readFileSync(
     join(skillsSource, "onboard", "setup-code.md"),
     "utf8",
   );
   const skillPath = join(destRoot, "SKILL.md");
-  writeFileSync(skillPath, SKILL_FRONTMATTER + taskBody, "utf8");
+  writeFileSync(skillPath, `${frontmatter.trimEnd()}\n\n${taskBody}`, "utf8");
 
   // Copy every per-target recipe into references/. We don't pick by
   // language here — the agent reads the dispatch table in SKILL.md and
   // picks the right recipe at run time. Shipping all of them lets the
   // agent handle whichever stack the user actually has.
   const recipesDir = join(skillsSource, "onboard");
-  const recipeFiles = readdirSync(recipesDir).filter((f) => f.endsWith(".md"));
+  const recipeFiles = readdirSync(recipesDir).filter((f) => f.endsWith(".md") && f !== "frontmatter.md");
   const referencePaths: string[] = [];
   for (const filename of recipeFiles) {
     const dest = join(destRoot, "references", filename);

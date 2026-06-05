@@ -32,7 +32,6 @@ type GateResult = {
 type OptimizerScaffoldOptions = {
   backend?: string;
   budgetUsd?: string;
-  execute?: boolean;
 };
 
 type MetricArtifact = {
@@ -369,52 +368,6 @@ export function writeDryRunProofPacket(
     hashes: result.hashes,
     next_step: result.ok
       ? "Approval is still required before any live optimizer execution."
-      : "Fix failed gates before optimization.",
-  };
-  writeFileSync(proofPacketPath, `${JSON.stringify(packet, null, 2)}\n`);
-  return { ...result, proofPacketPath: rel(repo, proofPacketPath) };
-}
-
-export function writeUvGepaRunScaffold(repoInput: string, result: GateResult, options: OptimizerScaffoldOptions): GateResult {
-  const repo = resolve(repoInput);
-  const backend = validateBackend(options.backend);
-  const budgetUsd = parseBudgetUsd(options.budgetUsd);
-  const proofPacketPath = join(repo, optimizeDir, "proof-packet.json");
-  mkdirSync(join(repo, optimizeDir), { recursive: true });
-  const runtimePath = writeOptimizerRuntime(repo);
-  const execute = options.execute === true;
-  let execution: Record<string, unknown> = {
-    attempted: false,
-    reason: "pass --execute after explicit approval to import GEPA/DSPy in a local uv env",
-  };
-  if (execute && result.ok) {
-    execution = runUvPython(repo, runtimePath, ["gepa-smoke", "--repo", repo], ["gepa>=0.0.27,<0.1", "dspy>=3.0.0"]);
-  } else if (execute && !result.ok) {
-    execution = {
-      attempted: false,
-      reason: "deterministic gates failed; uv runtime was not invoked",
-    };
-  }
-  const packet = {
-    schema_version: "understudy.optimize-workload.proof.v1",
-    mode: "run",
-    status: execute && result.ok && execution.exit_code === 0 ? "ready-for-adapter" : "blocked",
-    repo: ".",
-    generated_at: new Date(0).toISOString(),
-    backend,
-    budget_usd: budgetUsd,
-    provider_calls: false,
-    package_installs: execute && result.ok,
-    live_optimizer_execution: false,
-    uv_env_created: execute && result.ok,
-    candidate_status: "not-created",
-    claim_json_created: false,
-    runtime_script: rel(repo, runtimePath),
-    execution,
-    checks: result.checks,
-    hashes: result.hashes,
-    next_step: result.ok
-      ? "GEPA/DSPy are importable only after --execute succeeds; add a workload adapter before live optimization."
       : "Fix failed gates before optimization.",
   };
   writeFileSync(proofPacketPath, `${JSON.stringify(packet, null, 2)}\n`);

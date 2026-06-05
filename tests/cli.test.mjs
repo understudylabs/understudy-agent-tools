@@ -441,24 +441,17 @@ describe("understudy CLI", () => {
       assert.deepEqual(payload.readiness.supplier_profiles_checked, []);
     }));
 
-  it("prints the uv optimizer guide", () => {
-    const result = run(["optimize-workload", "--uv"]);
+  it("routes GEPA setup guidance to skills search", () => {
+    const result = run(["optimize-workload"]);
     assert.equal(result.status, 0, result.stderr);
-    assert.match(result.stdout, /uv venv \.understudy\/venvs\/optimize/);
-    assert.match(result.stdout, /gepa/);
-    assert.match(result.stdout, /dspy/);
-    assert.match(result.stdout, /skills\/optimize-workload\/SKILL\.md/);
+    assert.match(result.stdout, /understudy skills --search gepa/);
   });
 
-  it("keeps old workflow command names as compatibility aliases", () => {
+  it("keeps the understand compatibility alias", () => {
     const understand = run(["understand", "check", "--repo", "."]);
     assert.equal(understand.status, 0, understand.stderr);
     const understandPayload = JSON.parse(understand.stdout);
     assert.equal(understandPayload.artifacts.check, ".understudy/capture-evidence/check.json");
-
-    const optimize = run(["validate-and-optimize", "--uv"]);
-    assert.equal(optimize.status, 0, optimize.stderr);
-    assert.match(optimize.stdout, /optimize-workload/);
   });
 
   it("passes optimize-workload check for fresh approved artifacts", () =>
@@ -549,36 +542,11 @@ describe("understudy CLI", () => {
       assert.equal(packet.status, "ready");
     }));
 
-  it("refuses optimize-workload run when deterministic gates are missing", () =>
-    withFixtureRepo((repo) => {
-      const result = run(["optimize-workload", "run", "--repo", repo, "--backend", "uv-gepa", "--budget-usd", "10"]);
-      assert.equal(result.status, 1);
-      assert.match(result.stdout, /FAIL required-artifacts: Missing \.understudy\/capture-evidence\/harness\.json/);
-      assert.match(result.stdout, /run: blocked/);
-      assert.match(result.stdout, /Pass --execute only after explicit approval/);
-    }));
-
-  it("scaffolds uv-gepa run metadata but refuses live optimizer execution", () =>
-    withValidateFixtureRepo({}, (repo) => {
-      const result = run(["optimize-workload", "run", "--repo", repo, "--backend", "uv-gepa", "--budget-usd", "10"]);
-      assert.equal(result.status, 1);
-      assert.match(result.stdout, /optimize-workload passed/);
-      assert.match(result.stdout, /run: blocked/);
-      assert.match(result.stdout, /Pass --execute only after explicit approval/);
-
-      const packet = JSON.parse(
-        readFileSync(join(repo, ".understudy", "optimize-workload", "proof-packet.json"), "utf8"),
-      );
-      assert.equal(packet.mode, "run");
-      assert.equal(packet.status, "blocked");
-      assert.equal(packet.backend, "uv-gepa");
-      assert.equal(packet.budget_usd, 10);
-      assert.equal(packet.provider_calls, false);
-      assert.equal(packet.package_installs, false);
-      assert.equal(packet.live_optimizer_execution, false);
-      assert.equal(packet.uv_env_created, false);
-      assert.equal(packet.claim_json_created, false);
-    }));
+  it("keeps generic optimizer run scaffolding out of the CLI", () => {
+    const result = run(["optimize-workload", "run", "--repo", "."]);
+    assert.notEqual(result.status, 0);
+    assert.match(result.stderr, /unknown command|unknown option|too many arguments/i);
+  });
 
   it("keeps rubric and DSPy teaching commands out of the CLI", () => {
     const rubric = run(["optimize-workload", "rubric", "score"]);
