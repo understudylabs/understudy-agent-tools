@@ -116,8 +116,9 @@ Write optimization and validation artifacts under:
 ```
 
 The previous Python helper scripts have been removed with the Python CLI
-prototype. Until the TypeScript gates land, inspect the artifacts directly and
-block on stale hashes, missing metric feedback, unapproved provider calls, or
+prototype. Use the TypeScript CLI gates first, and still inspect artifacts
+directly when a workload has unusual validator, split, or claim-boundary shape.
+Block on stale hashes, missing metric feedback, unapproved provider calls, or
 proxy-only validation.
 
 Use the CLI guide before creating a local optimizer env:
