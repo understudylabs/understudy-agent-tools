@@ -283,7 +283,7 @@ describe("understudy-tools CLI", () => {
       assert.deepEqual(payload.readiness.pricing_sources_checked, []);
       assert.equal(payload.candidate_routes[0].kind, "local");
       assert.equal(payload.candidate_routes[0].approval_required, false);
-      assert.match(payload.recommended_next_command, /understudy-tools evaluate plan/);
+      assert.match(payload.recommended_next_command, /understudy-tools validate-and-optimize check/);
       const saved = JSON.parse(readFileSync(join(repo, ".understudy", "route-decision", "route-decision-packet.json"), "utf8"));
       assert.equal(saved.schema_version, "understudy.route_decision_packet.v1");
     }));
@@ -502,6 +502,60 @@ describe("understudy-tools CLI", () => {
       assert.equal(payload.signature, "question -> answer");
       assert.equal(payload.sample_count, 2);
       assert.equal(payload.parity_required_before_gepa, true);
+    }));
+
+  it("passes DSPy ChainOfThought parity through the local uv runtime", () =>
+    withOptimizerFixtureRepo(({ repo, samplesPath }) => {
+      const result = run([
+        "validate-and-optimize",
+        "dspy",
+        "parity",
+        "--repo",
+        repo,
+        "--samples",
+        samplesPath,
+        "--input-keys",
+        "question",
+        "--output-keys",
+        "answer",
+        "--baseline-score",
+        "1.0",
+        "--module",
+        "cot",
+      ]);
+      assert.equal(result.status, 0, result.stderr);
+      const payload = JSON.parse(result.stdout);
+      assert.equal(payload.schema_version, "understudy.dspy_parity.v1");
+      assert.equal(payload.parity, true);
+      assert.equal(payload.provider_calls, false);
+    }));
+
+  it("fails DSPy parity when the scaffold diverges from baseline", () =>
+    withOptimizerFixtureRepo(({ repo, samplesPath }) => {
+      const result = run([
+        "validate-and-optimize",
+        "dspy",
+        "parity",
+        "--repo",
+        repo,
+        "--samples",
+        samplesPath,
+        "--input-keys",
+        "question",
+        "--output-keys",
+        "answer",
+        "--baseline-score",
+        "1.0",
+        "--dummy-answers",
+        '[{"answer":"wrong"},{"answer":"wrong"}]',
+        "--tolerance",
+        "0",
+      ]);
+      assert.equal(result.status, 1);
+      const payload = JSON.parse(result.stdout);
+      assert.equal(payload.schema_version, "understudy.dspy_parity.v1");
+      assert.equal(payload.parity, false);
+      assert.equal(payload.program_score, 0);
     }));
 
   it("writes a measured-evidence value report without making provider calls", () =>

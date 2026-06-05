@@ -146,7 +146,7 @@ export function planRouteDecision(workloadCardPath: string, output?: string): { 
       artificial_analysis_snapshots: [],
     },
     candidate_routes: buildCandidateRoutes(card),
-    recommended_next_command: `understudy-tools evaluate plan --workload-card ${workloadCardPath} --dry-run`,
+    recommended_next_command: "understudy-tools validate-and-optimize check --repo .",
     approval_required_before: ["live model calls", "model downloads", "uploads", "hosted jobs"],
   };
   const outputPath = resolve(output ?? join(dirname(resolvedPath), "..", "route-decision", "route-decision-packet.json"));

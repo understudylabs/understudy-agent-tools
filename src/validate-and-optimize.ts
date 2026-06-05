@@ -545,6 +545,16 @@ def dspy_parity(args: argparse.Namespace) -> None:
     dummy_answers = json.loads(args.dummy_answers) if args.dummy_answers else [
         {key: row[key] for key in output_keys} for row in rows
     ]
+    if args.module == "cot":
+        normalized_answers = []
+        for answer in dummy_answers:
+            if isinstance(answer, dict):
+                normalized = dict(answer)
+                normalized.setdefault("reasoning", "Synthetic parity reasoning.")
+                normalized_answers.append(normalized)
+            else:
+                normalized_answers.append(answer)
+        dummy_answers = normalized_answers
     dspy.configure(lm=DummyLM(dummy_answers))
     signature = dspy.Signature(f"{', '.join(input_keys)} -> {', '.join(output_keys)}")
     program = dspy.ChainOfThought(signature) if args.module == "cot" else dspy.Predict(signature)

@@ -80,7 +80,7 @@ baseline and candidate evidence.
     "public savings claims"
   ],
   "caveats": [],
-  "recommended_next_command": "understudy-tools evaluate plan --workload-card .understudy/workload-discovery/workload-card.json --dry-run"
+  "recommended_next_command": "understudy-tools validate-and-optimize check --repo ."
 }
 ```
 

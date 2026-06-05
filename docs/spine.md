@@ -29,18 +29,17 @@ understand workload -> attach harness/environment
 
 Registration is not a hard gate, but it is the **default path for inference**.
 Optimization and evaluation always need a model, so by default the lanes use
-**Understudy inference** — run `understudy login` — and fall back to the
+**Understudy inference** — run `understudy-tools login --email <email>` — and fall back to the
 developer's own provider keys if they'd rather not register. Everything else in
 the OSS loop (Workload Card, baseline rerun plan, validation plan, optimization
 plan, and conservative Value Report) stays reachable without an account; once a
-team wants credits, projects, gateway routing, or hosted execution, `register`
-is the path.
+team wants credits, projects, gateway routing, or hosted execution, the
+`understudy-tools login/status/projects/keys/run` path is the front door.
 
 The gateway endpoint is configuration, never hardcoded in the public package:
-`UNDERSTUDY_API_BASE` (set by `understudy login` / env) supplies it, so no
-hosted URL ships in this repo (see `oss-release-boundary.md`). Understudy
-routing needs both the credential and that base; either missing falls back to
-the developer's provider keys.
+`UNDERSTUDY_GATEWAY_URL` (set by `understudy-tools login` / env) supplies it.
+Understudy routing needs both the credential and that base; either missing
+falls back to the developer's provider keys if the developer chooses BYO.
 
 Baseline rerun is required after the harness, environment, metric, validator,
 or split boundary changes. Pre-existing benchmark numbers can inform intake,
@@ -62,17 +61,17 @@ candidate run, sample size, pricing basis, and caveats.
 Hosted upsell path:
 
 ```text
-register/login -> credits/project -> gateway routing
+login -> project/key setup -> gateway routing
 ```
 
 Hosted routing can use the same Workload Card and Value Report artifacts, but
 it starts after explicit account/project setup and approval for spend, uploads,
 or production traffic.
 
-Optimizer algorithm logic should stay upstream. The public tools may prompt the
-developer to install `gepa` for explicit optimization runs, then use
-skill-local adapters, metric feedback, and artifact gates. Do not port GEPA or
-depend on a full private runtime. See
+Optimizer algorithm logic should stay upstream. The public tools may invoke
+`gepa`/`dspy` only through approval-gated `uv` bridge commands, then use
+TypeScript-owned adapters, metric feedback, and artifact gates. Do not port GEPA
+or depend on a full private runtime. See
 [`validate-and-optimize-contract.md`](validate-and-optimize-contract.md).
 
 Default public path:

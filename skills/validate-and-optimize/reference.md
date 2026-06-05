@@ -116,11 +116,12 @@ approval-gated next step. This is the same gate `claim.json` enforces.
 ## Inference Boundary
 
 Optimization may need inference, but the public tools repo must not inspect
-secret values or run provider calls without explicit approval. A future
-TypeScript gate should resolve whether the developer wants the full Understudy
-runtime or BYO provider keys, record only credential presence/source metadata,
-and keep the selected provider, model, budget, and data class in the local run
-artifact.
+secret values or run provider calls without explicit approval. Use
+`understudy-tools login --email <developer-email>` plus
+`understudy-tools run -- <local command>` for the Understudy inference path, or
+record BYO provider-key readiness only as redacted presence/source metadata.
+Keep the selected provider, model, budget, and data class in the local run
+artifact before any live call.
 
 ## Optimization Lanes
 
@@ -130,18 +131,18 @@ Two ways to optimize, picked by commitment and workload shape:
    the developer's real workload via an injected `infer` function and evolves
    the prompt or route component they already ship. Truest to production, lowest
    commitment.
-2. **Program lane (opt-in).** A future adapter may scaffold a reusable program
-   from the Workload Card + samples, then optimize it natively. Richer, but it
-   is gated by parity: the scaffolded program must reproduce the incumbent
-   baseline before optimization, or you optimize a reconstruction that diverges
-   from production.
+2. **Program lane (opt-in).** The CLI can scaffold a reusable DSPy program
+   summary and run DSPy parity from local samples. Full GEPA optimization over
+   that program is still gated by parity: the scaffolded program must reproduce
+   the incumbent baseline before optimization, or you optimize a reconstruction
+   that diverges from production.
 
 ## Rubric Reward (the OSS half of the verifier rung)
 
-A future rubric reward gate should turn a human-confirmed `rubric.json` plus an
-approved judge into `(score, feedback)` — a graded metric richer than pass/fail.
-Pointwise scoring should surface failing-criterion rationales as feedback;
-pairwise scoring should debias position; human agreement is the calibration
-gate before trusting a rubric judge. The rubric + judgment is OSS-native and
-valuable on its own; **RL training over the reward stays hosted** (the verifier
-boundary above).
+The CLI can turn a human-confirmed `rubric.json` plus an injected or approved
+judge verdict into `(score, feedback)` — a graded metric richer than pass/fail.
+Pointwise scoring surfaces failing-criterion rationales as feedback. Pairwise
+scoring and human-agreement calibration remain future hardening before trusting
+a rubric judge for claims. The rubric + judgment is OSS-native and valuable on
+its own; **RL training over the reward stays hosted** (the verifier boundary
+above).

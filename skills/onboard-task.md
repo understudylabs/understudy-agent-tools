@@ -49,8 +49,9 @@ env var — the patch *depends* on it.
 - **The app must still run when `UNDERSTUDY_API_KEY` is unset.** Fail soft
   with a clear error from the SDK, not from your patched init code. The user
   will set the key later.
-- **Abort if the user is not authenticated.** `understudy-tools login` opens a browser and
-  requires a human. If `understudy-tools status --json` reports not logged in, stop and
+- **Abort if the user is not authenticated.** `understudy-tools login` starts
+  email-code auth and may require a human/code handoff unless an approved native
+  email connector is available. If `understudy-tools status --json` reports not logged in, stop and
   print exactly: `Run 'understudy-tools login' once, then re-run me.` Do not try to script
   around it.
 - **Don't guess CLI flags.** Run `understudy-tools --help` or `understudy-tools <subcommand> --help` if
