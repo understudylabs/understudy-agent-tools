@@ -153,15 +153,70 @@ use fresh data and label assumptions ([`reference.md`](reference.md)).
 .understudy/capture-evidence/metric.json
 .understudy/capture-evidence/splits.json
 .understudy/capture-evidence/baseline.json
-.understudy/optimize-workload/candidate.json
-.understudy/optimize-workload/claim.json
+.understudy/experiments/<exp-id>/experiment.json
+.understudy/experiments/<exp-id>/candidate.json
+.understudy/experiments/<exp-id>/claim.json
+.understudy/experiments/active            # pointer to the active <exp-id>
 ```
 
-`capture-evidence` creates or refreshes the first five. `optimize-workload` may
-optimize only from fresh copies of `harness.json`, `metric.json`, `splits.json`,
-and `baseline.json`. Freshness is hash-bound: `baseline.json` carries
-`harness_sha256`, `metric_sha256`, and `splits_sha256`; any later change to the
-harness, metric, validator, or splits routes back to `capture-evidence`.
+`capture-evidence` creates or refreshes the first five — the **workload
+evidence** every experiment runs against. Freshness is hash-bound:
+`baseline.json` carries `harness_sha256`, `metric_sha256`, and `splits_sha256`;
+any later change to the harness, metric, validator, or splits routes back to
+`capture-evidence`.
+
+### Experiment
+
+An **experiment** is one measured episode over a frozen workload: an incumbent
+baseline versus a candidate, under a pinned metric and split, producing a claim
+and an outcome. It is the unit `optimize-workload` writes and the unit that
+graduates into the knowledge base. Each experiment owns a directory under
+`.understudy/experiments/<exp-id>/`; `experiments/active` names the one in
+flight, so a workload can hold more than one without overwriting prior results.
+
+`experiment.json` is the record of that episode:
+
+```jsonc
+{
+  "experiment_id": "exp-001",
+  "workload": "workload-001",          // real id locally; anonymized only on promotion
+  "objective": "cost",                 // cost | speed | quality | reliability | compliance | weighted
+  "hypothesis": "Gemma-4-31b replaces the incumbent for triage tool-calls under break-even",
+  "pins": {                            // copied from baseline.json's hash-chain
+    "harness_sha256": "…",
+    "metric_sha256": "…",
+    "splits_sha256": "…"
+  },
+  "incumbent_model": "openai/gpt-4o",
+  "candidate_model": "google/gemma-4-31b-it",
+  "result": { "claim_ref": "claim.json", "quality_delta": null,
+              "p50_latency_delta_ms": null, "cost_per_1k_delta_usd": null },
+  "outcome": null,                     // success | partial | abandoned
+  "route_decision": null               // ship-local | local-as-router | hybrid | remote
+}
+```
+
+The record stores **identity + input-pins + verdict** — never a loop-step
+counter. Where you are in the loop is *derived*: re-hash the artifacts on disk
+and compare to `pins` (a changed hash means re-baseline); a present
+`candidate.json` with a null `outcome` means you are at compare. The filesystem
+and the pins are the truth, so the record cannot drift into reporting a step it
+isn't at.
+
+`outcome`, `workload`, `incumbent_model`, `candidate_model`, and the result
+deltas mirror the `type: experiment` lab-note in the Understudy knowledge
+base — `experiment.json` is its un-anonymized, hash-pinned, live
+precursor. When `outcome` is set, an experiment may be **promoted** into a
+knowledge lab-note: anonymize `workload` to `workload-NNN`, drop real paths, and
+add the cost/margin analysis the local record deliberately omits. Promotion
+publishes to a shared repository and is an upload — gate it like any other (see
+Safety Gates).
+
+> The `experiments/` layout is the target artifact contract. The
+> `optimize-workload` CLI still writes scratch candidate/claim artifacts under
+> `.understudy/optimize-workload/`; an experiment-aware CLI (`understudy next`,
+> an experiment ledger) is a tracked follow-up. Until then, freeze the chosen
+> candidate and the claim into the active experiment directory by hand.
 
 Removed Python-prototype commands and deleted draft skills are tracked in
 [`../../docs/current-functionality.md`](../../docs/current-functionality.md). Do
