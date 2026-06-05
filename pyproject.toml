@@ -17,3 +17,7 @@ build-backend = "hatchling.build"
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]
+# Repo root on sys.path so `from scripts.* import ...` resolves (scripts/ is not
+# an installed package). Without this, test collection fails with
+# ModuleNotFoundError: No module named 'scripts'.
+pythonpath = ["."]
