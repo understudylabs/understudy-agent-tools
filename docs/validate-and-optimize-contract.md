@@ -119,6 +119,9 @@ Future TypeScript commands should follow this behavior:
 ```bash
 understudy-tools validate-and-optimize dry-run --repo .
 understudy-tools validate-and-optimize run --repo . --budget-usd 10
+understudy-tools validate-and-optimize rubric score --repo . --rubric rubric.json --output-text "..."
+understudy-tools validate-and-optimize dspy scaffold --repo . --samples samples.json --input-keys question --output-keys answer
+understudy-tools validate-and-optimize dspy parity --repo . --samples samples.json --input-keys question --output-keys answer --baseline-score 1.0
 ```
 
 Required behavior:
@@ -129,6 +132,10 @@ Required behavior:
 - Unapproved metric: exit non-zero and ask for metric confirmation.
 - Missing optimizer package: print install guidance and stop.
 - Dry run: write `proof-packet.json` without provider calls or package installs.
+- Rubric score: use an injected judge verdict or approved judge path; never hide
+  provider calls.
+- DSPy scaffold/parity: use local samples and `DummyLM`/configured local runtime;
+  parity must pass before GEPA touches a reconstruction.
 - Holdout access during optimization: mark the run contaminated and require a
   new split contract before any claim.
 

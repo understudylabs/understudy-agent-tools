@@ -5,6 +5,9 @@ import { fileURLToPath } from "node:url";
 import { runUnderstandCheck, runUnderstandWorkloadCard } from "./understand.js";
 import {
   printGateResult,
+  parityCheckDspyProgram,
+  scaffoldDspyProgram,
+  scoreRubricWithUv,
   validateAndOptimizeCheck,
   writeDryRunProofPacket,
   writeUvGepaRunScaffold,
@@ -368,15 +371,100 @@ export function buildProgram(): Command {
     .requiredOption("--repo <path>", "Repository to inspect")
     .option("--backend <name>", "Optimizer backend scaffold", "uv-gepa")
     .option("--budget-usd <amount>", "Optional capped budget to record")
-    .action((options: { repo: string; backend?: string; budgetUsd?: string }) => {
+    .option("--execute", "After explicit approval, invoke uv to import GEPA/DSPy without provider calls")
+    .action((options: { repo: string; backend?: string; budgetUsd?: string; execute?: boolean }) => {
       const gateResult = validateAndOptimizeCheck(options.repo);
       const result = writeUvGepaRunScaffold(options.repo, gateResult, options);
       printGateResult(result);
+      if (options.execute && result.ok) {
+        if (result.proofPacketPath) {
+          const packet = JSON.parse(readFileSync(join(resolve(options.repo), result.proofPacketPath), "utf8")) as {
+            execution?: { json?: { gepa_optimize_available?: boolean; gepa_adapter_available?: boolean } };
+          };
+          console.log(`gepa.optimize available: ${String(packet.execution?.json?.gepa_optimize_available)}`);
+          console.log(`GEPAAdapter available: ${String(packet.execution?.json?.gepa_adapter_available)}`);
+        }
+        console.log("run: uv import smoke completed; no optimizer candidate was created.");
+        console.log("Next: add a workload adapter before live GEPA execution.");
+        return;
+      }
       console.log("run: blocked");
-      console.log("No uv env was created, no packages were installed, and no provider calls were made.");
-      console.log("Live GEPA/DSPy execution requires an explicit approval-gated local uv adapter.");
+      console.log("No provider calls were made.");
+      console.log(
+        options.execute
+          ? "uv was not invoked because deterministic gates failed."
+          : "Pass --execute only after explicit approval to import GEPA/DSPy in a local uv env.",
+      );
       process.exitCode = 1;
     });
+  const rubric = validateAndOptimize.command("rubric").description("Run local rubric reward helpers through uv");
+  rubric
+    .command("score")
+    .description("Score text against a rubric using an injected judge verdict")
+    .requiredOption("--repo <path>", "Repository to use for local uv runtime")
+    .requiredOption("--rubric <path>", "Rubric JSON with criteria")
+    .requiredOption("--output-text <text>", "Output text to score")
+    .option("--judge-verdict <text>", "Injected judge verdict; no provider calls are made")
+    .action((options: { repo: string; rubric: string; outputText: string; judgeVerdict?: string }) => {
+      const result = scoreRubricWithUv(options);
+      printJson(result.json ?? result);
+      if (result.exit_code !== 0) {
+        process.exitCode = 1;
+      }
+    });
+  const dspy = validateAndOptimize.command("dspy").description("Scaffold and parity-check DSPy programs through uv");
+  dspy
+    .command("scaffold")
+    .description("Create a DSPy signature/program scaffold summary from local samples")
+    .requiredOption("--repo <path>", "Repository to use for local uv runtime")
+    .requiredOption("--samples <path>", "JSON samples as an array or { rows: [...] }")
+    .requiredOption("--input-keys <keys>", "Comma-separated input keys")
+    .requiredOption("--output-keys <keys>", "Comma-separated output keys")
+    .option("--module <name>", "predict or cot", "predict")
+    .action((options: { repo: string; samples: string; inputKeys: string; outputKeys: string; module?: string }) => {
+      const result = scaffoldDspyProgram({
+        ...options,
+        inputKeys: options.inputKeys.split(",").map((item) => item.trim()).filter(Boolean),
+        outputKeys: options.outputKeys.split(",").map((item) => item.trim()).filter(Boolean),
+      });
+      printJson(result.json ?? result);
+      if (result.exit_code !== 0) {
+        process.exitCode = 1;
+      }
+    });
+  dspy
+    .command("parity")
+    .description("Run a DSPy DummyLM parity check before GEPA")
+    .requiredOption("--repo <path>", "Repository to use for local uv runtime")
+    .requiredOption("--samples <path>", "JSON samples as an array or { rows: [...] }")
+    .requiredOption("--input-keys <keys>", "Comma-separated input keys")
+    .requiredOption("--output-keys <keys>", "Comma-separated output keys")
+    .requiredOption("--baseline-score <number>", "Incumbent baseline score")
+    .option("--dummy-answers <json>", "Optional JSON list of DummyLM answers")
+    .option("--tolerance <number>", "Allowed score delta below baseline", "0.05")
+    .option("--module <name>", "predict or cot", "predict")
+    .action(
+      (options: {
+        repo: string;
+        samples: string;
+        inputKeys: string;
+        outputKeys: string;
+        baselineScore: string;
+        dummyAnswers?: string;
+        tolerance?: string;
+        module?: string;
+      }) => {
+        const result = parityCheckDspyProgram({
+          ...options,
+          inputKeys: options.inputKeys.split(",").map((item) => item.trim()).filter(Boolean),
+          outputKeys: options.outputKeys.split(",").map((item) => item.trim()).filter(Boolean),
+        });
+        printJson(result.json ?? result);
+        if (result.exit_code !== 0 || (result.json as { parity?: boolean } | null)?.parity === false) {
+          process.exitCode = 1;
+        }
+      },
+    );
 
   registerCaptureImportCommands(program);
   registerRouteDecisionCommands(program);

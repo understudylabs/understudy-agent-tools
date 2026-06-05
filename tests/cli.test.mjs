@@ -169,6 +169,34 @@ function withValueFixtureRepo({ measured = false } = {}, fn) {
   }
 }
 
+function withOptimizerFixtureRepo(fn) {
+  const repo = mkdtempSync(join(tmpdir(), "understudy-optimizer-runtime-"));
+  try {
+    const rubricPath = join(repo, "rubric.json");
+    const samplesPath = join(repo, "samples.json");
+    writeFileSync(
+      rubricPath,
+      JSON.stringify(
+        {
+          criteria: [
+            { id: "correctness", description: "Answer must be correct.", weight: 2 },
+            { id: "format", description: "Answer must be concise.", weight: 1 },
+          ],
+        },
+        null,
+        2,
+      ),
+    );
+    writeFileSync(
+      samplesPath,
+      JSON.stringify([{ question: "q1", answer: "a1" }, { question: "q2", answer: "a2" }], null, 2),
+    );
+    return fn({ repo, rubricPath, samplesPath });
+  } finally {
+    rmSync(repo, { recursive: true, force: true });
+  }
+}
+
 describe("understudy-tools CLI", () => {
   it("prints the public spine", () => {
     const result = run(["spine"]);
@@ -405,7 +433,7 @@ describe("understudy-tools CLI", () => {
       assert.equal(result.status, 1);
       assert.match(result.stdout, /FAIL required-artifacts: Missing \.understudy\/understand-workload\/harness\.json/);
       assert.match(result.stdout, /run: blocked/);
-      assert.match(result.stdout, /No uv env was created/);
+      assert.match(result.stdout, /Pass --execute only after explicit approval/);
     }));
 
   it("scaffolds uv-gepa run metadata but refuses live optimizer execution", () =>
@@ -414,7 +442,7 @@ describe("understudy-tools CLI", () => {
       assert.equal(result.status, 1);
       assert.match(result.stdout, /validate-and-optimize passed/);
       assert.match(result.stdout, /run: blocked/);
-      assert.match(result.stdout, /Live GEPA\/DSPy execution requires/);
+      assert.match(result.stdout, /Pass --execute only after explicit approval/);
 
       const packet = JSON.parse(
         readFileSync(join(repo, ".understudy", "validate-and-optimize", "proof-packet.json"), "utf8"),
@@ -428,6 +456,52 @@ describe("understudy-tools CLI", () => {
       assert.equal(packet.live_optimizer_execution, false);
       assert.equal(packet.uv_env_created, false);
       assert.equal(packet.claim_json_created, false);
+    }));
+
+  it("scores a rubric through the local uv runtime without provider calls", () =>
+    withOptimizerFixtureRepo(({ repo, rubricPath }) => {
+      const result = run([
+        "validate-and-optimize",
+        "rubric",
+        "score",
+        "--repo",
+        repo,
+        "--rubric",
+        rubricPath,
+        "--output-text",
+        "synthetic answer",
+        "--judge-verdict",
+        "SCORE: 0.5\nNeeds more detail.",
+      ]);
+      assert.equal(result.status, 0, result.stderr);
+      const payload = JSON.parse(result.stdout);
+      assert.equal(payload.schema_version, "understudy.rubric_score.v1");
+      assert.equal(payload.score, 0.5);
+      assert.equal(payload.provider_calls, false);
+      assert.match(payload.feedback, /Rubric gaps/);
+    }));
+
+  it("scaffolds a DSPy signature through the local uv runtime without installing packages", () =>
+    withOptimizerFixtureRepo(({ repo, samplesPath }) => {
+      const result = run([
+        "validate-and-optimize",
+        "dspy",
+        "scaffold",
+        "--repo",
+        repo,
+        "--samples",
+        samplesPath,
+        "--input-keys",
+        "question",
+        "--output-keys",
+        "answer",
+      ]);
+      assert.equal(result.status, 0, result.stderr);
+      const payload = JSON.parse(result.stdout);
+      assert.equal(payload.schema_version, "understudy.dspy_scaffold.v1");
+      assert.equal(payload.signature, "question -> answer");
+      assert.equal(payload.sample_count, 2);
+      assert.equal(payload.parity_required_before_gepa, true);
     }));
 
   it("writes a measured-evidence value report without making provider calls", () =>
