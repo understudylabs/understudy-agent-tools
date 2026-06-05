@@ -17,6 +17,7 @@ import { registerSetupCommand } from "./commands/setup.js";
 import { registerStatusCommand } from "./commands/status.js";
 import { registerOptimizeWorkloadCommand } from "./commands/optimize-workload.js";
 import { registerWorkloadsCommand } from "./commands/workloads.js";
+import { registerExperimentsCommands, registerNextCommand } from "./commands/experiments.js";
 
 export const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 
@@ -425,6 +426,8 @@ export function buildProgram(): Command {
   registerCaptureImportCommands(program);
   registerRouteDecisionCommands(program);
   registerValueCommands(program);
+  registerExperimentsCommands(program);
+  registerNextCommand(program);
 
   program.action(printSpine);
   return program;

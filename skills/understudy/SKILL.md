@@ -212,11 +212,13 @@ add the cost/margin analysis the local record deliberately omits. Promotion
 publishes to a shared repository and is an upload — gate it like any other (see
 Safety Gates).
 
-> The `experiments/` layout is the target artifact contract. The
-> `optimize-workload` CLI still writes scratch candidate/claim artifacts under
-> `.understudy/optimize-workload/`; an experiment-aware CLI (`understudy next`,
-> an experiment ledger) is a tracked follow-up. Until then, freeze the chosen
-> candidate and the claim into the active experiment directory by hand.
+> `understudy experiments new` opens an experiment and copies the baseline
+> hash-chain into `pins`; `understudy next` reads the artifacts on disk plus the
+> active experiment to report the loop step and the command to run next;
+> `understudy experiments outcome` records the verdict. The `optimize-workload`
+> CLI still writes scratch candidate/claim artifacts under
+> `.understudy/optimize-workload/`; freeze the chosen candidate and the claim
+> into the active experiment directory.
 
 Removed Python-prototype commands and deleted draft skills are tracked in
 [`../../docs/current-functionality.md`](../../docs/current-functionality.md). Do
