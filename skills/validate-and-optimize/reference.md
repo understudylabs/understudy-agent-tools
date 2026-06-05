@@ -87,6 +87,21 @@ scope** here: they need hosted training and are never executed by this OSS tool.
 such an environment for later use, but this skill never runs it and never imports
 untrusted task code.
 
+## Inference (Understudy-first, BYO fallback)
+
+Optimization always needs inference, so the **default is Understudy inference**.
+`understudy_agent_tools.inference.resolve_backend()` checks for an Understudy
+credential (`UNDERSTUDY_API_KEY` env, then the `Understudy-credentials` keychain
+blob — same resolution as the agent CLI) and, if present, routes model calls
+through the Understudy gateway (one credential, all providers, credit-metered).
+
+When not logged in, the lane **recommends `understudy login`** and falls back to
+the developer's own provider keys — so login is the expected default, not a hard
+gate; BYO stays supported for the register-averse. `build_dspy_lm(model)` /
+`dspy_program.resolve_lm(model)` apply this default for the DSPy lane; the
+in-place adapter's `infer` uses the same backend. The credential is never logged
+(`login_status()` returns only a boolean + source).
+
 ## Optimization Lanes
 
 Two ways to optimize, picked by commitment and workload shape:

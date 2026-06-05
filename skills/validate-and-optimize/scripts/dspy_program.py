@@ -116,13 +116,26 @@ def parity_check(
     )
 
 
+def resolve_lm(model: str):
+    """The lane's default LM: **Understudy inference if logged in, else BYO**.
+
+    Delegates to `understudy_agent_tools.inference.build_dspy_lm`, which routes
+    through the Understudy gateway when a credential is present and otherwise
+    builds a native `provider/model` LM on the developer's own keys.
+    """
+    from understudy_agent_tools.inference import build_dspy_lm
+
+    return build_dspy_lm(model)
+
+
 def optimize(
     program: "dspy.Module",
     *,
     trainset: Sequence["dspy.Example"],
     valset: Sequence["dspy.Example"],
     metric: Metric,
-    reflection_lm: Any,
+    reflection_lm: Any | None = None,
+    reflection_model: str | None = None,
     auto: str = "light",
     **gepa_kwargs: Any,
 ) -> "dspy.Module":
@@ -131,6 +144,14 @@ def optimize(
     Caller MUST have passed `parity_check` first. `metric` may return a
     `dspy.Prediction(score=..., feedback=...)` to give GEPA natural-language
     feedback (preferred) instead of a bare float.
+
+    By default the reflection LM is resolved Understudy-first: pass
+    `reflection_model` (a model name) and it routes through Understudy inference
+    when logged in, else BYO. Pass an explicit `reflection_lm` to override.
     """
+    if reflection_lm is None:
+        if reflection_model is None:
+            raise ValueError("pass reflection_lm or reflection_model")
+        reflection_lm = resolve_lm(reflection_model)
     optimizer = dspy.GEPA(metric=metric, reflection_lm=reflection_lm, auto=auto, **gepa_kwargs)
     return optimizer.compile(program, trainset=list(trainset), valset=list(valset))
