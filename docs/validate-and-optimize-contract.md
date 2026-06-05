@@ -123,10 +123,11 @@ artifact is therefore `metric.json`, not the optimizer package.
   "primary_metric": "exact_match",
   "threshold": 0.95,
   "validator": {
-    "kind": "command|callable|schema|human-review",
+    "kind": "command|callable|schema|rubric|llm-judge|human-review",
     "command": null,
     "callable": null,
-    "schema_path": null
+    "schema_path": null,
+    "rubric_path": null
   },
   "feedback": {
     "required": true,
@@ -149,6 +150,10 @@ Rules:
 - Feedback is required and must describe the actual validator failure.
 - If only a proxy metric exists, run diagnostic mode only and do not emit
   `claim.json`.
+- `kind` dispatches the runner: `command`/`callable` run a check; `schema` does a
+  safeParse (separate `schema_pass` from `quality_pass`); `rubric`/`llm-judge`
+  use `scripts/rubric_reward.py` (graded; debias position with a swapped
+  two-pass score); `human-review` is a blind packet. `kind: proxy` is rejected.
 
 ## Eval Input Adapter
 
@@ -207,21 +212,26 @@ Keep deterministic implementation details near the skill:
 
 ```text
 skills/validate-and-optimize/
-  SKILL.md
-  templates/
-    candidate.json
-    claim.json
-    eval.json
-  examples/
-    fresh-baseline-dry-run/
-    stale-baseline/
+  SKILL.md            thin routing prose (Before-You-Optimize gates)
+  reference.md        deep detail: lanes, model selection, validator kinds, inference
+  templates/          candidate.json, claim.json, eval.json, metric.json, rubric.json
+  examples/           fresh-baseline-dry-run/, stale-baseline/
   scripts/
-    check_freshness.py
-    prepare_examples.py
-    gepa_run.py
-    evaluate.py
-    report.py
+    _common.py        shared artifact IO + gate helpers
+    check_freshness.py / validate_metric.py / validate_claim.py   hard gates
+    prepare_examples.py                                           eval-input adapter
+    gepa_run.py                                                   run gate + (dry-run today)
+    _adapter.py       in-place lane: UnderstudyGepaAdapter (single + multi-turn)
+    dspy_program.py   opt-in DSPy-program lane: scaffold + parity_check + dspy.GEPA
+    rubric_reward.py  rubric/llm-judge reward -> (score, feedback)
 ```
+
+Inference is resolved **Understudy-first** by
+`understudy_agent_tools.inference.resolve_backend()` (login -> gateway; else BYO
+provider keys); the gateway base is config (`UNDERSTUDY_API_BASE`), never a
+hosted URL in the package. Two optimization lanes: **in-place** (default,
+`_adapter.py`, truest to prod) and **DSPy-program** (opt-in, `dspy_program.py`,
+gated by `parity_check`). See reference.md.
 
 The CLI should remain a thin wrapper around these proven scripts. Do not move
 the whole workflow into top-level CLI code.
