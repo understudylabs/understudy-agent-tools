@@ -1,8 +1,8 @@
 # TypeScript + uv Python Bridge
 
-`understudy-agent-tools` is a TypeScript CLI and skill library. The repo can
-still use Python for Python-native optimizer and evaluation packages, but Python
-is runtime glue, not the product architecture.
+`understudy-agent-tools` is a skill library with a thin TypeScript CLI. The repo
+can still use Python for Python-native optimizer and evaluation packages, but
+Python is runtime glue, not the product architecture.
 
 ## Rule
 
@@ -10,8 +10,9 @@ Use this split when porting from `understudy-agent`:
 
 | Surface | Home |
 | --- | --- |
-| CLI commands, auth, setup, status, keys, projects, run wrappers | TypeScript |
-| Safety gates, public artifacts, package checks, docs, skill routing | TypeScript |
+| Auth, setup, status, keys, projects, run wrappers | TypeScript |
+| Durable execution, public artifact checks, package checks | TypeScript |
+| Capability routing, implementation judgment, cookbook patterns | Skills and markdown |
 | GEPA, DSPy, eval harness adapters, rubric reward helpers, dataset transforms | `uv` Python bridge |
 | Hosted/private/customer runtime behavior | Do not port until public boundary is explicit |
 
@@ -27,8 +28,8 @@ A bridge command should follow this shape:
 4. TypeScript invokes Python with `uv run --no-project`, adding `--with`
    packages only when the command explicitly needs them.
 5. Python reads JSON/files and emits one structured JSON object to stdout.
-6. TypeScript parses the JSON, writes durable `.understudy/` artifacts, and
-   keeps user-facing output concise.
+6. TypeScript parses the JSON, writes durable `.understudy/` artifacts when the
+   shortcut owns them, and keeps user-facing output concise.
 
 The current implementation is `src/optimize-workload.ts`: it generates
 `.understudy/optimize-workload/uv-runtime/optimizer_runtime.py`, then uses

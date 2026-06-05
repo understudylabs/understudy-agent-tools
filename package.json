@@ -11,6 +11,7 @@
   "files": [
     "dist",
     "skills",
+    "cookbook",
     "docs",
     "vendor",
     "README.md",
@@ -23,10 +24,11 @@
     "build": "tsc -p tsconfig.build.json",
     "clean": "rm -rf dist",
     "package:smoke": "node scripts/package-smoke.mjs",
+    "cookbook:validate": "node scripts/validate-cookbook.mjs",
     "skills:validate": "node scripts/validate-public-skills.mjs --repo",
     "test": "node --test tests/*.test.mjs",
     "typecheck": "tsc --noEmit",
-    "check": "npm run build && npm run typecheck && npm test && npm run skills:validate && npm run package:smoke"
+    "check": "npm run build && npm run typecheck && npm test && npm run skills:validate && npm run cookbook:validate && npm run package:smoke"
   },
   "dependencies": {
     "@inquirer/prompts": "^8.4.3",

@@ -4,7 +4,7 @@ The first public shape is deliberately small and local-first:
 
 1. `understudy-tools spine` tells agents where to start.
 2. `skills/understudy/SKILL.md` routes by intent.
-3. Specialist skills point to local scripts or future extracted modules.
+3. Specialist skills point to cookbook examples and thin CLI shortcuts.
 4. Vendor shims are explicit and licensed.
 
 The extraction rule is one spine per change. A PR that adds a new script should
@@ -14,8 +14,9 @@ coupling is unavoidable.
 ## Progressive Disclosure
 
 Agents should not expose every command at once. The user starts with a broad
-goal, the fat skill selects a path, and only then should the agent read the
-specialist skill or run the corresponding script.
+goal, the fat skill selects a capability, and only then should the agent read
+the specialist skill, copy a cookbook pattern, or run the corresponding CLI
+shortcut.
 
 ## MVP Spine
 
@@ -69,10 +70,26 @@ it starts after explicit account/project setup and approval for spend, uploads,
 or production traffic.
 
 Optimizer algorithm logic should stay upstream. The public tools may invoke
-`gepa`/`dspy` only through approval-gated `uv` bridge commands, then use
-TypeScript-owned adapters, metric feedback, and artifact gates. Do not port GEPA
+`gepa`/`dspy` only through approval-gated `uv` bridge shortcuts, then use
+skill-owned guidance, metric feedback, and local artifact gates. Do not port GEPA
 or depend on a full private runtime. See
 [`optimize-workload-contract.md`](optimize-workload-contract.md).
+
+## CLI Boundary
+
+The CLI is not the product brain. It is a set of durable shortcuts an agent can
+run and monitor:
+
+- auth and gateway readiness: `login`, `status`, `projects`, `keys`, `run`;
+- local evidence shortcuts: `capture-evidence`, `capture-import`,
+  `route-decision`, `value`;
+- optimizer bridge shortcuts: `optimize-workload ... --execute` when explicitly
+  approved.
+
+Capability judgment lives in skills. Implementation patterns live in
+`cookbook/`. New CLI code should be added only when a workflow needs reliable
+execution, artifact writes, auth injection, or a safety gate that markdown alone
+cannot enforce.
 
 Default public path:
 

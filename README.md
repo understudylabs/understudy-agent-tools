@@ -1,17 +1,18 @@
 # understudy-agent-tools
 
-Public, MIT-licensed Understudy agent tools and skill library.
+Public, MIT-licensed Understudy skill library, cookbook, and thin CLI.
 
-This repo is the public tools surface for local-first AI workload evaluation,
-validation, optimization planning, and handoff. The Python CLI prototype has
-been removed; the CLI source of truth is now TypeScript/Node.
+This repo is the public skills surface for local-first AI workload evaluation,
+optimization planning, gateway handoff, and agent-led implementation. The CLI is
+thin TypeScript/Node: durable shortcuts, auth, artifact checks, and runtime
+wrappers that a coding agent can monitor.
 
 The OSS MVP loop is local-first:
 
 ```text
-understand workload -> attach harness/environment
+capture evidence -> attach harness/environment
   -> confirm metric/validator/holdout -> rerun baseline
-  -> validate and optimize -> conservative claim packet
+  -> optimize workload -> conservative claim packet
 ```
 
 Registration is not required for that loop. Hosted gateway, browser, channel,
@@ -23,14 +24,16 @@ tools surface.
 
 | Spine | Path | Purpose |
 | --- | --- | --- |
-| CLI | `src/` | TypeScript command router and stable public interface. |
+| CLI | `src/` | Thin TypeScript shortcuts for auth, artifact checks, and durable runs. |
 | Skills | `skills/` | MVP progressive-disclosure agent playbooks. |
+| Cookbook | `cookbook/` | Bundled synthetic examples for agents to copy, run, and adapt. |
 | Docs | `docs/` | Public methodology and release-boundary notes. |
 | Scripts | `scripts/` | Repo hygiene checks, not product CLI code. |
 | Vendor | `vendor/` | Vendored or mirrored compatibility shims, with license metadata. |
 
-The CLI should stay boring. Durable public behavior belongs in TypeScript
-commands or in short skills that route agents to auditable local artifacts.
+The CLI should stay boring. Workflow judgment belongs in skills and cookbooks;
+durable shortcuts belong in TypeScript only when the agent needs reliable
+execution, auth injection, artifact writes, or a safety gate.
 
 ## Install Locally
 
@@ -94,6 +97,20 @@ Then ask the coding agent to convert the current repo to Understudy or add a
 thin GEPA/DSPy optimizer. The installed onboarding skill starts by checking
 `understudy-tools status --json` and stops with a clear login instruction if
 the user is not authenticated.
+
+## Cookbook Examples
+
+Cookbooks are bundled with the package and smoke-tested:
+
+```bash
+npm run cookbook:validate
+```
+
+Current examples:
+
+- `cookbook/capture-evidence-node`
+- `cookbook/optimize-eval-input-gepa`
+- `cookbook/gateway-openai-typescript`
 
 ## Skill Rule
 

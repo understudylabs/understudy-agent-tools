@@ -25,6 +25,13 @@ const forbiddenMemberParts = [
   ".py",
 ];
 
+const requiredPackageMembers = [
+  "cookbook/README.md",
+  "cookbook/capture-evidence-node/README.md",
+  "cookbook/optimize-eval-input-gepa/eval-input-manifest.json",
+  "cookbook/gateway-openai-typescript/src/client.ts",
+];
+
 function npmPackFiles() {
   const result = spawnSync("npm", ["pack", "--dry-run", "--json"], { encoding: "utf8" });
   if (result.status !== 0) {
@@ -57,7 +64,14 @@ function textErrors(name, path) {
 }
 
 const errors = [];
-for (const entry of npmPackFiles()) {
+const packageFiles = npmPackFiles();
+const packagePaths = new Set(packageFiles.map((entry) => entry.path));
+for (const required of requiredPackageMembers) {
+  if (!packagePaths.has(required)) {
+    errors.push(`package/${required}: required cookbook file missing from package`);
+  }
+}
+for (const entry of packageFiles) {
   const path = entry.path;
   const packageName = `package/${path}`;
   for (const forbidden of forbiddenMemberParts) {

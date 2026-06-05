@@ -10,7 +10,7 @@ for:
 | Area | Former commands | Status after replacement |
 | --- | --- | --- |
 | Public spine | `spine`, `skills` | Kept in TypeScript. |
-| Local workload discovery | `demo scan`, `demo plan`, `workload-discovery scan`, `workload-discovery plan` | Restored as metadata-only `understand check` and `capture evidence-card`. |
+| Local workload discovery | `demo scan`, `demo plan`, `workload-discovery scan`, `workload-discovery plan` | Restored as metadata-only `capture-evidence check` and `capture-evidence workload-card`; old `understand` remains a compatibility alias. |
 | Capture/import | `capture-import scan`, `capture-import preview`, `capture-import workload-card` | Restored in TypeScript as metadata-only local scan, bounded preview, and workload-card artifacts. |
 | Route decision | `route-decision plan --workload-card ...` | Restored in TypeScript. Emits the JSON contract from `docs/route-decision-packet-template.md` with conservative evaluate-first routes only. |
 | Value report | `value report` | Restored in TypeScript. Emits conservative value reports only from measured evidence or explicit overrides. |
@@ -29,8 +29,8 @@ understudy-tools doctor
 understudy-tools capture-import scan --repo .
 understudy-tools capture-import preview --repo . --limit 10
 understudy-tools capture-import workload-card --repo .
-understudy-tools understand check --repo .
-understudy-tools capture evidence-card --repo .
+understudy-tools capture-evidence check --repo .
+understudy-tools capture-evidence workload-card --repo .
 understudy-tools route-decision plan --workload-card .understudy/workload-discovery/workload-card.json
 understudy-tools optimize-workload --uv
 understudy-tools optimize-workload check --repo .
@@ -50,8 +50,8 @@ The Node package validates itself with:
 npm run check
 ```
 
-That runs build, typecheck, CLI tests, public skill validation, and npm package
-smoke.
+That runs build, typecheck, CLI tests, public skill validation, cookbook
+validation, and npm package smoke.
 
 The understand commands are local-only. They do not upload data, call providers,
 or read prompt/eval payloads. They write metadata artifacts to:
