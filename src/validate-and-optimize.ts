@@ -3,6 +3,10 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { spawnSync } from "node:child_process";
 import { join, relative, resolve } from "node:path";
 
+import { DEFAULT_GATEWAY_URL } from "./config/defaults.js";
+import { readCredentials } from "./config/credentials.js";
+import { readProjectConfig } from "./config/index.js";
+
 type GateStatus = "pass" | "fail";
 
 type GateCheck = {
@@ -79,6 +83,22 @@ type DspyParityOptions = DspyScaffoldOptions & {
   baselineScore: string;
   dummyAnswers?: string;
   tolerance?: string;
+};
+
+type DspyGepaOptions = DspyScaffoldOptions & {
+  model: string;
+  execute?: boolean;
+  maxMetricCalls?: string;
+  splitKey?: string;
+  trainSplit?: string;
+  devSplit?: string;
+  maxTokens?: string;
+};
+
+type OptimizerAuth = {
+  apiKey: string;
+  gatewayUrl: string;
+  source: "env" | "stored";
 };
 
 function sha256(text: string): string {
@@ -373,6 +393,57 @@ export function parityCheckDspyProgram(options: DspyParityOptions): Record<strin
   return runUvPython(repo, runtimePath, args, ["dspy>=3.0.0"]);
 }
 
+export function runDspyGepaAdapter(options: DspyGepaOptions): Record<string, unknown> {
+  const repo = resolve(options.repo);
+  const runtimePath = writeOptimizerRuntime(repo);
+  if (options.execute !== true) {
+    return {
+      attempted: false,
+      schema_version: "understudy.dspy_gepa_adapter.v1",
+      status: "blocked",
+      provider_calls: false,
+      optimizer_execution: false,
+      reason: "pass --execute after explicit approval to use Understudy inference and run GEPA",
+    };
+  }
+  const auth = resolveOptimizerAuth(repo);
+  return runUvPython(
+    repo,
+    runtimePath,
+    [
+      "dspy-gepa",
+      "--repo",
+      repo,
+      "--samples",
+      resolve(options.samples),
+      "--input-keys",
+      options.inputKeys.join(","),
+      "--output-keys",
+      options.outputKeys.join(","),
+      "--module",
+      options.module ?? "predict",
+      "--model",
+      options.model,
+      "--max-metric-calls",
+      options.maxMetricCalls ?? "3",
+      "--split-key",
+      options.splitKey ?? "split",
+      "--train-split",
+      options.trainSplit ?? "train",
+      "--dev-split",
+      options.devSplit ?? "dev",
+      "--max-tokens",
+      options.maxTokens ?? "256",
+    ],
+    ["gepa>=0.0.27,<0.1", "dspy>=3.0.0", "litellm>=1.0.0"],
+    {
+      UNDERSTUDY_API_KEY: auth.apiKey,
+      UNDERSTUDY_GATEWAY_URL: auth.gatewayUrl,
+      UNDERSTUDY_AUTH_SOURCE: auth.source,
+    },
+  );
+}
+
 export function printGateResult(result: GateResult): void {
   console.log(`validate-and-optimize ${result.ok ? "passed" : "blocked"}`);
   console.log(`repo: ${result.repo}`);
@@ -385,7 +456,39 @@ export function printGateResult(result: GateResult): void {
   }
 }
 
-function runUvPython(repo: string, runtimePath: string, args: string[], packages: string[] = []): Record<string, unknown> {
+function resolveOptimizerAuth(repo: string): OptimizerAuth {
+  const envApiKey = process.env.UNDERSTUDY_API_KEY;
+  if (envApiKey) {
+    return {
+      apiKey: envApiKey,
+      gatewayUrl: process.env.UNDERSTUDY_GATEWAY_URL ?? DEFAULT_GATEWAY_URL,
+      source: "env",
+    };
+  }
+
+  const credentials = readCredentials();
+  if (!credentials) {
+    throw new Error("Not signed in. Run `understudy-tools login` once, then re-run this command.");
+  }
+  const config = readProjectConfig(repo);
+  const orgCredentials = config ? credentials.orgs[config.org_id] : undefined;
+  const onlyOrg = Object.keys(credentials.orgs).length === 1 ? credentials.orgs[Object.keys(credentials.orgs)[0]!] : undefined;
+  const entry = orgCredentials ?? onlyOrg;
+  const apiKey = entry?.api_key ?? credentials.api_key;
+  const gatewayUrl = entry?.gateway_url ?? credentials.gateway_url ?? DEFAULT_GATEWAY_URL;
+  if (!apiKey) {
+    throw new Error("Not signed in. Run `understudy-tools login` once, then re-run this command.");
+  }
+  return { apiKey, gatewayUrl, source: "stored" };
+}
+
+function runUvPython(
+  repo: string,
+  runtimePath: string,
+  args: string[],
+  packages: string[] = [],
+  env: Record<string, string> = {},
+): Record<string, unknown> {
   const uvArgs = ["run", "--no-project"];
   for (const pkg of packages) {
     uvArgs.push("--with", pkg);
@@ -394,15 +497,15 @@ function runUvPython(repo: string, runtimePath: string, args: string[], packages
   const result = spawnSync("uv", uvArgs, {
     cwd: repo,
     encoding: "utf8",
+    env: {
+      ...process.env,
+      ...env,
+    },
     maxBuffer: 10 * 1024 * 1024,
   });
   let parsed: unknown = null;
   if (result.stdout.trim()) {
-    try {
-      parsed = JSON.parse(result.stdout);
-    } catch {
-      parsed = null;
-    }
+    parsed = parseJsonFromNoisyStdout(result.stdout);
   }
   return {
     attempted: true,
@@ -412,6 +515,23 @@ function runUvPython(repo: string, runtimePath: string, args: string[], packages
     stderr: result.stderr.trim(),
     json: parsed,
   };
+}
+
+function parseJsonFromNoisyStdout(stdout: string): unknown {
+  const trimmed = stdout.trim();
+  try {
+    return JSON.parse(trimmed);
+  } catch {
+    const start = trimmed.lastIndexOf("\n{");
+    if (start === -1) {
+      return null;
+    }
+    try {
+      return JSON.parse(trimmed.slice(start + 1));
+    } catch {
+      return null;
+    }
+  }
 }
 
 function writeOptimizerRuntime(repo: string): string {
@@ -426,6 +546,7 @@ from __future__ import annotations
 
 import argparse
 import json
+import os
 import re
 from dataclasses import dataclass
 from pathlib import Path
@@ -579,6 +700,156 @@ def dspy_parity(args: argparse.Namespace) -> None:
     })
 
 
+def normalize_gateway_url(value: str) -> str:
+    base = value.rstrip("/")
+    return base if base.endswith("/v1") else f"{base}/v1"
+
+
+def normalize_dspy_model(value: str) -> str:
+    if "/" in value:
+        return value
+    return f"openai/{value}"
+
+
+def split_train_dev(rows: list[dict[str, Any]], split_key: str, train_split: str, dev_split: str) -> tuple[list[dict[str, Any]], list[dict[str, Any]], int]:
+    if any(split_key in row for row in rows):
+        train = [row for row in rows if str(row.get(split_key)) == train_split]
+        dev = [row for row in rows if str(row.get(split_key)) == dev_split]
+        holdout_count = len([row for row in rows if str(row.get(split_key)).lower() == "holdout"])
+    else:
+        train = rows[:1]
+        dev = rows[1:] or rows[:1]
+        holdout_count = 0
+    if not train:
+        raise ValueError(f"no train rows found for {split_key}={train_split}")
+    if not dev:
+        raise ValueError(f"no dev rows found for {split_key}={dev_split}")
+    return train, dev, holdout_count
+
+
+def exact_match_feedback(output_keys: list[str], gold: Any, pred: Any) -> Any:
+    from dspy.teleprompt.gepa.gepa_utils import ScoreWithFeedback
+
+    matches = []
+    gaps = []
+    for key in output_keys:
+        expected = str(getattr(gold, key, "")).strip()
+        actual = str(getattr(pred, key, "")).strip()
+        ok = actual == expected
+        matches.append(ok)
+        if not ok:
+            gaps.append(f"{key}: expected {expected!r}, got {actual!r}")
+    score = sum(1.0 for item in matches if item) / len(matches) if matches else 0.0
+    feedback = "All output fields matched." if not gaps else "Output mismatches: " + "; ".join(gaps)
+    return ScoreWithFeedback(score=score, feedback=feedback)
+
+
+def dspy_gepa(args: argparse.Namespace) -> None:
+    import dspy
+
+    api_key = os.environ.get("UNDERSTUDY_API_KEY")
+    gateway_url = os.environ.get("UNDERSTUDY_GATEWAY_URL")
+    if not api_key:
+        raise ValueError("UNDERSTUDY_API_KEY is required for dspy-gepa")
+    if not gateway_url:
+        raise ValueError("UNDERSTUDY_GATEWAY_URL is required for dspy-gepa")
+
+    rows = load_rows(args.samples)
+    input_keys = split_keys(args.input_keys)
+    output_keys = split_keys(args.output_keys)
+    train_rows, dev_rows, holdout_count = split_train_dev(rows, args.split_key, args.train_split, args.dev_split)
+    for row in [*train_rows, *dev_rows]:
+        missing = [key for key in [*input_keys, *output_keys] if key not in row]
+        if missing:
+            raise ValueError(f"sample row is missing keys: {', '.join(missing)}")
+
+    lm = dspy.LM(
+        normalize_dspy_model(args.model),
+        api_key=api_key,
+        api_base=normalize_gateway_url(gateway_url),
+        max_tokens=int(args.max_tokens),
+        cache=False,
+    )
+    dspy.configure(lm=lm)
+    signature = dspy.Signature(f"{', '.join(input_keys)} -> {', '.join(output_keys)}")
+    student = dspy.ChainOfThought(signature) if args.module == "cot" else dspy.Predict(signature)
+
+    def to_example(row: dict[str, Any]) -> Any:
+        return dspy.Example(**{key: row[key] for key in [*input_keys, *output_keys]}).with_inputs(*input_keys)
+
+    trainset = [to_example(row) for row in train_rows]
+    devset = [to_example(row) for row in dev_rows]
+
+    baseline_prediction = student(**{key: train_rows[0][key] for key in input_keys})
+    baseline_feedback = exact_match_feedback(output_keys, trainset[0], baseline_prediction)
+
+    def metric(gold: Any, pred: Any, trace: Any = None, pred_name: str | None = None, pred_trace: Any = None) -> Any:
+        return exact_match_feedback(output_keys, gold, pred)
+
+    teleprompter = dspy.GEPA(
+        metric=metric,
+        max_metric_calls=int(args.max_metric_calls),
+        reflection_minibatch_size=1,
+        reflection_lm=lm,
+        use_merge=False,
+        track_stats=False,
+    )
+    optimized = teleprompter.compile(student, trainset=trainset, valset=devset)
+
+    candidate = {
+        "schema_version": "understudy.dspy_gepa_candidate.v1",
+        "adapter": "dspy-gepa",
+        "model": args.model,
+        "module": args.module,
+        "input_keys": input_keys,
+        "output_keys": output_keys,
+        "train_count": len(trainset),
+        "dev_count": len(devset),
+        "holdout_count_excluded": holdout_count,
+        "max_metric_calls": int(args.max_metric_calls),
+        "baseline_first_score": float(baseline_feedback.score),
+        "baseline_first_feedback": baseline_feedback.feedback,
+        "optimized_program_class": optimized.__class__.__name__,
+    }
+    optimize_dir = Path(args.repo) / ".understudy" / "validate-and-optimize"
+    optimize_dir.mkdir(parents=True, exist_ok=True)
+    candidate_path = optimize_dir / "candidate.json"
+    proof_path = optimize_dir / "proof-packet.json"
+    candidate_path.write_text(json.dumps(candidate, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    proof = {
+        "schema_version": "understudy.validate-and-optimize.proof.v1",
+        "mode": "dspy-gepa",
+        "status": "candidate-created",
+        "backend": "uv-gepa",
+        "adapter": "dspy-gepa",
+        "provider_calls": True,
+        "live_optimizer_execution": True,
+        "package_installs": True,
+        "holdout_accessed_during_optimization": False,
+        "train_count": len(trainset),
+        "dev_count": len(devset),
+        "candidate": ".understudy/validate-and-optimize/candidate.json",
+    }
+    proof_path.write_text(json.dumps(proof, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    emit({
+        "schema_version": "understudy.dspy_gepa_adapter.v1",
+        "status": "candidate-created",
+        "adapter": "dspy-gepa",
+        "model": args.model,
+        "provider_calls": True,
+        "optimizer_execution": True,
+        "auth_source": os.environ.get("UNDERSTUDY_AUTH_SOURCE", "unknown"),
+        "gateway_url_configured": True,
+        "api_key_configured": True,
+        "train_count": len(trainset),
+        "dev_count": len(devset),
+        "holdout_count_excluded": holdout_count,
+        "max_metric_calls": int(args.max_metric_calls),
+        "candidate_path": ".understudy/validate-and-optimize/candidate.json",
+        "proof_packet_path": ".understudy/validate-and-optimize/proof-packet.json",
+    })
+
+
 def gepa_smoke(args: argparse.Namespace) -> None:
     import dspy
     import gepa
@@ -629,6 +900,20 @@ def main() -> None:
     gepa = sub.add_parser("gepa-smoke")
     gepa.add_argument("--repo", required=True)
     gepa.set_defaults(func=gepa_smoke)
+
+    dspy_gepa_parser = sub.add_parser("dspy-gepa")
+    dspy_gepa_parser.add_argument("--repo", required=True)
+    dspy_gepa_parser.add_argument("--samples", required=True)
+    dspy_gepa_parser.add_argument("--input-keys", required=True)
+    dspy_gepa_parser.add_argument("--output-keys", required=True)
+    dspy_gepa_parser.add_argument("--module", default="predict")
+    dspy_gepa_parser.add_argument("--model", required=True)
+    dspy_gepa_parser.add_argument("--max-metric-calls", default="3")
+    dspy_gepa_parser.add_argument("--split-key", default="split")
+    dspy_gepa_parser.add_argument("--train-split", default="train")
+    dspy_gepa_parser.add_argument("--dev-split", default="dev")
+    dspy_gepa_parser.add_argument("--max-tokens", default="256")
+    dspy_gepa_parser.set_defaults(func=dspy_gepa)
 
     args = parser.parse_args()
     args.func(args)

@@ -89,16 +89,19 @@ validator kinds in [`reference.md`](reference.md):
    prompt repair, parser/schema repair, context trimming, route change,
    candidate model comparison, or GEPA.
 4. For GEPA/DSPy execution, use a small local `uv` environment only after
-   explicit approval. Do not auto-install packages, vendor GEPA/DSPy, or depend
-   on a full private runtime. GEPA's edge is natural-language feedback: the
-   metric must return a diagnosis of *why* each failing row failed and what to
-   change, not a bare score — bland feedback wastes the optimizer.
+   explicit approval. Do not vendor GEPA/DSPy or depend on a full private
+   runtime. The CLI's live `dspy gepa --execute` adapter resolves the
+   Understudy API key, passes it to the child process through environment only,
+   and runs train/dev rows through the gateway. GEPA's edge is natural-language
+   feedback: the metric must return a diagnosis of *why* each failing row failed
+   and what to change, not a bare score — bland feedback wastes the optimizer.
 5. Keep deterministic work in the TypeScript CLI and this skill's templates. Follow
    [`../../docs/validate-and-optimize-contract.md`](../../docs/validate-and-optimize-contract.md)
    for adapter, metric feedback, and claim packet details.
 6. When GEPA is available and explicitly approved, run train/dev-only and
-   record the command, budget, seed, variant count, selected candidate, and
-   rejected variants.
+   record the command, model/deployment, metric-call budget, seed, selected
+   candidate, rejected variants when available, and whether provider calls were
+   made through Understudy.
 7. Freeze the candidate before any holdout validation.
 8. Run holdout only once the candidate is frozen, and record score, failures,
    latency basis, cost basis, fallback route, demotion trigger, and caveats.

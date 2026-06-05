@@ -6,6 +6,7 @@ import { runUnderstandCheck, runUnderstandWorkloadCard } from "./understand.js";
 import {
   printGateResult,
   parityCheckDspyProgram,
+  runDspyGepaAdapter,
   scaffoldDspyProgram,
   scoreRubricWithUv,
   validateAndOptimizeCheck,
@@ -485,6 +486,47 @@ export function buildProgram(): Command {
         });
         printJson(result.json ?? result);
         if (result.exit_code !== 0 || (result.json as { parity?: boolean } | null)?.parity === false) {
+          process.exitCode = 1;
+        }
+      },
+    );
+  dspy
+    .command("gepa")
+    .description("Run a DSPy GEPA adapter with Understudy gateway inference")
+    .requiredOption("--repo <path>", "Repository to use for local uv runtime")
+    .requiredOption("--samples <path>", "JSON samples as an array or { rows: [...] }")
+    .requiredOption("--input-keys <keys>", "Comma-separated input keys")
+    .requiredOption("--output-keys <keys>", "Comma-separated output keys")
+    .requiredOption("--model <name>", "Understudy gateway deployment/model name")
+    .option("--module <name>", "predict or cot", "predict")
+    .option("--max-metric-calls <number>", "GEPA metric-call budget", "3")
+    .option("--split-key <field>", "Sample split field", "split")
+    .option("--train-split <value>", "Train split value", "train")
+    .option("--dev-split <value>", "Dev split value", "dev")
+    .option("--max-tokens <number>", "Per-call max token cap", "256")
+    .option("--execute", "After explicit approval, use Understudy inference and run GEPA")
+    .action(
+      (options: {
+        repo: string;
+        samples: string;
+        inputKeys: string;
+        outputKeys: string;
+        model: string;
+        module?: string;
+        maxMetricCalls?: string;
+        splitKey?: string;
+        trainSplit?: string;
+        devSplit?: string;
+        maxTokens?: string;
+        execute?: boolean;
+      }) => {
+        const result = runDspyGepaAdapter({
+          ...options,
+          inputKeys: options.inputKeys.split(",").map((item) => item.trim()).filter(Boolean),
+          outputKeys: options.outputKeys.split(",").map((item) => item.trim()).filter(Boolean),
+        });
+        printJson(result.json ?? result);
+        if (result.attempted === false || (result.exit_code !== undefined && result.exit_code !== 0)) {
           process.exitCode = 1;
         }
       },

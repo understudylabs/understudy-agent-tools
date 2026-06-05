@@ -558,6 +558,31 @@ describe("understudy-tools CLI", () => {
       assert.equal(payload.program_score, 0);
     }));
 
+  it("blocks the live DSPy GEPA adapter unless execution is explicit", () =>
+    withOptimizerFixtureRepo(({ repo, samplesPath }) => {
+      const result = run([
+        "validate-and-optimize",
+        "dspy",
+        "gepa",
+        "--repo",
+        repo,
+        "--samples",
+        samplesPath,
+        "--input-keys",
+        "question",
+        "--output-keys",
+        "answer",
+        "--model",
+        "synthetic-deployment",
+      ]);
+      assert.equal(result.status, 1);
+      const payload = JSON.parse(result.stdout);
+      assert.equal(payload.schema_version, "understudy.dspy_gepa_adapter.v1");
+      assert.equal(payload.status, "blocked");
+      assert.equal(payload.provider_calls, false);
+      assert.equal(payload.optimizer_execution, false);
+    }));
+
   it("writes a measured-evidence value report without making provider calls", () =>
     withValueFixtureRepo({ measured: true }, ({ repo, cardPath, routePath }) => {
       const result = run([

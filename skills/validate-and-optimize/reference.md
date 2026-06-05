@@ -132,10 +132,11 @@ Two ways to optimize, picked by commitment and workload shape:
    the prompt or route component they already ship. Truest to production, lowest
    commitment.
 2. **Program lane (opt-in).** The CLI can scaffold a reusable DSPy program
-   summary and run DSPy parity from local samples. Full GEPA optimization over
-   that program is still gated by parity: the scaffolded program must reproduce
-   the incumbent baseline before optimization, or you optimize a reconstruction
-   that diverges from production.
+   summary, run DSPy parity from local samples, then run the approval-gated
+   `dspy gepa --execute` adapter against the Understudy gateway. Full GEPA
+   optimization over that program is gated by parity: the scaffolded program
+   must reproduce the incumbent baseline before optimization, or you optimize a
+   reconstruction that diverges from production.
 
 ## Rubric Reward (the OSS half of the verifier rung)
 

@@ -38,6 +38,7 @@ understudy-tools validate-and-optimize dry-run --repo .
 understudy-tools validate-and-optimize rubric score --repo . --rubric rubric.json --output-text "..."
 understudy-tools validate-and-optimize dspy scaffold --repo . --samples samples.json --input-keys question --output-keys answer
 understudy-tools validate-and-optimize dspy parity --repo . --samples samples.json --input-keys question --output-keys answer --baseline-score 1.0
+understudy-tools validate-and-optimize dspy gepa --repo . --samples samples.json --input-keys question --output-keys answer --model gpt-4o-mini --execute
 understudy-tools validate-and-optimize run --repo . --backend uv-gepa --execute
 ```
 
@@ -95,15 +96,19 @@ generates a small runtime script under
 `.understudy/validate-and-optimize/uv-runtime/`, then uses `uv run --no-project`
 for Python-native packages. Rubric scoring and DSPy scaffold/parity can run
 without provider calls. The GEPA path verifies that `gepa.optimize` and
-`GEPAAdapter` are importable, but it does not create a candidate until a real
-workload adapter and explicit model/provider approval exist.
+`GEPAAdapter` are importable. The first live adapter is
+`validate-and-optimize dspy gepa --execute`: it resolves the authenticated
+Understudy gateway key, passes it into the local `uv` runtime as environment,
+configures DSPy against the gateway, runs train/dev rows only, excludes holdout,
+and writes `.understudy/validate-and-optimize/candidate.json` plus
+`proof-packet.json`.
 
 ## Next CLI Restores
 
 Restore executable functionality in this order:
 
-1. Approval-gated GEPA workload adapter that calls `gepa.optimize` against
-   train/dev only.
+1. Additional workload adapters that follow the same TypeScript-orchestrated
+   `uv` pattern.
 2. Claim validation and holdout-finalization command.
 
 Each restore should be TypeScript-first. Python is acceptable only as a small

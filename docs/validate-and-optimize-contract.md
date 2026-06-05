@@ -124,6 +124,7 @@ understudy-tools validate-and-optimize run --repo . --budget-usd 10
 understudy-tools validate-and-optimize rubric score --repo . --rubric rubric.json --output-text "..."
 understudy-tools validate-and-optimize dspy scaffold --repo . --samples samples.json --input-keys question --output-keys answer
 understudy-tools validate-and-optimize dspy parity --repo . --samples samples.json --input-keys question --output-keys answer --baseline-score 1.0
+understudy-tools validate-and-optimize dspy gepa --repo . --samples samples.json --input-keys question --output-keys answer --model gpt-4o-mini --execute
 ```
 
 Required behavior:
@@ -138,6 +139,10 @@ Required behavior:
   provider calls.
 - DSPy scaffold/parity: use local samples and `DummyLM`/configured local runtime;
   parity must pass before GEPA touches a reconstruction.
+- DSPy GEPA adapter: require `--execute`, require an explicit model/deployment,
+  resolve the Understudy API key without printing it, pass auth only through the
+  child environment, run train/dev rows only, exclude holdout rows, and write a
+  candidate/proof packet with `provider_calls: true`.
 - Holdout access during optimization: mark the run contaminated and require a
   new split contract before any claim.
 
