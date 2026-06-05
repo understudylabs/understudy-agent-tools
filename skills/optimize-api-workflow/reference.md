@@ -1,8 +1,10 @@
 # Optimize API Workflow — reference
 
-Deep detail for [`SKILL.md`](SKILL.md). Read this when wiring an
-AutomationBench-like API workflow into the Understudy artifact contract,
-measuring a baseline, and comparing model or prompt candidates.
+Deep detail for [`SKILL.md`](SKILL.md). AutomationBench evaluates AI agents on
+realistic, multi-step business workflows across CRM, email, calendar, and 47
+simulated SaaS tools; read this reference when wiring that kind of API workflow
+into the Understudy artifact contract, measuring a baseline, and comparing model
+or prompt candidates.
 
 All examples here are synthetic. Use local fixtures or benchmark sandboxes unless
 the developer explicitly approves provider spend, hosted execution, uploads, or
@@ -183,7 +185,7 @@ first baseline.
 ```json
 {
   "schema_version": "understudy.baseline.v1",
-  "command": "understudy run -- uv run auto-bench --model gpt-5.x --domains sales,marketing --num-examples 8 --export-json .understudy/capture-evidence/baseline-export.json",
+  "command": "understudy run -- uv run auto-bench --model gpt-5.x --domains finance --num-examples 8 --export-json .understudy/capture-evidence/baseline-export.json",
   "split": "dev",
   "sample_size": 8,
   "quality": {
@@ -200,8 +202,8 @@ first baseline.
   },
   "per_task": [
     {
-      "id": "sales-001",
-      "domain": "sales",
+      "id": "finance-001",
+      "domain": "finance",
       "task_completed_correctly": true,
       "partial_credit": 1,
       "api_call_count": 5,
