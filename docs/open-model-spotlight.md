@@ -83,7 +83,7 @@ fits comfortably on a 32 GB+ machine; a 120B-A12B needs ~64–80 GB.
 ```bash
 # remote: pick a catalog model and route a workload to it
 understudy models
-understudy workloads route --model-id nemotron-3-nano --traffic-pct 100
+understudy workloads route <workload-id> --project-id <project-id> --model-id nemotron-3-nano --traffic-pct 100
 understudy run -- <your eval>
 
 # local: serve a small model OpenAI-compatibly and run the same eval
