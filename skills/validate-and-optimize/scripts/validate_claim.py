@@ -8,17 +8,38 @@ from pathlib import Path
 from _common import artifact_sha256, claim_hashes, read_json_object, validate_gate, write_json
 
 
+# Must match the claim contract (docs/validate-and-optimize-contract.md +
+# value-report-template.md `claim_packet_required_fields`). A claim with valid
+# hashes but no pricing/volume/fallback context is an underspecified
+# savings/readiness claim, so those fields are required, not optional metadata.
 REQUIRED_CLAIM_FIELDS = {
+    # hash-bound evidence
     "harness_sha256",
     "metric_sha256",
     "splits_sha256",
     "baseline_sha256",
     "candidate_sha256",
+    # what was measured
+    "workload_card",
     "holdout_result",
     "sample_size",
     "score_delta",
+    # cost/latency basis a savings claim needs
+    "latency_basis",
+    "cost_basis",
+    "pricing_basis",
+    "request_volume_assumption",
+    "confidence",
+    # operational guardrails
+    "fallback_route",
+    "demotion_trigger",
     "caveats",
 }
+
+
+def missing_claim_fields(claim: dict) -> list[str]:
+    """Required claim fields absent from `claim`. Empty when fully specified."""
+    return [field for field in sorted(REQUIRED_CLAIM_FIELDS) if field not in claim]
 
 
 def main() -> int:
@@ -54,8 +75,8 @@ def main() -> int:
         claim = {}
         blockers.append({"name": "claim", "path": str(claim_path), "reason": str(exc)})
 
-    for field in sorted(REQUIRED_CLAIM_FIELDS):
-        if claim and field not in claim:
+    if claim:
+        for field in missing_claim_fields(claim):
             blockers.append({"name": "claim", "path": str(claim_path), "reason": f"claim.json missing {field}"})
 
     if claim:

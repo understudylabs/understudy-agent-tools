@@ -1287,6 +1287,23 @@ def cmd_validate_and_optimize(args: argparse.Namespace) -> int:
         return 2
 
     workload_card = _resolve_repo_path(repo, args.workload_card)
+    if not workload_card.exists():
+        wc_blockers = [
+            {
+                "name": "workload_card",
+                "path": str(workload_card),
+                "reason": "missing workload card; run understand-workload first",
+            }
+        ]
+        payload, output = _write_validate_and_optimize_blockers(repo, checks, wc_blockers, contract)
+        if args.json:
+            print(json.dumps(payload, indent=2, sort_keys=True))
+        else:
+            print(f"wrote {output}")
+            print("blocked: missing or invalid required artifact(s)")
+            for blocker in wc_blockers:
+                print(f"- {blocker['name']}: {blocker['path']} ({blocker['reason']})")
+        return 2
     route_packet, route_output = build_route_decision(workload_card)
     value_report, value_output = build_value_report(
         workload_card,

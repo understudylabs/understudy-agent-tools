@@ -20,7 +20,9 @@ workload into auditable artifacts.
 
 ## Safety Gates
 
-Default to local-only, no-upload, no-spend work.
+Default to the cheapest path that still reaches an optimization outcome — not to
+zero spend (a skipped improvement has real opportunity cost). Get the
+developer's explicit approval before any upload, hosted run, or provider spend.
 
 Do not upload source files, prompts, traces, outputs, datasets, repo paths,
 private notes, provider keys, or secrets unless the developer explicitly
