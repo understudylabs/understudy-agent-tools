@@ -40,7 +40,10 @@ OpenAI-compatible endpoint, so the frozen eval just swaps `base_url`.
 brew install llama.cpp                 # macOS; else build from source / package mgr
 export HF_TOKEN=...                     # only for gated repos; never commit it
 # downloads the GGUF from HF and serves OpenAI-compatible at :8080/v1
-llama-server -hf ggml-org/gemma-4-e4b-it-GGUF:Q4_K_M --port 8080 --jinja
+llama-server -hf unsloth/gemma-4-E4B-it-GGUF:Q4_K_M --port 8080 --jinja
+# Nemotron 3 Nano — smallest gen-3 is the 4B dense; 30B-A3B is the MoE:
+#   llama-server -hf nvidia/NVIDIA-Nemotron-3-Nano-4B-GGUF:Q4_K_M --port 8080 --jinja
+#   llama-server -hf unsloth/Nemotron-3-Nano-30B-A3B-GGUF:Q4_K_M --port 8080 --jinja
 ```
 
 ### MLX — Apple Silicon native (best throughput on a Mac)
@@ -49,6 +52,7 @@ llama-server -hf ggml-org/gemma-4-e4b-it-GGUF:Q4_K_M --port 8080 --jinja
 pip install mlx-lm                       # or: uv pip install mlx-lm
 # pulls the MLX build from HF and serves OpenAI-compatible at :8080/v1
 mlx_lm.server --model mlx-community/gemma-4-e4b-it-4bit --port 8080
+# Nemotron 3 Nano on MLX: mlx-community/NVIDIA-Nemotron-3-Nano-30B-A3B-4bit
 ```
 
 (Ollama / LM Studio also serve OpenAI-compatible if a developer already runs one,
@@ -62,7 +66,7 @@ pull straight from Hugging Face the day weights drop.)
 # accept the model's terms on its HF page first, then:
 export HF_TOKEN=...                       # gated models only; never commit
 hf download google/gemma-4-e4b-it --local-dir ./models/gemma-4-e4b-it
-# or a prebuilt quant: hf download ggml-org/gemma-4-e4b-it-GGUF <file>.gguf
+# or a prebuilt quant: hf download unsloth/gemma-4-E4B-it-GGUF <file>.gguf
 ```
 
 ### Smoke-test the local endpoint, then run the eval
@@ -76,11 +80,42 @@ curl -sS http://localhost:8080/v1/chat/completions \
 Then run the frozen eval with `base_url=http://localhost:8080/v1` (or the gateway
 primitive's `--api-base-url`) — same harness, local model.
 
-Notes: exact repo ids and quant tags drift — verify on the model card (Gemma
-`e4b` / `12b`; Nemotron 3 Nano `30b-a3b`). On Apple Silicon prefer an MLX 4-bit
-build; for portability use a llama.cpp GGUF `Q4_K_M`. Nemotron 3 Nano is a
-30B-A3B MoE — it needs the full weights resident (~16–18 GB at q4) but runs at
-~4B speed, so it's comfortable on 32 GB+ (trivial on your 128 GB).
+Notes: exact repo ids and quant tags drift — verify on the model card. On Apple
+Silicon prefer an MLX 4-bit build; for portability use a llama.cpp GGUF `Q4_K_M`.
+Nemotron 3 Nano comes as a small **4B dense** (truly laptop/edge — a few GB at q4)
+and a **30B-A3B MoE** (holds all experts in memory, ~16–18 GB at q4, but runs at
+~4B speed). Use the 4B for cheap local smoke; the MoE for stronger local quality
+on 32 GB+. (Nemotron is a reasoning model — final text follows a `reasoning`
+block, so parse the last assistant `content`, not the reasoning.)
+
+## Compare local vs remote (recipe + measured example)
+
+Run the SAME frozen rows + prompt against the local endpoint and the remote
+catalog model, score the objective + latency, and let the route decision fall out.
+
+```bash
+# remote side: route a workload to a catalog model, then run the eval via the gateway
+understudy workloads route --model-id gemma-4-31b-it --traffic-pct 100
+BASE=https://api.understudylabs.com/v1 KEY="$UNDERSTUDY_SK" MODEL=x  node eval.mjs  # remote
+BASE=http://127.0.0.1:8080/v1          KEY=local             MODEL=x node eval.mjs  # local
+```
+
+Measured example — 6 support-triage rows, exact-match category + latency, on an
+Apple Silicon laptop:
+
+| | Local — Gemma 4 E4B (llama.cpp) | Remote — Gemma 4 31B (gateway) |
+| --- | --- | --- |
+| Accuracy | 5/6 | 6/6 |
+| Latency p50 | ~77 ms | ~526 ms |
+| Cost | $0 | provider pennies |
+| Privacy | fully local | via gateway |
+
+Decision: the small local model is ~7× faster, $0, and private, and handled the
+easy cases; its one miss (a login/reset ticket it called `technical` while the 31B
+got `account`) is the signal to escalate ambiguous cases. → **local-as-router /
+hybrid**: serve easy traffic locally, escalate hard cases to the remote model.
+Same family (Gemma E4B ↔ Gemma 31B) means the prompt transfers unchanged. Record
+the run in `.understudy/local-model-lab/`.
 
 ## Candidate chooser
 
@@ -93,6 +128,8 @@ availability, license, checkpoint format, and runtime support before use.
 | 12B | Main laptop eval, multimodal/audio tasks, stronger reasoning without workstation hardware | Google announced Gemma 4 12B on 2026-06-03 as a unified encoder-free multimodal model designed for laptops with 16GB VRAM or unified memory. |
 | 26B A4B MoE | Strong local text/image candidate on serious desktop/workstation hardware | Treat as the local quality/latency sweet spot when the runtime and memory fit. MoE active parameters do not remove the need to fit the checkpoint/KV cache. |
 | 31B dense | Maximum local quality when hardware is available, or remote graduation target | Prefer remote/gateway if local ops friction or memory pressure slows the experiment. |
+| Nemotron 3 Nano 4B | Smallest local Nemotron; routing/triage/edge on any laptop | Dense ~4B; GGUF at `nvidia/` and `unsloth/`. The cheapest gen-3 Nemotron rung. |
+| Nemotron 3 Nano 30B-A3B | Stronger local Nemotron on 32 GB+; agentic/reasoning, long context | MoE (3B active) → ~4B speed; reasoning model. Mirrors remote `nemotron-3-nano`/`super`. |
 | Target + `-assistant` | Latency optimization through speculative decoding | The `*-it-assistant` models are MTP drafters. Evaluate the target model's quality; measure the assistant as speedup only. |
 
 ## Gemma 4 facts to verify fresh

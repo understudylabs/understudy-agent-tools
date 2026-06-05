@@ -63,16 +63,17 @@ Cloud (indicative /1M): Nano ~$0.05 in / $0.20 out; Super ~$0.10 / $0.50 (free
 tiers available); Ultra ~$0.60 / $3.60.
 
 **Via Understudy** — remote: `nemotron-3-nano`, `nemotron-3-super`,
-`nemotron-3-ultra`. Local (`run-local-model-lab`): Nano 30B-A3B (smallest gen-3;
-the MoE means it runs ~at 4B speed; Nano-Omni adds multimodal). Super 120B fits a
-high-memory workstation (e.g. 64–128 GB Apple Silicon); Ultra is remote-only.
+`nemotron-3-ultra`. Local (`run-local-model-lab`): Nano **4B** (smallest, dense —
+laptop/edge) or Nano **30B-A3B** (MoE, ~4B speed; Nano-Omni adds multimodal).
+Super 120B fits a high-memory workstation (64–128 GB Apple Silicon); Ultra is
+remote-only.
 
 ## Remote ↔ local at a glance
 
 | Family | Remote (Understudy catalog) | Local (run-local-model-lab) |
 |---|---|---|
 | Gemma 4 | `gemma-4-31b-it` | E2B / E4B / 12B / 26B-MoE / 31B |
-| Nemotron 3 | `nemotron-3-nano`, `nemotron-3-super`, `nemotron-3-ultra` | Nano 30B-A3B (Super 120B on big-RAM) |
+| Nemotron 3 | `nemotron-3-nano`, `nemotron-3-super`, `nemotron-3-ultra` | Nano 4B / 30B-A3B (Super 120B on big-RAM) |
 
 Hardware rule of thumb (local, q4): ~0.5 GB/param of weights + KV cache; an MoE
 holds all experts in memory but runs at the active-parameter speed. A 30B-A3B
