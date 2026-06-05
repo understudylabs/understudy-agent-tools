@@ -24,8 +24,11 @@ from typing import Any, Callable, Sequence
 
 import dspy
 
-# A dspy metric: (example, prediction[, trace]) -> float in [0,1].
-Metric = Callable[..., float]
+# A dspy metric: (example, prediction[, trace, pred_name, pred_trace]) -> a float
+# in [0,1], OR a `dspy.Prediction(score=..., feedback=...)` to give GEPA
+# natural-language feedback (preferred). Typed Any because the Prediction form
+# can't be referenced here (dspy is lazily imported).
+Metric = Callable[..., Any]
 
 
 def build_signature(

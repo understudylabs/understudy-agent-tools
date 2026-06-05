@@ -1,15 +1,10 @@
 """Rubric reward scorer — pure tests (no LM; the judge is injected)."""
 from __future__ import annotations
 
-import sys
-from pathlib import Path
-
 import pytest
 
-_SCRIPTS = Path(__file__).resolve().parents[1] / "skills" / "validate-and-optimize" / "scripts"
-sys.path.insert(0, str(_SCRIPTS))
-
-from rubric_reward import (  # noqa: E402
+# `validate-and-optimize/scripts` is on sys.path via tests/conftest.py.
+from rubric_reward import (
     Criterion,
     default_score_extractor,
     judge_human_agreement,
