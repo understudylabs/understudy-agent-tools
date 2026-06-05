@@ -2,6 +2,16 @@ import { Command } from "commander";
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+import { runUnderstandCheck, runUnderstandWorkloadCard } from "./understand.js";
+import {
+  printGateResult,
+  validateAndOptimizeCheck,
+  writeDryRunProofPacket,
+  writeUvGepaRunScaffold,
+} from "./validate-and-optimize.js";
+import { buildWorkloadCard, previewCaptureImport, scanCaptureImport } from "./capture-import.js";
+import { planRouteDecision } from "./route-decision.js";
+import { buildValueReport } from "./value-report.js";
 
 export const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 
@@ -133,6 +143,143 @@ function printOptimizeGuide(): void {
   console.log("Skill entrypoint: skills/validate-and-optimize/SKILL.md");
 }
 
+function printJson(payload: unknown): void {
+  console.log(JSON.stringify(payload, null, 2));
+}
+
+function parsePositiveInteger(value: string): number {
+  const parsed = Number.parseInt(value, 10);
+  if (!Number.isFinite(parsed) || parsed < 1) {
+    throw new Error(`Expected a positive integer, got: ${value}`);
+  }
+  return parsed;
+}
+
+function parseNonNegativeNumber(value: string): number {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed) || parsed < 0) {
+    throw new Error(`Expected a non-negative number, got: ${value}`);
+  }
+  return parsed;
+}
+
+function registerCaptureImportCommands(program: Command): void {
+  const captureImport = program
+    .command("capture-import")
+    .description("Scan and preview local import candidates using metadata only");
+
+  captureImport
+    .command("scan")
+    .description("Scan a local repo for capture/import source metadata")
+    .option("--repo <path>", "Repository to scan", ".")
+    .option("--json", "Output JSON")
+    .action((options: { repo: string; json?: boolean }) => {
+      const manifest = scanCaptureImport(options.repo);
+      if (options.json) {
+        console.log(JSON.stringify(manifest, null, 2));
+        return;
+      }
+      console.log(`capture-import scan: ${manifest.source_count} metadata-only sources`);
+      console.log(`manifest: ${relative(process.cwd(), join(resolve(options.repo), ".understudy/capture-import/capture-sources.json"))}`);
+      console.log(`redaction: ${manifest.redaction_manifest_path}`);
+    });
+
+  captureImport
+    .command("preview")
+    .description("Write a bounded metadata-only preview artifact from the last scan")
+    .option("--repo <path>", "Repository with scan artifacts", ".")
+    .option("--source-id <id>", "Source id from capture-sources.json", "source-001")
+    .option("--limit <count>", "Preview row limit to record for later payload approval", parsePositiveInteger, 25)
+    .option("--json", "Output JSON")
+    .action((options: { repo: string; sourceId: string; limit: number; json?: boolean }) => {
+      const preview = previewCaptureImport(options.repo, options.sourceId, options.limit);
+      if (options.json) {
+        console.log(JSON.stringify(preview, null, 2));
+        return;
+      }
+      console.log(`capture-import preview: ${preview.source.id} ${preview.source.kind} ${preview.source.path}`);
+      console.log(`artifact: .understudy/capture-import/preview-${preview.source_id}.json`);
+      console.log("payload_read: false");
+    });
+
+  captureImport
+    .command("workload-card")
+    .description("Create a metadata-only workload card from the last scan")
+    .option("--repo <path>", "Repository with scan artifacts", ".")
+    .option("--json", "Output JSON")
+    .action((options: { repo: string; json?: boolean }) => {
+      const card = buildWorkloadCard(options.repo);
+      if (options.json) {
+        console.log(JSON.stringify(card, null, 2));
+        return;
+      }
+      console.log(`capture-import workload-card: ${card.source_count} source(s) summarized`);
+      console.log("artifact: .understudy/capture-import/workload-card.json");
+    });
+}
+
+function registerRouteDecisionCommands(program: Command): void {
+  const routeDecision = program
+    .command("route-decision")
+    .description("Plan conservative route decision packets from local Workload Cards");
+
+  routeDecision
+    .command("plan")
+    .description("Write a route decision packet JSON artifact")
+    .requiredOption("--workload-card <path>", "Path to a Workload Card JSON artifact")
+    .option("--output <path>", "Output path; defaults to .understudy/route-decision/route-decision-packet.json")
+    .option("--json", "Output JSON")
+    .action((options: { workloadCard: string; output?: string; json?: boolean }) => {
+      const { packet, outputPath } = planRouteDecision(options.workloadCard, options.output);
+      if (options.json) {
+        printJson(packet);
+        return;
+      }
+      console.log(`Route Decision Packet written: ${relative(process.cwd(), outputPath)}`);
+      console.log(`decision: ${String(packet.decision)}`);
+      console.log("No provider calls, live pricing lookups, uploads, or hosted jobs were made.");
+    });
+}
+
+function registerValueCommands(program: Command): void {
+  const value = program.command("value").description("Build local value artifacts without provider calls");
+
+  value
+    .command("report")
+    .description("Write a conservative Value Report from local artifacts")
+    .requiredOption("--workload-card <path>", "Path to a Workload Card JSON artifact")
+    .requiredOption("--route-decision <path>", "Path to a Route Decision Packet JSON artifact")
+    .option("--requests-per-month <number>", "Monthly request volume for scenario math", parseNonNegativeNumber)
+    .option("--baseline-cost-usd <number>", "Planning override for baseline cost per request", parseNonNegativeNumber)
+    .option("--baseline-latency-ms <number>", "Planning override for baseline latency", parseNonNegativeNumber)
+    .option("--candidate-cost-usd <number>", "Planning override for candidate cost per request", parseNonNegativeNumber)
+    .option("--candidate-latency-ms <number>", "Planning override for candidate latency", parseNonNegativeNumber)
+    .option("--output <path>", "Output path; defaults to .understudy/value/value-report.json")
+    .action(
+      (options: {
+        workloadCard: string;
+        routeDecision: string;
+        requestsPerMonth?: number;
+        baselineCostUsd?: number;
+        baselineLatencyMs?: number;
+        candidateCostUsd?: number;
+        candidateLatencyMs?: number;
+        output?: string;
+      }) => {
+        try {
+          const { report, outputPath } = buildValueReport(options);
+          console.log(`Value Report written: ${relative(process.cwd(), outputPath)}`);
+          console.log(`claim_status: ${String(report.claim_status)}`);
+          console.log("No provider calls, uploads, hosted jobs, or public savings claims were made.");
+        } catch (error) {
+          const message = error instanceof Error ? error.message : String(error);
+          console.error(message);
+          process.exitCode = 1;
+        }
+      },
+    );
+}
+
 function registerDeferredRuntimeCommand(program: Command, name: string, description: string): void {
   program
     .command(name)
@@ -168,13 +315,72 @@ export function buildProgram(): Command {
 
   program.command("doctor").description("Run local repository diagnostics").option("--json", "Output JSON").action(printDoctorJson);
 
+  const understand = program.command("understand").description("Run local-only workload understanding commands");
+  understand
+    .command("check")
+    .description("Inspect local repo metadata and write .understudy/understand-workload/check.json")
+    .requiredOption("--repo <path>", "Local repository path")
+    .action((options: { repo: string }) => {
+      printJson(runUnderstandCheck(options.repo));
+    });
+  understand
+    .command("workload-card")
+    .description("Create a metadata-only Workload Card under .understudy/workload-discovery/")
+    .requiredOption("--repo <path>", "Local repository path")
+    .action((options: { repo: string }) => {
+      printJson(runUnderstandWorkloadCard(options.repo));
+    });
+
   const validateAndOptimize = program
     .command("validate-and-optimize")
     .alias("optimize")
-    .description("Show the skill-led GEPA/DSPy optimization guide");
+    .description("Validate deterministic optimizer artifact gates");
   validateAndOptimize
     .option("--uv", "Show uv-based optimizer environment guidance")
     .action(printOptimizeGuide);
+  validateAndOptimize
+    .command("check")
+    .description("Check local understand-workload artifacts before optimization")
+    .requiredOption("--repo <path>", "Repository to inspect")
+    .action((options: { repo: string }) => {
+      const result = validateAndOptimizeCheck(options.repo);
+      printGateResult(result);
+      if (!result.ok) {
+        process.exitCode = 1;
+      }
+    });
+  validateAndOptimize
+    .command("dry-run")
+    .description("Write a deterministic proof packet without optimizer execution")
+    .requiredOption("--repo <path>", "Repository to inspect")
+    .option("--backend <name>", "Optimizer backend scaffold", "uv-gepa")
+    .option("--budget-usd <amount>", "Optional capped budget to record")
+    .action((options: { repo: string; backend?: string; budgetUsd?: string }) => {
+      const result = writeDryRunProofPacket(options.repo, validateAndOptimizeCheck(options.repo), options);
+      printGateResult(result);
+      if (!result.ok) {
+        process.exitCode = 1;
+      }
+    });
+  validateAndOptimize
+    .command("run")
+    .description("Validate gates, scaffold uv-gepa metadata, and refuse live execution")
+    .requiredOption("--repo <path>", "Repository to inspect")
+    .option("--backend <name>", "Optimizer backend scaffold", "uv-gepa")
+    .option("--budget-usd <amount>", "Optional capped budget to record")
+    .action((options: { repo: string; backend?: string; budgetUsd?: string }) => {
+      const gateResult = validateAndOptimizeCheck(options.repo);
+      const result = writeUvGepaRunScaffold(options.repo, gateResult, options);
+      printGateResult(result);
+      console.log("run: blocked");
+      console.log("No uv env was created, no packages were installed, and no provider calls were made.");
+      console.log("Live GEPA/DSPy execution requires an explicit approval-gated local uv adapter.");
+      process.exitCode = 1;
+    });
+
+  registerCaptureImportCommands(program);
+  registerRouteDecisionCommands(program);
+  registerValueCommands(program);
 
   for (const [name, description] of [
     ["chat", "Start a gateway-backed terminal chat session"],

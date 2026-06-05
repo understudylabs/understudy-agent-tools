@@ -10,11 +10,11 @@ for:
 | Area | Former commands | Status after replacement |
 | --- | --- | --- |
 | Public spine | `spine`, `skills` | Kept in TypeScript. |
-| Local workload discovery | `demo scan`, `demo plan`, `workload-discovery scan`, `workload-discovery plan` | Removed. Covered by `skills/understand-workload`, but not executable yet. |
-| Capture/import | `capture-import scan`, `capture-import preview`, `capture-import workload-card` | Removed. Needs a TypeScript implementation before docs should advertise commands. |
-| Route decision | `route-decision plan` | Removed. Template remains in `docs/route-decision-packet-template.md`. |
+| Local workload discovery | `demo scan`, `demo plan`, `workload-discovery scan`, `workload-discovery plan` | Restored as metadata-only `understand check` and `understand workload-card`. |
+| Capture/import | `capture-import scan`, `capture-import preview`, `capture-import workload-card` | Restored in TypeScript as metadata-only local scan, bounded preview, and workload-card artifacts. |
+| Route decision | `route-decision plan --workload-card ...` | Restored in TypeScript. Emits the JSON contract from `docs/route-decision-packet-template.md` with conservative evaluate-first routes only. |
 | Value report | `value report` | Removed. Template remains in `docs/value-report-template.md`. |
-| Validate/optimize proof gates | Python helper scripts under `skills/validate-and-optimize/scripts/` | Removed. Replaced with skill guidance and `understudy-tools validate-and-optimize --uv`. |
+| Validate/optimize proof gates | Python helper scripts under `skills/validate-and-optimize/scripts/` | Restored as deterministic TypeScript gates for `check` and `dry-run`; live optimizer execution remains intentionally absent. |
 | Public validation/release smoke | Python scripts in `scripts/` | Replaced with Node scripts. |
 
 ## What Works Now
@@ -26,7 +26,15 @@ understudy-tools spine
 understudy-tools skills --list
 understudy-tools skills --inspect understudy
 understudy-tools doctor
+understudy-tools capture-import scan --repo .
+understudy-tools capture-import preview --repo . --limit 10
+understudy-tools capture-import workload-card --repo .
+understudy-tools understand check --repo .
+understudy-tools understand workload-card --repo .
+understudy-tools route-decision plan --workload-card .understudy/workload-discovery/workload-card.json
 understudy-tools validate-and-optimize --uv
+understudy-tools validate-and-optimize check --repo .
+understudy-tools validate-and-optimize dry-run --repo .
 ```
 
 The Node package validates itself with:
@@ -37,6 +45,26 @@ npm run check
 
 That runs build, typecheck, CLI tests, public skill validation, and npm package
 smoke.
+
+The understand commands are local-only. They do not upload data, call providers,
+or read prompt/eval payloads. They write metadata artifacts to:
+
+```text
+.understudy/understand-workload/check.json
+.understudy/workload-discovery/workload-card.json
+```
+
+The capture/import commands are also local-only and metadata-first. `scan`
+records candidate paths, kinds, extensions, byte sizes, and detection evidence
+for likely eval fixtures, golden fixtures, `.jsonl`, `.csv`, prompt files, app
+routes, and provider traces. It does not persist file contents, prompts,
+messages, completions, traces, or secret values.
+
+```text
+.understudy/capture-import/capture-sources.json
+.understudy/capture-import/redaction-manifest.json
+.understudy/capture-import/workload-card.json
+```
 
 ## What Is Skill-Led Now
 
@@ -51,15 +79,18 @@ skills/validate-and-optimize/SKILL.md
 Agents should use those skills to inspect local artifacts and guide users, but
 they should not claim that removed Python commands still exist.
 
+`validate-and-optimize check` reads `.understudy/understand-workload/`
+artifacts, fails closed on missing files, invalid JSON, stale baseline hashes,
+unapproved metrics, proxy-only metrics, or contaminated proof packets, and never
+runs an optimizer. `dry-run` performs the same gates and writes
+`.understudy/validate-and-optimize/proof-packet.json` without provider calls,
+package installs, or live optimizer execution.
+
 ## Next CLI Restores
 
 Restore executable functionality in this order:
 
-1. `understudy-tools understand check --repo .`
-2. `understudy-tools understand workload-card --repo .`
-3. `understudy-tools validate-and-optimize check --repo .`
-4. `understudy-tools route-decision plan --workload-card ...`
-5. `understudy-tools value report --workload-card ... --route-decision ...`
+1. `understudy-tools value report --workload-card ... --route-decision ...`
 
 Each restore should be TypeScript-first. Python is acceptable only as a small
 local `uv` environment for Python-native optimizer packages such as GEPA/DSPy.
