@@ -77,12 +77,9 @@ confirmed artifacts it measured. Any later change to the harness, metric,
 validator, or splits routes back to `understand-workload` for a new incumbent
 baseline.
 
-Setup and adjacent tooling live in `appendix/` (not part of MVP discovery — see
-`appendix/README.md`). Route into them by path when a confirmed harness needs
-them — e.g. `appendix/understudy-bootstrap` (install repair),
-`appendix/understudy-provider-keys` (a redacted provider-key check),
-`appendix/understudy-local-proxy` (a gateway/proxy), or `appendix/understudy-demo`
-(a no-data first-touch walkthrough) — before the baseline can run.
+Removed Python prototype commands and deleted draft skills are tracked in
+[`../../docs/current-functionality.md`](../../docs/current-functionality.md).
+Do not route to deleted skills or commands.
 
 ## Output Standard
 

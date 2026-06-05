@@ -40,7 +40,7 @@ only by default.
 Template: [`workload-card-template.md`](workload-card-template.md).
 
 When the user already has traces, eval fixtures, prompts, logs, datasets, or
-benchmarks, start with [`capture-import.md`](capture-import.md). The capture
+benchmarks, start with [`current-functionality.md`](current-functionality.md). The capture
 scan is metadata-only until the user approves payload reading, redaction, and
 data-boundary handling.
 
@@ -64,8 +64,8 @@ Required public-safe fields:
 Do not copy prompt bodies, completions, trace payloads, dataset rows, customer
 names, private repo paths, or secrets into the card by default.
 
-Provider integration patterns live in
-[`provider-integration-cookbook.md`](provider-integration-cookbook.md).
+Provider integration patterns should be restored as TypeScript command docs
+only when the corresponding CLI surface exists.
 
 ## Context Triage
 

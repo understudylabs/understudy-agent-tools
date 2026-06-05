@@ -1,5 +1,0 @@
-{
-  "command": "python eval_ticket.py",
-  "schema_version": "understudy.harness.v1",
-  "validator": "python validate_ticket.py"
-}

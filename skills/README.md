@@ -7,8 +7,7 @@ so the first win isn't a maze.
 ## Entry Point
 
 - [`understudy`](understudy/SKILL.md) — orchestrator. Routes the journey to
-  workload understanding or validation/optimization, and into the appendix for
-  setup/recovery when a confirmed harness needs it.
+  workload understanding or validation/optimization.
 
 ## MVP Worker Skills
 
@@ -20,13 +19,6 @@ so the first win isn't a maze.
   artifacts, preserves train/dev/holdout boundaries, writes dry-run proof
   packets, and requires `claim.json` before public claims. (Evaluate, optimize,
   and decide folded into its [`reference.md`](validate-and-optimize/reference.md).)
-
-## Appendix
-
-Setup, first-touch, and adjacent tooling skills are kept in
-[`../appendix/`](../appendix/README.md) — real and working, but outside the MVP
-discovered surface. Promote one back under `skills/` (and into discovery) as
-real usage shows we need it.
 
 ## Public Safety
 

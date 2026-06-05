@@ -1,10 +1,8 @@
 # Understand Workload — reference
 
-Deep detail for [`SKILL.md`](SKILL.md). The discovery and capture/import steps
-below were folded in from two former standalone skills; the full original
-procedures are preserved in
-[`appendix/understudy-workload-discovery`](../../appendix/understudy-workload-discovery/SKILL.md)
-and [`appendix/understudy-capture-import`](../../appendix/understudy-capture-import/SKILL.md).
+Deep detail for [`SKILL.md`](SKILL.md). Discovery and capture/import are now
+skill-led until TypeScript commands are restored. See
+[`../../docs/current-functionality.md`](../../docs/current-functionality.md).
 
 ## Workload discovery (find the opportunity)
 

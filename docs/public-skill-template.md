@@ -105,8 +105,7 @@ provider keys, uploads, or paid calls by default.
 Run local-only checks:
 
 ```sh
-python3 scripts/validate_public_skills.py --repo
-python3 scripts/doctor.py
+npm run skills:validate
 ```
 
 ## Output Standard

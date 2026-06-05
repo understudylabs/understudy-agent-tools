@@ -67,8 +67,8 @@ optimizer.
 - `schema` (Zod / JSON-schema `safeParse`) — separate `schema_pass` from
   `quality_pass`; a valid-shape, valid-enum output must not be failed merely for
   not matching a teacher trace verbatim (the proxy-strict-match trap).
-- `rubric` / `llm-judge` — graded scoring via `scripts/rubric_reward.py` against a
-  confirmed criteria list. Debias position with the swapped two-pass score
+- `rubric` / `llm-judge` — graded scoring against a confirmed criteria list.
+  Debias position with the swapped two-pass score
   (`(r_ab − r_ba + 1)/2` for [0,1] judge scores; the internal judge uses `÷4` on a
   [-1,1] scale); never single-pass. Auto-drafted rubrics need human approval; gate
   on `judge_human_agreement` before trusting the judge.
@@ -89,10 +89,8 @@ untrusted task code.
 
 ## Folded steps: evaluate · optimize · decide
 
-These three were folded in from former standalone skills; full originals in
-[`appendix/understudy-evaluate`](../../appendix/understudy-evaluate/SKILL.md),
-[`appendix/understudy-optimize`](../../appendix/understudy-optimize/SKILL.md),
-[`appendix/understudy-decision-packet`](../../appendix/understudy-decision-packet/SKILL.md).
+These steps are now skill-led until TypeScript commands are restored. See
+[`../../docs/current-functionality.md`](../../docs/current-functionality.md).
 
 **Evaluate (measure before changing).** Prefer an existing eval suite / traces /
 app route over a toy fixture; replay locally when it can estimate quality or
@@ -115,45 +113,35 @@ lead, not a win. The decision packet records: decision + evidence level,
 baseline vs candidate, artifact paths, caveats / missing evidence, and the
 approval-gated next step. This is the same gate `claim.json` enforces.
 
-## Inference (Understudy-first, BYO fallback)
+## Inference Boundary
 
-Optimization always needs inference, so the **default is Understudy inference**.
-`understudy_agent_tools.inference.resolve_backend()` checks for an Understudy
-credential (`UNDERSTUDY_API_KEY` env, then the `Understudy-credentials` keychain
-blob — same resolution as the agent CLI) and, if present, routes model calls
-through the Understudy gateway (one credential, all providers, credit-metered).
-
-When not logged in, the lane **recommends `understudy login`** and falls back to
-the developer's own provider keys — so login is the expected default, not a hard
-gate; BYO stays supported for the register-averse. `build_dspy_lm(model)` /
-`dspy_program.resolve_lm(model)` apply this default for the DSPy lane; the
-in-place adapter's `infer` uses the same backend. The credential is never logged
-(`login_status()` returns only a boolean + source).
+Optimization may need inference, but the public tools repo must not inspect
+secret values or run provider calls without explicit approval. A future
+TypeScript gate should resolve whether the developer wants the full Understudy
+runtime or BYO provider keys, record only credential presence/source metadata,
+and keep the selected provider, model, budget, and data class in the local run
+artifact.
 
 ## Optimization Lanes
 
 Two ways to optimize, picked by commitment and workload shape:
 
-1. **In-place prompt optimization (default).** `scripts/_adapter.py`'s
-   `UnderstudyGepaAdapter` runs the developer's *real* workload via an injected
-   `infer` (single call or multi-turn agent loop) and evolves the prompt(s) they
-   already ship. Truest to production, lowest commitment, no DSPy. For MCP /
-   tool-use agents, prefer gepa's built-in `mcp_adapter` / `terminal_bench_adapter`
-   over hand-rolling.
-2. **DSPy-program lane (opt-in).** `scripts/dspy_program.py` scaffolds a DSPy
-   program from the Workload Card + samples, then `dspy.GEPA` optimizes it
-   natively — instructions across predictors + bootstrapped few-shot demos, and
-   `dspy.ReAct` for multi-turn. Richer, but the user must adopt the program as
-   runtime, and it is **gated by `parity_check`**: the scaffolded program must
-   reproduce the incumbent baseline on holdout before GEPA runs, or you optimize a
-   reconstruction that diverges from production.
+1. **In-place prompt optimization (default).** A future TypeScript adapter runs
+   the developer's real workload via an injected `infer` function and evolves
+   the prompt or route component they already ship. Truest to production, lowest
+   commitment.
+2. **Program lane (opt-in).** A future adapter may scaffold a reusable program
+   from the Workload Card + samples, then optimize it natively. Richer, but it
+   is gated by parity: the scaffolded program must reproduce the incumbent
+   baseline before optimization, or you optimize a reconstruction that diverges
+   from production.
 
 ## Rubric Reward (the OSS half of the verifier rung)
 
-`scripts/rubric_reward.py` turns a human-confirmed `rubric.json` + an injected
-LLM judge into `(score, feedback)` — a graded `metric` (richer than pass/fail)
-usable directly by either lane. `score_pointwise` weights per-criterion judgments
-and surfaces failing-criterion rationales as feedback; `score_pairwise` debiases
-position; `judge_human_agreement` is the calibration gate before trusting a
-rubric judge. The rubric + judgment is OSS-native and valuable on its own; **RL
-training over the reward stays hosted** (the verifier boundary above).
+A future rubric reward gate should turn a human-confirmed `rubric.json` plus an
+approved judge into `(score, feedback)` — a graded metric richer than pass/fail.
+Pointwise scoring should surface failing-criterion rationales as feedback;
+pairwise scoring should debias position; human agreement is the calibration
+gate before trusting a rubric judge. The rubric + judgment is OSS-native and
+valuable on its own; **RL training over the reward stays hosted** (the verifier
+boundary above).
