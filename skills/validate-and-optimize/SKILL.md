@@ -85,6 +85,19 @@ Write optimization and validation artifacts under:
 .understudy/validate-and-optimize/
 ```
 
+Use the bundled deterministic scripts before any optimizer work:
+
+```bash
+python3 skills/validate-and-optimize/scripts/check_freshness.py --repo .
+python3 skills/validate-and-optimize/scripts/validate_metric.py --repo .
+python3 skills/validate-and-optimize/scripts/gepa_run.py --repo . --dry-run
+python3 skills/validate-and-optimize/scripts/validate_claim.py --repo .
+```
+
+`check_freshness.py` and `validate_metric.py` are hard gates. GEPA missing is
+an install prompt; metric missing, unapproved, proxy-only, or feedback-free is
+a product stop.
+
 ## Claim Rules
 
 Do not claim savings without:

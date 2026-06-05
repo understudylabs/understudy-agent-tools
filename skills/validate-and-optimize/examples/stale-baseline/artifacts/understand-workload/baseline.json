@@ -1,0 +1,10 @@
+{
+  "command": "python eval_ticket.py --incumbent",
+  "harness_sha256": "0b1eaf193d841b473c72d1f460e2aafe70ddfcc2448fe8247fa05d4d637dc88c",
+  "metric_sha256": "stale",
+  "sample_size": 1,
+  "schema_version": "understudy.baseline.v1",
+  "score": 0.5,
+  "split": "dev",
+  "splits_sha256": "a08bb75bfee5c8f8bea996ce0b9e02cb33cce479a8f04c5ed4e920c0eff1aa96"
+}

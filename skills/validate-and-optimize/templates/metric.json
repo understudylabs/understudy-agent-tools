@@ -1,0 +1,16 @@
+{
+  "approved": true,
+  "feedback": {
+    "required": true,
+    "source": "validator_failure"
+  },
+  "primary_metric": "exact_match",
+  "schema_version": "understudy.metric.v1",
+  "threshold": 0.95,
+  "validator": {
+    "callable": null,
+    "command": "python validate.py",
+    "kind": "command",
+    "schema_path": null
+  }
+}

@@ -11,6 +11,7 @@ from understudy_agent_tools.artifact_contract import (
     build_artifact_contract,
     default_understand_artifact_paths,
     stale_hash_blockers,
+    validate_metric_contract,
 )
 from understudy_agent_tools.route_decision import build_route_decision
 from understudy_agent_tools.value_calculator import build_value_report
@@ -1264,6 +1265,16 @@ def cmd_validate_and_optimize(args: argparse.Namespace) -> int:
         for check in checks:
             if any(blocker["name"] == check["name"] for blocker in stale_blockers):
                 check["status"] = "stale"
+        if not stale_blockers:
+            metric_blockers = validate_metric_contract(loaded["metric"])
+            for blocker in metric_blockers:
+                blocker["path"] = relative_paths["metric"]
+                blockers.append(blocker)
+            for check in checks:
+                if check["name"] == "metric" and metric_blockers:
+                    check["status"] = "diagnostic" if any(
+                        blocker.get("mode") == "diagnostic" for blocker in metric_blockers
+                    ) else "unapproved"
     if blockers:
         payload, output = _write_validate_and_optimize_blockers(repo, checks, blockers, contract)
         if args.json:

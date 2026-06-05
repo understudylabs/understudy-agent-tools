@@ -1,0 +1,12 @@
+{
+  "candidate_id": "candidate-001",
+  "components": {
+    "system_prompt": "Replace with the frozen candidate prompt."
+  },
+  "frozen": true,
+  "notes": [
+    "Freeze candidate before holdout validation.",
+    "Do not mutate after candidate_sha256 is recorded in claim.json."
+  ],
+  "schema_version": "understudy.candidate.v1"
+}

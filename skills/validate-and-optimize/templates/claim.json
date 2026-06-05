@@ -1,0 +1,24 @@
+{
+  "baseline_sha256": null,
+  "candidate_sha256": null,
+  "caveats": [],
+  "confidence": "low",
+  "cost_basis": null,
+  "demotion_trigger": null,
+  "fallback_route": null,
+  "harness_sha256": null,
+  "holdout_result": {
+    "sample_size": null,
+    "score": null,
+    "split": "holdout"
+  },
+  "latency_basis": null,
+  "metric_sha256": null,
+  "pricing_basis": null,
+  "request_volume_assumption": null,
+  "sample_size": null,
+  "schema_version": "understudy.claim.v1",
+  "score_delta": null,
+  "splits_sha256": null,
+  "workload_card": ".understudy/workload-discovery/workload-card.json"
+}

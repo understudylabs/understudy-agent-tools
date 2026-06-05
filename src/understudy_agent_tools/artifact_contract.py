@@ -22,6 +22,13 @@ REQUIRED_BASELINE_HASH_KEYS = {
     "splits": "splits_sha256",
 }
 
+ALLOWED_FEEDBACK_SOURCES = {
+    "validator_failure",
+    "assertion_error",
+    "schema_error",
+    "review_note",
+}
+
 
 def canonical_json_sha256(payload: dict[str, Any]) -> str:
     encoded = json.dumps(payload, sort_keys=True, separators=(",", ":")).encode("utf-8")
@@ -103,3 +110,93 @@ def stale_hash_blockers(
                 }
             )
     return blockers
+
+
+def validate_metric_contract(metric: dict[str, Any]) -> list[dict[str, object]]:
+    blockers: list[dict[str, object]] = []
+    if metric.get("approved") is not True:
+        blockers.append(
+            {
+                "name": "metric",
+                "reason": "metric.json approved must be true before optimization",
+                "mode": "blocked",
+            }
+        )
+
+    validator = metric.get("validator")
+    if not isinstance(validator, dict):
+        blockers.append(
+            {
+                "name": "metric",
+                "reason": "metric.json validator must be an object",
+                "mode": "blocked",
+            }
+        )
+    else:
+        validator_kind = str(validator.get("kind") or "").strip().lower()
+        if not validator_kind:
+            blockers.append(
+                {
+                    "name": "metric",
+                    "reason": "metric.json validator.kind is required",
+                    "mode": "blocked",
+                }
+            )
+        if validator_kind == "proxy":
+            blockers.append(proxy_metric_blocker())
+
+    if bool(metric.get("proxy")):
+        blockers.append(proxy_metric_blocker())
+    metric_kind = str(metric.get("metric_kind") or metric.get("kind") or "").strip().lower()
+    if metric_kind == "proxy":
+        blockers.append(proxy_metric_blocker())
+
+    feedback = metric.get("feedback")
+    if not isinstance(feedback, dict):
+        blockers.append(
+            {
+                "name": "metric",
+                "reason": "metric.json feedback must be an object",
+                "mode": "blocked",
+            }
+        )
+    else:
+        if feedback.get("required") is not True:
+            blockers.append(
+                {
+                    "name": "metric",
+                    "reason": "metric.json feedback.required must be true",
+                    "mode": "blocked",
+                }
+            )
+        source = str(feedback.get("source") or "").strip()
+        if source not in ALLOWED_FEEDBACK_SOURCES:
+            blockers.append(
+                {
+                    "name": "metric",
+                    "reason": "metric.json feedback.source must describe validator-derived feedback",
+                    "allowed_sources": sorted(ALLOWED_FEEDBACK_SOURCES),
+                    "mode": "blocked",
+                }
+            )
+    return dedupe_blockers(blockers)
+
+
+def proxy_metric_blocker() -> dict[str, object]:
+    return {
+        "name": "metric",
+        "reason": "proxy metrics are diagnostic only and cannot optimize or claim wins",
+        "mode": "diagnostic",
+    }
+
+
+def dedupe_blockers(blockers: list[dict[str, object]]) -> list[dict[str, object]]:
+    seen: set[tuple[str, str]] = set()
+    deduped: list[dict[str, object]] = []
+    for blocker in blockers:
+        key = (str(blocker.get("name", "")), str(blocker.get("reason", "")))
+        if key in seen:
+            continue
+        seen.add(key)
+        deduped.append(blocker)
+    return deduped

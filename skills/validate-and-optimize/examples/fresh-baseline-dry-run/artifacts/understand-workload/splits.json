@@ -1,0 +1,20 @@
+{
+  "dev": {
+    "ids": [
+      "row-003"
+    ]
+  },
+  "holdout": {
+    "ids": [
+      "row-004"
+    ]
+  },
+  "holdout_mutation_allowed": false,
+  "schema_version": "understudy.splits.v1",
+  "train": {
+    "ids": [
+      "row-001",
+      "row-002"
+    ]
+  }
+}

@@ -1,6 +1,8 @@
 from __future__ import annotations
 
 import json
+import subprocess
+import sys
 
 from understudy_agent_tools.artifact_contract import canonical_json_sha256
 from understudy_agent_tools.cli import main
@@ -325,7 +327,7 @@ def test_capture_import_workload_card_from_preview(tmp_path, capsys) -> None:
     assert "removing secret-like fields before any export" in card["approval_gates"]
 
 
-def write_validate_artifacts(repo, *, stale: bool = False) -> None:
+def write_validate_artifacts(repo, *, stale: bool = False, approved: bool = True, proxy: bool = False) -> None:
     artifacts = repo / ".understudy" / "understand-workload"
     artifacts.mkdir(parents=True)
     harness = {
@@ -335,9 +337,22 @@ def write_validate_artifacts(repo, *, stale: bool = False) -> None:
     }
     metric = {
         "schema_version": "understudy.metric.v1",
+        "approved": approved,
         "primary_metric": "exact_match",
         "threshold": 0.95,
+        "validator": {
+            "kind": "proxy" if proxy else "command",
+            "command": "python -m pytest tests/eval_fixture.py::validate",
+            "callable": None,
+            "schema_path": None,
+        },
+        "feedback": {
+            "required": True,
+            "source": "validator_failure",
+        },
     }
+    if proxy:
+        metric["proxy"] = True
     splits = {
         "schema_version": "understudy.splits.v1",
         "train": {"count": 8},
@@ -427,6 +442,30 @@ def test_validate_and_optimize_blocks_stale_baseline_hash(tmp_path, capsys) -> N
     assert any("hash does not match" in blocker["reason"] for blocker in payload["blockers"])
 
 
+def test_validate_and_optimize_blocks_unapproved_metric(tmp_path, capsys) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    write_validate_artifacts(repo, approved=False)
+
+    assert main(["validate-and-optimize", "dry-run", "--repo", str(repo), "--json"]) == 2
+    payload = json.loads(capsys.readouterr().out)
+
+    assert any(blocker["name"] == "metric" for blocker in payload["blockers"])
+    assert any("approved must be true" in blocker["reason"] for blocker in payload["blockers"])
+
+
+def test_validate_and_optimize_blocks_proxy_metric_as_diagnostic(tmp_path, capsys) -> None:
+    repo = tmp_path / "repo"
+    repo.mkdir()
+    write_validate_artifacts(repo, proxy=True)
+
+    assert main(["validate-and-optimize", "dry-run", "--repo", str(repo), "--json"]) == 2
+    payload = json.loads(capsys.readouterr().out)
+
+    assert any(blocker.get("mode") == "diagnostic" for blocker in payload["blockers"])
+    assert any("proxy metrics are diagnostic only" in blocker["reason"] for blocker in payload["blockers"])
+
+
 def test_validate_and_optimize_writes_proof_packet_for_fresh_artifacts(tmp_path, capsys) -> None:
     repo = tmp_path / "repo"
     repo.mkdir()
@@ -444,3 +483,43 @@ def test_validate_and_optimize_writes_proof_packet_for_fresh_artifacts(tmp_path,
         "artifact_contract"
     ]["artifacts"]["splits"]["sha256"]
     assert proof["optimizer"]["externalized"] is False
+
+
+def test_validate_and_optimize_skill_scripts_enforce_metric_gate(tmp_path) -> None:
+    result = subprocess.run(
+        [
+            sys.executable,
+            "skills/validate-and-optimize/scripts/check_freshness.py",
+            "--repo",
+            "skills/validate-and-optimize/examples/fresh-baseline-dry-run",
+            "--artifact-root",
+            "artifacts/understand-workload",
+            "--output",
+            str(tmp_path / "fresh-gate.json"),
+            "--json",
+        ],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    assert result.returncode == 0, result.stderr
+    assert json.loads(result.stdout)["status"] == "ok"
+
+    stale = subprocess.run(
+        [
+            sys.executable,
+            "skills/validate-and-optimize/scripts/check_freshness.py",
+            "--repo",
+            "skills/validate-and-optimize/examples/stale-baseline",
+            "--artifact-root",
+            "artifacts/understand-workload",
+            "--output",
+            str(tmp_path / "stale-gate.json"),
+            "--json",
+        ],
+        check=False,
+        capture_output=True,
+        text=True,
+    )
+    assert stale.returncode == 2
+    assert "hash does not match" in stale.stdout
