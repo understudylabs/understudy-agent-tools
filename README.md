@@ -60,6 +60,7 @@ with `UNDERSTUDY_TELEMETRY=0`.
 ```bash
 understudy spine
 understudy skills --list
+understudy skills --search gateway
 understudy doctor
 ```
 
@@ -181,10 +182,9 @@ coding agent to use `skills/onboard/setup-code.md` and the matching framework
 recipe.
 
 Full-runtime command names such as `gateway`, `browser`, `channels`,
-`schedule`, `daemon`, `agent`, and `chat` are intentionally deferred. They are
-recognized as placeholders so the migration path from the full Understudy CLI
-is explicit, but this repo should not silently pull in hosted, browser,
-desktop, messaging, or daemon behavior.
+`schedule`, `daemon`, `agent`, and `chat` are not registered in this public
+CLI. Use `understudy skills --search <query>` to find the relevant capability
+skill or cookbook instead.
 
 For GEPA/DSPy work, the CLI stays as the guide and gate surface while Python is
 used only for small local optimizer environments:

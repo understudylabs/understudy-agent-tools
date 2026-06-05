@@ -24,6 +24,18 @@ type SkillSummary = {
   description: string;
 };
 
+type SearchResult = {
+  name: string;
+  path: string;
+  kind: "skill" | "reference" | "cookbook";
+  score: number;
+  matches: string[];
+};
+
+type SearchCandidate = Omit<SearchResult, "score" | "matches"> & {
+  text: string;
+};
+
 function readPackageVersion(): string {
   try {
     const raw = readFileSync(join(repoRoot, "package.json"), "utf8");
@@ -70,8 +82,6 @@ function printSkillList(): void {
     console.log(`- ${skill.name} (${skill.path})`);
     console.log(`  ${skill.description}`);
   }
-  console.log("");
-  console.log("Appendix skills are preserved drafts outside the MVP discovered surface.");
 }
 
 function inspectSkill(name: string): void {
@@ -84,6 +94,93 @@ function inspectSkill(name: string): void {
   console.log(`description: ${skill.description}`);
 }
 
+function searchSkills(query: string, json: boolean): void {
+  const terms = query.toLowerCase().split(/\s+/).filter(Boolean);
+  if (terms.length === 0) {
+    throw new Error("Usage: understudy skills --search <query>");
+  }
+  const results = searchSkillDocs(terms).slice(0, 8);
+  if (json) {
+    printJson({ query, results });
+    return;
+  }
+  if (results.length === 0) {
+    console.log(`No skill or cookbook matches for: ${query}`);
+    console.log("Try: understudy skills --list");
+    return;
+  }
+  console.log(`Skill search: ${query}`);
+  for (const result of results) {
+    console.log(`- ${result.name} (${result.kind})`);
+    console.log(`  path: ${result.path}`);
+    console.log(`  matched: ${result.matches.join(", ")}`);
+    if (result.kind === "skill") {
+      console.log(`  next: understudy skills --inspect ${result.name}`);
+    }
+  }
+}
+
+function searchSkillDocs(terms: string[]): SearchResult[] {
+  const candidates = [
+    ...readSearchFiles(join(repoRoot, "skills"), "skill"),
+    ...readSearchFiles(join(repoRoot, "cookbook"), "cookbook"),
+  ];
+  const results: SearchResult[] = [];
+  for (const candidate of candidates) {
+    const haystack = `${candidate.name}\n${candidate.path}\n${candidate.text}`.toLowerCase();
+    const matches = terms.filter((term) => haystack.includes(term));
+    if (matches.length === 0) {
+      continue;
+    }
+    const frontmatterBoost = candidate.kind === "skill" && candidate.path.endsWith("SKILL.md") ? 3 : 0;
+    const score = matches.length * 10 + frontmatterBoost;
+    results.push({ ...candidate, score, matches });
+  }
+  return results.sort((left, right) => right.score - left.score || left.path.localeCompare(right.path));
+}
+
+function readSearchFiles(root: string, defaultKind: "skill" | "cookbook"): SearchCandidate[] {
+  if (!existsSync(root)) {
+    return [];
+  }
+  const files = walkTextFiles(root)
+    .filter((path) => {
+      const relativePath = relative(repoRoot, path).replaceAll("\\", "/");
+      return (
+        relativePath.endsWith("/SKILL.md") ||
+        relativePath.endsWith("/reference.md") ||
+        relativePath.startsWith("skills/onboard/") && relativePath.endsWith(".md") ||
+        relativePath.startsWith("cookbook/") && relativePath.endsWith("README.md")
+      );
+    });
+  return files.map((path) => {
+    const relativePath = relative(repoRoot, path).replaceAll("\\", "/");
+    const text = readFileSync(path, "utf8");
+    const skillName = relativePath.startsWith("skills/")
+      ? relativePath.split("/")[1] ?? relativePath
+      : relativePath.split("/").slice(0, 2).join("/");
+    return {
+      name: skillName,
+      path: relativePath,
+      kind: relativePath.endsWith("SKILL.md") ? "skill" : defaultKind === "cookbook" ? "cookbook" : "reference",
+      text,
+    };
+  });
+}
+
+function walkTextFiles(root: string): string[] {
+  const files: string[] = [];
+  for (const entry of readdirSync(root, { withFileTypes: true })) {
+    const path = join(root, entry.name);
+    if (entry.isDirectory()) {
+      files.push(...walkTextFiles(path));
+    } else if (entry.isFile() && entry.name.endsWith(".md")) {
+      files.push(path);
+    }
+  }
+  return files;
+}
+
 function printSpine(): void {
   console.log("understudy-agent-tools");
   console.log("");
@@ -92,8 +189,6 @@ function printSpine(): void {
   console.log("2. skills/capture-evidence/SKILL.md pins harness, metric, splits, and baseline.");
   console.log("3. skills/optimize-workload/SKILL.md validates freshness before optimization claims.");
   console.log("4. skills/use-understudy-gateway/SKILL.md runs authenticated gateway workflows when approved.");
-  console.log("");
-  console.log("Appendix skills remain available by path, but are not part of the discovered MVP surface.");
 }
 
 function printDoctorJson(): void {
@@ -265,19 +360,6 @@ function registerValueCommands(program: Command): void {
     );
 }
 
-function registerDeferredRuntimeCommand(program: Command, name: string, description: string): void {
-  program
-    .command(name)
-    .description(description)
-    .allowUnknownOption(true)
-    .allowExcessArguments(true)
-    .action(() => {
-      console.log(`${name}: deferred to the full Understudy runtime`);
-      console.log("This repo now carries the public tools CLI and skill library.");
-      console.log("Gateway, browser, channel, schedule, and daemon commands should come from US intentionally.");
-    });
-}
-
 export function buildProgram(): Command {
   const program = new Command();
   program
@@ -291,9 +373,14 @@ export function buildProgram(): Command {
   const skills = program.command("skills").description("List and inspect public skills");
   skills.option("--list", "List public MVP skills");
   skills.option("--inspect <name>", "Inspect one public skill");
-  skills.action((options: { inspect?: string }) => {
+  skills.option("--search <query>", "Search skills, references, and cookbook README files");
+  skills.action((options: { inspect?: string; search?: string }) => {
     if (options.inspect) {
       inspectSkill(options.inspect);
+      return;
+    }
+    if (options.search) {
+      searchSkills(options.search, commandJsonEnabled(program, {}));
       return;
     }
     printSkillList();
@@ -334,21 +421,6 @@ export function buildProgram(): Command {
   registerCaptureImportCommands(program);
   registerRouteDecisionCommands(program);
   registerValueCommands(program);
-
-  for (const [name, description] of [
-    ["chat", "Start a gateway-backed terminal chat session"],
-    ["daemon", "Manage the background daemon"],
-    ["gateway", "Start the gateway server"],
-    ["browser", "Inspect and control the gateway browser runtime"],
-    ["channels", "Manage gateway channels"],
-    ["schedule", "Manage gateway schedule jobs"],
-    ["agent", "Run a single-shot gateway agent turn"],
-    ["agents", "List and manage configured agents"],
-    ["dashboard", "Open the control UI"],
-    ["webchat", "Open the WebChat UI"],
-  ] as const) {
-    registerDeferredRuntimeCommand(program, name, description);
-  }
 
   program.action(printSpine);
   return program;

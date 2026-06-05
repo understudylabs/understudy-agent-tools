@@ -24,6 +24,7 @@ The TypeScript CLI currently executes:
 ```bash
 understudy spine
 understudy skills --list
+understudy skills --search gateway
 understudy skills --inspect understudy
 understudy doctor
 understudy setup-code --client openai --file src/client.ts --json
@@ -121,6 +122,11 @@ objective, runs upstream `gepa.optimize` through `uv`, excludes holdout rows,
 and writes `eval-input-candidate.json`, `proof-packet.json`, and an adapter
 result under `.understudy/optimize-workload/eval-input-gepa/`. Without a
 model, this path makes no provider calls.
+
+Full-runtime commands such as `gateway`, `browser`, `channels`, `schedule`,
+`daemon`, `agent`, and `chat` are not registered in this public CLI. Agents
+should use `understudy skills --search <query>` to find the relevant skill or
+cookbook instead.
 
 ## Next CLI Restores
 

@@ -248,6 +248,13 @@ describe("understudy CLI", () => {
     assert.match(result.stdout, /use-understudy-gateway/);
   });
 
+  it("searches skills and cookbooks by query", () => {
+    const result = run(["skills", "--search", "gateway"]);
+    assert.equal(result.status, 0, result.stderr);
+    assert.match(result.stdout, /use-understudy-gateway/);
+    assert.match(result.stdout, /next: understudy skills --inspect use-understudy-gateway/);
+  });
+
   it("inspects one skill", () => {
     const result = run(["skills", "--inspect", "understudy"]);
     assert.equal(result.status, 0, result.stderr);
@@ -782,10 +789,10 @@ describe("understudy CLI", () => {
       assert.match(report.caveats.join("\n"), /Do not publish savings/);
     }));
 
-  it("marks full runtime commands as deferred", () => {
+  it("rejects removed full runtime commands", () => {
     const result = run(["gateway", "--port", "23333"]);
-    assert.equal(result.status, 0, result.stderr);
-    assert.match(result.stdout, /deferred to the full Understudy runtime/);
+    assert.notEqual(result.status, 0);
+    assert.match(result.stderr, /unknown option|unknown command/i);
   });
 
   it("routes setup-code to the onboarding skill instead of patching files", () => {
