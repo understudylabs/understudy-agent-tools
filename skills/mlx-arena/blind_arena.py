@@ -65,11 +65,20 @@ def _load_gateway():
     except Exception:
         pass
 
-ANTHROPIC_KEY = os.environ.get("ANTHROPIC_LOCAL_KEY") or os.environ.get("ANTHROPIC_API_KEY")
-FRONTIER_NAME = "Claude Opus 4.8 (high reasoning · cloud · $$)" if ANTHROPIC_KEY else "gpt-5.1 (high reasoning · cloud · $$)"
-
-OPUS_IN, OPUS_OUT = 5.00, 25.00     # $/1M tokens
-GPT_IN, GPT_OUT   = 1.25, 10.00
+# One agnostic, swappable frontier: pick the brain with FRONTIER_MODEL; its provider
+# adapter + price come from a registry — the arena never branches on a specific model.
+# Swap = `FRONTIER_MODEL=gpt-5.1` (or glm-5.1, claude-opus-4-8, …). No bespoke code per model.
+_HAS_ANTHROPIC = bool(os.environ.get("ANTHROPIC_LOCAL_KEY") or os.environ.get("ANTHROPIC_API_KEY"))
+FRONTIER_MODEL = os.environ.get("FRONTIER_MODEL", "claude-opus-4-8" if _HAS_ANTHROPIC else "gpt-5.1")
+# (prefix → provider adapter + $/1M in,out). First match wins; "" is the default.
+FRONTIER_REGISTRY = [
+    ("claude", {"provider": "anthropic",      "in": 5.00, "out": 25.00}),
+    ("gpt",    {"provider": "gateway-openai", "in": 1.25, "out": 10.00}),
+    ("o",      {"provider": "gateway-openai", "in": 1.25, "out": 10.00}),
+    ("",       {"provider": "gateway-openai", "in": 1.00, "out":  5.00}),
+]
+FRONTIER_CFG = next({**cfg, "model": FRONTIER_MODEL} for pre, cfg in FRONTIER_REGISTRY if FRONTIER_MODEL.startswith(pre))
+FRONTIER_NAME = f"{FRONTIER_MODEL} (high reasoning · cloud · $$)"
 
 SYSTEM = ("You are a helpful assistant. Answer directly and conversationally in plain prose — "
           "avoid markdown headings, bold, and bullet lists unless truly necessary, so your formatting "
@@ -205,63 +214,65 @@ def run_local(q, res):
             res.cost = 0.0; res.done = True
 
 def run_frontier(q, res):
+    """One entry point; the provider adapter is chosen from FRONTIER_CFG, not hardcoded."""
     res.kind = "frontier"; res.t_start = time.time()
-    (_run_opus if ANTHROPIC_KEY else _run_gpt)(q, res)
-
-def _run_opus(q, res):
-    import anthropic
-    client = anthropic.Anthropic(api_key=ANTHROPIC_KEY)
+    cfg = FRONTIER_CFG
     try:
-        with client.messages.stream(
-            model="claude-opus-4-8", max_tokens=4000,
-            thinking={"type": "adaptive", "display": "summarized"},
-            output_config={"effort": "high"}, system=SYSTEM,
-            messages=[{"role": "user", "content": q}]) as stream:
-            for event in stream:
-                if event.type == "content_block_delta":
-                    if event.delta.type == "thinking_delta":
-                        with res.lock:
-                            res.thinking += event.delta.thinking
-                    elif event.delta.type == "text_delta":
-                        with res.lock:
-                            if res.t_first is None: res.t_first = time.time()
-                            res.text += event.delta.text
-            final = stream.get_final_message()
-            with res.lock:
-                res.in_tok = final.usage.input_tokens; res.out_tok = final.usage.output_tokens
-                res.cost = res.in_tok * OPUS_IN / 1e6 + res.out_tok * OPUS_OUT / 1e6
+        (_stream_anthropic if cfg["provider"] == "anthropic" else _stream_gateway)(q, res, cfg)
     except Exception as e:
         res.error = str(e)
     finally:
         with res.lock:
             res.t_end = time.time(); res.done = True
 
-def _run_gpt(q, res):
+def _stream_anthropic(q, res, cfg):
+    """Native Anthropic adapter (gives streamed thinking). Used for any claude-* FRONTIER_MODEL."""
+    import anthropic
+    key = os.environ.get("ANTHROPIC_LOCAL_KEY") or os.environ.get("ANTHROPIC_API_KEY")
+    if not key:
+        raise RuntimeError(f"FRONTIER_MODEL={cfg['model']} needs ANTHROPIC_LOCAL_KEY or ANTHROPIC_API_KEY.")
+    client = anthropic.Anthropic(api_key=key)
+    with client.messages.stream(model=cfg["model"], max_tokens=4000,
+            thinking={"type": "adaptive", "display": "summarized"},
+            output_config={"effort": "high"}, system=SYSTEM,
+            messages=[{"role": "user", "content": q}]) as stream:
+        for event in stream:
+            if event.type == "content_block_delta":
+                if event.delta.type == "thinking_delta":
+                    with res.lock: res.thinking += event.delta.thinking
+                elif event.delta.type == "text_delta":
+                    with res.lock:
+                        if res.t_first is None: res.t_first = time.time()
+                        res.text += event.delta.text
+        final = stream.get_final_message()
+        with res.lock:
+            res.in_tok = final.usage.input_tokens; res.out_tok = final.usage.output_tokens
+            res.cost = res.in_tok * cfg["in"] / 1e6 + res.out_tok * cfg["out"] / 1e6
+
+def _stream_gateway(q, res, cfg):
+    """OpenAI-compatible adapter via the Understudy gateway. Used for any non-Anthropic model."""
     from openai import OpenAI
     _load_gateway()
+    if not GW_URL:
+        raise RuntimeError("No Understudy gateway in ~/.understudy/credentials.json "
+                           "(set ANTHROPIC_LOCAL_KEY to use a claude FRONTIER_MODEL instead).")
     client = OpenAI(base_url=GW_URL + "/v1", api_key=GW_KEY,
                     default_headers={"x-understudy-upstream-key": os.environ.get("OPENAI_API_KEY", "")})
-    try:
-        stream = client.chat.completions.create(
-            model="gpt-5.1", max_completion_tokens=2000, stream=True,
-            stream_options={"include_usage": True}, reasoning_effort="high",
-            messages=[{"role": "system", "content": SYSTEM}, {"role": "user", "content": q}])
-        for chunk in stream:
-            if chunk.usage:
-                with res.lock:
-                    res.in_tok = chunk.usage.prompt_tokens or res.in_tok
-                    res.out_tok = chunk.usage.completion_tokens or res.out_tok
-            if chunk.choices and chunk.choices[0].delta.content:
-                with res.lock:
-                    if res.t_first is None: res.t_first = time.time()
-                    res.text += chunk.choices[0].delta.content
-    except Exception as e:
-        res.error = str(e)
-    finally:
-        with res.lock:
-            res.t_end = time.time()
-            res.cost = res.in_tok * GPT_IN / 1e6 + res.out_tok * GPT_OUT / 1e6
-            res.done = True
+    stream = client.chat.completions.create(
+        model=cfg["model"], max_completion_tokens=2000, stream=True,
+        stream_options={"include_usage": True}, reasoning_effort="high",
+        messages=[{"role": "system", "content": SYSTEM}, {"role": "user", "content": q}])
+    for chunk in stream:
+        if chunk.usage:
+            with res.lock:
+                res.in_tok = chunk.usage.prompt_tokens or res.in_tok
+                res.out_tok = chunk.usage.completion_tokens or res.out_tok
+        if chunk.choices and chunk.choices[0].delta.content:
+            with res.lock:
+                if res.t_first is None: res.t_first = time.time()
+                res.text += chunk.choices[0].delta.content
+    with res.lock:
+        res.cost = res.in_tok * cfg["in"] / 1e6 + res.out_tok * cfg["out"] / 1e6
 
 # ---------- rendering ----------
 def panel_for(side_label, res, revealed):
@@ -463,9 +474,10 @@ def reveal(picks, guesses, agg, n, category):
         L.append(f"[bold]2) Identification:[/bold] all {guesses['unsure']} unsure.")
     L.append("")
     L.append(f"[#7C5CFF]{FRONTIER_NAME}[/#7C5CFF]")
-    L.append(f"    ~{aF['t']/n:4.1f}s/round    total cost [bold]${aF['cost']:.4f}[/bold]")
+    played = max(1, fr + lo + ti)   # actual rounds voted, so early-exit still averages right
+    L.append(f"    ~{aF['t']/played:4.1f}s/round    total cost [bold]${aF['cost']:.4f}[/bold]")
     L.append(f"[green]{LOCAL_LABEL}[/green]")
-    L.append(f"    ~{aL['t']/n:4.1f}s/round    total cost [bold]$0.0000[/bold]")
+    L.append(f"    ~{aL['t']/played:4.1f}s/round    total cost [bold]$0.0000[/bold]")
     L.append("")
     if lo >= fr:
         L.append("[bold]That's efficient intelligence.[/bold] On these questions you preferred — or couldn't")

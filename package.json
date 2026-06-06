@@ -18,7 +18,8 @@
     "AGENTS.md",
     "LICENSE",
     "!**/__pycache__",
-    "!**/*.pyc"
+    "!**/*.pyc",
+    "!**/*.py"
   ],
   "scripts": {
     "build": "rm -rf dist && tsc -p tsconfig.build.json",

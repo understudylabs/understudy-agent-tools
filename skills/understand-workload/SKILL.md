@@ -1,6 +1,6 @@
 ---
 name: understand-workload
-description: Use BEFORE comparing models or writing vibe-check questions — when a developer hands you a captured prompt/trace (or a dataset of them) and needs to understand what the workload actually does. Decompose ONE representative prompt into purpose, inputs, outputs, steps, and the tool-call flow (as a mermaid diagram); run an interactive Q&A to build shared understanding with the user; agree on what "success" means beyond cost and speed; then use that to generate grounded questions for the arena. Triggers — "explain this prompt/trace", "decompose this workload", "what is this prompt trying to do", "help me understand this dataset before testing models", "I don't understand the captured data", "walk me through this prompt", or any handoff from mlx-arena / capture-evidence where the workload isn't yet understood.
+description: Use to decompose and explain a captured prompt/trace before comparing models or writing vibe-check questions — "explain this prompt/trace", "decompose this workload", "what is this prompt trying to do", "help me understand this dataset before testing models", "walk me through this prompt", or any handoff from mlx-arena / capture-evidence where the workload isn't understood yet.
 metadata:
   understudy:
     mode: interactive
@@ -25,7 +25,7 @@ extracts the structure; you supply the meaning and confirm it with the user.
 - **Redact customer content.** Captured prompts often contain real customer data
   (transcripts, PII, business records). Show **structure** — system-prompt
   outline, message roles + sizes, tool catalog, output schema — never raw message
-  bodies. The `decompose.py` helper is built to do this; keep it that way.
+  bodies. Build the decomposer to redact by construction (sizes and headings, not content).
 - **Local-first.** The decomposition/understanding doc stays local; do not commit
   it or paste customer payloads into external services. The *generated questions*
   must be synthetic (no customer data) before they can be committed or sent to a
@@ -43,16 +43,17 @@ extracts the structure; you supply the meaning and confirm it with the user.
 
 1. **Locate + pick a representative trace.** If given a dataset, list the captures
    with sizes and pick the median + the largest (size drives the harness story).
-   ```bash
-   skills/understand-workload/decompose.py <capture.jsonl>          # human-readable
-   skills/understand-workload/decompose.py <capture.jsonl> --json   # facts for you
-   ```
+   Understudy captures are envelopes with a `customer_request_body`; parse that to
+   get the request (`model`, `system`, `messages`, `tools`, params).
 
-2. **Decompose the structure** (the helper does this, redaction-safe): model +
-   params, token size, the **system-prompt outline** (its headings), the
-   **messages** (roles + sizes), the **tool catalog grouped by action class**
-   (read / transform / write / search / orchestrate / notify / exec), and the
-   output schema.
+2. **Decompose the structure, redaction-safe** — extract and report only:
+   model + params, token size, the **system-prompt outline** (its `#` headings, not
+   the body), the **messages** (roles + char sizes — never content), the **tool
+   catalog grouped by action class** (read / transform / write / search /
+   orchestrate / notify / exec, with each tool's token cost), and the output schema.
+   Crucially, split the token cost into **fixed overhead (system + tool definitions,
+   re-sent every turn) vs per-call content** — the fixed share is usually the
+   surprise and drives the harness story.
 
 3. **Explain it back in plain language** — six facets, each one or two sentences:
    - **Purpose** — what is this prompt trying to accomplish?
@@ -63,10 +64,11 @@ extracts the structure; you supply the meaning and confirm it with the user.
    - **How we judge success** — the task-level criteria (correct records written,
      right observations extracted, policy followed) — **not just cost and speed.**
 
-4. **Show the flow as a mermaid diagram** (the helper emits one). Render the agent
-   loop and the tool classes so the user can *see* the shape: inputs → system →
-   loop → {read / transform / write} → final state. Add a second diagram for the
-   step sequence if it's a known pipeline.
+4. **Show the flow as a mermaid diagram.** Draw the agent loop and tool classes so
+   the user can *see* the shape: inputs → system → loop → {read / transform / write}
+   → final state. For a multi-turn case, also reconstruct the loop turn-by-turn from
+   the (history-carrying) captures — per-request token growth and how context
+   compounds as tool results are appended — and render that too.
 
 5. **Q&A discovery — build the understanding WITH the user.** Use `AskUserQuestion`
    to confirm and fill gaps you can't infer from structure alone, e.g.:
@@ -83,14 +85,14 @@ extracts the structure; you supply the meaning and confirm it with the user.
    compliance, no-bad-writes, schema validity. These become the metric the arena /
    `capture-evidence` use.
 
-7. **Derive the vibe-check questions from the shared understanding** — now the
-   questions are grounded: each maps to a real step or success criterion the user
-   has seen. Hand to [`../mlx-arena/SKILL.md`](../mlx-arena/SKILL.md) (compare
-   small-vs-frontier on those bounded sub-tasks) and/or
-   [`../capture-evidence/SKILL.md`](../capture-evidence/SKILL.md) (freeze the
-   metric/splits). For long prompts that a small model can't one-shot, flag the
-   harness-swap / decomposition question (how many bounded steps to reach parity)
-   per [`../mlx-arena/ROADMAP.md`](../mlx-arena/ROADMAP.md).
+7. **Use the shared understanding to test models.** Two paths: derive grounded
+   vibe-check questions (each mapping to a real step/criterion) for the frontier-vs-
+   local head-to-head ([`../mlx-arena/SKILL.md`](../mlx-arena/SKILL.md)); and, for a
+   whole-case test a small model can't one-shot, build a
+   [`../design-simulated-environment/SKILL.md`](../design-simulated-environment/SKILL.md)
+   and run the [`../recursive-language-model/SKILL.md`](../recursive-language-model/SKILL.md)
+   decomposition harness to measure what's reachable. Freeze the metric/splits with
+   [`../capture-evidence/SKILL.md`](../capture-evidence/SKILL.md).
 
 ## Output Standard
 
@@ -101,7 +103,8 @@ criterion. Keep the decomposition doc local; only the synthetic questions leave.
 
 ## References
 
-- [`decompose.py`](decompose.py) — redaction-safe structure extractor + mermaid.
-- [`../mlx-arena/SKILL.md`](../mlx-arena/SKILL.md) — the head-to-head the questions feed.
+- [`../mlx-arena/SKILL.md`](../mlx-arena/SKILL.md) — frontier-vs-local head-to-head the questions feed.
+- [`../design-simulated-environment/SKILL.md`](../design-simulated-environment/SKILL.md) — turn the understood workload into a scorable env.
+- [`../recursive-language-model/SKILL.md`](../recursive-language-model/SKILL.md) — decompose so a small model can take the whole case.
 - [`../capture-evidence/SKILL.md`](../capture-evidence/SKILL.md) — freeze the metric/splits.
 - [`../optimize-api-workflow/SKILL.md`](../optimize-api-workflow/SKILL.md) — the API-workflow metric axes.

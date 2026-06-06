@@ -1,6 +1,6 @@
 ---
 name: mlx-arena
-description: Use to run two local open-weight models side by side on Apple Silicon and compare them live — "compare Gemma vs Nemotron locally", "which small model is better on my Mac", "set up a side-by-side model arena", "drive two local models at once". Serves both with Apple MLX (mlx_lm.server), binds each to the Pi coding agent as an OpenAI-compatible provider, and lays them out in a two-pane tmux session an agent can drive in lockstep. Apple Silicon only.
+description: Use to run a frontier model against a small local model on Apple Silicon, blind, then hill-climb the local model toward it — "compare a local model to Opus/GPT", "is a local model good enough for this", "blind model vibe-check", "frontier vs local head-to-head", "hill-climb my local model". Serves the local model with Apple MLX (mlx_lm.server); the frontier is one swappable, provider-agnostic config. Apple Silicon only.
 metadata:
   understudy:
     mode: interactive
@@ -8,28 +8,33 @@ metadata:
     cli_required: false
 ---
 
-# MLX Arena — two local models, side by side
+# MLX Arena — frontier vs. local, then hill-climb the local
 
-Stand up two local models on an **M-series Mac**, serve each with **Apple MLX**,
-bind both to the **Pi** harness, and put them in a **two-pane tmux** session so you
-(or an agent) can send the same prompt to both and compare answers, latency, and
-style in real time. This is the fastest way to *feel* the quality gap between two
-small open-weight models on your own hardware — $0, private, no cloud.
+Put a **frontier model** head-to-head against a **small local model** on an
+**M-series Mac**, blind, and use the gap to **hill-climb the local model** until it
+is good enough to take over. The local side runs on **Apple MLX** ($0, private, no
+cloud); the frontier is a single **swappable, provider-agnostic** config (Opus,
+GPT, GLM, …) — never a per-provider code path. The aim is *efficient intelligence*:
+prove how much of the work the free local model can do, and pay for the frontier
+only on the genuinely hard tail.
 
-The runnable core is [`arena.sh`](arena.sh). MLX does inference, Pi is the harness,
-tmux is the surface; the script is a thin, boring orchestrator.
+The runnable core is the blind game [`blind_arena.py`](blind_arena.py); the local
+model is served by `mlx_lm.server` and [`arena.sh`](arena.sh) is the launcher. MLX
+does inference, the game is the surface; the scripts stay thin.
 
 This is the interactive sibling of
 [`../run-local-model-lab/SKILL.md`](../run-local-model-lab/SKILL.md): the lab
-*scores* a model against a frozen eval; the arena lets you *drive two at once* by
-hand. Use the arena to pick the two finalists, then the lab to score the winner.
+*scores* a model against a frozen eval; the arena lets you *feel* the frontier↔local
+gap by hand, then iterate on the local model. (Two local models can also be run
+side-by-side via `arena.sh up` when picking between local candidates.)
 
 ## Why MLX (and Apple Silicon only)
 
-On Macs, MLX is the native path: it runs quantized open-weight models against
-unified memory at the best tokens/sec, with no GPU drivers or build step. This
-skill is **MLX-exclusive** — no Ollama, no llama.cpp. If you are not on Apple
-Silicon, this skill does not apply.
+On Macs, MLX is the native path: it runs quantized local models against unified
+memory at the best tokens/sec, with no GPU drivers or build step. This skill is
+**MLX-exclusive** — no Ollama, no llama.cpp. If you are not on Apple Silicon, this
+skill does not apply. (Local models need not be open-weight — any model you can
+serve with `mlx_lm.server` works.)
 
 `mlx_lm.server` exposes an **OpenAI-compatible** endpoint per model
 (`/v1/chat/completions`), one model per process/port. Pi adds each as a custom
@@ -83,21 +88,6 @@ provider in `~/.pi/agent/models.json` (`api: openai-completions`).
    via [`../use-understudy-gateway/SKILL.md`](../use-understudy-gateway/SKILL.md)
    when you need more quality.
 
-## Finding MLX models
-
-`mlx-community` on Hugging Face hosts MLX-converted, pre-quantized open weights.
-Query the Hub API (no auth needed) and bias to the smallest 4-bit text-instruct:
-
-```bash
-curl -s "https://huggingface.co/api/models?author=mlx-community&search=gemma&limit=100" \
-  | python3 -c "import json,sys; [print(m['id']) for m in json.load(sys.stdin)]"
-curl -s "https://huggingface.co/api/models?author=mlx-community&search=nemotron&limit=100" \
-  | python3 -c "import json,sys; [print(m['id']) for m in json.load(sys.stdin)]"
-```
-
-Pick `*-it-*` (instruct), prefer `*-4bit`, and **avoid `*-assistant`** repos —
-those are speculative-decoding drafters, not standalone models.
-
 ## Blind-vote mode — the Efficient-Intelligence game
 
 [`blind_arena.py`](blind_arena.py) is the interactive, blind A/B version of the
@@ -138,29 +128,18 @@ running free-vs-cloud tally) without ever naming a side. The frontier key is rea
 from `ANTHROPIC_LOCAL_KEY`/`ANTHROPIC_API_KEY`; cost is computed from real usage
 (Opus 4.8 $5/$25 per 1M in/out) and shown only on reveal.
 
-Custom **domain questions** (point at your own repo/benchmark), the **harness-swap /
-decomposition** story for large prompts, and the **trust scorecard** are planned —
-see [`ROADMAP.md`](ROADMAP.md).
+For real workloads, ground the questions in a captured trace
+([`../understand-workload/SKILL.md`](../understand-workload/SKILL.md)); and to test
+whether the local model can take over the *whole* task (not just answer questions),
+build a [`../design-simulated-environment/SKILL.md`](../design-simulated-environment/SKILL.md)
+and hill-climb it with the
+[`../recursive-language-model/SKILL.md`](../recursive-language-model/SKILL.md) harness.
 
-## Known model-compat gotchas (hard-won)
+## Known model-compat gotchas
 
-- **Gemma 4 E2B doesn't load on mlx_lm 0.31.3.** Its MLX quants store per-layer
-  `k_proj`/`v_proj` for the 20 KV-shared layers, but the `gemma4_text` loader
-  shares them → `ValueError: Received 140 parameters not in model`. Use
-  `gemma-3-1b-it-4bit` as the smallest Google chat model that loads today; revisit
-  Gemma 4 when mlx_lm updates. Multimodal Gemma repos (no `-text`) also fail under
-  text-only `mlx_lm`.
-- **Reasoning models (e.g. Nemotron 3 Nano) need token headroom.** They emit a
-  hidden/visible reasoning trace before the answer; with a tiny `max_tokens` the
-  visible `content` comes back empty. Give ≥256 tokens. Expect higher latency than
-  a same-size non-reasoning model — that is a real cost to weigh, not a bug.
-- **Stop tokens.** Some quants ship an empty `generation_config.json` and a
-  tokenizer whose `eos` is `<eos>` but whose chat turn ends with `<end_of_turn>`
-  (id 106) — the model answers, then spews `<end_of_turn>`. Fix by writing
-  `generation_config.json` with `{"eos_token_id": [1, 106]}` into the snapshot, or
-  by passing `stop` in the request.
-- **Custom architectures need `--trust-remote-code`** (Nemotron-H ships
-  `modeling_nemotron_h.py`). The arena passes it by default.
+Hard-won MLX loading gotchas (Gemma 4 E2B won't load on mlx_lm 0.31.3, reasoning-model
+token headroom, stop-token fixes, `--trust-remote-code`) and how to find MLX models are
+in [`reference.md`](reference.md).
 
 ## Output Standard
 
