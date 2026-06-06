@@ -5,8 +5,11 @@ import { isJsonMode } from "../internal/output.js";
 import {
   createExperiment,
   deriveNext,
+  promoteExperiment,
   readActiveId,
   readExperiment,
+  recordCandidate,
+  recordClaim,
   recordOutcome,
   setActiveId,
   summarizeExperiments,
@@ -167,6 +170,64 @@ export function registerExperimentsCommands(program: Command): void {
         process.stdout.write(
           `${kleur.green("✓")} ${kleur.bold(experiment.experiment_id)} outcome=${experiment.outcome}` +
             `${experiment.route_decision ? ` route=${experiment.route_decision}` : ""}\n`,
+        );
+      });
+    });
+
+  experiments
+    .command("freeze")
+    .description("Freeze a candidate and/or claim into the active experiment directory")
+    .option("--repo <path>", "Local repository path", ".")
+    .option(
+      "--candidate-from [path]",
+      "Freeze a candidate (default source: .understudy/optimize-workload/candidate.json)",
+    )
+    .option("--claim-from <path>", "Freeze a claim from this path")
+    .option("--json", "Output JSON")
+    .action(function (
+      this: Command,
+      options: { repo: string; candidateFrom?: string | boolean; claimFrom?: string },
+    ) {
+      runLocal(this, () => {
+        const frozen: Record<string, string> = {};
+        // --candidate-from with no value (true) means "use the default scratch path".
+        if (options.candidateFrom !== undefined) {
+          const from = typeof options.candidateFrom === "string" ? options.candidateFrom : undefined;
+          frozen.candidate = recordCandidate(options.repo, { from }).path;
+        }
+        if (options.claimFrom !== undefined) {
+          frozen.claim = recordClaim(options.repo, { from: options.claimFrom }).path;
+        }
+        if (Object.keys(frozen).length === 0) {
+          // default: freeze the optimizer's scratch candidate.
+          frozen.candidate = recordCandidate(options.repo, {}).path;
+        }
+        if (isJsonMode(this)) {
+          printJson({ frozen });
+          return;
+        }
+        for (const [kind, path] of Object.entries(frozen)) {
+          process.stdout.write(`${kleur.green("✓")} froze ${kind} -> ${path}\n`);
+        }
+      });
+    });
+
+  experiments
+    .command("promote [id]")
+    .description("Write an anonymized lab-note draft from a decided experiment (no upload)")
+    .option("--repo <path>", "Local repository path", ".")
+    .option("--out <path>", "Output path (default: <experiment-dir>/lab-note.md)")
+    .option("--json", "Output JSON")
+    .action(function (this: Command, id: string | undefined, options: { repo: string; out?: string }) {
+      runLocal(this, () => {
+        const result = promoteExperiment(options.repo, { id, out: options.out });
+        if (isJsonMode(this)) {
+          printJson({ experiment_id: result.experiment_id, path: result.path });
+          return;
+        }
+        process.stdout.write(`${kleur.green("✓")} wrote lab-note draft -> ${result.path}\n`);
+        process.stdout.write(
+          `${kleur.yellow("not published")}: publishing to a shared knowledge base is a separate, approval-gated upload.\n`,
         );
       });
     });

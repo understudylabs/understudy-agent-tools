@@ -3,6 +3,7 @@ import { existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSy
 import { dirname, join, resolve } from "node:path";
 
 const captureEvidenceDir = ".understudy/capture-evidence";
+const optimizeWorkloadDir = ".understudy/optimize-workload";
 const experimentsDir = ".understudy/experiments";
 const activePointer = join(experimentsDir, "active");
 
@@ -116,6 +117,10 @@ function optionalString(value: unknown): string | null {
   return typeof value === "string" && value.length > 0 ? value : null;
 }
 
+function optionalNumber(value: unknown): number | null {
+  return typeof value === "number" && Number.isFinite(value) ? value : null;
+}
+
 function writeJson(path: string, payload: unknown): void {
   mkdirSync(dirname(path), { recursive: true });
   writeFileSync(path, `${JSON.stringify(payload, null, 2)}\n`, "utf8");
@@ -208,8 +213,12 @@ function pinsFromBaseline(repo: string): ExperimentPins {
 export function createExperiment(repoInput: string, options: NewExperimentOptions = {}): Experiment {
   const repo = ensureRepo(repoInput);
   const id = options.id ?? nextExperimentId(repo);
-  if (!/^exp-\d+$/.test(id) && options.id === undefined) {
-    throw new Error(`Generated an invalid experiment id: ${id}`);
+  // Validate every id — including a user-supplied --id — so it stays a safe,
+  // single-segment directory name (no path traversal, slashes, or dot prefixes).
+  if (!/^[a-z0-9][a-z0-9_-]{0,62}$/.test(id)) {
+    throw new Error(
+      `Invalid experiment id "${id}". Use lowercase letters, digits, '-' or '_' (no slashes or leading dots).`,
+    );
   }
   if (existsSync(experimentRecordPath(repo, id))) {
     throw new Error(`Experiment ${id} already exists.`);
@@ -265,6 +274,161 @@ export function recordOutcome(
   }
   writeJson(experimentRecordPath(repo, id), experiment);
   return experiment;
+}
+
+function requireActive(repo: string): string {
+  const id = readActiveId(repo);
+  if (!id) {
+    throw new Error("No active experiment. Run `understudy experiments new` first.");
+  }
+  return id;
+}
+
+/**
+ * Freeze a candidate into the active experiment directory (the home of record).
+ * Defaults to the optimizer's scratch candidate under
+ * `.understudy/optimize-workload/candidate.json`.
+ */
+export function recordCandidate(
+  repoInput: string,
+  options: { from?: string } = {},
+): { experiment_id: string; path: string } {
+  const repo = ensureRepo(repoInput);
+  const id = requireActive(repo);
+  const source = resolve(options.from ?? join(repo, optimizeWorkloadDir, "candidate.json"));
+  if (!existsSync(source)) {
+    throw new Error(
+      `No candidate to freeze at ${source}. Run the optimizer first or pass --candidate-from <path>.`,
+    );
+  }
+  const dest = join(experimentDir(repo, id), "candidate.json");
+  mkdirSync(dirname(dest), { recursive: true });
+  writeFileSync(dest, readFileSync(source, "utf8"), "utf8");
+  return { experiment_id: id, path: dest };
+}
+
+/**
+ * Freeze a claim into the active experiment directory and copy any result
+ * deltas it carries onto the experiment record.
+ */
+export function recordClaim(
+  repoInput: string,
+  options: { from: string },
+): { experiment_id: string; path: string } {
+  const repo = ensureRepo(repoInput);
+  const id = requireActive(repo);
+  if (!options.from) {
+    throw new Error("Pass --claim-from <path> to freeze a claim.");
+  }
+  const source = resolve(options.from);
+  if (!existsSync(source)) {
+    throw new Error(`No claim to freeze at ${source}.`);
+  }
+  const raw = readFileSync(source, "utf8");
+  const dest = join(experimentDir(repo, id), "claim.json");
+  mkdirSync(dirname(dest), { recursive: true });
+  writeFileSync(dest, raw, "utf8");
+
+  const experiment = readExperiment(repo, id);
+  experiment.result.claim_ref = "claim.json";
+  try {
+    const claim: unknown = JSON.parse(raw);
+    if (isObject(claim)) {
+      experiment.result.quality_delta = optionalNumber(claim.quality_delta) ?? experiment.result.quality_delta;
+      experiment.result.p50_latency_delta_ms =
+        optionalNumber(claim.p50_latency_delta_ms) ?? experiment.result.p50_latency_delta_ms;
+      experiment.result.cost_per_1k_delta_usd =
+        optionalNumber(claim.cost_per_1k_delta_usd) ?? experiment.result.cost_per_1k_delta_usd;
+    }
+  } catch {
+    // a non-JSON or partial claim still freezes; deltas stay null.
+  }
+  writeJson(experimentRecordPath(repo, id), experiment);
+  return { experiment_id: id, path: dest };
+}
+
+function renderLabNote(experiment: Experiment, date: string): string {
+  const title = experiment.hypothesis ?? `Experiment ${experiment.experiment_id}`;
+  const cell = (value: number | null): string => (value === null ? "—" : String(value));
+  return `---
+type: experiment
+title: ${JSON.stringify(title)}
+date: ${date}
+last_updated: ${date}
+workload_anon: TODO             # replace with workload-NNN before publishing
+incumbent_model: ${experiment.incumbent_model ?? "null"}
+candidate_model: ${experiment.candidate_model ?? "null"}
+outcome: ${experiment.outcome}
+cogs_total_usd: null            # fill before publishing
+customer_savings_pct: null      # fill before publishing
+understudy_margin_pct: null     # fill before publishing
+tags: []
+---
+
+> **DRAFT — review and anonymize before publishing.** Scrub the workload id, the
+> title/hypothesis, and any customer names or repo paths, then fill the
+> margin fields. Generated from local records; NOT anonymized or uploaded.
+
+# ${title}
+
+## Hypothesis
+
+${experiment.hypothesis ?? "_State the hypothesis this experiment tested._"}
+
+## Setup
+
+- **Objective**: ${experiment.objective ?? "_unspecified_"}
+- **Incumbent**: ${experiment.incumbent_model ?? "_unspecified_"}
+- **Candidate**: ${experiment.candidate_model ?? "_unspecified_"}
+- **Route decision**: ${experiment.route_decision ?? "_unspecified_"}
+
+## Results
+
+| Metric                 | Delta |
+|------------------------|-------|
+| Quality (judge score)  | ${cell(experiment.result.quality_delta)} |
+| p50 latency (ms)       | ${cell(experiment.result.p50_latency_delta_ms)} |
+| Cost per 1k calls (\$) | ${cell(experiment.result.cost_per_1k_delta_usd)} |
+
+Outcome: **${experiment.outcome}**.
+
+## Margin Analysis
+
+_Fill cogs / customer-savings / margin before publishing — the local record omits these._
+
+## Next Steps
+
+- _Concrete follow-up._
+`;
+}
+
+/**
+ * Produce a lab-note draft from a decided experiment. Writes a LOCAL draft with
+ * the real local values and a review banner — it does NOT anonymize (scrubbing
+ * the workload id, title, and free text is part of the gated publish review) and
+ * never uploads.
+ */
+export function promoteExperiment(
+  repoInput: string,
+  options: { id?: string; out?: string } = {},
+): { experiment_id: string; path: string; lab_note: string } {
+  const repo = ensureRepo(repoInput);
+  const id = options.id ?? readActiveId(repo);
+  if (!id) {
+    throw new Error("No active experiment. Pass an id or run `understudy experiments new`.");
+  }
+  const experiment = readExperiment(repo, id);
+  if (experiment.outcome === null) {
+    throw new Error(
+      `Experiment ${id} has no outcome yet. Record one with \`understudy experiments outcome\` before promoting.`,
+    );
+  }
+  const date = experiment.created_at.slice(0, 10);
+  const labNote = renderLabNote(experiment, date);
+  const dest = resolve(options.out ?? join(experimentDir(repo, id), "lab-note.md"));
+  mkdirSync(dirname(dest), { recursive: true });
+  writeFileSync(dest, labNote, "utf8");
+  return { experiment_id: id, path: dest, lab_note: labNote };
 }
 
 export function summarizeExperiments(repoInput: string): ExperimentSummary[] {
@@ -376,8 +540,8 @@ export function deriveNext(repoInput: string): NextState {
       step: "claim",
       experiment_id: activeId,
       pins_match: true,
-      summary: `Experiment ${activeId} has a candidate but no claim — run holdout and write claim.json.`,
-      next_command: "understudy optimize-workload check --repo .",
+      summary: `Experiment ${activeId} has a candidate but no claim — run holdout and freeze claim.json.`,
+      next_command: "understudy experiments freeze --claim-from <claim.json> --repo .",
     };
   }
 

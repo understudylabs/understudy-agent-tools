@@ -134,15 +134,14 @@ directory (see the Experiment section of
 .understudy/experiments/<exp-id>/      # experiment.json, candidate.json, claim.json
 ```
 
-Open or reuse an experiment before optimizing (`experiments/active` names it),
-record the candidate model, objective, and the `pins` copied from
-`baseline.json`'s hash-chain, then freeze the chosen `candidate.json` and the
-`claim.json` there. The `optimize-workload` CLI still emits scratch artifacts
-(`eval-input-candidate.json`, `proof-packet.json`, adapter outputs) under
-`.understudy/optimize-workload/`; treat those as working state and freeze the
-selected candidate into the experiment directory. Use `understudy experiments
-new` to open an experiment (it pins the current baseline) and `understudy next`
-to see the current loop step.
+Open or reuse an experiment before optimizing with `understudy experiments new`
+(it pins the current baseline); `experiments/active` names it. On
+`optimize-workload adapter run --execute` the produced candidate is frozen into
+the active experiment directory automatically; `understudy experiments freeze`
+does it explicitly and also freezes a `--claim-from <path>`. The optimizer's
+working artifacts (`eval-input-candidate.json`, `proof-packet.json`, adapter
+outputs) stay under `.understudy/optimize-workload/`. Run `understudy next` to
+see the current loop step.
 
 The previous Python helper scripts have been removed with the Python CLI
 prototype. Use the TypeScript CLI gates first, and still inspect artifacts

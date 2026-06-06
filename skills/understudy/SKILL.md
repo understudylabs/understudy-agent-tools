@@ -206,19 +206,21 @@ isn't at.
 `outcome`, `workload`, `incumbent_model`, `candidate_model`, and the result
 deltas mirror the `type: experiment` lab-note in the Understudy knowledge
 base — `experiment.json` is its un-anonymized, hash-pinned, live
-precursor. When `outcome` is set, an experiment may be **promoted** into a
-knowledge lab-note: anonymize `workload` to `workload-NNN`, drop real paths, and
-add the cost/margin analysis the local record deliberately omits. Promotion
-publishes to a shared repository and is an upload — gate it like any other (see
-Safety Gates).
+precursor. When `outcome` is set, `understudy experiments promote` writes a
+lab-note **draft** locally from the record. It does not anonymize or upload: the
+draft carries the real local values behind a review banner, and scrubbing
+`workload` to `workload-NNN`, dropping real paths, and filling the cost/margin
+fields the local record omits are part of the publish review. Publishing to a
+shared repository is an upload — gate it like any other (see Safety Gates).
 
 > `understudy experiments new` opens an experiment and copies the baseline
 > hash-chain into `pins`; `understudy next` reads the artifacts on disk plus the
 > active experiment to report the loop step and the command to run next;
-> `understudy experiments outcome` records the verdict. The `optimize-workload`
-> CLI still writes scratch candidate/claim artifacts under
-> `.understudy/optimize-workload/`; freeze the chosen candidate and the claim
-> into the active experiment directory.
+> `understudy experiments outcome` records the verdict. On `optimize-workload
+> adapter run --execute` the candidate is frozen into the active experiment
+> directory automatically; `understudy experiments freeze` does it explicitly
+> (and freezes a `--claim-from <path>`). The optimizer's working files stay
+> under `.understudy/optimize-workload/`.
 
 Removed Python-prototype commands and deleted draft skills are tracked in
 [`../../docs/current-functionality.md`](../../docs/current-functionality.md). Do
