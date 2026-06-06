@@ -137,25 +137,29 @@ cmd_down() {
 }
 cmd_attach() { tmux attach -t "$SESSION"; }
 
-# One-command bring-up of the BLIND HEAD-TO-HEAD game (blind_arena.py):
-# ensure the default local model is served, then launch the branded game in tmux.
-# The frontier side reads ANTHROPIC_LOCAL_KEY (Opus 4.8) or falls back to gpt-5.1.
+# One-command bring-up of the BLIND HEAD-TO-HEAD game (blind_arena.ts):
+# serve the local model with MLX, then launch the TypeScript game in tmux (Node runs the
+# .ts directly via --experimental-strip-types). The only Python is mlx_lm.server.
+# The frontier side reads ANTHROPIC_LOCAL_KEY (Opus 4.8) or routes via the gateway.
 cmd_play() {
-  _need tmux; _need curl
+  _need tmux; _need curl; _need node
   [ -x "$MLX_PYTHON" ] || { echo "MLX python not found: $MLX_PYTHON — create it with:
-  uv venv .understudy/venvs/mlx --python 3.12 && uv pip install --python $MLX_PYTHON 'mlx-lm>=0.31' 'huggingface_hub[cli]>=0.27' 'rich>=13' 'anthropic>=0.40' 'openai>=1.50'" >&2; exit 1; }
+  uv venv .understudy/venvs/mlx --python 3.12 && uv pip install --python $MLX_PYTHON 'mlx-lm>=0.31' 'huggingface_hub[cli]>=0.27'" >&2; exit 1; }
+  node -e 'const [a,b]=process.versions.node.split(".").map(Number); process.exit(a>22||(a===22&&b>=6)?0:1)' \
+    || { echo "node >= 22.6 required to run the TypeScript game (have $(node -v))." >&2; exit 1; }
   here="$(cd "$(dirname "$0")" && pwd)"
+  ( cd "$here/../.." && [ -d node_modules/openai ] || { echo "Installing arena deps (openai, @anthropic-ai/sdk)…"; npm install >/dev/null 2>&1; } )
   echo "Bringing up local model ${LEFT_REPO} on :${LEFT_PORT} (first run downloads weights)…"
   _serve "$LEFT_LABEL" "$LEFT_REPO" "$LEFT_PORT"
   _wait_health "$LEFT_PORT" "$LEFT_LABEL"
   local S="${SESSION}-play"
-  # seed the frontier key into the tmux global env (not echoed) so the game pane inherits it
+  # seed the frontier keys into the tmux global env (not echoed) so the game pane inherits them
   tmux start-server 2>/dev/null || true
   tmux setenv -g ANTHROPIC_LOCAL_KEY "${ANTHROPIC_LOCAL_KEY:-${ANTHROPIC_API_KEY:-}}"
   tmux setenv -g OPENAI_API_KEY "${OPENAI_API_KEY:-}"
   tmux kill-session -t "$S" 2>/dev/null || true
   tmux new-session -d -s "$S" -x 138 -y 60 -n arena
-  tmux send-keys -t "$S" "clear && LOCAL_BASE=http://127.0.0.1:${LEFT_PORT}/v1 LOCAL_MODEL=${LEFT_REPO} LOCAL_NAME='${LOCAL_NAME:-Gemma 3 1B}' CATEGORY='${CATEGORY:-}' '$MLX_PYTHON' '$here/blind_arena.py'" C-m
+  tmux send-keys -t "$S" "clear && LOCAL_BASE=http://127.0.0.1:${LEFT_PORT}/v1 LOCAL_MODEL=${LEFT_REPO} LOCAL_NAME='${LOCAL_NAME:-Gemma 3 1B}' CATEGORY='${CATEGORY:-}' FRONTIER_MODEL='${FRONTIER_MODEL:-}' node --experimental-strip-types '$here/blind_arena.ts'" C-m
   echo "Ready → attach and play:   tmux attach -t $S     (detach: Ctrl-b d)"
 }
 

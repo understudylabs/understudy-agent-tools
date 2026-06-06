@@ -18,7 +18,8 @@ GPT, GLM, …) — never a per-provider code path. The aim is *efficient intelli
 prove how much of the work the free local model can do, and pay for the frontier
 only on the genuinely hard tail.
 
-The runnable core is the blind game [`blind_arena.py`](blind_arena.py); the local
+The runnable core is the blind game [`blind_arena.ts`](blind_arena.ts) (TypeScript,
+run by Node ≥22.6 — no Python in the repo); the local
 model is served by `mlx_lm.server` and [`arena.sh`](arena.sh) is the launcher. MLX
 does inference, the game is the surface; the scripts stay thin.
 
@@ -90,7 +91,7 @@ provider in `~/.pi/agent/models.json` (`api: openai-completions`).
 
 ## Blind-vote mode — the Efficient-Intelligence game
 
-[`blind_arena.py`](blind_arena.py) is the interactive, blind A/B version of the
+[`blind_arena.ts`](blind_arena.ts) is the interactive, blind A/B version of the
 arena: a **frontier** model (Claude Opus 4.8 at high reasoning, or `gpt-5.1` via
 the Understudy gateway when no Anthropic key is present) vs a **small local MLX
 model**, randomly assigned to Left/Right each round. The user watches both answer
@@ -108,11 +109,12 @@ skills/mlx-arena/arena.sh play
 # then:  tmux attach -t mlx-arena-play
 ```
 
-Or run it directly:
+Or run it directly (Node ≥22.6 runs the `.ts` via native type-stripping):
 
 ```bash
 LOCAL_BASE=http://127.0.0.1:8081/v1 LOCAL_MODEL=mlx-community/gemma-3-1b-it-4bit \
-CATEGORY=coding .understudy/venvs/mlx/bin/python skills/mlx-arena/blind_arena.py
+CATEGORY=coding FRONTIER_MODEL=claude-opus-4-8 \
+node --experimental-strip-types skills/mlx-arena/blind_arena.ts
 ```
 
 It is branded as the **Understudy Labs · Local-vs-Frontier Model Testing

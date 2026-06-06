@@ -32,9 +32,11 @@
     "check": "npm run build && npm run typecheck && npm test && npm run skills:validate && npm run cookbook:validate && npm run package:smoke"
   },
   "dependencies": {
+    "@anthropic-ai/sdk": "^0.102.0",
     "@inquirer/prompts": "^8.4.3",
     "commander": "^14.0.3",
     "kleur": "^4.1.5",
+    "openai": "^6.42.0",
     "zod": "^4.4.3"
   },
   "devDependencies": {
