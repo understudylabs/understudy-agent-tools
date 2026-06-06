@@ -12,7 +12,7 @@
 // then a cost x speed x intelligence reveal. The frontier is ONE swappable config
 // (FRONTIER_MODEL); no per-provider branches in the game logic.
 import OpenAI from "openai";
-import { readFileSync } from "node:fs";
+import { readFileSync, readdirSync, statSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 import { createInterface } from "node:readline";
@@ -122,6 +122,41 @@ const CAT_LABELS: Record<string, string> = {
   automation: "AutomationBench-style sales/API automation tasks",
   mixed: "a mix of all sets",
 };
+
+// Include questions from a LOCAL dataset on disk (kept local — never committed).
+// DATASET=/path/to/file_or_dir. Accepts .txt (one question per line), .json (array of
+// strings or {question|prompt|text}), or .jsonl/.md (per-line plain text or JSON object).
+// A directory loads every matching file in it. The set appears in the picker as "dataset".
+function loadDataset(): void {
+  const p = env.DATASET;
+  if (!p) return;
+  let files: string[] = [];
+  try {
+    if (statSync(p).isDirectory())
+      files = readdirSync(p).filter((f) => /\.(txt|json|jsonl|md)$/i.test(f)).map((f) => join(p, f));
+    else files = [p];
+  } catch { console.error(kleur.red(`DATASET not readable: ${p}`)); return; }
+  const qs: string[] = [];
+  const pick = (o: any) => (typeof o === "string" ? o : o?.question ?? o?.prompt ?? o?.text ?? "");
+  for (const f of files) {
+    let raw = "";
+    try { raw = readFileSync(f, "utf8"); } catch { continue; }
+    if (f.toLowerCase().endsWith(".json")) {
+      try { const j = JSON.parse(raw); for (const it of Array.isArray(j) ? j : []) qs.push(pick(it)); } catch {}
+    } else {
+      for (const line of raw.split("\n")) {
+        const t = line.trim();
+        if (!t) continue;
+        if (t.startsWith("{")) { try { qs.push(pick(JSON.parse(t))); continue; } catch {} }
+        qs.push(t);
+      }
+    }
+  }
+  const clean = qs.map((s) => String(s).trim()).filter(Boolean);
+  if (clean.length) { QUESTION_BANK.dataset = clean; CAT_LABELS.dataset = `${clean.length} questions from your local dataset (${p})`; }
+  else console.error(kleur.yellow(`DATASET ${p} had no questions`));
+}
+loadDataset();
 
 // ---------- result state ----------
 type Result = {

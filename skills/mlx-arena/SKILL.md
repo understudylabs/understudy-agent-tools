@@ -118,10 +118,21 @@ node --experimental-strip-types skills/mlx-arena/blind_arena.ts
 ```
 
 It is branded as the **Understudy Labs · Local-vs-Frontier Model Testing
-Environment**. Pick a **question set** at launch (or `CATEGORY=everyday|coding|llm|mixed`):
-everyday assistant questions, coding Q&A + debugging, or how-LLMs-work knowledge.
-Blind by default; **type `reveal` at any prompt** to peek at identities + cost/speed,
-again to re-hide.
+Environment**. Pick a **question set** at launch (or `CATEGORY=everyday|coding|llm|automation|mixed`):
+everyday assistant questions, coding Q&A + debugging, how-LLMs-work knowledge, or
+AutomationBench-style automation tasks. Blind by default; **type `reveal` at any
+prompt** to peek at identities + cost/speed, again to re-hide.
+
+**Include your own dataset** with `DATASET=/path/to/file_or_dir` — questions from a
+local `.txt` (one per line), `.json` (array of strings or `{question|prompt|text}`),
+or `.jsonl`/`.md`; a directory loads every matching file. It shows up in the picker
+as a **dataset** set. The file is read locally at runtime and **never committed or
+sent anywhere but the models you're testing** — keep customer data out of any set
+that would reach a non-ZDR provider.
+
+```bash
+DATASET=~/my-eval/questions.jsonl skills/mlx-arena/arena.sh play
+```
 
 Design rules (so the blind test stays honest): while blind, **both panels show
 only the answer** — no latency/token/cost footer, no thinking trace, no model

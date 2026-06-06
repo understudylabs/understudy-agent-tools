@@ -159,7 +159,7 @@ cmd_play() {
   tmux setenv -g OPENAI_API_KEY "${OPENAI_API_KEY:-}"
   tmux kill-session -t "$S" 2>/dev/null || true
   tmux new-session -d -s "$S" -x 138 -y 60 -n arena
-  tmux send-keys -t "$S" "clear && LOCAL_BASE=http://127.0.0.1:${LEFT_PORT}/v1 LOCAL_MODEL=${LEFT_REPO} LOCAL_NAME='${LOCAL_NAME:-Gemma 3 1B}' CATEGORY='${CATEGORY:-}' FRONTIER_MODEL='${FRONTIER_MODEL:-}' node --experimental-strip-types '$here/blind_arena.ts'" C-m
+  tmux send-keys -t "$S" "clear && LOCAL_BASE=http://127.0.0.1:${LEFT_PORT}/v1 LOCAL_MODEL=${LEFT_REPO} LOCAL_NAME='${LOCAL_NAME:-Gemma 3 1B}' CATEGORY='${CATEGORY:-}' FRONTIER_MODEL='${FRONTIER_MODEL:-}' DATASET='${DATASET:-}' node --experimental-strip-types '$here/blind_arena.ts'" C-m
   echo "Ready → attach and play:   tmux attach -t $S     (detach: Ctrl-b d)"
 }
 
