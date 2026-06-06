@@ -167,4 +167,92 @@ describe("understudy experiments + next", () => {
       assert.ok(existsSync(join(repo, ".understudy", "experiments", "active")));
     });
   });
+
+  it("rejects an unsafe --id instead of escaping the experiments dir", () => {
+    withRepo((repo) => {
+      seedEvidence(repo);
+      const bad = run(repo, ["experiments", "new", "--id", "../../boom"]);
+      assert.equal(bad.status, 1);
+      assert.match(bad.stderr, /Invalid experiment id/);
+      assert.ok(!existsSync(join(repo, "..", "..", "boom")));
+      assert.ok(!existsSync(join(repo, ".understudy", "experiments", "..", "..", "boom")));
+    });
+  });
+
+  it("freezes the optimizer scratch candidate into the active experiment dir", () => {
+    withRepo((repo) => {
+      seedEvidence(repo);
+      run(repo, ["experiments", "new"]);
+
+      const ow = join(repo, ".understudy", "optimize-workload");
+      mkdirSync(ow, { recursive: true });
+      writeFileSync(join(ow, "candidate.json"), `${JSON.stringify({ schema_version: "x" })}\n`);
+
+      const freeze = run(repo, ["experiments", "freeze"]);
+      assert.equal(freeze.status, 0, freeze.stderr);
+      assert.ok(existsSync(join(repo, ".understudy", "experiments", "exp-001", "candidate.json")));
+      assert.equal(nextState(repo).step, "claim");
+    });
+  });
+
+  it("errors when freezing a candidate that does not exist", () => {
+    withRepo((repo) => {
+      seedEvidence(repo);
+      run(repo, ["experiments", "new"]);
+      const freeze = run(repo, ["experiments", "freeze"]);
+      assert.equal(freeze.status, 1);
+      assert.match(freeze.stderr, /No candidate to freeze/);
+    });
+  });
+
+  it("freezes a claim and copies its deltas onto the experiment record", () => {
+    withRepo((repo) => {
+      seedEvidence(repo);
+      run(repo, ["experiments", "new"]);
+      const expDir = join(repo, ".understudy", "experiments", "exp-001");
+      writeFileSync(join(expDir, "candidate.json"), "{}\n");
+
+      const claimPath = join(repo, "claim-src.json");
+      writeFileSync(claimPath, `${JSON.stringify({ quality_delta: 0.08, cost_per_1k_delta_usd: -1.2 })}\n`);
+      const freeze = run(repo, ["experiments", "freeze", "--claim-from", claimPath]);
+      assert.equal(freeze.status, 0, freeze.stderr);
+
+      const record = JSON.parse(readFileSync(join(expDir, "experiment.json"), "utf8"));
+      assert.equal(record.result.claim_ref, "claim.json");
+      assert.equal(record.result.quality_delta, 0.08);
+      assert.equal(record.result.cost_per_1k_delta_usd, -1.2);
+      assert.equal(nextState(repo).step, "decide");
+    });
+  });
+
+  it("refuses to promote an experiment without an outcome", () => {
+    withRepo((repo) => {
+      seedEvidence(repo);
+      run(repo, ["experiments", "new"]);
+      const promote = run(repo, ["experiments", "promote"]);
+      assert.equal(promote.status, 1);
+      assert.match(promote.stderr, /no outcome yet/);
+    });
+  });
+
+  it("promotes a decided experiment to a lab-note draft flagged for review", () => {
+    withRepo((repo) => {
+      seedEvidence(repo);
+      run(repo, ["experiments", "new", "--workload", "acme-support", "--candidate", "gemma-4-31b"]);
+      run(repo, ["experiments", "outcome", "success", "--route", "ship-local"]);
+
+      const promote = run(repo, ["experiments", "promote"]);
+      assert.equal(promote.status, 0, promote.stderr);
+      const note = readFileSync(join(repo, ".understudy", "experiments", "exp-001", "lab-note.md"), "utf8");
+      assert.match(note, /^type: experiment$/m);
+      assert.match(note, /outcome: success/);
+      assert.match(note, /candidate_model: gemma-4-31b/);
+      // the draft does NOT auto-anonymize: it flags the work for review and
+      // leaves workload_anon as a placeholder rather than guessing.
+      assert.match(note, /DRAFT — review and anonymize before publishing/);
+      assert.match(note, /workload_anon: TODO/);
+      // the raw workload id is never auto-injected into the draft.
+      assert.doesNotMatch(note, /acme-support/);
+    });
+  });
 });

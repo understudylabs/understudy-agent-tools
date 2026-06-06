@@ -7,6 +7,7 @@ import { DEFAULT_GATEWAY_URL } from "./config/defaults.js";
 import { readCredentials } from "./config/credentials.js";
 import { readProjectConfig } from "./config/index.js";
 import { optimizerRuntimeSource } from "./optimize-workload/runtime-source.js";
+import { readActiveId, recordCandidate } from "./experiments.js";
 
 type GateStatus = "pass" | "fail";
 
@@ -399,7 +400,35 @@ export function runOptimizerAdapter(options: AdapterRunOptions): Record<string, 
     env.UNDERSTUDY_GATEWAY_URL = auth.gatewayUrl;
     env.UNDERSTUDY_AUTH_SOURCE = auth.source;
   }
-  return runUvPython(repo, runtimePath, adapter.buildArgs(repo, options), adapter.packages, env);
+  const out = runUvPython(repo, runtimePath, adapter.buildArgs(repo, options), adapter.packages, env);
+  freezeCandidateIntoActiveExperiment(repo, out);
+  return out;
+}
+
+/**
+ * When the adapter produced a candidate and an experiment is active, freeze the
+ * scratch candidate into the experiment directory (its home of record) so
+ * `understudy next` advances. Best-effort: never fail the optimizer run.
+ */
+function freezeCandidateIntoActiveExperiment(repo: string, out: Record<string, unknown>): void {
+  try {
+    if (out.exit_code !== 0) {
+      return;
+    }
+    const emitted = out.json;
+    const candidatePath =
+      emitted && typeof emitted === "object" && !Array.isArray(emitted)
+        ? (emitted as Record<string, unknown>).candidate_path
+        : undefined;
+    if (typeof candidatePath !== "string" || !readActiveId(repo)) {
+      return;
+    }
+    const frozen = recordCandidate(repo, { from: join(repo, candidatePath) });
+    out.experiment_id = frozen.experiment_id;
+    out.experiment_candidate = relative(repo, frozen.path);
+  } catch {
+    // leave the scratch candidate in place; freezing is an optional convenience.
+  }
 }
 
 export function printGateResult(result: GateResult): void {
