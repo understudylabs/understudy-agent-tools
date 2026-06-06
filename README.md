@@ -54,6 +54,28 @@ jobs run by default. After authentication, the CLI emits bounded product
 telemetry documented in [`docs/telemetry.md`](docs/telemetry.md); disable it
 with `UNDERSTUDY_TELEMETRY=0`.
 
+## Install as a Claude Code plugin
+
+The skills in [`skills/`](skills/) ship as a Claude Code plugin, declared in
+[`.claude-plugin/`](.claude-plugin/) (`plugin.json` + `marketplace.json`).
+Installing it registers all nine invocable skills (`understudy`,
+`capture-evidence`, `use-understudy-gateway`, `run-local-model-lab`,
+`optimize-workload`, `optimize-api-workflow`, `optimize-agentic-search`,
+`prepare-verifier-handoff`, `install-plugin`).
+
+From a clone of this repo:
+
+```bash
+claude plugin marketplace add /path/to/understudy-agent-tools
+claude plugin install understudy@understudy-skills
+```
+
+Then run `/reload-plugins` in your Claude Code session to activate — **no
+restart required**. The equivalent interactive flow is `/plugin marketplace add
+<path>` then `/plugin install understudy@understudy-skills`. The
+[`install-plugin`](skills/install-plugin/SKILL.md) skill automates this and
+reports whether the plugin is already installed.
+
 ## First Commands
 
 ```bash
