@@ -136,7 +136,12 @@ function searchSkillDocs(terms: string[]): SearchResult[] {
       continue;
     }
     const frontmatterBoost = candidate.kind === "skill" && candidate.path.endsWith("SKILL.md") ? 3 : 0;
-    const score = matches.length * 10 + frontmatterBoost;
+    // A skill whose NAME matches the query is the canonical hit (e.g. "gateway" ->
+    // use-understudy-gateway); rank it above docs that merely mention the term, so it
+    // survives the result cap no matter how many other skills reference the topic.
+    const nameHaystack = candidate.name.toLowerCase();
+    const nameBoost = terms.some((term) => nameHaystack.includes(term)) ? 100 : 0;
+    const score = matches.length * 10 + frontmatterBoost + nameBoost;
     results.push({ ...candidate, score, matches });
   }
   return results.sort((left, right) => right.score - left.score || left.path.localeCompare(right.path));
