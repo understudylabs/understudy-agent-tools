@@ -17,6 +17,11 @@ that a smaller local model cannot. Instead of shrinking the model, change the
 *harness*: have the small model solve the task as a sequence of small, bounded
 steps, each with a deliberately flat context.
 
+Crucially, the RLM wraps the small model **behind the incumbent's existing call
+contract** — the workload's callers send the same request and get the same answer;
+the decomposition happens *inside*. That makes the specialist a **drop-in
+replacement** for the frontier generalist, not a rewrite of the system around it.
+
 This composes two other skills: it needs
 [`../understand-workload/SKILL.md`](../understand-workload/SKILL.md) to know the
 task, its steps, and the success criteria, and
