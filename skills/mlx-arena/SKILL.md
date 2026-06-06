@@ -110,18 +110,37 @@ is *efficient intelligence*: on most everyday questions the free local model is
 faster and good enough, and you only pay for the frontier on the genuinely hard
 tasks.
 
+Easiest bring-up (downloads the default model if missing, serves it, launches the
+branded game in tmux):
+
 ```bash
-LOCAL_BASE=http://127.0.0.1:8081/v1 \
-LOCAL_MODEL=mlx-community/gemma-3-1b-it-4bit \
-.understudy/venvs/mlx/bin/python skills/mlx-arena/blind_arena.py
+skills/mlx-arena/arena.sh play
+# then:  tmux attach -t mlx-arena-play
 ```
 
-Design rules (so the blind test stays honest): during play, **both panels show
+Or run it directly:
+
+```bash
+LOCAL_BASE=http://127.0.0.1:8081/v1 LOCAL_MODEL=mlx-community/gemma-3-1b-it-4bit \
+CATEGORY=coding .understudy/venvs/mlx/bin/python skills/mlx-arena/blind_arena.py
+```
+
+It is branded as the **Understudy Labs · Local-vs-Frontier Model Testing
+Environment**. Pick a **question set** at launch (or `CATEGORY=everyday|coding|llm|mixed`):
+everyday assistant questions, coding Q&A + debugging, or how-LLMs-work knowledge.
+Blind by default; **type `reveal` at any prompt** to peek at identities + cost/speed,
+again to re-hide.
+
+Design rules (so the blind test stays honest): while blind, **both panels show
 only the answer** — no latency/token/cost footer, no thinking trace, no model
 names (those are all tells). Hints escalate (speed tease → halfway confession →
 running free-vs-cloud tally) without ever naming a side. The frontier key is read
 from `ANTHROPIC_LOCAL_KEY`/`ANTHROPIC_API_KEY`; cost is computed from real usage
-(Opus 4.8 $5/$25 per 1M in/out) and shown only in the final reveal.
+(Opus 4.8 $5/$25 per 1M in/out) and shown only on reveal.
+
+Custom **domain questions** (point at your own repo/benchmark), the **harness-swap /
+decomposition** story for large prompts, and the **trust scorecard** are planned —
+see [`ROADMAP.md`](ROADMAP.md).
 
 ## Known model-compat gotchas (hard-won)
 

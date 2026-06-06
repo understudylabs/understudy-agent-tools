@@ -137,8 +137,31 @@ cmd_down() {
 }
 cmd_attach() { tmux attach -t "$SESSION"; }
 
+# One-command bring-up of the BLIND HEAD-TO-HEAD game (blind_arena.py):
+# ensure the default local model is served, then launch the branded game in tmux.
+# The frontier side reads ANTHROPIC_LOCAL_KEY (Opus 4.8) or falls back to gpt-5.1.
+cmd_play() {
+  _need tmux; _need curl
+  [ -x "$MLX_PYTHON" ] || { echo "MLX python not found: $MLX_PYTHON — create it with:
+  uv venv .understudy/venvs/mlx --python 3.12 && uv pip install --python $MLX_PYTHON 'mlx-lm>=0.31' 'huggingface_hub[cli]>=0.27' 'rich>=13' 'anthropic>=0.40' 'openai>=1.50'" >&2; exit 1; }
+  here="$(cd "$(dirname "$0")" && pwd)"
+  echo "Bringing up local model ${LEFT_REPO} on :${LEFT_PORT} (first run downloads weights)…"
+  _serve "$LEFT_LABEL" "$LEFT_REPO" "$LEFT_PORT"
+  _wait_health "$LEFT_PORT" "$LEFT_LABEL"
+  local S="${SESSION}-play"
+  # seed the frontier key into the tmux global env (not echoed) so the game pane inherits it
+  tmux start-server 2>/dev/null || true
+  tmux setenv -g ANTHROPIC_LOCAL_KEY "${ANTHROPIC_LOCAL_KEY:-${ANTHROPIC_API_KEY:-}}"
+  tmux setenv -g OPENAI_API_KEY "${OPENAI_API_KEY:-}"
+  tmux kill-session -t "$S" 2>/dev/null || true
+  tmux new-session -d -s "$S" -x 138 -y 60 -n arena
+  tmux send-keys -t "$S" "clear && LOCAL_BASE=http://127.0.0.1:${LEFT_PORT}/v1 LOCAL_MODEL=${LEFT_REPO} LOCAL_NAME='${LOCAL_NAME:-Gemma 3 1B}' CATEGORY='${CATEGORY:-}' '$MLX_PYTHON' '$here/blind_arena.py'" C-m
+  echo "Ready → attach and play:   tmux attach -t $S     (detach: Ctrl-b d)"
+}
+
 case "${1:-up}" in
   up) cmd_up ;;
+  play) cmd_play ;;
   ask) shift; cmd_ask "$@" ;;
   left) shift; cmd_left "$@" ;;
   right) shift; cmd_right "$@" ;;
@@ -147,5 +170,5 @@ case "${1:-up}" in
   status) cmd_status ;;
   down) cmd_down ;;
   attach) cmd_attach ;;
-  *) echo "usage: $0 {up|ask <text>|left <text>|right <text>|capture|logs|status|down|attach}" >&2; exit 2 ;;
+  *) echo "usage: $0 {play|up|ask <text>|left <text>|right <text>|capture|logs|status|down|attach}" >&2; exit 2 ;;
 esac
