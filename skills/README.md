@@ -12,6 +12,12 @@ execution; skills tell the agent what to inspect, gate, monitor, and report.
 
 ## Capability Skills
 
+- [`onboard`](onboard/SKILL.md) is the engaging first-run experience: it
+  backgrounds a small American open-model download while it profiles the machine,
+  detects ML tooling, interviews the user, and writes a durable
+  `~/.understudy/profile.json` so every later skill meets the user where they are.
+  (Profile schema, interview bank, and tooling map in its
+  [`reference.md`](onboard/reference.md).)
 - [`capture-evidence`](capture-evidence/SKILL.md) attaches the local
   harness/environment, confirms the metric and validator, freezes splits, and
   reruns the incumbent baseline. (Discovery + capture/import folded into its
@@ -36,6 +42,12 @@ execution; skills tell the agent what to inspect, gate, monitor, and report.
   authenticated gateway inference, project/key readiness, public model listing,
   workload route percentages, `understudy run`, and monitored durable CLI
   execution.
+- [`manage-local-models`](manage-local-models/SKILL.md) acquires, caches,
+  organizes, and explains local open-weight models (Gemma 4, Nemotron 3): where
+  weights come from and live, formats/quantization, gated weights and HF tokens,
+  disk budgeting, start-small-and-cache, and the local→cloud graduation path.
+  (Download locations, registry links, and the quant primer in its
+  [`reference.md`](manage-local-models/reference.md).)
 - [`run-local-model-lab`](run-local-model-lab/SKILL.md) evaluates local or
   workstation-hosted models against the same frozen workload/eval, keeps model
   downloads behind approval, and compares local, hybrid, and remote routes.
