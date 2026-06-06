@@ -71,7 +71,9 @@ FRONTIER_NAME = "Claude Opus 4.8 (high reasoning · cloud · $$)" if ANTHROPIC_K
 OPUS_IN, OPUS_OUT = 5.00, 25.00     # $/1M tokens
 GPT_IN, GPT_OUT   = 1.25, 10.00
 
-SYSTEM = "You are a helpful assistant. Answer the user directly and conversationally. Keep it tight — a few sentences unless real detail is needed."
+SYSTEM = ("You are a helpful assistant. Answer directly and conversationally in plain prose — "
+          "avoid markdown headings, bold, and bullet lists unless truly necessary, so your formatting "
+          "stays simple. Keep it tight — a few sentences unless real detail is needed.")
 
 QUESTION_BANK = {
     "everyday": [
@@ -83,16 +85,24 @@ QUESTION_BANK = {
         "Is it better to pay off a small debt first or the highest-interest debt first? Give me the short version.",
         "I'm nervous about a first date tomorrow. Give me one genuinely useful tip — no clichés.",
         "What's a good 20-minute beginner workout I can do at home with no equipment?",
+        "I have 30 minutes before guests arrive and the kitchen's a mess. What 3 things should I prioritize?",
+        "A friend is going through a breakup and I never know what to say. Give me one thing that actually helps.",
+        "Plan a simple, healthy lunch I can prep on Sunday and eat for 3 weekdays.",
+        "I want to start running but always quit after a week. What's one realistic way to actually stick with it?",
     ],
     "coding": [
         "Write a Python function that returns the unique items of a list while preserving order. Show the code.",
         "What's the difference between a list and a tuple in Python, and when would you pick each?",
         "My recursive factorial returns None for n=0:\n\n    def fact(n):\n        if n == 1: return 1\n        return n * fact(n-1)\n\nWhat's the bug and the fix?",
-        "Explain what a race condition is, with one concrete example, in a few sentences.",
+        "What does this print and why?\n\n    a = [1, 2, 3]\n    b = a\n    b.append(4)\n    print(a)",
         "When should I use a hash map vs a balanced BST? Give the short, practical version.",
         "Refactor this to be cleaner:\n\n    result = []\n    for x in items:\n        if x is not None:\n            result.append(x * 2)\n\nShow the one-liner.",
         "What does `git rebase` do versus `git merge`, in plain terms?",
         "How do I reverse a linked list iteratively? Describe the pointers, then show short code.",
+        "Explain async/await to someone who knows synchronous code, in a few sentences.",
+        "I get 'IndexError: list index out of range' in a loop that deletes items from the list while iterating. Why, and the fix?",
+        "Write a SQL query to get the second-highest salary from an `employees(name, salary)` table.",
+        "What's a deadlock, in one concrete example, and one rule that avoids it?",
     ],
     "llm": [
         "What's the difference between a base model and an instruct-tuned model?",
@@ -103,6 +113,27 @@ QUESTION_BANK = {
         "What is a context window, and why does a bigger one cost more?",
         "What's the difference between tokens and words, and why does it matter for cost?",
         "In one paragraph: why can a small local model match a big one on easy tasks but not hard ones?",
+        "What's the difference between prompt engineering and fine-tuning?",
+        "Why do LLMs 'hallucinate', and what actually reduces it?",
+        "What does the KV cache do during generation, simply?",
+        "Practical difference between a 4-bit and an 8-bit quantized model — what do I gain and lose?",
+    ],
+    # AutomationBench-style (Zapier) sales-automation tasks — synthetic, grounded in the
+    # genre: NL task -> discover endpoints -> interdependent calls -> business rules ->
+    # final state. Mirrors a real sales-intelligence agent (graph DB + observations +
+    # playbook). These are the bounded sub-tasks a decomposed harness would route to a
+    # small model. No customer data.
+    "automation": [
+        "A sales graph has (:Deal)-[:HAS_ACTIVITY]->(:Activity {date}). Write a Cypher query to find Deals with no Activity in the last 30 days, given a parameter $today. Return just the query.",
+        "Extract structured observations from this call snippet as a JSON array (each: type, entity, summary):\n'The buyer confirmed budget is approved, but legal review pushes close to next quarter. They asked for a SOC 2 report and named a competitor they're also evaluating.'\nReturn only JSON.",
+        "Playbook rule: if a deal is in stage 'Negotiation' with no activity for 14+ days, log a 'risk' observation and notify the owner. A deal is in 'Negotiation', last activity 21 days ago. What should the automation do? List the concrete steps.",
+        "An agent has tools: query_graph_database, parse_vtt_participants, lookup_catalog_items, bulk_write_observations. Task: 'Which products were discussed on the Acme call, and are they in our catalog?' Which tools, in what order, and why?",
+        "Automate: when a deal moves to 'Closed Won' in the CRM, (a) create an onboarding task in Asana, (b) post to the #wins Slack channel, (c) add the contact to a 'Customers' list. List the ordered API calls and note any data that must pass between steps.",
+        "An automation writes an Observation keyed by (deal_id, type, date) and may retry on timeout. How do you make the write idempotent so retries don't create duplicates? Answer in a few sentences.",
+        "Before upserting a contact, validate: {email: 'jane(at)acme', name: '', deal_id: 'D-991', owner: 'unknown@'}. List the problems and say whether you'd proceed, fix, or reject — and why.",
+        "Write a Cypher MERGE that upserts a 'risk' Observation linked to a Deal — (:Deal {id:$deal_id})-[:HAS_OBSERVATION]->(:Observation {type, summary, created_at}) — using parameters, without duplicating on re-run.",
+        "A 25k-token sales transcript needs every 'commitment' and 'risk' observation extracted, but your model's quality drops on long inputs. Describe how to decompose this so a small model matches a large model's recall — and roughly how many passes it takes.",
+        "An automation step gets HTTP 429 with Retry-After: 30, but the task has a 60s budget and 3 writes left. What should the agent do? Be specific about ordering and what to skip or defer.",
     ],
 }
 
@@ -115,7 +146,8 @@ def pick_category():
     labels = {"everyday": "everyday assistant questions",
               "coding": "coding Q&A + debugging",
               "llm": "knowledge about how LLMs work",
-              "mixed": "a mix of all three"}
+              "automation": "AutomationBench-style sales/API automation tasks",
+              "mixed": "a mix of all sets"}
     for i, c in enumerate(cats, 1):
         console.print(f"  [cyan]{i}[/cyan]. {c:<9} — {labels[c]}")
     while True:
@@ -286,12 +318,24 @@ def ask_vote(state):
         if v in ("t", "tie", "="):   return "T"
         console.print("  [dim]type L, R, t, or 'reveal'[/dim]")
 
-def play():
-    category = pick_category()
+def ask_guess():
+    """Second question: which side does the user THINK is the frontier/cloud model?"""
+    while True:
+        try:
+            g = console.input("[bold]…and which do you think is the [#7C5CFF]cloud (frontier)[/#7C5CFF] one?[/bold] "
+                              "([cyan]L[/cyan] / [cyan]R[/cyan] / [dim]?=not sure[/dim]) › ").strip().lower()
+        except (EOFError, KeyboardInterrupt):
+            return None
+        if g in ("l", "left", "1"):  return "L"
+        if g in ("r", "right", "2"): return "R"
+        if g in ("?", "u", "unsure", "idk", "n", ""): return "?"
+        console.print("  [dim]L, R, or ?[/dim]")
+
+def run_game(category, state):
     rounds = build_rounds(category)
     n = len(rounds); mid = (n + 1) // 2
-    state = {"reveal": START_REVEAL}
-    picks = {"frontier": 0, "local": 0, "tie": 0}
+    picks = {"frontier": 0, "local": 0, "tie": 0}                 # Q1: which did you prefer
+    guesses = {"right": 0, "wrong": 0, "unsure": 0}               # Q2: could you tell which was the frontier
     agg = {"frontier": {"t": 0.0, "cost": 0.0, "tok": 0}, "local": {"t": 0.0, "cost": 0.0, "tok": 0}}
 
     console.clear()
@@ -321,7 +365,7 @@ def play():
             dur = (r.t_end - r.t_start) if (r.t_end and r.t_start) else 0
             agg[r.kind]["t"] += dur; agg[r.kind]["tok"] += r.out_tok; agg[r.kind]["cost"] += r.cost
 
-        # vote loop — supports an in-session reveal toggle without leaving the round
+        # Q1 — PREFERENCE (with in-round reveal toggle)
         chosen = None; vote = None
         while True:
             vote = ask_vote(state)
@@ -334,14 +378,46 @@ def play():
         if vote is None:
             console.print("\n[dim]ended early[/dim]"); break
         if vote == "T":
-            picks["tie"] += 1; chosen = None
+            picks["tie"] += 1
         else:
             chosen = (left if vote == "L" else right).kind
             picks[chosen] += 1
+
+        # Q2 — IDENTIFICATION (only meaningful while still blind; correctness withheld until the end)
+        frontier_side = "L" if frontier_res is left else "R"
+        if not state["reveal"]:
+            g = ask_guess()
+            if g is None:
+                console.print("\n[dim]ended early[/dim]"); break
+            if g == "?":            guesses["unsure"] += 1
+            elif g == frontier_side: guesses["right"] += 1
+            else:                    guesses["wrong"] += 1
+
         console.print(hint(i, n, mid, chosen, frontier_res, local_res, picks, state["reveal"]))
         console.print(Rule(style="dim"))
 
-    reveal(picks, agg, n, category)
+    reveal(picks, guesses, agg, n, category)
+
+def play():
+    state = {"reveal": START_REVEAL}   # persists across games — a "global" reveal
+    category = pick_category()
+    while True:
+        run_game(category, state)
+        try:
+            again = console.input(
+                "\n[bold]Play again?[/bold]  [cyan]s[/cyan]ame set · [cyan]c[/cyan]hange set · "
+                "[cyan]q[/cyan]uit  (type [magenta]reveal[/magenta] to flip blind/revealed) › ").strip().lower()
+        except (EOFError, KeyboardInterrupt):
+            break
+        if again in REVEAL_WORDS:
+            state["reveal"] = not state["reveal"]
+            console.print(f"  [dim]default is now {'REVEALED' if state['reveal'] else 'BLIND'} for the next game[/dim]")
+            # fall through to a same-set rematch
+        elif again in ("c", "change", "switch", "2"):
+            category = pick_category()
+        elif again in ("", "q", "quit", "n", "no"):
+            console.print("[dim]thanks for playing — that's efficient intelligence.[/dim]"); break
+        # anything else (s/same/1/enter-other) → rematch, same set
 
 def hint(i, n, mid, chosen, frontier_res, local_res, picks, revealed):
     faster = "frontier" if (frontier_res.t_end - frontier_res.t_start) < (local_res.t_end - local_res.t_start) else "local"
@@ -364,12 +440,27 @@ def hint(i, n, mid, chosen, frontier_res, local_res, picks, revealed):
         base = f"Tally — [green]free {free}[/green] · [#7C5CFF]cloud {paid}[/#7C5CFF]. {tail.capitalize()}. Full reveal at the end…"
     return Text.from_markup("   " + base)
 
-def reveal(picks, agg, n, category):
+def reveal(picks, guesses, agg, n, category):
     console.print()
     fr, lo, ti = picks["frontier"], picks["local"], picks["tie"]
     aF, aL = agg["frontier"], agg["local"]
     L = []
-    L.append(f"Question set: [bold]{category}[/bold]   ·   your votes:  [green]local {lo}[/green]  ·  [#7C5CFF]frontier {fr}[/#7C5CFF]" + (f"  ·  tie {ti}" if ti else ""))
+    # Q1 — which did you prefer (quality)
+    L.append(f"[bold]1) Which did you prefer?[/bold]   [green]local {lo}[/green]  ·  [#7C5CFF]frontier {fr}[/#7C5CFF]"
+             + (f"  ·  tie {ti}" if ti else "") + f"     ([bold]{category}[/bold] set)")
+    # Q2 — could you tell which was the frontier (identification)
+    blind = guesses["right"] + guesses["wrong"]
+    if blind:
+        acc = 100 * guesses["right"] / blind
+        verdict = ("[red]the style still gives it away[/red] — tighten formatting for a cleaner blind test"
+                   if acc >= 75 else
+                   "[green]≈ coin-flip — you genuinely couldn't tell[/green]" if acc <= 60 else
+                   "[yellow]better than chance, but not obvious[/yellow]")
+        L.append(f"[bold]2) Could you spot the cloud model?[/bold]   [bold]{guesses['right']}/{blind}[/bold] right "
+                 f"([bold]{acc:.0f}%[/bold])" + (f" · {guesses['unsure']} unsure" if guesses['unsure'] else "")
+                 + f"   → {verdict}")
+    elif guesses["unsure"]:
+        L.append(f"[bold]2) Identification:[/bold] all {guesses['unsure']} unsure.")
     L.append("")
     L.append(f"[#7C5CFF]{FRONTIER_NAME}[/#7C5CFF]")
     L.append(f"    ~{aF['t']/n:4.1f}s/round    total cost [bold]${aF['cost']:.4f}[/bold]")
