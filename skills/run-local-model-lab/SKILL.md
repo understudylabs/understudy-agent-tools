@@ -1,6 +1,6 @@
 ---
 name: run-local-model-lab
-description: Use when a developer wants to run a local or workstation-hosted model (e.g. a Gemma 4 variant via llama.cpp/MLX) against an existing Understudy workload/eval before spending on hosted providers or routing remote traffic — to inventory hardware, pick a model tier, measure quality/latency/cost locally, compare against remote, and produce a route decision (ship local, local-as-router, hybrid, or remote).
+description: Use when a developer wants to run a local model on Apple Silicon via MLX (e.g. a Gemma or Nemotron variant served by mlx_lm.server) against an existing Understudy workload/eval before spending on hosted providers or routing remote traffic — to inventory hardware, pick a model tier, measure quality/latency/cost locally, compare against remote, and produce a route decision (ship local, local-as-router, hybrid, or remote). For a live side-by-side of two local models, see mlx-arena.
 metadata:
   understudy:
     mode: interactive
@@ -15,6 +15,13 @@ is good enough before spending on hosted providers or routing remote traffic.
 Local inference is $0, private, and the only legal path under ZDR / SOC2 /
 local-only constraints — so it is the cheapest rung of the ladder. Same-family
 models (e.g. local Gemma 4 → remote Gemma 4 31B via the gateway) graduate cleanly.
+
+**Apple Silicon + MLX only.** On Macs, MLX is the native local path — quantized
+open weights against unified memory at the best tokens/sec, no GPU drivers, no
+build step. This skill standardizes on **`mlx_lm.server`** (an OpenAI-compatible
+endpoint, one model per port); it does not use Ollama or llama.cpp. To compare
+two local models live side by side, use
+[`../mlx-arena/SKILL.md`](../mlx-arena/SKILL.md).
 
 This skill measures and recommends; it does not download weights or change
 production routing on its own.
@@ -43,10 +50,12 @@ route for compliance. For pure remote inference/routing use
 
 ## Flow
 
-1. **Inventory hardware + runtime.** Detect OS/chip (Apple Silicon vs CUDA),
-   RAM, and VRAM/unified memory; check installed runtimes (Ollama, llama.cpp, LM
-   Studio, vLLM, Transformers, MLX). Recommend a runtime for the platform. Do not
-   download anything yet. Surface what you found.
+1. **Inventory hardware + runtime.** Confirm Apple Silicon (M-series) and the
+   unified memory / free disk available. Set up the MLX runtime once with `uv`:
+   `uv venv .understudy/venvs/mlx && uv pip install --python
+   .understudy/venvs/mlx/bin/python 'mlx-lm>=0.31' 'huggingface_hub[cli]>=0.27'`.
+   Do not download weights yet. Surface what you found. (Not on Apple Silicon?
+   This skill does not apply — local serving here is MLX-only.)
 2. **Pick a candidate tier** (candidate chooser + hardware-fit guidance in [`reference.md`](reference.md)):
    - Tiny smoke — E2B / E4B class (fast, on-device; routing/triage/easy cases).
    - Real local eval — 12B class if hardware permits.
@@ -55,12 +64,13 @@ route for compliance. For pure remote inference/routing use
      `-assistant` drafter** (a latency optimization, not a quality change).
 3. **Freeze the workload contract.** Reuse the same eval rows, prompt, tool
    stubs, and scoring as the incumbent (the `capture-evidence` harness/metric/
-   splits). Serve the local model behind an **OpenAI-compatible endpoint** (e.g.
-   llama.cpp `llama-server` or MLX `mlx_lm.server` at `http://localhost:8080/v1`)
-   and run the existing loop by pointing
-   `base_url` at it — no harness rewrite. Write artifacts to
-   `.understudy/local-model-lab/`, recording: model id, quantization, runtime,
-   hardware, context length, latency, tokens/sec, and score.
+   splits). Serve the local model behind MLX's **OpenAI-compatible endpoint**
+   (`mlx_lm.server --model <mlx-community/repo> --port 8080`, serving
+   `http://localhost:8080/v1`) and run the existing loop by pointing
+   `base_url` at it — no harness rewrite. Add `--trust-remote-code` for custom
+   architectures (e.g. Nemotron-H). Write artifacts to
+   `.understudy/local-model-lab/`, recording: model id, quantization, runtime
+   (mlx_lm version), hardware, context length, latency, tokens/sec, and score.
 4. **Compare against remote.** Score the local candidate vs the remote route
    (gateway / Lilac / frontier) on the objective:
    - Local wins if it is *good enough* and cheaper / faster / private.

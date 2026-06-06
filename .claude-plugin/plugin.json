@@ -6,6 +6,5 @@
     "name": "Understudy Labs"
   },
   "license": "MIT",
-  "keywords": ["understudy", "llm", "evals", "optimization", "gepa", "routing", "traces", "cost", "latency"],
-  "skills": "skills/"
+  "keywords": ["understudy", "llm", "evals", "optimization", "gepa", "routing", "traces", "cost", "latency"]
 }
