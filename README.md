@@ -58,10 +58,10 @@ with `UNDERSTUDY_TELEMETRY=0`.
 
 The skills in [`skills/`](skills/) ship as a Claude Code plugin, declared in
 [`.claude-plugin/`](.claude-plugin/) (`plugin.json` + `marketplace.json`).
-Installing it registers all nine invocable skills (`understudy`,
-`capture-evidence`, `use-understudy-gateway`, `run-local-model-lab`,
-`optimize-workload`, `optimize-api-workflow`, `optimize-agentic-search`,
-`prepare-verifier-handoff`, `install-plugin`).
+Installing it registers all eleven invocable skills (`understudy`, `onboard`,
+`capture-evidence`, `use-understudy-gateway`, `manage-local-models`,
+`run-local-model-lab`, `optimize-workload`, `optimize-api-workflow`,
+`optimize-agentic-search`, `prepare-verifier-handoff`, `install-plugin`).
 
 From a clone of this repo:
 
@@ -75,6 +75,17 @@ restart required**. The equivalent interactive flow is `/plugin marketplace add
 <path>` then `/plugin install understudy@understudy-skills`. The
 [`install-plugin`](skills/install-plugin/SKILL.md) skill automates this and
 reports whether the plugin is already installed.
+
+Installing as a plugin is the recommended way to use Understudy: the skills are
+what let a coding agent explain what Understudy is and walk you from a trace to a
+shipped improvement. It is also fully reversible —
+
+```bash
+claude plugin uninstall understudy@understudy-skills
+claude plugin marketplace remove understudy-skills
+```
+
+— and nothing outside Claude Code's plugin registry is touched.
 
 ## First Commands
 
@@ -148,9 +159,12 @@ Current examples:
 `skills/understudy/SKILL.md` is the public entrypoint. It routes to exactly one
 capability worker:
 
+- `skills/onboard/SKILL.md` (first-run: profiles the machine + user, backgrounds a small model)
 - `skills/capture-evidence/SKILL.md`
 - `skills/optimize-workload/SKILL.md`
 - `skills/use-understudy-gateway/SKILL.md`
+- `skills/manage-local-models/SKILL.md` (acquire, cache, and explain local open-weight models)
+- `skills/run-local-model-lab/SKILL.md`
 - `skills/prepare-verifier-handoff/SKILL.md`
 
 Everything else stays outside the discovered surface until real usage proves it

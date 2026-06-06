@@ -31,7 +31,7 @@ Descriptions are activation-only. Keep under 512 characters.
 
 ```yaml
 ---
-name: understudy-<capability>
+name: <capability>   # must match the skill's directory name (validated)
 description: Use when...
 metadata:
   understudy:

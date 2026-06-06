@@ -80,14 +80,25 @@ The public workflow now lives in the MVP skill tree:
 
 ```text
 skills/understudy/SKILL.md
+skills/onboard/SKILL.md
 skills/capture-evidence/SKILL.md
 skills/optimize-workload/SKILL.md
 skills/use-understudy-gateway/SKILL.md
+skills/manage-local-models/SKILL.md
+skills/run-local-model-lab/SKILL.md
 skills/prepare-verifier-handoff/SKILL.md
 ```
 
 Agents should use those skills to inspect local artifacts and guide users, but
 they should not claim that removed Python commands still exist.
+
+`onboard` is the engaging first-run experience (machine + user profiling,
+interview, durable `~/.understudy/profile.json`); it backgrounds a small
+open-model download per the engagement doctrine in
+`docs/engagement-and-pacing.md` and hands off to `understudy`.
+`manage-local-models` acquires, caches, and explains local open-weight models
+(Gemma 4, Nemotron 3) — distinct from `run-local-model-lab`, which evaluates a
+local model against a frozen workload.
 
 `prepare-verifier-handoff` is a future-release stub, not an executable CLI
 surface. It helps agents recognize workloads that need stateful RL

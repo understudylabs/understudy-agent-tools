@@ -61,6 +61,27 @@ Show partial findings early ("found 3 LLM call sites"; "app uses LiteLLM, so
 gateway insertion is low-risk"; "no evals — I'll build a small harness first";
 "stated ZDR constraint blocks hosted upload unless approved").
 
+## Engagement & pacing
+
+Keep the user oriented and engaged across the loop's slow steps. Full doctrine in
+[`../../docs/engagement-and-pacing.md`](../../docs/engagement-and-pacing.md); the
+rules:
+
+- **Estimate before you start.** Say how long a step takes and what it costs
+  before running it (e.g. "100-task baseline ≈ 15–20 min, ~$31"). Measure a small
+  sample first if you don't know the rate.
+- **Background the slow thing — first.** Downloads, baselines, and sweeps run in
+  the background, started *before* the interactive part so they finish during it.
+- **Fill the wait.** While a long run goes, cost-model the candidate models at
+  the user's real volume and pull their benchmarks so the comparison is ready the
+  moment scores land.
+- **Plan up front; show where they are.** Open with a concrete plan; each turn,
+  state the loop stage (capture → baseline → optimize/compare → validate →
+  decide), re-derived from artifacts on disk.
+- **Meet them where they are.** Read `~/.understudy/profile.json` and set
+  vocabulary, coaching depth, and opinion strength to match. No profile yet → run
+  [`../onboard/SKILL.md`](../onboard/SKILL.md) first.
+
 ## Inspect before you ask
 
 Answer from the repo before asking the developer. Read package files, provider/
@@ -88,6 +109,10 @@ and worked examples.
 
 Identify the developer's current stage and load exactly one:
 
+- **First run / new user / no profile yet** — the developer is new, just
+  installed the plugin, or asks "where do I start?" and `~/.understudy/profile.json`
+  is missing → [`../onboard/SKILL.md`](../onboard/SKILL.md) (backgrounds a small
+  model, profiles the machine, interviews, writes the profile).
 - **Codebase / evidence not yet pinned down** — LLM call sites, current model/
   harness, traces, metric, splits, or incumbent baseline are missing, ambiguous,
   or stale → [`../capture-evidence/SKILL.md`](../capture-evidence/SKILL.md)
@@ -96,6 +121,10 @@ Identify the developer's current stage and load exactly one:
   gateway trace capture, project/key management, model A/B via route traffic %,
   `understudy run`, or registering an improved route →
   [`../use-understudy-gateway/SKILL.md`](../use-understudy-gateway/SKILL.md).
+- **Acquire / cache / organize local models** — download a model, see what's
+  already cached, free up model disk, pick which Gemma/Nemotron to pull, or
+  explain how open weights work →
+  [`../manage-local-models/SKILL.md`](../manage-local-models/SKILL.md).
 - **Local model experiment / local-only route** — evaluate a local or
   workstation-hosted model through the same frozen workload/eval, choose a
   runtime, compare local vs remote, or satisfy ZDR / no-upload constraints →
