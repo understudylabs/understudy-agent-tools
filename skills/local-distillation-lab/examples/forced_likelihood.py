@@ -12,15 +12,28 @@ Validation (run as __main__): full-pass gather == incremental teacher-forced
 logp (proves no off-by-one), then prints d_t / top-2 gap / G_spike.
 """
 from __future__ import annotations
-import sys, time
-from pathlib import Path
+import math, sys, time
 import mlx.core as mx
 import mlx.nn as nn
 from mlx_lm import load
 
-# import the real first-party reward
-sys.path.insert(0, str(Path(__file__).parent / "src"))
-from understudy_agent.pedagogical_reward import g_spike, SpikeRewardConfig, spike_intensity
+class SpikeRewardConfig:
+    """Small standalone spike proxy for this public example."""
+
+    def __init__(self, gamma: float = -4.0, kappa: float = 1.0):
+        self.gamma = gamma
+        self.kappa = kappa
+
+
+def spike_intensity(logps: list[float], cfg: SpikeRewardConfig) -> float:
+    if not logps:
+        return 0.0
+    weights = [1.0 / (1.0 + math.exp(-cfg.kappa * (lp - cfg.gamma))) for lp in logps]
+    return 1.0 - (sum(weights) / len(weights))
+
+
+def g_spike(logps: list[float], cfg: SpikeRewardConfig) -> float:
+    return max(0.0, 1.0 - spike_intensity(logps, cfg))
 
 
 def forced_token_logprobs(model, prompt_ids: list[int], completion_ids: list[int]) -> list[dict]:
