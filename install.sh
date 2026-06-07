@@ -69,6 +69,9 @@ Environment overrides:
   UNDERSTUDY_INSTALL_LOG_DIR   install logs, default $UNDERSTUDY_LAB/logs
   UNDERSTUDY_INSTALLER_COMMIT  optional script commit label when caller knows it
   UNDERSTUDY_INSTALL_PACKAGE  optional npm package spec override
+  UNDERSTUDY_DEBUG            set to 1 for arena action logs and verbose launch metadata
+  UNDERSTUDY_WINDOW_HOLD      set to 1 to keep spawned terminal windows open after exit
+  UNDERSTUDY_TERMINAL_APP     auto|iterm|ghostty|terminal, default auto from current terminal
   UNDERSTUDY_FRONTIER_KEY_MODE ask|byo|zdr|skip
   UNDERSTUDY_FRONTIER_ENV_FILE local .env path for BYO frontier keys
   UNDERSTUDY_ZDR_FRONTIER_MODEL model id for Understudy ZDR fallback, default gpt-5.5
@@ -581,6 +584,8 @@ if should_run_step 4; then
   section "Step 4/5: meet the local Understudy."
   say "A new Terminal window will show the model loading locally so you can see it is yours, not a hosted frontier call."
   say "If an agent launched this, follow the same session with: tmux attach -t ${SESSION:-mlx-arena}-first"
+  say "Window diagnostics write to: $LAB/.understudy/local-model-lab/arena/logs/window-launch-*.log"
+  say "If the window flashes closed, rerun with UNDERSTUDY_DEBUG=1 UNDERSTUDY_WINDOW_HOLD=1 or run: LAB=\"$LAB\" \"$ARENA\" diagnose"
   if [ "$NO_WINDOW" = "1" ]; then
     LAB="$LAB" MLX_PYTHON="$LAB/.understudy/venvs/mlx/bin/python" \
       FIRST_REPO="$MODEL_DIR" FIRST_LOADER=mlx_vlm "$ARENA" first
@@ -604,6 +609,7 @@ if [ "$NO_GAUNTLET" = "0" ]; then
       say "Frontier mode: Understudy ZDR gateway route ($ZDR_FRONTIER_MODEL). No local provider key is read for this duel."
     fi
     say "The shared tmux session is ${SESSION:-mlx-arena}-play; the agent can send prompts and you can watch or take over."
+    say "Window diagnostics write to: $LAB/.understudy/local-model-lab/arena/logs/window-launch-*.log"
     say "After the stock questions, point Understudy at a dataset or codebase."
     say "Then use the skills to generate task-specific evals and climb: better prompts, GEPA/RLM, larger Gemma/Nemotron, or remote training."
     confirm "Launch the remote frontier comparison now?" || {

@@ -179,15 +179,24 @@ with `UNDERSTUDY_CLEANUP_PREFIXES="mlx-arena mlx-e2e"` or
 When iTerm/Ghostty/Terminal opens and immediately exits, rerun in debug mode:
 
 ```bash
-UNDERSTUDY_DEBUG=1 LAB=~/.understudy/agent-tools \
+UNDERSTUDY_DEBUG=1 UNDERSTUDY_WINDOW_HOLD=1 LAB=~/.understudy/agent-tools \
   skills/mlx-arena/arena.sh first-window
 ```
 
 Debug mode writes an action trace to
 `~/.understudy/agent-tools/.understudy/local-model-lab/arena/logs/actions.log`.
-Every launched terminal command also writes a
-`window-YYYYMMDDTHHMMSSZ.log` in the same directory and keeps the terminal open
-on command failure.
+Every launched terminal command also writes two files in the same directory:
+`window-launch-YYYYMMDDTHHMMSSZ.log` from the parent process before iTerm opens,
+and `window-YYYYMMDDTHHMMSSZ.log` from inside the spawned terminal. The launch
+log records cwd, LAB, tmux sessions, listeners, AppleScript output, and a
+redacted command fingerprint. `UNDERSTUDY_WINDOW_HOLD=1` keeps the terminal open
+even when the command exits with status 0.
+
+For a quick post-failure snapshot:
+
+```bash
+LAB=~/.understudy/agent-tools skills/mlx-arena/arena.sh diagnose
+```
 
 ## Blind-vote mode — the Efficient-Intelligence game
 

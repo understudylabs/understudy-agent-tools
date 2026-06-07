@@ -20,6 +20,7 @@
 #   status        show server health + tmux session state
 #   down          tear everything down (servers + session)
 #   cleanup       remove stale Understudy tmux sessions and MLX listeners
+#   diagnose      print log locations + recent launcher/tmux/listener state
 #   attach        attach your terminal to the arena (interactive)
 #
 # Config via env (defaults target this repo's local MLX venv layout):
@@ -31,6 +32,7 @@
 #   SESSION      tmux session name               (default: mlx-arena)
 #   SYS_PROMPT   system prompt for both Pi panes
 #   UNDERSTUDY_DEBUG=1 writes $LAB/.understudy/local-model-lab/arena/logs/actions.log
+#   UNDERSTUDY_WINDOW_HOLD=1 keeps launched terminal windows open after command exit
 set -euo pipefail
 
 LAB="${LAB:-${UNDERSTUDY_LAB:-$HOME/.understudy/agent-tools}}"
@@ -44,6 +46,7 @@ SYS_PROMPT="${SYS_PROMPT:-You are a helpful, concise assistant. Answer directly.
 UNDERSTUDY_TERMINAL_APP="${UNDERSTUDY_TERMINAL_APP:-auto}"
 UNDERSTUDY_TERMINAL_PROFILE="${UNDERSTUDY_TERMINAL_PROFILE:-}"
 UNDERSTUDY_DEBUG="${UNDERSTUDY_DEBUG:-0}"
+UNDERSTUDY_WINDOW_HOLD="${UNDERSTUDY_WINDOW_HOLD:-0}"
 UNDERSTUDY_CLEANUP_PREFIXES="${UNDERSTUDY_CLEANUP_PREFIXES:-$SESSION mlx-arena}"
 
 # Two corners of the arena. Defaults: verified Gemma 4 E2B via mlx-vlm vs
@@ -76,15 +79,24 @@ UNDERSTUDY_CLEANUP_PORTS="${UNDERSTUDY_CLEANUP_PORTS:-$LEFT_PORT $RIGHT_PORT $FI
 mkdir -p "$LOGS"
 
 _now_utc() { date -u +"%Y-%m-%dT%H:%M:%SZ"; }
+_truthy() {
+  case "${1:-}" in
+    1|true|TRUE|yes|YES|on|ON) return 0 ;;
+    *) return 1 ;;
+  esac
+}
 _debug_log() {
-  [ "$UNDERSTUDY_DEBUG" = "1" ] || [ "$UNDERSTUDY_DEBUG" = "true" ] || return 0
+  _truthy "$UNDERSTUDY_DEBUG" || return 0
   mkdir -p "$LOGS"
   printf '%s %s\n' "$(_now_utc)" "$*" >>"$LOGS/actions.log"
 }
 _debug_echo() {
   _debug_log "$*"
-  [ "$UNDERSTUDY_DEBUG" = "1" ] || [ "$UNDERSTUDY_DEBUG" = "true" ] || return 0
+  _truthy "$UNDERSTUDY_DEBUG" || return 0
   printf '  [debug] %s\n' "$*"
+}
+_cleanup_ports() {
+  printf '%s\n' $UNDERSTUDY_CLEANUP_PORTS | awk 'NF && !seen[$0]++'
 }
 
 _need() { command -v "$1" >/dev/null 2>&1 || { echo "missing dependency: $1" >&2; exit 1; }; }
@@ -377,6 +389,39 @@ cmd_cleanup() {
   echo "cleanup complete"
 }
 
+cmd_diagnose() {
+  mkdir -p "$LOGS"
+  echo "Understudy arena diagnostics"
+  echo "  LAB: $LAB"
+  echo "  STATE: $STATE"
+  echo "  LOGS: $LOGS"
+  echo "  SESSION: $SESSION"
+  echo "  terminal app: ${UNDERSTUDY_TERMINAL_APP:-auto}"
+  echo "  debug: $UNDERSTUDY_DEBUG"
+  echo "  window hold: $UNDERSTUDY_WINDOW_HOLD"
+  echo
+  echo "Recent launch logs:"
+  ls -1t "$LOGS"/window-launch-*.log 2>/dev/null | head -5 || echo "  none"
+  echo
+  echo "Recent window command logs:"
+  ls -1t "$LOGS"/window-*.log 2>/dev/null | grep -v '/window-launch-' | head -5 || echo "  none"
+  echo
+  echo "Recent install logs:"
+  ls -1t "$LAB"/logs/install-*.log 2>/dev/null | head -5 || echo "  none"
+  echo
+  echo "tmux sessions:"
+  tmux list-sessions 2>/dev/null || echo "  none"
+  echo
+  echo "Configured port listeners:"
+  for port in $(_cleanup_ports); do
+    echo "  :$port"
+    lsof -nP -iTCP:"$port" -sTCP:LISTEN 2>/dev/null || echo "    none"
+  done
+  echo
+  echo "To collect the newest launcher log:"
+  echo "  tail -120 \"\$(ls -1t \"$LOGS\"/window-launch-*.log | head -1)\""
+}
+
 _terminal_kind() {
   local requested="${UNDERSTUDY_TERMINAL_APP:-auto}"
   case "$requested" in
@@ -393,6 +438,61 @@ _terminal_kind() {
     ghostty|Ghostty) echo "ghostty" ;;
     *) echo "terminal" ;;
   esac
+}
+
+_sha256_text() {
+  if command -v shasum >/dev/null 2>&1; then
+    printf '%s' "$1" | shasum -a 256 | awk '{print $1}'
+  elif command -v sha256sum >/dev/null 2>&1; then
+    printf '%s' "$1" | sha256sum | awk '{print $1}'
+  else
+    printf 'unavailable'
+  fi
+}
+
+_redact_command() {
+  printf '%s' "$1" | sed -E \
+    -e 's/(OPENAI_API_KEY|ANTHROPIC_API_KEY|ANTHROPIC_LOCAL_KEY|FRONTIER_API_KEY|AI_GATEWAY_API_KEY)=([^ ;]+)/\1=<redacted>/g' \
+    -e 's/(Authorization: Bearer )[A-Za-z0-9._~+\/=-]+/\1<redacted>/g' \
+    -e 's/(api[_-]?key=)[A-Za-z0-9._~+\/=-]+/\1<redacted>/Ig'
+}
+
+_log_window_launch() { # launch-log terminal-kind command window-log
+  local launch_log="$1" kind="$2" command_text="$3" window_log="$4"
+  mkdir -p "$LOGS"
+  {
+    printf 'timestamp=%s\n' "$(_now_utc)"
+    printf 'terminal_kind=%s\n' "$kind"
+    printf 'requested_terminal_app=%s\n' "${UNDERSTUDY_TERMINAL_APP:-auto}"
+    printf 'term_program=%s\n' "${TERM_PROGRAM:-}"
+    printf 'shell=%s\n' "${SHELL:-}"
+    printf 'cwd=%s\n' "$(pwd)"
+    printf 'script=%s\n' "$0"
+    printf 'lab=%s\n' "$LAB"
+    printf 'state=%s\n' "$STATE"
+    printf 'logs=%s\n' "$LOGS"
+    printf 'session=%s\n' "$SESSION"
+    printf 'mlx_python=%s\n' "$MLX_PYTHON"
+    printf 'model_home=%s\n' "$UNDERSTUDY_MODEL_HOME"
+    printf 'window_log=%s\n' "$window_log"
+    printf 'debug=%s\n' "$UNDERSTUDY_DEBUG"
+    printf 'window_hold=%s\n' "$UNDERSTUDY_WINDOW_HOLD"
+    printf 'command_sha256=%s\n' "$(_sha256_text "$command_text")"
+    printf 'command_redacted=%s\n' "$(_redact_command "$command_text")"
+    printf 'has_OPENAI_API_KEY=%s\n' "$([ -n "${OPENAI_API_KEY:-}" ] && echo yes || echo no)"
+    printf 'has_ANTHROPIC_API_KEY=%s\n' "$([ -n "${ANTHROPIC_API_KEY:-}" ] && echo yes || echo no)"
+    printf 'has_ANTHROPIC_LOCAL_KEY=%s\n' "$([ -n "${ANTHROPIC_LOCAL_KEY:-}" ] && echo yes || echo no)"
+    printf 'has_FRONTIER_API_KEY=%s\n' "$([ -n "${FRONTIER_API_KEY:-}" ] && echo yes || echo no)"
+    printf 'has_AI_GATEWAY_API_KEY=%s\n' "$([ -n "${AI_GATEWAY_API_KEY:-}" ] && echo yes || echo no)"
+    printf '\n[tmux sessions]\n'
+    tmux list-sessions 2>&1 || true
+    printf '\n[port listeners]\n'
+    for port in $(_cleanup_ports); do
+      printf 'port %s: ' "$port"
+      lsof -nP -iTCP:"$port" -sTCP:LISTEN 2>&1 || true
+    done
+    printf '\n[apple script output]\n'
+  } >"$launch_log"
 }
 
 _open_terminal_attach() { # tmux-session-name
@@ -428,69 +528,100 @@ _write_window_env_file() {
     printf 'export FRONTIER_FALLBACK=%q\n' "${FRONTIER_FALLBACK:-}"
     printf 'export FRONTIER_REASONING_EFFORT=%q\n' "${FRONTIER_REASONING_EFFORT:-}"
     printf 'export FRONTIER_MAX_COMPLETION_TOKENS=%q\n' "${FRONTIER_MAX_COMPLETION_TOKENS:-}"
+    printf 'export UNDERSTUDY_DEBUG=%q\n' "$UNDERSTUDY_DEBUG"
+    printf 'export UNDERSTUDY_WINDOW_HOLD=%q\n' "$UNDERSTUDY_WINDOW_HOLD"
+    printf 'export UNDERSTUDY_TERMINAL_APP=%q\n' "$UNDERSTUDY_TERMINAL_APP"
+    printf 'export UNDERSTUDY_TERMINAL_PROFILE=%q\n' "$UNDERSTUDY_TERMINAL_PROFILE"
   } >"$env_file"
   chmod 600 "$env_file"
   printf '%s\n' "$env_file"
 }
 
 _open_terminal_run() { # command
-  local command_text="$1" kind log_path quoted_command quoted_log quoted_log_line wrapped_command
+  local command_text="$1" kind stamp log_path launch_log quoted_command quoted_log quoted_log_line quoted_started_line quoted_hold quoted_debug wrapped_command
   if [[ "$(uname -s)" != "Darwin" ]]; then
     echo "  [window] new terminal windows are only automated on macOS; run: $command_text"
     return 0
   fi
 
   mkdir -p "$LOGS"
-  log_path="$LOGS/window-$(date -u +%Y%m%dT%H%M%SZ).log"
+  stamp="$(date -u +%Y%m%dT%H%M%SZ)"
+  log_path="$LOGS/window-$stamp.log"
+  launch_log="$LOGS/window-launch-$stamp.log"
   quoted_command="$(printf '%q' "$command_text")"
   quoted_log="$(printf '%q' "$log_path")"
   quoted_log_line="$(printf '%q' "[understudy] command: $command_text")"
-  wrapped_command="echo '[understudy] window command log: $log_path'; printf '%s\n' $quoted_log_line >>$quoted_log; eval $quoted_command 2>&1 | tee -a $quoted_log; status=\${pipestatus[1]:-\$?}; if [ \"\$status\" -ne 0 ]; then echo; echo '[understudy] window command failed with status' \"\$status\"; echo '[understudy] log:' $quoted_log; echo '[understudy] press Return to close this window'; read _; fi; exit \"\$status\""
+  quoted_started_line="$(printf '%q' "[understudy] started: $(_now_utc)")"
+  quoted_hold="$(printf '%q' "$UNDERSTUDY_WINDOW_HOLD")"
+  quoted_debug="$(printf '%q' "$UNDERSTUDY_DEBUG")"
+  wrapped_command="echo '[understudy] window command log: $log_path'; { printf '%s\n' $quoted_started_line $quoted_log_line; printf '[understudy] cwd: %s\n' \"\$PWD\"; printf '[understudy] shell: %s\n' \"\${SHELL:-}\"; } >>$quoted_log; eval $quoted_command 2>&1 | tee -a $quoted_log; status=\${pipestatus[1]:-\$?}; hold=$quoted_hold; debug=$quoted_debug; if [ \"\$status\" -ne 0 ] || [ \"\$hold\" = \"1\" ] || [ \"\$hold\" = \"true\" ] || [ \"\$debug\" = \"1\" ] || [ \"\$debug\" = \"true\" ]; then echo; if [ \"\$status\" -ne 0 ]; then echo '[understudy] window command failed with status' \"\$status\"; else echo '[understudy] window command exited with status 0'; fi; echo '[understudy] log:' $quoted_log; echo '[understudy] press Return to close this window'; read _; fi; exit \"\$status\""
   echo "  [window] log: $log_path"
+  echo "  [window] launch log: $launch_log"
 
   kind="$(_terminal_kind)"
-  _debug_echo "window launch kind=$kind app=${UNDERSTUDY_TERMINAL_APP:-auto} log=$log_path command=$command_text"
+  _log_window_launch "$launch_log" "$kind" "$command_text" "$log_path"
+  _debug_echo "window launch kind=$kind app=${UNDERSTUDY_TERMINAL_APP:-auto} log=$log_path launch_log=$launch_log command_sha256=$(_sha256_text "$command_text")"
   case "$kind" in
     ghostty)
       if command -v ghostty >/dev/null 2>&1; then
-        nohup ghostty -e /bin/zsh -lc "$wrapped_command" >/dev/null 2>&1 &
+        {
+          printf 'launch_method=ghostty-cli\n'
+          nohup ghostty -e /bin/zsh -lc "$wrapped_command" >/dev/null 2>&1 &
+          printf 'launch_status=0\n'
+        } >>"$launch_log" 2>&1
         _debug_echo "window opened kind=ghostty mode=cli"
         echo "  [window] opened Ghostty"
         return 0
       fi
       if open -Ra Ghostty 2>/dev/null; then
-        open -na Ghostty --args -e /bin/zsh -lc "$wrapped_command"
-        _debug_echo "window opened kind=ghostty mode=open"
-        echo "  [window] opened Ghostty"
-        return 0
+        printf 'launch_method=ghostty-open\n' >>"$launch_log"
+        if open -na Ghostty --args -e /bin/zsh -lc "$wrapped_command" >>"$launch_log" 2>&1; then
+          printf 'launch_status=0\n' >>"$launch_log"
+          _debug_echo "window opened kind=ghostty mode=open"
+          echo "  [window] opened Ghostty"
+          return 0
+        else
+          printf 'launch_status=%s\n' "$?" >>"$launch_log"
+          _debug_echo "window fallback reason=ghostty-open-failed"
+          echo "  [window] Ghostty launch failed; falling back to Terminal.app"
+        fi
       fi
       _debug_echo "window fallback reason=ghostty-not-found"
       echo "  [window] Ghostty not found; falling back to Terminal.app"
       ;;
     iterm)
       if command -v osascript >/dev/null 2>&1; then
-        if TERMINAL_COMMAND="$wrapped_command" osascript <<'APPLESCRIPT' >/dev/null 2>&1
+        local status
+        printf 'launch_method=osascript-iterm2\n' >>"$launch_log"
+        if TERMINAL_COMMAND="$wrapped_command" osascript >>"$launch_log" 2>&1 <<'APPLESCRIPT'
 tell application "iTerm2"
   activate
   create window with default profile command (system attribute "TERMINAL_COMMAND")
 end tell
 APPLESCRIPT
         then
+          printf 'launch_status=0\n' >>"$launch_log"
           _debug_echo "window opened kind=iterm app=iTerm2"
           echo "  [window] opened iTerm2"
           return 0
         fi
-        if TERMINAL_COMMAND="$wrapped_command" osascript <<'APPLESCRIPT' >/dev/null 2>&1
+        status="$?"
+        printf 'launch_status=%s\n' "$status" >>"$launch_log"
+        printf '\nlaunch_method=osascript-iterm\n' >>"$launch_log"
+        if TERMINAL_COMMAND="$wrapped_command" osascript >>"$launch_log" 2>&1 <<'APPLESCRIPT'
 tell application "iTerm"
   activate
   create window with default profile command (system attribute "TERMINAL_COMMAND")
 end tell
 APPLESCRIPT
         then
+          printf 'launch_status=0\n' >>"$launch_log"
           _debug_echo "window opened kind=iterm app=iTerm"
           echo "  [window] opened iTerm"
           return 0
         fi
+        status="$?"
+        printf 'launch_status=%s\n' "$status" >>"$launch_log"
       fi
       _debug_echo "window fallback reason=iterm-not-found-or-applescript-failed"
       echo "  [window] iTerm not found; falling back to Terminal.app"
@@ -499,10 +630,12 @@ APPLESCRIPT
 
   command -v osascript >/dev/null 2>&1 || {
     _debug_echo "window unable reason=osascript-not-found command=$command_text"
+    printf 'launch_method=none\nlaunch_status=osascript-not-found\n' >>"$launch_log"
     echo "  [window] osascript not found; run: $command_text"
     return 0
   }
-  TERMINAL_COMMAND="$wrapped_command" UNDERSTUDY_TERMINAL_PROFILE="$UNDERSTUDY_TERMINAL_PROFILE" osascript <<'APPLESCRIPT'
+  printf 'launch_method=osascript-terminal\n' >>"$launch_log"
+  if TERMINAL_COMMAND="$wrapped_command" UNDERSTUDY_TERMINAL_PROFILE="$UNDERSTUDY_TERMINAL_PROFILE" osascript >>"$launch_log" 2>&1 <<'APPLESCRIPT'
 tell application "Terminal"
   activate
   set targetProfile to system attribute "UNDERSTUDY_TERMINAL_PROFILE"
@@ -522,8 +655,17 @@ tell application "Terminal"
   end if
 end tell
 APPLESCRIPT
-  _debug_echo "window opened kind=terminal app=Terminal.app"
-  echo "  [window] opened Terminal.app"
+  then
+    printf 'launch_status=0\n' >>"$launch_log"
+    _debug_echo "window opened kind=terminal app=Terminal.app"
+    echo "  [window] opened Terminal.app"
+  else
+    local status="$?"
+    printf 'launch_status=%s\n' "$status" >>"$launch_log"
+    _debug_echo "window failed kind=terminal app=Terminal.app status=$status"
+    echo "  [window] Terminal.app launch failed; see $launch_log"
+    return "$status"
+  fi
 }
 
 _first_loading_script() {
@@ -651,6 +793,7 @@ case "${1:-up}" in
   status) cmd_status ;;
   down) cmd_down ;;
   cleanup) shift; cmd_cleanup "$@" ;;
+  diagnose) cmd_diagnose ;;
   attach) cmd_attach ;;
-  *) echo "usage: $0 {first|first-window|play|play-window|up|ask <text>|left <text>|right <text>|capture|logs|status|down|cleanup [--dry-run|--force]|attach}" >&2; exit 2 ;;
+  *) echo "usage: $0 {first|first-window|play|play-window|up|ask <text>|left <text>|right <text>|capture|logs|status|down|cleanup [--dry-run|--force]|diagnose|attach}" >&2; exit 2 ;;
 esac
