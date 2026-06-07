@@ -19,6 +19,7 @@
 #   logs          tail both MLX server logs
 #   status        show server health + tmux session state
 #   down          tear everything down (servers + session)
+#   cleanup       remove stale Understudy tmux sessions and MLX listeners
 #   attach        attach your terminal to the arena (interactive)
 #
 # Config via env (defaults target this repo's local MLX venv layout):
@@ -28,6 +29,7 @@
 #   RIGHT_LABEL/RIGHT_REPO/RIGHT_PORT/RIGHT_PROVIDER
 #   SESSION      tmux session name               (default: mlx-arena)
 #   SYS_PROMPT   system prompt for both Pi panes
+#   UNDERSTUDY_DEBUG=1 writes $LAB/.understudy/local-model-lab/arena/logs/actions.log
 set -euo pipefail
 
 LAB="${LAB:-$PWD}"
@@ -39,6 +41,8 @@ LOGS="$STATE/logs"
 SYS_PROMPT="${SYS_PROMPT:-You are a helpful, concise assistant. Answer directly.}"
 UNDERSTUDY_TERMINAL_APP="${UNDERSTUDY_TERMINAL_APP:-auto}"
 UNDERSTUDY_TERMINAL_PROFILE="${UNDERSTUDY_TERMINAL_PROFILE:-}"
+UNDERSTUDY_DEBUG="${UNDERSTUDY_DEBUG:-0}"
+UNDERSTUDY_CLEANUP_PREFIXES="${UNDERSTUDY_CLEANUP_PREFIXES:-$SESSION mlx-arena}"
 
 # Two corners of the arena. Defaults: verified Gemma 4 E2B via mlx-vlm vs
 # smallest NVIDIA (Nemotron), MLX 4-bit. Stock mlx-community Gemma 4 E2B repos
@@ -65,8 +69,21 @@ FIRST_PORT="${FIRST_PORT:-8081}"
 FIRST_PROVIDER="${FIRST_PROVIDER:-mlx-gemma4-e2b}"
 FIRST_NAME="${FIRST_NAME:-Gemma 4 E2B 4-bit}"
 FIRST_LOADER="${FIRST_LOADER:-mlx_vlm}"
+UNDERSTUDY_CLEANUP_PORTS="${UNDERSTUDY_CLEANUP_PORTS:-$LEFT_PORT $RIGHT_PORT $FIRST_PORT}"
 
 mkdir -p "$LOGS"
+
+_now_utc() { date -u +"%Y-%m-%dT%H:%M:%SZ"; }
+_debug_log() {
+  [ "$UNDERSTUDY_DEBUG" = "1" ] || [ "$UNDERSTUDY_DEBUG" = "true" ] || return 0
+  mkdir -p "$LOGS"
+  printf '%s %s\n' "$(_now_utc)" "$*" >>"$LOGS/actions.log"
+}
+_debug_echo() {
+  _debug_log "$*"
+  [ "$UNDERSTUDY_DEBUG" = "1" ] || [ "$UNDERSTUDY_DEBUG" = "true" ] || return 0
+  printf '  [debug] %s\n' "$*"
+}
 
 _need() { command -v "$1" >/dev/null 2>&1 || { echo "missing dependency: $1" >&2; exit 1; }; }
 _need_pi() {
@@ -109,6 +126,7 @@ _serve() { # label repo port loader
 _serve_with_loader() { # label repo port loader
   local label="$1" repo="$2" port="$3" loader="$4"
   if curl -s -o /dev/null -w '%{http_code}' "http://127.0.0.1:$port/v1/models" 2>/dev/null | grep -q 200; then
+    _debug_echo "serve skip label=$label port=$port reason=already-healthy"
     echo "  [$label] already serving on :$port"; return 0
   fi
   echo "  [$label] starting $loader $repo on :$port"
@@ -116,6 +134,7 @@ _serve_with_loader() { # label repo port loader
   local command_text log_path
   command_text="$(_server_command "$loader" "$repo" "$port")"
   log_path="$LOGS/srv-$label.log"
+  _debug_echo "serve start label=$label loader=$loader repo=$repo port=$port session=$server_session log=$log_path"
   tmux kill-session -t "$server_session" 2>/dev/null || true
   tmux new-session -d -s "$server_session" -n server \
     "mkdir -p $(printf %q "$LOGS"); exec $command_text >$(printf %q "$log_path") 2>&1"
@@ -124,11 +143,13 @@ _serve_with_loader() { # label repo port loader
 
 _wait_health() { # port label
   local port="$1" label="$2" i
+  _debug_echo "health wait label=$label port=$port"
   for i in $(seq 1 120); do
     [ "$(curl -s -o /dev/null -w '%{http_code}' "http://127.0.0.1:$port/v1/models" 2>/dev/null)" = "200" ] \
-      && { echo "  [$label] healthy on :$port (${i}s)"; return 0; }
+      && { _debug_echo "health ok label=$label port=$port seconds=$i"; echo "  [$label] healthy on :$port (${i}s)"; return 0; }
     sleep 1
   done
+  _debug_echo "health failed label=$label port=$port log=$LOGS/srv-$label.log"
   echo "  [$label] FAILED to become healthy — see $LOGS/srv-$label.log" >&2; return 1
 }
 
@@ -265,15 +286,94 @@ cmd_status() {
 }
 
 cmd_down() {
+  _debug_echo "down session=$SESSION"
   tmux kill-session -t "$SESSION" 2>/dev/null || true
+  tmux kill-session -t "${SESSION}-first" 2>/dev/null || true
+  tmux kill-session -t "${SESSION}-play" 2>/dev/null || true
   for f in "$STATE"/srv-*.session; do
-    [ -f "$f" ] && tmux kill-session -t "$(cat "$f")" 2>/dev/null || true
+    [ -f "$f" ] && { _debug_echo "down kill recorded server session=$(cat "$f") file=$f"; tmux kill-session -t "$(cat "$f")" 2>/dev/null || true; }
   done
   for f in "$STATE"/srv-*.pid; do [ -f "$f" ] && kill "$(cat "$f")" 2>/dev/null || true; done
   rm -f "$STATE"/srv-*.pid "$STATE"/srv-*.session
   echo "arena down (servers + session stopped)"
 }
 cmd_attach() { tmux attach -t "$SESSION"; }
+
+_cleanup_kill_tmux_prefixes() {
+  local dry_run="$1" name prefix killed=0
+  command -v tmux >/dev/null 2>&1 || return 0
+  while IFS= read -r name; do
+    [ -n "$name" ] || continue
+    for prefix in $UNDERSTUDY_CLEANUP_PREFIXES; do
+      case "$name" in
+        "$prefix"|"$prefix"-*)
+          _debug_echo "cleanup tmux session=$name prefix=$prefix dry_run=$dry_run"
+          if [ "$dry_run" = "1" ]; then
+            echo "  [cleanup] would kill tmux session $name"
+          else
+            tmux kill-session -t "$name" 2>/dev/null || true
+            echo "  [cleanup] killed tmux session $name"
+          fi
+          killed=$((killed + 1))
+          break
+          ;;
+      esac
+    done
+  done <<EOF
+$(tmux list-sessions -F '#S' 2>/dev/null || true)
+EOF
+  [ "$killed" -gt 0 ] || echo "  [cleanup] no matching tmux sessions"
+}
+
+_cleanup_kill_ports() {
+  local dry_run="$1" port pids pid command killed=0
+  command -v lsof >/dev/null 2>&1 || { echo "  [cleanup] lsof not found; skipping port cleanup"; return 0; }
+  for port in $UNDERSTUDY_CLEANUP_PORTS; do
+    pids="$(lsof -tiTCP:"$port" -sTCP:LISTEN 2>/dev/null || true)"
+    [ -n "$pids" ] || continue
+    for pid in $pids; do
+      command="$(ps -p "$pid" -o command= 2>/dev/null || true)"
+      case "$command" in
+        *mlx_lm*|*mlx_vlm*|*mlx-vlm*|*uvicorn*)
+          _debug_echo "cleanup port=$port pid=$pid command=$command dry_run=$dry_run"
+          if [ "$dry_run" = "1" ]; then
+            echo "  [cleanup] would kill MLX listener pid=$pid port=$port"
+          else
+            kill "$pid" 2>/dev/null || true
+            echo "  [cleanup] killed MLX listener pid=$pid port=$port"
+          fi
+          killed=$((killed + 1))
+          ;;
+        *)
+          _debug_echo "cleanup skip port=$port pid=$pid command=$command reason=not-mlx"
+          echo "  [cleanup] skipping non-MLX listener pid=$pid port=$port"
+          ;;
+      esac
+    done
+  done
+  [ "$killed" -gt 0 ] || echo "  [cleanup] no MLX listeners on ports: $UNDERSTUDY_CLEANUP_PORTS"
+}
+
+cmd_cleanup() {
+  local dry_run=0
+  case "${1:-}" in
+    --dry-run|-n) dry_run=1 ;;
+    ""|--force) ;;
+    *) echo "usage: $0 cleanup [--dry-run|--force]" >&2; exit 2 ;;
+  esac
+  mkdir -p "$LOGS"
+  _debug_echo "cleanup start dry_run=$dry_run prefixes=$UNDERSTUDY_CLEANUP_PREFIXES ports=$UNDERSTUDY_CLEANUP_PORTS logs=$LOGS"
+  echo "Understudy arena cleanup"
+  echo "  logs: $LOGS"
+  echo "  prefixes: $UNDERSTUDY_CLEANUP_PREFIXES"
+  echo "  ports: $UNDERSTUDY_CLEANUP_PORTS"
+  _cleanup_kill_tmux_prefixes "$dry_run"
+  _cleanup_kill_ports "$dry_run"
+  if [ "$dry_run" = "0" ]; then
+    rm -f "$STATE"/srv-*.pid "$STATE"/srv-*.session
+  fi
+  echo "cleanup complete"
+}
 
 _terminal_kind() {
   local requested="${UNDERSTUDY_TERMINAL_APP:-auto}"
@@ -315,18 +415,22 @@ _open_terminal_run() { # command
   echo "  [window] log: $log_path"
 
   kind="$(_terminal_kind)"
+  _debug_echo "window launch kind=$kind app=${UNDERSTUDY_TERMINAL_APP:-auto} log=$log_path command=$command_text"
   case "$kind" in
     ghostty)
       if command -v ghostty >/dev/null 2>&1; then
         nohup ghostty -e /bin/zsh -lc "$wrapped_command" >/dev/null 2>&1 &
+        _debug_echo "window opened kind=ghostty mode=cli"
         echo "  [window] opened Ghostty"
         return 0
       fi
       if open -Ra Ghostty 2>/dev/null; then
         open -na Ghostty --args -e /bin/zsh -lc "$wrapped_command"
+        _debug_echo "window opened kind=ghostty mode=open"
         echo "  [window] opened Ghostty"
         return 0
       fi
+      _debug_echo "window fallback reason=ghostty-not-found"
       echo "  [window] Ghostty not found; falling back to Terminal.app"
       ;;
     iterm)
@@ -338,6 +442,7 @@ tell application "iTerm2"
 end tell
 APPLESCRIPT
         then
+          _debug_echo "window opened kind=iterm app=iTerm2"
           echo "  [window] opened iTerm2"
           return 0
         fi
@@ -348,15 +453,18 @@ tell application "iTerm"
 end tell
 APPLESCRIPT
         then
+          _debug_echo "window opened kind=iterm app=iTerm"
           echo "  [window] opened iTerm"
           return 0
         fi
       fi
+      _debug_echo "window fallback reason=iterm-not-found-or-applescript-failed"
       echo "  [window] iTerm not found; falling back to Terminal.app"
       ;;
   esac
 
   command -v osascript >/dev/null 2>&1 || {
+    _debug_echo "window unable reason=osascript-not-found command=$command_text"
     echo "  [window] osascript not found; run: $command_text"
     return 0
   }
@@ -380,6 +488,7 @@ tell application "Terminal"
   end if
 end tell
 APPLESCRIPT
+  _debug_echo "window opened kind=terminal app=Terminal.app"
   echo "  [window] opened Terminal.app"
 }
 
@@ -497,6 +606,7 @@ case "${1:-up}" in
   logs) cmd_logs ;;
   status) cmd_status ;;
   down) cmd_down ;;
+  cleanup) shift; cmd_cleanup "$@" ;;
   attach) cmd_attach ;;
-  *) echo "usage: $0 {first|first-window|play|play-window|up|ask <text>|left <text>|right <text>|capture|logs|status|down|attach}" >&2; exit 2 ;;
+  *) echo "usage: $0 {first|first-window|play|play-window|up|ask <text>|left <text>|right <text>|capture|logs|status|down|cleanup [--dry-run|--force]|attach}" >&2; exit 2 ;;
 esac

@@ -53,7 +53,9 @@ custom provider in `~/.pi/agent/models.json` (`api: openai-completions`).
 - **One model per port.** Each `mlx_lm.server` loads one model and holds it in
   unified memory. Two 4-bit ~4B models fit comfortably on 16 GB+; check free RAM
   before adding a third.
-- **Tear down when done** (`arena.sh down`) to free memory.
+- **Tear down when done** (`arena.sh down`) to free memory. If a terminal window
+  flashed and disappeared, or old generators are still listening, run
+  `arena.sh cleanup --dry-run` first and then `arena.sh cleanup --force`.
 
 ## Flow
 
@@ -159,6 +161,34 @@ skills/mlx-arena/arena.sh play
    If quality is simply too low, climb the model ladder or route remote/hybrid via
    [`../use-understudy-gateway/SKILL.md`](../use-understudy-gateway/SKILL.md).
 
+## Cleanup and Debug Mode
+
+Use cleanup before retesting a failed installer or after any crashy terminal
+handoff:
+
+```bash
+LAB=~/.understudy/agent-tools skills/mlx-arena/arena.sh cleanup --dry-run
+LAB=~/.understudy/agent-tools skills/mlx-arena/arena.sh cleanup --force
+```
+
+Cleanup kills tmux sessions matching the current `SESSION` prefix and the default
+`mlx-arena` prefix, plus MLX listeners on the configured arena ports. Override
+with `UNDERSTUDY_CLEANUP_PREFIXES="mlx-arena mlx-e2e"` or
+`UNDERSTUDY_CLEANUP_PORTS="8081 8082"` when debugging another install.
+
+When iTerm/Ghostty/Terminal opens and immediately exits, rerun in debug mode:
+
+```bash
+UNDERSTUDY_DEBUG=1 LAB=~/.understudy/agent-tools \
+  skills/mlx-arena/arena.sh first-window
+```
+
+Debug mode writes an action trace to
+`~/.understudy/agent-tools/.understudy/local-model-lab/arena/logs/actions.log`.
+Every launched terminal command also writes a
+`window-YYYYMMDDTHHMMSSZ.log` in the same directory and keeps the terminal open
+on command failure.
+
 ## Blind-vote mode — the Efficient-Intelligence game
 
 [`blind_arena.ts`](blind_arena.ts) is the interactive, blind A/B version of the
@@ -262,7 +292,7 @@ try RLM, climb models, or route hybrid/remote).
 
 ## References
 
-- [`arena.sh`](arena.sh) — the launcher/controller (`first|first-window|play|up|ask|left|right|capture|logs|status|down|attach`).
+- [`arena.sh`](arena.sh) — the launcher/controller (`first|first-window|play|up|ask|left|right|capture|logs|status|down|cleanup|attach`).
 - [`../run-local-model-lab/SKILL.md`](../run-local-model-lab/SKILL.md) — score a model on a frozen eval.
 - [`../../docs/open-model-spotlight.md`](../../docs/open-model-spotlight.md) — Gemma & Nemotron variants and hardware fit.
 - [`../manage-local-models/SKILL.md`](../manage-local-models/SKILL.md) — acquiring/curating local weights.
