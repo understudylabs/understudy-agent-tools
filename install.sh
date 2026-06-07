@@ -10,6 +10,11 @@ INSTALL_REPO_URL="${UNDERSTUDY_INSTALL_REPO_URL:-https://github.com/UnderstudyLa
 INSTALL_REF="${UNDERSTUDY_INSTALL_REF:-main}"
 INSTALL_PACKAGE="${UNDERSTUDY_INSTALL_PACKAGE:-}"
 INSTALL_SOURCE_DIR="${UNDERSTUDY_INSTALL_SOURCE_DIR:-$LAB/source/understudy-agent-tools}"
+STATE_DIR="${UNDERSTUDY_INSTALL_STATE_DIR:-$LAB/install-state}"
+INSTALLER_COMMIT="${UNDERSTUDY_INSTALLER_COMMIT:-unknown}"
+START_STEP=1
+ONLY_STEP=""
+RESUME=0
 YES=0
 NO_MODEL=0
 NO_WINDOW=0
@@ -23,13 +28,16 @@ while [ "$#" -gt 0 ]; do
     --no-window) NO_WINDOW=1 ;;
     --no-gauntlet) NO_GAUNTLET=1 ;;
     --no-claude) NO_CLAUDE=1 ;;
+    --from-step) START_STEP="${2:?missing step number}"; shift ;;
+    --only-step) ONLY_STEP="${2:?missing step number}"; shift ;;
+    --resume) RESUME=1 ;;
     --model-session-url) MODEL_SESSION_URL="${2:?missing URL}"; shift ;;
     --model-base-url) MODEL_SESSION_URL="${2:?missing URL}"; shift ;;
     --model-dir) MODEL_DIR="${2:?missing path}"; shift ;;
     --lab) LAB="${2:?missing path}"; shift ;;
     -h|--help)
       cat <<'EOF'
-Usage: install.sh [--yes] [--no-claude] [--no-model] [--no-window] [--no-gauntlet]
+Usage: install.sh [--yes] [--from-step N] [--only-step N] [--resume] [--no-claude] [--no-model] [--no-window] [--no-gauntlet]
 
 Installs the Understudy CLI + Claude skill/plugin surface, prepares Apple MLX,
 downloads the verified Gemma 4 E2B 4-bit first rung, and opens the first local
@@ -42,6 +50,9 @@ Environment overrides:
   UNDERSTUDY_INSTALL_REPO_URL public repo URL, default https://github.com/UnderstudyLabs/understudy-agent-tools.git
   UNDERSTUDY_INSTALL_REF      Git ref for public repo install, default main
   UNDERSTUDY_INSTALL_SOURCE_DIR local repo checkout, default $UNDERSTUDY_LAB/source/understudy-agent-tools
+  UNDERSTUDY_INSTALL_STATE_DIR install markers, default $UNDERSTUDY_LAB/install-state
+  UNDERSTUDY_INSTALL_LOG_DIR   install logs, default $UNDERSTUDY_LAB/logs
+  UNDERSTUDY_INSTALLER_COMMIT  optional script commit label when caller knows it
   UNDERSTUDY_INSTALL_PACKAGE  optional npm package spec override
   SESSION                     tmux session prefix, default mlx-arena
 EOF
@@ -52,11 +63,64 @@ EOF
   shift
 done
 
-say() { printf '\033[1munderstudy\033[0m %s\n' "$*"; }
+LOG_DIR="${UNDERSTUDY_INSTALL_LOG_DIR:-$LAB/logs}"
+LOG_FILE="${UNDERSTUDY_INSTALL_LOG_FILE:-$LOG_DIR/install-$(date -u +"%Y%m%dT%H%M%SZ").log}"
+mkdir -p "$LOG_DIR"
+
+log() { printf '%s %s\n' "$(date -u +"%Y-%m-%dT%H:%M:%SZ")" "$*" >>"$LOG_FILE"; }
+say() {
+  printf '\033[1munderstudy\033[0m %s\n' "$*"
+  log "$*"
+}
 section() {
   printf '\n\033[1munderstudy\033[0m %s\n' "$*"
+  log "$*"
+}
+run_logged() {
+  log "RUN $*"
+  if "$@" >>"$LOG_FILE" 2>&1; then
+    return 0
+  fi
+  local status="$?"
+  say "Command failed: $*"
+  say "See install log: $LOG_FILE"
+  tail -40 "$LOG_FILE" >&2 || true
+  return "$status"
 }
 need() { command -v "$1" >/dev/null 2>&1; }
+valid_step() {
+  case "$1" in
+    1|2|3|4|5) return 0 ;;
+    *) echo "invalid step: $1 (expected 1-5)" >&2; exit 2 ;;
+  esac
+}
+should_run_step() {
+  local step="$1"
+  if [ -n "$ONLY_STEP" ]; then
+    [ "$step" = "$ONLY_STEP" ]
+  else
+    [ "$step" -ge "$START_STEP" ]
+  fi
+}
+mark_step_done() {
+  local step="$1"
+  mkdir -p "$STATE_DIR"
+  date -u +"%Y-%m-%dT%H:%M:%SZ" >"$STATE_DIR/step-$step.done"
+  printf '%s\n' "$step" >"$STATE_DIR/last-step"
+}
+configure_resume() {
+  local last_step
+  valid_step "$START_STEP"
+  [ -z "$ONLY_STEP" ] || valid_step "$ONLY_STEP"
+  if [ "$RESUME" = "1" ] && [ -f "$STATE_DIR/last-step" ]; then
+    last_step="$(cat "$STATE_DIR/last-step" 2>/dev/null || true)"
+    case "$last_step" in
+      1|2|3|4) START_STEP=$((last_step + 1)) ;;
+      5) START_STEP=5 ;;
+    esac
+    say "Resuming from step $START_STEP based on $STATE_DIR/last-step"
+  fi
+}
 confirm() {
   [ "$YES" = "1" ] && return 0
   if [ ! -r /dev/tty ]; then
@@ -109,11 +173,12 @@ remove_previous_global_package() {
 }
 
 install_understudy_package() {
+  local package_commit
   remove_previous_global_package
 
   if [ -n "$INSTALL_PACKAGE" ]; then
     say "Installing Understudy package from $INSTALL_PACKAGE"
-    npm install -g "$INSTALL_PACKAGE"
+    run_logged npm install -g "$INSTALL_PACKAGE"
     return 0
   fi
 
@@ -125,10 +190,14 @@ install_understudy_package() {
   say "Installing Understudy package from $INSTALL_REPO_URL#$INSTALL_REF"
   rm -rf "$INSTALL_SOURCE_DIR"
   mkdir -p "$(dirname "$INSTALL_SOURCE_DIR")"
-  git clone --depth 1 --branch "$INSTALL_REF" "$INSTALL_REPO_URL" "$INSTALL_SOURCE_DIR" >/dev/null
-  npm install --prefix "$INSTALL_SOURCE_DIR" --ignore-scripts >/dev/null
-  npm run --prefix "$INSTALL_SOURCE_DIR" build >/dev/null
-  npm install -g --ignore-scripts "$INSTALL_SOURCE_DIR" >/dev/null
+  run_logged git clone --depth 1 --branch "$INSTALL_REF" "$INSTALL_REPO_URL" "$INSTALL_SOURCE_DIR"
+  package_commit="$(git -C "$INSTALL_SOURCE_DIR" rev-parse --short=12 HEAD 2>/dev/null || echo unknown)"
+  say "Understudy package commit: $package_commit"
+  mkdir -p "$STATE_DIR"
+  printf '%s\n' "$package_commit" >"$STATE_DIR/package-commit"
+  run_logged npm install --prefix "$INSTALL_SOURCE_DIR" --ignore-scripts
+  run_logged npm run --prefix "$INSTALL_SOURCE_DIR" build
+  run_logged npm install -g --ignore-scripts "$INSTALL_SOURCE_DIR"
 }
 
 install_claude_plugin() {
@@ -171,7 +240,12 @@ need npm || {
   exit 1
 }
 
+configure_resume
+
 section "Welcome. We are going to create your first local Understudy."
+say "Install log: $LOG_FILE"
+say "Installer script commit: $INSTALLER_COMMIT"
+say "Install source ref: $INSTALL_REF"
 say "Understudy starts with a small open-weight model on your Mac."
 say "You compare it against a frontier model, then climb the ladder with better data, evals, GEPA/RLM, bigger local models, or remote runs."
 say "The point is concrete: build a replacement model for work you currently send to a frontier model."
@@ -179,33 +253,46 @@ say "The point is concrete: build a replacement model for work you currently sen
 if ! need uv; then
   say "uv is required for the isolated MLX runtime."
   confirm "Install uv from astral.sh now?" || exit 1
-  curl -LsSf https://astral.sh/uv/install.sh | sh
+  curl -LsSf https://astral.sh/uv/install.sh | sh 2>&1 | tee -a "$LOG_FILE"
   export PATH="$HOME/.local/bin:$PATH"
 fi
 
-install_tmux
-
-section "Step 1/5: install the CLI and Pi harness."
-install_understudy_package
-npm install -g @earendil-works/pi-coding-agent
-
 PKG_DIR="$(npm root -g)/@understudylabs/understudy-agent-tools"
 ARENA="$PKG_DIR/skills/mlx-arena/arena.sh"
-if [ ! -x "$ARENA" ]; then
+
+if should_run_step 1; then
+  section "Step 1/5: install the CLI and Pi harness."
+  install_understudy_package
+  run_logged npm install -g @earendil-works/pi-coding-agent
+  PKG_DIR="$(npm root -g)/@understudylabs/understudy-agent-tools"
+  ARENA="$PKG_DIR/skills/mlx-arena/arena.sh"
+  mark_step_done 1
+else
+  say "Skipping step 1/5: install the CLI and Pi harness."
+fi
+
+if (should_run_step 2 || should_run_step 4 || should_run_step 5) && [ ! -x "$ARENA" ]; then
   say "Could not find executable arena launcher at $ARENA."
-  say "If this is a local checkout, run from the repo with: skills/mlx-arena/arena.sh first-window"
+  say "Rerun from step 1, or install the CLI first."
   exit 1
 fi
 
-section "Step 2/5: install the Claude Code skills."
-install_claude_plugin
+if should_run_step 2; then
+  section "Step 2/5: install the Claude Code skills."
+  install_claude_plugin
+  mark_step_done 2
+else
+  say "Skipping step 2/5: install the Claude Code skills."
+fi
 
-mkdir -p "$LAB" "$MODEL_DIR" "$HOME/.understudy/models"
-if [ ! -x "$LAB/.understudy/venvs/mlx/bin/python" ]; then
-  say "Creating isolated MLX runtime."
-  uv venv "$LAB/.understudy/venvs/mlx" --python 3.12
-  uv pip install --python "$LAB/.understudy/venvs/mlx/bin/python" \
-    'mlx-lm>=0.31' 'mlx-vlm>=0.6' 'huggingface_hub>=0.27'
+if should_run_step 3 || should_run_step 4 || should_run_step 5; then
+  mkdir -p "$LAB" "$MODEL_DIR" "$HOME/.understudy/models"
+  if [ ! -x "$LAB/.understudy/venvs/mlx/bin/python" ]; then
+    say "Creating isolated MLX runtime."
+    run_logged uv venv "$LAB/.understudy/venvs/mlx" --python 3.12
+    run_logged uv pip install --python "$LAB/.understudy/venvs/mlx/bin/python" \
+      'mlx-lm>=0.31' 'mlx-vlm>=0.6' 'huggingface_hub>=0.27'
+  fi
 fi
 
 download_file() {
@@ -257,44 +344,67 @@ PY
 }
 
 if [ "$NO_MODEL" = "0" ]; then
-  section "Step 3/5: download the first local Understudy."
-  say "Model: Gemma 4 E2B IT, MLX-VLM 4-bit, about 3.3GB."
-  say "Why this rung: small enough to run locally, strong enough to make the replacement loop tangible."
-  say "Source: signed Understudy snapshot at $MODEL_SESSION_URL"
-  confirm "Download this verified open-weight snapshot now?" || exit 1
-  download_model_snapshot
+  if should_run_step 3; then
+    section "Step 3/5: download the first local Understudy."
+    say "Model: Gemma 4 E2B IT, MLX-VLM 4-bit, about 3.3GB."
+    say "Why this rung: small enough to run locally, strong enough to make the replacement loop tangible."
+    say "Source: signed Understudy snapshot at $MODEL_SESSION_URL"
+    confirm "Download this verified open-weight snapshot now?" || exit 1
+    download_model_snapshot
+    mark_step_done 3
+  else
+    say "Skipping step 3/5: download the first local Understudy."
+  fi
 else
   section "Step 3/5: use the existing local Understudy weights."
   say "Model directory: $MODEL_DIR"
+  should_run_step 3 && mark_step_done 3
 fi
 
-section "Step 4/5: meet the local Understudy."
-say "A new Terminal window will show the model loading locally so you can see it is yours, not a hosted frontier call."
-say "If an agent launched this, follow the same session with: tmux attach -t ${SESSION:-mlx-arena}-first"
-if [ "$NO_WINDOW" = "1" ]; then
-  LAB="$LAB" MLX_PYTHON="$LAB/.understudy/venvs/mlx/bin/python" \
-    FIRST_REPO="$MODEL_DIR" FIRST_LOADER=mlx_vlm "$ARENA" first
+if should_run_step 4; then
+  install_tmux
+  section "Step 4/5: meet the local Understudy."
+  say "A new Terminal window will show the model loading locally so you can see it is yours, not a hosted frontier call."
+  say "If an agent launched this, follow the same session with: tmux attach -t ${SESSION:-mlx-arena}-first"
+  if [ "$NO_WINDOW" = "1" ]; then
+    LAB="$LAB" MLX_PYTHON="$LAB/.understudy/venvs/mlx/bin/python" \
+      FIRST_REPO="$MODEL_DIR" FIRST_LOADER=mlx_vlm "$ARENA" first
+  else
+    LAB="$LAB" MLX_PYTHON="$LAB/.understudy/venvs/mlx/bin/python" \
+      FIRST_REPO="$MODEL_DIR" FIRST_LOADER=mlx_vlm "$ARENA" first-window
+  fi
+  mark_step_done 4
 else
-  LAB="$LAB" MLX_PYTHON="$LAB/.understudy/venvs/mlx/bin/python" \
-    FIRST_REPO="$MODEL_DIR" FIRST_LOADER=mlx_vlm "$ARENA" first-window
+  say "Skipping step 4/5: meet the local Understudy."
 fi
 
 if [ "$NO_GAUNTLET" = "0" ]; then
-  section "Step 5/5: run the local-vs-frontier duel."
-  say "Pi opens a side-by-side harness: local Understudy on the left, frontier baseline on the right."
-  say "The shared tmux session is ${SESSION:-mlx-arena}-play; the agent can send prompts and you can watch or take over."
-  say "After the stock questions, point Understudy at a dataset or codebase."
-  say "Then use the skills to generate task-specific evals and climb: better prompts, GEPA/RLM, larger Gemma/Nemotron, or remote training."
-  if [ "$NO_WINDOW" = "1" ]; then
-    LAB="$LAB" MLX_PYTHON="$LAB/.understudy/venvs/mlx/bin/python" \
-      LEFT_REPO="$MODEL_DIR" LEFT_LOADER=mlx_vlm LOCAL_NAME="Gemma 4 E2B" "$ARENA" play
+  if should_run_step 5; then
+    install_tmux
+    section "Step 5/5: run the local-vs-frontier duel."
+    say "Pi opens a side-by-side harness: local Understudy on the left, frontier baseline on the right."
+    say "The shared tmux session is ${SESSION:-mlx-arena}-play; the agent can send prompts and you can watch or take over."
+    say "After the stock questions, point Understudy at a dataset or codebase."
+    say "Then use the skills to generate task-specific evals and climb: better prompts, GEPA/RLM, larger Gemma/Nemotron, or remote training."
+    if [ "$NO_WINDOW" = "1" ]; then
+      LAB="$LAB" MLX_PYTHON="$LAB/.understudy/venvs/mlx/bin/python" \
+        LEFT_REPO="$MODEL_DIR" LEFT_LOADER=mlx_vlm LOCAL_NAME="Gemma 4 E2B" "$ARENA" play
+    else
+      LAB="$LAB" MLX_PYTHON="$LAB/.understudy/venvs/mlx/bin/python" \
+        LEFT_REPO="$MODEL_DIR" LEFT_LOADER=mlx_vlm LOCAL_NAME="Gemma 4 E2B" "$ARENA" play-window
+    fi
+    mark_step_done 5
   else
-    LAB="$LAB" MLX_PYTHON="$LAB/.understudy/venvs/mlx/bin/python" \
-      LEFT_REPO="$MODEL_DIR" LEFT_LOADER=mlx_vlm LOCAL_NAME="Gemma 4 E2B" "$ARENA" play-window
+    say "Skipping step 5/5: run the local-vs-frontier duel."
   fi
 else
-  section "Next: run the local-vs-frontier duel."
-  say "  LAB=\"$LAB\" MLX_PYTHON=\"$LAB/.understudy/venvs/mlx/bin/python\" LEFT_REPO=\"$MODEL_DIR\" LEFT_LOADER=mlx_vlm \"$ARENA\" play"
+  if should_run_step 5; then
+    section "Next: run the local-vs-frontier duel."
+    say "  LAB=\"$LAB\" MLX_PYTHON=\"$LAB/.understudy/venvs/mlx/bin/python\" LEFT_REPO=\"$MODEL_DIR\" LEFT_LOADER=mlx_vlm \"$ARENA\" play"
+    mark_step_done 5
+  else
+    say "Skipping step 5/5: run the local-vs-frontier duel."
+  fi
 fi
 
 section "Where this goes next."

@@ -72,6 +72,19 @@ short-lived signed URL returned in `files[]`. We publish the session URL, not
 the expiring per-object signed URLs. It is overridable with
 `UNDERSTUDY_MODEL_SESSION_URL`.
 
+The installer is resumable. It writes step markers under
+`~/.understudy/agent-tools/install-state`; after a failed run, use:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/UnderstudyLabs/understudy-agent-tools/main/install.sh | bash -s -- --resume
+```
+
+You can also jump directly to a step:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/UnderstudyLabs/understudy-agent-tools/main/install.sh | bash -s -- --from-step 3
+```
+
 If a coding agent started the installer, the user can follow the live Pi session
 with `tmux attach -t mlx-arena-first`. Agents should drive Pi through tmux using
 paste-buffer plus an explicit Enter:
