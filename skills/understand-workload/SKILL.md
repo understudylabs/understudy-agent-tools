@@ -137,6 +137,7 @@ or criterion. Keep the decomposition doc local; only synthetic questions leave.
 
 ## References
 
+- [`../profile-captures/SKILL.md`](../profile-captures/SKILL.md) — the fleet sibling: profile a whole capture dir into a cost + call-type taxonomy first, then aim this skill at the cluster worth decomposing.
 - [`../mlx-arena/SKILL.md`](../mlx-arena/SKILL.md) — frontier-vs-local head-to-head the questions feed.
 - [`../design-simulated-environment/SKILL.md`](../design-simulated-environment/SKILL.md) — turn the understood workload into a scorable env.
 - [`../recursive-language-model/SKILL.md`](../recursive-language-model/SKILL.md) — decompose so a small model can take the whole case.
