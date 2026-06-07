@@ -122,6 +122,13 @@ The stronger claim requires all three:
    improve `repl_fence`, `exec_ok`, `answer.ready`, and task metrics on a sealed
    split; lower loss alone is not enough.
 
+   Surface success is not full RLM success. If the emitter adapter works on a
+   direct prompt but fails inside RLM by asking for missing context, writing a
+   plan, or calling unsupported helper functions, train the next smallest trace:
+   inspect the LocalREPL `context` object, read the task/catalog fields, then
+   mutate `answer`. Do this context-inspection/action-surface repair before full
+   RLM policy RL.
+
 7. **Measure concentration.** For teacher or repaired trajectories, compute
    student forced logprobs and surprise gaps. Report mean `d_t`, max `d_t`, and
    spike penalty. This answers whether the teacher is giving learnable moves or
