@@ -73,6 +73,29 @@ install_tmux() {
   exit 1
 }
 
+remove_previous_global_package() {
+  local global_root global_prefix package_path bin_path bin_target
+  global_root="$(npm root -g)"
+  global_prefix="$(npm prefix -g)"
+  package_path="$global_root/@understudylabs/understudy-agent-tools"
+  bin_path="$global_prefix/bin/understudy"
+
+  if [ -e "$package_path" ] || [ -L "$package_path" ]; then
+    say "Removing previous global Understudy install at $package_path"
+    npm uninstall -g @understudylabs/understudy-agent-tools >/dev/null 2>&1 || true
+    if [ -e "$package_path" ] || [ -L "$package_path" ]; then
+      rm -rf "$package_path"
+    fi
+  fi
+
+  if [ -L "$bin_path" ]; then
+    bin_target="$(readlink "$bin_path" 2>/dev/null || true)"
+    case "$bin_target" in
+      *understudy-agent-tools*) rm -f "$bin_path" ;;
+    esac
+  fi
+}
+
 install_claude_plugin() {
   [ "$NO_CLAUDE" = "1" ] && return 0
 
@@ -129,6 +152,7 @@ install_tmux
 
 section "Step 1/5: install the CLI and Pi harness."
 say "Installing Understudy package from $INSTALL_PACKAGE"
+remove_previous_global_package
 npm install -g "$INSTALL_PACKAGE" @earendil-works/pi-coding-agent
 
 PKG_DIR="$(npm root -g)/@understudylabs/understudy-agent-tools"
