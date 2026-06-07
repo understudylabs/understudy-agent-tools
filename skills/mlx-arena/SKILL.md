@@ -149,14 +149,21 @@ skills/mlx-arena/arena.sh play
    tmux paste-buffer -t mlx-arena-first
    tmux send-keys -t mlx-arena-first Enter
    ```
-6. **Decide the next intervention.** Compare answers, latency, tone, and reasoning
-   behavior. If the model is already good enough, promote it to
-   [`../run-local-model-lab/SKILL.md`](../run-local-model-lab/SKILL.md) for a
-   scored, frozen-eval verdict. If it fails because the prompt/harness is weak,
-   route to [`../optimize-workload/SKILL.md`](../optimize-workload/SKILL.md). If
-   the task is a workflow with tool state, build a
+6. **Move from stock duel to real work.** Compare answers, latency, tone, and
+   reasoning behavior, then immediately ask the developer to pick a real problem
+   or let the agent find data in the current repo: eval files, prompts, traces,
+   fixtures, tickets, transcripts, golden outputs, failing tests, or API/tool
+   logs. The next step is to freeze a task-specific eval/environment and try to
+   make the local Understudy beat the frontier on that slice.
+
+7. **Route the task-specific hill climb.** If the slice is answer-only, promote
+   it to [`../run-local-model-lab/SKILL.md`](../run-local-model-lab/SKILL.md) for
+   scored frontier-vs-local evaluation. If the task is a workflow with tool
+   state, build a
    [`../design-simulated-environment/SKILL.md`](../design-simulated-environment/SKILL.md).
-   If the small model needs bounded substeps behind the same external call, use
+   If the prompt/harness is weak, route to
+   [`../optimize-workload/SKILL.md`](../optimize-workload/SKILL.md). If the small
+   model needs bounded substeps behind the same external call, use
    [`../recursive-language-model/SKILL.md`](../recursive-language-model/SKILL.md).
    If quality is simply too low, climb the model ladder or route remote/hybrid via
    [`../use-understudy-gateway/SKILL.md`](../use-understudy-gateway/SKILL.md).

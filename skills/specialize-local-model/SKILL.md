@@ -13,8 +13,11 @@ metadata:
 Turn a task into a measured local-model ladder. Start with the **smallest local
 model that is plausibly reasonable for the task**, open it in Pi so the developer
 immediately sees a private model running on their machine, compare it against a
-frontier model, then use the gap to decide whether to climb models, optimize the
-prompt, decompose the task, simulate the environment, or route remote.
+frontier model, then move immediately from the stock duel into the user's real
+problem: pick a workflow, find or create task-specific data, freeze an eval, and
+try to make the local Understudy outperform the frontier on that slice. Use the
+observed gap to decide whether to climb models, optimize the prompt, decompose
+the task, simulate the environment, or route remote.
 
 This is an orchestration skill. Do not reimplement worker skills inline; sequence
 them and hand off with concrete artifacts.
@@ -24,18 +27,21 @@ them and hand off with concrete artifacts.
 ```text
 task intake
   -> smallest reasonable local rung
-  -> Pi frontier-vs-local head-to-head
-  -> default deterministic environment calibration
+  -> Pi stock frontier-vs-local head-to-head
+  -> pick a real problem or find task data
+  -> freeze a task-specific eval/environment
   -> gap report
-  -> simulated env / frozen eval when the task is workflow-like
-  -> improve via model climb, GEPA, RLM, or route
+  -> improve via model climb, GEPA, RLM, env feedback, or route
+  -> rerun until local beats frontier on that task slice or the route stays remote
   -> measured route decision
 ```
 
-The arena is the emotional proof: "I have a local model running." The default
-environment is the calibration proof: "this model can act in a deterministic
-tool world." The codebase-specific simulated environment and eval loop are the
-proof that the local model can actually do the user's job.
+The arena is the emotional proof: "I have a local model running." The stock duel
+is only the spark, not the end state. The durable product moment is when the
+developer picks a real problem, the agent finds or builds representative data,
+and the local Understudy starts beating the frontier on that specific workload.
+The codebase-specific simulated environment and eval loop are the proof that the
+local model can actually do the user's job.
 
 ## Safety Gates
 
@@ -88,20 +94,29 @@ proof that the local model can actually do the user's job.
    generated from the workload decomposition. Capture preference, guessed
    frontier identity, latency, cost, and failure notes.
 
-4. **Write a gap report.** Record:
+4. **Pick the real task slice.** Do not stop at the stock duel. Ask the developer
+   to pick one concrete problem they care about, or inspect the current repo for
+   useful data: eval files, fixtures, traces, support tickets, prompts,
+   transcripts, golden outputs, failing tests, or API/tool logs. If no data
+   exists, synthesize a small public/local fixture that matches the workflow and
+   clearly label it as synthetic. The goal is a bounded slice where the local
+   Understudy can plausibly beat the frontier through specialization.
+
+5. **Freeze the task-specific eval/environment.** For answer-only work, route to
+   [`../capture-evidence/SKILL.md`](../capture-evidence/SKILL.md) and
+   [`../run-local-model-lab/SKILL.md`](../run-local-model-lab/SKILL.md) to create
+   rows, rubric/metric, baseline, and holdout. For workflow/tool tasks, route to
+   [`../design-simulated-environment/SKILL.md`](../design-simulated-environment/SKILL.md)
+   to build seeded state, tool contracts, oracle actions, and final-state
+   validators. Frontier is the incumbent baseline; local is the candidate.
+
+6. **Write a gap report.** Record:
    - where local already matches or beats frontier;
    - where frontier wins;
    - whether the gap is model size, prompt/harness, context/tool surface, missing
      environment feedback, or true policy learning.
 
-5. **Run the default environment before custom env work.** Use
-   [`../design-simulated-environment/SKILL.md`](../design-simulated-environment/SKILL.md)
-   to run the built-in synthetic inbox/ticket/project-board sandbox with the
-   local model and frontier. Treat this as calibration only: it validates tool
-   calling, schema following, final-state scoring, and the local-vs-frontier
-   comparison path before building anything from the user's codebase.
-
-6. **Choose the next intervention.**
+7. **Choose the next intervention.**
    - **Model too weak, harness sane** -> climb the local model ladder and rerun
      Pi / local-model-lab: Gemma 4 E2B 4-bit -> Gemma 4 E2B BF16 -> Gemma 4 E4B
      -> Gemma 4 12B -> Nemotron 3 Nano 4B/30B-A3B -> remote Gemma/Nemotron.
@@ -119,7 +134,12 @@ proof that the local model can actually do the user's job.
    - **Local cannot meet quality** -> stay remote and document the revisit trigger
      (new MLX runtime, new weights, larger hardware, or better env feedback).
 
-7. **Prove the route.** For answer-only tasks, run
+8. **Rerun until the claim is real.** Iterate on the chosen intervention against
+   the frozen task slice. The win condition is not "local feels good"; it is
+   "local beats the frontier baseline on the agreed metric for these tasks" or a
+   clear decision that frontier/remote remains the right route.
+
+9. **Prove the route.** For answer-only tasks, run
    [`../run-local-model-lab/SKILL.md`](../run-local-model-lab/SKILL.md) against
    frozen eval rows. For tool/API workflows, use
    [`../design-simulated-environment/SKILL.md`](../design-simulated-environment/SKILL.md)
@@ -128,8 +148,9 @@ proof that the local model can actually do the user's job.
 ## Output Standard
 
 End with: task class; first local rung and why it is the smallest reasonable
-choice; Pi arena setup and first head-to-head result; gap diagnosis; chosen next
-intervention; route decision or the exact evidence still needed.
+choice; Pi arena setup and first head-to-head result; chosen real task/data
+slice; frozen eval/environment path; gap diagnosis; chosen next intervention;
+whether local beat frontier on that slice or the exact evidence still needed.
 
 ## References
 
