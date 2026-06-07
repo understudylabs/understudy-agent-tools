@@ -1,7 +1,8 @@
 import assert from "node:assert/strict";
-import { spawnSync } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
 import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { createServer } from "node:http";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { describe, it } from "node:test";
@@ -26,6 +27,158 @@ function runWithHome(args, home, cwd = process.cwd()) {
       USERPROFILE: home,
     },
   });
+}
+
+function runWithEnv(args, env, cwd = process.cwd()) {
+  return spawnSync(cli[0], [cli[1], ...args], {
+    cwd,
+    encoding: "utf8",
+    env: {
+      ...process.env,
+      UNDERSTUDY_TELEMETRY: "0",
+      ...env,
+    },
+  });
+}
+
+function runWithEnvAsync(args, env, cwd = process.cwd()) {
+  return new Promise((resolve) => {
+    const child = spawn(cli[0], [cli[1], ...args], {
+      cwd,
+      env: {
+        ...process.env,
+        UNDERSTUDY_TELEMETRY: "0",
+        ...env,
+      },
+    });
+    let stdout = "";
+    let stderr = "";
+    child.stdout.setEncoding("utf8");
+    child.stderr.setEncoding("utf8");
+    child.stdout.on("data", (chunk) => {
+      stdout += chunk;
+    });
+    child.stderr.on("data", (chunk) => {
+      stderr += chunk;
+    });
+    child.on("close", (status) => {
+      resolve({ status, stdout, stderr });
+    });
+  });
+}
+
+function writeHostedConfig({ home, repo, gatewayUrl }) {
+  mkdirSync(join(home, ".understudy"), { recursive: true });
+  writeFileSync(
+    join(home, ".understudy", "credentials.json"),
+    `${JSON.stringify({
+      api_key: "sk_test_hosted",
+      gateway_url: gatewayUrl,
+      orgs: {
+        org_1: {
+          api_key: "sk_test_org",
+          gateway_url: gatewayUrl,
+        },
+      },
+    }, null, 2)}\n`,
+  );
+  mkdirSync(join(repo, ".understudy"), { recursive: true });
+  writeFileSync(
+    join(repo, ".understudy", "config.json"),
+    `${JSON.stringify({ org_id: "org_1", project_slug: "rehearsal" }, null, 2)}\n`,
+  );
+}
+
+async function withHostedFixture(fn) {
+  const requests = [];
+  const state = {
+    projects: [{ id: "proj_1", org_id: "org_1", slug: "rehearsal", name: "Rehearsal", created_at: "2026-06-01T00:00:00Z", settings: "{}", deleted_at: null }],
+    workloads: [
+      { id: "usp_main", project_id: "proj_1", name: "main", capture_enabled: true, route_model_id: null, route_traffic_pct: null, is_default: true, created_at: "2026-06-01T00:00:00Z" },
+      { id: "usp_classify", project_id: "proj_1", name: "classify", capture_enabled: false, route_model_id: "glm-5.1", route_traffic_pct: 10, is_default: false, created_at: "2026-06-02T00:00:00Z" },
+    ],
+    captures: [
+      {
+        request_id: "req_123",
+        schema_version: "understudy.capture.v1",
+        ts: "2026-06-07T00:00:00Z",
+        project_id: "proj_1",
+        workload_id: "usp_classify",
+        mode: "gateway",
+        provider: "anthropic",
+        endpoint: "/v1/messages",
+        requested_model: "claude-test",
+        upstream_model: "claude-test-upstream",
+        status_code: 200,
+        latency_ms: 42,
+        tags: { env: "test" },
+        customer_request_body: { messages: [{ role: "user", content: "SECRET_PROMPT" }] },
+        upstream_request_body: { messages: [{ role: "user", content: "SECRET_PROMPT" }] },
+        response_body: { content: "SECRET_COMPLETION" },
+      },
+    ],
+  };
+
+  const server = createServer(async (req, res) => {
+    const chunks = [];
+    for await (const chunk of req) chunks.push(chunk);
+    const bodyText = Buffer.concat(chunks).toString("utf8");
+    const body = bodyText ? JSON.parse(bodyText) : null;
+    const url = new URL(req.url, "http://127.0.0.1");
+    requests.push({ method: req.method, path: url.pathname, search: url.search, headers: req.headers, body });
+
+    const send = (status, value, headers = {}) => {
+      res.writeHead(status, { "content-type": "application/json", ...headers });
+      res.end(JSON.stringify(value));
+    };
+
+    if (req.method === "GET" && url.pathname === "/healthz") return send(200, { ok: true });
+    if (req.method === "GET" && url.pathname === "/admin/v1/orgs/org_1/projects") return send(200, { projects: state.projects, cursor: null });
+    if (req.method === "GET" && url.pathname === "/admin/v1/orgs/org_1/api_keys") return send(200, { keys: [{ id: "key_1", name: "default", obfuscated_value: "sk_...test", last_used_at: null, permissions: [], created_at: "2026-06-01T00:00:00Z" }] });
+    if (req.method === "GET" && url.pathname === "/admin/v1/orgs/org_1/models") return send(200, { models: [{ id: "glm-5.1", display_name: "GLM 5.1", capabilities: ["chat"], context_window: 128000 }] });
+    if (req.method === "GET" && url.pathname === "/customer/v1/orgs/org_1/projects/proj_1/workloads") return send(200, { workloads: state.workloads, cursor: null });
+    if (req.method === "POST" && url.pathname === "/customer/v1/orgs/org_1/projects/proj_1/workloads") {
+      const workload = { id: `usp_${body.name}`, project_id: "proj_1", name: body.name, capture_enabled: Boolean(body.capture_enabled), route_model_id: null, route_traffic_pct: null, is_default: false, created_at: "2026-06-07T00:00:00Z" };
+      state.workloads.push(workload);
+      return send(200, workload);
+    }
+    const workloadPatch = url.pathname.match(/^\/customer\/v1\/orgs\/org_1\/projects\/proj_1\/workloads\/([^/]+)$/);
+    if (req.method === "PATCH" && workloadPatch) {
+      const workload = state.workloads.find((entry) => entry.id === workloadPatch[1]);
+      if (!workload) return send(404, { message: "missing" });
+      if (body.name) workload.name = body.name;
+      if (typeof body.capture_enabled === "boolean") workload.capture_enabled = body.capture_enabled;
+      return send(200, workload);
+    }
+    const routePut = url.pathname.match(/^\/admin\/v1\/orgs\/org_1\/projects\/proj_1\/workloads\/([^/]+)\/route$/);
+    if (req.method === "PUT" && routePut) {
+      const workload = state.workloads.find((entry) => entry.id === routePut[1]);
+      if (!workload) return send(404, { message: "missing" });
+      workload.route_model_id = body.model_id;
+      workload.route_traffic_pct = body.model_id === null ? null : body.route_traffic_pct;
+      return send(200, { workload_id: workload.id, project_id: "proj_1", model_id: body.model_id, route_model_id: body.model_id, route_traffic_pct: workload.route_traffic_pct });
+    }
+    if (req.method === "GET" && url.pathname === "/admin/v1/orgs/org_1/projects/proj_1/captures") return send(200, { captures: state.captures, truncated: false, cursor: null });
+    if (req.method === "GET" && url.pathname === "/admin/v1/orgs/org_1/projects/proj_1/workloads/usp_classify/captures") return send(200, { captures: state.captures, truncated: false, cursor: null });
+    if (req.method === "GET" && url.pathname === "/admin/v1/orgs/org_1/projects/proj_1/captures/req_123") return send(200, { capture: state.captures[0] });
+    if (req.method === "GET" && url.pathname === "/admin/v1/orgs/org_1/projects/proj_1/workloads/usp_classify/captures/req_123") return send(200, { capture: state.captures[0] });
+    if (req.method === "POST" && (url.pathname === "/v1/messages" || url.pathname === "/v1/chat/completions")) return send(200, { ok: true, content: "SECRET_COMPLETION" }, { "x-understudy-request-id": "req_probe" });
+    return send(404, { message: `${req.method} ${url.pathname}` });
+  });
+
+  await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+  const address = server.address();
+  const gatewayUrl = `http://127.0.0.1:${address.port}`;
+  const home = mkdtempSync(join(tmpdir(), "understudy-hosted-home-"));
+  const repo = mkdtempSync(join(tmpdir(), "understudy-hosted-repo-"));
+  try {
+    writeHostedConfig({ home, repo, gatewayUrl });
+    return await fn({ gatewayUrl, home, repo, requests, state });
+  } finally {
+    await new Promise((resolve) => server.close(resolve));
+    rmSync(home, { recursive: true, force: true });
+    rmSync(repo, { recursive: true, force: true });
+  }
 }
 
 function withFixtureRepo(fn) {
@@ -813,12 +966,157 @@ describe("understudy CLI", () => {
     assert.equal(root.status, 0, root.stderr);
     assert.match(root.stdout, /models/);
     assert.match(root.stdout, /workloads/);
+    assert.match(root.stdout, /captures/);
+    assert.match(root.stdout, /gateway/);
+    assert.match(root.stdout, /routes/);
 
     const route = run(["workloads", "route", "--help"]);
     assert.equal(route.status, 0, route.stderr);
     assert.match(route.stdout, /--model-id/);
     assert.match(route.stdout, /--traffic-pct/);
     assert.match(route.stdout, /--clear/);
+  });
+
+  it("runs hosted workload lifecycle commands against the customer API", async () => {
+    await withHostedFixture(async ({ home, repo, requests }) => {
+      const env = { HOME: home, USERPROFILE: home };
+
+      const list = await runWithEnvAsync(["--json", "workloads", "list"], env, repo);
+      assert.equal(list.status, 0, list.stderr);
+      assert.equal(JSON.parse(list.stdout).workloads.length, 2);
+
+      const listByProjectId = await runWithEnvAsync(["--json", "workloads", "list", "--project-id", "proj_1"], env, repo);
+      assert.equal(listByProjectId.status, 0, listByProjectId.stderr);
+      assert.equal(JSON.parse(listByProjectId.stdout).project_id, "proj_1");
+
+      const create = await runWithEnvAsync(["workloads", "create", "support_triage", "--capture", "--project", "rehearsal"], env, repo);
+      assert.equal(create.status, 0, create.stderr);
+      assert.match(create.stdout, /Created workload support_triage/);
+      assert.equal(requests.at(-1).method, "POST");
+      assert.equal(requests.at(-1).path, "/customer/v1/orgs/org_1/projects/proj_1/workloads");
+      assert.deepEqual(requests.at(-1).body, { name: "support_triage", capture_enabled: true });
+
+      const show = await runWithEnvAsync(["--json", "workloads", "show", "support_triage"], env, repo);
+      assert.equal(show.status, 0, show.stderr);
+      assert.equal(JSON.parse(show.stdout).workload.id, "usp_support_triage");
+
+      const update = await runWithEnvAsync(["workloads", "update", "support_triage", "--capture", "off"], env, repo);
+      assert.equal(update.status, 0, update.stderr);
+      assert.equal(requests.at(-1).method, "PATCH");
+      assert.deepEqual(requests.at(-1).body, { capture_enabled: false });
+
+      const route = await runWithEnvAsync(["--json", "workloads", "route", "support_triage", "--model-id", "glm-5.1", "--traffic-pct", "10"], env, repo);
+      assert.equal(route.status, 0, route.stderr);
+      assert.equal(JSON.parse(route.stdout).route_traffic_pct, 10);
+      assert.equal(requests.at(-1).method, "PUT");
+      assert.equal(requests.at(-1).path, "/admin/v1/orgs/org_1/projects/proj_1/workloads/usp_support_triage/route");
+      assert.deepEqual(requests.at(-1).body, { model_id: "glm-5.1", route_traffic_pct: 10 });
+    });
+  });
+
+  it("redacts capture payloads by default and writes full payloads only to files", async () => {
+    await withHostedFixture(async ({ home, repo }) => {
+      const env = { HOME: home, USERPROFILE: home };
+      const list = await runWithEnvAsync(["--json", "captures", "list", "--workload", "classify"], env, repo);
+      assert.equal(list.status, 0, list.stderr);
+      assert.match(list.stdout, /req_123/);
+      assert.doesNotMatch(list.stdout, /SECRET_PROMPT|SECRET_COMPLETION/);
+      assert.equal(JSON.parse(list.stdout).captures[0].customer_request_body, "present");
+
+      const get = await runWithEnvAsync(["--json", "captures", "get", "req_123"], env, repo);
+      assert.equal(get.status, 0, get.stderr);
+      assert.doesNotMatch(get.stdout, /SECRET_PROMPT|SECRET_COMPLETION/);
+
+      const blocked = await runWithEnvAsync(["captures", "export", "req_123", "--out", join(repo, "full.json"), "--include-payload"], env, repo);
+      assert.notEqual(blocked.status, 0);
+      assert.match(blocked.stderr, /may contain prompts\/completions/);
+
+      const redactedPath = join(repo, "redacted.json");
+      const redacted = await runWithEnvAsync(["captures", "export", "req_123", "--out", redactedPath], env, repo);
+      assert.equal(redacted.status, 0, redacted.stderr);
+      assert.doesNotMatch(readFileSync(redactedPath, "utf8"), /SECRET_PROMPT|SECRET_COMPLETION/);
+
+      const fullPath = join(repo, "full.json");
+      const full = await runWithEnvAsync(["captures", "export", "req_123", "--out", fullPath, "--include-payload", "--yes"], env, repo);
+      assert.equal(full.status, 0, full.stderr);
+      assert.doesNotMatch(full.stdout, /SECRET_PROMPT|SECRET_COMPLETION/);
+      assert.match(readFileSync(fullPath, "utf8"), /SECRET_PROMPT/);
+    });
+  });
+
+  it("runs gateway health and probes without printing secrets", async () => {
+    await withHostedFixture(async ({ home, repo, gatewayUrl, requests }) => {
+      const env = { HOME: home, USERPROFILE: home, UPSTREAM_TEST_KEY: "provider_secret_value" };
+      const health = await runWithEnvAsync(["--json", "gateway", "health", "--gateway-url", gatewayUrl], env, repo);
+      assert.equal(health.status, 0, health.stderr);
+      assert.equal(JSON.parse(health.stdout).ok, true);
+
+      const anthropic = await runWithEnvAsync(["--json", "gateway", "probe", "--provider", "anthropic", "--project", "rehearsal", "--workload", "classify", "--tag", "env=test", "--byok-env", "UPSTREAM_TEST_KEY"], env, repo);
+      assert.equal(anthropic.status, 0, anthropic.stderr);
+      const anthropicPayload = JSON.parse(anthropic.stdout);
+      assert.equal(anthropicPayload.request_id, "req_probe");
+      assert.doesNotMatch(anthropic.stdout + anthropic.stderr, /sk_test|provider_secret_value|SECRET_COMPLETION/);
+      const anthropicRequest = requests.at(-1);
+      assert.equal(anthropicRequest.path, "/v1/messages");
+      assert.equal(anthropicRequest.headers["x-api-key"], "sk_test_hosted");
+      assert.equal(anthropicRequest.headers["x-understudy-upstream-key"], "provider_secret_value");
+      assert.equal(anthropicRequest.headers["x-understudy-project"], "rehearsal");
+      assert.equal(anthropicRequest.headers["x-understudy-workload"], "classify");
+      assert.equal(anthropicRequest.headers["x-understudy-tags"], "{\"env\":\"test\"}");
+
+      const openai = await runWithEnvAsync(["--json", "gateway", "probe", "--provider", "openai"], env, repo);
+      assert.equal(openai.status, 0, openai.stderr);
+      const openaiRequest = requests.at(-1);
+      assert.equal(openaiRequest.path, "/v1/chat/completions");
+      assert.equal(openaiRequest.headers.authorization, "Bearer sk_test_hosted");
+    });
+  });
+
+  it("shows, sets, clears, and rolls back hosted routes", async () => {
+    await withHostedFixture(async ({ home, repo, requests }) => {
+      const env = { HOME: home, USERPROFILE: home };
+      const show = await runWithEnvAsync(["--json", "routes", "show", "classify"], env, repo);
+      assert.equal(show.status, 0, show.stderr);
+      assert.equal(JSON.parse(show.stdout).route_model_id, "glm-5.1");
+
+      const set = await runWithEnvAsync(["--json", "routes", "set", "classify", "--model-id", "glm-5.2", "--traffic-pct", "20"], env, repo);
+      assert.equal(set.status, 0, set.stderr);
+      assert.equal(JSON.parse(set.stdout).route_traffic_pct, 20);
+      assert.deepEqual(requests.at(-1).body, { model_id: "glm-5.2", route_traffic_pct: 20 });
+
+      const clear = await runWithEnvAsync(["--json", "routes", "clear", "classify"], env, repo);
+      assert.equal(clear.status, 0, clear.stderr);
+      assert.deepEqual(requests.at(-1).body, { model_id: null });
+
+      const rollback = await runWithEnvAsync(["--json", "routes", "rollback", "classify"], env, repo);
+      assert.equal(rollback.status, 0, rollback.stderr);
+      assert.equal(JSON.parse(rollback.stdout).model_id, "glm-5.2");
+
+      const packetPath = join(repo, "route-decision.json");
+      writeFileSync(packetPath, JSON.stringify({ schema_version: "understudy.route_decision_packet.v1", decision: "evaluate-first" }));
+      const promote = await runWithEnvAsync(["routes", "promote", "--from", packetPath, "--yes"], env, repo);
+      assert.notEqual(promote.status, 0);
+      assert.match(promote.stderr, /evaluate-first/);
+    });
+  });
+
+  it("runs hosted doctor and renders model display_name", async () => {
+    await withHostedFixture(async ({ home, repo }) => {
+      const env = { HOME: home, USERPROFILE: home };
+      const doctor = await runWithEnvAsync(["--json", "doctor", "--hosted"], env, repo);
+      assert.equal(doctor.status, 0, doctor.stderr);
+      const payload = JSON.parse(doctor.stdout);
+      assert.equal(payload.ok, true);
+      assert.deepEqual(payload.checks.map((entry) => entry.name), ["credentials", "gateway health", "projects", "project selection", "keys", "models", "workloads"]);
+
+      const probeDoctor = await runWithEnvAsync(["--json", "doctor", "--hosted", "--probe"], env, repo);
+      assert.equal(probeDoctor.status, 0, probeDoctor.stderr);
+      assert.equal(JSON.parse(probeDoctor.stdout).checks.at(-1).name, "gateway probe");
+
+      const models = await runWithEnvAsync(["models", "list"], env, repo);
+      assert.equal(models.status, 0, models.stderr);
+      assert.match(models.stdout, /GLM 5\.1/);
+    });
   });
 
   it("scans capture/import sources with metadata only and writes a redaction manifest", () =>

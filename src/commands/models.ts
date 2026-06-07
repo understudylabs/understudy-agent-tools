@@ -8,6 +8,7 @@ import { trackControlPlaneAction } from "../internal/telemetry.js";
 
 const PublicModelSchema = z.object({
   id: z.string(),
+  display_name: z.string().optional(),
   name: z.string().optional(),
   description: z.string().optional(),
   capabilities: z.array(z.string()).optional(),
@@ -61,7 +62,7 @@ async function runList(cmd: Command, opts: OrgOpt): Promise<void> {
 
   const rows = res.data.models.map((model) => ({
     id: model.id,
-    name: model.name ?? "",
+    name: model.display_name ?? model.name ?? "",
     capabilities: model.capabilities?.join(",") ?? "",
     context_window: model.context_window == null ? "" : String(model.context_window),
   }));

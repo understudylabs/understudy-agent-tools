@@ -150,12 +150,14 @@ The first hosted journey is intentionally narrow:
 
 ```bash
 understudy login --email you@company.com
-understudy status --json
-understudy projects list --json
-understudy keys list --json
-understudy models list --json
-understudy workloads route <workload-id> --project-id <project-id> --model-id glm-5.1 --traffic-pct 10
-understudy run -- npm run your-local-script
+understudy doctor --hosted
+understudy workloads list
+understudy workloads create classify --capture
+understudy gateway probe --provider anthropic --project rehearsal --workload classify
+understudy captures list --project rehearsal --workload classify
+understudy routes set classify --project rehearsal --model-id glm-5.1 --traffic-pct 10
+understudy routes show classify --project rehearsal
+understudy routes clear classify --project rehearsal
 ```
 
 `login --email` uses the Understudy email-code registration flow. It stores the
@@ -163,11 +165,17 @@ returned `sk_*` in `~/.understudy/credentials.json` with mode `600` and writes a
 repo-local `.understudy/config.json` when the platform returns a default
 project. `run` injects `UNDERSTUDY_API_KEY` and `UNDERSTUDY_GATEWAY_URL` only
 into the child process; do not copy secrets into repo files or chat output.
-`models list` shows public Understudy model IDs only. `workloads route` writes
+`doctor --hosted` checks credentials, gateway health, projects, keys, models,
+and workloads without provider calls. `gateway probe` is an explicit tiny live
+call and prints request metadata, not the completion text. If you need BYOK for
+the probe, pass `--byok-env ENV_NAME`; the CLI reads the key from the
+environment and never persists or prints it. `captures list/get` are
+metadata-first and redacted by default. Full capture export is opt-in,
+file-only, and requires `--include-payload --yes`. `models list` shows public
+Understudy model IDs and display names only. `routes set/clear` writes
 control-plane route config, so the application keeps calling the normal gateway
 while a percentage of traffic goes to the selected Understudy model and the
-rest remains passthrough/frontier. Clear the route with
-`understudy workloads route <workload-id> --project-id <project-id> --clear`.
+rest remains passthrough/frontier.
 
 If the coding agent has an approved native email connector, it may complete the
 email-code prompt by reading the fresh Understudy sign-in email directly. The
@@ -245,6 +253,9 @@ projects
 keys
 models
 workloads
+captures
+gateway
+routes
 setup
 setup-code
 run
@@ -255,10 +266,12 @@ optimize-workload
 coding agent to use `skills/onboard/setup-code.md` and the matching framework
 recipe.
 
-Full-runtime command names such as `gateway`, `browser`, `channels`,
-`schedule`, `daemon`, `agent`, and `chat` are not registered in this public
-CLI. Use `understudy skills --search <query>` to find the relevant capability
-skill or cookbook instead.
+`gateway` is intentionally probe-only: `gateway health` checks healthz and
+`gateway probe` sends one explicit tiny request. It is not a daemon, proxy,
+browser, chat runtime, or hosted agent surface. Full-runtime command names such
+as `browser`, `channels`, `schedule`, `daemon`, `agent`, and `chat` are not
+registered in this public CLI. Use `understudy skills --search <query>` to find
+the relevant capability skill or cookbook instead.
 
 For GEPA/DSPy work, the CLI stays as the guide and gate surface while Python is
 used only for small local optimizer environments:
