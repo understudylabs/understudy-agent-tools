@@ -220,6 +220,7 @@ install_claude_plugin() {
 }
 
 launch_claude_code() {
+  local claude_log
   if [ "$NO_CLAUDE" != "0" ]; then
     say "Skipping Claude Code launch because --no-claude is set."
     mark_step_done 3
@@ -249,14 +250,28 @@ launch_claude_code() {
   say "  /understudy:onboard"
   say "The onboarding skill will coach model download, terminal choice, tmux/Pi handoff, and any frontier comparison with explicit consent."
   say "Launching Claude Code now. Exit Claude to return to this shell."
+  claude_log="$LOG_DIR/claude-$(date -u +"%Y%m%dT%H%M%SZ").log"
+  say "Claude Code launch log: $claude_log"
   log "LAUNCH claude ${UNDERSTUDY_CLAUDE_ARGS:-}"
-  # curl | sh leaves stdin attached to the pipe; reconnect Claude to the user's tty.
-  # shellcheck disable=SC2086
-  claude ${UNDERSTUDY_CLAUDE_ARGS:-} </dev/tty >/dev/tty 2>&1 || {
-    local status="$?"
-    say "Claude Code exited with status $status."
-    return "$status"
-  }
+  if need script; then
+    # curl | sh leaves stdin attached to the pipe. `script` gives Claude Code a
+    # real pseudo-terminal while also capturing the launch output for debugging.
+    # shellcheck disable=SC2086
+    script -q "$claude_log" claude ${UNDERSTUDY_CLAUDE_ARGS:-} </dev/tty >/dev/tty 2>&1 || {
+      local status="$?"
+      say "Claude Code exited with status $status."
+      say "See Claude Code launch log: $claude_log"
+      return "$status"
+    }
+  else
+    say "script(1) not found; launching without a Claude Code transcript."
+    # shellcheck disable=SC2086
+    claude ${UNDERSTUDY_CLAUDE_ARGS:-} </dev/tty >/dev/tty 2>&1 || {
+      local status="$?"
+      say "Claude Code exited with status $status."
+      return "$status"
+    }
+  fi
   mark_step_done 3
 }
 
