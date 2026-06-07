@@ -36,41 +36,32 @@ execution, auth injection, artifact writes, or a safety gate.
 
 ## Install Locally
 
-Fast first-run installer for Apple Silicon:
+Fast first-run installer:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/UnderstudyLabs/understudy-agent-tools/main/install.sh | bash
 ```
 
-After this lands on `main`, this is the URL to hand to Aamir for a clean
-top-of-funnel test:
+This installs the CLI, installs or refreshes the Claude Code plugin when
+`claude` is available, then opens Claude Code in the current directory. In
+Claude Code, run:
 
-```bash
-curl -fsSL https://raw.githubusercontent.com/UnderstudyLabs/understudy-agent-tools/main/install.sh | sh
+```text
+/reload-plugins
+/understudy:onboard
 ```
 
-Pre-merge branch test:
+The installer intentionally does **not** download model weights, start MLX,
+install Pi, launch tmux/iTerm, or make frontier calls. Those belong inside the
+Claude Code skill flow, where the agent can explain the tradeoffs, ask consent,
+coach the user on opening their preferred terminal, and run the same commands
+itself when appropriate.
 
-```bash
-curl -fsSL https://raw.githubusercontent.com/UnderstudyLabs/understudy-agent-tools/yolo/first-understudy-installer/install.sh | UNDERSTUDY_INSTALL_REF=yolo/first-understudy-installer bash -s -- --yes
-```
-
-That clones the public repo into `~/.understudy/agent-tools/source`, builds and
-installs the CLI locally, installs Pi, prepares an isolated MLX runtime, asks
-before downloading the verified Gemma 4 E2B 4-bit first-rung snapshot, and opens
-a new Terminal window so you meet your first local Understudy immediately. For
-non-interactive demos, add `--yes`:
+For non-interactive installs, add `--yes`:
 
 ```bash
 curl -fsSL https://raw.githubusercontent.com/UnderstudyLabs/understudy-agent-tools/main/install.sh | bash -s -- --yes
 ```
-
-The default model endpoint is a stable Understudy snapshot session generator:
-`https://models.understudylabs.com/session?model=gemma-4-e2b-it-mlx-vlm-4bit`.
-The installer fetches that manifest, then downloads each model file from the
-short-lived signed URL returned in `files[]`. We publish the session URL, not
-the expiring per-object signed URLs. It is overridable with
-`UNDERSTUDY_MODEL_SESSION_URL`.
 
 The installer is resumable. It writes step markers under
 `~/.understudy/agent-tools/install-state`; after a failed run, use:
@@ -82,17 +73,7 @@ curl -fsSL https://raw.githubusercontent.com/UnderstudyLabs/understudy-agent-too
 You can also jump directly to a step:
 
 ```bash
-curl -fsSL https://raw.githubusercontent.com/UnderstudyLabs/understudy-agent-tools/main/install.sh | bash -s -- --from-step 3
-```
-
-If a coding agent started the installer, the user can follow the live Pi session
-with `tmux attach -t mlx-arena-first`. Agents should drive Pi through tmux using
-paste-buffer plus an explicit Enter:
-
-```bash
-tmux set-buffer 'Say exactly: local Understudy is online.'
-tmux paste-buffer -t mlx-arena-first
-tmux send-keys -t mlx-arena-first Enter
+curl -fsSL https://raw.githubusercontent.com/UnderstudyLabs/understudy-agent-tools/main/install.sh | bash -s -- --from-step 2
 ```
 
 Developer install from a clone:
@@ -136,6 +117,10 @@ restart required**. The equivalent interactive flow is `/plugin marketplace add
 <path>` then `/plugin install understudy@understudy-skills`. The
 [`install-plugin`](skills/install-plugin/SKILL.md) skill automates this and
 reports whether the plugin is already installed.
+
+After `/reload-plugins`, run `/understudy:onboard`. That is where the coding
+agent guides the first local model, terminal choice, Pi/tmux handoff, and any
+frontier comparison with explicit consent.
 
 Installing as a plugin is the recommended way to use Understudy: the skills are
 what let a coding agent explain what Understudy is and walk you from a trace to a

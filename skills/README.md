@@ -42,6 +42,10 @@ execution; skills tell the agent what to inspect, gate, monitor, and report.
   authenticated gateway inference, project/key readiness, public model listing,
   workload route percentages, `understudy run`, and monitored durable CLI
   execution.
+- [`choose-frontier-keys`](choose-frontier-keys/SKILL.md) handles the first-run
+  choice between BYO provider keys from the current shell or a local `.env`, the
+  Understudy ZDR gateway route, or skipping remote frontier calls. It asks
+  before reading `.env` values and never prints or stores secrets.
 - [`manage-local-models`](manage-local-models/SKILL.md) acquires, caches,
   organizes, and explains local open-weight models (Gemma 4, Nemotron 3): where
   weights come from and live, formats/quantization, gated weights and HF tokens,

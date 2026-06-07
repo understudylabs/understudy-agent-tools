@@ -52,6 +52,55 @@ Write it with the smallest correct change: merge new fields, append to `history`
 and `local_models`, bump `updated_at`. If a value is unknown, leave it null
 rather than guessing.
 
+## The agent runtime card (`~/.understudy/agent-card.json`)
+
+Agent-level, not user-interview memory. This is the single file a fresh coding
+agent reads when the user asks, "is my Understudy active?" or "talk to my
+Understudy." It captures live local runtime facts that do not belong in the
+profile. Never put secrets, prompts, outputs, or customer data in it.
+
+```jsonc
+{
+  "schema_version": "understudy.agent_card.v1",
+  "created_at": "2026-06-06T18:00:00Z",
+  "updated_at": "2026-06-06T18:05:00Z",
+  "understudy": {
+    "model": "/Users/me/.understudy/models/gemma-4-e2b-it-mlx-vlm-4bit",
+    "name": "Gemma 4 E2B",
+    "endpoint": "http://127.0.0.1:8081/v1",
+    "health_url": "http://127.0.0.1:8081/v1/models",
+    "healthy": true,
+    "served_by": "mlx_vlm.server",
+    "runtime": "mlx_vlm",
+    "provider": "mlx-gemma4-e2b",
+    "tmux_session": "mlx-arena-first",
+    "logs": "~/.understudy/agent-tools/.understudy/local-model-lab/arena/logs",
+    "how_to_talk": "curl -s http://127.0.0.1:8081/v1/chat/completions -H 'Content-Type: application/json' -d '{\"model\":\"/Users/me/.understudy/models/gemma-4-e2b-it-mlx-vlm-4bit\",\"messages\":[{\"role\":\"user\",\"content\":\"Say hello from my local Understudy.\"}],\"max_tokens\":128}'"
+  },
+  "companion": {
+    "alive": false,
+    "pid": null,
+    "stale_pid": 84470,
+    "path": "/Users/me/Documents/understudy-cli/companion/rust/target/debug/us-companion",
+    "state_file": "~/.understudy/companion.json"
+  },
+  "project": {
+    "cwd": "/Users/me/my-app",
+    "slug": "my-app"
+  },
+  "org": {
+    "id": "org_..."
+  }
+}
+```
+
+Refresh this card during onboarding, whenever `arena.sh first|play|up` serves a
+model, and whenever a companion process starts. If `~/.understudy/companion.json`
+contains a dead pid, clear that pid in the companion state file and record it as
+`stale_pid` in the card. A later agent should be able to answer the user's
+runtime question from this card first, using health checks only to refresh stale
+facts.
+
 ## Tooling detection → experience signal
 
 Run these read-only checks while the model downloads. Each hit is a signal; the
@@ -125,9 +174,18 @@ through MLX on Apple Silicon (see
   `models.understudylabs.com/session?model=...` endpoint. It returns a manifest
   with short-lived signed URLs for the actual model files; do not publish the
   expiring per-object URLs directly.
-- **BF16 profiling rung** — same E2B source and converter, about 9.5 GB on disk.
-  Keep it as an internal/local profiling option until a signed
-  `models.understudylabs.com` session is published.
+- **12B local climb rungs** — Understudy-verified `google/gemma-4-12B-it`,
+  converted with `mlx-vlm 0.6.2` and served with `mlx_vlm.server`. Use
+  `https://models.understudylabs.com/session?model=gemma-4-12b-it-mlx-vlm-4bit`
+  first on high-RAM Apple Silicon; it is about 6.3 GB on disk and verified with
+  local generation plus OpenAI-compatible logprobs/top-logprobs. Use
+  `https://models.understudylabs.com/session?model=gemma-4-12b-it-mlx-vlm-bf16`
+  only for larger-memory quality/perf profiling; it is about 22 GB on disk.
+- **Larger local Gemma rungs** — `gemma-4-26b-a4b-it-mlx-vlm-4bit` is the
+  opinionated MoE-style climb at about 14 GB on disk; `gemma-4-31b-it-mlx-vlm-4bit`
+  is the dense high-memory local rung at about 17 GB. Both use stable
+  `https://models.understudylabs.com/session?model=<id>` endpoints and were
+  verified with local generation plus logprobs/top-logprobs.
 - **Tiny fallback only** — `mlx-community/gemma-3-1b-it-4bit`, served with
   `mlx_lm.server`. Dry-run download is about 772 MB and it loads on current
   `mlx-lm 0.31.3`; use it only when the verified Gemma 4 snapshot is unavailable

@@ -82,14 +82,33 @@ State plainly: **no restart needed** — `/reload-plugins` loads the skills into
 this session. Only if the skills still don't appear afterward should they fully
 restart Claude Code.
 
-### 5. Verify
+### 5. Hand off to onboarding
+
+Once `/reload-plugins` succeeds, the next user-typed command is:
+
+```
+/understudy:onboard
+```
+
+This matters: plugin install only makes the skills visible. Onboarding creates
+the durable `~/.understudy/profile.json`, starts or verifies the first local
+Understudy, and refreshes `~/.understudy/agent-card.json` so future Claude Code
+turns can answer "is my understudy active and how do I talk to it?" without
+guessing.
+
+The agent cannot run `/understudy:onboard` as a slash command on the user's
+behalf. Surface it as the immediate next step and offer to continue once the
+user invokes it.
+
+### 6. Verify
 
 ```bash
 claude plugin list --json
 ```
 
 Confirm `understudy@understudy-skills` is enabled, and confirm to the developer
-that `/understudy` (and the other eight skills) are now available.
+that `/understudy`, `/understudy:onboard`, and the other skills are now
+available.
 
 ## Fallback: fully interactive path
 
@@ -121,4 +140,5 @@ repo-local skills.
 
 End with: whether the plugin was already installed / just installed / shown for
 manual run; the exact activation step (`/reload-plugins`); an explicit
-restart-or-not statement (not needed); and the verification result.
+restart-or-not statement (not needed); the next onboarding command
+(`/understudy:onboard`); and the verification result.

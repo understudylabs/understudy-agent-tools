@@ -51,13 +51,18 @@ work — do not re-run the full interview. Only first-timers get the full flow.
    `r2://understudy-model-snapshots/models/google/gemma-4-e2b-it/mlx-vlm-0.6.2/quant-4bit/`).
    It is about 3.3 GB on disk and generated locally at
    about 218 tok/s in testing. Announce the model, quantization, size, source,
-   and ETA, get a quick yes, then run
-   `skills/mlx-arena/arena.sh first-window` on macOS so a distinct Terminal.app
-   window opens with the branded loading screen while the model loads, then lands
-   in Pi when the local Understudy is ready. Use `arena.sh first` when a separate
-   window is unavailable. If the MLX runtime is missing, the slow step is
-   *install MLX + pull* — get one quick approval, then background it. If the
-   Gemma 4 snapshot URL is unavailable, fall back to
+   and ETA, get a quick yes, then route through
+   [`../manage-local-models/SKILL.md`](../manage-local-models/SKILL.md) to run
+   the skill-owned pull helper:
+   ```bash
+   node scripts/pull-understudy-snapshot.mjs --model gemma-4-e2b-it-mlx-vlm-4bit
+   ```
+   Resolve the script relative to the `manage-local-models` skill directory.
+   This caches the first Understudy under
+   `~/.understudy/models/gemma-4-e2b-it-mlx-vlm-4bit` and logs progress/ETA under
+   `~/.understudy/agent-tools/logs/`. If the MLX runtime is missing, the slow
+   step is *install MLX + pull* — get one quick approval, then background it. If
+   the Gemma 4 snapshot URL is unavailable, fall back to
    `mlx-community/gemma-3-1b-it-4bit` only to preserve the aha moment. Then
    immediately move on; do not watch the bar.
 
@@ -81,31 +86,54 @@ work — do not re-run the full interview. Only first-timers get the full flow.
    providers), and preferred coaching depth. Question bank in
    [`reference.md`](reference.md).
 
-5. **Write the profile.** Save `~/.understudy/profile.json` (schema in
+5. **Write the profile and agent card.** Save `~/.understudy/profile.json` (schema in
    [`reference.md`](reference.md)): experience tier, detected tooling, hardware,
    goal, constraints, and the three meet-them-where-they-are dials — vocabulary,
    coaching depth, opinion strength. Append, don't overwrite, the `history` of
-   workloads and decisions.
+   workloads and decisions. Also refresh `~/.understudy/agent-card.json` with
+   live runtime facts: the local model, endpoint, serving process, tmux session,
+   companion status, and the exact command for talking to the local Understudy.
+   If `~/.understudy/companion.json` points at a dead pid, clear it and record
+   the stale pid in the card.
 
-6. **Land the quick win.** The `arena.sh first` pane now says their first local
-   Understudy is ready and opens Pi on verified Gemma 4 E2B. Have them try one
-   real prompt. If Pi is not installed, run one local generation and print:
+6. **Land the quick win: show the local Understudy exists.** Once the snapshot is cached, route to
+   [`../mlx-arena/SKILL.md`](../mlx-arena/SKILL.md). Coach the user to open a
+   terminal of their choice and attach to the tmux session, or launch it from the
+   agent if they ask. Use:
+   ```bash
+   FIRST_REPO="$HOME/.understudy/models/gemma-4-e2b-it-mlx-vlm-4bit" \
+     skills/mlx-arena/arena.sh first
+   ```
+   The pane says their first local Understudy is ready and opens Pi on verified
+   Gemma 4 E2B. Have them try one real prompt only to prove local inference is
+   real and inspectable. If Pi is not installed, run one local generation and print:
    `npm install -g --ignore-scripts @earendil-works/pi-coding-agent`. Briefly
    teach the idea: an open-weight model is downloadable weights you run yourself;
    local is free and ZDR-safe; you iterate small and local, then *graduate* to a
    larger model in the same family via the gateway when you need the quality.
 
-7. **Run the first default environment.** After the first local prompt or two,
-   run the built-in deterministic sandbox from
-   [`../design-simulated-environment/SKILL.md`](../design-simulated-environment/SKILL.md):
-   synthetic records, in-memory tools, a scripted oracle, and final-state
-   validators. This proves the local Understudy can act in a small tool world
-   before any codebase-specific environment is built.
+7. **Profile the user's real workload.** The main path after the local proof is
+   not a model duel. Ask the user for a codebase, trace folder, dataset, eval
+   runner, prompt file, or app route. If they point at a project, route to
+   [`../understand-workload/SKILL.md`](../understand-workload/SKILL.md) first:
+   inspect prompts in situ, trace the request/response path through code,
+   summarize the dataset or trace distribution, name the real task, and confirm
+   that understanding with the user before any optimization. If there is already
+   a real captured environment, skip the toy sandbox. Only use
+   [`../design-simulated-environment/SKILL.md`](../design-simulated-environment/SKILL.md)
+   when there is no resettable real workload yet.
 
-8. **Start the head-to-head.** After the default environment baseline, route to
+8. **Make head-to-head optional.** A frontier-vs-local duel is useful when the
+   user needs to feel the quality gap, calibrate taste, or get buy-in. It is a
+   side quest, not the default evidence path. If the user wants it, route to
    [`../specialize-local-model/SKILL.md`](../specialize-local-model/SKILL.md) and
-   run `skills/mlx-arena/arena.sh play` so they can compare the local Understudy
-   against a frontier model and decide where local is already enough.
+   run:
+   ```bash
+   LEFT_REPO="$HOME/.understudy/models/gemma-4-e2b-it-mlx-vlm-4bit" \
+     skills/mlx-arena/arena.sh play
+   ```
+   Otherwise keep going through workload understanding, capture evidence, and
+   local evaluation against the actual task slice.
 
 9. **Route onward.** Hand to the [`understudy`](../understudy/SKILL.md)
    orchestrator for the improvement loop;
@@ -120,8 +148,8 @@ recommended path; stay terse and offer trade-offs to practitioners.
 
 End with: runtime + model downloading (and ETA, or "cached"); hardware found and
 what fits locally; inferred experience tier and the dials set; the profile path
-written; the quick-win result (local generation shown or pending); and one
-recommended next skill/command.
+written; the agent-card path refreshed; the quick-win result (local generation
+shown or pending); and one recommended next skill/command.
 
 ## References
 

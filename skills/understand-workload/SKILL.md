@@ -8,17 +8,19 @@ metadata:
     cli_required: false
 ---
 
-# Understand the workload (decompose & explain a prompt)
+# Understand the workload (profile traces, data, prompts, and code path)
 
-The intermediate step before you compare models. **You cannot fairly vibe-check
-two models on a workload you don't understand**, and seeing generated questions in
-isolation is useless if the user has never seen what the real prompt does. This
-skill turns one captured prompt into a *shared mental model* — purpose, inputs,
-outputs, steps, tool-call flow, and success criteria — built **with** the user
-through Q&A, and only then derives the comparison questions.
+The intermediate step before you compare, optimize, or route models. **You
+cannot improve an AI workload you cannot explain.** Seeing generated questions
+or a side-by-side duel in isolation is secondary; first help the user understand
+what their workload is meant to accomplish, what data it represents, and how a
+request moves through the app. This skill turns traces, prompt files, datasets,
+and code paths into a *shared mental model* — purpose, inputs, outputs, steps,
+tool-call flow, data shape, failure modes, and success criteria — built **with**
+the user through Q&A.
 
-Every prompt is different, so this is a skill, not a script: the decomposer
-extracts the structure; you supply the meaning and confirm it with the user.
+Every workload is different, so this is a skill, not a script: the agent
+extracts structure from traces and code; the user confirms the task meaning.
 
 ## Safety Gates
 
@@ -31,22 +33,42 @@ extracts the structure; you supply the meaning and confirm it with the user.
   must be synthetic (no customer data) before they can be committed or sent to a
   model.
 - Make cost/latency/model claims from the capture itself, not memory.
+- **No premature duel.** Do not route to a frontier-vs-local head-to-head until
+  the workload purpose, data shape, and success criteria are clear enough that
+  the comparison questions map to real task behavior.
 
 ## Inputs it handles
 
 - **Understudy capture envelopes** (`.jsonl` with a `customer_request_body`).
 - **Raw request JSON** (Anthropic/OpenAI shape: `model`, `system`, `messages`, `tools`).
+- **Prompt/config files** embedded in an app (`prompts/`, route handlers, agent
+  policy files, YAML/JSON configs, eval manifests).
+- **Code paths** that assemble the request, call the provider, parse responses,
+  invoke tools, retry, stream, or write state.
+- **Datasets and eval rows** (`.jsonl`, fixtures, golden outputs, trace exports,
+  benchmark tasks, request logs).
 - A **folder** of captures — pick one or two representative ones (e.g. median and
   largest token count) rather than all of them.
 
 ## Flow
 
-1. **Locate + pick a representative trace.** If given a dataset, list the captures
-   with sizes and pick the median + the largest (size drives the harness story).
-   Understudy captures are envelopes with a `customer_request_body`; parse that to
-   get the request (`model`, `system`, `messages`, `tools`, params).
+1. **Locate the workload surface.** Start from what the user named: codebase,
+   app route, prompt file, dataset, eval suite, trace export, benchmark fixture,
+   request log, or existing runner. List candidate surfaces and identify which
+   one appears to be the actual production or benchmark workload. If given a
+   dataset or trace folder, list row/count/file sizes and pick the median +
+   largest representative cases (size drives the harness story). Understudy
+   captures are envelopes with a `customer_request_body`; parse that to get the
+   request (`model`, `system`, `messages`, `tools`, params).
 
-2. **Decompose the structure, redaction-safe** — extract and report only:
+2. **Trace the request/response path in situ.** Follow the code from user input
+   or eval row to prompt assembly, model/provider call, tool loop, response
+   parsing, retries, streaming, and any writes. Name the files/functions/routes
+   involved, the env var names used for providers, and where logs or traces are
+   emitted. Do not stop at "there is a prompt"; show the whole path the request
+   takes and where the candidate model can safely be swapped in.
+
+3. **Decompose the request structure, redaction-safe** — extract and report only:
    model + params, token size, the **system-prompt outline** (its `#` headings, not
    the body), the **messages** (roles + char sizes — never content), the **tool
    catalog grouped by action class** (read / transform / write / search /
@@ -55,22 +77,31 @@ extracts the structure; you supply the meaning and confirm it with the user.
    re-sent every turn) vs per-call content** — the fixed share is usually the
    surprise and drives the harness story.
 
-3. **Explain it back in plain language** — six facets, each one or two sentences:
+4. **Profile the data or traces.** Before model comparison, describe what the
+   dataset represents: row count, split/source if known, task categories, input
+   size distribution, output shapes, labels/golden fields, tool-call/request-log
+   counts, common failure classes, and outliers. Use metadata, schemas, counts,
+   hashes, and redacted examples. If raw examples are needed, ask for explicit
+   approval and show the smallest safe excerpt.
+
+5. **Explain it back in plain language** — seven facets, each one or two sentences:
    - **Purpose** — what is this prompt trying to accomplish?
    - **Inputs** — what goes in (and roughly how big)?
+   - **Data represented** — what rows/traces/users/tasks does this dataset stand for?
    - **Outputs** — what should come out, in what shape?
    - **Steps** — how many, and what is each step doing?
    - **Tools/actions** — what can it touch, and which calls *mutate state*?
+   - **Code path** — where the request is assembled, called, parsed, and logged.
    - **How we judge success** — the task-level criteria (correct records written,
      right observations extracted, policy followed) — **not just cost and speed.**
 
-4. **Show the flow as a mermaid diagram.** Draw the agent loop and tool classes so
+6. **Show the flow as a mermaid diagram.** Draw the agent loop and tool classes so
    the user can *see* the shape: inputs → system → loop → {read / transform / write}
    → final state. For a multi-turn case, also reconstruct the loop turn-by-turn from
    the (history-carrying) captures — per-request token growth and how context
    compounds as tool results are appended — and render that too.
 
-5. **Q&A discovery — build the understanding WITH the user.** Use `AskUserQuestion`
+7. **Q&A discovery — build the understanding WITH the user.** Use `AskUserQuestion`
    to confirm and fill gaps you can't infer from structure alone, e.g.:
    - "Is the goal *extraction* (read→structured output) or *orchestration*
      (read→decide→write)? I inferred X from the tools — right?"
@@ -80,26 +111,29 @@ extracts the structure; you supply the meaning and confirm it with the user.
    - "Where does the big token cost come from — fixed context or per-item input?"
    Iterate until the user says the picture is right.
 
-6. **Write the success criteria** — the rubric axes for *this* workload, beyond
+8. **Write the success criteria** — the rubric axes for *this* workload, beyond
    cost/latency: final-state correctness, extraction recall/precision, policy
    compliance, no-bad-writes, schema validity. These become the metric the arena /
    `capture-evidence` use.
 
-7. **Use the shared understanding to test models.** Two paths: derive grounded
-   vibe-check questions (each mapping to a real step/criterion) for the frontier-vs-
-   local head-to-head ([`../mlx-arena/SKILL.md`](../mlx-arena/SKILL.md)); and, for a
-   whole-case test a small model can't one-shot, build a
-   [`../design-simulated-environment/SKILL.md`](../design-simulated-environment/SKILL.md)
-   and run the [`../recursive-language-model/SKILL.md`](../recursive-language-model/SKILL.md)
-   decomposition harness to measure what's reachable. Freeze the metric/splits with
-   [`../capture-evidence/SKILL.md`](../capture-evidence/SKILL.md).
+9. **Use the shared understanding to test or improve models.** Primary path:
+   freeze a workload contract with [`../capture-evidence/SKILL.md`](../capture-evidence/SKILL.md)
+   and run the local model against the real task via
+   [`../run-local-model-lab/SKILL.md`](../run-local-model-lab/SKILL.md) or the
+   appropriate optimizer skill. Optional side quest: derive grounded vibe-check
+   questions for [`../mlx-arena/SKILL.md`](../mlx-arena/SKILL.md), each mapped to
+   a real step/criterion, when the user needs a visible local-vs-frontier feel
+   check. For a whole-case test a small model cannot one-shot, build a simulated
+   environment only when no real resettable workload exists.
 
 ## Output Standard
 
-End with: the representative trace(s) chosen and their size; the six-facet
-explanation; the mermaid flow; the success criteria agreed with the user; and the
-list of grounded questions to take into the arena — each tied to a step or
-criterion. Keep the decomposition doc local; only the synthetic questions leave.
+End with: workload surface inspected; representative trace(s)/dataset rows
+chosen and their size; the request/response code path; data/trace profile; the
+seven-facet explanation; the mermaid flow; success criteria agreed with the
+user; artifact paths for the local workload brief; and the next evidence action.
+If you include arena questions, mark them optional and tie each to a real step
+or criterion. Keep the decomposition doc local; only synthetic questions leave.
 
 ## References
 

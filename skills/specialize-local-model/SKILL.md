@@ -1,6 +1,6 @@
 ---
 name: specialize-local-model
-description: Use when a developer wants the smallest task-reasonable local model opened in Pi against a frontier model, then wants the gap to drive model climb, GEPA, simulated env, RLM, hybrid route, or remote-only. Triggers include "can local do this", "train an understudy", "smallest reasonable model", or "use Pi then simulated env".
+description: Use when a developer wants the smallest task-reasonable local model opened in Pi, then wants the real workload profiled and improved through model climb, GEPA, simulated/real env, RLM, hybrid route, or remote-only. Frontier head-to-head is optional calibration. Triggers include "can local do this", "train an understudy", "smallest reasonable model", or "profile this workload for local".
 metadata:
   understudy:
     mode: interactive
@@ -12,9 +12,12 @@ metadata:
 
 Turn a task into a measured local-model ladder. Start with the **smallest local
 model that is plausibly reasonable for the task**, open it in Pi so the developer
-immediately sees a private model running on their machine, compare it against a
-frontier model, then use the gap to decide whether to climb models, optimize the
-prompt, decompose the task, simulate the environment, or route remote.
+immediately sees a private model running on their machine, then move into the
+user's real problem: inspect prompts/traces/code paths, profile the dataset,
+freeze an eval, and try to make the local Understudy solve that task slice. A
+frontier comparison can be inserted when useful, but the observed workload gaps
+decide whether to climb models, optimize the prompt, decompose the task, simulate
+the environment, or route remote.
 
 This is an orchestration skill. Do not reimplement worker skills inline; sequence
 them and hand off with concrete artifacts.
@@ -23,19 +26,23 @@ them and hand off with concrete artifacts.
 
 ```text
 task intake
+  -> profile prompts/traces/data/code path
   -> smallest reasonable local rung
-  -> Pi frontier-vs-local head-to-head
-  -> default deterministic environment calibration
+  -> Pi local proof
+  -> optional frontier-vs-local head-to-head
+  -> freeze a task-specific eval/environment
   -> gap report
-  -> simulated env / frozen eval when the task is workflow-like
-  -> improve via model climb, GEPA, RLM, or route
+  -> improve via model climb, GEPA, RLM, env feedback, or route
+  -> rerun until local beats frontier on that task slice or the route stays remote
   -> measured route decision
 ```
 
-The arena is the emotional proof: "I have a local model running." The default
-environment is the calibration proof: "this model can act in a deterministic
-tool world." The codebase-specific simulated environment and eval loop are the
-proof that the local model can actually do the user's job.
+The arena is the visible proof: "I have a local model running." The durable
+product moment is when the agent profiles a real workload, the developer confirms
+the task understanding, and the local Understudy starts improving against that
+specific workload. A stock duel can be a spark, but the data profile, request
+path, metric, and eval loop are the proof that the local model can actually do
+the user's job.
 
 ## Safety Gates
 
@@ -83,28 +90,47 @@ proof that the local model can actually do the user's job.
      hybrid or remote if quality is the bottleneck.
 
 3. **Open Pi quickly.** Use [`../mlx-arena/SKILL.md`](../mlx-arena/SKILL.md):
-   serve the selected local model with MLX, wire Pi, and open the blind
-   local-vs-frontier game. Use user prompts, a small local dataset, or questions
-   generated from the workload decomposition. Capture preference, guessed
-   frontier identity, latency, cost, and failure notes.
+   serve the selected local model with MLX, wire Pi, and prove the user can talk
+   to the local Understudy. Do not spend the session on generic questions.
 
-4. **Write a gap report.** Record:
+4. **Profile the real task slice.** Ask the developer to pick one concrete
+   problem they care about, or inspect the current repo for useful data: eval
+   files, fixtures, traces, support tickets, prompts, transcripts, golden
+   outputs, failing tests, request logs, API/tool logs, or app routes. Route to
+   [`../understand-workload/SKILL.md`](../understand-workload/SKILL.md) to trace
+   the request/response path, describe the dataset/traces, and confirm success
+   criteria. If no data exists, synthesize a small public/local fixture that
+   matches the workflow and clearly label it as synthetic. The goal is a bounded
+   slice where the local Understudy can plausibly improve through specialization.
+
+5. **Optionally calibrate against frontier.** If the user needs a visible
+   quality comparison, run the blind frontier-vs-local game using questions
+   generated from the workload decomposition. Capture preference, guessed
+   frontier identity, latency, cost, and failure notes as hypotheses only, not
+   claims.
+
+6. **Freeze the task-specific eval/environment.** For answer-only work, route to
+   [`../capture-evidence/SKILL.md`](../capture-evidence/SKILL.md) and
+   [`../run-local-model-lab/SKILL.md`](../run-local-model-lab/SKILL.md) to create
+   rows, rubric/metric, baseline, and holdout. For workflow/tool tasks, route to
+   [`../design-simulated-environment/SKILL.md`](../design-simulated-environment/SKILL.md)
+   to build seeded state, tool contracts, oracle actions, and final-state
+   validators. Frontier is the incumbent baseline; local is the candidate.
+
+7. **Write a gap report.** Record:
    - where local already matches or beats frontier;
    - where frontier wins;
    - whether the gap is model size, prompt/harness, context/tool surface, missing
      environment feedback, or true policy learning.
 
-5. **Run the default environment before custom env work.** Use
-   [`../design-simulated-environment/SKILL.md`](../design-simulated-environment/SKILL.md)
-   to run the built-in synthetic inbox/ticket/project-board sandbox with the
-   local model and frontier. Treat this as calibration only: it validates tool
-   calling, schema following, final-state scoring, and the local-vs-frontier
-   comparison path before building anything from the user's codebase.
-
-6. **Choose the next intervention.**
+8. **Choose the next intervention.**
    - **Model too weak, harness sane** -> climb the local model ladder and rerun
-     Pi / local-model-lab: Gemma 4 E2B 4-bit -> Gemma 4 E2B BF16 -> Gemma 4 E4B
-     -> Gemma 4 12B -> Nemotron 3 Nano 4B/30B-A3B -> remote Gemma/Nemotron.
+     Pi / local-model-lab: Gemma 4 E2B 4-bit -> Gemma 4 E4B 4-bit -> Gemma 4
+     12B 4-bit -> Gemma 4 12B BF16 -> Gemma 4 26B A4B 4-bit -> Gemma 4 31B
+     4-bit -> Nemotron 3 Nano 4B/30B-A3B -> remote Gemma/Nemotron. Pull from
+     the stable `models.understudylabs.com/session?model=<id>` snapshots in
+     [`../manage-local-models/reference.md`](../manage-local-models/reference.md)
+     instead of sending the user to open-ended model browsing.
    - **Prompt or output contract weak** -> use
      [`../optimize-workload/SKILL.md`](../optimize-workload/SKILL.md) for
      train/dev-only GEPA or prompt repair.
@@ -119,7 +145,12 @@ proof that the local model can actually do the user's job.
    - **Local cannot meet quality** -> stay remote and document the revisit trigger
      (new MLX runtime, new weights, larger hardware, or better env feedback).
 
-7. **Prove the route.** For answer-only tasks, run
+9. **Rerun until the claim is real.** Iterate on the chosen intervention against
+   the frozen task slice. The win condition is not "local feels good"; it is
+   "local beats the frontier baseline on the agreed metric for these tasks" or a
+   clear decision that frontier/remote remains the right route.
+
+10. **Prove the route.** For answer-only tasks, run
    [`../run-local-model-lab/SKILL.md`](../run-local-model-lab/SKILL.md) against
    frozen eval rows. For tool/API workflows, use
    [`../design-simulated-environment/SKILL.md`](../design-simulated-environment/SKILL.md)
@@ -127,9 +158,11 @@ proof that the local model can actually do the user's job.
 
 ## Output Standard
 
-End with: task class; first local rung and why it is the smallest reasonable
-choice; Pi arena setup and first head-to-head result; gap diagnosis; chosen next
-intervention; route decision or the exact evidence still needed.
+End with: task class; workload profile status; first local rung and why it is
+the smallest reasonable choice; Pi/tmux local proof; whether a head-to-head was
+run; chosen real task/data slice; frozen eval/environment path; gap diagnosis;
+chosen next intervention; whether local beat the incumbent on that slice or the
+exact evidence still needed.
 
 ## References
 

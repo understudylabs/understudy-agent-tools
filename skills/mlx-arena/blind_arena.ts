@@ -36,12 +36,22 @@ const ROUNDS = parseInt(env.ROUNDS ?? "6", 10);
 const PANEL_W = 60;
 
 const REQUESTED_FRONTIER_MODEL = env.FRONTIER_MODEL?.trim();
-const OPENAI_FRONTIER_MODEL = env.OPENAI_MODEL?.trim() || REQUESTED_FRONTIER_MODEL || "gpt-5.1";
+const OPENAI_FRONTIER_MODEL = env.OPENAI_MODEL?.trim() || REQUESTED_FRONTIER_MODEL || "gpt-5.5";
 const ANTHROPIC_FRONTIER_MODEL = env.ANTHROPIC_MODEL?.trim() || REQUESTED_FRONTIER_MODEL || "claude-opus-4-8";
 const GATEWAY_FRONTIER_MODEL = env.AI_GATEWAY_MODEL?.trim() || REQUESTED_FRONTIER_MODEL || OPENAI_FRONTIER_MODEL;
 const UNDERSTUDY_FALLBACK_MODEL = env.UNDERSTUDY_FALLBACK_MODEL?.trim() || "glm-5.1";
 const FRONTIER_FALLBACK_ENABLED = env.FRONTIER_FALLBACK === "0" ? false : true;
-const FRONTIER_NAME = `${REQUESTED_FRONTIER_MODEL || OPENAI_FRONTIER_MODEL} (high reasoning · cloud · $$)`;
+const FRONTIER_REASONING_EFFORT = (env.FRONTIER_REASONING_EFFORT?.trim() || "none") as
+  | "none"
+  | "low"
+  | "medium"
+  | "high"
+  | "xhigh";
+const FRONTIER_MAX_COMPLETION_TOKENS = Math.max(
+  64,
+  Math.min(4096, parseInt(env.FRONTIER_MAX_COMPLETION_TOKENS ?? "768", 10) || 768),
+);
+const FRONTIER_NAME = `${REQUESTED_FRONTIER_MODEL || OPENAI_FRONTIER_MODEL} (cloud · $$)`;
 let activeFrontierName = FRONTIER_NAME;
 
 type FrontierAttempt = {
@@ -82,6 +92,13 @@ function normalizeBaseURL(value: string): string {
   return value.replace(/\/+$/, "").replace(/\/v1$/, "") + "/v1";
 }
 
+function priceForModel(model: string): { in: number; out: number } {
+  if (/^gpt-5\.5(?:-|$)/.test(model)) return { in: 5.0, out: 30.0 };
+  if (/^gpt-5\.4(?:-|$)/.test(model)) return { in: 2.5, out: 15.0 };
+  if (/^gpt-5(?:\.|$|-)/.test(model)) return { in: 1.25, out: 10.0 };
+  return { in: 1.0, out: 5.0 };
+}
+
 function pushUniqueAttempt(attempts: FrontierAttempt[], attempt: FrontierAttempt): void {
   const key = `${attempt.provider}:${attempt.baseURL ?? ""}:${attempt.model}`;
   if (!attempts.some((a) => `${a.provider}:${a.baseURL ?? ""}:${a.model}` === key)) attempts.push(attempt);
@@ -106,14 +123,15 @@ function resolveFrontierAttempts(): FrontierAttempt[] {
   }
 
   if (directOpenAIKey && !customGatewayURL && !REQUESTED_FRONTIER_MODEL?.startsWith("claude")) {
+    const price = priceForModel(OPENAI_FRONTIER_MODEL);
     pushUniqueAttempt(attempts, {
       provider: "openai-compatible",
       model: OPENAI_FRONTIER_MODEL,
       name: `${OPENAI_FRONTIER_MODEL} (OpenAI direct)`,
       apiKey: directOpenAIKey,
       baseURL: "https://api.openai.com/v1",
-      in: 1.25,
-      out: 10.0,
+      in: price.in,
+      out: price.out,
     });
   }
 
@@ -129,19 +147,21 @@ function resolveFrontierAttempts(): FrontierAttempt[] {
   }
 
   if (customGatewayURL) {
+    const price = priceForModel(GATEWAY_FRONTIER_MODEL);
     pushUniqueAttempt(attempts, {
       provider: "openai-compatible",
       model: GATEWAY_FRONTIER_MODEL,
       name: `${GATEWAY_FRONTIER_MODEL} (AI gateway)`,
       apiKey: customGatewayKey || "gateway",
       baseURL: normalizeBaseURL(customGatewayURL),
-      in: 1.25,
-      out: 10.0,
+      in: price.in,
+      out: price.out,
     });
   }
 
   const gateway = loadGateway();
   if (gateway.key && gateway.url) {
+    const price = priceForModel(UNDERSTUDY_FALLBACK_MODEL);
     pushUniqueAttempt(attempts, {
       provider: "understudy-gateway",
       model: UNDERSTUDY_FALLBACK_MODEL,
@@ -149,8 +169,8 @@ function resolveFrontierAttempts(): FrontierAttempt[] {
       apiKey: gateway.key,
       baseURL: normalizeBaseURL(gateway.url),
       headers: { "x-understudy-upstream-key": env.OPENAI_API_KEY ?? "" },
-      in: 1.0,
-      out: 5.0,
+      in: price.in,
+      out: price.out,
     });
   }
 
@@ -323,8 +343,8 @@ async function streamAnthropic(q: string, res: Result, attempt: FrontierAttempt)
   const Anthropic = (await import("@anthropic-ai/sdk")).default;
   const client = new Anthropic({ apiKey: key });
   const stream = client.messages.stream({
-    model: attempt.model, max_tokens: 4000,
-    thinking: { type: "adaptive", display: "summarized" }, output_config: { effort: "high" },
+    model: attempt.model, max_tokens: Math.max(256, Math.min(1600, FRONTIER_MAX_COMPLETION_TOKENS)),
+    thinking: { type: "disabled" }, output_config: { effort: "low" },
     system: SYSTEM, messages: [{ role: "user", content: q }],
   } as any);
   for await (const ev of stream as any) {
@@ -342,17 +362,56 @@ async function streamOpenAICompatible(q: string, res: Result, attempt: FrontierA
   if (!attempt.baseURL) throw new Error(`No base URL for ${attempt.name}.`);
   if (!attempt.apiKey) throw new Error(`No API key for ${attempt.name}.`);
   const client = new OpenAI({ baseURL: attempt.baseURL, apiKey: attempt.apiKey, defaultHeaders: attempt.headers ?? {} });
-  const stream = await client.chat.completions.create({
-    model: attempt.model, max_completion_tokens: 2000, stream: true,
-    stream_options: { include_usage: true }, reasoning_effort: "high",
-    messages: [{ role: "system", content: SYSTEM }, { role: "user", content: q }],
-  } as any);
+  const messages = [{ role: "system", content: SYSTEM }, { role: "user", content: q }];
+  const stream = await createOpenAICompatibleStream(client, attempt.model, messages);
   for await (const chunk of stream as any) {
     if (chunk.usage) { res.inTok = chunk.usage.prompt_tokens || res.inTok; res.outTok = chunk.usage.completion_tokens || res.outTok; }
     const d = chunk.choices?.[0]?.delta?.content;
     if (d) { if (res.tFirst === null) res.tFirst = Date.now(); res.text += d; }
   }
   res.cost = (res.inTok * attempt.in + res.outTok * attempt.out) / 1e6;
+}
+
+function shouldUseReasoningParams(model: string): boolean {
+  return /^(gpt-5|o[134])(?:[.\-_]|$)/.test(model);
+}
+
+async function createOpenAICompatibleStream(client: OpenAI, model: string, messages: Array<{ role: string; content: string }>): Promise<any> {
+  const base: Record<string, unknown> = {
+    model,
+    stream: true,
+    stream_options: { include_usage: true },
+    messages,
+  };
+  if (shouldUseReasoningParams(model)) {
+    base.max_completion_tokens = FRONTIER_MAX_COMPLETION_TOKENS;
+    base.reasoning_effort = FRONTIER_REASONING_EFFORT;
+  } else {
+    base.max_tokens = FRONTIER_MAX_COMPLETION_TOKENS;
+  }
+
+  try {
+    return await client.chat.completions.create(base as any);
+  } catch (err: any) {
+    const message = String(err?.message ?? err);
+    if (/Unsupported parameter: 'reasoning_effort'|unknown parameter.*reasoning_effort/i.test(message)) {
+      delete base.reasoning_effort;
+      return await client.chat.completions.create(base as any);
+    }
+    if (/Unsupported parameter: 'max_completion_tokens'|unknown parameter.*max_completion_tokens/i.test(message)) {
+      delete base.max_completion_tokens;
+      base.max_tokens = FRONTIER_MAX_COMPLETION_TOKENS;
+      delete base.reasoning_effort;
+      return await client.chat.completions.create(base as any);
+    }
+    if (/Unsupported parameter: 'max_tokens'|max_tokens is not supported/i.test(message)) {
+      delete base.max_tokens;
+      base.max_completion_tokens = FRONTIER_MAX_COMPLETION_TOKENS;
+      if (shouldUseReasoningParams(model)) base.reasoning_effort = FRONTIER_REASONING_EFFORT;
+      return await client.chat.completions.create(base as any);
+    }
+    throw err;
+  }
 }
 
 // ---------- rendering ----------
