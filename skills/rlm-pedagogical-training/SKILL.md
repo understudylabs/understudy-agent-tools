@@ -113,12 +113,21 @@ The stronger claim requires all three:
    decomposition, retrieval, tool execution, or context management that the flat
    output model cannot express.
 
-6. **Measure concentration.** For teacher or repaired trajectories, compute
+6. **Check the REPL emitter before policy training.** If the untrained RLM
+   writes prose, raw JSON, or JSON-looking data inside a `repl` fence instead of
+   executable code that mutates the final `answer`, treat that as an emitter
+   capability gap. Train a small REPL-code-emitter adapter on gold executable
+   trajectories, score it by executing the generated block, and retest the RLM
+   harness before attempting full RLM policy RL. A good emitter adapter should
+   improve `repl_fence`, `exec_ok`, `answer.ready`, and task metrics on a sealed
+   split; lower loss alone is not enough.
+
+7. **Measure concentration.** For teacher or repaired trajectories, compute
    student forced logprobs and surprise gaps. Report mean `d_t`, max `d_t`, and
    spike penalty. This answers whether the teacher is giving learnable moves or
    unsupported jumps.
 
-7. **Pick the training arm honestly.**
+8. **Pick the training arm honestly.**
    - **Off-policy pedagogical SFT**: train on correct, low-spike teacher traces.
      This is the first local rung.
    - **On-policy repair / DAGGER-style**: sample student RLM trajectories, use
@@ -128,7 +137,7 @@ The stronger claim requires all three:
    - **Hosted verifier handoff**: only after local proof shows the policy needs
      stateful RL beyond the local machine.
 
-8. **Seal holdout before promotion.** The deploy-time candidate must run from
+9. **Seal holdout before promotion.** The deploy-time candidate must run from
    `x` only. Privileged context may score or train; it must not be passed at
    inference.
 
@@ -180,6 +189,10 @@ If the result is `on-policy-repair`, record whether the untrained RLM produced
 valid trajectories. A repair dataset with invalid student trajectories and high
 max-spike repairs is evidence to improve the harness or use a smaller subpolicy,
 not evidence to imitate the repaired trajectories blindly.
+
+If the result is `repl-emitter-repair`, record `repl_fence_rate`,
+`exec_ok_rate`, `ready_rate`, task exact/F1, and whether the adapter was tested
+inside the full RLM harness or only on the emitter surface.
 
 ## Output Standard
 
