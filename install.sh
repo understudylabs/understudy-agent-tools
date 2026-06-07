@@ -213,10 +213,28 @@ download_file() {
   local url="$2"
   local target="$MODEL_DIR/$name"
   local partial="$target.part"
-  [ -s "$target" ] && return 0
+  local expected_size current_size
+  expected_size="$(curl -fsIL "$url" 2>/dev/null | awk 'tolower($1)=="content-length:" {gsub("\r","",$2); size=$2} END {print size}')"
+  if [ -s "$target" ]; then
+    if [ -n "$expected_size" ]; then
+      current_size="$(wc -c <"$target" | tr -d ' ')"
+      [ "$current_size" = "$expected_size" ] && return 0
+      say "Replacing incomplete $name ($current_size/$expected_size bytes)"
+    else
+      return 0
+    fi
+  fi
   mkdir -p "$(dirname "$target")"
   rm -f "$target"
   curl -fL --progress-bar "$url" -o "$partial"
+  if [ -n "$expected_size" ]; then
+    current_size="$(wc -c <"$partial" | tr -d ' ')"
+    if [ "$current_size" != "$expected_size" ]; then
+      rm -f "$partial"
+      say "Downloaded $name has unexpected size ($current_size/$expected_size bytes)."
+      return 1
+    fi
+  fi
   mv "$partial" "$target"
 }
 
