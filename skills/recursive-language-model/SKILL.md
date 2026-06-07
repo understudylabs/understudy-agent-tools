@@ -81,6 +81,12 @@ surface, separates privileged training context from deploy-time input, and
 decides whether the next rung is local pedagogical SFT, on-policy repair,
 pedagogical RL, or a hosted verifier handoff.
 
+Do not assume RLM is better because a task is agentic. Run a flat local baseline
+on the same sealed rows first. If the task is a bounded classification,
+selection, extraction, or short JSON output and flat local wins on quality,
+format, and latency, keep the flat route and use RLM only after a real
+state/context bottleneck appears.
+
 ## Safety Gates
 
 - Run only against the simulated environment or live tools the user approved — never

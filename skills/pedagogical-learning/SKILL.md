@@ -90,6 +90,10 @@ is the cheapest live-rollout intervention, route to
 5. **Pick the next rung.**
    - If a template or route makes the local model correct and learnable, feed it
      to `optimize-workload` or `recursive-language-model`; no weight update yet.
+   - If the task is a bounded output such as classification, extraction,
+     routing, tool selection, or short JSON, try the flat local/pedagogical path
+     before RLM trajectory training. A flat model that already beats the RLM
+     harness should be tuned directly.
    - If correct-and-learnable trajectories can be generated reliably for a flat
      completion or single-output task, prepare a rejection-sampled SFT dataset
      for local MLX LoRA. This is the default first weight-update rung because it

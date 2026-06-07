@@ -73,6 +73,25 @@ Run this before any training claim:
 
 Only the `x`-only deploy conditions are eligible for product claims.
 
+## Decision Rules
+
+- **Flat wins on bounded output:** if a flat local model has higher heldout
+  correctness, valid format, and lower latency than the RLM baseline, stay with
+  flat prompt repair, single-output pedagogical SFT, or local distillation.
+  Training RLM trajectories in this case adds harness complexity before it adds
+  capability.
+- **RLM wins or flat is structurally blocked:** continue toward RLM training
+  when the RLM baseline improves retrieval, context management, tool execution,
+  state repair, or decomposition despite extra latency.
+- **RLM invalid format:** fix the RLM prompt/harness first. Do not train from
+  invalid student trajectories except as a labeled repair dataset.
+- **High max surprise gap:** prefer on-policy repair, smaller subpolicies, or
+  same-family teachers before imitation. Correct but high-spike repairs are not
+  automatically teachable.
+- **Privileged teacher perfect, deploy model poor:** this is headroom, not a
+  deploy claim. The next artifact should be a repair/SFT dataset with
+  concentration metrics and sealed holdout boundaries.
+
 ## Reconciliation Rules
 
 Use these rules when multiple agents are running related experiments:

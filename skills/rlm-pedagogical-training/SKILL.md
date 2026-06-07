@@ -105,12 +105,20 @@ The stronger claim requires all three:
    - Privileged teacher or same-family teacher, labeled as privileged.
    - Optional frontier teacher only after approval.
 
-5. **Measure concentration.** For teacher or repaired trajectories, compute
+5. **Apply the flat-baseline gate.** If the flat local model already solves the
+   bounded output task more accurately, cheaply, and reliably than the untrained
+   RLM, do not train RLM trajectories yet. Prefer flat prompt repair,
+   single-output pedagogical SFT, or local distillation. RLM policy training is
+   justified only when the RLM harness contributes real state access,
+   decomposition, retrieval, tool execution, or context management that the flat
+   output model cannot express.
+
+6. **Measure concentration.** For teacher or repaired trajectories, compute
    student forced logprobs and surprise gaps. Report mean `d_t`, max `d_t`, and
    spike penalty. This answers whether the teacher is giving learnable moves or
    unsupported jumps.
 
-6. **Pick the training arm honestly.**
+7. **Pick the training arm honestly.**
    - **Off-policy pedagogical SFT**: train on correct, low-spike teacher traces.
      This is the first local rung.
    - **On-policy repair / DAGGER-style**: sample student RLM trajectories, use
@@ -120,7 +128,7 @@ The stronger claim requires all three:
    - **Hosted verifier handoff**: only after local proof shows the policy needs
      stateful RL beyond the local machine.
 
-7. **Seal holdout before promotion.** The deploy-time candidate must run from
+8. **Seal holdout before promotion.** The deploy-time candidate must run from
    `x` only. Privileged context may score or train; it must not be passed at
    inference.
 
@@ -167,6 +175,11 @@ Write local artifacts under:
 - `pedagogical-rl-smoke`;
 - `hosted-verifier-handoff`;
 - `blocked`.
+
+If the result is `on-policy-repair`, record whether the untrained RLM produced
+valid trajectories. A repair dataset with invalid student trajectories and high
+max-spike repairs is evidence to improve the harness or use a smaller subpolicy,
+not evidence to imitate the repaired trajectories blindly.
 
 ## Output Standard
 
