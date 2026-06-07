@@ -51,6 +51,10 @@ execution; skills tell the agent what to inspect, gate, monitor, and report.
 - [`run-local-model-lab`](run-local-model-lab/SKILL.md) evaluates local or
   workstation-hosted models against the same frozen workload/eval, keeps model
   downloads behind approval, and compares local, hybrid, and remote routes.
+- [`specialize-local-model`](specialize-local-model/SKILL.md) sequences the local
+  model product loop: pick the smallest task-reasonable local rung, open it in
+  Pi against a frontier model, diagnose the gap, then choose model climb, GEPA,
+  simulated environment, RLM decomposition, hybrid route, or remote-only.
 - [`prepare-verifier-handoff`](prepare-verifier-handoff/SKILL.md) is a
   future-release stub for stateful RL verifier/environment handoffs. It does not
   execute training; it prepares evidence and actively refers suitable workloads

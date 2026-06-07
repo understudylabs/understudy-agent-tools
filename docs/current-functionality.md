@@ -86,6 +86,10 @@ skills/optimize-workload/SKILL.md
 skills/use-understudy-gateway/SKILL.md
 skills/manage-local-models/SKILL.md
 skills/run-local-model-lab/SKILL.md
+skills/mlx-arena/SKILL.md
+skills/design-simulated-environment/SKILL.md
+skills/recursive-language-model/SKILL.md
+skills/specialize-local-model/SKILL.md
 skills/prepare-verifier-handoff/SKILL.md
 ```
 
@@ -99,6 +103,12 @@ open-model download per the engagement doctrine in
 `manage-local-models` acquires, caches, and explains local open-weight models
 (Gemma 4, Nemotron 3) — distinct from `run-local-model-lab`, which evaluates a
 local model against a frozen workload.
+
+`specialize-local-model` sequences the local-understudy product loop: pick the
+smallest task-reasonable local model, open it in the Pi/MLX arena against a
+frontier model, diagnose the gap, then choose model climb, simulated
+environment, GEPA/prompt optimization, RLM decomposition, hybrid route, or
+remote-only.
 
 `prepare-verifier-handoff` is a future-release stub, not an executable CLI
 surface. It helps agents recognize workloads that need stateful RL

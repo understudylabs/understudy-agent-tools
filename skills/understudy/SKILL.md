@@ -129,6 +129,11 @@ Identify the developer's current stage and load exactly one:
   workstation-hosted model through the same frozen workload/eval, choose a
   runtime, compare local vs remote, or satisfy ZDR / no-upload constraints →
   [`../run-local-model-lab/SKILL.md`](../run-local-model-lab/SKILL.md).
+- **Local understudy specialization loop** — the developer wants the smallest
+  task-reasonable local model opened in Pi against a frontier model, then wants
+  the observed gap to drive a model climb, simulated env, GEPA, RLM, hybrid
+  route, or remote-only decision →
+  [`../specialize-local-model/SKILL.md`](../specialize-local-model/SKILL.md).
 - **Single-output optimization** — fresh artifacts exist and the developer wants
   to validate, optimize (GEPA), compare candidates, or claim readiness →
   [`../optimize-workload/SKILL.md`](../optimize-workload/SKILL.md).

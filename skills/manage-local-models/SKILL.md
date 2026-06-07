@@ -48,14 +48,18 @@ locations and registry links are in [`reference.md`](reference.md).
 1. **Inventory.** List installed runtimes and already-cached models, and report
    free disk. (`ollama list`; Hugging Face cache scan; MLX/LM Studio dirs — see
    [`reference.md`](reference.md).) Surface total disk used by weights.
-2. **Pick the smallest viable American model.** Match the goal and hardware to a
-   tier, biased small (full ladder + hardware rule-of-thumb in
+2. **Pick the smallest viable American model.** For onboarding on Apple Silicon,
+   be prescriptive: start with Understudy's verified
+   `google/gemma-4-e2b-it` MLX-VLM 4-bit snapshot, then climb only when the
+   head-to-head or eval says the rung is too weak. Match later goals and
+   hardware to a tier, biased small (full ladder + hardware rule-of-thumb in
    [`reference.md`](reference.md) and
    [`../../docs/open-model-spotlight.md`](../../docs/open-model-spotlight.md)):
-   - **Gemma 4** (Google) — E2B/E4B on-device; 12B mid; 26B-MoE / 31B dense for
-     workstations. Strong small-to-mid, multimodal.
-   - **Nemotron 3** (NVIDIA) — Nano 4B (edge) or Nano 30B-A3B (MoE, ~4B-active
-     speed); Super on big-RAM boxes. Agentic-reasoning, long context.
+   - **Gemma 4** (Google) — verified E2B first; E4B/12B to climb; 26B-MoE / 31B
+     dense for workstation or remote routes. Strong small-to-mid, multimodal.
+   - **Nemotron 3** (NVIDIA) — Nano 4B as an alternate edge rung; Nano 30B-A3B
+     (MoE, ~4B-active speed) or Super on big-RAM boxes. Agentic-reasoning, long
+     context.
 3. **Choose source + format for the runtime.** Ollama library (simplest, GGUF,
    no HF token for Gemma); Hugging Face GGUF (llama.cpp / LM Studio); MLX builds
    (Apple Silicon). Quantization/format primer in [`reference.md`](reference.md).

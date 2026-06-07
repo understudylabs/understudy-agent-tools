@@ -42,12 +42,24 @@ work — do not re-run the full interview. Only first-timers get the full flow.
 ## Flow
 
 1. **Start the slow thing first (background).** Detect the model runtime
-   (`ollama`, `llama-server`, `mlx_lm`, `lms`). If one exists, announce the pick
-   + size + ETA and **background** a pull of a small American model — Gemma 4 E4B
-   or Nemotron 3 Nano (see [`open-model-spotlight.md`](../../docs/open-model-spotlight.md)).
-   If no runtime exists, the slow step is *install a runtime + pull* — get one
-   quick approval, then background it. Then immediately move on; do not watch the
-   bar.
+   (`mlx_vlm`, `mlx_lm`, `ollama`, `llama-server`, `lms`). On Apple Silicon, the
+   opinionated first out-of-box target is the smallest verified Gemma 4 local
+   Understudy: `google/gemma-4-e2b-it`, converted by Understudy with
+   `mlx-vlm 0.6.2` to 4-bit MLX safetensors. The verified snapshot is stored at
+   `https://models.understudylabs.com/session?model=gemma-4-e2b-it-mlx-vlm-4bit`
+   (R2 source:
+   `r2://understudy-model-snapshots/models/google/gemma-4-e2b-it/mlx-vlm-0.6.2/quant-4bit/`).
+   It is about 3.3 GB on disk and generated locally at
+   about 218 tok/s in testing. Announce the model, quantization, size, source,
+   and ETA, get a quick yes, then run
+   `skills/mlx-arena/arena.sh first-window` on macOS so a distinct Terminal.app
+   window opens with the branded loading screen while the model loads, then lands
+   in Pi when the local Understudy is ready. Use `arena.sh first` when a separate
+   window is unavailable. If the MLX runtime is missing, the slow step is
+   *install MLX + pull* — get one quick approval, then background it. If the
+   Gemma 4 snapshot URL is unavailable, fall back to
+   `mlx-community/gemma-3-1b-it-4bit` only to preserve the aha moment. Then
+   immediately move on; do not watch the bar.
 
 2. **Profile the machine (while it downloads).** Detect OS/chip (Apple Silicon
    vs CUDA), RAM / unified memory, free disk. State what fits locally. This is
@@ -75,13 +87,27 @@ work — do not re-run the full interview. Only first-timers get the full flow.
    coaching depth, opinion strength. Append, don't overwrite, the `history` of
    workloads and decisions.
 
-6. **Land the quick win.** The model is cached by now — run one local generation
-   so they see it answer **on their machine, $0, private**. Briefly teach the
-   idea: an open-weight model is downloadable weights you run yourself; local is
-   free and ZDR-safe; you iterate small and local, then *graduate* to a larger
-   model in the same family via the gateway when you need the quality.
+6. **Land the quick win.** The `arena.sh first` pane now says their first local
+   Understudy is ready and opens Pi on verified Gemma 4 E2B. Have them try one
+   real prompt. If Pi is not installed, run one local generation and print:
+   `npm install -g --ignore-scripts @earendil-works/pi-coding-agent`. Briefly
+   teach the idea: an open-weight model is downloadable weights you run yourself;
+   local is free and ZDR-safe; you iterate small and local, then *graduate* to a
+   larger model in the same family via the gateway when you need the quality.
 
-7. **Route onward.** Hand to the [`understudy`](../understudy/SKILL.md)
+7. **Run the first default environment.** After the first local prompt or two,
+   run the built-in deterministic sandbox from
+   [`../design-simulated-environment/SKILL.md`](../design-simulated-environment/SKILL.md):
+   synthetic records, in-memory tools, a scripted oracle, and final-state
+   validators. This proves the local Understudy can act in a small tool world
+   before any codebase-specific environment is built.
+
+8. **Start the head-to-head.** After the default environment baseline, route to
+   [`../specialize-local-model/SKILL.md`](../specialize-local-model/SKILL.md) and
+   run `skills/mlx-arena/arena.sh play` so they can compare the local Understudy
+   against a frontier model and decide where local is already enough.
+
+9. **Route onward.** Hand to the [`understudy`](../understudy/SKILL.md)
    orchestrator for the improvement loop;
    [`manage-local-models`](../manage-local-models/SKILL.md) to grow and organize
    the local model library; [`run-local-model-lab`](../run-local-model-lab/SKILL.md)

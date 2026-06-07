@@ -59,6 +59,33 @@ the quant is the bottleneck.
 **Rule of thumb (q4):** ~0.5 GB of weights per billion parameters, plus KV cache
 for context.
 
+## Understudy verified MLX ladder
+
+Use this ladder before sending a new user to open-ended model browsing. It keeps
+the first aha moment fast, then gives clear ways to climb within Gemma/Nemotron
+or graduate remote when local quality is the bottleneck.
+
+| Rung | Runtime | Snapshot / source | Use when |
+|---|---|---|---|
+| Gemma 4 E2B 4-bit | `mlx_vlm.server` | `https://models.understudylabs.com/session?model=gemma-4-e2b-it-mlx-vlm-4bit` | Default onboarding rung. About 3.3 GB; verified local generation, Pi serving, and logprobs/top-logprobs. |
+| Gemma 4 E4B 4-bit | `mlx_vlm.server` | `https://models.understudylabs.com/session?model=gemma-4-e4b-it-mlx-vlm-4bit` | First climb when E2B understands the task but lacks quality. About 4.8 GB; verified signed snapshot delivery. |
+| Gemma 4 E2B BF16 | `mlx_vlm.server` | Internal/local profiling until a signed session is published | Same model, less quantization loss. About 9.5 GB; use to profile quality/perf when the 4-bit model is close. |
+| Gemma 4 12B | MLX conversion or remote | `google/gemma-4-12B-it` / gateway route | Laptop-plus rung for harder reasoning or multimodal work. Use remote if memory is tight. |
+| Nemotron 3 Nano 4B | MLX / GGUF / remote | NVIDIA source or verified snapshot | Alternate edge rung when agentic reasoning or tool behavior beats Gemma on the workload. |
+| Nemotron 3 Nano 30B-A3B | MLX/GGUF on 32 GB+ or remote | NVIDIA source or gateway route | MoE climb when you need stronger reasoning while keeping active-parameter speed. |
+| Super / Ultra / 31B dense | Remote or workstation | Understudy gateway / provider route | Use when local cannot meet the quality bar or the Mac does not fit the weights comfortably. |
+
+Cloudflare delivery note: public installation uses stable session endpoints from
+`models.understudylabs.com`. Each session response contains short-lived signed
+per-file URLs; publish the session endpoint, not the expiring object URLs. R2
+remains the durable object source.
+
+Remote graduation note: when a local rung is too small, use
+[`../use-understudy-gateway/SKILL.md`](../use-understudy-gateway/SKILL.md) to
+run `understudy login --email <developer-email>`, store the API key through the
+CLI, list remote model IDs, and route the workload to larger Gemma/Nemotron
+variants without changing application code.
+
 | Model | Params | ~q4 weights on disk |
 |---|---|---|
 | Gemma 4 E4B | ~4.5B eff. | ~3–4 GB |

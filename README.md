@@ -36,6 +36,53 @@ execution, auth injection, artifact writes, or a safety gate.
 
 ## Install Locally
 
+Fast first-run installer for Apple Silicon:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/UnderstudyLabs/understudy-agent-tools/main/install.sh | bash
+```
+
+After this lands on `main`, this is the URL to hand to Aamir for a clean
+top-of-funnel test:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/UnderstudyLabs/understudy-agent-tools/main/install.sh | sh
+```
+
+Pre-merge branch test:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/UnderstudyLabs/understudy-agent-tools/yolo/first-understudy-installer/install.sh | UNDERSTUDY_INSTALL_REF=yolo/first-understudy-installer bash -s -- --yes
+```
+
+That installs the CLI and Pi, prepares an isolated MLX runtime, asks before
+downloading the verified Gemma 4 E2B 4-bit first-rung snapshot, and opens a new
+Terminal window so you meet your first local Understudy immediately. For
+non-interactive demos, add `--yes`:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/UnderstudyLabs/understudy-agent-tools/main/install.sh | bash -s -- --yes
+```
+
+The default model endpoint is a stable Understudy snapshot session generator:
+`https://models.understudylabs.com/session?model=gemma-4-e2b-it-mlx-vlm-4bit`.
+The installer fetches that manifest, then downloads each model file from the
+short-lived signed URL returned in `files[]`. We publish the session URL, not
+the expiring per-object signed URLs. It is overridable with
+`UNDERSTUDY_MODEL_SESSION_URL`.
+
+If a coding agent started the installer, the user can follow the live Pi session
+with `tmux attach -t mlx-arena-first`. Agents should drive Pi through tmux using
+paste-buffer plus an explicit Enter:
+
+```bash
+tmux set-buffer 'Say exactly: local Understudy is online.'
+tmux paste-buffer -t mlx-arena-first
+tmux send-keys -t mlx-arena-first Enter
+```
+
+Developer install from a clone:
+
 ```bash
 npm install
 npm run build
@@ -165,6 +212,7 @@ capability worker:
 - `skills/use-understudy-gateway/SKILL.md`
 - `skills/manage-local-models/SKILL.md` (acquire, cache, and explain local open-weight models)
 - `skills/run-local-model-lab/SKILL.md`
+- `skills/specialize-local-model/SKILL.md` (smallest reasonable local rung → Pi head-to-head → gap-driven improvement)
 - `skills/prepare-verifier-handoff/SKILL.md`
 
 Everything else stays outside the discovered surface until real usage proves it
