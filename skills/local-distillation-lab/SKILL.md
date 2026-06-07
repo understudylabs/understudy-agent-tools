@@ -1,6 +1,6 @@
 ---
 name: local-distillation-lab
-description: Use when a developer wants to actually fine-tune / distill a local open model on Apple Silicon MLX — run weight-updating training arms (rejection-sampling SFT, off-policy distillation, on-policy / pedagogical self-distillation) on a captured workload, compare them on a held eval with learning curves, and decide distill-vs-pedagogical-vs-climb. This is the weight-update rung between prompt optimization (optimize-workload/GEPA) and the hosted-RL handoff (prepare-verifier-handoff). Covers the Gemma-4→mlx-vlm loader gotcha, the forced-likelihood + weighted-LoRA kernels, the privileged-teacher choice, and overnight orchestration discipline.
+description: Use when a developer wants to fine-tune or distill a local open model on Apple Silicon MLX, compare weight-update arms on a captured workload, and decide distill-vs-pedagogical-vs-climb before hosted RL.
 metadata:
   understudy:
     mode: interactive
