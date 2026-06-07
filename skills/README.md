@@ -23,11 +23,11 @@ execution; skills tell the agent what to inspect, gate, monitor, and report.
   reruns the incumbent baseline. (Discovery + capture/import folded into its
   [`reference.md`](capture-evidence/reference.md).)
 - [`optimize-api-workflow`](optimize-api-workflow/SKILL.md) evaluates and
-  optimizes cross-application REST/API workflow agents such as
-  AutomationBench-style tasks: seeded state, fixed API schemas, policy docs,
-  request logs, final-state validators, and side-effect safety before any RL
-  handoff. (Artifact schemas, AutomationBench mapping, A/B procedure, and GEPA
-  bridge in its [`reference.md`](optimize-api-workflow/reference.md).)
+  optimizes cross-application REST/API workflow agents with seeded state, fixed
+  API schemas, policy docs, request logs, final-state validators, and
+  side-effect safety before any RL handoff. (Artifact schemas, harness mapping,
+  A/B procedure, and GEPA bridge in its
+  [`reference.md`](optimize-api-workflow/reference.md).)
 - [`optimize-workload`](optimize-workload/SKILL.md) refuses stale
   artifacts, preserves train/dev/holdout boundaries, writes dry-run proof
   packets, and requires `claim.json` before public claims. (Evaluate, optimize,
@@ -55,6 +55,9 @@ execution; skills tell the agent what to inspect, gate, monitor, and report.
 - [`run-local-model-lab`](run-local-model-lab/SKILL.md) evaluates local or
   workstation-hosted models against the same frozen workload/eval, keeps model
   downloads behind approval, and compares local, hybrid, and remote routes.
+- [`compare-model-sweep`](compare-model-sweep/SKILL.md) runs a frozen eval across
+  a candidate matrix and writes Pareto-style quality, latency, cost, reliability,
+  and caveat artifacts for route decisions.
 - [`specialize-local-model`](specialize-local-model/SKILL.md) sequences the local
   model product loop: pick the smallest task-reasonable local rung, open it in
   Pi against a frontier model, diagnose the gap, then choose model climb, GEPA,

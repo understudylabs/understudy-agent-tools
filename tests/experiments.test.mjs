@@ -87,6 +87,7 @@ describe("understudy experiments + next", () => {
       const experiment = JSON.parse(created.stdout);
       assert.equal(experiment.experiment_id, "exp-001");
       assert.equal(experiment.schema_version, "understudy.experiment.v1");
+      assert.equal(experiment.name, null);
       // pins are copied from baseline.json's hash-chain (exactly three).
       assert.deepEqual(Object.keys(experiment.pins).sort(), ["harness_sha256", "metric_sha256", "splits_sha256"]);
       assert.ok(experiment.pins.harness_sha256);
@@ -165,6 +166,22 @@ describe("understudy experiments + next", () => {
       run(repo, ["experiments", "new"]);
       assert.ok(existsSync(join(repo, ".understudy", "experiments", "exp-001", "experiment.json")));
       assert.ok(existsSync(join(repo, ".understudy", "experiments", "active")));
+    });
+  });
+
+  it("accepts a human-readable experiment name", () => {
+    withRepo((repo) => {
+      seedEvidence(repo);
+      const created = run(repo, ["experiments", "new", "--json", "--name", "gepa-simple-limzap"]);
+      assert.equal(created.status, 0, created.stderr);
+      const experiment = JSON.parse(created.stdout);
+      assert.equal(experiment.experiment_id, "exp-001");
+      assert.equal(experiment.name, "gepa-simple-limzap");
+
+      const list = run(repo, ["experiments", "list", "--json"]);
+      assert.equal(list.status, 0, list.stderr);
+      const rows = JSON.parse(list.stdout).experiments;
+      assert.equal(rows[0].name, "gepa-simple-limzap");
     });
   });
 

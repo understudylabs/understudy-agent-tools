@@ -260,6 +260,7 @@ _refresh_agent_card() { # name repo port loader provider tmux-session
 const fs = require("node:fs");
 const os = require("node:os");
 const path = require("node:path");
+const childProcess = require("node:child_process");
 
 const home = os.homedir();
 const now = new Date().toISOString();
@@ -331,6 +332,7 @@ if (companionState && typeof companionState === "object") {
 const config = readJson(configPath) || {};
 const model = process.env.UNDERSTUDY_CARD_MODEL;
 const endpoint = process.env.UNDERSTUDY_CARD_ENDPOINT;
+const port = process.env.UNDERSTUDY_CARD_PORT;
 const payload = {
   model,
   messages: [{ role: "user", content: "Say hello from my local Understudy." }],
@@ -341,6 +343,39 @@ function shellSingleQuote(value) {
 }
 const howToTalk = `curl -s ${endpoint}/chat/completions -H 'Content-Type: application/json' -d ${shellSingleQuote(JSON.stringify(payload))}`;
 const cwd = process.env.UNDERSTUDY_CARD_CWD || process.cwd();
+function observeListener(portValue) {
+  if (!portValue) return { pid: null, command: null };
+  try {
+    const out = childProcess.execFileSync("lsof", ["-nP", `-iTCP:${portValue}`, "-sTCP:LISTEN", "-Fp"], {
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "ignore"],
+    });
+    const pid = out.split("\n").find((line) => /^p\d+$/.test(line))?.slice(1);
+    if (!pid) return { pid: null, command: null };
+    const command = childProcess.execFileSync("ps", ["-p", pid, "-o", "command="], {
+      encoding: "utf8",
+      stdio: ["ignore", "pipe", "ignore"],
+    }).trim();
+    return { pid: Number(pid), command: command || null };
+  } catch {
+    return { pid: null, command: null };
+  }
+}
+function inferRuntime(requestedLoader, observedCommand) {
+  const command = observedCommand || "";
+  if (command.includes("mlx_vlm.server") || command.includes("mlx-vlm")) {
+    return { runtime: "mlx_vlm", served_by: "mlx_vlm.server" };
+  }
+  if (command.includes("mlx_lm") || command.includes("mlx-lm")) {
+    return { runtime: "mlx_lm", served_by: "mlx_lm.server" };
+  }
+  if (requestedLoader === "mlx_vlm") {
+    return { runtime: "mlx_vlm", served_by: "mlx_vlm.server" };
+  }
+  return { runtime: requestedLoader || null, served_by: requestedLoader ? `${requestedLoader}.server` : null };
+}
+const observed = observeListener(port);
+const runtime = inferRuntime(process.env.UNDERSTUDY_CARD_LOADER, observed.command);
 
 const card = {
   schema_version: "understudy.agent_card.v1",
@@ -352,8 +387,10 @@ const card = {
     endpoint,
     health_url: process.env.UNDERSTUDY_CARD_HEALTH_URL,
     healthy: process.env.UNDERSTUDY_CARD_HEALTHY === "true",
-    served_by: process.env.UNDERSTUDY_CARD_LOADER === "mlx_vlm" ? "mlx_vlm.server" : "mlx_lm.server",
-    runtime: process.env.UNDERSTUDY_CARD_LOADER,
+    served_by: runtime.served_by,
+    runtime: runtime.runtime,
+    requested_loader: process.env.UNDERSTUDY_CARD_LOADER || null,
+    observed_listener: observed,
     provider: process.env.UNDERSTUDY_CARD_PROVIDER,
     tmux_session: process.env.UNDERSTUDY_CARD_SESSION,
     logs: process.env.UNDERSTUDY_CARD_LOGS,
