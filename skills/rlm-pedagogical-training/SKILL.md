@@ -124,6 +124,50 @@ The stronger claim requires all three:
    `x` only. Privileged context may score or train; it must not be passed at
    inference.
 
+## Reading the training signal
+
+Read the signal before and during a GRPO / prime-rl run — do not just wait.
+
+**Predict gradual vs flat-then-jump from reward variance.** GRPO normalizes each
+rollout's advantage *within its group* — subtract the group mean, divide by the
+group std (DeepSeekMath, arXiv:2402.03300; DeepSeek-R1, arXiv:2501.12948). A group
+whose rollouts all score the same has advantage ≈ 0 and contributes **no
+gradient**, so **group reward-variance is the learning signal**:
+
+- High variance from step 1 (most groups mixed success/failure; prime-rl/ART
+  `groups_trainable` healthy) → expect a **gradual, noisy climb** with plateaus.
+- Near-zero variance (sparse reward — most groups all-fail or all-pass) → expect
+  **flat until a lucky success** (grokking-like; cf. arXiv:2201.02177). Fix the
+  reward shape (denser / shaped signal) rather than waiting it out.
+
+Check `groups_trainable` / per-group reward std over the first ~5 steps to set
+expectations before forecasting an ETA.
+
+**Read smoothed reward + a periodic held-out mini-eval, not per-step reward.**
+Per-step train reward is noisy; trust a moving average plus a small held-out eval
+every N steps (the ART·E recipe evaluated every 30). Timeline heuristic when
+variance is healthy: first drift ~step 30–50, clear trend ~step 100, gains across
+epochs.
+
+**Confirmed by Understudy:** 2026-04-29 (understudy-knowledge workload-010 —
+verifiers-shaped reward moved GRPO 0.025→0.1 where action-level reward did not);
+2026-06-07 (ART·E Qwen-14B recreation — `groups_trainable` held 4–11/12 from step 1
+→ gradual climb exactly as the variance predicts). Public reproduction: OpenPipe
+ART·E blog.
+
+**Trainer/model fit check (before picking prime-rl vs Unsloth/TRL).** A model
+*loading* is not support. For multi-turn tool-use RL on a specific model, confirm
+the trainer has, for that model: (1) a **renderer** for correct multi-turn
+tokenization — prime-rl's `renderers` lib; no per-model renderer falls back to
+`DefaultRenderer` → token drift, flagged lossy / ~3x-cost for multi-turn; (2) the
+model in the trainer/inference **registry** (e.g. vLLM `VLM_REGISTRY`); (3)
+**merged GRPO** support, not just SFT or an open PR. Field check 2026-06: prime-rl
+ships renderers for Qwen / GLM / MiniMax / DeepSeek / Kimi / Nemotron / GPT-OSS but
+**not Gemma** (no merged Gemma-4 GRPO; `gemma4` absent from registry; grad-norm
+blowup) → Gemma-4 multi-turn GRPO belongs on Unsloth/TRL, while Nemotron-3 is
+first-class on prime-rl. Match the model to the trainer that has all three, or
+switch trainers.
+
 ## Reconcile Parallel Research
 
 When another agent is already running local Gemma/MLX kernels, do not duplicate
