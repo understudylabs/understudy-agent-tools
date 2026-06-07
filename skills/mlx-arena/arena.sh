@@ -300,22 +300,30 @@ _open_terminal_attach() { # tmux-session-name
 }
 
 _open_terminal_run() { # command
-  local command_text="$1" kind
+  local command_text="$1" kind log_path quoted_command quoted_log quoted_log_line wrapped_command
   if [[ "$(uname -s)" != "Darwin" ]]; then
     echo "  [window] new terminal windows are only automated on macOS; run: $command_text"
     return 0
   fi
 
+  mkdir -p "$LOGS"
+  log_path="$LOGS/window-$(date -u +%Y%m%dT%H%M%SZ).log"
+  quoted_command="$(printf '%q' "$command_text")"
+  quoted_log="$(printf '%q' "$log_path")"
+  quoted_log_line="$(printf '%q' "[understudy] command: $command_text")"
+  wrapped_command="echo '[understudy] window command log: $log_path'; printf '%s\n' $quoted_log_line >>$quoted_log; eval $quoted_command 2>&1 | tee -a $quoted_log; status=\${pipestatus[1]:-\$?}; if [ \"\$status\" -ne 0 ]; then echo; echo '[understudy] window command failed with status' \"\$status\"; echo '[understudy] log:' $quoted_log; echo '[understudy] press Return to close this window'; read _; fi; exit \"\$status\""
+  echo "  [window] log: $log_path"
+
   kind="$(_terminal_kind)"
   case "$kind" in
     ghostty)
       if command -v ghostty >/dev/null 2>&1; then
-        nohup ghostty -e /bin/zsh -lc "$command_text" >/dev/null 2>&1 &
+        nohup ghostty -e /bin/zsh -lc "$wrapped_command" >/dev/null 2>&1 &
         echo "  [window] opened Ghostty"
         return 0
       fi
       if open -Ra Ghostty 2>/dev/null; then
-        open -na Ghostty --args -e /bin/zsh -lc "$command_text"
+        open -na Ghostty --args -e /bin/zsh -lc "$wrapped_command"
         echo "  [window] opened Ghostty"
         return 0
       fi
@@ -323,7 +331,7 @@ _open_terminal_run() { # command
       ;;
     iterm)
       if command -v osascript >/dev/null 2>&1; then
-        if TERMINAL_COMMAND="$command_text" osascript <<'APPLESCRIPT' >/dev/null 2>&1
+        if TERMINAL_COMMAND="$wrapped_command" osascript <<'APPLESCRIPT' >/dev/null 2>&1
 tell application "iTerm2"
   activate
   create window with default profile command (system attribute "TERMINAL_COMMAND")
@@ -333,7 +341,7 @@ APPLESCRIPT
           echo "  [window] opened iTerm2"
           return 0
         fi
-        if TERMINAL_COMMAND="$command_text" osascript <<'APPLESCRIPT' >/dev/null 2>&1
+        if TERMINAL_COMMAND="$wrapped_command" osascript <<'APPLESCRIPT' >/dev/null 2>&1
 tell application "iTerm"
   activate
   create window with default profile command (system attribute "TERMINAL_COMMAND")
@@ -352,7 +360,7 @@ APPLESCRIPT
     echo "  [window] osascript not found; run: $command_text"
     return 0
   }
-  TERMINAL_COMMAND="$command_text" UNDERSTUDY_TERMINAL_PROFILE="$UNDERSTUDY_TERMINAL_PROFILE" osascript <<'APPLESCRIPT'
+  TERMINAL_COMMAND="$wrapped_command" UNDERSTUDY_TERMINAL_PROFILE="$UNDERSTUDY_TERMINAL_PROFILE" osascript <<'APPLESCRIPT'
 tell application "Terminal"
   activate
   set targetProfile to system attribute "UNDERSTUDY_TERMINAL_PROFILE"
