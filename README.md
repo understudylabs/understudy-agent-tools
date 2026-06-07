@@ -100,10 +100,9 @@ with `UNDERSTUDY_TELEMETRY=0`.
 
 The skills in [`skills/`](skills/) ship as a Claude Code plugin, declared in
 [`.claude-plugin/`](.claude-plugin/) (`plugin.json` + `marketplace.json`).
-Installing it registers all eleven invocable skills (`understudy`, `onboard`,
-`capture-evidence`, `use-understudy-gateway`, `manage-local-models`,
-`run-local-model-lab`, `optimize-workload`, `optimize-api-workflow`,
-`optimize-agentic-search`, `prepare-verifier-handoff`, `install-plugin`).
+Installing it registers the public invocable skills in [`skills/`](skills/),
+including the `understudy` orchestrator, onboarding, capture/eval, optimization,
+local model, distillation, RLM, and verifier-handoff workers.
 
 From a clone of this repo:
 
@@ -212,12 +211,14 @@ capability worker:
 - `skills/manage-local-models/SKILL.md` (acquire, cache, and explain local open-weight models)
 - `skills/run-local-model-lab/SKILL.md`
 - `skills/specialize-local-model/SKILL.md` (smallest reasonable local rung → Pi head-to-head → gap-driven improvement)
+- `skills/pedagogical-learning/SKILL.md` (privileged-context trajectories that are correct and learnable)
+- `skills/rlm-pedagogical-training/SKILL.md` (stateful RLM/verifiers training surfaces before hosted RL)
+- `skills/local-distillation-lab/SKILL.md` (local Apple Silicon weight-update arms before hosted RL)
 - `skills/prepare-verifier-handoff/SKILL.md`
 
-Everything else stays outside the discovered surface until real usage proves it
-belongs back. See [`skills/README.md`](skills/README.md) for the current
-hierarchy and [`docs/current-functionality.md`](docs/current-functionality.md)
-for the migration ledger.
+See [`skills/README.md`](skills/README.md) for the current hierarchy and
+[`docs/current-functionality.md`](docs/current-functionality.md) for the
+migration ledger.
 
 `prepare-verifier-handoff` is intentionally handoff-only. It is for workloads
 that need a future Understudy verifier/RL-environment release or an external

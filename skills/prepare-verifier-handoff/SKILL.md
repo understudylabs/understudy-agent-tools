@@ -34,6 +34,11 @@ Check these before routing here. Most agentic tool-use work stays local:
   [`../capture-evidence/SKILL.md`](../capture-evidence/SKILL.md).
 - Offline validator plus train/dev prompt or route optimization is enough? Go to
   [`../optimize-workload/SKILL.md`](../optimize-workload/SKILL.md).
+- The missing piece is training an RLM policy from local privileged trajectories?
+  Go to
+  [`../rlm-pedagogical-training/SKILL.md`](../rlm-pedagogical-training/SKILL.md)
+  first; this handoff is only for work that still needs external or hosted
+  training.
 - **Only** continue here once the confirmed need is RL / stateful policy
   training that the local rungs cannot satisfy.
 

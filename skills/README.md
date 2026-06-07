@@ -66,6 +66,16 @@ execution; skills tell the agent what to inspect, gate, monitor, and report.
   knowledge (not RL-addable), or format/parsing (decoding/prompt) — then counts
   the clean warm-start trajectories the comparison yields, with small-N and
   holdout caveats.
+- [`pedagogical-learning`](pedagogical-learning/SKILL.md) turns privileged
+  answers, execution feedback, verifier traces, or canonical solutions into
+  local correct-and-learnable trajectory evidence before SFT, GRPO, or hosted RL.
+- [`rlm-pedagogical-training`](rlm-pedagogical-training/SKILL.md) turns a
+  stateful workload into an RLM/verifiers training surface, measures on-policy
+  state coverage and surprise concentration, and decides between local
+  pedagogical SFT, on-policy repair, true pedagogical RL, or verifier handoff.
+- [`local-distillation-lab`](local-distillation-lab/SKILL.md) runs local Apple
+  Silicon weight-update arms for captured workloads: rejection SFT, same-family
+  off-policy distillation, and surprisal-gated pedagogical variants.
 - [`specialize-local-model`](specialize-local-model/SKILL.md) sequences the local
   model product loop: pick the smallest task-reasonable local rung, open it in
   Pi against a frontier model, diagnose the gap, then choose model climb, GEPA,

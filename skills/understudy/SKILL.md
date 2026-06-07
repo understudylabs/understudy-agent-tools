@@ -149,6 +149,17 @@ Identify the developer's current stage and load exactly one:
   wants to run the same rows across several local, gateway, or frontier models to
   compare quality, latency, cost, and reliability →
   [`../compare-model-sweep/SKILL.md`](../compare-model-sweep/SKILL.md).
+- **Pedagogical learning / privileged-context self-teaching** — the developer has
+  answer keys, execution feedback, verifier traces, oracle tool labels, or
+  canonical solutions and wants the local model to learn from trajectories that
+  are both correct and learnable before SFT, GRPO, or hosted RL →
+  [`../pedagogical-learning/SKILL.md`](../pedagogical-learning/SKILL.md).
+- **RLM pedagogical training / verifiers / Prime RL** — the developer wants to
+  train or evaluate a Recursive Language Model policy over stateful trajectories,
+  use privileged context as training/scoring signal, measure on-policy state
+  coverage or surprise concentration, or prepare a Prime Intellect `verifiers` /
+  `prime-rl` path →
+  [`../rlm-pedagogical-training/SKILL.md`](../rlm-pedagogical-training/SKILL.md).
 - **Local understudy specialization loop** — the developer wants the smallest
   task-reasonable local model opened in Pi and optionally compared against a
   frontier model, then wants the observed gap to drive workload understanding,
@@ -165,14 +176,16 @@ Identify the developer's current stage and load exactly one:
   web search); evaluate, A/B-compare models, or optimize its prompt/route →
   [`../optimize-agentic-search/SKILL.md`](../optimize-agentic-search/SKILL.md)
   (verifiers env, model A/B through the gateway, prompt-GEPA for the cheap model).
-- **RL / stateful-policy training handoff** — local rungs are insufficient and
-  the agent must *learn* multi-step behavior →
+- **RL / stateful-policy training handoff** — local RLM/distillation rungs are
+  insufficient and the agent must *learn* multi-step behavior in external or
+  hosted training →
   [`../prepare-verifier-handoff/SKILL.md`](../prepare-verifier-handoff/SKILL.md).
 
 Multi-turn or tool-use alone is NOT a handoff: agentic evaluation, API-workflow
 evaluation, A/B, and prompt/route optimization stay local in
-`optimize-agentic-search` or `optimize-api-workflow`. Only RL/policy *training*
-routes to `prepare-verifier-handoff`. When in doubt, route to
+`optimize-agentic-search` or `optimize-api-workflow`. RLM policy training routes
+to `rlm-pedagogical-training` first; only external/hosted RL handoffs route to
+`prepare-verifier-handoff`. When in doubt, route to
 `capture-evidence` — optimizing without a current harness/metric/split/baseline
 creates false progress.
 

@@ -37,6 +37,10 @@ const requiredPackageMembers = [
   "cookbook/capture-evidence-node/README.md",
   "cookbook/optimize-eval-input-gepa/eval-input-manifest.json",
   "cookbook/gateway-openai-typescript/src/client.ts",
+  "skills/pedagogical-learning/SKILL.md",
+  "skills/pedagogical-learning/reference.md",
+  "skills/rlm-pedagogical-training/SKILL.md",
+  "skills/rlm-pedagogical-training/reference.md",
 ];
 
 function npmPackFiles() {
