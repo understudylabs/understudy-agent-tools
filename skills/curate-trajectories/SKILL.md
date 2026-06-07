@@ -1,6 +1,6 @@
 ---
 name: curate-trajectories
-description: Use to turn loose per-task trajectory JSONs (Lilac export or a local rollout corpus) into a queryable, provenance-tracked, contamination-safe dataset — "curate my trajectories", "which rollouts are train-safe", "exclude the holdout rows before RL", "is this distill pool contaminated", "make a hash-stamped selection", "stop hand-filtering trajectories in bash". Indexes runs with provenance, tags each row with its frozen split from capture-evidence, and hard-blocks any selection that leaks dev/holdout into a train/RL/distill pool.
+description: Use to turn loose per-task trajectory JSONs (a Lilac export or local rollout corpus) into a queryable, provenance-tracked, contamination-safe dataset that hard-blocks any selection leaking frozen dev/holdout into a train/RL/distill pool. "curate my trajectories", "which rollouts are train-safe", "exclude the holdout rows before RL", "is this distill pool contaminated", "make a hash-stamped selection", "stop hand-filtering trajectories in bash".
 metadata:
   understudy:
     mode: interactive
