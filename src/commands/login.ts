@@ -11,7 +11,11 @@ import {
 } from "../config/paths.js";
 import { DEFAULT_GATEWAY_URL } from "../config/defaults.js";
 import { isJsonMode, runAction } from "../internal/output.js";
-import { trackLoginCompleted } from "../internal/telemetry.js";
+import {
+  trackLoginCompleted,
+  trackLoginFailed,
+  trackLoginStarted,
+} from "../internal/telemetry.js";
 
 interface LoginOpts {
   email?: string;
@@ -93,31 +97,59 @@ async function runLogin(opts: LoginOpts, json: boolean): Promise<void> {
 
   if (opts.email) {
     const signupIntentId = opts.signupIntentId ?? signupIntentFromEnv();
-    const result = await runAuthMdLogin(opts.email, gatewayUrl, json, signupIntentId);
-    saveApiKeyResult(result, gatewayUrl, signupIntentId);
-    emitApiKeySuccess(result, json, "auth.md");
-    await trackLoginCompleted({
-      apiKey: result.credential,
-      gatewayUrl,
-      mode: "auth.md",
-      orgId: result.org_id ?? result.organization_id ?? null,
-      userId: result.user_id ?? null,
-      signupIntentId: opts.signupIntentId ?? signupIntentFromEnv() ?? null,
-    });
+    await trackLoginStarted({ mode: "auth.md", gatewayUrl, signupIntentId });
+    try {
+      const result = await runAuthMdLogin(
+        opts.email,
+        gatewayUrl,
+        json,
+        signupIntentId,
+      );
+      saveApiKeyResult(result, gatewayUrl, signupIntentId);
+      emitApiKeySuccess(result, json, "auth.md");
+      await trackLoginCompleted({
+        apiKey: result.credential,
+        gatewayUrl,
+        mode: "auth.md",
+        orgId: result.org_id ?? result.organization_id ?? null,
+        userId: result.user_id ?? null,
+        signupIntentId: opts.signupIntentId ?? signupIntentFromEnv() ?? null,
+      });
+    } catch (err) {
+      await trackLoginFailed({
+        mode: "auth.md",
+        gatewayUrl,
+        signupIntentId,
+        errorKind: loginErrorKind(err),
+      });
+      throw err;
+    }
     return;
   }
 
   if (opts.apiKey || opts.org || opts.project) {
-    const result = runManualLogin(opts, gatewayUrl);
-    saveApiKeyResult(result, gatewayUrl, opts.signupIntentId);
-    emitApiKeySuccess(result, json, "manual");
-    await trackLoginCompleted({
-      apiKey: result.credential,
-      gatewayUrl,
-      mode: "manual",
-      orgId: result.org_id ?? result.organization_id ?? null,
-      signupIntentId: opts.signupIntentId ?? signupIntentFromEnv() ?? null,
-    });
+    const signupIntentId = opts.signupIntentId ?? signupIntentFromEnv();
+    await trackLoginStarted({ mode: "manual", gatewayUrl, signupIntentId });
+    try {
+      const result = runManualLogin(opts, gatewayUrl);
+      saveApiKeyResult(result, gatewayUrl, opts.signupIntentId);
+      emitApiKeySuccess(result, json, "manual");
+      await trackLoginCompleted({
+        apiKey: result.credential,
+        gatewayUrl,
+        mode: "manual",
+        orgId: result.org_id ?? result.organization_id ?? null,
+        signupIntentId: opts.signupIntentId ?? signupIntentFromEnv() ?? null,
+      });
+    } catch (err) {
+      await trackLoginFailed({
+        mode: "manual",
+        gatewayUrl,
+        signupIntentId,
+        errorKind: loginErrorKind(err),
+      });
+      throw err;
+    }
     return;
   }
 
@@ -263,6 +295,14 @@ function saveApiKeyResult(
 function signupIntentFromEnv(): string | undefined {
   const value = process.env.UNDERSTUDY_SIGNUP_INTENT_ID?.trim();
   return value && value.length > 0 ? value : undefined;
+}
+
+function loginErrorKind(err: unknown): string {
+  if (!(err instanceof Error)) return "unknown";
+  if (err.name === "AbortError") return "network_timeout";
+  if (/metadata|fetch|request|status/i.test(err.message)) return "network";
+  if (/code|claim|credential|parse|invalid/i.test(err.message)) return "auth";
+  return "other";
 }
 
 function emitApiKeySuccess(

@@ -8,7 +8,7 @@ import { DEFAULT_GATEWAY_URL } from "../config/defaults.js";
 import { readProjectConfig } from "../config/index.js";
 import { globalTelemetryPath } from "../config/paths.js";
 
-const TELEMETRY_TIMEOUT_MS = 500;
+const TELEMETRY_TIMEOUT_MS = 3_000;
 const EVENT_VERSION = 1;
 const CLI_VERSION = "0.0.0";
 
@@ -31,6 +31,13 @@ interface LoginCompletedEvent {
   orgId: string | null;
   userId?: string | null;
   signupIntentId?: string | null;
+}
+
+interface LoginAttemptEvent {
+  mode: "auth.md" | "manual";
+  gatewayUrl?: string;
+  signupIntentId?: string | null;
+  errorKind?: string;
 }
 
 interface SetupCompletedEvent {
@@ -66,6 +73,16 @@ interface ControlPlaneEvent {
   resultCount?: number;
 }
 
+export async function trackLoginStarted(event: LoginAttemptEvent): Promise<void> {
+  await trackCliEvent("cli_login_started", {
+    gatewayUrl: event.gatewayUrl,
+    properties: {
+      mode: event.mode,
+      signup_intent_id: event.signupIntentId ?? null,
+    },
+  });
+}
+
 export async function trackLoginCompleted(
   event: LoginCompletedEvent,
 ): Promise<void> {
@@ -77,6 +94,17 @@ export async function trackLoginCompleted(
       org_id: event.orgId,
       user_id: event.userId ?? null,
       signup_intent_id: event.signupIntentId ?? null,
+    },
+  });
+}
+
+export async function trackLoginFailed(event: LoginAttemptEvent): Promise<void> {
+  await trackCliEvent("cli_login_failed", {
+    gatewayUrl: event.gatewayUrl,
+    properties: {
+      mode: event.mode,
+      signup_intent_id: event.signupIntentId ?? null,
+      error_kind: event.errorKind ?? "unknown",
     },
   });
 }
@@ -115,8 +143,8 @@ export async function trackRunCompleted(
   });
 }
 
-export function trackStatusChecked(event: StatusCheckedEvent): void {
-  void trackCliEvent("cli_activation_status_checked", {
+export async function trackStatusChecked(event: StatusCheckedEvent): Promise<void> {
+  await trackCliEvent("cli_activation_status_checked", {
     properties: {
       configured: event.configured,
       signed_in: event.signedIn,

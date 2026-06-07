@@ -5,6 +5,8 @@ import { join } from "node:path";
 import { afterEach, beforeEach, describe, it } from "node:test";
 
 import {
+  trackLoginFailed,
+  trackLoginStarted,
   trackRunCompleted,
   trackSetupCompleted,
   trackStatusChecked,
@@ -100,6 +102,42 @@ describe("CLI telemetry", () => {
     await new Promise((resolve) => setTimeout(resolve, 0));
 
     assert.deepEqual(events, ["cli_activation_status_checked"]);
+  });
+
+  it("records login attempt and failure events when credentials already exist", async () => {
+    writeCredentials({
+      api_key: "sk_test_telemetry",
+      gateway_url: "https://api.understudylabs.test",
+      signup_intent_id: "si_existing",
+      orgs: {},
+    });
+
+    const events = [];
+    globalThis.fetch = async (_input, init) => {
+      events.push(JSON.parse(String(init.body)));
+      return new Response(null, { status: 204 });
+    };
+
+    await trackLoginStarted({
+      mode: "auth.md",
+      gatewayUrl: "https://api.understudylabs.test",
+      signupIntentId: "si_new",
+    });
+    await trackLoginFailed({
+      mode: "auth.md",
+      gatewayUrl: "https://api.understudylabs.test",
+      signupIntentId: "si_new",
+      errorKind: "auth",
+    });
+    await new Promise((resolve) => setTimeout(resolve, 0));
+
+    assert.deepEqual(
+      events.map((event) => event.event_name),
+      ["cli_login_started", "cli_login_failed"],
+    );
+    assert.equal(events[0].properties.mode, "auth.md");
+    assert.equal(events[0].properties.signup_intent_id, "si_new");
+    assert.equal(events[1].properties.error_kind, "auth");
   });
 
   it("does nothing when telemetry is disabled", async () => {
