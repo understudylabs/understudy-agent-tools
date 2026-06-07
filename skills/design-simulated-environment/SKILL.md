@@ -93,7 +93,9 @@ criteria (recall / precision / policy — not just cost/speed).
 
 When the env is built as an actual `verifiers` Environment (the form
 [`author-rl-env`](../author-rl-env/SKILL.md) / `package-verifier-env` consume),
-these API facts (verifiers 0.1.14) save real trial:
+these API facts save real trial — verified against the `verifiers` library
+v0.1.14 (Prime Intellect / `willccbb/verifiers`; APIs move, so re-check the
+pinned version):
 
 - `vf.ToolEnv(tools=[fns], max_turns=, **kwargs)` — `dataset`, `rubric`,
   `system_prompt` pass through `**kwargs` to `MultiTurnEnv`; tools are plain

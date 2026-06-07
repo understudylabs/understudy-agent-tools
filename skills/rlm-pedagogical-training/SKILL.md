@@ -138,7 +138,8 @@ gradient**, so **group reward-variance is the learning signal**:
   `groups_trainable` healthy) → expect a **gradual, noisy climb** with plateaus.
 - Near-zero variance (sparse reward — most groups all-fail or all-pass) → expect
   **flat until a lucky success** (grokking-like; cf. arXiv:2201.02177). Fix the
-  reward shape (denser / shaped signal) rather than waiting it out.
+  reward shape (denser / shaped signal) rather than waiting it out — reward shape
+  governs what is learnable (Ng, Harada & Russell, ICML 1999).
 
 Check `groups_trainable` / per-group reward std over the first ~5 steps to set
 expectations before forecasting an ETA.
@@ -167,6 +168,25 @@ ships renderers for Qwen / GLM / MiniMax / DeepSeek / Kimi / Nemotron / GPT-OSS 
 blowup) → Gemma-4 multi-turn GRPO belongs on Unsloth/TRL, while Nemotron-3 is
 first-class on prime-rl. Match the model to the trainer that has all three, or
 switch trainers.
+
+### References for this section
+
+Original papers (theory):
+
+- GRPO / within-group advantage normalization — Shao et al., *DeepSeekMath*,
+  arXiv:2402.03300; DeepSeek-AI, *DeepSeek-R1*, arXiv:2501.12948.
+- Reward shape governs learnability — Ng, Harada & Russell, *Policy Invariance
+  Under Reward Transformations*, ICML 1999.
+- Delayed/sudden-jump dynamics — Power et al., *Grokking*, arXiv:2201.02177.
+
+Source projects (engineering facts — renderer/registry/GRPO support, env API):
+
+- Prime Intellect `prime-rl` and its `renderers` lib; vLLM model registry.
+- Public reproduction on this task: OpenPipe ART·E blog
+  (`openpipe.ai/blog/art-e-mail-agent`).
+
+Confirmed internally by Understudy: 2026-04-29 (workload-010) and 2026-06-07
+(ART·E Qwen-14B recreation).
 
 ## Reconcile Parallel Research
 
