@@ -6,11 +6,15 @@ import { runUnderstandCheck, runUnderstandWorkloadCard } from "./understand.js";
 import { buildWorkloadCard, previewCaptureImport, scanCaptureImport } from "./capture-import.js";
 import { planRouteDecision } from "./route-decision.js";
 import { buildValueReport } from "./value-report.js";
+import { registerCapturesCommand } from "./commands/captures.js";
+import { registerDoctorCommand } from "./commands/doctor.js";
+import { registerGatewayCommand } from "./commands/gateway.js";
 import { registerKeysCommand } from "./commands/keys.js";
 import { registerLoginCommand } from "./commands/login.js";
 import { registerLogoutCommand } from "./commands/logout.js";
 import { registerModelsCommand } from "./commands/models.js";
 import { registerProjectsCommand } from "./commands/projects.js";
+import { registerRoutesCommand } from "./commands/routes.js";
 import { registerRunCommand } from "./commands/run.js";
 import { registerSetupCodeCommand } from "./commands/setup-code.js";
 import { registerSetupCommand } from "./commands/setup.js";
@@ -394,7 +398,7 @@ export function buildProgram(): Command {
     printSkillList();
   });
 
-  program.command("doctor").description("Run local repository diagnostics").option("--json", "Output JSON").action(printDoctorJson);
+  registerDoctorCommand(program, printDoctorJson);
 
   registerLoginCommand(program);
   registerLogoutCommand(program);
@@ -403,6 +407,9 @@ export function buildProgram(): Command {
   registerModelsCommand(program);
   registerProjectsCommand(program);
   registerWorkloadsCommand(program);
+  registerCapturesCommand(program);
+  registerGatewayCommand(program);
+  registerRoutesCommand(program);
   registerSetupCommand(program);
   registerSetupCodeCommand(program);
   registerRunCommand(program);
