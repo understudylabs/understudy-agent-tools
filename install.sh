@@ -17,10 +17,14 @@ START_STEP=1
 ONLY_STEP=""
 RESUME=0
 YES=0
+NONINTERACTIVE="${UNDERSTUDY_NONINTERACTIVE:-${CI:-0}}"
+REQUIRE_CONFIRM="${UNDERSTUDY_REQUIRE_CONFIRM:-0}"
 
 while [ "$#" -gt 0 ]; do
   case "$1" in
     -y|--yes) YES=1 ;;
+    --non-interactive|--noninteractive|--no-input) NONINTERACTIVE=1 ;;
+    --require-confirm) REQUIRE_CONFIRM=1 ;;
     --no-claude) NO_CLAUDE=1 ;;
     --no-launch-claude) LAUNCH_CLAUDE=0 ;;
     --launch-claude) LAUNCH_CLAUDE=1 ;;
@@ -30,7 +34,7 @@ while [ "$#" -gt 0 ]; do
     --lab) LAB="${2:?missing path}"; shift ;;
     -h|--help)
       cat <<'EOF'
-Usage: install.sh [--yes] [--resume] [--from-step N] [--only-step N] [--no-claude] [--no-launch-claude]
+Usage: install.sh [--yes] [--non-interactive] [--resume] [--from-step N] [--only-step N] [--no-claude] [--no-launch-claude]
 
 Installs the Understudy CLI + Claude Code skill/plugin surface, then hands the
 user back to Claude Code. It does not download model weights, start MLX, install
@@ -39,6 +43,8 @@ Pi, launch tmux/iTerm, or make frontier calls. Those are guided by the
 
 Options:
   --yes                 approve the installer prompt
+  --non-interactive     use safe defaults without prompting
+  --require-confirm     fail instead of using defaults when no prompt TTY exists
   --resume              continue from the next unfinished install step
   --from-step N         start from step 1, 2, or 3
   --only-step N         run only step 1, 2, or 3
@@ -57,6 +63,8 @@ Environment overrides:
   UNDERSTUDY_INSTALL_LOG_FILE    exact install log path
   UNDERSTUDY_INSTALLER_COMMIT    optional script commit label when caller knows it
   UNDERSTUDY_INSTALL_PACKAGE     optional npm package spec override
+  UNDERSTUDY_NONINTERACTIVE      set to 1 to use safe defaults without prompting
+  UNDERSTUDY_REQUIRE_CONFIRM     set to 1 to fail when no prompt TTY exists
   UNDERSTUDY_LAUNCH_CLAUDE      set to 0 to skip opening Claude Code
   UNDERSTUDY_CLAUDE_ARGS        optional extra args when launching Claude Code
   UNDERSTUDY_CLAUDE_PERMISSION_MODE Claude Code permission mode, default auto
@@ -128,14 +136,33 @@ configure_resume() {
   fi
 }
 confirm() {
+  local answer
   [ "$YES" = "1" ] && return 0
-  if [ ! -r /dev/tty ]; then
-    say "This install is running without an interactive terminal for prompts."
-    say "Rerun with --yes to approve, for example: curl -fsSL .../install.sh | bash -s -- --yes"
+  case "$NONINTERACTIVE" in
+    1|true|TRUE|yes|YES|on|ON)
+      if [ "$REQUIRE_CONFIRM" = "1" ]; then
+        say "Confirmation is required but running non-interactively; rerun in a terminal or pass --yes."
+        return 1
+      fi
+      say "Running non-interactively; using installer defaults."
+      return 0
+      ;;
+  esac
+  if [ ! -r /dev/tty ] || [ ! -w /dev/tty ]; then
+    say "No interactive terminal is available for prompts."
+    say "Confirmation is required; rerun in a terminal or pass --yes / --non-interactive."
     return 1
   fi
-  printf "%s [y/N] " "$1" >/dev/tty
-  read -r answer </dev/tty
+  if ! printf "%s [y/N] " "$1" >/dev/tty 2>/dev/null; then
+    say "No interactive terminal is available for prompts."
+    say "Confirmation is required; rerun in a terminal or pass --yes / --non-interactive."
+    return 1
+  fi
+  if ! read -r answer </dev/tty 2>/dev/null; then
+    say "No interactive terminal input is available."
+    say "Confirmation is required; rerun in a terminal or pass --yes / --non-interactive."
+    return 1
+  fi
   case "$answer" in y|Y|yes|YES) return 0 ;; *) return 1 ;; esac
 }
 
