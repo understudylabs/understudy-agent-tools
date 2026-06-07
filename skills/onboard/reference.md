@@ -100,16 +100,47 @@ These dials are read by every skill (via
 [`../../docs/engagement-and-pacing.md`](../../docs/engagement-and-pacing.md)),
 so the whole experience adapts to the one profile.
 
-## First local model — pick small, American, cached
+## First local model — opinionated first rung
 
-Default first pull is the smallest model that still feels real, biased to the
-American open families (see
+Default first pull is the smallest verified Gemma 4 MLX chat model, served
+through MLX on Apple Silicon (see
 [`../../docs/open-model-spotlight.md`](../../docs/open-model-spotlight.md)):
 
-- **Apple Silicon, any RAM** — Gemma 4 E4B (~4.5B eff.) or Nemotron 3 Nano 4B
-  via Ollama or MLX. Fast, tiny download, runs everywhere.
-- **32 GB+** — can step up to Nemotron 3 Nano 30B-A3B (MoE, ~4B active speed) or
-  Gemma 4 12B once the tiny one proves the loop.
+- **Apple Silicon first rung** — Understudy-verified `google/gemma-4-e2b-it`,
+  converted with `mlx-vlm 0.6.2` to 4-bit MLX safetensors and served with
+  `mlx_vlm.server`. Snapshot:
+  `https://models.understudylabs.com/session?model=gemma-4-e2b-it-mlx-vlm-4bit`
+  (R2 source:
+  `r2://understudy-model-snapshots/models/google/gemma-4-e2b-it/mlx-vlm-0.6.2/quant-4bit/`).
+  It is about 3.3 GB on disk, used about 3.6 GB peak memory in testing, generated
+  locally at about 218 tok/s, and exposes logprobs/top-logprobs through the
+  OpenAI-compatible server.
+- **Gemma 4 E4B climb rung** — Understudy-verified `google/gemma-4-E4B-it`,
+  converted with `mlx-vlm 0.6.2` to 4-bit MLX safetensors and served with
+  `mlx_vlm.server`. Snapshot:
+  `https://models.understudylabs.com/session?model=gemma-4-e4b-it-mlx-vlm-4bit`.
+  It is about 4.8 GB on disk and is the first quality climb when E2B understands
+  the task but lacks enough capability.
+- **Delivery shape** — publish the stable
+  `models.understudylabs.com/session?model=...` endpoint. It returns a manifest
+  with short-lived signed URLs for the actual model files; do not publish the
+  expiring per-object URLs directly.
+- **BF16 profiling rung** — same E2B source and converter, about 9.5 GB on disk.
+  Keep it as an internal/local profiling option until a signed
+  `models.understudylabs.com` session is published.
+- **Tiny fallback only** — `mlx-community/gemma-3-1b-it-4bit`, served with
+  `mlx_lm.server`. Dry-run download is about 772 MB and it loads on current
+  `mlx-lm 0.31.3`; use it only when the verified Gemma 4 snapshot is unavailable
+  or disk/RAM is severely constrained.
+- **Stock Gemma 4 MLX caveat** — `mlx-community/Gemma4-E2B-IT-Text-int4` and
+  `mlx-community/gemma-4-e2b-it-4bit` failed on the tested stack with a Gemma 4
+  shared-KV weight/config mismatch. The Understudy snapshot exists to give users
+  a known-good first rung instead of sending them into loader debugging.
+- **Do not use `*-assistant` Gemma 4 repos as the first model.** They are MTP
+  draft models for speculative decoding, not standalone chat models.
+- **Next rungs** — Gemma 4 12B, Nemotron 3 Nano 4B, Nemotron 3
+  Nano 30B-A3B, then remote/hybrid Gemma/Nemotron routes after the first
+  local-vs-frontier gap is visible.
 
 Acquisition, caching, disk locations, and the larger ladder live in
 [`../manage-local-models/SKILL.md`](../manage-local-models/SKILL.md).

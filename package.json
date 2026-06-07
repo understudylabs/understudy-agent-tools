@@ -9,6 +9,8 @@
   "main": "./dist/index.js",
   "types": "./dist/index.d.ts",
   "files": [
+    ".claude-plugin",
+    "install.sh",
     "dist",
     "skills",
     "cookbook",
@@ -24,6 +26,7 @@
   "scripts": {
     "build": "rm -rf dist && tsc -p tsconfig.build.json",
     "clean": "rm -rf dist",
+    "prepare": "npm run build",
     "package:smoke": "node scripts/package-smoke.mjs",
     "cookbook:validate": "node scripts/validate-cookbook.mjs",
     "skills:validate": "node scripts/validate-public-skills.mjs --repo",

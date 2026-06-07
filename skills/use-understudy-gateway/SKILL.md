@@ -49,11 +49,16 @@ node dist/bin.js status --json
    understudy status --json
    ```
 
-2. If not signed in, run the email-code flow:
+2. If not signed in, register/sign in with the email-code flow:
 
    ```sh
    understudy login --email <developer-email>
    ```
+
+   This creates or finds the developer's Understudy account, retrieves an API
+   key through the CLI, and stores it outside the repo. The key is used for
+   authenticated gateway inference, project/key management, and remote model
+   routes. Do not ask the developer to paste the key.
 
    An agent with an approved native email connector may search narrowly for the
    fresh sign-in email and enter the one-time code into the waiting CLI prompt.
@@ -95,12 +100,17 @@ comparing a workload's quality and cost across the split.
    understudy models list --json
    ```
 
+   The list is the remote ladder. It should include larger Gemma-family routes
+   when enabled for the account, so the same API key can graduate a workload from
+   the local Gemma 4 E2B first rung to larger Gemma variants or remote/hybrid
+   routes without changing application code.
+
 2. Route a workload to a model at a traffic percentage — a per-request split
    where that share goes to the routed model and the rest stays on passthrough.
    Pick a bounded share (e.g. 30%) to keep the comparison small.
 
    ```sh
-   understudy workloads route <workload-id> --project-id <project-id> --model-id glm-5.1 --traffic-pct 30
+   understudy workloads route <workload-id> --project-id <project-id> --model-id gemma-4-12b --traffic-pct 30
    ```
 
    Clearing the route (`--clear` in place of the model/traffic flags) returns the

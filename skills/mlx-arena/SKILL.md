@@ -1,6 +1,6 @@
 ---
 name: mlx-arena
-description: Use to run a frontier model against a small local model on Apple Silicon, blind, then hill-climb the local model toward it — "compare a local model to Opus/GPT", "is a local model good enough for this", "blind model vibe-check", "frontier vs local head-to-head", "hill-climb my local model". Serves the local model with Apple MLX (mlx_lm.server); the frontier is one swappable, provider-agnostic config. Apple Silicon only.
+description: Use to run a frontier model against an opinionated local Understudy on Apple Silicon, blind, then hill-climb the local model toward it — "compare a local model to Opus/GPT", "is a local model good enough for this", "blind model vibe-check", "frontier vs local head-to-head", "hill-climb my local model". Starts with verified Gemma 4 E2B via mlx-vlm; the frontier is one swappable, provider-agnostic config. Apple Silicon only.
 metadata:
   understudy:
     mode: interactive
@@ -20,8 +20,9 @@ only on the genuinely hard tail.
 
 The runnable core is the blind game [`blind_arena.ts`](blind_arena.ts) (TypeScript,
 run by Node ≥22.6 — no Python in the repo); the local
-model is served by `mlx_lm.server` and [`arena.sh`](arena.sh) is the launcher. MLX
-does inference, the game is the surface; the scripts stay thin.
+model is served by `mlx_vlm.server` for the verified Gemma 4 rung or
+`mlx_lm.server` for compatible MLX repos, and [`arena.sh`](arena.sh) is the
+launcher. MLX does inference, the game is the surface; the scripts stay thin.
 
 This is the interactive sibling of
 [`../run-local-model-lab/SKILL.md`](../run-local-model-lab/SKILL.md): the lab
@@ -37,14 +38,15 @@ memory at the best tokens/sec, with no GPU drivers or build step. This skill is
 skill does not apply. (Local models need not be open-weight — any model you can
 serve with `mlx_lm.server` works.)
 
-`mlx_lm.server` exposes an **OpenAI-compatible** endpoint per model
-(`/v1/chat/completions`), one model per process/port. Pi adds each as a custom
-provider in `~/.pi/agent/models.json` (`api: openai-completions`).
+`mlx_vlm.server` and `mlx_lm.server` expose **OpenAI-compatible** endpoints per
+model (`/v1/chat/completions`), one model per process/port. Pi adds each as a
+custom provider in `~/.pi/agent/models.json` (`api: openai-completions`).
 
 ## Safety Gates
 
 - **No weight download without approval + a size cap.** Name the exact MLX repo,
-  quantization, and GB first. Default to the **smallest** model in each family.
+  quantization, and GB first. Default to the **smallest model that is reasonable
+  for the task**, not blindly to the smallest model in the family.
 - **Local-first, no upload.** Weights download from Hugging Face; prompts and
   outputs stay on the machine. No token is required for public `mlx-community`
   repos (a `HF_TOKEN` only raises rate limits).
@@ -55,23 +57,78 @@ provider in `~/.pi/agent/models.json` (`api: openai-completions`).
 
 ## Flow
 
-1. **Inventory + pick two models.** Confirm Apple Silicon, free RAM/disk, and the
-   MLX venv. Pick the **smallest** model from each family to compare (see
+### First out-of-box run
+
+For a new user, start with the verified first rung and open it in Pi immediately:
+
+```bash
+skills/mlx-arena/arena.sh first
+# or, on macOS, open the first Understudy in a distinct Terminal.app window:
+skills/mlx-arena/arena.sh first-window
+```
+
+This starts a branded tmux loading screen, serves the Understudy-verified
+`google/gemma-4-e2b-it` 4-bit MLX-VLM snapshot with `mlx_vlm.server`, then
+replaces the loader with Pi so the user sees: **their first local Understudy is
+ready**. It also creates/updates the local Pi provider entry in
+`~/.pi/agent/models.json`. `first-window` does the same work but opens a
+separate macOS Terminal window attached to the first-run tmux session, so the
+user sees the local Understudy load and then lands in Pi without staying in the
+agent's shell. When a coding agent invokes this, prefer `first-window` and
+`play-window`; always report the follow-along command (`tmux attach -t
+mlx-arena-first` or `tmux attach -t mlx-arena-play`) so the user can watch the
+same session while the agent sends prompts.
+
+Verified snapshot locations:
+
+- 4-bit first rung:
+  `https://models.understudylabs.com/session?model=gemma-4-e2b-it-mlx-vlm-4bit`
+  (R2 source:
+  `r2://understudy-model-snapshots/models/google/gemma-4-e2b-it/mlx-vlm-0.6.2/quant-4bit/`)
+- 4-bit E4B climb rung:
+  `https://models.understudylabs.com/session?model=gemma-4-e4b-it-mlx-vlm-4bit`
+- Public HTTPS delivery publishes stable session endpoints from
+  `models.understudylabs.com`. Each session response contains short-lived signed
+  per-file URLs; the same R2 prefix is the durable object source.
+
+The 4-bit snapshot is about 3.3 GB, generated `I am ready as your local
+understudy.` in local testing, used about 3.6 GB peak memory, and served
+OpenAI-compatible chat completions with `logprobs` / `top_logprobs`. The E4B
+snapshot is about 4.8 GB and is the first signed quality climb. If the verified
+Gemma 4 snapshot is not reachable, use
+`FIRST_REPO=mlx-community/gemma-3-1b-it-4bit FIRST_LOADER=mlx_lm
+skills/mlx-arena/arena.sh first` only as a fallback.
+
+After the first local prompt or two, move to the frontier head-to-head:
+
+```bash
+skills/mlx-arena/arena.sh play
+```
+
+1. **Inventory + pick the first local rung.** Confirm Apple Silicon, free RAM/disk,
+   and the MLX venv. Classify the task before picking a model: routing /
+   classification, extraction, coding, tool-use/API workflow, long-context
+   reasoning, or stateful policy. Pick the **smallest model that is plausibly
+   reasonable for that task** (see
    [`../../docs/open-model-spotlight.md`](../../docs/open-model-spotlight.md) and
-   "Finding MLX models" below). State exact repos + GB, get a quick yes.
+   "Finding MLX models" below). State exact repos + GB, get a quick yes. For a
+   two-local comparison, pick a second rung only after the first local-vs-frontier
+   gap is visible.
 2. **Set up the MLX runtime** (once):
    ```bash
    uv venv .understudy/venvs/mlx --python 3.12
-   uv pip install --python .understudy/venvs/mlx/bin/python 'mlx-lm>=0.31' 'huggingface_hub[cli]>=0.27'
+   uv pip install --python .understudy/venvs/mlx/bin/python 'mlx-lm>=0.31' 'mlx-vlm>=0.6' 'huggingface_hub>=0.27'
    ```
-3. **Download the two models** (backgrounded, announce ETA):
+3. **Download the first model** from the signed Understudy snapshot session:
    ```bash
-   .understudy/venvs/mlx/bin/hf download mlx-community/gemma-3-1b-it-4bit
-   .understudy/venvs/mlx/bin/hf download mlx-community/NVIDIA-Nemotron-3-Nano-4B-4bit
+   curl -fsSL 'https://models.understudylabs.com/session?model=gemma-4-e2b-it-mlx-vlm-4bit' -o /tmp/understudy-model-session.json
+   # install.sh performs the manifest download + signed file sync automatically.
    ```
-4. **Wire Pi** — add one provider per model in `~/.pi/agent/models.json`
-   (`baseUrl: http://127.0.0.1:<port>/v1`, `api: openai-completions`,
-   `apiKey: "mlx"`, `compat.supportsDeveloperRole:false`,
+4. **Wire Pi** — `arena.sh first` creates the first `mlx-gemma4` provider
+   automatically. For later side-by-side local arenas, add one provider per model
+   in `~/.pi/agent/models.json` (`baseUrl: http://127.0.0.1:<port>/v1`,
+   `api: openai-completions`, `apiKey: "mlx"`,
+   `compat.supportsDeveloperRole:false`,
    `compat.supportsReasoningEffort:false`). The model `id` must equal the served
    repo id. Verify with `pi --list-models | grep mlx`.
 5. **Launch the arena** and drive it:
@@ -83,11 +140,24 @@ provider in `~/.pi/agent/models.json` (`api: openai-completions`).
    skills/mlx-arena/arena.sh down               # stop servers + session
    ```
    An agent drives it headlessly with `ask` + `capture`; a human attaches.
-6. **Decide.** Compare answers, latency, tone, and reasoning behavior. Promote the
-   winner to [`../run-local-model-lab/SKILL.md`](../run-local-model-lab/SKILL.md)
-   for a scored, frozen-eval verdict, and graduate to a larger same-family model
-   via [`../use-understudy-gateway/SKILL.md`](../use-understudy-gateway/SKILL.md)
-   when you need more quality.
+   For the first Pi meeting session, use tmux paste-buffer rather than raw
+   literal key injection:
+   ```bash
+   tmux set-buffer 'Say exactly: local Understudy is online.'
+   tmux paste-buffer -t mlx-arena-first
+   tmux send-keys -t mlx-arena-first Enter
+   ```
+6. **Decide the next intervention.** Compare answers, latency, tone, and reasoning
+   behavior. If the model is already good enough, promote it to
+   [`../run-local-model-lab/SKILL.md`](../run-local-model-lab/SKILL.md) for a
+   scored, frozen-eval verdict. If it fails because the prompt/harness is weak,
+   route to [`../optimize-workload/SKILL.md`](../optimize-workload/SKILL.md). If
+   the task is a workflow with tool state, build a
+   [`../design-simulated-environment/SKILL.md`](../design-simulated-environment/SKILL.md).
+   If the small model needs bounded substeps behind the same external call, use
+   [`../recursive-language-model/SKILL.md`](../recursive-language-model/SKILL.md).
+   If quality is simply too low, climb the model ladder or route remote/hybrid via
+   [`../use-understudy-gateway/SKILL.md`](../use-understudy-gateway/SKILL.md).
 
 ## Blind-vote mode — the Efficient-Intelligence game
 
@@ -105,6 +175,7 @@ Easiest bring-up (downloads the default model if missing, serves it, launches th
 branded game in tmux):
 
 ```bash
+skills/mlx-arena/arena.sh first    # first verified local model in Pi
 skills/mlx-arena/arena.sh play
 # then:  tmux attach -t mlx-arena-play
 ```
@@ -112,7 +183,7 @@ skills/mlx-arena/arena.sh play
 Or run it directly (Node ≥22.6 runs the `.ts` via native type-stripping):
 
 ```bash
-LOCAL_BASE=http://127.0.0.1:8081/v1 LOCAL_MODEL=mlx-community/gemma-3-1b-it-4bit \
+LOCAL_BASE=http://127.0.0.1:8081/v1 LOCAL_MODEL=.understudy/models/gemma-4-e2b-it-mlx-vlm-4bit \
 CATEGORY=coding FRONTIER_MODEL=claude-opus-4-8 \
 node --experimental-strip-types skills/mlx-arena/blind_arena.ts
 ```
@@ -142,11 +213,14 @@ from `ANTHROPIC_LOCAL_KEY`/`ANTHROPIC_API_KEY`; cost is computed from real usage
 (Opus 4.8 $5/$25 per 1M in/out) and shown only on reveal.
 
 For real workloads, ground the questions in a captured trace
-([`../understand-workload/SKILL.md`](../understand-workload/SKILL.md)); and to test
-whether the local model can take over the *whole* task (not just answer questions),
-build a [`../design-simulated-environment/SKILL.md`](../design-simulated-environment/SKILL.md)
-and hill-climb it with the
-[`../recursive-language-model/SKILL.md`](../recursive-language-model/SKILL.md) harness.
+([`../understand-workload/SKILL.md`](../understand-workload/SKILL.md)). Treat Pi as
+the quick local-proof and gap-finding surface. To test whether the local model can
+take over the *whole* task (not just answer questions), build a
+[`../design-simulated-environment/SKILL.md`](../design-simulated-environment/SKILL.md),
+then hill-climb it with the
+[`../recursive-language-model/SKILL.md`](../recursive-language-model/SKILL.md)
+harness or prompt optimization through
+[`../optimize-workload/SKILL.md`](../optimize-workload/SKILL.md).
 
 ## Known model-compat gotchas
 
@@ -156,14 +230,15 @@ in [`reference.md`](reference.md).
 
 ## Output Standard
 
-End with: the two models (repo, quant, GB, port); RAM headroom used; the tmux
-session name and how to attach/drive it; a first lockstep comparison (both
-answers, rough latency, any reasoning-trace difference); and the recommended next
-step (score the winner in run-local-model-lab, or swap a corner and re-run).
+End with: task class; the first local rung and why it is the smallest reasonable
+choice; model repo, quant, GB, port, and RAM headroom; the tmux session name and
+how to attach/drive it; the first head-to-head comparison; and the recommended
+next intervention (score in run-local-model-lab, build simulated env, run GEPA,
+try RLM, climb models, or route hybrid/remote).
 
 ## References
 
-- [`arena.sh`](arena.sh) — the launcher/controller (`up|ask|left|right|capture|logs|status|down|attach`).
+- [`arena.sh`](arena.sh) — the launcher/controller (`first|first-window|play|up|ask|left|right|capture|logs|status|down|attach`).
 - [`../run-local-model-lab/SKILL.md`](../run-local-model-lab/SKILL.md) — score a model on a frozen eval.
 - [`../../docs/open-model-spotlight.md`](../../docs/open-model-spotlight.md) — Gemma & Nemotron variants and hardware fit.
 - [`../manage-local-models/SKILL.md`](../manage-local-models/SKILL.md) — acquiring/curating local weights.

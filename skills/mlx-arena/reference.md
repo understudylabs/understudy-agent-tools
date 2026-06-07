@@ -19,12 +19,17 @@ those are speculative-decoding drafters, not standalone models.
 
 ## Known model-compat gotchas (hard-won)
 
-- **Gemma 4 E2B doesn't load on mlx_lm 0.31.3.** Its MLX quants store per-layer
-  `k_proj`/`v_proj` for the 20 KV-shared layers, but the `gemma4_text` loader
-  shares them → `ValueError: Received 140 parameters not in model`. Use
-  `gemma-3-1b-it-4bit` as the smallest Google chat model that loads today; revisit
-  Gemma 4 when mlx_lm updates. Multimodal Gemma repos (no `-text`) also fail under
-  text-only `mlx_lm`.
+- **Gemma 4 E2B doesn't load on the tested MLX stack.**
+  `mlx-community/Gemma4-E2B-IT-Text-int4` downloads at about 2.7 GB, but both
+  `mlx_lm.generate` and `mlx_vlm.generate` fail on `mlx-lm 0.31.3` /
+  `mlx-vlm 0.6.2`. Root cause: the config puts `num_kv_shared_layers: 20` under
+  `text_config`, while `mlx_lm` reads top-level `ModelArgs` defaults; the loader
+  then treats layers 15-34 as KV-shared and rejects their per-layer `k_proj` /
+  `v_proj` weights (`ValueError: Received 140 parameters not in model`). Adding a
+  top-level `num_kv_shared_layers: 0` makes K/V weights fit but breaks the
+  double-wide MLP shapes on those layers, so this needs a loader/config fix, not
+  a one-line runtime override. Keep `gemma-3-1b-it-4bit` as the smallest verified
+  Google chat model until Gemma 4 E2B loads cleanly.
 - **Reasoning models (e.g. Nemotron 3 Nano) need token headroom.** They emit a
   hidden/visible reasoning trace before the answer; with a tiny `max_tokens` the
   visible `content` comes back empty. Give ≥256 tokens. Expect higher latency than

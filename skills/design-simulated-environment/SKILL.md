@@ -16,6 +16,29 @@ implementation. The goal: a deterministic, synthetic environment where **any
 candidate model can run the whole agentic task** and be **scored on the final
 state**, so you can compare frontier vs. local and hill-climb the local model.
 
+## Default environment first
+
+Before building a codebase-specific environment, every new local Understudy
+should run in a tiny **default environment** so the user has an immediate,
+repeatable baseline:
+
+- **Task shape:** read a small synthetic inbox / ticket queue / project board,
+  decide what matters, write one structured update, and avoid forbidden writes.
+- **Tools:** `list_records`, `read_record`, `write_note`, `update_status`, and
+  `finish`. All tools mutate in-memory JSON only.
+- **Gold state:** the exact notes/statuses a correct run should produce, plus
+  forbidden writes that must not occur.
+- **Validator axes:** required-write recall, unnecessary-write precision, policy
+  compliance, schema validity, recoverable errors, step count, latency, and cost.
+- **Oracle:** a scripted correct trajectory must score 1.0 before any model is
+  compared.
+
+This default env is not the customer's app and must not be presented as proof
+that local can replace the incumbent. It is the first-run calibration surface:
+"my local model can act in a deterministic tool world, and I can compare it to a
+frontier model." After that, inspect the repo/traces and build the
+workload-specific environment below.
+
 ## Why simulate (the lesson that forces this)
 
 A **recorded** replay (serve the teacher's captured tool_results back) only works
@@ -41,7 +64,9 @@ criteria (recall / precision / policy — not just cost/speed).
 
 ## Recipe
 
-1. **Seed synthetic state.** A few records of each entity the workload touches
+1. **Seed synthetic state.** For the default env, use the built-in synthetic
+   inbox/ticket/project-board fixture. For a workload-specific env, use a few
+   records of each entity the workload touches
    (deals, contacts, activities, a short transcript), small enough to read.
 2. **Implement the tools by intent, leniently.** Group the real tool catalog into
    read / transform / write classes (from understand-workload). For each class,

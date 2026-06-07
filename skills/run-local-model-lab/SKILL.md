@@ -57,6 +57,10 @@ route for compliance. For pure remote inference/routing use
    Do not download weights yet. Surface what you found. (Not on Apple Silicon?
    This skill does not apply — local serving here is MLX-only.)
 2. **Pick a candidate tier** (candidate chooser + hardware-fit guidance in [`reference.md`](reference.md)):
+   choose the smallest model that is reasonable for the task, not the smallest
+   model available. If a Pi arena gap report already exists, use it to decide
+   whether to score the current rung, climb to a larger local model, or skip to
+   hybrid/remote.
    - Tiny smoke — E2B / E4B class (fast, on-device; routing/triage/easy cases).
    - Real local eval — 12B class if hardware permits.
    - Workstation/server — 26B A4B (MoE, ~4B active so fast) or 31B dense.
