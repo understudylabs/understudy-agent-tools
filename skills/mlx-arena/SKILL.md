@@ -47,9 +47,11 @@ custom provider in `~/.pi/agent/models.json` (`api: openai-completions`).
 - **No weight download without approval + a size cap.** Name the exact MLX repo,
   quantization, and GB first. Default to the **smallest model that is reasonable
   for the task**, not blindly to the smallest model in the family.
-- **Local-first, no upload.** Weights download from Hugging Face; prompts and
-  outputs stay on the machine. No token is required for public `mlx-community`
-  repos (a `HF_TOKEN` only raises rate limits).
+- **Local-first, no upload.** The verified first rung downloads from signed
+  Understudy snapshot sessions into `~/.understudy/models`; prompts and outputs
+  stay on the machine. No token is required for the signed snapshots. If you
+  intentionally use a public Hugging Face repo, a `HF_TOKEN` only raises rate
+  limits unless the model is gated.
 - **One model per port.** Each `mlx_lm.server` loads one model and holds it in
   unified memory. Two 4-bit ~4B models fit comfortably on 16 GB+; check free RAM
   before adding a third.
@@ -61,25 +63,31 @@ custom provider in `~/.pi/agent/models.json` (`api: openai-completions`).
 
 ### First out-of-box run
 
-For a new user, start with the verified first rung and open it in Pi immediately:
+For a new user, start with the verified first rung. If it is not already cached,
+route to [`../manage-local-models/SKILL.md`](../manage-local-models/SKILL.md),
+ask approval for the ~3.3 GB snapshot, and run this skill helper from the
+`manage-local-models` skill directory:
+
+```bash
+node scripts/pull-understudy-snapshot.mjs --model gemma-4-e2b-it-mlx-vlm-4bit
+```
+
+Then open it in Pi:
 
 ```bash
 skills/mlx-arena/arena.sh first
-# or, on macOS, open the first Understudy in a distinct Terminal.app window:
-skills/mlx-arena/arena.sh first-window
 ```
 
 This starts a branded tmux loading screen, serves the Understudy-verified
 `google/gemma-4-e2b-it` 4-bit MLX-VLM snapshot with `mlx_vlm.server`, then
 replaces the loader with Pi so the user sees: **their first local Understudy is
 ready**. It also creates/updates the local Pi provider entry in
-`~/.pi/agent/models.json`. `first-window` does the same work but opens a
-separate macOS Terminal window attached to the first-run tmux session, so the
-user sees the local Understudy load and then lands in Pi without staying in the
-agent's shell. When a coding agent invokes this, prefer `first-window` and
-`play-window`; always report the follow-along command (`tmux attach -t
-mlx-arena-first` or `tmux attach -t mlx-arena-play`) so the user can watch the
-same session while the agent sends prompts.
+`~/.pi/agent/models.json`. Prefer coaching the user to open their own terminal
+and attach to the tmux session over auto-opening iTerm/Ghostty/Terminal from the
+installer. If they explicitly ask the coding agent to open a new window, use
+`first-window` / `play-window` and always report the follow-along command
+(`tmux attach -t mlx-arena-first` or `tmux attach -t mlx-arena-play`) so the
+user can watch the same session while the agent sends prompts.
 
 Verified snapshot locations:
 
@@ -123,8 +131,8 @@ skills/mlx-arena/arena.sh play
    ```
 3. **Download the first model** from the signed Understudy snapshot session:
    ```bash
-   curl -fsSL 'https://models.understudylabs.com/session?model=gemma-4-e2b-it-mlx-vlm-4bit' -o /tmp/understudy-model-session.json
-   # install.sh performs the manifest download + signed file sync automatically.
+   cd skills/manage-local-models
+   node scripts/pull-understudy-snapshot.mjs --model gemma-4-e2b-it-mlx-vlm-4bit
    ```
 4. **Wire Pi** — `arena.sh first` creates the first `mlx-gemma4` provider
    automatically. For later side-by-side local arenas, add one provider per model
@@ -246,8 +254,8 @@ chooses BYO `.env` keys, the Understudy ZDR gateway route, or local-only skip.
 For Understudy ZDR, the installer clears local provider-key env vars and sets
 `UNDERSTUDY_FALLBACK_MODEL=gpt-5.5` by default.
 
-Easiest bring-up (downloads the default model if missing, serves it, launches the
-branded game in tmux):
+Easiest bring-up after the model is cached (serves it, launches the branded game
+in tmux):
 
 ```bash
 skills/mlx-arena/arena.sh first    # first verified local model in Pi

@@ -51,13 +51,18 @@ work — do not re-run the full interview. Only first-timers get the full flow.
    `r2://understudy-model-snapshots/models/google/gemma-4-e2b-it/mlx-vlm-0.6.2/quant-4bit/`).
    It is about 3.3 GB on disk and generated locally at
    about 218 tok/s in testing. Announce the model, quantization, size, source,
-   and ETA, get a quick yes, then run
-   `skills/mlx-arena/arena.sh first-window` on macOS so a distinct Terminal.app
-   window opens with the branded loading screen while the model loads, then lands
-   in Pi when the local Understudy is ready. Use `arena.sh first` when a separate
-   window is unavailable. If the MLX runtime is missing, the slow step is
-   *install MLX + pull* — get one quick approval, then background it. If the
-   Gemma 4 snapshot URL is unavailable, fall back to
+   and ETA, get a quick yes, then route through
+   [`../manage-local-models/SKILL.md`](../manage-local-models/SKILL.md) to run
+   the skill-owned pull helper:
+   ```bash
+   node scripts/pull-understudy-snapshot.mjs --model gemma-4-e2b-it-mlx-vlm-4bit
+   ```
+   Resolve the script relative to the `manage-local-models` skill directory.
+   This caches the first Understudy under
+   `~/.understudy/models/gemma-4-e2b-it-mlx-vlm-4bit` and logs progress/ETA under
+   `~/.understudy/agent-tools/logs/`. If the MLX runtime is missing, the slow
+   step is *install MLX + pull* — get one quick approval, then background it. If
+   the Gemma 4 snapshot URL is unavailable, fall back to
    `mlx-community/gemma-3-1b-it-4bit` only to preserve the aha moment. Then
    immediately move on; do not watch the bar.
 
@@ -91,9 +96,17 @@ work — do not re-run the full interview. Only first-timers get the full flow.
    If `~/.understudy/companion.json` points at a dead pid, clear it and record
    the stale pid in the card.
 
-6. **Land the quick win.** The `arena.sh first` pane now says their first local
-   Understudy is ready and opens Pi on verified Gemma 4 E2B. Have them try one
-   real prompt. If Pi is not installed, run one local generation and print:
+6. **Land the quick win.** Once the snapshot is cached, route to
+   [`../mlx-arena/SKILL.md`](../mlx-arena/SKILL.md). Coach the user to open a
+   terminal of their choice and attach to the tmux session, or launch it from the
+   agent if they ask. Use:
+   ```bash
+   FIRST_REPO="$HOME/.understudy/models/gemma-4-e2b-it-mlx-vlm-4bit" \
+     skills/mlx-arena/arena.sh first
+   ```
+   The pane says their first local Understudy is ready and opens Pi on verified
+   Gemma 4 E2B. Have them try one real prompt. If Pi is not installed, run one
+   local generation and print:
    `npm install -g --ignore-scripts @earendil-works/pi-coding-agent`. Briefly
    teach the idea: an open-weight model is downloadable weights you run yourself;
    local is free and ZDR-safe; you iterate small and local, then *graduate* to a
@@ -108,8 +121,14 @@ work — do not re-run the full interview. Only first-timers get the full flow.
 
 8. **Start the head-to-head.** After the default environment baseline, route to
    [`../specialize-local-model/SKILL.md`](../specialize-local-model/SKILL.md) and
-   run `skills/mlx-arena/arena.sh play` so they can compare the local Understudy
-   against a frontier model and decide where local is already enough.
+   run:
+   ```bash
+   LEFT_REPO="$HOME/.understudy/models/gemma-4-e2b-it-mlx-vlm-4bit" \
+     skills/mlx-arena/arena.sh play
+   ```
+   The coding agent should watch the tmux session with the user, then after the
+   stock duel ask them to pick a real problem or let the agent find local data so
+   Understudy can try to beat the frontier on that task slice.
 
 9. **Route onward.** Hand to the [`understudy`](../understudy/SKILL.md)
    orchestrator for the improvement loop;

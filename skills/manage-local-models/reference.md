@@ -80,6 +80,20 @@ Cloudflare delivery note: public installation uses stable session endpoints from
 per-file URLs; publish the session endpoint, not the expiring object URLs. R2
 remains the durable object source.
 
+Skill-owned pull helper:
+
+```bash
+cd /path/to/skills/manage-local-models
+node scripts/pull-understudy-snapshot.mjs --model gemma-4-e2b-it-mlx-vlm-4bit --dry-run
+node scripts/pull-understudy-snapshot.mjs --model gemma-4-e2b-it-mlx-vlm-4bit
+```
+
+The helper writes verified snapshots to `~/.understudy/models/<model-id>` and
+logs to `~/.understudy/agent-tools/logs/model-pull-*.log`. Use
+`gemma-4-e4b-it-mlx-vlm-4bit` for the first quality climb. It is intentionally a
+skill helper, not a public CLI surface; the coding agent should request approval
+with the model id, source, and GB before running it.
+
 Remote graduation note: when a local rung is too small, use
 [`../use-understudy-gateway/SKILL.md`](../use-understudy-gateway/SKILL.md) to
 run `understudy login --email <developer-email>`, store the API key through the

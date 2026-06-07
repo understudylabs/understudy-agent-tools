@@ -63,8 +63,24 @@ locations and registry links are in [`reference.md`](reference.md).
 3. **Choose source + format for the runtime.** Ollama library (simplest, GGUF,
    no HF token for Gemma); Hugging Face GGUF (llama.cpp / LM Studio); MLX builds
    (Apple Silicon). Quantization/format primer in [`reference.md`](reference.md).
-4. **Confirm the size, then background the pull.** State exact GB and ETA, get
-   the go-ahead, run the download in the background, and move on to other work.
+4. **Confirm the size, then use the skill-owned pull helper.** For the
+   Understudy verified MLX ladder, do not send the user to a CLI command or the
+   installer. Resolve the script relative to this skill directory and run it
+   after approval:
+   ```bash
+   node scripts/pull-understudy-snapshot.mjs --model gemma-4-e2b-it-mlx-vlm-4bit
+   ```
+   Use `--dry-run` first when you need to show destination/log paths without
+   downloading:
+   ```bash
+   node scripts/pull-understudy-snapshot.mjs --model gemma-4-e2b-it-mlx-vlm-4bit --dry-run
+   ```
+   The helper downloads signed per-file URLs from
+   `models.understudylabs.com`, writes into `~/.understudy/models`, verifies
+   sizes and hashes when present, and logs progress/ETA to
+   `~/.understudy/agent-tools/logs/model-pull-*.log`. For non-Understudy
+   sources, use the native runtime pull (`ollama pull`, `hf download`, LM
+   Studio) and keep the same approval boundary.
 5. **Verify + record.** Once cached, run a one-line generation to confirm it
    loads and does tool calls if the workload needs them. Append the model to
    `local_models` in the profile (id, runtime, quant, size, date).
