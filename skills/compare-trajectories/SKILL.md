@@ -57,6 +57,13 @@ this skill is its behavioral complement, not a replacement. Both runs must come
 from the **same frozen task set, harness, and tool-access mode**; if they don't,
 stop — a trajectory diff across different tasks is meaningless.
 
+This skill diagnoses the RL-vs-not gap *behaviorally* (trajectory divergence,
+recovery events). The *learnability* cut on the resulting warm-start set —
+surprise-gap / concentration measured under the student — is a different
+instrument, owned by the `pedagogical-learning` and
+[`../local-distillation-lab/SKILL.md`](../local-distillation-lab/SKILL.md) skills,
+not here. They compose: behavioral verdict here, learnability cut there.
+
 ## Flow
 
 1. **Load two runs.** Take two run JSON exports (A = baseline/weaker, B =

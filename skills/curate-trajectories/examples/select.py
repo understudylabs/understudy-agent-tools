@@ -33,8 +33,13 @@ def load_index(path: str) -> list[dict]:
 
 
 def _split_ids(splits: dict, name: str) -> set[str]:
+    # capture-evidence's splits.json stores the frozen task ids under `rows`
+    # (real schema) or `row_ids`; accept either, or a bare list.
     block = splits.get(name, {})
-    ids = block.get("row_ids", []) if isinstance(block, dict) else block
+    if isinstance(block, dict):
+        ids = block.get("rows") or block.get("row_ids") or []
+    else:
+        ids = block
     return {str(x) for x in ids}
 
 

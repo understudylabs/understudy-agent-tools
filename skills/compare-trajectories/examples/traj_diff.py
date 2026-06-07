@@ -24,12 +24,41 @@ from collections import Counter
 
 # ----- loading & alignment -------------------------------------------------
 
+def task_id(record: dict) -> str:
+    """Canonical task id. Real AutomationBench exports put the stable id in
+    `name` (e.g. 'simple.sf_opp_update') and use `id` only as a 1-based
+    enumeration index; prefer name, fall back to id/task_id."""
+    return str(record.get("name") or record.get("task_id") or record.get("id"))
+
+
 def load_run(path: str) -> dict:
     """Load a run export -> {task_id: record}. Tolerates a bare list or
-    {'tasks': [...]} / {'results': [...]}; keys by record['id']."""
+    {'tasks': [...]} / {'results': [...]}; keys by the canonical task id."""
     raw = json.load(open(path))
     rows = raw if isinstance(raw, list) else raw.get("tasks") or raw.get("results") or []
-    return {str(r["id"]): r for r in rows}
+    return {task_id(r): r for r in rows}
+
+
+def _tc_dict(tc) -> dict:
+    """A recorded tool_call may be a dict OR a JSON-encoded string (real exports
+    double-encode: a list of JSON strings, each with `arguments` itself a JSON
+    string). Normalize to a dict."""
+    if isinstance(tc, str):
+        try:
+            tc = json.loads(tc)
+        except (ValueError, TypeError):
+            return {}
+    return tc if isinstance(tc, dict) else {}
+
+
+def _tc_name(tc) -> str:
+    d = _tc_dict(tc)
+    return d.get("name") or d.get("function", {}).get("name") or "?"
+
+
+def _tc_args(tc):
+    d = _tc_dict(tc)
+    return d.get("arguments", d.get("function", {}).get("arguments"))
 
 
 def align(run_a: dict, run_b: dict) -> tuple[list[str], list[str], list[str]]:
@@ -41,12 +70,13 @@ def align(run_a: dict, run_b: dict) -> tuple[list[str], list[str], list[str]]:
 # ----- behavioral metrics --------------------------------------------------
 
 def tool_sequence(record: dict) -> list[str]:
-    """Ordered (tool_name) signature from messages[].tool_calls."""
+    """Ordered (tool_name) signature from messages[].tool_calls. Handles both
+    dict and JSON-string-encoded tool_calls."""
     seq = []
     for m in record.get("messages", []):
         if m.get("role") == "assistant" and m.get("tool_calls"):
             for tc in m["tool_calls"]:
-                seq.append(tc.get("name") or tc.get("function", {}).get("name", "?"))
+                seq.append(_tc_name(tc))
     return seq
 
 
@@ -69,7 +99,7 @@ def detect_malformed(record: dict) -> bool:
     """A's failure is a format/parsing problem, not strategy."""
     for m in record.get("messages", []):
         for tc in (m.get("tool_calls") or []):
-            args = tc.get("arguments", tc.get("function", {}).get("arguments"))
+            args = _tc_args(tc)
             if isinstance(args, str):
                 try:
                     json.loads(args)
@@ -235,19 +265,25 @@ def main(argv=None) -> int:
 def _selftest() -> None:
     import tempfile, os
     def mk(passed, tools, finish, malformed=False):
-        tcs = [{"name": t, "arguments": ("{bad" if malformed else "{}")} for t in tools]
+        # Real AutomationBench schema: tool_calls are JSON-ENCODED STRINGS whose
+        # `arguments` is itself a JSON string. This guards the double-encoding bug.
+        tcs = [json.dumps({"id": f"t{i}", "name": t,
+                           "arguments": ("{bad" if malformed else json.dumps({"q": t}))})
+               for i, t in enumerate(tools)]
         return {"id": None, "passed": passed, "steps": len(tools), "finish_reasons": [finish],
                 "messages": [{"role": "assistant", "tool_calls": tcs}], "end_state": {}, "score": 1.0 if passed else 0.0}
     run_a = {"tasks": []}; run_b = {"tasks": []}
     cases = [
-        ("persist", mk(False, ["api_search"], "gave_up"), mk(True, ["api_search", "api_fetch"], "stop")),
-        ("know",    mk(False, ["email_search"], "gave_up"), mk(True, ["slack_post"], "stop")),
-        ("format",  mk(False, ["api_search"], "stop", malformed=True), mk(True, ["api_search"], "stop")),
-        ("both",    mk(True, ["api_fetch"], "stop"), mk(True, ["api_fetch"], "stop")),
-        ("regress", mk(True, ["api_fetch"], "stop"), mk(False, ["api_fetch"], "gave_up")),
+        ("simple.persist", mk(False, ["api_search"], "gave_up"), mk(True, ["api_search", "api_fetch"], "stop")),
+        ("simple.know",    mk(False, ["email_search"], "gave_up"), mk(True, ["slack_post"], "stop")),
+        ("simple.format",  mk(False, ["api_search"], "stop", malformed=True), mk(True, ["api_search"], "stop")),
+        ("simple.both",    mk(True, ["api_fetch"], "stop"), mk(True, ["api_fetch"], "stop")),
+        ("simple.regress", mk(True, ["api_fetch"], "stop"), mk(False, ["api_fetch"], "gave_up")),
     ]
     for tid, ra, rb in cases:
-        ra = {**ra, "id": tid}; rb = {**rb, "id": tid}
+        # Real exports key by `name`; `id` is just an enumeration index.
+        ra = {**ra, "name": tid, "id": len(run_a["tasks"]) + 1}
+        rb = {**rb, "name": tid, "id": len(run_b["tasks"]) + 1}
         run_a["tasks"].append(ra); run_b["tasks"].append(rb)
     da = tempfile.mktemp(suffix=".json"); db = tempfile.mktemp(suffix=".json")
     json.dump(run_a, open(da, "w")); json.dump(run_b, open(db, "w"))

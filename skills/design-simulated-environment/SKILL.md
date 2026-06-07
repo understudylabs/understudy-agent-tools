@@ -100,4 +100,5 @@ recall/precision/policy + cost/latency — with the local-model gap to close.
 - [`../understand-workload/SKILL.md`](../understand-workload/SKILL.md) — produces the shape this simulates.
 - [`../recursive-language-model/SKILL.md`](../recursive-language-model/SKILL.md) — the harness that lifts a small model's score in this env.
 - [`../optimize-api-workflow/SKILL.md`](../optimize-api-workflow/SKILL.md) — the API-workflow metric axes and final-state validation.
+- [`../author-rl-env/SKILL.md`](../author-rl-env/SKILL.md) — inverts this batch-scored env into a `reset`/`step` MDP when the workload needs RL (the direct next rung before a hosted handoff).
 - [`../prepare-verifier-handoff/SKILL.md`](../prepare-verifier-handoff/SKILL.md) — when the env should graduate to a hosted RL/verifiers partner.

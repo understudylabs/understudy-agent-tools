@@ -49,6 +49,12 @@ claim silently dies; replace it with a hash-stamped selection. If the trajectori
 are only being eyeballed (no downstream training/claim), a manifest is optional —
 but the moment a number leaves the building, curate first.
 
+This skill selects on **provenance and contamination** (split membership, dedup,
+outcome conflicts) — it does **not** judge whether a trajectory is *correct or
+learnable*. That pedagogical filtering (the useful-quadrant / surprise-gap cut)
+lives in the `pedagogical-learning` skill, which consumes this skill's
+decontaminated pool.
+
 ## Flow
 
 1. **Index + attach provenance.** Run `examples/index_trajectories.py` over the
@@ -96,9 +102,10 @@ End with:
 - one recommended next consumer —
   [`compare-trajectories`](../compare-trajectories/SKILL.md),
   [`author-rl-env`](../author-rl-env/SKILL.md),
-  [`local-distillation-lab`](../local-distillation-lab/SKILL.md), or
-  [`prepare-verifier-handoff`](../prepare-verifier-handoff/SKILL.md) — with the
-  exact selection hash to pass it.
+  [`local-distillation-lab`](../local-distillation-lab/SKILL.md),
+  [`prepare-verifier-handoff`](../prepare-verifier-handoff/SKILL.md), or the
+  `pedagogical-learning` / `rlm-pedagogical-training` skills — with the exact
+  selection hash to pass it.
 
 ## References
 

@@ -19,7 +19,11 @@ from pathlib import Path
 from typing import Iterator
 
 
-REQUIRED_PROVENANCE = ("task_id", "model", "toolset", "domain", "seed")
+# Fields needed to tag splits (by task_id) and dedup. `seed` is recorded when
+# present but NOT required — workloads like AutomationBench have no per-row RNG
+# seed (the initial_state IS the seed), so requiring it would falsely flag every
+# row as incomplete. Contamination safety keys on task_id<->split, not seed.
+REQUIRED_PROVENANCE = ("task_id", "model", "toolset", "domain")
 
 
 def canonical(obj) -> str:
@@ -77,7 +81,9 @@ def _outcome(raw: dict) -> str:
 
 
 def to_index_record(raw: dict, source_run_id: str, source_kind: str, source_path: str) -> dict:
-    task_id = str(raw.get("task_id", raw.get("id", "")))
+    # Real AutomationBench exports carry the stable id in `name`; `id` is a
+    # 1-based enumeration index. Prefer name so split tagging matches splits.json.
+    task_id = str(raw.get("name") or raw.get("task_id") or raw.get("id", ""))
     model = os.path.basename(str(raw.get("model", "")).rstrip("/")) or None
     content = _sha(canonical({
         "messages": raw.get("messages"), "end_state": raw.get("end_state"),

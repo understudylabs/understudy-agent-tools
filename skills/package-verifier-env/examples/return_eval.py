@@ -39,7 +39,10 @@ def return_eval(policy_ref: str, split: str = "holdout", run_policy=None) -> dic
         raise SystemExit("REFUSED: splits.json hash != baseline splits_sha256 — holdout drift")
 
     block = splits.get(split, {})
-    rows = block.get("row_ids", []) if isinstance(block, dict) else block
+    if isinstance(block, dict):
+        rows = block.get("rows") or block.get("row_ids") or []
+    else:
+        rows = block
 
     scores = []
     if run_policy is not None:
@@ -47,7 +50,11 @@ def return_eval(policy_ref: str, split: str = "holdout", run_policy=None) -> dic
             # final_state = run_policy(policy_ref, row); scores.append(final_state_score(final_state))
             scores.append(run_policy(policy_ref, row))
     returned = sum(scores) / len(scores) if scores else None
+    # Pre-RL local baseline number. Real baseline.json nests it under
+    # candidate_local.quality.partial_credit_mean; fall back to a top-level score.
     base = baseline.get("score")
+    if base is None:
+        base = (baseline.get("candidate_local", {}).get("quality", {}).get("partial_credit_mean"))
 
     out = {
         "result_type": "return-eval",

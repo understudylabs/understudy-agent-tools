@@ -51,8 +51,14 @@ backend — it is the same object; you re-expose it behind a step boundary. You 
   multi-step behavior*.
 - Cheaper weight-update rung not yet tried? A local distillation / pedagogical
   pass via
-  [`../local-distillation-lab/SKILL.md`](../local-distillation-lab/SKILL.md) may
-  close the gap without a hosted trainer — rule it out first.
+  [`../local-distillation-lab/SKILL.md`](../local-distillation-lab/SKILL.md) (or
+  the `pedagogical-learning` skill) may close the gap without a hosted trainer —
+  rule it out first.
+- Haven't yet decided *whether* RL is the right arm — off-policy SFT vs on-policy
+  repair vs RL, or measuring learnability/concentration? That arm-selection
+  decision lives in the `rlm-pedagogical-training` skill. This skill is **only**
+  the mechanical `reset`/`step` inversion you build *after* RL is the confirmed
+  arm — it does not decide the arm.
 - You have the trainer-ready env and just need the hosted handoff? Skip to
   [`../prepare-verifier-handoff/SKILL.md`](../prepare-verifier-handoff/SKILL.md).
 - **Continue here only** when a working sim env exists and the confirmed need is
@@ -96,7 +102,12 @@ holdout gate. Each is a gate, not a suggestion.
 3. **Make reset(task, seed) deterministic.** Expose `reset` as a pure function of
    `(task_id, seed)`: same seed ⇒ byte-identical initial state and obs. Route
    every nondeterministic source (RNG, clock, id generation, dict ordering)
-   through the seed. Same seed twice must produce equal `obs`.
+   through the seed. Same seed twice must produce equal `obs`. **Watch
+   constructor-default timestamps and generated ids** — the easiest nondeterminism
+   to miss. (Verified on AutomationBench: `WorldState()` stamps a wall-clock
+   `gmail.internal_date` at build time, so two resets differ on a field no task
+   touches; it breaks full-state conformance while leaving the reward identical.)
+   Pin these to the seed/initial_state.
 
 4. **Pin the serializable obs/action contract.** obs and action cross a process
    boundary, so both must JSON-serialize. Recover the contract from the recorded
@@ -115,9 +126,14 @@ holdout gate. Each is a gate, not a suggestion.
    default.
 
 6. **Replay-conformance test (required).** Replay each recorded trajectory's
-   actions through `reset()` + `step()` in order and assert the resulting
-   `end_state` and `score` equal the recorded ones. This proves the wrapper is
-   faithful to the batch runner before any trainer touches it. A trajectory that
+   actions through `reset()` + `step()` in order. **Hard-assert reproduced
+   `score` (the reward) equals the recorded score** — that is the conformance
+   signal, because it is exactly what the trainer optimizes. Treat full
+   `end_state` equality as a *soft* check, **modulo the nondeterministic default
+   fields from step 3** (project them out or pin them); raw full-dump equality
+   will spuriously fail otherwise. (On AutomationBench this wrapper reproduced
+   the score 200/200; full-dump equality was 0/200 purely from the timestamp
+   default — reward fidelity, not state divergence.) A trajectory whose *score*
    fails to round-trip means the inversion changed semantics — fix the wrapper,
    not the fixture. See `examples/replay_conformance.py`.
 

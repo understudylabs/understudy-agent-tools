@@ -50,18 +50,25 @@ check("traj_diff finds all 3 gap classes",
 # 2. curate-trajectories integration: index -> select (clean + blocked) ------
 print("== curate-trajectories integration ==")
 with tempfile.TemporaryDirectory() as T:
-    rows = [{"id": f"t{i}", "passed": True, "toolset": "api", "domain": "simple", "seed": 7,
-             "model": "gemma-4-e2b", "score": 1.0, "finish_reasons": ["stop"],
-             "messages": [{"role": "assistant", "tool_calls": [{"name": "api_search", "arguments": "{}"}]}],
+    # Real AutomationBench schema: task id in `name` (not `id`), provenance
+    # backfilled from run-level `meta` (no per-row seed), splits use `rows`.
+    names = [f"simple.task_{i}" for i in range(6)]
+    rows = [{"id": i + 1, "name": names[i], "passed": True, "score": 1.0, "finish_reasons": ["stop"],
+             "messages": [{"role": "assistant",
+                           "tool_calls": [json.dumps({"name": "api_fetch",
+                                                      "arguments": json.dumps({"url": "/x"})})]}],
              "end_state": {}} for i in range(6)]
     json.dump({"meta": {"model": "gemma-4-e2b", "toolset": "api", "domains": ["simple"]}, "tasks": rows},
               open(f"{T}/run.json", "w"))
-    json.dump({"seed": 7, "train": {"row_ids": ["t0", "t1", "t2", "t3"]},
-               "dev": {"row_ids": ["t4"]}, "holdout": {"row_ids": ["t5"]}, "splits_sha256": "DUMMY"},
+    json.dump({"seed": 7, "train": {"rows": names[:4]},
+               "dev": {"rows": [names[4]]}, "holdout": {"rows": [names[5]]}, "splits_sha256": "DUMMY"},
               open(f"{T}/splits.json", "w"))
     r = run([f"{SK}/curate-trajectories/examples/index_trajectories.py", f"{T}/run.json",
              "--out", f"{T}/index.jsonl"])
-    check("index builds", r.returncode == 0 and json.loads(r.stdout)["n_rows"] == 6, r.stderr)
+    idx = json.loads(r.stdout) if r.returncode == 0 else {}
+    check("index builds", r.returncode == 0 and idx.get("n_rows") == 6, r.stderr)
+    check("provenance complete from meta (no false seed flag)",
+          idx.get("incomplete_provenance") == [], f"incomplete: {idx.get('incomplete_provenance')}")
 
     r = run([f"{SK}/curate-trajectories/examples/select.py", "--index", f"{T}/index.jsonl",
              "--splits", f"{T}/splits.json", "--name", "safe", "--expr", "split == 'train'",
