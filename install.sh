@@ -261,13 +261,23 @@ launch_claude_code() {
   if need script; then
     # curl | sh leaves stdin attached to the pipe. `script` gives Claude Code a
     # real pseudo-terminal while also capturing the launch output for debugging.
+    # macOS script(1) takes a positional command; Linux script(1) needs -c.
     # shellcheck disable=SC2086
-    script -q "$claude_log" claude --permission-mode "$CLAUDE_PERMISSION_MODE" --plugin-dir "$PKG_DIR" ${UNDERSTUDY_CLAUDE_ARGS:-} "$INITIAL_CLAUDE_PROMPT" </dev/tty >/dev/tty 2>&1 || {
-      local status="$?"
-      say "Claude Code exited with status $status."
-      say "See Claude Code launch log: $claude_log"
-      return "$status"
-    }
+    if [ "$(uname -s)" = "Darwin" ]; then
+      script -q "$claude_log" claude --permission-mode "$CLAUDE_PERMISSION_MODE" --plugin-dir "$PKG_DIR" ${UNDERSTUDY_CLAUDE_ARGS:-} "$INITIAL_CLAUDE_PROMPT" </dev/tty >/dev/tty 2>&1 || {
+        local status="$?"
+        say "Claude Code exited with status $status."
+        say "See Claude Code launch log: $claude_log"
+        return "$status"
+      }
+    else
+      script -qc "claude --permission-mode '$CLAUDE_PERMISSION_MODE' --plugin-dir '$PKG_DIR' ${UNDERSTUDY_CLAUDE_ARGS:-} '$INITIAL_CLAUDE_PROMPT'" "$claude_log" </dev/tty >/dev/tty 2>&1 || {
+        local status="$?"
+        say "Claude Code exited with status $status."
+        say "See Claude Code launch log: $claude_log"
+        return "$status"
+      }
+    fi
   else
     say "script(1) not found; launching without a Claude Code transcript."
     # shellcheck disable=SC2086

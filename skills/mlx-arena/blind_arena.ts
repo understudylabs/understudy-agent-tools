@@ -51,7 +51,7 @@ const FRONTIER_MAX_COMPLETION_TOKENS = Math.max(
   64,
   Math.min(4096, parseInt(env.FRONTIER_MAX_COMPLETION_TOKENS ?? "768", 10) || 768),
 );
-const FRONTIER_NAME = `${REQUESTED_FRONTIER_MODEL || OPENAI_FRONTIER_MODEL} (high reasoning · cloud · $$)`;
+const FRONTIER_NAME = `${REQUESTED_FRONTIER_MODEL || OPENAI_FRONTIER_MODEL} (cloud · $$)`;
 let activeFrontierName = FRONTIER_NAME;
 
 type FrontierAttempt = {

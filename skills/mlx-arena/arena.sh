@@ -443,6 +443,15 @@ cmd_down() {
   done
   for f in "$STATE"/srv-*.pid; do [ -f "$f" ] && kill "$(cat "$f")" 2>/dev/null || true; done
   rm -f "$STATE"/srv-*.pid "$STATE"/srv-*.session
+  # unset API keys from the tmux global environment (set by cmd_play)
+  for _var in ANTHROPIC_LOCAL_KEY ANTHROPIC_API_KEY OPENAI_API_KEY \
+              FRONTIER_API_KEY AI_GATEWAY_API_KEY FRONTIER_BASE_URL \
+              AI_GATEWAY_BASE_URL OPENAI_BASE_URL OPENAI_MODEL \
+              ANTHROPIC_MODEL AI_GATEWAY_MODEL UNDERSTUDY_FALLBACK_MODEL \
+              FRONTIER_FALLBACK FRONTIER_REASONING_EFFORT \
+              FRONTIER_MAX_COMPLETION_TOKENS; do
+    tmux setenv -gu "$_var" 2>/dev/null || true
+  done
   echo "arena down (servers + session stopped)"
 }
 cmd_attach() { tmux attach -t "$SESSION"; }
@@ -519,6 +528,11 @@ cmd_cleanup() {
   _cleanup_kill_ports "$dry_run"
   if [ "$dry_run" = "0" ]; then
     rm -f "$STATE"/srv-*.pid "$STATE"/srv-*.session
+    rm -f "$STATE"/window-env-*.sh
+  else
+    for _envf in "$STATE"/window-env-*.sh; do
+      [ -f "$_envf" ] && echo "  [cleanup] would remove $_envf"
+    done
   fi
   echo "cleanup complete"
 }
