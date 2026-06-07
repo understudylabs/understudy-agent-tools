@@ -21,6 +21,34 @@ const VERIFIED_MODELS = {
     approxGb: 4.8,
     loader: "mlx_vlm",
   },
+  "gemma-4-12b-it-mlx-vlm-4bit": {
+    sessionUrl: "https://models.understudylabs.com/session?model=gemma-4-12b-it-mlx-vlm-4bit&ttl=21600",
+    destName: "gemma-4-12b-it-mlx-vlm-4bit",
+    name: "Gemma 4 12B IT MLX-VLM 4-bit",
+    approxGb: 6.3,
+    loader: "mlx_vlm",
+  },
+  "gemma-4-12b-it-mlx-vlm-bf16": {
+    sessionUrl: "https://models.understudylabs.com/session?model=gemma-4-12b-it-mlx-vlm-bf16&ttl=21600",
+    destName: "gemma-4-12b-it-mlx-vlm-bf16",
+    name: "Gemma 4 12B IT MLX-VLM BF16",
+    approxGb: 22,
+    loader: "mlx_vlm",
+  },
+  "gemma-4-26b-a4b-it-mlx-vlm-4bit": {
+    sessionUrl: "https://models.understudylabs.com/session?model=gemma-4-26b-a4b-it-mlx-vlm-4bit&ttl=21600",
+    destName: "gemma-4-26b-a4b-it-mlx-vlm-4bit",
+    name: "Gemma 4 26B A4B IT MLX-VLM 4-bit",
+    approxGb: 14,
+    loader: "mlx_vlm",
+  },
+  "gemma-4-31b-it-mlx-vlm-4bit": {
+    sessionUrl: "https://models.understudylabs.com/session?model=gemma-4-31b-it-mlx-vlm-4bit&ttl=21600",
+    destName: "gemma-4-31b-it-mlx-vlm-4bit",
+    name: "Gemma 4 31B IT MLX-VLM 4-bit",
+    approxGb: 17,
+    loader: "mlx_vlm",
+  },
 };
 
 function usage() {

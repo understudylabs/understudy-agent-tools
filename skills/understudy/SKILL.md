@@ -27,15 +27,18 @@ spend, or model downloads after explicit approval in the current thread.
 2. Understand the objective (cost, speed, quality, reliability, compliance, or a
    weighted mix).
 3. Understand the constraints (what must not be violated).
-4. Capture or locate real traces.
-5. Build or improve a small, meaningful eval harness; rerun the incumbent
+4. Understand the workload — inspect prompts in situ, trace the request/response
+   code path, profile the dataset/traces, and confirm the task meaning with the
+   user.
+5. Capture or locate real traces.
+6. Build or improve a small, meaningful eval harness; rerun the incumbent
    baseline.
-6. Run local optimization against eval failures.
-7. Compare candidate vs baseline on the objective.
-8. Recommend the most efficient route — harness, model, supplier, gateway/
+7. Run local optimization against eval failures.
+8. Compare candidate vs baseline on the objective.
+9. Recommend the most efficient route — harness, model, supplier, gateway/
    inference-layer route, deployment approach.
-9. Implement the selected route safely (smallest viable change).
-10. Produce an Understudy Agent Improvement Report the developer can review.
+10. Implement the selected route safely (smallest viable change).
+11. Produce an Understudy Agent Improvement Report the developer can review.
 
 ## Frame every job
 
@@ -44,6 +47,7 @@ Keep these six separate and explicit — say them back before acting:
 - **Objective** — what are we optimizing for?
 - **Constraints** — what are we not allowed to violate?
 - **Evidence** — what traces / evals / prices / measurements do we have?
+- **Workload** — what task does the prompt/data/code path actually represent?
 - **Route** — what harness / model / supplier / deployment path?
 - **Action** — what does the agent actually change?
 - **Verification** — how do we prove the change helped?
@@ -117,6 +121,10 @@ Identify the developer's current stage and load exactly one:
   installed the plugin, or asks "where do I start?" and `~/.understudy/profile.json`
   is missing → [`../onboard/SKILL.md`](../onboard/SKILL.md) (backgrounds a small
   model, profiles the machine, interviews, writes the profile).
+- **Workload unclear** — the repo has prompts, traces, datasets, eval rows, or
+  LLM call sites, but the task, data shape, request/response path, or success
+  criteria have not been explained and confirmed → [`../understand-workload/SKILL.md`](../understand-workload/SKILL.md).
+  Do this before head-to-head comparisons or optimization.
 - **Codebase / evidence not yet pinned down** — LLM call sites, current model/
   harness, traces, metric, splits, or incumbent baseline are missing, ambiguous,
   or stale → [`../capture-evidence/SKILL.md`](../capture-evidence/SKILL.md)
@@ -138,9 +146,9 @@ Identify the developer's current stage and load exactly one:
   runtime, compare local vs remote, or satisfy ZDR / no-upload constraints →
   [`../run-local-model-lab/SKILL.md`](../run-local-model-lab/SKILL.md).
 - **Local understudy specialization loop** — the developer wants the smallest
-  task-reasonable local model opened in Pi against a frontier model, then wants
-  the observed gap to drive a model climb, simulated env, GEPA, RLM, hybrid
-  route, or remote-only decision →
+  task-reasonable local model opened in Pi and optionally compared against a
+  frontier model, then wants the observed gap to drive workload understanding,
+  model climb, simulated env, GEPA, RLM, hybrid route, or remote-only decision →
   [`../specialize-local-model/SKILL.md`](../specialize-local-model/SKILL.md).
 - **Single-output optimization** — fresh artifacts exist and the developer wants
   to validate, optimize (GEPA), compare candidates, or claim readiness →
@@ -274,7 +282,7 @@ End with:
 
 - worker skill used or recommended;
 - where you are in the loop, and the Objective / Constraints / Evidence / Route /
-  Action / Verification state;
+  Action / Verification state, plus the Workload understanding state;
 - artifacts inspected, created, or still missing;
 - result type: evidence-capture, validation, optimization, route-recommendation,
   deployment, or blocked;

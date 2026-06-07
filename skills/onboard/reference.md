@@ -174,9 +174,18 @@ through MLX on Apple Silicon (see
   `models.understudylabs.com/session?model=...` endpoint. It returns a manifest
   with short-lived signed URLs for the actual model files; do not publish the
   expiring per-object URLs directly.
-- **BF16 profiling rung** — same E2B source and converter, about 9.5 GB on disk.
-  Keep it as an internal/local profiling option until a signed
-  `models.understudylabs.com` session is published.
+- **12B local climb rungs** — Understudy-verified `google/gemma-4-12B-it`,
+  converted with `mlx-vlm 0.6.2` and served with `mlx_vlm.server`. Use
+  `https://models.understudylabs.com/session?model=gemma-4-12b-it-mlx-vlm-4bit`
+  first on high-RAM Apple Silicon; it is about 6.3 GB on disk and verified with
+  local generation plus OpenAI-compatible logprobs/top-logprobs. Use
+  `https://models.understudylabs.com/session?model=gemma-4-12b-it-mlx-vlm-bf16`
+  only for larger-memory quality/perf profiling; it is about 22 GB on disk.
+- **Larger local Gemma rungs** — `gemma-4-26b-a4b-it-mlx-vlm-4bit` is the
+  opinionated MoE-style climb at about 14 GB on disk; `gemma-4-31b-it-mlx-vlm-4bit`
+  is the dense high-memory local rung at about 17 GB. Both use stable
+  `https://models.understudylabs.com/session?model=<id>` endpoints and were
+  verified with local generation plus logprobs/top-logprobs.
 - **Tiny fallback only** — `mlx-community/gemma-3-1b-it-4bit`, served with
   `mlx_lm.server`. Dry-run download is about 772 MB and it loads on current
   `mlx-lm 0.31.3`; use it only when the verified Gemma 4 snapshot is unavailable

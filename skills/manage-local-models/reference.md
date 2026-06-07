@@ -69,11 +69,13 @@ or graduate remote when local quality is the bottleneck.
 |---|---|---|---|
 | Gemma 4 E2B 4-bit | `mlx_vlm.server` | `https://models.understudylabs.com/session?model=gemma-4-e2b-it-mlx-vlm-4bit` | Default onboarding rung. About 3.3 GB; verified local generation, Pi serving, and logprobs/top-logprobs. |
 | Gemma 4 E4B 4-bit | `mlx_vlm.server` | `https://models.understudylabs.com/session?model=gemma-4-e4b-it-mlx-vlm-4bit` | First climb when E2B understands the task but lacks quality. About 4.8 GB; verified signed snapshot delivery. |
-| Gemma 4 E2B BF16 | `mlx_vlm.server` | Internal/local profiling until a signed session is published | Same model, less quantization loss. About 9.5 GB; use to profile quality/perf when the 4-bit model is close. |
-| Gemma 4 12B | MLX conversion or remote | `google/gemma-4-12B-it` / gateway route | Laptop-plus rung for harder reasoning or multimodal work. Use remote if memory is tight. |
+| Gemma 4 12B 4-bit | `mlx_vlm.server` | `https://models.understudylabs.com/session?model=gemma-4-12b-it-mlx-vlm-4bit` | M4/M5 MacBook Pro or high-RAM Air rung when E4B has the right behavior but not enough depth. About 6.3 GB; verified generation plus OpenAI-compatible logprobs/top-logprobs. |
+| Gemma 4 12B BF16 | `mlx_vlm.server` | `https://models.understudylabs.com/session?model=gemma-4-12b-it-mlx-vlm-bf16` | Quality/perf profiling rung on larger-memory Macs. About 22 GB; use when quantization may be the bottleneck. |
+| Gemma 4 26B A4B 4-bit | `mlx_vlm.server` | `https://models.understudylabs.com/session?model=gemma-4-26b-a4b-it-mlx-vlm-4bit` | MoE-style local climb for strong quality with lower active-parameter cost. About 14 GB; verified generation plus logprobs/top-logprobs. |
+| Gemma 4 31B 4-bit | `mlx_vlm.server` | `https://models.understudylabs.com/session?model=gemma-4-31b-it-mlx-vlm-4bit` | Workstation/high-memory local rung when dense capacity matters. About 17 GB; verified generation plus logprobs/top-logprobs. |
 | Nemotron 3 Nano 4B | MLX / GGUF / remote | NVIDIA source or verified snapshot | Alternate edge rung when agentic reasoning or tool behavior beats Gemma on the workload. |
 | Nemotron 3 Nano 30B-A3B | MLX/GGUF on 32 GB+ or remote | NVIDIA source or gateway route | MoE climb when you need stronger reasoning while keeping active-parameter speed. |
-| Super / Ultra / 31B dense | Remote or workstation | Understudy gateway / provider route | Use when local cannot meet the quality bar or the Mac does not fit the weights comfortably. |
+| Super / Ultra | Remote or workstation | Understudy gateway / provider route | Use when local cannot meet the quality bar or the Mac does not fit the weights comfortably. |
 
 Cloudflare delivery note: public installation uses stable session endpoints from
 `models.understudylabs.com`. Each session response contains short-lived signed
@@ -90,7 +92,8 @@ node scripts/pull-understudy-snapshot.mjs --model gemma-4-e2b-it-mlx-vlm-4bit
 
 The helper writes verified snapshots to `~/.understudy/models/<model-id>` and
 logs to `~/.understudy/agent-tools/logs/model-pull-*.log`. Use
-`gemma-4-e4b-it-mlx-vlm-4bit` for the first quality climb. It is intentionally a
+`gemma-4-e4b-it-mlx-vlm-4bit` for the first quality climb, then
+`gemma-4-12b-it-mlx-vlm-4bit` before jumping to remote. It is intentionally a
 skill helper, not a public CLI surface; the coding agent should request approval
 with the model id, source, and GB before running it.
 

@@ -36,6 +36,7 @@ approval for that exact data class and action.
 Create or refresh these artifacts under `.understudy/capture-evidence/`:
 
 ```text
+workload-profile.md
 harness.json
 environment.json
 metric.json
@@ -48,6 +49,14 @@ enough provenance for another agent to repeat the step without guessing.
 
 ## Required Checks
 
+0. Confirm the workload profile.
+   If `.understudy/capture-evidence/workload-profile.md` is missing or stale,
+   route to [`../understand-workload/SKILL.md`](../understand-workload/SKILL.md)
+   before building metrics. The profile should summarize the task purpose, data
+   or trace distribution, prompt/request structure, code path, tool/action
+   surface, output contract, failure taxonomy, and user-confirmed success
+   criteria. It may cite local paths and hashes, but should not contain raw
+   private payloads unless explicitly approved.
 1. Attach the harness.
    Capture the local runner, command, fixture path, entrypoint, timeout,
    dependency notes, input schema, output schema, and validator invocation in
@@ -106,11 +115,14 @@ enough provenance for another agent to repeat the step without guessing.
 
 Inspect the repo first to find where LLM calls happen and the current
 model/provider/harness/eval state, then surface that inventory before building
-anything. The deep inspection checklist (call sites by SDK family, env vars,
-tracing, CI) and the eval-harness discover-then-build playbook live in
-[`reference.md`](reference.md). For cross-cutting objective/constraint framing,
-read [`../understudy/reference.md`](../understudy/reference.md). For multi-step
-REST/API workflows that mutate state, route to
+anything. If the request/response path, dataset/trace shape, prompt purpose, or
+success criteria are not already clear, route to
+[`../understand-workload/SKILL.md`](../understand-workload/SKILL.md) first and
+use its workload profile as the narrative source of truth. The deep inspection
+checklist (call sites by SDK family, env vars, tracing, CI) and the eval-harness
+discover-then-build playbook live in [`reference.md`](reference.md). For
+cross-cutting objective/constraint framing, read
+[`../understudy/reference.md`](../understudy/reference.md). For multi-step REST/API workflows that mutate state, route to
 [`../optimize-api-workflow/SKILL.md`](../optimize-api-workflow/SKILL.md) so the
 agent records reset/seed state, API schemas, policy docs, request logs, and
 final-state validators as part of the harness. For multi-turn / tool-use /
@@ -136,6 +148,7 @@ local command or inspection, and the next smallest action.
 End with:
 
 - workload source inspected;
+- workload profile status and whether the task understanding was confirmed;
 - artifact paths created or refreshed;
 - metric, validator, split boundary, and incumbent baseline status;
 - result type: evidence-capture or blocked;

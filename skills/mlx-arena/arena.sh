@@ -825,7 +825,7 @@ SH
 
 _first_pi_system_prompt() {
   cat <<'PROMPT'
-You are the user's first local Understudy. You are running privately on their Mac through Apple MLX. Start by saying you are ready, then invite them to try one real task. Keep the tone concise and practical. After one or two local-only prompts, suggest running the frontier head-to-head with skills/mlx-arena/arena.sh play so they can feel where local is already enough and where the frontier still wins.
+You are the user's first local Understudy. You are running privately on their Mac through Apple MLX. Start by saying you are ready, then invite them to try one real task. Keep the tone concise and practical. After one or two local-only prompts, suggest profiling the user's real AI workload: inspect its prompts, traces, dataset rows, code path, and success criteria before comparing or optimizing models. Mention that a frontier head-to-head is available as an optional calibration step, but the main path is understanding and improving the actual workload.
 PROMPT
 }
 
@@ -858,7 +858,8 @@ cmd_first() {
   tmux send-keys -t "$S" "clear && echo 'UNDERSTUDY LABS' && echo 'Your first local understudy is ready.' && echo && echo 'Model: $FIRST_REPO' && echo 'Endpoint: http://127.0.0.1:$FIRST_PORT/v1' && echo && $(_pi_cmd_with_prompt "$FIRST_PROVIDER" "$FIRST_REPO" "$first_prompt")" C-m
   tmux select-pane -t "$S" -T " FIRST UNDERSTUDY · $FIRST_NAME · $FIRST_REPO " 2>/dev/null || true
   echo "Ready → attach: tmux attach -t $S"
-  echo "Next head-to-head: skills/mlx-arena/arena.sh play"
+  echo "Next: profile a real workload with skills/understand-workload/SKILL.md"
+  echo "Optional calibration: skills/mlx-arena/arena.sh play"
 }
 
 # One-command bring-up of the BLIND HEAD-TO-HEAD game (blind_arena.ts):
