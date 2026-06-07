@@ -421,7 +421,7 @@ describe("understudy CLI", () => {
     assert.match(result.stdout, /local-distillation-lab/);
   });
 
-  it("searches skills and cookbooks by query", () => {
+  it("searches skills by query", () => {
     const result = run(["skills", "--search", "gateway"]);
     assert.equal(result.status, 0, result.stderr);
     assert.match(result.stdout, /use-understudy-gateway/);

@@ -5,7 +5,7 @@ developer signs in. The goal is to understand whether a developer or coding
 agent reaches useful Understudy inference.
 
 No telemetry is sent before credentials exist. Local-only capture, scan, doctor,
-skills, cookbook, and optimizer dry-run commands do not require auth and do not
+skills and optimizer dry-run commands do not require auth and do not
 send telemetry unless they call an authenticated command path.
 
 Disable telemetry with:

@@ -12,7 +12,7 @@ Use this split when porting from `understudy-agent`:
 | --- | --- |
 | Auth, setup, status, keys, projects, run wrappers | TypeScript |
 | Durable execution, public artifact checks, package checks | TypeScript |
-| Capability routing, implementation judgment, cookbook patterns | Skills and markdown |
+| Capability routing, implementation judgment, fixture patterns | Skills and markdown |
 | GEPA, DSPy, eval harness adapters, rubric reward helpers, dataset transforms | `uv` Python bridge |
 | Hosted/private/customer runtime behavior | Do not port until public boundary is explicit |
 

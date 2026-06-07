@@ -1,6 +1,6 @@
 # understudy-agent-tools
 
-Public, MIT-licensed Understudy skill library, cookbook, and thin CLI.
+Public, MIT-licensed Understudy skill library and thin CLI.
 
 This repo is the public skills surface for local-first AI workload evaluation,
 optimization planning, gateway handoff, and agent-led implementation. The CLI is
@@ -25,12 +25,11 @@ commands remain outside this public CLI until intentionally extracted.
 | --- | --- | --- |
 | CLI | `src/` | Thin TypeScript shortcuts for auth, artifact checks, and durable runs. |
 | Skills | `skills/` | MVP progressive-disclosure agent playbooks. |
-| Cookbook | `cookbook/` | Bundled synthetic examples for agents to copy, run, and adapt. |
 | Docs | `docs/` | Public methodology and release-boundary notes. |
 | Scripts | `scripts/` | Repo hygiene checks, not product CLI code. |
 | Vendor | `vendor/` | Vendored or mirrored compatibility shims, with license metadata. |
 
-The CLI should stay boring. Workflow judgment belongs in skills and cookbooks;
+The CLI should stay boring. Workflow judgment belongs in skills;
 durable shortcuts belong in TypeScript only when the agent needs reliable
 execution, auth injection, artifact writes, or a safety gate.
 
@@ -193,20 +192,6 @@ thin GEPA/DSPy optimizer. The installed onboarding skill starts by checking
 `understudy status --json` and stops with a clear login instruction if
 the user is not authenticated.
 
-## Cookbook Examples
-
-Cookbooks are bundled with the package and smoke-tested:
-
-```bash
-npm run cookbook:validate
-```
-
-Current examples:
-
-- `cookbook/capture-evidence-node`
-- `cookbook/optimize-eval-input-gepa`
-- `cookbook/gateway-openai-typescript`
-
 ## Skill Tree
 
 `skills/understudy/SKILL.md` is the public entrypoint. It routes to exactly one
@@ -271,7 +256,7 @@ recipe.
 browser, chat runtime, or hosted agent surface. Full-runtime command names such
 as `browser`, `channels`, `schedule`, `daemon`, `agent`, and `chat` are not
 registered in this public CLI. Use `understudy skills --search <query>` to find
-the relevant capability skill or cookbook instead.
+the relevant capability skill instead.
 
 For GEPA/DSPy work, the CLI stays as the guide and gate surface while Python is
 used only for small local optimizer environments:

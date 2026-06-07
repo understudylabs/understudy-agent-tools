@@ -108,19 +108,18 @@ Keep one layer per spine:
 - CLI: `src/` for thin durable shortcuts, auth, artifact checks, and runtime wrappers
 - scripts: `scripts/` for repo hygiene only, not product CLI code
 - skills: `skills/`
-- cookbook: `cookbook/` for bundled synthetic examples agents can copy and test
 - vendor shims: `vendor/`
 - docs: `docs/`
 
-The CLI should stay thin. Skills and cookbooks explain the capability; the CLI
-only makes durable product shortcuts reliable enough for an agent to monitor.
+The CLI should stay thin. Skills explain the capability; the CLI only makes
+durable product shortcuts reliable enough for an agent to monitor.
 
 ## TypeScript + uv Python Bridge
 
 This repo is skills-first and TypeScript-backed. Port product behavior from
 `understudy-agent` into TypeScript only when it affects auth, command routing,
 durable execution, artifact checks, or public safety boundaries. Put workflow
-judgment and implementation guidance in skills, cookbook examples, and docs.
+judgment and implementation guidance in skills and docs.
 
 Python is allowed only as isolated runtime glue for Python-native workload
 logic such as GEPA, DSPy, eval harnesses, rubric helpers, dataset transforms,

@@ -14,7 +14,7 @@ git clone https://github.com/alexzhang13/rlm.git .understudy/research/rlm
 The RLM repo's `training/` directory exposes `rlm.RLM` as a `verifiers`
 environment and is designed to plug into Prime Intellect `prime-rl`. Treat that
 repo as a research dependency until a local smoke proves the workflow belongs in
-Understudy docs or cookbook examples.
+Understudy docs or golden-path fixtures.
 
 Do not vendor RLM, Prime Intellect, or generated Python environments into this
 repo. Public Understudy skills can point to setup commands and artifact shapes;
@@ -84,7 +84,7 @@ Use these rules when multiple agents are running related experiments:
 - Verifier handoff skill owns partner packets and approval gates.
 
 If an external bench script proves a kernel, copy only the general method into a
-skill or cookbook after it passes a small smoke. Do not copy private paths,
+skill or golden-path fixture after it passes a small smoke. Do not copy private paths,
 private notes, raw prompts, or local-only failure logs into public docs.
 
 ## Negative Result Template

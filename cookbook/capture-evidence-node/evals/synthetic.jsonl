@@ -1,2 +1,0 @@
-{"id":"ticket-001","input":"invoice question","expected":{"label":"billing"}}
-{"id":"ticket-002","input":"deployment error","expected":{"label":"technical"}}

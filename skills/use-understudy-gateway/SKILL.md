@@ -16,8 +16,8 @@ the agent monitors status and artifacts.
 
 The local evidence loop does not require auth. Route here only when the developer
 explicitly asks for Understudy inference, gateway routing, project/key
-management, workload route configuration, hosted execution, or an authenticated
-cookbook.
+management, workload route configuration, hosted execution, or authenticated
+gateway routing.
 
 ## Safety Gates
 
