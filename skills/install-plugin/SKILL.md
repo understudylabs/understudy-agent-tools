@@ -13,10 +13,9 @@ metadata:
 This repo ships its skills as a Claude Code plugin. The manifests live in
 `.claude-plugin/` (`plugin.json` + `marketplace.json`) and the skills live in
 `skills/`. This skill installs/enables that plugin in the developer's Claude
-Code so all eleven skills (`understudy`, `onboard`, `capture-evidence`,
-`use-understudy-gateway`, `manage-local-models`, `run-local-model-lab`,
-`optimize-workload`, `optimize-api-workflow`, `optimize-agentic-search`,
-`prepare-verifier-handoff`, and this `install-plugin` skill) become invocable.
+Code so the public skills become invocable, including the `understudy`
+orchestrator, onboarding, capture/eval, optimization, local model,
+distillation, RLM, and verifier-handoff workers.
 
 The whole flow is local: it adds a **local filesystem marketplace** pointing at
 this repo and installs from it. Nothing uploads, authenticates, or spends.

@@ -90,6 +90,9 @@ skills/mlx-arena/SKILL.md
 skills/design-simulated-environment/SKILL.md
 skills/recursive-language-model/SKILL.md
 skills/specialize-local-model/SKILL.md
+skills/pedagogical-learning/SKILL.md
+skills/rlm-pedagogical-training/SKILL.md
+skills/local-distillation-lab/SKILL.md
 skills/prepare-verifier-handoff/SKILL.md
 ```
 

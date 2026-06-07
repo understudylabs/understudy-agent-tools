@@ -4,7 +4,7 @@ Loads via mlx_vlm, injects LoRA into model.language_model, runs the surprisal-ga
 weighted-CE loss through the text forward. Proves a real weight update on Gemma-4.
 """
 from __future__ import annotations
-import math, sys, time
+import math, os, sys, time
 import mlx.core as mx, mlx.nn as nn, mlx.optimizers as optim
 from mlx.utils import tree_flatten
 from mlx_vlm import load as vlm_load
@@ -77,7 +77,11 @@ def train_lora_weighted_g4(path, examples, *, iters=24, lr=2e-4, rank=8, num_lor
             "loss_drop": curve[0] - curve[-1], "param_delta": delta}
 
 if __name__ == "__main__":
-    path = sys.argv[1] if len(sys.argv) > 1 else "/Users/luis/.understudy/models/gemma-4-e2b-it-mlx-vlm-4bit"
+    path = sys.argv[1] if len(sys.argv) > 1 else os.environ.get("UNDERSTUDY_MODEL")
+    if not path:
+        print("usage: python kernel2_mlxvlm.py /path/to/mlx-vlm-model")
+        print("or set UNDERSTUDY_MODEL=/path/to/mlx-vlm-model")
+        raise SystemExit(2)
     print(f"SMOKE kernel #2 (mlx-vlm) on REAL Gemma-4: {path}")
     exs = [{"prompt": "TASK: Update Jordan Lee's phone in Salesforce.\nReturn the JSON array.",
             "completion": '["salesforce_contact_update"]'},

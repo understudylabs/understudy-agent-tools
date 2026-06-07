@@ -72,6 +72,15 @@ remaining gap — feeding the route decision
 local rungs genuinely can't close it,
 [`../prepare-verifier-handoff/SKILL.md`](../prepare-verifier-handoff/SKILL.md).
 
+## Training Path
+
+When the RLM loop itself is the thing that must improve, route to
+[`../rlm-pedagogical-training/SKILL.md`](../rlm-pedagogical-training/SKILL.md).
+That worker turns the decomposition harness into a verifiers-style training
+surface, separates privileged training context from deploy-time input, and
+decides whether the next rung is local pedagogical SFT, on-policy repair,
+pedagogical RL, or a hosted verifier handoff.
+
 ## Safety Gates
 
 - Run only against the simulated environment or live tools the user approved — never
@@ -84,4 +93,5 @@ local rungs genuinely can't close it,
 - [`../understand-workload/SKILL.md`](../understand-workload/SKILL.md)
 - [`../design-simulated-environment/SKILL.md`](../design-simulated-environment/SKILL.md)
 - [`../run-local-model-lab/SKILL.md`](../run-local-model-lab/SKILL.md)
+- [`../rlm-pedagogical-training/SKILL.md`](../rlm-pedagogical-training/SKILL.md)
 - [`../mlx-arena/SKILL.md`](../mlx-arena/SKILL.md) — vibe-check the hill-climbed local model vs the frontier.

@@ -13,16 +13,18 @@ from mlx.utils import tree_flatten
 from mlx_vlm import load as vlm_load, generate as vlm_generate
 from mlx_lm.tuner.utils import linear_to_lora_layers
 
-ROOT = Path("/Users/luis/Developer/understudy/testing-environments/AutomationBench")
+ROOT = Path(os.environ.get("UNDERSTUDY_AUTOMATIONBENCH_ROOT", ".")).expanduser().resolve()
 EV = ROOT / ".understudy/capture-evidence"
-PED = Path("/Users/luis/Developer/understudy/worktrees/pedagogical-rl/src"); sys.path.insert(0, str(PED))
-from understudy_agent.pedagogical_reward import g_spike, SpikeRewardConfig
-ENDPOINT = "http://127.0.0.1:8081/v1/chat/completions"
-RUN = EV / "bench8h-g4"; RUN.mkdir(parents=True, exist_ok=True)
+ENDPOINT = os.environ.get("UNDERSTUDY_CHAT_ENDPOINT", "http://127.0.0.1:8081/v1/chat/completions")
+RUN = Path(os.environ.get("UNDERSTUDY_DISTILL_RUN_DIR", EV / "bench8h-g4")).expanduser()
+RUN.mkdir(parents=True, exist_ok=True)
 SMOKE = "--smoke" in sys.argv
 BUDGET_S = 1000 if SMOKE else int(os.environ.get("BENCH_BUDGET_S", 8 * 3600))
-T0 = time.time(); CFG = SpikeRewardConfig()
-STUDENT = "/Users/luis/.understudy/models/gemma-4-e2b-it-mlx-vlm-4bit"
+T0 = time.time()
+STUDENT = os.environ.get("UNDERSTUDY_MODEL")
+if not STUDENT:
+    print("set UNDERSTUDY_MODEL=/path/to/mlx-vlm-model before running this example")
+    raise SystemExit(2)
 STUDENT_SERVE = STUDENT
 TEACHER_SERVE = STUDENT  # privileged SELF-teacher (E2B + ICL gold); robust + OPSD/SDFT-faithful
 
