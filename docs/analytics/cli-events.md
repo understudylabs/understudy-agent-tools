@@ -17,18 +17,24 @@ Every event includes:
 
 Primary activation funnel:
 
-1. `cli_login_completed`
-2. `cli_activation_status_checked`
-3. `cli_run_completed`
+1. `cli_login_started`
+2. `cli_login_completed`
+3. `cli_activation_status_checked`
+4. `cli_run_completed`
 
 Pre-key signup events are platform-owned because they happen before the CLI has
-an API key.
+an API key. `cli_login_started` and `cli_login_failed` are only emitted when a
+previous credential or `UNDERSTUDY_API_KEY` already exists; first-time login
+attempts start in the platform-owned signup flow and emit `cli_login_completed`
+after the credential is minted.
 
 ## Events
 
 | Event | Purpose | Key properties |
 | --- | --- | --- |
+| `cli_login_started` | Existing user or agent started a CLI login attempt. | `mode`, `signup_intent_id` |
 | `cli_login_completed` | User has a stored Understudy credential. | `mode`, `org_id`, `user_id`, `signup_intent_id` |
+| `cli_login_failed` | Existing user or agent failed a CLI login attempt. | `mode`, `error_kind`, `signup_intent_id` |
 | `cli_activation_status_checked` | User or agent verified local auth state. | `configured`, `signed_in`, `org_id`, `project_slug` |
 | `cli_projects_listed` | User inspected project context. | `org_id`, `result_count` |
 | `cli_projects_created` | User created a project. | `org_id`, `project_slug` |

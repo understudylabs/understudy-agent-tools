@@ -3,7 +3,7 @@ import kleur from "kleur";
 
 import { readCredentials } from "../config/credentials.js";
 import { readProjectConfig } from "../config/index.js";
-import { isJsonMode } from "../internal/output.js";
+import { isJsonMode, runAction } from "../internal/output.js";
 import { trackStatusChecked } from "../internal/telemetry.js";
 
 /**
@@ -16,8 +16,10 @@ export function registerStatusCommand(program: Command): void {
   program
     .command("status")
     .description("Print the active Understudy org, project, key suffix, and gateway URL.")
-    .action(function (this: Command) {
-      process.exitCode = runStatus(isJsonMode(this));
+    .action(async function (this: Command) {
+      await runAction(this, async () => {
+        process.exitCode = await runStatus(isJsonMode(this));
+      });
     });
 }
 
@@ -29,7 +31,7 @@ export function registerStatusCommand(program: Command): void {
  * `1` only when config is present but invalid (since that means
  * the user's repo is broken).
  */
-export function runStatus(json = false): 0 | 1 {
+export async function runStatus(json = false): Promise<0 | 1> {
   const config = (() => {
     try {
       return readProjectConfig();
@@ -66,7 +68,7 @@ export function runStatus(json = false): 0 | 1 {
       : null;
 
   if (!config && !authMode) {
-    trackStatusChecked({ configured: false, signedIn: false });
+    await trackStatusChecked({ configured: false, signedIn: false });
     if (json) {
       process.stdout.write(
         `${JSON.stringify({ ok: true, configured: false, signed_in: false, hint: "Run `understudy login`." })}\n`,
@@ -87,7 +89,7 @@ export function runStatus(json = false): 0 | 1 {
     null;
 
   if (json) {
-    trackStatusChecked({
+    await trackStatusChecked({
       configured: Boolean(config),
       signedIn: Boolean(authMode),
     });
@@ -116,7 +118,7 @@ export function runStatus(json = false): 0 | 1 {
   ];
 
   process.stdout.write(`${lines.join("\n")}\n`);
-  trackStatusChecked({
+  await trackStatusChecked({
     configured: Boolean(config),
     signedIn: Boolean(authMode),
   });
