@@ -10,6 +10,7 @@ INSTALL_SOURCE_DIR="${UNDERSTUDY_INSTALL_SOURCE_DIR:-$LAB/source/understudy-agen
 STATE_DIR="${UNDERSTUDY_INSTALL_STATE_DIR:-$LAB/install-state}"
 INSTALLER_COMMIT="${UNDERSTUDY_INSTALLER_COMMIT:-unknown}"
 LAUNCH_CLAUDE="${UNDERSTUDY_LAUNCH_CLAUDE:-1}"
+CLAUDE_PERMISSION_MODE="${UNDERSTUDY_CLAUDE_PERMISSION_MODE:-auto}"
 INITIAL_CLAUDE_PROMPT="${UNDERSTUDY_INITIAL_CLAUDE_PROMPT:-Use the Understudy onboarding skill for this project now. Guide me through getting my first local Understudy, choosing my terminal/tmux/Pi handoff, and after the first local-vs-frontier duel, help me pick a real problem or find local data so we can try to make the Understudy beat the frontier on that task slice.}"
 NO_CLAUDE=0
 START_STEP=1
@@ -58,6 +59,7 @@ Environment overrides:
   UNDERSTUDY_INSTALL_PACKAGE     optional npm package spec override
   UNDERSTUDY_LAUNCH_CLAUDE      set to 0 to skip opening Claude Code
   UNDERSTUDY_CLAUDE_ARGS        optional extra args when launching Claude Code
+  UNDERSTUDY_CLAUDE_PERMISSION_MODE Claude Code permission mode, default auto
   UNDERSTUDY_INITIAL_CLAUDE_PROMPT initial prompt passed to Claude Code
 EOF
       exit 0
@@ -248,18 +250,19 @@ launch_claude_code() {
   section "Step 3/3: open Claude Code."
   say "Claude Code will open in: $(pwd)"
   say "The Understudy plugin will be loaded for this launch with --plugin-dir."
+  say "Claude Code permission mode: $CLAUDE_PERMISSION_MODE."
   say "Claude Code will receive the first prompt automatically:"
   say "  $INITIAL_CLAUDE_PROMPT"
   say "If you open a separate existing Claude Code session later, run /reload-plugins there once."
   say "Launching Claude Code now. Exit Claude to return to this shell."
   claude_log="$LOG_DIR/claude-$(date -u +"%Y%m%dT%H%M%SZ").log"
   say "Claude Code launch log: $claude_log"
-  log "LAUNCH claude --plugin-dir $PKG_DIR ${UNDERSTUDY_CLAUDE_ARGS:-} <initial-prompt>"
+  log "LAUNCH claude --permission-mode $CLAUDE_PERMISSION_MODE --plugin-dir $PKG_DIR ${UNDERSTUDY_CLAUDE_ARGS:-} <initial-prompt>"
   if need script; then
     # curl | sh leaves stdin attached to the pipe. `script` gives Claude Code a
     # real pseudo-terminal while also capturing the launch output for debugging.
     # shellcheck disable=SC2086
-    script -q "$claude_log" claude --plugin-dir "$PKG_DIR" ${UNDERSTUDY_CLAUDE_ARGS:-} "$INITIAL_CLAUDE_PROMPT" </dev/tty >/dev/tty 2>&1 || {
+    script -q "$claude_log" claude --permission-mode "$CLAUDE_PERMISSION_MODE" --plugin-dir "$PKG_DIR" ${UNDERSTUDY_CLAUDE_ARGS:-} "$INITIAL_CLAUDE_PROMPT" </dev/tty >/dev/tty 2>&1 || {
       local status="$?"
       say "Claude Code exited with status $status."
       say "See Claude Code launch log: $claude_log"
@@ -268,7 +271,7 @@ launch_claude_code() {
   else
     say "script(1) not found; launching without a Claude Code transcript."
     # shellcheck disable=SC2086
-    claude --plugin-dir "$PKG_DIR" ${UNDERSTUDY_CLAUDE_ARGS:-} "$INITIAL_CLAUDE_PROMPT" </dev/tty >/dev/tty 2>&1 || {
+    claude --permission-mode "$CLAUDE_PERMISSION_MODE" --plugin-dir "$PKG_DIR" ${UNDERSTUDY_CLAUDE_ARGS:-} "$INITIAL_CLAUDE_PROMPT" </dev/tty >/dev/tty 2>&1 || {
       local status="$?"
       say "Claude Code exited with status $status."
       return "$status"
