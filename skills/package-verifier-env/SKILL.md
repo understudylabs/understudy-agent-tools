@@ -1,6 +1,6 @@
 ---
 name: package-verifier-env
-description: Use after prepare-verifier-handoff confirms a stateful-RL need and author-rl-env has produced a conformant reset/step/score env, to package that env locally into a Prime Intellect Verifiers-compatible module, run a trainer-free conformance check, and build the frozen-holdout return-eval that makes a partner-trained policy comparable to the pre-RL baseline. "Package my env for verifiers", "make this RL-trainable for the partner", "prep the return-eval round-trip", "is my verifier env conformant". Packages locally only — does not run hosted training or upload.
+description: Use after prepare-verifier-handoff confirms a stateful-RL need and author-rl-env produced a conformant reset/step env, to package that env locally into a Prime Intellect Verifiers-compatible module, run a trainer-free conformance check, and build the frozen-holdout return-eval. "package my env for verifiers", "make this RL-trainable for the partner", "prep the return-eval round-trip", "is my verifier env conformant". Packages locally only — never trains or uploads.
 metadata:
   understudy:
     mode: interactive

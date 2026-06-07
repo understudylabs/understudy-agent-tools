@@ -1,6 +1,6 @@
 ---
 name: compare-trajectories
-description: Use when a developer needs to know HOW two model runs differ behaviorally on the same tasks — not just THAT one scores higher. Per-task, per-step trajectory diffing between two runs that classifies the capability gap as persistence/recovery, knowledge, or format/parsing, and counts warm-start examples. "why does the bigger model pass these", "is this gap RL-shaped", "diff these two trajectory runs", "where do the trajectories diverge", "what would distillation buy me". Complements compare-model-sweep (scalars) with behavior.
+description: Use when you need to know HOW two model runs differ behaviorally on the same tasks, not just THAT one scores higher — per-task trajectory diffing that classifies the gap as persistence/recovery, knowledge, or format/parsing. "why does the bigger model pass these", "is this gap RL-shaped", "diff these two trajectory runs", "where do the trajectories diverge", "what would distillation buy me". The behavioral complement to compare-model-sweep.
 metadata:
   understudy:
     mode: interactive
