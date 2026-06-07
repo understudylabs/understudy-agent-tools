@@ -61,32 +61,35 @@ on-policy state coverage (no exposure-bias gap). Arms O/P here train on teacher 
    `capture-evidence`). Expand the dataset — a frozen 18/6 overfits instantly; use a real
    train/dev plus a **held-out domain for OOD transfer**.
 2. **Pick the trainable student + loader** (see Gotchas). Prove a weight update first: loss drops
-   and `param_delta = Σ|after−before|` over trainable params is nonzero.
+   and `param_delta = Σ|after−before|` over trainable params is nonzero. Then prove task movement:
+   a lower train/validation loss is not a workload win unless the sealed task metric improves.
 3. **Choose the teacher.** Default = **privileged self-teacher** (student + gold/ICL in context;
    the OPSD/SDFT setup) — robust and same-family by construction. A bigger *same-family* model is
    the upgrade; a frontier (different-family) teacher is usually a trap (high surprise gap → most
    tokens discarded — measure it with kernel #1 before trusting it).
 4. **Run the arms** B/S/O/P from the same base, with **eval-checkpoint learning curves** (eval at
    iter 0, then every ~40 iters) so the curve captures the peak *and* any overfit-collapse. Track
-   `best`. Save adapters.
+   `best` by task metric, not loss. Save adapters.
 5. **Decide.** P>O → surprisal gating helps. O>S → the bigger/same-family teacher adds signal.
    best≈B → capability bound, climb the rung. Report dev + OOD + concentration (`d_t`).
 6. **Promote.** Fuse the winning adapter and re-serve; only then run holdout once.
 
 ## Gotchas that cost real time
 
-- **Gemma-4 will not load in `mlx_lm`** (even 0.31.3, which ships `gemma4_text.py`): the mlx-vlm
-  conversions carry a `language_model.` multimodal prefix and the text-int4 fails on `k_norm`
-  (QK-norm). **Train Gemma-4 via `mlx-vlm 0.6.2`**: `mlx_vlm.load(path) -> (model, processor)`,
-  text forward = `model.language_model(ids) -> logits`, inject LoRA into `model.language_model`
-  with `mlx_lm.tuner.utils.linear_to_lora_layers`, generate via `mlx_vlm.generate(...)`. Gemma-3
-  loads natively in `mlx_lm` (use for fast kernel smokes only).
+- **Preflight the trainable loader before promising Gemma-4 LoRA.** Gemma-4 may serve through
+  `mlx_vlm` while failing under `mlx_lm.lora`. In one local E2B check, the VLM/text snapshots had
+  35-layer Gemma-4 weights; `mlx_lm` rejected either per-layer K/V weights in layers 15-34 or
+  double-wide MLP weights depending on the config shim. That means "runs in the harness" and
+  "trainable by this loader" are separate gates. If Gemma-4 cannot load in `mlx_lm`, either train
+  through a verified `mlx_vlm` LoRA path or move the weight-update smoke to a compatible text model
+  such as Gemma-3, labeling it as a loader proof rather than a Gemma-4 result.
 - The mlx-vlm processor's `apply_chat_template` returns a **BatchEncoding**, not flat ints — coerce.
 - **Reward form:** additive `R + λ·G_spike` is an anti-stall scaffold for *binary* R; on a
   partial-credit env prefer the **product** `partial_credit · G_spike` (keeps the
   correct-AND-learnable conjunction).
-- **Overfit-collapse** on small data is real (dev 1.0→0.0). Use lr ~5e-5 and rely on the learning
-  curve, not the endpoint.
+- **Overfit-collapse** on small data is real. A tiny LoRA can lower validation loss while degrading
+  sealed F1 because the model learns output shape or domain priors instead of the policy. Use
+  learning curves, early stopping, and sealed task metrics; do not promote from loss alone.
 - **Orchestration:** smoke budget must exceed arm guards; per-row try/except in data-gen (one
   router 500 shouldn't abort the build); retry serve calls; `caffeinate -i` + JSON checkpoints +
   cheapest-arm-first for overnight runs.

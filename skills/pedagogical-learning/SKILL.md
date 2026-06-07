@@ -82,6 +82,11 @@ is the cheapest live-rollout intervention, route to
    references, no hidden facts, no unfinished derivation, and answer plus
    derivation present. Same-model judge scores are advisory only.
 
+   If you train a local adapter, treat loss as a training diagnostic only. A
+   pedagogical dataset is not useful unless the frozen task metric improves on a
+   dev split, and promotion requires a sealed holdout win where the student sees
+   only deploy-time input `x`.
+
 4. **Look for the useful quadrant.** Keep trajectories that are both correct and
    learnable. Reject answer-key shortcuts even when correct. Reject verbose
    derivations that time out, omit the final answer, or require facts not visible
@@ -97,7 +102,9 @@ is the cheapest live-rollout intervention, route to
    - If correct-and-learnable trajectories can be generated reliably for a flat
      completion or single-output task, prepare a rejection-sampled SFT dataset
      for local MLX LoRA. This is the default first weight-update rung because it
-     is simple, local, and easy to verify.
+     is simple, local, and easy to verify. Verify the loader can train the chosen
+     model before committing to the rung; serving a model locally and fine-tuning
+     it locally can require different MLX loaders.
    - If the task is stateful — tools, documents, code, browser, API state,
      recursive subcalls, or long context — route to
      [`../rlm-pedagogical-training/SKILL.md`](../rlm-pedagogical-training/SKILL.md)
