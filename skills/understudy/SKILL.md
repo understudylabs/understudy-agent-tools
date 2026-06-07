@@ -79,8 +79,12 @@ rules:
   state the loop stage (capture → baseline → optimize/compare → validate →
   decide), re-derived from artifacts on disk.
 - **Meet them where they are.** Read `~/.understudy/profile.json` and set
-  vocabulary, coaching depth, and opinion strength to match. No profile yet → run
-  [`../onboard/SKILL.md`](../onboard/SKILL.md) first.
+  vocabulary, coaching depth, and opinion strength to match. Also read
+  `~/.understudy/agent-card.json` when the user asks whether their Understudy is
+  active or how to talk to it; this card is the agent-facing runtime source of
+  truth for model endpoint, tmux session, companion status, and the exact local
+  chat command. No profile yet → run [`../onboard/SKILL.md`](../onboard/SKILL.md)
+  first.
 
 ## Inspect before you ask
 

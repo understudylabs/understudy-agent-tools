@@ -52,6 +52,55 @@ Write it with the smallest correct change: merge new fields, append to `history`
 and `local_models`, bump `updated_at`. If a value is unknown, leave it null
 rather than guessing.
 
+## The agent runtime card (`~/.understudy/agent-card.json`)
+
+Agent-level, not user-interview memory. This is the single file a fresh coding
+agent reads when the user asks, "is my Understudy active?" or "talk to my
+Understudy." It captures live local runtime facts that do not belong in the
+profile. Never put secrets, prompts, outputs, or customer data in it.
+
+```jsonc
+{
+  "schema_version": "understudy.agent_card.v1",
+  "created_at": "2026-06-06T18:00:00Z",
+  "updated_at": "2026-06-06T18:05:00Z",
+  "understudy": {
+    "model": "/Users/me/.understudy/models/gemma-4-e2b-it-mlx-vlm-4bit",
+    "name": "Gemma 4 E2B",
+    "endpoint": "http://127.0.0.1:8081/v1",
+    "health_url": "http://127.0.0.1:8081/v1/models",
+    "healthy": true,
+    "served_by": "mlx_vlm.server",
+    "runtime": "mlx_vlm",
+    "provider": "mlx-gemma4-e2b",
+    "tmux_session": "mlx-arena-first",
+    "logs": "~/.understudy/agent-tools/.understudy/local-model-lab/arena/logs",
+    "how_to_talk": "curl -s http://127.0.0.1:8081/v1/chat/completions -H 'Content-Type: application/json' -d '{\"model\":\"/Users/me/.understudy/models/gemma-4-e2b-it-mlx-vlm-4bit\",\"messages\":[{\"role\":\"user\",\"content\":\"Say hello from my local Understudy.\"}],\"max_tokens\":128}'"
+  },
+  "companion": {
+    "alive": false,
+    "pid": null,
+    "stale_pid": 84470,
+    "path": "/Users/me/Documents/understudy-cli/companion/rust/target/debug/us-companion",
+    "state_file": "~/.understudy/companion.json"
+  },
+  "project": {
+    "cwd": "/Users/me/my-app",
+    "slug": "my-app"
+  },
+  "org": {
+    "id": "org_..."
+  }
+}
+```
+
+Refresh this card during onboarding, whenever `arena.sh first|play|up` serves a
+model, and whenever a companion process starts. If `~/.understudy/companion.json`
+contains a dead pid, clear that pid in the companion state file and record it as
+`stale_pid` in the card. A later agent should be able to answer the user's
+runtime question from this card first, using health checks only to refresh stale
+facts.
+
 ## Tooling detection → experience signal
 
 Run these read-only checks while the model downloads. Each hit is a signal; the

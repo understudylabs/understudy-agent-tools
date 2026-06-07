@@ -81,11 +81,15 @@ work — do not re-run the full interview. Only first-timers get the full flow.
    providers), and preferred coaching depth. Question bank in
    [`reference.md`](reference.md).
 
-5. **Write the profile.** Save `~/.understudy/profile.json` (schema in
+5. **Write the profile and agent card.** Save `~/.understudy/profile.json` (schema in
    [`reference.md`](reference.md)): experience tier, detected tooling, hardware,
    goal, constraints, and the three meet-them-where-they-are dials — vocabulary,
    coaching depth, opinion strength. Append, don't overwrite, the `history` of
-   workloads and decisions.
+   workloads and decisions. Also refresh `~/.understudy/agent-card.json` with
+   live runtime facts: the local model, endpoint, serving process, tmux session,
+   companion status, and the exact command for talking to the local Understudy.
+   If `~/.understudy/companion.json` points at a dead pid, clear it and record
+   the stale pid in the card.
 
 6. **Land the quick win.** The `arena.sh first` pane now says their first local
    Understudy is ready and opens Pi on verified Gemma 4 E2B. Have them try one
@@ -120,8 +124,8 @@ recommended path; stay terse and offer trade-offs to practitioners.
 
 End with: runtime + model downloading (and ETA, or "cached"); hardware found and
 what fits locally; inferred experience tier and the dials set; the profile path
-written; the quick-win result (local generation shown or pending); and one
-recommended next skill/command.
+written; the agent-card path refreshed; the quick-win result (local generation
+shown or pending); and one recommended next skill/command.
 
 ## References
 

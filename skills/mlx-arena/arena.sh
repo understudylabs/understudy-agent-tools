@@ -241,6 +241,139 @@ console.log(`  [pi] provider ${provider} -> ${providerEntry.baseUrl} (${model})`
 NODE
 }
 
+_refresh_agent_card() { # name repo port loader provider tmux-session
+  local name="$1" repo="$2" port="$3" loader="$4" provider="$5" tmux_session="$6"
+  local health_url="http://127.0.0.1:$port/v1/models" endpoint="http://127.0.0.1:$port/v1" healthy="false"
+  [ "$(curl -s -o /dev/null -w '%{http_code}' "$health_url" 2>/dev/null || true)" = "200" ] && healthy="true"
+  UNDERSTUDY_CARD_NAME="$name" \
+  UNDERSTUDY_CARD_MODEL="$repo" \
+  UNDERSTUDY_CARD_PORT="$port" \
+  UNDERSTUDY_CARD_ENDPOINT="$endpoint" \
+  UNDERSTUDY_CARD_HEALTH_URL="$health_url" \
+  UNDERSTUDY_CARD_HEALTHY="$healthy" \
+  UNDERSTUDY_CARD_LOADER="$loader" \
+  UNDERSTUDY_CARD_PROVIDER="$provider" \
+  UNDERSTUDY_CARD_SESSION="$tmux_session" \
+  UNDERSTUDY_CARD_LOGS="$LOGS" \
+  UNDERSTUDY_CARD_CWD="$(pwd)" \
+  node <<'NODE'
+const fs = require("node:fs");
+const os = require("node:os");
+const path = require("node:path");
+
+const home = os.homedir();
+const now = new Date().toISOString();
+const cardPath = path.join(home, ".understudy", "agent-card.json");
+const companionPath = path.join(home, ".understudy", "companion.json");
+const configPath = path.join(home, ".understudy", "config.json");
+
+function readJson(file) {
+  try {
+    return JSON.parse(fs.readFileSync(file, "utf8"));
+  } catch {
+    return null;
+  }
+}
+
+function writeJsonMode600(file, value) {
+  fs.mkdirSync(path.dirname(file), { recursive: true });
+  fs.writeFileSync(file, `${JSON.stringify(value, null, 2)}\n`, { mode: 0o600 });
+  try {
+    fs.chmodSync(file, 0o600);
+  } catch {}
+}
+
+function pidAlive(pid) {
+  if (!Number.isInteger(pid) || pid <= 0) return false;
+  try {
+    process.kill(pid, 0);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
+const existing = readJson(cardPath) || {};
+const companionState = readJson(companionPath);
+let companion = {
+  alive: false,
+  pid: null,
+  stale_pid: null,
+  path: null,
+  state_file: companionPath,
+};
+
+if (companionState && typeof companionState === "object") {
+  const pid = Number(companionState.pid ?? companionState.process?.pid ?? companionState.companion?.pid);
+  const alive = pidAlive(pid);
+  companion = {
+    alive,
+    pid: alive ? pid : null,
+    stale_pid: !alive && Number.isInteger(pid) && pid > 0 ? pid : null,
+    path: companionState.path ?? companionState.binary ?? companionState.command ?? companionState.process?.path ?? null,
+    state_file: companionPath,
+  };
+  if (!alive && Number.isInteger(pid) && pid > 0) {
+    const cleaned = { ...companionState };
+    if ("pid" in cleaned) cleaned.pid = null;
+    if (cleaned.process && typeof cleaned.process === "object" && "pid" in cleaned.process) {
+      cleaned.process = { ...cleaned.process, pid: null };
+    }
+    if (cleaned.companion && typeof cleaned.companion === "object" && "pid" in cleaned.companion) {
+      cleaned.companion = { ...cleaned.companion, pid: null };
+    }
+    try {
+      writeJsonMode600(companionPath, cleaned);
+    } catch {}
+  }
+}
+
+const config = readJson(configPath) || {};
+const model = process.env.UNDERSTUDY_CARD_MODEL;
+const endpoint = process.env.UNDERSTUDY_CARD_ENDPOINT;
+const payload = {
+  model,
+  messages: [{ role: "user", content: "Say hello from my local Understudy." }],
+  max_tokens: 128,
+};
+function shellSingleQuote(value) {
+  return `'${value.replace(/'/g, `'\\''`)}'`;
+}
+const howToTalk = `curl -s ${endpoint}/chat/completions -H 'Content-Type: application/json' -d ${shellSingleQuote(JSON.stringify(payload))}`;
+const cwd = process.env.UNDERSTUDY_CARD_CWD || process.cwd();
+
+const card = {
+  schema_version: "understudy.agent_card.v1",
+  created_at: existing.created_at || now,
+  updated_at: now,
+  understudy: {
+    model,
+    name: process.env.UNDERSTUDY_CARD_NAME || null,
+    endpoint,
+    health_url: process.env.UNDERSTUDY_CARD_HEALTH_URL,
+    healthy: process.env.UNDERSTUDY_CARD_HEALTHY === "true",
+    served_by: process.env.UNDERSTUDY_CARD_LOADER === "mlx_vlm" ? "mlx_vlm.server" : "mlx_lm.server",
+    runtime: process.env.UNDERSTUDY_CARD_LOADER,
+    provider: process.env.UNDERSTUDY_CARD_PROVIDER,
+    tmux_session: process.env.UNDERSTUDY_CARD_SESSION,
+    logs: process.env.UNDERSTUDY_CARD_LOGS,
+    how_to_talk: howToTalk,
+  },
+  companion,
+  project: {
+    cwd,
+    slug: path.basename(cwd),
+  },
+  org: {
+    id: config.org_id ?? config.organization_id ?? config.org?.id ?? null,
+  },
+};
+
+writeJsonMode600(cardPath, card);
+console.log(`  [understudy] agent card -> ${cardPath}`);
+NODE
+}
+
 _prepare_tmux_session() { # session
   local session="$1"
   tmux set-option -t "$session" extended-keys on 2>/dev/null || true
@@ -256,6 +389,7 @@ cmd_up() {
   _serve "$RIGHT_LABEL" "$RIGHT_REPO" "$RIGHT_PORT" "$RIGHT_LOADER"
   _wait_health "$LEFT_PORT"  "$LEFT_LABEL"
   _wait_health "$RIGHT_PORT" "$RIGHT_LABEL"
+  _refresh_agent_card "$LEFT_LABEL" "$LEFT_REPO" "$LEFT_PORT" "$LEFT_LOADER" "$LEFT_PROVIDER" "$SESSION"
 
   tmux kill-session -t "$SESSION" 2>/dev/null || true
   tmux new-session  -d -s "$SESSION" -x 220 -y 50 -n arena
@@ -718,6 +852,7 @@ cmd_first() {
   _serve_with_loader "$FIRST_LABEL" "$FIRST_REPO" "$FIRST_PORT" "$FIRST_LOADER"
   _wait_health "$FIRST_PORT" "$FIRST_LABEL"
   _ensure_pi_provider "$FIRST_PROVIDER" "$FIRST_REPO" "$FIRST_PORT"
+  _refresh_agent_card "$FIRST_NAME" "$FIRST_REPO" "$FIRST_PORT" "$FIRST_LOADER" "$FIRST_PROVIDER" "$S"
 
   tmux send-keys -t "$S" C-c
   tmux send-keys -t "$S" "clear && echo 'UNDERSTUDY LABS' && echo 'Your first local understudy is ready.' && echo && echo 'Model: $FIRST_REPO' && echo 'Endpoint: http://127.0.0.1:$FIRST_PORT/v1' && echo && $(_pi_cmd_with_prompt "$FIRST_PROVIDER" "$FIRST_REPO" "$first_prompt")" C-m
@@ -743,6 +878,7 @@ cmd_play() {
   _serve "$LEFT_LABEL" "$LEFT_REPO" "$LEFT_PORT" "$LEFT_LOADER"
   _wait_health "$LEFT_PORT" "$LEFT_LABEL"
   local S="${SESSION}-play" frontier_model
+  _refresh_agent_card "${LOCAL_NAME:-Gemma 4 E2B}" "$LEFT_REPO" "$LEFT_PORT" "$LEFT_LOADER" "$LEFT_PROVIDER" "$S"
   frontier_model="${FRONTIER_MODEL:-}"
   # seed the frontier keys into the tmux global env (not echoed) so the game pane inherits them
   tmux start-server 2>/dev/null || true
