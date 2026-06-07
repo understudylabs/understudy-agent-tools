@@ -68,6 +68,27 @@ frontier routes:
    `.understudy/frontier-choice.json` or
    `~/.understudy/agent-tools/install-state/frontier-choice`.
 
+## Pushing a secret to remote infra
+
+When a run needs a key on a remote box (a training GPU), or a firewall / IAM
+change, the agent is correctly blocked from writing secrets to remote machines or
+mutating cloud security — and pasting a key into a command leaks it into
+transcripts / process args. Instead, hand the user a one-liner they run themselves
+(`!`-prefixed so the result is visible), reading the secret from a local source and
+piping it over SSH stdin so the value is never printed:
+
+```bash
+KEY=$(security find-internet-password -s <service> -w)   # or a parsed local .env / keychain
+printf 'export NAME=%s\n' "$KEY" \
+  | gcloud compute ssh BOX --command 'umask 077; cat > ~/.run_env; echo "wrote $(wc -c < ~/.run_env) bytes"'
+```
+
+Same shape for security changes the agent shouldn't make directly — generate the
+exact command, let the user run it:
+`gcloud compute firewall-rules update …`,
+`gcloud storage buckets add-iam-policy-binding …`,
+`modal secret create …`. Report only byte counts / success, never the value.
+
 ## Installer Mapping
 
 The public installer exposes the same choice:

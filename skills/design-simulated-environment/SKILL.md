@@ -89,6 +89,32 @@ criteria (recall / precision / policy — not just cost/speed).
    ([`../recursive-language-model/SKILL.md`](../recursive-language-model/SKILL.md))
    and the route decision ([`../run-local-model-lab/SKILL.md`](../run-local-model-lab/SKILL.md)).
 
+## Running it as a real `verifiers` env
+
+When the env is built as an actual `verifiers` Environment (the form
+[`author-rl-env`](../author-rl-env/SKILL.md) / `package-verifier-env` consume),
+these API facts (verifiers 0.1.14) save real trial:
+
+- `vf.ToolEnv(tools=[fns], max_turns=, **kwargs)` — `dataset`, `rubric`,
+  `system_prompt` pass through `**kwargs` to `MultiTurnEnv`; tools are plain
+  functions (type hints + docstring → auto tool schema).
+- **Tools are stateless** — a tool gets only its JSON args, not the dataset row.
+  For per-example scoping (each task targets a different account/inbox), subclass
+  ToolEnv and override `env_response(messages, state)` to set a **contextvar** from
+  `state["info"]` before `super().env_response(...)`; tools read the contextvar
+  (concurrency-safe across parallel rollouts).
+- Dataset rows: `question` + `answer` + `info` (dict); verifiers derives `prompt`
+  and `example_id`. Final answer = last assistant message with text (no submit
+  tool; the episode ends when the model stops calling tools).
+- Rubric: `vf.Rubric(funcs=[...], weights=[...])`; reward funcs take kwargs
+  `(prompt, completion, answer, state, ...)` — pull what you need by name.
+- Eval: `env.evaluate` is a **coroutine** — use `evaluate_sync` for blocking calls,
+  and pass a verifiers **`ClientConfig`** (a raw `openai.OpenAI` raises
+  "Unsupported client type"): `ClientConfig(client_type="openai_chat_completions",
+  api_key_var="<ENV_VAR_NAME>", api_base_url="<…/v1>")` — `api_key_var` is the
+  env-var *name* (default `PRIME_API_KEY`). Pointed at the Understudy gateway this
+  runs a full rollout+reward eval on CPU for pennies — strong pre-GPU validation.
+
 ## Output Standard
 
 End with: the seeded fixtures and gold set; the tool classes simulated; the
