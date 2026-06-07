@@ -37,6 +37,8 @@ SESSION="${SESSION:-mlx-arena}"
 STATE="$LAB/.understudy/local-model-lab/arena"
 LOGS="$STATE/logs"
 SYS_PROMPT="${SYS_PROMPT:-You are a helpful, concise assistant. Answer directly.}"
+UNDERSTUDY_TERMINAL_APP="${UNDERSTUDY_TERMINAL_APP:-auto}"
+UNDERSTUDY_TERMINAL_PROFILE="${UNDERSTUDY_TERMINAL_PROFILE:-}"
 
 # Two corners of the arena. Defaults: verified Gemma 4 E2B via mlx-vlm vs
 # smallest NVIDIA (Nemotron), MLX 4-bit. Stock mlx-community Gemma 4 E2B repos
@@ -273,42 +275,104 @@ cmd_down() {
 }
 cmd_attach() { tmux attach -t "$SESSION"; }
 
+_terminal_kind() {
+  local requested="${UNDERSTUDY_TERMINAL_APP:-auto}"
+  case "$requested" in
+    terminal|Terminal|Terminal.app) echo "terminal"; return 0 ;;
+    iterm|iTerm|iTerm2|iTerm.app|iTerm2.app) echo "iterm"; return 0 ;;
+    ghostty|Ghostty|Ghostty.app) echo "ghostty"; return 0 ;;
+    auto) ;;
+    *) echo "$requested"; return 0 ;;
+  esac
+
+  case "${TERM_PROGRAM:-}" in
+    Apple_Terminal) echo "terminal" ;;
+    iTerm.app|iTerm2|iTerm) echo "iterm" ;;
+    ghostty|Ghostty) echo "ghostty" ;;
+    *) echo "terminal" ;;
+  esac
+}
+
 _open_terminal_attach() { # tmux-session-name
   local target="$1"
-  if [[ "$(uname -s)" != "Darwin" ]]; then
-    echo "  [window] new terminal windows are only automated on macOS; attach with: tmux attach -t $target"
-    return 0
-  fi
-  command -v osascript >/dev/null 2>&1 || {
-    echo "  [window] osascript not found; attach with: tmux attach -t $target"
-    return 0
-  }
-  TARGET_SESSION="$target" osascript <<'APPLESCRIPT'
-tell application "Terminal"
-  activate
-  do script "tmux attach -t " & quoted form of (system attribute "TARGET_SESSION")
-end tell
-APPLESCRIPT
-  echo "  [window] opened Terminal attached to tmux session '$target'"
+  _open_terminal_run "tmux attach -t $(printf '%q' "$target")"
   echo "  [window] follow along with: tmux attach -t $target"
 }
 
 _open_terminal_run() { # command
-  local command_text="$1"
+  local command_text="$1" kind
   if [[ "$(uname -s)" != "Darwin" ]]; then
     echo "  [window] new terminal windows are only automated on macOS; run: $command_text"
     return 0
   fi
+
+  kind="$(_terminal_kind)"
+  case "$kind" in
+    ghostty)
+      if command -v ghostty >/dev/null 2>&1; then
+        nohup ghostty -e /bin/zsh -lc "$command_text" >/dev/null 2>&1 &
+        echo "  [window] opened Ghostty"
+        return 0
+      fi
+      if open -Ra Ghostty 2>/dev/null; then
+        open -na Ghostty --args -e /bin/zsh -lc "$command_text"
+        echo "  [window] opened Ghostty"
+        return 0
+      fi
+      echo "  [window] Ghostty not found; falling back to Terminal.app"
+      ;;
+    iterm)
+      if command -v osascript >/dev/null 2>&1; then
+        if TERMINAL_COMMAND="$command_text" osascript <<'APPLESCRIPT' >/dev/null 2>&1
+tell application "iTerm2"
+  activate
+  create window with default profile command (system attribute "TERMINAL_COMMAND")
+end tell
+APPLESCRIPT
+        then
+          echo "  [window] opened iTerm2"
+          return 0
+        fi
+        if TERMINAL_COMMAND="$command_text" osascript <<'APPLESCRIPT' >/dev/null 2>&1
+tell application "iTerm"
+  activate
+  create window with default profile command (system attribute "TERMINAL_COMMAND")
+end tell
+APPLESCRIPT
+        then
+          echo "  [window] opened iTerm"
+          return 0
+        fi
+      fi
+      echo "  [window] iTerm not found; falling back to Terminal.app"
+      ;;
+  esac
+
   command -v osascript >/dev/null 2>&1 || {
     echo "  [window] osascript not found; run: $command_text"
     return 0
   }
-  TERMINAL_COMMAND="$command_text" osascript <<'APPLESCRIPT'
+  TERMINAL_COMMAND="$command_text" UNDERSTUDY_TERMINAL_PROFILE="$UNDERSTUDY_TERMINAL_PROFILE" osascript <<'APPLESCRIPT'
 tell application "Terminal"
   activate
-  do script (system attribute "TERMINAL_COMMAND")
+  set targetProfile to system attribute "UNDERSTUDY_TERMINAL_PROFILE"
+  set sourceSettings to missing value
+  try
+    set sourceSettings to current settings of selected tab of front window
+  end try
+  set newTab to do script (system attribute "TERMINAL_COMMAND")
+  if targetProfile is not "" then
+    try
+      set current settings of newTab to settings set targetProfile
+    end try
+  else if sourceSettings is not missing value then
+    try
+      set current settings of newTab to sourceSettings
+    end try
+  end if
 end tell
 APPLESCRIPT
+  echo "  [window] opened Terminal.app"
 }
 
 _first_loading_script() {
@@ -372,7 +436,8 @@ cmd_first() {
 # One-command bring-up of the BLIND HEAD-TO-HEAD game (blind_arena.ts):
 # serve the local model with MLX, then launch the TypeScript game in tmux (Node runs the
 # .ts directly via --experimental-strip-types). The only Python is mlx_lm.server.
-# The frontier side reads ANTHROPIC_LOCAL_KEY (Opus 4.8) or routes via the gateway.
+# The frontier side defaults to the Understudy gateway. Set FRONTIER_MODEL=claude...
+# to use a direct Anthropic BYOK comparison instead.
 cmd_play() {
   _need tmux; _need curl; _need node
   [ -x "$MLX_PYTHON" ] || { echo "MLX python not found: $MLX_PYTHON — create it with:
@@ -384,7 +449,11 @@ cmd_play() {
   echo "Bringing up local model ${LEFT_REPO} on :${LEFT_PORT} (first run downloads weights)…"
   _serve "$LEFT_LABEL" "$LEFT_REPO" "$LEFT_PORT" "$LEFT_LOADER"
   _wait_health "$LEFT_PORT" "$LEFT_LABEL"
-  local S="${SESSION}-play"
+  local S="${SESSION}-play" frontier_model
+  frontier_model="${FRONTIER_MODEL:-}"
+  if [ -z "$frontier_model" ]; then
+    frontier_model="glm-5.1"
+  fi
   # seed the frontier keys into the tmux global env (not echoed) so the game pane inherits them
   tmux start-server 2>/dev/null || true
   tmux setenv -g ANTHROPIC_LOCAL_KEY "${ANTHROPIC_LOCAL_KEY:-${ANTHROPIC_API_KEY:-}}"
@@ -392,7 +461,7 @@ cmd_play() {
   tmux kill-session -t "$S" 2>/dev/null || true
   tmux new-session -d -s "$S" -x 138 -y 60 -n arena
   _prepare_tmux_session "$S"
-  tmux send-keys -t "$S" "clear && LOCAL_BASE=http://127.0.0.1:${LEFT_PORT}/v1 LOCAL_MODEL=${LEFT_REPO} LOCAL_NAME='${LOCAL_NAME:-Gemma 4 E2B}' CATEGORY='${CATEGORY:-}' FRONTIER_MODEL='${FRONTIER_MODEL:-}' DATASET='${DATASET:-}' node --experimental-strip-types '$here/blind_arena.ts'" C-m
+  tmux send-keys -t "$S" "clear && LOCAL_BASE=http://127.0.0.1:${LEFT_PORT}/v1 LOCAL_MODEL=${LEFT_REPO} LOCAL_NAME='${LOCAL_NAME:-Gemma 4 E2B}' CATEGORY='${CATEGORY:-}' FRONTIER_MODEL='$frontier_model' DATASET='${DATASET:-}' node --experimental-strip-types '$here/blind_arena.ts'" C-m
   echo "Ready → attach and play:   tmux attach -t $S     (detach: Ctrl-b d)"
 }
 

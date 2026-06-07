@@ -6,8 +6,8 @@
 // (the `arena.sh play` launcher does this for you). The only Python left is the
 // MLX model server (mlx_lm.server), which arena.sh invokes as a subprocess.
 //
-// A frontier model (Claude Opus 4.8, or any model via the Understudy gateway) vs a
-// small local MLX model, randomly assigned Left/Right. Two questions per round —
+// A frontier model via the Understudy gateway, or an explicit direct Anthropic
+// model, vs a small local MLX model, randomly assigned Left/Right. Two questions per round —
 // which do you PREFER, and which do you think is the FRONTIER — blind until the end,
 // then a cost x speed x intelligence reveal. The frontier is ONE swappable config
 // (FRONTIER_MODEL); no per-provider branches in the game logic.
@@ -35,8 +35,7 @@ const CATEGORY_ENV = (env.CATEGORY ?? "").trim().toLowerCase();
 const ROUNDS = parseInt(env.ROUNDS ?? "6", 10);
 const PANEL_W = 60;
 
-const HAS_ANTHROPIC = !!(env.ANTHROPIC_LOCAL_KEY || env.ANTHROPIC_API_KEY);
-const FRONTIER_MODEL = env.FRONTIER_MODEL ?? (HAS_ANTHROPIC ? "claude-opus-4-8" : "gpt-5.1");
+const FRONTIER_MODEL = env.FRONTIER_MODEL?.trim() || "glm-5.1";
 // prefix -> provider adapter + $/1M (in,out). First match wins; "" is the default.
 const FRONTIER_REGISTRY: [string, { provider: string; in: number; out: number }][] = [
   ["claude", { provider: "anthropic", in: 5.0, out: 25.0 }],
@@ -54,7 +53,21 @@ const FRONTIER_NAME = `${FRONTIER_MODEL} (high reasoning · cloud · $$)`;
 function loadGateway(): { key?: string; url?: string } {
   try {
     const d = JSON.parse(readFileSync(join(homedir(), ".understudy", "credentials.json"), "utf8"));
-    return { key: d.api_key, url: d.gateway_url };
+    const orgId = (() => {
+      try {
+        const cfg = JSON.parse(readFileSync(join(homedir(), ".understudy", "config.json"), "utf8"));
+        return typeof cfg.org_id === "string" ? cfg.org_id : undefined;
+      } catch {
+        return undefined;
+      }
+    })();
+    const orgs = d.orgs && typeof d.orgs === "object" ? d.orgs : {};
+    const firstOrgId = Object.keys(orgs)[0];
+    const org = orgId ? orgs[orgId] : firstOrgId ? orgs[firstOrgId] : undefined;
+    return {
+      key: org?.api_key ?? d.api_key,
+      url: org?.gateway_url ?? d.gateway_url,
+    };
   } catch {
     return {};
   }
@@ -228,6 +241,7 @@ async function streamAnthropic(q: string, res: Result): Promise<void> {
 async function streamGateway(q: string, res: Result): Promise<void> {
   const { key, url } = loadGateway();
   if (!url) throw new Error("No Understudy gateway in ~/.understudy/credentials.json (set ANTHROPIC_LOCAL_KEY to use a claude FRONTIER_MODEL instead).");
+  if (!key) throw new Error("No Understudy API key in ~/.understudy/credentials.json. Run `understudy login` once, then re-run the arena.");
   const client = new OpenAI({ baseURL: url + "/v1", apiKey: key, defaultHeaders: { "x-understudy-upstream-key": env.OPENAI_API_KEY ?? "" } });
   const stream = await client.chat.completions.create({
     model: FRONTIER_CFG.model, max_completion_tokens: 2000, stream: true,

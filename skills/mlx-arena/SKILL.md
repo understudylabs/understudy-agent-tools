@@ -162,14 +162,13 @@ skills/mlx-arena/arena.sh play
 ## Blind-vote mode — the Efficient-Intelligence game
 
 [`blind_arena.ts`](blind_arena.ts) is the interactive, blind A/B version of the
-arena: a **frontier** model (Claude Opus 4.8 at high reasoning, or `gpt-5.1` via
-the Understudy gateway when no Anthropic key is present) vs a **small local MLX
-model**, randomly assigned to Left/Right each round. The user watches both answer
-the same everyday question, votes which they prefer ("hot or not"), and only at
-the end are identities + the cost×speed×intelligence trade-off revealed. The point
-is *efficient intelligence*: on most everyday questions the free local model is
-faster and good enough, and you only pay for the frontier on the genuinely hard
-tasks.
+arena: a **frontier** model (`glm-5.1` through the authenticated Understudy
+gateway by default) vs a **small local MLX model**, randomly assigned to
+Left/Right each round. The user watches both answer the same everyday question,
+votes which they prefer ("hot or not"), and only at the end are identities + the
+cost×speed×intelligence trade-off revealed. The point is *efficient
+intelligence*: on most everyday questions the free local model is faster and good
+enough, and you only pay for the frontier on the genuinely hard tasks.
 
 Easiest bring-up (downloads the default model if missing, serves it, launches the
 branded game in tmux):
@@ -184,7 +183,7 @@ Or run it directly (Node ≥22.6 runs the `.ts` via native type-stripping):
 
 ```bash
 LOCAL_BASE=http://127.0.0.1:8081/v1 LOCAL_MODEL=.understudy/models/gemma-4-e2b-it-mlx-vlm-4bit \
-CATEGORY=coding FRONTIER_MODEL=claude-opus-4-8 \
+CATEGORY=coding FRONTIER_MODEL=glm-5.1 \
 node --experimental-strip-types skills/mlx-arena/blind_arena.ts
 ```
 
@@ -208,9 +207,11 @@ DATASET=~/my-eval/questions.jsonl skills/mlx-arena/arena.sh play
 Design rules (so the blind test stays honest): while blind, **both panels show
 only the answer** — no latency/token/cost footer, no thinking trace, no model
 names (those are all tells). Hints escalate (speed tease → halfway confession →
-running free-vs-cloud tally) without ever naming a side. The frontier key is read
-from `ANTHROPIC_LOCAL_KEY`/`ANTHROPIC_API_KEY`; cost is computed from real usage
-(Opus 4.8 $5/$25 per 1M in/out) and shown only on reveal.
+running free-vs-cloud tally) without ever naming a side. The default frontier
+uses the Understudy gateway account from `understudy login`; provider keys are
+optional BYOK headers for gateway passthrough, or direct Anthropic only when the
+user explicitly sets a `claude...` `FRONTIER_MODEL`. Cost is computed from real
+usage and shown only on reveal.
 
 For real workloads, ground the questions in a captured trace
 ([`../understand-workload/SKILL.md`](../understand-workload/SKILL.md)). Treat Pi as

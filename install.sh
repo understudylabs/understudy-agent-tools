@@ -383,9 +383,15 @@ if [ "$NO_GAUNTLET" = "0" ]; then
     install_tmux
     section "Step 5/5: run the local-vs-frontier duel."
     say "Pi opens a side-by-side harness: local Understudy on the left, frontier baseline on the right."
+    say "This step may make remote frontier calls using your Anthropic key or your Understudy gateway account."
     say "The shared tmux session is ${SESSION:-mlx-arena}-play; the agent can send prompts and you can watch or take over."
     say "After the stock questions, point Understudy at a dataset or codebase."
     say "Then use the skills to generate task-specific evals and climb: better prompts, GEPA/RLM, larger Gemma/Nemotron, or remote training."
+    confirm "Launch the remote frontier comparison now?" || {
+      say "Skipping frontier comparison. Run it later with:"
+      say "  LAB=\"$LAB\" MLX_PYTHON=\"$LAB/.understudy/venvs/mlx/bin/python\" LEFT_REPO=\"$MODEL_DIR\" LEFT_LOADER=mlx_vlm \"$ARENA\" play"
+      exit 0
+    }
     if [ "$NO_WINDOW" = "1" ]; then
       LAB="$LAB" MLX_PYTHON="$LAB/.understudy/venvs/mlx/bin/python" \
         LEFT_REPO="$MODEL_DIR" LEFT_LOADER=mlx_vlm LOCAL_NAME="Gemma 4 E2B" "$ARENA" play
