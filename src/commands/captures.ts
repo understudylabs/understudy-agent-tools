@@ -131,7 +131,7 @@ async function runGet(cmd: Command, requestId: string, opts: CaptureOpts): Promi
 }
 
 async function runExport(cmd: Command, requestId: string, opts: ExportOpts): Promise<void> {
-  if (opts.includePayload && !opts.yes && !isJsonMode(cmd)) {
+  if (opts.includePayload && !opts.yes) {
     throw new Error("Full capture export may contain prompts/completions. Re-run with --include-payload --yes to write it to a file.");
   }
   const { project, workload } = await resolveCaptureContext(opts);

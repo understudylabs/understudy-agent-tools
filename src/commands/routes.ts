@@ -3,6 +3,7 @@ import { Command } from "commander";
 import kleur from "kleur";
 
 import { isJsonMode, runAction } from "../internal/output.js";
+import { trackControlPlaneAction } from "../internal/telemetry.js";
 import { resolveProject, type ProjectResolutionOptions } from "../internal/projects.js";
 import {
   listWorkloads,
@@ -96,6 +97,7 @@ async function runSet(cmd: Command, workloadValue: string, opts: SetOpts): Promi
   const trafficPct = parseTrafficPct(opts.trafficPct, 10);
   const snapshotPath = writeRouteSnapshot(project, workload);
   const result = await setWorkloadRoute(project, workload, { model_id: opts.modelId, route_traffic_pct: trafficPct });
+  trackControlPlaneAction({ resource: "workload_routes", action: "updated", orgId: project.auth.orgId, projectSlug: project.projectSlug, resultCount: 1 });
   const payload = { ok: true, workload_id: workload.id, workload_name: workload.name, model_id: result.route_model_id ?? result.model_id ?? opts.modelId, route_traffic_pct: result.route_traffic_pct ?? trafficPct, snapshot_path: snapshotPath };
   if (isJsonMode(cmd)) {
     process.stdout.write(`${JSON.stringify(payload)}\n`);
@@ -111,6 +113,7 @@ async function runClear(cmd: Command, workloadValue: string, opts: RouteOpts): P
   const workload = await resolveWorkloadWithState(project, workloadValue);
   const snapshotPath = writeRouteSnapshot(project, workload);
   await setWorkloadRoute(project, workload, { model_id: null });
+  trackControlPlaneAction({ resource: "workload_routes", action: "cleared", orgId: project.auth.orgId, projectSlug: project.projectSlug, resultCount: 0 });
   const payload = { ok: true, workload_id: workload.id, workload_name: workload.name, model_id: null, route_traffic_pct: 0, snapshot_path: snapshotPath };
   if (isJsonMode(cmd)) {
     process.stdout.write(`${JSON.stringify(payload)}\n`);
@@ -129,6 +132,7 @@ async function runRollback(cmd: Command, workloadValue: string, opts: RouteOpts)
     ? { model_id: previous.route_model_id, route_traffic_pct: previous.route_traffic_pct ?? 10 }
     : { model_id: null };
   const result = await setWorkloadRoute(project, workload, body);
+  trackControlPlaneAction({ resource: "workload_routes", action: previous.route_model_id ? "updated" : "cleared", orgId: project.auth.orgId, projectSlug: project.projectSlug, resultCount: previous.route_model_id ? 1 : 0 });
   const payload = {
     ok: true,
     restored_from_snapshot: Boolean(snapshot),
@@ -171,6 +175,7 @@ async function runPromote(cmd: Command, opts: PromoteOpts): Promise<void> {
   const trafficPct = parseTrafficPct(opts.trafficPct ?? numberValue(packet.route_traffic_pct), 10);
   const snapshotPath = writeRouteSnapshot(project, workload);
   const result = await setWorkloadRoute(project, workload, { model_id: modelId, route_traffic_pct: trafficPct });
+  trackControlPlaneAction({ resource: "workload_routes", action: "updated", orgId: project.auth.orgId, projectSlug: project.projectSlug, resultCount: 1 });
   const payload = { ok: true, workload_id: workload.id, workload_name: workload.name, model_id: result.route_model_id ?? result.model_id ?? modelId, route_traffic_pct: result.route_traffic_pct ?? trafficPct, snapshot_path: snapshotPath };
   if (isJsonMode(cmd)) {
     process.stdout.write(`${JSON.stringify(payload)}\n`);

@@ -66,6 +66,7 @@ async function runHealth(cmd: Command, opts: HealthOpts): Promise<void> {
     ok = false;
   }
   const payload = { ok, gateway_url: gatewayUrl, status, latency_ms: Date.now() - started };
+  if (!ok) process.exitCode = 1;
   if (isJsonMode(cmd)) {
     process.stdout.write(`${JSON.stringify(payload)}\n`);
     return;
@@ -143,6 +144,7 @@ async function runProbe(cmd: Command, opts: ProbeOpts): Promise<void> {
     byok: Boolean(opts.byokEnv),
     response_kind: opts.stream ? "stream" : responseKind(text),
   };
+  if (!res.ok) process.exitCode = 1;
   if (isJsonMode(cmd)) {
     process.stdout.write(`${JSON.stringify(payload)}\n`);
     return;

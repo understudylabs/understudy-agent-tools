@@ -1041,6 +1041,11 @@ describe("understudy CLI", () => {
       assert.equal(full.status, 0, full.stderr);
       assert.doesNotMatch(full.stdout, /SECRET_PROMPT|SECRET_COMPLETION/);
       assert.match(readFileSync(fullPath, "utf8"), /SECRET_PROMPT/);
+
+      // --json must NOT bypass the --yes confirmation for full payload export.
+      const blockedJson = await runWithEnvAsync(["--json", "captures", "export", "req_123", "--out", join(repo, "full-json.json"), "--include-payload"], env, repo);
+      assert.notEqual(blockedJson.status, 0, "json mode must still require --yes for payload export");
+      assert.match(blockedJson.stderr, /may contain prompts\/completions/);
     });
   });
 
@@ -1069,6 +1074,11 @@ describe("understudy CLI", () => {
       const openaiRequest = requests.at(-1);
       assert.equal(openaiRequest.path, "/v1/chat/completions");
       assert.equal(openaiRequest.headers.authorization, "Bearer sk_test_hosted");
+
+      // An unreachable gateway must surface a non-zero exit code (scriptability).
+      const healthDown = await runWithEnvAsync(["--json", "gateway", "health", "--gateway-url", "http://127.0.0.1:1"], env, repo);
+      assert.notEqual(healthDown.status, 0, "gateway health must exit non-zero when unreachable");
+      assert.equal(JSON.parse(healthDown.stdout).ok, false);
     });
   });
 
