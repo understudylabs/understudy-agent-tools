@@ -85,6 +85,11 @@ Only the `x`-only deploy conditions are eligible for product claims.
   state repair, or decomposition despite extra latency.
 - **RLM invalid format:** fix the RLM prompt/harness first. Do not train from
   invalid student trajectories except as a labeled repair dataset.
+- **REPL emitter gap:** if the model writes JSON-looking data or prose inside a
+  code fence instead of executable code that mutates the environment's final
+  answer variable, the next target is a small REPL-code-emitter adapter or
+  format repair dataset. Do not treat that as evidence the task policy itself
+  needs RL.
 - **High max surprise gap:** prefer on-policy repair, smaller subpolicies, or
   same-family teachers before imitation. Correct but high-spike repairs are not
   automatically teachable.
