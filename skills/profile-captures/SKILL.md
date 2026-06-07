@@ -23,6 +23,11 @@ all this, and what can we make cheaper?" — run the profile, then aim
 `understand-workload` at the cluster worth decomposing and `run-local-model-lab` at the
 candidate worth testing.
 
+It is **provider-agnostic**: it reads Anthropic, OpenAI, and any OpenAI-compatible
+gateway capture shape (streamed or object responses), clusters on tool/turn structure
+rather than any provider's prompt boilerplate, and prices every model from a swappable
+table — anything not in the table is treated as open-weight/local ($0).
+
 ## When to use
 
 - You have a **folder of captures** (gateway `.jsonl` envelopes), not a single prompt.
@@ -108,4 +113,3 @@ cost/structure claim from the profile, not from memory.
 - [`profile_captures.ts`](profile_captures.ts) — the bundled, dependency-free runnable.
 - [`../understand-workload/SKILL.md`](../understand-workload/SKILL.md) — decompose one trace.
 - [`../run-local-model-lab/SKILL.md`](../run-local-model-lab/SKILL.md) — score a local model on a candidate.
-- Cookbook: [`../../cookbook/profile-captures-node`](../../cookbook/profile-captures-node) — synthetic captures + the report they produce.

@@ -39,14 +39,15 @@ the parsed-object case.
 
 ## Clustering key (call types)
 
-A "call type" is `model | family | toolsetHash | personaHash`:
+A "call type" is `model | family | toolsetHash | personaHash` — all provider-agnostic:
 
-- **family** — `agent-sdk` (tools present + a Claude Agent SDK / "agent for Claude
-  Code" preamble), `toolled` (tools, other), or `direct-api` (no tools).
+- **family** — `agent` (the request carries tools → a tool-using call/loop) or
+  `direct` (no tools → a single-shot micro-prompt). No provider-specific string
+  matching; it keys purely on whether tools are present.
 - **toolsetHash** — hash of the **sorted tool names** (Anthropic `tools[].name` or
   OpenAI `tools[].function.name`). The toolset variant is what distinguishes an
   orchestrator from a worker sub-agent — *not* the system text, which is often
-  per-session unique (a billing-header block + dynamic context).
+  per-session unique (an injected header block + dynamic context).
 - **personaHash** — hash of the persona label (below).
 
 This is why per-session-unique system prompts don't fragment the taxonomy: clustering
@@ -56,10 +57,11 @@ keys on toolset + persona-heading, not the volatile full prompt.
 
 The report is structure-only and safe to share:
 
-- **persona label** = the first `#`/`##`/`###` heading of the first non-billing system
-  block (or its first line, truncated to 60 chars) — **headings, not bodies**. Works
-  across shapes: a top-level `system`, an array of system blocks, or a leading
-  `system`/`developer` role message (OpenAI).
+- **persona label** = the first `#`/`##`/`###` heading of the first non-header system
+  block (header-shaped blocks like `x-...: ...` from any gateway are skipped), or its
+  first line truncated to 60 chars — **headings, not bodies**. Works across shapes: a
+  top-level `system`, an array of system blocks, or a leading `system`/`developer` role
+  message (OpenAI).
 - **messages** → only **roles and turn depth** (system messages are not counted as
   turns); never content.
 - **tools** → only **names**.

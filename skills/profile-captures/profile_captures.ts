@@ -6,6 +6,13 @@
 // model takeover candidates. The aggregate sibling of `understand-workload`
 // (which decomposes ONE trace); this one sweeps the whole fleet.
 //
+// Provider-agnostic by design — no per-provider code path. It reads request
+// shapes (top-level `system` + `messages` + `tools`, or `messages`-embedded
+// system + `tools[].function`) and usage from either a streamed body (e.g.
+// Anthropic SSE) or a parsed response object (e.g. OpenAI / any OpenAI-compatible
+// gateway). Models priced via a table; anything not in it is treated as
+// open-weight/local ($0). Extend or swap providers with --pricing.
+//
 // Runs on Node >= 22.6 via native type-stripping — no build step, no deps:
 //   node --experimental-strip-types skills/profile-captures/profile_captures.ts <captures-dir> [--out <dir>]
 //
@@ -105,10 +112,17 @@ function systemText(req: any): string[] {
   }
   return out;
 }
+// Injected metadata blocks (e.g. "x-anthropic-billing-header: ...",
+// "content-type: ...") — any provider's header-shaped block. Skipped so the
+// persona is the actual role, not a gateway header.
+function isHeaderish(block: string): boolean {
+  const first = block.trim().split("\n")[0] || "";
+  return /^[a-z0-9]+(-[a-z0-9]+)+:\s/i.test(first);
+}
 // persona = system headings only (never the body) — safe to display.
 function personaLabel(req: any): string {
   for (const block of systemText(req)) {
-    if (block.startsWith("x-anthropic-billing-header")) continue;
+    if (isHeaderish(block)) continue;
     const headings = block.split("\n").filter((l) => /^#{1,3}\s/.test(l)).map((l) => l.replace(/^#+\s*/, "").trim());
     if (headings.length) return headings[0].slice(0, 60);
     const first = block.trim().split("\n")[0];
@@ -120,9 +134,6 @@ function toolNames(req: any): string[] {
   const tools = (req && req.tools) || [];
   if (!Array.isArray(tools)) return [];
   return tools.map((t) => (t && t.name) || (t && t.function && t.function.name) || "?").sort();
-}
-function isSdkAgent(req: any): boolean {
-  return systemText(req).some((t) => t.includes("Claude Agent SDK") || t.includes("agent for Claude Code"));
 }
 function looksStructured(req: any): boolean {
   if (req && (req.response_format || req.output_config)) return true;
@@ -184,7 +195,7 @@ function main(): void {
 
       const names = toolNames(req);
       const ntools = names.length;
-      const family = ntools > 0 ? (isSdkAgent(req) ? "agent-sdk" : "toolled") : "direct-api";
+      const family = ntools > 0 ? "agent" : "direct"; // provider-agnostic: tool-using loop vs micro-prompt
       const persona = personaLabel(req);
       // turn depth = user/assistant turns only (a `system` message is not a turn)
       const nmsg = Array.isArray(req.messages) ? req.messages.filter((m: any) => m && m.role !== "system").length : 0;
@@ -310,8 +321,8 @@ function renderMarkdown(p: any): string {
     const pr = priceFor(m, DEFAULT_PRICES);
     const t = v.tokens;
     const parts = [
-      ["Cache write", (t.cacheWrite * pr.cacheWrite) / 1e6],
-      ["Cache read", (t.cacheRead * pr.cacheRead) / 1e6],
+      ["Cache write", (t.cache_write * pr.cacheWrite) / 1e6],
+      ["Cache read", (t.cache_read * pr.cacheRead) / 1e6],
       ["Output", (t.output * pr.out) / 1e6],
       ["Input", (t.input * pr.in) / 1e6],
     ].filter(([, x]) => (x as number) > 0);
