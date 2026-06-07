@@ -169,7 +169,17 @@ through MLX on Apple Silicon (see
   `mlx_vlm.server`. Snapshot:
   `https://models.understudylabs.com/session?model=gemma-4-e4b-it-mlx-vlm-4bit`.
   It is about 4.8 GB on disk and is the first quality climb when E2B understands
-  the task but lacks enough capability.
+  the task but lacks enough capability. Use this Understudy-managed snapshot
+  path for reproducible onboarding: the signed package has been checksum-verified,
+  loaded with `mlx_vlm.server`, and smoke-tested through OpenAI-compatible chat.
+- **Small BF16 diagnostic rungs** — Understudy-verified `google/gemma-4-e2b-it`
+  and `google/gemma-4-E4B-it`, converted with `mlx-vlm 0.6.2` to BF16 MLX
+  safetensors and served with `mlx_vlm.server`. Use
+  `https://models.understudylabs.com/session?model=gemma-4-e2b-it-mlx-vlm-bf16`
+  or `https://models.understudylabs.com/session?model=gemma-4-e4b-it-mlx-vlm-bf16`
+  when quantization may be hurting a small-model workload. They are about
+  9.5 GB and 15 GB on disk, include `SHA256SUMS`, and have been load-tested
+  through OpenAI-compatible chat.
 - **Delivery shape** — publish the stable
   `models.understudylabs.com/session?model=...` endpoint. It returns a manifest
   with short-lived signed URLs for the actual model files; do not publish the
@@ -183,9 +193,20 @@ through MLX on Apple Silicon (see
   only for larger-memory quality/perf profiling; it is about 22 GB on disk.
 - **Larger local Gemma rungs** — `gemma-4-26b-a4b-it-mlx-vlm-4bit` is the
   opinionated MoE-style climb at about 14 GB on disk; `gemma-4-31b-it-mlx-vlm-4bit`
-  is the dense high-memory local rung at about 17 GB. Both use stable
-  `https://models.understudylabs.com/session?model=<id>` endpoints and were
-  verified with local generation plus logprobs/top-logprobs.
+  is the dense high-memory local rung at about 17 GB. Both were converted
+  directly from the official Google Gemma 4 checkpoints with `mlx-vlm 0.6.2`,
+  use stable `https://models.understudylabs.com/session?model=<id>` endpoints,
+  and were verified through `mlx_vlm.server` with OpenAI-compatible chat
+  completions plus logprobs/top-logprobs. Known-good chat smoke: ask
+  "Answer in exactly three words: what is local inference?" and expect a short
+  answer such as `Running models locally.` or `AI runs locally.` with
+  `finish_reason: "stop"`.
+- **Full-precision high end** — official BF16 source pulls for
+  `google/gemma-4-26B-A4B-it` and `google/gemma-4-31B-it` can also be served
+  directly with `mlx_vlm.server` on 128 GB Apple Silicon and pass the same chat
+  smoke. They are not the default onboarding pull: they are gated, large
+  downloads of roughly 48 GB and 58 GB and require explicit approval plus a
+  disk/RAM check.
 - **Tiny fallback only** — `mlx-community/gemma-3-1b-it-4bit`, served with
   `mlx_lm.server`. Dry-run download is about 772 MB and it loads on current
   `mlx-lm 0.31.3`; use it only when the verified Gemma 4 snapshot is unavailable
