@@ -66,13 +66,14 @@ substitute.
    RL-train pool **excludes** dev + holdout. Confirm approval, budget cap, data
    class, and upload boundary are all present. Record any gap as a blocker; do not
    proceed past it.
-2. **Generate the PI-Verifiers env module skeleton.** Copy
-   `examples/pi_verifiers_env.py` into
-   `<workload>/.understudy/verifier-env/pi_verifiers_env.py` and map the
+2. **Generate the PI-Verifiers env module.** Write
+   `<workload>/.understudy/verifier-env/pi_verifiers_env.py` mapping the
    author-rl-env `reset()/step()/score()` onto the verifiers framework's expected
-   environment interface (see the docs below). Leave `TODO` markers only where the
-   developer wires their specific sim handles; everything structural is filled in.
-   Ship the seeded synthetic fixtures alongside.
+   environment interface (see the docs below): a `VerifierEnv` whose `reset`
+   builds the seeded sim state and whose `step` applies one tool call and returns
+   `(obs, reward, done, info)`. Mark only the workload-specific sim handles as
+   `TODO`; keep everything structural concrete. Ship the seeded synthetic fixtures
+   alongside.
 3. **Pin the reward.** Define the reward exactly as the partner will see it:
    terminal **fractional final-state `score`** by default, with any shaping made
    explicit and optional. Import the **local scorer** as the single source of
@@ -84,8 +85,8 @@ substitute.
    terminate, reward is finite and in-range, and the seeded oracle trajectory
    scores its expected value. Emit `conformance: pass|fail` with the N and the
    oracle score. A `fail` blocks the handoff.
-5. **Build the return-eval harness.** Copy `examples/return_eval.py` into
-   `<workload>/.understudy/verifier-env/return_eval.py`. It re-scores a **returned
+5. **Build the return-eval harness.** Write
+   `<workload>/.understudy/verifier-env/return_eval.py` that re-scores a **returned
    policy** on the **frozen seed-7 holdout** using the **same scorer, same rows,
    same seed, same metric** as the pre-RL baseline, producing one comparable
    number plus a **same-rows/seed/metric attestation**. It must refuse to run if

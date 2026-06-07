@@ -72,9 +72,11 @@ not here. They compose: behavioral verdict here, learnability cut there.
    tool_calls), end_state, finish_reasons, input/output_tokens, cost}`. Validate
    both share a schema and a task-id space; record the export paths, model ids,
    and harness/tool-access mode. More than two runs → run pairwise vs the chosen
-   baseline. See `examples/traj_diff.py`.
+   baseline.
 
-2. **Align by task id.** Inner-join on `id`. Report the shared-task count, any ids
+2. **Align by task id.** Inner-join on the **stable task name** (real exports put
+   it in `name`; `id` is only an enumeration index). Report the shared-task count,
+   any ids
    present in only one run (and why — crash, timeout, missing), and which ids
    carry a holdout/frozen flag. Drop unmatched ids from divergence math; list them.
 

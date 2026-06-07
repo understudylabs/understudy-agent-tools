@@ -57,24 +57,27 @@ decontaminated pool.
 
 ## Flow
 
-1. **Index + attach provenance.** Run `examples/index_trajectories.py` over the
-   run JSONs (and/or a Lilac export) to build a queryable local index at
-   `.understudy/curate-trajectories/index.jsonl`. One record per trajectory with
-   full provenance: `model, toolset, domain, seed, source_run_id, timestamp,
-   outcome, split` (split left `unknown` until step 2). Record the corpus hash and
-   per-source counts. Flag missing provenance now — a row with no `seed` or no
-   `toolset` cannot be split-tagged and must not enter a guarded pool.
+1. **Index + attach provenance.** Build a queryable local index (one record per
+   trajectory) at `.understudy/curate-trajectories/index.jsonl` from the run JSONs
+   (and/or a Lilac export). Carry full provenance: `task_id, model, toolset,
+   domain, source_run_id, timestamp, outcome, split` (split left `unknown` until
+   step 2; back-fill `model`/`toolset`/`domain` from run-level `meta` when rows
+   omit them). Record a corpus hash and per-source counts. The task id is the
+   stable name (real exports put it in `name`, not the enumeration `id`). Don't
+   require a per-row RNG `seed` — many workloads have none (the initial state *is*
+   the seed); contamination safety keys on `task_id`↔split. Flag rows missing the
+   fields needed to tag or filter, and keep them out of guarded pools.
 2. **Tag splits from capture-evidence.** Load the frozen
-   `.understudy/capture-evidence/splits.json` (its `splits_sha256` is recorded in
-   the manifest). Map each trajectory's task id to `train` / `dev` / `holdout` /
-   `none` by the frozen row ids. Tag every index record. Rows whose id is in no
-   frozen split are `none` and are themselves quarantined from guarded pools
-   unless explicitly admitted.
+   `.understudy/capture-evidence/splits.json` (its `splits_sha256` goes in the
+   manifest). Map each trajectory's task id to `train` / `dev` / `holdout` /
+   `none` by the frozen split membership (the `rows`/`row_ids` lists). Tag every
+   index record. Rows in no frozen split are `none` and are quarantined from
+   guarded pools unless explicitly admitted.
 3. **Query as a hash-stamped selection.** Express the subset as a filter over
    provenance fields (e.g. `toolset == "api" and domain == "simple" and outcome ==
-   "pass"`). `examples/select.py` resolves it to a named selection, computes the
-   selection hash, and writes a row manifest — never a loose id list pasted into
-   the next command.
+   "pass"`), evaluated over an allow-listed field set only (no arbitrary code).
+   Resolve it to a named selection, compute the selection hash, and write a row
+   manifest — never a loose id list pasted into the next command.
 4. **Contamination check + report.** Before emitting, cross-check the selection
    against the frozen dev+holdout id sets. Detect: (a) holdout/dev ids inside a
    guarded selection; (b) the **same task id appearing in both** this selection

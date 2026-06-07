@@ -135,7 +135,7 @@ holdout gate. Each is a gate, not a suggestion.
    the score 200/200; full-dump equality was 0/200 purely from the timestamp
    default — reward fidelity, not state divergence.) A trajectory whose *score*
    fails to round-trip means the inversion changed semantics — fix the wrapper,
-   not the fixture. See `examples/replay_conformance.py`.
+   not the fixture.
 
 7. **EXCLUDE holdout/dev from the RL train pool.** Build the RL task pool from
    the frozen seed-7 **train** split only; the dev and holdout rows must never
