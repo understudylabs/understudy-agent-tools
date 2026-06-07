@@ -174,16 +174,20 @@ switch trainers.
 Original papers (theory):
 
 - GRPO / within-group advantage normalization — Shao et al., *DeepSeekMath*,
-  arXiv:2402.03300; DeepSeek-AI, *DeepSeek-R1*, arXiv:2501.12948.
+  https://arxiv.org/abs/2402.03300 ; DeepSeek-AI, *DeepSeek-R1*,
+  https://arxiv.org/abs/2501.12948
 - Reward shape governs learnability — Ng, Harada & Russell, *Policy Invariance
-  Under Reward Transformations*, ICML 1999.
-- Delayed/sudden-jump dynamics — Power et al., *Grokking*, arXiv:2201.02177.
+  Under Reward Transformations* (ICML 1999), https://dl.acm.org/doi/10.5555/645528.657613
+- Delayed/sudden-jump dynamics — Power et al., *Grokking*,
+  https://arxiv.org/abs/2201.02177
 
 Source projects (engineering facts — renderer/registry/GRPO support, env API):
 
-- Prime Intellect `prime-rl` and its `renderers` lib; vLLM model registry.
-- Public reproduction on this task: OpenPipe ART·E blog
-  (`openpipe.ai/blog/art-e-mail-agent`).
+- Prime Intellect `prime-rl` — https://github.com/PrimeIntellect-ai/prime-rl ;
+  `renderers` — https://github.com/PrimeIntellect-ai/renderers ;
+  vLLM model registry — https://github.com/vllm-project/vllm
+- Public reproduction on this task: OpenPipe ART·E blog —
+  https://openpipe.ai/blog/art-e-mail-agent
 
 Confirmed internally by Understudy: 2026-04-29 (workload-010) and 2026-06-07
 (ART·E Qwen-14B recreation).

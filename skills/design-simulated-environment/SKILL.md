@@ -91,11 +91,17 @@ criteria (recall / precision / policy — not just cost/speed).
 
 ## Running it as a real `verifiers` env
 
+One env, many uses: the *same* `verifiers` Environment serves eval, RL training,
+synthetic-data generation, and agent-harness experimentation ("playgrounds for RL
+training, evaluation benchmarking, synthetic data generation, and agent-harness
+experimentation" — Prime Intellect, https://www.primeintellect.ai/blog/environments).
+That's why building it well — and validating it cheaply via eval *before* any GPU —
+pays off across all of them.
+
 When the env is built as an actual `verifiers` Environment (the form
 [`author-rl-env`](../author-rl-env/SKILL.md) / `package-verifier-env` consume),
-these API facts save real trial — verified against the `verifiers` library
-v0.1.14 (Prime Intellect / `willccbb/verifiers`; APIs move, so re-check the
-pinned version):
+these API facts save real trial — verified against the `verifiers` library v0.1.14
+(https://github.com/PrimeIntellect-ai/verifiers ; APIs move, re-check the pin):
 
 - `vf.ToolEnv(tools=[fns], max_turns=, **kwargs)` — `dataset`, `rubric`,
   `system_prompt` pass through `**kwargs` to `MultiTurnEnv`; tools are plain
