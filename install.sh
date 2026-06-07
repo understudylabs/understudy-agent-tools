@@ -271,10 +271,11 @@ launch_claude_code() {
         return "$status"
       }
     else
-      script -qc "claude --permission-mode '$CLAUDE_PERMISSION_MODE' --plugin-dir '$PKG_DIR' ${UNDERSTUDY_CLAUDE_ARGS:-} '$INITIAL_CLAUDE_PROMPT'" "$claude_log" </dev/tty >/dev/tty 2>&1 || {
+      say "script(1) command syntax varies on non-macOS; launching without a Claude Code transcript."
+      # shellcheck disable=SC2086
+      claude --permission-mode "$CLAUDE_PERMISSION_MODE" --plugin-dir "$PKG_DIR" ${UNDERSTUDY_CLAUDE_ARGS:-} "$INITIAL_CLAUDE_PROMPT" </dev/tty >/dev/tty 2>&1 || {
         local status="$?"
         say "Claude Code exited with status $status."
-        say "See Claude Code launch log: $claude_log"
         return "$status"
       }
     fi
