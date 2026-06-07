@@ -27,9 +27,23 @@ understudy skills --list
 understudy skills --search gateway
 understudy skills --inspect understudy
 understudy doctor
+understudy doctor --hosted
 understudy models list --json
+understudy workloads list
+understudy workloads create classify --capture
+understudy workloads show classify
+understudy workloads update classify --capture off
 understudy workloads route <workload-id> --project-id <project-id> --model-id glm-5.1 --traffic-pct 10
 understudy workloads route <workload-id> --project-id <project-id> --clear
+understudy gateway health
+understudy gateway probe --provider anthropic --project rehearsal --workload classify
+understudy captures list --project rehearsal --workload classify
+understudy captures get <request-id> --project rehearsal --workload classify
+understudy captures export <request-id> --out .understudy/captures/<request-id>.json
+understudy routes show classify --project rehearsal
+understudy routes set classify --project rehearsal --model-id glm-5.1 --traffic-pct 10
+understudy routes clear classify --project rehearsal
+understudy routes rollback classify --project rehearsal
 understudy setup-code --client openai --file src/client.ts --json
 understudy capture-import scan --repo .
 understudy capture-import preview --repo . --limit 10
@@ -119,11 +133,17 @@ verifier/environment training, preserve the local evidence packet, and refer to
 Prime Intellect Verifiers as the current preferred external path.
 
 `use-understudy-gateway` includes the public model-routing workflow. Agents can
-list routeable Understudy model IDs without supplier/provider details, set a
-traffic percentage for a project workload, and clear that route. Application
-code still calls the normal gateway path; the control plane decides what
-percentage goes to the selected Understudy model and what remains
-passthrough/frontier.
+list routeable Understudy model IDs without supplier/provider details, run
+probe-only gateway health/completion checks, list/create/update workloads, view
+redacted capture metadata, set a traffic percentage for a project workload, and
+clear or roll back that route. Application code still calls the normal gateway
+path; the control plane decides what percentage goes to the selected Understudy
+model and what remains passthrough/frontier.
+
+Hosted capture commands are metadata-first. `captures list` and `captures get`
+redact prompt/completion-bearing fields into presence booleans. Full capture
+export is opt-in with `--include-payload --yes`, writes only to a file, and never
+prints raw payloads to stdout.
 
 `optimize-workload check` reads `.understudy/capture-evidence/`
 artifacts, fails closed on missing files, invalid JSON, stale baseline hashes,
@@ -154,10 +174,10 @@ and writes `eval-input-candidate.json`, `proof-packet.json`, and an adapter
 result under `.understudy/optimize-workload/eval-input-gepa/`. Without a
 model, this path makes no provider calls.
 
-Full-runtime commands such as `gateway`, `browser`, `channels`, `schedule`,
-`daemon`, `agent`, and `chat` are not registered in this public CLI. Agents
-should use `understudy skills --search <query>` to find the relevant skill or
-cookbook instead.
+`gateway` is registered only as a narrow health/probe group. Full-runtime
+commands such as `browser`, `channels`, `schedule`, `daemon`, `agent`, and
+`chat` are not registered in this public CLI. Agents should use `understudy
+skills --search <query>` to find the relevant skill or cookbook instead.
 
 ## Next CLI Restores
 

@@ -41,6 +41,17 @@ Trace capture and proxy work should start with metadata: route, model, timing,
 token counts, schema status, and error class. Raw prompts, completions, tool
 payloads, source snippets, and eval rows require opt-in handling.
 
+Hosted capture CLI commands keep the same boundary. `understudy captures list`
+and `understudy captures get` print redacted summaries only: payload-bearing
+fields are represented as present/absent booleans. `understudy captures export`
+writes redacted metadata by default. Full capture export requires
+`--include-payload --yes`, writes to a file, and must not print raw prompts,
+completions, or tool payloads to stdout.
+
+Gateway probes are explicit live calls. BYOK provider keys are read only from an
+environment variable named by `--byok-env`; they are not requested in chat, not
+persisted, and not printed.
+
 ## Never Collected By Default
 
 - API key values;
