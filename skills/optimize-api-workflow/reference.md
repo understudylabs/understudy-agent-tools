@@ -1,10 +1,8 @@
 # Optimize API Workflow — reference
 
-Deep detail for [`SKILL.md`](SKILL.md). AutomationBench evaluates AI agents on
-realistic, multi-step business workflows across CRM, email, calendar, and 47
-simulated SaaS tools; read this reference when wiring that kind of API workflow
-into the Understudy artifact contract, measuring a baseline, and comparing model
-or prompt candidates.
+Deep detail for [`SKILL.md`](SKILL.md). Use this reference when wiring a
+resettable API workflow into the Understudy artifact contract, measuring a
+baseline, and comparing model, route, prompt, tool-access, or parser candidates.
 
 All examples here are synthetic. Use local fixtures or benchmark sandboxes unless
 the developer explicitly approves provider spend, hosted execution, uploads, or
@@ -43,18 +41,18 @@ docs, validator, and network boundary stay fixed.
 {
   "schema_version": "understudy.harness.v1",
   "kind": "api-workflow-rollout",
-  "benchmark": "automationbench",
-  "command": "uv run auto-bench --model ${MODEL} --domains ${DOMAINS} --num-examples ${N} --export-json ${EXPORT_JSON}",
-  "agent_entrypoint": "auto-bench",
+  "benchmark": "local-or-public-sandbox",
+  "command": "${HARNESS_CMD} --model ${MODEL} --rows ${ROWS} --export-json ${EXPORT_JSON}",
+  "agent_entrypoint": "${HARNESS_CMD}",
   "policy_model_slot": "${MODEL}",
-  "task_source": "automationbench.synthetic",
+  "task_source": "synthetic-api-workflow",
   "api_schema": {
     "kind": "openapi",
     "path": ".understudy/capture-evidence/api-schema.json"
   },
   "policy_docs": [".understudy/capture-evidence/policy.md"],
   "seeded_state": {
-    "reset_command": "uv run auto-bench reset --seed ${SEED}",
+    "reset_command": "${HARNESS_CMD} reset --seed ${SEED}",
     "seed": 7,
     "state_fixture": ".understudy/capture-evidence/seed-state.json"
   },
@@ -62,16 +60,16 @@ docs, validator, and network boundary stay fixed.
   "request_log": ".understudy/capture-evidence/request-log.jsonl",
   "final_state_validator": {
     "kind": "command",
-    "command": "uv run auto-bench validate --export-json ${EXPORT_JSON}"
+    "command": "${HARNESS_CMD} validate --export-json ${EXPORT_JSON}"
   },
   "timeout_s": 300,
   "network_boundary": "benchmark-sandbox"
 }
 ```
 
-If `uv run auto-bench` is unavailable in the current repo, do not invent a
-replacement command. Record the missing command as a blocker and keep the rest of
-the artifact draft local.
+If the harness command is unavailable in the current repo, do not invent a
+replacement command. Record the missing command as a blocker and keep the rest
+of the artifact draft local.
 
 ### `environment.json` — resettable sandbox
 
@@ -101,9 +99,9 @@ the artifact draft local.
 
 ### `metric.json` — rollout score plus feedback
 
-Map AutomationBench-style `task_completed_correctly` to final-state correctness
-and `partial_credit` to the weighted rubric. The rubric must emit natural
-language feedback tied to the failing step, endpoint, invariant, or state diff.
+Map the harness's primary pass/fail field to final-state correctness and its
+graded score to the weighted rubric. The rubric must emit natural-language
+feedback tied to the failing step, endpoint, invariant, or state diff.
 
 ```json
 {
@@ -111,7 +109,7 @@ language feedback tied to the failing step, endpoint, invariant, or state diff.
   "approved": true,
   "validator": {
     "kind": "api-workflow-rubric",
-    "source": "automationbench-export",
+    "source": "harness-export",
     "feedback_required": true
   },
   "objectives": {
@@ -152,16 +150,16 @@ language feedback tied to the failing step, endpoint, invariant, or state diff.
 }
 ```
 
-### `splits.json` — domain/task freeze
+### `splits.json` — task freeze
 
-AutomationBench domains are useful split units because they expose distribution
-shift across workflow families. Keep holdout domains or rows untouched after the
-first baseline.
+Use domains, workflow families, customer segments, or row ids as split units
+when they expose meaningful distribution shift. Keep holdout groups or rows
+untouched after the first baseline.
 
 ```json
 {
   "schema_version": "understudy.splits.v1",
-  "source": "automationbench",
+  "source": "synthetic-api-workflow",
   "seed": 7,
   "split_strategy": "domain-and-row-id",
   "train": {
@@ -185,7 +183,7 @@ first baseline.
 ```json
 {
   "schema_version": "understudy.baseline.v1",
-  "command": "understudy run -- uv run auto-bench --model gpt-5.x --domains finance --num-examples 8 --export-json .understudy/capture-evidence/baseline-export.json",
+  "command": "understudy run -- ${HARNESS_CMD} --model incumbent-model-id --rows dev.jsonl --export-json .understudy/capture-evidence/baseline-export.json",
   "split": "dev",
   "sample_size": 8,
   "quality": {
@@ -218,15 +216,16 @@ first baseline.
 }
 ```
 
-## AutomationBench Command Mapping
+## Harness Command Mapping
 
-Use the benchmark command as the harness instead of inventing a CLI surface:
+Use the existing benchmark, eval, or local runner as the harness instead of
+inventing a new CLI surface:
 
 ```sh
-uv run auto-bench \
+"$HARNESS_CMD" \
   --model <model-id> \
-  --domains sales,marketing \
-  --num-examples 8 \
+  --rows dev.jsonl \
+  --tool-access production \
   --export-json .understudy/capture-evidence/<run-name>.json
 ```
 
@@ -235,39 +234,41 @@ Map flags and export fields into artifacts:
 | Command / export field | Artifact field |
 | --- | --- |
 | `--model <model-id>` | `harness.policy_model_slot`, `baseline.command`, candidate model id |
-| `--domains <domains>` | `splits.train.domains`, `splits.dev.domains`, or `splits.holdout.domains` |
-| `--num-examples <n>` | `baseline.sample_size`, candidate sample size |
+| row, domain, or task selector | `splits.train`, `splits.dev`, or `splits.holdout` |
+| example/task count | `baseline.sample_size`, candidate sample size |
+| tool-access selector | `harness.tool_access_mode`, candidate caveats |
 | `--export-json <path>` | `baseline.export_json`, candidate artifact path |
-| `task_completed_correctly` | `metric.objectives.quality.primary`, `baseline.quality.task_completed_correctly_rate` |
-| `partial_credit` | `metric.objectives.quality.partial_credit`, `baseline.quality.partial_credit_mean` |
+| primary pass/fail field | `metric.objectives.quality.primary`, `baseline.quality.task_completed_correctly_rate` |
+| graded score field | `metric.objectives.quality.partial_credit`, `baseline.quality.partial_credit_mean` |
 | request/tool trace | `harness.request_log`, `baseline.request_log_summary` |
 | seeded state/reset metadata | `harness.seeded_state`, `environment.resettable` |
 
-AutomationBench's seeded state is the determinism guarantee. Prefer it over
-hand-rolled mocks when available; the agent should record the seed and reset
-command, then run every candidate against the same rows and state.
+Seeded state is the determinism guarantee. Prefer an existing resettable
+benchmark or sandbox over hand-rolled mocks when available; the agent should
+record the seed and reset command, then run every candidate against the same rows
+and state.
 
-### Toolset Reporting
+### Tool-Access Reporting
 
-AutomationBench exposes three materially different tool surfaces:
+Most API-workflow harnesses can expose materially different tool surfaces. Keep
+those surfaces explicit because they support different claims:
 
-| Toolset | What it measures | Claim status |
+| Tool-access mode | What it measures | Claim status |
 | --- | --- | --- |
-| `api` | Blind endpoint discovery over REST/API schemas | Realistic baseline |
-| `zapier` | Structured meta-search over the tool catalog | Realistic/assisted baseline |
-| `limited_zapier` | Gold tools from each row's `info["zapier_tools"]` | Oracle diagnostic only |
+| Broad production access | Discovery or selection over the deployable API/tool catalog | Realistic baseline |
+| Structured retrieval access | Search, ranking, or advisor selection over the catalog | Realistic if the retriever is deployable |
+| Curated or oracle access | Relevant tools supplied from labels, fixtures, or a narrow test slice | Diagnostic only unless the curator is deployable |
 
-Always report a realistic-toolset number (`api` or `zapier`) beside any
-`limited_zapier` result. A `limited_zapier` win proves the model can execute the
-task once discovery is solved; it does not prove a deployable route unless a
-real retriever/advisor supplies the same tool subset without looking at gold
-labels.
+Always report a realistic tool-access number beside any curated or oracle-tool
+result. An oracle-tool win proves the model can execute the task once discovery
+is solved; it does not prove a deployable route unless a real retriever or
+advisor supplies the same tool subset without looking at labels.
 
-For small local models, treat the spread between realistic toolsets and
-`limited_zapier` as the tool-retrieval opportunity. A useful advisor report
-should include recall, precision, exact-set match, catalog size, gold tool count
-distribution, latency, and whether the catalog prefix is byte-stable enough for
-prompt caching.
+For small local models, treat the spread between realistic tool access and
+curated/oracle tool access as the tool-retrieval opportunity. A useful advisor
+report should include recall, precision, exact-set match, catalog size, target
+tool count distribution, latency, and whether the catalog prefix is byte-stable
+enough for prompt caching.
 
 ## Workload Card Fill Values
 
@@ -277,17 +278,17 @@ workflow semantics before registering or routing it:
 ```json
 {
   "schema_version": "understudy.workload_card.v1",
-  "workload_id": "automationbench-api-workflow",
-  "workload_name": "AutomationBench API workflow",
+  "workload_id": "api-workflow-eval",
+  "workload_name": "API workflow eval",
   "workload_shape": ["api-workflow", "multi-step-rollout", "stateful-tools"],
-  "data_class": "synthetic-benchmark-state",
+  "data_class": "synthetic-or-local-sandbox-state",
   "success_metric": "task_completed_correctly_rate with partial_credit_mean and side-effect safety",
   "validator": {
     "type": "final-state-plus-policy-rubric",
     "artifact": ".understudy/capture-evidence/metric.json"
   },
   "harness": {
-    "command": "uv run auto-bench --model ${MODEL} --domains ${DOMAINS} --num-examples ${N} --export-json ${EXPORT_JSON}",
+    "command": "${HARNESS_CMD} --model ${MODEL} --rows ${ROWS} --export-json ${EXPORT_JSON}",
     "artifact": ".understudy/capture-evidence/harness.json"
   },
   "baseline": {
@@ -303,20 +304,18 @@ Keep `baseline.model` factual. If the incumbent is unknown, write
 ## Model A/B Procedure
 
 For API workflows, A/B is simpler than live traffic routing: run the same
-benchmark rows twice with only `--model` changed.
+harness rows twice with only the candidate route changed.
 
 ```sh
-understudy run -- uv run auto-bench \
-  --model gpt-5.x \
-  --domains sales,marketing \
-  --num-examples 8 \
-  --export-json .understudy/capture-evidence/baseline-gpt5x.json
+understudy run -- "$HARNESS_CMD" \
+  --model incumbent-model-id \
+  --rows dev.jsonl \
+  --export-json .understudy/capture-evidence/baseline-incumbent.json
 
-understudy run -- uv run auto-bench \
-  --model glm-5.1 \
-  --domains sales,marketing \
-  --num-examples 8 \
-  --export-json .understudy/capture-evidence/candidate-glm51.json
+understudy run -- "$HARNESS_CMD" \
+  --model candidate-model-id \
+  --rows dev.jsonl \
+  --export-json .understudy/capture-evidence/candidate-local.json
 ```
 
 Compare:
@@ -355,7 +354,7 @@ Minimal manifest shape for a future adapter:
 {
   "schema_version": "understudy.eval_input_manifest.v1",
   "kind": "api-workflow-rollout",
-  "student_model": "glm-5.1",
+  "student_model": "candidate-model-id",
   "reflection_lm": "frontier-model-id",
   "train_rows": ".understudy/capture-evidence/gepa-train-rollouts.jsonl",
   "dev_rows": ".understudy/capture-evidence/gepa-dev-rollouts.jsonl",
@@ -369,28 +368,28 @@ Do not optimize the entire agent in one opaque string if a cheaper target matche
 the failures. Prefer system prompt, tool descriptions, endpoint catalog wording,
 or retry policy before broader program changes.
 
-For AutomationBench-like harnesses, the faithful version of GEPA is a live
-rollout adapter: each candidate prompt is injected into the harness, train/dev
-rows are re-run with `auto-bench --tasks ...`, and the adapter returns rubric
-scores plus natural-language failure feedback. The current public CLI adapters
-(`eval-input-gepa` and `dspy-gepa`) optimize flat prompt-to-output rows; use them
-for decomposed subtasks such as tool retrieval, or use the live-rollout recipe in
-[`../../docs/agentic-rollout-gepa.md`](../../docs/agentic-rollout-gepa.md)
-when the score must come from real tool execution.
+For stateful tool harnesses, the faithful version of GEPA is a live rollout
+adapter: each candidate prompt is injected into the harness, train/dev rows are
+re-run, and the adapter returns rubric scores plus natural-language failure
+feedback. The current public CLI adapters (`eval-input-gepa` and `dspy-gepa`)
+optimize flat prompt-to-output rows; use them for decomposed subtasks such as
+tool retrieval, or use the live-rollout recipe in
+[`../../docs/agentic-rollout-gepa.md`](../../docs/agentic-rollout-gepa.md) when
+the score must come from real tool execution.
 
 If the harness has no prompt parameter, do not edit benchmark source as an
-undocumented side effect. Prefer a checked local patch or env hook such as
-`AB_SIMPLE_SYSTEM_PROMPT`, record it in `harness.json`, save the candidate prompt
-or patch as evidence, and restore external benchmark files before claiming a
-result. If you own the harness, add `--system-prompt-file` or a per-domain env
-override.
+undocumented side effect. Prefer a checked local patch, prompt file, or env hook
+such as `CANDIDATE_SYSTEM_PROMPT`, record it in `harness.json`, save the
+candidate prompt or patch as evidence, and restore external benchmark files
+before claiming a result. If you own the harness, add `--system-prompt-file` or
+an equivalent per-suite override.
 
 ## Failure Modes And Cheapest Interventions
 
 | Failure mode | Evidence | First intervention |
 | --- | --- | --- |
-| Wrong endpoint selected | request log shows plausible but wrong route | compare `api`/`zapier` vs `limited_zapier`, then build or improve tool retrieval |
-| Gold tools succeed but realistic search fails | `limited_zapier` high, `api`/`zapier` low | stateless advisor: task -> compact tool subset, scored by recall/precision vs gold |
+| Wrong endpoint selected | request log shows plausible but wrong route | compare production tool access vs curated/oracle access, then build or improve tool retrieval |
+| Curated tools succeed but production discovery fails | curated/oracle score high, production score low | stateless advisor: task -> compact tool subset, scored by recall/precision vs target tools |
 | Missing required write | final-state diff missing expected mutation | prompt repair around completion criteria |
 | Forbidden write | request log has disallowed mutation | hard safety instruction plus deterministic preflight guard |
 | Invalid request schema | 4xx or validator schema failure | parser/schema repair before model swap |

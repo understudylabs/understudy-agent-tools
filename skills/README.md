@@ -23,11 +23,11 @@ execution; skills tell the agent what to inspect, gate, monitor, and report.
   reruns the incumbent baseline. (Discovery + capture/import folded into its
   [`reference.md`](capture-evidence/reference.md).)
 - [`optimize-api-workflow`](optimize-api-workflow/SKILL.md) evaluates and
-  optimizes cross-application REST/API workflow agents such as
-  AutomationBench-style tasks: seeded state, fixed API schemas, policy docs,
-  request logs, final-state validators, and side-effect safety before any RL
-  handoff. (Artifact schemas, AutomationBench mapping, A/B procedure, and GEPA
-  bridge in its [`reference.md`](optimize-api-workflow/reference.md).)
+  optimizes cross-application REST/API workflow agents with seeded state, fixed
+  API schemas, policy docs, request logs, final-state validators, and
+  side-effect safety before any RL handoff. (Artifact schemas, harness mapping,
+  A/B procedure, and GEPA bridge in its
+  [`reference.md`](optimize-api-workflow/reference.md).)
 - [`optimize-workload`](optimize-workload/SKILL.md) refuses stale
   artifacts, preserves train/dev/holdout boundaries, writes dry-run proof
   packets, and requires `claim.json` before public claims. (Evaluate, optimize,

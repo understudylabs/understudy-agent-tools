@@ -29,14 +29,16 @@ customer data into a public sweep report; use synthetic, anonymized, or local-on
 artifacts.
 
 Do not claim a model is cheaper, faster, or better unless the sweep used the same
-rows, harness, metric, toolset, prompt, seed, and state reset for every candidate.
+rows, harness, metric, tool-access mode, prompt, seed, and state reset for every
+candidate.
 If those differ, label the result as an ablation or diagnostic, not a Pareto
 comparison.
 
 ## Flow
 
 1. **Freeze the comparison contract.** Record workload id, harness command,
-   split/row ids, metric, prompt, toolset, seed, timeout, concurrency, and budget.
+   split/row ids, metric, prompt, tool-access mode, seed, timeout, concurrency,
+   and budget.
    Write it to `.understudy/model-sweeps/<timestamp>/sweep-plan.json`.
 
 2. **Normalize candidate routes.** Include each model id, endpoint/base URL,
@@ -48,15 +50,15 @@ comparison.
    verified filesystem paths or Understudy snapshot aliases over arbitrary
    Hugging Face ids.
 
-4. **Run the frozen matrix.** For AutomationBench, call `auto-bench` once per
-   candidate with the same `--domains`, `--tasks` or `--num-examples`,
-   `--toolset`, and `--export-json`. Keep each export under
+4. **Run the frozen matrix.** Call the same harness once per candidate with the
+   same rows, split, tool-access mode, prompt, seed, and export path. Keep each
+   export under
    `.understudy/model-sweeps/<timestamp>/candidate-runs/<candidate>/`.
 
 5. **Summarize at the same grain.** Build `summary.csv` with candidate, route,
-   model family, toolset, task count, pass rate, partial credit, total tokens,
-   cost/task, run seconds, errors, empty responses, and caveats. If per-task
-   latency is unavailable, use run-level duration and say so.
+   model family, tool-access mode, task count, pass rate, partial credit, total
+   tokens, cost/task, run seconds, errors, empty responses, and caveats. If
+   per-task latency is unavailable, use run-level duration and say so.
 
 6. **Compute the frontier.** A candidate is dominated when another candidate has
    equal or better quality and equal or lower cost and latency, with no worse
@@ -66,27 +68,25 @@ comparison.
    the cheapest acceptable model at the agreed quality floor, and the next action:
    ship route, build retrieval/tooling, run GEPA, climb local model, or use remote.
 
-## AutomationBench Pattern
+## Harness Pattern
 
-Use AutomationBench's JSON exports directly:
+Use the workload harness's JSON exports directly. Keep the command concrete in
+`sweep-plan.json`, but avoid changing anything except the candidate route:
 
 ```sh
-uv run auto-bench \
+"$HARNESS_CMD" \
   --model "$MODEL" \
-  --base-url "$BASE_URL" \
-  --api-key "$API_KEY" \
-  --api chat_completions \
-  --domains simple \
-  --toolset api \
-  --tasks "$TASKS" \
+  --endpoint "$ENDPOINT" \
+  --rows "$ROWS" \
+  --tool-access "$TOOL_ACCESS" \
   --export-json ".understudy/model-sweeps/$RUN/candidate-runs/$ID/results.json"
 ```
 
-For API-workflow sweeps, keep toolset interpretation explicit:
+For API-workflow sweeps, keep tool-access interpretation explicit:
 
-- `api` and `zapier` are realistic tool-discovery comparisons.
-- `limited_zapier` is an oracle-tool diagnostic unless a retriever/advisor is
-  being evaluated and scored separately.
+- Broad or production tool access is the deployable baseline.
+- Curated, narrow, or oracle tool access is diagnostic unless a retriever or
+  advisor is being evaluated and scored separately.
 
 ## Output Standard
 
