@@ -158,9 +158,13 @@ confirm() {
 }
 prompt_choice() {
   local prompt="$1"
-  [ "$YES" = "1" ] && return 1
+  if [ "$YES" = "1" ]; then
+    printf '\n'
+    return 0
+  fi
   if [ ! -r /dev/tty ]; then
-    return 1
+    printf '\n'
+    return 0
   fi
   printf "%s " "$prompt" >/dev/tty
   read -r answer </dev/tty
