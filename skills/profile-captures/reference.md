@@ -1,8 +1,56 @@
 # profile-captures — reference
 
-Deeper notes for the [`profile-captures`](SKILL.md) skill. The runnable is
-[`profile_captures.ts`](profile_captures.ts) — dependency-free, run by Node ≥ 22.6 via
-native type-stripping (no build step, like `mlx-arena/blind_arena.ts`).
+The algorithm the [`profile-captures`](SKILL.md) skill has you implement on the spot, in
+whatever language the environment already has (Node, Python, `jq`…). There is no shipped
+binary: capture formats vary by gateway and provider, so you write a short, throwaway,
+dependency-free profiler against the *actual* shape in front of you, run it, and delete
+it. This file is the spec; reproduce it faithfully and two runs agree.
+
+## Build it (algorithm)
+
+```
+for each line in each *.jsonl under the dump:
+  env  = parse the envelope (JSON)
+  req  = parse env.customer_request_body|request|body   (often a JSON string)
+  usage = extractUsage(env.response_body|response)       (see streaming gotcha)
+  model = env.requested_model | env.model | req.model
+  price = table[firstKeySubstringMatch(model)]  or  {open_weight:true, all $0}
+  cost  = (usage.input*in + usage.output*out
+           + usage.cache_write*cacheWrite + usage.cache_read*cacheRead) / 1e6
+  tools   = names(req.tools)                         # [].name or [].function.name
+  family  = tools.length ? "agent" : "direct"
+  persona = firstHeadingOrLine(systemBlocks(req), skipping header-shaped blocks)
+  turns   = req.messages without role=="system"      # user/assistant turns only
+  key     = model | family | hash(sortedTools) | hash(persona)
+  accumulate cost, tokens, count, single(=turns<=1), structured(=looksStructured) into cluster[key]
+  accumulate cost+tokens into byModel[model] and count into byFamily[family]
+
+candidates = clusters where n_tools==0
+             AND single/count > 0.9
+             AND structured/count > 0.5
+             AND not price.open_weight,    sorted by cost desc
+write profile.json + profile.md
+```
+
+`looksStructured` = `req.response_format` or `req.output_config` present, **or** a system
+block that mentions JSON together with one of {only, array, object, schema, verdict}.
+
+## What it reads (capture envelope)
+
+Each line of a `.jsonl` capture is one request envelope. Be tolerant of field naming and
+of both Anthropic and OpenAI shapes. Look for:
+
+| Field | Used for |
+|---|---|
+| `requested_model` / `model` | model id (→ pricing, clustering) |
+| `mode` | reseller / byo split |
+| `ts` | per-day volume |
+| `latency_ms` | average latency per cluster |
+| `customer_request_body` (JSON string or object) | system, tools, messages → structure |
+| `response_body` (SSE string or object) | token usage |
+
+`customer_request_body` and `response_body` are commonly **JSON-encoded strings** in
+captures — parse them lazily.
 
 ## What it reads (capture envelope)
 
@@ -89,11 +137,12 @@ proven by `run-local-model-lab`, not a guaranteed saving.
 
 ## Pricing
 
-Built-in `$/Mtok` table (input, output, cache-write, cache-read). Cache write is priced
-at 1.25× input (5-minute TTL); cache read at 0.10× input. **Any model not in the table
-is treated as open-weight/local and priced at $0** — so a local rung shows up as free,
-which is the whole point. Override or extend with `--pricing prices.json` (same shape as
-the built-in `DEFAULT_PRICES`), and state which table you used in the writeup.
+Use a `$/Mtok` table keyed by model (input, output, cache-write, cache-read). A common
+default: cache write ≈ 1.25× input (5-minute TTL), cache read ≈ 0.10× input — but set
+per-model values from the provider's published prices (OpenAI's cached-input rate
+differs, etc.). **Any model not in the table is treated as open-weight/local and priced
+at $0** — so a local rung shows up as free, which is the whole point. State which table
+you used in the writeup, and let the user pass their own (e.g. negotiated rates).
 
 ## Output
 

@@ -11,22 +11,25 @@ metadata:
 # Profile captures (fleet cost + call-type taxonomy)
 
 `understand-workload` decomposes **one** trace. This skill is its **fleet** sibling:
-point it at a directory of gateway captures and it sweeps **all** of them into a
-single picture — what kinds of calls there are, where the spend goes, and **which
-call types an open-weight / local model could take over**. That last part is the
-point: Understudy is about moving work off the frontier onto free local models, and
-you can't pick what to move until you can see the whole fleet sorted by what it costs
-and how hard it is to replace.
+point it at a directory of gateway captures and it sweeps **all** of them into a single
+picture — what kinds of calls there are, where the spend goes, and **which call types an
+open-weight / local model could take over**. That last part is the point: Understudy is
+about moving work off the frontier onto free local models, and you can't pick what to
+move until you can see the whole fleet sorted by what it costs and how hard it is to
+replace.
 
-It is the natural first step when someone hands you a capture dump and asks "what is
-all this, and what can we make cheaper?" — run the profile, then aim
-`understand-workload` at the cluster worth decomposing and `run-local-model-lab` at the
-candidate worth testing.
+This is a skill, not a shipped script. **You write the profiler on the spot** — a short,
+throwaway local program in whatever language the environment already has (Node, Python,
+`jq`…), implementing the algorithm in [`reference.md`](reference.md) against the *actual*
+shape of the captures in front of you. Capture formats vary by gateway and provider; a
+frozen binary would rot, and an agent can tailor parsing to what's really there. Run it,
+produce the report, then delete the scaffolding — the report is the artifact, the script
+is not.
 
-It is **provider-agnostic**: it reads Anthropic, OpenAI, and any OpenAI-compatible
-gateway capture shape (streamed or object responses), clusters on tool/turn structure
-rather than any provider's prompt boilerplate, and prices every model from a swappable
-table — anything not in the table is treated as open-weight/local ($0).
+It is **provider-agnostic**: the algorithm reads Anthropic, OpenAI, and any
+OpenAI-compatible gateway shape (streamed or object responses), clusters on tool/turn
+structure rather than any provider's prompt boilerplate, and prices every model from a
+swappable table — anything not in the table is treated as open-weight/local ($0).
 
 ## When to use
 
@@ -41,55 +44,60 @@ For deep understanding of one representative trace, use
 
 ## Safety Gates
 
-- **Local-first, no uploads.** The profiler reads local files and writes a local
-  `profile.json` + `profile.md`. It makes no network calls and needs no auth.
-- **Redaction by construction.** The bundled script emits **structure only** — model
-  ids, token counts, toolset **names**, system-prompt **headings/first line**, message
-  **roles and sizes**. It never reads, stores, or renders message bodies, so the
-  report is safe to share. Do not bolt on a mode that dumps raw payloads.
+- **Local-first, no uploads.** The profiler you write reads local files and writes a
+  local `profile.json` + `profile.md`. It makes no network calls and needs no auth.
+- **Redaction by construction.** Emit **structure only** — model ids, token counts,
+  toolset **names**, system-prompt **headings/first line**, message **roles and sizes**.
+  Never read, store, or render message bodies, tool inputs, or completions, so the
+  report is safe to share. Build the parser so raw payloads can't leak by construction.
+- **The script is scaffolding, not an artifact.** Write it to a temp/working path, run
+  it, and delete it when the report is produced. Do not commit it.
 - **No savings *claims* from the profile alone.** The candidate list is a *shortlist to
   test*, and the dollar figures are *addressable spend at list prices*, not promised
-  savings. Prove any number by scoring the candidate in `run-local-model-lab` and
-  freezing a metric with `capture-evidence` before claiming anything.
-- **Pricing is explicit.** Costs come from a built-in table; **unknown/local models are
-  treated as open-weight ($0)**. Override with `--pricing` and say which table you used.
+  savings. Prove any number in `run-local-model-lab` and freeze a metric with
+  `capture-evidence` before claiming anything.
+- **Pricing is explicit.** Use a stated price table; **unknown/local models are
+  open-weight ($0)**. Say which table you used.
 
 ## Resolve CLI
 
-Not required — this skill runs a bundled, dependency-free Node script. (`cli_required:
-false`.) If the Understudy CLI is present you may record the run as an experiment
-artifact, but it is optional.
+Not required — this skill writes and runs a short local script (`cli_required: false`).
+If the Understudy CLI is present you may record the run as an experiment artifact, but it
+is optional.
 
 ## Flow
 
-1. **Locate the dump.** Find the directory of `.jsonl` captures. Note the file count
-   and rough size so you can set the user's expectation (a large dump is a minute or
-   two of pure local parsing).
+1. **Locate the dump.** Find the directory of `.jsonl` captures; note the file count and
+   rough size so you can set the user's expectation (a large dump is a minute or two of
+   pure local parsing).
 
-2. **Run the profiler** (Node ≥ 22.6, no install):
+2. **Learn the real shape.** Read **one or two** capture files *for structure only* to
+   confirm the envelope fields and, critically, whether responses are **streamed**
+   (usage split across stream events) or **parsed objects** (usage on the body), and
+   whether requests are Anthropic- or OpenAI-shaped. [`reference.md`](reference.md)
+   documents the variants and the streaming-usage gotcha.
 
-   ```bash
-   node --experimental-strip-types skills/profile-captures/profile_captures.ts \
-     <captures-dir> --out <captures-dir>
-   ```
+3. **Write the profiler.** In whatever language the box already has, implement the
+   algorithm in [`reference.md`](reference.md): parse token usage (from the stream or the
+   object), cluster each request by `model | family | toolset | persona` (structure, not
+   the volatile prompt text), price via your table (unknown ⇒ open-weight $0), and flag
+   **toolless + single-turn + structured-output** clusters as takeover candidates,
+   ranked by spend. Keep it redaction-safe.
 
-   It writes `profile.json` (machine-readable) and `profile.md` (the report with a
+4. **Run it and read the report back.** It writes `profile.json` + `profile.md` (a
    mermaid call-taxonomy graph, a cost-by-token-type pie for the priciest priced model,
-   and the open-weight-candidate table). Pass `--pricing prices.json` to override the
-   per-model table (e.g. your negotiated rates, or to add models it doesn't know).
+   and the candidate table). Walk the call types: **agentic loops** (many tools,
+   multi-turn — hard to move) vs **toolless micro-prompts** (single-turn, often
+   structured — cheap to move). Name where spend concentrates and whether it's
+   **generation or cache I/O** (the pie answers this — heavy cache I/O means the lever is
+   caching/routing, not a smaller model).
 
-3. **Read the taxonomy back to the user.** Walk the call types from the report:
-   which are **agentic loops** (many tools, multi-turn — hard to move) vs **toolless
-   micro-prompts** (single-turn, often structured — cheap to move). Name where the
-   spend concentrates and whether it's **generation or cache I/O** (the pie answers
-   this — heavy cache I/O means the lever is caching/routing, not a smaller model).
+5. **Surface the open-weight candidates.** For each, give the call count and addressable
+   spend, and that the next step is to *measure*, not assume.
 
-4. **Surface the open-weight candidates.** The report ranks toolless + single-turn +
-   structured-output clusters by spend — these are the lowest-risk to hand to a local
-   model (a cascade can escalate the hard tail). For each, state the call count and the
-   addressable spend, and that the next step is to *measure*, not assume.
+6. **Hand off, then clean up.** Route each finding to the right next skill (below), then
+   **delete the throwaway profiler script**; keep `profile.json`/`profile.md` local.
 
-5. **Hand off.** Route each finding to the right next skill:
    - cheap candidate → [`../run-local-model-lab/SKILL.md`](../run-local-model-lab/SKILL.md)
      to score a local open-weight model against it; cascade if it's close.
    - an agentic-loop cluster worth moving → [`../understand-workload/SKILL.md`](../understand-workload/SKILL.md)
@@ -103,13 +111,13 @@ artifact, but it is optional.
 End with: the dump profiled (files, requests, window); the cost split by model and by
 family; the call-type taxonomy (the mermaid graph from the report); the ranked
 open-weight-candidate table with call counts and addressable spend; and the specific
-next skill for the top candidate. Keep `profile.json`/`profile.md` local. Make every
-cost/structure claim from the profile, not from memory.
+next skill for the top candidate. Keep `profile.json`/`profile.md` local and delete the
+profiler script. Make every cost/structure claim from the profile, not from memory.
 
 ## References
 
-- [`reference.md`](reference.md) — capture schema, the streaming-usage gotcha, the
-  clustering key, the candidate heuristic, and the pricing/redaction model.
-- [`profile_captures.ts`](profile_captures.ts) — the bundled, dependency-free runnable.
+- [`reference.md`](reference.md) — the algorithm to implement: capture schema, the
+  streaming-usage gotcha, the clustering key, the candidate heuristic, and the
+  pricing/redaction model.
 - [`../understand-workload/SKILL.md`](../understand-workload/SKILL.md) — decompose one trace.
 - [`../run-local-model-lab/SKILL.md`](../run-local-model-lab/SKILL.md) — score a local model on a candidate.
