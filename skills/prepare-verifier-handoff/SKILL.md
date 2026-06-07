@@ -39,6 +39,18 @@ Check these before routing here. Most agentic tool-use work stays local:
   [`../rlm-pedagogical-training/SKILL.md`](../rlm-pedagogical-training/SKILL.md)
   first; this handoff is only for work that still needs external or hosted
   training.
+- **Before** routing here, confirm RL would not be wasted spend: (a) attribute
+  the multi-turn rollouts and confirm the residual is **cross-turn reasoning**,
+  not format or argument-value (cheaper rungs fix those); (b) the reward is
+  **dense, not strict** — a binary/strict reward can be constant within a group,
+  giving zero advantage and no gradient; and (c) the chosen model has a
+  first-class multi-turn GRPO **trainer and renderer** (e.g. NVIDIA Nemotron-3
+  does; Google Gemma-4 does not yet — no merged trainer, no multi-turn renderer).
+  If any gate fails, fix it (or pick a supported model) before any RL handoff.
+  For (b), implement the rewardability check per
+  [`references/rewardability.md`](references/rewardability.md) against the real scored-rollout
+  artifact; for (c), use the model matrix in
+  [`references/rl-readiness-matrix.md`](references/rl-readiness-matrix.md).
 - **Only** continue here once the confirmed need is RL / stateful policy
   training that the local rungs cannot satisfy.
 
@@ -124,3 +136,11 @@ End with:
 - missing evidence blocking a partner handoff;
 - one recommended next step, usually reading Prime Intellect Verifiers docs or
   preparing the handoff packet.
+
+## References
+
+- [`references/rl-readiness-matrix.md`](references/rl-readiness-matrix.md) — which open models
+  have a first-class multi-turn GRPO trainer + renderer (the decision-gate (c) lookup).
+- [`references/rewardability.md`](references/rewardability.md) — an implementable principle (not a
+  shipped script): the dense-vs-strict / constant-group / fail-closed checks the agent runs against
+  the real scored-rollout artifact, with the failure modes it must handle.

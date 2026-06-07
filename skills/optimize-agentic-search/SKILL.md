@@ -90,7 +90,19 @@ If the workload emits one output with no tool loop, route to
    those queries so the harness replays reproducibly and the holdout stays clean.
    See [`reference.md`](reference.md) → Determinism.
 
-5. **PRIMARY intervention — model A/B via the CLI.** This is the main move:
+5. **Attribute the multi-turn gap before intervening.** Read the environment's
+   multi-turn rollouts, not just the final score, and tag where reward is lost:
+   wrong tool, wrong argument value, **result-propagation** (mis-copying a value a
+   prior tool returned into a later call), failure to recover from a tool error,
+   or non-termination. Single-turn / next-tool-call imitation scores are a
+   *leading indicator only* — they cannot see result-propagation, recovery, or
+   termination, which exist only inside the running environment. Let the
+   attribution pick the **cheapest rung that closes the gap**, in order:
+   output-contract repair (prefill / format) → model A/B → prompt / GEPA →
+   distillation → RL. Often the gap is format or argument-fidelity, not planning,
+   and a cheap rung wins.
+
+6. **PRIMARY intervention — model A/B via the CLI.** This is the main move:
 
    ```sh
    understudy models list --json
@@ -108,18 +120,24 @@ If the workload emits one output with no tool loop, route to
    with `--clear`. Routing detail lives in
    [`../use-understudy-gateway/SKILL.md`](../use-understudy-gateway/SKILL.md).
 
-6. **SECONDARY intervention — optimize the cheap model's prompt.** If a cheaper
+7. **SECONDARY intervention — optimize the cheap model's prompt.** If a cheaper
    model wins on latency and cost but trails on quality, close the gap with a
    train/dev-only GEPA pass against the feedback-rich rubric, keeping the
    latency/cost win. Hand this off to
    [`../optimize-workload/SKILL.md`](../optimize-workload/SKILL.md); never tune
    on holdout.
 
-7. **Escalate only as a true handoff.** If model swap and prompt optimization
-   both stall while real headroom remains and the agent must learn *stateful*
-   multi-step behavior, route to
-   [`../prepare-verifier-handoff/SKILL.md`](../prepare-verifier-handoff/SKILL.md)
-   for the RL / policy-training rung. This repo never runs that training.
+8. **Escalate to RL only as a true handoff, behind three gates.** If model swap
+   and prompt/distillation stall while real headroom remains and the residual is
+   genuinely *stateful* multi-step behavior, route to
+   [`../prepare-verifier-handoff/SKILL.md`](../prepare-verifier-handoff/SKILL.md).
+   First confirm: (a) the attribution in step 5 shows **cross-turn reasoning** is
+   the residual, not format/argument-value (which are cheaper to fix); (b) the
+   reward is **dense, not strict** — a binary/strict reward can be constant within
+   a group, giving zero advantage and no gradient (paid-for, wasted steps); and
+   (c) the model has a first-class multi-turn GRPO **trainer and renderer** (e.g.
+   NVIDIA Nemotron-3 does; Google Gemma-4 does not yet), or the RL run is wasted
+   before it starts. This repo never runs that training.
 
 Capture evidence before you optimize, exactly as the rest of the MVP loop
 requires (see [`../understudy/SKILL.md`](../understudy/SKILL.md)). The decision
