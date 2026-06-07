@@ -249,6 +249,28 @@ say "Install source ref: $INSTALL_REF"
 say "Understudy starts with a small open-weight model on your Mac."
 say "You compare it against a frontier model, then climb the ladder with better data, evals, GEPA/RLM, bigger local models, or remote runs."
 say "The point is concrete: build a replacement model for work you currently send to a frontier model."
+say ""
+say "Install plan:"
+say "  1. Download the Understudy CLI and Pi terminal harness from $INSTALL_REPO_URL#$INSTALL_REF."
+say "  2. Install the CLI globally so agents can run durable Understudy commands."
+say "  3. Install the Claude Code skills when Claude Code is available, unless --no-claude is set."
+say "  4. Create an isolated local MLX runtime under $LAB."
+if [ "$NO_MODEL" = "0" ]; then
+  say "  5. Download the first model snapshot into $MODEL_DIR."
+  say "     First rung: Gemma 4 E2B IT, MLX-VLM 4-bit, about 3.3GB."
+else
+  say "  5. Reuse an existing model snapshot at $MODEL_DIR."
+fi
+say "  6. Open a tmux/Pi window so you can meet the local model as your first Understudy."
+if [ "$NO_GAUNTLET" = "0" ]; then
+  say "  7. Ask again before running the local-vs-frontier duel."
+  say "     Frontier attempts use local OpenAI/Anthropic keys or a configured AI gateway first, then fall back to Understudy glm-5.1."
+else
+  say "  7. Skip the remote frontier duel because --no-gauntlet is set."
+fi
+say ""
+say "This installer writes only under $LAB, $HOME/.understudy, the global npm prefix, and Claude Code plugin state when enabled."
+confirm "Continue with this Understudy installation?" || exit 1
 
 if ! need uv; then
   say "uv is required for the isolated MLX runtime."
@@ -383,7 +405,7 @@ if [ "$NO_GAUNTLET" = "0" ]; then
     install_tmux
     section "Step 5/5: run the local-vs-frontier duel."
     say "Pi opens a side-by-side harness: local Understudy on the left, frontier baseline on the right."
-    say "This step may make remote frontier calls using your Anthropic key or your Understudy gateway account."
+    say "This step may make remote frontier calls using a local OpenAI/Anthropic key, a configured AI gateway, or your Understudy gateway fallback."
     say "The shared tmux session is ${SESSION:-mlx-arena}-play; the agent can send prompts and you can watch or take over."
     say "After the stock questions, point Understudy at a dataset or codebase."
     say "Then use the skills to generate task-specific evals and climb: better prompts, GEPA/RLM, larger Gemma/Nemotron, or remote training."

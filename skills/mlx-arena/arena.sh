@@ -436,8 +436,8 @@ cmd_first() {
 # One-command bring-up of the BLIND HEAD-TO-HEAD game (blind_arena.ts):
 # serve the local model with MLX, then launch the TypeScript game in tmux (Node runs the
 # .ts directly via --experimental-strip-types). The only Python is mlx_lm.server.
-# The frontier side defaults to the Understudy gateway. Set FRONTIER_MODEL=claude...
-# to use a direct Anthropic BYOK comparison instead.
+# The frontier side resolves OpenAI/Anthropic/custom AI gateway first, then falls
+# back to the Understudy gateway model.
 cmd_play() {
   _need tmux; _need curl; _need node
   [ -x "$MLX_PYTHON" ] || { echo "MLX python not found: $MLX_PYTHON — create it with:
@@ -451,9 +451,6 @@ cmd_play() {
   _wait_health "$LEFT_PORT" "$LEFT_LABEL"
   local S="${SESSION}-play" frontier_model
   frontier_model="${FRONTIER_MODEL:-}"
-  if [ -z "$frontier_model" ]; then
-    frontier_model="glm-5.1"
-  fi
   # seed the frontier keys into the tmux global env (not echoed) so the game pane inherits them
   tmux start-server 2>/dev/null || true
   tmux setenv -g ANTHROPIC_LOCAL_KEY "${ANTHROPIC_LOCAL_KEY:-${ANTHROPIC_API_KEY:-}}"

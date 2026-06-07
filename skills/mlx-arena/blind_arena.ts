@@ -6,8 +6,8 @@
 // (the `arena.sh play` launcher does this for you). The only Python left is the
 // MLX model server (mlx_lm.server), which arena.sh invokes as a subprocess.
 //
-// A frontier model via the Understudy gateway, or an explicit direct Anthropic
-// model, vs a small local MLX model, randomly assigned Left/Right. Two questions per round —
+// A frontier model via OpenAI/Anthropic/an OpenAI-compatible gateway, falling
+// back to the Understudy gateway, vs a small local MLX model. Two questions per round —
 // which do you PREFER, and which do you think is the FRONTIER — blind until the end,
 // then a cost x speed x intelligence reveal. The frontier is ONE swappable config
 // (FRONTIER_MODEL); no per-provider branches in the game logic.
@@ -35,20 +35,25 @@ const CATEGORY_ENV = (env.CATEGORY ?? "").trim().toLowerCase();
 const ROUNDS = parseInt(env.ROUNDS ?? "6", 10);
 const PANEL_W = 60;
 
-const FRONTIER_MODEL = env.FRONTIER_MODEL?.trim() || "glm-5.1";
-// prefix -> provider adapter + $/1M (in,out). First match wins; "" is the default.
-const FRONTIER_REGISTRY: [string, { provider: string; in: number; out: number }][] = [
-  ["claude", { provider: "anthropic", in: 5.0, out: 25.0 }],
-  ["gpt", { provider: "gateway-openai", in: 1.25, out: 10.0 }],
-  ["o", { provider: "gateway-openai", in: 1.25, out: 10.0 }],
-  ["", { provider: "gateway-openai", in: 1.0, out: 5.0 }],
-];
-const FRONTIER_CFG = (() => {
-  for (const [pre, cfg] of FRONTIER_REGISTRY)
-    if (FRONTIER_MODEL.startsWith(pre)) return { ...cfg, model: FRONTIER_MODEL };
-  return { provider: "gateway-openai", in: 1.0, out: 5.0, model: FRONTIER_MODEL };
-})();
-const FRONTIER_NAME = `${FRONTIER_MODEL} (high reasoning · cloud · $$)`;
+const REQUESTED_FRONTIER_MODEL = env.FRONTIER_MODEL?.trim();
+const OPENAI_FRONTIER_MODEL = env.OPENAI_MODEL?.trim() || REQUESTED_FRONTIER_MODEL || "gpt-5.1";
+const ANTHROPIC_FRONTIER_MODEL = env.ANTHROPIC_MODEL?.trim() || REQUESTED_FRONTIER_MODEL || "claude-opus-4-8";
+const GATEWAY_FRONTIER_MODEL = env.AI_GATEWAY_MODEL?.trim() || REQUESTED_FRONTIER_MODEL || OPENAI_FRONTIER_MODEL;
+const UNDERSTUDY_FALLBACK_MODEL = env.UNDERSTUDY_FALLBACK_MODEL?.trim() || "glm-5.1";
+const FRONTIER_FALLBACK_ENABLED = env.FRONTIER_FALLBACK === "0" ? false : true;
+const FRONTIER_NAME = `${REQUESTED_FRONTIER_MODEL || OPENAI_FRONTIER_MODEL} (high reasoning · cloud · $$)`;
+let activeFrontierName = FRONTIER_NAME;
+
+type FrontierAttempt = {
+  provider: "anthropic" | "openai-compatible" | "understudy-gateway";
+  model: string;
+  name: string;
+  apiKey?: string;
+  baseURL?: string;
+  headers?: Record<string, string>;
+  in: number;
+  out: number;
+};
 
 function loadGateway(): { key?: string; url?: string } {
   try {
@@ -71,6 +76,85 @@ function loadGateway(): { key?: string; url?: string } {
   } catch {
     return {};
   }
+}
+
+function normalizeBaseURL(value: string): string {
+  return value.replace(/\/+$/, "").replace(/\/v1$/, "") + "/v1";
+}
+
+function pushUniqueAttempt(attempts: FrontierAttempt[], attempt: FrontierAttempt): void {
+  const key = `${attempt.provider}:${attempt.baseURL ?? ""}:${attempt.model}`;
+  if (!attempts.some((a) => `${a.provider}:${a.baseURL ?? ""}:${a.model}` === key)) attempts.push(attempt);
+}
+
+function resolveFrontierAttempts(): FrontierAttempt[] {
+  const attempts: FrontierAttempt[] = [];
+  const directOpenAIKey = env.OPENAI_API_KEY?.trim();
+  const anthropicKey = (env.ANTHROPIC_LOCAL_KEY || env.ANTHROPIC_API_KEY)?.trim();
+  const customGatewayURL = (env.FRONTIER_BASE_URL || env.AI_GATEWAY_BASE_URL || env.OPENAI_BASE_URL)?.trim();
+  const customGatewayKey = (env.FRONTIER_API_KEY || env.AI_GATEWAY_API_KEY || env.OPENAI_API_KEY)?.trim();
+
+  if (REQUESTED_FRONTIER_MODEL?.startsWith("claude") && anthropicKey) {
+    pushUniqueAttempt(attempts, {
+      provider: "anthropic",
+      model: REQUESTED_FRONTIER_MODEL,
+      name: `${REQUESTED_FRONTIER_MODEL} (Anthropic direct)`,
+      apiKey: anthropicKey,
+      in: 5.0,
+      out: 25.0,
+    });
+  }
+
+  if (directOpenAIKey && !customGatewayURL && !REQUESTED_FRONTIER_MODEL?.startsWith("claude")) {
+    pushUniqueAttempt(attempts, {
+      provider: "openai-compatible",
+      model: OPENAI_FRONTIER_MODEL,
+      name: `${OPENAI_FRONTIER_MODEL} (OpenAI direct)`,
+      apiKey: directOpenAIKey,
+      baseURL: "https://api.openai.com/v1",
+      in: 1.25,
+      out: 10.0,
+    });
+  }
+
+  if (anthropicKey && !REQUESTED_FRONTIER_MODEL && !directOpenAIKey) {
+    pushUniqueAttempt(attempts, {
+      provider: "anthropic",
+      model: ANTHROPIC_FRONTIER_MODEL,
+      name: `${ANTHROPIC_FRONTIER_MODEL} (Anthropic direct)`,
+      apiKey: anthropicKey,
+      in: 5.0,
+      out: 25.0,
+    });
+  }
+
+  if (customGatewayURL) {
+    pushUniqueAttempt(attempts, {
+      provider: "openai-compatible",
+      model: GATEWAY_FRONTIER_MODEL,
+      name: `${GATEWAY_FRONTIER_MODEL} (AI gateway)`,
+      apiKey: customGatewayKey || "gateway",
+      baseURL: normalizeBaseURL(customGatewayURL),
+      in: 1.25,
+      out: 10.0,
+    });
+  }
+
+  const gateway = loadGateway();
+  if (gateway.key && gateway.url) {
+    pushUniqueAttempt(attempts, {
+      provider: "understudy-gateway",
+      model: UNDERSTUDY_FALLBACK_MODEL,
+      name: `${UNDERSTUDY_FALLBACK_MODEL} (Understudy gateway fallback)`,
+      apiKey: gateway.key,
+      baseURL: normalizeBaseURL(gateway.url),
+      headers: { "x-understudy-upstream-key": env.OPENAI_API_KEY ?? "" },
+      in: 1.0,
+      out: 5.0,
+    });
+  }
+
+  return FRONTIER_FALLBACK_ENABLED ? attempts : attempts.slice(0, 1);
 }
 
 const SYSTEM =
@@ -184,6 +268,7 @@ type Result = {
   cost: number;
   done: boolean;
   error: string | null;
+  modelLabel?: string;
 };
 const newResult = (): Result => ({
   kind: null, text: "", thinking: "", tStart: Date.now(), tFirst: null, tEnd: null,
@@ -210,20 +295,35 @@ async function runLocal(q: string, res: Result): Promise<void> {
 
 async function runFrontier(q: string, res: Result): Promise<void> {
   res.kind = "frontier"; res.tStart = Date.now();
+  const attempts = resolveFrontierAttempts();
   try {
-    if (FRONTIER_CFG.provider === "anthropic") await streamAnthropic(q, res);
-    else await streamGateway(q, res);
+    if (attempts.length === 0) throw new Error("No frontier route configured. Set OPENAI_API_KEY, ANTHROPIC_API_KEY, FRONTIER_BASE_URL, or run `understudy login`.");
+    let lastError: unknown = null;
+    for (const attempt of attempts) {
+      res.text = ""; res.thinking = ""; res.inTok = 0; res.outTok = 0; res.cost = 0; res.error = null; res.tFirst = null;
+      try {
+        if (attempt.provider === "anthropic") await streamAnthropic(q, res, attempt);
+        else await streamOpenAICompatible(q, res, attempt);
+        activeFrontierName = attempt.name;
+        res.modelLabel = attempt.name;
+        return;
+      } catch (e: any) {
+        lastError = e;
+        if (!FRONTIER_FALLBACK_ENABLED) throw e;
+      }
+    }
+    throw lastError ?? new Error("No frontier attempt succeeded.");
   } catch (e: any) { res.error = String(e?.message ?? e); }
   finally { res.tEnd = Date.now(); res.done = true; }
 }
 
-async function streamAnthropic(q: string, res: Result): Promise<void> {
-  const key = env.ANTHROPIC_LOCAL_KEY || env.ANTHROPIC_API_KEY;
-  if (!key) throw new Error(`FRONTIER_MODEL=${FRONTIER_CFG.model} needs ANTHROPIC_LOCAL_KEY or ANTHROPIC_API_KEY.`);
+async function streamAnthropic(q: string, res: Result, attempt: FrontierAttempt): Promise<void> {
+  const key = attempt.apiKey;
+  if (!key) throw new Error(`FRONTIER_MODEL=${attempt.model} needs ANTHROPIC_LOCAL_KEY or ANTHROPIC_API_KEY.`);
   const Anthropic = (await import("@anthropic-ai/sdk")).default;
   const client = new Anthropic({ apiKey: key });
   const stream = client.messages.stream({
-    model: FRONTIER_CFG.model, max_tokens: 4000,
+    model: attempt.model, max_tokens: 4000,
     thinking: { type: "adaptive", display: "summarized" }, output_config: { effort: "high" },
     system: SYSTEM, messages: [{ role: "user", content: q }],
   } as any);
@@ -235,16 +335,15 @@ async function streamAnthropic(q: string, res: Result): Promise<void> {
   }
   const final: any = await stream.finalMessage();
   res.inTok = final.usage.input_tokens; res.outTok = final.usage.output_tokens;
-  res.cost = (res.inTok * FRONTIER_CFG.in + res.outTok * FRONTIER_CFG.out) / 1e6;
+  res.cost = (res.inTok * attempt.in + res.outTok * attempt.out) / 1e6;
 }
 
-async function streamGateway(q: string, res: Result): Promise<void> {
-  const { key, url } = loadGateway();
-  if (!url) throw new Error("No Understudy gateway in ~/.understudy/credentials.json (set ANTHROPIC_LOCAL_KEY to use a claude FRONTIER_MODEL instead).");
-  if (!key) throw new Error("No Understudy API key in ~/.understudy/credentials.json. Run `understudy login` once, then re-run the arena.");
-  const client = new OpenAI({ baseURL: url + "/v1", apiKey: key, defaultHeaders: { "x-understudy-upstream-key": env.OPENAI_API_KEY ?? "" } });
+async function streamOpenAICompatible(q: string, res: Result, attempt: FrontierAttempt): Promise<void> {
+  if (!attempt.baseURL) throw new Error(`No base URL for ${attempt.name}.`);
+  if (!attempt.apiKey) throw new Error(`No API key for ${attempt.name}.`);
+  const client = new OpenAI({ baseURL: attempt.baseURL, apiKey: attempt.apiKey, defaultHeaders: attempt.headers ?? {} });
   const stream = await client.chat.completions.create({
-    model: FRONTIER_CFG.model, max_completion_tokens: 2000, stream: true,
+    model: attempt.model, max_completion_tokens: 2000, stream: true,
     stream_options: { include_usage: true }, reasoning_effort: "high",
     messages: [{ role: "system", content: SYSTEM }, { role: "user", content: q }],
   } as any);
@@ -253,7 +352,7 @@ async function streamGateway(q: string, res: Result): Promise<void> {
     const d = chunk.choices?.[0]?.delta?.content;
     if (d) { if (res.tFirst === null) res.tFirst = Date.now(); res.text += d; }
   }
-  res.cost = (res.inTok * FRONTIER_CFG.in + res.outTok * FRONTIER_CFG.out) / 1e6;
+  res.cost = (res.inTok * attempt.in + res.outTok * attempt.out) / 1e6;
 }
 
 // ---------- rendering ----------
@@ -285,7 +384,7 @@ function panelLines(side: string, res: Result, revealed: boolean): string[] {
   if (res.error) body.push(`[error] ${res.error}`);
   let title = side, sub = "";
   if (revealed) {
-    title += "  —  " + (res.kind === "frontier" ? FRONTIER_NAME : LOCAL_LABEL);
+    title += "  —  " + (res.kind === "frontier" ? res.modelLabel ?? activeFrontierName : LOCAL_LABEL);
     if (res.done) {
       const el = ((res.tEnd ?? Date.now()) - res.tStart) / 1000;
       const tps = el > 0 ? res.outTok / el : 0;
@@ -449,7 +548,7 @@ function reveal(picks: Picks, guesses: Guesses, agg: Agg, category: string): voi
     console.log(`${kleur.bold("2) Could you spot the cloud model?")}   ${kleur.bold(guesses.right + "/" + blind)} right (${kleur.bold(acc.toFixed(0) + "%")})${guesses.unsure ? " · " + guesses.unsure + " unsure" : ""}   → ${verdict}`);
   }
   console.log("");
-  console.log(V(FRONTIER_NAME));
+  console.log(V(activeFrontierName));
   console.log(`    ~${(agg.frontier.t / played).toFixed(1)}s/round    total cost ${kleur.bold("$" + agg.frontier.cost.toFixed(4))}`);
   console.log(kleur.green(LOCAL_LABEL));
   console.log(`    ~${(agg.local.t / played).toFixed(1)}s/round    total cost ${kleur.bold("$0.0000")}`);
