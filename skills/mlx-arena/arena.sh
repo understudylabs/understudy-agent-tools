@@ -24,7 +24,8 @@
 #
 # Config via env (defaults target this repo's local MLX venv layout):
 #   MLX_PYTHON   python with mlx_lm installed   (default: $LAB/.understudy/venvs/mlx/bin/python)
-#   LAB          working dir for logs/state      (default: $PWD)
+#   LAB          working dir for logs/state      (default: ~/.understudy/agent-tools)
+#   UNDERSTUDY_MODEL_HOME local model cache      (default: ~/.understudy/models)
 #   LEFT_LABEL/LEFT_REPO/LEFT_PORT/LEFT_PROVIDER
 #   RIGHT_LABEL/RIGHT_REPO/RIGHT_PORT/RIGHT_PROVIDER
 #   SESSION      tmux session name               (default: mlx-arena)
@@ -32,7 +33,8 @@
 #   UNDERSTUDY_DEBUG=1 writes $LAB/.understudy/local-model-lab/arena/logs/actions.log
 set -euo pipefail
 
-LAB="${LAB:-$PWD}"
+LAB="${LAB:-${UNDERSTUDY_LAB:-$HOME/.understudy/agent-tools}}"
+UNDERSTUDY_MODEL_HOME="${UNDERSTUDY_MODEL_HOME:-$HOME/.understudy/models}"
 MLX_PYTHON="${MLX_PYTHON:-$LAB/.understudy/venvs/mlx/bin/python}"
 MLX_BIN="$(dirname "$MLX_PYTHON")"
 SESSION="${SESSION:-mlx-arena}"
@@ -49,7 +51,7 @@ UNDERSTUDY_CLEANUP_PREFIXES="${UNDERSTUDY_CLEANUP_PREFIXES:-$SESSION mlx-arena}"
 # had loader/config mismatches in testing; the first rung is Understudy's
 # self-converted snapshot from google/gemma-4-e2b-it.
 LEFT_LABEL="${LEFT_LABEL:-google}"
-LEFT_REPO="${LEFT_REPO:-$LAB/.understudy/models/gemma-4-e2b-it-mlx-vlm-4bit}"
+LEFT_REPO="${LEFT_REPO:-$UNDERSTUDY_MODEL_HOME/gemma-4-e2b-it-mlx-vlm-4bit}"
 LEFT_PORT="${LEFT_PORT:-8081}"
 LEFT_PROVIDER="${LEFT_PROVIDER:-mlx-google}"
 LEFT_LOADER="${LEFT_LOADER:-mlx_vlm}"
@@ -64,7 +66,7 @@ RIGHT_LOADER="${RIGHT_LOADER:-mlx_lm}"
 # testing. Serve it with mlx-vlm; use FIRST_REPO=mlx-community/gemma-3-1b-it-4bit
 # FIRST_LOADER=mlx_lm only as a tiny fallback when the Gemma 4 snapshot is absent.
 FIRST_LABEL="${FIRST_LABEL:-gemma4-e2b}"
-FIRST_REPO="${FIRST_REPO:-$LAB/.understudy/models/gemma-4-e2b-it-mlx-vlm-4bit}"
+FIRST_REPO="${FIRST_REPO:-$UNDERSTUDY_MODEL_HOME/gemma-4-e2b-it-mlx-vlm-4bit}"
 FIRST_PORT="${FIRST_PORT:-8081}"
 FIRST_PROVIDER="${FIRST_PROVIDER:-mlx-gemma4-e2b}"
 FIRST_NAME="${FIRST_NAME:-Gemma 4 E2B 4-bit}"
@@ -399,6 +401,38 @@ _open_terminal_attach() { # tmux-session-name
   echo "  [window] follow along with: tmux attach -t $target"
 }
 
+_write_window_env_file() {
+  local env_file="$STATE/window-env-$(date -u +%Y%m%dT%H%M%SZ).sh"
+  mkdir -p "$STATE"
+  umask 077
+  {
+    printf 'export LAB=%q\n' "$LAB"
+    printf 'export MLX_PYTHON=%q\n' "$MLX_PYTHON"
+    printf 'export LEFT_REPO=%q\n' "$LEFT_REPO"
+    printf 'export LEFT_LOADER=%q\n' "$LEFT_LOADER"
+    printf 'export LOCAL_NAME=%q\n' "${LOCAL_NAME:-Gemma 4 E2B}"
+    printf 'export UNDERSTUDY_MODEL_HOME=%q\n' "$UNDERSTUDY_MODEL_HOME"
+    printf 'export OPENAI_API_KEY=%q\n' "${OPENAI_API_KEY:-}"
+    printf 'export ANTHROPIC_API_KEY=%q\n' "${ANTHROPIC_API_KEY:-}"
+    printf 'export ANTHROPIC_LOCAL_KEY=%q\n' "${ANTHROPIC_LOCAL_KEY:-}"
+    printf 'export FRONTIER_API_KEY=%q\n' "${FRONTIER_API_KEY:-}"
+    printf 'export AI_GATEWAY_API_KEY=%q\n' "${AI_GATEWAY_API_KEY:-}"
+    printf 'export OPENAI_BASE_URL=%q\n' "${OPENAI_BASE_URL:-}"
+    printf 'export FRONTIER_BASE_URL=%q\n' "${FRONTIER_BASE_URL:-}"
+    printf 'export AI_GATEWAY_BASE_URL=%q\n' "${AI_GATEWAY_BASE_URL:-}"
+    printf 'export FRONTIER_MODEL=%q\n' "${FRONTIER_MODEL:-}"
+    printf 'export OPENAI_MODEL=%q\n' "${OPENAI_MODEL:-}"
+    printf 'export ANTHROPIC_MODEL=%q\n' "${ANTHROPIC_MODEL:-}"
+    printf 'export AI_GATEWAY_MODEL=%q\n' "${AI_GATEWAY_MODEL:-}"
+    printf 'export UNDERSTUDY_FALLBACK_MODEL=%q\n' "${UNDERSTUDY_FALLBACK_MODEL:-}"
+    printf 'export FRONTIER_FALLBACK=%q\n' "${FRONTIER_FALLBACK:-}"
+    printf 'export FRONTIER_REASONING_EFFORT=%q\n' "${FRONTIER_REASONING_EFFORT:-}"
+    printf 'export FRONTIER_MAX_COMPLETION_TOKENS=%q\n' "${FRONTIER_MAX_COMPLETION_TOKENS:-}"
+  } >"$env_file"
+  chmod 600 "$env_file"
+  printf '%s\n' "$env_file"
+}
+
 _open_terminal_run() { # command
   local command_text="$1" kind log_path quoted_command quoted_log quoted_log_line wrapped_command
   if [[ "$(uname -s)" != "Darwin" ]]; then
@@ -571,7 +605,20 @@ cmd_play() {
   # seed the frontier keys into the tmux global env (not echoed) so the game pane inherits them
   tmux start-server 2>/dev/null || true
   tmux setenv -g ANTHROPIC_LOCAL_KEY "${ANTHROPIC_LOCAL_KEY:-${ANTHROPIC_API_KEY:-}}"
+  tmux setenv -g ANTHROPIC_API_KEY "${ANTHROPIC_API_KEY:-}"
   tmux setenv -g OPENAI_API_KEY "${OPENAI_API_KEY:-}"
+  tmux setenv -g FRONTIER_API_KEY "${FRONTIER_API_KEY:-}"
+  tmux setenv -g AI_GATEWAY_API_KEY "${AI_GATEWAY_API_KEY:-}"
+  tmux setenv -g FRONTIER_BASE_URL "${FRONTIER_BASE_URL:-}"
+  tmux setenv -g AI_GATEWAY_BASE_URL "${AI_GATEWAY_BASE_URL:-}"
+  tmux setenv -g OPENAI_BASE_URL "${OPENAI_BASE_URL:-}"
+  tmux setenv -g OPENAI_MODEL "${OPENAI_MODEL:-}"
+  tmux setenv -g ANTHROPIC_MODEL "${ANTHROPIC_MODEL:-}"
+  tmux setenv -g AI_GATEWAY_MODEL "${AI_GATEWAY_MODEL:-}"
+  tmux setenv -g UNDERSTUDY_FALLBACK_MODEL "${UNDERSTUDY_FALLBACK_MODEL:-}"
+  tmux setenv -g FRONTIER_FALLBACK "${FRONTIER_FALLBACK:-}"
+  tmux setenv -g FRONTIER_REASONING_EFFORT "${FRONTIER_REASONING_EFFORT:-}"
+  tmux setenv -g FRONTIER_MAX_COMPLETION_TOKENS "${FRONTIER_MAX_COMPLETION_TOKENS:-}"
   tmux kill-session -t "$S" 2>/dev/null || true
   tmux new-session -d -s "$S" -x 138 -y 60 -n arena
   _prepare_tmux_session "$S"
@@ -580,15 +627,12 @@ cmd_play() {
 }
 
 cmd_play_window() {
-  local here quoted_here quoted_lab quoted_python quoted_repo quoted_loader quoted_name
+  local here quoted_here env_file quoted_env_file
   here="$(cd "$(dirname "$0")" && pwd)"
   quoted_here="$(printf '%q' "$here")"
-  quoted_lab="$(printf '%q' "$LAB")"
-  quoted_python="$(printf '%q' "$MLX_PYTHON")"
-  quoted_repo="$(printf '%q' "$LEFT_REPO")"
-  quoted_loader="$(printf '%q' "$LEFT_LOADER")"
-  quoted_name="$(printf '%q' "${LOCAL_NAME:-Gemma 4 E2B}")"
-  _open_terminal_run "cd $quoted_here/../.. && LAB=$quoted_lab MLX_PYTHON=$quoted_python LEFT_REPO=$quoted_repo LEFT_LOADER=$quoted_loader LOCAL_NAME=$quoted_name '$here/arena.sh' play; tmux attach -t ${SESSION}-play"
+  env_file="$(_write_window_env_file)"
+  quoted_env_file="$(printf '%q' "$env_file")"
+  _open_terminal_run ". $quoted_env_file; rm -f $quoted_env_file; cd $quoted_here/../.. && '$here/arena.sh' play; tmux attach -t ${SESSION}-play"
   echo "Opening stock local-vs-frontier gauntlet in a new Terminal window."
   echo "Follow along with: tmux attach -t ${SESSION}-play"
 }

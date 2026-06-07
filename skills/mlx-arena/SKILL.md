@@ -211,7 +211,7 @@ fragile:
 1. Use an existing OpenAI-compatible AI gateway if `FRONTIER_BASE_URL`,
    `AI_GATEWAY_BASE_URL`, or `OPENAI_BASE_URL` is set. Use
    `FRONTIER_API_KEY`, `AI_GATEWAY_API_KEY`, or `OPENAI_API_KEY` as available.
-2. Else use an existing `OPENAI_API_KEY` with `gpt-5.1` unless
+2. Else use an existing `OPENAI_API_KEY` with `gpt-5.5` unless
    `FRONTIER_MODEL`/`OPENAI_MODEL` overrides it.
 3. Else use an existing `ANTHROPIC_LOCAL_KEY` or `ANTHROPIC_API_KEY` with
    `claude-opus-4-8` unless `FRONTIER_MODEL`/`ANTHROPIC_MODEL` overrides it.
@@ -223,6 +223,12 @@ fragile:
    `UNDERSTUDY_FALLBACK_MODEL=glm-5.1` through `understudy login`.
 
 Disable fallback only for debugging with `FRONTIER_FALLBACK=0`.
+
+Before a first-run duel, route through
+[`../choose-frontier-keys/SKILL.md`](../choose-frontier-keys/SKILL.md). The user
+chooses BYO `.env` keys, the Understudy ZDR gateway route, or local-only skip.
+For Understudy ZDR, the installer clears local provider-key env vars and sets
+`UNDERSTUDY_FALLBACK_MODEL=gpt-5.5` by default.
 
 Easiest bring-up (downloads the default model if missing, serves it, launches the
 branded game in tmux):
@@ -236,8 +242,8 @@ skills/mlx-arena/arena.sh play
 Or run it directly (Node ≥22.6 runs the `.ts` via native type-stripping):
 
 ```bash
-LOCAL_BASE=http://127.0.0.1:8081/v1 LOCAL_MODEL=.understudy/models/gemma-4-e2b-it-mlx-vlm-4bit \
-CATEGORY=coding FRONTIER_MODEL=gpt-5.1 \
+LOCAL_BASE=http://127.0.0.1:8081/v1 LOCAL_MODEL=~/.understudy/models/gemma-4-e2b-it-mlx-vlm-4bit \
+CATEGORY=coding FRONTIER_MODEL=gpt-5.5 FRONTIER_REASONING_EFFORT=none FRONTIER_MAX_COMPLETION_TOKENS=768 \
 node --experimental-strip-types skills/mlx-arena/blind_arena.ts
 ```
 

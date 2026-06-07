@@ -121,6 +121,10 @@ Identify the developer's current stage and load exactly one:
   gateway trace capture, project/key management, model A/B via route traffic %,
   `understudy run`, or registering an improved route →
   [`../use-understudy-gateway/SKILL.md`](../use-understudy-gateway/SKILL.md).
+- **Frontier key choice** — a local-vs-frontier comparison, installer, or agent
+  run needs to decide between BYO `.env` provider keys, the Understudy ZDR
+  gateway route, or skipping remote frontier calls →
+  [`../choose-frontier-keys/SKILL.md`](../choose-frontier-keys/SKILL.md).
 - **Acquire / cache / organize local models** — download a model, see what's
   already cached, free up model disk, pick which Gemma/Nemotron to pull, or
   explain how open weights work →

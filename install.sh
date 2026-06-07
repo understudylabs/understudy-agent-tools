@@ -20,6 +20,9 @@ NO_MODEL=0
 NO_WINDOW=0
 NO_GAUNTLET=0
 NO_CLAUDE=0
+FRONTIER_KEY_MODE="${UNDERSTUDY_FRONTIER_KEY_MODE:-ask}"
+FRONTIER_ENV_FILE="${UNDERSTUDY_FRONTIER_ENV_FILE:-}"
+ZDR_FRONTIER_MODEL="${UNDERSTUDY_ZDR_FRONTIER_MODEL:-gpt-5.5}"
 
 while [ "$#" -gt 0 ]; do
   case "$1" in
@@ -28,6 +31,9 @@ while [ "$#" -gt 0 ]; do
     --no-window) NO_WINDOW=1 ;;
     --no-gauntlet) NO_GAUNTLET=1 ;;
     --no-claude) NO_CLAUDE=1 ;;
+    --frontier-key-mode) FRONTIER_KEY_MODE="${2:?missing mode}"; shift ;;
+    --frontier-env-file) FRONTIER_ENV_FILE="${2:?missing path}"; shift ;;
+    --zdr-frontier-model) ZDR_FRONTIER_MODEL="${2:?missing model id}"; shift ;;
     --from-step) START_STEP="${2:?missing step number}"; shift ;;
     --only-step) ONLY_STEP="${2:?missing step number}"; shift ;;
     --resume) RESUME=1 ;;
@@ -43,6 +49,15 @@ Installs the Understudy CLI + Claude skill/plugin surface, prepares Apple MLX,
 downloads the verified Gemma 4 E2B 4-bit first rung, and opens the first local
 Understudy in a new Terminal window on macOS.
 
+Frontier comparison key choices:
+  --frontier-key-mode ask|byo|zdr|skip
+      ask: prompt before the remote comparison (default)
+      byo: import allowed frontier variables from --frontier-env-file or a local .env
+      zdr: use the Understudy ZDR gateway frontier route, no local provider key
+      skip: skip the remote frontier comparison
+  --frontier-env-file PATH   .env file to inspect when --frontier-key-mode=byo
+  --zdr-frontier-model ID    Understudy ZDR model id, default gpt-5.5
+
 Environment overrides:
   UNDERSTUDY_MODEL_SESSION_URL stable session endpoint that returns signed model file URLs
   UNDERSTUDY_MODEL_DIR        local model destination
@@ -54,6 +69,9 @@ Environment overrides:
   UNDERSTUDY_INSTALL_LOG_DIR   install logs, default $UNDERSTUDY_LAB/logs
   UNDERSTUDY_INSTALLER_COMMIT  optional script commit label when caller knows it
   UNDERSTUDY_INSTALL_PACKAGE  optional npm package spec override
+  UNDERSTUDY_FRONTIER_KEY_MODE ask|byo|zdr|skip
+  UNDERSTUDY_FRONTIER_ENV_FILE local .env path for BYO frontier keys
+  UNDERSTUDY_ZDR_FRONTIER_MODEL model id for Understudy ZDR fallback, default gpt-5.5
   SESSION                     tmux session prefix, default mlx-arena
 EOF
       exit 0
@@ -94,6 +112,12 @@ valid_step() {
     *) echo "invalid step: $1 (expected 1-5)" >&2; exit 2 ;;
   esac
 }
+valid_frontier_key_mode() {
+  case "$FRONTIER_KEY_MODE" in
+    ask|byo|zdr|skip) return 0 ;;
+    *) echo "invalid frontier key mode: $FRONTIER_KEY_MODE (expected ask|byo|zdr|skip)" >&2; exit 2 ;;
+  esac
+}
 should_run_step() {
   local step="$1"
   if [ -n "$ONLY_STEP" ]; then
@@ -131,6 +155,169 @@ confirm() {
   printf "%s [y/N] " "$1" >/dev/tty
   read -r answer </dev/tty
   case "$answer" in y|Y|yes|YES) return 0 ;; *) return 1 ;; esac
+}
+prompt_choice() {
+  local prompt="$1"
+  [ "$YES" = "1" ] && return 1
+  if [ ! -r /dev/tty ]; then
+    return 1
+  fi
+  printf "%s " "$prompt" >/dev/tty
+  read -r answer </dev/tty
+  printf '%s\n' "$answer"
+}
+
+find_frontier_env_file() {
+  local candidate
+  if [ -n "$FRONTIER_ENV_FILE" ] && [ -f "$FRONTIER_ENV_FILE" ]; then
+    printf '%s\n' "$FRONTIER_ENV_FILE"
+    return 0
+  fi
+  for candidate in .env.local .env .env.development.local .env.development; do
+    if [ -f "$candidate" ] && grep -Eq '^(OPENAI_API_KEY|ANTHROPIC_API_KEY|ANTHROPIC_LOCAL_KEY|FRONTIER_API_KEY|AI_GATEWAY_API_KEY|OPENAI_BASE_URL|FRONTIER_BASE_URL|AI_GATEWAY_BASE_URL|OPENAI_MODEL|ANTHROPIC_MODEL|FRONTIER_MODEL|AI_GATEWAY_MODEL)=' "$candidate"; then
+      printf '%s\n' "$candidate"
+      return 0
+    fi
+  done
+  return 1
+}
+
+has_frontier_shell_env() {
+  [ -n "${OPENAI_API_KEY:-}" ] ||
+    [ -n "${ANTHROPIC_API_KEY:-}" ] ||
+    [ -n "${ANTHROPIC_LOCAL_KEY:-}" ] ||
+    [ -n "${FRONTIER_API_KEY:-}" ] ||
+    [ -n "${AI_GATEWAY_API_KEY:-}" ] ||
+    [ -n "${FRONTIER_BASE_URL:-}" ] ||
+    [ -n "${AI_GATEWAY_BASE_URL:-}" ] ||
+    [ -n "${OPENAI_BASE_URL:-}" ]
+}
+
+load_frontier_env_file() {
+  local file="$1"
+  local line key value
+  [ -f "$file" ] || return 1
+  while IFS= read -r line || [ -n "$line" ]; do
+    case "$line" in
+      OPENAI_API_KEY=*|ANTHROPIC_API_KEY=*|ANTHROPIC_LOCAL_KEY=*|FRONTIER_API_KEY=*|AI_GATEWAY_API_KEY=*|OPENAI_BASE_URL=*|FRONTIER_BASE_URL=*|AI_GATEWAY_BASE_URL=*|OPENAI_MODEL=*|ANTHROPIC_MODEL=*|FRONTIER_MODEL=*|AI_GATEWAY_MODEL=*)
+        key="${line%%=*}"
+        value="${line#*=}"
+        value="${value%$'\r'}"
+        case "$value" in
+          \"*\") value="${value#\"}"; value="${value%\"}" ;;
+          \'*\') value="${value#\'}"; value="${value%\'}" ;;
+        esac
+        export "$key=$value"
+        ;;
+    esac
+  done <"$file"
+}
+
+write_frontier_choice() {
+  local mode="$1"
+  local env_file="${2:-}"
+  mkdir -p "$STATE_DIR"
+  {
+    printf 'mode=%s\n' "$mode"
+    [ -n "$env_file" ] && printf 'env_file=%s\n' "$env_file"
+    [ "$mode" = "zdr" ] && printf 'model=%s\n' "$ZDR_FRONTIER_MODEL"
+    date -u +"created_at=%Y-%m-%dT%H:%M:%SZ"
+  } >"$STATE_DIR/frontier-choice"
+}
+
+choose_frontier_key_mode() {
+  local answer env_file
+  valid_frontier_key_mode
+  [ "$NO_GAUNTLET" = "1" ] && return 0
+
+  if [ "$FRONTIER_KEY_MODE" = "skip" ]; then
+    NO_GAUNTLET=1
+    write_frontier_choice "skip"
+    return 0
+  fi
+
+  if [ "$FRONTIER_KEY_MODE" = "byo" ]; then
+    if has_frontier_shell_env; then
+      say "Using BYO frontier keys already present in this shell. Values stay local and are not printed."
+      write_frontier_choice "byo" "shell-env"
+      return 0
+    fi
+    env_file="$(find_frontier_env_file || true)"
+    if [ -z "$env_file" ]; then
+      say "No local .env file with known frontier key variables was found."
+      say "Falling back to the Understudy ZDR gateway route."
+      FRONTIER_KEY_MODE="zdr"
+    else
+      load_frontier_env_file "$env_file"
+      say "Using local BYO frontier keys from $env_file. Values stay local and are not printed."
+      write_frontier_choice "byo" "$env_file"
+      return 0
+    fi
+  fi
+
+  if [ "$FRONTIER_KEY_MODE" = "zdr" ]; then
+    say "Using Understudy ZDR gateway frontier route: $ZDR_FRONTIER_MODEL."
+    write_frontier_choice "zdr"
+    return 0
+  fi
+
+  section "Frontier key choice."
+  say "The local model runs on your Mac. The right-side frontier comparison needs a remote model."
+  say "Choose one:"
+  say "  1. Bring your own OpenAI/Anthropic/AI-gateway key from this shell or a local .env file."
+  say "     The key stays on this machine; the selected provider receives the comparison prompts."
+  say "  2. Use the Understudy ZDR gateway route ($ZDR_FRONTIER_MODEL)."
+  say "     No local provider key is read; you use your Understudy account/gateway route."
+  say "  3. Skip the frontier comparison for now."
+  answer="$(prompt_choice "Use BYO shell/.env keys, Understudy ZDR, or skip? [byo/zdr/skip]")"
+  case "$answer" in
+    byo|BYO)
+      if has_frontier_shell_env; then
+        say "Using BYO frontier keys already present in this shell. Values stay local and are not printed."
+        FRONTIER_KEY_MODE="byo"
+        write_frontier_choice "byo" "shell-env"
+        return 0
+      fi
+      if confirm "May Understudy inspect local .env files in this directory for provider key variable names?"; then
+        env_file="$(find_frontier_env_file || true)"
+        if [ -n "$env_file" ]; then
+          load_frontier_env_file "$env_file"
+          say "Using local BYO frontier keys from $env_file. Values stay local and are not printed."
+          FRONTIER_KEY_MODE="byo"
+          write_frontier_choice "byo" "$env_file"
+          return 0
+        fi
+        say "No local .env file with known frontier key variables was found."
+      fi
+      say "Using Understudy ZDR gateway route instead."
+      FRONTIER_KEY_MODE="zdr"
+      write_frontier_choice "zdr"
+      ;;
+    skip|SKIP)
+      say "Skipping remote frontier comparison. You can run it later with --frontier-key-mode byo or --frontier-key-mode zdr."
+      FRONTIER_KEY_MODE="skip"
+      NO_GAUNTLET=1
+      write_frontier_choice "skip"
+      ;;
+    *)
+      say "Using Understudy ZDR gateway route."
+      FRONTIER_KEY_MODE="zdr"
+      write_frontier_choice "zdr"
+      ;;
+  esac
+}
+
+run_arena_play() {
+  local command="$1"
+  shift
+  if [ "$FRONTIER_KEY_MODE" = "zdr" ]; then
+    OPENAI_API_KEY= ANTHROPIC_API_KEY= ANTHROPIC_LOCAL_KEY= \
+      FRONTIER_API_KEY= AI_GATEWAY_API_KEY= \
+      OPENAI_BASE_URL= FRONTIER_BASE_URL= AI_GATEWAY_BASE_URL= \
+      UNDERSTUDY_FALLBACK_MODEL="$ZDR_FRONTIER_MODEL" "$command" "$@"
+    return $?
+  fi
+  "$command" "$@"
 }
 
 install_tmux() {
@@ -241,6 +428,7 @@ need npm || {
 }
 
 configure_resume
+valid_frontier_key_mode
 
 section "Welcome. We are going to create your first local Understudy."
 say "Install log: $LOG_FILE"
@@ -264,13 +452,14 @@ fi
 say "  6. Open a tmux/Pi window so you can meet the local model as your first Understudy."
 if [ "$NO_GAUNTLET" = "0" ]; then
   say "  7. Ask again before running the local-vs-frontier duel."
-  say "     Frontier attempts use local OpenAI/Anthropic keys or a configured AI gateway first, then fall back to Understudy glm-5.1."
+  say "     You choose whether the frontier uses local BYO keys from this shell/.env or the Understudy ZDR gateway route."
 else
   say "  7. Skip the remote frontier duel because --no-gauntlet is set."
 fi
 say ""
 say "This installer writes only under $LAB, $HOME/.understudy, the global npm prefix, and Claude Code plugin state when enabled."
 confirm "Continue with this Understudy installation?" || exit 1
+choose_frontier_key_mode
 
 if ! need uv; then
   say "uv is required for the isolated MLX runtime."
@@ -405,7 +594,11 @@ if [ "$NO_GAUNTLET" = "0" ]; then
     install_tmux
     section "Step 5/5: run the local-vs-frontier duel."
     say "Pi opens a side-by-side harness: local Understudy on the left, frontier baseline on the right."
-    say "This step may make remote frontier calls using a local OpenAI/Anthropic key, a configured AI gateway, or your Understudy gateway fallback."
+    if [ "$FRONTIER_KEY_MODE" = "byo" ]; then
+      say "Frontier mode: BYO local key from .env. The key stays local; the selected provider receives the comparison prompts."
+    else
+      say "Frontier mode: Understudy ZDR gateway route ($ZDR_FRONTIER_MODEL). No local provider key is read for this duel."
+    fi
     say "The shared tmux session is ${SESSION:-mlx-arena}-play; the agent can send prompts and you can watch or take over."
     say "After the stock questions, point Understudy at a dataset or codebase."
     say "Then use the skills to generate task-specific evals and climb: better prompts, GEPA/RLM, larger Gemma/Nemotron, or remote training."
@@ -416,10 +609,12 @@ if [ "$NO_GAUNTLET" = "0" ]; then
     }
     if [ "$NO_WINDOW" = "1" ]; then
       LAB="$LAB" MLX_PYTHON="$LAB/.understudy/venvs/mlx/bin/python" \
-        LEFT_REPO="$MODEL_DIR" LEFT_LOADER=mlx_vlm LOCAL_NAME="Gemma 4 E2B" "$ARENA" play
+        LEFT_REPO="$MODEL_DIR" LEFT_LOADER=mlx_vlm LOCAL_NAME="Gemma 4 E2B" \
+        run_arena_play "$ARENA" play
     else
       LAB="$LAB" MLX_PYTHON="$LAB/.understudy/venvs/mlx/bin/python" \
-        LEFT_REPO="$MODEL_DIR" LEFT_LOADER=mlx_vlm LOCAL_NAME="Gemma 4 E2B" "$ARENA" play-window
+        LEFT_REPO="$MODEL_DIR" LEFT_LOADER=mlx_vlm LOCAL_NAME="Gemma 4 E2B" \
+        run_arena_play "$ARENA" play-window
     fi
     mark_step_done 5
   else
