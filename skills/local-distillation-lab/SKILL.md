@@ -71,7 +71,9 @@ on-policy state coverage (no exposure-bias gap). Arms O/P here train on teacher 
    iter 0, then every ~40 iters) so the curve captures the peak *and* any overfit-collapse. Track
    `best` by task metric, not loss. Save adapters.
 5. **Decide.** P>O → surprisal gating helps. O>S → the bigger/same-family teacher adds signal.
-   best≈B → capability bound, climb the rung. Report dev + OOD + concentration (`d_t`).
+   best≈B → capability bound, climb the rung. If a tiny trainable student gets worse despite
+   lower loss, try the next compatible local model before escalating to RLM or hosted RL. Report
+   dev + OOD + concentration (`d_t`).
 6. **Promote.** Fuse the winning adapter and re-serve; only then run holdout once.
 
 ## Gotchas that cost real time
