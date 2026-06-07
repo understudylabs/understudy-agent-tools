@@ -6,8 +6,10 @@ set -euo pipefail
 MODEL_SESSION_URL="${UNDERSTUDY_MODEL_SESSION_URL:-https://models.understudylabs.com/session?model=gemma-4-e2b-it-mlx-vlm-4bit&ttl=21600}"
 MODEL_DIR="${UNDERSTUDY_MODEL_DIR:-$HOME/.understudy/models/gemma-4-e2b-it-mlx-vlm-4bit}"
 LAB="${UNDERSTUDY_LAB:-$HOME/.understudy/agent-tools}"
+INSTALL_REPO_URL="${UNDERSTUDY_INSTALL_REPO_URL:-https://github.com/UnderstudyLabs/understudy-agent-tools.git}"
 INSTALL_REF="${UNDERSTUDY_INSTALL_REF:-main}"
-INSTALL_PACKAGE="${UNDERSTUDY_INSTALL_PACKAGE:-git+https://github.com/UnderstudyLabs/understudy-agent-tools.git#$INSTALL_REF}"
+INSTALL_PACKAGE="${UNDERSTUDY_INSTALL_PACKAGE:-}"
+INSTALL_SOURCE_DIR="${UNDERSTUDY_INSTALL_SOURCE_DIR:-$LAB/source/understudy-agent-tools}"
 YES=0
 NO_MODEL=0
 NO_WINDOW=0
@@ -37,8 +39,10 @@ Environment overrides:
   UNDERSTUDY_MODEL_SESSION_URL stable session endpoint that returns signed model file URLs
   UNDERSTUDY_MODEL_DIR        local model destination
   UNDERSTUDY_LAB              local runtime/log directory
+  UNDERSTUDY_INSTALL_REPO_URL public repo URL, default https://github.com/UnderstudyLabs/understudy-agent-tools.git
   UNDERSTUDY_INSTALL_REF      Git ref for public repo install, default main
-  UNDERSTUDY_INSTALL_PACKAGE  npm package spec, default git+https://github.com/UnderstudyLabs/understudy-agent-tools.git#$UNDERSTUDY_INSTALL_REF
+  UNDERSTUDY_INSTALL_SOURCE_DIR local repo checkout, default $UNDERSTUDY_LAB/source/understudy-agent-tools
+  UNDERSTUDY_INSTALL_PACKAGE  optional npm package spec override
   SESSION                     tmux session prefix, default mlx-arena
 EOF
       exit 0
@@ -74,11 +78,10 @@ install_tmux() {
 }
 
 remove_previous_global_package() {
-  local global_root global_prefix package_path bin_path bin_target
+  local global_root global_prefix package_path bin_path
   global_root="$(npm root -g)"
   global_prefix="$(npm prefix -g)"
   package_path="$global_root/@understudylabs/understudy-agent-tools"
-  bin_path="$global_prefix/bin/understudy"
 
   if [ -e "$package_path" ] || [ -L "$package_path" ]; then
     say "Removing previous global Understudy install at $package_path"
@@ -88,12 +91,39 @@ remove_previous_global_package() {
     fi
   fi
 
-  if [ -L "$bin_path" ]; then
-    bin_target="$(readlink "$bin_path" 2>/dev/null || true)"
-    case "$bin_target" in
-      *understudy-agent-tools*) rm -f "$bin_path" ;;
-    esac
+  for bin_path in "$global_prefix/bin/understudy" "$HOME/.local/bin/understudy"; do
+    [ -e "$bin_path" ] || [ -L "$bin_path" ] || continue
+    if [ -L "$bin_path" ] && readlink "$bin_path" 2>/dev/null | grep -q 'understudy-agent-tools'; then
+      say "Removing stale Understudy command at $bin_path"
+      rm -f "$bin_path"
+    elif [ -f "$bin_path" ] && grep -q 'understudy-agent-tools' "$bin_path" 2>/dev/null; then
+      say "Removing stale Understudy command at $bin_path"
+      rm -f "$bin_path"
+    fi
+  done
+}
+
+install_understudy_package() {
+  remove_previous_global_package
+
+  if [ -n "$INSTALL_PACKAGE" ]; then
+    say "Installing Understudy package from $INSTALL_PACKAGE"
+    npm install -g "$INSTALL_PACKAGE"
+    return 0
   fi
+
+  need git || {
+    say "git is required to install Understudy from the public repo."
+    exit 1
+  }
+
+  say "Installing Understudy package from $INSTALL_REPO_URL#$INSTALL_REF"
+  rm -rf "$INSTALL_SOURCE_DIR"
+  mkdir -p "$(dirname "$INSTALL_SOURCE_DIR")"
+  git clone --depth 1 --branch "$INSTALL_REF" "$INSTALL_REPO_URL" "$INSTALL_SOURCE_DIR" >/dev/null
+  npm install --prefix "$INSTALL_SOURCE_DIR" --ignore-scripts >/dev/null
+  npm run --prefix "$INSTALL_SOURCE_DIR" build >/dev/null
+  npm install -g --ignore-scripts "$INSTALL_SOURCE_DIR" >/dev/null
 }
 
 install_claude_plugin() {
@@ -151,9 +181,8 @@ fi
 install_tmux
 
 section "Step 1/5: install the CLI and Pi harness."
-say "Installing Understudy package from $INSTALL_PACKAGE"
-remove_previous_global_package
-npm install -g "$INSTALL_PACKAGE" @earendil-works/pi-coding-agent
+install_understudy_package
+npm install -g @earendil-works/pi-coding-agent
 
 PKG_DIR="$(npm root -g)/@understudylabs/understudy-agent-tools"
 ARENA="$PKG_DIR/skills/mlx-arena/arena.sh"

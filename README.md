@@ -55,9 +55,10 @@ Pre-merge branch test:
 curl -fsSL https://raw.githubusercontent.com/UnderstudyLabs/understudy-agent-tools/yolo/first-understudy-installer/install.sh | UNDERSTUDY_INSTALL_REF=yolo/first-understudy-installer bash -s -- --yes
 ```
 
-That installs the CLI and Pi, prepares an isolated MLX runtime, asks before
-downloading the verified Gemma 4 E2B 4-bit first-rung snapshot, and opens a new
-Terminal window so you meet your first local Understudy immediately. For
+That clones the public repo into `~/.understudy/agent-tools/source`, builds and
+installs the CLI locally, installs Pi, prepares an isolated MLX runtime, asks
+before downloading the verified Gemma 4 E2B 4-bit first-rung snapshot, and opens
+a new Terminal window so you meet your first local Understudy immediately. For
 non-interactive demos, add `--yes`:
 
 ```bash
