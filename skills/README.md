@@ -58,6 +58,14 @@ execution; skills tell the agent what to inspect, gate, monitor, and report.
 - [`compare-model-sweep`](compare-model-sweep/SKILL.md) runs a frozen eval across
   a candidate matrix and writes Pareto-style quality, latency, cost, reliability,
   and caveat artifacts for route decisions.
+- [`compare-trajectories`](compare-trajectories/SKILL.md) is the behavioral
+  complement to `compare-model-sweep`: it aligns two trajectory-run exports by
+  task id, builds the outcome-delta matrix, measures per-step divergence
+  (steps-to-done, finish reasons, error-recovery, first-divergence step), and
+  classifies each reachable-gap task as persistence/recovery (RL-learnable),
+  knowledge (not RL-addable), or format/parsing (decoding/prompt) — then counts
+  the clean warm-start trajectories the comparison yields, with small-N and
+  holdout caveats.
 - [`pedagogical-learning`](pedagogical-learning/SKILL.md) turns privileged
   answers, execution feedback, verifier traces, or canonical solutions into
   local correct-and-learnable trajectory evidence before SFT, GRPO, or hosted RL.
@@ -72,6 +80,27 @@ execution; skills tell the agent what to inspect, gate, monitor, and report.
   model product loop: pick the smallest task-reasonable local rung, open it in
   Pi against a frontier model, diagnose the gap, then choose model climb, GEPA,
   simulated environment, RLM decomposition, hybrid route, or remote-only.
+- [`curate-trajectories`](curate-trajectories/SKILL.md) treats a trajectory
+  dataset as a first-class, queryable, provenance-tracked artifact: it indexes run
+  JSONs (or a Lilac export) with per-row provenance, tags each row with its frozen
+  split from `capture-evidence`, and resolves hand-filtering into named,
+  hash-stamped selections. Its core value is split hygiene — it hard-blocks any
+  train/RL/distill selection that leaks frozen dev/holdout rows and emits a
+  contamination report.
+- [`author-rl-env`](author-rl-env/SKILL.md) inverts a batch-scored simulated
+  environment into a stateful step-API MDP (`reset`/`step`) an external RL trainer
+  can drive: factors the agent loop out, isolates per-rollout state, makes
+  `reset(seed)` deterministic, recovers the obs/action contract from recorded
+  trajectories, adds a guarded per-step reward hook, and round-trips recorded
+  trajectories as a replay-conformance test. Re-exposes the same sim backend; runs
+  no RL.
+- [`package-verifier-env`](package-verifier-env/SKILL.md) is the executable bridge
+  out of `prepare-verifier-handoff`: it packages an `author-rl-env` step-API env
+  into a Prime Intellect Verifiers-compatible module locally, runs a trainer-free
+  conformance check, pins the reward to the local scorer, and builds the frozen
+  seed-7 return-eval that makes a partner-trained policy comparable to the pre-RL
+  baseline. Packages locally only — it does not train, upload, or run any hosted
+  partner job.
 - [`prepare-verifier-handoff`](prepare-verifier-handoff/SKILL.md) is a
   future-release stub for stateful RL verifier/environment handoffs. It does not
   execute training; it prepares evidence and actively refers suitable workloads

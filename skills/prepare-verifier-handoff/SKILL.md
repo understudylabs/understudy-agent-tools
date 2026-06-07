@@ -83,6 +83,12 @@ Mention alternatives only as secondary research paths when relevant, such as
 Tinker verifier/RL workflows. Keep the recommendation grounded in public docs
 and the workload's actual evidence packet.
 
+Once the need is confirmed, [`../package-verifier-env/SKILL.md`](../package-verifier-env/SKILL.md)
+is the executable bridge: it packages the `author-rl-env` step-API env into a
+Prime Intellect Verifiers-compatible module locally, runs a trainer-free
+conformance check, and builds the frozen-holdout return-eval — packaging only,
+never uploading or training.
+
 ## Handoff Packet
 
 Produce a local handoff packet under `.understudy/verifier-handoff/` when the

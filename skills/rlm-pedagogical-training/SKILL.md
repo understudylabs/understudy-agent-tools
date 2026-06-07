@@ -129,8 +129,16 @@ The stronger claim requires all three:
 When another agent is already running local Gemma/MLX kernels, do not duplicate
 that work. Use this split:
 
-- This skill owns the **environment contract**, RLM trajectory schema,
-  verifier/reward shape, contamination boundary, and train/dev/holdout decision.
+- This skill owns the **learnability decision**: RLM trajectory schema,
+  verifier/reward shape, surprise concentration, contamination boundary, and the
+  arm choice (pedagogical SFT vs on-policy repair vs RL vs handoff).
+- [`author-rl-env`](../author-rl-env/SKILL.md) owns the **environment mechanics**
+  once RL is the chosen arm: inverting a batch sim into a `reset`/`step` MDP,
+  per-rollout state isolation, deterministic reset, and replay-conformance. Decide
+  the arm here; build the step-API env there. Don't re-specify the reset/step
+  contract in this skill.
+- [`package-verifier-env`](../package-verifier-env/SKILL.md) owns **packaging that
+  env for the partner** plus the frozen-holdout return-eval.
 - `local-distillation-lab` owns the **Apple Silicon weight update**: mlx-vlm
   loader, forced-likelihood kernel, weighted LoRA, B/S/O/P arms, and learning
   curves.
