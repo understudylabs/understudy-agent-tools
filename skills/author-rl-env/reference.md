@@ -47,6 +47,15 @@ full `end_state` equality was **0/200** — entirely from that timestamp, i.e.
 reward fidelity, not state divergence. Pin such constructor defaults to the
 seed/initial_state, or project them out before comparing state.
 
+## Running-example specifics
+
+The grounding workload: AutomationBench `simple`/`api` endpoint-discovery, with
+local **Gemma-4-E2B** served via the MLX router at `:8081`, and frozen **seed-7
+splits (train 18 / dev 6 / holdout 6)**. The sim backend (endpoint catalog +
+state + final-state validator) is re-exposed behind `reset`/`step`; reward = the
+fractional final-state score, with optional **"correct app before mutation"
+shaping** under the reward-hacking guard (SKILL Flow step 5).
+
 ## Replay-conformance recipe
 
 1. `reset` a fresh sim from `initial_state`.
@@ -55,7 +64,8 @@ seed/initial_state, or project them out before comparing state.
 4. **Hard-assert** reproduced `score` == recorded `score` — this is the
    conformance signal (it is exactly what the trainer optimizes).
 5. **Soft-check** `end_state` equality *modulo* the volatile default fields from
-   step 4 of the SKILL Flow; raw full-dump equality will spuriously fail.
+   step 3 of the SKILL Flow ("Make reset(task, seed) deterministic"); raw
+   full-dump equality will spuriously fail.
 
 A score that fails to round-trip means the inversion changed semantics — fix the
 wrapper, not the fixture.
