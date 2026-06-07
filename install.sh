@@ -59,8 +59,13 @@ section() {
 need() { command -v "$1" >/dev/null 2>&1; }
 confirm() {
   [ "$YES" = "1" ] && return 0
-  printf "%s [y/N] " "$1"
-  read -r answer
+  if [ ! -r /dev/tty ]; then
+    say "This install is running without an interactive terminal for prompts."
+    say "Rerun with --yes to approve, for example: curl -fsSL .../install.sh | bash -s -- --yes"
+    return 1
+  fi
+  printf "%s [y/N] " "$1" >/dev/tty
+  read -r answer </dev/tty
   case "$answer" in y|Y|yes|YES) return 0 ;; *) return 1 ;; esac
 }
 
@@ -206,8 +211,13 @@ fi
 download_file() {
   local name="$1"
   local url="$2"
-  [ -f "$MODEL_DIR/$name" ] && return 0
-  curl -fL --progress-bar "$url" -o "$MODEL_DIR/$name"
+  local target="$MODEL_DIR/$name"
+  local partial="$target.part"
+  [ -s "$target" ] && return 0
+  mkdir -p "$(dirname "$target")"
+  rm -f "$target"
+  curl -fL --progress-bar "$url" -o "$partial"
+  mv "$partial" "$target"
 }
 
 download_model_snapshot() {
