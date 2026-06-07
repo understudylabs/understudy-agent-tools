@@ -153,11 +153,10 @@ holdout gate. Each is a gate, not a suggestion.
 
 ## Running example
 
-AutomationBench `simple`/`api` endpoint-discovery, local Gemma-4-E2B served via
-the MLX router at `:8081`, frozen seed-7 splits (train 18 / dev 6 / holdout 6).
-The sim backend (endpoint catalog + state + final-state validator) is re-exposed
-behind `reset`/`step`; reward = the existing fractional final-state score, with
-optional "correct app before mutation" shaping under the reward-hacking guard.
+AutomationBench `simple`/`api` endpoint-discovery — the sim backend is re-exposed
+behind `reset`/`step`, reward = the fractional final-state score. The concrete
+wiring (which sim primitives to call), the verified determinism caveat, and the
+replay-conformance recipe are in [`reference.md`](reference.md).
 
 ## Output Standard
 
@@ -177,6 +176,7 @@ End with:
 
 ## References
 
+- [`reference.md`](reference.md) — obs/action contract recovery, the worked AutomationBench wiring, the determinism caveat, and the replay-conformance recipe.
 - [`../design-simulated-environment/SKILL.md`](../design-simulated-environment/SKILL.md) — builds the batch-scored sim env this skill inverts.
 - [`../curate-trajectories/SKILL.md`](../curate-trajectories/SKILL.md) — supplies the decontaminated, holdout-free RL train pool.
 - [`../optimize-api-workflow/SKILL.md`](../optimize-api-workflow/SKILL.md) — the API-workflow final-state validator and metric axes that become the reward.
