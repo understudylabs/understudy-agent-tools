@@ -94,22 +94,31 @@ can write to live systems.
    Latency and cost are per workflow rollout. The metric must emit
    natural-language feedback tied to the failing step or invariant.
 
-4. **Run the incumbent baseline.** Execute the frozen harness on train/dev or a
+4. **Separate tool discovery from task execution.** For small/local models, first
+   ask whether the failure is "could not find the right tool" rather than "could
+   not do the task." In AutomationBench terms, always report the realistic
+   toolset result (`api` or `zapier`) next to any oracle-tool result
+   (`limited_zapier` from `info["zapier_tools"]`). Treat oracle-tool matching as
+   a diagnostic or advisor-training target, not as a route-superiority claim.
+
+5. **Run the incumbent baseline.** Execute the frozen harness on train/dev or a
    small sanctioned sample, write per-task pass/fail and request-log summaries,
    and include `harness_sha256`, `metric_sha256`, and `splits_sha256` in
    `baseline.json`. Do not optimize until the baseline is measured.
 
-5. **Pick the cheapest intervention.** Try parser/schema repair, prompt or
-   policy-instruction repair, context trimming, endpoint-catalog compression,
-   model A/B, or route changes before any training. Treat fewer unsafe writes,
-   fewer redundant calls, and cleaner recovery behavior as first-class wins.
+6. **Pick the cheapest intervention.** For API discovery failures, try toolset
+   structure, endpoint-catalog compression, or a stateless tool-retrieval advisor
+   before prompt-GEPA or model climb. Then try parser/schema repair, prompt or
+   policy-instruction repair, context trimming, model A/B, or route changes
+   before any training. Treat fewer unsafe writes, fewer redundant calls, and
+   cleaner recovery behavior as first-class wins.
 
-6. **Optimize only with fresh artifacts.** For prompt or route optimization, hand
+7. **Optimize only with fresh artifacts.** For prompt or route optimization, hand
    to [`../optimize-workload/SKILL.md`](../optimize-workload/SKILL.md) after the
    evidence artifacts are fresh and hash-bound. GEPA may use train/dev feedback
    only; never tune on holdout.
 
-7. **Validate holdout last.** Freeze the candidate, then run holdout once.
+8. **Validate holdout last.** Freeze the candidate, then run holdout once.
    Claims require `claim.json` with sample size, split, quality delta, latency
    basis, cost basis, request-volume assumption, fallback route, demotion
    trigger, and caveats.

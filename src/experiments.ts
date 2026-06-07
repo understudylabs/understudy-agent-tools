@@ -36,6 +36,7 @@ export type ExperimentResult = {
 export type Experiment = {
   schema_version: "understudy.experiment.v1";
   experiment_id: string;
+  name: string | null;
   workload: string;
   objective: string | null;
   hypothesis: string | null;
@@ -50,6 +51,7 @@ export type Experiment = {
 
 export type NewExperimentOptions = {
   id?: string;
+  name?: string;
   workload?: string;
   objective?: string;
   hypothesis?: string;
@@ -79,6 +81,7 @@ export type NextState = {
 
 export type ExperimentSummary = {
   experiment_id: string;
+  name: string | null;
   workload: string;
   outcome: ExperimentOutcome | null;
   candidate_model: string | null;
@@ -226,6 +229,7 @@ export function createExperiment(repoInput: string, options: NewExperimentOption
   const experiment: Experiment = {
     schema_version: "understudy.experiment.v1",
     experiment_id: id,
+    name: options.name ?? null,
     workload: options.workload ?? "workload-001",
     objective: options.objective ?? null,
     hypothesis: options.hypothesis ?? null,
@@ -348,7 +352,7 @@ export function recordClaim(
 }
 
 function renderLabNote(experiment: Experiment, date: string): string {
-  const title = experiment.hypothesis ?? `Experiment ${experiment.experiment_id}`;
+  const title = experiment.name ?? experiment.hypothesis ?? `Experiment ${experiment.experiment_id}`;
   const cell = (value: number | null): string => (value === null ? "—" : String(value));
   return `---
 type: experiment
@@ -438,6 +442,7 @@ export function summarizeExperiments(repoInput: string): ExperimentSummary[] {
     const experiment = readExperiment(repo, id);
     return {
       experiment_id: id,
+      name: experiment.name ?? null,
       workload: experiment.workload,
       outcome: experiment.outcome,
       candidate_model: experiment.candidate_model,

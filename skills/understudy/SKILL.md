@@ -145,6 +145,10 @@ Identify the developer's current stage and load exactly one:
   workstation-hosted model through the same frozen workload/eval, choose a
   runtime, compare local vs remote, or satisfy ZDR / no-upload constraints →
   [`../run-local-model-lab/SKILL.md`](../run-local-model-lab/SKILL.md).
+- **Multi-model sweep / Pareto comparison** — the developer has a frozen eval and
+  wants to run the same rows across several local, gateway, or frontier models to
+  compare quality, latency, cost, and reliability →
+  [`../compare-model-sweep/SKILL.md`](../compare-model-sweep/SKILL.md).
 - **Local understudy specialization loop** — the developer wants the smallest
   task-reasonable local model opened in Pi and optionally compared against a
   frontier model, then wants the observed gap to drive workload understanding,

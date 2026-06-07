@@ -61,6 +61,7 @@ export function registerExperimentsCommands(program: Command): void {
           const outcome = row.outcome ?? "open";
           process.stdout.write(
             `${marker}${kleur.bold(row.experiment_id)}  ${row.workload}  outcome=${outcome}` +
+              `${row.name ? `  name=${row.name}` : ""}` +
               `${row.candidate_model ? `  candidate=${row.candidate_model}` : ""}\n`,
           );
         }
@@ -72,6 +73,7 @@ export function registerExperimentsCommands(program: Command): void {
     .description("Open a new experiment, pin the current baseline, and make it active")
     .option("--repo <path>", "Local repository path", ".")
     .option("--id <id>", "Experiment id (default: next exp-NNN)")
+    .option("--name <label>", "Human-readable experiment name.")
     .option("--workload <id>", "Workload id this experiment runs against")
     .option("--objective <objective>", "cost | speed | quality | reliability | compliance | weighted")
     .option("--hypothesis <text>", "One-line hypothesis")
@@ -83,6 +85,7 @@ export function registerExperimentsCommands(program: Command): void {
       options: {
         repo: string;
         id?: string;
+        name?: string;
         workload?: string;
         objective?: string;
         hypothesis?: string;
@@ -93,6 +96,7 @@ export function registerExperimentsCommands(program: Command): void {
       runLocal(this, () => {
         const experiment = createExperiment(options.repo, {
           id: options.id,
+          name: options.name,
           workload: options.workload,
           objective: options.objective,
           hypothesis: options.hypothesis,
@@ -105,7 +109,9 @@ export function registerExperimentsCommands(program: Command): void {
         }
         const pinned = experiment.pins.harness_sha256 && experiment.pins.metric_sha256 && experiment.pins.splits_sha256;
         process.stdout.write(
-          `${kleur.green("✓")} Created ${kleur.bold(experiment.experiment_id)} (active) for ${experiment.workload}\n`,
+          `${kleur.green("✓")} Created ${kleur.bold(experiment.experiment_id)} (active)` +
+            `${experiment.name ? ` ${kleur.gray(`"${experiment.name}"`)}` : ""}` +
+            ` for ${experiment.workload}\n`,
         );
         process.stdout.write(
           pinned

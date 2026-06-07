@@ -55,6 +55,9 @@ execution; skills tell the agent what to inspect, gate, monitor, and report.
 - [`run-local-model-lab`](run-local-model-lab/SKILL.md) evaluates local or
   workstation-hosted models against the same frozen workload/eval, keeps model
   downloads behind approval, and compares local, hybrid, and remote routes.
+- [`compare-model-sweep`](compare-model-sweep/SKILL.md) runs a frozen eval across
+  a candidate matrix and writes Pareto-style quality, latency, cost, reliability,
+  and caveat artifacts for route decisions.
 - [`specialize-local-model`](specialize-local-model/SKILL.md) sequences the local
   model product loop: pick the smallest task-reasonable local rung, open it in
   Pi against a frontier model, diagnose the gap, then choose model climb, GEPA,

@@ -247,6 +247,28 @@ AutomationBench's seeded state is the determinism guarantee. Prefer it over
 hand-rolled mocks when available; the agent should record the seed and reset
 command, then run every candidate against the same rows and state.
 
+### Toolset Reporting
+
+AutomationBench exposes three materially different tool surfaces:
+
+| Toolset | What it measures | Claim status |
+| --- | --- | --- |
+| `api` | Blind endpoint discovery over REST/API schemas | Realistic baseline |
+| `zapier` | Structured meta-search over the tool catalog | Realistic/assisted baseline |
+| `limited_zapier` | Gold tools from each row's `info["zapier_tools"]` | Oracle diagnostic only |
+
+Always report a realistic-toolset number (`api` or `zapier`) beside any
+`limited_zapier` result. A `limited_zapier` win proves the model can execute the
+task once discovery is solved; it does not prove a deployable route unless a
+real retriever/advisor supplies the same tool subset without looking at gold
+labels.
+
+For small local models, treat the spread between realistic toolsets and
+`limited_zapier` as the tool-retrieval opportunity. A useful advisor report
+should include recall, precision, exact-set match, catalog size, gold tool count
+distribution, latency, and whether the catalog prefix is byte-stable enough for
+prompt caching.
+
 ## Workload Card Fill Values
 
 When `capture-evidence` produces a mostly-null workload card, fill the known API
@@ -347,11 +369,28 @@ Do not optimize the entire agent in one opaque string if a cheaper target matche
 the failures. Prefer system prompt, tool descriptions, endpoint catalog wording,
 or retry policy before broader program changes.
 
+For AutomationBench-like harnesses, the faithful version of GEPA is a live
+rollout adapter: each candidate prompt is injected into the harness, train/dev
+rows are re-run with `auto-bench --tasks ...`, and the adapter returns rubric
+scores plus natural-language failure feedback. The current public CLI adapters
+(`eval-input-gepa` and `dspy-gepa`) optimize flat prompt-to-output rows; use them
+for decomposed subtasks such as tool retrieval, or use the live-rollout recipe in
+[`../../docs/agentic-rollout-gepa.md`](../../docs/agentic-rollout-gepa.md)
+when the score must come from real tool execution.
+
+If the harness has no prompt parameter, do not edit benchmark source as an
+undocumented side effect. Prefer a checked local patch or env hook such as
+`AB_SIMPLE_SYSTEM_PROMPT`, record it in `harness.json`, save the candidate prompt
+or patch as evidence, and restore external benchmark files before claiming a
+result. If you own the harness, add `--system-prompt-file` or a per-domain env
+override.
+
 ## Failure Modes And Cheapest Interventions
 
 | Failure mode | Evidence | First intervention |
 | --- | --- | --- |
-| Wrong endpoint selected | request log shows plausible but wrong route | tighten tool descriptions and endpoint catalog examples |
+| Wrong endpoint selected | request log shows plausible but wrong route | compare `api`/`zapier` vs `limited_zapier`, then build or improve tool retrieval |
+| Gold tools succeed but realistic search fails | `limited_zapier` high, `api`/`zapier` low | stateless advisor: task -> compact tool subset, scored by recall/precision vs gold |
 | Missing required write | final-state diff missing expected mutation | prompt repair around completion criteria |
 | Forbidden write | request log has disallowed mutation | hard safety instruction plus deterministic preflight guard |
 | Invalid request schema | 4xx or validator schema failure | parser/schema repair before model swap |
