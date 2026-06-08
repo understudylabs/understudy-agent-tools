@@ -22,6 +22,11 @@ execution; skills tell the agent what to inspect, gate, monitor, and report.
   harness/environment, confirms the metric and validator, freezes splits, and
   reruns the incumbent baseline. (Discovery + capture/import folded into its
   [`reference.md`](capture-evidence/reference.md).)
+- [`walkthrough-public-benchmark-ladder`](walkthrough-public-benchmark-ladder/SKILL.md)
+  runs the improvement loop against public long-horizon agent benchmarks such as
+  Zapier AutomationBench and Harvey LAB. It keeps public harnesses upstream and
+  maps their outputs into Understudy capture, split, baseline, optimization, and
+  conservative-claim artifacts.
 - [`optimize-api-workflow`](optimize-api-workflow/SKILL.md) evaluates and
   optimizes cross-application REST/API workflow agents with seeded state, fixed
   API schemas, policy docs, request logs, final-state validators, and
