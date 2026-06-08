@@ -34,7 +34,7 @@ type SkillSummary = {
 type SearchResult = {
   name: string;
   path: string;
-  kind: "skill" | "reference" | "cookbook";
+  kind: "skill" | "reference";
   score: number;
   matches: string[];
 };
@@ -112,7 +112,7 @@ function searchSkills(query: string, json: boolean): void {
     return;
   }
   if (results.length === 0) {
-    console.log(`No skill or cookbook matches for: ${query}`);
+    console.log(`No skill matches for: ${query}`);
     console.log("Try: understudy skills --list");
     return;
   }
@@ -128,10 +128,7 @@ function searchSkills(query: string, json: boolean): void {
 }
 
 function searchSkillDocs(terms: string[]): SearchResult[] {
-  const candidates = [
-    ...readSearchFiles(join(repoRoot, "skills"), "skill"),
-    ...readSearchFiles(join(repoRoot, "cookbook"), "cookbook"),
-  ];
+  const candidates = readSearchFiles(join(repoRoot, "skills"));
   const results: SearchResult[] = [];
   for (const candidate of candidates) {
     const haystack = `${candidate.name}\n${candidate.path}\n${candidate.text}`.toLowerCase();
@@ -151,7 +148,7 @@ function searchSkillDocs(terms: string[]): SearchResult[] {
   return results.sort((left, right) => right.score - left.score || left.path.localeCompare(right.path));
 }
 
-function readSearchFiles(root: string, defaultKind: "skill" | "cookbook"): SearchCandidate[] {
+function readSearchFiles(root: string): SearchCandidate[] {
   if (!existsSync(root)) {
     return [];
   }
@@ -161,20 +158,17 @@ function readSearchFiles(root: string, defaultKind: "skill" | "cookbook"): Searc
       return (
         relativePath.endsWith("/SKILL.md") ||
         relativePath.endsWith("/reference.md") ||
-        relativePath.startsWith("skills/onboard/") && relativePath.endsWith(".md") ||
-        relativePath.startsWith("cookbook/") && relativePath.endsWith("README.md")
+        relativePath.startsWith("skills/onboard/") && relativePath.endsWith(".md")
       );
     });
   return files.map((path) => {
     const relativePath = relative(repoRoot, path).replaceAll("\\", "/");
     const text = readFileSync(path, "utf8");
-    const skillName = relativePath.startsWith("skills/")
-      ? relativePath.split("/")[1] ?? relativePath
-      : relativePath.split("/").slice(0, 2).join("/");
+    const skillName = relativePath.split("/")[1] ?? relativePath;
     return {
       name: skillName,
       path: relativePath,
-      kind: relativePath.endsWith("SKILL.md") ? "skill" : defaultKind === "cookbook" ? "cookbook" : "reference",
+      kind: relativePath.endsWith("SKILL.md") ? "skill" : "reference",
       text,
     };
   });
@@ -385,7 +379,7 @@ export function buildProgram(): Command {
   const skills = program.command("skills").description("List and inspect public skills");
   skills.option("--list", "List public MVP skills");
   skills.option("--inspect <name>", "Inspect one public skill");
-  skills.option("--search <query>", "Search skills, references, and cookbook README files");
+  skills.option("--search <query>", "Search skills and reference docs");
   skills.action((options: { inspect?: string; search?: string }) => {
     if (options.inspect) {
       inspectSkill(options.inspect);

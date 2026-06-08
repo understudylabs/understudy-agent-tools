@@ -137,8 +137,8 @@ Required behavior:
 - Missing optimizer package: print install guidance and stop.
 - Dry run: write `proof-packet.json` without provider calls or package installs.
 - Generic optimizer smoke/scaffold commands stay out of the CLI. Use named
-  adapters for real execution and skills/cookbook recipes for setup guidance.
-- Rubric scoring and DSPy scaffold/parity: keep as skill/cookbook
+  adapters for real execution and skill reference recipes for setup guidance.
+- Rubric scoring and DSPy scaffold/parity: keep as skill/reference guidance
   guidance unless a concrete adapter needs executable support.
 - DSPy GEPA adapter: expose through `adapter run`, require `--execute`, require
   an explicit model/deployment, resolve the Understudy API key without printing

@@ -65,8 +65,8 @@ The Node package validates itself with:
 npm run check
 ```
 
-That runs build, typecheck, CLI tests, public skill validation, cookbook
-validation, and npm package smoke.
+That runs build, typecheck, CLI tests, public skill validation, and npm package
+smoke.
 
 The understand commands are local-only. They do not upload data, call providers,
 or read prompt/eval payloads. They write metadata artifacts to:
@@ -156,7 +156,7 @@ The optimizer helpers are TypeScript-orchestrated and `uv`-backed. The CLI
 generates a small runtime script under
 `.understudy/optimize-workload/uv-runtime/`, then uses `uv run --no-project`
 for Python-native packages. Rubric, smoke-test, and DSPy scaffold/parity
-guidance lives in skills and cookbooks rather than first-class CLI commands.
+guidance lives in skills rather than first-class CLI commands.
 GEPA execution is exposed through named adapters. The live DSPy adapter is
 exposed through
 `optimize-workload adapter run --adapter dspy-gepa --execute`: it resolves the
@@ -177,7 +177,7 @@ model, this path makes no provider calls.
 `gateway` is registered only as a narrow health/probe group. Full-runtime
 commands such as `browser`, `channels`, `schedule`, `daemon`, `agent`, and
 `chat` are not registered in this public CLI. Agents should use `understudy
-skills --search <query>` to find the relevant skill or cookbook instead.
+skills --search <query>` to find the relevant skill instead.
 
 ## Next CLI Restores
 
