@@ -65,8 +65,8 @@ The Node package validates itself with:
 npm run check
 ```
 
-That runs build, typecheck, CLI tests, and public skill validation
-validation, and npm package smoke.
+That runs build, typecheck, CLI tests, public skill validation, and npm package
+smoke.
 
 The understand commands are local-only. They do not upload data, call providers,
 or read prompt/eval payloads. They write metadata artifacts to:
