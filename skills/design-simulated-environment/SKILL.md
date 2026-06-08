@@ -98,6 +98,27 @@ experimentation" — Prime Intellect, https://www.primeintellect.ai/blog/environ
 That's why building it well — and validating it cheaply via eval *before* any GPU —
 pays off across all of them.
 
+**Four LEGO blocks (dataset · parser · rubric · rollout).** A `verifiers` env snaps
+together from four independently-swappable pieces (Will Brown / Prime Intellect):
+
+- **Dataset** — the tasks: `prompt` + gold `answer` + per-example `info`.
+- **Rollout** — the harness / the "world": tools, turn budget, how state flows.
+- **Parser** — turns raw model output into actions/answer (tool-call extraction,
+  final-answer pull).
+- **Rubric** — the reward: scoring function(s) + weights. The metric, not the trajectory.
+
+The payoff is the seams — swap one brick, keep the rest: swap the **dataset** → new
+task; swap the model in the **rollout** → model comparison on the *same* harness;
+add a **rubric** function → reward something new; change the **consumer** → the same
+env runs as eval, RL training, or synthetic-data gen (one env, many uses). This is
+why the env is the durable asset and the trainer/model are swap-in bricks — how a
+run can change model (e.g. Gemma-4 → Nemotron-3) or trainer (eval → prime-rl)
+*without rebuilding the env*.
+
+Caveat: the bricks look independent, but the **parser must match the model** (and
+the trainer's renderer must too) — that's the seam that breaks on a new model arch.
+When you swap the model brick, re-check the parser/renderer.
+
 When the env is built as an actual `verifiers` Environment (the form
 [`author-rl-env`](../author-rl-env/SKILL.md) / `package-verifier-env` consume),
 these API facts save real trial — verified against the `verifiers` library v0.1.14
