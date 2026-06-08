@@ -150,7 +150,7 @@ every N steps (the ART·E recipe evaluated every 30). Timeline heuristic when
 variance is healthy: first drift ~step 30–50, clear trend ~step 100, gains across
 epochs.
 
-**Confirmed by Understudy:** 2026-04-29 (understudy-knowledge workload-010 —
+**Confirmed by Understudy:** 2026-04-29 (internal synthetic workload —
 verifiers-shaped reward moved GRPO 0.025→0.1 where action-level reward did not);
 2026-06-07 (ART·E Qwen-14B recreation — `groups_trainable` held 4–11/12 from step 1
 → gradual climb exactly as the variance predicts). Public reproduction: OpenPipe
