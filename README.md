@@ -192,12 +192,23 @@ thin GEPA/DSPy optimizer. The installed onboarding skill starts by checking
 `understudy status --json` and stops with a clear login instruction if
 the user is not authenticated.
 
+## Public Benchmark Golden Path
+
+For a public demo or agent smoke test, use
+[`skills/walkthrough-public-benchmark-ladder/SKILL.md`](skills/walkthrough-public-benchmark-ladder/SKILL.md).
+It points agents at public upstream benchmarks such as
+[Zapier AutomationBench](https://github.com/zapier/AutomationBench) and
+[Harvey LAB](https://github.com/harveyai/harvey-labs). Keep benchmark harnesses
+upstream; use Understudy for capture, splits, baselines, optimization, and
+conservative claims.
+
 ## Skill Tree
 
 `skills/understudy/SKILL.md` is the public entrypoint. It routes to exactly one
 capability worker:
 
 - `skills/onboard/SKILL.md` (first-run: profiles the machine + user, backgrounds a small model)
+- `skills/walkthrough-public-benchmark-ladder/SKILL.md` (public benchmark golden path)
 - `skills/capture-evidence/SKILL.md`
 - `skills/optimize-workload/SKILL.md`
 - `skills/use-understudy-gateway/SKILL.md`
