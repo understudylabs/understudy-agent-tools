@@ -97,8 +97,8 @@ Two checks beyond the scripted oracle, before any model score is trusted:
   pass/fail and the partial-credit axes. When strict reads 0 while partial
   credit is high across many rows, the strict reward is underestimating real
   behavior — and as a training signal it would yield constant all-fail groups
-  with no gradient. Confirmed by Understudy: 2026-05-18 (internal — strict
-  pass-rate materially under-read measured behavior on a multi-step workload).
+  with no gradient. Measured on an internal synthetic workload, 2026-05-18
+  (strict pass-rate materially under-read behavior on a multi-step workload).
 - **Reward-hacking sentinels.** Plant runs the validator must reject: an
   empty/no-op trajectory, a plausible-but-wrong-values write, and a
   metric-gaming run (e.g. writing every record to inflate recall). Each must
