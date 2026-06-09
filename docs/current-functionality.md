@@ -99,6 +99,24 @@ does not duplicate that list.
 Agents should use those skills to inspect local artifacts and guide users, but
 they should not claim that removed Python commands still exist.
 
+### Skill catalog consolidation (2026-06)
+
+Thirteen pipeline-stage/research skills were folded into the skill that owns
+the user intent; do not route to the old names:
+
+| Former skill | New owner |
+| --- | --- |
+| `profile-captures` | `ingest-traces/references/profile-captures.md` |
+| `optimize-agentic-search`, `optimize-api-workflow` | `optimize-agentic-workload` |
+| `author-rl-env`, `package-verifier-env` | `prepare-verifier-handoff/references/stage-1-author-env.md`, `stage-2-package-env.md` |
+| `mlx-arena` | `run-local-model-lab/references/blind-arena.md` |
+| `specialize-local-model` | `understudy` routing section (local specialization sequencing) |
+| `pedagogical-learning` | `local-distillation-lab/references/pedagogical-arm.md` |
+| `rlm-pedagogical-training` | `recursive-language-model/references/pedagogical-training.md` |
+| `choose-cloud-provider`, `estimate-run-cost` | `plan-hosted-run` |
+| `choose-frontier-keys` | `use-understudy-gateway/references/frontier-keys.md` |
+| `walkthrough-public-benchmark-ladder` | `capture-evidence/references/public-benchmark-path.md` |
+
 `use-understudy-gateway` includes the public model-routing workflow. Agents can
 list routeable Understudy model IDs without supplier/provider details, run
 probe-only gateway health/completion checks, list/create/update workloads, view

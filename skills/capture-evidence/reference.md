@@ -201,10 +201,10 @@ hand forward. Keep it local-only and gate any provider spend per Safety Gates.
 If the inspection shows a **multi-turn tool-calling loop** (an agent that plans
 over turns and calls live tools), do **not** build a single-output harness here.
 A single-shot prompt/response harness cannot score *how* the agent searches.
-Route the eval to [`../optimize-agentic-search/SKILL.md`](../optimize-agentic-search/SKILL.md),
-which adopts a verifiers environment as the harness (tools held fixed, policy
-model varied) and still lands in the same `.understudy/capture-evidence/`
-artifact contract. Single output with no tool loop stays here.
+Route the eval to [`../optimize-agentic-workload/SKILL.md`](../optimize-agentic-workload/SKILL.md),
+which adopts a verifiers environment or resettable workflow sandbox as the
+harness (tools held fixed, policy model varied) and still lands in the same
+`.understudy/capture-evidence/` artifact contract. Single output with no tool loop stays here.
 
 ## Acquire-fresh (when no usable data exists)
 

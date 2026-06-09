@@ -1,6 +1,6 @@
 ---
 name: use-understudy-gateway
-description: Use when a developer wants authenticated Understudy inference, project/key management, public model routing, gateway-backed local commands, or durable CLI execution that an agent can monitor.
+description: Use when a developer wants to run inference or evals through the Understudy gateway — "route my app through Understudy", "set up my account and keys", "A/B a model on part of my traffic" — or must choose between local provider keys and the gateway route ("should I use my OpenAI key or the gateway"). Handles login, projects/keys, model routing, and runs.
 metadata:
   understudy:
     mode: interactive
@@ -18,6 +18,14 @@ The local evidence loop does not require auth. Route here only when the develope
 explicitly asks for Understudy inference, gateway routing, project/key
 management, workload route configuration, hosted execution, or authenticated
 gateway routing.
+
+**Choosing between local provider keys and the gateway route?** When an
+onboarding step, installer, or local-vs-frontier comparison needs a remote
+frontier model, run the decision in
+[`references/frontier-keys.md`](references/frontier-keys.md) first — BYO
+shell/`.env` keys vs the Understudy ZDR gateway vs local-only skip. It keeps
+secrets local, asks before reading `.env` values, and records the choice
+without printing keys.
 
 ## Safety Gates
 
@@ -91,7 +99,7 @@ node dist/bin.js status --json
 
 Use this recipe to A/B a chosen public model against passthrough while an eval
 runs through the gateway. A typical consumer is
-[`../optimize-agentic-search/SKILL.md`](../optimize-agentic-search/SKILL.md),
+[`../optimize-agentic-workload/SKILL.md`](../optimize-agentic-workload/SKILL.md),
 comparing a workload's quality and cost across the split.
 
 1. Discover public model options (public model IDs only; no supplier detail):
@@ -141,6 +149,10 @@ End with:
 - local artifact path or next CLI command to monitor.
 
 ## References
+
+- [`references/frontier-keys.md`](references/frontier-keys.md) — the BYO
+  `.env`-keys vs ZDR-gateway vs skip decision, the allowlisted env vars, the
+  secret-to-remote-infra recipe, and the installer mapping.
 
 Domain depth in [`reference.md`](reference.md):
 

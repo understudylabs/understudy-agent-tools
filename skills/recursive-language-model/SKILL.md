@@ -1,6 +1,6 @@
 ---
 name: recursive-language-model
-description: Use to make a small/local model take over an agentic task a frontier model one-shots, by decomposing it into bounded steps with flat context (a recursive-language-model loop) and measuring what's possible — "can a small model do this whole case", "decompose this workload for a local model", "the prompt is too big for the small model", "hill-climb the local model on this task", or any handoff from understand-workload + design-simulated-environment toward whole-case local takeover.
+description: Use when a developer wants a small or local model to take over an agentic task a frontier model one-shots — "can a small model do this whole case", "the prompt is too big for the small model", "hill-climb the local model on this task". Decomposes the task into bounded, flat-context steps behind the same call contract; includes the training path.
 metadata:
   understudy:
     mode: interactive
@@ -86,12 +86,13 @@ local rungs genuinely can't close it,
 
 ## Training Path
 
-When the RLM loop itself is the thing that must improve, route to
-[`../rlm-pedagogical-training/SKILL.md`](../rlm-pedagogical-training/SKILL.md).
-That worker turns the decomposition harness into a verifiers-style training
-surface, separates privileged training context from deploy-time input, and
-decides whether the next rung is local pedagogical SFT, on-policy repair,
-pedagogical RL, or a hosted verifier handoff.
+When the RLM loop itself is the thing that must improve, follow
+[`references/pedagogical-training.md`](references/pedagogical-training.md). It
+turns the decomposition harness into a verifiers-style training surface,
+separates privileged training context (`c`) from deploy-time input (`x`),
+measures surprise concentration, explains how to read a live GRPO training
+signal, and decides whether the next rung is local pedagogical SFT, on-policy
+repair, pedagogical RL, or a hosted verifier handoff.
 
 ## Safety Gates
 
@@ -102,8 +103,8 @@ pedagogical RL, or a hosted verifier handoff.
 
 ## References
 
+- [`references/pedagogical-training.md`](references/pedagogical-training.md) — train the RLM policy (verifiers shape, baselines, concentration, training arms, reading the training signal).
 - [`../understand-workload/SKILL.md`](../understand-workload/SKILL.md)
 - [`../design-simulated-environment/SKILL.md`](../design-simulated-environment/SKILL.md)
 - [`../run-local-model-lab/SKILL.md`](../run-local-model-lab/SKILL.md)
-- [`../rlm-pedagogical-training/SKILL.md`](../rlm-pedagogical-training/SKILL.md)
-- [`../mlx-arena/SKILL.md`](../mlx-arena/SKILL.md) — vibe-check the hill-climbed local model vs the frontier.
+- [`../run-local-model-lab/references/blind-arena.md`](../run-local-model-lab/references/blind-arena.md) — vibe-check the hill-climbed local model vs the frontier.

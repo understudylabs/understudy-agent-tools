@@ -137,7 +137,7 @@ the trainer's renderer must too) — that's the seam that breaks on a new model 
 When you swap the model brick, re-check the parser/renderer.
 
 When the env is built as an actual `verifiers` Environment (the form
-[`author-rl-env`](../author-rl-env/SKILL.md) / `package-verifier-env` consume),
+[`prepare-verifier-handoff`'s authoring and packaging stages](../prepare-verifier-handoff/references/stage-1-author-env.md) consume),
 these API facts save real trial — verified against the `verifiers` library v0.1.14
 (https://github.com/PrimeIntellect-ai/verifiers ; APIs move, re-check the pin):
 
@@ -171,6 +171,6 @@ recall/precision/policy + cost/latency — with the local-model gap to close.
 
 - [`../understand-workload/SKILL.md`](../understand-workload/SKILL.md) — produces the shape this simulates.
 - [`../recursive-language-model/SKILL.md`](../recursive-language-model/SKILL.md) — the harness that lifts a small model's score in this env.
-- [`../optimize-api-workflow/SKILL.md`](../optimize-api-workflow/SKILL.md) — the API-workflow metric axes and final-state validation.
-- [`../author-rl-env/SKILL.md`](../author-rl-env/SKILL.md) — inverts this batch-scored env into a `reset`/`step` MDP when the workload needs RL (the direct next rung before a hosted handoff).
+- [`../optimize-agentic-workload/SKILL.md`](../optimize-agentic-workload/SKILL.md) — the agentic-workload metric axes and final-state validation.
+- [`../prepare-verifier-handoff/references/stage-1-author-env.md`](../prepare-verifier-handoff/references/stage-1-author-env.md) — inverts this batch-scored env into a `reset`/`step` MDP when the workload needs RL (the direct next rung before a hosted handoff).
 - [`../prepare-verifier-handoff/SKILL.md`](../prepare-verifier-handoff/SKILL.md) — when the env should graduate to a hosted RL/verifiers partner.

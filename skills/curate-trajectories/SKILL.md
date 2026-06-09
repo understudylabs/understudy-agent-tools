@@ -52,8 +52,9 @@ but the moment a number leaves the building, curate first.
 This skill selects on **provenance and contamination** (split membership, dedup,
 outcome conflicts) — it does **not** judge whether a trajectory is *correct or
 learnable*. That pedagogical filtering (the useful-quadrant / surprise-gap cut)
-lives in the `pedagogical-learning` skill, which consumes this skill's
-decontaminated pool.
+lives in
+[`local-distillation-lab`'s pedagogical arm](../local-distillation-lab/references/pedagogical-arm.md),
+which consumes this skill's decontaminated pool.
 
 ## Flow
 
@@ -104,11 +105,12 @@ End with:
 - `result_type: curated-selection` or `blocked`;
 - one recommended next consumer —
   [`compare-trajectories`](../compare-trajectories/SKILL.md),
-  [`author-rl-env`](../author-rl-env/SKILL.md),
-  [`local-distillation-lab`](../local-distillation-lab/SKILL.md),
-  [`prepare-verifier-handoff`](../prepare-verifier-handoff/SKILL.md), or the
-  `pedagogical-learning` / `rlm-pedagogical-training` skills — with the exact
-  selection hash to pass it.
+  [`local-distillation-lab`](../local-distillation-lab/SKILL.md) (including its
+  pedagogical arm),
+  [`prepare-verifier-handoff`](../prepare-verifier-handoff/SKILL.md) (its
+  stage-1 env authoring consumes the `train-safe` pool), or
+  [`recursive-language-model`](../recursive-language-model/SKILL.md)
+  pedagogical training — with the exact selection hash to pass it.
 
 ## References
 
@@ -119,7 +121,7 @@ End with:
   — produces the trajectories/traces this skill ingests and curates.
 - [`../compare-trajectories/SKILL.md`](../compare-trajectories/SKILL.md) — consumes
   a clean selection to diff trajectories across models.
-- [`../author-rl-env/SKILL.md`](../author-rl-env/SKILL.md) — consumes the
-  `train-safe` pool as the RL training set.
+- [`../prepare-verifier-handoff/references/stage-1-author-env.md`](../prepare-verifier-handoff/references/stage-1-author-env.md)
+  — consumes the `train-safe` pool as the RL training set.
 - [`../prepare-verifier-handoff/SKILL.md`](../prepare-verifier-handoff/SKILL.md) —
   carries the selection hash + `splits_sha256` into the hosted-RL handoff.

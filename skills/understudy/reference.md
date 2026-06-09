@@ -135,7 +135,7 @@ Produce this for every completed improvement attempt:
   `use-understudy-gateway`).
 - **Tool-use reliability** — inspect tool defs + traces → build evals from failed
   tool calls → optimize tool descriptions/system prompt → compare success rate →
-  report regressions (`optimize-agentic-search`).
+  report regressions (`optimize-agentic-workload`).
 - **SOC 2 + ZDR quality** — confirm the data boundary → local-only traces, no
   hosted upload → approved providers only → local optimization → report suitable
   for security review.

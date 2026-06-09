@@ -1,6 +1,6 @@
 ---
 name: compare-model-sweep
-description: Use when a developer wants to run the same eval or benchmark across multiple local, gateway, or frontier models and produce a Pareto-style quality, latency, cost, and reliability comparison.
+description: Use when a developer wants to compare candidate models — any mix of local, gateway, or frontier — on the same eval and see quality, latency, cost, and reliability side by side. "Which model should I use", "sweep these models on my benchmark", "compare Gemma vs the frontier on my eval". To stand up and serve a local candidate first, use run-local-model-lab.
 metadata:
   understudy:
     mode: interactive
@@ -16,7 +16,7 @@ one frozen harness across a candidate matrix, records each run, and emits a
 small Pareto report an agent can use for route decisions.
 
 Prefer this after [`../understand-workload/SKILL.md`](../understand-workload/SKILL.md),
-[`../optimize-api-workflow/SKILL.md`](../optimize-api-workflow/SKILL.md), or
+[`../optimize-agentic-workload/SKILL.md`](../optimize-agentic-workload/SKILL.md), or
 [`../run-local-model-lab/SKILL.md`](../run-local-model-lab/SKILL.md) has already
 identified a resettable eval and a first local candidate.
 

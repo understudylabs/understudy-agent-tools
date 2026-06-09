@@ -416,9 +416,8 @@ describe("understudy CLI", () => {
   it("lists the pedagogical and local training skills", () => {
     const result = run(["skills", "--list"]);
     assert.equal(result.status, 0, result.stderr);
-    assert.match(result.stdout, /pedagogical-learning/);
-    assert.match(result.stdout, /rlm-pedagogical-training/);
     assert.match(result.stdout, /local-distillation-lab/);
+    assert.match(result.stdout, /recursive-language-model/);
   });
 
   it("searches skills by query", () => {
@@ -431,13 +430,11 @@ describe("understudy CLI", () => {
   it("searches pedagogical and verifier training surfaces", () => {
     const pedagogical = run(["skills", "--search", "pedagogical"]);
     assert.equal(pedagogical.status, 0, pedagogical.stderr);
-    assert.match(pedagogical.stdout, /pedagogical-learning \(skill\)/);
-    assert.match(pedagogical.stdout, /rlm-pedagogical-training \(skill\)/);
-    assert.match(pedagogical.stdout, /next: understudy skills --inspect pedagogical-learning/);
+    assert.match(pedagogical.stdout, /local-distillation-lab \(skill\)/);
+    assert.match(pedagogical.stdout, /next: understudy skills --inspect local-distillation-lab/);
 
     const verifiers = run(["skills", "--search", "verifiers"]);
     assert.equal(verifiers.status, 0, verifiers.stderr);
-    assert.match(verifiers.stdout, /rlm-pedagogical-training \(skill\)/);
     assert.match(verifiers.stdout, /prepare-verifier-handoff \(skill\)/);
   });
 
@@ -448,35 +445,35 @@ describe("understudy CLI", () => {
   });
 
   it("inspects pedagogical skill descriptions", () => {
-    const pedagogical = run(["skills", "--inspect", "pedagogical-learning"]);
-    assert.equal(pedagogical.status, 0, pedagogical.stderr);
-    assert.match(pedagogical.stdout, /correct and learnable/);
+    const distillation = run(["skills", "--inspect", "local-distillation-lab"]);
+    assert.equal(distillation.status, 0, distillation.stderr);
+    assert.match(distillation.stdout, /pedagogical/);
 
-    const rlm = run(["skills", "--inspect", "rlm-pedagogical-training"]);
+    const rlm = run(["skills", "--inspect", "recursive-language-model"]);
     assert.equal(rlm.status, 0, rlm.stderr);
-    assert.match(rlm.stdout, /Recursive Language Model policy/);
+    assert.match(rlm.stdout, /take over an agentic task/);
   });
 
   it("routes local pedagogical and RLM rungs before hosted verifier handoff", () => {
     const understudySkill = readFileSync("skills/understudy/SKILL.md", "utf8");
     assert.ok(
-      understudySkill.indexOf("../pedagogical-learning/SKILL.md") <
+      understudySkill.indexOf("../local-distillation-lab/SKILL.md") <
         understudySkill.indexOf("../prepare-verifier-handoff/SKILL.md"),
     );
     assert.ok(
-      understudySkill.indexOf("../rlm-pedagogical-training/SKILL.md") <
+      understudySkill.indexOf("../recursive-language-model/SKILL.md") <
         understudySkill.indexOf("../prepare-verifier-handoff/SKILL.md"),
     );
     assert.match(
       understudySkill,
-      /RLM policy training routes\s+to `rlm-pedagogical-training` first; only external\/hosted RL handoffs route to\s+`prepare-verifier-handoff`/,
+      /RLM policy\s+training routes to `recursive-language-model` \(pedagogical training\) first;\s+only external\/hosted RL handoffs route to `prepare-verifier-handoff`/,
     );
 
     const recursiveSkill = readFileSync("skills/recursive-language-model/SKILL.md", "utf8");
-    assert.match(recursiveSkill, /\.\.\/rlm-pedagogical-training\/SKILL\.md/);
+    assert.match(recursiveSkill, /references\/pedagogical-training\.md/);
 
     const handoffSkill = readFileSync("skills/prepare-verifier-handoff/SKILL.md", "utf8");
-    assert.match(handoffSkill, /rlm-pedagogical-training\/SKILL\.md/);
+    assert.match(handoffSkill, /recursive-language-model\/references\/pedagogical-training\.md/);
     assert.match(handoffSkill, /only for work that still needs external or hosted\s+training/);
   });
 

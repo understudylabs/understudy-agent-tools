@@ -1,6 +1,6 @@
 ---
 name: ingest-traces
-description: Use when a developer already has production LLM traces somewhere — an object-store bucket (R2/S3), provider log exports, or an Understudy gateway capture export — and wants them turned into local, redacted, deterministically split evaluation artifacts. "ingest my traces", "I have a bucket of captures", "turn these logs into an eval set", "get my production calls into the harness". The front door for users who arrive with data instead of a harness.
+description: Use when a developer already has production LLM traces — a bucket of captures, provider log exports, or gateway capture files — and wants them turned into local, redacted eval sets, or profiled for cost first. "Ingest my traces", "turn these logs into an eval set", "where is my LLM spend going", "which calls could a local model take over".
 metadata:
   understudy:
     mode: interactive
@@ -55,6 +55,13 @@ Identify the source shape first:
 Then confirm with the developer which workload(s) the traces should map to,
 and what the unit of one "task" is (one request? one conversation?).
 
+**Profile a whole capture directory first.** When the source is a fleet of
+gateway captures and the developer wants to know where the spend goes and
+which call types a local model could take over, run the profiling playbook in
+[`references/profile-captures.md`](references/profile-captures.md) before (or
+instead of) per-workload ingestion — it produces a cost + call-type taxonomy
+and a ranked local-takeover candidate list from the same `.jsonl` dump.
+
 ## Flow
 
 1. **Classify deterministically.** Bucket every trace into workload groups by
@@ -82,7 +89,7 @@ and what the unit of one "task" is (one request? one conversation?).
    [`../compare-model-sweep/SKILL.md`](../compare-model-sweep/SKILL.md) can
    consume directly.
 5. **Hand off.** Fleet-level cost/taxonomy questions →
-   [`../profile-captures/SKILL.md`](../profile-captures/SKILL.md). "What is
+   [`references/profile-captures.md`](references/profile-captures.md). "What is
    this workload actually doing?" →
    [`../understand-workload/SKILL.md`](../understand-workload/SKILL.md).
    Harness attachment, metric, and baseline →
@@ -101,8 +108,9 @@ skill for this workload.
 
 - [`../capture-evidence/SKILL.md`](../capture-evidence/SKILL.md) — owns the
   metric/validator/baseline contract the frozen slices feed.
-- [`../profile-captures/SKILL.md`](../profile-captures/SKILL.md) — fleet-level
-  cost and call-type taxonomy over the same capture set.
+- [`references/profile-captures.md`](references/profile-captures.md) —
+  fleet-level cost and call-type taxonomy over the same capture set, with a
+  ranked local-takeover candidate list.
 - [`../understand-workload/SKILL.md`](../understand-workload/SKILL.md) —
   decomposes one ingested workload before model comparison.
 - [`../curate-trajectories/SKILL.md`](../curate-trajectories/SKILL.md) — split

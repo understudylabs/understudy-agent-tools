@@ -158,6 +158,7 @@ function readSearchFiles(root: string): SearchCandidate[] {
       return (
         relativePath.endsWith("/SKILL.md") ||
         relativePath.endsWith("/reference.md") ||
+        relativePath.includes("/references/") && relativePath.endsWith(".md") ||
         relativePath.startsWith("skills/onboard/") && relativePath.endsWith(".md")
       );
     });

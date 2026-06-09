@@ -194,8 +194,8 @@ the user is not authenticated.
 
 ## Public Benchmark Golden Path
 
-For a public demo or agent smoke test, use
-[`skills/walkthrough-public-benchmark-ladder/SKILL.md`](skills/walkthrough-public-benchmark-ladder/SKILL.md).
+For a public demo or agent smoke test, use the public-benchmark on-ramp in
+[`skills/capture-evidence/references/public-benchmark-path.md`](skills/capture-evidence/references/public-benchmark-path.md).
 It points agents at public upstream benchmarks such as
 [Zapier AutomationBench](https://github.com/zapier/AutomationBench) and
 [Harvey LAB](https://github.com/harveyai/harvey-labs). Keep benchmark harnesses
@@ -205,23 +205,26 @@ conservative claims.
 ## Skill Tree
 
 `skills/understudy/SKILL.md` is the public entrypoint. It routes to exactly one
-capability worker per intent. The workers are grouped by journey stage:
+capability worker per intent. The workers are grouped by journey stage; deeper
+playbooks live in each skill's `references/` directory:
 
-- **Setup & first run** — install-plugin, onboard, choose-frontier-keys,
-  walkthrough-public-benchmark-ladder
-- **Understand & capture** — understand-workload, profile-captures,
-  ingest-traces, capture-evidence, design-simulated-environment
-- **Local models** — manage-local-models, run-local-model-lab, mlx-arena,
-  specialize-local-model, recursive-language-model
+- **Setup & first run** — install-plugin, onboard
+- **Understand & capture** — understand-workload, ingest-traces (incl. the
+  capture-directory profiler), capture-evidence (incl. the public-benchmark
+  on-ramp), design-simulated-environment
+- **Local models** — manage-local-models, run-local-model-lab (incl. the blind
+  frontier-vs-local arena), recursive-language-model (incl. RLM pedagogical
+  training)
 - **Compare & diagnose** — compare-model-sweep, compare-trajectories
-- **Cost & providers** — estimate-run-cost, choose-cloud-provider
-- **Optimize** — optimize-workload, optimize-api-workflow,
-  optimize-agentic-search
-- **Train locally** — pedagogical-learning, curate-trajectories,
-  distill-classifier, local-distillation-lab, rlm-pedagogical-training
-- **RL environment & handoff** — author-rl-env, package-verifier-env,
-  prepare-verifier-handoff
-- **Gateway & routing** — use-understudy-gateway, ramp-and-verify
+- **Plan hosted runs** — plan-hosted-run (provider routing + cost estimation)
+- **Optimize** — optimize-workload, optimize-agentic-workload (read-only
+  search loops and state-mutating API workflows)
+- **Train locally** — curate-trajectories, distill-classifier,
+  local-distillation-lab (incl. the pedagogical arm)
+- **RL handoff** — prepare-verifier-handoff (decide → author env → package →
+  hand off)
+- **Gateway & routing** — use-understudy-gateway (incl. the frontier-keys
+  decision), ramp-and-verify
 
 [`skills/README.md`](skills/README.md) is the authoritative index with
 per-skill descriptions — keep it in sync when adding skills. See

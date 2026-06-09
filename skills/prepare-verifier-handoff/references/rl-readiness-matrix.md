@@ -37,10 +37,10 @@ determine readiness from primary sources rather than trusting the snapshot:
 
 A model passes only if 1 and 2 both hold for multi-turn; otherwise it is single-turn-only or not ready.
 
-## Relationship to `rlm-pedagogical-training`
+## Relationship to RLM pedagogical training
 
 The "Reading the training signal" section of
-[`rlm-pedagogical-training/SKILL.md`](../../rlm-pedagogical-training/SKILL.md)
+[`recursive-language-model/references/pedagogical-training.md`](../../recursive-language-model/references/pedagogical-training.md)
 applies the same trainer/model fit gate at training time (renderer + registry +
 merged GRPO). This matrix is the canonical support table; when a family's
 status changes, update both places together so the Gemma-4/Nemotron-3 finding

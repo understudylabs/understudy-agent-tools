@@ -96,13 +96,15 @@ work — do not re-run the full interview. Only first-timers get the full flow.
    If `~/.understudy/companion.json` points at a dead pid, clear it and record
    the stale pid in the card.
 
-6. **Land the quick win: show the local Understudy exists.** Once the snapshot is cached, route to
-   [`../mlx-arena/SKILL.md`](../mlx-arena/SKILL.md). Coach the user to open a
+6. **Land the quick win: show the local Understudy exists.** Once the snapshot is cached, follow
+   the blind-arena playbook in
+   [`../run-local-model-lab/references/blind-arena.md`](../run-local-model-lab/references/blind-arena.md).
+   Coach the user to open a
    terminal of their choice and attach to the tmux session, or launch it from the
    agent if they ask. Use:
    ```bash
    FIRST_REPO="$HOME/.understudy/models/gemma-4-e2b-it-mlx-vlm-4bit" \
-     skills/mlx-arena/arena.sh first
+     skills/run-local-model-lab/scripts/arena.sh first
    ```
    The pane says their first local Understudy is ready and opens Pi on verified
    Gemma 4 E2B. Have them try one real prompt only to prove local inference is
@@ -125,12 +127,13 @@ work — do not re-run the full interview. Only first-timers get the full flow.
 
 8. **Make head-to-head optional.** A frontier-vs-local duel is useful when the
    user needs to feel the quality gap, calibrate taste, or get buy-in. It is a
-   side quest, not the default evidence path. If the user wants it, route to
-   [`../specialize-local-model/SKILL.md`](../specialize-local-model/SKILL.md) and
+   side quest, not the default evidence path. If the user wants it, follow the
+   local specialization sequencing in the
+   [`understudy`](../understudy/SKILL.md) orchestrator's routing section and
    run:
    ```bash
    LEFT_REPO="$HOME/.understudy/models/gemma-4-e2b-it-mlx-vlm-4bit" \
-     skills/mlx-arena/arena.sh play
+     skills/run-local-model-lab/scripts/arena.sh play
    ```
    Otherwise keep going through workload understanding, capture evidence, and
    local evaluation against the actual task slice.

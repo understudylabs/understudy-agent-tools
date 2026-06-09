@@ -69,7 +69,7 @@ SFT is only warranted after it plateaus against a **measured baseline**.
    `reference.md`). Train locally via
    [`../local-distillation-lab/SKILL.md`](../local-distillation-lab/SKILL.md)
    or export the JSONL for a hosted SFT job (approval-gated; size it with
-   [`../estimate-run-cost/SKILL.md`](../estimate-run-cost/SKILL.md)).
+   [`../plan-hosted-run/SKILL.md`](../plan-hosted-run/SKILL.md)).
 6. **Validate, then verdict.** On dev: macro-F1 vs best teacher, per-class
    recall ≥50% everywhere, schema-validity 100% for structured output. Then
    one holdout pass and a four-way verdict:
