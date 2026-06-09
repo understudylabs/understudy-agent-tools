@@ -14,6 +14,13 @@ Use this worker when the unit of learning is a **stateful policy**, not a flat
 completion. The target is an RLM-style loop that learns how to inspect context,
 choose tools, retrieve evidence, call sub-models, and stop with a final answer.
 
+**Not for** environment mechanics or partner packaging: this skill owns the
+learnability decision and the training-arm choice;
+[`../author-rl-env/SKILL.md`](../author-rl-env/SKILL.md) owns building the
+`reset`/`step` environment once RL is the chosen arm, and
+[`../package-verifier-env/SKILL.md`](../package-verifier-env/SKILL.md) owns
+packaging that env for a partner.
+
 This is the bridge between:
 
 - [`../recursive-language-model/SKILL.md`](../recursive-language-model/SKILL.md):
@@ -128,93 +135,25 @@ The stronger claim requires all three:
 
 Read the signal before and during a GRPO / prime-rl run — do not just wait.
 
-**Predict gradual vs flat-then-jump from reward variance.** GRPO normalizes each
-rollout's advantage *within its group* — subtract the group mean, divide by the
-group std (DeepSeekMath, arXiv:2402.03300; DeepSeek-R1, arXiv:2501.12948). A group
-whose rollouts all score the same has advantage ≈ 0 and contributes **no
-gradient**, so **group reward-variance is the learning signal**:
+- **Group reward-variance is the learning signal.** GRPO normalizes each
+  rollout's advantage within its group, so a group whose rollouts all score the
+  same contributes no gradient. Check `groups_trainable` / per-group reward std
+  over the first ~5 steps before forecasting an ETA: healthy variance from
+  step 1 predicts a gradual, noisy climb with plateaus; near-zero variance
+  (most groups all-fail or all-pass) predicts flat-until-a-lucky-success — fix
+  the reward shape (denser / shaped signal) rather than waiting it out.
+- **Read smoothed reward + a periodic held-out mini-eval, not per-step
+  reward.** Timeline heuristic when variance is healthy: first drift
+  ~step 30–50, clear trend ~step 100, gains across epochs.
+- **Trainer/model fit check (before picking prime-rl vs Unsloth/TRL).** A model
+  *loading* is not support. For multi-turn tool-use RL, confirm the trainer
+  has, for that model: a multi-turn **renderer**, the model in the
+  trainer/inference **registry**, and **merged GRPO** support — or switch
+  trainers.
 
-- High variance from step 1 (most groups mixed success/failure; prime-rl/ART
-  `groups_trainable` healthy) → expect a **gradual, noisy climb** with plateaus.
-- Near-zero variance (sparse reward — most groups all-fail or all-pass) → expect
-  **flat until a lucky success** (grokking-like; cf. arXiv:2201.02177). Fix the
-  reward shape (denser / shaped signal) rather than waiting it out — reward shape
-  governs what is learnable (Ng, Harada & Russell, ICML 1999).
-
-Check `groups_trainable` / per-group reward std over the first ~5 steps to set
-expectations before forecasting an ETA.
-
-**Read smoothed reward + a periodic held-out mini-eval, not per-step reward.**
-Per-step train reward is noisy; trust a moving average plus a small held-out eval
-every N steps (the ART·E recipe evaluated every 30). Timeline heuristic when
-variance is healthy: first drift ~step 30–50, clear trend ~step 100, gains across
-epochs.
-
-**Confirmed by Understudy:** 2026-04-29 (internal synthetic workload —
-verifiers-shaped reward moved GRPO 0.025→0.1 where action-level reward did not);
-2026-06-07 (ART·E Qwen-14B recreation — `groups_trainable` held 4–11/12 from step 1
-→ gradual climb exactly as the variance predicts). Public reproduction: OpenPipe
-ART·E blog.
-
-**Trainer/model fit check (before picking prime-rl vs Unsloth/TRL).** A model
-*loading* is not support. For multi-turn tool-use RL on a specific model, confirm
-the trainer has, for that model: (1) a **renderer** for correct multi-turn
-tokenization — prime-rl's `renderers` lib; no per-model renderer falls back to
-`DefaultRenderer` → token drift, flagged lossy / ~3x-cost for multi-turn; (2) the
-model in the trainer/inference **registry** (e.g. vLLM `VLM_REGISTRY`); (3)
-**merged GRPO** support, not just SFT or an open PR. Field check 2026-06: prime-rl
-ships renderers for Qwen / GLM / MiniMax / DeepSeek / Kimi / Nemotron / GPT-OSS but
-**not Gemma** (no merged Gemma-4 GRPO; `gemma4` absent from registry; grad-norm
-blowup) → Gemma-4 multi-turn GRPO belongs on Unsloth/TRL, while Nemotron-3 is
-first-class on prime-rl. Match the model to the trainer that has all three, or
-switch trainers.
-
-### References for this section
-
-Original papers (theory):
-
-- GRPO / within-group advantage normalization — Shao et al., *DeepSeekMath*,
-  https://arxiv.org/abs/2402.03300 ; DeepSeek-AI, *DeepSeek-R1*,
-  https://arxiv.org/abs/2501.12948
-- Reward shape governs learnability — Ng, Harada & Russell, *Policy Invariance
-  Under Reward Transformations* (ICML 1999), https://dl.acm.org/doi/10.5555/645528.657613
-- Delayed/sudden-jump dynamics — Power et al., *Grokking*,
-  https://arxiv.org/abs/2201.02177
-
-Source projects (engineering facts — renderer/registry/GRPO support, env API):
-
-- Prime Intellect `prime-rl` — https://github.com/PrimeIntellect-ai/prime-rl ;
-  `renderers` — https://github.com/PrimeIntellect-ai/renderers ;
-  vLLM model registry — https://github.com/vllm-project/vllm
-- Public reproduction on this task: OpenPipe ART·E blog —
-  https://openpipe.ai/blog/art-e-mail-agent
-
-Confirmed internally by Understudy: 2026-04-29 (workload-010) and 2026-06-07
-(ART·E Qwen-14B recreation).
-
-## Reconcile Parallel Research
-
-When another agent is already running local Gemma/MLX kernels, do not duplicate
-that work. Use this split:
-
-- This skill owns the **learnability decision**: RLM trajectory schema,
-  verifier/reward shape, surprise concentration, contamination boundary, and the
-  arm choice (pedagogical SFT vs on-policy repair vs RL vs handoff).
-- [`author-rl-env`](../author-rl-env/SKILL.md) owns the **environment mechanics**
-  once RL is the chosen arm: inverting a batch sim into a `reset`/`step` MDP,
-  per-rollout state isolation, deterministic reset, and replay-conformance. Decide
-  the arm here; build the step-API env there. Don't re-specify the reset/step
-  contract in this skill.
-- [`package-verifier-env`](../package-verifier-env/SKILL.md) owns **packaging that
-  env for the partner** plus the frozen-holdout return-eval.
-- `local-distillation-lab` owns the **Apple Silicon weight update**: mlx-vlm
-  loader, forced-likelihood kernel, weighted LoRA, B/S/O/P arms, and learning
-  curves.
-- `prepare-verifier-handoff` owns the **external training packet** only after
-  local rungs are insufficient and upload/budget boundaries are approved.
-
-If parallel results conflict, trust sealed-holdout metrics over smoke results,
-and trust deploy-time `x`-only scores over privileged or oracle-tool settings.
+Citations (GRPO, grokking, reward shaping), the measured confirmations, and the
+per-trainer support details are in
+[`reference.md`](reference.md#reading-the-training-signal--background-and-references).
 
 ## Artifact Contract
 

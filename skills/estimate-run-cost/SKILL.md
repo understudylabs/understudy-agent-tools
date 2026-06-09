@@ -96,8 +96,8 @@ than 10× — an estimate priced entirely at the base input rate is wrong in
 either direction. Pull the cache fields from measured usage
 (`cache_read`/`cache_creation` or `cached_tokens`) and price each class at the
 provider's current cached rates, cited with source + date like every other
-dollar figure. Confirmed by Understudy: 2026-05-22 (internal workload-002 —
-cache-read tokens >10× fresh input tokens on a long-context agentic loop).
+dollar figure. Measured on an internal synthetic workload, 2026-05-22
+(cache-read tokens >10× fresh input tokens on a long-context agentic loop).
 
 ### Decide
 
