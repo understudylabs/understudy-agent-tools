@@ -1,33 +1,30 @@
----
-name: rlm-pedagogical-training
-description: Use when a developer wants to train or evaluate a Recursive Language Model policy with privileged context, verifiers, Prime Intellect prime-rl, or pedagogical RL. Turns a workload into an RLM/verifiers environment, measures on-policy state coverage and surprise concentration, and decides between local LoRA/distillation, true pedagogical RL, or hosted verifier handoff.
-metadata:
-  understudy:
-    mode: interactive
-    safety: local-first
-    cli_required: false
----
+# Pedagogical training for RLM policies
 
-# RLM Pedagogical Training
+The training path for [`SKILL.md`](../SKILL.md): use it when the unit of
+learning is a **stateful policy**, not a flat completion. The target is an
+RLM-style loop that learns how to inspect context, choose tools, retrieve
+evidence, call sub-models, and stop with a final answer.
 
-Use this worker when the unit of learning is a **stateful policy**, not a flat
-completion. The target is an RLM-style loop that learns how to inspect context,
-choose tools, retrieve evidence, call sub-models, and stop with a final answer.
+The shared pedagogy concepts — the `x`/`c` contract, correct-and-learnable
+trajectory selection, the local MLX rung order, the training boundary, and the
+SFT-vs-GRPO choice — live in
+[`local-distillation-lab` → pedagogical arm](../../local-distillation-lab/references/pedagogical-arm.md).
+This reference applies them to stateful trajectories and adds what is
+RLM-specific: the verifiers environment shape, the baseline matrix, surprise
+concentration, the training-arm choice, and how to read a live training run.
 
 This is the bridge between:
 
-- [`../recursive-language-model/SKILL.md`](../recursive-language-model/SKILL.md):
-  build the decomposition harness;
-- [`../pedagogical-learning/SKILL.md`](../pedagogical-learning/SKILL.md):
-  use privileged context to find correct-and-learnable trajectories;
-- [`../local-distillation-lab/SKILL.md`](../local-distillation-lab/SKILL.md):
-  run local weight-update arms on Apple Silicon;
-- [`../prepare-verifier-handoff/SKILL.md`](../prepare-verifier-handoff/SKILL.md):
-  hand off only when local rungs cannot train the needed policy.
+- [`recursive-language-model`](../SKILL.md): build the decomposition harness;
+- [`local-distillation-lab`](../../local-distillation-lab/SKILL.md): run local
+  weight-update arms on Apple Silicon (its pedagogical arm owns
+  correct-and-learnable selection for flat tasks);
+- [`prepare-verifier-handoff`](../../prepare-verifier-handoff/SKILL.md): hand
+  off only when local rungs cannot train the needed policy.
 
-## When To Use
+## When this applies
 
-Use this skill when all of these are true:
+Use it when all of these are true:
 
 - the workload has multi-step state: tools, documents, simulated state, code,
   browser, API calls, recursive sub-questions, or long context;
@@ -38,14 +35,14 @@ Use this skill when all of these are true:
   wants RLM, verifiers, Prime Intellect `prime-rl`, or pedagogical RL.
 
 If the workload is still unclear, route to
-[`../understand-workload/SKILL.md`](../understand-workload/SKILL.md). If no
+[`understand-workload`](../../understand-workload/SKILL.md). If no
 validator/splits/baseline exist, route to
-[`../capture-evidence/SKILL.md`](../capture-evidence/SKILL.md). If there is no
-stateful policy, stay in
-[`../pedagogical-learning/SKILL.md`](../pedagogical-learning/SKILL.md) or
-[`../local-distillation-lab/SKILL.md`](../local-distillation-lab/SKILL.md).
+[`capture-evidence`](../../capture-evidence/SKILL.md). If there is no stateful
+policy, stay in the
+[pedagogical arm](../../local-distillation-lab/references/pedagogical-arm.md)
+or [`local-distillation-lab`](../../local-distillation-lab/SKILL.md).
 
-## Safety Gates
+## Safety gates (training-specific)
 
 Default to local, synthetic, redacted, or benchmark-sandbox data. Do not upload
 prompts, traces, completions, labels, datasets, repo paths, or private notes.
@@ -63,7 +60,7 @@ Do not claim a deploy win from privileged prompts, oracle tools, or train rows.
 Only sealed holdout scores where the deployed student sees `x` only can support
 a product claim.
 
-## Core Claim
+## Core claim
 
 Do not claim "pedagogical RL worked" unless a policy was trained with a reward
 that uses both task success and learnability. Local LoRA on teacher traces is
@@ -150,10 +147,10 @@ every N steps (the ART·E recipe evaluated every 30). Timeline heuristic when
 variance is healthy: first drift ~step 30–50, clear trend ~step 100, gains across
 epochs.
 
-**Confirmed by Understudy:** 2026-04-29 (internal synthetic workload —
-verifiers-shaped reward moved GRPO 0.025→0.1 where action-level reward did not);
-2026-06-07 (ART·E Qwen-14B recreation — `groups_trainable` held 4–11/12 from step 1
-→ gradual climb exactly as the variance predicts). Public reproduction: OpenPipe
+Measured on an internal synthetic workload, 2026-04-29 (a verifiers-shaped
+reward moved GRPO 0.025→0.1 where action-level reward did not), and on an ART·E
+Qwen-14B recreation, 2026-06-07 (`groups_trainable` held 4–11/12 from step 1 →
+gradual climb exactly as the variance predicts). Public reproduction: OpenPipe
 ART·E blog.
 
 **Trainer/model fit check (before picking prime-rl vs Unsloth/TRL).** A model
@@ -167,7 +164,9 @@ ships renderers for Qwen / GLM / MiniMax / DeepSeek / Kimi / Nemotron / GPT-OSS 
 **not Gemma** (no merged Gemma-4 GRPO; `gemma4` absent from registry; grad-norm
 blowup) → Gemma-4 multi-turn GRPO belongs on Unsloth/TRL, while Nemotron-3 is
 first-class on prime-rl. Match the model to the trainer that has all three, or
-switch trainers.
+switch trainers. The canonical support table is
+[`prepare-verifier-handoff` → rl-readiness-matrix](../../prepare-verifier-handoff/references/rl-readiness-matrix.md);
+when a family's status changes, update both places together.
 
 ### References for this section
 
@@ -189,34 +188,109 @@ Source projects (engineering facts — renderer/registry/GRPO support, env API):
 - Public reproduction on this task: OpenPipe ART·E blog —
   https://openpipe.ai/blog/art-e-mail-agent
 
-Confirmed internally by Understudy: 2026-04-29 (workload-010) and 2026-06-07
-(ART·E Qwen-14B recreation).
+Measured on an internal synthetic workload, 2026-04-29, and on an ART·E
+Qwen-14B recreation, 2026-06-07.
 
-## Reconcile Parallel Research
+## Local research setup
 
-When another agent is already running local Gemma/MLX kernels, do not duplicate
-that work. Use this split:
+Keep external research repos and generated artifacts out of the public package:
 
-- This skill owns the **learnability decision**: RLM trajectory schema,
-  verifier/reward shape, surprise concentration, contamination boundary, and the
-  arm choice (pedagogical SFT vs on-policy repair vs RL vs handoff).
-- [`author-rl-env`](../author-rl-env/SKILL.md) owns the **environment mechanics**
-  once RL is the chosen arm: inverting a batch sim into a `reset`/`step` MDP,
-  per-rollout state isolation, deterministic reset, and replay-conformance. Decide
-  the arm here; build the step-API env there. Don't re-specify the reset/step
-  contract in this skill.
-- [`package-verifier-env`](../package-verifier-env/SKILL.md) owns **packaging that
-  env for the partner** plus the frozen-holdout return-eval.
-- `local-distillation-lab` owns the **Apple Silicon weight update**: mlx-vlm
-  loader, forced-likelihood kernel, weighted LoRA, B/S/O/P arms, and learning
-  curves.
-- `prepare-verifier-handoff` owns the **external training packet** only after
-  local rungs are insufficient and upload/budget boundaries are approved.
+```sh
+mkdir -p .understudy/research
+git clone https://github.com/alexzhang13/rlm.git .understudy/research/rlm
+```
+
+The RLM repo's `training/` directory exposes `rlm.RLM` as a `verifiers`
+environment and is designed to plug into Prime Intellect `prime-rl`. Treat that
+repo as a research dependency until a local smoke proves the workflow belongs in
+Understudy docs or golden-path fixtures.
+
+Do not vendor RLM, Prime Intellect, or generated Python environments into this
+repo. Public Understudy skills can point to setup commands and artifact shapes;
+product code remains TypeScript-backed unless there is a deliberate architecture
+change.
+
+## Minimal verifiers shape
+
+An RLM/verifiers environment needs:
+
+- dataset rows with `prompt` or `root_prompt`;
+- `info.context` containing the inspected corpus, tool catalog, state, or files;
+- a correctness function over final answer, selected tools, retrieved evidence,
+  or final state;
+- metrics for iterations, REPL calls, sub-LM calls, and final-answer presence.
+
+Good first tasks are small and verifiable:
+
+- select the minimal tool set from a fixed catalog;
+- retrieve the required evidence chunks;
+- build a checklist from a fixed policy corpus;
+- choose the next API operation in a simulated workflow;
+- repair a final state to match a deterministic diff.
+
+Avoid starting with broad final-answer generation when the evidence corpus,
+rubric, or judge is incomplete.
+
+## Pedagogical reward checklist
+
+For a trajectory `tau`:
+
+1. Score task success with `R(x,c,tau)`.
+2. Teacher-force the same trajectory under the deploy student using `x` only.
+3. Record token logprobs, mean surprise gap, max surprise gap, and spike penalty.
+4. Prefer product rewards when partial credit exists:
+
+   ```text
+   r_ped = partial_credit(x,c,tau) * G_spike(tau | x)
+   ```
+
+5. Use additive reward only as an anti-stall scaffold for binary sparse rewards,
+   and label it as such.
+
+## Baseline matrix
+
+Run this before any training claim:
+
+| condition | sees privileged context | stateful RLM | trains weights | purpose |
+|---|---:|---:|---:|---|
+| flat local | no | no | no | local floor |
+| RLM local | no | yes | no | harness/decomposition value |
+| privileged teacher | yes | yes | no | upper bound / data source |
+| off-policy pedagogical SFT | train only | yes | yes | first local weight rung |
+| on-policy repair | train only | yes | yes | state-coverage rung |
+| pedagogical RL | train/reward only | yes | yes | true research target |
+
+Only the `x`-only deploy conditions are eligible for product claims.
+
+## Ownership boundaries
+
+When multiple agents run related experiments, keep the ownership split:
+
+- this reference owns the **learnability decision**: RLM trajectory schema,
+  verifier/reward shape, surprise concentration, contamination boundary, and
+  the arm choice (pedagogical SFT vs on-policy repair vs RL vs handoff);
+- [`prepare-verifier-handoff` stage 1](../../prepare-verifier-handoff/references/stage-1-author-env.md)
+  owns the **environment mechanics** once RL is the chosen arm (reset/step
+  inversion, state isolation, deterministic reset, replay-conformance), and
+  [stage 2](../../prepare-verifier-handoff/references/stage-2-package-env.md)
+  owns **packaging** plus the frozen-holdout return-eval;
+- [`local-distillation-lab`](../../local-distillation-lab/SKILL.md) owns the
+  **Apple Silicon weight update** (mlx-vlm loader, forced-likelihood kernel,
+  weighted LoRA, B/S/O/P arms, learning curves), and its
+  [pedagogical arm](../../local-distillation-lab/references/pedagogical-arm.md)
+  owns correct-and-learnable selection for flat/single-output tasks;
+- [`prepare-verifier-handoff`](../../prepare-verifier-handoff/SKILL.md) owns the
+  **external training packet** only after local rungs are insufficient and
+  upload/budget boundaries are approved.
 
 If parallel results conflict, trust sealed-holdout metrics over smoke results,
 and trust deploy-time `x`-only scores over privileged or oracle-tool settings.
+If an external bench script proves a kernel, copy only the general method into
+a skill or golden-path fixture after it passes a small smoke. Do not copy
+private paths, private notes, raw prompts, or local-only failure logs into
+public docs.
 
-## Artifact Contract
+## Artifact contract
 
 Write local artifacts under:
 
@@ -244,9 +318,25 @@ Write local artifacts under:
 - `hosted-verifier-handoff`;
 - `blocked`.
 
-## Output Standard
+## Negative result template
 
-End with:
+Negative results are valuable and should be recorded:
+
+```text
+Result: negative
+Task: <subpolicy or full task>
+Reason: <missing data / no verifier / local model capability / high spike / no state coverage>
+Evidence: <baseline table or artifact path>
+Next rung: <smaller subpolicy / RLM / same-family teacher / hosted handoff>
+```
+
+For hard legal or long-document work, a negative full-task result usually means
+the next target is an RLM subpolicy such as evidence retrieval or checklist
+construction, not immediate hosted RL.
+
+## Output standard (training runs)
+
+End a training run with:
 
 - the chosen subpolicy and why it is learnable;
 - dataset size and split hashes;
@@ -256,6 +346,3 @@ End with:
 - training arm selected and why;
 - whether the result is a local proof, a negative result, or a verifier handoff;
 - artifact path under `.understudy/`.
-
-See [`reference.md`](reference.md) for setup commands and a Prime
-Intellect/RLM bridge checklist.

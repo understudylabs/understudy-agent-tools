@@ -1,6 +1,6 @@
 ---
 name: local-distillation-lab
-description: Use when a developer wants to fine-tune or distill a local open model on Apple Silicon MLX, compare weight-update arms on a captured workload, and decide distill-vs-pedagogical-vs-climb before hosted RL.
+description: Use when a developer wants to fine-tune or distill a local open model on their Mac and see which training method actually moves a captured workload — "fine-tune a local model", "distill the frontier into a small model", "would training close the gap". Compares baseline, rejection-sampled fine-tuning, distillation, and surprisal-gated pedagogical arms; includes learning from privileged answers/feedback.
 metadata:
   understudy:
     mode: interactive
@@ -49,6 +49,11 @@ Dense-biased post-training methods differ by *where the bias points* and *how co
 | **S** | rejection-sampling SFT (STaR) | toward student's own passes | shifts curve up, same ceiling |
 | **O** | off-policy distillation | toward a **same-family** teacher's completions | recipe-matched = cheap signal |
 | **P** | pedagogical / OPSD-style | toward teacher, **surprisal-gated** | down-weights unlearnable tokens |
+
+Arm **P** has a full playbook — finding trajectories that are both *correct and
+learnable* from privileged context (answer keys, execution feedback, verifier
+traces, oracle labels), the headroom proof, the useful-quadrant cut, and the
+rung menu — in [`references/pedagogical-arm.md`](references/pedagogical-arm.md).
 
 Not covered yet (add when needed): true **on-policy distillation** — student samples its *own*
 rollout, teacher grades each token by reverse-KL. Its higher practical ceiling comes from
@@ -107,6 +112,7 @@ table (dev + OOD + `d_t`) with learning curves; the distill/pedagogical/climb ve
 adapter paths; result type (training / heldout / blocked); one recommended next action.
 
 ## References
+- [`references/pedagogical-arm.md`](references/pedagogical-arm.md) — arm P in depth: privileged-context pedagogy, correctness-vs-learnability scoring, rung menu.
 - [`../optimize-workload/SKILL.md`](../optimize-workload/SKILL.md) — the prompt rung before this.
 - [`../prepare-verifier-handoff/SKILL.md`](../prepare-verifier-handoff/SKILL.md) — hosted RL after.
 - [`../understudy/SKILL.md`](../understudy/SKILL.md) — the local specialization sequencing (model ladder) in its routing section.

@@ -1,16 +1,14 @@
----
-name: pedagogical-learning
-description: Use when a developer has privileged answers, execution feedback, verifier traces, or canonical solutions and wants a local model to learn from trajectories that are both correct and learnable, before moving to SFT, GRPO, or hosted RL.
-metadata:
-  understudy:
-    mode: interactive
-    safety: local-first
-    cli_required: false
----
+# Pedagogical arm — learning from privileged context
 
-# Pedagogical Learning
+The deep playbook behind arm **P** in [`SKILL.md`](../SKILL.md)'s method
+taxonomy (the surprisal-gated pedagogical variant), and the canonical home of
+the shared pedagogy concepts: the `x`/`c` contract, correctness-vs-learnability
+scoring, and the rung menu.
+[`recursive-language-model` → pedagogical training](../../recursive-language-model/references/pedagogical-training.md)
+applies the same concepts to stateful RLM policies and links back here rather
+than restating them.
 
-Use this worker when privileged information should help **find teachable
+Use this playbook when privileged information should help **find teachable
 trajectories**, not merely score rollouts after the fact. The goal is to turn a
 weak local model's failures into local evidence about which trajectories are:
 
@@ -18,32 +16,32 @@ weak local model's failures into local evidence about which trajectories are:
 - plausible for the current student model to imitate;
 - free of shortcuts, hidden facts, answer-key references, and unsupported jumps.
 
-This is a local evidence and data-selection skill. It may prepare SFT, GRPO, or
+This is local evidence and data selection. It may prepare SFT, GRPO, or
 verifier-handoff artifacts, but it does not silently train weights or upload
 data.
 
-## Safety Gates
+## Safety gates (pedagogy-specific)
 
 Default to local, synthetic, redacted, or benchmark-sandbox data. Do not upload
 prompts, traces, completions, labels, datasets, repo paths, or private notes.
 
 Get explicit approval before provider calls, hosted jobs, model downloads,
-weight updates, adapter fusion, publishing artifacts, or running any command that
-can mutate files outside `.understudy/`.
+weight updates, adapter fusion, publishing artifacts, or running any command
+that can mutate files outside `.understudy/`.
 
 Do not claim "pedagogical RL worked" from prompt-only experiments. Prompt-only
-smokes can prove headroom and scoring shape; they are not policy training. Label
-local SFT as imitation, GRPO as on-policy reward optimization, and hosted RL as a
-handoff.
+smokes can prove headroom and scoring shape; they are not policy training.
+Label local SFT as imitation, GRPO as on-policy reward optimization, and hosted
+RL as a handoff.
 
 Do not trust the same weak model as both generator and sole judge for
 learnability. If token-level logprobs are unavailable, use deterministic
 structure checks, an external verifier, or a stronger approved judge, and label
 the score as a proxy.
 
-## When To Use
+## When the arm applies
 
-Use this skill when all of these hold:
+Use it when all of these hold:
 
 - there is privileged context `c`: gold answers, validator output, execution
   feedback, final-state diffs, oracle tool sets, canonical traces, or policy
@@ -54,11 +52,11 @@ Use this skill when all of these hold:
 - the developer wants a rung before hosted RL or broad model climbing.
 
 If the workload is still not understood, route to
-[`../understand-workload/SKILL.md`](../understand-workload/SKILL.md). If there is
-no resettable harness or metric, route to
-[`../capture-evidence/SKILL.md`](../capture-evidence/SKILL.md). If prompt GEPA
-is the cheapest live-rollout intervention, route to
-[`../optimize-workload/SKILL.md`](../optimize-workload/SKILL.md).
+[`understand-workload`](../../understand-workload/SKILL.md). If there is no
+resettable harness or metric, route to
+[`capture-evidence`](../../capture-evidence/SKILL.md). If prompt GEPA is the
+cheapest live-rollout intervention, route to
+[`optimize-workload`](../../optimize-workload/SKILL.md).
 
 ## Flow
 
@@ -96,14 +94,15 @@ is the cheapest live-rollout intervention, route to
      is simple, local, and easy to verify.
    - If the task is stateful — tools, documents, code, browser, API state,
      recursive subcalls, or long context — route to
-     [`../rlm-pedagogical-training/SKILL.md`](../rlm-pedagogical-training/SKILL.md)
+     [`recursive-language-model` → pedagogical training](../../recursive-language-model/references/pedagogical-training.md)
      so the environment and trajectories are represented before weight updates.
    - If a fast reward exists for generated completions, prepare a GRPO smoke with
      reward functions for correctness and learnability. Prefer single-output
      rewards first; multi-step rollout rewards are slower and should usually
      follow a rejection-SFT proof or a simpler learned advisor surface.
-   - If the reward requires long stateful rollouts, route to
-     `rlm-pedagogical-training` first. Route to `prepare-verifier-handoff` only
+   - If the reward requires long stateful rollouts, route to the RLM pedagogical
+     training reference first. Route to
+     [`prepare-verifier-handoff`](../../prepare-verifier-handoff/SKILL.md) only
      when local RLM/distillation rungs stall.
 
 6. **Record artifacts locally.** Use an ignored directory such as:
@@ -118,16 +117,61 @@ is the cheapest live-rollout intervention, route to
      next-rung.md
    ```
 
-## Local MLX Rungs
+## Local MLX rung order
 
-For Apple Silicon, prefer the smallest working local rung: prompt/template proof,
-then rejection-sampled SFT, then GRPO only when reward calls are cheap. See
-[`reference.md`](reference.md) for the local trainer boundary and adapter
-evidence checklist.
+For Apple Silicon, prefer the smallest working local rung:
 
-## Output Standard
+- **Prompt/template proof**: serve the local model and generate blind,
+  shortcut, and pedagogical rollouts. This is the fastest proof of headroom.
+- **Rejection-sampled SFT**: keep only correct-and-learnable trajectories and
+  run local `mlx_lm.lora` after approval. This is imitation, not RL. Evaluate
+  the base model and adapter on the same sealed holdout before claiming the
+  weights improved.
+- **GRPO smoke**: use a reward function that returns correctness and
+  learnability scores per completion. Treat third-party GRPO packages as
+  prototype dependencies until pinned, audited, and smoked in an isolated env.
+  Use this when the reward is cheap enough to run many times locally.
+- **First-party rebuild**: if GRPO becomes core, prefer a narrow reward-runner
+  adapter that consumes Understudy artifacts over vendor-locking a broad
+  training CLI.
 
-End with:
+## Training boundary
+
+The public repo may guide local training but should not hide training behind an
+implicit command. Before any SFT, DPO, GRPO, adapter fusion, or model export,
+ask for approval and name the base model, trainer, data path, expected runtime,
+and rollback path.
+
+For a real weight-update claim, record:
+
+- base model path and content/hash identifier;
+- trainer and version, for example `mlx_lm.lora`;
+- train/dev/holdout split hashes;
+- adapter path and whether it has been fused;
+- before/after scores on the same heldout rows;
+- regressions, format drift, latency change, and whether inference still uses
+  only deploy-time input `x`.
+
+## Choosing SFT vs GRPO
+
+Use rejection-sampled SFT first when correct trajectories can be selected from
+rollouts or teacher traces. It is the lowest-complexity proof that the local
+weights can absorb the desired behavior.
+
+Use GRPO when a reward is cheap, deterministic enough, and callable many times
+per prompt. Single-output advisor, retrieval, classification, and formatting
+surfaces are better first GRPO candidates than full multi-step tool rollouts.
+
+For a full agentic rollout, prefer one of these before direct GRPO:
+
+- rejection-SFT from passing trajectories;
+- train a smaller advisor or router surface with a cheap reward;
+- reduce the rollout into scored subdecisions;
+- hand off only when local rungs stall and stateful policy learning is required.
+
+## Output standard (pedagogical runs)
+
+End a pedagogical run with:
 
 - the local model and runtime used;
 - task count and split;

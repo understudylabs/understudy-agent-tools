@@ -60,9 +60,10 @@ stop — a trajectory diff across different tasks is meaningless.
 This skill diagnoses the RL-vs-not gap *behaviorally* (trajectory divergence,
 recovery events). The *learnability* cut on the resulting warm-start set —
 surprise-gap / concentration measured under the student — is a different
-instrument, owned by the `pedagogical-learning` and
-[`../local-distillation-lab/SKILL.md`](../local-distillation-lab/SKILL.md) skills,
-not here. They compose: behavioral verdict here, learnability cut there.
+instrument, owned by
+[`../local-distillation-lab/SKILL.md`](../local-distillation-lab/SKILL.md) and
+its pedagogical arm (`references/pedagogical-arm.md`), not here. They compose:
+behavioral verdict here, learnability cut there.
 
 ## Flow
 

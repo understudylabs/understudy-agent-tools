@@ -33,10 +33,10 @@ const forbiddenMemberParts = [
 ];
 
 const requiredPackageMembers = [
-  "skills/pedagogical-learning/SKILL.md",
-  "skills/pedagogical-learning/reference.md",
-  "skills/rlm-pedagogical-training/SKILL.md",
-  "skills/rlm-pedagogical-training/reference.md",
+  "skills/local-distillation-lab/SKILL.md",
+  "skills/local-distillation-lab/references/pedagogical-arm.md",
+  "skills/recursive-language-model/SKILL.md",
+  "skills/recursive-language-model/references/pedagogical-training.md",
 ];
 
 function npmPackFiles() {
