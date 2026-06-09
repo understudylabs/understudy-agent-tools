@@ -88,6 +88,17 @@ in [`reference.md`](reference.md); the methodology is here.
    thousands of rollouts, slow for millions. Compute the wall-clock and let the
    developer judge if the time is acceptable.
 
+**Cache tokens are their own line item.** Multi-turn/agentic workloads re-send
+the growing context every turn, and with provider prompt caching most of those
+tokens bill at cache-read/cache-write rates, not the base input rate. On
+long-context workloads, cache-read tokens can exceed fresh input tokens by more
+than 10× — an estimate priced entirely at the base input rate is wrong in
+either direction. Pull the cache fields from measured usage
+(`cache_read`/`cache_creation` or `cached_tokens`) and price each class at the
+provider's current cached rates, cited with source + date like every other
+dollar figure. Confirmed by Understudy: 2026-05-22 (internal workload-002 —
+cache-read tokens >10× fresh input tokens on a long-context agentic loop).
+
 ### Decide
 
 Present **local vs cloud side by side**: wall-clock and dollars for each, with the

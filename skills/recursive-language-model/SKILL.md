@@ -55,6 +55,18 @@ so the small model has a real, scorable place to run the whole case.
 5. **Stop** when the model writes its answer/observations or hits a step budget;
    score the final state with the environment's validator.
 
+## Pattern: structured intermediate artifacts
+
+When the task is long-horizon synthesis (drafting, analysis, multi-document
+work) rather than tool routing, have the loop emit **explicit intermediate
+artifacts** — a structured plan, an extracted-facts table, a checklist the
+deliverable must satisfy — and make later steps consume only those artifacts,
+not free-form scratchpad prose. Each artifact is checkable (schema, required
+keys) at the step that produces it, so errors surface mid-loop instead of in
+the final deliverable. The gap this closes is large: Confirmed by Understudy:
+2026-06-03 (internal long-horizon benchmark — a structured-artifact workflow
+scored 57/59 where a raw free-form RLM loop scored 3/59 with the same models).
+
 ## What to measure (what's possible)
 
 - **Decomposition factor** — small-model steps ÷ the teacher's steps to reach the

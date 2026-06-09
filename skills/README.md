@@ -22,6 +22,11 @@ execution; skills tell the agent what to inspect, gate, monitor, and report.
   harness/environment, confirms the metric and validator, freezes splits, and
   reruns the incumbent baseline. (Discovery + capture/import folded into its
   [`reference.md`](capture-evidence/reference.md).)
+- [`ingest-traces`](ingest-traces/SKILL.md) is the front door for developers
+  who arrive with data instead of a harness: it turns existing production
+  traces (an object-store bucket, provider log exports, or a gateway capture
+  export) into local, redacted, deterministically classified and frozen
+  evaluation slices that `capture-evidence` and the optimizers consume.
 - [`walkthrough-public-benchmark-ladder`](walkthrough-public-benchmark-ladder/SKILL.md)
   runs the improvement loop against public long-horizon agent benchmarks such as
   Zapier AutomationBench and Harvey LAB. It keeps public harnesses upstream and
@@ -47,6 +52,12 @@ execution; skills tell the agent what to inspect, gate, monitor, and report.
   authenticated gateway inference, project/key readiness, public model listing,
   workload route percentages, `understudy run`, and monitored durable CLI
   execution.
+- [`ramp-and-verify`](ramp-and-verify/SKILL.md) owns the last mile after a
+  route decision: pre-ramp repeat-replay stability gates, a staged traffic
+  ladder (5% → 25% → 100%) on the gateway dial with explicit approval per
+  tier, routed-vs-passthrough verification from captures at each step,
+  rollback triggers, and the measured before/after that feeds the claim
+  packet.
 - [`choose-frontier-keys`](choose-frontier-keys/SKILL.md) handles the first-run
   choice between BYO provider keys from the current shell or a local `.env`, the
   Understudy ZDR gateway route, or skipping remote frontier calls. It asks
@@ -78,6 +89,13 @@ execution; skills tell the agent what to inspect, gate, monitor, and report.
   stateful workload into an RLM/verifiers training surface, measures on-policy
   state coverage and surprise concentration, and decides between local
   pedagogical SFT, on-policy repair, true pedagogical RL, or verifier handoff.
+- [`distill-classifier`](distill-classifier/SKILL.md) replaces an expensive
+  frontier model on a classification workload (binary, multi-class,
+  multi-label, structured extraction) with a fine-tuned open-weight student:
+  multi-teacher majority-vote labeling, failure-directed SFT data, the
+  confound ablations that keep the lift honest, and a four-way
+  promote/shadow/collect/stop verdict. (Quantified findings and defaults in
+  its [`reference.md`](distill-classifier/reference.md).)
 - [`local-distillation-lab`](local-distillation-lab/SKILL.md) runs local Apple
   Silicon weight-update arms for captured workloads: rejection SFT, same-family
   off-policy distillation, and surprisal-gated pedagogical variants.
