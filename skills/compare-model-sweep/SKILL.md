@@ -66,7 +66,10 @@ comparison.
    equivalent cache layer (a different provider or gateway can't share the
    incumbent's cache pool), measure it uncached and label it — what you
    measured is what they'd pay. Note that batching or longer cache TTLs shift
-   absolute costs on the cached side but should not change the ratios.
+   absolute costs on the cached side but should not change the ratios. To
+   structure the harness itself for cache hits (and avoid the
+   parallel-fan-out all-miss trap), see
+   [`optimize-workload/references/prompt-cache-optimization.md`](../optimize-workload/references/prompt-cache-optimization.md).
 
    **Pairwise option.** When the workload has no programmatic metric
    (open-ended generation), score quality as a pairwise preference against the

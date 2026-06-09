@@ -121,6 +121,8 @@ either direction. Pull the cache fields from measured usage
 provider's current cached rates, cited with source + date like every other
 dollar figure. Measured on an internal synthetic workload, 2026-05-22
 (cache-read tokens >10× fresh input tokens on a long-context agentic loop).
+To *improve* a workload's hit rate rather than just price it, see
+[`optimize-workload/references/prompt-cache-optimization.md`](../optimize-workload/references/prompt-cache-optimization.md).
 
 ### Decide local vs cloud
 
