@@ -1,18 +1,8 @@
----
-name: choose-frontier-keys
-description: Use when onboarding or running a local-vs-frontier comparison and the agent must choose whether to use a developer's local provider keys from a .env file or the Understudy ZDR gateway route. Keeps secrets local, asks before reading .env values, and records the frontier choice without printing keys.
-metadata:
-  understudy:
-    mode: interactive
-    safety: approval-required
-    cli_required: false
----
+# Frontier keys — local provider keys vs the gateway route
 
-# Choose Frontier Keys
-
-Use this before any local-vs-frontier duel, gateway A/B, or first-run installer
-step that needs a remote frontier model. The user must choose one of three
-frontier routes:
+Use this lens before any local-vs-frontier duel, gateway A/B, or first-run
+installer step that needs a remote frontier model. The user must choose one of
+three frontier routes:
 
 1. **BYO local key from shell or `.env`** — use an existing OpenAI, Anthropic,
    or OpenAI-compatible AI-gateway key already exported in the shell or stored
@@ -21,7 +11,7 @@ frontier routes:
    route, with no local provider key read by the installer or agent.
 3. **Skip** — run local-only now and defer the remote frontier comparison.
 
-## Safety Gates
+## Safety gates
 
 - Never ask the user to paste a provider key into chat.
 - Never print, summarize, diff, log, or commit secret values.
@@ -89,7 +79,7 @@ exact command, let the user run it:
 `gcloud storage buckets add-iam-policy-binding …`,
 `modal secret create …`. Report only byte counts / success, never the value.
 
-## Installer Mapping
+## Installer mapping
 
 The public installer exposes the same choice:
 
@@ -108,7 +98,7 @@ The installer stores logs under `~/.understudy/agent-tools/logs` and the
 frontier choice under `~/.understudy/agent-tools/install-state/frontier-choice`.
 It does not store secret values in that choice file.
 
-## Output Standard
+## Output standard (frontier-keys decision)
 
 End with:
 
