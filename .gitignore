@@ -20,3 +20,6 @@ docs/skill-comparison-audit.md
 
 # local scratch (checklists, notes) — never shipped
 .scratch/
+
+# local staging for external snapshots / incoming worktrees — never shipped
+_incoming/

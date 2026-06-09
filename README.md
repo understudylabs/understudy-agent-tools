@@ -205,22 +205,26 @@ conservative claims.
 ## Skill Tree
 
 `skills/understudy/SKILL.md` is the public entrypoint. It routes to exactly one
-capability worker:
+capability worker per intent. The workers are grouped by journey stage:
 
-- `skills/onboard/SKILL.md` (first-run: profiles the machine + user, backgrounds a small model)
-- `skills/walkthrough-public-benchmark-ladder/SKILL.md` (public benchmark golden path)
-- `skills/capture-evidence/SKILL.md`
-- `skills/optimize-workload/SKILL.md`
-- `skills/use-understudy-gateway/SKILL.md`
-- `skills/manage-local-models/SKILL.md` (acquire, cache, and explain local open-weight models)
-- `skills/run-local-model-lab/SKILL.md`
-- `skills/specialize-local-model/SKILL.md` (smallest reasonable local rung → Pi head-to-head → gap-driven improvement)
-- `skills/pedagogical-learning/SKILL.md` (privileged-context trajectories that are correct and learnable)
-- `skills/rlm-pedagogical-training/SKILL.md` (stateful RLM/verifiers training surfaces before hosted RL)
-- `skills/local-distillation-lab/SKILL.md` (local Apple Silicon weight-update arms before hosted RL)
-- `skills/prepare-verifier-handoff/SKILL.md`
+- **Setup & first run** — install-plugin, onboard, choose-frontier-keys,
+  walkthrough-public-benchmark-ladder
+- **Understand & capture** — understand-workload, profile-captures,
+  ingest-traces, capture-evidence, design-simulated-environment
+- **Local models** — manage-local-models, run-local-model-lab, mlx-arena,
+  specialize-local-model, recursive-language-model
+- **Compare & diagnose** — compare-model-sweep, compare-trajectories
+- **Cost & providers** — estimate-run-cost, choose-cloud-provider
+- **Optimize** — optimize-workload, optimize-api-workflow,
+  optimize-agentic-search
+- **Train locally** — pedagogical-learning, curate-trajectories,
+  distill-classifier, local-distillation-lab, rlm-pedagogical-training
+- **RL environment & handoff** — author-rl-env, package-verifier-env,
+  prepare-verifier-handoff
+- **Gateway & routing** — use-understudy-gateway, ramp-and-verify
 
-See [`skills/README.md`](skills/README.md) for the current hierarchy and
+[`skills/README.md`](skills/README.md) is the authoritative index with
+per-skill descriptions — keep it in sync when adding skills. See
 [`docs/current-functionality.md`](docs/current-functionality.md) for the
 migration ledger.
 
@@ -231,8 +235,10 @@ Prime Intellect Verifiers is the current preferred referral for that rung.
 
 Optimizer implementation stays upstream. Do not vendor GEPA or add the full
 private runtime as a dependency. The implementation contract is documented in
-[`docs/optimize-workload-contract.md`](docs/optimize-workload-contract.md).
-The TypeScript-to-`uv` Python bridge pattern is documented in
+[`docs/optimize-workload-contract.md`](docs/optimize-workload-contract.md),
+the evidence-ladder methodology behind it in
+[`docs/methodology-framework.md`](docs/methodology-framework.md). The
+TypeScript-to-`uv` Python bridge pattern is documented in
 [`docs/uv-python-bridge.md`](docs/uv-python-bridge.md).
 
 ## CLI Surface
