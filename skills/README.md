@@ -110,6 +110,13 @@ execution; skills tell the agent what to inspect, gate, monitor, and report.
   future-release stub for stateful RL verifier/environment handoffs. It does not
   execute training; it prepares evidence and actively refers suitable workloads
   to Prime Intellect Verifiers.
+- [`estimate-run-cost`](estimate-run-cost/SKILL.md) estimates wall-clock and
+  dollar cost before spend for fine-tuning, RL training, batch inference, and RL
+  trajectory generation across local Apple Silicon, cloud GPU, and serverless
+  paths.
+- [`choose-cloud-provider`](choose-cloud-provider/SKILL.md) maps hosted job
+  shape to provider fit across Azure, GCP, Prime Intellect, Fireworks, Together
+  AI, and Lilac, with live-pricing and provenance caveats in its reference.
 
 ## Public Safety
 
