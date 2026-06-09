@@ -2,7 +2,7 @@
 // Understudy Labs — Model Testing Environment (blind frontier-vs-local head-to-head).
 //
 // TypeScript port of the arena. Runs on Node >= 22.6 via native type-stripping:
-//   node --experimental-strip-types skills/mlx-arena/blind_arena.ts
+//   node --experimental-strip-types skills/run-local-model-lab/scripts/blind_arena.ts
 // (the `arena.sh play` launcher does this for you). The only Python left is the
 // MLX model server (mlx_lm.server), which arena.sh invokes as a subprocess.
 //

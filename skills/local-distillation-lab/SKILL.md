@@ -109,4 +109,4 @@ adapter paths; result type (training / heldout / blocked); one recommended next 
 ## References
 - [`../optimize-workload/SKILL.md`](../optimize-workload/SKILL.md) — the prompt rung before this.
 - [`../prepare-verifier-handoff/SKILL.md`](../prepare-verifier-handoff/SKILL.md) — hosted RL after.
-- [`../specialize-local-model/SKILL.md`](../specialize-local-model/SKILL.md) — the model ladder.
+- [`../understudy/SKILL.md`](../understudy/SKILL.md) — the local specialization sequencing (model ladder) in its routing section.

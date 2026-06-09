@@ -106,4 +106,4 @@ pedagogical RL, or a hosted verifier handoff.
 - [`../design-simulated-environment/SKILL.md`](../design-simulated-environment/SKILL.md)
 - [`../run-local-model-lab/SKILL.md`](../run-local-model-lab/SKILL.md)
 - [`../rlm-pedagogical-training/SKILL.md`](../rlm-pedagogical-training/SKILL.md)
-- [`../mlx-arena/SKILL.md`](../mlx-arena/SKILL.md) — vibe-check the hill-climbed local model vs the frontier.
+- [`../run-local-model-lab/references/blind-arena.md`](../run-local-model-lab/references/blind-arena.md) — vibe-check the hill-climbed local model vs the frontier.

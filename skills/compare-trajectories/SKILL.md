@@ -27,7 +27,7 @@ reachable-gap task**, and counts how many clean warm-start trajectories the
 comparison yields. It reads trajectory JSON that already exists on disk; it does
 not run models. To produce the trajectories, run
 [`../run-local-model-lab/SKILL.md`](../run-local-model-lab/SKILL.md) or
-[`../mlx-arena/SKILL.md`](../mlx-arena/SKILL.md) first.
+[`../run-local-model-lab/references/blind-arena.md`](../run-local-model-lab/references/blind-arena.md) first.
 
 ## Safety Gates
 
@@ -158,7 +158,7 @@ that loses tasks is not strictly better.
   scalar Pareto this skill complements; run it first for the frontier.
 - [`../run-local-model-lab/SKILL.md`](../run-local-model-lab/SKILL.md) — produces
   the local-model trajectory exports this skill diffs.
-- [`../mlx-arena/SKILL.md`](../mlx-arena/SKILL.md) — local-vs-frontier head-to-head
+- [`../run-local-model-lab/references/blind-arena.md`](../run-local-model-lab/references/blind-arena.md) — local-vs-frontier head-to-head
   that also produces paired runs to diff.
 - [`../curate-trajectories/SKILL.md`](../curate-trajectories/SKILL.md) — supplies
   hash-stamped, holdout-segregated selections to diff.

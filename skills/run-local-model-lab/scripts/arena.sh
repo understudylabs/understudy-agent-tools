@@ -5,7 +5,7 @@
 # binds each to the Pi coding agent as an OpenAI-compatible provider, and lays
 # them out in a two-pane tmux session you (or an agent) can drive in lockstep.
 #
-# This is the runnable core of the `mlx-arena` skill. It is intentionally a thin,
+# This is the runnable core of the run-local-model-lab blind-arena playbook. It is intentionally a thin,
 # boring orchestrator: MLX does inference, Pi is the harness, tmux is the surface.
 #
 # Subcommands:
@@ -910,7 +910,7 @@ cmd_first() {
   tmux select-pane -t "$S" -T " FIRST UNDERSTUDY · $FIRST_NAME · $FIRST_REPO " 2>/dev/null || true
   echo "Ready → attach: tmux attach -t $S"
   echo "Next: profile a real workload with skills/understand-workload/SKILL.md"
-  echo "Optional calibration: skills/mlx-arena/arena.sh play"
+  echo "Optional calibration: skills/run-local-model-lab/scripts/arena.sh play"
 }
 
 # One-command bring-up of the BLIND HEAD-TO-HEAD game (blind_arena.ts):
