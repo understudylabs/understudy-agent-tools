@@ -143,6 +143,14 @@ Use progressive disclosure: start with the fat skill, then route to the
 specialist playbook for the current intent. Keep specialist skills short and
 move deeper command notes into `reference.md`.
 
+### Catalog growth rule
+
+New findings default to a `reference.md` inside the skill that owns the user
+intent. A new top-level skill requires a user utterance no existing skill
+claims, and the PR must name which existing skills it was checked against.
+Frontmatter descriptions are user-intent triggers (≤60 words, quoted user
+phrases, no unglossed internal jargon), not pipeline-position statements.
+
 ## Extraction Discipline
 
 When importing code from private Understudy repos:
