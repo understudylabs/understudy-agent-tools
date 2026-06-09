@@ -29,6 +29,14 @@ three frontier routes:
   upstream provider receives the prompts used in the comparison.
 - If the user chooses ZDR, state that no local provider key is read and the
   comparison goes through the Understudy gateway route.
+- **Watch for the silent-bypass failure.** If a provider key is pasted directly
+  into the app's own config (its provider stack, `.env`, or client setup),
+  that traffic goes straight to the provider and never touches the gateway —
+  no capture, no routing, and any "gateway vs frontier" comparison is silently
+  measuring the wrong path. This has happened in real onboarding. Before
+  trusting a comparison run, verify the requests actually arrived:
+  `understudy captures list` (or `understudy status --json`) should show them;
+  if it doesn't, find the direct-wired key before re-running.
 
 ## Flow
 

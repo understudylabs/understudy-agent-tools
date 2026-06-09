@@ -149,7 +149,11 @@ Identify the developer's current stage and load exactly one:
 - **Multi-model sweep / Pareto comparison** — the developer has a frozen eval and
   wants to run the same rows across several local, gateway, or frontier models to
   compare quality, latency, cost, and reliability →
-  [`../compare-model-sweep/SKILL.md`](../compare-model-sweep/SKILL.md).
+  [`../compare-model-sweep/SKILL.md`](../compare-model-sweep/SKILL.md). When the
+  sweep verdict supports changing production traffic, don't stop at the report —
+  the answer to "how do I get this running in prod?" is
+  [`../ramp-and-verify/SKILL.md`](../ramp-and-verify/SKILL.md) (add provider →
+  set route → staged ramp gated by the production validator).
 - **Token-level logprob comparison** — the developer has two same-family eval
   runs with stored logprob sidecars and wants to see the exact moment a smaller,
   quantized, or weaker model diverged from a larger/full-precision sibling on
