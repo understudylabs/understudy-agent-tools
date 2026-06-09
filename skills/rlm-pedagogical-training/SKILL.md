@@ -145,6 +145,8 @@ Read the signal before and during a GRPO / prime-rl run — do not just wait.
 - **Read smoothed reward + a periodic held-out mini-eval, not per-step
   reward.** Timeline heuristic when variance is healthy: first drift
   ~step 30–50, clear trend ~step 100, gains across epochs.
+- **When results conflict, trust sealed-holdout metrics over smoke results.**
+  A quick smoke run never overrides a measured holdout eval.
 - **Trainer/model fit check (before picking prime-rl vs Unsloth/TRL).** A model
   *loading* is not support. For multi-turn tool-use RL, confirm the trainer
   has, for that model: a multi-turn **renderer**, the model in the
