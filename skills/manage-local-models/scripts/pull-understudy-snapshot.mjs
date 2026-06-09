@@ -1,9 +1,19 @@
 #!/usr/bin/env node
 import { createHash } from "node:crypto";
-import { createWriteStream, existsSync, mkdirSync, renameSync, rmSync, statSync, writeFileSync } from "node:fs";
+import {
+  createReadStream,
+  createWriteStream,
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  renameSync,
+  rmSync,
+  statSync,
+  writeFileSync,
+} from "node:fs";
 import { homedir } from "node:os";
 import { dirname, isAbsolute, join, relative, resolve, sep } from "node:path";
-import { Readable, Transform } from "node:stream";
+import { Readable, Transform, Writable } from "node:stream";
 import { pipeline } from "node:stream/promises";
 
 const VERIFIED_MODELS = {
@@ -14,11 +24,25 @@ const VERIFIED_MODELS = {
     approxGb: 3.3,
     loader: "mlx_vlm",
   },
+  "gemma-4-e2b-it-mlx-vlm-bf16": {
+    sessionUrl: "https://models.understudylabs.com/session?model=gemma-4-e2b-it-mlx-vlm-bf16&ttl=21600",
+    destName: "gemma-4-e2b-it-mlx-vlm-bf16",
+    name: "Gemma 4 E2B IT MLX-VLM BF16",
+    approxGb: 9.5,
+    loader: "mlx_vlm",
+  },
   "gemma-4-e4b-it-mlx-vlm-4bit": {
     sessionUrl: "https://models.understudylabs.com/session?model=gemma-4-e4b-it-mlx-vlm-4bit&ttl=21600",
     destName: "gemma-4-e4b-it-mlx-vlm-4bit",
     name: "Gemma 4 E4B IT MLX-VLM 4-bit",
     approxGb: 4.8,
+    loader: "mlx_vlm",
+  },
+  "gemma-4-e4b-it-mlx-vlm-bf16": {
+    sessionUrl: "https://models.understudylabs.com/session?model=gemma-4-e4b-it-mlx-vlm-bf16&ttl=21600",
+    destName: "gemma-4-e4b-it-mlx-vlm-bf16",
+    name: "Gemma 4 E4B IT MLX-VLM BF16",
+    approxGb: 15,
     loader: "mlx_vlm",
   },
   "gemma-4-12b-it-mlx-vlm-4bit": {
@@ -146,6 +170,15 @@ function fileRows(manifest) {
   }));
 }
 
+function orderedRows(rows) {
+  return [...rows].sort((a, b) => {
+    const aLarge = /\.safetensors$/i.test(a.name) ? 1 : 0;
+    const bLarge = /\.safetensors$/i.test(b.name) ? 1 : 0;
+    if (aLarge !== bLarge) return aLarge - bLarge;
+    return a.name.localeCompare(b.name);
+  });
+}
+
 function safeTarget(dest, name) {
   if (isAbsolute(name)) {
     throw new Error(`manifest file path must be relative: ${name}`);
@@ -161,7 +194,7 @@ function safeTarget(dest, name) {
 
 async function downloadFile({ row, target, logFile }) {
   mkdirSync(dirname(target), { recursive: true });
-  const expectedSize = row.size || (await getContentLength(row.url));
+  let expectedSize = row.size || (await getContentLength(row.url));
   if (existsSync(target) && expectedSize && statSync(target).size === expectedSize) {
     logLine(logFile, `cached ${row.name} (${expectedSize} bytes)`);
     return { name: row.name, bytes: expectedSize, cached: true };
@@ -178,6 +211,7 @@ async function downloadFile({ row, target, logFile }) {
   if (!response.ok || !response.body) {
     throw new Error(`download failed for ${row.name}: ${response.status} ${response.statusText}`);
   }
+  expectedSize ||= Number(response.headers.get("content-length")) || null;
   const startedAt = Date.now();
   let lastProgressAt = startedAt;
   let downloaded = 0;
@@ -187,13 +221,15 @@ async function downloadFile({ row, target, logFile }) {
       downloaded += chunk.length;
       if (hash) hash.update(chunk);
       const now = Date.now();
-      if (expectedSize && (now - lastProgressAt > 5000 || downloaded === expectedSize)) {
+      if (now - lastProgressAt > 5000 || (expectedSize && downloaded === expectedSize)) {
         const elapsedSeconds = Math.max((now - startedAt) / 1000, 0.001);
         const bytesPerSecond = downloaded / elapsedSeconds;
-        const remainingSeconds = (expectedSize - downloaded) / bytesPerSecond;
+        const remainingSeconds = expectedSize ? (expectedSize - downloaded) / bytesPerSecond : NaN;
+        const total = expectedSize ? `/${formatBytes(expectedSize)}` : "";
+        const eta = expectedSize ? ` eta=${formatEta(remainingSeconds)}` : "";
         logLine(
           logFile,
-          `progress ${row.name} ${formatBytes(downloaded)}/${formatBytes(expectedSize)} eta=${formatEta(remainingSeconds)}`,
+          `progress ${row.name} ${formatBytes(downloaded)}${total} rate=${formatBytes(bytesPerSecond)}/s${eta}`,
         );
         lastProgressAt = now;
       }
@@ -215,6 +251,41 @@ async function downloadFile({ row, target, logFile }) {
   }
   renameSync(partial, target);
   return { name: row.name, bytes: actualSize, cached: false };
+}
+
+async function fileSha256(path) {
+  const hash = createHash("sha256");
+  await pipeline(createReadStream(path), new Writable({
+    write(chunk, _encoding, callback) {
+      hash.update(chunk);
+      callback();
+    },
+  }));
+  return hash.digest("hex");
+}
+
+async function verifySha256Sums(dest, logFile) {
+  const sumsPath = join(dest, "SHA256SUMS");
+  if (!existsSync(sumsPath)) return null;
+  const lines = readFileSync(sumsPath, "utf8").split(/\r?\n/).filter(Boolean);
+  const verified = [];
+  for (const line of lines) {
+    const match = /^([a-fA-F0-9]{64})\s+(.+)$/.exec(line.trim());
+    if (!match) continue;
+    const [, expected, rawPath] = match;
+    const name = rawPath.replace(/^\*/, "").replace(/^\.\//, "");
+    const target = safeTarget(dest, name);
+    if (!existsSync(target)) {
+      throw new Error(`SHA256SUMS references missing file: ${name}`);
+    }
+    const actual = await fileSha256(target);
+    if (actual !== expected.toLowerCase()) {
+      throw new Error(`sha256 mismatch for ${name}: got ${actual}, expected ${expected}`);
+    }
+    verified.push(name);
+  }
+  logLine(logFile, `sha256sums_verified files=${verified.length}`);
+  return verified;
 }
 
 async function main() {
@@ -254,14 +325,26 @@ async function main() {
   }
 
   mkdirSync(dest, { recursive: true });
+  const incompletePath = join(dest, ".understudy-snapshot.incomplete");
+  writeFileSync(
+    incompletePath,
+    `${JSON.stringify({ model_id: args.model, started_at: new Date().toISOString(), logFile }, null, 2)}\n`,
+    { mode: 0o600 },
+  );
   const manifest = await fetchJson(args.sessionUrl || modelInfo.sessionUrl);
-  const rows = fileRows(manifest);
+  const rows = orderedRows(fileRows(manifest));
   const results = [];
-  for (const row of rows) {
-    if (!row.name || !row.url) {
-      throw new Error("manifest file entries must include name/path and url");
+  try {
+    for (const row of rows) {
+      if (!row.name || !row.url) {
+        throw new Error("manifest file entries must include name/path and url");
+      }
+      results.push(await downloadFile({ row, target: safeTarget(dest, row.name), logFile }));
     }
-    results.push(await downloadFile({ row, target: safeTarget(dest, row.name), logFile }));
+    await verifySha256Sums(dest, logFile);
+  } catch (error) {
+    logLine(logFile, `incomplete error=${error instanceof Error ? error.message : String(error)}`);
+    throw error;
   }
 
   const metadata = {
@@ -275,6 +358,7 @@ async function main() {
     files: results,
   };
   writeFileSync(join(dest, ".understudy-snapshot.json"), `${JSON.stringify(metadata, null, 2)}\n`, { mode: 0o600 });
+  rmSync(incompletePath, { force: true });
   logLine(logFile, `complete files=${results.length} dest=${dest}`);
   console.log(JSON.stringify({ model: args.model, dest, logFile, files: results.length }, null, 2));
 }

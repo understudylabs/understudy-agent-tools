@@ -81,7 +81,10 @@ execution; skills tell the agent what to inspect, gate, monitor, and report.
   classifies each reachable-gap task as persistence/recovery (RL-learnable),
   knowledge (not RL-addable), or format/parsing (decoding/prompt) — then counts
   the clean warm-start trajectories the comparison yields, with small-N and
-  holdout caveats.
+  holdout caveats. Its token-logprob lens
+  ([`references/logprob-lens.md`](compare-trajectories/references/logprob-lens.md))
+  covers same-row, same-family token-confidence comparison when logprob
+  sidecars exist.
 - [`pedagogical-learning`](pedagogical-learning/SKILL.md) turns privileged
   answers, execution feedback, verifier traces, or canonical solutions into
   local correct-and-learnable trajectory evidence before SFT, GRPO, or hosted RL.
