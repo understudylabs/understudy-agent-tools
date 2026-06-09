@@ -273,7 +273,7 @@ async function verifySha256Sums(dest, logFile) {
     const match = /^([a-fA-F0-9]{64})\s+(.+)$/.exec(line.trim());
     if (!match) continue;
     const [, expected, rawPath] = match;
-    const name = rawPath.split(/[\\/]/).at(-1);
+    const name = rawPath.replace(/^\*/, "").replace(/^\.\//, "");
     const target = safeTarget(dest, name);
     if (!existsSync(target)) {
       throw new Error(`SHA256SUMS references missing file: ${name}`);
