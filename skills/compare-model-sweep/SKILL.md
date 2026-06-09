@@ -16,7 +16,7 @@ one frozen harness across a candidate matrix, records each run, and emits a
 small Pareto report an agent can use for route decisions.
 
 Prefer this after [`../understand-workload/SKILL.md`](../understand-workload/SKILL.md),
-[`../optimize-api-workflow/SKILL.md`](../optimize-api-workflow/SKILL.md), or
+[`../optimize-agentic-workload/SKILL.md`](../optimize-agentic-workload/SKILL.md), or
 [`../run-local-model-lab/SKILL.md`](../run-local-model-lab/SKILL.md) has already
 identified a resettable eval and a first local candidate.
 

@@ -1,30 +1,18 @@
----
-name: package-verifier-env
-description: Use after prepare-verifier-handoff confirms a stateful-RL need and author-rl-env produced a conformant reset/step env, to package that env locally into a Prime Intellect Verifiers-compatible module, run a trainer-free conformance check, and build the frozen-holdout return-eval. "package my env for verifiers", "make this RL-trainable for the partner", "prep the return-eval round-trip", "is my verifier env conformant". Packages locally only — never trains or uploads.
-metadata:
-  understudy:
-    mode: interactive
-    safety: local-first
-    cli_required: false
----
+# Stage 2 — Package the verifier environment
 
-# Package Verifier Environment
-
-Use this worker after
-[`../prepare-verifier-handoff/SKILL.md`](../prepare-verifier-handoff/SKILL.md) has
-confirmed a **stateful RL / policy-training** need and
-[`../author-rl-env/SKILL.md`](../author-rl-env/SKILL.md) has produced a
-**conformant step-API env** (reset/step/score, with passing replay-conformance).
-It is the executable bridge the handoff stub routes to: it **packages the env
+The second executable stage of [`prepare-verifier-handoff`](../SKILL.md),
+entered after the decision gate confirmed a **stateful RL / policy-training**
+need and [stage 1](stage-1-author-env.md) produced a **conformant step-API env**
+(reset/step/score, with passing replay-conformance). It **packages the env
 locally** into a Prime Intellect Verifiers-compatible module, runs a
 **trainer-free conformance check**, and builds the **return-eval** that makes a
 partner-trained policy comparable to the pre-RL local baseline.
 
-This skill **packages and prepares**. It does **not** train, upload, or run any
+This stage **packages and prepares**. It does **not** train, upload, or run any
 hosted partner job. Hosted RL is a **partner action the developer takes**, not
 something this skill performs.
 
-## Safety Gates
+## Safety gates (packaging-specific)
 
 - **Does not run hosted training.** No trainer is invoked here. The packaged
   module is exercised only against the local sim.
@@ -40,20 +28,20 @@ something this skill performs.
 - **Holdout is frozen.** The RL-train pool excludes dev + holdout. Never let the
   packaged env or the return-eval read the seed-7 holdout during packaging.
 
-## Decision Gate
+## Entry conditions
 
 Only enter here when ALL hold:
 
-- `prepare-verifier-handoff` has written
+- The decision gate has written
   `<workload>/.understudy/verifier-handoff/handoff.json` confirming the need is
   **learned multi-step policy training**, not evaluation, A/B, or prompt/route
-  optimization. If not, go back there.
-- `author-rl-env` produced a **step-API env** (reset/step/score MDP) with a
-  **passing replay-conformance** check. If the env is missing or non-conformant,
-  go to `author-rl-env` first.
-- `curate-trajectories` produced a **decontaminated, RL-train-safe selection**
-  (train pool excludes dev + holdout; contamination status recorded). If not, go
-  to [`../curate-trajectories/SKILL.md`](../curate-trajectories/SKILL.md) first.
+  optimization. If not, go back to the [skill's decision gate](../SKILL.md).
+- [Stage 1](stage-1-author-env.md) produced a **step-API env** (reset/step/score
+  MDP) with a **passing replay-conformance** check. If the env is missing or
+  non-conformant, go there first.
+- [`curate-trajectories`](../../curate-trajectories/SKILL.md) produced a
+  **decontaminated, RL-train-safe selection** (train pool excludes dev +
+  holdout; contamination status recorded). If not, go there first.
 
 If any prerequisite is missing, name it and route there. Do not synthesize a
 substitute.
@@ -67,8 +55,8 @@ substitute.
    class, and upload boundary are all present. Record any gap as a blocker; do not
    proceed past it.
 2. **Generate the PI-Verifiers env module.** Write
-   `<workload>/.understudy/verifier-env/pi_verifiers_env.py` mapping the
-   author-rl-env `reset()/step()/score()` onto the verifiers framework's expected
+   `<workload>/.understudy/verifier-env/pi_verifiers_env.py` mapping the stage-1
+   `reset()/step()/score()` onto the verifiers framework's expected
    environment interface (see the docs below): a `VerifierEnv` whose `reset`
    builds the seeded sim state and whose `step` applies one tool call and returns
    `(obs, reward, done, info)`. Mark only the workload-specific sim handles as
@@ -95,13 +83,13 @@ substitute.
    status, the exact return-eval command, the pinned reward definition, the
    approval/budget/data-class/upload-boundary status, and a fallback route (local
    pedagogical SFT / on-policy repair via
-   [`../local-distillation-lab/SKILL.md`](../local-distillation-lab/SKILL.md) if
+   [`local-distillation-lab`](../../local-distillation-lab/SKILL.md) if
    hosted RL is not approved). Mark hosted execution as the **developer's partner
    action**.
 
-## Output Standard
+## Stage output
 
-End with:
+End the packaging stage with:
 
 - `result_type: verifier-env-package`;
 - package path (`<workload>/.understudy/verifier-env/`);
@@ -115,17 +103,7 @@ End with:
 - the reminder that **the developer**, not this skill, takes the package to the
   partner and runs training.
 
-## References
+## External docs
 
-- [`../prepare-verifier-handoff/SKILL.md`](../prepare-verifier-handoff/SKILL.md) —
-  confirms the RL need and writes the `handoff.json` this skill consumes/emits.
-- [`../author-rl-env/SKILL.md`](../author-rl-env/SKILL.md) — produces the step-API
-  env this skill packages.
-- [`../curate-trajectories/SKILL.md`](../curate-trajectories/SKILL.md) — supplies
-  the decontaminated RL-train-safe selection.
-- [`../design-simulated-environment/SKILL.md`](../design-simulated-environment/SKILL.md)
-  — the seeded env + oracle + final-state validator vocabulary this packaging maps.
-- [`../local-distillation-lab/SKILL.md`](../local-distillation-lab/SKILL.md) — the
-  local fallback rung if hosted RL is not approved.
 - Prime Intellect Verifiers overview: `https://docs.primeintellect.ai/verifiers/overview`
 - Prime Intellect Verifiers training: `https://docs.primeintellect.ai/verifiers/training`

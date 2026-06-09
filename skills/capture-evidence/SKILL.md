@@ -122,13 +122,13 @@ use its workload profile as the narrative source of truth. The deep inspection
 checklist (call sites by SDK family, env vars, tracing, CI) and the eval-harness
 discover-then-build playbook live in [`reference.md`](reference.md). For
 cross-cutting objective/constraint framing, read
-[`../understudy/reference.md`](../understudy/reference.md). For multi-step REST/API workflows that mutate state, route to
-[`../optimize-api-workflow/SKILL.md`](../optimize-api-workflow/SKILL.md) so the
-agent records reset/seed state, API schemas, policy docs, request logs, and
-final-state validators as part of the harness. For multi-turn / tool-use /
-agentic search workloads, route the eval to
-[`../optimize-agentic-search/SKILL.md`](../optimize-agentic-search/SKILL.md)
-instead of building a single-output harness.
+[`../understudy/reference.md`](../understudy/reference.md). For multi-turn /
+tool-use / agentic workloads — both read-only search loops and multi-step
+REST/API workflows that mutate state — route the eval to
+[`../optimize-agentic-workload/SKILL.md`](../optimize-agentic-workload/SKILL.md)
+instead of building a single-output harness; its state-mutating lens records
+reset/seed state, API schemas, policy docs, request logs, and final-state
+validators as part of the harness.
 
 Start from the real local workload:
 

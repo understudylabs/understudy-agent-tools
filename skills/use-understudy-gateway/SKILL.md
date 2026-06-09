@@ -91,7 +91,7 @@ node dist/bin.js status --json
 
 Use this recipe to A/B a chosen public model against passthrough while an eval
 runs through the gateway. A typical consumer is
-[`../optimize-agentic-search/SKILL.md`](../optimize-agentic-search/SKILL.md),
+[`../optimize-agentic-workload/SKILL.md`](../optimize-agentic-workload/SKILL.md),
 comparing a workload's quality and cost across the split.
 
 1. Discover public model options (public model IDs only; no supplier detail):

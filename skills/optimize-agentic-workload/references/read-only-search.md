@@ -1,10 +1,12 @@
-# Optimize Agentic Search — reference
+# Read-only search loops — harness reference
 
-Deep detail for [`SKILL.md`](SKILL.md). Read this when you actually wire a
-verifiers environment into the Understudy artifact contract and run the model
-A/B. See also [`../optimize-workload/reference.md`](../optimize-workload/reference.md)
+Deep detail for [`SKILL.md`](../SKILL.md), for the **read-only** lens: agentic
+web/retrieval/lookup loops where no tool mutates state. Read this when you
+actually wire a verifiers environment into the Understudy artifact contract and
+run the model A/B. See also
+[`../../optimize-workload/reference.md`](../../optimize-workload/reference.md)
 (GEPA, feedback functions, validator kinds) and
-[`../prepare-verifier-handoff/SKILL.md`](../prepare-verifier-handoff/SKILL.md)
+[`../../prepare-verifier-handoff/SKILL.md`](../../prepare-verifier-handoff/SKILL.md)
 (the RL rung this skill stops short of).
 
 All examples here are synthetic. Use public model ids (e.g. `glm-5.1`,
@@ -64,7 +66,7 @@ set and the policy-model slot that varies. Synthetic shape:
   "command": "vf-eval agentic-web-search-synthetic --model ${MODEL} -n ${N}",
   "fixed_tools": ["web_search", "fetch_page"],
   "policy_model_slot": "${MODEL}",
-  "tool_snapshot": ".understudy/optimize-agentic-search/tool-cache/",
+  "tool_snapshot": ".understudy/optimize-agentic-workload/tool-cache/",
   "timeout_s": 120
 }
 ```
@@ -103,7 +105,7 @@ shape:
 
 Debias the LLM-judge with a swapped two-pass score; never single-pass. Bare
 pass/fail feedback wastes a later GEPA pass — see
-[`../optimize-workload/reference.md`](../optimize-workload/reference.md) →
+[`../../optimize-workload/reference.md`](../../optimize-workload/reference.md) →
 Feedback Function and Validator Kinds.
 
 ### `splits.json` — freeze the query set
@@ -150,7 +152,7 @@ can prove freshness.
 ```
 
 If any later change touches the harness, rubric, or splits, route back to
-[`../capture-evidence/SKILL.md`](../capture-evidence/SKILL.md) for a fresh
+[`../../capture-evidence/SKILL.md`](../../capture-evidence/SKILL.md) for a fresh
 baseline — the hashes will not match otherwise.
 
 ## Determinism: snapshot the tool outputs
@@ -168,7 +170,7 @@ the live web on every run, two problems follow:
 
 Fix: **snapshot / cache the tool outputs for the frozen query set.** Run each
 fixed tool once over the query set, store the responses under
-`.understudy/optimize-agentic-search/tool-cache/` keyed by (tool, normalized
+`.understudy/optimize-agentic-workload/tool-cache/` keyed by (tool, normalized
 args), and have the environment replay from that cache during eval. Now:
 
 - the harness is reproducible and its hash is meaningful;
@@ -212,8 +214,8 @@ share to the chosen model; the remainder must still complete. That non-routed
 share needs a configured managed frontier fallback so untouched traffic keeps
 working during the experiment. Configure it through the normal gateway/project
 setup in
-[`../use-understudy-gateway/SKILL.md`](../use-understudy-gateway/SKILL.md); this
-skill does not describe the internal plumbing.
+[`../../use-understudy-gateway/SKILL.md`](../../use-understudy-gateway/SKILL.md);
+this skill does not describe the internal plumbing.
 
 Inference defaults to Understudy after explicit approval via
 `understudy login --email <developer-email>`; BYO provider keys are a fallback if
@@ -226,7 +228,7 @@ If a cheaper model wins latency/cost but trails on quality, optimize its prompt
 to close the gap while keeping the win. GEPA is train/dev-only and feeds on the
 rubric's natural-language feedback, so a feedback-rich `metric.json` is the
 precondition. Hand the actual run to
-[`../optimize-workload/SKILL.md`](../optimize-workload/SKILL.md):
+[`../../optimize-workload/SKILL.md`](../../optimize-workload/SKILL.md):
 
 - it refuses stale artifacts (hash check) and never touches holdout;
 - it climbs the cheapest-intervention ladder (prompt prefill/repair → context
@@ -239,7 +241,8 @@ to a rubric criterion, so the feedback is actionable.
 
 ## When To Escalate To The Handoff
 
-Escalate to [`../prepare-verifier-handoff/SKILL.md`](../prepare-verifier-handoff/SKILL.md)
+Escalate to
+[`../../prepare-verifier-handoff/SKILL.md`](../../prepare-verifier-handoff/SKILL.md)
 only when **all** of these hold:
 
 - model A/B found no shippable model within the regression band;
@@ -253,8 +256,9 @@ skill prepares the evidence packet and refers to Prime Intellect Verifiers.
 ## Capture-Evidence And Claim Discipline
 
 Everything above sits inside the standard MVP loop: capture a measured baseline
-before optimizing (see [`../capture-evidence/SKILL.md`](../capture-evidence/SKILL.md)
-and [`../understudy/SKILL.md`](../understudy/SKILL.md)), keep holdout untouched
+before optimizing (see
+[`../../capture-evidence/SKILL.md`](../../capture-evidence/SKILL.md) and
+[`../../understudy/SKILL.md`](../../understudy/SKILL.md)), keep holdout untouched
 until the candidate is frozen, and produce the `claim.json` packet before any
 savings or replacement-readiness statement. Below holdout/live validation, report
 an optimization lead, not a win.

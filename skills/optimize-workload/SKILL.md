@@ -80,7 +80,7 @@ validator kinds in [`reference.md`](reference.md):
   scope; that is the handoff in
   [`../prepare-verifier-handoff/SKILL.md`](../prepare-verifier-handoff/SKILL.md).
   For agentic eval/optimization, set up the rollout harness and rubric in
-  [`../optimize-agentic-search/SKILL.md`](../optimize-agentic-search/SKILL.md)
+  [`../optimize-agentic-workload/SKILL.md`](../optimize-agentic-workload/SKILL.md)
   first, then return here for the GEPA prompt pass.
 - **Stopping rule** — if the scorer saturates to 1.0 fast, the surface is too
   easy; strengthen the metric, don't claim. If GEPA stalls with headroom left,

@@ -95,7 +95,7 @@ references them; it does not duplicate them.
      or graduate to RL/verifiers
      ([`../../skills/prepare-verifier-handoff/SKILL.md`](../../skills/prepare-verifier-handoff/SKILL.md)).
    Freeze eval/metric/splits with [`../../skills/capture-evidence/SKILL.md`](../../skills/capture-evidence/SKILL.md);
-   for state-mutating API workflows use [`../../skills/optimize-api-workflow/SKILL.md`](../../skills/optimize-api-workflow/SKILL.md).
+   for state-mutating API workflows use [`../../skills/optimize-agentic-workload/references/state-mutating-workflows.md`](../../skills/optimize-agentic-workload/references/state-mutating-workflows.md).
 5. **Prove + route** — score with [`../../skills/run-local-model-lab/SKILL.md`](../../skills/run-local-model-lab/SKILL.md)
    and produce the **scorecard**: coverage at parity, decomposition-factor
    distribution, measured cost/latency savings, and the cut line (ship local /

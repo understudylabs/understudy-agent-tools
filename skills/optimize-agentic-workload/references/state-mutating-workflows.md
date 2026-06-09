@@ -1,8 +1,12 @@
-# Optimize API Workflow — reference
+# State-mutating API workflows — harness reference
 
-Deep detail for [`SKILL.md`](SKILL.md). Use this reference when wiring a
-resettable API workflow into the Understudy artifact contract, measuring a
-baseline, and comparing model, route, prompt, tool-access, or parser candidates.
+Deep detail for [`SKILL.md`](../SKILL.md), for the **state-mutating** lens: a
+multi-step LLM or agent loop that reads task instructions and policy docs,
+discovers or selects REST endpoints, performs writes across one or more business
+systems, and is judged by final state plus policy compliance. Use this reference
+when wiring a resettable API workflow into the Understudy artifact contract,
+measuring a baseline, and comparing model, route, prompt, tool-access, or parser
+candidates.
 
 All examples here are synthetic. Use local fixtures or benchmark sandboxes unless
 the developer explicitly approves provider spend, hosted execution, uploads, or
@@ -26,10 +30,29 @@ Three consequences shape the playbook:
   fixed policy docs, and final-state validators make API workflow evals more
   reproducible than live agentic search.
 
+## When This Lens Applies
+
+- the agent performs a multi-step API workflow, not a single prompt response;
+- tools are REST, OpenAPI, RPC, or SDK calls with observable state changes;
+- success requires final-state correctness and policy adherence;
+- the harness can reset or seed state before each task;
+- candidates should be compared on quality, latency, cost, and side-effect
+  safety.
+
+If there is no resettable state or validator, route back to
+[`../../capture-evidence/SKILL.md`](../../capture-evidence/SKILL.md) first.
+
 ## Artifact Bridge
 
 Write the standard evidence files under `.understudy/capture-evidence/`. These
 examples are intentionally small and synthetic.
+
+For API workflows, `harness.json` must include the reset command, seed fixture,
+task source, API schema or service map, allowed endpoint set, policy-doc refs,
+agent entrypoint, request-log path, final-state validator, timeout, and network
+boundary. `environment.json` must record the local service versions, mock server
+or sandbox setup, required env var names without values, and whether any route
+can write to live systems.
 
 ### `harness.json` — runnable rollout harness
 
@@ -99,9 +122,14 @@ of the artifact draft local.
 
 ### `metric.json` — rollout score plus feedback
 
-Map the harness's primary pass/fail field to final-state correctness and its
-graded score to the weighted rubric. The rubric must emit natural-language
-feedback tied to the failing step, endpoint, invariant, or state diff.
+Quality is a weighted API-workflow rubric, not a generic answer score. Include
+final-state correctness, policy compliance, data accuracy, endpoint discovery,
+required-write completion, forbidden-write avoidance, unnecessary calls/retries,
+schema validity, and recoverable errors. Latency and cost are per workflow
+rollout. Map the harness's primary pass/fail field to final-state correctness
+and its graded score to the weighted rubric. The rubric must emit
+natural-language feedback tied to the failing step, endpoint, invariant, or
+state diff.
 
 ```json
 {
@@ -250,8 +278,10 @@ and state.
 
 ### Tool-Access Reporting
 
-Most API-workflow harnesses can expose materially different tool surfaces. Keep
-those surfaces explicit because they support different claims:
+Separate tool discovery from task execution. For small/local models, first ask
+whether the failure is "could not find the right tool" rather than "could not do
+the task." Most API-workflow harnesses can expose materially different tool
+surfaces. Keep those surfaces explicit because they support different claims:
 
 | Tool-access mode | What it measures | Claim status |
 | --- | --- | --- |
@@ -262,7 +292,9 @@ those surfaces explicit because they support different claims:
 Always report a realistic tool-access number beside any curated or oracle-tool
 result. An oracle-tool win proves the model can execute the task once discovery
 is solved; it does not prove a deployable route unless a real retriever or
-advisor supplies the same tool subset without looking at labels.
+advisor supplies the same tool subset without looking at labels. Treat
+oracle-tool matching as a diagnostic or advisor-training target, not as a
+route-superiority claim.
 
 For small local models, treat the spread between realistic tool access and
 curated/oracle tool access as the tool-retrieval opportunity. A useful advisor
@@ -374,8 +406,8 @@ re-run, and the adapter returns rubric scores plus natural-language failure
 feedback. The current public CLI adapters (`eval-input-gepa` and `dspy-gepa`)
 optimize flat prompt-to-output rows; use them for decomposed subtasks such as
 tool retrieval, or use the live-rollout recipe in
-[`../../docs/agentic-rollout-gepa.md`](../../docs/agentic-rollout-gepa.md) when
-the score must come from real tool execution.
+[`../../../docs/agentic-rollout-gepa.md`](../../../docs/agentic-rollout-gepa.md)
+when the score must come from real tool execution.
 
 If the harness has no prompt parameter, do not edit benchmark source as an
 undocumented side effect. Prefer a checked local patch, prompt file, or env hook
