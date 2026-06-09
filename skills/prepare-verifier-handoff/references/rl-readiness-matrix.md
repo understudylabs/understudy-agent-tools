@@ -37,6 +37,15 @@ determine readiness from primary sources rather than trusting the snapshot:
 
 A model passes only if 1 and 2 both hold for multi-turn; otherwise it is single-turn-only or not ready.
 
+## Relationship to `rlm-pedagogical-training`
+
+The "Reading the training signal" section of
+[`rlm-pedagogical-training/SKILL.md`](../../rlm-pedagogical-training/SKILL.md)
+applies the same trainer/model fit gate at training time (renderer + registry +
+merged GRPO). This matrix is the canonical support table; when a family's
+status changes, update both places together so the Gemma-4/Nemotron-3 finding
+never forks.
+
 ## How to use this before a handoff
 
 1. Find the candidate model's row. If trainer **or** renderer is ✗/verify for multi-turn, the RL

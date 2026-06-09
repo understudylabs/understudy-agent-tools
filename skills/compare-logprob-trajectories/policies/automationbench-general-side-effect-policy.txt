@@ -1,0 +1,65 @@
+General AutomationBench side-effect policy.
+
+Use this as generic execution guidance for workflow automation tasks. It must
+not contain task-specific entity names, IDs, payloads, or teacher traces.
+
+Execution priorities:
+- Complete required side effects before final answer. A correct explanation with
+  missing mutations is a failure.
+- For API discovery, prefer broader searches. When calling `api_search`, request
+  `top_k: 10` unless the query is already fully disambiguated. Narrow retrieval
+  is a common cause of missing the correct endpoint, policy source, or canonical
+  example.
+- Treat business policy documents, standard operating procedures, and recent
+  canonical examples as stronger evidence than informal notes, external advice,
+  account preferences, or intuitive defaults.
+- When the user asks for the latest process or standard format, search for the
+  policy or recent canonical examples before composing the mutation payload.
+- Preserve exact strings from authoritative sources: prefixes, labels,
+  separators, capitalization, dates, amounts, record IDs, channel names, owner
+  names, and required punctuation. Do not paraphrase operational formats.
+- If a notification format is required, resolve every named field from source
+  records before posting. This includes responsible owner, assignee, account
+  tier, amount, object name, target channel, and any status prefix or label.
+- Before posting a formatted notification, write a short private checklist of
+  required message substrings implied by the task and authoritative sources.
+  The final payload must satisfy the checklist exactly. Prefer a plain exact
+  operational format over decorative prose when the task mentions standard
+  process, latest guidelines, or canonical examples.
+- For sales deal-win announcements, if the task requires a standard process and
+  canonical examples are not found, use a compact operational fallback instead
+  of prose: status prefix, deal/account name, amount, account tier, and owner or
+  account-executive label, separated by vertical bars. This is a fallback only;
+  exact authoritative examples still win.
+- For closed-won sales announcements, prefer an explicit closed status prefix
+  over vague celebratory labels. When the responsible owner is an account
+  executive or sales owner, label that person explicitly. Preserve currency
+  formatting from source records; if the amount is an integer dollar amount,
+  render it without a decimal suffix.
+- Treat explicit user-specified channels, recipients, dates, target objects, and
+  requested workflows as hard requirements. Do not override them based only on a
+  source-record note, account preference, external suggestion, or informal
+  comment. A conflicting source-record preference is evidence to inspect, not an
+  authority to change the target. Only a formal policy document or canonical
+  standard operating procedure may override an explicit user target.
+- Do not invent precedence rules such as "account preferences override the
+  requested workflow" unless that rule is explicitly present in an authoritative
+  policy source.
+- Use concrete IDs and API URLs only. Never call mutation APIs with templated
+  placeholders, example domains, or guessed IDs.
+- For API tools, pass actual JSON objects or JSON null where supported. Avoid
+  stringified placeholders such as "{}", "null", "None", or malformed key
+  fragments when the tool schema expects structured input.
+- After each mutation, verify the side effect by reading the mutated record or
+  target channel/search result. If the posted message or record update is
+  missing a required exact token, correct that missing side effect before final
+  answer.
+- Empty mutation responses such as `{}` or 204-style no-content responses often
+  mean success. Do not repeat the same exact mutation after an empty response.
+  Verify by fetching/searching the changed object, then move to the next
+  missing requirement.
+- If a verification check shows a notification used the wrong format, post or
+  update a corrected notification instead of repeatedly updating unrelated
+  records.
+- Final answer only after all required side effects and negative assertions have
+  been verified.

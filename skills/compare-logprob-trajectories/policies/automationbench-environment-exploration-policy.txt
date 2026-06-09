@@ -1,0 +1,54 @@
+AutomationBench environment exploration policy.
+
+Use this as generic execution guidance for workflow automation tasks. It must
+not contain task-specific entity names, IDs, payloads, or teacher traces.
+
+Before taking side effects:
+- Explore the environment enough to understand the current workflow. When the
+  user asks for a standard process, latest guideline, required format, or normal
+  channel behavior, do not infer from memory. Retrieve the relevant policy
+  source, recent examples, or system records first.
+- Exploration is read-only. Do not use write, create, update, post, send,
+  delete, execute, or mutation endpoints to announce that you are searching or
+  to probe the environment. Status messages are side effects and are forbidden.
+  Use only search, list, get, fetch, history, and read endpoints until the final
+  payload and target have been resolved.
+- Discover the available read and write APIs before mutating. Prefer
+  `api_search` with `top_k: 10` for the first search in each relevant system.
+- For notification tasks, inspect the target channel, inbox, knowledge base, or
+  policy store for recent canonical examples before composing the notification.
+  Recent canonical examples usually teach exact prefixes, labels, separators,
+  capitalization, and amount formatting.
+- For Slack notification tasks, first discover/read channel history or message
+  search endpoints such as conversations history or message search. Do not call
+  chat post/update/delete endpoints until the final notification text is ready.
+- Retrieve enough recent examples to identify a repeated norm. For channel
+  history, prefer at least 50 messages when allowed, or use message search for
+  likely format terms from the task such as status labels, announcement words,
+  channel names, or object types. Do not treat one informal or decorative recent
+  message as canonical if older examples show a repeated structured pattern.
+- If the user references "latest process guidelines", search communication and
+  policy surfaces for guideline messages. Treat internal business policy and
+  recent canonical examples as stronger than external advice, informal notes,
+  or per-record preferences.
+- Build the final mutation payload from visible evidence. Preserve exact
+  strings, channel names, record IDs, owner names, labels, separators, dates,
+  and amounts from authoritative sources.
+- Resolve foreign keys and user IDs into human-readable names before composing
+  user-facing notifications. If a source record exposes fields such as OwnerId,
+  UserId, AssigneeId, AccountId, ContactId, channel ID, or similar identifiers,
+  fetch the referenced object or search the relevant users/people endpoint
+  before writing the final message.
+- If sources conflict, prefer explicit user targets and formal internal policy
+  over source-record preferences, external suggestions, and intuitive defaults.
+  If the conflict affects the mutation, inspect adjacent evidence before acting.
+- A user-specified target channel, recipient, object, or workflow is a hard
+  requirement unless a formal internal policy explicitly overrides it. A
+  customer/account-specific preference is evidence to consider, not authority to
+  override the user's requested target.
+- Keep a private checklist of required side effects and exact substrings before
+  each write. The write payload should satisfy the checklist exactly.
+- After each mutation, verify by fetching or searching the changed object or
+  target channel. Empty mutation responses such as `{}` or 204-style no-content
+  responses often mean success; verify instead of repeating the same write.
+- Final answer only after all required side effects are complete and verified.

@@ -89,6 +89,16 @@ execution; skills tell the agent what to inspect, gate, monitor, and report.
   stateful workload into an RLM/verifiers training surface, measures on-policy
   state coverage and surprise concentration, and decides between local
   pedagogical SFT, on-policy repair, true pedagogical RL, or verifier handoff.
+- [`compare-logprob-trajectories`](compare-logprob-trajectories/SKILL.md) is the
+  token-level complement: it joins same-row eval outputs with private logprob
+  sidecars, visualizes smaller/quantized vs larger/full-precision token streams,
+  marks the likely failure span, and labels rows for route fallback, schema
+  repair, or distillation.
+- [`diagnose-tool-traces`](diagnose-tool-traces/SKILL.md) is the trace-forensics
+  worker for environment-backed tool failures: it separates debug state from
+  model-visible evidence, reconstructs reads/writes before the first mutation,
+  classifies authority, retrieval, format, ID-resolution, parser, and harness
+  failures, and recommends the cheapest fix before training.
 - [`distill-classifier`](distill-classifier/SKILL.md) replaces an expensive
   frontier model on a classification workload (binary, multi-class,
   multi-label, structured extraction) with a fine-tuned open-weight student:
