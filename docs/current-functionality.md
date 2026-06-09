@@ -90,47 +90,14 @@ messages, completions, traces, or secret values.
 
 ## What Is Skill-Led Now
 
-The public workflow now lives in the MVP skill tree:
-
-```text
-skills/understudy/SKILL.md
-skills/onboard/SKILL.md
-skills/capture-evidence/SKILL.md
-skills/optimize-workload/SKILL.md
-skills/use-understudy-gateway/SKILL.md
-skills/manage-local-models/SKILL.md
-skills/run-local-model-lab/SKILL.md
-skills/mlx-arena/SKILL.md
-skills/design-simulated-environment/SKILL.md
-skills/recursive-language-model/SKILL.md
-skills/specialize-local-model/SKILL.md
-skills/pedagogical-learning/SKILL.md
-skills/rlm-pedagogical-training/SKILL.md
-skills/local-distillation-lab/SKILL.md
-skills/prepare-verifier-handoff/SKILL.md
-```
+The public workflow now lives in the skill tree. The authoritative,
+per-skill index — grouped by journey stage (setup, understand/capture, local
+models, compare/diagnose, cost/providers, optimize, train, RL handoff,
+gateway/routing) — is [`skills/README.md`](../skills/README.md). This ledger
+does not duplicate that list.
 
 Agents should use those skills to inspect local artifacts and guide users, but
 they should not claim that removed Python commands still exist.
-
-`onboard` is the engaging first-run experience (machine + user profiling,
-interview, durable `~/.understudy/profile.json`); it backgrounds a small
-open-model download per the engagement doctrine in
-`docs/engagement-and-pacing.md` and hands off to `understudy`.
-`manage-local-models` acquires, caches, and explains local open-weight models
-(Gemma 4, Nemotron 3) — distinct from `run-local-model-lab`, which evaluates a
-local model against a frozen workload.
-
-`specialize-local-model` sequences the local-understudy product loop: pick the
-smallest task-reasonable local model, open it in the Pi/MLX arena against a
-frontier model, diagnose the gap, then choose model climb, simulated
-environment, GEPA/prompt optimization, RLM decomposition, hybrid route, or
-remote-only.
-
-`prepare-verifier-handoff` is a future-release stub, not an executable CLI
-surface. It helps agents recognize workloads that need stateful RL
-verifier/environment training, preserve the local evidence packet, and refer to
-Prime Intellect Verifiers as the current preferred external path.
 
 `use-understudy-gateway` includes the public model-routing workflow. Agents can
 list routeable Understudy model IDs without supplier/provider details, run
