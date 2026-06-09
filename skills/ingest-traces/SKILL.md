@@ -43,9 +43,14 @@ Identify the source shape first:
   existing tooling (`aws s3`, `rclone`, `wrangler`); pull to a local staging
   dir.
 - **Provider log export**: JSONL/CSV of historical calls.
-- **Understudy capture export**: gateway capture files (`captures export`, or
-  a platform bulk export). Captures may carry either `workload_id` or the
-  older `placement_id` — read both.
+- **Understudy capture export**: gateway capture files. Note the access
+  limits: `captures export <request-id>` exports **one request at a time**,
+  writes metadata only unless run with `--include-payload --yes` (payloads may
+  contain prompts/completions), and platform-side bulk export requires
+  elevated platform-administrator access — plan on per-request exports or ask
+  your platform administrator for a bulk dump.
+  Captures may carry either `workload_id` or the older `placement_id` — read
+  both.
 
 Then confirm with the developer which workload(s) the traces should map to,
 and what the unit of one "task" is (one request? one conversation?).

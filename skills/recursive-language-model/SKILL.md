@@ -63,9 +63,9 @@ artifacts** — a structured plan, an extracted-facts table, a checklist the
 deliverable must satisfy — and make later steps consume only those artifacts,
 not free-form scratchpad prose. Each artifact is checkable (schema, required
 keys) at the step that produces it, so errors surface mid-loop instead of in
-the final deliverable. The gap this closes is large: Confirmed by Understudy:
-2026-06-03 (internal long-horizon benchmark — a structured-artifact workflow
-scored 57/59 where a raw free-form RLM loop scored 3/59 with the same models).
+the final deliverable. The gap this closes is large: measured on an internal
+long-horizon benchmark, 2026-06-03, a structured-artifact workflow scored
+57/59 where a raw free-form RLM loop scored 3/59 with the same models.
 
 ## What to measure (what's possible)
 

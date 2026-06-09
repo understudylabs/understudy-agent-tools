@@ -13,6 +13,13 @@ This reference applies them to stateful trajectories and adds what is
 RLM-specific: the verifiers environment shape, the baseline matrix, surprise
 concentration, the training-arm choice, and how to read a live training run.
 
+**Not for** environment mechanics or partner packaging: this skill owns the
+learnability decision and the training-arm choice;
+[`../author-rl-env/SKILL.md`](../author-rl-env/SKILL.md) owns building the
+`reset`/`step` environment once RL is the chosen arm, and
+[`../package-verifier-env/SKILL.md`](../package-verifier-env/SKILL.md) owns
+packaging that env for a partner.
+
 This is the bridge between:
 
 - [`recursive-language-model`](../SKILL.md): build the decomposition harness;
@@ -125,11 +132,23 @@ The stronger claim requires all three:
 
 Read the signal before and during a GRPO / prime-rl run — do not just wait.
 
-**Predict gradual vs flat-then-jump from reward variance.** GRPO normalizes each
-rollout's advantage *within its group* — subtract the group mean, divide by the
-group std (DeepSeekMath, arXiv:2402.03300; DeepSeek-R1, arXiv:2501.12948). A group
-whose rollouts all score the same has advantage ≈ 0 and contributes **no
-gradient**, so **group reward-variance is the learning signal**:
+- **Group reward-variance is the learning signal.** GRPO normalizes each
+  rollout's advantage within its group, so a group whose rollouts all score the
+  same contributes no gradient. Check `groups_trainable` / per-group reward std
+  over the first ~5 steps before forecasting an ETA: healthy variance from
+  step 1 predicts a gradual, noisy climb with plateaus; near-zero variance
+  (most groups all-fail or all-pass) predicts flat-until-a-lucky-success — fix
+  the reward shape (denser / shaped signal) rather than waiting it out.
+- **Read smoothed reward + a periodic held-out mini-eval, not per-step
+  reward.** Timeline heuristic when variance is healthy: first drift
+  ~step 30–50, clear trend ~step 100, gains across epochs.
+- **When results conflict, trust sealed-holdout metrics over smoke results.**
+  A quick smoke run never overrides a measured holdout eval.
+- **Trainer/model fit check (before picking prime-rl vs Unsloth/TRL).** A model
+  *loading* is not support. For multi-turn tool-use RL, confirm the trainer
+  has, for that model: a multi-turn **renderer**, the model in the
+  trainer/inference **registry**, and **merged GRPO** support — or switch
+  trainers.
 
 - High variance from step 1 (most groups mixed success/failure; prime-rl/ART
   `groups_trainable` healthy) → expect a **gradual, noisy climb** with plateaus.

@@ -65,8 +65,9 @@ node dist/bin.js status --json
 
 ## The ladder
 
-Default tiers: **5% → 25% → 100%** (5 is also the platform's default split on
-a fresh route). At each tier:
+Default tiers: **5% → 25% → 100%** (note: `routes set` defaults `--traffic-pct`
+to 10 when not specified, so pass `--traffic-pct 5` explicitly for the first
+tier). At each tier:
 
 1. `understudy routes set <workload> --project <p> --model-id <id>
    --traffic-pct <pct>` — after approval.
