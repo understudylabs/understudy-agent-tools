@@ -1,4 +1,4 @@
-# Choose Cloud Provider — reference
+# Providers — where to run a hosted job (reference)
 
 Per-provider detail for routing hosted ML jobs. Compiled **2026-06-07**. Tags:
 **[V]** verified from a primary/official source · **[U]** unverified / could not
@@ -6,7 +6,7 @@ confirm — flagged. **Marketplace and serverless prices drift; treat every figu
 "as of 2026-06-07, verify live."** Vendor performance claims are marketing unless
 independently benchmarked.
 
-This file is reference data for [`SKILL.md`](SKILL.md). It states public facts about
+This file is reference data for [`SKILL.md`](../SKILL.md). It states public facts about
 third-party providers to help an agent route work; it is not an endorsement and
 implies no commercial relationship.
 
@@ -124,8 +124,8 @@ GPU-second**, and throughput "scales with GPU allocation" (default 8 A100/H100, 
 Documented account limits: **6,000 RPM** account-wide fixed ceiling with credits (**10 RPM**
 without), and on on-demand an HTTP **429** "typically means deployment saturation (GPUs
 busy)," not a TPM-tier cap. Size for *effective* sustained throughput, not peak, when
-planning large rollout jobs (see `estimate-run-cost`
-[`reference.md`](../estimate-run-cost/reference.md) §3d).
+planning large rollout jobs (see
+[`cost-estimation.md`](cost-estimation.md) §3d).
 Sources: https://docs.fireworks.ai/faq/deployment/ondemand/billing-scaling (autoscale/billing)
 · https://docs.fireworks.ai/guides/quotas_usage/account-quotas (RPM ceiling + 429 meaning)
 

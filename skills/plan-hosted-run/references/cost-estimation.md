@@ -1,6 +1,6 @@
-# Estimate Run Cost — reference
+# Cost estimation — how long and how much (reference)
 
-Cited numbers and worked math for [`SKILL.md`](SKILL.md). Compiled **2026-06-07**.
+Cited numbers and worked math for [`SKILL.md`](../SKILL.md). Compiled **2026-06-07**.
 Tags: **[MEASURED]** real benchmark / live rate · **[SPEC]** vendor datasheet ·
 **[ESTIMATE]** rule-of-thumb. **Cloud and per-token prices drift monthly — re-fetch
 the live pricing page before quoting.** Where an aggregator disagreed with a vendor's
