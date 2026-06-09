@@ -1,6 +1,6 @@
 ---
 name: understudy
-description: Use when a developer asks a coding agent to improve an LLM app or agent — reduce cost or latency, raise quality/reliability, capture traces, build evals, run local optimization (GEPA), compare models/providers, pick a model/route, or route behavior through Understudy. Orchestrates trace → evaluate → optimize → compare → deploy via worker skills. Not for generic coding unless LLM behavior, cost, traces, evals, or routing is involved.
+description: Use when a developer asks a coding agent to improve an LLM app or agent — "make my LLM app cheaper/faster", "raise quality or reliability", "compare models", "pick a model or route". Orchestrates trace → evaluate → optimize (GEPA, automatic prompt evolution) → compare → deploy via worker skills. Not for generic coding unless LLM behavior, cost, traces, evals, or routing is involved.
 metadata:
   understudy:
     mode: automatic

@@ -1,6 +1,6 @@
 ---
 name: compare-model-sweep
-description: Use when a developer wants to run the same eval or benchmark across multiple local, gateway, or frontier models and produce a Pareto-style quality, latency, cost, and reliability comparison.
+description: Use when a developer wants to compare candidate models — any mix of local, gateway, or frontier — on the same eval and see quality, latency, cost, and reliability side by side. "Which model should I use", "sweep these models on my benchmark", "compare Gemma vs the frontier on my eval". To stand up and serve a local candidate first, use run-local-model-lab.
 metadata:
   understudy:
     mode: interactive
