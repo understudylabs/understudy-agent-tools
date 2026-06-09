@@ -1,6 +1,6 @@
 ---
 name: capture-evidence
-description: Use when an AI workload needs local harness capture, environment attachment, metric and validator confirmation, frozen splits, and an incumbent baseline before optimization.
+description: Use when a developer wants to build an eval from their real LLM app before changing anything — "measure how my app is doing today", "build an eval from my workload", "we have no baseline", "is my current model actually good". Turns the workload into auditable local artifacts (harness, metric, frozen splits, baseline); has a public-benchmark on-ramp when no traces exist.
 metadata:
   understudy:
     mode: interactive
@@ -134,6 +134,10 @@ Start from the real local workload:
 
 - app route, eval suite, trace export, benchmark fixture, prompt set, dataset,
   report, or existing runner;
+- **no traces yet?** Start from a public benchmark — the golden-path ladder
+  (AutomationBench, Harvey LAB) in
+  [`references/public-benchmark-path.md`](references/public-benchmark-path.md)
+  runs this same evidence loop against public fixtures;
 - otherwise, create only a synthetic fixture and label it clearly as synthetic.
 
 Do not optimize, tune prompts, choose replacement models, mutate splits, or

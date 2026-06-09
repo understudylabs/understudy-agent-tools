@@ -1,6 +1,6 @@
 ---
 name: optimize-workload
-description: Use after fresh workload artifacts exist to validate candidates, run train/dev-only GEPA optimization, preserve holdout boundaries, and make conservative claims.
+description: Use when a developer has a measured eval and wants the prompt or route improved without retraining — "optimize my prompt against my eval", "close the quality gap with the cheaper model", "squeeze cost without losing quality". Runs GEPA (automatic prompt evolution) on train/dev only, keeps holdout sealed, and requires a claim packet before any savings statement.
 metadata:
   understudy:
     mode: interactive
