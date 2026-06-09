@@ -153,12 +153,14 @@ Identify the developer's current stage and load exactly one:
   runs with stored logprob sidecars and wants to see the exact moment a smaller,
   quantized, or weaker model diverged from a larger/full-precision sibling on
   the same row →
-  [`../compare-logprob-trajectories/SKILL.md`](../compare-logprob-trajectories/SKILL.md).
+  [`../compare-trajectories/SKILL.md`](../compare-trajectories/SKILL.md) and its
+  token-logprob lens (`references/logprob-lens.md`).
 - **Tool-trace failure diagnosis** — an environment-backed or tool-calling run
   failed and the developer asks whether the model lacked evidence, failed to
   retrieve visible evidence, trusted the wrong authority, acted too early,
   missed exact format, failed ID resolution, or exposed a scorer/harness issue →
-  [`../diagnose-tool-traces/SKILL.md`](../diagnose-tool-traces/SKILL.md).
+  [`../understand-workload/SKILL.md`](../understand-workload/SKILL.md) and its
+  tool-trace forensics lens (`references/tool-trace-forensics.md`).
 - **Pedagogical learning / privileged-context self-teaching** — the developer has
   answer keys, execution feedback, verifier traces, oracle tool labels, or
   canonical solutions and wants the local model to learn from trajectories that

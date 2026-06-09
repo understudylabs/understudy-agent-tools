@@ -117,28 +117,28 @@ Verified snapshot locations:
   `models.understudylabs.com`. Each session response contains short-lived signed
   per-file URLs; the same R2 prefix is the durable object source.
 
-The 4-bit snapshot is about 3.3 GB, generated `I am ready as your local
+The 4-bit E2B snapshot is about 3.3 GB, generated `I am ready as your local
 understudy.` in local testing, used about 3.6 GB peak memory, and served
-OpenAI-compatible chat completions with `logprobs` / `top_logprobs`. The E2B
-BF16 diagnostic rung is about 9.5 GB, and the E4B BF16 diagnostic rung is about
-15 GB; both were converted directly from official Google checkpoints with
-`mlx-vlm 0.6.2`, packaged with `SHA256SUMS`, and smoke-tested through
-OpenAI-compatible chat. The E4B
-snapshot is about 4.8 GB, is the first signed quality climb, and has been
-checksum-verified, loaded with `mlx_vlm.server`, and smoke-tested through
-OpenAI-compatible chat. The verified 12B
-4-bit snapshot is about 6.3 GB on disk, the 12B BF16 profile is about 22 GB, the
-26B A4B 4-bit snapshot is about 14 GB, and the 31B 4-bit snapshot is about 17 GB.
-The 26B and 31B high-memory snapshots were converted directly from the official
-Google Gemma 4 checkpoints with `mlx-vlm 0.6.2`; the known-good functional smoke
-is `mlx_vlm.server` plus `/v1/chat/completions` asking "Answer in exactly three
-words: what is local inference?", expecting a short answer such as `Running
-models locally.` or `AI runs locally.` with `finish_reason: "stop"`. Use these
-only after the workload profile shows the smaller rung is genuinely
-capacity-limited. Official BF16 26B A4B and 31B source directories also load
-directly with `mlx_vlm.server` on 128 GB Apple Silicon, but those are separate
-large gated downloads, not the default signed 4-bit arena path. If the verified
-Gemma 4 snapshot is not reachable, use
+OpenAI-compatible chat completions with `logprobs` / `top_logprobs`.
+
+Approximate disk sizes for the other rungs:
+
+- E2B BF16 diagnostic: about 9.5 GB.
+- E4B 4-bit (first signed quality climb): about 4.8 GB.
+- E4B BF16 diagnostic: about 15 GB.
+- 12B 4-bit: about 6.3 GB; 12B BF16 profiling: about 22 GB.
+- 26B A4B 4-bit: about 14 GB; 31B 4-bit: about 17 GB.
+
+All of these share the same provenance and chat smoke test; see
+[`../manage-local-models/reference.md`](../manage-local-models/reference.md)
+for the canonical conversion/checksum statement and the known-good
+`mlx_vlm.server` smoke. Use the 26B/31B rungs only after the workload profile
+shows the smaller rung is genuinely capacity-limited. Official BF16 26B A4B
+and 31B source directories also load directly with `mlx_vlm.server` on 128 GB
+Apple Silicon, but those are separate large gated downloads, not the default
+signed 4-bit arena path.
+
+If the verified Gemma 4 snapshot is not reachable, use
 `FIRST_REPO=mlx-community/gemma-3-1b-it-4bit FIRST_LOADER=mlx_lm
 skills/mlx-arena/arena.sh first` only as a fallback.
 

@@ -57,9 +57,9 @@ python -m mlx_vlm.server --model ~/.understudy/models/gemma-4-e4b-it-mlx-vlm-4bi
 # Nemotron 3 Nano on MLX: mlx-community/NVIDIA-Nemotron-3-Nano-30B-A3B-4bit
 ```
 
-Use the Understudy snapshot id above when testing E4B in this lab. It is the
-reproducible, checksum-verified package Understudy converted and load-tested
-with `mlx_vlm.server` plus OpenAI-compatible chat.
+Use the Understudy snapshot id above when testing E4B in this lab; it is the
+reproducible verified package (provenance and smoke-test details:
+[`../manage-local-models/reference.md`](../manage-local-models/reference.md)).
 
 (Ollama / LM Studio also serve OpenAI-compatible if a developer already runs one,
 but skip them as the default: their library tags lag new HF releases, so brand-new

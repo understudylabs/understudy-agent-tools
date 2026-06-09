@@ -128,6 +128,16 @@ classification and the warm-start yield). Above ~5% unstable, fix decoding
 feed the pre-ramp gate in [`../ramp-and-verify/SKILL.md`](../ramp-and-verify/SKILL.md)
 (stable → serve, borderline → shadow, stochastic → incumbent fallback).
 
+## Token-logprob lens
+
+When two same-family runs (e.g. quantized vs full-precision) diverge on the
+same row and you need the token-level *why* — which token the weaker model got
+wrong and how confident it was — see
+[`references/logprob-lens.md`](references/logprob-lens.md). It documents the
+renderer in [`scripts/render-logprob-compare.mjs`](scripts/render-logprob-compare.mjs)
+and the private logprob-sidecar artifacts it requires; nothing public in this
+repo produces those artifacts yet, so treat it as an optional lens, not a step.
+
 ## Output Standard
 
 End with the diff path and: the two run ids + harness/tool-access mode;

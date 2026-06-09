@@ -68,13 +68,13 @@ or graduate remote when local quality is the bottleneck.
 | Rung | Runtime | Snapshot / source | Use when |
 |---|---|---|---|
 | Gemma 4 E2B 4-bit | `mlx_vlm.server` | `https://models.understudylabs.com/session?model=gemma-4-e2b-it-mlx-vlm-4bit` | Default onboarding rung. About 3.3 GB; verified local generation, Pi serving, and logprobs/top-logprobs. |
-| Gemma 4 E2B BF16 | `mlx_vlm.server` | `https://models.understudylabs.com/session?model=gemma-4-e2b-it-mlx-vlm-bf16` | Full-precision diagnostic rung for small-model quality checks. About 9.5 GB; converted directly from `google/gemma-4-e2b-it` with `mlx-vlm 0.6.2` and smoke-tested through OpenAI-compatible chat. |
-| Gemma 4 E4B 4-bit | `mlx_vlm.server` | `https://models.understudylabs.com/session?model=gemma-4-e4b-it-mlx-vlm-4bit` | First climb when E2B understands the task but lacks quality. About 4.8 GB; Understudy-converted and load-tested with `mlx_vlm.server` plus OpenAI-compatible chat. |
-| Gemma 4 E4B BF16 | `mlx_vlm.server` | `https://models.understudylabs.com/session?model=gemma-4-e4b-it-mlx-vlm-bf16` | Full-precision E4B diagnostic when 4-bit quality looks suspicious. About 15 GB; converted directly from `google/gemma-4-E4B-it` with `mlx-vlm 0.6.2` and smoke-tested through OpenAI-compatible chat. |
+| Gemma 4 E2B BF16 | `mlx_vlm.server` | `https://models.understudylabs.com/session?model=gemma-4-e2b-it-mlx-vlm-bf16` | Full-precision diagnostic rung for small-model quality checks. About 9.5 GB. |
+| Gemma 4 E4B 4-bit | `mlx_vlm.server` | `https://models.understudylabs.com/session?model=gemma-4-e4b-it-mlx-vlm-4bit` | First climb when E2B understands the task but lacks quality. About 4.8 GB; verified signed snapshot delivery. |
+| Gemma 4 E4B BF16 | `mlx_vlm.server` | `https://models.understudylabs.com/session?model=gemma-4-e4b-it-mlx-vlm-bf16` | Full-precision E4B diagnostic when 4-bit quality looks suspicious. About 15 GB. |
 | Gemma 4 12B 4-bit | `mlx_vlm.server` | `https://models.understudylabs.com/session?model=gemma-4-12b-it-mlx-vlm-4bit` | M4/M5 MacBook Pro or high-RAM Air rung when E4B has the right behavior but not enough depth. About 6.3 GB; verified generation plus OpenAI-compatible logprobs/top-logprobs. |
 | Gemma 4 12B BF16 | `mlx_vlm.server` | `https://models.understudylabs.com/session?model=gemma-4-12b-it-mlx-vlm-bf16` | Quality/perf profiling rung on larger-memory Macs. About 22 GB; use when quantization may be the bottleneck. |
-| Gemma 4 26B A4B 4-bit | `mlx_vlm.server` | `https://models.understudylabs.com/session?model=gemma-4-26b-a4b-it-mlx-vlm-4bit` | MoE-style local climb for strong quality with lower active-parameter cost. About 14 GB; converted directly from `google/gemma-4-26B-A4B-it` with `mlx-vlm 0.6.2` and verified through OpenAI-compatible chat completions plus logprobs/top-logprobs. |
-| Gemma 4 31B 4-bit | `mlx_vlm.server` | `https://models.understudylabs.com/session?model=gemma-4-31b-it-mlx-vlm-4bit` | Workstation/high-memory local rung when dense capacity matters. About 17 GB; converted directly from `google/gemma-4-31B-it` with `mlx-vlm 0.6.2` and verified through OpenAI-compatible chat completions plus logprobs/top-logprobs. |
+| Gemma 4 26B A4B 4-bit | `mlx_vlm.server` | `https://models.understudylabs.com/session?model=gemma-4-26b-a4b-it-mlx-vlm-4bit` | MoE-style local climb for strong quality with lower active-parameter cost. About 14 GB; verified generation plus logprobs/top-logprobs. |
+| Gemma 4 31B 4-bit | `mlx_vlm.server` | `https://models.understudylabs.com/session?model=gemma-4-31b-it-mlx-vlm-4bit` | Workstation/high-memory local rung when dense capacity matters. About 17 GB; verified generation plus logprobs/top-logprobs. |
 | Nemotron 3 Nano 4B | MLX / GGUF / remote | NVIDIA source or verified snapshot | Alternate edge rung when agentic reasoning or tool behavior beats Gemma on the workload. |
 | Nemotron 3 Nano 30B-A3B | MLX/GGUF on 32 GB+ or remote | NVIDIA source or gateway route | MoE climb when you need stronger reasoning while keeping active-parameter speed. |
 | Super / Ultra | Remote or workstation | Understudy gateway / provider route | Use when local cannot meet the quality bar or the Mac does not fit the weights comfortably. |
@@ -100,19 +100,20 @@ quantization may be the bottleneck. It is intentionally a
 skill helper, not a public CLI surface; the coding agent should request approval
 with the model id, source, and GB before running it.
 
-E4B note: use `~/.understudy/models/gemma-4-e4b-it-mlx-vlm-4bit` from the
-Understudy pull helper when you want the tested E4B rung. The snapshot is an
-Understudy-managed MLX-VLM package with `SHA256SUMS`; we verified the signed
-Cloudflare snapshot downloads, matches checksums, loads with `mlx_vlm.server`,
-and answers an OpenAI-compatible chat completion. Prefer this tested snapshot
-over ad hoc local conversions when reproducing Understudy workflows.
+Provenance and smoke test (canonical statement — other skills cross-reference
+this paragraph instead of repeating it): every Understudy Gemma 4 snapshot in
+the ladder was converted directly from the official Google checkpoints
+(`google/gemma-4-e2b-it`, `google/gemma-4-e4b-it`, `google/gemma-4-12b-it`,
+`google/gemma-4-26b-a4b-it`, `google/gemma-4-31b-it`) with `mlx-vlm 0.6.2`,
+packaged with `SHA256SUMS`, and smoke-tested through `mlx_vlm.server` plus
+OpenAI-compatible `/v1/chat/completions`; the 12B/26B/31B rungs were
+additionally verified for `logprobs`/`top_logprobs`. Prefer these tested
+snapshots over ad hoc local conversions when reproducing Understudy workflows.
 
 Small full-precision diagnostic note: `gemma-4-e2b-it-mlx-vlm-bf16` and
-`gemma-4-e4b-it-mlx-vlm-bf16` are the smaller BF16 rungs. They were converted
-directly from the official Google checkpoints with `mlx-vlm 0.6.2`, packaged
-with `SHA256SUMS`, and load-tested through `mlx_vlm.server` plus
-OpenAI-compatible `/v1/chat/completions`. Use them to distinguish model-size
-limits from quantization damage before jumping to 12B or remote.
+`gemma-4-e4b-it-mlx-vlm-bf16` are the smaller BF16 rungs. Use them to
+distinguish model-size limits from quantization damage before jumping to 12B
+or remote.
 
 Known-good high-end smoke:
 
@@ -133,7 +134,7 @@ the supported functional check; raw `mlx_vlm.generate()` can emit odd text if th
 chat template is bypassed.
 
 Full-precision high end: on a 128 GB Apple Silicon machine, the official
-`google/gemma-4-26B-A4B-it` and `google/gemma-4-31B-it` BF16 source directories
+`google/gemma-4-26b-a4b-it` and `google/gemma-4-31b-it` BF16 source directories
 also load directly with `mlx_vlm.server` and pass the same chat smoke. They are
 large gated downloads, about 48 GB and 58 GB respectively, so keep them behind
 explicit approval and a disk/RAM check. The public Understudy signed snapshots
