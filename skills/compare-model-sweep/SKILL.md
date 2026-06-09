@@ -60,6 +60,15 @@ comparison.
    tokens, cost/task, run seconds, errors, empty responses, and caveats. If
    per-task latency is unavailable, use run-level duration and say so.
 
+   **Pairwise option.** When the workload has no programmatic metric
+   (open-ended generation), score quality as a pairwise preference against the
+   incumbent instead of an absolute rubric: same row, two outputs, an LLM
+   judge picks A/B/tie — run **twice with the order swapped** and count a win
+   only when both passes agree. Report the debiased win-rate with N. Dry-run
+   the judge on a few rows first, budget-gate the live judge like any provider
+   spend, and keep judge-scored quality as its own column — never silently
+   blended with a programmatic metric.
+
 6. **Compute the frontier.** A candidate is dominated when another candidate has
    equal or better quality and equal or lower cost and latency, with no worse
    error rate or safety result. Write `pareto.json` with dominated reasons.

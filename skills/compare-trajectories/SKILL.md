@@ -117,6 +117,17 @@ not here. They compose: behavioral verdict here, learnability cut there.
    warm-start count, and the RL-shaped verdict to
    `.understudy/trajectory-diffs/<timestamp>/`.
 
+## Repeat-replay stability
+
+A single run per model can mistake sampling noise for a behavioral gap. Before
+classifying gaps — and always before a candidate graduates toward live traffic
+— re-run the candidate on the same frozen rows N times (default 3): all repeats
+match → stable; some → borderline; none → stochastic (exclude from gap
+classification and the warm-start yield). Above ~5% unstable, fix decoding
+(temperature, seed) or downgrade verdicts to directional-only. The dispositions
+feed the pre-ramp gate in [`../ramp-and-verify/SKILL.md`](../ramp-and-verify/SKILL.md)
+(stable → serve, borderline → shadow, stochastic → incumbent fallback).
+
 ## Output Standard
 
 End with the diff path and: the two run ids + harness/tool-access mode;
