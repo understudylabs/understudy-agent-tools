@@ -13,12 +13,13 @@ This reference applies them to stateful trajectories and adds what is
 RLM-specific: the verifiers environment shape, the baseline matrix, surprise
 concentration, the training-arm choice, and how to read a live training run.
 
-**Not for** environment mechanics or partner packaging: this skill owns the
-learnability decision and the training-arm choice;
-[`../author-rl-env/SKILL.md`](../author-rl-env/SKILL.md) owns building the
-`reset`/`step` environment once RL is the chosen arm, and
-[`../package-verifier-env/SKILL.md`](../package-verifier-env/SKILL.md) owns
-packaging that env for a partner.
+**Not for** environment mechanics or partner packaging: this reference owns
+the learnability decision and the training-arm choice;
+[`prepare-verifier-handoff`](../../prepare-verifier-handoff/SKILL.md) owns the
+rest — building the `reset`/`step` environment once RL is the chosen arm
+([`references/stage-1-author-env.md`](../../prepare-verifier-handoff/references/stage-1-author-env.md))
+and packaging that env for a partner
+([`references/stage-2-package-env.md`](../../prepare-verifier-handoff/references/stage-2-package-env.md)).
 
 This is the bridge between:
 
