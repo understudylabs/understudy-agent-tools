@@ -138,6 +138,11 @@ Identify the developer's current stage and load exactly one:
   gateway route, or skipping remote frontier calls →
   [`../use-understudy-gateway/SKILL.md`](../use-understudy-gateway/SKILL.md)
   and its frontier-keys lens (`references/frontier-keys.md`).
+- **Production ramp / rollback** — a route decision exists and live traffic
+  must move safely: "ramp this route", "move 25% of traffic to the new model",
+  "did the route change regress anything", "roll this back", "prove the
+  savings are real" →
+  [`../ramp-and-verify/SKILL.md`](../ramp-and-verify/SKILL.md).
 - **Acquire / cache / organize local models** — download a model, see what's
   already cached, free up model disk, pick which Gemma/Nemotron to pull, or
   explain how open weights work →
