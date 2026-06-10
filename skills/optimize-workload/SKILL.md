@@ -93,7 +93,11 @@ validator kinds in [`reference.md`](reference.md):
    basis, cost basis if available, and failure taxonomy.
 3. Select the cheapest intervention that matches the observed failure mode:
    prompt repair, parser/schema repair, context trimming, route change,
-   candidate model comparison, or GEPA. Pick the cheapest *target* that matches
+   candidate model comparison, or GEPA. When the complaint is cost (not
+   quality) and inputs dominate the bill, check prompt-cache structure first —
+   it's often the cheapest lever of all:
+   [`references/prompt-cache-optimization.md`](references/prompt-cache-optimization.md).
+   Pick the cheapest *target* that matches
    the failure too — see [`reference.md`](reference.md) → Optimization-Target
    Menu for the full list. For an agentic workload, treat latency
    and cost per rollout as first-class objectives alongside the rubric score —

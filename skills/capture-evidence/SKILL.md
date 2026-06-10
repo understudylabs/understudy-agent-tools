@@ -83,7 +83,15 @@ enough provenance for another agent to repeat the step without guessing.
      feedback is the assertion or diff that failed.
    - `schema` (e.g. Zod/JSON-schema `safeParse`) — keep `schema_pass` separate
      from `quality_pass`; a valid-shape, valid-enum output must not be failed
-     merely for not matching a teacher trace verbatim.
+     merely for not matching a teacher trace verbatim. Two grounding checks a
+     shape-only schema misses, both observed in real workloads: (a) **verbatim
+     evidence** — when a field claims to quote a source (transcript, doc,
+     log), verify the quote appears verbatim in the source; smaller open
+     models hallucinate correctly-formatted quotes; (b) **conditional
+     requireds** — when an optional signal (date, flag, risk) is present, its
+     evidence subfield must be present too; models that include the signal but
+     drop its evidence are the dominant residual failure and usually
+     prompt-fixable.
    - `rubric` — a confirmed criteria list (each criterion: id, description,
      review type); auto-generated rubrics need human approval.
    - `llm-judge` — must debias position with a swapped two-pass score

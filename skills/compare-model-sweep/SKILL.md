@@ -60,6 +60,17 @@ comparison.
    tokens, cost/task, run seconds, errors, empty responses, and caveats. If
    per-task latency is unavailable, use run-level duration and say so.
 
+   **Caching parity.** Cost columns must state each candidate's caching basis.
+   If the incumbent runs cache-warmed in production (e.g. a cached primer),
+   measure same-provider candidates cache-warmed too; when a candidate has no
+   equivalent cache layer (a different provider or gateway can't share the
+   incumbent's cache pool), measure it uncached and label it — what you
+   measured is what they'd pay. Note that batching or longer cache TTLs shift
+   absolute costs on the cached side but should not change the ratios. To
+   structure the harness itself for cache hits (and avoid the
+   parallel-fan-out all-miss trap), see
+   [`optimize-workload/references/prompt-cache-optimization.md`](../optimize-workload/references/prompt-cache-optimization.md).
+
    **Pairwise option.** When the workload has no programmatic metric
    (open-ended generation), score quality as a pairwise preference against the
    incumbent instead of an absolute rubric: same row, two outputs, an LLM
@@ -102,3 +113,24 @@ For API-workflow sweeps, keep tool-access interpretation explicit:
 End with the sweep path, candidate count, split size, quality/cost/latency axes,
 which candidates are on the frontier, which are dominated, and the recommended
 next action.
+
+When the sweep informs a real route decision, also write the report as a
+**decision memo** the developer can paste to their team unedited:
+
+- a results table: candidate, pass rate against the production validator,
+  total cost, cost per unit of work the business counts (per deal, per ticket,
+  per call — not per token), and the cost ratio vs the incumbent;
+- caching basis per row (see step 5) and any other comparability caveats;
+- where the residual failures cluster, as named patterns with the cheapest fix
+  per pattern (prompt line, decode/format fix, decomposition, route fallback);
+- a staged recommendation: the drop-in safe swap, the parallel pilot, and the
+  cheap iteration, rather than one all-or-nothing verdict;
+- a scope line: what fraction of the workload's total LLM cost this step
+  represents, and what's next if the approach extends;
+- one headline the finance owner can multiply by volume ("saves ~$X per
+  <unit>; multiply by monthly volume").
+
+If the verdict supports changing production traffic, hand off to
+[`../ramp-and-verify/SKILL.md`](../ramp-and-verify/SKILL.md): add the provider,
+set the route, and ramp staged traffic gated by the same production validator
+the sweep used.

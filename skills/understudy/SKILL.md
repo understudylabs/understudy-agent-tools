@@ -138,6 +138,11 @@ Identify the developer's current stage and load exactly one:
   gateway route, or skipping remote frontier calls →
   [`../use-understudy-gateway/SKILL.md`](../use-understudy-gateway/SKILL.md)
   and its frontier-keys lens (`references/frontier-keys.md`).
+- **Production ramp / rollback** — a route decision exists and live traffic
+  must move safely: "ramp this route", "move 25% of traffic to the new model",
+  "did the route change regress anything", "roll this back", "prove the
+  savings are real" →
+  [`../ramp-and-verify/SKILL.md`](../ramp-and-verify/SKILL.md).
 - **Acquire / cache / organize local models** — download a model, see what's
   already cached, free up model disk, pick which Gemma/Nemotron to pull, or
   explain how open weights work →
@@ -149,7 +154,11 @@ Identify the developer's current stage and load exactly one:
 - **Multi-model sweep / Pareto comparison** — the developer has a frozen eval and
   wants to run the same rows across several local, gateway, or frontier models to
   compare quality, latency, cost, and reliability →
-  [`../compare-model-sweep/SKILL.md`](../compare-model-sweep/SKILL.md).
+  [`../compare-model-sweep/SKILL.md`](../compare-model-sweep/SKILL.md). When the
+  sweep verdict supports changing production traffic, don't stop at the report —
+  the answer to "how do I get this running in prod?" is
+  [`../ramp-and-verify/SKILL.md`](../ramp-and-verify/SKILL.md) (add provider →
+  set route → staged ramp gated by the production validator).
 - **Token-level logprob comparison** — the developer has two same-family eval
   runs with stored logprob sidecars and wants to see the exact moment a smaller,
   quantized, or weaker model diverged from a larger/full-precision sibling on
