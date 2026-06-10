@@ -38,6 +38,9 @@ interview the user while the bytes arrive. By the time the interview is done, th
 model is cached.
 
 - Use background tasks / monitors for downloads, baselines, sweeps, installs.
+- Prefer non-blocking fan-out over a barrier that waits on the slowest worker —
+  the measurements behind this (and which work is worth parallelizing at all)
+  are in [`agent-model-and-parallelism.md`](agent-model-and-parallelism.md).
 - Announce the ETA, then move on to interactive work — do not block the user
   watching a progress bar.
 - Surface a notification when it lands; do not silently poll.
