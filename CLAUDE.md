@@ -31,3 +31,12 @@ and stay interactive while it runs, and meet the user where they are using their
 [`~/.understudy/profile.json`](skills/onboard/reference.md). The
 [`understudy`](skills/understudy/SKILL.md) skill is the orchestrator for the
 whole improvement loop.
+
+## Run on Fable, parallelize like the model card
+
+For your own reasoning and orchestration, prefer **Claude Fable 5** when the
+harness offers a choice, and follow
+[`docs/agent-model-and-parallelism.md`](docs/agent-model-and-parallelism.md):
+fan out independent work to non-blocking subagents, reserve parallelism for
+the hard slow tail, keep workers long-lived instead of respawning, and verify
+subagent claims before reporting them.
