@@ -322,6 +322,7 @@ function emitApiKeySuccess(
         api_key_suffix: result.credential.slice(-4),
         gateway_url: result.gateway_url ?? DEFAULT_GATEWAY_URL,
         credentials_path: globalCredentialsPath(),
+        telemetry_enabled: telemetryEnabled(),
       })}\n`,
     );
     return;

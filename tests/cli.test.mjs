@@ -504,6 +504,30 @@ describe("understudy CLI", () => {
     }
   });
 
+  it("includes telemetry state in login JSON output", () => {
+    const home = mkdtempSync(join(tmpdir(), "understudy-login-home-"));
+    try {
+      const result = runWithEnv(
+        [
+          "login",
+          "--json",
+          "--api-key",
+          "sk_test_login_json",
+          "--org",
+          "org_TEST",
+          "--project",
+          "default",
+        ],
+        { HOME: home, USERPROFILE: home, UNDERSTUDY_TELEMETRY: "0" },
+      );
+      assert.equal(result.status, 0, result.stderr);
+      const payload = JSON.parse(result.stdout);
+      assert.equal(payload.telemetry_enabled, false);
+    } finally {
+      rmSync(home, { recursive: true, force: true });
+    }
+  });
+
   it("per-org logout preserves top-level credential metadata", () => {
     const home = mkdtempSync(join(tmpdir(), "understudy-logout-home-"));
     try {
