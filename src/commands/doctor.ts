@@ -103,9 +103,16 @@ async function runHostedDoctor(cmd: Command, opts: DoctorOpts): Promise<void> {
         body: JSON.stringify({
           model: "claude-3-5-haiku-latest",
           max_tokens: 8,
+          // Always stream gateway inference: the edge cuts responses with no
+          // first byte within ~125s, so a non-streaming probe can 524 on a
+          // slow upstream. Streaming returns headers within seconds.
+          stream: true,
           messages: [{ role: "user", content: "Reply with the single word ok." }],
         }),
       });
+      // Drain the SSE body so the upstream generation completes instead of
+      // being cancelled by an early disconnect.
+      await res.text().catch(() => {});
       if (!res.ok) throw new Error(`status ${res.status}`);
     });
   }

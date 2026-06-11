@@ -43,7 +43,10 @@ export function registerGatewayCommand(program: Command): void {
     .option("--project <slug>", "Project slug header.")
     .option("--workload <name>", "Workload name header.")
     .option("--byok-env <ENV_NAME>", "Read upstream provider key from this environment variable.")
-    .option("--stream", "Request a streaming response.")
+    .option(
+      "--no-stream",
+      "Request a buffered (non-streaming) response. Streaming is the default: the edge cuts responses with no first byte within ~125s, so non-streaming probes can 524 on slow upstreams.",
+    )
     .option("--max-tokens <n>", "Maximum output tokens.", "8")
     .option("--tag <key=value>", "Flat string tag; may be repeated.", collectTag, [])
     .option("--org <id>", "Org id to use (default: local config or only org in credentials).")
