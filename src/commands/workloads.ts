@@ -109,7 +109,7 @@ async function runCreate(cmd: Command, name: string, opts: CreateOpts): Promise<
   const captureEnabled = Boolean(opts.capture);
   const res = await request(
     {
-      url: `/customer/v1/orgs/${project.auth.orgId}/projects/${encodeURIComponent(project.projectId)}/workloads`,
+      url: `/admin/v1/orgs/${project.auth.orgId}/projects/${encodeURIComponent(project.projectId)}/workloads`,
       orgId: project.auth.orgId,
       method: "POST",
       body: { name, capture_enabled: captureEnabled },
@@ -159,7 +159,7 @@ async function runUpdate(cmd: Command, workloadValue: string, opts: UpdateOpts):
 
   const res = await request(
     {
-      url: `/customer/v1/orgs/${project.auth.orgId}/projects/${encodeURIComponent(project.projectId)}/workloads/${encodeURIComponent(workload.id)}`,
+      url: `/admin/v1/orgs/${project.auth.orgId}/projects/${encodeURIComponent(project.projectId)}/workloads/${encodeURIComponent(workload.id)}`,
       orgId: project.auth.orgId,
       method: "PATCH",
       body,

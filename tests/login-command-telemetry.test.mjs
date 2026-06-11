@@ -14,6 +14,8 @@ describe("login command telemetry", () => {
   let previousHome;
   let previousUserProfile;
   let previousTelemetry;
+  let previousApiKey;
+  let previousGatewayUrl;
   let previousFetch;
   let previousStdoutWrite;
   let previousExitCode;
@@ -23,12 +25,18 @@ describe("login command telemetry", () => {
     previousHome = process.env.HOME;
     previousUserProfile = process.env.USERPROFILE;
     previousTelemetry = process.env.UNDERSTUDY_TELEMETRY;
+    previousApiKey = process.env.UNDERSTUDY_API_KEY;
+    previousGatewayUrl = process.env.UNDERSTUDY_GATEWAY_URL;
     previousFetch = globalThis.fetch;
     previousStdoutWrite = process.stdout.write;
     previousExitCode = process.exitCode;
     process.env.HOME = root;
     process.env.USERPROFILE = root;
     delete process.env.UNDERSTUDY_TELEMETRY;
+    // Ambient credentials (a developer's shell, a CI secret) change which
+    // telemetry the login path emits — keep the test hermetic.
+    delete process.env.UNDERSTUDY_API_KEY;
+    delete process.env.UNDERSTUDY_GATEWAY_URL;
     process.exitCode = undefined;
     process.stdout.write = () => true;
   });
@@ -40,6 +48,10 @@ describe("login command telemetry", () => {
     else process.env.USERPROFILE = previousUserProfile;
     if (previousTelemetry === undefined) delete process.env.UNDERSTUDY_TELEMETRY;
     else process.env.UNDERSTUDY_TELEMETRY = previousTelemetry;
+    if (previousApiKey === undefined) delete process.env.UNDERSTUDY_API_KEY;
+    else process.env.UNDERSTUDY_API_KEY = previousApiKey;
+    if (previousGatewayUrl === undefined) delete process.env.UNDERSTUDY_GATEWAY_URL;
+    else process.env.UNDERSTUDY_GATEWAY_URL = previousGatewayUrl;
     globalThis.fetch = previousFetch;
     process.stdout.write = previousStdoutWrite;
     process.exitCode = previousExitCode;

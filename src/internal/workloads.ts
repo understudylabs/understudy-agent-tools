@@ -40,7 +40,7 @@ export type RouteResponse = z.infer<typeof RouteResponseSchema>;
 export async function listWorkloads(project: ResolvedProject): Promise<Workload[]> {
   const res = await request(
     {
-      url: `/customer/v1/orgs/${project.auth.orgId}/projects/${encodeURIComponent(project.projectId)}/workloads`,
+      url: `/admin/v1/orgs/${project.auth.orgId}/projects/${encodeURIComponent(project.projectId)}/workloads`,
       orgId: project.auth.orgId,
     },
     ListWorkloadsResponseSchema,
