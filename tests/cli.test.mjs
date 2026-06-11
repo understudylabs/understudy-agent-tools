@@ -484,6 +484,9 @@ describe("understudy CLI", () => {
     assert.equal(payload.runtime, "node");
     assert.equal(payload.ok, true);
     assert.deepEqual(payload.missing, []);
+    assert.equal(payload.versions_consistent, true);
+    assert.equal(payload.versions.cli, payload.versions.plugin);
+    assert.equal(payload.versions.cli, payload.versions.marketplace);
   });
 
   it("status exits non-zero when local config is malformed", () => {
