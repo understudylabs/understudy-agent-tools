@@ -235,14 +235,16 @@ batch ops, always.
 
 - Repository: [lotus-data/lotus](https://github.com/lotus-data/lotus)
   (Apache-2.0; PyPI package `lotus-ai`).
-- Semantic-operator model: Patel et al., *Semantic Operators: A Declarative
-  Model for Rich, AI-based Data Processing*,
-  [arXiv:2407.11418](https://arxiv.org/abs/2407.11418).
-- Optimizer + accuracy guarantees: Patel et al., *Semantic Operators and
-  Their Optimization: Enabling LLM-Based Data Processing with Accuracy
-  Guarantees in LOTUS*,
-  [PVLDB 18, 4171](https://www.vldb.org/pvldb/vol18/p4171-patel.pdf) —
-  source of the cascade recall/precision-target machinery used above.
+- The project asks that both papers be cited when referencing LOTUS or its
+  semantic operators:
+  - Patel, Jha, Asawa, Pan, Guestrin, Zaharia. *Semantic Operators: A
+    Declarative Model for Rich, AI-based Analytics Over Text Data*. 2024.
+    [arXiv:2407.11418](https://arxiv.org/abs/2407.11418).
+  - Patel, Jha, Pan, Gupta, Asawa, Guestrin, Zaharia. *Semantic Operators
+    and Their Optimization: Enabling LLM-Based Data Processing with Accuracy
+    Guarantees in LOTUS*. Proc. VLDB Endow., 2025.
+    [doi:10.14778/3749646.3749685](https://doi.org/10.14778/3749646.3749685)
+    — source of the cascade recall/precision-target machinery used above.
 - LOTUSPlan (lazy plans, GEPA, plan-level optimization; git-main, post-1.1.4):
   [*LOTUSPlan* blog post](https://liana313.github.io/blog/lotusplan.html) —
   includes the MAST agent-failure-mode triage result this playbook adapts.
