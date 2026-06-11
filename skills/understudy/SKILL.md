@@ -129,6 +129,13 @@ Identify the developer's current stage and load exactly one:
   harness, traces, metric, splits, or incumbent baseline are missing, ambiguous,
   or stale → [`../capture-evidence/SKILL.md`](../capture-evidence/SKILL.md)
   (also owns repo inspection + eval-harness discovery/build).
+- **Traces already exist** — a bucket of captures, a provider log export, or
+  gateway capture files are in hand and the developer wants them turned into
+  local eval sets, profiled for where the spend goes, or triaged in bulk by
+  content ("which runs failed", "label these by failure mode") →
+  [`../ingest-traces/SKILL.md`](../ingest-traces/SKILL.md) and its fleet
+  lenses (`references/profile-captures.md` for structure/cost,
+  `references/lotus-semantic-triage.md` for content-level bulk triage).
 - **Inference / routing / capture / auth / deploy** — Understudy inference,
   gateway trace capture, project/key management, model A/B via route traffic %,
   `understudy run`, or registering an improved route →
