@@ -253,6 +253,7 @@ spine
 skills
 doctor
 login
+logout
 status
 projects
 keys
@@ -264,8 +265,17 @@ routes
 setup
 setup-code
 run
+capture-evidence   (alias: understand)
+capture-import
 optimize-workload
+route-decision
+value
+experiments
+next
 ```
+
+Every command accepts the global `--json` flag (before or after the
+subcommand) and emits machine-readable JSON where supported.
 
 `setup-code` is skill-routed. It does not patch files directly; it tells the
 coding agent to use `skills/onboard/setup-code.md` and the matching framework

@@ -14,6 +14,10 @@ Disable telemetry with:
 UNDERSTUDY_TELEMETRY=0
 ```
 
+The CLI discloses this state directly: `understudy login` prints a one-line
+notice on success, and `understudy status` shows a `telemetry` line (and a
+`telemetry_enabled` field under `--json`).
+
 ## Destination
 
 Events are sent to the configured Understudy gateway:
@@ -35,7 +39,7 @@ Allowed fields are categorical or operational:
 
 - event name and event version;
 - anonymous install id from `~/.understudy/telemetry.json`;
-- CLI version placeholder;
+- CLI version (from `package.json`);
 - platform and architecture;
 - org id, project slug, user id, and signup intent id when already known from
   credentials/config;

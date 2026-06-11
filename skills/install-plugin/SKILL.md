@@ -52,8 +52,13 @@ claude plugin list --json
 ```
 
 Look for `understudy` from the `understudy-skills` marketplace. If it's already
-enabled, stop — report installed and skip to step 4 only if the developer wants
-to update (then `claude plugin marketplace update understudy-skills`).
+enabled, **compare versions before stopping**: installed version (from the list
+output) vs the repo's `$REPO/.claude-plugin/plugin.json` `version`. If the repo
+is newer, the installed catalog is stale (skills may be missing or renamed) —
+run `claude plugin marketplace update understudy-skills`, then
+`claude plugin install understudy@understudy-skills`, then have the developer
+run `/reload-plugins` (step 4). If versions match, report installed-and-current
+and stop.
 
 ### 3. Add the marketplace and install (background-safe)
 

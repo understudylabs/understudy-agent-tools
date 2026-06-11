@@ -484,6 +484,9 @@ describe("understudy CLI", () => {
     assert.equal(payload.runtime, "node");
     assert.equal(payload.ok, true);
     assert.deepEqual(payload.missing, []);
+    assert.equal(payload.versions_consistent, true);
+    assert.equal(payload.versions.cli, payload.versions.plugin);
+    assert.equal(payload.versions.cli, payload.versions.marketplace);
   });
 
   it("status exits non-zero when local config is malformed", () => {
@@ -498,6 +501,30 @@ describe("understudy CLI", () => {
     } finally {
       rmSync(home, { recursive: true, force: true });
       rmSync(repo, { recursive: true, force: true });
+    }
+  });
+
+  it("includes telemetry state in login JSON output", () => {
+    const home = mkdtempSync(join(tmpdir(), "understudy-login-home-"));
+    try {
+      const result = runWithEnv(
+        [
+          "login",
+          "--json",
+          "--api-key",
+          "sk_test_login_json",
+          "--org",
+          "org_TEST",
+          "--project",
+          "default",
+        ],
+        { HOME: home, USERPROFILE: home, UNDERSTUDY_TELEMETRY: "0" },
+      );
+      assert.equal(result.status, 0, result.stderr);
+      const payload = JSON.parse(result.stdout);
+      assert.equal(payload.telemetry_enabled, false);
+    } finally {
+      rmSync(home, { recursive: true, force: true });
     }
   });
 

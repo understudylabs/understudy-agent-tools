@@ -7,10 +7,10 @@ import { readCredentials } from "../config/credentials.js";
 import { DEFAULT_GATEWAY_URL } from "../config/defaults.js";
 import { readProjectConfig } from "../config/index.js";
 import { globalTelemetryPath } from "../config/paths.js";
+import { readCliVersion } from "./version.js";
 
 const TELEMETRY_TIMEOUT_MS = 3_000;
 const EVENT_VERSION = 1;
-const CLI_VERSION = "0.0.0";
 
 const TelemetryStateSchema = z.object({
   install_id: z.string().min(1),
@@ -165,11 +165,20 @@ export function trackControlPlaneAction(event: ControlPlaneEvent): void {
   });
 }
 
+/**
+ * Whether CLI telemetry is active. Exposed so user-facing surfaces
+ * (`status`, login success) can disclose the current state and the
+ * opt-out, instead of telemetry existing only in docs.
+ */
+export function telemetryEnabled(): boolean {
+  return process.env.UNDERSTUDY_TELEMETRY !== "0";
+}
+
 async function trackCliEvent(
   eventName: string,
   opts: TrackCliEventOpts = {},
 ): Promise<void> {
-  if (process.env.UNDERSTUDY_TELEMETRY === "0") return;
+  if (!telemetryEnabled()) return;
 
   const context = resolveTelemetryContext(opts);
   if (!context) return;
@@ -179,7 +188,7 @@ async function trackCliEvent(
     event_version: EVENT_VERSION,
     install_id: readOrCreateInstallId(),
     created_at_ms: Date.now(),
-    version: CLI_VERSION,
+    version: readCliVersion(),
     properties: sanitizeProperties({
       ...context.properties,
       ...(opts.properties ?? {}),

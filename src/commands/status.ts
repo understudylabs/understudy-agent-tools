@@ -4,7 +4,7 @@ import kleur from "kleur";
 import { readCredentials } from "../config/credentials.js";
 import { readProjectConfig } from "../config/index.js";
 import { isJsonMode, runAction } from "../internal/output.js";
-import { trackStatusChecked } from "../internal/telemetry.js";
+import { telemetryEnabled, trackStatusChecked } from "../internal/telemetry.js";
 
 /**
  * `understudy status` — print active org, project, key suffix, and
@@ -103,6 +103,7 @@ export async function runStatus(json = false): Promise<0 | 1> {
         project_slug: config?.project_slug ?? null,
         api_key_suffix: storedApiKey ? storedApiKey.slice(-4) : null,
         gateway_url: gatewayUrl,
+        telemetry_enabled: telemetryEnabled(),
       })}\n`,
     );
     return 0;
@@ -115,6 +116,11 @@ export async function runStatus(json = false): Promise<0 | 1> {
     `${kleur.bold("project_slug")}  ${config?.project_slug ?? kleur.dim("(none)")}`,
     `${kleur.bold("api_key")}       ${storedApiKey ? maskKey(storedApiKey) : kleur.dim("(none)")}`,
     `${kleur.bold("gateway_url")}   ${gatewayUrl ?? kleur.dim("(unknown)")}`,
+    `${kleur.bold("telemetry")}     ${
+      telemetryEnabled()
+        ? `on ${kleur.dim("(bounded usage events; disable with UNDERSTUDY_TELEMETRY=0)")}`
+        : "off"
+    }`,
   ];
 
   process.stdout.write(`${lines.join("\n")}\n`);

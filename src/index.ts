@@ -22,6 +22,7 @@ import { registerStatusCommand } from "./commands/status.js";
 import { registerOptimizeWorkloadCommand } from "./commands/optimize-workload.js";
 import { registerWorkloadsCommand } from "./commands/workloads.js";
 import { registerExperimentsCommands, registerNextCommand } from "./commands/experiments.js";
+import { readCliVersion, readManifestVersions } from "./internal/version.js";
 
 export const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 
@@ -42,16 +43,6 @@ type SearchResult = {
 type SearchCandidate = Omit<SearchResult, "score" | "matches"> & {
   text: string;
 };
-
-function readPackageVersion(): string {
-  try {
-    const raw = readFileSync(join(repoRoot, "package.json"), "utf8");
-    const parsed = JSON.parse(raw) as { version?: string };
-    return parsed.version ?? "0.0.0";
-  } catch {
-    return "0.0.0";
-  }
-}
 
 function readSkillSummaries(): SkillSummary[] {
   const skillsRoot = join(repoRoot, "skills");
@@ -208,20 +199,29 @@ function printDoctorJson(): void {
     "vendor/MANIFEST.md",
   ];
   const missing = required.filter((path) => !existsSync(join(repoRoot, path)));
+  // package.json and the plugin manifests must move together: installed
+  // plugins have no other staleness signal, so a skipped bump ships silently.
+  const versions = readManifestVersions();
+  const versionsConsistent =
+    versions.cli !== null &&
+    versions.cli === versions.plugin &&
+    versions.cli === versions.marketplace;
   console.log(
     JSON.stringify(
       {
         repo: "understudy-agent-tools",
         runtime: "node",
         node: process.version,
+        versions,
+        versions_consistent: versionsConsistent,
         missing,
-        ok: missing.length === 0,
+        ok: missing.length === 0 && versionsConsistent,
       },
       null,
       2,
     ),
   );
-  if (missing.length > 0) {
+  if (missing.length > 0 || !versionsConsistent) {
     process.exitCode = 1;
   }
 }
@@ -372,7 +372,7 @@ export function buildProgram(): Command {
   program
     .name("understudy")
     .description("Public Understudy agent tools and skill-library CLI")
-    .version(readPackageVersion())
+    .version(readCliVersion())
     .option("--json", "Emit machine-readable JSON when supported");
 
   program.command("spine").description("Print the public MVP workflow spine").action(printSpine);
@@ -436,8 +436,29 @@ export function buildProgram(): Command {
   registerExperimentsCommands(program);
   registerNextCommand(program);
 
+  annotateGlobalJsonHelp(program);
+
   program.action(printSpine);
   return program;
+}
+
+/**
+ * The global `--json` flag only appears in the program's own help, but
+ * Commander accepts it before or after the subcommand. Surface it in
+ * every subcommand's help so it is discoverable without trial and error;
+ * skip commands that declare their own `--json`.
+ */
+function annotateGlobalJsonHelp(command: Command): void {
+  for (const sub of command.commands) {
+    const hasOwnJson = sub.options.some((option) => option.long === "--json");
+    if (!hasOwnJson) {
+      sub.addHelpText(
+        "after",
+        "\nGlobal options:\n  --json    Emit machine-readable JSON when supported",
+      );
+    }
+    annotateGlobalJsonHelp(sub);
+  }
 }
 
 export async function main(argv = process.argv): Promise<void> {
