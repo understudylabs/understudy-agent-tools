@@ -60,7 +60,11 @@ gateway captures and the developer wants to know where the spend goes and
 which call types a local model could take over, run the profiling playbook in
 [`references/profile-captures.md`](references/profile-captures.md) before (or
 instead of) per-workload ingestion — it produces a cost + call-type taxonomy
-and a ranked local-takeover candidate list from the same `.jsonl` dump.
+and a ranked local-takeover candidate list from the same `.jsonl` dump. When
+the question is about trace *content* at fleet scale — "which runs failed",
+"label these by failure mode", "summarize what goes wrong" — follow with the
+bulk semantic-triage playbook in
+[`references/lotus-semantic-triage.md`](references/lotus-semantic-triage.md).
 
 ## Flow
 
@@ -111,6 +115,9 @@ skill for this workload.
 - [`references/profile-captures.md`](references/profile-captures.md) —
   fleet-level cost and call-type taxonomy over the same capture set, with a
   ranked local-takeover candidate list.
+- [`references/lotus-semantic-triage.md`](references/lotus-semantic-triage.md) —
+  content-level bulk triage (filter/label/rank/summarize all captures) with
+  LOTUS semantic operators on a local MLX-served model.
 - [`../understand-workload/SKILL.md`](../understand-workload/SKILL.md) —
   decomposes one ingested workload before model comparison.
 - [`../curate-trajectories/SKILL.md`](../curate-trajectories/SKILL.md) — split
