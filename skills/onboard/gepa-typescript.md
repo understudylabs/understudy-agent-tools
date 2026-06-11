@@ -120,15 +120,23 @@ const signature = {
   output: "The answer that should satisfy the task rubric.",
 };
 
+// Always stream gateway calls: the gateway's edge cuts responses with no
+// first byte within ~125s, so a non-streaming call can 524 on slow
+// generations. Stream and aggregate locally instead.
 async function predict(instruction: string, example: Example): Promise<string> {
-  const response = await client.chat.completions.create({
+  const stream = await client.chat.completions.create({
     model: process.env.UNDERSTUDY_MODEL ?? "gpt-4o-mini",
+    stream: true,
     messages: [
       { role: "system", content: instruction },
       { role: "user", content: example.input },
     ],
   });
-  return response.choices[0]?.message?.content ?? "";
+  let output = "";
+  for await (const chunk of stream) {
+    output += chunk.choices[0]?.delta?.content ?? "";
+  }
+  return output;
 }
 
 function score(example: Example, output: string): number {

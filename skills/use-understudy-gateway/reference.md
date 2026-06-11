@@ -12,6 +12,67 @@ The two workflows below are the domain depth this worker owns: capturing model
 calls into a trace inventory, and deploying an improved behavior through the
 inference layer with a measured before/after comparison.
 
+## Always-stream rule
+
+[`SKILL.md`](SKILL.md) → "Always stream gateway inference" states the rule and
+the why (the ~125s edge first-byte cutoff that turns slow non-streaming
+generations into 524s with unmeterable usage). These are the aggregation
+patterns when the caller wants one final object instead of incremental tokens.
+
+**Anthropic SDK** — use the stream helper; `finalMessage()` returns the same
+shape `messages.create` would have:
+
+```ts
+const message = await client.messages
+  .stream({ model, max_tokens, messages })
+  .finalMessage();
+```
+
+**OpenAI SDK** — set `stream: true` and accumulate deltas. The gateway injects
+`stream_options: { include_usage: true }` upstream, so the final chunk carries
+`usage` without the caller setting it (setting it yourself is harmless):
+
+```ts
+const stream = await client.chat.completions.create({
+  model, messages, stream: true,
+});
+let text = "";
+let usage;
+for await (const chunk of stream) {
+  text += chunk.choices[0]?.delta?.content ?? "";
+  if (chunk.usage) usage = chunk.usage;
+}
+```
+
+(Or use the SDK's own helper: `client.chat.completions.stream(...)` with
+`finalChatCompletion()`.)
+
+**Raw fetch** — read the SSE body line by line and accumulate:
+
+```ts
+const res = await fetch(url, { ...opts, body: JSON.stringify({ ...body, stream: true }) });
+const reader = res.body.getReader();
+const decoder = new TextDecoder();
+let buffer = "", text = "";
+for (;;) {
+  const { done, value } = await reader.read();
+  if (done) break;
+  buffer += decoder.decode(value, { stream: true });
+  const lines = buffer.split("\n");
+  buffer = lines.pop() ?? "";
+  for (const line of lines) {
+    if (!line.startsWith("data: ") || line === "data: [DONE]") continue;
+    const chunk = JSON.parse(line.slice(6));
+    text += chunk.choices?.[0]?.delta?.content ?? "";
+  }
+}
+```
+
+Framework wrappers (Vercel AI SDK, LangChain, Mastra) expose their own
+streaming call forms (`streamText`, `.stream()`, `agent.stream(...)`); prefer
+those over their non-streaming siblings for any call routed through the
+gateway.
+
 ## Workflow 1 — Trace capture
 
 Goal: turn a running app's LLM calls into a local, redacted trace inventory the

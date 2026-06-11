@@ -24,7 +24,9 @@ const client = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
 
 Find every `new OpenAI(...)` construction site. Change only the constructor
 argument — leave `client.chat.completions.create`, `client.responses.*`,
-streaming, and tool calls untouched.
+streaming, and tool calls untouched. (One exception, applied after the
+constructor patch: gateway calls must stream — see "After the patch — make
+gateway calls stream" below.)
 
 **Before — bare construction:**
 
@@ -79,6 +81,24 @@ direct OpenAI-shape route). Don't touch:
 - Custom `Organization` / `Project` headers (`OpenAI-Organization`,
   `OpenAI-Project`) — merge with the new `x-understudy-upstream-key`
   entry, don't overwrite
+
+## After the patch — make gateway calls stream
+
+The one follow-up that *does* touch call sites: every request that now goes
+through the gateway should set `stream: true`. The gateway's edge cuts any
+response with no first byte within ~125s (a 524, with no usage block to
+meter), and a non-streaming call holds the response open for the model's full
+generation time. Streaming returns SSE framing within seconds, so the timeout
+can never fire. The gateway injects `stream_options: { include_usage: true }`
+upstream itself, so the final chunk carries usage without the caller setting
+it.
+
+Where the code wants one final object, keep streaming and aggregate — iterate
+`for await` accumulating `chunk.choices[0]?.delta?.content`, or use the SDK's
+`client.chat.completions.stream(...)` + `finalChatCompletion()`. Do not
+"simplify" this back to `stream: false`. Full patterns:
+[`../use-understudy-gateway/reference.md`](../use-understudy-gateway/reference.md)
+→ "Always-stream rule".
 
 ## Multiple construction sites
 
