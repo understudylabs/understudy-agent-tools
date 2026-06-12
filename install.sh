@@ -168,7 +168,9 @@ section() {
     len=$(printf '%s' "$title" | wc -m)
     n=$((54 - len))
     [ "$n" -lt 2 ] && n=2
-    while [ "$n" -gt 0 ]; do pad="$pad─"; n=$((n - 1)); done
+    # bash 3.2's lexer misparses an unbraced $pad butted against the
+    # multibyte ─ ("pad\xe2: unbound variable" under set -u) — keep braces
+    while [ "$n" -gt 0 ]; do pad="${pad}─"; n=$((n - 1)); done
     printf '\n  %s──%s %s%s%s %s%s%s\n' "$AC" "$R" "$B" "$title" "$R" "$AC" "$pad" "$R"
   else
     printf '\n\033[1munderstudy\033[0m %s\n' "$*"
