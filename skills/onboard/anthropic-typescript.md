@@ -79,6 +79,10 @@ Key points:
 - Preserve every other field the constructor already had (`timeout`,
   `maxRetries`, custom `fetch`, etc.). They're orthogonal to gateway
   routing.
+- The full gateway header contract is documented at
+  [reference/request-headers](https://docs.understudylabs.com/reference/request-headers)
+  and
+  [reference/response-headers](https://docs.understudylabs.com/reference/response-headers).
 
 ## What doesn't need to change
 

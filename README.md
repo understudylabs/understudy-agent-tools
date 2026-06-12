@@ -19,6 +19,14 @@ Registration is not required for that loop. Hosted gateway access is available
 after `understudy login`; browser, channel, daemon, and desktop-runtime
 commands remain outside this public CLI until intentionally extracted.
 
+The hosted surface this CLI consumes is documented at
+[docs.understudylabs.com](https://docs.understudylabs.com) — see
+[open-source/agent-tools](https://docs.understudylabs.com/open-source/agent-tools)
+for how this repo fits the platform and
+[open-source/cli](https://docs.understudylabs.com/open-source/cli) for the
+command-level CLI reference. The skills here stay local-first; the docs site
+covers the hosted contracts behind them.
+
 ## Shape
 
 | Spine | Path | Purpose |
@@ -175,6 +183,16 @@ Understudy model IDs and display names only. `routes set/clear` writes
 control-plane route config, so the application keeps calling the normal gateway
 while a percentage of traffic goes to the selected Understudy model and the
 rest remains passthrough/frontier.
+
+The hosted contracts behind these commands are documented on the docs site: the
+[control-plane API](https://docs.understudylabs.com/reference/control-plane)
+(what `workloads`, `routes`, and `captures` call), the
+[routing](https://docs.understudylabs.com/concepts/routing) and
+[capture](https://docs.understudylabs.com/concepts/capture) semantics, the
+gateway [request headers](https://docs.understudylabs.com/reference/request-headers)
+and [response headers](https://docs.understudylabs.com/reference/response-headers),
+and the [CLI command reference](https://docs.understudylabs.com/open-source/cli)
+for every command in the journey above.
 
 If the coding agent has an approved native email connector, it may complete the
 email-code prompt by reading the fresh Understudy sign-in email directly. The
