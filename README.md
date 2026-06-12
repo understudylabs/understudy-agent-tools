@@ -148,7 +148,8 @@ understudy doctor
 The first hosted journey is intentionally narrow:
 
 ```bash
-understudy login --email you@company.com
+understudy login --email you@company.com   # emails a one-time code
+understudy login --code 123456             # completes sign-in (non-TTY shells)
 understudy doctor --hosted
 understudy workloads list
 understudy workloads create classify --capture
@@ -159,7 +160,11 @@ understudy routes show classify --project rehearsal
 understudy routes clear classify --project rehearsal
 ```
 
-`login --email` uses the Understudy email-code registration flow. It stores the
+`login --email` uses the Understudy email-code registration flow. In an
+interactive terminal it prompts for the code inline; in a non-TTY shell (a
+coding agent, a script) it sends the code and exits, and `login --code`
+completes the pending sign-in — so an agent can drive sign-up as two plain
+shell commands. It stores the
 returned `sk_*` in `~/.understudy/credentials.json` with mode `600` and writes a
 repo-local `.understudy/config.json` when the platform returns a default
 project. `run` injects `UNDERSTUDY_API_KEY` and `UNDERSTUDY_GATEWAY_URL` only
