@@ -39,6 +39,26 @@ process environment.
 Do not run provider calls, uploads, hosted jobs, or model downloads without the
 developer approving the exact command, data class, and spend or download bound.
 
+## Always stream gateway inference
+
+Every inference request sent to the Understudy gateway (`/v1/messages` or
+`/v1/chat/completions`) must set `stream: true`. This is not a style
+preference: the gateway sits behind an edge that cuts any origin response
+producing no first byte within ~125 seconds and returns a 524 to the client.
+A non-streaming request holds the response open for the model's full
+generation time, so a slow generation can cross that limit and fail — and a
+524 carries no usage block, so the request's tokens cannot be metered. With
+`stream: true` the upstream returns headers and SSE framing within seconds,
+so the first-byte timeout can never fire regardless of generation length.
+
+If the caller needs the full response as a single object, still stream — then
+aggregate locally. Do not "simplify" a streaming call back to `stream: false`.
+For OpenAI-shape streaming requests the gateway injects
+`stream_options: { include_usage: true }` upstream itself, so the final SSE
+chunk carries usage without the caller setting anything. Aggregation patterns
+per client (Anthropic SDK, OpenAI SDK, raw fetch/SSE) are in
+[`reference.md`](reference.md) → "Always-stream rule".
+
 ## Resolve CLI
 
 Prefer the installed `understudy` binary. If it is unavailable inside a repo

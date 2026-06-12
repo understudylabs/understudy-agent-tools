@@ -1098,12 +1098,22 @@ describe("understudy CLI", () => {
       assert.equal(anthropicRequest.headers["x-understudy-project"], "rehearsal");
       assert.equal(anthropicRequest.headers["x-understudy-workload"], "classify");
       assert.equal(anthropicRequest.headers["x-understudy-tags"], "{\"env\":\"test\"}");
+      // Probes stream by default — non-streaming gateway calls risk the edge's
+      // ~125s first-byte 524 cutoff.
+      assert.equal(anthropicRequest.body.stream, true);
 
       const openai = await runWithEnvAsync(["--json", "gateway", "probe", "--provider", "openai"], env, repo);
       assert.equal(openai.status, 0, openai.stderr);
       const openaiRequest = requests.at(-1);
       assert.equal(openaiRequest.path, "/v1/chat/completions");
       assert.equal(openaiRequest.headers.authorization, "Bearer sk_test_hosted");
+      assert.equal(openaiRequest.body.stream, true);
+
+      // --no-stream is the explicit opt-out for reproducing buffered behavior.
+      const buffered = await runWithEnvAsync(["--json", "gateway", "probe", "--provider", "openai", "--no-stream"], env, repo);
+      assert.equal(buffered.status, 0, buffered.stderr);
+      assert.equal(requests.at(-1).body.stream, false);
+      assert.equal(JSON.parse(buffered.stdout).response_kind, "json");
 
       // An unreachable gateway must surface a non-zero exit code (scriptability).
       const healthDown = await runWithEnvAsync(["--json", "gateway", "health", "--gateway-url", "http://127.0.0.1:1"], env, repo);
@@ -1141,7 +1151,7 @@ describe("understudy CLI", () => {
   });
 
   it("runs hosted doctor and renders model display_name", async () => {
-    await withHostedFixture(async ({ home, repo }) => {
+    await withHostedFixture(async ({ home, repo, requests }) => {
       const env = { HOME: home, USERPROFILE: home };
       const doctor = await runWithEnvAsync(["--json", "doctor", "--hosted"], env, repo);
       assert.equal(doctor.status, 0, doctor.stderr);
@@ -1152,6 +1162,8 @@ describe("understudy CLI", () => {
       const probeDoctor = await runWithEnvAsync(["--json", "doctor", "--hosted", "--probe"], env, repo);
       assert.equal(probeDoctor.status, 0, probeDoctor.stderr);
       assert.equal(JSON.parse(probeDoctor.stdout).checks.at(-1).name, "gateway probe");
+      // The doctor probe always streams (edge ~125s first-byte 524 cutoff).
+      assert.equal(requests.at(-1).body.stream, true);
 
       const models = await runWithEnvAsync(["models", "list"], env, repo);
       assert.equal(models.status, 0, models.stderr);

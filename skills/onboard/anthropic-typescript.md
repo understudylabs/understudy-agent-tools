@@ -24,7 +24,9 @@ const client = new Anthropic({ apiKey: process.env.ANTHROPIC_API_KEY });
 Find every `new Anthropic(...)` construction site. For each one, change
 only the constructor argument — do **not** rewrite `client.messages.create`
 calls, streaming code, tool definitions, or response handling. The SDK's
-public API stays identical; you're just changing where the bytes go.
+public API stays identical; you're just changing where the bytes go. (One
+exception, applied after the constructor patch: gateway calls must stream —
+see "After the patch — make gateway calls stream" below.)
 
 Three constructor shapes you may see:
 
@@ -92,6 +94,32 @@ prompt caching, and beta flags all pass through the gateway byte-faithfully
 - `usage.input_tokens` / `usage.output_tokens` access
 - Anthropic-version pinning via `defaultHeaders["anthropic-version"]`
   (merge with the new `x-understudy-upstream-key` entry, don't overwrite)
+
+## After the patch — make gateway calls stream
+
+The one follow-up that *does* touch call sites: every request that now goes
+through the gateway should stream. The gateway's edge cuts any response with
+no first byte within ~125s (a 524, with no usage block to meter), and a
+non-streaming `messages.create` holds the response open for the model's full
+generation time. Streaming returns SSE framing within seconds, so the timeout
+can never fire.
+
+Where the code wants one final message object, keep streaming and aggregate
+with the SDK's helper — same shape, no other changes:
+
+```ts
+// Before
+const message = await client.messages.create({ model, max_tokens, messages });
+
+// After
+const message = await client.messages
+  .stream({ model, max_tokens, messages })
+  .finalMessage();
+```
+
+Do not "simplify" this back to a non-streaming `create`. Full patterns:
+[`../use-understudy-gateway/reference.md`](../use-understudy-gateway/reference.md)
+→ "Always-stream rule".
 
 ## If the patcher's defaults clash
 

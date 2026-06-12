@@ -139,8 +139,26 @@ Mastra's higher-level API stays identical end-to-end. Don't touch:
 - `Memory`, `Workflow`, scorer wiring
 - `new Mastra({ agents: { ... } })` registration
 - Tool definitions (`createTool`, Zod input schemas)
-- The `agent.generate(...)` / `agent.stream(...)` call sites
+- The `agent.generate(...)` / `agent.stream(...)` call sites — with the
+  streaming exception below
 - `mastra dev` / `mastra build` / `mastra start` scripts
+
+## After the patch — make gateway calls stream
+
+The one follow-up that *does* touch call sites: agents now routed through
+the gateway should use Mastra's streaming call form. The gateway's edge cuts
+any response with no first byte within ~125s (a 524, with no usage block to
+meter), and a non-streaming `agent.generate(...)` holds the response open for
+the model's full generation time. Streaming returns SSE framing within
+seconds, so the timeout can never fire.
+
+Prefer `agent.stream(...)` over `agent.generate(...)` for gateway-routed
+agents; where the caller wants the final result as one object, consume the
+stream's terminal promise (e.g. `await stream.text`) instead of reverting to
+`generate`. Do not "simplify" this back to a non-streaming call. The why and
+per-client patterns:
+[`../use-understudy-gateway/reference.md`](../use-understudy-gateway/reference.md)
+→ "Always-stream rule".
 
 ## Multiple agents
 

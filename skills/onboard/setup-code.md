@@ -24,7 +24,12 @@ patch using the repo's language, framework, tests, and style.
    `UNDERSTUDY_API_KEY` and `UNDERSTUDY_GATEWAY_URL`.
 7. Preserve the developer's existing upstream provider key variable. Do not
    delete or rename it.
-8. Run the narrowest local test or typecheck that proves the patched code still
+8. Make every call site that now routes through the gateway stream
+   (`stream: true` or the client's streaming call form), aggregating locally
+   where the caller needs one final object. Each recipe has an "After the
+   patch — make gateway calls stream" / "Gateway calls must stream" section
+   with the why and the per-client pattern.
+9. Run the narrowest local test or typecheck that proves the patched code still
    loads.
 
 ## Output

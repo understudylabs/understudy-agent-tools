@@ -227,8 +227,10 @@ const res = await fetch("$UNDERSTUDY_GATEWAY_URL/v1/chat/completions", {
     authorization: `Bearer ${process.env.UNDERSTUDY_API_KEY}`,
     "x-understudy-upstream-key": process.env.OPENAI_API_KEY ?? "",
   },
-  body: JSON.stringify({ model, messages, ... }),
+  body: JSON.stringify({ model, messages, stream: true, ... }),
 });
+// res.body is SSE — read lines and accumulate the deltas if the caller
+// wants one final object (see "Gateway calls must stream" below).
 ```
 
 ## When to ask the user instead of guessing
@@ -243,6 +245,21 @@ const res = await fetch("$UNDERSTUDY_GATEWAY_URL/v1/chat/completions", {
 - The constructor takes a hand-rolled HTTP client factory or a
   function that returns headers — you can wrap it, but ask first.
 
+## Gateway calls must stream
+
+After the configuration patch, audit the call sites that now route through
+the gateway: every gateway inference call should set `stream: true` (or use
+the client's streaming call form — `streamText` over `generateText` in the
+Vercel AI SDK, `.stream()` over `.invoke()` in LangChain, etc.). The
+gateway's edge cuts any response with no first byte within ~125s (a 524,
+with no usage block to meter), and a non-streaming call holds the response
+open for the model's full generation time. Streaming returns SSE framing
+within seconds, so the timeout can never fire. Where the code wants one
+final object, keep streaming and aggregate locally — do not "simplify" back
+to a non-streaming call. Patterns per client:
+[`../use-understudy-gateway/reference.md`](../use-understudy-gateway/reference.md)
+→ "Always-stream rule".
+
 ## Anything you don't touch
 
 Same as the named recipes:
@@ -250,9 +267,10 @@ Same as the named recipes:
 - Request shapes (`messages.create`, `chat.completions.create`, etc.)
   do not change. The wire format is preserved on the way to the
   gateway and back.
-- Streaming, tool calls, vision content blocks, response handling —
-  all unchanged. The gateway is byte-faithful for whichever wire
-  shape it's routing.
+- Tool calls, vision content blocks, response handling — all
+  unchanged. The gateway is byte-faithful for whichever wire shape
+  it's routing. (Streaming is the one deliberate call-site change —
+  see "Gateway calls must stream" above.)
 - Existing constructor fields other than `apiKey` / `baseURL` /
   `defaultHeaders` — preserve them. Add the BYO bits; never wholesale
   rewrite the client.

@@ -25,11 +25,16 @@ const client = new Anthropic({
   },
 });
 
-const msg = await client.messages.create({
-  model: "claude-opus-4-7",
-  max_tokens: 256,
-  messages: [{ role: "user", content: "Say hello from Understudy." }],
-});
+// Always stream gateway calls: the edge cuts responses with no first byte
+// within ~125s, so non-streaming calls can 524 on slow generations.
+// finalMessage() aggregates the stream back into one Message object.
+const msg = await client.messages
+  .stream({
+    model: "claude-opus-4-7",
+    max_tokens: 256,
+    messages: [{ role: "user", content: "Say hello from Understudy." }],
+  })
+  .finalMessage();
 console.log(msg.content[0].type === "text" ? msg.content[0].text : "");`;
 
   const shell = `export UNDERSTUDY_API_KEY=sk_••••••••
