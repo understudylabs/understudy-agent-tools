@@ -1,6 +1,6 @@
 ---
 name: understudy
-description: Use when a developer asks a coding agent to improve an LLM app or agent — reduce cost or latency, raise quality/reliability, capture traces, build evals, run local optimization (GEPA), compare models/providers, pick a model/route, or route behavior through Understudy. Orchestrates trace → evaluate → optimize → compare → deploy via worker skills. Not for generic coding unless LLM behavior, cost, traces, evals, or routing is involved.
+description: Use when a developer asks a coding agent to improve an LLM app or agent — "make my LLM app cheaper/faster", "raise quality or reliability", "compare models", "pick a model or route". Orchestrates trace → evaluate → optimize (GEPA, automatic prompt evolution) → compare → deploy via worker skills. Not for generic coding unless LLM behavior, cost, traces, evals, or routing is involved.
 metadata:
   understudy:
     mode: automatic
@@ -129,6 +129,13 @@ Identify the developer's current stage and load exactly one:
   harness, traces, metric, splits, or incumbent baseline are missing, ambiguous,
   or stale → [`../capture-evidence/SKILL.md`](../capture-evidence/SKILL.md)
   (also owns repo inspection + eval-harness discovery/build).
+- **Traces already exist** — a bucket of captures, a provider log export, or
+  gateway capture files are in hand and the developer wants them turned into
+  local eval sets, profiled for where the spend goes, or triaged in bulk by
+  content ("which runs failed", "label these by failure mode") →
+  [`../ingest-traces/SKILL.md`](../ingest-traces/SKILL.md) and its fleet
+  lenses (`references/profile-captures.md` for structure/cost,
+  `references/lotus-semantic-triage.md` for content-level bulk triage).
 - **Inference / routing / capture / auth / deploy** — Understudy inference,
   gateway trace capture, project/key management, model A/B via route traffic %,
   `understudy run`, or registering an improved route →
@@ -136,7 +143,13 @@ Identify the developer's current stage and load exactly one:
 - **Frontier key choice** — a local-vs-frontier comparison, installer, or agent
   run needs to decide between BYO `.env` provider keys, the Understudy ZDR
   gateway route, or skipping remote frontier calls →
-  [`../choose-frontier-keys/SKILL.md`](../choose-frontier-keys/SKILL.md).
+  [`../use-understudy-gateway/SKILL.md`](../use-understudy-gateway/SKILL.md)
+  and its frontier-keys lens (`references/frontier-keys.md`).
+- **Production ramp / rollback** — a route decision exists and live traffic
+  must move safely: "ramp this route", "move 25% of traffic to the new model",
+  "did the route change regress anything", "roll this back", "prove the
+  savings are real" →
+  [`../ramp-and-verify/SKILL.md`](../ramp-and-verify/SKILL.md).
 - **Acquire / cache / organize local models** — download a model, see what's
   already cached, free up model disk, pick which Gemma/Nemotron to pull, or
   explain how open weights work →
@@ -148,46 +161,96 @@ Identify the developer's current stage and load exactly one:
 - **Multi-model sweep / Pareto comparison** — the developer has a frozen eval and
   wants to run the same rows across several local, gateway, or frontier models to
   compare quality, latency, cost, and reliability →
-  [`../compare-model-sweep/SKILL.md`](../compare-model-sweep/SKILL.md).
+  [`../compare-model-sweep/SKILL.md`](../compare-model-sweep/SKILL.md). When the
+  sweep verdict supports changing production traffic, don't stop at the report —
+  the answer to "how do I get this running in prod?" is
+  [`../ramp-and-verify/SKILL.md`](../ramp-and-verify/SKILL.md) (add provider →
+  set route → staged ramp gated by the production validator).
+- **Token-level logprob comparison** — the developer has two same-family eval
+  runs with stored logprob sidecars and wants to see the exact moment a smaller,
+  quantized, or weaker model diverged from a larger/full-precision sibling on
+  the same row →
+  [`../compare-trajectories/SKILL.md`](../compare-trajectories/SKILL.md) and its
+  token-logprob lens (`references/logprob-lens.md`).
+- **Tool-trace failure diagnosis** — an environment-backed or tool-calling run
+  failed and the developer asks whether the model lacked evidence, failed to
+  retrieve visible evidence, trusted the wrong authority, acted too early,
+  missed exact format, failed ID resolution, or exposed a scorer/harness issue →
+  [`../understand-workload/SKILL.md`](../understand-workload/SKILL.md) and its
+  tool-trace forensics lens (`references/tool-trace-forensics.md`).
 - **Pedagogical learning / privileged-context self-teaching** — the developer has
   answer keys, execution feedback, verifier traces, oracle tool labels, or
   canonical solutions and wants the local model to learn from trajectories that
   are both correct and learnable before SFT, GRPO, or hosted RL →
-  [`../pedagogical-learning/SKILL.md`](../pedagogical-learning/SKILL.md).
+  [`../local-distillation-lab/SKILL.md`](../local-distillation-lab/SKILL.md) and
+  its pedagogical arm (`references/pedagogical-arm.md`).
 - **RLM pedagogical training / verifiers / Prime RL** — the developer wants to
   train or evaluate a Recursive Language Model policy over stateful trajectories,
   use privileged context as training/scoring signal, measure on-policy state
   coverage or surprise concentration, or prepare a Prime Intellect `verifiers` /
   `prime-rl` path →
-  [`../rlm-pedagogical-training/SKILL.md`](../rlm-pedagogical-training/SKILL.md).
-- **Local understudy specialization loop** — the developer wants the smallest
-  task-reasonable local model opened in Pi and optionally compared against a
-  frontier model, then wants the observed gap to drive workload understanding,
-  model climb, simulated env, GEPA, RLM, hybrid route, or remote-only decision →
-  [`../specialize-local-model/SKILL.md`](../specialize-local-model/SKILL.md).
+  [`../recursive-language-model/SKILL.md`](../recursive-language-model/SKILL.md)
+  and its pedagogical-training lens (`references/pedagogical-training.md`).
+- **Hosted run planning** — the developer wants to run a hosted job (fine-tune,
+  RL run, big eval) and asks where to run it, how long it takes, or what it
+  costs → [`../plan-hosted-run/SKILL.md`](../plan-hosted-run/SKILL.md).
 - **Single-output optimization** — fresh artifacts exist and the developer wants
   to validate, optimize (GEPA), compare candidates, or claim readiness →
   [`../optimize-workload/SKILL.md`](../optimize-workload/SKILL.md).
-- **API workflow optimization** — multi-step REST/API agent that discovers
-  endpoints, follows policy docs, mutates state, and must pass final-state
-  validators →
-  [`../optimize-api-workflow/SKILL.md`](../optimize-api-workflow/SKILL.md).
-- **Agentic / tool-use optimization** — multi-turn agent that calls tools (e.g.
-  web search); evaluate, A/B-compare models, or optimize its prompt/route →
-  [`../optimize-agentic-search/SKILL.md`](../optimize-agentic-search/SKILL.md)
-  (verifiers env, model A/B through the gateway, prompt-GEPA for the cheap model).
+- **Agentic / tool-use optimization** — multi-turn agent that calls tools, from
+  read-only search loops to multi-step REST/API workflows that mutate state and
+  must pass final-state validators; evaluate, A/B-compare models, or optimize
+  its prompt/route →
+  [`../optimize-agentic-workload/SKILL.md`](../optimize-agentic-workload/SKILL.md)
+  (verifiers env or resettable sandbox, model A/B through the gateway,
+  prompt-GEPA for the cheap model).
 - **RL / stateful-policy training handoff** — local RLM/distillation rungs are
   insufficient and the agent must *learn* multi-step behavior in external or
   hosted training →
-  [`../prepare-verifier-handoff/SKILL.md`](../prepare-verifier-handoff/SKILL.md).
+  [`../prepare-verifier-handoff/SKILL.md`](../prepare-verifier-handoff/SKILL.md)
+  (decide → author env → package → hand off).
 
-Multi-turn or tool-use alone is NOT a handoff: agentic evaluation, API-workflow
-evaluation, A/B, and prompt/route optimization stay local in
-`optimize-agentic-search` or `optimize-api-workflow`. RLM policy training routes
-to `rlm-pedagogical-training` first; only external/hosted RL handoffs route to
-`prepare-verifier-handoff`. When in doubt, route to
-`capture-evidence` — optimizing without a current harness/metric/split/baseline
-creates false progress.
+Multi-turn or tool-use alone is NOT a handoff: agentic evaluation, A/B, and
+prompt/route optimization stay local in `optimize-agentic-workload`. RLM policy
+training routes to `recursive-language-model` (pedagogical training) first;
+only external/hosted RL handoffs route to `prepare-verifier-handoff`. When in
+doubt, route to `capture-evidence` — optimizing without a current
+harness/metric/split/baseline creates false progress.
+
+### Local specialization sequencing
+
+When the goal is "train an understudy" / "can a local model do this?", the
+orchestrator owns the ladder — sequence workers, don't reimplement them:
+
+1. **Smallest reasonable rung first.** Pick the smallest local model plausibly
+   reasonable for the task class (easy classification/extraction → Gemma 4 E2B
+   first; coding/structured generation → E2B feel-test then E4B/12B; tool-use →
+   E2B only if the tool surface can be bounded; long-context/high-recall →
+   expect hybrid or remote). Never start at the smallest model blindly, and
+   never evaluate `*-assistant` drafter checkpoints as standalone candidates.
+   Use [`../manage-local-models/SKILL.md`](../manage-local-models/SKILL.md) and
+   [`../run-local-model-lab/SKILL.md`](../run-local-model-lab/SKILL.md).
+2. **Optional frontier head-to-head** for calibration — the blind-arena
+   protocol in
+   [`../run-local-model-lab/references/blind-arena.md`](../run-local-model-lab/references/blind-arena.md).
+   Preference is a gap signal, never a claim.
+3. **Freeze the eval** (`capture-evidence`; for workflow/tool tasks,
+   `design-simulated-environment`), with frontier as the incumbent baseline and
+   local as the candidate. Then write a gap report and let the gap pick the rung:
+   - model too weak, harness sane → **climb** the Gemma/Nemotron ladder;
+   - prompt or output contract weak → **GEPA / prompt repair**
+     (`optimize-workload`);
+   - workflow/tool state matters → **seeded env**
+     (`design-simulated-environment`);
+   - small model drowns in one giant prompt → **RLM decomposition**
+     (`recursive-language-model`);
+   - local handles easy cases only → **hybrid / local-as-router**
+     (`run-local-model-lab` + `use-understudy-gateway`);
+   - local cannot meet quality → **stay remote** and record the revisit
+     trigger (new runtime, new weights, larger hardware, better env feedback).
+4. **Rerun until the claim is real**: local beats the incumbent on the agreed
+   metric for the frozen slice, or the route stays remote — measured, not
+   vibes.
 
 ## Safety Gates
 

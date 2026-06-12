@@ -27,7 +27,7 @@ reachable-gap task**, and counts how many clean warm-start trajectories the
 comparison yields. It reads trajectory JSON that already exists on disk; it does
 not run models. To produce the trajectories, run
 [`../run-local-model-lab/SKILL.md`](../run-local-model-lab/SKILL.md) or
-[`../mlx-arena/SKILL.md`](../mlx-arena/SKILL.md) first.
+[`../run-local-model-lab/references/blind-arena.md`](../run-local-model-lab/references/blind-arena.md) first.
 
 ## Safety Gates
 
@@ -60,9 +60,10 @@ stop — a trajectory diff across different tasks is meaningless.
 This skill diagnoses the RL-vs-not gap *behaviorally* (trajectory divergence,
 recovery events). The *learnability* cut on the resulting warm-start set —
 surprise-gap / concentration measured under the student — is a different
-instrument, owned by the `pedagogical-learning` and
-[`../local-distillation-lab/SKILL.md`](../local-distillation-lab/SKILL.md) skills,
-not here. They compose: behavioral verdict here, learnability cut there.
+instrument, owned by
+[`../local-distillation-lab/SKILL.md`](../local-distillation-lab/SKILL.md) and
+its pedagogical arm (`references/pedagogical-arm.md`), not here. They compose:
+behavioral verdict here, learnability cut there.
 
 ## Flow
 
@@ -117,6 +118,27 @@ not here. They compose: behavioral verdict here, learnability cut there.
    warm-start count, and the RL-shaped verdict to
    `.understudy/trajectory-diffs/<timestamp>/`.
 
+## Repeat-replay stability
+
+A single run per model can mistake sampling noise for a behavioral gap. Before
+classifying gaps — and always before a candidate graduates toward live traffic
+— re-run the candidate on the same frozen rows N times (default 3): all repeats
+match → stable; some → borderline; none → stochastic (exclude from gap
+classification and the warm-start yield). Above ~5% unstable, fix decoding
+(temperature, seed) or downgrade verdicts to directional-only. The dispositions
+feed the pre-ramp gate in [`../ramp-and-verify/SKILL.md`](../ramp-and-verify/SKILL.md)
+(stable → serve, borderline → shadow, stochastic → incumbent fallback).
+
+## Token-logprob lens
+
+When two same-family runs (e.g. quantized vs full-precision) diverge on the
+same row and you need the token-level *why* — which token the weaker model got
+wrong and how confident it was — see
+[`references/logprob-lens.md`](references/logprob-lens.md). It documents the
+renderer in [`scripts/render-logprob-compare.mjs`](scripts/render-logprob-compare.mjs)
+and the private logprob-sidecar artifacts it requires; nothing public in this
+repo produces those artifacts yet, so treat it as an optional lens, not a step.
+
 ## Output Standard
 
 End with the diff path and: the two run ids + harness/tool-access mode;
@@ -137,7 +159,7 @@ that loses tasks is not strictly better.
   scalar Pareto this skill complements; run it first for the frontier.
 - [`../run-local-model-lab/SKILL.md`](../run-local-model-lab/SKILL.md) — produces
   the local-model trajectory exports this skill diffs.
-- [`../mlx-arena/SKILL.md`](../mlx-arena/SKILL.md) — local-vs-frontier head-to-head
+- [`../run-local-model-lab/references/blind-arena.md`](../run-local-model-lab/references/blind-arena.md) — local-vs-frontier head-to-head
   that also produces paired runs to diff.
 - [`../curate-trajectories/SKILL.md`](../curate-trajectories/SKILL.md) — supplies
   hash-stamped, holdout-segregated selections to diff.

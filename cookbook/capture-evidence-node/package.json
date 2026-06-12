@@ -1,8 +1,0 @@
-{
-  "name": "understudy-cookbook-capture-evidence-node",
-  "private": true,
-  "type": "module",
-  "scripts": {
-    "test": "node --test tests/*.mjs"
-  }
-}

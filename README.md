@@ -1,6 +1,6 @@
 # understudy-agent-tools
 
-Public, MIT-licensed Understudy skill library, cookbook, and thin CLI.
+Public, MIT-licensed Understudy skill library and thin CLI.
 
 This repo is the public skills surface for local-first AI workload evaluation,
 optimization planning, gateway handoff, and agent-led implementation. The CLI is
@@ -25,12 +25,11 @@ commands remain outside this public CLI until intentionally extracted.
 | --- | --- | --- |
 | CLI | `src/` | Thin TypeScript shortcuts for auth, artifact checks, and durable runs. |
 | Skills | `skills/` | MVP progressive-disclosure agent playbooks. |
-| Cookbook | `cookbook/` | Bundled synthetic examples for agents to copy, run, and adapt. |
 | Docs | `docs/` | Public methodology and release-boundary notes. |
 | Scripts | `scripts/` | Repo hygiene checks, not product CLI code. |
 | Vendor | `vendor/` | Vendored or mirrored compatibility shims, with license metadata. |
 
-The CLI should stay boring. Workflow judgment belongs in skills and cookbooks;
+The CLI should stay boring. Workflow judgment belongs in skills;
 durable shortcuts belong in TypeScript only when the agent needs reliable
 execution, auth injection, artifact writes, or a safety gate.
 
@@ -193,38 +192,42 @@ thin GEPA/DSPy optimizer. The installed onboarding skill starts by checking
 `understudy status --json` and stops with a clear login instruction if
 the user is not authenticated.
 
-## Cookbook Examples
+## Public Benchmark Golden Path
 
-Cookbooks are bundled with the package and smoke-tested:
-
-```bash
-npm run cookbook:validate
-```
-
-Current examples:
-
-- `cookbook/capture-evidence-node`
-- `cookbook/optimize-eval-input-gepa`
-- `cookbook/gateway-openai-typescript`
+For a public demo or agent smoke test, use the public-benchmark on-ramp in
+[`skills/capture-evidence/references/public-benchmark-path.md`](skills/capture-evidence/references/public-benchmark-path.md).
+It points agents at public upstream benchmarks such as
+[Zapier AutomationBench](https://github.com/zapier/AutomationBench) and
+[Harvey LAB](https://github.com/harveyai/harvey-labs). Keep benchmark harnesses
+upstream; use Understudy for capture, splits, baselines, optimization, and
+conservative claims.
 
 ## Skill Tree
 
 `skills/understudy/SKILL.md` is the public entrypoint. It routes to exactly one
-capability worker:
+capability worker per intent. The workers are grouped by journey stage; deeper
+playbooks live in each skill's `references/` directory:
 
-- `skills/onboard/SKILL.md` (first-run: profiles the machine + user, backgrounds a small model)
-- `skills/capture-evidence/SKILL.md`
-- `skills/optimize-workload/SKILL.md`
-- `skills/use-understudy-gateway/SKILL.md`
-- `skills/manage-local-models/SKILL.md` (acquire, cache, and explain local open-weight models)
-- `skills/run-local-model-lab/SKILL.md`
-- `skills/specialize-local-model/SKILL.md` (smallest reasonable local rung → Pi head-to-head → gap-driven improvement)
-- `skills/pedagogical-learning/SKILL.md` (privileged-context trajectories that are correct and learnable)
-- `skills/rlm-pedagogical-training/SKILL.md` (stateful RLM/verifiers training surfaces before hosted RL)
-- `skills/local-distillation-lab/SKILL.md` (local Apple Silicon weight-update arms before hosted RL)
-- `skills/prepare-verifier-handoff/SKILL.md`
+- **Setup & first run** — install-plugin, onboard
+- **Understand & capture** — understand-workload, ingest-traces (incl. the
+  capture-directory profiler), capture-evidence (incl. the public-benchmark
+  on-ramp), design-simulated-environment
+- **Local models** — manage-local-models, run-local-model-lab (incl. the blind
+  frontier-vs-local arena), recursive-language-model (incl. RLM pedagogical
+  training)
+- **Compare & diagnose** — compare-model-sweep, compare-trajectories
+- **Plan hosted runs** — plan-hosted-run (provider routing + cost estimation)
+- **Optimize** — optimize-workload, optimize-agentic-workload (read-only
+  search loops and state-mutating API workflows)
+- **Train locally** — curate-trajectories, distill-classifier,
+  local-distillation-lab (incl. the pedagogical arm)
+- **RL handoff** — prepare-verifier-handoff (decide → author env → package →
+  hand off)
+- **Gateway & routing** — use-understudy-gateway (incl. the frontier-keys
+  decision), ramp-and-verify
 
-See [`skills/README.md`](skills/README.md) for the current hierarchy and
+[`skills/README.md`](skills/README.md) is the authoritative index with
+per-skill descriptions — keep it in sync when adding skills. See
 [`docs/current-functionality.md`](docs/current-functionality.md) for the
 migration ledger.
 
@@ -235,8 +238,10 @@ Prime Intellect Verifiers is the current preferred referral for that rung.
 
 Optimizer implementation stays upstream. Do not vendor GEPA or add the full
 private runtime as a dependency. The implementation contract is documented in
-[`docs/optimize-workload-contract.md`](docs/optimize-workload-contract.md).
-The TypeScript-to-`uv` Python bridge pattern is documented in
+[`docs/optimize-workload-contract.md`](docs/optimize-workload-contract.md),
+the evidence-ladder methodology behind it in
+[`docs/methodology-framework.md`](docs/methodology-framework.md). The
+TypeScript-to-`uv` Python bridge pattern is documented in
 [`docs/uv-python-bridge.md`](docs/uv-python-bridge.md).
 
 ## CLI Surface
@@ -248,6 +253,7 @@ spine
 skills
 doctor
 login
+logout
 status
 projects
 keys
@@ -259,8 +265,17 @@ routes
 setup
 setup-code
 run
+capture-evidence   (alias: understand)
+capture-import
 optimize-workload
+route-decision
+value
+experiments
+next
 ```
+
+Every command accepts the global `--json` flag (before or after the
+subcommand) and emits machine-readable JSON where supported.
 
 `setup-code` is skill-routed. It does not patch files directly; it tells the
 coding agent to use `skills/onboard/setup-code.md` and the matching framework
@@ -271,7 +286,7 @@ recipe.
 browser, chat runtime, or hosted agent surface. Full-runtime command names such
 as `browser`, `channels`, `schedule`, `daemon`, `agent`, and `chat` are not
 registered in this public CLI. Use `understudy skills --search <query>` to find
-the relevant capability skill or cookbook instead.
+the relevant capability skill instead.
 
 For GEPA/DSPy work, the CLI stays as the guide and gate surface while Python is
 used only for small local optimizer environments:

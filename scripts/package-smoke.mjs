@@ -33,14 +33,10 @@ const forbiddenMemberParts = [
 ];
 
 const requiredPackageMembers = [
-  "cookbook/README.md",
-  "cookbook/capture-evidence-node/README.md",
-  "cookbook/optimize-eval-input-gepa/eval-input-manifest.json",
-  "cookbook/gateway-openai-typescript/src/client.ts",
-  "skills/pedagogical-learning/SKILL.md",
-  "skills/pedagogical-learning/reference.md",
-  "skills/rlm-pedagogical-training/SKILL.md",
-  "skills/rlm-pedagogical-training/reference.md",
+  "skills/local-distillation-lab/SKILL.md",
+  "skills/local-distillation-lab/references/pedagogical-arm.md",
+  "skills/recursive-language-model/SKILL.md",
+  "skills/recursive-language-model/references/pedagogical-training.md",
 ];
 
 function npmPackFiles() {
@@ -88,7 +84,7 @@ const packageFiles = npmPackFiles();
 const packagePaths = new Set(packageFiles.map((entry) => entry.path));
 for (const required of requiredPackageMembers) {
   if (!packagePaths.has(required)) {
-    errors.push(`package/${required}: required cookbook file missing from package`);
+    errors.push(`package/${required}: required package file missing`);
   }
 }
 for (const entry of packageFiles) {

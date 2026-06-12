@@ -11,6 +11,10 @@ git ls-files
 
 ## Inspect
 
+- versions bumped **together** in `package.json`, `.claude-plugin/plugin.json`,
+  and `.claude-plugin/marketplace.json` on any release that changes the skill
+  catalog or CLI surface — installed plugins have no other staleness signal;
+  `understudy doctor --json` fails if the three drift;
 - no `.understudy/` runtime artifacts;
 - no `.env*`, credentials, tokens, or secret-shaped strings;
 - no private planning docs;

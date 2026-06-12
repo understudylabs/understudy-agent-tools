@@ -1,6 +1,6 @@
 ---
 name: capture-evidence
-description: Use when an AI workload needs local harness capture, environment attachment, metric and validator confirmation, frozen splits, and an incumbent baseline before optimization.
+description: Use when a developer wants to build an eval from their real LLM app before changing anything — "measure how my app is doing today", "build an eval from my workload", "we have no baseline", "is my current model actually good". Turns the workload into auditable local artifacts (harness, metric, frozen splits, baseline); has a public-benchmark on-ramp when no traces exist.
 metadata:
   understudy:
     mode: interactive
@@ -83,7 +83,15 @@ enough provenance for another agent to repeat the step without guessing.
      feedback is the assertion or diff that failed.
    - `schema` (e.g. Zod/JSON-schema `safeParse`) — keep `schema_pass` separate
      from `quality_pass`; a valid-shape, valid-enum output must not be failed
-     merely for not matching a teacher trace verbatim.
+     merely for not matching a teacher trace verbatim. Two grounding checks a
+     shape-only schema misses, both observed in real workloads: (a) **verbatim
+     evidence** — when a field claims to quote a source (transcript, doc,
+     log), verify the quote appears verbatim in the source; smaller open
+     models hallucinate correctly-formatted quotes; (b) **conditional
+     requireds** — when an optional signal (date, flag, risk) is present, its
+     evidence subfield must be present too; models that include the signal but
+     drop its evidence are the dominant residual failure and usually
+     prompt-fixable.
    - `rubric` — a confirmed criteria list (each criterion: id, description,
      review type); auto-generated rubrics need human approval.
    - `llm-judge` — must debias position with a swapped two-pass score
@@ -122,18 +130,22 @@ use its workload profile as the narrative source of truth. The deep inspection
 checklist (call sites by SDK family, env vars, tracing, CI) and the eval-harness
 discover-then-build playbook live in [`reference.md`](reference.md). For
 cross-cutting objective/constraint framing, read
-[`../understudy/reference.md`](../understudy/reference.md). For multi-step REST/API workflows that mutate state, route to
-[`../optimize-api-workflow/SKILL.md`](../optimize-api-workflow/SKILL.md) so the
-agent records reset/seed state, API schemas, policy docs, request logs, and
-final-state validators as part of the harness. For multi-turn / tool-use /
-agentic search workloads, route the eval to
-[`../optimize-agentic-search/SKILL.md`](../optimize-agentic-search/SKILL.md)
-instead of building a single-output harness.
+[`../understudy/reference.md`](../understudy/reference.md). For multi-turn /
+tool-use / agentic workloads — both read-only search loops and multi-step
+REST/API workflows that mutate state — route the eval to
+[`../optimize-agentic-workload/SKILL.md`](../optimize-agentic-workload/SKILL.md)
+instead of building a single-output harness; its state-mutating lens records
+reset/seed state, API schemas, policy docs, request logs, and final-state
+validators as part of the harness.
 
 Start from the real local workload:
 
 - app route, eval suite, trace export, benchmark fixture, prompt set, dataset,
   report, or existing runner;
+- **no traces yet?** Start from a public benchmark — the golden-path ladder
+  (AutomationBench, Harvey LAB) in
+  [`references/public-benchmark-path.md`](references/public-benchmark-path.md)
+  runs this same evidence loop against public fixtures;
 - otherwise, create only a synthetic fixture and label it clearly as synthetic.
 
 Do not optimize, tune prompts, choose replacement models, mutate splits, or

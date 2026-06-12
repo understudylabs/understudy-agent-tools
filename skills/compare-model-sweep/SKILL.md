@@ -1,6 +1,6 @@
 ---
 name: compare-model-sweep
-description: Use when a developer wants to run the same eval or benchmark across multiple local, gateway, or frontier models and produce a Pareto-style quality, latency, cost, and reliability comparison.
+description: Use when a developer wants to compare candidate models — any mix of local, gateway, or frontier — on the same eval and see quality, latency, cost, and reliability side by side. "Which model should I use", "sweep these models on my benchmark", "compare Gemma vs the frontier on my eval". To stand up and serve a local candidate first, use run-local-model-lab.
 metadata:
   understudy:
     mode: interactive
@@ -16,7 +16,7 @@ one frozen harness across a candidate matrix, records each run, and emits a
 small Pareto report an agent can use for route decisions.
 
 Prefer this after [`../understand-workload/SKILL.md`](../understand-workload/SKILL.md),
-[`../optimize-api-workflow/SKILL.md`](../optimize-api-workflow/SKILL.md), or
+[`../optimize-agentic-workload/SKILL.md`](../optimize-agentic-workload/SKILL.md), or
 [`../run-local-model-lab/SKILL.md`](../run-local-model-lab/SKILL.md) has already
 identified a resettable eval and a first local candidate.
 
@@ -60,6 +60,26 @@ comparison.
    tokens, cost/task, run seconds, errors, empty responses, and caveats. If
    per-task latency is unavailable, use run-level duration and say so.
 
+   **Caching parity.** Cost columns must state each candidate's caching basis.
+   If the incumbent runs cache-warmed in production (e.g. a cached primer),
+   measure same-provider candidates cache-warmed too; when a candidate has no
+   equivalent cache layer (a different provider or gateway can't share the
+   incumbent's cache pool), measure it uncached and label it — what you
+   measured is what they'd pay. Note that batching or longer cache TTLs shift
+   absolute costs on the cached side but should not change the ratios. To
+   structure the harness itself for cache hits (and avoid the
+   parallel-fan-out all-miss trap), see
+   [`optimize-workload/references/prompt-cache-optimization.md`](../optimize-workload/references/prompt-cache-optimization.md).
+
+   **Pairwise option.** When the workload has no programmatic metric
+   (open-ended generation), score quality as a pairwise preference against the
+   incumbent instead of an absolute rubric: same row, two outputs, an LLM
+   judge picks A/B/tie — run **twice with the order swapped** and count a win
+   only when both passes agree. Report the debiased win-rate with N. Dry-run
+   the judge on a few rows first, budget-gate the live judge like any provider
+   spend, and keep judge-scored quality as its own column — never silently
+   blended with a programmatic metric.
+
 6. **Compute the frontier.** A candidate is dominated when another candidate has
    equal or better quality and equal or lower cost and latency, with no worse
    error rate or safety result. Write `pareto.json` with dominated reasons.
@@ -93,3 +113,24 @@ For API-workflow sweeps, keep tool-access interpretation explicit:
 End with the sweep path, candidate count, split size, quality/cost/latency axes,
 which candidates are on the frontier, which are dominated, and the recommended
 next action.
+
+When the sweep informs a real route decision, also write the report as a
+**decision memo** the developer can paste to their team unedited:
+
+- a results table: candidate, pass rate against the production validator,
+  total cost, cost per unit of work the business counts (per deal, per ticket,
+  per call — not per token), and the cost ratio vs the incumbent;
+- caching basis per row (see step 5) and any other comparability caveats;
+- where the residual failures cluster, as named patterns with the cheapest fix
+  per pattern (prompt line, decode/format fix, decomposition, route fallback);
+- a staged recommendation: the drop-in safe swap, the parallel pilot, and the
+  cheap iteration, rather than one all-or-nothing verdict;
+- a scope line: what fraction of the workload's total LLM cost this step
+  represents, and what's next if the approach extends;
+- one headline the finance owner can multiply by volume ("saves ~$X per
+  <unit>; multiply by monthly volume").
+
+If the verdict supports changing production traffic, hand off to
+[`../ramp-and-verify/SKILL.md`](../ramp-and-verify/SKILL.md): add the provider,
+set the route, and ramp staged traffic gated by the same production validator
+the sweep used.

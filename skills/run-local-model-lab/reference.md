@@ -49,11 +49,17 @@ llama-server -hf unsloth/gemma-4-E4B-it-GGUF:Q4_K_M --port 8080 --jinja
 ### MLX — Apple Silicon native (best throughput on a Mac)
 
 ```bash
-pip install mlx-lm                       # or: uv pip install mlx-lm
-# pulls the MLX build from HF and serves OpenAI-compatible at :8080/v1
-mlx_lm.server --model mlx-community/gemma-4-e4b-it-4bit --port 8080
+pip install mlx-vlm                      # or: uv pip install mlx-vlm
+# pull the Understudy-verified snapshot first, then serve OpenAI-compatible
+cd /path/to/understudy-agent-tools/skills/manage-local-models
+node scripts/pull-understudy-snapshot.mjs --model gemma-4-e4b-it-mlx-vlm-4bit
+python -m mlx_vlm.server --model ~/.understudy/models/gemma-4-e4b-it-mlx-vlm-4bit --port 8080
 # Nemotron 3 Nano on MLX: mlx-community/NVIDIA-Nemotron-3-Nano-30B-A3B-4bit
 ```
+
+Use the Understudy snapshot id above when testing E4B in this lab; it is the
+reproducible verified package (provenance and smoke-test details:
+[`../manage-local-models/reference.md`](../manage-local-models/reference.md)).
 
 (Ollama / LM Studio also serve OpenAI-compatible if a developer already runs one,
 but skip them as the default: their library tags lag new HF releases, so brand-new
@@ -124,7 +130,7 @@ availability, license, checkpoint format, and runtime support before use.
 
 | Candidate class | Use when | Notes |
 | --- | --- | --- |
-| E2B / E4B | Router, triage, extraction, easy classification, edge/mobile, audio-first smoke tests | Smallest Gemma 4 rungs. Good for cheap local iteration and compliance-constrained routing. |
+| E2B / E4B | Router, triage, extraction, easy classification, edge/mobile, audio-first smoke tests | Smallest Gemma 4 rungs. Good for cheap local iteration and compliance-constrained routing. Use the 4-bit snapshots for speed/size; use `gemma-4-e2b-it-mlx-vlm-bf16` or `gemma-4-e4b-it-mlx-vlm-bf16` when quantization may be the bottleneck. |
 | 12B | Main laptop eval, multimodal/audio tasks, stronger reasoning without workstation hardware | Google announced Gemma 4 12B on 2026-06-03 as a unified encoder-free multimodal model designed for laptops with 16GB VRAM or unified memory. |
 | 26B A4B MoE | Strong local text/image candidate on serious desktop/workstation hardware | Treat as the local quality/latency sweet spot when the runtime and memory fit. MoE active parameters do not remove the need to fit the checkpoint/KV cache. |
 | 31B dense | Maximum local quality when hardware is available, or remote graduation target | Prefer remote/gateway if local ops friction or memory pressure slows the experiment. |

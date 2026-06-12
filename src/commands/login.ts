@@ -12,6 +12,7 @@ import {
 import { DEFAULT_GATEWAY_URL } from "../config/defaults.js";
 import { isJsonMode, runAction } from "../internal/output.js";
 import {
+  telemetryEnabled,
   trackLoginCompleted,
   trackLoginFailed,
   trackLoginStarted,
@@ -321,6 +322,7 @@ function emitApiKeySuccess(
         api_key_suffix: result.credential.slice(-4),
         gateway_url: result.gateway_url ?? DEFAULT_GATEWAY_URL,
         credentials_path: globalCredentialsPath(),
+        telemetry_enabled: telemetryEnabled(),
       })}\n`,
     );
     return;
@@ -334,4 +336,9 @@ function emitApiKeySuccess(
       `${kleur.gray("key")}      sk_••••${result.credential.slice(-4)}\n` +
       `${kleur.gray("saved")}    ${globalCredentialsPath()}\n`,
   );
+  if (telemetryEnabled()) {
+    process.stdout.write(
+      `${kleur.dim("Signed-in sessions send bounded usage telemetry (docs/telemetry.md); disable with UNDERSTUDY_TELEMETRY=0.")}\n`,
+    );
+  }
 }

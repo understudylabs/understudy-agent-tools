@@ -10,6 +10,12 @@ import { describe, it } from "node:test";
 const cli = ["node", resolve("dist/bin.js")];
 const uvAvailable = spawnSync("uv", ["--version"], { encoding: "utf8" }).status === 0;
 
+// Ambient Understudy credentials (a developer's shell, a CI secret) must not
+// leak into spawned CLIs — fixtures provide their own.
+const baseEnv = { ...process.env };
+delete baseEnv.UNDERSTUDY_API_KEY;
+delete baseEnv.UNDERSTUDY_GATEWAY_URL;
+
 function run(args) {
   return spawnSync(cli[0], [cli[1], ...args], {
     cwd: process.cwd(),
@@ -22,7 +28,7 @@ function runWithHome(args, home, cwd = process.cwd()) {
     cwd,
     encoding: "utf8",
     env: {
-      ...process.env,
+      ...baseEnv,
       HOME: home,
       USERPROFILE: home,
     },
@@ -34,7 +40,7 @@ function runWithEnv(args, env, cwd = process.cwd()) {
     cwd,
     encoding: "utf8",
     env: {
-      ...process.env,
+      ...baseEnv,
       UNDERSTUDY_TELEMETRY: "0",
       ...env,
     },
@@ -46,7 +52,7 @@ function runWithEnvAsync(args, env, cwd = process.cwd()) {
     const child = spawn(cli[0], [cli[1], ...args], {
       cwd,
       env: {
-        ...process.env,
+        ...baseEnv,
         UNDERSTUDY_TELEMETRY: "0",
         ...env,
       },
@@ -136,13 +142,13 @@ async function withHostedFixture(fn) {
     if (req.method === "GET" && url.pathname === "/admin/v1/orgs/org_1/projects") return send(200, { projects: state.projects, cursor: null });
     if (req.method === "GET" && url.pathname === "/admin/v1/orgs/org_1/api_keys") return send(200, { keys: [{ id: "key_1", name: "default", obfuscated_value: "sk_...test", last_used_at: null, permissions: [], created_at: "2026-06-01T00:00:00Z" }] });
     if (req.method === "GET" && url.pathname === "/admin/v1/orgs/org_1/models") return send(200, { models: [{ id: "glm-5.1", display_name: "GLM 5.1", capabilities: ["chat"], context_window: 128000 }] });
-    if (req.method === "GET" && url.pathname === "/customer/v1/orgs/org_1/projects/proj_1/workloads") return send(200, { workloads: state.workloads, cursor: null });
-    if (req.method === "POST" && url.pathname === "/customer/v1/orgs/org_1/projects/proj_1/workloads") {
+    if (req.method === "GET" && url.pathname === "/admin/v1/orgs/org_1/projects/proj_1/workloads") return send(200, { workloads: state.workloads, cursor: null });
+    if (req.method === "POST" && url.pathname === "/admin/v1/orgs/org_1/projects/proj_1/workloads") {
       const workload = { id: `usp_${body.name}`, project_id: "proj_1", name: body.name, capture_enabled: Boolean(body.capture_enabled), route_model_id: null, route_traffic_pct: null, is_default: false, created_at: "2026-06-07T00:00:00Z" };
       state.workloads.push(workload);
       return send(200, workload);
     }
-    const workloadPatch = url.pathname.match(/^\/customer\/v1\/orgs\/org_1\/projects\/proj_1\/workloads\/([^/]+)$/);
+    const workloadPatch = url.pathname.match(/^\/admin\/v1\/orgs\/org_1\/projects\/proj_1\/workloads\/([^/]+)$/);
     if (req.method === "PATCH" && workloadPatch) {
       const workload = state.workloads.find((entry) => entry.id === workloadPatch[1]);
       if (!workload) return send(404, { message: "missing" });
@@ -416,12 +422,11 @@ describe("understudy CLI", () => {
   it("lists the pedagogical and local training skills", () => {
     const result = run(["skills", "--list"]);
     assert.equal(result.status, 0, result.stderr);
-    assert.match(result.stdout, /pedagogical-learning/);
-    assert.match(result.stdout, /rlm-pedagogical-training/);
     assert.match(result.stdout, /local-distillation-lab/);
+    assert.match(result.stdout, /recursive-language-model/);
   });
 
-  it("searches skills and cookbooks by query", () => {
+  it("searches skills by query", () => {
     const result = run(["skills", "--search", "gateway"]);
     assert.equal(result.status, 0, result.stderr);
     assert.match(result.stdout, /use-understudy-gateway/);
@@ -431,13 +436,11 @@ describe("understudy CLI", () => {
   it("searches pedagogical and verifier training surfaces", () => {
     const pedagogical = run(["skills", "--search", "pedagogical"]);
     assert.equal(pedagogical.status, 0, pedagogical.stderr);
-    assert.match(pedagogical.stdout, /pedagogical-learning \(skill\)/);
-    assert.match(pedagogical.stdout, /rlm-pedagogical-training \(skill\)/);
-    assert.match(pedagogical.stdout, /next: understudy skills --inspect pedagogical-learning/);
+    assert.match(pedagogical.stdout, /local-distillation-lab \(skill\)/);
+    assert.match(pedagogical.stdout, /next: understudy skills --inspect local-distillation-lab/);
 
     const verifiers = run(["skills", "--search", "verifiers"]);
     assert.equal(verifiers.status, 0, verifiers.stderr);
-    assert.match(verifiers.stdout, /rlm-pedagogical-training \(skill\)/);
     assert.match(verifiers.stdout, /prepare-verifier-handoff \(skill\)/);
   });
 
@@ -448,35 +451,35 @@ describe("understudy CLI", () => {
   });
 
   it("inspects pedagogical skill descriptions", () => {
-    const pedagogical = run(["skills", "--inspect", "pedagogical-learning"]);
-    assert.equal(pedagogical.status, 0, pedagogical.stderr);
-    assert.match(pedagogical.stdout, /correct and learnable/);
+    const distillation = run(["skills", "--inspect", "local-distillation-lab"]);
+    assert.equal(distillation.status, 0, distillation.stderr);
+    assert.match(distillation.stdout, /pedagogical/);
 
-    const rlm = run(["skills", "--inspect", "rlm-pedagogical-training"]);
+    const rlm = run(["skills", "--inspect", "recursive-language-model"]);
     assert.equal(rlm.status, 0, rlm.stderr);
-    assert.match(rlm.stdout, /Recursive Language Model policy/);
+    assert.match(rlm.stdout, /take over an agentic task/);
   });
 
   it("routes local pedagogical and RLM rungs before hosted verifier handoff", () => {
     const understudySkill = readFileSync("skills/understudy/SKILL.md", "utf8");
     assert.ok(
-      understudySkill.indexOf("../pedagogical-learning/SKILL.md") <
+      understudySkill.indexOf("../local-distillation-lab/SKILL.md") <
         understudySkill.indexOf("../prepare-verifier-handoff/SKILL.md"),
     );
     assert.ok(
-      understudySkill.indexOf("../rlm-pedagogical-training/SKILL.md") <
+      understudySkill.indexOf("../recursive-language-model/SKILL.md") <
         understudySkill.indexOf("../prepare-verifier-handoff/SKILL.md"),
     );
     assert.match(
       understudySkill,
-      /RLM policy training routes\s+to `rlm-pedagogical-training` first; only external\/hosted RL handoffs route to\s+`prepare-verifier-handoff`/,
+      /RLM policy\s+training routes to `recursive-language-model` \(pedagogical training\) first;\s+only external\/hosted RL handoffs route to `prepare-verifier-handoff`/,
     );
 
     const recursiveSkill = readFileSync("skills/recursive-language-model/SKILL.md", "utf8");
-    assert.match(recursiveSkill, /\.\.\/rlm-pedagogical-training\/SKILL\.md/);
+    assert.match(recursiveSkill, /references\/pedagogical-training\.md/);
 
     const handoffSkill = readFileSync("skills/prepare-verifier-handoff/SKILL.md", "utf8");
-    assert.match(handoffSkill, /rlm-pedagogical-training\/SKILL\.md/);
+    assert.match(handoffSkill, /recursive-language-model\/references\/pedagogical-training\.md/);
     assert.match(handoffSkill, /only for work that still needs external or hosted\s+training/);
   });
 
@@ -487,6 +490,9 @@ describe("understudy CLI", () => {
     assert.equal(payload.runtime, "node");
     assert.equal(payload.ok, true);
     assert.deepEqual(payload.missing, []);
+    assert.equal(payload.versions_consistent, true);
+    assert.equal(payload.versions.cli, payload.versions.plugin);
+    assert.equal(payload.versions.cli, payload.versions.marketplace);
   });
 
   it("status exits non-zero when local config is malformed", () => {
@@ -501,6 +507,30 @@ describe("understudy CLI", () => {
     } finally {
       rmSync(home, { recursive: true, force: true });
       rmSync(repo, { recursive: true, force: true });
+    }
+  });
+
+  it("includes telemetry state in login JSON output", () => {
+    const home = mkdtempSync(join(tmpdir(), "understudy-login-home-"));
+    try {
+      const result = runWithEnv(
+        [
+          "login",
+          "--json",
+          "--api-key",
+          "sk_test_login_json",
+          "--org",
+          "org_TEST",
+          "--project",
+          "default",
+        ],
+        { HOME: home, USERPROFILE: home, UNDERSTUDY_TELEMETRY: "0" },
+      );
+      assert.equal(result.status, 0, result.stderr);
+      const payload = JSON.parse(result.stdout);
+      assert.equal(payload.telemetry_enabled, false);
+    } finally {
+      rmSync(home, { recursive: true, force: true });
     }
   });
 
@@ -977,7 +1007,7 @@ describe("understudy CLI", () => {
     assert.match(route.stdout, /--clear/);
   });
 
-  it("runs hosted workload lifecycle commands against the customer API", async () => {
+  it("runs hosted workload lifecycle commands against the admin API", async () => {
     await withHostedFixture(async ({ home, repo, requests }) => {
       const env = { HOME: home, USERPROFILE: home };
 
@@ -993,7 +1023,7 @@ describe("understudy CLI", () => {
       assert.equal(create.status, 0, create.stderr);
       assert.match(create.stdout, /Created workload support_triage/);
       assert.equal(requests.at(-1).method, "POST");
-      assert.equal(requests.at(-1).path, "/customer/v1/orgs/org_1/projects/proj_1/workloads");
+      assert.equal(requests.at(-1).path, "/admin/v1/orgs/org_1/projects/proj_1/workloads");
       assert.deepEqual(requests.at(-1).body, { name: "support_triage", capture_enabled: true });
 
       const show = await runWithEnvAsync(["--json", "workloads", "show", "support_triage"], env, repo);

@@ -5,7 +5,7 @@ developer signs in. The goal is to understand whether a developer or coding
 agent reaches useful Understudy inference.
 
 No telemetry is sent before credentials exist. Local-only capture, scan, doctor,
-skills, cookbook, and optimizer dry-run commands do not require auth and do not
+skills and optimizer dry-run commands do not require auth and do not
 send telemetry unless they call an authenticated command path.
 
 Disable telemetry with:
@@ -13,6 +13,10 @@ Disable telemetry with:
 ```sh
 UNDERSTUDY_TELEMETRY=0
 ```
+
+The CLI discloses this state directly: `understudy login` prints a one-line
+notice on success, and `understudy status` shows a `telemetry` line (and a
+`telemetry_enabled` field under `--json`).
 
 ## Destination
 
@@ -35,7 +39,7 @@ Allowed fields are categorical or operational:
 
 - event name and event version;
 - anonymous install id from `~/.understudy/telemetry.json`;
-- CLI version placeholder;
+- CLI version (from `package.json`);
 - platform and architecture;
 - org id, project slug, user id, and signup intent id when already known from
   credentials/config;

@@ -1,8 +1,0 @@
-{
-  "name": "understudy-cookbook-gateway-openai-typescript",
-  "private": true,
-  "type": "module",
-  "scripts": {
-    "test": "node --test tests/*.mjs"
-  }
-}

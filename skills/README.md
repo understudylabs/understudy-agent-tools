@@ -5,59 +5,94 @@ workloads. Use progressive disclosure: start with the entrypoint, then load one
 worker only when the developer's intent requires it. The CLI handles durable
 execution; skills tell the agent what to inspect, gate, monitor, and report.
 
+This file is the authoritative index. The root README and
+`docs/current-functionality.md` point here instead of keeping their own lists;
+when you add a finding, default to a `reference.md` inside the skill that owns
+the user intent (see the catalog growth rule in [`AGENTS.md`](../AGENTS.md)) —
+a new top-level skill is the exception, and must be registered here in the
+group it belongs to.
+
 ## Entry Point
 
 - [`understudy`](understudy/SKILL.md) — orchestrator. Routes the journey to the
-  right capability worker.
+  right capability worker, and owns the local specialization sequencing
+  (smallest reasonable rung → optional head-to-head → gap-driven intervention).
 
-## Capability Skills
+## Setup & First Run
 
+- [`install-plugin`](install-plugin/SKILL.md) installs, enables, updates, or
+  verifies the Understudy skills as a Claude Code plugin via the
+  non-interactive `claude plugin` CLI, then surfaces the one `/reload-plugins`
+  activation step.
 - [`onboard`](onboard/SKILL.md) is the engaging first-run experience: it
   backgrounds a small American open-model download while it profiles the machine,
   detects ML tooling, interviews the user, and writes a durable
   `~/.understudy/profile.json` so every later skill meets the user where they are.
   (Profile schema, interview bank, and tooling map in its
-  [`reference.md`](onboard/reference.md).)
-- [`capture-evidence`](capture-evidence/SKILL.md) attaches the local
-  harness/environment, confirms the metric and validator, freezes splits, and
-  reruns the incumbent baseline. (Discovery + capture/import folded into its
-  [`reference.md`](capture-evidence/reference.md).)
-- [`optimize-api-workflow`](optimize-api-workflow/SKILL.md) evaluates and
-  optimizes cross-application REST/API workflow agents with seeded state, fixed
-  API schemas, policy docs, request logs, final-state validators, and
-  side-effect safety before any RL handoff. (Artifact schemas, harness mapping,
-  A/B procedure, and GEPA bridge in its
-  [`reference.md`](optimize-api-workflow/reference.md).)
-- [`optimize-workload`](optimize-workload/SKILL.md) refuses stale
-  artifacts, preserves train/dev/holdout boundaries, writes dry-run proof
-  packets, and requires `claim.json` before public claims. (Evaluate, optimize,
-  and decide folded into its [`reference.md`](optimize-workload/reference.md).)
-- [`optimize-agentic-search`](optimize-agentic-search/SKILL.md) evaluates and
-  optimizes agentic / tool-use workloads (multi-turn tool-calling loops such as
-  agentic search): holds tools fixed, A/B-tests the policy model on quality,
-  latency, and cost through the gateway, and routes prompt tuning to
-  `optimize-workload` — before any RL handoff. (Verifier-env→artifact bridge and
-  determinism notes in its [`reference.md`](optimize-agentic-search/reference.md).)
-- [`use-understudy-gateway`](use-understudy-gateway/SKILL.md) handles
-  authenticated gateway inference, project/key readiness, public model listing,
-  workload route percentages, `understudy run`, and monitored durable CLI
-  execution.
-- [`choose-frontier-keys`](choose-frontier-keys/SKILL.md) handles the first-run
-  choice between BYO provider keys from the current shell or a local `.env`, the
-  Understudy ZDR gateway route, or skipping remote frontier calls. It asks
-  before reading `.env` values and never prints or stores secrets.
+  [`reference.md`](onboard/reference.md).) The BYO-keys vs ZDR-gateway choice it
+  needs lives in
+  [`use-understudy-gateway/references/frontier-keys.md`](use-understudy-gateway/references/frontier-keys.md).
+
+## Understand & Capture
+
+- [`understand-workload`](understand-workload/SKILL.md) decomposes and explains
+  a captured prompt or trace — purpose, data shape, tool catalog, token cost,
+  success criteria — before any model comparison or vibe-check questions are
+  written. Single-run tool-call forensics live in its
+  [`references/tool-trace-forensics.md`](understand-workload/references/tool-trace-forensics.md).
+- [`ingest-traces`](ingest-traces/SKILL.md) is the front door for developers
+  who arrive with data instead of a harness: it turns existing production
+  traces (an object-store bucket, provider log exports, or a gateway capture
+  export) into local, redacted, deterministically classified and frozen
+  evaluation slices that `capture-evidence` and the optimizers consume. Its
+  [`references/profile-captures.md`](ingest-traces/references/profile-captures.md)
+  profiles a whole capture directory into a cost + call-type taxonomy with a
+  ranked local-takeover candidate list.
+- [`capture-evidence`](capture-evidence/SKILL.md) builds an eval from the real
+  app before anything changes: attaches the local harness/environment, confirms
+  the metric and validator, freezes splits, and reruns the incumbent baseline.
+  (Discovery + capture/import in its
+  [`reference.md`](capture-evidence/reference.md); the "no traces yet? start
+  from a public benchmark" on-ramp — AutomationBench, Harvey LAB — in
+  [`references/public-benchmark-path.md`](capture-evidence/references/public-benchmark-path.md).)
+- [`design-simulated-environment`](design-simulated-environment/SKILL.md)
+  builds a seeded, synthetic, scorable environment (AutomationBench /
+  verifiers style) plus final-state validator so any candidate model can run a
+  captured agentic workload end-to-end and be judged on outcome — a recorded
+  replay cannot host a different model's trajectory.
+
+## Local Models
+
 - [`manage-local-models`](manage-local-models/SKILL.md) acquires, caches,
   organizes, and explains local open-weight models (Gemma 4, Nemotron 3): where
   weights come from and live, formats/quantization, gated weights and HF tokens,
   disk budgeting, start-small-and-cache, and the local→cloud graduation path.
   (Download locations, registry links, and the quant primer in its
   [`reference.md`](manage-local-models/reference.md).)
-- [`run-local-model-lab`](run-local-model-lab/SKILL.md) evaluates local or
-  workstation-hosted models against the same frozen workload/eval, keeps model
-  downloads behind approval, and compares local, hybrid, and remote routes.
-- [`compare-model-sweep`](compare-model-sweep/SKILL.md) runs a frozen eval across
-  a candidate matrix and writes Pareto-style quality, latency, cost, reliability,
-  and caveat artifacts for route decisions.
+- [`run-local-model-lab`](run-local-model-lab/SKILL.md) stands up and runs a
+  local model on Apple Silicon against the real workload: the MLX serving rig,
+  scored frozen-eval runs, and the route decision (ship local, local-as-router,
+  hybrid, or remote). The blind frontier-vs-local arena and hill-climb protocol
+  live in
+  [`references/blind-arena.md`](run-local-model-lab/references/blind-arena.md).
+- [`recursive-language-model`](recursive-language-model/SKILL.md) makes a
+  small/local model take over an agentic task a frontier model one-shots by
+  decomposing it into bounded steps with flat context behind the incumbent's
+  existing call contract, and measures what is possible. Training the RLM
+  policy (verifiers shape, surprise concentration, reading the GRPO signal) is
+  in
+  [`references/pedagogical-training.md`](recursive-language-model/references/pedagogical-training.md).
+
+## Compare & Diagnose
+
+The diagnostic ladder runs scalar → trajectory → token → tool-call: sweep
+first (is there a gap?), trajectories next (which tasks, what kind of gap?),
+logprobs (which tokens?), and tool-trace forensics (why did this call fail?).
+
+- [`compare-model-sweep`](compare-model-sweep/SKILL.md) compares candidate
+  models — any mix of local, gateway, or frontier — on one frozen eval and
+  writes Pareto-style quality, latency, cost, reliability, and caveat artifacts
+  for route decisions.
 - [`compare-trajectories`](compare-trajectories/SKILL.md) is the behavioral
   complement to `compare-model-sweep`: it aligns two trajectory-run exports by
   task id, builds the outcome-delta matrix, measures per-step divergence
@@ -65,21 +100,40 @@ execution; skills tell the agent what to inspect, gate, monitor, and report.
   classifies each reachable-gap task as persistence/recovery (RL-learnable),
   knowledge (not RL-addable), or format/parsing (decoding/prompt) — then counts
   the clean warm-start trajectories the comparison yields, with small-N and
-  holdout caveats.
-- [`pedagogical-learning`](pedagogical-learning/SKILL.md) turns privileged
-  answers, execution feedback, verifier traces, or canonical solutions into
-  local correct-and-learnable trajectory evidence before SFT, GRPO, or hosted RL.
-- [`rlm-pedagogical-training`](rlm-pedagogical-training/SKILL.md) turns a
-  stateful workload into an RLM/verifiers training surface, measures on-policy
-  state coverage and surprise concentration, and decides between local
-  pedagogical SFT, on-policy repair, true pedagogical RL, or verifier handoff.
-- [`local-distillation-lab`](local-distillation-lab/SKILL.md) runs local Apple
-  Silicon weight-update arms for captured workloads: rejection SFT, same-family
-  off-policy distillation, and surprisal-gated pedagogical variants.
-- [`specialize-local-model`](specialize-local-model/SKILL.md) sequences the local
-  model product loop: pick the smallest task-reasonable local rung, open it in
-  Pi against a frontier model, diagnose the gap, then choose model climb, GEPA,
-  simulated environment, RLM decomposition, hybrid route, or remote-only.
+  holdout caveats. Its token-logprob lens is
+  [`references/logprob-lens.md`](compare-trajectories/references/logprob-lens.md).
+
+## Plan Hosted Runs
+
+- [`plan-hosted-run`](plan-hosted-run/SKILL.md) answers "I want to run a hosted
+  job — where, how long, how much?": a labeled wall-clock + dollar estimate
+  (local Apple Silicon vs cloud GPU vs serverless) and a provider routing
+  decision, never spending. Cited cost tables and the 6ND/MFU methodology in
+  [`references/cost-estimation.md`](plan-hosted-run/references/cost-estimation.md);
+  the per-provider comparison with pricing provenance in
+  [`references/providers.md`](plan-hosted-run/references/providers.md).
+
+## Optimize
+
+- [`optimize-workload`](optimize-workload/SKILL.md) improves the prompt or
+  route against a measured eval: refuses stale artifacts, preserves
+  train/dev/holdout boundaries, writes dry-run proof packets, and requires
+  `claim.json` before public claims. (Evaluate, optimize, and decide folded
+  into its [`reference.md`](optimize-workload/reference.md).)
+- [`optimize-agentic-workload`](optimize-agentic-workload/SKILL.md) makes a
+  multi-turn tool-calling agent cheaper, faster, or better with tools held
+  fixed: model A/B through the gateway, prompt tuning via `optimize-workload`,
+  and a three-gate check before any RL escalation. It covers both read-only
+  search loops
+  ([`references/read-only-search.md`](optimize-agentic-workload/references/read-only-search.md))
+  and state-mutating API workflows
+  ([`references/state-mutating-workflows.md`](optimize-agentic-workload/references/state-mutating-workflows.md)).
+
+## Train Locally
+
+The training rungs are ordered: no weight updates until pedagogical evidence
+shows headroom, no hosted RL until the local arms plateau.
+
 - [`curate-trajectories`](curate-trajectories/SKILL.md) treats a trajectory
   dataset as a first-class, queryable, provenance-tracked artifact: it indexes run
   JSONs (or a Lilac export) with per-row provenance, tags each row with its frozen
@@ -87,24 +141,49 @@ execution; skills tell the agent what to inspect, gate, monitor, and report.
   hash-stamped selections. Its core value is split hygiene — it hard-blocks any
   train/RL/distill selection that leaks frozen dev/holdout rows and emits a
   contamination report.
-- [`author-rl-env`](author-rl-env/SKILL.md) inverts a batch-scored simulated
-  environment into a stateful step-API MDP (`reset`/`step`) an external RL trainer
-  can drive: factors the agent loop out, isolates per-rollout state, makes
-  `reset(seed)` deterministic, recovers the obs/action contract from recorded
-  trajectories, adds a guarded per-step reward hook, and round-trips recorded
-  trajectories as a replay-conformance test. Re-exposes the same sim backend; runs
-  no RL.
-- [`package-verifier-env`](package-verifier-env/SKILL.md) is the executable bridge
-  out of `prepare-verifier-handoff`: it packages an `author-rl-env` step-API env
-  into a Prime Intellect Verifiers-compatible module locally, runs a trainer-free
-  conformance check, pins the reward to the local scorer, and builds the frozen
-  seed-7 return-eval that makes a partner-trained policy comparable to the pre-RL
-  baseline. Packages locally only — it does not train, upload, or run any hosted
-  partner job.
-- [`prepare-verifier-handoff`](prepare-verifier-handoff/SKILL.md) is a
-  future-release stub for stateful RL verifier/environment handoffs. It does not
-  execute training; it prepares evidence and actively refers suitable workloads
-  to Prime Intellect Verifiers.
+- [`distill-classifier`](distill-classifier/SKILL.md) replaces an expensive
+  frontier model on a classification workload (binary, multi-class,
+  multi-label, structured extraction) with a fine-tuned open-weight student:
+  multi-teacher majority-vote labeling, failure-directed SFT data, the
+  confound ablations that keep the lift honest, and a four-way
+  promote/shadow/collect/stop verdict. (Quantified findings and defaults in
+  its [`reference.md`](distill-classifier/reference.md).)
+- [`local-distillation-lab`](local-distillation-lab/SKILL.md) runs local Apple
+  Silicon weight-update arms for captured workloads: rejection SFT, same-family
+  off-policy distillation, and surprisal-gated pedagogical variants. The
+  pedagogical arm — finding correct-and-learnable trajectories from privileged
+  answers/feedback, and the rung menu before any weight update — is in
+  [`references/pedagogical-arm.md`](local-distillation-lab/references/pedagogical-arm.md).
+
+## RL Handoff
+
+- [`prepare-verifier-handoff`](prepare-verifier-handoff/SKILL.md) is the single
+  "my workload needs hosted/stateful RL — get it partner-ready" skill, with a
+  staged flow: decide (three gates, with
+  [`references/rewardability.md`](prepare-verifier-handoff/references/rewardability.md)
+  and
+  [`references/rl-readiness-matrix.md`](prepare-verifier-handoff/references/rl-readiness-matrix.md)),
+  author the reset/step environment
+  ([`references/stage-1-author-env.md`](prepare-verifier-handoff/references/stage-1-author-env.md)),
+  package it for Prime Intellect Verifiers with a trainer-free conformance
+  check and frozen-holdout return-eval
+  ([`references/stage-2-package-env.md`](prepare-verifier-handoff/references/stage-2-package-env.md)),
+  then hand off. It never trains, uploads, or runs partner jobs.
+
+## Gateway & Routing
+
+- [`use-understudy-gateway`](use-understudy-gateway/SKILL.md) handles
+  authenticated gateway inference, project/key readiness, public model listing,
+  workload route percentages, `understudy run`, and monitored durable CLI
+  execution. The local-provider-keys vs ZDR-gateway decision (with all
+  key-safety rules) is in
+  [`references/frontier-keys.md`](use-understudy-gateway/references/frontier-keys.md).
+- [`ramp-and-verify`](ramp-and-verify/SKILL.md) owns the last mile after a
+  route decision: pre-ramp repeat-replay stability gates, a staged traffic
+  ladder (5% → 25% → 100%) on the gateway dial with explicit approval per
+  tier, routed-vs-passthrough verification from captures at each step,
+  rollback triggers, and the measured before/after that feeds the claim
+  packet.
 
 ## Public Safety
 

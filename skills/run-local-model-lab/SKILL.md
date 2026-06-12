@@ -1,6 +1,6 @@
 ---
 name: run-local-model-lab
-description: Use when a developer wants to run a local model on Apple Silicon via MLX (e.g. a Gemma or Nemotron variant served by mlx_lm.server) against an existing Understudy workload/eval before spending on hosted providers or routing remote traffic — to inventory hardware, pick a model tier, measure quality/latency/cost locally, compare against remote, and produce a route decision (ship local, local-as-router, hybrid, or remote). For a live side-by-side of two local models, see mlx-arena.
+description: Use when a developer wants to stand up and run a local model on Apple Silicon against their real workload — "run this model on my Mac", "is a local model good enough before I pay for hosted". Covers the MLX serving rig, a blind local-vs-frontier arena, and the route decision. For comparing many candidate models on one eval, use compare-model-sweep.
 metadata:
   understudy:
     mode: interactive
@@ -19,12 +19,19 @@ models (e.g. local Gemma 4 → remote Gemma 4 31B via the gateway) graduate clea
 **Apple Silicon + MLX only.** On Macs, MLX is the native local path — quantized
 open weights against unified memory at the best tokens/sec, no GPU drivers, no
 build step. This skill standardizes on **`mlx_lm.server`** (an OpenAI-compatible
-endpoint, one model per port); it does not use Ollama or llama.cpp. To compare
-two local models live side by side, use
-[`../mlx-arena/SKILL.md`](../mlx-arena/SKILL.md).
+endpoint, one model per port); it does not use Ollama or llama.cpp.
+
+**Want to *meet* the model, not just score it?** The blind-arena + hill-climb
+protocol in [`references/blind-arena.md`](references/blind-arena.md) opens a
+local model in Pi, runs a blind frontier-vs-local head-to-head (or two local
+models side by side), and routes the hill climb from the observed gap — use it
+for the first-run experience and taste calibration before or alongside the
+scored lab runs here.
 
 This skill measures and recommends; it does not download weights or change
-production routing on its own.
+production routing on its own. To compare several candidate models (any mix of
+local, gateway, frontier) on one frozen eval, use
+[`../compare-model-sweep/SKILL.md`](../compare-model-sweep/SKILL.md).
 
 ## When to use
 

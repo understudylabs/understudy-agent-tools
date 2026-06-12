@@ -1,6 +1,6 @@
 ---
 name: understand-workload
-description: Use to decompose and explain a captured prompt/trace before comparing models or writing vibe-check questions — "explain this prompt/trace", "decompose this workload", "what is this prompt trying to do", "help me understand this dataset before testing models", "walk me through this prompt", or any handoff from mlx-arena / capture-evidence where the workload isn't understood yet.
+description: Use when a developer wants a captured prompt, trace, or dataset explained before changing anything — "explain this prompt", "what is this trace actually doing", "decompose this workload", "help me understand this dataset before testing models". Builds a shared mental model (purpose, inputs, tools, success criteria) with the user through Q&A.
 metadata:
   understudy:
     mode: interactive
@@ -121,9 +121,10 @@ extracts structure from traces and code; the user confirms the task meaning.
    and run the local model against the real task via
    [`../run-local-model-lab/SKILL.md`](../run-local-model-lab/SKILL.md) or the
    appropriate optimizer skill. Optional side quest: derive grounded vibe-check
-   questions for [`../mlx-arena/SKILL.md`](../mlx-arena/SKILL.md), each mapped to
-   a real step/criterion, when the user needs a visible local-vs-frontier feel
-   check. For a whole-case test a small model cannot one-shot, build a simulated
+   questions for the blind-arena protocol in
+   [`../run-local-model-lab/references/blind-arena.md`](../run-local-model-lab/references/blind-arena.md),
+   each mapped to a real step/criterion, when the user needs a visible
+   local-vs-frontier feel check. For a whole-case test a small model cannot one-shot, build a simulated
    environment only when no real resettable workload exists.
 
 ## Output Standard
@@ -135,11 +136,21 @@ user; artifact paths for the local workload brief; and the next evidence action.
 If you include arena questions, mark them optional and tie each to a real step
 or criterion. Keep the decomposition doc local; only synthetic questions leave.
 
+## Single-run tool-failure forensics
+
+When one environment-backed or tool-calling run failed and the question is
+"why did the model make that choice from what it actually saw?", use
+[`references/tool-trace-forensics.md`](references/tool-trace-forensics.md). It
+separates environment evidence from model-visible evidence, reconstructs
+reads/writes before the first mutation, classifies the failure (retrieval,
+authority precedence, format, ID resolution, parser, harness), and recommends
+the cheapest fix before training.
+
 ## References
 
-- [`../profile-captures/SKILL.md`](../profile-captures/SKILL.md) — the fleet sibling: profile a whole capture dir into a cost + call-type taxonomy first, then aim this skill at the cluster worth decomposing.
-- [`../mlx-arena/SKILL.md`](../mlx-arena/SKILL.md) — frontier-vs-local head-to-head the questions feed.
+- [`../ingest-traces/references/profile-captures.md`](../ingest-traces/references/profile-captures.md) — the fleet sibling: profile a whole capture dir into a cost + call-type taxonomy first, then aim this skill at the cluster worth decomposing.
+- [`../run-local-model-lab/references/blind-arena.md`](../run-local-model-lab/references/blind-arena.md) — frontier-vs-local head-to-head the questions feed.
 - [`../design-simulated-environment/SKILL.md`](../design-simulated-environment/SKILL.md) — turn the understood workload into a scorable env.
 - [`../recursive-language-model/SKILL.md`](../recursive-language-model/SKILL.md) — decompose so a small model can take the whole case.
 - [`../capture-evidence/SKILL.md`](../capture-evidence/SKILL.md) — freeze the metric/splits.
-- [`../optimize-api-workflow/SKILL.md`](../optimize-api-workflow/SKILL.md) — the API-workflow metric axes.
+- [`../optimize-agentic-workload/SKILL.md`](../optimize-agentic-workload/SKILL.md) — the agentic-workload metric axes.

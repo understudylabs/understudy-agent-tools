@@ -1,6 +1,6 @@
 ---
 name: optimize-workload
-description: Use after fresh workload artifacts exist to validate candidates, run train/dev-only GEPA optimization, preserve holdout boundaries, and make conservative claims.
+description: Use when a developer has a measured eval and wants the prompt or route improved without retraining — "optimize my prompt against my eval", "close the quality gap with the cheaper model", "squeeze cost without losing quality". Keeps holdout sealed, runs GEPA (automatic prompt evolution) on train/dev only, and requires a claim packet before any savings statement.
 metadata:
   understudy:
     mode: interactive
@@ -80,7 +80,7 @@ validator kinds in [`reference.md`](reference.md):
   scope; that is the handoff in
   [`../prepare-verifier-handoff/SKILL.md`](../prepare-verifier-handoff/SKILL.md).
   For agentic eval/optimization, set up the rollout harness and rubric in
-  [`../optimize-agentic-search/SKILL.md`](../optimize-agentic-search/SKILL.md)
+  [`../optimize-agentic-workload/SKILL.md`](../optimize-agentic-workload/SKILL.md)
   first, then return here for the GEPA prompt pass.
 - **Stopping rule** — if the scorer saturates to 1.0 fast, the surface is too
   easy; strengthen the metric, don't claim. If GEPA stalls with headroom left,
@@ -93,7 +93,11 @@ validator kinds in [`reference.md`](reference.md):
    basis, cost basis if available, and failure taxonomy.
 3. Select the cheapest intervention that matches the observed failure mode:
    prompt repair, parser/schema repair, context trimming, route change,
-   candidate model comparison, or GEPA. Pick the cheapest *target* that matches
+   candidate model comparison, or GEPA. When the complaint is cost (not
+   quality) and inputs dominate the bill, check prompt-cache structure first —
+   it's often the cheapest lever of all:
+   [`references/prompt-cache-optimization.md`](references/prompt-cache-optimization.md).
+   Pick the cheapest *target* that matches
    the failure too — see [`reference.md`](reference.md) → Optimization-Target
    Menu for the full list. For an agentic workload, treat latency
    and cost per rollout as first-class objectives alongside the rubric score —

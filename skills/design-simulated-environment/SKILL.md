@@ -89,6 +89,78 @@ criteria (recall / precision / policy — not just cost/speed).
    ([`../recursive-language-model/SKILL.md`](../recursive-language-model/SKILL.md))
    and the route decision ([`../run-local-model-lab/SKILL.md`](../run-local-model-lab/SKILL.md)).
 
+## Validator quality gates
+
+Two checks beyond the scripted oracle, before any model score is trusted:
+
+- **Strict-vs-dense divergence.** Score every run with both the strict
+  pass/fail and the partial-credit axes. When strict reads 0 while partial
+  credit is high across many rows, the strict reward is underestimating real
+  behavior — and as a training signal it would yield constant all-fail groups
+  with no gradient. Measured on an internal synthetic workload, 2026-05-18
+  (strict pass-rate materially under-read behavior on a multi-step workload).
+- **Reward-hacking sentinels.** Plant runs the validator must reject: an
+  empty/no-op trajectory, a plausible-but-wrong-values write, and a
+  metric-gaming run (e.g. writing every record to inflate recall). Each must
+  score near 0 — the precision and forbidden-write axes are what keep recall
+  un-gameable. A validator that hasn't rejected a sentinel has not been
+  tested.
+
+## Running it as a real `verifiers` env
+
+One env, many uses: the *same* `verifiers` Environment serves eval, RL training,
+synthetic-data generation, and agent-harness experimentation ("playgrounds for RL
+training, evaluation benchmarking, synthetic data generation, and agent-harness
+experimentation" — Prime Intellect, https://www.primeintellect.ai/blog/environments).
+That's why building it well — and validating it cheaply via eval *before* any GPU —
+pays off across all of them.
+
+**Four LEGO blocks (dataset · parser · rubric · rollout).** A `verifiers` env snaps
+together from four independently-swappable pieces (Will Brown / Prime Intellect):
+
+- **Dataset** — the tasks: `prompt` + gold `answer` + per-example `info`.
+- **Rollout** — the harness / the "world": tools, turn budget, how state flows.
+- **Parser** — turns raw model output into actions/answer (tool-call extraction,
+  final-answer pull).
+- **Rubric** — the reward: scoring function(s) + weights. The metric, not the trajectory.
+
+The payoff is the seams — swap one brick, keep the rest: swap the **dataset** → new
+task; swap the model in the **rollout** → model comparison on the *same* harness;
+add a **rubric** function → reward something new; change the **consumer** → the same
+env runs as eval, RL training, or synthetic-data gen (one env, many uses). This is
+why the env is the durable asset and the trainer/model are swap-in bricks — how a
+run can change model (e.g. Gemma-4 → Nemotron-3) or trainer (eval → prime-rl)
+*without rebuilding the env*.
+
+Caveat: the bricks look independent, but the **parser must match the model** (and
+the trainer's renderer must too) — that's the seam that breaks on a new model arch.
+When you swap the model brick, re-check the parser/renderer.
+
+When the env is built as an actual `verifiers` Environment (the form
+[`prepare-verifier-handoff`'s authoring and packaging stages](../prepare-verifier-handoff/references/stage-1-author-env.md) consume),
+these API facts save real trial — verified against the `verifiers` library v0.1.14
+(https://github.com/PrimeIntellect-ai/verifiers ; APIs move, re-check the pin):
+
+- `vf.ToolEnv(tools=[fns], max_turns=, **kwargs)` — `dataset`, `rubric`,
+  `system_prompt` pass through `**kwargs` to `MultiTurnEnv`; tools are plain
+  functions (type hints + docstring → auto tool schema).
+- **Tools are stateless** — a tool gets only its JSON args, not the dataset row.
+  For per-example scoping (each task targets a different account/inbox), subclass
+  ToolEnv and override `env_response(messages, state)` to set a **contextvar** from
+  `state["info"]` before `super().env_response(...)`; tools read the contextvar
+  (concurrency-safe across parallel rollouts).
+- Dataset rows: `question` + `answer` + `info` (dict); verifiers derives `prompt`
+  and `example_id`. Final answer = last assistant message with text (no submit
+  tool; the episode ends when the model stops calling tools).
+- Rubric: `vf.Rubric(funcs=[...], weights=[...])`; reward funcs take kwargs
+  `(prompt, completion, answer, state, ...)` — pull what you need by name.
+- Eval: `env.evaluate` is a **coroutine** — use `evaluate_sync` for blocking calls,
+  and pass a verifiers **`ClientConfig`** (a raw `openai.OpenAI` raises
+  "Unsupported client type"): `ClientConfig(client_type="openai_chat_completions",
+  api_key_var="<ENV_VAR_NAME>", api_base_url="<…/v1>")` — `api_key_var` is the
+  env-var *name* (default `PRIME_API_KEY`). Pointed at the Understudy gateway this
+  runs a full rollout+reward eval on CPU for pennies — strong pre-GPU validation.
+
 ## Output Standard
 
 End with: the seeded fixtures and gold set; the tool classes simulated; the
@@ -99,6 +171,6 @@ recall/precision/policy + cost/latency — with the local-model gap to close.
 
 - [`../understand-workload/SKILL.md`](../understand-workload/SKILL.md) — produces the shape this simulates.
 - [`../recursive-language-model/SKILL.md`](../recursive-language-model/SKILL.md) — the harness that lifts a small model's score in this env.
-- [`../optimize-api-workflow/SKILL.md`](../optimize-api-workflow/SKILL.md) — the API-workflow metric axes and final-state validation.
-- [`../author-rl-env/SKILL.md`](../author-rl-env/SKILL.md) — inverts this batch-scored env into a `reset`/`step` MDP when the workload needs RL (the direct next rung before a hosted handoff).
+- [`../optimize-agentic-workload/SKILL.md`](../optimize-agentic-workload/SKILL.md) — the agentic-workload metric axes and final-state validation.
+- [`../prepare-verifier-handoff/references/stage-1-author-env.md`](../prepare-verifier-handoff/references/stage-1-author-env.md) — inverts this batch-scored env into a `reset`/`step` MDP when the workload needs RL (the direct next rung before a hosted handoff).
 - [`../prepare-verifier-handoff/SKILL.md`](../prepare-verifier-handoff/SKILL.md) — when the env should graduate to a hosted RL/verifiers partner.
