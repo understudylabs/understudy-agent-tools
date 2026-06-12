@@ -1236,3 +1236,136 @@ describe("understudy CLI", () => {
       assert.equal(packet.constraints.data_class, "source-metadata-only");
     }));
 });
+
+describe("two-phase email login", () => {
+  function startFakeAuthGateway() {
+    const state = { registers: 0, claims: [] };
+    const server = createServer((req, res) => {
+      let body = "";
+      req.on("data", (chunk) => {
+        body += chunk;
+      });
+      req.on("end", () => {
+        const base = `http://127.0.0.1:${server.address().port}`;
+        if (req.method === "GET" && req.url === "/.well-known/oauth-authorization-server") {
+          res.writeHead(200, { "content-type": "application/json" });
+          res.end(JSON.stringify({
+            agent_auth: {
+              register_uri: `${base}/agent/auth/register`,
+              claim_uri: `${base}/agent/auth/claim`,
+            },
+          }));
+          return;
+        }
+        if (req.method === "POST" && req.url === "/agent/auth/register") {
+          state.registers += 1;
+          res.writeHead(200, { "content-type": "application/json" });
+          res.end(JSON.stringify({
+            registration_id: "reg_1",
+            claim_token: "ct_test_token",
+            claim_url: "/agent/auth/claim/complete",
+          }));
+          return;
+        }
+        if (req.method === "POST" && req.url === "/agent/auth/claim/complete") {
+          const payload = JSON.parse(body);
+          state.claims.push(payload);
+          if (payload.claim_token !== "ct_test_token" || payload.code !== "424242") {
+            res.writeHead(400, { "content-type": "application/json" });
+            res.end(JSON.stringify({ message: "Invalid or expired code." }));
+            return;
+          }
+          res.writeHead(200, { "content-type": "application/json" });
+          res.end(JSON.stringify({
+            credential_type: "api_key",
+            credential: "sk_test_two_phase",
+            org_id: "org_TWOPHASE",
+            email: "agent@example.com",
+            default_project: { slug: "default" },
+          }));
+          return;
+        }
+        res.writeHead(404, { "content-type": "application/json" });
+        res.end(JSON.stringify({ message: `unexpected ${req.method} ${req.url}` }));
+      });
+    });
+    return new Promise((resolveServer) => {
+      server.listen(0, "127.0.0.1", () => resolveServer({ server, state }));
+    });
+  }
+
+  it("sends a code with --send-code, retries a bad code, completes with --code", async () => {
+    const home = mkdtempSync(join(tmpdir(), "understudy-two-phase-"));
+    const { server, state } = await startFakeAuthGateway();
+    const gatewayUrl = `http://127.0.0.1:${server.address().port}`;
+    try {
+      const env = { HOME: home, USERPROFILE: home };
+
+      const sent = await runWithEnvAsync(
+        ["login", "--email", "agent@example.com", "--send-code", "--gateway-url", gatewayUrl, "--json"],
+        env,
+      );
+      assert.equal(sent.status, 0, sent.stderr);
+      const sentPayload = JSON.parse(sent.stdout);
+      assert.equal(sentPayload.pending, true);
+      assert.equal(sentPayload.code_sent_to, "agent@example.com");
+      assert.match(sentPayload.complete_with, /understudy login --code/);
+      const pendingPath = join(home, ".understudy", "login-pending.json");
+      const pending = JSON.parse(readFileSync(pendingPath, "utf8"));
+      assert.equal(pending.claim_token, "ct_test_token");
+      assert.equal(state.registers, 1);
+
+      const wrong = await runWithEnvAsync(["login", "--code", "111111", "--json"], env);
+      assert.equal(wrong.status, 1);
+      assert.match(wrong.stderr, /Invalid or expired code/);
+      assert.match(wrong.stderr, /login --email agent@example.com/);
+      // a mistyped code keeps the pending claim so the user can retry
+      assert.equal(JSON.parse(readFileSync(pendingPath, "utf8")).claim_token, "ct_test_token");
+
+      const done = await runWithEnvAsync(["login", "--code", "424242", "--json"], env);
+      assert.equal(done.status, 0, done.stderr);
+      const donePayload = JSON.parse(done.stdout);
+      assert.equal(donePayload.ok, true);
+      assert.equal(donePayload.org_id, "org_TWOPHASE");
+      const creds = JSON.parse(readFileSync(join(home, ".understudy", "credentials.json"), "utf8"));
+      assert.equal(creds.api_key, "sk_test_two_phase");
+      assert.equal(creds.email, "agent@example.com");
+      assert.throws(() => readFileSync(pendingPath));
+    } finally {
+      server.close();
+      rmSync(home, { recursive: true, force: true });
+    }
+  });
+
+  it("degrades --email to send-and-exit when stdin is not a TTY", async () => {
+    const home = mkdtempSync(join(tmpdir(), "understudy-two-phase-notty-"));
+    const { server } = await startFakeAuthGateway();
+    const gatewayUrl = `http://127.0.0.1:${server.address().port}`;
+    try {
+      const result = await runWithEnvAsync(
+        ["login", "--email", "agent@example.com", "--gateway-url", gatewayUrl],
+        { HOME: home, USERPROFILE: home },
+      );
+      assert.equal(result.status, 0, result.stderr);
+      assert.match(result.stdout, /One-time code sent to/);
+      assert.match(result.stdout, /understudy login --code/);
+    } finally {
+      server.close();
+      rmSync(home, { recursive: true, force: true });
+    }
+  });
+
+  it("fails clearly when completing with no pending sign-in", () => {
+    const home = mkdtempSync(join(tmpdir(), "understudy-two-phase-none-"));
+    try {
+      const result = runWithEnv(["login", "--code", "424242"], {
+        HOME: home,
+        USERPROFILE: home,
+      });
+      assert.equal(result.status, 1);
+      assert.match(result.stderr, /No pending sign-in found/);
+    } finally {
+      rmSync(home, { recursive: true, force: true });
+    }
+  });
+});

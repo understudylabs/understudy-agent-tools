@@ -1,3 +1,13 @@
+import {
+  chmodSync,
+  existsSync,
+  mkdirSync,
+  readFileSync,
+  unlinkSync,
+  writeFileSync,
+} from "node:fs";
+import { dirname } from "node:path";
+
 import { input } from "@inquirer/prompts";
 import { Command } from "commander";
 import kleur from "kleur";
@@ -7,6 +17,7 @@ import { writeProjectConfig } from "../config/index.js";
 import { readCredentials, writeCredentials } from "../config/credentials.js";
 import {
   globalCredentialsPath,
+  globalLoginPendingPath,
   PROJECT_CONFIG_DIR,
 } from "../config/paths.js";
 import { DEFAULT_GATEWAY_URL } from "../config/defaults.js";
@@ -20,6 +31,8 @@ import {
 
 interface LoginOpts {
   email?: string;
+  code?: string;
+  sendCode?: boolean;
   apiKey?: string;
   org?: string;
   project?: string;
@@ -62,11 +75,40 @@ const AgentClaimResponseSchema = z.object({
 
 type AgentClaimResponse = z.infer<typeof AgentClaimResponseSchema>;
 
+/**
+ * In-flight email-code sign-in, persisted at
+ * `~/.understudy/login-pending.json` (mode 600 — the claim token is
+ * sensitive). Written when a code is sent, consumed by
+ * `understudy login --code <code>`, removed on success. This is what
+ * lets a coding agent drive sign-in as two plain shell commands
+ * instead of holding an interactive prompt open.
+ */
+const PendingLoginSchema = z.object({
+  email: z.string().email(),
+  gateway_url: z.string().url(),
+  claim_token: z.string().min(1),
+  complete_url: z.string().url(),
+  signup_intent_id: z.string().optional(),
+  sent_at: z.string(),
+});
+
+type PendingLogin = z.infer<typeof PendingLoginSchema>;
+
 export function registerLoginCommand(program: Command): void {
   program
     .command("login")
-    .description("Sign in or register with Understudy.")
+    .description(
+      "Sign in or register with Understudy. `--email` sends a one-time code; in a non-interactive shell, finish with `understudy login --code <code>`.",
+    )
     .option("--email <email>", "Use the auth.md email code registration flow.")
+    .option(
+      "--send-code",
+      "Send the one-time code and exit without prompting; finish with `understudy login --code <code>`.",
+    )
+    .option(
+      "--code <code>",
+      "Complete a pending email sign-in with the one-time code from the inbox.",
+    )
     .option(
       "--api-key <key>",
       "Non-interactive escape hatch: save this sk_* directly. Requires --org and --project.",
@@ -96,16 +138,33 @@ async function runLogin(opts: LoginOpts, json: boolean): Promise<void> {
   const gatewayUrl =
     opts.gatewayUrl ?? process.env.UNDERSTUDY_GATEWAY_URL ?? DEFAULT_GATEWAY_URL;
 
+  if (opts.code) {
+    await completePendingLogin(opts.code, json);
+    return;
+  }
+
+  if (opts.sendCode && !opts.email) {
+    throw new Error("--send-code requires --email <email>.");
+  }
+
   if (opts.email) {
     const signupIntentId = opts.signupIntentId ?? signupIntentFromEnv();
+    // Without a TTY (an agent's shell, a script) the inline code prompt
+    // cannot work — degrade to send-and-exit so the caller can finish
+    // with `understudy login --code <code>`.
+    const sendOnly = Boolean(opts.sendCode) || !process.stdin.isTTY;
     await trackLoginStarted({ mode: "auth.md", gatewayUrl, signupIntentId });
     try {
       const result = await runAuthMdLogin(
         opts.email,
         gatewayUrl,
         json,
+        sendOnly,
         signupIntentId,
       );
+      if (!result) {
+        return; // code sent; completion happens via `login --code`
+      }
       saveApiKeyResult(result, gatewayUrl, signupIntentId);
       emitApiKeySuccess(result, json, "auth.md");
       await trackLoginCompleted({
@@ -155,7 +214,7 @@ async function runLogin(opts: LoginOpts, json: boolean): Promise<void> {
   }
 
   throw new Error(
-    "Run `understudy login --email <email>` to sign in with an email code.",
+    "Run `understudy login --email <email>` to send a one-time code, then `understudy login --code <code>` to finish.",
   );
 }
 
@@ -187,8 +246,9 @@ async function runAuthMdLogin(
   email: string,
   gatewayUrl: string,
   json: boolean,
+  sendOnly: boolean,
   signupIntentId?: string,
-): Promise<AgentClaimResponse> {
+): Promise<AgentClaimResponse | null> {
   const metadata = await fetchAuthMdMetadata(gatewayUrl);
   const register = await postJson(metadata.agent_auth.register_uri, {
     type: "identity_assertion",
@@ -198,6 +258,28 @@ async function runAuthMdLogin(
     ...(signupIntentId ? { signup_intent_id: signupIntentId } : {}),
   });
   const reg = AgentRegisterResponseSchema.parse(register);
+  const completeUrl = resolveClaimCompleteUrl(
+    reg.claim_url,
+    metadata.agent_auth.claim_uri,
+    metadata.agent_auth.register_uri,
+  );
+
+  // Persist the claim so the sign-in survives this process: an agent
+  // (or an interrupted prompt) finishes with `understudy login --code`.
+  const pending: PendingLogin = {
+    email,
+    gateway_url: gatewayUrl,
+    claim_token: reg.claim_token,
+    complete_url: completeUrl,
+    ...(signupIntentId ? { signup_intent_id: signupIntentId } : {}),
+    sent_at: new Date().toISOString(),
+  };
+  writePendingLogin(pending);
+
+  if (sendOnly) {
+    emitCodeSent(pending, json);
+    return null;
+  }
 
   if (!json) {
     process.stdout.write(
@@ -206,16 +288,104 @@ async function runAuthMdLogin(
   }
   const code = await input({ message: "One-time code:" });
 
-  const completeUrl = resolveClaimCompleteUrl(
-    reg.claim_url,
-    metadata.agent_auth.claim_uri,
-    metadata.agent_auth.register_uri,
-  );
   const claim = await postJson(completeUrl, {
     claim_token: reg.claim_token,
     code,
   });
-  return AgentClaimResponseSchema.parse(claim);
+  const result = AgentClaimResponseSchema.parse(claim);
+  clearPendingLogin();
+  return result;
+}
+
+/**
+ * Phase two of the email-code flow: `understudy login --code <code>`.
+ * Reads the pending claim written by phase one, completes it, saves
+ * credentials, and clears the pending file. The pending file is kept
+ * on failure so a mistyped code can simply be retried.
+ */
+async function completePendingLogin(code: string, json: boolean): Promise<void> {
+  const pending = readPendingLogin();
+  if (!pending) {
+    throw new Error(
+      "No pending sign-in found. Run `understudy login --email <email>` first to send a one-time code.",
+    );
+  }
+  try {
+    const claim = await postJson(pending.complete_url, {
+      claim_token: pending.claim_token,
+      code: code.trim(),
+    });
+    const result = AgentClaimResponseSchema.parse(claim);
+    saveApiKeyResult(result, pending.gateway_url, pending.signup_intent_id);
+    clearPendingLogin();
+    emitApiKeySuccess(result, json, "auth.md");
+    await trackLoginCompleted({
+      apiKey: result.credential,
+      gatewayUrl: result.gateway_url ?? pending.gateway_url,
+      mode: "auth.md",
+      orgId: result.org_id ?? result.organization_id ?? null,
+      userId: result.user_id ?? null,
+      signupIntentId: pending.signup_intent_id ?? null,
+    });
+  } catch (err) {
+    await trackLoginFailed({
+      mode: "auth.md",
+      gatewayUrl: pending.gateway_url,
+      signupIntentId: pending.signup_intent_id,
+      errorKind: loginErrorKind(err),
+    });
+    if (err instanceof Error) {
+      err.message += ` If the code expired (about 10 minutes), run \`understudy login --email ${pending.email}\` to send a fresh one.`;
+    }
+    throw err;
+  }
+}
+
+function writePendingLogin(pending: PendingLogin): void {
+  const path = globalLoginPendingPath();
+  mkdirSync(dirname(path), { recursive: true, mode: 0o700 });
+  writeFileSync(path, `${JSON.stringify(pending, null, 2)}\n`, {
+    encoding: "utf8",
+  });
+  chmodSync(path, 0o600);
+}
+
+function readPendingLogin(): PendingLogin | null {
+  const path = globalLoginPendingPath();
+  if (!existsSync(path)) {
+    return null;
+  }
+  return PendingLoginSchema.parse(JSON.parse(readFileSync(path, "utf8")));
+}
+
+function clearPendingLogin(): void {
+  const path = globalLoginPendingPath();
+  if (existsSync(path)) {
+    unlinkSync(path);
+  }
+}
+
+function emitCodeSent(pending: PendingLogin, json: boolean): void {
+  if (json) {
+    process.stdout.write(
+      `${JSON.stringify({
+        ok: true,
+        pending: true,
+        code_sent_to: pending.email,
+        gateway_url: pending.gateway_url,
+        complete_with: "understudy login --code <code>",
+        expires_in_minutes: 10,
+        pending_path: globalLoginPendingPath(),
+      })}\n`,
+    );
+    return;
+  }
+  process.stdout.write(
+    `${kleur.green("✓")} One-time code sent to ${kleur.bold(pending.email)}\n` +
+      `  Get the code from the inbox, then finish with:\n` +
+      `    ${kleur.cyan("understudy login --code <code>")}\n` +
+      `  ${kleur.dim("The code expires in about 10 minutes.")}\n`,
+  );
 }
 
 async function fetchAuthMdMetadata(gatewayUrl: string) {

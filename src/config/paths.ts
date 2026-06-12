@@ -25,6 +25,12 @@ export const GLOBAL_CREDENTIALS_FILE = "credentials.json";
 export const GLOBAL_TELEMETRY_FILE = "telemetry.json";
 
 /**
+ * In-flight email-code sign-in state. Written when a one-time code is
+ * sent, consumed by `understudy login --code`, removed on success.
+ */
+export const GLOBAL_LOGIN_PENDING_FILE = "login-pending.json";
+
+/**
  * Walk upward from `startDir` looking for the nearest directory that
  * contains a `.understudy/` folder. If none exists, fall back to
  * `startDir` itself.
@@ -64,4 +70,8 @@ export function globalCredentialsPath(): string {
 
 export function globalTelemetryPath(): string {
   return join(globalConfigDir(), GLOBAL_TELEMETRY_FILE);
+}
+
+export function globalLoginPendingPath(): string {
+  return join(globalConfigDir(), GLOBAL_LOGIN_PENDING_FILE);
 }

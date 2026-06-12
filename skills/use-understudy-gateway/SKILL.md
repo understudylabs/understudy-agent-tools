@@ -77,20 +77,29 @@ node dist/bin.js status --json
    understudy status --json
    ```
 
-2. If not signed in, register/sign in with the email-code flow:
+2. If not signed in, register/sign in with the two-phase email-code flow:
 
    ```sh
-   understudy login --email <developer-email>
+   understudy login --email <developer-email>   # emails a one-time code, then exits
+   understudy login --code <one-time-code>      # completes the sign-in
    ```
+
+   In a non-TTY shell (an agent's shell) the first command sends the code and
+   exits with instructions; the pending claim is saved under
+   `~/.understudy/login-pending.json`, so no interactive prompt has to be held
+   open — no tmux or expect tricks. In an interactive terminal the same command
+   prompts for the code inline instead. Codes expire after about 10 minutes;
+   rerun `--email` to send a fresh one.
 
    This creates or finds the developer's Understudy account, retrieves an API
    key through the CLI, and stores it outside the repo. The key is used for
    authenticated gateway inference, project/key management, and remote model
    routes. Do not ask the developer to paste the key.
 
-   An agent with an approved native email connector may search narrowly for the
-   fresh sign-in email and enter the one-time code into the waiting CLI prompt.
-   Do not print or persist the code.
+   Ask the developer to read the one-time code from their inbox. An agent with
+   an approved native email connector may instead search narrowly for the fresh
+   Understudy sign-in email and pass the code to `understudy login --code`. Read
+   only that email, and do not persist the code anywhere else.
 
 3. Confirm project/key readiness:
 

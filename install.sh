@@ -11,7 +11,9 @@ STATE_DIR="${UNDERSTUDY_INSTALL_STATE_DIR:-$LAB/install-state}"
 INSTALLER_COMMIT="${UNDERSTUDY_INSTALLER_COMMIT:-unknown}"
 LAUNCH_CLAUDE="${UNDERSTUDY_LAUNCH_CLAUDE:-1}"
 CLAUDE_PERMISSION_MODE="${UNDERSTUDY_CLAUDE_PERMISSION_MODE:-auto}"
-INITIAL_CLAUDE_PROMPT="${UNDERSTUDY_INITIAL_CLAUDE_PROMPT:-Use the Understudy onboarding skill for this project now. Guide me through getting my first local Understudy, choosing my terminal/tmux/Pi handoff, and after the first local-vs-frontier duel, help me pick a real problem or find local data so we can try to make the Understudy beat the frontier on that task slice.}"
+USER_PROMPT_OVERRIDE="${UNDERSTUDY_INITIAL_CLAUDE_PROMPT:-}"
+INITIAL_CLAUDE_PROMPT=""
+KEEP_LOGIN="${UNDERSTUDY_KEEP_LOGIN:-0}"
 NO_CLAUDE=0
 START_STEP=1
 ONLY_STEP=""
@@ -28,18 +30,28 @@ while [ "$#" -gt 0 ]; do
     --no-claude) NO_CLAUDE=1 ;;
     --no-launch-claude) LAUNCH_CLAUDE=0 ;;
     --launch-claude) LAUNCH_CLAUDE=1 ;;
+    --keep-login) KEEP_LOGIN=1 ;;
+    --fresh-login) KEEP_LOGIN=0 ;;
     --from-step) START_STEP="${2:?missing step number}"; shift ;;
     --only-step) ONLY_STEP="${2:?missing step number}"; shift ;;
     --resume) RESUME=1 ;;
     --lab) LAB="${2:?missing path}"; shift ;;
     -h|--help)
       cat <<'EOF'
-Usage: install.sh [--yes] [--non-interactive] [--resume] [--from-step N] [--only-step N] [--no-claude] [--no-launch-claude]
+Usage: install.sh [--yes] [--non-interactive] [--resume] [--from-step N] [--only-step N] [--keep-login] [--no-claude] [--no-launch-claude]
 
 Installs the Understudy CLI + Claude Code skill/plugin surface, then hands the
-user back to Claude Code. It does not download model weights, start MLX, install
-Pi, launch tmux/iTerm, or make frontier calls. Those are guided by the
-/understudy:onboard skill after the user is in their coding agent.
+user back to Claude Code, where the coding agent runs the agent-first sign-up
+(email one-time code through `understudy login`) and onboarding. It does not
+download model weights, start MLX, install Pi, launch tmux/iTerm, or make
+frontier calls. Those are guided by the /understudy:onboard skill after the
+user is in their coding agent.
+
+If you are already signed in, the installer signs you out by default so the
+agent-first sign-up can be experienced (or demoed) from scratch. Only the
+login state is touched — profile, models, and history under ~/.understudy are
+preserved, and the old credentials file is kept as a timestamped backup.
+Pass --keep-login to keep the existing sign-in.
 
 Options:
   --yes                 approve the installer prompt
@@ -48,6 +60,8 @@ Options:
   --resume              continue from the next unfinished install step
   --from-step N         start from step 1, 2, or 3
   --only-step N         run only step 1, 2, or 3
+  --keep-login          keep an existing sign-in instead of resetting it
+  --fresh-login         reset an existing sign-in for agent-first sign-up (default)
   --no-claude           skip Claude Code plugin install and final Claude launch
   --no-launch-claude    install plugin but do not open Claude Code at the end
   --launch-claude       open Claude Code at the end (default)
@@ -65,10 +79,12 @@ Environment overrides:
   UNDERSTUDY_INSTALL_PACKAGE     optional npm package spec override
   UNDERSTUDY_NONINTERACTIVE      set to 1 to use safe defaults without prompting
   UNDERSTUDY_REQUIRE_CONFIRM     set to 1 to fail when no prompt TTY exists
+  UNDERSTUDY_KEEP_LOGIN          set to 1 to keep an existing sign-in
   UNDERSTUDY_LAUNCH_CLAUDE      set to 0 to skip opening Claude Code
   UNDERSTUDY_CLAUDE_ARGS        optional extra args when launching Claude Code
   UNDERSTUDY_CLAUDE_PERMISSION_MODE Claude Code permission mode, default auto
   UNDERSTUDY_INITIAL_CLAUDE_PROMPT initial prompt passed to Claude Code
+  NO_COLOR                      disable all installer styling
 EOF
       exit 0
       ;;
@@ -81,22 +97,127 @@ LOG_DIR="${UNDERSTUDY_INSTALL_LOG_DIR:-$LAB/logs}"
 LOG_FILE="${UNDERSTUDY_INSTALL_LOG_FILE:-$LOG_DIR/install-$(date -u +"%Y%m%dT%H%M%SZ").log}"
 mkdir -p "$LOG_DIR"
 
+# ── presentation ─────────────────────────────────────────────────────
+# Fancy output needs a TTY on stdout; pipes, CI, and dumb terminals get
+# the plain `understudy <message>` lines so logs and tests stay stable.
+FANCY=0
+if [ -t 1 ] && [ -z "${NO_COLOR:-}" ] && [ "${TERM:-dumb}" != "dumb" ]; then
+  FANCY=1
+fi
+
+if [ "$FANCY" = "1" ]; then
+  R=$'\033[0m' B=$'\033[1m' D=$'\033[2m'
+  case "${COLORTERM:-}" in
+    *truecolor*|*24bit*)
+      # stage-light gradient: indigo -> cyan -> spring green
+      G1=$'\033[38;2;139;132;250m' G2=$'\033[38;2;120;156;250m'
+      G3=$'\033[38;2;97;181;246m'  G4=$'\033[38;2;72;204;231m'
+      G5=$'\033[38;2;56;222;205m'  G6=$'\033[38;2;72;235;170m'
+      ;;
+    *)
+      G1=$'\033[38;5;105m' G2=$'\033[38;5;111m' G3=$'\033[38;5;75m'
+      G4=$'\033[38;5;44m'  G5=$'\033[38;5;43m'  G6=$'\033[38;5;48m'
+      ;;
+  esac
+  AC="$G3" OKC=$'\033[38;5;42m' WARNC=$'\033[33m' ERRC=$'\033[31m'
+  trap 'printf "\033[?25h" 2>/dev/null || true' EXIT
+else
+  R="" B="" D="" G1="" G2="" G3="" G4="" G5="" G6=""
+  AC="" OKC="" WARNC="" ERRC=""
+fi
+
 log() { printf '%s %s\n' "$(date -u +"%Y-%m-%dT%H:%M:%SZ")" "$*" >>"$LOG_FILE"; }
 say() {
-  printf '\033[1munderstudy\033[0m %s\n' "$*"
+  if [ "$FANCY" = "1" ]; then
+    printf '  %s│%s %s\n' "$D" "$R" "$*"
+  else
+    printf '\033[1munderstudy\033[0m %s\n' "$*"
+  fi
+  log "$*"
+}
+ok() {
+  if [ "$FANCY" = "1" ]; then
+    printf '  %s✓%s %s\n' "$OKC" "$R" "$*"
+  else
+    printf '\033[1munderstudy\033[0m %s\n' "$*"
+  fi
+  log "$*"
+}
+warn() {
+  if [ "$FANCY" = "1" ]; then
+    printf '  %s!%s %s\n' "$WARNC" "$R" "$*"
+  else
+    printf '\033[1munderstudy\033[0m %s\n' "$*"
+  fi
+  log "$*"
+}
+fail_line() {
+  if [ "$FANCY" = "1" ]; then
+    printf '  %s✗%s %s\n' "$ERRC" "$R" "$*"
+  else
+    printf '\033[1munderstudy\033[0m %s\n' "$*"
+  fi
   log "$*"
 }
 section() {
-  printf '\n\033[1munderstudy\033[0m %s\n' "$*"
+  if [ "$FANCY" = "1" ]; then
+    # bash 3.2 (macOS default) counts bytes, not characters, in ${#var}
+    # and substring expansion — measure with wc -m and build the rule
+    # character by character so multibyte titles stay valid UTF-8.
+    local title="$*" len n pad=""
+    len=$(printf '%s' "$title" | wc -m)
+    n=$((54 - len))
+    [ "$n" -lt 2 ] && n=2
+    while [ "$n" -gt 0 ]; do pad="$pad─"; n=$((n - 1)); done
+    printf '\n  %s──%s %s%s%s %s%s%s\n' "$AC" "$R" "$B" "$title" "$R" "$AC" "$pad" "$R"
+  else
+    printf '\n\033[1munderstudy\033[0m %s\n' "$*"
+  fi
   log "$*"
 }
-run_logged() {
-  log "RUN $*"
-  if "$@" >>"$LOG_FILE" 2>&1; then
+banner() {
+  if [ "$FANCY" != "1" ]; then
     return 0
   fi
-  local status="$?"
-  say "Command failed: $*"
+  printf '\n'
+  printf '  %s%s%s\n' "$G1" '                   __               __            __' "$R"
+  printf '  %s%s%s\n' "$G2" '  __  ______  ____/ /__  __________/ /___  ______/ /_  __' "$R"
+  printf '  %s%s%s\n' "$G3" ' / / / / __ \/ __  / _ \/ ___/ ___/ __/ / / / __  / / / /' "$R"
+  printf '  %s%s%s\n' "$G4" '/ /_/ / / / / /_/ /  __/ /  (__  ) /_/ /_/ / /_/ / /_/ /' "$R"
+  printf '  %s%s%s\n' "$G5" '\__,_/_/ /_/\__,_/\___/_/  /____/\__/\__,_/\__,_/\__, /' "$R"
+  printf '  %s%s%s\n' "$G6" '                                                /____/' "$R"
+  printf '\n  %severy frontier model deserves an understudy%s\n' "$D" "$R"
+}
+# run_logged <label> <command...> — run quietly into the install log,
+# with a live spinner on a TTY and a plain line everywhere else.
+run_logged() {
+  local label="$1"
+  shift
+  log "RUN $*"
+  local status=0
+  if [ "$FANCY" = "1" ]; then
+    local frames=(⠋ ⠙ ⠹ ⠸ ⠼ ⠴ ⠦ ⠧ ⠇ ⠏) i=0 start=$SECONDS
+    "$@" >>"$LOG_FILE" 2>&1 &
+    local pid=$!
+    printf '\033[?25l'
+    while kill -0 "$pid" 2>/dev/null; do
+      printf '\r  %s%s%s %s %s%ss%s ' "$AC" "${frames[$((i % 10))]}" "$R" "$label" "$D" "$((SECONDS - start))" "$R"
+      i=$((i + 1))
+      sleep 0.1
+    done
+    wait "$pid" || status=$?
+    printf '\r\033[2K\033[?25h'
+    if [ "$status" = "0" ]; then
+      ok "$label ${D}($((SECONDS - start))s)${R}"
+      return 0
+    fi
+  else
+    if "$@" >>"$LOG_FILE" 2>&1; then
+      return 0
+    fi
+    status="$?"
+  fi
+  fail_line "Command failed: $*"
   say "See install log: $LOG_FILE"
   tail -40 "$LOG_FILE" >&2 || true
   return "$status"
@@ -153,7 +274,7 @@ confirm() {
     say "Confirmation is required; rerun in a terminal or pass --yes / --non-interactive."
     return 1
   fi
-  if ! printf "%s [y/N] " "$1" >/dev/tty 2>/dev/null; then
+  if ! printf "  %s?%s %s %s[y/N]%s " "$G4" "$R" "$1" "$D" "$R" >/dev/tty 2>/dev/null; then
     say "No interactive terminal is available for prompts."
     say "Confirmation is required; rerun in a terminal or pass --yes / --non-interactive."
     return 1
@@ -198,7 +319,7 @@ install_understudy_package() {
 
   if [ -n "$INSTALL_PACKAGE" ]; then
     say "Installing Understudy package from $INSTALL_PACKAGE"
-    run_logged npm install -g "$INSTALL_PACKAGE"
+    run_logged "Install Understudy package" npm install -g "$INSTALL_PACKAGE"
     return 0
   fi
 
@@ -210,14 +331,78 @@ install_understudy_package() {
   say "Installing Understudy package from $INSTALL_REPO_URL#$INSTALL_REF"
   rm -rf "$INSTALL_SOURCE_DIR"
   mkdir -p "$(dirname "$INSTALL_SOURCE_DIR")"
-  run_logged git clone --depth 1 --branch "$INSTALL_REF" "$INSTALL_REPO_URL" "$INSTALL_SOURCE_DIR"
+  run_logged "Download Understudy ($INSTALL_REF)" git clone --depth 1 --branch "$INSTALL_REF" "$INSTALL_REPO_URL" "$INSTALL_SOURCE_DIR"
   package_commit="$(git -C "$INSTALL_SOURCE_DIR" rev-parse --short=12 HEAD 2>/dev/null || echo unknown)"
   say "Understudy package commit: $package_commit"
   mkdir -p "$STATE_DIR"
   printf '%s\n' "$package_commit" >"$STATE_DIR/package-commit"
-  run_logged npm install --prefix "$INSTALL_SOURCE_DIR" --ignore-scripts
-  run_logged npm run --prefix "$INSTALL_SOURCE_DIR" build
-  run_logged npm install -g --ignore-scripts "$INSTALL_SOURCE_DIR"
+  run_logged "Install dependencies" npm install --prefix "$INSTALL_SOURCE_DIR" --ignore-scripts
+  run_logged "Build the CLI" npm run --prefix "$INSTALL_SOURCE_DIR" build
+  run_logged "Link the understudy command" npm install -g --ignore-scripts "$INSTALL_SOURCE_DIR"
+}
+
+# ── agent-first sign-in ──────────────────────────────────────────────
+# The sign-up itself belongs to the coding agent (`understudy login`
+# sends an email code; `understudy login --code` finishes). The
+# installer only resets login state so that experience starts from
+# scratch — everything else under ~/.understudy is preserved.
+CREDENTIALS_FILE="$HOME/.understudy/credentials.json"
+KNOWN_EMAIL=""
+
+credentials_email() {
+  need node || return 0
+  node -e 'try{const c=JSON.parse(require("fs").readFileSync(process.argv[1],"utf8"));if(c.email)process.stdout.write(c.email)}catch(e){}' "$CREDENTIALS_FILE" 2>/dev/null || true
+}
+
+prepare_agent_first_signin() {
+  [ -n "$ONLY_STEP" ] && return 0
+  section "Prepare the agent-first sign-in."
+  if [ -f "$CREDENTIALS_FILE" ]; then
+    KNOWN_EMAIL="$(credentials_email)"
+    if [ "$KEEP_LOGIN" = "1" ]; then
+      say "Keeping the existing Understudy sign-in (--keep-login)."
+      return 0
+    fi
+    local backup
+    backup="$HOME/.understudy/credentials.json.bak-$(date -u +"%Y%m%dT%H%M%SZ")"
+    mv "$CREDENTIALS_FILE" "$backup"
+    rm -f "$HOME/.understudy/login-pending.json"
+    if [ -n "$KNOWN_EMAIL" ]; then
+      ok "Signed out $KNOWN_EMAIL so the agent can run the sign-up from scratch."
+    else
+      ok "Signed out so the agent can run the sign-up from scratch."
+    fi
+    say "Only the login state was reset; profile, models, and history under ~/.understudy are untouched."
+    say "Credentials backup: $backup"
+    say "Restore it without re-signing in: mv \"$backup\" \"$CREDENTIALS_FILE\""
+    say "Keep the sign-in next time with --keep-login."
+  else
+    say "No existing sign-in found; the coding agent will run the first sign-up."
+  fi
+  if [ -z "$KNOWN_EMAIL" ]; then
+    KNOWN_EMAIL="$(git config --get user.email 2>/dev/null || true)"
+  fi
+}
+
+compose_initial_prompt() {
+  if [ -n "$USER_PROMPT_OVERRIDE" ]; then
+    INITIAL_CLAUDE_PROMPT="$USER_PROMPT_OVERRIDE"
+    return 0
+  fi
+  local signup="" email_clause
+  if [ ! -f "$CREDENTIALS_FILE" ]; then
+    if [ -n "$KNOWN_EMAIL" ]; then
+      email_clause="run \`understudy login --email $KNOWN_EMAIL\`"
+    else
+      email_clause="ask me for my email, then run \`understudy login --email <my-email>\`"
+    fi
+    signup="Start with the agent-first Understudy sign-up: check \`understudy status --json\`, and if signed_in is false, $email_clause — it emails me a one-time code and exits. Ask me for the code from my inbox (or fetch it yourself if you have email access, reading only the Understudy sign-in email), finish with \`understudy login --code <code>\`, and confirm with \`understudy status --json\`. Then "
+  fi
+  if [ -n "$signup" ]; then
+    INITIAL_CLAUDE_PROMPT="${signup}use the Understudy onboarding skill for this project. Guide me through getting my first local Understudy, choosing my terminal/tmux/Pi handoff, and after the first local-vs-frontier duel, help me pick a real problem or find local data so we can try to make the Understudy beat the frontier on that task slice."
+  else
+    INITIAL_CLAUDE_PROMPT="Use the Understudy onboarding skill for this project now. Guide me through getting my first local Understudy, choosing my terminal/tmux/Pi handoff, and after the first local-vs-frontier duel, help me pick a real problem or find local data so we can try to make the Understudy beat the frontier on that task slice."
+  fi
 }
 
 install_claude_plugin() {
@@ -240,11 +425,11 @@ install_claude_plugin() {
 
   say "Installing the Understudy Claude Code plugin from $repo."
   if claude plugin list --json 2>/dev/null | grep -q 'understudy@understudy-skills'; then
-    say "Understudy plugin already appears installed."
+    ok "Understudy plugin already appears installed."
   else
-    claude plugin marketplace add "$repo" >/dev/null
-    claude plugin install understudy@understudy-skills >/dev/null
-    say "Understudy plugin installed."
+    run_logged "Register the plugin marketplace" claude plugin marketplace add "$repo"
+    run_logged "Install the Understudy plugin" claude plugin install understudy@understudy-skills
+    ok "Understudy plugin installed."
   fi
   say "In Claude Code, type /reload-plugins once to activate the skills."
   say "Then type /understudy:onboard so the agent can guide the first local Understudy."
@@ -274,12 +459,12 @@ launch_claude_code() {
     return 0
   fi
 
-  section "Step 3/3: open Claude Code."
+  section "Step 3/3 · Open Claude Code"
   say "Claude Code will open in: $(pwd)"
   say "The Understudy plugin will be loaded for this launch with --plugin-dir."
   say "Claude Code permission mode: $CLAUDE_PERMISSION_MODE."
   say "Claude Code will receive the first prompt automatically:"
-  say "  $INITIAL_CLAUDE_PROMPT"
+  say "  ${D}$INITIAL_CLAUDE_PROMPT${R}"
   say "If you open a separate existing Claude Code session later, run /reload-plugins there once."
   say "Launching Claude Code now. Exit Claude to return to this shell."
   claude_log="$LOG_DIR/claude-$(date -u +"%Y%m%dT%H%M%SZ").log"
@@ -325,16 +510,25 @@ need npm || {
 
 configure_resume
 
-section "Welcome. We are going to install Understudy for your coding agent."
-say "Install log: $LOG_FILE"
-say "Installer script commit: $INSTALLER_COMMIT"
-say "Install source ref: $INSTALL_REF"
+banner
+if [ "$FANCY" = "1" ]; then
+  section "Welcome"
+else
+  section "Welcome. We are going to install Understudy for your coding agent."
+fi
 say "This installer bootstraps the CLI and Claude Code skills, then drops you back into your coding agent."
+say "Source: $INSTALL_REPO_URL#$INSTALL_REF ${D}(installer commit: $INSTALLER_COMMIT)${R}"
+say "Install log: $LOG_FILE"
 say ""
-say "Install plan:"
-say "  1. Download and install the Understudy CLI from $INSTALL_REPO_URL#$INSTALL_REF."
-say "  2. Install or refresh the Claude Code skills when Claude Code is available."
-say "  3. Open Claude Code in this directory and show the next slash commands."
+say "${B}Install plan${R}"
+say "  ${G2}1.${R} Install the Understudy CLI."
+if [ "$KEEP_LOGIN" = "1" ]; then
+  say "  ${G3}·${R}  Keep the existing Understudy sign-in (--keep-login)."
+else
+  say "  ${G3}·${R}  Reset any existing sign-in so the agent-first sign-up starts fresh (backup kept; --keep-login skips)."
+fi
+say "  ${G4}2.${R} Install or refresh the Claude Code skills when Claude Code is available."
+say "  ${G5}3.${R} Open Claude Code here — the agent signs you up by email code, then onboards you."
 say ""
 say "Default install does not download weights, start MLX, install Pi, launch tmux/iTerm, or make frontier calls."
 say "Those actions happen later through /understudy:onboard, where the coding agent can coach the user and ask consent."
@@ -344,7 +538,7 @@ confirm "Continue with this Understudy installation?" || exit 1
 PKG_DIR="$(npm root -g)/@understudylabs/understudy-agent-tools"
 
 if should_run_step 1; then
-  section "Step 1/3: install the CLI."
+  section "Step 1/3 · Install the CLI"
   install_understudy_package
   PKG_DIR="$(npm root -g)/@understudylabs/understudy-agent-tools"
   mark_step_done 1
@@ -352,19 +546,23 @@ else
   say "Skipping step 1/3: install the CLI."
 fi
 
+prepare_agent_first_signin
+
 if should_run_step 2; then
-  section "Step 2/3: install the Claude Code skills."
+  section "Step 2/3 · Install the Claude Code skills"
   install_claude_plugin
   mark_step_done 2
 else
   say "Skipping step 2/3: install the Claude Code skills."
 fi
 
-section "Where this goes next."
+compose_initial_prompt
+
+section "Where this goes next"
 say "The installer is done. The next experience belongs inside Claude Code:"
-say "  The launched Claude Code session receives an Understudy onboarding prompt automatically."
+say "  The launched Claude Code session receives the sign-up + onboarding prompt automatically."
 say "  If you continue in an already-open Claude Code session instead, run /reload-plugins and then /understudy:onboard."
-say "That lets the coding agent explain the first local Understudy, open a terminal of the user's choice when needed, and run the same commands itself when appropriate."
+say "That lets the coding agent run the email-code sign-up itself, explain the first local Understudy, and open a terminal of the user's choice when needed."
 if should_run_step 3; then
   launch_claude_code
 else
