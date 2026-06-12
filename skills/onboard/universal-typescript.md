@@ -115,6 +115,12 @@ The header machinery varies by client. Common forms:
   (Python)
 - Raw `fetch`: add to the `headers` object on the request
 
+The full gateway header contract — every request header the gateway
+reads and every response header it adds — is documented at
+[reference/request-headers](https://docs.understudylabs.com/reference/request-headers)
+and
+[reference/response-headers](https://docs.understudylabs.com/reference/response-headers).
+
 ## Worked examples
 
 ### Vercel AI SDK with OpenAI

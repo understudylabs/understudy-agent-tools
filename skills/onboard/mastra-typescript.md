@@ -129,6 +129,10 @@ Key points:
 - Do not delete `OPENAI_API_KEY` / `ANTHROPIC_API_KEY` from `.env` or
   deployment config. The provider reads them at runtime to forward on
   `x-understudy-upstream-key`.
+- The full gateway header contract is documented at
+  [reference/request-headers](https://docs.understudylabs.com/reference/request-headers)
+  and
+  [reference/response-headers](https://docs.understudylabs.com/reference/response-headers).
 
 ## What doesn't need to change
 

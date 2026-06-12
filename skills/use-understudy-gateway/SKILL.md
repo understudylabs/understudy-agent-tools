@@ -122,7 +122,8 @@ comparing a workload's quality and cost across the split.
    ```
 
    Clearing the route (`--clear` in place of the model/traffic flags) returns the
-   workload to full passthrough.
+   workload to full passthrough. The hosted split semantics are documented at
+   [docs.understudylabs.com/concepts/routing](https://docs.understudylabs.com/concepts/routing).
 
 3. Run the eval through the gateway so the routed model serves its share. Any
    local command works; an eval harness like a verifiers `vf-eval` run is typical.
@@ -153,6 +154,13 @@ End with:
 - [`references/frontier-keys.md`](references/frontier-keys.md) — the BYO
   `.env`-keys vs ZDR-gateway vs skip decision, the allowlisted env vars, the
   secret-to-remote-infra recipe, and the installer mapping.
+- Hosted contracts on the docs site —
+  [routing semantics](https://docs.understudylabs.com/concepts/routing),
+  [capture](https://docs.understudylabs.com/concepts/capture), the
+  [control-plane API](https://docs.understudylabs.com/reference/control-plane)
+  behind `workloads`/`routes`/`captures`, and the gateway
+  [request headers](https://docs.understudylabs.com/reference/request-headers) /
+  [response headers](https://docs.understudylabs.com/reference/response-headers).
 
 Domain depth in [`reference.md`](reference.md):
 

@@ -37,7 +37,8 @@ node dist/bin.js status --json
 - **Disclose capture-on-by-default.** Setting a model route enables request
   capture for that workload unless capture is explicitly disabled — tell the
   developer this before the first route write and confirm the capture setting
-  they want.
+  they want. The hosted capture behavior is documented at
+  [docs.understudylabs.com/concepts/capture](https://docs.understudylabs.com/concepts/capture).
 - **Snapshot before every change.** The CLI writes a route snapshot before
   route writes; verify it exists so `routes rollback` has something to restore.
 - **No savings claim without a claim packet.** Measured routed-vs-passthrough
@@ -67,7 +68,9 @@ node dist/bin.js status --json
 
 Default tiers: **5% → 25% → 100%** (note: `routes set` defaults `--traffic-pct`
 to 10 when not specified, so pass `--traffic-pct 5` explicitly for the first
-tier). At each tier:
+tier). The dial's hosted split semantics are documented at
+[docs.understudylabs.com/concepts/routing](https://docs.understudylabs.com/concepts/routing).
+At each tier:
 
 1. `understudy routes set <workload> --project <p> --model-id <id>
    --traffic-pct <pct>` — after approval.
@@ -116,3 +119,8 @@ recommended next action.
   frozen-eval verdict required by the pre-ramp gate.
 - [`../optimize-workload/SKILL.md`](../optimize-workload/SKILL.md) — the
   claim-packet contract for any measured savings statement.
+- Hosted contracts on the docs site —
+  [routing](https://docs.understudylabs.com/concepts/routing),
+  [capture](https://docs.understudylabs.com/concepts/capture), and the
+  [control-plane API](https://docs.understudylabs.com/reference/control-plane)
+  behind `routes set/rollback/clear` and `captures list`.

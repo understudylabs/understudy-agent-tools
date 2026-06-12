@@ -35,11 +35,17 @@ anything that the developer has not approved.
    that leaves the application code untouched:
    - *Gateway already in place* — enable gateway trace capture for the workload
      so calls are recorded as they pass through. The app keeps calling the same
-     base URL.
+     base URL. Hosted capture semantics (what is recorded, defaults, redaction)
+     are documented at
+     [docs.understudylabs.com/concepts/capture](https://docs.understudylabs.com/concepts/capture).
    - *Provider SDK direct* — point the existing client's base URL at the gateway
      (an OpenAI-compatible base URL plus the injected key from
      `understudy run`), so the SDK, request shape, and response shape are
-     unchanged and only the endpoint moves.
+     unchanged and only the endpoint moves. The gateway's header contract is
+     documented at
+     [reference/request-headers](https://docs.understudylabs.com/reference/request-headers)
+     and
+     [reference/response-headers](https://docs.understudylabs.com/reference/response-headers).
    - *Restricted / offline* — when the environment is local-only or hosted
      capture is disallowed (for example a ZDR constraint, see
      [`../understudy/reference.md`](../understudy/reference.md) → Constraints),
@@ -96,7 +102,12 @@ rules below apply to every upload, spend, credential, deploy, or route change.
    ```
 
    See [`SKILL.md`](SKILL.md) → A/B model routing for the full split mechanics
-   and the managed-frontier prerequisite for a frontier comparison.
+   and the managed-frontier prerequisite for a frontier comparison. The hosted
+   side of this contract is documented at
+   [concepts/routing](https://docs.understudylabs.com/concepts/routing) (split
+   semantics) and
+   [reference/control-plane](https://docs.understudylabs.com/reference/control-plane)
+   (the API the workloads route commands call).
 4. **Local-only mode: write a deployment artifact instead of routing.** When no
    hosted route is allowed, write the chosen route to a local deployment artifact
    / `understudy.yaml` (model id, traffic intent, prompt/parser version, baseline

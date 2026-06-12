@@ -64,6 +64,10 @@ Key points:
   OpenAI key. **Do not delete or rename `OPENAI_API_KEY`** anywhere — the
   patch reads it at runtime to forward to `api.openai.com`.
 - Preserve any other constructor fields the user had.
+- The full gateway header contract is documented at
+  [reference/request-headers](https://docs.understudylabs.com/reference/request-headers)
+  and
+  [reference/response-headers](https://docs.understudylabs.com/reference/response-headers).
 
 ## What doesn't need to change
 
