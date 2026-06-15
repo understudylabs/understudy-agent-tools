@@ -1,0 +1,154 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>understudy · no-data ladder</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500&family=IBM+Plex+Sans:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root{
+    --paper:#141311; --ink:#E8E4DC; --muted:#8A8680; --faint:#5A5752;
+    --rule:#2A2622; --rust:#D7623E;
+    --mono:'IBM Plex Mono',ui-monospace,'SF Mono',Menlo,monospace;
+    --sans:'IBM Plex Sans',system-ui,-apple-system,sans-serif;
+  }
+  *{box-sizing:border-box}
+  html,body{margin:0;background:var(--paper);color:var(--ink);font-family:var(--mono);-webkit-font-smoothing:antialiased}
+  .wrap{max-width:720px;margin:0 auto;padding:48px 28px 96px}
+  .mast{display:flex;justify-content:space-between;align-items:baseline;border-bottom:.5px solid var(--rule);padding-bottom:14px}
+  .mast b{font-weight:500}
+  .meta{font-size:11px;letter-spacing:.12em;color:var(--faint);text-transform:uppercase}
+  .caveat{font-size:12px;color:var(--muted);margin:14px 0 0;line-height:1.6}
+  .seclbl{font-size:11px;letter-spacing:.16em;color:var(--rust);text-transform:uppercase;margin:40px 0 18px;display:flex;align-items:center;gap:9px}
+  .seclbl::before{content:"";width:5px;height:5px;border-radius:50%;background:var(--rust);display:inline-block}
+  .problem{font-family:var(--sans);font-size:22px;line-height:1.4;font-weight:500;margin:0 0 22px}
+  .panel{border:.5px solid var(--rule);border-radius:12px;overflow:hidden}
+  .blk{padding:16px 18px;border-bottom:.5px solid var(--rule)}
+  .blk:last-child{border-bottom:0}
+  .tag{font-size:10.5px;letter-spacing:.16em;color:var(--faint);text-transform:uppercase;margin-bottom:9px}
+  .req{white-space:pre-wrap;font-size:13px;line-height:1.55;color:var(--ink)}
+  .sys-toggle{font-size:11px;letter-spacing:.08em;color:var(--muted);background:none;border:0;cursor:pointer;padding:0;font-family:var(--mono)}
+  .sys-body{display:none;margin-top:10px;font-size:12.5px;line-height:1.55;color:var(--faint);white-space:pre-wrap}
+  .sys.open .sys-body{display:block}
+  .resp{font-family:var(--sans);font-size:16px;line-height:1.6}
+  .plan{color:var(--muted);font-size:12.5px;line-height:1.5;margin:0 0 14px}
+  .step{display:grid;grid-template-columns:1fr 1fr;gap:16px;font-size:13px;line-height:1.5;padding:6px 0}
+  .step .r{color:var(--muted)}
+  .bad{color:var(--rust)}
+  .outcome{color:var(--muted);font-size:12.5px;line-height:1.5;margin-top:14px}
+  .verdict{display:flex;align-items:center;gap:10px;font-size:14px}
+  .verdict .mk{font-size:15px}
+  .ok{color:var(--ink)}
+  .controls{display:flex;align-items:center;gap:12px;margin-top:22px;flex-wrap:wrap}
+  .models{display:flex;gap:6px;flex-wrap:wrap}
+  .mbtn{font-family:var(--mono);font-size:12px;color:var(--muted);background:none;border:.5px solid var(--rule);border-radius:7px;padding:6px 11px;cursor:pointer;transition:border-color .15s,color .15s}
+  .mbtn:hover{color:var(--ink)}
+  .mbtn.active{color:var(--ink);border-color:var(--ink)}
+  .next{margin-left:auto;font-family:var(--mono);font-size:12px;letter-spacing:.06em;color:var(--muted);background:none;border:.5px solid var(--rule);border-radius:7px;padding:7px 13px;cursor:pointer}
+  .next:hover{color:var(--ink);border-color:var(--ink)}
+  .reveal{opacity:0;animation:rise .4s cubic-bezier(.2,.7,.2,1) forwards}
+  @keyframes rise{to{opacity:1}}
+  @media(prefers-reduced-motion:reduce){.reveal{animation:none;opacity:1}}
+</style>
+</head>
+<body>
+<div class="wrap">
+  <div class="mast"><span><b>understudy</b> · no-data ladder</span><span class="meta" id="meta"></span></div>
+  <div class="caveat" id="caveat"></div>
+
+  <div class="seclbl">watch a model try a task</div>
+  <div class="problem" id="problem"></div>
+
+  <div class="panel">
+    <div class="blk sys" id="sysblk">
+      <button class="sys-toggle" id="systoggle">▸ show the instructions</button>
+      <div class="sys-body" id="sysbody"></div>
+    </div>
+    <div class="blk">
+      <div class="tag">the input</div>
+      <div class="req" id="input"></div>
+    </div>
+    <div class="blk">
+      <div class="tag">what the model returned</div>
+      <div id="response"></div>
+    </div>
+    <div class="blk">
+      <div class="verdict" id="verdict"></div>
+    </div>
+  </div>
+
+  <div class="controls">
+    <div class="models" id="models"></div>
+    <button class="next" id="next">next task →</button>
+  </div>
+</div>
+
+<script src="ladder.climb.data.js"></script>
+<script>
+(function(){
+  var C = window.CLIMB;
+  if(!C){ document.getElementById('problem').textContent = 'Could not load ladder.climb.data.js (keep it next to index.html).'; return; }
+  var ti = 0, mid = C.models[0].id;
+  var $ = function(id){ return document.getElementById(id); };
+  $('caveat').textContent = C.caveat;
+
+  function el(tag, cls, text){ var e=document.createElement(tag); if(cls)e.className=cls; if(text!=null)e.textContent=text; return e; }
+
+  function renderResponse(run){
+    var box=$('response'); box.innerHTML='';
+    if(run.plan) box.appendChild(el('div','plan reveal','it planned: '+run.plan));
+    if(Array.isArray(run.steps)){
+      run.steps.forEach(function(s,i){
+        var row=el('div','step reveal'); row.style.animationDelay=(i*0.09)+'s';
+        var c=el('span', s.ok?'':'bad', s.call);
+        var r=el('span', 'r'+(s.ok?'':' bad'), s.result);
+        row.appendChild(c); row.appendChild(r); box.appendChild(row);
+      });
+      if(run.outcome){ var o=el('div','outcome reveal', run.outcome); o.style.animationDelay=(run.steps.length*0.09)+'s'; box.appendChild(o); }
+    } else {
+      box.appendChild(el('div','resp reveal', run.output||''));
+    }
+  }
+
+  function renderVerdict(run){
+    var v=$('verdict'); v.innerHTML='';
+    if(run.correct){
+      v.appendChild(el('span','mk ok','✓'));
+      v.appendChild(el('span','ok','matched the answer'));
+    } else {
+      v.appendChild(el('span','mk bad','✕'));
+      v.appendChild(el('span','bad', run.note ? ('missed it — '+run.note) : 'missed it'));
+    }
+  }
+
+  function renderModels(){
+    var box=$('models'); box.innerHTML='';
+    C.models.forEach(function(m){
+      var b=el('button','mbtn'+(m.id===mid?' active':''), m.label);
+      b.onclick=function(){ mid=m.id; render(); };
+      box.appendChild(b);
+    });
+  }
+
+  function render(){
+    var t=C.tasks[ti], run=t.runs[mid];
+    $('problem').textContent=t.title;
+    $('sysbody').textContent=t.system;
+    $('input').textContent=t.input;
+    $('meta').textContent=t.tier+' · seed '+C.seed+' · synthetic';
+    renderResponse(run); renderVerdict(run); renderModels();
+  }
+
+  $('systoggle').onclick=function(){
+    var s=$('sysblk'); s.classList.toggle('open');
+    $('systoggle').textContent = s.classList.contains('open') ? '▾ hide the instructions' : '▸ show the instructions';
+  };
+  $('next').onclick=function(){ ti=(ti+1)%C.tasks.length; render(); window.scrollTo({top:0,behavior:'smooth'}); };
+
+  render();
+})();
+</script>
+</body>
+</html>
