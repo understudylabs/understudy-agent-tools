@@ -90,7 +90,7 @@
   .think {
     font-family: var(--font-reading); letter-spacing: -0.008em;
     font-size: 0.88rem; line-height: 1.5; color: var(--color-ink-muted);
-    font-style: italic; min-height: 1.3em;
+    font-style: italic; min-height: 1.3em; max-height: 8em; overflow-y: auto;
   }
   .attempt .who {
     font-size: 0.68rem; text-transform: uppercase; letter-spacing: 0.16em;
@@ -133,6 +133,13 @@
   }
   .replaybar button:hover { border-color: var(--color-ink-muted); }
   .replaybar button:active { transform: translateY(1px); }
+  .models { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 18px; }
+  .models button {
+    font-family: var(--font-mono); font-size: 0.66rem; text-transform: uppercase; letter-spacing: 0.14em;
+    background: transparent; color: var(--color-ink-muted); cursor: pointer;
+    border: 1px solid var(--color-rule); padding: 6px 11px;
+  }
+  .models button.active { color: var(--color-ink); border-color: var(--color-ink); }
 
   /* ---------- VIEW B : the climb ---------- */
   .climb-frame { margin-top: 26px; }
@@ -200,7 +207,7 @@
         <div class="doing">
           <div class="io"><span class="who">system prompt</span><span class="ioval" id="sysLine"></span></div>
           <div class="io"><span class="who">user prompt</span><span class="ioval" id="userLine"></span></div>
-          <div class="io"><span class="who">thinking</span><span class="think" id="thinkLine"><span class="cursor"></span></span></div>
+          <div class="io" id="thinkBlock"><span class="who">thinking</span><span class="think" id="thinkLine"><span class="cursor"></span></span></div>
           <div class="io"><span class="who">response</span><span class="act" id="actLine"></span></div>
         </div>
         <div class="verdict pending" id="verdict">
@@ -209,7 +216,9 @@
         </div>
       </div>
 
+      <div class="models" id="modelPicker" style="display:none"></div>
       <div class="replaybar settle settle-4">
+        <button id="runBtn" type="button" style="display:none">run &#9656;</button>
         <button id="replayBtn" type="button">replay</button>
         <span id="taskSwitch" style="cursor:pointer">next task -&gt;</span>
       </div>
@@ -330,6 +339,9 @@
   var verdictWd  = document.getElementById('verdictWord');
   var replayBtn  = document.getElementById('replayBtn');
   var taskSwitch = document.getElementById('taskSwitch');
+  var runBtn     = document.getElementById('runBtn');
+  var modelPicker= document.getElementById('modelPicker');
+  var thinkBlock = document.getElementById('thinkBlock');
 
   var idx = 0;
   var timers = [];
@@ -378,13 +390,83 @@
     }
   }
 
-  function play(){ clearTimers(); settle(); }
+  function playPrebaked(){ clearTimers(); settle(); }
+
+  // ---- live mode: when served by serve.py, stream a real local model ----
+  var LIVE = (location.protocol === 'http:' || location.protocol === 'https:');
+  var TASK_IDS = ["sort-email", "match-search", "save-play"];
+  var LIVE_MODELS = [
+    { id: "lfm-thinking", label: "thinking" },
+    { id: "lfm-instruct", label: "instruct" },
+    { id: "gemma-4-e2b",  label: "gemma-4-e2b" }
+  ];
+  var curModel = "lfm-thinking";
+  var es = null;
+
+  function renderModelPicker(){
+    modelPicker.innerHTML = '';
+    LIVE_MODELS.forEach(function (m) {
+      var b = document.createElement('button');
+      b.textContent = m.label;
+      b.className = (m.id === curModel ? 'active' : '');
+      b.addEventListener('click', function () { curModel = m.id; renderModelPicker(); playLive(); });
+      modelPicker.appendChild(b);
+    });
+  }
+
+  function playLive(){
+    clearTimers();
+    if (es) { es.close(); es = null; }
+    var d = TASKS[idx];
+    taskLine.textContent = d.task;
+    sysLine.textContent  = d.system;
+    userLine.textContent = d.user;
+    thinkBlock.style.display = 'none';        // revealed when the model emits a thinking channel
+    thinkLine.textContent = '';
+    actLine.innerHTML = '<span class="cursor"></span>';
+    verdict.className = 'verdict pending'; verdictMk.innerHTML = ''; verdictWd.textContent = 'running';
+    var gotResp = false;
+    try {
+      es = new EventSource('/run?task=' + encodeURIComponent(TASK_IDS[idx]) + '&model=' + encodeURIComponent(curModel));
+    } catch (e) { return playPrebaked(); }
+    es.onmessage = function (ev) {
+      var m; try { m = JSON.parse(ev.data); } catch (_) { return; }
+      if (m.type === 'token') {
+        if (m.channel === 'thinking') {
+          thinkBlock.style.display = ''; thinkLine.textContent += m.text;
+          thinkLine.scrollTop = thinkLine.scrollHeight;
+        } else {
+          if (!gotResp) { actLine.textContent = ''; gotResp = true; }
+          actLine.textContent += m.text;
+        }
+      } else if (m.type === 'done') {
+        if (es) { es.close(); es = null; }
+        if (!gotResp && m.response) actLine.textContent = m.response;
+        if (m.correct) { verdict.className = 'verdict landed'; verdictMk.innerHTML = checkMark; verdictWd.textContent = 'it worked'; }
+        else { verdict.className = 'verdict broke'; verdictMk.innerHTML = xMark; verdictWd.textContent = "didn't"; }
+      }
+    };
+    es.onerror = function () {
+      if (es) { es.close(); es = null; }
+      if (!gotResp) playPrebaked();           // can't reach the live endpoint -> pre-baked replay
+    };
+  }
+
+  function play(){ if (LIVE) playLive(); else playPrebaked(); }
 
   replayBtn.addEventListener('click', play);
+  runBtn.addEventListener('click', playLive);
   taskSwitch.addEventListener('click', function () {
     idx = (idx + 1) % TASKS.length;
     play();
   });
+
+  if (LIVE) {
+    runBtn.style.display = '';
+    replayBtn.style.display = 'none';
+    modelPicker.style.display = '';
+    renderModelPicker();
+  }
 
   // first run
   play();
