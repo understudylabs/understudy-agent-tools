@@ -26,11 +26,13 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 VIEWER_DIR = os.path.join(HERE, "viewer")
 HOST, PORT = "127.0.0.1", 8011
 
-# id -> (lane, path-or-repo, label)
+# id -> (lane, path-or-repo, label, sampling)
+# sampling is LiquidAI's recommendation from each model's Hugging Face card (mlx-lm lane only).
 MODELS = {
-    "lfm-thinking": ("mlx_lm",  "LiquidAI/LFM2.5-1.2B-Thinking-MLX-8bit", "LFM 1.2B · thinking"),
-    "lfm-instruct": ("mlx_lm",  "LiquidAI/LFM2.5-1.2B-Instruct-MLX-8bit", "LFM 1.2B · instruct"),
-    "gemma-4-e2b":  ("mlx_vlm", "/Users/luis/.understudy/models/gemma-4-e2b-it-mlx-vlm-4bit", "gemma-4-e2b"),
+    "lfm2.5-8b-a1b": ("mlx_lm",  "/Users/luis/.understudy/models/lfm2.5-8b-a1b-8bit", "LFM 8B-A1B · thinking", {"temp": 0.2,  "top_k": 80, "rep": 1.05}),
+    "lfm-thinking":  ("mlx_lm",  "LiquidAI/LFM2.5-1.2B-Thinking-MLX-8bit", "LFM 1.2B · thinking", {"temp": 0.05, "top_k": 50, "rep": 1.05}),
+    "lfm-instruct":  ("mlx_lm",  "LiquidAI/LFM2.5-1.2B-Instruct-MLX-8bit", "LFM 1.2B · instruct", {"temp": 0.05, "top_k": 50, "rep": 1.05}),
+    "gemma-4-e2b":   ("mlx_vlm", "/Users/luis/.understudy/models/gemma-4-e2b-it-mlx-vlm-4bit", "gemma-4-e2b", {}),
 }
 
 # id -> (title, system, user, gold)
@@ -63,7 +65,7 @@ def get_model(mid):
     with _lock:
         if mid in _loaded:
             return _loaded[mid]
-        lane, path, _ = MODELS[mid]
+        lane, path = MODELS[mid][0], MODELS[mid][1]
         sys.stderr.write(f"[load] {mid} ({lane}) ...\n"); sys.stderr.flush()
         if lane == "mlx_lm":
             from mlx_lm import load as lm_load
@@ -82,6 +84,7 @@ def stream_tokens(mid, system, user, max_tokens=900):
     """Yield raw text deltas from the model for system+user."""
     obj = get_model(mid)
     lane = obj[0]
+    samp = MODELS[mid][3] if len(MODELS[mid]) > 3 else {}
     if lane == "mlx_lm":
         from mlx_lm import stream_generate
         _, model, tok = obj
@@ -89,7 +92,15 @@ def stream_tokens(mid, system, user, max_tokens=900):
             [{"role": "system", "content": system}, {"role": "user", "content": user}],
             add_generation_prompt=True,
         )
-        for r in stream_generate(model, tok, prompt, max_tokens=max_tokens):
+        kw = dict(max_tokens=max_tokens)
+        try:                                   # pin LiquidAI's recommended sampling (temp 0 => greedy)
+            from mlx_lm.sample_utils import make_sampler, make_logits_processors
+            kw["sampler"] = make_sampler(temp=samp.get("temp", 0.0), top_k=samp.get("top_k", 0))
+            if samp.get("rep"):
+                kw["logits_processors"] = make_logits_processors(repetition_penalty=samp["rep"])
+        except Exception:
+            pass
+        for r in stream_generate(model, tok, prompt, **kw):
             yield r.text
     else:
         from mlx_vlm import stream_generate
@@ -169,7 +180,7 @@ class Handler(BaseHTTPRequestHandler):
 
     def handle_run(self, q):
         task = q.get("task", ["sort-email"])[0]
-        mid = q.get("model", ["lfm-thinking"])[0]
+        mid = q.get("model", ["lfm2.5-8b-a1b"])[0]
         if task not in TASKS or mid not in MODELS:
             return self._json({"error": "unknown task or model"}, 400)
         title, system, user, gold = TASKS[task]
