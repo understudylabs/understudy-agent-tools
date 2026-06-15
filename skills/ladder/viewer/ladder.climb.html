@@ -1,0 +1,367 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>understudy — the climb</title>
+<style>
+  :root {
+    --color-paper: #F5F2ED;
+    --color-ink: #0A0A0A;
+    --color-ink-muted: #6B6862;
+    --color-rule: #D9D4CA;
+    --color-stamp: #B24A2E;
+    --color-good: #6FAE82;
+    --color-warn: #C7A04A;
+    --color-bad: #C26A55;
+    --font-mono: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, monospace;
+    --font-reading: "IBM Plex Sans", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+    --settle-ease: cubic-bezier(0.2, 0.7, 0.2, 1);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --color-paper: #141311;
+      --color-ink: #E8E4DC;
+      --color-ink-muted: #8A8680;
+      --color-rule: #2A2622;
+      --color-stamp: #D7623E;
+      --color-good: #8DD39E;
+      --color-warn: #E4BF69;
+      --color-bad: #D97A66;
+    }
+  }
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0;
+    background: var(--color-paper);
+    color: var(--color-ink);
+    font-family: var(--font-mono);
+    font-feature-settings: "ss01", "ss02", "zero";
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+  ::selection { background: var(--color-ink); color: var(--color-paper); }
+
+  @keyframes settle {
+    from { opacity: 0; transform: translateY(2px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+  .settle { animation: settle 600ms var(--settle-ease) both; }
+  .settle-1{animation-delay:0ms}.settle-2{animation-delay:90ms}.settle-3{animation-delay:180ms}
+  .settle-4{animation-delay:270ms}.settle-5{animation-delay:360ms}.settle-6{animation-delay:450ms}
+  .settle-7{animation-delay:540ms}.settle-8{animation-delay:630ms}
+  @media (prefers-reduced-motion: reduce){ .settle{ animation: none; } }
+
+  .wrap { max-width: 720px; margin: 0 auto; padding: 56px 28px 80px; }
+
+  .eyebrow {
+    font-size: 0.68rem; text-transform: uppercase; font-weight: 500;
+    letter-spacing: 0.16em; color: var(--color-ink-muted);
+  }
+  .stamp-dot {
+    display: inline-block; width: 6px; height: 6px; border-radius: 999px;
+    background: var(--color-stamp); margin-right: 9px; vertical-align: 1px;
+  }
+
+  section { border-top: 1px solid var(--color-rule); }
+  section:first-of-type { border-top: 0; }
+  .pad { padding: 44px 0 8px; }
+
+  /* ---------- VIEW A : one rollout ---------- */
+  .task-line {
+    font-family: var(--font-reading); letter-spacing: -0.008em;
+    font-weight: 400; font-size: 1.18rem; line-height: 1.5;
+    margin: 18px 0 0; max-width: 30ch;
+  }
+  .attempt {
+    margin-top: 30px; border: 1px solid var(--color-rule);
+    background: color-mix(in srgb, var(--color-paper) 96%, var(--color-ink) 4%);
+    padding: 0; display: grid; grid-template-columns: 1fr auto;
+  }
+  .attempt .doing {
+    padding: 20px 22px; min-height: 92px;
+    display: flex; flex-direction: column; justify-content: center; gap: 6px;
+  }
+  .attempt .who {
+    font-size: 0.68rem; text-transform: uppercase; letter-spacing: 0.16em;
+    font-weight: 500; color: var(--color-ink-muted);
+  }
+  .attempt .act {
+    font-family: var(--font-reading); letter-spacing: -0.008em;
+    font-size: 0.95rem; color: var(--color-ink); min-height: 1.4em;
+  }
+  .cursor {
+    display: inline-block; width: 7px; height: 1.05em; vertical-align: -2px;
+    background: var(--color-ink-muted); margin-left: 2px; animation: blink 1s steps(1) infinite;
+  }
+  @keyframes blink { 50% { opacity: 0; } }
+  .verdict {
+    border-left: 1px solid var(--color-rule);
+    width: 132px; display: flex; flex-direction: column;
+    align-items: center; justify-content: center; gap: 10px;
+    color: var(--color-ink-muted);
+  }
+  .verdict svg { display: block; }
+  .verdict .word {
+    font-size: 0.68rem; text-transform: uppercase; letter-spacing: 0.16em; font-weight: 500;
+  }
+  .verdict.landed { color: var(--color-good); }
+  .verdict.broke  { color: var(--color-bad); }
+  .verdict.pending { opacity: 0.45; }
+
+  .replaybar {
+    margin-top: 14px; display: flex; align-items: center; gap: 14px;
+    font-size: 0.68rem; text-transform: uppercase; letter-spacing: 0.16em;
+    color: var(--color-ink-muted);
+  }
+  .replaybar button {
+    font-family: var(--font-mono); font-size: 0.68rem; text-transform: uppercase;
+    letter-spacing: 0.16em; font-weight: 500;
+    background: transparent; color: var(--color-ink); cursor: pointer;
+    border: 1px solid var(--color-rule); padding: 7px 14px;
+    transition: border-color 140ms ease, opacity 140ms ease;
+  }
+  .replaybar button:hover { border-color: var(--color-ink-muted); }
+  .replaybar button:active { transform: translateY(1px); }
+
+  /* ---------- VIEW B : the climb ---------- */
+  .climb-frame { margin-top: 26px; }
+  .climb-svg { width: 100%; height: auto; display: block; overflow: visible; }
+  .legend {
+    margin-top: 18px; display: flex; gap: 26px; flex-wrap: wrap;
+    font-size: 0.68rem; text-transform: uppercase; letter-spacing: 0.16em;
+    color: var(--color-ink-muted);
+  }
+  .legend i {
+    display: inline-block; width: 22px; height: 0; vertical-align: 3px;
+    margin-right: 9px; border-top: 2px solid var(--color-ink-muted);
+  }
+  .legend .sm i { border-top-style: solid; border-color: var(--color-ink); }
+  .legend .fr i { border-top-style: dashed; border-color: var(--color-ink-muted); }
+
+  /* x-axis task words sit under the climb */
+  .climb-x {
+    margin-top: 2px; display: grid; grid-template-columns: repeat(3, 1fr);
+    font-size: 0.68rem; text-transform: uppercase; letter-spacing: 0.14em;
+    color: var(--color-ink-muted);
+  }
+  .climb-x span { text-align: center; }
+  .climb-x span.break { color: var(--color-stamp); }
+
+  /* ---------- CTA ---------- */
+  .cta {
+    margin-top: 40px; padding-top: 26px; border-top: 1px solid var(--color-rule);
+    display: flex; align-items: center; justify-content: space-between; gap: 20px;
+    flex-wrap: wrap;
+  }
+  .cta a {
+    font-family: var(--font-mono); text-decoration: none;
+    font-size: 0.74rem; text-transform: uppercase; letter-spacing: 0.16em; font-weight: 500;
+    color: var(--color-paper); background: var(--color-ink);
+    padding: 13px 20px; border: 1px solid var(--color-ink);
+    transition: opacity 140ms ease;
+  }
+  .cta a:hover { opacity: 0.86; }
+  .fine {
+    font-family: var(--font-reading); letter-spacing: -0.008em;
+    font-size: 0.78rem; color: var(--color-ink-muted); max-width: 34ch; line-height: 1.5;
+  }
+  .foot {
+    margin-top: 56px; padding-top: 16px; border-top: 1px solid var(--color-rule);
+    font-size: 0.68rem; text-transform: uppercase; letter-spacing: 0.16em;
+    color: var(--color-ink-muted); display: flex; justify-content: space-between; gap: 16px;
+  }
+  .wordmark { color: var(--color-ink); }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <!-- ============================================================= VIEW A -->
+  <section>
+    <div class="pad">
+      <p class="eyebrow settle settle-1"><span class="stamp-dot"></span>watch a model try a task</p>
+
+      <p class="task-line settle settle-2" id="taskLine">
+        Sort this customer email into the right inbox.
+      </p>
+
+      <div class="attempt settle settle-3">
+        <div class="doing">
+          <span class="who" id="whoLabel">a small model running on your laptop</span>
+          <span class="act" id="actLine"><span class="cursor"></span></span>
+        </div>
+        <div class="verdict pending" id="verdict">
+          <span id="verdictMark"></span>
+          <span class="word" id="verdictWord">trying</span>
+        </div>
+      </div>
+
+      <div class="replaybar settle settle-4">
+        <button id="replayBtn" type="button">replay</button>
+        <span id="taskSwitch" style="cursor:pointer">next task -&gt;</span>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============================================================= VIEW B -->
+  <section>
+    <div class="pad">
+      <p class="eyebrow settle settle-1"><span class="stamp-dot"></span>the same small model, as the work gets harder</p>
+
+      <div class="climb-frame settle settle-2">
+        <svg class="climb-svg" viewBox="0 0 680 300" role="img"
+             aria-labelledby="climbTitle climbDesc" preserveAspectRatio="xMidYMid meet">
+          <title id="climbTitle">A rising path of harder tasks</title>
+          <desc id="climbDesc">The small local model keeps pace with the frontier model on the
+            first two tasks, then drops off the path at the hardest task, where the frontier model
+            continues on.</desc>
+
+          <!-- hairline floor -->
+          <line x1="40" y1="250" x2="640" y2="250" stroke="var(--color-rule)" stroke-width="1"/>
+
+          <!-- frontier: the full rising path, dashed, muted -->
+          <polyline id="frontierLine" fill="none"
+            stroke="var(--color-ink-muted)" stroke-width="2"
+            stroke-dasharray="3 5" stroke-linecap="round" stroke-linejoin="round"
+            points="113,212 340,150 567,70" />
+
+          <!-- small model: solid ink, climbs two steps then falls off -->
+          <polyline id="smallLine" fill="none"
+            stroke="var(--color-ink)" stroke-width="2.5"
+            stroke-linecap="round" stroke-linejoin="round"
+            points="113,212 340,150" />
+          <!-- the fall -->
+          <polyline id="fallLine" fill="none"
+            stroke="var(--color-stamp)" stroke-width="2.5"
+            stroke-linecap="round" stroke-linejoin="round"
+            points="340,150 567,248" />
+
+          <!-- node dots: kept-up (ink) then break (stamp ring) -->
+          <circle cx="113" cy="212" r="4.5" fill="var(--color-ink)"/>
+          <circle cx="340" cy="150" r="4.5" fill="var(--color-ink)"/>
+
+          <!-- frontier stays on at the top -->
+          <circle cx="567" cy="70" r="4.5" fill="var(--color-paper)" stroke="var(--color-ink-muted)" stroke-width="2"/>
+
+          <!-- the break: small model lands on the floor, marked in stamp -->
+          <circle id="breakDot" cx="567" cy="248" r="6" fill="var(--color-stamp)"/>
+          <circle cx="567" cy="248" r="11" fill="none" stroke="var(--color-stamp)" stroke-width="1.25" opacity="0.55"/>
+        </svg>
+      </div>
+
+      <div class="climb-x settle settle-3">
+        <span>sort an email</span>
+        <span>match a search</span>
+        <span class="break">run the save play</span>
+      </div>
+
+      <div class="legend settle settle-4">
+        <span class="sm"><i></i>small / local</span>
+        <span class="fr"><i></i>frontier</span>
+      </div>
+
+      <div class="cta settle settle-5">
+        <p class="fine">Synthetic example. Runs on your machine, nothing uploaded.</p>
+        <a href="#" id="ctaBtn">run this on your tasks -&gt;</a>
+      </div>
+    </div>
+
+    <div class="foot">
+      <span class="wordmark">understudy</span>
+      <span>directional, not a measurement</span>
+    </div>
+  </section>
+
+</div>
+
+<script>
+(function () {
+  // --- synthetic Larkfield content (mirrors ladder.data.js, stripped to task + attempt + verdict) ---
+  var TASKS = [
+    {
+      task: "Sort this customer email into the right inbox.",
+      who:  "a small model running on your laptop",
+      act:  "Reads it. Routes it to billing.",
+      outcome: "landed"
+    },
+    {
+      task: "Decide how this product matches a shopper's search.",
+      who:  "a small model running on your laptop",
+      act:  "Calls it a substitute. It was a match.",
+      outcome: "broke"
+    },
+    {
+      task: "Run the renewal save play: apply the discount, update the plan, tell the right team.",
+      who:  "a small model running on your laptop",
+      act:  "Skips the price. Emails the wrong team.",
+      outcome: "broke"
+    }
+  ];
+
+  var checkMark = '<svg width="26" height="26" viewBox="0 0 26 26" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="13" cy="13" r="11"/><path d="M8 13.5l3.2 3.2L18 9.5"/></svg>';
+  var xMark     = '<svg width="26" height="26" viewBox="0 0 26 26" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="13" cy="13" r="11"/><path d="M9 9l8 8M17 9l-8 8"/></svg>';
+
+  var taskLine   = document.getElementById('taskLine');
+  var whoLabel   = document.getElementById('whoLabel');
+  var actLine    = document.getElementById('actLine');
+  var verdict    = document.getElementById('verdict');
+  var verdictMk  = document.getElementById('verdictMark');
+  var verdictWd  = document.getElementById('verdictWord');
+  var replayBtn  = document.getElementById('replayBtn');
+  var taskSwitch = document.getElementById('taskSwitch');
+
+  var idx = 0;
+  var timers = [];
+  function clearTimers(){ timers.forEach(clearTimeout); timers = []; }
+
+  function reduced(){
+    return window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  }
+
+  function settle(t){
+    // reset to "trying", then resolve to a verdict after a short ambient pause
+    var d = TASKS[idx];
+    taskLine.textContent = d.task;
+    whoLabel.textContent = d.who;
+    verdict.className = 'verdict pending';
+    verdictMk.innerHTML = '';
+    verdictWd.textContent = 'trying';
+    actLine.innerHTML = '<span class="cursor"></span>';
+
+    if (reduced()) { return resolve(); }
+
+    timers.push(setTimeout(function () {
+      actLine.textContent = d.act;
+    }, 700));
+    timers.push(setTimeout(resolve, 1550));
+  }
+
+  function resolve(){
+    var d = TASKS[idx];
+    actLine.textContent = d.act;
+    if (d.outcome === 'landed') {
+      verdict.className = 'verdict landed';
+      verdictMk.innerHTML = checkMark;
+      verdictWd.textContent = 'it worked';
+    } else {
+      verdict.className = 'verdict broke';
+      verdictMk.innerHTML = xMark;
+      verdictWd.textContent = "didn't";
+    }
+  }
+
+  function play(){ clearTimers(); settle(); }
+
+  replayBtn.addEventListener('click', play);
+  taskSwitch.addEventListener('click', function () {
+    idx = (idx + 1) % TASKS.length;
+    play();
+  });
+
+  // first run
+  play();
+})();
+</script>
+</body>
+</html>
