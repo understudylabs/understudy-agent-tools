@@ -87,6 +87,11 @@
     font-family: var(--font-mono); font-size: 0.8rem; line-height: 1.5;
     color: var(--color-ink); white-space: pre-wrap;
   }
+  .think {
+    font-family: var(--font-reading); letter-spacing: -0.008em;
+    font-size: 0.88rem; line-height: 1.5; color: var(--color-ink-muted);
+    font-style: italic; min-height: 1.3em;
+  }
   .attempt .who {
     font-size: 0.68rem; text-transform: uppercase; letter-spacing: 0.16em;
     font-weight: 500; color: var(--color-ink-muted);
@@ -195,7 +200,8 @@
         <div class="doing">
           <div class="io"><span class="who">system prompt</span><span class="ioval" id="sysLine"></span></div>
           <div class="io"><span class="who">user prompt</span><span class="ioval" id="userLine"></span></div>
-          <div class="io"><span class="who">response</span><span class="act" id="actLine"><span class="cursor"></span></span></div>
+          <div class="io"><span class="who">thinking</span><span class="think" id="thinkLine"><span class="cursor"></span></span></div>
+          <div class="io"><span class="who">response</span><span class="act" id="actLine"></span></div>
         </div>
         <div class="verdict pending" id="verdict">
           <span id="verdictMark"></span>
@@ -289,6 +295,7 @@
       task: "Sort this customer email into the right inbox.",
       system: "Route the email to exactly one inbox: billing_urgent, billing_normal, technical, sales_lead, or spam. Reply with just the label.",
       user: "From: pat@maple.example\nSubject: charged twice\nI got billed twice this morning and it's holding up payroll. Please fix this today.",
+      thinking: "Billed twice and it's blocking payroll — that's a billing problem, and \"today\" makes it urgent.",
       response: "billing_urgent",
       outcome: "landed"
     },
@@ -296,6 +303,7 @@
       task: "Decide how a product relates to a shopper's search.",
       system: "Label the product against the search: Exact, Substitute, Complement, or Irrelevant. Reply with just the label.",
       user: "search: running shoes\nproduct: merino ankle socks, cushioned, 3-pack",
+      thinking: "Socks and shoes both go on the feet — close enough, I'll call it a substitute.",
       response: "Substitute",
       outcome: "broke"
     },
@@ -303,6 +311,7 @@
       task: "Run the renewal save play: apply the discount, update the plan, email the right team.",
       system: "Apply the latest discount, mark the subscription Saved with the new price in USD, and email the right teams per the save-play policy.",
       user: "Nova Retail · Growth · EUR 4000 · At-Risk · renews soon.\nTools: get_account, read_policy, update_subscription, send_mail, finish.",
+      thinking: "It's at-risk and renews soon — apply the save discount, mark it saved, and tell the renewals team.",
       response: "update_subscription({ })   ·   send_mail(to: csm@)",
       outcome: "broke"
     }
@@ -314,6 +323,7 @@
   var taskLine   = document.getElementById('taskLine');
   var sysLine    = document.getElementById('sysLine');
   var userLine   = document.getElementById('userLine');
+  var thinkLine  = document.getElementById('thinkLine');
   var actLine    = document.getElementById('actLine');
   var verdict    = document.getElementById('verdict');
   var verdictMk  = document.getElementById('verdictMark');
@@ -330,7 +340,7 @@
   }
 
   function settle(){
-    // show the request, blink, then reveal the response and resolve the verdict
+    // show the request, watch it think, then reveal the response and resolve the verdict
     var d = TASKS[idx];
     taskLine.textContent = d.task;
     sysLine.textContent  = d.system;
@@ -338,18 +348,24 @@
     verdict.className = 'verdict pending';
     verdictMk.innerHTML = '';
     verdictWd.textContent = 'trying';
-    actLine.innerHTML = '<span class="cursor"></span>';
+    thinkLine.innerHTML = '<span class="cursor"></span>';
+    actLine.textContent = '';
 
     if (reduced()) { return resolve(); }
 
     timers.push(setTimeout(function () {
-      actLine.textContent = d.response;
+      thinkLine.textContent = d.thinking;
+      actLine.innerHTML = '<span class="cursor"></span>';
     }, 800));
-    timers.push(setTimeout(resolve, 1650));
+    timers.push(setTimeout(function () {
+      actLine.textContent = d.response;
+    }, 1800));
+    timers.push(setTimeout(resolve, 2450));
   }
 
   function resolve(){
     var d = TASKS[idx];
+    thinkLine.textContent = d.thinking;
     actLine.textContent = d.response;
     if (d.outcome === 'landed') {
       verdict.className = 'verdict landed';
