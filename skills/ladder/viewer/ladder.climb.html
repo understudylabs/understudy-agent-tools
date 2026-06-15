@@ -79,8 +79,13 @@
     padding: 0; display: grid; grid-template-columns: 1fr auto;
   }
   .attempt .doing {
-    padding: 20px 22px; min-height: 92px;
-    display: flex; flex-direction: column; justify-content: center; gap: 6px;
+    padding: 22px 22px; min-height: 92px;
+    display: flex; flex-direction: column; justify-content: center; gap: 16px;
+  }
+  .io { display: flex; flex-direction: column; gap: 5px; }
+  .ioval {
+    font-family: var(--font-mono); font-size: 0.8rem; line-height: 1.5;
+    color: var(--color-ink); white-space: pre-wrap;
   }
   .attempt .who {
     font-size: 0.68rem; text-transform: uppercase; letter-spacing: 0.16em;
@@ -188,8 +193,9 @@
 
       <div class="attempt settle settle-3">
         <div class="doing">
-          <span class="who" id="whoLabel">a small model running on your laptop</span>
-          <span class="act" id="actLine"><span class="cursor"></span></span>
+          <div class="io"><span class="who">system prompt</span><span class="ioval" id="sysLine"></span></div>
+          <div class="io"><span class="who">user prompt</span><span class="ioval" id="userLine"></span></div>
+          <div class="io"><span class="who">response</span><span class="act" id="actLine"><span class="cursor"></span></span></div>
         </div>
         <div class="verdict pending" id="verdict">
           <span id="verdictMark"></span>
@@ -281,20 +287,23 @@
   var TASKS = [
     {
       task: "Sort this customer email into the right inbox.",
-      who:  "a small model running on your laptop",
-      act:  "Reads it. Routes it to billing.",
+      system: "Route the email to exactly one inbox: billing_urgent, billing_normal, technical, sales_lead, or spam. Reply with just the label.",
+      user: "From: pat@maple.example\nSubject: charged twice\nI got billed twice this morning and it's holding up payroll. Please fix this today.",
+      response: "billing_urgent",
       outcome: "landed"
     },
     {
-      task: "Decide how this product matches a shopper's search.",
-      who:  "a small model running on your laptop",
-      act:  "Calls it a substitute. It was a match.",
+      task: "Decide how a product relates to a shopper's search.",
+      system: "Label the product against the search: Exact, Substitute, Complement, or Irrelevant. Reply with just the label.",
+      user: "search: running shoes\nproduct: merino ankle socks, cushioned, 3-pack",
+      response: "Substitute",
       outcome: "broke"
     },
     {
-      task: "Run the renewal save play: apply the discount, update the plan, tell the right team.",
-      who:  "a small model running on your laptop",
-      act:  "Skips the price. Emails the wrong team.",
+      task: "Run the renewal save play: apply the discount, update the plan, email the right team.",
+      system: "Apply the latest discount, mark the subscription Saved with the new price in USD, and email the right teams per the save-play policy.",
+      user: "Nova Retail · Growth · EUR 4000 · At-Risk · renews soon.\nTools: get_account, read_policy, update_subscription, send_mail, finish.",
+      response: "update_subscription({ })   ·   send_mail(to: csm@)",
       outcome: "broke"
     }
   ];
@@ -303,7 +312,8 @@
   var xMark     = '<svg width="26" height="26" viewBox="0 0 26 26" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="13" cy="13" r="11"/><path d="M9 9l8 8M17 9l-8 8"/></svg>';
 
   var taskLine   = document.getElementById('taskLine');
-  var whoLabel   = document.getElementById('whoLabel');
+  var sysLine    = document.getElementById('sysLine');
+  var userLine   = document.getElementById('userLine');
   var actLine    = document.getElementById('actLine');
   var verdict    = document.getElementById('verdict');
   var verdictMk  = document.getElementById('verdictMark');
@@ -319,11 +329,12 @@
     return window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
   }
 
-  function settle(t){
-    // reset to "trying", then resolve to a verdict after a short ambient pause
+  function settle(){
+    // show the request, blink, then reveal the response and resolve the verdict
     var d = TASKS[idx];
     taskLine.textContent = d.task;
-    whoLabel.textContent = d.who;
+    sysLine.textContent  = d.system;
+    userLine.textContent = d.user;
     verdict.className = 'verdict pending';
     verdictMk.innerHTML = '';
     verdictWd.textContent = 'trying';
@@ -332,14 +343,14 @@
     if (reduced()) { return resolve(); }
 
     timers.push(setTimeout(function () {
-      actLine.textContent = d.act;
-    }, 700));
-    timers.push(setTimeout(resolve, 1550));
+      actLine.textContent = d.response;
+    }, 800));
+    timers.push(setTimeout(resolve, 1650));
   }
 
   function resolve(){
     var d = TASKS[idx];
-    actLine.textContent = d.act;
+    actLine.textContent = d.response;
     if (d.outcome === 'landed') {
       verdict.className = 'verdict landed';
       verdictMk.innerHTML = checkMark;
