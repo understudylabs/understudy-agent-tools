@@ -29,9 +29,7 @@ HOST, PORT = "127.0.0.1", 8011
 # id -> (lane, path-or-repo, label, sampling)
 # sampling is LiquidAI's recommendation from each model's Hugging Face card (mlx-lm lane only).
 MODELS = {
-    "lfm2.5-8b-a1b": ("mlx_lm",  "/Users/luis/.understudy/models/lfm2.5-8b-a1b-8bit", "LFM 8B-A1B · thinking", {"temp": 0.2,  "top_k": 80, "rep": 1.05}),
-    "lfm-thinking":  ("mlx_lm",  "LiquidAI/LFM2.5-1.2B-Thinking-MLX-8bit", "LFM 1.2B · thinking", {"temp": 0.05, "top_k": 50, "rep": 1.05}),
-    "lfm-instruct":  ("mlx_lm",  "LiquidAI/LFM2.5-1.2B-Instruct-MLX-8bit", "LFM 1.2B · instruct", {"temp": 0.05, "top_k": 50, "rep": 1.05}),
+    "lfm2.5-8b-a1b": ("mlx_lm",  "/Users/luis/.understudy/models/lfm2.5-8b-a1b-8bit", "LFM 8B-A1B · thinking", {"temp": 0.2, "top_k": 80, "rep": 1.05}),
     "gemma-4-e2b":   ("mlx_vlm", "/Users/luis/.understudy/models/gemma-4-e2b-it-mlx-vlm-4bit", "gemma-4-e2b", {}),
 }
 
