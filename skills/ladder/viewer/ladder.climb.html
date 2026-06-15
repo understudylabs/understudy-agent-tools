@@ -241,6 +241,12 @@
           <!-- hairline floor -->
           <line x1="40" y1="250" x2="640" y2="250" stroke="var(--color-rule)" stroke-width="1"/>
 
+          <!-- live runs paint here (served mode) -->
+          <g id="climbSeries"></g>
+
+          <!-- the pre-baked climb (file:// mode); hidden when live -->
+          <g id="staticClimb">
+
           <!-- frontier: the full rising path, dashed, muted -->
           <polyline id="frontierLine" fill="none"
             stroke="var(--color-ink-muted)" stroke-width="2"
@@ -268,6 +274,7 @@
           <!-- the break: small model lands on the floor, marked in stamp -->
           <circle id="breakDot" cx="567" cy="248" r="6" fill="var(--color-stamp)"/>
           <circle cx="567" cy="248" r="11" fill="none" stroke="var(--color-stamp)" stroke-width="1.25" opacity="0.55"/>
+          </g>
         </svg>
       </div>
 
@@ -277,7 +284,7 @@
         <span class="break">run the save play</span>
       </div>
 
-      <div class="legend settle settle-4">
+      <div class="legend settle settle-4" id="climbLegend">
         <span class="sm"><i></i>small / local</span>
         <span class="fr"><i></i>frontier</span>
       </div>
@@ -404,6 +411,50 @@
   var curModel = "lfm2.5-8b-a1b";
   var es = null;
 
+  // ---- the climb graph: accumulates the live runs ----
+  var RESULTS = {};                 // model -> { taskId -> score 0..1 }
+  var TASK_X = [113, 340, 567];
+  var SVGNS = 'http://www.w3.org/2000/svg';
+  function scoreY(s){ s = Math.max(0, Math.min(1, s)); return 250 - s * 180; }
+  function recordResult(model, taskId, score){
+    if (!RESULTS[model]) RESULTS[model] = {};
+    RESULTS[model][taskId] = score;
+    renderClimb();
+  }
+  function renderClimb(){
+    var g = document.getElementById('climbSeries'); if (!g) return;
+    while (g.firstChild) g.removeChild(g.firstChild);
+    var legend = document.getElementById('climbLegend'); if (legend) legend.innerHTML = '';
+    Object.keys(RESULTS).forEach(function (model) {
+      var r = RESULTS[model], active = (model === curModel), pts = [];
+      TASK_IDS.forEach(function (tid, i) { if (r[tid] != null) pts.push([TASK_X[i], scoreY(r[tid]), r[tid]]); });
+      if (!pts.length) return;
+      if (pts.length > 1) {
+        var pl = document.createElementNS(SVGNS, 'polyline');
+        pl.setAttribute('points', pts.map(function (p) { return p[0] + ',' + p[1]; }).join(' '));
+        pl.setAttribute('fill', 'none'); pl.setAttribute('stroke', 'var(--color-ink)');
+        pl.setAttribute('stroke-width', active ? '2.5' : '1.5');
+        pl.setAttribute('stroke-linecap', 'round'); pl.setAttribute('stroke-linejoin', 'round');
+        pl.setAttribute('opacity', active ? '1' : '0.28');
+        g.appendChild(pl);
+      }
+      pts.forEach(function (p) {
+        var c = document.createElementNS(SVGNS, 'circle');
+        c.setAttribute('cx', p[0]); c.setAttribute('cy', p[1]); c.setAttribute('r', active ? '5' : '3.5');
+        c.setAttribute('fill', p[2] <= 0 ? 'var(--color-stamp)' : (active ? 'var(--color-ink)' : 'var(--color-ink-muted)'));
+        c.setAttribute('opacity', active ? '1' : '0.5');
+        g.appendChild(c);
+      });
+      if (legend) {
+        var lm = LIVE_MODELS.filter(function (x) { return x.id === model; })[0];
+        var sp = document.createElement('span');
+        sp.textContent = (lm ? lm.label : model);
+        sp.style.color = active ? 'var(--color-ink)' : 'var(--color-ink-muted)';
+        legend.appendChild(sp);
+      }
+    });
+  }
+
   function renderModelPicker(){
     modelPicker.innerHTML = '';
     LIVE_MODELS.forEach(function (m) {
@@ -426,6 +477,7 @@
     thinkLine.textContent = '';
     actLine.innerHTML = '<span class="cursor"></span>';
     verdict.className = 'verdict pending'; verdictMk.innerHTML = ''; verdictWd.textContent = 'running';
+    renderClimb();                          // re-emphasize the active model's line on switch
     var gotResp = false;
     try {
       es = new EventSource('/run?task=' + encodeURIComponent(TASK_IDS[idx]) + '&model=' + encodeURIComponent(curModel));
@@ -445,6 +497,7 @@
         if (!gotResp && m.response) actLine.textContent = m.response;
         if (m.correct) { verdict.className = 'verdict landed'; verdictMk.innerHTML = checkMark; verdictWd.textContent = 'it worked'; }
         else { verdict.className = 'verdict broke'; verdictMk.innerHTML = xMark; verdictWd.textContent = "didn't"; }
+        if (m.correct != null) recordResult(curModel, TASK_IDS[idx], m.correct ? 1 : 0);
       }
     };
     es.onerror = function () {
@@ -467,6 +520,7 @@
     replayBtn.style.display = 'none';
     modelPicker.style.display = '';
     renderModelPicker();
+    var sc = document.getElementById('staticClimb'); if (sc) sc.style.display = 'none';
   }
 
   // first run
