@@ -282,6 +282,25 @@ Run this before any training claim:
 
 Only the `x`-only deploy conditions are eligible for product claims.
 
+## Cold-start data: harvest from a strong root, not weak failures
+
+The cold-start SFT corpus should be *successful* trajectories from a capable model, not the
+weak student's own failed rollouts (you would be teaching it to fail). The
+**big-orchestrator / small-runner split** (see the skill's "orchestrator and runner need not
+be the same model") is the natural generator: run the capable model as the orchestrator over
+the task and collect its trajectories, then filter twice before they enter the SFT pool —
+
+- **score gate**: keep only trajectories that pass the environment validator;
+- **process gate**: of those, keep only the ones with clean process metrics (well-grounded,
+  low replan-overlap, accurate sub-summaries) — a right-answer-by-luck trajectory with a
+  messy process teaches the wrong decomposition.
+
+SFT the small model on that filtered corpus to install the decomposition behavior, then RL
+with the process metrics as the per-step reward (grounding / compaction / correct summaries),
+not just the sparse final score. Route the filtered pool through
+[`../../curate-trajectories/SKILL.md`](../../curate-trajectories/SKILL.md) so no frozen
+dev/holdout rows leak into the train/RL pool.
+
 ## Ownership boundaries
 
 When multiple agents run related experiments, keep the ownership split:

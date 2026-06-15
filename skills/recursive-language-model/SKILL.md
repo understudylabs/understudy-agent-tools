@@ -124,13 +124,9 @@ turns the decomposition harness into a verifiers-style training surface,
 separates privileged training context (`c`) from deploy-time input (`x`),
 measures surprise concentration, explains how to read a live GRPO training
 signal, and decides whether the next rung is local pedagogical SFT, on-policy
-repair, pedagogical RL, or a hosted verifier handoff.
-
-The **big-orchestrator/small-runner split above is also the cold-start data generator**: run
-the capable orchestrator over the task, keep only the trajectories that both *score* and have
-clean process metrics (well-grounded, low-loop, accurate summaries), and SFT the small model
-on those — then RL with the process metrics as the per-step reward. Don't SFT on a weak
-model's failed trajectories; collect *good* ones from a strong root first.
+repair, pedagogical RL, or a hosted verifier handoff. That reference also covers
+**harvesting cold-start SFT data from the big-orchestrator/small-runner split** — collect
+*good* trajectories from a strong root, don't SFT on a weak model's failures.
 
 ## Safety Gates
 
