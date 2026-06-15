@@ -67,7 +67,21 @@ the final deliverable. The gap this closes is large: measured on an internal
 long-horizon benchmark, 2026-06-03, a structured-artifact workflow scored
 57/59 where a raw free-form RLM loop scored 3/59 with the same models.
 
+## The orchestrator and the runner need not be the same model
+
+The hardest sub-skill is the orchestration — planning the decomposition and authoring good
+sub-steps. The high-*volume* work is the bounded execution (run the step, summarize the
+result). These can run on **different models**: a capable model orchestrates (low call
+count, where quality matters) while a **small local model runs the bounded steps** (high
+call count, where cost lives). This "big orchestrator + small runner" split keeps planning
+quality high and displaces the fan-out — usually a better cost shape than forcing one small
+model to do both. Decide per band: if the small model's *orchestration* is the gap (bad
+plans, no grounding), keep a capable orchestrator and make the small model the runner; if
+only *execution* is the gap, the small model can be both under a tighter scaffold.
+
 ## What to measure (what's possible)
+
+**Outcome:**
 
 - **Decomposition factor** — small-model steps ÷ the teacher's steps to reach the
   same scored final state. 1 = one-shot parity; higher = more bounded passes per
@@ -78,8 +92,26 @@ long-horizon benchmark, 2026-06-03, a structured-artifact workflow scored
 - **Flat-context win** — peak context vs the teacher's compounding context, and the
   resulting cost/latency at parity.
 
-Report the local model's reachable score, the decomposition factor, and the
-remaining gap — feeding the route decision
+**Process (where it breaks — diagnose, don't just score).** A small model that scores
+near-zero usually is *not* failing to know it should decompose (the harness prompts that);
+it decomposes *badly*. Outcome alone can't tell you which sub-skill to fix, so instrument
+the trajectory:
+
+- **grounding rate** — fraction of steps that actually read the prior result vs reasoning
+  in a vacuum (the dominant small-model failure: it stops reading its own output).
+- **think-vs-act ratio** — output spent deliberating vs taking the next action.
+- **compaction** — does the scratchpad/working context stay bounded, or balloon turn over turn?
+- **repetition** — does it loop / re-derive the same step?
+- **sub-summary accuracy** — are the summaries it carries forward actually correct?
+
+These pinpoint *which* band to fix — plan vs execute vs ground vs combine — and they double
+as **dense per-step rewards** when you train (reward grounding/compaction/correct summaries,
+not just the final pass/fail). Empirically, scaling the base model buys *grounding and
+execution* but not *less over-thinking* — so part of any gap is capacity, part is scaffold;
+the process profile tells you which.
+
+Report the local model's reachable score, the decomposition factor, the process profile,
+and the remaining gap — feeding the route decision
 ([`../run-local-model-lab/SKILL.md`](../run-local-model-lab/SKILL.md)) and, only if
 local rungs genuinely can't close it,
 [`../prepare-verifier-handoff/SKILL.md`](../prepare-verifier-handoff/SKILL.md).
@@ -93,6 +125,12 @@ separates privileged training context (`c`) from deploy-time input (`x`),
 measures surprise concentration, explains how to read a live GRPO training
 signal, and decides whether the next rung is local pedagogical SFT, on-policy
 repair, pedagogical RL, or a hosted verifier handoff.
+
+The **big-orchestrator/small-runner split above is also the cold-start data generator**: run
+the capable orchestrator over the task, keep only the trajectories that both *score* and have
+clean process metrics (well-grounded, low-loop, accurate summaries), and SFT the small model
+on those — then RL with the process metrics as the per-step reward. Don't SFT on a weak
+model's failed trajectories; collect *good* ones from a strong root first.
 
 ## Safety Gates
 
