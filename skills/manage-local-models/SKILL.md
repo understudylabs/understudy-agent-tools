@@ -84,6 +84,17 @@ locations and registry links are in [`reference.md`](reference.md).
 5. **Verify + record.** Once cached, run a one-line generation to confirm it
    loads and does tool calls if the workload needs them. Append the model to
    `local_models` in the profile (id, runtime, quant, size, date).
+
+   **Also pre-research and record the recommended serving settings, at pull
+   time, not at bench time.** Read the snapshot's `generation_config.json`
+   (sampling: `do_sample`, `temperature`, `top_p`/`top_k`, schedules) and the
+   model card's serving guidance, and record them alongside the model entry in
+   the profile (e.g. `serving: {temperature: 1.0, top_k: 64, top_p: 0.95}`).
+   Local servers are not neutral: MLX servers map an omitted temperature to 0
+   (greedy), which is off-spec for every `do_sample: true` model and breaks
+   diffusion LMs outright. The pre-researched ladder settings live in
+   [`reference.md`](reference.md) — check there before serving anything from
+   the verified ladder.
 6. **Curate.** Offer to remove superseded or oversized weights to reclaim disk;
    show how to relocate the cache to another volume if space is tight
    ([`reference.md`](reference.md)).

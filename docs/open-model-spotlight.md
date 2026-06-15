@@ -37,6 +37,7 @@ multimodal, on-device end.
 | 12B Unified | 12B | 256K | text, image, audio |
 | 26B A4B (MoE) | 25B / ~3.8B | 256K | text, image |
 | 31B Dense | 30.7B | 256K | text, image |
+| DiffusionGemma 26B A4B | 26B / ~3.8B | 256K | text, image → text |
 | `*-it-assistant` | — | — | speculative-decoding **drafters**, not standalone |
 
 Benchmarks (instruct): 31B — MMLU-Pro 85, GPQA 84, LiveCodeBench 80; 26B —
@@ -45,6 +46,17 @@ Benchmarks (instruct): 31B — MMLU-Pro 85, GPQA 84, LiveCodeBench 80; 26B —
 
 **Via Understudy** — remote: `gemma-4-31b-it`. Local (`run-local-model-lab`):
 E2B / E4B / 12B / 26B-MoE / 31B — **$0 inference**.
+
+**DiffusionGemma** (launched **2026-06-10**, Apache 2.0): the 26B-A4B MoE
+retrained for **block discrete diffusion** — drafts a 256-token canvas per
+pass and denoises it in up to 48 steps instead of decoding token-by-token.
+Google claims up to 4x faster generation on datacenter/consumer GPUs (1000+
+tok/s on H100); the speedup relies on compute headroom and does **not** carry
+to bandwidth-bound Apple Silicon, where the AR 26B-A4B decodes ~1.8x faster
+(see `manage-local-models` reference for measured numbers). Useful locally for
+its behavior — whole-block drafting, infilling, self-correction — and as the
+first open diffusion LM in the ladder: `diffusiongemma-26b-a4b-it-mlx-vlm-4bit`
+/ `-bf16`.
 
 ## NVIDIA Nemotron 3
 
@@ -61,6 +73,16 @@ tokens + 18M post-training samples + RL gym environments). Nano launched
 
 Cloud (indicative /1M): Nano ~$0.05 in / $0.20 out; Super ~$0.10 / $0.50 (free
 tiers available); Ultra ~$0.60 / $3.60.
+
+Measured caution (AutomationBench discovery-toolset, 10 tasks, temp 1.0 +
+fixed seed, 2026-06): Nano 30B-A3B is very weak at **native tool-calling** —
+hosted at native precision it solved only **2/10**, and as a local MLX 4-bit
+**0/10** (quantization cost it both wins; see the quantization-tax note in the
+`manage-local-models` reference). Its calls parse cleanly but it search-loops
+and picks wrong tools. Same harness: Gemma 4 26B-A4B 8/10, Qwen3.6-35B-A3B
+9/10. Nemotron Nano performs far better when orchestrated through code
+(RLM-style REPL with tools as functions) than through native tool-call
+schemas — pair it with `recursive-language-model`, not raw tool use.
 
 **Via Understudy** — remote: `nemotron-3-nano`, `nemotron-3-super`,
 `nemotron-3-ultra`. Local (`run-local-model-lab`): Nano **4B** (smallest, dense —

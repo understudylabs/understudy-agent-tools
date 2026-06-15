@@ -137,10 +137,36 @@ comparing a workload's quality and cost across the split.
    understudy models list --json
    ```
 
+   The same catalog is enumerable in-band via OpenAI-compatible
+   `GET {gateway}/v1/models` with the `sk_*` key — `OpenAI(...).models.list()`
+   works — useful from a harness that already speaks the OpenAI SDK.
+
    The list is the remote ladder. It should include larger Gemma-family routes
    when enabled for the account, so the same API key can graduate a workload from
    the local Gemma 4 E2B first rung to larger Gemma variants or remote/hybrid
    routes without changing application code.
+
+   **Eval shortcut — request-time catalog resolution.** On a workload with **no
+   route configured** (never routed, or explicitly `--clear`ed — a route dialed
+   to 0% still counts as configured and stays passthrough), a request for any
+   active catalog id (`"model": "glm-5.1"`) is served from managed supply with
+   no per-model setup; unknown ids fall through to passthrough, where the URL
+   shape picks the provider (`/v1/chat/completions` → OpenAI) and the provider
+   returns its own 404. So a model sweep needs exactly one unrouted workload and
+   can iterate over catalog ids in the request body.
+
+   **Selecting the workload per request.** The gateway resolves which workload's
+   route serves a request from two optional headers: `x-understudy-project`
+   (project slug) and `x-understudy-workload` (workload name). Absent headers
+   fall back to the org's default workload — whose route may rewrite the model.
+   A bench harness should always send both headers and **never assume
+   requested == served**: read the canonical legibility headers the gateway
+   returns on every response — `x-understudy-mode` (managed/byo),
+   `x-understudy-route` (`primary` / `understudy` / `fallback`), and
+   `x-understudy-effective-model` (the public id that actually served) — and
+   record the effective model, falling back to the response-body `model` field
+   only if the headers are absent. Exclude runs where the requested and
+   effective models disagree.
 
 2. Route a workload to a model at a traffic percentage — a per-request split
    where that share goes to the routed model and the rest stays on passthrough.

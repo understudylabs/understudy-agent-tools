@@ -59,6 +59,17 @@ the quant is the bottleneck.
 **Rule of thumb (q4):** ~0.5 GB of weights per billion parameters, plus KV cache
 for context.
 
+**Quantization tax on agentic workloads (measured 2026-06-11):** 4-bit is a
+fine default for chat/drafting, but on tool-calling benches it measurably
+costs whole tasks — across families, on the same 10-task harness with
+sampling and token caps held equal: Nemotron 3 Nano went 2/10 hosted → 0/10
+as MLX 4-bit (lost both wins); DiffusionGemma's only solved task came at
+BF16; AR Gemma 4 26B-A4B's BF16 rung recovered misses its 4-bit made. The
+weaker a model's baseline tool-calling, the larger the tax. For agentic
+evals: treat 4-bit scores as lower bounds, and re-measure on the BF16 rung
+(now published for every ladder model) before concluding a model can't do a
+workload.
+
 ## Understudy verified MLX ladder
 
 Use this ladder before sending a new user to open-ended model browsing. It keeps
@@ -74,10 +85,14 @@ or graduate remote when local quality is the bottleneck.
 | Gemma 4 12B 4-bit | `mlx_vlm.server` | `https://models.understudylabs.com/session?model=gemma-4-12b-it-mlx-vlm-4bit` | M4/M5 MacBook Pro or high-RAM Air rung when E4B has the right behavior but not enough depth. About 6.3 GB; verified generation plus OpenAI-compatible logprobs/top-logprobs. |
 | Gemma 4 12B BF16 | `mlx_vlm.server` | `https://models.understudylabs.com/session?model=gemma-4-12b-it-mlx-vlm-bf16` | Quality/perf profiling rung on larger-memory Macs. About 22 GB; use when quantization may be the bottleneck. |
 | Gemma 4 26B A4B 4-bit | `mlx_vlm.server` | `https://models.understudylabs.com/session?model=gemma-4-26b-a4b-it-mlx-vlm-4bit` | MoE-style local climb for strong quality with lower active-parameter cost. About 14 GB; verified generation plus logprobs/top-logprobs. |
+| Gemma 4 26B A4B BF16 | `mlx_vlm.server` | `https://models.understudylabs.com/session?model=gemma-4-26b-a4b-it-mlx-vlm-bf16` | Full-precision MoE high end for 64 GB+ Macs when 4-bit quality is in question. About 52 GB. |
 | Gemma 4 31B 4-bit | `mlx_vlm.server` | `https://models.understudylabs.com/session?model=gemma-4-31b-it-mlx-vlm-4bit` | Workstation/high-memory local rung when dense capacity matters. About 17 GB; verified generation plus logprobs/top-logprobs. |
+| Gemma 4 31B BF16 | `mlx_vlm.server` | `https://models.understudylabs.com/session?model=gemma-4-31b-it-mlx-vlm-bf16` | Full-precision dense high end for 96 GB+ Macs. About 62 GB. |
+| DiffusionGemma 26B A4B 4-bit | `mlx_vlm.server` (mlx-vlm ≥ 0.6.3) | `https://models.understudylabs.com/session?model=diffusiongemma-26b-a4b-it-mlx-vlm-4bit` | Block-diffusion variant of the 26B A4B MoE. About 16 GB; verified generation, chat completions, and tool calls. See the diffusion note below before picking it for speed. |
+| DiffusionGemma 26B A4B BF16 | `mlx_vlm.server` (mlx-vlm ≥ 0.6.3) | `https://models.understudylabs.com/session?model=diffusiongemma-26b-a4b-it-mlx-vlm-bf16` | Full-precision diffusion rung for 64 GB+ Macs. About 52 GB; on bandwidth-bound Apple Silicon it decodes slightly *faster* than the 4-bit snapshot (diffusion decode is compute-bound), so prefer it when memory allows. |
 | Nemotron 3 Nano 4B | MLX / GGUF / remote | NVIDIA source or verified snapshot | Alternate edge rung when agentic reasoning or tool behavior beats Gemma on the workload. |
-| Nemotron 3 Nano 30B-A3B | MLX/GGUF on 32 GB+ or remote | NVIDIA source or gateway route | MoE climb when you need stronger reasoning while keeping active-parameter speed. |
-| Super / Ultra | Remote or workstation | Understudy gateway / provider route | Use when local cannot meet the quality bar or the Mac does not fit the weights comfortably. |
+| Nemotron 3 Nano 30B-A3B | `mlx_lm.server` on 32 GB+ | `mlx-community/NVIDIA-Nemotron-3-Nano-30B-A3B-4bit` (about 18 GB) | MoE climb when you need stronger reasoning while keeping active-parameter speed. Omni variant: `mlx-community/Nemotron-3-Nano-Omni-30B-A3B-Reasoning-nvfp4` (about 20 GB) for multimodal + reasoning. |
+| Super / Ultra | Remote | Understudy gateway / provider route | Not local rungs today: Ultra 4-bit MLX is ~347 GB; Super's only published MLX build is 9-bit at ~136 GB, over even a 128 GB Mac (a self-converted 4-bit Super ≈ 65 GB would fit but needs the ~240 GB BF16 source pull). Route remote via the gateway instead. |
 
 Cloudflare delivery note: public installation uses stable session endpoints from
 `models.understudylabs.com`. Each session response contains short-lived signed
@@ -107,8 +122,60 @@ the ladder was converted directly from the official Google checkpoints
 `google/gemma-4-26b-a4b-it`, `google/gemma-4-31b-it`) with `mlx-vlm 0.6.2`,
 packaged with `SHA256SUMS`, and smoke-tested through `mlx_vlm.server` plus
 OpenAI-compatible `/v1/chat/completions`; the 12B/26B/31B rungs were
-additionally verified for `logprobs`/`top_logprobs`. Prefer these tested
-snapshots over ad hoc local conversions when reproducing Understudy workflows.
+additionally verified for `logprobs`/`top_logprobs`. The DiffusionGemma rungs
+were converted from `google/diffusiongemma-26B-A4B-it` with `mlx-vlm 0.6.3`,
+packaged with `SHA256SUMS`, and smoke-tested the same way plus native
+tool-calling. The 26B-A4B/31B BF16 high-end rungs were likewise converted with
+`mlx-vlm 0.6.3` from the official BF16 checkpoints. Prefer these tested snapshots over ad hoc local conversions when
+reproducing Understudy workflows.
+
+DiffusionGemma note (measured on an M5 Max, 128 GB, mlx-vlm 0.6.3): Google's
+"up to 4x faster" claim comes from arithmetic intensity on compute-bound GPUs
+and does **not** transfer to bandwidth-bound Apple Silicon — long-form decode
+measured ~68 tok/s (4-bit) vs ~119 tok/s for the autoregressive
+`gemma-4-26b-a4b-it-mlx-vlm-4bit` sibling, while prefill was ~1.8x faster.
+Because the 256-token canvas makes decode compute-bound, BF16 decodes slightly
+faster than 4-bit (~78 vs ~68 tok/s); quantization buys memory, not speed.
+Pick DiffusionGemma for its behavior (block drafting, infilling-style edits),
+not for throughput. Serving tool calls requires mlx-vlm newer than 0.6.3 or a
+patched 0.6.3: stock 0.6.3 strips the gemma tool-call/escape marker tokens in
+the diffusion decode lane, so structured `tool_calls` never parse (the fix is
+to keep `<|tool_call>`, `<tool_call|>`, `<|"|>`, `<|channel>`, `<channel|>`
+out of the skipped-special-ids set in `server/generation.py`).
+
+Two more measured caveats for serving (mlx-vlm 0.6.3): (1) **reliability** —
+a client disconnect mid-canvas can wedge the diffusion generation lane (HTTP
+stays up, generation never completes); long-running harnesses should
+health-check the server with a small completion between tasks and restart on
+failure. (2) **never request `temperature: 0` (or omit temperature — the
+server default is 0)**. A diffusion LM's reference decode is *sampling* at
+its built-in linear t-schedule (0.8→0.4); the schedule IS the temperature.
+mlx-vlm maps OpenAI `temperature<=0` to argmax denoising — an unsupported
+greedy mode that silently corrupts structured output in long/hard contexts
+(measured: nested-JSON tool arguments truncate at internal quotes; the HF
+transformers reference on the identical 3.9K-token context is flawless, and
+the same server at `temperature: 1.0` is clean across seeds). Always send
+`temperature: 1.0` plus a `seed` for reproducibility; eval harnesses that
+default to temp 0 for AR models must override it for diffusion rungs.
+
+## Recommended serving settings (pre-researched)
+
+Pre-research serving settings **at pull time** — read the snapshot's
+`generation_config.json` and the model card before the first bench, and send
+the settings explicitly on every request. MLX servers (`mlx_lm.server`,
+`mlx_vlm.server`) map an **omitted** temperature to 0 = greedy, which is
+off-spec for every `do_sample: true` model and breaks diffusion LMs. Use a
+fixed `seed` for reproducibility, never `temperature: 0`.
+
+| Model family | Prescribed sampling (from `generation_config.json`) | Notes |
+|---|---|---|
+| Gemma 4 (all AR rungs) | `temperature 1.0, top_k 64, top_p 0.95` (`do_sample: true`) | Tolerates greedy in practice, but temp-0 results are off-spec — label them. |
+| DiffusionGemma | `temperature 1.0` + `seed` — **never 0, never omitted** | Built-in linear t-schedule 0.8→0.4 is the real temperature; ≤48 denoising steps, entropy bound 0.1, 256-token canvas. Greedy denoise corrupts long-context structured output (see decode note above). |
+| Nemotron 3 Nano 30B-A3B | `temperature 1.0, top_p 1.0` (`do_sample: true`) | Greedy produces search-looping on agentic tasks. |
+| Qwen3.6 (commonly cached peer) | `temperature 1.0, top_k 20, top_p 0.95` (`do_sample: true`) | Tolerates greedy; same labeling rule applies. |
+
+When adding a new model to the cache or ladder, append its row here as part of
+the pull — the bench harness should never have to guess.
 
 Small full-precision diagnostic note: `gemma-4-e2b-it-mlx-vlm-bf16` and
 `gemma-4-e4b-it-mlx-vlm-bf16` are the smaller BF16 rungs. Use them to
@@ -133,13 +200,15 @@ usage counts. Repeat the same smoke for `gemma-4-31b-it-mlx-vlm-4bit`. This is
 the supported functional check; raw `mlx_vlm.generate()` can emit odd text if the
 chat template is bypassed.
 
-Full-precision high end: on a 128 GB Apple Silicon machine, the official
-`google/gemma-4-26b-a4b-it` and `google/gemma-4-31b-it` BF16 source directories
-also load directly with `mlx_vlm.server` and pass the same chat smoke. They are
-large gated downloads, about 48 GB and 58 GB respectively, so keep them behind
-explicit approval and a disk/RAM check. The public Understudy signed snapshots
-currently publish the 4-bit 26B/31B rungs; full-precision source pulls remain a
-separate gated-weight workflow.
+Full-precision high end: the BF16 rungs for `gemma-4-26b-a4b-it` and
+`gemma-4-31b-it` are published as Understudy signed snapshots
+(`session?model=gemma-4-26b-a4b-it-mlx-vlm-bf16` /
+`gemma-4-31b-it-mlx-vlm-bf16`, converted with `mlx-vlm 0.6.3`), completing
+full-precision coverage of the Gemma ladder. They are large — about 52 GB and
+62 GB — so keep them behind explicit approval and a disk/RAM check; the
+official BF16 source directories also still load directly with
+`mlx_vlm.server` on 128 GB machines, but the signed snapshots are the
+reproducible path.
 
 Remote graduation note: when a local rung is too small, use
 [`../use-understudy-gateway/SKILL.md`](../use-understudy-gateway/SKILL.md) to

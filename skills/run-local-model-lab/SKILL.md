@@ -82,6 +82,20 @@ route for compliance. For pure remote inference/routing use
    architectures (e.g. Nemotron-H). Write artifacts to
    `.understudy/local-model-lab/`, recording: model id, quantization, runtime
    (mlx_lm version), hardware, context length, latency, tokens/sec, and score.
+
+   **Sampling is part of the contract — per model, not per harness.** Read the
+   model's `generation_config.json` and pin `(temperature, top_p/top_k, seed)`
+   from it into the run; record them in the artifact. Do not default to
+   `temperature: 0` for reproducibility — fix the seed instead. Models that set
+   `do_sample: true` (Gemma 4, Qwen3.6, Nemotron 3) are off-spec at temp 0,
+   and diffusion LMs (DiffusionGemma) are *broken* at temp 0: their reference
+   decode samples at a built-in temperature schedule, and MLX servers map
+   temp 0 — or an omitted temperature — to greedy argmax, which silently
+   corrupts long-context structured output (see the DiffusionGemma decode note
+   in [`../manage-local-models/reference.md`](../manage-local-models/reference.md)).
+   A near-zero agentic score next to clean peer scores warrants replaying one
+   failing context through the provider's reference implementation before
+   blaming the model.
 4. **Compare against remote.** Score the local candidate vs the remote route
    (gateway / Lilac / frontier) on the objective:
    - Local wins if it is *good enough* and cheaper / faster / private.

@@ -197,12 +197,21 @@ through MLX on Apple Silicon (see
   verified with chat completions plus logprobs/top-logprobs; see
   [`../manage-local-models/reference.md`](../manage-local-models/reference.md)
   for the canonical provenance statement and the known-good chat smoke.
-- **Full-precision high end** — official BF16 source pulls for
-  `google/gemma-4-26b-a4b-it` and `google/gemma-4-31b-it` can also be served
-  directly with `mlx_vlm.server` on 128 GB Apple Silicon and pass the same chat
-  smoke. They are not the default onboarding pull: they are gated, large
-  downloads of roughly 48 GB and 58 GB and require explicit approval plus a
-  disk/RAM check.
+- **DiffusionGemma rungs (specialty, not an onboarding default)** —
+  `diffusiongemma-26b-a4b-it-mlx-vlm-4bit` (about 16 GB) and
+  `diffusiongemma-26b-a4b-it-mlx-vlm-bf16` (about 52 GB), converted from
+  `google/diffusiongemma-26B-A4B-it` with `mlx-vlm 0.6.3` and served with
+  `mlx_vlm.server` (requires mlx-vlm ≥ 0.6.3 for the `diffusion_gemma`
+  architecture). Block-diffusion decoding: pick it to explore whole-block
+  drafting/infilling behavior, not for speed — on Apple Silicon the
+  autoregressive 26B-A4B rung decodes faster (see the DiffusionGemma note in
+  [`../manage-local-models/reference.md`](../manage-local-models/reference.md)).
+- **Full-precision high end** — Understudy-verified BF16 snapshots
+  `gemma-4-26b-a4b-it-mlx-vlm-bf16` (about 52 GB) and
+  `gemma-4-31b-it-mlx-vlm-bf16` (about 62 GB), converted with `mlx-vlm 0.6.3`
+  and served with `mlx_vlm.server`. They are not the default onboarding pull:
+  they are large downloads that require explicit approval plus a disk/RAM
+  check.
 - **Tiny fallback only** — `mlx-community/gemma-3-1b-it-4bit`, served with
   `mlx_lm.server`. Dry-run download is about 772 MB and it loads on current
   `mlx-lm 0.31.3`; use it only when the verified Gemma 4 snapshot is unavailable
