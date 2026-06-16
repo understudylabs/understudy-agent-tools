@@ -87,6 +87,16 @@
     font-family: var(--font-mono); font-size: 0.8rem; line-height: 1.5;
     color: var(--color-ink); white-space: pre-wrap;
   }
+  /* foldable context: collapse system -> user -> thinking so the trace + result lead */
+  .io.foldable > .who { cursor: pointer; user-select: none; display: inline-flex; align-items: center; gap: 6px; width: fit-content; }
+  .io.foldable > .who::after { content: "\25BE"; font-size: 0.62em; color: var(--color-ink-muted); }
+  .io.collapsed > .who::after { content: "\25B8"; }
+  .io.collapsed > .ioval, .io.collapsed > .think { display: none; }
+  .fold-preview { display: none; }
+  .io.collapsed > .fold-preview {
+    display: block; font-family: var(--font-mono); font-size: 0.76rem; color: var(--color-ink-muted);
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 56ch;
+  }
   .think {
     font-family: var(--font-reading); letter-spacing: -0.008em;
     font-size: 0.88rem; line-height: 1.5; color: var(--color-ink-muted);
@@ -170,6 +180,23 @@
   }
   .models button.active { color: var(--color-ink); border-color: var(--color-ink); }
   .models .pick-label { align-self: center; margin-right: 2px; font-size: 0.6rem; letter-spacing: 0.16em; text-transform: uppercase; color: var(--color-ink-muted); }
+  .replaybar button.active { color: var(--color-ink); border-color: var(--color-ink); }
+
+  /* ---------- reflect & retry: attempt chips + the model's post-mortem ---------- */
+  .attempts { display: flex; gap: 10px; flex-wrap: wrap; margin-top: 18px; }
+  .att-chip {
+    font-family: var(--font-mono); font-size: 0.66rem; text-transform: uppercase; letter-spacing: 0.12em;
+    border: 1px solid var(--color-rule); padding: 5px 11px; color: var(--color-ink-muted);
+  }
+  .att-chip.land { color: var(--color-good); border-color: color-mix(in srgb, var(--color-good) 45%, var(--color-rule)); }
+  .att-chip.brk  { color: var(--color-bad);  border-color: color-mix(in srgb, var(--color-bad) 45%, var(--color-rule)); }
+  .postmortem {
+    margin-top: 14px; padding: 14px 16px; border-left: 2px solid var(--color-stamp);
+    background: color-mix(in srgb, var(--color-paper) 96%, var(--color-ink) 4%);
+    font-family: var(--font-reading); letter-spacing: -0.008em; font-size: 0.9rem; line-height: 1.5;
+    color: var(--color-ink); white-space: pre-wrap;
+  }
+  .postmortem-lbl { font-family: var(--font-mono); font-size: 0.62rem; text-transform: uppercase; letter-spacing: 0.16em; color: var(--color-stamp); margin-bottom: 8px; }
 
   /* ---------- VS : two models, same task, side by side ---------- */
   body.vs .wrap { max-width: 1100px; transition: max-width 220ms var(--settle-ease); }
@@ -198,24 +225,11 @@
   .vs-pane .pane-verdict.broke  { color: var(--color-bad); }
   .vs-pane .pane-verdict.pending { opacity: 0.5; }
 
-  /* ---------- CTA ---------- */
-  .cta {
-    margin-top: 40px; padding-top: 26px; border-top: 1px solid var(--color-rule);
-    display: flex; align-items: center; justify-content: space-between; gap: 20px;
-    flex-wrap: wrap;
+  /* ---------- run button: the kept, filled primary action ---------- */
+  .replaybar button#runBtn {
+    color: var(--color-paper); background: var(--color-ink); border-color: var(--color-ink);
   }
-  .cta a {
-    font-family: var(--font-mono); text-decoration: none;
-    font-size: 0.74rem; text-transform: uppercase; letter-spacing: 0.16em; font-weight: 500;
-    color: var(--color-paper); background: var(--color-ink);
-    padding: 13px 20px; border: 1px solid var(--color-ink);
-    transition: opacity 140ms ease;
-  }
-  .cta a:hover { opacity: 0.86; }
-  .fine {
-    font-family: var(--font-reading); letter-spacing: -0.008em;
-    font-size: 0.78rem; color: var(--color-ink-muted); max-width: 34ch; line-height: 1.5;
-  }
+  .replaybar button#runBtn:hover { border-color: var(--color-ink); opacity: 0.86; }
   .foot {
     margin-top: 56px; padding-top: 16px; border-top: 1px solid var(--color-rule);
     font-size: 0.68rem; text-transform: uppercase; letter-spacing: 0.16em;
@@ -238,9 +252,9 @@
 
       <div class="attempt settle settle-3" id="singleAttempt">
         <div class="doing">
-          <div class="io"><span class="who">system prompt</span><span class="ioval" id="sysLine"></span></div>
-          <div class="io"><span class="who">user prompt</span><span class="ioval" id="userLine"></span></div>
-          <div class="io" id="thinkBlock"><span class="who">thinking</span><span class="think" id="thinkLine"><span class="cursor"></span></span></div>
+          <div class="io foldable" id="sysIo"><span class="who">system prompt</span><span class="fold-preview"></span><span class="ioval" id="sysLine"></span></div>
+          <div class="io foldable" id="userIo"><span class="who">user prompt</span><span class="fold-preview"></span><span class="ioval" id="userLine"></span></div>
+          <div class="io foldable" id="thinkBlock"><span class="who">thinking</span><span class="fold-preview"></span><span class="think" id="thinkLine"><span class="cursor"></span></span></div>
           <div class="io" id="respBlock"><span class="who">response</span><span class="act" id="actLine"></span></div>
           <div class="io" id="traceBlock" style="display:none"><span class="who">tool calls</span><div id="traceLine"></div></div>
           <div id="scoreBlock" style="display:none"></div>
@@ -249,6 +263,11 @@
           <span id="verdictMark"></span>
           <span class="word" id="verdictWord">trying</span>
         </div>
+      </div>
+
+      <div id="reflectStrip" style="display:none">
+        <div class="attempts" id="attemptsBar"></div>
+        <div class="postmortem" id="pmBlock" style="display:none"></div>
       </div>
 
       <div id="vsWrap" style="display:none"><div class="vs-grid" id="vsGrid"></div></div>
@@ -260,20 +279,14 @@
         <button id="runBtn" type="button" style="display:none">run &#9656;</button>
         <button id="replayBtn" type="button">replay</button>
         <button id="vsBtn" type="button" style="display:none">compare two &#9656;</button>
+        <button id="reflectBtn" type="button" style="display:none">reflect &amp; retry &#9656;</button>
         <span id="taskSwitch" style="cursor:pointer">next task -&gt;</span>
       </div>
     </div>
   </section>
 
-  <!-- ============================================================= CTA + FOOT -->
+  <!-- ============================================================= FOOT -->
   <section>
-    <div class="pad">
-      <div class="cta settle settle-5">
-        <p class="fine">Synthetic example. Runs on your machine, nothing uploaded.</p>
-        <a href="#" id="ctaBtn">run this on your tasks -&gt;</a>
-      </div>
-    </div>
-
     <div class="foot">
       <span class="wordmark">understudy</span>
       <span>directional, not a measurement</span>
@@ -321,6 +334,7 @@
   var vsBtn      = document.getElementById('vsBtn');
   var vsWrap     = document.getElementById('vsWrap');
   var vsGrid     = document.getElementById('vsGrid');
+  var reflectBtn = document.getElementById('reflectBtn');
   var singleAttempt = document.getElementById('singleAttempt');
 
   // the single-attempt pane, packaged like a VS pane so one renderer drives both
@@ -331,8 +345,22 @@
     scoreBlock: document.getElementById('scoreBlock'),
     verdict: document.getElementById('verdict'), verdictMk: document.getElementById('verdictMark'),
     verdictWd: document.getElementById('verdictWord'), verdictClass: 'verdict',
-    sysLine: sysLine, userLine: userLine
+    sysLine: sysLine, userLine: userLine,
+    sysIo: document.getElementById('sysIo'), userIo: document.getElementById('userIo'),
+    reflectStrip: document.getElementById('reflectStrip'),
+    attemptsBar: document.getElementById('attemptsBar'), pmBlock: document.getElementById('pmBlock')
   };
+
+  // collapse/expand a foldable context block; collapsed shows a one-line preview of its value
+  function setFold(io, collapsed){
+    if (!io) return;
+    io.classList.toggle('collapsed', collapsed);
+    var pv = io.querySelector('.fold-preview');
+    if (pv) {
+      var val = io.querySelector('.ioval, .think');
+      pv.textContent = collapsed && val ? (val.textContent || '').replace(/\s+/g, ' ').trim().slice(0, 90) : '';
+    }
+  }
 
   var idx = 0;
 
@@ -347,6 +375,7 @@
   var TOOL_TASKS = [];              // [{id,title,tools,checks}] available for the hard rung
   var curModelB = "glm-5.1";        // VS mode: the second model
   var vsOn = false;                 // VS (compare-two) mode active?
+  var reflectOn = false;            // reflect & retry mode active? (hard rung only)
   var single = null;                // live single-pane stream handle
   var vsConns = [];                 // live VS stream handles
 
@@ -479,37 +508,69 @@
   // The one renderer. Drive a set of pane elements from a /run SSE stream; the events
   // it sees decide the surface — classify (response token + correct) vs hard (meta,
   // tool_call/result, check, strict). Returns a handle so the caller can close it.
-  function streamInto(els, taskId, model){
-    var es = null, gotResp = false, settled = false, loading = false, isHard = false, rows = {}, scoreOpen = false;
-    // reset the pane to its pending state (the single-attempt pane is reused across runs)
-    if (els.thinkBlock) { els.thinkBlock.style.display = 'none'; els.thinkLine.textContent = ''; }
-    if (els.respBlock) els.respBlock.style.display = '';
-    els.actLine.innerHTML = '<span class="cursor"></span>';
-    if (els.traceBlock) { els.traceBlock.style.display = 'none'; els.traceLine.innerHTML = ''; }
-    if (els.scoreBlock) { els.scoreBlock.style.display = 'none'; els.scoreBlock.innerHTML = ''; }
-    els.verdict.className = els.verdictClass + ' pending'; els.verdictMk.innerHTML = ''; els.verdictWd.textContent = 'running';
+  function streamInto(els, taskId, model, reflect){
+    var es = null, settled = false, loading = false;
+    var gotResp, isHard, rows, scoreOpen, curAttempt = 1, prevPasses = null;
+    // reset the pane to its pending state (reused across runs, and between reflect attempts)
+    function resetPane(){
+      gotResp = false; isHard = false; rows = {}; scoreOpen = false; loading = false;
+      if (els.thinkBlock) { els.thinkBlock.style.display = 'none'; els.thinkLine.textContent = ''; }
+      if (els.respBlock) els.respBlock.style.display = '';
+      els.actLine.innerHTML = '<span class="cursor"></span>';
+      if (els.traceBlock) { els.traceBlock.style.display = 'none'; els.traceLine.innerHTML = ''; }
+      if (els.scoreBlock) { els.scoreBlock.style.display = 'none'; els.scoreBlock.innerHTML = ''; }
+      els.verdict.className = els.verdictClass + ' pending'; els.verdictMk.innerHTML = ''; els.verdictWd.textContent = 'running';
+      if (els.sysIo) { setFold(els.sysIo, false); setFold(els.userIo, false); setFold(els.thinkBlock, false); }  // start expanded
+    }
+    resetPane();
+    if (els.reflectStrip) {                       // reflect chrome lives only on the single pane
+      els.reflectStrip.style.display = reflect ? '' : 'none';
+      els.attemptsBar.innerHTML = ''; els.pmBlock.style.display = 'none'; els.pmBlock.innerHTML = '';
+    }
 
     function openScore(){ if (scoreOpen) return; scoreOpen = true; els.scoreBlock.style.display = '';
       var l = document.createElement('div'); l.className = 'sc-lbl'; l.textContent = 'criteria · expected vs. actual'; els.scoreBlock.appendChild(l); }
     function clearLoading(){ if (loading) { loading = false; els.actLine.textContent = ''; els.verdictWd.textContent = 'running'; } }
     function verdictOf(ok){ els.verdict.className = els.verdictClass + ' ' + (ok ? 'landed' : 'broke');
       els.verdictMk.innerHTML = ok ? checkMark : xMark; els.verdictWd.textContent = ok ? 'Pass' : 'Fail'; }
-    try { es = new EventSource('/run?task=' + encodeURIComponent(taskId) + '&model=' + encodeURIComponent(model)); }
+    function attemptChip(n, m){                    // reflect: one chip per attempt, with the climb arrow
+      var ok = m.strict >= 1, chip = document.createElement('span');
+      chip.className = 'att-chip ' + (ok ? 'land' : 'brk');
+      var arrow = (n > 1 && prevPasses != null) ? (m.passes > prevPasses ? ' ↑' : (m.passes < prevPasses ? ' ↓' : ' ·')) : '';
+      chip.textContent = 'attempt ' + n + ' · ' + m.passes + '/' + m.total + arrow;
+      els.attemptsBar.appendChild(chip); prevPasses = m.passes;
+    }
+    var url = '/run?task=' + encodeURIComponent(taskId) + '&model=' + encodeURIComponent(model) + (reflect ? '&reflect=1' : '');
+    try { es = new EventSource(url); }
     catch (e) { els.verdictWd.textContent = 'error'; return { close: function () {} }; }
     es.onmessage = function (ev) {
       var m; try { m = JSON.parse(ev.data); } catch (_) { return; }
       if (m.type === 'meta') {                  // hard tasks refine the system/user prompt
         if (els.sysLine) els.sysLine.textContent = m.system;
         if (els.userLine) els.userLine.textContent = m.user;
+      } else if (m.type === 'attempt') {        // reflect: a new attempt -> clear the pane
+        curAttempt = m.n; if (m.n > 1) resetPane();
+      } else if (m.type === 'postmortem') {     // reflect: the model's reflection on the grader
+        if (els.pmBlock) {
+          els.pmBlock.style.display = '';
+          els.pmBlock.innerHTML = '<div class="postmortem-lbl">post-mortem · the model reads the grader, then retries</div>';
+          var pt = document.createElement('div'); pt.textContent = m.text; els.pmBlock.appendChild(pt);
+        }
+      } else if (m.type === 'reflect_done') {
+        settled = true; if (es) { es.close(); es = null; }
       } else if (m.type === 'status' && m.state === 'loading') {
         loading = true; els.actLine.innerHTML = '<span class="loading-note">loading ' + (m.label || m.model) + ' …</span>'; els.verdictWd.textContent = 'loading';
+      } else if (m.type === 'status' && m.state === 'reflecting') {
+        els.verdictWd.textContent = 'reflecting';
       } else if (m.type === 'token') {
         clearLoading();
         if (m.channel === 'thinking') { els.thinkBlock.style.display = ''; els.thinkLine.textContent += m.text; els.thinkLine.scrollTop = els.thinkLine.scrollHeight; }
         else if (!isHard) { if (!gotResp) { els.actLine.textContent = ''; gotResp = true; } els.actLine.textContent += m.text; }
       } else if (m.type === 'tool_call') {
         clearLoading();
-        if (!isHard) { isHard = true; els.respBlock.style.display = 'none'; els.traceBlock.style.display = ''; }
+        if (!isHard) { isHard = true; els.respBlock.style.display = 'none'; els.traceBlock.style.display = '';
+          if (els.sysIo) { setFold(els.sysIo, true); setFold(els.userIo, true); setFold(els.thinkBlock, true); }  // fold context once the trace leads
+        }
         var row = document.createElement('div'); row.className = 'tstep';
         var c = document.createElement('div'); c.className = 'tcall';
         var badge = document.createElement('span'); badge.className = 'ui-badge'; badge.textContent = m.name; c.appendChild(badge);
@@ -521,9 +582,10 @@
       } else if (m.type === 'check') {
         openScore(); els.scoreBlock.appendChild(checkRow(m));
       } else if (m.type === 'done') {
-        settled = true; if (es) { es.close(); es = null; }
+        if (!reflect) { settled = true; if (es) { es.close(); es = null; } }   // reflect keeps the stream open for attempt 2
         if (!gotResp && !isHard && m.response) els.actLine.textContent = m.response;
         verdictOf(isHard ? (m.strict >= 1) : !!m.correct);
+        if (reflect && els.attemptsBar) attemptChip(curAttempt, m);
       } else if (m.type === 'error') {
         settled = true; if (es) { es.close(); es = null; }
         clearLoading(); els.thinkBlock.style.display = '';
@@ -576,17 +638,37 @@
     teardown();
     var d = TASKS[idx], f = framing(d);
     hardPicker.style.display = (d.hard && TOOL_TASKS.length) ? '' : 'none';
+    reflectBtn.style.display = d.hard ? '' : 'none';     // reflect & retry only makes sense on the hard rung
     if (vsOn) { vsRun(); return; }                       // VS mode: two models, same task
     taskLine.textContent = f.title; sysLine.textContent = f.system; userLine.textContent = f.user;
-    single = streamInto(globalEls, f.taskId, curModel);
+    single = streamInto(globalEls, f.taskId, curModel, reflectOn && d.hard);
+  }
+
+  function setReflect(on){
+    reflectOn = on;
+    reflectBtn.textContent = on ? '◂ reflect off' : 'reflect & retry ▸';
+    reflectBtn.className = on ? 'active' : '';
   }
 
   replayBtn.addEventListener('click', play);
   runBtn.addEventListener('click', play);
-  vsBtn.addEventListener('click', function () { vsOn = !vsOn; applyVsLayout(); play(); });
+  vsBtn.addEventListener('click', function () {
+    vsOn = !vsOn;
+    if (vsOn && reflectOn) setReflect(false);            // VS and reflect are mutually exclusive
+    applyVsLayout(); play();
+  });
+  reflectBtn.addEventListener('click', function () {
+    setReflect(!reflectOn);
+    if (reflectOn && vsOn) { vsOn = false; applyVsLayout(); }
+    play();
+  });
   taskSwitch.addEventListener('click', function () {
     idx = (idx + 1) % TASKS.length;
     play();
+  });
+  // click any context block's label to fold/unfold it manually
+  Array.prototype.forEach.call(document.querySelectorAll('.io.foldable > .who'), function (who) {
+    who.addEventListener('click', function () { var io = who.parentNode; setFold(io, !io.classList.contains('collapsed')); });
   });
 
   runBtn.style.display = '';

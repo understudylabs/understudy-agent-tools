@@ -515,11 +515,13 @@ def gemma_chat_turn(model_id, messages, tools, samp, max_tokens=1600):
     yield from _drive_local_turn(chunks, "<|tool_call>", parse_gemma_tool_calls)
 
 
-def run_agent(task_id, model_id, max_turns=10):
+def run_agent(task_id, model_id, max_turns=10, extra_user=""):
     """Generator of SSE-ready events for one live agent run against the world.
 
     Real model, real tools, real WorldState, real final-state scoring. Yields:
       meta -> token(thinking|response)* / tool_call / tool_result ... -> check* -> done
+    `extra_user` is appended to the user message (used by run_reflect to inject the
+    deterministic scorecard + post-mortem on a retry).
     """
     import world
     task = world.load_tasks().get(task_id)
@@ -533,8 +535,9 @@ def run_agent(task_id, model_id, max_turns=10):
     baseline = state.snapshot()
     tools = world.tool_schemas(task.get("allowed_tools"))
     samp = MODELS[model_id][3]
+    user_msg = task["prompt"] + (("\n\n" + extra_user) if extra_user else "")
     messages = [{"role": "system", "content": AGENT_SYSTEM},
-                {"role": "user", "content": task["prompt"]}]
+                {"role": "user", "content": user_msg}]
 
     yield {"type": "meta", "task": task_id, "model": model_id, "label": MODELS[model_id][2],
            "title": task["prompt"], "system": AGENT_SYSTEM, "user": task["prompt"],
@@ -608,6 +611,73 @@ def run_agent(task_id, model_id, max_turns=10):
     yield {"type": "done", "strict": scored["strict"], "dense": scored["dense"],
            "passes": passes, "total": len(scored["breakdown"]),
            "finished": finished, "turns": turn + 1}
+
+
+def _scorecard(checks):
+    """Render the deterministic per-criterion result as plain text for a retry prompt."""
+    lines = ["[%s] %s -- expected %s; got %s" %
+             ("PASS" if c["pass"] else "FAIL", c["label"], c.get("expected", ""), c.get("actual", ""))
+             for c in checks]
+    return "GRADER RESULTS (deterministic, authoritative):\n" + "\n".join(lines)
+
+
+def _postmortem(model_id, task_prompt, scorecard):
+    """Ask the model for a short post-mortem given the deterministic scorecard. It does NOT
+    grade -- the rules already did; it diagnoses each failure and plans the corrective action."""
+    system = ("You just attempted an operations task and a deterministic grader scored it. Write a "
+              "SHORT post-mortem: for each FAILED check, the root cause and the exact corrective action "
+              "(which tool call, which value) you will take on your retry. No preamble.")
+    user = "TASK:\n%s\n\n%s" % (task_prompt, scorecard)
+    raw = ""; resp = ""
+    # reasoning models need room to think before the post-mortem -- budget generously
+    src = (stream_tokens(model_id, system, user, max_tokens=2000) if MODELS[model_id][0] == "gateway"
+           else INFER.stream(lambda: stream_tokens(model_id, system, user, max_tokens=4000)))
+    for channel, text in src:
+        if channel == "raw":
+            raw += text
+        elif channel == "response":
+            resp += text
+    if raw:
+        _, resp = split_channels(raw)
+    return resp.strip()
+
+
+def run_reflect(task_id, model_id):
+    """Reflexion with a deterministic verifier. Attempt the task; if the rules don't pass it,
+    feed the model the scorecard, have it write a post-mortem, and retry once with both injected.
+    The model never grades -- it only diagnoses and retries. Yields run_agent's events wrapped
+    with attempt markers + a postmortem event so the viewer can show the climb."""
+    import world
+    task = world.load_tasks().get(task_id)
+    if task is None:
+        yield {"type": "error", "error": "unknown task '%s'" % task_id}; return
+
+    yield {"type": "attempt", "n": 1}
+    checks = []; done1 = None
+    for ev in run_agent(task_id, model_id):
+        if ev["type"] == "check":
+            checks.append(ev)
+        elif ev["type"] == "done":
+            done1 = ev
+        elif ev["type"] == "error":
+            yield ev; return
+        yield ev
+    if not done1 or done1.get("strict", 0) >= 1:                 # already solved -> nothing to reflect on
+        yield {"type": "reflect_done", "retried": False}; return
+
+    yield {"type": "status", "state": "reflecting", "model": model_id, "label": MODELS[model_id][2]}
+    scorecard = _scorecard(checks)
+    pm = _postmortem(model_id, task["prompt"], scorecard)
+    yield {"type": "postmortem", "text": pm}
+
+    extra = ("Your previous attempt was graded below.\n" + scorecard +
+             "\n\nYOUR POST-MORTEM:\n" + pm + "\n\nNow complete the task correctly.")
+    yield {"type": "attempt", "n": 2}
+    for ev in run_agent(task_id, model_id, extra_user=extra):
+        if ev["type"] == "meta":                                # keep attempt 1's framing on screen
+            continue
+        yield ev
+    yield {"type": "reflect_done", "retried": True}
 
 
 def classify_run(task, mid):
@@ -728,6 +798,8 @@ class Handler(BaseHTTPRequestHandler):
             return self._json({"error": "unknown model"}, 400)
         real = resolve_task(task)               # any tool task (or alias) -> live agent loop
         if real:
+            if q.get("reflect", ["0"])[0] == "1":   # reflect & retry: attempt -> scorecard -> post-mortem -> retry
+                return self._sse_run(run_reflect(real, mid))
             return self._sse_run(run_agent(real, mid))
         if task not in TASKS:
             return self._json({"error": "unknown task"}, 400)
