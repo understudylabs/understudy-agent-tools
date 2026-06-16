@@ -63,6 +63,79 @@ string or a dict. The rest of `run_agent` is lane-agnostic.
 - Negative + anti-shotgun checkers exist (`mail_not_sent_to`, `no_extra_writes`).
   See the PR's follow-ups for wiring `no_extra_writes` into the shipped fixtures.
 
+## Extending the ladder (adding tasks)
+
+Three layers, easiest first.
+
+### A new HARD tool-calling task — pure data, no code
+
+Append one JSON object (one line) to `fixtures/hard/tool_tasks.jsonl`. It is
+discovered by `load_tasks()`, listed by `GET /tasks` (kind `tool`), shown in the
+viewer's hard picker, and scored by the same agent loop — no server code. Restart
+the server to pick up a new/edited row (the task list is cached at startup).
+
+Row shape:
+
+| field | meaning |
+|---|---|
+| `task_id` | unique id, e.g. `hard.my_task` (the picker shows it) |
+| `tier` | `"hard"` |
+| `prompt` | the task the model must complete |
+| `toolset` | informational label (e.g. `"standard"`) |
+| `allowed_tools` | the tools exposed to the model for this task — a subset of the registry, always ending in `finish` |
+| `initial_state` | seeds a fresh `WorldState` (deep-copied per run): `{crm:{accounts,subscriptions,tickets}, mail:{inbox:[…]}, tables:{<name>:[rows]}, invoices:{…}}`. `mail.sent` starts empty; tools append to it and assertions read it back |
+| `assertions` | the scorecard (below) |
+| `gold_notes` | free-text notes (decoys to leave alone, etc.) — informational |
+
+Tools `allowed_tools` may pick from: `crm_find_accounts`, `crm_get_account`,
+`crm_get_subscriptions`, `crm_update_subscription`, `crm_list_tickets`,
+`crm_update_ticket`, `tables_get_rows`, `update_invoice`, `mail_find`,
+`mail_get`, `mail_send`, `finish`.
+
+Each assertion is `{id, type, weight, human:{label, expected?, plain?}, …type-params}`:
+
+| type | params | polarity |
+|---|---|---|
+| `sub_field_equals` | `sub_id, field, value` | positive |
+| `account_field_equals` | `acct_id, field, value` | positive |
+| `invoice_field_equals` | `invoice_id, field, value` | positive |
+| `ticket_field_equals` | `ticket_id, field, value` | positive |
+| `mail_sent_to_body_contains` | `to, substrings:[…]` — a sent message to `to` whose subject+body contains every substring | positive |
+| `mail_not_sent_to` | `to` — no message to that address | **negative** |
+| `no_extra_writes` | `allowed:[…]` mutation keys (`sub:ID`, `account:ID`, `ticket:ID`, `invoice:ID`, `mail:addr`) | **negative** |
+
+Scoring (`score_assertions`): `strict` = 1.0 iff **every** assertion passes;
+`dense` = sum of passed positive `weight`s, plus passed negative weights **only if
+all positives passed** (so a do-nothing run can't farm negatives). Keep positive
+weights summing to ≈1.0. Negatives + `no_extra_writes` turn the task's decoys into
+point-losers. The `human` block is display-only (label/expected/plain shown in the
+scorecard) and never affects pass/fail.
+
+### A new EASY/MEDIUM classify task — small edit
+
+Classify rungs are not fully data-driven (the viewer wires a fixed set of rungs by
+index). Add the task in two places:
+
+1. `serve.py` `TASKS`: `"my-task": ("title", "system prompt", "user prompt", "gold label")`.
+2. `viewer/ladder.climb.html`: add the id to `TASK_IDS` and a matching seed entry
+   to the `TASKS` array at the same index — the viewer cycles rungs by index and
+   `hydrate()` overwrites classify content from `/tasks`.
+
+Correctness is the substring check in `classify_run()`: the gold's first token must
+appear (case-insensitively) in the model's response, so keep gold labels short and
+single-token.
+
+### A new tool / a new model lane — code
+
+- **New tool:** add `fn(state, **args) -> dict` in `world.py`, register it in
+  `TOOLS`, and add an OpenAI-shaped entry to `TOOL_SCHEMAS`; then list it in a
+  task's `allowed_tools`. Errors must be recoverable — return `{"error": …}`,
+  never throw.
+- **New model lane:** add to `serve.py` `MODELS` (`id -> (lane, path, label,
+  sampling)`) and the viewer's `LIVE_MODELS`. A genuinely new tool-call dialect
+  needs a parser + a `LANE_ADAPT` row; an OpenAI-compatible gateway model is just
+  a `gateway` entry.
+
 ## Running notes & gotchas
 
 - **Use `uv`, not system python.** The local lanes need a current mlx stack; a

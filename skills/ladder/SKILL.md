@@ -120,5 +120,7 @@ loop), `env/world.py` (the synthetic Larkfield world + scoring),
 live and scored), and `viewer/ladder.climb.html` (the UI).
 
 See [`reference.md`](reference.md) for the architecture, the model lanes +
-tool-call dialects, the Larkfield world + scoring contract, and the running
-gotchas (uv-vs-system mlx, the one-GPU thread funnel, `UNDERSTUDY_MODEL_HOME`).
+tool-call dialects, the Larkfield world + scoring contract, **how to add your own
+tasks** (a new hard tool task is a single JSONL row — schema, assertion types, and
+tool list are documented there), and the running gotchas (uv-vs-system mlx, the
+one-GPU thread funnel, `UNDERSTUDY_MODEL_HOME`).
