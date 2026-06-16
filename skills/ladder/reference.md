@@ -68,9 +68,11 @@ string or a dict. The rest of `run_agent` is lane-agnostic.
 - **Use `uv`, not system python.** The local lanes need a current mlx stack; a
   stale system `mlx_lm` can't load some models:
   `understudy run -- uv run --with mlx-vlm --with mlx-lm python skills/ladder/serve.py`.
-- **Model cache.** Local weights load from `~/.understudy/models/<id>` (override
-  with `UNDERSTUDY_MODEL_HOME`). Missing weights raise a clear "pull it with
-  manage-local-models" error instead of a cryptic mlx load failure.
+- **Model cache.** Local weights load from `~/.understudy/models/<dir>` (override
+  the root with `UNDERSTUDY_MODEL_HOME`) — the `gemma-4-e2b` id resolves to the
+  `gemma-4-e2b-it-mlx-vlm-4bit` directory, not one named for the id. Missing
+  weights raise a clear "pull it with manage-local-models" error instead of a
+  cryptic mlx load failure.
 - **One GPU.** Local-vs-local VS serializes on the inference thread;
   local-vs-gateway runs concurrently (the gateway lane is network, not GPU).
 - **Reasoning is off by default** in the raw output and switched on per lane

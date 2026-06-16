@@ -32,22 +32,32 @@ workload, hand off to `run-local-model-lab`.
 
 ## Run it
 
+**Prerequisites** (otherwise-silent assumptions):
+
+- Apple Silicon (arm64) Mac with **`uv`** on `PATH` — the local lane needs a
+  current mlx stack (system `mlx_lm` is often too old to load the model).
+- The local model cached at `~/.understudy/models/gemma-4-e2b-it-mlx-vlm-4bit` —
+  the `gemma-4-e2b` id resolves to **that** directory, not a dir literally named
+  `gemma-4-e2b`. If it's missing, pull it with the `manage-local-models` skill
+  (`pull-understudy-snapshot.mjs --model gemma-4-e2b-it-mlx-vlm-4bit`); the server
+  prints an actionable error if it's absent.
+- **Frontier lane only:** run `understudy login` once so `understudy run` can
+  inject the gateway key. Without it the frontier lane returns the literal notice
+  `[gateway not configured …]` rather than erroring — don't mistake that for a
+  real run.
+
+Run from the repo root (the path below is relative):
+
 ```sh
 understudy run -- uv run --with mlx-vlm --with mlx-lm python skills/ladder/serve.py
 ```
 
-Then open <http://localhost:8011/ladder.climb.html>.
-
-- Use **`uv`**, not system python — the local models need the current mlx stack
-  (a stale system `mlx_lm` can't load some models).
-- `understudy run` injects the gateway key so the frontier lane works; the local
-  lane needs nothing and is **$0**. Local runs upload nothing.
-- The local model is loaded from `~/.understudy/models/<id>` (override with
-  `UNDERSTUDY_MODEL_HOME`). If it isn't there, pull it with the
-  `manage-local-models` skill — the server will say so explicitly.
+First invocation builds the mlx stack from PyPI (network, a few minutes) and the
+model cold-loads (~60s) — that pause is normal, not a hang. Then open
+<http://localhost:8011/ladder.climb.html>, or drive it headlessly (below).
 
 This is a developer-run demo/onboarding tool, **not** a headless production
-service.
+service — though the SSE endpoint is browserless-friendly for an agent.
 
 ## What you see
 
@@ -61,6 +71,32 @@ service.
 
 Frontier (`glm-5.1`) runs go through the Understudy gateway and are **billed** —
 the picker marks that lane and every such run is disclosed.
+
+## What you can actually run ($0 vs billed)
+
+- **$0, fully local — the "climb".** Run `gemma-4-e2b` across all three rungs and
+  watch where it breaks: it passes the easy/medium classify tasks and typically
+  fails the hard tool-calling task. That difficulty climb is the free demo and a
+  real signal on its own, entirely on your machine.
+- **A side-by-side model-vs-model comparison costs money.** The only frontier
+  lane, `glm-5.1`, is billed, and the "compare two" (VS) button pairs the local
+  model against it by default — so triggering VS bills a gateway run. No *second*
+  free model ships enabled (the local LFM lane is coded but commented out in
+  `serve.py`). So "$0" and "two models side by side" are not both available out
+  of the box: take the free climb, or accept the gateway cost for the race.
+
+## Drive it headlessly
+
+No browser required — the page is just a client of one SSE endpoint:
+
+```sh
+curl -N 'http://localhost:8011/run?task=sort-email&model=gemma-4-e2b'
+```
+
+The stream ends with a `done` event carrying the result (`correct`, `response`,
+`tok_s` for the classify rungs; `strict` / `dense` / `passes` for the hard rung).
+`GET /tasks` lists task ids (`sort-email`, `match-search`, `save-play`); `GET
+/models` lists the lanes.
 
 ## Safety Gates
 
