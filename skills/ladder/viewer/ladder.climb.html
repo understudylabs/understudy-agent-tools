@@ -593,9 +593,100 @@
     step(0);
   }
 
+  // ---- hard tier, LIVE: drive renderHard's DOM from the real agent loop ----
+  // Same trace-badge + scorecard surface as renderHard, but every row comes from
+  // a real model calling real tools (serve.py run_agent -> world.call_tool ->
+  // score_assertions). Pre-baked renderHard stays the file:// replay.
+  function fmtArgs(args){
+    if (!args || typeof args !== 'object') return '';
+    return Object.keys(args).map(function (k) {
+      var v = args[k], sv;
+      if (typeof v === 'string') { sv = '"' + (v.length > 44 ? v.slice(0, 42) + '…' : v) + '"'; }
+      else { try { sv = JSON.stringify(v); } catch (_) { sv = String(v); } }
+      return k + '=' + sv;
+    }).join(', ');
+  }
+  function fmtResult(res){
+    if (res && res.error) return '⚠ ' + res.error;
+    var s; try { s = JSON.stringify(res); } catch (_) { s = String(res); }
+    return s.length > 100 ? s.slice(0, 98) + '…' : s;
+  }
+
+  function playHardLive(){
+    clearTimers();
+    if (es) { es.close(); es = null; }
+    var d = TASKS[idx];
+    taskLine.textContent = d.task; sysLine.textContent = d.system; userLine.textContent = d.user;
+    thinkBlock.style.display = ''; thinkLine.textContent = '';
+    document.getElementById('respBlock').style.display = 'none';
+    var tb = document.getElementById('traceBlock'); tb.style.display = '';
+    var tl = document.getElementById('traceLine'); tl.innerHTML = '';
+    var sb = document.getElementById('scoreBlock'); sb.style.display = 'none'; sb.innerHTML = '';
+    verdict.className = 'verdict pending'; verdictMk.innerHTML = ''; verdictWd.textContent = 'running';
+    renderClimb();
+
+    var rows = {}, scoreOpen = false, settled = false;
+    function openScore(){
+      if (scoreOpen) return; scoreOpen = true;
+      sb.style.display = '';
+      var lbl = document.createElement('div'); lbl.className = 'sc-lbl';
+      lbl.textContent = 'final state — how the world looks now'; sb.appendChild(lbl);
+    }
+    try {
+      es = new EventSource('/run?task=save-play&model=' + encodeURIComponent(curModel));
+    } catch (e) { return renderHard(d); }
+    es.onmessage = function (ev) {
+      var m; try { m = JSON.parse(ev.data); } catch (_) { return; }
+      if (m.type === 'meta') {
+        sysLine.textContent = m.system; userLine.textContent = m.user;
+      } else if (m.type === 'token') {
+        if (m.channel === 'thinking') {
+          thinkBlock.style.display = ''; thinkLine.textContent += m.text;
+          thinkLine.scrollTop = thinkLine.scrollHeight;
+        }                                       // response channel: the trace carries the story
+      } else if (m.type === 'tool_call') {
+        var row = document.createElement('div'); row.className = 'tstep reveal';
+        var c = document.createElement('div'); c.className = 'tcall';
+        var badge = document.createElement('span'); badge.className = 'ui-badge'; badge.textContent = m.name;
+        c.appendChild(badge);
+        var a = fmtArgs(m.args);
+        if (a) { var ae = document.createElement('span'); ae.className = 'tcall-args'; ae.textContent = a; c.appendChild(ae); }
+        row.appendChild(c); tl.appendChild(row); rows[m.id] = row;
+      } else if (m.type === 'tool_result') {
+        var rw = rows[m.id]; if (!rw) return;
+        if (!m.ok) rw.className += ' tbad';      // a real recoverable error reads in stamp
+        var r = document.createElement('div'); r.className = 'tres'; r.textContent = '→ ' + fmtResult(m.result);
+        rw.appendChild(r);
+      } else if (m.type === 'check') {
+        openScore();
+        var cr = document.createElement('div'); cr.className = 'chk reveal ' + (m.pass ? 'ok' : 'no');
+        var mk = document.createElement('span'); mk.className = 'mk'; mk.textContent = m.pass ? '✓' : '✗';
+        var tx = document.createElement('span'); tx.textContent = m.label;
+        cr.appendChild(mk); cr.appendChild(tx); sb.appendChild(cr);
+      } else if (m.type === 'done') {
+        settled = true; if (es) { es.close(); es = null; }
+        if (m.strict >= 1) { verdict.className = 'verdict landed'; verdictMk.innerHTML = checkMark; verdictWd.textContent = 'it worked'; }
+        else { verdict.className = 'verdict broke'; verdictMk.innerHTML = xMark; verdictWd.textContent = "didn't"; }
+        recordResult(curModel, TASK_IDS[idx], m.strict >= 1 ? 1 : 0);
+      } else if (m.type === 'error') {
+        settled = true; if (es) { es.close(); es = null; }
+        thinkBlock.style.display = ''; thinkLine.textContent =
+          m.error + ' — this card needs a tool-calling model; pick glm-5.1 · frontier above.';
+        verdict.className = 'verdict pending'; verdictMk.innerHTML = ''; verdictWd.textContent = 'n/a';
+      }
+    };
+    es.onerror = function () {
+      if (es) { es.close(); es = null; }
+      if (!settled && !Object.keys(rows).length) renderHard(d);   // unreachable endpoint -> pre-baked
+    };
+  }
+
   function play(){
     var d = TASKS[idx];
-    if (d.trace) { renderHard(d); return; }              // tool-calling tier (pre-baked)
+    if (d.trace) {                                       // tool-calling tier
+      if (LIVE) playHardLive(); else renderHard(d);      // live agent loop vs pre-baked replay
+      return;
+    }
     document.getElementById('respBlock').style.display = '';
     document.getElementById('traceBlock').style.display = 'none';
     document.getElementById('scoreBlock').style.display = 'none';
