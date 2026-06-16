@@ -173,6 +173,156 @@ def split_channels(full):
     return "", full
 
 
+# ---------------------------------------------------------------------------
+# Live agent loop (HARD tier). A real model drives the Larkfield world:
+# model -> tool_call -> world.call_tool -> tool_result -> repeat -> finish,
+# then world.score_assertions on the final state. Gateway lane (BILLED), which
+# is the cleanest OpenAI function-calling path; local mlx tool-calling is harder
+# and deferred. Synthetic data only; every billed call is disclosed.
+# ---------------------------------------------------------------------------
+sys.path.insert(0, os.path.join(HERE, "env"))
+
+AGENT_SYSTEM = (
+    "You are an operations agent for Larkfield, a SaaS company. Complete the task "
+    "exactly using the provided tools. Before acting, read the relevant policy email "
+    "(mail_find / mail_get) and any reference tables (tables_get_rows). When a table "
+    "has multiple dated rows, ALWAYS use the row with the latest as_of date. Make every "
+    "required write and send every required email, then call finish. Do not take actions "
+    "the policy forbids."
+)
+
+
+def gateway_chat_turn(messages, tools, model_id, samp, max_tokens=2048):
+    """One streaming, tool-aware gateway turn (OpenAI-compatible, BILLED).
+
+    Generator: yields ('thinking', delta) and ('content', delta) as tokens
+    stream, then a final ('final', {content, reasoning, tool_calls}) with the
+    assembled assistant message. Gateway is always streamed (the edge cuts
+    non-streaming calls ~125s). Key/url come from the env `understudy run`
+    injects -- never read from disk."""
+    import urllib.request
+    key = os.environ.get("UNDERSTUDY_API_KEY")
+    base = os.environ.get("UNDERSTUDY_GATEWAY_URL")
+    if not key or not base:
+        yield ("final", {"content": "[gateway not configured -- launch serve.py via `understudy run`]",
+                         "reasoning": "", "tool_calls": []})
+        return
+    body = {"model": model_id, "stream": True, "max_tokens": max_tokens,
+            "messages": messages, "tools": tools, "tool_choice": "auto"}
+    if samp.get("temp") is not None:
+        body["temperature"] = samp["temp"]
+    req = urllib.request.Request(
+        base.rstrip("/") + "/v1/chat/completions",
+        data=json.dumps(body).encode(),
+        headers={"Authorization": "Bearer " + key, "Content-Type": "application/json",
+                 "Accept": "text/event-stream"},
+        method="POST")
+    content = ""; reasoning = ""; tcs = {}        # index -> {id,name,args}
+    with urllib.request.urlopen(req, timeout=180) as resp:
+        for raw in resp:
+            line = raw.decode("utf-8", "ignore").strip()
+            if not line.startswith("data:"):
+                continue
+            data = line[5:].strip()
+            if data == "[DONE]":
+                break
+            try:
+                delta = (json.loads(data).get("choices") or [{}])[0].get("delta") or {}
+            except Exception:
+                continue
+            rc = delta.get("reasoning_content") or delta.get("reasoning")
+            if rc:
+                reasoning += rc; yield ("thinking", rc)
+            c = delta.get("content")
+            if c:
+                content += c; yield ("content", c)
+            for tcd in (delta.get("tool_calls") or []):
+                slot = tcs.setdefault(tcd.get("index", 0), {"id": None, "name": "", "args": ""})
+                if tcd.get("id"):
+                    slot["id"] = tcd["id"]
+                fn = tcd.get("function") or {}
+                if fn.get("name"):
+                    slot["name"] = fn["name"]              # name arrives whole
+                if fn.get("arguments"):
+                    slot["args"] += fn["arguments"]         # arguments stream in chunks
+    yield ("final", {"content": content, "reasoning": reasoning,
+                     "tool_calls": [tcs[i] for i in sorted(tcs)]})
+
+
+def run_agent(task_id, model_id, max_turns=10):
+    """Generator of SSE-ready events for one live agent run against the world.
+
+    Real model, real tools, real WorldState, real final-state scoring. Yields:
+      meta -> token(thinking|response)* / tool_call / tool_result ... -> check* -> done
+    """
+    import world
+    task = world.load_tasks().get(task_id)
+    if task is None:
+        yield {"type": "error", "error": "unknown task '%s'" % task_id}; return
+    if MODELS.get(model_id, (None,))[0] != "gateway":
+        yield {"type": "error", "error": "agent loop needs a gateway (function-calling) model"}; return
+
+    state = world.fresh_state(task)
+    baseline = state.snapshot()
+    tools = world.tool_schemas(task.get("allowed_tools"))
+    model_real = MODELS[model_id][1]
+    samp = MODELS[model_id][3]
+    messages = [{"role": "system", "content": AGENT_SYSTEM},
+                {"role": "user", "content": task["prompt"]}]
+
+    yield {"type": "meta", "task": task_id, "model": model_id, "label": MODELS[model_id][2],
+           "title": task["prompt"], "system": AGENT_SYSTEM, "user": task["prompt"],
+           "tools": [t["function"]["name"] for t in tools]}
+
+    finished = False; turn = 0
+    for turn in range(max_turns):
+        msg = None
+        for kind, payload in gateway_chat_turn(messages, tools, model_real, samp):
+            if kind == "thinking":
+                yield {"type": "token", "channel": "thinking", "text": payload}
+            elif kind == "content":
+                yield {"type": "token", "channel": "response", "text": payload}
+            else:
+                msg = payload
+        assistant = {"role": "assistant", "content": msg.get("content") or ""}
+        if msg["tool_calls"]:
+            assistant["tool_calls"] = [
+                {"id": tc["id"] or ("call_%d" % i), "type": "function",
+                 "function": {"name": tc["name"], "arguments": tc["args"] or "{}"}}
+                for i, tc in enumerate(msg["tool_calls"])]
+        messages.append(assistant)
+
+        if not msg["tool_calls"]:
+            break                                          # model stopped without finishing
+        for i, tc in enumerate(msg["tool_calls"]):
+            call_id = tc["id"] or ("call_%d" % i)
+            name = tc["name"]
+            try:
+                args = json.loads(tc["args"] or "{}")
+            except Exception:
+                args = {}
+            yield {"type": "tool_call", "id": call_id, "name": name, "args": args}
+            result = world.call_tool(state, name, args)
+            yield {"type": "tool_result", "id": call_id, "name": name,
+                   "ok": "error" not in result, "result": result}
+            messages.append({"role": "tool", "tool_call_id": call_id,
+                             "content": json.dumps(result)})
+            if name == "finish":
+                finished = True
+        if finished:
+            break
+
+    scored = world.score_assertions(state, task.get("assertions", []), baseline=baseline)
+    for r in scored["breakdown"]:
+        yield {"type": "check", "id": r["id"], "label": r["label"], "pass": r["pass"],
+               "negative": r["negative"], "expected": r["expected"],
+               "actual": r["actual"], "plain": r["plain"]}
+    passes = sum(1 for r in scored["breakdown"] if r["pass"])
+    yield {"type": "done", "strict": scored["strict"], "dense": scored["dense"],
+           "passes": passes, "total": len(scored["breakdown"]),
+           "finished": finished, "turns": turn + 1}
+
+
 class Handler(BaseHTTPRequestHandler):
     def log_message(self, *a): pass
 
@@ -263,7 +413,44 @@ class Handler(BaseHTTPRequestHandler):
                    "response": resp_text.strip()[:200]})
 
 
+def _cli_agent(task_id, model_id):
+    """Run one agent loop and pretty-print its event stream to stderr.
+    Lets us verify the loop end-to-end (BILLED gateway call) before wiring routes:
+        understudy run -- uv run python skills/ladder/serve.py --agent hard.renewal_save_route glm-5.1
+    """
+    think = resp = 0
+    for ev in run_agent(task_id, model_id):
+        t = ev["type"]
+        if t == "meta":
+            sys.stderr.write(f"\n=== {ev['model']} on {ev['task']} ===\ntools: {', '.join(ev['tools'])}\n\n")
+        elif t == "token":
+            if ev["channel"] == "thinking":
+                think += len(ev["text"])
+            else:
+                resp += len(ev["text"])
+        elif t == "tool_call":
+            sys.stderr.write(f"  -> {ev['name']}({json.dumps(ev['args'])})\n")
+        elif t == "tool_result":
+            mark = "ok" if ev["ok"] else "ERR"
+            sys.stderr.write(f"     [{mark}] {json.dumps(ev['result'])[:160]}\n")
+        elif t == "check":
+            box = "PASS" if ev["pass"] else "fail"
+            neg = " (neg)" if ev["negative"] else ""
+            sys.stderr.write(f"  [{box}]{neg} {ev['label']}  -- {ev['actual']}\n")
+        elif t == "done":
+            sys.stderr.write(f"\nstrict={ev['strict']} dense={ev['dense']} "
+                             f"checks={ev['passes']}/{ev['total']} turns={ev['turns']} "
+                             f"finished={ev['finished']}  (thinking {think}c / response {resp}c)\n")
+        elif t == "error":
+            sys.stderr.write(f"ERROR: {ev['error']}\n")
+        sys.stderr.flush()
+
+
 def main():
+    if len(sys.argv) > 1 and sys.argv[1] == "--agent":
+        task_id = sys.argv[2] if len(sys.argv) > 2 else "hard.renewal_save_route"
+        model_id = sys.argv[3] if len(sys.argv) > 3 else "glm-5.1"
+        return _cli_agent(task_id, model_id)
     sys.stderr.write(f"ladder live server: http://{HOST}:{PORT}  (viewer: {VIEWER_DIR})\n")
     sys.stderr.write(f"  try: curl -N 'http://{HOST}:{PORT}/run?task=sort-email&model=lfm-thinking'\n")
     sys.stderr.flush()
