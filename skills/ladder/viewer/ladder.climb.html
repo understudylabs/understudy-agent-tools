@@ -92,6 +92,18 @@
     font-size: 0.88rem; line-height: 1.5; color: var(--color-ink-muted);
     font-style: italic; min-height: 1.3em; max-height: 8em; overflow-y: auto;
   }
+  /* hard tier: tool-calling trace + final-state scorecard */
+  .tstep { margin: 0 0 11px; }
+  .tcall { font-family: var(--font-mono); font-size: 0.8rem; color: var(--color-ink); line-height: 1.5; }
+  .tcall .mut { color: var(--color-ink-muted); }
+  .tres  { font-family: var(--font-mono); font-size: 0.78rem; color: var(--color-ink-muted); padding-left: 16px; margin-top: 2px; line-height: 1.5; }
+  .tbad .tcall, .tbad .tres { color: var(--color-stamp); }
+  #scoreBlock { margin-top: 6px; }
+  .sc-lbl { font-size: 0.62rem; text-transform: uppercase; letter-spacing: 0.16em; color: var(--color-ink-muted); margin: 0 0 10px; }
+  .chk { display: flex; align-items: flex-start; gap: 9px; font-family: var(--font-reading); font-size: 0.85rem; line-height: 1.45; margin: 7px 0; }
+  .chk .mk { font-family: var(--font-mono); font-size: 0.9rem; line-height: 1.25; }
+  .chk.ok .mk { color: var(--color-ink); }
+  .chk.no, .chk.no .mk { color: var(--color-stamp); }
   .attempt .who {
     font-size: 0.68rem; text-transform: uppercase; letter-spacing: 0.16em;
     font-weight: 500; color: var(--color-ink-muted);
@@ -208,7 +220,9 @@
           <div class="io"><span class="who">system prompt</span><span class="ioval" id="sysLine"></span></div>
           <div class="io"><span class="who">user prompt</span><span class="ioval" id="userLine"></span></div>
           <div class="io" id="thinkBlock"><span class="who">thinking</span><span class="think" id="thinkLine"><span class="cursor"></span></span></div>
-          <div class="io"><span class="who">response</span><span class="act" id="actLine"></span></div>
+          <div class="io" id="respBlock"><span class="who">response</span><span class="act" id="actLine"></span></div>
+          <div class="io" id="traceBlock" style="display:none"><span class="who">tool calls</span><div id="traceLine"></div></div>
+          <div id="scoreBlock" style="display:none"></div>
         </div>
         <div class="verdict pending" id="verdict">
           <span id="verdictMark"></span>
@@ -327,7 +341,23 @@
       task: "Run the renewal save play: apply the discount, update the plan, email the right team.",
       system: "Apply the latest discount, mark the subscription Saved with the new price in USD, and email the right teams per the save-play policy.",
       user: "Nova Retail · Growth · EUR 4000 · At-Risk · renews soon.\nTools: get_account, read_policy, update_subscription, send_mail, finish.",
-      thinking: "It's at-risk and renews soon — apply the save discount, mark it saved, and tell the renewals team.",
+      thinking: "It's at-risk and renews soon — find the account, read the routing policy, apply the latest discount, save it, then tell the right teams.",
+      trace: [
+        { call: 'crm_find_accounts("Nova Retail")', res: 'A-NOVA1 Nova Retail (Mid) · parent A-NOVAP · +2 look-alikes' },
+        { call: 'mail_get("Save-play routing")', res: 'use the latest discount row · report USD at latest FX · renewals@ + escalations@ if the parent has an open P1 · never csm@' },
+        { call: 'tables_get_rows("Discount Policy")', res: 'Mid: 10% (2025-12) · 15% (2026-02, latest)' },
+        { call: 'crm_update_subscription(S-NOVA1, status="Saved", mrr=3400)', res: 'ok · €3,400' },
+        { call: 'mail_send(to="renewals@", "…$3,808…")', res: 'sent' },
+        { call: 'mail_send(to="csm@", …)', res: 'sent · but csm@ was forbidden', bad: true },
+        { call: 'finish()', res: '' }
+      ],
+      checks: [
+        { label: 'subscription marked Saved', pass: true },
+        { label: 'MRR €3,400 — used the latest 15%, not the stale 10%', pass: true },
+        { label: 'emailed renewals@ with $3,808 (latest FX)', pass: true },
+        { label: 'escalations@ — never told, though the parent has an open P1', pass: false },
+        { label: 'csm@ — emailed them anyway (forbidden)', pass: false }
+      ],
       response: "update_subscription({ })   ·   send_mail(to: csm@)",
       outcome: "broke"
     }
@@ -461,7 +491,7 @@
       b.textContent = m.label;
       b.className = (m.id === curModel ? 'active' : '');
       if (m.billed) { b.title = 'runs on the Understudy gateway — billed to your account'; b.style.borderColor = 'var(--color-stamp)'; }
-      b.addEventListener('click', function () { curModel = m.id; renderModelPicker(); playLive(); });
+      b.addEventListener('click', function () { curModel = m.id; renderModelPicker(); play(); });
       modelPicker.appendChild(b);
     });
   }
@@ -506,10 +536,59 @@
     };
   }
 
-  function play(){ if (LIVE) playLive(); else playPrebaked(); }
+  // ---- hard tier: tool-calling trace + final-state scorecard (pre-baked for now) ----
+  function renderHard(d){
+    clearTimers(); if (es) { es.close(); es = null; }
+    taskLine.textContent = d.task;
+    sysLine.textContent  = d.system;
+    userLine.textContent = d.user;
+    thinkBlock.style.display = ''; thinkLine.textContent = d.thinking || '';
+    document.getElementById('respBlock').style.display = 'none';
+    var tb = document.getElementById('traceBlock'); tb.style.display = '';
+    var sb = document.getElementById('scoreBlock'); sb.style.display = 'none';
+    var tl = document.getElementById('traceLine'); tl.innerHTML = '';
+    verdict.className = 'verdict pending'; verdictMk.innerHTML = ''; verdictWd.textContent = 'running';
+    renderClimb();
+    var steps = d.trace || [], pace = reduced() ? 0 : 600;
+    function step(i){
+      if (i >= steps.length) { return score(); }
+      var s = steps[i];
+      var row = document.createElement('div'); row.className = 'tstep reveal' + (s.bad ? ' tbad' : '');
+      var c = document.createElement('div'); c.className = 'tcall'; c.textContent = s.call; row.appendChild(c);
+      if (s.res) { var r = document.createElement('div'); r.className = 'tres'; r.textContent = '→ ' + s.res; row.appendChild(r); }
+      tl.appendChild(row);
+      timers.push(setTimeout(function () { step(i + 1); }, pace));
+    }
+    function score(){
+      sb.style.display = ''; sb.innerHTML = '';
+      var lbl = document.createElement('div'); lbl.className = 'sc-lbl'; lbl.textContent = 'final state — how the world looks now'; sb.appendChild(lbl);
+      var checks = d.checks || [], passes = 0;
+      checks.forEach(function (ch) {
+        if (ch.pass) passes++;
+        var row = document.createElement('div'); row.className = 'chk reveal ' + (ch.pass ? 'ok' : 'no');
+        var mk = document.createElement('span'); mk.className = 'mk'; mk.textContent = ch.pass ? '✓' : '✗';
+        var tx = document.createElement('span'); tx.textContent = ch.label;
+        row.appendChild(mk); row.appendChild(tx); sb.appendChild(row);
+      });
+      var all = checks.length && passes === checks.length;
+      if (all) { verdict.className = 'verdict landed'; verdictMk.innerHTML = checkMark; verdictWd.textContent = 'it worked'; }
+      else { verdict.className = 'verdict broke'; verdictMk.innerHTML = xMark; verdictWd.textContent = "didn't"; }
+      recordResult(curModel, TASK_IDS[idx], checks.length ? passes / checks.length : 0);
+    }
+    step(0);
+  }
+
+  function play(){
+    var d = TASKS[idx];
+    if (d.trace) { renderHard(d); return; }              // tool-calling tier (pre-baked)
+    document.getElementById('respBlock').style.display = '';
+    document.getElementById('traceBlock').style.display = 'none';
+    document.getElementById('scoreBlock').style.display = 'none';
+    if (LIVE) playLive(); else playPrebaked();
+  }
 
   replayBtn.addEventListener('click', play);
-  runBtn.addEventListener('click', playLive);
+  runBtn.addEventListener('click', play);
   taskSwitch.addEventListener('click', function () {
     idx = (idx + 1) % TASKS.length;
     play();
