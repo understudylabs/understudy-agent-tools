@@ -17,6 +17,7 @@
     --font-mono: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, monospace;
     --font-reading: "IBM Plex Sans", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
     --settle-ease: cubic-bezier(0.2, 0.7, 0.2, 1);
+    --tool-ease: cubic-bezier(0.16, 1, 0.3, 1);   /* expo-out: smooth deceleration for the tool-column expand */
   }
   @media (prefers-color-scheme: dark) {
     :root {
@@ -50,7 +51,7 @@
   .settle-1{animation-delay:0ms}.settle-2{animation-delay:90ms}.settle-3{animation-delay:180ms}
   .settle-4{animation-delay:270ms}.settle-5{animation-delay:360ms}.settle-6{animation-delay:450ms}
   .settle-7{animation-delay:540ms}.settle-8{animation-delay:630ms}
-  @media (prefers-reduced-motion: reduce){ .settle{ animation: none; } }
+  @media (prefers-reduced-motion: reduce){ .settle{ animation: none; } .attempt.tool .trace-col{ animation: none; } }
 
   .wrap { max-width: 720px; margin: 0 auto; padding: 56px 28px 80px; }
 
@@ -79,9 +80,28 @@
     padding: 0; display: grid; grid-template-columns: 1fr auto;
   }
   .attempt .doing {
-    padding: 22px 22px; min-height: 92px;
-    display: flex; flex-direction: column; justify-content: center; gap: 16px;
+    padding: 16px 20px;
+    display: flex; flex-direction: column; justify-content: flex-start; gap: 16px;
   }
+  /* tool-calling tasks: 3 columns -- prompts/thinking | tool calls + score | verdict.
+     The center column expands in on the first tool call, not at run start. */
+  body.tool .wrap { max-width: 1100px; transition: max-width 340ms var(--tool-ease); }
+  .attempt .trace-col { display: none; }
+  .attempt.tool { grid-template-columns: minmax(0, 1fr) minmax(0, 1.15fr) auto; }
+  .attempt.tool .trace-col {
+    display: flex; flex-direction: column; gap: 14px; justify-content: flex-start;
+    padding: 16px 20px; border-left: 1px solid var(--color-rule); min-width: 0;
+    animation: trace-in 340ms var(--tool-ease) both;
+  }
+  .attempt.tool #traceLine { max-height: 60vh; overflow-y: auto; }   /* scroll long tool traces in place instead of growing the row */
+  @keyframes trace-in { from { opacity: 0; transform: translateX(14px); } to { opacity: 1; transform: none; } }
+  .attempt.tool .trace-col .tcall-args,
+  .attempt.tool .trace-col .tres { word-break: break-word; overflow-wrap: anywhere; }
+  /* criteria scorecard lives in the verdict column (it is the pass/fail breakdown);
+     the column widens when the scorecard arrives so the verdict stays compact mid-run */
+  .attempt.tool.scored .verdict { width: 248px; justify-content: flex-start; gap: 12px; }
+  .attempt.tool.scored .verdict-head { flex-direction: row; gap: 8px; }
+  .attempt.tool.scored #scoreBlock { align-self: stretch; margin-top: 0; border-top: 1px solid var(--color-rule); padding-top: 12px; }
   .io { display: flex; flex-direction: column; gap: 5px; }
   .ioval {
     font-family: var(--font-mono); font-size: 0.8rem; line-height: 1.5;
@@ -153,9 +173,10 @@
   @media (prefers-reduced-motion: reduce) { .loading-note { animation: none; opacity: 0.7; } }
   .verdict {
     border-left: 1px solid var(--color-rule);
-    width: 132px; display: flex; flex-direction: column;
+    width: 132px; padding: 16px; display: flex; flex-direction: column;
     align-items: center; justify-content: center; gap: 10px;
     color: var(--color-ink-muted);
+    transition: width 340ms var(--tool-ease);
   }
   .verdict svg { display: block; }
   .verdict .word {
@@ -164,6 +185,7 @@
   .verdict.landed { color: var(--color-good); }
   .verdict.broke  { color: var(--color-bad); }
   .verdict.pending { opacity: 0.45; }
+  .verdict-head { display: flex; flex-direction: column; align-items: center; gap: 10px; }
 
   .replaybar {
     margin-top: 14px; display: flex; align-items: center; gap: 14px;
@@ -274,12 +296,16 @@
           <div class="io foldable" id="userIo"><span class="who">user prompt</span><span class="fold-preview"></span><span class="ioval" id="userLine"></span></div>
           <div class="io foldable" id="thinkBlock"><span class="who">thinking</span><span class="fold-preview"></span><span class="think" id="thinkLine"><span class="cursor"></span></span></div>
           <div class="io" id="respBlock"><span class="who">response</span><span class="act" id="actLine"></span></div>
+        </div>
+        <div class="trace-col">
           <div class="io" id="traceBlock" style="display:none"><span class="who">tool calls</span><div id="traceLine"></div></div>
-          <div id="scoreBlock" style="display:none"></div>
         </div>
         <div class="verdict pending" id="verdict">
-          <span id="verdictMark"></span>
-          <span class="word" id="verdictWord">trying</span>
+          <div class="verdict-head">
+            <span id="verdictMark"></span>
+            <span class="word" id="verdictWord">trying</span>
+          </div>
+          <div id="scoreBlock" style="display:none"></div>
         </div>
       </div>
 
@@ -553,6 +579,7 @@
   // tool_call/result, check, strict). Returns a handle so the caller can close it.
   function streamInto(els, taskId, model){
     var es = null, gotResp = false, settled = false, loading = false, isHard = false, rows = {}, scoreOpen = false;
+    var attemptEl = els.verdict && els.verdict.parentElement;   // the .attempt (single mode) owns the 3-col tool layout
     // reset the pane to its pending state (the single-attempt pane is reused across runs)
     if (els.thinkBlock) { els.thinkBlock.style.display = 'none'; els.thinkLine.textContent = ''; }
     if (els.respBlock) els.respBlock.style.display = '';
@@ -560,9 +587,11 @@
     if (els.traceBlock) { els.traceBlock.style.display = 'none'; els.traceLine.innerHTML = ''; }
     if (els.scoreBlock) { els.scoreBlock.style.display = 'none'; els.scoreBlock.innerHTML = ''; }
     els.verdict.className = els.verdictClass + ' pending'; els.verdictMk.innerHTML = ''; els.verdictWd.textContent = 'running';
+    if (attemptEl && attemptEl.classList.contains('attempt')) { attemptEl.classList.remove('tool', 'scored'); document.body.classList.remove('tool'); }
     if (els.sysIo) { setFold(els.sysIo, false); setFold(els.userIo, false); setFold(els.thinkBlock, false); }  // start expanded
 
     function openScore(){ if (scoreOpen) return; scoreOpen = true; els.scoreBlock.style.display = '';
+      if (attemptEl && attemptEl.classList.contains('attempt')) attemptEl.classList.add('scored');   // widen the verdict column for the criteria breakdown
       var l = document.createElement('div'); l.className = 'sc-lbl'; l.textContent = 'criteria · expected vs. actual'; els.scoreBlock.appendChild(l); }
     function clearLoading(){ if (loading) { loading = false; els.actLine.textContent = ''; els.verdictWd.textContent = 'running'; } }
     function verdictOf(ok){ els.verdict.className = els.verdictClass + ' ' + (ok ? 'landed' : 'broke');
@@ -582,7 +611,8 @@
         else if (!isHard) { if (!gotResp) { els.actLine.textContent = ''; gotResp = true; } els.actLine.textContent += m.text; }
       } else if (m.type === 'tool_call') {
         clearLoading();
-        if (!isHard) { isHard = true; els.respBlock.style.display = 'none'; els.traceBlock.style.display = ''; }
+        if (!isHard) { isHard = true; els.respBlock.style.display = 'none'; els.traceBlock.style.display = '';
+          if (attemptEl && attemptEl.classList.contains('attempt')) { attemptEl.classList.add('tool'); document.body.classList.add('tool'); } }   // expand to 3 columns on the first tool call
         var row = document.createElement('div'); row.className = 'tstep';
         var c = document.createElement('div'); c.className = 'tcall';
         var badge = document.createElement('span'); badge.className = 'ui-badge'; badge.textContent = m.name; c.appendChild(badge);
