@@ -198,30 +198,6 @@
   .vs-pane .pane-verdict.broke  { color: var(--color-bad); }
   .vs-pane .pane-verdict.pending { opacity: 0.5; }
 
-  /* ---------- VIEW B : the climb ---------- */
-  .climb-frame { margin-top: 26px; }
-  .climb-svg { width: 100%; height: auto; display: block; overflow: visible; }
-  .legend {
-    margin-top: 18px; display: flex; gap: 26px; flex-wrap: wrap;
-    font-size: 0.68rem; text-transform: uppercase; letter-spacing: 0.16em;
-    color: var(--color-ink-muted);
-  }
-  .legend i {
-    display: inline-block; width: 22px; height: 0; vertical-align: 3px;
-    margin-right: 9px; border-top: 2px solid var(--color-ink-muted);
-  }
-  .legend .sm i { border-top-style: solid; border-color: var(--color-ink); }
-  .legend .fr i { border-top-style: dashed; border-color: var(--color-ink-muted); }
-
-  /* x-axis task words sit under the climb */
-  .climb-x {
-    margin-top: 2px; display: grid; grid-template-columns: repeat(3, 1fr);
-    font-size: 0.68rem; text-transform: uppercase; letter-spacing: 0.14em;
-    color: var(--color-ink-muted);
-  }
-  .climb-x span { text-align: center; }
-  .climb-x span.break { color: var(--color-stamp); }
-
   /* ---------- CTA ---------- */
   .cta {
     margin-top: 40px; padding-top: 26px; border-top: 1px solid var(--color-rule);
@@ -289,73 +265,9 @@
     </div>
   </section>
 
-  <!-- ============================================================= VIEW B -->
+  <!-- ============================================================= CTA + FOOT -->
   <section>
     <div class="pad">
-      <!-- climb chart parked for now — kept for later; delete this wrapper div to bring it back -->
-      <div id="climbArchive" style="display:none">
-      <p class="eyebrow settle settle-1"><span class="stamp-dot"></span>the same small model, as the work gets harder</p>
-
-      <div class="climb-frame settle settle-2">
-        <svg class="climb-svg" viewBox="0 0 680 300" role="img"
-             aria-labelledby="climbTitle climbDesc" preserveAspectRatio="xMidYMid meet">
-          <title id="climbTitle">A rising path of harder tasks</title>
-          <desc id="climbDesc">The small local model keeps pace with the frontier model on the
-            first two tasks, then drops off the path at the hardest task, where the frontier model
-            continues on.</desc>
-
-          <!-- hairline floor -->
-          <line x1="40" y1="250" x2="640" y2="250" stroke="var(--color-rule)" stroke-width="1"/>
-
-          <!-- live runs paint here (served mode) -->
-          <g id="climbSeries"></g>
-
-          <!-- the pre-baked climb (file:// mode); hidden when live -->
-          <g id="staticClimb">
-
-          <!-- frontier: the full rising path, dashed, muted -->
-          <polyline id="frontierLine" fill="none"
-            stroke="var(--color-ink-muted)" stroke-width="2"
-            stroke-dasharray="3 5" stroke-linecap="round" stroke-linejoin="round"
-            points="113,212 340,150 567,70" />
-
-          <!-- small model: solid ink, climbs two steps then falls off -->
-          <polyline id="smallLine" fill="none"
-            stroke="var(--color-ink)" stroke-width="2.5"
-            stroke-linecap="round" stroke-linejoin="round"
-            points="113,212 340,150" />
-          <!-- the fall -->
-          <polyline id="fallLine" fill="none"
-            stroke="var(--color-stamp)" stroke-width="2.5"
-            stroke-linecap="round" stroke-linejoin="round"
-            points="340,150 567,248" />
-
-          <!-- node dots: kept-up (ink) then break (stamp ring) -->
-          <circle cx="113" cy="212" r="4.5" fill="var(--color-ink)"/>
-          <circle cx="340" cy="150" r="4.5" fill="var(--color-ink)"/>
-
-          <!-- frontier stays on at the top -->
-          <circle cx="567" cy="70" r="4.5" fill="var(--color-paper)" stroke="var(--color-ink-muted)" stroke-width="2"/>
-
-          <!-- the break: small model lands on the floor, marked in stamp -->
-          <circle id="breakDot" cx="567" cy="248" r="6" fill="var(--color-stamp)"/>
-          <circle cx="567" cy="248" r="11" fill="none" stroke="var(--color-stamp)" stroke-width="1.25" opacity="0.55"/>
-          </g>
-        </svg>
-      </div>
-
-      <div class="climb-x settle settle-3">
-        <span>sort an email</span>
-        <span>match a search</span>
-        <span class="break">run the save play</span>
-      </div>
-
-      <div class="legend settle settle-4" id="climbLegend">
-        <span class="sm"><i></i>small / local</span>
-        <span class="fr"><i></i>frontier</span>
-      </div>
-      </div><!-- /climbArchive -->
-
       <div class="cta settle settle-5">
         <p class="fine">Synthetic example. Runs on your machine, nothing uploaded.</p>
         <a href="#" id="ctaBtn">run this on your tasks -&gt;</a>
@@ -372,47 +284,25 @@
 
 <script>
 (function () {
-  // --- synthetic Larkfield content (mirrors ladder.data.js, stripped to task + attempt + verdict) ---
+  // --- synthetic Larkfield content: the seed shown before the server's /tasks
+  //     catalog hydrates. The classify rungs get overwritten by hydrate(); the
+  //     hard rung is just flagged so play() routes it to the tool-calling surface. ---
   var TASKS = [
     {
       task: "Sort this customer email into the right inbox.",
       system: "Route the email to exactly one inbox: billing_urgent, billing_normal, technical, sales_lead, or spam. Reply with just the label.",
-      user: "From: pat@maple.example\nSubject: charged twice\nI got billed twice this morning and it's holding up payroll. Please fix this today.",
-      thinking: "Billed twice and it's blocking payroll — that's a billing problem, and \"today\" makes it urgent.",
-      response: "billing_urgent",
-      outcome: "landed"
+      user: "From: pat@maple.example\nSubject: charged twice\nI got billed twice this morning and it's holding up payroll. Please fix this today."
     },
     {
       task: "Decide how a product relates to a shopper's search.",
       system: "Label the product against the search: Exact, Substitute, Complement, or Irrelevant. Reply with just the label.",
-      user: "search: running shoes\nproduct: merino ankle socks, cushioned, 3-pack",
-      thinking: "Socks and shoes both go on the feet — close enough, I'll call it a substitute.",
-      response: "Substitute",
-      outcome: "broke"
+      user: "search: running shoes\nproduct: merino ankle socks, cushioned, 3-pack"
     },
     {
       task: "Run the renewal save play: apply the discount, update the plan, email the right team.",
       system: "Apply the latest discount, mark the subscription Saved with the new price in USD, and email the right teams per the save-play policy.",
       user: "Nova Retail · Growth · EUR 4000 · At-Risk · renews soon.\nTools: get_account, read_policy, update_subscription, send_mail, finish.",
-      thinking: "It's at-risk and renews soon — find the account, read the routing policy, apply the latest discount, save it, then tell the right teams.",
-      trace: [
-        { call: 'crm_find_accounts("Nova Retail")', res: 'A-NOVA1 Nova Retail (Mid) · parent A-NOVAP · +2 look-alikes' },
-        { call: 'mail_get("Save-play routing")', res: 'use the latest discount row · report USD at latest FX · renewals@ + escalations@ if the parent has an open P1 · never csm@' },
-        { call: 'tables_get_rows("Discount Policy")', res: 'Mid: 10% (2025-12) · 15% (2026-02, latest)' },
-        { call: 'crm_update_subscription(S-NOVA1, status="Saved", mrr=3400)', res: 'ok · €3,400' },
-        { call: 'mail_send(to="renewals@", "…$3,808…")', res: 'sent' },
-        { call: 'mail_send(to="csm@", …)', res: 'sent · but csm@ was forbidden', bad: true },
-        { call: 'finish()', res: '' }
-      ],
-      checks: [
-        { label: 'subscription marked Saved', pass: true },
-        { label: 'MRR €3,400 — used the latest 15%, not the stale 10%', pass: true },
-        { label: 'emailed renewals@ with $3,808 (latest FX)', pass: true },
-        { label: 'escalations@ — never told, though the parent has an open P1', pass: false },
-        { label: 'csm@ — emailed them anyway (forbidden)', pass: false }
-      ],
-      response: "update_subscription({ })   ·   send_mail(to: csm@)",
-      outcome: "broke"
+      hard: true
     }
   ];
 
@@ -422,11 +312,6 @@
   var taskLine   = document.getElementById('taskLine');
   var sysLine    = document.getElementById('sysLine');
   var userLine   = document.getElementById('userLine');
-  var thinkLine  = document.getElementById('thinkLine');
-  var actLine    = document.getElementById('actLine');
-  var verdict    = document.getElementById('verdict');
-  var verdictMk  = document.getElementById('verdictMark');
-  var verdictWd  = document.getElementById('verdictWord');
   var replayBtn  = document.getElementById('replayBtn');
   var taskSwitch = document.getElementById('taskSwitch');
   var runBtn     = document.getElementById('runBtn');
@@ -437,59 +322,20 @@
   var vsWrap     = document.getElementById('vsWrap');
   var vsGrid     = document.getElementById('vsGrid');
   var singleAttempt = document.getElementById('singleAttempt');
-  var thinkBlock = document.getElementById('thinkBlock');
+
+  // the single-attempt pane, packaged like a VS pane so one renderer drives both
+  var globalEls = {
+    thinkBlock: document.getElementById('thinkBlock'), thinkLine: document.getElementById('thinkLine'),
+    respBlock: document.getElementById('respBlock'),   actLine: document.getElementById('actLine'),
+    traceBlock: document.getElementById('traceBlock'), traceLine: document.getElementById('traceLine'),
+    scoreBlock: document.getElementById('scoreBlock'),
+    verdict: document.getElementById('verdict'), verdictMk: document.getElementById('verdictMark'),
+    verdictWd: document.getElementById('verdictWord'), verdictClass: 'verdict',
+    sysLine: sysLine, userLine: userLine
+  };
 
   var idx = 0;
-  var timers = [];
-  function clearTimers(){ timers.forEach(clearTimeout); timers = []; }
 
-  function reduced(){
-    return window.matchMedia && window.matchMedia('(prefers-reduced-motion: reduce)').matches;
-  }
-
-  function settle(){
-    // show the request, watch it think, then reveal the response and resolve the verdict
-    var d = TASKS[idx];
-    taskLine.textContent = d.task;
-    sysLine.textContent  = d.system;
-    userLine.textContent = d.user;
-    verdict.className = 'verdict pending';
-    verdictMk.innerHTML = '';
-    verdictWd.textContent = 'trying';
-    thinkLine.innerHTML = '<span class="cursor"></span>';
-    actLine.textContent = '';
-
-    if (reduced()) { return resolve(); }
-
-    timers.push(setTimeout(function () {
-      thinkLine.textContent = d.thinking;
-      actLine.innerHTML = '<span class="cursor"></span>';
-    }, 800));
-    timers.push(setTimeout(function () {
-      actLine.textContent = d.response;
-    }, 1800));
-    timers.push(setTimeout(resolve, 2450));
-  }
-
-  function resolve(){
-    var d = TASKS[idx];
-    thinkLine.textContent = d.thinking;
-    actLine.textContent = d.response;
-    if (d.outcome === 'landed') {
-      verdict.className = 'verdict landed';
-      verdictMk.innerHTML = checkMark;
-      verdictWd.textContent = 'Pass';
-    } else {
-      verdict.className = 'verdict broke';
-      verdictMk.innerHTML = xMark;
-      verdictWd.textContent = 'Fail';
-    }
-  }
-
-  function playPrebaked(){ clearTimers(); settle(); }
-
-  // ---- live mode: when served by serve.py, stream a real local model ----
-  var LIVE = (location.protocol === 'http:' || location.protocol === 'https:');
   var TASK_IDS = ["sort-email", "match-search", "save-play"];
   var LIVE_MODELS = [
     { id: "gemma-4-e2b",   label: "gemma-4-e2b" },
@@ -501,66 +347,15 @@
   var TOOL_TASKS = [];              // [{id,title,tools,checks}] available for the hard rung
   var curModelB = "glm-5.1";        // VS mode: the second model
   var vsOn = false;                 // VS (compare-two) mode active?
+  var single = null;                // live single-pane stream handle
   var vsConns = [];                 // live VS stream handles
-  var es = null;
 
-  // ---- the climb graph: accumulates the live runs ----
-  var RESULTS = {};                 // model -> { taskId -> score 0..1 }
-  var TASK_X = [113, 340, 567];
-  var SVGNS = 'http://www.w3.org/2000/svg';
-  function scoreY(s){ s = Math.max(0, Math.min(1, s)); return 250 - s * 180; }
-  function recordResult(model, taskId, score){
-    if (!RESULTS[model]) RESULTS[model] = {};
-    RESULTS[model][taskId] = score;
-    renderClimb();
-  }
-  function renderClimb(){
-    var g = document.getElementById('climbSeries'); if (!g) return;
-    while (g.firstChild) g.removeChild(g.firstChild);
-    var legend = document.getElementById('climbLegend'); if (legend) legend.innerHTML = '';
-    Object.keys(RESULTS).forEach(function (model) {
-      var r = RESULTS[model], active = (model === curModel), pts = [];
-      TASK_IDS.forEach(function (tid, i) { if (r[tid] != null) pts.push([TASK_X[i], scoreY(r[tid]), r[tid]]); });
-      if (!pts.length) return;
-      if (pts.length > 1) {
-        var pl = document.createElementNS(SVGNS, 'polyline');
-        pl.setAttribute('points', pts.map(function (p) { return p[0] + ',' + p[1]; }).join(' '));
-        pl.setAttribute('fill', 'none'); pl.setAttribute('stroke', 'var(--color-ink)');
-        pl.setAttribute('stroke-width', active ? '2.5' : '1.5');
-        pl.setAttribute('stroke-linecap', 'round'); pl.setAttribute('stroke-linejoin', 'round');
-        pl.setAttribute('opacity', active ? '1' : '0.28');
-        g.appendChild(pl);
-      }
-      pts.forEach(function (p) {
-        var c = document.createElementNS(SVGNS, 'circle');
-        c.setAttribute('cx', p[0]); c.setAttribute('cy', p[1]); c.setAttribute('r', active ? '5' : '3.5');
-        c.setAttribute('fill', p[2] <= 0 ? 'var(--color-stamp)' : (active ? 'var(--color-ink)' : 'var(--color-ink-muted)'));
-        c.setAttribute('opacity', active ? '1' : '0.5');
-        g.appendChild(c);
-      });
-      if (legend) {
-        var lm = LIVE_MODELS.filter(function (x) { return x.id === model; })[0];
-        var sp = document.createElement('span');
-        sp.textContent = (lm ? lm.label : model);
-        sp.style.color = active ? 'var(--color-ink)' : 'var(--color-ink-muted)';
-        legend.appendChild(sp);
-      }
-    });
+  function teardown(){
+    if (single) { single.close(); single = null; }
+    vsConns.forEach(function (c) { c.close(); }); vsConns = [];
   }
 
-  function renderModelPicker(){
-    modelPicker.innerHTML = '';
-    LIVE_MODELS.forEach(function (m) {
-      var b = document.createElement('button');
-      b.textContent = m.label;
-      b.className = (m.id === curModel ? 'active' : '');
-      if (m.billed) { b.title = 'runs on the Understudy gateway — billed to your account'; b.style.borderColor = 'var(--color-stamp)'; }
-      b.addEventListener('click', function () { curModel = m.id; renderModelPicker(); play(); });
-      modelPicker.appendChild(b);
-    });
-  }
-
-  // ---- task catalog: hydrate the 3 rungs from the server (served mode) ----
+  // ---- task catalog: hydrate the 3 rungs from the server ----
   // The easy/medium rungs take their content from /tasks; the hard rung becomes a
   // picker over whatever tool tasks the fixtures define. Edit a fixture or the
   // server's task list and it reflects here -- no change to this page.
@@ -581,38 +376,51 @@
         }
       });
       if (TOOL_TASKS.length) { curHardTask = TOOL_TASKS[0].id; }   // default hard rung -> first fixture
-    }).catch(function () { /* offline / static host: keep the hardcoded content */ });
+    }).catch(function () { /* server unreachable: keep the seed content */ });
   }
-  function renderHardPicker(){
-    hardPicker.innerHTML = '';
-    if (!TOOL_TASKS.length) return;
-    var lbl = document.createElement('span');
-    lbl.textContent = 'task'; lbl.style.cssText =
-      'align-self:center;margin-right:2px;font-size:0.6rem;letter-spacing:0.16em;text-transform:uppercase;color:var(--color-ink-muted)';
-    hardPicker.appendChild(lbl);
-    TOOL_TASKS.forEach(function (t) {
+
+  // ---- pickers: one builder, three call sites (model A / hard task / VS model B) ----
+  // opt: {label?, text(it), id(it), active(), title?(it), billed?, pick(it)}
+  function buildPicker(el, items, opt){
+    el.innerHTML = '';
+    if (opt.label) { var lb = document.createElement('span'); lb.className = 'pick-label'; lb.textContent = opt.label; el.appendChild(lb); }
+    items.forEach(function (it) {
       var b = document.createElement('button');
-      b.textContent = humanizeTask(t.id);
-      b.className = (t.id === curHardTask ? 'active' : '');
-      b.title = (t.tools ? t.tools.length + ' tools · ' : '') + (t.checks != null ? t.checks + ' checks' : '');
-      b.addEventListener('click', function () { curHardTask = t.id; renderHardPicker(); play(); });
-      hardPicker.appendChild(b);
+      b.textContent = opt.text(it);
+      b.className = (opt.active() === opt.id(it) ? 'active' : '');
+      var tip = opt.title && opt.title(it); if (tip) b.title = tip;
+      if (opt.billed && it.billed) { b.title = opt.billed; b.style.borderColor = 'var(--color-stamp)'; }
+      b.addEventListener('click', function () { opt.pick(it); });
+      el.appendChild(b);
+    });
+  }
+  function pickModel(){
+    buildPicker(modelPicker, LIVE_MODELS, {
+      text: function (m) { return m.label; }, id: function (m) { return m.id; },
+      active: function () { return curModel; },
+      billed: 'runs on the Understudy gateway — billed to your account',
+      pick: function (m) { curModel = m.id; pickModel(); play(); }
+    });
+  }
+  function pickModelB(){
+    buildPicker(modelPickerB, LIVE_MODELS, {
+      label: 'vs', text: function (m) { return m.label; }, id: function (m) { return m.id; },
+      active: function () { return curModelB; },
+      billed: 'runs on the Understudy gateway — billed',
+      pick: function (m) { curModelB = m.id; pickModelB(); play(); }
+    });
+  }
+  function pickHard(){
+    if (!TOOL_TASKS.length) { hardPicker.innerHTML = ''; return; }
+    buildPicker(hardPicker, TOOL_TASKS, {
+      label: 'task', text: function (t) { return humanizeTask(t.id); }, id: function (t) { return t.id; },
+      active: function () { return curHardTask; },
+      title: function (t) { return (t.tools ? t.tools.length + ' tools · ' : '') + (t.checks != null ? t.checks + ' checks' : ''); },
+      pick: function (t) { curHardTask = t.id; pickHard(); play(); }
     });
   }
 
-  // ---- VS mode: two models race the same task, side by side ----
-  function renderModelPickerB(){
-    modelPickerB.innerHTML = '';
-    var lbl = document.createElement('span'); lbl.className = 'pick-label'; lbl.textContent = 'vs'; modelPickerB.appendChild(lbl);
-    LIVE_MODELS.forEach(function (m) {
-      var b = document.createElement('button');
-      b.textContent = m.label; b.className = (m.id === curModelB ? 'active' : '');
-      if (m.billed) { b.title = 'runs on the Understudy gateway — billed'; b.style.borderColor = 'var(--color-stamp)'; }
-      b.addEventListener('click', function () { curModelB = m.id; renderModelPickerB(); play(); });
-      modelPickerB.appendChild(b);
-    });
-  }
-
+  // ---- VS mode: build a pane that mirrors the single-attempt element set ----
   function makePane(model){
     var lm = LIVE_MODELS.filter(function (x) { return x.id === model; })[0];
     var pane = document.createElement('div'); pane.className = 'vs-pane';
@@ -630,182 +438,10 @@
       thinkBlock: q('[data-think]'), thinkLine: q('[data-thinkline]'),
       respBlock: q('[data-resp]'), actLine: q('[data-actline]'),
       traceBlock: q('[data-trace]'), traceLine: q('[data-traceline]'),
-      scoreBlock: q('[data-score]'),
+      scoreBlock: q('[data-score]'), verdictClass: 'pane-verdict',
       verdict: q('[data-verdict]'), verdictMk: q('[data-vmark]'), verdictWd: q('[data-vword]') } };
   }
 
-  // unified live renderer: drive ONE set of elements from a /run SSE stream. Adapts to
-  // classify (response token) vs hard (tool_call/check) by the events it actually sees.
-  function streamInto(els, taskId, model, recordKey){
-    var es2 = null, gotResp = false, settled = false, loading = false, isHard = false, rows = {}, scoreOpen = false;
-    function openScore(){ if (scoreOpen) return; scoreOpen = true; els.scoreBlock.style.display = '';
-      var l = document.createElement('div'); l.className = 'sc-lbl'; l.textContent = 'criteria · expected vs. actual'; els.scoreBlock.appendChild(l); }
-    function clearLoading(){ if (loading) { loading = false; (isHard ? els.thinkLine : els.actLine).textContent = ''; els.verdictWd.textContent = 'running'; } }
-    try { es2 = new EventSource('/run?task=' + encodeURIComponent(taskId) + '&model=' + encodeURIComponent(model)); }
-    catch (e) { els.verdictWd.textContent = 'error'; return { close: function () {} }; }
-    es2.onmessage = function (ev) {
-      var m; try { m = JSON.parse(ev.data); } catch (_) { return; }
-      if (m.type === 'status' && m.state === 'loading') {
-        loading = true; els.actLine.innerHTML = '<span class="loading-note">loading …</span>'; els.verdictWd.textContent = 'loading';
-      } else if (m.type === 'token') {
-        clearLoading();
-        if (m.channel === 'thinking') { els.thinkBlock.style.display = ''; els.thinkLine.textContent += m.text; els.thinkLine.scrollTop = els.thinkLine.scrollHeight; }
-        else if (!isHard) { if (!gotResp) { els.actLine.textContent = ''; gotResp = true; } els.actLine.textContent += m.text; }
-      } else if (m.type === 'tool_call') {
-        clearLoading();
-        if (!isHard) { isHard = true; els.respBlock.style.display = 'none'; els.traceBlock.style.display = ''; }
-        var row = document.createElement('div'); row.className = 'tstep reveal';
-        var c = document.createElement('div'); c.className = 'tcall';
-        var badge = document.createElement('span'); badge.className = 'ui-badge'; badge.textContent = m.name; c.appendChild(badge);
-        var a = fmtArgs(m.args); if (a) { var ae = document.createElement('span'); ae.className = 'tcall-args'; ae.textContent = a; c.appendChild(ae); }
-        row.appendChild(c); els.traceLine.appendChild(row); rows[m.id] = row;
-      } else if (m.type === 'tool_result') {
-        var rw = rows[m.id]; if (!rw) return; if (!m.ok) rw.className += ' tbad';
-        var r = document.createElement('div'); r.className = 'tres'; r.textContent = '→ ' + fmtResult(m.result); rw.appendChild(r);
-      } else if (m.type === 'check') {
-        openScore(); els.scoreBlock.appendChild(checkRow(m));
-      } else if (m.type === 'done') {
-        settled = true; if (es2) { es2.close(); es2 = null; }
-        if (!gotResp && !isHard && m.response) els.actLine.textContent = m.response;
-        var ok = isHard ? (m.strict >= 1) : !!m.correct;
-        els.verdict.className = 'pane-verdict ' + (ok ? 'landed' : 'broke');
-        els.verdictMk.innerHTML = ok ? checkMark : xMark; els.verdictWd.textContent = ok ? 'Pass' : 'Fail';
-        recordResult(model, recordKey, ok ? 1 : 0);
-      } else if (m.type === 'error') {
-        settled = true; if (es2) { es2.close(); es2 = null; }
-        els.thinkBlock.style.display = ''; els.thinkLine.textContent = '⚠ ' + m.error;
-        els.verdict.className = 'pane-verdict broke'; els.verdictMk.innerHTML = xMark; els.verdictWd.textContent = 'error';
-      }
-    };
-    es2.onerror = function () { if (es2) { es2.close(); es2 = null; } if (!settled) els.verdictWd.textContent = '—'; };
-    return { close: function () { if (es2) { es2.close(); es2 = null; } } };
-  }
-
-  function vsRun(){
-    clearTimers(); if (es) { es.close(); es = null; }
-    vsConns.forEach(function (c) { c.close(); }); vsConns = [];
-    var d = TASKS[idx], cat = CATALOG[curHardTask];
-    var taskId = d.trace ? curHardTask : TASK_IDS[idx];
-    taskLine.textContent = (d.trace && cat) ? firstSentence(cat.title) : d.task;
-    sysLine.textContent = d.system; userLine.textContent = (d.trace && cat) ? cat.title : d.user;
-    vsGrid.innerHTML = '';
-    var pa = makePane(curModel), pb = makePane(curModelB);
-    vsGrid.appendChild(pa.el); vsGrid.appendChild(pb.el);
-    renderClimb();
-    vsConns.push(streamInto(pa.els, taskId, curModel, TASK_IDS[idx]));
-    vsConns.push(streamInto(pb.els, taskId, curModelB, TASK_IDS[idx]));
-  }
-
-  function applyVsLayout(){
-    document.body.classList.toggle('vs', vsOn);
-    singleAttempt.style.display = vsOn ? 'none' : '';
-    vsWrap.style.display = vsOn ? '' : 'none';
-    modelPickerB.style.display = (vsOn && LIVE) ? '' : 'none';
-    vsBtn.textContent = vsOn ? '◂ single' : 'compare two ▸';
-  }
-
-  function playLive(){
-    clearTimers();
-    if (es) { es.close(); es = null; }
-    var d = TASKS[idx];
-    taskLine.textContent = d.task;
-    sysLine.textContent  = d.system;
-    userLine.textContent = d.user;
-    thinkBlock.style.display = 'none';        // revealed when the model emits a thinking channel
-    thinkLine.textContent = '';
-    actLine.innerHTML = '<span class="cursor"></span>';
-    verdict.className = 'verdict pending'; verdictMk.innerHTML = ''; verdictWd.textContent = 'running';
-    renderClimb();                          // re-emphasize the active model's line on switch
-    var gotResp = false, failed = false, loading = false;
-    try {
-      es = new EventSource('/run?task=' + encodeURIComponent(TASK_IDS[idx]) + '&model=' + encodeURIComponent(curModel));
-    } catch (e) { return playPrebaked(); }
-    es.onmessage = function (ev) {
-      var m; try { m = JSON.parse(ev.data); } catch (_) { return; }
-      if (m.type === 'status' && m.state === 'loading') {
-        loading = true; thinkBlock.style.display = 'none';
-        actLine.innerHTML = '<span class="loading-note">loading ' + (m.label || m.model) + ' …</span>';
-        verdictWd.textContent = 'loading';
-      } else if (m.type === 'token') {
-        if (loading) { loading = false; actLine.textContent = ''; verdictWd.textContent = 'running'; }
-        if (m.channel === 'thinking') {
-          thinkBlock.style.display = ''; thinkLine.textContent += m.text;
-          thinkLine.scrollTop = thinkLine.scrollHeight;
-        } else {
-          if (!gotResp) { actLine.textContent = ''; gotResp = true; }
-          actLine.textContent += m.text;
-        }
-      } else if (m.type === 'error') {        // server hit a real failure (e.g. model load) -> show it
-        failed = true; if (es) { es.close(); es = null; }
-        thinkBlock.style.display = 'none'; actLine.textContent = '⚠ ' + m.error;
-        verdict.className = 'verdict broke'; verdictMk.innerHTML = xMark; verdictWd.textContent = 'error';
-      } else if (m.type === 'done') {
-        if (es) { es.close(); es = null; }
-        if (!gotResp && m.response) actLine.textContent = m.response;
-        if (m.correct) { verdict.className = 'verdict landed'; verdictMk.innerHTML = checkMark; verdictWd.textContent = 'Pass'; }
-        else { verdict.className = 'verdict broke'; verdictMk.innerHTML = xMark; verdictWd.textContent = 'Fail'; }
-        if (m.correct != null) recordResult(curModel, TASK_IDS[idx], m.correct ? 1 : 0);
-      }
-    };
-    es.onerror = function () {
-      if (es) { es.close(); es = null; }
-      if (!gotResp && !failed) playPrebaked();  // unreachable endpoint -> pre-baked; a real {error} stays shown
-    };
-  }
-
-  // ---- hard tier: tool-calling trace + final-state scorecard (pre-baked for now) ----
-  function renderHard(d){
-    clearTimers(); if (es) { es.close(); es = null; }
-    taskLine.textContent = d.task;
-    sysLine.textContent  = d.system;
-    userLine.textContent = d.user;
-    thinkBlock.style.display = ''; thinkLine.textContent = d.thinking || '';
-    document.getElementById('respBlock').style.display = 'none';
-    var tb = document.getElementById('traceBlock'); tb.style.display = '';
-    var sb = document.getElementById('scoreBlock'); sb.style.display = 'none';
-    var tl = document.getElementById('traceLine'); tl.innerHTML = '';
-    verdict.className = 'verdict pending'; verdictMk.innerHTML = ''; verdictWd.textContent = 'running';
-    renderClimb();
-    var steps = d.trace || [], pace = reduced() ? 0 : 600;
-    function step(i){
-      if (i >= steps.length) { return score(); }
-      var s = steps[i];
-      var row = document.createElement('div'); row.className = 'tstep reveal' + (s.bad ? ' tbad' : '');
-      var c = document.createElement('div'); c.className = 'tcall';
-      var mm = s.call.match(/^([a-z0-9_]+)\(([\s\S]*)\)$/);
-      if (mm) {
-        var badge = document.createElement('span'); badge.className = 'ui-badge' + (s.bad ? ' bad' : '');
-        badge.textContent = mm[1]; c.appendChild(badge);
-        if (mm[2]) { var a = document.createElement('span'); a.className = 'tcall-args'; a.textContent = mm[2]; c.appendChild(a); }
-      } else { c.textContent = s.call; }
-      row.appendChild(c);
-      if (s.res) { var r = document.createElement('div'); r.className = 'tres'; r.textContent = '→ ' + s.res; row.appendChild(r); }
-      tl.appendChild(row);
-      timers.push(setTimeout(function () { step(i + 1); }, pace));
-    }
-    function score(){
-      sb.style.display = ''; sb.innerHTML = '';
-      var lbl = document.createElement('div'); lbl.className = 'sc-lbl'; lbl.textContent = 'final state — how the world looks now'; sb.appendChild(lbl);
-      var checks = d.checks || [], passes = 0;
-      checks.forEach(function (ch) {
-        if (ch.pass) passes++;
-        var row = document.createElement('div'); row.className = 'chk reveal ' + (ch.pass ? 'ok' : 'no');
-        var mk = document.createElement('span'); mk.className = 'mk'; mk.textContent = ch.pass ? '✓' : '✗';
-        var tx = document.createElement('span'); tx.textContent = ch.label;
-        row.appendChild(mk); row.appendChild(tx); sb.appendChild(row);
-      });
-      var all = checks.length && passes === checks.length;
-      if (all) { verdict.className = 'verdict landed'; verdictMk.innerHTML = checkMark; verdictWd.textContent = 'Pass'; }
-      else { verdict.className = 'verdict broke'; verdictMk.innerHTML = xMark; verdictWd.textContent = 'Fail'; }
-      recordResult(curModel, TASK_IDS[idx], checks.length ? passes / checks.length : 0);
-    }
-    step(0);
-  }
-
-  // ---- hard tier, LIVE: drive renderHard's DOM from the real agent loop ----
-  // Same trace-badge + scorecard surface as renderHard, but every row comes from
-  // a real model calling real tools (serve.py run_agent -> world.call_tool ->
-  // score_assertions). Pre-baked renderHard stays the file:// replay.
   function fmtArgs(args){
     if (!args || typeof args !== 'object') return '';
     return Object.keys(args).map(function (k) {
@@ -823,10 +459,10 @@
   // one scorecard row: ✓/✗ + the criterion label + the EXPECTED condition (and, on a
   // fail, what actually happened) so you can read why each check passed or failed.
   function checkRow(m){
-    var cr = document.createElement('div'); cr.className = 'chk reveal ' + (m.pass ? 'ok' : 'no');
+    var cr = document.createElement('div'); cr.className = 'chk ' + (m.pass ? 'ok' : 'no');
     var mk = document.createElement('span'); mk.className = 'mk'; mk.textContent = m.pass ? '✓' : '✗';
     var body = document.createElement('div'); body.className = 'chk-body';
-    var lab = document.createElement('div'); lab.className = 'chk-label'; lab.textContent = m.label || m.id || '';
+    var lab = document.createElement('div'); lab.textContent = m.label || m.id || '';
     body.appendChild(lab);
     if (m.expected) {
       var crit = document.createElement('div'); crit.className = 'chk-crit';
@@ -837,97 +473,108 @@
     return cr;
   }
 
-  function playHardLive(){
-    clearTimers();
-    if (es) { es.close(); es = null; }
-    var d = TASKS[idx], cat = CATALOG[curHardTask];
-    taskLine.textContent = cat ? firstSentence(cat.title) : d.task;
-    sysLine.textContent  = d.system;                       // refined by the meta event
-    userLine.textContent = cat ? cat.title : d.user;
-    thinkBlock.style.display = ''; thinkLine.textContent = '';
-    document.getElementById('respBlock').style.display = 'none';
-    var tb = document.getElementById('traceBlock'); tb.style.display = '';
-    var tl = document.getElementById('traceLine'); tl.innerHTML = '';
-    var sb = document.getElementById('scoreBlock'); sb.style.display = 'none'; sb.innerHTML = '';
-    verdict.className = 'verdict pending'; verdictMk.innerHTML = ''; verdictWd.textContent = 'running';
-    renderClimb();
+  // The one renderer. Drive a set of pane elements from a /run SSE stream; the events
+  // it sees decide the surface — classify (response token + correct) vs hard (meta,
+  // tool_call/result, check, strict). Returns a handle so the caller can close it.
+  function streamInto(els, taskId, model){
+    var es = null, gotResp = false, settled = false, loading = false, isHard = false, rows = {}, scoreOpen = false;
+    // reset the pane to its pending state (the single-attempt pane is reused across runs)
+    if (els.thinkBlock) { els.thinkBlock.style.display = 'none'; els.thinkLine.textContent = ''; }
+    if (els.respBlock) els.respBlock.style.display = '';
+    els.actLine.innerHTML = '<span class="cursor"></span>';
+    if (els.traceBlock) { els.traceBlock.style.display = 'none'; els.traceLine.innerHTML = ''; }
+    if (els.scoreBlock) { els.scoreBlock.style.display = 'none'; els.scoreBlock.innerHTML = ''; }
+    els.verdict.className = els.verdictClass + ' pending'; els.verdictMk.innerHTML = ''; els.verdictWd.textContent = 'running';
 
-    var rows = {}, scoreOpen = false, settled = false, loading = false;
-    function clearLoading(){ if (loading) { loading = false; thinkLine.textContent = ''; verdictWd.textContent = 'running'; } }
-    function openScore(){
-      if (scoreOpen) return; scoreOpen = true;
-      sb.style.display = '';
-      var lbl = document.createElement('div'); lbl.className = 'sc-lbl';
-      lbl.textContent = 'criteria · expected vs. actual'; sb.appendChild(lbl);
-    }
-    try {
-      es = new EventSource('/run?task=' + encodeURIComponent(curHardTask) + '&model=' + encodeURIComponent(curModel));
-    } catch (e) { return renderHard(d); }
+    function openScore(){ if (scoreOpen) return; scoreOpen = true; els.scoreBlock.style.display = '';
+      var l = document.createElement('div'); l.className = 'sc-lbl'; l.textContent = 'criteria · expected vs. actual'; els.scoreBlock.appendChild(l); }
+    function clearLoading(){ if (loading) { loading = false; els.actLine.textContent = ''; els.verdictWd.textContent = 'running'; } }
+    function verdictOf(ok){ els.verdict.className = els.verdictClass + ' ' + (ok ? 'landed' : 'broke');
+      els.verdictMk.innerHTML = ok ? checkMark : xMark; els.verdictWd.textContent = ok ? 'Pass' : 'Fail'; }
+    try { es = new EventSource('/run?task=' + encodeURIComponent(taskId) + '&model=' + encodeURIComponent(model)); }
+    catch (e) { els.verdictWd.textContent = 'error'; return { close: function () {} }; }
     es.onmessage = function (ev) {
       var m; try { m = JSON.parse(ev.data); } catch (_) { return; }
-      if (m.type === 'meta') {
-        sysLine.textContent = m.system; userLine.textContent = m.user;
+      if (m.type === 'meta') {                  // hard tasks refine the system/user prompt
+        if (els.sysLine) els.sysLine.textContent = m.system;
+        if (els.userLine) els.userLine.textContent = m.user;
       } else if (m.type === 'status' && m.state === 'loading') {
-        loading = true; thinkBlock.style.display = '';
-        thinkLine.innerHTML = '<span class="loading-note">loading ' + (m.label || m.model) + ' …</span>';
-        verdictWd.textContent = 'loading';
+        loading = true; els.actLine.innerHTML = '<span class="loading-note">loading ' + (m.label || m.model) + ' …</span>'; els.verdictWd.textContent = 'loading';
       } else if (m.type === 'token') {
-        if (m.channel === 'thinking') {
-          clearLoading();
-          thinkBlock.style.display = ''; thinkLine.textContent += m.text;
-          thinkLine.scrollTop = thinkLine.scrollHeight;
-        }                                       // response channel: the trace carries the story
+        clearLoading();
+        if (m.channel === 'thinking') { els.thinkBlock.style.display = ''; els.thinkLine.textContent += m.text; els.thinkLine.scrollTop = els.thinkLine.scrollHeight; }
+        else if (!isHard) { if (!gotResp) { els.actLine.textContent = ''; gotResp = true; } els.actLine.textContent += m.text; }
       } else if (m.type === 'tool_call') {
         clearLoading();
-        var row = document.createElement('div'); row.className = 'tstep reveal';
+        if (!isHard) { isHard = true; els.respBlock.style.display = 'none'; els.traceBlock.style.display = ''; }
+        var row = document.createElement('div'); row.className = 'tstep';
         var c = document.createElement('div'); c.className = 'tcall';
-        var badge = document.createElement('span'); badge.className = 'ui-badge'; badge.textContent = m.name;
-        c.appendChild(badge);
-        var a = fmtArgs(m.args);
-        if (a) { var ae = document.createElement('span'); ae.className = 'tcall-args'; ae.textContent = a; c.appendChild(ae); }
-        row.appendChild(c); tl.appendChild(row); rows[m.id] = row;
+        var badge = document.createElement('span'); badge.className = 'ui-badge'; badge.textContent = m.name; c.appendChild(badge);
+        var a = fmtArgs(m.args); if (a) { var ae = document.createElement('span'); ae.className = 'tcall-args'; ae.textContent = a; c.appendChild(ae); }
+        row.appendChild(c); els.traceLine.appendChild(row); rows[m.id] = row;
       } else if (m.type === 'tool_result') {
-        var rw = rows[m.id]; if (!rw) return;
-        if (!m.ok) rw.className += ' tbad';      // a real recoverable error reads in stamp
-        var r = document.createElement('div'); r.className = 'tres'; r.textContent = '→ ' + fmtResult(m.result);
-        rw.appendChild(r);
+        var rw = rows[m.id]; if (!rw) return; if (!m.ok) rw.className += ' tbad';
+        var r = document.createElement('div'); r.className = 'tres'; r.textContent = '→ ' + fmtResult(m.result); rw.appendChild(r);
       } else if (m.type === 'check') {
-        openScore(); sb.appendChild(checkRow(m));
+        openScore(); els.scoreBlock.appendChild(checkRow(m));
       } else if (m.type === 'done') {
         settled = true; if (es) { es.close(); es = null; }
-        if (m.strict >= 1) { verdict.className = 'verdict landed'; verdictMk.innerHTML = checkMark; verdictWd.textContent = 'Pass'; }
-        else { verdict.className = 'verdict broke'; verdictMk.innerHTML = xMark; verdictWd.textContent = 'Fail'; }
-        recordResult(curModel, TASK_IDS[idx], m.strict >= 1 ? 1 : 0);
+        if (!gotResp && !isHard && m.response) els.actLine.textContent = m.response;
+        verdictOf(isHard ? (m.strict >= 1) : !!m.correct);
       } else if (m.type === 'error') {
         settled = true; if (es) { es.close(); es = null; }
-        thinkBlock.style.display = '';
+        clearLoading(); els.thinkBlock.style.display = '';
         if (/tool-calling model|function-calling/i.test(m.error)) {   // expected: model can't tool-call
-          thinkLine.textContent = m.error + ' — pick one of those above.';
-          verdict.className = 'verdict pending'; verdictMk.innerHTML = ''; verdictWd.textContent = 'n/a';
-        } else {                                                // a real failure
-          thinkLine.textContent = '⚠ ' + m.error;
-          verdict.className = 'verdict broke'; verdictMk.innerHTML = xMark; verdictWd.textContent = 'error';
+          if (els.respBlock) els.respBlock.style.display = 'none';
+          els.thinkLine.textContent = m.error + ' — pick one of those above.';
+          els.verdict.className = els.verdictClass + ' pending'; els.verdictMk.innerHTML = ''; els.verdictWd.textContent = 'n/a';
+        } else {                                                      // a real failure
+          els.thinkLine.textContent = '⚠ ' + m.error;
+          els.verdict.className = els.verdictClass + ' broke'; els.verdictMk.innerHTML = xMark; els.verdictWd.textContent = 'error';
         }
       }
     };
-    es.onerror = function () {
-      if (es) { es.close(); es = null; }
-      if (!settled && !Object.keys(rows).length) renderHard(d);   // unreachable endpoint -> pre-baked
+    es.onerror = function () { if (es) { es.close(); es = null; } if (!settled) els.verdictWd.textContent = '—'; };
+    return { close: function () { if (es) { es.close(); es = null; } } };
+  }
+
+  // resolve the task being run: a hard rung targets the picked fixture and shows its
+  // catalog title; a classify rung shows the seed/hydrated content.
+  function framing(d){
+    var cat = d.hard ? CATALOG[curHardTask] : null;
+    return {
+      taskId: d.hard ? curHardTask : TASK_IDS[idx],
+      title: (d.hard && cat) ? firstSentence(cat.title) : d.task,
+      system: d.system,
+      user: (d.hard && cat) ? cat.title : d.user
     };
   }
 
+  function vsRun(){
+    var d = TASKS[idx], f = framing(d);
+    taskLine.textContent = f.title; sysLine.textContent = f.system; userLine.textContent = f.user;
+    vsGrid.innerHTML = '';
+    var pa = makePane(curModel), pb = makePane(curModelB);
+    vsGrid.appendChild(pa.el); vsGrid.appendChild(pb.el);
+    vsConns.push(streamInto(pa.els, f.taskId, curModel));
+    vsConns.push(streamInto(pb.els, f.taskId, curModelB));
+  }
+
+  function applyVsLayout(){
+    document.body.classList.toggle('vs', vsOn);
+    singleAttempt.style.display = vsOn ? 'none' : '';
+    vsWrap.style.display = vsOn ? '' : 'none';
+    modelPickerB.style.display = vsOn ? '' : 'none';
+    vsBtn.textContent = vsOn ? '◂ single' : 'compare two ▸';
+  }
+
   function play(){
-    var d = TASKS[idx], onHard = !!d.trace;
-    hardPicker.style.display = (LIVE && onHard && TOOL_TASKS.length) ? '' : 'none';
-    if (LIVE && vsOn) { vsRun(); return; }               // VS mode: two models, same task
-    if (onHard) {                                        // tool-calling tier
-      if (LIVE) playHardLive(); else renderHard(d);      // live agent loop vs pre-baked replay
-      return;
-    }
-    document.getElementById('respBlock').style.display = '';
-    document.getElementById('traceBlock').style.display = 'none';
-    document.getElementById('scoreBlock').style.display = 'none';
-    if (LIVE) playLive(); else playPrebaked();
+    teardown();
+    var d = TASKS[idx], f = framing(d);
+    hardPicker.style.display = (d.hard && TOOL_TASKS.length) ? '' : 'none';
+    if (vsOn) { vsRun(); return; }                       // VS mode: two models, same task
+    taskLine.textContent = f.title; sysLine.textContent = f.system; userLine.textContent = f.user;
+    single = streamInto(globalEls, f.taskId, curModel);
   }
 
   replayBtn.addEventListener('click', play);
@@ -938,17 +585,12 @@
     play();
   });
 
-  if (LIVE) {
-    runBtn.style.display = '';
-    replayBtn.style.display = 'none';
-    modelPicker.style.display = '';
-    vsBtn.style.display = '';
-    renderModelPicker(); renderModelPickerB();
-    var sc = document.getElementById('staticClimb'); if (sc) sc.style.display = 'none';
-    hydrate().then(function () { renderHardPicker(); play(); });   // pull the task catalog, then run
-  } else {
-    play();                                                        // static host: hardcoded content
-  }
+  runBtn.style.display = '';
+  replayBtn.style.display = 'none';
+  modelPicker.style.display = '';
+  vsBtn.style.display = '';
+  pickModel(); pickModelB();
+  hydrate().then(function () { pickHard(); play(); });   // pull the task catalog, then run
 })();
 </script>
 </body>
