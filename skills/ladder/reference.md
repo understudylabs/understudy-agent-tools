@@ -60,8 +60,11 @@ string or a dict. The rest of `run_agent` is lane-agnostic.
   assertion passes, else 0.0) and **dense** (weighted positives, plus weighted
   negatives only if all positives passed — so a model that does nothing cannot
   farm "didn't email X" for free points).
-- Negative + anti-shotgun checkers exist (`mail_not_sent_to`, `no_extra_writes`).
-  See the PR's follow-ups for wiring `no_extra_writes` into the shipped fixtures.
+- Negative + anti-shotgun checkers (`mail_not_sent_to`, `no_extra_writes`) are
+  wired into every shipped hard task, so a model that does the right work but also
+  shotguns (extra emails, or touching a decoy like the `sla_route` P2 ticket
+  `T-556`) loses `strict`. The numeric `body_contains` match is digit-bounded, so
+  a required figure like `3808` isn't satisfied by `38080`.
 
 ## Extending the ladder (adding tasks)
 

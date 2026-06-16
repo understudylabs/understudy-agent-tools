@@ -28,6 +28,7 @@ The scoring contract (frozen, see build contract section 2):
 
 import copy
 import json
+import re
 
 # ---------------------------------------------------------------------------
 # Pinned globals (every builder hard-codes these; see build contract).
@@ -426,13 +427,23 @@ def _field_equals(store, id_param, label=None):
     return chk
 
 
+def _body_has(body_loose, needle):
+    """Membership test on comma-normalized text. A purely-numeric needle must match
+    on a digit boundary, so a required '3808' is NOT satisfied by '38080' or
+    '138085'; non-numeric needles fall back to plain substring."""
+    n = _loose(needle)
+    if n.isdigit():
+        return re.search(r"(?<!\d)" + re.escape(n) + r"(?!\d)", body_loose) is not None
+    return n in body_loose
+
+
 def _a_mail_sent_to_body_contains(state, to=None, substrings=None, **_):
     want = list(substrings or [])
     target = _norm(to)
     for m in state.mail["sent"]:
         if _norm(m.get("to")) == target:
             body = _loose((m.get("subject", "") or "") + "\n" + (m.get("body", "") or ""))
-            if all(_loose(s) in body for s in want):
+            if all(_body_has(body, s) for s in want):
                 return {
                     "passed": True,
                     "expected": "message to %s containing %s" % (to, want),
@@ -444,7 +455,7 @@ def _a_mail_sent_to_body_contains(state, to=None, substrings=None, **_):
         actual = "no message sent to %s" % to
     else:
         body = _loose((matches[0].get("subject", "") or "") + "\n" + (matches[0].get("body", "") or ""))
-        missing = [s for s in want if _loose(s) not in body]
+        missing = [s for s in want if not _body_has(body, s)]
         actual = "message to %s missing %s" % (to, missing)
     return {
         "passed": False,
@@ -663,5 +674,10 @@ def load_tasks(path=None):
             if not line:
                 continue
             t = json.loads(line)
+            # A task must carry at least one POSITIVE assertion. Otherwise negatives
+            # are credited for an empty run (strict would be 1.0 for doing nothing).
+            positives = [a for a in t.get("assertions", []) if a.get("type") not in NEGATIVE_TYPES]
+            if t.get("assertions") and not positives:
+                raise ValueError("task %r has only negative assertions; add a positive." % t.get("task_id"))
             tasks[t["task_id"]] = t
     return tasks

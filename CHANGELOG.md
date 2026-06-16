@@ -9,6 +9,19 @@ staleness signal. After upgrading, run `/reload-plugins`.
 The format follows [Keep a Changelog](https://keepachangelog.com/); this project
 uses semantic-ish versioning (minor = new skill or new capability, patch = fixes).
 
+## [Unreleased]
+
+### Fixed
+
+- **`ladder` scoring integrity.** Wired the `no_extra_writes` anti-shotgun check
+  into all three hard tasks (it existed but was used by none), so a model that
+  does the right work but also shotguns — extra emails, or touching the
+  `sla_route` P2 decoy ticket `T-556` — now loses `strict`. The numeric
+  `body_contains` match is digit-bounded (`3808` is no longer satisfied by
+  `38080`), and a task with only negative assertions is rejected at load. Verified:
+  the gold trajectory and the frontier (`glm-5.1`) still score `strict=1.0`; a
+  shotgun trajectory now fails.
+
 ## [0.3.0] — 2026-06-16
 
 ### Added
