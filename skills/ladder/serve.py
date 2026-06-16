@@ -6,10 +6,11 @@ Run on an isolated, CURRENT mlx stack (never system python):
 
     uv run --with mlx-vlm --with mlx-lm python skills/ladder/serve.py
 
-Serves the viewer/ directory statically AND an SSE endpoint that streams a
-local model's *thinking* and *response* token deltas for a task. Local-only,
-$0, nothing uploaded. The static page (file:// or this server) is the pre-baked
-demo; this server is the "run it for real, live" lane.
+Serves the viewer/ directory statically AND the SSE endpoint that streams a run
+live: classify tasks stream *thinking* + *response* token deltas; hard tool-calling
+tasks stream the whole agent loop (tool_call / tool_result / check). Local runs are
+$0 and nothing is uploaded; gateway runs are billed and disclosed. This server is
+the entry point -- the viewer always runs live against /run (no pre-baked mode).
 
   GET /run?task=<id>&model=<id>   -> text/event-stream of {type, channel, text}
   GET /tasks                      -> the task catalog (title/system/user/gold)
