@@ -36,17 +36,9 @@ gateway uses OpenAI JSON; the local lanes use their native formats).
 ## Reference / fuller prototype
 
 This directory is the **slimmed comparison UI**. The fuller exploration it grew
-from — the CLI eval harness (`run_eval` / `oracle` / `sentinels`), the
-task-anatomy "dissector" view, the easy-email generator, earlier viewers, the
-scoping/design docs, and a **lab note synthesizing the findings** (the
-gemma < lfm < glm capability gradient; gemma's front-loaded-reasoning ceiling
-that prompts can't fix; the `mlx_vlm` one-thread GPU-stream gotcha; uv-vs-system
-mlx; off-by-default reasoning formats) — is archived for reimplementation in
-the **`understudy-knowledge`** repo:
-
-```
-experiments/2026-06-15-onboarding-difficulty-ladder/
-├── lab-note.md     # findings synthesis
-├── prototype/      # full prototype snapshot (this UI + the harness + viewers)
-└── scoping/        # design docs (two-door onboarding, ladder scope, storyboard, task anatomy)
-```
+from — a CLI eval harness (`run_eval` / `oracle` / `sentinels`), a task-anatomy
+"dissector" view, the easy-email generator, earlier viewers, the scoping/design
+docs, and a lab note synthesizing the findings (the gemma < lfm < glm capability
+gradient; gemma's front-loaded-reasoning ceiling that prompts can't fix; the
+`mlx_vlm` one-thread GPU-stream gotcha; uv-vs-system mlx; off-by-default
+reasoning formats) — is archived internally for reimplementation.

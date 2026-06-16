@@ -1,6 +1,6 @@
 ---
 name: ladder
-description: Use to give a developer an immediate, visceral local-vs-frontier comparison before they have any of their own traces yet — "show me what a local model can do", "compare a local model to a frontier model", "is a small model good enough", "the onboarding climb". Launches a local web UI that streams live thinking + tool-call traces for the same task across a local mlx model (gemma-4, $0) and a frontier model (glm-5.1 via the Understudy gateway, billed and disclosed), each scored against a synthetic "Larkfield" world, with a side-by-side VS mode. For comparing many candidate models on the user's own eval, use compare-model-sweep; to stand up and serve a local model against the user's real workload, use run-local-model-lab.
+description: Use to give a developer an immediate local-vs-frontier model comparison before they have their own traces — "what can a local model do", "is a small model good enough", "the onboarding climb". Launches a local web UI streaming live thinking + tool-call traces for the same task across a local mlx model and a frontier gateway model, scored against a synthetic world, with a VS mode. To compare many models on a user's own eval, use compare-model-sweep; to serve a local model, use run-local-model-lab.
 metadata:
   understudy:
     mode: interactive
@@ -62,6 +62,20 @@ service.
 Frontier (`glm-5.1`) runs go through the Understudy gateway and are **billed** —
 the picker marks that lane and every such run is disclosed.
 
+## Safety Gates
+
+- **Local-first, $0 on the local lane.** The mlx model runs on the developer's
+  machine, the server binds `127.0.0.1` only, and nothing is uploaded.
+- **Gateway runs are billed.** The frontier lane (`glm-5.1`) goes through the
+  Understudy gateway and costs money. The picker marks it and every such run is
+  disclosed in the UI — do not route to it without the developer understanding
+  it bills.
+- **Synthetic data only.** The "Larkfield" world is invented; no real customer or
+  workload data is involved.
+- **No silent downloads.** The server only *loads* a cached local model from
+  `~/.understudy/models`; if it is missing it says so — pull it with
+  `manage-local-models`, never auto-download weights.
+
 ## What's here (the core, 4 files)
 
 | File | Role |
@@ -71,5 +85,5 @@ the picker marks that lane and every such run is disclosed.
 | `fixtures/hard/tool_tasks.jsonl` | the hard tool-calling tasks (renewal save-play / AP approval / SLA route) — data, not code: add a row and it's live and scored. |
 | `viewer/ladder.climb.html` | the UI (the "climb" viewer + VS panes). Self-contained HTML/JS. |
 
-See [`README.md`](README.md) for the model lanes and the fuller-prototype
-reference archived in `understudy-knowledge`.
+See [`README.md`](README.md) for the model lanes and how this slimmed UI relates
+to the fuller prototype it grew from.
