@@ -76,14 +76,13 @@ the picker marks that lane and every such run is disclosed.
   `~/.understudy/models`; if it is missing it says so — pull it with
   `manage-local-models`, never auto-download weights.
 
-## What's here (the core, 4 files)
+## What's here
 
-| File | Role |
-|---|---|
-| `serve.py` | stdlib HTTP + SSE server: the `run_agent` loop (model → tool_call → `world.call_tool` → tool_result → `finish` → score) and the live event stream. Easy/medium classify tasks + the model catalog are inline. |
-| `env/world.py` | the synthetic "Larkfield" world: `WorldState`, the recoverable tool registry, `call_tool`, and `score_assertions` (strict + dense, with the anti-shotgun rule for negatives). Stdlib only. |
-| `fixtures/hard/tool_tasks.jsonl` | the hard tool-calling tasks (renewal save-play / AP approval / SLA route) — data, not code: add a row and it's live and scored. |
-| `viewer/ladder.climb.html` | the UI (the "climb" viewer + VS panes). Self-contained HTML/JS. |
+Four stdlib, self-contained files: `serve.py` (HTTP + SSE server + the agent
+loop), `env/world.py` (the synthetic Larkfield world + scoring),
+`fixtures/hard/tool_tasks.jsonl` (the hard tasks as data — add a row and it's
+live and scored), and `viewer/ladder.climb.html` (the UI).
 
-See [`README.md`](README.md) for the model lanes and how this slimmed UI relates
-to the fuller prototype it grew from.
+See [`reference.md`](reference.md) for the architecture, the model lanes +
+tool-call dialects, the Larkfield world + scoring contract, and the running
+gotchas (uv-vs-system mlx, the one-GPU thread funnel, `UNDERSTUDY_MODEL_HOME`).
