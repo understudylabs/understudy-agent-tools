@@ -293,6 +293,110 @@ def call_tool(state, name, args):
 
 
 # ---------------------------------------------------------------------------
+# OpenAI-format tool schemas.
+#
+# The live agent loop (serve.py) hands these to a function-calling model so it
+# can drive the world above. Hand-authored (not introspected) so the
+# descriptions carry the task-relevant semantics a model actually needs:
+# "pick the LATEST row", "MRR is a number", which writes are no-ops under
+# STRICT_MODE. Keys mirror each tool's real signature in TOOLS.
+# ---------------------------------------------------------------------------
+def _fn(name, description, properties, required):
+    return {
+        "type": "function",
+        "function": {
+            "name": name,
+            "description": description,
+            "parameters": {
+                "type": "object",
+                "properties": properties,
+                "required": required,
+            },
+        },
+    }
+
+
+_S = lambda desc: {"type": "string", "description": desc}
+
+TOOL_SCHEMAS = {
+    "crm_find_accounts": _fn(
+        "crm_find_accounts",
+        "Search CRM accounts by name (substring, case-insensitive). Returns id, name, tier for each match.",
+        {"query": _S("Account name or fragment to search for, e.g. 'Nova Retail'.")},
+        ["query"]),
+    "crm_get_account": _fn(
+        "crm_get_account",
+        "Get one account's full record by id, including its parent account id, tier, and status.",
+        {"id": _S("Account id, e.g. 'A-NOVA1'.")},
+        ["id"]),
+    "crm_get_subscriptions": _fn(
+        "crm_get_subscriptions",
+        "List the subscriptions on an account: id, plan, currency, mrr, status.",
+        {"account_id": _S("Account id whose subscriptions to list.")},
+        ["account_id"]),
+    "crm_update_subscription": _fn(
+        "crm_update_subscription",
+        "Update a subscription's status and/or mrr. You must pass at least one of status or mrr "
+        "(an empty update is rejected). mrr is a number, not a string.",
+        {"id": _S("Subscription id, e.g. 'S-NOVA1'."),
+         "status": _S("New status, e.g. 'Saved'."),
+         "mrr": {"type": "number", "description": "New monthly recurring revenue, e.g. 3400."}},
+        ["id"]),
+    "crm_list_tickets": _fn(
+        "crm_list_tickets",
+        "List support tickets on an account: id, priority, status.",
+        {"account_id": _S("Account id whose tickets to list.")},
+        ["account_id"]),
+    "crm_update_ticket": _fn(
+        "crm_update_ticket",
+        "Update a ticket's status. status is required (an empty update is rejected).",
+        {"id": _S("Ticket id, e.g. 'T-9001'."),
+         "status": _S("New status, e.g. 'Escalated'.")},
+        ["id", "status"]),
+    "tables_get_rows": _fn(
+        "tables_get_rows",
+        "Read all rows of a reference table (e.g. 'FX Rates', 'Discount Policy'). Returns every "
+        "row plus a 'latest' convenience pointer; when rows differ by as_of date, use the LATEST.",
+        {"table": _S("Table name, e.g. 'Discount Policy'.")},
+        ["table"]),
+    "update_invoice": _fn(
+        "update_invoice",
+        "Update an invoice's status. status is required (an empty update is rejected).",
+        {"id": _S("Invoice id, e.g. 'INV-204'."),
+         "status": _S("New status, e.g. 'Approved'.")},
+        ["id", "status"]),
+    "mail_find": _fn(
+        "mail_find",
+        "Search the inbox by subject/body substring. Returns id, from, subject for each match.",
+        {"query": _S("Search term, e.g. 'routing'.")},
+        ["query"]),
+    "mail_get": _fn(
+        "mail_get",
+        "Read one inbox message in full by id (from, subject, body).",
+        {"id": _S("Message id, e.g. 'm1'.")},
+        ["id"]),
+    "mail_send": _fn(
+        "mail_send",
+        "Send an email. 'to' is required and at least one of subject/body must be non-empty.",
+        {"to": _S("Recipient address, e.g. 'renewals@larkfield.example'."),
+         "subject": _S("Subject line."),
+         "body": _S("Message body.")},
+        ["to"]),
+    "finish": _fn(
+        "finish",
+        "Signal the task is complete. Call this once, after every required write and email is done.",
+        {}, []),
+}
+
+
+def tool_schemas(allowed=None):
+    """Return OpenAI-format tool definitions, filtered to `allowed` tool names
+    (a task's allowed_tools) in a stable order. None => every tool."""
+    names = list(allowed) if allowed else list(TOOLS.keys())
+    return [TOOL_SCHEMAS[n] for n in names if n in TOOL_SCHEMAS]
+
+
+# ---------------------------------------------------------------------------
 # Assertion registry. Each checker: (state, **params) -> dict with keys
 #   passed (bool), expected (str), actual (str).
 # ---------------------------------------------------------------------------
