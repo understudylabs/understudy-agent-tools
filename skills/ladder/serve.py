@@ -420,6 +420,97 @@ def local_chat_turn(model_id, messages, tools, samp, max_tokens=1280):
                      "tool_calls": parse_lfm_tool_calls(full)})
 
 
+def _parse_gemma_args(s):
+    """Parse Gemma's arg body: key:<|"|>str<|"|>,key2:NUM,key3:true . Strings are
+    delimited by <|"|> (so they can contain commas/braces); bare tokens are coerced."""
+    Q = '<|"|>'
+    args = {}; i = 0; n = len(s)
+    while i < n:
+        km = re.match(r"\s*([A-Za-z_]\w*)\s*:", s[i:])
+        if not km:
+            break
+        key = km.group(1); i += km.end()
+        if s[i:].lstrip().startswith(Q):
+            try:
+                a = s.index(Q, i) + len(Q)
+                b = s.index(Q, a)
+            except ValueError:
+                break
+            args[key] = s[a:b]; i = b + len(Q)
+        else:
+            vm = re.match(r"\s*([^,]*)", s[i:])
+            raw = (vm.group(1) or "").strip(); i += vm.end()
+            if re.fullmatch(r"-?\d+", raw):
+                args[key] = int(raw)
+            elif re.fullmatch(r"-?\d*\.\d+", raw):
+                args[key] = float(raw)
+            elif raw in ("true", "false"):
+                args[key] = (raw == "true")
+            else:
+                args[key] = raw
+        cm = re.match(r"\s*,\s*", s[i:])
+        if cm:
+            i += cm.end()
+        elif not re.match(r"\s*[A-Za-z_]\w*\s*:", s[i:]):
+            break
+    return args
+
+
+def parse_gemma_tool_calls(text):
+    """Parse Gemma-4's native tool calls:
+        <|tool_call>call:NAME{key:<|"|>val<|"|>,key2:NUM}<tool_call|>
+    Returns [{"name", "args": dict}, ...]."""
+    calls = []
+    for m in re.finditer(r"<\|tool_call>(.*?)<tool_call\|>", text, re.S):
+        block = m.group(1).strip()
+        cm = re.match(r"call:\s*([A-Za-z_]\w*)\s*\{(.*)\}\s*$", block, re.S)
+        if cm:
+            calls.append({"name": cm.group(1), "args": _parse_gemma_args(cm.group(2))})
+        else:
+            nm = re.match(r"call:\s*([A-Za-z_]\w*)", block)
+            if nm:
+                calls.append({"name": nm.group(1), "args": {}})
+    return calls
+
+
+def gemma_chat_turn(model_id, messages, tools, samp, max_tokens=1600):
+    """One streaming LOCAL (mlx_vlm) turn using Gemma-4's native tool-calling, reasoning
+    ON. Tools go in via the chat template's tools= kwarg; the model emits its reasoning
+    channel <|channel>thought...<channel|> then <|tool_call>call:fn{...}<tool_call|>.
+    Yields ('thinking',delta)/('content',delta) live, then ('final', {...}). $0."""
+    from mlx_vlm import stream_generate
+    from mlx_vlm.prompt_utils import apply_chat_template
+    _, model, proc, config = get_model(model_id)
+    try:
+        prompt = apply_chat_template(proc, config, messages, num_images=0, tools=tools, enable_thinking=True)
+    except TypeError:
+        prompt = apply_chat_template(proc, config, messages, tools=tools, enable_thinking=True)
+    gkw = {"max_tokens": max_tokens}
+    if samp.get("temp") is not None:
+        gkw["temperature"] = samp["temp"]
+    if samp.get("top_p") is not None:
+        gkw["top_p"] = samp["top_p"]
+    if samp.get("top_k"):
+        gkw["top_k"] = samp["top_k"]
+    full = ""; sent_think = 0; sent_resp = 0
+    try:
+        stream = stream_generate(model, proc, prompt, **gkw)
+    except TypeError:
+        stream = stream_generate(model, proc, prompt, max_tokens=max_tokens)
+    for ch in stream:
+        full += getattr(ch, "text", "") or ""
+        think, rest = split_channels(full)
+        resp = rest.split("<|tool_call>", 1)[0]            # don't stream the structured call as prose
+        if len(think) > sent_think:
+            yield ("thinking", think[sent_think:]); sent_think = len(think)
+        if len(resp) > sent_resp:
+            yield ("content", resp[sent_resp:]); sent_resp = len(resp)
+    think, rest = split_channels(full)
+    content = rest.split("<|tool_call>", 1)[0].strip()
+    yield ("final", {"content": content, "reasoning": think,
+                     "tool_calls": parse_gemma_tool_calls(full)})
+
+
 def run_agent(task_id, model_id, max_turns=10):
     """Generator of SSE-ready events for one live agent run against the world.
 
@@ -431,8 +522,8 @@ def run_agent(task_id, model_id, max_turns=10):
     if task is None:
         yield {"type": "error", "error": "unknown task '%s'" % task_id}; return
     lane = MODELS.get(model_id, (None,))[0]
-    if lane not in ("gateway", "mlx_lm"):
-        yield {"type": "error", "error": "this task needs a tool-calling model (8b-a1b or glm-5.1)"}; return
+    if lane not in ("gateway", "mlx_lm", "mlx_vlm"):
+        yield {"type": "error", "error": "this task needs a tool-calling model"}; return
 
     state = world.fresh_state(task)
     baseline = state.snapshot()
@@ -450,9 +541,12 @@ def run_agent(task_id, model_id, max_turns=10):
     finished = False; turn = 0
     for turn in range(max_turns):
         msg = None
-        turn_stream = (gateway_chat_turn(messages, tools, MODELS[model_id][1], samp)
-                       if lane == "gateway"
-                       else INFER.stream(lambda: local_chat_turn(model_id, messages, tools, samp)))
+        if lane == "gateway":
+            turn_stream = gateway_chat_turn(messages, tools, MODELS[model_id][1], samp)
+        elif lane == "mlx_vlm":
+            turn_stream = INFER.stream(lambda: gemma_chat_turn(model_id, messages, tools, samp))
+        else:
+            turn_stream = INFER.stream(lambda: local_chat_turn(model_id, messages, tools, samp))
         for kind, payload in turn_stream:
             if kind == "thinking":
                 yield {"type": "token", "channel": "thinking", "text": payload}
@@ -470,7 +564,12 @@ def run_agent(task_id, model_id, max_turns=10):
                      "function": {"name": tc["name"],
                                   "arguments": tc["args"] if isinstance(tc["args"], str) else json.dumps(tc["args"])}}
                     for i, tc in enumerate(msg["tool_calls"])]
-            else:                                          # LFM template: arguments is a dict
+            elif lane == "mlx_vlm":                        # Gemma template: arguments dict + id (response matching)
+                assistant["tool_calls"] = [
+                    {"id": "call_%d" % i, "type": "function",
+                     "function": {"name": tc["name"], "arguments": tc["args"]}}
+                    for i, tc in enumerate(msg["tool_calls"])]
+            else:                                          # LFM template: arguments dict, positional responses
                 assistant["tool_calls"] = [
                     {"type": "function", "function": {"name": tc["name"], "arguments": tc["args"]}}
                     for tc in msg["tool_calls"]]
@@ -491,10 +590,10 @@ def run_agent(task_id, model_id, max_turns=10):
             result = world.call_tool(state, name, args)
             yield {"type": "tool_result", "id": call_id, "name": name,
                    "ok": "error" not in result, "result": result}
-            if lane == "gateway":
-                messages.append({"role": "tool", "tool_call_id": call_id, "content": json.dumps(result)})
-            else:
+            if lane == "mlx_lm":                           # LFM: positional tool responses (no id)
                 messages.append({"role": "tool", "content": json.dumps(result)})
+            else:                                          # gateway + gemma: match by tool_call_id
+                messages.append({"role": "tool", "tool_call_id": call_id, "content": json.dumps(result)})
             if name == "finish":
                 finished = True
         if finished:
