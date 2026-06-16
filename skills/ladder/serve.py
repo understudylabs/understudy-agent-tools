@@ -16,7 +16,7 @@ demo; this server is the "run it for real, live" lane.
   GET /models                     -> the model catalog
   GET /<file>                     -> static file from viewer/
 """
-import ast, json, os, re, sys, time, threading
+import ast, json, os, queue, re, sys, time, threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import urlparse, parse_qs
 
@@ -85,6 +85,54 @@ def resolve_task(task):
 _loaded = {}
 _lock = threading.Lock()
 
+
+class _Inference:
+    """Funnel ALL MLX work (model load + generation) onto ONE dedicated thread.
+
+    ThreadingHTTPServer hands each request its own thread, but mlx_vlm binds GPU
+    streams to the thread that built the model -- generating from a different thread
+    raises 'There is no Stream(gpu, N) in current thread'. One long-lived worker keeps
+    every load and generation on the same thread; request handlers stay concurrent for
+    serving static files and gateway (urllib) calls. Generations are serialized, which
+    is correct anyway -- two local models can't share the GPU at once."""
+
+    def __init__(self):
+        self._jobs = queue.Queue()
+        threading.Thread(target=self._loop, daemon=True).start()
+
+    def _loop(self):
+        while True:
+            make_gen, out = self._jobs.get()
+            try:
+                for item in make_gen():
+                    out.put(("y", item))
+                out.put(("d", None))
+            except Exception as e:                 # ship the error to the waiting caller
+                out.put(("e", e))
+
+    def stream(self, make_gen):
+        """Run make_gen() (a generator factory) on the worker; re-yield its items
+        in the caller's thread. Exceptions are re-raised here."""
+        out = queue.Queue()
+        self._jobs.put((make_gen, out))
+        while True:
+            kind, val = out.get()
+            if kind == "y":
+                yield val
+            elif kind == "e":
+                raise val
+            else:
+                return
+
+    def submit(self, fn):
+        """Run fn() on the worker thread and block until it finishes (or raises)."""
+        for _ in self.stream(lambda: iter((fn(),))):
+            pass
+
+
+INFER = _Inference()
+
+
 def get_model(mid):
     """Load (once) and cache a model. Returns a lane-tagged tuple."""
     with _lock:
@@ -117,7 +165,7 @@ def prewarm_models():
     for mid, spec in MODELS.items():
         if spec[0] in ("mlx_lm", "mlx_vlm"):
             try:
-                get_model(mid)
+                INFER.submit(lambda mid=mid: get_model(mid))    # load ON the inference thread
             except Exception as e:
                 sys.stderr.write(f"[prewarm] {mid} failed: {type(e).__name__}: {e}\n"); sys.stderr.flush()
 
@@ -404,7 +452,7 @@ def run_agent(task_id, model_id, max_turns=10):
         msg = None
         turn_stream = (gateway_chat_turn(messages, tools, MODELS[model_id][1], samp)
                        if lane == "gateway"
-                       else local_chat_turn(model_id, messages, tools, samp))
+                       else INFER.stream(lambda: local_chat_turn(model_id, messages, tools, samp)))
         for kind, payload in turn_stream:
             if kind == "thinking":
                 yield {"type": "token", "channel": "thinking", "text": payload}
@@ -553,8 +601,11 @@ class Handler(BaseHTTPRequestHandler):
         if not model_loaded(mid):              # cold model: tell the UI before the ~60s load
             self._sse({"type": "status", "state": "loading", "model": mid, "label": MODELS[mid][2]})
         full = ""; sent_think = 0; sent_resp = 0; resp_text = ""; n = 0; t0 = time.time()
+        # local models generate on the dedicated inference thread; gateway stays here
+        src = (stream_tokens(mid, system, user) if MODELS[mid][0] == "gateway"
+               else INFER.stream(lambda: stream_tokens(mid, system, user)))
         try:
-            for channel, text in stream_tokens(mid, system, user):
+            for channel, text in src:
                 if not text:
                     continue
                 n += 1
