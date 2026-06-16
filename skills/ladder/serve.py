@@ -219,7 +219,7 @@ def stream_tokens(mid, system, user, max_tokens=900):
     """Yield (channel, text) deltas. channel is 'raw' (local — split on <think> downstream)
     or 'thinking'/'response' (gateway — already channel-separated)."""
     lane = MODELS[mid][0]
-    samp = MODELS[mid][3] if len(MODELS[mid]) > 3 else {}
+    samp = MODELS[mid][3]
     if lane == "gateway":
         yield from stream_gateway(MODELS[mid][1], system, user, samp, max_tokens)
         return

@@ -409,44 +409,21 @@ def tool_schemas(allowed=None):
 # Assertion registry. Each checker: (state, **params) -> dict with keys
 #   passed (bool), expected (str), actual (str).
 # ---------------------------------------------------------------------------
-def _a_sub_field_equals(state, sub_id=None, field=None, value=None, **_):
-    sub = state.crm["subscriptions"].get(sub_id, {})
-    actual = sub.get(field, None)
-    return {
-        "passed": actual == value,
-        "expected": "%s = %r" % (field, value),
-        "actual": "%s = %r" % (field, actual),
-    }
-
-
-def _a_account_field_equals(state, acct_id=None, field=None, value=None, **_):
-    acc = state.crm["accounts"].get(acct_id, {})
-    actual = acc.get(field, None)
-    return {
-        "passed": actual == value,
-        "expected": "%s = %r" % (field, value),
-        "actual": "%s = %r" % (field, actual),
-    }
-
-
-def _a_invoice_field_equals(state, invoice_id=None, field=None, value=None, **_):
-    inv = state.invoices.get(invoice_id, {})
-    actual = inv.get(field, None)
-    return {
-        "passed": actual == value,
-        "expected": "invoice %s.%s = %r" % (invoice_id, field, value),
-        "actual": "%s = %r" % (field, actual),
-    }
-
-
-def _a_ticket_field_equals(state, ticket_id=None, field=None, value=None, **_):
-    tix = state.crm["tickets"].get(ticket_id, {})
-    actual = tix.get(field, None)
-    return {
-        "passed": actual == value,
-        "expected": "ticket %s.%s = %r" % (ticket_id, field, value),
-        "actual": "%s = %r" % (field, actual),
-    }
+def _field_equals(store, id_param, label=None):
+    """Factory for the by-id field-equality checkers (sub / account / invoice /
+    ticket). `store(state)` is the record dict; `id_param` is the assertion's id
+    kwarg. label=None gives the bare '<field> = <value>' form (sub/account); a
+    label gives the prefixed '<label> <id>.<field> = <value>' form."""
+    def chk(state, field=None, value=None, **kw):
+        rec = store(state).get(kw.get(id_param), {})
+        actual = rec.get(field, None)
+        pre = "%s %s." % (label, kw.get(id_param)) if label else ""
+        return {
+            "passed": actual == value,
+            "expected": "%s%s = %r" % (pre, field, value),
+            "actual": "%s = %r" % (field, actual),
+        }
+    return chk
 
 
 def _a_mail_sent_to_body_contains(state, to=None, substrings=None, **_):
@@ -530,10 +507,10 @@ def _diff_mutations(baseline, state):
 
 
 ASSERTIONS = {
-    "sub_field_equals": _a_sub_field_equals,
-    "account_field_equals": _a_account_field_equals,
-    "invoice_field_equals": _a_invoice_field_equals,
-    "ticket_field_equals": _a_ticket_field_equals,
+    "sub_field_equals": _field_equals(lambda s: s.crm["subscriptions"], "sub_id"),
+    "account_field_equals": _field_equals(lambda s: s.crm["accounts"], "acct_id"),
+    "invoice_field_equals": _field_equals(lambda s: s.invoices, "invoice_id", "invoice"),
+    "ticket_field_equals": _field_equals(lambda s: s.crm["tickets"], "ticket_id", "ticket"),
     "mail_sent_to_body_contains": _a_mail_sent_to_body_contains,
     "mail_not_sent_to": _a_mail_not_sent_to,
     "no_extra_writes": _a_no_extra_writes,
@@ -586,18 +563,12 @@ def score_assertions(state, assertions, baseline=None):
             "type": atype,
             "label": human.get("label", a.get("id", atype)),
             "expected": human.get("expected", res["expected"]),
-            "actual": human.get("actual_template") and None or res["actual"],
+            "actual": res["actual"],
             "negative": is_negative,
             "pass": bool(res["passed"]),
             "weight": float(a.get("weight", 0.0)),
             "plain": human.get("plain", ""),
-            # keep the raw machine view too for debugging
-            "machine_expected": res["expected"],
-            "machine_actual": res["actual"],
         }
-        # if a human row didn't pin a custom actual, surface the live machine one
-        if not row["actual"]:
-            row["actual"] = res["actual"]
         rows.append(row)
         (negatives if is_negative else positives).append(row)
 
