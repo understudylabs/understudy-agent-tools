@@ -104,6 +104,9 @@
   .chk .mk { font-family: var(--font-mono); font-size: 0.9rem; line-height: 1.25; }
   .chk.ok .mk { color: var(--color-ink); }
   .chk.no, .chk.no .mk { color: var(--color-stamp); }
+  .chk-body { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+  .chk-crit { font-family: var(--font-mono); font-size: 0.7rem; color: var(--color-ink-muted); line-height: 1.4; word-break: break-word; overflow-wrap: anywhere; }
+  .chk.no .chk-crit { color: color-mix(in srgb, var(--color-stamp) 72%, var(--color-ink-muted)); }
   /* house badge (from understudy-design mood board: .ui-badge with status dot) */
   .ui-badge { display: inline-flex; align-items: center; gap: 6px; border: 1px solid var(--color-rule); padding: 3px 8px; color: var(--color-ink-muted); font-family: var(--font-mono); font-size: 10px; letter-spacing: 0.08em; text-transform: uppercase; vertical-align: 1px; }
   .ui-badge::before { content: ""; width: 6px; height: 6px; border-radius: 999px; background: var(--color-ink-muted); }
@@ -289,6 +292,8 @@
   <!-- ============================================================= VIEW B -->
   <section>
     <div class="pad">
+      <!-- climb chart parked for now — kept for later; delete this wrapper div to bring it back -->
+      <div id="climbArchive" style="display:none">
       <p class="eyebrow settle settle-1"><span class="stamp-dot"></span>the same small model, as the work gets harder</p>
 
       <div class="climb-frame settle settle-2">
@@ -349,6 +354,7 @@
         <span class="sm"><i></i>small / local</span>
         <span class="fr"><i></i>frontier</span>
       </div>
+      </div><!-- /climbArchive -->
 
       <div class="cta settle settle-5">
         <p class="fine">Synthetic example. Runs on your machine, nothing uploaded.</p>
@@ -472,11 +478,11 @@
     if (d.outcome === 'landed') {
       verdict.className = 'verdict landed';
       verdictMk.innerHTML = checkMark;
-      verdictWd.textContent = 'it worked';
+      verdictWd.textContent = 'Pass';
     } else {
       verdict.className = 'verdict broke';
       verdictMk.innerHTML = xMark;
-      verdictWd.textContent = "didn't";
+      verdictWd.textContent = 'Fail';
     }
   }
 
@@ -633,7 +639,7 @@
   function streamInto(els, taskId, model, recordKey){
     var es2 = null, gotResp = false, settled = false, loading = false, isHard = false, rows = {}, scoreOpen = false;
     function openScore(){ if (scoreOpen) return; scoreOpen = true; els.scoreBlock.style.display = '';
-      var l = document.createElement('div'); l.className = 'sc-lbl'; l.textContent = 'final state'; els.scoreBlock.appendChild(l); }
+      var l = document.createElement('div'); l.className = 'sc-lbl'; l.textContent = 'criteria · expected vs. actual'; els.scoreBlock.appendChild(l); }
     function clearLoading(){ if (loading) { loading = false; (isHard ? els.thinkLine : els.actLine).textContent = ''; els.verdictWd.textContent = 'running'; } }
     try { es2 = new EventSource('/run?task=' + encodeURIComponent(taskId) + '&model=' + encodeURIComponent(model)); }
     catch (e) { els.verdictWd.textContent = 'error'; return { close: function () {} }; }
@@ -657,17 +663,13 @@
         var rw = rows[m.id]; if (!rw) return; if (!m.ok) rw.className += ' tbad';
         var r = document.createElement('div'); r.className = 'tres'; r.textContent = '→ ' + fmtResult(m.result); rw.appendChild(r);
       } else if (m.type === 'check') {
-        openScore();
-        var cr = document.createElement('div'); cr.className = 'chk reveal ' + (m.pass ? 'ok' : 'no');
-        var mk = document.createElement('span'); mk.className = 'mk'; mk.textContent = m.pass ? '✓' : '✗';
-        var tx = document.createElement('span'); tx.textContent = m.label;
-        cr.appendChild(mk); cr.appendChild(tx); els.scoreBlock.appendChild(cr);
+        openScore(); els.scoreBlock.appendChild(checkRow(m));
       } else if (m.type === 'done') {
         settled = true; if (es2) { es2.close(); es2 = null; }
         if (!gotResp && !isHard && m.response) els.actLine.textContent = m.response;
         var ok = isHard ? (m.strict >= 1) : !!m.correct;
         els.verdict.className = 'pane-verdict ' + (ok ? 'landed' : 'broke');
-        els.verdictMk.innerHTML = ok ? checkMark : xMark; els.verdictWd.textContent = ok ? 'it worked' : "didn't";
+        els.verdictMk.innerHTML = ok ? checkMark : xMark; els.verdictWd.textContent = ok ? 'Pass' : 'Fail';
         recordResult(model, recordKey, ok ? 1 : 0);
       } else if (m.type === 'error') {
         settled = true; if (es2) { es2.close(); es2 = null; }
@@ -740,8 +742,8 @@
       } else if (m.type === 'done') {
         if (es) { es.close(); es = null; }
         if (!gotResp && m.response) actLine.textContent = m.response;
-        if (m.correct) { verdict.className = 'verdict landed'; verdictMk.innerHTML = checkMark; verdictWd.textContent = 'it worked'; }
-        else { verdict.className = 'verdict broke'; verdictMk.innerHTML = xMark; verdictWd.textContent = "didn't"; }
+        if (m.correct) { verdict.className = 'verdict landed'; verdictMk.innerHTML = checkMark; verdictWd.textContent = 'Pass'; }
+        else { verdict.className = 'verdict broke'; verdictMk.innerHTML = xMark; verdictWd.textContent = 'Fail'; }
         if (m.correct != null) recordResult(curModel, TASK_IDS[idx], m.correct ? 1 : 0);
       }
     };
@@ -793,8 +795,8 @@
         row.appendChild(mk); row.appendChild(tx); sb.appendChild(row);
       });
       var all = checks.length && passes === checks.length;
-      if (all) { verdict.className = 'verdict landed'; verdictMk.innerHTML = checkMark; verdictWd.textContent = 'it worked'; }
-      else { verdict.className = 'verdict broke'; verdictMk.innerHTML = xMark; verdictWd.textContent = "didn't"; }
+      if (all) { verdict.className = 'verdict landed'; verdictMk.innerHTML = checkMark; verdictWd.textContent = 'Pass'; }
+      else { verdict.className = 'verdict broke'; verdictMk.innerHTML = xMark; verdictWd.textContent = 'Fail'; }
       recordResult(curModel, TASK_IDS[idx], checks.length ? passes / checks.length : 0);
     }
     step(0);
@@ -818,6 +820,22 @@
     var s; try { s = JSON.stringify(res); } catch (_) { s = String(res); }
     return s.length > 100 ? s.slice(0, 98) + '…' : s;
   }
+  // one scorecard row: ✓/✗ + the criterion label + the EXPECTED condition (and, on a
+  // fail, what actually happened) so you can read why each check passed or failed.
+  function checkRow(m){
+    var cr = document.createElement('div'); cr.className = 'chk reveal ' + (m.pass ? 'ok' : 'no');
+    var mk = document.createElement('span'); mk.className = 'mk'; mk.textContent = m.pass ? '✓' : '✗';
+    var body = document.createElement('div'); body.className = 'chk-body';
+    var lab = document.createElement('div'); lab.className = 'chk-label'; lab.textContent = m.label || m.id || '';
+    body.appendChild(lab);
+    if (m.expected) {
+      var crit = document.createElement('div'); crit.className = 'chk-crit';
+      crit.textContent = 'expected ' + m.expected + ((!m.pass && m.actual) ? '   ·   got ' + m.actual : '');
+      body.appendChild(crit);
+    }
+    cr.appendChild(mk); cr.appendChild(body);
+    return cr;
+  }
 
   function playHardLive(){
     clearTimers();
@@ -840,7 +858,7 @@
       if (scoreOpen) return; scoreOpen = true;
       sb.style.display = '';
       var lbl = document.createElement('div'); lbl.className = 'sc-lbl';
-      lbl.textContent = 'final state — how the world looks now'; sb.appendChild(lbl);
+      lbl.textContent = 'criteria · expected vs. actual'; sb.appendChild(lbl);
     }
     try {
       es = new EventSource('/run?task=' + encodeURIComponent(curHardTask) + '&model=' + encodeURIComponent(curModel));
@@ -874,15 +892,11 @@
         var r = document.createElement('div'); r.className = 'tres'; r.textContent = '→ ' + fmtResult(m.result);
         rw.appendChild(r);
       } else if (m.type === 'check') {
-        openScore();
-        var cr = document.createElement('div'); cr.className = 'chk reveal ' + (m.pass ? 'ok' : 'no');
-        var mk = document.createElement('span'); mk.className = 'mk'; mk.textContent = m.pass ? '✓' : '✗';
-        var tx = document.createElement('span'); tx.textContent = m.label;
-        cr.appendChild(mk); cr.appendChild(tx); sb.appendChild(cr);
+        openScore(); sb.appendChild(checkRow(m));
       } else if (m.type === 'done') {
         settled = true; if (es) { es.close(); es = null; }
-        if (m.strict >= 1) { verdict.className = 'verdict landed'; verdictMk.innerHTML = checkMark; verdictWd.textContent = 'it worked'; }
-        else { verdict.className = 'verdict broke'; verdictMk.innerHTML = xMark; verdictWd.textContent = "didn't"; }
+        if (m.strict >= 1) { verdict.className = 'verdict landed'; verdictMk.innerHTML = checkMark; verdictWd.textContent = 'Pass'; }
+        else { verdict.className = 'verdict broke'; verdictMk.innerHTML = xMark; verdictWd.textContent = 'Fail'; }
         recordResult(curModel, TASK_IDS[idx], m.strict >= 1 ? 1 : 0);
       } else if (m.type === 'error') {
         settled = true; if (es) { es.close(); es = null; }
