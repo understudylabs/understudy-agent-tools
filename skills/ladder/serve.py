@@ -31,7 +31,9 @@ HOST, PORT = "127.0.0.1", 8011
 # Gemma (mlx_vlm): Google's standardized temp 1.0 / top_p 0.95 / top_k 64, and it runs with
 # enable_thinking=True so it emits a reasoning channel like the others.
 MODELS = {
-    "lfm2.5-8b-a1b": ("mlx_lm",  "/Users/luis/.understudy/models/lfm2.5-8b-a1b-8bit", "LFM 8B-A1B · thinking", {"temp": 0.2, "top_k": 80, "rep": 1.05}),
+    # gemma is our default local model for now. (8b-a1b removed for now -- re-add the
+    # line below to restore it; the mlx_lm / LFM tool-calling code is left intact.)
+    # "lfm2.5-8b-a1b": ("mlx_lm",  "/Users/luis/.understudy/models/lfm2.5-8b-a1b-8bit", "LFM 8B-A1B · thinking", {"temp": 0.2, "top_k": 80, "rep": 1.05}),
     "gemma-4-e2b":   ("mlx_vlm", "/Users/luis/.understudy/models/gemma-4-e2b-it-mlx-vlm-4bit", "gemma-4-e2b · thinking", {"temp": 1.0, "top_p": 0.95, "top_k": 64}),
     # frontier via the Understudy gateway (BILLED). Launch serve.py with `understudy run` so
     # UNDERSTUDY_API_KEY + UNDERSTUDY_GATEWAY_URL are injected — the raw key is never read from disk.
@@ -685,7 +687,7 @@ class Handler(BaseHTTPRequestHandler):
 
     def handle_run(self, q):
         task = q.get("task", ["sort-email"])[0]
-        mid = q.get("model", ["lfm2.5-8b-a1b"])[0]
+        mid = q.get("model", ["gemma-4-e2b"])[0]
         if mid not in MODELS:
             return self._json({"error": "unknown model"}, 400)
         real = resolve_task(task)               # any tool task (or alias) -> live agent loop
@@ -785,7 +787,7 @@ def main():
         model_id = sys.argv[3] if len(sys.argv) > 3 else "glm-5.1"
         return _cli_agent(task_id, model_id)
     sys.stderr.write(f"ladder live server: http://{HOST}:{PORT}  (viewer: {VIEWER_DIR})\n")
-    sys.stderr.write(f"  try: curl -N 'http://{HOST}:{PORT}/run?task=sort-email&model=lfm2.5-8b-a1b'\n")
+    sys.stderr.write(f"  try: curl -N 'http://{HOST}:{PORT}/run?task=sort-email&model=gemma-4-e2b'\n")
     sys.stderr.flush()
     threading.Thread(target=prewarm_models, daemon=True).start()   # warm local models off the request path
     QuietServer((HOST, PORT), Handler).serve_forever()

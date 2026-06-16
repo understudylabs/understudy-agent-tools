@@ -486,11 +486,10 @@
   var LIVE = (location.protocol === 'http:' || location.protocol === 'https:');
   var TASK_IDS = ["sort-email", "match-search", "save-play"];
   var LIVE_MODELS = [
-    { id: "lfm2.5-8b-a1b", label: "8b-a1b" },
     { id: "gemma-4-e2b",   label: "gemma-4-e2b" },
     { id: "glm-5.1",       label: "glm-5.1 · frontier", billed: true }
   ];
-  var curModel = "lfm2.5-8b-a1b";
+  var curModel = "gemma-4-e2b";
   var curHardTask = "save-play";    // hard-rung target; hydrate() swaps to a real fixture id
   var CATALOG = {};                 // id -> server task (from /tasks)
   var TOOL_TASKS = [];              // [{id,title,tools,checks}] available for the hard rung
