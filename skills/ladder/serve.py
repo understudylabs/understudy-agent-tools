@@ -172,30 +172,29 @@ def prewarm_models():
                 sys.stderr.write(f"[prewarm] {mid} failed: {type(e).__name__}: {e}\n"); sys.stderr.flush()
 
 
-def stream_gateway(model_id, system, user, samp, max_tokens):
-    """Stream a frontier model through the Understudy gateway (OpenAI-compatible, BILLED).
-    Reads UNDERSTUDY_API_KEY + UNDERSTUDY_GATEWAY_URL from the env that `understudy run`
-    injects — the raw key is never read from disk. Yields (channel, text)."""
+def _gateway_ready():
+    """True once `understudy run` has injected the gateway key + url into the env."""
+    return bool(os.environ.get("UNDERSTUDY_API_KEY") and os.environ.get("UNDERSTUDY_GATEWAY_URL"))
+
+
+def _gateway_request(model_id, messages, samp, max_tokens, tools=None, timeout=120):
+    """Shared transport for both gateway lanes (classify + tool-calling, BILLED).
+    POSTs a streamed OpenAI-compatible chat-completions request and yields each
+    streamed `delta` dict. Key/url come from the env `understudy run` injects -- never
+    read from disk. Call _gateway_ready() first; this assumes a configured gateway."""
     import urllib.request
-    key = os.environ.get("UNDERSTUDY_API_KEY")
-    base = os.environ.get("UNDERSTUDY_GATEWAY_URL")
-    if not key or not base:
-        yield ("response", "[gateway not configured — launch serve.py via `understudy run`]")
-        return
-    body = {
-        "model": model_id, "stream": True, "max_tokens": max_tokens,
-        "messages": [{"role": "system", "content": system}, {"role": "user", "content": user}],
-    }
+    body = {"model": model_id, "stream": True, "max_tokens": max_tokens, "messages": messages}
+    if tools is not None:
+        body["tools"] = tools; body["tool_choice"] = "auto"
     if samp.get("temp") is not None:
         body["temperature"] = samp["temp"]
     req = urllib.request.Request(
-        base.rstrip("/") + "/v1/chat/completions",
+        os.environ["UNDERSTUDY_GATEWAY_URL"].rstrip("/") + "/v1/chat/completions",
         data=json.dumps(body).encode(),
-        headers={"Authorization": "Bearer " + key, "Content-Type": "application/json",
-                 "Accept": "text/event-stream"},
-        method="POST",
-    )
-    with urllib.request.urlopen(req, timeout=120) as resp:
+        headers={"Authorization": "Bearer " + os.environ["UNDERSTUDY_API_KEY"],
+                 "Content-Type": "application/json", "Accept": "text/event-stream"},
+        method="POST")
+    with urllib.request.urlopen(req, timeout=timeout) as resp:
         for raw in resp:
             line = raw.decode("utf-8", "ignore").strip()
             if not line.startswith("data:"):
@@ -204,15 +203,25 @@ def stream_gateway(model_id, system, user, samp, max_tokens):
             if data == "[DONE]":
                 break
             try:
-                delta = (json.loads(data).get("choices") or [{}])[0].get("delta") or {}
+                yield (json.loads(data).get("choices") or [{}])[0].get("delta") or {}
             except Exception:
                 continue
-            rc = delta.get("reasoning_content") or delta.get("reasoning")
-            if rc:
-                yield ("thinking", rc)
-            c = delta.get("content")
-            if c:
-                yield ("response", c)
+
+
+def stream_gateway(model_id, system, user, samp, max_tokens):
+    """Stream a frontier model through the Understudy gateway (classify lane, BILLED).
+    Yields (channel, text) with channel in {thinking, response}."""
+    if not _gateway_ready():
+        yield ("response", "[gateway not configured — launch serve.py via `understudy run`]")
+        return
+    messages = [{"role": "system", "content": system}, {"role": "user", "content": user}]
+    for delta in _gateway_request(model_id, messages, samp, max_tokens):
+        rc = delta.get("reasoning_content") or delta.get("reasoning")
+        if rc:
+            yield ("thinking", rc)
+        c = delta.get("content")
+        if c:
+            yield ("response", c)
 
 
 def stream_tokens(mid, system, user, max_tokens=900):
@@ -307,6 +316,16 @@ AGENT_SYSTEM = (
     "the policy forbids."
 )
 
+# lane -> (with_id, args_json). with_id: tool calls + tool responses carry an id /
+# tool_call_id -- OpenAI (gateway) and Gemma match responses to calls by id, while LFM
+# is positional. args_json: function.arguments is a JSON string (gateway only); the
+# local chat templates take an arguments dict.
+LANE_ADAPT = {
+    "gateway": (True,  True),
+    "mlx_vlm": (True,  False),
+    "mlx_lm":  (False, False),
+}
+
 
 def gateway_chat_turn(messages, tools, model_id, samp, max_tokens=2048):
     """One streaming, tool-aware gateway turn (OpenAI-compatible, BILLED).
@@ -316,51 +335,27 @@ def gateway_chat_turn(messages, tools, model_id, samp, max_tokens=2048):
     assembled assistant message. Gateway is always streamed (the edge cuts
     non-streaming calls ~125s). Key/url come from the env `understudy run`
     injects -- never read from disk."""
-    import urllib.request
-    key = os.environ.get("UNDERSTUDY_API_KEY")
-    base = os.environ.get("UNDERSTUDY_GATEWAY_URL")
-    if not key or not base:
+    if not _gateway_ready():
         yield ("final", {"content": "[gateway not configured -- launch serve.py via `understudy run`]",
                          "reasoning": "", "tool_calls": []})
         return
-    body = {"model": model_id, "stream": True, "max_tokens": max_tokens,
-            "messages": messages, "tools": tools, "tool_choice": "auto"}
-    if samp.get("temp") is not None:
-        body["temperature"] = samp["temp"]
-    req = urllib.request.Request(
-        base.rstrip("/") + "/v1/chat/completions",
-        data=json.dumps(body).encode(),
-        headers={"Authorization": "Bearer " + key, "Content-Type": "application/json",
-                 "Accept": "text/event-stream"},
-        method="POST")
     content = ""; reasoning = ""; tcs = {}        # index -> {id,name,args}
-    with urllib.request.urlopen(req, timeout=180) as resp:
-        for raw in resp:
-            line = raw.decode("utf-8", "ignore").strip()
-            if not line.startswith("data:"):
-                continue
-            data = line[5:].strip()
-            if data == "[DONE]":
-                break
-            try:
-                delta = (json.loads(data).get("choices") or [{}])[0].get("delta") or {}
-            except Exception:
-                continue
-            rc = delta.get("reasoning_content") or delta.get("reasoning")
-            if rc:
-                reasoning += rc; yield ("thinking", rc)
-            c = delta.get("content")
-            if c:
-                content += c; yield ("content", c)
-            for tcd in (delta.get("tool_calls") or []):
-                slot = tcs.setdefault(tcd.get("index", 0), {"id": None, "name": "", "args": ""})
-                if tcd.get("id"):
-                    slot["id"] = tcd["id"]
-                fn = tcd.get("function") or {}
-                if fn.get("name"):
-                    slot["name"] = fn["name"]              # name arrives whole
-                if fn.get("arguments"):
-                    slot["args"] += fn["arguments"]         # arguments stream in chunks
+    for delta in _gateway_request(model_id, messages, samp, max_tokens, tools=tools, timeout=180):
+        rc = delta.get("reasoning_content") or delta.get("reasoning")
+        if rc:
+            reasoning += rc; yield ("thinking", rc)
+        c = delta.get("content")
+        if c:
+            content += c; yield ("content", c)
+        for tcd in (delta.get("tool_calls") or []):
+            slot = tcs.setdefault(tcd.get("index", 0), {"id": None, "name": "", "args": ""})
+            if tcd.get("id"):
+                slot["id"] = tcd["id"]
+            fn = tcd.get("function") or {}
+            if fn.get("name"):
+                slot["name"] = fn["name"]              # name arrives whole
+            if fn.get("arguments"):
+                slot["args"] += fn["arguments"]         # arguments stream in chunks
     yield ("final", {"content": content, "reasoning": reasoning,
                      "tool_calls": [tcs[i] for i in sorted(tcs)]})
 
@@ -391,6 +386,26 @@ def parse_lfm_tool_calls(text):
     return calls
 
 
+def _drive_local_turn(chunks, stop, parse):
+    """Shared streaming loop for the local tool-calling lanes (mlx_lm + mlx_vlm).
+    `chunks` is an iterable of raw text deltas; `stop` is the marker that opens the
+    structured tool call (never streamed as prose); `parse` pulls the tool calls out
+    of the full text. Yields ('thinking',d)/('content',d) live, then a trailing
+    ('final', {content, reasoning, tool_calls})."""
+    full = ""; sent_think = 0; sent_resp = 0
+    for text in chunks:
+        full += text
+        think, rest = split_channels(full)
+        resp = rest.split(stop, 1)[0]                       # don't stream the structured call as prose
+        if len(think) > sent_think:
+            yield ("thinking", think[sent_think:]); sent_think = len(think)
+        if len(resp) > sent_resp:
+            yield ("content", resp[sent_resp:]); sent_resp = len(resp)
+    think, rest = split_channels(full)
+    content = rest.split(stop, 1)[0].strip()
+    yield ("final", {"content": content, "reasoning": think, "tool_calls": parse(full)})
+
+
 def local_chat_turn(model_id, messages, tools, samp, max_tokens=1280):
     """One streaming LOCAL (mlx_lm) turn using LFM2.5's native tool-calling.
     Tool schemas go into the prompt via the chat template's `tools=` kwarg; the
@@ -407,19 +422,8 @@ def local_chat_turn(model_id, messages, tools, samp, max_tokens=1280):
             kw["logits_processors"] = make_logits_processors(repetition_penalty=samp["rep"])
     except Exception:
         pass
-    full = ""; sent_think = 0; sent_resp = 0
-    for r in stream_generate(model, tok, prompt, **kw):
-        full += r.text
-        think, rest = split_channels(full)
-        resp = rest.split("<|tool_call_start|>", 1)[0]      # don't stream the structured call as prose
-        if len(think) > sent_think:
-            yield ("thinking", think[sent_think:]); sent_think = len(think)
-        if len(resp) > sent_resp:
-            yield ("content", resp[sent_resp:]); sent_resp = len(resp)
-    think, rest = split_channels(full)
-    content = rest.split("<|tool_call_start|>", 1)[0].strip()
-    yield ("final", {"content": content, "reasoning": think,
-                     "tool_calls": parse_lfm_tool_calls(full)})
+    chunks = (r.text for r in stream_generate(model, tok, prompt, **kw))
+    yield from _drive_local_turn(chunks, "<|tool_call_start|>", parse_lfm_tool_calls)
 
 
 def _parse_gemma_args(s):
@@ -494,23 +498,12 @@ def gemma_chat_turn(model_id, messages, tools, samp, max_tokens=1600):
         gkw["top_p"] = samp["top_p"]
     if samp.get("top_k"):
         gkw["top_k"] = samp["top_k"]
-    full = ""; sent_think = 0; sent_resp = 0
     try:
         stream = stream_generate(model, proc, prompt, **gkw)
     except TypeError:
         stream = stream_generate(model, proc, prompt, max_tokens=max_tokens)
-    for ch in stream:
-        full += getattr(ch, "text", "") or ""
-        think, rest = split_channels(full)
-        resp = rest.split("<|tool_call>", 1)[0]            # don't stream the structured call as prose
-        if len(think) > sent_think:
-            yield ("thinking", think[sent_think:]); sent_think = len(think)
-        if len(resp) > sent_resp:
-            yield ("content", resp[sent_resp:]); sent_resp = len(resp)
-    think, rest = split_channels(full)
-    content = rest.split("<|tool_call>", 1)[0].strip()
-    yield ("final", {"content": content, "reasoning": think,
-                     "tool_calls": parse_gemma_tool_calls(full)})
+    chunks = (getattr(ch, "text", "") or "" for ch in stream)
+    yield from _drive_local_turn(chunks, "<|tool_call>", parse_gemma_tool_calls)
 
 
 def run_agent(task_id, model_id, max_turns=10):
@@ -557,24 +550,20 @@ def run_agent(task_id, model_id, max_turns=10):
             else:
                 msg = payload
 
-        # record the assistant turn in the lane's expected message shape
+        # record the assistant turn + tool responses in the lane's expected shape
+        with_id, args_json = LANE_ADAPT[lane]
         assistant = {"role": "assistant", "content": msg.get("content") or ""}
         if msg["tool_calls"]:
-            if lane == "gateway":                          # OpenAI: arguments is a JSON string + id
-                assistant["tool_calls"] = [
-                    {"id": tc.get("id") or ("call_%d" % i), "type": "function",
-                     "function": {"name": tc["name"],
-                                  "arguments": tc["args"] if isinstance(tc["args"], str) else json.dumps(tc["args"])}}
-                    for i, tc in enumerate(msg["tool_calls"])]
-            elif lane == "mlx_vlm":                        # Gemma template: arguments dict + id (response matching)
-                assistant["tool_calls"] = [
-                    {"id": "call_%d" % i, "type": "function",
-                     "function": {"name": tc["name"], "arguments": tc["args"]}}
-                    for i, tc in enumerate(msg["tool_calls"])]
-            else:                                          # LFM template: arguments dict, positional responses
-                assistant["tool_calls"] = [
-                    {"type": "function", "function": {"name": tc["name"], "arguments": tc["args"]}}
-                    for tc in msg["tool_calls"]]
+            calls = []
+            for i, tc in enumerate(msg["tool_calls"]):
+                fargs = tc["args"]
+                if args_json and not isinstance(fargs, str):   # gateway wants a JSON-string argument blob
+                    fargs = json.dumps(fargs)
+                call = {"type": "function", "function": {"name": tc["name"], "arguments": fargs}}
+                if with_id:
+                    call["id"] = tc.get("id") or ("call_%d" % i)
+                calls.append(call)
+            assistant["tool_calls"] = calls
         messages.append(assistant)
 
         if not msg["tool_calls"]:
@@ -592,10 +581,10 @@ def run_agent(task_id, model_id, max_turns=10):
             result = world.call_tool(state, name, args)
             yield {"type": "tool_result", "id": call_id, "name": name,
                    "ok": "error" not in result, "result": result}
-            if lane == "mlx_lm":                           # LFM: positional tool responses (no id)
-                messages.append({"role": "tool", "content": json.dumps(result)})
-            else:                                          # gateway + gemma: match by tool_call_id
-                messages.append({"role": "tool", "tool_call_id": call_id, "content": json.dumps(result)})
+            tmsg = {"role": "tool", "content": json.dumps(result)}
+            if with_id:                                    # gateway + gemma match by id; LFM is positional
+                tmsg["tool_call_id"] = call_id
+            messages.append(tmsg)
             if name == "finish":
                 finished = True
         if finished:
@@ -610,6 +599,44 @@ def run_agent(task_id, model_id, max_turns=10):
     yield {"type": "done", "strict": scored["strict"], "dense": scored["dense"],
            "passes": passes, "total": len(scored["breakdown"]),
            "finished": finished, "turns": turn + 1}
+
+
+def classify_run(task, mid):
+    """Generator of SSE events for one single-shot classify task (EASY/MEDIUM rung):
+      meta -> [status:loading] -> token(thinking|response)* -> done.
+    Local models split their raw stream on <think> here; the gateway arrives already
+    channel-separated. `done` carries throughput + correctness against the gold label."""
+    title, system, user, gold = TASKS[task]
+    yield {"type": "meta", "task": task, "model": mid, "label": MODELS[mid][2],
+           "title": title, "system": system, "user": user, "gold": gold}
+    if not model_loaded(mid):                  # cold model: tell the UI before the ~60s load
+        yield {"type": "status", "state": "loading", "model": mid, "label": MODELS[mid][2]}
+    full = ""; sent_think = 0; sent_resp = 0; resp_text = ""; n = 0; t0 = time.time()
+    # local models generate on the dedicated inference thread; gateway stays on this one
+    src = (stream_tokens(mid, system, user) if MODELS[mid][0] == "gateway"
+           else INFER.stream(lambda: stream_tokens(mid, system, user)))
+    for channel, text in src:
+        if not text:
+            continue
+        n += 1
+        if channel == "raw":                          # local: split on <think> here
+            full += text
+            think, resp = split_channels(full)
+            if len(think) > sent_think:
+                yield {"type": "token", "channel": "thinking", "text": think[sent_think:]}; sent_think = len(think)
+            if len(resp) > sent_resp:
+                yield {"type": "token", "channel": "response", "text": resp[sent_resp:]}; sent_resp = len(resp)
+            resp_text = resp
+        elif channel == "thinking":                   # gateway: already separated
+            yield {"type": "token", "channel": "thinking", "text": text}
+        else:
+            yield {"type": "token", "channel": "response", "text": text}
+            resp_text += text
+    dt = time.time() - t0
+    correct = gold.split()[0].lower() in resp_text.lower() if gold else None
+    yield {"type": "done", "tokens": n, "seconds": round(dt, 2),
+           "tok_s": round(n / max(dt, 0.01)), "correct": correct,
+           "response": resp_text.strip()[:200]}
 
 
 class Handler(BaseHTTPRequestHandler):
@@ -635,6 +662,22 @@ class Handler(BaseHTTPRequestHandler):
     def _sse(self, obj):
         self.wfile.write(("data: " + json.dumps(obj) + "\n\n").encode())
         self.wfile.flush()
+
+    def _sse_run(self, events):
+        """Open an SSE stream and forward an event generator. A client hanging up
+        mid-stream is the normal close (swallowed); any other failure is surfaced to
+        the page as one {type:error} event rather than dying silently."""
+        self._sse_open()
+        try:
+            for ev in events:
+                self._sse(ev)
+        except (BrokenPipeError, ConnectionResetError):
+            return
+        except Exception as e:
+            try:
+                self._sse({"type": "error", "error": "%s: %s" % (type(e).__name__, str(e)[:300])})
+            except (BrokenPipeError, ConnectionResetError):
+                pass
 
     def do_GET(self):
         u = urlparse(self.path)
@@ -669,22 +712,6 @@ class Handler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(b)
 
-    def handle_agent(self, task_id, mid):
-        """Stream a live tool-calling agent run (any tool task) as SSE.
-        Forwards run_agent's fully-formed events; it self-guards non-gateway
-        models with a single {type:error} event."""
-        self._sse_open()
-        try:
-            for ev in run_agent(task_id, mid):
-                self._sse(ev)
-        except (BrokenPipeError, ConnectionResetError):
-            return
-        except Exception as e:                     # surface failures, never silently die
-            try:
-                self._sse({"type": "error", "error": "%s: %s" % (type(e).__name__, str(e)[:300])})
-            except (BrokenPipeError, ConnectionResetError):
-                pass
-
     def handle_run(self, q):
         task = q.get("task", ["sort-email"])[0]
         mid = q.get("model", ["gemma-4-e2b"])[0]
@@ -692,50 +719,10 @@ class Handler(BaseHTTPRequestHandler):
             return self._json({"error": "unknown model"}, 400)
         real = resolve_task(task)               # any tool task (or alias) -> live agent loop
         if real:
-            return self.handle_agent(real, mid)
+            return self._sse_run(run_agent(real, mid))
         if task not in TASKS:
             return self._json({"error": "unknown task"}, 400)
-        title, system, user, gold = TASKS[task]
-        self._sse_open()
-        self._sse({"type": "meta", "task": task, "model": mid, "label": MODELS[mid][2],
-                   "title": title, "system": system, "user": user, "gold": gold})
-        if not model_loaded(mid):              # cold model: tell the UI before the ~60s load
-            self._sse({"type": "status", "state": "loading", "model": mid, "label": MODELS[mid][2]})
-        full = ""; sent_think = 0; sent_resp = 0; resp_text = ""; n = 0; t0 = time.time()
-        # local models generate on the dedicated inference thread; gateway stays here
-        src = (stream_tokens(mid, system, user) if MODELS[mid][0] == "gateway"
-               else INFER.stream(lambda: stream_tokens(mid, system, user)))
-        try:
-            for channel, text in src:
-                if not text:
-                    continue
-                n += 1
-                if channel == "raw":                      # local: split on <think> here
-                    full += text
-                    think, resp = split_channels(full)
-                    if len(think) > sent_think:
-                        self._sse({"type": "token", "channel": "thinking", "text": think[sent_think:]}); sent_think = len(think)
-                    if len(resp) > sent_resp:
-                        self._sse({"type": "token", "channel": "response", "text": resp[sent_resp:]}); sent_resp = len(resp)
-                    resp_text = resp
-                elif channel == "thinking":               # gateway: already separated
-                    self._sse({"type": "token", "channel": "thinking", "text": text})
-                else:
-                    self._sse({"type": "token", "channel": "response", "text": text})
-                    resp_text += text
-        except (BrokenPipeError, ConnectionResetError):
-            return
-        except Exception as e:                     # e.g. a local model fails to load on a stale mlx
-            try:
-                self._sse({"type": "error", "error": "%s: %s" % (type(e).__name__, str(e)[:300])})
-            except (BrokenPipeError, ConnectionResetError):
-                pass
-            return
-        dt = time.time() - t0
-        correct = gold.split()[0].lower() in resp_text.lower() if gold else None
-        self._sse({"type": "done", "tokens": n, "seconds": round(dt, 2),
-                   "tok_s": round(n / max(dt, 0.01)), "correct": correct,
-                   "response": resp_text.strip()[:200]})
+        return self._sse_run(classify_run(task, mid))
 
 
 def _cli_agent(task_id, model_id):
