@@ -390,7 +390,10 @@
       b.className = (opt.active() === opt.id(it) ? 'active' : '');
       var tip = opt.title && opt.title(it); if (tip) b.title = tip;
       if (opt.billed && it.billed) { b.title = opt.billed; b.style.borderColor = 'var(--color-stamp)'; }
-      b.addEventListener('click', function () { opt.pick(it); });
+      b.addEventListener('click', function () {
+        if (opt.active() === opt.id(it)) return;   // re-picking the active item would re-run (and re-bill the gateway)
+        opt.pick(it);
+      });
       el.appendChild(b);
     });
   }

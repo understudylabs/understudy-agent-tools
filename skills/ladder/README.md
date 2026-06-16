@@ -14,21 +14,24 @@ Then open <http://localhost:8011/ladder.climb.html>.
 
 Use **`uv`**, not system python — the local models need the current mlx stack
 (system `mlx_lm` is too old to load some models). `understudy run` injects the
-gateway key for the frontier model; nothing else is needed.
+gateway key for the frontier model. The local model loads from
+`~/.understudy/models/<id>` (override with `UNDERSTUDY_MODEL_HOME`); if it isn't
+cached there, pull it with the `manage-local-models` skill.
 
 ## What's here (the core, 4 files)
 
 | File | Role |
 |---|---|
 | `serve.py` | stdlib HTTP + SSE server. The `run_agent` loop (model → tool_call → `world.call_tool` → tool_result → `finish` → score) and the SSE event stream. Easy/medium classify tasks are inline; the model list is here too. |
-| `env/world.py` | the synthetic "Larkfield" task world: `WorldState`, ~12 recoverable tools, `call_tool`, and `score_assertions` (strict + dense, with the anti-shotgun rule for negatives). Stdlib only. |
+| `env/world.py` | the synthetic "Larkfield" task world: `WorldState`, 12 recoverable tools, `call_tool`, and `score_assertions` (strict + dense, with the anti-shotgun rule for negatives). Stdlib only. |
 | `fixtures/hard/tool_tasks.jsonl` | the hard tool-calling tasks (renewal save-play / AP approval / SLA route). |
 | `viewer/ladder.climb.html` | the UI itself (the "climb" viewer + VS panes). Self-contained HTML/JS. |
 
-Three model lanes are wired in `serve.py`, each speaking its own tool-call
-dialect against the one world + scorer: the gateway (OpenAI JSON), and two local
-mlx lanes (gemma-4 default; the LFM2.5 lane is present but its model line is
-commented out).
+Two model lanes are active in `serve.py`: the local `gemma-4-e2b` (mlx, default)
+and the `glm-5.1` gateway frontier. A third LFM2.5 `mlx_lm` lane is fully coded
+but its model line is commented out — uncomment it in `serve.py` to restore it.
+Each lane speaks its own tool-call dialect against the one world + scorer (the
+gateway uses OpenAI JSON; the local lanes use their native formats).
 
 ## Reference / fuller prototype
 

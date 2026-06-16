@@ -1,16 +1,16 @@
 """world.py -- the Larkfield simulated SaaS world (HARD tier).
 
 Plain, self-contained Python 3 (3.9+). STANDARD LIBRARY ONLY.
-No verifiers / mlx / uv / pydantic. Original re-implementation inspired by
-the StatefulToolEnv / WorldState *mechanism* (see LICENSE-FIXTURES.md for the
-URL-only upstream citation); it copies no upstream bytes.
+No verifiers / mlx / uv / pydantic. Original re-implementation inspired by the
+StatefulToolEnv / WorldState *mechanism* from the `verifiers` agentic-eval
+library; it reuses only the pattern and copies no upstream bytes.
 
 Everything here lives in the invented "Larkfield" world:
 brands TravelPro / AcmeRoast / NorthPeak; domains *.larkfield.example.
 
 What this module gives the rest of the env:
   * WorldState            -- a mutable, snapshot-able world (crm / mail / tables / invoices)
-  * TOOLS                 -- ~10 callables (state, **args) -> dict; ALL errors recoverable
+  * TOOLS                 -- 12 callables (state, **args) -> dict; ALL errors recoverable
   * STRICT_MODE           -- module flag; malformed/empty writes are NOT coerced
   * ASSERTIONS            -- typed checkers incl. negative + anti-shotgun
   * score_assertions()    -- returns strict (0/1) and dense (weighted) with the

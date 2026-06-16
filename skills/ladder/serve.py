@@ -27,6 +27,10 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 VIEWER_DIR = os.path.join(HERE, "viewer")
 HOST, PORT = "127.0.0.1", 8011
 
+# local model cache root -- same convention as the other skills (run-local-model-lab's
+# arena.sh, manage-local-models): default ~/.understudy/models, override with the env var.
+MODEL_HOME = os.environ.get("UNDERSTUDY_MODEL_HOME") or os.path.expanduser("~/.understudy/models")
+
 # id -> (lane, path-or-repo, label, sampling)
 # sampling = each model's HF-card recommendation. LFM (mlx_lm): LiquidAI's temp/top_k/rep.
 # Gemma (mlx_vlm): Google's standardized temp 1.0 / top_p 0.95 / top_k 64, and it runs with
@@ -34,8 +38,8 @@ HOST, PORT = "127.0.0.1", 8011
 MODELS = {
     # gemma is our default local model for now. (8b-a1b removed for now -- re-add the
     # line below to restore it; the mlx_lm / LFM tool-calling code is left intact.)
-    # "lfm2.5-8b-a1b": ("mlx_lm",  "/Users/luis/.understudy/models/lfm2.5-8b-a1b-8bit", "LFM 8B-A1B · thinking", {"temp": 0.2, "top_k": 80, "rep": 1.05}),
-    "gemma-4-e2b":   ("mlx_vlm", "/Users/luis/.understudy/models/gemma-4-e2b-it-mlx-vlm-4bit", "gemma-4-e2b · thinking", {"temp": 1.0, "top_p": 0.95, "top_k": 64}),
+    # "lfm2.5-8b-a1b": ("mlx_lm",  os.path.join(MODEL_HOME, "lfm2.5-8b-a1b-8bit"), "LFM 8B-A1B · thinking", {"temp": 0.2, "top_k": 80, "rep": 1.05}),
+    "gemma-4-e2b":   ("mlx_vlm", os.path.join(MODEL_HOME, "gemma-4-e2b-it-mlx-vlm-4bit"), "gemma-4-e2b · thinking", {"temp": 1.0, "top_p": 0.95, "top_k": 64}),
     # frontier via the Understudy gateway (BILLED). Launch serve.py with `understudy run` so
     # UNDERSTUDY_API_KEY + UNDERSTUDY_GATEWAY_URL are injected — the raw key is never read from disk.
     "glm-5.1":       ("gateway", "glm-5.1", "glm-5.1 · frontier", {}),
@@ -142,6 +146,10 @@ def get_model(mid):
         if mid in _loaded:
             return _loaded[mid]
         lane, path = MODELS[mid][0], MODELS[mid][1]
+        if lane != "gateway" and not os.path.isdir(path):   # actionable instead of a cryptic mlx load error
+            raise FileNotFoundError(
+                "model not found at %s -- pull it with the manage-local-models skill, "
+                "or point UNDERSTUDY_MODEL_HOME at your model cache." % path)
         sys.stderr.write(f"[load] {mid} ({lane}) ...\n"); sys.stderr.flush()
         if lane == "mlx_lm":
             from mlx_lm import load as lm_load
