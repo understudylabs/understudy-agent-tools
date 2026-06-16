@@ -58,10 +58,27 @@ TASKS = {
     ),
 }
 
-# The HARD "save-play" card is not a single-shot prompt -- it's the live agent
-# loop. The viewer's save-play task maps to this real tool-calling task in the
-# Larkfield world (env/world.py + fixtures/hard/tool_tasks.jsonl).
-SAVE_PLAY_TASK = "hard.renewal_save_route"
+# Tool-calling tasks are DATA, not code: they live in fixtures/hard/tool_tasks.jsonl
+# and load through env/world.py. EVERY task there runs through the same agent loop
+# with no per-task server code -- add a JSONL row and it is immediately live and
+# scored. The viewer's friendly "save-play" id aliases one fixture task; every other
+# task is addressed by its real fixture id (e.g. hard.sla_route).
+TASK_ALIASES = {"save-play": "hard.renewal_save_route"}
+_TOOL_TASKS = None
+
+def tool_tasks():
+    """Cached {task_id: task} from the hard fixtures (loaded via env/world.py)."""
+    global _TOOL_TASKS
+    if _TOOL_TASKS is None:
+        import world
+        _TOOL_TASKS = world.load_tasks()
+    return _TOOL_TASKS
+
+def resolve_task(task):
+    """Map a requested task id (or alias) to a real tool-task id, or None if it
+    isn't a tool task (then it's a single-shot classify task or unknown)."""
+    real = TASK_ALIASES.get(task, task)
+    return real if real in tool_tasks() else None
 
 _loaded = {}
 _lock = threading.Lock()
@@ -358,8 +375,12 @@ class Handler(BaseHTTPRequestHandler):
         if u.path == "/run":
             return self.handle_run(q)
         if u.path == "/tasks":
-            return self._json({"tasks": [
-                {"id": k, "title": v[0], "system": v[1], "user": v[2], "gold": v[3]} for k, v in TASKS.items()]})
+            cat = [{"id": k, "kind": "classify", "title": v[0], "system": v[1], "user": v[2], "gold": v[3]}
+                   for k, v in TASKS.items()]
+            for tid, t in tool_tasks().items():     # tool tasks discovered from the fixtures
+                cat.append({"id": tid, "kind": "tool", "title": t.get("prompt"),
+                            "tools": t.get("allowed_tools", []), "checks": len(t.get("assertions", []))})
+            return self._json({"tasks": cat})
         if u.path == "/models":
             return self._json({"models": [
                 {"id": k, "label": v[2], "lane": v[0]} for k, v in MODELS.items()]})
@@ -381,13 +402,13 @@ class Handler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(b)
 
-    def handle_agent(self, mid):
-        """Stream a live tool-calling agent run (HARD save-play) as SSE.
+    def handle_agent(self, task_id, mid):
+        """Stream a live tool-calling agent run (any tool task) as SSE.
         Forwards run_agent's fully-formed events; it self-guards non-gateway
         models with a single {type:error} event."""
         self._sse_open()
         try:
-            for ev in run_agent(SAVE_PLAY_TASK, mid):
+            for ev in run_agent(task_id, mid):
                 self._sse(ev)
         except (BrokenPipeError, ConnectionResetError):
             return
@@ -395,10 +416,13 @@ class Handler(BaseHTTPRequestHandler):
     def handle_run(self, q):
         task = q.get("task", ["sort-email"])[0]
         mid = q.get("model", ["lfm2.5-8b-a1b"])[0]
-        if task not in TASKS or mid not in MODELS:
-            return self._json({"error": "unknown task or model"}, 400)
-        if task == "save-play":                 # HARD card -> live agent loop
-            return self.handle_agent(mid)
+        if mid not in MODELS:
+            return self._json({"error": "unknown model"}, 400)
+        real = resolve_task(task)               # any tool task (or alias) -> live agent loop
+        if real:
+            return self.handle_agent(real, mid)
+        if task not in TASKS:
+            return self._json({"error": "unknown task"}, 400)
         title, system, user, gold = TASKS[task]
         self._sse_open()
         self._sse({"type": "meta", "task": task, "model": mid, "label": MODELS[mid][2],
