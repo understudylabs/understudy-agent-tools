@@ -27,10 +27,12 @@ VIEWER_DIR = os.path.join(HERE, "viewer")
 HOST, PORT = "127.0.0.1", 8011
 
 # id -> (lane, path-or-repo, label, sampling)
-# sampling is LiquidAI's recommendation from each model's Hugging Face card (mlx-lm lane only).
+# sampling = each model's HF-card recommendation. LFM (mlx_lm): LiquidAI's temp/top_k/rep.
+# Gemma (mlx_vlm): Google's standardized temp 1.0 / top_p 0.95 / top_k 64, and it runs with
+# enable_thinking=True so it emits a reasoning channel like the others.
 MODELS = {
     "lfm2.5-8b-a1b": ("mlx_lm",  "/Users/luis/.understudy/models/lfm2.5-8b-a1b-8bit", "LFM 8B-A1B · thinking", {"temp": 0.2, "top_k": 80, "rep": 1.05}),
-    "gemma-4-e2b":   ("mlx_vlm", "/Users/luis/.understudy/models/gemma-4-e2b-it-mlx-vlm-4bit", "gemma-4-e2b", {}),
+    "gemma-4-e2b":   ("mlx_vlm", "/Users/luis/.understudy/models/gemma-4-e2b-it-mlx-vlm-4bit", "gemma-4-e2b · thinking", {"temp": 1.0, "top_p": 0.95, "top_k": 64}),
     # frontier via the Understudy gateway (BILLED). Launch serve.py with `understudy run` so
     # UNDERSTUDY_API_KEY + UNDERSTUDY_GATEWAY_URL are injected — the raw key is never read from disk.
     "glm-5.1":       ("gateway", "glm-5.1", "glm-5.1 · frontier", {}),
@@ -176,17 +178,41 @@ def stream_tokens(mid, system, user, max_tokens=900):
         from mlx_vlm import stream_generate
         from mlx_vlm.prompt_utils import apply_chat_template
         _, model, proc, config = obj
-        msgs = [{"role": "user", "content": system + "\n\n" + user}]   # gemma: no system role
-        try:
-            prompt = apply_chat_template(proc, config, msgs, num_images=0)
+        msgs = [{"role": "system", "content": system}, {"role": "user", "content": user}]
+        try:                                          # enable_thinking => Gemma reasoning channel
+            prompt = apply_chat_template(proc, config, msgs, num_images=0, enable_thinking=True)
         except TypeError:
-            prompt = apply_chat_template(proc, config, msgs)
-        for ch in stream_generate(model, proc, prompt, max_tokens=max_tokens):
+            try:
+                prompt = apply_chat_template(proc, config, msgs, enable_thinking=True)
+            except TypeError:
+                prompt = apply_chat_template(proc, config, msgs)
+        gkw = {"max_tokens": max_tokens}              # Google's recommended sampling
+        if samp.get("temp") is not None:
+            gkw["temperature"] = samp["temp"]
+        if samp.get("top_p") is not None:
+            gkw["top_p"] = samp["top_p"]
+        if samp.get("top_k"):
+            gkw["top_k"] = samp["top_k"]
+        try:
+            stream = stream_generate(model, proc, prompt, **gkw)
+        except TypeError:
+            stream = stream_generate(model, proc, prompt, max_tokens=max_tokens)
+        for ch in stream:
             yield ("raw", getattr(ch, "text", "") or "")
 
 def split_channels(full):
-    """Split accumulated text into (thinking, response) by the <think> channel."""
-    if "<think>" in full:
+    """Split accumulated text into (thinking, response). Handles both local
+    reasoning formats: LFM's <think>...</think> and Gemma's channel form
+    <|channel>thought\\n...<channel|>."""
+    if "<|channel>" in full:                        # Gemma reasoning channel
+        after = full.split("<|channel>", 1)[1]
+        nl = after.find("\n")                        # drop the channel label line ("thought")
+        body = after[nl + 1:] if nl != -1 else ""
+        if "<channel|>" in body:
+            think, resp = body.split("<channel|>", 1)
+            return think, resp
+        return body, ""
+    if "<think>" in full:                            # LFM reasoning
         after = full.split("<think>", 1)[1]
         if "</think>" in after:
             think, resp = after.split("</think>", 1)
