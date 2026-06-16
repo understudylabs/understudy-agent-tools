@@ -105,6 +105,23 @@ def get_model(mid):
         sys.stderr.write(f"[load] {mid} ready\n"); sys.stderr.flush()
         return obj
 
+
+def model_loaded(mid):
+    """True if `mid` needs no load (gateway) or is already cached (local lane)."""
+    return MODELS.get(mid, ("",))[0] == "gateway" or mid in _loaded
+
+
+def prewarm_models():
+    """Load the local mlx models once at startup (in a background thread) so the
+    first real request streams immediately instead of stalling ~60s on a cold load."""
+    for mid, spec in MODELS.items():
+        if spec[0] in ("mlx_lm", "mlx_vlm"):
+            try:
+                get_model(mid)
+            except Exception as e:
+                sys.stderr.write(f"[prewarm] {mid} failed: {type(e).__name__}: {e}\n"); sys.stderr.flush()
+
+
 def stream_gateway(model_id, system, user, samp, max_tokens):
     """Stream a frontier model through the Understudy gateway (OpenAI-compatible, BILLED).
     Reads UNDERSTUDY_API_KEY + UNDERSTUDY_GATEWAY_URL from the env that `understudy run`
@@ -379,6 +396,8 @@ def run_agent(task_id, model_id, max_turns=10):
     yield {"type": "meta", "task": task_id, "model": model_id, "label": MODELS[model_id][2],
            "title": task["prompt"], "system": AGENT_SYSTEM, "user": task["prompt"],
            "tools": [t["function"]["name"] for t in tools]}
+    if not model_loaded(model_id):             # cold model: tell the UI before the ~60s load
+        yield {"type": "status", "state": "loading", "model": model_id, "label": MODELS[model_id][2]}
 
     finished = False; turn = 0
     for turn in range(max_turns):
@@ -482,7 +501,7 @@ class Handler(BaseHTTPRequestHandler):
             return self._json({"tasks": cat})
         if u.path == "/models":
             return self._json({"models": [
-                {"id": k, "label": v[2], "lane": v[0]} for k, v in MODELS.items()]})
+                {"id": k, "label": v[2], "lane": v[0], "ready": model_loaded(k)} for k, v in MODELS.items()]})
         return self.serve_static(u.path)
 
     def serve_static(self, path):
@@ -531,6 +550,8 @@ class Handler(BaseHTTPRequestHandler):
         self._sse_open()
         self._sse({"type": "meta", "task": task, "model": mid, "label": MODELS[mid][2],
                    "title": title, "system": system, "user": user, "gold": gold})
+        if not model_loaded(mid):              # cold model: tell the UI before the ~60s load
+            self._sse({"type": "status", "state": "loading", "model": mid, "label": MODELS[mid][2]})
         full = ""; sent_think = 0; sent_resp = 0; resp_text = ""; n = 0; t0 = time.time()
         try:
             for channel, text in stream_tokens(mid, system, user):
@@ -616,6 +637,7 @@ def main():
     sys.stderr.write(f"ladder live server: http://{HOST}:{PORT}  (viewer: {VIEWER_DIR})\n")
     sys.stderr.write(f"  try: curl -N 'http://{HOST}:{PORT}/run?task=sort-email&model=lfm2.5-8b-a1b'\n")
     sys.stderr.flush()
+    threading.Thread(target=prewarm_models, daemon=True).start()   # warm local models off the request path
     QuietServer((HOST, PORT), Handler).serve_forever()
 
 

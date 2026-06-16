@@ -125,6 +125,12 @@
     background: var(--color-ink-muted); margin-left: 2px; animation: blink 1s steps(1) infinite;
   }
   @keyframes blink { 50% { opacity: 0; } }
+  @keyframes pulse { 0%, 100% { opacity: 0.35; } 50% { opacity: 0.9; } }
+  .loading-note {
+    color: var(--color-ink-muted); font-family: var(--font-mono); font-size: 0.85rem;
+    animation: pulse 1.3s ease-in-out infinite;
+  }
+  @media (prefers-reduced-motion: reduce) { .loading-note { animation: none; opacity: 0.7; } }
   .verdict {
     border-left: 1px solid var(--color-rule);
     width: 132px; display: flex; flex-direction: column;
@@ -561,13 +567,18 @@
     actLine.innerHTML = '<span class="cursor"></span>';
     verdict.className = 'verdict pending'; verdictMk.innerHTML = ''; verdictWd.textContent = 'running';
     renderClimb();                          // re-emphasize the active model's line on switch
-    var gotResp = false, failed = false;
+    var gotResp = false, failed = false, loading = false;
     try {
       es = new EventSource('/run?task=' + encodeURIComponent(TASK_IDS[idx]) + '&model=' + encodeURIComponent(curModel));
     } catch (e) { return playPrebaked(); }
     es.onmessage = function (ev) {
       var m; try { m = JSON.parse(ev.data); } catch (_) { return; }
-      if (m.type === 'token') {
+      if (m.type === 'status' && m.state === 'loading') {
+        loading = true; thinkBlock.style.display = 'none';
+        actLine.innerHTML = '<span class="loading-note">loading ' + (m.label || m.model) + ' …</span>';
+        verdictWd.textContent = 'loading';
+      } else if (m.type === 'token') {
+        if (loading) { loading = false; actLine.textContent = ''; verdictWd.textContent = 'running'; }
         if (m.channel === 'thinking') {
           thinkBlock.style.display = ''; thinkLine.textContent += m.text;
           thinkLine.scrollTop = thinkLine.scrollHeight;
@@ -676,7 +687,8 @@
     verdict.className = 'verdict pending'; verdictMk.innerHTML = ''; verdictWd.textContent = 'running';
     renderClimb();
 
-    var rows = {}, scoreOpen = false, settled = false;
+    var rows = {}, scoreOpen = false, settled = false, loading = false;
+    function clearLoading(){ if (loading) { loading = false; thinkLine.textContent = ''; verdictWd.textContent = 'running'; } }
     function openScore(){
       if (scoreOpen) return; scoreOpen = true;
       sb.style.display = '';
@@ -690,12 +702,18 @@
       var m; try { m = JSON.parse(ev.data); } catch (_) { return; }
       if (m.type === 'meta') {
         sysLine.textContent = m.system; userLine.textContent = m.user;
+      } else if (m.type === 'status' && m.state === 'loading') {
+        loading = true; thinkBlock.style.display = '';
+        thinkLine.innerHTML = '<span class="loading-note">loading ' + (m.label || m.model) + ' …</span>';
+        verdictWd.textContent = 'loading';
       } else if (m.type === 'token') {
         if (m.channel === 'thinking') {
+          clearLoading();
           thinkBlock.style.display = ''; thinkLine.textContent += m.text;
           thinkLine.scrollTop = thinkLine.scrollHeight;
         }                                       // response channel: the trace carries the story
       } else if (m.type === 'tool_call') {
+        clearLoading();
         var row = document.createElement('div'); row.className = 'tstep reveal';
         var c = document.createElement('div'); c.className = 'tcall';
         var badge = document.createElement('span'); badge.className = 'ui-badge'; badge.textContent = m.name;
