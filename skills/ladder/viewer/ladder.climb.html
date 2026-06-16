@@ -722,8 +722,8 @@
       } else if (m.type === 'error') {
         settled = true; if (es) { es.close(); es = null; }
         thinkBlock.style.display = '';
-        if (/gateway|function-calling/i.test(m.error)) {        // expected: wrong model picked
-          thinkLine.textContent = m.error + ' — this card needs a tool-calling model; pick glm-5.1 · frontier above.';
+        if (/tool-calling model|function-calling/i.test(m.error)) {   // expected: model can't tool-call
+          thinkLine.textContent = m.error + ' — pick one of those above.';
           verdict.className = 'verdict pending'; verdictMk.innerHTML = ''; verdictWd.textContent = 'n/a';
         } else {                                                // a real failure
           thinkLine.textContent = '⚠ ' + m.error;

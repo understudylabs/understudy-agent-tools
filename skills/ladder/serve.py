@@ -16,7 +16,7 @@ demo; this server is the "run it for real, live" lane.
   GET /models                     -> the model catalog
   GET /<file>                     -> static file from viewer/
 """
-import json, os, sys, time, threading
+import ast, json, os, re, sys, time, threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import urlparse, parse_qs
 
@@ -198,9 +198,10 @@ def split_channels(full):
 # ---------------------------------------------------------------------------
 # Live agent loop (HARD tier). A real model drives the Larkfield world:
 # model -> tool_call -> world.call_tool -> tool_result -> repeat -> finish,
-# then world.score_assertions on the final state. Gateway lane (BILLED), which
-# is the cleanest OpenAI function-calling path; local mlx tool-calling is harder
-# and deferred. Synthetic data only; every billed call is disclosed.
+# then world.score_assertions on the final state. TWO lanes drive the same world
+# + scorer: the gateway (OpenAI function-calling, BILLED) and local mlx_lm (LFM2.5's
+# native <|tool_call_start|>[...] format, $0, runs on your machine). Synthetic data
+# only; every billed call is disclosed.
 # ---------------------------------------------------------------------------
 sys.path.insert(0, os.path.join(HERE, "env"))
 
@@ -271,6 +272,63 @@ def gateway_chat_turn(messages, tools, model_id, samp, max_tokens=2048):
                      "tool_calls": [tcs[i] for i in sorted(tcs)]})
 
 
+def parse_lfm_tool_calls(text):
+    """Parse LFM2.5's native tool calls out of a generated turn:
+        <|tool_call_start|>[crm_find_accounts(query='Nova Retail'), ...]<|tool_call_end|>
+    The inside is Python-call syntax (kwargs), so parse it with ast -- never eval.
+    Returns [{"name", "args": dict}, ...]."""
+    calls = []
+    for m in re.finditer(r"<\|tool_call_start\|>\s*\[(.*?)\]\s*<\|tool_call_end\|>", text, re.S):
+        inner = m.group(1).strip()
+        if not inner:
+            continue
+        try:
+            elts = ast.parse("[" + inner + "]", mode="eval").body.elts
+        except Exception:
+            continue
+        for node in elts:
+            if isinstance(node, ast.Call) and isinstance(node.func, ast.Name):
+                args = {}
+                for kw in node.keywords:
+                    try:
+                        args[kw.arg] = ast.literal_eval(kw.value)
+                    except Exception:
+                        args[kw.arg] = None
+                calls.append({"name": node.func.id, "args": args})
+    return calls
+
+
+def local_chat_turn(model_id, messages, tools, samp, max_tokens=1280):
+    """One streaming LOCAL (mlx_lm) turn using LFM2.5's native tool-calling.
+    Tool schemas go into the prompt via the chat template's `tools=` kwarg; the
+    model emits <think>...</think> then <|tool_call_start|>[...]. Yields
+    ('thinking', delta)/('content', delta) live, then ('final', {...}). $0."""
+    from mlx_lm import stream_generate
+    _, model, tok = get_model(model_id)
+    prompt = tok.apply_chat_template(messages, tools=tools, add_generation_prompt=True)
+    kw = dict(max_tokens=max_tokens)
+    try:
+        from mlx_lm.sample_utils import make_sampler, make_logits_processors
+        kw["sampler"] = make_sampler(temp=samp.get("temp", 0.2), top_k=samp.get("top_k", 0))
+        if samp.get("rep"):
+            kw["logits_processors"] = make_logits_processors(repetition_penalty=samp["rep"])
+    except Exception:
+        pass
+    full = ""; sent_think = 0; sent_resp = 0
+    for r in stream_generate(model, tok, prompt, **kw):
+        full += r.text
+        think, rest = split_channels(full)
+        resp = rest.split("<|tool_call_start|>", 1)[0]      # don't stream the structured call as prose
+        if len(think) > sent_think:
+            yield ("thinking", think[sent_think:]); sent_think = len(think)
+        if len(resp) > sent_resp:
+            yield ("content", resp[sent_resp:]); sent_resp = len(resp)
+    think, rest = split_channels(full)
+    content = rest.split("<|tool_call_start|>", 1)[0].strip()
+    yield ("final", {"content": content, "reasoning": think,
+                     "tool_calls": parse_lfm_tool_calls(full)})
+
+
 def run_agent(task_id, model_id, max_turns=10):
     """Generator of SSE-ready events for one live agent run against the world.
 
@@ -281,13 +339,13 @@ def run_agent(task_id, model_id, max_turns=10):
     task = world.load_tasks().get(task_id)
     if task is None:
         yield {"type": "error", "error": "unknown task '%s'" % task_id}; return
-    if MODELS.get(model_id, (None,))[0] != "gateway":
-        yield {"type": "error", "error": "agent loop needs a gateway (function-calling) model"}; return
+    lane = MODELS.get(model_id, (None,))[0]
+    if lane not in ("gateway", "mlx_lm"):
+        yield {"type": "error", "error": "this task needs a tool-calling model (8b-a1b or glm-5.1)"}; return
 
     state = world.fresh_state(task)
     baseline = state.snapshot()
     tools = world.tool_schemas(task.get("allowed_tools"))
-    model_real = MODELS[model_id][1]
     samp = MODELS[model_id][3]
     messages = [{"role": "system", "content": AGENT_SYSTEM},
                 {"role": "user", "content": task["prompt"]}]
@@ -299,36 +357,51 @@ def run_agent(task_id, model_id, max_turns=10):
     finished = False; turn = 0
     for turn in range(max_turns):
         msg = None
-        for kind, payload in gateway_chat_turn(messages, tools, model_real, samp):
+        turn_stream = (gateway_chat_turn(messages, tools, MODELS[model_id][1], samp)
+                       if lane == "gateway"
+                       else local_chat_turn(model_id, messages, tools, samp))
+        for kind, payload in turn_stream:
             if kind == "thinking":
                 yield {"type": "token", "channel": "thinking", "text": payload}
             elif kind == "content":
                 yield {"type": "token", "channel": "response", "text": payload}
             else:
                 msg = payload
+
+        # record the assistant turn in the lane's expected message shape
         assistant = {"role": "assistant", "content": msg.get("content") or ""}
         if msg["tool_calls"]:
-            assistant["tool_calls"] = [
-                {"id": tc["id"] or ("call_%d" % i), "type": "function",
-                 "function": {"name": tc["name"], "arguments": tc["args"] or "{}"}}
-                for i, tc in enumerate(msg["tool_calls"])]
+            if lane == "gateway":                          # OpenAI: arguments is a JSON string + id
+                assistant["tool_calls"] = [
+                    {"id": tc.get("id") or ("call_%d" % i), "type": "function",
+                     "function": {"name": tc["name"],
+                                  "arguments": tc["args"] if isinstance(tc["args"], str) else json.dumps(tc["args"])}}
+                    for i, tc in enumerate(msg["tool_calls"])]
+            else:                                          # LFM template: arguments is a dict
+                assistant["tool_calls"] = [
+                    {"type": "function", "function": {"name": tc["name"], "arguments": tc["args"]}}
+                    for tc in msg["tool_calls"]]
         messages.append(assistant)
 
         if not msg["tool_calls"]:
             break                                          # model stopped without finishing
         for i, tc in enumerate(msg["tool_calls"]):
-            call_id = tc["id"] or ("call_%d" % i)
+            call_id = tc.get("id") or ("call_%d" % i)
             name = tc["name"]
-            try:
-                args = json.loads(tc["args"] or "{}")
-            except Exception:
-                args = {}
+            args = tc["args"]
+            if isinstance(args, str):
+                try:
+                    args = json.loads(args or "{}")
+                except Exception:
+                    args = {}
             yield {"type": "tool_call", "id": call_id, "name": name, "args": args}
             result = world.call_tool(state, name, args)
             yield {"type": "tool_result", "id": call_id, "name": name,
                    "ok": "error" not in result, "result": result}
-            messages.append({"role": "tool", "tool_call_id": call_id,
-                             "content": json.dumps(result)})
+            if lane == "gateway":
+                messages.append({"role": "tool", "tool_call_id": call_id, "content": json.dumps(result)})
+            else:
+                messages.append({"role": "tool", "content": json.dumps(result)})
             if name == "finish":
                 finished = True
         if finished:
@@ -499,15 +572,25 @@ def _cli_agent(task_id, model_id):
         sys.stderr.flush()
 
 
+class QuietServer(ThreadingHTTPServer):
+    daemon_threads = True
+
+    def handle_error(self, request, client_address):
+        # A client closing an SSE stream mid-flight is normal, not an error.
+        if sys.exc_info()[0] in (ConnectionResetError, BrokenPipeError):
+            return
+        super().handle_error(request, client_address)
+
+
 def main():
     if len(sys.argv) > 1 and sys.argv[1] == "--agent":
         task_id = sys.argv[2] if len(sys.argv) > 2 else "hard.renewal_save_route"
         model_id = sys.argv[3] if len(sys.argv) > 3 else "glm-5.1"
         return _cli_agent(task_id, model_id)
     sys.stderr.write(f"ladder live server: http://{HOST}:{PORT}  (viewer: {VIEWER_DIR})\n")
-    sys.stderr.write(f"  try: curl -N 'http://{HOST}:{PORT}/run?task=sort-email&model=lfm-thinking'\n")
+    sys.stderr.write(f"  try: curl -N 'http://{HOST}:{PORT}/run?task=sort-email&model=lfm2.5-8b-a1b'\n")
     sys.stderr.flush()
-    ThreadingHTTPServer((HOST, PORT), Handler).serve_forever()
+    QuietServer((HOST, PORT), Handler).serve_forever()
 
 
 if __name__ == "__main__":
