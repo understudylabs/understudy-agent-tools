@@ -87,14 +87,21 @@
     font-family: var(--font-mono); font-size: 0.8rem; line-height: 1.5;
     color: var(--color-ink); white-space: pre-wrap;
   }
-  /* foldable context: collapse system -> user -> thinking so the trace + result lead */
-  .io.foldable > .who { cursor: pointer; user-select: none; display: inline-flex; align-items: center; gap: 6px; width: fit-content; }
-  .io.foldable > .who::after { content: "\25BE"; font-size: 0.62em; color: var(--color-ink-muted); }
-  .io.collapsed > .who::after { content: "\25B8"; }
+  /* foldable context blocks: click the label to collapse/expand */
+  .io.foldable > .who {
+    cursor: pointer; user-select: none; display: inline-flex; align-items: center; gap: 6px;
+    width: fit-content; padding: 1px 5px 1px 0; border-radius: 2px;
+    transition: color 140ms ease, background 140ms ease;
+  }
+  .io.foldable > .who::after { content: "\25BE"; font-size: 0.72em; color: var(--color-ink-muted); transition: color 140ms ease; }
+  .io.collapsed > .who::after { content: "\25B8"; color: var(--color-ink); }   /* stronger chevron when folded: signals it expands */
+  .io.foldable > .who:hover { color: var(--color-ink); background: color-mix(in srgb, var(--color-ink) 6%, transparent); }
+  .io.foldable > .who:hover::after { color: var(--color-ink); }
   .io.collapsed > .ioval, .io.collapsed > .think { display: none; }
   .fold-preview { display: none; }
   .io.collapsed > .fold-preview {
-    display: block; font-family: var(--font-mono); font-size: 0.76rem; color: var(--color-ink-muted);
+    display: block; font-family: var(--font-mono); font-size: 0.76rem;
+    color: color-mix(in srgb, var(--color-ink-muted) 58%, var(--color-paper));  /* fainter than the .who title so they don't merge */
     white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 56ch;
   }
   .think {
@@ -242,7 +249,7 @@
   }
   .replaybar button#runBtn:hover { border-color: var(--color-ink); opacity: 0.86; }
   .foot {
-    margin-top: 56px; padding-top: 16px; border-top: 1px solid var(--color-rule);
+    margin-top: 28px; padding-top: 14px; border-top: 1px solid var(--color-rule);
     font-size: 0.68rem; text-transform: uppercase; letter-spacing: 0.16em;
     color: var(--color-ink-muted); display: flex; justify-content: space-between; gap: 16px;
   }
@@ -278,7 +285,6 @@
 
       <div id="vsWrap" style="display:none"><div class="vs-grid" id="vsGrid"></div></div>
 
-      <div class="models" id="hardPicker" style="display:none"></div>
       <div class="models" id="modelPicker" style="display:none"></div>
       <div class="models" id="modelPickerB" style="display:none"></div>
       <div class="replaybar settle settle-4">
@@ -291,11 +297,9 @@
   </section>
 
   <!-- ============================================================= FOOT -->
-  <section>
-    <div class="foot">
-      <span class="wordmark">understudy</span>
-    </div>
-  </section>
+  <div class="foot">
+    <span class="wordmark">understudy</span>
+  </div>
 
 </div>
 
@@ -304,22 +308,19 @@
   // --- synthetic Larkfield content: the seed shown before the server's /tasks
   //     catalog hydrates. The classify rungs get overwritten by hydrate(); the
   //     hard rung is just flagged so play() routes it to the tool-calling surface. ---
+  var HARD_SYS = "Apply the latest discount, mark the subscription Saved with the new price in USD, and email the right teams per the save-play policy.";
   var TASKS = [
     {
+      id: "sort-email",
       task: "Sort this customer email into the right inbox.",
       system: "Route the email to exactly one inbox: billing_urgent, billing_normal, technical, sales_lead, or spam. Reply with just the label.",
       user: "From: pat@maple.example\nSubject: charged twice\nI got billed twice this morning and it's holding up payroll. Please fix this today."
     },
     {
+      id: "match-search",
       task: "Decide how a product relates to a shopper's search.",
       system: "Label the product against the search: Exact, Substitute, Complement, or Irrelevant. Reply with just the label.",
       user: "search: running shoes\nproduct: merino ankle socks, cushioned, 3-pack"
-    },
-    {
-      task: "Run the renewal save play: apply the discount, update the plan, email the right team.",
-      system: "Apply the latest discount, mark the subscription Saved with the new price in USD, and email the right teams per the save-play policy.",
-      user: "Nova Retail · Growth · EUR 4000 · At-Risk · renews soon.\nTools: get_account, read_policy, update_subscription, send_mail, finish.",
-      hard: true
     }
   ];
 
@@ -334,7 +335,6 @@
   var runBtn     = document.getElementById('runBtn');
   var modelPicker= document.getElementById('modelPicker');
   var modelPickerB= document.getElementById('modelPickerB');
-  var hardPicker = document.getElementById('hardPicker');
   var vsBtn      = document.getElementById('vsBtn');
   var vsWrap     = document.getElementById('vsWrap');
   var vsGrid     = document.getElementById('vsGrid');
@@ -365,13 +365,13 @@
 
   var idx = 0;
 
-  var TASK_IDS = ["sort-email", "match-search", "save-play"];
+  var TASK_IDS = ["sort-email", "match-search"];
   var LIVE_MODELS = [
     { id: "gemma-4-e2b",   label: "gemma-4-e2b" },
     { id: "glm-5.1",       label: "glm-5.1 · frontier", billed: true }
   ];
   var curModel = "gemma-4-e2b";
-  var curHardTask = "save-play";    // hard-rung target; hydrate() swaps to a real fixture id
+  var FLAT_BUILT = false;           // guard: append tool tasks to TASKS only once
   var CATALOG = {};                 // id -> server task (from /tasks)
   var TOOL_TASKS = [];              // [{id,title,tools,checks}] available for the hard rung
   var curModelB = "glm-5.1";        // VS mode: the second model
@@ -404,7 +404,12 @@
           TASKS[i].task = t.title; TASKS[i].system = t.system; TASKS[i].user = t.user;
         }
       });
-      if (TOOL_TASKS.length) { curHardTask = TOOL_TASKS[0].id; }   // default hard rung -> first fixture
+      if (!FLAT_BUILT) {                               // flatten: each tool task is its own entry
+        TOOL_TASKS.forEach(function (t) {
+          TASKS.push({ id: t.id, task: firstSentence(t.title), system: HARD_SYS, user: t.title, hard: true });
+        });
+        FLAT_BUILT = true;
+      }
     }).catch(function () { /* server unreachable: keep the seed content */ });
   }
 
@@ -481,15 +486,6 @@
       active: function () { return curModelB; },
       billed: 'runs on the Understudy gateway — billed',
       pick: function (m) { curModelB = m.id; pickModelB(); play(); }
-    });
-  }
-  function pickHard(){
-    if (!TOOL_TASKS.length) { hardPicker.innerHTML = ''; return; }
-    buildPicker(hardPicker, TOOL_TASKS, {
-      label: 'task', text: function (t) { return humanizeTask(t.id); }, id: function (t) { return t.id; },
-      active: function () { return curHardTask; },
-      title: function (t) { return (t.tools ? t.tools.length + ' tools · ' : '') + (t.checks != null ? t.checks + ' checks' : ''); },
-      pick: function (t) { curHardTask = t.id; pickHard(); play(); }
     });
   }
 
@@ -586,9 +582,7 @@
         else if (!isHard) { if (!gotResp) { els.actLine.textContent = ''; gotResp = true; } els.actLine.textContent += m.text; }
       } else if (m.type === 'tool_call') {
         clearLoading();
-        if (!isHard) { isHard = true; els.respBlock.style.display = 'none'; els.traceBlock.style.display = '';
-          if (els.sysIo) { setFold(els.sysIo, true); setFold(els.userIo, true); setFold(els.thinkBlock, true); }  // fold context once the trace leads
-        }
+        if (!isHard) { isHard = true; els.respBlock.style.display = 'none'; els.traceBlock.style.display = ''; }
         var row = document.createElement('div'); row.className = 'tstep';
         var c = document.createElement('div'); c.className = 'tcall';
         var badge = document.createElement('span'); badge.className = 'ui-badge'; badge.textContent = m.name; c.appendChild(badge);
@@ -620,16 +614,10 @@
     return { close: function () { if (es) { es.close(); es = null; } } };
   }
 
-  // resolve the task being run: a hard rung targets the picked fixture and shows its
-  // catalog title; a classify rung shows the seed/hydrated content.
+  // resolve the task being run: every entry (classify or tool) carries its own id +
+  // display text, so tool-calling tasks are framed exactly like the classify ones.
   function framing(d){
-    var cat = d.hard ? CATALOG[curHardTask] : null;
-    return {
-      taskId: d.hard ? curHardTask : TASK_IDS[idx],
-      title: (d.hard && cat) ? firstSentence(cat.title) : d.task,
-      system: d.system,
-      user: (d.hard && cat) ? cat.title : d.user
-    };
+    return { taskId: d.id, title: d.task, system: d.system, user: d.user };
   }
 
   function vsRun(){
@@ -652,10 +640,29 @@
     vsBtn.textContent = vsOn ? '◂ single' : 'compare two ▸';
   }
 
+  // ---- deep links: task + model (+ VS) live in the URL so any view is shareable ----
+  function taskIndexForId(id){ for (var i = 0; i < TASKS.length; i++) { if (TASKS[i].id === id) return i; } return -1; }
+  function validModel(id){ return LIVE_MODELS.some(function (m) { return m.id === id; }) ? id : null; }
+  function applyQuery(){
+    var p = new URLSearchParams(location.search);
+    var tid = p.get('task'); if (tid) { var i = taskIndexForId(tid); if (i >= 0) idx = i; }
+    var md = validModel(p.get('model')); if (md) curModel = md;
+    var mdB = validModel(p.get('modelB')); if (mdB) curModelB = mdB;
+    if (p.get('vs') === '1') vsOn = true;
+  }
+  function syncQuery(){
+    var t = TASKS[idx]; if (!t) return;
+    var p = new URLSearchParams();
+    p.set('task', t.id); p.set('model', curModel);
+    if (vsOn) { p.set('vs', '1'); p.set('modelB', curModelB); }
+    var qs = p.toString();
+    history.replaceState(null, '', location.pathname + (qs ? '?' + qs : ''));
+  }
+
   function play(){
     teardown();
     var d = TASKS[idx], f = framing(d);
-    hardPicker.style.display = (d.hard && TOOL_TASKS.length) ? '' : 'none';
+    syncQuery();
     if (vsOn) { vsRun(); return; }                       // VS mode: two models, same task
     taskLine.textContent = f.title; sysLine.textContent = f.system; userLine.textContent = f.user;
     single = streamInto(globalEls, f.taskId, curModel);
@@ -677,8 +684,9 @@
   replayBtn.style.display = 'none';
   modelPicker.style.display = '';
   vsBtn.style.display = '';
+  applyQuery();                                       // ?model/&vs apply now; task resolves fully post-hydrate
   pickModel();
-  hydrate().then(function () { pickHard(); play(); });   // pull the task catalog, then run
+  hydrate().then(function () { applyQuery(); if (vsOn) applyVsLayout(); play(); });   // pull catalog, deep-link, run
 })();
 </script>
 </body>

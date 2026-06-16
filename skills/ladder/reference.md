@@ -28,6 +28,26 @@ One stdlib process, no web framework:
   and both VS panes from the same `/run` SSE stream, adapting to classify vs hard
   by the events it actually sees.
 
+## Deep links (URL state)
+
+The viewer keeps the live view in the query string and reads it back on load, so
+any task/model/mode is shareable — handy when an agent wants to point a user at a
+specific run or embed a precise view.
+
+| param | meaning |
+|---|---|
+| `?task=<id>` | task to open: a classify id (`sort-email`, `match-search`) or any tool-task id from the fixtures (e.g. `hard.sla_route`) |
+| `?model=<id>` | model lane for the single pane / VS pane A (`gemma-4-e2b` or `glm-5.1`) |
+| `?vs=1` | open in compare-two (VS) mode |
+| `?modelB=<id>` | VS pane B's model (only meaningful with `vs=1`) |
+
+On load, `applyQuery()` runs twice — once before the first render (model/VS) and
+again after `/tasks` hydrates (so tool-task ids resolve). As the user moves
+(next task, model pick, VS toggle), `syncQuery()` rewrites the URL with
+`history.replaceState`, so the address bar always reflects the live view (no
+history spam). An agent adding a task or lane just uses its id in the URL — no
+extra wiring. (Both helpers live in the viewer's `<script>`.)
+
 ## Model lanes & tool-call dialects
 
 Two lanes are active; a third is coded but its model line is commented out:
@@ -73,8 +93,9 @@ Three layers, easiest first.
 ### A new HARD tool-calling task — pure data, no code
 
 Append one JSON object (one line) to `fixtures/hard/tool_tasks.jsonl`. It is
-discovered by `load_tasks()`, listed by `GET /tasks` (kind `tool`), shown in the
-viewer's hard picker, and scored by the same agent loop — no server code. Restart
+discovered by `load_tasks()`, listed by `GET /tasks` (kind `tool`), flattened
+into the viewer's task list (cycled by "next task" like the classify rungs — no
+separate picker), and scored by the same agent loop — no server code. Restart
 the server to pick up a new/edited row (the task list is cached at startup).
 
 Row shape:
@@ -116,13 +137,16 @@ scorecard) and never affects pass/fail.
 
 ### A new EASY/MEDIUM classify task — small edit
 
-Classify rungs are not fully data-driven (the viewer wires a fixed set of rungs by
-index). Add the task in two places:
+Classify rungs are not fully data-driven (the viewer holds the classify seeds in
+order; tool tasks are appended automatically on hydrate). Add the task in two
+places:
 
 1. `serve.py` `TASKS`: `"my-task": ("title", "system prompt", "user prompt", "gold label")`.
 2. `viewer/ladder.climb.html`: add the id to `TASK_IDS` and a matching seed entry
-   to the `TASKS` array at the same index — the viewer cycles rungs by index and
-   `hydrate()` overwrites classify content from `/tasks`.
+   `{ id: "my-task", … }` to the `TASKS` array at the same index — `hydrate()`
+   overwrites classify content from `/tasks` by aligned index. (Tool tasks need
+   no viewer edit: each is appended as its own flat entry on hydrate, cycled by
+   "next task" alongside the classify rungs.)
 
 Correctness is the substring check in `classify_run()`: the gold's first token must
 appear (case-insensitively) in the model's response, so keep gold labels short and
