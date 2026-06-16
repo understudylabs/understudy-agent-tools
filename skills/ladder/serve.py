@@ -412,6 +412,11 @@ class Handler(BaseHTTPRequestHandler):
                 self._sse(ev)
         except (BrokenPipeError, ConnectionResetError):
             return
+        except Exception as e:                     # surface failures, never silently die
+            try:
+                self._sse({"type": "error", "error": "%s: %s" % (type(e).__name__, str(e)[:300])})
+            except (BrokenPipeError, ConnectionResetError):
+                pass
 
     def handle_run(self, q):
         task = q.get("task", ["sort-email"])[0]
@@ -447,6 +452,12 @@ class Handler(BaseHTTPRequestHandler):
                     self._sse({"type": "token", "channel": "response", "text": text})
                     resp_text += text
         except (BrokenPipeError, ConnectionResetError):
+            return
+        except Exception as e:                     # e.g. a local model fails to load on a stale mlx
+            try:
+                self._sse({"type": "error", "error": "%s: %s" % (type(e).__name__, str(e)[:300])})
+            except (BrokenPipeError, ConnectionResetError):
+                pass
             return
         dt = time.time() - t0
         correct = gold.split()[0].lower() in resp_text.lower() if gold else None

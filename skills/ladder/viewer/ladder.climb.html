@@ -561,7 +561,7 @@
     actLine.innerHTML = '<span class="cursor"></span>';
     verdict.className = 'verdict pending'; verdictMk.innerHTML = ''; verdictWd.textContent = 'running';
     renderClimb();                          // re-emphasize the active model's line on switch
-    var gotResp = false;
+    var gotResp = false, failed = false;
     try {
       es = new EventSource('/run?task=' + encodeURIComponent(TASK_IDS[idx]) + '&model=' + encodeURIComponent(curModel));
     } catch (e) { return playPrebaked(); }
@@ -575,6 +575,10 @@
           if (!gotResp) { actLine.textContent = ''; gotResp = true; }
           actLine.textContent += m.text;
         }
+      } else if (m.type === 'error') {        // server hit a real failure (e.g. model load) -> show it
+        failed = true; if (es) { es.close(); es = null; }
+        thinkBlock.style.display = 'none'; actLine.textContent = '⚠ ' + m.error;
+        verdict.className = 'verdict broke'; verdictMk.innerHTML = xMark; verdictWd.textContent = 'error';
       } else if (m.type === 'done') {
         if (es) { es.close(); es = null; }
         if (!gotResp && m.response) actLine.textContent = m.response;
@@ -585,7 +589,7 @@
     };
     es.onerror = function () {
       if (es) { es.close(); es = null; }
-      if (!gotResp) playPrebaked();           // can't reach the live endpoint -> pre-baked replay
+      if (!gotResp && !failed) playPrebaked();  // unreachable endpoint -> pre-baked; a real {error} stays shown
     };
   }
 
@@ -717,9 +721,14 @@
         recordResult(curModel, TASK_IDS[idx], m.strict >= 1 ? 1 : 0);
       } else if (m.type === 'error') {
         settled = true; if (es) { es.close(); es = null; }
-        thinkBlock.style.display = ''; thinkLine.textContent =
-          m.error + ' — this card needs a tool-calling model; pick glm-5.1 · frontier above.';
-        verdict.className = 'verdict pending'; verdictMk.innerHTML = ''; verdictWd.textContent = 'n/a';
+        thinkBlock.style.display = '';
+        if (/gateway|function-calling/i.test(m.error)) {        // expected: wrong model picked
+          thinkLine.textContent = m.error + ' — this card needs a tool-calling model; pick glm-5.1 · frontier above.';
+          verdict.className = 'verdict pending'; verdictMk.innerHTML = ''; verdictWd.textContent = 'n/a';
+        } else {                                                // a real failure
+          thinkLine.textContent = '⚠ ' + m.error;
+          verdict.className = 'verdict broke'; verdictMk.innerHTML = xMark; verdictWd.textContent = 'error';
+        }
       }
     };
     es.onerror = function () {
