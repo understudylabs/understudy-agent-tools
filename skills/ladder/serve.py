@@ -58,6 +58,11 @@ TASKS = {
     ),
 }
 
+# The HARD "save-play" card is not a single-shot prompt -- it's the live agent
+# loop. The viewer's save-play task maps to this real tool-calling task in the
+# Larkfield world (env/world.py + fixtures/hard/tool_tasks.jsonl).
+SAVE_PLAY_TASK = "hard.renewal_save_route"
+
 _loaded = {}
 _lock = threading.Lock()
 
@@ -376,11 +381,24 @@ class Handler(BaseHTTPRequestHandler):
         self.end_headers()
         self.wfile.write(b)
 
+    def handle_agent(self, mid):
+        """Stream a live tool-calling agent run (HARD save-play) as SSE.
+        Forwards run_agent's fully-formed events; it self-guards non-gateway
+        models with a single {type:error} event."""
+        self._sse_open()
+        try:
+            for ev in run_agent(SAVE_PLAY_TASK, mid):
+                self._sse(ev)
+        except (BrokenPipeError, ConnectionResetError):
+            return
+
     def handle_run(self, q):
         task = q.get("task", ["sort-email"])[0]
         mid = q.get("model", ["lfm2.5-8b-a1b"])[0]
         if task not in TASKS or mid not in MODELS:
             return self._json({"error": "unknown task or model"}, 400)
+        if task == "save-play":                 # HARD card -> live agent loop
+            return self.handle_agent(mid)
         title, system, user, gold = TASKS[task]
         self._sse_open()
         self._sse({"type": "meta", "task": task, "model": mid, "label": MODELS[mid][2],
