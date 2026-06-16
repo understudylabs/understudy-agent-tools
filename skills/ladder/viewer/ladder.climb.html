@@ -87,6 +87,16 @@
     font-family: var(--font-mono); font-size: 0.8rem; line-height: 1.5;
     color: var(--color-ink); white-space: pre-wrap;
   }
+  /* foldable context: collapse system -> user -> thinking so the trace + result lead */
+  .io.foldable > .who { cursor: pointer; user-select: none; display: inline-flex; align-items: center; gap: 6px; width: fit-content; }
+  .io.foldable > .who::after { content: "\25BE"; font-size: 0.62em; color: var(--color-ink-muted); }
+  .io.collapsed > .who::after { content: "\25B8"; }
+  .io.collapsed > .ioval, .io.collapsed > .think { display: none; }
+  .fold-preview { display: none; }
+  .io.collapsed > .fold-preview {
+    display: block; font-family: var(--font-mono); font-size: 0.76rem; color: var(--color-ink-muted);
+    white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 56ch;
+  }
   .think {
     font-family: var(--font-reading); letter-spacing: -0.008em;
     font-size: 0.88rem; line-height: 1.5; color: var(--color-ink-muted);
@@ -198,24 +208,11 @@
   .vs-pane .pane-verdict.broke  { color: var(--color-bad); }
   .vs-pane .pane-verdict.pending { opacity: 0.5; }
 
-  /* ---------- CTA ---------- */
-  .cta {
-    margin-top: 40px; padding-top: 26px; border-top: 1px solid var(--color-rule);
-    display: flex; align-items: center; justify-content: space-between; gap: 20px;
-    flex-wrap: wrap;
+  /* ---------- run button: the kept, filled primary action ---------- */
+  .replaybar button#runBtn {
+    color: var(--color-paper); background: var(--color-ink); border-color: var(--color-ink);
   }
-  .cta a {
-    font-family: var(--font-mono); text-decoration: none;
-    font-size: 0.74rem; text-transform: uppercase; letter-spacing: 0.16em; font-weight: 500;
-    color: var(--color-paper); background: var(--color-ink);
-    padding: 13px 20px; border: 1px solid var(--color-ink);
-    transition: opacity 140ms ease;
-  }
-  .cta a:hover { opacity: 0.86; }
-  .fine {
-    font-family: var(--font-reading); letter-spacing: -0.008em;
-    font-size: 0.78rem; color: var(--color-ink-muted); max-width: 34ch; line-height: 1.5;
-  }
+  .replaybar button#runBtn:hover { border-color: var(--color-ink); opacity: 0.86; }
   .foot {
     margin-top: 56px; padding-top: 16px; border-top: 1px solid var(--color-rule);
     font-size: 0.68rem; text-transform: uppercase; letter-spacing: 0.16em;
@@ -238,9 +235,9 @@
 
       <div class="attempt settle settle-3" id="singleAttempt">
         <div class="doing">
-          <div class="io"><span class="who">system prompt</span><span class="ioval" id="sysLine"></span></div>
-          <div class="io"><span class="who">user prompt</span><span class="ioval" id="userLine"></span></div>
-          <div class="io" id="thinkBlock"><span class="who">thinking</span><span class="think" id="thinkLine"><span class="cursor"></span></span></div>
+          <div class="io foldable" id="sysIo"><span class="who">system prompt</span><span class="fold-preview"></span><span class="ioval" id="sysLine"></span></div>
+          <div class="io foldable" id="userIo"><span class="who">user prompt</span><span class="fold-preview"></span><span class="ioval" id="userLine"></span></div>
+          <div class="io foldable" id="thinkBlock"><span class="who">thinking</span><span class="fold-preview"></span><span class="think" id="thinkLine"><span class="cursor"></span></span></div>
           <div class="io" id="respBlock"><span class="who">response</span><span class="act" id="actLine"></span></div>
           <div class="io" id="traceBlock" style="display:none"><span class="who">tool calls</span><div id="traceLine"></div></div>
           <div id="scoreBlock" style="display:none"></div>
@@ -265,15 +262,8 @@
     </div>
   </section>
 
-  <!-- ============================================================= CTA + FOOT -->
+  <!-- ============================================================= FOOT -->
   <section>
-    <div class="pad">
-      <div class="cta settle settle-5">
-        <p class="fine">Synthetic example. Runs on your machine, nothing uploaded.</p>
-        <a href="#" id="ctaBtn">run this on your tasks -&gt;</a>
-      </div>
-    </div>
-
     <div class="foot">
       <span class="wordmark">understudy</span>
       <span>directional, not a measurement</span>
@@ -331,8 +321,20 @@
     scoreBlock: document.getElementById('scoreBlock'),
     verdict: document.getElementById('verdict'), verdictMk: document.getElementById('verdictMark'),
     verdictWd: document.getElementById('verdictWord'), verdictClass: 'verdict',
-    sysLine: sysLine, userLine: userLine
+    sysLine: sysLine, userLine: userLine,
+    sysIo: document.getElementById('sysIo'), userIo: document.getElementById('userIo')
   };
+
+  // collapse/expand a foldable context block; collapsed shows a one-line preview of its value
+  function setFold(io, collapsed){
+    if (!io) return;
+    io.classList.toggle('collapsed', collapsed);
+    var pv = io.querySelector('.fold-preview');
+    if (pv) {
+      var val = io.querySelector('.ioval, .think');
+      pv.textContent = collapsed && val ? (val.textContent || '').replace(/\s+/g, ' ').trim().slice(0, 90) : '';
+    }
+  }
 
   var idx = 0;
 
@@ -488,6 +490,7 @@
     if (els.traceBlock) { els.traceBlock.style.display = 'none'; els.traceLine.innerHTML = ''; }
     if (els.scoreBlock) { els.scoreBlock.style.display = 'none'; els.scoreBlock.innerHTML = ''; }
     els.verdict.className = els.verdictClass + ' pending'; els.verdictMk.innerHTML = ''; els.verdictWd.textContent = 'running';
+    if (els.sysIo) { setFold(els.sysIo, false); setFold(els.userIo, false); setFold(els.thinkBlock, false); }  // start expanded
 
     function openScore(){ if (scoreOpen) return; scoreOpen = true; els.scoreBlock.style.display = '';
       var l = document.createElement('div'); l.className = 'sc-lbl'; l.textContent = 'criteria · expected vs. actual'; els.scoreBlock.appendChild(l); }
@@ -509,7 +512,9 @@
         else if (!isHard) { if (!gotResp) { els.actLine.textContent = ''; gotResp = true; } els.actLine.textContent += m.text; }
       } else if (m.type === 'tool_call') {
         clearLoading();
-        if (!isHard) { isHard = true; els.respBlock.style.display = 'none'; els.traceBlock.style.display = ''; }
+        if (!isHard) { isHard = true; els.respBlock.style.display = 'none'; els.traceBlock.style.display = '';
+          if (els.sysIo) { setFold(els.sysIo, true); setFold(els.userIo, true); setFold(els.thinkBlock, true); }  // fold context once the trace leads
+        }
         var row = document.createElement('div'); row.className = 'tstep';
         var c = document.createElement('div'); c.className = 'tcall';
         var badge = document.createElement('span'); badge.className = 'ui-badge'; badge.textContent = m.name; c.appendChild(badge);
@@ -587,6 +592,10 @@
   taskSwitch.addEventListener('click', function () {
     idx = (idx + 1) % TASKS.length;
     play();
+  });
+  // click any context block's label to fold/unfold it manually
+  Array.prototype.forEach.call(document.querySelectorAll('.io.foldable > .who'), function (who) {
+    who.addEventListener('click', function () { var io = who.parentNode; setFold(io, !io.classList.contains('collapsed')); });
   });
 
   runBtn.style.display = '';
