@@ -30,6 +30,7 @@
       --color-warn: #E4BF69;
       --color-bad: #D97A66;
     }
+    .ui-badge { background: transparent; }
   }
   * { box-sizing: border-box; }
   html, body {
@@ -144,11 +145,8 @@
   .chk-body { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
   .chk-crit { font-family: var(--font-mono); font-size: 0.7rem; color: var(--color-ink-muted); line-height: 1.4; word-break: break-word; overflow-wrap: anywhere; }
   .chk.no .chk-crit { color: color-mix(in srgb, var(--color-stamp) 72%, var(--color-ink-muted)); }
-  /* house badge (from understudy-design mood board: .ui-badge with status dot) */
-  .ui-badge { display: inline-flex; align-items: center; gap: 6px; border: 1px solid var(--color-rule); padding: 3px 8px; color: var(--color-ink-muted); font-family: var(--font-mono); font-size: 10px; letter-spacing: 0.08em; text-transform: uppercase; vertical-align: 1px; }
-  .ui-badge::before { content: ""; width: 6px; height: 6px; border-radius: 999px; background: var(--color-ink-muted); }
-  .ui-badge.good::before { background: var(--color-good); }
-  .ui-badge.bad::before  { background: var(--color-stamp); }
+  /* house badge: filled pill in light mode, outline-only in dark mode; no status bullet */
+  .ui-badge { display: inline-flex; align-items: center; border: 1px solid var(--color-rule); padding: 3px 8px; color: var(--color-ink-muted); font-family: var(--font-mono); font-size: 10px; letter-spacing: 0.08em; text-transform: uppercase; vertical-align: 1px; background: color-mix(in srgb, var(--color-ink) 8%, var(--color-paper)); }
   .ui-badge.bad { color: var(--color-stamp); border-color: color-mix(in srgb, var(--color-stamp) 45%, var(--color-rule)); }
   .tcall-args { font-family: var(--font-mono); font-size: 0.78rem; color: var(--color-ink-muted); margin-left: 9px; }
   .tbad .tcall-args { color: var(--color-stamp); }
