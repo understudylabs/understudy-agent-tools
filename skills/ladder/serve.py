@@ -31,6 +31,9 @@ HOST, PORT = "127.0.0.1", 8011
 MODELS = {
     "lfm2.5-8b-a1b": ("mlx_lm",  "/Users/luis/.understudy/models/lfm2.5-8b-a1b-8bit", "LFM 8B-A1B · thinking", {"temp": 0.2, "top_k": 80, "rep": 1.05}),
     "gemma-4-e2b":   ("mlx_vlm", "/Users/luis/.understudy/models/gemma-4-e2b-it-mlx-vlm-4bit", "gemma-4-e2b", {}),
+    # frontier via the Understudy gateway (BILLED). Launch serve.py with `understudy run` so
+    # UNDERSTUDY_API_KEY + UNDERSTUDY_GATEWAY_URL are injected — the raw key is never read from disk.
+    "glm-5.1":       ("gateway", "glm-5.1", "glm-5.1 · frontier", {}),
 }
 
 # id -> (title, system, user, gold)
@@ -78,11 +81,58 @@ def get_model(mid):
         sys.stderr.write(f"[load] {mid} ready\n"); sys.stderr.flush()
         return obj
 
+def stream_gateway(model_id, system, user, samp, max_tokens):
+    """Stream a frontier model through the Understudy gateway (OpenAI-compatible, BILLED).
+    Reads UNDERSTUDY_API_KEY + UNDERSTUDY_GATEWAY_URL from the env that `understudy run`
+    injects — the raw key is never read from disk. Yields (channel, text)."""
+    import urllib.request
+    key = os.environ.get("UNDERSTUDY_API_KEY")
+    base = os.environ.get("UNDERSTUDY_GATEWAY_URL")
+    if not key or not base:
+        yield ("response", "[gateway not configured — launch serve.py via `understudy run`]")
+        return
+    body = {
+        "model": model_id, "stream": True, "max_tokens": max_tokens,
+        "messages": [{"role": "system", "content": system}, {"role": "user", "content": user}],
+    }
+    if samp.get("temp") is not None:
+        body["temperature"] = samp["temp"]
+    req = urllib.request.Request(
+        base.rstrip("/") + "/v1/chat/completions",
+        data=json.dumps(body).encode(),
+        headers={"Authorization": "Bearer " + key, "Content-Type": "application/json",
+                 "Accept": "text/event-stream"},
+        method="POST",
+    )
+    with urllib.request.urlopen(req, timeout=120) as resp:
+        for raw in resp:
+            line = raw.decode("utf-8", "ignore").strip()
+            if not line.startswith("data:"):
+                continue
+            data = line[5:].strip()
+            if data == "[DONE]":
+                break
+            try:
+                delta = (json.loads(data).get("choices") or [{}])[0].get("delta") or {}
+            except Exception:
+                continue
+            rc = delta.get("reasoning_content") or delta.get("reasoning")
+            if rc:
+                yield ("thinking", rc)
+            c = delta.get("content")
+            if c:
+                yield ("response", c)
+
+
 def stream_tokens(mid, system, user, max_tokens=900):
-    """Yield raw text deltas from the model for system+user."""
-    obj = get_model(mid)
-    lane = obj[0]
+    """Yield (channel, text) deltas. channel is 'raw' (local — split on <think> downstream)
+    or 'thinking'/'response' (gateway — already channel-separated)."""
+    lane = MODELS[mid][0]
     samp = MODELS[mid][3] if len(MODELS[mid]) > 3 else {}
+    if lane == "gateway":
+        yield from stream_gateway(MODELS[mid][1], system, user, samp, max_tokens)
+        return
+    obj = get_model(mid)
     if lane == "mlx_lm":
         from mlx_lm import stream_generate
         _, model, tok = obj
@@ -99,7 +149,7 @@ def stream_tokens(mid, system, user, max_tokens=900):
         except Exception:
             pass
         for r in stream_generate(model, tok, prompt, **kw):
-            yield r.text
+            yield ("raw", r.text)
     else:
         from mlx_vlm import stream_generate
         from mlx_vlm.prompt_utils import apply_chat_template
@@ -110,7 +160,7 @@ def stream_tokens(mid, system, user, max_tokens=900):
         except TypeError:
             prompt = apply_chat_template(proc, config, msgs)
         for ch in stream_generate(model, proc, prompt, max_tokens=max_tokens):
-            yield getattr(ch, "text", "") or ""
+            yield ("raw", getattr(ch, "text", "") or "")
 
 def split_channels(full):
     """Split accumulated text into (thinking, response) by the <think> channel."""
@@ -185,25 +235,32 @@ class Handler(BaseHTTPRequestHandler):
         self._sse_open()
         self._sse({"type": "meta", "task": task, "model": mid, "label": MODELS[mid][2],
                    "title": title, "system": system, "user": user, "gold": gold})
-        full = ""; sent_think = 0; sent_resp = 0; n = 0; t0 = time.time()
+        full = ""; sent_think = 0; sent_resp = 0; resp_text = ""; n = 0; t0 = time.time()
         try:
-            for delta in stream_tokens(mid, system, user):
-                if not delta:
+            for channel, text in stream_tokens(mid, system, user):
+                if not text:
                     continue
-                full += delta; n += 1
-                think, resp = split_channels(full)
-                if len(think) > sent_think:
-                    self._sse({"type": "token", "channel": "thinking", "text": think[sent_think:]}); sent_think = len(think)
-                if len(resp) > sent_resp:
-                    self._sse({"type": "token", "channel": "response", "text": resp[sent_resp:]}); sent_resp = len(resp)
+                n += 1
+                if channel == "raw":                      # local: split on <think> here
+                    full += text
+                    think, resp = split_channels(full)
+                    if len(think) > sent_think:
+                        self._sse({"type": "token", "channel": "thinking", "text": think[sent_think:]}); sent_think = len(think)
+                    if len(resp) > sent_resp:
+                        self._sse({"type": "token", "channel": "response", "text": resp[sent_resp:]}); sent_resp = len(resp)
+                    resp_text = resp
+                elif channel == "thinking":               # gateway: already separated
+                    self._sse({"type": "token", "channel": "thinking", "text": text})
+                else:
+                    self._sse({"type": "token", "channel": "response", "text": text})
+                    resp_text += text
         except (BrokenPipeError, ConnectionResetError):
             return
         dt = time.time() - t0
-        _, resp = split_channels(full)
-        correct = gold.split()[0].lower() in resp.lower() if gold else None
+        correct = gold.split()[0].lower() in resp_text.lower() if gold else None
         self._sse({"type": "done", "tokens": n, "seconds": round(dt, 2),
                    "tok_s": round(n / max(dt, 0.01)), "correct": correct,
-                   "response": resp.strip()[:200]})
+                   "response": resp_text.strip()[:200]})
 
 
 def main():

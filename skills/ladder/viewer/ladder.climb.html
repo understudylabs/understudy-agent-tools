@@ -404,7 +404,8 @@
   var TASK_IDS = ["sort-email", "match-search", "save-play"];
   var LIVE_MODELS = [
     { id: "lfm2.5-8b-a1b", label: "8b-a1b" },
-    { id: "gemma-4-e2b",   label: "gemma-4-e2b" }
+    { id: "gemma-4-e2b",   label: "gemma-4-e2b" },
+    { id: "glm-5.1",       label: "glm-5.1 · frontier", billed: true }
   ];
   var curModel = "lfm2.5-8b-a1b";
   var es = null;
@@ -459,6 +460,7 @@
       var b = document.createElement('button');
       b.textContent = m.label;
       b.className = (m.id === curModel ? 'active' : '');
+      if (m.billed) { b.title = 'runs on the Understudy gateway — billed to your account'; b.style.borderColor = 'var(--color-stamp)'; }
       b.addEventListener('click', function () { curModel = m.id; renderModelPicker(); playLive(); });
       modelPicker.appendChild(b);
     });
