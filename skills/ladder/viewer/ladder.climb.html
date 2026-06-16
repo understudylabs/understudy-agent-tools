@@ -104,6 +104,14 @@
   .chk .mk { font-family: var(--font-mono); font-size: 0.9rem; line-height: 1.25; }
   .chk.ok .mk { color: var(--color-ink); }
   .chk.no, .chk.no .mk { color: var(--color-stamp); }
+  /* house badge (from understudy-design mood board: .ui-badge with status dot) */
+  .ui-badge { display: inline-flex; align-items: center; gap: 6px; border: 1px solid var(--color-rule); padding: 3px 8px; color: var(--color-ink-muted); font-family: var(--font-mono); font-size: 10px; letter-spacing: 0.08em; text-transform: uppercase; vertical-align: 1px; }
+  .ui-badge::before { content: ""; width: 6px; height: 6px; border-radius: 999px; background: var(--color-ink-muted); }
+  .ui-badge.good::before { background: var(--color-good); }
+  .ui-badge.bad::before  { background: var(--color-stamp); }
+  .ui-badge.bad { color: var(--color-stamp); border-color: color-mix(in srgb, var(--color-stamp) 45%, var(--color-rule)); }
+  .tcall-args { font-family: var(--font-mono); font-size: 0.78rem; color: var(--color-ink-muted); margin-left: 9px; }
+  .tbad .tcall-args { color: var(--color-stamp); }
   .attempt .who {
     font-size: 0.68rem; text-transform: uppercase; letter-spacing: 0.16em;
     font-weight: 500; color: var(--color-ink-muted);
@@ -554,7 +562,14 @@
       if (i >= steps.length) { return score(); }
       var s = steps[i];
       var row = document.createElement('div'); row.className = 'tstep reveal' + (s.bad ? ' tbad' : '');
-      var c = document.createElement('div'); c.className = 'tcall'; c.textContent = s.call; row.appendChild(c);
+      var c = document.createElement('div'); c.className = 'tcall';
+      var mm = s.call.match(/^([a-z0-9_]+)\(([\s\S]*)\)$/);
+      if (mm) {
+        var badge = document.createElement('span'); badge.className = 'ui-badge' + (s.bad ? ' bad' : '');
+        badge.textContent = mm[1]; c.appendChild(badge);
+        if (mm[2]) { var a = document.createElement('span'); a.className = 'tcall-args'; a.textContent = mm[2]; c.appendChild(a); }
+      } else { c.textContent = s.call; }
+      row.appendChild(c);
       if (s.res) { var r = document.createElement('div'); r.className = 'tres'; r.textContent = '→ ' + s.res; row.appendChild(r); }
       tl.appendChild(row);
       timers.push(setTimeout(function () { step(i + 1); }, pace));
