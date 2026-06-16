@@ -1,6 +1,6 @@
 ---
 name: ladder
-description: Use to give a developer an immediate local-vs-frontier model comparison before they have their own traces — "what can a local model do", "is a small model good enough", "the onboarding climb". Launches a local web UI streaming live thinking + tool-call traces for the same task across a local mlx model and a frontier gateway model, scored against a synthetic world, with a VS mode. To compare many models on a user's own eval, use compare-model-sweep; to serve a local model, use run-local-model-lab.
+description: Use to give a developer an immediate local-vs-frontier model comparison before they have their own traces — "what can a local model do", "is a small model good enough", "compare a local model to a frontier model", "the onboarding climb". For comparing many models on a user's own eval, use compare-model-sweep; to serve a local model, use run-local-model-lab.
 metadata:
   understudy:
     mode: interactive

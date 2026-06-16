@@ -708,7 +708,7 @@ class Handler(BaseHTTPRequestHandler):
     def serve_static(self, path):
         rel = path.lstrip("/") or "ladder.climb.html"
         fp = os.path.normpath(os.path.join(VIEWER_DIR, rel))
-        if not fp.startswith(VIEWER_DIR) or not os.path.isfile(fp):
+        if not fp.startswith(VIEWER_DIR + os.sep) or not os.path.isfile(fp):   # trailing sep: no sibling-prefix escape
             self.send_response(404); self.end_headers(); return
         ctype = ("text/html" if fp.endswith(".html")
                  else "application/javascript" if fp.endswith(".js")

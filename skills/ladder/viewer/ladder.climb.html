@@ -558,6 +558,7 @@
     taskLine.textContent = f.title; sysLine.textContent = f.system; userLine.textContent = f.user;
     vsGrid.innerHTML = '';
     var pa = makePane(curModel), pb = makePane(curModelB);
+    pa.els.sysLine = sysLine; pa.els.userLine = userLine;   // pane A's meta drives the shared prompt area (real AGENT_SYSTEM on the hard rung, not the seed)
     vsGrid.appendChild(pa.el); vsGrid.appendChild(pb.el);
     vsConns.push(streamInto(pa.els, f.taskId, curModel));
     vsConns.push(streamInto(pb.els, f.taskId, curModelB));
