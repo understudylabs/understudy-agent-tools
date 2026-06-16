@@ -102,6 +102,15 @@ def _norm(s):
     return (s or "").strip().lower()
 
 
+def _loose(s):
+    """Number-in-any-format normalizer: drop thousands separators so '$3,808',
+    '3,808' and '3808' all compare equal. Words are untouched (no commas), so a
+    needle like 'Nova Retail' still matches literally. Used by the body-contains
+    checker so a correct figure isn't failed on $ / comma styling -- but a wrong
+    number (e.g. the stale-FX 3570) still fails."""
+    return (s or "").replace(",", "")
+
+
 def _latest_row(rows):
     """Pick the row with the latest as_of (ISO date string sorts lexically)."""
     if not rows:
@@ -445,8 +454,8 @@ def _a_mail_sent_to_body_contains(state, to=None, substrings=None, **_):
     target = _norm(to)
     for m in state.mail["sent"]:
         if _norm(m.get("to")) == target:
-            body = (m.get("subject", "") or "") + "\n" + (m.get("body", "") or "")
-            if all(s in body for s in want):
+            body = _loose((m.get("subject", "") or "") + "\n" + (m.get("body", "") or ""))
+            if all(_loose(s) in body for s in want):
                 return {
                     "passed": True,
                     "expected": "message to %s containing %s" % (to, want),
@@ -457,8 +466,8 @@ def _a_mail_sent_to_body_contains(state, to=None, substrings=None, **_):
     if not matches:
         actual = "no message sent to %s" % to
     else:
-        body = (matches[0].get("subject", "") or "") + "\n" + (matches[0].get("body", "") or "")
-        missing = [s for s in want if s not in body]
+        body = _loose((matches[0].get("subject", "") or "") + "\n" + (matches[0].get("body", "") or ""))
+        missing = [s for s in want if _loose(s) not in body]
         actual = "message to %s missing %s" % (to, missing)
     return {
         "passed": False,
