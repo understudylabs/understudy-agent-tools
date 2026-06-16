@@ -57,8 +57,9 @@ output) vs the repo's `$REPO/.claude-plugin/plugin.json` `version`. If the repo
 is newer, the installed catalog is stale (skills may be missing or renamed) —
 run `claude plugin marketplace update understudy-skills`, then
 `claude plugin install understudy@understudy-skills`, then have the developer
-run `/reload-plugins` (step 4). If versions match, report installed-and-current
-and stop.
+run `/reload-plugins` (step 4). On a stale upgrade, also surface the
+`$REPO/CHANGELOG.md` entries newer than the installed version (what's new, not
+just a bumped number). If versions match, report installed-and-current and stop.
 
 ### 3. Add the marketplace and install (background-safe)
 
@@ -142,7 +143,7 @@ repo-local skills.
 
 ## Output Standard
 
-End with: whether the plugin was already installed / just installed / shown for
-manual run; the exact activation step (`/reload-plugins`); an explicit
-restart-or-not statement (not needed); the next onboarding command
-(`/understudy:onboard`); and the verification result.
+End with: whether the plugin was already installed / just installed / refreshed
+from a stale version (+ a one-line "what's new") / shown for manual run; the
+activation step (`/reload-plugins`); a restart-or-not statement (not needed); the
+next onboarding command (`/understudy:onboard`); and the verification result.
