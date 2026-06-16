@@ -1,0 +1,601 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>understudy — the climb</title>
+<style>
+  :root {
+    --color-paper: #F5F2ED;
+    --color-ink: #0A0A0A;
+    --color-ink-muted: #6B6862;
+    --color-rule: #D9D4CA;
+    --color-stamp: #B24A2E;
+    --color-good: #6FAE82;
+    --color-warn: #C7A04A;
+    --color-bad: #C26A55;
+    --font-mono: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, monospace;
+    --font-reading: "IBM Plex Sans", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
+    --settle-ease: cubic-bezier(0.2, 0.7, 0.2, 1);
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --color-paper: #141311;
+      --color-ink: #E8E4DC;
+      --color-ink-muted: #8A8680;
+      --color-rule: #2A2622;
+      --color-stamp: #D7623E;
+      --color-good: #8DD39E;
+      --color-warn: #E4BF69;
+      --color-bad: #D97A66;
+    }
+  }
+  * { box-sizing: border-box; }
+  html, body {
+    margin: 0;
+    background: var(--color-paper);
+    color: var(--color-ink);
+    font-family: var(--font-mono);
+    font-feature-settings: "ss01", "ss02", "zero";
+    -webkit-font-smoothing: antialiased;
+    text-rendering: optimizeLegibility;
+  }
+  ::selection { background: var(--color-ink); color: var(--color-paper); }
+
+  @keyframes settle {
+    from { opacity: 0; transform: translateY(2px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+  .settle { animation: settle 600ms var(--settle-ease) both; }
+  .settle-1{animation-delay:0ms}.settle-2{animation-delay:90ms}.settle-3{animation-delay:180ms}
+  .settle-4{animation-delay:270ms}.settle-5{animation-delay:360ms}.settle-6{animation-delay:450ms}
+  .settle-7{animation-delay:540ms}.settle-8{animation-delay:630ms}
+  @media (prefers-reduced-motion: reduce){ .settle{ animation: none; } }
+
+  .wrap { max-width: 720px; margin: 0 auto; padding: 56px 28px 80px; }
+
+  .eyebrow {
+    font-size: 0.68rem; text-transform: uppercase; font-weight: 500;
+    letter-spacing: 0.16em; color: var(--color-ink-muted);
+  }
+  .stamp-dot {
+    display: inline-block; width: 6px; height: 6px; border-radius: 999px;
+    background: var(--color-stamp); margin-right: 9px; vertical-align: 1px;
+  }
+
+  section { border-top: 1px solid var(--color-rule); }
+  section:first-of-type { border-top: 0; }
+  .pad { padding: 44px 0 8px; }
+
+  /* ---------- VIEW A : one rollout ---------- */
+  .task-line {
+    font-family: var(--font-reading); letter-spacing: -0.008em;
+    font-weight: 400; font-size: 1.18rem; line-height: 1.5;
+    margin: 18px 0 0; max-width: 30ch;
+  }
+  .attempt {
+    margin-top: 30px; border: 1px solid var(--color-rule);
+    background: color-mix(in srgb, var(--color-paper) 96%, var(--color-ink) 4%);
+    padding: 0; display: grid; grid-template-columns: 1fr auto;
+  }
+  .attempt .doing {
+    padding: 22px 22px; min-height: 92px;
+    display: flex; flex-direction: column; justify-content: center; gap: 16px;
+  }
+  .io { display: flex; flex-direction: column; gap: 5px; }
+  .ioval {
+    font-family: var(--font-mono); font-size: 0.8rem; line-height: 1.5;
+    color: var(--color-ink); white-space: pre-wrap;
+  }
+  .think {
+    font-family: var(--font-reading); letter-spacing: -0.008em;
+    font-size: 0.88rem; line-height: 1.5; color: var(--color-ink-muted);
+    font-style: italic; min-height: 1.3em; max-height: 8em; overflow-y: auto;
+  }
+  /* hard tier: tool-calling trace + final-state scorecard */
+  .tstep { margin: 0 0 11px; }
+  .tcall { font-family: var(--font-mono); font-size: 0.8rem; color: var(--color-ink); line-height: 1.5; }
+  .tcall .mut { color: var(--color-ink-muted); }
+  .tres  { font-family: var(--font-mono); font-size: 0.78rem; color: var(--color-ink-muted); padding-left: 16px; margin-top: 2px; line-height: 1.5; }
+  .tbad .tcall, .tbad .tres { color: var(--color-stamp); }
+  #scoreBlock { margin-top: 6px; }
+  .sc-lbl { font-size: 0.62rem; text-transform: uppercase; letter-spacing: 0.16em; color: var(--color-ink-muted); margin: 0 0 10px; }
+  .chk { display: flex; align-items: flex-start; gap: 9px; font-family: var(--font-reading); font-size: 0.85rem; line-height: 1.45; margin: 7px 0; }
+  .chk .mk { font-family: var(--font-mono); font-size: 0.9rem; line-height: 1.25; }
+  .chk.ok .mk { color: var(--color-ink); }
+  .chk.no, .chk.no .mk { color: var(--color-stamp); }
+  .chk-body { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
+  .chk-crit { font-family: var(--font-mono); font-size: 0.7rem; color: var(--color-ink-muted); line-height: 1.4; word-break: break-word; overflow-wrap: anywhere; }
+  .chk.no .chk-crit { color: color-mix(in srgb, var(--color-stamp) 72%, var(--color-ink-muted)); }
+  /* house badge (from understudy-design mood board: .ui-badge with status dot) */
+  .ui-badge { display: inline-flex; align-items: center; gap: 6px; border: 1px solid var(--color-rule); padding: 3px 8px; color: var(--color-ink-muted); font-family: var(--font-mono); font-size: 10px; letter-spacing: 0.08em; text-transform: uppercase; vertical-align: 1px; }
+  .ui-badge::before { content: ""; width: 6px; height: 6px; border-radius: 999px; background: var(--color-ink-muted); }
+  .ui-badge.good::before { background: var(--color-good); }
+  .ui-badge.bad::before  { background: var(--color-stamp); }
+  .ui-badge.bad { color: var(--color-stamp); border-color: color-mix(in srgb, var(--color-stamp) 45%, var(--color-rule)); }
+  .tcall-args { font-family: var(--font-mono); font-size: 0.78rem; color: var(--color-ink-muted); margin-left: 9px; }
+  .tbad .tcall-args { color: var(--color-stamp); }
+  .attempt .who {
+    font-size: 0.68rem; text-transform: uppercase; letter-spacing: 0.16em;
+    font-weight: 500; color: var(--color-ink-muted);
+  }
+  .attempt .act {
+    font-family: var(--font-reading); letter-spacing: -0.008em;
+    font-size: 0.95rem; color: var(--color-ink); min-height: 1.4em;
+  }
+  .cursor {
+    display: inline-block; width: 7px; height: 1.05em; vertical-align: -2px;
+    background: var(--color-ink-muted); margin-left: 2px; animation: blink 1s steps(1) infinite;
+  }
+  @keyframes blink { 50% { opacity: 0; } }
+  @keyframes pulse { 0%, 100% { opacity: 0.35; } 50% { opacity: 0.9; } }
+  .loading-note {
+    color: var(--color-ink-muted); font-family: var(--font-mono); font-size: 0.85rem;
+    animation: pulse 1.3s ease-in-out infinite;
+  }
+  @media (prefers-reduced-motion: reduce) { .loading-note { animation: none; opacity: 0.7; } }
+  .verdict {
+    border-left: 1px solid var(--color-rule);
+    width: 132px; display: flex; flex-direction: column;
+    align-items: center; justify-content: center; gap: 10px;
+    color: var(--color-ink-muted);
+  }
+  .verdict svg { display: block; }
+  .verdict .word {
+    font-size: 0.68rem; text-transform: uppercase; letter-spacing: 0.16em; font-weight: 500;
+  }
+  .verdict.landed { color: var(--color-good); }
+  .verdict.broke  { color: var(--color-bad); }
+  .verdict.pending { opacity: 0.45; }
+
+  .replaybar {
+    margin-top: 14px; display: flex; align-items: center; gap: 14px;
+    font-size: 0.68rem; text-transform: uppercase; letter-spacing: 0.16em;
+    color: var(--color-ink-muted);
+  }
+  .replaybar button {
+    font-family: var(--font-mono); font-size: 0.68rem; text-transform: uppercase;
+    letter-spacing: 0.16em; font-weight: 500;
+    background: transparent; color: var(--color-ink); cursor: pointer;
+    border: 1px solid var(--color-rule); padding: 7px 14px;
+    transition: border-color 140ms ease, opacity 140ms ease;
+  }
+  .replaybar button:hover { border-color: var(--color-ink-muted); }
+  .replaybar button:active { transform: translateY(1px); }
+  .models { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 18px; }
+  .models button {
+    font-family: var(--font-mono); font-size: 0.66rem; text-transform: uppercase; letter-spacing: 0.14em;
+    background: transparent; color: var(--color-ink-muted); cursor: pointer;
+    border: 1px solid var(--color-rule); padding: 6px 11px;
+  }
+  .models button.active { color: var(--color-ink); border-color: var(--color-ink); }
+  .models .pick-label { align-self: center; margin-right: 2px; font-size: 0.6rem; letter-spacing: 0.16em; text-transform: uppercase; color: var(--color-ink-muted); }
+
+  /* ---------- VS : two models, same task, side by side ---------- */
+  body.vs .wrap { max-width: 1100px; transition: max-width 220ms var(--settle-ease); }
+  .vs-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; margin-top: 28px; }
+  @media (max-width: 780px) { .vs-grid { grid-template-columns: 1fr; } }
+  .vs-pane {
+    border: 1px solid var(--color-rule);
+    background: color-mix(in srgb, var(--color-paper) 96%, var(--color-ink) 4%);
+    padding: 16px 18px 14px; display: flex; flex-direction: column; gap: 13px; min-width: 0;
+  }
+  .vs-head {
+    display: flex; align-items: center; justify-content: space-between; gap: 10px;
+    font-family: var(--font-mono); font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.13em;
+    color: var(--color-ink); border-bottom: 1px solid var(--color-rule); padding-bottom: 11px;
+  }
+  .vs-head .billed { color: var(--color-stamp); font-size: 0.58rem; }
+  .vs-pane .think { max-height: 6.5em; }
+  .vs-pane .ioval, .vs-pane .tres, .vs-pane .tcall-args { word-break: break-word; overflow-wrap: anywhere; }
+  .vs-pane .pane-verdict {
+    display: flex; align-items: center; gap: 11px; margin-top: auto; padding-top: 12px;
+    border-top: 1px solid var(--color-rule); color: var(--color-ink-muted);
+  }
+  .vs-pane .pane-verdict svg { width: 22px; height: 22px; }
+  .vs-pane .pane-verdict .word { font-size: 0.66rem; text-transform: uppercase; letter-spacing: 0.16em; font-weight: 500; }
+  .vs-pane .pane-verdict.landed { color: var(--color-good); }
+  .vs-pane .pane-verdict.broke  { color: var(--color-bad); }
+  .vs-pane .pane-verdict.pending { opacity: 0.5; }
+
+  /* ---------- CTA ---------- */
+  .cta {
+    margin-top: 40px; padding-top: 26px; border-top: 1px solid var(--color-rule);
+    display: flex; align-items: center; justify-content: space-between; gap: 20px;
+    flex-wrap: wrap;
+  }
+  .cta a {
+    font-family: var(--font-mono); text-decoration: none;
+    font-size: 0.74rem; text-transform: uppercase; letter-spacing: 0.16em; font-weight: 500;
+    color: var(--color-paper); background: var(--color-ink);
+    padding: 13px 20px; border: 1px solid var(--color-ink);
+    transition: opacity 140ms ease;
+  }
+  .cta a:hover { opacity: 0.86; }
+  .fine {
+    font-family: var(--font-reading); letter-spacing: -0.008em;
+    font-size: 0.78rem; color: var(--color-ink-muted); max-width: 34ch; line-height: 1.5;
+  }
+  .foot {
+    margin-top: 56px; padding-top: 16px; border-top: 1px solid var(--color-rule);
+    font-size: 0.68rem; text-transform: uppercase; letter-spacing: 0.16em;
+    color: var(--color-ink-muted); display: flex; justify-content: space-between; gap: 16px;
+  }
+  .wordmark { color: var(--color-ink); }
+</style>
+</head>
+<body>
+<div class="wrap">
+
+  <!-- ============================================================= VIEW A -->
+  <section>
+    <div class="pad">
+      <p class="eyebrow settle settle-1"><span class="stamp-dot"></span>watch a model try a task</p>
+
+      <p class="task-line settle settle-2" id="taskLine">
+        Sort this customer email into the right inbox.
+      </p>
+
+      <div class="attempt settle settle-3" id="singleAttempt">
+        <div class="doing">
+          <div class="io"><span class="who">system prompt</span><span class="ioval" id="sysLine"></span></div>
+          <div class="io"><span class="who">user prompt</span><span class="ioval" id="userLine"></span></div>
+          <div class="io" id="thinkBlock"><span class="who">thinking</span><span class="think" id="thinkLine"><span class="cursor"></span></span></div>
+          <div class="io" id="respBlock"><span class="who">response</span><span class="act" id="actLine"></span></div>
+          <div class="io" id="traceBlock" style="display:none"><span class="who">tool calls</span><div id="traceLine"></div></div>
+          <div id="scoreBlock" style="display:none"></div>
+        </div>
+        <div class="verdict pending" id="verdict">
+          <span id="verdictMark"></span>
+          <span class="word" id="verdictWord">trying</span>
+        </div>
+      </div>
+
+      <div id="vsWrap" style="display:none"><div class="vs-grid" id="vsGrid"></div></div>
+
+      <div class="models" id="hardPicker" style="display:none"></div>
+      <div class="models" id="modelPicker" style="display:none"></div>
+      <div class="models" id="modelPickerB" style="display:none"></div>
+      <div class="replaybar settle settle-4">
+        <button id="runBtn" type="button" style="display:none">run &#9656;</button>
+        <button id="replayBtn" type="button">replay</button>
+        <button id="vsBtn" type="button" style="display:none">compare two &#9656;</button>
+        <span id="taskSwitch" style="cursor:pointer">next task -&gt;</span>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============================================================= CTA + FOOT -->
+  <section>
+    <div class="pad">
+      <div class="cta settle settle-5">
+        <p class="fine">Synthetic example. Runs on your machine, nothing uploaded.</p>
+        <a href="#" id="ctaBtn">run this on your tasks -&gt;</a>
+      </div>
+    </div>
+
+    <div class="foot">
+      <span class="wordmark">understudy</span>
+      <span>directional, not a measurement</span>
+    </div>
+  </section>
+
+</div>
+
+<script>
+(function () {
+  // --- synthetic Larkfield content: the seed shown before the server's /tasks
+  //     catalog hydrates. The classify rungs get overwritten by hydrate(); the
+  //     hard rung is just flagged so play() routes it to the tool-calling surface. ---
+  var TASKS = [
+    {
+      task: "Sort this customer email into the right inbox.",
+      system: "Route the email to exactly one inbox: billing_urgent, billing_normal, technical, sales_lead, or spam. Reply with just the label.",
+      user: "From: pat@maple.example\nSubject: charged twice\nI got billed twice this morning and it's holding up payroll. Please fix this today."
+    },
+    {
+      task: "Decide how a product relates to a shopper's search.",
+      system: "Label the product against the search: Exact, Substitute, Complement, or Irrelevant. Reply with just the label.",
+      user: "search: running shoes\nproduct: merino ankle socks, cushioned, 3-pack"
+    },
+    {
+      task: "Run the renewal save play: apply the discount, update the plan, email the right team.",
+      system: "Apply the latest discount, mark the subscription Saved with the new price in USD, and email the right teams per the save-play policy.",
+      user: "Nova Retail · Growth · EUR 4000 · At-Risk · renews soon.\nTools: get_account, read_policy, update_subscription, send_mail, finish.",
+      hard: true
+    }
+  ];
+
+  var checkMark = '<svg width="26" height="26" viewBox="0 0 26 26" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="13" cy="13" r="11"/><path d="M8 13.5l3.2 3.2L18 9.5"/></svg>';
+  var xMark     = '<svg width="26" height="26" viewBox="0 0 26 26" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="13" cy="13" r="11"/><path d="M9 9l8 8M17 9l-8 8"/></svg>';
+
+  var taskLine   = document.getElementById('taskLine');
+  var sysLine    = document.getElementById('sysLine');
+  var userLine   = document.getElementById('userLine');
+  var replayBtn  = document.getElementById('replayBtn');
+  var taskSwitch = document.getElementById('taskSwitch');
+  var runBtn     = document.getElementById('runBtn');
+  var modelPicker= document.getElementById('modelPicker');
+  var modelPickerB= document.getElementById('modelPickerB');
+  var hardPicker = document.getElementById('hardPicker');
+  var vsBtn      = document.getElementById('vsBtn');
+  var vsWrap     = document.getElementById('vsWrap');
+  var vsGrid     = document.getElementById('vsGrid');
+  var singleAttempt = document.getElementById('singleAttempt');
+
+  // the single-attempt pane, packaged like a VS pane so one renderer drives both
+  var globalEls = {
+    thinkBlock: document.getElementById('thinkBlock'), thinkLine: document.getElementById('thinkLine'),
+    respBlock: document.getElementById('respBlock'),   actLine: document.getElementById('actLine'),
+    traceBlock: document.getElementById('traceBlock'), traceLine: document.getElementById('traceLine'),
+    scoreBlock: document.getElementById('scoreBlock'),
+    verdict: document.getElementById('verdict'), verdictMk: document.getElementById('verdictMark'),
+    verdictWd: document.getElementById('verdictWord'), verdictClass: 'verdict',
+    sysLine: sysLine, userLine: userLine
+  };
+
+  var idx = 0;
+
+  var TASK_IDS = ["sort-email", "match-search", "save-play"];
+  var LIVE_MODELS = [
+    { id: "gemma-4-e2b",   label: "gemma-4-e2b" },
+    { id: "glm-5.1",       label: "glm-5.1 · frontier", billed: true }
+  ];
+  var curModel = "gemma-4-e2b";
+  var curHardTask = "save-play";    // hard-rung target; hydrate() swaps to a real fixture id
+  var CATALOG = {};                 // id -> server task (from /tasks)
+  var TOOL_TASKS = [];              // [{id,title,tools,checks}] available for the hard rung
+  var curModelB = "glm-5.1";        // VS mode: the second model
+  var vsOn = false;                 // VS (compare-two) mode active?
+  var single = null;                // live single-pane stream handle
+  var vsConns = [];                 // live VS stream handles
+
+  function teardown(){
+    if (single) { single.close(); single = null; }
+    vsConns.forEach(function (c) { c.close(); }); vsConns = [];
+  }
+
+  // ---- task catalog: hydrate the 3 rungs from the server ----
+  // The easy/medium rungs take their content from /tasks; the hard rung becomes a
+  // picker over whatever tool tasks the fixtures define. Edit a fixture or the
+  // server's task list and it reflects here -- no change to this page.
+  function humanizeTask(id){ return id.replace(/^hard\./, '').replace(/_/g, ' '); }
+  function firstSentence(s){
+    s = (s || '').trim();
+    var m = s.match(/^(.+?[.!?])(\s|$)/);
+    return m ? m[1] : (s.length > 90 ? s.slice(0, 88) + '…' : s);
+  }
+  function hydrate(){
+    return fetch('/tasks').then(function (r) { return r.json(); }).then(function (j) {
+      (j.tasks || []).forEach(function (t) { CATALOG[t.id] = t; });
+      TOOL_TASKS = (j.tasks || []).filter(function (t) { return t.kind === 'tool'; });
+      TASK_IDS.forEach(function (id, i) {              // classify rungs pull content from the server
+        var t = CATALOG[id];
+        if (t && t.kind === 'classify' && TASKS[i]) {
+          TASKS[i].task = t.title; TASKS[i].system = t.system; TASKS[i].user = t.user;
+        }
+      });
+      if (TOOL_TASKS.length) { curHardTask = TOOL_TASKS[0].id; }   // default hard rung -> first fixture
+    }).catch(function () { /* server unreachable: keep the seed content */ });
+  }
+
+  // ---- pickers: one builder, three call sites (model A / hard task / VS model B) ----
+  // opt: {label?, text(it), id(it), active(), title?(it), billed?, pick(it)}
+  function buildPicker(el, items, opt){
+    el.innerHTML = '';
+    if (opt.label) { var lb = document.createElement('span'); lb.className = 'pick-label'; lb.textContent = opt.label; el.appendChild(lb); }
+    items.forEach(function (it) {
+      var b = document.createElement('button');
+      b.textContent = opt.text(it);
+      b.className = (opt.active() === opt.id(it) ? 'active' : '');
+      var tip = opt.title && opt.title(it); if (tip) b.title = tip;
+      if (opt.billed && it.billed) { b.title = opt.billed; b.style.borderColor = 'var(--color-stamp)'; }
+      b.addEventListener('click', function () {
+        if (opt.active() === opt.id(it)) return;   // re-picking the active item would re-run (and re-bill the gateway)
+        opt.pick(it);
+      });
+      el.appendChild(b);
+    });
+  }
+  function pickModel(){
+    buildPicker(modelPicker, LIVE_MODELS, {
+      text: function (m) { return m.label; }, id: function (m) { return m.id; },
+      active: function () { return curModel; },
+      billed: 'runs on the Understudy gateway — billed to your account',
+      pick: function (m) { curModel = m.id; pickModel(); play(); }
+    });
+  }
+  function pickModelB(){
+    buildPicker(modelPickerB, LIVE_MODELS, {
+      label: 'vs', text: function (m) { return m.label; }, id: function (m) { return m.id; },
+      active: function () { return curModelB; },
+      billed: 'runs on the Understudy gateway — billed',
+      pick: function (m) { curModelB = m.id; pickModelB(); play(); }
+    });
+  }
+  function pickHard(){
+    if (!TOOL_TASKS.length) { hardPicker.innerHTML = ''; return; }
+    buildPicker(hardPicker, TOOL_TASKS, {
+      label: 'task', text: function (t) { return humanizeTask(t.id); }, id: function (t) { return t.id; },
+      active: function () { return curHardTask; },
+      title: function (t) { return (t.tools ? t.tools.length + ' tools · ' : '') + (t.checks != null ? t.checks + ' checks' : ''); },
+      pick: function (t) { curHardTask = t.id; pickHard(); play(); }
+    });
+  }
+
+  // ---- VS mode: build a pane that mirrors the single-attempt element set ----
+  function makePane(model){
+    var lm = LIVE_MODELS.filter(function (x) { return x.id === model; })[0];
+    var pane = document.createElement('div'); pane.className = 'vs-pane';
+    pane.innerHTML =
+      '<div class="vs-head"><span data-name></span><span class="billed" data-billed></span></div>' +
+      '<div class="io" data-think style="display:none"><span class="who">thinking</span><span class="think" data-thinkline></span></div>' +
+      '<div class="io" data-resp><span class="who">response</span><span class="act" data-actline><span class="cursor"></span></span></div>' +
+      '<div class="io" data-trace style="display:none"><span class="who">tool calls</span><div data-traceline></div></div>' +
+      '<div data-score style="display:none"></div>' +
+      '<div class="pane-verdict pending" data-verdict><span data-vmark></span><span class="word" data-vword>running</span></div>';
+    var q = function (s) { return pane.querySelector(s); };
+    q('[data-name]').textContent = lm ? lm.label : model;
+    if (lm && lm.billed) q('[data-billed]').textContent = '$ billed';
+    return { el: pane, model: model, els: {
+      thinkBlock: q('[data-think]'), thinkLine: q('[data-thinkline]'),
+      respBlock: q('[data-resp]'), actLine: q('[data-actline]'),
+      traceBlock: q('[data-trace]'), traceLine: q('[data-traceline]'),
+      scoreBlock: q('[data-score]'), verdictClass: 'pane-verdict',
+      verdict: q('[data-verdict]'), verdictMk: q('[data-vmark]'), verdictWd: q('[data-vword]') } };
+  }
+
+  function fmtArgs(args){
+    if (!args || typeof args !== 'object') return '';
+    return Object.keys(args).map(function (k) {
+      var v = args[k], sv;
+      if (typeof v === 'string') { sv = '"' + (v.length > 44 ? v.slice(0, 42) + '…' : v) + '"'; }
+      else { try { sv = JSON.stringify(v); } catch (_) { sv = String(v); } }
+      return k + '=' + sv;
+    }).join(', ');
+  }
+  function fmtResult(res){
+    if (res && res.error) return '⚠ ' + res.error;
+    var s; try { s = JSON.stringify(res); } catch (_) { s = String(res); }
+    return s.length > 100 ? s.slice(0, 98) + '…' : s;
+  }
+  // one scorecard row: ✓/✗ + the criterion label + the EXPECTED condition (and, on a
+  // fail, what actually happened) so you can read why each check passed or failed.
+  function checkRow(m){
+    var cr = document.createElement('div'); cr.className = 'chk ' + (m.pass ? 'ok' : 'no');
+    var mk = document.createElement('span'); mk.className = 'mk'; mk.textContent = m.pass ? '✓' : '✗';
+    var body = document.createElement('div'); body.className = 'chk-body';
+    var lab = document.createElement('div'); lab.textContent = m.label || m.id || '';
+    body.appendChild(lab);
+    if (m.expected) {
+      var crit = document.createElement('div'); crit.className = 'chk-crit';
+      crit.textContent = 'expected ' + m.expected + ((!m.pass && m.actual) ? '   ·   got ' + m.actual : '');
+      body.appendChild(crit);
+    }
+    cr.appendChild(mk); cr.appendChild(body);
+    return cr;
+  }
+
+  // The one renderer. Drive a set of pane elements from a /run SSE stream; the events
+  // it sees decide the surface — classify (response token + correct) vs hard (meta,
+  // tool_call/result, check, strict). Returns a handle so the caller can close it.
+  function streamInto(els, taskId, model){
+    var es = null, gotResp = false, settled = false, loading = false, isHard = false, rows = {}, scoreOpen = false;
+    // reset the pane to its pending state (the single-attempt pane is reused across runs)
+    if (els.thinkBlock) { els.thinkBlock.style.display = 'none'; els.thinkLine.textContent = ''; }
+    if (els.respBlock) els.respBlock.style.display = '';
+    els.actLine.innerHTML = '<span class="cursor"></span>';
+    if (els.traceBlock) { els.traceBlock.style.display = 'none'; els.traceLine.innerHTML = ''; }
+    if (els.scoreBlock) { els.scoreBlock.style.display = 'none'; els.scoreBlock.innerHTML = ''; }
+    els.verdict.className = els.verdictClass + ' pending'; els.verdictMk.innerHTML = ''; els.verdictWd.textContent = 'running';
+
+    function openScore(){ if (scoreOpen) return; scoreOpen = true; els.scoreBlock.style.display = '';
+      var l = document.createElement('div'); l.className = 'sc-lbl'; l.textContent = 'criteria · expected vs. actual'; els.scoreBlock.appendChild(l); }
+    function clearLoading(){ if (loading) { loading = false; els.actLine.textContent = ''; els.verdictWd.textContent = 'running'; } }
+    function verdictOf(ok){ els.verdict.className = els.verdictClass + ' ' + (ok ? 'landed' : 'broke');
+      els.verdictMk.innerHTML = ok ? checkMark : xMark; els.verdictWd.textContent = ok ? 'Pass' : 'Fail'; }
+    try { es = new EventSource('/run?task=' + encodeURIComponent(taskId) + '&model=' + encodeURIComponent(model)); }
+    catch (e) { els.verdictWd.textContent = 'error'; return { close: function () {} }; }
+    es.onmessage = function (ev) {
+      var m; try { m = JSON.parse(ev.data); } catch (_) { return; }
+      if (m.type === 'meta') {                  // hard tasks refine the system/user prompt
+        if (els.sysLine) els.sysLine.textContent = m.system;
+        if (els.userLine) els.userLine.textContent = m.user;
+      } else if (m.type === 'status' && m.state === 'loading') {
+        loading = true; els.actLine.innerHTML = '<span class="loading-note">loading ' + (m.label || m.model) + ' …</span>'; els.verdictWd.textContent = 'loading';
+      } else if (m.type === 'token') {
+        clearLoading();
+        if (m.channel === 'thinking') { els.thinkBlock.style.display = ''; els.thinkLine.textContent += m.text; els.thinkLine.scrollTop = els.thinkLine.scrollHeight; }
+        else if (!isHard) { if (!gotResp) { els.actLine.textContent = ''; gotResp = true; } els.actLine.textContent += m.text; }
+      } else if (m.type === 'tool_call') {
+        clearLoading();
+        if (!isHard) { isHard = true; els.respBlock.style.display = 'none'; els.traceBlock.style.display = ''; }
+        var row = document.createElement('div'); row.className = 'tstep';
+        var c = document.createElement('div'); c.className = 'tcall';
+        var badge = document.createElement('span'); badge.className = 'ui-badge'; badge.textContent = m.name; c.appendChild(badge);
+        var a = fmtArgs(m.args); if (a) { var ae = document.createElement('span'); ae.className = 'tcall-args'; ae.textContent = a; c.appendChild(ae); }
+        row.appendChild(c); els.traceLine.appendChild(row); rows[m.id] = row;
+      } else if (m.type === 'tool_result') {
+        var rw = rows[m.id]; if (!rw) return; if (!m.ok) rw.className += ' tbad';
+        var r = document.createElement('div'); r.className = 'tres'; r.textContent = '→ ' + fmtResult(m.result); rw.appendChild(r);
+      } else if (m.type === 'check') {
+        openScore(); els.scoreBlock.appendChild(checkRow(m));
+      } else if (m.type === 'done') {
+        settled = true; if (es) { es.close(); es = null; }
+        if (!gotResp && !isHard && m.response) els.actLine.textContent = m.response;
+        verdictOf(isHard ? (m.strict >= 1) : !!m.correct);
+      } else if (m.type === 'error') {
+        settled = true; if (es) { es.close(); es = null; }
+        clearLoading(); els.thinkBlock.style.display = '';
+        if (/tool-calling model|function-calling/i.test(m.error)) {   // expected: model can't tool-call
+          if (els.respBlock) els.respBlock.style.display = 'none';
+          els.thinkLine.textContent = m.error + ' — pick one of those above.';
+          els.verdict.className = els.verdictClass + ' pending'; els.verdictMk.innerHTML = ''; els.verdictWd.textContent = 'n/a';
+        } else {                                                      // a real failure
+          els.thinkLine.textContent = '⚠ ' + m.error;
+          els.verdict.className = els.verdictClass + ' broke'; els.verdictMk.innerHTML = xMark; els.verdictWd.textContent = 'error';
+        }
+      }
+    };
+    es.onerror = function () { if (es) { es.close(); es = null; } if (!settled) els.verdictWd.textContent = '—'; };
+    return { close: function () { if (es) { es.close(); es = null; } } };
+  }
+
+  // resolve the task being run: a hard rung targets the picked fixture and shows its
+  // catalog title; a classify rung shows the seed/hydrated content.
+  function framing(d){
+    var cat = d.hard ? CATALOG[curHardTask] : null;
+    return {
+      taskId: d.hard ? curHardTask : TASK_IDS[idx],
+      title: (d.hard && cat) ? firstSentence(cat.title) : d.task,
+      system: d.system,
+      user: (d.hard && cat) ? cat.title : d.user
+    };
+  }
+
+  function vsRun(){
+    var d = TASKS[idx], f = framing(d);
+    taskLine.textContent = f.title; sysLine.textContent = f.system; userLine.textContent = f.user;
+    vsGrid.innerHTML = '';
+    var pa = makePane(curModel), pb = makePane(curModelB);
+    pa.els.sysLine = sysLine; pa.els.userLine = userLine;   // pane A's meta drives the shared prompt area (real AGENT_SYSTEM on the hard rung, not the seed)
+    vsGrid.appendChild(pa.el); vsGrid.appendChild(pb.el);
+    vsConns.push(streamInto(pa.els, f.taskId, curModel));
+    vsConns.push(streamInto(pb.els, f.taskId, curModelB));
+  }
+
+  function applyVsLayout(){
+    document.body.classList.toggle('vs', vsOn);
+    singleAttempt.style.display = vsOn ? 'none' : '';
+    vsWrap.style.display = vsOn ? '' : 'none';
+    modelPickerB.style.display = vsOn ? '' : 'none';
+    vsBtn.textContent = vsOn ? '◂ single' : 'compare two ▸';
+  }
+
+  function play(){
+    teardown();
+    var d = TASKS[idx], f = framing(d);
+    hardPicker.style.display = (d.hard && TOOL_TASKS.length) ? '' : 'none';
+    if (vsOn) { vsRun(); return; }                       // VS mode: two models, same task
+    taskLine.textContent = f.title; sysLine.textContent = f.system; userLine.textContent = f.user;
+    single = streamInto(globalEls, f.taskId, curModel);
+  }
+
+  replayBtn.addEventListener('click', play);
+  runBtn.addEventListener('click', play);
+  vsBtn.addEventListener('click', function () { vsOn = !vsOn; applyVsLayout(); play(); });
+  taskSwitch.addEventListener('click', function () {
+    idx = (idx + 1) % TASKS.length;
+    play();
+  });
+
+  runBtn.style.display = '';
+  replayBtn.style.display = 'none';
+  modelPicker.style.display = '';
+  vsBtn.style.display = '';
+  pickModel(); pickModelB();
+  hydrate().then(function () { pickHard(); play(); });   // pull the task catalog, then run
+})();
+</script>
+</body>
+</html>
