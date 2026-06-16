@@ -238,6 +238,7 @@
         </div>
       </div>
 
+      <div class="models" id="hardPicker" style="display:none"></div>
       <div class="models" id="modelPicker" style="display:none"></div>
       <div class="replaybar settle settle-4">
         <button id="runBtn" type="button" style="display:none">run &#9656;</button>
@@ -386,6 +387,7 @@
   var taskSwitch = document.getElementById('taskSwitch');
   var runBtn     = document.getElementById('runBtn');
   var modelPicker= document.getElementById('modelPicker');
+  var hardPicker = document.getElementById('hardPicker');
   var thinkBlock = document.getElementById('thinkBlock');
 
   var idx = 0;
@@ -446,6 +448,9 @@
     { id: "glm-5.1",       label: "glm-5.1 · frontier", billed: true }
   ];
   var curModel = "lfm2.5-8b-a1b";
+  var curHardTask = "save-play";    // hard-rung target; hydrate() swaps to a real fixture id
+  var CATALOG = {};                 // id -> server task (from /tasks)
+  var TOOL_TASKS = [];              // [{id,title,tools,checks}] available for the hard rung
   var es = null;
 
   // ---- the climb graph: accumulates the live runs ----
@@ -501,6 +506,46 @@
       if (m.billed) { b.title = 'runs on the Understudy gateway — billed to your account'; b.style.borderColor = 'var(--color-stamp)'; }
       b.addEventListener('click', function () { curModel = m.id; renderModelPicker(); play(); });
       modelPicker.appendChild(b);
+    });
+  }
+
+  // ---- task catalog: hydrate the 3 rungs from the server (served mode) ----
+  // The easy/medium rungs take their content from /tasks; the hard rung becomes a
+  // picker over whatever tool tasks the fixtures define. Edit a fixture or the
+  // server's task list and it reflects here -- no change to this page.
+  function humanizeTask(id){ return id.replace(/^hard\./, '').replace(/_/g, ' '); }
+  function firstSentence(s){
+    s = (s || '').trim();
+    var m = s.match(/^(.+?[.!?])(\s|$)/);
+    return m ? m[1] : (s.length > 90 ? s.slice(0, 88) + '…' : s);
+  }
+  function hydrate(){
+    return fetch('/tasks').then(function (r) { return r.json(); }).then(function (j) {
+      (j.tasks || []).forEach(function (t) { CATALOG[t.id] = t; });
+      TOOL_TASKS = (j.tasks || []).filter(function (t) { return t.kind === 'tool'; });
+      TASK_IDS.forEach(function (id, i) {              // classify rungs pull content from the server
+        var t = CATALOG[id];
+        if (t && t.kind === 'classify' && TASKS[i]) {
+          TASKS[i].task = t.title; TASKS[i].system = t.system; TASKS[i].user = t.user;
+        }
+      });
+      if (TOOL_TASKS.length) { curHardTask = TOOL_TASKS[0].id; }   // default hard rung -> first fixture
+    }).catch(function () { /* offline / static host: keep the hardcoded content */ });
+  }
+  function renderHardPicker(){
+    hardPicker.innerHTML = '';
+    if (!TOOL_TASKS.length) return;
+    var lbl = document.createElement('span');
+    lbl.textContent = 'task'; lbl.style.cssText =
+      'align-self:center;margin-right:2px;font-size:0.6rem;letter-spacing:0.16em;text-transform:uppercase;color:var(--color-ink-muted)';
+    hardPicker.appendChild(lbl);
+    TOOL_TASKS.forEach(function (t) {
+      var b = document.createElement('button');
+      b.textContent = humanizeTask(t.id);
+      b.className = (t.id === curHardTask ? 'active' : '');
+      b.title = (t.tools ? t.tools.length + ' tools · ' : '') + (t.checks != null ? t.checks + ' checks' : '');
+      b.addEventListener('click', function () { curHardTask = t.id; renderHardPicker(); play(); });
+      hardPicker.appendChild(b);
     });
   }
 
@@ -615,8 +660,10 @@
   function playHardLive(){
     clearTimers();
     if (es) { es.close(); es = null; }
-    var d = TASKS[idx];
-    taskLine.textContent = d.task; sysLine.textContent = d.system; userLine.textContent = d.user;
+    var d = TASKS[idx], cat = CATALOG[curHardTask];
+    taskLine.textContent = cat ? firstSentence(cat.title) : d.task;
+    sysLine.textContent  = d.system;                       // refined by the meta event
+    userLine.textContent = cat ? cat.title : d.user;
     thinkBlock.style.display = ''; thinkLine.textContent = '';
     document.getElementById('respBlock').style.display = 'none';
     var tb = document.getElementById('traceBlock'); tb.style.display = '';
@@ -633,7 +680,7 @@
       lbl.textContent = 'final state — how the world looks now'; sb.appendChild(lbl);
     }
     try {
-      es = new EventSource('/run?task=save-play&model=' + encodeURIComponent(curModel));
+      es = new EventSource('/run?task=' + encodeURIComponent(curHardTask) + '&model=' + encodeURIComponent(curModel));
     } catch (e) { return renderHard(d); }
     es.onmessage = function (ev) {
       var m; try { m = JSON.parse(ev.data); } catch (_) { return; }
@@ -682,8 +729,9 @@
   }
 
   function play(){
-    var d = TASKS[idx];
-    if (d.trace) {                                       // tool-calling tier
+    var d = TASKS[idx], onHard = !!d.trace;
+    hardPicker.style.display = (LIVE && onHard && TOOL_TASKS.length) ? '' : 'none';
+    if (onHard) {                                        // tool-calling tier
       if (LIVE) playHardLive(); else renderHard(d);      // live agent loop vs pre-baked replay
       return;
     }
@@ -706,10 +754,10 @@
     modelPicker.style.display = '';
     renderModelPicker();
     var sc = document.getElementById('staticClimb'); if (sc) sc.style.display = 'none';
+    hydrate().then(function () { renderHardPicker(); play(); });   // pull the task catalog, then run
+  } else {
+    play();                                                        // static host: hardcoded content
   }
-
-  // first run
-  play();
 })();
 </script>
 </body>
