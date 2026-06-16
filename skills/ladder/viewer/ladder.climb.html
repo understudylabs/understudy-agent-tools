@@ -71,7 +71,7 @@
   .task-line {
     font-family: var(--font-reading); letter-spacing: -0.008em;
     font-weight: 400; font-size: 1.18rem; line-height: 1.5;
-    margin: 18px 0 0; max-width: 30ch;
+    margin: 18px 0 0;
   }
   .attempt {
     margin-top: 30px; border: 1px solid var(--color-rule);
@@ -172,14 +172,40 @@
   }
   .replaybar button:hover { border-color: var(--color-ink-muted); }
   .replaybar button:active { transform: translateY(1px); }
-  .models { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 18px; }
-  .models button {
+  /* pickers redesigned as Select dropdowns (shadcn Select spec, ported into this file) */
+  .models { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-top: 18px; }
+  .models .pick-label { font-size: 0.6rem; letter-spacing: 0.16em; text-transform: uppercase; color: var(--color-ink-muted); }
+  .select { position: relative; display: inline-block; }
+  .select-trigger {
+    display: inline-flex; align-items: center; gap: 14px;
     font-family: var(--font-mono); font-size: 0.66rem; text-transform: uppercase; letter-spacing: 0.14em;
-    background: transparent; color: var(--color-ink-muted); cursor: pointer;
-    border: 1px solid var(--color-rule); padding: 6px 11px;
+    background: transparent; color: var(--color-ink); cursor: pointer;
+    border: 1px solid var(--color-rule); padding: 6px 11px; max-width: 26ch;
+    transition: border-color 140ms ease;
   }
-  .models button.active { color: var(--color-ink); border-color: var(--color-ink); }
-  .models .pick-label { align-self: center; margin-right: 2px; font-size: 0.6rem; letter-spacing: 0.16em; text-transform: uppercase; color: var(--color-ink-muted); }
+  .select-trigger:hover { border-color: var(--color-ink-muted); }
+  .select-trigger[aria-expanded="true"] { border-color: var(--color-ink); }
+  .select.billed .select-trigger { border-color: var(--color-stamp); }
+  .select-value { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .select-caret { width: 9px; height: 9px; color: var(--color-ink-muted); flex: none; transition: transform 160ms var(--settle-ease); }
+  .select-trigger[aria-expanded="true"] .select-caret { transform: rotate(180deg); color: var(--color-ink); }
+
+  .select-content {
+    position: absolute; left: 0; top: calc(100% + 4px); z-index: 40;
+    min-width: 100%; border: 1px solid var(--color-ink); background: var(--color-paper);
+    padding: 4px; display: none;
+    box-shadow: 0 8px 22px -14px color-mix(in srgb, var(--color-ink) 55%, transparent);
+  }
+  .select.open .select-content { display: block; }
+  .select-item {
+    display: flex; align-items: center; justify-content: space-between; gap: 14px;
+    font-family: var(--font-mono); font-size: 0.66rem; text-transform: uppercase; letter-spacing: 0.14em;
+    color: var(--color-ink-muted); cursor: pointer; padding: 6px 9px; white-space: nowrap;
+  }
+  .select-item:hover { color: var(--color-ink); }
+  .select-item.active { color: var(--color-ink); }
+  .select-check { width: 9px; height: 9px; color: var(--color-stamp); flex: none; visibility: hidden; }
+  .select-item.active .select-check { visibility: visible; }
 
   /* ---------- VS : two models, same task, side by side ---------- */
   body.vs .wrap { max-width: 1100px; transition: max-width 220ms var(--settle-ease); }
@@ -195,6 +221,8 @@
     font-family: var(--font-mono); font-size: 0.72rem; text-transform: uppercase; letter-spacing: 0.13em;
     color: var(--color-ink); border-bottom: 1px solid var(--color-rule); padding-bottom: 11px;
   }
+  .vs-head .select-trigger { font-size: 0.72rem; }
+  .vs-head .select-item { font-size: 0.72rem; }
   .vs-head .billed { color: var(--color-stamp); font-size: 0.58rem; }
   .vs-pane .think { max-height: 6.5em; }
   .vs-pane .ioval, .vs-pane .tres, .vs-pane .tcall-args { word-break: break-word; overflow-wrap: anywhere; }
@@ -266,7 +294,6 @@
   <section>
     <div class="foot">
       <span class="wordmark">understudy</span>
-      <span>directional, not a measurement</span>
     </div>
   </section>
 
@@ -381,23 +408,64 @@
     }).catch(function () { /* server unreachable: keep the seed content */ });
   }
 
-  // ---- pickers: one builder, three call sites (model A / hard task / VS model B) ----
+  // ---- pickers: Select dropdowns (one builder, three call sites: model A / hard task / VS model B) ----
   // opt: {label?, text(it), id(it), active(), title?(it), billed?, pick(it)}
-  function buildPicker(el, items, opt){
+  var PICK_CARET = '<svg class="select-caret" viewBox="0 0 24 24" aria-hidden="true"><path d="m6 9 6 6 6-6" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+  var PICK_CHECK = '<svg class="select-check" viewBox="0 0 24 24" aria-hidden="true"><path d="M20 6 9 17l-5-5" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>';
+  function closeAllPickers() {
+    var open = document.querySelectorAll('.select.open');
+    for (var i = 0; i < open.length; i++) {
+      open[i].classList.remove('open');
+      var t = open[i].querySelector('.select-trigger'); if (t) t.setAttribute('aria-expanded', 'false');
+    }
+  }
+  document.addEventListener('click', closeAllPickers);
+  function buildPicker(el, items, opt) {
     el.innerHTML = '';
     if (opt.label) { var lb = document.createElement('span'); lb.className = 'pick-label'; lb.textContent = opt.label; el.appendChild(lb); }
+    var wrap = document.createElement('div'); wrap.className = 'select';
+    var trig = document.createElement('button');
+    trig.type = 'button'; trig.className = 'select-trigger';
+    trig.setAttribute('aria-haspopup', 'listbox'); trig.setAttribute('aria-expanded', 'false');
+    trig.innerHTML = '<span class="select-value"></span>' + PICK_CARET;
+    var valueEl = trig.querySelector('.select-value');
+    var content = document.createElement('div'); content.className = 'select-content'; content.setAttribute('role', 'listbox');
+
+    function syncActive() {
+      var cur = opt.active(), found = false, rows = content.children;
+      for (var i = 0; i < items.length; i++) {
+        var on = opt.id(items[i]) === cur;
+        if (on) { found = true; valueEl.textContent = opt.text(items[i]); }
+        rows[i].classList.toggle('active', on);
+      }
+      if (!found) valueEl.textContent = items.length ? opt.text(items[0]) : '\u2014';
+    }
+
     items.forEach(function (it) {
-      var b = document.createElement('button');
-      b.textContent = opt.text(it);
-      b.className = (opt.active() === opt.id(it) ? 'active' : '');
-      var tip = opt.title && opt.title(it); if (tip) b.title = tip;
-      if (opt.billed && it.billed) { b.title = opt.billed; b.style.borderColor = 'var(--color-stamp)'; }
-      b.addEventListener('click', function () {
+      var row = document.createElement('div'); row.className = 'select-item'; row.setAttribute('role', 'option');
+      row.innerHTML = '<span></span>' + PICK_CHECK;
+      row.firstChild.textContent = opt.text(it);
+      var tip = opt.title && opt.title(it); if (tip) row.title = tip;
+      if (opt.billed && it.billed) { row.title = opt.billed; wrap.classList.add('billed'); }
+      row.addEventListener('click', function (ev) {
+        ev.stopPropagation();
+        closeAllPickers();
         if (opt.active() === opt.id(it)) return;   // re-picking the active item would re-run (and re-bill the gateway)
         opt.pick(it);
       });
-      el.appendChild(b);
+      content.appendChild(row);
     });
+
+    trig.addEventListener('click', function (ev) {
+      ev.stopPropagation();
+      var wasOpen = wrap.classList.contains('open');
+      closeAllPickers();
+      if (!wasOpen) { wrap.classList.add('open'); trig.setAttribute('aria-expanded', 'true'); syncActive(); }
+    });
+
+    wrap.appendChild(trig); wrap.appendChild(content);
+    el.appendChild(wrap);
+    syncActive();
   }
   function pickModel(){
     buildPicker(modelPicker, LIVE_MODELS, {
@@ -426,7 +494,7 @@
   }
 
   // ---- VS mode: build a pane that mirrors the single-attempt element set ----
-  function makePane(model){
+  function makePane(model, which){
     var lm = LIVE_MODELS.filter(function (x) { return x.id === model; })[0];
     var pane = document.createElement('div'); pane.className = 'vs-pane';
     pane.innerHTML =
@@ -437,7 +505,13 @@
       '<div data-score style="display:none"></div>' +
       '<div class="pane-verdict pending" data-verdict><span data-vmark></span><span class="word" data-vword>running</span></div>';
     var q = function (s) { return pane.querySelector(s); };
-    q('[data-name]').textContent = lm ? lm.label : model;
+    q('[data-name]').classList.add('vs-name');
+    buildPicker(q('[data-name]'), LIVE_MODELS, {
+      text: function (m) { return m.label; }, id: function (m) { return m.id; },
+      active: function () { return which === 'a' ? curModel : curModelB; },
+      billed: 'runs on the Understudy gateway — billed to your account',
+      pick: function (m) { if (which === 'a') curModel = m.id; else curModelB = m.id; play(); }
+    });
     if (lm && lm.billed) q('[data-billed]').textContent = '$ billed';
     return { el: pane, model: model, els: {
       thinkBlock: q('[data-think]'), thinkLine: q('[data-thinkline]'),
@@ -562,7 +636,7 @@
     var d = TASKS[idx], f = framing(d);
     taskLine.textContent = f.title; sysLine.textContent = f.system; userLine.textContent = f.user;
     vsGrid.innerHTML = '';
-    var pa = makePane(curModel), pb = makePane(curModelB);
+    var pa = makePane(curModel, 'a'), pb = makePane(curModelB, 'b');
     pa.els.sysLine = sysLine; pa.els.userLine = userLine;   // pane A's meta drives the shared prompt area (real AGENT_SYSTEM on the hard rung, not the seed)
     vsGrid.appendChild(pa.el); vsGrid.appendChild(pb.el);
     vsConns.push(streamInto(pa.els, f.taskId, curModel));
@@ -573,7 +647,8 @@
     document.body.classList.toggle('vs', vsOn);
     singleAttempt.style.display = vsOn ? 'none' : '';
     vsWrap.style.display = vsOn ? '' : 'none';
-    modelPickerB.style.display = vsOn ? '' : 'none';
+    modelPicker.style.display = vsOn ? 'none' : '';
+    modelPickerB.style.display = 'none';   // retired: its selector lives in the VS pane header
     vsBtn.textContent = vsOn ? '◂ single' : 'compare two ▸';
   }
 
@@ -602,7 +677,7 @@
   replayBtn.style.display = 'none';
   modelPicker.style.display = '';
   vsBtn.style.display = '';
-  pickModel(); pickModelB();
+  pickModel();
   hydrate().then(function () { pickHard(); play(); });   // pull the task catalog, then run
 })();
 </script>
