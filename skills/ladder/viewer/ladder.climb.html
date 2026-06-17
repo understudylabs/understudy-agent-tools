@@ -97,7 +97,7 @@
     padding: 16px 20px;
     display: flex; flex-direction: column; justify-content: flex-start; gap: 16px;
   }
-  /* tool-calling tasks: 3 columns -- prompts/thinking | tool calls + score | verdict.
+  /* tool-calling tasks: 3 columns -- prompts/thinking | tool calls | verdict (+ score).
      The center column expands in on the first tool call, not at run start. */
   body.tool .wrap { max-width: 1100px; transition: max-width 340ms var(--tool-ease); }
   .attempt .trace-col { display: none; }
@@ -345,8 +345,8 @@
 <script>
 (function () {
   // --- synthetic Larkfield content: the seed shown before the server's /tasks
-  //     catalog hydrates. The classify rungs get overwritten by hydrate(); the
-  //     hard rung is just flagged so play() routes it to the tool-calling surface. ---
+  //     catalog hydrates. Two classify seeds (overwritten by hydrate()); each tool
+  //     task is appended in hydrate() so the rail treats them as flat rungs. ---
   var HARD_SYS = "Apply the latest discount, mark the subscription Saved with the new price in USD, and email the right teams per the save-play policy.";
   var TASKS = [
     {
@@ -424,9 +424,9 @@
     vsConns.forEach(function (c) { c.close(); }); vsConns = [];
   }
 
-  // ---- task catalog: hydrate the 3 rungs from the server ----
-  // The easy/medium rungs take their content from /tasks; the hard rung becomes a
-  // picker over whatever tool tasks the fixtures define. Edit a fixture or the
+  // ---- task catalog: hydrate classify content + flatten tool tasks from the server ----
+  // Classify seeds pull their content from /tasks; each tool task (kind 'tool') is
+  // appended once (FLAT_BUILT guard) as its own flat rung. Edit a fixture or the
   // server's task list and it reflects here -- no change to this page.
   function humanizeTask(id){ return id.replace(/^hard\./, '').replace(/[-_]/g, ' '); }
   var RAIL_LABELS = {   // friendly rail names; falls back to humanizeTask when absent
@@ -451,7 +451,7 @@
       });
       if (!FLAT_BUILT) {                               // flatten: each tool task is its own entry
         TOOL_TASKS.forEach(function (t) {
-          TASKS.push({ id: t.id, task: firstSentence(t.title), system: HARD_SYS, user: t.title, hard: true });
+          TASKS.push({ id: t.id, task: firstSentence(t.title), system: HARD_SYS, user: t.title });
         });
         FLAT_BUILT = true;
       }
@@ -638,7 +638,8 @@
         var a = fmtArgs(m.args); if (a) { var ae = document.createElement('span'); ae.className = 'tcall-args'; ae.textContent = a; c.appendChild(ae); }
         row.appendChild(c); els.traceLine.appendChild(row); rows[m.id] = row;
       } else if (m.type === 'tool_result') {
-        var rw = rows[m.id]; if (!rw) return; if (!m.ok) rw.className += ' tbad';
+        var rw = rows[m.id]; if (!rw) return;
+        if (!m.ok) { rw.className += ' tbad'; var bd = rw.querySelector('.ui-badge'); if (bd) bd.classList.add('bad'); }
         var r = document.createElement('div'); r.className = 'tres'; r.textContent = '→ ' + fmtResult(m.result); rw.appendChild(r);
       } else if (m.type === 'check') {
         openScore(); els.scoreBlock.appendChild(checkRow(m));
@@ -682,6 +683,7 @@
 
   function applyVsLayout(){
     document.body.classList.toggle('vs', vsOn);
+    if (vsOn) document.body.classList.remove('tool');   // VS owns the widened wrap; drop any single-tool class
     singleAttempt.style.display = vsOn ? 'none' : '';
     vsWrap.style.display = vsOn ? '' : 'none';
     modelPicker.style.display = vsOn ? 'none' : '';
@@ -714,14 +716,16 @@
     TASKS.forEach(function (t, i) {
       var r = document.createElement('button'); r.type = 'button'; r.className = 'rung';
       r.innerHTML = '<span class="num">' + (i + 1) + '</span>' + (RAIL_LABELS[t.id] || humanizeTask(t.id));
-      r.title = t.task; r.dataset.idx = String(i);
+      r.title = t.task;
       r.addEventListener('click', function () { if (i === idx) return; idx = i; play(); });
       rungRail.appendChild(r);
     });
   }
   function syncRail(){
     for (var i = 0; i < rungRail.children.length; i++) {
-      rungRail.children[i].classList.toggle('active', i === idx);
+      var on = i === idx;
+      rungRail.children[i].classList.toggle('active', on);
+      rungRail.children[i].setAttribute('aria-current', on ? 'step' : 'false');
     }
   }
 
