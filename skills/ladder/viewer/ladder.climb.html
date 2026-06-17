@@ -75,6 +75,19 @@
     font-weight: 400; font-size: 1.18rem; line-height: 1.5;
     margin: 18px 0 0;
   }
+  /* task rung rail: single row (scrolls only if it overflows) */
+  .rung-rail { display: flex; flex-wrap: nowrap; gap: 6px; margin: 14px 0 0; overflow-x: auto; scrollbar-width: none; }
+  .rung-rail::-webkit-scrollbar { display: none; }
+  .rung {
+    font-family: var(--font-mono); font-size: 0.62rem; text-transform: uppercase; letter-spacing: 0.12em;
+    color: var(--color-ink-muted); background: transparent; border: 1px solid var(--color-rule);
+    padding: 5px 9px; cursor: pointer; white-space: nowrap; flex: 0 0 auto;
+    transition: color 140ms ease, border-color 140ms ease, background 140ms ease;
+  }
+  .rung:hover { color: var(--color-ink); border-color: var(--color-ink-muted); }
+  .rung.active { color: var(--color-paper); background: var(--color-ink); border-color: var(--color-ink); }
+  .rung .num { opacity: 0.6; margin-right: 6px; }
+  .rung.active .num { opacity: 0.65; }
   .attempt {
     margin-top: 30px; border: 1px solid var(--color-rule);
     background: color-mix(in srgb, var(--color-paper) 96%, var(--color-ink) 4%);
@@ -284,6 +297,8 @@
     <div class="pad">
       <p class="eyebrow settle settle-1"><span class="stamp-dot"></span>watch a model try a task</p>
 
+      <div class="rung-rail settle settle-2" id="rungRail"></div>
+
       <p class="task-line settle settle-2" id="taskLine">
         Sort this customer email into the right inbox.
       </p>
@@ -352,6 +367,7 @@
   var xMark     = '<svg width="26" height="26" viewBox="0 0 26 26" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="13" cy="13" r="11"/><path d="M9 9l8 8M17 9l-8 8"/></svg>';
 
   var taskLine   = document.getElementById('taskLine');
+  var rungRail   = document.getElementById('rungRail');
   var sysLine    = document.getElementById('sysLine');
   var userLine   = document.getElementById('userLine');
   var replayBtn  = document.getElementById('replayBtn');
@@ -412,7 +428,12 @@
   // The easy/medium rungs take their content from /tasks; the hard rung becomes a
   // picker over whatever tool tasks the fixtures define. Edit a fixture or the
   // server's task list and it reflects here -- no change to this page.
-  function humanizeTask(id){ return id.replace(/^hard\./, '').replace(/_/g, ' '); }
+  function humanizeTask(id){ return id.replace(/^hard\./, '').replace(/[-_]/g, ' '); }
+  var RAIL_LABELS = {   // friendly rail names; falls back to humanizeTask when absent
+    "sort-email": "categorization", "match-search": "classification",
+    "hard.renewal_save_route": "task routing", "hard.ap_approval_threshold": "policy approval",
+    "hard.sla_route": "operations"
+  };
   function firstSentence(s){
     s = (s || '').trim();
     var m = s.match(/^(.+?[.!?])(\s|$)/);
@@ -687,10 +708,27 @@
     history.replaceState(null, '', location.pathname + (qs ? '?' + qs : ''));
   }
 
+  // ---- task rung rail: one chip per task, click to jump ----
+  function buildRail(){
+    rungRail.innerHTML = '';
+    TASKS.forEach(function (t, i) {
+      var r = document.createElement('button'); r.type = 'button'; r.className = 'rung';
+      r.innerHTML = '<span class="num">' + (i + 1) + '</span>' + (RAIL_LABELS[t.id] || humanizeTask(t.id));
+      r.title = t.task; r.dataset.idx = String(i);
+      r.addEventListener('click', function () { if (i === idx) return; idx = i; play(); });
+      rungRail.appendChild(r);
+    });
+  }
+  function syncRail(){
+    for (var i = 0; i < rungRail.children.length; i++) {
+      rungRail.children[i].classList.toggle('active', i === idx);
+    }
+  }
+
   function play(){
     teardown();
     var d = TASKS[idx], f = framing(d);
-    syncQuery();
+    syncQuery(); syncRail();
     if (vsOn) { vsRun(); return; }                       // VS mode: two models, same task
     taskLine.textContent = f.title; sysLine.textContent = f.system; userLine.textContent = f.user;
     single = streamInto(globalEls, f.taskId, curModel);
@@ -714,7 +752,7 @@
   vsBtn.style.display = '';
   applyQuery();                                       // ?model/&vs apply now; task resolves fully post-hydrate
   pickModel();
-  hydrate().then(function () { applyQuery(); if (vsOn) applyVsLayout(); play(); });   // pull catalog, deep-link, run
+  hydrate().then(function () { applyQuery(); buildRail(); if (vsOn) applyVsLayout(); play(); });   // pull catalog, deep-link, run
 })();
 </script>
 </body>
