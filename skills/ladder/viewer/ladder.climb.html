@@ -137,8 +137,8 @@
   .tres  { font-family: var(--font-mono); font-size: 0.78rem; color: var(--color-ink-muted); padding-left: 16px; margin-top: 2px; line-height: 1.5; }
   .tbad .tcall, .tbad .tres { color: var(--color-stamp); }
   #scoreBlock { margin-top: 6px; }
-  .sc-lbl { font-size: 0.62rem; text-transform: uppercase; letter-spacing: 0.16em; color: var(--color-ink-muted); margin: 0 0 10px; }
-  .chk { display: flex; align-items: flex-start; gap: 9px; font-family: var(--font-reading); font-size: 0.85rem; line-height: 1.45; margin: 7px 0; }
+  .sc-lbl { font-size: 0.62rem; text-transform: uppercase; letter-spacing: 0.16em; color: var(--color-ink-muted); margin: 0 0 10px; text-align: center; }
+  .chk { display: flex; align-items: flex-start; gap: 9px; font-family: var(--font-reading); font-size: 0.85rem; line-height: 1.45; margin: 7px 0; color: var(--color-ink); }
   .chk .mk { font-family: var(--font-mono); font-size: 0.9rem; line-height: 1.25; }
   .chk.ok .mk { color: var(--color-ink); }
   .chk.no, .chk.no .mk { color: var(--color-stamp); }
@@ -590,7 +590,7 @@
 
     function openScore(){ if (scoreOpen) return; scoreOpen = true; els.scoreBlock.style.display = '';
       if (attemptEl && attemptEl.classList.contains('attempt')) attemptEl.classList.add('scored');   // widen the verdict column for the criteria breakdown
-      var l = document.createElement('div'); l.className = 'sc-lbl'; l.textContent = 'criteria · expected vs. actual'; els.scoreBlock.appendChild(l); }
+      var l = document.createElement('div'); l.className = 'sc-lbl'; l.textContent = 'expected vs. actual'; els.scoreBlock.appendChild(l); }
     function clearLoading(){ if (loading) { loading = false; els.actLine.textContent = ''; els.verdictWd.textContent = 'running'; } }
     function verdictOf(ok){ els.verdict.className = els.verdictClass + ' ' + (ok ? 'landed' : 'broke');
       els.verdictMk.innerHTML = ok ? checkMark : xMark; els.verdictWd.textContent = ok ? 'Pass' : 'Fail'; }
