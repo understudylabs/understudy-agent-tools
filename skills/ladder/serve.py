@@ -45,27 +45,32 @@ MODELS = {
     "glm-5.1":       ("gateway", "glm-5.1", "glm-5.1 · frontier", {}),
 }
 
-# id -> (title, system, user, gold)
-TASKS = {
-    "sort-email": (
-        "Sort this customer email into the right inbox.",
-        "Route the email to exactly one inbox: billing_urgent, billing_normal, technical, sales_lead, or spam. Reply with just the label.",
-        "From: pat@maple.example\nSubject: charged twice\nI got billed twice this morning and it's holding up payroll. Please fix this today.",
-        "billing_urgent",
-    ),
-    "match-search": (
-        "Decide how a product relates to a shopper's search.",
-        "Label the product against the search: Exact, Substitute, Complement, or Irrelevant. Reply with just the label.",
-        "search: running shoes\nproduct: merino ankle socks, cushioned, 3-pack",
-        "Complement",
-    ),
-    "save-play": (
-        "Run the renewal save play.",
-        "Apply the latest discount, mark the subscription Saved with the new price in USD, and email the right teams per the save-play policy. Tools: get_account, read_policy, update_subscription, send_mail, finish.",
-        "Nova Retail · Growth · EUR 4000 · At-Risk · renews soon.",
-        "Saved",
-    ),
-}
+# Catalog version stamp. Bump whenever a task row or its assertions change so run
+# results taken against different versions stay comparable (same discipline as the
+# world's scoring contract in env/world.py). Exposed as `tasks_version` on /tasks.
+TASKS_VERSION = "1"
+
+# Classify tasks are DATA, not code -- the same discipline as the tool tasks below.
+# Each row in fixtures/classify_tasks.jsonl is one single-shot classify rung:
+#   {task_id, tier:"classify", title, system, user, gold}
+_CLASSIFY_TASKS = None
+
+def classify_tasks():
+    """Cached {task_id: task} from the classify fixtures (loaded once, mirroring
+    tool_tasks()). Used by GET /tasks, classify_run, and the /run router."""
+    global _CLASSIFY_TASKS
+    if _CLASSIFY_TASKS is None:
+        path = os.path.join(HERE, "fixtures", "classify_tasks.jsonl")
+        out = {}
+        with open(path, "r") as fh:
+            for line in fh:
+                line = line.strip()
+                if not line:
+                    continue
+                t = json.loads(line)
+                out[t["task_id"]] = t
+        _CLASSIFY_TASKS = out
+    return _CLASSIFY_TASKS
 
 # Tool-calling tasks are DATA, not code: they live in fixtures/hard/tool_tasks.jsonl
 # and load through env/world.py. EVERY task there runs through the same agent loop
@@ -615,7 +620,8 @@ def classify_run(task, mid):
       meta -> [status:loading] -> token(thinking|response)* -> done.
     Local models split their raw stream on <think> here; the gateway arrives already
     channel-separated. `done` carries throughput + correctness against the gold label."""
-    title, system, user, gold = TASKS[task]
+    t = classify_tasks()[task]
+    title, system, user, gold = t["title"], t["system"], t["user"], t.get("gold")
     yield {"type": "meta", "task": task, "model": mid, "label": MODELS[mid][2],
            "title": title, "system": system, "user": user, "gold": gold}
     if not model_loaded(mid):                  # cold model: tell the UI before the ~60s load
@@ -694,12 +700,15 @@ class Handler(BaseHTTPRequestHandler):
         if u.path == "/run":
             return self.handle_run(q)
         if u.path == "/tasks":
-            cat = [{"id": k, "kind": "classify", "title": v[0], "system": v[1], "user": v[2], "gold": v[3]}
-                   for k, v in TASKS.items()]
-            for tid, t in tool_tasks().items():     # tool tasks discovered from the fixtures
+            cat = []
+            for tid, t in classify_tasks().items():       # classify rungs (fixtures/classify_tasks.jsonl)
+                cat.append({"id": tid, "kind": "classify", "title": t["title"],
+                            "system": t["system"], "user": t["user"], "gold": t.get("gold")})
+            for tid, t in tool_tasks().items():            # tool rungs (fixtures/hard/tool_tasks.jsonl)
                 cat.append({"id": tid, "kind": "tool", "title": t.get("prompt"),
+                            "system": AGENT_SYSTEM,         # display-only; the real prompt is server-side
                             "tools": t.get("allowed_tools", []), "checks": len(t.get("assertions", []))})
-            return self._json({"tasks": cat})
+            return self._json({"tasks_version": TASKS_VERSION, "tasks": cat})
         if u.path == "/models":
             return self._json({"models": [
                 {"id": k, "label": v[2], "lane": v[0], "ready": model_loaded(k)} for k, v in MODELS.items()]})
@@ -729,9 +738,9 @@ class Handler(BaseHTTPRequestHandler):
         real = resolve_task(task)               # any tool task (or alias) -> live agent loop
         if real:
             return self._sse_run(run_agent(real, mid))
-        if task not in TASKS:
-            return self._json({"error": "unknown task"}, 400)
-        return self._sse_run(classify_run(task, mid))
+        if task in classify_tasks():
+            return self._sse_run(classify_run(task, mid))
+        return self._json({"error": "unknown task"}, 400)
 
 
 def _cli_agent(task_id, model_id):

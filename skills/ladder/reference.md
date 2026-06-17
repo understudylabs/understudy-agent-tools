@@ -20,10 +20,13 @@ One stdlib process, no web framework:
 - **`env/world.py`** — the synthetic "Larkfield" world: `WorldState` (crm / mail
   / tables / invoices), a 12-tool recoverable registry, `call_tool`, and
   `score_assertions`. Standard library only.
-- **`fixtures/hard/tool_tasks.jsonl`** — the hard tasks as *data*: one JSONL row
-  per task (prompt, allowed tools, initial state, assertions). Add a row and it
-  is immediately live and scored — no per-task server code.
-- **`viewer/ladder.climb.html`** — the self-contained UI. One renderer
+- **`fixtures/`** — every task as *data*, one JSONL row per task:
+  `classify_tasks.jsonl` (single-shot classify rungs: title/system/user/gold) and
+  `hard/tool_tasks.jsonl` (tool-calling rungs: prompt, allowed tools, initial
+  state, assertions). Add a row to either and it is immediately live, listed, and
+  scored — no per-task server or viewer code.
+- **`viewer/ladder.climb.html`** — the self-contained UI. It builds its task list
+  *entirely* from `/tasks` (the server is the single source of truth). One renderer
   (`streamInto`) drives the single-attempt pane, the hard-tier trace + scorecard,
   and both VS panes from the same `/run` SSE stream, adapting to classify vs hard
   by the events it actually sees.
@@ -88,28 +91,50 @@ string or a dict. The rest of `run_agent` is lane-agnostic.
 
 ## Extending the ladder (adding tasks)
 
-Three layers, easiest first.
+Every task is *data* now — classify rungs and tool rungs alike. Append one JSON
+object (one line) to the right fixture and it is immediately live: discovered on
+the next server start, listed by `GET /tasks`, flattened into the viewer's rung
+rail (the server is the single source of truth — no per-task viewer edit), and
+run/scored with no per-task code on either side. Restart the server to pick up a
+new/edited row; both task lists are cached at first use.
 
-### A new HARD tool-calling task — pure data, no code
+### TaskSpec — the one row schema (both kinds)
+
+Both fixtures share one row shape; `tier` is the discriminator. Common fields:
+`task_id` (unique) and `tier`; everything else is kind-specific.
+
+| field | classify row (`fixtures/classify_tasks.jsonl`) | tool row (`fixtures/hard/tool_tasks.jsonl`) |
+|---|---|---|
+| `task_id` | unique id, e.g. `sort-email` | unique id, e.g. `hard.my_task` (the rail shows it) |
+| `tier` | `"classify"` | `"hard"` |
+| `title` | the task line shown in the UI | — |
+| `system` | the system prompt sent to the model | — (the agent system prompt is the server-side `AGENT_SYSTEM` constant) |
+| `user` | the user prompt sent to the model | — |
+| `gold` | expected label (first token, substring match) | — |
+| `prompt` | — | the task to complete — drives both the UI line and the user message |
+| `toolset` | — | informational label, e.g. `"standard"` |
+| `allowed_tools` | — | subset of the registry, always ending in `finish` |
+| `initial_state` | — | seeds a fresh `WorldState` (deep-copied per run): `{crm:{accounts,subscriptions,tickets}, mail:{inbox:[…]}, tables:{<name>:[rows]}, invoices:{…}}`. `mail.sent` starts empty; tools append to it and assertions read it back |
+| `assertions` | — | the scorecard (below) |
+
+### A new classify task — one fixture row
+
+Append one line to `fixtures/classify_tasks.jsonl`:
+
+```json
+{"task_id":"my-task","tier":"classify","title":"…","system":"…","user":"…","gold":"label"}
+```
+
+It is loaded by `classify_tasks()`, listed by `GET /tasks` (kind `classify`),
+and run by `classify_run()`. Correctness is the substring check in
+`classify_run()`: the gold's first token must appear (case-insensitively) in the
+model's response, so keep gold labels short and single-token.
+
+### A new tool-calling task — one fixture row
 
 Append one JSON object (one line) to `fixtures/hard/tool_tasks.jsonl`. It is
-discovered by `load_tasks()`, listed by `GET /tasks` (kind `tool`), flattened
-into the viewer's task list (cycled by "next task" like the classify rungs — no
-separate picker), and scored by the same agent loop — no server code. Restart
-the server to pick up a new/edited row (the task list is cached at startup).
-
-Row shape:
-
-| field | meaning |
-|---|---|
-| `task_id` | unique id, e.g. `hard.my_task` (the picker shows it) |
-| `tier` | `"hard"` |
-| `prompt` | the task the model must complete |
-| `toolset` | informational label (e.g. `"standard"`) |
-| `allowed_tools` | the tools exposed to the model for this task — a subset of the registry, always ending in `finish` |
-| `initial_state` | seeds a fresh `WorldState` (deep-copied per run): `{crm:{accounts,subscriptions,tickets}, mail:{inbox:[…]}, tables:{<name>:[rows]}, invoices:{…}}`. `mail.sent` starts empty; tools append to it and assertions read it back |
-| `assertions` | the scorecard (below) |
-| `gold_notes` | free-text notes (decoys to leave alone, etc.) — informational |
+discovered by `world.load_tasks()`, listed by `GET /tasks` (kind `tool`), and
+scored by the same agent loop — no server code.
 
 Tools `allowed_tools` may pick from: `crm_find_accounts`, `crm_get_account`,
 `crm_get_subscriptions`, `crm_update_subscription`, `crm_list_tickets`,
@@ -135,22 +160,13 @@ weights summing to ≈1.0. Negatives + `no_extra_writes` turn the task's decoys 
 point-losers. The `human` block is display-only (label/expected/plain shown in the
 scorecard) and never affects pass/fail.
 
-### A new EASY/MEDIUM classify task — small edit
+### TASKS_VERSION — bump when tasks or assertions change
 
-Classify rungs are not fully data-driven (the viewer holds the classify seeds in
-order; tool tasks are appended automatically on hydrate). Add the task in two
-places:
-
-1. `serve.py` `TASKS`: `"my-task": ("title", "system prompt", "user prompt", "gold label")`.
-2. `viewer/ladder.climb.html`: add the id to `TASK_IDS` and a matching seed entry
-   `{ id: "my-task", … }` to the `TASKS` array at the same index — `hydrate()`
-   overwrites classify content from `/tasks` by aligned index. (Tool tasks need
-   no viewer edit: each is appended as its own flat entry on hydrate, cycled by
-   "next task" alongside the classify rungs.)
-
-Correctness is the substring check in `classify_run()`: the gold's first token must
-appear (case-insensitively) in the model's response, so keep gold labels short and
-single-token.
+`serve.py` stamps the catalog with `TASKS_VERSION` (top-level `tasks_version` on
+`GET /tasks`). Bump it whenever a task row or its assertions change so run results
+taken against different versions stay comparable — the same discipline as the
+world's scoring contract. The viewer notes the stamp but is otherwise indifferent
+to it.
 
 ### A new tool / a new model lane — code
 
@@ -162,6 +178,52 @@ single-token.
   sampling)`) and the viewer's `LIVE_MODELS`. A genuinely new tool-call dialect
   needs a parser + a `LANE_ADAPT` row; an OpenAI-compatible gateway model is just
   a `gateway` entry.
+
+## Swapping the world (replacing Larkfield with your own domain)
+
+Larkfield (CRM / mail / tables / invoices) is one instance of a small contract.
+`env/world.py` is split so the **harness is generic over the domain**: the agent
+loop, the scorer, and the task loader all dispatch over two registries (`TOOLS`,
+`ASSERTIONS`) plus a `WorldState`. To run a different tool-using domain — a
+shopping cart, a doc tool, a coding REPL — implement that contract; the demo
+loop, the viewer, and the fixture format keep working unchanged.
+
+**Generic (leave as-is):** `call_tool`, `score_assertions`, `fresh_state`,
+`run_trajectory`, `evaluate_trajectory`, `load_tasks` — they operate over the
+registries and the state, not over Larkfield specifically.
+
+**Domain-specific (replace):** `WorldState`, the `TOOLS` registry, `TOOL_SCHEMAS`,
+the `ASSERTIONS` registry, and the `_a_*` checkers.
+
+The contract a new world implements:
+
+1. **`WorldState`** — a class holding mutable state, deep-copyable per run. The
+   harness snapshots it as `baseline` before a trajectory so the anti-shotgun
+   check can diff mutations.
+2. **`TOOLS = {name: fn}`** — each `fn(state, **args) -> dict`. **Every error is
+   recoverable**: return `{"error": …}` (see `_err`), never raise — unknown tool,
+   bad args, and missing records all return errors so the model can react. Include
+   a `finish` sentinel so the agent can end the turn.
+3. **`TOOL_SCHEMAS = {name: schema}`** — an OpenAI tool-shaped schema per tool
+   (the `_fn(name, description, properties, required)` factory is reusable);
+   `tool_schemas(allowed)` returns the subset a task exposes.
+4. **`ASSERTIONS = {type: checker}`** — each `checker(state, **params) ->
+   {passed: bool, expected: str, actual: str}`. Ship at least one **positive**
+   type (the loader rejects tasks with only negatives), and optionally
+   **negatives** (forbid an outcome) and an **anti-shotgun** check that diffs
+   `baseline`→state against an allowlist of mutation keys.
+5. **Task fixtures** — rows whose `initial_state` seeds your `WorldState` and whose
+   `assertions` reference your assertion types.
+
+The scoring contract is unchanged: `score_assertions` returns `strict` (1.0 iff
+every assertion passes) and `dense` (weighted positives, plus negative weights
+only if all positives pass — a do-nothing run cannot farm negatives).
+
+**Honest scope.** This makes the ladder reusable for a new *tool-using* domain
+without touching the viewer, the server, or the agent loop. It does not turn it
+into a generic eval harness for non-tool tasks (the classify lane is separate and
+simpler), and it stays a local demo — the path to actual RL is the export in
+[`verifiers-export.md`](verifiers-export.md).
 
 ## Running notes & gotchas
 
@@ -180,6 +242,15 @@ single-token.
   channel from the response before streaming.
 - **Gateway is billed.** Only the `glm-5.1` lane costs money; the picker marks it
   and every run is disclosed.
+
+## Path to RL: exporting to a Verifiers environment
+
+The ladder is a demo; actual RL training is Verifiers infra. Don't bake
+`verifiers` into the demo — instead **export on demand** when a workload earns
+RL. The concept + contract for that bridge lives in
+[`verifiers-export.md`](verifiers-export.md) (decision-gate → map world +
+assertions to a `StatefulToolEnv` + `Rubric` → feed `prepare-verifier-handoff`
+stage 2). Concept only; no adapter is built.
 
 ## Fuller prototype
 
