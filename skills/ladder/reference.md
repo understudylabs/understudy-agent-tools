@@ -179,6 +179,52 @@ to it.
   needs a parser + a `LANE_ADAPT` row; an OpenAI-compatible gateway model is just
   a `gateway` entry.
 
+## Swapping the world (replacing Larkfield with your own domain)
+
+Larkfield (CRM / mail / tables / invoices) is one instance of a small contract.
+`env/world.py` is split so the **harness is generic over the domain**: the agent
+loop, the scorer, and the task loader all dispatch over two registries (`TOOLS`,
+`ASSERTIONS`) plus a `WorldState`. To run a different tool-using domain — a
+shopping cart, a doc tool, a coding REPL — implement that contract; the demo
+loop, the viewer, and the fixture format keep working unchanged.
+
+**Generic (leave as-is):** `call_tool`, `score_assertions`, `fresh_state`,
+`run_trajectory`, `evaluate_trajectory`, `load_tasks` — they operate over the
+registries and the state, not over Larkfield specifically.
+
+**Domain-specific (replace):** `WorldState`, the `TOOLS` registry, `TOOL_SCHEMAS`,
+the `ASSERTIONS` registry, and the `_a_*` checkers.
+
+The contract a new world implements:
+
+1. **`WorldState`** — a class holding mutable state, deep-copyable per run. The
+   harness snapshots it as `baseline` before a trajectory so the anti-shotgun
+   check can diff mutations.
+2. **`TOOLS = {name: fn}`** — each `fn(state, **args) -> dict`. **Every error is
+   recoverable**: return `{"error": …}` (see `_err`), never raise — unknown tool,
+   bad args, and missing records all return errors so the model can react. Include
+   a `finish` sentinel so the agent can end the turn.
+3. **`TOOL_SCHEMAS = {name: schema}`** — an OpenAI tool-shaped schema per tool
+   (the `_fn(name, description, properties, required)` factory is reusable);
+   `tool_schemas(allowed)` returns the subset a task exposes.
+4. **`ASSERTIONS = {type: checker}`** — each `checker(state, **params) ->
+   {passed: bool, expected: str, actual: str}`. Ship at least one **positive**
+   type (the loader rejects tasks with only negatives), and optionally
+   **negatives** (forbid an outcome) and an **anti-shotgun** check that diffs
+   `baseline`→state against an allowlist of mutation keys.
+5. **Task fixtures** — rows whose `initial_state` seeds your `WorldState` and whose
+   `assertions` reference your assertion types.
+
+The scoring contract is unchanged: `score_assertions` returns `strict` (1.0 iff
+every assertion passes) and `dense` (weighted positives, plus negative weights
+only if all positives pass — a do-nothing run cannot farm negatives).
+
+**Honest scope.** This makes the ladder reusable for a new *tool-using* domain
+without touching the viewer, the server, or the agent loop. It does not turn it
+into a generic eval harness for non-tool tasks (the classify lane is separate and
+simpler), and it stays a local demo — the path to actual RL is the export in
+[`verifiers-export.md`](verifiers-export.md).
+
 ## Running notes & gotchas
 
 - **Use `uv`, not system python.** The local lanes need a current mlx stack; a
@@ -196,6 +242,15 @@ to it.
   channel from the response before streaming.
 - **Gateway is billed.** Only the `glm-5.1` lane costs money; the picker marks it
   and every run is disclosed.
+
+## Path to RL: exporting to a Verifiers environment
+
+The ladder is a demo; actual RL training is Verifiers infra. Don't bake
+`verifiers` into the demo — instead **export on demand** when a workload earns
+RL. The concept + contract for that bridge lives in
+[`verifiers-export.md`](verifiers-export.md) (decision-gate → map world +
+assertions to a `StatefulToolEnv` + `Rubric` → feed `prepare-verifier-handoff`
+stage 2). Concept only; no adapter is built.
 
 ## Fuller prototype
 
