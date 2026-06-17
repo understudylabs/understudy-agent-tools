@@ -231,7 +231,7 @@ conservative claims.
 capability worker per intent. The workers are grouped by journey stage; deeper
 playbooks live in each skill's `references/` directory:
 
-- **Setup & first run** — install-plugin, onboard
+- **Setup & first run** — install-plugin, onboard, ladder (the onboarding "climb")
 - **Understand & capture** — understand-workload, ingest-traces (incl. the
   capture-directory profiler), capture-evidence (incl. the public-benchmark
   on-ramp), design-simulated-environment
