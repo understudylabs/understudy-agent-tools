@@ -44,22 +44,25 @@ work — do not re-run the full interview. Only first-timers get the full flow.
 1. **Start the slow thing first (background).** Detect the model runtime
    (`mlx_vlm`, `mlx_lm`, `ollama`, `llama-server`, `lms`). On Apple Silicon, the
    opinionated first out-of-box target is the smallest verified Gemma 4 local
-   Understudy: `google/gemma-4-e2b-it`, converted by Understudy with
-   `mlx-vlm 0.6.2` to 4-bit MLX safetensors. The verified snapshot is stored at
-   `https://models.understudylabs.com/session?model=gemma-4-e2b-it-mlx-vlm-4bit`
+   Understudy: the **QAT-derived** `gemma-4-e2b-it-qat-mlx-vlm-understudy` —
+   `google/gemma-4-E2B-it` QAT weights converted by Understudy to MLX 4-bit at
+   `group_size=32` (matching Q4_0's block structure). The verified snapshot is
+   stored at
+   `https://models.understudylabs.com/session?model=gemma-4-e2b-it-qat-mlx-vlm-understudy`
    (R2 source:
-   `r2://understudy-model-snapshots/models/google/gemma-4-e2b-it/mlx-vlm-0.6.2/quant-4bit/`).
-   It is about 3.3 GB on disk and generated locally at
-   about 218 tok/s in testing. Announce the model, quantization, size, source,
-   and ETA, get a quick yes, then route through
+   `r2://understudy-model-snapshots/models/google/gemma-4-e2b-it/mlx-vlm-0.6.2/qat-understudy-4bit-g32/`).
+   It is about 3.6 GB on disk, runs at ~3.9 GB peak memory (~2.6x less than
+   BF16), and is 4/4 certified (generation, Pi/OpenAI-compat, logprobs, tool
+   calls) at the prescribed decode. Announce the model, quantization, size,
+   source, and ETA, get a quick yes, then route through
    [`../manage-local-models/SKILL.md`](../manage-local-models/SKILL.md) to run
    the skill-owned pull helper:
    ```bash
-   node scripts/pull-understudy-snapshot.mjs --model gemma-4-e2b-it-mlx-vlm-4bit
+   node scripts/pull-understudy-snapshot.mjs --model gemma-4-e2b-it-qat-mlx-vlm-understudy
    ```
    Resolve the script relative to the `manage-local-models` skill directory.
    This caches the first Understudy under
-   `~/.understudy/models/gemma-4-e2b-it-mlx-vlm-4bit` and logs progress/ETA under
+   `~/.understudy/models/gemma-4-e2b-it-qat-mlx-vlm-understudy` and logs progress/ETA under
    `~/.understudy/agent-tools/logs/`. If the MLX runtime is missing, the slow
    step is *install MLX + pull* — get one quick approval, then background it. If
    the Gemma 4 snapshot URL is unavailable, fall back to
@@ -102,10 +105,10 @@ work — do not re-run the full interview. Only first-timers get the full flow.
    Coach the user to open a
    terminal of their choice and attach to the tmux session, or launch it from the
    agent if they ask. Use:
-   ```bash
-   FIRST_REPO="$HOME/.understudy/models/gemma-4-e2b-it-mlx-vlm-4bit" \
-     skills/run-local-model-lab/scripts/arena.sh first
-   ```
+    ```bash
+    FIRST_REPO="$HOME/.understudy/models/gemma-4-e2b-it-qat-mlx-vlm-understudy" \
+      skills/run-local-model-lab/scripts/arena.sh first
+    ```
    The pane says their first local Understudy is ready and opens Pi on verified
    Gemma 4 E2B. Have them try one real prompt only to prove local inference is
    real and inspectable. If Pi is not installed, run one local generation and print:
@@ -131,10 +134,10 @@ work — do not re-run the full interview. Only first-timers get the full flow.
    local specialization sequencing in the
    [`understudy`](../understudy/SKILL.md) orchestrator's routing section and
    run:
-   ```bash
-   LEFT_REPO="$HOME/.understudy/models/gemma-4-e2b-it-mlx-vlm-4bit" \
-     skills/run-local-model-lab/scripts/arena.sh play
-   ```
+    ```bash
+    LEFT_REPO="$HOME/.understudy/models/gemma-4-e2b-it-qat-mlx-vlm-understudy" \
+      skills/run-local-model-lab/scripts/arena.sh play
+    ```
    Otherwise keep going through workload understanding, capture evidence, and
    local evaluation against the actual task slice.
 

@@ -68,12 +68,12 @@ locations and registry links are in [`reference.md`](reference.md).
    installer. Resolve the script relative to this skill directory and run it
    after approval:
    ```bash
-   node scripts/pull-understudy-snapshot.mjs --model gemma-4-e2b-it-mlx-vlm-4bit
+   node scripts/pull-understudy-snapshot.mjs --model gemma-4-e2b-it-qat-mlx-vlm-understudy
    ```
    Use `--dry-run` first when you need to show destination/log paths without
    downloading:
    ```bash
-   node scripts/pull-understudy-snapshot.mjs --model gemma-4-e2b-it-mlx-vlm-4bit --dry-run
+   node scripts/pull-understudy-snapshot.mjs --model gemma-4-e2b-it-qat-mlx-vlm-understudy --dry-run
    ```
    The helper downloads signed per-file URLs from
    `models.understudylabs.com`, writes into `~/.understudy/models`, verifies
@@ -81,18 +81,32 @@ locations and registry links are in [`reference.md`](reference.md).
    `~/.understudy/agent-tools/logs/model-pull-*.log`. For non-Understudy
    sources, use the native runtime pull (`ollama pull`, `hf download`, LM
    Studio) and keep the same approval boundary.
-5. **Verify + record.** Once cached, run a one-line generation to confirm it
+5. **Serve from the manifest, not from memory.** Each verified artifact ships an
+   `understudy.serving.json` (see [`references/serving-manifest.md`](references/serving-manifest.md))
+   encoding the exact launcher, required flags, and prescribed decode. Emit the
+   correct serve command with the helper rather than hand-specifying flags:
+   ```bash
+   node scripts/serve-understudy-snapshot.mjs --model gemma-4-e2b-it-qat-mlx-vlm-understudy        # print the exact command
+   node scripts/serve-understudy-snapshot.mjs --model gemma-4-e2b-it-qat-mlx-vlm-understudy --exec  # spawn it
+   ```
+   This is what prevents the recurring config mistakes: a forgotten
+   `--top-logprobs-k 20` (mlx_vlm defaults it to 0 and silently gates
+   `top_logprobs`), the wrong sampling (greedy is off-spec for `do_sample: true`
+   models), or a mis-wired MTP draft.
+6. **Verify + record.** Once cached, run a one-line generation to confirm it
    loads and does tool calls if the workload needs them. Append the model to
    `local_models` in the profile (id, runtime, quant, size, date).
 
    **Also pre-research and record the recommended serving settings, at pull
-   time, not at bench time.** Read the snapshot's `generation_config.json`
-   (sampling: `do_sample`, `temperature`, `top_p`/`top_k`, schedules) and the
-   model card's serving guidance, and record them alongside the model entry in
-   the profile (e.g. `serving: {temperature: 1.0, top_k: 64, top_p: 0.95}`).
-   Local servers are not neutral: MLX servers map an omitted temperature to 0
-   (greedy), which is off-spec for every `do_sample: true` model and breaks
-   diffusion LMs outright. The pre-researched ladder settings live in
+   time, not at bench time.** Read the snapshot's `understudy.serving.json`
+   (preferred — it is the machine-readable source of truth) or, if absent,
+   `generation_config.json` (sampling: `do_sample`, `temperature`,
+   `top_p`/`top_k`, schedules) and the model card's serving guidance, and record
+   them alongside the model entry in the profile (e.g.
+   `serving: {temperature: 1.0, top_k: 64, top_p: 0.95}`). Local servers are not
+   neutral: MLX servers map an omitted temperature to 0 (greedy), which is
+   off-spec for every `do_sample: true` model and breaks diffusion LMs outright.
+   The pre-researched ladder settings live in
    [`reference.md`](reference.md) — check there before serving anything from
    the verified ladder.
 6. **Curate.** Offer to remove superseded or oversized weights to reclaim disk;

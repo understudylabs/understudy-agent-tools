@@ -78,7 +78,8 @@ or graduate remote when local quality is the bottleneck.
 
 | Rung | Runtime | Snapshot / source | Use when |
 |---|---|---|---|
-| Gemma 4 E2B 4-bit | `mlx_vlm.server` | `https://models.understudylabs.com/session?model=gemma-4-e2b-it-mlx-vlm-4bit` | Default onboarding rung. About 3.3 GB; verified local generation, Pi serving, and logprobs/top-logprobs. |
+| **Gemma 4 E2B QAT (Understudy, g32)** | `mlx_vlm.server` | `https://models.understudylabs.com/session?model=gemma-4-e2b-it-qat-mlx-vlm-understudy` | **Default onboarding rung.** QAT bf16 -> MLX 4-bit `group_size=32`. About 3.6 GB; 4/4 certified (generation, Pi/OpenAI-compat, logprobs+top_logprobs, tool_calls) at the prescribed decode (1.0/0.95/k64). Matches-or-beats vanilla BF16 on tool-call fidelity at 2.6x less memory and 2.6x faster decode. Serve with `--top-logprobs-k 20` — see `understudy.serving.json` and `references/serving-manifest.md`. |
+| Gemma 4 E2B 4-bit (vanilla) | `mlx_vlm.server` | `https://models.understudylabs.com/session?model=gemma-4-e2b-it-mlx-vlm-4bit` | Diagnostic rung (vanilla non-QAT bf16 -> MLX 4-bit). Keep it to isolate "is this a quant artifact?" questions against the QAT default. About 3.3 GB; verified generation, Pi serving, logprobs/top-logprobs. |
 | Gemma 4 E2B BF16 | `mlx_vlm.server` | `https://models.understudylabs.com/session?model=gemma-4-e2b-it-mlx-vlm-bf16` | Full-precision diagnostic rung for small-model quality checks. About 9.5 GB. |
 | Gemma 4 E4B 4-bit | `mlx_vlm.server` | `https://models.understudylabs.com/session?model=gemma-4-e4b-it-mlx-vlm-4bit` | First climb when E2B understands the task but lacks quality. About 4.8 GB; verified signed snapshot delivery. |
 | Gemma 4 E4B BF16 | `mlx_vlm.server` | `https://models.understudylabs.com/session?model=gemma-4-e4b-it-mlx-vlm-bf16` | Full-precision E4B diagnostic when 4-bit quality looks suspicious. About 15 GB. |
@@ -103,8 +104,16 @@ Skill-owned pull helper:
 
 ```bash
 cd /path/to/skills/manage-local-models
-node scripts/pull-understudy-snapshot.mjs --model gemma-4-e2b-it-mlx-vlm-4bit --dry-run
-node scripts/pull-understudy-snapshot.mjs --model gemma-4-e2b-it-mlx-vlm-4bit
+node scripts/pull-understudy-snapshot.mjs --model gemma-4-e2b-it-qat-mlx-vlm-understudy --dry-run
+node scripts/pull-understudy-snapshot.mjs --model gemma-4-e2b-it-qat-mlx-vlm-understudy
+```
+
+Once pulled, serve it with the manifest-driven helper so the required flags
+(`--top-logprobs-k 20`) and prescribed decode are applied automatically:
+
+```bash
+node scripts/serve-understudy-snapshot.mjs --model gemma-4-e2b-it-qat-mlx-vlm-understudy   # prints the exact command
+node scripts/serve-understudy-snapshot.mjs --model gemma-4-e2b-it-qat-mlx-vlm-understudy --exec  # spawns it
 ```
 
 The helper writes verified snapshots to `~/.understudy/models/<model-id>` and

@@ -36,10 +36,10 @@ workload, hand off to `run-local-model-lab`.
 
 - Apple Silicon (arm64) Mac with **`uv`** on `PATH` — the local lane needs a
   current mlx stack (system `mlx_lm` is often too old to load the model).
-- The local model cached at `~/.understudy/models/gemma-4-e2b-it-mlx-vlm-4bit` —
+- The local model cached at `~/.understudy/models/gemma-4-e2b-it-qat-mlx-vlm-understudy` —
   the `gemma-4-e2b` id resolves to **that** directory, not a dir literally named
   `gemma-4-e2b`. If it's missing, pull it with the `manage-local-models` skill
-  (`pull-understudy-snapshot.mjs --model gemma-4-e2b-it-mlx-vlm-4bit`); the server
+  (`pull-understudy-snapshot.mjs --model gemma-4-e2b-it-qat-mlx-vlm-understudy`); the server
   prints an actionable error if it's absent.
 - **Frontier lane only:** run `understudy login` once so `understudy run` can
   inject the gateway key. Without it the frontier lane returns the literal notice
