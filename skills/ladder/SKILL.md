@@ -95,7 +95,7 @@ curl -N 'http://localhost:8011/run?task=sort-email&model=gemma-4-e2b'
 
 The stream ends with a `done` event carrying the result (`correct`, `response`,
 `tok_s` for the classify rungs; `strict` / `dense` / `passes` for the hard rung).
-`GET /tasks` lists task ids (`sort-email`, `match-search`, `save-play`); `GET
+`GET /tasks` lists task ids (`sort-email`, `match-search`, `hard.sla_route`); `GET
 /models` lists the lanes.
 
 ## Safety Gates

@@ -75,9 +75,7 @@ def classify_tasks():
 # Tool-calling tasks are DATA, not code: they live in fixtures/hard/tool_tasks.jsonl
 # and load through env/world.py. EVERY task there runs through the same agent loop
 # with no per-task server code -- add a JSONL row and it is immediately live and
-# scored. The viewer's friendly "save-play" id aliases one fixture task; every other
-# task is addressed by its real fixture id (e.g. hard.sla_route).
-TASK_ALIASES = {"save-play": "hard.renewal_save_route"}
+# scored. Every task is addressed by its real fixture id (e.g. hard.sla_route).
 _TOOL_TASKS = None
 
 def tool_tasks():
@@ -89,10 +87,9 @@ def tool_tasks():
     return _TOOL_TASKS
 
 def resolve_task(task):
-    """Map a requested task id (or alias) to a real tool-task id, or None if it
-    isn't a tool task (then it's a single-shot classify task or unknown)."""
-    real = TASK_ALIASES.get(task, task)
-    return real if real in tool_tasks() else None
+    """Map a requested task id to a real tool-task id, or None if it isn't a tool
+    task (then it's a single-shot classify task or unknown)."""
+    return task if task in tool_tasks() else None
 
 _loaded = {}
 _lock = threading.Lock()
