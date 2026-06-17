@@ -711,6 +711,7 @@
   function play(){
     teardown();
     if (!TASKS.length) return;                  // hydrate not done (or server unreachable): nothing to run yet
+    if (!TASKS[idx]) idx = 0;                   // guard a stale/NaN idx (e.g. a pre-hydrate click)
     var d = TASKS[idx], f = framing(d);
     syncQuery(); syncRail();
     if (vsOn) { vsRun(); return; }                       // VS mode: two models, same task
@@ -722,6 +723,7 @@
   runBtn.addEventListener('click', play);
   vsBtn.addEventListener('click', function () { vsOn = !vsOn; applyVsLayout(); play(); });
   taskSwitch.addEventListener('click', function () {
+    if (!TASKS.length) return;                  // hydrate pending: ignore until tasks load
     idx = (idx + 1) % TASKS.length;
     play();
   });
