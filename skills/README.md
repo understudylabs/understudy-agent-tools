@@ -32,6 +32,13 @@ group it belongs to.
   [`reference.md`](onboard/reference.md).) The BYO-keys vs ZDR-gateway choice it
   needs lives in
   [`use-understudy-gateway/references/frontier-keys.md`](use-understudy-gateway/references/frontier-keys.md).
+- [`ladder`](ladder/SKILL.md) is the no-data front door: a small local web UI that
+  watches a local model and a frontier model attempt the same task side by side —
+  live reasoning, real tool calls, strict scoring — so a new user sees the
+  local-vs-frontier difference before they have any of their own traces. It is the
+  onboarding "climb"; reach for `compare-model-sweep` once you have your own eval.
+  (Architecture, the tool-call dialects, adding/swapping tasks, and the demo→RL
+  export path in its [`reference.md`](ladder/reference.md).)
 
 ## Understand & Capture
 
