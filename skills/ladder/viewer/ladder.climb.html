@@ -17,6 +17,7 @@
     --font-mono: "IBM Plex Mono", ui-monospace, "SF Mono", Menlo, monospace;
     --font-reading: "IBM Plex Sans", ui-sans-serif, system-ui, -apple-system, "Segoe UI", sans-serif;
     --settle-ease: cubic-bezier(0.2, 0.7, 0.2, 1);
+    --tool-ease: cubic-bezier(0.16, 1, 0.3, 1);   /* expo-out: smooth deceleration for the tool-column expand */
   }
   @media (prefers-color-scheme: dark) {
     :root {
@@ -29,6 +30,7 @@
       --color-warn: #E4BF69;
       --color-bad: #D97A66;
     }
+    .ui-badge { background: transparent; }
   }
   * { box-sizing: border-box; }
   html, body {
@@ -50,7 +52,7 @@
   .settle-1{animation-delay:0ms}.settle-2{animation-delay:90ms}.settle-3{animation-delay:180ms}
   .settle-4{animation-delay:270ms}.settle-5{animation-delay:360ms}.settle-6{animation-delay:450ms}
   .settle-7{animation-delay:540ms}.settle-8{animation-delay:630ms}
-  @media (prefers-reduced-motion: reduce){ .settle{ animation: none; } }
+  @media (prefers-reduced-motion: reduce){ .settle{ animation: none; } .attempt.tool .trace-col{ animation: none; } }
 
   .wrap { max-width: 720px; margin: 0 auto; padding: 56px 28px 80px; }
 
@@ -73,28 +75,67 @@
     font-weight: 400; font-size: 1.18rem; line-height: 1.5;
     margin: 18px 0 0;
   }
+  /* task rung rail: single row (scrolls only if it overflows) */
+  .rung-rail { display: flex; flex-wrap: nowrap; gap: 6px; margin: 14px 0 0; overflow-x: auto; scrollbar-width: none; }
+  .rung-rail::-webkit-scrollbar { display: none; }
+  .rung {
+    font-family: var(--font-mono); font-size: 0.62rem; text-transform: uppercase; letter-spacing: 0.12em;
+    color: var(--color-ink-muted); background: transparent; border: 1px solid var(--color-rule);
+    padding: 5px 9px; cursor: pointer; white-space: nowrap; flex: 0 0 auto;
+    transition: color 140ms ease, border-color 140ms ease, background 140ms ease;
+  }
+  .rung:hover { color: var(--color-ink); border-color: var(--color-ink-muted); }
+  .rung.active { color: var(--color-paper); background: var(--color-ink); border-color: var(--color-ink); }
+  .rung .num { opacity: 0.6; margin-right: 6px; }
+  .rung.active .num { opacity: 0.65; }
   .attempt {
     margin-top: 30px; border: 1px solid var(--color-rule);
     background: color-mix(in srgb, var(--color-paper) 96%, var(--color-ink) 4%);
     padding: 0; display: grid; grid-template-columns: 1fr auto;
   }
   .attempt .doing {
-    padding: 22px 22px; min-height: 92px;
-    display: flex; flex-direction: column; justify-content: center; gap: 16px;
+    padding: 16px 20px;
+    display: flex; flex-direction: column; justify-content: flex-start; gap: 16px;
   }
+  /* tool-calling tasks: 3 columns -- prompts/thinking | tool calls | verdict (+ score).
+     The center column expands in on the first tool call, not at run start. */
+  body.tool .wrap { max-width: 1100px; transition: max-width 340ms var(--tool-ease); }
+  .attempt .trace-col { display: none; }
+  .attempt.tool { grid-template-columns: minmax(0, 1fr) minmax(0, 1.15fr) auto; }
+  .attempt.tool .trace-col {
+    display: flex; flex-direction: column; gap: 14px; justify-content: flex-start;
+    padding: 16px 20px; border-left: 1px solid var(--color-rule); min-width: 0;
+    animation: trace-in 340ms var(--tool-ease) both;
+  }
+  .attempt.tool #traceLine { max-height: 60vh; overflow-y: auto; }   /* scroll long tool traces in place instead of growing the row */
+  @keyframes trace-in { from { opacity: 0; transform: translateX(14px); } to { opacity: 1; transform: none; } }
+  .attempt.tool .trace-col .tcall-args,
+  .attempt.tool .trace-col .tres { word-break: break-word; overflow-wrap: anywhere; }
+  /* criteria scorecard lives in the verdict column (it is the pass/fail breakdown);
+     the column widens when the scorecard arrives so the verdict stays compact mid-run */
+  .attempt.tool.scored .verdict { width: 248px; justify-content: flex-start; gap: 12px; }
+  .attempt.tool.scored .verdict-head { flex-direction: row; gap: 8px; }
+  .attempt.tool.scored #scoreBlock { align-self: stretch; margin-top: 0; border-top: 1px solid var(--color-rule); padding-top: 12px; }
   .io { display: flex; flex-direction: column; gap: 5px; }
   .ioval {
     font-family: var(--font-mono); font-size: 0.8rem; line-height: 1.5;
     color: var(--color-ink); white-space: pre-wrap;
   }
-  /* foldable context: collapse system -> user -> thinking so the trace + result lead */
-  .io.foldable > .who { cursor: pointer; user-select: none; display: inline-flex; align-items: center; gap: 6px; width: fit-content; }
-  .io.foldable > .who::after { content: "\25BE"; font-size: 0.62em; color: var(--color-ink-muted); }
-  .io.collapsed > .who::after { content: "\25B8"; }
+  /* foldable context blocks: click the label to collapse/expand */
+  .io.foldable > .who {
+    cursor: pointer; user-select: none; display: inline-flex; align-items: center; gap: 6px;
+    width: fit-content; padding: 1px 5px 1px 0; border-radius: 2px;
+    transition: color 140ms ease, background 140ms ease;
+  }
+  .io.foldable > .who::after { content: "\25BE"; font-size: 0.72em; color: var(--color-ink-muted); transition: color 140ms ease; }
+  .io.collapsed > .who::after { content: "\25B8"; color: var(--color-ink); }   /* stronger chevron when folded: signals it expands */
+  .io.foldable > .who:hover { color: var(--color-ink); background: color-mix(in srgb, var(--color-ink) 6%, transparent); }
+  .io.foldable > .who:hover::after { color: var(--color-ink); }
   .io.collapsed > .ioval, .io.collapsed > .think { display: none; }
   .fold-preview { display: none; }
   .io.collapsed > .fold-preview {
-    display: block; font-family: var(--font-mono); font-size: 0.76rem; color: var(--color-ink-muted);
+    display: block; font-family: var(--font-mono); font-size: 0.76rem;
+    color: color-mix(in srgb, var(--color-ink-muted) 58%, var(--color-paper));  /* fainter than the .who title so they don't merge */
     white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 56ch;
   }
   .think {
@@ -109,19 +150,16 @@
   .tres  { font-family: var(--font-mono); font-size: 0.78rem; color: var(--color-ink-muted); padding-left: 16px; margin-top: 2px; line-height: 1.5; }
   .tbad .tcall, .tbad .tres { color: var(--color-stamp); }
   #scoreBlock { margin-top: 6px; }
-  .sc-lbl { font-size: 0.62rem; text-transform: uppercase; letter-spacing: 0.16em; color: var(--color-ink-muted); margin: 0 0 10px; }
-  .chk { display: flex; align-items: flex-start; gap: 9px; font-family: var(--font-reading); font-size: 0.85rem; line-height: 1.45; margin: 7px 0; }
+  .sc-lbl { font-size: 0.62rem; text-transform: uppercase; letter-spacing: 0.16em; color: var(--color-ink-muted); margin: 0 0 10px; text-align: center; }
+  .chk { display: flex; align-items: flex-start; gap: 9px; font-family: var(--font-reading); font-size: 0.85rem; line-height: 1.45; margin: 7px 0; color: var(--color-ink); }
   .chk .mk { font-family: var(--font-mono); font-size: 0.9rem; line-height: 1.25; }
   .chk.ok .mk { color: var(--color-ink); }
   .chk.no, .chk.no .mk { color: var(--color-stamp); }
   .chk-body { display: flex; flex-direction: column; gap: 2px; min-width: 0; }
   .chk-crit { font-family: var(--font-mono); font-size: 0.7rem; color: var(--color-ink-muted); line-height: 1.4; word-break: break-word; overflow-wrap: anywhere; }
   .chk.no .chk-crit { color: color-mix(in srgb, var(--color-stamp) 72%, var(--color-ink-muted)); }
-  /* house badge (from understudy-design mood board: .ui-badge with status dot) */
-  .ui-badge { display: inline-flex; align-items: center; gap: 6px; border: 1px solid var(--color-rule); padding: 3px 8px; color: var(--color-ink-muted); font-family: var(--font-mono); font-size: 10px; letter-spacing: 0.08em; text-transform: uppercase; vertical-align: 1px; }
-  .ui-badge::before { content: ""; width: 6px; height: 6px; border-radius: 999px; background: var(--color-ink-muted); }
-  .ui-badge.good::before { background: var(--color-good); }
-  .ui-badge.bad::before  { background: var(--color-stamp); }
+  /* house badge: filled pill in light mode, outline-only in dark mode; no status bullet */
+  .ui-badge { display: inline-flex; align-items: center; border: 1px solid var(--color-rule); padding: 3px 8px; color: var(--color-ink-muted); font-family: var(--font-mono); font-size: 10px; letter-spacing: 0.08em; text-transform: uppercase; vertical-align: 1px; background: color-mix(in srgb, var(--color-ink) 8%, var(--color-paper)); }
   .ui-badge.bad { color: var(--color-stamp); border-color: color-mix(in srgb, var(--color-stamp) 45%, var(--color-rule)); }
   .tcall-args { font-family: var(--font-mono); font-size: 0.78rem; color: var(--color-ink-muted); margin-left: 9px; }
   .tbad .tcall-args { color: var(--color-stamp); }
@@ -146,9 +184,10 @@
   @media (prefers-reduced-motion: reduce) { .loading-note { animation: none; opacity: 0.7; } }
   .verdict {
     border-left: 1px solid var(--color-rule);
-    width: 132px; display: flex; flex-direction: column;
+    width: 132px; padding: 16px; display: flex; flex-direction: column;
     align-items: center; justify-content: center; gap: 10px;
     color: var(--color-ink-muted);
+    transition: width 340ms var(--tool-ease);
   }
   .verdict svg { display: block; }
   .verdict .word {
@@ -157,6 +196,7 @@
   .verdict.landed { color: var(--color-good); }
   .verdict.broke  { color: var(--color-bad); }
   .verdict.pending { opacity: 0.45; }
+  .verdict-head { display: flex; flex-direction: column; align-items: center; gap: 10px; }
 
   .replaybar {
     margin-top: 14px; display: flex; align-items: center; gap: 14px;
@@ -242,7 +282,7 @@
   }
   .replaybar button#runBtn:hover { border-color: var(--color-ink); opacity: 0.86; }
   .foot {
-    margin-top: 56px; padding-top: 16px; border-top: 1px solid var(--color-rule);
+    margin-top: 28px; padding-top: 14px; border-top: 1px solid var(--color-rule);
     font-size: 0.68rem; text-transform: uppercase; letter-spacing: 0.16em;
     color: var(--color-ink-muted); display: flex; justify-content: space-between; gap: 16px;
   }
@@ -257,6 +297,8 @@
     <div class="pad">
       <p class="eyebrow settle settle-1"><span class="stamp-dot"></span>watch a model try a task</p>
 
+      <div class="rung-rail settle settle-2" id="rungRail"></div>
+
       <p class="task-line settle settle-2" id="taskLine">
         Sort this customer email into the right inbox.
       </p>
@@ -267,18 +309,21 @@
           <div class="io foldable" id="userIo"><span class="who">user prompt</span><span class="fold-preview"></span><span class="ioval" id="userLine"></span></div>
           <div class="io foldable" id="thinkBlock"><span class="who">thinking</span><span class="fold-preview"></span><span class="think" id="thinkLine"><span class="cursor"></span></span></div>
           <div class="io" id="respBlock"><span class="who">response</span><span class="act" id="actLine"></span></div>
+        </div>
+        <div class="trace-col">
           <div class="io" id="traceBlock" style="display:none"><span class="who">tool calls</span><div id="traceLine"></div></div>
-          <div id="scoreBlock" style="display:none"></div>
         </div>
         <div class="verdict pending" id="verdict">
-          <span id="verdictMark"></span>
-          <span class="word" id="verdictWord">trying</span>
+          <div class="verdict-head">
+            <span id="verdictMark"></span>
+            <span class="word" id="verdictWord">trying</span>
+          </div>
+          <div id="scoreBlock" style="display:none"></div>
         </div>
       </div>
 
       <div id="vsWrap" style="display:none"><div class="vs-grid" id="vsGrid"></div></div>
 
-      <div class="models" id="hardPicker" style="display:none"></div>
       <div class="models" id="modelPicker" style="display:none"></div>
       <div class="models" id="modelPickerB" style="display:none"></div>
       <div class="replaybar settle settle-4">
@@ -291,35 +336,30 @@
   </section>
 
   <!-- ============================================================= FOOT -->
-  <section>
-    <div class="foot">
-      <span class="wordmark">understudy</span>
-    </div>
-  </section>
+  <div class="foot">
+    <span class="wordmark">understudy</span>
+  </div>
 
 </div>
 
 <script>
 (function () {
   // --- synthetic Larkfield content: the seed shown before the server's /tasks
-  //     catalog hydrates. The classify rungs get overwritten by hydrate(); the
-  //     hard rung is just flagged so play() routes it to the tool-calling surface. ---
+  //     catalog hydrates. Two classify seeds (overwritten by hydrate()); each tool
+  //     task is appended in hydrate() so the rail treats them as flat rungs. ---
+  var HARD_SYS = "Apply the latest discount, mark the subscription Saved with the new price in USD, and email the right teams per the save-play policy.";
   var TASKS = [
     {
+      id: "sort-email",
       task: "Sort this customer email into the right inbox.",
       system: "Route the email to exactly one inbox: billing_urgent, billing_normal, technical, sales_lead, or spam. Reply with just the label.",
       user: "From: pat@maple.example\nSubject: charged twice\nI got billed twice this morning and it's holding up payroll. Please fix this today."
     },
     {
+      id: "match-search",
       task: "Decide how a product relates to a shopper's search.",
       system: "Label the product against the search: Exact, Substitute, Complement, or Irrelevant. Reply with just the label.",
       user: "search: running shoes\nproduct: merino ankle socks, cushioned, 3-pack"
-    },
-    {
-      task: "Run the renewal save play: apply the discount, update the plan, email the right team.",
-      system: "Apply the latest discount, mark the subscription Saved with the new price in USD, and email the right teams per the save-play policy.",
-      user: "Nova Retail · Growth · EUR 4000 · At-Risk · renews soon.\nTools: get_account, read_policy, update_subscription, send_mail, finish.",
-      hard: true
     }
   ];
 
@@ -327,6 +367,7 @@
   var xMark     = '<svg width="26" height="26" viewBox="0 0 26 26" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="13" cy="13" r="11"/><path d="M9 9l8 8M17 9l-8 8"/></svg>';
 
   var taskLine   = document.getElementById('taskLine');
+  var rungRail   = document.getElementById('rungRail');
   var sysLine    = document.getElementById('sysLine');
   var userLine   = document.getElementById('userLine');
   var replayBtn  = document.getElementById('replayBtn');
@@ -334,7 +375,6 @@
   var runBtn     = document.getElementById('runBtn');
   var modelPicker= document.getElementById('modelPicker');
   var modelPickerB= document.getElementById('modelPickerB');
-  var hardPicker = document.getElementById('hardPicker');
   var vsBtn      = document.getElementById('vsBtn');
   var vsWrap     = document.getElementById('vsWrap');
   var vsGrid     = document.getElementById('vsGrid');
@@ -365,13 +405,13 @@
 
   var idx = 0;
 
-  var TASK_IDS = ["sort-email", "match-search", "save-play"];
+  var TASK_IDS = ["sort-email", "match-search"];
   var LIVE_MODELS = [
     { id: "gemma-4-e2b",   label: "gemma-4-e2b" },
     { id: "glm-5.1",       label: "glm-5.1 · frontier", billed: true }
   ];
   var curModel = "gemma-4-e2b";
-  var curHardTask = "save-play";    // hard-rung target; hydrate() swaps to a real fixture id
+  var FLAT_BUILT = false;           // guard: append tool tasks to TASKS only once
   var CATALOG = {};                 // id -> server task (from /tasks)
   var TOOL_TASKS = [];              // [{id,title,tools,checks}] available for the hard rung
   var curModelB = "glm-5.1";        // VS mode: the second model
@@ -384,11 +424,16 @@
     vsConns.forEach(function (c) { c.close(); }); vsConns = [];
   }
 
-  // ---- task catalog: hydrate the 3 rungs from the server ----
-  // The easy/medium rungs take their content from /tasks; the hard rung becomes a
-  // picker over whatever tool tasks the fixtures define. Edit a fixture or the
+  // ---- task catalog: hydrate classify content + flatten tool tasks from the server ----
+  // Classify seeds pull their content from /tasks; each tool task (kind 'tool') is
+  // appended once (FLAT_BUILT guard) as its own flat rung. Edit a fixture or the
   // server's task list and it reflects here -- no change to this page.
-  function humanizeTask(id){ return id.replace(/^hard\./, '').replace(/_/g, ' '); }
+  function humanizeTask(id){ return id.replace(/^hard\./, '').replace(/[-_]/g, ' '); }
+  var RAIL_LABELS = {   // friendly rail names; falls back to humanizeTask when absent
+    "sort-email": "categorization", "match-search": "classification",
+    "hard.renewal_save_route": "task routing", "hard.ap_approval_threshold": "policy approval",
+    "hard.sla_route": "operations"
+  };
   function firstSentence(s){
     s = (s || '').trim();
     var m = s.match(/^(.+?[.!?])(\s|$)/);
@@ -404,7 +449,12 @@
           TASKS[i].task = t.title; TASKS[i].system = t.system; TASKS[i].user = t.user;
         }
       });
-      if (TOOL_TASKS.length) { curHardTask = TOOL_TASKS[0].id; }   // default hard rung -> first fixture
+      if (!FLAT_BUILT) {                               // flatten: each tool task is its own entry
+        TOOL_TASKS.forEach(function (t) {
+          TASKS.push({ id: t.id, task: firstSentence(t.title), system: HARD_SYS, user: t.title });
+        });
+        FLAT_BUILT = true;
+      }
     }).catch(function () { /* server unreachable: keep the seed content */ });
   }
 
@@ -483,15 +533,6 @@
       pick: function (m) { curModelB = m.id; pickModelB(); play(); }
     });
   }
-  function pickHard(){
-    if (!TOOL_TASKS.length) { hardPicker.innerHTML = ''; return; }
-    buildPicker(hardPicker, TOOL_TASKS, {
-      label: 'task', text: function (t) { return humanizeTask(t.id); }, id: function (t) { return t.id; },
-      active: function () { return curHardTask; },
-      title: function (t) { return (t.tools ? t.tools.length + ' tools · ' : '') + (t.checks != null ? t.checks + ' checks' : ''); },
-      pick: function (t) { curHardTask = t.id; pickHard(); play(); }
-    });
-  }
 
   // ---- VS mode: build a pane that mirrors the single-attempt element set ----
   function makePane(model, which){
@@ -557,6 +598,7 @@
   // tool_call/result, check, strict). Returns a handle so the caller can close it.
   function streamInto(els, taskId, model){
     var es = null, gotResp = false, settled = false, loading = false, isHard = false, rows = {}, scoreOpen = false;
+    var attemptEl = els.verdict && els.verdict.parentElement;   // the .attempt (single mode) owns the 3-col tool layout
     // reset the pane to its pending state (the single-attempt pane is reused across runs)
     if (els.thinkBlock) { els.thinkBlock.style.display = 'none'; els.thinkLine.textContent = ''; }
     if (els.respBlock) els.respBlock.style.display = '';
@@ -564,10 +606,12 @@
     if (els.traceBlock) { els.traceBlock.style.display = 'none'; els.traceLine.innerHTML = ''; }
     if (els.scoreBlock) { els.scoreBlock.style.display = 'none'; els.scoreBlock.innerHTML = ''; }
     els.verdict.className = els.verdictClass + ' pending'; els.verdictMk.innerHTML = ''; els.verdictWd.textContent = 'running';
+    if (attemptEl && attemptEl.classList.contains('attempt')) { attemptEl.classList.remove('tool', 'scored'); document.body.classList.remove('tool'); }
     if (els.sysIo) { setFold(els.sysIo, false); setFold(els.userIo, false); setFold(els.thinkBlock, false); }  // start expanded
 
     function openScore(){ if (scoreOpen) return; scoreOpen = true; els.scoreBlock.style.display = '';
-      var l = document.createElement('div'); l.className = 'sc-lbl'; l.textContent = 'criteria · expected vs. actual'; els.scoreBlock.appendChild(l); }
+      if (attemptEl && attemptEl.classList.contains('attempt')) attemptEl.classList.add('scored');   // widen the verdict column for the criteria breakdown
+      var l = document.createElement('div'); l.className = 'sc-lbl'; l.textContent = 'expected vs. actual'; els.scoreBlock.appendChild(l); }
     function clearLoading(){ if (loading) { loading = false; els.actLine.textContent = ''; els.verdictWd.textContent = 'running'; } }
     function verdictOf(ok){ els.verdict.className = els.verdictClass + ' ' + (ok ? 'landed' : 'broke');
       els.verdictMk.innerHTML = ok ? checkMark : xMark; els.verdictWd.textContent = ok ? 'Pass' : 'Fail'; }
@@ -587,15 +631,15 @@
       } else if (m.type === 'tool_call') {
         clearLoading();
         if (!isHard) { isHard = true; els.respBlock.style.display = 'none'; els.traceBlock.style.display = '';
-          if (els.sysIo) { setFold(els.sysIo, true); setFold(els.userIo, true); setFold(els.thinkBlock, true); }  // fold context once the trace leads
-        }
+          if (attemptEl && attemptEl.classList.contains('attempt')) { attemptEl.classList.add('tool'); document.body.classList.add('tool'); } }   // expand to 3 columns on the first tool call
         var row = document.createElement('div'); row.className = 'tstep';
         var c = document.createElement('div'); c.className = 'tcall';
         var badge = document.createElement('span'); badge.className = 'ui-badge'; badge.textContent = m.name; c.appendChild(badge);
         var a = fmtArgs(m.args); if (a) { var ae = document.createElement('span'); ae.className = 'tcall-args'; ae.textContent = a; c.appendChild(ae); }
         row.appendChild(c); els.traceLine.appendChild(row); rows[m.id] = row;
       } else if (m.type === 'tool_result') {
-        var rw = rows[m.id]; if (!rw) return; if (!m.ok) rw.className += ' tbad';
+        var rw = rows[m.id]; if (!rw) return;
+        if (!m.ok) { rw.className += ' tbad'; var bd = rw.querySelector('.ui-badge'); if (bd) bd.classList.add('bad'); }
         var r = document.createElement('div'); r.className = 'tres'; r.textContent = '→ ' + fmtResult(m.result); rw.appendChild(r);
       } else if (m.type === 'check') {
         openScore(); els.scoreBlock.appendChild(checkRow(m));
@@ -620,16 +664,10 @@
     return { close: function () { if (es) { es.close(); es = null; } } };
   }
 
-  // resolve the task being run: a hard rung targets the picked fixture and shows its
-  // catalog title; a classify rung shows the seed/hydrated content.
+  // resolve the task being run: every entry (classify or tool) carries its own id +
+  // display text, so tool-calling tasks are framed exactly like the classify ones.
   function framing(d){
-    var cat = d.hard ? CATALOG[curHardTask] : null;
-    return {
-      taskId: d.hard ? curHardTask : TASK_IDS[idx],
-      title: (d.hard && cat) ? firstSentence(cat.title) : d.task,
-      system: d.system,
-      user: (d.hard && cat) ? cat.title : d.user
-    };
+    return { taskId: d.id, title: d.task, system: d.system, user: d.user };
   }
 
   function vsRun(){
@@ -645,6 +683,7 @@
 
   function applyVsLayout(){
     document.body.classList.toggle('vs', vsOn);
+    if (vsOn) document.body.classList.remove('tool');   // VS owns the widened wrap; drop any single-tool class
     singleAttempt.style.display = vsOn ? 'none' : '';
     vsWrap.style.display = vsOn ? '' : 'none';
     modelPicker.style.display = vsOn ? 'none' : '';
@@ -652,10 +691,48 @@
     vsBtn.textContent = vsOn ? '◂ single' : 'compare two ▸';
   }
 
+  // ---- deep links: task + model (+ VS) live in the URL so any view is shareable ----
+  function taskIndexForId(id){ for (var i = 0; i < TASKS.length; i++) { if (TASKS[i].id === id) return i; } return -1; }
+  function validModel(id){ return LIVE_MODELS.some(function (m) { return m.id === id; }) ? id : null; }
+  function applyQuery(){
+    var p = new URLSearchParams(location.search);
+    var tid = p.get('task'); if (tid) { var i = taskIndexForId(tid); if (i >= 0) idx = i; }
+    var md = validModel(p.get('model')); if (md) curModel = md;
+    var mdB = validModel(p.get('modelB')); if (mdB) curModelB = mdB;
+    if (p.get('vs') === '1') vsOn = true;
+  }
+  function syncQuery(){
+    var t = TASKS[idx]; if (!t) return;
+    var p = new URLSearchParams();
+    p.set('task', t.id); p.set('model', curModel);
+    if (vsOn) { p.set('vs', '1'); p.set('modelB', curModelB); }
+    var qs = p.toString();
+    history.replaceState(null, '', location.pathname + (qs ? '?' + qs : ''));
+  }
+
+  // ---- task rung rail: one chip per task, click to jump ----
+  function buildRail(){
+    rungRail.innerHTML = '';
+    TASKS.forEach(function (t, i) {
+      var r = document.createElement('button'); r.type = 'button'; r.className = 'rung';
+      r.innerHTML = '<span class="num">' + (i + 1) + '</span>' + (RAIL_LABELS[t.id] || humanizeTask(t.id));
+      r.title = t.task;
+      r.addEventListener('click', function () { if (i === idx) return; idx = i; play(); });
+      rungRail.appendChild(r);
+    });
+  }
+  function syncRail(){
+    for (var i = 0; i < rungRail.children.length; i++) {
+      var on = i === idx;
+      rungRail.children[i].classList.toggle('active', on);
+      rungRail.children[i].setAttribute('aria-current', on ? 'step' : 'false');
+    }
+  }
+
   function play(){
     teardown();
     var d = TASKS[idx], f = framing(d);
-    hardPicker.style.display = (d.hard && TOOL_TASKS.length) ? '' : 'none';
+    syncQuery(); syncRail();
     if (vsOn) { vsRun(); return; }                       // VS mode: two models, same task
     taskLine.textContent = f.title; sysLine.textContent = f.system; userLine.textContent = f.user;
     single = streamInto(globalEls, f.taskId, curModel);
@@ -677,8 +754,9 @@
   replayBtn.style.display = 'none';
   modelPicker.style.display = '';
   vsBtn.style.display = '';
+  applyQuery();                                       // ?model/&vs apply now; task resolves fully post-hydrate
   pickModel();
-  hydrate().then(function () { pickHard(); play(); });   // pull the task catalog, then run
+  hydrate().then(function () { applyQuery(); buildRail(); if (vsOn) applyVsLayout(); play(); });   // pull catalog, deep-link, run
 })();
 </script>
 </body>
