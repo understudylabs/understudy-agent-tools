@@ -300,7 +300,7 @@
       <div class="rung-rail settle settle-2" id="rungRail"></div>
 
       <p class="task-line settle settle-2" id="taskLine">
-        Sort this customer email into the right inbox.
+        loading tasks…
       </p>
 
       <div class="attempt settle settle-3" id="singleAttempt">
@@ -344,24 +344,11 @@
 
 <script>
 (function () {
-  // --- synthetic Larkfield content: the seed shown before the server's /tasks
-  //     catalog hydrates. Two classify seeds (overwritten by hydrate()); each tool
-  //     task is appended in hydrate() so the rail treats them as flat rungs. ---
-  var HARD_SYS = "Apply the latest discount, mark the subscription Saved with the new price in USD, and email the right teams per the save-play policy.";
-  var TASKS = [
-    {
-      id: "sort-email",
-      task: "Sort this customer email into the right inbox.",
-      system: "Route the email to exactly one inbox: billing_urgent, billing_normal, technical, sales_lead, or spam. Reply with just the label.",
-      user: "From: pat@maple.example\nSubject: charged twice\nI got billed twice this morning and it's holding up payroll. Please fix this today."
-    },
-    {
-      id: "match-search",
-      task: "Decide how a product relates to a shopper's search.",
-      system: "Label the product against the search: Exact, Substitute, Complement, or Irrelevant. Reply with just the label.",
-      user: "search: running shoes\nproduct: merino ankle socks, cushioned, 3-pack"
-    }
-  ];
+  // --- task catalog. Built entirely from GET /tasks in hydrate() -- the server is
+  //     the single source of truth, so adding any task (classify or tool) is just
+  //     appending one fixture row on the server, with no edit to this page. ---
+  var TASKS = [];            // [{id, task, system, user}] in the server's order (classify then tool)
+  var TASKS_VERSION = null;  // catalog stamp from /tasks (informational; the viewer is otherwise indifferent to it)
 
   var checkMark = '<svg width="26" height="26" viewBox="0 0 26 26" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="13" cy="13" r="11"/><path d="M8 13.5l3.2 3.2L18 9.5"/></svg>';
   var xMark     = '<svg width="26" height="26" viewBox="0 0 26 26" fill="none" stroke="currentColor" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"><circle cx="13" cy="13" r="11"/><path d="M9 9l8 8M17 9l-8 8"/></svg>';
@@ -405,15 +392,11 @@
 
   var idx = 0;
 
-  var TASK_IDS = ["sort-email", "match-search"];
   var LIVE_MODELS = [
     { id: "gemma-4-e2b",   label: "gemma-4-e2b" },
     { id: "glm-5.1",       label: "glm-5.1 · frontier", billed: true }
   ];
   var curModel = "gemma-4-e2b";
-  var FLAT_BUILT = false;           // guard: append tool tasks to TASKS only once
-  var CATALOG = {};                 // id -> server task (from /tasks)
-  var TOOL_TASKS = [];              // [{id,title,tools,checks}] available for the hard rung
   var curModelB = "glm-5.1";        // VS mode: the second model
   var vsOn = false;                 // VS (compare-two) mode active?
   var single = null;                // live single-pane stream handle
@@ -424,10 +407,10 @@
     vsConns.forEach(function (c) { c.close(); }); vsConns = [];
   }
 
-  // ---- task catalog: hydrate classify content + flatten tool tasks from the server ----
-  // Classify seeds pull their content from /tasks; each tool task (kind 'tool') is
-  // appended once (FLAT_BUILT guard) as its own flat rung. Edit a fixture or the
-  // server's task list and it reflects here -- no change to this page.
+  // ---- task catalog: built entirely from GET /tasks ----
+  // The server is the single source of truth: classify rungs and tool rungs arrive
+  // in one ordered list, and this page frames them identically. Add any task by
+  // appending one fixture row on the server -- no edit here.
   function humanizeTask(id){ return id.replace(/^hard\./, '').replace(/[-_]/g, ' '); }
   var RAIL_LABELS = {   // friendly rail names; falls back to humanizeTask when absent
     "sort-email": "categorization", "match-search": "classification",
@@ -441,21 +424,17 @@
   }
   function hydrate(){
     return fetch('/tasks').then(function (r) { return r.json(); }).then(function (j) {
-      (j.tasks || []).forEach(function (t) { CATALOG[t.id] = t; });
-      TOOL_TASKS = (j.tasks || []).filter(function (t) { return t.kind === 'tool'; });
-      TASK_IDS.forEach(function (id, i) {              // classify rungs pull content from the server
-        var t = CATALOG[id];
-        if (t && t.kind === 'classify' && TASKS[i]) {
-          TASKS[i].task = t.title; TASKS[i].system = t.system; TASKS[i].user = t.user;
+      TASKS_VERSION = j.tasks_version || null;
+      (j.tasks || []).forEach(function (t) {
+        if (t.kind === 'classify') {
+          TASKS.push({ id: t.id, task: t.title, system: t.system, user: t.user });
+        } else if (t.kind === 'tool') {
+          // display system is cosmetic: the real agent system prompt arrives in the
+          // run's first (meta) event and overwrites sysLine then.
+          TASKS.push({ id: t.id, task: firstSentence(t.title), system: t.system || '', user: t.title });
         }
       });
-      if (!FLAT_BUILT) {                               // flatten: each tool task is its own entry
-        TOOL_TASKS.forEach(function (t) {
-          TASKS.push({ id: t.id, task: firstSentence(t.title), system: HARD_SYS, user: t.title });
-        });
-        FLAT_BUILT = true;
-      }
-    }).catch(function () { /* server unreachable: keep the seed content */ });
+    }).catch(function () { /* server unreachable: TASKS stays empty, the pane keeps its placeholder */ });
   }
 
   // ---- pickers: Select dropdowns (one builder, three call sites: model A / hard task / VS model B) ----
@@ -731,6 +710,7 @@
 
   function play(){
     teardown();
+    if (!TASKS.length) return;                  // hydrate not done (or server unreachable): nothing to run yet
     var d = TASKS[idx], f = framing(d);
     syncQuery(); syncRail();
     if (vsOn) { vsRun(); return; }                       // VS mode: two models, same task
