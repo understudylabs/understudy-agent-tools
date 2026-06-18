@@ -210,10 +210,11 @@ The main lever is swapping the policy model with tools held fixed. Procedure:
    ```
 
 **A/B fallback prerequisite (generic).** A traffic split sends only the routed
-share to the chosen model; the remainder must still complete. That non-routed
-share needs a configured managed frontier fallback so untouched traffic keeps
-working during the experiment. Configure it through the normal gateway/project
-setup in
+share to the chosen model; the remainder must still complete. For keyless
+accounts, run a managed-catalog sweep on a cleared/no-route workload first. Use
+a traffic split only when the non-routed passthrough share has a configured
+managed provider credential or BYO key, so untouched traffic keeps working
+during the experiment. Configure it through the normal gateway/project setup in
 [`../../use-understudy-gateway/SKILL.md`](../../use-understudy-gateway/SKILL.md);
 this skill does not describe the internal plumbing.
 

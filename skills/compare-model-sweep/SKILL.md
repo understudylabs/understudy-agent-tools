@@ -41,10 +41,14 @@ comparison.
    and budget.
    Write it to `.understudy/model-sweeps/<timestamp>/sweep-plan.json`.
 
-2. **Normalize candidate routes.** Include each model id, endpoint/base URL,
-   loader/runtime, local-vs-remote boundary, max tokens, reasoning effort,
-   pricing basis, and whether the model is cached or requires download.
+2. **Normalize candidate routes.** Include each model id, route type
+   (`local`, `understudy-managed-catalog`, `understudy-routed`,
+   `byo-provider`, or `hosted-other`), endpoint/base URL, loader/runtime,
+   local-vs-remote boundary, max tokens, reasoning effort, pricing basis, and
+   whether the model is cached or requires download.
 
+   For remote Understudy candidates, run `understudy models list --json`;
+   prefer managed-catalog ids unless BYO provider-direct behavior is required.
 3. **Run a smoke row first.** Each candidate must complete one row without
    connection errors, empty responses, or bad model aliases. For local MLX, prefer
    verified filesystem paths or Understudy snapshot aliases over arbitrary
@@ -56,9 +60,14 @@ comparison.
    `.understudy/model-sweeps/<timestamp>/candidate-runs/<candidate>/`.
 
 5. **Summarize at the same grain.** Build `summary.csv` with candidate, route,
-   model family, tool-access mode, task count, pass rate, partial credit, total
-   tokens, cost/task, run seconds, errors, empty responses, and caveats. If
-   per-task latency is unavailable, use run-level duration and say so.
+   route type, requested model, effective model, model family, tool-access mode,
+   task count, pass rate, partial credit, total tokens, cost/task, run seconds,
+   errors, empty responses, and caveats. If per-task latency is unavailable, use
+   run-level duration and say so.
+
+   For Understudy gateway runs, capture `x-understudy-mode`,
+   `x-understudy-route`, and `x-understudy-effective-model`; exclude rows where
+   requested and effective model disagree unless that is the test.
 
    **Caching parity.** Cost columns must state each candidate's caching basis.
    If the incumbent runs cache-warmed in production (e.g. a cached primer),
@@ -101,6 +110,10 @@ Use the workload harness's JSON exports directly. Keep the command concrete in
   --tool-access "$TOOL_ACCESS" \
   --export-json ".understudy/model-sweeps/$RUN/candidate-runs/$ID/results.json"
 ```
+
+For keyless managed-catalog sweeps, use one cleared/no-route workload and vary
+only request-body `model`. Do not use a traffic split unless the non-routed
+passthrough share has a managed provider credential or BYO key.
 
 For API-workflow sweeps, keep tool-access interpretation explicit:
 

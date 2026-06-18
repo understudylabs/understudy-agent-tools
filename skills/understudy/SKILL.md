@@ -140,9 +140,9 @@ Identify the developer's current stage and load exactly one:
   gateway trace capture, project/key management, model A/B via route traffic %,
   `understudy run`, or registering an improved route →
   [`../use-understudy-gateway/SKILL.md`](../use-understudy-gateway/SKILL.md).
-- **Frontier key choice** — a local-vs-frontier comparison, installer, or agent
-  run needs to decide between BYO `.env` provider keys, the Understudy ZDR
-  gateway route, or skipping remote frontier calls →
+- **Frontier access choice** — a local-vs-frontier comparison, installer, or
+  agent run needs to decide between the Understudy managed catalog, BYO `.env`
+  provider keys, or skipping remote frontier calls →
   [`../use-understudy-gateway/SKILL.md`](../use-understudy-gateway/SKILL.md)
   and its frontier-keys lens (`references/frontier-keys.md`).
 - **Production ramp / rollback** — a route decision exists and live traffic
@@ -230,8 +230,9 @@ orchestrator owns the ladder — sequence workers, don't reimplement them:
    never evaluate `*-assistant` drafter checkpoints as standalone candidates.
    Use [`../manage-local-models/SKILL.md`](../manage-local-models/SKILL.md) and
    [`../run-local-model-lab/SKILL.md`](../run-local-model-lab/SKILL.md).
-2. **Optional frontier head-to-head** for calibration — the blind-arena
-   protocol in
+2. **Optional frontier head-to-head** for calibration — prefer the Understudy
+   managed catalog when the frontier id is listed, so the comparison uses one
+   gateway key and no provider key handling. Use the blind-arena protocol in
    [`../run-local-model-lab/references/blind-arena.md`](../run-local-model-lab/references/blind-arena.md).
    Preference is a gap signal, never a claim.
 3. **Freeze the eval** (`capture-evidence`; for workflow/tool tasks,

@@ -150,10 +150,11 @@ single-output optimization does not need a tool environment.
    List public model options, route the project workload to a chosen model,
    then run the frozen harness through the gateway with `understudy run`.
    Compare quality vs latency vs cost (vs side-effect safety) across candidates
-   and pick the model you would ship. Prerequisite: an A/B split sends only the
-   routed share to the chosen model; the non-routed share needs a configured
-   managed frontier fallback so untouched traffic still completes. Clear a
-   route with `--clear`. Routing detail lives in
+   and pick the model you would ship. For keyless accounts, prefer a
+   managed-catalog sweep on a cleared/no-route workload before traffic-split
+   A/B. Prerequisite for a traffic split: the non-routed passthrough share
+   needs a configured managed provider credential or BYO key so untouched
+   traffic still completes. Clear a route with `--clear`. Routing detail lives in
    [`../use-understudy-gateway/SKILL.md`](../use-understudy-gateway/SKILL.md).
    For state-mutating workflows, A/B is often simpler: run the same harness
    rows twice with only the model changed (see the reference).

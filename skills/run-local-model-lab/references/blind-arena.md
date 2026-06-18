@@ -172,7 +172,7 @@ only on reveal; if fallback happened, the reveal names the actual route used.
 
 Before a first-run duel, route through the frontier-keys decision in
 [`../../use-understudy-gateway/references/frontier-keys.md`](../../use-understudy-gateway/references/frontier-keys.md):
-BYO `.env` keys, the Understudy ZDR gateway route, or local-only skip.
+the Understudy managed catalog, BYO `.env` keys, or local-only skip.
 
 ## Hill-climb routing
 
