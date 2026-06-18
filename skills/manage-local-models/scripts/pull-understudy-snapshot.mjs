@@ -83,6 +83,13 @@ const VERIFIED_MODELS = {
     approxGb: 52,
     loader: "mlx_vlm",
   },
+  "gemma-4-26b-a4b-it-qat-mlx-vlm-understudy": {
+    sessionUrl: "https://models.understudylabs.com/session?model=gemma-4-26b-a4b-it-qat-mlx-vlm-understudy&ttl=21600",
+    destName: "gemma-4-26b-a4b-it-qat-mlx-vlm-understudy",
+    name: "Gemma 4 26B A4B IT QAT -> MLX 4-bit (group_size=32 + 8-bit routers), Understudy",
+    approxGb: 16,
+    loader: "mlx_vlm",
+  },
   "gemma-4-31b-it-mlx-vlm-4bit": {
     sessionUrl: "https://models.understudylabs.com/session?model=gemma-4-31b-it-mlx-vlm-4bit&ttl=21600",
     destName: "gemma-4-31b-it-mlx-vlm-4bit",

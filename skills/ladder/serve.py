@@ -33,13 +33,14 @@ MODEL_HOME = os.environ.get("UNDERSTUDY_MODEL_HOME") or os.path.expanduser("~/.u
 
 # id -> (lane, path-or-repo, label, sampling)
 # sampling = each model's HF-card recommendation. LFM (mlx_lm): LiquidAI's temp/top_k/rep.
-# Gemma (mlx_vlm): Google's standardized temp 1.0 / top_p 0.95 / top_k 64, and it runs with
-# enable_thinking=True so it emits a reasoning channel like the others.
+# Gemma (mlx_vlm): Google's standardized temp 1.0 / top_p 0.95 / top_k 64.
+# Classify runs can expose the reasoning channel; tool-calling uses the
+# snapshot-certified agentic path with thinking disabled.
 MODELS = {
     # gemma is our default local model for now. (8b-a1b removed for now -- re-add the
     # line below to restore it; the mlx_lm / LFM tool-calling code is left intact.)
     # "lfm2.5-8b-a1b": ("mlx_lm",  os.path.join(MODEL_HOME, "lfm2.5-8b-a1b-8bit"), "LFM 8B-A1B · thinking", {"temp": 0.2, "top_k": 80, "rep": 1.05}),
-    "gemma-4-e2b":   ("mlx_vlm", os.path.join(MODEL_HOME, "gemma-4-e2b-it-mlx-vlm-4bit"), "gemma-4-e2b · thinking", {"temp": 1.0, "top_p": 0.95, "top_k": 64}),
+    "gemma-4-e2b":   ("mlx_vlm", os.path.join(MODEL_HOME, "gemma-4-e2b-it-qat-mlx-vlm-understudy"), "gemma-4-e2b · thinking", {"temp": 1.0, "top_p": 0.95, "top_k": 64}),
     # frontier via the Understudy gateway (BILLED). Launch serve.py with `understudy run` so
     # UNDERSTUDY_API_KEY + UNDERSTUDY_GATEWAY_URL are injected — the raw key is never read from disk.
     "glm-5.1":       ("gateway", "glm-5.1", "glm-5.1 · frontier", {}),
@@ -491,17 +492,20 @@ def parse_gemma_tool_calls(text):
 
 
 def gemma_chat_turn(model_id, messages, tools, samp, max_tokens=1600):
-    """One streaming LOCAL (mlx_vlm) turn using Gemma-4's native tool-calling, reasoning
-    ON. Tools go in via the chat template's tools= kwarg; the model emits its reasoning
-    channel <|channel>thought...<channel|> then <|tool_call>call:fn{...}<tool_call|>.
+    """One streaming LOCAL (mlx_vlm) turn using Gemma-4's native tool-calling.
+    Tools go in via the chat template's tools= kwarg. The QAT default snapshot is
+    certified for agentic/tool-calling use with thinking disabled.
     Yields ('thinking',delta)/('content',delta) live, then ('final', {...}). $0."""
     from mlx_vlm import stream_generate
     from mlx_vlm.prompt_utils import apply_chat_template
     _, model, proc, config = get_model(model_id)
     try:
-        prompt = apply_chat_template(proc, config, messages, num_images=0, tools=tools, enable_thinking=True)
+        prompt = apply_chat_template(proc, config, messages, num_images=0, tools=tools, enable_thinking=False)
     except TypeError:
-        prompt = apply_chat_template(proc, config, messages, tools=tools, enable_thinking=True)
+        try:
+            prompt = apply_chat_template(proc, config, messages, tools=tools, enable_thinking=False)
+        except TypeError:
+            prompt = apply_chat_template(proc, config, messages, tools=tools)
     gkw = {"max_tokens": max_tokens}
     if samp.get("temp") is not None:
         gkw["temperature"] = samp["temp"]
