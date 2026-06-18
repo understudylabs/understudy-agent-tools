@@ -46,10 +46,11 @@ MODELS = {
     "glm-5.1":       ("gateway", "glm-5.1", "glm-5.1 · frontier", {}),
 }
 
-# Catalog version stamp. Bump whenever a task row or its assertions change so run
-# results taken against different versions stay comparable (same discipline as the
-# world's scoring contract in env/world.py). Exposed as `tasks_version` on /tasks.
-TASKS_VERSION = "1"
+# Catalog version stamp. Bump whenever a task row, assertion, scorer, or
+# execution config changes so run results taken against different versions stay
+# comparable (same discipline as the world's scoring contract in env/world.py).
+# Exposed as `tasks_version` on /tasks.
+TASKS_VERSION = "2"
 
 # Classify tasks are DATA, not code -- the same discipline as the tool tasks below.
 # Each row in fixtures/classify_tasks.jsonl is one single-shot classify rung:

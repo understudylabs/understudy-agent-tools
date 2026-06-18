@@ -52,13 +52,13 @@ function readManifest(modelId) {
 }
 
 // Build the exact serve argv from the manifest.
-function buildCommand({ manifest, host, port, mtp }) {
+function buildCommand({ manifest, dir, host, port, mtp }) {
   const s = manifest.server || {};
   if (!s.launcher || !s.model_arg) {
     throw new Error("manifest.server.launcher and model_arg are required");
   }
   const launcher = s.launcher.split(/\s+/); // e.g. ["python", "-m", "mlx_vlm.server"]
-  const argv = [...launcher, s.model_arg, manifest.model_id, "--host", host, "--port", port];
+  const argv = [...launcher, s.model_arg, dir, "--host", host, "--port", port];
   // Required flags from the manifest (e.g. ["--top-logprobs-k", "20"]).
   for (const flag of s.required_flags || []) argv.push(flag);
 
@@ -116,6 +116,7 @@ function main() {
   const { dir, manifest } = readManifest(args.model);
   const { argv, cwd } = buildCommand({
     manifest,
+    dir,
     host: args.host,
     port: args.port,
     mtp: args.mtp,
