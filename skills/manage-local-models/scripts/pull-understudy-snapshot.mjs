@@ -17,12 +17,22 @@ import { Readable, Transform, Writable } from "node:stream";
 import { pipeline } from "node:stream/promises";
 
 const VERIFIED_MODELS = {
+  "gemma-4-e2b-it-qat-mlx-vlm-understudy": {
+    sessionUrl: "https://models.understudylabs.com/session?model=gemma-4-e2b-it-qat-mlx-vlm-understudy&ttl=21600",
+    destName: "gemma-4-e2b-it-qat-mlx-vlm-understudy",
+    name: "Gemma 4 E2B IT QAT -> MLX 4-bit (group_size=32), Understudy",
+    approxGb: 3.6,
+    loader: "mlx_vlm",
+    defaultRung: true,
+    notes: "Default onboarding rung. QAT-derived 4-bit at group_size=32 (matches Q4_0 block structure). ~3.6 GB; 4/4 certified (generation, Pi/OpenAI-compat, logprobs+top_logprobs, tool_calls) at the prescribed decode. Serves via mlx_vlm.server with --top-logprobs-k 20 (see understudy.serving.json). Session URL resolves once the R2 publish completes.",
+  },
   "gemma-4-e2b-it-mlx-vlm-4bit": {
     sessionUrl: "https://models.understudylabs.com/session?model=gemma-4-e2b-it-mlx-vlm-4bit&ttl=21600",
     destName: "gemma-4-e2b-it-mlx-vlm-4bit",
     name: "Gemma 4 E2B IT MLX-VLM 4-bit",
     approxGb: 3.3,
     loader: "mlx_vlm",
+    notes: "Vanilla (non-QAT) bf16 -> MLX 4-bit. Diagnostic rung now that the QAT understudy variant is the default; keep it to isolate 'is this a quant artifact?' questions.",
   },
   "gemma-4-e2b-it-mlx-vlm-bf16": {
     sessionUrl: "https://models.understudylabs.com/session?model=gemma-4-e2b-it-mlx-vlm-bf16&ttl=21600",
@@ -71,6 +81,13 @@ const VERIFIED_MODELS = {
     destName: "gemma-4-26b-a4b-it-mlx-vlm-bf16",
     name: "Gemma 4 26B A4B IT MLX-VLM BF16",
     approxGb: 52,
+    loader: "mlx_vlm",
+  },
+  "gemma-4-26b-a4b-it-qat-mlx-vlm-understudy": {
+    sessionUrl: "https://models.understudylabs.com/session?model=gemma-4-26b-a4b-it-qat-mlx-vlm-understudy&ttl=21600",
+    destName: "gemma-4-26b-a4b-it-qat-mlx-vlm-understudy",
+    name: "Gemma 4 26B A4B IT QAT -> MLX 4-bit (group_size=32 + 8-bit routers), Understudy",
+    approxGb: 16,
     loader: "mlx_vlm",
   },
   "gemma-4-31b-it-mlx-vlm-4bit": {

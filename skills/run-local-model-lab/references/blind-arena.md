@@ -41,7 +41,7 @@ ask approval for the ~3.3 GB snapshot, and run (from the `manage-local-models`
 skill directory):
 
 ```bash
-node scripts/pull-understudy-snapshot.mjs --model gemma-4-e2b-it-mlx-vlm-4bit
+node scripts/pull-understudy-snapshot.mjs --model gemma-4-e2b-it-qat-mlx-vlm-understudy
 ```
 
 Then open it in Pi:
@@ -133,7 +133,7 @@ skills/run-local-model-lab/scripts/arena.sh play
 Or directly:
 
 ```bash
-LOCAL_BASE=http://127.0.0.1:8081/v1 LOCAL_MODEL=~/.understudy/models/gemma-4-e2b-it-mlx-vlm-4bit \
+LOCAL_BASE=http://127.0.0.1:8081/v1 LOCAL_MODEL=~/.understudy/models/gemma-4-e2b-it-qat-mlx-vlm-understudy \
 CATEGORY=coding FRONTIER_MODEL=gpt-5.5 FRONTIER_REASONING_EFFORT=none FRONTIER_MAX_COMPLETION_TOKENS=768 \
 node --experimental-strip-types skills/run-local-model-lab/scripts/blind_arena.ts
 ```

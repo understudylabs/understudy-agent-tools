@@ -160,13 +160,13 @@ weights summing to ≈1.0. Negatives + `no_extra_writes` turn the task's decoys 
 point-losers. The `human` block is display-only (label/expected/plain shown in the
 scorecard) and never affects pass/fail.
 
-### TASKS_VERSION — bump when tasks or assertions change
+### TASKS_VERSION — bump when tasks, assertions, or run semantics change
 
 `serve.py` stamps the catalog with `TASKS_VERSION` (top-level `tasks_version` on
-`GET /tasks`). Bump it whenever a task row or its assertions change so run results
-taken against different versions stay comparable — the same discipline as the
-world's scoring contract. The viewer notes the stamp but is otherwise indifferent
-to it.
+`GET /tasks`). Bump it whenever a task row, assertion, scorer, or execution
+config changes so run results taken against different versions stay comparable —
+the same discipline as the world's scoring contract. The viewer notes the stamp
+but is otherwise indifferent to it.
 
 ### A new tool / a new model lane — code
 
@@ -232,7 +232,7 @@ simpler), and it stays a local demo — the path to actual RL is the export in
   `understudy run -- uv run --with mlx-vlm --with mlx-lm python skills/ladder/serve.py`.
 - **Model cache.** Local weights load from `~/.understudy/models/<dir>` (override
   the root with `UNDERSTUDY_MODEL_HOME`) — the `gemma-4-e2b` id resolves to the
-  `gemma-4-e2b-it-mlx-vlm-4bit` directory, not one named for the id. Missing
+  `gemma-4-e2b-it-qat-mlx-vlm-understudy` directory, not one named for the id. Missing
   weights raise a clear "pull it with manage-local-models" error instead of a
   cryptic mlx load failure.
 - **One GPU.** Local-vs-local VS serializes on the inference thread;

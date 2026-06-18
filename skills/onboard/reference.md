@@ -65,7 +65,7 @@ profile. Never put secrets, prompts, outputs, or customer data in it.
   "created_at": "2026-06-06T18:00:00Z",
   "updated_at": "2026-06-06T18:05:00Z",
   "understudy": {
-    "model": "/Users/me/.understudy/models/gemma-4-e2b-it-mlx-vlm-4bit",
+    "model": "/Users/me/.understudy/models/gemma-4-e2b-it-qat-mlx-vlm-understudy",
     "name": "Gemma 4 E2B",
     "endpoint": "http://127.0.0.1:8081/v1",
     "health_url": "http://127.0.0.1:8081/v1/models",
@@ -75,7 +75,7 @@ profile. Never put secrets, prompts, outputs, or customer data in it.
     "provider": "mlx-gemma4-e2b",
     "tmux_session": "mlx-arena-first",
     "logs": "~/.understudy/agent-tools/.understudy/local-model-lab/arena/logs",
-    "how_to_talk": "curl -s http://127.0.0.1:8081/v1/chat/completions -H 'Content-Type: application/json' -d '{\"model\":\"/Users/me/.understudy/models/gemma-4-e2b-it-mlx-vlm-4bit\",\"messages\":[{\"role\":\"user\",\"content\":\"Say hello from my local Understudy.\"}],\"max_tokens\":128}'"
+    "how_to_talk": "curl -s http://127.0.0.1:8081/v1/chat/completions -H 'Content-Type: application/json' -d '{\"model\":\"/Users/me/.understudy/models/gemma-4-e2b-it-qat-mlx-vlm-understudy\",\"messages\":[{\"role\":\"user\",\"content\":\"Say hello from my local Understudy.\"}],\"max_tokens\":128}'"
   },
   "companion": {
     "alive": false,
@@ -155,13 +155,13 @@ Default first pull is the smallest verified Gemma 4 MLX chat model, served
 through MLX on Apple Silicon (see
 [`../../docs/open-model-spotlight.md`](../../docs/open-model-spotlight.md)):
 
-- **Apple Silicon first rung** — Understudy-verified `google/gemma-4-e2b-it`,
-  converted with `mlx-vlm 0.6.2` to 4-bit MLX safetensors and served with
-  `mlx_vlm.server`. Snapshot:
-  `https://models.understudylabs.com/session?model=gemma-4-e2b-it-mlx-vlm-4bit`
+- **Apple Silicon first rung** — Understudy-verified QAT-derived
+  `gemma-4-e2b-it-qat-mlx-vlm-understudy` (`google/gemma-4-E2B-it` QAT weights,
+  MLX 4-bit at `group_size=32`), served with `mlx_vlm.server`. Snapshot:
+  `https://models.understudylabs.com/session?model=gemma-4-e2b-it-qat-mlx-vlm-understudy`
   (R2 source:
-  `r2://understudy-model-snapshots/models/google/gemma-4-e2b-it/mlx-vlm-0.6.2/quant-4bit/`).
-  It is about 3.3 GB on disk, used about 3.6 GB peak memory in testing, generated
+  `r2://understudy-model-snapshots/models/google/gemma-4-e2b-it/mlx-vlm-0.6.2/qat-understudy-4bit-g32/`).
+  It is about 3.6 GB on disk, ~3.9 GB peak memory in testing, generated
   locally at about 218 tok/s, and exposes logprobs/top-logprobs through the
   OpenAI-compatible server.
 - **Gemma 4 E4B climb rung** — Understudy-verified `google/gemma-4-e4b-it`,

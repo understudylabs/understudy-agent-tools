@@ -49,12 +49,12 @@ UNDERSTUDY_DEBUG="${UNDERSTUDY_DEBUG:-0}"
 UNDERSTUDY_WINDOW_HOLD="${UNDERSTUDY_WINDOW_HOLD:-0}"
 UNDERSTUDY_CLEANUP_PREFIXES="${UNDERSTUDY_CLEANUP_PREFIXES:-$SESSION mlx-arena}"
 
-# Two corners of the arena. Defaults: verified Gemma 4 E2B via mlx-vlm vs
-# smallest NVIDIA (Nemotron), MLX 4-bit. Stock mlx-community Gemma 4 E2B repos
-# had loader/config mismatches in testing; the first rung is Understudy's
-# self-converted snapshot from google/gemma-4-e2b-it.
+# Two corners of the arena. Defaults: Understudy-certified Gemma 4 E2B QAT via
+# mlx-vlm vs smallest NVIDIA (Nemotron), MLX 4-bit. Stock mlx-community Gemma 4
+# E2B repos had loader/config mismatches in testing; the first rung is
+# Understudy's converted QAT snapshot.
 LEFT_LABEL="${LEFT_LABEL:-google}"
-LEFT_REPO="${LEFT_REPO:-$UNDERSTUDY_MODEL_HOME/gemma-4-e2b-it-mlx-vlm-4bit}"
+LEFT_REPO="${LEFT_REPO:-$UNDERSTUDY_MODEL_HOME/gemma-4-e2b-it-qat-mlx-vlm-understudy}"
 LEFT_PORT="${LEFT_PORT:-8081}"
 LEFT_PROVIDER="${LEFT_PROVIDER:-mlx-google}"
 LEFT_LOADER="${LEFT_LOADER:-mlx_vlm}"
@@ -65,14 +65,14 @@ RIGHT_PORT="${RIGHT_PORT:-8082}"
 RIGHT_PROVIDER="${RIGHT_PROVIDER:-mlx-nvidia}"
 RIGHT_LOADER="${RIGHT_LOADER:-mlx_lm}"
 
-# First-run defaults: smallest verified Gemma 4 rung that generated locally in
-# testing. Serve it with mlx-vlm; use FIRST_REPO=mlx-community/gemma-3-1b-it-4bit
+# First-run defaults: smallest certified Gemma 4 QAT rung that generated locally
+# in testing. Serve it with mlx-vlm; use FIRST_REPO=mlx-community/gemma-3-1b-it-4bit
 # FIRST_LOADER=mlx_lm only as a tiny fallback when the Gemma 4 snapshot is absent.
 FIRST_LABEL="${FIRST_LABEL:-gemma4-e2b}"
-FIRST_REPO="${FIRST_REPO:-$UNDERSTUDY_MODEL_HOME/gemma-4-e2b-it-mlx-vlm-4bit}"
+FIRST_REPO="${FIRST_REPO:-$UNDERSTUDY_MODEL_HOME/gemma-4-e2b-it-qat-mlx-vlm-understudy}"
 FIRST_PORT="${FIRST_PORT:-8081}"
 FIRST_PROVIDER="${FIRST_PROVIDER:-mlx-gemma4-e2b}"
-FIRST_NAME="${FIRST_NAME:-Gemma 4 E2B 4-bit}"
+FIRST_NAME="${FIRST_NAME:-Gemma 4 E2B QAT 4-bit}"
 FIRST_LOADER="${FIRST_LOADER:-mlx_vlm}"
 UNDERSTUDY_CLEANUP_PORTS="${UNDERSTUDY_CLEANUP_PORTS:-$LEFT_PORT $RIGHT_PORT $FIRST_PORT}"
 
@@ -121,7 +121,7 @@ _server_command() { # loader repo port
         echo "  uv pip install --python $MLX_PYTHON 'mlx-vlm>=0.6'" >&2
         exit 1
       }
-      printf '%q --model %q --host 127.0.0.1 --port %q --trust-remote-code --top-logprobs-k 5' \
+      printf '%q --model %q --host 127.0.0.1 --port %q --trust-remote-code --top-logprobs-k 20' \
         "$MLX_BIN/mlx_vlm.server" "$repo" "$port"
       ;;
     *)
