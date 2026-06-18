@@ -19,13 +19,13 @@ explicitly asks for Understudy inference, gateway routing, project/key
 management, workload route configuration, hosted execution, or authenticated
 gateway routing.
 
-**Choosing between local provider keys and the gateway route?** When an
-onboarding step, installer, or local-vs-frontier comparison needs a remote
-frontier model, run the decision in
-[`references/frontier-keys.md`](references/frontier-keys.md) first — BYO
-shell/`.env` keys vs the Understudy ZDR gateway vs local-only skip. It keeps
-secrets local, asks before reading `.env` values, and records the choice
-without printing keys.
+**Choosing frontier access?** When an onboarding step, installer, or
+local-vs-frontier comparison needs a remote frontier model, run the decision in
+[`references/frontier-keys.md`](references/frontier-keys.md) first. Default to
+the Understudy managed catalog when the requested model is available there; use
+BYO shell/`.env` keys only for unsupported models, provider-specific account
+needs, or an explicit developer preference. It keeps secrets local, asks before
+reading `.env` values, and records the choice without printing keys.
 
 ## Safety Gates
 
@@ -108,11 +108,11 @@ node dist/bin.js status --json
    understudy keys list --json
    ```
 
-4. For frontier-vs-Understudy A/B routing, list public model IDs and set a
-   bounded workload route — see the **A/B model routing** recipe below for the
-   commands and the split mechanics. The agent must not expose or ask for
-   supplier/provider details; the app keeps calling the normal gateway path while
-   the control-plane route decides the split.
+4. For frontier-vs-Understudy comparison, list public model IDs first. If the
+   account is keyless for frontier providers, prefer the **keyless catalog
+   sweep** recipe below: clear the workload route and vary the request-body
+   `model`. Use traffic-split A/B only after confirming the non-routed
+   passthrough share has a managed provider credential or BYO key.
 
 5. Run the local command through the gateway wrapper only after approval:
 
@@ -123,6 +123,43 @@ node dist/bin.js status --json
 6. Monitor the command output and local artifacts. For optimization work, route
    back to [`../optimize-workload/SKILL.md`](../optimize-workload/SKILL.md) once
    the run has produced candidate/proof evidence.
+
+## Keyless catalog sweep
+
+Use this recipe for the fastest frontier/open-weight comparison when the
+developer does not have, or does not want to use, provider keys. The same
+Understudy key can request supported Anthropic, OpenAI, and open-weight catalog
+models by public id.
+
+1. Discover public model options:
+
+   ```sh
+   understudy models list --json
+   ```
+
+2. Ensure the eval workload has **no route configured**. A route dialed to 0%
+   still counts as configured and prevents request-time catalog resolution.
+
+   ```sh
+   understudy workloads route <workload-id> --project-id <project-id> --clear
+   ```
+
+3. Run the frozen eval once per catalog model by changing only the request-body
+   `model` value. Send `x-understudy-project` and `x-understudy-workload` on
+   every request so the run does not accidentally use the org default workload.
+
+4. Record the legibility headers for every row: `x-understudy-mode`,
+   `x-understudy-route`, and `x-understudy-effective-model`. Treat rows where the
+   requested model and effective model disagree as invalid for model comparison.
+
+5. Unknown ids for a keyless managed org return a clean catalog-miss 404 with
+   available alternatives. Do not expect arbitrary frontier names to passthrough
+   unless the org has its own managed provider key or the request supplies BYO
+   credentials.
+
+6. Bound the run by row count, max tokens, and wall-clock time. New accounts get
+   prepaid credit and async suspension, not a synchronous per-request spend
+   reservation.
 
 ## A/B model routing
 
@@ -149,11 +186,12 @@ comparing a workload's quality and cost across the split.
    **Eval shortcut — request-time catalog resolution.** On a workload with **no
    route configured** (never routed, or explicitly `--clear`ed — a route dialed
    to 0% still counts as configured and stays passthrough), a request for any
-   active catalog id (`"model": "glm-5.1"`) is served from managed supply with
-   no per-model setup; unknown ids fall through to passthrough, where the URL
-   shape picks the provider (`/v1/chat/completions` → OpenAI) and the provider
-   returns its own 404. So a model sweep needs exactly one unrouted workload and
-   can iterate over catalog ids in the request body.
+   active catalog id (`"model": "glm-5.1"`, `"model": "gpt-5.5"`, or another
+   listed id) is served from managed supply with no per-model setup. For a
+   keyless managed org, unknown ids return a clean catalog-miss 404 with
+   available alternatives instead of falling through to unpriced provider
+   passthrough. So a model sweep needs exactly one unrouted workload and can
+   iterate over listed catalog ids in the request body.
 
    **Selecting the workload per request.** The gateway resolves which workload's
    route serves a request from two optional headers: `x-understudy-project`
@@ -189,9 +227,10 @@ comparing a workload's quality and cost across the split.
 
 4. Prerequisite for a frontier comparison. For the split to compare the routed
    model against a frontier model, the non-routed (passthrough) share must have a
-   configured managed frontier; without it those requests error. This is usually
-   account setup, not a per-run flag, so confirm it before starting an A/B —
-   otherwise only the routed share returns results.
+   configured managed provider key or BYO key; the managed catalog only resolves
+   on no-route workloads. Without passthrough credentials, those non-routed
+   requests error. For keyless accounts, use the **keyless catalog sweep** recipe
+   first, then route only after choosing a candidate.
 
 ## Output Standard
 
@@ -206,8 +245,8 @@ End with:
 
 ## References
 
-- [`references/frontier-keys.md`](references/frontier-keys.md) — the BYO
-  `.env`-keys vs ZDR-gateway vs skip decision, the allowlisted env vars, the
+- [`references/frontier-keys.md`](references/frontier-keys.md) — managed catalog
+  vs BYO `.env` keys vs skip, the allowlisted env vars, the
   secret-to-remote-infra recipe, and the installer mapping.
 - Hosted contracts on the docs site —
   [routing semantics](https://docs.understudylabs.com/concepts/routing),
