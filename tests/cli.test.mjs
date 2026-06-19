@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { spawn, spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { createServer } from "node:http";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
@@ -1005,6 +1005,64 @@ describe("understudy CLI", () => {
     assert.match(route.stdout, /--model-id/);
     assert.match(route.stdout, /--traffic-pct/);
     assert.match(route.stdout, /--clear/);
+  });
+
+  it("pulls a local model snapshot from a signed session manifest", async () => {
+    const fileBody = Buffer.from("hello local model\n");
+    const fileSha = createHash("sha256").update(fileBody).digest("hex");
+    const sumsBody = Buffer.from(`${fileSha}  weights.bin\n`);
+    let baseUrl = "";
+    const server = createServer((req, res) => {
+      const url = new URL(req.url, "http://127.0.0.1");
+      const send = (status, body, headers = {}) => {
+        res.writeHead(status, headers);
+        if (req.method === "HEAD") {
+          res.end();
+        } else {
+          res.end(body);
+        }
+      };
+      if (url.pathname === "/session") {
+        return send(
+          200,
+          JSON.stringify({
+            files: [
+              { name: "weights.bin", url: `${baseUrl}/weights.bin`, size_bytes: fileBody.length, sha256: fileSha },
+              { name: "SHA256SUMS", url: `${baseUrl}/SHA256SUMS`, size_bytes: sumsBody.length },
+            ],
+          }),
+          { "content-type": "application/json" },
+        );
+      }
+      if (url.pathname === "/weights.bin") {
+        return send(200, fileBody, { "content-length": String(fileBody.length) });
+      }
+      if (url.pathname === "/SHA256SUMS") {
+        return send(200, sumsBody, { "content-length": String(sumsBody.length) });
+      }
+      return send(404, "missing");
+    });
+    await new Promise((resolve) => server.listen(0, "127.0.0.1", resolve));
+    const address = server.address();
+    baseUrl = `http://127.0.0.1:${address.port}`;
+    const home = mkdtempSync(join(tmpdir(), "understudy-model-pull-home-"));
+    const dest = join(home, "models", "toy-model");
+    const logDir = join(home, "logs");
+    try {
+      const result = await runWithEnvAsync(
+        ["--json", "models", "pull", "toy-model", "--session-url", `${baseUrl}/session`, "--dest", dest, "--log-dir", logDir],
+        { HOME: home, USERPROFILE: home },
+      );
+      assert.equal(result.status, 0, result.stderr);
+      const payload = JSON.parse(result.stdout);
+      assert.equal(payload.models[0].model, "toy-model");
+      assert.equal(payload.models[0].files, 2);
+      assert.equal(readFileSync(join(dest, "weights.bin"), "utf8"), "hello local model\n");
+      assert.equal(existsSync(join(dest, ".understudy-snapshot.json")), true);
+    } finally {
+      await new Promise((resolve) => server.close(resolve));
+      rmSync(home, { recursive: true, force: true });
+    }
   });
 
   it("runs hosted workload lifecycle commands against the admin API", async () => {

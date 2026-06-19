@@ -121,9 +121,8 @@ extracts structure from traces and code; the user confirms the task meaning.
    and run the local model against the real task via
    [`../run-local-model-lab/SKILL.md`](../run-local-model-lab/SKILL.md) or the
    appropriate optimizer skill. Optional side quest: derive grounded vibe-check
-   questions for the blind-arena protocol in
-   [`../run-local-model-lab/references/blind-arena.md`](../run-local-model-lab/references/blind-arena.md),
-   each mapped to a real step/criterion, when the user needs a visible
+   questions for [`../ladder/SKILL.md`](../ladder/SKILL.md), each mapped to a
+   real step/criterion, when the user needs a visible
    local-vs-frontier feel check. For a whole-case test a small model cannot one-shot, build a simulated
    environment only when no real resettable workload exists.
 
@@ -149,7 +148,7 @@ the cheapest fix before training.
 ## References
 
 - [`../ingest-traces/references/profile-captures.md`](../ingest-traces/references/profile-captures.md) — the fleet sibling: profile a whole capture dir into a cost + call-type taxonomy first, then aim this skill at the cluster worth decomposing.
-- [`../run-local-model-lab/references/blind-arena.md`](../run-local-model-lab/references/blind-arena.md) — frontier-vs-local head-to-head the questions feed.
+- [`../ladder/SKILL.md`](../ladder/SKILL.md) — no-data local-vs-frontier feel check the questions can feed.
 - [`../design-simulated-environment/SKILL.md`](../design-simulated-environment/SKILL.md) — turn the understood workload into a scorable env.
 - [`../recursive-language-model/SKILL.md`](../recursive-language-model/SKILL.md) — decompose so a small model can take the whole case.
 - [`../capture-evidence/SKILL.md`](../capture-evidence/SKILL.md) — freeze the metric/splits.

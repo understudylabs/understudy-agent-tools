@@ -79,9 +79,8 @@ group it belongs to.
 - [`run-local-model-lab`](run-local-model-lab/SKILL.md) stands up and runs a
   local model on Apple Silicon against the real workload: the MLX serving rig,
   scored frozen-eval runs, and the route decision (ship local, local-as-router,
-  hybrid, or remote). The blind frontier-vs-local arena and hill-climb protocol
-  live in
-  [`references/blind-arena.md`](run-local-model-lab/references/blind-arena.md).
+  hybrid, or remote). For a no-data first-run demo or local-vs-frontier feel
+  test, use [`ladder`](ladder/SKILL.md).
 - [`recursive-language-model`](recursive-language-model/SKILL.md) makes a
   small/local model take over an agentic task a frontier model one-shots by
   decomposing it into bounded steps with flat context behind the incumbent's

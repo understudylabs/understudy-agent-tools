@@ -59,7 +59,7 @@ Claude Code, run:
 ```
 
 The installer intentionally does **not** download model weights, start MLX,
-install Pi, launch tmux/iTerm, or make frontier calls. Those belong inside the
+launch the ladder server, or make frontier calls. Those belong inside the
 Claude Code skill flow, where the agent can explain the tradeoffs, ask consent,
 coach the user on opening their preferred terminal, and run the same commands
 itself when appropriate.
@@ -125,7 +125,7 @@ restart required**. The equivalent interactive flow is `/plugin marketplace add
 reports whether the plugin is already installed.
 
 After `/reload-plugins`, run `/understudy:onboard`. That is where the coding
-agent guides the first local model, terminal choice, Pi/tmux handoff, and any
+agent guides the first local model, launches the ladder climb, and handles any
 frontier comparison with explicit consent.
 
 Installing as a plugin is the recommended way to use Understudy: the skills are
@@ -235,9 +235,8 @@ playbooks live in each skill's `references/` directory:
 - **Understand & capture** — understand-workload, ingest-traces (incl. the
   capture-directory profiler), capture-evidence (incl. the public-benchmark
   on-ramp), design-simulated-environment
-- **Local models** — manage-local-models, run-local-model-lab (incl. the blind
-  frontier-vs-local arena), recursive-language-model (incl. RLM pedagogical
-  training)
+- **Local models** — manage-local-models, run-local-model-lab,
+  recursive-language-model (incl. RLM pedagogical training)
 - **Compare & diagnose** — compare-model-sweep, compare-trajectories
 - **Plan hosted runs** — plan-hosted-run (provider routing + cost estimation)
 - **Optimize** — optimize-workload, optimize-agentic-workload (read-only

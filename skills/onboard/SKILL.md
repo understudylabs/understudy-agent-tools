@@ -52,15 +52,14 @@ work — do not re-run the full interview. Only first-timers get the full flow.
    (R2 source:
    `r2://understudy-model-snapshots/models/google/gemma-4-e2b-it/mlx-vlm-0.6.2/qat-understudy-4bit-g32/`).
    It is about 3.6 GB on disk, runs at ~3.9 GB peak memory (~2.6x less than
-   BF16), and is 4/4 certified (generation, Pi/OpenAI-compat, logprobs, tool
-   calls) at the prescribed decode. Announce the model, quantization, size,
+   BF16), and is 4/4 certified (generation, OpenAI-compatible serving,
+   logprobs, tool calls) at the prescribed decode. Announce the model, quantization, size,
    source, and ETA, get a quick yes, then route through
-   [`../manage-local-models/SKILL.md`](../manage-local-models/SKILL.md) to run
-   the skill-owned pull helper:
+   [`../manage-local-models/SKILL.md`](../manage-local-models/SKILL.md) and run
+   the CLI snapshot pull:
    ```bash
-   node scripts/pull-understudy-snapshot.mjs --model gemma-4-e2b-it-qat-mlx-vlm-understudy
+   understudy models pull gemma-4-e2b-it-qat-mlx-vlm-understudy
    ```
-   Resolve the script relative to the `manage-local-models` skill directory.
    This caches the first Understudy under
    `~/.understudy/models/gemma-4-e2b-it-qat-mlx-vlm-understudy` and logs progress/ETA under
    `~/.understudy/agent-tools/logs/`. If the MLX runtime is missing, the slow
@@ -94,31 +93,30 @@ work — do not re-run the full interview. Only first-timers get the full flow.
    goal, constraints, and the three meet-them-where-they-are dials — vocabulary,
    coaching depth, opinion strength. Append, don't overwrite, the `history` of
    workloads and decisions. Also refresh `~/.understudy/agent-card.json` with
-   live runtime facts: the local model, endpoint, serving process, tmux session,
-   companion status, and the exact command for talking to the local Understudy.
+   live runtime facts: the local model, endpoint, serving process, companion
+   status, and the exact command or URL for talking to the local Understudy.
    If `~/.understudy/companion.json` points at a dead pid, clear it and record
    the stale pid in the card.
 
 6. **Land the quick win: show the local Understudy exists.** Once the snapshot is
-   cached, serve it from the manifest so the launcher, required flags, and
-   prescribed decode are all enforced — not hand-specified. Route through
-   [`../manage-local-models/SKILL.md`](../manage-local-models/SKILL.md) and run
-   the skill-owned serve helper:
+   cached, route through [`../ladder/SKILL.md`](../ladder/SKILL.md) and start the
+   onboarding climb:
     ```bash
-    node scripts/serve-understudy-snapshot.mjs --model gemma-4-e2b-it-qat-mlx-vlm-understudy --exec
+    understudy run -- uv run --with mlx-vlm --with mlx-lm python skills/ladder/serve.py
     ```
-   Resolve the script relative to the `manage-local-models` skill directory. It
-   reads the artifact's `understudy.serving.json` and spawns the MLX server on
-   `http://127.0.0.1:8094/v1` with the exact flags (e.g. `--top-logprobs-k 20`)
-   and the prescribed decode exported; drop `--exec` to print the command for
-   review first. Then prove local inference is real and inspectable with one
-   generation against that endpoint (or point Pi at it:
-   `npm install -g --ignore-scripts @earendil-works/pi-coding-agent`). Record the
-   live runtime facts — endpoint, `served_by`, model path — in the agent card
-   (step 5). Briefly teach the idea: an open-weight model is downloadable
-   weights you run yourself; local is free and ZDR-safe; you iterate small and
-   local, then *graduate* to a larger model in the same family via the gateway
-   when you need the quality.
+   Then open
+   `http://localhost:8011/ladder.climb.html?task=sort-email&model=gemma-4-e2b`
+   or prove it headlessly:
+    ```bash
+    curl -N 'http://localhost:8011/run?task=sort-email&model=gemma-4-e2b'
+    ```
+   The ladder server loads the cached QAT snapshot for `gemma-4-e2b`, streams a
+   scored local run, and can optionally compare against the billed gateway lane.
+   Record the live runtime facts — endpoint, `served_by`, model path, and
+   follow-along URL — in the agent card (step 5). Briefly teach the idea: an
+   open-weight model is downloadable weights you run yourself; local is free and
+   ZDR-safe; you iterate small and local, then *graduate* to a larger model in
+   the same family via the gateway when you need the quality.
 
 7. **Profile the user's real workload.** The main path after the local proof is
    not a model duel. Ask the user for a codebase, trace folder, dataset, eval
@@ -131,21 +129,22 @@ work — do not re-run the full interview. Only first-timers get the full flow.
    [`../design-simulated-environment/SKILL.md`](../design-simulated-environment/SKILL.md)
    when there is no resettable real workload yet.
 
-8. **Make head-to-head optional.** A frontier-vs-local duel is useful when the
+8. **Make head-to-head optional.** A frontier-vs-local comparison is useful when the
    user needs to feel the quality gap, calibrate taste, or get buy-in. It is a
    side quest, not the default evidence path. If the user wants it, follow the
-   local specialization sequencing in the
-   [`understudy`](../understudy/SKILL.md) orchestrator's routing section, which
-   hands off to [`../run-local-model-lab/SKILL.md`](../run-local-model-lab/SKILL.md)
-   for the blind local-vs-frontier protocol. Otherwise keep going through
-   workload understanding, capture evidence, and local evaluation against the
-   actual task slice.
+   [`ladder`](../ladder/SKILL.md) VS lane and disclose that the frontier side is
+   billed. Otherwise keep going through workload understanding, capture
+   evidence, and local evaluation against the actual task slice.
 
 9. **Route onward.** Hand to the [`understudy`](../understudy/SKILL.md)
-   orchestrator for the improvement loop;
-   [`manage-local-models`](../manage-local-models/SKILL.md) to grow and organize
-   the local model library; [`run-local-model-lab`](../run-local-model-lab/SKILL.md)
-   to evaluate a local candidate against a real workload.
+   orchestrator for the improvement loop. In the normal first-run path, the next
+   worker is [`understand-workload`](../understand-workload/SKILL.md): pick a
+   real app, trace, prompt file, dataset, or eval and define the task before
+   comparing or optimizing models. Use
+   [`manage-local-models`](../manage-local-models/SKILL.md) only to grow and
+   organize the local model library, and
+   [`run-local-model-lab`](../run-local-model-lab/SKILL.md) only once there is a
+   frozen real workload/eval to score.
 
 Adapt everything to the profile: expand jargon and give first-timers one clear
 recommended path; stay terse and offer trade-offs to practitioners.

@@ -141,4 +141,4 @@ repair, pedagogical RL, or a hosted verifier handoff. That reference also covers
 - [`../understand-workload/SKILL.md`](../understand-workload/SKILL.md)
 - [`../design-simulated-environment/SKILL.md`](../design-simulated-environment/SKILL.md)
 - [`../run-local-model-lab/SKILL.md`](../run-local-model-lab/SKILL.md)
-- [`../run-local-model-lab/references/blind-arena.md`](../run-local-model-lab/references/blind-arena.md) — vibe-check the hill-climbed local model vs the frontier.
+- [`../ladder/SKILL.md`](../ladder/SKILL.md) — vibe-check the hill-climbed local model vs the frontier.

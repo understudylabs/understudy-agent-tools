@@ -230,11 +230,11 @@ orchestrator owns the ladder — sequence workers, don't reimplement them:
    never evaluate `*-assistant` drafter checkpoints as standalone candidates.
    Use [`../manage-local-models/SKILL.md`](../manage-local-models/SKILL.md) and
    [`../run-local-model-lab/SKILL.md`](../run-local-model-lab/SKILL.md).
-2. **Optional frontier head-to-head** for calibration — prefer the Understudy
-   managed catalog when the frontier id is listed, so the comparison uses one
-   gateway key and no provider key handling. Use the blind-arena protocol in
-   [`../run-local-model-lab/references/blind-arena.md`](../run-local-model-lab/references/blind-arena.md).
-   Preference is a gap signal, never a claim.
+2. **Optional frontier head-to-head** for calibration — use
+   [`../ladder/SKILL.md`](../ladder/SKILL.md) when the developer needs a no-data
+   local-vs-frontier feel test. Prefer the Understudy managed catalog when the
+   frontier id is listed, so the comparison uses one gateway key and no provider
+   key handling. Preference is a gap signal, never a claim.
 3. **Freeze the eval** (`capture-evidence`; for workflow/tool tasks,
    `design-simulated-environment`), with frontier as the incumbent baseline and
    local as the candidate. Then write a gap report and let the gap pick the rung:
