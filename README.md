@@ -57,11 +57,10 @@ Fast first-run installer:
 curl -fsSL https://raw.githubusercontent.com/UnderstudyLabs/understudy-agent-tools/main/install.sh | bash
 ```
 
-This installs the CLI, autodetects available coding-agent adapters, and installs
-or refreshes the matching local plugin surfaces. Today that means Claude Code
-when `claude` is available, Cursor when Cursor is present, and Codex when the
-`codex` CLI is available. Override the
-default with `--agents auto|all|claude-code|cursor|codex|none`.
+This installs the CLI, then asks where to install the local coding-agent plugin:
+Claude Code, Cursor, Codex, all detected agents, or CLI-only. Non-interactive
+installs keep the old script-friendly autodetect behavior. Override the prompt
+with `--agents auto|all|claude-code|cursor|codex|none`.
 
 | Agent harness | Default installer behavior | Activation |
 | --- | --- | --- |
