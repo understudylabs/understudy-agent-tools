@@ -23,12 +23,21 @@ export function readManifestVersions(): {
   cli: string | null;
   plugin: string | null;
   marketplace: string | null;
+  cursorPlugin: string | null;
+  codexPlugin: string | null;
+  codexMarketplace: string | null;
 } {
   return {
     cli: readManifestVersion(join(packageRoot, "package.json")),
     plugin: readManifestVersion(join(packageRoot, ".claude-plugin", "plugin.json")),
     marketplace: readManifestVersion(
       join(packageRoot, ".claude-plugin", "marketplace.json"),
+      (parsed) => (parsed as { metadata?: { version?: string } }).metadata?.version,
+    ),
+    cursorPlugin: readManifestVersion(join(packageRoot, ".cursor-plugin", "plugin.json")),
+    codexPlugin: readManifestVersion(join(packageRoot, ".codex-plugin", "plugin.json")),
+    codexMarketplace: readManifestVersion(
+      join(packageRoot, ".agents", "plugins", "marketplace.json"),
       (parsed) => (parsed as { metadata?: { version?: string } }).metadata?.version,
     ),
   };

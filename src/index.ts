@@ -6,6 +6,7 @@ import { runUnderstandCheck, runUnderstandWorkloadCard } from "./understand.js";
 import { buildWorkloadCard, previewCaptureImport, scanCaptureImport } from "./capture-import.js";
 import { planRouteDecision } from "./route-decision.js";
 import { buildValueReport } from "./value-report.js";
+import { type AgentPlatformAdapter, agentPlatformAdapters, findAgentPlatformAdapter } from "./agent-platforms.js";
 import { registerCapturesCommand } from "./commands/captures.js";
 import { registerDoctorCommand } from "./commands/doctor.js";
 import { registerGatewayCommand } from "./commands/gateway.js";
@@ -189,6 +190,31 @@ function printSpine(): void {
   console.log("4. skills/use-understudy-gateway/SKILL.md runs authenticated gateway workflows when approved.");
 }
 
+function printPlatforms(json: boolean, inspect?: string): void {
+  let adapters: AgentPlatformAdapter[];
+  if (inspect) {
+    const adapter = findAgentPlatformAdapter(inspect);
+    if (!adapter) {
+      throw new Error(`Unknown agent platform adapter: ${inspect}`);
+    }
+    adapters = [adapter];
+  } else {
+    adapters = agentPlatformAdapters;
+  }
+  if (json) {
+    printJson({ adapters });
+    return;
+  }
+  console.log("Understudy agent platform adapters:");
+  for (const adapter of adapters) {
+    console.log(`- ${adapter.id} (${adapter.status})`);
+    console.log(`  ${adapter.displayName}: ${adapter.discovery}`);
+    console.log(`  manifest: ${adapter.manifestPath}`);
+    console.log(`  reload: ${adapter.reload}`);
+    console.log(`  onboarding: ${adapter.onboarding}`);
+  }
+}
+
 function printDoctorJson(): void {
   const required = [
     "README.md",
@@ -205,7 +231,10 @@ function printDoctorJson(): void {
   const versionsConsistent =
     versions.cli !== null &&
     versions.cli === versions.plugin &&
-    versions.cli === versions.marketplace;
+    versions.cli === versions.marketplace &&
+    versions.cli === versions.cursorPlugin &&
+    versions.cli === versions.codexPlugin &&
+    versions.cli === versions.codexMarketplace;
   console.log(
     JSON.stringify(
       {
@@ -376,6 +405,14 @@ export function buildProgram(): Command {
     .option("--json", "Emit machine-readable JSON when supported");
 
   program.command("spine").description("Print the public MVP workflow spine").action(printSpine);
+
+  program
+    .command("platforms")
+    .description("List agent platform adapters for Claude Code, Cursor, and Codex")
+    .option("--inspect <id>", "Inspect one platform adapter")
+    .action((options: { inspect?: string }) => {
+      printPlatforms(commandJsonEnabled(program, {}), options.inspect);
+    });
 
   const skills = program.command("skills").description("List and inspect public skills");
   skills.option("--list", "List public MVP skills");
