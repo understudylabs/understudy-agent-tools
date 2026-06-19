@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Install Understudy agent tools and hand the user back to Claude Code skills.
+# Install Understudy agent tools and hand the user back to an agent skill surface.
 set -euo pipefail
 
 LAB="${UNDERSTUDY_LAB:-$HOME/.understudy/agent-tools}"
@@ -13,6 +13,7 @@ LAUNCH_CLAUDE="${UNDERSTUDY_LAUNCH_CLAUDE:-1}"
 CLAUDE_PERMISSION_MODE="${UNDERSTUDY_CLAUDE_PERMISSION_MODE:-auto}"
 USER_PROMPT_OVERRIDE="${UNDERSTUDY_INITIAL_CLAUDE_PROMPT:-}"
 INITIAL_CLAUDE_PROMPT=""
+AGENT_PLATFORMS="${UNDERSTUDY_AGENT_PLATFORMS:-auto}"
 KEEP_LOGIN="${UNDERSTUDY_KEEP_LOGIN:-0}"
 NO_CLAUDE=0
 START_STEP=1
@@ -28,6 +29,8 @@ while [ "$#" -gt 0 ]; do
     --non-interactive|--noninteractive|--no-input) NONINTERACTIVE=1 ;;
     --require-confirm) REQUIRE_CONFIRM=1 ;;
     --no-claude) NO_CLAUDE=1 ;;
+    --agents|--agent) AGENT_PLATFORMS="${2:?missing agent platform list}"; shift ;;
+    --no-agents) AGENT_PLATFORMS="none"; NO_CLAUDE=1; LAUNCH_CLAUDE=0 ;;
     --no-launch-claude) LAUNCH_CLAUDE=0 ;;
     --launch-claude) LAUNCH_CLAUDE=1 ;;
     --keep-login) KEEP_LOGIN=1 ;;
@@ -38,14 +41,13 @@ while [ "$#" -gt 0 ]; do
     --lab) LAB="${2:?missing path}"; shift ;;
     -h|--help)
       cat <<'EOF'
-Usage: install.sh [--yes] [--non-interactive] [--resume] [--from-step N] [--only-step N] [--keep-login] [--no-claude] [--no-launch-claude]
+Usage: install.sh [--yes] [--non-interactive] [--resume] [--from-step N] [--only-step N] [--keep-login] [--agents auto|all|claude-code|cursor|codex|none] [--no-claude] [--no-launch-claude]
 
-Installs the Understudy CLI + Claude Code skill/plugin surface, then hands the
-user back to Claude Code, where the coding agent runs the agent-first sign-up
-(email one-time code through `understudy login`) and onboarding. It does not
-download model weights, start MLX, launch the ladder server, or make
-frontier calls. Those are guided by the /understudy:onboard skill after the
-user is in their coding agent.
+Installs the Understudy CLI + detected coding-agent skill/plugin surfaces, then
+hands the user back to the selected coding agent when possible. It does not
+download model weights, start MLX, launch the ladder server, or make frontier
+calls. Those are guided by the Understudy onboarding skill after the user is in
+their coding agent.
 
 If you are already signed in, the installer signs you out by default so the
 agent-first sign-up can be experienced (or demoed) from scratch. Only the
@@ -62,6 +64,9 @@ Options:
   --only-step N         run only step 1, 2, or 3
   --keep-login          keep an existing sign-in instead of resetting it
   --fresh-login         reset an existing sign-in for agent-first sign-up (default)
+  --agents LIST         agent adapters to install: auto, all, claude-code, cursor, codex, none
+                        comma-separated lists are accepted, e.g. claude-code,cursor
+  --no-agents           skip all coding-agent plugin installs and launches
   --no-claude           skip Claude Code plugin install and final Claude launch
   --no-launch-claude    install plugin but do not open Claude Code at the end
   --launch-claude       open Claude Code at the end (default)
@@ -80,6 +85,7 @@ Environment overrides:
   UNDERSTUDY_NONINTERACTIVE      set to 1 to use safe defaults without prompting
   UNDERSTUDY_REQUIRE_CONFIRM     set to 1 to fail when no prompt TTY exists
   UNDERSTUDY_KEEP_LOGIN          set to 1 to keep an existing sign-in
+  UNDERSTUDY_AGENT_PLATFORMS     auto, all, claude-code, cursor, codex, none, or comma list
   UNDERSTUDY_LAUNCH_CLAUDE      set to 0 to skip opening Claude Code
   UNDERSTUDY_CLAUDE_ARGS        optional extra args when launching Claude Code
   UNDERSTUDY_CLAUDE_PERMISSION_MODE Claude Code permission mode, default auto
@@ -258,6 +264,93 @@ configure_resume() {
     say "Resuming from step $START_STEP based on $STATE_DIR/last-step"
   fi
 }
+normalize_agent_platform() {
+  case "$1" in
+    claude|claude_code|claudecode) printf '%s\n' "claude-code" ;;
+    cursor|codex|all|auto|none|claude-code) printf '%s\n' "$1" ;;
+    *) printf '%s\n' "$1" ;;
+  esac
+}
+validate_agent_platforms() {
+  local token normalized count mode
+  count=0
+  mode=""
+  for token in $(printf '%s\n' "$AGENT_PLATFORMS" | tr ',;' '  '); do
+    count=$((count + 1))
+    normalized="$(normalize_agent_platform "$token")"
+    case "$normalized" in
+      auto|all|none) mode="$normalized" ;;
+      claude-code|cursor|codex) ;;
+      *)
+        fail_line "Unknown agent adapter '$token'. Use auto, all, claude-code, cursor, codex, none, or a comma list of explicit adapters."
+        return 1
+        ;;
+    esac
+  done
+  if [ "$count" -eq 0 ]; then
+    fail_line "No agent adapter selection provided. Use auto, all, claude-code, cursor, codex, or none."
+    return 1
+  fi
+  if [ -n "$mode" ] && [ "$count" -gt 1 ]; then
+    fail_line "Agent adapter mode '$mode' cannot be combined with other values. Use '$mode' alone, or use a comma list like claude-code,cursor."
+    return 1
+  fi
+}
+agent_platform_requested() {
+  local wanted token normalized
+  wanted="$(normalize_agent_platform "$1")"
+  for token in $(printf '%s\n' "$AGENT_PLATFORMS" | tr ',;' '  '); do
+    normalized="$(normalize_agent_platform "$token")"
+    case "$normalized" in
+      all) return 0 ;;
+      none|auto) ;;
+      "$wanted") return 0 ;;
+    esac
+  done
+  return 1
+}
+detect_claude_code() {
+  need claude
+}
+detect_cursor() {
+  need cursor ||
+    [ -d "$HOME/.cursor" ] ||
+    [ -d "/Applications/Cursor.app" ] ||
+    [ -d "$HOME/Applications/Cursor.app" ]
+}
+detect_codex() {
+  need codex
+}
+should_install_claude_adapter() {
+  [ "$NO_CLAUDE" = "1" ] && return 1
+  case "$(normalize_agent_platform "$AGENT_PLATFORMS")" in
+    none) return 1 ;;
+    auto) detect_claude_code; return ;;
+  esac
+  agent_platform_requested "claude-code"
+}
+should_install_cursor_adapter() {
+  case "$(normalize_agent_platform "$AGENT_PLATFORMS")" in
+    none) return 1 ;;
+    auto) detect_cursor; return ;;
+  esac
+  agent_platform_requested "cursor"
+}
+should_install_codex_adapter() {
+  case "$(normalize_agent_platform "$AGENT_PLATFORMS")" in
+    none) return 1 ;;
+    auto) detect_codex; return ;;
+  esac
+  agent_platform_requested "codex"
+}
+agent_plan_label() {
+  case "$(normalize_agent_platform "$AGENT_PLATFORMS")" in
+    auto) printf '%s\n' "Autodetect and install available agent adapters." ;;
+    none) printf '%s\n' "Skip coding-agent plugin adapters." ;;
+    all) printf '%s\n' "Install all supported agent adapters." ;;
+    *) printf '%s\n' "Install requested agent adapter(s): $AGENT_PLATFORMS." ;;
+  esac
+}
 confirm() {
   local answer
   [ "$YES" = "1" ] && return 0
@@ -407,20 +500,33 @@ compose_initial_prompt() {
   fi
 }
 
-install_claude_plugin() {
-  [ "$NO_CLAUDE" = "1" ] && return 0
+resolve_plugin_repo() {
+  local manifest_dir="$1" repo="$PKG_DIR"
+  if [ ! -f "$repo/$manifest_dir/plugin.json" ]; then
+    repo="$(cd "$(dirname "$0")" && pwd)"
+  fi
+  if [ ! -f "$repo/$manifest_dir/plugin.json" ]; then
+    repo="$(pwd)"
+  fi
+  if [ ! -f "$repo/$manifest_dir/plugin.json" ]; then
+    return 1
+  fi
+  printf '%s\n' "$repo"
+}
 
+install_claude_plugin() {
+  if ! should_install_claude_adapter; then
+    say "Claude Code adapter not selected or not detected; skipping Claude Code plugin install."
+    return 0
+  fi
   if ! need claude; then
     say "Claude Code CLI not found; skipping plugin install."
     say "Later, from a checkout, run: claude plugin marketplace add <repo> && claude plugin install understudy@understudy-skills"
     return 0
   fi
 
-  local repo="$PKG_DIR"
-  if [ ! -f "$repo/.claude-plugin/plugin.json" ]; then
-    repo="$(cd "$(dirname "$0")" && pwd)"
-  fi
-  if [ ! -f "$repo/.claude-plugin/plugin.json" ]; then
+  local repo
+  if ! repo="$(resolve_plugin_repo ".claude-plugin")"; then
     say "Could not find .claude-plugin/plugin.json; skipping Claude Code plugin install."
     return 0
   fi
@@ -437,10 +543,79 @@ install_claude_plugin() {
   say "Then type /understudy:onboard so the agent can guide the first local Understudy."
 }
 
+install_cursor_plugin() {
+  if ! should_install_cursor_adapter; then
+    say "Cursor adapter not selected or not detected; skipping Cursor plugin install."
+    return 0
+  fi
+
+  local repo dest
+  if ! repo="$(resolve_plugin_repo ".cursor-plugin")"; then
+    say "Could not find .cursor-plugin/plugin.json; skipping Cursor plugin install."
+    return 0
+  fi
+
+  dest="$HOME/.cursor/plugins/local/understudy"
+  say "Installing the Understudy Cursor plugin from $repo."
+  mkdir -p "$(dirname "$dest")"
+  if [ -L "$dest" ] && [ "$(readlink "$dest" 2>/dev/null || true)" = "$repo" ]; then
+    ok "Understudy Cursor plugin already points at $repo."
+  else
+    rm -rf "$dest"
+    ln -s "$repo" "$dest"
+    ok "Understudy Cursor plugin linked at $dest."
+  fi
+  say "In Cursor, restart the app or run Developer: Reload Window."
+  say "Then ask Cursor Agent: Use the Understudy onboarding skill for this project."
+}
+
+install_codex_plugin() {
+  if ! should_install_codex_adapter; then
+    say "Codex adapter not selected or not detected; skipping Codex marketplace registration."
+    return 0
+  fi
+  if ! need codex; then
+    say "Codex CLI not found; skipping Codex marketplace registration."
+    say "Later, from a checkout, run: codex plugin marketplace add <repo>"
+    return 0
+  fi
+
+  local repo
+  if ! repo="$(resolve_plugin_repo ".codex-plugin")"; then
+    say "Could not find .codex-plugin/plugin.json; skipping Codex marketplace registration."
+    return 0
+  fi
+  if [ ! -f "$repo/.agents/plugins/marketplace.json" ]; then
+    say "Could not find .agents/plugins/marketplace.json; skipping Codex marketplace registration."
+    return 0
+  fi
+
+  say "Registering the Understudy Codex marketplace from $repo."
+  if codex plugin marketplace add "$repo" >>"$LOG_FILE" 2>&1; then
+    ok "Understudy Codex marketplace registered."
+  else
+    say "Codex marketplace add failed; trying marketplace refresh."
+    run_logged "Refresh the Understudy Codex marketplace" codex plugin marketplace upgrade understudy-skills
+  fi
+  say "In Codex, run /plugins, choose the understudy-skills marketplace, and install or enable the understudy plugin."
+  say "Then ask Codex: Use the Understudy onboarding skill for this project."
+}
+
+install_agent_adapters() {
+  install_claude_plugin
+  install_cursor_plugin
+  install_codex_plugin
+}
+
 launch_claude_code() {
   local claude_log
   if [ "$NO_CLAUDE" != "0" ]; then
     say "Skipping Claude Code launch because --no-claude is set."
+    mark_step_done 3
+    return 0
+  fi
+  if ! should_install_claude_adapter; then
+    say "Skipping Claude Code launch because the Claude Code adapter is not selected or detected."
     mark_step_done 3
     return 0
   fi
@@ -510,6 +685,7 @@ need npm || {
   exit 1
 }
 
+validate_agent_platforms || exit 2
 configure_resume
 
 banner
@@ -529,12 +705,12 @@ if [ "$KEEP_LOGIN" = "1" ]; then
 else
   say "  ${G3}·${R}  Reset any existing sign-in so the agent-first sign-up starts fresh (backup kept; --keep-login skips)."
 fi
-say "  ${G4}2.${R} Install or refresh the Claude Code skills when Claude Code is available."
-say "  ${G5}3.${R} Open Claude Code here — the agent signs you up by email code, then onboards you."
+say "  ${G4}2.${R} $(agent_plan_label)"
+say "  ${G5}3.${R} Open Claude Code here when the Claude Code adapter is selected — otherwise finish with reload instructions."
 say ""
 say "Default install does not download weights, start MLX, launch the ladder server, or make frontier calls."
-say "Those actions happen later through /understudy:onboard, where the coding agent can coach the user and ask consent."
-say "This installer writes only under $LAB, $HOME/.understudy, the global npm prefix, and Claude Code plugin state when enabled."
+say "Those actions happen later through the Understudy onboarding skill, where the coding agent can coach the user and ask consent."
+say "This installer writes only under $LAB, $HOME/.understudy, the global npm prefix, and selected coding-agent plugin state."
 confirm "Continue with this Understudy installation?" || exit 1
 
 PKG_DIR="$(npm root -g)/@understudylabs/understudy-agent-tools"
@@ -551,19 +727,19 @@ fi
 prepare_agent_first_signin
 
 if should_run_step 2; then
-  section "Step 2/3 · Install the Claude Code skills"
-  install_claude_plugin
+  section "Step 2/3 · Install agent adapters"
+  install_agent_adapters
   mark_step_done 2
 else
-  say "Skipping step 2/3: install the Claude Code skills."
+  say "Skipping step 2/3: install agent adapters."
 fi
 
 compose_initial_prompt
 
 section "Where this goes next"
-say "The installer is done. The next experience belongs inside Claude Code:"
-say "  The launched Claude Code session receives the sign-up + onboarding prompt automatically."
-say "  If you continue in an already-open Claude Code session instead, run /reload-plugins and then /understudy:onboard."
+say "The installer is done. The next experience belongs inside your coding agent:"
+say "  Claude Code: run /reload-plugins and then /understudy:onboard."
+say "  Cursor: restart Cursor or run Developer: Reload Window, then ask Cursor Agent to use the Understudy onboarding skill."
 say "That lets the coding agent run the email-code sign-up itself, explain the first local Understudy, and open a terminal of the user's choice when needed."
 if should_run_step 3; then
   launch_claude_code

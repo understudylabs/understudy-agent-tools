@@ -1,0 +1,25 @@
+{
+  "name": "understudy-skills",
+  "metadata": {
+    "description": "Understudy skills for improving LLM apps with local-first evidence, evals, optimization, local models, and routing.",
+    "version": "0.4.0"
+  },
+  "plugins": [
+    {
+      "name": "understudy",
+      "source": {
+        "source": "local",
+        "path": "./"
+      },
+      "policy": {
+        "installation": "AVAILABLE",
+        "authentication": "ON_INSTALL"
+      },
+      "category": "Productivity",
+      "interface": {
+        "displayName": "Understudy",
+        "description": "Improve LLM apps from traces: capture evidence, build evals, optimize, compare models, and route through Understudy."
+      }
+    }
+  ]
+}

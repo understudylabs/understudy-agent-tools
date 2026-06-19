@@ -24,6 +24,13 @@ group it belongs to.
   verifies the Understudy skills as a Claude Code plugin via the
   non-interactive `claude plugin` CLI, then surfaces the one `/reload-plugins`
   activation step.
+- [`install-cursor-plugin`](install-cursor-plugin/SKILL.md) installs, refreshes,
+  verifies, or removes the same Understudy skills as a local Cursor plugin by
+  symlinking this repo into `~/.cursor/plugins/local/understudy`, then surfaces
+  the Cursor reload step.
+- [`install-codex-plugin`](install-codex-plugin/SKILL.md) registers, refreshes,
+  verifies, or removes the same Understudy skills as a local Codex marketplace
+  plugin, then surfaces the `/plugins` install/enable step.
 - [`onboard`](onboard/SKILL.md) is the engaging first-run experience: it
   backgrounds a small American open-model download while it profiles the machine,
   detects ML tooling, interviews the user, and writes a durable

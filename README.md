@@ -7,6 +7,13 @@ optimization planning, gateway handoff, and agent-led implementation. The CLI is
 thin TypeScript/Node: durable shortcuts, auth, artifact checks, and runtime
 wrappers that a coding agent can monitor.
 
+Understudy is agent-platform-neutral at the skill layer. Claude Code, Cursor,
+and Codex share the same [`skills/`](skills/) tree and only differ in a thin
+platform adapter: manifest, install path, reload step, and onboarding
+invocation. The current adapter registry is documented in
+[`docs/agent-platform-adapters.md`](docs/agent-platform-adapters.md) and exposed
+through `understudy platforms`.
+
 The OSS MVP loop is local-first and skill-led:
 
 ```text
@@ -34,6 +41,7 @@ covers the hosted contracts behind them.
 | CLI | `src/` | Thin TypeScript shortcuts for auth, artifact checks, and durable runs. |
 | Skills | `skills/` | MVP progressive-disclosure agent playbooks. |
 | Docs | `docs/` | Public methodology and release-boundary notes. |
+| Platform adapters | `.claude-plugin/`, `.cursor-plugin/`, `.codex-plugin/`, `.agents/`, `AGENTS.md` | Thin manifests or durable instructions that expose the same skill tree to each coding-agent surface. |
 | Scripts | `scripts/` | Repo hygiene checks, not product CLI code. |
 | Vendor | `vendor/` | Vendored or mirrored compatibility shims, with license metadata. |
 
@@ -49,9 +57,20 @@ Fast first-run installer:
 curl -fsSL https://raw.githubusercontent.com/UnderstudyLabs/understudy-agent-tools/main/install.sh | bash
 ```
 
-This installs the CLI, installs or refreshes the Claude Code plugin when
-`claude` is available, then opens Claude Code in the current directory. In
-Claude Code, run:
+This installs the CLI, autodetects available coding-agent adapters, and installs
+or refreshes the matching local plugin surfaces. Today that means Claude Code
+when `claude` is available, Cursor when Cursor is present, and Codex when the
+`codex` CLI is available. Override the
+default with `--agents auto|all|claude-code|cursor|codex|none`.
+
+| Agent harness | Default installer behavior | Activation |
+| --- | --- | --- |
+| Claude Code | Autodetected when `claude` is on `PATH`; installs the local Claude plugin. | Run `/reload-plugins`, then `/understudy:onboard`. |
+| Cursor | Autodetected when Cursor is present; links this repo into `~/.cursor/plugins/local/understudy`. | Restart Cursor or run **Developer: Reload Window**, then ask Cursor Agent to use the Understudy onboarding skill. |
+| Codex | Autodetected when `codex` is on `PATH`; registers the local Codex marketplace from `.agents/plugins/marketplace.json`. | Run `/plugins`, choose `understudy-skills`, install or enable `understudy`, then start a new thread if needed. |
+
+If Claude Code is selected, the installer opens Claude Code in the current
+directory. In Claude Code, run:
 
 ```text
 /reload-plugins
@@ -139,12 +158,83 @@ claude plugin marketplace remove understudy-skills
 
 — and nothing outside Claude Code's plugin registry is touched.
 
+## Install as a Cursor plugin
+
+The same skills also ship as a Cursor plugin, declared in
+[`.cursor-plugin/plugin.json`](.cursor-plugin/plugin.json). Cursor discovers
+the repo's existing [`skills/`](skills/) tree from the plugin root, so there is
+no Cursor-specific fork of the playbooks.
+
+For local testing from a clone:
+
+```bash
+mkdir -p ~/.cursor/plugins/local
+ln -s /path/to/understudy-agent-tools ~/.cursor/plugins/local/understudy
+```
+
+Then restart Cursor or run **Developer: Reload Window**. In Cursor Settings ->
+Rules, the Understudy skills should appear under Agent Decides. To remove it:
+
+```bash
+rm -f ~/.cursor/plugins/local/understudy
+```
+
+The [`install-cursor-plugin`](skills/install-cursor-plugin/SKILL.md) skill
+contains the agent-run install/update/verify flow. This path is local-only:
+adding the plugin does not authenticate, upload data, download model weights, or
+make provider calls.
+
+## Install as a Codex plugin
+
+The same skills ship as a Codex plugin, declared in
+[`.codex-plugin/plugin.json`](.codex-plugin/plugin.json) and exposed through the
+repo marketplace at [`.agents/plugins/marketplace.json`](.agents/plugins/marketplace.json).
+The plugin points at the repo's existing [`skills/`](skills/) tree.
+
+From a clone of this repo:
+
+```bash
+codex plugin marketplace add /path/to/understudy-agent-tools
+```
+
+Then open Codex, run `/plugins`, choose the `understudy-skills` marketplace, and
+install or enable the `understudy` plugin. The
+[`install-codex-plugin`](skills/install-codex-plugin/SKILL.md) skill contains
+the agent-run registration/verify flow. This path is local-only: registering the
+marketplace does not authenticate, upload data, download model weights, or make
+provider calls.
+
+To remove the marketplace registration:
+
+```bash
+codex plugin marketplace remove understudy-skills
+```
+
+`AGENTS.md` remains repo guidance for Codex, but the Codex plugin is the reusable
+distribution unit for the skills.
+
+## Agent Platform Adapters
+
+Use the platform registry to see the current install/reload surface across
+agent clients:
+
+```bash
+understudy platforms
+understudy platforms --inspect claude-code
+understudy platforms --inspect cursor
+understudy --json platforms
+```
+
+Claude Code, Cursor, and Codex are supported adapters. All three reuse the same
+`skills/` tree instead of copying platform-specific skill content.
+
 ## First Commands
 
 ```bash
 understudy spine
 understudy skills --list
 understudy skills --search gateway
+understudy platforms
 understudy doctor
 ```
 
@@ -231,7 +321,8 @@ conservative claims.
 capability worker per intent. The workers are grouped by journey stage; deeper
 playbooks live in each skill's `references/` directory:
 
-- **Setup & first run** — install-plugin, onboard, ladder (the onboarding "climb")
+- **Setup & first run** — install-plugin, install-cursor-plugin,
+  install-codex-plugin, onboard, ladder (the onboarding "climb")
 - **Understand & capture** — understand-workload, ingest-traces (incl. the
   capture-directory profiler), capture-evidence (incl. the public-benchmark
   on-ramp), design-simulated-environment
@@ -272,6 +363,7 @@ The TypeScript CLI currently owns the public tools surface:
 
 ```text
 spine
+platforms
 skills
 doctor
 login

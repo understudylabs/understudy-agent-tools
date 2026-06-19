@@ -1,15 +1,41 @@
 # Changelog
 
 Notable, user-facing changes to the Understudy skills + CLI. Versions track the
-plugin: `package.json`, `.claude-plugin/plugin.json`, and
-`.claude-plugin/marketplace.json` are bumped together on any release that changes
-the skill catalog or CLI surface, because an installed plugin has no other
-staleness signal. After upgrading, run `/reload-plugins`.
+plugin: `package.json`, `.claude-plugin/plugin.json`,
+`.claude-plugin/marketplace.json`, `.cursor-plugin/plugin.json`,
+`.codex-plugin/plugin.json`, and `.agents/plugins/marketplace.json` are bumped
+together on any release that changes the skill catalog, CLI surface, or
+agent-platform adapter surface, because an installed plugin has no other
+staleness signal. After upgrading, reload or enable the plugin in your coding
+agent.
 
 The format follows [Keep a Changelog](https://keepachangelog.com/); this project
 uses semantic-ish versioning (minor = new skill or new capability, patch = fixes).
 
 ## [Unreleased]
+
+## [0.4.0] — 2026-06-19
+
+### Added
+
+- **Multi-agent plugin adapters.** Added a shared adapter registry and
+  `understudy platforms` so Claude Code, Cursor, and Codex can expose the same
+  `skills/` tree without platform-specific forks.
+- **Cursor plugin support.** Added `.cursor-plugin/plugin.json`, an
+  `install-cursor-plugin` skill, installer autodetect/linking into
+  `~/.cursor/plugins/local/understudy`, and README/docs activation guidance.
+- **Codex plugin support.** Added `.codex-plugin/plugin.json`, a local Codex
+  marketplace at `.agents/plugins/marketplace.json`, an `install-codex-plugin`
+  skill, installer marketplace registration, and `/plugins` activation
+  guidance.
+
+### Changed
+
+- `install.sh` now supports `--agents auto|all|claude-code|cursor|codex|none`
+  and `UNDERSTUDY_AGENT_PLATFORMS` so the curl installer can autodetect or
+  explicitly target multiple coding-agent harnesses.
+- `understudy doctor` now checks version consistency across Claude Code,
+  Cursor, and Codex plugin metadata.
 
 ### Fixed
 

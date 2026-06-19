@@ -419,6 +419,27 @@ describe("understudy CLI", () => {
     assert.match(result.stdout, /use-understudy-gateway/);
   });
 
+  it("lists agent platform adapters", () => {
+    const result = run(["--json", "platforms"]);
+    assert.equal(result.status, 0, result.stderr);
+    const payload = JSON.parse(result.stdout);
+    assert.deepEqual(
+      payload.adapters.map((adapter) => adapter.id),
+      ["claude-code", "cursor", "codex"],
+    );
+    assert.equal(payload.adapters.find((adapter) => adapter.id === "cursor").manifestPath, ".cursor-plugin/plugin.json");
+    assert.equal(payload.adapters.find((adapter) => adapter.id === "codex").manifestPath, ".codex-plugin/plugin.json");
+    assert.equal(payload.adapters.find((adapter) => adapter.id === "codex").status, "supported");
+  });
+
+  it("inspects one agent platform adapter", () => {
+    const result = run(["platforms", "--inspect", "cursor"]);
+    assert.equal(result.status, 0, result.stderr);
+    assert.match(result.stdout, /Cursor/);
+    assert.match(result.stdout, /\.cursor-plugin\/plugin\.json/);
+    assert.match(result.stdout, /Developer: Reload Window/);
+  });
+
   it("lists the pedagogical and local training skills", () => {
     const result = run(["skills", "--list"]);
     assert.equal(result.status, 0, result.stderr);
@@ -493,6 +514,9 @@ describe("understudy CLI", () => {
     assert.equal(payload.versions_consistent, true);
     assert.equal(payload.versions.cli, payload.versions.plugin);
     assert.equal(payload.versions.cli, payload.versions.marketplace);
+    assert.equal(payload.versions.cli, payload.versions.cursorPlugin);
+    assert.equal(payload.versions.cli, payload.versions.codexPlugin);
+    assert.equal(payload.versions.cli, payload.versions.codexMarketplace);
   });
 
   it("status exits non-zero when local config is malformed", () => {
