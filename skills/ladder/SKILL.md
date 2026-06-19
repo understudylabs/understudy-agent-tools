@@ -41,10 +41,10 @@ workload, hand off to `run-local-model-lab`.
   `gemma-4-e2b`. If it's missing, pull it with the `manage-local-models` skill
   (`understudy models pull gemma-4-e2b-it-qat-mlx-vlm-understudy`); the server
   prints an actionable error if it's absent.
-- **Frontier lane only:** run `understudy login` once so `understudy run` can
-  inject the gateway key. Without it the frontier lane returns the literal notice
-  `[gateway not configured …]` rather than erroring — don't mistake that for a
-  real run.
+- **Remote lanes only:** run `understudy login` once so `understudy run` can
+  inject the gateway key and org id. Without it a remote lane returns the literal
+  notice `[gateway not configured …]` rather than erroring — don't mistake that
+  for a real run.
 
 Run from the repo root (the path below is relative):
 
@@ -69,8 +69,8 @@ service — though the SSE endpoint is browserless-friendly for an agent.
 - **VS mode** — two models race the same task side by side. Local-vs-local
   serializes on the one GPU; local-vs-gateway runs concurrently.
 
-Frontier (`glm-5.1`) runs go through the Understudy gateway and are **billed** —
-the picker marks that lane and every such run is disclosed.
+Remote runs go through the Understudy gateway and are **billed**. The picker
+marks every gateway-backed lane and every such run is disclosed.
 
 ## What you can actually run ($0 vs billed)
 
@@ -78,12 +78,12 @@ the picker marks that lane and every such run is disclosed.
   watch where it breaks: it passes the easy/medium classify tasks and typically
   fails the hard tool-calling task. That difficulty climb is the free demo and a
   real signal on its own, entirely on your machine.
-- **A side-by-side model-vs-model comparison costs money.** The only frontier
-  lane, `glm-5.1`, is billed, and the "compare two" (VS) button pairs the local
-  model against it by default — so triggering VS bills a gateway run. No *second*
-  free model ships enabled (the local LFM lane is coded but commented out in
-  `serve.py`). So "$0" and "two models side by side" are not both available out
-  of the box: take the free climb, or accept the gateway cost for the race.
+- **A side-by-side model-vs-model comparison usually costs money.** The "compare
+  two" (VS) button pairs the local model against a gateway-backed remote model
+  by default — so triggering VS bills a gateway run. No *second* free model ships
+  enabled (the local LFM lane is coded but commented out in `serve.py`). So "$0"
+  and "two models side by side" are not both available out of the box: take the
+  free climb, or accept the gateway cost for the race.
 
 ## Drive it headlessly
 
@@ -102,10 +102,9 @@ The stream ends with a `done` event carrying the result (`correct`, `response`,
 
 - **Local-first, $0 on the local lane.** The mlx model runs on the developer's
   machine, the server binds `127.0.0.1` only, and nothing is uploaded.
-- **Gateway runs are billed.** The frontier lane (`glm-5.1`) goes through the
-  Understudy gateway and costs money. The picker marks it and every such run is
-  disclosed in the UI — do not route to it without the developer understanding
-  it bills.
+- **Gateway runs are billed.** Remote lanes go through the Understudy gateway and
+  cost money. The picker marks them and every such run is disclosed in the UI —
+  do not route to one without the developer understanding it bills.
 - **Synthetic data only.** The "Larkfield" world is invented; no real customer or
   workload data is involved.
 - **No silent downloads.** The server only *loads* a cached local model from
