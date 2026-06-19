@@ -294,6 +294,65 @@ describe("install.sh", () => {
     assert.match(callsText, /codex plugin marketplace add /);
   });
 
+  it("surfaces an interactive install-target selector for human installs", () => {
+    const script = readFileSync("install.sh", "utf8");
+
+    assert.match(script, /Choose Coding Agent/);
+    assert.match(script, /Where should Understudy install its agent plugin/);
+    assert.match(script, /Install target/);
+    assert.match(script, /All detected coding agents/);
+    assert.match(script, /CLI only, no coding-agent plugins/);
+  });
+
+  it("continues when Codex marketplace registration cannot be refreshed", () => {
+    const script = readFileSync("install.sh", "utf8");
+    const home = join(root, "home");
+    const bin = join(root, "bin");
+    const calls = join(root, "codex-failed-calls.txt");
+    mkdirSync(bin, { recursive: true });
+    writeFileSync(
+      join(bin, "codex"),
+      `#!/usr/bin/env bash\nprintf '%s\\n' "$*" >> "${calls}"\ncase "$*" in\n  plugin\\ marketplace\\ add*) echo "Error: --ref is only supported for git marketplace sources" >&2; exit 1 ;;\n  "plugin marketplace upgrade understudy-skills") echo "Error: marketplace is not configured as a Git marketplace" >&2; exit 1 ;;\nesac\nexit 0\n`,
+    );
+    chmodSync(join(bin, "codex"), 0o755);
+
+    const result = spawnSync(
+      "bash",
+      [
+        "-s",
+        "--",
+        "--non-interactive",
+        "--only-step",
+        "2",
+        "--agents",
+        "codex",
+        "--no-launch-claude",
+        "--lab",
+        join(root, "lab"),
+      ],
+      {
+        cwd: process.cwd(),
+        input: script,
+        encoding: "utf8",
+        env: {
+          ...process.env,
+          CI: "1",
+          HOME: home,
+          PATH: `${bin}:${process.env.PATH}`,
+          UNDERSTUDY_INSTALL_LOG_DIR: join(root, "logs"),
+        },
+      },
+    );
+
+    assert.equal(result.status, 0, result.stderr || result.stdout);
+    assert.match(result.stdout, /Codex marketplace add failed; trying marketplace refresh/);
+    assert.match(result.stdout, /Codex marketplace registration failed; continuing/);
+    assert.match(result.stdout, /Manual recovery: run `codex plugin marketplace remove understudy-skills`/);
+    const callsText = readFileSync(calls, "utf8");
+    assert.match(callsText, /plugin marketplace add /);
+    assert.match(callsText, /plugin marketplace upgrade understudy-skills/);
+  });
+
   it("rejects ambiguous mixed agent adapter modes", () => {
     const script = readFileSync("install.sh", "utf8");
     const result = spawnSync(

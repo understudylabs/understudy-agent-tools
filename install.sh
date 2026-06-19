@@ -14,6 +14,8 @@ CLAUDE_PERMISSION_MODE="${UNDERSTUDY_CLAUDE_PERMISSION_MODE:-auto}"
 USER_PROMPT_OVERRIDE="${UNDERSTUDY_INITIAL_CLAUDE_PROMPT:-}"
 INITIAL_CLAUDE_PROMPT=""
 AGENT_PLATFORMS="${UNDERSTUDY_AGENT_PLATFORMS:-auto}"
+AGENT_PLATFORMS_EXPLICIT=0
+[ -n "${UNDERSTUDY_AGENT_PLATFORMS:-}" ] && AGENT_PLATFORMS_EXPLICIT=1
 KEEP_LOGIN="${UNDERSTUDY_KEEP_LOGIN:-0}"
 NO_CLAUDE=0
 START_STEP=1
@@ -29,8 +31,8 @@ while [ "$#" -gt 0 ]; do
     --non-interactive|--noninteractive|--no-input) NONINTERACTIVE=1 ;;
     --require-confirm) REQUIRE_CONFIRM=1 ;;
     --no-claude) NO_CLAUDE=1 ;;
-    --agents|--agent) AGENT_PLATFORMS="${2:?missing agent platform list}"; shift ;;
-    --no-agents) AGENT_PLATFORMS="none"; NO_CLAUDE=1; LAUNCH_CLAUDE=0 ;;
+    --agents|--agent) AGENT_PLATFORMS="${2:?missing agent platform list}"; AGENT_PLATFORMS_EXPLICIT=1; shift ;;
+    --no-agents) AGENT_PLATFORMS="none"; AGENT_PLATFORMS_EXPLICIT=1; NO_CLAUDE=1; LAUNCH_CLAUDE=0 ;;
     --no-launch-claude) LAUNCH_CLAUDE=0 ;;
     --launch-claude) LAUNCH_CLAUDE=1 ;;
     --keep-login) KEEP_LOGIN=1 ;;
@@ -321,6 +323,74 @@ detect_cursor() {
 detect_codex() {
   need codex
 }
+default_agent_platform() {
+  if [ "$NO_CLAUDE" != "1" ] && detect_claude_code; then
+    printf '%s\n' "claude-code"
+  elif detect_cursor; then
+    printf '%s\n' "cursor"
+  elif detect_codex; then
+    printf '%s\n' "codex"
+  else
+    printf '%s\n' "none"
+  fi
+}
+detected_agent_label() {
+  local name="$1" label="$2"
+  if [ "$name" = "claude-code" ] && [ "$NO_CLAUDE" = "1" ]; then
+    printf '%s\n' "$label (disabled by --no-claude)"
+  elif case "$name" in
+      claude-code) detect_claude_code ;;
+      cursor) detect_cursor ;;
+      codex) detect_codex ;;
+      *) return 1 ;;
+    esac
+  then
+    printf '%s\n' "$label (detected)"
+  else
+    printf '%s\n' "$label (not detected)"
+  fi
+}
+noninteractive_enabled() {
+  case "$NONINTERACTIVE" in
+    1|true|TRUE|yes|YES|on|ON) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+select_agent_platforms() {
+  local answer default
+  [ "$AGENT_PLATFORMS_EXPLICIT" = "0" ] || return 0
+  should_run_step 2 || return 0
+  [ "$YES" = "0" ] || return 0
+  noninteractive_enabled && return 0
+  [ -r /dev/tty ] && [ -w /dev/tty ] || return 0
+
+  default="$(default_agent_platform)"
+  section "Choose Coding Agent"
+  say "Where should Understudy install its agent plugin?"
+  say "  ${G2}1.${R} $(detected_agent_label "claude-code" "Claude Code")"
+  say "  ${G3}2.${R} $(detected_agent_label "cursor" "Cursor")"
+  say "  ${G4}3.${R} $(detected_agent_label "codex" "Codex")"
+  say "  ${G5}4.${R} All detected coding agents"
+  say "  ${G6}5.${R} CLI only, no coding-agent plugins"
+  say "Press Enter for: $default."
+
+  if ! printf "  %s?%s Install target %s[1/2/3/4/5 or name]%s " "$G4" "$R" "$D" "$R" >/dev/tty 2>/dev/null; then
+    return 0
+  fi
+  if ! read -r answer </dev/tty 2>/dev/null; then
+    return 0
+  fi
+  case "$answer" in
+    "") AGENT_PLATFORMS="$default" ;;
+    1|claude|claude-code|claude_code|claudecode) AGENT_PLATFORMS="claude-code" ;;
+    2|cursor) AGENT_PLATFORMS="cursor" ;;
+    3|codex) AGENT_PLATFORMS="codex" ;;
+    4|all|auto) AGENT_PLATFORMS="auto" ;;
+    5|none|cli|cli-only|cli_only) AGENT_PLATFORMS="none" ;;
+    *) AGENT_PLATFORMS="$answer" ;;
+  esac
+  validate_agent_platforms || exit 2
+}
 should_install_claude_adapter() {
   [ "$NO_CLAUDE" = "1" ] && return 1
   case "$(normalize_agent_platform "$AGENT_PLATFORMS")" in
@@ -595,7 +665,15 @@ install_codex_plugin() {
     ok "Understudy Codex marketplace registered."
   else
     say "Codex marketplace add failed; trying marketplace refresh."
-    run_logged "Refresh the Understudy Codex marketplace" codex plugin marketplace upgrade understudy-skills
+    log "RUN codex plugin marketplace upgrade understudy-skills"
+    if codex plugin marketplace upgrade understudy-skills >>"$LOG_FILE" 2>&1; then
+      ok "Understudy Codex marketplace refreshed."
+    else
+      warn "Codex marketplace registration failed; continuing with the rest of the install."
+      say "Manual recovery: run \`codex plugin marketplace remove understudy-skills\`, then \`codex plugin marketplace add $repo\`."
+      say "Codex details are in the install log: $LOG_FILE"
+      return 0
+    fi
   fi
   say "In Codex, run /plugins, choose the understudy-skills marketplace, and install or enable the understudy plugin."
   say "Then ask Codex: Use the Understudy onboarding skill for this project."
@@ -694,10 +772,11 @@ if [ "$FANCY" = "1" ]; then
 else
   section "Welcome. We are going to install Understudy for your coding agent."
 fi
-say "This installer bootstraps the CLI and Claude Code skills, then drops you back into your coding agent."
+say "This installer bootstraps the CLI and selected coding-agent skills, then drops you back into your coding agent when possible."
 say "Source: $INSTALL_REPO_URL#$INSTALL_REF ${D}(installer commit: $INSTALLER_COMMIT)${R}"
 say "Install log: $LOG_FILE"
 say ""
+select_agent_platforms
 say "${B}Install plan${R}"
 say "  ${G2}1.${R} Install the Understudy CLI."
 if [ "$KEEP_LOGIN" = "1" ]; then
