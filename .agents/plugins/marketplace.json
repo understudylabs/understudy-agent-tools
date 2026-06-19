@@ -2,7 +2,7 @@
   "name": "understudy-skills",
   "metadata": {
     "description": "Understudy skills for improving LLM apps with local-first evidence, evals, optimization, local models, and routing.",
-    "version": "0.4.0"
+    "version": "0.5.0"
   },
   "plugins": [
     {

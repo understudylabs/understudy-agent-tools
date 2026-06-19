@@ -14,6 +14,22 @@ uses semantic-ish versioning (minor = new skill or new capability, patch = fixes
 
 ## [Unreleased]
 
+## [0.5.0] — 2026-06-19
+
+### Added
+
+- **`ladder` remote model picker.** The ladder now builds remote lanes from the
+  Understudy gateway catalog when org context is available, falls back to the
+  public remote model list, and supports explicit existing model ids via
+  `UNDERSTUDY_LADDER_REMOTE_MODELS` (for example `glm-5.2`). The viewer consumes
+  `/models` as the source of truth instead of hard-coding only `glm-5.1`.
+
+### Changed
+
+- `understudy run` now injects the non-secret `UNDERSTUDY_ORG_ID` when known so
+  local tools can discover org-scoped hosted metadata without reading
+  credentials from disk.
+
 ## [0.4.0] — 2026-06-19
 
 ### Added

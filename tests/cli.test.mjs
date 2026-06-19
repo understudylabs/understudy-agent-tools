@@ -1253,6 +1253,67 @@ describe("understudy CLI", () => {
     });
   });
 
+  it("injects org context into authenticated child runs", async () => {
+    await withHostedFixture(async ({ home, repo }) => {
+      const env = { HOME: home, USERPROFILE: home };
+      const result = await runWithEnvAsync(
+        [
+          "--json",
+          "run",
+          "node",
+          "-e",
+          "console.log(JSON.stringify({api:!!process.env.UNDERSTUDY_API_KEY,gateway:process.env.UNDERSTUDY_GATEWAY_URL,org:process.env.UNDERSTUDY_ORG_ID||null}))",
+        ],
+        env,
+        repo,
+      );
+
+      assert.equal(result.status, 0, result.stderr);
+      const runMeta = JSON.parse(result.stderr.trim().split("\n").find((line) => line.startsWith("{")));
+      assert.deepEqual(runMeta.injected, ["UNDERSTUDY_API_KEY", "UNDERSTUDY_GATEWAY_URL", "UNDERSTUDY_ORG_ID"]);
+      assert.equal(runMeta.org_id, "org_1");
+      const childEnv = JSON.parse(result.stdout.trim());
+      assert.equal(childEnv.api, true);
+      assert.match(childEnv.gateway, /^http:\/\/127\.0\.0\.1:/);
+      assert.equal(childEnv.org, "org_1");
+    });
+  });
+
+  it("omits org context from run metadata when no org is configured", async () => {
+    const home = mkdtempSync(join(tmpdir(), "understudy-run-env-home-"));
+    const repo = mkdtempSync(join(tmpdir(), "understudy-run-env-repo-"));
+    try {
+      const result = await runWithEnvAsync(
+        [
+          "--json",
+          "run",
+          "node",
+          "-e",
+          "console.log(JSON.stringify({api:!!process.env.UNDERSTUDY_API_KEY,gateway:process.env.UNDERSTUDY_GATEWAY_URL,org:process.env.UNDERSTUDY_ORG_ID||null}))",
+        ],
+        {
+          HOME: home,
+          USERPROFILE: home,
+          UNDERSTUDY_API_KEY: "sk_env_only",
+          UNDERSTUDY_GATEWAY_URL: "https://gateway.example.test",
+        },
+        repo,
+      );
+
+      assert.equal(result.status, 0, result.stderr);
+      const runMeta = JSON.parse(result.stderr.trim().split("\n").find((line) => line.startsWith("{")));
+      assert.deepEqual(runMeta.injected, ["UNDERSTUDY_API_KEY", "UNDERSTUDY_GATEWAY_URL"]);
+      assert.equal(runMeta.org_id, null);
+      const childEnv = JSON.parse(result.stdout.trim());
+      assert.equal(childEnv.api, true);
+      assert.equal(childEnv.gateway, "https://gateway.example.test");
+      assert.equal(childEnv.org, null);
+    } finally {
+      rmSync(home, { recursive: true, force: true });
+      rmSync(repo, { recursive: true, force: true });
+    }
+  });
+
   it("scans capture/import sources with metadata only and writes a redaction manifest", () =>
     withCaptureFixtureRepo((repo) => {
       const result = run(["capture-import", "scan", "--repo", repo, "--json"]);

@@ -36,21 +36,92 @@ MODEL_HOME = os.environ.get("UNDERSTUDY_MODEL_HOME") or os.path.expanduser("~/.u
 # Gemma (mlx_vlm): Google's standardized temp 1.0 / top_p 0.95 / top_k 64.
 # Classify runs can expose the reasoning channel; tool-calling uses the
 # snapshot-certified agentic path with thinking disabled.
-MODELS = {
+LOCAL_MODELS = {
     # gemma is our default local model for now. (8b-a1b removed for now -- re-add the
     # line below to restore it; the mlx_lm / LFM tool-calling code is left intact.)
     # "lfm2.5-8b-a1b": ("mlx_lm",  os.path.join(MODEL_HOME, "lfm2.5-8b-a1b-8bit"), "LFM 8B-A1B · thinking", {"temp": 0.2, "top_k": 80, "rep": 1.05}),
     "gemma-4-e2b":   ("mlx_vlm", os.path.join(MODEL_HOME, "gemma-4-e2b-it-qat-mlx-vlm-understudy"), "gemma-4-e2b · thinking", {"temp": 1.0, "top_p": 0.95, "top_k": 64}),
-    # frontier via the Understudy gateway (BILLED). Launch serve.py with `understudy run` so
-    # UNDERSTUDY_API_KEY + UNDERSTUDY_GATEWAY_URL are injected — the raw key is never read from disk.
-    "glm-5.1":       ("gateway", "glm-5.1", "glm-5.1 · frontier", {}),
 }
+
+FALLBACK_REMOTE_MODELS = [
+    ("glm-5.1", "GLM 5.1"),
+    ("gemma-4-31b-it", "Gemma 4 31B"),
+    ("nemotron-3-nano", "Nemotron 3 Nano"),
+    ("nemotron-3-super", "Nemotron 3 Super"),
+    ("nemotron-3-ultra", "Nemotron 3 Ultra"),
+]
+
+
+def _gateway_spec(model_id, label):
+    return ("gateway", model_id, "%s · remote" % label, {})
+
+
+def _fallback_gateway_models():
+    return {mid: _gateway_spec(mid, label) for mid, label in FALLBACK_REMOTE_MODELS}
+
+
+def _configured_gateway_models():
+    raw = os.environ.get("UNDERSTUDY_LADDER_REMOTE_MODELS", "").strip()
+    if not raw:
+        return None
+    out = {}
+    for part in re.split(r"[,;\s]+", raw):
+        mid = part.strip()
+        if mid:
+            out[mid] = _gateway_spec(mid, mid)
+    return out or None
+
+
+def _live_gateway_models():
+    """Best-effort org catalog refresh. Falls back silently when the ladder is
+    launched without org context or while offline; model calls still go through
+    /v1/chat/completions with the selected id."""
+    org_id = os.environ.get("UNDERSTUDY_ORG_ID")
+    api_key = os.environ.get("UNDERSTUDY_API_KEY")
+    gateway_url = os.environ.get("UNDERSTUDY_GATEWAY_URL")
+    if not (org_id and api_key and gateway_url):
+        return None
+    try:
+        import urllib.request
+        req = urllib.request.Request(
+            gateway_url.rstrip("/") + "/admin/v1/orgs/%s/models" % org_id,
+            headers={"Authorization": "Bearer " + api_key, "Accept": "application/json"},
+            method="GET")
+        with urllib.request.urlopen(req, timeout=5) as resp:
+            data = json.loads(resp.read().decode("utf-8"))
+    except Exception as e:
+        sys.stderr.write("[models] live catalog unavailable: %s: %s\n" % (type(e).__name__, str(e)[:160])); sys.stderr.flush()
+        return None
+    out = {}
+    for item in data.get("models") or []:
+        mid = item.get("id")
+        if not mid:
+            continue
+        label = item.get("display_name") or item.get("name") or mid
+        out[mid] = _gateway_spec(mid, label)
+    return out or None
+
+
+def build_model_catalog():
+    remote = _configured_gateway_models() or _live_gateway_models() or _fallback_gateway_models()
+    out = dict(LOCAL_MODELS)
+    out.update(remote)
+    return out
+
+
+MODELS = build_model_catalog()
+
+
+def model_catalog_payload():
+    return {"models": [
+        {"id": k, "label": v[2], "lane": v[0], "ready": model_loaded(k), "billed": v[0] == "gateway"}
+        for k, v in MODELS.items()]}
 
 # Catalog version stamp. Bump whenever a task row, assertion, scorer, or
 # execution config changes so run results taken against different versions stay
 # comparable (same discipline as the world's scoring contract in env/world.py).
 # Exposed as `tasks_version` on /tasks.
-TASKS_VERSION = "2"
+TASKS_VERSION = "3"
 
 # Classify tasks are DATA, not code -- the same discipline as the tool tasks below.
 # Each row in fixtures/classify_tasks.jsonl is one single-shot classify rung:
@@ -712,8 +783,7 @@ class Handler(BaseHTTPRequestHandler):
                             "tools": t.get("allowed_tools", []), "checks": len(t.get("assertions", []))})
             return self._json({"tasks_version": TASKS_VERSION, "tasks": cat})
         if u.path == "/models":
-            return self._json({"models": [
-                {"id": k, "label": v[2], "lane": v[0], "ready": model_loaded(k)} for k, v in MODELS.items()]})
+            return self._json(model_catalog_payload())
         return self.serve_static(u.path)
 
     def serve_static(self, path):

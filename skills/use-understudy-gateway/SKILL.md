@@ -33,8 +33,8 @@ Do not ask the developer to paste an API key. Use the CLI registration flow and
 let the CLI store credentials outside the repo.
 
 Do not print, commit, or write `sk_*` values into artifacts. `understudy run`
-injects `UNDERSTUDY_API_KEY` and `UNDERSTUDY_GATEWAY_URL` only into the child
-process environment.
+injects `UNDERSTUDY_API_KEY`, `UNDERSTUDY_GATEWAY_URL`, and the non-secret
+`UNDERSTUDY_ORG_ID` when known only into the child process environment.
 
 Do not run provider calls, uploads, hosted jobs, or model downloads without the
 developer approving the exact command, data class, and spend or download bound.

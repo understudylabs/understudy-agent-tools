@@ -265,8 +265,9 @@ completes the pending sign-in — so an agent can drive sign-up as two plain
 shell commands. It stores the
 returned `sk_*` in `~/.understudy/credentials.json` with mode `600` and writes a
 repo-local `.understudy/config.json` when the platform returns a default
-project. `run` injects `UNDERSTUDY_API_KEY` and `UNDERSTUDY_GATEWAY_URL` only
-into the child process; do not copy secrets into repo files or chat output.
+project. `run` injects `UNDERSTUDY_API_KEY`, `UNDERSTUDY_GATEWAY_URL`, and the
+non-secret `UNDERSTUDY_ORG_ID` when known into the child process; do not copy
+secrets into repo files or chat output.
 `doctor --hosted` checks credentials, gateway health, projects, keys, models,
 and workloads without provider calls. `gateway probe` is an explicit tiny live
 call and prints request metadata, not the completion text. If you need BYOK for

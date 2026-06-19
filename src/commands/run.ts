@@ -65,7 +65,11 @@ async function runWithUnderstudyEnv(
       `${JSON.stringify({
         ok: true,
         command: [bin, ...args],
-        injected: ["UNDERSTUDY_API_KEY", "UNDERSTUDY_GATEWAY_URL"],
+        injected: [
+          "UNDERSTUDY_API_KEY",
+          "UNDERSTUDY_GATEWAY_URL",
+          ...(resolved.orgId ? ["UNDERSTUDY_ORG_ID"] : []),
+        ],
         org_id: resolved.orgId,
         project_slug: resolved.projectSlug,
         source: resolved.source,
@@ -82,6 +86,7 @@ async function runWithUnderstudyEnv(
       ...process.env,
       UNDERSTUDY_API_KEY: resolved.apiKey,
       UNDERSTUDY_GATEWAY_URL: resolved.gatewayUrl,
+      ...(resolved.orgId ? { UNDERSTUDY_ORG_ID: resolved.orgId } : {}),
     },
     stdio: "inherit",
   });

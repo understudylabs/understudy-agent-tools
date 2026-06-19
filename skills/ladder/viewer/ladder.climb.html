@@ -393,8 +393,12 @@
   var idx = 0;
 
   var LIVE_MODELS = [
-    { id: "gemma-4-e2b",   label: "gemma-4-e2b" },
-    { id: "glm-5.1",       label: "glm-5.1 · frontier", billed: true }
+    { id: "gemma-4-e2b", label: "gemma-4-e2b" },
+    { id: "glm-5.1", label: "GLM 5.1 · remote", billed: true },
+    { id: "gemma-4-31b-it", label: "Gemma 4 31B · remote", billed: true },
+    { id: "nemotron-3-nano", label: "Nemotron 3 Nano · remote", billed: true },
+    { id: "nemotron-3-super", label: "Nemotron 3 Super · remote", billed: true },
+    { id: "nemotron-3-ultra", label: "Nemotron 3 Ultra · remote", billed: true }
   ];
   var curModel = "gemma-4-e2b";
   var curModelB = "glm-5.1";        // VS mode: the second model
@@ -411,6 +415,36 @@
   // The server is the single source of truth: classify rungs and tool rungs arrive
   // in one ordered list, and this page frames them identically. Add any task by
   // appending one fixture row on the server -- no edit here.
+  function validModel(id){ return LIVE_MODELS.some(function (m) { return m.id === id; }) ? id : null; }
+  function fallbackRemoteModel(){
+    for (var i = 0; i < LIVE_MODELS.length; i++) if (LIVE_MODELS[i].billed) return LIVE_MODELS[i].id;
+    return LIVE_MODELS[1] ? LIVE_MODELS[1].id : curModel;
+  }
+  function normalizeModels(items){
+    var seen = {}, out = [];
+    (items || []).forEach(function (m) {
+      var id = m && m.id;
+      if (!id || seen[id]) return;
+      seen[id] = true;
+      out.push({
+        id: id,
+        label: m.label || m.display_name || m.name || id,
+        billed: !!(m.billed || m.lane === 'gateway'),
+        lane: m.lane || ''
+      });
+    });
+    return out;
+  }
+  function hydrateModels(){
+    return fetch('/models').then(function (r) { return r.json(); }).then(function (j) {
+      var next = normalizeModels(j.models);
+      if (!next.length) return;
+      LIVE_MODELS = next;
+      if (!validModel(curModel)) curModel = LIVE_MODELS[0].id;
+      if (!validModel(curModelB)) curModelB = fallbackRemoteModel();
+      pickModel(); pickModelB();
+    }).catch(function () { /* keep the fallback model list */ });
+  }
   function humanizeTask(id){ return id.replace(/^hard\./, '').replace(/[-_]/g, ' '); }
   var RAIL_LABELS = {   // friendly rail names; falls back to humanizeTask when absent
     "sort-email": "categorization", "match-search": "classification",
@@ -423,7 +457,7 @@
     return m ? m[1] : (s.length > 90 ? s.slice(0, 88) + '…' : s);
   }
   function hydrate(){
-    return fetch('/tasks').then(function (r) { return r.json(); }).then(function (j) {
+    var tasks = fetch('/tasks').then(function (r) { return r.json(); }).then(function (j) {
       TASKS_VERSION = j.tasks_version || null;
       (j.tasks || []).forEach(function (t) {
         if (t.kind === 'classify') {
@@ -435,6 +469,7 @@
         }
       });
     }).catch(function () { /* server unreachable: TASKS stays empty, the pane keeps its placeholder */ });
+    return Promise.all([hydrateModels(), tasks]);
   }
 
   // ---- pickers: Select dropdowns (one builder, three call sites: model A / hard task / VS model B) ----
@@ -466,6 +501,7 @@
         var on = opt.id(items[i]) === cur;
         if (on) { found = true; valueEl.textContent = opt.text(items[i]); }
         rows[i].classList.toggle('active', on);
+        if (on) wrap.classList.toggle('billed', !!(opt.billed && items[i].billed));
       }
       if (!found) valueEl.textContent = items.length ? opt.text(items[0]) : '\u2014';
     }
@@ -475,7 +511,7 @@
       row.innerHTML = '<span></span>' + PICK_CHECK;
       row.firstChild.textContent = opt.text(it);
       var tip = opt.title && opt.title(it); if (tip) row.title = tip;
-      if (opt.billed && it.billed) { row.title = opt.billed; wrap.classList.add('billed'); }
+      if (opt.billed && it.billed) row.title = opt.billed;
       row.addEventListener('click', function (ev) {
         ev.stopPropagation();
         closeAllPickers();
@@ -672,7 +708,6 @@
 
   // ---- deep links: task + model (+ VS) live in the URL so any view is shareable ----
   function taskIndexForId(id){ for (var i = 0; i < TASKS.length; i++) { if (TASKS[i].id === id) return i; } return -1; }
-  function validModel(id){ return LIVE_MODELS.some(function (m) { return m.id === id; }) ? id : null; }
   function applyQuery(){
     var p = new URLSearchParams(location.search);
     var tid = p.get('task'); if (tid) { var i = taskIndexForId(tid); if (i >= 0) idx = i; }
@@ -738,7 +773,7 @@
   vsBtn.style.display = '';
   applyQuery();                                       // ?model/&vs apply now; task resolves fully post-hydrate
   pickModel();
-  hydrate().then(function () { applyQuery(); buildRail(); if (vsOn) applyVsLayout(); play(); });   // pull catalog, deep-link, run
+  hydrate().then(function () { applyQuery(); pickModel(); pickModelB(); buildRail(); if (vsOn) applyVsLayout(); play(); });   // pull catalogs, deep-link, run
 })();
 </script>
 </body>
