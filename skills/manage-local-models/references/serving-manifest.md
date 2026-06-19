@@ -5,7 +5,7 @@ artifact, so the launcher applies them by default instead of the operator
 hand-specifying (and mis-specifying) flags. Lives **inside the model artifact
 directory** as `understudy.serving.json` — alongside `config.json`,
 `tokenizer.json`, and the README — so it travels with the weights through
-`pull-understudy-snapshot.mjs` and any R2 publish.
+`understudy models pull` and any R2 publish.
 
 ## Why
 
@@ -98,7 +98,7 @@ and metadata.
   `<artifact-dir>/understudy.serving.json` and emits (or runs) the exact serve
   command: `<launcher> <model_arg> <id> <required_flags...>`, with the prescribed
   decode exported as the eval/smithers env. The operator cannot forget a flag.
-- `pull-understudy-snapshot.mjs` includes `understudy.serving.json` in the
+- `understudy models pull` includes `understudy.serving.json` in the
   snapshot file set so a freshly-pulled artifact is immediately serve-correct.
 - The `manage-local-models` skill's "verify + record" step writes/reads this
   manifest instead of leaving settings as prose in the profile.

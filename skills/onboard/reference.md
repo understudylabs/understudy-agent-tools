@@ -67,15 +67,16 @@ profile. Never put secrets, prompts, outputs, or customer data in it.
   "understudy": {
     "model": "/Users/me/.understudy/models/gemma-4-e2b-it-qat-mlx-vlm-understudy",
     "name": "Gemma 4 E2B",
-    "endpoint": "http://127.0.0.1:8094/v1",
-    "health_url": "http://127.0.0.1:8094/v1/models",
+    "endpoint": "http://127.0.0.1:8011",
+    "health_url": "http://127.0.0.1:8011/tasks",
     "healthy": true,
-    "served_by": "mlx_vlm.server",
-    "runtime": "mlx_vlm",
-    "provider": "mlx-gemma4-e2b",
+    "served_by": "skills/ladder/serve.py",
+    "runtime": "mlx_vlm via ladder",
+    "provider": "ladder-local-gemma4-e2b",
     "tmux_session": null,
     "logs": null,
-    "how_to_talk": "curl -s http://127.0.0.1:8094/v1/chat/completions -H 'Content-Type: application/json' -d '{\"model\":\"/Users/me/.understudy/models/gemma-4-e2b-it-qat-mlx-vlm-understudy\",\"messages\":[{\"role\":\"user\",\"content\":\"Say hello from my local Understudy.\"}],\"max_tokens\":128}'"
+    "how_to_talk": "curl -N 'http://localhost:8011/run?task=sort-email&model=gemma-4-e2b'",
+    "follow_along_url": "http://localhost:8011/ladder.climb.html?task=sort-email&model=gemma-4-e2b"
   },
   "companion": {
     "alive": false,
@@ -94,7 +95,7 @@ profile. Never put secrets, prompts, outputs, or customer data in it.
 }
 ```
 
-Refresh this card during onboarding, whenever
+Refresh this card during onboarding, whenever the ladder server or
 `serve-understudy-snapshot.mjs` serves a model, and whenever a companion process
 starts. If `~/.understudy/companion.json`
 contains a dead pid, clear that pid in the companion state file and record it as

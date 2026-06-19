@@ -1,6 +1,6 @@
 ---
 name: run-local-model-lab
-description: Use when a developer wants to stand up and run a local model on Apple Silicon against their real workload — "run this model on my Mac", "is a local model good enough before I pay for hosted". Covers the MLX serving rig, a blind local-vs-frontier arena, and the route decision. For comparing many candidate models on one eval, use compare-model-sweep.
+description: Use when a developer wants to stand up and run a local model on Apple Silicon against their real workload — "run this model on my Mac", "is a local model good enough before I pay for hosted". Covers the MLX serving rig, scored real-workload evals, and the route decision. For comparing many candidate models on one eval, use compare-model-sweep.
 metadata:
   understudy:
     mode: interactive
@@ -21,12 +21,11 @@ open weights against unified memory at the best tokens/sec, no GPU drivers, no
 build step. This skill standardizes on **`mlx_lm.server`** (an OpenAI-compatible
 endpoint, one model per port); it does not use Ollama or llama.cpp.
 
-**Want to *meet* the model, not just score it?** The blind-arena + hill-climb
-protocol in [`references/blind-arena.md`](references/blind-arena.md) opens a
-local model in Pi, runs a blind frontier-vs-local head-to-head (or two local
-models side by side), and routes the hill climb from the observed gap — use it
-for the first-run experience and taste calibration before or alongside the
-scored lab runs here.
+**Want to *meet* the model, not just score it?** Use
+[`../ladder/SKILL.md`](../ladder/SKILL.md) for the no-data onboarding climb:
+it opens the local `gemma-4-e2b` lane in a browser, streams scored tasks, and can
+optionally compare against the billed gateway lane. Keep this skill for measured
+runs against the user's real workload.
 
 This skill measures and recommends; it does not download weights or change
 production routing on its own. To compare several candidate models (any mix of
@@ -65,7 +64,8 @@ route for compliance. For pure remote inference/routing use
    This skill does not apply — local serving here is MLX-only.)
 2. **Pick a candidate tier** (candidate chooser + hardware-fit guidance in [`reference.md`](reference.md)):
    choose the smallest model that is reasonable for the task, not the smallest
-   model available. If a Pi arena gap report already exists, use it to decide
+   model available. If a ladder climb or prior local gap report already exists,
+   use it to decide
    whether to score the current rung, climb to a larger local model, or skip to
    hybrid/remote.
    - Tiny smoke — E2B / E4B class (fast, on-device; routing/triage/easy cases).

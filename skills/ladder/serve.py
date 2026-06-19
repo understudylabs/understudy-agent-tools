@@ -27,8 +27,8 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 VIEWER_DIR = os.path.join(HERE, "viewer")
 HOST, PORT = "127.0.0.1", 8011
 
-# local model cache root -- same convention as the other skills (run-local-model-lab's
-# arena.sh, manage-local-models): default ~/.understudy/models, override with the env var.
+# local model cache root -- same convention as manage-local-models: default
+# ~/.understudy/models, override with the env var.
 MODEL_HOME = os.environ.get("UNDERSTUDY_MODEL_HOME") or os.path.expanduser("~/.understudy/models")
 
 # id -> (lane, path-or-repo, label, sampling)

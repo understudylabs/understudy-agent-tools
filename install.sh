@@ -43,7 +43,7 @@ Usage: install.sh [--yes] [--non-interactive] [--resume] [--from-step N] [--only
 Installs the Understudy CLI + Claude Code skill/plugin surface, then hands the
 user back to Claude Code, where the coding agent runs the agent-first sign-up
 (email one-time code through `understudy login`) and onboarding. It does not
-download model weights, start MLX, install Pi, launch tmux/iTerm, or make
+download model weights, start MLX, launch the ladder server, or make
 frontier calls. Those are guided by the /understudy:onboard skill after the
 user is in their coding agent.
 
@@ -401,9 +401,9 @@ compose_initial_prompt() {
     signup="Start with the agent-first Understudy sign-up: check \`understudy status --json\`, and if signed_in is false, $email_clause — it emails me a one-time code and exits. Ask me for the code from my inbox (or fetch it yourself if you have email access, reading only the Understudy sign-in email), finish with \`understudy login --code <code>\`, and confirm with \`understudy status --json\`. Then "
   fi
   if [ -n "$signup" ]; then
-    INITIAL_CLAUDE_PROMPT="${signup}use the Understudy onboarding skill for this project. Guide me through getting my first local Understudy, choosing my terminal/tmux/Pi handoff, and after the first local-vs-frontier duel, help me pick a real problem or find local data so we can try to make the Understudy beat the frontier on that task slice."
+    INITIAL_CLAUDE_PROMPT="${signup}use the Understudy onboarding skill for this project. Guide me through getting my first local Understudy, launch the ladder climb, then help me pick a real problem or find local data so we can try to make the Understudy beat the frontier on that task slice."
   else
-    INITIAL_CLAUDE_PROMPT="Use the Understudy onboarding skill for this project now. Guide me through getting my first local Understudy, choosing my terminal/tmux/Pi handoff, and after the first local-vs-frontier duel, help me pick a real problem or find local data so we can try to make the Understudy beat the frontier on that task slice."
+    INITIAL_CLAUDE_PROMPT="Use the Understudy onboarding skill for this project now. Guide me through getting my first local Understudy, launch the ladder climb, then help me pick a real problem or find local data so we can try to make the Understudy beat the frontier on that task slice."
   fi
 }
 
@@ -532,7 +532,7 @@ fi
 say "  ${G4}2.${R} Install or refresh the Claude Code skills when Claude Code is available."
 say "  ${G5}3.${R} Open Claude Code here — the agent signs you up by email code, then onboards you."
 say ""
-say "Default install does not download weights, start MLX, install Pi, launch tmux/iTerm, or make frontier calls."
+say "Default install does not download weights, start MLX, launch the ladder server, or make frontier calls."
 say "Those actions happen later through /understudy:onboard, where the coding agent can coach the user and ask consent."
 say "This installer writes only under $LAB, $HOME/.understudy, the global npm prefix, and Claude Code plugin state when enabled."
 confirm "Continue with this Understudy installation?" || exit 1

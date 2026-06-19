@@ -52,7 +52,7 @@ llama-server -hf unsloth/gemma-4-E4B-it-GGUF:Q4_K_M --port 8080 --jinja
 pip install mlx-vlm                      # or: uv pip install mlx-vlm
 # pull the Understudy-verified snapshot first, then serve OpenAI-compatible
 cd /path/to/understudy-agent-tools/skills/manage-local-models
-node scripts/pull-understudy-snapshot.mjs --model gemma-4-e4b-it-mlx-vlm-4bit
+understudy models pull gemma-4-e4b-it-mlx-vlm-4bit
 python -m mlx_vlm.server --model ~/.understudy/models/gemma-4-e4b-it-mlx-vlm-4bit --port 8080
 # Nemotron 3 Nano on MLX: mlx-community/NVIDIA-Nemotron-3-Nano-30B-A3B-4bit
 ```

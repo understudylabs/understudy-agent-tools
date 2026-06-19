@@ -63,19 +63,21 @@ locations and registry links are in [`reference.md`](reference.md).
 3. **Choose source + format for the runtime.** Ollama library (simplest, GGUF,
    no HF token for Gemma); Hugging Face GGUF (llama.cpp / LM Studio); MLX builds
    (Apple Silicon). Quantization/format primer in [`reference.md`](reference.md).
-4. **Confirm the size, then use the skill-owned pull helper.** For the
-   Understudy verified MLX ladder, do not send the user to a CLI command or the
-   installer. Resolve the script relative to this skill directory and run it
-   after approval:
+4. **Confirm the size, then use the CLI pull command.** For the Understudy
+   verified MLX ladder, use the product command after approval:
    ```bash
-   node scripts/pull-understudy-snapshot.mjs --model gemma-4-e2b-it-qat-mlx-vlm-understudy
+   understudy models pull gemma-4-e2b-it-qat-mlx-vlm-understudy
    ```
    Use `--dry-run` first when you need to show destination/log paths without
    downloading:
    ```bash
-   node scripts/pull-understudy-snapshot.mjs --model gemma-4-e2b-it-qat-mlx-vlm-understudy --dry-run
+   understudy models pull gemma-4-e2b-it-qat-mlx-vlm-understudy --dry-run
    ```
-   The helper downloads signed per-file URLs from
+   To cache every verified snapshot currently listed in the CLI catalog, use:
+   ```bash
+   understudy models pull --all
+   ```
+   The command downloads signed per-file URLs from
    `models.understudylabs.com`, writes into `~/.understudy/models`, verifies
    sizes and hashes when present, and logs progress/ETA to
    `~/.understudy/agent-tools/logs/model-pull-*.log`. For non-Understudy
