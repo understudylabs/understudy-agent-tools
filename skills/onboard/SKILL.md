@@ -99,23 +99,26 @@ work — do not re-run the full interview. Only first-timers get the full flow.
    If `~/.understudy/companion.json` points at a dead pid, clear it and record
    the stale pid in the card.
 
-6. **Land the quick win: show the local Understudy exists.** Once the snapshot is cached, follow
-   the blind-arena playbook in
-   [`../run-local-model-lab/references/blind-arena.md`](../run-local-model-lab/references/blind-arena.md).
-   Coach the user to open a
-   terminal of their choice and attach to the tmux session, or launch it from the
-   agent if they ask. Use:
+6. **Land the quick win: show the local Understudy exists.** Once the snapshot is
+   cached, serve it from the manifest so the launcher, required flags, and
+   prescribed decode are all enforced — not hand-specified. Route through
+   [`../manage-local-models/SKILL.md`](../manage-local-models/SKILL.md) and run
+   the skill-owned serve helper:
     ```bash
-    FIRST_REPO="$HOME/.understudy/models/gemma-4-e2b-it-qat-mlx-vlm-understudy" \
-      skills/run-local-model-lab/scripts/arena.sh first
+    node scripts/serve-understudy-snapshot.mjs --model gemma-4-e2b-it-qat-mlx-vlm-understudy --exec
     ```
-   The pane says their first local Understudy is ready and opens Pi on verified
-   Gemma 4 E2B. Have them try one real prompt only to prove local inference is
-   real and inspectable. If Pi is not installed, run one local generation and print:
-   `npm install -g --ignore-scripts @earendil-works/pi-coding-agent`. Briefly
-   teach the idea: an open-weight model is downloadable weights you run yourself;
-   local is free and ZDR-safe; you iterate small and local, then *graduate* to a
-   larger model in the same family via the gateway when you need the quality.
+   Resolve the script relative to the `manage-local-models` skill directory. It
+   reads the artifact's `understudy.serving.json` and spawns the MLX server on
+   `http://127.0.0.1:8094/v1` with the exact flags (e.g. `--top-logprobs-k 20`)
+   and the prescribed decode exported; drop `--exec` to print the command for
+   review first. Then prove local inference is real and inspectable with one
+   generation against that endpoint (or point Pi at it:
+   `npm install -g --ignore-scripts @earendil-works/pi-coding-agent`). Record the
+   live runtime facts — endpoint, `served_by`, model path — in the agent card
+   (step 5). Briefly teach the idea: an open-weight model is downloadable
+   weights you run yourself; local is free and ZDR-safe; you iterate small and
+   local, then *graduate* to a larger model in the same family via the gateway
+   when you need the quality.
 
 7. **Profile the user's real workload.** The main path after the local proof is
    not a model duel. Ask the user for a codebase, trace folder, dataset, eval
@@ -132,14 +135,11 @@ work — do not re-run the full interview. Only first-timers get the full flow.
    user needs to feel the quality gap, calibrate taste, or get buy-in. It is a
    side quest, not the default evidence path. If the user wants it, follow the
    local specialization sequencing in the
-   [`understudy`](../understudy/SKILL.md) orchestrator's routing section and
-   run:
-    ```bash
-    LEFT_REPO="$HOME/.understudy/models/gemma-4-e2b-it-qat-mlx-vlm-understudy" \
-      skills/run-local-model-lab/scripts/arena.sh play
-    ```
-   Otherwise keep going through workload understanding, capture evidence, and
-   local evaluation against the actual task slice.
+   [`understudy`](../understudy/SKILL.md) orchestrator's routing section, which
+   hands off to [`../run-local-model-lab/SKILL.md`](../run-local-model-lab/SKILL.md)
+   for the blind local-vs-frontier protocol. Otherwise keep going through
+   workload understanding, capture evidence, and local evaluation against the
+   actual task slice.
 
 9. **Route onward.** Hand to the [`understudy`](../understudy/SKILL.md)
    orchestrator for the improvement loop;
