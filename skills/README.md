@@ -29,8 +29,8 @@ group it belongs to.
   detects ML tooling, interviews the user, and writes a durable
   `~/.understudy/profile.json` so every later skill meets the user where they are.
   (Profile schema, interview bank, and tooling map in its
-  [`reference.md`](onboard/reference.md).) The BYO-keys vs ZDR-gateway choice it
-  needs lives in
+  [`reference.md`](onboard/reference.md).) The managed-catalog vs BYO-keys
+  frontier choice it needs lives in
   [`use-understudy-gateway/references/frontier-keys.md`](use-understudy-gateway/references/frontier-keys.md).
 - [`ladder`](ladder/SKILL.md) is the no-data front door: a small local web UI that
   watches a local model and a frontier model attempt the same task side by side —
@@ -182,7 +182,7 @@ shows headroom, no hosted RL until the local arms plateau.
 - [`use-understudy-gateway`](use-understudy-gateway/SKILL.md) handles
   authenticated gateway inference, project/key readiness, public model listing,
   workload route percentages, `understudy run`, and monitored durable CLI
-  execution. The local-provider-keys vs ZDR-gateway decision (with all
+  execution. The managed-catalog vs BYO provider-key decision (with all
   key-safety rules) is in
   [`references/frontier-keys.md`](use-understudy-gateway/references/frontier-keys.md).
 - [`ramp-and-verify`](ramp-and-verify/SKILL.md) owns the last mile after a
