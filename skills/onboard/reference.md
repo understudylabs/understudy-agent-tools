@@ -94,8 +94,9 @@ profile. Never put secrets, prompts, outputs, or customer data in it.
 }
 ```
 
-Refresh this card during onboarding, whenever `arena.sh first|play|up` serves a
-model, and whenever a companion process starts. If `~/.understudy/companion.json`
+Refresh this card during onboarding, whenever
+`serve-understudy-snapshot.mjs` serves a model, and whenever a companion process
+starts. If `~/.understudy/companion.json`
 contains a dead pid, clear that pid in the companion state file and record it as
 `stale_pid` in the card. A later agent should be able to answer the user's
 runtime question from this card first, using health checks only to refresh stale
