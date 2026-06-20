@@ -20,21 +20,17 @@ group it belongs to.
 
 ## Setup & First Run
 
-- [`install-plugin`](install-plugin/SKILL.md) installs, enables, updates, or
-  verifies the Understudy skills as a Claude Code plugin via the
-  non-interactive `claude plugin` CLI, then surfaces the one `/reload-plugins`
-  activation step.
-- [`install-cursor-plugin`](install-cursor-plugin/SKILL.md) installs, refreshes,
-  verifies, or removes the same Understudy skills as a local Cursor plugin by
-  symlinking this repo into `~/.cursor/plugins/local/understudy`, then surfaces
-  the Cursor reload step.
-- [`install-codex-plugin`](install-codex-plugin/SKILL.md) registers, refreshes,
-  verifies, or removes the same Understudy skills as a local Codex marketplace
-  plugin, then surfaces the `/plugins` install/enable step.
-- [`install-opencode-plugin`](install-opencode-plugin/SKILL.md) links, refreshes,
-  verifies, or removes the same Understudy skills in OpenCode's native global
-  skill directory, then surfaces the OpenCode restart and `/understudy-onboard`
-  activation step.
+- [`install-agent-adapter`](install-agent-adapter/SKILL.md) installs, refreshes,
+  verifies, or removes Understudy from the developer's coding-agent surface:
+  Claude Code, Cursor, Codex, or OpenCode. It owns platform detection, local
+  install paths, reload steps, uninstall commands, and the handoff into
+  onboarding.
+- [`install-plugin`](install-plugin/SKILL.md),
+  [`install-cursor-plugin`](install-cursor-plugin/SKILL.md),
+  [`install-codex-plugin`](install-codex-plugin/SKILL.md), and
+  [`install-opencode-plugin`](install-opencode-plugin/SKILL.md) are compatibility
+  shims that route platform-specific install requests to
+  `install-agent-adapter`.
 - [`onboard`](onboard/SKILL.md) is the engaging first-run experience: it
   backgrounds a small American open-model download while it profiles the machine,
   detects ML tooling, interviews the user, and writes a durable

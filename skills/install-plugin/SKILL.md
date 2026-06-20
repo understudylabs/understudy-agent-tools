@@ -1,6 +1,6 @@
 ---
 name: install-plugin
-description: Use when a developer wants to install, enable, update, reinstall, or verify the Understudy skills as a Claude Code plugin — "install understudy", "add the understudy skills", "set up the plugin", "why can't you see the understudy skill". Runs the non-interactive `claude plugin` CLI (or shows the commands), then tells the developer the one activation step and whether a restart is needed.
+description: Compatibility shim for Claude Code installs. Use when a developer asks to install, update, enable, reinstall, remove, or verify the Understudy Claude Code plugin - "install Understudy in Claude", "add the Understudy skills", "why can't Claude see the skill". Route to install-agent-adapter with platform claude-code.
 metadata:
   understudy:
     mode: automatic
@@ -8,142 +8,48 @@ metadata:
     cli_required: false
 ---
 
-# Install the Understudy plugin
+# Install the Understudy Claude Code plugin
 
-This repo ships its skills as a Claude Code plugin. The manifests live in
-`.claude-plugin/` (`plugin.json` + `marketplace.json`) and the skills live in
-`skills/`. This skill installs/enables that plugin in the developer's Claude
-Code so the public skills become invocable, including the `understudy`
-orchestrator, onboarding, capture/eval, optimization, local model,
-distillation, RLM, and verifier-handoff workers.
-
-The whole flow is local: it adds a **local filesystem marketplace** pointing at
-this repo and installs from it. Nothing uploads, authenticates, or spends.
-
-## Key facts (don't get these wrong)
-
-- **No app restart is required.** Plugin skills hot-load. After install, the
-  developer runs `/reload-plugins` **once** in the current session and the
-  skills appear. A full quit/relaunch is only a fallback if reload misbehaves.
-- The CLI is non-interactive and safe to run from a background bash process:
-  `claude plugin marketplace add`, `claude plugin install`, `claude plugin list`.
-- The agent **cannot** run the activation step. `/reload-plugins` (and the
-  interactive `/plugin …` commands) are user-typed slash commands — surface them
-  for the developer; never claim you ran them.
+This skill is a compatibility shim. The consolidated setup surface is
+[`install-agent-adapter`](../install-agent-adapter/SKILL.md).
 
 ## Procedure
 
-### 1. Find the repo root
+Load `install-agent-adapter` and run it with platform `claude-code`.
 
-The marketplace source is the directory that contains `.claude-plugin/`. Resolve
-it before running anything (it is the root of this `understudy-agent-tools`
-checkout — do not hardcode another user's absolute path):
-
-```bash
-REPO="$(cd "$(git rev-parse --show-toplevel 2>/dev/null || echo .)" && pwd)"
-# Sanity check the manifests exist:
-ls "$REPO/.claude-plugin/marketplace.json" "$REPO/.claude-plugin/plugin.json"
-```
-
-### 2. Check whether it's already installed
-
-```bash
-claude plugin list --json
-```
-
-Look for `understudy` from the `understudy-skills` marketplace. If it's already
-enabled, **compare versions before stopping**: installed version (from the list
-output) vs the repo's `$REPO/.claude-plugin/plugin.json` `version`. If the repo
-is newer, the installed catalog is stale (skills may be missing or renamed) —
-run `claude plugin marketplace update understudy-skills`, then
-`claude plugin install understudy@understudy-skills`, then have the developer
-run `/reload-plugins` (step 4). On a stale upgrade, also surface the
-`$REPO/CHANGELOG.md` entries newer than the installed version (what's new, not
-just a bumped number). If versions match, report installed-and-current and stop.
-
-### 3. Add the marketplace and install (background-safe)
-
-Run these from bash. They are idempotent enough to re-run; if the marketplace
-name already exists the add is a no-op/update.
+Use its [`reference.md`](../install-agent-adapter/reference.md#claude-code) for
+the current commands:
 
 ```bash
 claude plugin marketplace add "$REPO"
 claude plugin install understudy@understudy-skills
 ```
 
-Prefer running this as a background process and reporting the exit status rather
-than blocking. If the developer would rather run it themselves, **show** the two
-commands instead of executing them.
+Activation is user-typed:
 
-### 4. Activate in the current session
-
-Tell the developer to type:
-
-```
+```text
 /reload-plugins
-```
-
-State plainly: **no restart needed** — `/reload-plugins` loads the skills into
-this session. Only if the skills still don't appear afterward should they fully
-restart Claude Code.
-
-### 5. Hand off to onboarding
-
-Once `/reload-plugins` succeeds, the next user-typed command is:
-
-```
 /understudy:onboard
-```
-
-This matters: plugin install only makes the skills visible. Onboarding creates
-the durable `~/.understudy/profile.json`, starts or verifies the first local
-Understudy, and refreshes `~/.understudy/agent-card.json` so future Claude Code
-turns can answer "is my understudy active and how do I talk to it?" without
-guessing.
-
-The agent cannot run `/understudy:onboard` as a slash command on the user's
-behalf. Surface it as the immediate next step and offer to continue once the
-user invokes it.
-
-### 6. Verify
-
-```bash
-claude plugin list --json
-```
-
-Confirm `understudy@understudy-skills` is enabled, and confirm to the developer
-that `/understudy`, `/understudy:onboard`, and the other skills are now
-available.
-
-## Fallback: fully interactive path
-
-If the `claude plugin` CLI is unavailable, give the developer the interactive
-equivalents to type themselves:
-
-```
-/plugin marketplace add <repo-root-path>
-/plugin install understudy@understudy-skills
-/reload-plugins
 ```
 
 ## Safety Gates
 
-Local-first and free: adding a local marketplace and installing from it makes no
-provider calls, uploads, spend, or credential changes — do not require login,
-auth, or keys for this skill. The `claude plugin` commands only register
-repo-local skills.
+Local-first and free: installing the Claude Code adapter only registers local
+skills. It must not authenticate, upload data, inspect secret values, download
+model weights, start hosted jobs, or make provider calls.
 
-- Confirm before running if the developer asked you only to *show* the commands;
-  otherwise the install is low-risk and may run in the background.
-- You **must not** claim you activated the plugin. `/reload-plugins` and the
-  interactive `/plugin …` commands are user-typed — surface them and wait.
-- Never edit `settings.json` / `settings.local.json` `enabledPlugins` by hand to
-  force-enable; use the documented `claude plugin` CLI so the install is
-  reversible with `claude plugin uninstall`.
+- Do not claim you ran `/reload-plugins`; the developer must type it.
+- Do not edit Claude settings files by hand to force-enable the plugin.
+- Do not copy or fork skill content outside the plugin/marketplace path.
+
+## Resolve CLI
+
+No Understudy CLI command is required. Prefer the `claude plugin` CLI when
+available; otherwise show the interactive `/plugin ...` commands from
+`install-agent-adapter/reference.md`.
 
 ## Output Standard
 
-End with: whether the plugin was already installed / just installed / refreshed
-from a stale version (+ a one-line "what's new") / shown for manual run; the
-activation step (`/reload-plugins`); a restart-or-not statement (not needed); the
-next onboarding command (`/understudy:onboard`); and the verification result.
+End with: that this routed through `install-agent-adapter`; whether the Claude
+plugin was installed/refreshed/shown for manual run; `/reload-plugins`; the next
+command `/understudy:onboard`; and the uninstall commands.

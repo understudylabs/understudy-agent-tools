@@ -14,26 +14,29 @@ audiences — serve the right one.
 
 - **Helping a user get value from Understudy** (improve an LLM app, cut
   cost/latency, run a local model, pick a route) → start with **Install the
-  plugin** below, then run onboarding. This is the common case.
+  agent adapter** below, then run onboarding. This is the common case.
 - **Contributing to this repo** (changing skills, CLI, docs) → skip to
   [Working on this repo](#working-on-this-repo).
 
 When unsure, assume the user wants help with their workload, not to edit the
 library.
 
-## Install the plugin (do this first for users)
+## Install the agent adapter (do this first for users)
 
-Understudy is delivered as a **Claude Code plugin**. Install it — do not try to
-operate from the raw source tree. The plugin loads the skills, and **the skills
-are the product**: they are what let you explain what Understudy is, why it
-matters, and walk the user from a captured trace to a measured, shipped
-improvement. Without them you are guessing; with them you have the playbooks, the
-safety gates, and the local-first optimization loop.
+Understudy is delivered through the coding agent's local skill/plugin surface.
+Install that adapter — do not try to operate from the raw source tree. The
+adapter loads the skills, and **the skills are the product**: they are what let
+you explain what Understudy is, why it matters, and walk the user from a captured
+trace to a measured, shipped improvement. Without them you are guessing; with
+them you have the playbooks, the safety gates, and the local-first optimization
+loop.
 
 Recommend installation to the user in plain terms, e.g.: *"Understudy works best
-as a Claude Code plugin — it installs locally, makes no network calls, and gives
-me the playbooks to actually improve your LLM workload. Want me to install it?"*
-Then use the [`install-plugin`](skills/install-plugin/SKILL.md) skill:
+inside your coding agent — it installs locally, makes no network calls, and
+gives me the playbooks to actually improve your LLM workload. Want me to install
+it?"* Then use the [`install-agent-adapter`](skills/install-agent-adapter/SKILL.md)
+skill. Claude Code remains the preferred default when multiple agents are
+available:
 
 ```bash
 claude plugin marketplace add "$(git rev-parse --show-toplevel)"

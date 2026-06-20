@@ -140,8 +140,10 @@ claude plugin install understudy@understudy-skills
 Then run `/reload-plugins` in your Claude Code session to activate — **no
 restart required**. The equivalent interactive flow is `/plugin marketplace add
 <path>` then `/plugin install understudy@understudy-skills`. The
-[`install-plugin`](skills/install-plugin/SKILL.md) skill automates this and
-reports whether the plugin is already installed.
+[`install-agent-adapter`](skills/install-agent-adapter/SKILL.md) skill automates
+this and reports whether the plugin is already installed. The older
+[`install-plugin`](skills/install-plugin/SKILL.md) skill remains as a Claude Code
+compatibility shim.
 
 After `/reload-plugins`, run `/understudy:onboard`. That is where the coding
 agent guides the first local model, launches the ladder climb, and handles any
@@ -179,10 +181,11 @@ Rules, the Understudy skills should appear under Agent Decides. To remove it:
 rm -f ~/.cursor/plugins/local/understudy
 ```
 
-The [`install-cursor-plugin`](skills/install-cursor-plugin/SKILL.md) skill
-contains the agent-run install/update/verify flow. This path is local-only:
-adding the plugin does not authenticate, upload data, download model weights, or
-make provider calls.
+The [`install-agent-adapter`](skills/install-agent-adapter/SKILL.md) skill
+contains the agent-run install/update/verify flow; ask for platform `cursor`.
+The older [`install-cursor-plugin`](skills/install-cursor-plugin/SKILL.md) skill
+remains as a compatibility shim. This path is local-only: adding the plugin does
+not authenticate, upload data, download model weights, or make provider calls.
 
 ## Install as a Codex plugin
 
@@ -199,10 +202,11 @@ codex plugin marketplace add /path/to/understudy-agent-tools
 
 Then open Codex, run `/plugins`, choose the `understudy-skills` marketplace, and
 install or enable the `understudy` plugin. The
-[`install-codex-plugin`](skills/install-codex-plugin/SKILL.md) skill contains
-the agent-run registration/verify flow. This path is local-only: registering the
-marketplace does not authenticate, upload data, download model weights, or make
-provider calls.
+[`install-agent-adapter`](skills/install-agent-adapter/SKILL.md) skill contains
+the agent-run registration/verify flow; ask for platform `codex`. The older
+[`install-codex-plugin`](skills/install-codex-plugin/SKILL.md) skill remains as a
+compatibility shim. This path is local-only: registering the marketplace does not
+authenticate, upload data, download model weights, or make provider calls.
 
 To remove the marketplace registration:
 
@@ -240,10 +244,12 @@ Then restart OpenCode or open a new TUI session and run:
 /understudy-onboard
 ```
 
-The [`install-opencode-plugin`](skills/install-opencode-plugin/SKILL.md) skill
-contains the agent-run install/update/verify flow. This path is local-only:
-linking the skills does not authenticate, upload data, download model weights,
-or make provider calls.
+The [`install-agent-adapter`](skills/install-agent-adapter/SKILL.md) skill
+contains the agent-run install/update/verify flow; ask for platform `opencode`.
+The older [`install-opencode-plugin`](skills/install-opencode-plugin/SKILL.md)
+skill remains as a compatibility shim. This path is local-only: linking the
+skills does not authenticate, upload data, download model weights, or make
+provider calls.
 
 To remove Understudy-owned symlinks:
 
@@ -362,8 +368,8 @@ conservative claims.
 capability worker per intent. The workers are grouped by journey stage; deeper
 playbooks live in each skill's `references/` directory:
 
-- **Setup & first run** — install-plugin, install-cursor-plugin,
-  install-codex-plugin, onboard, ladder (the onboarding "climb")
+- **Setup & first run** — install-agent-adapter, compatibility install shims,
+  onboard, ladder (the onboarding "climb")
 - **Understand & capture** — understand-workload, ingest-traces (incl. the
   capture-directory profiler), capture-evidence (incl. the public-benchmark
   on-ramp), design-simulated-environment

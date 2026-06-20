@@ -15,7 +15,7 @@ The first thing a new user experiences. Goal: in a few minutes, leave them with
 sense of what Understudy is and why it matters, and (3) a saved profile so you
 never re-ask what you already learned.
 
-Run this after [`install-plugin`](../install-plugin/SKILL.md). It follows the
+Run this after [`install-agent-adapter`](../install-agent-adapter/SKILL.md). It follows the
 engagement doctrine in
 [`../../docs/engagement-and-pacing.md`](../../docs/engagement-and-pacing.md):
 **start the slow download first, then interview while it runs.** Detail —
