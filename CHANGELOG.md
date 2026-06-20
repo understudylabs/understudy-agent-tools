@@ -14,6 +14,19 @@ uses semantic-ish versioning (minor = new skill or new capability, patch = fixes
 
 ## [Unreleased]
 
+### Added
+
+- **OpenCode adapter support.** Added native OpenCode skill discovery through
+  `.opencode/skills`, a `/understudy-onboard` command, installer autodetection,
+  and `--agents opencode`.
+
+### Changed
+
+- **Unified agent-adapter setup.** Added `install-agent-adapter` as the canonical
+  install/update/verify/uninstall skill for Claude Code, Cursor, Codex, and
+  OpenCode. The older platform-specific install skills now route to it as
+  compatibility shims.
+
 ## [0.5.0] — 2026-06-19
 
 ### Added
