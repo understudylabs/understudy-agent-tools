@@ -12,9 +12,15 @@ git ls-files
 ## Inspect
 
 - versions bumped **together** in `package.json`, `.claude-plugin/plugin.json`,
-  and `.claude-plugin/marketplace.json` on any release that changes the skill
-  catalog or CLI surface — installed plugins have no other staleness signal;
-  `understudy doctor --json` fails if the three drift;
+  `.claude-plugin/marketplace.json`, `.cursor-plugin/plugin.json`,
+  `.codex-plugin/plugin.json`, `.agents/plugins/marketplace.json`, and
+  `.opencode/adapter.json` on any release that changes the skill catalog or CLI
+  surface — installed adapters have no other staleness signal;
+  `understudy doctor --json` fails if they drift;
+- adapter install and onboarding parity checked across Claude Code, Cursor,
+  Codex, and OpenCode: `install.sh --agents ...`, `understudy platforms`, and
+  `skills/install-agent-adapter/reference.md` describe the same supported
+  surfaces, reload steps, and uninstall paths;
 - no `.understudy/` runtime artifacts;
 - no `.env*`, credentials, tokens, or secret-shaped strings;
 - no private planning docs;

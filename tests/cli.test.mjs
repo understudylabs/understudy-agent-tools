@@ -425,11 +425,13 @@ describe("understudy CLI", () => {
     const payload = JSON.parse(result.stdout);
     assert.deepEqual(
       payload.adapters.map((adapter) => adapter.id),
-      ["claude-code", "cursor", "codex"],
+      ["claude-code", "cursor", "codex", "opencode"],
     );
     assert.equal(payload.adapters.find((adapter) => adapter.id === "cursor").manifestPath, ".cursor-plugin/plugin.json");
     assert.equal(payload.adapters.find((adapter) => adapter.id === "codex").manifestPath, ".codex-plugin/plugin.json");
+    assert.equal(payload.adapters.find((adapter) => adapter.id === "opencode").manifestPath, ".opencode/skills");
     assert.equal(payload.adapters.find((adapter) => adapter.id === "codex").status, "supported");
+    assert.equal(payload.adapters.find((adapter) => adapter.id === "opencode").status, "supported");
   });
 
   it("inspects one agent platform adapter", () => {
@@ -438,6 +440,14 @@ describe("understudy CLI", () => {
     assert.match(result.stdout, /Cursor/);
     assert.match(result.stdout, /\.cursor-plugin\/plugin\.json/);
     assert.match(result.stdout, /Developer: Reload Window/);
+  });
+
+  it("inspects the OpenCode platform adapter", () => {
+    const result = run(["platforms", "--inspect", "opencode"]);
+    assert.equal(result.status, 0, result.stderr);
+    assert.match(result.stdout, /OpenCode/);
+    assert.match(result.stdout, /\.opencode\/skills/);
+    assert.match(result.stdout, /understudy-onboard/);
   });
 
   it("lists the pedagogical and local training skills", () => {
@@ -517,6 +527,7 @@ describe("understudy CLI", () => {
     assert.equal(payload.versions.cli, payload.versions.cursorPlugin);
     assert.equal(payload.versions.cli, payload.versions.codexPlugin);
     assert.equal(payload.versions.cli, payload.versions.codexMarketplace);
+    assert.equal(payload.versions.cli, payload.versions.opencodeAdapter);
   });
 
   it("status exits non-zero when local config is malformed", () => {

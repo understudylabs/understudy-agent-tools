@@ -13,6 +13,8 @@
     ".claude-plugin",
     ".codex-plugin",
     ".cursor-plugin",
+    ".opencode",
+    "!.opencode/skills",
     "install.sh",
     "dist",
     "skills",

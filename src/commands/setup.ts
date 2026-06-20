@@ -27,11 +27,11 @@ interface SetupOpts {
  * `understudy setup` — install the agent-onboarding skill into the user's
  * coding-agent skill directory.
  *
- * Today this targets Claude Code only (`.claude/skills/<name>/SKILL.md`
- * locally, `~/.claude/skills/<name>/SKILL.md` with `--global`).
- * Per-agent format adapters (Cursor `.cursor/rules/*.mdc`, Codex
- * `.codex/...`, etc.) are followup work — pattern lift from `bt setup`
- * which fans out across seven agents.
+ * This command is the legacy direct skill-copy path for agents that read
+ * Claude-compatible `.claude/skills/<name>/SKILL.md` directories. The primary
+ * multi-agent install path is now `install.sh --agents ...` plus the
+ * `install-agent-adapter` skill, which handles Claude Code, Cursor, Codex, and
+ * OpenCode without copying skill content per platform.
  *
  * The skill content (master task + per-target recipes) is shipped
  * inside the CLI at `dist/skills/` (copied from repo-root `skills/`
@@ -43,7 +43,7 @@ export function registerSetupCommand(program: Command): void {
   program
     .command("setup")
     .description(
-      "Install the Understudy onboarding skill into your coding agent's skill directory.",
+      "Install the legacy Claude-compatible Understudy onboarding skill copy.",
     )
     .option(
       "--global",
@@ -119,9 +119,11 @@ async function runSetup(cmd: Command, opts: SetupOpts): Promise<void> {
     process.stdout.write(`  ${kleur.gray(ref)}\n`);
   }
   process.stdout.write(
-    `\n${kleur.bold("Next step")}\n` +
-      `  Open this repo in Claude Code (or any agent that reads .claude/skills/)\n` +
+      `\n${kleur.bold("Next step")}\n` +
+      `  Open this repo in Claude Code or another agent that reads .claude/skills/\n` +
       `  and say: ${kleur.cyan('"convert this to Understudy"')}\n\n` +
+      `  For Claude Code, Cursor, Codex, or OpenCode plugin setup, prefer\n` +
+      `  ${kleur.cyan("install.sh --agents ...")} or the ${kleur.cyan("install-agent-adapter")} skill.\n\n` +
       `  The agent will read the skill, detect your SDK, and apply the matching\n` +
       `  recipe end-to-end.\n`,
   );

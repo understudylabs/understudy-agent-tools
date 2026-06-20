@@ -234,7 +234,8 @@ function printDoctorJson(): void {
     versions.cli === versions.marketplace &&
     versions.cli === versions.cursorPlugin &&
     versions.cli === versions.codexPlugin &&
-    versions.cli === versions.codexMarketplace;
+    versions.cli === versions.codexMarketplace &&
+    versions.cli === versions.opencodeAdapter;
   console.log(
     JSON.stringify(
       {
@@ -408,7 +409,7 @@ export function buildProgram(): Command {
 
   program
     .command("platforms")
-    .description("List agent platform adapters for Claude Code, Cursor, and Codex")
+    .description("List agent platform adapters for Claude Code, Cursor, Codex, and OpenCode")
     .option("--inspect <id>", "Inspect one platform adapter")
     .action((options: { inspect?: string }) => {
       printPlatforms(commandJsonEnabled(program, {}), options.inspect);

@@ -8,7 +8,7 @@ thin TypeScript/Node: durable shortcuts, auth, artifact checks, and runtime
 wrappers that a coding agent can monitor.
 
 Understudy is agent-platform-neutral at the skill layer. Claude Code, Cursor,
-and Codex share the same [`skills/`](skills/) tree and only differ in a thin
+Codex, and OpenCode share the same [`skills/`](skills/) tree and only differ in a thin
 platform adapter: manifest, install path, reload step, and onboarding
 invocation. The current adapter registry is documented in
 [`docs/agent-platform-adapters.md`](docs/agent-platform-adapters.md) and exposed
@@ -41,7 +41,7 @@ covers the hosted contracts behind them.
 | CLI | `src/` | Thin TypeScript shortcuts for auth, artifact checks, and durable runs. |
 | Skills | `skills/` | MVP progressive-disclosure agent playbooks. |
 | Docs | `docs/` | Public methodology and release-boundary notes. |
-| Platform adapters | `.claude-plugin/`, `.cursor-plugin/`, `.codex-plugin/`, `.agents/`, `AGENTS.md` | Thin manifests or durable instructions that expose the same skill tree to each coding-agent surface. |
+| Platform adapters | `.claude-plugin/`, `.cursor-plugin/`, `.codex-plugin/`, `.opencode/`, `.agents/`, `AGENTS.md` | Thin manifests or durable instructions that expose the same skill tree to each coding-agent surface. |
 | Scripts | `scripts/` | Repo hygiene checks, not product CLI code. |
 | Vendor | `vendor/` | Vendored or mirrored compatibility shims, with license metadata. |
 
@@ -58,15 +58,16 @@ curl -fsSL https://raw.githubusercontent.com/UnderstudyLabs/understudy-agent-too
 ```
 
 This installs the CLI, then asks where to install the local coding-agent plugin:
-Claude Code, Cursor, Codex, all detected agents, or CLI-only. Non-interactive
+Claude Code, Cursor, Codex, OpenCode, all detected agents, or CLI-only. Non-interactive
 installs keep the old script-friendly autodetect behavior. Override the prompt
-with `--agents auto|all|claude-code|cursor|codex|none`.
+with `--agents auto|all|claude-code|cursor|codex|opencode|none`.
 
 | Agent harness | Default installer behavior | Activation |
 | --- | --- | --- |
 | Claude Code | Autodetected when `claude` is on `PATH`; installs the local Claude plugin. | Run `/reload-plugins`, then `/understudy:onboard`. |
 | Cursor | Autodetected when Cursor is present; links this repo into `~/.cursor/plugins/local/understudy`. | Restart Cursor or run **Developer: Reload Window**, then ask Cursor Agent to use the Understudy onboarding skill. |
 | Codex | Autodetected when `codex` is on `PATH`; registers the local Codex marketplace from `.agents/plugins/marketplace.json`. | Run `/plugins`, choose `understudy-skills`, install or enable `understudy`, then start a new thread if needed. |
+| OpenCode | Autodetected when `opencode` is on `PATH` or OpenCode config/data exists; links the shared skills into `~/.config/opencode/skills`. | Restart OpenCode or open a new TUI session, then run `/understudy-onboard`. |
 
 If Claude Code is selected, the installer opens Claude Code in the current
 directory. In Claude Code, run:
@@ -139,8 +140,10 @@ claude plugin install understudy@understudy-skills
 Then run `/reload-plugins` in your Claude Code session to activate — **no
 restart required**. The equivalent interactive flow is `/plugin marketplace add
 <path>` then `/plugin install understudy@understudy-skills`. The
-[`install-plugin`](skills/install-plugin/SKILL.md) skill automates this and
-reports whether the plugin is already installed.
+[`install-agent-adapter`](skills/install-agent-adapter/SKILL.md) skill automates
+this and reports whether the plugin is already installed. The older
+[`install-plugin`](skills/install-plugin/SKILL.md) skill remains as a Claude Code
+compatibility shim.
 
 After `/reload-plugins`, run `/understudy:onboard`. That is where the coding
 agent guides the first local model, launches the ladder climb, and handles any
@@ -178,10 +181,11 @@ Rules, the Understudy skills should appear under Agent Decides. To remove it:
 rm -f ~/.cursor/plugins/local/understudy
 ```
 
-The [`install-cursor-plugin`](skills/install-cursor-plugin/SKILL.md) skill
-contains the agent-run install/update/verify flow. This path is local-only:
-adding the plugin does not authenticate, upload data, download model weights, or
-make provider calls.
+The [`install-agent-adapter`](skills/install-agent-adapter/SKILL.md) skill
+contains the agent-run install/update/verify flow; ask for platform `cursor`.
+The older [`install-cursor-plugin`](skills/install-cursor-plugin/SKILL.md) skill
+remains as a compatibility shim. This path is local-only: adding the plugin does
+not authenticate, upload data, download model weights, or make provider calls.
 
 ## Install as a Codex plugin
 
@@ -198,10 +202,11 @@ codex plugin marketplace add /path/to/understudy-agent-tools
 
 Then open Codex, run `/plugins`, choose the `understudy-skills` marketplace, and
 install or enable the `understudy` plugin. The
-[`install-codex-plugin`](skills/install-codex-plugin/SKILL.md) skill contains
-the agent-run registration/verify flow. This path is local-only: registering the
-marketplace does not authenticate, upload data, download model weights, or make
-provider calls.
+[`install-agent-adapter`](skills/install-agent-adapter/SKILL.md) skill contains
+the agent-run registration/verify flow; ask for platform `codex`. The older
+[`install-codex-plugin`](skills/install-codex-plugin/SKILL.md) skill remains as a
+compatibility shim. This path is local-only: registering the marketplace does not
+authenticate, upload data, download model weights, or make provider calls.
 
 To remove the marketplace registration:
 
@@ -212,6 +217,47 @@ codex plugin marketplace remove understudy-skills
 `AGENTS.md` remains repo guidance for Codex, but the Codex plugin is the reusable
 distribution unit for the skills.
 
+## Install as OpenCode skills
+
+OpenCode loads `SKILL.md` files natively. This repo exposes the shared skill tree
+through [`.opencode/skills`](.opencode/skills), a symlink to [`skills/`](skills/),
+and ships a small [`/understudy-onboard`](.opencode/commands/understudy-onboard.md)
+command.
+
+For global local testing from a clone:
+
+```bash
+mkdir -p ~/.config/opencode/skills ~/.config/opencode/commands
+for skill in /path/to/understudy-agent-tools/skills/*; do
+  [ -f "$skill/SKILL.md" ] || continue
+  dest=~/.config/opencode/skills/"$(basename "$skill")"
+  [ -e "$dest" ] || [ -L "$dest" ] || ln -s "$skill" "$dest"
+done
+[ -e ~/.config/opencode/commands/understudy-onboard.md ] || \
+  ln -s /path/to/understudy-agent-tools/.opencode/commands/understudy-onboard.md \
+    ~/.config/opencode/commands/understudy-onboard.md
+```
+
+Then restart OpenCode or open a new TUI session and run:
+
+```text
+/understudy-onboard
+```
+
+The [`install-agent-adapter`](skills/install-agent-adapter/SKILL.md) skill
+contains the agent-run install/update/verify flow; ask for platform `opencode`.
+The older [`install-opencode-plugin`](skills/install-opencode-plugin/SKILL.md)
+skill remains as a compatibility shim. This path is local-only: linking the
+skills does not authenticate, upload data, download model weights, or make
+provider calls.
+
+To remove Understudy-owned symlinks:
+
+```bash
+find ~/.config/opencode/skills -type l -lname '*/understudy-agent-tools/skills/*' -delete
+rm -f ~/.config/opencode/commands/understudy-onboard.md
+```
+
 ## Agent Platform Adapters
 
 Use the platform registry to see the current install/reload surface across
@@ -221,11 +267,12 @@ agent clients:
 understudy platforms
 understudy platforms --inspect claude-code
 understudy platforms --inspect cursor
+understudy platforms --inspect opencode
 understudy --json platforms
 ```
 
-Claude Code, Cursor, and Codex are supported adapters. All three reuse the same
-`skills/` tree instead of copying platform-specific skill content.
+Claude Code, Cursor, Codex, and OpenCode are supported adapters. All four reuse
+the same `skills/` tree instead of copying platform-specific skill content.
 
 ## First Commands
 
@@ -321,8 +368,8 @@ conservative claims.
 capability worker per intent. The workers are grouped by journey stage; deeper
 playbooks live in each skill's `references/` directory:
 
-- **Setup & first run** — install-plugin, install-cursor-plugin,
-  install-codex-plugin, onboard, ladder (the onboarding "climb")
+- **Setup & first run** — install-agent-adapter, compatibility install shims,
+  onboard, ladder (the onboarding "climb")
 - **Understand & capture** — understand-workload, ingest-traces (incl. the
   capture-directory profiler), capture-evidence (incl. the public-benchmark
   on-ramp), design-simulated-environment
