@@ -28,6 +28,8 @@ describe("install.sh", () => {
         "--only-step",
         "3",
         "--no-claude",
+        "--agents",
+        "claude-code",
         "--lab",
         lab,
       ],
@@ -45,7 +47,7 @@ describe("install.sh", () => {
 
     assert.equal(result.status, 0, result.stderr || result.stdout);
     assert.match(result.stdout, /Running non-interactively/);
-    assert.match(result.stdout, /Skipping Claude Code launch because --no-claude is set/);
+    assert.match(result.stdout, /Skipping coding-agent launch because --no-claude is set/);
   });
 
   it("lets require-confirm override noninteractive mode", () => {
@@ -91,7 +93,18 @@ describe("install.sh", () => {
     writeFileSync(join(understudyDir, "profile.json"), '{"keep":"me"}\n');
     const result = spawnSync(
       "bash",
-      ["-s", "--", "--non-interactive", "--from-step", "3", "--no-claude", "--lab", join(root, "lab")],
+      [
+        "-s",
+        "--",
+        "--non-interactive",
+        "--from-step",
+        "3",
+        "--no-claude",
+        "--agents",
+        "claude-code",
+        "--lab",
+        join(root, "lab"),
+      ],
       {
         cwd: process.cwd(),
         input: script,
@@ -124,7 +137,19 @@ describe("install.sh", () => {
     );
     const result = spawnSync(
       "bash",
-      ["-s", "--", "--non-interactive", "--keep-login", "--from-step", "3", "--no-claude", "--lab", join(root, "lab")],
+      [
+        "-s",
+        "--",
+        "--non-interactive",
+        "--keep-login",
+        "--from-step",
+        "3",
+        "--no-claude",
+        "--agents",
+        "claude-code",
+        "--lab",
+        join(root, "lab"),
+      ],
       {
         cwd: process.cwd(),
         input: script,
@@ -151,7 +176,18 @@ describe("install.sh", () => {
     writeFileSync(join(understudyDir, "credentials.json"), '{"api_key":"sk_demo","orgs":{}}\n');
     const result = spawnSync(
       "bash",
-      ["-s", "--", "--non-interactive", "--only-step", "3", "--no-claude", "--lab", join(root, "lab")],
+      [
+        "-s",
+        "--",
+        "--non-interactive",
+        "--only-step",
+        "3",
+        "--no-claude",
+        "--agents",
+        "claude-code",
+        "--lab",
+        join(root, "lab"),
+      ],
       {
         cwd: process.cwd(),
         input: script,
@@ -366,6 +402,45 @@ describe("install.sh", () => {
     assert.equal(result.status, 0, result.stderr || result.stdout);
     assert.match(result.stdout, /No interactive terminal is available for OpenCode/);
     assert.match(result.stdout, /Open OpenCode in this directory, then run \/understudy-onboard/);
+  });
+
+  it("launches detected OpenCode in auto mode even when Claude Code is disabled", () => {
+    const script = readFileSync("install.sh", "utf8");
+    const home = join(root, "home");
+    const bin = join(root, "bin");
+    mkdirSync(bin, { recursive: true });
+    writeFileSync(join(bin, "opencode"), "#!/usr/bin/env bash\nexit 0\n");
+    chmodSync(join(bin, "opencode"), 0o755);
+
+    const result = spawnSync(
+      "bash",
+      [
+        "-s",
+        "--",
+        "--non-interactive",
+        "--only-step",
+        "3",
+        "--no-claude",
+        "--lab",
+        join(root, "lab"),
+      ],
+      {
+        cwd: process.cwd(),
+        input: script,
+        encoding: "utf8",
+        env: {
+          ...process.env,
+          CI: "1",
+          HOME: home,
+          PATH: `${bin}:${process.env.PATH}`,
+          UNDERSTUDY_INSTALL_LOG_DIR: join(root, "logs"),
+        },
+      },
+    );
+
+    assert.equal(result.status, 0, result.stderr || result.stdout);
+    assert.match(result.stdout, /No interactive terminal is available for OpenCode/);
+    assert.doesNotMatch(result.stdout, /no other launchable adapter is available/);
   });
 
   it("autodetects available agent adapters by default", () => {

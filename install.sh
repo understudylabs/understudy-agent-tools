@@ -925,8 +925,8 @@ launch_opencode() {
 }
 
 launch_selected_agent() {
-  if [ "$NO_CLAUDE" != "0" ] && ! agent_platform_requested "opencode"; then
-    say "Skipping Claude Code launch because --no-claude is set."
+  if [ "$NO_CLAUDE" != "0" ] && ! should_install_opencode_adapter; then
+    say "Skipping coding-agent launch because --no-claude is set and no other launchable adapter is available."
     mark_step_done 3
     return 0
   fi

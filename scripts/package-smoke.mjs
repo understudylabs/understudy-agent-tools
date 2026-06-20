@@ -26,6 +26,7 @@ const forbiddenMemberParts = [
   "docs/skill-externalization-plan.md",
   "docs/tool-migration-map.md",
   "examples/",
+  ".opencode/skills",
   "pyproject.toml",
   "uv.lock",
   "src/understudy_agent_tools/",
