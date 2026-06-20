@@ -224,6 +224,13 @@ through [`.opencode/skills`](.opencode/skills), a symlink to [`skills/`](skills/
 and ships a small [`/understudy-onboard`](.opencode/commands/understudy-onboard.md)
 command.
 
+This is an OpenCode skills/commands adapter, not an OpenCode JS/TS plugin.
+OpenCode plugins are for lifecycle hooks and custom behavior; Understudy only
+needs native skill discovery plus a command that routes into onboarding.
+[`.opencode/adapter.json`](.opencode/adapter.json) is an Understudy
+version/staleness sentinel for release checks, not a manifest consumed by
+OpenCode.
+
 For global local testing from a clone:
 
 ```bash
@@ -247,9 +254,10 @@ Then restart OpenCode or open a new TUI session and run:
 The [`install-agent-adapter`](skills/install-agent-adapter/SKILL.md) skill
 contains the agent-run install/update/verify flow; ask for platform `opencode`.
 The older [`install-opencode-plugin`](skills/install-opencode-plugin/SKILL.md)
-skill remains as a compatibility shim. This path is local-only: linking the
-skills does not authenticate, upload data, download model weights, or make
-provider calls.
+skill remains as a compatibility shim for the old name. This path is local-only:
+linking the skills does not authenticate, upload data, download model weights,
+or make provider calls. Because symlink targets can live outside the current
+project, OpenCode may ask before reading linked external resources.
 
 To remove Understudy-owned symlinks:
 

@@ -115,6 +115,17 @@ OpenCode loads native `SKILL.md` definitions from project and global skill
 directories. This repo also exposes `.opencode/skills` as a project-level symlink
 to `../skills`.
 
+This is a native OpenCode skills/commands adapter, not an OpenCode JS/TS plugin.
+OpenCode plugins are hook modules for lifecycle events and custom behavior. For
+Understudy, the documented and community-style pattern is simpler: keep one
+durable checkout/package, symlink each `skills/<name>/` directory into
+`~/.config/opencode/skills`, and link a small markdown command into
+`~/.config/opencode/commands`.
+
+The `.opencode/adapter.json` file is not consumed by OpenCode. It is an
+Understudy-owned version/staleness sentinel used by `understudy doctor` and the
+release checklist.
+
 Global install:
 
 ```bash
@@ -149,6 +160,10 @@ Activation:
 Restart OpenCode or open a new TUI session.
 /understudy-onboard
 ```
+
+OpenCode may ask before reading symlink targets outside the current project.
+That is expected; do not bypass the prompt by copying skill content into
+OpenCode config.
 
 Verify:
 

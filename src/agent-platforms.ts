@@ -78,8 +78,8 @@ export const agentPlatformAdapters: AgentPlatformAdapter[] = [
     id: "opencode",
     displayName: "OpenCode",
     status: "supported",
-    manifestPath: ".opencode/skills",
-    discovery: "OpenCode native skills discovered from .opencode/skills or ~/.config/opencode/skills",
+    manifestPath: ".opencode/adapter.json",
+    discovery: "OpenCode skills/commands adapter: native skills discovered from .opencode/skills or ~/.config/opencode/skills; command markdown discovered from .opencode/commands or ~/.config/opencode/commands",
     install: [
       'REPO="$(git rev-parse --show-toplevel)"',
       'mkdir -p "$HOME/.config/opencode/skills" "$HOME/.config/opencode/commands"',
@@ -93,8 +93,11 @@ export const agentPlatformAdapters: AgentPlatformAdapter[] = [
     ],
     onboarding: "Run /understudy-onboard, or ask OpenCode: Use the Understudy onboarding skill for this project.",
     notes: [
+      ".opencode/adapter.json is an Understudy version/staleness sentinel, not an OpenCode plugin manifest.",
+      "OpenCode JS/TS plugins are for lifecycle hooks; this adapter intentionally uses native skills and commands.",
       "OpenCode loads SKILL.md definitions natively; no copied skill content or provider calls are required.",
       "The installer links every public skill because OpenCode skill names are global and sibling skill references must stay intact.",
+      "Symlink targets live outside many user projects, so OpenCode may ask before reading linked external resources.",
     ],
   },
 ];

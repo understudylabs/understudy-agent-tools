@@ -13,6 +13,11 @@ metadata:
 This skill is a compatibility shim. The consolidated setup surface is
 [`install-agent-adapter`](../install-agent-adapter/SKILL.md).
 
+The legacy skill name says "plugin" for compatibility with older prompts, but
+the OpenCode implementation is not a JS/TS OpenCode plugin. It is a native
+skills/commands adapter: symlink `SKILL.md` directories into OpenCode's global
+skills directory and link the `/understudy-onboard` markdown command.
+
 ## Procedure
 
 Load `install-agent-adapter` and run it with platform `opencode`.
@@ -43,6 +48,8 @@ weights, start hosted jobs, or make provider calls.
 - Do not overwrite existing non-Understudy OpenCode skills or commands.
 - Do not copy private traces, keys, or `.understudy/` state into OpenCode config.
 - Use symlinks back to this repo's shared `skills/` tree.
+- If OpenCode asks before reading symlinked external resources, let the user
+  make that permission decision; do not copy skill content to bypass it.
 
 ## Resolve CLI
 
