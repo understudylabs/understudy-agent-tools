@@ -757,7 +757,7 @@ link_opencode_path() {
   ln -s "$src" "$dest"
 }
 
-install_opencode_plugin() {
+install_opencode_adapter() {
   if ! should_install_opencode_adapter; then
     say "OpenCode adapter not selected or not detected; skipping OpenCode skill install."
     return 0
@@ -801,7 +801,7 @@ install_agent_adapters() {
   install_claude_plugin
   install_cursor_plugin
   install_codex_plugin
-  install_opencode_plugin
+  install_opencode_adapter
 }
 
 launch_claude_code() {

@@ -429,7 +429,7 @@ describe("understudy CLI", () => {
     );
     assert.equal(payload.adapters.find((adapter) => adapter.id === "cursor").manifestPath, ".cursor-plugin/plugin.json");
     assert.equal(payload.adapters.find((adapter) => adapter.id === "codex").manifestPath, ".codex-plugin/plugin.json");
-    assert.equal(payload.adapters.find((adapter) => adapter.id === "opencode").manifestPath, ".opencode/skills");
+    assert.equal(payload.adapters.find((adapter) => adapter.id === "opencode").manifestPath, ".opencode/adapter.json");
     assert.equal(payload.adapters.find((adapter) => adapter.id === "codex").status, "supported");
     assert.equal(payload.adapters.find((adapter) => adapter.id === "opencode").status, "supported");
   });
@@ -446,7 +446,8 @@ describe("understudy CLI", () => {
     const result = run(["platforms", "--inspect", "opencode"]);
     assert.equal(result.status, 0, result.stderr);
     assert.match(result.stdout, /OpenCode/);
-    assert.match(result.stdout, /\.opencode\/skills/);
+    assert.match(result.stdout, /\.opencode\/adapter\.json/);
+    assert.match(result.stdout, /skills\/commands adapter/);
     assert.match(result.stdout, /understudy-onboard/);
   });
 
