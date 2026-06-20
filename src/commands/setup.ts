@@ -122,7 +122,7 @@ async function runSetup(cmd: Command, opts: SetupOpts): Promise<void> {
       `\n${kleur.bold("Next step")}\n` +
       `  Open this repo in Claude Code or another agent that reads .claude/skills/\n` +
       `  and say: ${kleur.cyan('"convert this to Understudy"')}\n\n` +
-      `  For Claude Code, Cursor, Codex, or OpenCode plugin setup, prefer\n` +
+      `  For Claude Code, Cursor, Codex, or OpenCode adapter setup, prefer\n` +
       `  ${kleur.cyan("install.sh --agents ...")} or the ${kleur.cyan("install-agent-adapter")} skill.\n\n` +
       `  The agent will read the skill, detect your SDK, and apply the matching\n` +
       `  recipe end-to-end.\n`,

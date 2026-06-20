@@ -30,6 +30,8 @@ uses semantic-ish versioning (minor = new skill or new capability, patch = fixes
 - `understudy doctor` now includes OpenCode adapter version drift checks, the
   installer can launch OpenCode when it is the selected launchable adapter, and
   Cursor adapter install now preserves unexpected existing plugin paths.
+- Clarified that OpenCode support is a native skills/commands adapter, not a
+  JS/TS OpenCode plugin, and documented the symlink/restart behavior.
 
 ## [0.5.0] — 2026-06-19
 

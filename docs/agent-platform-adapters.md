@@ -31,7 +31,7 @@ understudy platforms --inspect opencode
 | Claude Code | supported | `.claude-plugin/plugin.json` | Local marketplace plugin discovers `skills/`. |
 | Cursor | supported | `.cursor-plugin/plugin.json` | Local Cursor plugin discovers `skills/` from the plugin root. |
 | Codex | supported | `.codex-plugin/plugin.json` | Local marketplace plugin discovers `skills/`. |
-| OpenCode | supported | `.opencode/skills` | Native OpenCode skills are linked from the shared `skills/` tree. |
+| OpenCode | supported | `.opencode/adapter.json` | Native OpenCode skills and commands are linked from the shared `skills/` tree and `.opencode/commands/`. |
 
 ## Design Rule
 
@@ -39,3 +39,8 @@ Do not copy skills per platform. If a platform needs different packaging, add a
 thin adapter manifest or installer path that points back to the same `skills/`
 directories. Forking skill content creates stale safety gates and inconsistent
 onboarding during the sprint.
+
+OpenCode calls JS/TS hook modules "plugins." Understudy's OpenCode surface is
+not that kind of plugin; it is a native skills/commands adapter. The
+`.opencode/adapter.json` file is only an Understudy version sentinel for
+`understudy doctor` and release checks.
