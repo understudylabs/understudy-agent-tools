@@ -234,7 +234,8 @@ function printDoctorJson(): void {
     versions.cli === versions.marketplace &&
     versions.cli === versions.cursorPlugin &&
     versions.cli === versions.codexPlugin &&
-    versions.cli === versions.codexMarketplace;
+    versions.cli === versions.codexMarketplace &&
+    versions.cli === versions.opencodeAdapter;
   console.log(
     JSON.stringify(
       {

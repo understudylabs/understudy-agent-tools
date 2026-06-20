@@ -26,6 +26,7 @@ export function readManifestVersions(): {
   cursorPlugin: string | null;
   codexPlugin: string | null;
   codexMarketplace: string | null;
+  opencodeAdapter: string | null;
 } {
   return {
     cli: readManifestVersion(join(packageRoot, "package.json")),
@@ -40,6 +41,7 @@ export function readManifestVersions(): {
       join(packageRoot, ".agents", "plugins", "marketplace.json"),
       (parsed) => (parsed as { metadata?: { version?: string } }).metadata?.version,
     ),
+    opencodeAdapter: readManifestVersion(join(packageRoot, ".opencode", "adapter.json")),
   };
 }
 

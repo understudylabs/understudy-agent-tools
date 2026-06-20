@@ -9,7 +9,7 @@ INSTALL_PACKAGE="${UNDERSTUDY_INSTALL_PACKAGE:-}"
 INSTALL_SOURCE_DIR="${UNDERSTUDY_INSTALL_SOURCE_DIR:-$LAB/source/understudy-agent-tools}"
 STATE_DIR="${UNDERSTUDY_INSTALL_STATE_DIR:-$LAB/install-state}"
 INSTALLER_COMMIT="${UNDERSTUDY_INSTALLER_COMMIT:-unknown}"
-LAUNCH_CLAUDE="${UNDERSTUDY_LAUNCH_CLAUDE:-1}"
+LAUNCH_CLAUDE="${UNDERSTUDY_LAUNCH_AGENT:-${UNDERSTUDY_LAUNCH_CLAUDE:-1}}"
 CLAUDE_PERMISSION_MODE="${UNDERSTUDY_CLAUDE_PERMISSION_MODE:-auto}"
 USER_PROMPT_OVERRIDE="${UNDERSTUDY_INITIAL_CLAUDE_PROMPT:-}"
 INITIAL_CLAUDE_PROMPT=""
@@ -33,8 +33,8 @@ while [ "$#" -gt 0 ]; do
     --no-claude) NO_CLAUDE=1 ;;
     --agents|--agent) AGENT_PLATFORMS="${2:?missing agent platform list}"; AGENT_PLATFORMS_EXPLICIT=1; shift ;;
     --no-agents) AGENT_PLATFORMS="none"; AGENT_PLATFORMS_EXPLICIT=1; NO_CLAUDE=1; LAUNCH_CLAUDE=0 ;;
-    --no-launch-claude) LAUNCH_CLAUDE=0 ;;
-    --launch-claude) LAUNCH_CLAUDE=1 ;;
+    --no-launch-claude|--no-launch-agent) LAUNCH_CLAUDE=0 ;;
+    --launch-claude|--launch-agent) LAUNCH_CLAUDE=1 ;;
     --keep-login) KEEP_LOGIN=1 ;;
     --fresh-login) KEEP_LOGIN=0 ;;
     --from-step) START_STEP="${2:?missing step number}"; shift ;;
@@ -43,7 +43,7 @@ while [ "$#" -gt 0 ]; do
     --lab) LAB="${2:?missing path}"; shift ;;
     -h|--help)
       cat <<'EOF'
-Usage: install.sh [--yes] [--non-interactive] [--resume] [--from-step N] [--only-step N] [--keep-login] [--agents auto|all|claude-code|cursor|codex|opencode|none] [--no-claude] [--no-launch-claude]
+Usage: install.sh [--yes] [--non-interactive] [--resume] [--from-step N] [--only-step N] [--keep-login] [--agents auto|all|claude-code|cursor|codex|opencode|none] [--no-claude] [--no-launch-agent]
 
 Installs the Understudy CLI + detected coding-agent skill/plugin surfaces, then
 hands the user back to the selected coding agent when possible. It does not
@@ -70,8 +70,10 @@ Options:
                         comma-separated lists are accepted, e.g. claude-code,cursor
   --no-agents           skip all coding-agent plugin installs and launches
   --no-claude           skip Claude Code plugin install and final Claude launch
-  --no-launch-claude    install plugin but do not open Claude Code at the end
-  --launch-claude       open Claude Code at the end (default)
+  --no-launch-agent     install adapters but do not open a coding agent at the end
+  --no-launch-claude    legacy alias for --no-launch-agent
+  --launch-agent        open a supported coding agent at the end (default)
+  --launch-claude       legacy alias for --launch-agent
   --lab PATH            local Understudy runtime/log directory
 
 Environment overrides:
@@ -88,7 +90,8 @@ Environment overrides:
   UNDERSTUDY_REQUIRE_CONFIRM     set to 1 to fail when no prompt TTY exists
   UNDERSTUDY_KEEP_LOGIN          set to 1 to keep an existing sign-in
   UNDERSTUDY_AGENT_PLATFORMS     auto, all, claude-code, cursor, codex, opencode, none, or comma list
-  UNDERSTUDY_LAUNCH_CLAUDE      set to 0 to skip opening Claude Code
+  UNDERSTUDY_LAUNCH_AGENT       set to 0 to skip opening a coding agent
+  UNDERSTUDY_LAUNCH_CLAUDE      set to 0 to skip opening a coding agent
   UNDERSTUDY_CLAUDE_ARGS        optional extra args when launching Claude Code
   UNDERSTUDY_CLAUDE_PERMISSION_MODE Claude Code permission mode, default auto
   UNDERSTUDY_INITIAL_CLAUDE_PROMPT initial prompt passed to Claude Code
@@ -452,7 +455,7 @@ confirm() {
       return 0
       ;;
   esac
-  if [ ! -r /dev/tty ] || [ ! -w /dev/tty ]; then
+  if ! { : </dev/tty >/dev/tty; } 2>/dev/null; then
     say "No interactive terminal is available for prompts."
     say "Confirmation is required; rerun in a terminal or pass --yes / --non-interactive."
     return 1
@@ -662,6 +665,25 @@ install_cursor_plugin() {
   mkdir -p "$(dirname "$dest")"
   if [ -L "$dest" ] && [ "$(readlink "$dest" 2>/dev/null || true)" = "$repo" ]; then
     ok "Understudy Cursor plugin already points at $repo."
+  elif [ -L "$dest" ]; then
+    local current
+    current="$(readlink "$dest" 2>/dev/null || true)"
+    case "$current" in
+      *understudy-agent-tools)
+        rm -f "$dest"
+        ln -s "$repo" "$dest"
+        ok "Understudy Cursor plugin refreshed at $dest."
+        ;;
+      *)
+        warn "Cursor plugin path already exists at $dest; leaving it unchanged."
+        say "Manual recovery: move that path aside, then rerun this installer."
+        return 0
+        ;;
+    esac
+  elif [ -e "$dest" ]; then
+    warn "Cursor plugin path already exists at $dest; leaving it unchanged."
+    say "Manual recovery: move that path aside, then rerun this installer."
+    return 0
   else
     rm -rf "$dest"
     ln -s "$repo" "$dest"
@@ -795,7 +817,7 @@ launch_claude_code() {
     return 0
   fi
   if [ "$LAUNCH_CLAUDE" != "1" ]; then
-    say "Skipping Claude Code launch because --no-launch-claude is set."
+    say "Skipping coding-agent launch because --no-launch-agent is set."
     mark_step_done 3
     return 0
   fi
@@ -804,7 +826,7 @@ launch_claude_code() {
     mark_step_done 3
     return 0
   fi
-  if [ ! -r /dev/tty ] || [ ! -w /dev/tty ]; then
+  if ! { : </dev/tty >/dev/tty; } 2>/dev/null; then
     say "No interactive terminal is available for Claude Code."
     say "Open Claude Code in this directory, then run /reload-plugins and /understudy:onboard."
     mark_step_done 3
@@ -855,6 +877,69 @@ launch_claude_code() {
   mark_step_done 3
 }
 
+opencode_command() {
+  if need opencode; then
+    command -v opencode
+  elif [ -x "$HOME/.opencode/bin/opencode" ]; then
+    printf '%s\n' "$HOME/.opencode/bin/opencode"
+  else
+    return 1
+  fi
+}
+
+launch_opencode() {
+  local opencode_bin
+  if ! should_install_opencode_adapter; then
+    say "Skipping OpenCode launch because the OpenCode adapter is not selected or detected."
+    mark_step_done 3
+    return 0
+  fi
+  if [ "$LAUNCH_CLAUDE" != "1" ]; then
+    say "Skipping coding-agent launch because --no-launch-agent is set."
+    mark_step_done 3
+    return 0
+  fi
+  if ! opencode_bin="$(opencode_command)"; then
+    say "OpenCode CLI not found; open OpenCode manually and run /understudy-onboard."
+    mark_step_done 3
+    return 0
+  fi
+  if ! { : </dev/tty >/dev/tty; } 2>/dev/null; then
+    say "No interactive terminal is available for OpenCode."
+    say "Open OpenCode in this directory, then run /understudy-onboard."
+    mark_step_done 3
+    return 0
+  fi
+
+  section "Step 3/3 · Open OpenCode"
+  say "OpenCode will open in: $(pwd)"
+  say "Run /understudy-onboard once the TUI loads."
+  say "Launching OpenCode now. Exit OpenCode to return to this shell."
+  log "LAUNCH $opencode_bin"
+  "$opencode_bin" </dev/tty >/dev/tty 2>&1 || {
+    local status="$?"
+    say "OpenCode exited with status $status."
+    return "$status"
+  }
+  mark_step_done 3
+}
+
+launch_selected_agent() {
+  if [ "$NO_CLAUDE" != "0" ] && ! agent_platform_requested "opencode"; then
+    say "Skipping Claude Code launch because --no-claude is set."
+    mark_step_done 3
+    return 0
+  fi
+  if should_install_claude_adapter; then
+    launch_claude_code
+  elif should_install_opencode_adapter; then
+    launch_opencode
+  else
+    say "Skipping coding-agent launch because the selected adapter has no automatic launch path."
+    mark_step_done 3
+  fi
+}
+
 need npm || {
   say "npm is required. Install Node.js 20+ first: https://nodejs.org"
   exit 1
@@ -882,7 +967,7 @@ else
   say "  ${G3}·${R}  Reset any existing sign-in so the agent-first sign-up starts fresh (backup kept; --keep-login skips)."
 fi
 say "  ${G4}2.${R} $(agent_plan_label)"
-say "  ${G5}3.${R} Open Claude Code here when the Claude Code adapter is selected — otherwise finish with reload instructions."
+say "  ${G5}3.${R} Open a supported coding agent here when available — otherwise finish with reload instructions."
 say ""
 say "Default install does not download weights, start MLX, launch the ladder server, or make frontier calls."
 say "Those actions happen later through the Understudy onboarding skill, where the coding agent can coach the user and ask consent."
@@ -920,7 +1005,7 @@ say "  Codex: run /plugins, install or enable understudy, then ask Codex to use 
 say "  OpenCode: restart the TUI or open a new session, then run /understudy-onboard."
 say "That lets the coding agent run the email-code sign-up itself, explain the first local Understudy, and open a terminal of the user's choice when needed."
 if should_run_step 3; then
-  launch_claude_code
+  launch_selected_agent
 else
-  say "Skipping step 3/3: open Claude Code."
+  say "Skipping step 3/3: open coding agent."
 fi

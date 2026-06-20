@@ -3,9 +3,10 @@
 Notable, user-facing changes to the Understudy skills + CLI. Versions track the
 plugin: `package.json`, `.claude-plugin/plugin.json`,
 `.claude-plugin/marketplace.json`, `.cursor-plugin/plugin.json`,
-`.codex-plugin/plugin.json`, and `.agents/plugins/marketplace.json` are bumped
-together on any release that changes the skill catalog, CLI surface, or
-agent-platform adapter surface, because an installed plugin has no other
+`.codex-plugin/plugin.json`, `.agents/plugins/marketplace.json`, and
+`.opencode/adapter.json` are bumped together on any release that changes the
+skill catalog, CLI surface, or agent-platform adapter surface, because an
+installed plugin has no other
 staleness signal. After upgrading, reload or enable the plugin in your coding
 agent.
 
@@ -26,6 +27,9 @@ uses semantic-ish versioning (minor = new skill or new capability, patch = fixes
   install/update/verify/uninstall skill for Claude Code, Cursor, Codex, and
   OpenCode. The older platform-specific install skills now route to it as
   compatibility shims.
+- `understudy doctor` now includes OpenCode adapter version drift checks, the
+  installer can launch OpenCode when it is the selected launchable adapter, and
+  Cursor adapter install now preserves unexpected existing plugin paths.
 
 ## [0.5.0] — 2026-06-19
 

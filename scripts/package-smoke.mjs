@@ -36,6 +36,7 @@ const requiredPackageMembers = [
   ".agents/plugins/marketplace.json",
   ".codex-plugin/plugin.json",
   ".cursor-plugin/plugin.json",
+  ".opencode/adapter.json",
   ".opencode/commands/understudy-onboard.md",
   "skills/install-agent-adapter/SKILL.md",
   "skills/install-agent-adapter/reference.md",

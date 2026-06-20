@@ -527,6 +527,7 @@ describe("understudy CLI", () => {
     assert.equal(payload.versions.cli, payload.versions.cursorPlugin);
     assert.equal(payload.versions.cli, payload.versions.codexPlugin);
     assert.equal(payload.versions.cli, payload.versions.codexMarketplace);
+    assert.equal(payload.versions.cli, payload.versions.opencodeAdapter);
   });
 
   it("status exits non-zero when local config is malformed", () => {

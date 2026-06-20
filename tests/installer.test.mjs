@@ -204,6 +204,45 @@ describe("install.sh", () => {
     assert.equal(existsSync(join(home, ".cursor", "plugins", "local", "understudy")), true);
   });
 
+  it("does not overwrite an existing Cursor plugin path", () => {
+    const script = readFileSync("install.sh", "utf8");
+    const home = join(root, "home");
+    const dest = join(home, ".cursor", "plugins", "local", "understudy");
+    mkdirSync(dest, { recursive: true });
+    writeFileSync(join(dest, "marker.txt"), "keep me\n");
+
+    const result = spawnSync(
+      "bash",
+      [
+        "-s",
+        "--",
+        "--non-interactive",
+        "--only-step",
+        "2",
+        "--agents",
+        "cursor",
+        "--no-launch-agent",
+        "--lab",
+        join(root, "lab"),
+      ],
+      {
+        cwd: process.cwd(),
+        input: script,
+        encoding: "utf8",
+        env: {
+          ...process.env,
+          CI: "1",
+          HOME: home,
+          UNDERSTUDY_INSTALL_LOG_DIR: join(root, "logs"),
+        },
+      },
+    );
+
+    assert.equal(result.status, 0, result.stderr || result.stdout);
+    assert.match(result.stdout, /Cursor plugin path already exists/);
+    assert.equal(readFileSync(join(dest, "marker.txt"), "utf8"), "keep me\n");
+  });
+
   it("registers the Codex marketplace when explicitly requested", () => {
     const script = readFileSync("install.sh", "utf8");
     const home = join(root, "home");
@@ -287,6 +326,46 @@ describe("install.sh", () => {
       /skills\/understudy$/,
     );
     assert.equal(existsSync(join(home, ".config", "opencode", "commands", "understudy-onboard.md")), true);
+  });
+
+  it("surfaces OpenCode launch instructions when no terminal is available", () => {
+    const script = readFileSync("install.sh", "utf8");
+    const home = join(root, "home");
+    const bin = join(root, "bin");
+    mkdirSync(bin, { recursive: true });
+    writeFileSync(join(bin, "opencode"), "#!/usr/bin/env bash\nexit 0\n");
+    chmodSync(join(bin, "opencode"), 0o755);
+
+    const result = spawnSync(
+      "bash",
+      [
+        "-s",
+        "--",
+        "--non-interactive",
+        "--only-step",
+        "3",
+        "--agents",
+        "opencode",
+        "--lab",
+        join(root, "lab"),
+      ],
+      {
+        cwd: process.cwd(),
+        input: script,
+        encoding: "utf8",
+        env: {
+          ...process.env,
+          CI: "1",
+          HOME: home,
+          PATH: `${bin}:${process.env.PATH}`,
+          UNDERSTUDY_INSTALL_LOG_DIR: join(root, "logs"),
+        },
+      },
+    );
+
+    assert.equal(result.status, 0, result.stderr || result.stdout);
+    assert.match(result.stdout, /No interactive terminal is available for OpenCode/);
+    assert.match(result.stdout, /Open OpenCode in this directory, then run \/understudy-onboard/);
   });
 
   it("autodetects available agent adapters by default", () => {
