@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, readlinkSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { spawnSync } from "node:child_process";
@@ -249,6 +249,46 @@ describe("install.sh", () => {
     assert.match(readFileSync(calls, "utf8"), /plugin marketplace add /);
   });
 
+  it("links the OpenCode skills when explicitly requested", () => {
+    const script = readFileSync("install.sh", "utf8");
+    const home = join(root, "home");
+    const result = spawnSync(
+      "bash",
+      [
+        "-s",
+        "--",
+        "--non-interactive",
+        "--only-step",
+        "2",
+        "--agents",
+        "opencode",
+        "--no-launch-claude",
+        "--lab",
+        join(root, "lab"),
+      ],
+      {
+        cwd: process.cwd(),
+        input: script,
+        encoding: "utf8",
+        env: {
+          ...process.env,
+          CI: "1",
+          HOME: home,
+          UNDERSTUDY_INSTALL_LOG_DIR: join(root, "logs"),
+        },
+      },
+    );
+
+    assert.equal(result.status, 0, result.stderr || result.stdout);
+    assert.match(result.stdout, /Understudy OpenCode skills linked/);
+    assert.equal(existsSync(join(home, ".config", "opencode", "skills", "understudy", "SKILL.md")), true);
+    assert.match(
+      readlinkSync(join(home, ".config", "opencode", "skills", "understudy")),
+      /skills\/understudy$/,
+    );
+    assert.equal(existsSync(join(home, ".config", "opencode", "commands", "understudy-onboard.md")), true);
+  });
+
   it("autodetects available agent adapters by default", () => {
     const script = readFileSync("install.sh", "utf8");
     const home = join(root, "home");
@@ -264,8 +304,13 @@ describe("install.sh", () => {
       join(bin, "codex"),
       `#!/usr/bin/env bash\nprintf 'codex %s\\n' "$*" >> "${calls}"\nexit 0\n`,
     );
+    writeFileSync(
+      join(bin, "opencode"),
+      `#!/usr/bin/env bash\nprintf 'opencode %s\\n' "$*" >> "${calls}"\nexit 0\n`,
+    );
     chmodSync(join(bin, "claude"), 0o755);
     chmodSync(join(bin, "codex"), 0o755);
+    chmodSync(join(bin, "opencode"), 0o755);
 
     const result = spawnSync(
       "bash",
@@ -288,6 +333,7 @@ describe("install.sh", () => {
     assert.match(result.stdout, /Understudy plugin installed/);
     assert.match(result.stdout, /Understudy Cursor plugin linked/);
     assert.match(result.stdout, /Understudy Codex marketplace registered/);
+    assert.match(result.stdout, /Understudy OpenCode skills linked/);
     const callsText = readFileSync(calls, "utf8");
     assert.match(callsText, /claude plugin marketplace add /);
     assert.match(callsText, /claude plugin install understudy@understudy-skills/);
@@ -302,6 +348,7 @@ describe("install.sh", () => {
     assert.match(script, /Install target/);
     assert.match(script, /All detected coding agents/);
     assert.match(script, /CLI only, no coding-agent plugins/);
+    assert.match(script, /OpenCode/);
   });
 
   it("continues when Codex marketplace registration cannot be refreshed", () => {
@@ -397,6 +444,7 @@ describe("install.sh", () => {
     assert.match(result.stdout, /Claude Code adapter not selected or not detected/);
     assert.match(result.stdout, /Cursor adapter not selected or not detected/);
     assert.match(result.stdout, /Codex adapter not selected or not detected/);
+    assert.match(result.stdout, /OpenCode adapter not selected or not detected/);
     assert.equal(existsSync(join(home, ".cursor", "plugins", "local", "understudy")), false);
   });
 });

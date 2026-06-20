@@ -31,6 +31,10 @@ group it belongs to.
 - [`install-codex-plugin`](install-codex-plugin/SKILL.md) registers, refreshes,
   verifies, or removes the same Understudy skills as a local Codex marketplace
   plugin, then surfaces the `/plugins` install/enable step.
+- [`install-opencode-plugin`](install-opencode-plugin/SKILL.md) links, refreshes,
+  verifies, or removes the same Understudy skills in OpenCode's native global
+  skill directory, then surfaces the OpenCode restart and `/understudy-onboard`
+  activation step.
 - [`onboard`](onboard/SKILL.md) is the engaging first-run experience: it
   backgrounds a small American open-model download while it profiles the machine,
   detects ML tooling, interviews the user, and writes a durable

@@ -43,7 +43,7 @@ while [ "$#" -gt 0 ]; do
     --lab) LAB="${2:?missing path}"; shift ;;
     -h|--help)
       cat <<'EOF'
-Usage: install.sh [--yes] [--non-interactive] [--resume] [--from-step N] [--only-step N] [--keep-login] [--agents auto|all|claude-code|cursor|codex|none] [--no-claude] [--no-launch-claude]
+Usage: install.sh [--yes] [--non-interactive] [--resume] [--from-step N] [--only-step N] [--keep-login] [--agents auto|all|claude-code|cursor|codex|opencode|none] [--no-claude] [--no-launch-claude]
 
 Installs the Understudy CLI + detected coding-agent skill/plugin surfaces, then
 hands the user back to the selected coding agent when possible. It does not
@@ -66,7 +66,7 @@ Options:
   --only-step N         run only step 1, 2, or 3
   --keep-login          keep an existing sign-in instead of resetting it
   --fresh-login         reset an existing sign-in for agent-first sign-up (default)
-  --agents LIST         agent adapters to install: auto, all, claude-code, cursor, codex, none
+  --agents LIST         agent adapters to install: auto, all, claude-code, cursor, codex, opencode, none
                         comma-separated lists are accepted, e.g. claude-code,cursor
   --no-agents           skip all coding-agent plugin installs and launches
   --no-claude           skip Claude Code plugin install and final Claude launch
@@ -87,7 +87,7 @@ Environment overrides:
   UNDERSTUDY_NONINTERACTIVE      set to 1 to use safe defaults without prompting
   UNDERSTUDY_REQUIRE_CONFIRM     set to 1 to fail when no prompt TTY exists
   UNDERSTUDY_KEEP_LOGIN          set to 1 to keep an existing sign-in
-  UNDERSTUDY_AGENT_PLATFORMS     auto, all, claude-code, cursor, codex, none, or comma list
+  UNDERSTUDY_AGENT_PLATFORMS     auto, all, claude-code, cursor, codex, opencode, none, or comma list
   UNDERSTUDY_LAUNCH_CLAUDE      set to 0 to skip opening Claude Code
   UNDERSTUDY_CLAUDE_ARGS        optional extra args when launching Claude Code
   UNDERSTUDY_CLAUDE_PERMISSION_MODE Claude Code permission mode, default auto
@@ -269,7 +269,7 @@ configure_resume() {
 normalize_agent_platform() {
   case "$1" in
     claude|claude_code|claudecode) printf '%s\n' "claude-code" ;;
-    cursor|codex|all|auto|none|claude-code) printf '%s\n' "$1" ;;
+    cursor|codex|opencode|all|auto|none|claude-code) printf '%s\n' "$1" ;;
     *) printf '%s\n' "$1" ;;
   esac
 }
@@ -282,15 +282,15 @@ validate_agent_platforms() {
     normalized="$(normalize_agent_platform "$token")"
     case "$normalized" in
       auto|all|none) mode="$normalized" ;;
-      claude-code|cursor|codex) ;;
+      claude-code|cursor|codex|opencode) ;;
       *)
-        fail_line "Unknown agent adapter '$token'. Use auto, all, claude-code, cursor, codex, none, or a comma list of explicit adapters."
+        fail_line "Unknown agent adapter '$token'. Use auto, all, claude-code, cursor, codex, opencode, none, or a comma list of explicit adapters."
         return 1
         ;;
     esac
   done
   if [ "$count" -eq 0 ]; then
-    fail_line "No agent adapter selection provided. Use auto, all, claude-code, cursor, codex, or none."
+    fail_line "No agent adapter selection provided. Use auto, all, claude-code, cursor, codex, opencode, or none."
     return 1
   fi
   if [ -n "$mode" ] && [ "$count" -gt 1 ]; then
@@ -323,6 +323,12 @@ detect_cursor() {
 detect_codex() {
   need codex
 }
+detect_opencode() {
+  need opencode ||
+    [ -x "$HOME/.opencode/bin/opencode" ] ||
+    [ -d "$HOME/.config/opencode" ] ||
+    [ -d "$HOME/.local/share/opencode" ]
+}
 default_agent_platform() {
   if [ "$NO_CLAUDE" != "1" ] && detect_claude_code; then
     printf '%s\n' "claude-code"
@@ -330,6 +336,8 @@ default_agent_platform() {
     printf '%s\n' "cursor"
   elif detect_codex; then
     printf '%s\n' "codex"
+  elif detect_opencode; then
+    printf '%s\n' "opencode"
   else
     printf '%s\n' "none"
   fi
@@ -342,6 +350,7 @@ detected_agent_label() {
       claude-code) detect_claude_code ;;
       cursor) detect_cursor ;;
       codex) detect_codex ;;
+      opencode) detect_opencode ;;
       *) return 1 ;;
     esac
   then
@@ -370,11 +379,12 @@ select_agent_platforms() {
   say "  ${G2}1.${R} $(detected_agent_label "claude-code" "Claude Code")"
   say "  ${G3}2.${R} $(detected_agent_label "cursor" "Cursor")"
   say "  ${G4}3.${R} $(detected_agent_label "codex" "Codex")"
-  say "  ${G5}4.${R} All detected coding agents"
-  say "  ${G6}5.${R} CLI only, no coding-agent plugins"
+  say "  ${G5}4.${R} $(detected_agent_label "opencode" "OpenCode")"
+  say "  ${G6}5.${R} All detected coding agents"
+  say "  ${G6}6.${R} CLI only, no coding-agent plugins"
   say "Press Enter for: $default."
 
-  if ! printf "  %s?%s Install target %s[1/2/3/4/5 or name]%s " "$G4" "$R" "$D" "$R" >/dev/tty 2>/dev/null; then
+  if ! printf "  %s?%s Install target %s[1/2/3/4/5/6 or name]%s " "$G4" "$R" "$D" "$R" >/dev/tty 2>/dev/null; then
     return 0
   fi
   if ! read -r answer </dev/tty 2>/dev/null; then
@@ -385,8 +395,9 @@ select_agent_platforms() {
     1|claude|claude-code|claude_code|claudecode) AGENT_PLATFORMS="claude-code" ;;
     2|cursor) AGENT_PLATFORMS="cursor" ;;
     3|codex) AGENT_PLATFORMS="codex" ;;
-    4|all|auto) AGENT_PLATFORMS="auto" ;;
-    5|none|cli|cli-only|cli_only) AGENT_PLATFORMS="none" ;;
+    4|opencode|open-code|open_code) AGENT_PLATFORMS="opencode" ;;
+    5|all|auto) AGENT_PLATFORMS="auto" ;;
+    6|none|cli|cli-only|cli_only) AGENT_PLATFORMS="none" ;;
     *) AGENT_PLATFORMS="$answer" ;;
   esac
   validate_agent_platforms || exit 2
@@ -412,6 +423,13 @@ should_install_codex_adapter() {
     auto) detect_codex; return ;;
   esac
   agent_platform_requested "codex"
+}
+should_install_opencode_adapter() {
+  case "$(normalize_agent_platform "$AGENT_PLATFORMS")" in
+    none) return 1 ;;
+    auto) detect_opencode; return ;;
+  esac
+  agent_platform_requested "opencode"
 }
 agent_plan_label() {
   case "$(normalize_agent_platform "$AGENT_PLATFORMS")" in
@@ -583,6 +601,20 @@ resolve_plugin_repo() {
   fi
   printf '%s\n' "$repo"
 }
+resolve_skill_repo() {
+  local repo
+  repo="$(cd "$(dirname "$0")" && pwd)"
+  if [ ! -f "$repo/skills/understudy/SKILL.md" ]; then
+    repo="$(pwd)"
+  fi
+  if [ ! -f "$repo/skills/understudy/SKILL.md" ]; then
+    repo="$PKG_DIR"
+  fi
+  if [ ! -f "$repo/skills/understudy/SKILL.md" ]; then
+    return 1
+  fi
+  printf '%s\n' "$repo"
+}
 
 install_claude_plugin() {
   if ! should_install_claude_adapter; then
@@ -679,10 +711,75 @@ install_codex_plugin() {
   say "Then ask Codex: Use the Understudy onboarding skill for this project."
 }
 
+link_opencode_path() {
+  local src="$1" dest="$2" kind="$3" current
+  if [ -L "$dest" ]; then
+    current="$(readlink "$dest" 2>/dev/null || true)"
+    if [ "$current" = "$src" ]; then
+      return 0
+    fi
+    case "$current" in
+      *understudy-agent-tools/skills/*|*understudy-agent-tools/.opencode/commands/*)
+        rm -f "$dest"
+        ln -s "$src" "$dest"
+        return 0
+        ;;
+    esac
+    warn "OpenCode $kind already exists at $dest; leaving it unchanged."
+    return 1
+  fi
+  if [ -e "$dest" ]; then
+    warn "OpenCode $kind already exists at $dest; leaving it unchanged."
+    return 1
+  fi
+  ln -s "$src" "$dest"
+}
+
+install_opencode_plugin() {
+  if ! should_install_opencode_adapter; then
+    say "OpenCode adapter not selected or not detected; skipping OpenCode skill install."
+    return 0
+  fi
+
+  local repo skill_root command_root skill skill_name linked skipped command_src command_dest
+  if ! repo="$(resolve_skill_repo)"; then
+    say "Could not find skills/understudy/SKILL.md; skipping OpenCode skill install."
+    return 0
+  fi
+
+  skill_root="$HOME/.config/opencode/skills"
+  command_root="$HOME/.config/opencode/commands"
+  mkdir -p "$skill_root" "$command_root"
+  linked=0
+  skipped=0
+
+  say "Installing the Understudy OpenCode skills from $repo."
+  for skill in "$repo"/skills/*; do
+    [ -f "$skill/SKILL.md" ] || continue
+    skill_name="$(basename "$skill")"
+    if link_opencode_path "$skill" "$skill_root/$skill_name" "skill"; then
+      linked=$((linked + 1))
+    else
+      skipped=$((skipped + 1))
+    fi
+  done
+
+  command_src="$repo/.opencode/commands/understudy-onboard.md"
+  command_dest="$command_root/understudy-onboard.md"
+  if [ -f "$command_src" ]; then
+    link_opencode_path "$command_src" "$command_dest" "command" || true
+  fi
+
+  ok "Understudy OpenCode skills linked: $linked; skipped existing conflicts: $skipped."
+  say "In OpenCode, restart the TUI or open a new session so skills and commands reload."
+  say "Then run /understudy-onboard, or ask OpenCode: Use the Understudy onboarding skill for this project."
+}
+
 install_agent_adapters() {
   install_claude_plugin
   install_cursor_plugin
   install_codex_plugin
+  install_opencode_plugin
 }
 
 launch_claude_code() {
@@ -819,6 +916,8 @@ section "Where this goes next"
 say "The installer is done. The next experience belongs inside your coding agent:"
 say "  Claude Code: run /reload-plugins and then /understudy:onboard."
 say "  Cursor: restart Cursor or run Developer: Reload Window, then ask Cursor Agent to use the Understudy onboarding skill."
+say "  Codex: run /plugins, install or enable understudy, then ask Codex to use the Understudy onboarding skill."
+say "  OpenCode: restart the TUI or open a new session, then run /understudy-onboard."
 say "That lets the coding agent run the email-code sign-up itself, explain the first local Understudy, and open a terminal of the user's choice when needed."
 if should_run_step 3; then
   launch_claude_code

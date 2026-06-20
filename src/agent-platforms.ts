@@ -74,6 +74,29 @@ export const agentPlatformAdapters: AgentPlatformAdapter[] = [
       "AGENTS.md remains repo guidance, but the plugin is the reusable distribution unit.",
     ],
   },
+  {
+    id: "opencode",
+    displayName: "OpenCode",
+    status: "supported",
+    manifestPath: ".opencode/skills",
+    discovery: "OpenCode native skills discovered from .opencode/skills or ~/.config/opencode/skills",
+    install: [
+      'REPO="$(git rev-parse --show-toplevel)"',
+      'mkdir -p "$HOME/.config/opencode/skills" "$HOME/.config/opencode/commands"',
+      'for skill in "$REPO"/skills/*; do [ -f "$skill/SKILL.md" ] || continue; dest="$HOME/.config/opencode/skills/$(basename "$skill")"; [ -e "$dest" ] || [ -L "$dest" ] || ln -s "$skill" "$dest"; done',
+      '[ -e "$HOME/.config/opencode/commands/understudy-onboard.md" ] || ln -s "$REPO/.opencode/commands/understudy-onboard.md" "$HOME/.config/opencode/commands/understudy-onboard.md"',
+    ],
+    reload: "Restart OpenCode or open a new TUI session so it reloads global skills and commands.",
+    uninstall: [
+      'find "$HOME/.config/opencode/skills" -type l -lname "*/understudy-agent-tools/skills/*" -delete',
+      'rm -f "$HOME/.config/opencode/commands/understudy-onboard.md"',
+    ],
+    onboarding: "Run /understudy-onboard, or ask OpenCode: Use the Understudy onboarding skill for this project.",
+    notes: [
+      "OpenCode loads SKILL.md definitions natively; no copied skill content or provider calls are required.",
+      "The installer links every public skill because OpenCode skill names are global and sibling skill references must stay intact.",
+    ],
+  },
 ];
 
 export function findAgentPlatformAdapter(id: string): AgentPlatformAdapter | undefined {

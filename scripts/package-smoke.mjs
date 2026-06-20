@@ -36,6 +36,7 @@ const requiredPackageMembers = [
   ".agents/plugins/marketplace.json",
   ".codex-plugin/plugin.json",
   ".cursor-plugin/plugin.json",
+  ".opencode/commands/understudy-onboard.md",
   "skills/local-distillation-lab/SKILL.md",
   "skills/local-distillation-lab/references/pedagogical-arm.md",
   "skills/recursive-language-model/SKILL.md",
