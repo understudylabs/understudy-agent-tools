@@ -364,7 +364,7 @@ describe("install.sh", () => {
     assert.equal(existsSync(join(home, ".config", "opencode", "commands", "understudy-onboard.md")), true);
   });
 
-  it("surfaces OpenCode launch instructions when no terminal is available", () => {
+  it("hands off to OpenCode without auto-launching it", () => {
     const script = readFileSync("install.sh", "utf8");
     const home = join(root, "home");
     const bin = join(root, "bin");
@@ -400,11 +400,13 @@ describe("install.sh", () => {
     );
 
     assert.equal(result.status, 0, result.stderr || result.stdout);
-    assert.match(result.stdout, /No interactive terminal is available for OpenCode/);
-    assert.match(result.stdout, /Open OpenCode in this directory, then run \/understudy-onboard/);
+    assert.match(result.stdout, /OpenCode skills and commands are installed/);
+    assert.match(result.stdout, /Open a fresh OpenCode TUI session/);
+    assert.match(result.stdout, /Then run \/understudy-onboard/);
+    assert.doesNotMatch(result.stdout, /OpenCode exited with status/);
   });
 
-  it("launches detected OpenCode in auto mode even when Claude Code is disabled", () => {
+  it("hands off to detected OpenCode in auto mode even when Claude Code is disabled", () => {
     const script = readFileSync("install.sh", "utf8");
     const home = join(root, "home");
     const bin = join(root, "bin");
@@ -439,7 +441,8 @@ describe("install.sh", () => {
     );
 
     assert.equal(result.status, 0, result.stderr || result.stdout);
-    assert.match(result.stdout, /No interactive terminal is available for OpenCode/);
+    assert.match(result.stdout, /OpenCode skills and commands are installed/);
+    assert.match(result.stdout, /Open a fresh OpenCode TUI session/);
     assert.doesNotMatch(result.stdout, /no other launchable adapter is available/);
   });
 
