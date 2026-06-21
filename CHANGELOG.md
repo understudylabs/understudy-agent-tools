@@ -32,6 +32,8 @@ uses semantic-ish versioning (minor = new skill or new capability, patch = fixes
   Cursor adapter install now preserves unexpected existing plugin paths.
 - Clarified that OpenCode support is a native skills/commands adapter, not a
   JS/TS OpenCode plugin, and documented the symlink/restart behavior.
+- OpenCode installs now end with a manual TUI handoff instead of auto-launching
+  `opencode` from the curl-piped installer, avoiding Bun/OpenCode TTY failures.
 
 ## [0.5.0] — 2026-06-19
 

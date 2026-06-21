@@ -877,18 +877,7 @@ launch_claude_code() {
   mark_step_done 3
 }
 
-opencode_command() {
-  if need opencode; then
-    command -v opencode
-  elif [ -x "$HOME/.opencode/bin/opencode" ]; then
-    printf '%s\n' "$HOME/.opencode/bin/opencode"
-  else
-    return 1
-  fi
-}
-
 launch_opencode() {
-  local opencode_bin
   if ! should_install_opencode_adapter; then
     say "Skipping OpenCode launch because the OpenCode adapter is not selected or detected."
     mark_step_done 3
@@ -899,28 +888,12 @@ launch_opencode() {
     mark_step_done 3
     return 0
   fi
-  if ! opencode_bin="$(opencode_command)"; then
-    say "OpenCode CLI not found; open OpenCode manually and run /understudy-onboard."
-    mark_step_done 3
-    return 0
-  fi
-  if ! { : </dev/tty >/dev/tty; } 2>/dev/null; then
-    say "No interactive terminal is available for OpenCode."
-    say "Open OpenCode in this directory, then run /understudy-onboard."
-    mark_step_done 3
-    return 0
-  fi
 
   section "Step 3/3 · Open OpenCode"
-  say "OpenCode will open in: $(pwd)"
-  say "Run /understudy-onboard once the TUI loads."
-  say "Launching OpenCode now. Exit OpenCode to return to this shell."
-  log "LAUNCH $opencode_bin"
-  "$opencode_bin" </dev/tty >/dev/tty 2>&1 || {
-    local status="$?"
-    say "OpenCode exited with status $status."
-    return "$status"
-  }
+  say "OpenCode skills and commands are installed."
+  say "Open a fresh OpenCode TUI session in: $(pwd)"
+  say "Then run /understudy-onboard."
+  say "The installer does not auto-launch OpenCode because piped installers cannot reliably hand Bun/OpenCode a stable interactive TTY."
   mark_step_done 3
 }
 
