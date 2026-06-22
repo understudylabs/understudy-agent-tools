@@ -106,7 +106,7 @@ references them; it does not duplicate them.
 ## Output Standard
 
 End with: the captures and sizes; the agreed success criteria; the gap diagnosis
-(blind preference + identification accuracy by class); the reconstructed loop
+(frozen workload scores and failure classes); the reconstructed loop
 (turns, fixed-vs-content token split, compounding multiplier, full-task cost); the
 harness + model improvements run (tool-subsetting reduction, sim-env scores,
 decomposition factor); and the **meet-and-beat scorecard with a route
