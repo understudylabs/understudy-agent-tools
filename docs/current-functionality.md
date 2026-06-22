@@ -101,7 +101,7 @@ they should not claim that removed Python commands still exist.
 
 ### Skill catalog consolidation (2026-06)
 
-Thirteen pipeline-stage/research skills were folded into the skill that owns
+Twelve pipeline-stage/research skills were folded into the skill that owns
 the user intent; do not route to the old names:
 
 | Former skill | New owner |
@@ -109,7 +109,6 @@ the user intent; do not route to the old names:
 | `profile-captures` | `ingest-traces/references/profile-captures.md` |
 | `optimize-agentic-search`, `optimize-api-workflow` | `optimize-agentic-workload` |
 | `author-rl-env`, `package-verifier-env` | `prepare-verifier-handoff/references/stage-1-author-env.md`, `stage-2-package-env.md` |
-| `mlx-arena` | `run-local-model-lab/references/blind-arena.md` |
 | `specialize-local-model` | `understudy` routing section (local specialization sequencing) |
 | `pedagogical-learning` | `local-distillation-lab/references/pedagogical-arm.md` |
 | `rlm-pedagogical-training` | `recursive-language-model/references/pedagogical-training.md` |
