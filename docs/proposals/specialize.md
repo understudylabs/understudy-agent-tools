@@ -1,6 +1,6 @@
 ---
 name: specialize
-description: DRAFT PROPOSAL — not yet installed. Use when a developer has a captured trace/dataset of an expensive frontier-model workload and wants to replace it with a faster, cheaper specialist that does the same job — "meet and beat the frontier on this workload", "train a specialist for this agent", "watch my agent and build a cheaper version", "can a small model do this and how do I get it there", "understudy optimization". The umbrella loop that turns understand-workload, the run-local-model-lab blind arena, design-simulated-environment, recursive-language-model, run-local-model-lab, capture-evidence, and optimize-workload into one specialization process — diagnose why the generalist is good and where the specialist fails, improve model + harness (RLM keeps the existing call contract) until the specialist meets-and-beats on-domain, and route it in as a drop-in replacement.
+description: DRAFT PROPOSAL — not yet installed. Use when a developer has a captured trace/dataset of an expensive frontier-model workload and wants to replace it with a faster, cheaper specialist that does the same job — "meet and beat the frontier on this workload", "train a specialist for this agent", "watch my agent and build a cheaper version", "can a small model do this and how do I get it there", "understudy optimization". The umbrella loop that turns understand-workload, ladder, run-local-model-lab, design-simulated-environment, recursive-language-model, capture-evidence, and optimize-workload into one specialization process — diagnose why the generalist is good and where the specialist fails, improve model + harness (RLM keeps the existing call contract) until the specialist meets-and-beats on-domain, and route it in as a drop-in replacement.
 metadata:
   understudy:
     mode: interactive
@@ -45,7 +45,7 @@ references them; it does not duplicate them.
      steps so the small model can actually perform.
    - **Model** — prompt/route now; post-train later (GEPA → RL/verifiers) against a
      simulated environment, hill-climbing toward the criteria.
-5. **Prove meet-and-beat.** On a frozen env + the blind arena: match quality
+5. **Prove meet-and-beat.** On a frozen env + measured local evals: match quality
    on-domain, beat on cost/latency — *measured*, not asserted.
 6. **Replace the incumbent.** Route the workload to the specialist via the gateway,
    same call surface, cheaper brain.
@@ -69,10 +69,11 @@ references them; it does not duplicate them.
 1. **Understand the incumbent** — [`../../skills/understand-workload/SKILL.md`](../../skills/understand-workload/SKILL.md):
    decompose → plain-language six-facet explanation → mermaid flow → Q&A → agreed
    success criteria. Why is the generalist good, and what does "good" mean here?
-2. **Diagnose the specialist's gap** — [`../../skills/run-local-model-lab/references/blind-arena.md`](../../skills/run-local-model-lab/references/blind-arena.md):
-   blind frontier-vs-local head-to-head on grounded questions (preference +
-   identification accuracy) to find which task classes are already a wash and which
-   have a real gap to close.
+2. **Diagnose the specialist's gap** — [`../../skills/run-local-model-lab/SKILL.md`](../../skills/run-local-model-lab/SKILL.md):
+   score the local candidate against the frozen workload contract to find which
+   task classes are already a wash and which have a real gap to close. If the user
+   does not have traces yet, use [`../../skills/ladder/SKILL.md`](../../skills/ladder/SKILL.md)
+   for a no-data local-vs-frontier first look before returning to measured evals.
 3. **Reconstruct the loop** (why it's expensive) — from the captures, redaction-safe
    aggregates: turns + call stack (incl. sub-agents); per-request token split into
    **fixed tool-definition overhead vs per-call content**; and **context

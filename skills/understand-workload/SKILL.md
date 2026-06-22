@@ -113,8 +113,8 @@ extracts structure from traces and code; the user confirms the task meaning.
 
 8. **Write the success criteria** — the rubric axes for *this* workload, beyond
    cost/latency: final-state correctness, extraction recall/precision, policy
-   compliance, no-bad-writes, schema validity. These become the metric the arena /
-   `capture-evidence` use.
+   compliance, no-bad-writes, schema validity. These become the metric
+   `capture-evidence` and downstream local/optimizer runs use.
 
 9. **Use the shared understanding to test or improve models.** Primary path:
    freeze a workload contract with [`../capture-evidence/SKILL.md`](../capture-evidence/SKILL.md)
@@ -132,8 +132,9 @@ End with: workload surface inspected; representative trace(s)/dataset rows
 chosen and their size; the request/response code path; data/trace profile; the
 seven-facet explanation; the mermaid flow; success criteria agreed with the
 user; artifact paths for the local workload brief; and the next evidence action.
-If you include arena questions, mark them optional and tie each to a real step
-or criterion. Keep the decomposition doc local; only synthetic questions leave.
+If you include ladder vibe-check questions, mark them optional and tie each to a
+real step or criterion. Keep the decomposition doc local; only synthetic
+questions leave.
 
 ## Single-run tool-failure forensics
 
