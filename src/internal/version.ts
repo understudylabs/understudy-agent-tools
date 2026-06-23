@@ -27,6 +27,7 @@ export function readManifestVersions(): {
   codexPlugin: string | null;
   codexMarketplace: string | null;
   opencodeAdapter: string | null;
+  hermesAdapter: string | null;
 } {
   return {
     cli: readManifestVersion(join(packageRoot, "package.json")),
@@ -42,6 +43,7 @@ export function readManifestVersions(): {
       (parsed) => (parsed as { metadata?: { version?: string } }).metadata?.version,
     ),
     opencodeAdapter: readManifestVersion(join(packageRoot, ".opencode", "adapter.json")),
+    hermesAdapter: readManifestVersion(join(packageRoot, ".hermes", "adapter.json")),
   };
 }
 

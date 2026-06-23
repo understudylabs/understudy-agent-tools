@@ -446,6 +446,52 @@ describe("install.sh", () => {
     assert.doesNotMatch(result.stdout, /no other launchable adapter is available/);
   });
 
+  it("registers the Hermes skills tree through a stable symlink when explicitly requested", () => {
+    const script = readFileSync("install.sh", "utf8");
+    const home = join(root, "home");
+    const hermesHome = join(home, ".hermes");
+    const config = join(hermesHome, "config.yaml");
+    const stableLink = join(home, ".understudy", "skills");
+    const realSkills = join(process.cwd(), "skills");
+    const env = {
+      ...process.env,
+      CI: "1",
+      HOME: home,
+      HERMES_HOME: hermesHome,
+      UNDERSTUDY_INSTALL_LOG_DIR: join(root, "logs"),
+    };
+    const args = [
+      "-s",
+      "--",
+      "--non-interactive",
+      "--only-step",
+      "2",
+      "--agents",
+      "hermes",
+      "--no-launch-claude",
+      "--lab",
+      join(root, "lab"),
+    ];
+
+    const first = spawnSync("bash", args, { cwd: process.cwd(), input: script, encoding: "utf8", env });
+    assert.equal(first.status, 0, first.stderr || first.stdout);
+    assert.match(first.stdout, /registered Understudy skills in skills\.external_dirs/);
+    // A durable ~/.understudy/skills symlink points at the resolved skills tree.
+    assert.equal(readlinkSync(stableLink), realSkills);
+    // The config registers the stable symlink path, not the resolved checkout path.
+    assert.equal(existsSync(config), true);
+    const written = readFileSync(config, "utf8");
+    assert.match(written, /external_dirs/);
+    assert.ok(written.includes(stableLink), `expected ${config} to list ${stableLink}`);
+
+    // A second run is idempotent: the path is already present, so nothing changes.
+    const second = spawnSync("bash", args, { cwd: process.cwd(), input: script, encoding: "utf8", env });
+    assert.equal(second.status, 0, second.stderr || second.stdout);
+    assert.match(second.stdout, /already registered in .*config\.yaml/);
+    const after = readFileSync(config, "utf8");
+    assert.equal((after.match(new RegExp(stableLink.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), "g")) || []).length, 1);
+  });
+
   it("autodetects available agent adapters by default", () => {
     const script = readFileSync("install.sh", "utf8");
     const home = join(root, "home");
@@ -480,6 +526,8 @@ describe("install.sh", () => {
           ...process.env,
           CI: "1",
           HOME: home,
+          // Isolate from any real ~/.hermes so autodetection never edits it.
+          HERMES_HOME: join(home, ".hermes"),
           PATH: `${bin}:${process.env.PATH}`,
           UNDERSTUDY_INSTALL_LOG_DIR: join(root, "logs"),
         },
@@ -506,6 +554,7 @@ describe("install.sh", () => {
     assert.match(script, /All detected coding agents/);
     assert.match(script, /CLI only, no coding-agent plugins/);
     assert.match(script, /OpenCode/);
+    assert.match(script, /Hermes Agent/);
   });
 
   it("continues when Codex marketplace registration cannot be refreshed", () => {
@@ -602,6 +651,7 @@ describe("install.sh", () => {
     assert.match(result.stdout, /Cursor adapter not selected or not detected/);
     assert.match(result.stdout, /Codex adapter not selected or not detected/);
     assert.match(result.stdout, /OpenCode adapter not selected or not detected/);
+    assert.match(result.stdout, /Hermes adapter not selected or not detected/);
     assert.equal(existsSync(join(home, ".cursor", "plugins", "local", "understudy")), false);
   });
 });

@@ -1,6 +1,6 @@
 {
   "name": "@understudylabs/understudy-agent-tools",
-  "version": "0.5.0",
+  "version": "0.6.0",
   "description": "Public Understudy agent tools CLI and skill library.",
   "type": "module",
   "bin": {
@@ -15,6 +15,7 @@
     ".cursor-plugin",
     ".opencode",
     "!.opencode/skills",
+    ".hermes",
     "install.sh",
     "dist",
     "skills",

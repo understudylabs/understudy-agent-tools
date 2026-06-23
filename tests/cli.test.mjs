@@ -425,13 +425,15 @@ describe("understudy CLI", () => {
     const payload = JSON.parse(result.stdout);
     assert.deepEqual(
       payload.adapters.map((adapter) => adapter.id),
-      ["claude-code", "cursor", "codex", "opencode"],
+      ["claude-code", "cursor", "codex", "opencode", "hermes"],
     );
     assert.equal(payload.adapters.find((adapter) => adapter.id === "cursor").manifestPath, ".cursor-plugin/plugin.json");
     assert.equal(payload.adapters.find((adapter) => adapter.id === "codex").manifestPath, ".codex-plugin/plugin.json");
     assert.equal(payload.adapters.find((adapter) => adapter.id === "opencode").manifestPath, ".opencode/adapter.json");
+    assert.equal(payload.adapters.find((adapter) => adapter.id === "hermes").manifestPath, ".hermes/adapter.json");
     assert.equal(payload.adapters.find((adapter) => adapter.id === "codex").status, "supported");
     assert.equal(payload.adapters.find((adapter) => adapter.id === "opencode").status, "supported");
+    assert.equal(payload.adapters.find((adapter) => adapter.id === "hermes").status, "supported");
   });
 
   it("inspects one agent platform adapter", () => {
@@ -449,6 +451,15 @@ describe("understudy CLI", () => {
     assert.match(result.stdout, /\.opencode\/adapter\.json/);
     assert.match(result.stdout, /skills\/commands adapter/);
     assert.match(result.stdout, /understudy-onboard/);
+  });
+
+  it("inspects the Hermes platform adapter", () => {
+    const result = run(["platforms", "--inspect", "hermes"]);
+    assert.equal(result.status, 0, result.stderr);
+    assert.match(result.stdout, /Hermes Agent/);
+    assert.match(result.stdout, /\.hermes\/adapter\.json/);
+    assert.match(result.stdout, /external_dirs/);
+    assert.match(result.stdout, /\/onboard/);
   });
 
   it("lists the pedagogical and local training skills", () => {
@@ -529,6 +540,7 @@ describe("understudy CLI", () => {
     assert.equal(payload.versions.cli, payload.versions.codexPlugin);
     assert.equal(payload.versions.cli, payload.versions.codexMarketplace);
     assert.equal(payload.versions.cli, payload.versions.opencodeAdapter);
+    assert.equal(payload.versions.cli, payload.versions.hermesAdapter);
   });
 
   it("status exits non-zero when local config is malformed", () => {
