@@ -44,8 +44,12 @@ LOCAL_MODELS = {
 }
 
 FALLBACK_REMOTE_MODELS = [
-    ("glm-5.1", "GLM 5.1"),
-    ("gemma-4-31b-it", "Gemma 4 31B"),
+    ("glm-5.2", "GLM 5.2"),
+    ("minimax-m3", "MiniMax M3"),
+    ("glm-5.1", "GLM 5.1 · deprecates 2026-06-29"),
+    ("gemma-4-31b-it", "Gemma 4 31B · deprecates 2026-06-29"),
+    ("kimi-k2.6", "Kimi K2.6 · deprecates 2026-06-29"),
+    ("minimax-m2.7", "MiniMax M2.7"),
     ("nemotron-3-nano", "Nemotron 3 Nano"),
     ("nemotron-3-super", "Nemotron 3 Super"),
     ("nemotron-3-ultra", "Nemotron 3 Ultra"),

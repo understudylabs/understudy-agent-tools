@@ -188,16 +188,20 @@ Databricks (March 2024)** — different entity, do not conflate.
 base-URL swap, prepaid). Routes inference to **idle enterprise GPUs already powered on**
 (clusters typically run 30–50% utilized), passing the savings to per-token price.
 
-**Models hosted, with on-site pricing [V]** (confirm input-vs-cache split live — [U]):
+**Models hosted, with on-site pricing [V]** (snapshot 2026-06-23; confirm live before
+large runs):
 
-| Model | Precision | $/M input | $/M output |
-|---|---|---|---|
-| Gemma 4 (31B) | BF16 | $0.11 | $0.35 |
-| MiniMax M2.7 | FP8 | $0.30 | $1.20 |
-| Kimi K2.6 | INT4 | $0.70* | $3.50 |
-| GLM 5.1 | FP8 | $0.90* | $3.00 |
+| Model | Provider id | Precision | Context | $/M input | $/M output | $/M cache | Status |
+|---|---|---|---:|---:|---:|---:|---|
+| GLM 5.2 | `zai-org/glm-5.2` | FP8/NVFP4 | 524.3K | $0.90 | $3.00 | $0.27 | current |
+| MiniMax M3 | `minimaxai/minimax-m3` | — | 1.0M | $0.28 | $1.10 | $0.05 | current |
+| MiniMax M2.7 | `minimaxai/minimax-m2.7` | FP8 | 204.8K | $0.30 | $1.20 | $0.055 | legacy |
+| Kimi K2.6 | `moonshotai/kimi-k2.6` | INT4 | 262.1K | $0.70 | $3.50 | $0.20 | deprecates 2026-06-29 |
+| GLM 5.1 | `zai-org/glm-5.1` | FP8/NVFP4 | 202.8K | $0.90 | $3.00 | $0.27 | deprecates 2026-06-29 |
+| Gemma 4 (31B) | `google/gemma-4-31b-it` | FP8 | 262.1K | $0.11 | $0.35 | — | deprecates 2026-06-29 |
 
-\* a second source listed lower input + a separate cache rate — verify on the live page.
+GLM/Kimi/Gemma/MiniMax advertise tools + reasoning. Gemma and MiniMax M3 also
+advertise image/video input on the current Lilac page.
 
 **Batch / trajectory throughput [U — NOT FOUND]:** as of 2026-06-07 the public inference
 docs (quickstart) document **no** batch API, async endpoint, or rpm/concurrency limits

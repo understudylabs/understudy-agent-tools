@@ -141,9 +141,11 @@ on-demand / $0.94 spot.
   Qwen2.5-7B Turbo $0.30/$0.30 · Gemma 4 31B $0.39/$0.97. Dedicated H100 $6.49/hr.
 - **Fireworks:** ≤16B tier ~$0.20 · >16B tier ~$0.90. On-demand H100 $7.00/hr. LoRA
   SFT $0.50/1M tok (≤16B).
-- **Lilac (getlilac):** Gemma 4 31B $0.11/$0.35 · Kimi K2.6 $0.70/$3.50 · GLM 5.1
-  $0.90/$3.00 (verify input-vs-cache split live). Batch/concurrency is not publicly
-  documented; treat it as a probe path until confirmed.
+- **Lilac (getlilac):** GLM 5.2 $0.90/$3.00 (cache $0.27) · MiniMax M3
+  $0.28/$1.10 (cache $0.05) · Gemma 4 31B $0.11/$0.35 · Kimi K2.6
+  $0.70/$3.50. Kimi K2.6, GLM 5.1, and Gemma 4 are marked deprecating
+  2026-06-29 on the Lilac page. Batch/concurrency is not publicly documented;
+  treat it as a probe path until confirmed.
 
 Sources: together.ai/pricing ; fireworks.ai/pricing ; getlilac.com.
 **Drift flag:** Together's live rates rose vs older blog citations ($0.88→$1.04 for
