@@ -3,10 +3,10 @@
 Notable, user-facing changes to the Understudy skills + CLI. Versions track the
 plugin: `package.json`, `.claude-plugin/plugin.json`,
 `.claude-plugin/marketplace.json`, `.cursor-plugin/plugin.json`,
-`.codex-plugin/plugin.json`, `.agents/plugins/marketplace.json`, and
-`.opencode/adapter.json` are bumped together on any release that changes the
-skill catalog, CLI surface, or agent-platform adapter surface, because an
-installed plugin has no other
+`.codex-plugin/plugin.json`, `.agents/plugins/marketplace.json`,
+`.opencode/adapter.json`, and `.hermes/adapter.json` are bumped together on any
+release that changes the skill catalog, CLI surface, or agent-platform adapter
+surface, because an installed plugin has no other
 staleness signal. After upgrading, reload or enable the plugin in your coding
 agent.
 
@@ -15,8 +15,17 @@ uses semantic-ish versioning (minor = new skill or new capability, patch = fixes
 
 ## [Unreleased]
 
+## [0.6.0] — 2026-06-22
+
 ### Added
 
+- **Hermes Agent adapter support.** Added a `.hermes/adapter.json` sentinel,
+  registry entry, installer autodetection, and `--agents hermes`. The installer
+  registers the shared `skills/` tree in `skills.external_dirs`
+  (`~/.hermes/config.yaml`) through a durable `~/.understudy/skills` symlink, so
+  Hermes discovers the same `SKILL.md` files natively — no copies, no Python
+  plugin. Config edits are idempotent and back up `config.yaml`; activation is
+  `/reload-skills` (no restart needed).
 - **OpenCode adapter support.** Added native OpenCode skill discovery through
   `.opencode/skills`, a `/understudy-onboard` command, installer autodetection,
   and `--agents opencode`.
@@ -24,12 +33,13 @@ uses semantic-ish versioning (minor = new skill or new capability, patch = fixes
 ### Changed
 
 - **Unified agent-adapter setup.** Added `install-agent-adapter` as the canonical
-  install/update/verify/uninstall skill for Claude Code, Cursor, Codex, and
-  OpenCode. The older platform-specific install skills now route to it as
+  install/update/verify/uninstall skill for Claude Code, Cursor, Codex, OpenCode,
+  and Hermes Agent. The older platform-specific install skills now route to it as
   compatibility shims.
-- `understudy doctor` now includes OpenCode adapter version drift checks, the
-  installer can launch OpenCode when it is the selected launchable adapter, and
-  Cursor adapter install now preserves unexpected existing plugin paths.
+- `understudy doctor` now includes OpenCode and Hermes adapter version drift
+  checks, the installer can launch OpenCode when it is the selected launchable
+  adapter, and Cursor adapter install now preserves unexpected existing plugin
+  paths.
 - Clarified that OpenCode support is a native skills/commands adapter, not a
   JS/TS OpenCode plugin, and documented the symlink/restart behavior.
 - OpenCode installs now end with a manual TUI handoff instead of auto-launching

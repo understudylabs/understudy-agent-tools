@@ -100,6 +100,36 @@ export const agentPlatformAdapters: AgentPlatformAdapter[] = [
       "Symlink targets live outside many user projects, so OpenCode may ask before reading linked external resources.",
     ],
   },
+  {
+    id: "hermes",
+    displayName: "Hermes Agent",
+    status: "supported",
+    manifestPath: ".hermes/adapter.json",
+    discovery:
+      "Hermes Agent registers a durable ~/.understudy/skills symlink (to the shared skills/ tree) in skills.external_dirs (~/.hermes/config.yaml); it discovers SKILL.md skills natively alongside ~/.hermes/skills, with local skills winning on name conflicts",
+    install: [
+      'REPO="$(git rev-parse --show-toplevel)"',
+      'LINK="$HOME/.understudy/skills"',
+      'CONFIG="${HERMES_HOME:-$HOME/.hermes}/config.yaml"',
+      'mkdir -p "$HOME/.understudy"; [ -e "$LINK" ] || ln -s "$REPO/skills" "$LINK"',
+      `python3 -c "import sys,os,yaml;p,d=sys.argv[1],sys.argv[2];c=(yaml.safe_load(open(p)) or {}) if os.path.exists(p) else {};c=c if isinstance(c,dict) else {};s=c.get('skills') if isinstance(c.get('skills'),dict) else {};c['skills']=s;e=s.get('external_dirs') or [];e=[e] if isinstance(e,str) else (e if isinstance(e,list) else []);(d in e) or e.append(d);s['external_dirs']=e;os.makedirs(os.path.dirname(p) or '.',exist_ok=True);yaml.safe_dump(c,open(p,'w'),sort_keys=False)" "$CONFIG" "$LINK"`,
+    ],
+    reload: "Run /reload-skills in Hermes (or start a new `hermes` session) to rescan skills.external_dirs.",
+    uninstall: [
+      'CONFIG="${HERMES_HOME:-$HOME/.hermes}/config.yaml"',
+      'LINK="$HOME/.understudy/skills"',
+      `python3 -c "import sys,os,yaml;p,d=sys.argv[1],sys.argv[2];c=(yaml.safe_load(open(p)) or {}) if os.path.exists(p) else {};s=c.get('skills') if isinstance(c.get('skills'),dict) else {};e=s.get('external_dirs') or [];e=[e] if isinstance(e,str) else (e if isinstance(e,list) else []);s['external_dirs']=[x for x in e if x!=d];yaml.safe_dump(c,open(p,'w'),sort_keys=False)" "$CONFIG" "$LINK"`,
+      '[ -L "$LINK" ] && rm -f "$LINK"',
+    ],
+    onboarding: "In Hermes run /onboard, or ask Hermes: Use the Understudy onboarding skill for this project.",
+    notes: [
+      ".hermes/adapter.json is an Understudy version/staleness sentinel, not a Hermes plugin manifest.",
+      "Hermes discovers SKILL.md skills natively; registering skills/ via skills.external_dirs needs no copies and keeps the shared tree as the single source of truth.",
+      "The installer registers a stable ~/.understudy/skills symlink so the config entry survives checkout/package moves; a reinstall just re-points the link. external_dirs expands ~ and ${VAR} and silently skips missing paths.",
+      "Edits to ~/.hermes/config.yaml are idempotent and back up the file first; /reload-skills rescans without a restart.",
+      "Local ~/.hermes/skills entries win on name conflicts, so a few generically named skills may be shadowed by Hermes bundled skills.",
+    ],
+  },
 ];
 
 export function findAgentPlatformAdapter(id: string): AgentPlatformAdapter | undefined {

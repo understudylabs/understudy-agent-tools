@@ -8,9 +8,9 @@ thin TypeScript/Node: durable shortcuts, auth, artifact checks, and runtime
 wrappers that a coding agent can monitor.
 
 Understudy is agent-platform-neutral at the skill layer. Claude Code, Cursor,
-Codex, and OpenCode share the same [`skills/`](skills/) tree and only differ in a thin
-platform adapter: manifest, install path, reload step, and onboarding
-invocation. The current adapter registry is documented in
+Codex, OpenCode, and Hermes Agent share the same [`skills/`](skills/) tree and only
+differ in a thin platform adapter: manifest, install path, reload step, and
+onboarding invocation. The current adapter registry is documented in
 [`docs/agent-platform-adapters.md`](docs/agent-platform-adapters.md) and exposed
 through `understudy platforms`.
 
@@ -41,7 +41,7 @@ covers the hosted contracts behind them.
 | CLI | `src/` | Thin TypeScript shortcuts for auth, artifact checks, and durable runs. |
 | Skills | `skills/` | MVP progressive-disclosure agent playbooks. |
 | Docs | `docs/` | Public methodology and release-boundary notes. |
-| Platform adapters | `.claude-plugin/`, `.cursor-plugin/`, `.codex-plugin/`, `.opencode/`, `.agents/`, `AGENTS.md` | Thin manifests or durable instructions that expose the same skill tree to each coding-agent surface. |
+| Platform adapters | `.claude-plugin/`, `.cursor-plugin/`, `.codex-plugin/`, `.opencode/`, `.hermes/`, `.agents/`, `AGENTS.md` | Thin manifests or durable instructions that expose the same skill tree to each coding-agent surface. |
 | Scripts | `scripts/` | Repo hygiene checks, not product CLI code. |
 | Vendor | `vendor/` | Vendored or mirrored compatibility shims, with license metadata. |
 
@@ -58,9 +58,9 @@ curl -fsSL https://raw.githubusercontent.com/UnderstudyLabs/understudy-agent-too
 ```
 
 This installs the CLI, then asks where to install the local coding-agent plugin:
-Claude Code, Cursor, Codex, OpenCode, all detected agents, or CLI-only. Non-interactive
-installs keep the old script-friendly autodetect behavior. Override the prompt
-with `--agents auto|all|claude-code|cursor|codex|opencode|none`.
+Claude Code, Cursor, Codex, OpenCode, Hermes Agent, all detected agents, or CLI-only.
+Non-interactive installs keep the old script-friendly autodetect behavior. Override
+the prompt with `--agents auto|all|claude-code|cursor|codex|opencode|hermes|none`.
 
 | Agent harness | Default installer behavior | Activation |
 | --- | --- | --- |
@@ -68,6 +68,7 @@ with `--agents auto|all|claude-code|cursor|codex|opencode|none`.
 | Cursor | Autodetected when Cursor is present; links this repo into `~/.cursor/plugins/local/understudy`. | Restart Cursor or run **Developer: Reload Window**, then ask Cursor Agent to use the Understudy onboarding skill. |
 | Codex | Autodetected when `codex` is on `PATH`; registers the local Codex marketplace from `.agents/plugins/marketplace.json`. | Run `/plugins`, choose `understudy-skills`, install or enable `understudy`, then start a new thread if needed. |
 | OpenCode | Autodetected when `opencode` is on `PATH` or OpenCode config/data exists; links the shared skills into `~/.config/opencode/skills`. | Restart OpenCode or open a new TUI session, then run `/understudy-onboard`. |
+| Hermes Agent | Autodetected when `hermes` is on `PATH` or `~/.hermes` exists; registers a stable `~/.understudy/skills` symlink in `skills.external_dirs`. | Run `/reload-skills` (or start a new `hermes` session), then `/onboard` or ask Hermes to use the Understudy onboarding skill. |
 
 If Claude Code is selected, the installer opens Claude Code in the current
 directory. In Claude Code, run:
@@ -266,6 +267,73 @@ find ~/.config/opencode/skills -type l -lname '*/understudy-agent-tools/skills/*
 rm -f ~/.config/opencode/commands/understudy-onboard.md
 ```
 
+## Install as Hermes skills
+
+Hermes Agent (Nous Research) loads `SKILL.md` files natively and scans any
+directory listed in `skills.external_dirs` in `~/.hermes/config.yaml`. The shared
+skill tree already ships valid Hermes skills, so the adapter registers the
+directory rather than copying it. To keep the config entry stable across checkout
+or package moves, it registers a durable `~/.understudy/skills` symlink to
+[`skills/`](skills/) — a path indirection, not a fork.
+[`.hermes/adapter.json`](.hermes/adapter.json) is an Understudy version/staleness
+sentinel for release checks, not a manifest consumed by Hermes.
+
+For global local testing from a clone:
+
+```bash
+REPO=/path/to/understudy-agent-tools
+LINK="$HOME/.understudy/skills"
+mkdir -p "$HOME/.understudy"
+[ -e "$LINK" ] || ln -s "$REPO/skills" "$LINK"
+python3 - "${HERMES_HOME:-$HOME/.hermes}/config.yaml" "$LINK" <<'PY'
+import sys, os, yaml
+p, d = sys.argv[1], sys.argv[2]
+c = (yaml.safe_load(open(p)) or {}) if os.path.exists(p) else {}
+s = c.get("skills") if isinstance(c.get("skills"), dict) else {}
+c["skills"] = s
+e = s.get("external_dirs") or []
+e = [e] if isinstance(e, str) else (e if isinstance(e, list) else [])
+if d not in e:
+    e.append(d)
+s["external_dirs"] = e
+os.makedirs(os.path.dirname(p) or ".", exist_ok=True)
+yaml.safe_dump(c, open(p, "w"), sort_keys=False)
+PY
+```
+
+Then, in Hermes, rescan without restarting and start onboarding:
+
+```text
+/reload-skills
+/onboard
+```
+
+The [`install-agent-adapter`](skills/install-agent-adapter/SKILL.md) skill
+contains the agent-run install/update/verify flow; ask for platform `hermes`.
+This path is local-only: registering the skills does not authenticate, upload
+data, download model weights, or make provider calls. Local `~/.hermes/skills/`
+entries win on name conflicts, so a few generically named skills may be shadowed
+by Hermes bundled skills.
+
+To remove the registration, drop the entry from `skills.external_dirs` and the
+symlink:
+
+```bash
+CONFIG="${HERMES_HOME:-$HOME/.hermes}/config.yaml"
+LINK="$HOME/.understudy/skills"
+python3 - "$CONFIG" "$LINK" <<'PY'
+import sys, os, yaml
+p, d = sys.argv[1], sys.argv[2]
+c = (yaml.safe_load(open(p)) or {}) if os.path.exists(p) else {}
+s = c.get("skills") if isinstance(c.get("skills"), dict) else {}
+e = s.get("external_dirs") or []
+e = [e] if isinstance(e, str) else (e if isinstance(e, list) else [])
+s["external_dirs"] = [x for x in e if x != d]
+yaml.safe_dump(c, open(p, "w"), sort_keys=False)
+PY
+[ -L "$LINK" ] && rm -f "$LINK"
+```
+
 ## Agent Platform Adapters
 
 Use the platform registry to see the current install/reload surface across
@@ -279,8 +347,9 @@ understudy platforms --inspect opencode
 understudy --json platforms
 ```
 
-Claude Code, Cursor, Codex, and OpenCode are supported adapters. All four reuse
-the same `skills/` tree instead of copying platform-specific skill content.
+Claude Code, Cursor, Codex, OpenCode, and Hermes Agent are supported adapters. All
+five reuse the same `skills/` tree instead of copying platform-specific skill
+content.
 
 ## First Commands
 

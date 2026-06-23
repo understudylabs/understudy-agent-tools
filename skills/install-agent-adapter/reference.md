@@ -178,3 +178,100 @@ Uninstall Understudy-owned symlinks:
 find "$HOME/.config/opencode/skills" -type l -lname '*/understudy-agent-tools/skills/*' -delete
 rm -f "$HOME/.config/opencode/commands/understudy-onboard.md"
 ```
+
+## Hermes Agent
+
+Hermes Agent (Nous Research) discovers native `SKILL.md` skills from
+`~/.hermes/skills/` and from any directory listed in `skills.external_dirs` in
+`~/.hermes/config.yaml`. The shared `skills/` tree already ships valid Hermes
+skills (Hermes reads `name`/`description`; the extra `metadata.understudy.*` is
+ignored), so the adapter just registers the directory — no copies and no Hermes
+plugin. (It does register through a stable `~/.understudy/skills` symlink for
+path durability, but that points at the one shared tree; it is not a fork.)
+
+This is not a Hermes plugin (`~/.hermes/plugins/` with `plugin.yaml` + Python)
+and not a Skills Hub install. The `.hermes/adapter.json` file is not consumed by
+Hermes; it is an Understudy-owned version/staleness sentinel for
+`understudy doctor` and the release checklist.
+
+Register through a stable symlink, not the raw checkout path. The installer
+points a durable `~/.understudy/skills` symlink at the resolved `skills/` tree
+and registers that symlink, so the Hermes config entry survives checkout or
+package moves (a reinstall just re-points the link — never a copy).
+`skills.external_dirs` accepts a string or a list, expands `~` and `${VAR}`,
+`.resolve()`s symlinks, and silently skips paths that do not exist. The edit is
+idempotent and backs up the config first:
+
+```bash
+REPO="$(cd "$(git rev-parse --show-toplevel 2>/dev/null || echo .)" && pwd)"
+ls "$REPO/skills/understudy/SKILL.md"
+LINK="$HOME/.understudy/skills"
+mkdir -p "$HOME/.understudy"
+[ -e "$LINK" ] || ln -s "$REPO/skills" "$LINK"
+CONFIG="${HERMES_HOME:-$HOME/.hermes}/config.yaml"
+[ -f "$CONFIG" ] && cp "$CONFIG" "$CONFIG.understudy.bak-$(date -u +%Y%m%dT%H%M%SZ)"
+python3 - "$CONFIG" "$LINK" <<'PY'
+import sys, os, yaml
+cfg_path, skills_dir = sys.argv[1], sys.argv[2]
+cfg = (yaml.safe_load(open(cfg_path)) or {}) if os.path.exists(cfg_path) else {}
+cfg = cfg if isinstance(cfg, dict) else {}
+skills = cfg.get("skills") if isinstance(cfg.get("skills"), dict) else {}
+cfg["skills"] = skills
+dirs = skills.get("external_dirs") or []
+dirs = [dirs] if isinstance(dirs, str) else (dirs if isinstance(dirs, list) else [])
+if skills_dir not in dirs:
+    dirs.append(skills_dir)
+skills["external_dirs"] = dirs
+os.makedirs(os.path.dirname(cfg_path) or ".", exist_ok=True)
+yaml.safe_dump(cfg, open(cfg_path, "w"), sort_keys=False)
+PY
+```
+
+If no YAML-capable `python3` is available, edit `~/.hermes/config.yaml` by hand
+(or run `hermes config edit`) and add `~/.understudy/skills` under
+`skills.external_dirs`. Do not use `hermes config set skills.external_dirs <path>`
+on a config that already has entries — it overwrites the list instead of
+appending.
+
+Activation — Hermes rescans `skills.external_dirs` in-session, no restart needed:
+
+```text
+/reload-skills
+/onboard
+```
+
+Then, if you prefer natural language, ask Hermes:
+
+```text
+Use the Understudy onboarding skill for this project.
+```
+
+A few generically named skills (e.g. `onboard`, `review`) may be shadowed by
+Hermes bundled skills of the same name, since local `~/.hermes/skills/` wins on
+conflicts; the Understudy-specific skills are unique and unaffected.
+
+Verify:
+
+```bash
+ls -l "$HOME/.understudy/skills"          # symlink -> the resolved skills/ tree
+hermes config show | grep -A4 'external_dirs'
+hermes skills list | grep -i understudy
+```
+
+Uninstall — remove the entry from `skills.external_dirs`, then drop the symlink:
+
+```bash
+CONFIG="${HERMES_HOME:-$HOME/.hermes}/config.yaml"
+LINK="$HOME/.understudy/skills"
+python3 - "$CONFIG" "$LINK" <<'PY'
+import sys, os, yaml
+cfg_path, skills_dir = sys.argv[1], sys.argv[2]
+cfg = (yaml.safe_load(open(cfg_path)) or {}) if os.path.exists(cfg_path) else {}
+skills = cfg.get("skills") if isinstance(cfg.get("skills"), dict) else {}
+dirs = skills.get("external_dirs") or []
+dirs = [dirs] if isinstance(dirs, str) else (dirs if isinstance(dirs, list) else [])
+skills["external_dirs"] = [x for x in dirs if x != skills_dir]
+yaml.safe_dump(cfg, open(cfg_path, "w"), sort_keys=False)
+PY
+[ -L "$LINK" ] && rm -f "$LINK"
+```

@@ -1,6 +1,6 @@
 ---
 name: install-agent-adapter
-description: Use when a developer wants to install, enable, update, reinstall, remove, or verify Understudy in a coding agent - "install Understudy", "add the Understudy skills", "make Claude/Cursor/Codex/OpenCode see the skills". Chooses the requested agent platform and routes to the local install, reload, onboarding, and uninstall steps.
+description: Use when a developer wants to install, enable, update, reinstall, remove, or verify Understudy in a coding agent - "install Understudy", "add the Understudy skills", "make Claude/Cursor/Codex/OpenCode/Hermes see the skills". Chooses the requested agent platform and routes to the local install, reload, onboarding, and uninstall steps.
 metadata:
   understudy:
     mode: automatic
@@ -11,8 +11,8 @@ metadata:
 # Install the Understudy Agent Adapter
 
 Understudy is agent-platform-neutral at the skill layer. The product is the
-shared `skills/` tree; Claude Code, Cursor, Codex, and OpenCode only differ in
-how they discover and reload those skills.
+shared `skills/` tree; Claude Code, Cursor, Codex, OpenCode, and Hermes Agent only
+differ in how they discover and reload those skills.
 
 Use this skill for setup, refresh, verification, uninstall, or "why can't my
 agent see Understudy?" requests. Keep the workflow local-first and pick the
@@ -29,9 +29,11 @@ command -v claude || true
 command -v cursor || true
 command -v codex || true
 command -v opencode || true
+command -v hermes || true
 test -d "$HOME/.cursor" && echo cursor-config
 test -d "$HOME/.config/opencode" && echo opencode-config
 test -d "$HOME/.local/share/opencode" && echo opencode-data
+test -d "$HOME/.hermes" && echo hermes-config
 ```
 
 Platform details live in [`reference.md`](reference.md):
@@ -43,6 +45,8 @@ Platform details live in [`reference.md`](reference.md):
   `/plugins`.
 - OpenCode: link the shared skills into `~/.config/opencode/skills`, then restart
   or open a new TUI session.
+- Hermes Agent: register a stable `~/.understudy/skills` symlink in
+  `skills.external_dirs` (`~/.hermes/config.yaml`), then run `/reload-skills`.
 
 ## Procedure
 
@@ -72,6 +76,13 @@ For OpenCode, the convenience command is:
 
 ```text
 /understudy-onboard
+```
+
+For Hermes, rescan in-session and start onboarding:
+
+```text
+/reload-skills
+/onboard
 ```
 
 ## Safety Gates

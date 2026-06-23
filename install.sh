@@ -43,7 +43,7 @@ while [ "$#" -gt 0 ]; do
     --lab) LAB="${2:?missing path}"; shift ;;
     -h|--help)
       cat <<'EOF'
-Usage: install.sh [--yes] [--non-interactive] [--resume] [--from-step N] [--only-step N] [--keep-login] [--agents auto|all|claude-code|cursor|codex|opencode|none] [--no-claude] [--no-launch-agent]
+Usage: install.sh [--yes] [--non-interactive] [--resume] [--from-step N] [--only-step N] [--keep-login] [--agents auto|all|claude-code|cursor|codex|opencode|hermes|none] [--no-claude] [--no-launch-agent]
 
 Installs the Understudy CLI + detected coding-agent skill/plugin surfaces, then
 hands the user back to the selected coding agent when possible. It does not
@@ -66,7 +66,7 @@ Options:
   --only-step N         run only step 1, 2, or 3
   --keep-login          keep an existing sign-in instead of resetting it
   --fresh-login         reset an existing sign-in for agent-first sign-up (default)
-  --agents LIST         agent adapters to install: auto, all, claude-code, cursor, codex, opencode, none
+  --agents LIST         agent adapters to install: auto, all, claude-code, cursor, codex, opencode, hermes, none
                         comma-separated lists are accepted, e.g. claude-code,cursor
   --no-agents           skip all coding-agent plugin installs and launches
   --no-claude           skip Claude Code plugin install and final Claude launch
@@ -89,7 +89,7 @@ Environment overrides:
   UNDERSTUDY_NONINTERACTIVE      set to 1 to use safe defaults without prompting
   UNDERSTUDY_REQUIRE_CONFIRM     set to 1 to fail when no prompt TTY exists
   UNDERSTUDY_KEEP_LOGIN          set to 1 to keep an existing sign-in
-  UNDERSTUDY_AGENT_PLATFORMS     auto, all, claude-code, cursor, codex, opencode, none, or comma list
+  UNDERSTUDY_AGENT_PLATFORMS     auto, all, claude-code, cursor, codex, opencode, hermes, none, or comma list
   UNDERSTUDY_LAUNCH_AGENT       set to 0 to skip opening a coding agent
   UNDERSTUDY_LAUNCH_CLAUDE      set to 0 to skip opening a coding agent
   UNDERSTUDY_CLAUDE_ARGS        optional extra args when launching Claude Code
@@ -272,6 +272,7 @@ configure_resume() {
 normalize_agent_platform() {
   case "$1" in
     claude|claude_code|claudecode) printf '%s\n' "claude-code" ;;
+    hermes|hermes_agent|hermes-agent) printf '%s\n' "hermes" ;;
     cursor|codex|opencode|all|auto|none|claude-code) printf '%s\n' "$1" ;;
     *) printf '%s\n' "$1" ;;
   esac
@@ -285,15 +286,15 @@ validate_agent_platforms() {
     normalized="$(normalize_agent_platform "$token")"
     case "$normalized" in
       auto|all|none) mode="$normalized" ;;
-      claude-code|cursor|codex|opencode) ;;
+      claude-code|cursor|codex|opencode|hermes) ;;
       *)
-        fail_line "Unknown agent adapter '$token'. Use auto, all, claude-code, cursor, codex, opencode, none, or a comma list of explicit adapters."
+        fail_line "Unknown agent adapter '$token'. Use auto, all, claude-code, cursor, codex, opencode, hermes, none, or a comma list of explicit adapters."
         return 1
         ;;
     esac
   done
   if [ "$count" -eq 0 ]; then
-    fail_line "No agent adapter selection provided. Use auto, all, claude-code, cursor, codex, opencode, or none."
+    fail_line "No agent adapter selection provided. Use auto, all, claude-code, cursor, codex, opencode, hermes, or none."
     return 1
   fi
   if [ -n "$mode" ] && [ "$count" -gt 1 ]; then
@@ -332,6 +333,10 @@ detect_opencode() {
     [ -d "$HOME/.config/opencode" ] ||
     [ -d "$HOME/.local/share/opencode" ]
 }
+detect_hermes() {
+  need hermes ||
+    [ -d "${HERMES_HOME:-$HOME/.hermes}" ]
+}
 default_agent_platform() {
   if [ "$NO_CLAUDE" != "1" ] && detect_claude_code; then
     printf '%s\n' "claude-code"
@@ -341,6 +346,8 @@ default_agent_platform() {
     printf '%s\n' "codex"
   elif detect_opencode; then
     printf '%s\n' "opencode"
+  elif detect_hermes; then
+    printf '%s\n' "hermes"
   else
     printf '%s\n' "none"
   fi
@@ -354,6 +361,7 @@ detected_agent_label() {
       cursor) detect_cursor ;;
       codex) detect_codex ;;
       opencode) detect_opencode ;;
+      hermes) detect_hermes ;;
       *) return 1 ;;
     esac
   then
@@ -383,11 +391,12 @@ select_agent_platforms() {
   say "  ${G3}2.${R} $(detected_agent_label "cursor" "Cursor")"
   say "  ${G4}3.${R} $(detected_agent_label "codex" "Codex")"
   say "  ${G5}4.${R} $(detected_agent_label "opencode" "OpenCode")"
-  say "  ${G6}5.${R} All detected coding agents"
-  say "  ${G6}6.${R} CLI only, no coding-agent plugins"
+  say "  ${G6}5.${R} $(detected_agent_label "hermes" "Hermes Agent")"
+  say "  ${G6}6.${R} All detected coding agents"
+  say "  ${G6}7.${R} CLI only, no coding-agent plugins"
   say "Press Enter for: $default."
 
-  if ! printf "  %s?%s Install target %s[1/2/3/4/5/6 or name]%s " "$G4" "$R" "$D" "$R" >/dev/tty 2>/dev/null; then
+  if ! printf "  %s?%s Install target %s[1-7 or name]%s " "$G4" "$R" "$D" "$R" >/dev/tty 2>/dev/null; then
     return 0
   fi
   if ! read -r answer </dev/tty 2>/dev/null; then
@@ -399,8 +408,9 @@ select_agent_platforms() {
     2|cursor) AGENT_PLATFORMS="cursor" ;;
     3|codex) AGENT_PLATFORMS="codex" ;;
     4|opencode|open-code|open_code) AGENT_PLATFORMS="opencode" ;;
-    5|all|auto) AGENT_PLATFORMS="auto" ;;
-    6|none|cli|cli-only|cli_only) AGENT_PLATFORMS="none" ;;
+    5|hermes|hermes-agent|hermes_agent) AGENT_PLATFORMS="hermes" ;;
+    6|all|auto) AGENT_PLATFORMS="auto" ;;
+    7|none|cli|cli-only|cli_only) AGENT_PLATFORMS="none" ;;
     *) AGENT_PLATFORMS="$answer" ;;
   esac
   validate_agent_platforms || exit 2
@@ -433,6 +443,13 @@ should_install_opencode_adapter() {
     auto) detect_opencode; return ;;
   esac
   agent_platform_requested "opencode"
+}
+should_install_hermes_adapter() {
+  case "$(normalize_agent_platform "$AGENT_PLATFORMS")" in
+    none) return 1 ;;
+    auto) detect_hermes; return ;;
+  esac
+  agent_platform_requested "hermes"
 }
 agent_plan_label() {
   case "$(normalize_agent_platform "$AGENT_PLATFORMS")" in
@@ -797,11 +814,146 @@ install_opencode_adapter() {
   say "Then run /understudy-onboard, or ask OpenCode: Use the Understudy onboarding skill for this project."
 }
 
+hermes_config_path() {
+  printf '%s\n' "${HERMES_HOME:-$HOME/.hermes}/config.yaml"
+}
+# Locate a Python interpreter that can parse YAML, used to merge the skills
+# path into an existing Hermes config without guessing its shape. macOS's
+# /usr/bin/python3 only finds PyYAML via HOME-dependent user-site, so we also
+# fall back to Hermes' own bundled venv interpreter, which always ships PyYAML
+# and exists whenever the Hermes adapter is being installed.
+hermes_yaml_python() {
+  local cand hermes_home="${HERMES_HOME:-$HOME/.hermes}"
+  for cand in \
+    python3 \
+    python \
+    "$hermes_home/hermes-agent/venv/bin/python3" \
+    "$hermes_home/hermes-agent/venv/bin/python"; do
+    if command -v "$cand" >/dev/null 2>&1 && "$cand" -c 'import yaml' >/dev/null 2>&1; then
+      printf '%s\n' "$cand"
+      return 0
+    fi
+  done
+  return 1
+}
+# A stable, install-location-independent path that Hermes can keep in its
+# config even if the underlying checkout/package moves. We register this
+# symlink (never a copy — the shared skills/ tree stays the single source of
+# truth); a reinstall just re-points it.
+hermes_stable_skills_link() {
+  printf '%s\n' "$HOME/.understudy/skills"
+}
+# Resolve the path to register in skills.external_dirs: prefer the durable
+# ~/.understudy/skills symlink, falling back to the resolved skills dir if a
+# foreign file already occupies the link. Echoes the path to register.
+hermes_register_dir() {
+  local skills_dir="$1" stable_link current
+  stable_link="$(hermes_stable_skills_link)"
+  mkdir -p "$(dirname "$stable_link")"
+  if [ -L "$stable_link" ]; then
+    current="$(readlink "$stable_link" 2>/dev/null || true)"
+    if [ "$current" = "$skills_dir" ]; then
+      printf '%s\n' "$stable_link"; return 0
+    fi
+    case "$current" in
+      *understudy-agent-tools/skills)
+        rm -f "$stable_link"
+        ln -s "$skills_dir" "$stable_link"
+        printf '%s\n' "$stable_link"; return 0
+        ;;
+      *)
+        warn "An unexpected symlink already exists at $stable_link; registering the resolved skills path instead." >&2
+        printf '%s\n' "$skills_dir"; return 0
+        ;;
+    esac
+  elif [ -e "$stable_link" ]; then
+    warn "A non-symlink path already exists at $stable_link; registering the resolved skills path instead." >&2
+    printf '%s\n' "$skills_dir"; return 0
+  fi
+  ln -s "$skills_dir" "$stable_link"
+  printf '%s\n' "$stable_link"
+}
+
+install_hermes_adapter() {
+  if ! should_install_hermes_adapter; then
+    say "Hermes adapter not selected or not detected; skipping Hermes skill registration."
+    return 0
+  fi
+
+  local repo skills_dir register_dir config py
+  if ! repo="$(resolve_skill_repo)"; then
+    say "Could not find skills/understudy/SKILL.md; skipping Hermes skill registration."
+    return 0
+  fi
+  skills_dir="$repo/skills"
+  register_dir="$(hermes_register_dir "$skills_dir")"
+  config="$(hermes_config_path)"
+
+  say "Registering the Understudy skills with Hermes via $register_dir."
+
+  # Idempotent: Hermes reads skills.external_dirs and skips non-existent or
+  # duplicate paths, so if our path is already present there is nothing to do.
+  # A plain substring check avoids a YAML dependency on the fast path.
+  if [ -f "$config" ] && grep -qF "$register_dir" "$config" 2>/dev/null; then
+    ok "Understudy skills already registered in $config (skills.external_dirs)."
+  elif [ ! -f "$config" ]; then
+    # Fresh Hermes: write a minimal user config. Hermes merges defaults at load
+    # and `hermes config migrate` keeps our block, so this is non-destructive.
+    mkdir -p "$(dirname "$config")"
+    {
+      printf 'skills:\n'
+      printf '  external_dirs:\n'
+      printf '    - %s\n' "$register_dir"
+    } >"$config"
+    ok "Created $config and registered Understudy skills in skills.external_dirs."
+  elif py="$(hermes_yaml_python)"; then
+    cp "$config" "$config.understudy.bak-$(date -u +"%Y%m%dT%H%M%SZ")"
+    if "$py" - "$config" "$register_dir" >>"$LOG_FILE" 2>&1 <<'PY'
+import sys, os, yaml
+
+cfg_path, skills_dir = sys.argv[1], sys.argv[2]
+with open(cfg_path, encoding="utf-8") as f:
+    cfg = yaml.safe_load(f) or {}
+if not isinstance(cfg, dict):
+    cfg = {}
+skills = cfg.get("skills")
+if not isinstance(skills, dict):
+    skills = {}
+    cfg["skills"] = skills
+dirs = skills.get("external_dirs")
+if dirs is None:
+    dirs = []
+elif isinstance(dirs, str):
+    dirs = [dirs]
+elif not isinstance(dirs, list):
+    dirs = []
+if skills_dir not in dirs:
+    dirs.append(skills_dir)
+skills["external_dirs"] = dirs
+with open(cfg_path, "w", encoding="utf-8") as f:
+    yaml.safe_dump(cfg, f, sort_keys=False, default_flow_style=False)
+PY
+    then
+      ok "Registered Understudy skills in $config (skills.external_dirs)."
+    else
+      warn "Could not update $config automatically; continuing with the rest of the install."
+      say "Manual step: add \"$register_dir\" to skills.external_dirs in $config (or run: hermes config edit)."
+    fi
+  else
+    warn "No YAML-capable Python found to edit $config safely; leaving it unchanged."
+    say "Manual step: add \"$register_dir\" to skills.external_dirs in $config (run: hermes config edit)."
+  fi
+
+  say "In Hermes, run /reload-skills (or start a new session) so it rescans skills.external_dirs."
+  say "Then run /onboard, or ask Hermes: Use the Understudy onboarding skill for this project."
+}
+
 install_agent_adapters() {
   install_claude_plugin
   install_cursor_plugin
   install_codex_plugin
   install_opencode_adapter
+  install_hermes_adapter
 }
 
 launch_claude_code() {
@@ -897,8 +1049,30 @@ launch_opencode() {
   mark_step_done 3
 }
 
+launch_hermes() {
+  if ! should_install_hermes_adapter; then
+    say "Skipping Hermes launch because the Hermes adapter is not selected or detected."
+    mark_step_done 3
+    return 0
+  fi
+  if [ "$LAUNCH_CLAUDE" != "1" ]; then
+    say "Skipping coding-agent launch because --no-launch-agent is set."
+    mark_step_done 3
+    return 0
+  fi
+
+  section "Step 3/3 · Open Hermes"
+  say "The Understudy skills are registered in Hermes via skills.external_dirs."
+  say "Start a fresh Hermes session in: $(pwd)"
+  say "  hermes"
+  say "In an already-open session, run /reload-skills to pick them up without restarting."
+  say "Then run /onboard, or ask Hermes: Use the Understudy onboarding skill for this project."
+  say "The installer does not auto-launch Hermes because piped installers cannot reliably hand it a stable interactive TTY."
+  mark_step_done 3
+}
+
 launch_selected_agent() {
-  if [ "$NO_CLAUDE" != "0" ] && ! should_install_opencode_adapter; then
+  if [ "$NO_CLAUDE" != "0" ] && ! should_install_opencode_adapter && ! should_install_hermes_adapter; then
     say "Skipping coding-agent launch because --no-claude is set and no other launchable adapter is available."
     mark_step_done 3
     return 0
@@ -907,6 +1081,8 @@ launch_selected_agent() {
     launch_claude_code
   elif should_install_opencode_adapter; then
     launch_opencode
+  elif should_install_hermes_adapter; then
+    launch_hermes
   else
     say "Skipping coding-agent launch because the selected adapter has no automatic launch path."
     mark_step_done 3
@@ -976,6 +1152,7 @@ say "  Claude Code: run /reload-plugins and then /understudy:onboard."
 say "  Cursor: restart Cursor or run Developer: Reload Window, then ask Cursor Agent to use the Understudy onboarding skill."
 say "  Codex: run /plugins, install or enable understudy, then ask Codex to use the Understudy onboarding skill."
 say "  OpenCode: restart the TUI or open a new session, then run /understudy-onboard."
+say "  Hermes: run /reload-skills in an open session (or start a new hermes session), then run /onboard or ask Hermes to use the Understudy onboarding skill."
 say "That lets the coding agent run the email-code sign-up itself, explain the first local Understudy, and open a terminal of the user's choice when needed."
 if should_run_step 3; then
   launch_selected_agent
