@@ -252,6 +252,21 @@ Then restart OpenCode or open a new TUI session and run:
 /understudy-onboard
 ```
 
+The [`install-agent-adapter`](skills/install-agent-adapter/SKILL.md) skill
+contains the agent-run install/update/verify flow; ask for platform `opencode`.
+The older [`install-opencode-plugin`](skills/install-opencode-plugin/SKILL.md)
+skill remains as a compatibility shim for the old name. This path is local-only:
+linking the skills does not authenticate, upload data, download model weights,
+or make provider calls. Because symlink targets can live outside the current
+project, OpenCode may ask before reading linked external resources.
+
+To remove Understudy-owned symlinks:
+
+```bash
+find ~/.config/opencode/skills -type l -lname '*/understudy-agent-tools/skills/*' -delete
+rm -f ~/.config/opencode/commands/understudy-onboard.md
+```
+
 ## Install as Hermes skills
 
 Hermes Agent (Nous Research) loads `SKILL.md` files natively and scans any
@@ -294,18 +309,29 @@ Then, in Hermes, rescan without restarting and start onboarding:
 ```
 
 The [`install-agent-adapter`](skills/install-agent-adapter/SKILL.md) skill
-contains the agent-run install/update/verify flow; ask for platform `opencode`.
-The older [`install-opencode-plugin`](skills/install-opencode-plugin/SKILL.md)
-skill remains as a compatibility shim for the old name. This path is local-only:
-linking the skills does not authenticate, upload data, download model weights,
-or make provider calls. Because symlink targets can live outside the current
-project, OpenCode may ask before reading linked external resources.
+contains the agent-run install/update/verify flow; ask for platform `hermes`.
+This path is local-only: registering the skills does not authenticate, upload
+data, download model weights, or make provider calls. Local `~/.hermes/skills/`
+entries win on name conflicts, so a few generically named skills may be shadowed
+by Hermes bundled skills.
 
-To remove Understudy-owned symlinks:
+To remove the registration, drop the entry from `skills.external_dirs` and the
+symlink:
 
 ```bash
-find ~/.config/opencode/skills -type l -lname '*/understudy-agent-tools/skills/*' -delete
-rm -f ~/.config/opencode/commands/understudy-onboard.md
+CONFIG="${HERMES_HOME:-$HOME/.hermes}/config.yaml"
+LINK="$HOME/.understudy/skills"
+python3 - "$CONFIG" "$LINK" <<'PY'
+import sys, os, yaml
+p, d = sys.argv[1], sys.argv[2]
+c = (yaml.safe_load(open(p)) or {}) if os.path.exists(p) else {}
+s = c.get("skills") if isinstance(c.get("skills"), dict) else {}
+e = s.get("external_dirs") or []
+e = [e] if isinstance(e, str) else (e if isinstance(e, list) else [])
+s["external_dirs"] = [x for x in e if x != d]
+yaml.safe_dump(c, open(p, "w"), sort_keys=False)
+PY
+[ -L "$LINK" ] && rm -f "$LINK"
 ```
 
 ## Agent Platform Adapters

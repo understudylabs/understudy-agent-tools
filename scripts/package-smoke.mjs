@@ -39,6 +39,7 @@ const requiredPackageMembers = [
   ".cursor-plugin/plugin.json",
   ".opencode/adapter.json",
   ".opencode/commands/understudy-onboard.md",
+  ".hermes/adapter.json",
   "skills/install-agent-adapter/SKILL.md",
   "skills/install-agent-adapter/reference.md",
   "skills/local-distillation-lab/SKILL.md",
