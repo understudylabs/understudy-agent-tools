@@ -37,9 +37,12 @@ describe("ladder model catalog", { skip: !pythonAvailable }, () => {
 
     assert.equal(models.get("gemma-4-e2b").lane, "mlx_vlm");
     assert.equal(models.get("gemma-4-e2b").billed, false);
-    assert.equal(models.get("glm-5.1").lane, "gateway");
-    assert.equal(models.get("glm-5.1").billed, true);
+    assert.equal(models.get("glm-5.2").lane, "gateway");
+    assert.equal(models.get("glm-5.2").billed, true);
+    assert.equal(models.get("minimax-m3").lane, "gateway");
+    assert.equal(models.get("minimax-m3").billed, true);
     assert.equal(models.get("gemma-4-31b-it").lane, "gateway");
+    assert.match(models.get("gemma-4-31b-it").label, /deprecates 2026-06-29/);
     assert.equal(models.get("nemotron-3-ultra").lane, "gateway");
   });
 

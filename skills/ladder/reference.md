@@ -68,8 +68,12 @@ Active local lane plus default fallback remotes:
 | id | lane | where |
 |---|---|---|
 | `gemma-4-e2b` | `mlx_vlm` | local default, **$0** |
-| `glm-5.1` | `gateway` | Understudy gateway, **billed** |
-| `gemma-4-31b-it` | `gateway` | Understudy gateway, **billed** |
+| `glm-5.2` | `gateway` | Understudy gateway, **billed** |
+| `minimax-m3` | `gateway` | Understudy gateway, **billed** |
+| `glm-5.1` | `gateway` | Understudy gateway, **billed**; Lilac deprecates 2026-06-29 |
+| `gemma-4-31b-it` | `gateway` | Understudy gateway, **billed**; Lilac deprecates 2026-06-29 |
+| `kimi-k2.6` | `gateway` | Understudy gateway, **billed**; Lilac deprecates 2026-06-29 |
+| `minimax-m2.7` | `gateway` | Understudy gateway, **billed** |
 | `nemotron-3-nano` | `gateway` | Understudy gateway, **billed** |
 | `nemotron-3-super` | `gateway` | Understudy gateway, **billed** |
 | `nemotron-3-ultra` | `gateway` | Understudy gateway, **billed** |
