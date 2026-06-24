@@ -557,6 +557,40 @@ describe("install.sh", () => {
     assert.match(script, /Hermes Agent/);
   });
 
+  it("focuses the handoff on Anthropic bill reduction when requested", () => {
+    const script = readFileSync("install.sh", "utf8");
+    const result = spawnSync(
+      "bash",
+      [
+        "-s",
+        "--",
+        "--non-interactive",
+        "--only-step",
+        "3",
+        "--lower-my-ant-bill",
+        "--no-launch-agent",
+        "--agents",
+        "none",
+        "--lab",
+        join(root, "lab"),
+      ],
+      {
+        cwd: process.cwd(),
+        input: script,
+        encoding: "utf8",
+        env: {
+          ...process.env,
+          CI: "1",
+          UNDERSTUDY_INSTALL_LOG_DIR: join(root, "logs"),
+        },
+      },
+    );
+
+    assert.equal(result.status, 0, result.stderr || result.stdout);
+    assert.match(result.stdout, /Focused path: lower Anthropic bill/);
+    assert.match(result.stdout, /lower-anthropic-bill skill/);
+  });
+
   it("continues when Codex marketplace registration cannot be refreshed", () => {
     const script = readFileSync("install.sh", "utf8");
     const home = join(root, "home");

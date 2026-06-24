@@ -16,6 +16,7 @@ INITIAL_CLAUDE_PROMPT=""
 AGENT_PLATFORMS="${UNDERSTUDY_AGENT_PLATFORMS:-auto}"
 AGENT_PLATFORMS_EXPLICIT=0
 [ -n "${UNDERSTUDY_AGENT_PLATFORMS:-}" ] && AGENT_PLATFORMS_EXPLICIT=1
+LOWER_MY_ANT_BILL="${UNDERSTUDY_LOWER_MY_ANT_BILL:-0}"
 KEEP_LOGIN="${UNDERSTUDY_KEEP_LOGIN:-0}"
 NO_CLAUDE=0
 START_STEP=1
@@ -35,6 +36,7 @@ while [ "$#" -gt 0 ]; do
     --no-agents) AGENT_PLATFORMS="none"; AGENT_PLATFORMS_EXPLICIT=1; NO_CLAUDE=1; LAUNCH_CLAUDE=0 ;;
     --no-launch-claude|--no-launch-agent) LAUNCH_CLAUDE=0 ;;
     --launch-claude|--launch-agent) LAUNCH_CLAUDE=1 ;;
+    --lower-my-ant-bill|--lower-my-anthropic-bill) LOWER_MY_ANT_BILL=1 ;;
     --keep-login) KEEP_LOGIN=1 ;;
     --fresh-login) KEEP_LOGIN=0 ;;
     --from-step) START_STEP="${2:?missing step number}"; shift ;;
@@ -43,7 +45,7 @@ while [ "$#" -gt 0 ]; do
     --lab) LAB="${2:?missing path}"; shift ;;
     -h|--help)
       cat <<'EOF'
-Usage: install.sh [--yes] [--non-interactive] [--resume] [--from-step N] [--only-step N] [--keep-login] [--agents auto|all|claude-code|cursor|codex|opencode|hermes|none] [--no-claude] [--no-launch-agent]
+Usage: install.sh [--yes] [--non-interactive] [--resume] [--from-step N] [--only-step N] [--keep-login] [--lower-my-ant-bill] [--agents auto|all|claude-code|cursor|codex|opencode|hermes|none] [--no-claude] [--no-launch-agent]
 
 Installs the Understudy CLI + detected coding-agent skill/plugin surfaces, then
 hands the user back to the selected coding agent when possible. It does not
@@ -66,6 +68,9 @@ Options:
   --only-step N         run only step 1, 2, or 3
   --keep-login          keep an existing sign-in instead of resetting it
   --fresh-login         reset an existing sign-in for agent-first sign-up (default)
+  --lower-my-ant-bill   focus onboarding on lowering Anthropic/Claude API spend
+  --lower-my-anthropic-bill
+                        alias for --lower-my-ant-bill
   --agents LIST         agent adapters to install: auto, all, claude-code, cursor, codex, opencode, hermes, none
                         comma-separated lists are accepted, e.g. claude-code,cursor
   --no-agents           skip all coding-agent plugin installs and launches
@@ -89,6 +94,7 @@ Environment overrides:
   UNDERSTUDY_NONINTERACTIVE      set to 1 to use safe defaults without prompting
   UNDERSTUDY_REQUIRE_CONFIRM     set to 1 to fail when no prompt TTY exists
   UNDERSTUDY_KEEP_LOGIN          set to 1 to keep an existing sign-in
+  UNDERSTUDY_LOWER_MY_ANT_BILL   set to 1 to focus onboarding on lowering Anthropic/Claude API spend
   UNDERSTUDY_AGENT_PLATFORMS     auto, all, claude-code, cursor, codex, opencode, hermes, none, or comma list
   UNDERSTUDY_LAUNCH_AGENT       set to 0 to skip opening a coding agent
   UNDERSTUDY_LAUNCH_CLAUDE      set to 0 to skip opening a coding agent
@@ -376,6 +382,12 @@ noninteractive_enabled() {
     *) return 1 ;;
   esac
 }
+lower_my_ant_bill_enabled() {
+  case "$LOWER_MY_ANT_BILL" in
+    1|true|TRUE|yes|YES|on|ON) return 0 ;;
+    *) return 1 ;;
+  esac
+}
 select_agent_platforms() {
   local answer default
   [ "$AGENT_PLATFORMS_EXPLICIT" = "0" ] || return 0
@@ -601,10 +613,16 @@ compose_initial_prompt() {
     fi
     signup="Start with the agent-first Understudy sign-up: check \`understudy status --json\`, and if signed_in is false, $email_clause — it emails me a one-time code and exits. Ask me for the code from my inbox (or fetch it yourself if you have email access, reading only the Understudy sign-in email), finish with \`understudy login --code <code>\`, and confirm with \`understudy status --json\`. Then "
   fi
-  if [ -n "$signup" ]; then
-    INITIAL_CLAUDE_PROMPT="${signup}use the Understudy onboarding skill for this project. Guide me through getting my first local Understudy, launch the ladder climb, then help me pick a real problem or find local data so we can try to make the Understudy beat the frontier on that task slice."
+  local next_prompt
+  if lower_my_ant_bill_enabled; then
+    next_prompt="use the Understudy onboarding skill with the lower-Anthropic-bill path for this project. Set my primary goal to lowering my Anthropic/Claude API bill. After the local proof, run the lower-anthropic-bill skill against this repo: inventory Anthropic call sites, re-baseline token counts for Opus 4.7+ tokenizer changes, audit prompt-cache hit opportunities, build a savings ledger, and propose measured Anthropic, OpenAI, or local route candidates. Do not spend money, upload data, or call providers without my explicit approval and a cap."
   else
-    INITIAL_CLAUDE_PROMPT="Use the Understudy onboarding skill for this project now. Guide me through getting my first local Understudy, launch the ladder climb, then help me pick a real problem or find local data so we can try to make the Understudy beat the frontier on that task slice."
+    next_prompt="use the Understudy onboarding skill for this project. Guide me through getting my first local Understudy, launch the ladder climb, then help me pick a real problem or find local data so we can try to make the Understudy beat the frontier on that task slice."
+  fi
+  if [ -n "$signup" ]; then
+    INITIAL_CLAUDE_PROMPT="${signup}${next_prompt}"
+  else
+    INITIAL_CLAUDE_PROMPT="U${next_prompt#u}"
   fi
 }
 
@@ -1117,6 +1135,9 @@ else
 fi
 say "  ${G4}2.${R} $(agent_plan_label)"
 say "  ${G5}3.${R} Open a supported coding agent here when available — otherwise finish with reload instructions."
+if lower_my_ant_bill_enabled; then
+  say "  ${G6}·${R}  Focus onboarding on the lower Anthropic bill audit path."
+fi
 say ""
 say "Default install does not download weights, start MLX, launch the ladder server, or make frontier calls."
 say "Those actions happen later through the Understudy onboarding skill, where the coding agent can coach the user and ask consent."
@@ -1153,6 +1174,9 @@ say "  Cursor: restart Cursor or run Developer: Reload Window, then ask Cursor A
 say "  Codex: run /plugins, install or enable understudy, then ask Codex to use the Understudy onboarding skill."
 say "  OpenCode: restart the TUI or open a new session, then run /understudy-onboard."
 say "  Hermes: run /reload-skills in an open session (or start a new hermes session), then run /onboard or ask Hermes to use the Understudy onboarding skill."
+if lower_my_ant_bill_enabled; then
+  say "Focused path: lower Anthropic bill. Ask the agent to use onboarding with the lower-Anthropic-bill path, then run the lower-anthropic-bill skill."
+fi
 say "That lets the coding agent run the email-code sign-up itself, explain the first local Understudy, and open a terminal of the user's choice when needed."
 if should_run_step 3; then
   launch_selected_agent

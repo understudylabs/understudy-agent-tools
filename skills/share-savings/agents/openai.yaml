@@ -1,0 +1,4 @@
+interface:
+  display_name: "Share Savings"
+  short_description: "Share anonymous savings metrics"
+  default_prompt: "Use $share-savings to prepare and submit an anonymous savings report from my Understudy value report."

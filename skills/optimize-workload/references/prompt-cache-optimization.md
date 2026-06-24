@@ -9,7 +9,7 @@ every candidate (see the caching-parity rule in
 [`compare-model-sweep`](../../compare-model-sweep/SKILL.md)).
 
 Mechanics, multipliers, and minimums below are from the Anthropic prompt-caching
-and cache-diagnostics docs, fetched 2026-06-09. They are provider-specific —
+and pricing docs, refreshed 2026-06-24. They are provider-specific —
 re-verify before quoting, and treat other providers separately (OpenAI caches
 long shared prefixes automatically with no markers; vLLM/SGLang do server-side
 prefix caching for local serving; the same structure rules pay off on all of
@@ -46,9 +46,11 @@ it. Render order is `tools` → `system` → `messages`.
   place at stability boundaries (end of shared portion, not end of prompt).
   Top-level `cache_control` auto-places on the last cacheable block — fine for
   simple cases.
-- **Minimum cacheable prefix is model-dependent** (roughly 512–4096 tokens
-  depending on model and platform). Shorter prefixes *silently* don't cache —
-  no error, just `cache_creation_input_tokens: 0`.
+- **Minimum cacheable prefix is model-dependent**. First-party Anthropic docs
+  currently list: Fable 5 / Mythos 5 at 512 tokens; Mythos Preview / Opus 4.7
+  at 2,048; Opus 4.6 / Opus 4.5 / Haiku 4.5 at 4,096; and Opus 4.8, Sonnet
+  4.6, Sonnet 4.5, Opus 4.1, Opus 4, and Sonnet 4 at 1,024. Shorter prefixes
+  *silently* don't cache — no error, just `cache_creation_input_tokens: 0`.
 - Tool-definition or model changes invalidate everything; `tool_choice`,
   thinking toggles, and images invalidate only the messages tier — the
   tools+system cache survives them.

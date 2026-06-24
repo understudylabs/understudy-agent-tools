@@ -117,6 +117,18 @@ and worked examples.
 
 Identify the developer's current stage and load exactly one:
 
+- **Anthropic / Claude bill reduction** — the developer says "lower my
+  Anthropic bill", "audit my Claude spend", "why is cache_read zero", asks to
+  find Anthropic calls, or arrives through the `--lower-my-ant-bill` installer
+  path → [`../lower-anthropic-bill/SKILL.md`](../lower-anthropic-bill/SKILL.md)
+  first. It audits call sites, tokenizer risk, cache structure, batchability,
+  and route candidates before any code edits or provider calls.
+- **Billing email / browser source inspection** — the developer wants to inspect
+  Anthropic billing emails, receipts, invoices, usage exports, or an
+  authenticated billing website for spend hotspots →
+  [`../inspect-billing-sources/SKILL.md`](../inspect-billing-sources/SKILL.md).
+  This is optional evidence for `lower-anthropic-bill` and requires exact read
+  scope approval before email or browser access.
 - **First run / new user / no profile yet** — the developer is new, just
   installed the plugin, or asks "where do I start?" and `~/.understudy/profile.json`
   is missing → [`../onboard/SKILL.md`](../onboard/SKILL.md) (backgrounds a small
@@ -150,6 +162,11 @@ Identify the developer's current stage and load exactly one:
   "did the route change regress anything", "roll this back", "prove the
   savings are real" →
   [`../ramp-and-verify/SKILL.md`](../ramp-and-verify/SKILL.md).
+- **Share savings / leaderboard receipt** — the developer wants to share how
+  much money they saved, submit an anonymous lower-Anthropic-bill result, or
+  send metrics back for the coming leaderboard →
+  [`../share-savings/SKILL.md`](../share-savings/SKILL.md). Require the
+  metrics-only payload review and explicit approval before posting.
 - **Acquire / cache / organize local models** — download a model, see what's
   already cached, free up model disk, pick which Gemma/Nemotron to pull, or
   explain how open weights work →
