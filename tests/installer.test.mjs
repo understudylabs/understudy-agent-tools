@@ -126,6 +126,95 @@ describe("install.sh", () => {
     assert.equal(readFileSync(join(understudyDir, "profile.json"), "utf8"), '{"keep":"me"}\n');
   });
 
+  it("does not reuse a GitHub noreply email from existing credentials", () => {
+    const script = readFileSync("install.sh", "utf8");
+    const home = join(root, "home");
+    const understudyDir = join(home, ".understudy");
+    mkdirSync(understudyDir, { recursive: true });
+    writeFileSync(
+      join(understudyDir, "credentials.json"),
+      `${JSON.stringify({
+        api_key: "sk_demo",
+        gateway_url: "https://api.understudylabs.com",
+        email: "166242911+lluisinthedesert@users.noreply.github.com",
+        orgs: {},
+      })}\n`,
+    );
+
+    const result = spawnSync(
+      "bash",
+      [
+        "-s",
+        "--",
+        "--non-interactive",
+        "--from-step",
+        "3",
+        "--no-claude",
+        "--agents",
+        "none",
+        "--lab",
+        join(root, "lab"),
+      ],
+      {
+        cwd: process.cwd(),
+        input: script,
+        encoding: "utf8",
+        env: {
+          ...process.env,
+          CI: "1",
+          HOME: home,
+          UNDERSTUDY_INSTALL_LOG_DIR: join(root, "logs"),
+        },
+      },
+    );
+
+    assert.equal(result.status, 0, result.stderr || result.stdout);
+    assert.match(result.stdout, /Ignoring GitHub noreply email from existing Understudy credentials/);
+    assert.match(result.stdout, /Signed out the existing Understudy sign-in/);
+    assert.doesNotMatch(result.stdout, /users\.noreply\.github\.com/);
+  });
+
+  it("does not seed the launch prompt from a GitHub noreply git email", () => {
+    const script = readFileSync("install.sh", "utf8");
+    const home = join(root, "home");
+    mkdirSync(home, { recursive: true });
+    writeFileSync(
+      join(home, ".gitconfig"),
+      "[user]\n\temail = 166242911+lluisinthedesert@users.noreply.github.com\n",
+    );
+
+    const result = spawnSync(
+      "bash",
+      [
+        "-s",
+        "--",
+        "--non-interactive",
+        "--from-step",
+        "3",
+        "--no-claude",
+        "--agents",
+        "none",
+        "--lab",
+        join(root, "lab"),
+      ],
+      {
+        cwd: process.cwd(),
+        input: script,
+        encoding: "utf8",
+        env: {
+          ...process.env,
+          CI: "1",
+          HOME: home,
+          UNDERSTUDY_INSTALL_LOG_DIR: join(root, "logs"),
+        },
+      },
+    );
+
+    assert.equal(result.status, 0, result.stderr || result.stdout);
+    assert.match(result.stdout, /Ignoring GitHub noreply email from git config user\.email/);
+    assert.doesNotMatch(result.stdout, /users\.noreply\.github\.com/);
+  });
+
   it("keeps the sign-in with --keep-login", () => {
     const script = readFileSync("install.sh", "utf8");
     const home = join(root, "home");
