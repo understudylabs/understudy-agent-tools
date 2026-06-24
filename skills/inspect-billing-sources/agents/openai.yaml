@@ -1,0 +1,4 @@
+interface:
+  display_name: "Inspect Billing Sources"
+  short_description: "Find bill hotspots from email or browser"
+  default_prompt: "Use $inspect-billing-sources to inspect my Anthropic billing emails or billing page and summarize cost hotspots."

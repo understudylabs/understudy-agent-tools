@@ -49,6 +49,20 @@ group it belongs to.
 
 ## Understand & Capture
 
+- [`lower-anthropic-bill`](lower-anthropic-bill/SKILL.md) is the focused
+  Claude/Anthropic spend audit path: it inventories Anthropic call sites,
+  re-baselines tokenizer risk, checks prompt-cache structure and usage fields,
+  ranks cache/batch/model-route opportunities, and hands proven candidates to
+  `compare-model-sweep` or `optimize-workload`.
+- [`inspect-billing-sources`](inspect-billing-sources/SKILL.md) is the optional
+  bill-evidence path for lower-Anthropic-bill audits: with explicit approval it
+  reads narrow billing email, invoice, export, or browser usage surfaces and
+  writes a local hotspot ledger without prompts, traces, secrets, or account
+  mutations.
+- [`share-savings`](share-savings/SKILL.md) turns a measured value report into
+  an anonymous, metrics-only lower-Anthropic-bill receipt for Understudy and
+  the coming leaderboard. It never sends prompts, traces, repo names, company
+  names, or contact details, and posts only after approval.
 - [`understand-workload`](understand-workload/SKILL.md) decomposes and explains
   a captured prompt or trace — purpose, data shape, tool catalog, token cost,
   success criteria — before any model comparison or vibe-check questions are

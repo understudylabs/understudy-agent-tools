@@ -39,6 +39,13 @@ Returning user? If `~/.understudy/profile.json` exists, read it, greet them by
 where they left off, confirm nothing major changed, and skip straight to the
 work — do not re-run the full interview. Only first-timers get the full flow.
 
+If the launch prompt came from `install.sh --lower-my-ant-bill`, treat the
+primary goal as lowering Anthropic/Claude API spend. Still do the local-first
+profile and quick proof, but keep the interview short and route the real work
+to [`../lower-anthropic-bill/SKILL.md`](../lower-anthropic-bill/SKILL.md):
+inventory Anthropic call sites, re-baseline tokenizer risk, audit cache hits,
+and build an opportunity ledger before any code edits or provider calls.
+
 ## Flow
 
 1. **Start the slow thing first (background).** Detect the model runtime
@@ -127,7 +134,10 @@ work — do not re-run the full interview. Only first-timers get the full flow.
    that understanding with the user before any optimization. If there is already
    a real captured environment, skip the toy sandbox. Only use
    [`../design-simulated-environment/SKILL.md`](../design-simulated-environment/SKILL.md)
-   when there is no resettable real workload yet.
+   when there is no resettable real workload yet. If the stated goal is lowering
+   an Anthropic bill, route to
+   [`../lower-anthropic-bill/SKILL.md`](../lower-anthropic-bill/SKILL.md)
+   instead of asking for a generic problem.
 
 8. **Make head-to-head optional.** A frontier-vs-local comparison is useful when the
    user needs to feel the quality gap, calibrate taste, or get buy-in. It is a
