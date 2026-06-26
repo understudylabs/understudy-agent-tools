@@ -24,6 +24,7 @@ function run(args) {
   return spawnSync(cli[0], [cli[1], ...args], {
     cwd: process.cwd(),
     encoding: "utf8",
+    env: baseEnv,
   });
 }
 
