@@ -122,7 +122,11 @@ locations and registry links are in [`reference.md`](reference.md).
 
 For first-timers, teach as you go: what an open-weight model is, why local is
 free and private, what quantization trades away, and why MoE "30B but 3B active"
-runs fast. For practitioners, skip it and just name the pick.
+runs fast. For practitioners, skip it and just name the pick. If the user is
+hitting tool-call fidelity problems after quantization (broken JSON, model
+stops calling tools), route to
+[`../optimize-local-model-compression/SKILL.md`](../optimize-local-model-compression/SKILL.md)
+for the layer-aware compression method and the QAT group-size fix.
 
 ## Output Standard
 
@@ -137,3 +141,6 @@ license/token, large download); and one recommended next skill/command.
   quantization primer, gated-weights/token, disk budgeting & relocation.
 - [`../../docs/open-model-spotlight.md`](../../docs/open-model-spotlight.md) —
   Gemma 4 & Nemotron 3 variants, benchmarks, and hardware fit.
+- [`../optimize-local-model-compression/SKILL.md`](../optimize-local-model-compression/SKILL.md)
+  — layer-aware compression for tool-calling workloads (the QAT group-size
+  fix, outcome-optimized calibration, and the stacked method).
