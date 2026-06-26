@@ -11,7 +11,7 @@ measured, cheaper — often local — model, with evidence you can trust.**
 [![Skills](https://img.shields.io/badge/skill%20library-skills%2F-2ea44f)](skills/README.md)
 [![Backed by Y Combinator](https://img.shields.io/badge/backed%20by-Y%20Combinator-F0652F)](https://www.ycombinator.com)
 
-Works with **Claude Code** · **Cursor** · **Codex** · **OpenCode** · **Hermes Agent**
+Works with **Claude Code** · **Cursor** · **Codex** · **OpenCode** · **Hermes Agent** · **Devin**
 
 </div>
 
@@ -56,7 +56,7 @@ curl -fsSL https://raw.githubusercontent.com/UnderstudyLabs/understudy-agent-too
 ```
 
 Override the agent prompt with
-`--agents auto|all|claude-code|cursor|codex|opencode|hermes|none`.
+`--agents auto|all|claude-code|cursor|codex|opencode|hermes|devin|none`.
 
 The installer is resumable. It writes step markers under
 `~/.understudy/agent-tools/install-state`; after a failed run:
@@ -119,7 +119,7 @@ commands remain outside this public CLI until intentionally extracted.
 
 ## How it's built
 
-Understudy is **agent-platform-neutral at the skill layer**. All five
+Understudy is **agent-platform-neutral at the skill layer**. All six
 supported coding agents share the same [`skills/`](skills/) tree and differ
 only in a thin adapter: manifest, install path, reload step, and onboarding
 invocation. The adapter registry lives in
@@ -131,7 +131,7 @@ exposed through `understudy platforms`.
 | CLI | `src/` | Thin TypeScript shortcuts for auth, artifact checks, and durable runs. |
 | Skills | `skills/` | MVP progressive-disclosure agent playbooks — **the product**. |
 | Docs | `docs/` | Public methodology and release-boundary notes. |
-| Platform adapters | `.claude-plugin/`, `.cursor-plugin/`, `.codex-plugin/`, `.opencode/`, `.hermes/`, `.agents/`, `AGENTS.md` | Thin manifests exposing the same skill tree to each coding-agent surface. |
+| Platform adapters | `.claude-plugin/`, `.cursor-plugin/`, `.codex-plugin/`, `.opencode/`, `.hermes/`, `.devin/`, `.agents/`, `AGENTS.md` | Thin manifests exposing the same skill tree to each coding-agent surface. |
 | Scripts | `scripts/` | Repo hygiene checks, not product CLI code. |
 
 The CLI stays boring on purpose. Workflow judgment belongs in skills; durable
@@ -158,6 +158,7 @@ the agent-run install/update/verify flow for every platform.
 | Codex | Autodetected when `codex` is on `PATH`; registers the local Codex marketplace from `.agents/plugins/marketplace.json`. | Run `/plugins`, choose `understudy-skills`, install or enable `understudy`, then start a new thread if needed. |
 | OpenCode | Autodetected when `opencode` is on `PATH` or OpenCode config/data exists; links the shared skills into `~/.config/opencode/skills`. | Restart OpenCode or open a new TUI session, then run `/understudy-onboard`. |
 | Hermes Agent | Autodetected when `hermes` is on `PATH` or `~/.hermes` exists; registers a stable `~/.understudy/skills` symlink in `skills.external_dirs`. | Run `/reload-skills` (or start a new `hermes` session), then `/onboard` or ask Hermes to use the Understudy onboarding skill. |
+| Devin | Autodetected when the `DEVIN` or `DEVIN_SESSION_ID` env var is set or `~/.devin` exists; the CLI is installed globally via npm. | Ask Devin: *Use the Understudy onboarding skill for this project.* |
 
 Every path is local-only: installing an adapter does not authenticate, upload
 data, download model weights, or make provider calls.
@@ -386,6 +387,42 @@ s["external_dirs"] = [x for x in e if x != d]
 yaml.safe_dump(c, open(p, "w"), sort_keys=False)
 PY
 [ -L "$LINK" ] && rm -f "$LINK"
+```
+
+</details>
+
+<details>
+<summary><b>Devin — install as a global CLI</b></summary>
+
+Devin is a cloud-based coding agent: each session boots from a snapshot, so the
+install surface is a global npm package rather than a local plugin registration.
+Devin reads `AGENTS.md` as an injected repository rule and accesses the shared
+[`skills/`](skills/) tree directly from the cloned repo.
+[`.devin/adapter.json`](.devin/adapter.json) is an Understudy version/staleness
+sentinel for release checks, not a manifest consumed by Devin.
+
+Install the CLI globally (typically added to the Devin environment blueprint
+for persistence across sessions):
+
+```bash
+npm install -g @understudylabs/understudy-agent-tools
+```
+
+Then ask Devin:
+
+```text
+Use the Understudy onboarding skill for this project.
+```
+
+The [`install-agent-adapter`](skills/install-agent-adapter/SKILL.md) skill
+contains the agent-run install/verify flow; ask for platform `devin`. This path
+is local-only: installing the CLI does not authenticate, upload data, download
+model weights, or make provider calls.
+
+To remove:
+
+```bash
+npm uninstall -g @understudylabs/understudy-agent-tools
 ```
 
 </details>

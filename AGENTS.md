@@ -23,9 +23,11 @@ library.
 
 ## Install the agent adapter (do this first for users)
 
-Understudy is delivered through the coding agent's local skill/plugin surface.
-Install that adapter — do not try to operate from the raw source tree. The
-adapter loads the skills, and **the skills are the product**: they are what let
+Understudy is delivered through the coding agent's local skill/plugin surface
+(or, for cloud-based agents like Devin, through the globally installed CLI and
+repository rule injection). Install that adapter — do not try to operate from
+the raw source tree. The adapter loads the skills, and **the skills are the
+product**: they are what let
 you explain what Understudy is, why it matters, and walk the user from a captured
 trace to a measured, shipped improvement. Without them you are guessing; with
 them you have the playbooks, the safety gates, and the local-first optimization

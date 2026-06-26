@@ -16,6 +16,8 @@
     ".opencode",
     "!.opencode/skills",
     ".hermes",
+    ".devin",
+    "!.devin/skills",
     "install.sh",
     "dist",
     "skills",

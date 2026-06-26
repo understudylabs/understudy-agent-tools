@@ -1,9 +1,9 @@
 # Agent Platform Adapters
 
 Understudy should not become separate products for Claude Code, Cursor, Codex,
-OpenCode, and Hermes Agent. The product is the public skill tree in `skills/`.
-Platform adapters only describe how each coding-agent surface discovers, installs,
-reloads, and starts those skills.
+OpenCode, Hermes Agent, and Devin. The product is the public skill tree in
+`skills/`. Platform adapters only describe how each coding-agent surface
+discovers, installs, reloads, and starts those skills.
 
 ## Contract
 
@@ -23,6 +23,7 @@ understudy --json platforms
 understudy platforms --inspect cursor
 understudy platforms --inspect opencode
 understudy platforms --inspect hermes
+understudy platforms --inspect devin
 ```
 
 ## Supported Adapters
@@ -34,6 +35,7 @@ understudy platforms --inspect hermes
 | Codex | supported | `.codex-plugin/plugin.json` | Local marketplace plugin discovers `skills/`. |
 | OpenCode | supported | `.opencode/adapter.json` | Native OpenCode skills and commands are linked from the shared `skills/` tree and `.opencode/commands/`. |
 | Hermes Agent | supported | `.hermes/adapter.json` | The shared `skills/` tree is registered in `skills.external_dirs` (`~/.hermes/config.yaml`); Hermes discovers its `SKILL.md` files natively. |
+| Devin | supported | `.devin/adapter.json` | Devin reads `AGENTS.md` as an injected repo rule and accesses the shared `skills/` tree directly from the cloned repo. |
 
 ## Design Rule
 
@@ -57,3 +59,11 @@ shared tree, not a fork) and edits `~/.hermes/config.yaml` idempotently with a
 timestamped backup. Hermes rescans in-session via `/reload-skills`, and local
 `~/.hermes/skills/` entries win on name conflicts. The `.hermes/adapter.json`
 file is only an Understudy version sentinel, like the OpenCode one.
+
+Devin is a cloud-based agent: each session boots from a snapshot and reads
+`AGENTS.md` as an injected repository rule. The shared `skills/` tree is
+accessible directly from the cloned repo without additional linking or plugin
+registration. The install surface is `npm install -g` (typically added to the
+Devin environment blueprint for persistence across sessions). The
+`.devin/adapter.json` file is only an Understudy version sentinel, like the
+OpenCode and Hermes ones.

@@ -430,7 +430,7 @@ describe("understudy CLI", () => {
     const payload = JSON.parse(result.stdout);
     assert.deepEqual(
       payload.adapters.map((adapter) => adapter.id),
-      ["claude-code", "cursor", "codex", "opencode", "hermes"],
+      ["claude-code", "cursor", "codex", "opencode", "hermes", "devin"],
     );
     assert.equal(payload.adapters.find((adapter) => adapter.id === "cursor").manifestPath, ".cursor-plugin/plugin.json");
     assert.equal(payload.adapters.find((adapter) => adapter.id === "codex").manifestPath, ".codex-plugin/plugin.json");
@@ -439,6 +439,8 @@ describe("understudy CLI", () => {
     assert.equal(payload.adapters.find((adapter) => adapter.id === "codex").status, "supported");
     assert.equal(payload.adapters.find((adapter) => adapter.id === "opencode").status, "supported");
     assert.equal(payload.adapters.find((adapter) => adapter.id === "hermes").status, "supported");
+    assert.equal(payload.adapters.find((adapter) => adapter.id === "devin").manifestPath, ".devin/adapter.json");
+    assert.equal(payload.adapters.find((adapter) => adapter.id === "devin").status, "supported");
   });
 
   it("inspects one agent platform adapter", () => {
