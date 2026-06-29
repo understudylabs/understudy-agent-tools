@@ -1,4 +1,4 @@
-// Curated model data for the Models + Marketplace tabs.
+// Curated model data for the Models surface.
 //
 // Reality: there is no live pricing feed and no structured benchmark dump. Past
 // experimental numbers live in Moraine traces + on-disk model sizes. So this is a
@@ -94,11 +94,11 @@ export const curatedBenchmarks: BenchmarkPoint[] = [
 ];
 
 // ---------------------------------------------------------------------------
-// Seed marketplace: advertised provider pricing (NOT authoritative — verify) +
+// Seed route catalog: advertised provider pricing (NOT authoritative — verify) +
 // an Understudy-inference entry for the route we ship today (glm-5.2). Prices
 // are $/Mtok, approximate public list; the point is the comparison scaffold.
 // ---------------------------------------------------------------------------
-export const curatedMarketplace: MarketEntry[] = [
+export const curatedRoutes: MarketEntry[] = [
   { model: "glm-5.2", display_name: "GLM 5.2", provider: "understudy", route: "glm-5.2", context: 128000, price_in: 0.6, price_out: 2.2, tok_per_sec: 90, quality: 84, note: "Understudy inference · default cloud route" },
   { model: "gpt-5.4", display_name: "GPT-5.4", provider: "openai", context: 400000, price_in: 1.25, price_out: 10, quality: 92 },
   { model: "gpt-5.4-mini", display_name: "GPT-5.4 mini", provider: "openai", context: 400000, price_in: 0.15, price_out: 0.6, quality: 78 },
@@ -120,14 +120,14 @@ export interface DataSource {
   id: string;
   label: string;
   benchmarks: () => BenchmarkPoint[];
-  marketplace: () => MarketEntry[];
+  routes: () => MarketEntry[];
 }
 
 export const curatedSource: DataSource = {
   id: "curated",
   label: "Curated · understudy research",
   benchmarks: () => curatedBenchmarks,
-  marketplace: () => curatedMarketplace,
+  routes: () => curatedRoutes,
 };
 
 export const sources: DataSource[] = [curatedSource];
@@ -135,8 +135,8 @@ export const sources: DataSource[] = [curatedSource];
 export function allBenchmarks(): BenchmarkPoint[] {
   return sources.flatMap((s) => s.benchmarks());
 }
-export function allMarketplace(): MarketEntry[] {
-  return sources.flatMap((s) => s.marketplace());
+export function allRoutes(): MarketEntry[] {
+  return sources.flatMap((s) => s.routes());
 }
 export function sourceLabels(): string[] {
   return sources.map((s) => s.label);

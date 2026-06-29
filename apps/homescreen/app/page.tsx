@@ -4,7 +4,6 @@ import { listen } from "@tauri-apps/api/event";
 import { Sidebar, type PaneId } from "./components/Sidebar";
 import { StatusPane } from "./components/StatusPane";
 import { ModelsPane } from "./components/ModelsPane";
-import { MarketplacePane } from "./components/MarketplacePane";
 import { ChatPane } from "./components/ChatPane";
 import { TracesPane } from "./components/TracesPane";
 import { AccountPane } from "./components/AccountPane";
@@ -18,9 +17,9 @@ export default function Page() {
 
   // Inbound: a coding agent (via the local server) can drive the GUI to a pane.
   useEffect(() => {
-    const valid: PaneId[] = ["status", "chat", "models", "marketplace", "account", "usage", "traces"];
+    const valid: PaneId[] = ["status", "chat", "models", "account", "usage", "traces"];
     const u = listen<{ pane?: string }>("server-focus", (e) => {
-      const p = e.payload?.pane as PaneId;
+      const p = (e.payload?.pane === "marketplace" ? "models" : e.payload?.pane) as PaneId;
       if (p && (valid as string[]).includes(p)) setPane(p);
     });
     return () => {
@@ -35,7 +34,6 @@ export default function Page() {
         {pane === "status" && <StatusPane status={status} />}
         {pane === "chat" && <ChatPane status={status} />}
         {pane === "models" && <ModelsPane />}
-        {pane === "marketplace" && <MarketplacePane />}
         {pane === "account" && <AccountPane />}
         {pane === "usage" && <UsagePane status={status} />}
         {pane === "traces" && <TracesPane />}

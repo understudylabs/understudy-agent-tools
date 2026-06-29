@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 
-export type PaneId = "status" | "chat" | "models" | "marketplace" | "account" | "usage" | "traces";
+export type PaneId = "status" | "chat" | "models" | "account" | "usage" | "traces";
 
 const ICONS: Record<PaneId, ReactNode> = {
   status: (
@@ -37,19 +37,12 @@ const ICONS: Record<PaneId, ReactNode> = {
       <path d="M2 3h12M2 8h12M2 13h8" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
     </svg>
   ),
-  marketplace: (
-    <svg viewBox="0 0 16 16" fill="none" className="nav-icon">
-      <path d="M3 3h5l5 5-5 5-5-5z" stroke="currentColor" strokeWidth="1.3" strokeLinejoin="round" />
-      <circle cx="6" cy="6" r="1" fill="currentColor" />
-    </svg>
-  ),
 };
 
 const NAV: { id: PaneId; label: string }[] = [
   { id: "status", label: "Status" },
   { id: "chat", label: "Chat" },
   { id: "models", label: "Models" },
-  { id: "marketplace", label: "Marketplace" },
   { id: "traces", label: "Traces" },
   { id: "usage", label: "Usage" },
   { id: "account", label: "Account" },

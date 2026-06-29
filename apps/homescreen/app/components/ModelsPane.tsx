@@ -1,7 +1,7 @@
 "use client";
 import { useEffect, useMemo, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
-import { curatedBenchmarks } from "../lib/catalog";
+import { curatedBenchmarks, curatedRoutes, type MarketEntry, type Provider } from "../lib/catalog";
 import { Button } from "./ui/Button";
 
 type Dossier = {
@@ -34,6 +34,17 @@ type AaModel = {
   tok_per_sec?: number | null;
 };
 type MoraineHit = { snippet?: { text?: string }; session?: { title?: string; source?: string }; open?: { session_id?: string } };
+type SortKey = "quality" | "price_out" | "tok_per_sec";
+
+const PROVIDER_OF: Record<string, Provider> = {
+  OpenAI: "openai",
+  Anthropic: "anthropic",
+  Google: "google",
+  "Z AI": "zai",
+  Moonshot: "moonshot",
+  MiniMax: "minimax",
+  NVIDIA: "nvidia",
+};
 
 export function ModelsPane() {
   const [dossiers, setDossiers] = useState<Dossier[] | null>(null);
@@ -43,6 +54,7 @@ export function ModelsPane() {
   const [sel, setSel] = useState<string | null>(null);
   const [hits, setHits] = useState<MoraineHit[] | null>(null);
   const [busy, setBusy] = useState(false);
+  const [sort, setSort] = useState<SortKey>("quality");
 
   useEffect(() => {
     invoke<Dossier[]>("knowledge_dossiers").then(setDossiers).catch(() => setDossiers([]));
@@ -55,8 +67,35 @@ export function ModelsPane() {
     const names = new Set<string>();
     (dossiers ?? []).forEach((d) => names.add(d.title));
     curatedBenchmarks.forEach((b) => names.add(b.family));
+    curatedRoutes.forEach((m) => names.add(m.display_name));
+    (aa ?? []).forEach((a) => names.add(a.name));
     return [...names].sort();
-  }, [dossiers]);
+  }, [aa, dossiers]);
+
+  const marketRows = useMemo(() => {
+    const map = new Map<string, MarketEntry>();
+    curatedRoutes.forEach((m) => map.set(m.model, { ...m }));
+    (aa ?? []).forEach((a) => {
+      map.set(a.name, {
+        model: a.name,
+        display_name: a.name,
+        provider: PROVIDER_OF[a.creator ?? ""] ?? "other",
+        price_in: a.price_in ?? undefined,
+        price_out: a.price_out ?? undefined,
+        tok_per_sec: a.tok_per_sec ?? undefined,
+        quality: a.intelligence ?? undefined,
+        note: "via Artificial Analysis",
+      });
+    });
+    const arr = [...map.values()];
+    arr.sort((a, b) => {
+      const dir = sort === "price_out" ? 1 : -1;
+      const av = (a[sort] ?? (dir > 0 ? Infinity : -Infinity)) as number;
+      const bv = (b[sort] ?? (dir > 0 ? Infinity : -Infinity)) as number;
+      return (av - bv) * dir;
+    });
+    return arr;
+  }, [aa, sort]);
 
   const selected = sel ?? models[0] ?? null;
   const firstWord = selected?.split(" ")[0].toLowerCase() ?? "";
@@ -67,6 +106,10 @@ export function ModelsPane() {
   const curated = curatedBenchmarks.filter((b) => b.family.toLowerCase().includes(firstWord));
   const localRows = benches.filter((b) => b.model.toLowerCase().includes(firstWord));
   const aaRow = aa?.find((a) => a.name.toLowerCase().includes(firstWord)) ?? null;
+  const selectedRoute =
+    marketRows.find((r) => r.display_name === selected) ??
+    marketRows.find((r) => r.display_name.toLowerCase().includes(firstWord) || r.model.toLowerCase().includes(firstWord)) ??
+    null;
 
   const findExperiments = async () => {
     if (!selected) return;
@@ -104,7 +147,7 @@ export function ModelsPane() {
       {/* profile */}
       <div className="flex-1 overflow-y-auto p-7">
         <h1 className="text-[19px] font-semibold">{selected ?? "—"}</h1>
-        <p className="mb-5 mt-0.5 text-[13px] text-ink-muted">Cited profile · in-house experiments + external benchmarks.</p>
+        <p className="mb-5 mt-0.5 text-[13px] text-ink-muted">Model profile, route pricing, local measurements, and experiment history.</p>
 
         {dossier && (
           <Section title="Bundled dossier" cite={dossier.source} badge="public">
@@ -148,6 +191,62 @@ export function ModelsPane() {
           </Section>
         )}
 
+        {selectedRoute && (
+          <Section title="Selected route" cite={selectedRoute.note}>
+            <div className="mb-2 flex flex-wrap gap-1.5">
+              <Tag>{selectedRoute.provider}</Tag>
+              {selectedRoute.route && <Tag>{selectedRoute.route}</Tag>}
+              {selectedRoute.context && <Tag>{selectedRoute.context.toLocaleString()} ctx</Tag>}
+            </div>
+            <KV k="input">${selectedRoute.price_in ?? "?"} / Mtok</KV>
+            <KV k="output">${selectedRoute.price_out ?? "?"} / Mtok</KV>
+            <KV k="speed">{selectedRoute.tok_per_sec != null ? `${selectedRoute.tok_per_sec.toFixed(0)} tok/s` : "—"}</KV>
+            <KV k="quality">{selectedRoute.quality != null ? selectedRoute.quality.toFixed(0) : "—"}</KV>
+          </Section>
+        )}
+
+        <Section title="Routes and pricing" cite={aa?.length && aaSrc ? `Pricing/speed/quality: ${aaSrc}. Curated entries are public comparison scaffolds; verify before committing workloads.` : "Curated baseline · public comparison scaffold. Add an Artificial Analysis key for live provider data."}>
+          <table className="w-full border-collapse text-[13px]">
+            <thead>
+              <tr className="border-b border-rule text-left">
+                <Th onClick={() => setSort("quality")}>Model</Th>
+                <th className="px-3 py-2 font-mono text-[11px] uppercase tracking-[0.12em] text-ink-muted">Provider</th>
+                <Th onClick={() => setSort("price_out")} align="right">$/Mtok out</Th>
+                <Th onClick={() => setSort("tok_per_sec")} align="right">tok/s</Th>
+                <Th onClick={() => setSort("quality")} align="right">Quality</Th>
+              </tr>
+            </thead>
+            <tbody>
+              {marketRows.map((r) => (
+                <tr
+                  key={r.model}
+                  onClick={() => { setSel(r.display_name); setHits(null); }}
+                  className={
+                    "cursor-pointer border-b border-rule last:border-0 hover:bg-hover " +
+                    (r.model === selectedRoute?.model ? "bg-hover" : "")
+                  }
+                >
+                  <td className="px-3 py-2.5">
+                    <div className="text-ink">{r.display_name}</div>
+                    {r.note && <div className="text-[11px] text-ink-muted">{r.note}</div>}
+                  </td>
+                  <td className="px-3 py-2.5">
+                    <span className="rounded-full border border-rule px-2 py-0.5 font-mono text-[10px] uppercase tracking-[0.1em] text-ink-muted">
+                      {r.provider}
+                    </span>
+                  </td>
+                  <td className="px-3 py-2.5 text-right font-mono text-ink">{r.price_out != null ? `$${r.price_out}` : "—"}</td>
+                  <td className="px-3 py-2.5 text-right font-mono text-ink-muted">{r.tok_per_sec != null ? r.tok_per_sec.toFixed(0) : "—"}</td>
+                  <td className="px-3 py-2.5 text-right font-mono text-ink-muted">{r.quality != null ? r.quality.toFixed(0) : "—"}</td>
+                </tr>
+              ))}
+              {marketRows.length === 0 && (
+                <tr><td colSpan={5} className="px-3 py-6 text-center text-ink-muted">No route data.</td></tr>
+              )}
+            </tbody>
+          </table>
+        </Section>
+
         <Section title="Past experiments · Moraine" cite="local trace search">
           <div className="mb-2"><Button size="sm" onClick={findExperiments} disabled={busy || !selected}>{busy ? "Searching…" : "Find in experiments"}</Button></div>
           {hits === null ? (
@@ -190,5 +289,15 @@ function KV({ k, children }: { k: string; children: React.ReactNode }) {
       <span className="font-mono uppercase tracking-[0.1em] text-stamp">{k}</span>
       <span className="font-mono text-ink">{children}</span>
     </div>
+  );
+}
+function Th({ children, onClick, align }: { children: React.ReactNode; onClick: () => void; align?: "right" }) {
+  return (
+    <th
+      onClick={onClick}
+      className={`cursor-pointer select-none px-3 py-2 font-mono text-[11px] uppercase tracking-[0.12em] text-ink-muted hover:text-ink ${align === "right" ? "text-right" : ""}`}
+    >
+      {children}
+    </th>
   );
 }

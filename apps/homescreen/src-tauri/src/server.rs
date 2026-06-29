@@ -33,7 +33,6 @@ pub fn router(ctx: Ctx) -> Router {
         .route("/api/residency", get(residency))
         .route("/api/dossiers", get(dossiers))
         .route("/api/benchmarks", get(benchmarks))
-        .route("/api/marketplace", get(marketplace))
         .route("/api/profile/:id", get(profile))
         .route("/api/traces", get(traces_list))
         .route("/api/traces/search", get(traces_search))
@@ -124,10 +123,6 @@ async fn benchmarks(State(ctx): State<Ctx>, h: HeaderMap) -> Result<Json<Value>,
     auth(&ctx, &h)?;
     crate::commands::local_benchmarks(ctx.app.clone()).map(|v| Json(json!(v))).map_err(|e| (StatusCode::BAD_GATEWAY, e))
 }
-async fn marketplace(State(ctx): State<Ctx>, h: HeaderMap) -> Result<Json<Value>, (StatusCode, String)> {
-    auth(&ctx, &h)?;
-    crate::commands::aa_models(ctx.app.clone()).await.map(|v| Json(json!(v))).map_err(|e| (StatusCode::BAD_GATEWAY, e))
-}
 async fn profile(State(ctx): State<Ctx>, h: HeaderMap, Path(id): Path<String>) -> Result<Json<Value>, (StatusCode, String)> {
     auth(&ctx, &h)?;
     // Cited profile assembled from the same sources the GUI uses.
@@ -200,7 +195,7 @@ fn tools() -> Vec<Value> {
         ("status", "Local runtime status: services, warm slots, metrics."),
         ("list_models", "List locally cached models."),
         ("residency", "Warm-slot residency (which models are loaded)."),
-        ("knowledge_dossiers", "In-house per-model dossiers (cited)."),
+        ("knowledge_dossiers", "Bundled public per-model dossiers."),
         ("local_benchmarks", "Local live benchmark rows."),
         ("aa_models", "Artificial Analysis external pricing/speed/quality."),
         ("list_traces", "List recent Moraine sessions. Args: {limit?}."),
@@ -240,7 +235,7 @@ async fn a2a_card(State(ctx): State<Ctx>, h: HeaderMap) -> Result<Json<Value>, (
     auth(&ctx, &h)?;
     Ok(Json(json!({
         "name": "understudy-desktop",
-        "description": "Local Understudy control plane: models, marketplace, traces, and runtime.",
+        "description": "Local Understudy control plane: models, routes, traces, and runtime.",
         "version": "0.1.0",
         "url": format!("/a2a"),
         "capabilities": { "streaming": false, "tools": true },
