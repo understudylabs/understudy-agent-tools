@@ -12,7 +12,7 @@ import { TrainingPane } from "./components/TrainingPane";
 import { useStatus } from "./lib/useStatus";
 
 export default function Page() {
-  const [pane, setPane] = useState<PaneId>("status");
+  const [pane, setPane] = useState<PaneId>("chat");
   const status = useStatus();
   const connected = status.snap?.connected ?? false;
 

@@ -70,7 +70,7 @@ export function ChatPane({ status }: { status: StatusController }) {
   return (
     <div className="chat">
       <div className="chat-toolbar">
-        <div className="seg">
+        <div className="seg chat-route">
           <button className={route === "local" ? "active" : ""} onClick={() => setRoute("local")}>Serving</button>
           <button className={route === "cloud" ? "active" : ""} onClick={() => setRoute("cloud")}>Cloud</button>
         </div>
@@ -86,7 +86,7 @@ export function ChatPane({ status }: { status: StatusController }) {
             ))}
           </select>
         ) : (
-          <span className="chat-target">Understudy gateway · glm-5.2</span>
+          <span className="chat-target">Gateway · glm-5.2</span>
         )}
       </div>
 
@@ -105,6 +105,7 @@ export function ChatPane({ status }: { status: StatusController }) {
         ) : (
           messages.map((m, i) => (
             <div key={i} className={"chat-msg " + m.role}>
+              <div className="chat-role">{m.role === "assistant" ? "Assistant" : "You"}</div>
               {m.role === "assistant" ? (
                 <MarkdownMessage content={m.content || (streaming ? "…" : "")} />
               ) : (

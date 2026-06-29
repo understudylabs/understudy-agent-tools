@@ -46,8 +46,8 @@ const ICONS: Record<PaneId, ReactNode> = {
 };
 
 const SERVING_NAV: { id: PaneId; label: string }[] = [
-  { id: "status", label: "Status" },
   { id: "chat", label: "Chat" },
+  { id: "status", label: "Status" },
   { id: "models", label: "Models" },
   { id: "traces", label: "Traces" },
   { id: "usage", label: "Usage" },

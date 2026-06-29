@@ -516,7 +516,7 @@ select,
 
 /* ---------- Chat pane ---------- */
 .chat {
-  max-width: 880px;
+  max-width: 920px;
   margin: 0 auto;
   height: calc(100vh - 56px);
   display: flex;
@@ -525,8 +525,12 @@ select,
 .chat-toolbar {
   display: flex;
   align-items: center;
-  gap: 14px;
-  margin-bottom: 14px;
+  gap: 10px;
+  min-height: 36px;
+  margin-bottom: 18px;
+}
+.chat-route {
+  flex: none;
 }
 .chat-target {
   font-family: var(--mono);
@@ -538,35 +542,50 @@ select,
   overflow-y: auto;
   display: flex;
   flex-direction: column;
-  gap: 10px;
-  padding-right: 4px;
+  gap: 18px;
+  padding: 4px 6px 14px 0;
 }
 .chat-msg {
-  max-width: 80%;
-  padding: 9px 13px;
-  border-radius: 12px;
+  max-width: 100%;
   line-height: 1.5;
   word-wrap: break-word;
   font-size: 14px;
 }
 .chat-msg.user {
   align-self: flex-end;
-  background: #0a2a3a;
-  border: 1px solid #114b63;
-}
-.chat-msg.assistant {
-  align-self: flex-start;
+  max-width: 72%;
   background: var(--surface-2);
   border: 1px solid var(--border);
+  border-radius: 14px;
+  padding: 9px 12px;
+}
+.chat-msg.assistant {
+  width: 100%;
+  align-self: flex-start;
+  color: var(--text);
 }
 .chat-msg.user {
   white-space: pre-wrap;
+}
+.chat-role {
+  margin-bottom: 5px;
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--text-3);
+}
+.chat-msg.user .chat-role {
+  text-align: right;
+}
+.chat-msg.assistant .chat-role {
+  padding-left: 1px;
 }
 .chat-msg.assistant p,
 .chat-msg.assistant ul,
 .chat-msg.assistant ol,
 .chat-msg.assistant pre {
-  margin: 0 0 10px;
+  margin: 0 0 12px;
 }
 .chat-msg.assistant :last-child {
   margin-bottom: 0;
@@ -585,10 +604,10 @@ select,
 }
 .chat-msg.assistant pre {
   overflow-x: auto;
-  background: var(--bg);
+  background: var(--surface);
   border: 1px solid var(--border);
   border-radius: var(--r-control);
-  padding: 9px 10px;
+  padding: 10px 12px;
 }
 .chat-msg.assistant pre code {
   background: transparent;
@@ -608,22 +627,28 @@ select,
 }
 .chat-input {
   display: flex;
-  gap: 8px;
+  gap: 10px;
   align-items: flex-end;
-  padding-top: 12px;
+  margin-top: 8px;
+  padding: 10px;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: 16px;
 }
 .chat-input textarea {
   flex: 1;
   resize: none;
-  background: var(--surface-2);
+  min-height: 48px;
+  max-height: 160px;
+  background: transparent;
   color: var(--text);
-  border: 1px solid var(--border);
-  border-radius: var(--r-control);
-  padding: 9px 12px;
+  border: 0;
+  padding: 6px 4px;
   font: inherit;
+  line-height: 1.45;
   outline: none;
 }
-.chat-input textarea:focus { border-color: var(--border-strong); }
+.chat-input:focus-within { border-color: var(--border-strong); }
 
 /* ---------- Selects ---------- */
 .assign-select {
