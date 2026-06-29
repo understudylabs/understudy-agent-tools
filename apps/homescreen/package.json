@@ -1,0 +1,27 @@
+{
+  "name": "understudy-desktop",
+  "private": true,
+  "version": "0.1.0",
+  "scripts": {
+    "dev": "next dev -p 1420",
+    "build": "next build",
+    "start": "next start -p 1420",
+    "tauri": "tauri"
+  },
+  "dependencies": {
+    "next": "^15.1.6",
+    "react": "^19.1.0",
+    "react-dom": "^19.1.0",
+    "@tauri-apps/api": "^2",
+    "@tauri-apps/plugin-opener": "^2"
+  },
+  "devDependencies": {
+    "@tailwindcss/postcss": "^4.3.1",
+    "@tauri-apps/cli": "^2",
+    "@types/node": "^22",
+    "@types/react": "^19.1.8",
+    "@types/react-dom": "^19.1.6",
+    "tailwindcss": "^4.3.1",
+    "typescript": "~5.8.3"
+  }
+}
