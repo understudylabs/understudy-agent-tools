@@ -45,13 +45,16 @@ const ICONS: Record<PaneId, ReactNode> = {
   ),
 };
 
-const NAV: { id: PaneId; label: string }[] = [
+const SERVING_NAV: { id: PaneId; label: string }[] = [
   { id: "status", label: "Status" },
   { id: "chat", label: "Chat" },
   { id: "models", label: "Models" },
-  { id: "training", label: "Training" },
   { id: "traces", label: "Traces" },
   { id: "usage", label: "Usage" },
+];
+
+const TRAINING_NAV: { id: PaneId; label: string }[] = [
+  { id: "training", label: "Jobs" },
 ];
 
 export function Sidebar({
@@ -66,7 +69,19 @@ export function Sidebar({
   return (
     <aside className="sidebar">
       <div className="nav-section">Serving</div>
-      {NAV.map((n) => (
+      {SERVING_NAV.map((n) => (
+        <div
+          key={n.id}
+          className={"nav-item" + (active === n.id ? " active" : "")}
+          onClick={() => onSelect(n.id)}
+        >
+          {ICONS[n.id]}
+          {n.label}
+        </div>
+      ))}
+
+      <div className="nav-section">Training</div>
+      {TRAINING_NAV.map((n) => (
         <div
           key={n.id}
           className={"nav-item" + (active === n.id ? " active" : "")}
