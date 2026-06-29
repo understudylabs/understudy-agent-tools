@@ -5,7 +5,6 @@ import { Channel, invoke } from "@tauri-apps/api/core";
 import {
   Conversation,
   ConversationContent,
-  ConversationEmptyState,
   ConversationScrollButton,
 } from "@/components/ai-elements/conversation";
 import {
@@ -221,12 +220,7 @@ export function ChatPane() {
       </div>
       <Conversation className="min-h-0">
         <ConversationContent className="gap-5 p-6">
-          {messages.length === 0 ? (
-            <ConversationEmptyState
-              title="Chat"
-              description="Ask the warm local model. Use the selector for a fallback route."
-            />
-          ) : (
+          {messages.length > 0 &&
             messages.map((m, i) => {
               const isLastAssistant = m.role === "assistant" && i === messages.length - 1;
               const isActiveAssistant = isLastAssistant && streaming;
@@ -253,7 +247,7 @@ export function ChatPane() {
                 </Message>
               );
             })
-          )}
+          }
           {err && <div className="chat-err">{err}</div>}
         </ConversationContent>
         <ConversationScrollButton />
