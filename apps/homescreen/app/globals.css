@@ -177,8 +177,36 @@ select,
 /* ---------- Shell layout ---------- */
 .shell {
   display: grid;
-  grid-template-columns: var(--sidebar-w) 1fr;
+  grid-template-columns: 1fr;
   height: 100vh;
+}
+.shell.rail-open {
+  grid-template-columns: var(--sidebar-w) 1fr;
+}
+.rail-toggle {
+  position: fixed;
+  z-index: 30;
+  top: 16px;
+  left: 16px;
+  display: inline-grid;
+  place-content: center;
+  gap: 3px;
+  width: 30px;
+  height: 30px;
+  border: 1px solid var(--border);
+  border-radius: var(--r-control);
+  background: color-mix(in srgb, var(--surface) 88%, transparent);
+  color: var(--text-2);
+}
+.rail-toggle:hover {
+  background: var(--surface-2);
+  color: var(--text);
+}
+.rail-toggle span {
+  display: block;
+  width: 13px;
+  height: 1px;
+  background: currentColor;
 }
 
 /* ---------- Sidebar ---------- */
@@ -189,6 +217,10 @@ select,
   flex-direction: column;
   padding: 14px 10px;
   gap: 4px;
+  display: none;
+}
+.rail-open .sidebar {
+  display: flex;
 }
 
 .nav-section {

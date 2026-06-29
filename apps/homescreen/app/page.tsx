@@ -13,6 +13,7 @@ import { useStatus } from "./lib/useStatus";
 
 export default function Page() {
   const [pane, setPane] = useState<PaneId>("chat");
+  const [railOpen, setRailOpen] = useState(false);
   const status = useStatus();
   const connected = status.snap?.connected ?? false;
 
@@ -46,8 +47,26 @@ export default function Page() {
   }, []);
 
   return (
-    <div className="shell">
-      <Sidebar active={pane} onSelect={setPane} connected={connected} />
+    <div className={"shell" + (railOpen ? " rail-open" : "")}>
+      <button
+        type="button"
+        className="rail-toggle"
+        aria-label={railOpen ? "Hide navigation" : "Show navigation"}
+        aria-expanded={railOpen}
+        onClick={() => setRailOpen((open) => !open)}
+      >
+        <span />
+        <span />
+        <span />
+      </button>
+      <Sidebar
+        active={pane}
+        onSelect={(next) => {
+          setPane(next);
+          setRailOpen(false);
+        }}
+        connected={connected}
+      />
       <main className="content">
         {pane === "status" && <StatusPane status={status} />}
         {pane === "chat" && <ChatPane />}
