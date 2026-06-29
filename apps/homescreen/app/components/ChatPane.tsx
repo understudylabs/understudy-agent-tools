@@ -32,6 +32,7 @@ import {
   PromptInputTextarea,
   PromptInputTools,
 } from "@/components/ai-elements/prompt-input";
+import { Persona, type PersonaState } from "@/components/ai-elements/persona";
 import {
   Reasoning,
   ReasoningContent,
@@ -89,6 +90,7 @@ export function ChatPane() {
   const [messages, setMessages] = useState<Msg[]>([]);
   const [input, setInput] = useState("");
   const [streaming, setStreaming] = useState(false);
+  const [assistantSpeaking, setAssistantSpeaking] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const [choices, setChoices] = useState<ModelChoice[]>([CLOUD_MODEL]);
   const [selectedModel, setSelectedModel] = useState<string | null>(null);
@@ -148,10 +150,12 @@ export function ChatPane() {
     const toSend: Msg[] = [...messages, { role: "user", content: clean, model: choice.label }];
     setMessages([...toSend, { role: "assistant", content: "", reasoning: "", model: choice.label }]);
     setStreaming(true);
+    setAssistantSpeaking(false);
 
     const ch = new Channel<ChatEvent>();
     ch.onmessage = (msg) => {
       if (msg.type === "Chunk") {
+        setAssistantSpeaking(true);
         setMessages((prev) => {
           if (prev.length === 0) return prev;
           const p = [...prev];
@@ -170,8 +174,10 @@ export function ChatPane() {
       } else if (msg.type === "Error") {
         setErr(msg.message);
         setStreaming(false);
+        setAssistantSpeaking(false);
       } else if (msg.type === "Done") {
         setStreaming(false);
+        setAssistantSpeaking(false);
       }
     };
 
@@ -185,6 +191,7 @@ export function ChatPane() {
     } catch (e: unknown) {
       setErr(String(e));
       setStreaming(false);
+      setAssistantSpeaking(false);
     }
   };
 
@@ -199,8 +206,19 @@ export function ChatPane() {
     }
   };
 
+  const personaState: PersonaState = streaming
+    ? assistantSpeaking
+      ? "speaking"
+      : "thinking"
+    : input.trim()
+      ? "listening"
+      : "idle";
+
   return (
     <div className="chat ai-chat">
+      <div className="persona-stage" aria-hidden="true">
+        <Persona variant="halo" state={personaState} className="persona-halo" />
+      </div>
       <Conversation className="min-h-0">
         <ConversationContent className="gap-5 p-6">
           {messages.length === 0 ? (

@@ -574,6 +574,16 @@ select,
 .ai-chat {
   padding: 6px 0 14px;
 }
+.persona-stage {
+  display: grid;
+  place-items: center;
+  height: 132px;
+  flex: 0 0 132px;
+}
+.persona-halo {
+  width: 112px;
+  height: 112px;
+}
 .ai-chat-composer {
   padding: 8px 0 0;
 }
