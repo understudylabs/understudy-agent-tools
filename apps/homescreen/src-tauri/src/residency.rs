@@ -1,4 +1,5 @@
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
+use std::path::Path;
 use std::process::{Child, Command, Stdio};
 use std::sync::Mutex;
 use std::time::{Instant, SystemTime};
@@ -6,6 +7,8 @@ use tauri::{AppHandle, Emitter, Manager};
 
 use crate::db::Db;
 use crate::models::{self, MLX_PORT};
+
+const SERVING_MANIFEST_VERSION: &str = "understudy.serving.v1";
 
 /// Reserved unified memory for macOS + this app, off-limits to warm models.
 pub const HEADROOM_GB: f32 = 24.0;
@@ -77,6 +80,79 @@ pub struct Residency {
     next_id: Mutex<u32>,
     next_port: Mutex<u16>,
     usable_gb: f32,
+}
+
+#[derive(Deserialize)]
+struct ServingManifest {
+    schema_version: String,
+    server: ServingServer,
+}
+
+#[derive(Deserialize)]
+struct ServingServer {
+    launcher: String,
+    model_arg: String,
+    cwd: Option<String>,
+    required_flags: Option<Vec<String>>,
+}
+
+fn expand_home(value: &str) -> String {
+    if let Some(rest) = value.strip_prefix("~/") {
+        if let Some(home) = std::env::var_os("HOME") {
+            return Path::new(&home).join(rest).to_string_lossy().into_owned();
+        }
+    }
+    value.to_string()
+}
+
+fn serving_command(model_path: &str, port: u16) -> anyhow::Result<Command> {
+    let manifest_path = Path::new(model_path).join("understudy.serving.json");
+    if !manifest_path.exists() {
+        let mut cmd = Command::new(crate::bin::mlx_server());
+        cmd.args([
+            "--model",
+            model_path,
+            "--host",
+            "127.0.0.1",
+            "--port",
+            &port.to_string(),
+        ]);
+        return Ok(cmd);
+    }
+
+    let manifest: ServingManifest =
+        serde_json::from_str(&std::fs::read_to_string(&manifest_path)?)?;
+    if manifest.schema_version != SERVING_MANIFEST_VERSION {
+        anyhow::bail!(
+            "unsupported serving manifest version {} at {}",
+            manifest.schema_version,
+            manifest_path.display()
+        );
+    }
+
+    let launcher: Vec<&str> = manifest.server.launcher.split_whitespace().collect();
+    let Some((program, rest)) = launcher.split_first() else {
+        anyhow::bail!(
+            "serving manifest has an empty launcher at {}",
+            manifest_path.display()
+        );
+    };
+
+    let mut cmd = Command::new(crate::bin::resolve(program));
+    cmd.args(rest);
+    cmd.arg(manifest.server.model_arg).arg(model_path).args([
+        "--host",
+        "127.0.0.1",
+        "--port",
+        &port.to_string(),
+    ]);
+    if let Some(flags) = manifest.server.required_flags {
+        cmd.args(flags);
+    }
+    if let Some(cwd) = manifest.server.cwd {
+        cmd.current_dir(expand_home(&cwd));
+    }
+    Ok(cmd)
 }
 
 impl Residency {
@@ -218,8 +294,7 @@ impl Residency {
         self.evict_until_fits(slot_id, mem_gb);
 
         // 3. Spawn the server process and attach it.
-        let child = Command::new(crate::bin::mlx_server())
-            .args(["--model", &model_path, "--port", &port.to_string()])
+        let child = serving_command(&model_path, port)?
             .stdout(Stdio::null())
             .stderr(Stdio::null())
             .spawn()?;
@@ -360,7 +435,11 @@ impl Residency {
             return;
         }
         let max_id = rows.iter().map(|r| r.slot_id).max().unwrap_or(0);
-        let max_port = rows.iter().filter_map(|r| r.port).max().unwrap_or(MLX_PORT - 1);
+        let max_port = rows
+            .iter()
+            .filter_map(|r| r.port)
+            .max()
+            .unwrap_or(MLX_PORT - 1);
         {
             let mut inner = self.inner.lock().unwrap();
             for r in &rows {
@@ -394,7 +473,13 @@ async fn wait_ready(port: u16) -> bool {
         .unwrap_or_default();
     let deadline = Instant::now() + std::time::Duration::from_secs(180);
     while Instant::now() < deadline {
-        if client.get(&url).send().await.map(|r| r.status().is_success()).unwrap_or(false) {
+        if client
+            .get(&url)
+            .send()
+            .await
+            .map(|r| r.status().is_success())
+            .unwrap_or(false)
+        {
             return true;
         }
         tokio::time::sleep(std::time::Duration::from_millis(500)).await;
