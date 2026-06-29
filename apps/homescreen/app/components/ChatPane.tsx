@@ -1,5 +1,7 @@
 "use client";
 import { useRef, useState } from "react";
+import ReactMarkdown from "react-markdown";
+import remarkGfm from "remark-gfm";
 import { Channel, invoke } from "@tauri-apps/api/core";
 import type { StatusController } from "../lib/useStatus";
 
@@ -103,7 +105,11 @@ export function ChatPane({ status }: { status: StatusController }) {
         ) : (
           messages.map((m, i) => (
             <div key={i} className={"chat-msg " + m.role}>
-              {m.content || (m.role === "assistant" && streaming ? "…" : "")}
+              {m.role === "assistant" ? (
+                <MarkdownMessage content={m.content || (streaming ? "…" : "")} />
+              ) : (
+                m.content
+              )}
             </div>
           ))
         )}
@@ -134,5 +140,22 @@ export function ChatPane({ status }: { status: StatusController }) {
         </button>
       </form>
     </div>
+  );
+}
+
+function MarkdownMessage({ content }: { content: string }) {
+  return (
+    <ReactMarkdown
+      remarkPlugins={[remarkGfm]}
+      components={{
+        a: ({ children, ...props }) => (
+          <a {...props} target="_blank" rel="noreferrer">
+            {children}
+          </a>
+        ),
+      }}
+    >
+      {content}
+    </ReactMarkdown>
   );
 }
