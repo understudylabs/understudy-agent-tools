@@ -21,6 +21,7 @@ export type SourceKind = "measured" | "research" | "advertised";
 
 export type BenchmarkPoint = {
   model: string;
+  display_name?: string;
   family: string;
   quant?: string;
   tok_per_sec?: number; // generation tok/s (local, on an M5 Max / 128GB)
@@ -51,7 +52,8 @@ export type MarketEntry = {
 // ---------------------------------------------------------------------------
 export const curatedBenchmarks: BenchmarkPoint[] = [
   {
-    model: "gemma-4-26b-a4b-it-qat-mlx-vlm-4bit",
+    model: "gemma-4-26b-a4b-it-qat-mlx-vlm-4bit-understudy",
+    display_name: "Gemma 4 26B A4B Understudy QAT MLX 4-bit",
     family: "Gemma 4 26B (A4B MoE)",
     quant: "qat · 4bit",
     tok_per_sec: 108.3,
@@ -60,7 +62,8 @@ export const curatedBenchmarks: BenchmarkPoint[] = [
     source_kind: "measured",
   },
   {
-    model: "gemma-4-26b-a4b-it-optiq-4bit",
+    model: "gemma-4-26b-a4b-it-optiq-4bit-understudy",
+    display_name: "Gemma 4 26B A4B Understudy OptiQ 4-bit",
     family: "Gemma 4 26B (A4B MoE)",
     quant: "optiq · 4bit",
     mem_gb: 17.6,
@@ -68,7 +71,8 @@ export const curatedBenchmarks: BenchmarkPoint[] = [
     source_kind: "research",
   },
   {
-    model: "gemma-4-26b-a4b-it-mlx-vlm-bf16",
+    model: "gemma-4-26b-a4b-it-mlx-vlm-bf16-understudy",
+    display_name: "Gemma 4 26B A4B Understudy MLX BF16",
     family: "Gemma 4 26B (A4B MoE)",
     quant: "bf16",
     mem_gb: 52,
@@ -76,7 +80,8 @@ export const curatedBenchmarks: BenchmarkPoint[] = [
     source_kind: "research",
   },
   {
-    model: "gemma-4-12b-it-optiq-4bit",
+    model: "gemma-4-12b-it-optiq-4bit-understudy",
+    display_name: "Gemma 4 12B Understudy OptiQ 4-bit",
     family: "Gemma 4 12B",
     quant: "optiq · 4bit",
     mem_gb: 8.4,
@@ -84,7 +89,8 @@ export const curatedBenchmarks: BenchmarkPoint[] = [
     source_kind: "research",
   },
   {
-    model: "gemma-4-e2b-it-qat-mlx-vlm-4bit",
+    model: "gemma-4-e2b-it-qat-mlx-vlm-4bit-understudy",
+    display_name: "Gemma 4 E2B Understudy QAT MLX 4-bit",
     family: "Gemma 4 E2B",
     quant: "qat · 4bit",
     mem_gb: 3.3,

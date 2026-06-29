@@ -60,7 +60,7 @@ const PROVIDER_LABELS: Record<Provider, string> = {
   other: "Other",
 };
 
-const GROUP_ORDER = ["Understudy", "Serving", "OpenAI", "Anthropic", "Google", "Z AI", "Moonshot", "MiniMax", "NVIDIA", "Other"];
+const GROUP_ORDER = ["Understudy", "OpenAI", "Anthropic", "Google", "Z AI", "Moonshot", "MiniMax", "NVIDIA", "Other"];
 
 export function ModelsPane() {
   const [dossiers, setDossiers] = useState<Dossier[] | null>(null);
@@ -94,7 +94,7 @@ export function ModelsPane() {
       const provider = (d.provider ?? "").toLowerCase() as Provider;
       add(d.title, PROVIDER_LABELS[provider] ?? d.family ?? "Other");
     });
-    curatedBenchmarks.forEach((b) => add(b.family, providerFamilyFor(b.family)));
+    curatedBenchmarks.forEach((b) => add(benchmarkLabel(b), providerFamilyFor(`${b.family} ${b.model}`)));
 
     const grouped = new Map<string, ModelNavItem[]>();
     [...items.values()].forEach((item) => {
@@ -139,12 +139,13 @@ export function ModelsPane() {
 
   const selected = sel ?? models[0] ?? null;
   const firstWord = selected?.split(" ")[0].toLowerCase() ?? "";
+  const selectedLower = selected?.toLowerCase() ?? "";
   const dossier =
     (dossiers ?? []).find((d) => d.title === selected) ??
-    (dossiers ?? []).find((d) => d.title.toLowerCase().includes(firstWord)) ??
+    (dossiers ?? []).find((d) => selectedLower.includes(d.family?.toLowerCase() ?? "\u0000") || d.title.toLowerCase().includes(firstWord)) ??
     null;
-  const curated = curatedBenchmarks.filter((b) => b.family.toLowerCase().includes(firstWord));
-  const localRows = benches.filter((b) => b.model.toLowerCase().includes(firstWord));
+  const curated = curatedBenchmarks.filter((b) => benchmarkMatches(b, selectedLower, firstWord));
+  const localRows = benches.filter((b) => b.model.toLowerCase().includes(firstWord) || selectedLower.includes(b.model.toLowerCase()));
   const aaRow = aa?.find((a) => a.name.toLowerCase().includes(firstWord)) ?? null;
   const selectedRoute =
     marketRows.find((r) => r.display_name === selected) ??
@@ -212,7 +213,7 @@ export function ModelsPane() {
         {curated.length > 0 && (
           <Section title="Understudy benchmarks" cite="curated · understudy research">
             {curated.map((b) => (
-              <KV key={b.model} k={b.quant ?? b.model}>
+              <KV key={b.model} k={benchmarkLabel(b)}>
                 {b.tok_per_sec ? `${b.tok_per_sec} tok/s` : "tok/s pending"} · {b.mem_gb ? `${b.mem_gb} GB` : "?"}
               </KV>
             ))}
@@ -350,6 +351,7 @@ function Th({ children, onClick, align }: { children: React.ReactNode; onClick: 
 function providerFamilyFor(label: string) {
   const lower = label.toLowerCase();
   if (lower.includes("gemma")) return "Google";
+  if (lower.includes("qwen")) return "Other";
   if (lower.includes("glm")) return "Z AI";
   if (lower.includes("gpt")) return "OpenAI";
   if (lower.includes("claude")) return "Anthropic";
@@ -361,4 +363,15 @@ function providerFamilyFor(label: string) {
 function groupRank(group: string) {
   const idx = GROUP_ORDER.indexOf(group);
   return idx === -1 ? GROUP_ORDER.length : idx;
+}
+
+function benchmarkLabel(point: { display_name?: string; model: string }) {
+  return point.display_name ?? point.model;
+}
+
+function benchmarkMatches(point: { display_name?: string; model: string; family: string }, selectedLower: string, firstWord: string) {
+  const display = benchmarkLabel(point).toLowerCase();
+  const model = point.model.toLowerCase();
+  const family = point.family.toLowerCase();
+  return display === selectedLower || model === selectedLower || display.includes(firstWord) || model.includes(firstWord) || family.includes(firstWord);
 }

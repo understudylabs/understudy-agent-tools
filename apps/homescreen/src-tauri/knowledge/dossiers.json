@@ -26,15 +26,21 @@
     "private": false
   },
   {
-    "id": "local-mlx-routes",
-    "title": "Local MLX routes",
-    "provider": "local",
-    "family": "mlx",
-    "sizes": ["machine-dependent"],
+    "id": "google-gemma-4-understudy-snapshots",
+    "title": "Gemma 4 Understudy snapshots",
+    "provider": "google",
+    "family": "gemma-4",
+    "sizes": [
+      "gemma-4-e2b-it-qat-mlx-vlm-4bit-understudy",
+      "gemma-4-12b-it-optiq-4bit-understudy",
+      "gemma-4-26b-a4b-it-qat-mlx-vlm-4bit-understudy",
+      "gemma-4-26b-a4b-it-optiq-4bit-understudy",
+      "gemma-4-26b-a4b-it-mlx-vlm-bf16-understudy"
+    ],
     "strong_at": ["offline demos", "low marginal cost", "data locality"],
     "weak_at": ["cold-start latency", "memory-constrained machines", "quality variance across model families"],
     "last_pricing_check": null,
-    "excerpt": "Public bundled note: Local MLX routes are best treated as measured candidates, not assumptions. The desktop app should profile the user's machine, warm only selected routes, and keep a cloud fallback available when local quality or latency misses the workload target.",
+    "excerpt": "Public bundled note: Understudy snapshots are serving artifacts derived from upstream model families. Treat MLX, QAT, OptiQ, and BF16 as variant details on the Google Gemma family, not as a standalone model-provider taxonomy. Profile the user's machine, warm only selected routes, and keep a cloud fallback when local quality or latency misses the workload target.",
     "source": "bundled public dossier · apps/homescreen/src-tauri/knowledge/dossiers.json",
     "private": false
   }
