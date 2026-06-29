@@ -3,12 +3,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { Channel, invoke } from "@tauri-apps/api/core";
 import {
-  ChainOfThought,
-  ChainOfThoughtContent,
-  ChainOfThoughtHeader,
-  ChainOfThoughtStep,
-} from "@/components/ai-elements/chain-of-thought";
-import {
   Conversation,
   ConversationContent,
   ConversationEmptyState,
@@ -231,28 +225,6 @@ export function ChatPane() {
                         <ReasoningTrigger />
                         <ReasoningContent>{m.reasoning}</ReasoningContent>
                       </Reasoning>
-                    )}
-                    {isLastAssistant && (
-                      <ChainOfThought defaultOpen={isActiveAssistant}>
-                        <ChainOfThoughtHeader>Runtime trace</ChainOfThoughtHeader>
-                        <ChainOfThoughtContent>
-                          <ChainOfThoughtStep
-                            label="Route selected"
-                            description={m.model ?? selectedChoice.label}
-                            status="complete"
-                          />
-                          <ChainOfThoughtStep
-                            label="Local server"
-                            description={selectedChoice.route === "local" ? selectedChoice.detail : "Gateway fallback"}
-                            status="complete"
-                          />
-                          <ChainOfThoughtStep
-                            label="Response stream"
-                            description={isActiveAssistant ? "Receiving chunks" : "Complete"}
-                            status={isActiveAssistant ? "active" : "complete"}
-                          />
-                        </ChainOfThoughtContent>
-                      </ChainOfThought>
                     )}
                     {m.role === "assistant" ? (
                       <MessageResponse>{m.content || (isActiveAssistant ? "..." : "")}</MessageResponse>
