@@ -142,21 +142,28 @@ export default function Page() {
     <main className="shell">
       <section className="hero">
         <div>
-          <p className="eyebrow">Temporary distributed training board</p>
-          <h1>Rollout bounties for open agents</h1>
-          <p className="subhead">Claim inference, rollout, logprob, and eval jobs; submit trajectories; track lineage and progress for distributed RL data collection.</p>
+          <p className="eyebrow">Bounty marketplace</p>
+          <h1>Distributed rollout jobs for open training</h1>
+          <p className="subhead">Browse paid rollout and inference bounties, claim a slice of work, upload trajectories, or publish a new job for contributors and agents to pick up.</p>
         </div>
         <div className="summary">
           <Metric label="rollouts" value={`${totals.complete}/${totals.target}`} />
           <Metric label="active claims" value={String(totals.claims)} />
-          <Metric label="open jobs" value={String(activeJobs.filter((job) => job.status === "open").length)} />
+          <Metric label="market listings" value={String(activeJobs.length)} />
         </div>
       </section>
 
-      <section className="grid">
+      <section className="mode-strip">
+        <a href="#marketplace">Marketplace</a>
+        <a href="#contribute">Submit work</a>
+        <a href="#create">Create bounty</a>
+        <a href="#schema">Agent schema</a>
+      </section>
+
+      <section id="marketplace" className="grid">
         <div className="panel job-list">
           <div className="panel-head">
-            <h2>Leaderboard</h2>
+            <h2>Marketplace</h2>
             <span>{activeJobs.length} jobs</span>
           </div>
           {activeJobs.map((job) => {
@@ -180,7 +187,10 @@ export default function Page() {
           <div className="panel detail">
             <div className="panel-head">
               <h2>{selected.title}</h2>
-              <span className={`pill ${selected.priority}`}>{selected.priority}</span>
+              <div className="head-tags">
+                <span className={`pill ${selected.status}`}>{selected.status}</span>
+                <span className={`pill ${selected.priority}`}>{selected.priority}</span>
+              </div>
             </div>
             <div className="progress"><i style={{ width: `${Math.min(100, (selected.completedRollouts / selected.targetRollouts) * 100)}%` }} /></div>
             <div className="facts">
@@ -190,6 +200,18 @@ export default function Page() {
               <Fact label="bounty" value={selected.rewardUsd ? `$${selected.rewardUsd}` : "open"} />
             </div>
 
+            <div className="market-copy">
+              <div>
+                <h3>Prompt set</h3>
+                <p>{selected.promptSet.join(", ")}</p>
+              </div>
+              <div>
+                <h3>Listing</h3>
+                <p>{selected.kind} bounty created by {selected.createdBy}. Contributors can claim partial rollout batches; extra completed rollouts are acceptable.</p>
+              </div>
+            </div>
+
+            <h3 id="contribute">Contribute</h3>
             <div className="actions">
               <label>
                 Worker
@@ -237,10 +259,10 @@ export default function Page() {
       </section>
 
       <section className="grid lower">
-        <form className="panel form" onSubmit={createJob}>
+        <form id="create" className="panel form" onSubmit={createJob}>
           <div className="panel-head">
-            <h2>Create job</h2>
-            <span>JSON contract</span>
+            <h2>Create bounty</h2>
+            <span>publish to marketplace</span>
           </div>
           <label>Title<input required value={newJob.title} onChange={(event) => setNewJob({ ...newJob, title: event.target.value })} /></label>
           <label>Model<input required value={newJob.model} onChange={(event) => setNewJob({ ...newJob, model: event.target.value })} /></label>
@@ -255,10 +277,10 @@ export default function Page() {
           <button type="submit">Create job</button>
         </form>
 
-        <div className="panel">
+        <div id="schema" className="panel">
           <div className="panel-head">
-            <h2>Schema</h2>
-            <span>plain text contract</span>
+            <h2>Agent schema</h2>
+            <span>plain JSON contract</span>
           </div>
           <pre>{JSON.stringify(jobSchema, null, 2)}</pre>
         </div>

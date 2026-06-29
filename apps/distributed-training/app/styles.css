@@ -172,6 +172,28 @@ h3 {
   font-size: 12px;
 }
 
+.mode-strip {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 18px;
+}
+
+.mode-strip a {
+  border: 1px solid var(--rule);
+  border-radius: 999px;
+  background: var(--panel);
+  color: var(--text);
+  font-size: 12px;
+  padding: 8px 12px;
+  text-decoration: none;
+}
+
+.mode-strip a:hover {
+  border-color: rgba(229, 107, 66, 0.45);
+  color: #ffd6c9;
+}
+
 .grid {
   display: grid;
   grid-template-columns: 420px minmax(0, 1fr);
@@ -203,6 +225,13 @@ h3 {
 .muted {
   color: var(--muted);
   font-size: 12px;
+}
+
+.head-tags {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+  gap: 6px;
 }
 
 .job-list {
@@ -318,6 +347,22 @@ h3 {
   white-space: nowrap;
 }
 
+.market-copy {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 14px;
+  border-top: 1px solid var(--rule);
+  border-bottom: 1px solid var(--rule);
+  margin-bottom: 14px;
+  padding: 2px 0 14px;
+}
+
+.market-copy p {
+  color: var(--muted);
+  font-size: 13px;
+  line-height: 1.45;
+}
+
 .actions {
   display: grid;
   grid-template-columns: 1fr 150px auto auto;
@@ -363,6 +408,7 @@ h3 {
   .grid,
   .split,
   .facts,
+  .market-copy,
   .actions,
   .form-row {
     grid-template-columns: 1fr;
