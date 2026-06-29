@@ -20,6 +20,7 @@ pub struct PersistedSlot {
     pub model_id: Option<String>,
     pub model_path: Option<String>,
     pub warm: bool,
+    pub thinking: bool,
     pub port: Option<u16>,
     pub mem_gb: f32,
     pub ordinal: u32,
@@ -34,6 +35,7 @@ pub struct SlotView {
     pub port: Option<u16>,
     pub mem_gb: f32,
     pub load_ms: Option<u64>,
+    pub thinking: bool,
 }
 
 #[derive(Serialize, Clone)]
@@ -50,6 +52,7 @@ struct Resident {
     state: SlotState,
     port: Option<u16>,
     mem_gb: f32,
+    thinking: bool,
     load_ms: Option<u64>,
     last_used: Instant,
     child: Option<Child>,
@@ -105,7 +108,7 @@ fn expand_home(value: &str) -> String {
     value.to_string()
 }
 
-fn serving_command(model_path: &str, port: u16) -> anyhow::Result<Command> {
+fn serving_command(model_path: &str, port: u16, thinking: bool) -> anyhow::Result<Command> {
     let manifest_path = Path::new(model_path).join("understudy.serving.json");
     if !manifest_path.exists() {
         let mut cmd = Command::new(crate::bin::mlx_server());
@@ -117,6 +120,9 @@ fn serving_command(model_path: &str, port: u16) -> anyhow::Result<Command> {
             "--port",
             &port.to_string(),
         ]);
+        if thinking {
+            cmd.arg("--enable-thinking");
+        }
         return Ok(cmd);
     }
 
@@ -154,6 +160,9 @@ fn serving_command(model_path: &str, port: u16) -> anyhow::Result<Command> {
     ]);
     if let Some(flags) = manifest.server.required_flags {
         cmd.args(flags);
+    }
+    if thinking {
+        cmd.arg("--enable-thinking");
     }
     if let Some(cwd) = manifest.server.cwd {
         cmd.current_dir(expand_home(&cwd));
@@ -198,6 +207,7 @@ impl Residency {
                     port: r.port,
                     mem_gb: r.mem_gb,
                     load_ms: r.load_ms,
+                    thinking: r.thinking,
                 }
             })
             .collect();
@@ -218,6 +228,7 @@ impl Residency {
             state: SlotState::Stopped,
             port: None,
             mem_gb: 0.0,
+            thinking: false,
             load_ms: None,
             last_used: Instant::now(),
             child: None,
@@ -244,8 +255,22 @@ impl Residency {
         r.model_id = Some(model.id.clone());
         r.model_path = Some(model.path.clone());
         r.mem_gb = model.size_gb;
+        r.thinking = false;
         r.state = SlotState::Stopped;
         r.load_ms = None;
+        Ok(())
+    }
+
+    pub fn set_thinking(&self, slot_id: u32, thinking: bool) -> anyhow::Result<()> {
+        let mut inner = self.inner.lock().unwrap();
+        let r = inner
+            .iter_mut()
+            .find(|r| r.id == slot_id)
+            .ok_or_else(|| anyhow::anyhow!("slot not found: {slot_id}"))?;
+        if matches!(r.state, SlotState::Warm | SlotState::Loading) {
+            anyhow::bail!("cool the slot before changing thinking mode");
+        }
+        r.thinking = thinking;
         Ok(())
     }
 
@@ -276,7 +301,7 @@ impl Residency {
     /// Warm a slot: enforce budget (LRU evict), spawn mlx_vlm.server, poll until ready.
     pub fn warm(&self, app: &AppHandle, slot_id: u32) -> anyhow::Result<()> {
         // 1. Validate, reserve a port, flip to Loading (one short-lived borrow).
-        let (port, model_id, model_path, mem_gb) = {
+        let (port, model_id, model_path, mem_gb, thinking) = {
             let mut inner = self.inner.lock().unwrap();
             let r = inner
                 .iter_mut()
@@ -293,6 +318,7 @@ impl Residency {
                 r.model_id.clone().unwrap_or_default(),
                 r.model_path.clone().unwrap_or_default(),
                 r.mem_gb,
+                r.thinking,
             )
         };
 
@@ -300,7 +326,7 @@ impl Residency {
         self.evict_until_fits(slot_id, mem_gb);
 
         // 3. Spawn the server process and attach it.
-        let child = match serving_command(&model_path, port)?
+        let child = match serving_command(&model_path, port, thinking)?
             .stdout(Stdio::null())
             .stderr(Stdio::null())
             .spawn()
@@ -419,6 +445,7 @@ impl Residency {
                     port: r.port,
                     mem_gb: r.mem_gb,
                     load_ms: r.load_ms,
+                    thinking: r.thinking,
                 }
             })
             .collect();
@@ -440,6 +467,7 @@ impl Residency {
                 model_id: r.model_id.clone(),
                 model_path: r.model_path.clone(),
                 warm: matches!(r.state, SlotState::Warm),
+                thinking: r.thinking,
                 port: r.port,
                 mem_gb: r.mem_gb,
                 ordinal: i as u32,
@@ -470,6 +498,7 @@ impl Residency {
                     state: SlotState::Stopped,
                     port: r.port,
                     mem_gb: r.mem_gb,
+                    thinking: r.thinking,
                     load_ms: None,
                     last_used: Instant::now(),
                     child: None,

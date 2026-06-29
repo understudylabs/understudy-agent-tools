@@ -670,6 +670,25 @@ select,
 }
 .assign-select:focus { border-color: var(--border-strong); }
 
+.thinking-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 28px;
+  color: var(--text-2);
+  font-size: 12px;
+  user-select: none;
+}
+.thinking-toggle input {
+  width: 14px;
+  height: 14px;
+  margin: 0;
+  accent-color: var(--accent);
+}
+.thinking-toggle:has(input:disabled) {
+  color: var(--text-3);
+}
+
 /* ---------- Install CTA ---------- */
 .install-lede {
   color: var(--text-2);

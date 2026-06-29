@@ -12,6 +12,7 @@ use crate::residency::Residency;
 #[serde(tag = "type")]
 pub enum ChatEvent {
     Chunk { text: String },
+    ReasoningChunk { text: String },
     Error { message: String },
     Done,
 }
@@ -20,6 +21,57 @@ pub enum ChatEvent {
 pub struct ChatMsg {
     pub role: String,
     pub content: String,
+}
+
+struct ThinkParser {
+    pending: String,
+    in_reasoning: bool,
+}
+
+impl ThinkParser {
+    fn new() -> Self {
+        Self {
+            pending: String::new(),
+            in_reasoning: false,
+        }
+    }
+
+    fn push(&mut self, text: &str) -> Vec<(bool, String)> {
+        self.pending.push_str(text);
+        let mut out = vec![];
+        loop {
+            let marker = if self.in_reasoning {
+                "</think>"
+            } else {
+                "<think>"
+            };
+            if let Some(pos) = self.pending.find(marker) {
+                if pos > 0 {
+                    out.push((self.in_reasoning, self.pending[..pos].to_string()));
+                }
+                self.pending.drain(..pos + marker.len());
+                self.in_reasoning = !self.in_reasoning;
+                continue;
+            }
+
+            let keep = marker.len().saturating_sub(1).min(self.pending.len());
+            let emit_len = self.pending.len().saturating_sub(keep);
+            if emit_len > 0 {
+                out.push((self.in_reasoning, self.pending[..emit_len].to_string()));
+                self.pending.drain(..emit_len);
+            }
+            break;
+        }
+        out
+    }
+
+    fn finish(&mut self) -> Option<(bool, String)> {
+        if self.pending.is_empty() {
+            None
+        } else {
+            Some((self.in_reasoning, std::mem::take(&mut self.pending)))
+        }
+    }
 }
 
 /// Read the gateway URL + API key from ~/.understudy/credentials.json (server-side only).
@@ -104,6 +156,7 @@ pub async fn chat_stream(
 
     let mut stream = resp.bytes_stream();
     let mut buf = String::new();
+    let mut think = ThinkParser::new();
 
     while let Some(item) = stream.next().await {
         let chunk = match item {
@@ -128,15 +181,34 @@ pub async fn chat_stream(
                 return Ok(());
             }
             if let Ok(v) = serde_json::from_str::<serde_json::Value>(data) {
-                if let Some(delta) = v["choices"][0]["delta"]["content"].as_str() {
-                    let _ = on_event.send(ChatEvent::Chunk {
-                        text: delta.to_string(),
-                    });
+                let delta = &v["choices"][0]["delta"];
+                for key in ["reasoning_content", "reasoning", "thinking"] {
+                    if let Some(reasoning) = delta[key].as_str() {
+                        let _ = on_event.send(ChatEvent::ReasoningChunk {
+                            text: reasoning.to_string(),
+                        });
+                    }
+                }
+                if let Some(delta_text) = delta["content"].as_str() {
+                    for (is_reasoning, text) in think.push(delta_text) {
+                        if is_reasoning {
+                            let _ = on_event.send(ChatEvent::ReasoningChunk { text });
+                        } else {
+                            let _ = on_event.send(ChatEvent::Chunk { text });
+                        }
+                    }
                 }
             }
         }
     }
 
+    if let Some((is_reasoning, text)) = think.finish() {
+        if is_reasoning {
+            let _ = on_event.send(ChatEvent::ReasoningChunk { text });
+        } else {
+            let _ = on_event.send(ChatEvent::Chunk { text });
+        }
+    }
     let _ = on_event.send(ChatEvent::Done);
     Ok(())
 }

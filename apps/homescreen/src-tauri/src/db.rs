@@ -29,6 +29,7 @@ impl Db {
                 model_id    TEXT,
                 model_path  TEXT,
                 warm        INTEGER NOT NULL DEFAULT 0,
+                thinking    INTEGER NOT NULL DEFAULT 0,
                 port        INTEGER,
                 mem_gb      REAL NOT NULL DEFAULT 0,
                 ordinal     INTEGER NOT NULL DEFAULT 0
@@ -53,6 +54,10 @@ impl Db {
                 value TEXT NOT NULL
             );",
         )?;
+        let _ = conn.execute(
+            "ALTER TABLE residency ADD COLUMN thinking INTEGER NOT NULL DEFAULT 0",
+            [],
+        );
         Ok(conn)
     }
 
@@ -61,13 +66,14 @@ impl Db {
         conn.execute("DELETE FROM residency", [])?;
         for s in slots {
             conn.execute(
-                "INSERT INTO residency (slot_id, model_id, model_path, warm, port, mem_gb, ordinal)
-                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+                "INSERT INTO residency (slot_id, model_id, model_path, warm, thinking, port, mem_gb, ordinal)
+                 VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)",
                 rusqlite::params![
                     s.slot_id,
                     s.model_id,
                     s.model_path,
                     s.warm as i64,
+                    s.thinking as i64,
                     s.port.map(|p| p as i64),
                     s.mem_gb,
                     s.ordinal,
@@ -80,7 +86,7 @@ impl Db {
     pub fn load_residency(&self) -> Result<Vec<PersistedSlot>> {
         let conn = self.conn()?;
         let mut stmt = conn.prepare(
-            "SELECT slot_id, model_id, model_path, warm, port, mem_gb, ordinal
+            "SELECT slot_id, model_id, model_path, warm, thinking, port, mem_gb, ordinal
              FROM residency ORDER BY ordinal",
         )?;
         let rows = stmt.query_map([], |r| {
@@ -89,9 +95,10 @@ impl Db {
                 model_id: r.get(1)?,
                 model_path: r.get(2)?,
                 warm: r.get::<_, i64>(3)? != 0,
-                port: r.get::<_, Option<i64>>(4)?.map(|p| p as u16),
-                mem_gb: r.get(5)?,
-                ordinal: r.get(6)?,
+                thinking: r.get::<_, i64>(4)? != 0,
+                port: r.get::<_, Option<i64>>(5)?.map(|p| p as u16),
+                mem_gb: r.get(6)?,
+                ordinal: r.get(7)?,
             })
         })?;
         let mut out = vec![];

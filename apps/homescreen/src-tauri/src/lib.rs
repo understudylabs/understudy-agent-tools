@@ -119,6 +119,7 @@ pub fn run() {
             commands::add_slot,
             commands::assign_slot,
             commands::warm_slot,
+            commands::set_slot_thinking,
             commands::cool_slot,
             commands::remove_slot,
             commands::get_moraine_state,

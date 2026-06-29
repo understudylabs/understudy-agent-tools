@@ -17,6 +17,7 @@ export type SlotView = {
   port: number | null;
   mem_gb: number;
   load_ms: number | null;
+  thinking: boolean;
 };
 
 export type ResidencySnapshot = {

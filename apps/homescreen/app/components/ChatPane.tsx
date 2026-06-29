@@ -46,9 +46,10 @@ import {
 import { modelShortName, type SnapshotAlias } from "../lib/model-aliases";
 
 type Role = "user" | "assistant";
-type Msg = { role: Role; content: string; model?: string };
+type Msg = { role: Role; content: string; model?: string; reasoning?: string };
 type ChatEvent =
   | { type: "Chunk"; text: string }
+  | { type: "ReasoningChunk"; text: string }
   | { type: "Error"; message: string }
   | { type: "Done" };
 type ResidencySnapshot = {
@@ -148,7 +149,7 @@ export function ChatPane() {
     }
 
     const toSend: Msg[] = [...messages, { role: "user", content: clean, model: choice.label }];
-    setMessages([...toSend, { role: "assistant", content: "", model: choice.label }]);
+    setMessages([...toSend, { role: "assistant", content: "", reasoning: "", model: choice.label }]);
     setStreaming(true);
 
     const ch = new Channel<ChatEvent>();
@@ -159,6 +160,14 @@ export function ChatPane() {
           const p = [...prev];
           const last = p.length - 1;
           p[last] = { ...p[last], content: p[last].content + msg.text };
+          return p;
+        });
+      } else if (msg.type === "ReasoningChunk") {
+        setMessages((prev) => {
+          if (prev.length === 0) return prev;
+          const p = [...prev];
+          const last = p.length - 1;
+          p[last] = { ...p[last], reasoning: (p[last].reasoning ?? "") + msg.text };
           return p;
         });
       } else if (msg.type === "Error") {
@@ -192,25 +201,25 @@ export function ChatPane() {
               description="Ask the warm local model. Use the selector for a fallback route."
             />
           ) : (
-            messages.map((m, i) => (
-              <Message
-                key={i}
-                from={m.role}
-                className={`chat-msg ${m.role} ${m.role === "user" ? "max-w-[80%]" : "max-w-[92%]"}`}
-              >
-                <div className="chat-role">{m.role === "assistant" ? m.model ?? "Assistant" : "You"}</div>
-                <MessageContent>
-                  {m.role === "assistant" && (streaming || m.content) && i === messages.length - 1 && (
-                    <>
-                      <Reasoning isStreaming={streaming} defaultOpen={streaming}>
+            messages.map((m, i) => {
+              const isLastAssistant = m.role === "assistant" && i === messages.length - 1;
+              const isActiveAssistant = isLastAssistant && streaming;
+              return (
+                <Message
+                  key={i}
+                  from={m.role}
+                  className={`chat-msg ${m.role} ${m.role === "user" ? "max-w-[80%]" : "max-w-[92%]"}`}
+                >
+                  <div className="chat-role">{m.role === "assistant" ? m.model ?? "Assistant" : "You"}</div>
+                  <MessageContent>
+                    {m.role === "assistant" && m.reasoning && (
+                      <Reasoning isStreaming={isActiveAssistant} defaultOpen={isActiveAssistant}>
                         <ReasoningTrigger />
-                        <ReasoningContent>
-                          {`${selectedChoice.route === "local" ? "Local MLX" : "Gateway"} route selected: ${m.model ?? selectedChoice.label}. ${
-                            streaming ? "Streaming response chunks." : "Response complete."
-                          }`}
-                        </ReasoningContent>
+                        <ReasoningContent>{m.reasoning}</ReasoningContent>
                       </Reasoning>
-                      <ChainOfThought defaultOpen={streaming}>
+                    )}
+                    {isLastAssistant && (
+                      <ChainOfThought defaultOpen={isActiveAssistant}>
                         <ChainOfThoughtHeader>Runtime trace</ChainOfThoughtHeader>
                         <ChainOfThoughtContent>
                           <ChainOfThoughtStep
@@ -225,21 +234,21 @@ export function ChatPane() {
                           />
                           <ChainOfThoughtStep
                             label="Response stream"
-                            description={streaming ? "Receiving chunks" : "Complete"}
-                            status={streaming ? "active" : "complete"}
+                            description={isActiveAssistant ? "Receiving chunks" : "Complete"}
+                            status={isActiveAssistant ? "active" : "complete"}
                           />
                         </ChainOfThoughtContent>
                       </ChainOfThought>
-                    </>
-                  )}
-                  {m.role === "assistant" ? (
-                    <MessageResponse>{m.content || (streaming ? "..." : "")}</MessageResponse>
-                  ) : (
-                    m.content
-                  )}
-                </MessageContent>
-              </Message>
-            ))
+                    )}
+                    {m.role === "assistant" ? (
+                      <MessageResponse>{m.content || (isActiveAssistant ? "..." : "")}</MessageResponse>
+                    ) : (
+                      m.content
+                    )}
+                  </MessageContent>
+                </Message>
+              );
+            })
           )}
           {err && <div className="chat-err">{err}</div>}
         </ConversationContent>
