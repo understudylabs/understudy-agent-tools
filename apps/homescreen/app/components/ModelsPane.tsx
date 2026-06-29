@@ -35,6 +35,7 @@ type AaModel = {
 };
 type MoraineHit = { snippet?: { text?: string }; session?: { title?: string; source?: string }; open?: { session_id?: string } };
 type SortKey = "quality" | "price_out" | "tok_per_sec";
+type ModelNavItem = { label: string; group: string };
 
 const PROVIDER_OF: Record<string, Provider> = {
   OpenAI: "openai",
@@ -45,6 +46,21 @@ const PROVIDER_OF: Record<string, Provider> = {
   MiniMax: "minimax",
   NVIDIA: "nvidia",
 };
+
+const PROVIDER_LABELS: Record<Provider, string> = {
+  local: "Serving",
+  understudy: "Understudy",
+  openai: "OpenAI",
+  anthropic: "Anthropic",
+  google: "Google",
+  zai: "Z AI",
+  moonshot: "Moonshot",
+  minimax: "MiniMax",
+  nvidia: "NVIDIA",
+  other: "Other",
+};
+
+const GROUP_ORDER = ["Understudy", "Serving", "OpenAI", "Anthropic", "Google", "Z AI", "Moonshot", "MiniMax", "NVIDIA", "Other"];
 
 export function ModelsPane() {
   const [dossiers, setDossiers] = useState<Dossier[] | null>(null);
@@ -63,14 +79,38 @@ export function ModelsPane() {
     invoke<string>("aa_attribution").then(setAaSrc).catch(() => {});
   }, []);
 
-  const models = useMemo(() => {
-    const names = new Set<string>();
-    (dossiers ?? []).forEach((d) => names.add(d.title));
-    curatedBenchmarks.forEach((b) => names.add(b.family));
-    curatedRoutes.forEach((m) => names.add(m.display_name));
-    (aa ?? []).forEach((a) => names.add(a.name));
-    return [...names].sort();
+  const navGroups = useMemo(() => {
+    const items = new Map<string, ModelNavItem>();
+    const add = (label: string, group: string) => {
+      if (!items.has(label)) items.set(label, { label, group });
+    };
+
+    curatedRoutes.forEach((m) => add(m.display_name, PROVIDER_LABELS[m.provider]));
+    (aa ?? []).forEach((a) => {
+      const provider = PROVIDER_OF[a.creator ?? ""] ?? "other";
+      add(a.name, PROVIDER_LABELS[provider]);
+    });
+    (dossiers ?? []).forEach((d) => {
+      const provider = (d.provider ?? "").toLowerCase() as Provider;
+      add(d.title, PROVIDER_LABELS[provider] ?? d.family ?? "Other");
+    });
+    curatedBenchmarks.forEach((b) => add(b.family, providerFamilyFor(b.family)));
+
+    const grouped = new Map<string, ModelNavItem[]>();
+    [...items.values()].forEach((item) => {
+      const list = grouped.get(item.group) ?? [];
+      list.push(item);
+      grouped.set(item.group, list);
+    });
+
+    return [...grouped.entries()]
+      .sort(([a], [b]) => groupRank(a) - groupRank(b) || a.localeCompare(b))
+      .map(([group, groupItems]) => ({
+        group,
+        items: groupItems.sort((a, b) => a.label.localeCompare(b.label)),
+      }));
   }, [aa, dossiers]);
+  const models = useMemo(() => navGroups.flatMap((g) => g.items.map((item) => item.label)), [navGroups]);
 
   const marketRows = useMemo(() => {
     const map = new Map<string, MarketEntry>();
@@ -129,17 +169,22 @@ export function ModelsPane() {
       {/* model list */}
       <aside className="w-[240px] shrink-0 overflow-y-auto border-r border-rule p-3">
         <div className="mb-2 px-2 font-mono text-[11px] uppercase tracking-[0.18em] text-ink-muted">models</div>
-        {models.map((m) => (
-          <button
-            key={m}
-            onClick={() => { setSel(m); setHits(null); }}
-            className={
-              "mb-0.5 block w-full rounded-[8px] px-2.5 py-2 text-left text-[13px] transition-colors " +
-              (m === selected ? "bg-hover text-ink" : "text-ink-muted hover:bg-hover hover:text-ink")
-            }
-          >
-            {m}
-          </button>
+        {navGroups.map(({ group, items }) => (
+          <div key={group} className="mb-3">
+            <div className="mb-1 px-2 pt-2 font-mono text-[10px] uppercase tracking-[0.16em] text-ink-muted">{group}</div>
+            {items.map(({ label }) => (
+              <button
+                key={label}
+                onClick={() => { setSel(label); setHits(null); }}
+                className={
+                  "mb-0.5 block w-full rounded-[8px] px-2.5 py-2 text-left text-[13px] transition-colors " +
+                  (label === selected ? "bg-hover text-ink" : "text-ink-muted hover:bg-hover hover:text-ink")
+                }
+              >
+                {label}
+              </button>
+            ))}
+          </div>
         ))}
         {models.length === 0 && <div className="px-2 text-[12px] text-ink-muted">Loading…</div>}
       </aside>
@@ -300,4 +345,20 @@ function Th({ children, onClick, align }: { children: React.ReactNode; onClick: 
       {children}
     </th>
   );
+}
+
+function providerFamilyFor(label: string) {
+  const lower = label.toLowerCase();
+  if (lower.includes("gemma")) return "Google";
+  if (lower.includes("glm")) return "Z AI";
+  if (lower.includes("gpt")) return "OpenAI";
+  if (lower.includes("claude")) return "Anthropic";
+  if (lower.includes("kimi")) return "Moonshot";
+  if (lower.includes("nemotron")) return "NVIDIA";
+  return "Other";
+}
+
+function groupRank(group: string) {
+  const idx = GROUP_ORDER.indexOf(group);
+  return idx === -1 ? GROUP_ORDER.length : idx;
 }
