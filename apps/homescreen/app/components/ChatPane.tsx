@@ -10,6 +10,13 @@ type ChatEvent =
   | { type: "Chunk"; text: string }
   | { type: "Error"; message: string }
   | { type: "Done" };
+type ResidencySnapshot = {
+  slots: {
+    id: number;
+    model_id?: string | null;
+    state: string;
+  }[];
+};
 
 export function ChatPane() {
   const [messages, setMessages] = useState<Msg[]>([]);
@@ -23,6 +30,18 @@ export function ChatPane() {
     if (!text || streaming) return;
     setInput("");
     setErr(null);
+
+    let slotId: number | null = null;
+    try {
+      const residency = await invoke<ResidencySnapshot>("get_residency");
+      slotId = residency.slots.find((slot) => slot.state === "running")?.id ?? null;
+    } catch {
+      slotId = null;
+    }
+    if (slotId == null) {
+      setErr("No local model is warm. Open Serving, warm a local model slot, then send again.");
+      return;
+    }
 
     const toSend: Msg[] = [...messages, { role: "user", content: text }];
     setMessages([...toSend, { role: "assistant", content: "" }]);
@@ -50,8 +69,8 @@ export function ChatPane() {
     try {
       await invoke("chat_stream", {
         messages: toSend,
-        route: "cloud",
-        slotId: null,
+        route: "local",
+        slotId,
         onEvent: ch,
       });
     } catch (e: unknown) {
