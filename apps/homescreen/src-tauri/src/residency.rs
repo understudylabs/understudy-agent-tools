@@ -138,8 +138,14 @@ fn serving_command(model_path: &str, port: u16) -> anyhow::Result<Command> {
         );
     };
 
-    let mut cmd = Command::new(crate::bin::resolve(program));
-    cmd.args(rest);
+    let use_mlx_script = *program == "python" && rest == ["-m", "mlx_vlm.server"];
+    let mut cmd = if use_mlx_script {
+        Command::new(crate::bin::mlx_server())
+    } else {
+        let mut cmd = Command::new(crate::bin::resolve(program));
+        cmd.args(rest);
+        cmd
+    };
     cmd.arg(manifest.server.model_arg).arg(model_path).args([
         "--host",
         "127.0.0.1",
@@ -294,10 +300,24 @@ impl Residency {
         self.evict_until_fits(slot_id, mem_gb);
 
         // 3. Spawn the server process and attach it.
-        let child = serving_command(&model_path, port)?
+        let child = match serving_command(&model_path, port)?
             .stdout(Stdio::null())
             .stderr(Stdio::null())
-            .spawn()?;
+            .spawn()
+        {
+            Ok(child) => child,
+            Err(err) => {
+                let mut inner = self.inner.lock().unwrap();
+                if let Some(r) = inner.iter_mut().find(|r| r.id == slot_id) {
+                    r.child = None;
+                    r.state = SlotState::Error;
+                }
+                let snapshot = self.snapshot_from(&inner);
+                drop(inner);
+                let _ = app.emit("residency-changed", snapshot);
+                anyhow::bail!("failed to start local model server: {err}");
+            }
+        };
         {
             let mut inner = self.inner.lock().unwrap();
             if let Some(r) = inner.iter_mut().find(|r| r.id == slot_id) {
