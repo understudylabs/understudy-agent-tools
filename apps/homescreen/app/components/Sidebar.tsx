@@ -1,6 +1,6 @@
 import type { ReactNode } from "react";
 
-export type PaneId = "status" | "chat" | "models" | "account" | "usage" | "traces";
+export type PaneId = "status" | "chat" | "models" | "training" | "account" | "usage" | "traces";
 
 const ICONS: Record<PaneId, ReactNode> = {
   status: (
@@ -19,6 +19,12 @@ const ICONS: Record<PaneId, ReactNode> = {
       <rect x="9" y="2" width="5" height="5" rx="1" stroke="currentColor" strokeWidth="1.3" />
       <rect x="2" y="9" width="5" height="5" rx="1" stroke="currentColor" strokeWidth="1.3" />
       <rect x="9" y="9" width="5" height="5" rx="1" stroke="currentColor" strokeWidth="1.3" />
+    </svg>
+  ),
+  training: (
+    <svg viewBox="0 0 16 16" fill="none" className="nav-icon">
+      <path d="M2.5 12.5 8 3l5.5 9.5H2.5Z" stroke="currentColor" strokeWidth="1.3" strokeLinejoin="round" />
+      <path d="M8 7v2.2M8 11.5h.01" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
     </svg>
   ),
   account: (
@@ -43,9 +49,9 @@ const NAV: { id: PaneId; label: string }[] = [
   { id: "status", label: "Status" },
   { id: "chat", label: "Chat" },
   { id: "models", label: "Models" },
+  { id: "training", label: "Training" },
   { id: "traces", label: "Traces" },
   { id: "usage", label: "Usage" },
-  { id: "account", label: "Account" },
 ];
 
 export function Sidebar({
@@ -59,7 +65,7 @@ export function Sidebar({
 }) {
   return (
     <aside className="sidebar">
-      <div className="nav-section">Local</div>
+      <div className="nav-section">Serving</div>
       {NAV.map((n) => (
         <div
           key={n.id}
@@ -72,10 +78,19 @@ export function Sidebar({
       ))}
 
       <div className="nav-spacer" />
-      <div className="nav-status">
-        <span className={"dot" + (connected ? " running" : "")} />
-        {connected ? "Connected" : "Disconnected"}
-      </div>
+      <button
+        className={"nav-account" + (active === "account" ? " active" : "")}
+        onClick={() => onSelect("account")}
+      >
+        {ICONS.account}
+        <span className="nav-account-copy">
+          <span>Account</span>
+          <span className="nav-account-status">
+            <span className={"dot" + (connected ? " running" : "")} />
+            {connected ? "Connected" : "Disconnected"}
+          </span>
+        </span>
+      </button>
     </aside>
   );
 }

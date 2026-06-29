@@ -31,11 +31,11 @@ export function UsagePane({ status }: { status: StatusController }) {
     <>
       <div className="pane-head">
         <h1 className="pane-title">Usage</h1>
-        <p className="pane-sub">Local resource consumption and remote gateway activity.</p>
+        <p className="pane-sub">Serving resource consumption and remote gateway activity.</p>
       </div>
       <div className="pane-body">
         <div className="card">
-          <div className="card-title" style={{ marginBottom: 10 }}>Local</div>
+          <div className="card-title" style={{ marginBottom: 10 }}>Serving</div>
           <Metric label="CPU" value={m ? `${m.cpu_pct.toFixed(0)}%` : "…"} pct={m?.cpu_pct ?? 0} />
           <Metric label="Memory" value={m ? `${m.mem_used_gb.toFixed(1)} / ${m.mem_total_gb.toFixed(0)} GB` : "…"} pct={m && m.mem_total_gb ? (m.mem_used_gb / m.mem_total_gb) * 100 : 0} />
           <Metric label="Model memory (warm)" value={res ? `${res.used_gb.toFixed(1)} / ${res.usable_gb.toFixed(0)} GB` : "…"} pct={res && res.usable_gb > 0 ? (res.used_gb / res.usable_gb) * 100 : 0} />

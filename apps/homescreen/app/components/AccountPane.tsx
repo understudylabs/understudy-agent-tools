@@ -90,7 +90,7 @@ export function AccountPane() {
 
         {srv && (
           <div className="card">
-            <div className="card-title" style={{ marginBottom: 4 }}>Local server · for coding agents</div>
+            <div className="card-title" style={{ marginBottom: 4 }}>Serving server · for coding agents</div>
             <div className="card-sub" style={{ marginBottom: 10 }}>Point an MCP-capable agent at this endpoint with the bearer token.</div>
             <div className="cmd">{srv.base_url}/mcp</div>
             <div className="cmd">Authorization: Bearer {srv.token}</div>

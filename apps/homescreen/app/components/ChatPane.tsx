@@ -69,7 +69,7 @@ export function ChatPane({ status }: { status: StatusController }) {
     <div className="chat">
       <div className="chat-toolbar">
         <div className="seg">
-          <button className={route === "local" ? "active" : ""} onClick={() => setRoute("local")}>Local</button>
+          <button className={route === "local" ? "active" : ""} onClick={() => setRoute("local")}>Serving</button>
           <button className={route === "cloud" ? "active" : ""} onClick={() => setRoute("cloud")}>Cloud</button>
         </div>
         {route === "local" ? (

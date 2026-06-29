@@ -9,7 +9,7 @@ export function StatusPane({ status }: { status: StatusController }) {
     return (
       <div className="empty-pane">
         <h2>Connecting</h2>
-        <p>Connecting to local runtime…</p>
+        <p>Connecting to serving runtime…</p>
       </div>
     );
   }
@@ -22,14 +22,14 @@ export function StatusPane({ status }: { status: StatusController }) {
     <>
       <div className="pane-head">
         <h1 className="pane-title">Status</h1>
-        <p className="pane-sub">Local sidecars, warm models, and resources.</p>
+        <p className="pane-sub">Serving sidecars, warm models, and resources.</p>
       </div>
 
       <div className="pane-body">
         <div className="card">
           <div className="hero">
             <div>
-              <div className="card-title">{connected ? "Local runtime online" : "Local runtime offline"}</div>
+              <div className="card-title">{connected ? "Serving runtime online" : "Serving runtime offline"}</div>
               <div className="card-sub">Start the Moraine trace stack; warm models on the Models pane.</div>
             </div>
             <button

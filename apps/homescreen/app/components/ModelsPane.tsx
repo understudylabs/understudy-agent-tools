@@ -175,7 +175,7 @@ export function ModelsPane() {
         )}
 
         {localRows.length > 0 && (
-          <Section title="Local live" cite="measured on this Mac">
+          <Section title="Serving live" cite="measured on this Mac">
             {localRows.map((r, i) => (
               <KV key={i} k={r.model}>{r.tok_per_sec ? `${r.tok_per_sec.toFixed(1)} tok/s` : "—"} · {r.mem_gb?.toFixed(1) ?? "?"} GB{r.load_ms ? ` · ${(r.load_ms / 1000).toFixed(1)}s load` : ""}</KV>
             ))}
