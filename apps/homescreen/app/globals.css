@@ -21,6 +21,22 @@
   --color-ok: var(--c-ok);
   --color-warn: var(--c-warn);
   --color-bad: var(--c-bad);
+  --color-background: var(--c-card);
+  --color-foreground: var(--c-ink);
+  --color-muted: var(--c-hover);
+  --color-muted-foreground: var(--c-ink-muted);
+  --color-popover: var(--c-card);
+  --color-popover-foreground: var(--c-ink);
+  --color-border: var(--c-rule);
+  --color-input: var(--c-card);
+  --color-ring: var(--c-stamp);
+  --color-primary: var(--c-stamp);
+  --color-primary-foreground: var(--c-paper);
+  --color-secondary: var(--c-hover);
+  --color-secondary-foreground: var(--c-ink);
+  --color-accent: var(--c-hover);
+  --color-accent-foreground: var(--c-ink);
+  --color-destructive: var(--c-bad);
 
   --font-mono: var(--font-plex-mono), ui-monospace, "SF Mono", Menlo, monospace;
   --font-sans: -apple-system, BlinkMacSystemFont, "SF Pro Text", system-ui, "IBM Plex Sans", sans-serif;
@@ -521,36 +537,41 @@ select,
   height: calc(100vh - 56px);
   display: flex;
   flex-direction: column;
+  min-height: 0;
 }
-.chat-thread {
-  flex: 1;
-  overflow-y: auto;
-  display: flex;
-  flex-direction: column;
-  gap: 18px;
-  padding: 4px 6px 14px 0;
+.ai-chat {
+  padding: 6px 0 14px;
 }
-.chat-msg {
-  max-width: 100%;
-  line-height: 1.5;
-  word-wrap: break-word;
-  font-size: 14px;
+.ai-chat-composer {
+  padding: 8px 0 0;
 }
-.chat-msg.user {
-  align-self: flex-end;
-  max-width: 72%;
-  background: var(--surface-2);
+.ai-chat-composer form {
+  border-radius: 16px;
+  box-shadow: none;
+}
+.ai-model-trigger {
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 30px;
+  max-width: min(520px, 58vw);
   border: 1px solid var(--border);
-  border-radius: 14px;
-  padding: 9px 12px;
-}
-.chat-msg.assistant {
-  width: 100%;
-  align-self: flex-start;
+  border-radius: var(--r-control);
+  background: var(--surface-2);
   color: var(--text);
+  padding: 5px 8px;
+  font-family: var(--mono);
+  font-size: 11px;
+  line-height: 1;
 }
-.chat-msg.user {
-  white-space: pre-wrap;
+.ai-model-trigger span:first-child {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ai-model-trigger span:last-child {
+  color: var(--text-3);
+  text-transform: uppercase;
 }
 .chat-role {
   margin-bottom: 5px;
