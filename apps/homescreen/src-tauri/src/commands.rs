@@ -112,10 +112,23 @@ pub fn warm_slot(app: AppHandle, slot_id: u32) -> Result<(), String> {
 
 #[tauri::command]
 pub fn set_slot_thinking(app: AppHandle, slot_id: u32, thinking: bool) -> Result<(), String> {
+    let reload = residency(&app)
+        .is_warm(slot_id)
+        .map_err(|e| e.to_string())?;
+    if reload {
+        residency(&app).cool(slot_id).map_err(|e| e.to_string())?;
+    }
     residency(&app)
         .set_thinking(slot_id, thinking)
         .map_err(|e| e.to_string())?;
-    commit(&app);
+    if reload {
+        residency(&app)
+            .warm(&app, slot_id)
+            .map_err(|e| e.to_string())?;
+        commit(&app);
+    } else {
+        commit(&app);
+    }
     Ok(())
 }
 

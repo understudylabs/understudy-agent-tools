@@ -267,11 +267,20 @@ impl Residency {
             .iter_mut()
             .find(|r| r.id == slot_id)
             .ok_or_else(|| anyhow::anyhow!("slot not found: {slot_id}"))?;
-        if matches!(r.state, SlotState::Warm | SlotState::Loading) {
-            anyhow::bail!("cool the slot before changing thinking mode");
+        if matches!(r.state, SlotState::Loading) {
+            anyhow::bail!("slot is already loading");
         }
         r.thinking = thinking;
         Ok(())
+    }
+
+    pub fn is_warm(&self, slot_id: u32) -> anyhow::Result<bool> {
+        let inner = self.inner.lock().unwrap();
+        let r = inner
+            .iter()
+            .find(|r| r.id == slot_id)
+            .ok_or_else(|| anyhow::anyhow!("slot not found: {slot_id}"))?;
+        Ok(matches!(r.state, SlotState::Warm))
     }
 
     pub fn remove(&self, slot_id: u32) -> anyhow::Result<()> {

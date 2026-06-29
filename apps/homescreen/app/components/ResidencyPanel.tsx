@@ -73,7 +73,7 @@ function SlotCard({
 }) {
   const isWarm = slot.state === "running";
   const isLoading = slot.state === "loading";
-  const thinkingLocked = isWarm || isLoading;
+  const thinkingLocked = isLoading;
   return (
     <div className="model-row" style={{ alignItems: "flex-start", flexDirection: "column", gap: 8, padding: "12px 0" }}>
       <div style={{ width: "100%", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
@@ -111,7 +111,7 @@ function SlotCard({
           <option key={m.id} value={m.id}>{modelShortName(m.id, snapshots)} ({m.size_gb.toFixed(1)} GB)</option>
         ))}
       </select>
-      <label className="thinking-toggle" title={thinkingLocked ? "Cool this slot before changing thinking mode." : undefined}>
+      <label className="thinking-toggle" title={thinkingLocked ? "This slot is already loading." : undefined}>
         <input
           type="checkbox"
           checked={slot.thinking}
