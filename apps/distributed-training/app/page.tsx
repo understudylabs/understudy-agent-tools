@@ -140,31 +140,29 @@ export default function Page() {
 
   return (
     <main className="shell">
-      <section className="hero">
+      <header className="topbar">
         <div>
-          <p className="eyebrow">Bounty marketplace</p>
-          <h1>Distributed rollout jobs for open training</h1>
-          <p className="subhead">Browse paid rollout and inference bounties, claim a slice of work, upload trajectories, or publish a new job for contributors and agents to pick up.</p>
+          <p className="eyebrow">Understudy Bounties</p>
+          <h1>Create, retrieve, and submit rollout jobs.</h1>
         </div>
         <div className="summary">
           <Metric label="rollouts" value={`${totals.complete}/${totals.target}`} />
-          <Metric label="active claims" value={String(totals.claims)} />
-          <Metric label="market listings" value={String(activeJobs.length)} />
+          <Metric label="contributors" value={String(totals.claims)} />
+          <Metric label="jobs" value={String(activeJobs.length)} />
         </div>
+      </header>
+
+      <section className="job-actions">
+        <a href="#create">Create job</a>
+        <a href="#retrieve">Retrieve job</a>
+        <a href="#submit">Submit job</a>
       </section>
 
-      <section className="mode-strip">
-        <a href="#marketplace">Marketplace</a>
-        <a href="#contribute">Submit work</a>
-        <a href="#create">Create bounty</a>
-        <a href="#schema">Agent schema</a>
-      </section>
-
-      <section id="marketplace" className="grid">
+      <section id="retrieve" className="board">
         <div className="panel job-list">
           <div className="panel-head">
-            <h2>Marketplace</h2>
-            <span>{activeJobs.length} jobs</span>
+            <h2>Retrieve jobs</h2>
+            <span>{activeJobs.length} available</span>
           </div>
           {activeJobs.map((job) => {
             const pct = Math.min(100, Math.round((job.completedRollouts / job.targetRollouts) * 100));
@@ -172,10 +170,9 @@ export default function Page() {
               <button key={job._id} className={`job-row ${selected?._id === job._id ? "active" : ""}`} onClick={() => setSelectedId(job._id)}>
                 <div>
                   <div className="job-title">{job.title}</div>
-                  <div className="muted">{job.kind} · {job.model}</div>
+                  <div className="muted">{job.kind} · {job.activeClaims} tackling · {job.rewardUsd ? `$${job.rewardUsd}` : "open bounty"}</div>
                 </div>
                 <div className="job-progress">
-                  <span className={`pill ${job.status}`}>{job.status}</span>
                   <span>{pct}%</span>
                 </div>
               </button>
@@ -189,29 +186,29 @@ export default function Page() {
               <h2>{selected.title}</h2>
               <div className="head-tags">
                 <span className={`pill ${selected.status}`}>{selected.status}</span>
-                <span className={`pill ${selected.priority}`}>{selected.priority}</span>
+                <span className="pill">{selected.kind}</span>
               </div>
             </div>
-            <div className="progress"><i style={{ width: `${Math.min(100, (selected.completedRollouts / selected.targetRollouts) * 100)}%` }} /></div>
+
+            <div className="campaign">
+              <strong>{selected.completedRollouts}</strong>
+              <span>of {selected.targetRollouts} rollouts submitted</span>
+              <div className="progress"><i style={{ width: `${Math.min(100, (selected.completedRollouts / selected.targetRollouts) * 100)}%` }} /></div>
+              <div className="campaign-stats">
+                <Metric label="tackling" value={String(selected.activeClaims)} />
+                <Metric label="bounty" value={selected.rewardUsd ? `$${selected.rewardUsd}` : "open"} />
+                <Metric label="remaining" value={String(Math.max(0, selected.targetRollouts - selected.completedRollouts))} />
+              </div>
+            </div>
+
             <div className="facts">
               <Fact label="model" value={selected.model} />
               <Fact label="weights" value={selected.weights ?? "base route"} />
-              <Fact label="target" value={`${selected.completedRollouts}/${selected.targetRollouts}`} />
-              <Fact label="bounty" value={selected.rewardUsd ? `$${selected.rewardUsd}` : "open"} />
+              <Fact label="prompts" value={selected.promptSet.join(", ")} />
+              <Fact label="created by" value={selected.createdBy} />
             </div>
 
-            <div className="market-copy">
-              <div>
-                <h3>Prompt set</h3>
-                <p>{selected.promptSet.join(", ")}</p>
-              </div>
-              <div>
-                <h3>Listing</h3>
-                <p>{selected.kind} bounty created by {selected.createdBy}. Contributors can claim partial rollout batches; extra completed rollouts are acceptable.</p>
-              </div>
-            </div>
-
-            <h3 id="contribute">Contribute</h3>
+            <h3>Claim work</h3>
             <div className="actions">
               <label>
                 Worker
@@ -225,6 +222,7 @@ export default function Page() {
               <button className="danger" onClick={removeJob}>Remove</button>
             </div>
 
+            <h3 id="submit">Submit work</h3>
             <div className="actions">
               <label>
                 Submit count
@@ -239,30 +237,27 @@ export default function Page() {
 
             <div className="split">
               <div>
-                <h3>Claims</h3>
+                <h3>People tackling this</h3>
                 {selected.claims.length === 0 ? <p className="muted">No claims yet.</p> : selected.claims.map((claim) => (
                   <p key={claim._id} className="line">{claim.workerName} · {claim.submittedRollouts}/{claim.targetRollouts} · {claim.status}</p>
                 ))}
               </div>
               <div>
-                <h3>Submissions</h3>
+                <h3>Submitted artifacts</h3>
                 {selected.submissions.length === 0 ? <p className="muted">No submissions yet.</p> : selected.submissions.map((submission) => (
                   <p key={submission._id} className="line">{submission.workerName} · {submission.rolloutCount} · {submission.artifactUri ?? "inline"}</p>
                 ))}
               </div>
             </div>
-
-            <h3>Agent-readable job file</h3>
-            <pre>{selected.jobSpec}</pre>
           </div>
         )}
       </section>
 
-      <section className="grid lower">
+      <section className="lower">
         <form id="create" className="panel form" onSubmit={createJob}>
           <div className="panel-head">
-            <h2>Create bounty</h2>
-            <span>publish to marketplace</span>
+            <h2>Create job</h2>
+            <span>publish a bounty</span>
           </div>
           <label>Title<input required value={newJob.title} onChange={(event) => setNewJob({ ...newJob, title: event.target.value })} /></label>
           <label>Model<input required value={newJob.model} onChange={(event) => setNewJob({ ...newJob, model: event.target.value })} /></label>
@@ -274,15 +269,15 @@ export default function Page() {
             <label>Bounty<input type="number" value={newJob.rewardUsd} onChange={(event) => setNewJob({ ...newJob, rewardUsd: Number(event.target.value) })} /></label>
           </div>
           <label>Prompt set<textarea required rows={5} placeholder="One prompt or prompt id per line" value={newJob.promptSet} onChange={(event) => setNewJob({ ...newJob, promptSet: event.target.value })} /></label>
-          <button type="submit">Create job</button>
+          <button type="submit">Create bounty</button>
         </form>
 
         <div id="schema" className="panel">
           <div className="panel-head">
-            <h2>Agent schema</h2>
-            <span>plain JSON contract</span>
+            <h2>Job file</h2>
+            <span>agents can retrieve this</span>
           </div>
-          <pre>{JSON.stringify(jobSchema, null, 2)}</pre>
+          <pre>{selected ? selected.jobSpec : JSON.stringify(jobSchema, null, 2)}</pre>
         </div>
       </section>
     </main>
