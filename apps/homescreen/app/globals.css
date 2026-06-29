@@ -522,21 +522,6 @@ select,
   display: flex;
   flex-direction: column;
 }
-.chat-toolbar {
-  display: flex;
-  align-items: center;
-  gap: 10px;
-  min-height: 36px;
-  margin-bottom: 18px;
-}
-.chat-route {
-  flex: none;
-}
-.chat-target {
-  font-family: var(--mono);
-  font-size: 12px;
-  color: var(--text-3);
-}
 .chat-thread {
   flex: 1;
   overflow-y: auto;
@@ -663,7 +648,6 @@ select,
   outline: none;
 }
 .assign-select:focus { border-color: var(--border-strong); }
-.chat-target-select { width: auto; }
 
 /* ---------- Install CTA ---------- */
 .install-lede {

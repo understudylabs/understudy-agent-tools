@@ -50,7 +50,7 @@ export default function Page() {
       <Sidebar active={pane} onSelect={setPane} connected={connected} />
       <main className="content">
         {pane === "status" && <StatusPane status={status} />}
-        {pane === "chat" && <ChatPane status={status} />}
+        {pane === "chat" && <ChatPane />}
         {pane === "models" && <ModelsPane />}
         {isTrainingPane(pane) && <TrainingPane section={pane} />}
         {pane === "account" && <AccountPane />}

@@ -3,7 +3,6 @@ import { useRef, useState } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { Channel, invoke } from "@tauri-apps/api/core";
-import type { StatusController } from "../lib/useStatus";
 
 type Role = "user" | "assistant";
 type Msg = { role: Role; content: string };
@@ -12,22 +11,16 @@ type ChatEvent =
   | { type: "Error"; message: string }
   | { type: "Done" };
 
-export function ChatPane({ status }: { status: StatusController }) {
-  const [route, setRoute] = useState<"local" | "cloud">("cloud");
-  const [slotId, setSlotId] = useState<number | null>(null);
+export function ChatPane() {
   const [messages, setMessages] = useState<Msg[]>([]);
   const [input, setInput] = useState("");
   const [streaming, setStreaming] = useState(false);
   const [err, setErr] = useState<string | null>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
 
-  const warm = (status.snap?.residency.slots ?? []).filter((s) => s.state === "running");
-  const activeSlot = slotId !== null ? warm.find((s) => s.id === slotId) ?? null : warm[0] ?? null;
-  const needsChoice = route === "local" && !activeSlot;
-
   const send = async () => {
     const text = input.trim();
-    if (!text || streaming || needsChoice) return;
+    if (!text || streaming) return;
     setInput("");
     setErr(null);
 
@@ -57,8 +50,8 @@ export function ChatPane({ status }: { status: StatusController }) {
     try {
       await invoke("chat_stream", {
         messages: toSend,
-        route,
-        slotId: route === "local" ? (activeSlot?.id ?? null) : null,
+        route: "cloud",
+        slotId: null,
         onEvent: ch,
       });
     } catch (e: unknown) {
@@ -69,38 +62,11 @@ export function ChatPane({ status }: { status: StatusController }) {
 
   return (
     <div className="chat">
-      <div className="chat-toolbar">
-        <div className="seg chat-route">
-          <button className={route === "local" ? "active" : ""} onClick={() => setRoute("local")}>Serving</button>
-          <button className={route === "cloud" ? "active" : ""} onClick={() => setRoute("cloud")}>Cloud</button>
-        </div>
-        {route === "local" ? (
-          <select
-            className="assign-select chat-target-select"
-            value={activeSlot?.id ?? ""}
-            onChange={(e) => setSlotId(Number(e.target.value))}
-          >
-            <option value="" disabled>{warm.length ? "Select a warm model…" : "No models warm — warm one on Models"}</option>
-            {warm.map((s) => (
-              <option key={s.id} value={s.id}>{s.model_id} · :{s.port}</option>
-            ))}
-          </select>
-        ) : (
-          <span className="chat-target">Gateway · glm-5.2</span>
-        )}
-      </div>
-
       <div className="chat-thread" ref={scrollRef}>
         {messages.length === 0 ? (
           <div className="empty-pane">
             <h2>Chat</h2>
-            <p>
-              {route === "local"
-                ? activeSlot
-                  ? `Streaming from ${activeSlot.model_id}.`
-                  : "Warm a model on the Models pane, then pick it here."
-                : "Cloud route streams from the Understudy gateway (GLM-5.2)."}
-            </p>
+            <p>Ask Understudy.</p>
           </div>
         ) : (
           messages.map((m, i) => (
@@ -133,10 +99,10 @@ export function ChatPane({ status }: { status: StatusController }) {
               send();
             }
           }}
-          placeholder={needsChoice ? "Select a warm model…" : "Ask Understudy…"}
+          placeholder="Ask Understudy…"
           rows={2}
         />
-        <button type="submit" className="btn primary" disabled={streaming || !input.trim() || needsChoice}>
+        <button type="submit" className="btn primary" disabled={streaming || !input.trim()}>
           {streaming ? "…" : "Send"}
         </button>
       </form>

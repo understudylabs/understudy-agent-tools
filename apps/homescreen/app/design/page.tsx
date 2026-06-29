@@ -72,7 +72,7 @@ export default function DesignPage() {
           </Row>
           <Row label="sans / reading">
             <span style={{ fontFamily: "var(--font-sans)", fontSize: 13 }}>
-              Lightweight chat against the local model, or flip to the cloud gateway.
+              Lightweight chat in one focused frame.
             </span>
           </Row>
         </Surface>
