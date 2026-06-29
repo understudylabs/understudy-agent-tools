@@ -214,7 +214,7 @@ export function ChatPane() {
       : "idle";
 
   return (
-    <div className="chat ai-chat">
+    <div className={"chat ai-chat" + (messages.length > 0 ? " has-messages" : "")}>
       <div className="persona-stage" aria-hidden="true">
         <Persona variant="halo" state={personaState} className="persona-halo" />
       </div>
