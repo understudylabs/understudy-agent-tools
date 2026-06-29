@@ -573,6 +573,24 @@ select,
   color: var(--text-3);
   text-transform: uppercase;
 }
+.ai-thinking-toggle {
+  min-height: 30px;
+  border: 1px solid var(--border);
+  border-radius: var(--r-control);
+  background: var(--surface-2);
+  color: var(--text-3);
+  padding: 5px 9px;
+  font-family: var(--mono);
+  font-size: 11px;
+  line-height: 1;
+}
+.ai-thinking-toggle.active {
+  border-color: color-mix(in srgb, var(--accent) 55%, var(--border));
+  color: var(--text);
+}
+.ai-thinking-toggle:disabled {
+  opacity: 0.45;
+}
 .chat-role {
   margin-bottom: 5px;
   font-family: var(--mono);

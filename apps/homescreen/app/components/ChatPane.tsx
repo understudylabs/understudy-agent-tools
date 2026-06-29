@@ -58,6 +58,7 @@ type ResidencySnapshot = {
     model_id?: string | null;
     state: string;
     port?: number | null;
+    thinking: boolean;
   }[];
 };
 type SnapshotModel = SnapshotAlias;
@@ -69,6 +70,7 @@ type ModelChoice =
       detail: string;
       route: "local";
       slotId: number;
+      thinking: boolean;
       active: boolean;
     }
   | {
@@ -111,6 +113,7 @@ export function ChatPane() {
           detail: `${slot.model_id}${slot.port ? ` · :${slot.port}` : ""}`,
           route: "local",
           slotId: slot.id,
+          thinking: slot.thinking,
           active: true,
         }));
       const next = [...local, CLOUD_MODEL];
@@ -188,6 +191,17 @@ export function ChatPane() {
     } catch (e: unknown) {
       setErr(String(e));
       setStreaming(false);
+    }
+  };
+
+  const setThinking = async (thinking: boolean) => {
+    if (selectedChoice.route !== "local") return;
+    setErr(null);
+    try {
+      await invoke("set_slot_thinking", { slotId: selectedChoice.slotId, thinking });
+      await refreshModels();
+    } catch (e: unknown) {
+      setErr(String(e));
     }
   };
 
@@ -275,6 +289,11 @@ export function ChatPane() {
                 selected={selectedChoice}
                 onSelect={(id) => setSelectedModel(id)}
               />
+              <ThinkingToggle
+                selected={selectedChoice}
+                disabled={streaming}
+                onToggle={setThinking}
+              />
             </PromptInputTools>
             <PromptInputSubmit
               status={streaming ? "streaming" : err ? "error" : "ready"}
@@ -284,6 +303,29 @@ export function ChatPane() {
         </PromptInput>
       </div>
     </div>
+  );
+}
+
+function ThinkingToggle({
+  selected,
+  disabled,
+  onToggle,
+}: {
+  selected: ModelChoice;
+  disabled: boolean;
+  onToggle: (thinking: boolean) => void;
+}) {
+  const isLocal = selected.route === "local";
+  return (
+    <button
+      type="button"
+      className={"ai-thinking-toggle" + (isLocal && selected.thinking ? " active" : "")}
+      disabled={!isLocal || disabled}
+      title={isLocal ? "Reload this local model with thinking mode." : "Thinking is available for local models."}
+      onClick={() => isLocal && onToggle(!selected.thinking)}
+    >
+      Thinking
+    </button>
   );
 }
 
