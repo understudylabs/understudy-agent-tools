@@ -12,6 +12,8 @@ const nextConfig = {
   images: { unoptimized: true },
   // Tauri dev server lives on 1420; allow it to drive the webview.
   reactStrictMode: true,
+  // The in-app shell already has native chrome; hide Next's dev-mode badge.
+  devIndicators: false,
 };
 
 export default nextConfig;
