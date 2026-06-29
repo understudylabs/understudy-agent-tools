@@ -25,7 +25,9 @@ pub struct ChatMsg {
 /// Read the gateway URL + API key from ~/.understudy/credentials.json (server-side only).
 fn credentials() -> Option<(String, String)> {
     let home = std::env::var_os("HOME")?;
-    let path = PathBuf::from(home).join(".understudy").join("credentials.json");
+    let path = PathBuf::from(home)
+        .join(".understudy")
+        .join("credentials.json");
     let value: serde_json::Value =
         serde_json::from_str(&std::fs::read_to_string(path).ok()?).ok()?;
     let url = value.get("gateway_url")?.as_str()?.to_string();
@@ -59,7 +61,11 @@ pub async fn chat_stream(
             let (port, path) = mgr
                 .endpoint(sid)
                 .ok_or_else(|| "selected slot is not warm".to_string())?;
-            (format!("http://127.0.0.1:{port}/v1/chat/completions"), None, path)
+            (
+                format!("http://127.0.0.1:{port}/v1/chat/completions"),
+                None,
+                path,
+            )
         }
     };
 

@@ -1,0 +1,114 @@
+[
+  {
+    "id": "gemma-4-e2b-it-qat-mlx-vlm-understudy",
+    "name": "Gemma 4 E2B IT QAT MLX 4-bit, Understudy",
+    "approx_gb": 3.6,
+    "loader": "mlx_vlm",
+    "default_rung": true,
+    "notes": "Default onboarding rung. QAT-derived 4-bit at group_size=32. Certified generation, OpenAI-compatible serving, logprobs+top_logprobs, and tool_calls at the prescribed decode."
+  },
+  {
+    "id": "gemma-4-e2b-it-mlx-vlm-4bit",
+    "name": "Gemma 4 E2B IT MLX-VLM 4-bit",
+    "approx_gb": 3.3,
+    "loader": "mlx_vlm",
+    "default_rung": false,
+    "notes": "Vanilla non-QAT bf16 to MLX 4-bit. Diagnostic rung for isolating quantization artifacts against the QAT default."
+  },
+  {
+    "id": "gemma-4-e2b-it-mlx-vlm-bf16",
+    "name": "Gemma 4 E2B IT MLX-VLM BF16",
+    "approx_gb": 9.5,
+    "loader": "mlx_vlm",
+    "default_rung": false,
+    "notes": "Full-precision diagnostic rung for small-model quality checks."
+  },
+  {
+    "id": "gemma-4-e4b-it-mlx-vlm-4bit",
+    "name": "Gemma 4 E4B IT MLX-VLM 4-bit",
+    "approx_gb": 4.8,
+    "loader": "mlx_vlm",
+    "default_rung": false,
+    "notes": "First climb when E2B understands the task but lacks quality."
+  },
+  {
+    "id": "gemma-4-e4b-it-mlx-vlm-bf16",
+    "name": "Gemma 4 E4B IT MLX-VLM BF16",
+    "approx_gb": 15.0,
+    "loader": "mlx_vlm",
+    "default_rung": false,
+    "notes": "Full-precision E4B diagnostic when 4-bit quality looks suspicious."
+  },
+  {
+    "id": "gemma-4-12b-it-mlx-vlm-4bit",
+    "name": "Gemma 4 12B IT MLX-VLM 4-bit",
+    "approx_gb": 6.3,
+    "loader": "mlx_vlm",
+    "default_rung": false,
+    "notes": "M4/M5 MacBook Pro or high-RAM Air rung when E4B behavior is right but not deep enough."
+  },
+  {
+    "id": "gemma-4-12b-it-mlx-vlm-bf16",
+    "name": "Gemma 4 12B IT MLX-VLM BF16",
+    "approx_gb": 22.0,
+    "loader": "mlx_vlm",
+    "default_rung": false,
+    "notes": "Quality/perf profiling rung on larger-memory Macs."
+  },
+  {
+    "id": "gemma-4-26b-a4b-it-mlx-vlm-4bit",
+    "name": "Gemma 4 26B A4B IT MLX-VLM 4-bit",
+    "approx_gb": 14.0,
+    "loader": "mlx_vlm",
+    "default_rung": false,
+    "notes": "MoE-style local climb for strong quality with lower active-parameter cost."
+  },
+  {
+    "id": "gemma-4-26b-a4b-it-qat-mlx-vlm-understudy",
+    "name": "Gemma 4 26B A4B IT QAT MLX 4-bit, Understudy",
+    "approx_gb": 16.0,
+    "loader": "mlx_vlm",
+    "default_rung": false,
+    "notes": "Certified MLX 4-bit QAT MoE from Google's QAT checkpoint. Certified generation, logprobs/top_logprobs, and tool calls."
+  },
+  {
+    "id": "gemma-4-26b-a4b-it-mlx-vlm-bf16",
+    "name": "Gemma 4 26B A4B IT MLX-VLM BF16",
+    "approx_gb": 52.0,
+    "loader": "mlx_vlm",
+    "default_rung": false,
+    "notes": "Full-precision MoE high end for 64 GB+ Macs when 4-bit quality is in question."
+  },
+  {
+    "id": "gemma-4-31b-it-mlx-vlm-4bit",
+    "name": "Gemma 4 31B IT MLX-VLM 4-bit",
+    "approx_gb": 17.0,
+    "loader": "mlx_vlm",
+    "default_rung": false,
+    "notes": "Workstation/high-memory local rung when dense capacity matters."
+  },
+  {
+    "id": "gemma-4-31b-it-mlx-vlm-bf16",
+    "name": "Gemma 4 31B IT MLX-VLM BF16",
+    "approx_gb": 62.0,
+    "loader": "mlx_vlm",
+    "default_rung": false,
+    "notes": "Full-precision dense high end for 96 GB+ Macs."
+  },
+  {
+    "id": "diffusiongemma-26b-a4b-it-mlx-vlm-4bit",
+    "name": "DiffusionGemma 26B A4B IT MLX-VLM 4-bit",
+    "approx_gb": 16.0,
+    "loader": "mlx_vlm",
+    "default_rung": false,
+    "notes": "Block-diffusion variant of the 26B A4B MoE. Requires mlx-vlm 0.6.3 or newer."
+  },
+  {
+    "id": "diffusiongemma-26b-a4b-it-mlx-vlm-bf16",
+    "name": "DiffusionGemma 26B A4B IT MLX-VLM BF16",
+    "approx_gb": 52.0,
+    "loader": "mlx_vlm",
+    "default_rung": false,
+    "notes": "Full-precision diffusion rung for 64 GB+ Macs."
+  }
+]

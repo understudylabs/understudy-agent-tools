@@ -18,10 +18,7 @@ pub fn call_tool(name: &str, args: Value) -> anyhow::Result<Value> {
         .map_err(|e| anyhow!("spawn moraine-mcp failed (Moraine installed?): {e}"))?;
 
     {
-        let stdin = child
-            .stdin
-            .as_mut()
-            .ok_or_else(|| anyhow!("no stdin"))?;
+        let stdin = child.stdin.as_mut().ok_or_else(|| anyhow!("no stdin"))?;
         writeln!(
             stdin,
             "{}",
@@ -49,10 +46,7 @@ pub fn call_tool(name: &str, args: Value) -> anyhow::Result<Value> {
         stdin.flush()?;
     }
 
-    let stdout = child
-        .stdout
-        .take()
-        .ok_or_else(|| anyhow!("no stdout"))?;
+    let stdout = child.stdout.take().ok_or_else(|| anyhow!("no stdout"))?;
     let mut result: Option<Value> = None;
     for line in BufReader::new(stdout).lines() {
         let line = match line {

@@ -126,8 +126,9 @@ impl Db {
     /// Most-recent benchmark rows (local live measurements).
     pub fn list_benchmarks(&self) -> Result<Vec<BenchRow>> {
         let conn = self.conn()?;
-        let mut stmt =
-            conn.prepare("SELECT model, tok_per_sec, mem_gb, load_ms, run_at FROM benchmarks ORDER BY id DESC")?;
+        let mut stmt = conn.prepare(
+            "SELECT model, tok_per_sec, mem_gb, load_ms, run_at FROM benchmarks ORDER BY id DESC",
+        )?;
         let rows = stmt.query_map([], |r| {
             Ok(BenchRow {
                 model: r.get(0)?,
@@ -137,13 +138,16 @@ impl Db {
                 run_at: r.get(4)?,
             })
         })?;
-        rows.collect::<rusqlite::Result<Vec<_>>>().map_err(Into::into)
+        rows.collect::<rusqlite::Result<Vec<_>>>()
+            .map_err(Into::into)
     }
 
     pub fn setting_get(&self, key: &str) -> Option<String> {
         let conn = self.conn().ok()?;
-        conn.query_row("SELECT value FROM settings WHERE key=?1", [key], |r| r.get::<_, String>(0))
-            .ok()
+        conn.query_row("SELECT value FROM settings WHERE key=?1", [key], |r| {
+            r.get::<_, String>(0)
+        })
+        .ok()
     }
 
     pub fn setting_set(&self, key: &str, value: &str) -> Result<()> {

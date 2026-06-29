@@ -30,6 +30,7 @@ pub fn router(ctx: Ctx) -> Router {
         // REST
         .route("/api/status", get(status))
         .route("/api/models", get(models))
+        .route("/api/snapshots", get(snapshots))
         .route("/api/residency", get(residency))
         .route("/api/dossiers", get(dossiers))
         .route("/api/benchmarks", get(benchmarks))
@@ -111,55 +112,116 @@ async fn models(State(ctx): State<Ctx>, h: HeaderMap) -> Result<Json<Value>, (St
     auth(&ctx, &h)?;
     Ok(Json(json!(crate::commands::list_models())))
 }
-async fn residency(State(ctx): State<Ctx>, h: HeaderMap) -> Result<Json<Value>, (StatusCode, String)> {
+async fn snapshots(
+    State(ctx): State<Ctx>,
+    h: HeaderMap,
+) -> Result<Json<Value>, (StatusCode, String)> {
+    auth(&ctx, &h)?;
+    Ok(Json(json!(crate::commands::list_snapshot_models())))
+}
+async fn residency(
+    State(ctx): State<Ctx>,
+    h: HeaderMap,
+) -> Result<Json<Value>, (StatusCode, String)> {
     auth(&ctx, &h)?;
     Ok(Json(json!(crate::commands::get_residency(ctx.app.clone()))))
 }
-async fn dossiers(State(ctx): State<Ctx>, h: HeaderMap) -> Result<Json<Value>, (StatusCode, String)> {
+async fn dossiers(
+    State(ctx): State<Ctx>,
+    h: HeaderMap,
+) -> Result<Json<Value>, (StatusCode, String)> {
     auth(&ctx, &h)?;
     Ok(Json(json!(crate::commands::knowledge_dossiers())))
 }
-async fn benchmarks(State(ctx): State<Ctx>, h: HeaderMap) -> Result<Json<Value>, (StatusCode, String)> {
+async fn benchmarks(
+    State(ctx): State<Ctx>,
+    h: HeaderMap,
+) -> Result<Json<Value>, (StatusCode, String)> {
     auth(&ctx, &h)?;
-    crate::commands::local_benchmarks(ctx.app.clone()).map(|v| Json(json!(v))).map_err(|e| (StatusCode::BAD_GATEWAY, e))
+    crate::commands::local_benchmarks(ctx.app.clone())
+        .map(|v| Json(json!(v)))
+        .map_err(|e| (StatusCode::BAD_GATEWAY, e))
 }
-async fn profile(State(ctx): State<Ctx>, h: HeaderMap, Path(id): Path<String>) -> Result<Json<Value>, (StatusCode, String)> {
+async fn profile(
+    State(ctx): State<Ctx>,
+    h: HeaderMap,
+    Path(id): Path<String>,
+) -> Result<Json<Value>, (StatusCode, String)> {
     auth(&ctx, &h)?;
     // Cited profile assembled from the same sources the GUI uses.
     let dossiers = crate::commands::knowledge_dossiers();
     let benches = crate::commands::local_benchmarks(ctx.app.clone()).unwrap_or_default();
-    let aa = crate::commands::aa_models(ctx.app.clone()).await.unwrap_or_default();
-    Ok(Json(json!({ "id": id, "dossiers": dossiers, "benchmarks": benches, "artificial_analysis": aa })))
+    let aa = crate::commands::aa_models(ctx.app.clone())
+        .await
+        .unwrap_or_default();
+    Ok(Json(
+        json!({ "id": id, "dossiers": dossiers, "benchmarks": benches, "artificial_analysis": aa }),
+    ))
 }
 #[derive(serde::Deserialize)]
-struct LimitQ { limit: Option<u32> }
-async fn traces_list(State(ctx): State<Ctx>, h: HeaderMap, Query(q): Query<LimitQ>) -> Result<Json<Value>, (StatusCode, String)> {
+struct LimitQ {
+    limit: Option<u32>,
+}
+async fn traces_list(
+    State(ctx): State<Ctx>,
+    h: HeaderMap,
+    Query(q): Query<LimitQ>,
+) -> Result<Json<Value>, (StatusCode, String)> {
     auth(&ctx, &h)?;
-    crate::commands::list_traces(q.limit).map(Json).map_err(|e| (StatusCode::BAD_GATEWAY, e))
+    crate::commands::list_traces(q.limit)
+        .map(Json)
+        .map_err(|e| (StatusCode::BAD_GATEWAY, e))
 }
 #[derive(serde::Deserialize)]
-struct SearchQ { q: String }
-async fn traces_search(State(ctx): State<Ctx>, h: HeaderMap, Query(q): Query<SearchQ>) -> Result<Json<Value>, (StatusCode, String)> {
-    auth(&ctx, &h)?;
-    crate::commands::search_traces(q.q).map(Json).map_err(|e| (StatusCode::BAD_GATEWAY, e))
+struct SearchQ {
+    q: String,
 }
-async fn traces_open(State(ctx): State<Ctx>, h: HeaderMap, Path(id): Path<String>) -> Result<Json<Value>, (StatusCode, String)> {
+async fn traces_search(
+    State(ctx): State<Ctx>,
+    h: HeaderMap,
+    Query(q): Query<SearchQ>,
+) -> Result<Json<Value>, (StatusCode, String)> {
     auth(&ctx, &h)?;
-    crate::commands::open_trace(id).map(Json).map_err(|e| (StatusCode::BAD_GATEWAY, e))
+    crate::commands::search_traces(q.q)
+        .map(Json)
+        .map_err(|e| (StatusCode::BAD_GATEWAY, e))
+}
+async fn traces_open(
+    State(ctx): State<Ctx>,
+    h: HeaderMap,
+    Path(id): Path<String>,
+) -> Result<Json<Value>, (StatusCode, String)> {
+    auth(&ctx, &h)?;
+    crate::commands::open_trace(id)
+        .map(Json)
+        .map_err(|e| (StatusCode::BAD_GATEWAY, e))
 }
 
 /// Inbound: an agent asks the GUI to focus a pane / show something.
 #[derive(serde::Deserialize)]
-struct FocusBody { pane: Option<String>, model: Option<String> }
-async fn ui_focus(State(ctx): State<Ctx>, h: HeaderMap, Json(b): Json<FocusBody>) -> Result<Json<Value>, (StatusCode, String)> {
+struct FocusBody {
+    pane: Option<String>,
+    model: Option<String>,
+}
+async fn ui_focus(
+    State(ctx): State<Ctx>,
+    h: HeaderMap,
+    Json(b): Json<FocusBody>,
+) -> Result<Json<Value>, (StatusCode, String)> {
     auth(&ctx, &h)?;
-    let _ = ctx.app.emit("server-focus", json!({ "pane": b.pane, "model": b.model }));
+    let _ = ctx
+        .app
+        .emit("server-focus", json!({ "pane": b.pane, "model": b.model }));
     Ok(Json(json!({ "ok": true })))
 }
 
 // ---------------- MCP front ----------------
 
-async fn mcp(State(ctx): State<Ctx>, h: HeaderMap, Json(req): Json<Value>) -> Result<Json<Value>, (StatusCode, String)> {
+async fn mcp(
+    State(ctx): State<Ctx>,
+    h: HeaderMap,
+    Json(req): Json<Value>,
+) -> Result<Json<Value>, (StatusCode, String)> {
     auth(&ctx, &h)?;
     let id = req.get("id").cloned().unwrap_or(Value::Null);
     let method = req.get("method").and_then(|m| m.as_str()).unwrap_or("");
@@ -173,7 +235,9 @@ async fn mcp(State(ctx): State<Ctx>, h: HeaderMap, Json(req): Json<Value>) -> Re
             }
         }))),
         "notifications/initialized" => Ok(Json(json!({ "jsonrpc": "2.0" }))),
-        "tools/list" => Ok(Json(json!({ "jsonrpc":"2.0","id":id,"result":{ "tools": tools() } }))),
+        "tools/list" => Ok(Json(
+            json!({ "jsonrpc":"2.0","id":id,"result":{ "tools": tools() } }),
+        )),
         "tools/call" => {
             let params = req.get("params").cloned().unwrap_or(Value::Null);
             let name = params.get("name").and_then(|n| n.as_str()).unwrap_or("");
@@ -183,10 +247,14 @@ async fn mcp(State(ctx): State<Ctx>, h: HeaderMap, Json(req): Json<Value>) -> Re
                     "content":[{ "type":"text","text": serde_json::to_string(&value).unwrap_or_default() }],
                     "structuredContent": value
                 }}))),
-                Err(e) => Ok(Json(json!({ "jsonrpc":"2.0","id":id,"error":{ "code":-32603,"message":e } }))),
+                Err(e) => Ok(Json(
+                    json!({ "jsonrpc":"2.0","id":id,"error":{ "code":-32603,"message":e } }),
+                )),
             }
         }
-        _ => Ok(Json(json!({ "jsonrpc":"2.0","id":id,"error":{ "code":-32601,"message":"method not found" } }))),
+        _ => Ok(Json(
+            json!({ "jsonrpc":"2.0","id":id,"error":{ "code":-32601,"message":"method not found" } }),
+        )),
     }
 }
 
@@ -194,6 +262,7 @@ fn tools() -> Vec<Value> {
     [
         ("status", "Local runtime status: services, warm slots, metrics."),
         ("list_models", "List locally cached models."),
+        ("list_snapshot_models", "Bundled local MLX snapshot catalog."),
         ("residency", "Warm-slot residency (which models are loaded)."),
         ("knowledge_dossiers", "Bundled public per-model dossiers."),
         ("local_benchmarks", "Local live benchmark rows."),
@@ -214,15 +283,34 @@ async fn call_tool(ctx: &Ctx, name: &str, args: &Value) -> Result<Value, String>
     Ok(match name {
         "status" => json!(c::get_status(app)),
         "list_models" => json!(c::list_models()),
+        "list_snapshot_models" => json!(c::list_snapshot_models()),
         "residency" => json!(c::get_residency(app)),
         "knowledge_dossiers" => json!(c::knowledge_dossiers()),
         "local_benchmarks" => json!(c::local_benchmarks(app).map_err(|e| e.to_string())?),
         "aa_models" => json!(c::aa_models(app).await.map_err(|e| e.to_string())?),
-        "list_traces" => c::list_traces(args.get("limit").and_then(|v| v.as_u64()).map(|x| x as u32)).map_err(|e| e.to_string())?,
-        "search_traces" => c::search_traces(args.get("q").and_then(|v| v.as_str()).unwrap_or("").to_string()).map_err(|e| e.to_string())?,
-        "open_trace" => c::open_trace(args.get("id").and_then(|v| v.as_str()).unwrap_or("").to_string()).map_err(|e| e.to_string())?,
+        "list_traces" => {
+            c::list_traces(args.get("limit").and_then(|v| v.as_u64()).map(|x| x as u32))
+                .map_err(|e| e.to_string())?
+        }
+        "search_traces" => c::search_traces(
+            args.get("q")
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_string(),
+        )
+        .map_err(|e| e.to_string())?,
+        "open_trace" => c::open_trace(
+            args.get("id")
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_string(),
+        )
+        .map_err(|e| e.to_string())?,
         "ui_focus" => {
-            let _ = app.emit("server-focus", json!({ "pane": args.get("pane"), "model": args.get("model") }));
+            let _ = app.emit(
+                "server-focus",
+                json!({ "pane": args.get("pane"), "model": args.get("model") }),
+            );
             json!({ "ok": true })
         }
         other => return Err(format!("unknown tool: {other}")),
@@ -231,7 +319,10 @@ async fn call_tool(ctx: &Ctx, name: &str, args: &Value) -> Result<Value, String>
 
 // ---------------- A2A front (v1: card + task stub) ----------------
 
-async fn a2a_card(State(ctx): State<Ctx>, h: HeaderMap) -> Result<Json<Value>, (StatusCode, String)> {
+async fn a2a_card(
+    State(ctx): State<Ctx>,
+    h: HeaderMap,
+) -> Result<Json<Value>, (StatusCode, String)> {
     auth(&ctx, &h)?;
     Ok(Json(json!({
         "name": "understudy-desktop",
@@ -245,7 +336,11 @@ async fn a2a_card(State(ctx): State<Ctx>, h: HeaderMap) -> Result<Json<Value>, (
     })))
 }
 
-async fn a2a_task(State(ctx): State<Ctx>, h: HeaderMap, Json(req): Json<Value>) -> Result<Json<Value>, (StatusCode, String)> {
+async fn a2a_task(
+    State(ctx): State<Ctx>,
+    h: HeaderMap,
+    Json(req): Json<Value>,
+) -> Result<Json<Value>, (StatusCode, String)> {
     auth(&ctx, &h)?;
     // v1: acknowledge the task; full agent-driven execution lands with the
     // outbound agent-runner slice.
@@ -261,7 +356,10 @@ async fn a2a_task(State(ctx): State<Ctx>, h: HeaderMap, Json(req): Json<Value>) 
 
 fn gen_token() -> String {
     use std::time::{SystemTime, UNIX_EPOCH};
-    let mut x: u64 = SystemTime::now().duration_since(UNIX_EPOCH).map(|d| d.as_nanos() as u64).unwrap_or(0);
+    let mut x: u64 = SystemTime::now()
+        .duration_since(UNIX_EPOCH)
+        .map(|d| d.as_nanos() as u64)
+        .unwrap_or(0);
     x ^= std::process::id() as u64;
     x = x.wrapping_mul(0x9E3779B97F4A7C15).rotate_left(13) ^ x;
     format!("{x:016x}")
@@ -271,7 +369,10 @@ fn gen_token() -> String {
 pub fn info(app: &AppHandle) -> Option<(String, String)> {
     let db = app.try_state::<crate::db::Db>()?;
     let token = db.setting_get(TOKEN_KEY)?;
-    let port = db.setting_get(PORT_KEY).and_then(|p| p.parse().ok()).unwrap_or(DEFAULT_PORT);
+    let port = db
+        .setting_get(PORT_KEY)
+        .and_then(|p| p.parse().ok())
+        .unwrap_or(DEFAULT_PORT);
     Some((format!("http://127.0.0.1:{port}"), token))
 }
 

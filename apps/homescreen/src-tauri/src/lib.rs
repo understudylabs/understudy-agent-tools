@@ -1,5 +1,5 @@
-mod account;
 mod aa;
+mod account;
 mod bin;
 mod chat;
 mod commands;
@@ -29,10 +29,7 @@ pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .setup(|app| {
-            let data_dir = app
-                .path()
-                .app_data_dir()
-                .expect("app data dir resolved");
+            let data_dir = app.path().app_data_dir().expect("app data dir resolved");
 
             let machine = metrics::detect_machine();
             let residency = residency::Residency::new(machine.memory_gb);
@@ -55,8 +52,20 @@ pub fn run() {
 
             // Menu-bar tray.
             let show = MenuItem::with_id(app, "show", "Show Understudy", true, None::<&str>)?;
-            let conn = MenuItem::with_id(app, "connect", "Connect (start Moraine)", true, None::<&str>)?;
-            let disc = MenuItem::with_id(app, "disconnect", "Disconnect (stop Moraine)", true, None::<&str>)?;
+            let conn = MenuItem::with_id(
+                app,
+                "connect",
+                "Connect (start Moraine)",
+                true,
+                None::<&str>,
+            )?;
+            let disc = MenuItem::with_id(
+                app,
+                "disconnect",
+                "Disconnect (stop Moraine)",
+                true,
+                None::<&str>,
+            )?;
             let sep = PredefinedMenuItem::separator(app)?;
             let quit = MenuItem::with_id(app, "quit", "Quit Understudy", true, None::<&str>)?;
             let menu = Menu::with_items(app, &[&show, &conn, &disc, &sep, &quit])?;
@@ -73,10 +82,14 @@ pub fn run() {
                 .on_menu_event(|app, event| match event.id.as_ref() {
                     "show" => show_window(app),
                     "connect" => {
-                        let _ = std::process::Command::new(bin::moraine()).arg("up").status();
+                        let _ = std::process::Command::new(bin::moraine())
+                            .arg("up")
+                            .status();
                     }
                     "disconnect" => {
-                        let _ = std::process::Command::new(bin::moraine()).arg("down").status();
+                        let _ = std::process::Command::new(bin::moraine())
+                            .arg("down")
+                            .status();
                     }
                     "quit" => app.exit(0),
                     _ => {}
@@ -100,6 +113,8 @@ pub fn run() {
             commands::connect,
             commands::disconnect,
             commands::list_models,
+            commands::list_snapshot_models,
+            commands::mlx_runtime_status,
             commands::get_residency,
             commands::add_slot,
             commands::assign_slot,

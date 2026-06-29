@@ -55,7 +55,10 @@ pub async fn models(db: &Db) -> Result<Vec<AaModel>> {
         return Err(anyhow!("AA returned {}", resp.status()));
     }
     let v: serde_json::Value = resp.json().await?;
-    let arr = v.get("data").cloned().unwrap_or(serde_json::Value::Array(vec![]));
+    let arr = v
+        .get("data")
+        .cloned()
+        .unwrap_or(serde_json::Value::Array(vec![]));
 
     let mut out = vec![];
     if let Some(items) = arr.as_array() {
@@ -64,8 +67,7 @@ pub async fn models(db: &Db) -> Result<Vec<AaModel>> {
                 name: it["name"].as_str().unwrap_or("").to_string(),
                 slug: it["slug"].as_str().map(String::from),
                 creator: it["model_creator"]["name"].as_str().map(String::from),
-                intelligence: it["evaluations"]["artificial_analysis_intelligence_index"]
-                    .as_f64(),
+                intelligence: it["evaluations"]["artificial_analysis_intelligence_index"].as_f64(),
                 coding_index: it["evaluations"]["artificial_analysis_coding_index"].as_f64(),
                 price_in: it["pricing"]["price_1m_input_tokens"].as_f64(),
                 price_out: it["pricing"]["price_1m_output_tokens"].as_f64(),

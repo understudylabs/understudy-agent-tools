@@ -1,5 +1,5 @@
-use crate::account;
 use crate::aa::{self, AaModel};
+use crate::account;
 use crate::bin;
 use crate::db::BenchRow;
 use crate::knowledge::{self, Dossier};
@@ -112,18 +112,14 @@ pub fn warm_slot(app: AppHandle, slot_id: u32) -> Result<(), String> {
 
 #[tauri::command]
 pub fn cool_slot(app: AppHandle, slot_id: u32) -> Result<(), String> {
-    residency(&app)
-        .cool(slot_id)
-        .map_err(|e| e.to_string())?;
+    residency(&app).cool(slot_id).map_err(|e| e.to_string())?;
     commit(&app);
     Ok(())
 }
 
 #[tauri::command]
 pub fn remove_slot(app: AppHandle, slot_id: u32) -> Result<(), String> {
-    residency(&app)
-        .remove(slot_id)
-        .map_err(|e| e.to_string())?;
+    residency(&app).remove(slot_id).map_err(|e| e.to_string())?;
     commit(&app);
     Ok(())
 }
@@ -131,6 +127,16 @@ pub fn remove_slot(app: AppHandle, slot_id: u32) -> Result<(), String> {
 #[tauri::command]
 pub fn list_models() -> Vec<models::ModelInfo> {
     models::list()
+}
+
+#[tauri::command]
+pub fn list_snapshot_models() -> Vec<models::SnapshotInfo> {
+    models::snapshots()
+}
+
+#[tauri::command]
+pub fn mlx_runtime_status() -> models::MlxRuntimeStatus {
+    models::mlx_runtime_status()
 }
 
 // ----- moraine / traces (MCP) -----
@@ -174,10 +180,7 @@ pub fn install_moraine() -> Result<String, String> {
     if out.status.success() {
         Ok(stdout)
     } else {
-        Err(format!(
-            "{stdout}{}",
-            String::from_utf8_lossy(&out.stderr)
-        ))
+        Err(format!("{stdout}{}", String::from_utf8_lossy(&out.stderr)))
     }
 }
 

@@ -24,6 +24,22 @@ type BenchRow = {
   load_ms?: number | null;
   run_at: string;
 };
+type SnapshotModel = {
+  id: string;
+  name: string;
+  approx_gb: number;
+  loader: string;
+  default_rung: boolean;
+  notes: string;
+  cached: boolean;
+  path?: string | null;
+  manifest: boolean;
+};
+type MlxRuntimeStatus = {
+  available: boolean;
+  command: string;
+  detail: string;
+};
 type AaModel = {
   name: string;
   creator?: string;
@@ -60,11 +76,13 @@ const PROVIDER_LABELS: Record<Provider, string> = {
   other: "Other",
 };
 
-const GROUP_ORDER = ["Understudy", "OpenAI", "Anthropic", "Google", "Z AI", "Moonshot", "MiniMax", "NVIDIA", "Other"];
+const GROUP_ORDER = ["Serving", "Understudy", "OpenAI", "Anthropic", "Google", "Z AI", "Moonshot", "MiniMax", "NVIDIA", "Other"];
 
 export function ModelsPane() {
   const [dossiers, setDossiers] = useState<Dossier[] | null>(null);
   const [benches, setBenches] = useState<BenchRow[]>([]);
+  const [snapshots, setSnapshots] = useState<SnapshotModel[]>([]);
+  const [mlxRuntime, setMlxRuntime] = useState<MlxRuntimeStatus | null>(null);
   const [aa, setAa] = useState<AaModel[] | null>(null);
   const [aaSrc, setAaSrc] = useState("");
   const [sel, setSel] = useState<string | null>(null);
@@ -75,6 +93,8 @@ export function ModelsPane() {
   useEffect(() => {
     invoke<Dossier[]>("knowledge_dossiers").then(setDossiers).catch(() => setDossiers([]));
     invoke<BenchRow[]>("local_benchmarks").then(setBenches).catch(() => {});
+    invoke<SnapshotModel[]>("list_snapshot_models").then(setSnapshots).catch(() => setSnapshots([]));
+    invoke<MlxRuntimeStatus>("mlx_runtime_status").then(setMlxRuntime).catch(() => setMlxRuntime(null));
     invoke<AaModel[]>("aa_models").then(setAa).catch(() => setAa([]));
     invoke<string>("aa_attribution").then(setAaSrc).catch(() => {});
   }, []);
@@ -85,6 +105,7 @@ export function ModelsPane() {
       if (!items.has(label)) items.set(label, { label, group });
     };
 
+    snapshots.forEach((m) => add(m.name, "Serving"));
     curatedRoutes.forEach((m) => add(m.display_name, PROVIDER_LABELS[m.provider]));
     (aa ?? []).forEach((a) => {
       const provider = PROVIDER_OF[a.creator ?? ""] ?? "other";
@@ -109,7 +130,7 @@ export function ModelsPane() {
         group,
         items: groupItems.sort((a, b) => a.label.localeCompare(b.label)),
       }));
-  }, [aa, dossiers]);
+  }, [aa, dossiers, snapshots]);
   const models = useMemo(() => navGroups.flatMap((g) => g.items.map((item) => item.label)), [navGroups]);
 
   const marketRows = useMemo(() => {
@@ -146,6 +167,10 @@ export function ModelsPane() {
     null;
   const curated = curatedBenchmarks.filter((b) => benchmarkMatches(b, selectedLower, firstWord));
   const localRows = benches.filter((b) => b.model.toLowerCase().includes(firstWord) || selectedLower.includes(b.model.toLowerCase()));
+  const snapshot =
+    snapshots.find((s) => s.name === selected) ??
+    snapshots.find((s) => selectedLower === s.id.toLowerCase() || selectedLower === s.name.toLowerCase()) ??
+    null;
   const aaRow = aa?.find((a) => a.name.toLowerCase().includes(firstWord)) ?? null;
   const selectedRoute =
     marketRows.find((r) => r.display_name === selected) ??
@@ -194,6 +219,22 @@ export function ModelsPane() {
       <div className="flex-1 overflow-y-auto p-7">
         <h1 className="text-[19px] font-semibold">{selected ?? "—"}</h1>
         <p className="mb-5 mt-0.5 text-[13px] text-ink-muted">Model profile, route pricing, local measurements, and experiment history.</p>
+
+        {snapshot && (
+          <Section title="Serving snapshot" cite="Bundled from understudy-agent-tools · weights remain in ~/.understudy/models">
+            <div className="mb-2 flex flex-wrap gap-1.5">
+              <Tag>{snapshot.loader}</Tag>
+              <Tag>{snapshot.approx_gb} GB</Tag>
+              {snapshot.default_rung && <Tag>default rung</Tag>}
+              <Tag>{snapshot.cached ? "cached" : "not cached"}</Tag>
+              <Tag>{snapshot.manifest ? "manifest" : "manifest pending"}</Tag>
+            </div>
+            <pre className="whitespace-pre-wrap font-sans text-[13px] leading-relaxed text-ink">{snapshot.notes}</pre>
+            <KV k="model id">{snapshot.id}</KV>
+            <KV k="runtime">{mlxRuntime?.available ? "ready" : "not installed"} · {mlxRuntime?.command ?? "mlx_vlm.server"}</KV>
+            {snapshot.path && <KV k="path">{snapshot.path}</KV>}
+          </Section>
+        )}
 
         {dossier && (
           <Section title="Bundled dossier" cite={dossier.source} badge="public">
