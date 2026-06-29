@@ -2,17 +2,20 @@
 import { useEffect, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import type { StatusController, SlotView } from "../lib/useStatus";
+import { modelShortName, type SnapshotAlias } from "../lib/model-aliases";
 
 type ModelInfo = { id: string; path: string; size_gb: number };
 
 /** Warm-slot residency manager. Lives in Status; controls the local model fleet. */
 export function ResidencyPanel({ status }: { status: StatusController }) {
   const [models, setModels] = useState<ModelInfo[] | null>(null);
+  const [snapshots, setSnapshots] = useState<SnapshotAlias[]>([]);
   const [err, setErr] = useState<string | null>(null);
   const res = status.snap?.residency;
 
   useEffect(() => {
     invoke<ModelInfo[]>("list_models").then(setModels).catch((e) => setErr(String(e)));
+    invoke<SnapshotAlias[]>("list_snapshot_models").then(setSnapshots).catch(() => {});
   }, []);
 
   const usedPct = res && res.usable_gb > 0 ? (res.used_gb / res.usable_gb) * 100 : 0;
@@ -47,7 +50,7 @@ export function ResidencyPanel({ status }: { status: StatusController }) {
       {res.slots.length > 0 ? (
         <div className="model-list">
           {res.slots.map((s) => (
-            <SlotCard key={s.id} slot={s} models={models} call={call} />
+            <SlotCard key={s.id} slot={s} models={models} snapshots={snapshots} call={call} />
           ))}
         </div>
       ) : (
@@ -60,10 +63,12 @@ export function ResidencyPanel({ status }: { status: StatusController }) {
 function SlotCard({
   slot,
   models,
+  snapshots,
   call,
 }: {
   slot: SlotView;
   models: ModelInfo[] | null;
+  snapshots: SnapshotAlias[];
   call: (fn: string, args?: Record<string, unknown>) => Promise<void>;
 }) {
   const isWarm = slot.state === "running";
@@ -74,10 +79,10 @@ function SlotCard({
         <div style={{ display: "flex", alignItems: "center", gap: 9 }}>
           <span className={"dot " + slot.state} />
           <div>
-            <div className="model-id">{slot.model_id ?? "Empty slot"}</div>
+            <div className="model-id">{modelShortName(slot.model_id, snapshots) ?? "Empty slot"}</div>
             <div className="metric model-size">
               {slot.model_id
-                ? `${slot.mem_gb.toFixed(1)} GB${slot.port ? ` · :${slot.port}` : ""}${slot.load_ms ? ` · loaded ${(slot.load_ms / 1000).toFixed(1)}s` : ""}`
+                ? `${slot.model_id} · ${slot.mem_gb.toFixed(1)} GB${slot.port ? ` · :${slot.port}` : ""}${slot.load_ms ? ` · loaded ${(slot.load_ms / 1000).toFixed(1)}s` : ""}`
                 : "unassigned"}
             </div>
           </div>
@@ -102,7 +107,7 @@ function SlotCard({
       >
         <option value="" disabled>{slot.model_id ? "Change model…" : "Assign a model…"}</option>
         {models?.map((m) => (
-          <option key={m.id} value={m.id}>{m.id} ({m.size_gb.toFixed(1)} GB)</option>
+          <option key={m.id} value={m.id}>{modelShortName(m.id, snapshots)} ({m.size_gb.toFixed(1)} GB)</option>
         ))}
       </select>
     </div>

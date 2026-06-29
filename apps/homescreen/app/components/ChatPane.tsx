@@ -43,6 +43,7 @@ import {
   ReasoningContent,
   ReasoningTrigger,
 } from "@/components/ai-elements/reasoning";
+import { modelShortName, type SnapshotAlias } from "../lib/model-aliases";
 
 type Role = "user" | "assistant";
 type Msg = { role: Role; content: string; model?: string };
@@ -58,6 +59,7 @@ type ResidencySnapshot = {
     port?: number | null;
   }[];
 };
+type SnapshotModel = SnapshotAlias;
 type ChatStatus = "ready" | "streaming" | "error";
 type ModelChoice =
   | {
@@ -96,13 +98,16 @@ export function ChatPane() {
 
   const refreshModels = async () => {
     try {
-      const residency = await invoke<ResidencySnapshot>("get_residency");
+      const [residency, snapshots] = await Promise.all([
+        invoke<ResidencySnapshot>("get_residency"),
+        invoke<SnapshotModel[]>("list_snapshot_models"),
+      ]);
       const local = residency.slots
         .filter((slot) => slot.state === "running" && slot.model_id)
         .map<ModelChoice>((slot) => ({
           id: `local:${slot.id}`,
-          label: slot.model_id ?? `slot ${slot.id}`,
-          detail: `Local MLX slot ${slot.id}${slot.port ? ` · :${slot.port}` : ""}`,
+          label: modelShortName(slot.model_id, snapshots) ?? `slot ${slot.id}`,
+          detail: `${slot.model_id}${slot.port ? ` · :${slot.port}` : ""}`,
           route: "local",
           slotId: slot.id,
           active: true,
@@ -300,7 +305,7 @@ function ModelPicker({
               .map((choice) => (
                 <ModelSelectorItem key={choice.id} value={choice.id} onSelect={() => onSelect(choice.id)}>
                   <ModelSelectorName>{choice.label}</ModelSelectorName>
-                  <span className="font-mono text-[11px] text-muted-foreground">{choice.detail}</span>
+                  <span className="max-w-[520px] truncate font-mono text-[11px] text-muted-foreground">{choice.detail}</span>
                 </ModelSelectorItem>
               ))}
           </ModelSelectorGroup>

@@ -1,6 +1,7 @@
 [
   {
     "id": "gemma-4-e2b-it-qat-mlx-vlm-understudy",
+    "short_name": "understudy-small",
     "name": "Gemma 4 E2B IT QAT MLX 4-bit, Understudy",
     "approx_gb": 3.6,
     "loader": "mlx_vlm",
@@ -65,6 +66,7 @@
   },
   {
     "id": "gemma-4-26b-a4b-it-qat-mlx-vlm-understudy",
+    "short_name": "understudy-fast",
     "name": "Gemma 4 26B A4B IT QAT MLX 4-bit, Understudy",
     "approx_gb": 16.0,
     "loader": "mlx_vlm",

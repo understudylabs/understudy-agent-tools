@@ -26,6 +26,7 @@ type BenchRow = {
 };
 type SnapshotModel = {
   id: string;
+  short_name?: string | null;
   name: string;
   approx_gb: number;
   loader: string;
@@ -224,6 +225,7 @@ export function ModelsPane() {
           <Section title="Serving snapshot" cite="Bundled from understudy-agent-tools · weights remain in ~/.understudy/models">
             <div className="mb-2 flex flex-wrap gap-1.5">
               <Tag>{snapshot.loader}</Tag>
+              {snapshot.short_name && <Tag>{snapshot.short_name}</Tag>}
               <Tag>{snapshot.approx_gb} GB</Tag>
               {snapshot.default_rung && <Tag>default rung</Tag>}
               <Tag>{snapshot.cached ? "cached" : "not cached"}</Tag>
@@ -231,6 +233,7 @@ export function ModelsPane() {
             </div>
             <pre className="whitespace-pre-wrap font-sans text-[13px] leading-relaxed text-ink">{snapshot.notes}</pre>
             <KV k="model id">{snapshot.id}</KV>
+            {snapshot.short_name && <KV k="short name">{snapshot.short_name}</KV>}
             <KV k="runtime">{mlxRuntime?.available ? "ready" : "not installed"} · {mlxRuntime?.command ?? "mlx_vlm.server"}</KV>
             {snapshot.path && <KV k="path">{snapshot.path}</KV>}
           </Section>

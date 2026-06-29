@@ -13,6 +13,7 @@ pub struct ModelInfo {
 #[derive(Deserialize, Serialize, Clone)]
 pub struct SnapshotInfo {
     pub id: String,
+    pub short_name: Option<String>,
     pub name: String,
     pub approx_gb: f32,
     pub loader: String,
