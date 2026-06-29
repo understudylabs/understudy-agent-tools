@@ -1,0 +1,27 @@
+{
+  "name": "understudy-distributed-training",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "scripts": {
+    "dev": "next dev -p 1430",
+    "build": "next build",
+    "start": "next start -p 1430",
+    "convex:dev": "convex dev",
+    "convex:deploy": "convex deploy",
+    "typecheck": "tsc --noEmit"
+  },
+  "dependencies": {
+    "convex": "^1.29.3",
+    "next": "^15.5.19",
+    "react": "^19.1.0",
+    "react-dom": "^19.1.0",
+    "zod": "^4.4.3"
+  },
+  "devDependencies": {
+    "@types/node": "^22.18.6",
+    "@types/react": "^19.1.8",
+    "@types/react-dom": "^19.1.6",
+    "typescript": "~5.8.3"
+  }
+}
