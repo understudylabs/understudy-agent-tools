@@ -107,7 +107,7 @@ export function ModelsPane() {
         <p className="mb-5 mt-0.5 text-[13px] text-ink-muted">Cited profile · in-house experiments + external benchmarks.</p>
 
         {dossier && (
-          <Section title="In-house dossier" cite={dossier.source} badge={dossier.private ? "founders-private" : "public subset"}>
+          <Section title="Bundled dossier" cite={dossier.source} badge="public">
             <div className="mb-2 flex flex-wrap gap-1.5">
               {dossier.provider && <Tag>{dossier.provider}</Tag>}
               {dossier.family && <Tag>{dossier.family}</Tag>}

@@ -1,0 +1,41 @@
+[
+  {
+    "id": "google-gemma-4",
+    "title": "Gemma 4 (family)",
+    "provider": "google",
+    "family": "gemma-4",
+    "sizes": ["e2b", "12b", "26b A4B MoE", "31b"],
+    "strong_at": ["local inference", "cost-sensitive routing", "tool-use experiments"],
+    "weak_at": ["frontier long-horizon reasoning", "tasks requiring closed-model tool ecosystems"],
+    "last_pricing_check": null,
+    "excerpt": "Public bundled note: Gemma-family local routes are useful for low-latency, privacy-sensitive, and cost-sensitive workloads when the task fits the local context and quality envelope. Treat any local-model recommendation as workload-specific and validate against the user's own task traces before routing production traffic.",
+    "source": "bundled public dossier · apps/homescreen/src-tauri/knowledge/dossiers.json",
+    "private": false
+  },
+  {
+    "id": "zai-glm-5-2",
+    "title": "GLM 5.2",
+    "provider": "zai",
+    "family": "glm",
+    "sizes": ["cloud route"],
+    "strong_at": ["general coding assistance", "agent workflows", "cost-conscious cloud fallback"],
+    "weak_at": ["offline execution", "provider-independent deployments"],
+    "last_pricing_check": null,
+    "excerpt": "Public bundled note: GLM 5.2 is represented here as a cloud route candidate for interactive agent workflows. Keep it behind measured routing gates: compare task success, latency, and cost against local and frontier alternatives before making it a default for a workload.",
+    "source": "bundled public dossier · apps/homescreen/src-tauri/knowledge/dossiers.json",
+    "private": false
+  },
+  {
+    "id": "local-mlx-routes",
+    "title": "Local MLX routes",
+    "provider": "local",
+    "family": "mlx",
+    "sizes": ["machine-dependent"],
+    "strong_at": ["offline demos", "low marginal cost", "data locality"],
+    "weak_at": ["cold-start latency", "memory-constrained machines", "quality variance across model families"],
+    "last_pricing_check": null,
+    "excerpt": "Public bundled note: Local MLX routes are best treated as measured candidates, not assumptions. The desktop app should profile the user's machine, warm only selected routes, and keep a cloud fallback available when local quality or latency misses the workload target.",
+    "source": "bundled public dossier · apps/homescreen/src-tauri/knowledge/dossiers.json",
+    "private": false
+  }
+]
