@@ -169,4 +169,41 @@ describe("automationbench handoff runner", () => {
     assert.equal(payload.rows[0].mode, "candidate-gateway-glm");
     assert.equal(payload.rows[0].model, "glm-5.2");
   });
+
+  it("can override native export rows with a Fusion mode", () => {
+    const { handoffPath } = writeFixture();
+    const resultsPath = join(dir, "automationbench-export.json");
+    writeFileSync(
+      resultsPath,
+      `${JSON.stringify({
+        meta: { model: "understudy-fusion-sidekick-main", domains: ["simple"], duration_seconds: 5 },
+        tasks: [{ id: 1, name: "simple.task", score: 0, passed: false, input_tokens: 10, output_tokens: 5 }],
+      })}\n`,
+    );
+    const result = spawnSync(
+      runner[0],
+      [
+        ...runner.slice(1),
+        "--handoff",
+        handoffPath,
+        "--results",
+        resultsPath,
+        "--candidate",
+        "local-fast",
+        "--cohort-run-id",
+        "ab-fusion-cohort",
+        "--mode",
+        "sidekick-parallel",
+        "--sidekick-runs",
+        "1",
+      ],
+      { encoding: "utf8" },
+    );
+    assert.equal(result.status, 0, result.stderr);
+    const payload = JSON.parse(result.stdout);
+    assert.equal(payload.rows[0].run_id, "ab-fusion-cohort");
+    assert.equal(payload.rows[0].mode, "sidekick-parallel");
+    assert.equal(payload.rows[0].model, "understudy-fusion-sidekick-main");
+    assert.equal(payload.rows[0].sidekick_runs, 1);
+  });
 });

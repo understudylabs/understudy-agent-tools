@@ -4,7 +4,7 @@ import { existsSync, readFileSync } from "node:fs";
 function usage() {
   return `Usage:
   node scripts/automationbench-handoff-runner.mjs --handoff <path> [--print-commands]
-  node scripts/automationbench-handoff-runner.mjs --handoff <path> --results <path> [--candidate <id>] [--cohort-run-id <id>] [--mode-prefix <prefix>] [--post] [--token <token>]
+  node scripts/automationbench-handoff-runner.mjs --handoff <path> --results <path> [--candidate <id>] [--cohort-run-id <id>] [--mode <mode>] [--mode-prefix <prefix>] [--sidekick-runs <n>] [--sidekick-tool-calls <n>] [--post] [--token <token>]
 
 Reads an Understudy AutomationBench handoff packet and either prints the intended
 candidate runs or normalizes runner results for the desktop callback endpoint.
@@ -100,7 +100,9 @@ function normalizeRows(handoff, rows, options = {}) {
     }
     const status = row.status ?? "ok";
     const score = row.score === undefined || row.score === null ? null : Number(row.score);
-    const mode = options.modePrefix
+    const mode = options.mode
+      ? options.mode
+      : options.modePrefix
       ? `${options.modePrefix}-${candidate.candidate}`
       : (row.mode ?? "automationbench");
     return {
@@ -111,8 +113,11 @@ function normalizeRows(handoff, rows, options = {}) {
       elapsed_ms: row.elapsed_ms === undefined ? null : Number(row.elapsed_ms),
       prompt_tokens: row.prompt_tokens === undefined ? null : Number(row.prompt_tokens),
       completion_tokens: row.completion_tokens === undefined ? null : Number(row.completion_tokens),
-      sidekick_runs: 0,
-      sidekick_tool_calls: 0,
+      sidekick_runs: row.sidekick_runs === undefined ? Number(options.sidekickRuns ?? 0) : Number(row.sidekick_runs),
+      sidekick_tool_calls:
+        row.sidekick_tool_calls === undefined
+          ? Number(options.sidekickToolCalls ?? 0)
+          : Number(row.sidekick_tool_calls),
       gateway_used: candidate.route === "gateway",
       compacted: false,
       context_tokens_before: row.prompt_tokens === undefined ? null : Number(row.prompt_tokens),
@@ -175,7 +180,10 @@ async function main() {
   if (resultsPath) {
     const normalized = normalizeRows(handoff, readResultRows(resultsPath, argValue(args, "--candidate")), {
       cohortRunId: argValue(args, "--cohort-run-id"),
+      mode: argValue(args, "--mode"),
       modePrefix: argValue(args, "--mode-prefix"),
+      sidekickRuns: argValue(args, "--sidekick-runs"),
+      sidekickToolCalls: argValue(args, "--sidekick-tool-calls"),
     });
     console.log(JSON.stringify({ schema_version: "understudy.automationbench_normalized_results.v1", rows: normalized }, null, 2));
     if (args.includes("--post")) {
