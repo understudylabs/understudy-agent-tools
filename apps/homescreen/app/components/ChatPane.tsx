@@ -492,6 +492,7 @@ export function ChatPane({ resetToken }: { resetToken: number }) {
     (streaming &&
       (latestSidekickEvent?.stage === "handoff_ready" ||
         latestSidekickEvent?.stage === "handoff_deferred" ||
+        latestSidekickEvent?.stage === "route_applied" ||
         latestSidekickEvent?.stage === "compaction_boundary"));
   const sidekickActive =
     sidekickTool?.state === "input-available" ||
@@ -590,6 +591,8 @@ export function ChatPane({ resetToken }: { resetToken: number }) {
                 <div className="sidekick-active-title">
                   {latestSidekickEvent.stage === "compaction_boundary"
                     ? "Compaction boundary"
+                    : latestSidekickEvent.stage === "route_applied"
+                      ? "Route switched"
                     : backgroundSidekickActive
                       ? "Working in background"
                       : "Background update"}

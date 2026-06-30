@@ -1722,6 +1722,61 @@ fn record_compaction_route_decision(
     }
 }
 
+fn apply_dynamic_chat_route(
+    app: &AppHandle,
+    session_id: &str,
+    route: &str,
+    slot_id: Option<u32>,
+    messages: &[ChatMsg],
+    on_event: &Channel<ChatEvent>,
+) -> String {
+    if app
+        .state::<crate::db::Db>()
+        .setting_get("fusion.routing")
+        .as_deref()
+        == Some("off")
+    {
+        return route.to_string();
+    }
+    let prompt = latest_user_message(messages).unwrap_or("").trim();
+    if prompt.is_empty() {
+        return route.to_string();
+    }
+    let recommendation = crate::commands::fusion_route_recommendation(
+        app.clone(),
+        crate::commands::FusionRouteRecommendationRequest {
+            prompt: prompt.to_string(),
+            current_route: Some(route.to_string()),
+            active_slot_id: slot_id,
+            session_id: Some(session_id.to_string()),
+        },
+    );
+    let next_route =
+        if route == "local" && recommendation.route == "gateway" && recommendation.gateway_ready {
+            "cloud"
+        } else {
+            route
+        };
+    if next_route != route {
+        let detail = format!(
+            "{} -> {} · {} ({})",
+            route, next_route, recommendation.policy_class, recommendation.reason
+        );
+        let _ = app.state::<crate::db::Db>().record_sidekick_event(
+            session_id,
+            "routing",
+            "route_applied",
+            &detail,
+        );
+        let _ = on_event.send(ChatEvent::SidekickEvent {
+            mode: "routing".to_string(),
+            stage: "route_applied".to_string(),
+            detail,
+        });
+    }
+    next_route.to_string()
+}
+
 fn benchmark_prompt(prompt: &str) -> String {
     format!(
         "Fusion benchmark task. Answer concisely in 1200 characters or fewer. Cite concrete evidence or tool results, but do not dump full files, logs, JSON, or source code.\n\nTask: {prompt}"
@@ -2143,6 +2198,7 @@ pub async fn chat_stream(
 ) -> Result<(), String> {
     let started = Instant::now();
     let session_id = session_id.unwrap_or_else(|| "default".to_string());
+    let route = apply_dynamic_chat_route(&app, &session_id, &route, slot_id, &messages, &on_event);
     let sidekick_spawned = maybe_spawn_parallel_sidekick(
         &app,
         &route,
