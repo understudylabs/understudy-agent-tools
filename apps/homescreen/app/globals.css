@@ -889,6 +889,85 @@ select,
   margin: 0 0 12px;
   max-width: 720px;
 }
+.sidekick-lane-card {
+  position: relative;
+  overflow: hidden;
+}
+.sidekick-lane-card::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  border-radius: inherit;
+  box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--accent) 0%, transparent);
+  transition: box-shadow 180ms ease;
+}
+.sidekick-lane-card.active::before {
+  box-shadow:
+    inset 0 0 0 1px color-mix(in srgb, var(--accent) 28%, transparent),
+    inset 0 1px 0 color-mix(in srgb, white 8%, transparent);
+}
+.sidekick-lane-card.active .card-title::after {
+  content: "active";
+  margin-left: 8px;
+  padding: 2px 6px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--accent) 14%, transparent);
+  color: color-mix(in srgb, var(--accent) 70%, white);
+  font-family: var(--mono);
+  font-size: 10px;
+  font-weight: 500;
+  text-transform: uppercase;
+}
+.sidekick-active-card {
+  display: grid;
+  grid-template-columns: 34px minmax(0, 1fr);
+  gap: 12px;
+  align-items: center;
+  max-width: 620px;
+  margin: 0 0 12px;
+  padding: 12px;
+  border-radius: var(--r-card);
+  background:
+    radial-gradient(circle at 17px 17px, color-mix(in srgb, var(--accent) 16%, transparent), transparent 24px),
+    color-mix(in srgb, var(--surface-2) 58%, transparent);
+}
+.sidekick-orbit {
+  width: 28px;
+  height: 28px;
+  border-radius: 999px;
+  border: 1px solid color-mix(in srgb, var(--accent) 42%, white 18%);
+  box-shadow:
+    0 0 0 1px color-mix(in srgb, white 10%, transparent),
+    0 0 18px color-mix(in srgb, var(--accent) 20%, transparent);
+  animation: sidekick-pulse 1.25s ease-in-out infinite;
+}
+.sidekick-active-copy {
+  min-width: 0;
+}
+.sidekick-active-kicker {
+  margin-bottom: 2px;
+  font-family: var(--mono);
+  font-size: 10px;
+  text-transform: uppercase;
+  color: var(--text-3);
+}
+.sidekick-active-title {
+  color: var(--text);
+  font-size: 13px;
+  font-weight: 600;
+}
+.sidekick-active-task {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--text-3);
+  font-size: 12px;
+}
+.sidekick-tool-card {
+  border-color: color-mix(in srgb, var(--accent) 18%, transparent);
+  background: color-mix(in srgb, var(--surface-2) 46%, transparent);
+}
 .sidekick-result {
   display: grid;
   gap: 8px;
@@ -915,6 +994,17 @@ select,
   color: var(--text-2);
   font-size: 13px;
   line-height: 1.55;
+}
+@keyframes sidekick-pulse {
+  0%,
+  100% {
+    transform: scale(0.94);
+    opacity: 0.62;
+  }
+  50% {
+    transform: scale(1);
+    opacity: 1;
+  }
 }
 .chat-msg.assistant p,
 .chat-msg.assistant ul,

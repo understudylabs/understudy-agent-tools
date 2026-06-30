@@ -208,7 +208,7 @@ export function StatusPane({ status }: { status: StatusController }) {
         <ResidencyPanel status={status} />
 
         {sidekickModel && (
-          <div className="card">
+          <div className={"card sidekick-lane-card" + (sidekickSlot?.state === "running" ? " active" : "")}>
             <div className="card-row" style={{ marginBottom: 10 }}>
               <div>
                 <div className="card-title">Sidekick lane</div>

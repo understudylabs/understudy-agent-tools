@@ -158,8 +158,9 @@ function ReasoningSubstream({
 function ChatToolTrace({ tool }: { tool: ToolTrace }) {
   const shouldAutoOpen = tool.state !== "output-available";
   const [open, setOpen] = useState(shouldAutoOpen);
+  const isSidekick = tool.name === "delegate_to_sidekick";
   const sidekick =
-    tool.name === "delegate_to_sidekick" && tool.output && typeof tool.output === "object"
+    isSidekick && tool.output && typeof tool.output === "object"
       ? (tool.output as {
           profile_label?: string;
           model_id?: string;
@@ -173,8 +174,25 @@ function ChatToolTrace({ tool }: { tool: ToolTrace }) {
     setOpen(shouldAutoOpen);
   }, [shouldAutoOpen]);
 
+  if (isSidekick && !sidekick) {
+    return (
+      <div className="sidekick-active-card">
+        <div className="sidekick-orbit" aria-hidden="true" />
+        <div className="sidekick-active-copy">
+          <div className="sidekick-active-kicker">Sidekick</div>
+          <div className="sidekick-active-title">Working in parallel</div>
+          <div className="sidekick-active-task">
+            {typeof tool.input === "object" && tool.input && "task" in tool.input
+              ? String((tool.input as { task?: unknown }).task)
+              : "Running a bounded local check."}
+          </div>
+        </div>
+      </div>
+    );
+  }
+
   return (
-    <Tool open={open} onOpenChange={setOpen}>
+    <Tool open={open} onOpenChange={setOpen} className={isSidekick ? "sidekick-tool-card" : undefined}>
       <ToolHeader type="dynamic-tool" toolName={tool.name} state={tool.state} />
       <ToolContent>
         <ToolInput input={tool.input} />
