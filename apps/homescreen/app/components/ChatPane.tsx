@@ -424,7 +424,13 @@ export function ChatPane({ resetToken }: { resetToken: number }) {
   const latestAssistant = [...messages].reverse().find((message) => message.role === "assistant");
   const sidekickTool = latestAssistant?.tools?.find((tool) => tool.name === "delegate_to_sidekick");
   const sidekickActive = sidekickTool?.state === "input-available" || sidekickTool?.state === "input-streaming";
-  const showSidekickPersona = Boolean(sidekickTool);
+  const warmSidekickAvailable = choices.some((choice) => {
+    if (choice.route !== "local" || !choice.active) return false;
+    if (selectedChoice.route === "local" && choice.slotId === selectedChoice.slotId) return false;
+    const id = choice.detail.toLowerCase();
+    return choice.label === "understudy-small" || id.includes("understudy-small") || id.includes("e2b");
+  });
+  const showSidekickPersona = warmSidekickAvailable || Boolean(sidekickTool);
   const sidekickPersonaState: PersonaState = sidekickActive ? "thinking" : "idle";
 
   return (
