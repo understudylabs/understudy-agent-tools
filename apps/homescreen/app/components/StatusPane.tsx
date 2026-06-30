@@ -38,12 +38,27 @@ type DownloadEvent =
   | { type: "Done"; dest: string; files: number }
   | { type: "Error"; message: string };
 
+type SidekickRun = {
+  session_id: string;
+  mode: string;
+  task: string;
+  model?: string | null;
+  elapsed_ms?: number | null;
+  tool_calls: number;
+  session_messages: number;
+  escalated: boolean;
+  accepted?: boolean | null;
+  run_at: string;
+};
+
 export function StatusPane({ status }: { status: StatusController }) {
   const { snap, busy, connect, disconnect } = status;
   const [bootstrap, setBootstrap] = useState<BootstrapStatus | null>(null);
   const [action, setAction] = useState<string | null>(null);
   const [download, setDownload] = useState<{ model: string; label: string; pct: number | null } | null>(null);
   const [bootErr, setBootErr] = useState<string | null>(null);
+  const [parallelSidekick, setParallelSidekick] = useState(false);
+  const [sidekickRuns, setSidekickRuns] = useState<SidekickRun[]>([]);
 
   const refreshBootstrap = () => {
     invoke<BootstrapStatus>("bootstrap_status")
@@ -59,6 +74,31 @@ export function StatusPane({ status }: { status: StatusController }) {
     const timer = setInterval(refreshBootstrap, 5000);
     return () => clearInterval(timer);
   }, []);
+
+  const refreshSidekickRuns = () => {
+    invoke<SidekickRun[]>("sidekick_runs", { limit: 5 })
+      .then(setSidekickRuns)
+      .catch(() => setSidekickRuns([]));
+  };
+
+  useEffect(() => {
+    invoke<string | null>("get_setting", { key: "sidekick.parallel" })
+      .then((value) => setParallelSidekick(value === "on"))
+      .catch(() => setParallelSidekick(false));
+    refreshSidekickRuns();
+    const timer = setInterval(refreshSidekickRuns, 5000);
+    return () => clearInterval(timer);
+  }, []);
+
+  async function setParallelLane(next: boolean) {
+    setParallelSidekick(next);
+    try {
+      await invoke("set_setting", { key: "sidekick.parallel", value: next ? "on" : "off" });
+    } catch (e) {
+      setParallelSidekick(!next);
+      setBootErr(String(e));
+    }
+  }
 
   const model = useMemo(() => {
     const rows = bootstrap?.snapshots ?? [];
@@ -231,6 +271,28 @@ export function StatusPane({ status }: { status: StatusController }) {
               actionLabel={sidekickModel.cached || sidekickSlot ? "Warm" : "Download + warm"}
               pct={download?.model === sidekickModel.id ? download.pct : undefined}
             />
+            <ToggleRow
+              title="Parallel sidekick"
+              detail="Auto-runs eligible read-only sidekick work in the background."
+              on={parallelSidekick}
+              disabled={sidekickSlot?.state !== "running"}
+              onToggle={() => setParallelLane(!parallelSidekick)}
+            />
+            {sidekickRuns.length > 0 && (
+              <div className="sidekick-run-list">
+                {sidekickRuns.map((run, index) => (
+                  <div className="sidekick-run" key={`${run.run_at}-${index}`}>
+                    <div>
+                      <div className="svc-name">{run.mode}{run.escalated ? " · escalated" : ""}</div>
+                      <div className="svc-desc">{run.task}</div>
+                    </div>
+                    <span className="svc-state">
+                      {run.elapsed_ms ? `${(run.elapsed_ms / 1000).toFixed(1)}s` : "—"} · {run.tool_calls} tools
+                    </span>
+                  </div>
+                ))}
+              </div>
+            )}
           </div>
         )}
 
@@ -348,6 +410,38 @@ function SetupRow({
       ) : (
         <span className="svc-state">{done ? "ready" : "pending"}</span>
       )}
+    </div>
+  );
+}
+
+function ToggleRow({
+  title,
+  detail,
+  on,
+  disabled,
+  onToggle,
+}: {
+  title: string;
+  detail: string;
+  on: boolean;
+  disabled?: boolean;
+  onToggle: () => void;
+}) {
+  return (
+    <div className={"svc" + (disabled ? " muted" : "")}>
+      <span className={"dot " + (on ? "running" : "stopped")} />
+      <div>
+        <div className="svc-name">{title}</div>
+        <div className="svc-desc">{detail}</div>
+      </div>
+      <button
+        className={"toggle-pill" + (on ? " on" : "")}
+        disabled={disabled}
+        onClick={onToggle}
+        type="button"
+      >
+        {on ? "On" : "Off"}
+      </button>
     </div>
   );
 }

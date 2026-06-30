@@ -523,6 +523,7 @@ select,
   border-bottom: 1px solid var(--border);
 }
 .svc:last-child { border-bottom: none; }
+.svc.muted { opacity: 0.58; }
 .svc-name { font-weight: 500; }
 .svc-desc { font-size: 12px; color: var(--text-3); margin-top: 1px; }
 .svc-state {
@@ -545,6 +546,43 @@ select,
 .mini-btn:disabled {
   cursor: default;
   color: var(--text-3);
+}
+.toggle-pill {
+  min-width: 44px;
+  border: none;
+  border-radius: var(--r-pill);
+  background: var(--surface-2);
+  color: var(--text-3);
+  cursor: pointer;
+  font: inherit;
+  font-family: var(--mono);
+  font-size: 11px;
+  padding: 6px 10px;
+}
+.toggle-pill.on {
+  background: color-mix(in srgb, var(--accent) 18%, transparent);
+  color: color-mix(in srgb, var(--accent) 72%, white);
+}
+.toggle-pill:disabled {
+  cursor: default;
+  opacity: 0.6;
+}
+.sidekick-run-list {
+  display: grid;
+  border-top: 1px solid var(--border);
+  margin-top: 4px;
+  padding-top: 4px;
+}
+.sidekick-run {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 12px;
+  padding: 8px 0;
+}
+.sidekick-run .svc-desc {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
 }
 .error-text {
   color: var(--error);

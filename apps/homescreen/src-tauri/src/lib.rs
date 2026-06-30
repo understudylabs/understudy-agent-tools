@@ -141,6 +141,7 @@ pub fn run() {
             commands::account_logout,
             commands::knowledge_dossiers,
             commands::local_benchmarks,
+            commands::sidekick_runs,
             commands::aa_models,
             commands::aa_attribution,
             commands::get_setting,

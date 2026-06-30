@@ -15,6 +15,20 @@ pub struct BenchRow {
     pub run_at: String,
 }
 
+#[derive(Serialize, Clone)]
+pub struct SidekickRunRow {
+    pub session_id: String,
+    pub mode: String,
+    pub task: String,
+    pub model: Option<String>,
+    pub elapsed_ms: Option<u64>,
+    pub tool_calls: u64,
+    pub session_messages: u64,
+    pub escalated: bool,
+    pub accepted: Option<bool>,
+    pub run_at: String,
+}
+
 /// App-owned SQLite store, under the macOS app-data dir. Profile, credentials,
 /// and the model cache continue to live under `~/.understudy/`.
 pub struct Db(pub std::path::PathBuf);
@@ -52,6 +66,19 @@ impl Db {
             CREATE TABLE IF NOT EXISTS settings (
                 key   TEXT PRIMARY KEY,
                 value TEXT NOT NULL
+            );
+            CREATE TABLE IF NOT EXISTS sidekick_runs (
+                id               INTEGER PRIMARY KEY,
+                session_id       TEXT NOT NULL,
+                mode             TEXT NOT NULL,
+                task             TEXT NOT NULL,
+                model            TEXT,
+                elapsed_ms       INTEGER,
+                tool_calls       INTEGER NOT NULL DEFAULT 0,
+                session_messages INTEGER NOT NULL DEFAULT 0,
+                escalated        INTEGER NOT NULL DEFAULT 0,
+                accepted         INTEGER,
+                run_at           TEXT NOT NULL
             );",
         )?;
         let _ = conn.execute(
@@ -165,6 +192,61 @@ impl Db {
             [key, value],
         )?;
         Ok(())
+    }
+
+    pub fn record_sidekick_run(
+        &self,
+        session_id: &str,
+        mode: &str,
+        task: &str,
+        model: Option<&str>,
+        elapsed_ms: Option<u64>,
+        tool_calls: u64,
+        session_messages: u64,
+        escalated: bool,
+    ) -> Result<()> {
+        let conn = self.conn()?;
+        conn.execute(
+            "INSERT INTO sidekick_runs (
+                session_id, mode, task, model, elapsed_ms, tool_calls, session_messages, escalated, run_at
+             ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
+            rusqlite::params![
+                session_id,
+                mode,
+                task,
+                model,
+                elapsed_ms.map(|m| m as i64),
+                tool_calls as i64,
+                session_messages as i64,
+                escalated as i64,
+                now_iso(),
+            ],
+        )?;
+        Ok(())
+    }
+
+    pub fn list_sidekick_runs(&self, limit: u32) -> Result<Vec<SidekickRunRow>> {
+        let conn = self.conn()?;
+        let mut stmt = conn.prepare(
+            "SELECT session_id, mode, task, model, elapsed_ms, tool_calls, session_messages, escalated, accepted, run_at
+             FROM sidekick_runs ORDER BY id DESC LIMIT ?1",
+        )?;
+        let rows = stmt.query_map([limit.max(1).min(100) as i64], |r| {
+            Ok(SidekickRunRow {
+                session_id: r.get(0)?,
+                mode: r.get(1)?,
+                task: r.get(2)?,
+                model: r.get(3)?,
+                elapsed_ms: r.get::<_, Option<i64>>(4)?.map(|m| m as u64),
+                tool_calls: r.get::<_, i64>(5)? as u64,
+                session_messages: r.get::<_, i64>(6)? as u64,
+                escalated: r.get::<_, i64>(7)? != 0,
+                accepted: r.get::<_, Option<i64>>(8)?.map(|v| v != 0),
+                run_at: r.get(9)?,
+            })
+        })?;
+        rows.collect::<rusqlite::Result<Vec<_>>>()
+            .map_err(Into::into)
     }
 }
 

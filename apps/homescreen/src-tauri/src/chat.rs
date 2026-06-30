@@ -6,7 +6,7 @@ use std::path::PathBuf;
 use std::sync::{Mutex, OnceLock};
 use std::time::Instant;
 use tauri::ipc::Channel;
-use tauri::{AppHandle, State};
+use tauri::{AppHandle, Manager, State};
 
 use crate::residency::Residency;
 
@@ -311,7 +311,9 @@ async fn tool_result(
                 .to_string(),
         )
         .map_err(|e| e.to_string())?,
-        "delegate_to_sidekick" => delegate_to_sidekick(app, mgr, active_slot_id, session_id, args).await?,
+        "delegate_to_sidekick" => {
+            delegate_to_sidekick(app, mgr, active_slot_id, session_id, "tool", args).await?
+        }
         "understudy_mcp_tool" => call_understudy_mcp(app, args).await?,
         "understudy_agent_tools" => call_understudy_cli(args)?,
         other => return Err(format!("unknown tool: {other}")),
@@ -323,6 +325,7 @@ async fn delegate_to_sidekick(
     mgr: &Residency,
     active_slot_id: Option<u32>,
     session_id: &str,
+    mode: &str,
     args: &Value,
 ) -> Result<Value, String> {
     let task = required_string(args, "task")?;
@@ -354,6 +357,16 @@ async fn delegate_to_sidekick(
     .await?;
     let elapsed_ms = started.elapsed().as_millis() as u64;
     let escalate = result.content.contains("ESCALATE_TO_MAIN");
+    let _ = app.state::<crate::db::Db>().record_sidekick_run(
+        session_id,
+        mode,
+        &task,
+        Some(&model_id),
+        Some(elapsed_ms),
+        result.tool_calls as u64,
+        result.session_messages as u64,
+        escalate,
+    );
     Ok(json!({
         "profile_id": profile.id,
         "profile_label": profile.label,
@@ -789,6 +802,83 @@ fn credentials() -> Option<(String, String)> {
     Some((url, key))
 }
 
+fn latest_user_message(messages: &[ChatMsg]) -> Option<&str> {
+    messages
+        .iter()
+        .rev()
+        .find(|m| m.role == "user")
+        .map(|m| m.content.as_str())
+}
+
+fn should_run_parallel_sidekick(prompt: &str) -> bool {
+    let lower = prompt.to_lowercase();
+    [
+        "check",
+        "review",
+        "inspect",
+        "search",
+        "summarize",
+        "verify",
+        "compare",
+        "find",
+        "trace",
+        "status",
+        "models",
+        "what's left",
+        "whats left",
+        "reminder",
+    ]
+    .iter()
+    .any(|needle| lower.contains(needle))
+}
+
+fn maybe_spawn_parallel_sidekick(
+    app: &AppHandle,
+    route: &str,
+    active_slot_id: Option<u32>,
+    session_id: &str,
+    messages: &[ChatMsg],
+) {
+    if route != "local" {
+        return;
+    }
+    if app
+        .state::<crate::db::Db>()
+        .setting_get("sidekick.parallel")
+        .as_deref()
+        != Some("on")
+    {
+        return;
+    }
+    let Some(prompt) = latest_user_message(messages).map(str::trim) else {
+        return;
+    };
+    if prompt.is_empty() || !should_run_parallel_sidekick(prompt) {
+        return;
+    }
+
+    let task = format!("Run a quick background sidekick pass on this user request:\n{prompt}");
+    let args = json!({
+        "task": task,
+        "context": "This is a non-visual parallel sidekick lane. Do not make final decisions. Look for useful checks, trace/runtime context, or concise second-pass observations for the main agent.",
+        "expected_output": "Return compact findings, uncertainty, and ESCALATE_TO_MAIN only if the request requires main-agent judgment."
+    });
+    let app = app.clone();
+    let session_id = session_id.to_string();
+    tauri::async_runtime::spawn(async move {
+        let mgr = app.state::<Residency>();
+        let _ = delegate_to_sidekick(
+            &app,
+            mgr.inner(),
+            active_slot_id,
+            &session_id,
+            "parallel",
+            &args,
+        )
+        .await;
+    });
+}
+
 /// Stream a chat completion. `route` is "local" (MLX :8089) or "cloud" (gateway).
 /// The desktop app's JS passes a `Channel` it receives chunks on.
 #[tauri::command]
@@ -802,6 +892,7 @@ pub async fn chat_stream(
     mgr: State<'_, Residency>,
 ) -> Result<(), String> {
     let session_id = session_id.unwrap_or_else(|| "default".to_string());
+    maybe_spawn_parallel_sidekick(&app, &route, slot_id, &session_id, &messages);
     let (url, bearer, model_field) = match route.as_str() {
         "cloud" => {
             let (base, key) = credentials().ok_or_else(|| "not signed in".to_string())?;
