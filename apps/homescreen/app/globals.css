@@ -889,6 +889,33 @@ select,
   margin: 0 0 12px;
   max-width: 720px;
 }
+.sidekick-result {
+  display: grid;
+  gap: 8px;
+  padding: 10px 12px;
+  border-radius: var(--r-control);
+  background: color-mix(in srgb, var(--surface-2) 58%, transparent);
+}
+.sidekick-result-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  font-family: var(--mono);
+  font-size: 10px;
+  text-transform: uppercase;
+  color: var(--text-3);
+}
+.sidekick-result-meta span {
+  padding: 2px 6px;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--surface) 72%, transparent);
+}
+.sidekick-result-content {
+  white-space: pre-wrap;
+  color: var(--text-2);
+  font-size: 13px;
+  line-height: 1.55;
+}
 .chat-msg.assistant p,
 .chat-msg.assistant ul,
 .chat-msg.assistant ol,

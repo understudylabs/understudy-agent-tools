@@ -158,6 +158,16 @@ function ReasoningSubstream({
 function ChatToolTrace({ tool }: { tool: ToolTrace }) {
   const shouldAutoOpen = tool.state !== "output-available";
   const [open, setOpen] = useState(shouldAutoOpen);
+  const sidekick =
+    tool.name === "delegate_to_sidekick" && tool.output && typeof tool.output === "object"
+      ? (tool.output as {
+          profile_label?: string;
+          model_id?: string;
+          elapsed_ms?: number;
+          escalate?: boolean;
+          content?: string;
+        })
+      : null;
 
   useEffect(() => {
     setOpen(shouldAutoOpen);
@@ -168,7 +178,17 @@ function ChatToolTrace({ tool }: { tool: ToolTrace }) {
       <ToolHeader type="dynamic-tool" toolName={tool.name} state={tool.state} />
       <ToolContent>
         <ToolInput input={tool.input} />
-        {(tool.output !== undefined || tool.errorText) && (
+        {sidekick ? (
+          <div className="sidekick-result">
+            <div className="sidekick-result-meta">
+              <span>{sidekick.profile_label ?? "Sidekick"}</span>
+              {sidekick.model_id && <span>{modelShortName(sidekick.model_id, [])}</span>}
+              {sidekick.elapsed_ms != null && <span>{(sidekick.elapsed_ms / 1000).toFixed(1)}s</span>}
+              {sidekick.escalate && <span>escalated</span>}
+            </div>
+            <div className="sidekick-result-content">{sidekick.content}</div>
+          </div>
+        ) : (tool.output !== undefined || tool.errorText) && (
           <ToolOutput output={tool.output} errorText={tool.errorText} />
         )}
       </ToolContent>

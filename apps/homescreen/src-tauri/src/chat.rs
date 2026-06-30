@@ -41,7 +41,6 @@ pub struct ChatMsg {
 
 const CHAT_MAX_TOKENS: u32 = 8192;
 const CHAT_THINKING_BUDGET: u32 = 2048;
-const SIDEKICK_MAX_TOKENS: u32 = 1536;
 const MAX_TOOL_ROUNDS: usize = 4;
 
 #[derive(Deserialize)]
@@ -49,6 +48,33 @@ struct ModelCard {
     id: String,
     system_prompt: Option<String>,
     alias_for: Option<String>,
+}
+
+#[derive(Deserialize, Clone)]
+struct SidekickProfile {
+    id: String,
+    label: String,
+    max_tokens: u32,
+    temperature: f32,
+    system_prompt: String,
+    delegation_policy: Vec<String>,
+}
+
+fn sidekick_profile() -> SidekickProfile {
+    let profiles: Vec<SidekickProfile> =
+        serde_json::from_str(include_str!("../knowledge/sidekick_profiles.json"))
+            .unwrap_or_default();
+    profiles
+        .into_iter()
+        .find(|profile| profile.id == "default")
+        .unwrap_or_else(|| SidekickProfile {
+            id: "default".to_string(),
+            label: "Understudy Sidekick".to_string(),
+            max_tokens: 1536,
+            temperature: 0.2,
+            system_prompt: "You are Understudy Sidekick. Do bounded read-only support work and escalate uncertainty.".to_string(),
+            delegation_policy: vec![],
+        })
 }
 
 fn canonical_model_id(model: &str) -> String {
@@ -300,15 +326,27 @@ async fn delegate_to_sidekick(
     let (slot_id, port, model_path, model_id) = mgr.sidekick_endpoint(active_slot_id).ok_or_else(|| {
         "no warm sidekick slot available; warm understudy-small or another small local model in Status first".to_string()
     })?;
+    let profile = sidekick_profile();
     let started = Instant::now();
-    let content = call_sidekick_model(port, &model_path, &task, context, expected_output).await?;
+    let content = call_sidekick_model(
+        port,
+        &model_path,
+        &profile,
+        &task,
+        context,
+        expected_output,
+    )
+    .await?;
     let elapsed_ms = started.elapsed().as_millis() as u64;
     let escalate = content.contains("ESCALATE_TO_MAIN");
     Ok(json!({
+        "profile_id": profile.id,
+        "profile_label": profile.label,
         "slot_id": slot_id,
         "model_id": model_id,
         "elapsed_ms": elapsed_ms,
         "escalate": escalate,
+        "policy": profile.delegation_policy,
         "content": truncate_tool_output(content),
     }))
 }
@@ -316,23 +354,23 @@ async fn delegate_to_sidekick(
 async fn call_sidekick_model(
     port: u16,
     model_path: &str,
+    profile: &SidekickProfile,
     task: &str,
     context: &str,
     expected_output: &str,
 ) -> Result<String, String> {
-    let system = "You are Understudy Sidekick, a small local model running as a bounded helper. Do read-only support work for the main model. Be concise and concrete. Do not make final decisions. If the task is ambiguous, high risk, needs tools you do not have, or you are not confident, include a line starting exactly with ESCALATE_TO_MAIN: followed by the reason.";
     let user = format!(
         "Task:\n{task}\n\nContext:\n{context}\n\nExpected output:\n{expected_output}\n\nReturn only the useful result for the main model."
     );
     let payload = json!({
         "model": model_path,
         "messages": [
-            { "role": "system", "content": system },
+            { "role": "system", "content": profile.system_prompt },
             { "role": "user", "content": user }
         ],
         "stream": false,
-        "max_tokens": SIDEKICK_MAX_TOKENS,
-        "temperature": 0.2
+        "max_tokens": profile.max_tokens,
+        "temperature": profile.temperature
     });
     let response = reqwest::Client::new()
         .post(format!("http://127.0.0.1:{port}/v1/chat/completions"))
