@@ -1248,7 +1248,7 @@ fn maybe_spawn_parallel_sidekick(
         record_decision(false, "non_local_route");
         return;
     }
-    if db.setting_get("sidekick.parallel").as_deref() != Some("on") {
+    if db.setting_get("sidekick.parallel").as_deref() == Some("off") {
         record_decision(false, "parallel_toggle_off");
         return;
     }
@@ -1277,6 +1277,7 @@ fn maybe_spawn_parallel_sidekick(
         "context": format!("This is a non-visual parallel sidekick lane. Routing reason: {}. Do not make final decisions. Look for useful checks, trace/runtime context, or concise second-pass observations for the main agent.", decision.reason),
         "expected_output": "Return compact findings, uncertainty, and ESCALATE_TO_MAIN only if the request requires main-agent judgment."
     });
+    let _ = db.record_sidekick_event(session_id, "parallel", "queued", decision.reason);
     let app = app.clone();
     let session_id = session_id.to_string();
     tauri::async_runtime::spawn(async move {

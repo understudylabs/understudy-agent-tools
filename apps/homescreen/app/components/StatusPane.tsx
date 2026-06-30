@@ -113,8 +113,8 @@ export function StatusPane({ status }: { status: StatusController }) {
 
   useEffect(() => {
     invoke<string | null>("get_setting", { key: "sidekick.parallel" })
-      .then((value) => setParallelSidekick(value === "on"))
-      .catch(() => setParallelSidekick(false));
+      .then((value) => setParallelSidekick(value !== "off"))
+      .catch(() => setParallelSidekick(true));
     refreshSidekickRuns();
     const timer = setInterval(refreshSidekickRuns, 5000);
     return () => clearInterval(timer);
@@ -312,7 +312,7 @@ export function StatusPane({ status }: { status: StatusController }) {
             />
             <ToggleRow
               title="Parallel sidekick"
-              detail="Auto-runs eligible read-only sidekick work in the background."
+              detail="Default background lane for eligible read-only checks; main keeps judgment and final review."
               on={parallelSidekick}
               disabled={sidekickSlot?.state !== "running"}
               onToggle={() => setParallelLane(!parallelSidekick)}
