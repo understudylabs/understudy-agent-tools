@@ -387,7 +387,11 @@ fn valid_fusion_mode(mode: &str) -> bool {
 }
 
 fn valid_fusion_result_mode(mode: &str) -> bool {
-    valid_fusion_mode(mode) || mode == "automationbench"
+    if valid_fusion_mode(mode) || mode == "automationbench" {
+        return true;
+    }
+    mode.strip_prefix("candidate-")
+        .is_some_and(valid_fusion_candidate)
 }
 
 fn valid_fusion_route(route: &str) -> bool {

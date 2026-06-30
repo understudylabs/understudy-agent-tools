@@ -135,4 +135,38 @@ describe("automationbench handoff runner", () => {
     assert.equal(payload.rows[0].gateway_used, false);
     assert.equal(payload.rows[0].status, "error");
   });
+
+  it("can group candidate exports under one cohort run id", () => {
+    const { handoffPath } = writeFixture();
+    const resultsPath = join(dir, "automationbench-export.json");
+    writeFileSync(
+      resultsPath,
+      `${JSON.stringify({
+        meta: { model: "glm-5.2", domains: ["simple"], duration_seconds: 4 },
+        tasks: [{ id: 1, name: "simple.task", score: 1, passed: true, input_tokens: 10, output_tokens: 5 }],
+      })}\n`,
+    );
+    const result = spawnSync(
+      runner[0],
+      [
+        ...runner.slice(1),
+        "--handoff",
+        handoffPath,
+        "--results",
+        resultsPath,
+        "--candidate",
+        "gateway-glm",
+        "--cohort-run-id",
+        "ab-cohort",
+        "--mode-prefix",
+        "candidate",
+      ],
+      { encoding: "utf8" },
+    );
+    assert.equal(result.status, 0, result.stderr);
+    const payload = JSON.parse(result.stdout);
+    assert.equal(payload.rows[0].run_id, "ab-cohort");
+    assert.equal(payload.rows[0].mode, "candidate-gateway-glm");
+    assert.equal(payload.rows[0].model, "glm-5.2");
+  });
 });

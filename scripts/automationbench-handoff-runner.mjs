@@ -4,7 +4,7 @@ import { existsSync, readFileSync } from "node:fs";
 function usage() {
   return `Usage:
   node scripts/automationbench-handoff-runner.mjs --handoff <path> [--print-commands]
-  node scripts/automationbench-handoff-runner.mjs --handoff <path> --results <path> [--post] [--token <token>]
+  node scripts/automationbench-handoff-runner.mjs --handoff <path> --results <path> [--candidate <id>] [--cohort-run-id <id>] [--mode-prefix <prefix>] [--post] [--token <token>]
 
 Reads an Understudy AutomationBench handoff packet and either prints the intended
 candidate runs or normalizes runner results for the desktop callback endpoint.
@@ -91,7 +91,7 @@ function candidateById(handoff) {
   return new Map(handoff.candidates.map((candidate) => [candidate.candidate, candidate]));
 }
 
-function normalizeRows(handoff, rows) {
+function normalizeRows(handoff, rows, options = {}) {
   const candidates = candidateById(handoff);
   return rows.map((row, index) => {
     const candidate = candidates.get(row.candidate);
@@ -100,10 +100,13 @@ function normalizeRows(handoff, rows) {
     }
     const status = row.status ?? "ok";
     const score = row.score === undefined || row.score === null ? null : Number(row.score);
+    const mode = options.modePrefix
+      ? `${options.modePrefix}-${candidate.candidate}`
+      : (row.mode ?? "automationbench");
     return {
-      run_id: row.run_id ?? candidate.run_id,
+      run_id: options.cohortRunId ?? row.run_id ?? candidate.run_id,
       task_id: String(row.task_id ?? row.example_id ?? row.id ?? `automationbench-row-${index}`),
-      mode: "automationbench",
+      mode,
       model: String(row.model ?? candidate.model),
       elapsed_ms: row.elapsed_ms === undefined ? null : Number(row.elapsed_ms),
       prompt_tokens: row.prompt_tokens === undefined ? null : Number(row.prompt_tokens),
@@ -170,7 +173,10 @@ async function main() {
   }
   const resultsPath = argValue(args, "--results");
   if (resultsPath) {
-    const normalized = normalizeRows(handoff, readResultRows(resultsPath, argValue(args, "--candidate")));
+    const normalized = normalizeRows(handoff, readResultRows(resultsPath, argValue(args, "--candidate")), {
+      cohortRunId: argValue(args, "--cohort-run-id"),
+      modePrefix: argValue(args, "--mode-prefix"),
+    });
     console.log(JSON.stringify({ schema_version: "understudy.automationbench_normalized_results.v1", rows: normalized }, null, 2));
     if (args.includes("--post")) {
       await postRows(handoff, normalized, argValue(args, "--token") ?? process.env.UNDERSTUDY_DESKTOP_TOKEN);
