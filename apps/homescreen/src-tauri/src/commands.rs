@@ -75,6 +75,7 @@ pub struct RecordFusionBenchmarkRequest {
 #[derive(serde::Deserialize)]
 pub struct RunFusionBenchmarkRequest {
     pub run_id: Option<String>,
+    pub suite: Option<String>,
     pub route: Option<String>,
     pub modes: Option<Vec<String>>,
     pub task_ids: Option<Vec<String>>,
@@ -252,6 +253,58 @@ fn valid_fusion_mode(mode: &str) -> bool {
 
 fn valid_fusion_route(route: &str) -> bool {
     matches!(route, "local" | "gateway")
+}
+
+fn fusion_benchmark_suite(suite: Option<&str>) -> Result<(Vec<String>, Vec<String>), String> {
+    match suite.unwrap_or("full-matrix") {
+        "full-matrix" => Ok((
+            vec![
+                "main-only",
+                "sidekick-advisory",
+                "sidekick-parallel",
+                "sidekick-routing",
+            ]
+            .into_iter()
+            .map(str::to_string)
+            .collect(),
+            fusion_benchmark_matrix()
+                .tasks
+                .iter()
+                .map(|task| task.id.to_string())
+                .collect(),
+        )),
+        "routing-smoke" => Ok((
+            vec!["sidekick-routing"]
+                .into_iter()
+                .map(str::to_string)
+                .collect(),
+            vec![
+                "repo-search-summary",
+                "runtime-status-check",
+                "judgment-boundary",
+                "frontier-upgrade-trigger",
+            ]
+            .into_iter()
+            .map(str::to_string)
+            .collect(),
+        )),
+        "local-comparison" => Ok((
+            vec!["main-only", "sidekick-parallel", "sidekick-routing"]
+                .into_iter()
+                .map(str::to_string)
+                .collect(),
+            vec![
+                "repo-search-summary",
+                "runtime-status-check",
+                "repo-open-grounding",
+                "latency-cost-accounting",
+            ]
+            .into_iter()
+            .map(str::to_string)
+            .collect(),
+        )),
+        other => Err(format!("unknown Fusion benchmark suite: {other}")),
+    }
 }
 
 fn avg(values: &[f64]) -> Option<f64> {
@@ -1375,20 +1428,9 @@ pub async fn run_fusion_benchmark(
     }
     let dry_run = request.dry_run.unwrap_or(true);
     let record_skips = request.record_skips.unwrap_or(false);
-    let requested_modes = request.modes.unwrap_or_else(|| {
-        matrix
-            .modes
-            .iter()
-            .map(|mode| mode.id.to_string())
-            .collect()
-    });
-    let requested_tasks = request.task_ids.unwrap_or_else(|| {
-        matrix
-            .tasks
-            .iter()
-            .map(|task| task.id.to_string())
-            .collect()
-    });
+    let (suite_modes, suite_tasks) = fusion_benchmark_suite(request.suite.as_deref())?;
+    let requested_modes = request.modes.unwrap_or(suite_modes);
+    let requested_tasks = request.task_ids.unwrap_or(suite_tasks);
     for mode in &requested_modes {
         if !valid_fusion_mode(mode) {
             return Err(format!("unknown Fusion benchmark mode: {mode}"));

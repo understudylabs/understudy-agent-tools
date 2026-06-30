@@ -419,7 +419,7 @@ fn tools() -> Vec<Value> {
         ("sidekick_metrics", "Aggregate recent sidekick usage, handoff, escalation, and feedback metrics. Args: {limit?}."),
         ("sidekick_session_summaries", "Inspect persisted sidekick session memory and compacted summaries. Args: {limit?}."),
         ("record_fusion_benchmark", "Record one Fusion benchmark result row."),
-        ("run_fusion_benchmark", "Plan or run a Fusion benchmark matrix. Args: {run_id?, modes?, task_ids?, model?, dry_run?, record_skips?}."),
+        ("run_fusion_benchmark", "Plan or run a Fusion benchmark matrix. Args: {run_id?, suite?, modes?, task_ids?, model?, dry_run?, record_skips?}. Suites: routing-smoke, local-comparison, full-matrix."),
         ("aa_models", "Artificial Analysis external pricing/speed/quality."),
         ("list_traces", "List recent Moraine sessions. Args: {limit?}."),
         ("search_traces", "Search Moraine traces. Args: {q}."),
