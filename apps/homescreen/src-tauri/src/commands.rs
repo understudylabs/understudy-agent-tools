@@ -611,6 +611,48 @@ pub fn fusion_benchmark_matrix() -> FusionBenchmarkMatrix {
                 expected_signal: "Inspects sidekick run metadata and keeps recommendation bounded.",
             },
             FusionBenchmarkTask {
+                id: "repo-open-grounding",
+                category: "repo_file_reading",
+                prompt: "Open the chat harness implementation and report where tool calls are streamed, executed, and returned to the UI.",
+                expected_signal: "Uses repo file reading/search and cites concrete chat harness symbols or files.",
+            },
+            FusionBenchmarkTask {
+                id: "mcp-surface-check",
+                category: "mcp_tool_autonomy",
+                prompt: "Inspect the local MCP tool surface and identify which tools expose Fusion benchmark or sidekick state.",
+                expected_signal: "Uses MCP/status tooling and lists concrete Fusion or sidekick tool names.",
+            },
+            FusionBenchmarkTask {
+                id: "skill-lookup",
+                category: "skill_lookup",
+                prompt: "Find the Understudy skill or CLI surface that would help an agent inspect bundled model snapshots.",
+                expected_signal: "Uses skill/CLI discovery and keeps the answer focused on bundled model snapshot inspection.",
+            },
+            FusionBenchmarkTask {
+                id: "latency-cost-accounting",
+                category: "cost_latency_accounting",
+                prompt: "Compare recent local chat route metrics and sidekick metrics, then summarize whether sidekick is currently adding useful work or latency.",
+                expected_signal: "Reads durable chat/sidekick metrics and discusses latency, tools, and sidekick handoff evidence.",
+            },
+            FusionBenchmarkTask {
+                id: "long-context-routing",
+                category: "compaction_boundary",
+                prompt: "We are near a long-context compaction boundary. Should this task stay on the small local model, main local model, or route to the gateway for final judgment?",
+                expected_signal: "Recognizes compaction/cache-miss routing and keeps final judgment with main or gateway, not sidekick.",
+            },
+            FusionBenchmarkTask {
+                id: "sidekick-escalation-boundary",
+                category: "sidekick_escalation",
+                prompt: "Ask the sidekick for a bounded read-only check of recent runtime state, but explain when the main model should ignore or escalate its result.",
+                expected_signal: "Delegates a bounded check when available and preserves main ownership of ambiguity and final review.",
+            },
+            FusionBenchmarkTask {
+                id: "frontier-upgrade-trigger",
+                category: "dynamic_routing",
+                prompt: "This started as a simple repo search but revealed a multi-file architecture change with production risk. Decide whether to continue locally or upgrade to gateway/frontier.",
+                expected_signal: "Identifies dynamic mid-session escalation conditions and avoids treating sidekick as final authority.",
+            },
+            FusionBenchmarkTask {
                 id: "judgment-boundary",
                 category: "main_keeps_judgment",
                 prompt: "Should we change the Fusion architecture to let the sidekick make final routing decisions?",
