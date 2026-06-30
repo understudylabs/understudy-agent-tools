@@ -50,6 +50,7 @@ pub struct BenchmarkChatResult {
     pub tool_calls: u64,
     pub prompt_tokens: u64,
     pub completion_tokens: u64,
+    pub reasoning_tokens: u64,
     pub compacted: bool,
     pub context_tokens_before: u64,
 }
@@ -58,6 +59,12 @@ struct StreamChatOnceResult {
     content: String,
     tool_calls: Vec<ToolCallAcc>,
     error: Option<String>,
+}
+
+struct NonstreamChatOnceResult {
+    content: String,
+    reasoning: String,
+    tool_calls: Vec<ToolCallAcc>,
 }
 
 const CHAT_MAX_TOKENS: u32 = 8192;
@@ -1807,11 +1814,12 @@ pub async fn benchmark_local_chat(
         .build()
         .map_err(|e| e.to_string())?;
     let mut final_content = String::new();
+    let mut reasoning_tokens = 0u64;
     let mut tool_count = 0u64;
     let mut status = "tool_limit".to_string();
 
     for _round in 0..=MAX_TOOL_ROUNDS {
-        let (content, tool_calls) = nonstream_chat_once(
+        let result = nonstream_chat_once(
             &client,
             &url,
             None,
@@ -1820,7 +1828,9 @@ pub async fn benchmark_local_chat(
             BENCHMARK_MAX_TOKENS,
         )
         .await?;
-        final_content = content.clone();
+        final_content = result.content.clone();
+        reasoning_tokens += approximate_token_count(&result.reasoning);
+        let tool_calls = result.tool_calls;
         if tool_calls.is_empty() {
             status = "ok".to_string();
             break;
@@ -1837,7 +1847,7 @@ pub async fn benchmark_local_chat(
             .collect();
         outbound_messages.push(json!({
             "role": "assistant",
-            "content": content,
+            "content": final_content,
             "tool_calls": assistant_tool_calls,
         }));
 
@@ -1860,6 +1870,7 @@ pub async fn benchmark_local_chat(
     Ok(BenchmarkChatResult {
         prompt_tokens: approximate_messages_tokens(&outbound_messages),
         completion_tokens: final_content.split_whitespace().count() as u64,
+        reasoning_tokens,
         content: final_content,
         status,
         elapsed_ms: started.elapsed().as_millis() as u64,
@@ -1894,11 +1905,12 @@ pub async fn benchmark_gateway_chat(
         .build()
         .map_err(|e| e.to_string())?;
     let mut final_content = String::new();
+    let mut reasoning_tokens = 0u64;
     let mut tool_count = 0u64;
     let mut status = "tool_limit".to_string();
 
     for _round in 0..=MAX_TOOL_ROUNDS {
-        let (content, tool_calls) = nonstream_chat_once(
+        let result = nonstream_chat_once(
             &client,
             &url,
             Some(&key),
@@ -1907,7 +1919,9 @@ pub async fn benchmark_gateway_chat(
             BENCHMARK_MAX_TOKENS,
         )
         .await?;
-        final_content = content.clone();
+        final_content = result.content.clone();
+        reasoning_tokens += approximate_token_count(&result.reasoning);
+        let tool_calls = result.tool_calls;
         if tool_calls.is_empty() {
             status = "ok".to_string();
             break;
@@ -1924,7 +1938,7 @@ pub async fn benchmark_gateway_chat(
             .collect();
         outbound_messages.push(json!({
             "role": "assistant",
-            "content": content,
+            "content": final_content,
             "tool_calls": assistant_tool_calls,
         }));
 
@@ -1946,6 +1960,7 @@ pub async fn benchmark_gateway_chat(
     Ok(BenchmarkChatResult {
         prompt_tokens: approximate_messages_tokens(&outbound_messages),
         completion_tokens: final_content.split_whitespace().count() as u64,
+        reasoning_tokens,
         content: final_content,
         status,
         elapsed_ms: started.elapsed().as_millis() as u64,
@@ -1962,7 +1977,7 @@ async fn nonstream_chat_once(
     model_field: &str,
     messages: &[Value],
     max_tokens: u32,
-) -> Result<(String, Vec<ToolCallAcc>), String> {
+) -> Result<NonstreamChatOnceResult, String> {
     let payload = json!({
         "model": model_field,
         "messages": messages,
@@ -1997,6 +2012,11 @@ async fn nonstream_chat_once(
         .and_then(|v| v.as_str())
         .unwrap_or("")
         .to_string();
+    let reasoning = ["reasoning_content", "reasoning", "thinking"]
+        .iter()
+        .filter_map(|key| message.get(*key).and_then(|v| v.as_str()))
+        .collect::<Vec<_>>()
+        .join("\n");
     let tool_calls = message
         .get("tool_calls")
         .and_then(|v| v.as_array())
@@ -2022,7 +2042,11 @@ async fn nonstream_chat_once(
             })
         })
         .collect();
-    Ok((content, tool_calls))
+    Ok(NonstreamChatOnceResult {
+        content,
+        reasoning,
+        tool_calls,
+    })
 }
 
 async fn stream_chat_once(

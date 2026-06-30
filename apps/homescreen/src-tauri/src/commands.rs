@@ -1207,12 +1207,13 @@ pub async fn run_fusion_benchmark(
                         context_tokens_before: Some(result.context_tokens_before),
                         score,
                         notes: Some(format!(
-                            "executed:{}; status={}; policy_reason={}; main_tool_calls={}; output_chars={}",
+                            "executed:{}; status={}; policy_reason={}; main_tool_calls={}; output_chars={}; reasoning_tokens={}",
                             effective_route,
                             result.status,
                             policy_reason,
                             result.tool_calls,
-                            result.content.len()
+                            result.content.len(),
+                            result.reasoning_tokens
                         )),
                     })
                     .map_err(|e| e.to_string())?;
