@@ -487,6 +487,12 @@ export function ChatPane({ resetToken }: { resetToken: number }) {
     latestSidekickEvent?.stage === "queued" ||
     latestSidekickEvent?.stage === "started" ||
     latestSidekickEvent?.stage === "waiting";
+  const sidekickMonitorVisible =
+    backgroundSidekickActive ||
+    (streaming &&
+      (latestSidekickEvent?.stage === "handoff_ready" ||
+        latestSidekickEvent?.stage === "handoff_deferred" ||
+        latestSidekickEvent?.stage === "compaction_boundary"));
   const sidekickActive =
     sidekickTool?.state === "input-available" ||
     sidekickTool?.state === "input-streaming" ||
@@ -574,12 +580,20 @@ export function ChatPane({ resetToken }: { resetToken: number }) {
               );
             })
           }
-          {backgroundSidekickActive && latestSidekickEvent && (
+          {sidekickMonitorVisible && latestSidekickEvent && (
             <div className="sidekick-active-card chat-sidekick-monitor">
               <div className="sidekick-orbit" aria-hidden="true" />
               <div className="sidekick-active-copy">
-                <div className="sidekick-active-kicker">Sidekick</div>
-                <div className="sidekick-active-title">Working in background</div>
+                <div className="sidekick-active-kicker">
+                  {latestSidekickEvent.mode === "routing" ? "Routing" : "Sidekick"}
+                </div>
+                <div className="sidekick-active-title">
+                  {latestSidekickEvent.stage === "compaction_boundary"
+                    ? "Compaction boundary"
+                    : backgroundSidekickActive
+                      ? "Working in background"
+                      : "Background update"}
+                </div>
                 <div className="sidekick-active-task">{latestSidekickEvent.detail}</div>
               </div>
             </div>

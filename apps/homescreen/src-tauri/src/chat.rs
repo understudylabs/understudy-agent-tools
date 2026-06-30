@@ -1680,6 +1680,48 @@ fn record_chat_run(app: &AppHandle, input: ChatRunInput) {
     let _ = app.state::<crate::db::Db>().record_chat_run(&input);
 }
 
+fn record_compaction_route_decision(
+    app: &AppHandle,
+    session_id: &str,
+    route: &str,
+    slot_id: Option<u32>,
+    messages: &[ChatMsg],
+    compaction_reason: &str,
+    context_tokens_before: u64,
+    on_event: Option<&Channel<ChatEvent>>,
+) {
+    let prompt = latest_user_message(messages).unwrap_or("").trim();
+    if prompt.is_empty() {
+        return;
+    }
+    let recommendation = crate::commands::fusion_route_recommendation(
+        app.clone(),
+        crate::commands::FusionRouteRecommendationRequest {
+            prompt: prompt.to_string(),
+            current_route: Some(route.to_string()),
+            session_id: Some(session_id.to_string()),
+            active_slot_id: slot_id,
+        },
+    );
+    let detail = format!(
+        "{} · {} tokens · recommend {} ({})",
+        compaction_reason, context_tokens_before, recommendation.route, recommendation.reason
+    );
+    let _ = app.state::<crate::db::Db>().record_sidekick_event(
+        session_id,
+        "routing",
+        "compaction_boundary",
+        &detail,
+    );
+    if let Some(on_event) = on_event {
+        let _ = on_event.send(ChatEvent::SidekickEvent {
+            mode: "routing".to_string(),
+            stage: "compaction_boundary".to_string(),
+            detail,
+        });
+    }
+}
+
 fn benchmark_prompt(prompt: &str) -> String {
     format!(
         "Fusion benchmark task. Answer concisely in 1200 characters or fewer. Cite concrete evidence or tool results, but do not dump full files, logs, JSON, or source code.\n\nTask: {prompt}"
@@ -2159,6 +2201,18 @@ pub async fn chat_stream(
     let mut completion_tokens = 0u64;
     let mut tool_count = 0u64;
     let compacted = compaction_reason.is_some();
+    if let Some(reason) = compaction_reason.as_deref() {
+        record_compaction_route_decision(
+            &app,
+            &session_id,
+            &route,
+            slot_id,
+            &messages,
+            reason,
+            context_tokens_before,
+            Some(&on_event),
+        );
+    }
 
     let client = reqwest::Client::builder()
         .build()
@@ -2331,6 +2385,18 @@ pub async fn benchmark_local_chat(
     let (mut outbound_messages, compaction_reason, context_tokens_before) =
         compact_chat_messages(outbound_messages);
     let compacted = compaction_reason.is_some();
+    if let Some(reason) = compaction_reason.as_deref() {
+        record_compaction_route_decision(
+            app,
+            session_id,
+            "local",
+            Some(slot_id),
+            &messages,
+            reason,
+            context_tokens_before,
+            None,
+        );
+    }
 
     let client = reqwest::Client::builder()
         .build()
