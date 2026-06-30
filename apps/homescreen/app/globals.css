@@ -192,11 +192,13 @@ select,
   right: 0;
   left: 0;
   height: var(--titlebar-h);
+  border-bottom: 1px solid var(--border);
+  background: color-mix(in srgb, var(--c-window) 92%, transparent);
 }
 .rail-toggle {
   position: fixed;
   z-index: 30;
-  top: 11px;
+  top: 15px;
   left: var(--traffic-left);
   display: inline-grid;
   place-content: center;
