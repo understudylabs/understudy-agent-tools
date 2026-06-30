@@ -362,6 +362,7 @@ async fn delegate_to_sidekick(
         mode,
         &task,
         Some(&model_id),
+        Some(&result.content),
         Some(elapsed_ms),
         result.tool_calls as u64,
         result.session_messages as u64,
@@ -879,6 +880,41 @@ fn maybe_spawn_parallel_sidekick(
     });
 }
 
+fn consume_sidekick_handoffs(app: &AppHandle, session_id: &str) -> Vec<Value> {
+    let Ok(rows) = app
+        .state::<crate::db::Db>()
+        .consume_sidekick_handoffs(session_id, 2)
+    else {
+        return vec![];
+    };
+    if rows.is_empty() {
+        return vec![];
+    }
+
+    let mut body = String::from(
+        "Background sidekick findings from prior parallel work. Treat these as advisory context, not final judgment. Use them only if relevant.\n",
+    );
+    for row in rows {
+        let task = row.task.lines().last().unwrap_or(row.task.as_str()).trim();
+        let content = row.content.unwrap_or_default();
+        body.push_str("\n---\n");
+        body.push_str(&format!(
+            "mode: {}; model: {}; elapsed_ms: {}; tool_calls: {}; escalated: {}\n",
+            row.mode,
+            row.model.unwrap_or_else(|| "unknown".to_string()),
+            row.elapsed_ms.unwrap_or(0),
+            row.tool_calls,
+            row.escalated
+        ));
+        body.push_str(&format!("task: {}\n", truncate_tool_output(task.to_string())));
+        body.push_str("result:\n");
+        body.push_str(&truncate_tool_output(content));
+        body.push('\n');
+    }
+
+    vec![json!({ "role": "system", "content": body })]
+}
+
 /// Stream a chat completion. `route` is "local" (MLX :8089) or "cloud" (gateway).
 /// The desktop app's JS passes a `Channel` it receives chunks on.
 #[tauri::command]
@@ -921,6 +957,7 @@ pub async fn chat_stream(
         "role": "system",
         "content": system_prompt_for(&model_field),
     })];
+    outbound_messages.extend(consume_sidekick_handoffs(&app, &session_id));
     outbound_messages.extend(
         messages
             .iter()

@@ -17,15 +17,18 @@ pub struct BenchRow {
 
 #[derive(Serialize, Clone)]
 pub struct SidekickRunRow {
+    pub id: u64,
     pub session_id: String,
     pub mode: String,
     pub task: String,
     pub model: Option<String>,
+    pub content: Option<String>,
     pub elapsed_ms: Option<u64>,
     pub tool_calls: u64,
     pub session_messages: u64,
     pub escalated: bool,
     pub accepted: Option<bool>,
+    pub consumed: bool,
     pub run_at: String,
 }
 
@@ -73,16 +76,23 @@ impl Db {
                 mode             TEXT NOT NULL,
                 task             TEXT NOT NULL,
                 model            TEXT,
+                content          TEXT,
                 elapsed_ms       INTEGER,
                 tool_calls       INTEGER NOT NULL DEFAULT 0,
                 session_messages INTEGER NOT NULL DEFAULT 0,
                 escalated        INTEGER NOT NULL DEFAULT 0,
                 accepted         INTEGER,
+                consumed         INTEGER NOT NULL DEFAULT 0,
                 run_at           TEXT NOT NULL
             );",
         )?;
         let _ = conn.execute(
             "ALTER TABLE residency ADD COLUMN thinking INTEGER NOT NULL DEFAULT 0",
+            [],
+        );
+        let _ = conn.execute("ALTER TABLE sidekick_runs ADD COLUMN content TEXT", []);
+        let _ = conn.execute(
+            "ALTER TABLE sidekick_runs ADD COLUMN consumed INTEGER NOT NULL DEFAULT 0",
             [],
         );
         Ok(conn)
@@ -200,6 +210,7 @@ impl Db {
         mode: &str,
         task: &str,
         model: Option<&str>,
+        content: Option<&str>,
         elapsed_ms: Option<u64>,
         tool_calls: u64,
         session_messages: u64,
@@ -208,13 +219,14 @@ impl Db {
         let conn = self.conn()?;
         conn.execute(
             "INSERT INTO sidekick_runs (
-                session_id, mode, task, model, elapsed_ms, tool_calls, session_messages, escalated, run_at
-             ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
+                session_id, mode, task, model, content, elapsed_ms, tool_calls, session_messages, escalated, run_at
+             ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
             rusqlite::params![
                 session_id,
                 mode,
                 task,
                 model,
+                content,
                 elapsed_ms.map(|m| m as i64),
                 tool_calls as i64,
                 session_messages as i64,
@@ -228,25 +240,72 @@ impl Db {
     pub fn list_sidekick_runs(&self, limit: u32) -> Result<Vec<SidekickRunRow>> {
         let conn = self.conn()?;
         let mut stmt = conn.prepare(
-            "SELECT session_id, mode, task, model, elapsed_ms, tool_calls, session_messages, escalated, accepted, run_at
+            "SELECT id, session_id, mode, task, model, content, elapsed_ms, tool_calls, session_messages, escalated, accepted, consumed, run_at
              FROM sidekick_runs ORDER BY id DESC LIMIT ?1",
         )?;
         let rows = stmt.query_map([limit.max(1).min(100) as i64], |r| {
             Ok(SidekickRunRow {
-                session_id: r.get(0)?,
-                mode: r.get(1)?,
-                task: r.get(2)?,
-                model: r.get(3)?,
-                elapsed_ms: r.get::<_, Option<i64>>(4)?.map(|m| m as u64),
-                tool_calls: r.get::<_, i64>(5)? as u64,
-                session_messages: r.get::<_, i64>(6)? as u64,
-                escalated: r.get::<_, i64>(7)? != 0,
-                accepted: r.get::<_, Option<i64>>(8)?.map(|v| v != 0),
-                run_at: r.get(9)?,
+                id: r.get::<_, i64>(0)? as u64,
+                session_id: r.get(1)?,
+                mode: r.get(2)?,
+                task: r.get(3)?,
+                model: r.get(4)?,
+                content: r.get(5)?,
+                elapsed_ms: r.get::<_, Option<i64>>(6)?.map(|m| m as u64),
+                tool_calls: r.get::<_, i64>(7)? as u64,
+                session_messages: r.get::<_, i64>(8)? as u64,
+                escalated: r.get::<_, i64>(9)? != 0,
+                accepted: r.get::<_, Option<i64>>(10)?.map(|v| v != 0),
+                consumed: r.get::<_, i64>(11)? != 0,
+                run_at: r.get(12)?,
             })
         })?;
         rows.collect::<rusqlite::Result<Vec<_>>>()
             .map_err(Into::into)
+    }
+
+    pub fn consume_sidekick_handoffs(
+        &self,
+        session_id: &str,
+        limit: u32,
+    ) -> Result<Vec<SidekickRunRow>> {
+        let conn = self.conn()?;
+        let mut stmt = conn.prepare(
+            "SELECT id, session_id, mode, task, model, content, elapsed_ms, tool_calls, session_messages, escalated, accepted, consumed, run_at
+             FROM sidekick_runs
+             WHERE session_id=?1 AND mode='parallel' AND consumed=0 AND content IS NOT NULL
+             ORDER BY id ASC LIMIT ?2",
+        )?;
+        let rows = stmt.query_map(
+            rusqlite::params![session_id, limit.max(1).min(5) as i64],
+            |r| {
+                Ok(SidekickRunRow {
+                    id: r.get::<_, i64>(0)? as u64,
+                    session_id: r.get(1)?,
+                    mode: r.get(2)?,
+                    task: r.get(3)?,
+                    model: r.get(4)?,
+                    content: r.get(5)?,
+                    elapsed_ms: r.get::<_, Option<i64>>(6)?.map(|m| m as u64),
+                    tool_calls: r.get::<_, i64>(7)? as u64,
+                    session_messages: r.get::<_, i64>(8)? as u64,
+                    escalated: r.get::<_, i64>(9)? != 0,
+                    accepted: r.get::<_, Option<i64>>(10)?.map(|v| v != 0),
+                    consumed: r.get::<_, i64>(11)? != 0,
+                    run_at: r.get(12)?,
+                })
+            },
+        )?;
+        let out = rows
+            .collect::<rusqlite::Result<Vec<_>>>()
+            .map_err(anyhow::Error::from)?;
+        for row in &out {
+            conn.execute(
+                "UPDATE sidekick_runs SET consumed=1 WHERE id=?1",
+                [row.id as i64],
+            )?;
+        }
+        Ok(out)
     }
 }
 

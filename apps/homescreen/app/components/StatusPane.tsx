@@ -39,15 +39,18 @@ type DownloadEvent =
   | { type: "Error"; message: string };
 
 type SidekickRun = {
+  id: number;
   session_id: string;
   mode: string;
   task: string;
   model?: string | null;
+  content?: string | null;
   elapsed_ms?: number | null;
   tool_calls: number;
   session_messages: number;
   escalated: boolean;
   accepted?: boolean | null;
+  consumed: boolean;
   run_at: string;
 };
 
@@ -283,7 +286,11 @@ export function StatusPane({ status }: { status: StatusController }) {
                 {sidekickRuns.map((run, index) => (
                   <div className="sidekick-run" key={`${run.run_at}-${index}`}>
                     <div>
-                      <div className="svc-name">{run.mode}{run.escalated ? " · escalated" : ""}</div>
+                      <div className="svc-name">
+                        {run.mode}
+                        {run.mode === "parallel" ? run.consumed ? " · handed off" : " · queued" : ""}
+                        {run.escalated ? " · escalated" : ""}
+                      </div>
                       <div className="svc-desc">{run.task}</div>
                     </div>
                     <span className="svc-state">
