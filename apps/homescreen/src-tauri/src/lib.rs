@@ -143,6 +143,7 @@ pub fn run() {
             commands::local_benchmarks,
             commands::sidekick_runs,
             commands::sidekick_decisions,
+            commands::sidekick_events,
             commands::aa_models,
             commands::aa_attribution,
             commands::get_setting,

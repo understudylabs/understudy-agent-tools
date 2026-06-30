@@ -587,6 +587,18 @@ select,
   border-top: 1px solid var(--border);
   padding: 10px 0;
 }
+.sidekick-event-list {
+  display: grid;
+  border-top: 1px solid var(--border);
+  padding: 4px 0;
+}
+.sidekick-event {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  align-items: center;
+  gap: 12px;
+  padding: 7px 0;
+}
 .sidekick-run .svc-desc {
   overflow: hidden;
   text-overflow: ellipsis;

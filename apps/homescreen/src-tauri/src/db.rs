@@ -43,6 +43,16 @@ pub struct SidekickDecisionRow {
     pub created_at: String,
 }
 
+#[derive(Serialize, Clone)]
+pub struct SidekickEventRow {
+    pub id: u64,
+    pub session_id: String,
+    pub mode: String,
+    pub stage: String,
+    pub detail: String,
+    pub created_at: String,
+}
+
 /// App-owned SQLite store, under the macOS app-data dir. Profile, credentials,
 /// and the model cache continue to live under `~/.understudy/`.
 pub struct Db(pub std::path::PathBuf);
@@ -104,6 +114,14 @@ impl Db {
                 eligible       INTEGER NOT NULL DEFAULT 0,
                 reason         TEXT NOT NULL,
                 created_at     TEXT NOT NULL
+            );
+            CREATE TABLE IF NOT EXISTS sidekick_events (
+                id         INTEGER PRIMARY KEY,
+                session_id TEXT NOT NULL,
+                mode       TEXT NOT NULL,
+                stage      TEXT NOT NULL,
+                detail     TEXT NOT NULL,
+                created_at TEXT NOT NULL
             );",
         )?;
         let _ = conn.execute(
@@ -367,6 +385,42 @@ impl Db {
                 eligible: r.get::<_, i64>(4)? != 0,
                 reason: r.get(5)?,
                 created_at: r.get(6)?,
+            })
+        })?;
+        rows.collect::<rusqlite::Result<Vec<_>>>()
+            .map_err(Into::into)
+    }
+
+    pub fn record_sidekick_event(
+        &self,
+        session_id: &str,
+        mode: &str,
+        stage: &str,
+        detail: &str,
+    ) -> Result<()> {
+        let conn = self.conn()?;
+        conn.execute(
+            "INSERT INTO sidekick_events (session_id, mode, stage, detail, created_at)
+             VALUES (?1, ?2, ?3, ?4, ?5)",
+            rusqlite::params![session_id, mode, stage, detail, now_iso()],
+        )?;
+        Ok(())
+    }
+
+    pub fn list_sidekick_events(&self, limit: u32) -> Result<Vec<SidekickEventRow>> {
+        let conn = self.conn()?;
+        let mut stmt = conn.prepare(
+            "SELECT id, session_id, mode, stage, detail, created_at
+             FROM sidekick_events ORDER BY id DESC LIMIT ?1",
+        )?;
+        let rows = stmt.query_map([limit.max(1).min(100) as i64], |r| {
+            Ok(SidekickEventRow {
+                id: r.get::<_, i64>(0)? as u64,
+                session_id: r.get(1)?,
+                mode: r.get(2)?,
+                stage: r.get(3)?,
+                detail: r.get(4)?,
+                created_at: r.get(5)?,
             })
         })?;
         rows.collect::<rusqlite::Result<Vec<_>>>()

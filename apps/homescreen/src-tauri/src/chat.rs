@@ -346,7 +346,9 @@ async fn delegate_to_sidekick(
     })?;
     let profile = sidekick_profile();
     let started = Instant::now();
-    let result = call_sidekick_model(
+    let db = app.state::<crate::db::Db>();
+    let _ = db.record_sidekick_event(session_id, mode, "started", &task);
+    let result = match call_sidekick_model(
         app,
         port,
         &model_path,
@@ -356,10 +358,17 @@ async fn delegate_to_sidekick(
         context,
         expected_output,
     )
-    .await?;
+    .await
+    {
+        Ok(result) => result,
+        Err(err) => {
+            let _ = db.record_sidekick_event(session_id, mode, "error", &err);
+            return Err(err);
+        }
+    };
     let elapsed_ms = started.elapsed().as_millis() as u64;
     let escalate = result.content.contains("ESCALATE_TO_MAIN");
-    let _ = app.state::<crate::db::Db>().record_sidekick_run(
+    let _ = db.record_sidekick_run(
         session_id,
         mode,
         &task,
@@ -369,6 +378,15 @@ async fn delegate_to_sidekick(
         result.tool_calls as u64,
         result.session_messages as u64,
         escalate,
+    );
+    let _ = db.record_sidekick_event(
+        session_id,
+        mode,
+        "finished",
+        &format!(
+            "{}ms · {} tools · {} ctx",
+            elapsed_ms, result.tool_calls, result.session_messages
+        ),
     );
     Ok(json!({
         "profile_id": profile.id,

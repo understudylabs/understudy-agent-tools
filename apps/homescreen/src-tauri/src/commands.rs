@@ -1,7 +1,7 @@
 use crate::aa::{self, AaModel};
 use crate::account;
 use crate::bin;
-use crate::db::{BenchRow, SidekickDecisionRow, SidekickRunRow};
+use crate::db::{BenchRow, SidekickDecisionRow, SidekickEventRow, SidekickRunRow};
 use crate::knowledge::{self, Dossier};
 use crate::mcp;
 use crate::metrics::{Machine, Metrics, MetricsReader};
@@ -344,6 +344,13 @@ pub fn sidekick_decisions(
 ) -> Result<Vec<SidekickDecisionRow>, String> {
     app.state::<crate::db::Db>()
         .list_sidekick_decisions(limit.unwrap_or(10))
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn sidekick_events(app: AppHandle, limit: Option<u32>) -> Result<Vec<SidekickEventRow>, String> {
+    app.state::<crate::db::Db>()
+        .list_sidekick_events(limit.unwrap_or(10))
         .map_err(|e| e.to_string())
 }
 

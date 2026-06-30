@@ -64,6 +64,15 @@ type SidekickDecision = {
   created_at: string;
 };
 
+type SidekickEvent = {
+  id: number;
+  session_id: string;
+  mode: string;
+  stage: string;
+  detail: string;
+  created_at: string;
+};
+
 export function StatusPane({ status }: { status: StatusController }) {
   const { snap, busy, connect, disconnect } = status;
   const [bootstrap, setBootstrap] = useState<BootstrapStatus | null>(null);
@@ -73,6 +82,7 @@ export function StatusPane({ status }: { status: StatusController }) {
   const [parallelSidekick, setParallelSidekick] = useState(false);
   const [sidekickRuns, setSidekickRuns] = useState<SidekickRun[]>([]);
   const [sidekickDecisions, setSidekickDecisions] = useState<SidekickDecision[]>([]);
+  const [sidekickEvents, setSidekickEvents] = useState<SidekickEvent[]>([]);
 
   const refreshBootstrap = () => {
     invoke<BootstrapStatus>("bootstrap_status")
@@ -96,6 +106,9 @@ export function StatusPane({ status }: { status: StatusController }) {
     invoke<SidekickDecision[]>("sidekick_decisions", { limit: 3 })
       .then(setSidekickDecisions)
       .catch(() => setSidekickDecisions([]));
+    invoke<SidekickEvent[]>("sidekick_events", { limit: 4 })
+      .then(setSidekickEvents)
+      .catch(() => setSidekickEvents([]));
   };
 
   useEffect(() => {
@@ -306,6 +319,19 @@ export function StatusPane({ status }: { status: StatusController }) {
                     {sidekickDecisions[0].reason} · {sidekickDecisions[0].prompt_excerpt}
                   </div>
                 </div>
+              </div>
+            )}
+            {sidekickEvents.length > 0 && (
+              <div className="sidekick-event-list">
+                {sidekickEvents.map((event) => (
+                  <div className="sidekick-event" key={event.id}>
+                    <span className={"dot " + (event.stage === "finished" ? "running" : event.stage === "error" ? "stopped" : "loading")} />
+                    <div>
+                      <div className="svc-name">{event.mode} · {event.stage}</div>
+                      <div className="svc-desc">{event.detail}</div>
+                    </div>
+                  </div>
+                ))}
               </div>
             )}
             {sidekickRuns.length > 0 && (
