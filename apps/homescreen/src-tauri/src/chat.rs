@@ -9,7 +9,7 @@ use std::time::{Duration, Instant};
 use tauri::ipc::Channel;
 use tauri::{AppHandle, Manager, State};
 
-use crate::db::SidekickFeedbackSummary;
+use crate::db::{ChatRunInput, SidekickFeedbackSummary};
 use crate::residency::Residency;
 
 /// Frontend-facing stream events. Tagged so JS can switch on `msg.type`.
@@ -49,6 +49,12 @@ pub struct BenchmarkChatResult {
     pub tool_calls: u64,
     pub prompt_tokens: u64,
     pub completion_tokens: u64,
+}
+
+struct StreamChatOnceResult {
+    content: String,
+    tool_calls: Vec<ToolCallAcc>,
+    error: Option<String>,
 }
 
 const CHAT_MAX_TOKENS: u32 = 8192;
@@ -1163,6 +1169,25 @@ fn prompt_excerpt(prompt: &str) -> String {
     format!("{}…", &trimmed[..end])
 }
 
+fn approximate_token_count(text: &str) -> u64 {
+    text.split_whitespace().count() as u64
+}
+
+fn approximate_messages_tokens(messages: &[Value]) -> u64 {
+    messages
+        .iter()
+        .filter_map(|message| message.get("content"))
+        .map(|content| match content {
+            Value::String(text) => approximate_token_count(text),
+            other => approximate_token_count(&other.to_string()),
+        })
+        .sum()
+}
+
+fn record_chat_run(app: &AppHandle, input: ChatRunInput) {
+    let _ = app.state::<crate::db::Db>().record_chat_run(&input);
+}
+
 fn sidekick_routing_signals(app: &AppHandle) -> SidekickRoutingSignals {
     let Ok(rows) = app.state::<crate::db::Db>().list_sidekick_runs(30) else {
         return SidekickRoutingSignals::default();
@@ -1442,6 +1467,7 @@ pub async fn chat_stream(
     app: AppHandle,
     mgr: State<'_, Residency>,
 ) -> Result<(), String> {
+    let started = Instant::now();
     let session_id = session_id.unwrap_or_else(|| "default".to_string());
     let sidekick_spawned =
         maybe_spawn_parallel_sidekick(&app, &route, slot_id, &session_id, &messages);
@@ -1480,13 +1506,17 @@ pub async fn chat_stream(
             .filter(|m| m.role != "system")
             .map(|m| json!({ "role": m.role, "content": m.content })),
     );
+    let mut prompt_tokens = approximate_messages_tokens(&outbound_messages);
+    let mut completion_tokens = 0u64;
+    let mut tool_count = 0u64;
 
     let client = reqwest::Client::builder()
         .build()
         .map_err(|e| e.to_string())?;
 
     for _round in 0..=MAX_TOOL_ROUNDS {
-        let tool_calls = stream_chat_once(
+        prompt_tokens = prompt_tokens.max(approximate_messages_tokens(&outbound_messages));
+        let result = stream_chat_once(
             &client,
             &url,
             bearer.as_deref(),
@@ -1495,10 +1525,49 @@ pub async fn chat_stream(
             &on_event,
         )
         .await?;
-        if tool_calls.is_empty() {
+        completion_tokens += approximate_token_count(&result.content);
+        if let Some(error) = result.error {
+            record_chat_run(
+                &app,
+                ChatRunInput {
+                    session_id: session_id.clone(),
+                    route: route.clone(),
+                    model: model_field.clone(),
+                    elapsed_ms: Some(started.elapsed().as_millis() as u64),
+                    prompt_tokens: Some(prompt_tokens),
+                    completion_tokens: Some(completion_tokens),
+                    tool_calls: tool_count,
+                    sidekick_spawned,
+                    gateway_used: route == "cloud",
+                    status: "error".to_string(),
+                    error: Some(error),
+                },
+            );
             let _ = on_event.send(ChatEvent::Done);
             return Ok(());
         }
+        let tool_calls = result.tool_calls;
+        if tool_calls.is_empty() {
+            record_chat_run(
+                &app,
+                ChatRunInput {
+                    session_id: session_id.clone(),
+                    route: route.clone(),
+                    model: model_field.clone(),
+                    elapsed_ms: Some(started.elapsed().as_millis() as u64),
+                    prompt_tokens: Some(prompt_tokens),
+                    completion_tokens: Some(completion_tokens),
+                    tool_calls: tool_count,
+                    sidekick_spawned,
+                    gateway_used: route == "cloud",
+                    status: "ok".to_string(),
+                    error: None,
+                },
+            );
+            let _ = on_event.send(ChatEvent::Done);
+            return Ok(());
+        }
+        tool_count += tool_calls.len() as u64;
 
         let assistant_tool_calls: Vec<Value> = tool_calls
             .iter()
@@ -1544,6 +1613,22 @@ pub async fn chat_stream(
     let _ = on_event.send(ChatEvent::Error {
         message: format!("tool call limit reached ({MAX_TOOL_ROUNDS})"),
     });
+    record_chat_run(
+        &app,
+        ChatRunInput {
+            session_id: session_id.clone(),
+            route: route.clone(),
+            model: model_field,
+            elapsed_ms: Some(started.elapsed().as_millis() as u64),
+            prompt_tokens: Some(prompt_tokens),
+            completion_tokens: Some(completion_tokens),
+            tool_calls: tool_count,
+            sidekick_spawned,
+            gateway_used: route == "cloud",
+            status: "tool_limit".to_string(),
+            error: Some(format!("tool call limit reached ({MAX_TOOL_ROUNDS})")),
+        },
+    );
     let _ = on_event.send(ChatEvent::Done);
     Ok(())
 }
@@ -1774,7 +1859,7 @@ async fn stream_chat_once(
     model_field: &str,
     messages: &[Value],
     on_event: &Channel<ChatEvent>,
-) -> Result<Vec<ToolCallAcc>, String> {
+) -> Result<StreamChatOnceResult, String> {
     let payload = json!({
         "model": model_field,
         "messages": messages,
@@ -1793,10 +1878,15 @@ async fn stream_chat_once(
     let resp = match req.send().await {
         Ok(r) => r,
         Err(e) => {
+            let message = format!("request failed: {e}");
             let _ = on_event.send(ChatEvent::Error {
-                message: format!("request failed: {e}"),
+                message: message.clone(),
             });
-            return Ok(vec![]);
+            return Ok(StreamChatOnceResult {
+                content: String::new(),
+                tool_calls: vec![],
+                error: Some(message),
+            });
         }
     };
 
@@ -1806,13 +1896,18 @@ async fn stream_chat_once(
         let _ = on_event.send(ChatEvent::Error {
             message: format!("{status}: {body}"),
         });
-        return Ok(vec![]);
+        return Ok(StreamChatOnceResult {
+            content: String::new(),
+            tool_calls: vec![],
+            error: Some(format!("{status}: {body}")),
+        });
     }
 
     let mut stream = resp.bytes_stream();
     let mut buf = String::new();
     let mut think = ThinkParser::new();
     let mut tool_calls: Vec<ToolCallAcc> = vec![];
+    let mut content = String::new();
 
     while let Some(item) = stream.next().await {
         let chunk = match item {
@@ -1821,7 +1916,11 @@ async fn stream_chat_once(
                 let _ = on_event.send(ChatEvent::Error {
                     message: e.to_string(),
                 });
-                return Ok(vec![]);
+                return Ok(StreamChatOnceResult {
+                    content,
+                    tool_calls: vec![],
+                    error: Some(e.to_string()),
+                });
             }
         };
         buf.push_str(&String::from_utf8_lossy(&chunk));
@@ -1834,7 +1933,11 @@ async fn stream_chat_once(
             };
             if data == "[DONE]" {
                 flush_thinking(&mut think, on_event);
-                return Ok(finalize_tool_calls(tool_calls));
+                return Ok(StreamChatOnceResult {
+                    content,
+                    tool_calls: finalize_tool_calls(tool_calls),
+                    error: None,
+                });
             }
             if let Ok(v) = serde_json::from_str::<Value>(data) {
                 let delta = &v["choices"][0]["delta"];
@@ -1850,6 +1953,7 @@ async fn stream_chat_once(
                         if is_reasoning {
                             let _ = on_event.send(ChatEvent::ReasoningChunk { text });
                         } else {
+                            content.push_str(&text);
                             let _ = on_event.send(ChatEvent::Chunk { text });
                         }
                     }
@@ -1860,7 +1964,11 @@ async fn stream_chat_once(
     }
 
     flush_thinking(&mut think, on_event);
-    Ok(finalize_tool_calls(tool_calls))
+    Ok(StreamChatOnceResult {
+        content,
+        tool_calls: finalize_tool_calls(tool_calls),
+        error: None,
+    })
 }
 
 fn flush_thinking(think: &mut ThinkParser, on_event: &Channel<ChatEvent>) {

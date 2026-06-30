@@ -146,6 +146,8 @@ pub fn run() {
             commands::record_fusion_benchmark,
             commands::fusion_benchmark_results,
             commands::fusion_benchmark_summary,
+            commands::chat_runs,
+            commands::chat_route_metrics,
             commands::run_fusion_benchmark,
             commands::sidekick_runs,
             commands::sidekick_metrics,

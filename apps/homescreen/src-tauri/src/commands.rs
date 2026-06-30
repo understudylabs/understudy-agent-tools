@@ -2,8 +2,8 @@ use crate::aa::{self, AaModel};
 use crate::account;
 use crate::bin;
 use crate::db::{
-    BenchRow, FusionBenchmarkInput, FusionBenchmarkRow, SidekickDecisionRow, SidekickEventRow,
-    SidekickRunRow, SidekickSessionSummaryRow,
+    BenchRow, ChatRunRow, FusionBenchmarkInput, FusionBenchmarkRow, SidekickDecisionRow,
+    SidekickEventRow, SidekickRunRow, SidekickSessionSummaryRow,
 };
 use crate::knowledge::{self, Dossier};
 use crate::mcp;
@@ -148,6 +148,27 @@ pub struct FusionBenchmarkSummary {
     pub executed: u64,
     pub skipped: u64,
     pub groups: Vec<FusionBenchmarkSummaryGroup>,
+}
+
+#[derive(Serialize, Clone)]
+pub struct ChatRouteMetricGroup {
+    pub route: String,
+    pub model: String,
+    pub rows: u64,
+    pub ok_rows: u64,
+    pub error_rows: u64,
+    pub sidekick_rows: u64,
+    pub gateway_rows: u64,
+    pub avg_elapsed_ms: Option<f64>,
+    pub avg_prompt_tokens: Option<f64>,
+    pub avg_completion_tokens: Option<f64>,
+    pub avg_tool_calls: Option<f64>,
+}
+
+#[derive(Serialize, Clone)]
+pub struct ChatRouteMetrics {
+    pub schema_version: &'static str,
+    pub groups: Vec<ChatRouteMetricGroup>,
 }
 
 #[derive(Serialize, Clone)]
@@ -828,6 +849,63 @@ pub fn fusion_benchmark_summary(
         executed: executed_total,
         skipped: skipped_total,
         groups: summary_groups,
+    })
+}
+
+#[tauri::command]
+pub fn chat_runs(app: AppHandle, limit: Option<u32>) -> Result<Vec<ChatRunRow>, String> {
+    app.state::<crate::db::Db>()
+        .list_chat_runs(limit.unwrap_or(100))
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn chat_route_metrics(app: AppHandle, limit: Option<u32>) -> Result<ChatRouteMetrics, String> {
+    let rows = app
+        .state::<crate::db::Db>()
+        .list_chat_runs(limit.unwrap_or(250))
+        .map_err(|e| e.to_string())?;
+    let mut groups: std::collections::BTreeMap<(String, String), Vec<ChatRunRow>> =
+        std::collections::BTreeMap::new();
+    for row in rows {
+        groups
+            .entry((row.route.clone(), row.model.clone()))
+            .or_default()
+            .push(row);
+    }
+    let mut out = vec![];
+    for ((route, model), rows) in groups {
+        let elapsed_values: Vec<f64> = rows
+            .iter()
+            .filter_map(|row| row.elapsed_ms.map(|v| v as f64))
+            .collect();
+        let prompt_values: Vec<f64> = rows
+            .iter()
+            .filter_map(|row| row.prompt_tokens.map(|v| v as f64))
+            .collect();
+        let completion_values: Vec<f64> = rows
+            .iter()
+            .filter_map(|row| row.completion_tokens.map(|v| v as f64))
+            .collect();
+        let tool_values: Vec<f64> = rows.iter().map(|row| row.tool_calls as f64).collect();
+        out.push(ChatRouteMetricGroup {
+            route,
+            model,
+            rows: rows.len() as u64,
+            ok_rows: rows.iter().filter(|row| row.status == "ok").count() as u64,
+            error_rows: rows.iter().filter(|row| row.status != "ok").count() as u64,
+            sidekick_rows: rows.iter().filter(|row| row.sidekick_spawned).count() as u64,
+            gateway_rows: rows.iter().filter(|row| row.gateway_used).count() as u64,
+            avg_elapsed_ms: avg(&elapsed_values),
+            avg_prompt_tokens: avg(&prompt_values),
+            avg_completion_tokens: avg(&completion_values),
+            avg_tool_calls: avg(&tool_values),
+        });
+    }
+    out.sort_by(|a, b| b.rows.cmp(&a.rows));
+    Ok(ChatRouteMetrics {
+        schema_version: "understudy.chat_route_metrics.v1",
+        groups: out,
     })
 }
 

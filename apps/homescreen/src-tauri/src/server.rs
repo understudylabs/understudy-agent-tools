@@ -47,6 +47,8 @@ pub fn router(ctx: Ctx) -> Router {
             "/api/fusion/benchmark-results",
             get(fusion_benchmark_results).post(record_fusion_benchmark),
         )
+        .route("/api/chat/runs", get(chat_runs))
+        .route("/api/chat/route-metrics", get(chat_route_metrics))
         .route("/api/fusion/run", post(run_fusion_benchmark))
         .route("/api/sidekick/metrics", get(sidekick_metrics))
         .route("/api/sidekick/sessions", get(sidekick_session_summaries))
@@ -227,6 +229,26 @@ async fn sidekick_metrics(
         .map(|v| Json(json!(v)))
         .map_err(|e| (StatusCode::BAD_GATEWAY, e))
 }
+async fn chat_runs(
+    State(ctx): State<Ctx>,
+    h: HeaderMap,
+    Query(q): Query<LimitQ>,
+) -> Result<Json<Value>, (StatusCode, String)> {
+    auth(&ctx, &h)?;
+    crate::commands::chat_runs(ctx.app.clone(), q.limit)
+        .map(|v| Json(json!(v)))
+        .map_err(|e| (StatusCode::BAD_GATEWAY, e))
+}
+async fn chat_route_metrics(
+    State(ctx): State<Ctx>,
+    h: HeaderMap,
+    Query(q): Query<LimitQ>,
+) -> Result<Json<Value>, (StatusCode, String)> {
+    auth(&ctx, &h)?;
+    crate::commands::chat_route_metrics(ctx.app.clone(), q.limit)
+        .map(|v| Json(json!(v)))
+        .map_err(|e| (StatusCode::BAD_GATEWAY, e))
+}
 async fn sidekick_session_summaries(
     State(ctx): State<Ctx>,
     h: HeaderMap,
@@ -365,6 +387,8 @@ fn tools() -> Vec<Value> {
         ("fusion_route_recommendation", "Recommend local, local+sidekick, or gateway for a prompt. Args: {prompt, current_route?, active_slot_id?}."),
         ("fusion_benchmark_results", "Recent Fusion benchmark result rows. Args: {limit?}."),
         ("fusion_benchmark_summary", "Aggregate Fusion benchmark results by route, mode, and model. Args: {limit?}."),
+        ("chat_runs", "Recent desktop chat route accounting rows. Args: {limit?}."),
+        ("chat_route_metrics", "Aggregate desktop chat route latency, token, tool, sidekick, and gateway usage. Args: {limit?}."),
         ("sidekick_metrics", "Aggregate recent sidekick usage, handoff, escalation, and feedback metrics. Args: {limit?}."),
         ("sidekick_session_summaries", "Inspect persisted sidekick session memory and compacted summaries. Args: {limit?}."),
         ("record_fusion_benchmark", "Record one Fusion benchmark result row."),
@@ -403,6 +427,16 @@ async fn call_tool(ctx: &Ctx, name: &str, args: &Value) -> Result<Value, String>
         )
         .map_err(|e| e.to_string())?),
         "fusion_benchmark_summary" => json!(c::fusion_benchmark_summary(
+            app,
+            args.get("limit").and_then(|v| v.as_u64()).map(|x| x as u32)
+        )
+        .map_err(|e| e.to_string())?),
+        "chat_runs" => json!(c::chat_runs(
+            app,
+            args.get("limit").and_then(|v| v.as_u64()).map(|x| x as u32)
+        )
+        .map_err(|e| e.to_string())?),
+        "chat_route_metrics" => json!(c::chat_route_metrics(
             app,
             args.get("limit").and_then(|v| v.as_u64()).map(|x| x as u32)
         )

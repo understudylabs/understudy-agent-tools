@@ -50,6 +50,38 @@ pub struct FusionBenchmarkInput {
 }
 
 #[derive(Serialize, Clone)]
+pub struct ChatRunRow {
+    pub id: u64,
+    pub session_id: String,
+    pub route: String,
+    pub model: String,
+    pub elapsed_ms: Option<u64>,
+    pub prompt_tokens: Option<u64>,
+    pub completion_tokens: Option<u64>,
+    pub tool_calls: u64,
+    pub sidekick_spawned: bool,
+    pub gateway_used: bool,
+    pub status: String,
+    pub error: Option<String>,
+    pub run_at: String,
+}
+
+#[derive(Clone, Debug)]
+pub struct ChatRunInput {
+    pub session_id: String,
+    pub route: String,
+    pub model: String,
+    pub elapsed_ms: Option<u64>,
+    pub prompt_tokens: Option<u64>,
+    pub completion_tokens: Option<u64>,
+    pub tool_calls: u64,
+    pub sidekick_spawned: bool,
+    pub gateway_used: bool,
+    pub status: String,
+    pub error: Option<String>,
+}
+
+#[derive(Serialize, Clone)]
 pub struct SidekickRunRow {
     pub id: u64,
     pub session_id: String,
@@ -153,6 +185,21 @@ impl Db {
                 content     TEXT NOT NULL,
                 route       TEXT,
                 created_at  TEXT NOT NULL
+            );
+            CREATE TABLE IF NOT EXISTS chat_runs (
+                id                INTEGER PRIMARY KEY,
+                session_id        TEXT NOT NULL,
+                route             TEXT NOT NULL,
+                model             TEXT NOT NULL,
+                elapsed_ms        INTEGER,
+                prompt_tokens     INTEGER,
+                completion_tokens INTEGER,
+                tool_calls        INTEGER NOT NULL DEFAULT 0,
+                sidekick_spawned  INTEGER NOT NULL DEFAULT 0,
+                gateway_used      INTEGER NOT NULL DEFAULT 0,
+                status            TEXT NOT NULL,
+                error             TEXT,
+                run_at            TEXT NOT NULL
             );
             CREATE TABLE IF NOT EXISTS settings (
                 key   TEXT PRIMARY KEY,
@@ -322,6 +369,59 @@ impl Db {
             ],
         )?;
         Ok(())
+    }
+
+    pub fn record_chat_run(&self, input: &ChatRunInput) -> Result<()> {
+        let conn = self.conn()?;
+        conn.execute(
+            "INSERT INTO chat_runs (
+                session_id, route, model, elapsed_ms, prompt_tokens, completion_tokens, tool_calls,
+                sidekick_spawned, gateway_used, status, error, run_at
+             ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)",
+            rusqlite::params![
+                input.session_id,
+                input.route,
+                input.model,
+                input.elapsed_ms.map(|v| v as i64),
+                input.prompt_tokens.map(|v| v as i64),
+                input.completion_tokens.map(|v| v as i64),
+                input.tool_calls as i64,
+                input.sidekick_spawned as i64,
+                input.gateway_used as i64,
+                input.status,
+                input.error,
+                now_iso(),
+            ],
+        )?;
+        Ok(())
+    }
+
+    pub fn list_chat_runs(&self, limit: u32) -> Result<Vec<ChatRunRow>> {
+        let conn = self.conn()?;
+        let mut stmt = conn.prepare(
+            "SELECT id, session_id, route, model, elapsed_ms, prompt_tokens, completion_tokens,
+                    tool_calls, sidekick_spawned, gateway_used, status, error, run_at
+             FROM chat_runs ORDER BY id DESC LIMIT ?1",
+        )?;
+        let rows = stmt.query_map([limit.max(1).min(500) as i64], |r| {
+            Ok(ChatRunRow {
+                id: r.get::<_, i64>(0)? as u64,
+                session_id: r.get(1)?,
+                route: r.get(2)?,
+                model: r.get(3)?,
+                elapsed_ms: r.get::<_, Option<i64>>(4)?.map(|v| v as u64),
+                prompt_tokens: r.get::<_, Option<i64>>(5)?.map(|v| v as u64),
+                completion_tokens: r.get::<_, Option<i64>>(6)?.map(|v| v as u64),
+                tool_calls: r.get::<_, i64>(7)? as u64,
+                sidekick_spawned: r.get::<_, i64>(8)? != 0,
+                gateway_used: r.get::<_, i64>(9)? != 0,
+                status: r.get(10)?,
+                error: r.get(11)?,
+                run_at: r.get(12)?,
+            })
+        })?;
+        rows.collect::<rusqlite::Result<Vec<_>>>()
+            .map_err(Into::into)
     }
 
     pub fn list_fusion_benchmarks(&self, limit: u32) -> Result<Vec<FusionBenchmarkRow>> {
