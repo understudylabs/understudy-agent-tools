@@ -87,6 +87,7 @@ pub struct FusionRouteRecommendationRequest {
     pub prompt: String,
     pub current_route: Option<String>,
     pub active_slot_id: Option<u32>,
+    pub session_id: Option<String>,
 }
 
 #[derive(Serialize, Clone)]
@@ -245,6 +246,8 @@ struct ChatRouteSignals {
     local_error_rate: Option<f64>,
     sidekick_rows: u64,
     compacted_rows: u64,
+    session_compacted_rows: u64,
+    session_last_compaction_reason: Option<String>,
     local_tool_depth_rows: u64,
     avg_local_tool_calls: Option<f64>,
     sidekick_benchmark_rows: u64,
@@ -253,10 +256,17 @@ struct ChatRouteSignals {
     avg_sidekick_elapsed_ms: Option<f64>,
 }
 
-fn chat_route_signals(app: &AppHandle) -> ChatRouteSignals {
+fn chat_route_signals(app: &AppHandle, session_id: Option<&str>) -> ChatRouteSignals {
     let Ok(rows) = app.state::<crate::db::Db>().list_chat_runs(60) else {
         return ChatRouteSignals::default();
     };
+    let session_rows = session_id
+        .and_then(|id| {
+            app.state::<crate::db::Db>()
+                .list_chat_runs_for_session(id, 20)
+                .ok()
+        })
+        .unwrap_or_default();
     let local: Vec<_> = rows.iter().filter(|row| row.route == "local").collect();
     let sidekick: Vec<_> = local
         .iter()
@@ -292,6 +302,11 @@ fn chat_route_signals(app: &AppHandle) -> ChatRouteSignals {
         ),
         sidekick_rows: sidekick.len() as u64,
         compacted_rows: rows.iter().filter(|row| row.compacted).count() as u64,
+        session_compacted_rows: session_rows.iter().filter(|row| row.compacted).count() as u64,
+        session_last_compaction_reason: session_rows
+            .iter()
+            .find(|row| row.compacted)
+            .and_then(|row| row.compaction_reason.clone()),
         local_tool_depth_rows,
         avg_local_tool_calls: avg(&local_tool_calls),
         sidekick_benchmark_rows: sidekick_scores.len() as u64,
@@ -794,7 +809,7 @@ pub fn fusion_route_recommendation(
     );
 
     let metrics = sidekick_metrics(app.clone(), Some(30)).ok();
-    let route_signals = chat_route_signals(&app);
+    let route_signals = chat_route_signals(&app, request.session_id.as_deref());
     let enough_parallel_feedback = metrics
         .as_ref()
         .is_some_and(|m| m.parallel_useful_rows + m.parallel_miss_rows >= 5);
@@ -846,13 +861,25 @@ pub fn fusion_route_recommendation(
         && route_signals
             .sidekick_benchmark_score
             .is_some_and(|score| score < 0.5);
-    let compaction_boundary = route_signals.compacted_rows > 0 || prompt.len() > 16_000;
+    let session_compaction_boundary = route_signals.session_compacted_rows > 0;
+    let compaction_boundary =
+        session_compaction_boundary || route_signals.compacted_rows > 0 || prompt.len() > 16_000;
 
     let (route, use_sidekick, escalate_gateway, reason) =
         if matches!(current_route, Some("cloud" | "gateway")) && gateway_ready && !mechanical {
             ("gateway", false, true, "keep_current_gateway")
+        } else if session_compaction_boundary && gateway_ready && (complex || judgment) {
+            (
+                "gateway",
+                false,
+                true,
+                route_signals
+                    .session_last_compaction_reason
+                    .as_deref()
+                    .unwrap_or("session_compaction_boundary_gateway"),
+            )
         } else if compaction_boundary && gateway_ready && (complex || judgment) {
-            ("gateway", false, true, "compaction_boundary_gateway")
+            ("gateway", false, true, "recent_compaction_boundary_gateway")
         } else if local_unhealthy && gateway_ready && (complex || current_route == Some("local")) {
             ("gateway", false, true, "local_error_rate_high")
         } else if local_tool_depth_high
@@ -1236,6 +1263,7 @@ pub async fn run_fusion_benchmark(
                         prompt: task.prompt.to_string(),
                         current_route: Some(route.clone()),
                         active_slot_id: main_slot_id,
+                        session_id: Some(run_id.clone()),
                     },
                 )
             });

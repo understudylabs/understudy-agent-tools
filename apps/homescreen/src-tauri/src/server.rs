@@ -395,7 +395,7 @@ fn tools() -> Vec<Value> {
         ("knowledge_dossiers", "Bundled public per-model dossiers."),
         ("local_benchmarks", "Local live benchmark rows."),
         ("fusion_benchmark_matrix", "Fusion benchmark modes and fixed local task set."),
-        ("fusion_route_recommendation", "Recommend local, local+sidekick, or gateway for a prompt. Args: {prompt, current_route?, active_slot_id?}."),
+        ("fusion_route_recommendation", "Recommend local, local+sidekick, or gateway for a prompt. Args: {prompt, current_route?, active_slot_id?, session_id?}."),
         ("fusion_route_decisions", "Recent persisted Fusion route policy decisions with sidekick, gateway, token, and memory accounting. Args: {limit?}."),
         ("fusion_benchmark_results", "Recent Fusion benchmark result rows. Args: {limit?}."),
         ("fusion_benchmark_summary", "Aggregate Fusion benchmark results by route, mode, and model. Args: {limit?}."),

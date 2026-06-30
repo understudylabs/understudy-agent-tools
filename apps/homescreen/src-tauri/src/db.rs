@@ -596,6 +596,47 @@ impl Db {
             .map_err(Into::into)
     }
 
+    pub fn list_chat_runs_for_session(
+        &self,
+        session_id: &str,
+        limit: u32,
+    ) -> Result<Vec<ChatRunRow>> {
+        let conn = self.conn()?;
+        let mut stmt = conn.prepare(
+            "SELECT id, session_id, route, model, elapsed_ms, prompt_tokens, completion_tokens,
+                    tool_calls, sidekick_spawned, gateway_used, compacted, compaction_reason,
+                    context_tokens_before, status, error, run_at
+             FROM chat_runs
+             WHERE session_id=?1
+             ORDER BY id DESC LIMIT ?2",
+        )?;
+        let rows = stmt.query_map(
+            rusqlite::params![session_id, limit.max(1).min(100) as i64],
+            |r| {
+                Ok(ChatRunRow {
+                    id: r.get::<_, i64>(0)? as u64,
+                    session_id: r.get(1)?,
+                    route: r.get(2)?,
+                    model: r.get(3)?,
+                    elapsed_ms: r.get::<_, Option<i64>>(4)?.map(|v| v as u64),
+                    prompt_tokens: r.get::<_, Option<i64>>(5)?.map(|v| v as u64),
+                    completion_tokens: r.get::<_, Option<i64>>(6)?.map(|v| v as u64),
+                    tool_calls: r.get::<_, i64>(7)? as u64,
+                    sidekick_spawned: r.get::<_, i64>(8)? != 0,
+                    gateway_used: r.get::<_, i64>(9)? != 0,
+                    compacted: r.get::<_, i64>(10)? != 0,
+                    compaction_reason: r.get(11)?,
+                    context_tokens_before: r.get::<_, Option<i64>>(12)?.map(|v| v as u64),
+                    status: r.get(13)?,
+                    error: r.get(14)?,
+                    run_at: r.get(15)?,
+                })
+            },
+        )?;
+        rows.collect::<rusqlite::Result<Vec<_>>>()
+            .map_err(Into::into)
+    }
+
     pub fn list_fusion_benchmarks(&self, limit: u32) -> Result<Vec<FusionBenchmarkRow>> {
         let conn = self.conn()?;
         let mut stmt = conn.prepare(
