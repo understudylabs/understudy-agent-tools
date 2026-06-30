@@ -811,35 +811,9 @@ select,
 }
 .tool-trace-list {
   display: grid;
-  gap: 6px;
+  gap: 4px;
   margin: 0 0 12px;
-}
-.tool-trace {
-  display: grid;
-  grid-template-columns: auto auto minmax(0, 1fr);
-  align-items: center;
-  gap: 8px;
   max-width: 720px;
-  color: color-mix(in srgb, var(--text-3) 82%, transparent);
-  font-family: var(--mono);
-  font-size: 11px;
-}
-.tool-trace span {
-  color: var(--text-3);
-  text-transform: uppercase;
-}
-.tool-trace strong {
-  color: var(--text-2);
-  font-weight: 500;
-}
-.tool-trace code {
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-  color: color-mix(in srgb, var(--text-3) 72%, transparent);
-}
-.tool-trace.error strong {
-  color: var(--error);
 }
 .chat-msg.assistant p,
 .chat-msg.assistant ul,

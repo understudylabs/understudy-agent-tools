@@ -36,10 +36,24 @@ import {
   PromptInputTools,
 } from "@/components/ai-elements/prompt-input";
 import { Persona, type PersonaState } from "@/components/ai-elements/persona";
+import {
+  Tool,
+  ToolContent,
+  ToolHeader,
+  ToolInput,
+  ToolOutput,
+  type ToolPart,
+} from "@/components/ai-elements/tool";
 import { modelShortName, type SnapshotAlias } from "../lib/model-aliases";
 
 type Role = "user" | "assistant";
-type ToolTrace = { name: string; status: "calling" | "ok" | "error"; detail: string };
+type ToolTrace = {
+  name: string;
+  state: ToolPart["state"];
+  input?: unknown;
+  output?: unknown;
+  errorText?: string;
+};
 type Msg = { role: Role; content: string; model?: string; reasoning?: string; tools?: ToolTrace[] };
 type ChatEvent =
   | { type: "Chunk"; text: string }
@@ -96,12 +110,6 @@ function cleanReasoningText(text: string) {
     .replace(/<\/?think>/gi, "")
     .replace(/^\s*thought\s*$/gim, "")
     .trim();
-}
-
-function compactJson(value: unknown) {
-  const text = JSON.stringify(value);
-  if (!text) return "";
-  return text.length > 220 ? `${text.slice(0, 220)}...` : text;
 }
 
 function ReasoningSubstream({
@@ -242,7 +250,7 @@ export function ChatPane({ resetToken }: { resetToken: number }) {
             ...p[last],
             tools: [
               ...(p[last].tools ?? []),
-              { name: msg.name, status: "calling", detail: compactJson(msg.args) },
+              { name: msg.name, state: "input-available", input: msg.args },
             ],
           };
           return p;
@@ -253,11 +261,13 @@ export function ChatPane({ resetToken }: { resetToken: number }) {
           const p = [...prev];
           const last = p.length - 1;
           const tools = [...(p[last].tools ?? [])];
-          const idx = tools.findLastIndex((tool) => tool.name === msg.name && tool.status === "calling");
+          const idx = tools.findLastIndex((tool) => tool.name === msg.name && tool.state === "input-available");
           const next = {
             name: msg.name,
-            status: msg.ok ? "ok" : "error",
-            detail: compactJson(msg.result),
+            state: msg.ok ? "output-available" : "output-error",
+            input: idx >= 0 ? tools[idx].input : undefined,
+            output: msg.ok ? msg.result : undefined,
+            errorText: msg.ok ? undefined : JSON.stringify(msg.result),
           } satisfies ToolTrace;
           if (idx >= 0) tools[idx] = next;
           else tools.push(next);
@@ -377,11 +387,15 @@ export function ChatPane({ resetToken }: { resetToken: number }) {
                     {m.role === "assistant" && m.tools && m.tools.length > 0 && (
                       <div className="tool-trace-list">
                         {m.tools.map((tool, idx) => (
-                          <div key={`${tool.name}-${idx}`} className={`tool-trace ${tool.status}`}>
-                            <span>{tool.status === "calling" ? "calling" : tool.status}</span>
-                            <strong>{tool.name}</strong>
-                            <code>{tool.detail}</code>
-                          </div>
+                          <Tool key={`${tool.name}-${idx}`} defaultOpen={tool.state !== "output-available"}>
+                            <ToolHeader type="dynamic-tool" toolName={tool.name} state={tool.state} />
+                            <ToolContent>
+                              <ToolInput input={tool.input} />
+                              {(tool.output !== undefined || tool.errorText) && (
+                                <ToolOutput output={tool.output} errorText={tool.errorText} />
+                              )}
+                            </ToolContent>
+                          </Tool>
                         ))}
                       </div>
                     )}
