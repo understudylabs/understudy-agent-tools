@@ -1,7 +1,7 @@
 "use client";
 import { useEffect, useState } from "react";
 import { listen } from "@tauri-apps/api/event";
-import { SquarePenIcon } from "lucide-react";
+import { PanelLeftIcon, SquarePenIcon } from "lucide-react";
 import { Sidebar, type PaneId } from "./components/Sidebar";
 import { StatusPane } from "./components/StatusPane";
 import { ModelsPane } from "./components/ModelsPane";
@@ -75,9 +75,7 @@ export default function Page() {
         aria-expanded={railOpen}
         onClick={() => setRailOpen((open) => !open)}
       >
-        <span />
-        <span />
-        <span />
+        <PanelLeftIcon aria-hidden="true" size={16} strokeWidth={2} />
       </button>
       {pane === "chat" && (
         <button
