@@ -48,7 +48,9 @@ const CHAT_THINKING_BUDGET: u32 = 2048;
 const MAX_TOOL_ROUNDS: usize = 4;
 const SIDEKICK_MAX_TOOL_ROUNDS: usize = 2;
 const SIDEKICK_MAX_CONTEXT_MESSAGES: usize = 16;
+const SIDEKICK_RECENT_CONTEXT_MESSAGES: usize = 10;
 const SIDEKICK_FILE_READ_LIMIT: usize = 48 * 1024;
+const SIDEKICK_MEMORY_PREFIX: &str = "Sidekick compacted memory:";
 
 static SIDEKICK_SESSIONS: OnceLock<Mutex<HashMap<String, Vec<Value>>>> = OnceLock::new();
 
@@ -110,6 +112,82 @@ fn save_sidekick_messages(
         .map_err(|_| "sidekick session lock poisoned".to_string())?;
     sessions.insert(key.to_string(), messages.to_vec());
     Ok(())
+}
+
+fn sidekick_message_content(message: &Value) -> Option<String> {
+    message
+        .get("content")
+        .and_then(|v| v.as_str())
+        .map(str::trim)
+        .filter(|s| !s.is_empty())
+        .map(|s| s.to_string())
+}
+
+fn compact_line(text: &str, limit: usize) -> String {
+    let one_line = text.split_whitespace().collect::<Vec<_>>().join(" ");
+    if one_line.len() <= limit {
+        return one_line;
+    }
+    let mut end = limit;
+    while end > 0 && !one_line.is_char_boundary(end) {
+        end -= 1;
+    }
+    format!("{}...", &one_line[..end])
+}
+
+fn compact_sidekick_messages(messages: Vec<Value>) -> Vec<Value> {
+    if messages.len() <= SIDEKICK_MAX_CONTEXT_MESSAGES {
+        return messages;
+    }
+
+    let system = messages.first().cloned();
+    let mut existing_memory = None;
+    let mut non_system = vec![];
+    for message in messages.into_iter().skip(1) {
+        let is_memory = message.get("role").and_then(|v| v.as_str()) == Some("system")
+            && sidekick_message_content(&message)
+                .as_deref()
+                .is_some_and(|content| content.starts_with(SIDEKICK_MEMORY_PREFIX));
+        if is_memory {
+            existing_memory = sidekick_message_content(&message);
+        } else {
+            non_system.push(message);
+        }
+    }
+
+    let recent_start = non_system
+        .len()
+        .saturating_sub(SIDEKICK_RECENT_CONTEXT_MESSAGES);
+    let older = &non_system[..recent_start];
+    let recent = non_system[recent_start..].to_vec();
+    let mut memory_lines = vec![];
+    if let Some(memory) = existing_memory {
+        memory_lines.push(compact_line(
+            memory.trim_start_matches(SIDEKICK_MEMORY_PREFIX).trim(),
+            800,
+        ));
+    }
+    for message in older.iter().rev().take(8).rev() {
+        let role = message.get("role").and_then(|v| v.as_str()).unwrap_or("message");
+        if let Some(content) = sidekick_message_content(message) {
+            memory_lines.push(format!("{role}: {}", compact_line(&content, 280)));
+        } else if role == "assistant" && message.get("tool_calls").is_some() {
+            memory_lines.push("assistant: requested read-only tool context".to_string());
+        }
+    }
+
+    let mut compacted = system.into_iter().collect::<Vec<_>>();
+    if !memory_lines.is_empty() {
+        compacted.push(json!({
+            "role": "system",
+            "content": format!(
+                "{SIDEKICK_MEMORY_PREFIX}\n{}",
+                memory_lines.join("\n")
+            ),
+        }));
+    }
+    compacted.extend(recent);
+    compacted
 }
 
 #[derive(Deserialize)]
@@ -815,11 +893,7 @@ async fn call_sidekick_model(
     }
 
     if messages.len() > SIDEKICK_MAX_CONTEXT_MESSAGES {
-        let system = messages.first().cloned();
-        let keep_from = messages.len().saturating_sub(SIDEKICK_MAX_CONTEXT_MESSAGES - 1);
-        let mut compacted = system.into_iter().collect::<Vec<_>>();
-        compacted.extend(messages.into_iter().skip(keep_from));
-        messages = compacted;
+        messages = compact_sidekick_messages(messages);
     }
     let session_messages = messages.len();
     save_sidekick_messages(app, &key, session_id, model_path, &messages)?;
