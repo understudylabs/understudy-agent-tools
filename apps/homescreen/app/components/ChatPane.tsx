@@ -127,6 +127,7 @@ export function ChatPane({ resetToken }: { resetToken: number }) {
   const [choices, setChoices] = useState<ModelChoice[]>([CLOUD_MODEL]);
   const [selectedModel, setSelectedModel] = useState<string | null>(null);
   const [thinkingPending, setThinkingPending] = useState<{ slotId: number; thinking: boolean } | null>(null);
+  const [personaReady, setPersonaReady] = useState(false);
 
   const refreshModels = async () => {
     try {
@@ -293,8 +294,19 @@ export function ChatPane({ resetToken }: { resetToken: number }) {
         (streaming ? " is-streaming" : "")
       }
     >
-      <div className="persona-stage" aria-hidden="true">
-        <Persona variant="halo" state={personaState} className="persona-halo" />
+      <div className={"persona-stage" + (personaReady ? " persona-ready" : "")} aria-hidden="true">
+        <img
+          className="persona-stamp"
+          src="/brand/usl-stamp-monochrome-01.png"
+          alt=""
+          draggable={false}
+        />
+        <Persona
+          variant="halo"
+          state={personaState}
+          className="persona-halo"
+          onReady={() => setPersonaReady(true)}
+        />
       </div>
       <Conversation className="min-h-0">
         <ConversationContent className="gap-5 px-4 pb-3 pt-0">
