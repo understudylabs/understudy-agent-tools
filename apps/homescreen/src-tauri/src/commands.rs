@@ -189,11 +189,19 @@ pub struct SidekickMetrics {
     pub useful_rows: u64,
     pub miss_rows: u64,
     pub pending_feedback_rows: u64,
+    pub parallel_consumed_rows: u64,
+    pub parallel_escalated_rows: u64,
+    pub parallel_useful_rows: u64,
+    pub parallel_miss_rows: u64,
     pub avg_elapsed_ms: Option<f64>,
     pub avg_tool_calls: Option<f64>,
+    pub avg_session_messages: Option<f64>,
     pub handoff_rate: Option<f64>,
     pub escalation_rate: Option<f64>,
     pub useful_rate: Option<f64>,
+    pub parallel_handoff_rate: Option<f64>,
+    pub parallel_escalation_rate: Option<f64>,
+    pub parallel_useful_rate: Option<f64>,
 }
 
 fn valid_fusion_mode(mode: &str) -> bool {
@@ -787,18 +795,36 @@ pub fn fusion_route_recommendation(
 
     let metrics = sidekick_metrics(app.clone(), Some(30)).ok();
     let route_signals = chat_route_signals(&app);
+    let enough_parallel_feedback = metrics
+        .as_ref()
+        .is_some_and(|m| m.parallel_useful_rows + m.parallel_miss_rows >= 5);
     let low_usefulness = metrics
         .as_ref()
-        .and_then(|m| m.useful_rate)
+        .and_then(|m| {
+            if enough_parallel_feedback {
+                m.parallel_useful_rate
+            } else {
+                m.useful_rate
+            }
+        })
         .is_some_and(|rate| {
-            metrics
-                .as_ref()
-                .is_some_and(|m| m.useful_rows + m.miss_rows >= 5)
-                && rate < 0.25
+            metrics.as_ref().is_some_and(|m| {
+                if enough_parallel_feedback {
+                    m.parallel_useful_rows + m.parallel_miss_rows >= 5
+                } else {
+                    m.useful_rows + m.miss_rows >= 5
+                }
+            }) && rate < 0.25
         });
     let high_escalation = metrics
         .as_ref()
-        .and_then(|m| m.escalation_rate)
+        .and_then(|m| {
+            if m.parallel_rows >= 5 {
+                m.parallel_escalation_rate
+            } else {
+                m.escalation_rate
+            }
+        })
         .is_some_and(|rate| metrics.as_ref().is_some_and(|m| m.rows >= 5) && rate > 0.6);
     let local_unhealthy = route_signals.local_rows >= 5
         && route_signals
@@ -1391,7 +1417,8 @@ pub fn sidekick_metrics(app: AppHandle, limit: Option<u32>) -> Result<SidekickMe
         .list_sidekick_runs(limit.unwrap_or(100))
         .map_err(|e| e.to_string())?;
     let total = rows.len() as u64;
-    let parallel_rows = rows.iter().filter(|row| row.mode == "parallel").count() as u64;
+    let parallel: Vec<_> = rows.iter().filter(|row| row.mode == "parallel").collect();
+    let parallel_rows = parallel.len() as u64;
     let consumed_rows = rows.iter().filter(|row| row.consumed).count() as u64;
     let escalated_rows = rows.iter().filter(|row| row.escalated).count() as u64;
     let useful_rows = rows.iter().filter(|row| row.accepted == Some(true)).count() as u64;
@@ -1400,12 +1427,25 @@ pub fn sidekick_metrics(app: AppHandle, limit: Option<u32>) -> Result<SidekickMe
         .filter(|row| row.accepted == Some(false))
         .count() as u64;
     let pending_feedback_rows = rows.iter().filter(|row| row.accepted.is_none()).count() as u64;
+    let parallel_consumed_rows = parallel.iter().filter(|row| row.consumed).count() as u64;
+    let parallel_escalated_rows = parallel.iter().filter(|row| row.escalated).count() as u64;
+    let parallel_useful_rows = parallel
+        .iter()
+        .filter(|row| row.accepted == Some(true))
+        .count() as u64;
+    let parallel_miss_rows = parallel
+        .iter()
+        .filter(|row| row.accepted == Some(false))
+        .count() as u64;
     let elapsed_values: Vec<f64> = rows
         .iter()
         .filter_map(|row| row.elapsed_ms.map(|v| v as f64))
         .collect();
     let tool_values: Vec<f64> = rows.iter().map(|row| row.tool_calls as f64).collect();
+    let session_message_values: Vec<f64> =
+        rows.iter().map(|row| row.session_messages as f64).collect();
     let feedback_rows = useful_rows + miss_rows;
+    let parallel_feedback_rows = parallel_useful_rows + parallel_miss_rows;
     Ok(SidekickMetrics {
         schema_version: "understudy.sidekick_metrics.v1",
         rows: total,
@@ -1415,11 +1455,22 @@ pub fn sidekick_metrics(app: AppHandle, limit: Option<u32>) -> Result<SidekickMe
         useful_rows,
         miss_rows,
         pending_feedback_rows,
+        parallel_consumed_rows,
+        parallel_escalated_rows,
+        parallel_useful_rows,
+        parallel_miss_rows,
         avg_elapsed_ms: avg(&elapsed_values),
         avg_tool_calls: avg(&tool_values),
+        avg_session_messages: avg(&session_message_values),
         handoff_rate: (total > 0).then_some(consumed_rows as f64 / total as f64),
         escalation_rate: (total > 0).then_some(escalated_rows as f64 / total as f64),
         useful_rate: (feedback_rows > 0).then_some(useful_rows as f64 / feedback_rows as f64),
+        parallel_handoff_rate: (parallel_rows > 0)
+            .then_some(parallel_consumed_rows as f64 / parallel_rows as f64),
+        parallel_escalation_rate: (parallel_rows > 0)
+            .then_some(parallel_escalated_rows as f64 / parallel_rows as f64),
+        parallel_useful_rate: (parallel_feedback_rows > 0)
+            .then_some(parallel_useful_rows as f64 / parallel_feedback_rows as f64),
     })
 }
 
