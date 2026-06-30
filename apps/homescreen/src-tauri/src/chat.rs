@@ -61,6 +61,7 @@ struct StreamChatOnceResult {
 }
 
 const CHAT_MAX_TOKENS: u32 = 8192;
+const BENCHMARK_MAX_TOKENS: u32 = 1024;
 const CHAT_THINKING_BUDGET: u32 = 2048;
 const MAX_TOOL_ROUNDS: usize = 4;
 const SIDEKICK_MAX_TOOL_ROUNDS: usize = 2;
@@ -1253,6 +1254,12 @@ fn record_chat_run(app: &AppHandle, input: ChatRunInput) {
     let _ = app.state::<crate::db::Db>().record_chat_run(&input);
 }
 
+fn benchmark_prompt(prompt: &str) -> String {
+    format!(
+        "Fusion benchmark task. Answer concisely in 1200 characters or fewer. Cite concrete evidence or tool results, but do not dump full files, logs, JSON, or source code.\n\nTask: {prompt}"
+    )
+}
+
 fn sidekick_routing_signals(app: &AppHandle) -> SidekickRoutingSignals {
     let Ok(rows) = app.state::<crate::db::Db>().list_sidekick_runs(30) else {
         return SidekickRoutingSignals::default();
@@ -1759,12 +1766,13 @@ pub async fn benchmark_local_chat(
     enable_parallel_sidekick: bool,
 ) -> Result<BenchmarkChatResult, String> {
     let started = Instant::now();
+    let prompt = benchmark_prompt(prompt);
     let (port, model_field) = mgr
         .endpoint(slot_id)
         .ok_or_else(|| "selected benchmark slot is not warm".to_string())?;
     let messages = vec![ChatMsg {
         role: "user".to_string(),
-        content: prompt.to_string(),
+        content: prompt.clone(),
     }];
     let sidekick_spawned = enable_parallel_sidekick
         && maybe_spawn_parallel_sidekick(app, "local", Some(slot_id), session_id, &messages);
@@ -1787,8 +1795,15 @@ pub async fn benchmark_local_chat(
     let mut status = "tool_limit".to_string();
 
     for _round in 0..=MAX_TOOL_ROUNDS {
-        let (content, tool_calls) =
-            nonstream_chat_once(&client, &url, None, &model_field, &outbound_messages).await?;
+        let (content, tool_calls) = nonstream_chat_once(
+            &client,
+            &url,
+            None,
+            &model_field,
+            &outbound_messages,
+            BENCHMARK_MAX_TOKENS,
+        )
+        .await?;
         final_content = content.clone();
         if tool_calls.is_empty() {
             status = "ok".to_string();
@@ -1846,6 +1861,7 @@ pub async fn benchmark_gateway_chat(
     model_field: &str,
 ) -> Result<BenchmarkChatResult, String> {
     let started = Instant::now();
+    let prompt = benchmark_prompt(prompt);
     let (base, key) = credentials().ok_or_else(|| "not signed in".to_string())?;
     let url = format!("{}/v1/chat/completions", base.trim_end_matches('/'));
     let mut outbound_messages = vec![json!({
@@ -1866,8 +1882,15 @@ pub async fn benchmark_gateway_chat(
     let mut status = "tool_limit".to_string();
 
     for _round in 0..=MAX_TOOL_ROUNDS {
-        let (content, tool_calls) =
-            nonstream_chat_once(&client, &url, Some(&key), model_field, &outbound_messages).await?;
+        let (content, tool_calls) = nonstream_chat_once(
+            &client,
+            &url,
+            Some(&key),
+            model_field,
+            &outbound_messages,
+            BENCHMARK_MAX_TOKENS,
+        )
+        .await?;
         final_content = content.clone();
         if tool_calls.is_empty() {
             status = "ok".to_string();
@@ -1922,6 +1945,7 @@ async fn nonstream_chat_once(
     bearer: Option<&str>,
     model_field: &str,
     messages: &[Value],
+    max_tokens: u32,
 ) -> Result<(String, Vec<ToolCallAcc>), String> {
     let payload = json!({
         "model": model_field,
@@ -1929,7 +1953,7 @@ async fn nonstream_chat_once(
         "stream": false,
         "tools": tool_schemas(),
         "tool_choice": "auto",
-        "max_tokens": CHAT_MAX_TOKENS,
+        "max_tokens": max_tokens,
         "thinking_budget": CHAT_THINKING_BUDGET,
     });
     let mut request = client.post(url).json(&payload);
