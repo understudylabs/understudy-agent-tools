@@ -25,6 +25,8 @@ Models exposed:
   understudy-fusion-fast
   understudy-fusion-sidekick-main
   understudy-fusion-sidekick-gateway
+  understudy-fusion-sidekick-advisory-main
+  understudy-fusion-sidekick-advisory-gateway
 `;
 }
 
@@ -79,7 +81,7 @@ function modelSpec(requestedModel, cfg) {
         baseUrl: cfg.mainBaseUrl,
         model: cfg.mainModel,
         apiKey: null,
-        sidekick: true,
+        sidekickMode: "background",
         route: "main",
       };
     case "understudy-fusion-sidekick-gateway":
@@ -90,7 +92,26 @@ function modelSpec(requestedModel, cfg) {
         baseUrl: cfg.gatewayBaseUrl,
         model: "glm-5.2",
         apiKey: cfg.gatewayApiKey,
-        sidekick: true,
+        sidekickMode: "background",
+        route: "gateway",
+      };
+    case "understudy-fusion-sidekick-advisory-main":
+      return {
+        baseUrl: cfg.mainBaseUrl,
+        model: cfg.mainModel,
+        apiKey: null,
+        sidekickMode: "advisory",
+        route: "main",
+      };
+    case "understudy-fusion-sidekick-advisory-gateway":
+      if (!cfg.gatewayBaseUrl || !cfg.gatewayApiKey) {
+        throw new Error("FUSION_GATEWAY_BASE_URL and FUSION_GATEWAY_API_KEY are required for gateway Fusion");
+      }
+      return {
+        baseUrl: cfg.gatewayBaseUrl,
+        model: "glm-5.2",
+        apiKey: cfg.gatewayApiKey,
+        sidekickMode: "advisory",
         route: "gateway",
       };
     case "understudy-fusion-main":
@@ -99,7 +120,7 @@ function modelSpec(requestedModel, cfg) {
         baseUrl: cfg.mainBaseUrl,
         model: cfg.mainModel,
         apiKey: null,
-        sidekick: false,
+        sidekickMode: "off",
         route: "main",
       };
   }
@@ -186,15 +207,32 @@ async function chatCompletions(reqBody) {
   const requestedModel = reqBody.model ?? "understudy-fusion-main";
   const spec = modelSpec(requestedModel, cfg);
   let messages = Array.isArray(reqBody.messages) ? reqBody.messages : [];
-  let sidekick = { used: false, error: null, advice_chars: 0 };
-  if (spec.sidekick) {
+  let sidekick = { used: false, mode: spec.sidekickMode, pending: false, error: null, advice_chars: 0 };
+  let backgroundSidekick = null;
+  if (spec.sidekickMode === "advisory") {
     try {
       const advice = await sidekickAdvice(cfg, messages);
-      sidekick = { used: Boolean(advice), error: null, advice_chars: advice.length };
+      sidekick = { used: Boolean(advice), mode: spec.sidekickMode, pending: false, error: null, advice_chars: advice.length };
       messages = injectAdvice(messages, advice);
     } catch (error) {
-      sidekick = { used: false, error: error.message, advice_chars: 0 };
+      sidekick = { used: false, mode: spec.sidekickMode, pending: false, error: error.message, advice_chars: 0 };
     }
+  } else if (spec.sidekickMode === "background") {
+    let settled = false;
+    let result = sidekick;
+    backgroundSidekick = sidekickAdvice(cfg, messages)
+      .then((advice) => {
+        result = { used: Boolean(advice), mode: spec.sidekickMode, pending: false, error: null, advice_chars: advice.length };
+        settled = true;
+        return result;
+      })
+      .catch((error) => {
+        result = { used: false, mode: spec.sidekickMode, pending: false, error: error.message, advice_chars: 0 };
+        settled = true;
+        return result;
+      });
+    backgroundSidekick.snapshot = () =>
+      settled ? result : { used: false, mode: spec.sidekickMode, pending: true, error: null, advice_chars: 0 };
   }
   const upstreamBody = {
     ...reqBody,
@@ -208,10 +246,14 @@ async function chatCompletions(reqBody) {
     body: upstreamBody,
     timeoutMs: 180000,
   });
+  if (backgroundSidekick) {
+    sidekick = backgroundSidekick.snapshot();
+  }
   response.model = requestedModel;
   response.understudy_fusion = {
     route: spec.route,
     upstream_model: spec.model,
+    sidekick_mode: spec.sidekickMode,
     sidekick,
   };
   return response;
@@ -230,6 +272,8 @@ async function handler(req, res) {
           { id: "understudy-fusion-fast", object: "model" },
           { id: "understudy-fusion-sidekick-main", object: "model" },
           { id: "understudy-fusion-sidekick-gateway", object: "model" },
+          { id: "understudy-fusion-sidekick-advisory-main", object: "model" },
+          { id: "understudy-fusion-sidekick-advisory-gateway", object: "model" },
         ],
       });
     }
