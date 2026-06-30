@@ -6,6 +6,7 @@ import { join, resolve } from "node:path";
 import { afterEach, beforeEach, describe, it } from "node:test";
 
 const runner = ["node", resolve("scripts/automationbench-handoff-runner.mjs")];
+const matrixRunner = ["node", resolve("scripts/automationbench-fusion-matrix.mjs")];
 
 let dir;
 
@@ -361,5 +362,47 @@ describe("automationbench handoff runner", () => {
     assert.equal(payload.rows[1].gateway_used, false);
     assert.equal(payload.rows[1].sidekick_runs, 0);
     assert.equal(payload.rows[1].elapsed_ms, 321);
+  });
+
+  it("prints a runnable Fusion matrix dry-run with ingestion commands", () => {
+    const { handoffPath } = writeFixture();
+    const outDir = join(dir, "matrix-output");
+    const eventLogPath = join(dir, "proxy-events.jsonl");
+    const result = spawnSync(
+      matrixRunner[0],
+      [
+        ...matrixRunner.slice(1),
+        "--handoff",
+        handoffPath,
+        "--dry-run",
+        "--only",
+        "gateway-glm,fusion-routing",
+        "--out-dir",
+        outDir,
+        "--event-log",
+        eventLogPath,
+      ],
+      { encoding: "utf8" },
+    );
+    assert.equal(result.status, 0, result.stderr);
+    assert.match(result.stdout, /AutomationBench Fusion matrix: ab-smoke/);
+    assert.match(result.stdout, /# gateway-glm/);
+    assert.match(result.stdout, /# fusion-routing/);
+    assert.match(result.stdout, /uv run auto-bench/);
+    assert.match(result.stdout, /UNDERSTUDY_GATEWAY_BASE_URL/);
+    assert.match(result.stdout, /automationbench-handoff-runner\.mjs/);
+    assert.match(result.stdout, /--fusion-event-log/);
+    assert.doesNotMatch(result.stdout, /# local-fast/);
+  });
+
+  it("rejects unknown Fusion matrix labels", () => {
+    const { handoffPath } = writeFixture();
+    const result = spawnSync(
+      matrixRunner[0],
+      [...matrixRunner.slice(1), "--handoff", handoffPath, "--dry-run", "--only", "fusion-routing,missing"],
+      { encoding: "utf8" },
+    );
+    assert.notEqual(result.status, 0);
+    assert.match(result.stderr, /unknown matrix label\(s\): missing/);
   });
 });
