@@ -12,7 +12,7 @@ const plexMono = IBM_Plex_Mono({
 });
 
 export const metadata: Metadata = {
-  title: "understudy",
+  title: "Understudy",
   description: "Local models, gateway, and agent traces.",
 };
 

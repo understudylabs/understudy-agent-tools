@@ -647,6 +647,101 @@ select,
   font-weight: 600;
 }
 .btn.primary:hover { background: #2a97ff; }
+.btn:disabled {
+  opacity: 0.55;
+  cursor: default;
+}
+
+/* ---------- Evals ---------- */
+.evals-grid {
+  max-width: 1040px;
+}
+.evals-hero {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+}
+.evals-actions {
+  display: flex;
+  gap: 8px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+.evals-wide {
+  overflow: hidden;
+}
+.env-list {
+  margin-top: 4px;
+}
+.eval-controls {
+  display: grid;
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+  gap: 10px;
+  margin-top: 14px;
+}
+.eval-controls label {
+  display: grid;
+  gap: 6px;
+  color: var(--text-3);
+  font-size: 11px;
+  text-transform: uppercase;
+  font-family: var(--mono);
+}
+.eval-controls select {
+  width: 100%;
+  border: 1px solid var(--border);
+  border-radius: var(--r-control);
+  background: var(--surface-2);
+  color: var(--text);
+  font: inherit;
+  font-size: 13px;
+  padding: 8px 10px;
+}
+.eval-error {
+  margin-top: 12px;
+  color: var(--danger);
+  font-family: var(--mono);
+  font-size: 12px;
+}
+.eval-table {
+  display: grid;
+  margin-top: 12px;
+  border-top: 1px solid var(--border);
+}
+.eval-row {
+  display: grid;
+  grid-template-columns: minmax(130px, 1.2fr) minmax(130px, 1fr) minmax(90px, .7fr) minmax(70px, .5fr) minmax(150px, 1.4fr);
+  gap: 10px;
+  align-items: center;
+  min-height: 42px;
+  padding: 9px 0;
+  border-bottom: 1px solid var(--border);
+  color: var(--text-2);
+  font-size: 12px;
+}
+.eval-row span {
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.eval-row .ok { color: var(--success); }
+.eval-row .warn { color: var(--loading); }
+
+@media (max-width: 760px) {
+  .evals-hero,
+  .eval-controls {
+    grid-template-columns: 1fr;
+    display: grid;
+  }
+  .evals-actions {
+    justify-content: start;
+  }
+  .eval-row {
+    grid-template-columns: minmax(110px, 1fr) minmax(110px, 1fr);
+  }
+}
 
 /* ---------- Empty state ---------- */
 .empty-pane {

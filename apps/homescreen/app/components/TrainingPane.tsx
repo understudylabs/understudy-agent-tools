@@ -1,5 +1,7 @@
 "use client";
 
+import { useEffect, useMemo, useState } from "react";
+import { invoke } from "@tauri-apps/api/core";
 import type { PaneId } from "./Sidebar";
 
 export type TrainingPaneId = Extract<
@@ -24,6 +26,98 @@ type Step = {
   title: string;
   body: string;
   state?: "ready" | "idle" | "blocked";
+};
+
+type FusionTask = {
+  id: string;
+  category: string;
+  prompt: string;
+  expected_signal: string;
+};
+
+type FusionSuite = {
+  id: string;
+  label: string;
+  description: string;
+  modes: string[];
+  task_ids: string[];
+};
+
+type FusionCandidate = {
+  id: string;
+  label: string;
+  route: string;
+  model_hint: string;
+  description: string;
+};
+
+type FusionMatrix = {
+  schema_version: string;
+  suites: FusionSuite[];
+  candidates: FusionCandidate[];
+  tasks: FusionTask[];
+};
+
+type FusionPlanRow = {
+  route: string;
+  task_id: string;
+  mode: string;
+  model: string;
+  ready: boolean;
+  reason: string;
+};
+
+type FusionMatrixRun = {
+  run_id: string;
+  suite: string;
+  dry_run: boolean;
+  rows: number;
+  recorded_skips: number;
+  candidates: { candidate: string; run: { rows: FusionPlanRow[] } }[];
+};
+
+type FusionRunModeSummary = {
+  mode: string;
+  rows: number;
+  ok_rows: number;
+  error_rows: number;
+  skipped_rows: number;
+  gateway_rows: number;
+  local_rows: number;
+  avg_score: number | null;
+  avg_elapsed_ms: number | null;
+  avg_total_tokens: number | null;
+  avg_sidekick_runs: number;
+  avg_sidekick_tool_calls: number;
+  avg_local_mem_gb: number | null;
+};
+
+type FusionRunSummary = {
+  runs: {
+    run_id: string;
+    rows: number;
+    ok_rows: number;
+    error_rows: number;
+    skipped_rows: number;
+    avg_score: number | null;
+    best_mode: string | null;
+    modes: FusionRunModeSummary[];
+  }[];
+};
+
+type FusionRouteDecision = {
+  id: number;
+  prompt_excerpt: string;
+  recommended_route: string;
+  use_sidekick: boolean;
+  escalate_gateway: boolean;
+  upgrade_sidekick: boolean;
+  reason: string;
+  policy_class: string;
+  main_model: string | null;
+  sidekick_model: string | null;
+  gateway_model: string | null;
+  created_at: string;
 };
 
 const SECTIONS: Record<TrainingPaneId, {
@@ -109,6 +203,8 @@ const SECTIONS: Record<TrainingPaneId, {
 };
 
 export function TrainingPane({ section }: { section: TrainingPaneId }) {
+  if (section === "training-evals") return <FusionEvaluationPane />;
+
   const current = SECTIONS[section];
   return (
     <>
@@ -133,6 +229,212 @@ export function TrainingPane({ section }: { section: TrainingPaneId }) {
           {current.steps.map((step) => (
             <TrainingStep key={step.title} title={step.title} body={step.body} state={step.state ?? "idle"} />
           ))}
+        </div>
+      </div>
+    </>
+  );
+}
+
+function FusionEvaluationPane() {
+  const [matrix, setMatrix] = useState<FusionMatrix | null>(null);
+  const [runSummary, setRunSummary] = useState<FusionRunSummary | null>(null);
+  const [decisions, setDecisions] = useState<FusionRouteDecision[]>([]);
+  const [plan, setPlan] = useState<FusionMatrixRun | null>(null);
+  const [suite, setSuite] = useState("local-fusion-smoke");
+  const [candidate, setCandidate] = useState("local-fast");
+  const [busy, setBusy] = useState<"plan" | "run" | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  const refresh = async () => {
+    const [nextMatrix, nextSummary, nextDecisions] = await Promise.all([
+      invoke<FusionMatrix>("fusion_benchmark_matrix"),
+      invoke<FusionRunSummary>("fusion_benchmark_run_summary", { limit: 80 }),
+      invoke<FusionRouteDecision[]>("fusion_route_decisions", { limit: 8 }),
+    ]);
+    setMatrix(nextMatrix);
+    setRunSummary(nextSummary);
+    setDecisions(nextDecisions);
+  };
+
+  useEffect(() => {
+    refresh().catch((err) => setError(String(err)));
+  }, []);
+
+  const currentSuite = useMemo(
+    () => matrix?.suites.find((item) => item.id === suite),
+    [matrix, suite],
+  );
+  const environmentRows = useMemo(
+    () => [
+      {
+        name: "Fusion local harness",
+        state: "ready",
+        desc: "Local questions, repeated attempts, route policy, sidekick telemetry, and persisted result rows.",
+      },
+      {
+        name: "Prime Intellect verifiers",
+        state: "standard",
+        desc: "Verifier-backed environment family for objective tasks and scheduled larger runs.",
+      },
+      {
+        name: "AutomationBench",
+        state: "paused",
+        desc: "Full public workflow benchmark. Resume after local rollout behavior is easy to inspect.",
+      },
+    ],
+    [],
+  );
+
+  const invokeRun = async (dryRun: boolean) => {
+    setBusy(dryRun ? "plan" : "run");
+    setError(null);
+    try {
+      const result = await invoke<FusionMatrixRun>("run_fusion_benchmark_matrix", {
+        request: {
+          suite,
+          candidates: [candidate],
+          dry_run: dryRun,
+          record_skips: !dryRun,
+        },
+      });
+      setPlan(result);
+      await refresh();
+    } catch (err) {
+      setError(String(err));
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  return (
+    <>
+      <div className="pane-head">
+        <h1 className="pane-title">Evals</h1>
+        <p className="pane-sub">Verifier environments, local rollout runs, model comparisons, and failure analysis.</p>
+      </div>
+
+      <div className="pane-body evals-grid">
+        <div className="card evals-hero">
+          <div>
+            <div className="card-title">Evaluation environments</div>
+            <div className="card-sub">Run specific questions across candidates, persist attempts, and inspect where each model is strong or weak.</div>
+          </div>
+          <div className="evals-actions">
+            <button className="btn" type="button" onClick={() => invokeRun(true)} disabled={busy !== null}>
+              {busy === "plan" ? "Planning..." : "Plan run"}
+            </button>
+            <button className="btn primary" type="button" onClick={() => invokeRun(false)} disabled={busy !== null}>
+              {busy === "run" ? "Running..." : "Run"}
+            </button>
+          </div>
+        </div>
+
+        <div className="card">
+          <div className="card-title">Environment</div>
+          <div className="env-list">
+            {environmentRows.map((row) => (
+              <div className="svc" key={row.name}>
+                <span className={"dot " + (row.state === "ready" ? "running" : row.state === "paused" ? "loading" : "stopped")} />
+                <div>
+                  <div className="svc-name">{row.name}</div>
+                  <div className="svc-desc">{row.desc}</div>
+                </div>
+                <span className="svc-state">{row.state}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+
+        <div className="card">
+          <div className="card-row">
+            <div>
+              <div className="card-title">Run setup</div>
+              <div className="card-sub">{currentSuite?.description ?? "Choose a suite and candidate."}</div>
+            </div>
+            <span className="svc-state">{currentSuite?.task_ids.length || matrix?.tasks.length || 0} questions</span>
+          </div>
+          <div className="eval-controls">
+            <label>
+              Suite
+              <select value={suite} onChange={(event) => setSuite(event.target.value)}>
+                {matrix?.suites.map((item) => (
+                  <option key={item.id} value={item.id}>{item.label}</option>
+                ))}
+              </select>
+            </label>
+            <label>
+              Model
+              <select value={candidate} onChange={(event) => setCandidate(event.target.value)}>
+                {matrix?.candidates.map((item) => (
+                  <option key={item.id} value={item.id}>{item.label}</option>
+                ))}
+              </select>
+            </label>
+          </div>
+          {error && <div className="eval-error">{error}</div>}
+        </div>
+
+        {plan && (
+          <div className="card evals-wide">
+            <div className="card-row">
+              <div>
+                <div className="card-title">{plan.dry_run ? "Planned run" : "Executed run"}</div>
+                <div className="card-sub">{plan.run_id} · {plan.rows} rows · {plan.recorded_skips} skips</div>
+              </div>
+              <span className="svc-state">{plan.suite}</span>
+            </div>
+            <div className="eval-table">
+              {plan.candidates.flatMap((candidateRun) =>
+                candidateRun.run.rows.slice(0, 8).map((row) => (
+                  <div className="eval-row" key={`${candidateRun.candidate}-${row.task_id}-${row.mode}`}>
+                    <span>{candidateRun.candidate}</span>
+                    <span>{row.task_id}</span>
+                    <span>{row.mode}</span>
+                    <span>{row.route}</span>
+                    <span className={row.ready ? "ok" : "warn"}>{row.ready ? "ready" : row.reason}</span>
+                  </div>
+                )),
+              )}
+            </div>
+          </div>
+        )}
+
+        <div className="card evals-wide">
+          <div className="card-title">Recent performance</div>
+          {runSummary?.runs.length ? (
+            <div className="eval-table">
+              {runSummary.runs.slice(0, 6).map((run) => (
+                <div className="eval-row" key={run.run_id}>
+                  <span>{run.run_id}</span>
+                  <span>{run.rows} rows</span>
+                  <span>{run.ok_rows} ok</span>
+                  <span>{run.error_rows} errors</span>
+                  <span>{run.avg_score == null ? "unscored" : run.avg_score.toFixed(2)}</span>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="svc-desc">No persisted eval rows yet.</div>
+          )}
+        </div>
+
+        <div className="card evals-wide">
+          <div className="card-title">Route policy</div>
+          {decisions.length ? (
+            <div className="eval-table">
+              {decisions.map((decision) => (
+                <div className="eval-row" key={decision.id}>
+                  <span>{decision.policy_class}</span>
+                  <span>{decision.recommended_route}</span>
+                  <span>{decision.use_sidekick ? "sidekick" : decision.upgrade_sidekick ? "upgrade sidekick" : decision.escalate_gateway ? "gateway" : "main"}</span>
+                  <span>{decision.reason}</span>
+                  <span>{decision.prompt_excerpt}</span>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="svc-desc">No route decisions recorded yet.</div>
+          )}
         </div>
       </div>
     </>

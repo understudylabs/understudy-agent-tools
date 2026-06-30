@@ -443,6 +443,16 @@ fn fusion_benchmark_suite(suite: Option<&str>) -> Result<(Vec<String>, Vec<Strin
             .map(str::to_string)
             .collect(),
         )),
+        "local-fusion-smoke" => Ok((
+            vec!["main-only", "sidekick-parallel"]
+                .into_iter()
+                .map(str::to_string)
+                .collect(),
+            vec!["repo-search-summary", "runtime-status-check"]
+                .into_iter()
+                .map(str::to_string)
+                .collect(),
+        )),
         "local-comparison" => Ok((
             vec!["main-only", "sidekick-parallel", "sidekick-routing"]
                 .into_iter()
@@ -994,6 +1004,13 @@ pub fn fusion_benchmark_matrix() -> FusionBenchmarkMatrix {
     FusionBenchmarkMatrix {
         schema_version: "understudy.fusion_benchmark_matrix.v1",
         suites: vec![
+            FusionBenchmarkSuite {
+                id: "local-fusion-smoke",
+                label: "Local Fusion smoke",
+                description: "Fast local-only check comparing the main lane against the sidekick lane.",
+                modes: vec!["main-only", "sidekick-parallel"],
+                task_ids: vec!["repo-search-summary", "runtime-status-check"],
+            },
             FusionBenchmarkSuite {
                 id: "routing-smoke",
                 label: "Routing smoke",
