@@ -78,6 +78,28 @@ pub struct RunFusionBenchmarkRequest {
     pub record_skips: Option<bool>,
 }
 
+#[derive(serde::Deserialize)]
+pub struct FusionRouteRecommendationRequest {
+    pub prompt: String,
+    pub current_route: Option<String>,
+    pub active_slot_id: Option<u32>,
+}
+
+#[derive(Serialize, Clone)]
+pub struct FusionRouteRecommendation {
+    pub schema_version: &'static str,
+    pub route: String,
+    pub use_sidekick: bool,
+    pub escalate_gateway: bool,
+    pub reason: String,
+    pub main_model: Option<String>,
+    pub sidekick_model: Option<String>,
+    pub gateway_model: Option<String>,
+    pub local_ready: bool,
+    pub sidekick_ready: bool,
+    pub gateway_ready: bool,
+}
+
 #[derive(Serialize, Clone)]
 pub struct FusionBenchmarkPlanRow {
     pub run_id: String,
@@ -166,6 +188,11 @@ fn avg(values: &[f64]) -> Option<f64> {
 
 fn default_fusion_run_id() -> String {
     format!("fusion-{}", chrono::Utc::now().timestamp_millis())
+}
+
+fn prompt_has_any(prompt: &str, terms: &[&str]) -> bool {
+    let lower = prompt.to_lowercase();
+    terms.iter().any(|term| lower.contains(term))
 }
 
 fn residency<'a>(app: &'a AppHandle) -> &'a Residency {
@@ -524,6 +551,148 @@ pub fn fusion_benchmark_matrix() -> FusionBenchmarkMatrix {
                 expected_signal: "Keeps final judgment with main and does not over-delegate.",
             },
         ],
+    }
+}
+
+#[tauri::command]
+pub fn fusion_route_recommendation(
+    app: AppHandle,
+    request: FusionRouteRecommendationRequest,
+) -> FusionRouteRecommendation {
+    let snapshot = residency(&app).snapshot();
+    let active_slot = request.active_slot_id.and_then(|slot_id| {
+        snapshot
+            .slots
+            .iter()
+            .find(|slot| slot.id == slot_id)
+            .cloned()
+    });
+    let fallback_slot = snapshot
+        .slots
+        .iter()
+        .find(|slot| slot.state == "running")
+        .cloned();
+    let main_slot = active_slot.or(fallback_slot);
+    let local_ready = main_slot
+        .as_ref()
+        .is_some_and(|slot| slot.state == "running");
+    let sidekick = residency(&app).sidekick_endpoint(main_slot.as_ref().map(|slot| slot.id));
+    let sidekick_ready = sidekick.is_some();
+    let gateway_ready = crate::chat::gateway_credentials_available();
+
+    let prompt = request.prompt.trim();
+    let current_route = request.current_route.as_deref();
+    let judgment = prompt_has_any(
+        prompt,
+        &[
+            "decide",
+            "should we",
+            "what should",
+            "strategy",
+            "plan",
+            "architect",
+            "tradeoff",
+            "judgment",
+        ],
+    );
+    let mechanical = prompt_has_any(
+        prompt,
+        &[
+            "check",
+            "review",
+            "inspect",
+            "search",
+            "summarize",
+            "verify",
+            "compare",
+            "find",
+            "trace",
+            "status",
+            "models",
+            "what's left",
+            "whats left",
+            "reminder",
+        ],
+    );
+    let complex = prompt_has_any(
+        prompt,
+        &[
+            "full automationbench",
+            "benchmark",
+            "multi-file",
+            "race condition",
+            "architecture",
+            "frontier",
+            "hard",
+            "complex",
+            "production",
+        ],
+    );
+
+    let metrics = sidekick_metrics(app.clone(), Some(30)).ok();
+    let low_usefulness = metrics
+        .as_ref()
+        .and_then(|m| m.useful_rate)
+        .is_some_and(|rate| {
+            metrics
+                .as_ref()
+                .is_some_and(|m| m.useful_rows + m.miss_rows >= 5)
+                && rate < 0.25
+        });
+    let high_escalation = metrics
+        .as_ref()
+        .and_then(|m| m.escalation_rate)
+        .is_some_and(|rate| metrics.as_ref().is_some_and(|m| m.rows >= 5) && rate > 0.6);
+
+    let (route, use_sidekick, escalate_gateway, reason) =
+        if matches!(current_route, Some("cloud" | "gateway")) && gateway_ready && !mechanical {
+            ("gateway", false, true, "keep_current_gateway")
+        } else if judgment || complex {
+            if gateway_ready && complex {
+                ("gateway", false, true, "complex_or_frontier_task")
+            } else if local_ready {
+                ("local", false, false, "main_keeps_judgment")
+            } else if gateway_ready {
+                ("gateway", false, true, "local_unavailable")
+            } else {
+                ("local", false, false, "no_ready_route")
+            }
+        } else if mechanical && local_ready && sidekick_ready && !low_usefulness && !high_escalation
+        {
+            ("local", true, false, "mechanical_with_sidekick")
+        } else if local_ready {
+            (
+                "local",
+                false,
+                false,
+                if low_usefulness {
+                    "sidekick_low_usefulness"
+                } else if high_escalation {
+                    "sidekick_high_escalation"
+                } else if mechanical {
+                    "no_warm_sidekick"
+                } else {
+                    "local_default"
+                },
+            )
+        } else if gateway_ready {
+            ("gateway", false, true, "local_unavailable")
+        } else {
+            ("local", false, false, "no_ready_route")
+        };
+
+    FusionRouteRecommendation {
+        schema_version: "understudy.fusion_route_recommendation.v1",
+        route: route.to_string(),
+        use_sidekick,
+        escalate_gateway,
+        reason: reason.to_string(),
+        main_model: main_slot.and_then(|slot| slot.model_id),
+        sidekick_model: sidekick.map(|(_, _, _, model_id)| model_id),
+        gateway_model: gateway_ready.then(|| "glm-5.2".to_string()),
+        local_ready,
+        sidekick_ready,
+        gateway_ready,
     }
 }
 

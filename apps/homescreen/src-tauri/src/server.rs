@@ -36,6 +36,10 @@ pub fn router(ctx: Ctx) -> Router {
         .route("/api/benchmarks", get(benchmarks))
         .route("/api/fusion/benchmark-matrix", get(fusion_benchmark_matrix))
         .route(
+            "/api/fusion/route-recommendation",
+            post(fusion_route_recommendation),
+        )
+        .route(
             "/api/fusion/benchmark-summary",
             get(fusion_benchmark_summary),
         )
@@ -159,6 +163,17 @@ async fn fusion_benchmark_matrix(
 ) -> Result<Json<Value>, (StatusCode, String)> {
     auth(&ctx, &h)?;
     Ok(Json(json!(crate::commands::fusion_benchmark_matrix())))
+}
+async fn fusion_route_recommendation(
+    State(ctx): State<Ctx>,
+    h: HeaderMap,
+    Json(body): Json<crate::commands::FusionRouteRecommendationRequest>,
+) -> Result<Json<Value>, (StatusCode, String)> {
+    auth(&ctx, &h)?;
+    Ok(Json(json!(crate::commands::fusion_route_recommendation(
+        ctx.app.clone(),
+        body
+    ))))
 }
 async fn fusion_benchmark_results(
     State(ctx): State<Ctx>,
@@ -336,6 +351,7 @@ fn tools() -> Vec<Value> {
         ("knowledge_dossiers", "Bundled public per-model dossiers."),
         ("local_benchmarks", "Local live benchmark rows."),
         ("fusion_benchmark_matrix", "Fusion benchmark modes and fixed local task set."),
+        ("fusion_route_recommendation", "Recommend local, local+sidekick, or gateway for a prompt. Args: {prompt, current_route?, active_slot_id?}."),
         ("fusion_benchmark_results", "Recent Fusion benchmark result rows. Args: {limit?}."),
         ("fusion_benchmark_summary", "Aggregate Fusion benchmark results by route, mode, and model. Args: {limit?}."),
         ("sidekick_metrics", "Aggregate recent sidekick usage, handoff, escalation, and feedback metrics. Args: {limit?}."),
@@ -363,6 +379,12 @@ async fn call_tool(ctx: &Ctx, name: &str, args: &Value) -> Result<Value, String>
         "knowledge_dossiers" => json!(c::knowledge_dossiers()),
         "local_benchmarks" => json!(c::local_benchmarks(app).map_err(|e| e.to_string())?),
         "fusion_benchmark_matrix" => json!(c::fusion_benchmark_matrix()),
+        "fusion_route_recommendation" => {
+            let request =
+                serde_json::from_value::<c::FusionRouteRecommendationRequest>(args.clone())
+                    .map_err(|e| format!("invalid Fusion route request: {e}"))?;
+            json!(c::fusion_route_recommendation(app, request))
+        }
         "fusion_benchmark_results" => json!(c::fusion_benchmark_results(
             app,
             args.get("limit").and_then(|v| v.as_u64()).map(|x| x as u32)
