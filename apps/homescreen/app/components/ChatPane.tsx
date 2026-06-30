@@ -52,16 +52,18 @@ type ResidencySnapshot = {
 };
 type SnapshotModel = SnapshotAlias;
 type ChatStatus = "ready" | "streaming" | "error";
+type LocalModelChoice = {
+  id: string;
+  label: string;
+  detail: string;
+  route: "local";
+  slotId: number;
+  thinking: boolean;
+  loading: boolean;
+  active: boolean;
+};
 type ModelChoice =
-  | {
-      id: string;
-      label: string;
-      detail: string;
-      route: "local";
-      slotId: number;
-      thinking: boolean;
-      active: boolean;
-    }
+  | LocalModelChoice
   | {
       id: string;
       label: string;
@@ -124,6 +126,7 @@ export function ChatPane() {
   const [err, setErr] = useState<string | null>(null);
   const [choices, setChoices] = useState<ModelChoice[]>([CLOUD_MODEL]);
   const [selectedModel, setSelectedModel] = useState<string | null>(null);
+  const [thinkingPending, setThinkingPending] = useState<{ slotId: number; thinking: boolean } | null>(null);
 
   const refreshModels = async () => {
     try {
@@ -132,16 +135,23 @@ export function ChatPane() {
         invoke<SnapshotModel[]>("list_snapshot_models"),
       ]);
       const local = residency.slots
-        .filter((slot) => slot.state === "running" && slot.model_id)
-        .map<ModelChoice>((slot) => ({
+        .filter((slot) => (slot.state === "running" || slot.state === "loading") && slot.model_id)
+        .map<LocalModelChoice>((slot) => ({
           id: `local:${slot.id}`,
           label: modelShortName(slot.model_id, snapshots) ?? `slot ${slot.id}`,
-          detail: `${slot.model_id}${slot.port ? ` · :${slot.port}` : ""}`,
+          detail: `${slot.model_id}${slot.port ? ` · :${slot.port}` : ""}${slot.state === "loading" ? " · loading" : ""}`,
           route: "local",
           slotId: slot.id,
           thinking: slot.thinking,
-          active: true,
+          loading: slot.state === "loading",
+          active: slot.state === "running",
         }));
+      setThinkingPending((pending) => {
+        if (!pending) return pending;
+        const slot = local.find((choice) => choice.slotId === pending.slotId);
+        if (slot?.active && slot.thinking === pending.thinking) return null;
+        return pending;
+      });
       const next = [...local, CLOUD_MODEL];
       setChoices(next);
       setSelectedModel((current) => {
@@ -174,6 +184,10 @@ export function ChatPane() {
     const choice = selectedChoice;
     if (choice.route === "local" && choice.slotId == null) {
       setErr("No local model is warm. Open Serving, warm a local model slot, then send again.");
+      return;
+    }
+    if (choice.route === "local" && !choice.active) {
+      setErr("The selected local model is still loading. Try again in a moment.");
       return;
     }
 
@@ -228,11 +242,20 @@ export function ChatPane() {
   const setThinking = async (thinking: boolean) => {
     if (selectedChoice.route !== "local") return;
     setErr(null);
+    setThinkingPending({ slotId: selectedChoice.slotId, thinking });
+    setChoices((current) =>
+      current.map((choice) =>
+        choice.route === "local" && choice.slotId === selectedChoice.slotId
+          ? { ...choice, thinking, loading: true, active: false, detail: choice.detail.replace(/ · loading$/, "") + " · loading" }
+          : choice,
+      ),
+    );
     try {
       await invoke("set_slot_thinking", { slotId: selectedChoice.slotId, thinking });
       await refreshModels();
     } catch (e: unknown) {
       setErr(String(e));
+      setThinkingPending(null);
     }
   };
 
@@ -311,12 +334,13 @@ export function ChatPane() {
               <ThinkingToggle
                 selected={selectedChoice}
                 disabled={streaming}
+                loading={selectedChoice.route === "local" && thinkingPending?.slotId === selectedChoice.slotId}
                 onToggle={setThinking}
               />
             </PromptInputTools>
             <PromptInputSubmit
               status={streaming ? "streaming" : err ? "error" : "ready"}
-              disabled={streaming || !input.trim()}
+              disabled={streaming || !input.trim() || (selectedChoice.route === "local" && !selectedChoice.active)}
             />
           </PromptInputFooter>
         </PromptInput>
@@ -328,22 +352,26 @@ export function ChatPane() {
 function ThinkingToggle({
   selected,
   disabled,
+  loading,
   onToggle,
 }: {
   selected: ModelChoice;
   disabled: boolean;
+  loading: boolean;
   onToggle: (thinking: boolean) => void;
 }) {
   const isLocal = selected.route === "local";
+  const isBusy = loading || (isLocal && selected.loading);
   return (
     <button
       type="button"
-      className={"ai-thinking-toggle" + (isLocal && selected.thinking ? " active" : "")}
-      disabled={!isLocal || disabled}
+      className={"ai-thinking-toggle" + (isLocal && selected.thinking ? " active" : "") + (isBusy ? " loading" : "")}
+      disabled={!isLocal || disabled || isBusy}
       title={isLocal ? "Reload this local model with thinking mode." : "Thinking is available for local models."}
       onClick={() => isLocal && onToggle(!selected.thinking)}
     >
-      Thinking
+      <span className="thinking-loading-dot" />
+      {isBusy ? "Loading" : "Thinking"}
     </button>
   );
 }

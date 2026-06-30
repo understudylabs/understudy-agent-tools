@@ -656,6 +656,9 @@ select,
   text-transform: uppercase;
 }
 .ai-thinking-toggle {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
   min-height: 30px;
   border: 1px solid var(--border);
   border-radius: var(--r-control);
@@ -672,6 +675,20 @@ select,
 }
 .ai-thinking-toggle:disabled {
   opacity: 0.45;
+}
+.ai-thinking-toggle.loading {
+  opacity: 1;
+}
+.thinking-loading-dot {
+  display: none;
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: currentColor;
+}
+.ai-thinking-toggle.loading .thinking-loading-dot {
+  display: inline-block;
+  animation: pulse 1.1s ease-in-out infinite;
 }
 .chat-role {
   margin-bottom: 5px;
