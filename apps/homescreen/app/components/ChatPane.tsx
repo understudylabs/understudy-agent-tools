@@ -32,7 +32,6 @@ import {
   PromptInputTools,
 } from "@/components/ai-elements/prompt-input";
 import { Persona, type PersonaState } from "@/components/ai-elements/persona";
-import { DockIcon, MoveDiagonalIcon } from "lucide-react";
 import { modelShortName, type SnapshotAlias } from "../lib/model-aliases";
 
 type Role = "user" | "assistant";
@@ -120,7 +119,6 @@ function ReasoningSubstream({
 export function ChatPane() {
   const [messages, setMessages] = useState<Msg[]>([]);
   const [input, setInput] = useState("");
-  const [composerMode, setComposerMode] = useState<"bottom" | "floating">("bottom");
   const [streaming, setStreaming] = useState(false);
   const [assistantSpeaking, setAssistantSpeaking] = useState(false);
   const [err, setErr] = useState<string | null>(null);
@@ -251,8 +249,7 @@ export function ChatPane() {
       className={
         "chat ai-chat" +
         (messages.length > 0 ? " has-messages" : "") +
-        (streaming ? " is-streaming" : "") +
-        (composerMode === "floating" ? " composer-floating" : "")
+        (streaming ? " is-streaming" : "")
       }
     >
       <div className="persona-stage" aria-hidden="true">
@@ -306,14 +303,6 @@ export function ChatPane() {
           </PromptInputBody>
           <PromptInputFooter>
             <PromptInputTools>
-              <button
-                type="button"
-                className="composer-mode-toggle"
-                title={composerMode === "bottom" ? "Float composer" : "Dock composer"}
-                onClick={() => setComposerMode((mode) => (mode === "bottom" ? "floating" : "bottom"))}
-              >
-                {composerMode === "bottom" ? <MoveDiagonalIcon size={14} /> : <DockIcon size={14} />}
-              </button>
               <ModelPicker
                 choices={choices}
                 selected={selectedChoice}
