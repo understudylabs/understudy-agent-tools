@@ -133,6 +133,10 @@ Identify the developer's current stage and load exactly one:
   installed the plugin, or asks "where do I start?" and `~/.understudy/profile.json`
   is missing → [`../onboard/SKILL.md`](../onboard/SKILL.md) (backgrounds a small
   model, profiles the machine, interviews, writes the profile).
+- **Product explanation / onboarding copy** — the developer asks what
+  Understudy is, how Desktop, local serving, Fusion sidekick, candidate results,
+  rollout lab, or training workflows work →
+  [`../product-knowledge/SKILL.md`](../product-knowledge/SKILL.md).
 - **Workload unclear** — the repo has prompts, traces, datasets, eval rows, or
   LLM call sites, but the task, data shape, request/response path, or success
   criteria have not been explained and confirmed → [`../understand-workload/SKILL.md`](../understand-workload/SKILL.md).

@@ -34,6 +34,38 @@ pub fn router(ctx: Ctx) -> Router {
         .route("/api/residency", get(residency))
         .route("/api/dossiers", get(dossiers))
         .route("/api/benchmarks", get(benchmarks))
+        .route("/api/fusion/benchmark-matrix", get(fusion_benchmark_matrix))
+        .route(
+            "/api/fusion/route-recommendation",
+            post(fusion_route_recommendation),
+        )
+        .route("/api/fusion/route-decisions", get(fusion_route_decisions))
+        .route(
+            "/api/fusion/benchmark-summary",
+            get(fusion_benchmark_summary),
+        )
+        .route(
+            "/api/fusion/benchmark-run-summary",
+            get(fusion_benchmark_run_summary),
+        )
+        .route(
+            "/api/fusion/benchmark-export",
+            post(export_fusion_benchmark_comparison),
+        )
+        .route(
+            "/api/fusion/automationbench-handoff",
+            post(export_automationbench_handoff),
+        )
+        .route(
+            "/api/fusion/benchmark-results",
+            get(fusion_benchmark_results).post(record_fusion_benchmark),
+        )
+        .route("/api/chat/runs", get(chat_runs))
+        .route("/api/chat/route-metrics", get(chat_route_metrics))
+        .route("/api/fusion/run", post(run_fusion_benchmark))
+        .route("/api/fusion/run-matrix", post(run_fusion_benchmark_matrix))
+        .route("/api/sidekick/metrics", get(sidekick_metrics))
+        .route("/api/sidekick/sessions", get(sidekick_session_summaries))
         .route("/api/profile/:id", get(profile))
         .route("/api/traces", get(traces_list))
         .route("/api/traces/search", get(traces_search))
@@ -142,6 +174,156 @@ async fn benchmarks(
         .map(|v| Json(json!(v)))
         .map_err(|e| (StatusCode::BAD_GATEWAY, e))
 }
+async fn fusion_benchmark_matrix(
+    State(ctx): State<Ctx>,
+    h: HeaderMap,
+) -> Result<Json<Value>, (StatusCode, String)> {
+    auth(&ctx, &h)?;
+    Ok(Json(json!(crate::commands::fusion_benchmark_matrix())))
+}
+async fn fusion_route_recommendation(
+    State(ctx): State<Ctx>,
+    h: HeaderMap,
+    Json(body): Json<crate::commands::FusionRouteRecommendationRequest>,
+) -> Result<Json<Value>, (StatusCode, String)> {
+    auth(&ctx, &h)?;
+    Ok(Json(json!(crate::commands::fusion_route_recommendation(
+        ctx.app.clone(),
+        body
+    ))))
+}
+async fn fusion_route_decisions(
+    State(ctx): State<Ctx>,
+    h: HeaderMap,
+    Query(q): Query<LimitQ>,
+) -> Result<Json<Value>, (StatusCode, String)> {
+    auth(&ctx, &h)?;
+    crate::commands::fusion_route_decisions(ctx.app.clone(), q.limit)
+        .map(|v| Json(json!(v)))
+        .map_err(|e| (StatusCode::BAD_GATEWAY, e))
+}
+async fn fusion_benchmark_results(
+    State(ctx): State<Ctx>,
+    h: HeaderMap,
+    Query(q): Query<LimitQ>,
+) -> Result<Json<Value>, (StatusCode, String)> {
+    auth(&ctx, &h)?;
+    crate::commands::fusion_benchmark_results(ctx.app.clone(), q.limit)
+        .map(|v| Json(json!(v)))
+        .map_err(|e| (StatusCode::BAD_GATEWAY, e))
+}
+async fn fusion_benchmark_summary(
+    State(ctx): State<Ctx>,
+    h: HeaderMap,
+    Query(q): Query<LimitQ>,
+) -> Result<Json<Value>, (StatusCode, String)> {
+    auth(&ctx, &h)?;
+    crate::commands::fusion_benchmark_summary(ctx.app.clone(), q.limit)
+        .map(|v| Json(json!(v)))
+        .map_err(|e| (StatusCode::BAD_GATEWAY, e))
+}
+async fn fusion_benchmark_run_summary(
+    State(ctx): State<Ctx>,
+    h: HeaderMap,
+    Query(q): Query<LimitQ>,
+) -> Result<Json<Value>, (StatusCode, String)> {
+    auth(&ctx, &h)?;
+    crate::commands::fusion_benchmark_run_summary(ctx.app.clone(), q.limit)
+        .map(|v| Json(json!(v)))
+        .map_err(|e| (StatusCode::BAD_GATEWAY, e))
+}
+async fn export_fusion_benchmark_comparison(
+    State(ctx): State<Ctx>,
+    h: HeaderMap,
+    Json(body): Json<crate::commands::ExportFusionBenchmarkComparisonRequest>,
+) -> Result<Json<Value>, (StatusCode, String)> {
+    auth(&ctx, &h)?;
+    crate::commands::export_fusion_benchmark_comparison(ctx.app.clone(), body)
+        .map(|v| Json(json!(v)))
+        .map_err(|e| (StatusCode::BAD_GATEWAY, e))
+}
+async fn export_automationbench_handoff(
+    State(ctx): State<Ctx>,
+    h: HeaderMap,
+    Json(body): Json<crate::commands::ExportAutomationBenchHandoffRequest>,
+) -> Result<Json<Value>, (StatusCode, String)> {
+    auth(&ctx, &h)?;
+    crate::commands::export_automationbench_handoff(body)
+        .map(|v| Json(json!(v)))
+        .map_err(|e| (StatusCode::BAD_GATEWAY, e))
+}
+async fn record_fusion_benchmark(
+    State(ctx): State<Ctx>,
+    h: HeaderMap,
+    Json(body): Json<crate::commands::RecordFusionBenchmarkRequest>,
+) -> Result<Json<Value>, (StatusCode, String)> {
+    auth(&ctx, &h)?;
+    crate::commands::record_fusion_benchmark(ctx.app.clone(), body)
+        .map(|_| Json(json!({ "ok": true })))
+        .map_err(|e| (StatusCode::BAD_REQUEST, e))
+}
+async fn run_fusion_benchmark(
+    State(ctx): State<Ctx>,
+    h: HeaderMap,
+    Json(body): Json<crate::commands::RunFusionBenchmarkRequest>,
+) -> Result<Json<Value>, (StatusCode, String)> {
+    auth(&ctx, &h)?;
+    crate::commands::run_fusion_benchmark(ctx.app.clone(), body)
+        .await
+        .map(|run| Json(json!(run)))
+        .map_err(|e| (StatusCode::BAD_REQUEST, e))
+}
+async fn run_fusion_benchmark_matrix(
+    State(ctx): State<Ctx>,
+    h: HeaderMap,
+    Json(body): Json<crate::commands::RunFusionBenchmarkMatrixRequest>,
+) -> Result<Json<Value>, (StatusCode, String)> {
+    auth(&ctx, &h)?;
+    crate::commands::run_fusion_benchmark_matrix(ctx.app.clone(), body)
+        .await
+        .map(|run| Json(json!(run)))
+        .map_err(|e| (StatusCode::BAD_REQUEST, e))
+}
+async fn sidekick_metrics(
+    State(ctx): State<Ctx>,
+    h: HeaderMap,
+    Query(q): Query<LimitQ>,
+) -> Result<Json<Value>, (StatusCode, String)> {
+    auth(&ctx, &h)?;
+    crate::commands::sidekick_metrics(ctx.app.clone(), q.limit)
+        .map(|v| Json(json!(v)))
+        .map_err(|e| (StatusCode::BAD_GATEWAY, e))
+}
+async fn chat_runs(
+    State(ctx): State<Ctx>,
+    h: HeaderMap,
+    Query(q): Query<LimitQ>,
+) -> Result<Json<Value>, (StatusCode, String)> {
+    auth(&ctx, &h)?;
+    crate::commands::chat_runs(ctx.app.clone(), q.limit)
+        .map(|v| Json(json!(v)))
+        .map_err(|e| (StatusCode::BAD_GATEWAY, e))
+}
+async fn chat_route_metrics(
+    State(ctx): State<Ctx>,
+    h: HeaderMap,
+    Query(q): Query<LimitQ>,
+) -> Result<Json<Value>, (StatusCode, String)> {
+    auth(&ctx, &h)?;
+    crate::commands::chat_route_metrics(ctx.app.clone(), q.limit)
+        .map(|v| Json(json!(v)))
+        .map_err(|e| (StatusCode::BAD_GATEWAY, e))
+}
+async fn sidekick_session_summaries(
+    State(ctx): State<Ctx>,
+    h: HeaderMap,
+    Query(q): Query<LimitQ>,
+) -> Result<Json<Value>, (StatusCode, String)> {
+    auth(&ctx, &h)?;
+    crate::commands::sidekick_session_summaries(ctx.app.clone(), q.limit)
+        .map(|v| Json(json!(v)))
+        .map_err(|e| (StatusCode::BAD_GATEWAY, e))
+}
 async fn profile(
     State(ctx): State<Ctx>,
     h: HeaderMap,
@@ -230,7 +412,7 @@ async fn mcp(
             "jsonrpc": "2.0", "id": id,
             "result": {
                 "protocolVersion": "2024-11-05",
-                "serverInfo": { "name": "understudy-desktop", "version": "0.1.0" },
+                "serverInfo": { "name": "understudy-desktop", "version": "0.2.0" },
                 "capabilities": { "tools": {} }
             }
         }))),
@@ -266,6 +448,21 @@ fn tools() -> Vec<Value> {
         ("residency", "Warm-slot residency (which models are loaded)."),
         ("knowledge_dossiers", "Bundled public per-model dossiers."),
         ("local_benchmarks", "Local live benchmark rows."),
+        ("fusion_benchmark_matrix", "Fusion benchmark modes and fixed local task set."),
+        ("fusion_route_recommendation", "Recommend local, local+sidekick, or gateway for a prompt. Args: {prompt, current_route?, active_slot_id?, session_id?}."),
+        ("fusion_route_decisions", "Recent persisted Fusion route policy decisions with sidekick, gateway, token, and memory accounting. Args: {limit?}."),
+        ("fusion_benchmark_results", "Recent Fusion benchmark result rows. Args: {limit?}."),
+        ("fusion_benchmark_summary", "Aggregate Fusion benchmark results by route, mode, and model. Args: {limit?}."),
+        ("fusion_benchmark_run_summary", "Compare Fusion benchmark modes within each run. Args: {limit?}."),
+        ("export_fusion_benchmark_comparison", "Write a local Fusion comparison packet for external eval tooling. Args: {limit?, output_path?}."),
+        ("export_automationbench_handoff", "Write a local AutomationBench handoff packet with candidates, runner hints, and desktop callback mapping. Args: {run_id?, candidates?, domains?, num_examples?, output_path?}."),
+        ("chat_runs", "Recent desktop chat route accounting rows. Args: {limit?}."),
+        ("chat_route_metrics", "Aggregate desktop chat route latency, token, tool, sidekick, and gateway usage. Args: {limit?}."),
+        ("sidekick_metrics", "Aggregate recent sidekick usage, handoff, escalation, and feedback metrics. Args: {limit?}."),
+        ("sidekick_session_summaries", "Inspect persisted sidekick session memory and compacted summaries. Args: {limit?}."),
+        ("record_fusion_benchmark", "Record one Fusion benchmark result row."),
+        ("run_fusion_benchmark", "Plan or run a Fusion benchmark for one candidate. Args: {run_id?, suite?, candidate?, route?, modes?, task_ids?, model?, dry_run?, record_skips?}. Suites: routing-smoke, local-comparison, full-matrix, automationbench-proxy. Candidates: gateway-glm, local-main, local-fast."),
+        ("run_fusion_benchmark_matrix", "Plan or run a Fusion benchmark across candidates. Args: {run_id?, suite?, candidates?, modes?, task_ids?, dry_run?, record_skips?}. Defaults candidates to gateway-glm, local-main, local-fast."),
         ("aa_models", "Artificial Analysis external pricing/speed/quality."),
         ("list_traces", "List recent Moraine sessions. Args: {limit?}."),
         ("search_traces", "Search Moraine traces. Args: {q}."),
@@ -287,6 +484,86 @@ async fn call_tool(ctx: &Ctx, name: &str, args: &Value) -> Result<Value, String>
         "residency" => json!(c::get_residency(app)),
         "knowledge_dossiers" => json!(c::knowledge_dossiers()),
         "local_benchmarks" => json!(c::local_benchmarks(app).map_err(|e| e.to_string())?),
+        "fusion_benchmark_matrix" => json!(c::fusion_benchmark_matrix()),
+        "fusion_route_recommendation" => {
+            let request =
+                serde_json::from_value::<c::FusionRouteRecommendationRequest>(args.clone())
+                    .map_err(|e| format!("invalid Fusion route request: {e}"))?;
+            json!(c::fusion_route_recommendation(app, request))
+        }
+        "fusion_route_decisions" => json!(c::fusion_route_decisions(
+            app,
+            args.get("limit").and_then(|v| v.as_u64()).map(|x| x as u32)
+        )
+        .map_err(|e| e.to_string())?),
+        "fusion_benchmark_results" => json!(c::fusion_benchmark_results(
+            app,
+            args.get("limit").and_then(|v| v.as_u64()).map(|x| x as u32)
+        )
+        .map_err(|e| e.to_string())?),
+        "fusion_benchmark_summary" => json!(c::fusion_benchmark_summary(
+            app,
+            args.get("limit").and_then(|v| v.as_u64()).map(|x| x as u32)
+        )
+        .map_err(|e| e.to_string())?),
+        "fusion_benchmark_run_summary" => json!(c::fusion_benchmark_run_summary(
+            app,
+            args.get("limit").and_then(|v| v.as_u64()).map(|x| x as u32)
+        )
+        .map_err(|e| e.to_string())?),
+        "export_fusion_benchmark_comparison" => {
+            let request =
+                serde_json::from_value::<c::ExportFusionBenchmarkComparisonRequest>(args.clone())
+                    .map_err(|e| format!("invalid Fusion comparison export request: {e}"))?;
+            json!(c::export_fusion_benchmark_comparison(app, request).map_err(|e| e.to_string())?)
+        }
+        "export_automationbench_handoff" => {
+            let request =
+                serde_json::from_value::<c::ExportAutomationBenchHandoffRequest>(args.clone())
+                    .map_err(|e| format!("invalid AutomationBench handoff request: {e}"))?;
+            json!(c::export_automationbench_handoff(request).map_err(|e| e.to_string())?)
+        }
+        "chat_runs" => json!(c::chat_runs(
+            app,
+            args.get("limit").and_then(|v| v.as_u64()).map(|x| x as u32)
+        )
+        .map_err(|e| e.to_string())?),
+        "chat_route_metrics" => json!(c::chat_route_metrics(
+            app,
+            args.get("limit").and_then(|v| v.as_u64()).map(|x| x as u32)
+        )
+        .map_err(|e| e.to_string())?),
+        "sidekick_metrics" => json!(c::sidekick_metrics(
+            app,
+            args.get("limit").and_then(|v| v.as_u64()).map(|x| x as u32)
+        )
+        .map_err(|e| e.to_string())?),
+        "sidekick_session_summaries" => json!(c::sidekick_session_summaries(
+            app,
+            args.get("limit").and_then(|v| v.as_u64()).map(|x| x as u32)
+        )
+        .map_err(|e| e.to_string())?),
+        "record_fusion_benchmark" => {
+            let result = serde_json::from_value::<c::RecordFusionBenchmarkRequest>(args.clone())
+                .map_err(|e| format!("invalid Fusion benchmark result: {e}"))?;
+            c::record_fusion_benchmark(app, result).map_err(|e| e.to_string())?;
+            json!({ "ok": true })
+        }
+        "run_fusion_benchmark" => {
+            let request = serde_json::from_value::<c::RunFusionBenchmarkRequest>(args.clone())
+                .map_err(|e| format!("invalid Fusion benchmark request: {e}"))?;
+            json!(c::run_fusion_benchmark(app, request)
+                .await
+                .map_err(|e| e.to_string())?)
+        }
+        "run_fusion_benchmark_matrix" => {
+            let request =
+                serde_json::from_value::<c::RunFusionBenchmarkMatrixRequest>(args.clone())
+                    .map_err(|e| format!("invalid Fusion benchmark matrix request: {e}"))?;
+            json!(c::run_fusion_benchmark_matrix(app, request)
+                .await
+                .map_err(|e| e.to_string())?)
+        }
         "aa_models" => json!(c::aa_models(app).await.map_err(|e| e.to_string())?),
         "list_traces" => {
             c::list_traces(args.get("limit").and_then(|v| v.as_u64()).map(|x| x as u32))
@@ -327,7 +604,7 @@ async fn a2a_card(
     Ok(Json(json!({
         "name": "understudy-desktop",
         "description": "Local Understudy control plane: models, routes, traces, and runtime.",
-        "version": "0.1.0",
+        "version": "0.2.0",
         "url": format!("/a2a"),
         "capabilities": { "streaming": false, "tools": true },
         "defaultInputModes": ["text"],

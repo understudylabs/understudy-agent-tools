@@ -26,7 +26,7 @@ pub fn call_tool(name: &str, args: Value) -> anyhow::Result<Value> {
                 "jsonrpc": "2.0", "id": 1, "method": "initialize",
                 "params": {
                     "protocolVersion": PROTOCOL_VERSION, "capabilities": {},
-                    "clientInfo": { "name": "understudy-desktop", "version": "0.1.0" }
+                    "clientInfo": { "name": "understudy-desktop", "version": "0.2.0" }
                 }
             })
         )?;
