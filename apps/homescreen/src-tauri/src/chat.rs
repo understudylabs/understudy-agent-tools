@@ -2,7 +2,8 @@ use futures_util::StreamExt;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::collections::HashMap;
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
+use std::process::Command;
 use std::sync::{Mutex, OnceLock};
 use std::time::Instant;
 use tauri::ipc::Channel;
@@ -46,6 +47,7 @@ const CHAT_THINKING_BUDGET: u32 = 2048;
 const MAX_TOOL_ROUNDS: usize = 4;
 const SIDEKICK_MAX_TOOL_ROUNDS: usize = 2;
 const SIDEKICK_MAX_CONTEXT_MESSAGES: usize = 16;
+const SIDEKICK_FILE_READ_LIMIT: usize = 48 * 1024;
 
 static SIDEKICK_SESSIONS: OnceLock<Mutex<HashMap<String, Vec<Value>>>> = OnceLock::new();
 
@@ -452,6 +454,55 @@ fn sidekick_tool_schemas() -> Vec<Value> {
                 }
             }
         }),
+        json!({
+            "type": "function",
+            "function": {
+                "name": "repo_files",
+                "description": "List repository files with an optional glob. Read-only. Use to locate likely implementation files.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "glob": { "type": "string", "description": "Optional rg glob, for example apps/homescreen/**/*.rs" },
+                        "limit": { "type": "integer", "minimum": 1, "maximum": 50 }
+                    },
+                    "additionalProperties": false
+                }
+            }
+        }),
+        json!({
+            "type": "function",
+            "function": {
+                "name": "repo_search",
+                "description": "Search repository text with ripgrep. Read-only and capped. Use for mechanical lookup or verification.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "query": { "type": "string" },
+                        "glob": { "type": "string", "description": "Optional rg glob to narrow files" },
+                        "limit": { "type": "integer", "minimum": 1, "maximum": 50 }
+                    },
+                    "required": ["query"],
+                    "additionalProperties": false
+                }
+            }
+        }),
+        json!({
+            "type": "function",
+            "function": {
+                "name": "repo_open",
+                "description": "Open a bounded text slice from a repository file. Read-only; rejects absolute paths and parent traversal.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "path": { "type": "string" },
+                        "start_line": { "type": "integer", "minimum": 1 },
+                        "max_lines": { "type": "integer", "minimum": 1, "maximum": 160 }
+                    },
+                    "required": ["path"],
+                    "additionalProperties": false
+                }
+            }
+        }),
     ]
 }
 
@@ -479,8 +530,122 @@ fn sidekick_tool_result(app: &AppHandle, name: &str, args: &Value) -> Result<Val
                 .to_string(),
         )
         .map_err(|e| e.to_string())?,
+        "repo_files" => sidekick_repo_files(args)?,
+        "repo_search" => sidekick_repo_search(args)?,
+        "repo_open" => sidekick_repo_open(args)?,
         other => return Err(format!("unknown sidekick tool: {other}")),
     })
+}
+
+fn repo_root() -> Result<PathBuf, String> {
+    let mut dir = std::env::current_dir().map_err(|e| format!("cannot read cwd: {e}"))?;
+    for _ in 0..8 {
+        if dir.join(".git").exists() || dir.join("package.json").exists() {
+            return Ok(dir);
+        }
+        if !dir.pop() {
+            break;
+        }
+    }
+    Err("could not locate repository root".to_string())
+}
+
+fn bounded_limit(args: &Value, key: &str, default: usize, max: usize) -> usize {
+    args.get(key)
+        .and_then(|v| v.as_u64())
+        .map(|v| v as usize)
+        .unwrap_or(default)
+        .max(1)
+        .min(max)
+}
+
+fn rg_lines(mut cmd: Command, limit: usize) -> Result<Vec<String>, String> {
+    let output = cmd
+        .output()
+        .map_err(|e| format!("repo search command failed: {e}"))?;
+    if !output.status.success() && output.status.code() != Some(1) {
+        return Err(String::from_utf8_lossy(&output.stderr).trim().to_string());
+    }
+    Ok(String::from_utf8_lossy(&output.stdout)
+        .lines()
+        .take(limit)
+        .map(|line| line.to_string())
+        .collect())
+}
+
+fn sidekick_repo_files(args: &Value) -> Result<Value, String> {
+    let root = repo_root()?;
+    let limit = bounded_limit(args, "limit", 30, 50);
+    let mut cmd = Command::new("rg");
+    cmd.arg("--files").current_dir(&root);
+    if let Some(glob) = args.get("glob").and_then(|v| v.as_str()).filter(|s| !s.is_empty()) {
+        cmd.arg("-g").arg(glob);
+    }
+    let files = rg_lines(cmd, limit)?;
+    Ok(json!({ "root": root.display().to_string(), "files": files, "truncated": files.len() >= limit }))
+}
+
+fn sidekick_repo_search(args: &Value) -> Result<Value, String> {
+    let root = repo_root()?;
+    let query = required_string(args, "query")?;
+    let limit = bounded_limit(args, "limit", 30, 50);
+    let mut cmd = Command::new("rg");
+    cmd.args(["--line-number", "--column", "--smart-case", "--hidden"])
+        .arg("-g")
+        .arg("!.git")
+        .arg(&query)
+        .current_dir(&root);
+    if let Some(glob) = args.get("glob").and_then(|v| v.as_str()).filter(|s| !s.is_empty()) {
+        cmd.arg("-g").arg(glob);
+    }
+    let matches = rg_lines(cmd, limit)?;
+    Ok(json!({ "query": query, "matches": matches, "truncated": matches.len() >= limit }))
+}
+
+fn safe_repo_path(root: &Path, rel: &str) -> Result<PathBuf, String> {
+    let rel_path = Path::new(rel);
+    if rel_path.is_absolute() || rel_path.components().any(|c| matches!(c, std::path::Component::ParentDir)) {
+        return Err("repo_open only accepts relative paths inside the repository".to_string());
+    }
+    let path = root.join(rel_path);
+    let canonical_root = root
+        .canonicalize()
+        .map_err(|e| format!("cannot resolve repo root: {e}"))?;
+    let canonical_path = path
+        .canonicalize()
+        .map_err(|e| format!("cannot resolve file path: {e}"))?;
+    if !canonical_path.starts_with(canonical_root) {
+        return Err("repo_open path escaped repository root".to_string());
+    }
+    Ok(canonical_path)
+}
+
+fn sidekick_repo_open(args: &Value) -> Result<Value, String> {
+    let root = repo_root()?;
+    let rel = required_string(args, "path")?;
+    let path = safe_repo_path(&root, &rel)?;
+    if !path.is_file() {
+        return Err("repo_open path is not a file".to_string());
+    }
+    let start = bounded_limit(args, "start_line", 1, usize::MAX);
+    let max_lines = bounded_limit(args, "max_lines", 120, 160);
+    let text = std::fs::read_to_string(&path).map_err(|e| format!("cannot read file: {e}"))?;
+    let mut bytes = 0usize;
+    let mut lines = vec![];
+    for (idx, line) in text.lines().enumerate().skip(start.saturating_sub(1)) {
+        if lines.len() >= max_lines || bytes >= SIDEKICK_FILE_READ_LIMIT {
+            break;
+        }
+        let numbered = format!("{}: {}", idx + 1, line);
+        bytes += numbered.len() + 1;
+        lines.push(numbered);
+    }
+    Ok(json!({
+        "path": rel,
+        "start_line": start,
+        "lines": lines,
+        "truncated": lines.len() >= max_lines || bytes >= SIDEKICK_FILE_READ_LIMIT
+    }))
 }
 
 async fn call_sidekick_model(
