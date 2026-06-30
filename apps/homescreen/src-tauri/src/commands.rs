@@ -68,6 +68,7 @@ pub struct RecordFusionBenchmarkRequest {
     pub context_tokens_before: Option<u64>,
     pub local_mem_gb: Option<f64>,
     pub score: Option<f64>,
+    pub status: Option<String>,
     pub notes: Option<String>,
 }
 
@@ -135,6 +136,8 @@ pub struct FusionBenchmarkSummaryGroup {
     pub rows: u64,
     pub executed: u64,
     pub skipped: u64,
+    pub ok_rows: u64,
+    pub error_rows: u64,
     pub avg_elapsed_ms: Option<f64>,
     pub avg_total_tokens: Option<f64>,
     pub avg_completion_tokens: Option<f64>,
@@ -1061,6 +1064,7 @@ pub fn record_fusion_benchmark(
         context_tokens_before: result.context_tokens_before,
         local_mem_gb: result.local_mem_gb,
         score: result.score,
+        status: result.status.unwrap_or_else(|| "ok".to_string()),
         notes: result.notes,
     };
     app.state::<crate::db::Db>()
@@ -1101,10 +1105,9 @@ pub fn fusion_benchmark_summary(
     let mut skipped_total = 0u64;
     for ((route, mode, model), rows) in groups {
         let row_count = rows.len() as u64;
-        let skipped = rows
-            .iter()
-            .filter(|row| row.notes.as_deref().unwrap_or("").starts_with("skipped:"))
-            .count() as u64;
+        let skipped = rows.iter().filter(|row| row.status == "skipped").count() as u64;
+        let error_rows = rows.iter().filter(|row| row.status == "error").count() as u64;
+        let ok_rows = rows.iter().filter(|row| row.status == "ok").count() as u64;
         let executed = row_count.saturating_sub(skipped);
         executed_total += executed;
         skipped_total += skipped;
@@ -1142,6 +1145,8 @@ pub fn fusion_benchmark_summary(
             rows: row_count,
             executed,
             skipped,
+            ok_rows,
+            error_rows,
             avg_elapsed_ms,
             avg_total_tokens,
             avg_completion_tokens: avg(&completion_token_values),
@@ -1424,6 +1429,7 @@ pub async fn run_fusion_benchmark(
                                 ),
                                 local_mem_gb: effective_local_mem_gb,
                                 score: Some(0.0),
+                                status: "error".to_string(),
                                 notes: Some(format!(
                                     "error:{}; status=error; policy_reason={}; error={}",
                                     effective_route,
@@ -1460,6 +1466,7 @@ pub async fn run_fusion_benchmark(
                         context_tokens_before: Some(result.context_tokens_before),
                         local_mem_gb: effective_local_mem_gb,
                         score,
+                        status: result.status.clone(),
                         notes: Some(format!(
                             "executed:{}; status={}; policy_reason={}; main_tool_calls={}; output_chars={}; reasoning_tokens={}",
                             effective_route,
@@ -1488,6 +1495,7 @@ pub async fn run_fusion_benchmark(
                         context_tokens_before: Some(task.prompt.split_whitespace().count() as u64),
                         local_mem_gb: effective_local_mem_gb,
                         score: None,
+                        status: "skipped".to_string(),
                         notes: Some(format!("skipped:{reason}; policy_reason={policy_reason}")),
                     })
                     .map_err(|e| e.to_string())?;
