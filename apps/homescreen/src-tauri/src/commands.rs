@@ -66,6 +66,7 @@ pub struct RecordFusionBenchmarkRequest {
     pub gateway_used: Option<bool>,
     pub compacted: Option<bool>,
     pub context_tokens_before: Option<u64>,
+    pub local_mem_gb: Option<f64>,
     pub score: Option<f64>,
     pub notes: Option<String>,
 }
@@ -142,6 +143,7 @@ pub struct FusionBenchmarkSummaryGroup {
     pub gateway_avoidance_rows: u64,
     pub compacted_rows: u64,
     pub avg_context_tokens_before: Option<f64>,
+    pub avg_local_mem_gb: Option<f64>,
     pub avg_score: Option<f64>,
     pub speed_index: Option<f64>,
 }
@@ -953,6 +955,7 @@ pub fn record_fusion_benchmark(
         gateway_used: result.gateway_used.unwrap_or(false),
         compacted: result.compacted.unwrap_or(false),
         context_tokens_before: result.context_tokens_before,
+        local_mem_gb: result.local_mem_gb,
         score: result.score,
         notes: result.notes,
     };
@@ -1020,6 +1023,7 @@ pub fn fusion_benchmark_summary(
             .iter()
             .filter_map(|row| row.context_tokens_before.map(|v| v as f64))
             .collect();
+        let local_mem_values: Vec<f64> = rows.iter().filter_map(|row| row.local_mem_gb).collect();
         let score_values: Vec<f64> = rows.iter().filter_map(|row| row.score).collect();
         let avg_elapsed_ms = avg(&elapsed_values);
         let avg_total_tokens = avg(&total_token_values);
@@ -1048,6 +1052,7 @@ pub fn fusion_benchmark_summary(
             gateway_avoidance_rows: rows.iter().filter(|row| !row.gateway_used).count() as u64,
             compacted_rows: rows.iter().filter(|row| row.compacted).count() as u64,
             avg_context_tokens_before: avg(&context_token_values),
+            avg_local_mem_gb: avg(&local_mem_values),
             avg_score: avg(&score_values),
             speed_index,
         });
@@ -1170,6 +1175,15 @@ pub async fn run_fusion_benchmark(
                 .is_some_and(|id| id.contains("understudy-small") || id.contains("e2b"))
     });
     let main_slot_id = warm_main.map(|slot| slot.id);
+    let local_mem_gb = {
+        let mem = snapshot
+            .slots
+            .iter()
+            .filter(|slot| slot.state == "running")
+            .map(|slot| slot.mem_gb as f64)
+            .sum::<f64>();
+        (mem > 0.0).then_some(mem)
+    };
     let requested_model = request.model;
     let default_model = requested_model
         .clone()
@@ -1218,6 +1232,9 @@ pub async fn run_fusion_benchmark(
                     .and_then(|rec| rec.main_model.clone())
                     .unwrap_or_else(|| default_model.clone())
             };
+            let effective_local_mem_gb = (effective_route == "local")
+                .then_some(local_mem_gb)
+                .flatten();
             let policy_sidekick = recommendation
                 .as_ref()
                 .map(|rec| rec.use_sidekick)
@@ -1302,6 +1319,7 @@ pub async fn run_fusion_benchmark(
                         gateway_used: effective_route == "gateway",
                         compacted: result.compacted,
                         context_tokens_before: Some(result.context_tokens_before),
+                        local_mem_gb: effective_local_mem_gb,
                         score,
                         notes: Some(format!(
                             "executed:{}; status={}; policy_reason={}; main_tool_calls={}; output_chars={}; reasoning_tokens={}",
@@ -1329,6 +1347,7 @@ pub async fn run_fusion_benchmark(
                         gateway_used: effective_route == "gateway",
                         compacted: false,
                         context_tokens_before: Some(task.prompt.split_whitespace().count() as u64),
+                        local_mem_gb: effective_local_mem_gb,
                         score: None,
                         notes: Some(format!("skipped:{reason}; policy_reason={policy_reason}")),
                     })
