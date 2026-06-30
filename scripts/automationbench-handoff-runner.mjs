@@ -4,6 +4,7 @@ import { existsSync, readFileSync } from "node:fs";
 function usage() {
   return `Usage:
   node scripts/automationbench-handoff-runner.mjs --handoff <path> [--print-commands]
+  node scripts/automationbench-handoff-runner.mjs --handoff <path> --print-fusion-commands [--base-url <url>]
   node scripts/automationbench-handoff-runner.mjs --handoff <path> --results <path> [--candidate <id>] [--cohort-run-id <id>] [--mode <mode>] [--mode-prefix <prefix>] [--sidekick-runs <n>] [--sidekick-tool-calls <n>] [--post] [--token <token>]
 
 Reads an Understudy AutomationBench handoff packet and either prints the intended
@@ -15,6 +16,26 @@ Result input may be a native AutomationBench export, a JSON array, or JSONL. Eac
 Optional row fields:
   prompt_tokens, completion_tokens, local_mem_gb, notes, run_id
 `;
+}
+
+const FUSION_MODEL_DEFAULTS = new Map([
+  ["understudy-fusion-main", { candidate: "local-main", mode: "main-only", sidekickRuns: 0, gatewayUsed: false }],
+  ["understudy-fusion-fast", { candidate: "local-fast", mode: "candidate-local-fast", sidekickRuns: 0, gatewayUsed: false }],
+  ["understudy-fusion-sidekick-main", { candidate: "local-main", mode: "sidekick-parallel", sidekickRuns: 1, gatewayUsed: false }],
+  [
+    "understudy-fusion-sidekick-advisory-main",
+    { candidate: "local-main", mode: "sidekick-advisory", sidekickRuns: 1, gatewayUsed: false },
+  ],
+  ["understudy-fusion-sidekick-gateway", { candidate: "gateway-glm", mode: "sidekick-parallel", sidekickRuns: 1, gatewayUsed: true }],
+  [
+    "understudy-fusion-sidekick-advisory-gateway",
+    { candidate: "gateway-glm", mode: "sidekick-advisory", sidekickRuns: 1, gatewayUsed: true },
+  ],
+  ["understudy-fusion-routing", { candidate: "local-main", mode: "sidekick-routing", sidekickRuns: 1, gatewayUsed: null }],
+]);
+
+function fusionDefaultsForModel(model) {
+  return FUSION_MODEL_DEFAULTS.get(String(model ?? ""));
 }
 
 function argValue(args, name) {
@@ -39,20 +60,23 @@ function readResultRows(path, candidateId) {
   if (raw.startsWith("{")) {
     const parsed = JSON.parse(raw);
     if (Array.isArray(parsed.tasks) && parsed.meta) {
-      if (!candidateId) {
-        throw new Error("native AutomationBench exports require --candidate");
-      }
+      const modelDefaults = fusionDefaultsForModel(parsed.meta.model);
+      const inferredCandidate = candidateId ?? modelDefaults?.candidate;
+      if (!inferredCandidate) throw new Error("native AutomationBench exports require --candidate");
       const durationMs =
         typeof parsed.meta.duration_seconds === "number"
           ? Math.round((parsed.meta.duration_seconds * 1000) / Math.max(parsed.tasks.length, 1))
           : undefined;
       return parsed.tasks.map((task) => ({
-        candidate: candidateId,
+        candidate: inferredCandidate,
         task_id: task.name ?? task.id,
         status: task.passed ? "ok" : "error",
         score: task.score,
         elapsed_ms: durationMs,
         model: parsed.meta.model,
+        mode: modelDefaults?.mode,
+        sidekick_runs: modelDefaults?.sidekickRuns,
+        gateway_used: modelDefaults?.gatewayUsed,
         prompt_tokens: task.input_tokens,
         completion_tokens: task.output_tokens,
         notes: [
@@ -60,6 +84,7 @@ function readResultRows(path, candidateId) {
           `task=${task.name ?? task.id}`,
           `passed=${Boolean(task.passed)}`,
           `assertions=${task.assertions_passed ?? 0}/${task.assertions_total ?? 0}`,
+          modelDefaults ? `fusion_mode=${modelDefaults.mode}` : null,
         ].join("; "),
       }));
     }
@@ -105,6 +130,19 @@ function normalizeRows(handoff, rows, options = {}) {
       : options.modePrefix
       ? `${options.modePrefix}-${candidate.candidate}`
       : (row.mode ?? "automationbench");
+    const modelDefaults = fusionDefaultsForModel(row.model ?? candidate.model);
+    const sidekickRuns =
+      row.sidekick_runs === undefined
+        ? options.sidekickRuns === undefined
+          ? Number(modelDefaults?.sidekickRuns ?? 0)
+          : Number(options.sidekickRuns)
+        : Number(row.sidekick_runs);
+    const gatewayUsed =
+      row.gateway_used === true || row.gateway_used === false
+        ? row.gateway_used
+        : modelDefaults?.gatewayUsed === null || modelDefaults?.gatewayUsed === undefined
+          ? candidate.route === "gateway"
+          : modelDefaults.gatewayUsed;
     return {
       run_id: options.cohortRunId ?? row.run_id ?? candidate.run_id,
       task_id: String(row.task_id ?? row.example_id ?? row.id ?? `automationbench-row-${index}`),
@@ -113,12 +151,12 @@ function normalizeRows(handoff, rows, options = {}) {
       elapsed_ms: row.elapsed_ms === undefined ? null : Number(row.elapsed_ms),
       prompt_tokens: row.prompt_tokens === undefined ? null : Number(row.prompt_tokens),
       completion_tokens: row.completion_tokens === undefined ? null : Number(row.completion_tokens),
-      sidekick_runs: row.sidekick_runs === undefined ? Number(options.sidekickRuns ?? 0) : Number(row.sidekick_runs),
+      sidekick_runs: sidekickRuns,
       sidekick_tool_calls:
         row.sidekick_tool_calls === undefined
           ? Number(options.sidekickToolCalls ?? 0)
           : Number(row.sidekick_tool_calls),
-      gateway_used: candidate.route === "gateway",
+      gateway_used: gatewayUsed,
       compacted: false,
       context_tokens_before: row.prompt_tokens === undefined ? null : Number(row.prompt_tokens),
       local_mem_gb: row.local_mem_gb === undefined ? null : Number(row.local_mem_gb),
@@ -164,6 +202,42 @@ function printCommands(handoff) {
   }
 }
 
+function printFusionCommands(handoff, baseUrl = "http://127.0.0.1:17890/v1") {
+  const domains = handoff.domains.join(",");
+  const examples = handoff.num_examples;
+  const runs = [
+    { label: "local-main", model: "gemma-4-26b-a4b-it-qat-mlx-vlm-understudy", baseUrl: "http://127.0.0.1:8091/v1", apiKey: "local" },
+    { label: "local-fast", model: "gemma-4-e2b-it-qat-mlx-vlm-understudy", baseUrl: "http://127.0.0.1:8092/v1", apiKey: "local" },
+    { label: "gateway-glm", model: "glm-5.2", baseUrl: "$UNDERSTUDY_GATEWAY_BASE_URL/v1", apiKey: "$UNDERSTUDY_GATEWAY_API_KEY" },
+    { label: "fusion-main", model: "understudy-fusion-main", baseUrl, apiKey: "fusion" },
+    { label: "fusion-sidekick-parallel", model: "understudy-fusion-sidekick-main", baseUrl, apiKey: "fusion" },
+    { label: "fusion-sidekick-advisory", model: "understudy-fusion-sidekick-advisory-main", baseUrl, apiKey: "fusion" },
+    { label: "fusion-routing", model: "understudy-fusion-routing", baseUrl, apiKey: "fusion" },
+  ];
+  console.log(`# ${handoff.benchmark} Fusion command matrix: ${handoff.run_id}`);
+  console.log(`# Start proxy first: node scripts/automationbench-fusion-proxy.mjs --port 17890`);
+  for (const run of runs) {
+    const exportPath = `/tmp/understudy-automationbench-${handoff.run_id}-${run.label}.json`;
+    console.log("");
+    console.log(`# ${run.label}`);
+    console.log(
+      [
+        "uv run auto-bench",
+        `--model "${run.model}"`,
+        `--base-url "${run.baseUrl}"`,
+        `--api-key "${run.apiKey}"`,
+        `--domains "${domains}"`,
+        `--num-examples ${examples}`,
+        "--max-concurrent 1",
+        "--max-steps 10",
+        "--toolset api",
+        `--export-json "${exportPath}"`,
+        "--save-every -1",
+      ].join(" "),
+    );
+  }
+}
+
 async function main() {
   const args = process.argv.slice(2);
   if (args.includes("--help") || args.length === 0) {
@@ -175,6 +249,9 @@ async function main() {
   const handoff = requireHandoff(handoffPath);
   if (args.includes("--print-commands")) {
     printCommands(handoff);
+  }
+  if (args.includes("--print-fusion-commands")) {
+    printFusionCommands(handoff, argValue(args, "--base-url") ?? undefined);
   }
   const resultsPath = argValue(args, "--results");
   if (resultsPath) {

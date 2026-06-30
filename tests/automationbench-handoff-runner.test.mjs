@@ -40,6 +40,12 @@ function writeFixture() {
         route: "local",
         model: "understudy-fast",
       },
+      {
+        candidate: "local-main",
+        run_id: "ab-smoke-local-main",
+        route: "local",
+        model: "understudy-main",
+      },
     ],
   };
   const handoffPath = join(dir, "handoff.json");
@@ -70,6 +76,21 @@ describe("automationbench handoff runner", () => {
     assert.match(result.stdout, /candidate=gateway-glm/);
     assert.match(result.stdout, /candidate=local-fast/);
     assert.match(result.stdout, /uv run auto-bench/);
+  });
+
+  it("prints the AutomationBench Fusion proxy command matrix", () => {
+    const { handoffPath } = writeFixture();
+    const result = spawnSync(
+      runner[0],
+      [...runner.slice(1), "--handoff", handoffPath, "--print-fusion-commands", "--base-url", "http://127.0.0.1:17890/v1"],
+      { encoding: "utf8" },
+    );
+    assert.equal(result.status, 0, result.stderr);
+    assert.match(result.stdout, /understudy-fusion-sidekick-main/);
+    assert.match(result.stdout, /understudy-fusion-sidekick-advisory-main/);
+    assert.match(result.stdout, /understudy-fusion-routing/);
+    assert.match(result.stdout, /--base-url "http:\/\/127\.0\.0\.1:17890\/v1"/);
+    assert.match(result.stdout, /--toolset api/);
   });
 
   it("normalizes JSONL results for the desktop callback endpoint", () => {
@@ -204,6 +225,50 @@ describe("automationbench handoff runner", () => {
     assert.equal(payload.rows[0].run_id, "ab-fusion-cohort");
     assert.equal(payload.rows[0].mode, "sidekick-parallel");
     assert.equal(payload.rows[0].model, "understudy-fusion-sidekick-main");
+    assert.equal(payload.rows[0].sidekick_runs, 1);
+  });
+
+  it("infers Fusion sidekick mode from native export model id", () => {
+    const { handoffPath } = writeFixture();
+    const resultsPath = join(dir, "automationbench-fusion-export.json");
+    writeFileSync(
+      resultsPath,
+      `${JSON.stringify({
+        meta: { model: "understudy-fusion-sidekick-advisory-main", domains: ["simple"], duration_seconds: 6 },
+        tasks: [{ id: 1, name: "simple.task", score: 1, passed: true, input_tokens: 12, output_tokens: 4 }],
+      })}\n`,
+    );
+    const result = spawnSync(runner[0], [...runner.slice(1), "--handoff", handoffPath, "--results", resultsPath], {
+      encoding: "utf8",
+    });
+    assert.equal(result.status, 0, result.stderr);
+    const payload = JSON.parse(result.stdout);
+    assert.equal(payload.rows[0].run_id, "ab-smoke-local-main");
+    assert.equal(payload.rows[0].mode, "sidekick-advisory");
+    assert.equal(payload.rows[0].sidekick_runs, 1);
+    assert.equal(payload.rows[0].gateway_used, false);
+  });
+
+  it("infers Fusion routing rows for cohort comparison", () => {
+    const { handoffPath } = writeFixture();
+    const resultsPath = join(dir, "automationbench-routing-export.json");
+    writeFileSync(
+      resultsPath,
+      `${JSON.stringify({
+        meta: { model: "understudy-fusion-routing", domains: ["simple"], duration_seconds: 9 },
+        tasks: [{ id: 1, name: "simple.route", score: 0.5, passed: false, input_tokens: 20, output_tokens: 8 }],
+      })}\n`,
+    );
+    const result = spawnSync(
+      runner[0],
+      [...runner.slice(1), "--handoff", handoffPath, "--results", resultsPath, "--cohort-run-id", "ab-routing"],
+      { encoding: "utf8" },
+    );
+    assert.equal(result.status, 0, result.stderr);
+    const payload = JSON.parse(result.stdout);
+    assert.equal(payload.rows[0].run_id, "ab-routing");
+    assert.equal(payload.rows[0].mode, "sidekick-routing");
+    assert.equal(payload.rows[0].model, "understudy-fusion-routing");
     assert.equal(payload.rows[0].sidekick_runs, 1);
   });
 });
