@@ -834,6 +834,43 @@ fn sidekick_tool_schemas() -> Vec<Value> {
                 }
             }
         }),
+        json!({
+            "type": "function",
+            "function": {
+                "name": "understudy_mcp_read",
+                "description": "Call a read-only local Understudy MCP tool for Fusion/runtime/accounting context. Use for sidekick metrics, route decisions, benchmark summaries, chat runs, residency, and trace inspection.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "tool_name": {
+                            "type": "string",
+                            "enum": [
+                                "status",
+                                "list_models",
+                                "list_snapshot_models",
+                                "residency",
+                                "knowledge_dossiers",
+                                "local_benchmarks",
+                                "fusion_benchmark_matrix",
+                                "fusion_route_decisions",
+                                "fusion_benchmark_results",
+                                "fusion_benchmark_summary",
+                                "chat_runs",
+                                "chat_route_metrics",
+                                "sidekick_metrics",
+                                "sidekick_session_summaries",
+                                "list_traces",
+                                "search_traces",
+                                "open_trace"
+                            ]
+                        },
+                        "arguments": { "type": "object" }
+                    },
+                    "required": ["tool_name"],
+                    "additionalProperties": false
+                }
+            }
+        }),
     ]
 }
 
@@ -867,6 +904,7 @@ fn sidekick_tool_result(app: &AppHandle, name: &str, args: &Value) -> Result<Val
         "skills_list" => sidekick_skills_list(args)?,
         "skills_search" => sidekick_skills_search(args)?,
         "skill_open" => sidekick_skill_open(args)?,
+        "understudy_mcp_read" => sidekick_understudy_mcp_read(app, args)?,
         other => return Err(format!("unknown sidekick tool: {other}")),
     })
 }
@@ -1101,6 +1139,112 @@ fn sidekick_skill_open(args: &Value) -> Result<Value, String> {
         "lines": lines,
         "truncated": text.lines().count() > max_lines,
     }))
+}
+
+fn sidekick_understudy_mcp_read(app: &AppHandle, args: &Value) -> Result<Value, String> {
+    use crate::commands as c;
+    let nested = args.get("arguments").cloned().unwrap_or_else(|| json!({}));
+    let tool_name = args
+        .get("tool_name")
+        .and_then(|v| v.as_str())
+        .or_else(|| nested.get("tool_name").and_then(|v| v.as_str()))
+        .ok_or_else(|| "understudy_mcp_read requires tool_name".to_string())?;
+    let arguments = args
+        .get("arguments")
+        .and_then(|v| v.get("arguments"))
+        .cloned()
+        .or_else(|| nested.get("arguments").cloned())
+        .or_else(|| args.get("arguments").cloned())
+        .unwrap_or_else(|| json!({}));
+    Ok(match tool_name {
+        "status" => json!(c::get_status(app.clone())),
+        "list_models" => json!(c::list_models()),
+        "list_snapshot_models" => json!(c::list_snapshot_models()),
+        "residency" => json!(c::get_residency(app.clone())),
+        "knowledge_dossiers" => json!(c::knowledge_dossiers()),
+        "local_benchmarks" => json!(c::local_benchmarks(app.clone()).map_err(|e| e.to_string())?),
+        "fusion_benchmark_matrix" => json!(c::fusion_benchmark_matrix()),
+        "fusion_route_decisions" => json!(c::fusion_route_decisions(
+            app.clone(),
+            arguments
+                .get("limit")
+                .and_then(|v| v.as_u64())
+                .map(|x| x as u32)
+        )
+        .map_err(|e| e.to_string())?),
+        "fusion_benchmark_results" => json!(c::fusion_benchmark_results(
+            app.clone(),
+            arguments
+                .get("limit")
+                .and_then(|v| v.as_u64())
+                .map(|x| x as u32)
+        )
+        .map_err(|e| e.to_string())?),
+        "fusion_benchmark_summary" => json!(c::fusion_benchmark_summary(
+            app.clone(),
+            arguments
+                .get("limit")
+                .and_then(|v| v.as_u64())
+                .map(|x| x as u32)
+        )
+        .map_err(|e| e.to_string())?),
+        "chat_runs" => json!(c::chat_runs(
+            app.clone(),
+            arguments
+                .get("limit")
+                .and_then(|v| v.as_u64())
+                .map(|x| x as u32)
+        )
+        .map_err(|e| e.to_string())?),
+        "chat_route_metrics" => json!(c::chat_route_metrics(
+            app.clone(),
+            arguments
+                .get("limit")
+                .and_then(|v| v.as_u64())
+                .map(|x| x as u32)
+        )
+        .map_err(|e| e.to_string())?),
+        "sidekick_metrics" => json!(c::sidekick_metrics(
+            app.clone(),
+            arguments
+                .get("limit")
+                .and_then(|v| v.as_u64())
+                .map(|x| x as u32)
+        )
+        .map_err(|e| e.to_string())?),
+        "sidekick_session_summaries" => json!(c::sidekick_session_summaries(
+            app.clone(),
+            arguments
+                .get("limit")
+                .and_then(|v| v.as_u64())
+                .map(|x| x as u32)
+        )
+        .map_err(|e| e.to_string())?),
+        "list_traces" => c::list_traces(
+            arguments
+                .get("limit")
+                .and_then(|v| v.as_u64())
+                .map(|x| x as u32),
+        )
+        .map_err(|e| e.to_string())?,
+        "search_traces" => c::search_traces(
+            arguments
+                .get("q")
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_string(),
+        )
+        .map_err(|e| e.to_string())?,
+        "open_trace" => c::open_trace(
+            arguments
+                .get("id")
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_string(),
+        )
+        .map_err(|e| e.to_string())?,
+        other => return Err(format!("unsupported sidekick MCP read tool: {other}")),
+    })
 }
 
 async fn call_sidekick_model(
