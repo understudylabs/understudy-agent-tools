@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { Persona } from "@/components/ai-elements/persona";
+import { PauseIcon, PlayIcon, ShieldCheckIcon } from "lucide-react";
 
 type CaptureStep = {
   id: string;
@@ -11,6 +12,8 @@ type CaptureStep = {
   cli: string;
   diagram: "baseline" | "gateway" | "learning" | "scorecard" | "replace";
   status: string;
+  route: string;
+  artifact: string;
 };
 
 const STEPS: CaptureStep[] = [
@@ -22,6 +25,8 @@ const STEPS: CaptureStep[] = [
     cli: "understudy capture inspect",
     diagram: "baseline",
     status: "read-only",
+    route: "Your app → Anthropic",
+    artifact: "No behavior change",
   },
   {
     id: "insert",
@@ -31,6 +36,8 @@ const STEPS: CaptureStep[] = [
     cli: "understudy gateway install --provider anthropic",
     diagram: "gateway",
     status: "same model",
+    route: "Your app → Understudy → Anthropic",
+    artifact: "Local traces begin",
   },
   {
     id: "learn",
@@ -40,6 +47,8 @@ const STEPS: CaptureStep[] = [
     cli: "understudy traces build-eval && understudy lab run",
     diagram: "learning",
     status: "offline loop",
+    route: "Teacher traffic → eval rows",
+    artifact: "Candidate learns",
   },
   {
     id: "score",
@@ -49,15 +58,19 @@ const STEPS: CaptureStep[] = [
     cli: "understudy eval compare --candidate understudy-fast",
     diagram: "scorecard",
     status: "promotion gate",
+    route: "Candidate vs teacher",
+    artifact: "Scorecard decides",
   },
   {
     id: "replace",
     label: "Replace",
     title: "Swap calls and start the next loop",
-    body: "Once the candidate passes, Understudy replaces the route. The old provider path becomes the teacher for the next smaller, faster model.",
+    body: "Once the candidate passes, Understudy serves the app. Anthropic moves out of the hot path, and the new live traces start training the next Understudy candidate.",
     cli: "understudy route promote --candidate understudy-fast",
     diagram: "replace",
     status: "continuous",
+    route: "Your app → Understudy live",
+    artifact: "Next candidate training",
   },
 ];
 
@@ -79,24 +92,40 @@ export function CapturePane() {
     <>
       <div className="pane-head">
         <h1 className="pane-title">Capture</h1>
-        <p className="pane-sub">Install the gateway, collect traces, prove a better local route, then repeat.</p>
+        <p className="pane-sub">Capture production-shaped traces, build a scorecard, and replace expensive calls only after the candidate proves itself.</p>
       </div>
 
       <div className="pane-body capture-pane">
         <div className="card capture-hero">
           <div className="capture-hero-copy">
+            <span className="capture-eyebrow">Gateway replacement loop</span>
             <div className="card-title">{step.title}</div>
             <div className="card-sub">{step.body}</div>
           </div>
           <div className="capture-actions">
             <span className="svc-state">{step.status}</span>
-            <button className="btn" type="button" onClick={() => setPlaying((value) => !value)}>
+            <button className="btn icon-label" type="button" onClick={() => setPlaying((value) => !value)}>
+              {playing ? <PauseIcon size={15} /> : <PlayIcon size={15} />}
               {playing ? "Pause" : "Play"}
             </button>
           </div>
         </div>
 
         <div className="card capture-stage-card">
+          <div className="capture-route-strip">
+            <div>
+              <span>Route</span>
+              <strong>{step.route}</strong>
+            </div>
+            <div>
+              <span>Artifact</span>
+              <strong>{step.artifact}</strong>
+            </div>
+            <div>
+              <span>Privacy</span>
+              <strong><ShieldCheckIcon size={14} /> local-first</strong>
+            </div>
+          </div>
           <CaptureFlow state={step.diagram} />
           <div className="capture-progress">
             <span style={{ width: `${progress}%` }} />
@@ -124,10 +153,10 @@ export function CapturePane() {
         <div className="card capture-cli-card">
           <div className="card-row">
             <div>
-              <div className="card-title">What the CLI teaches</div>
-              <div className="card-sub">Each step maps to an agent-visible action and an auditable local artifact.</div>
+              <div className="card-title">Agent-visible install path</div>
+              <div className="card-sub">The CLI changes endpoints, records the local evidence, and leaves a report agents can inspect.</div>
             </div>
-            <span className="svc-state">demo script</span>
+            <span className="svc-state">replayable</span>
           </div>
           <pre className="capture-cli">{step.cli}</pre>
           <div className="capture-artifacts">
@@ -150,32 +179,42 @@ function CaptureFlow({ state }: { state: CaptureStep["diagram"] }) {
 
   return (
     <div className={`capture-flow ${state}`}>
+      <div className="capture-stage-label source">live workload</div>
+      <div className="capture-stage-label provider">{replaced ? "teacher" : "provider"}</div>
       <FlowNode kind="site" title="Your app" subtitle="Website / agent" />
       <div className="flow-lane app-to-provider">
         <FlowPackets count={gatewayOn ? 3 : 4} />
       </div>
-      {gatewayOn && <FlowNode kind="gateway" title="Understudy" subtitle="Gateway + trace tap" />}
+      {gatewayOn && <FlowNode kind={replaced ? "live" : "gateway"} title="Understudy" subtitle={replaced ? "serving app calls" : "Gateway + trace tap"} />}
       <div className="flow-lane gateway-to-provider">
         <FlowPackets count={gatewayOn ? 2 : 0} />
       </div>
-      <FlowNode kind={replaced ? "retired" : "anthropic"} title={replaced ? "Teacher" : "Anthropic"} subtitle={replaced ? "fallback + labels" : "current route"} />
+      <FlowNode kind={replaced ? "retired" : "anthropic"} title={replaced ? "Anthropic" : "Anthropic"} subtitle={replaced ? "replaced teacher" : "current route"} />
 
       <div className="capture-trace-stream" aria-hidden="true">
-        <span />
-        <span />
-        <span />
-        <span />
+        <span>prompt</span>
+        <span>tools</span>
+        <span>outcome</span>
+        <span>latency</span>
       </div>
 
       <div className={"capture-learner" + (learning ? " active" : "")}>
         <Persona state={learning ? "thinking" : "idle"} variant="halo" />
         <div>
-          <strong>{replaced ? "Understudy live" : "Understudy candidate"}</strong>
-          <span>{learning ? "learning from captured traces" : "waiting for traces"}</span>
+          <strong>{replaced ? "Next Understudy" : "Understudy candidate"}</strong>
+          <span>{replaced ? "training from replacement traffic" : learning ? "learning from captured traces" : "waiting for traces"}</span>
         </div>
       </div>
 
+      {replaced && (
+        <div className="capture-replacement-badge">
+          <strong>Understudy replaced Anthropic</strong>
+          <span>new traces feed the next candidate</span>
+        </div>
+      )}
+
       <div className={"capture-scorecard" + (scorecard ? " active" : "")}>
+        <div className="scorecard-title">Promotion scorecard</div>
         <ScoreRow label="Quality" value={scorecard ? 92 : 46} pass={scorecard} />
         <ScoreRow label="Latency" value={scorecard ? 81 : 35} pass={scorecard} />
         <ScoreRow label="Cost" value={scorecard ? 88 : 28} pass={scorecard} />
