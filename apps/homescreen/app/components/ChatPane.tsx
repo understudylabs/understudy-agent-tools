@@ -297,7 +297,7 @@ export function ChatPane({ resetToken }: { resetToken: number }) {
       <div className={"persona-stage" + (personaReady ? " persona-ready" : "")} aria-hidden="true">
         <img
           className="persona-stamp"
-          src="/brand/usl-stamp-monochrome-01.png"
+          src="/brand/usl-stamp-white-transparent.png"
           alt=""
           draggable={false}
         />
