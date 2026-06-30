@@ -410,6 +410,38 @@ describe("automationbench handoff runner", () => {
     assert.doesNotMatch(result.stdout, /# local-fast/);
   });
 
+  it("prints the final full AutomationBench comparison matrix", () => {
+    const { handoffPath } = writeFixture();
+    const outDir = join(dir, "matrix-output");
+    const result = spawnSync(
+      matrixRunner[0],
+      [
+        ...matrixRunner.slice(1),
+        "--handoff",
+        handoffPath,
+        "--dry-run",
+        "--final-comparison",
+        "--full",
+        "--out-dir",
+        outDir,
+        "--bench-dir",
+        dir,
+      ],
+      { encoding: "utf8" },
+    );
+    assert.equal(result.status, 0, result.stderr);
+    assert.match(result.stdout, /# num_examples=full/);
+    assert.match(result.stdout, /# gateway-glm/);
+    assert.match(result.stdout, /# local-main/);
+    assert.match(result.stdout, /# local-fast/);
+    assert.match(result.stdout, /understudy-automationbench-ab-smoke-simple-full-gateway-glm\.json/);
+    assert.match(result.stdout, /understudy-automationbench-ab-smoke-simple-full-local-main\.json/);
+    assert.match(result.stdout, /understudy-automationbench-ab-smoke-simple-full-local-fast\.json/);
+    assert.doesNotMatch(result.stdout, /--num-examples/);
+    assert.doesNotMatch(result.stdout, /# fusion-routing/);
+    assert.doesNotMatch(result.stdout, /# Start proxy first/);
+  });
+
   it("rejects unknown Fusion matrix labels", () => {
     const { handoffPath } = writeFixture();
     const result = spawnSync(
