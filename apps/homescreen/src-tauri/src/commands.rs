@@ -245,6 +245,8 @@ pub struct ChatRouteMetrics {
 pub struct SidekickMetrics {
     pub schema_version: &'static str,
     pub rows: u64,
+    pub session_rows: u64,
+    pub memory_session_rows: u64,
     pub parallel_rows: u64,
     pub consumed_rows: u64,
     pub escalated_rows: u64,
@@ -258,6 +260,7 @@ pub struct SidekickMetrics {
     pub avg_elapsed_ms: Option<f64>,
     pub avg_tool_calls: Option<f64>,
     pub avg_session_messages: Option<f64>,
+    pub avg_compacted_entries: Option<f64>,
     pub handoff_rate: Option<f64>,
     pub escalation_rate: Option<f64>,
     pub useful_rate: Option<f64>,
@@ -1790,11 +1793,17 @@ pub fn sidekick_runs(app: AppHandle, limit: Option<u32>) -> Result<Vec<SidekickR
 
 #[tauri::command]
 pub fn sidekick_metrics(app: AppHandle, limit: Option<u32>) -> Result<SidekickMetrics, String> {
+    let db = app.state::<crate::db::Db>();
     let rows = app
         .state::<crate::db::Db>()
         .list_sidekick_runs(limit.unwrap_or(100))
         .map_err(|e| e.to_string())?;
+    let sessions = db
+        .list_sidekick_session_summaries(limit.unwrap_or(100))
+        .map_err(|e| e.to_string())?;
     let total = rows.len() as u64;
+    let session_rows = sessions.len() as u64;
+    let memory_session_rows = sessions.iter().filter(|row| row.has_memory).count() as u64;
     let parallel: Vec<_> = rows.iter().filter(|row| row.mode == "parallel").collect();
     let parallel_rows = parallel.len() as u64;
     let consumed_rows = rows.iter().filter(|row| row.consumed).count() as u64;
@@ -1822,11 +1831,17 @@ pub fn sidekick_metrics(app: AppHandle, limit: Option<u32>) -> Result<SidekickMe
     let tool_values: Vec<f64> = rows.iter().map(|row| row.tool_calls as f64).collect();
     let session_message_values: Vec<f64> =
         rows.iter().map(|row| row.session_messages as f64).collect();
+    let compacted_entry_values: Vec<f64> = sessions
+        .iter()
+        .map(|row| row.compacted_count as f64)
+        .collect();
     let feedback_rows = useful_rows + miss_rows;
     let parallel_feedback_rows = parallel_useful_rows + parallel_miss_rows;
     Ok(SidekickMetrics {
         schema_version: "understudy.sidekick_metrics.v1",
         rows: total,
+        session_rows,
+        memory_session_rows,
         parallel_rows,
         consumed_rows,
         escalated_rows,
@@ -1840,6 +1855,7 @@ pub fn sidekick_metrics(app: AppHandle, limit: Option<u32>) -> Result<SidekickMe
         avg_elapsed_ms: avg(&elapsed_values),
         avg_tool_calls: avg(&tool_values),
         avg_session_messages: avg(&session_message_values),
+        avg_compacted_entries: avg(&compacted_entry_values),
         handoff_rate: (total > 0).then_some(consumed_rows as f64 / total as f64),
         escalation_rate: (total > 0).then_some(escalated_rows as f64 / total as f64),
         useful_rate: (feedback_rows > 0).then_some(useful_rows as f64 / feedback_rows as f64),

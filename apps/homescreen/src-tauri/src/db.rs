@@ -177,6 +177,7 @@ pub struct SidekickSessionSummaryRow {
     pub session_id: String,
     pub model: String,
     pub message_count: u64,
+    pub compacted_count: u64,
     pub has_memory: bool,
     pub memory_preview: Option<String>,
     pub updated_at: String,
@@ -319,6 +320,9 @@ impl Db {
                 session_id  TEXT NOT NULL,
                 model       TEXT NOT NULL,
                 messages    TEXT NOT NULL,
+                message_count INTEGER NOT NULL DEFAULT 0,
+                compacted_count INTEGER NOT NULL DEFAULT 0,
+                memory      TEXT,
                 updated_at  TEXT NOT NULL
             );",
         )?;
@@ -356,6 +360,15 @@ impl Db {
             [],
         );
         let _ = conn.execute("ALTER TABLE fusion_benchmarks ADD COLUMN status TEXT", []);
+        let _ = conn.execute(
+            "ALTER TABLE sidekick_sessions ADD COLUMN message_count INTEGER NOT NULL DEFAULT 0",
+            [],
+        );
+        let _ = conn.execute(
+            "ALTER TABLE sidekick_sessions ADD COLUMN compacted_count INTEGER NOT NULL DEFAULT 0",
+            [],
+        );
+        let _ = conn.execute("ALTER TABLE sidekick_sessions ADD COLUMN memory TEXT", []);
         Ok(conn)
     }
 
@@ -967,15 +980,51 @@ impl Db {
         messages: &str,
     ) -> Result<()> {
         let conn = self.conn()?;
+        let parsed_messages =
+            serde_json::from_str::<Vec<serde_json::Value>>(messages).unwrap_or_default();
+        let message_count = parsed_messages.len() as i64;
+        let memory = parsed_messages.iter().find_map(|message| {
+            let role = message.get("role").and_then(|v| v.as_str());
+            let content = message.get("content").and_then(|v| v.as_str())?;
+            if role == Some("system") && content.starts_with("Sidekick compacted memory:") {
+                Some(content.to_string())
+            } else {
+                None
+            }
+        });
+        let compacted_count = memory
+            .as_ref()
+            .map(|value| {
+                value
+                    .lines()
+                    .filter(|line| line.trim_start().starts_with("- "))
+                    .count() as i64
+            })
+            .unwrap_or(0);
         conn.execute(
-            "INSERT INTO sidekick_sessions(session_key, session_id, model, messages, updated_at)
-             VALUES(?1, ?2, ?3, ?4, ?5)
+            "INSERT INTO sidekick_sessions(
+                session_key, session_id, model, messages, message_count, compacted_count, memory,
+                updated_at
+             )
+             VALUES(?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)
              ON CONFLICT(session_key) DO UPDATE SET
                 session_id=excluded.session_id,
                 model=excluded.model,
                 messages=excluded.messages,
+                message_count=excluded.message_count,
+                compacted_count=excluded.compacted_count,
+                memory=excluded.memory,
                 updated_at=excluded.updated_at",
-            rusqlite::params![session_key, session_id, model, messages, now_iso()],
+            rusqlite::params![
+                session_key,
+                session_id,
+                model,
+                messages,
+                message_count,
+                compacted_count,
+                memory,
+                now_iso()
+            ],
         )?;
         Ok(())
     }
@@ -986,22 +1035,21 @@ impl Db {
     ) -> Result<Vec<SidekickSessionSummaryRow>> {
         let conn = self.conn()?;
         let mut stmt = conn.prepare(
-            "SELECT session_key, session_id, model, messages, updated_at
+            "SELECT session_key, session_id, model, messages, message_count, compacted_count,
+                    memory, updated_at
              FROM sidekick_sessions ORDER BY updated_at DESC LIMIT ?1",
         )?;
         let rows = stmt.query_map([limit.max(1).min(100) as i64], |r| {
             let messages_raw: String = r.get(3)?;
-            let messages =
-                serde_json::from_str::<Vec<serde_json::Value>>(&messages_raw).unwrap_or_default();
-            let memory = messages.iter().find_map(|message| {
-                let role = message.get("role").and_then(|v| v.as_str());
-                let content = message.get("content").and_then(|v| v.as_str())?;
-                if role == Some("system") && content.starts_with("Sidekick compacted memory:") {
-                    Some(content.to_string())
-                } else {
-                    None
-                }
-            });
+            let stored_message_count = r.get::<_, i64>(4)?;
+            let memory: Option<String> = r.get(6)?;
+            let message_count = if stored_message_count > 0 {
+                stored_message_count as u64
+            } else {
+                serde_json::from_str::<Vec<serde_json::Value>>(&messages_raw)
+                    .map(|messages| messages.len() as u64)
+                    .unwrap_or(0)
+            };
             let memory_preview = memory.as_ref().map(|value| {
                 let one_line = value.split_whitespace().collect::<Vec<_>>().join(" ");
                 if one_line.len() <= 240 {
@@ -1018,10 +1066,11 @@ impl Db {
                 session_key: r.get(0)?,
                 session_id: r.get(1)?,
                 model: r.get(2)?,
-                message_count: messages.len() as u64,
+                message_count,
+                compacted_count: r.get::<_, i64>(5)?.max(0) as u64,
                 has_memory: memory.is_some(),
                 memory_preview,
-                updated_at: r.get(4)?,
+                updated_at: r.get(7)?,
             })
         })?;
         rows.collect::<rusqlite::Result<Vec<_>>>()
