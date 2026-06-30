@@ -135,6 +135,10 @@ function enrichRowsWithFusionEvents(rows, events) {
       event.routing_reason ? `routing_reason=${event.routing_reason}` : null,
       `upstream=${event.upstream_model ?? "unknown"}`,
       `sidekick=${event.sidekick_mode ?? "off"}`,
+      typeof event.elapsed_ms === "number" ? `proxy_elapsed_ms=${event.elapsed_ms}` : null,
+      typeof event.prompt_tokens === "number" ? `proxy_prompt_tokens=${event.prompt_tokens}` : null,
+      typeof event.completion_tokens === "number" ? `proxy_completion_tokens=${event.completion_tokens}` : null,
+      typeof event.tool_count === "number" ? `proxy_tool_count=${event.tool_count}` : null,
       event.sidekick_pending ? "sidekick_pending=true" : null,
       event.sidekick_error ? "sidekick_error=true" : null,
     ]
@@ -142,12 +146,8 @@ function enrichRowsWithFusionEvents(rows, events) {
       .join("; ");
     return {
       ...row,
-      elapsed_ms: event.elapsed_ms ?? row.elapsed_ms,
-      prompt_tokens: event.prompt_tokens ?? row.prompt_tokens,
-      completion_tokens: event.completion_tokens ?? row.completion_tokens,
       gateway_used: event.gateway_used,
       sidekick_runs: event.sidekick_mode && event.sidekick_mode !== "off" ? 1 : 0,
-      sidekick_tool_calls: event.tool_count ?? row.sidekick_tool_calls,
       notes: row.notes ? `${row.notes}; ${eventNotes}` : eventNotes,
     };
   });

@@ -352,16 +352,18 @@ describe("automationbench handoff runner", () => {
     const payload = JSON.parse(result.stdout);
     assert.equal(payload.rows.length, 2);
     assert.equal(payload.rows[0].gateway_used, true);
-    assert.equal(payload.rows[0].elapsed_ms, 1234);
-    assert.equal(payload.rows[0].prompt_tokens, 100);
-    assert.equal(payload.rows[0].completion_tokens, 40);
+    assert.equal(payload.rows[0].elapsed_ms, 49500);
+    assert.equal(payload.rows[0].prompt_tokens, 20);
+    assert.equal(payload.rows[0].completion_tokens, 8);
     assert.equal(payload.rows[0].sidekick_runs, 1);
-    assert.equal(payload.rows[0].sidekick_tool_calls, 6);
     assert.match(payload.rows[0].notes, /fusion_route=gateway/);
     assert.match(payload.rows[0].notes, /routing_reason=tool_backed_write_work/);
+    assert.match(payload.rows[0].notes, /proxy_elapsed_ms=1234/);
+    assert.match(payload.rows[0].notes, /proxy_prompt_tokens=100/);
+    assert.match(payload.rows[0].notes, /proxy_tool_count=6/);
     assert.equal(payload.rows[1].gateway_used, false);
     assert.equal(payload.rows[1].sidekick_runs, 0);
-    assert.equal(payload.rows[1].elapsed_ms, 321);
+    assert.equal(payload.rows[1].elapsed_ms, 49500);
   });
 
   it("prints a runnable Fusion matrix dry-run with ingestion commands", () => {
@@ -381,13 +383,17 @@ describe("automationbench handoff runner", () => {
         outDir,
         "--event-log",
         eventLogPath,
+        "--bench-dir",
+        dir,
       ],
       { encoding: "utf8" },
     );
     assert.equal(result.status, 0, result.stderr);
     assert.match(result.stdout, /AutomationBench Fusion matrix: ab-smoke/);
+    assert.match(result.stdout, new RegExp(`# bench_dir=${dir.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}`));
     assert.match(result.stdout, /# gateway-glm/);
     assert.match(result.stdout, /# fusion-routing/);
+    assert.match(result.stdout, /cd .* && uv run auto-bench/);
     assert.match(result.stdout, /uv run auto-bench/);
     assert.match(result.stdout, /UNDERSTUDY_GATEWAY_BASE_URL/);
     assert.match(result.stdout, /automationbench-handoff-runner\.mjs/);

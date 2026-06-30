@@ -5,11 +5,12 @@ import { resolve } from "node:path";
 
 const DEFAULT_PROXY_BASE_URL = "http://127.0.0.1:17890/v1";
 const DEFAULT_EVENT_LOG = ".understudy/fusion-benchmark/proxy-events.jsonl";
+const DEFAULT_BENCH_DIR = "/Users/luis/Developer/understudy/AutomationBench";
 
 function usage() {
   return `Usage:
   node scripts/automationbench-fusion-matrix.mjs --handoff <path> [--dry-run]
-  node scripts/automationbench-fusion-matrix.mjs --handoff <path> --run [--only <labels>] [--out-dir <dir>] [--event-log <path>]
+  node scripts/automationbench-fusion-matrix.mjs --handoff <path> --run [--only <labels>] [--bench-dir <path>] [--out-dir <dir>] [--event-log <path>]
   node scripts/automationbench-fusion-matrix.mjs --handoff <path> --ingest [--only <labels>] [--out-dir <dir>] [--event-log <path>] [--post] [--token <token>]
 
 Runs or ingests the Understudy Fusion AutomationBench matrix:
@@ -117,6 +118,16 @@ function loadHandoff(path) {
   return handoff;
 }
 
+function resolveBenchDir(args) {
+  const explicit = argValue(args, "--bench-dir");
+  if (explicit) return resolve(explicit);
+  if (existsSync("pyproject.toml") && readFileSync("pyproject.toml", "utf8").includes("auto-bench")) {
+    return process.cwd();
+  }
+  if (existsSync(DEFAULT_BENCH_DIR)) return DEFAULT_BENCH_DIR;
+  return process.cwd();
+}
+
 function outputPath(outDir, handoff, run) {
   return resolve(outDir, `understudy-automationbench-${handoff.run_id}-${run.label}.json`);
 }
@@ -180,22 +191,23 @@ function commandString(command, args) {
   return [command, ...args].map(shellQuote).join(" ");
 }
 
-function printDryRun({ handoffPath, handoff, runs, outDir, eventLog, args }) {
+function printDryRun({ handoffPath, handoff, runs, benchDir, outDir, eventLog, args }) {
   console.log(`# AutomationBench Fusion matrix: ${handoff.run_id}`);
+  console.log(`# bench_dir=${benchDir}`);
   console.log(`# outputs=${outDir}`);
   console.log(`# event_log=${eventLog}`);
   console.log(`# Start proxy first: FUSION_PROXY_EVENT_LOG=${shellQuote(eventLog)} node scripts/automationbench-fusion-proxy.mjs --port 17890`);
   for (const run of runs) {
     console.log("");
     console.log(`# ${run.label}`);
-    console.log(commandString("uv", autoBenchArgs(handoff, run, outDir)));
+    console.log(`cd ${shellQuote(benchDir)} && ${commandString("uv", autoBenchArgs(handoff, run, outDir))}`);
     console.log(commandString("node", ingestArgs(handoffPath, handoff, run, outDir, eventLog, args)));
   }
 }
 
 function runCommand(command, args, options = {}) {
   const result = spawnSync(command, args, {
-    cwd: process.cwd(),
+    cwd: options.cwd ?? process.cwd(),
     encoding: "utf8",
     stdio: options.capture ? "pipe" : "inherit",
     env: process.env,
@@ -207,11 +219,12 @@ function runCommand(command, args, options = {}) {
   return result;
 }
 
-function runMatrix({ handoff, runs, outDir }) {
+function runMatrix({ handoff, runs, benchDir, outDir }) {
   mkdirSync(outDir, { recursive: true });
+  if (!existsSync(benchDir)) throw new Error(`AutomationBench directory not found: ${benchDir}`);
   for (const run of runs) {
     console.error(`running ${run.label}`);
-    runCommand("uv", autoBenchArgs(handoff, run, outDir, { execution: true }));
+    runCommand("uv", autoBenchArgs(handoff, run, outDir, { execution: true }), { cwd: benchDir });
   }
 }
 
@@ -233,14 +246,15 @@ async function main() {
   const handoffPath = argValue(args, "--handoff");
   if (!handoffPath) throw new Error("--handoff is required");
   const handoff = loadHandoff(handoffPath);
+  const benchDir = resolveBenchDir(args);
   const outDir = resolve(argValue(args, "--out-dir") ?? ".understudy/fusion-benchmark/runs");
   const eventLog = resolve(argValue(args, "--event-log") ?? DEFAULT_EVENT_LOG);
   const runs = selectedRuns(args);
   if (args.includes("--dry-run") || (!args.includes("--run") && !args.includes("--ingest"))) {
-    printDryRun({ handoffPath, handoff, runs, outDir, eventLog, args });
+    printDryRun({ handoffPath, handoff, runs, benchDir, outDir, eventLog, args });
     return;
   }
-  if (args.includes("--run")) runMatrix({ handoff, runs, outDir });
+  if (args.includes("--run")) runMatrix({ handoff, runs, benchDir, outDir });
   if (args.includes("--ingest")) ingestMatrix({ handoffPath, handoff, runs, outDir, eventLog, args });
 }
 
