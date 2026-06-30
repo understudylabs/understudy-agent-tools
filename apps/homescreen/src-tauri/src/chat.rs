@@ -649,7 +649,7 @@ async fn delegate_to_sidekick(
         }
     };
     let elapsed_ms = started.elapsed().as_millis() as u64;
-    let escalate = result.content.contains("ESCALATE_TO_MAIN");
+    let escalate = result.tool_limited || result.content.contains("ESCALATE_TO_MAIN");
     let _ = db.record_sidekick_run(
         session_id,
         mode,
@@ -661,6 +661,14 @@ async fn delegate_to_sidekick(
         result.session_messages as u64,
         escalate,
     );
+    if result.tool_limited {
+        let _ = db.record_sidekick_event(
+            session_id,
+            mode,
+            "tool_limit",
+            "sidekick reached bounded tool limit; main should continue or upgrade",
+        );
+    }
     let _ = db.record_sidekick_event(
         session_id,
         mode,
@@ -688,6 +696,7 @@ struct SidekickRunResult {
     content: String,
     tool_calls: usize,
     session_messages: usize,
+    tool_limited: bool,
 }
 
 fn sidekick_tool_schemas() -> Vec<Value> {
@@ -1282,8 +1291,9 @@ async fn call_sidekick_model(
     let client = reqwest::Client::new();
     let mut tool_count = 0usize;
     let mut final_content = String::new();
+    let mut tool_limited = false;
 
-    for _round in 0..=SIDEKICK_MAX_TOOL_ROUNDS {
+    for round in 0..=SIDEKICK_MAX_TOOL_ROUNDS {
         let payload = json!({
             "model": model_path,
             "messages": messages,
@@ -1327,6 +1337,13 @@ async fn call_sidekick_model(
         if tool_calls.is_empty() {
             break;
         }
+        if round == SIDEKICK_MAX_TOOL_ROUNDS {
+            tool_limited = true;
+            final_content = format!(
+                "ESCALATE_TO_MAIN: sidekick reached bounded tool limit after {} tool calls. Main should continue or upgrade the helper model if more inspection is required.",
+                tool_count + tool_calls.len()
+            );
+        }
 
         for call in tool_calls {
             let call_id = call
@@ -1363,6 +1380,7 @@ async fn call_sidekick_model(
         content: final_content,
         tool_calls: tool_count,
         session_messages,
+        tool_limited,
     })
 }
 
