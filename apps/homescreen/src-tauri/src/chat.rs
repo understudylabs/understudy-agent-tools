@@ -815,6 +815,24 @@ fn sidekick_tool_schemas() -> Vec<Value> {
         json!({
             "type": "function",
             "function": {
+                "name": "repo_verify",
+                "description": "Run a small allowlisted repository verification command. No arbitrary shell. Use to check worktree state, whitespace, or AutomationBench matrix script syntax.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "check": {
+                            "type": "string",
+                            "enum": ["git_status", "git_diff_check", "automationbench_matrix_check"]
+                        }
+                    },
+                    "required": ["check"],
+                    "additionalProperties": false
+                }
+            }
+        }),
+        json!({
+            "type": "function",
+            "function": {
                 "name": "skills_list",
                 "description": "List bundled Understudy skills with short descriptions. Read-only. Use to find relevant playbooks.",
                 "parameters": {
@@ -925,6 +943,7 @@ fn sidekick_tool_result(app: &AppHandle, name: &str, args: &Value) -> Result<Val
         "repo_files" => sidekick_repo_files(args)?,
         "repo_search" => sidekick_repo_search(args)?,
         "repo_open" => sidekick_repo_open(args)?,
+        "repo_verify" => sidekick_repo_verify(args)?,
         "skills_list" => sidekick_skills_list(args)?,
         "skills_search" => sidekick_skills_search(args)?,
         "skill_open" => sidekick_skill_open(args)?,
@@ -1055,6 +1074,44 @@ fn sidekick_repo_open(args: &Value) -> Result<Value, String> {
         "start_line": start,
         "lines": lines,
         "truncated": lines.len() >= max_lines || bytes >= SIDEKICK_FILE_READ_LIMIT
+    }))
+}
+
+fn capped_process_output(text: &[u8], max_chars: usize) -> String {
+    let mut value = String::from_utf8_lossy(text).to_string();
+    if value.len() > max_chars {
+        let mut end = max_chars;
+        while end > 0 && !value.is_char_boundary(end) {
+            end -= 1;
+        }
+        value = format!("{}...", &value[..end]);
+    }
+    value
+}
+
+fn sidekick_repo_verify(args: &Value) -> Result<Value, String> {
+    let root = repo_root()?;
+    let check = required_string(args, "check")?;
+    let (program, command_args): (&str, Vec<&str>) = match check.as_str() {
+        "git_status" => ("git", vec!["status", "--short"]),
+        "git_diff_check" => ("git", vec!["diff", "--check"]),
+        "automationbench_matrix_check" => (
+            "node",
+            vec!["--check", "scripts/automationbench-fusion-matrix.mjs"],
+        ),
+        other => return Err(format!("unsupported repo_verify check: {other}")),
+    };
+    let output = Command::new(program)
+        .args(command_args)
+        .current_dir(&root)
+        .output()
+        .map_err(|e| format!("repo_verify failed to start {check}: {e}"))?;
+    Ok(json!({
+        "check": check,
+        "success": output.status.success(),
+        "status": output.status.code(),
+        "stdout": capped_process_output(&output.stdout, 4_000),
+        "stderr": capped_process_output(&output.stderr, 4_000),
     }))
 }
 
