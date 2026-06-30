@@ -1,9 +1,9 @@
 use futures_util::StreamExt;
 use serde::{Deserialize, Serialize};
-use serde_json::json;
+use serde_json::{json, Value};
 use std::path::PathBuf;
 use tauri::ipc::Channel;
-use tauri::State;
+use tauri::{AppHandle, State};
 
 use crate::residency::Residency;
 
@@ -13,6 +13,8 @@ use crate::residency::Residency;
 pub enum ChatEvent {
     Chunk { text: String },
     ReasoningChunk { text: String },
+    ToolCall { name: String, args: Value },
+    ToolResult { name: String, ok: bool, result: Value },
     Error { message: String },
     Done,
 }
@@ -25,6 +27,7 @@ pub struct ChatMsg {
 
 const CHAT_MAX_TOKENS: u32 = 8192;
 const CHAT_THINKING_BUDGET: u32 = 2048;
+const MAX_TOOL_ROUNDS: usize = 4;
 
 #[derive(Deserialize)]
 struct ModelCard {
@@ -61,6 +64,118 @@ fn system_prompt_for(model: &str) -> String {
                 .and_then(|card| card.system_prompt.clone())
         })
         .unwrap_or_else(|| "You are an AI assistant in the Understudy desktop app.".to_string())
+}
+
+#[derive(Clone, Debug, Default)]
+struct ToolCallAcc {
+    index: usize,
+    id: String,
+    name: String,
+    arguments: String,
+}
+
+fn tool_schemas() -> Vec<Value> {
+    vec![
+        json!({
+            "type": "function",
+            "function": {
+                "name": "status",
+                "description": "Read local Understudy runtime status, warm slots, machine metrics, and service state.",
+                "parameters": { "type": "object", "properties": {}, "additionalProperties": false }
+            }
+        }),
+        json!({
+            "type": "function",
+            "function": {
+                "name": "residency",
+                "description": "Read local warm-model residency: loaded models, ports, memory use, and thinking flags.",
+                "parameters": { "type": "object", "properties": {}, "additionalProperties": false }
+            }
+        }),
+        json!({
+            "type": "function",
+            "function": {
+                "name": "list_models",
+                "description": "List locally cached MLX-loadable models.",
+                "parameters": { "type": "object", "properties": {}, "additionalProperties": false }
+            }
+        }),
+        json!({
+            "type": "function",
+            "function": {
+                "name": "list_snapshot_models",
+                "description": "List the bundled Understudy local model snapshot catalog.",
+                "parameters": { "type": "object", "properties": {}, "additionalProperties": false }
+            }
+        }),
+        json!({
+            "type": "function",
+            "function": {
+                "name": "list_traces",
+                "description": "List recent Moraine trace sessions.",
+                "parameters": {
+                    "type": "object",
+                    "properties": { "limit": { "type": "integer", "minimum": 1, "maximum": 50 } },
+                    "additionalProperties": false
+                }
+            }
+        }),
+        json!({
+            "type": "function",
+            "function": {
+                "name": "search_traces",
+                "description": "Search local Moraine traces with a keyword query.",
+                "parameters": {
+                    "type": "object",
+                    "properties": { "q": { "type": "string" } },
+                    "required": ["q"],
+                    "additionalProperties": false
+                }
+            }
+        }),
+        json!({
+            "type": "function",
+            "function": {
+                "name": "open_trace",
+                "description": "Open a Moraine trace session, turn, or event by id.",
+                "parameters": {
+                    "type": "object",
+                    "properties": { "id": { "type": "string" } },
+                    "required": ["id"],
+                    "additionalProperties": false
+                }
+            }
+        }),
+    ]
+}
+
+fn tool_result(app: &AppHandle, name: &str, args: &Value) -> Result<Value, String> {
+    use crate::commands as c;
+    Ok(match name {
+        "status" => json!(c::get_status(app.clone())),
+        "residency" => json!(c::get_residency(app.clone())),
+        "list_models" => json!(c::list_models()),
+        "list_snapshot_models" => json!(c::list_snapshot_models()),
+        "list_traces" => {
+            c::list_traces(args.get("limit").and_then(|v| v.as_u64()).map(|x| x as u32))
+                .map_err(|e| e.to_string())?
+        }
+        "search_traces" => c::search_traces(
+            args.get("q")
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_string(),
+        )
+        .map_err(|e| e.to_string())?,
+        "open_trace" => c::open_trace(
+            args.get("id")
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_string(),
+        )
+        .map_err(|e| e.to_string())?,
+        other => return Err(format!("unknown tool: {other}")),
+    })
 }
 
 struct ThinkParser {
@@ -138,6 +253,7 @@ pub async fn chat_stream(
     route: String,
     slot_id: Option<u32>,
     on_event: Channel<ChatEvent>,
+    app: AppHandle,
     mgr: State<'_, Residency>,
 ) -> Result<(), String> {
     let (url, bearer, model_field) = match route.as_str() {
@@ -175,19 +291,91 @@ pub async fn chat_stream(
             .map(|m| json!({ "role": m.role, "content": m.content })),
     );
 
+    let client = reqwest::Client::builder()
+        .build()
+        .map_err(|e| e.to_string())?;
+
+    for _round in 0..=MAX_TOOL_ROUNDS {
+        let tool_calls = stream_chat_once(
+            &client,
+            &url,
+            bearer.as_deref(),
+            &model_field,
+            &outbound_messages,
+            &on_event,
+        )
+        .await?;
+        if tool_calls.is_empty() {
+            let _ = on_event.send(ChatEvent::Done);
+            return Ok(());
+        }
+
+        let assistant_tool_calls: Vec<Value> = tool_calls
+            .iter()
+            .map(|call| {
+                json!({
+                    "id": call.id,
+                    "type": "function",
+                    "function": { "name": call.name, "arguments": call.arguments },
+                })
+            })
+            .collect();
+        outbound_messages.push(json!({
+            "role": "assistant",
+            "content": "",
+            "tool_calls": assistant_tool_calls,
+        }));
+
+        for call in tool_calls {
+            let args = serde_json::from_str::<Value>(&call.arguments).unwrap_or_else(|_| json!({}));
+            let _ = on_event.send(ChatEvent::ToolCall {
+                name: call.name.clone(),
+                args: args.clone(),
+            });
+            let (ok, result) = match tool_result(&app, &call.name, &args) {
+                Ok(value) => (true, value),
+                Err(err) => (false, json!({ "error": err })),
+            };
+            let _ = on_event.send(ChatEvent::ToolResult {
+                name: call.name.clone(),
+                ok,
+                result: result.clone(),
+            });
+            outbound_messages.push(json!({
+                "role": "tool",
+                "tool_call_id": call.id,
+                "content": result.to_string(),
+            }));
+        }
+    }
+
+    let _ = on_event.send(ChatEvent::Error {
+        message: format!("tool call limit reached ({MAX_TOOL_ROUNDS})"),
+    });
+    let _ = on_event.send(ChatEvent::Done);
+    Ok(())
+}
+
+async fn stream_chat_once(
+    client: &reqwest::Client,
+    url: &str,
+    bearer: Option<&str>,
+    model_field: &str,
+    messages: &[Value],
+    on_event: &Channel<ChatEvent>,
+) -> Result<Vec<ToolCallAcc>, String> {
     let payload = json!({
         "model": model_field,
-        "messages": outbound_messages,
+        "messages": messages,
         "stream": true,
+        "tools": tool_schemas(),
+        "tool_choice": "auto",
         "max_tokens": CHAT_MAX_TOKENS,
         "thinking_budget": CHAT_THINKING_BUDGET,
     });
 
-    let client = reqwest::Client::builder()
-        .build()
-        .map_err(|e| e.to_string())?;
-    let mut req = client.post(&url).json(&payload);
-    if let Some(key) = &bearer {
+    let mut req = client.post(url).json(&payload);
+    if let Some(key) = bearer {
         req = req.bearer_auth(key);
     }
 
@@ -197,7 +385,7 @@ pub async fn chat_stream(
             let _ = on_event.send(ChatEvent::Error {
                 message: format!("request failed: {e}"),
             });
-            return Ok(());
+            return Ok(vec![]);
         }
     };
 
@@ -207,12 +395,13 @@ pub async fn chat_stream(
         let _ = on_event.send(ChatEvent::Error {
             message: format!("{status}: {body}"),
         });
-        return Ok(());
+        return Ok(vec![]);
     }
 
     let mut stream = resp.bytes_stream();
     let mut buf = String::new();
     let mut think = ThinkParser::new();
+    let mut tool_calls: Vec<ToolCallAcc> = vec![];
 
     while let Some(item) = stream.next().await {
         let chunk = match item {
@@ -221,7 +410,7 @@ pub async fn chat_stream(
                 let _ = on_event.send(ChatEvent::Error {
                     message: e.to_string(),
                 });
-                return Ok(());
+                return Ok(vec![]);
             }
         };
         buf.push_str(&String::from_utf8_lossy(&chunk));
@@ -233,10 +422,10 @@ pub async fn chat_stream(
                 continue;
             };
             if data == "[DONE]" {
-                let _ = on_event.send(ChatEvent::Done);
-                return Ok(());
+                flush_thinking(&mut think, on_event);
+                return Ok(finalize_tool_calls(tool_calls));
             }
-            if let Ok(v) = serde_json::from_str::<serde_json::Value>(data) {
+            if let Ok(v) = serde_json::from_str::<Value>(data) {
                 let delta = &v["choices"][0]["delta"];
                 for key in ["reasoning_content", "reasoning", "thinking"] {
                     if let Some(reasoning) = delta[key].as_str() {
@@ -254,10 +443,16 @@ pub async fn chat_stream(
                         }
                     }
                 }
+                collect_tool_deltas(delta, &mut tool_calls);
             }
         }
     }
 
+    flush_thinking(&mut think, on_event);
+    Ok(finalize_tool_calls(tool_calls))
+}
+
+fn flush_thinking(think: &mut ThinkParser, on_event: &Channel<ChatEvent>) {
     if let Some((is_reasoning, text)) = think.finish() {
         if is_reasoning {
             let _ = on_event.send(ChatEvent::ReasoningChunk { text });
@@ -265,6 +460,50 @@ pub async fn chat_stream(
             let _ = on_event.send(ChatEvent::Chunk { text });
         }
     }
-    let _ = on_event.send(ChatEvent::Done);
-    Ok(())
+}
+
+fn collect_tool_deltas(delta: &Value, tool_calls: &mut Vec<ToolCallAcc>) {
+    let Some(calls) = delta.get("tool_calls").and_then(|v| v.as_array()) else {
+        return;
+    };
+    for call in calls {
+        let index = call.get("index").and_then(|v| v.as_u64()).unwrap_or(0) as usize;
+        if tool_calls.iter().all(|existing| existing.index != index) {
+            tool_calls.push(ToolCallAcc {
+                index,
+                ..Default::default()
+            });
+        }
+        let Some(acc) = tool_calls.iter_mut().find(|existing| existing.index == index) else {
+            continue;
+        };
+        if let Some(id) = call.get("id").and_then(|v| v.as_str()) {
+            acc.id = id.to_string();
+        }
+        if let Some(function) = call.get("function") {
+            if let Some(name) = function.get("name").and_then(|v| v.as_str()) {
+                acc.name.push_str(name);
+            }
+            if let Some(arguments) = function.get("arguments").and_then(|v| v.as_str()) {
+                acc.arguments.push_str(arguments);
+            }
+        }
+    }
+}
+
+fn finalize_tool_calls(mut tool_calls: Vec<ToolCallAcc>) -> Vec<ToolCallAcc> {
+    tool_calls.sort_by_key(|call| call.index);
+    tool_calls
+        .into_iter()
+        .enumerate()
+        .filter_map(|(i, mut call)| {
+            if call.name.is_empty() {
+                return None;
+            }
+            if call.id.is_empty() {
+                call.id = format!("call_{i}");
+            }
+            Some(call)
+        })
+        .collect()
 }

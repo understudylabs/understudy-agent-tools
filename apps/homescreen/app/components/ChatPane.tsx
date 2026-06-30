@@ -39,10 +39,13 @@ import { Persona, type PersonaState } from "@/components/ai-elements/persona";
 import { modelShortName, type SnapshotAlias } from "../lib/model-aliases";
 
 type Role = "user" | "assistant";
-type Msg = { role: Role; content: string; model?: string; reasoning?: string };
+type ToolTrace = { name: string; status: "calling" | "ok" | "error"; detail: string };
+type Msg = { role: Role; content: string; model?: string; reasoning?: string; tools?: ToolTrace[] };
 type ChatEvent =
   | { type: "Chunk"; text: string }
   | { type: "ReasoningChunk"; text: string }
+  | { type: "ToolCall"; name: string; args: unknown }
+  | { type: "ToolResult"; name: string; ok: boolean; result: unknown }
   | { type: "Error"; message: string }
   | { type: "Done" };
 type ResidencySnapshot = {
@@ -93,6 +96,12 @@ function cleanReasoningText(text: string) {
     .replace(/<\/?think>/gi, "")
     .replace(/^\s*thought\s*$/gim, "")
     .trim();
+}
+
+function compactJson(value: unknown) {
+  const text = JSON.stringify(value);
+  if (!text) return "";
+  return text.length > 220 ? `${text.slice(0, 220)}...` : text;
 }
 
 function ReasoningSubstream({
@@ -224,6 +233,37 @@ export function ChatPane({ resetToken }: { resetToken: number }) {
           p[last] = { ...p[last], reasoning: (p[last].reasoning ?? "") + msg.text };
           return p;
         });
+      } else if (msg.type === "ToolCall") {
+        setMessages((prev) => {
+          if (prev.length === 0) return prev;
+          const p = [...prev];
+          const last = p.length - 1;
+          p[last] = {
+            ...p[last],
+            tools: [
+              ...(p[last].tools ?? []),
+              { name: msg.name, status: "calling", detail: compactJson(msg.args) },
+            ],
+          };
+          return p;
+        });
+      } else if (msg.type === "ToolResult") {
+        setMessages((prev) => {
+          if (prev.length === 0) return prev;
+          const p = [...prev];
+          const last = p.length - 1;
+          const tools = [...(p[last].tools ?? [])];
+          const idx = tools.findLastIndex((tool) => tool.name === msg.name && tool.status === "calling");
+          const next = {
+            name: msg.name,
+            status: msg.ok ? "ok" : "error",
+            detail: compactJson(msg.result),
+          } satisfies ToolTrace;
+          if (idx >= 0) tools[idx] = next;
+          else tools.push(next);
+          p[last] = { ...p[last], tools };
+          return p;
+        });
       } else if (msg.type === "Error") {
         setErr(msg.message);
         setStreaming(false);
@@ -333,6 +373,17 @@ export function ChatPane({ resetToken }: { resetToken: number }) {
                   <MessageContent>
                     {m.role === "assistant" && reasoningText && (
                       <ReasoningSubstream active={isActiveAssistant} text={reasoningText} />
+                    )}
+                    {m.role === "assistant" && m.tools && m.tools.length > 0 && (
+                      <div className="tool-trace-list">
+                        {m.tools.map((tool, idx) => (
+                          <div key={`${tool.name}-${idx}`} className={`tool-trace ${tool.status}`}>
+                            <span>{tool.status === "calling" ? "calling" : tool.status}</span>
+                            <strong>{tool.name}</strong>
+                            <code>{tool.detail}</code>
+                          </div>
+                        ))}
+                      </div>
                     )}
                     {m.role === "assistant" ? (
                       <MessageResponse>{m.content || (isActiveAssistant ? "..." : "")}</MessageResponse>
