@@ -328,8 +328,13 @@ select,
 
 /* ---------- Content ---------- */
 .content {
+  min-height: 0;
   overflow-y: auto;
   padding: 28px 32px 40px;
+}
+.content:has(.ai-chat) {
+  overflow: hidden;
+  padding: 0;
 }
 
 .pane-head {
@@ -566,13 +571,14 @@ select,
 .chat {
   max-width: 1080px;
   margin: 0 auto;
-  height: 100vh;
+  height: 100%;
+  width: 100%;
   display: flex;
   flex-direction: column;
   min-height: 0;
 }
 .ai-chat {
-  padding: 0 0 12px;
+  padding: 0 24px 24px;
 }
 .persona-stage {
   display: grid;
