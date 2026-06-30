@@ -28,6 +28,8 @@ pub struct FusionBenchmarkRow {
     pub sidekick_runs: u64,
     pub sidekick_tool_calls: u64,
     pub gateway_used: bool,
+    pub compacted: bool,
+    pub context_tokens_before: Option<u64>,
     pub score: Option<f64>,
     pub notes: Option<String>,
     pub run_at: String,
@@ -45,6 +47,8 @@ pub struct FusionBenchmarkInput {
     pub sidekick_runs: u64,
     pub sidekick_tool_calls: u64,
     pub gateway_used: bool,
+    pub compacted: bool,
+    pub context_tokens_before: Option<u64>,
     pub score: Option<f64>,
     pub notes: Option<String>,
 }
@@ -181,6 +185,8 @@ impl Db {
                 sidekick_runs       INTEGER NOT NULL DEFAULT 0,
                 sidekick_tool_calls INTEGER NOT NULL DEFAULT 0,
                 gateway_used        INTEGER NOT NULL DEFAULT 0,
+                compacted           INTEGER NOT NULL DEFAULT 0,
+                context_tokens_before INTEGER,
                 score               REAL,
                 notes               TEXT,
                 run_at              TEXT NOT NULL
@@ -273,6 +279,14 @@ impl Db {
         );
         let _ = conn.execute(
             "ALTER TABLE chat_runs ADD COLUMN context_tokens_before INTEGER",
+            [],
+        );
+        let _ = conn.execute(
+            "ALTER TABLE fusion_benchmarks ADD COLUMN compacted INTEGER NOT NULL DEFAULT 0",
+            [],
+        );
+        let _ = conn.execute(
+            "ALTER TABLE fusion_benchmarks ADD COLUMN context_tokens_before INTEGER",
             [],
         );
         Ok(conn)
@@ -371,8 +385,9 @@ impl Db {
         conn.execute(
             "INSERT INTO fusion_benchmarks (
                 run_id, task_id, mode, model, elapsed_ms, prompt_tokens, completion_tokens,
-                sidekick_runs, sidekick_tool_calls, gateway_used, score, notes, run_at
-             ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)",
+                sidekick_runs, sidekick_tool_calls, gateway_used, compacted, context_tokens_before,
+                score, notes, run_at
+             ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15)",
             rusqlite::params![
                 input.run_id,
                 input.task_id,
@@ -384,6 +399,8 @@ impl Db {
                 input.sidekick_runs as i64,
                 input.sidekick_tool_calls as i64,
                 input.gateway_used as i64,
+                input.compacted as i64,
+                input.context_tokens_before.map(|v| v as i64),
                 input.score,
                 input.notes,
                 now_iso(),
@@ -457,7 +474,8 @@ impl Db {
         let conn = self.conn()?;
         let mut stmt = conn.prepare(
             "SELECT id, run_id, task_id, mode, model, elapsed_ms, prompt_tokens, completion_tokens,
-                    sidekick_runs, sidekick_tool_calls, gateway_used, score, notes, run_at
+                    sidekick_runs, sidekick_tool_calls, gateway_used, compacted, context_tokens_before,
+                    score, notes, run_at
              FROM fusion_benchmarks ORDER BY id DESC LIMIT ?1",
         )?;
         let rows = stmt.query_map([limit.max(1).min(500) as i64], |r| {
@@ -473,9 +491,11 @@ impl Db {
                 sidekick_runs: r.get::<_, i64>(8)? as u64,
                 sidekick_tool_calls: r.get::<_, i64>(9)? as u64,
                 gateway_used: r.get::<_, i64>(10)? != 0,
-                score: r.get(11)?,
-                notes: r.get(12)?,
-                run_at: r.get(13)?,
+                compacted: r.get::<_, i64>(11)? != 0,
+                context_tokens_before: r.get::<_, Option<i64>>(12)?.map(|v| v as u64),
+                score: r.get(13)?,
+                notes: r.get(14)?,
+                run_at: r.get(15)?,
             })
         })?;
         rows.collect::<rusqlite::Result<Vec<_>>>()

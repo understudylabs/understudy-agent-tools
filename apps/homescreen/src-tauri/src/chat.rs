@@ -49,6 +49,8 @@ pub struct BenchmarkChatResult {
     pub tool_calls: u64,
     pub prompt_tokens: u64,
     pub completion_tokens: u64,
+    pub compacted: bool,
+    pub context_tokens_before: u64,
 }
 
 struct StreamChatOnceResult {
@@ -1772,6 +1774,9 @@ pub async fn benchmark_local_chat(
     })];
     outbound_messages.extend(wait_for_sidekick_handoffs(app, session_id, sidekick_spawned).await);
     outbound_messages.push(json!({ "role": "user", "content": prompt }));
+    let (mut outbound_messages, compaction_reason, context_tokens_before) =
+        compact_chat_messages(outbound_messages);
+    let compacted = compaction_reason.is_some();
 
     let client = reqwest::Client::builder()
         .build()
@@ -1819,11 +1824,13 @@ pub async fn benchmark_local_chat(
     }
 
     Ok(BenchmarkChatResult {
-        prompt_tokens: prompt.split_whitespace().count() as u64,
+        prompt_tokens: approximate_messages_tokens(&outbound_messages),
         completion_tokens: final_content.split_whitespace().count() as u64,
         content: final_content,
         elapsed_ms: started.elapsed().as_millis() as u64,
         tool_calls: tool_count,
+        compacted,
+        context_tokens_before,
     })
 }
 
@@ -1843,6 +1850,9 @@ pub async fn benchmark_gateway_chat(
     })];
     outbound_messages.extend(consume_sidekick_handoffs(app, session_id));
     outbound_messages.push(json!({ "role": "user", "content": prompt }));
+    let (mut outbound_messages, compaction_reason, context_tokens_before) =
+        compact_chat_messages(outbound_messages);
+    let compacted = compaction_reason.is_some();
 
     let client = reqwest::Client::builder()
         .build()
@@ -1889,11 +1899,13 @@ pub async fn benchmark_gateway_chat(
     }
 
     Ok(BenchmarkChatResult {
-        prompt_tokens: prompt.split_whitespace().count() as u64,
+        prompt_tokens: approximate_messages_tokens(&outbound_messages),
         completion_tokens: final_content.split_whitespace().count() as u64,
         content: final_content,
         elapsed_ms: started.elapsed().as_millis() as u64,
         tool_calls: tool_count,
+        compacted,
+        context_tokens_before,
     })
 }
 

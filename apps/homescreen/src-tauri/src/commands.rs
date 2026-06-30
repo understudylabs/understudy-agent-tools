@@ -63,6 +63,8 @@ pub struct RecordFusionBenchmarkRequest {
     pub sidekick_runs: Option<u64>,
     pub sidekick_tool_calls: Option<u64>,
     pub gateway_used: Option<bool>,
+    pub compacted: Option<bool>,
+    pub context_tokens_before: Option<u64>,
     pub score: Option<f64>,
     pub notes: Option<String>,
 }
@@ -137,6 +139,8 @@ pub struct FusionBenchmarkSummaryGroup {
     pub avg_sidekick_tool_calls: f64,
     pub gateway_rows: u64,
     pub gateway_avoidance_rows: u64,
+    pub compacted_rows: u64,
+    pub avg_context_tokens_before: Option<f64>,
     pub avg_score: Option<f64>,
     pub speed_index: Option<f64>,
 }
@@ -811,6 +815,8 @@ pub fn record_fusion_benchmark(
         sidekick_runs: result.sidekick_runs.unwrap_or(0),
         sidekick_tool_calls: result.sidekick_tool_calls.unwrap_or(0),
         gateway_used: result.gateway_used.unwrap_or(false),
+        compacted: result.compacted.unwrap_or(false),
+        context_tokens_before: result.context_tokens_before,
         score: result.score,
         notes: result.notes,
     };
@@ -874,6 +880,10 @@ pub fn fusion_benchmark_summary(
             .iter()
             .filter_map(|row| row.completion_tokens.map(|v| v as f64))
             .collect();
+        let context_token_values: Vec<f64> = rows
+            .iter()
+            .filter_map(|row| row.context_tokens_before.map(|v| v as f64))
+            .collect();
         let score_values: Vec<f64> = rows.iter().filter_map(|row| row.score).collect();
         let avg_elapsed_ms = avg(&elapsed_values);
         let avg_total_tokens = avg(&total_token_values);
@@ -900,6 +910,8 @@ pub fn fusion_benchmark_summary(
                 / row_count.max(1) as f64,
             gateway_rows: rows.iter().filter(|row| row.gateway_used).count() as u64,
             gateway_avoidance_rows: rows.iter().filter(|row| !row.gateway_used).count() as u64,
+            compacted_rows: rows.iter().filter(|row| row.compacted).count() as u64,
+            avg_context_tokens_before: avg(&context_token_values),
             avg_score: avg(&score_values),
             speed_index,
         });
@@ -1142,6 +1154,8 @@ pub async fn run_fusion_benchmark(
                         sidekick_runs: sidekick_run_count,
                         sidekick_tool_calls,
                         gateway_used: effective_route == "gateway",
+                        compacted: result.compacted,
+                        context_tokens_before: Some(result.context_tokens_before),
                         score: None,
                         notes: Some(format!(
                             "executed:{}; policy_reason={}; main_tool_calls={}; output_chars={}",
@@ -1165,6 +1179,8 @@ pub async fn run_fusion_benchmark(
                         sidekick_runs: 0,
                         sidekick_tool_calls: 0,
                         gateway_used: effective_route == "gateway",
+                        compacted: false,
+                        context_tokens_before: Some(task.prompt.split_whitespace().count() as u64),
                         score: None,
                         notes: Some(format!("skipped:{reason}; policy_reason={policy_reason}")),
                     })
