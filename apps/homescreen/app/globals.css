@@ -692,6 +692,23 @@ select,
   display: inline-block;
   animation: pulse 1.1s ease-in-out infinite;
 }
+.ai-restart-chat {
+  display: inline-grid;
+  place-content: center;
+  width: 30px;
+  height: 30px;
+  border: 1px solid var(--border);
+  border-radius: var(--r-control);
+  background: var(--surface-2);
+  color: var(--text-3);
+}
+.ai-restart-chat:hover:not(:disabled) {
+  color: var(--text);
+  background: var(--surface);
+}
+.ai-restart-chat:disabled {
+  opacity: 0.38;
+}
 .chat-role {
   margin-bottom: 5px;
   font-family: var(--mono);
