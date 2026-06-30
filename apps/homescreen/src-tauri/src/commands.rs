@@ -67,11 +67,46 @@ pub struct RecordFusionBenchmarkRequest {
     pub notes: Option<String>,
 }
 
+#[derive(serde::Deserialize)]
+pub struct RunFusionBenchmarkRequest {
+    pub run_id: Option<String>,
+    pub modes: Option<Vec<String>>,
+    pub task_ids: Option<Vec<String>>,
+    pub model: Option<String>,
+    pub dry_run: Option<bool>,
+    pub record_skips: Option<bool>,
+}
+
+#[derive(Serialize, Clone)]
+pub struct FusionBenchmarkPlanRow {
+    pub run_id: String,
+    pub task_id: String,
+    pub mode: String,
+    pub model: String,
+    pub prompt: String,
+    pub expected_signal: String,
+    pub ready: bool,
+    pub reason: String,
+}
+
+#[derive(Serialize, Clone)]
+pub struct FusionBenchmarkRun {
+    pub schema_version: &'static str,
+    pub run_id: String,
+    pub dry_run: bool,
+    pub recorded_skips: u64,
+    pub rows: Vec<FusionBenchmarkPlanRow>,
+}
+
 fn valid_fusion_mode(mode: &str) -> bool {
     matches!(
         mode,
         "main-only" | "sidekick-advisory" | "sidekick-parallel" | "sidekick-routing"
     )
+}
+
+fn default_fusion_run_id() -> String {
+    format!("fusion-{}", chrono::Utc::now().timestamp_millis())
 }
 
 fn residency<'a>(app: &'a AppHandle) -> &'a Residency {
@@ -477,6 +512,104 @@ pub fn fusion_benchmark_results(
     app.state::<crate::db::Db>()
         .list_fusion_benchmarks(limit.unwrap_or(50))
         .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn run_fusion_benchmark(
+    app: AppHandle,
+    request: RunFusionBenchmarkRequest,
+) -> Result<FusionBenchmarkRun, String> {
+    let matrix = fusion_benchmark_matrix();
+    let run_id = request.run_id.unwrap_or_else(default_fusion_run_id);
+    if run_id.trim().is_empty() {
+        return Err("run_id is required".to_string());
+    }
+    let dry_run = request.dry_run.unwrap_or(true);
+    let record_skips = request.record_skips.unwrap_or(false);
+    let requested_modes = request
+        .modes
+        .unwrap_or_else(|| matrix.modes.iter().map(|mode| mode.id.to_string()).collect());
+    let requested_tasks = request
+        .task_ids
+        .unwrap_or_else(|| matrix.tasks.iter().map(|task| task.id.to_string()).collect());
+    for mode in &requested_modes {
+        if !valid_fusion_mode(mode) {
+            return Err(format!("unknown Fusion benchmark mode: {mode}"));
+        }
+    }
+
+    let snapshot = residency(&app).snapshot();
+    let warm_main = snapshot.slots.iter().find(|slot| slot.state == "running");
+    let warm_sidekick = snapshot.slots.iter().find(|slot| {
+        slot.state == "running"
+            && slot
+                .model_id
+                .as_deref()
+                .is_some_and(|id| id.contains("understudy-small") || id.contains("e2b"))
+    });
+    let model = request
+        .model
+        .or_else(|| warm_main.and_then(|slot| slot.model_id.clone()))
+        .unwrap_or_else(|| "unassigned".to_string());
+    let mut rows = vec![];
+    let mut recorded_skips = 0u64;
+
+    for task_id in requested_tasks {
+        let task = matrix
+            .tasks
+            .iter()
+            .find(|task| task.id == task_id)
+            .ok_or_else(|| format!("unknown Fusion benchmark task: {task_id}"))?;
+        for mode in &requested_modes {
+            let needs_sidekick = matches!(mode.as_str(), "sidekick-parallel" | "sidekick-routing");
+            let (ready, reason) = if warm_main.is_none() {
+                (false, "no_warm_main_model")
+            } else if needs_sidekick && warm_sidekick.is_none() {
+                (false, "no_warm_sidekick_model")
+            } else if dry_run {
+                (true, "dry_run_ready")
+            } else {
+                (false, "live_execution_not_implemented")
+            };
+            if !ready && record_skips {
+                app.state::<crate::db::Db>()
+                    .record_fusion_benchmark(&FusionBenchmarkInput {
+                        run_id: run_id.clone(),
+                        task_id: task.id.to_string(),
+                        mode: mode.clone(),
+                        model: model.clone(),
+                        elapsed_ms: None,
+                        prompt_tokens: Some(task.prompt.split_whitespace().count() as u64),
+                        completion_tokens: None,
+                        sidekick_runs: 0,
+                        sidekick_tool_calls: 0,
+                        gateway_used: false,
+                        score: None,
+                        notes: Some(format!("skipped:{reason}")),
+                    })
+                    .map_err(|e| e.to_string())?;
+                recorded_skips += 1;
+            }
+            rows.push(FusionBenchmarkPlanRow {
+                run_id: run_id.clone(),
+                task_id: task.id.to_string(),
+                mode: mode.clone(),
+                model: model.clone(),
+                prompt: task.prompt.to_string(),
+                expected_signal: task.expected_signal.to_string(),
+                ready,
+                reason: reason.to_string(),
+            });
+        }
+    }
+
+    Ok(FusionBenchmarkRun {
+        schema_version: "understudy.fusion_benchmark_run.v1",
+        run_id,
+        dry_run,
+        recorded_skips,
+        rows,
+    })
 }
 
 #[tauri::command]

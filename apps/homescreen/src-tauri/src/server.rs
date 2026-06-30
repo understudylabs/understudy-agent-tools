@@ -39,6 +39,7 @@ pub fn router(ctx: Ctx) -> Router {
             "/api/fusion/benchmark-results",
             get(fusion_benchmark_results).post(record_fusion_benchmark),
         )
+        .route("/api/fusion/run", post(run_fusion_benchmark))
         .route("/api/profile/:id", get(profile))
         .route("/api/traces", get(traces_list))
         .route("/api/traces/search", get(traces_search))
@@ -174,6 +175,16 @@ async fn record_fusion_benchmark(
         .map(|_| Json(json!({ "ok": true })))
         .map_err(|e| (StatusCode::BAD_REQUEST, e))
 }
+async fn run_fusion_benchmark(
+    State(ctx): State<Ctx>,
+    h: HeaderMap,
+    Json(body): Json<crate::commands::RunFusionBenchmarkRequest>,
+) -> Result<Json<Value>, (StatusCode, String)> {
+    auth(&ctx, &h)?;
+    crate::commands::run_fusion_benchmark(ctx.app.clone(), body)
+        .map(|run| Json(json!(run)))
+        .map_err(|e| (StatusCode::BAD_REQUEST, e))
+}
 async fn profile(
     State(ctx): State<Ctx>,
     h: HeaderMap,
@@ -301,6 +312,7 @@ fn tools() -> Vec<Value> {
         ("fusion_benchmark_matrix", "Fusion benchmark modes and fixed local task set."),
         ("fusion_benchmark_results", "Recent Fusion benchmark result rows. Args: {limit?}."),
         ("record_fusion_benchmark", "Record one Fusion benchmark result row."),
+        ("run_fusion_benchmark", "Plan or run a Fusion benchmark matrix. Args: {run_id?, modes?, task_ids?, model?, dry_run?, record_skips?}."),
         ("aa_models", "Artificial Analysis external pricing/speed/quality."),
         ("list_traces", "List recent Moraine sessions. Args: {limit?}."),
         ("search_traces", "Search Moraine traces. Args: {q}."),
@@ -333,6 +345,11 @@ async fn call_tool(ctx: &Ctx, name: &str, args: &Value) -> Result<Value, String>
                 .map_err(|e| format!("invalid Fusion benchmark result: {e}"))?;
             c::record_fusion_benchmark(app, result).map_err(|e| e.to_string())?;
             json!({ "ok": true })
+        }
+        "run_fusion_benchmark" => {
+            let request = serde_json::from_value::<c::RunFusionBenchmarkRequest>(args.clone())
+                .map_err(|e| format!("invalid Fusion benchmark request: {e}"))?;
+            json!(c::run_fusion_benchmark(app, request).map_err(|e| e.to_string())?)
         }
         "aa_models" => json!(c::aa_models(app).await.map_err(|e| e.to_string())?),
         "list_traces" => {
