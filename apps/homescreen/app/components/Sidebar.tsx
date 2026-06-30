@@ -4,6 +4,7 @@ export type PaneId =
   | "status"
   | "chat"
   | "models"
+  | "capture"
   | "account"
   | "usage"
   | "traces"
@@ -31,6 +32,12 @@ const ICONS: Record<PaneId, ReactNode> = {
       <rect x="9" y="2" width="5" height="5" rx="1" stroke="currentColor" strokeWidth="1.3" />
       <rect x="2" y="9" width="5" height="5" rx="1" stroke="currentColor" strokeWidth="1.3" />
       <rect x="9" y="9" width="5" height="5" rx="1" stroke="currentColor" strokeWidth="1.3" />
+    </svg>
+  ),
+  capture: (
+    <svg viewBox="0 0 16 16" fill="none" className="nav-icon">
+      <path d="M2.5 4.5h4l1.2-1.5h5.8v9.5h-11z" stroke="currentColor" strokeWidth="1.3" strokeLinejoin="round" />
+      <path d="M5 8h6M8 5.5v5" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" opacity=".72" />
     </svg>
   ),
   "training-evals": (
@@ -89,6 +96,7 @@ const ICONS: Record<PaneId, ReactNode> = {
 const SERVING_NAV: { id: PaneId; label: string }[] = [
   { id: "chat", label: "Chat" },
   { id: "status", label: "Status" },
+  { id: "capture", label: "Capture" },
   { id: "models", label: "Models" },
   { id: "traces", label: "Traces" },
   { id: "usage", label: "Usage" },

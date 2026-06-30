@@ -5,10 +5,12 @@ import { PanelLeftIcon, SquarePenIcon } from "lucide-react";
 import { Sidebar, type PaneId } from "./components/Sidebar";
 import { StatusPane } from "./components/StatusPane";
 import { ModelsPane } from "./components/ModelsPane";
+import { CapturePane } from "./components/CapturePane";
 import { ChatPane } from "./components/ChatPane";
 import { TracesPane } from "./components/TracesPane";
 import { AccountPane } from "./components/AccountPane";
 import { UsagePane } from "./components/UsagePane";
+import { DownloadQrButton } from "./components/DownloadQrButton";
 import { isTrainingPane, TrainingPane } from "./components/TrainingPane";
 import { useStatus } from "./lib/useStatus";
 
@@ -30,6 +32,7 @@ export default function Page() {
       "status",
       "chat",
       "models",
+      "capture",
       "account",
       "usage",
       "traces",
@@ -88,6 +91,7 @@ export default function Page() {
           <SquarePenIcon aria-hidden="true" size={15} strokeWidth={2} />
         </button>
       )}
+      <DownloadQrButton />
       <Sidebar
         active={pane}
         onSelect={(next) => {
@@ -100,6 +104,7 @@ export default function Page() {
         {pane === "status" && <StatusPane status={status} />}
         {pane === "chat" && <ChatPane resetToken={chatResetToken} />}
         {pane === "models" && <ModelsPane />}
+        {pane === "capture" && <CapturePane />}
         {isTrainingPane(pane) && <TrainingPane section={pane} />}
         {pane === "account" && <AccountPane />}
         {pane === "usage" && <UsagePane status={status} />}
