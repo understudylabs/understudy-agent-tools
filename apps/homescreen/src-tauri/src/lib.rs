@@ -142,6 +142,7 @@ pub fn run() {
             commands::knowledge_dossiers,
             commands::local_benchmarks,
             commands::sidekick_runs,
+            commands::sidekick_decisions,
             commands::aa_models,
             commands::aa_attribution,
             commands::get_setting,

@@ -54,6 +54,16 @@ type SidekickRun = {
   run_at: string;
 };
 
+type SidekickDecision = {
+  id: number;
+  session_id: string;
+  route: string;
+  prompt_excerpt: string;
+  eligible: boolean;
+  reason: string;
+  created_at: string;
+};
+
 export function StatusPane({ status }: { status: StatusController }) {
   const { snap, busy, connect, disconnect } = status;
   const [bootstrap, setBootstrap] = useState<BootstrapStatus | null>(null);
@@ -62,6 +72,7 @@ export function StatusPane({ status }: { status: StatusController }) {
   const [bootErr, setBootErr] = useState<string | null>(null);
   const [parallelSidekick, setParallelSidekick] = useState(false);
   const [sidekickRuns, setSidekickRuns] = useState<SidekickRun[]>([]);
+  const [sidekickDecisions, setSidekickDecisions] = useState<SidekickDecision[]>([]);
 
   const refreshBootstrap = () => {
     invoke<BootstrapStatus>("bootstrap_status")
@@ -82,6 +93,9 @@ export function StatusPane({ status }: { status: StatusController }) {
     invoke<SidekickRun[]>("sidekick_runs", { limit: 5 })
       .then(setSidekickRuns)
       .catch(() => setSidekickRuns([]));
+    invoke<SidekickDecision[]>("sidekick_decisions", { limit: 3 })
+      .then(setSidekickDecisions)
+      .catch(() => setSidekickDecisions([]));
   };
 
   useEffect(() => {
@@ -281,6 +295,19 @@ export function StatusPane({ status }: { status: StatusController }) {
               disabled={sidekickSlot?.state !== "running"}
               onToggle={() => setParallelLane(!parallelSidekick)}
             />
+            {sidekickDecisions[0] && (
+              <div className="sidekick-policy-row">
+                <span className={"dot " + (sidekickDecisions[0].eligible ? "running" : "stopped")} />
+                <div>
+                  <div className="svc-name">
+                    Policy · {sidekickDecisions[0].eligible ? "delegated" : "kept main"}
+                  </div>
+                  <div className="svc-desc">
+                    {sidekickDecisions[0].reason} · {sidekickDecisions[0].prompt_excerpt}
+                  </div>
+                </div>
+              </div>
+            )}
             {sidekickRuns.length > 0 && (
               <div className="sidekick-run-list">
                 {sidekickRuns.map((run, index) => (

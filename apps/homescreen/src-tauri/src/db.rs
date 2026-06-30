@@ -32,6 +32,17 @@ pub struct SidekickRunRow {
     pub run_at: String,
 }
 
+#[derive(Serialize, Clone)]
+pub struct SidekickDecisionRow {
+    pub id: u64,
+    pub session_id: String,
+    pub route: String,
+    pub prompt_excerpt: String,
+    pub eligible: bool,
+    pub reason: String,
+    pub created_at: String,
+}
+
 /// App-owned SQLite store, under the macOS app-data dir. Profile, credentials,
 /// and the model cache continue to live under `~/.understudy/`.
 pub struct Db(pub std::path::PathBuf);
@@ -84,6 +95,15 @@ impl Db {
                 accepted         INTEGER,
                 consumed         INTEGER NOT NULL DEFAULT 0,
                 run_at           TEXT NOT NULL
+            );
+            CREATE TABLE IF NOT EXISTS sidekick_decisions (
+                id             INTEGER PRIMARY KEY,
+                session_id     TEXT NOT NULL,
+                route          TEXT NOT NULL,
+                prompt_excerpt TEXT NOT NULL,
+                eligible       INTEGER NOT NULL DEFAULT 0,
+                reason         TEXT NOT NULL,
+                created_at     TEXT NOT NULL
             );",
         )?;
         let _ = conn.execute(
@@ -306,6 +326,51 @@ impl Db {
             )?;
         }
         Ok(out)
+    }
+
+    pub fn record_sidekick_decision(
+        &self,
+        session_id: &str,
+        route: &str,
+        prompt_excerpt: &str,
+        eligible: bool,
+        reason: &str,
+    ) -> Result<()> {
+        let conn = self.conn()?;
+        conn.execute(
+            "INSERT INTO sidekick_decisions (session_id, route, prompt_excerpt, eligible, reason, created_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+            rusqlite::params![
+                session_id,
+                route,
+                prompt_excerpt,
+                eligible as i64,
+                reason,
+                now_iso(),
+            ],
+        )?;
+        Ok(())
+    }
+
+    pub fn list_sidekick_decisions(&self, limit: u32) -> Result<Vec<SidekickDecisionRow>> {
+        let conn = self.conn()?;
+        let mut stmt = conn.prepare(
+            "SELECT id, session_id, route, prompt_excerpt, eligible, reason, created_at
+             FROM sidekick_decisions ORDER BY id DESC LIMIT ?1",
+        )?;
+        let rows = stmt.query_map([limit.max(1).min(100) as i64], |r| {
+            Ok(SidekickDecisionRow {
+                id: r.get::<_, i64>(0)? as u64,
+                session_id: r.get(1)?,
+                route: r.get(2)?,
+                prompt_excerpt: r.get(3)?,
+                eligible: r.get::<_, i64>(4)? != 0,
+                reason: r.get(5)?,
+                created_at: r.get(6)?,
+            })
+        })?;
+        rows.collect::<rusqlite::Result<Vec<_>>>()
+            .map_err(Into::into)
     }
 }
 

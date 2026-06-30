@@ -811,9 +811,26 @@ fn latest_user_message(messages: &[ChatMsg]) -> Option<&str> {
         .map(|m| m.content.as_str())
 }
 
-fn should_run_parallel_sidekick(prompt: &str) -> bool {
+struct SidekickRoutingDecision {
+    eligible: bool,
+    reason: &'static str,
+}
+
+fn prompt_excerpt(prompt: &str) -> String {
+    let trimmed = prompt.trim();
+    if trimmed.len() <= 240 {
+        return trimmed.to_string();
+    }
+    let mut end = 240;
+    while end > 0 && !trimmed.is_char_boundary(end) {
+        end -= 1;
+    }
+    format!("{}…", &trimmed[..end])
+}
+
+fn route_parallel_sidekick(prompt: &str) -> SidekickRoutingDecision {
     let lower = prompt.to_lowercase();
-    [
+    let delegate_terms = [
         "check",
         "review",
         "inspect",
@@ -828,9 +845,43 @@ fn should_run_parallel_sidekick(prompt: &str) -> bool {
         "what's left",
         "whats left",
         "reminder",
-    ]
-    .iter()
-    .any(|needle| lower.contains(needle))
+    ];
+    let judgment_terms = [
+        "decide",
+        "should we",
+        "what should",
+        "strategy",
+        "plan",
+        "architect",
+        "tradeoff",
+        "judgment",
+    ];
+    let mechanical = delegate_terms
+        .iter()
+        .find(|needle| lower.contains(**needle))
+        .copied();
+    if let Some(term) = mechanical {
+        return SidekickRoutingDecision {
+            eligible: true,
+            reason: match term {
+                "search" | "find" | "trace" => "mechanical_search",
+                "check" | "verify" | "inspect" | "review" => "verification",
+                "summarize" | "reminder" | "what's left" | "whats left" => "summary",
+                "status" | "models" | "compare" => "runtime_inspection",
+                _ => "eligible",
+            },
+        };
+    }
+    if judgment_terms.iter().any(|needle| lower.contains(needle)) {
+        return SidekickRoutingDecision {
+            eligible: false,
+            reason: "main_keeps_judgment",
+        };
+    }
+    SidekickRoutingDecision {
+        eligible: false,
+        reason: "no_mechanical_subtask",
+    }
 }
 
 fn maybe_spawn_parallel_sidekick(
@@ -840,28 +891,47 @@ fn maybe_spawn_parallel_sidekick(
     session_id: &str,
     messages: &[ChatMsg],
 ) {
+    let db = app.state::<crate::db::Db>();
+    let prompt = latest_user_message(messages).map(str::trim).unwrap_or("");
+    let record_decision = |eligible: bool, reason: &'static str| {
+        let _ = db.record_sidekick_decision(
+            session_id,
+            route,
+            &prompt_excerpt(prompt),
+            eligible,
+            reason,
+        );
+    };
     if route != "local" {
+        record_decision(false, "non_local_route");
+        return;
+    }
+    if db.setting_get("sidekick.parallel").as_deref() != Some("on") {
+        record_decision(false, "parallel_toggle_off");
+        return;
+    }
+    if prompt.is_empty() {
+        record_decision(false, "no_user_prompt");
         return;
     }
     if app
-        .state::<crate::db::Db>()
-        .setting_get("sidekick.parallel")
-        .as_deref()
-        != Some("on")
+        .state::<Residency>()
+        .sidekick_endpoint(active_slot_id)
+        .is_none()
     {
+        record_decision(false, "no_warm_sidekick");
         return;
     }
-    let Some(prompt) = latest_user_message(messages).map(str::trim) else {
-        return;
-    };
-    if prompt.is_empty() || !should_run_parallel_sidekick(prompt) {
+    let decision = route_parallel_sidekick(prompt);
+    record_decision(decision.eligible, decision.reason);
+    if !decision.eligible {
         return;
     }
 
     let task = format!("Run a quick background sidekick pass on this user request:\n{prompt}");
     let args = json!({
         "task": task,
-        "context": "This is a non-visual parallel sidekick lane. Do not make final decisions. Look for useful checks, trace/runtime context, or concise second-pass observations for the main agent.",
+        "context": format!("This is a non-visual parallel sidekick lane. Routing reason: {}. Do not make final decisions. Look for useful checks, trace/runtime context, or concise second-pass observations for the main agent.", decision.reason),
         "expected_output": "Return compact findings, uncertainty, and ESCALATE_TO_MAIN only if the request requires main-agent judgment."
     });
     let app = app.clone();
