@@ -166,6 +166,8 @@ function ChatToolTrace({ tool }: { tool: ToolTrace }) {
           model_id?: string;
           elapsed_ms?: number;
           escalate?: boolean;
+          tool_calls?: number;
+          session_messages?: number;
           content?: string;
         })
       : null;
@@ -202,6 +204,8 @@ function ChatToolTrace({ tool }: { tool: ToolTrace }) {
               <span>{sidekick.profile_label ?? "Sidekick"}</span>
               {sidekick.model_id && <span>{modelShortName(sidekick.model_id, [])}</span>}
               {sidekick.elapsed_ms != null && <span>{(sidekick.elapsed_ms / 1000).toFixed(1)}s</span>}
+              {sidekick.tool_calls != null && sidekick.tool_calls > 0 && <span>{sidekick.tool_calls} tools</span>}
+              {sidekick.session_messages != null && <span>{sidekick.session_messages} ctx</span>}
               {sidekick.escalate && <span>escalated</span>}
             </div>
             <div className="sidekick-result-content">{sidekick.content}</div>
@@ -217,6 +221,7 @@ function ChatToolTrace({ tool }: { tool: ToolTrace }) {
 export function ChatPane({ resetToken }: { resetToken: number }) {
   const [messages, setMessages] = useState<Msg[]>([]);
   const [input, setInput] = useState("");
+  const [sessionId, setSessionId] = useState(() => crypto.randomUUID());
   const [streaming, setStreaming] = useState(false);
   const [assistantSpeaking, setAssistantSpeaking] = useState(false);
   const [err, setErr] = useState<string | null>(null);
@@ -365,6 +370,7 @@ export function ChatPane({ resetToken }: { resetToken: number }) {
         messages: toSend.map(({ role, content }) => ({ role, content })),
         route: choice.route,
         slotId: choice.slotId,
+        sessionId,
         onEvent: ch,
       });
     } catch (e: unknown) {
@@ -379,6 +385,7 @@ export function ChatPane({ resetToken }: { resetToken: number }) {
     setMessages([]);
     setInput("");
     setErr(null);
+    setSessionId(crypto.randomUUID());
     setAssistantSpeaking(false);
     setPersonaReady(false);
     setPersonaCycle((value) => value + 1);

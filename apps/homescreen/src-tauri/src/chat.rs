@@ -1,7 +1,9 @@
 use futures_util::StreamExt;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
+use std::collections::HashMap;
 use std::path::PathBuf;
+use std::sync::{Mutex, OnceLock};
 use std::time::Instant;
 use tauri::ipc::Channel;
 use tauri::{AppHandle, State};
@@ -42,6 +44,14 @@ pub struct ChatMsg {
 const CHAT_MAX_TOKENS: u32 = 8192;
 const CHAT_THINKING_BUDGET: u32 = 2048;
 const MAX_TOOL_ROUNDS: usize = 4;
+const SIDEKICK_MAX_TOOL_ROUNDS: usize = 2;
+const SIDEKICK_MAX_CONTEXT_MESSAGES: usize = 16;
+
+static SIDEKICK_SESSIONS: OnceLock<Mutex<HashMap<String, Vec<Value>>>> = OnceLock::new();
+
+fn sidekick_sessions() -> &'static Mutex<HashMap<String, Vec<Value>>> {
+    SIDEKICK_SESSIONS.get_or_init(|| Mutex::new(HashMap::new()))
+}
 
 #[derive(Deserialize)]
 struct ModelCard {
@@ -191,7 +201,7 @@ fn tool_schemas() -> Vec<Value> {
             "type": "function",
             "function": {
                 "name": "delegate_to_sidekick",
-                "description": "Delegate a bounded, local, read-only subtask to the smaller warm Understudy sidekick model. Use for focused summaries, checks, and narrow draft work. The main model keeps final ownership.",
+                "description": "Delegate a bounded, local, read-only subtask to the smaller warm Understudy sidekick agent. The sidekick has its own persistent chat context and read-only tools. Use for focused summaries, checks, trace/status inspection, narrow draft work, and second-pass critique. The main model keeps planning, ambiguity handling, and final review.",
                 "parameters": {
                     "type": "object",
                     "properties": {
@@ -273,6 +283,7 @@ async fn tool_result(
     app: &AppHandle,
     mgr: &Residency,
     active_slot_id: Option<u32>,
+    session_id: &str,
     name: &str,
     args: &Value,
 ) -> Result<Value, String> {
@@ -300,7 +311,7 @@ async fn tool_result(
                 .to_string(),
         )
         .map_err(|e| e.to_string())?,
-        "delegate_to_sidekick" => delegate_to_sidekick(mgr, active_slot_id, args).await?,
+        "delegate_to_sidekick" => delegate_to_sidekick(app, mgr, active_slot_id, session_id, args).await?,
         "understudy_mcp_tool" => call_understudy_mcp(app, args).await?,
         "understudy_agent_tools" => call_understudy_cli(args)?,
         other => return Err(format!("unknown tool: {other}")),
@@ -308,8 +319,10 @@ async fn tool_result(
 }
 
 async fn delegate_to_sidekick(
+    app: &AppHandle,
     mgr: &Residency,
     active_slot_id: Option<u32>,
+    session_id: &str,
     args: &Value,
 ) -> Result<Value, String> {
     let task = required_string(args, "task")?;
@@ -328,9 +341,11 @@ async fn delegate_to_sidekick(
     })?;
     let profile = sidekick_profile();
     let started = Instant::now();
-    let content = call_sidekick_model(
+    let result = call_sidekick_model(
+        app,
         port,
         &model_path,
+        session_id,
         &profile,
         &task,
         context,
@@ -338,7 +353,7 @@ async fn delegate_to_sidekick(
     )
     .await?;
     let elapsed_ms = started.elapsed().as_millis() as u64;
-    let escalate = content.contains("ESCALATE_TO_MAIN");
+    let escalate = result.content.contains("ESCALATE_TO_MAIN");
     Ok(json!({
         "profile_id": profile.id,
         "profile_label": profile.label,
@@ -346,51 +361,236 @@ async fn delegate_to_sidekick(
         "model_id": model_id,
         "elapsed_ms": elapsed_ms,
         "escalate": escalate,
+        "tool_calls": result.tool_calls,
+        "session_messages": result.session_messages,
         "policy": profile.delegation_policy,
-        "content": truncate_tool_output(content),
+        "content": truncate_tool_output(result.content),
     }))
 }
 
+struct SidekickRunResult {
+    content: String,
+    tool_calls: usize,
+    session_messages: usize,
+}
+
+fn sidekick_tool_schemas() -> Vec<Value> {
+    vec![
+        json!({
+            "type": "function",
+            "function": {
+                "name": "status",
+                "description": "Read local Understudy runtime status, warm slots, machine metrics, and service state.",
+                "parameters": { "type": "object", "properties": {}, "additionalProperties": false }
+            }
+        }),
+        json!({
+            "type": "function",
+            "function": {
+                "name": "residency",
+                "description": "Read warm-model residency: loaded models, ports, memory use, and thinking flags.",
+                "parameters": { "type": "object", "properties": {}, "additionalProperties": false }
+            }
+        }),
+        json!({
+            "type": "function",
+            "function": {
+                "name": "list_models",
+                "description": "List locally cached MLX-loadable models.",
+                "parameters": { "type": "object", "properties": {}, "additionalProperties": false }
+            }
+        }),
+        json!({
+            "type": "function",
+            "function": {
+                "name": "list_traces",
+                "description": "List recent Moraine trace sessions.",
+                "parameters": {
+                    "type": "object",
+                    "properties": { "limit": { "type": "integer", "minimum": 1, "maximum": 20 } },
+                    "additionalProperties": false
+                }
+            }
+        }),
+        json!({
+            "type": "function",
+            "function": {
+                "name": "search_traces",
+                "description": "Search local Moraine traces with a keyword query.",
+                "parameters": {
+                    "type": "object",
+                    "properties": { "q": { "type": "string" } },
+                    "required": ["q"],
+                    "additionalProperties": false
+                }
+            }
+        }),
+        json!({
+            "type": "function",
+            "function": {
+                "name": "open_trace",
+                "description": "Open a Moraine trace session, turn, or event by id.",
+                "parameters": {
+                    "type": "object",
+                    "properties": { "id": { "type": "string" } },
+                    "required": ["id"],
+                    "additionalProperties": false
+                }
+            }
+        }),
+    ]
+}
+
+fn sidekick_tool_result(app: &AppHandle, name: &str, args: &Value) -> Result<Value, String> {
+    use crate::commands as c;
+    Ok(match name {
+        "status" => json!(c::get_status(app.clone())),
+        "residency" => json!(c::get_residency(app.clone())),
+        "list_models" => json!(c::list_models()),
+        "list_traces" => {
+            c::list_traces(args.get("limit").and_then(|v| v.as_u64()).map(|x| x as u32))
+                .map_err(|e| e.to_string())?
+        }
+        "search_traces" => c::search_traces(
+            args.get("q")
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_string(),
+        )
+        .map_err(|e| e.to_string())?,
+        "open_trace" => c::open_trace(
+            args.get("id")
+                .and_then(|v| v.as_str())
+                .unwrap_or("")
+                .to_string(),
+        )
+        .map_err(|e| e.to_string())?,
+        other => return Err(format!("unknown sidekick tool: {other}")),
+    })
+}
+
 async fn call_sidekick_model(
+    app: &AppHandle,
     port: u16,
     model_path: &str,
+    session_id: &str,
     profile: &SidekickProfile,
     task: &str,
     context: &str,
     expected_output: &str,
-) -> Result<String, String> {
+) -> Result<SidekickRunResult, String> {
     let user = format!(
         "Task:\n{task}\n\nContext:\n{context}\n\nExpected output:\n{expected_output}\n\nReturn only the useful result for the main model."
     );
-    let payload = json!({
-        "model": model_path,
-        "messages": [
-            { "role": "system", "content": profile.system_prompt },
-            { "role": "user", "content": user }
-        ],
-        "stream": false,
-        "max_tokens": profile.max_tokens,
-        "temperature": profile.temperature
-    });
-    let response = reqwest::Client::new()
-        .post(format!("http://127.0.0.1:{port}/v1/chat/completions"))
-        .json(&payload)
-        .send()
-        .await
-        .map_err(|e| format!("sidekick request failed: {e}"))?;
-    let status = response.status();
-    let value: Value = response
-        .json()
-        .await
-        .map_err(|e| format!("sidekick response parse failed: {e}"))?;
-    if !status.is_success() {
-        return Err(format!("sidekick returned {status}: {value}"));
+    let key = format!("{session_id}:{model_path}");
+    let mut messages = {
+        let mut sessions = sidekick_sessions()
+            .lock()
+            .map_err(|_| "sidekick session lock poisoned".to_string())?;
+        sessions.entry(key.clone()).or_insert_with(|| {
+            vec![json!({
+                "role": "system",
+                "content": profile.system_prompt,
+            })]
+        });
+        sessions.get(&key).cloned().unwrap_or_default()
+    };
+    messages.push(json!({ "role": "user", "content": user }));
+
+    let client = reqwest::Client::new();
+    let mut tool_count = 0usize;
+    let mut final_content = String::new();
+
+    for _round in 0..=SIDEKICK_MAX_TOOL_ROUNDS {
+        let payload = json!({
+            "model": model_path,
+            "messages": messages,
+            "stream": false,
+            "tools": sidekick_tool_schemas(),
+            "tool_choice": "auto",
+            "max_tokens": profile.max_tokens,
+            "temperature": profile.temperature
+        });
+        let response = client
+            .post(format!("http://127.0.0.1:{port}/v1/chat/completions"))
+            .json(&payload)
+            .send()
+            .await
+            .map_err(|e| format!("sidekick request failed: {e}"))?;
+        let status = response.status();
+        let value: Value = response
+            .json()
+            .await
+            .map_err(|e| format!("sidekick response parse failed: {e}"))?;
+        if !status.is_success() {
+            return Err(format!("sidekick returned {status}: {value}"));
+        }
+
+        let message = value
+            .pointer("/choices/0/message")
+            .cloned()
+            .unwrap_or_else(|| json!({ "role": "assistant", "content": "" }));
+        final_content = message
+            .get("content")
+            .and_then(|v| v.as_str())
+            .unwrap_or("")
+            .to_string();
+        let tool_calls = message
+            .get("tool_calls")
+            .and_then(|v| v.as_array())
+            .cloned()
+            .unwrap_or_default();
+        messages.push(message);
+
+        if tool_calls.is_empty() {
+            break;
+        }
+
+        for call in tool_calls {
+            let call_id = call
+                .get("id")
+                .and_then(|v| v.as_str())
+                .unwrap_or("sidekick_call");
+            let function = call.get("function").cloned().unwrap_or_else(|| json!({}));
+            let name = function.get("name").and_then(|v| v.as_str()).unwrap_or("");
+            let args = function
+                .get("arguments")
+                .and_then(|v| v.as_str())
+                .and_then(|raw| serde_json::from_str::<Value>(raw).ok())
+                .unwrap_or_else(|| json!({}));
+            let result = match sidekick_tool_result(app, name, &args) {
+                Ok(value) => json!({ "ok": true, "result": value }),
+                Err(err) => json!({ "ok": false, "error": err }),
+            };
+            tool_count += 1;
+            messages.push(json!({
+                "role": "tool",
+                "tool_call_id": call_id,
+                "content": truncate_tool_output(result.to_string()),
+            }));
+        }
     }
-    Ok(value
-        .pointer("/choices/0/message/content")
-        .and_then(|v| v.as_str())
-        .unwrap_or("")
-        .to_string())
+
+    if messages.len() > SIDEKICK_MAX_CONTEXT_MESSAGES {
+        let system = messages.first().cloned();
+        let keep_from = messages.len().saturating_sub(SIDEKICK_MAX_CONTEXT_MESSAGES - 1);
+        let mut compacted = system.into_iter().collect::<Vec<_>>();
+        compacted.extend(messages.into_iter().skip(keep_from));
+        messages = compacted;
+    }
+    let session_messages = messages.len();
+    {
+        let mut sessions = sidekick_sessions()
+            .lock()
+            .map_err(|_| "sidekick session lock poisoned".to_string())?;
+        sessions.insert(key, messages);
+    }
+
+    Ok(SidekickRunResult {
+        content: final_content,
+        tool_calls: tool_count,
+        session_messages,
+    })
 }
 
 async fn call_understudy_mcp(app: &AppHandle, args: &Value) -> Result<Value, String> {
@@ -596,10 +796,12 @@ pub async fn chat_stream(
     messages: Vec<ChatMsg>,
     route: String,
     slot_id: Option<u32>,
+    session_id: Option<String>,
     on_event: Channel<ChatEvent>,
     app: AppHandle,
     mgr: State<'_, Residency>,
 ) -> Result<(), String> {
+    let session_id = session_id.unwrap_or_else(|| "default".to_string());
     let (url, bearer, model_field) = match route.as_str() {
         "cloud" => {
             let (base, key) = credentials().ok_or_else(|| "not signed in".to_string())?;
@@ -677,7 +879,7 @@ pub async fn chat_stream(
                 args: args.clone(),
             });
             let (ok, result) =
-                match tool_result(&app, mgr.inner(), slot_id, &call.name, &args).await {
+                match tool_result(&app, mgr.inner(), slot_id, &session_id, &call.name, &args).await {
                     Ok(value) => (true, value),
                     Err(err) => (false, json!({ "error": err })),
                 };
