@@ -1,6 +1,7 @@
 "use client";
 import { useEffect, useState } from "react";
 import { listen } from "@tauri-apps/api/event";
+import { SquarePenIcon } from "lucide-react";
 import { Sidebar, type PaneId } from "./components/Sidebar";
 import { StatusPane } from "./components/StatusPane";
 import { ModelsPane } from "./components/ModelsPane";
@@ -14,8 +15,14 @@ import { useStatus } from "./lib/useStatus";
 export default function Page() {
   const [pane, setPane] = useState<PaneId>("chat");
   const [railOpen, setRailOpen] = useState(false);
+  const [chatResetToken, setChatResetToken] = useState(0);
   const status = useStatus();
   const connected = status.snap?.connected ?? false;
+
+  const newChat = () => {
+    if (pane !== "chat") return;
+    setChatResetToken((token) => token + 1);
+  };
 
   // Inbound: a coding agent (via the local server) can drive the GUI to a pane.
   useEffect(() => {
@@ -46,6 +53,18 @@ export default function Page() {
     };
   }, []);
 
+  useEffect(() => {
+    const onKeyDown = (event: KeyboardEvent) => {
+      if (!event.metaKey || event.shiftKey || event.altKey || event.ctrlKey) return;
+      if (event.key.toLowerCase() !== "n") return;
+      if (pane !== "chat") return;
+      event.preventDefault();
+      newChat();
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+  }, [pane]);
+
   return (
     <div className={"shell" + (railOpen ? " rail-open" : "")}>
       <div className="window-drag-region" data-tauri-drag-region />
@@ -60,6 +79,17 @@ export default function Page() {
         <span />
         <span />
       </button>
+      {pane === "chat" && (
+        <button
+          type="button"
+          className="titlebar-new-chat"
+          aria-label="New chat"
+          title="New chat (Cmd+N)"
+          onClick={newChat}
+        >
+          <SquarePenIcon aria-hidden="true" size={15} strokeWidth={2} />
+        </button>
+      )}
       <Sidebar
         active={pane}
         onSelect={(next) => {
@@ -70,7 +100,7 @@ export default function Page() {
       />
       <main className="content">
         {pane === "status" && <StatusPane status={status} />}
-        {pane === "chat" && <ChatPane />}
+        {pane === "chat" && <ChatPane resetToken={chatResetToken} />}
         {pane === "models" && <ModelsPane />}
         {isTrainingPane(pane) && <TrainingPane section={pane} />}
         {pane === "account" && <AccountPane />}

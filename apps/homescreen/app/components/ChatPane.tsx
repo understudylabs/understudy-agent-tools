@@ -2,7 +2,6 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Channel, invoke } from "@tauri-apps/api/core";
-import { RotateCcwIcon } from "lucide-react";
 import {
   Conversation,
   ConversationContent,
@@ -119,7 +118,7 @@ function ReasoningSubstream({
   );
 }
 
-export function ChatPane() {
+export function ChatPane({ resetToken }: { resetToken: number }) {
   const [messages, setMessages] = useState<Msg[]>([]);
   const [input, setInput] = useState("");
   const [streaming, setStreaming] = useState(false);
@@ -248,6 +247,10 @@ export function ChatPane() {
     setAssistantSpeaking(false);
   };
 
+  useEffect(() => {
+    restartChat();
+  }, [resetToken]);
+
   const setThinking = async (thinking: boolean) => {
     if (selectedChoice.route !== "local") return;
     setErr(null);
@@ -341,16 +344,6 @@ export function ChatPane() {
           </PromptInputBody>
           <PromptInputFooter>
             <PromptInputTools>
-              <button
-                type="button"
-                className="ai-restart-chat"
-                disabled={streaming || (messages.length === 0 && !err && !input.trim())}
-                title="Restart chat"
-                aria-label="Restart chat"
-                onClick={restartChat}
-              >
-                <RotateCcwIcon aria-hidden="true" size={14} strokeWidth={2} />
-              </button>
               <ModelPicker
                 choices={choices}
                 selected={selectedChoice}
