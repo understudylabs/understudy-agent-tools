@@ -25,6 +25,10 @@ import {
 } from "@/components/ai-elements/model-selector";
 import {
   PromptInput,
+  PromptInputActionAddAttachments,
+  PromptInputActionMenu,
+  PromptInputActionMenuContent,
+  PromptInputActionMenuTrigger,
   PromptInputBody,
   PromptInputFooter,
   PromptInputSubmit,
@@ -176,9 +180,13 @@ export function ChatPane({ resetToken }: { resetToken: number }) {
     [choices, selectedModel],
   );
 
-  const send = async (text: string) => {
+  const send = async (text: string, files = 0) => {
     const clean = text.trim();
-    if (!clean || streaming) return;
+    if ((!clean && files === 0) || streaming) return;
+    if (files > 0) {
+      setErr("Image/file attachment UI is enabled, but multimodal chat payloads are not wired yet.");
+      return;
+    }
     setInput("");
     setErr(null);
 
@@ -343,7 +351,10 @@ export function ChatPane({ resetToken }: { resetToken: number }) {
 
       <div className="ai-chat-composer">
         <PromptInput
-          onSubmit={(message) => send(message.text)}
+          accept="image/*"
+          multiple
+          maxFiles={4}
+          onSubmit={(message) => send(message.text, message.files.length)}
           className="border-rule bg-card"
         >
           <PromptInputBody>
@@ -356,6 +367,12 @@ export function ChatPane({ resetToken }: { resetToken: number }) {
           </PromptInputBody>
           <PromptInputFooter>
             <PromptInputTools>
+              <PromptInputActionMenu>
+                <PromptInputActionMenuTrigger tooltip="Add image or file" />
+                <PromptInputActionMenuContent>
+                  <PromptInputActionAddAttachments label="Add image or file" />
+                </PromptInputActionMenuContent>
+              </PromptInputActionMenu>
               <ModelPicker
                 choices={choices}
                 selected={selectedChoice}
