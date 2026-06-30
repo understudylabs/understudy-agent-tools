@@ -66,6 +66,8 @@ pub struct FusionRouteDecisionRow {
     pub use_sidekick: bool,
     pub escalate_gateway: bool,
     pub reason: String,
+    pub policy_class: String,
+    pub signals: Option<String>,
     pub main_model: Option<String>,
     pub sidekick_model: Option<String>,
     pub gateway_model: Option<String>,
@@ -85,6 +87,8 @@ pub struct FusionRouteDecisionInput {
     pub use_sidekick: bool,
     pub escalate_gateway: bool,
     pub reason: String,
+    pub policy_class: String,
+    pub signals: Option<String>,
     pub main_model: Option<String>,
     pub sidekick_model: Option<String>,
     pub gateway_model: Option<String>,
@@ -244,6 +248,8 @@ impl Db {
                 use_sidekick        INTEGER NOT NULL DEFAULT 0,
                 escalate_gateway    INTEGER NOT NULL DEFAULT 0,
                 reason              TEXT NOT NULL,
+                policy_class        TEXT NOT NULL DEFAULT 'unknown',
+                signals             TEXT,
                 main_model          TEXT,
                 sidekick_model      TEXT,
                 gateway_model       TEXT,
@@ -369,6 +375,14 @@ impl Db {
             [],
         );
         let _ = conn.execute("ALTER TABLE sidekick_sessions ADD COLUMN memory TEXT", []);
+        let _ = conn.execute(
+            "ALTER TABLE fusion_route_decisions ADD COLUMN policy_class TEXT NOT NULL DEFAULT 'unknown'",
+            [],
+        );
+        let _ = conn.execute(
+            "ALTER TABLE fusion_route_decisions ADD COLUMN signals TEXT",
+            [],
+        );
         Ok(conn)
     }
 
@@ -496,9 +510,9 @@ impl Db {
         conn.execute(
             "INSERT INTO fusion_route_decisions (
                 prompt_excerpt, current_route, recommended_route, use_sidekick, escalate_gateway,
-                reason, main_model, sidekick_model, gateway_model, local_ready, sidekick_ready,
-                gateway_ready, prompt_tokens, local_mem_gb, created_at
-             ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15)",
+                reason, policy_class, signals, main_model, sidekick_model, gateway_model,
+                local_ready, sidekick_ready, gateway_ready, prompt_tokens, local_mem_gb, created_at
+             ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17)",
             rusqlite::params![
                 input.prompt_excerpt,
                 input.current_route,
@@ -506,6 +520,8 @@ impl Db {
                 input.use_sidekick as i64,
                 input.escalate_gateway as i64,
                 input.reason,
+                input.policy_class,
+                input.signals,
                 input.main_model,
                 input.sidekick_model,
                 input.gateway_model,
@@ -524,7 +540,7 @@ impl Db {
         let conn = self.conn()?;
         let mut stmt = conn.prepare(
             "SELECT id, prompt_excerpt, current_route, recommended_route, use_sidekick,
-                    escalate_gateway, reason, main_model, sidekick_model, gateway_model,
+                    escalate_gateway, reason, policy_class, signals, main_model, sidekick_model, gateway_model,
                     local_ready, sidekick_ready, gateway_ready, prompt_tokens, local_mem_gb,
                     created_at
              FROM fusion_route_decisions ORDER BY id DESC LIMIT ?1",
@@ -538,15 +554,17 @@ impl Db {
                 use_sidekick: r.get::<_, i64>(4)? != 0,
                 escalate_gateway: r.get::<_, i64>(5)? != 0,
                 reason: r.get(6)?,
-                main_model: r.get(7)?,
-                sidekick_model: r.get(8)?,
-                gateway_model: r.get(9)?,
-                local_ready: r.get::<_, i64>(10)? != 0,
-                sidekick_ready: r.get::<_, i64>(11)? != 0,
-                gateway_ready: r.get::<_, i64>(12)? != 0,
-                prompt_tokens: r.get::<_, i64>(13)? as u64,
-                local_mem_gb: r.get(14)?,
-                created_at: r.get(15)?,
+                policy_class: r.get(7)?,
+                signals: r.get(8)?,
+                main_model: r.get(9)?,
+                sidekick_model: r.get(10)?,
+                gateway_model: r.get(11)?,
+                local_ready: r.get::<_, i64>(12)? != 0,
+                sidekick_ready: r.get::<_, i64>(13)? != 0,
+                gateway_ready: r.get::<_, i64>(14)? != 0,
+                prompt_tokens: r.get::<_, i64>(15)? as u64,
+                local_mem_gb: r.get(16)?,
+                created_at: r.get(17)?,
             })
         })?;
         rows.collect::<rusqlite::Result<Vec<_>>>()

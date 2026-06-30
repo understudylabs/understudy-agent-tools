@@ -100,6 +100,8 @@ pub struct FusionRouteRecommendation {
     pub use_sidekick: bool,
     pub escalate_gateway: bool,
     pub reason: String,
+    pub policy_class: String,
+    pub signals: Value,
     pub main_model: Option<String>,
     pub sidekick_model: Option<String>,
     pub gateway_model: Option<String>,
@@ -425,6 +427,31 @@ struct ChatRouteSignals {
     sidekick_benchmark_score: Option<f64>,
     avg_local_elapsed_ms: Option<f64>,
     avg_sidekick_elapsed_ms: Option<f64>,
+}
+
+fn fusion_policy_class(
+    route: &str,
+    use_sidekick: bool,
+    escalate_gateway: bool,
+    reason: &str,
+) -> &'static str {
+    if use_sidekick {
+        "delegate_mechanical"
+    } else if escalate_gateway || route == "gateway" {
+        if reason.contains("compaction") {
+            "compaction_gateway"
+        } else if reason.contains("error") || reason.contains("tool_depth") {
+            "health_gateway"
+        } else {
+            "frontier_gateway"
+        }
+    } else if reason.contains("judgment") || reason.contains("complex") {
+        "main_owns_judgment"
+    } else if reason.starts_with("sidekick_") || reason.contains("sidekick") {
+        "sidekick_suppressed"
+    } else {
+        "local_default"
+    }
 }
 
 fn chat_route_signals(app: &AppHandle, session_id: Option<&str>) -> ChatRouteSignals {
@@ -1105,12 +1132,58 @@ pub fn fusion_route_recommendation(
     let main_model = main_slot.and_then(|slot| slot.model_id);
     let sidekick_model = sidekick.map(|(_, _, _, model_id)| model_id);
     let gateway_model = gateway_ready.then(|| "glm-5.2".to_string());
+    let policy_class = fusion_policy_class(route, use_sidekick, escalate_gateway, reason);
+    let signals = json!({
+        "mechanical": mechanical,
+        "judgment": judgment,
+        "complex": complex,
+        "local_ready": local_ready,
+        "sidekick_ready": sidekick_ready,
+        "gateway_ready": gateway_ready,
+        "low_usefulness": low_usefulness,
+        "high_escalation": high_escalation,
+        "local_unhealthy": local_unhealthy,
+        "local_tool_depth_high": local_tool_depth_high,
+        "sidekick_slow": sidekick_slow,
+        "sidekick_benchmark_low": sidekick_benchmark_low,
+        "session_compaction_boundary": session_compaction_boundary,
+        "compaction_boundary": compaction_boundary,
+        "route_metrics": {
+            "local_rows": route_signals.local_rows,
+            "local_error_rate": route_signals.local_error_rate,
+            "sidekick_rows": route_signals.sidekick_rows,
+            "compacted_rows": route_signals.compacted_rows,
+            "session_compacted_rows": route_signals.session_compacted_rows,
+            "session_last_compaction_reason": route_signals.session_last_compaction_reason,
+            "local_tool_depth_rows": route_signals.local_tool_depth_rows,
+            "avg_local_tool_calls": route_signals.avg_local_tool_calls,
+            "sidekick_benchmark_rows": route_signals.sidekick_benchmark_rows,
+            "sidekick_benchmark_score": route_signals.sidekick_benchmark_score,
+            "avg_local_elapsed_ms": route_signals.avg_local_elapsed_ms,
+            "avg_sidekick_elapsed_ms": route_signals.avg_sidekick_elapsed_ms,
+        },
+        "sidekick_metrics": metrics.as_ref().map(|m| json!({
+            "rows": m.rows,
+            "session_rows": m.session_rows,
+            "memory_session_rows": m.memory_session_rows,
+            "parallel_rows": m.parallel_rows,
+            "useful_rate": m.useful_rate,
+            "parallel_useful_rate": m.parallel_useful_rate,
+            "escalation_rate": m.escalation_rate,
+            "parallel_escalation_rate": m.parallel_escalation_rate,
+            "handoff_rate": m.handoff_rate,
+            "parallel_handoff_rate": m.parallel_handoff_rate,
+            "avg_compacted_entries": m.avg_compacted_entries,
+        })),
+    });
     let recommendation = FusionRouteRecommendation {
         schema_version: "understudy.fusion_route_recommendation.v1",
         route: route.to_string(),
         use_sidekick,
         escalate_gateway,
         reason: reason.to_string(),
+        policy_class: policy_class.to_string(),
+        signals: signals.clone(),
         main_model,
         sidekick_model,
         gateway_model,
@@ -1127,6 +1200,8 @@ pub fn fusion_route_recommendation(
             use_sidekick: recommendation.use_sidekick,
             escalate_gateway: recommendation.escalate_gateway,
             reason: recommendation.reason.clone(),
+            policy_class: recommendation.policy_class.clone(),
+            signals: serde_json::to_string(&signals).ok(),
             main_model: recommendation.main_model.clone(),
             sidekick_model: recommendation.sidekick_model.clone(),
             gateway_model: recommendation.gateway_model.clone(),
