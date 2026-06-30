@@ -271,4 +271,25 @@ describe("automationbench handoff runner", () => {
     assert.equal(payload.rows[0].model, "understudy-fusion-routing");
     assert.equal(payload.rows[0].sidekick_runs, 1);
   });
+
+  it("can override gateway usage for proxy-routed Fusion rows", () => {
+    const { handoffPath } = writeFixture();
+    const resultsPath = join(dir, "automationbench-routing-export.json");
+    writeFileSync(
+      resultsPath,
+      `${JSON.stringify({
+        meta: { model: "understudy-fusion-routing", domains: ["simple"], duration_seconds: 9 },
+        tasks: [{ id: 1, name: "simple.route", score: 1, passed: true, input_tokens: 20, output_tokens: 8 }],
+      })}\n`,
+    );
+    const result = spawnSync(
+      runner[0],
+      [...runner.slice(1), "--handoff", handoffPath, "--results", resultsPath, "--gateway-used", "true"],
+      { encoding: "utf8" },
+    );
+    assert.equal(result.status, 0, result.stderr);
+    const payload = JSON.parse(result.stdout);
+    assert.equal(payload.rows[0].mode, "sidekick-routing");
+    assert.equal(payload.rows[0].gateway_used, true);
+  });
 });

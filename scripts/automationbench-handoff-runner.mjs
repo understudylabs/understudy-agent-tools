@@ -5,7 +5,7 @@ function usage() {
   return `Usage:
   node scripts/automationbench-handoff-runner.mjs --handoff <path> [--print-commands]
   node scripts/automationbench-handoff-runner.mjs --handoff <path> --print-fusion-commands [--base-url <url>]
-  node scripts/automationbench-handoff-runner.mjs --handoff <path> --results <path> [--candidate <id>] [--cohort-run-id <id>] [--mode <mode>] [--mode-prefix <prefix>] [--sidekick-runs <n>] [--sidekick-tool-calls <n>] [--post] [--token <token>]
+  node scripts/automationbench-handoff-runner.mjs --handoff <path> --results <path> [--candidate <id>] [--cohort-run-id <id>] [--mode <mode>] [--mode-prefix <prefix>] [--sidekick-runs <n>] [--sidekick-tool-calls <n>] [--gateway-used true|false] [--post] [--token <token>]
 
 Reads an Understudy AutomationBench handoff packet and either prints the intended
 candidate runs or normalizes runner results for the desktop callback endpoint.
@@ -112,6 +112,13 @@ function requireHandoff(path) {
   return handoff;
 }
 
+function optionalBoolean(value, name) {
+  if (value === null || value === undefined) return undefined;
+  if (value === "true" || value === "1") return true;
+  if (value === "false" || value === "0") return false;
+  throw new Error(`${name} must be true or false`);
+}
+
 function candidateById(handoff) {
   return new Map(handoff.candidates.map((candidate) => [candidate.candidate, candidate]));
 }
@@ -138,7 +145,9 @@ function normalizeRows(handoff, rows, options = {}) {
           : Number(options.sidekickRuns)
         : Number(row.sidekick_runs);
     const gatewayUsed =
-      row.gateway_used === true || row.gateway_used === false
+      options.gatewayUsed !== undefined
+        ? options.gatewayUsed
+        : row.gateway_used === true || row.gateway_used === false
         ? row.gateway_used
         : modelDefaults?.gatewayUsed === null || modelDefaults?.gatewayUsed === undefined
           ? candidate.route === "gateway"
@@ -261,6 +270,7 @@ async function main() {
       modePrefix: argValue(args, "--mode-prefix"),
       sidekickRuns: argValue(args, "--sidekick-runs"),
       sidekickToolCalls: argValue(args, "--sidekick-tool-calls"),
+      gatewayUsed: optionalBoolean(argValue(args, "--gateway-used"), "--gateway-used"),
     });
     console.log(JSON.stringify({ schema_version: "understudy.automationbench_normalized_results.v1", rows: normalized }, null, 2));
     if (args.includes("--post")) {

@@ -1,4 +1,6 @@
 #!/usr/bin/env node
+import { existsSync, readFileSync } from "node:fs";
+import { homedir } from "node:os";
 import { createServer } from "node:http";
 
 const DEFAULT_PORT = 17890;
@@ -19,6 +21,7 @@ Environment:
   FUSION_MAIN_MODEL         default ${DEFAULT_MAIN_MODEL}
   FUSION_FAST_MODEL         default ${DEFAULT_FAST_MODEL}
   FUSION_SIDECAR_WAIT_MS    default 2500
+  FUSION_ROUTING_WRITE_GATEWAY  default 1; route tool-backed write/update work to gateway when available
 
 Models exposed:
   understudy-fusion-main
@@ -54,16 +57,38 @@ async function readJsonBody(req) {
   return raw ? JSON.parse(raw) : {};
 }
 
+function ensureV1BaseUrl(url) {
+  const trimmed = String(url ?? "").replace(/\/$/, "");
+  if (!trimmed) return null;
+  return trimmed.endsWith("/v1") ? trimmed : `${trimmed}/v1`;
+}
+
+function localGatewayCredentials() {
+  const path = `${homedir()}/.understudy/credentials.json`;
+  if (!existsSync(path)) return {};
+  try {
+    const value = JSON.parse(readFileSync(path, "utf8"));
+    return {
+      gatewayBaseUrl: ensureV1BaseUrl(value.gateway_url),
+      gatewayApiKey: typeof value.api_key === "string" && value.api_key ? value.api_key : null,
+    };
+  } catch {
+    return {};
+  }
+}
+
 function config() {
-  const gatewayBase = process.env.FUSION_GATEWAY_BASE_URL?.replace(/\/$/, "");
+  const localGateway = localGatewayCredentials();
+  const gatewayBase = ensureV1BaseUrl(process.env.FUSION_GATEWAY_BASE_URL) ?? localGateway.gatewayBaseUrl;
   return {
     mainBaseUrl: (process.env.FUSION_MAIN_BASE_URL ?? DEFAULT_MAIN_BASE_URL).replace(/\/$/, ""),
     fastBaseUrl: (process.env.FUSION_FAST_BASE_URL ?? DEFAULT_FAST_BASE_URL).replace(/\/$/, ""),
     gatewayBaseUrl: gatewayBase,
-    gatewayApiKey: process.env.FUSION_GATEWAY_API_KEY,
+    gatewayApiKey: process.env.FUSION_GATEWAY_API_KEY ?? localGateway.gatewayApiKey,
     mainModel: process.env.FUSION_MAIN_MODEL ?? DEFAULT_MAIN_MODEL,
     fastModel: process.env.FUSION_FAST_MODEL ?? DEFAULT_FAST_MODEL,
     sidecarWaitMs: Number(process.env.FUSION_SIDECAR_WAIT_MS ?? 2500),
+    routingWriteGateway: process.env.FUSION_ROUTING_WRITE_GATEWAY !== "0",
   };
 }
 
@@ -153,17 +178,19 @@ function routeRequest(reqBody, cfg) {
     const text = String(typeof message.content === "string" ? message.content : JSON.stringify(message.content ?? "")).toLowerCase();
     return /\b(create|update|delete|remove|send|submit|claim|attach|write|patch|commit)\b/.test(text);
   });
-  const highComplexity = toolCount >= 8 || toolMessages >= 2 || userTextChars > 12000 || (hasWriteIntent && toolCount >= 4);
+  const highComplexity =
+    toolCount >= 8 || toolMessages >= 2 || userTextChars > 12000 || (hasWriteIntent && toolCount >= 4);
+  const gatewayWriteWork = cfg.routingWriteGateway && hasWriteIntent && toolCount > 0;
   const localToolWork = toolCount > 0 || toolMessages > 0 || userTextChars > 4000;
 
-  if (cfg.gatewayBaseUrl && cfg.gatewayApiKey && highComplexity) {
+  if (cfg.gatewayBaseUrl && cfg.gatewayApiKey && (highComplexity || gatewayWriteWork)) {
     return {
       baseUrl: cfg.gatewayBaseUrl,
       model: "glm-5.2",
       apiKey: cfg.gatewayApiKey,
       route: "gateway",
       sidekickMode: "background",
-      reason: "high_complexity_tool_or_write_work",
+      reason: gatewayWriteWork ? "tool_backed_write_work" : "high_complexity_tool_work",
     };
   }
   if (localToolWork) {
