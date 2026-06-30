@@ -166,6 +166,54 @@ fn compact_line(text: &str, limit: usize) -> String {
     format!("{}...", &one_line[..end])
 }
 
+fn sidekick_memory_entry(message: &Value) -> Option<String> {
+    let role = message
+        .get("role")
+        .and_then(|v| v.as_str())
+        .unwrap_or("message");
+    match role {
+        "user" => sidekick_message_content(message).map(|content| {
+            let task = content
+                .split("Expected output:")
+                .next()
+                .unwrap_or(&content)
+                .replace("Task:", "")
+                .replace("Context:", "");
+            format!("Task request: {}", compact_line(&task, 260))
+        }),
+        "assistant" => {
+            if let Some(content) = sidekick_message_content(message) {
+                let label = if content.contains("ESCALATE_TO_MAIN") {
+                    "Escalation signal"
+                } else {
+                    "Finding"
+                };
+                Some(format!("{label}: {}", compact_line(&content, 320)))
+            } else if let Some(calls) = message.get("tool_calls").and_then(|v| v.as_array()) {
+                let names: Vec<String> = calls
+                    .iter()
+                    .filter_map(|call| {
+                        call.pointer("/function/name")
+                            .and_then(|v| v.as_str())
+                            .map(|name| name.to_string())
+                    })
+                    .collect();
+                if names.is_empty() {
+                    Some("Tool activity: requested read-only context".to_string())
+                } else {
+                    Some(format!("Tool activity: {}", names.join(", ")))
+                }
+            } else {
+                None
+            }
+        }
+        "tool" => sidekick_message_content(message)
+            .map(|content| format!("Tool result: {}", compact_line(&content, 260))),
+        other => sidekick_message_content(message)
+            .map(|content| format!("{other}: {}", compact_line(&content, 260))),
+    }
+}
+
 fn compact_sidekick_messages(messages: Vec<Value>) -> Vec<Value> {
     if messages.len() <= SIDEKICK_MAX_CONTEXT_MESSAGES {
         return messages;
@@ -191,27 +239,77 @@ fn compact_sidekick_messages(messages: Vec<Value>) -> Vec<Value> {
         .saturating_sub(SIDEKICK_RECENT_CONTEXT_MESSAGES);
     let older = &non_system[..recent_start];
     let recent = non_system[recent_start..].to_vec();
-    let mut memory_lines = vec![];
+    let mut prior_memory = vec![];
     if let Some(memory) = existing_memory {
-        memory_lines.push(compact_line(
-            memory.trim_start_matches(SIDEKICK_MEMORY_PREFIX).trim(),
-            800,
-        ));
+        let prior = memory
+            .trim_start_matches(SIDEKICK_MEMORY_PREFIX)
+            .trim()
+            .lines()
+            .filter(|line| {
+                let trimmed = line.trim();
+                !trimmed.is_empty()
+                    && trimmed
+                        != "Purpose: preserve durable sidekick context for bounded read-only support work."
+                    && trimmed != "Prior memory:"
+            })
+            .take(8)
+            .collect::<Vec<_>>()
+            .join(" ");
+        if !prior.trim().is_empty() {
+            prior_memory.push(compact_line(&prior, 800));
+        }
     }
+    let mut task_lines = vec![];
+    let mut finding_lines = vec![];
+    let mut tool_lines = vec![];
+    let mut escalation_lines = vec![];
     for message in older.iter().rev().take(8).rev() {
-        let role = message
-            .get("role")
-            .and_then(|v| v.as_str())
-            .unwrap_or("message");
-        if let Some(content) = sidekick_message_content(message) {
-            memory_lines.push(format!("{role}: {}", compact_line(&content, 280)));
-        } else if role == "assistant" && message.get("tool_calls").is_some() {
-            memory_lines.push("assistant: requested read-only tool context".to_string());
+        if let Some(entry) = sidekick_memory_entry(message) {
+            if entry.starts_with("Task request:") {
+                task_lines.push(entry);
+            } else if entry.starts_with("Finding:") {
+                finding_lines.push(entry);
+            } else if entry.starts_with("Escalation signal:") {
+                escalation_lines.push(entry);
+            } else if entry.starts_with("Tool ") {
+                tool_lines.push(entry);
+            } else {
+                finding_lines.push(entry);
+            }
         }
     }
 
     let mut compacted = system.into_iter().collect::<Vec<_>>();
-    if !memory_lines.is_empty() {
+    if !(prior_memory.is_empty()
+        && task_lines.is_empty()
+        && finding_lines.is_empty()
+        && tool_lines.is_empty()
+        && escalation_lines.is_empty())
+    {
+        let mut memory_lines = vec![
+            "Purpose: preserve durable sidekick context for bounded read-only support work."
+                .to_string(),
+        ];
+        if !prior_memory.is_empty() {
+            memory_lines.push("Prior memory:".to_string());
+            memory_lines.extend(prior_memory.into_iter().map(|line| format!("- {line}")));
+        }
+        if !task_lines.is_empty() {
+            memory_lines.push("Recent delegated tasks:".to_string());
+            memory_lines.extend(task_lines.into_iter().map(|line| format!("- {line}")));
+        }
+        if !finding_lines.is_empty() {
+            memory_lines.push("Useful findings:".to_string());
+            memory_lines.extend(finding_lines.into_iter().map(|line| format!("- {line}")));
+        }
+        if !tool_lines.is_empty() {
+            memory_lines.push("Tool context already inspected:".to_string());
+            memory_lines.extend(tool_lines.into_iter().map(|line| format!("- {line}")));
+        }
+        if !escalation_lines.is_empty() {
+            memory_lines.push("Escalation or uncertainty signals:".to_string());
+            memory_lines.extend(escalation_lines.into_iter().map(|line| format!("- {line}")));
+        }
         compacted.push(json!({
             "role": "system",
             "content": format!(
