@@ -235,6 +235,8 @@ struct ChatRouteSignals {
     local_error_rate: Option<f64>,
     sidekick_rows: u64,
     compacted_rows: u64,
+    local_tool_depth_rows: u64,
+    avg_local_tool_calls: Option<f64>,
     sidekick_benchmark_rows: u64,
     sidekick_benchmark_score: Option<f64>,
     avg_local_elapsed_ms: Option<f64>,
@@ -259,6 +261,11 @@ fn chat_route_signals(app: &AppHandle) -> ChatRouteSignals {
         .iter()
         .filter_map(|row| row.elapsed_ms.map(|v| v as f64))
         .collect();
+    let local_tool_calls: Vec<f64> = local.iter().map(|row| row.tool_calls as f64).collect();
+    let local_tool_depth_rows = local
+        .iter()
+        .filter(|row| row.tool_calls >= 3 || row.status == "tool_limit")
+        .count() as u64;
     let benchmark_rows = app
         .state::<crate::db::Db>()
         .list_fusion_benchmarks(40)
@@ -275,6 +282,8 @@ fn chat_route_signals(app: &AppHandle) -> ChatRouteSignals {
         ),
         sidekick_rows: sidekick.len() as u64,
         compacted_rows: rows.iter().filter(|row| row.compacted).count() as u64,
+        local_tool_depth_rows,
+        avg_local_tool_calls: avg(&local_tool_calls),
         sidekick_benchmark_rows: sidekick_scores.len() as u64,
         sidekick_benchmark_score: avg(&sidekick_scores),
         avg_local_elapsed_ms: avg(&local_elapsed),
@@ -793,6 +802,10 @@ pub fn fusion_route_recommendation(
         && route_signals
             .local_error_rate
             .is_some_and(|rate| rate >= 0.35);
+    let local_tool_depth_high = route_signals.local_tool_depth_rows >= 2
+        || route_signals
+            .avg_local_tool_calls
+            .is_some_and(|avg| route_signals.local_rows >= 3 && avg >= 2.5);
     let sidekick_slow = route_signals.sidekick_rows >= 3
         && matches!(
             (
@@ -814,6 +827,11 @@ pub fn fusion_route_recommendation(
             ("gateway", false, true, "compaction_boundary_gateway")
         } else if local_unhealthy && gateway_ready && (complex || current_route == Some("local")) {
             ("gateway", false, true, "local_error_rate_high")
+        } else if local_tool_depth_high
+            && gateway_ready
+            && (complex || judgment || current_route == Some("local"))
+        {
+            ("gateway", false, true, "local_tool_depth_high")
         } else if judgment || complex {
             if gateway_ready && complex {
                 ("gateway", false, true, "complex_or_frontier_task")
