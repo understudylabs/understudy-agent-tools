@@ -679,16 +679,10 @@ select,
 }
 .reasoning-substream {
   position: relative;
-  max-height: 140px;
   margin: 0 0 16px;
-  overflow: hidden;
   color: color-mix(in srgb, var(--text-3) 76%, transparent);
   font-size: 13px;
   line-height: 1.55;
-  mask-image: linear-gradient(to bottom, #000 70%, transparent);
-}
-.reasoning-substream.active {
-  max-height: 110px;
 }
 .reasoning-substream-label {
   display: inline-flex;
@@ -711,7 +705,23 @@ select,
   animation: pulse 1.1s ease-in-out infinite;
 }
 .reasoning-substream-text {
+  max-height: 112px;
+  overflow-y: auto;
+  padding-right: 10px;
   white-space: pre-wrap;
+  mask-image: linear-gradient(to bottom, transparent 0, #000 12px, #000 calc(100% - 18px), transparent 100%);
+  scrollbar-width: thin;
+  scrollbar-color: color-mix(in srgb, var(--text-3) 34%, transparent) transparent;
+}
+.reasoning-substream.active .reasoning-substream-text {
+  max-height: 124px;
+}
+.reasoning-substream-text::-webkit-scrollbar {
+  width: 6px;
+}
+.reasoning-substream-text::-webkit-scrollbar-thumb {
+  background: color-mix(in srgb, var(--text-3) 34%, transparent);
+  border-radius: 999px;
 }
 .chat-msg.assistant p,
 .chat-msg.assistant ul,

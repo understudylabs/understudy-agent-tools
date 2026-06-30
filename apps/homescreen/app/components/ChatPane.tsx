@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useState } from "react";
+import { useEffect, useMemo, useRef, useState } from "react";
 import { Channel, invoke } from "@tauri-apps/api/core";
 import {
   Conversation,
@@ -87,6 +87,33 @@ function cleanReasoningText(text: string) {
     .replace(/<\/?think>/gi, "")
     .replace(/^\s*thought\s*$/gim, "")
     .trim();
+}
+
+function ReasoningSubstream({
+  active,
+  text,
+}: {
+  active: boolean;
+  text: string;
+}) {
+  const ref = useRef<HTMLDivElement | null>(null);
+
+  useEffect(() => {
+    if (!ref.current) return;
+    ref.current.scrollTop = ref.current.scrollHeight;
+  }, [text]);
+
+  return (
+    <div className={"reasoning-substream" + (active ? " active" : "")}>
+      <div className="reasoning-substream-label">
+        <span />
+        {active ? "Thinking" : "Thoughts"}
+      </div>
+      <div ref={ref} className="reasoning-substream-text">
+        {text}
+      </div>
+    </div>
+  );
 }
 
 export function ChatPane() {
@@ -238,13 +265,7 @@ export function ChatPane() {
                   <div className="chat-role">{m.role === "assistant" ? m.model ?? "Assistant" : "You"}</div>
                   <MessageContent>
                     {m.role === "assistant" && reasoningText && (
-                      <div className={"reasoning-substream" + (isActiveAssistant ? " active" : "")}>
-                        <div className="reasoning-substream-label">
-                          <span />
-                          {isActiveAssistant ? "Thinking" : "Thoughts"}
-                        </div>
-                        <div className="reasoning-substream-text">{reasoningText}</div>
-                      </div>
+                      <ReasoningSubstream active={isActiveAssistant} text={reasoningText} />
                     )}
                     {m.role === "assistant" ? (
                       <MessageResponse>{m.content || (isActiveAssistant ? "..." : "")}</MessageResponse>
