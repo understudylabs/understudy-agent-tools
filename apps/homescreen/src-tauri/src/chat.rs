@@ -1981,6 +1981,31 @@ fn consume_sidekick_handoffs(app: &AppHandle, session_id: &str) -> Vec<Value> {
     vec![json!({ "role": "system", "content": body })]
 }
 
+fn sidekick_progress_context(app: &AppHandle, session_id: &str, wait_ms: u64) -> Vec<Value> {
+    let Ok(mut events) = app
+        .state::<crate::db::Db>()
+        .list_sidekick_events_for_session(session_id, 8)
+    else {
+        return vec![];
+    };
+    if events.is_empty() {
+        return vec![];
+    }
+    events.reverse();
+    let mut body = format!(
+        "Background sidekick progress. The sidekick was spawned, but no final handoff was ready after {wait_ms}ms. Treat this as monitoring context only; continue with the main answer unless waiting is clearly worth it.\n"
+    );
+    for event in events {
+        body.push_str(&format!(
+            "- {} / {}: {}\n",
+            event.mode,
+            event.stage,
+            compact_line(&event.detail, 220)
+        ));
+    }
+    vec![json!({ "role": "system", "content": body })]
+}
+
 async fn wait_for_sidekick_handoffs(
     app: &AppHandle,
     session_id: &str,
@@ -2013,7 +2038,7 @@ async fn wait_for_sidekick_handoffs(
         "handoff_deferred",
         &format!("main continued after {wait_ms}ms"),
     );
-    vec![]
+    sidekick_progress_context(app, session_id, wait_ms)
 }
 
 /// Stream a chat completion. `route` is "local" (MLX :8089) or "cloud" (gateway).

@@ -855,6 +855,35 @@ impl Db {
             .map_err(Into::into)
     }
 
+    pub fn list_sidekick_events_for_session(
+        &self,
+        session_id: &str,
+        limit: u32,
+    ) -> Result<Vec<SidekickEventRow>> {
+        let conn = self.conn()?;
+        let mut stmt = conn.prepare(
+            "SELECT id, session_id, mode, stage, detail, created_at
+             FROM sidekick_events
+             WHERE session_id=?1
+             ORDER BY id DESC LIMIT ?2",
+        )?;
+        let rows = stmt.query_map(
+            rusqlite::params![session_id, limit.max(1).min(50) as i64],
+            |r| {
+                Ok(SidekickEventRow {
+                    id: r.get::<_, i64>(0)? as u64,
+                    session_id: r.get(1)?,
+                    mode: r.get(2)?,
+                    stage: r.get(3)?,
+                    detail: r.get(4)?,
+                    created_at: r.get(5)?,
+                })
+            },
+        )?;
+        rows.collect::<rusqlite::Result<Vec<_>>>()
+            .map_err(Into::into)
+    }
+
     pub fn load_sidekick_session(&self, session_key: &str) -> Result<Option<String>> {
         let conn = self.conn()?;
         match conn.query_row(
