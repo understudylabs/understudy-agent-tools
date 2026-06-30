@@ -155,6 +155,27 @@ function ReasoningSubstream({
   );
 }
 
+function ChatToolTrace({ tool }: { tool: ToolTrace }) {
+  const shouldAutoOpen = tool.state !== "output-available";
+  const [open, setOpen] = useState(shouldAutoOpen);
+
+  useEffect(() => {
+    setOpen(shouldAutoOpen);
+  }, [shouldAutoOpen]);
+
+  return (
+    <Tool open={open} onOpenChange={setOpen}>
+      <ToolHeader type="dynamic-tool" toolName={tool.name} state={tool.state} />
+      <ToolContent>
+        <ToolInput input={tool.input} />
+        {(tool.output !== undefined || tool.errorText) && (
+          <ToolOutput output={tool.output} errorText={tool.errorText} />
+        )}
+      </ToolContent>
+    </Tool>
+  );
+}
+
 export function ChatPane({ resetToken }: { resetToken: number }) {
   const [messages, setMessages] = useState<Msg[]>([]);
   const [input, setInput] = useState("");
@@ -403,15 +424,7 @@ export function ChatPane({ resetToken }: { resetToken: number }) {
                     {m.role === "assistant" && m.tools && m.tools.length > 0 && (
                       <div className="tool-trace-list">
                         {m.tools.map((tool, idx) => (
-                          <Tool key={`${tool.name}-${idx}`} defaultOpen={tool.state !== "output-available"}>
-                            <ToolHeader type="dynamic-tool" toolName={tool.name} state={tool.state} />
-                            <ToolContent>
-                              <ToolInput input={tool.input} />
-                              {(tool.output !== undefined || tool.errorText) && (
-                                <ToolOutput output={tool.output} errorText={tool.errorText} />
-                              )}
-                            </ToolContent>
-                          </Tool>
+                          <ChatToolTrace key={`${tool.name}-${idx}`} tool={tool} />
                         ))}
                       </div>
                     )}
