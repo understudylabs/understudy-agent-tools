@@ -144,6 +144,7 @@ pub fn run() {
             commands::fusion_benchmark_matrix,
             commands::record_fusion_benchmark,
             commands::fusion_benchmark_results,
+            commands::fusion_benchmark_summary,
             commands::run_fusion_benchmark,
             commands::sidekick_runs,
             commands::set_sidekick_run_feedback,

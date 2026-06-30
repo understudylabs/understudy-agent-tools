@@ -36,6 +36,10 @@ pub fn router(ctx: Ctx) -> Router {
         .route("/api/benchmarks", get(benchmarks))
         .route("/api/fusion/benchmark-matrix", get(fusion_benchmark_matrix))
         .route(
+            "/api/fusion/benchmark-summary",
+            get(fusion_benchmark_summary),
+        )
+        .route(
             "/api/fusion/benchmark-results",
             get(fusion_benchmark_results).post(record_fusion_benchmark),
         )
@@ -162,6 +166,16 @@ async fn fusion_benchmark_results(
 ) -> Result<Json<Value>, (StatusCode, String)> {
     auth(&ctx, &h)?;
     crate::commands::fusion_benchmark_results(ctx.app.clone(), q.limit)
+        .map(|v| Json(json!(v)))
+        .map_err(|e| (StatusCode::BAD_GATEWAY, e))
+}
+async fn fusion_benchmark_summary(
+    State(ctx): State<Ctx>,
+    h: HeaderMap,
+    Query(q): Query<LimitQ>,
+) -> Result<Json<Value>, (StatusCode, String)> {
+    auth(&ctx, &h)?;
+    crate::commands::fusion_benchmark_summary(ctx.app.clone(), q.limit)
         .map(|v| Json(json!(v)))
         .map_err(|e| (StatusCode::BAD_GATEWAY, e))
 }
@@ -312,6 +326,7 @@ fn tools() -> Vec<Value> {
         ("local_benchmarks", "Local live benchmark rows."),
         ("fusion_benchmark_matrix", "Fusion benchmark modes and fixed local task set."),
         ("fusion_benchmark_results", "Recent Fusion benchmark result rows. Args: {limit?}."),
+        ("fusion_benchmark_summary", "Aggregate Fusion benchmark results by route, mode, and model. Args: {limit?}."),
         ("record_fusion_benchmark", "Record one Fusion benchmark result row."),
         ("run_fusion_benchmark", "Plan or run a Fusion benchmark matrix. Args: {run_id?, modes?, task_ids?, model?, dry_run?, record_skips?}."),
         ("aa_models", "Artificial Analysis external pricing/speed/quality."),
@@ -337,6 +352,11 @@ async fn call_tool(ctx: &Ctx, name: &str, args: &Value) -> Result<Value, String>
         "local_benchmarks" => json!(c::local_benchmarks(app).map_err(|e| e.to_string())?),
         "fusion_benchmark_matrix" => json!(c::fusion_benchmark_matrix()),
         "fusion_benchmark_results" => json!(c::fusion_benchmark_results(
+            app,
+            args.get("limit").and_then(|v| v.as_u64()).map(|x| x as u32)
+        )
+        .map_err(|e| e.to_string())?),
+        "fusion_benchmark_summary" => json!(c::fusion_benchmark_summary(
             app,
             args.get("limit").and_then(|v| v.as_u64()).map(|x| x as u32)
         )
