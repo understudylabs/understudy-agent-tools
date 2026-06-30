@@ -2198,7 +2198,8 @@ pub async fn chat_stream(
 ) -> Result<(), String> {
     let started = Instant::now();
     let session_id = session_id.unwrap_or_else(|| "default".to_string());
-    let route = apply_dynamic_chat_route(&app, &session_id, &route, slot_id, &messages, &on_event);
+    let mut route =
+        apply_dynamic_chat_route(&app, &session_id, &route, slot_id, &messages, &on_event);
     let sidekick_spawned = maybe_spawn_parallel_sidekick(
         &app,
         &route,
@@ -2207,7 +2208,7 @@ pub async fn chat_stream(
         &messages,
         Some(&on_event),
     );
-    let (url, bearer, model_field) = match route.as_str() {
+    let (mut url, mut bearer, mut model_field) = match route.as_str() {
         "cloud" => {
             let (base, key) = credentials().ok_or_else(|| "not signed in".to_string())?;
             (
@@ -2256,6 +2257,7 @@ pub async fn chat_stream(
     let mut prompt_tokens = approximate_messages_tokens(&outbound_messages);
     let mut completion_tokens = 0u64;
     let mut tool_count = 0u64;
+    let mut mid_session_escalated = false;
     let compacted = compaction_reason.is_some();
     if let Some(reason) = compaction_reason.as_deref() {
         record_compaction_route_decision(
@@ -2373,6 +2375,45 @@ pub async fn chat_stream(
                 "tool_call_id": call.id,
                 "content": result.to_string(),
             }));
+        }
+
+        if route == "local"
+            && !mid_session_escalated
+            && tool_count >= 3
+            && app
+                .state::<crate::db::Db>()
+                .setting_get("fusion.routing")
+                .as_deref()
+                != Some("off")
+        {
+            if let Some((base, key)) = credentials() {
+                mid_session_escalated = true;
+                route = "cloud".to_string();
+                url = format!("{}/v1/chat/completions", base.trim_end_matches('/'));
+                bearer = Some(key);
+                model_field = "glm-5.2".to_string();
+                if let Some(system) = outbound_messages
+                    .iter_mut()
+                    .find(|message| message.get("role").and_then(|v| v.as_str()) == Some("system"))
+                {
+                    system["content"] = json!(system_prompt_for(&model_field));
+                }
+                let detail = format!(
+                    "local -> cloud · mid_session_tool_depth ({} tool calls)",
+                    tool_count
+                );
+                let _ = app.state::<crate::db::Db>().record_sidekick_event(
+                    &session_id,
+                    "routing",
+                    "mid_session_route_applied",
+                    &detail,
+                );
+                let _ = on_event.send(ChatEvent::SidekickEvent {
+                    mode: "routing".to_string(),
+                    stage: "mid_session_route_applied".to_string(),
+                    detail,
+                });
+            }
         }
     }
 
