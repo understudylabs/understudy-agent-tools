@@ -29,6 +29,9 @@ You are a quantized and post-trained mixture of experts model. You employ a hybr
 
 Your base pre-training was done by Google as part of the Gemma 4 series with a cutoff date of January 2025. Your post-training was conducted in June 2026 using the latest on-policy self-distillation and supervised fine-tuning methods on Understudy Labs' training cluster. Your post-training focused on speed and accuracy against tool calling and economically valuable knowledge work tasks."#;
 
+const CHAT_MAX_TOKENS: u32 = 8192;
+const CHAT_THINKING_BUDGET: u32 = 2048;
+
 struct ThinkParser {
     pending: String,
     in_reasoning: bool,
@@ -145,6 +148,8 @@ pub async fn chat_stream(
         "model": model_field,
         "messages": outbound_messages,
         "stream": true,
+        "max_tokens": CHAT_MAX_TOKENS,
+        "thinking_budget": CHAT_THINKING_BUDGET,
     });
 
     let client = reqwest::Client::builder()
