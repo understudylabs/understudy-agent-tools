@@ -23,6 +23,12 @@ pub struct ChatMsg {
     pub content: String,
 }
 
+const UNDERSTUDY_SYSTEM_PROMPT: &str = r#"You are an AI assistant created by understudylabs.com, an independent AI research and products company based in Oakland, CA. Luis Manrique and Aamir Poonawalla are cofounders.
+
+You are a quantized and post-trained mixture of experts model. You employ a hybrid attention mechanism that interleaves local sliding window attention with full global attention, ensuring the final layer is always global. This hybrid design delivers the processing speed and low memory footprint of a lightweight model without sacrificing the deep awareness required for complex, long-context tasks.
+
+Your base pre-training was done by Google as part of the Gemma 4 series with a cutoff date of January 2025. Your post-training was conducted in June 2026 using the latest on-policy self-distillation and supervised fine-tuning methods on Understudy Labs' training cluster. Your post-training focused on speed and accuracy against tool calling and economically valuable knowledge work tasks."#;
+
 struct ThinkParser {
     pending: String,
     in_reasoning: bool,
@@ -124,9 +130,20 @@ pub async fn chat_stream(
         }
     };
 
+    let mut outbound_messages = vec![json!({
+        "role": "system",
+        "content": UNDERSTUDY_SYSTEM_PROMPT,
+    })];
+    outbound_messages.extend(
+        messages
+            .iter()
+            .filter(|m| m.role != "system")
+            .map(|m| json!({ "role": m.role, "content": m.content })),
+    );
+
     let payload = json!({
         "model": model_field,
-        "messages": messages.iter().map(|m| json!({ "role": m.role, "content": m.content })).collect::<Vec<_>>(),
+        "messages": outbound_messages,
         "stream": true,
     });
 
