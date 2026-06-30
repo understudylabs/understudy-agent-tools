@@ -76,6 +76,7 @@ pub struct RecordFusionBenchmarkRequest {
 pub struct RunFusionBenchmarkRequest {
     pub run_id: Option<String>,
     pub suite: Option<String>,
+    pub candidate: Option<String>,
     pub route: Option<String>,
     pub modes: Option<Vec<String>>,
     pub task_ids: Option<Vec<String>>,
@@ -253,6 +254,10 @@ fn valid_fusion_mode(mode: &str) -> bool {
 
 fn valid_fusion_route(route: &str) -> bool {
     matches!(route, "local" | "gateway")
+}
+
+fn valid_fusion_candidate(candidate: &str) -> bool {
+    matches!(candidate, "gateway-glm" | "local-main" | "local-fast")
 }
 
 fn fusion_benchmark_suite(suite: Option<&str>) -> Result<(Vec<String>, Vec<String>), String> {
@@ -1422,10 +1427,23 @@ pub async fn run_fusion_benchmark(
     if run_id.trim().is_empty() {
         return Err("run_id is required".to_string());
     }
-    let route = request.route.unwrap_or_else(|| "local".to_string());
+    let candidate = request
+        .candidate
+        .unwrap_or_else(|| "local-main".to_string());
+    if !valid_fusion_candidate(&candidate) {
+        return Err(format!("unknown Fusion benchmark candidate: {candidate}"));
+    }
+    let route = request.route.unwrap_or_else(|| {
+        if candidate == "gateway-glm" {
+            "gateway".to_string()
+        } else {
+            "local".to_string()
+        }
+    });
     if !valid_fusion_route(&route) {
         return Err(format!("unknown Fusion benchmark route: {route}"));
     }
+    let requested_model = request.model;
     let dry_run = request.dry_run.unwrap_or(true);
     let record_skips = request.record_skips.unwrap_or(false);
     let (suite_modes, suite_tasks) = fusion_benchmark_suite(request.suite.as_deref())?;
@@ -1446,7 +1464,12 @@ pub async fn run_fusion_benchmark(
                 .as_deref()
                 .is_some_and(|id| id.contains("understudy-small") || id.contains("e2b"))
     });
-    let main_slot_id = warm_main.map(|slot| slot.id);
+    let candidate_main = if candidate == "local-fast" {
+        warm_sidekick.or(warm_main)
+    } else {
+        warm_main
+    };
+    let main_slot_id = candidate_main.map(|slot| slot.id);
     let local_mem_gb = {
         let mem = snapshot
             .slots
@@ -1456,14 +1479,19 @@ pub async fn run_fusion_benchmark(
             .sum::<f64>();
         (mem > 0.0).then_some(mem)
     };
-    let requested_model = request.model;
     let default_model = requested_model
         .clone()
-        .or_else(|| warm_main.and_then(|slot| slot.model_id.clone()))
+        .or_else(|| candidate_main.and_then(|slot| slot.model_id.clone()))
         .unwrap_or_else(|| "unassigned".to_string());
     let gateway_model = requested_model
         .clone()
-        .or_else(|| Some("glm-5.2".to_string()))
+        .or_else(|| {
+            if candidate == "gateway-glm" {
+                Some("glm-5.2".to_string())
+            } else {
+                None
+            }
+        })
         .unwrap_or_else(|| "glm-5.2".to_string());
     let mut rows = vec![];
     let mut recorded_skips = 0u64;
@@ -1475,17 +1503,18 @@ pub async fn run_fusion_benchmark(
             .find(|task| task.id == task_id)
             .ok_or_else(|| format!("unknown Fusion benchmark task: {task_id}"))?;
         for mode in &requested_modes {
-            let recommendation = (mode == "sidekick-routing").then(|| {
-                fusion_route_recommendation(
-                    app.clone(),
-                    FusionRouteRecommendationRequest {
-                        prompt: task.prompt.to_string(),
-                        current_route: Some(route.clone()),
-                        active_slot_id: main_slot_id,
-                        session_id: Some(run_id.clone()),
-                    },
-                )
-            });
+            let recommendation =
+                (mode == "sidekick-routing" && candidate != "gateway-glm").then(|| {
+                    fusion_route_recommendation(
+                        app.clone(),
+                        FusionRouteRecommendationRequest {
+                            prompt: task.prompt.to_string(),
+                            current_route: Some(route.clone()),
+                            active_slot_id: main_slot_id,
+                            session_id: Some(run_id.clone()),
+                        },
+                    )
+                });
             let effective_route = recommendation
                 .as_ref()
                 .map(|rec| rec.route.as_str())
@@ -1517,7 +1546,7 @@ pub async fn run_fusion_benchmark(
             let needs_sidekick = effective_route == "local"
                 && (mode == "sidekick-parallel" || (mode == "sidekick-routing" && policy_sidekick));
             let has_gateway = crate::chat::gateway_credentials_available();
-            let (ready, reason) = if needs_local_main && warm_main.is_none() {
+            let (ready, reason) = if needs_local_main && candidate_main.is_none() {
                 (false, "no_warm_main_model")
             } else if effective_route == "gateway" && !has_gateway {
                 (false, "gateway_not_signed_in")
