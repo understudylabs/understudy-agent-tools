@@ -154,6 +154,7 @@ pub fn run() {
             commands::chat_route_metrics,
             commands::run_fusion_benchmark,
             commands::run_fusion_benchmark_matrix,
+            commands::run_fusion_benchmark_matrix_live,
             commands::sidekick_runs,
             commands::sidekick_metrics,
             commands::set_sidekick_run_feedback,

@@ -182,6 +182,62 @@ pub struct FusionBenchmarkMatrixRun {
 }
 
 #[derive(Serialize, Clone)]
+#[serde(tag = "type")]
+pub enum FusionEvalEvent {
+    RunStarted {
+        run_id: String,
+        suite: String,
+        candidates: Vec<String>,
+        rows: u64,
+    },
+    CandidateStarted {
+        run_id: String,
+        candidate: String,
+    },
+    RowStarted {
+        run_id: String,
+        candidate: String,
+        task_id: String,
+        mode: String,
+        route: String,
+        model: String,
+        prompt: String,
+        expected_signal: String,
+    },
+    RowFinished {
+        run_id: String,
+        candidate: String,
+        task_id: String,
+        mode: String,
+        route: String,
+        model: String,
+        status: String,
+        score: Option<f64>,
+        elapsed_ms: Option<u64>,
+        sidekick_runs: u64,
+        sidekick_tool_calls: u64,
+        output: String,
+        reason: String,
+    },
+    CandidateFinished {
+        run_id: String,
+        candidate: String,
+        rows: u64,
+    },
+    RunFinished {
+        run_id: String,
+        suite: String,
+        rows: u64,
+        recorded_skips: u64,
+        avg_score: Option<f64>,
+    },
+    Error {
+        run_id: String,
+        message: String,
+    },
+}
+
+#[derive(Serialize, Clone)]
 pub struct FusionBenchmarkSummaryGroup {
     pub route: String,
     pub mode: String,
@@ -2020,6 +2076,15 @@ pub async fn run_fusion_benchmark(
     app: AppHandle,
     request: RunFusionBenchmarkRequest,
 ) -> Result<FusionBenchmarkRun, String> {
+    run_fusion_benchmark_inner(app, request, None, None).await
+}
+
+async fn run_fusion_benchmark_inner(
+    app: AppHandle,
+    request: RunFusionBenchmarkRequest,
+    candidate_label: Option<&str>,
+    on_event: Option<&Channel<FusionEvalEvent>>,
+) -> Result<FusionBenchmarkRun, String> {
     let matrix = fusion_benchmark_matrix();
     let run_id = request.run_id.unwrap_or_else(default_fusion_run_id);
     if run_id.trim().is_empty() {
@@ -2155,6 +2220,18 @@ pub async fn run_fusion_benchmark(
             } else {
                 (true, "live_ready")
             };
+            if let Some(on_event) = on_event {
+                let _ = on_event.send(FusionEvalEvent::RowStarted {
+                    run_id: run_id.clone(),
+                    candidate: candidate_label.unwrap_or(&candidate).to_string(),
+                    task_id: task.id.to_string(),
+                    mode: mode.clone(),
+                    route: effective_route.to_string(),
+                    model: effective_model.clone(),
+                    prompt: task.prompt.to_string(),
+                    expected_signal: task.expected_signal.to_string(),
+                });
+            }
             if ready && !dry_run {
                 let before_sidekick_run_ids = app
                     .state::<crate::db::Db>()
@@ -2228,6 +2305,28 @@ pub async fn run_fusion_benchmark(
                                 )),
                             })
                             .map_err(|e| e.to_string())?;
+                        if let Some(on_event) = on_event {
+                            let _ = on_event.send(FusionEvalEvent::RowFinished {
+                                run_id: run_id.clone(),
+                                candidate: candidate_label.unwrap_or(&candidate).to_string(),
+                                task_id: task.id.to_string(),
+                                mode: mode.clone(),
+                                route: effective_route.to_string(),
+                                model: effective_model.clone(),
+                                status: "error".to_string(),
+                                score: Some(0.0),
+                                elapsed_ms: None,
+                                sidekick_runs: sidekick_run_count,
+                                sidekick_tool_calls,
+                                output: String::new(),
+                                reason: format!(
+                                    "error:{}; policy_reason={}; error={}",
+                                    effective_route,
+                                    policy_reason,
+                                    err.replace('\n', " ")
+                                ),
+                            });
+                        }
                         continue;
                     }
                 };
@@ -2268,6 +2367,23 @@ pub async fn run_fusion_benchmark(
                         )),
                     })
                     .map_err(|e| e.to_string())?;
+                if let Some(on_event) = on_event {
+                    let _ = on_event.send(FusionEvalEvent::RowFinished {
+                        run_id: run_id.clone(),
+                        candidate: candidate_label.unwrap_or(&candidate).to_string(),
+                        task_id: task.id.to_string(),
+                        mode: mode.clone(),
+                        route: effective_route.to_string(),
+                        model: effective_model.clone(),
+                        status: result.status.clone(),
+                        score,
+                        elapsed_ms: Some(result.elapsed_ms),
+                        sidekick_runs: sidekick_run_count,
+                        sidekick_tool_calls,
+                        output: truncate_for_event(&result.content, 4000),
+                        reason: format!("{reason}; policy_reason={policy_reason}"),
+                    });
+                }
             } else if !ready && record_skips {
                 app.state::<crate::db::Db>()
                     .record_fusion_benchmark(&FusionBenchmarkInput {
@@ -2290,6 +2406,41 @@ pub async fn run_fusion_benchmark(
                     })
                     .map_err(|e| e.to_string())?;
                 recorded_skips += 1;
+                if let Some(on_event) = on_event {
+                    let _ = on_event.send(FusionEvalEvent::RowFinished {
+                        run_id: run_id.clone(),
+                        candidate: candidate_label.unwrap_or(&candidate).to_string(),
+                        task_id: task.id.to_string(),
+                        mode: mode.clone(),
+                        route: effective_route.to_string(),
+                        model: effective_model.clone(),
+                        status: "skipped".to_string(),
+                        score: None,
+                        elapsed_ms: None,
+                        sidekick_runs: 0,
+                        sidekick_tool_calls: 0,
+                        output: String::new(),
+                        reason: format!("{reason}; policy_reason={policy_reason}"),
+                    });
+                }
+            } else if dry_run {
+                if let Some(on_event) = on_event {
+                    let _ = on_event.send(FusionEvalEvent::RowFinished {
+                        run_id: run_id.clone(),
+                        candidate: candidate_label.unwrap_or(&candidate).to_string(),
+                        task_id: task.id.to_string(),
+                        mode: mode.clone(),
+                        route: effective_route.to_string(),
+                        model: effective_model.clone(),
+                        status: "planned".to_string(),
+                        score: None,
+                        elapsed_ms: None,
+                        sidekick_runs: 0,
+                        sidekick_tool_calls: 0,
+                        output: String::new(),
+                        reason: format!("{reason}; policy_reason={policy_reason}"),
+                    });
+                }
             }
             rows.push(FusionBenchmarkPlanRow {
                 run_id: run_id.clone(),
@@ -2312,6 +2463,17 @@ pub async fn run_fusion_benchmark(
         recorded_skips,
         rows,
     })
+}
+
+fn truncate_for_event(text: &str, max: usize) -> String {
+    if text.len() <= max {
+        return text.to_string();
+    }
+    let mut end = max;
+    while end > 0 && !text.is_char_boundary(end) {
+        end -= 1;
+    }
+    format!("{}…", &text[..end])
 }
 
 #[tauri::command]
@@ -2342,7 +2504,7 @@ pub async fn run_fusion_benchmark_matrix(
     let mut recorded_skips = 0u64;
     for candidate in candidates {
         let candidate_run_id = format!("{run_id}-{candidate}");
-        let run = run_fusion_benchmark(
+        let run = run_fusion_benchmark_inner(
             app.clone(),
             RunFusionBenchmarkRequest {
                 run_id: Some(candidate_run_id),
@@ -2355,12 +2517,116 @@ pub async fn run_fusion_benchmark_matrix(
                 dry_run: Some(dry_run),
                 record_skips: request.record_skips,
             },
+            Some(&candidate),
+            None,
         )
         .await?;
         rows += run.rows.len() as u64;
         recorded_skips += run.recorded_skips;
         runs.push(FusionBenchmarkCandidateRun { candidate, run });
     }
+    Ok(FusionBenchmarkMatrixRun {
+        schema_version: "understudy.fusion_benchmark_matrix_run.v1",
+        run_id,
+        suite,
+        dry_run,
+        candidates: runs,
+        rows,
+        recorded_skips,
+    })
+}
+
+#[tauri::command]
+pub async fn run_fusion_benchmark_matrix_live(
+    app: AppHandle,
+    request: RunFusionBenchmarkMatrixRequest,
+    on_event: Channel<FusionEvalEvent>,
+) -> Result<FusionBenchmarkMatrixRun, String> {
+    let run_id = request.run_id.unwrap_or_else(default_fusion_run_id);
+    if run_id.trim().is_empty() {
+        return Err("run_id is required".to_string());
+    }
+    let suite = request.suite.unwrap_or_else(|| "full-matrix".to_string());
+    let candidates = request.candidates.unwrap_or_else(|| {
+        vec![
+            "gateway-glm".to_string(),
+            "local-main".to_string(),
+            "local-fast".to_string(),
+        ]
+    });
+    for candidate in &candidates {
+        if !valid_fusion_candidate(candidate) {
+            return Err(format!("unknown Fusion benchmark candidate: {candidate}"));
+        }
+    }
+    let dry_run = request.dry_run.unwrap_or(false);
+    let (suite_modes, suite_tasks) = fusion_benchmark_suite(Some(&suite))?;
+    let requested_modes = request.modes.clone().unwrap_or(suite_modes);
+    let requested_tasks = request.task_ids.clone().unwrap_or(suite_tasks);
+    let planned_rows = (candidates.len() * requested_modes.len() * requested_tasks.len()) as u64;
+    let _ = on_event.send(FusionEvalEvent::RunStarted {
+        run_id: run_id.clone(),
+        suite: suite.clone(),
+        candidates: candidates.clone(),
+        rows: planned_rows,
+    });
+
+    let mut runs = vec![];
+    let mut rows = 0u64;
+    let mut recorded_skips = 0u64;
+    for candidate in candidates {
+        let candidate_run_id = format!("{run_id}-{candidate}");
+        let _ = on_event.send(FusionEvalEvent::CandidateStarted {
+            run_id: candidate_run_id.clone(),
+            candidate: candidate.clone(),
+        });
+        let run = match run_fusion_benchmark_inner(
+            app.clone(),
+            RunFusionBenchmarkRequest {
+                run_id: Some(candidate_run_id.clone()),
+                suite: Some(suite.clone()),
+                candidate: Some(candidate.clone()),
+                route: None,
+                modes: request.modes.clone(),
+                task_ids: request.task_ids.clone(),
+                model: None,
+                dry_run: Some(dry_run),
+                record_skips: request.record_skips,
+            },
+            Some(&candidate),
+            Some(&on_event),
+        )
+        .await
+        {
+            Ok(run) => run,
+            Err(err) => {
+                let _ = on_event.send(FusionEvalEvent::Error {
+                    run_id: candidate_run_id,
+                    message: err.clone(),
+                });
+                return Err(err);
+            }
+        };
+        rows += run.rows.len() as u64;
+        recorded_skips += run.recorded_skips;
+        let _ = on_event.send(FusionEvalEvent::CandidateFinished {
+            run_id: run.run_id.clone(),
+            candidate: candidate.clone(),
+            rows: run.rows.len() as u64,
+        });
+        runs.push(FusionBenchmarkCandidateRun { candidate, run });
+    }
+    let avg_score = fusion_benchmark_run_summary(app.clone(), Some(200))
+        .ok()
+        .and_then(|summary| summary.runs.into_iter().find(|run| run.run_id == run_id))
+        .and_then(|run| run.avg_score);
+    let _ = on_event.send(FusionEvalEvent::RunFinished {
+        run_id: run_id.clone(),
+        suite: suite.clone(),
+        rows,
+        recorded_skips,
+        avg_score,
+    });
     Ok(FusionBenchmarkMatrixRun {
         schema_version: "understudy.fusion_benchmark_matrix_run.v1",
         run_id,

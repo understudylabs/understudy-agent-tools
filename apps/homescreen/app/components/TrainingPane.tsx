@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useState } from "react";
-import { invoke } from "@tauri-apps/api/core";
+import { Channel, invoke } from "@tauri-apps/api/core";
 import type { PaneId } from "./Sidebar";
 
 export type TrainingPaneId = Extract<
@@ -119,6 +119,59 @@ type FusionRouteDecision = {
   gateway_model: string | null;
   created_at: string;
 };
+
+type FusionLiveRow = {
+  key: string;
+  run_id: string;
+  candidate: string;
+  task_id: string;
+  mode: string;
+  route: string;
+  model: string;
+  prompt: string;
+  expected_signal: string;
+  status: "queued" | "running" | "ok" | "error" | "skipped" | "planned";
+  score: number | null;
+  elapsed_ms: number | null;
+  sidekick_runs: number;
+  sidekick_tool_calls: number;
+  output: string;
+  reason: string;
+};
+
+type FusionEvalEvent =
+  | { type: "RunStarted"; run_id: string; suite: string; candidates: string[]; rows: number }
+  | { type: "CandidateStarted"; run_id: string; candidate: string }
+  | {
+      type: "RowStarted";
+      run_id: string;
+      candidate: string;
+      task_id: string;
+      mode: string;
+      route: string;
+      model: string;
+      prompt: string;
+      expected_signal: string;
+    }
+  | {
+      type: "RowFinished";
+      run_id: string;
+      candidate: string;
+      task_id: string;
+      mode: string;
+      route: string;
+      model: string;
+      status: string;
+      score: number | null;
+      elapsed_ms: number | null;
+      sidekick_runs: number;
+      sidekick_tool_calls: number;
+      output: string;
+      reason: string;
+    }
+  | { type: "CandidateFinished"; run_id: string; candidate: string; rows: number }
+  | { type: "RunFinished"; run_id: string; suite: string; rows: number; recorded_skips: number; avg_score: number | null }
+  | { type: "Error"; run_id: string; message: string };
 
 const SECTIONS: Record<TrainingPaneId, {
   title: string;
@@ -244,6 +297,11 @@ function FusionEvaluationPane() {
   const [candidate, setCandidate] = useState("local-fast");
   const [busy, setBusy] = useState<"plan" | "run" | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [liveRunId, setLiveRunId] = useState<string | null>(null);
+  const [liveSuite, setLiveSuite] = useState<string | null>(null);
+  const [liveRows, setLiveRows] = useState<FusionLiveRow[]>([]);
+  const [activeRowKey, setActiveRowKey] = useState<string | null>(null);
+  const [finishedScore, setFinishedScore] = useState<number | null>(null);
 
   const refresh = async () => {
     const [nextMatrix, nextSummary, nextDecisions] = await Promise.all([
@@ -289,6 +347,89 @@ function FusionEvaluationPane() {
     setBusy(dryRun ? "plan" : "run");
     setError(null);
     try {
+      if (!dryRun) {
+        const ch = new Channel<FusionEvalEvent>();
+        ch.onmessage = (event) => {
+          if (event.type === "RunStarted") {
+            setLiveRunId(event.run_id);
+            setLiveSuite(event.suite);
+            setFinishedScore(null);
+            setLiveRows([]);
+            setActiveRowKey(null);
+            return;
+          }
+          if (event.type === "RowStarted") {
+            const key = `${event.candidate}:${event.task_id}:${event.mode}`;
+            setActiveRowKey(key);
+            setLiveRows((rows) => {
+              const nextRow: FusionLiveRow = {
+                key,
+                run_id: event.run_id,
+                candidate: event.candidate,
+                task_id: event.task_id,
+                mode: event.mode,
+                route: event.route,
+                model: event.model,
+                prompt: event.prompt,
+                expected_signal: event.expected_signal,
+                status: "running",
+                score: null,
+                elapsed_ms: null,
+                sidekick_runs: 0,
+                sidekick_tool_calls: 0,
+                output: "",
+                reason: "",
+              };
+              const existing = rows.findIndex((row) => row.key === key);
+              if (existing === -1) return [...rows, nextRow];
+              return rows.map((row, index) => index === existing ? { ...row, ...nextRow } : row);
+            });
+            return;
+          }
+          if (event.type === "RowFinished") {
+            const key = `${event.candidate}:${event.task_id}:${event.mode}`;
+            setActiveRowKey(key);
+            setLiveRows((rows) =>
+              rows.map((row) =>
+                row.key === key
+                  ? {
+                      ...row,
+                      status: normalizeRowStatus(event.status),
+                      score: event.score,
+                      elapsed_ms: event.elapsed_ms,
+                      sidekick_runs: event.sidekick_runs,
+                      sidekick_tool_calls: event.sidekick_tool_calls,
+                      output: event.output,
+                      reason: event.reason,
+                    }
+                  : row,
+              ),
+            );
+            return;
+          }
+          if (event.type === "RunFinished") {
+            setFinishedScore(event.avg_score);
+            setActiveRowKey(null);
+            return;
+          }
+          if (event.type === "Error") {
+            setError(event.message);
+          }
+        };
+        const result = await invoke<FusionMatrixRun>("run_fusion_benchmark_matrix_live", {
+          request: {
+            suite,
+            candidates: [candidate],
+            dry_run: false,
+            record_skips: true,
+          },
+          onEvent: ch,
+        });
+        setPlan(result);
+        await refresh();
+        return;
+      }
+
       const result = await invoke<FusionMatrixRun>("run_fusion_benchmark_matrix", {
         request: {
           suite,
@@ -305,6 +446,13 @@ function FusionEvaluationPane() {
       setBusy(null);
     }
   };
+  const activeRow = liveRows.find((row) => row.key === activeRowKey) ?? liveRows.at(-1) ?? null;
+  const completedRows = liveRows.filter((row) => ["ok", "error", "skipped"].includes(row.status));
+  const visibleScore =
+    finishedScore ??
+    (completedRows.length
+      ? completedRows.reduce((sum, row) => sum + (row.score ?? 0), 0) / completedRows.length
+      : null);
 
   return (
     <>
@@ -374,6 +522,58 @@ function FusionEvaluationPane() {
           {error && <div className="eval-error">{error}</div>}
         </div>
 
+        {(busy === "run" || liveRows.length > 0) && (
+          <div className="card evals-wide rollout-live">
+            <div className="card-row">
+              <div>
+                <div className="card-title">Live rollout</div>
+                <div className="card-sub">
+                  {liveRunId ?? "Starting"} · {completedRows.length}/{liveRows.length || currentSuite?.task_ids.length || 0} rows
+                </div>
+              </div>
+              <span className="score-pill">{visibleScore == null ? "scoring" : visibleScore.toFixed(2)}</span>
+            </div>
+            <div className="rollout-progress">
+              <span style={{ width: `${progressPct(completedRows.length, liveRows.length || currentSuite?.task_ids.length || 1)}%` }} />
+            </div>
+            <div className="rollout-grid">
+              <div className="rollout-queue">
+                {liveRows.length ? liveRows.map((row) => (
+                  <button
+                    type="button"
+                    className={"rollout-row " + row.status + (row.key === activeRow?.key ? " active" : "")}
+                    key={row.key}
+                    onClick={() => setActiveRowKey(row.key)}
+                  >
+                    <span>{row.task_id}</span>
+                    <span>{row.mode}</span>
+                    <strong>{row.score == null ? row.status : row.score.toFixed(2)}</strong>
+                  </button>
+                )) : (
+                  <div className="svc-desc">Waiting for first row...</div>
+                )}
+              </div>
+              <div className="rollout-detail">
+                {activeRow ? (
+                  <>
+                    <div className="rollout-meta">
+                      <span>{activeRow.candidate}</span>
+                      <span>{activeRow.route}</span>
+                      <span>{activeRow.elapsed_ms == null ? "running" : `${activeRow.elapsed_ms}ms`}</span>
+                      <span>{activeRow.sidekick_runs ? `${activeRow.sidekick_runs} sidekick` : activeRow.mode}</span>
+                    </div>
+                    <div className="rollout-question">{activeRow.prompt}</div>
+                    <div className="rollout-expected">{activeRow.expected_signal}</div>
+                    <pre className="rollout-output">{activeRow.output || (activeRow.status === "running" ? "Generating..." : activeRow.reason)}</pre>
+                  </>
+                ) : (
+                  <div className="svc-desc">Run a local smoke to watch the rollout and score row by row.</div>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
+
         {plan && (
           <div className="card evals-wide">
             <div className="card-row">
@@ -439,6 +639,16 @@ function FusionEvaluationPane() {
       </div>
     </>
   );
+}
+
+function normalizeRowStatus(status: string): FusionLiveRow["status"] {
+  if (status === "ok" || status === "error" || status === "skipped" || status === "planned") return status;
+  return status.trim() ? "ok" : "error";
+}
+
+function progressPct(done: number, total: number): number {
+  if (!total) return 0;
+  return Math.max(4, Math.min(100, Math.round((done / total) * 100)));
 }
 
 function TrainingStep({ title, body, state }: { title: string; body: string; state: "ready" | "idle" | "blocked" }) {
