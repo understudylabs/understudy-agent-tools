@@ -39,6 +39,7 @@ pub fn router(ctx: Ctx) -> Router {
             "/api/fusion/route-recommendation",
             post(fusion_route_recommendation),
         )
+        .route("/api/fusion/route-decisions", get(fusion_route_decisions))
         .route(
             "/api/fusion/benchmark-summary",
             get(fusion_benchmark_summary),
@@ -177,6 +178,16 @@ async fn fusion_route_recommendation(
         ctx.app.clone(),
         body
     ))))
+}
+async fn fusion_route_decisions(
+    State(ctx): State<Ctx>,
+    h: HeaderMap,
+    Query(q): Query<LimitQ>,
+) -> Result<Json<Value>, (StatusCode, String)> {
+    auth(&ctx, &h)?;
+    crate::commands::fusion_route_decisions(ctx.app.clone(), q.limit)
+        .map(|v| Json(json!(v)))
+        .map_err(|e| (StatusCode::BAD_GATEWAY, e))
 }
 async fn fusion_benchmark_results(
     State(ctx): State<Ctx>,
@@ -385,6 +396,7 @@ fn tools() -> Vec<Value> {
         ("local_benchmarks", "Local live benchmark rows."),
         ("fusion_benchmark_matrix", "Fusion benchmark modes and fixed local task set."),
         ("fusion_route_recommendation", "Recommend local, local+sidekick, or gateway for a prompt. Args: {prompt, current_route?, active_slot_id?}."),
+        ("fusion_route_decisions", "Recent persisted Fusion route policy decisions with sidekick, gateway, token, and memory accounting. Args: {limit?}."),
         ("fusion_benchmark_results", "Recent Fusion benchmark result rows. Args: {limit?}."),
         ("fusion_benchmark_summary", "Aggregate Fusion benchmark results by route, mode, and model. Args: {limit?}."),
         ("chat_runs", "Recent desktop chat route accounting rows. Args: {limit?}."),
@@ -421,6 +433,11 @@ async fn call_tool(ctx: &Ctx, name: &str, args: &Value) -> Result<Value, String>
                     .map_err(|e| format!("invalid Fusion route request: {e}"))?;
             json!(c::fusion_route_recommendation(app, request))
         }
+        "fusion_route_decisions" => json!(c::fusion_route_decisions(
+            app,
+            args.get("limit").and_then(|v| v.as_u64()).map(|x| x as u32)
+        )
+        .map_err(|e| e.to_string())?),
         "fusion_benchmark_results" => json!(c::fusion_benchmark_results(
             app,
             args.get("limit").and_then(|v| v.as_u64()).map(|x| x as u32)

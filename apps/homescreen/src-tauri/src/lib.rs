@@ -143,6 +143,7 @@ pub fn run() {
             commands::local_benchmarks,
             commands::fusion_benchmark_matrix,
             commands::fusion_route_recommendation,
+            commands::fusion_route_decisions,
             commands::record_fusion_benchmark,
             commands::fusion_benchmark_results,
             commands::fusion_benchmark_summary,

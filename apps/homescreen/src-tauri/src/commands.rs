@@ -2,8 +2,9 @@ use crate::aa::{self, AaModel};
 use crate::account;
 use crate::bin;
 use crate::db::{
-    BenchRow, ChatRunRow, FusionBenchmarkInput, FusionBenchmarkRow, SidekickDecisionRow,
-    SidekickEventRow, SidekickRunRow, SidekickSessionSummaryRow,
+    BenchRow, ChatRunRow, FusionBenchmarkInput, FusionBenchmarkRow, FusionRouteDecisionInput,
+    FusionRouteDecisionRow, SidekickDecisionRow, SidekickEventRow, SidekickRunRow,
+    SidekickSessionSummaryRow,
 };
 use crate::knowledge::{self, Dossier};
 use crate::mcp;
@@ -210,6 +211,18 @@ fn avg(values: &[f64]) -> Option<f64> {
     } else {
         Some(values.iter().sum::<f64>() / values.len() as f64)
     }
+}
+
+fn prompt_excerpt(prompt: &str) -> String {
+    let trimmed = prompt.trim();
+    if trimmed.len() <= 240 {
+        return trimmed.to_string();
+    }
+    let mut end = 240;
+    while end > 0 && !trimmed.is_char_boundary(end) {
+        end -= 1;
+    }
+    format!("{}...", &trimmed[..end])
 }
 
 fn default_fusion_run_id() -> String {
@@ -700,6 +713,12 @@ pub fn fusion_route_recommendation(
     let sidekick = residency(&app).sidekick_endpoint(main_slot.as_ref().map(|slot| slot.id));
     let sidekick_ready = sidekick.is_some();
     let gateway_ready = crate::chat::gateway_credentials_available();
+    let local_mem_gb = snapshot
+        .slots
+        .iter()
+        .filter(|slot| slot.state == "running")
+        .map(|slot| slot.mem_gb as f64)
+        .sum::<f64>();
 
     let prompt = request.prompt.trim();
     let current_route = request.current_route.as_deref();
@@ -839,19 +858,51 @@ pub fn fusion_route_recommendation(
             ("local", false, false, "no_ready_route")
         };
 
-    FusionRouteRecommendation {
+    let main_model = main_slot.and_then(|slot| slot.model_id);
+    let sidekick_model = sidekick.map(|(_, _, _, model_id)| model_id);
+    let gateway_model = gateway_ready.then(|| "glm-5.2".to_string());
+    let recommendation = FusionRouteRecommendation {
         schema_version: "understudy.fusion_route_recommendation.v1",
         route: route.to_string(),
         use_sidekick,
         escalate_gateway,
         reason: reason.to_string(),
-        main_model: main_slot.and_then(|slot| slot.model_id),
-        sidekick_model: sidekick.map(|(_, _, _, model_id)| model_id),
-        gateway_model: gateway_ready.then(|| "glm-5.2".to_string()),
+        main_model,
+        sidekick_model,
+        gateway_model,
         local_ready,
         sidekick_ready,
         gateway_ready,
-    }
+    };
+    let _ = app
+        .state::<crate::db::Db>()
+        .record_fusion_route_decision(&FusionRouteDecisionInput {
+            prompt_excerpt: prompt_excerpt(prompt),
+            current_route: request.current_route,
+            recommended_route: recommendation.route.clone(),
+            use_sidekick: recommendation.use_sidekick,
+            escalate_gateway: recommendation.escalate_gateway,
+            reason: recommendation.reason.clone(),
+            main_model: recommendation.main_model.clone(),
+            sidekick_model: recommendation.sidekick_model.clone(),
+            gateway_model: recommendation.gateway_model.clone(),
+            local_ready: recommendation.local_ready,
+            sidekick_ready: recommendation.sidekick_ready,
+            gateway_ready: recommendation.gateway_ready,
+            prompt_tokens: prompt.split_whitespace().count() as u64,
+            local_mem_gb: (local_mem_gb > 0.0).then_some(local_mem_gb),
+        });
+    recommendation
+}
+
+#[tauri::command]
+pub fn fusion_route_decisions(
+    app: AppHandle,
+    limit: Option<u32>,
+) -> Result<Vec<FusionRouteDecisionRow>, String> {
+    app.state::<crate::db::Db>()
+        .list_fusion_route_decisions(limit.unwrap_or(100))
+        .map_err(|e| e.to_string())
 }
 
 #[tauri::command]

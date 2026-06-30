@@ -54,6 +54,44 @@ pub struct FusionBenchmarkInput {
 }
 
 #[derive(Serialize, Clone)]
+pub struct FusionRouteDecisionRow {
+    pub id: u64,
+    pub prompt_excerpt: String,
+    pub current_route: Option<String>,
+    pub recommended_route: String,
+    pub use_sidekick: bool,
+    pub escalate_gateway: bool,
+    pub reason: String,
+    pub main_model: Option<String>,
+    pub sidekick_model: Option<String>,
+    pub gateway_model: Option<String>,
+    pub local_ready: bool,
+    pub sidekick_ready: bool,
+    pub gateway_ready: bool,
+    pub prompt_tokens: u64,
+    pub local_mem_gb: Option<f64>,
+    pub created_at: String,
+}
+
+#[derive(Clone, Debug)]
+pub struct FusionRouteDecisionInput {
+    pub prompt_excerpt: String,
+    pub current_route: Option<String>,
+    pub recommended_route: String,
+    pub use_sidekick: bool,
+    pub escalate_gateway: bool,
+    pub reason: String,
+    pub main_model: Option<String>,
+    pub sidekick_model: Option<String>,
+    pub gateway_model: Option<String>,
+    pub local_ready: bool,
+    pub sidekick_ready: bool,
+    pub gateway_ready: bool,
+    pub prompt_tokens: u64,
+    pub local_mem_gb: Option<f64>,
+}
+
+#[derive(Serialize, Clone)]
 pub struct ChatRunRow {
     pub id: u64,
     pub session_id: String,
@@ -190,6 +228,24 @@ impl Db {
                 score               REAL,
                 notes               TEXT,
                 run_at              TEXT NOT NULL
+            );
+            CREATE TABLE IF NOT EXISTS fusion_route_decisions (
+                id                  INTEGER PRIMARY KEY,
+                prompt_excerpt      TEXT NOT NULL,
+                current_route       TEXT,
+                recommended_route   TEXT NOT NULL,
+                use_sidekick        INTEGER NOT NULL DEFAULT 0,
+                escalate_gateway    INTEGER NOT NULL DEFAULT 0,
+                reason              TEXT NOT NULL,
+                main_model          TEXT,
+                sidekick_model      TEXT,
+                gateway_model       TEXT,
+                local_ready         INTEGER NOT NULL DEFAULT 0,
+                sidekick_ready      INTEGER NOT NULL DEFAULT 0,
+                gateway_ready       INTEGER NOT NULL DEFAULT 0,
+                prompt_tokens       INTEGER NOT NULL DEFAULT 0,
+                local_mem_gb        REAL,
+                created_at          TEXT NOT NULL
             );
             CREATE TABLE IF NOT EXISTS chat_history (
                 id          INTEGER PRIMARY KEY,
@@ -407,6 +463,68 @@ impl Db {
             ],
         )?;
         Ok(())
+    }
+
+    pub fn record_fusion_route_decision(&self, input: &FusionRouteDecisionInput) -> Result<()> {
+        let conn = self.conn()?;
+        conn.execute(
+            "INSERT INTO fusion_route_decisions (
+                prompt_excerpt, current_route, recommended_route, use_sidekick, escalate_gateway,
+                reason, main_model, sidekick_model, gateway_model, local_ready, sidekick_ready,
+                gateway_ready, prompt_tokens, local_mem_gb, created_at
+             ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15)",
+            rusqlite::params![
+                input.prompt_excerpt,
+                input.current_route,
+                input.recommended_route,
+                input.use_sidekick as i64,
+                input.escalate_gateway as i64,
+                input.reason,
+                input.main_model,
+                input.sidekick_model,
+                input.gateway_model,
+                input.local_ready as i64,
+                input.sidekick_ready as i64,
+                input.gateway_ready as i64,
+                input.prompt_tokens as i64,
+                input.local_mem_gb,
+                now_iso(),
+            ],
+        )?;
+        Ok(())
+    }
+
+    pub fn list_fusion_route_decisions(&self, limit: u32) -> Result<Vec<FusionRouteDecisionRow>> {
+        let conn = self.conn()?;
+        let mut stmt = conn.prepare(
+            "SELECT id, prompt_excerpt, current_route, recommended_route, use_sidekick,
+                    escalate_gateway, reason, main_model, sidekick_model, gateway_model,
+                    local_ready, sidekick_ready, gateway_ready, prompt_tokens, local_mem_gb,
+                    created_at
+             FROM fusion_route_decisions ORDER BY id DESC LIMIT ?1",
+        )?;
+        let rows = stmt.query_map([limit.max(1).min(500) as i64], |r| {
+            Ok(FusionRouteDecisionRow {
+                id: r.get::<_, i64>(0)? as u64,
+                prompt_excerpt: r.get(1)?,
+                current_route: r.get(2)?,
+                recommended_route: r.get(3)?,
+                use_sidekick: r.get::<_, i64>(4)? != 0,
+                escalate_gateway: r.get::<_, i64>(5)? != 0,
+                reason: r.get(6)?,
+                main_model: r.get(7)?,
+                sidekick_model: r.get(8)?,
+                gateway_model: r.get(9)?,
+                local_ready: r.get::<_, i64>(10)? != 0,
+                sidekick_ready: r.get::<_, i64>(11)? != 0,
+                gateway_ready: r.get::<_, i64>(12)? != 0,
+                prompt_tokens: r.get::<_, i64>(13)? as u64,
+                local_mem_gb: r.get(14)?,
+                created_at: r.get(15)?,
+            })
+        })?;
+        rows.collect::<rusqlite::Result<Vec<_>>>()
+            .map_err(Into::into)
     }
 
     pub fn record_chat_run(&self, input: &ChatRunInput) -> Result<()> {
