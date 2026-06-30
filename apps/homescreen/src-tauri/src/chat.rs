@@ -220,10 +220,6 @@ fn sidekick_memory_entry(message: &Value) -> Option<String> {
 }
 
 fn compact_sidekick_messages(messages: Vec<Value>) -> Vec<Value> {
-    if messages.len() <= SIDEKICK_MAX_CONTEXT_MESSAGES {
-        return messages;
-    }
-
     let system = messages.first().cloned();
     let mut existing_memory = None;
     let mut non_system = vec![];
@@ -268,7 +264,10 @@ fn compact_sidekick_messages(messages: Vec<Value>) -> Vec<Value> {
     let mut finding_lines = vec![];
     let mut tool_lines = vec![];
     let mut escalation_lines = vec![];
-    for message in older.iter().rev().take(8).rev() {
+    let summary_source = if older.is_empty() { &non_system } else { older };
+    let mut summary_messages: Vec<&Value> = summary_source.iter().rev().take(8).collect();
+    summary_messages.reverse();
+    for message in summary_messages {
         if let Some(entry) = sidekick_memory_entry(message) {
             if entry.starts_with("Task request:") {
                 task_lines.push(entry);
