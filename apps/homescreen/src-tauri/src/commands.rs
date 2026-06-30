@@ -1378,7 +1378,7 @@ pub async fn run_fusion_benchmark(
                         &effective_model,
                         allow_sidekick_tool,
                     )
-                    .await?
+                    .await
                 } else {
                     let slot_id = main_slot_id.ok_or_else(|| "no warm main slot".to_string())?;
                     crate::chat::benchmark_local_chat(
@@ -1390,7 +1390,7 @@ pub async fn run_fusion_benchmark(
                         needs_sidekick,
                         allow_sidekick_tool,
                     )
-                    .await?
+                    .await
                 };
                 let sidekick_runs: Vec<_> = app
                     .state::<crate::db::Db>()
@@ -1403,6 +1403,38 @@ pub async fn run_fusion_benchmark(
                 let sidekick_run_count = sidekick_runs.len() as u64;
                 let sidekick_tool_calls =
                     sidekick_runs.iter().map(|run| run.tool_calls).sum::<u64>();
+                let result = match result {
+                    Ok(result) => result,
+                    Err(err) => {
+                        app.state::<crate::db::Db>()
+                            .record_fusion_benchmark(&FusionBenchmarkInput {
+                                run_id: run_id.clone(),
+                                task_id: task.id.to_string(),
+                                mode: mode.clone(),
+                                model: effective_model.clone(),
+                                elapsed_ms: None,
+                                prompt_tokens: Some(task.prompt.split_whitespace().count() as u64),
+                                completion_tokens: None,
+                                sidekick_runs: sidekick_run_count,
+                                sidekick_tool_calls,
+                                gateway_used: effective_route == "gateway",
+                                compacted: false,
+                                context_tokens_before: Some(
+                                    task.prompt.split_whitespace().count() as u64
+                                ),
+                                local_mem_gb: effective_local_mem_gb,
+                                score: Some(0.0),
+                                notes: Some(format!(
+                                    "error:{}; status=error; policy_reason={}; error={}",
+                                    effective_route,
+                                    policy_reason,
+                                    err.replace('\n', " ")
+                                )),
+                            })
+                            .map_err(|e| e.to_string())?;
+                        continue;
+                    }
+                };
                 let score = Some(fusion_benchmark_score(
                     task.id,
                     mode,
