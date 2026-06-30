@@ -55,6 +55,62 @@ fn sidekick_sessions() -> &'static Mutex<HashMap<String, Vec<Value>>> {
     SIDEKICK_SESSIONS.get_or_init(|| Mutex::new(HashMap::new()))
 }
 
+fn initial_sidekick_messages(profile: &SidekickProfile) -> Vec<Value> {
+    vec![json!({
+        "role": "system",
+        "content": profile.system_prompt,
+    })]
+}
+
+fn load_sidekick_messages(
+    app: &AppHandle,
+    key: &str,
+    profile: &SidekickProfile,
+) -> Result<Vec<Value>, String> {
+    {
+        let sessions = sidekick_sessions()
+            .lock()
+            .map_err(|_| "sidekick session lock poisoned".to_string())?;
+        if let Some(messages) = sessions.get(key) {
+            return Ok(messages.clone());
+        }
+    }
+    let messages = app
+        .state::<crate::db::Db>()
+        .load_sidekick_session(key)
+        .ok()
+        .flatten()
+        .and_then(|raw| serde_json::from_str::<Vec<Value>>(&raw).ok())
+        .filter(|messages| !messages.is_empty())
+        .unwrap_or_else(|| initial_sidekick_messages(profile));
+    {
+        let mut sessions = sidekick_sessions()
+            .lock()
+            .map_err(|_| "sidekick session lock poisoned".to_string())?;
+        sessions.insert(key.to_string(), messages.clone());
+    }
+    Ok(messages)
+}
+
+fn save_sidekick_messages(
+    app: &AppHandle,
+    key: &str,
+    session_id: &str,
+    model_path: &str,
+    messages: &[Value],
+) -> Result<(), String> {
+    let raw = serde_json::to_string(messages)
+        .map_err(|e| format!("sidekick session serialize failed: {e}"))?;
+    app.state::<crate::db::Db>()
+        .save_sidekick_session(key, session_id, model_path, &raw)
+        .map_err(|e| format!("sidekick session persist failed: {e}"))?;
+    let mut sessions = sidekick_sessions()
+        .lock()
+        .map_err(|_| "sidekick session lock poisoned".to_string())?;
+    sessions.insert(key.to_string(), messages.to_vec());
+    Ok(())
+}
+
 #[derive(Deserialize)]
 struct ModelCard {
     id: String,
@@ -680,18 +736,7 @@ async fn call_sidekick_model(
         "Task:\n{task}\n\nContext:\n{context}\n\nExpected output:\n{expected_output}\n\nReturn only the useful result for the main model."
     );
     let key = format!("{session_id}:{model_path}");
-    let mut messages = {
-        let mut sessions = sidekick_sessions()
-            .lock()
-            .map_err(|_| "sidekick session lock poisoned".to_string())?;
-        sessions.entry(key.clone()).or_insert_with(|| {
-            vec![json!({
-                "role": "system",
-                "content": profile.system_prompt,
-            })]
-        });
-        sessions.get(&key).cloned().unwrap_or_default()
-    };
+    let mut messages = load_sidekick_messages(app, &key, profile)?;
     messages.push(json!({ "role": "user", "content": user }));
 
     let client = reqwest::Client::new();
@@ -776,12 +821,7 @@ async fn call_sidekick_model(
         messages = compacted;
     }
     let session_messages = messages.len();
-    {
-        let mut sessions = sidekick_sessions()
-            .lock()
-            .map_err(|_| "sidekick session lock poisoned".to_string())?;
-        sessions.insert(key, messages);
-    }
+    save_sidekick_messages(app, &key, session_id, model_path, &messages)?;
 
     Ok(SidekickRunResult {
         content: final_content,

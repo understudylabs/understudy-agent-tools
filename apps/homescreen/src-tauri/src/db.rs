@@ -122,6 +122,13 @@ impl Db {
                 stage      TEXT NOT NULL,
                 detail     TEXT NOT NULL,
                 created_at TEXT NOT NULL
+            );
+            CREATE TABLE IF NOT EXISTS sidekick_sessions (
+                session_key TEXT PRIMARY KEY,
+                session_id  TEXT NOT NULL,
+                model       TEXT NOT NULL,
+                messages    TEXT NOT NULL,
+                updated_at  TEXT NOT NULL
             );",
         )?;
         let _ = conn.execute(
@@ -425,6 +432,40 @@ impl Db {
         })?;
         rows.collect::<rusqlite::Result<Vec<_>>>()
             .map_err(Into::into)
+    }
+
+    pub fn load_sidekick_session(&self, session_key: &str) -> Result<Option<String>> {
+        let conn = self.conn()?;
+        match conn.query_row(
+            "SELECT messages FROM sidekick_sessions WHERE session_key=?1",
+            [session_key],
+            |r| r.get::<_, String>(0),
+        ) {
+            Ok(messages) => Ok(Some(messages)),
+            Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
+            Err(err) => Err(err.into()),
+        }
+    }
+
+    pub fn save_sidekick_session(
+        &self,
+        session_key: &str,
+        session_id: &str,
+        model: &str,
+        messages: &str,
+    ) -> Result<()> {
+        let conn = self.conn()?;
+        conn.execute(
+            "INSERT INTO sidekick_sessions(session_key, session_id, model, messages, updated_at)
+             VALUES(?1, ?2, ?3, ?4, ?5)
+             ON CONFLICT(session_key) DO UPDATE SET
+                session_id=excluded.session_id,
+                model=excluded.model,
+                messages=excluded.messages,
+                updated_at=excluded.updated_at",
+            rusqlite::params![session_key, session_id, model, messages, now_iso()],
+        )?;
+        Ok(())
     }
 }
 
