@@ -212,6 +212,24 @@ pub struct FusionBenchmarkComparisonPacket {
     pub created_at: String,
     pub source: &'static str,
     pub summary: FusionBenchmarkRunSummary,
+    pub route_policy: FusionRoutePolicyExport,
+}
+
+#[derive(Serialize, Clone)]
+pub struct FusionRoutePolicySummary {
+    pub policy_class: String,
+    pub rows: u64,
+    pub sidekick_rows: u64,
+    pub gateway_rows: u64,
+    pub local_rows: u64,
+}
+
+#[derive(Serialize, Clone)]
+pub struct FusionRoutePolicyExport {
+    pub schema_version: &'static str,
+    pub rows: u64,
+    pub groups: Vec<FusionRoutePolicySummary>,
+    pub decisions: Vec<FusionRouteDecisionRow>,
 }
 
 #[derive(Serialize, Clone)]
@@ -1463,12 +1481,48 @@ pub fn export_fusion_benchmark_comparison(
     app: AppHandle,
     request: ExportFusionBenchmarkComparisonRequest,
 ) -> Result<FusionBenchmarkComparisonExport, String> {
-    let summary = fusion_benchmark_run_summary(app, request.limit)?;
+    let limit = request.limit.unwrap_or(500);
+    let summary = fusion_benchmark_run_summary(app.clone(), Some(limit))?;
+    let decisions = app
+        .state::<crate::db::Db>()
+        .list_fusion_route_decisions(limit)
+        .map_err(|e| e.to_string())?;
+    let mut groups_by_policy: std::collections::BTreeMap<String, Vec<FusionRouteDecisionRow>> =
+        std::collections::BTreeMap::new();
+    for decision in decisions.iter().cloned() {
+        groups_by_policy
+            .entry(decision.policy_class.clone())
+            .or_default()
+            .push(decision);
+    }
+    let mut groups = groups_by_policy
+        .into_iter()
+        .map(|(policy_class, rows)| FusionRoutePolicySummary {
+            policy_class,
+            rows: rows.len() as u64,
+            sidekick_rows: rows.iter().filter(|row| row.use_sidekick).count() as u64,
+            gateway_rows: rows
+                .iter()
+                .filter(|row| row.escalate_gateway || row.recommended_route == "gateway")
+                .count() as u64,
+            local_rows: rows
+                .iter()
+                .filter(|row| row.recommended_route == "local")
+                .count() as u64,
+        })
+        .collect::<Vec<_>>();
+    groups.sort_by(|a, b| b.rows.cmp(&a.rows));
     let packet = FusionBenchmarkComparisonPacket {
         schema_version: "understudy.fusion_benchmark_comparison.v1",
         created_at: chrono::Utc::now().to_rfc3339(),
         source: "desktop-fusion-benchmark",
         summary,
+        route_policy: FusionRoutePolicyExport {
+            schema_version: "understudy.fusion_route_policy_export.v1",
+            rows: decisions.len() as u64,
+            groups,
+            decisions,
+        },
     };
     let path = request.output_path.map(PathBuf::from).unwrap_or_else(|| {
         PathBuf::from(".understudy")
