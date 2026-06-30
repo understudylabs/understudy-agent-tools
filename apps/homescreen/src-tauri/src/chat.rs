@@ -1428,10 +1428,13 @@ fn benchmark_prompt(prompt: &str) -> String {
     )
 }
 
-fn benchmark_finalize_prompt() -> Value {
+fn benchmark_finalize_prompt(reasoning: &str) -> Value {
+    let reasoning = truncate_tool_output(reasoning.to_string());
     json!({
         "role": "user",
-        "content": "Your previous turn produced reasoning or tool work but no final answer. Provide the concise final benchmark answer now. Do not call tools unless absolutely necessary.",
+        "content": format!(
+            "Your previous turn produced reasoning or tool work but no final answer. Use the bounded reasoning/context below as notes and provide the concise final benchmark answer now. Do not call tools unless absolutely necessary.\n\nPrevious reasoning/context:\n{reasoning}"
+        ),
     })
 }
 
@@ -2021,13 +2024,14 @@ pub async fn benchmark_local_chat(
         reasoning_tokens += approximate_token_count(&result.reasoning);
         let tool_calls = result.tool_calls;
         if tool_calls.is_empty() {
-            if final_content.trim().is_empty()
-                && !result.reasoning.trim().is_empty()
-                && !repaired_empty_final
-            {
+            if final_content.trim().is_empty() && !repaired_empty_final {
                 repaired_empty_final = true;
-                outbound_messages.push(benchmark_finalize_prompt());
+                outbound_messages.push(benchmark_finalize_prompt(&result.reasoning));
                 continue;
+            }
+            if final_content.trim().is_empty() {
+                status = "empty_final".to_string();
+                break;
             }
             status = "ok".to_string();
             break;
@@ -2122,13 +2126,14 @@ pub async fn benchmark_gateway_chat(
         reasoning_tokens += approximate_token_count(&result.reasoning);
         let tool_calls = result.tool_calls;
         if tool_calls.is_empty() {
-            if final_content.trim().is_empty()
-                && !result.reasoning.trim().is_empty()
-                && !repaired_empty_final
-            {
+            if final_content.trim().is_empty() && !repaired_empty_final {
                 repaired_empty_final = true;
-                outbound_messages.push(benchmark_finalize_prompt());
+                outbound_messages.push(benchmark_finalize_prompt(&result.reasoning));
                 continue;
+            }
+            if final_content.trim().is_empty() {
+                status = "empty_final".to_string();
+                break;
             }
             status = "ok".to_string();
             break;
