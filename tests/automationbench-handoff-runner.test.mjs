@@ -385,16 +385,25 @@ describe("automationbench handoff runner", () => {
         eventLogPath,
         "--bench-dir",
         dir,
+        "--domains",
+        "simple,sales",
+        "--num-examples",
+        "10",
       ],
       { encoding: "utf8" },
     );
     assert.equal(result.status, 0, result.stderr);
     assert.match(result.stdout, /AutomationBench Fusion matrix: ab-smoke/);
     assert.match(result.stdout, new RegExp(`# bench_dir=${dir.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}`));
+    assert.match(result.stdout, /# domains=simple,sales/);
+    assert.match(result.stdout, /# num_examples=10/);
     assert.match(result.stdout, /# gateway-glm/);
     assert.match(result.stdout, /# fusion-routing/);
     assert.match(result.stdout, /cd .* && uv run auto-bench/);
     assert.match(result.stdout, /uv run auto-bench/);
+    assert.match(result.stdout, /--domains simple,sales/);
+    assert.match(result.stdout, /--num-examples 10/);
+    assert.match(result.stdout, /understudy-automationbench-ab-smoke-simple-sales-10-fusion-routing\.json/);
     assert.match(result.stdout, /UNDERSTUDY_GATEWAY_BASE_URL/);
     assert.match(result.stdout, /automationbench-handoff-runner\.mjs/);
     assert.match(result.stdout, /--fusion-event-log/);
@@ -465,14 +474,14 @@ describe("automationbench handoff runner", () => {
     const eventLogPath = join(dir, "proxy-events.jsonl");
     mkdirSync(outDir, { recursive: true });
     writeFileSync(
-      join(outDir, "understudy-automationbench-ab-smoke-gateway-glm.json"),
+      join(outDir, "understudy-automationbench-ab-smoke-simple-1-gateway-glm.json"),
       `${JSON.stringify({
         meta: { model: "glm-5.2", domains: ["simple"], duration_seconds: 20 },
         tasks: [{ id: 1, name: "simple.gateway", score: 1, passed: true, input_tokens: 100, output_tokens: 20 }],
       })}\n`,
     );
     writeFileSync(
-      join(outDir, "understudy-automationbench-ab-smoke-fusion-routing.json"),
+      join(outDir, "understudy-automationbench-ab-smoke-simple-1-fusion-routing.json"),
       `${JSON.stringify({
         meta: { model: "understudy-fusion-routing", domains: ["simple"], duration_seconds: 10 },
         tasks: [{ id: 1, name: "simple.fusion", score: 1, passed: true, input_tokens: 80, output_tokens: 10 }],
@@ -503,12 +512,18 @@ describe("automationbench handoff runner", () => {
         outDir,
         "--event-log",
         eventLogPath,
+        "--domains",
+        "simple",
+        "--num-examples",
+        "1",
       ],
       { encoding: "utf8" },
     );
     assert.equal(result.status, 0, result.stderr);
     const payload = JSON.parse(result.stdout);
     assert.equal(payload.schema_version, "understudy.automationbench_matrix_results.v1");
+    assert.equal(payload.domains, "simple");
+    assert.equal(payload.num_examples, "1");
     assert.equal(payload.rows.length, 2);
     assert.equal(payload.summary.length, 2);
     const byModel = new Map(payload.summary.map((row) => [row.model, row]));

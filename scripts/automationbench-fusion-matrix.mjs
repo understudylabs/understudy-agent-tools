@@ -10,9 +10,9 @@ const DEFAULT_BENCH_DIR = "/Users/luis/Developer/understudy/AutomationBench";
 
 function usage() {
   return `Usage:
-  node scripts/automationbench-fusion-matrix.mjs --handoff <path> [--dry-run]
-  node scripts/automationbench-fusion-matrix.mjs --handoff <path> --run [--only <labels>] [--bench-dir <path>] [--out-dir <dir>] [--event-log <path>]
-  node scripts/automationbench-fusion-matrix.mjs --handoff <path> --ingest [--only <labels>] [--out-dir <dir>] [--event-log <path>] [--post] [--token <token>]
+  node scripts/automationbench-fusion-matrix.mjs --handoff <path> [--dry-run] [--domains <domains>] [--num-examples <n>]
+  node scripts/automationbench-fusion-matrix.mjs --handoff <path> --run [--only <labels>] [--bench-dir <path>] [--out-dir <dir>] [--event-log <path>] [--domains <domains>] [--num-examples <n>]
+  node scripts/automationbench-fusion-matrix.mjs --handoff <path> --ingest [--only <labels>] [--out-dir <dir>] [--event-log <path>] [--post] [--token <token>] [--domains <domains>] [--num-examples <n>]
 
 Runs or ingests the Understudy Fusion AutomationBench matrix:
   local-main, local-fast, gateway-glm, fusion-main, fusion-sidekick-parallel,
@@ -119,6 +119,13 @@ function loadHandoff(path) {
   return handoff;
 }
 
+function runConfig(handoff, args) {
+  return {
+    domains: argValue(args, "--domains") ?? handoff.domains.join(","),
+    numExamples: argValue(args, "--num-examples") ?? String(handoff.num_examples),
+  };
+}
+
 function resolveBenchDir(args) {
   const explicit = argValue(args, "--bench-dir");
   if (explicit) return resolve(explicit);
@@ -129,8 +136,12 @@ function resolveBenchDir(args) {
   return process.cwd();
 }
 
-function outputPath(outDir, handoff, run) {
-  return resolve(outDir, `understudy-automationbench-${handoff.run_id}-${run.label}.json`);
+function outputPath(outDir, handoff, run, config) {
+  const suffix =
+    config.domains === handoff.domains.join(",") && config.numExamples === String(handoff.num_examples)
+      ? ""
+      : `-${config.domains.replace(/[^a-zA-Z0-9]+/g, "-")}-${config.numExamples}`;
+  return resolve(outDir, `understudy-automationbench-${handoff.run_id}${suffix}-${run.label}.json`);
 }
 
 function localGatewayCredentials() {
@@ -155,7 +166,7 @@ function executionValue(value) {
   return `${envValue}${match[2]}`;
 }
 
-function autoBenchArgs(handoff, run, outDir, options = {}) {
+function autoBenchArgs(handoff, run, outDir, config, options = {}) {
   const baseUrl = options.execution ? executionValue(run.baseUrl) : run.baseUrl;
   const apiKey = options.execution ? executionValue(run.apiKey) : run.apiKey;
   return [
@@ -168,9 +179,9 @@ function autoBenchArgs(handoff, run, outDir, options = {}) {
     "--api-key",
     apiKey,
     "--domains",
-    handoff.domains.join(","),
+    config.domains,
     "--num-examples",
-    String(handoff.num_examples),
+    config.numExamples,
     "--max-concurrent",
     "1",
     "--max-steps",
@@ -178,19 +189,19 @@ function autoBenchArgs(handoff, run, outDir, options = {}) {
     "--toolset",
     "api",
     "--export-json",
-    outputPath(outDir, handoff, run),
+    outputPath(outDir, handoff, run, config),
     "--save-every",
     "-1",
   ];
 }
 
-function ingestArgs(handoffPath, handoff, run, outDir, eventLog, args) {
+function ingestArgs(handoffPath, handoff, run, outDir, eventLog, args, config) {
   const values = [
     "scripts/automationbench-handoff-runner.mjs",
     "--handoff",
     handoffPath,
     "--results",
-    outputPath(outDir, handoff, run),
+    outputPath(outDir, handoff, run, config),
     "--cohort-run-id",
     handoff.run_id,
   ];
@@ -206,17 +217,19 @@ function commandString(command, args) {
   return [command, ...args].map(shellQuote).join(" ");
 }
 
-function printDryRun({ handoffPath, handoff, runs, benchDir, outDir, eventLog, args }) {
+function printDryRun({ handoffPath, handoff, runs, benchDir, outDir, eventLog, args, config }) {
   console.log(`# AutomationBench Fusion matrix: ${handoff.run_id}`);
   console.log(`# bench_dir=${benchDir}`);
+  console.log(`# domains=${config.domains}`);
+  console.log(`# num_examples=${config.numExamples}`);
   console.log(`# outputs=${outDir}`);
   console.log(`# event_log=${eventLog}`);
   console.log(`# Start proxy first: FUSION_PROXY_EVENT_LOG=${shellQuote(eventLog)} node scripts/automationbench-fusion-proxy.mjs --port 17890`);
   for (const run of runs) {
     console.log("");
     console.log(`# ${run.label}`);
-    console.log(`cd ${shellQuote(benchDir)} && ${commandString("uv", autoBenchArgs(handoff, run, outDir))}`);
-    console.log(commandString("node", ingestArgs(handoffPath, handoff, run, outDir, eventLog, args)));
+    console.log(`cd ${shellQuote(benchDir)} && ${commandString("uv", autoBenchArgs(handoff, run, outDir, config))}`);
+    console.log(commandString("node", ingestArgs(handoffPath, handoff, run, outDir, eventLog, args, config)));
   }
 }
 
@@ -271,22 +284,22 @@ function summarizeRows(rows) {
   }));
 }
 
-function runMatrix({ handoff, runs, benchDir, outDir }) {
+function runMatrix({ handoff, runs, benchDir, outDir, config }) {
   mkdirSync(outDir, { recursive: true });
   if (!existsSync(benchDir)) throw new Error(`AutomationBench directory not found: ${benchDir}`);
   for (const run of runs) {
     console.error(`running ${run.label}`);
-    runCommand("uv", autoBenchArgs(handoff, run, outDir, { execution: true }), { cwd: benchDir });
+    runCommand("uv", autoBenchArgs(handoff, run, outDir, config, { execution: true }), { cwd: benchDir });
   }
 }
 
-function ingestMatrix({ handoffPath, handoff, runs, outDir, eventLog, args }) {
+function ingestMatrix({ handoffPath, handoff, runs, outDir, eventLog, args, config }) {
   const rows = [];
   for (const run of runs) {
-    const path = outputPath(outDir, handoff, run);
+    const path = outputPath(outDir, handoff, run, config);
     if (!existsSync(path)) throw new Error(`missing result export for ${run.label}: ${path}`);
     console.error(`ingesting ${run.label}`);
-    const result = runCommand("node", ingestArgs(handoffPath, handoff, run, outDir, eventLog, args), {
+    const result = runCommand("node", ingestArgs(handoffPath, handoff, run, outDir, eventLog, args, config), {
       capture: true,
     });
     const parsed = JSON.parse(result.stdout);
@@ -297,6 +310,8 @@ function ingestMatrix({ handoffPath, handoff, runs, outDir, eventLog, args }) {
       {
         schema_version: "understudy.automationbench_matrix_results.v1",
         handoff_run_id: handoff.run_id,
+        domains: config.domains,
+        num_examples: config.numExamples,
         rows,
         summary: summarizeRows(rows),
       },
@@ -319,12 +334,13 @@ async function main() {
   const outDir = resolve(argValue(args, "--out-dir") ?? ".understudy/fusion-benchmark/runs");
   const eventLog = resolve(argValue(args, "--event-log") ?? DEFAULT_EVENT_LOG);
   const runs = selectedRuns(args);
+  const config = runConfig(handoff, args);
   if (args.includes("--dry-run") || (!args.includes("--run") && !args.includes("--ingest"))) {
-    printDryRun({ handoffPath, handoff, runs, benchDir, outDir, eventLog, args });
+    printDryRun({ handoffPath, handoff, runs, benchDir, outDir, eventLog, args, config });
     return;
   }
-  if (args.includes("--run")) runMatrix({ handoff, runs, benchDir, outDir });
-  if (args.includes("--ingest")) ingestMatrix({ handoffPath, handoff, runs, outDir, eventLog, args });
+  if (args.includes("--run")) runMatrix({ handoff, runs, benchDir, outDir, config });
+  if (args.includes("--ingest")) ingestMatrix({ handoffPath, handoff, runs, outDir, eventLog, args, config });
 }
 
 main().catch((error) => {
