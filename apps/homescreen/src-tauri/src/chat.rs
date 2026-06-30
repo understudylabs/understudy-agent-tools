@@ -146,10 +146,72 @@ fn tool_schemas() -> Vec<Value> {
                 }
             }
         }),
+        json!({
+            "type": "function",
+            "function": {
+                "name": "understudy_mcp_tool",
+                "description": "Call the local Understudy Desktop MCP tool surface. Use this for app/runtime/model/trace context.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "tool_name": {
+                            "type": "string",
+                            "enum": [
+                                "status",
+                                "list_models",
+                                "list_snapshot_models",
+                                "residency",
+                                "knowledge_dossiers",
+                                "local_benchmarks",
+                                "list_traces",
+                                "search_traces",
+                                "open_trace",
+                                "ui_focus"
+                            ]
+                        },
+                        "arguments": { "type": "object" }
+                    },
+                    "required": ["tool_name"],
+                    "additionalProperties": false
+                }
+            }
+        }),
+        json!({
+            "type": "function",
+            "function": {
+                "name": "understudy_agent_tools",
+                "description": "Run a safe, read-only Understudy agent-tools CLI command. Use for public skills, model catalog, doctor/status, and model pull planning.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "command": {
+                            "type": "string",
+                            "enum": [
+                                "version",
+                                "spine",
+                                "platforms",
+                                "skills_list",
+                                "skills_search",
+                                "skills_inspect",
+                                "doctor",
+                                "status",
+                                "models_snapshots",
+                                "models_pull_plan"
+                            ]
+                        },
+                        "query": { "type": "string" },
+                        "name": { "type": "string" },
+                        "model_id": { "type": "string" }
+                    },
+                    "required": ["command"],
+                    "additionalProperties": false
+                }
+            }
+        }),
     ]
 }
 
-fn tool_result(app: &AppHandle, name: &str, args: &Value) -> Result<Value, String> {
+async fn tool_result(app: &AppHandle, name: &str, args: &Value) -> Result<Value, String> {
     use crate::commands as c;
     Ok(match name {
         "status" => json!(c::get_status(app.clone())),
@@ -174,8 +236,127 @@ fn tool_result(app: &AppHandle, name: &str, args: &Value) -> Result<Value, Strin
                 .to_string(),
         )
         .map_err(|e| e.to_string())?,
+        "understudy_mcp_tool" => call_understudy_mcp(app, args).await?,
+        "understudy_agent_tools" => call_understudy_cli(args)?,
         other => return Err(format!("unknown tool: {other}")),
     })
+}
+
+async fn call_understudy_mcp(app: &AppHandle, args: &Value) -> Result<Value, String> {
+    let tool_name = args
+        .get("tool_name")
+        .and_then(|v| v.as_str())
+        .ok_or_else(|| "understudy_mcp_tool requires tool_name".to_string())?;
+    let arguments = args.get("arguments").cloned().unwrap_or_else(|| json!({}));
+    let (base, token) = crate::server::info(app)
+        .ok_or_else(|| "local Understudy MCP server is not ready".to_string())?;
+    let body = json!({
+        "jsonrpc": "2.0",
+        "id": "chat-tool",
+        "method": "tools/call",
+        "params": { "name": tool_name, "arguments": arguments }
+    });
+    let response = reqwest::Client::new()
+        .post(format!("{}/mcp", base.trim_end_matches('/')))
+        .bearer_auth(token)
+        .json(&body)
+        .send()
+        .await
+        .map_err(|e| format!("understudy MCP request failed: {e}"))?;
+    let status = response.status();
+    let value: Value = response
+        .json()
+        .await
+        .map_err(|e| format!("understudy MCP response parse failed: {e}"))?;
+    if !status.is_success() {
+        return Err(format!("understudy MCP returned {status}: {value}"));
+    }
+    if let Some(error) = value.get("error") {
+        return Err(error.to_string());
+    }
+    Ok(value
+        .get("result")
+        .and_then(|r| r.get("structuredContent"))
+        .cloned()
+        .unwrap_or(value))
+}
+
+fn call_understudy_cli(args: &Value) -> Result<Value, String> {
+    let command = args
+        .get("command")
+        .and_then(|v| v.as_str())
+        .ok_or_else(|| "understudy_agent_tools requires command".to_string())?;
+    let cli_args = match command {
+        "version" => vec!["--version".to_string()],
+        "spine" => vec!["spine".to_string()],
+        "platforms" => vec!["--json".to_string(), "platforms".to_string()],
+        "skills_list" => vec!["--json".to_string(), "skills".to_string(), "--list".to_string()],
+        "skills_search" => {
+            let query = required_string(args, "query")?;
+            vec![
+                "--json".to_string(),
+                "skills".to_string(),
+                "--search".to_string(),
+                query,
+            ]
+        }
+        "skills_inspect" => {
+            let name = required_string(args, "name")?;
+            vec![
+                "--json".to_string(),
+                "skills".to_string(),
+                "--inspect".to_string(),
+                name,
+            ]
+        }
+        "doctor" => vec!["--json".to_string(), "doctor".to_string()],
+        "status" => vec!["--json".to_string(), "status".to_string()],
+        "models_snapshots" => vec!["--json".to_string(), "models".to_string(), "snapshots".to_string()],
+        "models_pull_plan" => {
+            let model_id = required_string(args, "model_id")?;
+            vec![
+                "--json".to_string(),
+                "models".to_string(),
+                "pull".to_string(),
+                model_id,
+                "--dry-run".to_string(),
+            ]
+        }
+        other => return Err(format!("unsupported understudy_agent_tools command: {other}")),
+    };
+    let out = std::process::Command::new(crate::bin::understudy())
+        .args(cli_args)
+        .output()
+        .map_err(|e| format!("understudy CLI unavailable: {e}"))?;
+    let stdout = String::from_utf8_lossy(&out.stdout).to_string();
+    let stderr = String::from_utf8_lossy(&out.stderr).to_string();
+    let stdout = truncate_tool_output(stdout);
+    let stderr = truncate_tool_output(stderr);
+    if !out.status.success() {
+        return Err(format!("understudy CLI failed: {stdout}{stderr}"));
+    }
+    if let Ok(value) = serde_json::from_str::<Value>(&stdout) {
+        Ok(value)
+    } else {
+        Ok(json!({ "stdout": stdout, "stderr": stderr }))
+    }
+}
+
+fn required_string(args: &Value, key: &str) -> Result<String, String> {
+    args.get(key)
+        .and_then(|v| v.as_str())
+        .filter(|s| !s.trim().is_empty())
+        .map(|s| s.to_string())
+        .ok_or_else(|| format!("understudy_agent_tools requires {key}"))
+}
+
+fn truncate_tool_output(mut text: String) -> String {
+    const MAX: usize = 64 * 1024;
+    if text.len() > MAX {
+        text.truncate(MAX);
+        text.push_str("\n[truncated]");
+    }
+    text
 }
 
 struct ThinkParser {
@@ -332,7 +513,7 @@ pub async fn chat_stream(
                 name: call.name.clone(),
                 args: args.clone(),
             });
-            let (ok, result) = match tool_result(&app, &call.name, &args) {
+            let (ok, result) = match tool_result(&app, &call.name, &args).await {
                 Ok(value) => (true, value),
                 Err(err) => (false, json!({ "error": err })),
             };
