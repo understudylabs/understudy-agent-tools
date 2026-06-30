@@ -782,18 +782,32 @@ select,
   padding-right: 10px;
   white-space: pre-wrap;
   mask-image: linear-gradient(to bottom, transparent 0, #000 12px, #000 calc(100% - 18px), transparent 100%);
-  scrollbar-width: thin;
-  scrollbar-color: color-mix(in srgb, var(--text-3) 34%, transparent) transparent;
+  scrollbar-width: none;
+  scrollbar-color: transparent transparent;
 }
 .reasoning-substream.active .reasoning-substream-text {
   max-height: 124px;
 }
+.reasoning-substream:hover .reasoning-substream-text,
+.reasoning-substream:focus-within .reasoning-substream-text {
+  scrollbar-width: thin;
+  scrollbar-color: color-mix(in srgb, var(--text-3) 20%, transparent) transparent;
+}
 .reasoning-substream-text::-webkit-scrollbar {
-  width: 6px;
+  width: 8px;
+}
+.reasoning-substream-text::-webkit-scrollbar-track {
+  background: transparent;
 }
 .reasoning-substream-text::-webkit-scrollbar-thumb {
-  background: color-mix(in srgb, var(--text-3) 34%, transparent);
+  border: 3px solid transparent;
   border-radius: 999px;
+  background-clip: content-box;
+  background-color: transparent;
+}
+.reasoning-substream:hover .reasoning-substream-text::-webkit-scrollbar-thumb,
+.reasoning-substream:focus-within .reasoning-substream-text::-webkit-scrollbar-thumb {
+  background-color: color-mix(in srgb, var(--text-3) 18%, transparent);
 }
 .chat-msg.assistant p,
 .chat-msg.assistant ul,
