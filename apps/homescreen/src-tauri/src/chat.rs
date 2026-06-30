@@ -63,6 +63,8 @@ struct StreamChatOnceResult {
 const CHAT_MAX_TOKENS: u32 = 8192;
 const BENCHMARK_MAX_TOKENS: u32 = 1024;
 const CHAT_THINKING_BUDGET: u32 = 2048;
+const CHAT_SIDEKICK_WAIT_MS: u64 = 1_000;
+const BENCHMARK_SIDEKICK_WAIT_MS: u64 = 20_000;
 const MAX_TOOL_ROUNDS: usize = 4;
 const SIDEKICK_MAX_TOOL_ROUNDS: usize = 2;
 const SIDEKICK_MAX_CONTEXT_MESSAGES: usize = 16;
@@ -1539,12 +1541,15 @@ async fn wait_for_sidekick_handoffs(
     app: &AppHandle,
     session_id: &str,
     spawned: bool,
+    wait_ms: u64,
 ) -> Vec<Value> {
     if !spawned {
         return consume_sidekick_handoffs(app, session_id);
     }
 
-    for attempt in 0..4 {
+    let interval_ms = 250;
+    let attempts = (wait_ms / interval_ms).max(1);
+    for attempt in 0..attempts {
         let handoffs = consume_sidekick_handoffs(app, session_id);
         if !handoffs.is_empty() {
             let _ = app.state::<crate::db::Db>().record_sidekick_event(
@@ -1562,7 +1567,7 @@ async fn wait_for_sidekick_handoffs(
         session_id,
         "parallel",
         "handoff_deferred",
-        "main continued after 1000ms",
+        &format!("main continued after {wait_ms}ms"),
     );
     vec![]
 }
@@ -1611,7 +1616,10 @@ pub async fn chat_stream(
         "role": "system",
         "content": system_prompt_for(&model_field),
     })];
-    outbound_messages.extend(wait_for_sidekick_handoffs(&app, &session_id, sidekick_spawned).await);
+    outbound_messages.extend(
+        wait_for_sidekick_handoffs(&app, &session_id, sidekick_spawned, CHAT_SIDEKICK_WAIT_MS)
+            .await,
+    );
     outbound_messages.extend(
         messages
             .iter()
@@ -1781,7 +1789,15 @@ pub async fn benchmark_local_chat(
         "role": "system",
         "content": system_prompt_for(&model_field),
     })];
-    outbound_messages.extend(wait_for_sidekick_handoffs(app, session_id, sidekick_spawned).await);
+    outbound_messages.extend(
+        wait_for_sidekick_handoffs(
+            app,
+            session_id,
+            sidekick_spawned,
+            BENCHMARK_SIDEKICK_WAIT_MS,
+        )
+        .await,
+    );
     outbound_messages.push(json!({ "role": "user", "content": prompt }));
     let (mut outbound_messages, compaction_reason, context_tokens_before) =
         compact_chat_messages(outbound_messages);
