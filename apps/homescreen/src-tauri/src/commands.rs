@@ -222,6 +222,8 @@ struct ChatRouteSignals {
     local_error_rate: Option<f64>,
     sidekick_rows: u64,
     compacted_rows: u64,
+    sidekick_benchmark_rows: u64,
+    sidekick_benchmark_score: Option<f64>,
     avg_local_elapsed_ms: Option<f64>,
     avg_sidekick_elapsed_ms: Option<f64>,
 }
@@ -244,6 +246,15 @@ fn chat_route_signals(app: &AppHandle) -> ChatRouteSignals {
         .iter()
         .filter_map(|row| row.elapsed_ms.map(|v| v as f64))
         .collect();
+    let benchmark_rows = app
+        .state::<crate::db::Db>()
+        .list_fusion_benchmarks(40)
+        .unwrap_or_default();
+    let sidekick_scores: Vec<f64> = benchmark_rows
+        .iter()
+        .filter(|row| row.mode == "sidekick-parallel")
+        .filter_map(|row| row.score)
+        .collect();
     ChatRouteSignals {
         local_rows: local.len() as u64,
         local_error_rate: (!local.is_empty()).then_some(
@@ -251,6 +262,8 @@ fn chat_route_signals(app: &AppHandle) -> ChatRouteSignals {
         ),
         sidekick_rows: sidekick.len() as u64,
         compacted_rows: rows.iter().filter(|row| row.compacted).count() as u64,
+        sidekick_benchmark_rows: sidekick_scores.len() as u64,
+        sidekick_benchmark_score: avg(&sidekick_scores),
         avg_local_elapsed_ms: avg(&local_elapsed),
         avg_sidekick_elapsed_ms: avg(&sidekick_elapsed),
     }
@@ -764,6 +777,10 @@ pub fn fusion_route_recommendation(
             ),
             (Some(sidekick_ms), Some(local_ms)) if local_ms > 0.0 && sidekick_ms > local_ms * 1.75
         );
+    let sidekick_benchmark_low = route_signals.sidekick_benchmark_rows >= 4
+        && route_signals
+            .sidekick_benchmark_score
+            .is_some_and(|score| score < 0.5);
     let compaction_boundary = route_signals.compacted_rows > 0 || prompt.len() > 16_000;
 
     let (route, use_sidekick, escalate_gateway, reason) =
@@ -789,6 +806,7 @@ pub fn fusion_route_recommendation(
             && !low_usefulness
             && !high_escalation
             && !sidekick_slow
+            && !sidekick_benchmark_low
         {
             ("local", true, false, "mechanical_with_sidekick")
         } else if local_ready {
@@ -802,6 +820,8 @@ pub fn fusion_route_recommendation(
                     "sidekick_high_escalation"
                 } else if sidekick_slow {
                     "sidekick_latency_high"
+                } else if sidekick_benchmark_low {
+                    "sidekick_benchmark_score_low"
                 } else if mechanical {
                     "no_warm_sidekick"
                 } else {

@@ -70,6 +70,7 @@ struct NonstreamChatOnceResult {
 const CHAT_MAX_TOKENS: u32 = 8192;
 const BENCHMARK_MAX_TOKENS: u32 = 1024;
 const CHAT_THINKING_BUDGET: u32 = 2048;
+const BENCHMARK_THINKING_BUDGET: u32 = 0;
 const CHAT_SIDEKICK_WAIT_MS: u64 = 1_000;
 const BENCHMARK_SIDEKICK_WAIT_MS: u64 = 20_000;
 const MAX_TOOL_ROUNDS: usize = 4;
@@ -1172,6 +1173,8 @@ struct SidekickRoutingSignals {
     handoff_rate: Option<f64>,
     escalation_rate: Option<f64>,
     sidekick_rows: u64,
+    sidekick_benchmark_rows: u64,
+    sidekick_benchmark_score: Option<f64>,
     avg_local_elapsed_ms: Option<f64>,
     avg_sidekick_elapsed_ms: Option<f64>,
 }
@@ -1269,6 +1272,13 @@ fn benchmark_prompt(prompt: &str) -> String {
     )
 }
 
+fn benchmark_finalize_prompt() -> Value {
+    json!({
+        "role": "user",
+        "content": "Your previous turn produced reasoning or tool work but no final answer. Provide the concise final benchmark answer now. Do not call tools unless absolutely necessary.",
+    })
+}
+
 fn sidekick_routing_signals(app: &AppHandle) -> SidekickRoutingSignals {
     let Ok(rows) = app.state::<crate::db::Db>().list_sidekick_runs(30) else {
         return SidekickRoutingSignals::default();
@@ -1300,12 +1310,23 @@ fn sidekick_routing_signals(app: &AppHandle) -> SidekickRoutingSignals {
         .filter(|row| row.route == "local" && row.sidekick_spawned)
         .filter_map(|row| row.elapsed_ms.map(|v| v as f64))
         .collect();
+    let benchmark_rows = app
+        .state::<crate::db::Db>()
+        .list_fusion_benchmarks(40)
+        .unwrap_or_default();
+    let sidekick_scores: Vec<f64> = benchmark_rows
+        .iter()
+        .filter(|row| row.mode == "sidekick-parallel")
+        .filter_map(|row| row.score)
+        .collect();
     SidekickRoutingSignals {
         feedback_rows,
         useful_rate: (feedback_rows > 0).then_some(useful as f64 / feedback_rows as f64),
         handoff_rate: Some(consumed as f64 / total as f64),
         escalation_rate: Some(escalated as f64 / total as f64),
         sidekick_rows: sidekick_elapsed.len() as u64,
+        sidekick_benchmark_rows: sidekick_scores.len() as u64,
+        sidekick_benchmark_score: avg_f64(&sidekick_scores),
         avg_local_elapsed_ms: avg_f64(&local_elapsed),
         avg_sidekick_elapsed_ms: avg_f64(&sidekick_elapsed),
     }
@@ -1381,6 +1402,16 @@ fn route_parallel_sidekick(
         return SidekickRoutingDecision {
             eligible: false,
             reason: "metrics_sidekick_latency_high",
+        };
+    }
+    if signals.sidekick_benchmark_rows >= 4
+        && signals
+            .sidekick_benchmark_score
+            .is_some_and(|score| score < 0.5)
+    {
+        return SidekickRoutingDecision {
+            eligible: false,
+            reason: "benchmark_sidekick_score_low",
         };
     }
     let mechanical = delegate_terms
@@ -1817,6 +1848,7 @@ pub async fn benchmark_local_chat(
     let mut reasoning_tokens = 0u64;
     let mut tool_count = 0u64;
     let mut status = "tool_limit".to_string();
+    let mut repaired_empty_final = false;
 
     for _round in 0..=MAX_TOOL_ROUNDS {
         let result = nonstream_chat_once(
@@ -1826,12 +1858,21 @@ pub async fn benchmark_local_chat(
             &model_field,
             &outbound_messages,
             BENCHMARK_MAX_TOKENS,
+            BENCHMARK_THINKING_BUDGET,
         )
         .await?;
         final_content = result.content.clone();
         reasoning_tokens += approximate_token_count(&result.reasoning);
         let tool_calls = result.tool_calls;
         if tool_calls.is_empty() {
+            if final_content.trim().is_empty()
+                && !result.reasoning.trim().is_empty()
+                && !repaired_empty_final
+            {
+                repaired_empty_final = true;
+                outbound_messages.push(benchmark_finalize_prompt());
+                continue;
+            }
             status = "ok".to_string();
             break;
         }
@@ -1908,6 +1949,7 @@ pub async fn benchmark_gateway_chat(
     let mut reasoning_tokens = 0u64;
     let mut tool_count = 0u64;
     let mut status = "tool_limit".to_string();
+    let mut repaired_empty_final = false;
 
     for _round in 0..=MAX_TOOL_ROUNDS {
         let result = nonstream_chat_once(
@@ -1917,12 +1959,21 @@ pub async fn benchmark_gateway_chat(
             model_field,
             &outbound_messages,
             BENCHMARK_MAX_TOKENS,
+            BENCHMARK_THINKING_BUDGET,
         )
         .await?;
         final_content = result.content.clone();
         reasoning_tokens += approximate_token_count(&result.reasoning);
         let tool_calls = result.tool_calls;
         if tool_calls.is_empty() {
+            if final_content.trim().is_empty()
+                && !result.reasoning.trim().is_empty()
+                && !repaired_empty_final
+            {
+                repaired_empty_final = true;
+                outbound_messages.push(benchmark_finalize_prompt());
+                continue;
+            }
             status = "ok".to_string();
             break;
         }
@@ -1977,6 +2028,7 @@ async fn nonstream_chat_once(
     model_field: &str,
     messages: &[Value],
     max_tokens: u32,
+    thinking_budget: u32,
 ) -> Result<NonstreamChatOnceResult, String> {
     let payload = json!({
         "model": model_field,
@@ -1985,7 +2037,7 @@ async fn nonstream_chat_once(
         "tools": tool_schemas(),
         "tool_choice": "auto",
         "max_tokens": max_tokens,
-        "thinking_budget": CHAT_THINKING_BUDGET,
+        "thinking_budget": thinking_budget,
     });
     let mut request = client.post(url).json(&payload);
     if let Some(key) = bearer {
