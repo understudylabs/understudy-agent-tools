@@ -700,11 +700,11 @@ select,
   position: relative;
   pointer-events: none;
   opacity: 0.62;
-  animation: sidekick-persona-orbit 7.5s linear infinite;
+  animation: sidekick-persona-orbit 26s linear infinite;
 }
 .sidekick-persona-orbit.active {
   opacity: 1;
-  animation-duration: 4.8s;
+  animation-duration: 16s;
 }
 .sidekick-persona-halo {
   position: absolute;
@@ -716,10 +716,48 @@ select,
   min-height: 30px;
   filter: drop-shadow(0 0 14px color-mix(in srgb, var(--accent) 28%, transparent));
   opacity: 0.86;
-  animation: sidekick-persona-counter-orbit 7.5s linear infinite;
+  animation: sidekick-persona-counter-orbit 26s linear infinite;
 }
 .sidekick-persona-orbit.active .sidekick-persona-halo {
-  animation-duration: 4.8s;
+  animation-duration: 16s;
+}
+.sidekick-cursor-rings {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  opacity: 0;
+  transform: translate3d(
+    calc(var(--sidekick-cursor-x, 50%) - 50%),
+    calc(var(--sidekick-cursor-y, 50%) - 50%),
+    0
+  );
+  transition:
+    opacity 180ms ease,
+    transform 260ms cubic-bezier(0.2, 0.8, 0.2, 1);
+}
+.sidekick-persona-orbit.cursor-active .sidekick-cursor-rings {
+  opacity: 0.72;
+}
+.sidekick-cursor-rings span {
+  position: absolute;
+  left: 50%;
+  top: 50%;
+  width: 20%;
+  height: 20%;
+  min-width: 18px;
+  min-height: 18px;
+  border-radius: 999px;
+  border: 1px solid color-mix(in srgb, var(--accent) 34%, white 18%);
+  transform: translate(-50%, -50%);
+  box-shadow: 0 0 16px color-mix(in srgb, var(--accent) 18%, transparent);
+}
+.sidekick-cursor-rings span:nth-child(2) {
+  width: 32%;
+  height: 32%;
+  min-width: 28px;
+  min-height: 28px;
+  opacity: 0.42;
+  transition: transform 420ms cubic-bezier(0.16, 1, 0.3, 1);
 }
 .persona-stamp {
   grid-area: 1 / 1;
@@ -1078,6 +1116,9 @@ select,
   .sidekick-persona-orbit,
   .sidekick-persona-halo {
     animation: none;
+  }
+  .sidekick-cursor-rings {
+    transition: opacity 120ms ease;
   }
 }
 .chat-msg.assistant p,

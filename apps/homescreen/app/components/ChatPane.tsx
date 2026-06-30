@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { type CSSProperties, useEffect, useMemo, useRef, useState } from "react";
 import { Channel, invoke } from "@tauri-apps/api/core";
 import {
   Conversation,
@@ -230,6 +230,7 @@ export function ChatPane({ resetToken }: { resetToken: number }) {
   const [thinkingPending, setThinkingPending] = useState<{ slotId: number; thinking: boolean } | null>(null);
   const [personaReady, setPersonaReady] = useState(false);
   const [personaCycle, setPersonaCycle] = useState(0);
+  const [sidekickCursor, setSidekickCursor] = useState({ x: 50, y: 50, active: false });
 
   const refreshModels = async () => {
     try {
@@ -438,7 +439,11 @@ export function ChatPane({ resetToken }: { resetToken: number }) {
     return choice.label === "understudy-small" || id.includes("understudy-small") || id.includes("e2b");
   });
   const showSidekickPersona = warmSidekickAvailable || Boolean(sidekickTool);
-  const sidekickPersonaState: PersonaState = sidekickActive ? "thinking" : "idle";
+  const sidekickPersonaState: PersonaState = "thinking";
+  const sidekickCursorStyle = {
+    "--sidekick-cursor-x": `${sidekickCursor.x}%`,
+    "--sidekick-cursor-y": `${sidekickCursor.y}%`,
+  } as CSSProperties;
 
   return (
     <div
@@ -448,7 +453,19 @@ export function ChatPane({ resetToken }: { resetToken: number }) {
         (streaming ? " is-streaming" : "")
       }
     >
-      <div className={"persona-stage" + (personaReady ? " persona-ready" : "")} aria-hidden="true">
+      <div
+        className={"persona-stage" + (personaReady ? " persona-ready" : "")}
+        aria-hidden="true"
+        onPointerMove={(event) => {
+          const rect = event.currentTarget.getBoundingClientRect();
+          setSidekickCursor({
+            x: ((event.clientX - rect.left) / rect.width) * 100,
+            y: ((event.clientY - rect.top) / rect.height) * 100,
+            active: true,
+          });
+        }}
+        onPointerLeave={() => setSidekickCursor((cursor) => ({ ...cursor, active: false }))}
+      >
         <img
           key={`stamp-${personaCycle}`}
           className="persona-stamp"
@@ -464,7 +481,18 @@ export function ChatPane({ resetToken }: { resetToken: number }) {
           onReady={() => setPersonaReady(true)}
         />
         {showSidekickPersona && (
-          <div className={"sidekick-persona-orbit" + (sidekickActive ? " active" : "")}>
+          <div
+            className={
+              "sidekick-persona-orbit" +
+              (sidekickActive ? " active" : "") +
+              (sidekickCursor.active ? " cursor-active" : "")
+            }
+            style={sidekickCursorStyle}
+          >
+            <div className="sidekick-cursor-rings" aria-hidden="true">
+              <span />
+              <span />
+            </div>
             <Persona
               key={`sidekick-${personaCycle}`}
               variant="halo"
