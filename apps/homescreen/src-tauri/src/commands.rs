@@ -338,11 +338,14 @@ pub struct ChatRouteMetricGroup {
     pub error_rows: u64,
     pub sidekick_rows: u64,
     pub gateway_rows: u64,
+    pub gateway_available_rows: u64,
+    pub gateway_avoidance_rows: u64,
     pub compacted_rows: u64,
     pub avg_elapsed_ms: Option<f64>,
     pub avg_prompt_tokens: Option<f64>,
     pub avg_completion_tokens: Option<f64>,
     pub avg_tool_calls: Option<f64>,
+    pub avg_local_mem_gb: Option<f64>,
 }
 
 #[derive(Serialize, Clone)]
@@ -1938,6 +1941,7 @@ pub fn chat_route_metrics(app: AppHandle, limit: Option<u32>) -> Result<ChatRout
             .filter_map(|row| row.completion_tokens.map(|v| v as f64))
             .collect();
         let tool_values: Vec<f64> = rows.iter().map(|row| row.tool_calls as f64).collect();
+        let local_mem_values: Vec<f64> = rows.iter().filter_map(|row| row.local_mem_gb).collect();
         out.push(ChatRouteMetricGroup {
             route,
             model,
@@ -1946,11 +1950,14 @@ pub fn chat_route_metrics(app: AppHandle, limit: Option<u32>) -> Result<ChatRout
             error_rows: rows.iter().filter(|row| row.status != "ok").count() as u64,
             sidekick_rows: rows.iter().filter(|row| row.sidekick_spawned).count() as u64,
             gateway_rows: rows.iter().filter(|row| row.gateway_used).count() as u64,
+            gateway_available_rows: rows.iter().filter(|row| row.gateway_available).count() as u64,
+            gateway_avoidance_rows: rows.iter().filter(|row| row.gateway_avoided).count() as u64,
             compacted_rows: rows.iter().filter(|row| row.compacted).count() as u64,
             avg_elapsed_ms: avg(&elapsed_values),
             avg_prompt_tokens: avg(&prompt_values),
             avg_completion_tokens: avg(&completion_values),
             avg_tool_calls: avg(&tool_values),
+            avg_local_mem_gb: avg(&local_mem_values),
         });
     }
     out.sort_by(|a, b| b.rows.cmp(&a.rows));

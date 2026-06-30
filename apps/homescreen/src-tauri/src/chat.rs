@@ -1679,6 +1679,18 @@ fn record_chat_run(app: &AppHandle, input: ChatRunInput) {
     let _ = app.state::<crate::db::Db>().record_chat_run(&input);
 }
 
+fn local_resident_mem_gb(app: &AppHandle) -> Option<f64> {
+    let mem = app
+        .state::<Residency>()
+        .snapshot()
+        .slots
+        .iter()
+        .filter(|slot| slot.state == "running")
+        .map(|slot| slot.mem_gb as f64)
+        .sum::<f64>();
+    (mem > 0.0).then_some(mem)
+}
+
 fn record_compaction_route_decision(
     app: &AppHandle,
     session_id: &str,
@@ -2258,6 +2270,8 @@ pub async fn chat_stream(
     let mut tool_count = 0u64;
     let mut mid_session_escalated = false;
     let compacted = compaction_reason.is_some();
+    let gateway_available = credentials().is_some();
+    let local_mem_gb = local_resident_mem_gb(&app);
     if let Some(reason) = compaction_reason.as_deref() {
         record_compaction_route_decision(
             &app,
@@ -2303,6 +2317,9 @@ pub async fn chat_stream(
                     compacted,
                     compaction_reason: compaction_reason.clone(),
                     context_tokens_before: Some(context_tokens_before),
+                    local_mem_gb,
+                    gateway_available,
+                    gateway_avoided: gateway_available && route != "cloud",
                     status: "error".to_string(),
                     error: Some(error),
                 },
@@ -2327,6 +2344,9 @@ pub async fn chat_stream(
                     compacted,
                     compaction_reason: compaction_reason.clone(),
                     context_tokens_before: Some(context_tokens_before),
+                    local_mem_gb,
+                    gateway_available,
+                    gateway_avoided: gateway_available && route != "cloud",
                     status: "ok".to_string(),
                     error: None,
                 },
@@ -2434,6 +2454,9 @@ pub async fn chat_stream(
             compacted,
             compaction_reason,
             context_tokens_before: Some(context_tokens_before),
+            local_mem_gb,
+            gateway_available,
+            gateway_avoided: gateway_available && route != "cloud",
             status: "tool_limit".to_string(),
             error: Some(format!("tool call limit reached ({MAX_TOOL_ROUNDS})")),
         },

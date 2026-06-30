@@ -114,6 +114,9 @@ pub struct ChatRunRow {
     pub compacted: bool,
     pub compaction_reason: Option<String>,
     pub context_tokens_before: Option<u64>,
+    pub local_mem_gb: Option<f64>,
+    pub gateway_available: bool,
+    pub gateway_avoided: bool,
     pub status: String,
     pub error: Option<String>,
     pub run_at: String,
@@ -133,6 +136,9 @@ pub struct ChatRunInput {
     pub compacted: bool,
     pub compaction_reason: Option<String>,
     pub context_tokens_before: Option<u64>,
+    pub local_mem_gb: Option<f64>,
+    pub gateway_available: bool,
+    pub gateway_avoided: bool,
     pub status: String,
     pub error: Option<String>,
 }
@@ -281,6 +287,9 @@ impl Db {
                 compacted         INTEGER NOT NULL DEFAULT 0,
                 compaction_reason TEXT,
                 context_tokens_before INTEGER,
+                local_mem_gb      REAL,
+                gateway_available INTEGER NOT NULL DEFAULT 0,
+                gateway_avoided   INTEGER NOT NULL DEFAULT 0,
                 status            TEXT NOT NULL,
                 error             TEXT,
                 run_at            TEXT NOT NULL
@@ -351,6 +360,15 @@ impl Db {
         );
         let _ = conn.execute(
             "ALTER TABLE chat_runs ADD COLUMN context_tokens_before INTEGER",
+            [],
+        );
+        let _ = conn.execute("ALTER TABLE chat_runs ADD COLUMN local_mem_gb REAL", []);
+        let _ = conn.execute(
+            "ALTER TABLE chat_runs ADD COLUMN gateway_available INTEGER NOT NULL DEFAULT 0",
+            [],
+        );
+        let _ = conn.execute(
+            "ALTER TABLE chat_runs ADD COLUMN gateway_avoided INTEGER NOT NULL DEFAULT 0",
             [],
         );
         let _ = conn.execute(
@@ -577,8 +595,8 @@ impl Db {
             "INSERT INTO chat_runs (
                 session_id, route, model, elapsed_ms, prompt_tokens, completion_tokens, tool_calls,
                 sidekick_spawned, gateway_used, compacted, compaction_reason, context_tokens_before,
-                status, error, run_at
-             ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15)",
+                local_mem_gb, gateway_available, gateway_avoided, status, error, run_at
+             ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18)",
             rusqlite::params![
                 input.session_id,
                 input.route,
@@ -592,6 +610,9 @@ impl Db {
                 input.compacted as i64,
                 input.compaction_reason,
                 input.context_tokens_before.map(|v| v as i64),
+                input.local_mem_gb,
+                input.gateway_available as i64,
+                input.gateway_avoided as i64,
                 input.status,
                 input.error,
                 now_iso(),
@@ -605,7 +626,8 @@ impl Db {
         let mut stmt = conn.prepare(
             "SELECT id, session_id, route, model, elapsed_ms, prompt_tokens, completion_tokens,
                     tool_calls, sidekick_spawned, gateway_used, compacted, compaction_reason,
-                    context_tokens_before, status, error, run_at
+                    context_tokens_before, local_mem_gb, gateway_available, gateway_avoided,
+                    status, error, run_at
              FROM chat_runs ORDER BY id DESC LIMIT ?1",
         )?;
         let rows = stmt.query_map([limit.max(1).min(500) as i64], |r| {
@@ -623,9 +645,12 @@ impl Db {
                 compacted: r.get::<_, i64>(10)? != 0,
                 compaction_reason: r.get(11)?,
                 context_tokens_before: r.get::<_, Option<i64>>(12)?.map(|v| v as u64),
-                status: r.get(13)?,
-                error: r.get(14)?,
-                run_at: r.get(15)?,
+                local_mem_gb: r.get(13)?,
+                gateway_available: r.get::<_, i64>(14)? != 0,
+                gateway_avoided: r.get::<_, i64>(15)? != 0,
+                status: r.get(16)?,
+                error: r.get(17)?,
+                run_at: r.get(18)?,
             })
         })?;
         rows.collect::<rusqlite::Result<Vec<_>>>()
@@ -641,7 +666,8 @@ impl Db {
         let mut stmt = conn.prepare(
             "SELECT id, session_id, route, model, elapsed_ms, prompt_tokens, completion_tokens,
                     tool_calls, sidekick_spawned, gateway_used, compacted, compaction_reason,
-                    context_tokens_before, status, error, run_at
+                    context_tokens_before, local_mem_gb, gateway_available, gateway_avoided,
+                    status, error, run_at
              FROM chat_runs
              WHERE session_id=?1
              ORDER BY id DESC LIMIT ?2",
@@ -663,9 +689,12 @@ impl Db {
                     compacted: r.get::<_, i64>(10)? != 0,
                     compaction_reason: r.get(11)?,
                     context_tokens_before: r.get::<_, Option<i64>>(12)?.map(|v| v as u64),
-                    status: r.get(13)?,
-                    error: r.get(14)?,
-                    run_at: r.get(15)?,
+                    local_mem_gb: r.get(13)?,
+                    gateway_available: r.get::<_, i64>(14)? != 0,
+                    gateway_avoided: r.get::<_, i64>(15)? != 0,
+                    status: r.get(16)?,
+                    error: r.get(17)?,
+                    run_at: r.get(18)?,
                 })
             },
         )?;
