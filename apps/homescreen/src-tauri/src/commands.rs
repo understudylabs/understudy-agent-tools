@@ -48,8 +48,28 @@ pub struct FusionBenchmarkMode {
 #[derive(Serialize, Clone)]
 pub struct FusionBenchmarkMatrix {
     pub schema_version: &'static str,
+    pub suites: Vec<FusionBenchmarkSuite>,
+    pub candidates: Vec<FusionBenchmarkCandidate>,
     pub modes: Vec<FusionBenchmarkMode>,
     pub tasks: Vec<FusionBenchmarkTask>,
+}
+
+#[derive(Serialize, Clone)]
+pub struct FusionBenchmarkSuite {
+    pub id: &'static str,
+    pub label: &'static str,
+    pub description: &'static str,
+    pub modes: Vec<&'static str>,
+    pub task_ids: Vec<&'static str>,
+}
+
+#[derive(Serialize, Clone)]
+pub struct FusionBenchmarkCandidate {
+    pub id: &'static str,
+    pub label: &'static str,
+    pub route: &'static str,
+    pub model_hint: &'static str,
+    pub description: &'static str,
 }
 
 #[derive(serde::Deserialize)]
@@ -352,6 +372,22 @@ fn fusion_benchmark_suite(suite: Option<&str>) -> Result<(Vec<String>, Vec<Strin
             .map(str::to_string)
             .collect(),
         )),
+        "automationbench-proxy" => Ok((
+            vec!["main-only", "sidekick-parallel", "sidekick-routing"]
+                .into_iter()
+                .map(str::to_string)
+                .collect(),
+            vec![
+                "automationbench-api-discovery",
+                "automationbench-state-verification",
+                "automationbench-domain-routing",
+                "automationbench-tool-risk",
+                "automationbench-cost-latency",
+            ]
+            .into_iter()
+            .map(str::to_string)
+            .collect(),
+        )),
         other => Err(format!("unknown Fusion benchmark suite: {other}")),
     }
 }
@@ -403,9 +439,20 @@ fn fusion_benchmark_score(
         | "repo-open-grounding"
         | "mcp-surface-check"
         | "skill-lookup"
+        | "automationbench-api-discovery"
+        | "automationbench-state-verification"
+        | "automationbench-tool-risk"
+        | "automationbench-cost-latency"
             if mode == "sidekick-routing" =>
         {
             if effective_route == "local" && policy_sidekick {
+                1.0
+            } else {
+                0.0
+            }
+        }
+        "automationbench-domain-routing" if mode == "sidekick-routing" => {
+            if !policy_sidekick && (effective_route == "local" || effective_route == "gateway") {
                 1.0
             } else {
                 0.0
@@ -845,6 +892,80 @@ pub fn local_benchmarks(app: AppHandle) -> Result<Vec<BenchRow>, String> {
 pub fn fusion_benchmark_matrix() -> FusionBenchmarkMatrix {
     FusionBenchmarkMatrix {
         schema_version: "understudy.fusion_benchmark_matrix.v1",
+        suites: vec![
+            FusionBenchmarkSuite {
+                id: "routing-smoke",
+                label: "Routing smoke",
+                description: "Small policy smoke for sidekick routing and gateway escalation.",
+                modes: vec!["sidekick-routing"],
+                task_ids: vec![
+                    "repo-search-summary",
+                    "runtime-status-check",
+                    "judgment-boundary",
+                    "frontier-upgrade-trigger",
+                ],
+            },
+            FusionBenchmarkSuite {
+                id: "local-comparison",
+                label: "Local comparison",
+                description: "Compare main local against parallel sidekick and routing on local-friendly tasks.",
+                modes: vec!["main-only", "sidekick-parallel", "sidekick-routing"],
+                task_ids: vec![
+                    "repo-search-summary",
+                    "runtime-status-check",
+                    "repo-open-grounding",
+                    "latency-cost-accounting",
+                ],
+            },
+            FusionBenchmarkSuite {
+                id: "full-matrix",
+                label: "Full matrix",
+                description: "Run every bundled Fusion task across every harness mode.",
+                modes: vec![
+                    "main-only",
+                    "sidekick-advisory",
+                    "sidekick-parallel",
+                    "sidekick-routing",
+                ],
+                task_ids: vec![],
+            },
+            FusionBenchmarkSuite {
+                id: "automationbench-proxy",
+                label: "AutomationBench proxy",
+                description: "Directional local proxy for AutomationBench-style SaaS workflow/tool-state tasks before the external verifier run.",
+                modes: vec!["main-only", "sidekick-parallel", "sidekick-routing"],
+                task_ids: vec![
+                    "automationbench-api-discovery",
+                    "automationbench-state-verification",
+                    "automationbench-domain-routing",
+                    "automationbench-tool-risk",
+                    "automationbench-cost-latency",
+                ],
+            },
+        ],
+        candidates: vec![
+            FusionBenchmarkCandidate {
+                id: "gateway-glm",
+                label: "GLM 5.2 gateway",
+                route: "gateway",
+                model_hint: "glm-5.2",
+                description: "Remote gateway candidate for frontier-style comparison.",
+            },
+            FusionBenchmarkCandidate {
+                id: "local-main",
+                label: "Local main",
+                route: "local",
+                model_hint: "warm main Understudy model",
+                description: "Current warm main local model.",
+            },
+            FusionBenchmarkCandidate {
+                id: "local-fast",
+                label: "Local fast",
+                route: "local",
+                model_hint: "warm small/e2b Understudy model",
+                description: "Small local model used as the fast/sidekick candidate.",
+            },
+        ],
         modes: vec![
             FusionBenchmarkMode {
                 id: "main-only",
@@ -933,6 +1054,36 @@ pub fn fusion_benchmark_matrix() -> FusionBenchmarkMatrix {
                 category: "main_keeps_judgment",
                 prompt: "Should we change the Fusion architecture to let the sidekick make final routing decisions?",
                 expected_signal: "Keeps final judgment with main and does not over-delegate.",
+            },
+            FusionBenchmarkTask {
+                id: "automationbench-api-discovery",
+                category: "automationbench_proxy",
+                prompt: "AutomationBench-style proxy: inspect the available tool/API surface, identify the likely endpoint or tool family for a simple SaaS workflow, and state what evidence is still missing before mutation.",
+                expected_signal: "Uses read-only discovery, preserves final action ownership, and does not invent unavailable API state.",
+            },
+            FusionBenchmarkTask {
+                id: "automationbench-state-verification",
+                category: "automationbench_proxy",
+                prompt: "AutomationBench-style proxy: verify whether a simulated workflow has enough final-state evidence to claim success, and list the assertions that would need to pass.",
+                expected_signal: "Focuses on final-state assertions and treats weak evidence as not proven.",
+            },
+            FusionBenchmarkTask {
+                id: "automationbench-domain-routing",
+                category: "automationbench_proxy",
+                prompt: "AutomationBench-style proxy: decide whether a sales/support/finance workflow should stay on local fast, local main, or gateway when tool calls reveal ambiguous business rules.",
+                expected_signal: "Routes ambiguity and final judgment to main or gateway while allowing sidekick only for bounded inspection.",
+            },
+            FusionBenchmarkTask {
+                id: "automationbench-tool-risk",
+                category: "automationbench_proxy",
+                prompt: "AutomationBench-style proxy: identify which steps in a multi-tool SaaS workflow are safe for sidekick read-only assistance and which require main-agent control.",
+                expected_signal: "Separates read-only discovery from mutation/final review and avoids giving sidekick final authority.",
+            },
+            FusionBenchmarkTask {
+                id: "automationbench-cost-latency",
+                category: "automationbench_proxy",
+                prompt: "AutomationBench-style proxy: compare recent local, sidekick, and gateway routing metrics and summarize the cost/latency tradeoff for running a small public AutomationBench slice.",
+                expected_signal: "Uses durable metrics and discusses local memory/time, sidekick overhead, and gateway avoidance.",
             },
         ],
     }
