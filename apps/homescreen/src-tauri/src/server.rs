@@ -34,6 +34,11 @@ pub fn router(ctx: Ctx) -> Router {
         .route("/api/residency", get(residency))
         .route("/api/dossiers", get(dossiers))
         .route("/api/benchmarks", get(benchmarks))
+        .route("/api/fusion/benchmark-matrix", get(fusion_benchmark_matrix))
+        .route(
+            "/api/fusion/benchmark-results",
+            get(fusion_benchmark_results).post(record_fusion_benchmark),
+        )
         .route("/api/profile/:id", get(profile))
         .route("/api/traces", get(traces_list))
         .route("/api/traces/search", get(traces_search))
@@ -141,6 +146,33 @@ async fn benchmarks(
     crate::commands::local_benchmarks(ctx.app.clone())
         .map(|v| Json(json!(v)))
         .map_err(|e| (StatusCode::BAD_GATEWAY, e))
+}
+async fn fusion_benchmark_matrix(
+    State(ctx): State<Ctx>,
+    h: HeaderMap,
+) -> Result<Json<Value>, (StatusCode, String)> {
+    auth(&ctx, &h)?;
+    Ok(Json(json!(crate::commands::fusion_benchmark_matrix())))
+}
+async fn fusion_benchmark_results(
+    State(ctx): State<Ctx>,
+    h: HeaderMap,
+    Query(q): Query<LimitQ>,
+) -> Result<Json<Value>, (StatusCode, String)> {
+    auth(&ctx, &h)?;
+    crate::commands::fusion_benchmark_results(ctx.app.clone(), q.limit)
+        .map(|v| Json(json!(v)))
+        .map_err(|e| (StatusCode::BAD_GATEWAY, e))
+}
+async fn record_fusion_benchmark(
+    State(ctx): State<Ctx>,
+    h: HeaderMap,
+    Json(body): Json<crate::commands::RecordFusionBenchmarkRequest>,
+) -> Result<Json<Value>, (StatusCode, String)> {
+    auth(&ctx, &h)?;
+    crate::commands::record_fusion_benchmark(ctx.app.clone(), body)
+        .map(|_| Json(json!({ "ok": true })))
+        .map_err(|e| (StatusCode::BAD_REQUEST, e))
 }
 async fn profile(
     State(ctx): State<Ctx>,
@@ -266,6 +298,9 @@ fn tools() -> Vec<Value> {
         ("residency", "Warm-slot residency (which models are loaded)."),
         ("knowledge_dossiers", "Bundled public per-model dossiers."),
         ("local_benchmarks", "Local live benchmark rows."),
+        ("fusion_benchmark_matrix", "Fusion benchmark modes and fixed local task set."),
+        ("fusion_benchmark_results", "Recent Fusion benchmark result rows. Args: {limit?}."),
+        ("record_fusion_benchmark", "Record one Fusion benchmark result row."),
         ("aa_models", "Artificial Analysis external pricing/speed/quality."),
         ("list_traces", "List recent Moraine sessions. Args: {limit?}."),
         ("search_traces", "Search Moraine traces. Args: {q}."),
@@ -287,6 +322,18 @@ async fn call_tool(ctx: &Ctx, name: &str, args: &Value) -> Result<Value, String>
         "residency" => json!(c::get_residency(app)),
         "knowledge_dossiers" => json!(c::knowledge_dossiers()),
         "local_benchmarks" => json!(c::local_benchmarks(app).map_err(|e| e.to_string())?),
+        "fusion_benchmark_matrix" => json!(c::fusion_benchmark_matrix()),
+        "fusion_benchmark_results" => json!(c::fusion_benchmark_results(
+            app,
+            args.get("limit").and_then(|v| v.as_u64()).map(|x| x as u32)
+        )
+        .map_err(|e| e.to_string())?),
+        "record_fusion_benchmark" => {
+            let result = serde_json::from_value::<c::RecordFusionBenchmarkRequest>(args.clone())
+                .map_err(|e| format!("invalid Fusion benchmark result: {e}"))?;
+            c::record_fusion_benchmark(app, result).map_err(|e| e.to_string())?;
+            json!({ "ok": true })
+        }
         "aa_models" => json!(c::aa_models(app).await.map_err(|e| e.to_string())?),
         "list_traces" => {
             c::list_traces(args.get("limit").and_then(|v| v.as_u64()).map(|x| x as u32))

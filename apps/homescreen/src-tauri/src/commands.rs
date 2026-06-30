@@ -1,7 +1,10 @@
 use crate::aa::{self, AaModel};
 use crate::account;
 use crate::bin;
-use crate::db::{BenchRow, SidekickDecisionRow, SidekickEventRow, SidekickRunRow};
+use crate::db::{
+    BenchRow, FusionBenchmarkInput, FusionBenchmarkRow, SidekickDecisionRow, SidekickEventRow,
+    SidekickRunRow,
+};
 use crate::knowledge::{self, Dossier};
 use crate::mcp;
 use crate::metrics::{Machine, Metrics, MetricsReader};
@@ -24,6 +27,51 @@ pub struct StatusSnapshot {
     pub metrics: Metrics,
     pub residency: ResidencySnapshot,
     pub local_base_url: &'static str,
+}
+
+#[derive(Serialize, Clone)]
+pub struct FusionBenchmarkTask {
+    pub id: &'static str,
+    pub category: &'static str,
+    pub prompt: &'static str,
+    pub expected_signal: &'static str,
+}
+
+#[derive(Serialize, Clone)]
+pub struct FusionBenchmarkMode {
+    pub id: &'static str,
+    pub label: &'static str,
+    pub description: &'static str,
+}
+
+#[derive(Serialize, Clone)]
+pub struct FusionBenchmarkMatrix {
+    pub schema_version: &'static str,
+    pub modes: Vec<FusionBenchmarkMode>,
+    pub tasks: Vec<FusionBenchmarkTask>,
+}
+
+#[derive(serde::Deserialize)]
+pub struct RecordFusionBenchmarkRequest {
+    pub run_id: String,
+    pub task_id: String,
+    pub mode: String,
+    pub model: String,
+    pub elapsed_ms: Option<u64>,
+    pub prompt_tokens: Option<u64>,
+    pub completion_tokens: Option<u64>,
+    pub sidekick_runs: Option<u64>,
+    pub sidekick_tool_calls: Option<u64>,
+    pub gateway_used: Option<bool>,
+    pub score: Option<f64>,
+    pub notes: Option<String>,
+}
+
+fn valid_fusion_mode(mode: &str) -> bool {
+    matches!(
+        mode,
+        "main-only" | "sidekick-advisory" | "sidekick-parallel" | "sidekick-routing"
+    )
 }
 
 fn residency<'a>(app: &'a AppHandle) -> &'a Residency {
@@ -327,6 +375,107 @@ pub fn knowledge_dossiers() -> Vec<Dossier> {
 pub fn local_benchmarks(app: AppHandle) -> Result<Vec<BenchRow>, String> {
     app.state::<crate::db::Db>()
         .list_benchmarks()
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn fusion_benchmark_matrix() -> FusionBenchmarkMatrix {
+    FusionBenchmarkMatrix {
+        schema_version: "understudy.fusion_benchmark_matrix.v1",
+        modes: vec![
+            FusionBenchmarkMode {
+                id: "main-only",
+                label: "Main only",
+                description: "Run the selected main model with sidekick disabled.",
+            },
+            FusionBenchmarkMode {
+                id: "sidekick-advisory",
+                label: "Sidekick advisory",
+                description: "Allow explicit delegate_to_sidekick tool calls only.",
+            },
+            FusionBenchmarkMode {
+                id: "sidekick-parallel",
+                label: "Sidekick parallel",
+                description: "Enable non-visual background sidekick on eligible prompts.",
+            },
+            FusionBenchmarkMode {
+                id: "sidekick-routing",
+                label: "Sidekick + routing",
+                description: "Enable parallel sidekick plus feedback-aware routing policy.",
+            },
+        ],
+        tasks: vec![
+            FusionBenchmarkTask {
+                id: "repo-search-summary",
+                category: "mechanical_search",
+                prompt: "Find the sidekick routing code and summarize what controls parallel delegation.",
+                expected_signal: "Uses repo search or cites routing files without making final product decisions.",
+            },
+            FusionBenchmarkTask {
+                id: "runtime-status-check",
+                category: "runtime_inspection",
+                prompt: "Check whether local serving has a warm sidekick model and report the relevant slots.",
+                expected_signal: "Reads runtime/status or residency and reports concrete slot state.",
+            },
+            FusionBenchmarkTask {
+                id: "verification-review",
+                category: "verification",
+                prompt: "Review the most recent sidekick runs and identify whether any should be marked useful or miss.",
+                expected_signal: "Inspects sidekick run metadata and keeps recommendation bounded.",
+            },
+            FusionBenchmarkTask {
+                id: "judgment-boundary",
+                category: "main_keeps_judgment",
+                prompt: "Should we change the Fusion architecture to let the sidekick make final routing decisions?",
+                expected_signal: "Keeps final judgment with main and does not over-delegate.",
+            },
+        ],
+    }
+}
+
+#[tauri::command]
+pub fn record_fusion_benchmark(
+    app: AppHandle,
+    result: RecordFusionBenchmarkRequest,
+) -> Result<(), String> {
+    if result.run_id.trim().is_empty() {
+        return Err("run_id is required".to_string());
+    }
+    if result.task_id.trim().is_empty() {
+        return Err("task_id is required".to_string());
+    }
+    if !valid_fusion_mode(&result.mode) {
+        return Err(format!("unknown Fusion benchmark mode: {}", result.mode));
+    }
+    if result.model.trim().is_empty() {
+        return Err("model is required".to_string());
+    }
+    let input = FusionBenchmarkInput {
+        run_id: result.run_id,
+        task_id: result.task_id,
+        mode: result.mode,
+        model: result.model,
+        elapsed_ms: result.elapsed_ms,
+        prompt_tokens: result.prompt_tokens,
+        completion_tokens: result.completion_tokens,
+        sidekick_runs: result.sidekick_runs.unwrap_or(0),
+        sidekick_tool_calls: result.sidekick_tool_calls.unwrap_or(0),
+        gateway_used: result.gateway_used.unwrap_or(false),
+        score: result.score,
+        notes: result.notes,
+    };
+    app.state::<crate::db::Db>()
+        .record_fusion_benchmark(&input)
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn fusion_benchmark_results(
+    app: AppHandle,
+    limit: Option<u32>,
+) -> Result<Vec<FusionBenchmarkRow>, String> {
+    app.state::<crate::db::Db>()
+        .list_fusion_benchmarks(limit.unwrap_or(50))
         .map_err(|e| e.to_string())
 }
 

@@ -16,6 +16,40 @@ pub struct BenchRow {
 }
 
 #[derive(Serialize, Clone)]
+pub struct FusionBenchmarkRow {
+    pub id: u64,
+    pub run_id: String,
+    pub task_id: String,
+    pub mode: String,
+    pub model: String,
+    pub elapsed_ms: Option<u64>,
+    pub prompt_tokens: Option<u64>,
+    pub completion_tokens: Option<u64>,
+    pub sidekick_runs: u64,
+    pub sidekick_tool_calls: u64,
+    pub gateway_used: bool,
+    pub score: Option<f64>,
+    pub notes: Option<String>,
+    pub run_at: String,
+}
+
+#[derive(Clone, Debug)]
+pub struct FusionBenchmarkInput {
+    pub run_id: String,
+    pub task_id: String,
+    pub mode: String,
+    pub model: String,
+    pub elapsed_ms: Option<u64>,
+    pub prompt_tokens: Option<u64>,
+    pub completion_tokens: Option<u64>,
+    pub sidekick_runs: u64,
+    pub sidekick_tool_calls: u64,
+    pub gateway_used: bool,
+    pub score: Option<f64>,
+    pub notes: Option<String>,
+}
+
+#[derive(Serialize, Clone)]
 pub struct SidekickRunRow {
     pub id: u64,
     pub session_id: String,
@@ -85,6 +119,22 @@ impl Db {
                 mem_gb      REAL,
                 load_ms     INTEGER,
                 run_at      TEXT NOT NULL
+            );
+            CREATE TABLE IF NOT EXISTS fusion_benchmarks (
+                id                  INTEGER PRIMARY KEY,
+                run_id              TEXT NOT NULL,
+                task_id             TEXT NOT NULL,
+                mode                TEXT NOT NULL,
+                model               TEXT NOT NULL,
+                elapsed_ms          INTEGER,
+                prompt_tokens       INTEGER,
+                completion_tokens   INTEGER,
+                sidekick_runs       INTEGER NOT NULL DEFAULT 0,
+                sidekick_tool_calls INTEGER NOT NULL DEFAULT 0,
+                gateway_used        INTEGER NOT NULL DEFAULT 0,
+                score               REAL,
+                notes               TEXT,
+                run_at              TEXT NOT NULL
             );
             CREATE TABLE IF NOT EXISTS chat_history (
                 id          INTEGER PRIMARY KEY,
@@ -231,6 +281,61 @@ impl Db {
                 mem_gb: r.get::<_, Option<f64>>(2)?,
                 load_ms: r.get::<_, Option<i64>>(3)?.map(|m| m as u64),
                 run_at: r.get(4)?,
+            })
+        })?;
+        rows.collect::<rusqlite::Result<Vec<_>>>()
+            .map_err(Into::into)
+    }
+
+    pub fn record_fusion_benchmark(&self, input: &FusionBenchmarkInput) -> Result<()> {
+        let conn = self.conn()?;
+        conn.execute(
+            "INSERT INTO fusion_benchmarks (
+                run_id, task_id, mode, model, elapsed_ms, prompt_tokens, completion_tokens,
+                sidekick_runs, sidekick_tool_calls, gateway_used, score, notes, run_at
+             ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)",
+            rusqlite::params![
+                input.run_id,
+                input.task_id,
+                input.mode,
+                input.model,
+                input.elapsed_ms.map(|v| v as i64),
+                input.prompt_tokens.map(|v| v as i64),
+                input.completion_tokens.map(|v| v as i64),
+                input.sidekick_runs as i64,
+                input.sidekick_tool_calls as i64,
+                input.gateway_used as i64,
+                input.score,
+                input.notes,
+                now_iso(),
+            ],
+        )?;
+        Ok(())
+    }
+
+    pub fn list_fusion_benchmarks(&self, limit: u32) -> Result<Vec<FusionBenchmarkRow>> {
+        let conn = self.conn()?;
+        let mut stmt = conn.prepare(
+            "SELECT id, run_id, task_id, mode, model, elapsed_ms, prompt_tokens, completion_tokens,
+                    sidekick_runs, sidekick_tool_calls, gateway_used, score, notes, run_at
+             FROM fusion_benchmarks ORDER BY id DESC LIMIT ?1",
+        )?;
+        let rows = stmt.query_map([limit.max(1).min(500) as i64], |r| {
+            Ok(FusionBenchmarkRow {
+                id: r.get::<_, i64>(0)? as u64,
+                run_id: r.get(1)?,
+                task_id: r.get(2)?,
+                mode: r.get(3)?,
+                model: r.get(4)?,
+                elapsed_ms: r.get::<_, Option<i64>>(5)?.map(|v| v as u64),
+                prompt_tokens: r.get::<_, Option<i64>>(6)?.map(|v| v as u64),
+                completion_tokens: r.get::<_, Option<i64>>(7)?.map(|v| v as u64),
+                sidekick_runs: r.get::<_, i64>(8)? as u64,
+                sidekick_tool_calls: r.get::<_, i64>(9)? as u64,
+                gateway_used: r.get::<_, i64>(10)? != 0,
+                score: r.get(11)?,
+                notes: r.get(12)?,
+                run_at: r.get(13)?,
             })
         })?;
         rows.collect::<rusqlite::Result<Vec<_>>>()
