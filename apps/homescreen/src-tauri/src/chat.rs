@@ -548,6 +548,17 @@ fn tool_schemas() -> Vec<Value> {
     ]
 }
 
+fn benchmark_tool_schemas(allow_sidekick_tool: bool) -> Vec<Value> {
+    tool_schemas()
+        .into_iter()
+        .filter(|schema| {
+            allow_sidekick_tool
+                || schema.pointer("/function/name").and_then(|v| v.as_str())
+                    != Some("delegate_to_sidekick")
+        })
+        .collect()
+}
+
 async fn tool_result(
     app: &AppHandle,
     mgr: &Residency,
@@ -2241,6 +2252,7 @@ pub async fn benchmark_local_chat(
     session_id: &str,
     prompt: &str,
     enable_parallel_sidekick: bool,
+    allow_sidekick_tool: bool,
 ) -> Result<BenchmarkChatResult, String> {
     let started = Instant::now();
     let prompt = benchmark_prompt(prompt);
@@ -2290,6 +2302,7 @@ pub async fn benchmark_local_chat(
             &outbound_messages,
             BENCHMARK_MAX_TOKENS,
             BENCHMARK_THINKING_BUDGET,
+            allow_sidekick_tool,
         )
         .await?;
         final_content = result.content.clone();
@@ -2359,6 +2372,7 @@ pub async fn benchmark_gateway_chat(
     session_id: &str,
     prompt: &str,
     model_field: &str,
+    allow_sidekick_tool: bool,
 ) -> Result<BenchmarkChatResult, String> {
     let started = Instant::now();
     let prompt = benchmark_prompt(prompt);
@@ -2392,6 +2406,7 @@ pub async fn benchmark_gateway_chat(
             &outbound_messages,
             BENCHMARK_MAX_TOKENS,
             BENCHMARK_THINKING_BUDGET,
+            allow_sidekick_tool,
         )
         .await?;
         final_content = result.content.clone();
@@ -2462,12 +2477,13 @@ async fn nonstream_chat_once(
     messages: &[Value],
     max_tokens: u32,
     thinking_budget: u32,
+    allow_sidekick_tool: bool,
 ) -> Result<NonstreamChatOnceResult, String> {
     let payload = json!({
         "model": model_field,
         "messages": messages,
         "stream": false,
-        "tools": tool_schemas(),
+        "tools": benchmark_tool_schemas(allow_sidekick_tool),
         "tool_choice": "auto",
         "max_tokens": max_tokens,
         "thinking_budget": thinking_budget,

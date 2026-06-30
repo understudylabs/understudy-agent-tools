@@ -1222,6 +1222,7 @@ pub async fn run_fusion_benchmark(
                 .as_ref()
                 .map(|rec| rec.use_sidekick)
                 .unwrap_or(false);
+            let allow_sidekick_tool = mode != "main-only";
             let needs_local_main = effective_route == "local";
             let needs_sidekick = effective_route == "local"
                 && (mode == "sidekick-parallel" || (mode == "sidekick-routing" && policy_sidekick));
@@ -1253,6 +1254,7 @@ pub async fn run_fusion_benchmark(
                         &run_id,
                         task.prompt,
                         &effective_model,
+                        allow_sidekick_tool,
                     )
                     .await?
                 } else {
@@ -1264,6 +1266,7 @@ pub async fn run_fusion_benchmark(
                         &run_id,
                         task.prompt,
                         needs_sidekick,
+                        allow_sidekick_tool,
                     )
                     .await?
                 };
