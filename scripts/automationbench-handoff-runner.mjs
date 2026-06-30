@@ -5,7 +5,7 @@ function usage() {
   return `Usage:
   node scripts/automationbench-handoff-runner.mjs --handoff <path> [--print-commands]
   node scripts/automationbench-handoff-runner.mjs --handoff <path> --print-fusion-commands [--base-url <url>]
-  node scripts/automationbench-handoff-runner.mjs --handoff <path> --results <path> [--candidate <id>] [--cohort-run-id <id>] [--mode <mode>] [--mode-prefix <prefix>] [--sidekick-runs <n>] [--sidekick-tool-calls <n>] [--gateway-used true|false] [--post] [--token <token>]
+  node scripts/automationbench-handoff-runner.mjs --handoff <path> --results <path> [--candidate <id>] [--cohort-run-id <id>] [--mode <mode>] [--mode-prefix <prefix>] [--sidekick-runs <n>] [--sidekick-tool-calls <n>] [--gateway-used true|false] [--fusion-event-log <path>] [--post] [--token <token>]
 
 Reads an Understudy AutomationBench handoff packet and either prints the intended
 candidate runs or normalizes runner results for the desktop callback endpoint.
@@ -15,6 +15,9 @@ Result input may be a native AutomationBench export, a JSON array, or JSONL. Eac
 
 Optional row fields:
   prompt_tokens, completion_tokens, local_mem_gb, notes, run_id
+
+Fusion proxy event logs may be passed with --fusion-event-log to enrich routed
+rows with observed route, gateway usage, tokens, latency, and sidekick state.
 `;
 }
 
@@ -98,6 +101,56 @@ function readResultRows(path, candidateId) {
       const row = JSON.parse(line);
       return { candidate: candidateId ?? row.candidate, ...row };
     });
+}
+
+function readFusionEvents(path) {
+  if (!path) return [];
+  const raw = readFileSync(path, "utf8").trim();
+  if (!raw) return [];
+  return raw
+    .split(/\n+/)
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .map((line) => JSON.parse(line))
+    .filter((event) => event.schema_version === "understudy.fusion_proxy_event.v1");
+}
+
+function enrichRowsWithFusionEvents(rows, events) {
+  if (!events.length) return rows;
+  const queues = new Map();
+  for (const event of events) {
+    const model = String(event.requested_model ?? "");
+    if (!model) continue;
+    const queue = queues.get(model) ?? [];
+    queue.push(event);
+    queues.set(model, queue);
+  }
+  return rows.map((row) => {
+    const model = String(row.model ?? "");
+    if (!model.startsWith("understudy-fusion-")) return row;
+    const event = queues.get(model)?.shift();
+    if (!event) return row;
+    const eventNotes = [
+      `fusion_route=${event.route ?? "unknown"}`,
+      event.routing_reason ? `routing_reason=${event.routing_reason}` : null,
+      `upstream=${event.upstream_model ?? "unknown"}`,
+      `sidekick=${event.sidekick_mode ?? "off"}`,
+      event.sidekick_pending ? "sidekick_pending=true" : null,
+      event.sidekick_error ? "sidekick_error=true" : null,
+    ]
+      .filter(Boolean)
+      .join("; ");
+    return {
+      ...row,
+      elapsed_ms: event.elapsed_ms ?? row.elapsed_ms,
+      prompt_tokens: event.prompt_tokens ?? row.prompt_tokens,
+      completion_tokens: event.completion_tokens ?? row.completion_tokens,
+      gateway_used: event.gateway_used,
+      sidekick_runs: event.sidekick_mode && event.sidekick_mode !== "off" ? 1 : 0,
+      sidekick_tool_calls: event.tool_count ?? row.sidekick_tool_calls,
+      notes: row.notes ? `${row.notes}; ${eventNotes}` : eventNotes,
+    };
+  });
 }
 
 function requireHandoff(path) {
@@ -264,7 +317,12 @@ async function main() {
   }
   const resultsPath = argValue(args, "--results");
   if (resultsPath) {
-    const normalized = normalizeRows(handoff, readResultRows(resultsPath, argValue(args, "--candidate")), {
+    const resultRows = readResultRows(resultsPath, argValue(args, "--candidate"));
+    const fusionEventLogPath = argValue(args, "--fusion-event-log");
+    const enrichedRows = fusionEventLogPath
+      ? enrichRowsWithFusionEvents(resultRows, readFusionEvents(fusionEventLogPath))
+      : resultRows;
+    const normalized = normalizeRows(handoff, enrichedRows, {
       cohortRunId: argValue(args, "--cohort-run-id"),
       mode: argValue(args, "--mode"),
       modePrefix: argValue(args, "--mode-prefix"),

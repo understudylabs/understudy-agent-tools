@@ -292,4 +292,74 @@ describe("automationbench handoff runner", () => {
     assert.equal(payload.rows[0].mode, "sidekick-routing");
     assert.equal(payload.rows[0].gateway_used, true);
   });
+
+  it("enriches Fusion routing rows from proxy event logs", () => {
+    const { handoffPath } = writeFixture();
+    const resultsPath = join(dir, "automationbench-routing-export.json");
+    const eventLogPath = join(dir, "proxy-events.jsonl");
+    writeFileSync(
+      resultsPath,
+      `${JSON.stringify({
+        meta: { model: "understudy-fusion-routing", domains: ["simple"], duration_seconds: 99 },
+        tasks: [
+          { id: 1, name: "simple.route_a", score: 1, passed: true, input_tokens: 20, output_tokens: 8 },
+          { id: 2, name: "simple.route_b", score: 0, passed: false, input_tokens: 21, output_tokens: 9 },
+        ],
+      })}\n`,
+    );
+    writeFileSync(
+      eventLogPath,
+      [
+        {
+          schema_version: "understudy.fusion_proxy_event.v1",
+          requested_model: "understudy-fusion-routing",
+          route: "gateway",
+          upstream_model: "glm-5.2",
+          gateway_used: true,
+          sidekick_mode: "background",
+          sidekick_pending: false,
+          elapsed_ms: 1234,
+          tool_count: 6,
+          prompt_tokens: 100,
+          completion_tokens: 40,
+          routing_reason: "tool_backed_write_work",
+        },
+        {
+          schema_version: "understudy.fusion_proxy_event.v1",
+          requested_model: "understudy-fusion-routing",
+          route: "fast",
+          upstream_model: "gemma-4-e2b-it-qat-mlx-vlm-understudy",
+          gateway_used: false,
+          sidekick_mode: "off",
+          sidekick_pending: false,
+          elapsed_ms: 321,
+          tool_count: 0,
+          prompt_tokens: 50,
+          completion_tokens: 10,
+          routing_reason: "small_no_tool_turn",
+        },
+      ]
+        .map((event) => JSON.stringify(event))
+        .join("\n") + "\n",
+    );
+    const result = spawnSync(
+      runner[0],
+      [...runner.slice(1), "--handoff", handoffPath, "--results", resultsPath, "--fusion-event-log", eventLogPath],
+      { encoding: "utf8" },
+    );
+    assert.equal(result.status, 0, result.stderr);
+    const payload = JSON.parse(result.stdout);
+    assert.equal(payload.rows.length, 2);
+    assert.equal(payload.rows[0].gateway_used, true);
+    assert.equal(payload.rows[0].elapsed_ms, 1234);
+    assert.equal(payload.rows[0].prompt_tokens, 100);
+    assert.equal(payload.rows[0].completion_tokens, 40);
+    assert.equal(payload.rows[0].sidekick_runs, 1);
+    assert.equal(payload.rows[0].sidekick_tool_calls, 6);
+    assert.match(payload.rows[0].notes, /fusion_route=gateway/);
+    assert.match(payload.rows[0].notes, /routing_reason=tool_backed_write_work/);
+    assert.equal(payload.rows[1].gateway_used, false);
+    assert.equal(payload.rows[1].sidekick_runs, 0);
+    assert.equal(payload.rows[1].elapsed_ms, 321);
+  });
 });
