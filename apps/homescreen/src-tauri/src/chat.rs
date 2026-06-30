@@ -65,6 +65,9 @@ const SIDEKICK_MAX_CONTEXT_MESSAGES: usize = 16;
 const SIDEKICK_RECENT_CONTEXT_MESSAGES: usize = 10;
 const SIDEKICK_FILE_READ_LIMIT: usize = 48 * 1024;
 const SIDEKICK_MEMORY_PREFIX: &str = "Sidekick compacted memory:";
+const CHAT_COMPACTION_TOKEN_THRESHOLD: u64 = 12_000;
+const CHAT_RECENT_CONTEXT_MESSAGES: usize = 12;
+const CHAT_COMPACTED_CONTEXT_PREFIX: &str = "Chat compacted context:";
 
 static SIDEKICK_SESSIONS: OnceLock<Mutex<HashMap<String, Vec<Value>>>> = OnceLock::new();
 
@@ -1187,6 +1190,62 @@ fn approximate_messages_tokens(messages: &[Value]) -> u64 {
         .sum()
 }
 
+fn chat_message_content(message: &Value) -> Option<String> {
+    match message.get("content")? {
+        Value::String(text) => Some(text.to_string()),
+        other => Some(other.to_string()),
+    }
+}
+
+fn compact_chat_messages(messages: Vec<Value>) -> (Vec<Value>, Option<String>, u64) {
+    let before_tokens = approximate_messages_tokens(&messages);
+    if before_tokens < CHAT_COMPACTION_TOKEN_THRESHOLD
+        || messages.len() <= CHAT_RECENT_CONTEXT_MESSAGES + 2
+    {
+        return (messages, None, before_tokens);
+    }
+
+    let split_at = messages.len().saturating_sub(CHAT_RECENT_CONTEXT_MESSAGES);
+    let mut system = vec![];
+    let mut older = vec![];
+    let mut recent = vec![];
+    for (idx, message) in messages.into_iter().enumerate() {
+        let role = message.get("role").and_then(|v| v.as_str()).unwrap_or("");
+        if role == "system" && idx < split_at {
+            system.push(message);
+        } else if idx < split_at {
+            older.push(message);
+        } else {
+            recent.push(message);
+        }
+    }
+
+    let mut memory_lines = vec![format!(
+        "{CHAT_COMPACTED_CONTEXT_PREFIX} older turns were compressed at ~{before_tokens} estimated prompt tokens. Preserve concrete constraints and decisions, but treat this summary as lower fidelity than recent verbatim messages."
+    )];
+    for message in older.iter().rev().take(10).rev() {
+        let role = message
+            .get("role")
+            .and_then(|v| v.as_str())
+            .unwrap_or("message");
+        if let Some(content) = chat_message_content(message) {
+            memory_lines.push(format!("{role}: {}", compact_line(&content, 320)));
+        }
+    }
+
+    let mut compacted = system;
+    compacted.push(json!({
+        "role": "system",
+        "content": memory_lines.join("\n"),
+    }));
+    compacted.extend(recent);
+    (
+        compacted,
+        Some("long_context_boundary".to_string()),
+        before_tokens,
+    )
+}
+
 fn record_chat_run(app: &AppHandle, input: ChatRunInput) {
     let _ = app.state::<crate::db::Db>().record_chat_run(&input);
 }
@@ -1384,6 +1443,10 @@ fn maybe_spawn_parallel_sidekick(
         record_decision(false, "no_user_prompt");
         return false;
     }
+    if approximate_token_count(prompt) > CHAT_COMPACTION_TOKEN_THRESHOLD / 2 {
+        record_decision(false, "compaction_boundary_main");
+        return false;
+    }
     if app
         .state::<Residency>()
         .sidekick_endpoint(active_slot_id)
@@ -1545,9 +1608,12 @@ pub async fn chat_stream(
             .filter(|m| m.role != "system")
             .map(|m| json!({ "role": m.role, "content": m.content })),
     );
+    let (mut outbound_messages, compaction_reason, context_tokens_before) =
+        compact_chat_messages(outbound_messages);
     let mut prompt_tokens = approximate_messages_tokens(&outbound_messages);
     let mut completion_tokens = 0u64;
     let mut tool_count = 0u64;
+    let compacted = compaction_reason.is_some();
 
     let client = reqwest::Client::builder()
         .build()
@@ -1578,6 +1644,9 @@ pub async fn chat_stream(
                     tool_calls: tool_count,
                     sidekick_spawned,
                     gateway_used: route == "cloud",
+                    compacted,
+                    compaction_reason: compaction_reason.clone(),
+                    context_tokens_before: Some(context_tokens_before),
                     status: "error".to_string(),
                     error: Some(error),
                 },
@@ -1599,6 +1668,9 @@ pub async fn chat_stream(
                     tool_calls: tool_count,
                     sidekick_spawned,
                     gateway_used: route == "cloud",
+                    compacted,
+                    compaction_reason: compaction_reason.clone(),
+                    context_tokens_before: Some(context_tokens_before),
                     status: "ok".to_string(),
                     error: None,
                 },
@@ -1664,6 +1736,9 @@ pub async fn chat_stream(
             tool_calls: tool_count,
             sidekick_spawned,
             gateway_used: route == "cloud",
+            compacted,
+            compaction_reason,
+            context_tokens_before: Some(context_tokens_before),
             status: "tool_limit".to_string(),
             error: Some(format!("tool call limit reached ({MAX_TOOL_ROUNDS})")),
         },

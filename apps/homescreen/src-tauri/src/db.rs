@@ -61,6 +61,9 @@ pub struct ChatRunRow {
     pub tool_calls: u64,
     pub sidekick_spawned: bool,
     pub gateway_used: bool,
+    pub compacted: bool,
+    pub compaction_reason: Option<String>,
+    pub context_tokens_before: Option<u64>,
     pub status: String,
     pub error: Option<String>,
     pub run_at: String,
@@ -77,6 +80,9 @@ pub struct ChatRunInput {
     pub tool_calls: u64,
     pub sidekick_spawned: bool,
     pub gateway_used: bool,
+    pub compacted: bool,
+    pub compaction_reason: Option<String>,
+    pub context_tokens_before: Option<u64>,
     pub status: String,
     pub error: Option<String>,
 }
@@ -197,6 +203,9 @@ impl Db {
                 tool_calls        INTEGER NOT NULL DEFAULT 0,
                 sidekick_spawned  INTEGER NOT NULL DEFAULT 0,
                 gateway_used      INTEGER NOT NULL DEFAULT 0,
+                compacted         INTEGER NOT NULL DEFAULT 0,
+                compaction_reason TEXT,
+                context_tokens_before INTEGER,
                 status            TEXT NOT NULL,
                 error             TEXT,
                 run_at            TEXT NOT NULL
@@ -252,6 +261,18 @@ impl Db {
         let _ = conn.execute("ALTER TABLE sidekick_runs ADD COLUMN content TEXT", []);
         let _ = conn.execute(
             "ALTER TABLE sidekick_runs ADD COLUMN consumed INTEGER NOT NULL DEFAULT 0",
+            [],
+        );
+        let _ = conn.execute(
+            "ALTER TABLE chat_runs ADD COLUMN compacted INTEGER NOT NULL DEFAULT 0",
+            [],
+        );
+        let _ = conn.execute(
+            "ALTER TABLE chat_runs ADD COLUMN compaction_reason TEXT",
+            [],
+        );
+        let _ = conn.execute(
+            "ALTER TABLE chat_runs ADD COLUMN context_tokens_before INTEGER",
             [],
         );
         Ok(conn)
@@ -376,8 +397,9 @@ impl Db {
         conn.execute(
             "INSERT INTO chat_runs (
                 session_id, route, model, elapsed_ms, prompt_tokens, completion_tokens, tool_calls,
-                sidekick_spawned, gateway_used, status, error, run_at
-             ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12)",
+                sidekick_spawned, gateway_used, compacted, compaction_reason, context_tokens_before,
+                status, error, run_at
+             ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15)",
             rusqlite::params![
                 input.session_id,
                 input.route,
@@ -388,6 +410,9 @@ impl Db {
                 input.tool_calls as i64,
                 input.sidekick_spawned as i64,
                 input.gateway_used as i64,
+                input.compacted as i64,
+                input.compaction_reason,
+                input.context_tokens_before.map(|v| v as i64),
                 input.status,
                 input.error,
                 now_iso(),
@@ -400,7 +425,8 @@ impl Db {
         let conn = self.conn()?;
         let mut stmt = conn.prepare(
             "SELECT id, session_id, route, model, elapsed_ms, prompt_tokens, completion_tokens,
-                    tool_calls, sidekick_spawned, gateway_used, status, error, run_at
+                    tool_calls, sidekick_spawned, gateway_used, compacted, compaction_reason,
+                    context_tokens_before, status, error, run_at
              FROM chat_runs ORDER BY id DESC LIMIT ?1",
         )?;
         let rows = stmt.query_map([limit.max(1).min(500) as i64], |r| {
@@ -415,9 +441,12 @@ impl Db {
                 tool_calls: r.get::<_, i64>(7)? as u64,
                 sidekick_spawned: r.get::<_, i64>(8)? != 0,
                 gateway_used: r.get::<_, i64>(9)? != 0,
-                status: r.get(10)?,
-                error: r.get(11)?,
-                run_at: r.get(12)?,
+                compacted: r.get::<_, i64>(10)? != 0,
+                compaction_reason: r.get(11)?,
+                context_tokens_before: r.get::<_, Option<i64>>(12)?.map(|v| v as u64),
+                status: r.get(13)?,
+                error: r.get(14)?,
+                run_at: r.get(15)?,
             })
         })?;
         rows.collect::<rusqlite::Result<Vec<_>>>()

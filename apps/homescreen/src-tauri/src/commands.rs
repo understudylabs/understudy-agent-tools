@@ -159,6 +159,7 @@ pub struct ChatRouteMetricGroup {
     pub error_rows: u64,
     pub sidekick_rows: u64,
     pub gateway_rows: u64,
+    pub compacted_rows: u64,
     pub avg_elapsed_ms: Option<f64>,
     pub avg_prompt_tokens: Option<f64>,
     pub avg_completion_tokens: Option<f64>,
@@ -216,6 +217,7 @@ struct ChatRouteSignals {
     local_rows: u64,
     local_error_rate: Option<f64>,
     sidekick_rows: u64,
+    compacted_rows: u64,
     avg_local_elapsed_ms: Option<f64>,
     avg_sidekick_elapsed_ms: Option<f64>,
 }
@@ -244,6 +246,7 @@ fn chat_route_signals(app: &AppHandle) -> ChatRouteSignals {
             local.iter().filter(|row| row.status != "ok").count() as f64 / local.len() as f64,
         ),
         sidekick_rows: sidekick.len() as u64,
+        compacted_rows: rows.iter().filter(|row| row.compacted).count() as u64,
         avg_local_elapsed_ms: avg(&local_elapsed),
         avg_sidekick_elapsed_ms: avg(&sidekick_elapsed),
     }
@@ -715,10 +718,13 @@ pub fn fusion_route_recommendation(
             ),
             (Some(sidekick_ms), Some(local_ms)) if local_ms > 0.0 && sidekick_ms > local_ms * 1.75
         );
+    let compaction_boundary = route_signals.compacted_rows > 0 || prompt.len() > 16_000;
 
     let (route, use_sidekick, escalate_gateway, reason) =
         if matches!(current_route, Some("cloud" | "gateway")) && gateway_ready && !mechanical {
             ("gateway", false, true, "keep_current_gateway")
+        } else if compaction_boundary && gateway_ready && (complex || judgment) {
+            ("gateway", false, true, "compaction_boundary_gateway")
         } else if local_unhealthy && gateway_ready && (complex || current_route == Some("local")) {
             ("gateway", false, true, "local_error_rate_high")
         } else if judgment || complex {
@@ -956,6 +962,7 @@ pub fn chat_route_metrics(app: AppHandle, limit: Option<u32>) -> Result<ChatRout
             error_rows: rows.iter().filter(|row| row.status != "ok").count() as u64,
             sidekick_rows: rows.iter().filter(|row| row.sidekick_spawned).count() as u64,
             gateway_rows: rows.iter().filter(|row| row.gateway_used).count() as u64,
+            compacted_rows: rows.iter().filter(|row| row.compacted).count() as u64,
             avg_elapsed_ms: avg(&elapsed_values),
             avg_prompt_tokens: avg(&prompt_values),
             avg_completion_tokens: avg(&completion_values),
