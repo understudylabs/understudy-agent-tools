@@ -186,6 +186,7 @@ export function ChatPane({ resetToken }: { resetToken: number }) {
   const [selectedModel, setSelectedModel] = useState<string | null>(null);
   const [thinkingPending, setThinkingPending] = useState<{ slotId: number; thinking: boolean } | null>(null);
   const [personaReady, setPersonaReady] = useState(false);
+  const [personaCycle, setPersonaCycle] = useState(0);
 
   const refreshModels = async () => {
     try {
@@ -341,6 +342,8 @@ export function ChatPane({ resetToken }: { resetToken: number }) {
     setInput("");
     setErr(null);
     setAssistantSpeaking(false);
+    setPersonaReady(false);
+    setPersonaCycle((value) => value + 1);
   };
 
   useEffect(() => {
@@ -391,12 +394,14 @@ export function ChatPane({ resetToken }: { resetToken: number }) {
     >
       <div className={"persona-stage" + (personaReady ? " persona-ready" : "")} aria-hidden="true">
         <img
+          key={`stamp-${personaCycle}`}
           className="persona-stamp"
           src="/brand/usl-stamp-white-transparent.png"
           alt=""
           draggable={false}
         />
         <Persona
+          key={personaCycle}
           variant="halo"
           state={personaState}
           className="persona-halo"
