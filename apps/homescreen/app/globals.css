@@ -84,8 +84,8 @@
     --r-control: 8px;
     --r-pill: 9999px;
     --sidebar-w: 224px;
-    --titlebar-h: 52px;
-    --traffic-left: 84px;
+    --titlebar-h: 48px;
+    --traffic-left: 86px;
     --sans: var(--font-sans);
     --mono: var(--font-mono);
     color-scheme: dark;
@@ -198,7 +198,7 @@ select,
 .rail-toggle {
   position: fixed;
   z-index: 30;
-  top: 15px;
+  top: 9px;
   left: var(--traffic-left);
   display: inline-grid;
   place-content: center;
