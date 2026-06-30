@@ -9,7 +9,7 @@ function usage() {
 Reads an Understudy AutomationBench handoff packet and either prints the intended
 candidate runs or normalizes runner results for the desktop callback endpoint.
 
-Result input may be a JSON array or JSONL. Each row should include:
+Result input may be a native AutomationBench export, a JSON array, or JSONL. Each row should include:
   candidate, task_id, status, score, elapsed_ms, model
 
 Optional row fields:
@@ -31,15 +31,48 @@ function readJson(path) {
   return JSON.parse(readFileSync(path, "utf8"));
 }
 
-function readResultRows(path) {
+function readResultRows(path, candidateId) {
   const raw = readFileSync(path, "utf8").trim();
   if (!raw) return [];
-  if (raw.startsWith("[")) return JSON.parse(raw);
+  if (raw.startsWith("["))
+    return JSON.parse(raw).map((row) => ({ candidate: candidateId ?? row.candidate, ...row }));
+  if (raw.startsWith("{")) {
+    const parsed = JSON.parse(raw);
+    if (Array.isArray(parsed.tasks) && parsed.meta) {
+      if (!candidateId) {
+        throw new Error("native AutomationBench exports require --candidate");
+      }
+      const durationMs =
+        typeof parsed.meta.duration_seconds === "number"
+          ? Math.round((parsed.meta.duration_seconds * 1000) / Math.max(parsed.tasks.length, 1))
+          : undefined;
+      return parsed.tasks.map((task) => ({
+        candidate: candidateId,
+        task_id: task.name ?? task.id,
+        status: task.passed ? "ok" : "error",
+        score: task.score,
+        elapsed_ms: durationMs,
+        model: parsed.meta.model,
+        prompt_tokens: task.input_tokens,
+        completion_tokens: task.output_tokens,
+        notes: [
+          `domain=${(parsed.meta.domains ?? []).join(",") || "unknown"}`,
+          `task=${task.name ?? task.id}`,
+          `passed=${Boolean(task.passed)}`,
+          `assertions=${task.assertions_passed ?? 0}/${task.assertions_total ?? 0}`,
+        ].join("; "),
+      }));
+    }
+    return [{ candidate: candidateId ?? parsed.candidate, ...parsed }];
+  }
   return raw
     .split(/\n+/)
     .map((line) => line.trim())
     .filter(Boolean)
-    .map((line) => JSON.parse(line));
+    .map((line) => {
+      const row = JSON.parse(line);
+      return { candidate: candidateId ?? row.candidate, ...row };
+    });
 }
 
 function requireHandoff(path) {
@@ -137,7 +170,7 @@ async function main() {
   }
   const resultsPath = argValue(args, "--results");
   if (resultsPath) {
-    const normalized = normalizeRows(handoff, readResultRows(resultsPath));
+    const normalized = normalizeRows(handoff, readResultRows(resultsPath, argValue(args, "--candidate")));
     console.log(JSON.stringify({ schema_version: "understudy.automationbench_normalized_results.v1", rows: normalized }, null, 2));
     if (args.includes("--post")) {
       await postRows(handoff, normalized, argValue(args, "--token") ?? process.env.UNDERSTUDY_DESKTOP_TOKEN);

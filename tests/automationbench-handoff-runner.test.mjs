@@ -87,4 +87,52 @@ describe("automationbench handoff runner", () => {
     assert.equal(payload.rows[0].gateway_used, true);
     assert.equal(payload.rows[0].score, 1);
   });
+
+  it("normalizes native AutomationBench exports for a selected candidate", () => {
+    const { handoffPath } = writeFixture();
+    const resultsPath = join(dir, "automationbench-export.json");
+    writeFileSync(
+      resultsPath,
+      `${JSON.stringify(
+        {
+          meta: {
+            model: "gemma-4-e2b-it-qat-mlx-vlm-understudy",
+            domains: ["simple"],
+            duration_seconds: 8.4,
+          },
+          tasks: [
+            {
+              id: 1,
+              name: "simple.email_sf_contact_phone_update",
+              score: 0,
+              passed: false,
+              assertions_passed: 0,
+              assertions_total: 1,
+              input_tokens: 15060,
+              output_tokens: 962,
+            },
+          ],
+        },
+        null,
+        2,
+      )}\n`,
+    );
+    const result = spawnSync(
+      runner[0],
+      [...runner.slice(1), "--handoff", handoffPath, "--results", resultsPath, "--candidate", "local-fast"],
+      {
+        encoding: "utf8",
+      },
+    );
+    assert.equal(result.status, 0, result.stderr);
+    const payload = JSON.parse(result.stdout);
+    assert.equal(payload.rows.length, 1);
+    assert.equal(payload.rows[0].run_id, "ab-smoke-local-fast");
+    assert.equal(payload.rows[0].task_id, "simple.email_sf_contact_phone_update");
+    assert.equal(payload.rows[0].model, "gemma-4-e2b-it-qat-mlx-vlm-understudy");
+    assert.equal(payload.rows[0].prompt_tokens, 15060);
+    assert.equal(payload.rows[0].completion_tokens, 962);
+    assert.equal(payload.rows[0].gateway_used, false);
+    assert.equal(payload.rows[0].status, "error");
+  });
 });
