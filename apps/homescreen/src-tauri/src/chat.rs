@@ -117,37 +117,6 @@ fn system_prompt_for(model: &str) -> String {
         .unwrap_or_else(|| "You are an AI assistant in the Understudy desktop app.".to_string())
 }
 
-fn should_auto_delegate_to_sidekick(messages: &[ChatMsg]) -> Option<String> {
-    let last = messages.iter().rev().find(|m| m.role == "user")?;
-    let text = last.content.trim();
-    if text.len() < 80 {
-        return None;
-    }
-    let lower = text.to_lowercase();
-    let useful = [
-        "review",
-        "compare",
-        "debug",
-        "why",
-        "plan",
-        "implement",
-        "tool",
-        "mcp",
-        "trace",
-        "model",
-        "sidekick",
-        "fusion",
-        "rust",
-        "app",
-    ]
-    .iter()
-    .any(|needle| lower.contains(needle));
-    if !useful && text.len() < 180 {
-        return None;
-    }
-    Some(text.to_string())
-}
-
 #[derive(Clone, Debug, Default)]
 struct ToolCallAcc {
     index: usize,
@@ -861,44 +830,6 @@ pub async fn chat_stream(
         "role": "system",
         "content": system_prompt_for(&model_field),
     })];
-
-    if route != "cloud" && mgr.sidekick_endpoint(slot_id).is_some() {
-        if let Some(task_text) = should_auto_delegate_to_sidekick(&messages) {
-            let args = json!({
-                "task": "Run a quick read-only sidekick preflight before the main model answers. Identify useful facts, risks, missing context, or a compact critique. Use read-only tools only if they reduce guesswork.",
-                "context": task_text,
-                "expected_output": "Concise bullets for the main model. Include ESCALATE_TO_MAIN only if the main model must not rely on the sidekick result."
-            });
-            let _ = on_event.send(ChatEvent::ToolCall {
-                name: "delegate_to_sidekick".to_string(),
-                args: args.clone(),
-            });
-            match delegate_to_sidekick(&app, mgr.inner(), slot_id, &session_id, &args).await {
-                Ok(result) => {
-                    let _ = on_event.send(ChatEvent::ToolResult {
-                        name: "delegate_to_sidekick".to_string(),
-                        ok: true,
-                        result: result.clone(),
-                    });
-                    outbound_messages.push(json!({
-                        "role": "system",
-                        "content": format!(
-                            "Sidekick preflight for this turn:\n{}",
-                            result.get("content").and_then(|v| v.as_str()).unwrap_or("")
-                        ),
-                    }));
-                }
-                Err(err) => {
-                    let _ = on_event.send(ChatEvent::ToolResult {
-                        name: "delegate_to_sidekick".to_string(),
-                        ok: false,
-                        result: json!({ "error": err }),
-                    });
-                }
-            }
-        }
-    }
-
     outbound_messages.extend(
         messages
             .iter()
