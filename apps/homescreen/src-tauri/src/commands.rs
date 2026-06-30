@@ -211,6 +211,44 @@ fn default_fusion_run_id() -> String {
     format!("fusion-{}", chrono::Utc::now().timestamp_millis())
 }
 
+#[derive(Default)]
+struct ChatRouteSignals {
+    local_rows: u64,
+    local_error_rate: Option<f64>,
+    sidekick_rows: u64,
+    avg_local_elapsed_ms: Option<f64>,
+    avg_sidekick_elapsed_ms: Option<f64>,
+}
+
+fn chat_route_signals(app: &AppHandle) -> ChatRouteSignals {
+    let Ok(rows) = app.state::<crate::db::Db>().list_chat_runs(60) else {
+        return ChatRouteSignals::default();
+    };
+    let local: Vec<_> = rows.iter().filter(|row| row.route == "local").collect();
+    let sidekick: Vec<_> = local
+        .iter()
+        .copied()
+        .filter(|row| row.sidekick_spawned)
+        .collect();
+    let local_elapsed: Vec<f64> = local
+        .iter()
+        .filter_map(|row| row.elapsed_ms.map(|v| v as f64))
+        .collect();
+    let sidekick_elapsed: Vec<f64> = sidekick
+        .iter()
+        .filter_map(|row| row.elapsed_ms.map(|v| v as f64))
+        .collect();
+    ChatRouteSignals {
+        local_rows: local.len() as u64,
+        local_error_rate: (!local.is_empty()).then_some(
+            local.iter().filter(|row| row.status != "ok").count() as f64 / local.len() as f64,
+        ),
+        sidekick_rows: sidekick.len() as u64,
+        avg_local_elapsed_ms: avg(&local_elapsed),
+        avg_sidekick_elapsed_ms: avg(&sidekick_elapsed),
+    }
+}
+
 fn prompt_has_any(prompt: &str, terms: &[&str]) -> bool {
     let lower = prompt.to_lowercase();
     terms.iter().any(|term| lower.contains(term))
@@ -651,6 +689,7 @@ pub fn fusion_route_recommendation(
     );
 
     let metrics = sidekick_metrics(app.clone(), Some(30)).ok();
+    let route_signals = chat_route_signals(&app);
     let low_usefulness = metrics
         .as_ref()
         .and_then(|m| m.useful_rate)
@@ -664,10 +703,24 @@ pub fn fusion_route_recommendation(
         .as_ref()
         .and_then(|m| m.escalation_rate)
         .is_some_and(|rate| metrics.as_ref().is_some_and(|m| m.rows >= 5) && rate > 0.6);
+    let local_unhealthy = route_signals.local_rows >= 5
+        && route_signals
+            .local_error_rate
+            .is_some_and(|rate| rate >= 0.35);
+    let sidekick_slow = route_signals.sidekick_rows >= 3
+        && matches!(
+            (
+                route_signals.avg_sidekick_elapsed_ms,
+                route_signals.avg_local_elapsed_ms
+            ),
+            (Some(sidekick_ms), Some(local_ms)) if local_ms > 0.0 && sidekick_ms > local_ms * 1.75
+        );
 
     let (route, use_sidekick, escalate_gateway, reason) =
         if matches!(current_route, Some("cloud" | "gateway")) && gateway_ready && !mechanical {
             ("gateway", false, true, "keep_current_gateway")
+        } else if local_unhealthy && gateway_ready && (complex || current_route == Some("local")) {
+            ("gateway", false, true, "local_error_rate_high")
         } else if judgment || complex {
             if gateway_ready && complex {
                 ("gateway", false, true, "complex_or_frontier_task")
@@ -678,7 +731,12 @@ pub fn fusion_route_recommendation(
             } else {
                 ("local", false, false, "no_ready_route")
             }
-        } else if mechanical && local_ready && sidekick_ready && !low_usefulness && !high_escalation
+        } else if mechanical
+            && local_ready
+            && sidekick_ready
+            && !low_usefulness
+            && !high_escalation
+            && !sidekick_slow
         {
             ("local", true, false, "mechanical_with_sidekick")
         } else if local_ready {
@@ -690,6 +748,8 @@ pub fn fusion_route_recommendation(
                     "sidekick_low_usefulness"
                 } else if high_escalation {
                     "sidekick_high_escalation"
+                } else if sidekick_slow {
+                    "sidekick_latency_high"
                 } else if mechanical {
                     "no_warm_sidekick"
                 } else {

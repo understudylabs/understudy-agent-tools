@@ -1155,6 +1155,9 @@ struct SidekickRoutingSignals {
     useful_rate: Option<f64>,
     handoff_rate: Option<f64>,
     escalation_rate: Option<f64>,
+    sidekick_rows: u64,
+    avg_local_elapsed_ms: Option<f64>,
+    avg_sidekick_elapsed_ms: Option<f64>,
 }
 
 fn prompt_excerpt(prompt: &str) -> String {
@@ -1205,11 +1208,36 @@ fn sidekick_routing_signals(app: &AppHandle) -> SidekickRoutingSignals {
     let feedback_rows = useful + misses;
     let consumed = rows.iter().filter(|row| row.consumed).count() as u64;
     let escalated = rows.iter().filter(|row| row.escalated).count() as u64;
+    let chat_rows = app
+        .state::<crate::db::Db>()
+        .list_chat_runs(60)
+        .unwrap_or_default();
+    let local_elapsed: Vec<f64> = chat_rows
+        .iter()
+        .filter(|row| row.route == "local")
+        .filter_map(|row| row.elapsed_ms.map(|v| v as f64))
+        .collect();
+    let sidekick_elapsed: Vec<f64> = chat_rows
+        .iter()
+        .filter(|row| row.route == "local" && row.sidekick_spawned)
+        .filter_map(|row| row.elapsed_ms.map(|v| v as f64))
+        .collect();
     SidekickRoutingSignals {
         feedback_rows,
         useful_rate: (feedback_rows > 0).then_some(useful as f64 / feedback_rows as f64),
         handoff_rate: Some(consumed as f64 / total as f64),
         escalation_rate: Some(escalated as f64 / total as f64),
+        sidekick_rows: sidekick_elapsed.len() as u64,
+        avg_local_elapsed_ms: avg_f64(&local_elapsed),
+        avg_sidekick_elapsed_ms: avg_f64(&sidekick_elapsed),
+    }
+}
+
+fn avg_f64(values: &[f64]) -> Option<f64> {
+    if values.is_empty() {
+        None
+    } else {
+        Some(values.iter().sum::<f64>() / values.len() as f64)
     }
 }
 
@@ -1264,6 +1292,17 @@ fn route_parallel_sidekick(
         return SidekickRoutingDecision {
             eligible: false,
             reason: "metrics_high_escalation",
+        };
+    }
+    if signals.sidekick_rows >= 3
+        && matches!(
+            (signals.avg_sidekick_elapsed_ms, signals.avg_local_elapsed_ms),
+            (Some(sidekick_ms), Some(local_ms)) if local_ms > 0.0 && sidekick_ms > local_ms * 1.75
+        )
+    {
+        return SidekickRoutingDecision {
+            eligible: false,
+            reason: "metrics_sidekick_latency_high",
         };
     }
     let mechanical = delegate_terms
