@@ -11,7 +11,7 @@ const DEFAULT_BENCH_DIR = "/Users/luis/Developer/understudy/AutomationBench";
 function usage() {
   return `Usage:
   node scripts/automationbench-fusion-matrix.mjs --handoff <path> [--dry-run] [--domains <domains>] [--num-examples <n>]
-  node scripts/automationbench-fusion-matrix.mjs --handoff <path> --run [--only <labels>] [--bench-dir <path>] [--out-dir <dir>] [--event-log <path>] [--domains <domains>] [--num-examples <n>]
+  node scripts/automationbench-fusion-matrix.mjs --handoff <path> --run [--only <labels>] [--bench-dir <path>] [--out-dir <dir>] [--event-log <path>] [--domains <domains>] [--num-examples <n>] [--max-concurrent <n>] [--max-steps <n>] [--save-every <n>]
   node scripts/automationbench-fusion-matrix.mjs --handoff <path> --ingest [--only <labels>] [--out-dir <dir>] [--event-log <path>] [--post] [--token <token>] [--domains <domains>] [--num-examples <n>]
   node scripts/automationbench-fusion-matrix.mjs --handoff <path> --final-comparison --full [--run|--ingest]
   node scripts/automationbench-fusion-matrix.mjs --handoff <path> --final-comparison --preflight
@@ -24,6 +24,7 @@ Use --dry-run to print the exact auto-bench and ingestion commands without execu
 Use --preflight to check selected model endpoints before a long run.
 Use --final-comparison for the required final matrix: gateway-glm, local-main, local-fast.
 Use --full to omit --num-examples and run the full selected AutomationBench domains.
+Use --save-every for long full runs so partial progress is persisted.
 `;
 }
 
@@ -127,6 +128,9 @@ function runConfig(handoff, args) {
   return {
     domains: argValue(args, "--domains") ?? handoff.domains.join(","),
     numExamples: full ? null : (argValue(args, "--num-examples") ?? String(handoff.num_examples)),
+    maxConcurrent: argValue(args, "--max-concurrent") ?? "1",
+    maxSteps: argValue(args, "--max-steps") ?? "10",
+    saveEvery: argValue(args, "--save-every") ?? "-1",
   };
 }
 
@@ -249,15 +253,15 @@ function autoBenchArgs(handoff, run, outDir, config, options = {}) {
   }
   values.push(
     "--max-concurrent",
-    "1",
+    config.maxConcurrent,
     "--max-steps",
-    "10",
+    config.maxSteps,
     "--toolset",
     "api",
     "--export-json",
     outputPath(outDir, handoff, run, config),
     "--save-every",
-    "-1",
+    config.saveEvery,
   );
   return values;
 }

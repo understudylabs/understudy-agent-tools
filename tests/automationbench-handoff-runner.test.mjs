@@ -389,6 +389,12 @@ describe("automationbench handoff runner", () => {
         "simple,sales",
         "--num-examples",
         "10",
+        "--max-concurrent",
+        "2",
+        "--max-steps",
+        "7",
+        "--save-every",
+        "25",
       ],
       { encoding: "utf8" },
     );
@@ -403,6 +409,9 @@ describe("automationbench handoff runner", () => {
     assert.match(result.stdout, /uv run auto-bench/);
     assert.match(result.stdout, /--domains simple,sales/);
     assert.match(result.stdout, /--num-examples 10/);
+    assert.match(result.stdout, /--max-concurrent 2/);
+    assert.match(result.stdout, /--max-steps 7/);
+    assert.match(result.stdout, /--save-every 25/);
     assert.match(result.stdout, /understudy-automationbench-ab-smoke-simple-sales-10-fusion-routing\.json/);
     assert.match(result.stdout, /UNDERSTUDY_GATEWAY_BASE_URL/);
     assert.match(result.stdout, /automationbench-handoff-runner\.mjs/);
