@@ -182,6 +182,7 @@ async fn run_fusion_benchmark(
 ) -> Result<Json<Value>, (StatusCode, String)> {
     auth(&ctx, &h)?;
     crate::commands::run_fusion_benchmark(ctx.app.clone(), body)
+        .await
         .map(|run| Json(json!(run)))
         .map_err(|e| (StatusCode::BAD_REQUEST, e))
 }
@@ -349,7 +350,9 @@ async fn call_tool(ctx: &Ctx, name: &str, args: &Value) -> Result<Value, String>
         "run_fusion_benchmark" => {
             let request = serde_json::from_value::<c::RunFusionBenchmarkRequest>(args.clone())
                 .map_err(|e| format!("invalid Fusion benchmark request: {e}"))?;
-            json!(c::run_fusion_benchmark(app, request).map_err(|e| e.to_string())?)
+            json!(c::run_fusion_benchmark(app, request)
+                .await
+                .map_err(|e| e.to_string())?)
         }
         "aa_models" => json!(c::aa_models(app).await.map_err(|e| e.to_string())?),
         "list_traces" => {

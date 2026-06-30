@@ -515,7 +515,7 @@ pub fn fusion_benchmark_results(
 }
 
 #[tauri::command]
-pub fn run_fusion_benchmark(
+pub async fn run_fusion_benchmark(
     app: AppHandle,
     request: RunFusionBenchmarkRequest,
 ) -> Result<FusionBenchmarkRun, String> {
@@ -526,12 +526,20 @@ pub fn run_fusion_benchmark(
     }
     let dry_run = request.dry_run.unwrap_or(true);
     let record_skips = request.record_skips.unwrap_or(false);
-    let requested_modes = request
-        .modes
-        .unwrap_or_else(|| matrix.modes.iter().map(|mode| mode.id.to_string()).collect());
-    let requested_tasks = request
-        .task_ids
-        .unwrap_or_else(|| matrix.tasks.iter().map(|task| task.id.to_string()).collect());
+    let requested_modes = request.modes.unwrap_or_else(|| {
+        matrix
+            .modes
+            .iter()
+            .map(|mode| mode.id.to_string())
+            .collect()
+    });
+    let requested_tasks = request.task_ids.unwrap_or_else(|| {
+        matrix
+            .tasks
+            .iter()
+            .map(|task| task.id.to_string())
+            .collect()
+    });
     for mode in &requested_modes {
         if !valid_fusion_mode(mode) {
             return Err(format!("unknown Fusion benchmark mode: {mode}"));
@@ -547,6 +555,7 @@ pub fn run_fusion_benchmark(
                 .as_deref()
                 .is_some_and(|id| id.contains("understudy-small") || id.contains("e2b"))
     });
+    let main_slot_id = warm_main.map(|slot| slot.id);
     let model = request
         .model
         .or_else(|| warm_main.and_then(|slot| slot.model_id.clone()))
@@ -569,9 +578,59 @@ pub fn run_fusion_benchmark(
             } else if dry_run {
                 (true, "dry_run_ready")
             } else {
-                (false, "live_execution_not_implemented")
+                (true, "live_ready")
             };
-            if !ready && record_skips {
+            if ready && !dry_run {
+                let slot_id = main_slot_id.ok_or_else(|| "no warm main slot".to_string())?;
+                let before_sidekick_run_ids = app
+                    .state::<crate::db::Db>()
+                    .list_sidekick_runs(100)
+                    .map_err(|e| e.to_string())?
+                    .into_iter()
+                    .filter(|run| run.session_id == run_id)
+                    .map(|run| run.id)
+                    .collect::<std::collections::HashSet<_>>();
+                let result = crate::chat::benchmark_local_chat(
+                    &app,
+                    residency(&app),
+                    slot_id,
+                    &run_id,
+                    task.prompt,
+                    matches!(mode.as_str(), "sidekick-parallel" | "sidekick-routing"),
+                )
+                .await?;
+                let sidekick_runs: Vec<_> = app
+                    .state::<crate::db::Db>()
+                    .list_sidekick_runs(100)
+                    .map_err(|e| e.to_string())?
+                    .into_iter()
+                    .filter(|run| run.session_id == run_id)
+                    .filter(|run| !before_sidekick_run_ids.contains(&run.id))
+                    .collect();
+                let sidekick_run_count = sidekick_runs.len() as u64;
+                let sidekick_tool_calls =
+                    sidekick_runs.iter().map(|run| run.tool_calls).sum::<u64>();
+                app.state::<crate::db::Db>()
+                    .record_fusion_benchmark(&FusionBenchmarkInput {
+                        run_id: run_id.clone(),
+                        task_id: task.id.to_string(),
+                        mode: mode.clone(),
+                        model: model.clone(),
+                        elapsed_ms: Some(result.elapsed_ms),
+                        prompt_tokens: Some(result.prompt_tokens),
+                        completion_tokens: Some(result.completion_tokens),
+                        sidekick_runs: sidekick_run_count,
+                        sidekick_tool_calls,
+                        gateway_used: false,
+                        score: None,
+                        notes: Some(format!(
+                            "executed:local; main_tool_calls={}; output_chars={}",
+                            result.tool_calls,
+                            result.content.len()
+                        )),
+                    })
+                    .map_err(|e| e.to_string())?;
+            } else if !ready && record_skips {
                 app.state::<crate::db::Db>()
                     .record_fusion_benchmark(&FusionBenchmarkInput {
                         run_id: run_id.clone(),
@@ -641,7 +700,10 @@ pub fn sidekick_decisions(
 }
 
 #[tauri::command]
-pub fn sidekick_events(app: AppHandle, limit: Option<u32>) -> Result<Vec<SidekickEventRow>, String> {
+pub fn sidekick_events(
+    app: AppHandle,
+    limit: Option<u32>,
+) -> Result<Vec<SidekickEventRow>, String> {
     app.state::<crate::db::Db>()
         .list_sidekick_events(limit.unwrap_or(10))
         .map_err(|e| e.to_string())

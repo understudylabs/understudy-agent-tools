@@ -43,6 +43,14 @@ pub struct ChatMsg {
     pub content: String,
 }
 
+pub struct BenchmarkChatResult {
+    pub content: String,
+    pub elapsed_ms: u64,
+    pub tool_calls: u64,
+    pub prompt_tokens: u64,
+    pub completion_tokens: u64,
+}
+
 const CHAT_MAX_TOKENS: u32 = 8192;
 const CHAT_THINKING_BUDGET: u32 = 2048;
 const MAX_TOOL_ROUNDS: usize = 4;
@@ -168,7 +176,10 @@ fn compact_sidekick_messages(messages: Vec<Value>) -> Vec<Value> {
         ));
     }
     for message in older.iter().rev().take(8).rev() {
-        let role = message.get("role").and_then(|v| v.as_str()).unwrap_or("message");
+        let role = message
+            .get("role")
+            .and_then(|v| v.as_str())
+            .unwrap_or("message");
         if let Some(content) = sidekick_message_content(message) {
             memory_lines.push(format!("{role}: {}", compact_line(&content, 280)));
         } else if role == "assistant" && message.get("tool_calls").is_some() {
@@ -731,11 +742,17 @@ fn sidekick_repo_files(args: &Value) -> Result<Value, String> {
     let limit = bounded_limit(args, "limit", 30, 50);
     let mut cmd = Command::new("rg");
     cmd.arg("--files").current_dir(&root);
-    if let Some(glob) = args.get("glob").and_then(|v| v.as_str()).filter(|s| !s.is_empty()) {
+    if let Some(glob) = args
+        .get("glob")
+        .and_then(|v| v.as_str())
+        .filter(|s| !s.is_empty())
+    {
         cmd.arg("-g").arg(glob);
     }
     let files = rg_lines(cmd, limit)?;
-    Ok(json!({ "root": root.display().to_string(), "files": files, "truncated": files.len() >= limit }))
+    Ok(
+        json!({ "root": root.display().to_string(), "files": files, "truncated": files.len() >= limit }),
+    )
 }
 
 fn sidekick_repo_search(args: &Value) -> Result<Value, String> {
@@ -748,7 +765,11 @@ fn sidekick_repo_search(args: &Value) -> Result<Value, String> {
         .arg("!.git")
         .arg(&query)
         .current_dir(&root);
-    if let Some(glob) = args.get("glob").and_then(|v| v.as_str()).filter(|s| !s.is_empty()) {
+    if let Some(glob) = args
+        .get("glob")
+        .and_then(|v| v.as_str())
+        .filter(|s| !s.is_empty())
+    {
         cmd.arg("-g").arg(glob);
     }
     let matches = rg_lines(cmd, limit)?;
@@ -757,7 +778,11 @@ fn sidekick_repo_search(args: &Value) -> Result<Value, String> {
 
 fn safe_repo_path(root: &Path, rel: &str) -> Result<PathBuf, String> {
     let rel_path = Path::new(rel);
-    if rel_path.is_absolute() || rel_path.components().any(|c| matches!(c, std::path::Component::ParentDir)) {
+    if rel_path.is_absolute()
+        || rel_path
+            .components()
+            .any(|c| matches!(c, std::path::Component::ParentDir))
+    {
         return Err("repo_open only accepts relative paths inside the repository".to_string());
     }
     let path = root.join(rel_path);
@@ -1290,7 +1315,10 @@ fn consume_sidekick_handoffs(app: &AppHandle, session_id: &str) -> Vec<Value> {
             row.tool_calls,
             row.escalated
         ));
-        body.push_str(&format!("task: {}\n", truncate_tool_output(task.to_string())));
+        body.push_str(&format!(
+            "task: {}\n",
+            truncate_tool_output(task.to_string())
+        ));
         body.push_str("result:\n");
         body.push_str(&truncate_tool_output(content));
         body.push('\n');
@@ -1391,7 +1419,8 @@ pub async fn chat_stream(
                 args: args.clone(),
             });
             let (ok, result) =
-                match tool_result(&app, mgr.inner(), slot_id, &session_id, &call.name, &args).await {
+                match tool_result(&app, mgr.inner(), slot_id, &session_id, &call.name, &args).await
+                {
                     Ok(value) => (true, value),
                     Err(err) => (false, json!({ "error": err })),
                 };
@@ -1413,6 +1442,153 @@ pub async fn chat_stream(
     });
     let _ = on_event.send(ChatEvent::Done);
     Ok(())
+}
+
+pub async fn benchmark_local_chat(
+    app: &AppHandle,
+    mgr: &Residency,
+    slot_id: u32,
+    session_id: &str,
+    prompt: &str,
+    enable_parallel_sidekick: bool,
+) -> Result<BenchmarkChatResult, String> {
+    let started = Instant::now();
+    let (port, model_field) = mgr
+        .endpoint(slot_id)
+        .ok_or_else(|| "selected benchmark slot is not warm".to_string())?;
+    let messages = vec![ChatMsg {
+        role: "user".to_string(),
+        content: prompt.to_string(),
+    }];
+    if enable_parallel_sidekick {
+        maybe_spawn_parallel_sidekick(app, "local", Some(slot_id), session_id, &messages);
+    }
+    let url = format!("http://127.0.0.1:{port}/v1/chat/completions");
+    let mut outbound_messages = vec![json!({
+        "role": "system",
+        "content": system_prompt_for(&model_field),
+    })];
+    outbound_messages.extend(consume_sidekick_handoffs(app, session_id));
+    outbound_messages.push(json!({ "role": "user", "content": prompt }));
+
+    let client = reqwest::Client::builder()
+        .build()
+        .map_err(|e| e.to_string())?;
+    let mut final_content = String::new();
+    let mut tool_count = 0u64;
+
+    for _round in 0..=MAX_TOOL_ROUNDS {
+        let (content, tool_calls) =
+            nonstream_chat_once(&client, &url, &model_field, &outbound_messages).await?;
+        final_content = content.clone();
+        if tool_calls.is_empty() {
+            break;
+        }
+        let assistant_tool_calls: Vec<Value> = tool_calls
+            .iter()
+            .map(|call| {
+                json!({
+                    "id": call.id,
+                    "type": "function",
+                    "function": { "name": call.name, "arguments": call.arguments },
+                })
+            })
+            .collect();
+        outbound_messages.push(json!({
+            "role": "assistant",
+            "content": content,
+            "tool_calls": assistant_tool_calls,
+        }));
+
+        for call in tool_calls {
+            let args = serde_json::from_str::<Value>(&call.arguments).unwrap_or_else(|_| json!({}));
+            let result =
+                match tool_result(app, mgr, Some(slot_id), session_id, &call.name, &args).await {
+                    Ok(value) => value,
+                    Err(err) => json!({ "error": err }),
+                };
+            tool_count += 1;
+            outbound_messages.push(json!({
+                "role": "tool",
+                "tool_call_id": call.id,
+                "content": result.to_string(),
+            }));
+        }
+    }
+
+    Ok(BenchmarkChatResult {
+        prompt_tokens: prompt.split_whitespace().count() as u64,
+        completion_tokens: final_content.split_whitespace().count() as u64,
+        content: final_content,
+        elapsed_ms: started.elapsed().as_millis() as u64,
+        tool_calls: tool_count,
+    })
+}
+
+async fn nonstream_chat_once(
+    client: &reqwest::Client,
+    url: &str,
+    model_field: &str,
+    messages: &[Value],
+) -> Result<(String, Vec<ToolCallAcc>), String> {
+    let payload = json!({
+        "model": model_field,
+        "messages": messages,
+        "stream": false,
+        "tools": tool_schemas(),
+        "tool_choice": "auto",
+        "max_tokens": CHAT_MAX_TOKENS,
+        "thinking_budget": CHAT_THINKING_BUDGET,
+    });
+    let response = client
+        .post(url)
+        .json(&payload)
+        .send()
+        .await
+        .map_err(|e| format!("benchmark request failed: {e}"))?;
+    let status = response.status();
+    let value: Value = response
+        .json()
+        .await
+        .map_err(|e| format!("benchmark response parse failed: {e}"))?;
+    if !status.is_success() {
+        return Err(format!("benchmark returned {status}: {value}"));
+    }
+    let message = value
+        .pointer("/choices/0/message")
+        .cloned()
+        .unwrap_or_else(|| json!({ "role": "assistant", "content": "" }));
+    let content = message
+        .get("content")
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .to_string();
+    let tool_calls = message
+        .get("tool_calls")
+        .and_then(|v| v.as_array())
+        .cloned()
+        .unwrap_or_default()
+        .into_iter()
+        .enumerate()
+        .filter_map(|(index, call)| {
+            let function = call.get("function")?;
+            Some(ToolCallAcc {
+                index,
+                id: call
+                    .get("id")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("benchmark_call")
+                    .to_string(),
+                name: function.get("name").and_then(|v| v.as_str())?.to_string(),
+                arguments: function
+                    .get("arguments")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("{}")
+                    .to_string(),
+            })
+        })
+        .collect();
+    Ok((content, tool_calls))
 }
 
 async fn stream_chat_once(
