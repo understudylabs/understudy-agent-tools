@@ -268,7 +268,13 @@ export function ChatPane() {
     }
   };
 
-  const personaState: PersonaState = streaming
+  const personaLoading =
+    selectedChoice.route === "local" &&
+    (selectedChoice.loading || thinkingPending?.slotId === selectedChoice.slotId);
+
+  const personaState: PersonaState = personaLoading
+    ? "thinking"
+    : streaming
     ? assistantSpeaking
       ? "speaking"
       : "thinking"
