@@ -55,7 +55,10 @@ impl ThinkParser {
             }
 
             let keep = marker.len().saturating_sub(1).min(self.pending.len());
-            let emit_len = self.pending.len().saturating_sub(keep);
+            let mut emit_len = self.pending.len().saturating_sub(keep);
+            while emit_len > 0 && !self.pending.is_char_boundary(emit_len) {
+                emit_len -= 1;
+            }
             if emit_len > 0 {
                 out.push((self.in_reasoning, self.pending[..emit_len].to_string()));
                 self.pending.drain(..emit_len);

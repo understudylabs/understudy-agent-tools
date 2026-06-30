@@ -32,11 +32,6 @@ import {
   PromptInputTools,
 } from "@/components/ai-elements/prompt-input";
 import { Persona, type PersonaState } from "@/components/ai-elements/persona";
-import {
-  Reasoning,
-  ReasoningContent,
-  ReasoningTrigger,
-} from "@/components/ai-elements/reasoning";
 import { modelShortName, type SnapshotAlias } from "../lib/model-aliases";
 
 type Role = "user" | "assistant";
@@ -84,6 +79,15 @@ const CLOUD_MODEL: ModelChoice = {
   slotId: null,
   active: true,
 };
+
+function cleanReasoningText(text: string) {
+  return text
+    .replace(/<\|?channel\|?>\s*thought/gi, "")
+    .replace(/<\/?\|?(?:channel|message|start|end)\|?>/gi, "")
+    .replace(/<\/?think>/gi, "")
+    .replace(/^\s*thought\s*$/gim, "")
+    .trim();
+}
 
 export function ChatPane() {
   const [messages, setMessages] = useState<Msg[]>([]);
@@ -214,16 +218,17 @@ export function ChatPane() {
       : "idle";
 
   return (
-    <div className={"chat ai-chat" + (messages.length > 0 ? " has-messages" : "")}>
+    <div className={"chat ai-chat" + (messages.length > 0 ? " has-messages" : "") + (streaming ? " is-streaming" : "")}>
       <div className="persona-stage" aria-hidden="true">
         <Persona variant="halo" state={personaState} className="persona-halo" />
       </div>
       <Conversation className="min-h-0">
-        <ConversationContent className="gap-5 p-6">
+        <ConversationContent className="gap-5 px-4 pb-3 pt-0">
           {messages.length > 0 &&
             messages.map((m, i) => {
               const isLastAssistant = m.role === "assistant" && i === messages.length - 1;
               const isActiveAssistant = isLastAssistant && streaming;
+              const reasoningText = cleanReasoningText(m.reasoning ?? "");
               return (
                 <Message
                   key={i}
@@ -232,11 +237,14 @@ export function ChatPane() {
                 >
                   <div className="chat-role">{m.role === "assistant" ? m.model ?? "Assistant" : "You"}</div>
                   <MessageContent>
-                    {m.role === "assistant" && m.reasoning && (
-                      <Reasoning isStreaming={isActiveAssistant} defaultOpen={isActiveAssistant}>
-                        <ReasoningTrigger />
-                        <ReasoningContent>{m.reasoning}</ReasoningContent>
-                      </Reasoning>
+                    {m.role === "assistant" && reasoningText && (
+                      <div className={"reasoning-substream" + (isActiveAssistant ? " active" : "")}>
+                        <div className="reasoning-substream-label">
+                          <span />
+                          {isActiveAssistant ? "Thinking" : "Thoughts"}
+                        </div>
+                        <div className="reasoning-substream-text">{reasoningText}</div>
+                      </div>
                     )}
                     {m.role === "assistant" ? (
                       <MessageResponse>{m.content || (isActiveAssistant ? "..." : "")}</MessageResponse>
