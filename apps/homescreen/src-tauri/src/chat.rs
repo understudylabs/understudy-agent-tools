@@ -31,6 +31,11 @@ pub enum ChatEvent {
         ok: bool,
         result: Value,
     },
+    SidekickEvent {
+        mode: String,
+        stage: String,
+        detail: String,
+    },
     Error {
         message: String,
     },
@@ -1886,6 +1891,7 @@ fn maybe_spawn_parallel_sidekick(
     active_slot_id: Option<u32>,
     session_id: &str,
     messages: &[ChatMsg],
+    on_event: Option<&Channel<ChatEvent>>,
 ) -> bool {
     let db = app.state::<crate::db::Db>();
     let prompt = latest_user_message(messages).map(str::trim).unwrap_or("");
@@ -1937,6 +1943,13 @@ fn maybe_spawn_parallel_sidekick(
         "expected_output": "Return compact findings, uncertainty, and ESCALATE_TO_MAIN only if the request requires main-agent judgment."
     });
     let _ = db.record_sidekick_event(session_id, "parallel", "queued", decision.reason);
+    if let Some(on_event) = on_event {
+        let _ = on_event.send(ChatEvent::SidekickEvent {
+            mode: "parallel".to_string(),
+            stage: "queued".to_string(),
+            detail: decision.reason.to_string(),
+        });
+    }
     let app = app.clone();
     let session_id = session_id.to_string();
     tauri::async_runtime::spawn(async move {
@@ -2022,11 +2035,19 @@ async fn wait_for_sidekick_handoffs(
     session_id: &str,
     spawned: bool,
     wait_ms: u64,
+    on_event: Option<&Channel<ChatEvent>>,
 ) -> Vec<Value> {
     if !spawned {
         return consume_sidekick_handoffs(app, session_id);
     }
 
+    if let Some(on_event) = on_event {
+        let _ = on_event.send(ChatEvent::SidekickEvent {
+            mode: "parallel".to_string(),
+            stage: "waiting".to_string(),
+            detail: format!("waiting up to {wait_ms}ms for background findings"),
+        });
+    }
     let interval_ms = 250;
     let attempts = (wait_ms / interval_ms).max(1);
     for attempt in 0..attempts {
@@ -2038,6 +2059,13 @@ async fn wait_for_sidekick_handoffs(
                 "handoff_ready",
                 &format!("attempt={attempt}"),
             );
+            if let Some(on_event) = on_event {
+                let _ = on_event.send(ChatEvent::SidekickEvent {
+                    mode: "parallel".to_string(),
+                    stage: "handoff_ready".to_string(),
+                    detail: format!("attempt={attempt}"),
+                });
+            }
             return handoffs;
         }
         tokio::time::sleep(Duration::from_millis(250)).await;
@@ -2049,6 +2077,13 @@ async fn wait_for_sidekick_handoffs(
         "handoff_deferred",
         &format!("main continued after {wait_ms}ms"),
     );
+    if let Some(on_event) = on_event {
+        let _ = on_event.send(ChatEvent::SidekickEvent {
+            mode: "parallel".to_string(),
+            stage: "handoff_deferred".to_string(),
+            detail: format!("main continued after {wait_ms}ms"),
+        });
+    }
     sidekick_progress_context(app, session_id, wait_ms)
 }
 
@@ -2066,8 +2101,14 @@ pub async fn chat_stream(
 ) -> Result<(), String> {
     let started = Instant::now();
     let session_id = session_id.unwrap_or_else(|| "default".to_string());
-    let sidekick_spawned =
-        maybe_spawn_parallel_sidekick(&app, &route, slot_id, &session_id, &messages);
+    let sidekick_spawned = maybe_spawn_parallel_sidekick(
+        &app,
+        &route,
+        slot_id,
+        &session_id,
+        &messages,
+        Some(&on_event),
+    );
     let (url, bearer, model_field) = match route.as_str() {
         "cloud" => {
             let (base, key) = credentials().ok_or_else(|| "not signed in".to_string())?;
@@ -2097,8 +2138,14 @@ pub async fn chat_stream(
         "content": system_prompt_for(&model_field),
     })];
     outbound_messages.extend(
-        wait_for_sidekick_handoffs(&app, &session_id, sidekick_spawned, CHAT_SIDEKICK_WAIT_MS)
-            .await,
+        wait_for_sidekick_handoffs(
+            &app,
+            &session_id,
+            sidekick_spawned,
+            CHAT_SIDEKICK_WAIT_MS,
+            Some(&on_event),
+        )
+        .await,
     );
     outbound_messages.extend(
         messages
@@ -2264,7 +2311,7 @@ pub async fn benchmark_local_chat(
         content: prompt.clone(),
     }];
     let sidekick_spawned = enable_parallel_sidekick
-        && maybe_spawn_parallel_sidekick(app, "local", Some(slot_id), session_id, &messages);
+        && maybe_spawn_parallel_sidekick(app, "local", Some(slot_id), session_id, &messages, None);
     let url = format!("http://127.0.0.1:{port}/v1/chat/completions");
     let mut outbound_messages = vec![json!({
         "role": "system",
@@ -2276,6 +2323,7 @@ pub async fn benchmark_local_chat(
             session_id,
             sidekick_spawned,
             BENCHMARK_SIDEKICK_WAIT_MS,
+            None,
         )
         .await,
     );

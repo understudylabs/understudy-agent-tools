@@ -60,6 +60,7 @@ type ChatEvent =
   | { type: "ReasoningChunk"; text: string }
   | { type: "ToolCall"; name: string; args: unknown }
   | { type: "ToolResult"; name: string; ok: boolean; result: unknown }
+  | { type: "SidekickEvent"; mode: string; stage: string; detail: string }
   | { type: "Error"; message: string }
   | { type: "Done" };
 type ResidencySnapshot = {
@@ -391,6 +392,18 @@ export function ChatPane({ resetToken }: { resetToken: number }) {
           p[last] = { ...p[last], tools };
           return p;
         });
+      } else if (msg.type === "SidekickEvent") {
+        setSidekickEvents((prev) => [
+          {
+            id: Date.now(),
+            session_id: sessionId,
+            mode: msg.mode,
+            stage: msg.stage,
+            detail: msg.detail,
+            created_at: new Date().toISOString(),
+          },
+          ...prev.filter((event) => event.session_id === sessionId),
+        ].slice(0, 12));
       } else if (msg.type === "Error") {
         setErr(msg.message);
         setStreaming(false);
