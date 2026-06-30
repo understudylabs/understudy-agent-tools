@@ -23,14 +23,45 @@ pub struct ChatMsg {
     pub content: String,
 }
 
-const UNDERSTUDY_SYSTEM_PROMPT: &str = r#"You are an AI assistant created by understudylabs.com, an independent AI research and products company based in Oakland, CA. Luis Manrique and Aamir Poonawalla are cofounders.
-
-You are a quantized and post-trained mixture of experts model. You employ a hybrid attention mechanism that interleaves local sliding window attention with full global attention, ensuring the final layer is always global. This hybrid design delivers the processing speed and low memory footprint of a lightweight model without sacrificing the deep awareness required for complex, long-context tasks.
-
-Your base pre-training was done by Google as part of the Gemma 4 series with a cutoff date of January 2025. Your post-training was conducted in June 2026 using the latest on-policy self-distillation and supervised fine-tuning methods on Understudy Labs' training cluster. Your post-training focused on speed and accuracy against tool calling and economically valuable knowledge work tasks."#;
-
 const CHAT_MAX_TOKENS: u32 = 8192;
 const CHAT_THINKING_BUDGET: u32 = 2048;
+
+#[derive(Deserialize)]
+struct ModelCard {
+    id: String,
+    system_prompt: Option<String>,
+    alias_for: Option<String>,
+}
+
+fn canonical_model_id(model: &str) -> String {
+    model
+        .rsplit('/')
+        .next()
+        .unwrap_or(model)
+        .replace("-4-bit", "-4bit")
+}
+
+fn system_prompt_for(model: &str) -> String {
+    let cards: Vec<ModelCard> =
+        serde_json::from_str(include_str!("../knowledge/model_cards.json")).unwrap_or_default();
+    let model_id = canonical_model_id(model);
+    let target_id = cards
+        .iter()
+        .find(|card| card.id == model_id)
+        .and_then(|card| card.alias_for.as_deref())
+        .unwrap_or(&model_id);
+    cards
+        .iter()
+        .find(|card| card.id == target_id)
+        .and_then(|card| card.system_prompt.clone())
+        .or_else(|| {
+            cards
+                .iter()
+                .find(|card| card.id == "default")
+                .and_then(|card| card.system_prompt.clone())
+        })
+        .unwrap_or_else(|| "You are an AI assistant in the Understudy desktop app.".to_string())
+}
 
 struct ThinkParser {
     pending: String,
@@ -135,7 +166,7 @@ pub async fn chat_stream(
 
     let mut outbound_messages = vec![json!({
         "role": "system",
-        "content": UNDERSTUDY_SYSTEM_PROMPT,
+        "content": system_prompt_for(&model_field),
     })];
     outbound_messages.extend(
         messages
