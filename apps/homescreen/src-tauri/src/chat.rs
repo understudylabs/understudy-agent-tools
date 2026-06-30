@@ -1143,6 +1143,14 @@ struct SidekickRoutingDecision {
     reason: &'static str,
 }
 
+#[derive(Default)]
+struct SidekickRoutingSignals {
+    feedback_rows: u64,
+    useful_rate: Option<f64>,
+    handoff_rate: Option<f64>,
+    escalation_rate: Option<f64>,
+}
+
 fn prompt_excerpt(prompt: &str) -> String {
     let trimmed = prompt.trim();
     if trimmed.len() <= 240 {
@@ -1155,9 +1163,35 @@ fn prompt_excerpt(prompt: &str) -> String {
     format!("{}…", &trimmed[..end])
 }
 
+fn sidekick_routing_signals(app: &AppHandle) -> SidekickRoutingSignals {
+    let Ok(rows) = app.state::<crate::db::Db>().list_sidekick_runs(30) else {
+        return SidekickRoutingSignals::default();
+    };
+    let total = rows.len() as u64;
+    if total == 0 {
+        return SidekickRoutingSignals::default();
+    }
+
+    let useful = rows.iter().filter(|row| row.accepted == Some(true)).count() as u64;
+    let misses = rows
+        .iter()
+        .filter(|row| row.accepted == Some(false))
+        .count() as u64;
+    let feedback_rows = useful + misses;
+    let consumed = rows.iter().filter(|row| row.consumed).count() as u64;
+    let escalated = rows.iter().filter(|row| row.escalated).count() as u64;
+    SidekickRoutingSignals {
+        feedback_rows,
+        useful_rate: (feedback_rows > 0).then_some(useful as f64 / feedback_rows as f64),
+        handoff_rate: Some(consumed as f64 / total as f64),
+        escalation_rate: Some(escalated as f64 / total as f64),
+    }
+}
+
 fn route_parallel_sidekick(
     prompt: &str,
     feedback: SidekickFeedbackSummary,
+    signals: SidekickRoutingSignals,
 ) -> SidekickRoutingDecision {
     let lower = prompt.to_lowercase();
     let delegate_terms = [
@@ -1192,11 +1226,35 @@ fn route_parallel_sidekick(
             reason: "main_keeps_judgment",
         };
     }
+    if signals.feedback_rows >= 5 && signals.useful_rate.is_some_and(|rate| rate < 0.25) {
+        return SidekickRoutingDecision {
+            eligible: false,
+            reason: "metrics_low_usefulness",
+        };
+    }
+    if signals
+        .escalation_rate
+        .is_some_and(|rate| signals.feedback_rows >= 3 && rate > 0.6)
+    {
+        return SidekickRoutingDecision {
+            eligible: false,
+            reason: "metrics_high_escalation",
+        };
+    }
     let mechanical = delegate_terms
         .iter()
         .find(|needle| lower.contains(**needle))
         .copied();
     if let Some(term) = mechanical {
+        if signals
+            .handoff_rate
+            .is_some_and(|rate| signals.feedback_rows >= 3 && rate < 0.2)
+        {
+            return SidekickRoutingDecision {
+                eligible: false,
+                reason: "metrics_low_handoff",
+            };
+        }
         if feedback.misses >= 3 && feedback.misses > feedback.useful.saturating_mul(2) {
             return SidekickRoutingDecision {
                 eligible: false,
@@ -1218,6 +1276,12 @@ fn route_parallel_sidekick(
         return SidekickRoutingDecision {
             eligible: true,
             reason: "feedback_positive_prior",
+        };
+    }
+    if signals.feedback_rows >= 5 && signals.useful_rate.is_some_and(|rate| rate >= 0.75) {
+        return SidekickRoutingDecision {
+            eligible: true,
+            reason: "metrics_success_prior",
         };
     }
     SidekickRoutingDecision {
@@ -1265,7 +1329,8 @@ fn maybe_spawn_parallel_sidekick(
         return false;
     }
     let feedback = db.sidekick_feedback_summary(20).unwrap_or_default();
-    let decision = route_parallel_sidekick(prompt, feedback);
+    let signals = sidekick_routing_signals(app);
+    let decision = route_parallel_sidekick(prompt, feedback, signals);
     record_decision(decision.eligible, decision.reason);
     if !decision.eligible {
         return false;
