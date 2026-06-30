@@ -5,7 +5,7 @@ use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::process::Command;
 use std::sync::{Mutex, OnceLock};
-use std::time::Instant;
+use std::time::{Duration, Instant};
 use tauri::ipc::Channel;
 use tauri::{AppHandle, Manager, State};
 
@@ -1232,7 +1232,7 @@ fn maybe_spawn_parallel_sidekick(
     active_slot_id: Option<u32>,
     session_id: &str,
     messages: &[ChatMsg],
-) {
+) -> bool {
     let db = app.state::<crate::db::Db>();
     let prompt = latest_user_message(messages).map(str::trim).unwrap_or("");
     let record_decision = |eligible: bool, reason: &'static str| {
@@ -1246,15 +1246,15 @@ fn maybe_spawn_parallel_sidekick(
     };
     if route != "local" {
         record_decision(false, "non_local_route");
-        return;
+        return false;
     }
     if db.setting_get("sidekick.parallel").as_deref() == Some("off") {
         record_decision(false, "parallel_toggle_off");
-        return;
+        return false;
     }
     if prompt.is_empty() {
         record_decision(false, "no_user_prompt");
-        return;
+        return false;
     }
     if app
         .state::<Residency>()
@@ -1262,13 +1262,13 @@ fn maybe_spawn_parallel_sidekick(
         .is_none()
     {
         record_decision(false, "no_warm_sidekick");
-        return;
+        return false;
     }
     let feedback = db.sidekick_feedback_summary(20).unwrap_or_default();
     let decision = route_parallel_sidekick(prompt, feedback);
     record_decision(decision.eligible, decision.reason);
     if !decision.eligible {
-        return;
+        return false;
     }
 
     let task = format!("Run a quick background sidekick pass on this user request:\n{prompt}");
@@ -1292,6 +1292,7 @@ fn maybe_spawn_parallel_sidekick(
         )
         .await;
     });
+    true
 }
 
 fn consume_sidekick_handoffs(app: &AppHandle, session_id: &str) -> Vec<Value> {
@@ -1332,6 +1333,38 @@ fn consume_sidekick_handoffs(app: &AppHandle, session_id: &str) -> Vec<Value> {
     vec![json!({ "role": "system", "content": body })]
 }
 
+async fn wait_for_sidekick_handoffs(
+    app: &AppHandle,
+    session_id: &str,
+    spawned: bool,
+) -> Vec<Value> {
+    if !spawned {
+        return consume_sidekick_handoffs(app, session_id);
+    }
+
+    for attempt in 0..4 {
+        let handoffs = consume_sidekick_handoffs(app, session_id);
+        if !handoffs.is_empty() {
+            let _ = app.state::<crate::db::Db>().record_sidekick_event(
+                session_id,
+                "parallel",
+                "handoff_ready",
+                &format!("attempt={attempt}"),
+            );
+            return handoffs;
+        }
+        tokio::time::sleep(Duration::from_millis(250)).await;
+    }
+
+    let _ = app.state::<crate::db::Db>().record_sidekick_event(
+        session_id,
+        "parallel",
+        "handoff_deferred",
+        "main continued after 1000ms",
+    );
+    vec![]
+}
+
 /// Stream a chat completion. `route` is "local" (MLX :8089) or "cloud" (gateway).
 /// The desktop app's JS passes a `Channel` it receives chunks on.
 #[tauri::command]
@@ -1345,7 +1378,8 @@ pub async fn chat_stream(
     mgr: State<'_, Residency>,
 ) -> Result<(), String> {
     let session_id = session_id.unwrap_or_else(|| "default".to_string());
-    maybe_spawn_parallel_sidekick(&app, &route, slot_id, &session_id, &messages);
+    let sidekick_spawned =
+        maybe_spawn_parallel_sidekick(&app, &route, slot_id, &session_id, &messages);
     let (url, bearer, model_field) = match route.as_str() {
         "cloud" => {
             let (base, key) = credentials().ok_or_else(|| "not signed in".to_string())?;
@@ -1374,7 +1408,7 @@ pub async fn chat_stream(
         "role": "system",
         "content": system_prompt_for(&model_field),
     })];
-    outbound_messages.extend(consume_sidekick_handoffs(&app, &session_id));
+    outbound_messages.extend(wait_for_sidekick_handoffs(&app, &session_id, sidekick_spawned).await);
     outbound_messages.extend(
         messages
             .iter()
@@ -1465,15 +1499,14 @@ pub async fn benchmark_local_chat(
         role: "user".to_string(),
         content: prompt.to_string(),
     }];
-    if enable_parallel_sidekick {
-        maybe_spawn_parallel_sidekick(app, "local", Some(slot_id), session_id, &messages);
-    }
+    let sidekick_spawned = enable_parallel_sidekick
+        && maybe_spawn_parallel_sidekick(app, "local", Some(slot_id), session_id, &messages);
     let url = format!("http://127.0.0.1:{port}/v1/chat/completions");
     let mut outbound_messages = vec![json!({
         "role": "system",
         "content": system_prompt_for(&model_field),
     })];
-    outbound_messages.extend(consume_sidekick_handoffs(app, session_id));
+    outbound_messages.extend(wait_for_sidekick_handoffs(app, session_id, sidekick_spawned).await);
     outbound_messages.push(json!({ "role": "user", "content": prompt }));
 
     let client = reqwest::Client::builder()
