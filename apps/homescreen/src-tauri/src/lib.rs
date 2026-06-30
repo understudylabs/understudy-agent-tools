@@ -149,6 +149,7 @@ pub fn run() {
             commands::fusion_benchmark_summary,
             commands::fusion_benchmark_run_summary,
             commands::export_fusion_benchmark_comparison,
+            commands::export_automationbench_handoff,
             commands::chat_runs,
             commands::chat_route_metrics,
             commands::run_fusion_benchmark,

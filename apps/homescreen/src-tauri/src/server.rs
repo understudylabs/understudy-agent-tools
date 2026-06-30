@@ -53,6 +53,10 @@ pub fn router(ctx: Ctx) -> Router {
             post(export_fusion_benchmark_comparison),
         )
         .route(
+            "/api/fusion/automationbench-handoff",
+            post(export_automationbench_handoff),
+        )
+        .route(
             "/api/fusion/benchmark-results",
             get(fusion_benchmark_results).post(record_fusion_benchmark),
         )
@@ -235,6 +239,16 @@ async fn export_fusion_benchmark_comparison(
 ) -> Result<Json<Value>, (StatusCode, String)> {
     auth(&ctx, &h)?;
     crate::commands::export_fusion_benchmark_comparison(ctx.app.clone(), body)
+        .map(|v| Json(json!(v)))
+        .map_err(|e| (StatusCode::BAD_GATEWAY, e))
+}
+async fn export_automationbench_handoff(
+    State(ctx): State<Ctx>,
+    h: HeaderMap,
+    Json(body): Json<crate::commands::ExportAutomationBenchHandoffRequest>,
+) -> Result<Json<Value>, (StatusCode, String)> {
+    auth(&ctx, &h)?;
+    crate::commands::export_automationbench_handoff(body)
         .map(|v| Json(json!(v)))
         .map_err(|e| (StatusCode::BAD_GATEWAY, e))
 }
@@ -441,6 +455,7 @@ fn tools() -> Vec<Value> {
         ("fusion_benchmark_summary", "Aggregate Fusion benchmark results by route, mode, and model. Args: {limit?}."),
         ("fusion_benchmark_run_summary", "Compare Fusion benchmark modes within each run. Args: {limit?}."),
         ("export_fusion_benchmark_comparison", "Write a local Fusion comparison packet for external eval tooling. Args: {limit?, output_path?}."),
+        ("export_automationbench_handoff", "Write a local AutomationBench handoff packet with candidates, runner hints, and desktop callback mapping. Args: {run_id?, candidates?, domains?, num_examples?, output_path?}."),
         ("chat_runs", "Recent desktop chat route accounting rows. Args: {limit?}."),
         ("chat_route_metrics", "Aggregate desktop chat route latency, token, tool, sidekick, and gateway usage. Args: {limit?}."),
         ("sidekick_metrics", "Aggregate recent sidekick usage, handoff, escalation, and feedback metrics. Args: {limit?}."),
@@ -501,6 +516,12 @@ async fn call_tool(ctx: &Ctx, name: &str, args: &Value) -> Result<Value, String>
                 serde_json::from_value::<c::ExportFusionBenchmarkComparisonRequest>(args.clone())
                     .map_err(|e| format!("invalid Fusion comparison export request: {e}"))?;
             json!(c::export_fusion_benchmark_comparison(app, request).map_err(|e| e.to_string())?)
+        }
+        "export_automationbench_handoff" => {
+            let request =
+                serde_json::from_value::<c::ExportAutomationBenchHandoffRequest>(args.clone())
+                    .map_err(|e| format!("invalid AutomationBench handoff request: {e}"))?;
+            json!(c::export_automationbench_handoff(request).map_err(|e| e.to_string())?)
         }
         "chat_runs" => json!(c::chat_runs(
             app,

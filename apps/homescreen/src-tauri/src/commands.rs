@@ -254,6 +254,15 @@ pub struct ExportFusionBenchmarkComparisonRequest {
     pub output_path: Option<String>,
 }
 
+#[derive(serde::Deserialize)]
+pub struct ExportAutomationBenchHandoffRequest {
+    pub run_id: Option<String>,
+    pub candidates: Option<Vec<String>>,
+    pub domains: Option<Vec<String>>,
+    pub num_examples: Option<u32>,
+    pub output_path: Option<String>,
+}
+
 #[derive(Serialize, Clone)]
 pub struct FusionBenchmarkComparisonPacket {
     pub schema_version: &'static str,
@@ -285,6 +294,39 @@ pub struct FusionBenchmarkComparisonExport {
     pub schema_version: &'static str,
     pub path: String,
     pub packet: FusionBenchmarkComparisonPacket,
+}
+
+#[derive(Serialize, Clone)]
+pub struct AutomationBenchHandoffCandidate {
+    pub candidate: String,
+    pub run_id: String,
+    pub route: String,
+    pub model: String,
+    pub local_model_required: bool,
+    pub gateway_required: bool,
+    pub result_mapping: Value,
+}
+
+#[derive(Serialize, Clone)]
+pub struct AutomationBenchHandoffPacket {
+    pub schema_version: &'static str,
+    pub created_at: String,
+    pub source: &'static str,
+    pub run_id: String,
+    pub benchmark: &'static str,
+    pub domains: Vec<String>,
+    pub num_examples: u32,
+    pub candidates: Vec<AutomationBenchHandoffCandidate>,
+    pub commands: Vec<String>,
+    pub callback: Value,
+    pub notes: Vec<String>,
+}
+
+#[derive(Serialize, Clone)]
+pub struct AutomationBenchHandoffExport {
+    pub schema_version: &'static str,
+    pub path: String,
+    pub packet: AutomationBenchHandoffPacket,
 }
 
 #[derive(Serialize, Clone)]
@@ -504,6 +546,18 @@ fn prompt_excerpt(prompt: &str) -> String {
 
 fn default_fusion_run_id() -> String {
     format!("fusion-{}", chrono::Utc::now().timestamp_millis())
+}
+
+fn resolve_repo_output_path(path: PathBuf) -> PathBuf {
+    if path.is_absolute() {
+        path
+    } else {
+        PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("..")
+            .join("..")
+            .join("..")
+            .join(path)
+    }
 }
 
 #[derive(Default)]
@@ -1711,15 +1765,7 @@ pub fn export_fusion_benchmark_comparison(
                 chrono::Utc::now().format("%Y%m%dT%H%M%SZ")
             ))
     });
-    let path = if path.is_absolute() {
-        path
-    } else {
-        PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-            .join("..")
-            .join("..")
-            .join("..")
-            .join(path)
-    };
+    let path = resolve_repo_output_path(path);
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent).map_err(|e| e.to_string())?;
     }
@@ -1730,6 +1776,119 @@ pub fn export_fusion_benchmark_comparison(
     let path = fs::canonicalize(&path).unwrap_or(path);
     Ok(FusionBenchmarkComparisonExport {
         schema_version: "understudy.fusion_benchmark_comparison_export.v1",
+        path: path.to_string_lossy().to_string(),
+        packet,
+    })
+}
+
+#[tauri::command]
+pub fn export_automationbench_handoff(
+    request: ExportAutomationBenchHandoffRequest,
+) -> Result<AutomationBenchHandoffExport, String> {
+    let run_id = request
+        .run_id
+        .unwrap_or_else(|| format!("automationbench-{}", chrono::Utc::now().timestamp_millis()));
+    if run_id.trim().is_empty() {
+        return Err("run_id is required".to_string());
+    }
+    let domains = request
+        .domains
+        .unwrap_or_else(|| vec!["simple".to_string()]);
+    let num_examples = request.num_examples.unwrap_or(5).max(1);
+    let candidates = request.candidates.unwrap_or_else(|| {
+        vec![
+            "gateway-glm".to_string(),
+            "local-main".to_string(),
+            "local-fast".to_string(),
+        ]
+    });
+    let mut candidate_packets = vec![];
+    for candidate in candidates {
+        if !valid_fusion_candidate(&candidate) {
+            return Err(format!("unknown Fusion benchmark candidate: {candidate}"));
+        }
+        let (route, model, local_model_required, gateway_required) = match candidate.as_str() {
+            "gateway-glm" => ("gateway", "glm-5.2", false, true),
+            "local-fast" => ("local", "warm small/e2b Understudy model", true, false),
+            _ => ("local", "warm main Understudy model", true, false),
+        };
+        candidate_packets.push(AutomationBenchHandoffCandidate {
+            run_id: format!("{run_id}-{candidate}"),
+            candidate,
+            route: route.to_string(),
+            model: model.to_string(),
+            local_model_required,
+            gateway_required,
+            result_mapping: json!({
+                "task_id": "AutomationBench example id or domain/example id",
+                "mode": "automationbench",
+                "model": "resolved model id used by the runner",
+                "elapsed_ms": "wall clock for the example",
+                "prompt_tokens": "input tokens when available",
+                "completion_tokens": "output tokens when available",
+                "gateway_used": route == "gateway",
+                "local_mem_gb": "resident local model memory when route is local",
+                "score": "AutomationBench pass/partial score normalized to 0..1",
+                "status": "ok | error | skipped",
+                "notes": "domain, example id, assertion summary, and failure reason"
+            }),
+        });
+    }
+    let domain_arg = if domains.len() == 1 {
+        domains[0].clone()
+    } else {
+        domains.join(",")
+    };
+    let commands = vec![
+        "git clone https://github.com/zapier/AutomationBench.git".to_string(),
+        "cd AutomationBench && uv sync".to_string(),
+        format!(
+            "cd AutomationBench && uv run auto-bench --model <candidate-model-or-base-url> --domains {} --num-examples {}",
+            domain_arg, num_examples
+        ),
+    ];
+    let packet = AutomationBenchHandoffPacket {
+        schema_version: "understudy.automationbench_handoff.v1",
+        created_at: chrono::Utc::now().to_rfc3339(),
+        source: "desktop-fusion-harness",
+        run_id: run_id.clone(),
+        benchmark: "AutomationBench",
+        domains,
+        num_examples,
+        candidates: candidate_packets,
+        commands,
+        callback: json!({
+            "record_result_url": "http://127.0.0.1:17790/api/fusion/benchmark-results",
+            "method": "POST",
+            "auth": "Authorization: Bearer <desktop server token>",
+            "export_comparison_url": "http://127.0.0.1:17790/api/fusion/benchmark-export",
+            "content_type": "application/json"
+        }),
+        notes: vec![
+            "This handoff is for the real external AutomationBench runner; the desktop automationbench-proxy suite is only directional.".to_string(),
+            "Do not include provider secrets in this packet. Inject credentials into the runner environment.".to_string(),
+            "Use the candidate run_id when posting each result row so desktop summaries can compare gateway-glm, local-main, and local-fast.".to_string(),
+        ],
+    };
+    let path = request.output_path.map(PathBuf::from).unwrap_or_else(|| {
+        PathBuf::from(".understudy")
+            .join("fusion-benchmark")
+            .join(format!(
+                "automationbench-handoff-{}.json",
+                chrono::Utc::now().format("%Y%m%dT%H%M%SZ")
+            ))
+    });
+    let path = resolve_repo_output_path(path);
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+    }
+    let bytes = serde_json::to_vec_pretty(&packet).map_err(|e| e.to_string())?;
+    let mut text = String::from_utf8(bytes).map_err(|e| e.to_string())?;
+    text.push('\n');
+    fs::write(&path, text).map_err(|e| e.to_string())?;
+    let path = fs::canonicalize(&path).unwrap_or(path);
+    Ok(AutomationBenchHandoffExport {
+        schema_version: "understudy.automationbench_handoff_export.v1",
         path: path.to_string_lossy().to_string(),
         packet,
     })
