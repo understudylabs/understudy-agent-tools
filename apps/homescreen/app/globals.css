@@ -769,11 +769,18 @@ select,
   align-items: center;
   gap: 7px;
   margin-bottom: 8px;
+  padding: 0;
+  border: 0;
+  background: transparent;
   font-family: var(--mono);
   font-size: 10px;
   letter-spacing: 0.12em;
   text-transform: uppercase;
   color: var(--text-3);
+  cursor: pointer;
+}
+.reasoning-substream-label:hover {
+  color: color-mix(in srgb, var(--text-2) 88%, transparent);
 }
 .reasoning-substream-label span {
   width: 5px;

@@ -120,21 +120,37 @@ function ReasoningSubstream({
   text: string;
 }) {
   const ref = useRef<HTMLDivElement | null>(null);
+  const [open, setOpen] = useState(active);
 
   useEffect(() => {
-    if (!ref.current) return;
+    setOpen(active);
+  }, [active]);
+
+  useEffect(() => {
+    if (!active || !ref.current) return;
     ref.current.scrollTop = ref.current.scrollHeight;
-  }, [text]);
+  }, [active, text]);
+
+  const expanded = active || open;
 
   return (
     <div className={"reasoning-substream" + (active ? " active" : "")}>
-      <div className="reasoning-substream-label">
+      <button
+        type="button"
+        className="reasoning-substream-label"
+        aria-expanded={expanded}
+        onClick={() => {
+          if (!active) setOpen((value) => !value);
+        }}
+      >
         <span />
         {active ? "Thinking" : "Thoughts"}
-      </div>
-      <div ref={ref} className="reasoning-substream-text">
-        {text}
-      </div>
+      </button>
+      {expanded && (
+        <div ref={ref} className="reasoning-substream-text">
+          {text}
+        </div>
+      )}
     </div>
   );
 }
