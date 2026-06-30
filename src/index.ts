@@ -224,7 +224,6 @@ async function printDoctorJson(): Promise<void> {
     "package.json",
     "src/index.ts",
     "skills/understudy/SKILL.md",
-    "vendor/MANIFEST.md",
   ];
   const missing = required.filter((path) => !existsSync(join(repoRoot, path)));
   // package.json and the plugin manifests must move together: installed

@@ -133,7 +133,6 @@ exposed through `understudy platforms`.
 | Docs | `docs/` | Public methodology and release-boundary notes. |
 | Platform adapters | `.claude-plugin/`, `.cursor-plugin/`, `.codex-plugin/`, `.opencode/`, `.hermes/`, `.agents/`, `AGENTS.md` | Thin manifests exposing the same skill tree to each coding-agent surface. |
 | Scripts | `scripts/` | Repo hygiene checks, not product CLI code. |
-| Vendor | `vendor/` | Vendored or mirrored compatibility shims, with license metadata. |
 
 The CLI stays boring on purpose. Workflow judgment belongs in skills; durable
 shortcuts belong in TypeScript only when the agent needs reliable execution,
@@ -627,7 +626,7 @@ provider secrets, or local env files; hosted production URLs except documented
 public defaults.
 
 **Do commit:** local-only TypeScript CLI code, public agent skills, synthetic
-templates and docs, vendored shims with license metadata, and reproducible
+templates and docs, and reproducible
 command outputs that do not contain private payloads.
 
 ## License

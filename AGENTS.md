@@ -113,7 +113,6 @@ Keep one layer per spine:
 - CLI: `src/` for thin durable shortcuts, auth, artifact checks, and runtime wrappers
 - scripts: `scripts/` for repo hygiene only, not product CLI code
 - skills: `skills/`
-- vendor shims: `vendor/`
 - docs: `docs/`
 
 The CLI should stay thin. Skills explain the capability; the CLI only makes

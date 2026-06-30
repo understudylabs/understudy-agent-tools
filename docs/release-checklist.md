@@ -26,7 +26,7 @@ git ls-files
 - no private planning docs;
 - no private repo paths or local usernames;
 - no raw prompts, completions, trace payloads, customer names, or domains;
-- vendored files are covered by `vendor/MANIFEST.md`;
+- no vendored compatibility shims or mirrored source;
 - README links to privacy, security, telemetry, and OSS boundary docs.
 
 ## Package Smoke
