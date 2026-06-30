@@ -302,15 +302,20 @@ select,
   display: grid;
   place-items: center;
   justify-self: center;
+  box-sizing: border-box;
   width: 256px;
   height: 256px;
+  overflow: hidden;
   border-radius: 18px;
   background: #f7f5ef;
   padding: 12px;
 }
 .qr-code-frame canvas {
-  width: 232px;
-  height: 232px;
+  display: block;
+  width: 232px !important;
+  height: 232px !important;
+  max-width: 100%;
+  max-height: 100%;
 }
 .qr-url {
   overflow: hidden;
@@ -768,15 +773,58 @@ select,
   min-width: 0;
   max-width: 680px;
 }
+.capture-eyebrow {
+  display: inline-flex;
+  margin-bottom: 8px;
+  color: var(--text-3);
+  font-family: var(--mono);
+  font-size: 11px;
+  letter-spacing: 0;
+  text-transform: uppercase;
+}
 .capture-actions {
   display: flex;
   align-items: center;
   gap: 8px;
   flex-shrink: 0;
 }
+.icon-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+}
 .capture-stage-card {
   padding: 0;
   overflow: hidden;
+}
+.capture-route-strip {
+  display: grid;
+  grid-template-columns: 1.2fr 1fr .8fr;
+  gap: 1px;
+  border-bottom: 1px solid var(--border);
+  background: var(--border);
+}
+.capture-route-strip > div {
+  display: grid;
+  gap: 4px;
+  min-width: 0;
+  padding: 13px 16px;
+  background: color-mix(in srgb, var(--surface) 90%, transparent);
+}
+.capture-route-strip span {
+  color: var(--text-3);
+  font-family: var(--mono);
+  font-size: 10px;
+  text-transform: uppercase;
+}
+.capture-route-strip strong {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  min-width: 0;
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 600;
 }
 .capture-flow {
   position: relative;
@@ -811,6 +859,12 @@ select,
   grid-column: 3;
   grid-row: 1;
 }
+.flow-node.live {
+  grid-column: 3;
+  grid-row: 1;
+  border-color: color-mix(in srgb, var(--accent) 45%, var(--border));
+  background: color-mix(in srgb, var(--accent) 13%, var(--surface));
+}
 .flow-node.anthropic,
 .flow-node.retired {
   grid-column: 5;
@@ -843,6 +897,11 @@ select,
   background: color-mix(in srgb, var(--accent) 28%, var(--surface-2));
   color: #fff;
 }
+.flow-node.live .flow-node-icon {
+  background: var(--accent);
+  color: #fff;
+  box-shadow: 0 0 22px color-mix(in srgb, var(--accent) 28%, transparent);
+}
 .flow-provider-mark {
   display: grid;
   place-items: center;
@@ -867,7 +926,12 @@ select,
   fill: #d8c7ad;
 }
 .flow-node.retired {
-  opacity: .62;
+  opacity: .5;
+  filter: grayscale(.4);
+}
+.capture-flow.replace .gateway-to-provider {
+  opacity: .28;
+  background: linear-gradient(90deg, var(--border), var(--border));
 }
 .flow-node strong {
   color: var(--text);
@@ -939,11 +1003,16 @@ select,
   position: absolute;
   left: 50%;
   top: 0;
-  width: 58px;
+  display: grid;
+  place-items: center;
+  width: 64px;
   height: 18px;
   border: 1px solid var(--border);
   border-radius: 5px;
   background: color-mix(in srgb, var(--surface-2) 92%, transparent);
+  color: var(--text-3);
+  font-family: var(--mono);
+  font-size: 9px;
   transform: translateX(-50%);
   animation: trace-drop 2.8s ease-in-out infinite;
 }
@@ -1014,6 +1083,11 @@ select,
   opacity: 1;
   transform: translateY(0);
 }
+.scorecard-title {
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 600;
+}
 .score-row {
   display: grid;
   grid-template-columns: 58px 1fr 52px;
@@ -1040,6 +1114,28 @@ select,
   color: var(--text-2);
   font-weight: 500;
   text-align: right;
+}
+.capture-replacement-badge {
+  position: absolute;
+  z-index: 4;
+  left: 28px;
+  bottom: 28px;
+  display: grid;
+  gap: 4px;
+  width: 238px;
+  padding: 12px;
+  border: 1px solid color-mix(in srgb, var(--accent) 34%, var(--border));
+  border-radius: var(--r-card);
+  background: color-mix(in srgb, var(--bg) 88%, transparent);
+  box-shadow: 0 14px 50px rgba(0, 0, 0, .24);
+}
+.capture-replacement-badge strong {
+  color: var(--text);
+  font-size: 12px;
+}
+.capture-replacement-badge span {
+  color: var(--text-3);
+  font-size: 11px;
 }
 .capture-progress {
   height: 4px;
@@ -1429,6 +1525,9 @@ select,
   .evals-actions {
     justify-content: start;
   }
+  .capture-route-strip {
+    grid-template-columns: 1fr;
+  }
   .capture-flow {
     grid-template-columns: 1fr;
     grid-template-rows: repeat(5, auto);
@@ -1444,6 +1543,7 @@ select,
   }
   .flow-node.site,
   .flow-node.gateway,
+  .flow-node.live,
   .flow-node.anthropic,
   .flow-node.retired {
     grid-column: 1;
@@ -1459,7 +1559,9 @@ select,
     to { transform: translateY(44px) rotate(180deg); opacity: 0; }
   }
   .capture-trace-stream,
-  .capture-scorecard {
+  .capture-scorecard,
+  .capture-replacement-badge,
+  .capture-stage-label {
     display: none;
   }
   .capture-learner {
