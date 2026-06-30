@@ -1,6 +1,7 @@
 mod aa;
 mod account;
 mod bin;
+mod bootstrap;
 mod chat;
 mod commands;
 mod db;
@@ -115,6 +116,11 @@ pub fn run() {
             commands::list_models,
             commands::list_snapshot_models,
             commands::mlx_runtime_status,
+            commands::bootstrap_status,
+            commands::install_uv,
+            commands::install_mlx_runtime,
+            commands::install_understudy_agent_tools,
+            commands::download_snapshot_model,
             commands::get_residency,
             commands::add_slot,
             commands::assign_slot,

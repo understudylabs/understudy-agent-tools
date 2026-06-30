@@ -531,6 +531,26 @@ select,
   color: var(--text-2);
   text-transform: capitalize;
 }
+.mini-btn {
+  border: none;
+  border-radius: var(--r-control);
+  background: var(--surface-2);
+  color: var(--text);
+  cursor: pointer;
+  font: inherit;
+  font-size: 12px;
+  padding: 6px 10px;
+}
+.mini-btn:hover { background: var(--hover); }
+.mini-btn:disabled {
+  cursor: default;
+  color: var(--text-3);
+}
+.error-text {
+  color: var(--error);
+  font-size: 12px;
+  line-height: 1.45;
+}
 
 /* ---------- Generic buttons ---------- */
 .btn {

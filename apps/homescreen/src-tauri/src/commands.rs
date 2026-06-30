@@ -13,6 +13,7 @@ use serde::Serialize;
 use serde_json::{json, Value};
 use std::process::Command;
 use tauri::{AppHandle, Emitter, Manager};
+use tauri::ipc::Channel;
 
 #[derive(Serialize, Clone)]
 pub struct StatusSnapshot {
@@ -159,6 +160,35 @@ pub fn list_snapshot_models() -> Vec<models::SnapshotInfo> {
 #[tauri::command]
 pub fn mlx_runtime_status() -> models::MlxRuntimeStatus {
     models::mlx_runtime_status()
+}
+
+#[tauri::command]
+pub fn bootstrap_status() -> crate::bootstrap::BootstrapStatus {
+    crate::bootstrap::status()
+}
+
+#[tauri::command]
+pub fn install_uv() -> Result<String, String> {
+    crate::bootstrap::install_uv()
+}
+
+#[tauri::command]
+pub fn install_mlx_runtime() -> Result<String, String> {
+    crate::bootstrap::install_mlx_runtime()
+}
+
+#[tauri::command]
+pub fn install_understudy_agent_tools() -> Result<String, String> {
+    crate::bootstrap::install_understudy_agent_tools()
+}
+
+#[tauri::command]
+pub async fn download_snapshot_model(
+    app: AppHandle,
+    model_id: String,
+    on_event: Channel<crate::bootstrap::DownloadEvent>,
+) -> Result<(), String> {
+    crate::bootstrap::download_model(app, model_id, on_event).await
 }
 
 // ----- moraine / traces (MCP) -----

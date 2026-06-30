@@ -28,3 +28,4 @@ futures-util = "0.3"
 tokio = { version = "1", features = ["full"] }
 chrono = { version = "0.4", default-features = false, features = ["clock"] }
 axum = { version = "0.7", default-features = false, features = ["http1", "json", "query", "tokio"] }
+sha2 = "0.10"

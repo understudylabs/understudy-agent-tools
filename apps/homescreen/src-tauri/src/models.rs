@@ -14,6 +14,7 @@ pub struct ModelInfo {
 pub struct SnapshotInfo {
     pub id: String,
     pub short_name: Option<String>,
+    pub session_url: Option<String>,
     pub name: String,
     pub approx_gb: f32,
     pub loader: String,
