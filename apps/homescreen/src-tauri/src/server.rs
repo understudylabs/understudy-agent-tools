@@ -412,7 +412,7 @@ async fn mcp(
             "jsonrpc": "2.0", "id": id,
             "result": {
                 "protocolVersion": "2024-11-05",
-                "serverInfo": { "name": "understudy-desktop", "version": "0.2.0" },
+                "serverInfo": { "name": "understudy-desktop", "version": "0.2.1" },
                 "capabilities": { "tools": {} }
             }
         }))),
@@ -604,7 +604,7 @@ async fn a2a_card(
     Ok(Json(json!({
         "name": "understudy-desktop",
         "description": "Local Understudy control plane: models, routes, traces, and runtime.",
-        "version": "0.2.0",
+        "version": "0.2.1",
         "url": format!("/a2a"),
         "capabilities": { "streaming": false, "tools": true },
         "defaultInputModes": ["text"],
