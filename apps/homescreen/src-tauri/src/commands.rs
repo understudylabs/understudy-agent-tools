@@ -1184,6 +1184,13 @@ pub async fn run_fusion_benchmark(
                 let sidekick_run_count = sidekick_runs.len() as u64;
                 let sidekick_tool_calls =
                     sidekick_runs.iter().map(|run| run.tool_calls).sum::<u64>();
+                let score = Some(
+                    if result.status == "ok" && !result.content.trim().is_empty() {
+                        1.0
+                    } else {
+                        0.0
+                    },
+                );
                 app.state::<crate::db::Db>()
                     .record_fusion_benchmark(&FusionBenchmarkInput {
                         run_id: run_id.clone(),
@@ -1198,10 +1205,11 @@ pub async fn run_fusion_benchmark(
                         gateway_used: effective_route == "gateway",
                         compacted: result.compacted,
                         context_tokens_before: Some(result.context_tokens_before),
-                        score: None,
+                        score,
                         notes: Some(format!(
-                            "executed:{}; policy_reason={}; main_tool_calls={}; output_chars={}",
+                            "executed:{}; status={}; policy_reason={}; main_tool_calls={}; output_chars={}",
                             effective_route,
+                            result.status,
                             policy_reason,
                             result.tool_calls,
                             result.content.len()

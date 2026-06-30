@@ -45,6 +45,7 @@ pub struct ChatMsg {
 
 pub struct BenchmarkChatResult {
     pub content: String,
+    pub status: String,
     pub elapsed_ms: u64,
     pub tool_calls: u64,
     pub prompt_tokens: u64,
@@ -1783,12 +1784,14 @@ pub async fn benchmark_local_chat(
         .map_err(|e| e.to_string())?;
     let mut final_content = String::new();
     let mut tool_count = 0u64;
+    let mut status = "tool_limit".to_string();
 
     for _round in 0..=MAX_TOOL_ROUNDS {
         let (content, tool_calls) =
             nonstream_chat_once(&client, &url, None, &model_field, &outbound_messages).await?;
         final_content = content.clone();
         if tool_calls.is_empty() {
+            status = "ok".to_string();
             break;
         }
         let assistant_tool_calls: Vec<Value> = tool_calls
@@ -1827,6 +1830,7 @@ pub async fn benchmark_local_chat(
         prompt_tokens: approximate_messages_tokens(&outbound_messages),
         completion_tokens: final_content.split_whitespace().count() as u64,
         content: final_content,
+        status,
         elapsed_ms: started.elapsed().as_millis() as u64,
         tool_calls: tool_count,
         compacted,
@@ -1859,12 +1863,14 @@ pub async fn benchmark_gateway_chat(
         .map_err(|e| e.to_string())?;
     let mut final_content = String::new();
     let mut tool_count = 0u64;
+    let mut status = "tool_limit".to_string();
 
     for _round in 0..=MAX_TOOL_ROUNDS {
         let (content, tool_calls) =
             nonstream_chat_once(&client, &url, Some(&key), model_field, &outbound_messages).await?;
         final_content = content.clone();
         if tool_calls.is_empty() {
+            status = "ok".to_string();
             break;
         }
         let assistant_tool_calls: Vec<Value> = tool_calls
@@ -1902,6 +1908,7 @@ pub async fn benchmark_gateway_chat(
         prompt_tokens: approximate_messages_tokens(&outbound_messages),
         completion_tokens: final_content.split_whitespace().count() as u64,
         content: final_content,
+        status,
         elapsed_ms: started.elapsed().as_millis() as u64,
         tool_calls: tool_count,
         compacted,
