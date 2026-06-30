@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 import { existsSync, mkdirSync, readFileSync } from "node:fs";
 import { spawnSync } from "node:child_process";
+import { homedir } from "node:os";
 import { resolve } from "node:path";
 
 const DEFAULT_PROXY_BASE_URL = "http://127.0.0.1:17890/v1";
@@ -132,10 +133,24 @@ function outputPath(outDir, handoff, run) {
   return resolve(outDir, `understudy-automationbench-${handoff.run_id}-${run.label}.json`);
 }
 
+function localGatewayCredentials() {
+  const path = `${homedir()}/.understudy/credentials.json`;
+  if (!existsSync(path)) return {};
+  try {
+    const value = JSON.parse(readFileSync(path, "utf8"));
+    return {
+      UNDERSTUDY_GATEWAY_BASE_URL: value.gateway_url,
+      UNDERSTUDY_GATEWAY_API_KEY: value.api_key,
+    };
+  } catch {
+    return {};
+  }
+}
+
 function executionValue(value) {
   const match = String(value).match(/^\$([A-Z0-9_]+)(.*)$/);
   if (!match) return value;
-  const envValue = process.env[match[1]];
+  const envValue = process.env[match[1]] || localGatewayCredentials()[match[1]];
   if (!envValue) throw new Error(`${match[1]} is required to run ${value}`);
   return `${envValue}${match[2]}`;
 }
@@ -219,6 +234,39 @@ function runCommand(command, args, options = {}) {
   return result;
 }
 
+function summarizeRows(rows) {
+  const byMode = new Map();
+  for (const row of rows) {
+    const mode = row.mode ?? "unknown";
+    const current = byMode.get(mode) ?? {
+      mode,
+      rows: 0,
+      passed: 0,
+      gateway_rows: 0,
+      elapsed_ms: 0,
+      tokens: 0,
+      sidekick_runs: 0,
+    };
+    current.rows += 1;
+    current.passed += row.status === "ok" ? 1 : 0;
+    current.gateway_rows += row.gateway_used ? 1 : 0;
+    current.elapsed_ms += Number(row.elapsed_ms ?? 0);
+    current.tokens += Number(row.prompt_tokens ?? 0) + Number(row.completion_tokens ?? 0);
+    current.sidekick_runs += Number(row.sidekick_runs ?? 0);
+    byMode.set(mode, current);
+  }
+  return [...byMode.values()].map((summary) => ({
+    mode: summary.mode,
+    rows: summary.rows,
+    passed: summary.passed,
+    pass_rate: summary.rows ? summary.passed / summary.rows : 0,
+    gateway_rows: summary.gateway_rows,
+    sidekick_runs: summary.sidekick_runs,
+    avg_elapsed_ms: summary.rows ? Math.round(summary.elapsed_ms / summary.rows) : null,
+    avg_tokens: summary.rows ? Math.round(summary.tokens / summary.rows) : null,
+  }));
+}
+
 function runMatrix({ handoff, runs, benchDir, outDir }) {
   mkdirSync(outDir, { recursive: true });
   if (!existsSync(benchDir)) throw new Error(`AutomationBench directory not found: ${benchDir}`);
@@ -229,12 +277,29 @@ function runMatrix({ handoff, runs, benchDir, outDir }) {
 }
 
 function ingestMatrix({ handoffPath, handoff, runs, outDir, eventLog, args }) {
+  const rows = [];
   for (const run of runs) {
     const path = outputPath(outDir, handoff, run);
     if (!existsSync(path)) throw new Error(`missing result export for ${run.label}: ${path}`);
     console.error(`ingesting ${run.label}`);
-    runCommand("node", ingestArgs(handoffPath, handoff, run, outDir, eventLog, args));
+    const result = runCommand("node", ingestArgs(handoffPath, handoff, run, outDir, eventLog, args), {
+      capture: true,
+    });
+    const parsed = JSON.parse(result.stdout);
+    rows.push(...(parsed.rows ?? []));
   }
+  console.log(
+    JSON.stringify(
+      {
+        schema_version: "understudy.automationbench_matrix_results.v1",
+        handoff_run_id: handoff.run_id,
+        rows,
+        summary: summarizeRows(rows),
+      },
+      null,
+      2,
+    ),
+  );
 }
 
 async function main() {

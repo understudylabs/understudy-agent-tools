@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
-import { mkdirSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { afterEach, beforeEach, describe, it } from "node:test";
@@ -410,5 +410,110 @@ describe("automationbench handoff runner", () => {
     );
     assert.notEqual(result.status, 0);
     assert.match(result.stderr, /unknown matrix label\(s\): missing/);
+  });
+
+  it("uses local Understudy credentials for gateway matrix execution", () => {
+    const { handoffPath } = writeFixture();
+    const home = join(dir, "home");
+    const bin = join(dir, "bin");
+    const outDir = join(dir, "matrix-output");
+    mkdirSync(join(home, ".understudy"), { recursive: true });
+    mkdirSync(bin, { recursive: true });
+    writeFileSync(
+      join(home, ".understudy", "credentials.json"),
+      JSON.stringify({ gateway_url: "http://gateway.example", api_key: "test-key" }),
+    );
+    writeFileSync(
+      join(bin, "uv"),
+      `#!/bin/sh\nprintf '%s\\n' "$@" > ${join(dir, "uv-args.txt")}\nexit 0\n`,
+      { mode: 0o755 },
+    );
+    const result = spawnSync(
+      matrixRunner[0],
+      [
+        ...matrixRunner.slice(1),
+        "--handoff",
+        handoffPath,
+        "--run",
+        "--only",
+        "gateway-glm",
+        "--out-dir",
+        outDir,
+        "--bench-dir",
+        dir,
+      ],
+      {
+        encoding: "utf8",
+        env: {
+          ...process.env,
+          HOME: home,
+          PATH: `${bin}:${process.env.PATH}`,
+          UNDERSTUDY_GATEWAY_BASE_URL: "",
+          UNDERSTUDY_GATEWAY_API_KEY: "",
+        },
+      },
+    );
+    assert.equal(result.status, 0, result.stderr);
+    const uvArgs = readFileSync(join(dir, "uv-args.txt"), "utf8");
+    assert.match(uvArgs, /http:\/\/gateway\.example\/v1/);
+    assert.match(uvArgs, /test-key/);
+  });
+
+  it("combines matrix ingestion into one summarized result packet", () => {
+    const { handoffPath } = writeFixture();
+    const outDir = join(dir, "matrix-output");
+    const eventLogPath = join(dir, "proxy-events.jsonl");
+    mkdirSync(outDir, { recursive: true });
+    writeFileSync(
+      join(outDir, "understudy-automationbench-ab-smoke-gateway-glm.json"),
+      `${JSON.stringify({
+        meta: { model: "glm-5.2", domains: ["simple"], duration_seconds: 20 },
+        tasks: [{ id: 1, name: "simple.gateway", score: 1, passed: true, input_tokens: 100, output_tokens: 20 }],
+      })}\n`,
+    );
+    writeFileSync(
+      join(outDir, "understudy-automationbench-ab-smoke-fusion-routing.json"),
+      `${JSON.stringify({
+        meta: { model: "understudy-fusion-routing", domains: ["simple"], duration_seconds: 10 },
+        tasks: [{ id: 1, name: "simple.fusion", score: 1, passed: true, input_tokens: 80, output_tokens: 10 }],
+      })}\n`,
+    );
+    writeFileSync(
+      eventLogPath,
+      `${JSON.stringify({
+        schema_version: "understudy.fusion_proxy_event.v1",
+        requested_model: "understudy-fusion-routing",
+        route: "gateway",
+        upstream_model: "glm-5.2",
+        gateway_used: true,
+        sidekick_mode: "background",
+        elapsed_ms: 123,
+      })}\n`,
+    );
+    const result = spawnSync(
+      matrixRunner[0],
+      [
+        ...matrixRunner.slice(1),
+        "--handoff",
+        handoffPath,
+        "--ingest",
+        "--only",
+        "gateway-glm,fusion-routing",
+        "--out-dir",
+        outDir,
+        "--event-log",
+        eventLogPath,
+      ],
+      { encoding: "utf8" },
+    );
+    assert.equal(result.status, 0, result.stderr);
+    const payload = JSON.parse(result.stdout);
+    assert.equal(payload.schema_version, "understudy.automationbench_matrix_results.v1");
+    assert.equal(payload.rows.length, 2);
+    assert.equal(payload.summary.length, 2);
+    const byMode = new Map(payload.summary.map((row) => [row.mode, row]));
+    assert.equal(byMode.get("automationbench").avg_tokens, 120);
+    assert.equal(byMode.get("sidekick-routing").avg_tokens, 90);
+    assert.equal(byMode.get("sidekick-routing").gateway_rows, 1);
   });
 });
