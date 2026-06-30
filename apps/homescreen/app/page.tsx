@@ -48,6 +48,7 @@ export default function Page() {
 
   return (
     <div className={"shell" + (railOpen ? " rail-open" : "")}>
+      <div className="window-drag-region" data-tauri-drag-region />
       <button
         type="button"
         className="rail-toggle"
