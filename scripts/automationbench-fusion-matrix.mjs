@@ -13,12 +13,15 @@ function usage() {
   node scripts/automationbench-fusion-matrix.mjs --handoff <path> [--dry-run] [--domains <domains>] [--num-examples <n>]
   node scripts/automationbench-fusion-matrix.mjs --handoff <path> --run [--only <labels>] [--bench-dir <path>] [--out-dir <dir>] [--event-log <path>] [--domains <domains>] [--num-examples <n>]
   node scripts/automationbench-fusion-matrix.mjs --handoff <path> --ingest [--only <labels>] [--out-dir <dir>] [--event-log <path>] [--post] [--token <token>] [--domains <domains>] [--num-examples <n>]
+  node scripts/automationbench-fusion-matrix.mjs --handoff <path> --final-comparison --full [--run|--ingest]
 
 Runs or ingests the Understudy Fusion AutomationBench matrix:
   local-main, local-fast, gateway-glm, fusion-main, fusion-sidekick-parallel,
   fusion-sidekick-advisory, fusion-routing
 
 Use --dry-run to print the exact auto-bench and ingestion commands without executing.
+Use --final-comparison for the required final matrix: gateway-glm, local-main, local-fast.
+Use --full to omit --num-examples and run the full selected AutomationBench domains.
 `;
 }
 
@@ -94,13 +97,17 @@ function matrix(baseUrl = DEFAULT_PROXY_BASE_URL) {
 function selectedRuns(args) {
   const only = argValue(args, "--only");
   const runs = matrix(argValue(args, "--base-url") ?? DEFAULT_PROXY_BASE_URL);
-  if (!only) return runs;
   const labels = new Set(
     only
-      .split(",")
-      .map((label) => label.trim())
-      .filter(Boolean),
+      ? only
+          .split(",")
+          .map((label) => label.trim())
+          .filter(Boolean)
+      : args.includes("--final-comparison")
+        ? ["gateway-glm", "local-main", "local-fast"]
+        : [],
   );
+  if (labels.size === 0) return runs;
   const selected = runs.filter((run) => labels.has(run.label));
   if (selected.length !== labels.size) {
     const known = new Set(runs.map((run) => run.label));
@@ -110,6 +117,21 @@ function selectedRuns(args) {
   return selected;
 }
 
+function runConfig(handoff, args) {
+  const full = args.includes("--full");
+  if (full && args.includes("--num-examples")) {
+    throw new Error("--full cannot be combined with --num-examples");
+  }
+  return {
+    domains: argValue(args, "--domains") ?? handoff.domains.join(","),
+    numExamples: full ? null : (argValue(args, "--num-examples") ?? String(handoff.num_examples)),
+  };
+}
+
+function configSuffixValue(value) {
+  return String(value).replace(/[^a-zA-Z0-9]+/g, "-");
+}
+
 function loadHandoff(path) {
   if (!existsSync(path)) throw new Error(`handoff not found: ${path}`);
   const handoff = JSON.parse(readFileSync(path, "utf8"));
@@ -117,13 +139,6 @@ function loadHandoff(path) {
     throw new Error(`unsupported handoff schema: ${handoff.schema_version ?? "missing"}`);
   }
   return handoff;
-}
-
-function runConfig(handoff, args) {
-  return {
-    domains: argValue(args, "--domains") ?? handoff.domains.join(","),
-    numExamples: argValue(args, "--num-examples") ?? String(handoff.num_examples),
-  };
 }
 
 function resolveBenchDir(args) {
@@ -137,10 +152,12 @@ function resolveBenchDir(args) {
 }
 
 function outputPath(outDir, handoff, run, config) {
+  const handoffDomains = handoff.domains.join(",");
+  const handoffExamples = String(handoff.num_examples);
   const suffix =
-    config.domains === handoff.domains.join(",") && config.numExamples === String(handoff.num_examples)
+    config.domains === handoffDomains && config.numExamples === handoffExamples
       ? ""
-      : `-${config.domains.replace(/[^a-zA-Z0-9]+/g, "-")}-${config.numExamples}`;
+      : `-${configSuffixValue(config.domains)}-${config.numExamples ?? "full"}`;
   return resolve(outDir, `understudy-automationbench-${handoff.run_id}${suffix}-${run.label}.json`);
 }
 
@@ -169,7 +186,7 @@ function executionValue(value) {
 function autoBenchArgs(handoff, run, outDir, config, options = {}) {
   const baseUrl = options.execution ? executionValue(run.baseUrl) : run.baseUrl;
   const apiKey = options.execution ? executionValue(run.apiKey) : run.apiKey;
-  return [
+  const values = [
     "run",
     "auto-bench",
     "--model",
@@ -180,8 +197,11 @@ function autoBenchArgs(handoff, run, outDir, config, options = {}) {
     apiKey,
     "--domains",
     config.domains,
-    "--num-examples",
-    config.numExamples,
+  ];
+  if (config.numExamples !== null) {
+    values.push("--num-examples", config.numExamples);
+  }
+  values.push(
     "--max-concurrent",
     "1",
     "--max-steps",
@@ -192,7 +212,8 @@ function autoBenchArgs(handoff, run, outDir, config, options = {}) {
     outputPath(outDir, handoff, run, config),
     "--save-every",
     "-1",
-  ];
+  );
+  return values;
 }
 
 function ingestArgs(handoffPath, handoff, run, outDir, eventLog, args, config) {
@@ -221,10 +242,13 @@ function printDryRun({ handoffPath, handoff, runs, benchDir, outDir, eventLog, a
   console.log(`# AutomationBench Fusion matrix: ${handoff.run_id}`);
   console.log(`# bench_dir=${benchDir}`);
   console.log(`# domains=${config.domains}`);
-  console.log(`# num_examples=${config.numExamples}`);
+  console.log(`# num_examples=${config.numExamples ?? "full"}`);
   console.log(`# outputs=${outDir}`);
   console.log(`# event_log=${eventLog}`);
-  console.log(`# Start proxy first: FUSION_PROXY_EVENT_LOG=${shellQuote(eventLog)} node scripts/automationbench-fusion-proxy.mjs --port 17890`);
+  const needsProxy = runs.some((run) => run.baseUrl === DEFAULT_PROXY_BASE_URL || run.fusionEventLog);
+  if (needsProxy) {
+    console.log(`# Start proxy first: FUSION_PROXY_EVENT_LOG=${shellQuote(eventLog)} node scripts/automationbench-fusion-proxy.mjs --port 17890`);
+  }
   for (const run of runs) {
     console.log("");
     console.log(`# ${run.label}`);
@@ -311,7 +335,7 @@ function ingestMatrix({ handoffPath, handoff, runs, outDir, eventLog, args, conf
         schema_version: "understudy.automationbench_matrix_results.v1",
         handoff_run_id: handoff.run_id,
         domains: config.domains,
-        num_examples: config.numExamples,
+        num_examples: config.numExamples ?? "full",
         rows,
         summary: summarizeRows(rows),
       },
