@@ -877,11 +877,15 @@ pub async fn run_fusion_benchmark(
                 .is_some_and(|id| id.contains("understudy-small") || id.contains("e2b"))
     });
     let main_slot_id = warm_main.map(|slot| slot.id);
-    let model = request
-        .model
+    let requested_model = request.model;
+    let default_model = requested_model
+        .clone()
         .or_else(|| warm_main.and_then(|slot| slot.model_id.clone()))
-        .or_else(|| (route == "gateway").then(|| "glm-5.2".to_string()))
         .unwrap_or_else(|| "unassigned".to_string());
+    let gateway_model = requested_model
+        .clone()
+        .or_else(|| Some("glm-5.2".to_string()))
+        .unwrap_or_else(|| "glm-5.2".to_string());
     let mut rows = vec![];
     let mut recorded_skips = 0u64;
 
@@ -892,13 +896,46 @@ pub async fn run_fusion_benchmark(
             .find(|task| task.id == task_id)
             .ok_or_else(|| format!("unknown Fusion benchmark task: {task_id}"))?;
         for mode in &requested_modes {
-            let needs_local_main = route == "local";
-            let needs_sidekick = route == "local"
-                && matches!(mode.as_str(), "sidekick-parallel" | "sidekick-routing");
+            let recommendation = (mode == "sidekick-routing").then(|| {
+                fusion_route_recommendation(
+                    app.clone(),
+                    FusionRouteRecommendationRequest {
+                        prompt: task.prompt.to_string(),
+                        current_route: Some(route.clone()),
+                        active_slot_id: main_slot_id,
+                    },
+                )
+            });
+            let effective_route = recommendation
+                .as_ref()
+                .map(|rec| rec.route.as_str())
+                .unwrap_or(route.as_str());
+            let policy_reason = recommendation
+                .as_ref()
+                .map(|rec| rec.reason.as_str())
+                .unwrap_or("fixed_route");
+            let effective_model = if effective_route == "gateway" {
+                recommendation
+                    .as_ref()
+                    .and_then(|rec| rec.gateway_model.clone())
+                    .unwrap_or_else(|| gateway_model.clone())
+            } else {
+                recommendation
+                    .as_ref()
+                    .and_then(|rec| rec.main_model.clone())
+                    .unwrap_or_else(|| default_model.clone())
+            };
+            let policy_sidekick = recommendation
+                .as_ref()
+                .map(|rec| rec.use_sidekick)
+                .unwrap_or(false);
+            let needs_local_main = effective_route == "local";
+            let needs_sidekick = effective_route == "local"
+                && (mode == "sidekick-parallel" || (mode == "sidekick-routing" && policy_sidekick));
             let has_gateway = crate::chat::gateway_credentials_available();
             let (ready, reason) = if needs_local_main && warm_main.is_none() {
                 (false, "no_warm_main_model")
-            } else if route == "gateway" && !has_gateway {
+            } else if effective_route == "gateway" && !has_gateway {
                 (false, "gateway_not_signed_in")
             } else if needs_sidekick && warm_sidekick.is_none() {
                 (false, "no_warm_sidekick_model")
@@ -916,13 +953,13 @@ pub async fn run_fusion_benchmark(
                     .filter(|run| run.session_id == run_id)
                     .map(|run| run.id)
                     .collect::<std::collections::HashSet<_>>();
-                let result = if route == "gateway" {
+                let result = if effective_route == "gateway" {
                     crate::chat::benchmark_gateway_chat(
                         &app,
                         residency(&app),
                         &run_id,
                         task.prompt,
-                        &model,
+                        &effective_model,
                     )
                     .await?
                 } else {
@@ -933,7 +970,7 @@ pub async fn run_fusion_benchmark(
                         slot_id,
                         &run_id,
                         task.prompt,
-                        matches!(mode.as_str(), "sidekick-parallel" | "sidekick-routing"),
+                        needs_sidekick,
                     )
                     .await?
                 };
@@ -953,17 +990,18 @@ pub async fn run_fusion_benchmark(
                         run_id: run_id.clone(),
                         task_id: task.id.to_string(),
                         mode: mode.clone(),
-                        model: model.clone(),
+                        model: effective_model.clone(),
                         elapsed_ms: Some(result.elapsed_ms),
                         prompt_tokens: Some(result.prompt_tokens),
                         completion_tokens: Some(result.completion_tokens),
                         sidekick_runs: sidekick_run_count,
                         sidekick_tool_calls,
-                        gateway_used: route == "gateway",
+                        gateway_used: effective_route == "gateway",
                         score: None,
                         notes: Some(format!(
-                            "executed:{}; main_tool_calls={}; output_chars={}",
-                            route,
+                            "executed:{}; policy_reason={}; main_tool_calls={}; output_chars={}",
+                            effective_route,
+                            policy_reason,
                             result.tool_calls,
                             result.content.len()
                         )),
@@ -975,29 +1013,29 @@ pub async fn run_fusion_benchmark(
                         run_id: run_id.clone(),
                         task_id: task.id.to_string(),
                         mode: mode.clone(),
-                        model: model.clone(),
+                        model: effective_model.clone(),
                         elapsed_ms: None,
                         prompt_tokens: Some(task.prompt.split_whitespace().count() as u64),
                         completion_tokens: None,
                         sidekick_runs: 0,
                         sidekick_tool_calls: 0,
-                        gateway_used: route == "gateway",
+                        gateway_used: effective_route == "gateway",
                         score: None,
-                        notes: Some(format!("skipped:{reason}")),
+                        notes: Some(format!("skipped:{reason}; policy_reason={policy_reason}")),
                     })
                     .map_err(|e| e.to_string())?;
                 recorded_skips += 1;
             }
             rows.push(FusionBenchmarkPlanRow {
                 run_id: run_id.clone(),
-                route: route.clone(),
+                route: effective_route.to_string(),
                 task_id: task.id.to_string(),
                 mode: mode.clone(),
-                model: model.clone(),
+                model: effective_model,
                 prompt: task.prompt.to_string(),
                 expected_signal: task.expected_signal.to_string(),
                 ready,
-                reason: reason.to_string(),
+                reason: format!("{reason}; policy_reason={policy_reason}"),
             });
         }
     }
