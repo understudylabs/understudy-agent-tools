@@ -367,6 +367,7 @@ pub struct SidekickMetrics {
     pub miss_rows: u64,
     pub pending_feedback_rows: u64,
     pub parallel_consumed_rows: u64,
+    pub parallel_pending_handoff_rows: u64,
     pub parallel_escalated_rows: u64,
     pub parallel_useful_rows: u64,
     pub parallel_miss_rows: u64,
@@ -375,9 +376,11 @@ pub struct SidekickMetrics {
     pub avg_session_messages: Option<f64>,
     pub avg_compacted_entries: Option<f64>,
     pub handoff_rate: Option<f64>,
+    pub pending_handoff_rate: Option<f64>,
     pub escalation_rate: Option<f64>,
     pub useful_rate: Option<f64>,
     pub parallel_handoff_rate: Option<f64>,
+    pub parallel_pending_handoff_rate: Option<f64>,
     pub parallel_escalation_rate: Option<f64>,
     pub parallel_useful_rate: Option<f64>,
 }
@@ -1301,6 +1304,10 @@ pub fn fusion_route_recommendation(
             }
         })
         .is_some_and(|rate| metrics.as_ref().is_some_and(|m| m.rows >= 5) && rate > 0.6);
+    let pending_sidekick_handoffs = metrics
+        .as_ref()
+        .and_then(|m| m.parallel_pending_handoff_rate)
+        .is_some_and(|rate| metrics.as_ref().is_some_and(|m| m.parallel_rows >= 5) && rate > 0.5);
     let local_unhealthy = route_signals.local_rows >= 5
         && route_signals
             .local_error_rate
@@ -1362,6 +1369,7 @@ pub fn fusion_route_recommendation(
             && sidekick_ready
             && !low_usefulness
             && !high_escalation
+            && !pending_sidekick_handoffs
             && !sidekick_slow
             && !sidekick_benchmark_low
         {
@@ -1375,6 +1383,8 @@ pub fn fusion_route_recommendation(
                     "sidekick_low_usefulness"
                 } else if high_escalation {
                     "sidekick_high_escalation"
+                } else if pending_sidekick_handoffs {
+                    "sidekick_pending_handoffs"
                 } else if sidekick_slow {
                     "sidekick_latency_high"
                 } else if sidekick_benchmark_low {
@@ -1404,6 +1414,7 @@ pub fn fusion_route_recommendation(
         "gateway_ready": gateway_ready,
         "low_usefulness": low_usefulness,
         "high_escalation": high_escalation,
+        "pending_sidekick_handoffs": pending_sidekick_handoffs,
         "local_unhealthy": local_unhealthy,
         "local_tool_depth_high": local_tool_depth_high,
         "sidekick_slow": sidekick_slow,
@@ -1433,6 +1444,8 @@ pub fn fusion_route_recommendation(
             "parallel_useful_rate": m.parallel_useful_rate,
             "escalation_rate": m.escalation_rate,
             "parallel_escalation_rate": m.parallel_escalation_rate,
+            "parallel_pending_handoff_rows": m.parallel_pending_handoff_rows,
+            "parallel_pending_handoff_rate": m.parallel_pending_handoff_rate,
             "handoff_rate": m.handoff_rate,
             "parallel_handoff_rate": m.parallel_handoff_rate,
             "avg_compacted_entries": m.avg_compacted_entries,
@@ -2355,6 +2368,10 @@ pub fn sidekick_metrics(app: AppHandle, limit: Option<u32>) -> Result<SidekickMe
         .count() as u64;
     let pending_feedback_rows = rows.iter().filter(|row| row.accepted.is_none()).count() as u64;
     let parallel_consumed_rows = parallel.iter().filter(|row| row.consumed).count() as u64;
+    let parallel_pending_handoff_rows = parallel
+        .iter()
+        .filter(|row| !row.consumed && row.content.as_deref().is_some_and(|v| !v.is_empty()))
+        .count() as u64;
     let parallel_escalated_rows = parallel.iter().filter(|row| row.escalated).count() as u64;
     let parallel_useful_rows = parallel
         .iter()
@@ -2389,6 +2406,7 @@ pub fn sidekick_metrics(app: AppHandle, limit: Option<u32>) -> Result<SidekickMe
         miss_rows,
         pending_feedback_rows,
         parallel_consumed_rows,
+        parallel_pending_handoff_rows,
         parallel_escalated_rows,
         parallel_useful_rows,
         parallel_miss_rows,
@@ -2397,10 +2415,20 @@ pub fn sidekick_metrics(app: AppHandle, limit: Option<u32>) -> Result<SidekickMe
         avg_session_messages: avg(&session_message_values),
         avg_compacted_entries: avg(&compacted_entry_values),
         handoff_rate: (total > 0).then_some(consumed_rows as f64 / total as f64),
+        pending_handoff_rate: (total > 0).then_some(
+            rows.iter()
+                .filter(|row| {
+                    !row.consumed && row.content.as_deref().is_some_and(|v| !v.is_empty())
+                })
+                .count() as f64
+                / total as f64,
+        ),
         escalation_rate: (total > 0).then_some(escalated_rows as f64 / total as f64),
         useful_rate: (feedback_rows > 0).then_some(useful_rows as f64 / feedback_rows as f64),
         parallel_handoff_rate: (parallel_rows > 0)
             .then_some(parallel_consumed_rows as f64 / parallel_rows as f64),
+        parallel_pending_handoff_rate: (parallel_rows > 0)
+            .then_some(parallel_pending_handoff_rows as f64 / parallel_rows as f64),
         parallel_escalation_rate: (parallel_rows > 0)
             .then_some(parallel_escalated_rows as f64 / parallel_rows as f64),
         parallel_useful_rate: (parallel_feedback_rows > 0)
