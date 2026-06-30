@@ -235,11 +235,14 @@ function runCommand(command, args, options = {}) {
 }
 
 function summarizeRows(rows) {
-  const byMode = new Map();
+  const byRoute = new Map();
   for (const row of rows) {
     const mode = row.mode ?? "unknown";
-    const current = byMode.get(mode) ?? {
+    const model = row.model ?? "unknown";
+    const key = `${mode}\u0000${model}`;
+    const current = byRoute.get(key) ?? {
       mode,
+      model,
       rows: 0,
       passed: 0,
       gateway_rows: 0,
@@ -253,10 +256,11 @@ function summarizeRows(rows) {
     current.elapsed_ms += Number(row.elapsed_ms ?? 0);
     current.tokens += Number(row.prompt_tokens ?? 0) + Number(row.completion_tokens ?? 0);
     current.sidekick_runs += Number(row.sidekick_runs ?? 0);
-    byMode.set(mode, current);
+    byRoute.set(key, current);
   }
-  return [...byMode.values()].map((summary) => ({
+  return [...byRoute.values()].map((summary) => ({
     mode: summary.mode,
+    model: summary.model,
     rows: summary.rows,
     passed: summary.passed,
     pass_rate: summary.rows ? summary.passed / summary.rows : 0,

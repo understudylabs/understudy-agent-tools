@@ -511,9 +511,11 @@ describe("automationbench handoff runner", () => {
     assert.equal(payload.schema_version, "understudy.automationbench_matrix_results.v1");
     assert.equal(payload.rows.length, 2);
     assert.equal(payload.summary.length, 2);
-    const byMode = new Map(payload.summary.map((row) => [row.mode, row]));
-    assert.equal(byMode.get("automationbench").avg_tokens, 120);
-    assert.equal(byMode.get("sidekick-routing").avg_tokens, 90);
-    assert.equal(byMode.get("sidekick-routing").gateway_rows, 1);
+    const byModel = new Map(payload.summary.map((row) => [row.model, row]));
+    assert.equal(byModel.get("glm-5.2").mode, "automationbench");
+    assert.equal(byModel.get("glm-5.2").avg_tokens, 120);
+    assert.equal(byModel.get("understudy-fusion-routing").mode, "sidekick-routing");
+    assert.equal(byModel.get("understudy-fusion-routing").avg_tokens, 90);
+    assert.equal(byModel.get("understudy-fusion-routing").gateway_rows, 1);
   });
 });
