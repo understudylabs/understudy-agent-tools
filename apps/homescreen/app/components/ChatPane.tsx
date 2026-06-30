@@ -396,7 +396,7 @@ export function ChatPane({ resetToken }: { resetToken: number }) {
         <img
           key={`stamp-${personaCycle}`}
           className="persona-stamp"
-          src="/brand/usl-stamp-white-transparent.png"
+          src="/brand/usl-stamp-bald-white-transparent.png"
           alt=""
           draggable={false}
         />
