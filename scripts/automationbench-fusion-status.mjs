@@ -71,6 +71,10 @@ function resultFiles(outDir) {
     });
 }
 
+function ageSeconds(date) {
+  return Math.max(0, Math.round((Date.now() - date.getTime()) / 1000));
+}
+
 function lastLines(text, count) {
   return text
     .split(/[\r\n]+/)
@@ -90,12 +94,15 @@ function latestProgressLine(lines) {
 function logStatus(logPath) {
   const path = resolve(logPath);
   if (!existsSync(path)) return { path, exists: false, tail: [], progress: null };
+  const stat = statSync(path);
   const content = readFileSync(path, "utf8");
   const tail = lastLines(content, 40);
   return {
     path,
     exists: true,
-    bytes: statSync(path).size,
+    bytes: stat.size,
+    modified_at: stat.mtime.toISOString(),
+    age_seconds: ageSeconds(stat.mtime),
     progress: latestProgressLine(tail),
     tail: tail.slice(-12),
   };
@@ -104,6 +111,10 @@ function logStatus(logPath) {
 function printText(status) {
   console.log(`session: ${status.tmux.session} (${status.tmux.active ? "active" : "inactive"})`);
   if (status.log.progress) console.log(`progress: ${status.log.progress}`);
+  if (status.log.exists) {
+    const stale = status.log.age_seconds >= 300 ? " stale" : "";
+    console.log(`log_age: ${status.log.age_seconds}s${stale}`);
+  }
   console.log(`processes: ${status.processes.length}`);
   for (const line of status.processes) console.log(`  ${line}`);
   console.log(`results: ${status.results.length}`);

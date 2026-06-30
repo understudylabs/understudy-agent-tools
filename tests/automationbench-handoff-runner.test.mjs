@@ -94,6 +94,7 @@ describe("automationbench handoff runner", () => {
     assert.equal(payload.schema_version, "understudy.automationbench_fusion_status.v1");
     assert.equal(payload.tmux.active, false);
     assert.match(payload.log.progress, /3\/570/);
+    assert.equal(typeof payload.log.age_seconds, "number");
     assert.equal(payload.results.length, 1);
   });
 
