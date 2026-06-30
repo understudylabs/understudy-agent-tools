@@ -53,6 +53,12 @@ pub struct SidekickEventRow {
     pub created_at: String,
 }
 
+#[derive(Clone, Copy, Debug, Default)]
+pub struct SidekickFeedbackSummary {
+    pub useful: u64,
+    pub misses: u64,
+}
+
 /// App-owned SQLite store, under the macOS app-data dir. Profile, credentials,
 /// and the model cache continue to live under `~/.understudy/`.
 pub struct Db(pub std::path::PathBuf);
@@ -316,6 +322,26 @@ impl Db {
             rusqlite::params![accepted.map(|v| if v { 1_i64 } else { 0_i64 }), run_id as i64],
         )?;
         Ok(())
+    }
+
+    pub fn sidekick_feedback_summary(&self, limit: u32) -> Result<SidekickFeedbackSummary> {
+        let conn = self.conn()?;
+        let (useful, misses): (i64, i64) = conn.query_row(
+            "SELECT
+                COALESCE(SUM(CASE WHEN accepted=1 THEN 1 ELSE 0 END), 0),
+                COALESCE(SUM(CASE WHEN accepted=0 THEN 1 ELSE 0 END), 0)
+             FROM (
+                SELECT accepted FROM sidekick_runs
+                WHERE mode='parallel' AND accepted IS NOT NULL
+                ORDER BY id DESC LIMIT ?1
+             )",
+            [limit.max(1).min(100) as i64],
+            |r| Ok((r.get(0)?, r.get(1)?)),
+        )?;
+        Ok(SidekickFeedbackSummary {
+            useful: useful.max(0) as u64,
+            misses: misses.max(0) as u64,
+        })
     }
 
     pub fn consume_sidekick_handoffs(

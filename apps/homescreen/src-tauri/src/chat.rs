@@ -9,6 +9,7 @@ use std::time::Instant;
 use tauri::ipc::Channel;
 use tauri::{AppHandle, Manager, State};
 
+use crate::db::SidekickFeedbackSummary;
 use crate::residency::Residency;
 
 /// Frontend-facing stream events. Tagged so JS can switch on `msg.type`.
@@ -1051,7 +1052,10 @@ fn prompt_excerpt(prompt: &str) -> String {
     format!("{}…", &trimmed[..end])
 }
 
-fn route_parallel_sidekick(prompt: &str) -> SidekickRoutingDecision {
+fn route_parallel_sidekick(
+    prompt: &str,
+    feedback: SidekickFeedbackSummary,
+) -> SidekickRoutingDecision {
     let lower = prompt.to_lowercase();
     let delegate_terms = [
         "check",
@@ -1079,11 +1083,23 @@ fn route_parallel_sidekick(prompt: &str) -> SidekickRoutingDecision {
         "tradeoff",
         "judgment",
     ];
+    if judgment_terms.iter().any(|needle| lower.contains(needle)) {
+        return SidekickRoutingDecision {
+            eligible: false,
+            reason: "main_keeps_judgment",
+        };
+    }
     let mechanical = delegate_terms
         .iter()
         .find(|needle| lower.contains(**needle))
         .copied();
     if let Some(term) = mechanical {
+        if feedback.misses >= 3 && feedback.misses > feedback.useful.saturating_mul(2) {
+            return SidekickRoutingDecision {
+                eligible: false,
+                reason: "feedback_recent_misses",
+            };
+        }
         return SidekickRoutingDecision {
             eligible: true,
             reason: match term {
@@ -1095,10 +1111,10 @@ fn route_parallel_sidekick(prompt: &str) -> SidekickRoutingDecision {
             },
         };
     }
-    if judgment_terms.iter().any(|needle| lower.contains(needle)) {
+    if feedback.useful >= 3 && feedback.useful >= feedback.misses.saturating_mul(2).max(1) {
         return SidekickRoutingDecision {
-            eligible: false,
-            reason: "main_keeps_judgment",
+            eligible: true,
+            reason: "feedback_positive_prior",
         };
     }
     SidekickRoutingDecision {
@@ -1145,7 +1161,8 @@ fn maybe_spawn_parallel_sidekick(
         record_decision(false, "no_warm_sidekick");
         return;
     }
-    let decision = route_parallel_sidekick(prompt);
+    let feedback = db.sidekick_feedback_summary(20).unwrap_or_default();
+    let decision = route_parallel_sidekick(prompt, feedback);
     record_decision(decision.eligible, decision.reason);
     if !decision.eligible {
         return;
