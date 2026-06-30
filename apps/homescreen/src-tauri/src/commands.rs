@@ -130,6 +130,7 @@ pub struct FusionRouteRecommendation {
     pub route: String,
     pub use_sidekick: bool,
     pub escalate_gateway: bool,
+    pub upgrade_sidekick: bool,
     pub reason: String,
     pub policy_class: String,
     pub signals: Value,
@@ -278,6 +279,7 @@ pub struct FusionRoutePolicySummary {
     pub rows: u64,
     pub sidekick_rows: u64,
     pub gateway_rows: u64,
+    pub sidekick_upgrade_rows: u64,
     pub local_rows: u64,
 }
 
@@ -594,9 +596,12 @@ fn fusion_policy_class(
     route: &str,
     use_sidekick: bool,
     escalate_gateway: bool,
+    upgrade_sidekick: bool,
     reason: &str,
 ) -> &'static str {
-    if use_sidekick {
+    if upgrade_sidekick {
+        "sidekick_upgrade"
+    } else if use_sidekick {
         "delegate_mechanical"
     } else if escalate_gateway || route == "gateway" {
         if reason.contains("compaction") {
@@ -1328,6 +1333,9 @@ pub fn fusion_route_recommendation(
         && route_signals
             .sidekick_benchmark_score
             .is_some_and(|score| score < 0.5);
+    let upgrade_sidekick = sidekick_ready
+        && (high_escalation || sidekick_slow || sidekick_benchmark_low)
+        && !low_usefulness;
     let session_compaction_boundary = route_signals.session_compacted_rows > 0;
     let compaction_boundary =
         session_compaction_boundary || route_signals.compacted_rows > 0 || prompt.len() > 16_000;
@@ -1404,7 +1412,13 @@ pub fn fusion_route_recommendation(
     let main_model = main_slot.and_then(|slot| slot.model_id);
     let sidekick_model = sidekick.map(|(_, _, _, model_id)| model_id);
     let gateway_model = gateway_ready.then(|| "glm-5.2".to_string());
-    let policy_class = fusion_policy_class(route, use_sidekick, escalate_gateway, reason);
+    let policy_class = fusion_policy_class(
+        route,
+        use_sidekick,
+        escalate_gateway,
+        upgrade_sidekick,
+        reason,
+    );
     let signals = json!({
         "mechanical": mechanical,
         "judgment": judgment,
@@ -1419,6 +1433,7 @@ pub fn fusion_route_recommendation(
         "local_tool_depth_high": local_tool_depth_high,
         "sidekick_slow": sidekick_slow,
         "sidekick_benchmark_low": sidekick_benchmark_low,
+        "upgrade_sidekick": upgrade_sidekick,
         "session_compaction_boundary": session_compaction_boundary,
         "compaction_boundary": compaction_boundary,
         "route_metrics": {
@@ -1456,6 +1471,7 @@ pub fn fusion_route_recommendation(
         route: route.to_string(),
         use_sidekick,
         escalate_gateway,
+        upgrade_sidekick,
         reason: reason.to_string(),
         policy_class: policy_class.to_string(),
         signals: signals.clone(),
@@ -1474,6 +1490,7 @@ pub fn fusion_route_recommendation(
             recommended_route: recommendation.route.clone(),
             use_sidekick: recommendation.use_sidekick,
             escalate_gateway: recommendation.escalate_gateway,
+            upgrade_sidekick: recommendation.upgrade_sidekick,
             reason: recommendation.reason.clone(),
             policy_class: recommendation.policy_class.clone(),
             signals: serde_json::to_string(&signals).ok(),
@@ -1762,6 +1779,7 @@ pub fn export_fusion_benchmark_comparison(
                 .iter()
                 .filter(|row| row.escalate_gateway || row.recommended_route == "gateway")
                 .count() as u64,
+            sidekick_upgrade_rows: rows.iter().filter(|row| row.upgrade_sidekick).count() as u64,
             local_rows: rows
                 .iter()
                 .filter(|row| row.recommended_route == "local")

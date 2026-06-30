@@ -8,6 +8,7 @@ import { afterEach, beforeEach, describe, it } from "node:test";
 const runner = ["node", resolve("scripts/automationbench-handoff-runner.mjs")];
 const matrixRunner = ["node", resolve("scripts/automationbench-fusion-matrix.mjs")];
 const statusRunner = ["node", resolve("scripts/automationbench-fusion-status.mjs")];
+const demoRunner = ["node", resolve("scripts/fusion-local-rollout-demo.mjs")];
 
 let dir;
 
@@ -96,6 +97,39 @@ describe("automationbench handoff runner", () => {
     assert.match(payload.log.progress, /3\/570/);
     assert.equal(typeof payload.log.age_seconds, "number");
     assert.equal(payload.results.length, 1);
+  });
+
+  it("prints local Fusion rollout demo status", () => {
+    const outDir = join(dir, "demo");
+    const runDir = join(outDir, "fusion-demo-test");
+    mkdirSync(runDir, { recursive: true });
+    writeFileSync(
+      join(runDir, "summary.json"),
+      `${JSON.stringify({
+        schema_version: "understudy.fusion_local_rollout_demo_summary.v1",
+        run_id: "fusion-demo-test",
+        rows: 1,
+        summary: [{ candidate: "local-fast", rows: 1, ok_rows: 1, error_rows: 0, avg_elapsed_ms: 123, avg_score: 1 }],
+      })}\n`,
+    );
+    writeFileSync(
+      join(runDir, "events.jsonl"),
+      `${JSON.stringify({
+        schema_version: "understudy.fusion_local_rollout_demo_event.v1",
+        type: "rollout_finished",
+        at: "2026-06-30T00:00:00.000Z",
+        row_id: "demo:local-fast:1",
+        status: "ok",
+      })}\n`,
+    );
+    const result = spawnSync(
+      demoRunner[0],
+      [...demoRunner.slice(1), "--status", "--out-dir", outDir, "--run-id", "fusion-demo-test"],
+      { encoding: "utf8" },
+    );
+    assert.equal(result.status, 0, result.stderr);
+    assert.match(result.stdout, /fusion-demo-test/);
+    assert.match(result.stdout, /local-fast: rows=1 ok=1/);
   });
 
   it("prints candidate commands from a handoff packet", () => {
