@@ -80,7 +80,7 @@ const CHAT_SIDEKICK_QUICK_WAIT_MS: u64 = 600;
 const CHAT_SIDEKICK_DEFAULT_WAIT_MS: u64 = 1_000;
 const CHAT_SIDEKICK_VERIFICATION_WAIT_MS: u64 = 1_800;
 const BENCHMARK_SIDEKICK_WAIT_MS: u64 = 2_500;
-const MAX_TOOL_ROUNDS: usize = 4;
+const BENCHMARK_MAX_TOOL_ROUNDS: usize = 4;
 const SIDEKICK_MAX_TOOL_ROUNDS: usize = 2;
 const SIDEKICK_MAX_CONTEXT_MESSAGES: usize = 16;
 const SIDEKICK_RECENT_CONTEXT_MESSAGES: usize = 10;
@@ -2404,7 +2404,7 @@ pub async fn chat_stream(
         .build()
         .map_err(|e| e.to_string())?;
 
-    for _round in 0..=MAX_TOOL_ROUNDS {
+    loop {
         prompt_tokens = prompt_tokens.max(approximate_messages_tokens(&outbound_messages));
         let result = stream_chat_once(
             &client,
@@ -2550,34 +2550,6 @@ pub async fn chat_stream(
             }
         }
     }
-
-    let _ = on_event.send(ChatEvent::Error {
-        message: format!("tool call limit reached ({MAX_TOOL_ROUNDS})"),
-    });
-    record_chat_run(
-        &app,
-        ChatRunInput {
-            session_id: session_id.clone(),
-            route: route.clone(),
-            model: model_field,
-            elapsed_ms: Some(started.elapsed().as_millis() as u64),
-            prompt_tokens: Some(prompt_tokens),
-            completion_tokens: Some(completion_tokens),
-            tool_calls: tool_count,
-            sidekick_spawned: sidekick_plan.spawned,
-            gateway_used: route == "cloud",
-            compacted,
-            compaction_reason,
-            context_tokens_before: Some(context_tokens_before),
-            local_mem_gb,
-            gateway_available,
-            gateway_avoided: gateway_available && route != "cloud",
-            status: "tool_limit".to_string(),
-            error: Some(format!("tool call limit reached ({MAX_TOOL_ROUNDS})")),
-        },
-    );
-    let _ = on_event.send(ChatEvent::Done);
-    Ok(())
 }
 
 pub async fn benchmark_local_chat(
@@ -2647,7 +2619,7 @@ pub async fn benchmark_local_chat(
     let mut status = "tool_limit".to_string();
     let mut repaired_empty_final = false;
 
-    for _round in 0..=MAX_TOOL_ROUNDS {
+    for _round in 0..=BENCHMARK_MAX_TOOL_ROUNDS {
         let result = nonstream_chat_once(
             &client,
             &url,
@@ -2751,7 +2723,7 @@ pub async fn benchmark_gateway_chat(
     let mut status = "tool_limit".to_string();
     let mut repaired_empty_final = false;
 
-    for _round in 0..=MAX_TOOL_ROUNDS {
+    for _round in 0..=BENCHMARK_MAX_TOOL_ROUNDS {
         let result = nonstream_chat_once(
             &client,
             &url,

@@ -6,7 +6,7 @@ import { resolve } from "node:path";
 
 const DEFAULT_PROXY_BASE_URL = "http://127.0.0.1:17890/v1";
 const DEFAULT_EVENT_LOG = ".understudy/fusion-benchmark/proxy-events.jsonl";
-const DEFAULT_BENCH_DIR = "/Users/luis/Developer/understudy/AutomationBench";
+const DEFAULT_BENCH_DIR = process.env.AUTOMATIONBENCH_DIR ?? resolve(homedir(), "AutomationBench");
 
 function usage() {
   return `Usage:

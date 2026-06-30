@@ -92,6 +92,23 @@ type FusionRunModeSummary = {
   avg_local_mem_gb: number | null;
 };
 
+type CandidateResult = {
+  id: string;
+  label: string;
+  suites: number;
+  rows: number;
+  okRows: number;
+  errorRows: number;
+  skippedRows: number;
+  avgScore: number | null;
+  avgLatencyMs: number | null;
+  avgTokens: number | null;
+  sidekickRuns: number;
+  status: "passed" | "failed" | "running" | "skipped";
+  strongestMode: string | null;
+  weakestMode: string | null;
+};
+
 type FusionRunSummary = {
   runs: {
     run_id: string;
@@ -453,6 +470,34 @@ function FusionEvaluationPane() {
     (completedRows.length
       ? completedRows.reduce((sum, row) => sum + (row.score ?? 0), 0) / completedRows.length
       : null);
+  const candidateResults = useMemo(() => {
+    const rows = new Map<string, CandidateResult>();
+    const candidateLabels = new Map(matrix?.candidates.map((item) => [item.id, item.label]) ?? []);
+
+    for (const run of runSummary?.runs ?? []) {
+      for (const mode of run.modes) {
+        const existing = rows.get(mode.mode) ?? {
+          id: mode.mode,
+          label: candidateLabels.get(mode.mode) ?? mode.mode,
+          suites: 0,
+          rows: 0,
+          okRows: 0,
+          errorRows: 0,
+          skippedRows: 0,
+          avgScore: null,
+          avgLatencyMs: null,
+          avgTokens: null,
+          sidekickRuns: 0,
+          status: "skipped" as const,
+          strongestMode: null,
+          weakestMode: null,
+        };
+        rows.set(mode.mode, mergeCandidateResult(existing, mode));
+      }
+    }
+
+    return Array.from(rows.values()).sort((a, b) => (b.avgScore ?? -1) - (a.avgScore ?? -1));
+  }, [matrix, runSummary]);
 
   return (
     <>
@@ -521,6 +566,8 @@ function FusionEvaluationPane() {
           </div>
           {error && <div className="eval-error">{error}</div>}
         </div>
+
+        <ModelCandidateResults results={candidateResults} liveRows={liveRows} />
 
         {(busy === "run" || liveRows.length > 0) && (
           <div className="card evals-wide rollout-live">
@@ -639,6 +686,151 @@ function FusionEvaluationPane() {
       </div>
     </>
   );
+}
+
+function ModelCandidateResults({ results, liveRows }: { results: CandidateResult[]; liveRows: FusionLiveRow[] }) {
+  const liveByMode = liveRows.reduce<Record<string, FusionLiveRow[]>>((acc, row) => {
+    acc[row.mode] = [...(acc[row.mode] ?? []), row];
+    return acc;
+  }, {});
+  const liveResults = Object.entries(liveByMode).map(([mode, rows]) => {
+    const finished = rows.filter((row) => ["ok", "error", "skipped"].includes(row.status));
+    const scores = finished.flatMap((row) => (row.score == null ? [] : [row.score]));
+    return {
+      id: mode,
+      label: mode,
+      suites: 1,
+      rows: rows.length,
+      okRows: finished.filter((row) => row.status === "ok").length,
+      errorRows: finished.filter((row) => row.status === "error").length,
+      skippedRows: finished.filter((row) => row.status === "skipped").length,
+      avgScore: scores.length ? scores.reduce((sum, score) => sum + score, 0) / scores.length : null,
+      avgLatencyMs: avg(finished.flatMap((row) => (row.elapsed_ms == null ? [] : [row.elapsed_ms]))),
+      avgTokens: null,
+      sidekickRuns: finished.reduce((sum, row) => sum + row.sidekick_runs, 0),
+      status: rows.some((row) => row.status === "running") ? "running" as const : resultStatus(finished.length, scores.length ? scores.reduce((sum, score) => sum + score, 0) / scores.length : null, finished.some((row) => row.status === "error")),
+      strongestMode: null,
+      weakestMode: null,
+    };
+  });
+  const rows = liveResults.length ? liveResults : results;
+  const total = rows.reduce((sum, row) => sum + row.rows, 0);
+  const passed = rows.filter((row) => row.status === "passed").length;
+  const failed = rows.filter((row) => row.status === "failed").length;
+  const running = rows.filter((row) => row.status === "running").length;
+  const skipped = rows.filter((row) => row.status === "skipped").length;
+
+  return (
+    <div className="card evals-wide test-results-card">
+      <div className="card-row">
+        <div>
+          <div className="card-title">Candidate results</div>
+          <div className="card-sub">Model-family task results using the Test Results pattern: status, score, latency, and failure drilldown.</div>
+        </div>
+        <span className="svc-state">{liveResults.length ? "live" : "persisted"}</span>
+      </div>
+      <div className="test-summary">
+        <ResultStat label="passed" value={passed} tone="ok" />
+        <ResultStat label="failed" value={failed} tone="error" />
+        <ResultStat label="running" value={running} tone="running" />
+        <ResultStat label="skipped" value={skipped} tone="skipped" />
+        <ResultStat label="rows" value={total} tone="neutral" />
+      </div>
+      {rows.length ? (
+        <div className="test-results-list">
+          {rows.map((row) => (
+            <details className={`test-result ${row.status}`} key={row.id} open={row.status === "running" || row.status === "failed"}>
+              <summary>
+                <span className={`test-status ${row.status}`} />
+                <strong>{row.label}</strong>
+                <span>{row.rows} rows</span>
+                <span>{row.avgScore == null ? "unscored" : `${Math.round(row.avgScore * 100)}%`}</span>
+                <span>{row.avgLatencyMs == null ? "latency -" : `${Math.round(row.avgLatencyMs)}ms`}</span>
+              </summary>
+              <div className="test-detail-grid">
+                <span>OK {row.okRows}</span>
+                <span>Errors {row.errorRows}</span>
+                <span>Skipped {row.skippedRows}</span>
+                <span>Sidekick {row.sidekickRuns}</span>
+                <span>Tokens {row.avgTokens == null ? "-" : Math.round(row.avgTokens)}</span>
+                <span>Suites {row.suites}</span>
+              </div>
+              {(row.strongestMode || row.weakestMode || row.errorRows > 0) && (
+                <div className="test-message">
+                  {row.strongestMode && <span>Strongest: {row.strongestMode}</span>}
+                  {row.weakestMode && <span>Weakest: {row.weakestMode}</span>}
+                  {row.errorRows > 0 && <span>Inspect failed questions in the live rollout or persisted rows before promotion.</span>}
+                </div>
+              )}
+            </details>
+          ))}
+        </div>
+      ) : (
+        <div className="svc-desc">Run a candidate suite to populate model-specific test results.</div>
+      )}
+    </div>
+  );
+}
+
+function ResultStat({ label, value, tone }: { label: string; value: number; tone: string }) {
+  return (
+    <div className={`test-stat ${tone}`}>
+      <strong>{value}</strong>
+      <span>{label}</span>
+    </div>
+  );
+}
+
+function mergeCandidateResult(existing: CandidateResult, mode: FusionRunModeSummary): CandidateResult {
+  const rows = existing.rows + mode.rows;
+  const score = weightedAverage(existing.avgScore, existing.rows, mode.avg_score, mode.rows);
+  const latency = weightedAverage(existing.avgLatencyMs, existing.rows, mode.avg_elapsed_ms, mode.rows);
+  const tokens = weightedAverage(existing.avgTokens, existing.rows, mode.avg_total_tokens, mode.rows);
+  const status = resultStatus(rows, score, existing.errorRows + mode.error_rows > 0);
+  const strongestMode = score == null ? existing.strongestMode : bestMode(existing.strongestMode, existing.avgScore, mode.mode, mode.avg_score, "high");
+  const weakestMode = score == null ? existing.weakestMode : bestMode(existing.weakestMode, existing.avgScore, mode.mode, mode.avg_score, "low");
+
+  return {
+    ...existing,
+    suites: existing.suites + 1,
+    rows,
+    okRows: existing.okRows + mode.ok_rows,
+    errorRows: existing.errorRows + mode.error_rows,
+    skippedRows: existing.skippedRows + mode.skipped_rows,
+    avgScore: score,
+    avgLatencyMs: latency,
+    avgTokens: tokens,
+    sidekickRuns: existing.sidekickRuns + Math.round(mode.avg_sidekick_runs * mode.rows),
+    status,
+    strongestMode,
+    weakestMode,
+  };
+}
+
+function weightedAverage(current: number | null, currentRows: number, next: number | null, nextRows: number): number | null {
+  if (current == null && next == null) return null;
+  if (current == null) return next;
+  if (next == null) return current;
+  return ((current * currentRows) + (next * nextRows)) / Math.max(1, currentRows + nextRows);
+}
+
+function avg(values: number[]): number | null {
+  return values.length ? values.reduce((sum, value) => sum + value, 0) / values.length : null;
+}
+
+function bestMode(currentMode: string | null, currentScore: number | null, nextMode: string, nextScore: number | null, direction: "high" | "low"): string | null {
+  if (nextScore == null) return currentMode;
+  if (currentScore == null || currentMode == null) return nextMode;
+  return direction === "high"
+    ? (nextScore >= currentScore ? nextMode : currentMode)
+    : (nextScore <= currentScore ? nextMode : currentMode);
+}
+
+function resultStatus(rows: number, score: number | null, hasErrors: boolean): CandidateResult["status"] {
+  if (!rows) return "skipped";
+  if (hasErrors) return "failed";
+  if (score == null) return "skipped";
+  return score >= 0.7 ? "passed" : "failed";
 }
 
 function normalizeRowStatus(status: string): FusionLiveRow["status"] {
