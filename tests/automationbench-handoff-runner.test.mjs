@@ -442,6 +442,50 @@ describe("automationbench handoff runner", () => {
     assert.doesNotMatch(result.stdout, /# Start proxy first/);
   });
 
+  it("preflights the final comparison endpoints", () => {
+    const { handoffPath } = writeFixture();
+    const home = join(dir, "home");
+    const bin = join(dir, "bin");
+    mkdirSync(join(home, ".understudy"), { recursive: true });
+    mkdirSync(bin, { recursive: true });
+    writeFileSync(
+      join(home, ".understudy", "credentials.json"),
+      JSON.stringify({ gateway_url: "http://gateway.example", api_key: "test-key" }),
+    );
+    writeFileSync(
+      join(bin, "curl"),
+      `#!/bin/sh\nprintf '%s\\n' "$@" >> ${join(dir, "curl-args.txt")}\nexit 0\n`,
+      { mode: 0o755 },
+    );
+    const result = spawnSync(
+      matrixRunner[0],
+      [...matrixRunner.slice(1), "--handoff", handoffPath, "--final-comparison", "--preflight"],
+      {
+        encoding: "utf8",
+        env: {
+          ...process.env,
+          HOME: home,
+          PATH: `${bin}:${process.env.PATH}`,
+          UNDERSTUDY_GATEWAY_BASE_URL: "",
+          UNDERSTUDY_GATEWAY_API_KEY: "",
+        },
+      },
+    );
+    assert.equal(result.status, 0, result.stderr);
+    const payload = JSON.parse(result.stdout);
+    assert.equal(payload.schema_version, "understudy.automationbench_matrix_preflight.v1");
+    assert.equal(payload.ok, true);
+    assert.deepEqual(
+      payload.checks.map((check) => check.label).sort(),
+      ["gateway-glm", "local-fast", "local-main"],
+    );
+    const curlArgs = readFileSync(join(dir, "curl-args.txt"), "utf8");
+    assert.match(curlArgs, /http:\/\/127\.0\.0\.1:8091\/v1\/models/);
+    assert.match(curlArgs, /http:\/\/127\.0\.0\.1:8092\/v1\/models/);
+    assert.match(curlArgs, /http:\/\/gateway\.example\/v1\/models/);
+    assert.match(curlArgs, /Authorization: Bearer test-key/);
+  });
+
   it("rejects unknown Fusion matrix labels", () => {
     const { handoffPath } = writeFixture();
     const result = spawnSync(

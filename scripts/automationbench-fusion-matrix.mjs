@@ -14,12 +14,14 @@ function usage() {
   node scripts/automationbench-fusion-matrix.mjs --handoff <path> --run [--only <labels>] [--bench-dir <path>] [--out-dir <dir>] [--event-log <path>] [--domains <domains>] [--num-examples <n>]
   node scripts/automationbench-fusion-matrix.mjs --handoff <path> --ingest [--only <labels>] [--out-dir <dir>] [--event-log <path>] [--post] [--token <token>] [--domains <domains>] [--num-examples <n>]
   node scripts/automationbench-fusion-matrix.mjs --handoff <path> --final-comparison --full [--run|--ingest]
+  node scripts/automationbench-fusion-matrix.mjs --handoff <path> --final-comparison --preflight
 
 Runs or ingests the Understudy Fusion AutomationBench matrix:
   local-main, local-fast, gateway-glm, fusion-main, fusion-sidekick-parallel,
   fusion-sidekick-advisory, fusion-routing
 
 Use --dry-run to print the exact auto-bench and ingestion commands without executing.
+Use --preflight to check selected model endpoints before a long run.
 Use --final-comparison for the required final matrix: gateway-glm, local-main, local-fast.
 Use --full to omit --num-examples and run the full selected AutomationBench domains.
 `;
@@ -181,6 +183,50 @@ function executionValue(value) {
   const envValue = process.env[match[1]] || localGatewayCredentials()[match[1]];
   if (!envValue) throw new Error(`${match[1]} is required to run ${value}`);
   return `${envValue}${match[2]}`;
+}
+
+function endpointHealthUrl(baseUrl) {
+  return `${String(baseUrl).replace(/\/$/, "")}/models`;
+}
+
+function preflightRun(run) {
+  const baseUrl = executionValue(run.baseUrl);
+  const apiKey = executionValue(run.apiKey);
+  const args = ["-fsS", "--max-time", "5", endpointHealthUrl(baseUrl)];
+  if (apiKey && apiKey !== "local" && apiKey !== "fusion") {
+    args.splice(1, 0, "-H", `Authorization: Bearer ${apiKey}`);
+  }
+  const result = spawnSync("curl", args, {
+    encoding: "utf8",
+    stdio: "pipe",
+  });
+  return {
+    label: run.label,
+    model: run.model,
+    base_url: baseUrl,
+    ok: result.status === 0,
+    status: result.status,
+    stderr: result.stderr.trim(),
+  };
+}
+
+function preflightMatrix(runs) {
+  const checks = runs.map(preflightRun);
+  const failed = checks.filter((check) => !check.ok);
+  console.log(
+    JSON.stringify(
+      {
+        schema_version: "understudy.automationbench_matrix_preflight.v1",
+        ok: failed.length === 0,
+        checks,
+      },
+      null,
+      2,
+    ),
+  );
+  if (failed.length > 0) {
+    throw new Error(`preflight failed for ${failed.map((check) => check.label).join(", ")}`);
+  }
 }
 
 function autoBenchArgs(handoff, run, outDir, config, options = {}) {
@@ -359,6 +405,10 @@ async function main() {
   const eventLog = resolve(argValue(args, "--event-log") ?? DEFAULT_EVENT_LOG);
   const runs = selectedRuns(args);
   const config = runConfig(handoff, args);
+  if (args.includes("--preflight")) {
+    preflightMatrix(runs);
+    return;
+  }
   if (args.includes("--dry-run") || (!args.includes("--run") && !args.includes("--ingest"))) {
     printDryRun({ handoffPath, handoff, runs, benchDir, outDir, eventLog, args, config });
     return;
