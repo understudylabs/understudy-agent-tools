@@ -2283,6 +2283,41 @@ pub async fn chat_stream(
             context_tokens_before,
             Some(&on_event),
         );
+        if route == "local"
+            && app
+                .state::<crate::db::Db>()
+                .setting_get("fusion.routing")
+                .as_deref()
+                != Some("off")
+        {
+            if let Some((base, key)) = credentials() {
+                route = "cloud".to_string();
+                url = format!("{}/v1/chat/completions", base.trim_end_matches('/'));
+                bearer = Some(key);
+                model_field = "glm-5.2".to_string();
+                if let Some(system) = outbound_messages
+                    .iter_mut()
+                    .find(|message| message.get("role").and_then(|v| v.as_str()) == Some("system"))
+                {
+                    system["content"] = json!(system_prompt_for(&model_field));
+                }
+                let detail = format!(
+                    "local -> cloud · compaction_boundary ({reason}, {} tokens)",
+                    context_tokens_before
+                );
+                let _ = app.state::<crate::db::Db>().record_sidekick_event(
+                    &session_id,
+                    "routing",
+                    "compaction_route_applied",
+                    &detail,
+                );
+                let _ = on_event.send(ChatEvent::SidekickEvent {
+                    mode: "routing".to_string(),
+                    stage: "compaction_route_applied".to_string(),
+                    detail,
+                });
+            }
+        }
     }
 
     let client = reqwest::Client::builder()
