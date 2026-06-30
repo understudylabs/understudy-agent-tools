@@ -73,6 +73,14 @@ type ResidencySnapshot = {
 };
 type SnapshotModel = SnapshotAlias;
 type ChatStatus = "ready" | "streaming" | "error";
+type SidekickEvent = {
+  id: number;
+  session_id: string;
+  mode: string;
+  stage: string;
+  detail: string;
+  created_at: string;
+};
 type LocalModelChoice = {
   id: string;
   label: string;
@@ -231,6 +239,7 @@ export function ChatPane({ resetToken }: { resetToken: number }) {
   const [personaReady, setPersonaReady] = useState(false);
   const [personaCycle, setPersonaCycle] = useState(0);
   const [introThinking, setIntroThinking] = useState(true);
+  const [sidekickEvents, setSidekickEvents] = useState<SidekickEvent[]>([]);
 
   const refreshModels = async () => {
     try {
@@ -279,6 +288,26 @@ export function ChatPane({ resetToken }: { resetToken: number }) {
     const timer = window.setTimeout(() => setIntroThinking(false), 1850);
     return () => window.clearTimeout(timer);
   }, [personaCycle]);
+
+  useEffect(() => {
+    let cancelled = false;
+    const refreshSidekickEvents = () => {
+      invoke<SidekickEvent[]>("sidekick_events", { limit: 12 })
+        .then((events) => {
+          if (cancelled) return;
+          setSidekickEvents(events.filter((event) => event.session_id === sessionId));
+        })
+        .catch(() => {
+          if (!cancelled) setSidekickEvents([]);
+        });
+    };
+    refreshSidekickEvents();
+    const timer = window.setInterval(refreshSidekickEvents, streaming ? 1200 : 3500);
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+    };
+  }, [sessionId, streaming]);
 
   const selectedChoice = useMemo(
     () => choices.find((choice) => choice.id === selectedModel) ?? choices[0] ?? CLOUD_MODEL,
@@ -440,14 +469,22 @@ export function ChatPane({ resetToken }: { resetToken: number }) {
       : "idle";
   const latestAssistant = [...messages].reverse().find((message) => message.role === "assistant");
   const sidekickTool = latestAssistant?.tools?.find((tool) => tool.name === "delegate_to_sidekick");
-  const sidekickActive = sidekickTool?.state === "input-available" || sidekickTool?.state === "input-streaming";
+  const latestSidekickEvent = sidekickEvents[0];
+  const backgroundSidekickActive =
+    latestSidekickEvent?.stage === "queued" ||
+    latestSidekickEvent?.stage === "started" ||
+    latestSidekickEvent?.stage === "waiting";
+  const sidekickActive =
+    sidekickTool?.state === "input-available" ||
+    sidekickTool?.state === "input-streaming" ||
+    backgroundSidekickActive;
   const warmSidekickAvailable = choices.some((choice) => {
     if (choice.route !== "local" || !choice.active) return false;
     if (selectedChoice.route === "local" && choice.slotId === selectedChoice.slotId) return false;
     const id = choice.detail.toLowerCase();
     return choice.label === "understudy-small" || id.includes("understudy-small") || id.includes("e2b");
   });
-  const showSidekickPersona = warmSidekickAvailable || Boolean(sidekickTool);
+  const showSidekickPersona = warmSidekickAvailable || Boolean(sidekickTool) || sidekickEvents.length > 0;
   const sidekickPersonaState: PersonaState = "thinking";
 
   return (
@@ -524,6 +561,16 @@ export function ChatPane({ resetToken }: { resetToken: number }) {
               );
             })
           }
+          {backgroundSidekickActive && latestSidekickEvent && (
+            <div className="sidekick-active-card chat-sidekick-monitor">
+              <div className="sidekick-orbit" aria-hidden="true" />
+              <div className="sidekick-active-copy">
+                <div className="sidekick-active-kicker">Sidekick</div>
+                <div className="sidekick-active-title">Working in background</div>
+                <div className="sidekick-active-task">{latestSidekickEvent.detail}</div>
+              </div>
+            </div>
+          )}
           {err && <div className="chat-err">{err}</div>}
         </ConversationContent>
         <ConversationScrollButton />
