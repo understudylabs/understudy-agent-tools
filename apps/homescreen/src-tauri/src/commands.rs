@@ -198,6 +198,27 @@ pub struct FusionBenchmarkRunSummary {
     pub runs: Vec<FusionBenchmarkRunSummaryRow>,
 }
 
+#[derive(serde::Deserialize)]
+pub struct ExportFusionBenchmarkComparisonRequest {
+    pub limit: Option<u32>,
+    pub output_path: Option<String>,
+}
+
+#[derive(Serialize, Clone)]
+pub struct FusionBenchmarkComparisonPacket {
+    pub schema_version: &'static str,
+    pub created_at: String,
+    pub source: &'static str,
+    pub summary: FusionBenchmarkRunSummary,
+}
+
+#[derive(Serialize, Clone)]
+pub struct FusionBenchmarkComparisonExport {
+    pub schema_version: &'static str,
+    pub path: String,
+    pub packet: FusionBenchmarkComparisonPacket,
+}
+
 #[derive(Serialize, Clone)]
 pub struct ChatRouteMetricGroup {
     pub route: String,
@@ -1356,6 +1377,50 @@ pub fn fusion_benchmark_run_summary(
     Ok(FusionBenchmarkRunSummary {
         schema_version: "understudy.fusion_benchmark_run_summary.v1",
         runs: out,
+    })
+}
+
+#[tauri::command]
+pub fn export_fusion_benchmark_comparison(
+    app: AppHandle,
+    request: ExportFusionBenchmarkComparisonRequest,
+) -> Result<FusionBenchmarkComparisonExport, String> {
+    let summary = fusion_benchmark_run_summary(app, request.limit)?;
+    let packet = FusionBenchmarkComparisonPacket {
+        schema_version: "understudy.fusion_benchmark_comparison.v1",
+        created_at: chrono::Utc::now().to_rfc3339(),
+        source: "desktop-fusion-benchmark",
+        summary,
+    };
+    let path = request.output_path.map(PathBuf::from).unwrap_or_else(|| {
+        PathBuf::from(".understudy")
+            .join("fusion-benchmark")
+            .join(format!(
+                "comparison-{}.json",
+                chrono::Utc::now().format("%Y%m%dT%H%M%SZ")
+            ))
+    });
+    let path = if path.is_absolute() {
+        path
+    } else {
+        PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("..")
+            .join("..")
+            .join("..")
+            .join(path)
+    };
+    if let Some(parent) = path.parent() {
+        fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+    }
+    let bytes = serde_json::to_vec_pretty(&packet).map_err(|e| e.to_string())?;
+    let mut text = String::from_utf8(bytes).map_err(|e| e.to_string())?;
+    text.push('\n');
+    fs::write(&path, text).map_err(|e| e.to_string())?;
+    let path = fs::canonicalize(&path).unwrap_or(path);
+    Ok(FusionBenchmarkComparisonExport {
+        schema_version: "understudy.fusion_benchmark_comparison_export.v1",
+        path: path.to_string_lossy().to_string(),
+        packet,
     })
 }
 
