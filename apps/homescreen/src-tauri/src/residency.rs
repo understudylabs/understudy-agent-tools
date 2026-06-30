@@ -307,6 +307,40 @@ impl Residency {
         })
     }
 
+    /// Resolve the preferred warm local sidekick endpoint.
+    pub fn sidekick_endpoint(
+        &self,
+        exclude_slot_id: Option<u32>,
+    ) -> Option<(u32, u16, String, String)> {
+        let inner = self.inner.lock().unwrap();
+        let candidates: Vec<_> = inner
+            .iter()
+            .filter(|r| {
+                matches!(r.state, SlotState::Warm)
+                    && Some(r.id) != exclude_slot_id
+                    && r.port.is_some()
+                    && r.model_path.is_some()
+                    && r.model_id.is_some()
+            })
+            .collect();
+        let preferred = candidates
+            .iter()
+            .copied()
+            .find(|r| {
+                r.model_id
+                    .as_deref()
+                    .map(|id| id.contains("e2b") || id.contains("understudy-small"))
+                    .unwrap_or(false)
+            })
+            .or_else(|| candidates.first().copied())?;
+        Some((
+            preferred.id,
+            preferred.port?,
+            preferred.model_path.clone()?,
+            preferred.model_id.clone()?,
+        ))
+    }
+
     /// Warm a slot: enforce budget (LRU evict), spawn mlx_vlm.server, poll until ready.
     pub fn warm(&self, app: &AppHandle, slot_id: u32) -> anyhow::Result<()> {
         // 1. Validate, reserve a port, flip to Loading (one short-lived borrow).

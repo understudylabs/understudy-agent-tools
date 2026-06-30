@@ -11,9 +11,10 @@ use crate::residency::{Residency, ResidencySnapshot};
 use crate::sidecar::{ServiceState, Services};
 use serde::Serialize;
 use serde_json::{json, Value};
-use std::process::Command;
-use tauri::{AppHandle, Emitter, Manager};
+use std::fs;
+use std::path::PathBuf;
 use tauri::ipc::Channel;
+use tauri::{AppHandle, Emitter, Manager};
 
 #[derive(Serialize, Clone)]
 pub struct StatusSnapshot {
@@ -55,7 +56,7 @@ pub fn get_status(app: AppHandle) -> StatusSnapshot {
 
 #[tauri::command]
 pub fn connect(app: AppHandle) -> Result<(), String> {
-    Command::new(bin::moraine())
+    bin::command("moraine")
         .arg("up")
         .status()
         .map_err(|e| format!("moraine up failed: {e}"))?;
@@ -65,7 +66,7 @@ pub fn connect(app: AppHandle) -> Result<(), String> {
 
 #[tauri::command]
 pub fn disconnect(app: AppHandle) -> Result<(), String> {
-    Command::new(bin::moraine())
+    bin::command("moraine")
         .arg("down")
         .status()
         .map_err(|e| format!("moraine down failed: {e}"))?;
@@ -163,6 +164,34 @@ pub fn mlx_runtime_status() -> models::MlxRuntimeStatus {
 }
 
 #[tauri::command]
+pub fn set_app_icon(app: AppHandle, icon_id: String) -> Result<String, String> {
+    let icon = load_app_icon(&icon_id)?;
+    if let Some(window) = app.get_webview_window("main") {
+        window.set_icon(icon.clone()).map_err(|e| e.to_string())?;
+    }
+    if let Some(tray) = app.tray_by_id("understudy-tray") {
+        tray.set_icon(Some(icon)).map_err(|e| e.to_string())?;
+        let _ = tray.set_icon_as_template(false);
+    }
+    Ok(icon_id)
+}
+
+fn load_app_icon(icon_id: &str) -> Result<tauri::image::Image<'static>, String> {
+    let name = match icon_id {
+        "classic" | "graphite" | "stamp" | "paper" => icon_id,
+        other => return Err(format!("unknown app icon: {other}")),
+    };
+    let path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+        .join("..")
+        .join("public")
+        .join("brand")
+        .join("app-icons")
+        .join(format!("{name}.png"));
+    let bytes = fs::read(&path).map_err(|e| format!("read icon failed: {e}"))?;
+    tauri::image::Image::from_bytes(&bytes).map_err(|e| format!("decode icon failed: {e}"))
+}
+
+#[tauri::command]
 pub fn bootstrap_status() -> crate::bootstrap::BootstrapStatus {
     crate::bootstrap::status()
 }
@@ -224,7 +253,7 @@ pub fn open_trace(id: String) -> Result<Value, String> {
 
 #[tauri::command]
 pub fn install_moraine() -> Result<String, String> {
-    let out = Command::new(bin::uv())
+    let out = bin::command("uv")
         .args(["tool", "install", "moraine-cli"])
         .output()
         .map_err(|e| format!("uv not found: {e}"))?;
@@ -238,7 +267,7 @@ pub fn install_moraine() -> Result<String, String> {
 
 #[tauri::command]
 pub fn start_moraine(app: AppHandle) -> Result<(), String> {
-    Command::new(bin::moraine())
+    bin::command("moraine")
         .arg("up")
         .status()
         .map_err(|e| format!("moraine up failed: {e}"))?;
@@ -248,7 +277,7 @@ pub fn start_moraine(app: AppHandle) -> Result<(), String> {
 
 #[tauri::command]
 pub fn stop_moraine(app: AppHandle) -> Result<(), String> {
-    Command::new(bin::moraine())
+    bin::command("moraine")
         .arg("down")
         .status()
         .map_err(|e| format!("moraine down failed: {e}"))?;

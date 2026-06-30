@@ -83,14 +83,10 @@ pub fn run() {
                 .on_menu_event(|app, event| match event.id.as_ref() {
                     "show" => show_window(app),
                     "connect" => {
-                        let _ = std::process::Command::new(bin::moraine())
-                            .arg("up")
-                            .status();
+                        let _ = bin::command("moraine").arg("up").status();
                     }
                     "disconnect" => {
-                        let _ = std::process::Command::new(bin::moraine())
-                            .arg("down")
-                            .status();
+                        let _ = bin::command("moraine").arg("down").status();
                     }
                     "quit" => app.exit(0),
                     _ => {}
@@ -116,6 +112,7 @@ pub fn run() {
             commands::list_models,
             commands::list_snapshot_models,
             commands::mlx_runtime_status,
+            commands::set_app_icon,
             commands::bootstrap_status,
             commands::install_uv,
             commands::install_mlx_runtime,

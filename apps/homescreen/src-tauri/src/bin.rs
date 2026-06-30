@@ -1,4 +1,5 @@
 use std::path::PathBuf;
+use std::process::Command;
 
 /// Resolve a sidecar/CLI binary to an absolute path so the app works when
 /// launched from Finder (no shell PATH). Falls back to the bare name under
@@ -11,6 +12,36 @@ pub fn resolve(name: &str) -> String {
         }
     }
     name.to_string()
+}
+
+pub fn command(name: &str) -> Command {
+    let mut cmd = Command::new(resolve(name));
+    cmd.env("PATH", runtime_path());
+    cmd
+}
+
+pub fn runtime_path() -> String {
+    let mut parts = vec![];
+    if let Some(home) = std::env::var_os("HOME") {
+        let home = PathBuf::from(home);
+        parts.push(home.join(".local/bin").to_string_lossy().into_owned());
+        parts.push(home.join(".bun/bin").to_string_lossy().into_owned());
+        parts.push(home.join(".nvm/current/bin").to_string_lossy().into_owned());
+    }
+    parts.extend([
+        "/opt/homebrew/bin".to_string(),
+        "/opt/homebrew/sbin".to_string(),
+        "/usr/local/bin".to_string(),
+        "/usr/local/sbin".to_string(),
+        "/usr/bin".to_string(),
+        "/bin".to_string(),
+        "/usr/sbin".to_string(),
+        "/sbin".to_string(),
+    ]);
+    if let Ok(existing) = std::env::var("PATH") {
+        parts.push(existing);
+    }
+    parts.join(":")
 }
 
 pub fn moraine() -> String {

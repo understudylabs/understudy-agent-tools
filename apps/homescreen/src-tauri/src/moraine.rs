@@ -14,7 +14,7 @@ pub struct MoraineState {
 
 /// Installed = the `moraine` binary resolves. Running = the monitor port is up.
 pub fn detect() -> MoraineState {
-    let installed = Command::new(bin::moraine())
+    let installed = bin::command("moraine")
         .arg("--version")
         .output()
         .map(|o| o.status.success())
@@ -23,5 +23,3 @@ pub fn detect() -> MoraineState {
     let running = TcpStream::connect_timeout(&addr, Duration::from_millis(400)).is_ok();
     MoraineState { installed, running }
 }
-
-use std::process::Command;

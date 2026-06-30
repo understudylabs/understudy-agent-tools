@@ -2,6 +2,7 @@ use futures_util::StreamExt;
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::path::PathBuf;
+use std::time::Instant;
 use tauri::ipc::Channel;
 use tauri::{AppHandle, State};
 
@@ -11,11 +12,24 @@ use crate::residency::Residency;
 #[derive(Serialize, Clone)]
 #[serde(tag = "type")]
 pub enum ChatEvent {
-    Chunk { text: String },
-    ReasoningChunk { text: String },
-    ToolCall { name: String, args: Value },
-    ToolResult { name: String, ok: bool, result: Value },
-    Error { message: String },
+    Chunk {
+        text: String,
+    },
+    ReasoningChunk {
+        text: String,
+    },
+    ToolCall {
+        name: String,
+        args: Value,
+    },
+    ToolResult {
+        name: String,
+        ok: bool,
+        result: Value,
+    },
+    Error {
+        message: String,
+    },
     Done,
 }
 
@@ -27,6 +41,7 @@ pub struct ChatMsg {
 
 const CHAT_MAX_TOKENS: u32 = 8192;
 const CHAT_THINKING_BUDGET: u32 = 2048;
+const SIDEKICK_MAX_TOKENS: u32 = 1536;
 const MAX_TOOL_ROUNDS: usize = 4;
 
 #[derive(Deserialize)]
@@ -149,6 +164,23 @@ fn tool_schemas() -> Vec<Value> {
         json!({
             "type": "function",
             "function": {
+                "name": "delegate_to_sidekick",
+                "description": "Delegate a bounded, local, read-only subtask to the smaller warm Understudy sidekick model. Use for focused summaries, checks, and narrow draft work. The main model keeps final ownership.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "task": { "type": "string" },
+                        "context": { "type": "string" },
+                        "expected_output": { "type": "string" }
+                    },
+                    "required": ["task"],
+                    "additionalProperties": false
+                }
+            }
+        }),
+        json!({
+            "type": "function",
+            "function": {
                 "name": "understudy_mcp_tool",
                 "description": "Call the local Understudy Desktop MCP tool surface. Use this for app/runtime/model/trace context.",
                 "parameters": {
@@ -211,7 +243,13 @@ fn tool_schemas() -> Vec<Value> {
     ]
 }
 
-async fn tool_result(app: &AppHandle, name: &str, args: &Value) -> Result<Value, String> {
+async fn tool_result(
+    app: &AppHandle,
+    mgr: &Residency,
+    active_slot_id: Option<u32>,
+    name: &str,
+    args: &Value,
+) -> Result<Value, String> {
     use crate::commands as c;
     Ok(match name {
         "status" => json!(c::get_status(app.clone())),
@@ -236,10 +274,85 @@ async fn tool_result(app: &AppHandle, name: &str, args: &Value) -> Result<Value,
                 .to_string(),
         )
         .map_err(|e| e.to_string())?,
+        "delegate_to_sidekick" => delegate_to_sidekick(mgr, active_slot_id, args).await?,
         "understudy_mcp_tool" => call_understudy_mcp(app, args).await?,
         "understudy_agent_tools" => call_understudy_cli(args)?,
         other => return Err(format!("unknown tool: {other}")),
     })
+}
+
+async fn delegate_to_sidekick(
+    mgr: &Residency,
+    active_slot_id: Option<u32>,
+    args: &Value,
+) -> Result<Value, String> {
+    let task = required_string(args, "task")?;
+    let context = args
+        .get("context")
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .trim();
+    let expected_output = args
+        .get("expected_output")
+        .and_then(|v| v.as_str())
+        .unwrap_or("Return concise findings and any uncertainty.")
+        .trim();
+    let (slot_id, port, model_path, model_id) = mgr.sidekick_endpoint(active_slot_id).ok_or_else(|| {
+        "no warm sidekick slot available; warm understudy-small or another small local model in Status first".to_string()
+    })?;
+    let started = Instant::now();
+    let content = call_sidekick_model(port, &model_path, &task, context, expected_output).await?;
+    let elapsed_ms = started.elapsed().as_millis() as u64;
+    let escalate = content.contains("ESCALATE_TO_MAIN");
+    Ok(json!({
+        "slot_id": slot_id,
+        "model_id": model_id,
+        "elapsed_ms": elapsed_ms,
+        "escalate": escalate,
+        "content": truncate_tool_output(content),
+    }))
+}
+
+async fn call_sidekick_model(
+    port: u16,
+    model_path: &str,
+    task: &str,
+    context: &str,
+    expected_output: &str,
+) -> Result<String, String> {
+    let system = "You are Understudy Sidekick, a small local model running as a bounded helper. Do read-only support work for the main model. Be concise and concrete. Do not make final decisions. If the task is ambiguous, high risk, needs tools you do not have, or you are not confident, include a line starting exactly with ESCALATE_TO_MAIN: followed by the reason.";
+    let user = format!(
+        "Task:\n{task}\n\nContext:\n{context}\n\nExpected output:\n{expected_output}\n\nReturn only the useful result for the main model."
+    );
+    let payload = json!({
+        "model": model_path,
+        "messages": [
+            { "role": "system", "content": system },
+            { "role": "user", "content": user }
+        ],
+        "stream": false,
+        "max_tokens": SIDEKICK_MAX_TOKENS,
+        "temperature": 0.2
+    });
+    let response = reqwest::Client::new()
+        .post(format!("http://127.0.0.1:{port}/v1/chat/completions"))
+        .json(&payload)
+        .send()
+        .await
+        .map_err(|e| format!("sidekick request failed: {e}"))?;
+    let status = response.status();
+    let value: Value = response
+        .json()
+        .await
+        .map_err(|e| format!("sidekick response parse failed: {e}"))?;
+    if !status.is_success() {
+        return Err(format!("sidekick returned {status}: {value}"));
+    }
+    Ok(value
+        .pointer("/choices/0/message/content")
+        .and_then(|v| v.as_str())
+        .unwrap_or("")
+        .to_string())
 }
 
 async fn call_understudy_mcp(app: &AppHandle, args: &Value) -> Result<Value, String> {
@@ -290,7 +403,11 @@ fn call_understudy_cli(args: &Value) -> Result<Value, String> {
         "version" => vec!["--version".to_string()],
         "spine" => vec!["spine".to_string()],
         "platforms" => vec!["--json".to_string(), "platforms".to_string()],
-        "skills_list" => vec!["--json".to_string(), "skills".to_string(), "--list".to_string()],
+        "skills_list" => vec![
+            "--json".to_string(),
+            "skills".to_string(),
+            "--list".to_string(),
+        ],
         "skills_search" => {
             let query = required_string(args, "query")?;
             vec![
@@ -311,7 +428,11 @@ fn call_understudy_cli(args: &Value) -> Result<Value, String> {
         }
         "doctor" => vec!["--json".to_string(), "doctor".to_string()],
         "status" => vec!["--json".to_string(), "status".to_string()],
-        "models_snapshots" => vec!["--json".to_string(), "models".to_string(), "snapshots".to_string()],
+        "models_snapshots" => vec![
+            "--json".to_string(),
+            "models".to_string(),
+            "snapshots".to_string(),
+        ],
         "models_pull_plan" => {
             let model_id = required_string(args, "model_id")?;
             vec![
@@ -322,9 +443,13 @@ fn call_understudy_cli(args: &Value) -> Result<Value, String> {
                 "--dry-run".to_string(),
             ]
         }
-        other => return Err(format!("unsupported understudy_agent_tools command: {other}")),
+        other => {
+            return Err(format!(
+                "unsupported understudy_agent_tools command: {other}"
+            ))
+        }
     };
-    let out = std::process::Command::new(crate::bin::understudy())
+    let out = crate::bin::command("understudy")
         .args(cli_args)
         .output()
         .map_err(|e| format!("understudy CLI unavailable: {e}"))?;
@@ -513,10 +638,11 @@ pub async fn chat_stream(
                 name: call.name.clone(),
                 args: args.clone(),
             });
-            let (ok, result) = match tool_result(&app, &call.name, &args).await {
-                Ok(value) => (true, value),
-                Err(err) => (false, json!({ "error": err })),
-            };
+            let (ok, result) =
+                match tool_result(&app, mgr.inner(), slot_id, &call.name, &args).await {
+                    Ok(value) => (true, value),
+                    Err(err) => (false, json!({ "error": err })),
+                };
             let _ = on_event.send(ChatEvent::ToolResult {
                 name: call.name.clone(),
                 ok,
@@ -655,7 +781,10 @@ fn collect_tool_deltas(delta: &Value, tool_calls: &mut Vec<ToolCallAcc>) {
                 ..Default::default()
             });
         }
-        let Some(acc) = tool_calls.iter_mut().find(|existing| existing.index == index) else {
+        let Some(acc) = tool_calls
+            .iter_mut()
+            .find(|existing| existing.index == index)
+        else {
             continue;
         };
         if let Some(id) = call.get("id").and_then(|v| v.as_str()) {

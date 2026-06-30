@@ -1,6 +1,5 @@
 use serde::{Deserialize, Serialize};
 use std::path::{Path, PathBuf};
-use std::process::Command;
 
 /// A locally cached, MLX-format model under `~/.understudy/models`.
 #[derive(Serialize, Clone)]
@@ -88,7 +87,7 @@ pub fn snapshots() -> Vec<SnapshotInfo> {
 
 pub fn mlx_runtime_status() -> MlxRuntimeStatus {
     let command = crate::bin::mlx_server();
-    match Command::new(&command).arg("--help").output() {
+    match crate::bin::command("mlx_vlm.server").arg("--help").output() {
         Ok(out) if out.status.success() => MlxRuntimeStatus {
             available: true,
             command,

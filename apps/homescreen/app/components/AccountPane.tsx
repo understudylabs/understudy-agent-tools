@@ -20,6 +20,7 @@ export function AccountPane() {
   const [busy, setBusy] = useState(false);
   const [srv, setSrv] = useState<{ base_url: string; token: string } | null>(null);
   const [appIcon, setAppIcon] = useState<AppIconId>("classic");
+  const [iconBusy, setIconBusy] = useState<AppIconId | null>(null);
 
   // login flow
   const [email, setEmail] = useState("");
@@ -43,9 +44,18 @@ export function AccountPane() {
       .catch(() => {});
   }, []);
 
-  const chooseAppIcon = (icon: AppIconId) => {
-    setAppIcon(icon);
-    localStorage.setItem("understudy-app-icon", icon);
+  const chooseAppIcon = async (icon: AppIconId) => {
+    setIconBusy(icon);
+    setErr(null);
+    try {
+      await invoke("set_app_icon", { iconId: icon });
+      setAppIcon(icon);
+      localStorage.setItem("understudy-app-icon", icon);
+    } catch (e) {
+      setErr(String(e));
+    } finally {
+      setIconBusy(null);
+    }
   };
 
   const signedIn = Boolean(status?.signed_in);
@@ -109,7 +119,7 @@ export function AccountPane() {
         <div className="card">
           <div className="card-title" style={{ marginBottom: 4 }}>App icon</div>
           <div className="card-sub" style={{ marginBottom: 12 }}>
-            Choose a visual style. Native Dock icon switching is queued behind the macOS bridge.
+            Applies to the active app window and menu-bar icon.
           </div>
           <div className="app-icon-grid">
             {APP_ICONS.map((icon) => (
@@ -118,10 +128,11 @@ export function AccountPane() {
                 type="button"
                 className={"app-icon-choice" + (appIcon === icon.id ? " active" : "")}
                 aria-pressed={appIcon === icon.id}
+                disabled={iconBusy !== null}
                 onClick={() => chooseAppIcon(icon.id)}
               >
                 <img src={icon.src} alt="" draggable={false} />
-                <span>{icon.label}</span>
+                <span>{iconBusy === icon.id ? "Applying" : icon.label}</span>
               </button>
             ))}
           </div>

@@ -36,10 +36,21 @@ pub struct BootstrapStatus {
 #[derive(Serialize, Clone)]
 #[serde(tag = "type")]
 pub enum DownloadEvent {
-    Log { message: String },
-    File { name: String, downloaded: u64, total: Option<u64> },
-    Done { dest: String, files: usize },
-    Error { message: String },
+    Log {
+        message: String,
+    },
+    File {
+        name: String,
+        downloaded: u64,
+        total: Option<u64>,
+    },
+    Done {
+        dest: String,
+        files: usize,
+    },
+    Error {
+        message: String,
+    },
 }
 
 #[derive(Deserialize)]
@@ -87,7 +98,12 @@ pub fn status() -> BootstrapStatus {
             &["--version"],
         ),
         moraine: command_status("moraine", "Moraine CLI", bin::moraine(), &["--version"]),
-        moraine_mcp: command_status("moraine_mcp", "Moraine MCP", bin::moraine_mcp(), &["--help"]),
+        moraine_mcp: command_status(
+            "moraine_mcp",
+            "Moraine MCP",
+            bin::moraine_mcp(),
+            &["--help"],
+        ),
         mlx: mlx_status(),
         account_connected: account::status().is_ok(),
         models_dir: models_dir().to_string_lossy().into_owned(),
@@ -100,13 +116,14 @@ pub fn install_uv() -> Result<String, String> {
     let out = Command::new("sh")
         .arg("-c")
         .arg("curl -LsSf https://astral.sh/uv/install.sh | sh")
+        .env("PATH", bin::runtime_path())
         .output()
         .map_err(|e| format!("uv install failed to start: {e}"))?;
     command_output(out)
 }
 
 pub fn install_mlx_runtime() -> Result<String, String> {
-    let out = Command::new(bin::uv())
+    let out = bin::command("uv")
         .args(["tool", "install", "mlx-vlm"])
         .output()
         .map_err(|e| format!("uv not found: {e}"))?;
@@ -116,6 +133,7 @@ pub fn install_mlx_runtime() -> Result<String, String> {
 pub fn install_understudy_agent_tools() -> Result<String, String> {
     let out = Command::new("npm")
         .args(["install", "-g", "@understudylabs/understudy-agent-tools"])
+        .env("PATH", bin::runtime_path())
         .output()
         .map_err(|e| format!("npm install failed to start: {e}"))?;
     command_output(out)
@@ -352,7 +370,11 @@ fn models_dir() -> PathBuf {
 }
 
 fn command_status(id: &str, label: &str, command: String, args: &[&str]) -> ToolStatus {
-    match Command::new(&command).args(args).output() {
+    match Command::new(&command)
+        .args(args)
+        .env("PATH", bin::runtime_path())
+        .output()
+    {
         Ok(out) if out.status.success() => ToolStatus {
             id: id.to_string(),
             label: label.to_string(),

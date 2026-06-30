@@ -1,5 +1,5 @@
 use serde::Serialize;
-use std::process::{Command, Stdio};
+use std::process::Stdio;
 
 #[derive(Serialize, Clone)]
 pub struct ServiceState {
@@ -25,7 +25,7 @@ impl Services {
 }
 
 fn moraine_state() -> &'static str {
-    match Command::new(crate::bin::moraine())
+    match crate::bin::command("moraine")
         .arg("status")
         .stdout(Stdio::null())
         .stderr(Stdio::null())

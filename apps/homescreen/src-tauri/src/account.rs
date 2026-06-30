@@ -1,10 +1,9 @@
 use crate::bin;
 use anyhow::Result;
 use serde_json::Value;
-use std::process::Command;
 
 fn out_string(args: &[&str]) -> Result<String> {
-    let out = Command::new(bin::understudy()).args(args).output()?;
+    let out = bin::command("understudy").args(args).output()?;
     let s = String::from_utf8_lossy(&out.stdout).to_string();
     if !out.status.success() {
         anyhow::bail!("{}{}", s, String::from_utf8_lossy(&out.stderr));

@@ -2,7 +2,7 @@ use crate::bin;
 use anyhow::anyhow;
 use serde_json::{json, Value};
 use std::io::{BufRead, BufReader, Write};
-use std::process::{Command, Stdio};
+use std::process::Stdio;
 
 const PROTOCOL_VERSION: &str = "2024-11-05";
 
@@ -10,7 +10,7 @@ const PROTOCOL_VERSION: &str = "2024-11-05";
 /// Per-call spawn keeps state simple at the cost of a re-init each invocation
 /// (tens of ms) — fine for UI-driven lookups.
 pub fn call_tool(name: &str, args: Value) -> anyhow::Result<Value> {
-    let mut child = Command::new(bin::moraine_mcp())
+    let mut child = bin::command("moraine-mcp")
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::null())
