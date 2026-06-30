@@ -73,6 +73,21 @@ type SidekickEvent = {
   created_at: string;
 };
 
+type SidekickMetrics = {
+  rows: number;
+  parallel_rows: number;
+  consumed_rows: number;
+  escalated_rows: number;
+  useful_rows: number;
+  miss_rows: number;
+  pending_feedback_rows: number;
+  avg_elapsed_ms?: number | null;
+  avg_tool_calls?: number | null;
+  handoff_rate?: number | null;
+  escalation_rate?: number | null;
+  useful_rate?: number | null;
+};
+
 export function StatusPane({ status }: { status: StatusController }) {
   const { snap, busy, connect, disconnect } = status;
   const [bootstrap, setBootstrap] = useState<BootstrapStatus | null>(null);
@@ -83,6 +98,7 @@ export function StatusPane({ status }: { status: StatusController }) {
   const [sidekickRuns, setSidekickRuns] = useState<SidekickRun[]>([]);
   const [sidekickDecisions, setSidekickDecisions] = useState<SidekickDecision[]>([]);
   const [sidekickEvents, setSidekickEvents] = useState<SidekickEvent[]>([]);
+  const [sidekickMetrics, setSidekickMetrics] = useState<SidekickMetrics | null>(null);
 
   const refreshBootstrap = () => {
     invoke<BootstrapStatus>("bootstrap_status")
@@ -109,6 +125,9 @@ export function StatusPane({ status }: { status: StatusController }) {
     invoke<SidekickEvent[]>("sidekick_events", { limit: 4 })
       .then(setSidekickEvents)
       .catch(() => setSidekickEvents([]));
+    invoke<SidekickMetrics>("sidekick_metrics", { limit: 100 })
+      .then(setSidekickMetrics)
+      .catch(() => setSidekickMetrics(null));
   };
 
   useEffect(() => {
@@ -341,6 +360,21 @@ export function StatusPane({ status }: { status: StatusController }) {
                     </div>
                   </div>
                 ))}
+              </div>
+            )}
+            {sidekickMetrics && sidekickMetrics.rows > 0 && (
+              <div className="sidekick-policy-row">
+                <span className="dot running" />
+                <div>
+                  <div className="svc-name">Metrics · {sidekickMetrics.rows} recent runs</div>
+                  <div className="svc-desc">
+                    {sidekickMetrics.handoff_rate == null ? "—" : `${Math.round(sidekickMetrics.handoff_rate * 100)}%`} handed off ·{" "}
+                    {sidekickMetrics.useful_rate == null ? "no feedback" : `${Math.round(sidekickMetrics.useful_rate * 100)}% useful`} ·{" "}
+                    {sidekickMetrics.escalation_rate == null ? "—" : `${Math.round(sidekickMetrics.escalation_rate * 100)}%`} escalated ·{" "}
+                    {sidekickMetrics.avg_elapsed_ms == null ? "—" : `${(sidekickMetrics.avg_elapsed_ms / 1000).toFixed(1)}s`} avg ·{" "}
+                    {sidekickMetrics.avg_tool_calls == null ? "—" : `${sidekickMetrics.avg_tool_calls.toFixed(1)}`} tools
+                  </div>
+                </div>
               </div>
             )}
             {sidekickRuns.length > 0 && (

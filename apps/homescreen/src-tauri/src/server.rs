@@ -44,6 +44,7 @@ pub fn router(ctx: Ctx) -> Router {
             get(fusion_benchmark_results).post(record_fusion_benchmark),
         )
         .route("/api/fusion/run", post(run_fusion_benchmark))
+        .route("/api/sidekick/metrics", get(sidekick_metrics))
         .route("/api/profile/:id", get(profile))
         .route("/api/traces", get(traces_list))
         .route("/api/traces/search", get(traces_search))
@@ -200,6 +201,16 @@ async fn run_fusion_benchmark(
         .map(|run| Json(json!(run)))
         .map_err(|e| (StatusCode::BAD_REQUEST, e))
 }
+async fn sidekick_metrics(
+    State(ctx): State<Ctx>,
+    h: HeaderMap,
+    Query(q): Query<LimitQ>,
+) -> Result<Json<Value>, (StatusCode, String)> {
+    auth(&ctx, &h)?;
+    crate::commands::sidekick_metrics(ctx.app.clone(), q.limit)
+        .map(|v| Json(json!(v)))
+        .map_err(|e| (StatusCode::BAD_GATEWAY, e))
+}
 async fn profile(
     State(ctx): State<Ctx>,
     h: HeaderMap,
@@ -327,6 +338,7 @@ fn tools() -> Vec<Value> {
         ("fusion_benchmark_matrix", "Fusion benchmark modes and fixed local task set."),
         ("fusion_benchmark_results", "Recent Fusion benchmark result rows. Args: {limit?}."),
         ("fusion_benchmark_summary", "Aggregate Fusion benchmark results by route, mode, and model. Args: {limit?}."),
+        ("sidekick_metrics", "Aggregate recent sidekick usage, handoff, escalation, and feedback metrics. Args: {limit?}."),
         ("record_fusion_benchmark", "Record one Fusion benchmark result row."),
         ("run_fusion_benchmark", "Plan or run a Fusion benchmark matrix. Args: {run_id?, modes?, task_ids?, model?, dry_run?, record_skips?}."),
         ("aa_models", "Artificial Analysis external pricing/speed/quality."),
@@ -357,6 +369,11 @@ async fn call_tool(ctx: &Ctx, name: &str, args: &Value) -> Result<Value, String>
         )
         .map_err(|e| e.to_string())?),
         "fusion_benchmark_summary" => json!(c::fusion_benchmark_summary(
+            app,
+            args.get("limit").and_then(|v| v.as_u64()).map(|x| x as u32)
+        )
+        .map_err(|e| e.to_string())?),
+        "sidekick_metrics" => json!(c::sidekick_metrics(
             app,
             args.get("limit").and_then(|v| v.as_u64()).map(|x| x as u32)
         )

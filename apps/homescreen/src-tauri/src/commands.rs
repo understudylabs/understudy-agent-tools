@@ -128,6 +128,23 @@ pub struct FusionBenchmarkSummary {
     pub groups: Vec<FusionBenchmarkSummaryGroup>,
 }
 
+#[derive(Serialize, Clone)]
+pub struct SidekickMetrics {
+    pub schema_version: &'static str,
+    pub rows: u64,
+    pub parallel_rows: u64,
+    pub consumed_rows: u64,
+    pub escalated_rows: u64,
+    pub useful_rows: u64,
+    pub miss_rows: u64,
+    pub pending_feedback_rows: u64,
+    pub avg_elapsed_ms: Option<f64>,
+    pub avg_tool_calls: Option<f64>,
+    pub handoff_rate: Option<f64>,
+    pub escalation_rate: Option<f64>,
+    pub useful_rate: Option<f64>,
+}
+
 fn valid_fusion_mode(mode: &str) -> bool {
     matches!(
         mode,
@@ -830,6 +847,45 @@ pub fn sidekick_runs(app: AppHandle, limit: Option<u32>) -> Result<Vec<SidekickR
     app.state::<crate::db::Db>()
         .list_sidekick_runs(limit.unwrap_or(10))
         .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn sidekick_metrics(app: AppHandle, limit: Option<u32>) -> Result<SidekickMetrics, String> {
+    let rows = app
+        .state::<crate::db::Db>()
+        .list_sidekick_runs(limit.unwrap_or(100))
+        .map_err(|e| e.to_string())?;
+    let total = rows.len() as u64;
+    let parallel_rows = rows.iter().filter(|row| row.mode == "parallel").count() as u64;
+    let consumed_rows = rows.iter().filter(|row| row.consumed).count() as u64;
+    let escalated_rows = rows.iter().filter(|row| row.escalated).count() as u64;
+    let useful_rows = rows.iter().filter(|row| row.accepted == Some(true)).count() as u64;
+    let miss_rows = rows
+        .iter()
+        .filter(|row| row.accepted == Some(false))
+        .count() as u64;
+    let pending_feedback_rows = rows.iter().filter(|row| row.accepted.is_none()).count() as u64;
+    let elapsed_values: Vec<f64> = rows
+        .iter()
+        .filter_map(|row| row.elapsed_ms.map(|v| v as f64))
+        .collect();
+    let tool_values: Vec<f64> = rows.iter().map(|row| row.tool_calls as f64).collect();
+    let feedback_rows = useful_rows + miss_rows;
+    Ok(SidekickMetrics {
+        schema_version: "understudy.sidekick_metrics.v1",
+        rows: total,
+        parallel_rows,
+        consumed_rows,
+        escalated_rows,
+        useful_rows,
+        miss_rows,
+        pending_feedback_rows,
+        avg_elapsed_ms: avg(&elapsed_values),
+        avg_tool_calls: avg(&tool_values),
+        handoff_rate: (total > 0).then_some(consumed_rows as f64 / total as f64),
+        escalation_rate: (total > 0).then_some(escalated_rows as f64 / total as f64),
+        useful_rate: (feedback_rows > 0).then_some(useful_rows as f64 / feedback_rows as f64),
+    })
 }
 
 #[tauri::command]
