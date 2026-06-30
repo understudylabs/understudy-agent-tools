@@ -224,6 +224,57 @@ fn avg(values: &[f64]) -> Option<f64> {
     }
 }
 
+fn fusion_benchmark_score(
+    task_id: &str,
+    mode: &str,
+    effective_route: &str,
+    policy_sidekick: bool,
+    sidekick_runs: u64,
+    status: &str,
+    content: &str,
+) -> f64 {
+    if status != "ok" || content.trim().is_empty() {
+        return 0.0;
+    }
+    match task_id {
+        "long-context-routing" if mode == "sidekick-routing" => {
+            if effective_route == "gateway" && !policy_sidekick {
+                1.0
+            } else {
+                0.0
+            }
+        }
+        "frontier-upgrade-trigger" if mode == "sidekick-routing" => {
+            if effective_route == "gateway" && !policy_sidekick {
+                1.0
+            } else {
+                0.0
+            }
+        }
+        "judgment-boundary" if mode == "sidekick-routing" => {
+            if !policy_sidekick && sidekick_runs == 0 {
+                1.0
+            } else {
+                0.0
+            }
+        }
+        "repo-search-summary"
+        | "runtime-status-check"
+        | "repo-open-grounding"
+        | "mcp-surface-check"
+        | "skill-lookup"
+            if mode == "sidekick-routing" =>
+        {
+            if effective_route == "local" && policy_sidekick {
+                1.0
+            } else {
+                0.0
+            }
+        }
+        _ => 1.0,
+    }
+}
+
 fn prompt_excerpt(prompt: &str) -> String {
     let trimmed = prompt.trim();
     if trimmed.len() <= 240 {
@@ -1352,13 +1403,15 @@ pub async fn run_fusion_benchmark(
                 let sidekick_run_count = sidekick_runs.len() as u64;
                 let sidekick_tool_calls =
                     sidekick_runs.iter().map(|run| run.tool_calls).sum::<u64>();
-                let score = Some(
-                    if result.status == "ok" && !result.content.trim().is_empty() {
-                        1.0
-                    } else {
-                        0.0
-                    },
-                );
+                let score = Some(fusion_benchmark_score(
+                    task.id,
+                    mode,
+                    effective_route,
+                    policy_sidekick,
+                    sidekick_run_count,
+                    &result.status,
+                    &result.content,
+                ));
                 app.state::<crate::db::Db>()
                     .record_fusion_benchmark(&FusionBenchmarkInput {
                         run_id: run_id.clone(),
