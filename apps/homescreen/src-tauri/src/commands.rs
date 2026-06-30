@@ -162,6 +162,41 @@ pub struct FusionBenchmarkSummary {
 }
 
 #[derive(Serialize, Clone)]
+pub struct FusionBenchmarkRunModeSummary {
+    pub mode: String,
+    pub rows: u64,
+    pub ok_rows: u64,
+    pub error_rows: u64,
+    pub skipped_rows: u64,
+    pub gateway_rows: u64,
+    pub local_rows: u64,
+    pub avg_score: Option<f64>,
+    pub avg_elapsed_ms: Option<f64>,
+    pub avg_total_tokens: Option<f64>,
+    pub avg_sidekick_runs: f64,
+    pub avg_sidekick_tool_calls: f64,
+    pub avg_local_mem_gb: Option<f64>,
+}
+
+#[derive(Serialize, Clone)]
+pub struct FusionBenchmarkRunSummaryRow {
+    pub run_id: String,
+    pub rows: u64,
+    pub ok_rows: u64,
+    pub error_rows: u64,
+    pub skipped_rows: u64,
+    pub avg_score: Option<f64>,
+    pub best_mode: Option<String>,
+    pub modes: Vec<FusionBenchmarkRunModeSummary>,
+}
+
+#[derive(Serialize, Clone)]
+pub struct FusionBenchmarkRunSummary {
+    pub schema_version: &'static str,
+    pub runs: Vec<FusionBenchmarkRunSummaryRow>,
+}
+
+#[derive(Serialize, Clone)]
 pub struct ChatRouteMetricGroup {
     pub route: String,
     pub model: String,
@@ -1177,6 +1212,92 @@ pub fn fusion_benchmark_summary(
         executed: executed_total,
         skipped: skipped_total,
         groups: summary_groups,
+    })
+}
+
+#[tauri::command]
+pub fn fusion_benchmark_run_summary(
+    app: AppHandle,
+    limit: Option<u32>,
+) -> Result<FusionBenchmarkRunSummary, String> {
+    let rows = app
+        .state::<crate::db::Db>()
+        .list_fusion_benchmarks(limit.unwrap_or(500))
+        .map_err(|e| e.to_string())?;
+    let mut runs: std::collections::BTreeMap<String, Vec<FusionBenchmarkRow>> =
+        std::collections::BTreeMap::new();
+    for row in rows {
+        runs.entry(row.run_id.clone()).or_default().push(row);
+    }
+    let mut out = vec![];
+    for (run_id, rows) in runs {
+        let mut modes: std::collections::BTreeMap<String, Vec<FusionBenchmarkRow>> =
+            std::collections::BTreeMap::new();
+        for row in rows.iter().cloned() {
+            modes.entry(row.mode.clone()).or_default().push(row);
+        }
+        let mut mode_summaries = vec![];
+        for (mode, rows) in modes {
+            let row_count = rows.len() as u64;
+            let score_values: Vec<f64> = rows.iter().filter_map(|row| row.score).collect();
+            let elapsed_values: Vec<f64> = rows
+                .iter()
+                .filter_map(|row| row.elapsed_ms.map(|v| v as f64))
+                .collect();
+            let total_token_values: Vec<f64> = rows
+                .iter()
+                .filter_map(|row| match (row.prompt_tokens, row.completion_tokens) {
+                    (Some(prompt), Some(completion)) => Some((prompt + completion) as f64),
+                    _ => None,
+                })
+                .collect();
+            let local_mem_values: Vec<f64> =
+                rows.iter().filter_map(|row| row.local_mem_gb).collect();
+            mode_summaries.push(FusionBenchmarkRunModeSummary {
+                mode,
+                rows: row_count,
+                ok_rows: rows.iter().filter(|row| row.status == "ok").count() as u64,
+                error_rows: rows.iter().filter(|row| row.status == "error").count() as u64,
+                skipped_rows: rows.iter().filter(|row| row.status == "skipped").count() as u64,
+                gateway_rows: rows.iter().filter(|row| row.gateway_used).count() as u64,
+                local_rows: rows.iter().filter(|row| !row.gateway_used).count() as u64,
+                avg_score: avg(&score_values),
+                avg_elapsed_ms: avg(&elapsed_values),
+                avg_total_tokens: avg(&total_token_values),
+                avg_sidekick_runs: rows.iter().map(|row| row.sidekick_runs as f64).sum::<f64>()
+                    / row_count.max(1) as f64,
+                avg_sidekick_tool_calls: rows
+                    .iter()
+                    .map(|row| row.sidekick_tool_calls as f64)
+                    .sum::<f64>()
+                    / row_count.max(1) as f64,
+                avg_local_mem_gb: avg(&local_mem_values),
+            });
+        }
+        mode_summaries.sort_by(|a, b| {
+            b.avg_score
+                .partial_cmp(&a.avg_score)
+                .unwrap_or(std::cmp::Ordering::Equal)
+        });
+        let score_values: Vec<f64> = rows.iter().filter_map(|row| row.score).collect();
+        out.push(FusionBenchmarkRunSummaryRow {
+            run_id,
+            rows: rows.len() as u64,
+            ok_rows: rows.iter().filter(|row| row.status == "ok").count() as u64,
+            error_rows: rows.iter().filter(|row| row.status == "error").count() as u64,
+            skipped_rows: rows.iter().filter(|row| row.status == "skipped").count() as u64,
+            avg_score: avg(&score_values),
+            best_mode: mode_summaries
+                .iter()
+                .find(|mode| mode.avg_score.is_some())
+                .map(|mode| mode.mode.clone()),
+            modes: mode_summaries,
+        });
+    }
+    out.sort_by(|a, b| b.run_id.cmp(&a.run_id));
+    Ok(FusionBenchmarkRunSummary {
+        schema_version: "understudy.fusion_benchmark_run_summary.v1",
+        runs: out,
     })
 }
 
