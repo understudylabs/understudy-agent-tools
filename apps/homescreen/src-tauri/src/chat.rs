@@ -76,7 +76,9 @@ const CHAT_MAX_TOKENS: u32 = 8192;
 const BENCHMARK_MAX_TOKENS: u32 = 1024;
 const CHAT_THINKING_BUDGET: u32 = 2048;
 const BENCHMARK_THINKING_BUDGET: u32 = 0;
-const CHAT_SIDEKICK_WAIT_MS: u64 = 1_000;
+const CHAT_SIDEKICK_QUICK_WAIT_MS: u64 = 600;
+const CHAT_SIDEKICK_DEFAULT_WAIT_MS: u64 = 1_000;
+const CHAT_SIDEKICK_VERIFICATION_WAIT_MS: u64 = 1_800;
 const BENCHMARK_SIDEKICK_WAIT_MS: u64 = 20_000;
 const MAX_TOOL_ROUNDS: usize = 4;
 const SIDEKICK_MAX_TOOL_ROUNDS: usize = 2;
@@ -1652,6 +1654,29 @@ fn latest_user_message(messages: &[ChatMsg]) -> Option<&str> {
 struct SidekickRoutingDecision {
     eligible: bool,
     reason: &'static str,
+    wait_ms: u64,
+}
+
+#[derive(Clone, Copy)]
+struct ParallelSidekickPlan {
+    spawned: bool,
+    wait_ms: u64,
+}
+
+fn sidekick_ineligible(reason: &'static str) -> SidekickRoutingDecision {
+    SidekickRoutingDecision {
+        eligible: false,
+        reason,
+        wait_ms: 0,
+    }
+}
+
+fn sidekick_eligible(reason: &'static str, wait_ms: u64) -> SidekickRoutingDecision {
+    SidekickRoutingDecision {
+        eligible: true,
+        reason,
+        wait_ms,
+    }
 }
 
 #[derive(Default)]
@@ -1978,25 +2003,16 @@ fn route_parallel_sidekick(
         "judgment",
     ];
     if judgment_terms.iter().any(|needle| lower.contains(needle)) {
-        return SidekickRoutingDecision {
-            eligible: false,
-            reason: "main_keeps_judgment",
-        };
+        return sidekick_ineligible("main_keeps_judgment");
     }
     if signals.feedback_rows >= 5 && signals.useful_rate.is_some_and(|rate| rate < 0.25) {
-        return SidekickRoutingDecision {
-            eligible: false,
-            reason: "metrics_low_usefulness",
-        };
+        return sidekick_ineligible("metrics_low_usefulness");
     }
     if signals
         .escalation_rate
         .is_some_and(|rate| signals.feedback_rows >= 3 && rate > 0.6)
     {
-        return SidekickRoutingDecision {
-            eligible: false,
-            reason: "metrics_high_escalation",
-        };
+        return sidekick_ineligible("metrics_high_escalation");
     }
     if signals.sidekick_rows >= 3
         && matches!(
@@ -2004,20 +2020,14 @@ fn route_parallel_sidekick(
             (Some(sidekick_ms), Some(local_ms)) if local_ms > 0.0 && sidekick_ms > local_ms * 1.75
         )
     {
-        return SidekickRoutingDecision {
-            eligible: false,
-            reason: "metrics_sidekick_latency_high",
-        };
+        return sidekick_ineligible("metrics_sidekick_latency_high");
     }
     if signals.sidekick_benchmark_rows >= 4
         && signals
             .sidekick_benchmark_score
             .is_some_and(|score| score < 0.5)
     {
-        return SidekickRoutingDecision {
-            eligible: false,
-            reason: "benchmark_sidekick_score_low",
-        };
+        return sidekick_ineligible("benchmark_sidekick_score_low");
     }
     let mechanical = delegate_terms
         .iter()
@@ -2028,44 +2038,31 @@ fn route_parallel_sidekick(
             .handoff_rate
             .is_some_and(|rate| signals.feedback_rows >= 3 && rate < 0.2)
         {
-            return SidekickRoutingDecision {
-                eligible: false,
-                reason: "metrics_low_handoff",
-            };
+            return sidekick_ineligible("metrics_low_handoff");
         }
         if feedback.misses >= 3 && feedback.misses > feedback.useful.saturating_mul(2) {
-            return SidekickRoutingDecision {
-                eligible: false,
-                reason: "feedback_recent_misses",
-            };
+            return sidekick_ineligible("feedback_recent_misses");
         }
-        return SidekickRoutingDecision {
-            eligible: true,
-            reason: match term {
-                "search" | "find" | "trace" => "mechanical_search",
-                "check" | "verify" | "inspect" | "review" => "verification",
-                "summarize" | "reminder" | "what's left" | "whats left" => "summary",
-                "status" | "models" | "compare" => "runtime_inspection",
-                _ => "eligible",
-            },
+        let (reason, wait_ms) = match term {
+            "search" | "find" | "trace" => ("mechanical_search", CHAT_SIDEKICK_DEFAULT_WAIT_MS),
+            "check" | "verify" | "inspect" | "review" => {
+                ("verification", CHAT_SIDEKICK_VERIFICATION_WAIT_MS)
+            }
+            "summarize" | "reminder" | "what's left" | "whats left" => {
+                ("summary", CHAT_SIDEKICK_QUICK_WAIT_MS)
+            }
+            "status" | "models" | "compare" => ("runtime_inspection", CHAT_SIDEKICK_QUICK_WAIT_MS),
+            _ => ("eligible", CHAT_SIDEKICK_DEFAULT_WAIT_MS),
         };
+        return sidekick_eligible(reason, wait_ms);
     }
     if feedback.useful >= 3 && feedback.useful >= feedback.misses.saturating_mul(2).max(1) {
-        return SidekickRoutingDecision {
-            eligible: true,
-            reason: "feedback_positive_prior",
-        };
+        return sidekick_eligible("feedback_positive_prior", CHAT_SIDEKICK_DEFAULT_WAIT_MS);
     }
     if signals.feedback_rows >= 5 && signals.useful_rate.is_some_and(|rate| rate >= 0.75) {
-        return SidekickRoutingDecision {
-            eligible: true,
-            reason: "metrics_success_prior",
-        };
+        return sidekick_eligible("metrics_success_prior", CHAT_SIDEKICK_DEFAULT_WAIT_MS);
     }
-    SidekickRoutingDecision {
-        eligible: false,
-        reason: "no_mechanical_subtask",
-    }
+    sidekick_ineligible("no_mechanical_subtask")
 }
 
 fn maybe_spawn_parallel_sidekick(
@@ -2075,7 +2072,11 @@ fn maybe_spawn_parallel_sidekick(
     session_id: &str,
     messages: &[ChatMsg],
     on_event: Option<&Channel<ChatEvent>>,
-) -> bool {
+) -> ParallelSidekickPlan {
+    let no_spawn = ParallelSidekickPlan {
+        spawned: false,
+        wait_ms: 0,
+    };
     let db = app.state::<crate::db::Db>();
     let prompt = latest_user_message(messages).map(str::trim).unwrap_or("");
     let record_decision = |eligible: bool, reason: &'static str| {
@@ -2089,19 +2090,19 @@ fn maybe_spawn_parallel_sidekick(
     };
     if route != "local" {
         record_decision(false, "non_local_route");
-        return false;
+        return no_spawn;
     }
     if db.setting_get("sidekick.parallel").as_deref() == Some("off") {
         record_decision(false, "parallel_toggle_off");
-        return false;
+        return no_spawn;
     }
     if prompt.is_empty() {
         record_decision(false, "no_user_prompt");
-        return false;
+        return no_spawn;
     }
     if approximate_token_count(prompt) > CHAT_COMPACTION_TOKEN_THRESHOLD / 2 {
         record_decision(false, "compaction_boundary_main");
-        return false;
+        return no_spawn;
     }
     if app
         .state::<Residency>()
@@ -2109,14 +2110,14 @@ fn maybe_spawn_parallel_sidekick(
         .is_none()
     {
         record_decision(false, "no_warm_sidekick");
-        return false;
+        return no_spawn;
     }
     let feedback = db.sidekick_feedback_summary(20).unwrap_or_default();
     let signals = sidekick_routing_signals(app);
     let decision = route_parallel_sidekick(prompt, feedback, signals);
     record_decision(decision.eligible, decision.reason);
     if !decision.eligible {
-        return false;
+        return no_spawn;
     }
 
     let task = format!("Run a quick background sidekick pass on this user request:\n{prompt}");
@@ -2125,12 +2126,13 @@ fn maybe_spawn_parallel_sidekick(
         "context": format!("This is a non-visual parallel sidekick lane. Routing reason: {}. Do not make final decisions. Look for useful checks, trace/runtime context, or concise second-pass observations for the main agent.", decision.reason),
         "expected_output": "Return compact findings, uncertainty, and ESCALATE_TO_MAIN only if the request requires main-agent judgment."
     });
-    let _ = db.record_sidekick_event(session_id, "parallel", "queued", decision.reason);
+    let detail = format!("{} · wait_ms={}", decision.reason, decision.wait_ms);
+    let _ = db.record_sidekick_event(session_id, "parallel", "queued", &detail);
     if let Some(on_event) = on_event {
         let _ = on_event.send(ChatEvent::SidekickEvent {
             mode: "parallel".to_string(),
             stage: "queued".to_string(),
-            detail: decision.reason.to_string(),
+            detail,
         });
     }
     let app = app.clone();
@@ -2147,7 +2149,10 @@ fn maybe_spawn_parallel_sidekick(
         )
         .await;
     });
-    true
+    ParallelSidekickPlan {
+        spawned: true,
+        wait_ms: decision.wait_ms,
+    }
 }
 
 fn consume_sidekick_handoffs(app: &AppHandle, session_id: &str) -> Vec<Value> {
@@ -2286,7 +2291,7 @@ pub async fn chat_stream(
     let session_id = session_id.unwrap_or_else(|| "default".to_string());
     let mut route =
         apply_dynamic_chat_route(&app, &session_id, &route, slot_id, &messages, &on_event);
-    let sidekick_spawned = maybe_spawn_parallel_sidekick(
+    let sidekick_plan = maybe_spawn_parallel_sidekick(
         &app,
         &route,
         slot_id,
@@ -2326,8 +2331,8 @@ pub async fn chat_stream(
         wait_for_sidekick_handoffs(
             &app,
             &session_id,
-            sidekick_spawned,
-            CHAT_SIDEKICK_WAIT_MS,
+            sidekick_plan.spawned,
+            sidekick_plan.wait_ms,
             Some(&on_event),
         )
         .await,
@@ -2422,7 +2427,7 @@ pub async fn chat_stream(
                     prompt_tokens: Some(prompt_tokens),
                     completion_tokens: Some(completion_tokens),
                     tool_calls: tool_count,
-                    sidekick_spawned,
+                    sidekick_spawned: sidekick_plan.spawned,
                     gateway_used: route == "cloud",
                     compacted,
                     compaction_reason: compaction_reason.clone(),
@@ -2449,7 +2454,7 @@ pub async fn chat_stream(
                     prompt_tokens: Some(prompt_tokens),
                     completion_tokens: Some(completion_tokens),
                     tool_calls: tool_count,
-                    sidekick_spawned,
+                    sidekick_spawned: sidekick_plan.spawned,
                     gateway_used: route == "cloud",
                     compacted,
                     compaction_reason: compaction_reason.clone(),
@@ -2559,7 +2564,7 @@ pub async fn chat_stream(
             prompt_tokens: Some(prompt_tokens),
             completion_tokens: Some(completion_tokens),
             tool_calls: tool_count,
-            sidekick_spawned,
+            sidekick_spawned: sidekick_plan.spawned,
             gateway_used: route == "cloud",
             compacted,
             compaction_reason,
@@ -2593,8 +2598,14 @@ pub async fn benchmark_local_chat(
         role: "user".to_string(),
         content: prompt.clone(),
     }];
-    let sidekick_spawned = enable_parallel_sidekick
-        && maybe_spawn_parallel_sidekick(app, "local", Some(slot_id), session_id, &messages, None);
+    let sidekick_plan = if enable_parallel_sidekick {
+        maybe_spawn_parallel_sidekick(app, "local", Some(slot_id), session_id, &messages, None)
+    } else {
+        ParallelSidekickPlan {
+            spawned: false,
+            wait_ms: 0,
+        }
+    };
     let url = format!("http://127.0.0.1:{port}/v1/chat/completions");
     let mut outbound_messages = vec![json!({
         "role": "system",
@@ -2604,7 +2615,7 @@ pub async fn benchmark_local_chat(
         wait_for_sidekick_handoffs(
             app,
             session_id,
-            sidekick_spawned,
+            sidekick_plan.spawned,
             BENCHMARK_SIDEKICK_WAIT_MS,
             None,
         )
@@ -3069,4 +3080,49 @@ fn finalize_tool_calls(mut tool_calls: Vec<ToolCallAcc>) -> Vec<ToolCallAcc> {
             Some(call)
         })
         .collect()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn feedback(useful: u64, misses: u64) -> SidekickFeedbackSummary {
+        SidekickFeedbackSummary { useful, misses }
+    }
+
+    #[test]
+    fn sidekick_policy_keeps_judgment_with_main() {
+        let decision = route_parallel_sidekick(
+            "should we redesign the routing architecture?",
+            feedback(0, 0),
+            SidekickRoutingSignals::default(),
+        );
+        assert!(!decision.eligible);
+        assert_eq!(decision.reason, "main_keeps_judgment");
+        assert_eq!(decision.wait_ms, 0);
+    }
+
+    #[test]
+    fn sidekick_policy_waits_longer_for_verification() {
+        let decision = route_parallel_sidekick(
+            "please verify the current model status",
+            feedback(0, 0),
+            SidekickRoutingSignals::default(),
+        );
+        assert!(decision.eligible);
+        assert_eq!(decision.reason, "verification");
+        assert_eq!(decision.wait_ms, CHAT_SIDEKICK_VERIFICATION_WAIT_MS);
+    }
+
+    #[test]
+    fn sidekick_policy_uses_quick_wait_for_summary() {
+        let decision = route_parallel_sidekick(
+            "what's left for fusion reminder",
+            feedback(0, 0),
+            SidekickRoutingSignals::default(),
+        );
+        assert!(decision.eligible);
+        assert_eq!(decision.reason, "summary");
+        assert_eq!(decision.wait_ms, CHAT_SIDEKICK_QUICK_WAIT_MS);
+    }
 }
