@@ -309,6 +309,15 @@ impl Db {
             .map_err(Into::into)
     }
 
+    pub fn set_sidekick_run_feedback(&self, run_id: u64, accepted: Option<bool>) -> Result<()> {
+        let conn = self.conn()?;
+        conn.execute(
+            "UPDATE sidekick_runs SET accepted=?1 WHERE id=?2",
+            rusqlite::params![accepted.map(|v| if v { 1_i64 } else { 0_i64 }), run_id as i64],
+        )?;
+        Ok(())
+    }
+
     pub fn consume_sidekick_handoffs(
         &self,
         session_id: &str,

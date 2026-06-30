@@ -338,6 +338,17 @@ pub fn sidekick_runs(app: AppHandle, limit: Option<u32>) -> Result<Vec<SidekickR
 }
 
 #[tauri::command]
+pub fn set_sidekick_run_feedback(
+    app: AppHandle,
+    run_id: u64,
+    accepted: Option<bool>,
+) -> Result<(), String> {
+    app.state::<crate::db::Db>()
+        .set_sidekick_run_feedback(run_id, accepted)
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
 pub fn sidekick_decisions(
     app: AppHandle,
     limit: Option<u32>,

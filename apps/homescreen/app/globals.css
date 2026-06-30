@@ -576,8 +576,27 @@ select,
 .sidekick-run {
   display: grid;
   grid-template-columns: 1fr auto;
+  align-items: start;
   gap: 12px;
   padding: 8px 0;
+}
+.sidekick-run-meta {
+  display: grid;
+  justify-items: end;
+  gap: 5px;
+}
+.run-feedback {
+  display: flex;
+  gap: 4px;
+}
+.run-feedback .mini-btn {
+  color: var(--text-2);
+  font-size: 11px;
+  padding: 4px 7px;
+}
+.run-feedback .mini-btn.active {
+  background: color-mix(in srgb, var(--accent) 18%, transparent);
+  color: color-mix(in srgb, var(--accent) 76%, white);
 }
 .sidekick-policy-row {
   display: grid;

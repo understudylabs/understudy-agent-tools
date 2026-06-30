@@ -130,6 +130,15 @@ export function StatusPane({ status }: { status: StatusController }) {
     }
   }
 
+  async function markSidekickRun(runId: number, accepted: boolean | null) {
+    try {
+      await invoke("set_sidekick_run_feedback", { runId, accepted });
+      refreshSidekickRuns();
+    } catch (e) {
+      setBootErr(String(e));
+    }
+  }
+
   const model = useMemo(() => {
     const rows = bootstrap?.snapshots ?? [];
     return (
@@ -346,9 +355,26 @@ export function StatusPane({ status }: { status: StatusController }) {
                       </div>
                       <div className="svc-desc">{run.task}</div>
                     </div>
-                    <span className="svc-state">
-                      {run.elapsed_ms ? `${(run.elapsed_ms / 1000).toFixed(1)}s` : "—"} · {run.tool_calls} tools
-                    </span>
+                    <div className="sidekick-run-meta">
+                      <span className="svc-state">
+                        {run.elapsed_ms ? `${(run.elapsed_ms / 1000).toFixed(1)}s` : "—"} · {run.tool_calls} tools
+                        {run.accepted === true ? " · useful" : run.accepted === false ? " · miss" : ""}
+                      </span>
+                      <div className="run-feedback" aria-label="Sidekick run feedback">
+                        <button
+                          className={"mini-btn" + (run.accepted === true ? " active" : "")}
+                          onClick={() => markSidekickRun(run.id, run.accepted === true ? null : true)}
+                        >
+                          Use
+                        </button>
+                        <button
+                          className={"mini-btn" + (run.accepted === false ? " active" : "")}
+                          onClick={() => markSidekickRun(run.id, run.accepted === false ? null : false)}
+                        >
+                          Miss
+                        </button>
+                      </div>
+                    </div>
                   </div>
                 ))}
               </div>
