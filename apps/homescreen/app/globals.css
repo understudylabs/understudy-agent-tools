@@ -408,6 +408,45 @@ select,
   color: var(--text-3);
   margin-top: 2px;
 }
+.app-icon-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(92px, 1fr));
+  gap: 10px;
+}
+.app-icon-choice {
+  display: grid;
+  gap: 8px;
+  justify-items: center;
+  min-width: 0;
+  padding: 10px;
+  border: 1px solid transparent;
+  border-radius: var(--r-control);
+  background: color-mix(in srgb, var(--surface-2) 52%, transparent);
+  color: var(--text-3);
+  font: inherit;
+  cursor: pointer;
+}
+.app-icon-choice:hover {
+  background: var(--hover);
+  color: var(--text-2);
+}
+.app-icon-choice.active {
+  border-color: color-mix(in srgb, var(--accent) 52%, transparent);
+  background: color-mix(in srgb, var(--accent) 10%, var(--surface));
+  color: var(--text);
+}
+.app-icon-choice img {
+  width: 54px;
+  height: 54px;
+  border-radius: 12px;
+  user-select: none;
+}
+.app-icon-choice span {
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
 
 /* Metric — always SF Mono */
 .metric {

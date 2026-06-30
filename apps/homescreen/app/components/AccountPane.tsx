@@ -3,6 +3,14 @@ import { useEffect, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 
 type Any = Record<string, unknown>;
+type AppIconId = "classic" | "graphite" | "stamp" | "paper";
+
+const APP_ICONS: { id: AppIconId; label: string; src: string }[] = [
+  { id: "classic", label: "Classic", src: "/brand/app-icons/classic.png" },
+  { id: "graphite", label: "Graphite", src: "/brand/app-icons/graphite.png" },
+  { id: "stamp", label: "Stamp", src: "/brand/app-icons/stamp.png" },
+  { id: "paper", label: "Paper", src: "/brand/app-icons/paper.png" },
+];
 
 export function AccountPane() {
   const [status, setStatus] = useState<Any | null>(null);
@@ -11,6 +19,7 @@ export function AccountPane() {
   const [err, setErr] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
   const [srv, setSrv] = useState<{ base_url: string; token: string } | null>(null);
+  const [appIcon, setAppIcon] = useState<AppIconId>("classic");
 
   // login flow
   const [email, setEmail] = useState("");
@@ -21,6 +30,10 @@ export function AccountPane() {
     invoke<Any>("account_status").then(setStatus).catch((e) => setErr(String(e)));
   };
   useEffect(() => {
+    const storedIcon = localStorage.getItem("understudy-app-icon") as AppIconId | null;
+    if (storedIcon && APP_ICONS.some((icon) => icon.id === storedIcon)) {
+      setAppIcon(storedIcon);
+    }
     refresh();
     invoke<Any>("account_platforms")
       .then((v) => setPlatforms(((v.adapters as Any[]) || [])))
@@ -29,6 +42,11 @@ export function AccountPane() {
       .then(setSrv)
       .catch(() => {});
   }, []);
+
+  const chooseAppIcon = (icon: AppIconId) => {
+    setAppIcon(icon);
+    localStorage.setItem("understudy-app-icon", icon);
+  };
 
   const signedIn = Boolean(status?.signed_in);
 
@@ -87,6 +105,27 @@ export function AccountPane() {
       </div>
       <div className="pane-body">
         {err && <div className="card err">{err}</div>}
+
+        <div className="card">
+          <div className="card-title" style={{ marginBottom: 4 }}>App icon</div>
+          <div className="card-sub" style={{ marginBottom: 12 }}>
+            Choose a visual style. Native Dock icon switching is queued behind the macOS bridge.
+          </div>
+          <div className="app-icon-grid">
+            {APP_ICONS.map((icon) => (
+              <button
+                key={icon.id}
+                type="button"
+                className={"app-icon-choice" + (appIcon === icon.id ? " active" : "")}
+                aria-pressed={appIcon === icon.id}
+                onClick={() => chooseAppIcon(icon.id)}
+              >
+                <img src={icon.src} alt="" draggable={false} />
+                <span>{icon.label}</span>
+              </button>
+            ))}
+          </div>
+        </div>
 
         {srv && (
           <div className="card">
