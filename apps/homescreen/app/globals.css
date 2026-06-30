@@ -528,11 +528,19 @@ select,
 }
 
 /* ---------- Scrollbar (subtle, native) ---------- */
-.content::-webkit-scrollbar { width: 10px; }
+.content {
+  scrollbar-width: thin;
+  scrollbar-color: color-mix(in srgb, var(--text-3) 16%, transparent) transparent;
+}
+.content::-webkit-scrollbar { width: 6px; }
 .content::-webkit-scrollbar-thumb {
-  background: var(--border);
+  background: color-mix(in srgb, var(--text-3) 18%, transparent);
   border-radius: var(--r-pill);
-  border: 3px solid var(--bg);
+  border: 2px solid transparent;
+  background-clip: content-box;
+}
+.content::-webkit-scrollbar-track {
+  background: transparent;
 }
 
 /* ---------- Segment control (route toggle) ---------- */
@@ -791,10 +799,10 @@ select,
 .reasoning-substream:hover .reasoning-substream-text,
 .reasoning-substream:focus-within .reasoning-substream-text {
   scrollbar-width: thin;
-  scrollbar-color: color-mix(in srgb, var(--text-3) 20%, transparent) transparent;
+  scrollbar-color: color-mix(in srgb, var(--text-3) 14%, transparent) transparent;
 }
 .reasoning-substream-text::-webkit-scrollbar {
-  width: 8px;
+  width: 5px;
 }
 .reasoning-substream-text::-webkit-scrollbar-track {
   background: transparent;
@@ -807,7 +815,7 @@ select,
 }
 .reasoning-substream:hover .reasoning-substream-text::-webkit-scrollbar-thumb,
 .reasoning-substream:focus-within .reasoning-substream-text::-webkit-scrollbar-thumb {
-  background-color: color-mix(in srgb, var(--text-3) 18%, transparent);
+  background-color: color-mix(in srgb, var(--text-3) 14%, transparent);
 }
 .tool-trace-list {
   display: grid;
