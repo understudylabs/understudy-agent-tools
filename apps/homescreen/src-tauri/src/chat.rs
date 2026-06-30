@@ -690,6 +690,52 @@ fn sidekick_tool_schemas() -> Vec<Value> {
                 }
             }
         }),
+        json!({
+            "type": "function",
+            "function": {
+                "name": "skills_list",
+                "description": "List bundled Understudy skills with short descriptions. Read-only. Use to find relevant playbooks.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "limit": { "type": "integer", "minimum": 1, "maximum": 50 }
+                    },
+                    "additionalProperties": false
+                }
+            }
+        }),
+        json!({
+            "type": "function",
+            "function": {
+                "name": "skills_search",
+                "description": "Search bundled Understudy skill names and descriptions. Read-only.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "query": { "type": "string" },
+                        "limit": { "type": "integer", "minimum": 1, "maximum": 20 }
+                    },
+                    "required": ["query"],
+                    "additionalProperties": false
+                }
+            }
+        }),
+        json!({
+            "type": "function",
+            "function": {
+                "name": "skill_open",
+                "description": "Open a bounded slice of a bundled Understudy skill by name. Read-only.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "name": { "type": "string" },
+                        "max_lines": { "type": "integer", "minimum": 1, "maximum": 160 }
+                    },
+                    "required": ["name"],
+                    "additionalProperties": false
+                }
+            }
+        }),
     ]
 }
 
@@ -720,6 +766,9 @@ fn sidekick_tool_result(app: &AppHandle, name: &str, args: &Value) -> Result<Val
         "repo_files" => sidekick_repo_files(args)?,
         "repo_search" => sidekick_repo_search(args)?,
         "repo_open" => sidekick_repo_open(args)?,
+        "skills_list" => sidekick_skills_list(args)?,
+        "skills_search" => sidekick_skills_search(args)?,
+        "skill_open" => sidekick_skill_open(args)?,
         other => return Err(format!("unknown sidekick tool: {other}")),
     })
 }
@@ -846,6 +895,113 @@ fn sidekick_repo_open(args: &Value) -> Result<Value, String> {
         "start_line": start,
         "lines": lines,
         "truncated": lines.len() >= max_lines || bytes >= SIDEKICK_FILE_READ_LIMIT
+    }))
+}
+
+fn skills_root() -> Result<PathBuf, String> {
+    Ok(repo_root()?.join("skills"))
+}
+
+#[derive(Clone)]
+struct SkillSummary {
+    name: String,
+    path: PathBuf,
+    description: String,
+}
+
+fn skill_description(text: &str) -> String {
+    text.lines()
+        .find_map(|line| {
+            line.trim()
+                .strip_prefix("description:")
+                .or_else(|| line.trim().strip_prefix("purpose:"))
+                .map(|value| value.trim().trim_matches('"').to_string())
+        })
+        .unwrap_or_default()
+}
+
+fn skill_summaries() -> Result<Vec<SkillSummary>, String> {
+    let root = skills_root()?;
+    let entries = std::fs::read_dir(&root).map_err(|e| format!("cannot read skills: {e}"))?;
+    let mut skills = vec![];
+    for entry in entries {
+        let entry = entry.map_err(|e| format!("cannot read skill entry: {e}"))?;
+        let path = entry.path().join("SKILL.md");
+        if !path.is_file() {
+            continue;
+        }
+        let Some(name) = entry.file_name().to_str().map(|s| s.to_string()) else {
+            continue;
+        };
+        let text = std::fs::read_to_string(&path).unwrap_or_default();
+        skills.push(SkillSummary {
+            name,
+            path,
+            description: skill_description(&text),
+        });
+    }
+    skills.sort_by(|a, b| a.name.cmp(&b.name));
+    Ok(skills)
+}
+
+fn sidekick_skills_list(args: &Value) -> Result<Value, String> {
+    let limit = bounded_limit(args, "limit", 30, 50);
+    let skills = skill_summaries()?;
+    let rows: Vec<Value> = skills
+        .iter()
+        .take(limit)
+        .map(|skill| {
+            json!({
+                "name": skill.name,
+                "description": skill.description,
+            })
+        })
+        .collect();
+    Ok(json!({ "skills": rows, "truncated": skills.len() > limit }))
+}
+
+fn sidekick_skills_search(args: &Value) -> Result<Value, String> {
+    let query = required_string(args, "query")?;
+    let lower = query.to_lowercase();
+    let limit = bounded_limit(args, "limit", 10, 20);
+    let matches: Vec<Value> = skill_summaries()?
+        .into_iter()
+        .filter(|skill| {
+            skill.name.to_lowercase().contains(&lower)
+                || skill.description.to_lowercase().contains(&lower)
+        })
+        .take(limit)
+        .map(|skill| {
+            json!({
+                "name": skill.name,
+                "description": skill.description,
+            })
+        })
+        .collect();
+    Ok(json!({ "query": query, "matches": matches, "truncated": matches.len() >= limit }))
+}
+
+fn sidekick_skill_open(args: &Value) -> Result<Value, String> {
+    let name = required_string(args, "name")?;
+    let max_lines = bounded_limit(args, "max_lines", 120, 160);
+    let skill = skill_summaries()?
+        .into_iter()
+        .find(|skill| skill.name == name)
+        .ok_or_else(|| format!("unknown skill: {name}"))?;
+    let text =
+        std::fs::read_to_string(&skill.path).map_err(|e| format!("cannot read skill: {e}"))?;
+    let lines: Vec<String> = text
+        .lines()
+        .take(max_lines)
+        .enumerate()
+        .map(|(idx, line)| format!("{}: {}", idx + 1, line))
+        .collect();
+    Ok(json!({
+        "name": skill.name,
+        "description": skill.description,
+        "path": skill.path.strip_prefix(repo_root()?).unwrap_or(&skill.path).display().to_string(),
+        "lines": lines,
+        "truncated": text.lines().count() > max_lines,
     }))
 }
 
