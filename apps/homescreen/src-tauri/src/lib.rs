@@ -152,6 +152,7 @@ pub fn run() {
             commands::set_sidekick_run_feedback,
             commands::sidekick_decisions,
             commands::sidekick_events,
+            commands::sidekick_session_summaries,
             commands::aa_models,
             commands::aa_attribution,
             commands::get_setting,

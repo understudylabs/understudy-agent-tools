@@ -87,6 +87,17 @@ pub struct SidekickEventRow {
     pub created_at: String,
 }
 
+#[derive(Serialize, Clone)]
+pub struct SidekickSessionSummaryRow {
+    pub session_key: String,
+    pub session_id: String,
+    pub model: String,
+    pub message_count: u64,
+    pub has_memory: bool,
+    pub memory_preview: Option<String>,
+    pub updated_at: String,
+}
+
 #[derive(Clone, Copy, Debug, Default)]
 pub struct SidekickFeedbackSummary {
     pub useful: u64,
@@ -609,6 +620,54 @@ impl Db {
             rusqlite::params![session_key, session_id, model, messages, now_iso()],
         )?;
         Ok(())
+    }
+
+    pub fn list_sidekick_session_summaries(
+        &self,
+        limit: u32,
+    ) -> Result<Vec<SidekickSessionSummaryRow>> {
+        let conn = self.conn()?;
+        let mut stmt = conn.prepare(
+            "SELECT session_key, session_id, model, messages, updated_at
+             FROM sidekick_sessions ORDER BY updated_at DESC LIMIT ?1",
+        )?;
+        let rows = stmt.query_map([limit.max(1).min(100) as i64], |r| {
+            let messages_raw: String = r.get(3)?;
+            let messages =
+                serde_json::from_str::<Vec<serde_json::Value>>(&messages_raw).unwrap_or_default();
+            let memory = messages.iter().find_map(|message| {
+                let role = message.get("role").and_then(|v| v.as_str());
+                let content = message.get("content").and_then(|v| v.as_str())?;
+                if role == Some("system") && content.starts_with("Sidekick compacted memory:") {
+                    Some(content.to_string())
+                } else {
+                    None
+                }
+            });
+            let memory_preview = memory.as_ref().map(|value| {
+                let one_line = value.split_whitespace().collect::<Vec<_>>().join(" ");
+                if one_line.len() <= 240 {
+                    one_line
+                } else {
+                    let mut end = 240;
+                    while end > 0 && !one_line.is_char_boundary(end) {
+                        end -= 1;
+                    }
+                    format!("{}...", &one_line[..end])
+                }
+            });
+            Ok(SidekickSessionSummaryRow {
+                session_key: r.get(0)?,
+                session_id: r.get(1)?,
+                model: r.get(2)?,
+                message_count: messages.len() as u64,
+                has_memory: memory.is_some(),
+                memory_preview,
+                updated_at: r.get(4)?,
+            })
+        })?;
+        rows.collect::<rusqlite::Result<Vec<_>>>()
+            .map_err(Into::into)
     }
 }
 

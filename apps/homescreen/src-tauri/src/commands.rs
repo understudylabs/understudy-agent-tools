@@ -3,7 +3,7 @@ use crate::account;
 use crate::bin;
 use crate::db::{
     BenchRow, FusionBenchmarkInput, FusionBenchmarkRow, SidekickDecisionRow, SidekickEventRow,
-    SidekickRunRow,
+    SidekickRunRow, SidekickSessionSummaryRow,
 };
 use crate::knowledge::{self, Dossier};
 use crate::mcp;
@@ -1123,6 +1123,16 @@ pub fn sidekick_events(
 ) -> Result<Vec<SidekickEventRow>, String> {
     app.state::<crate::db::Db>()
         .list_sidekick_events(limit.unwrap_or(10))
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn sidekick_session_summaries(
+    app: AppHandle,
+    limit: Option<u32>,
+) -> Result<Vec<SidekickSessionSummaryRow>, String> {
+    app.state::<crate::db::Db>()
+        .list_sidekick_session_summaries(limit.unwrap_or(20))
         .map_err(|e| e.to_string())
 }
 
