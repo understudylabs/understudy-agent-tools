@@ -27,6 +27,7 @@ Models exposed:
   understudy-fusion-sidekick-gateway
   understudy-fusion-sidekick-advisory-main
   understudy-fusion-sidekick-advisory-gateway
+  understudy-fusion-routing
 `;
 }
 
@@ -114,6 +115,12 @@ function modelSpec(requestedModel, cfg) {
         sidekickMode: "advisory",
         route: "gateway",
       };
+    case "understudy-fusion-routing":
+      return {
+        routing: true,
+        sidekickMode: "off",
+        route: "routing",
+      };
     case "understudy-fusion-main":
     default:
       return {
@@ -124,6 +131,59 @@ function modelSpec(requestedModel, cfg) {
         route: "main",
       };
   }
+}
+
+function textLength(value) {
+  if (typeof value === "string") return value.length;
+  if (Array.isArray(value)) {
+    return value.reduce((total, part) => total + textLength(part?.text ?? part?.content ?? part), 0);
+  }
+  if (value == null) return 0;
+  return JSON.stringify(value).length;
+}
+
+function routeRequest(reqBody, cfg) {
+  const messages = Array.isArray(reqBody.messages) ? reqBody.messages : [];
+  const toolCount = Array.isArray(reqBody.tools) ? reqBody.tools.length : 0;
+  const toolMessages = messages.filter((message) => message.role === "tool").length;
+  const userTextChars = messages
+    .filter((message) => message.role === "user")
+    .reduce((total, message) => total + textLength(message.content), 0);
+  const hasWriteIntent = messages.some((message) => {
+    const text = String(typeof message.content === "string" ? message.content : JSON.stringify(message.content ?? "")).toLowerCase();
+    return /\b(create|update|delete|remove|send|submit|claim|attach|write|patch|commit)\b/.test(text);
+  });
+  const highComplexity = toolCount >= 8 || toolMessages >= 2 || userTextChars > 12000 || (hasWriteIntent && toolCount >= 4);
+  const localToolWork = toolCount > 0 || toolMessages > 0 || userTextChars > 4000;
+
+  if (cfg.gatewayBaseUrl && cfg.gatewayApiKey && highComplexity) {
+    return {
+      baseUrl: cfg.gatewayBaseUrl,
+      model: "glm-5.2",
+      apiKey: cfg.gatewayApiKey,
+      route: "gateway",
+      sidekickMode: "background",
+      reason: "high_complexity_tool_or_write_work",
+    };
+  }
+  if (localToolWork) {
+    return {
+      baseUrl: cfg.mainBaseUrl,
+      model: cfg.mainModel,
+      apiKey: null,
+      route: "main",
+      sidekickMode: "background",
+      reason: "local_tool_or_long_context_work",
+    };
+  }
+  return {
+    baseUrl: cfg.fastBaseUrl,
+    model: cfg.fastModel,
+    apiKey: null,
+    route: "fast",
+    sidekickMode: "off",
+    reason: "small_no_tool_turn",
+  };
 }
 
 function compactText(value, max = 6000) {
@@ -205,7 +265,8 @@ function injectAdvice(messages, advice) {
 async function chatCompletions(reqBody) {
   const cfg = config();
   const requestedModel = reqBody.model ?? "understudy-fusion-main";
-  const spec = modelSpec(requestedModel, cfg);
+  const requestedSpec = modelSpec(requestedModel, cfg);
+  const spec = requestedSpec.routing ? routeRequest(reqBody, cfg) : requestedSpec;
   let messages = Array.isArray(reqBody.messages) ? reqBody.messages : [];
   let sidekick = { used: false, mode: spec.sidekickMode, pending: false, error: null, advice_chars: 0 };
   let backgroundSidekick = null;
@@ -254,6 +315,12 @@ async function chatCompletions(reqBody) {
     route: spec.route,
     upstream_model: spec.model,
     sidekick_mode: spec.sidekickMode,
+    routing: requestedSpec.routing
+      ? {
+          policy: "heuristic.v1",
+          reason: spec.reason,
+        }
+      : null,
     sidekick,
   };
   return response;
@@ -274,6 +341,7 @@ async function handler(req, res) {
           { id: "understudy-fusion-sidekick-gateway", object: "model" },
           { id: "understudy-fusion-sidekick-advisory-main", object: "model" },
           { id: "understudy-fusion-sidekick-advisory-gateway", object: "model" },
+          { id: "understudy-fusion-routing", object: "model" },
         ],
       });
     }
