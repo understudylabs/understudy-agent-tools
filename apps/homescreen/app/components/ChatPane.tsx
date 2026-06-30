@@ -230,6 +230,7 @@ export function ChatPane({ resetToken }: { resetToken: number }) {
   const [thinkingPending, setThinkingPending] = useState<{ slotId: number; thinking: boolean } | null>(null);
   const [personaReady, setPersonaReady] = useState(false);
   const [personaCycle, setPersonaCycle] = useState(0);
+  const [introThinking, setIntroThinking] = useState(true);
 
   const refreshModels = async () => {
     try {
@@ -272,6 +273,12 @@ export function ChatPane({ resetToken }: { resetToken: number }) {
     const timer = window.setInterval(refreshModels, 2500);
     return () => window.clearInterval(timer);
   }, []);
+
+  useEffect(() => {
+    setIntroThinking(true);
+    const timer = window.setTimeout(() => setIntroThinking(false), 1850);
+    return () => window.clearTimeout(timer);
+  }, [personaCycle]);
 
   const selectedChoice = useMemo(
     () => choices.find((choice) => choice.id === selectedModel) ?? choices[0] ?? CLOUD_MODEL,
@@ -388,6 +395,7 @@ export function ChatPane({ resetToken }: { resetToken: number }) {
     setSessionId(crypto.randomUUID());
     setAssistantSpeaking(false);
     setPersonaReady(false);
+    setIntroThinking(true);
     setPersonaCycle((value) => value + 1);
   };
 
@@ -420,6 +428,8 @@ export function ChatPane({ resetToken }: { resetToken: number }) {
     (selectedChoice.loading || thinkingPending?.slotId === selectedChoice.slotId);
 
   const personaState: PersonaState = personaLoading
+    ? "thinking"
+    : introThinking && messages.length === 0 && !input.trim()
     ? "thinking"
     : streaming
     ? assistantSpeaking
