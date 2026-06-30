@@ -7,6 +7,7 @@ import { afterEach, beforeEach, describe, it } from "node:test";
 
 const runner = ["node", resolve("scripts/automationbench-handoff-runner.mjs")];
 const matrixRunner = ["node", resolve("scripts/automationbench-fusion-matrix.mjs")];
+const statusRunner = ["node", resolve("scripts/automationbench-fusion-status.mjs")];
 
 let dir;
 
@@ -68,6 +69,34 @@ function writeFixture() {
 }
 
 describe("automationbench handoff runner", () => {
+  it("prints Fusion benchmark status as JSON", () => {
+    const logPath = join(dir, "status.log");
+    const outDir = join(dir, "out");
+    mkdirSync(outDir, { recursive: true });
+    writeFileSync(logPath, "Processing 570 groups (600 total rollouts):   1%| | 3/570 [02:22<7:03:35, 44.83s\n");
+    writeFileSync(join(outDir, "result.json"), "{}\n");
+    const result = spawnSync(
+      statusRunner[0],
+      [
+        ...statusRunner.slice(1),
+        "--session",
+        "missing-understudy-test-session",
+        "--log",
+        logPath,
+        "--out-dir",
+        outDir,
+        "--json",
+      ],
+      { encoding: "utf8" },
+    );
+    assert.equal(result.status, 0, result.stderr);
+    const payload = JSON.parse(result.stdout);
+    assert.equal(payload.schema_version, "understudy.automationbench_fusion_status.v1");
+    assert.equal(payload.tmux.active, false);
+    assert.match(payload.log.progress, /3\/570/);
+    assert.equal(payload.results.length, 1);
+  });
+
   it("prints candidate commands from a handoff packet", () => {
     const { handoffPath } = writeFixture();
     const result = spawnSync(runner[0], [...runner.slice(1), "--handoff", handoffPath, "--print-commands"], {
