@@ -421,6 +421,11 @@ export function ChatPane({ resetToken }: { resetToken: number }) {
     : input.trim()
       ? "listening"
       : "idle";
+  const latestAssistant = [...messages].reverse().find((message) => message.role === "assistant");
+  const sidekickTool = latestAssistant?.tools?.find((tool) => tool.name === "delegate_to_sidekick");
+  const sidekickActive = sidekickTool?.state === "input-available" || sidekickTool?.state === "input-streaming";
+  const showSidekickPersona = Boolean(sidekickTool);
+  const sidekickPersonaState: PersonaState = sidekickActive ? "thinking" : "idle";
 
   return (
     <div
@@ -445,6 +450,16 @@ export function ChatPane({ resetToken }: { resetToken: number }) {
           className="persona-halo"
           onReady={() => setPersonaReady(true)}
         />
+        {showSidekickPersona && (
+          <div className={"sidekick-persona-orbit" + (sidekickActive ? " active" : "")}>
+            <Persona
+              key={`sidekick-${personaCycle}`}
+              variant="halo"
+              state={sidekickPersonaState}
+              className="sidekick-persona-halo"
+            />
+          </div>
+        )}
       </div>
       <Conversation className="min-h-0">
         <ConversationContent className="gap-5 px-4 pb-3 pt-0">

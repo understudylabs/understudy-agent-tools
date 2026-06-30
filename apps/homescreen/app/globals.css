@@ -693,6 +693,34 @@ select,
     opacity 300ms cubic-bezier(0.2, 0.7, 0.2, 1),
     transform 300ms cubic-bezier(0.2, 0.7, 0.2, 1);
 }
+.sidekick-persona-orbit {
+  grid-area: 1 / 1;
+  width: min(52vh, 420px);
+  height: min(52vh, 420px);
+  position: relative;
+  pointer-events: none;
+  opacity: 0.62;
+  animation: sidekick-persona-orbit 7.5s linear infinite;
+}
+.sidekick-persona-orbit.active {
+  opacity: 1;
+  animation-duration: 4.8s;
+}
+.sidekick-persona-halo {
+  position: absolute;
+  top: 4%;
+  right: 6%;
+  width: 18%;
+  height: 18%;
+  min-width: 30px;
+  min-height: 30px;
+  filter: drop-shadow(0 0 14px color-mix(in srgb, var(--accent) 28%, transparent));
+  opacity: 0.86;
+  animation: sidekick-persona-counter-orbit 7.5s linear infinite;
+}
+.sidekick-persona-orbit.active .sidekick-persona-halo {
+  animation-duration: 4.8s;
+}
 .persona-stamp {
   grid-area: 1 / 1;
   width: min(32vh, 240px);
@@ -723,6 +751,18 @@ select,
   width: 42px;
   height: 42px;
 }
+.ai-chat.has-messages .sidekick-persona-orbit {
+  width: 42px;
+  height: 42px;
+}
+.ai-chat.has-messages .sidekick-persona-halo {
+  top: -8px;
+  right: -14px;
+  width: 18px;
+  height: 18px;
+  min-width: 18px;
+  min-height: 18px;
+}
 .ai-chat.has-messages .persona-stamp {
   width: 34px;
   height: 34px;
@@ -735,6 +775,18 @@ select,
 .ai-chat.has-messages.is-streaming .persona-halo {
   width: 32px;
   height: 32px;
+}
+.ai-chat.has-messages.is-streaming .sidekick-persona-orbit {
+  width: 32px;
+  height: 32px;
+}
+.ai-chat.has-messages.is-streaming .sidekick-persona-halo {
+  top: -7px;
+  right: -12px;
+  width: 16px;
+  height: 16px;
+  min-width: 16px;
+  min-height: 16px;
 }
 .ai-chat-composer {
   padding: 6px 0 0;
@@ -1004,6 +1056,28 @@ select,
   50% {
     transform: scale(1);
     opacity: 1;
+  }
+}
+@keyframes sidekick-persona-orbit {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+@keyframes sidekick-persona-counter-orbit {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(-360deg);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .sidekick-persona-orbit,
+  .sidekick-persona-halo {
+    animation: none;
   }
 }
 .chat-msg.assistant p,
