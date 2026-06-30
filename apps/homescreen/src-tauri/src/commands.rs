@@ -70,6 +70,7 @@ pub struct RecordFusionBenchmarkRequest {
 #[derive(serde::Deserialize)]
 pub struct RunFusionBenchmarkRequest {
     pub run_id: Option<String>,
+    pub route: Option<String>,
     pub modes: Option<Vec<String>>,
     pub task_ids: Option<Vec<String>>,
     pub model: Option<String>,
@@ -80,6 +81,7 @@ pub struct RunFusionBenchmarkRequest {
 #[derive(Serialize, Clone)]
 pub struct FusionBenchmarkPlanRow {
     pub run_id: String,
+    pub route: String,
     pub task_id: String,
     pub mode: String,
     pub model: String,
@@ -103,6 +105,10 @@ fn valid_fusion_mode(mode: &str) -> bool {
         mode,
         "main-only" | "sidekick-advisory" | "sidekick-parallel" | "sidekick-routing"
     )
+}
+
+fn valid_fusion_route(route: &str) -> bool {
+    matches!(route, "local" | "gateway")
 }
 
 fn default_fusion_run_id() -> String {
@@ -524,6 +530,10 @@ pub async fn run_fusion_benchmark(
     if run_id.trim().is_empty() {
         return Err("run_id is required".to_string());
     }
+    let route = request.route.unwrap_or_else(|| "local".to_string());
+    if !valid_fusion_route(&route) {
+        return Err(format!("unknown Fusion benchmark route: {route}"));
+    }
     let dry_run = request.dry_run.unwrap_or(true);
     let record_skips = request.record_skips.unwrap_or(false);
     let requested_modes = request.modes.unwrap_or_else(|| {
@@ -559,6 +569,7 @@ pub async fn run_fusion_benchmark(
     let model = request
         .model
         .or_else(|| warm_main.and_then(|slot| slot.model_id.clone()))
+        .or_else(|| (route == "gateway").then(|| "glm-5.2".to_string()))
         .unwrap_or_else(|| "unassigned".to_string());
     let mut rows = vec![];
     let mut recorded_skips = 0u64;
@@ -570,9 +581,14 @@ pub async fn run_fusion_benchmark(
             .find(|task| task.id == task_id)
             .ok_or_else(|| format!("unknown Fusion benchmark task: {task_id}"))?;
         for mode in &requested_modes {
-            let needs_sidekick = matches!(mode.as_str(), "sidekick-parallel" | "sidekick-routing");
-            let (ready, reason) = if warm_main.is_none() {
+            let needs_local_main = route == "local";
+            let needs_sidekick = route == "local"
+                && matches!(mode.as_str(), "sidekick-parallel" | "sidekick-routing");
+            let has_gateway = crate::chat::gateway_credentials_available();
+            let (ready, reason) = if needs_local_main && warm_main.is_none() {
                 (false, "no_warm_main_model")
+            } else if route == "gateway" && !has_gateway {
+                (false, "gateway_not_signed_in")
             } else if needs_sidekick && warm_sidekick.is_none() {
                 (false, "no_warm_sidekick_model")
             } else if dry_run {
@@ -581,7 +597,6 @@ pub async fn run_fusion_benchmark(
                 (true, "live_ready")
             };
             if ready && !dry_run {
-                let slot_id = main_slot_id.ok_or_else(|| "no warm main slot".to_string())?;
                 let before_sidekick_run_ids = app
                     .state::<crate::db::Db>()
                     .list_sidekick_runs(100)
@@ -590,15 +605,27 @@ pub async fn run_fusion_benchmark(
                     .filter(|run| run.session_id == run_id)
                     .map(|run| run.id)
                     .collect::<std::collections::HashSet<_>>();
-                let result = crate::chat::benchmark_local_chat(
-                    &app,
-                    residency(&app),
-                    slot_id,
-                    &run_id,
-                    task.prompt,
-                    matches!(mode.as_str(), "sidekick-parallel" | "sidekick-routing"),
-                )
-                .await?;
+                let result = if route == "gateway" {
+                    crate::chat::benchmark_gateway_chat(
+                        &app,
+                        residency(&app),
+                        &run_id,
+                        task.prompt,
+                        &model,
+                    )
+                    .await?
+                } else {
+                    let slot_id = main_slot_id.ok_or_else(|| "no warm main slot".to_string())?;
+                    crate::chat::benchmark_local_chat(
+                        &app,
+                        residency(&app),
+                        slot_id,
+                        &run_id,
+                        task.prompt,
+                        matches!(mode.as_str(), "sidekick-parallel" | "sidekick-routing"),
+                    )
+                    .await?
+                };
                 let sidekick_runs: Vec<_> = app
                     .state::<crate::db::Db>()
                     .list_sidekick_runs(100)
@@ -621,10 +648,11 @@ pub async fn run_fusion_benchmark(
                         completion_tokens: Some(result.completion_tokens),
                         sidekick_runs: sidekick_run_count,
                         sidekick_tool_calls,
-                        gateway_used: false,
+                        gateway_used: route == "gateway",
                         score: None,
                         notes: Some(format!(
-                            "executed:local; main_tool_calls={}; output_chars={}",
+                            "executed:{}; main_tool_calls={}; output_chars={}",
+                            route,
                             result.tool_calls,
                             result.content.len()
                         )),
@@ -642,7 +670,7 @@ pub async fn run_fusion_benchmark(
                         completion_tokens: None,
                         sidekick_runs: 0,
                         sidekick_tool_calls: 0,
-                        gateway_used: false,
+                        gateway_used: route == "gateway",
                         score: None,
                         notes: Some(format!("skipped:{reason}")),
                     })
@@ -651,6 +679,7 @@ pub async fn run_fusion_benchmark(
             }
             rows.push(FusionBenchmarkPlanRow {
                 run_id: run_id.clone(),
+                route: route.clone(),
                 task_id: task.id.to_string(),
                 mode: mode.clone(),
                 model: model.clone(),

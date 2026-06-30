@@ -1126,6 +1126,10 @@ fn credentials() -> Option<(String, String)> {
     Some((url, key))
 }
 
+pub(crate) fn gateway_credentials_available() -> bool {
+    credentials().is_some()
+}
+
 fn latest_user_message(messages: &[ChatMsg]) -> Option<&str> {
     messages
         .iter()
@@ -1479,7 +1483,7 @@ pub async fn benchmark_local_chat(
 
     for _round in 0..=MAX_TOOL_ROUNDS {
         let (content, tool_calls) =
-            nonstream_chat_once(&client, &url, &model_field, &outbound_messages).await?;
+            nonstream_chat_once(&client, &url, None, &model_field, &outbound_messages).await?;
         final_content = content.clone();
         if tool_calls.is_empty() {
             break;
@@ -1525,9 +1529,80 @@ pub async fn benchmark_local_chat(
     })
 }
 
+pub async fn benchmark_gateway_chat(
+    app: &AppHandle,
+    mgr: &Residency,
+    session_id: &str,
+    prompt: &str,
+    model_field: &str,
+) -> Result<BenchmarkChatResult, String> {
+    let started = Instant::now();
+    let (base, key) = credentials().ok_or_else(|| "not signed in".to_string())?;
+    let url = format!("{}/v1/chat/completions", base.trim_end_matches('/'));
+    let mut outbound_messages = vec![json!({
+        "role": "system",
+        "content": system_prompt_for(model_field),
+    })];
+    outbound_messages.extend(consume_sidekick_handoffs(app, session_id));
+    outbound_messages.push(json!({ "role": "user", "content": prompt }));
+
+    let client = reqwest::Client::builder()
+        .build()
+        .map_err(|e| e.to_string())?;
+    let mut final_content = String::new();
+    let mut tool_count = 0u64;
+
+    for _round in 0..=MAX_TOOL_ROUNDS {
+        let (content, tool_calls) =
+            nonstream_chat_once(&client, &url, Some(&key), model_field, &outbound_messages).await?;
+        final_content = content.clone();
+        if tool_calls.is_empty() {
+            break;
+        }
+        let assistant_tool_calls: Vec<Value> = tool_calls
+            .iter()
+            .map(|call| {
+                json!({
+                    "id": call.id,
+                    "type": "function",
+                    "function": { "name": call.name, "arguments": call.arguments },
+                })
+            })
+            .collect();
+        outbound_messages.push(json!({
+            "role": "assistant",
+            "content": content,
+            "tool_calls": assistant_tool_calls,
+        }));
+
+        for call in tool_calls {
+            let args = serde_json::from_str::<Value>(&call.arguments).unwrap_or_else(|_| json!({}));
+            let result = match tool_result(app, mgr, None, session_id, &call.name, &args).await {
+                Ok(value) => value,
+                Err(err) => json!({ "error": err }),
+            };
+            tool_count += 1;
+            outbound_messages.push(json!({
+                "role": "tool",
+                "tool_call_id": call.id,
+                "content": result.to_string(),
+            }));
+        }
+    }
+
+    Ok(BenchmarkChatResult {
+        prompt_tokens: prompt.split_whitespace().count() as u64,
+        completion_tokens: final_content.split_whitespace().count() as u64,
+        content: final_content,
+        elapsed_ms: started.elapsed().as_millis() as u64,
+        tool_calls: tool_count,
+    })
+}
+
 async fn nonstream_chat_once(
     client: &reqwest::Client,
     url: &str,
+    bearer: Option<&str>,
     model_field: &str,
     messages: &[Value],
 ) -> Result<(String, Vec<ToolCallAcc>), String> {
@@ -1540,9 +1615,11 @@ async fn nonstream_chat_once(
         "max_tokens": CHAT_MAX_TOKENS,
         "thinking_budget": CHAT_THINKING_BUDGET,
     });
-    let response = client
-        .post(url)
-        .json(&payload)
+    let mut request = client.post(url).json(&payload);
+    if let Some(key) = bearer {
+        request = request.bearer_auth(key);
+    }
+    let response = request
         .send()
         .await
         .map_err(|e| format!("benchmark request failed: {e}"))?;
