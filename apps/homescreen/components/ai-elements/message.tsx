@@ -1,5 +1,6 @@
 "use client";
 
+import { openUrl } from "@tauri-apps/plugin-opener";
 import { Button } from "@/app/components/base-ui/button";
 import {
   ButtonGroup,
@@ -18,7 +19,12 @@ import { math } from "@streamdown/math";
 import { mermaid } from "@streamdown/mermaid";
 import type { UIMessage } from "ai";
 import { ChevronLeftIcon, ChevronRightIcon } from "lucide-react";
-import type { ComponentProps, HTMLAttributes, ReactElement } from "react";
+import type {
+  ComponentProps,
+  HTMLAttributes,
+  MouseEvent,
+  ReactElement,
+} from "react";
 import {
   createContext,
   memo,
@@ -323,6 +329,25 @@ export type MessageResponseProps = ComponentProps<typeof Streamdown>;
 
 const streamdownPlugins = { cjk, code, math, mermaid };
 
+const MessageLink = ({
+  href,
+  onClick,
+  ...props
+}: ComponentProps<"a">) => {
+  const handleClick = (event: MouseEvent<HTMLAnchorElement>) => {
+    onClick?.(event);
+    if (event.defaultPrevented || !href) return;
+    event.preventDefault();
+    void openUrl(href);
+  };
+
+  return <a href={href} onClick={handleClick} rel="noreferrer" {...props} />;
+};
+
+const messageComponents = {
+  a: MessageLink,
+} as NonNullable<MessageResponseProps["components"]>;
+
 export const MessageResponse = memo(
   ({ className, ...props }: MessageResponseProps) => (
     <Streamdown
@@ -330,6 +355,8 @@ export const MessageResponse = memo(
         "size-full [&>*:first-child]:mt-0 [&>*:last-child]:mb-0",
         className
       )}
+      components={messageComponents}
+      linkSafety={{ enabled: false }}
       plugins={streamdownPlugins}
       {...props}
     />
