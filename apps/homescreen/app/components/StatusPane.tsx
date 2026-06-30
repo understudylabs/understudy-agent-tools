@@ -68,6 +68,20 @@ export function StatusPane({ status }: { status: StatusController }) {
       rows[0]
     );
   }, [bootstrap]);
+  const sidekickModel = useMemo(() => {
+    const rows = bootstrap?.snapshots ?? [];
+    return (
+      rows.find((row) => row.short_name === "understudy-small") ??
+      rows.find((row) => row.id.includes("e2b") && row.id.endsWith("-understudy"))
+    );
+  }, [bootstrap]);
+  const sidekickSlot = useMemo(() => {
+    const slots = snap?.residency.slots ?? [];
+    return slots.find((slot) => {
+      const id = slot.model_id ?? "";
+      return id.includes("understudy-small") || id.includes("e2b");
+    });
+  }, [snap]);
 
   async function runInstall(id: "install_uv" | "install_moraine" | "install_mlx_runtime" | "install_understudy_agent_tools") {
     setAction(id);
@@ -109,6 +123,30 @@ export function StatusPane({ status }: { status: StatusController }) {
     } catch (e) {
       setBootErr(String(e));
       setDownload(null);
+    }
+  }
+
+  async function setupSidekick() {
+    if (!sidekickModel) return;
+    setAction("setup_sidekick");
+    setBootErr(null);
+    try {
+      if (!sidekickModel.cached) {
+        await downloadModel(sidekickModel.id);
+      }
+      const slotId =
+        sidekickSlot?.id ??
+        (await invoke<number>("add_slot"));
+      if (sidekickSlot?.model_id !== sidekickModel.id) {
+        await invoke("assign_slot", { slotId, modelId: sidekickModel.id });
+      }
+      await invoke("warm_slot", { slotId });
+      refreshBootstrap();
+      status.refresh();
+    } catch (e) {
+      setBootErr(String(e));
+    } finally {
+      setAction(null);
     }
   }
 
@@ -168,6 +206,33 @@ export function StatusPane({ status }: { status: StatusController }) {
         </div>
 
         <ResidencyPanel status={status} />
+
+        {sidekickModel && (
+          <div className="card">
+            <div className="card-row" style={{ marginBottom: 10 }}>
+              <div>
+                <div className="card-title">Sidekick lane</div>
+                <div className="card-sub">Small local helper for delegated read-only subtasks.</div>
+              </div>
+              <span className="metric">{sidekickSlot?.port ? `:${sidekickSlot.port}` : sidekickSlot?.state ?? "not warm"}</span>
+            </div>
+            <SetupRow
+              title={sidekickModel.short_name ?? sidekickModel.id}
+              detail={
+                download?.model === sidekickModel.id
+                  ? `${download.label}${download.pct == null ? "" : ` · ${download.pct.toFixed(0)}%`}`
+                  : sidekickSlot
+                    ? `${sidekickSlot.state} · ${sidekickModel.name} · ${sidekickModel.approx_gb} GB`
+                    : `${sidekickModel.cached ? "cached" : "not cached"} · ${sidekickModel.name} · ${sidekickModel.approx_gb} GB`
+              }
+              done={sidekickSlot?.state === "running"}
+              busy={action === "setup_sidekick" || download?.model === sidekickModel.id || sidekickSlot?.state === "loading"}
+              action={sidekickSlot?.state === "running" ? undefined : setupSidekick}
+              actionLabel={sidekickModel.cached || sidekickSlot ? "Warm" : "Download + warm"}
+              pct={download?.model === sidekickModel.id ? download.pct : undefined}
+            />
+          </div>
+        )}
 
         {bootstrap && (
           <div className="card">
