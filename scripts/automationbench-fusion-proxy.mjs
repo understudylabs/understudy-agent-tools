@@ -1,7 +1,8 @@
 #!/usr/bin/env node
-import { existsSync, readFileSync } from "node:fs";
+import { appendFileSync, existsSync, mkdirSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { createServer } from "node:http";
+import { dirname, resolve } from "node:path";
 
 const DEFAULT_PORT = 17890;
 const DEFAULT_MAIN_BASE_URL = "http://127.0.0.1:8091/v1";
@@ -22,6 +23,7 @@ Environment:
   FUSION_FAST_MODEL         default ${DEFAULT_FAST_MODEL}
   FUSION_SIDECAR_WAIT_MS    default 2500
   FUSION_ROUTING_WRITE_GATEWAY  default 1; route tool-backed write/update work to gateway when available
+  FUSION_PROXY_EVENT_LOG    default .understudy/fusion-benchmark/proxy-events.jsonl; set 0 to disable
 
 Models exposed:
   understudy-fusion-main
@@ -89,7 +91,21 @@ function config() {
     fastModel: process.env.FUSION_FAST_MODEL ?? DEFAULT_FAST_MODEL,
     sidecarWaitMs: Number(process.env.FUSION_SIDECAR_WAIT_MS ?? 2500),
     routingWriteGateway: process.env.FUSION_ROUTING_WRITE_GATEWAY !== "0",
+    eventLogPath:
+      process.env.FUSION_PROXY_EVENT_LOG === "0"
+        ? null
+        : resolve(process.env.FUSION_PROXY_EVENT_LOG ?? ".understudy/fusion-benchmark/proxy-events.jsonl"),
   };
+}
+
+function appendEvent(cfg, event) {
+  if (!cfg.eventLogPath) return;
+  try {
+    mkdirSync(dirname(cfg.eventLogPath), { recursive: true });
+    appendFileSync(cfg.eventLogPath, `${JSON.stringify(event)}\n`);
+  } catch {
+    // Logging must never affect benchmark traffic.
+  }
 }
 
 function modelSpec(requestedModel, cfg) {
@@ -291,10 +307,13 @@ function injectAdvice(messages, advice) {
 
 async function chatCompletions(reqBody) {
   const cfg = config();
+  const started = Date.now();
   const requestedModel = reqBody.model ?? "understudy-fusion-main";
   const requestedSpec = modelSpec(requestedModel, cfg);
   const spec = requestedSpec.routing ? routeRequest(reqBody, cfg) : requestedSpec;
   let messages = Array.isArray(reqBody.messages) ? reqBody.messages : [];
+  const inputMessages = messages;
+  const toolCount = Array.isArray(reqBody.tools) ? reqBody.tools.length : 0;
   let sidekick = { used: false, mode: spec.sidekickMode, pending: false, error: null, advice_chars: 0 };
   let backgroundSidekick = null;
   if (spec.sidekickMode === "advisory") {
@@ -337,6 +356,7 @@ async function chatCompletions(reqBody) {
   if (backgroundSidekick) {
     sidekick = backgroundSidekick.snapshot();
   }
+  const usage = response.usage ?? {};
   response.model = requestedModel;
   response.understudy_fusion = {
     route: spec.route,
@@ -350,6 +370,27 @@ async function chatCompletions(reqBody) {
       : null,
     sidekick,
   };
+  appendEvent(cfg, {
+    schema_version: "understudy.fusion_proxy_event.v1",
+    ts: new Date().toISOString(),
+    requested_model: requestedModel,
+    route: spec.route,
+    upstream_model: spec.model,
+    gateway_used: spec.route === "gateway",
+    sidekick_mode: spec.sidekickMode,
+    sidekick_used: Boolean(sidekick.used),
+    sidekick_pending: Boolean(sidekick.pending),
+    sidekick_error: sidekick.error ? String(sidekick.error) : null,
+    sidekick_advice_chars: Number(sidekick.advice_chars ?? 0),
+    routing_policy: requestedSpec.routing ? "heuristic.v1" : null,
+    routing_reason: requestedSpec.routing ? spec.reason : null,
+    elapsed_ms: Date.now() - started,
+    tool_count: toolCount,
+    message_count: inputMessages.length,
+    prompt_tokens: typeof usage.prompt_tokens === "number" ? usage.prompt_tokens : null,
+    completion_tokens: typeof usage.completion_tokens === "number" ? usage.completion_tokens : null,
+    total_tokens: typeof usage.total_tokens === "number" ? usage.total_tokens : null,
+  });
   return response;
 }
 
