@@ -386,6 +386,10 @@ fn valid_fusion_mode(mode: &str) -> bool {
     )
 }
 
+fn valid_fusion_result_mode(mode: &str) -> bool {
+    valid_fusion_mode(mode) || mode == "automationbench"
+}
+
 fn valid_fusion_route(route: &str) -> bool {
     matches!(route, "local" | "gateway")
 }
@@ -1486,7 +1490,7 @@ pub fn record_fusion_benchmark(
     if result.task_id.trim().is_empty() {
         return Err("task_id is required".to_string());
     }
-    if !valid_fusion_mode(&result.mode) {
+    if !valid_fusion_result_mode(&result.mode) {
         return Err(format!("unknown Fusion benchmark mode: {}", result.mode));
     }
     if result.model.trim().is_empty() {
