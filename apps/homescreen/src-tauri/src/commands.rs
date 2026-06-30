@@ -106,6 +106,17 @@ pub struct RunFusionBenchmarkRequest {
 }
 
 #[derive(serde::Deserialize)]
+pub struct RunFusionBenchmarkMatrixRequest {
+    pub run_id: Option<String>,
+    pub suite: Option<String>,
+    pub candidates: Option<Vec<String>>,
+    pub modes: Option<Vec<String>>,
+    pub task_ids: Option<Vec<String>>,
+    pub dry_run: Option<bool>,
+    pub record_skips: Option<bool>,
+}
+
+#[derive(serde::Deserialize)]
 pub struct FusionRouteRecommendationRequest {
     pub prompt: String,
     pub current_route: Option<String>,
@@ -150,6 +161,23 @@ pub struct FusionBenchmarkRun {
     pub dry_run: bool,
     pub recorded_skips: u64,
     pub rows: Vec<FusionBenchmarkPlanRow>,
+}
+
+#[derive(Serialize, Clone)]
+pub struct FusionBenchmarkCandidateRun {
+    pub candidate: String,
+    pub run: FusionBenchmarkRun,
+}
+
+#[derive(Serialize, Clone)]
+pub struct FusionBenchmarkMatrixRun {
+    pub schema_version: &'static str,
+    pub run_id: String,
+    pub suite: String,
+    pub dry_run: bool,
+    pub candidates: Vec<FusionBenchmarkCandidateRun>,
+    pub rows: u64,
+    pub recorded_skips: u64,
 }
 
 #[derive(Serialize, Clone)]
@@ -2061,6 +2089,64 @@ pub async fn run_fusion_benchmark(
         dry_run,
         recorded_skips,
         rows,
+    })
+}
+
+#[tauri::command]
+pub async fn run_fusion_benchmark_matrix(
+    app: AppHandle,
+    request: RunFusionBenchmarkMatrixRequest,
+) -> Result<FusionBenchmarkMatrixRun, String> {
+    let run_id = request.run_id.unwrap_or_else(default_fusion_run_id);
+    if run_id.trim().is_empty() {
+        return Err("run_id is required".to_string());
+    }
+    let suite = request.suite.unwrap_or_else(|| "full-matrix".to_string());
+    let candidates = request.candidates.unwrap_or_else(|| {
+        vec![
+            "gateway-glm".to_string(),
+            "local-main".to_string(),
+            "local-fast".to_string(),
+        ]
+    });
+    for candidate in &candidates {
+        if !valid_fusion_candidate(candidate) {
+            return Err(format!("unknown Fusion benchmark candidate: {candidate}"));
+        }
+    }
+    let dry_run = request.dry_run.unwrap_or(true);
+    let mut runs = vec![];
+    let mut rows = 0u64;
+    let mut recorded_skips = 0u64;
+    for candidate in candidates {
+        let candidate_run_id = format!("{run_id}-{candidate}");
+        let run = run_fusion_benchmark(
+            app.clone(),
+            RunFusionBenchmarkRequest {
+                run_id: Some(candidate_run_id),
+                suite: Some(suite.clone()),
+                candidate: Some(candidate.clone()),
+                route: None,
+                modes: request.modes.clone(),
+                task_ids: request.task_ids.clone(),
+                model: None,
+                dry_run: Some(dry_run),
+                record_skips: request.record_skips,
+            },
+        )
+        .await?;
+        rows += run.rows.len() as u64;
+        recorded_skips += run.recorded_skips;
+        runs.push(FusionBenchmarkCandidateRun { candidate, run });
+    }
+    Ok(FusionBenchmarkMatrixRun {
+        schema_version: "understudy.fusion_benchmark_matrix_run.v1",
+        run_id,
+        suite,
+        dry_run,
+        candidates: runs,
+        rows,
+        recorded_skips,
     })
 }
 

@@ -59,6 +59,7 @@ pub fn router(ctx: Ctx) -> Router {
         .route("/api/chat/runs", get(chat_runs))
         .route("/api/chat/route-metrics", get(chat_route_metrics))
         .route("/api/fusion/run", post(run_fusion_benchmark))
+        .route("/api/fusion/run-matrix", post(run_fusion_benchmark_matrix))
         .route("/api/sidekick/metrics", get(sidekick_metrics))
         .route("/api/sidekick/sessions", get(sidekick_session_summaries))
         .route("/api/profile/:id", get(profile))
@@ -258,6 +259,17 @@ async fn run_fusion_benchmark(
         .map(|run| Json(json!(run)))
         .map_err(|e| (StatusCode::BAD_REQUEST, e))
 }
+async fn run_fusion_benchmark_matrix(
+    State(ctx): State<Ctx>,
+    h: HeaderMap,
+    Json(body): Json<crate::commands::RunFusionBenchmarkMatrixRequest>,
+) -> Result<Json<Value>, (StatusCode, String)> {
+    auth(&ctx, &h)?;
+    crate::commands::run_fusion_benchmark_matrix(ctx.app.clone(), body)
+        .await
+        .map(|run| Json(json!(run)))
+        .map_err(|e| (StatusCode::BAD_REQUEST, e))
+}
 async fn sidekick_metrics(
     State(ctx): State<Ctx>,
     h: HeaderMap,
@@ -434,7 +446,8 @@ fn tools() -> Vec<Value> {
         ("sidekick_metrics", "Aggregate recent sidekick usage, handoff, escalation, and feedback metrics. Args: {limit?}."),
         ("sidekick_session_summaries", "Inspect persisted sidekick session memory and compacted summaries. Args: {limit?}."),
         ("record_fusion_benchmark", "Record one Fusion benchmark result row."),
-        ("run_fusion_benchmark", "Plan or run a Fusion benchmark matrix. Args: {run_id?, suite?, candidate?, route?, modes?, task_ids?, model?, dry_run?, record_skips?}. Suites: routing-smoke, local-comparison, full-matrix, automationbench-proxy. Candidates: gateway-glm, local-main, local-fast."),
+        ("run_fusion_benchmark", "Plan or run a Fusion benchmark for one candidate. Args: {run_id?, suite?, candidate?, route?, modes?, task_ids?, model?, dry_run?, record_skips?}. Suites: routing-smoke, local-comparison, full-matrix, automationbench-proxy. Candidates: gateway-glm, local-main, local-fast."),
+        ("run_fusion_benchmark_matrix", "Plan or run a Fusion benchmark across candidates. Args: {run_id?, suite?, candidates?, modes?, task_ids?, dry_run?, record_skips?}. Defaults candidates to gateway-glm, local-main, local-fast."),
         ("aa_models", "Artificial Analysis external pricing/speed/quality."),
         ("list_traces", "List recent Moraine sessions. Args: {limit?}."),
         ("search_traces", "Search Moraine traces. Args: {q}."),
@@ -519,6 +532,14 @@ async fn call_tool(ctx: &Ctx, name: &str, args: &Value) -> Result<Value, String>
             let request = serde_json::from_value::<c::RunFusionBenchmarkRequest>(args.clone())
                 .map_err(|e| format!("invalid Fusion benchmark request: {e}"))?;
             json!(c::run_fusion_benchmark(app, request)
+                .await
+                .map_err(|e| e.to_string())?)
+        }
+        "run_fusion_benchmark_matrix" => {
+            let request =
+                serde_json::from_value::<c::RunFusionBenchmarkMatrixRequest>(args.clone())
+                    .map_err(|e| format!("invalid Fusion benchmark matrix request: {e}"))?;
+            json!(c::run_fusion_benchmark_matrix(app, request)
                 .await
                 .map_err(|e| e.to_string())?)
         }
