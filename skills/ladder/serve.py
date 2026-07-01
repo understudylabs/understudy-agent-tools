@@ -31,6 +31,15 @@ HOST, PORT = "127.0.0.1", 8011
 # ~/.understudy/models, override with the env var.
 MODEL_HOME = os.environ.get("UNDERSTUDY_MODEL_HOME") or os.path.expanduser("~/.understudy/models")
 
+# scored-run persistence root -- same env-override convention as MODEL_HOME:
+# default ~/.understudy/ladder-runs, override with the env var. Every scored
+# run is appended as one understudy.eval_result.v1 row (see
+# schemas/understudy.eval_result.v1.schema.json at the repo root) to
+# <run-id>.jsonl. Local-only; nothing is uploaded.
+LADDER_RUNS_DIR = (os.environ.get("UNDERSTUDY_LADDER_RUNS_DIR")
+                   or os.path.expanduser("~/.understudy/ladder-runs"))
+EVAL_RESULT_SCHEMA_VERSION = "understudy.eval_result.v1"
+
 # id -> (lane, path-or-repo, label, sampling)
 # sampling = each model's HF-card recommendation. LFM (mlx_lm): LiquidAI's temp/top_k/rep.
 # Gemma (mlx_vlm): Google's standardized temp 1.0 / top_p 0.95 / top_k 64.
@@ -167,6 +176,132 @@ def resolve_task(task):
     """Map a requested task id to a real tool-task id, or None if it isn't a tool
     task (then it's a single-shot classify task or unknown)."""
     return task if task in tool_tasks() else None
+
+
+# ---------------------------------------------------------------------------
+# Scored-run persistence (understudy.eval_result.v1). One JSONL row per run
+# under LADDER_RUNS_DIR/<run-id>.jsonl. Persistence is best-effort: it must
+# never break a live SSE stream.
+# ---------------------------------------------------------------------------
+_HARNESS_SHA256 = None
+
+
+def harness_sha256():
+    """sha256 of this harness file, for the row's provenance chain."""
+    global _HARNESS_SHA256
+    if _HARNESS_SHA256 is None:
+        import hashlib
+        h = hashlib.sha256()
+        try:
+            with open(os.path.abspath(__file__), "rb") as fh:
+                for chunk in iter(lambda: fh.read(65536), b""):
+                    h.update(chunk)
+            _HARNESS_SHA256 = h.hexdigest()
+        except Exception:
+            _HARNESS_SHA256 = ""
+    return _HARNESS_SHA256 or None
+
+
+_RUN_SEQ = itertools.count(1)
+
+
+def new_run_id(task_id, model_id):
+    """Filesystem-safe unique run id: ladder-<ms>-<seq>-<task>-<model>. The
+    process-local sequence keeps two same-millisecond runs of the same
+    task+model from sharing a JSONL file."""
+    slug = re.sub(r"[^A-Za-z0-9._-]+", "-", "%s-%s" % (task_id, model_id)).strip("-")
+    return "ladder-%d-%03d-%s" % (int(time.time() * 1000), next(_RUN_SEQ), slug)
+
+
+def eval_result_row(run_id, task_id, model_id, score, status,
+                    subscores=None, tokens=None, latency_ms=None, artifact_refs=None):
+    """Build one understudy.eval_result.v1 row. score is 0..1 or None; status is
+    ok|error|skipped|unscored (unscored = ran fine but no gold/rubric covers it).
+    Local lanes are genuinely $0 marginal; gateway runs are billed but no price
+    table exists here, so cost.usd stays None rather than invented."""
+    lane = MODELS.get(model_id, ("",))[0]
+    gateway = lane == "gateway"
+    return {
+        "schema_version": EVAL_RESULT_SCHEMA_VERSION,
+        "run_id": run_id,
+        "task_id": task_id,
+        "split": "none",                      # the ladder has no frozen split contract
+        "score": score,
+        "subscores": subscores,
+        "status": status,
+        "model": model_id,
+        "route": "gateway" if gateway else "local",
+        "cost": {"usd": None if gateway else 0.0,
+                 "basis": "gateway-metered-unpriced" if gateway else "local-zero-marginal-cost"},
+        "tokens": tokens or {"prompt": None, "completion": None},
+        "latency_ms": latency_ms,
+        "created_at": time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()),
+        "provenance": {"harness_sha256": harness_sha256(),
+                       "split_sha256": None,
+                       "artifact_refs": artifact_refs or []},
+        # producer extension (allowed by the schema): scoring-contract version
+        "tasks_version": TASKS_VERSION,
+    }
+
+
+def persist_eval_result(run_id, row):
+    """Append one row to LADDER_RUNS_DIR/<run-id>.jsonl. Returns the path or None."""
+    try:
+        os.makedirs(LADDER_RUNS_DIR, exist_ok=True)
+        path = os.path.join(LADDER_RUNS_DIR, run_id + ".jsonl")
+        with open(path, "a") as fh:
+            fh.write(json.dumps(row) + "\n")
+        return path
+    except Exception as e:
+        sys.stderr.write("[persist] eval result not written: %s: %s\n"
+                         % (type(e).__name__, str(e)[:200])); sys.stderr.flush()
+        return None
+
+
+def run_with_persistence(events, run_id, task_id, model_id, kind):
+    """Wrap a run's SSE event generator; forward every event unchanged and
+    persist one eval_result.v1 row when the run completes (or fails). kind is
+    'tool' (agent loop, dense/strict scoring) or 'classify' (gold-label match)."""
+    t0 = time.time()
+    done = None
+    saw_error = False
+    try:
+        for ev in events:
+            if ev.get("type") == "done":
+                done = ev
+            elif ev.get("type") == "error":
+                saw_error = True
+            yield ev
+    except Exception:
+        persist_eval_result(run_id, eval_result_row(
+            run_id, task_id, model_id, None, "error",
+            latency_ms=round((time.time() - t0) * 1000)))
+        raise
+    latency_ms = round((time.time() - t0) * 1000)
+    if done is None:
+        if saw_error:
+            persist_eval_result(run_id, eval_result_row(
+                run_id, task_id, model_id, None, "error", latency_ms=latency_ms))
+        return
+    if kind == "tool":
+        score = done.get("dense")
+        subscores = {"strict": float(done.get("strict") or 0.0), "dense": score}
+        tokens = None
+        refs = ["skills/ladder/fixtures/hard/tool_tasks.jsonl"]
+    else:
+        correct = done.get("correct")
+        score = None if correct is None else (1.0 if correct else 0.0)
+        subscores = None
+        # classify 'tokens' counts streamed deltas -- an approximate completion count
+        tokens = {"prompt": None, "completion": done.get("tokens")}
+        if done.get("seconds") is not None:
+            latency_ms = round(done["seconds"] * 1000)
+        refs = ["skills/ladder/fixtures/classify_tasks.jsonl"]
+    status = "ok" if score is not None else "unscored"
+    persist_eval_result(run_id, eval_result_row(
+        run_id, task_id, model_id, score, status,
+        subscores=subscores, tokens=tokens, latency_ms=latency_ms, artifact_refs=refs))
+
 
 _loaded = {}
 _lock = threading.Lock()
@@ -813,9 +948,11 @@ class Handler(BaseHTTPRequestHandler):
             return self._json({"error": "unknown model"}, 400)
         real = resolve_task(task)               # any tool task (or alias) -> live agent loop
         if real:
-            return self._sse_run(run_agent(real, mid))
+            run_id = new_run_id(real, mid)
+            return self._sse_run(run_with_persistence(run_agent(real, mid), run_id, real, mid, "tool"))
         if task in classify_tasks():
-            return self._sse_run(classify_run(task, mid))
+            run_id = new_run_id(task, mid)
+            return self._sse_run(run_with_persistence(classify_run(task, mid), run_id, task, mid, "classify"))
         return self._json({"error": "unknown task"}, 400)
 
 
@@ -825,7 +962,8 @@ def _cli_agent(task_id, model_id):
         understudy run -- uv run python skills/ladder/serve.py --agent hard.renewal_save_route glm-5.1
     """
     think = resp = 0
-    for ev in run_agent(task_id, model_id):
+    run_id = new_run_id(task_id, model_id)
+    for ev in run_with_persistence(run_agent(task_id, model_id), run_id, task_id, model_id, "tool"):
         t = ev["type"]
         if t == "meta":
             sys.stderr.write(f"\n=== {ev['model']} on {ev['task']} ===\ntools: {', '.join(ev['tools'])}\n\n")

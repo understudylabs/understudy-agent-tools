@@ -19,6 +19,7 @@
     "install.sh",
     "dist",
     "skills",
+    "schemas",
     "docs",
     "vendor",
     "README.md",

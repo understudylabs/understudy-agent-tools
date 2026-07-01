@@ -37,6 +37,12 @@ pub struct FusionBenchmarkRow {
     pub status: String,
     pub notes: Option<String>,
     pub run_at: String,
+    // understudy.eval_result.v1 adoption columns (nullable; older rows carry None).
+    pub cost_usd: Option<f64>,
+    pub cost_basis: Option<String>,
+    pub split: Option<String>,
+    pub harness_sha256: Option<String>,
+    pub split_sha256: Option<String>,
 }
 
 #[derive(Clone, Debug)]
@@ -57,6 +63,14 @@ pub struct FusionBenchmarkInput {
     pub score: Option<f64>,
     pub status: String,
     pub notes: Option<String>,
+    // understudy.eval_result.v1 adoption columns. Leave cost None unless a real
+    // price basis exists; split defaults to "none" for suites without a split
+    // contract.
+    pub cost_usd: Option<f64>,
+    pub cost_basis: Option<String>,
+    pub split: Option<String>,
+    pub harness_sha256: Option<String>,
+    pub split_sha256: Option<String>,
 }
 
 #[derive(Serialize, Clone)]
@@ -279,7 +293,12 @@ fn migrate(conn: &Connection) -> Result<()> {
                 score               REAL,
                 status              TEXT,
                 notes               TEXT,
-                run_at              TEXT NOT NULL
+                run_at              TEXT NOT NULL,
+                cost_usd            REAL,
+                cost_basis          TEXT,
+                split               TEXT,
+                harness_sha256      TEXT,
+                split_sha256        TEXT
             );
             CREATE TABLE IF NOT EXISTS fusion_route_decisions (
                 id                  INTEGER PRIMARY KEY,
@@ -391,6 +410,11 @@ fn migrate(conn: &Connection) -> Result<()> {
         "ALTER TABLE fusion_benchmarks ADD COLUMN context_tokens_before INTEGER",
         "ALTER TABLE fusion_benchmarks ADD COLUMN local_mem_gb REAL",
         "ALTER TABLE fusion_benchmarks ADD COLUMN status TEXT",
+        "ALTER TABLE fusion_benchmarks ADD COLUMN cost_usd REAL",
+        "ALTER TABLE fusion_benchmarks ADD COLUMN cost_basis TEXT",
+        "ALTER TABLE fusion_benchmarks ADD COLUMN split TEXT",
+        "ALTER TABLE fusion_benchmarks ADD COLUMN harness_sha256 TEXT",
+        "ALTER TABLE fusion_benchmarks ADD COLUMN split_sha256 TEXT",
         "ALTER TABLE sidekick_sessions ADD COLUMN message_count INTEGER NOT NULL DEFAULT 0",
         "ALTER TABLE sidekick_sessions ADD COLUMN compacted_count INTEGER NOT NULL DEFAULT 0",
         "ALTER TABLE sidekick_sessions ADD COLUMN memory TEXT",
@@ -509,8 +533,10 @@ impl Db {
             "INSERT INTO fusion_benchmarks (
                 run_id, task_id, mode, model, elapsed_ms, prompt_tokens, completion_tokens,
                 sidekick_runs, sidekick_tool_calls, gateway_used, compacted, context_tokens_before,
-                local_mem_gb, score, status, notes, run_at
-             ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17)",
+                local_mem_gb, score, status, notes, run_at,
+                cost_usd, cost_basis, split, harness_sha256, split_sha256
+             ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17,
+                       ?18, ?19, ?20, ?21, ?22)",
             rusqlite::params![
                 input.run_id,
                 input.task_id,
@@ -529,6 +555,11 @@ impl Db {
                 input.status,
                 input.notes,
                 now_iso(),
+                input.cost_usd,
+                input.cost_basis,
+                input.split,
+                input.harness_sha256,
+                input.split_sha256,
             ],
         )?;
         Ok(())
@@ -726,7 +757,8 @@ impl Db {
                         WHEN notes LIKE 'error:%' THEN 'error'
                         ELSE 'ok'
                     END) AS status,
-                    notes, run_at
+                    notes, run_at,
+                    cost_usd, cost_basis, split, harness_sha256, split_sha256
              FROM fusion_benchmarks ORDER BY id DESC LIMIT ?1",
         )?;
         let rows = stmt.query_map([limit.max(1).min(500) as i64], |r| {
@@ -749,6 +781,11 @@ impl Db {
                 status: r.get(15)?,
                 notes: r.get(16)?,
                 run_at: r.get(17)?,
+                cost_usd: r.get(18)?,
+                cost_basis: r.get(19)?,
+                split: r.get(20)?,
+                harness_sha256: r.get(21)?,
+                split_sha256: r.get(22)?,
             })
         })?;
         rows.collect::<rusqlite::Result<Vec<_>>>()
@@ -1193,6 +1230,46 @@ mod tests {
         // file: duplicate columns must be tolerated, data preserved.
         let db = Db::open(dir.clone()).expect("re-open existing db");
         assert_eq!(db.setting_get("k").as_deref(), Some("v"));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn fusion_benchmark_rows_round_trip_eval_result_columns() {
+        let (dir, db) = temp_db("fusion-eval-cols");
+        db.record_fusion_benchmark(&FusionBenchmarkInput {
+            run_id: "run-1".into(),
+            task_id: "task-1".into(),
+            mode: "sidekick-routing".into(),
+            model: "model-x".into(),
+            elapsed_ms: Some(1200),
+            prompt_tokens: Some(100),
+            completion_tokens: Some(50),
+            sidekick_runs: 1,
+            sidekick_tool_calls: 2,
+            gateway_used: false,
+            compacted: false,
+            context_tokens_before: None,
+            local_mem_gb: Some(3.5),
+            // A real 0 is a scored failure, never a missing value.
+            score: Some(0.0),
+            status: "ok".into(),
+            notes: None,
+            cost_usd: None,
+            cost_basis: Some("local-zero-marginal-cost".into()),
+            split: Some("none".into()),
+            harness_sha256: Some("a".repeat(64)),
+            split_sha256: None,
+        })
+        .unwrap();
+        let rows = db.list_fusion_benchmarks(5).unwrap();
+        assert_eq!(rows.len(), 1);
+        let row = &rows[0];
+        assert_eq!(row.score, Some(0.0));
+        assert_eq!(row.split.as_deref(), Some("none"));
+        assert_eq!(row.cost_usd, None);
+        assert_eq!(row.cost_basis.as_deref(), Some("local-zero-marginal-cost"));
+        assert_eq!(row.harness_sha256.as_deref(), Some("a".repeat(64).as_str()));
+        assert_eq!(row.split_sha256, None);
         let _ = std::fs::remove_dir_all(&dir);
     }
 

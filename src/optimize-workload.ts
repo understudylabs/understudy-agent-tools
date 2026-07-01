@@ -367,6 +367,12 @@ export function writeDryRunProofPacket(
     live_optimizer_execution: false,
     checks: result.checks,
     hashes: result.hashes,
+    // Additive: per-row eval evidence cited by baselines and claims must use
+    // the shared cross-surface row shape.
+    evidence: {
+      eval_row_schema: "understudy.eval_result.v1",
+      eval_row_schema_path: "schemas/understudy.eval_result.v1.schema.json",
+    },
     next_step: result.ok
       ? "Approval is still required before any live optimizer execution."
       : "Fix failed gates before optimization.",

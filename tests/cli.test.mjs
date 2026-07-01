@@ -880,6 +880,8 @@ describe("understudy CLI", () => {
       assert.equal(packet.package_installs, false);
       assert.equal(packet.live_optimizer_execution, false);
       assert.equal(packet.status, "ready");
+      assert.equal(packet.evidence.eval_row_schema, "understudy.eval_result.v1");
+      assert.equal(packet.evidence.eval_row_schema_path, "schemas/understudy.eval_result.v1.schema.json");
     }));
 
   it("keeps generic optimizer run scaffolding out of the CLI", () => {

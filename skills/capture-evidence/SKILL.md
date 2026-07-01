@@ -118,6 +118,13 @@ enough provenance for another agent to repeat the step without guessing.
    Record the per-row (or per-cluster) pass/fail set, not just an aggregate
    score, so the next step can see whether optimization **headroom** exists —
    i.e. rows the incumbent fails that a stronger model could fix.
+   Record each per-row result as an `understudy.eval_result.v1` row — the
+   required row format for eval evidence across every Understudy surface
+   ([`schemas/understudy.eval_result.v1.schema.json`](../../schemas/understudy.eval_result.v1.schema.json)):
+   `run_id`, `task_id`, `split`, `score` (0..1 or null — a 0 is a scored
+   failure, never a missing value), `status` (`ok`/`error`/`skipped`/`unscored`),
+   model, route, cost/tokens/latency when known, and a `provenance` block whose
+   `harness_sha256`/`split_sha256` carry the same hash chain as `baseline.json`.
 
 ## Flow
 

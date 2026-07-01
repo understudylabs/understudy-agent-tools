@@ -186,6 +186,15 @@ basis are per-rollout and mandatory, not optional: report the delta in tool-call
 count and end-to-end rollout cost alongside the rubric delta, so a quality gain
 bought with more calls or higher latency is visible rather than hidden.
 
+Per-row eval evidence behind any claim — the baseline rerun, dev-set
+comparisons, and the frozen-candidate holdout table — must be recorded as
+`understudy.eval_result.v1` rows
+([`schemas/understudy.eval_result.v1.schema.json`](../../schemas/understudy.eval_result.v1.schema.json)).
+The row-level `provenance.harness_sha256` and `provenance.split_sha256` fields
+carry the same hash chain the claim packet cites, a `score` of 0 is a scored
+failure (never a missing value), and `unscored` rows are excluded from
+averages rather than counted as 0.
+
 No claim may imply replacement readiness, production readiness, or recurring
 savings unless those fields are present and the holdout evidence supports the
 statement. If the evidence is train/dev-only, call it an optimization lead, not
