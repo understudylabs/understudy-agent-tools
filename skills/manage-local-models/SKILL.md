@@ -96,8 +96,11 @@ locations and registry links are in [`reference.md`](reference.md).
    `top_logprobs`), the wrong sampling (greedy is off-spec for `do_sample: true`
    models), or a mis-wired MTP draft.
 6. **Verify + record.** Once cached, run a one-line generation to confirm it
-   loads and does tool calls if the workload needs them. Append the model to
-   `local_models` in the profile (id, runtime, quant, size, date).
+   loads and does tool calls if the workload needs them. The models directory
+   plus each snapshot's catalog/serving manifest is the source of truth for
+   what is installed; you may append an interview-time note to `local_models`
+   in the profile (id, runtime, quant, size, date), but never treat that field
+   as the library index — list the models dir to answer "what do I have?".
 
    **Also pre-research and record the recommended serving settings, at pull
    time, not at bench time.** Read the snapshot's `understudy.serving.json`
