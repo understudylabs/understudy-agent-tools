@@ -37,15 +37,6 @@
     "session_url": "https://models.understudylabs.com/session?model=gemma-4-e4b-it-mlx-vlm-4bit&ttl=21600"
   },
   {
-    "id": "gemma-4-e4b-it-mlx-vlm-bf16",
-    "name": "Gemma 4 E4B IT MLX-VLM BF16",
-    "approx_gb": 15,
-    "loader": "mlx_vlm",
-    "default_rung": false,
-    "notes": "Full-precision E4B diagnostic when 4-bit quality looks suspicious.",
-    "session_url": "https://models.understudylabs.com/session?model=gemma-4-e4b-it-mlx-vlm-bf16&ttl=21600"
-  },
-  {
     "id": "gemma-4-12b-it-mlx-vlm-4bit",
     "name": "Gemma 4 12B IT MLX-VLM 4-bit",
     "approx_gb": 6.3,

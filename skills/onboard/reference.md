@@ -184,13 +184,11 @@ through MLX on Apple Silicon (see
   (about 4.8 GB, `mlx-vlm 0.6.2`, served with `mlx_vlm.server`) — provenance
   and smoke-test details:
   [`../manage-local-models/reference.md`](../manage-local-models/reference.md).
-- **Small BF16 diagnostic rungs** — Understudy-verified BF16 conversions of
-  `google/gemma-4-e2b-it` and `google/gemma-4-e4b-it`, served with
-  `mlx_vlm.server`. Use
+- **Small BF16 diagnostic rung** — an Understudy-verified BF16 conversion of
+  `google/gemma-4-e2b-it`, served with `mlx_vlm.server`. Use
   `https://models.understudylabs.com/session?model=gemma-4-e2b-it-mlx-vlm-bf16`
-  or `https://models.understudylabs.com/session?model=gemma-4-e4b-it-mlx-vlm-bf16`
-  when quantization may be hurting a small-model workload. They are about
-  9.5 GB and 15 GB on disk.
+  when quantization may be hurting a small-model workload. It is about
+  9.5 GB on disk.
 - **Delivery shape** — publish the stable
   `models.understudylabs.com/session?model=...` endpoint. It returns a manifest
   with short-lived signed URLs for the actual model files; do not publish the
