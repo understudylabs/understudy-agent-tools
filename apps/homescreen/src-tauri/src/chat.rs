@@ -83,6 +83,7 @@ const BENCHMARK_SIDEKICK_WAIT_MS: u64 = 2_500;
 const MAX_TOOL_ROUNDS: usize = 4;
 const BENCHMARK_MAX_TOOL_ROUNDS: usize = 4;
 const SIDEKICK_MAX_TOOL_ROUNDS: usize = 2;
+const SIDEKICK_REQUEST_TIMEOUT_SECS: u64 = 120;
 const SIDEKICK_MAX_CONTEXT_MESSAGES: usize = 16;
 const SIDEKICK_RECENT_CONTEXT_MESSAGES: usize = 10;
 const SIDEKICK_FILE_READ_LIMIT: usize = 48 * 1024;
@@ -1437,7 +1438,12 @@ async fn call_sidekick_model(
     let mut messages = load_sidekick_messages(app, &key, profile)?;
     messages.push(json!({ "role": "user", "content": user }));
 
-    let client = reqwest::Client::new();
+    // This client runs while the per-session-key lock is held; the request
+    // timeout is what keeps a stalled local server from wedging the key forever.
+    let client = reqwest::Client::builder()
+        .timeout(Duration::from_secs(SIDEKICK_REQUEST_TIMEOUT_SECS))
+        .build()
+        .map_err(|e| format!("sidekick client failed: {e}"))?;
     let mut tool_count = 0usize;
     let mut final_content = String::new();
     let mut tool_limited = false;
@@ -2721,6 +2727,14 @@ pub async fn chat_stream(
             error: Some(format!("tool call limit reached ({MAX_TOOL_ROUNDS})")),
         },
     );
+    // The turn hit the tool limit; hand the claimed handoffs back so the next
+    // turn can retry them, matching the in-loop error path.
+    if let Err(err) = app
+        .state::<crate::db::Db>()
+        .unconsume_sidekick_handoffs(&handoff_ids)
+    {
+        eprintln!("understudy db: unconsume_sidekick_handoffs failed: {err:#}");
+    }
     let _ = on_event.send(ChatEvent::Done);
     Ok(())
 }

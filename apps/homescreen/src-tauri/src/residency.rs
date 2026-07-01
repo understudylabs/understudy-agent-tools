@@ -412,9 +412,12 @@ impl Residency {
             // Persist + benchmark record.
             if ready {
                 residency.persist(&app);
-                let _ = app
+                if let Err(err) = app
                     .state::<Db>()
-                    .record_benchmark(&model_id, None, mem_gb, Some(load_ms));
+                    .record_benchmark(&model_id, None, mem_gb, Some(load_ms))
+                {
+                    eprintln!("understudy db: record_benchmark failed: {err:#}");
+                }
             }
         });
         Ok(())
