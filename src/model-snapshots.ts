@@ -106,13 +106,6 @@ export const VERIFIED_SNAPSHOT_MODELS: Record<string, SnapshotModelInfo> = {
     approxGb: 4.8,
     loader: "mlx_vlm",
   },
-  "gemma-4-e4b-it-mlx-vlm-bf16": {
-    sessionUrl: "https://models.understudylabs.com/session?model=gemma-4-e4b-it-mlx-vlm-bf16&ttl=21600",
-    destName: "gemma-4-e4b-it-mlx-vlm-bf16",
-    name: "Gemma 4 E4B IT MLX-VLM BF16",
-    approxGb: 15,
-    loader: "mlx_vlm",
-  },
   "gemma-4-12b-it-mlx-vlm-4bit": {
     sessionUrl: "https://models.understudylabs.com/session?model=gemma-4-12b-it-mlx-vlm-4bit&ttl=21600",
     destName: "gemma-4-12b-it-mlx-vlm-4bit",

@@ -82,7 +82,6 @@ or graduate remote when local quality is the bottleneck.
 | Gemma 4 E2B 4-bit (vanilla) | `mlx_vlm.server` | `https://models.understudylabs.com/session?model=gemma-4-e2b-it-mlx-vlm-4bit` | Diagnostic rung (vanilla non-QAT bf16 -> MLX 4-bit). Keep it to isolate "is this a quant artifact?" questions against the QAT default. About 3.3 GB; verified generation, OpenAI-compatible serving, logprobs/top-logprobs. |
 | Gemma 4 E2B BF16 | `mlx_vlm.server` | `https://models.understudylabs.com/session?model=gemma-4-e2b-it-mlx-vlm-bf16` | Full-precision diagnostic rung for small-model quality checks. About 9.5 GB. |
 | Gemma 4 E4B 4-bit | `mlx_vlm.server` | `https://models.understudylabs.com/session?model=gemma-4-e4b-it-mlx-vlm-4bit` | First climb when E2B understands the task but lacks quality. About 4.8 GB; verified signed snapshot delivery. Official target for this tier: `gemma-4-e4b-it-qat-mlx-vlm-understudy` (QAT conversion staged; certification + publication pending) — switch to it once its session URL resolves. |
-| Gemma 4 E4B BF16 | `mlx_vlm.server` | `https://models.understudylabs.com/session?model=gemma-4-e4b-it-mlx-vlm-bf16` | Full-precision E4B diagnostic when 4-bit quality looks suspicious. About 15 GB. |
 | Gemma 4 12B 4-bit | `mlx_vlm.server` | `https://models.understudylabs.com/session?model=gemma-4-12b-it-mlx-vlm-4bit` | M4/M5 MacBook Pro or high-RAM Air rung when E4B has the right behavior but not enough depth. About 6.3 GB; verified generation plus OpenAI-compatible logprobs/top-logprobs. Official target for this tier: `gemma-4-12b-it-qat-mlx-vlm-understudy` (QAT conversion staged; certification + publication pending). |
 | Gemma 4 12B BF16 | `mlx_vlm.server` | `https://models.understudylabs.com/session?model=gemma-4-12b-it-mlx-vlm-bf16` | Quality/perf profiling rung on larger-memory Macs. About 22 GB; use when quantization may be the bottleneck. |
 | **Gemma 4 26B A4B QAT (Understudy)** | `mlx_vlm.server` | `https://models.understudylabs.com/session?model=gemma-4-26b-a4b-it-qat-mlx-vlm-understudy` | **Primary MoE-style climb.** Certified MLX 4-bit QAT MoE (`group_size=32` + 8-bit routers) from Google's QAT checkpoint. About 16 GB; certified generation, logprobs/top-logprobs, and tool calls. |
@@ -197,10 +196,9 @@ fixed `seed` for reproducibility, never `temperature: 0`.
 When adding a new model to the cache or ladder, append its row here as part of
 the pull — the bench harness should never have to guess.
 
-Small full-precision diagnostic note: `gemma-4-e2b-it-mlx-vlm-bf16` and
-`gemma-4-e4b-it-mlx-vlm-bf16` are the smaller BF16 rungs. Use them to
-distinguish model-size limits from quantization damage before jumping to 12B
-or remote.
+Small full-precision diagnostic note: `gemma-4-e2b-it-mlx-vlm-bf16` is the
+smallest BF16 rung. Use it to distinguish model-size limits from quantization
+damage before jumping to 12B or remote.
 
 Known-good high-end smoke:
 
