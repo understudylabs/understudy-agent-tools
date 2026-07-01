@@ -1705,7 +1705,7 @@ fn prompt_excerpt(prompt: &str) -> String {
     format!("{}…", &trimmed[..end])
 }
 
-fn approximate_token_count(text: &str) -> u64 {
+pub(crate) fn approximate_token_count(text: &str) -> u64 {
     text.split_whitespace().count() as u64
 }
 

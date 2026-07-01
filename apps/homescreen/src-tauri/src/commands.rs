@@ -552,6 +552,9 @@ fn avg(values: &[f64]) -> Option<f64> {
     }
 }
 
+/// Scores a benchmark row against its rubric. Returns `None` when the
+/// (task, mode) pair has no rubric — such rows stay unscored so averages and
+/// best-mode selection only consider rubric-covered combinations.
 fn fusion_benchmark_score(
     task_id: &str,
     mode: &str,
@@ -560,58 +563,33 @@ fn fusion_benchmark_score(
     sidekick_runs: u64,
     status: &str,
     content: &str,
-) -> f64 {
+) -> Option<f64> {
+    let passed = match (task_id, mode) {
+        ("long-context-routing" | "frontier-upgrade-trigger", "sidekick-routing") => {
+            effective_route == "gateway" && !policy_sidekick
+        }
+        ("judgment-boundary", "sidekick-routing") => !policy_sidekick && sidekick_runs == 0,
+        (
+            "repo-search-summary"
+            | "runtime-status-check"
+            | "repo-open-grounding"
+            | "mcp-surface-check"
+            | "skill-lookup"
+            | "automationbench-api-discovery"
+            | "automationbench-state-verification"
+            | "automationbench-tool-risk"
+            | "automationbench-cost-latency",
+            "sidekick-routing",
+        ) => effective_route == "local" && policy_sidekick,
+        ("automationbench-domain-routing", "sidekick-routing") => {
+            !policy_sidekick && (effective_route == "local" || effective_route == "gateway")
+        }
+        _ => return None,
+    };
     if status != "ok" || content.trim().is_empty() {
-        return 0.0;
+        return Some(0.0);
     }
-    match task_id {
-        "long-context-routing" if mode == "sidekick-routing" => {
-            if effective_route == "gateway" && !policy_sidekick {
-                1.0
-            } else {
-                0.0
-            }
-        }
-        "frontier-upgrade-trigger" if mode == "sidekick-routing" => {
-            if effective_route == "gateway" && !policy_sidekick {
-                1.0
-            } else {
-                0.0
-            }
-        }
-        "judgment-boundary" if mode == "sidekick-routing" => {
-            if !policy_sidekick && sidekick_runs == 0 {
-                1.0
-            } else {
-                0.0
-            }
-        }
-        "repo-search-summary"
-        | "runtime-status-check"
-        | "repo-open-grounding"
-        | "mcp-surface-check"
-        | "skill-lookup"
-        | "automationbench-api-discovery"
-        | "automationbench-state-verification"
-        | "automationbench-tool-risk"
-        | "automationbench-cost-latency"
-            if mode == "sidekick-routing" =>
-        {
-            if effective_route == "local" && policy_sidekick {
-                1.0
-            } else {
-                0.0
-            }
-        }
-        "automationbench-domain-routing" if mode == "sidekick-routing" => {
-            if !policy_sidekick && (effective_route == "local" || effective_route == "gateway") {
-                1.0
-            } else {
-                0.0
-            }
-        }
-        _ => 1.0,
-    }
+    Some(if passed { 1.0 } else { 0.0 })
 }
 
 fn prompt_excerpt(prompt: &str) -> String {
@@ -1280,6 +1258,17 @@ pub fn fusion_route_recommendation(
     app: AppHandle,
     request: FusionRouteRecommendationRequest,
 ) -> FusionRouteRecommendation {
+    fusion_route_recommendation_with_persist(app, request, true)
+}
+
+/// `persist_decision: false` computes the recommendation without recording a
+/// fusion_route_decisions row — used by benchmark dry runs so planning never
+/// pollutes exported routing evidence.
+pub fn fusion_route_recommendation_with_persist(
+    app: AppHandle,
+    request: FusionRouteRecommendationRequest,
+    persist_decision: bool,
+) -> FusionRouteRecommendation {
     let snapshot = residency(&app).snapshot();
     let active_slot = request.active_slot_id.and_then(|slot_id| {
         snapshot
@@ -1567,6 +1556,9 @@ pub fn fusion_route_recommendation(
         sidekick_ready,
         gateway_ready,
     };
+    if !persist_decision {
+        return recommendation;
+    }
     let _ = app
         .state::<crate::db::Db>()
         .record_fusion_route_decision(&FusionRouteDecisionInput {
@@ -1585,7 +1577,7 @@ pub fn fusion_route_recommendation(
             local_ready: recommendation.local_ready,
             sidekick_ready: recommendation.sidekick_ready,
             gateway_ready: recommendation.gateway_ready,
-            prompt_tokens: prompt.split_whitespace().count() as u64,
+            prompt_tokens: crate::chat::approximate_token_count(prompt),
             local_mem_gb: (local_mem_gb > 0.0).then_some(local_mem_gb),
         });
     recommendation
@@ -2088,7 +2080,7 @@ pub async fn run_fusion_benchmark(
     app: AppHandle,
     request: RunFusionBenchmarkRequest,
 ) -> Result<FusionBenchmarkRun, String> {
-    run_fusion_benchmark_inner(app, request, None, None).await
+    run_fusion_benchmark_inner(app, request, None, None, None).await
 }
 
 async fn run_fusion_benchmark_inner(
@@ -2096,12 +2088,16 @@ async fn run_fusion_benchmark_inner(
     request: RunFusionBenchmarkRequest,
     candidate_label: Option<&str>,
     on_event: Option<&Channel<FusionEvalEvent>>,
+    event_run_id: Option<&str>,
 ) -> Result<FusionBenchmarkRun, String> {
     let matrix = fusion_benchmark_matrix();
     let run_id = request.run_id.unwrap_or_else(default_fusion_run_id);
     if run_id.trim().is_empty() {
         return Err("run_id is required".to_string());
     }
+    // Matrix runs persist rows under a candidate-suffixed run id but emit
+    // events under the parent run id so the frontend can correlate them.
+    let event_run_id = event_run_id.unwrap_or(&run_id).to_string();
     let candidate = request
         .candidate
         .unwrap_or_else(|| "local-main".to_string());
@@ -2180,7 +2176,7 @@ async fn run_fusion_benchmark_inner(
         for mode in &requested_modes {
             let recommendation =
                 (mode == "sidekick-routing" && candidate != "gateway-glm").then(|| {
-                    fusion_route_recommendation(
+                    fusion_route_recommendation_with_persist(
                         app.clone(),
                         FusionRouteRecommendationRequest {
                             prompt: task.prompt.to_string(),
@@ -2188,6 +2184,7 @@ async fn run_fusion_benchmark_inner(
                             active_slot_id: main_slot_id,
                             session_id: Some(run_id.clone()),
                         },
+                        !dry_run,
                     )
                 });
             let effective_route = recommendation
@@ -2234,7 +2231,7 @@ async fn run_fusion_benchmark_inner(
             };
             if let Some(on_event) = on_event {
                 let _ = on_event.send(FusionEvalEvent::RowStarted {
-                    run_id: run_id.clone(),
+                    run_id: event_run_id.clone(),
                     candidate: candidate_label.unwrap_or(&candidate).to_string(),
                     task_id: task.id.to_string(),
                     mode: mode.clone(),
@@ -2290,6 +2287,15 @@ async fn run_fusion_benchmark_inner(
                 let result = match result {
                     Ok(result) => result,
                     Err(err) => {
+                        let error_score = fusion_benchmark_score(
+                            task.id,
+                            mode,
+                            effective_route,
+                            policy_sidekick,
+                            sidekick_run_count,
+                            "error",
+                            "",
+                        );
                         app.state::<crate::db::Db>()
                             .record_fusion_benchmark(&FusionBenchmarkInput {
                                 run_id: run_id.clone(),
@@ -2297,17 +2303,18 @@ async fn run_fusion_benchmark_inner(
                                 mode: mode.clone(),
                                 model: effective_model.clone(),
                                 elapsed_ms: None,
-                                prompt_tokens: Some(task.prompt.split_whitespace().count() as u64),
+                                // Token columns hold approximate token counts from
+                                // executed calls; rows that never executed stay None
+                                // so unit-mismatched word counts don't skew averages.
+                                prompt_tokens: None,
                                 completion_tokens: None,
                                 sidekick_runs: sidekick_run_count,
                                 sidekick_tool_calls,
                                 gateway_used: effective_route == "gateway",
                                 compacted: false,
-                                context_tokens_before: Some(
-                                    task.prompt.split_whitespace().count() as u64
-                                ),
+                                context_tokens_before: None,
                                 local_mem_gb: effective_local_mem_gb,
-                                score: Some(0.0),
+                                score: error_score,
                                 status: "error".to_string(),
                                 notes: Some(format!(
                                     "error:{}; status=error; policy_reason={}; error={}",
@@ -2319,14 +2326,14 @@ async fn run_fusion_benchmark_inner(
                             .map_err(|e| e.to_string())?;
                         if let Some(on_event) = on_event {
                             let _ = on_event.send(FusionEvalEvent::RowFinished {
-                                run_id: run_id.clone(),
+                                run_id: event_run_id.clone(),
                                 candidate: candidate_label.unwrap_or(&candidate).to_string(),
                                 task_id: task.id.to_string(),
                                 mode: mode.clone(),
                                 route: effective_route.to_string(),
                                 model: effective_model.clone(),
                                 status: "error".to_string(),
-                                score: Some(0.0),
+                                score: error_score,
                                 elapsed_ms: None,
                                 sidekick_runs: sidekick_run_count,
                                 sidekick_tool_calls,
@@ -2342,7 +2349,7 @@ async fn run_fusion_benchmark_inner(
                         continue;
                     }
                 };
-                let score = Some(fusion_benchmark_score(
+                let score = fusion_benchmark_score(
                     task.id,
                     mode,
                     effective_route,
@@ -2350,7 +2357,7 @@ async fn run_fusion_benchmark_inner(
                     sidekick_run_count,
                     &result.status,
                     &result.content,
-                ));
+                );
                 app.state::<crate::db::Db>()
                     .record_fusion_benchmark(&FusionBenchmarkInput {
                         run_id: run_id.clone(),
@@ -2381,7 +2388,7 @@ async fn run_fusion_benchmark_inner(
                     .map_err(|e| e.to_string())?;
                 if let Some(on_event) = on_event {
                     let _ = on_event.send(FusionEvalEvent::RowFinished {
-                        run_id: run_id.clone(),
+                        run_id: event_run_id.clone(),
                         candidate: candidate_label.unwrap_or(&candidate).to_string(),
                         task_id: task.id.to_string(),
                         mode: mode.clone(),
@@ -2404,13 +2411,15 @@ async fn run_fusion_benchmark_inner(
                         mode: mode.clone(),
                         model: effective_model.clone(),
                         elapsed_ms: None,
-                        prompt_tokens: Some(task.prompt.split_whitespace().count() as u64),
+                        // Non-executed rows keep token columns None; see the error
+                        // path above.
+                        prompt_tokens: None,
                         completion_tokens: None,
                         sidekick_runs: 0,
                         sidekick_tool_calls: 0,
                         gateway_used: effective_route == "gateway",
                         compacted: false,
-                        context_tokens_before: Some(task.prompt.split_whitespace().count() as u64),
+                        context_tokens_before: None,
                         local_mem_gb: effective_local_mem_gb,
                         score: None,
                         status: "skipped".to_string(),
@@ -2420,7 +2429,7 @@ async fn run_fusion_benchmark_inner(
                 recorded_skips += 1;
                 if let Some(on_event) = on_event {
                     let _ = on_event.send(FusionEvalEvent::RowFinished {
-                        run_id: run_id.clone(),
+                        run_id: event_run_id.clone(),
                         candidate: candidate_label.unwrap_or(&candidate).to_string(),
                         task_id: task.id.to_string(),
                         mode: mode.clone(),
@@ -2438,7 +2447,7 @@ async fn run_fusion_benchmark_inner(
             } else if dry_run {
                 if let Some(on_event) = on_event {
                     let _ = on_event.send(FusionEvalEvent::RowFinished {
-                        run_id: run_id.clone(),
+                        run_id: event_run_id.clone(),
                         candidate: candidate_label.unwrap_or(&candidate).to_string(),
                         task_id: task.id.to_string(),
                         mode: mode.clone(),
@@ -2493,59 +2502,7 @@ pub async fn run_fusion_benchmark_matrix(
     app: AppHandle,
     request: RunFusionBenchmarkMatrixRequest,
 ) -> Result<FusionBenchmarkMatrixRun, String> {
-    let run_id = request.run_id.unwrap_or_else(default_fusion_run_id);
-    if run_id.trim().is_empty() {
-        return Err("run_id is required".to_string());
-    }
-    let suite = request.suite.unwrap_or_else(|| "full-matrix".to_string());
-    let candidates = request.candidates.unwrap_or_else(|| {
-        vec![
-            "gateway-glm".to_string(),
-            "local-main".to_string(),
-            "local-fast".to_string(),
-        ]
-    });
-    for candidate in &candidates {
-        if !valid_fusion_candidate(candidate) {
-            return Err(format!("unknown Fusion benchmark candidate: {candidate}"));
-        }
-    }
-    let dry_run = request.dry_run.unwrap_or(true);
-    let mut runs = vec![];
-    let mut rows = 0u64;
-    let mut recorded_skips = 0u64;
-    for candidate in candidates {
-        let candidate_run_id = format!("{run_id}-{candidate}");
-        let run = run_fusion_benchmark_inner(
-            app.clone(),
-            RunFusionBenchmarkRequest {
-                run_id: Some(candidate_run_id),
-                suite: Some(suite.clone()),
-                candidate: Some(candidate.clone()),
-                route: None,
-                modes: request.modes.clone(),
-                task_ids: request.task_ids.clone(),
-                model: None,
-                dry_run: Some(dry_run),
-                record_skips: request.record_skips,
-            },
-            Some(&candidate),
-            None,
-        )
-        .await?;
-        rows += run.rows.len() as u64;
-        recorded_skips += run.recorded_skips;
-        runs.push(FusionBenchmarkCandidateRun { candidate, run });
-    }
-    Ok(FusionBenchmarkMatrixRun {
-        schema_version: "understudy.fusion_benchmark_matrix_run.v1",
-        run_id,
-        suite,
-        dry_run,
-        candidates: runs,
-        rows,
-        recorded_skips,
-    })
+    run_fusion_benchmark_matrix_impl(app, request, None).await
 }
 
 #[tauri::command]
@@ -2553,6 +2510,14 @@ pub async fn run_fusion_benchmark_matrix_live(
     app: AppHandle,
     request: RunFusionBenchmarkMatrixRequest,
     on_event: Channel<FusionEvalEvent>,
+) -> Result<FusionBenchmarkMatrixRun, String> {
+    run_fusion_benchmark_matrix_impl(app, request, Some(&on_event)).await
+}
+
+async fn run_fusion_benchmark_matrix_impl(
+    app: AppHandle,
+    request: RunFusionBenchmarkMatrixRequest,
+    on_event: Option<&Channel<FusionEvalEvent>>,
 ) -> Result<FusionBenchmarkMatrixRun, String> {
     let run_id = request.run_id.unwrap_or_else(default_fusion_run_id);
     if run_id.trim().is_empty() {
@@ -2571,27 +2536,36 @@ pub async fn run_fusion_benchmark_matrix_live(
             return Err(format!("unknown Fusion benchmark candidate: {candidate}"));
         }
     }
-    let dry_run = request.dry_run.unwrap_or(false);
-    let (suite_modes, suite_tasks) = fusion_benchmark_suite(Some(&suite))?;
-    let requested_modes = request.modes.clone().unwrap_or(suite_modes);
-    let requested_tasks = request.task_ids.clone().unwrap_or(suite_tasks);
-    let planned_rows = (candidates.len() * requested_modes.len() * requested_tasks.len()) as u64;
-    let _ = on_event.send(FusionEvalEvent::RunStarted {
-        run_id: run_id.clone(),
-        suite: suite.clone(),
-        candidates: candidates.clone(),
-        rows: planned_rows,
-    });
+    // Planning is the safe default; callers must opt into spending tokens.
+    let dry_run = request.dry_run.unwrap_or(true);
+    if let Some(on_event) = on_event {
+        let (suite_modes, suite_tasks) = fusion_benchmark_suite(Some(&suite))?;
+        let mode_count = request.modes.as_ref().map_or(suite_modes.len(), Vec::len);
+        let task_count = request
+            .task_ids
+            .as_ref()
+            .map_or(suite_tasks.len(), Vec::len);
+        let _ = on_event.send(FusionEvalEvent::RunStarted {
+            run_id: run_id.clone(),
+            suite: suite.clone(),
+            candidates: candidates.clone(),
+            rows: (candidates.len() * mode_count * task_count) as u64,
+        });
+    }
 
     let mut runs = vec![];
     let mut rows = 0u64;
     let mut recorded_skips = 0u64;
     for candidate in candidates {
+        // Result rows persist under the candidate-suffixed run id; every
+        // emitted event carries the parent run_id plus the candidate field.
         let candidate_run_id = format!("{run_id}-{candidate}");
-        let _ = on_event.send(FusionEvalEvent::CandidateStarted {
-            run_id: candidate_run_id.clone(),
-            candidate: candidate.clone(),
-        });
+        if let Some(on_event) = on_event {
+            let _ = on_event.send(FusionEvalEvent::CandidateStarted {
+                run_id: run_id.clone(),
+                candidate: candidate.clone(),
+            });
+        }
         let run = match run_fusion_benchmark_inner(
             app.clone(),
             RunFusionBenchmarkRequest {
@@ -2606,39 +2580,52 @@ pub async fn run_fusion_benchmark_matrix_live(
                 record_skips: request.record_skips,
             },
             Some(&candidate),
-            Some(&on_event),
+            on_event,
+            Some(&run_id),
         )
         .await
         {
             Ok(run) => run,
             Err(err) => {
-                let _ = on_event.send(FusionEvalEvent::Error {
-                    run_id: candidate_run_id,
-                    message: err.clone(),
-                });
+                if let Some(on_event) = on_event {
+                    let _ = on_event.send(FusionEvalEvent::Error {
+                        run_id: run_id.clone(),
+                        message: format!("candidate {candidate}: {err}"),
+                    });
+                }
                 return Err(err);
             }
         };
         rows += run.rows.len() as u64;
         recorded_skips += run.recorded_skips;
-        let _ = on_event.send(FusionEvalEvent::CandidateFinished {
-            run_id: run.run_id.clone(),
-            candidate: candidate.clone(),
-            rows: run.rows.len() as u64,
-        });
+        if let Some(on_event) = on_event {
+            let _ = on_event.send(FusionEvalEvent::CandidateFinished {
+                run_id: run_id.clone(),
+                candidate: candidate.clone(),
+                rows: run.rows.len() as u64,
+            });
+        }
         runs.push(FusionBenchmarkCandidateRun { candidate, run });
     }
-    let avg_score = fusion_benchmark_run_summary(app.clone(), Some(200))
-        .ok()
-        .and_then(|summary| summary.runs.into_iter().find(|run| run.run_id == run_id))
-        .and_then(|run| run.avg_score);
-    let _ = on_event.send(FusionEvalEvent::RunFinished {
-        run_id: run_id.clone(),
-        suite: suite.clone(),
-        rows,
-        recorded_skips,
-        avg_score,
-    });
+    if let Some(on_event) = on_event {
+        // Recorded rows live under the candidate-suffixed run ids, so
+        // aggregate scores across all of this run's candidates.
+        let score_values: Vec<f64> = app
+            .state::<crate::db::Db>()
+            .list_fusion_benchmarks(500)
+            .unwrap_or_default()
+            .into_iter()
+            .filter(|row| runs.iter().any(|c| c.run.run_id == row.run_id))
+            .filter_map(|row| row.score)
+            .collect();
+        let _ = on_event.send(FusionEvalEvent::RunFinished {
+            run_id: run_id.clone(),
+            suite: suite.clone(),
+            rows,
+            recorded_skips,
+            avg_score: avg(&score_values),
+        });
+    }
     Ok(FusionBenchmarkMatrixRun {
         schema_version: "understudy.fusion_benchmark_matrix_run.v1",
         run_id,
@@ -2817,4 +2804,184 @@ pub fn set_setting(app: AppHandle, key: String, value: String) -> Result<(), Str
 #[tauri::command]
 pub fn server_info(app: AppHandle) -> Option<Value> {
     crate::server::info(&app).map(|(base, token)| json!({ "base_url": base, "token": token }))
+}
+
+#[cfg(test)]
+mod tests {
+    use super::fusion_benchmark_score;
+
+    #[test]
+    fn score_is_none_without_rubric() {
+        for mode in ["main-only", "sidekick-advisory", "sidekick-parallel"] {
+            assert_eq!(
+                fusion_benchmark_score("repo-search-summary", mode, "local", true, 1, "ok", "out"),
+                None,
+            );
+        }
+        assert_eq!(
+            fusion_benchmark_score(
+                "unknown-task",
+                "sidekick-routing",
+                "local",
+                true,
+                1,
+                "ok",
+                "out"
+            ),
+            None,
+        );
+    }
+
+    #[test]
+    fn rubric_rows_score_zero_on_error_or_empty_output() {
+        assert_eq!(
+            fusion_benchmark_score(
+                "repo-search-summary",
+                "sidekick-routing",
+                "local",
+                true,
+                1,
+                "error",
+                "out",
+            ),
+            Some(0.0),
+        );
+        assert_eq!(
+            fusion_benchmark_score(
+                "repo-search-summary",
+                "sidekick-routing",
+                "local",
+                true,
+                1,
+                "ok",
+                "  \n",
+            ),
+            Some(0.0),
+        );
+        // Rows without a rubric stay unscored even when they fail.
+        assert_eq!(
+            fusion_benchmark_score(
+                "repo-search-summary",
+                "main-only",
+                "local",
+                false,
+                0,
+                "error",
+                ""
+            ),
+            None,
+        );
+    }
+
+    #[test]
+    fn mechanical_tasks_reward_local_sidekick_delegation() {
+        assert_eq!(
+            fusion_benchmark_score(
+                "repo-search-summary",
+                "sidekick-routing",
+                "local",
+                true,
+                1,
+                "ok",
+                "out",
+            ),
+            Some(1.0),
+        );
+        assert_eq!(
+            fusion_benchmark_score(
+                "repo-search-summary",
+                "sidekick-routing",
+                "gateway",
+                false,
+                0,
+                "ok",
+                "out",
+            ),
+            Some(0.0),
+        );
+    }
+
+    #[test]
+    fn frontier_tasks_reward_gateway_without_sidekick() {
+        assert_eq!(
+            fusion_benchmark_score(
+                "long-context-routing",
+                "sidekick-routing",
+                "gateway",
+                false,
+                0,
+                "ok",
+                "out",
+            ),
+            Some(1.0),
+        );
+        assert_eq!(
+            fusion_benchmark_score(
+                "frontier-upgrade-trigger",
+                "sidekick-routing",
+                "local",
+                true,
+                1,
+                "ok",
+                "out",
+            ),
+            Some(0.0),
+        );
+    }
+
+    #[test]
+    fn judgment_boundary_rewards_main_keeping_the_task() {
+        assert_eq!(
+            fusion_benchmark_score(
+                "judgment-boundary",
+                "sidekick-routing",
+                "local",
+                false,
+                0,
+                "ok",
+                "out",
+            ),
+            Some(1.0),
+        );
+        assert_eq!(
+            fusion_benchmark_score(
+                "judgment-boundary",
+                "sidekick-routing",
+                "local",
+                false,
+                2,
+                "ok",
+                "out",
+            ),
+            Some(0.0),
+        );
+    }
+
+    #[test]
+    fn domain_routing_rewards_either_route_without_sidekick() {
+        assert_eq!(
+            fusion_benchmark_score(
+                "automationbench-domain-routing",
+                "sidekick-routing",
+                "gateway",
+                false,
+                0,
+                "ok",
+                "out",
+            ),
+            Some(1.0),
+        );
+        assert_eq!(
+            fusion_benchmark_score(
+                "automationbench-domain-routing",
+                "sidekick-routing",
+                "local",
+                true,
+                1,
+                "ok",
+                "out",
+            ),
+            Some(0.0),
+        );
+    }
 }
