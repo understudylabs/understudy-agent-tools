@@ -864,6 +864,12 @@ pub fn list_models() -> Vec<models::ModelInfo> {
 
 #[tauri::command]
 pub fn list_snapshot_models() -> Vec<models::SnapshotInfo> {
+    // Kick a background catalog refresh (no-op while fresh or backed off);
+    // this call never blocks on the network — it serves the last good live
+    // catalog or the bundled fallback.
+    tauri::async_runtime::spawn(async {
+        let _ = models::refresh_catalog().await;
+    });
     models::snapshots()
 }
 

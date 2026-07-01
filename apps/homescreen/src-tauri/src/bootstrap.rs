@@ -254,29 +254,34 @@ async fn download_file(
             .map_err(|e| format!("create parent dir failed: {e}"))?;
     }
     let total = file.size_bytes.or(file.size);
-    if let Ok(meta) = fs::metadata(&target).await {
-        let size_matches = total.map(|t| t == meta.len()).unwrap_or(meta.len() > 0);
-        // A size match alone can hide a stale or corrupt file; when the
-        // manifest carries a hash, only a hash match counts as cached.
-        let verified = if !size_matches {
-            false
-        } else if let Some(expected) = file.sha256.as_ref() {
-            let _ = on_event.send(DownloadEvent::Log {
-                message: format!("verifying cached {name}"),
-            });
-            sha256_of_file(&target).await.ok().as_deref() == Some(&expected.to_lowercase())
-        } else {
-            true
-        };
-        if verified {
-            let _ = on_event.send(DownloadEvent::Log {
-                message: format!("cached {name}"),
-            });
-            return Ok(FileMetadata {
-                name,
-                bytes: meta.len(),
-                cached: true,
-            });
+    // Never cache-skip SHA256SUMS itself: a stale sums file left by a
+    // previous snapshot in the same dest would make verify_sha256sums
+    // validate the wrong weights. It is tiny — always refetch it.
+    if name != "SHA256SUMS" {
+        if let Ok(meta) = fs::metadata(&target).await {
+            let size_matches = total.map(|t| t == meta.len()).unwrap_or(meta.len() > 0);
+            // A size match alone can hide a stale or corrupt file; when the
+            // manifest carries a hash, only a hash match counts as cached.
+            let verified = if !size_matches {
+                false
+            } else if let Some(expected) = file.sha256.as_ref() {
+                let _ = on_event.send(DownloadEvent::Log {
+                    message: format!("verifying cached {name}"),
+                });
+                sha256_of_file(&target).await.ok().as_deref() == Some(&expected.to_lowercase())
+            } else {
+                true
+            };
+            if verified {
+                let _ = on_event.send(DownloadEvent::Log {
+                    message: format!("cached {name}"),
+                });
+                return Ok(FileMetadata {
+                    name,
+                    bytes: meta.len(),
+                    cached: true,
+                });
+            }
         }
     }
 
@@ -407,12 +412,11 @@ fn safe_target(root: &Path, name: &str) -> Result<PathBuf, String> {
     Ok(root.join(path))
 }
 
+/// Shared model cache root (UNDERSTUDY_MODEL_HOME override, else
+/// ~/.understudy/models) — see `models::models_dir`.
 fn models_dir() -> PathBuf {
-    std::env::var_os("HOME")
-        .map(PathBuf::from)
-        .unwrap_or_else(|| PathBuf::from("."))
-        .join(".understudy")
-        .join("models")
+    models::models_dir()
+        .unwrap_or_else(|| PathBuf::from(".").join(".understudy").join("models"))
 }
 
 fn command_status(id: &str, label: &str, command: String, args: &[&str]) -> ToolStatus {

@@ -8,10 +8,10 @@ import { isJsonMode, runAction } from "../internal/output.js";
 import { trackControlPlaneAction } from "../internal/telemetry.js";
 import {
   DEFAULT_MODELS_DIR,
-  VERIFIED_SNAPSHOT_MODELS,
+  fetchSnapshotCatalog,
   pullSnapshotModel,
   resolveSnapshotPlan,
-  snapshotModelIds,
+  type SnapshotCatalog,
 } from "../model-snapshots.js";
 
 const PublicModelSchema = z.object({
@@ -57,8 +57,8 @@ export function registerModelsCommand(program: Command): void {
     .command("snapshots")
     .description("List downloadable local Understudy model snapshots.")
     .option("--json", "Output JSON.")
-    .action(function (this: Command, opts: { json?: boolean }) {
-      runSnapshotList(this, opts);
+    .action(async function (this: Command, opts: { json?: boolean }) {
+      await runSnapshotList(this, opts);
     });
 
   models
@@ -118,24 +118,32 @@ async function runList(cmd: Command, opts: OrgOpt): Promise<void> {
   }
 }
 
-function runSnapshotList(cmd: Command, opts: { json?: boolean }): void {
-  const models = snapshotModelIds().map((id) => ({
+function catalogSourceLabel(catalog: SnapshotCatalog): string {
+  return catalog.source === "live" ? `live catalog (${catalog.url})` : "bundled fallback";
+}
+
+async function runSnapshotList(cmd: Command, opts: { json?: boolean }): Promise<void> {
+  const catalog = await fetchSnapshotCatalog();
+  const models = Object.entries(catalog.models).map(([id, info]) => ({
     id,
-    name: VERIFIED_SNAPSHOT_MODELS[id]?.name ?? id,
-    approx_gb: VERIFIED_SNAPSHOT_MODELS[id]?.approxGb ?? null,
-    loader: VERIFIED_SNAPSHOT_MODELS[id]?.loader ?? null,
-    default: VERIFIED_SNAPSHOT_MODELS[id]?.defaultRung === true,
+    name: info.name,
+    short_name: info.shortName ?? null,
+    approx_gb: info.approxGb,
+    loader: info.loader,
+    default: info.defaultRung === true,
+    certified: info.certified === true,
   }));
   if (opts.json || isJsonMode(cmd)) {
-    process.stdout.write(`${JSON.stringify({ models }, null, 2)}\n`);
+    process.stdout.write(`${JSON.stringify({ source: catalog.source, catalog_url: catalog.url, models }, null, 2)}\n`);
     return;
   }
-  const headers = ["id", "approx_gb", "loader", "default"];
+  const headers = ["id", "approx_gb", "loader", "default", "short_name"];
   const rows = models.map((model) => ({
     id: model.id,
     approx_gb: model.approx_gb == null ? "" : String(model.approx_gb),
     loader: model.loader ?? "",
     default: model.default ? "yes" : "",
+    short_name: model.short_name ?? "",
   }));
   const widths = headers.map((h) =>
     Math.max(
@@ -148,6 +156,7 @@ function runSnapshotList(cmd: Command, opts: { json?: boolean }): void {
   for (const row of rows) {
     process.stdout.write(`${headers.map((h, i) => pad(row[h as keyof typeof row], widths[i]!)).join("  ")}\n`);
   }
+  process.stdout.write(`${kleur.gray(`source: ${catalogSourceLabel(catalog)}`)}\n`);
 }
 
 async function runPull(cmd: Command, model: string | undefined, opts: PullOpts): Promise<void> {
@@ -160,10 +169,14 @@ async function runPull(cmd: Command, model: string | undefined, opts: PullOpts):
   if (!opts.all && !model) {
     throw new Error("Usage: understudy models pull <model-id> or understudy models pull --all");
   }
-  const ids = opts.all ? snapshotModelIds() : [model!];
+  const catalog = await fetchSnapshotCatalog();
+  if (!opts.json && !isJsonMode(cmd)) {
+    process.stdout.write(`${kleur.gray(`catalog: ${catalogSourceLabel(catalog)}`)}\n`);
+  }
+  const ids = opts.all ? Object.keys(catalog.models) : [model!];
   const results = [];
   for (const id of ids) {
-    const modelInfo = VERIFIED_SNAPSHOT_MODELS[id];
+    const modelInfo = catalog.models[id];
     const dest = opts.all
       ? join(opts.dest ?? DEFAULT_MODELS_DIR, modelInfo?.destName ?? id)
       : opts.dest === DEFAULT_MODELS_DIR
@@ -176,6 +189,7 @@ async function runPull(cmd: Command, model: string | undefined, opts: PullOpts):
         sessionUrl: opts.sessionUrl,
         logDir: opts.logDir,
         dryRun: true,
+        catalog: catalog.models,
       });
       results.push(planned);
       continue;
@@ -185,6 +199,7 @@ async function runPull(cmd: Command, model: string | undefined, opts: PullOpts):
       dest,
       sessionUrl: opts.sessionUrl,
       logDir: opts.logDir,
+      catalog: catalog.models,
       onLog: (line) => {
         if (!opts.json && !isJsonMode(cmd)) process.stdout.write(`${line}\n`);
       },
@@ -193,7 +208,7 @@ async function runPull(cmd: Command, model: string | undefined, opts: PullOpts):
   }
 
   if (opts.json || isJsonMode(cmd)) {
-    process.stdout.write(`${JSON.stringify({ models: results }, null, 2)}\n`);
+    process.stdout.write(`${JSON.stringify({ catalog_source: catalog.source, models: results }, null, 2)}\n`);
     return;
   }
   if (opts.dryRun) {
