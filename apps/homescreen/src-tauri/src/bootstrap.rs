@@ -229,7 +229,7 @@ async fn download_model_inner(
         .await
         .map_err(|e| format!("session manifest parse failed: {e}"))?;
     let mut files = manifest.files;
-    files.sort_by(|a, b| file_name(a).cmp(&file_name(b)));
+    files.sort_by_key(file_name);
     let mut out = Vec::with_capacity(files.len());
 
     // Pull SHA256SUMS first (never cache-skipped) so every other file,

@@ -575,7 +575,7 @@ impl Db {
                     created_at
              FROM fusion_route_decisions ORDER BY id DESC LIMIT ?1",
         )?;
-        let rows = stmt.query_map([limit.max(1).min(500) as i64], |r| {
+        let rows = stmt.query_map([limit.clamp(1, 500) as i64], |r| {
             Ok(FusionRouteDecisionRow {
                 id: r.get::<_, i64>(0)? as u64,
                 prompt_excerpt: r.get(1)?,
@@ -643,7 +643,7 @@ impl Db {
                     status, error, run_at
              FROM chat_runs ORDER BY id DESC LIMIT ?1",
         )?;
-        let rows = stmt.query_map([limit.max(1).min(500) as i64], |r| {
+        let rows = stmt.query_map([limit.clamp(1, 500) as i64], |r| {
             Ok(ChatRunRow {
                 id: r.get::<_, i64>(0)? as u64,
                 session_id: r.get(1)?,
@@ -686,7 +686,7 @@ impl Db {
              ORDER BY id DESC LIMIT ?2",
         )?;
         let rows = stmt.query_map(
-            rusqlite::params![session_id, limit.max(1).min(100) as i64],
+            rusqlite::params![session_id, limit.clamp(1, 100) as i64],
             |r| {
                 Ok(ChatRunRow {
                     id: r.get::<_, i64>(0)? as u64,
@@ -729,7 +729,7 @@ impl Db {
                     notes, run_at
              FROM fusion_benchmarks ORDER BY id DESC LIMIT ?1",
         )?;
-        let rows = stmt.query_map([limit.max(1).min(500) as i64], |r| {
+        let rows = stmt.query_map([limit.clamp(1, 500) as i64], |r| {
             Ok(FusionBenchmarkRow {
                 id: r.get::<_, i64>(0)? as u64,
                 run_id: r.get(1)?,
@@ -773,6 +773,8 @@ impl Db {
         Ok(())
     }
 
+    // Mirrors the sidekick_runs column list; not restructured to avoid churn.
+    #[allow(clippy::too_many_arguments)]
     pub fn record_sidekick_run(
         &self,
         session_id: &str,
@@ -812,7 +814,7 @@ impl Db {
             "SELECT id, session_id, mode, task, model, content, elapsed_ms, tool_calls, session_messages, escalated, accepted, consumed, run_at
              FROM sidekick_runs ORDER BY id DESC LIMIT ?1",
         )?;
-        let rows = stmt.query_map([limit.max(1).min(100) as i64], |r| {
+        let rows = stmt.query_map([limit.clamp(1, 100) as i64], |r| {
             Ok(SidekickRunRow {
                 id: r.get::<_, i64>(0)? as u64,
                 session_id: r.get(1)?,
@@ -856,7 +858,7 @@ impl Db {
                 WHERE mode='parallel' AND accepted IS NOT NULL
                 ORDER BY id DESC LIMIT ?1
              )",
-            [limit.max(1).min(100) as i64],
+            [limit.clamp(1, 100) as i64],
             |r| Ok((r.get(0)?, r.get(1)?)),
         )?;
         Ok(SidekickFeedbackSummary {
@@ -883,7 +885,7 @@ impl Db {
              ORDER BY id ASC LIMIT ?2",
         )?;
         let rows = stmt.query_map(
-            rusqlite::params![session_id, limit.max(1).min(5) as i64],
+            rusqlite::params![session_id, limit.clamp(1, 5) as i64],
             |r| {
                 Ok(SidekickRunRow {
                     id: r.get::<_, i64>(0)? as u64,
@@ -963,7 +965,7 @@ impl Db {
             "SELECT id, session_id, route, prompt_excerpt, eligible, reason, created_at
              FROM sidekick_decisions ORDER BY id DESC LIMIT ?1",
         )?;
-        let rows = stmt.query_map([limit.max(1).min(100) as i64], |r| {
+        let rows = stmt.query_map([limit.clamp(1, 100) as i64], |r| {
             Ok(SidekickDecisionRow {
                 id: r.get::<_, i64>(0)? as u64,
                 session_id: r.get(1)?,
@@ -1000,7 +1002,7 @@ impl Db {
             "SELECT id, session_id, mode, stage, detail, created_at
              FROM sidekick_events ORDER BY id DESC LIMIT ?1",
         )?;
-        let rows = stmt.query_map([limit.max(1).min(100) as i64], |r| {
+        let rows = stmt.query_map([limit.clamp(1, 100) as i64], |r| {
             Ok(SidekickEventRow {
                 id: r.get::<_, i64>(0)? as u64,
                 session_id: r.get(1)?,
@@ -1027,7 +1029,7 @@ impl Db {
              ORDER BY id DESC LIMIT ?2",
         )?;
         let rows = stmt.query_map(
-            rusqlite::params![session_id, limit.max(1).min(50) as i64],
+            rusqlite::params![session_id, limit.clamp(1, 50) as i64],
             |r| {
                 Ok(SidekickEventRow {
                     id: r.get::<_, i64>(0)? as u64,
@@ -1123,7 +1125,7 @@ impl Db {
                     memory, updated_at
              FROM sidekick_sessions ORDER BY updated_at DESC LIMIT ?1",
         )?;
-        let rows = stmt.query_map([limit.max(1).min(100) as i64], |r| {
+        let rows = stmt.query_map([limit.clamp(1, 100) as i64], |r| {
             let messages_raw: String = r.get(3)?;
             let stored_message_count = r.get::<_, i64>(4)?;
             let memory: Option<String> = r.get(6)?;

@@ -1417,6 +1417,8 @@ fn sidekick_understudy_mcp_read(app: &AppHandle, args: &Value) -> Result<Value, 
     })
 }
 
+// Parameter list mirrors the sidekick call contract; not restructured to avoid churn.
+#[allow(clippy::too_many_arguments)]
 async fn call_sidekick_model(
     app: &AppHandle,
     port: u16,
@@ -1967,6 +1969,8 @@ fn switch_route_to_cloud(
     true
 }
 
+// Parameter list mirrors the route-decision record; not restructured to avoid churn.
+#[allow(clippy::too_many_arguments)]
 fn record_compaction_route_decision(
     app: &AppHandle,
     session_id: &str,
@@ -2860,6 +2864,8 @@ pub async fn benchmark_gateway_chat(
     })
 }
 
+// Parameter list mirrors the chat request contract; not restructured to avoid churn.
+#[allow(clippy::too_many_arguments)]
 async fn nonstream_chat_once(
     client: &reqwest::Client,
     url: &str,
