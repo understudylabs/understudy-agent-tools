@@ -1171,3 +1171,91 @@ fn now_iso() -> String {
 pub fn init(_data_dir: &Path) -> Result<()> {
     Ok(())
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn temp_db(tag: &str) -> (PathBuf, Db) {
+        let dir =
+            std::env::temp_dir().join(format!("understudy-db-test-{tag}-{}", std::process::id()));
+        let _ = std::fs::remove_dir_all(&dir);
+        let db = Db::open(dir.clone()).expect("open temp db");
+        (dir, db)
+    }
+
+    #[test]
+    fn open_is_idempotent_on_existing_database() {
+        let (dir, db) = temp_db("reopen");
+        db.setting_set("k", "v").unwrap();
+        drop(db);
+        // Second open replays the CREATE batch + ALTERs against the existing
+        // file: duplicate columns must be tolerated, data preserved.
+        let db = Db::open(dir.clone()).expect("re-open existing db");
+        assert_eq!(db.setting_get("k").as_deref(), Some("v"));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn concurrent_consumers_never_double_claim_handoffs() {
+        let (dir, db) = temp_db("claim");
+        let db = std::sync::Arc::new(db);
+        for i in 0..8 {
+            db.record_sidekick_run(
+                "s",
+                "parallel",
+                &format!("task {i}"),
+                Some("model"),
+                Some("finding"),
+                Some(5),
+                1,
+                3,
+                false,
+            )
+            .unwrap();
+        }
+
+        let handles: Vec<_> = (0..4)
+            .map(|_| {
+                let db = db.clone();
+                std::thread::spawn(move || {
+                    let mut claimed = vec![];
+                    loop {
+                        let rows = db.consume_sidekick_handoffs("s", 5).unwrap();
+                        if rows.is_empty() {
+                            break;
+                        }
+                        claimed.extend(rows.into_iter().map(|row| row.id));
+                    }
+                    claimed
+                })
+            })
+            .collect();
+        let mut all: Vec<u64> = handles
+            .into_iter()
+            .flat_map(|handle| handle.join().unwrap())
+            .collect();
+        all.sort_unstable();
+        let claims = all.len();
+        all.dedup();
+        assert_eq!(claims, all.len(), "a handoff was claimed by two consumers");
+        assert_eq!(all.len(), 8, "every handoff is claimed exactly once");
+
+        // Handing claims back makes them consumable again (failed-turn path).
+        db.unconsume_sidekick_handoffs(&all).unwrap();
+        assert_eq!(db.consume_sidekick_handoffs("s", 5).unwrap().len(), 5);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    #[ignore = "set UNDERSTUDY_TEST_DB_DIR to a COPY of a real app-data dir"]
+    fn open_real_database_copy() {
+        let dir = std::env::var("UNDERSTUDY_TEST_DB_DIR").expect("UNDERSTUDY_TEST_DB_DIR set");
+        let db = Db::open(PathBuf::from(dir)).expect("open real db copy");
+        db.list_chat_runs(5).unwrap();
+        db.list_sidekick_runs(5).unwrap();
+        db.list_fusion_benchmarks(5).unwrap();
+        db.list_sidekick_session_summaries(5).unwrap();
+        db.load_residency().unwrap();
+    }
+}
