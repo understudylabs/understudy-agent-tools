@@ -515,6 +515,20 @@ impl Residency {
         if let Err(err) = app.state::<Db>().save_residency(&rows) {
             eprintln!("understudy db: save_residency failed: {err:#}");
         }
+        // Keep the agent card's warm-model facts current on every commit
+        // (warm/cool/assign) so external agents see live runtime truth.
+        let warm: Vec<crate::agent_card::WarmModel> = rows
+            .iter()
+            .filter(|r| r.warm)
+            .filter_map(|r| {
+                Some(crate::agent_card::WarmModel {
+                    id: r.model_id.clone()?,
+                    port: r.port,
+                    model_path: r.model_path.clone().unwrap_or_default(),
+                })
+            })
+            .collect();
+        crate::agent_card::record_warm_models(&warm);
     }
 
     /// On launch, rebuild slots from the persisted plan and re-warm the warm set.

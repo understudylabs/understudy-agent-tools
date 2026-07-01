@@ -121,6 +121,9 @@ async fn serve(ctx: Ctx, port: u16) {
             return;
         }
     };
+    // The app is the canonical local daemon: advertise it in the agent card
+    // once the server is actually reachable (never the token itself).
+    crate::agent_card::record_server_started(port, !ctx.token.is_empty());
     let _ = axum::serve(listener, router(ctx)).await;
 }
 

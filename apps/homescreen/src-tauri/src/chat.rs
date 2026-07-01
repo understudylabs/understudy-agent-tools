@@ -1728,17 +1728,11 @@ impl ThinkParser {
     }
 }
 
-/// Read the gateway URL + API key from ~/.understudy/credentials.json (server-side only).
+/// Read the gateway URL + API key with the same resolution order as the CLI
+/// (env vars > active org entry in the `orgs` map > legacy top-level fields).
+/// See `crate::creds` — orgs-map-only sign-ins must work here too.
 fn credentials() -> Option<(String, String)> {
-    let home = std::env::var_os("HOME")?;
-    let path = PathBuf::from(home)
-        .join(".understudy")
-        .join("credentials.json");
-    let value: serde_json::Value =
-        serde_json::from_str(&std::fs::read_to_string(path).ok()?).ok()?;
-    let url = value.get("gateway_url")?.as_str()?.to_string();
-    let key = value.get("api_key")?.as_str()?.to_string();
-    Some((url, key))
+    crate::creds::resolve().map(|c| (c.gateway_url, c.api_key))
 }
 
 pub(crate) fn gateway_credentials_available() -> bool {
