@@ -450,7 +450,9 @@ pub fn fusion_policy_class(
     } else if use_sidekick {
         "delegate_mechanical"
     } else if escalate_gateway || route == "gateway" {
-        if reason.contains("compaction") {
+        // Session boundaries carry the stored compaction reason
+        // ("long_context_boundary"), which doesn't say "compaction".
+        if reason.contains("compaction") || reason.contains("long_context") {
             "compaction_gateway"
         } else if reason.contains("error") || reason.contains("tool_depth") {
             "health_gateway"
@@ -564,6 +566,11 @@ mod tests {
         let decision = recommend_route(&inputs);
         assert_eq!(decision.route, "gateway");
         assert_eq!(decision.reason, "long_context_boundary");
+        // The stored reason must still classify as a compaction escalation.
+        assert_eq!(
+            fusion_policy_class("gateway", false, true, false, &decision.reason),
+            "compaction_gateway"
+        );
     }
 
     #[test]
