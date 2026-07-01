@@ -1,8 +1,14 @@
 // Local server pillar: one service core (the `commands::*` functions) exposed
 // through HTTP REST, a minimal MCP JSON-RPC endpoint, and an A2A agent card —
-// all on 127.0.0.1 behind a bearer token. Coding agents can drive the app
-// (warm a model, run a benchmark, search traces, push a view to the GUI) by
-// calling this server; the GUI itself keeps using Tauri commands.
+// all on 127.0.0.1 behind a bearer token. Coding agents get full model and
+// serving control: mutate residency (add/assign/warm/cool/remove a slot),
+// start/poll/cancel model downloads, run fusion benchmarks (single-flight —
+// a concurrent second run gets 409 — with cooperative cancel between rows),
+// run a non-streaming chat completion against a warm slot, plus the read
+// surfaces (status, models, traces, metrics) and `ui_focus` to drive the GUI.
+// The GUI itself keeps using Tauri commands. Blocking work never runs on the
+// axum workers: residency mutations go through `spawn_blocking`, downloads
+// run on the Tauri async runtime.
 
 use axum::{
     extract::{Path, Query, State},
@@ -32,6 +38,14 @@ pub fn router(ctx: Ctx) -> Router {
         .route("/api/models", get(models))
         .route("/api/snapshots", get(snapshots))
         .route("/api/residency", get(residency))
+        .route("/api/residency/slots", post(residency_add_slot))
+        .route("/api/residency/assign", post(residency_assign))
+        .route("/api/residency/warm", post(residency_warm))
+        .route("/api/residency/cool", post(residency_cool))
+        .route("/api/residency/remove", post(residency_remove))
+        .route("/api/downloads", get(downloads_list).post(download_start))
+        .route("/api/downloads/:id", get(download_status))
+        .route("/api/downloads/:id/cancel", post(download_cancel))
         .route("/api/dossiers", get(dossiers))
         .route("/api/benchmarks", get(benchmarks))
         .route("/api/fusion/benchmark-matrix", get(fusion_benchmark_matrix))
@@ -64,6 +78,9 @@ pub fn router(ctx: Ctx) -> Router {
         .route("/api/chat/route-metrics", get(chat_route_metrics))
         .route("/api/fusion/run", post(run_fusion_benchmark))
         .route("/api/fusion/run-matrix", post(run_fusion_benchmark_matrix))
+        .route("/api/fusion/run-active", get(fusion_run_active))
+        .route("/api/fusion/run-cancel", post(fusion_run_cancel))
+        .route("/api/chat/completion", post(chat_completion))
         .route("/api/sidekick/metrics", get(sidekick_metrics))
         .route("/api/sidekick/sessions", get(sidekick_session_summaries))
         .route("/api/profile/:id", get(profile))
@@ -162,6 +179,216 @@ async fn residency(
 ) -> Result<Json<Value>, (StatusCode, String)> {
     auth(&ctx, &h)?;
     Ok(Json(json!(crate::commands::get_residency(ctx.app.clone()))))
+}
+
+// ----- residency mutation (agent parity with the GUI slot controls) -----
+//
+// The wrapped `commands::*` functions kill/spawn model server processes, so
+// they run under `spawn_blocking`, never on the axum workers. Reliability
+// semantics (budget/LRU eviction, ready polling) live in `residency.rs`.
+
+/// Run a blocking residency/commands call off the axum workers.
+async fn blocking<T, F>(f: F) -> Result<T, (StatusCode, String)>
+where
+    T: Send + 'static,
+    F: FnOnce() -> Result<T, String> + Send + 'static,
+{
+    tokio::task::spawn_blocking(f)
+        .await
+        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, format!("task failed: {e}")))?
+        .map_err(|e| (StatusCode::BAD_REQUEST, e))
+}
+
+#[derive(serde::Deserialize)]
+struct SlotBody {
+    slot_id: u32,
+}
+
+#[derive(serde::Deserialize)]
+struct AssignBody {
+    slot_id: u32,
+    model_id: String,
+}
+
+async fn residency_add_slot(
+    State(ctx): State<Ctx>,
+    h: HeaderMap,
+) -> Result<Json<Value>, (StatusCode, String)> {
+    auth(&ctx, &h)?;
+    let app = ctx.app.clone();
+    let slot_id = blocking(move || crate::commands::add_slot(app)).await?;
+    Ok(Json(json!({ "ok": true, "slot_id": slot_id })))
+}
+
+async fn residency_assign(
+    State(ctx): State<Ctx>,
+    h: HeaderMap,
+    Json(b): Json<AssignBody>,
+) -> Result<Json<Value>, (StatusCode, String)> {
+    auth(&ctx, &h)?;
+    let app = ctx.app.clone();
+    blocking(move || crate::commands::assign_slot(app, b.slot_id, b.model_id)).await?;
+    Ok(Json(json!({ "ok": true, "slot_id": b.slot_id })))
+}
+
+async fn residency_warm(
+    State(ctx): State<Ctx>,
+    h: HeaderMap,
+    Json(b): Json<SlotBody>,
+) -> Result<Json<Value>, (StatusCode, String)> {
+    auth(&ctx, &h)?;
+    let app = ctx.app.clone();
+    // Warming is asynchronous by design: this flips the slot to `loading`
+    // and returns; agents poll /api/residency until the slot is `running`.
+    blocking(move || crate::commands::warm_slot(app, b.slot_id)).await?;
+    Ok(Json(
+        json!({ "ok": true, "slot_id": b.slot_id, "state": "loading" }),
+    ))
+}
+
+async fn residency_cool(
+    State(ctx): State<Ctx>,
+    h: HeaderMap,
+    Json(b): Json<SlotBody>,
+) -> Result<Json<Value>, (StatusCode, String)> {
+    auth(&ctx, &h)?;
+    let app = ctx.app.clone();
+    blocking(move || crate::commands::cool_slot(app, b.slot_id)).await?;
+    Ok(Json(json!({ "ok": true, "slot_id": b.slot_id })))
+}
+
+async fn residency_remove(
+    State(ctx): State<Ctx>,
+    h: HeaderMap,
+    Json(b): Json<SlotBody>,
+) -> Result<Json<Value>, (StatusCode, String)> {
+    auth(&ctx, &h)?;
+    let app = ctx.app.clone();
+    blocking(move || crate::commands::remove_slot(app, b.slot_id)).await?;
+    Ok(Json(json!({ "ok": true, "slot_id": b.slot_id })))
+}
+
+// ----- model downloads (start / poll / cancel) -----
+
+#[derive(serde::Deserialize)]
+struct DownloadBody {
+    model_id: String,
+}
+
+async fn download_start(
+    State(ctx): State<Ctx>,
+    h: HeaderMap,
+    Json(b): Json<DownloadBody>,
+) -> Result<Json<Value>, (StatusCode, String)> {
+    auth(&ctx, &h)?;
+    let id = crate::agent_ops::start_model_download(&ctx.app, b.model_id.clone())
+        .map_err(|e| (StatusCode::CONFLICT, e))?;
+    Ok(Json(
+        json!({ "ok": true, "download_id": id, "model_id": b.model_id }),
+    ))
+}
+
+async fn downloads_list(
+    State(ctx): State<Ctx>,
+    h: HeaderMap,
+) -> Result<Json<Value>, (StatusCode, String)> {
+    auth(&ctx, &h)?;
+    let downloads = ctx.app.state::<crate::agent_ops::Downloads>();
+    Ok(Json(json!({ "downloads": downloads.list() })))
+}
+
+async fn download_status(
+    State(ctx): State<Ctx>,
+    h: HeaderMap,
+    Path(id): Path<String>,
+) -> Result<Json<Value>, (StatusCode, String)> {
+    auth(&ctx, &h)?;
+    let downloads = ctx.app.state::<crate::agent_ops::Downloads>();
+    downloads
+        .get(&id)
+        .map(|p| Json(json!(p)))
+        .ok_or_else(|| (StatusCode::NOT_FOUND, format!("unknown download id: {id}")))
+}
+
+async fn download_cancel(
+    State(ctx): State<Ctx>,
+    h: HeaderMap,
+    Path(id): Path<String>,
+) -> Result<Json<Value>, (StatusCode, String)> {
+    auth(&ctx, &h)?;
+    let downloads = ctx.app.state::<crate::agent_ops::Downloads>();
+    downloads
+        .cancel(&id)
+        .map(|p| Json(json!(p)))
+        .map_err(|e| (StatusCode::BAD_REQUEST, e))
+}
+
+// ----- fusion benchmark run registry (single-flight + cancel) -----
+
+/// A run rejected by the single-flight gate is a 409, not a 400.
+fn run_error_status(e: &str) -> StatusCode {
+    if e.starts_with(crate::agent_ops::RUN_CONFLICT) {
+        StatusCode::CONFLICT
+    } else {
+        StatusCode::BAD_REQUEST
+    }
+}
+
+async fn fusion_run_active(
+    State(ctx): State<Ctx>,
+    h: HeaderMap,
+) -> Result<Json<Value>, (StatusCode, String)> {
+    auth(&ctx, &h)?;
+    let runs = ctx.app.state::<crate::agent_ops::BenchRuns>();
+    Ok(Json(json!({ "active": runs.active() })))
+}
+
+async fn fusion_run_cancel(
+    State(ctx): State<Ctx>,
+    h: HeaderMap,
+) -> Result<Json<Value>, (StatusCode, String)> {
+    auth(&ctx, &h)?;
+    let runs = ctx.app.state::<crate::agent_ops::BenchRuns>();
+    match runs.cancel() {
+        Some(run_id) => Ok(Json(json!({ "ok": true, "cancelled_run_id": run_id }))),
+        None => Err((
+            StatusCode::NOT_FOUND,
+            "no benchmark run in progress".to_string(),
+        )),
+    }
+}
+
+// ----- chat completion against a warm slot -----
+
+#[derive(serde::Deserialize)]
+struct ChatBody {
+    slot_id: u32,
+    prompt: String,
+    session_id: Option<String>,
+    max_tokens: Option<u32>,
+}
+
+async fn chat_completion(
+    State(ctx): State<Ctx>,
+    h: HeaderMap,
+    Json(b): Json<ChatBody>,
+) -> Result<Json<Value>, (StatusCode, String)> {
+    auth(&ctx, &h)?;
+    let session_id = b
+        .session_id
+        .unwrap_or_else(|| format!("agent-{}", chrono::Utc::now().timestamp_millis()));
+    let residency = ctx.app.state::<crate::residency::Residency>();
+    crate::chat::agent_chat(
+        &ctx.app,
+        &residency,
+        b.slot_id,
+        &session_id,
+        &b.prompt,
+        b.max_tokens,
+    )
+    .await
+    .map(|r| Json(json!(r)))
+    .map_err(|e| (StatusCode::BAD_REQUEST, e))
 }
 async fn dossiers(
     State(ctx): State<Ctx>,
@@ -276,7 +503,7 @@ async fn run_fusion_benchmark(
     crate::commands::run_fusion_benchmark(ctx.app.clone(), body)
         .await
         .map(|run| Json(json!(run)))
-        .map_err(|e| (StatusCode::BAD_REQUEST, e))
+        .map_err(|e| (run_error_status(&e), e))
 }
 async fn run_fusion_benchmark_matrix(
     State(ctx): State<Ctx>,
@@ -287,7 +514,7 @@ async fn run_fusion_benchmark_matrix(
     crate::commands::run_fusion_benchmark_matrix(ctx.app.clone(), body)
         .await
         .map(|run| Json(json!(run)))
-        .map_err(|e| (StatusCode::BAD_REQUEST, e))
+        .map_err(|e| (run_error_status(&e), e))
 }
 async fn sidekick_metrics(
     State(ctx): State<Ctx>,
@@ -445,38 +672,269 @@ async fn mcp(
     }
 }
 
+/// Build one object input schema; `required` is emitted only when non-empty.
+fn obj_schema(properties: Value, required: &[&str]) -> Value {
+    let mut schema = json!({ "type": "object", "properties": properties });
+    if !required.is_empty() {
+        schema["required"] = json!(required);
+    }
+    schema
+}
+
+fn empty_schema() -> Value {
+    obj_schema(json!({}), &[])
+}
+
+fn limit_schema() -> Value {
+    obj_schema(
+        json!({ "limit": { "type": "integer", "minimum": 1, "description": "Max rows to return." } }),
+        &[],
+    )
+}
+
+fn slot_schema() -> Value {
+    obj_schema(
+        json!({ "slot_id": { "type": "integer", "minimum": 1, "description": "Residency slot id (see the residency tool)." } }),
+        &["slot_id"],
+    )
+}
+
+fn download_id_schema() -> Value {
+    obj_schema(
+        json!({ "download_id": { "type": "string", "description": "Download id returned by start_model_download." } }),
+        &["download_id"],
+    )
+}
+
+fn run_benchmark_properties(with_candidates: bool) -> Value {
+    let mut props = json!({
+        "run_id": { "type": "string", "description": "Run id; generated when omitted." },
+        "suite": { "type": "string", "enum": ["routing-smoke", "local-comparison", "full-matrix", "automationbench-proxy"] },
+        "modes": { "type": "array", "items": { "type": "string", "enum": ["main-only", "sidekick-advisory", "sidekick-parallel", "sidekick-routing"] } },
+        "task_ids": { "type": "array", "items": { "type": "string" } },
+        "dry_run": { "type": "boolean", "description": "Default true: plan without spending tokens." },
+        "record_skips": { "type": "boolean" }
+    });
+    if with_candidates {
+        props["candidates"] = json!({
+            "type": "array",
+            "items": { "type": "string", "enum": ["gateway-glm", "local-main", "local-fast"] },
+            "description": "Defaults to gateway-glm, local-main, local-fast."
+        });
+    } else {
+        props["candidate"] = json!({ "type": "string", "enum": ["gateway-glm", "local-main", "local-fast"] });
+        props["route"] = json!({ "type": "string", "enum": ["local", "gateway"] });
+        props["model"] = json!({ "type": "string", "description": "Override the model id/path." });
+    }
+    props
+}
+
 fn tools() -> Vec<Value> {
-    [
-        ("status", "Local runtime status: services, warm slots, metrics."),
-        ("list_models", "List locally cached models."),
-        ("list_snapshot_models", "Bundled local MLX snapshot catalog."),
-        ("residency", "Warm-slot residency (which models are loaded)."),
-        ("knowledge_dossiers", "Bundled public per-model dossiers."),
-        ("local_benchmarks", "Local live benchmark rows."),
-        ("fusion_benchmark_matrix", "Fusion benchmark modes and fixed local task set."),
-        ("fusion_route_recommendation", "Recommend local, local+sidekick, or gateway for a prompt. Args: {prompt, current_route?, active_slot_id?, session_id?}."),
-        ("fusion_route_decisions", "Recent persisted Fusion route policy decisions with sidekick, gateway, token, and memory accounting. Args: {limit?}."),
-        ("fusion_benchmark_results", "Recent Fusion benchmark result rows. Args: {limit?}."),
-        ("fusion_benchmark_summary", "Aggregate Fusion benchmark results by route, mode, and model. Args: {limit?}."),
-        ("fusion_benchmark_run_summary", "Compare Fusion benchmark modes within each run. Args: {limit?}."),
-        ("export_fusion_benchmark_comparison", "Write a local Fusion comparison packet for external eval tooling. Args: {limit?, output_path?}."),
-        ("export_automationbench_handoff", "Write a local AutomationBench handoff packet with candidates, runner hints, and desktop callback mapping. Args: {run_id?, candidates?, domains?, num_examples?, output_path?}."),
-        ("chat_runs", "Recent desktop chat route accounting rows. Args: {limit?}."),
-        ("chat_route_metrics", "Aggregate desktop chat route latency, token, tool, sidekick, and gateway usage. Args: {limit?}."),
-        ("sidekick_metrics", "Aggregate recent sidekick usage, handoff, escalation, and feedback metrics. Args: {limit?}."),
-        ("sidekick_session_summaries", "Inspect persisted sidekick session memory and compacted summaries. Args: {limit?}."),
-        ("record_fusion_benchmark", "Record one Fusion benchmark result row."),
-        ("run_fusion_benchmark", "Plan or run a Fusion benchmark for one candidate. Args: {run_id?, suite?, candidate?, route?, modes?, task_ids?, model?, dry_run?, record_skips?}. Suites: routing-smoke, local-comparison, full-matrix, automationbench-proxy. Candidates: gateway-glm, local-main, local-fast."),
-        ("run_fusion_benchmark_matrix", "Plan or run a Fusion benchmark across candidates. Args: {run_id?, suite?, candidates?, modes?, task_ids?, dry_run?, record_skips?}. Defaults candidates to gateway-glm, local-main, local-fast."),
-        ("aa_models", "Artificial Analysis external pricing/speed/quality."),
-        ("list_traces", "List recent Moraine sessions. Args: {limit?}."),
-        ("search_traces", "Search Moraine traces. Args: {q}."),
-        ("open_trace", "Open a session/turn/event. Args: {id}."),
-        ("ui_focus", "Drive the GUI to a pane. Args: {pane?, model?}."),
-    ]
-    .into_iter()
-    .map(|(n, d)| json!({ "name": n, "description": d, "inputSchema": { "type":"object","properties":{} } }))
-    .collect()
+    let tools: Vec<(&str, &str, Value)> = vec![
+        // ----- read surfaces -----
+        ("status", "Local runtime status: services, warm slots, metrics.", empty_schema()),
+        ("list_models", "List locally cached models.", empty_schema()),
+        ("list_snapshot_models", "Bundled local MLX snapshot catalog.", empty_schema()),
+        ("residency", "Warm-slot residency (which models are loaded).", empty_schema()),
+        ("knowledge_dossiers", "Bundled public per-model dossiers.", empty_schema()),
+        ("local_benchmarks", "Local live benchmark rows.", empty_schema()),
+        ("fusion_benchmark_matrix", "Fusion benchmark modes and fixed local task set.", empty_schema()),
+        ("aa_models", "Artificial Analysis external pricing/speed/quality.", empty_schema()),
+        // ----- residency mutation -----
+        ("add_slot", "Add an empty residency slot; returns its slot_id.", empty_schema()),
+        (
+            "assign_slot",
+            "Assign a locally cached model to a residency slot (cools the slot first if warm).",
+            obj_schema(
+                json!({
+                    "slot_id": { "type": "integer", "minimum": 1 },
+                    "model_id": { "type": "string", "description": "Model id from list_models." }
+                }),
+                &["slot_id", "model_id"],
+            ),
+        ),
+        (
+            "warm_slot",
+            "Warm a residency slot: evicts LRU slots to fit the memory budget, spawns the model server, then loads in the background. Poll residency until the slot state is 'running'.",
+            slot_schema(),
+        ),
+        ("cool_slot", "Cool a residency slot (stops its model server).", slot_schema()),
+        ("remove_slot", "Remove a residency slot entirely.", slot_schema()),
+        // ----- model downloads -----
+        (
+            "start_model_download",
+            "Start a snapshot model download in the background; returns a download_id to poll with model_download_status. One running download per model id.",
+            obj_schema(
+                json!({ "model_id": { "type": "string", "description": "Snapshot id from list_snapshot_models." } }),
+                &["model_id"],
+            ),
+        ),
+        (
+            "model_download_status",
+            "Per-file progress, status (running|done|error|cancelled), and recent logs for one download.",
+            download_id_schema(),
+        ),
+        ("list_model_downloads", "All tracked model downloads with progress.", empty_schema()),
+        ("cancel_model_download", "Cancel a running model download.", download_id_schema()),
+        // ----- fusion routing + benchmarks -----
+        (
+            "fusion_route_recommendation",
+            "Recommend local, local+sidekick, or gateway for a prompt.",
+            obj_schema(
+                json!({
+                    "prompt": { "type": "string" },
+                    "current_route": { "type": "string", "enum": ["local", "gateway"] },
+                    "active_slot_id": { "type": "integer", "minimum": 1 },
+                    "session_id": { "type": "string" }
+                }),
+                &["prompt"],
+            ),
+        ),
+        (
+            "fusion_route_decisions",
+            "Recent persisted Fusion route policy decisions with sidekick, gateway, token, and memory accounting.",
+            limit_schema(),
+        ),
+        ("fusion_benchmark_results", "Recent Fusion benchmark result rows.", limit_schema()),
+        ("fusion_benchmark_summary", "Aggregate Fusion benchmark results by route, mode, and model.", limit_schema()),
+        ("fusion_benchmark_run_summary", "Compare Fusion benchmark modes within each run.", limit_schema()),
+        (
+            "export_fusion_benchmark_comparison",
+            "Write a local Fusion comparison packet for external eval tooling.",
+            obj_schema(
+                json!({
+                    "limit": { "type": "integer", "minimum": 1 },
+                    "output_path": { "type": "string" }
+                }),
+                &[],
+            ),
+        ),
+        (
+            "export_automationbench_handoff",
+            "Write a local AutomationBench handoff packet with candidates, runner hints, and desktop callback mapping.",
+            obj_schema(
+                json!({
+                    "run_id": { "type": "string" },
+                    "candidates": { "type": "array", "items": { "type": "string" } },
+                    "domains": { "type": "array", "items": { "type": "string" } },
+                    "num_examples": { "type": "integer", "minimum": 1 },
+                    "output_path": { "type": "string" }
+                }),
+                &[],
+            ),
+        ),
+        (
+            "record_fusion_benchmark",
+            "Record one Fusion benchmark result row.",
+            obj_schema(
+                json!({
+                    "run_id": { "type": "string" },
+                    "task_id": { "type": "string" },
+                    "mode": { "type": "string" },
+                    "model": { "type": "string" },
+                    "elapsed_ms": { "type": "integer", "minimum": 0 },
+                    "prompt_tokens": { "type": "integer", "minimum": 0 },
+                    "completion_tokens": { "type": "integer", "minimum": 0 },
+                    "sidekick_runs": { "type": "integer", "minimum": 0 },
+                    "sidekick_tool_calls": { "type": "integer", "minimum": 0 },
+                    "gateway_used": { "type": "boolean" },
+                    "compacted": { "type": "boolean" },
+                    "context_tokens_before": { "type": "integer", "minimum": 0 },
+                    "local_mem_gb": { "type": "number", "minimum": 0 },
+                    "score": { "type": "number" },
+                    "status": { "type": "string" },
+                    "notes": { "type": "string" }
+                }),
+                &["run_id", "task_id", "mode", "model"],
+            ),
+        ),
+        (
+            "run_fusion_benchmark",
+            "Plan or run a Fusion benchmark for one candidate. Single-flight: fails with a conflict while another run is active; cancel via cancel_fusion_benchmark_run.",
+            obj_schema(run_benchmark_properties(false), &[]),
+        ),
+        (
+            "run_fusion_benchmark_matrix",
+            "Plan or run a Fusion benchmark across candidates. Single-flight: fails with a conflict while another run is active.",
+            obj_schema(run_benchmark_properties(true), &[]),
+        ),
+        ("fusion_benchmark_run_status", "The active benchmark run (run_id, started_at, cancel_requested), or null.", empty_schema()),
+        (
+            "cancel_fusion_benchmark_run",
+            "Request cancellation of the active benchmark run; the run loop stops between rows.",
+            empty_schema(),
+        ),
+        // ----- chat -----
+        (
+            "chat_completion",
+            "Non-streaming chat completion against a warm residency slot (local tool loop included). Warm a slot first.",
+            obj_schema(
+                json!({
+                    "slot_id": { "type": "integer", "minimum": 1, "description": "A warm slot from residency." },
+                    "prompt": { "type": "string" },
+                    "session_id": { "type": "string" },
+                    "max_tokens": { "type": "integer", "minimum": 1, "maximum": 8192, "description": "Completion cap; default 2048." }
+                }),
+                &["slot_id", "prompt"],
+            ),
+        ),
+        // ----- accounting + traces + GUI -----
+        ("chat_runs", "Recent desktop chat route accounting rows.", limit_schema()),
+        ("chat_route_metrics", "Aggregate desktop chat route latency, token, tool, sidekick, and gateway usage.", limit_schema()),
+        ("sidekick_metrics", "Aggregate recent sidekick usage, handoff, escalation, and feedback metrics.", limit_schema()),
+        ("sidekick_session_summaries", "Inspect persisted sidekick session memory and compacted summaries.", limit_schema()),
+        ("list_traces", "List recent Moraine sessions.", limit_schema()),
+        (
+            "search_traces",
+            "Search Moraine traces.",
+            obj_schema(json!({ "q": { "type": "string", "description": "Search query." } }), &["q"]),
+        ),
+        (
+            "open_trace",
+            "Open a session/turn/event.",
+            obj_schema(json!({ "id": { "type": "string", "description": "Session/turn/event id." } }), &["id"]),
+        ),
+        (
+            "ui_focus",
+            "Drive the GUI to a pane.",
+            obj_schema(
+                json!({
+                    "pane": { "type": "string" },
+                    "model": { "type": "string" }
+                }),
+                &[],
+            ),
+        ),
+    ];
+    tools
+        .into_iter()
+        .map(|(n, d, schema)| json!({ "name": n, "description": d, "inputSchema": schema }))
+        .collect()
+}
+
+fn required_u32(args: &Value, key: &str) -> Result<u32, String> {
+    args.get(key)
+        .and_then(|v| v.as_u64())
+        .map(|x| x as u32)
+        .ok_or_else(|| format!("{key} is required"))
+}
+
+fn required_str(args: &Value, key: &str) -> Result<String, String> {
+    args.get(key)
+        .and_then(|v| v.as_str())
+        .map(str::to_string)
+        .ok_or_else(|| format!("{key} is required"))
+}
+
+/// Run a blocking commands call off the MCP request task.
+async fn call_blocking<T, F>(f: F) -> Result<T, String>
+where
+    T: Send + 'static,
+    F: FnOnce() -> Result<T, String> + Send + 'static,
+{
+    tokio::task::spawn_blocking(f)
+        .await
+        .map_err(|e| format!("task failed: {e}"))?
 }
 
 async fn call_tool(ctx: &Ctx, name: &str, args: &Value) -> Result<Value, String> {
@@ -487,6 +945,81 @@ async fn call_tool(ctx: &Ctx, name: &str, args: &Value) -> Result<Value, String>
         "list_models" => json!(c::list_models()),
         "list_snapshot_models" => json!(c::list_snapshot_models()),
         "residency" => json!(c::get_residency(app)),
+        "add_slot" => {
+            let slot_id = call_blocking(move || c::add_slot(app)).await?;
+            json!({ "ok": true, "slot_id": slot_id })
+        }
+        "assign_slot" => {
+            let slot_id = required_u32(args, "slot_id")?;
+            let model_id = required_str(args, "model_id")?;
+            call_blocking(move || c::assign_slot(app, slot_id, model_id)).await?;
+            json!({ "ok": true, "slot_id": slot_id })
+        }
+        "warm_slot" => {
+            let slot_id = required_u32(args, "slot_id")?;
+            call_blocking(move || c::warm_slot(app, slot_id)).await?;
+            json!({ "ok": true, "slot_id": slot_id, "state": "loading" })
+        }
+        "cool_slot" => {
+            let slot_id = required_u32(args, "slot_id")?;
+            call_blocking(move || c::cool_slot(app, slot_id)).await?;
+            json!({ "ok": true, "slot_id": slot_id })
+        }
+        "remove_slot" => {
+            let slot_id = required_u32(args, "slot_id")?;
+            call_blocking(move || c::remove_slot(app, slot_id)).await?;
+            json!({ "ok": true, "slot_id": slot_id })
+        }
+        "start_model_download" => {
+            let model_id = required_str(args, "model_id")?;
+            let id = crate::agent_ops::start_model_download(&app, model_id.clone())?;
+            json!({ "ok": true, "download_id": id, "model_id": model_id })
+        }
+        "model_download_status" => {
+            let id = required_str(args, "download_id")?;
+            let downloads = app.state::<crate::agent_ops::Downloads>();
+            json!(downloads
+                .get(&id)
+                .ok_or_else(|| format!("unknown download id: {id}"))?)
+        }
+        "list_model_downloads" => {
+            let downloads = app.state::<crate::agent_ops::Downloads>();
+            json!({ "downloads": downloads.list() })
+        }
+        "cancel_model_download" => {
+            let id = required_str(args, "download_id")?;
+            let downloads = app.state::<crate::agent_ops::Downloads>();
+            json!(downloads.cancel(&id)?)
+        }
+        "fusion_benchmark_run_status" => {
+            let runs = app.state::<crate::agent_ops::BenchRuns>();
+            json!({ "active": runs.active() })
+        }
+        "cancel_fusion_benchmark_run" => {
+            let runs = app.state::<crate::agent_ops::BenchRuns>();
+            match runs.cancel() {
+                Some(run_id) => json!({ "ok": true, "cancelled_run_id": run_id }),
+                None => return Err("no benchmark run in progress".to_string()),
+            }
+        }
+        "chat_completion" => {
+            let slot_id = required_u32(args, "slot_id")?;
+            let prompt = required_str(args, "prompt")?;
+            let session_id = args
+                .get("session_id")
+                .and_then(|v| v.as_str())
+                .map(str::to_string)
+                .unwrap_or_else(|| format!("agent-{}", chrono::Utc::now().timestamp_millis()));
+            let max_tokens = args
+                .get("max_tokens")
+                .and_then(|v| v.as_u64())
+                .map(|x| x as u32);
+            let residency = app.state::<crate::residency::Residency>();
+            json!(
+                crate::chat::agent_chat(&app, &residency, slot_id, &session_id, &prompt, max_tokens)
+                    .await?
+            )
+        }
         "knowledge_dossiers" => json!(c::knowledge_dossiers()),
         "local_benchmarks" => json!(c::local_benchmarks(app).map_err(|e| e.to_string())?),
         "fusion_benchmark_matrix" => json!(c::fusion_benchmark_matrix()),
@@ -662,4 +1195,57 @@ pub fn info(app: &AppHandle) -> Option<(String, String)> {
 #[allow(unused)]
 fn _unused() -> impl IntoResponse {
     "ok"
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn every_mcp_tool_advertises_a_real_object_schema() {
+        let tools = tools();
+        assert!(tools.len() >= 30, "tool list unexpectedly small");
+        let mut names = std::collections::HashSet::new();
+        for tool in &tools {
+            let name = tool["name"].as_str().expect("tool has a name");
+            assert!(names.insert(name.to_string()), "duplicate tool: {name}");
+            assert!(tool["description"].as_str().is_some_and(|d| !d.is_empty()));
+            let schema = &tool["inputSchema"];
+            assert_eq!(schema["type"], "object", "{name} schema is an object");
+            assert!(schema["properties"].is_object(), "{name} has properties");
+        }
+    }
+
+    #[test]
+    fn tools_with_required_args_declare_them() {
+        let tools = tools();
+        let required_of = |name: &str| -> Vec<String> {
+            tools
+                .iter()
+                .find(|t| t["name"] == name)
+                .unwrap_or_else(|| panic!("tool {name} exists"))["inputSchema"]["required"]
+                .as_array()
+                .map(|a| {
+                    a.iter()
+                        .filter_map(|v| v.as_str().map(str::to_string))
+                        .collect()
+                })
+                .unwrap_or_default()
+        };
+        assert_eq!(required_of("warm_slot"), ["slot_id"]);
+        assert_eq!(required_of("assign_slot"), ["slot_id", "model_id"]);
+        assert_eq!(required_of("start_model_download"), ["model_id"]);
+        assert_eq!(required_of("cancel_model_download"), ["download_id"]);
+        assert_eq!(required_of("chat_completion"), ["slot_id", "prompt"]);
+        assert_eq!(required_of("fusion_route_recommendation"), ["prompt"]);
+        assert_eq!(required_of("search_traces"), ["q"]);
+        assert_eq!(required_of("open_trace"), ["id"]);
+        assert_eq!(
+            required_of("record_fusion_benchmark"),
+            ["run_id", "task_id", "mode", "model"]
+        );
+        // Args-optional tools stay unconstrained.
+        assert!(required_of("run_fusion_benchmark").is_empty());
+        assert!(required_of("list_traces").is_empty());
+    }
 }

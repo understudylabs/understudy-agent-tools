@@ -22,7 +22,10 @@ interface DoctorOpts {
 
 type Check = { name: string; ok: boolean; detail?: string };
 
-export function registerDoctorCommand(program: Command, runLocalDoctor: () => void): void {
+export function registerDoctorCommand(
+  program: Command,
+  runLocalDoctor: () => void | Promise<void>,
+): void {
   program
     .command("doctor")
     .description("Run local repository diagnostics or hosted readiness checks.")
@@ -34,7 +37,7 @@ export function registerDoctorCommand(program: Command, runLocalDoctor: () => vo
     .option("--org <id>", "Org id to use.")
     .action(async function (this: Command, opts: DoctorOpts) {
       if (!opts.hosted) {
-        runLocalDoctor();
+        await runLocalDoctor();
         return;
       }
       await runAction(this, () => runHostedDoctor(this, opts));

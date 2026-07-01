@@ -54,6 +54,18 @@ route for compliance. For pure remote inference/routing use
   only speed up a paired target while preserving its quality. See
   [`reference.md`](reference.md).
 
+## If the Understudy desktop app is running, prefer its daemon
+
+Before spawning your own MLX server, check for the desktop app's local daemon:
+read `~/.understudy/agent-card.json` and trust its `app` block only after a
+pid check on `app.pid` and a health probe of `<app.base_url>/health`
+(`understudy daemon status` does exactly this; schema in
+[`../onboard/reference.md`](../onboard/reference.md)). A running app already
+manages warm model slots (`app.warm_models`, each an OpenAI-compatible
+endpoint on its own port) and exposes warm/cool/assign, downloads, benchmarks,
+and chat over its authenticated HTTP + MCP server — reuse those slots instead
+of standing up a second server against the same weights and memory budget.
+
 ## Flow
 
 1. **Inventory hardware + runtime.** Confirm Apple Silicon (M-series) and the
