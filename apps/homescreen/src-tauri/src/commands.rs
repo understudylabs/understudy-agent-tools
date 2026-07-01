@@ -12,6 +12,13 @@ use crate::metrics::{Machine, Metrics, MetricsReader};
 use crate::models::{self, LOCAL_BASE_URL};
 use crate::moraine::MoraineState;
 use crate::residency::{Residency, ResidencySnapshot};
+use crate::route_policy::{
+    self, AVG_LOCAL_TOOL_CALLS_CEILING, CHAT_RUNS_SIGNAL_WINDOW, FUSION_BENCHMARK_SIGNAL_WINDOW,
+    GATEWAY_CHAT_MODEL, LOCAL_ERROR_RATE_CEILING, LONG_PROMPT_COMPACTION_CHARS,
+    MIN_ROWS_FOR_RATE_GATES, MIN_ROWS_FOR_TOOL_AVG_GATE, MIN_TOOL_DEPTH_ROWS,
+    PENDING_HANDOFF_RATE_CEILING, SESSION_CHAT_RUNS_SIGNAL_WINDOW, SIDEKICK_RUNS_SIGNAL_WINDOW,
+    TOOL_DEPTH_ESCALATION_CALLS,
+};
 use crate::sidecar::{ServiceState, Services};
 use serde::Serialize;
 use serde_json::{json, Value};
@@ -628,6 +635,8 @@ struct ChatRouteSignals {
     compacted_rows: u64,
     session_compacted_rows: u64,
     session_last_compaction_reason: Option<String>,
+    /// Rows in the tool-depth scope (session when known, else global window).
+    local_tool_rows: u64,
     local_tool_depth_rows: u64,
     avg_local_tool_calls: Option<f64>,
     sidekick_benchmark_rows: u64,
@@ -636,42 +645,17 @@ struct ChatRouteSignals {
     avg_sidekick_elapsed_ms: Option<f64>,
 }
 
-fn fusion_policy_class(
-    route: &str,
-    use_sidekick: bool,
-    escalate_gateway: bool,
-    upgrade_sidekick: bool,
-    reason: &str,
-) -> &'static str {
-    if upgrade_sidekick {
-        "sidekick_upgrade"
-    } else if use_sidekick {
-        "delegate_mechanical"
-    } else if escalate_gateway || route == "gateway" {
-        if reason.contains("compaction") {
-            "compaction_gateway"
-        } else if reason.contains("error") || reason.contains("tool_depth") {
-            "health_gateway"
-        } else {
-            "frontier_gateway"
-        }
-    } else if reason.contains("judgment") || reason.contains("complex") {
-        "main_owns_judgment"
-    } else if reason.starts_with("sidekick_") || reason.contains("sidekick") {
-        "sidekick_suppressed"
-    } else {
-        "local_default"
-    }
-}
-
 fn chat_route_signals(app: &AppHandle, session_id: Option<&str>) -> ChatRouteSignals {
-    let Ok(rows) = app.state::<crate::db::Db>().list_chat_runs(60) else {
+    let Ok(rows) = app
+        .state::<crate::db::Db>()
+        .list_chat_runs(CHAT_RUNS_SIGNAL_WINDOW)
+    else {
         return ChatRouteSignals::default();
     };
     let session_rows = session_id
         .and_then(|id| {
             app.state::<crate::db::Db>()
-                .list_chat_runs_for_session(id, 20)
+                .list_chat_runs_for_session(id, SESSION_CHAT_RUNS_SIGNAL_WINDOW)
                 .ok()
         })
         .unwrap_or_default();
@@ -689,14 +673,28 @@ fn chat_route_signals(app: &AppHandle, session_id: Option<&str>) -> ChatRouteSig
         .iter()
         .filter_map(|row| row.elapsed_ms.map(|v| v as f64))
         .collect();
-    let local_tool_calls: Vec<f64> = local.iter().map(|row| row.tool_calls as f64).collect();
-    let local_tool_depth_rows = local
+    // Tool depth is a property of the current conversation, not machine
+    // health: scope it to the session so a couple of tool-heavy turns in one
+    // session cannot ratchet every other session to the gateway. Fall back to
+    // the global window only when no session is known.
+    let tool_scope: Vec<_> = if session_id.is_some() {
+        session_rows
+            .iter()
+            .filter(|row| row.route == "local")
+            .collect()
+    } else {
+        local.clone()
+    };
+    let local_tool_calls: Vec<f64> = tool_scope.iter().map(|row| row.tool_calls as f64).collect();
+    let local_tool_depth_rows = tool_scope
         .iter()
-        .filter(|row| row.tool_calls >= 3 || row.status == "tool_limit")
+        .filter(|row| {
+            row.tool_calls >= TOOL_DEPTH_ESCALATION_CALLS || row.status == "tool_limit"
+        })
         .count() as u64;
     let benchmark_rows = app
         .state::<crate::db::Db>()
-        .list_fusion_benchmarks(40)
+        .list_fusion_benchmarks(FUSION_BENCHMARK_SIGNAL_WINDOW)
         .unwrap_or_default();
     let sidekick_scores: Vec<f64> = benchmark_rows
         .iter()
@@ -705,8 +703,10 @@ fn chat_route_signals(app: &AppHandle, session_id: Option<&str>) -> ChatRouteSig
         .collect();
     ChatRouteSignals {
         local_rows: local.len() as u64,
-        local_error_rate: (!local.is_empty()).then_some(
-            local.iter().filter(|row| row.status != "ok").count() as f64 / local.len() as f64,
+        // Rows are newest-first; decay old errors so a bad patch fades instead
+        // of pinning the local route unhealthy for the whole window.
+        local_error_rate: route_policy::decayed_rate(
+            local.iter().map(|row| row.status != "ok"),
         ),
         sidekick_rows: sidekick.len() as u64,
         compacted_rows: rows.iter().filter(|row| row.compacted).count() as u64,
@@ -715,6 +715,7 @@ fn chat_route_signals(app: &AppHandle, session_id: Option<&str>) -> ChatRouteSig
             .iter()
             .find(|row| row.compacted)
             .and_then(|row| row.compaction_reason.clone()),
+        local_tool_rows: tool_scope.len() as u64,
         local_tool_depth_rows,
         avg_local_tool_calls: avg(&local_tool_calls),
         sidekick_benchmark_rows: sidekick_scores.len() as u64,
@@ -722,11 +723,6 @@ fn chat_route_signals(app: &AppHandle, session_id: Option<&str>) -> ChatRouteSig
         avg_local_elapsed_ms: avg(&local_elapsed),
         avg_sidekick_elapsed_ms: avg(&sidekick_elapsed),
     }
-}
-
-fn prompt_has_any(prompt: &str, terms: &[&str]) -> bool {
-    let lower = prompt.to_lowercase();
-    terms.iter().any(|term| lower.contains(term))
 }
 
 fn residency<'a>(app: &'a AppHandle) -> &'a Residency {
@@ -1112,7 +1108,7 @@ pub fn fusion_benchmark_matrix() -> FusionBenchmarkMatrix {
                 id: "gateway-glm",
                 label: "GLM 5.2 gateway",
                 route: "gateway",
-                model_hint: "glm-5.2",
+                model_hint: GATEWAY_CHAT_MODEL,
                 description: "Remote gateway candidate for frontier-style comparison.",
             },
             FusionBenchmarkCandidate {
@@ -1298,200 +1294,93 @@ pub fn fusion_route_recommendation_with_persist(
 
     let prompt = request.prompt.trim();
     let current_route = request.current_route.as_deref();
-    let judgment = prompt_has_any(
-        prompt,
-        &[
-            "decide",
-            "should we",
-            "what should",
-            "strategy",
-            "plan",
-            "architect",
-            "tradeoff",
-            "judgment",
-        ],
-    );
-    let mechanical = prompt_has_any(
-        prompt,
-        &[
-            "check",
-            "review",
-            "inspect",
-            "search",
-            "summarize",
-            "open",
-            "ground",
-            "grounding",
-            "read",
-            "locate",
-            "verify",
-            "compare",
-            "find",
-            "trace",
-            "status",
-            "models",
-            "what's left",
-            "whats left",
-            "reminder",
-        ],
-    );
-    let complex = prompt_has_any(
-        prompt,
-        &[
-            "full automationbench",
-            "benchmark",
-            "multi-file",
-            "race condition",
-            "architecture",
-            "frontier",
-            "hard",
-            "complex",
-            "production",
-        ],
-    );
+    let class = route_policy::classify_prompt(prompt);
+    let (mechanical, judgment, complex) = (class.mechanical(), class.judgment, class.complex);
 
-    let metrics = sidekick_metrics(app.clone(), Some(30)).ok();
+    let metrics = sidekick_metrics(app.clone(), Some(SIDEKICK_RUNS_SIGNAL_WINDOW)).ok();
     let route_signals = chat_route_signals(&app, request.session_id.as_deref());
-    let enough_parallel_feedback = metrics
-        .as_ref()
-        .is_some_and(|m| m.parallel_useful_rows + m.parallel_miss_rows >= 5);
-    let low_usefulness = metrics
-        .as_ref()
-        .and_then(|m| {
-            if enough_parallel_feedback {
-                m.parallel_useful_rate
-            } else {
-                m.useful_rate
-            }
-        })
-        .is_some_and(|rate| {
-            metrics.as_ref().is_some_and(|m| {
-                if enough_parallel_feedback {
-                    m.parallel_useful_rows + m.parallel_miss_rows >= 5
-                } else {
-                    m.useful_rows + m.miss_rows >= 5
-                }
-            }) && rate < 0.25
-        });
-    let high_escalation = metrics
-        .as_ref()
-        .and_then(|m| {
-            if m.parallel_rows >= 5 {
-                m.parallel_escalation_rate
-            } else {
-                m.escalation_rate
-            }
-        })
-        .is_some_and(|rate| metrics.as_ref().is_some_and(|m| m.rows >= 5) && rate > 0.6);
-    let pending_sidekick_handoffs = metrics
-        .as_ref()
-        .and_then(|m| m.parallel_pending_handoff_rate)
-        .is_some_and(|rate| metrics.as_ref().is_some_and(|m| m.parallel_rows >= 5) && rate > 0.5);
-    let local_unhealthy = route_signals.local_rows >= 5
+    let low_usefulness = metrics.as_ref().is_some_and(|m| {
+        let parallel_feedback = m.parallel_useful_rows + m.parallel_miss_rows;
+        let (feedback_rows, useful_rate) = if parallel_feedback >= MIN_ROWS_FOR_RATE_GATES {
+            (parallel_feedback, m.parallel_useful_rate)
+        } else {
+            (m.useful_rows + m.miss_rows, m.useful_rate)
+        };
+        route_policy::usefulness_low(feedback_rows, useful_rate)
+    });
+    let high_escalation = metrics.as_ref().is_some_and(|m| {
+        let escalation_rate = if m.parallel_rows >= MIN_ROWS_FOR_RATE_GATES {
+            m.parallel_escalation_rate
+        } else {
+            m.escalation_rate
+        };
+        route_policy::escalation_high(m.rows, escalation_rate)
+    });
+    let pending_sidekick_handoffs = metrics.as_ref().is_some_and(|m| {
+        m.parallel_rows >= MIN_ROWS_FOR_RATE_GATES
+            && m.parallel_pending_handoff_rate
+                .is_some_and(|rate| rate > PENDING_HANDOFF_RATE_CEILING)
+    });
+    let local_unhealthy = route_signals.local_rows >= MIN_ROWS_FOR_RATE_GATES
         && route_signals
             .local_error_rate
-            .is_some_and(|rate| rate >= 0.35);
-    let local_tool_depth_high = route_signals.local_tool_depth_rows >= 2
-        || route_signals
-            .avg_local_tool_calls
-            .is_some_and(|avg| route_signals.local_rows >= 3 && avg >= 2.5);
-    let sidekick_slow = route_signals.sidekick_rows >= 3
-        && matches!(
-            (
-                route_signals.avg_sidekick_elapsed_ms,
-                route_signals.avg_local_elapsed_ms
-            ),
-            (Some(sidekick_ms), Some(local_ms)) if local_ms > 0.0 && sidekick_ms > local_ms * 1.75
-        );
-    let sidekick_benchmark_low = route_signals.sidekick_benchmark_rows >= 4
-        && route_signals
-            .sidekick_benchmark_score
-            .is_some_and(|score| score < 0.5);
+            .is_some_and(|rate| rate >= LOCAL_ERROR_RATE_CEILING);
+    let local_tool_depth_high = route_signals.local_tool_depth_rows >= MIN_TOOL_DEPTH_ROWS
+        || route_signals.avg_local_tool_calls.is_some_and(|avg| {
+            route_signals.local_tool_rows >= MIN_ROWS_FOR_TOOL_AVG_GATE
+                && avg >= AVG_LOCAL_TOOL_CALLS_CEILING
+        });
+    let sidekick_slow = route_policy::sidekick_latency_high(
+        route_signals.sidekick_rows,
+        route_signals.avg_sidekick_elapsed_ms,
+        route_signals.avg_local_elapsed_ms,
+    );
+    let sidekick_benchmark_low = route_policy::sidekick_benchmark_low(
+        route_signals.sidekick_benchmark_rows,
+        route_signals.sidekick_benchmark_score,
+    );
     let upgrade_sidekick = sidekick_ready
         && (high_escalation || sidekick_slow || sidekick_benchmark_low)
         && !low_usefulness;
     let session_compaction_boundary = route_signals.session_compacted_rows > 0;
-    let compaction_boundary =
-        session_compaction_boundary || route_signals.compacted_rows > 0 || prompt.len() > 16_000;
+    let long_prompt = prompt.len() > LONG_PROMPT_COMPACTION_CHARS;
+    // Compaction is per-conversation state: a compaction in some other
+    // session must not push this one to the gateway.
+    let compaction_boundary = session_compaction_boundary || long_prompt;
 
-    let (route, use_sidekick, escalate_gateway, reason) =
-        if matches!(current_route, Some("cloud" | "gateway")) && gateway_ready && !mechanical {
-            ("gateway", false, true, "keep_current_gateway")
-        } else if session_compaction_boundary && gateway_ready && (complex || judgment) {
-            (
-                "gateway",
-                false,
-                true,
-                route_signals
-                    .session_last_compaction_reason
-                    .as_deref()
-                    .unwrap_or("session_compaction_boundary_gateway"),
-            )
-        } else if compaction_boundary && gateway_ready && (complex || judgment) {
-            ("gateway", false, true, "recent_compaction_boundary_gateway")
-        } else if local_unhealthy && gateway_ready && (complex || current_route == Some("local")) {
-            ("gateway", false, true, "local_error_rate_high")
-        } else if local_tool_depth_high
-            && gateway_ready
-            && (complex || judgment || current_route == Some("local"))
-        {
-            ("gateway", false, true, "local_tool_depth_high")
-        } else if judgment || complex {
-            if gateway_ready && complex {
-                ("gateway", false, true, "complex_or_frontier_task")
-            } else if local_ready {
-                ("local", false, false, "main_keeps_judgment")
-            } else if gateway_ready {
-                ("gateway", false, true, "local_unavailable")
-            } else {
-                ("local", false, false, "no_ready_route")
-            }
-        } else if mechanical
-            && local_ready
-            && sidekick_ready
-            && !low_usefulness
-            && !high_escalation
-            && !pending_sidekick_handoffs
-            && !sidekick_slow
-            && !sidekick_benchmark_low
-        {
-            ("local", true, false, "mechanical_with_sidekick")
-        } else if local_ready {
-            (
-                "local",
-                false,
-                false,
-                if low_usefulness {
-                    "sidekick_low_usefulness"
-                } else if high_escalation {
-                    "sidekick_high_escalation"
-                } else if pending_sidekick_handoffs {
-                    "sidekick_pending_handoffs"
-                } else if sidekick_slow {
-                    "sidekick_latency_high"
-                } else if sidekick_benchmark_low {
-                    "sidekick_benchmark_score_low"
-                } else if mechanical {
-                    "no_warm_sidekick"
-                } else {
-                    "local_default"
-                },
-            )
-        } else if gateway_ready {
-            ("gateway", false, true, "local_unavailable")
-        } else {
-            ("local", false, false, "no_ready_route")
-        };
+    let decision = route_policy::recommend_route(&route_policy::RouteInputs {
+        current_route,
+        class,
+        local_ready,
+        sidekick_ready,
+        gateway_ready,
+        low_usefulness,
+        high_escalation,
+        pending_sidekick_handoffs,
+        local_unhealthy,
+        local_tool_depth_high,
+        sidekick_slow,
+        sidekick_benchmark_low,
+        session_compaction_boundary,
+        long_prompt,
+        session_last_compaction_reason: route_signals.session_last_compaction_reason.as_deref(),
+    });
+    let (route, use_sidekick, escalate_gateway, reason) = (
+        decision.route,
+        decision.use_sidekick,
+        decision.escalate_gateway,
+        decision.reason,
+    );
 
     let main_model = main_slot.and_then(|slot| slot.model_id);
     let sidekick_model = sidekick.map(|(_, _, _, model_id)| model_id);
-    let gateway_model = gateway_ready.then(|| "glm-5.2".to_string());
-    let policy_class = fusion_policy_class(
+    let gateway_model = gateway_ready.then(|| GATEWAY_CHAT_MODEL.to_string());
+    let policy_class = route_policy::fusion_policy_class(
         route,
         use_sidekick,
         escalate_gateway,
         upgrade_sidekick,
-        reason,
+        &reason,
     );
     let signals = json!({
         "mechanical": mechanical,
@@ -1517,6 +1406,7 @@ pub fn fusion_route_recommendation_with_persist(
             "compacted_rows": route_signals.compacted_rows,
             "session_compacted_rows": route_signals.session_compacted_rows,
             "session_last_compaction_reason": route_signals.session_last_compaction_reason,
+            "local_tool_rows": route_signals.local_tool_rows,
             "local_tool_depth_rows": route_signals.local_tool_depth_rows,
             "avg_local_tool_calls": route_signals.avg_local_tool_calls,
             "sidekick_benchmark_rows": route_signals.sidekick_benchmark_rows,
@@ -1546,7 +1436,7 @@ pub fn fusion_route_recommendation_with_persist(
         use_sidekick,
         escalate_gateway,
         upgrade_sidekick,
-        reason: reason.to_string(),
+        reason,
         policy_class: policy_class.to_string(),
         signals: signals.clone(),
         main_model,
@@ -1927,7 +1817,7 @@ pub fn export_automationbench_handoff(
             return Err(format!("unknown Fusion benchmark candidate: {candidate}"));
         }
         let (route, model, local_model_required, gateway_required) = match candidate.as_str() {
-            "gateway-glm" => ("gateway", "glm-5.2", false, true),
+            "gateway-glm" => ("gateway", GATEWAY_CHAT_MODEL, false, true),
             "local-fast" => ("local", "warm small/e2b Understudy model", true, false),
             _ => ("local", "warm main Understudy model", true, false),
         };
@@ -2158,12 +2048,12 @@ async fn run_fusion_benchmark_inner(
         .clone()
         .or_else(|| {
             if candidate == "gateway-glm" {
-                Some("glm-5.2".to_string())
+                Some(GATEWAY_CHAT_MODEL.to_string())
             } else {
                 None
             }
         })
-        .unwrap_or_else(|| "glm-5.2".to_string());
+        .unwrap_or_else(|| GATEWAY_CHAT_MODEL.to_string());
     let mut rows = vec![];
     let mut recorded_skips = 0u64;
 

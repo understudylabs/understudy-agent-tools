@@ -11,6 +11,7 @@ mod metrics;
 mod models;
 mod moraine;
 mod residency;
+mod route_policy;
 mod server;
 mod sidecar;
 
