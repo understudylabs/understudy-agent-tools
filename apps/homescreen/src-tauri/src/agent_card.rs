@@ -86,15 +86,23 @@ pub fn mark_stopped() {
     });
 }
 
+/// Serializes every card writer in this process. The three writers run on
+/// three different threads (server bind on the server thread, warm-model
+/// refreshes on the async runtime, mark_stopped on the main thread) and an
+/// unlocked read-modify-write loses whichever update renames first.
+static CARD_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
+
 fn update<F: FnOnce(&mut Map<String, Value>)>(f: F) {
     let Some(path) = card_path() else { return };
+    let _guard = CARD_LOCK.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
     if let Err(err) = update_at(&path, f) {
         eprintln!("understudy agent-card: write failed: {err}");
     }
 }
 
 /// Read-modify-write of the card at `path`, atomically. Split from `update`
-/// so tests can drive it against a temp directory.
+/// so tests can drive it against a temp directory; callers other than
+/// `update` must not touch the real card path (no lock is taken here).
 fn update_at<F: FnOnce(&mut Map<String, Value>)>(path: &Path, f: F) -> std::io::Result<()> {
     let mut card = std::fs::read_to_string(path)
         .ok()
@@ -125,16 +133,25 @@ fn update_at<F: FnOnce(&mut Map<String, Value>)>(path: &Path, f: F) -> std::io::
 }
 
 fn write_atomic(path: &Path, value: &Value) -> std::io::Result<()> {
+    static TMP_SEQ: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
     let dir = path
         .parent()
         .ok_or_else(|| std::io::Error::other("agent-card path has no parent"))?;
     std::fs::create_dir_all(dir)?;
+    // pid + per-process counter: a pid-only temp name is shared by every
+    // thread in the process, letting one writer rename another's
+    // half-written file into place.
     let tmp = dir.join(format!(
-        ".agent-card.json.tmp-{}",
-        std::process::id()
+        ".agent-card.json.tmp-{}-{}",
+        std::process::id(),
+        TMP_SEQ.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
     ));
-    std::fs::write(&tmp, format!("{}\n", serde_json::to_string_pretty(value)?))?;
-    std::fs::rename(&tmp, path)
+    let result = std::fs::write(&tmp, format!("{}\n", serde_json::to_string_pretty(value)?))
+        .and_then(|_| std::fs::rename(&tmp, path));
+    if result.is_err() {
+        let _ = std::fs::remove_file(&tmp);
+    }
+    result
 }
 
 #[cfg(test)]

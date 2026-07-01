@@ -90,11 +90,13 @@ export async function runStatus(json = false): Promise<0 | 1> {
   const activeOrgId =
     config?.org_id ?? (orgIds.length === 1 ? orgIds[0] : undefined);
   const orgCredentials = activeOrgId ? credentials?.orgs[activeOrgId] : undefined;
-  const storedApiKey = orgCredentials?.api_key ?? credentials?.api_key;
-  const gatewayUrl =
-    orgCredentials?.gateway_url ??
-    credentials?.gateway_url ??
-    null;
+  // Display what resolveAuth actually sends: the top-level credential wins
+  // over an org entry when both exist (a `logout --org` can leave a stale
+  // top-level key next to a sole org entry, and requests use the top-level).
+  const storedApiKey = credentials?.api_key ?? orgCredentials?.api_key;
+  const gatewayUrl = credentials?.api_key
+    ? (credentials?.gateway_url ?? null)
+    : (orgCredentials?.gateway_url ?? credentials?.gateway_url ?? null);
 
   if (json) {
     await trackStatusChecked({

@@ -102,29 +102,33 @@ pub fn resolve_from(
 
     let file = file?;
 
-    // 2. Active org entry: the orgs map's only entry (`resolveOrgId` with
-    //    no explicit org).
-    if let Some(org_id) = sole_org_id(&file) {
-        if let Some(entry) = file.get("orgs").and_then(|o| o.get(&org_id)) {
-            if let Some(key) = non_empty_str(entry, "api_key") {
-                return Some(ResolvedCredentials {
-                    gateway_url: non_empty_str(entry, "gateway_url")
-                        .unwrap_or(fallback_gateway),
-                    api_key: key,
-                    auth_mode: "api_key",
-                    org_id: Some(org_id),
-                });
-            }
-        }
+    // 2. Top-level api_key, exactly like the CLI's `resolveAuth`
+    //    (src/internal/http.ts): the CLI's actual request path prefers the
+    //    top-level credential (with the fallback gateway, never an org
+    //    entry's gateway) whenever it is present. `login A; login B;
+    //    logout --org B` leaves a sole org A entry plus a top-level B
+    //    credential — both surfaces must pick B or they authenticate as
+    //    different identities from the same file.
+    if let Some(key) = non_empty_str(&file, "api_key") {
+        let org_id = sole_org_id(&file);
+        return Some(ResolvedCredentials {
+            gateway_url: fallback_gateway,
+            api_key: key,
+            auth_mode: "api_key",
+            org_id,
+        });
     }
 
-    // 3. Top-level legacy fields (also the multi-org tiebreaker).
-    let key = non_empty_str(&file, "api_key")?;
+    // 3. Active org entry: the orgs map's only entry (`resolveOrgId` with
+    //    no explicit org), reached only when no top-level key exists.
+    let org_id = sole_org_id(&file)?;
+    let entry = file.get("orgs").and_then(|o| o.get(&org_id))?;
+    let key = non_empty_str(entry, "api_key")?;
     Some(ResolvedCredentials {
-        gateway_url: fallback_gateway,
+        gateway_url: non_empty_str(entry, "gateway_url").unwrap_or(fallback_gateway),
         api_key: key,
         auth_mode: "api_key",
-        org_id: None,
+        org_id: Some(org_id),
     })
 }
 
@@ -183,7 +187,7 @@ mod tests {
     }
 
     #[test]
-    fn env_beats_orgs_map_beats_legacy() {
+    fn env_beats_legacy_beats_orgs_map() {
         let path = temp_credentials_file(&json!({
             "api_key": "sk_legacy_key_9999",
             "gateway_url": "https://legacy.gateway.example",
@@ -215,10 +219,12 @@ mod tests {
         .unwrap();
         assert_eq!(resolved.gateway_url, "https://legacy.gateway.example");
 
-        // No env: the active (sole) org entry wins over legacy fields.
+        // No env: the top-level key wins over the org entry, matching the
+        // CLI's resolveAuth. `logout --org` can leave a stale top-level
+        // credential next to a sole org entry — both surfaces must agree.
         let resolved = resolve_from(None, None, read_credentials_value(&path)).unwrap();
-        assert_eq!(resolved.api_key, "sk_org_key_1234");
-        assert_eq!(resolved.gateway_url, "https://org.gateway.example");
+        assert_eq!(resolved.api_key, "sk_legacy_key_9999");
+        assert_eq!(resolved.gateway_url, "https://legacy.gateway.example");
         assert_eq!(resolved.org_id.as_deref(), Some("org_ab12"));
     }
 
