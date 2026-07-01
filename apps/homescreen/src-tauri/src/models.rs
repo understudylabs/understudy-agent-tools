@@ -135,6 +135,20 @@ fn parse_catalog(body: &str) -> Result<Vec<SnapshotInfo>, String> {
     if rows.is_empty() {
         return Err("catalog listed no models".to_string());
     }
+    // A live catalog REPLACES the bundled table, so a field-dropping or
+    // half-empty payload must be rejected wholesale rather than silently
+    // shadowing complete bundled data with unpullable rows.
+    for row in &rows {
+        if row.id.trim().is_empty()
+            || row.loader.trim().is_empty()
+            || !row
+                .session_url
+                .as_deref()
+                .is_some_and(|u| !u.trim().is_empty())
+        {
+            return Err(format!("catalog row invalid: {:?}", row.id));
+        }
+    }
     Ok(rows)
 }
 
@@ -143,7 +157,9 @@ fn parse_catalog(body: &str) -> Result<Vec<SnapshotInfo>, String> {
 /// the result and `snapshots()` keeps serving the bundled fallback.
 pub async fn refresh_catalog() -> Result<usize, String> {
     {
-        let state = catalog_state().lock().unwrap();
+        // One lock span for freshness check + attempt stamp: two separate
+        // acquisitions let concurrent callers both pass the backoff gate.
+        let mut state = catalog_state().lock().unwrap();
         if let Some((fetched_at, rows)) = state.rows.as_ref() {
             if fetched_at.elapsed() < CATALOG_MAX_AGE {
                 return Ok(rows.len());
@@ -154,8 +170,8 @@ pub async fn refresh_catalog() -> Result<usize, String> {
                 return Err("catalog fetch backed off".to_string());
             }
         }
+        state.last_attempt = Some(Instant::now());
     }
-    catalog_state().lock().unwrap().last_attempt = Some(Instant::now());
     let client = reqwest::Client::builder()
         .connect_timeout(CATALOG_TIMEOUT)
         .timeout(CATALOG_TIMEOUT)

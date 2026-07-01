@@ -4,6 +4,7 @@ use crate::models::{self, SnapshotInfo};
 use futures_util::StreamExt;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
+use std::collections::{HashMap, HashSet};
 use std::path::{Component, Path, PathBuf};
 use std::process::Command;
 use std::time::Duration;
@@ -230,10 +231,30 @@ async fn download_model_inner(
     let mut files = manifest.files;
     files.sort_by(|a, b| file_name(a).cmp(&file_name(b)));
     let mut out = Vec::with_capacity(files.len());
-    for file in files {
-        out.push(download_file(&client, dest, file, on_event).await?);
+
+    // Pull SHA256SUMS first (never cache-skipped) so every other file,
+    // cached or fresh, verifies against this snapshot's current hashes.
+    // Without this, a stale same-name file from another snapshot passes the
+    // size heuristic and wedges the download at final verify with no
+    // in-app way to recover.
+    let mut expected_hashes: HashMap<String, String> = HashMap::new();
+    if let Some(pos) = files.iter().position(|f| is_sums_file(&file_name(f))) {
+        let sums_entry = files.remove(pos);
+        out.push(download_file(&client, dest, sums_entry, None, on_event).await?);
+        expected_hashes = parse_sha256sums(dest).await?;
     }
-    verify_sha256sums(dest).await?;
+
+    let mut verified: HashSet<String> = HashSet::new();
+    for file in files {
+        let key = normalize_sums_name(&file_name(&file));
+        let expected = expected_hashes.get(&key).cloned();
+        let had_expected = expected.is_some();
+        out.push(download_file(&client, dest, file, expected, on_event).await?);
+        if had_expected {
+            verified.insert(key);
+        }
+    }
+    verify_sha256sums(dest, &verified).await?;
     Ok(out)
 }
 
@@ -241,6 +262,7 @@ async fn download_file(
     client: &reqwest::Client,
     dest: &Path,
     file: SessionFile,
+    expected_sha: Option<String>,
     on_event: &Channel<DownloadEvent>,
 ) -> Result<FileMetadata, String> {
     let name = file_name(&file);
@@ -254,21 +276,25 @@ async fn download_file(
             .map_err(|e| format!("create parent dir failed: {e}"))?;
     }
     let total = file.size_bytes.or(file.size);
+    // The freshly pulled SHA256SUMS entry wins over any manifest hash.
+    let expected = expected_sha
+        .or(file.sha256.clone())
+        .map(|h| h.to_lowercase());
     // Never cache-skip SHA256SUMS itself: a stale sums file left by a
     // previous snapshot in the same dest would make verify_sha256sums
     // validate the wrong weights. It is tiny — always refetch it.
-    if name != "SHA256SUMS" {
+    if !is_sums_file(&name) {
         if let Ok(meta) = fs::metadata(&target).await {
             let size_matches = total.map(|t| t == meta.len()).unwrap_or(meta.len() > 0);
             // A size match alone can hide a stale or corrupt file; when the
             // manifest carries a hash, only a hash match counts as cached.
             let verified = if !size_matches {
                 false
-            } else if let Some(expected) = file.sha256.as_ref() {
+            } else if let Some(expected) = expected.as_deref() {
                 let _ = on_event.send(DownloadEvent::Log {
                     message: format!("verifying cached {name}"),
                 });
-                sha256_of_file(&target).await.ok().as_deref() == Some(&expected.to_lowercase())
+                sha256_of_file(&target).await.ok().as_deref() == Some(expected)
             } else {
                 true
             };
@@ -282,6 +308,11 @@ async fn download_file(
                     cached: true,
                 });
             }
+            // Self-heal: a cached file that fails verification is replaced by
+            // a fresh download instead of wedging the pull at final verify.
+            let _ = on_event.send(DownloadEvent::Log {
+                message: format!("cached {name} failed verification; re-downloading"),
+            });
         }
     }
 
@@ -305,7 +336,7 @@ async fn download_file(
         .map_err(|e| format!("create partial file failed for {name}: {e}"))?;
     let mut stream = response.bytes_stream();
     let mut downloaded = 0u64;
-    let mut hasher = file.sha256.as_ref().map(|_| Sha256::new());
+    let mut hasher = expected.as_ref().map(|_| Sha256::new());
     while let Some(chunk) = stream.next().await {
         let chunk = chunk.map_err(|e| format!("download stream failed for {name}: {e}"))?;
         downloaded += chunk.len() as u64;
@@ -334,9 +365,9 @@ async fn download_file(
             ));
         }
     }
-    if let (Some(hash), Some(expected)) = (hasher, file.sha256.as_ref()) {
+    if let (Some(hash), Some(expected)) = (hasher, expected.as_deref()) {
         let actual = format!("{:x}", hash.finalize());
-        if actual != expected.to_lowercase() {
+        if actual != expected {
             let _ = fs::remove_file(&part).await;
             return Err(format!("sha256 mismatch for {name}"));
         }
@@ -351,10 +382,12 @@ async fn download_file(
     })
 }
 
-async fn verify_sha256sums(dest: &Path) -> Result<(), String> {
+/// Parse the snapshot's SHA256SUMS into normalized-name -> lowercase hex.
+async fn parse_sha256sums(dest: &Path) -> Result<HashMap<String, String>, String> {
     let sums = dest.join("SHA256SUMS");
+    let mut out = HashMap::new();
     if !sums.exists() {
-        return Ok(());
+        return Ok(out);
     }
     let text = fs::read_to_string(&sums)
         .await
@@ -366,16 +399,39 @@ async fn verify_sha256sums(dest: &Path) -> Result<(), String> {
         if expected.len() != 64 {
             continue;
         }
-        let name = raw.trim().trim_start_matches('*').trim_start_matches("./");
-        let target = safe_target(dest, name)?;
+        out.insert(normalize_sums_name(raw), expected.to_lowercase());
+    }
+    Ok(out)
+}
+
+/// Final backstop over the whole dest. `already_verified` holds normalized
+/// names hashed during download this run; re-hashing 50+ GB of weights a
+/// second time is pointless.
+async fn verify_sha256sums(dest: &Path, already_verified: &HashSet<String>) -> Result<(), String> {
+    for (name, expected) in parse_sha256sums(dest).await? {
+        if already_verified.contains(&name) {
+            continue;
+        }
+        let target = safe_target(dest, &name)?;
         let actual = sha256_of_file(&target)
             .await
             .map_err(|e| format!("read {name} for SHA256 failed: {e}"))?;
-        if actual != expected.to_lowercase() {
+        if actual != expected {
             return Err(format!("sha256 mismatch for {name}"));
         }
     }
     Ok(())
+}
+
+fn normalize_sums_name(name: &str) -> String {
+    name.trim()
+        .trim_start_matches('*')
+        .trim_start_matches("./")
+        .to_string()
+}
+
+fn is_sums_file(name: &str) -> bool {
+    normalize_sums_name(name) == "SHA256SUMS"
 }
 
 /// Hash a file in fixed-size chunks; weights run 50+ GB and must never be

@@ -89,9 +89,19 @@ type DownloadResult = {
 
 // Shared model-cache convention (same semantics as skills/ladder/serve.py and
 // the desktop app): UNDERSTUDY_MODEL_HOME overrides, else ~/.understudy/models.
+function resolveModelHome(raw: string): string {
+  const trimmed = raw.trim();
+  // Expand a leading ~ and absolutize so the same value means the same
+  // directory regardless of each tool's working directory.
+  const expanded = trimmed === "~" || trimmed.startsWith("~/")
+    ? join(homedir(), trimmed.slice(1))
+    : trimmed;
+  return resolve(expanded);
+}
+
 export const DEFAULT_MODELS_DIR =
   process.env.UNDERSTUDY_MODEL_HOME && process.env.UNDERSTUDY_MODEL_HOME.trim() !== ""
-    ? process.env.UNDERSTUDY_MODEL_HOME
+    ? resolveModelHome(process.env.UNDERSTUDY_MODEL_HOME)
     : join(homedir(), ".understudy", "models");
 export const DEFAULT_MODEL_LOG_DIR = join(homedir(), ".understudy", "agent-tools", "logs");
 
@@ -382,7 +392,11 @@ export async function pullSnapshotModel(options: SnapshotPullOptions): Promise<S
       if (result.verified) verifiedNames.add(normalizeSumsName(row.name));
       results.push(result);
     }
-    await verifySha256Sums(dest, log, verifiedNames);
+    // Only verify against sums delivered by THIS manifest; a leftover
+    // SHA256SUMS from another snapshot in the same dest proves nothing.
+    if (sumsRow) {
+      await verifySha256Sums(dest, log, verifiedNames);
+    }
   } catch (error) {
     log(`incomplete error=${error instanceof Error ? error.message : String(error)}`);
     throw error;
@@ -409,7 +423,9 @@ function modelInfoFor(
   sessionUrl?: string,
   catalog?: Record<string, SnapshotModelInfo>,
 ): SnapshotModelInfo {
-  const model = catalog?.[modelId] ?? VERIFIED_SNAPSHOT_MODELS[modelId];
+  // When a live catalog was fetched it REPLACES the compiled table: an id
+  // the service no longer lists must not resurrect from the fallback.
+  const model = catalog ? catalog[modelId] : VERIFIED_SNAPSHOT_MODELS[modelId];
   if (model) return model;
   if (!sessionUrl) {
     throw new Error(`unknown verified snapshot model id: ${modelId}`);
