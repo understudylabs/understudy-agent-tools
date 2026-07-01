@@ -18,6 +18,7 @@ import { readCredentials, writeCredentials } from "../config/credentials.js";
 import {
   globalCredentialsPath,
   globalLoginPendingPath,
+  isGlobalProjectConfigPath,
   PROJECT_CONFIG_DIR,
 } from "../config/paths.js";
 import { DEFAULT_GATEWAY_URL } from "../config/defaults.js";
@@ -456,10 +457,20 @@ function saveApiKeyResult(
   writeCredentials(next);
 
   if (orgId && result.default_project) {
-    writeProjectConfig(`${PROJECT_CONFIG_DIR}/config.json`, {
-      org_id: orgId,
-      project_slug: result.default_project.slug,
-    });
+    const target = `${PROJECT_CONFIG_DIR}/config.json`;
+    if (isGlobalProjectConfigPath(target)) {
+      // Running from `$HOME`: `.understudy/` there is the global config
+      // dir, not a project. Credentials are saved; the project pin waits
+      // for a real repo.
+      process.stderr.write(
+        "note: current directory is your home directory, so no project config was written. cd into your project and run `understudy projects use <slug>`.\n",
+      );
+    } else {
+      writeProjectConfig(target, {
+        org_id: orgId,
+        project_slug: result.default_project.slug,
+      });
+    }
   }
 }
 

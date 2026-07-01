@@ -60,10 +60,14 @@ export async function runStatus(json = false): Promise<0 | 1> {
     return 1;
   }
 
+  // A credential in the `orgs` map signs the user in just like the legacy
+  // top-level `api_key` — `resolveAuth` sends requests with it, so status
+  // must agree (and so must the desktop app, which mirrors this order).
+  const orgIds = credentials ? Object.keys(credentials.orgs) : [];
   const envApiKey = process.env.UNDERSTUDY_API_KEY;
   const authMode = envApiKey
     ? "env_api_key"
-    : credentials?.api_key
+    : credentials?.api_key || orgIds.length > 0
       ? "api_key"
       : null;
 
@@ -81,12 +85,18 @@ export async function runStatus(json = false): Promise<0 | 1> {
     return 0;
   }
 
-  const orgCredentials = config ? credentials?.orgs[config.org_id] : undefined;
-  const storedApiKey = orgCredentials?.api_key ?? credentials?.api_key;
-  const gatewayUrl =
-    orgCredentials?.gateway_url ??
-    credentials?.gateway_url ??
-    null;
+  // Active org: the project config names one; otherwise a sole entry in
+  // the orgs map is unambiguous (same rule as `resolveOrgId`).
+  const activeOrgId =
+    config?.org_id ?? (orgIds.length === 1 ? orgIds[0] : undefined);
+  const orgCredentials = activeOrgId ? credentials?.orgs[activeOrgId] : undefined;
+  // Display what resolveAuth actually sends: the top-level credential wins
+  // over an org entry when both exist (a `logout --org` can leave a stale
+  // top-level key next to a sole org entry, and requests use the top-level).
+  const storedApiKey = credentials?.api_key ?? orgCredentials?.api_key;
+  const gatewayUrl = credentials?.api_key
+    ? (credentials?.gateway_url ?? null)
+    : (orgCredentials?.gateway_url ?? credentials?.gateway_url ?? null);
 
   if (json) {
     await trackStatusChecked({
@@ -99,7 +109,7 @@ export async function runStatus(json = false): Promise<0 | 1> {
         configured: Boolean(config),
         signed_in: Boolean(authMode),
         auth_mode: authMode,
-        org_id: config?.org_id ?? null,
+        org_id: activeOrgId ?? null,
         project_slug: config?.project_slug ?? null,
         api_key_suffix: storedApiKey ? storedApiKey.slice(-4) : null,
         gateway_url: gatewayUrl,
@@ -112,7 +122,7 @@ export async function runStatus(json = false): Promise<0 | 1> {
   const lines = [
     `${kleur.bold("signed_in")}     ${authMode ? "yes" : "no"}`,
     `${kleur.bold("auth_mode")}     ${authMode ?? kleur.yellow("none")}`,
-    `${kleur.bold("org_id")}        ${config?.org_id ?? kleur.dim("(none)")}`,
+    `${kleur.bold("org_id")}        ${activeOrgId ?? kleur.dim("(none)")}`,
     `${kleur.bold("project_slug")}  ${config?.project_slug ?? kleur.dim("(none)")}`,
     `${kleur.bold("api_key")}       ${storedApiKey ? maskKey(storedApiKey) : kleur.dim("(none)")}`,
     `${kleur.bold("gateway_url")}   ${gatewayUrl ?? kleur.dim("(unknown)")}`,
