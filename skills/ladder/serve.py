@@ -43,12 +43,12 @@ LOCAL_MODELS = {
     "gemma-4-e2b":   ("mlx_vlm", os.path.join(MODEL_HOME, "gemma-4-e2b-it-qat-mlx-vlm-understudy"), "gemma-4-e2b · thinking", {"temp": 1.0, "top_p": 0.95, "top_k": 64}),
 }
 
+# Static stand-in when the live gateway catalog is unreachable. Keep this list
+# to models the gateway still serves — deprecated ids fail mid-demo. glm-5.1,
+# gemma-4-31b-it, and kimi-k2.6 were removed after their 2026-06-29 deprecation.
 FALLBACK_REMOTE_MODELS = [
     ("glm-5.2", "GLM 5.2"),
     ("minimax-m3", "MiniMax M3"),
-    ("glm-5.1", "GLM 5.1 · deprecates 2026-06-29"),
-    ("gemma-4-31b-it", "Gemma 4 31B · deprecates 2026-06-29"),
-    ("kimi-k2.6", "Kimi K2.6 · deprecates 2026-06-29"),
     ("minimax-m2.7", "MiniMax M2.7"),
     ("nemotron-3-nano", "Nemotron 3 Nano"),
     ("nemotron-3-super", "Nemotron 3 Super"),
