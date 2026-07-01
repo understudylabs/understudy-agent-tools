@@ -412,9 +412,12 @@ impl Residency {
             // Persist + benchmark record.
             if ready {
                 residency.persist(&app);
-                let _ = app
+                if let Err(err) = app
                     .state::<Db>()
-                    .record_benchmark(&model_id, None, mem_gb, Some(load_ms));
+                    .record_benchmark(&model_id, None, mem_gb, Some(load_ms))
+                {
+                    eprintln!("understudy db: record_benchmark failed: {err:#}");
+                }
             }
         });
         Ok(())
@@ -509,7 +512,9 @@ impl Residency {
                 ordinal: i as u32,
             })
             .collect();
-        let _ = app.state::<Db>().save_residency(&rows);
+        if let Err(err) = app.state::<Db>().save_residency(&rows) {
+            eprintln!("understudy db: save_residency failed: {err:#}");
+        }
     }
 
     /// On launch, rebuild slots from the persisted plan and re-warm the warm set.

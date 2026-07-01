@@ -89,7 +89,9 @@ pub fn start(app: AppHandle) {
         Some(t) => t,
         None => {
             let t = gen_token();
-            let _ = db.setting_set(TOKEN_KEY, &t);
+            if let Err(err) = db.setting_set(TOKEN_KEY, &t) {
+                eprintln!("understudy db: persisting server token failed: {err:#}");
+            }
             t
         }
     };
