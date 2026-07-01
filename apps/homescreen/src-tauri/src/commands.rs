@@ -781,20 +781,26 @@ pub fn get_status(app: AppHandle) -> StatusSnapshot {
 
 #[tauri::command]
 pub fn connect(app: AppHandle) -> Result<(), String> {
-    bin::command("moraine")
+    let status = bin::command("moraine")
         .arg("up")
         .status()
         .map_err(|e| format!("moraine up failed: {e}"))?;
+    if !status.success() {
+        return Err(format!("moraine up exited with {status}"));
+    }
     let _ = app.emit("status-changed", get_status(app.clone()));
     Ok(())
 }
 
 #[tauri::command]
 pub fn disconnect(app: AppHandle) -> Result<(), String> {
-    bin::command("moraine")
+    let status = bin::command("moraine")
         .arg("down")
         .status()
         .map_err(|e| format!("moraine down failed: {e}"))?;
+    if !status.success() {
+        return Err(format!("moraine down exited with {status}"));
+    }
     let _ = app.emit("status-changed", get_status(app.clone()));
     Ok(())
 }
@@ -992,20 +998,26 @@ pub fn install_moraine() -> Result<String, String> {
 
 #[tauri::command]
 pub fn start_moraine(app: AppHandle) -> Result<(), String> {
-    bin::command("moraine")
+    let status = bin::command("moraine")
         .arg("up")
         .status()
         .map_err(|e| format!("moraine up failed: {e}"))?;
+    if !status.success() {
+        return Err(format!("moraine up exited with {status}"));
+    }
     let _ = app.emit("status-changed", get_status(app.clone()));
     Ok(())
 }
 
 #[tauri::command]
 pub fn stop_moraine(app: AppHandle) -> Result<(), String> {
-    bin::command("moraine")
+    let status = bin::command("moraine")
         .arg("down")
         .status()
         .map_err(|e| format!("moraine down failed: {e}"))?;
+    if !status.success() {
+        return Err(format!("moraine down exited with {status}"));
+    }
     let _ = app.emit("status-changed", get_status(app.clone()));
     Ok(())
 }

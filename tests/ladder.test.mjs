@@ -41,9 +41,14 @@ describe("ladder model catalog", { skip: !pythonAvailable }, () => {
     assert.equal(models.get("glm-5.2").billed, true);
     assert.equal(models.get("minimax-m3").lane, "gateway");
     assert.equal(models.get("minimax-m3").billed, true);
-    assert.equal(models.get("gemma-4-31b-it").lane, "gateway");
-    assert.match(models.get("gemma-4-31b-it").label, /deprecates 2026-06-29/);
     assert.equal(models.get("nemotron-3-ultra").lane, "gateway");
+    // gateway ids deprecated 2026-06-29 must not be offered as fallbacks
+    for (const retired of ["glm-5.1", "gemma-4-31b-it", "kimi-k2.6"]) {
+      assert.equal(models.has(retired), false, `${retired} should be retired`);
+    }
+    for (const model of payload.models) {
+      assert.doesNotMatch(model.label ?? "", /deprecates/);
+    }
   });
 
   it("can override the remote gateway list with explicit model ids", () => {
