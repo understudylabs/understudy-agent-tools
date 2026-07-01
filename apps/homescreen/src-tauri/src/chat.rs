@@ -1836,7 +1836,14 @@ fn compact_chat_messages(messages: Vec<Value>) -> (Vec<Value>, Option<String>, u
         return (messages, None, before_tokens);
     }
 
-    let split_at = messages.len().saturating_sub(CHAT_RECENT_CONTEXT_MESSAGES);
+    let mut split_at = messages.len().saturating_sub(CHAT_RECENT_CONTEXT_MESSAGES);
+    // Same guard as compact_sidekick_messages: never cut between an assistant
+    // tool_calls message and its tool replies. Today's inputs carry no tool
+    // messages (compaction runs before the tool loop), but keep the invariant
+    // local so a reordering can't reintroduce rejected transcripts.
+    while split_at > 0 && messages[split_at].get("role").and_then(|v| v.as_str()) == Some("tool") {
+        split_at -= 1;
+    }
     let mut system = vec![];
     let mut older = vec![];
     let mut recent = vec![];
@@ -3280,6 +3287,40 @@ mod tests {
             first_kept.get("role").and_then(|v| v.as_str()),
             Some("assistant")
         );
+        assert!(
+            first_kept.get("tool_calls").is_some(),
+            "recent slice must start at the assistant tool_calls message, not an orphaned tool reply"
+        );
+    }
+
+    #[test]
+    fn chat_compaction_never_orphans_tool_replies() {
+        let filler = "word ".repeat(700);
+        let mut messages = vec![];
+        for i in 0..11 {
+            let role = if i % 2 == 0 { "user" } else { "assistant" };
+            messages.push(json!({"role": role, "content": format!("{i} {filler}")}));
+        }
+        // Tool replies placed to straddle the split_at cut (len 24 -> cut at 12).
+        messages.push(json!({
+            "role": "assistant",
+            "content": "",
+            "tool_calls": [{"id": "call_1", "type": "function",
+                            "function": {"name": "status", "arguments": "{}"}}],
+        }));
+        messages.push(json!({"role": "tool", "tool_call_id": "call_1", "content": "result a"}));
+        messages.push(json!({"role": "tool", "tool_call_id": "call_1", "content": "result b"}));
+        for i in 0..10 {
+            let role = if i % 2 == 0 { "user" } else { "assistant" };
+            messages.push(json!({"role": role, "content": format!("late {i} {filler}")}));
+        }
+
+        let (compacted, reason, _tokens) = compact_chat_messages(messages);
+        assert!(reason.is_some(), "compaction must trigger for this input");
+        let first_kept = compacted
+            .iter()
+            .find(|m| m.get("role").and_then(|v| v.as_str()) != Some("system"))
+            .expect("compaction keeps recent messages");
         assert!(
             first_kept.get("tool_calls").is_some(),
             "recent slice must start at the assistant tool_calls message, not an orphaned tool reply"
