@@ -9,8 +9,12 @@ use std::time::{Duration, Instant};
 use tauri::ipc::Channel;
 use tauri::{AppHandle, Manager, State};
 
-use crate::db::{ChatRunInput, SidekickFeedbackSummary};
+use crate::db::ChatRunInput;
 use crate::residency::Residency;
+use crate::route_policy::{
+    self, CHAT_RUNS_SIGNAL_WINDOW, FUSION_BENCHMARK_SIGNAL_WINDOW, GATEWAY_CHAT_MODEL,
+    SIDEKICK_FEEDBACK_SIGNAL_WINDOW, SIDEKICK_RUNS_SIGNAL_WINDOW, TOOL_DEPTH_ESCALATION_CALLS,
+};
 
 /// Frontend-facing stream events. Tagged so JS can switch on `msg.type`.
 #[derive(Serialize, Clone)]
@@ -76,9 +80,6 @@ const CHAT_MAX_TOKENS: u32 = 8192;
 const BENCHMARK_MAX_TOKENS: u32 = 384;
 const CHAT_THINKING_BUDGET: u32 = 2048;
 const BENCHMARK_THINKING_BUDGET: u32 = 0;
-const CHAT_SIDEKICK_QUICK_WAIT_MS: u64 = 600;
-const CHAT_SIDEKICK_DEFAULT_WAIT_MS: u64 = 1_000;
-const CHAT_SIDEKICK_VERIFICATION_WAIT_MS: u64 = 1_800;
 const BENCHMARK_SIDEKICK_WAIT_MS: u64 = 2_500;
 const MAX_TOOL_ROUNDS: usize = 4;
 const BENCHMARK_MAX_TOOL_ROUNDS: usize = 4;
@@ -1747,45 +1748,10 @@ fn latest_user_message(messages: &[ChatMsg]) -> Option<&str> {
         .map(|m| m.content.as_str())
 }
 
-struct SidekickRoutingDecision {
-    eligible: bool,
-    reason: &'static str,
-    wait_ms: u64,
-}
-
 #[derive(Clone, Copy)]
 struct ParallelSidekickPlan {
     spawned: bool,
     wait_ms: u64,
-}
-
-fn sidekick_ineligible(reason: &'static str) -> SidekickRoutingDecision {
-    SidekickRoutingDecision {
-        eligible: false,
-        reason,
-        wait_ms: 0,
-    }
-}
-
-fn sidekick_eligible(reason: &'static str, wait_ms: u64) -> SidekickRoutingDecision {
-    SidekickRoutingDecision {
-        eligible: true,
-        reason,
-        wait_ms,
-    }
-}
-
-#[derive(Default)]
-struct SidekickRoutingSignals {
-    feedback_rows: u64,
-    useful_rate: Option<f64>,
-    handoff_rate: Option<f64>,
-    escalation_rate: Option<f64>,
-    sidekick_rows: u64,
-    sidekick_benchmark_rows: u64,
-    sidekick_benchmark_score: Option<f64>,
-    avg_local_elapsed_ms: Option<f64>,
-    avg_sidekick_elapsed_ms: Option<f64>,
 }
 
 fn prompt_excerpt(prompt: &str) -> String {
@@ -1905,6 +1871,102 @@ fn local_resident_mem_gb(app: &AppHandle) -> Option<f64> {
     (mem > 0.0).then_some(mem)
 }
 
+/// Route name + endpoint + auth + model of a live chat turn, kept together
+/// so they can never drift apart across a mid-turn switch.
+struct RouteBinding {
+    route: String,
+    url: String,
+    bearer: Option<String>,
+    model_field: String,
+}
+
+fn cloud_route_binding() -> Option<RouteBinding> {
+    let (base, key) = credentials()?;
+    Some(RouteBinding {
+        route: "cloud".to_string(),
+        url: format!("{}/v1/chat/completions", base.trim_end_matches('/')),
+        bearer: Some(key),
+        model_field: GATEWAY_CHAT_MODEL.to_string(),
+    })
+}
+
+fn local_route_binding(
+    route: &str,
+    mgr: &Residency,
+    slot_id: Option<u32>,
+) -> Result<RouteBinding, String> {
+    // A specific warm slot must be selected; each slot is its own mlx_vlm
+    // process on its own port, keyed by the model's local path.
+    let sid = slot_id.ok_or_else(|| "no local slot selected".to_string())?;
+    let (port, path) = mgr
+        .endpoint(sid)
+        .ok_or_else(|| "selected slot is not warm".to_string())?;
+    Ok(RouteBinding {
+        route: route.to_string(),
+        url: format!("http://127.0.0.1:{port}/v1/chat/completions"),
+        bearer: None,
+        model_field: path,
+    })
+}
+
+fn fusion_routing_enabled(app: &AppHandle) -> bool {
+    app.state::<crate::db::Db>()
+        .setting_get("fusion.routing")
+        .as_deref()
+        != Some("off")
+}
+
+fn emit_routing_event(
+    app: &AppHandle,
+    session_id: &str,
+    stage: &str,
+    detail: &str,
+    on_event: Option<&Channel<ChatEvent>>,
+) {
+    log_db_write(
+        "record_sidekick_event(routing)",
+        app.state::<crate::db::Db>()
+            .record_sidekick_event(session_id, "routing", stage, detail),
+    );
+    if let Some(on_event) = on_event {
+        let _ = on_event.send(ChatEvent::SidekickEvent {
+            mode: "routing".to_string(),
+            stage: stage.to_string(),
+            detail: detail.to_string(),
+        });
+    }
+}
+
+/// The single local→cloud switch used at every escalation point of a live
+/// turn: rebinds the endpoint, refreshes the system prompt for the gateway
+/// model, and records the applied route in the audit trail. Returns false
+/// (and changes nothing) when routing is off or the gateway is unavailable.
+fn switch_route_to_cloud(
+    app: &AppHandle,
+    session_id: &str,
+    binding: &mut RouteBinding,
+    outbound_messages: &mut [Value],
+    stage: &str,
+    detail: &str,
+    on_event: Option<&Channel<ChatEvent>>,
+) -> bool {
+    if !fusion_routing_enabled(app) {
+        return false;
+    }
+    let Some(cloud) = cloud_route_binding() else {
+        return false;
+    };
+    *binding = cloud;
+    if let Some(system) = outbound_messages
+        .iter_mut()
+        .find(|message| message.get("role").and_then(|v| v.as_str()) == Some("system"))
+    {
+        system["content"] = json!(system_prompt_for(&binding.model_field));
+    }
+    emit_routing_event(app, session_id, stage, detail, on_event);
+    true
+}
+
 fn record_compaction_route_decision(
     app: &AppHandle,
     session_id: &str,
@@ -1914,10 +1976,10 @@ fn record_compaction_route_decision(
     compaction_reason: &str,
     context_tokens_before: u64,
     on_event: Option<&Channel<ChatEvent>>,
-) {
+) -> Option<crate::commands::FusionRouteRecommendation> {
     let prompt = latest_user_message(messages).unwrap_or("").trim();
     if prompt.is_empty() {
-        return;
+        return None;
     }
     let recommendation = crate::commands::fusion_route_recommendation(
         app.clone(),
@@ -1932,22 +1994,8 @@ fn record_compaction_route_decision(
         "{} · {} tokens · recommend {} ({})",
         compaction_reason, context_tokens_before, recommendation.route, recommendation.reason
     );
-    log_db_write(
-        "record_sidekick_event(compaction_boundary)",
-        app.state::<crate::db::Db>().record_sidekick_event(
-            session_id,
-            "routing",
-            "compaction_boundary",
-            &detail,
-        ),
-    );
-    if let Some(on_event) = on_event {
-        let _ = on_event.send(ChatEvent::SidekickEvent {
-            mode: "routing".to_string(),
-            stage: "compaction_boundary".to_string(),
-            detail,
-        });
-    }
+    emit_routing_event(app, session_id, "compaction_boundary", &detail, on_event);
+    Some(recommendation)
 }
 
 fn apply_dynamic_chat_route(
@@ -1958,12 +2006,7 @@ fn apply_dynamic_chat_route(
     messages: &[ChatMsg],
     on_event: &Channel<ChatEvent>,
 ) -> String {
-    if app
-        .state::<crate::db::Db>()
-        .setting_get("fusion.routing")
-        .as_deref()
-        == Some("off")
-    {
+    if !fusion_routing_enabled(app) {
         return route.to_string();
     }
     let prompt = latest_user_message(messages).unwrap_or("").trim();
@@ -1990,20 +2033,7 @@ fn apply_dynamic_chat_route(
             "{} -> {} · {} ({})",
             route, next_route, recommendation.policy_class, recommendation.reason
         );
-        log_db_write(
-            "record_sidekick_event(route_applied)",
-            app.state::<crate::db::Db>().record_sidekick_event(
-                session_id,
-                "routing",
-                "route_applied",
-                &detail,
-            ),
-        );
-        let _ = on_event.send(ChatEvent::SidekickEvent {
-            mode: "routing".to_string(),
-            stage: "route_applied".to_string(),
-            detail,
-        });
+        emit_routing_event(app, session_id, "route_applied", &detail, Some(on_event));
     }
     next_route.to_string()
 }
@@ -2024,13 +2054,16 @@ fn benchmark_finalize_prompt(reasoning: &str) -> Value {
     })
 }
 
-fn sidekick_routing_signals(app: &AppHandle) -> SidekickRoutingSignals {
-    let Ok(rows) = app.state::<crate::db::Db>().list_sidekick_runs(30) else {
-        return SidekickRoutingSignals::default();
+fn sidekick_routing_signals(app: &AppHandle) -> route_policy::SidekickRoutingSignals {
+    let Ok(rows) = app
+        .state::<crate::db::Db>()
+        .list_sidekick_runs(SIDEKICK_RUNS_SIGNAL_WINDOW)
+    else {
+        return route_policy::SidekickRoutingSignals::default();
     };
     let total = rows.len() as u64;
     if total == 0 {
-        return SidekickRoutingSignals::default();
+        return route_policy::SidekickRoutingSignals::default();
     }
 
     let useful = rows.iter().filter(|row| row.accepted == Some(true)).count() as u64;
@@ -2043,7 +2076,7 @@ fn sidekick_routing_signals(app: &AppHandle) -> SidekickRoutingSignals {
     let escalated = rows.iter().filter(|row| row.escalated).count() as u64;
     let chat_rows = app
         .state::<crate::db::Db>()
-        .list_chat_runs(60)
+        .list_chat_runs(CHAT_RUNS_SIGNAL_WINDOW)
         .unwrap_or_default();
     let local_elapsed: Vec<f64> = chat_rows
         .iter()
@@ -2057,14 +2090,15 @@ fn sidekick_routing_signals(app: &AppHandle) -> SidekickRoutingSignals {
         .collect();
     let benchmark_rows = app
         .state::<crate::db::Db>()
-        .list_fusion_benchmarks(40)
+        .list_fusion_benchmarks(FUSION_BENCHMARK_SIGNAL_WINDOW)
         .unwrap_or_default();
     let sidekick_scores: Vec<f64> = benchmark_rows
         .iter()
         .filter(|row| row.mode == "sidekick-parallel")
         .filter_map(|row| row.score)
         .collect();
-    SidekickRoutingSignals {
+    route_policy::SidekickRoutingSignals {
+        rows: total,
         feedback_rows,
         useful_rate: (feedback_rows > 0).then_some(useful as f64 / feedback_rows as f64),
         handoff_rate: Some(consumed as f64 / total as f64),
@@ -2083,106 +2117,6 @@ fn avg_f64(values: &[f64]) -> Option<f64> {
     } else {
         Some(values.iter().sum::<f64>() / values.len() as f64)
     }
-}
-
-fn route_parallel_sidekick(
-    prompt: &str,
-    feedback: SidekickFeedbackSummary,
-    signals: SidekickRoutingSignals,
-) -> SidekickRoutingDecision {
-    let lower = prompt.to_lowercase();
-    let delegate_terms = [
-        "check",
-        "review",
-        "inspect",
-        "search",
-        "summarize",
-        "open",
-        "ground",
-        "grounding",
-        "read",
-        "locate",
-        "verify",
-        "compare",
-        "find",
-        "trace",
-        "status",
-        "models",
-        "what's left",
-        "whats left",
-        "reminder",
-    ];
-    let judgment_terms = [
-        "decide",
-        "should we",
-        "what should",
-        "strategy",
-        "plan",
-        "architect",
-        "tradeoff",
-        "judgment",
-    ];
-    if judgment_terms.iter().any(|needle| lower.contains(needle)) {
-        return sidekick_ineligible("main_keeps_judgment");
-    }
-    if signals.feedback_rows >= 5 && signals.useful_rate.is_some_and(|rate| rate < 0.25) {
-        return sidekick_ineligible("metrics_low_usefulness");
-    }
-    if signals
-        .escalation_rate
-        .is_some_and(|rate| signals.feedback_rows >= 3 && rate > 0.6)
-    {
-        return sidekick_ineligible("metrics_high_escalation");
-    }
-    if signals.sidekick_rows >= 3
-        && matches!(
-            (signals.avg_sidekick_elapsed_ms, signals.avg_local_elapsed_ms),
-            (Some(sidekick_ms), Some(local_ms)) if local_ms > 0.0 && sidekick_ms > local_ms * 1.75
-        )
-    {
-        return sidekick_ineligible("metrics_sidekick_latency_high");
-    }
-    if signals.sidekick_benchmark_rows >= 4
-        && signals
-            .sidekick_benchmark_score
-            .is_some_and(|score| score < 0.5)
-    {
-        return sidekick_ineligible("benchmark_sidekick_score_low");
-    }
-    let mechanical = delegate_terms
-        .iter()
-        .find(|needle| lower.contains(**needle))
-        .copied();
-    if let Some(term) = mechanical {
-        if signals
-            .handoff_rate
-            .is_some_and(|rate| signals.feedback_rows >= 3 && rate < 0.2)
-        {
-            return sidekick_ineligible("metrics_low_handoff");
-        }
-        if feedback.misses >= 3 && feedback.misses > feedback.useful.saturating_mul(2) {
-            return sidekick_ineligible("feedback_recent_misses");
-        }
-        let (reason, wait_ms) = match term {
-            "search" | "find" | "trace" => ("mechanical_search", CHAT_SIDEKICK_DEFAULT_WAIT_MS),
-            "check" | "verify" | "inspect" | "review" => {
-                ("verification", CHAT_SIDEKICK_VERIFICATION_WAIT_MS)
-            }
-            "summarize" | "reminder" | "what's left" | "whats left" => {
-                ("summary", CHAT_SIDEKICK_QUICK_WAIT_MS)
-            }
-            "status" | "models" | "compare" => ("runtime_inspection", CHAT_SIDEKICK_QUICK_WAIT_MS),
-            _ => ("eligible", CHAT_SIDEKICK_DEFAULT_WAIT_MS),
-        };
-        return sidekick_eligible(reason, wait_ms);
-    }
-    if feedback.useful >= 3 && feedback.useful >= feedback.misses.saturating_mul(2).max(1) {
-        return sidekick_eligible("feedback_positive_prior", CHAT_SIDEKICK_DEFAULT_WAIT_MS);
-    }
-    if signals.feedback_rows >= 5 && signals.useful_rate.is_some_and(|rate| rate >= 0.75) {
-        return sidekick_eligible("metrics_success_prior", CHAT_SIDEKICK_DEFAULT_WAIT_MS);
-    }
-    sidekick_ineligible("no_mechanical_subtask")
 }
 
 fn maybe_spawn_parallel_sidekick(
@@ -2235,9 +2169,11 @@ fn maybe_spawn_parallel_sidekick(
         record_decision(false, "no_warm_sidekick");
         return no_spawn;
     }
-    let feedback = db.sidekick_feedback_summary(20).unwrap_or_default();
+    let feedback = db
+        .sidekick_feedback_summary(SIDEKICK_FEEDBACK_SIGNAL_WINDOW)
+        .unwrap_or_default();
     let signals = sidekick_routing_signals(app);
-    let decision = route_parallel_sidekick(prompt, feedback, signals);
+    let decision = route_policy::route_parallel_sidekick(prompt, feedback, signals);
     record_decision(decision.eligible, decision.reason);
     if !decision.eligible {
         return no_spawn;
@@ -2428,8 +2364,7 @@ pub async fn chat_stream(
 ) -> Result<(), String> {
     let started = Instant::now();
     let session_id = session_id.unwrap_or_else(|| "default".to_string());
-    let mut route =
-        apply_dynamic_chat_route(&app, &session_id, &route, slot_id, &messages, &on_event);
+    let route = apply_dynamic_chat_route(&app, &session_id, &route, slot_id, &messages, &on_event);
     let sidekick_plan = maybe_spawn_parallel_sidekick(
         &app,
         &route,
@@ -2438,33 +2373,14 @@ pub async fn chat_stream(
         &messages,
         Some(&on_event),
     );
-    let (mut url, mut bearer, mut model_field) = match route.as_str() {
-        "cloud" => {
-            let (base, key) = credentials().ok_or_else(|| "not signed in".to_string())?;
-            (
-                format!("{}/v1/chat/completions", base.trim_end_matches('/')),
-                Some(key),
-                "glm-5.2".to_string(),
-            )
-        }
-        _ => {
-            // A specific warm slot must be selected; each slot is its own mlx_vlm
-            // process on its own port, keyed by the model's local path.
-            let sid = slot_id.ok_or_else(|| "no local slot selected".to_string())?;
-            let (port, path) = mgr
-                .endpoint(sid)
-                .ok_or_else(|| "selected slot is not warm".to_string())?;
-            (
-                format!("http://127.0.0.1:{port}/v1/chat/completions"),
-                None,
-                path,
-            )
-        }
+    let mut binding = match route.as_str() {
+        "cloud" => cloud_route_binding().ok_or_else(|| "not signed in".to_string())?,
+        _ => local_route_binding(&route, &mgr, slot_id)?,
     };
 
     let mut outbound_messages = vec![json!({
         "role": "system",
-        "content": system_prompt_for(&model_field),
+        "content": system_prompt_for(&binding.model_field),
     })];
     let (handoff_messages, handoff_ids) = wait_for_sidekick_handoffs(
         &app,
@@ -2491,53 +2407,36 @@ pub async fn chat_stream(
     let gateway_available = credentials().is_some();
     let local_mem_gb = local_resident_mem_gb(&app);
     if let Some(reason) = compaction_reason.as_deref() {
-        record_compaction_route_decision(
+        let recommendation = record_compaction_route_decision(
             &app,
             &session_id,
-            &route,
+            &binding.route,
             slot_id,
             &messages,
             reason,
             context_tokens_before,
             Some(&on_event),
         );
-        if route == "local"
-            && app
-                .state::<crate::db::Db>()
-                .setting_get("fusion.routing")
-                .as_deref()
-                != Some("off")
+        // Only switch when the recorded recommendation actually says gateway,
+        // so the audit trail and the applied route cannot disagree.
+        if binding.route == "local"
+            && recommendation
+                .as_ref()
+                .is_some_and(|rec| rec.route == "gateway" && rec.gateway_ready)
         {
-            if let Some((base, key)) = credentials() {
-                route = "cloud".to_string();
-                url = format!("{}/v1/chat/completions", base.trim_end_matches('/'));
-                bearer = Some(key);
-                model_field = "glm-5.2".to_string();
-                if let Some(system) = outbound_messages
-                    .iter_mut()
-                    .find(|message| message.get("role").and_then(|v| v.as_str()) == Some("system"))
-                {
-                    system["content"] = json!(system_prompt_for(&model_field));
-                }
-                let detail = format!(
-                    "local -> cloud · compaction_boundary ({reason}, {} tokens)",
-                    context_tokens_before
-                );
-                log_db_write(
-                    "record_sidekick_event(compaction_route_applied)",
-                    app.state::<crate::db::Db>().record_sidekick_event(
-                        &session_id,
-                        "routing",
-                        "compaction_route_applied",
-                        &detail,
-                    ),
-                );
-                let _ = on_event.send(ChatEvent::SidekickEvent {
-                    mode: "routing".to_string(),
-                    stage: "compaction_route_applied".to_string(),
-                    detail,
-                });
-            }
+            let detail = format!(
+                "local -> cloud · compaction_boundary ({reason}, {} tokens)",
+                context_tokens_before
+            );
+            switch_route_to_cloud(
+                &app,
+                &session_id,
+                &mut binding,
+                &mut outbound_messages,
+                "compaction_route_applied",
+                &detail,
+                Some(&on_event),
+            );
         }
     }
 
@@ -2549,9 +2448,9 @@ pub async fn chat_stream(
         prompt_tokens = prompt_tokens.max(approximate_messages_tokens(&outbound_messages));
         let result = stream_chat_once(
             &client,
-            &url,
-            bearer.as_deref(),
-            &model_field,
+            &binding.url,
+            binding.bearer.as_deref(),
+            &binding.model_field,
             &outbound_messages,
             &on_event,
         )
@@ -2562,20 +2461,20 @@ pub async fn chat_stream(
                 &app,
                 ChatRunInput {
                     session_id: session_id.clone(),
-                    route: route.clone(),
-                    model: model_field.clone(),
+                    route: binding.route.clone(),
+                    model: binding.model_field.clone(),
                     elapsed_ms: Some(started.elapsed().as_millis() as u64),
                     prompt_tokens: Some(prompt_tokens),
                     completion_tokens: Some(completion_tokens),
                     tool_calls: tool_count,
                     sidekick_spawned: sidekick_plan.spawned,
-                    gateway_used: route == "cloud",
+                    gateway_used: binding.route == "cloud",
                     compacted,
                     compaction_reason: compaction_reason.clone(),
                     context_tokens_before: Some(context_tokens_before),
                     local_mem_gb,
                     gateway_available,
-                    gateway_avoided: gateway_available && route != "cloud",
+                    gateway_avoided: gateway_available && binding.route != "cloud",
                     status: "error".to_string(),
                     error: Some(error),
                 },
@@ -2597,20 +2496,20 @@ pub async fn chat_stream(
                 &app,
                 ChatRunInput {
                     session_id: session_id.clone(),
-                    route: route.clone(),
-                    model: model_field.clone(),
+                    route: binding.route.clone(),
+                    model: binding.model_field.clone(),
                     elapsed_ms: Some(started.elapsed().as_millis() as u64),
                     prompt_tokens: Some(prompt_tokens),
                     completion_tokens: Some(completion_tokens),
                     tool_calls: tool_count,
                     sidekick_spawned: sidekick_plan.spawned,
-                    gateway_used: route == "cloud",
+                    gateway_used: binding.route == "cloud",
                     compacted,
                     compaction_reason: compaction_reason.clone(),
                     context_tokens_before: Some(context_tokens_before),
                     local_mem_gb,
                     gateway_available,
-                    gateway_avoided: gateway_available && route != "cloud",
+                    gateway_avoided: gateway_available && binding.route != "cloud",
                     status: "ok".to_string(),
                     error: None,
                 },
@@ -2660,46 +2559,23 @@ pub async fn chat_stream(
             }));
         }
 
-        if route == "local"
+        if binding.route == "local"
             && !mid_session_escalated
-            && tool_count >= 3
-            && app
-                .state::<crate::db::Db>()
-                .setting_get("fusion.routing")
-                .as_deref()
-                != Some("off")
+            && tool_count >= TOOL_DEPTH_ESCALATION_CALLS
         {
-            if let Some((base, key)) = credentials() {
-                mid_session_escalated = true;
-                route = "cloud".to_string();
-                url = format!("{}/v1/chat/completions", base.trim_end_matches('/'));
-                bearer = Some(key);
-                model_field = "glm-5.2".to_string();
-                if let Some(system) = outbound_messages
-                    .iter_mut()
-                    .find(|message| message.get("role").and_then(|v| v.as_str()) == Some("system"))
-                {
-                    system["content"] = json!(system_prompt_for(&model_field));
-                }
-                let detail = format!(
-                    "local -> cloud · mid_session_tool_depth ({} tool calls)",
-                    tool_count
-                );
-                log_db_write(
-                    "record_sidekick_event(mid_session_route_applied)",
-                    app.state::<crate::db::Db>().record_sidekick_event(
-                        &session_id,
-                        "routing",
-                        "mid_session_route_applied",
-                        &detail,
-                    ),
-                );
-                let _ = on_event.send(ChatEvent::SidekickEvent {
-                    mode: "routing".to_string(),
-                    stage: "mid_session_route_applied".to_string(),
-                    detail,
-                });
-            }
+            let detail = format!(
+                "local -> cloud · mid_session_tool_depth ({} tool calls)",
+                tool_count
+            );
+            mid_session_escalated = switch_route_to_cloud(
+                &app,
+                &session_id,
+                &mut binding,
+                &mut outbound_messages,
+                "mid_session_route_applied",
+                &detail,
+                Some(&on_event),
+            );
         }
     }
 
@@ -2710,20 +2586,20 @@ pub async fn chat_stream(
         &app,
         ChatRunInput {
             session_id: session_id.clone(),
-            route: route.clone(),
-            model: model_field,
+            route: binding.route.clone(),
+            model: binding.model_field.clone(),
             elapsed_ms: Some(started.elapsed().as_millis() as u64),
             prompt_tokens: Some(prompt_tokens),
             completion_tokens: Some(completion_tokens),
             tool_calls: tool_count,
             sidekick_spawned: sidekick_plan.spawned,
-            gateway_used: route == "cloud",
+            gateway_used: binding.route == "cloud",
             compacted,
             compaction_reason,
             context_tokens_before: Some(context_tokens_before),
             local_mem_gb,
             gateway_available,
-            gateway_avoided: gateway_available && route != "cloud",
+            gateway_avoided: gateway_available && binding.route != "cloud",
             status: "tool_limit".to_string(),
             error: Some(format!("tool call limit reached ({MAX_TOOL_ROUNDS})")),
         },
@@ -3247,10 +3123,6 @@ fn finalize_tool_calls(mut tool_calls: Vec<ToolCallAcc>) -> Vec<ToolCallAcc> {
 mod tests {
     use super::*;
 
-    fn feedback(useful: u64, misses: u64) -> SidekickFeedbackSummary {
-        SidekickFeedbackSummary { useful, misses }
-    }
-
     #[test]
     fn sidekick_compaction_never_orphans_tool_replies() {
         let mut messages = vec![json!({"role": "system", "content": "sys"})];
@@ -3332,41 +3204,5 @@ mod tests {
         assert!(cache
             .get(&format!("key-{}", SIDEKICK_SESSION_CACHE_MAX + 7))
             .is_some());
-    }
-
-    #[test]
-    fn sidekick_policy_keeps_judgment_with_main() {
-        let decision = route_parallel_sidekick(
-            "should we redesign the routing architecture?",
-            feedback(0, 0),
-            SidekickRoutingSignals::default(),
-        );
-        assert!(!decision.eligible);
-        assert_eq!(decision.reason, "main_keeps_judgment");
-        assert_eq!(decision.wait_ms, 0);
-    }
-
-    #[test]
-    fn sidekick_policy_waits_longer_for_verification() {
-        let decision = route_parallel_sidekick(
-            "please verify the current model status",
-            feedback(0, 0),
-            SidekickRoutingSignals::default(),
-        );
-        assert!(decision.eligible);
-        assert_eq!(decision.reason, "verification");
-        assert_eq!(decision.wait_ms, CHAT_SIDEKICK_VERIFICATION_WAIT_MS);
-    }
-
-    #[test]
-    fn sidekick_policy_uses_quick_wait_for_summary() {
-        let decision = route_parallel_sidekick(
-            "what's left for fusion reminder",
-            feedback(0, 0),
-            SidekickRoutingSignals::default(),
-        );
-        assert!(decision.eligible);
-        assert_eq!(decision.reason, "summary");
-        assert_eq!(decision.wait_ms, CHAT_SIDEKICK_QUICK_WAIT_MS);
     }
 }
