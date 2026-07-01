@@ -35,9 +35,20 @@ pub struct MlxRuntimeStatus {
 pub const MLX_PORT: u16 = 8089;
 pub const LOCAL_BASE_URL: &str = "http://127.0.0.1:8089/v1";
 
+/// Marker dropped at the start of a snapshot download and removed only after
+/// every file has landed and verified. While it exists the snapshot must not
+/// be treated as serveable.
+pub const INCOMPLETE_MARKER: &str = ".understudy-snapshot.incomplete";
+
 fn models_dir() -> Option<PathBuf> {
     let home = std::env::var_os("HOME")?;
     Some(PathBuf::from(home).join(".understudy").join("models"))
+}
+
+/// A snapshot dir is serveable once config.json exists and the download's
+/// incomplete marker is gone (config.json downloads long before the weights).
+fn snapshot_ready(dir: &Path) -> bool {
+    dir.join("config.json").exists() && !dir.join(INCOMPLETE_MARKER).exists()
 }
 
 /// List every local model snapshot that looks MLX-loadable (has a config.json).
@@ -54,7 +65,7 @@ pub fn list() -> Vec<ModelInfo> {
                 continue;
             }
             let real = std::fs::canonicalize(entry.path()).unwrap_or_else(|_| entry.path());
-            if !real.join("config.json").exists() {
+            if !snapshot_ready(&real) {
                 continue;
             }
             out.push(ModelInfo {
@@ -76,7 +87,7 @@ pub fn snapshots() -> Vec<SnapshotInfo> {
         let Some(dir) = root.as_ref().map(|root| root.join(&row.id)) else {
             continue;
         };
-        row.cached = dir.join("config.json").exists();
+        row.cached = snapshot_ready(&dir);
         row.manifest = dir.join("understudy.serving.json").exists();
         if row.cached {
             row.path = Some(dir.to_string_lossy().into_owned());
@@ -118,4 +129,37 @@ fn dir_size_gb(p: &Path) -> f32 {
         }
     }
     total as f32 / (1024.0 * 1024.0 * 1024.0)
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn temp_snapshot_dir(tag: &str) -> PathBuf {
+        let dir = std::env::temp_dir().join(format!(
+            "understudy-models-test-{}-{tag}",
+            std::process::id()
+        ));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        dir
+    }
+
+    #[test]
+    fn snapshot_ready_requires_config_json() {
+        let dir = temp_snapshot_dir("no-config");
+        assert!(!snapshot_ready(&dir));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn snapshot_ready_rejects_incomplete_download() {
+        let dir = temp_snapshot_dir("incomplete");
+        std::fs::write(dir.join("config.json"), "{}").unwrap();
+        std::fs::write(dir.join(INCOMPLETE_MARKER), "model_id=x\n").unwrap();
+        assert!(!snapshot_ready(&dir));
+        std::fs::remove_file(dir.join(INCOMPLETE_MARKER)).unwrap();
+        assert!(snapshot_ready(&dir));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
 }

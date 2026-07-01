@@ -6,10 +6,11 @@ use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::path::{Component, Path, PathBuf};
 use std::process::Command;
+use std::time::Duration;
 use tauri::ipc::Channel;
 use tauri::{AppHandle, Emitter};
 use tokio::fs;
-use tokio::io::AsyncWriteExt;
+use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
 #[derive(Serialize, Clone)]
 pub struct ToolStatus {
@@ -156,7 +157,7 @@ pub async fn download_model(
     fs::create_dir_all(&dest)
         .await
         .map_err(|e| format!("create model dir failed: {e}"))?;
-    let incomplete = dest.join(".understudy-snapshot.incomplete");
+    let incomplete = dest.join(models::INCOMPLETE_MARKER);
     fs::write(&incomplete, format!("model_id={}\n", snapshot.id))
         .await
         .map_err(|e| format!("mark incomplete failed: {e}"))?;
@@ -195,6 +196,17 @@ pub async fn download_model(
     }
 }
 
+/// HTTP client for snapshot downloads. `read_timeout` bounds each socket read
+/// rather than the whole transfer, so a stalled connection errors out instead
+/// of hanging onboarding forever while multi-GB files stay downloadable.
+fn download_client() -> Result<reqwest::Client, String> {
+    reqwest::Client::builder()
+        .connect_timeout(Duration::from_secs(20))
+        .read_timeout(Duration::from_secs(60))
+        .build()
+        .map_err(|e| format!("http client init failed: {e}"))
+}
+
 async fn download_model_inner(
     snapshot: &SnapshotInfo,
     session_url: &str,
@@ -204,7 +216,10 @@ async fn download_model_inner(
     let _ = on_event.send(DownloadEvent::Log {
         message: format!("requesting signed session for {}", snapshot.id),
     });
-    let manifest: SessionManifest = reqwest::get(session_url)
+    let client = download_client()?;
+    let manifest: SessionManifest = client
+        .get(session_url)
+        .send()
         .await
         .map_err(|e| format!("session request failed: {e}"))?
         .error_for_status()
@@ -216,13 +231,14 @@ async fn download_model_inner(
     files.sort_by(|a, b| file_name(a).cmp(&file_name(b)));
     let mut out = Vec::with_capacity(files.len());
     for file in files {
-        out.push(download_file(dest, file, on_event).await?);
+        out.push(download_file(&client, dest, file, on_event).await?);
     }
     verify_sha256sums(dest).await?;
     Ok(out)
 }
 
 async fn download_file(
+    client: &reqwest::Client,
     dest: &Path,
     file: SessionFile,
     on_event: &Channel<DownloadEvent>,
@@ -239,7 +255,20 @@ async fn download_file(
     }
     let total = file.size_bytes.or(file.size);
     if let Ok(meta) = fs::metadata(&target).await {
-        if total.map(|t| t == meta.len()).unwrap_or(meta.len() > 0) {
+        let size_matches = total.map(|t| t == meta.len()).unwrap_or(meta.len() > 0);
+        // A size match alone can hide a stale or corrupt file; when the
+        // manifest carries a hash, only a hash match counts as cached.
+        let verified = if !size_matches {
+            false
+        } else if let Some(expected) = file.sha256.as_ref() {
+            let _ = on_event.send(DownloadEvent::Log {
+                message: format!("verifying cached {name}"),
+            });
+            sha256_of_file(&target).await.ok().as_deref() == Some(&expected.to_lowercase())
+        } else {
+            true
+        };
+        if verified {
             let _ = on_event.send(DownloadEvent::Log {
                 message: format!("cached {name}"),
             });
@@ -254,7 +283,9 @@ async fn download_file(
     let _ = on_event.send(DownloadEvent::Log {
         message: format!("downloading {name}"),
     });
-    let response = reqwest::get(&file.url)
+    let response = client
+        .get(&file.url)
+        .send()
         .await
         .map_err(|e| format!("download request failed for {name}: {e}"))?
         .error_for_status()
@@ -332,15 +363,30 @@ async fn verify_sha256sums(dest: &Path) -> Result<(), String> {
         }
         let name = raw.trim().trim_start_matches('*').trim_start_matches("./");
         let target = safe_target(dest, name)?;
-        let bytes = fs::read(&target)
+        let actual = sha256_of_file(&target)
             .await
             .map_err(|e| format!("read {name} for SHA256 failed: {e}"))?;
-        let actual = format!("{:x}", Sha256::digest(&bytes));
         if actual != expected.to_lowercase() {
             return Err(format!("sha256 mismatch for {name}"));
         }
     }
     Ok(())
+}
+
+/// Hash a file in fixed-size chunks; weights run 50+ GB and must never be
+/// pulled into memory whole.
+async fn sha256_of_file(path: &Path) -> Result<String, String> {
+    let mut file = fs::File::open(path).await.map_err(|e| e.to_string())?;
+    let mut hasher = Sha256::new();
+    let mut buf = vec![0u8; 4 * 1024 * 1024];
+    loop {
+        let n = file.read(&mut buf).await.map_err(|e| e.to_string())?;
+        if n == 0 {
+            break;
+        }
+        hasher.update(&buf[..n]);
+    }
+    Ok(format!("{:x}", hasher.finalize()))
 }
 
 fn file_name(file: &SessionFile) -> String {

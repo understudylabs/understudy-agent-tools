@@ -1,7 +1,7 @@
 use serde::{Deserialize, Serialize};
 use std::path::Path;
 use std::process::{Child, Command, Stdio};
-use std::sync::Mutex;
+use std::sync::{Mutex, MutexGuard, PoisonError};
 use std::time::{Instant, SystemTime};
 use tauri::{AppHandle, Emitter, Manager};
 
@@ -99,6 +99,13 @@ struct ServingServer {
     required_flags: Option<Vec<String>>,
 }
 
+/// Lock with poison recovery: a panic in one holder must not brick every
+/// later status/snapshot call. Slot bookkeeping stays consistent across any
+/// single mutation, so taking the inner value is safe.
+fn locked<T>(m: &Mutex<T>) -> MutexGuard<'_, T> {
+    m.lock().unwrap_or_else(PoisonError::into_inner)
+}
+
 fn expand_home(value: &str) -> String {
     if let Some(rest) = value.strip_prefix("~/") {
         if let Some(home) = std::env::var_os("HOME") {
@@ -181,47 +188,28 @@ impl Residency {
     }
 
     fn alloc_id(&self) -> u32 {
-        let mut g = self.next_id.lock().unwrap();
+        let mut g = locked(&self.next_id);
         *g += 1;
         *g
     }
+    /// Hands out the current port and advances, so the first slot on a fresh
+    /// launch binds MLX_PORT itself — the port LOCAL_BASE_URL advertises.
     fn alloc_port(&self) -> u16 {
-        let mut g = self.next_port.lock().unwrap();
+        let mut g = locked(&self.next_port);
+        let port = *g;
         *g += 1;
-        *g
+        port
     }
 
     pub fn snapshot(&self) -> ResidencySnapshot {
-        let inner = self.inner.lock().unwrap();
-        let mut used = 0.0;
-        let slots = inner
-            .iter()
-            .map(|r| {
-                if matches!(r.state, SlotState::Warm) {
-                    used += r.mem_gb;
-                }
-                SlotView {
-                    id: r.id,
-                    model_id: r.model_id.clone(),
-                    state: r.state.as_str().to_string(),
-                    port: r.port,
-                    mem_gb: r.mem_gb,
-                    load_ms: r.load_ms,
-                    thinking: r.thinking,
-                }
-            })
-            .collect();
-        ResidencySnapshot {
-            slots,
-            used_gb: used,
-            usable_gb: self.usable_gb,
-        }
+        let inner = locked(&self.inner);
+        self.snapshot_from(&inner)
     }
 
     /// Add an empty slot; returns its id.
     pub fn add_slot(&self) -> u32 {
         let id = self.alloc_id();
-        self.inner.lock().unwrap().push(Resident {
+        locked(&self.inner).push(Resident {
             id,
             model_id: None,
             model_path: None,
@@ -241,7 +229,7 @@ impl Residency {
             .into_iter()
             .find(|m| m.id == model_id)
             .ok_or_else(|| anyhow::anyhow!("model not found: {model_id}"))?;
-        let mut inner = self.inner.lock().unwrap();
+        let mut inner = locked(&self.inner);
         let r = inner
             .iter_mut()
             .find(|r| r.id == slot_id)
@@ -262,7 +250,7 @@ impl Residency {
     }
 
     pub fn set_thinking(&self, slot_id: u32, thinking: bool) -> anyhow::Result<()> {
-        let mut inner = self.inner.lock().unwrap();
+        let mut inner = locked(&self.inner);
         let r = inner
             .iter_mut()
             .find(|r| r.id == slot_id)
@@ -275,7 +263,7 @@ impl Residency {
     }
 
     pub fn is_warm(&self, slot_id: u32) -> anyhow::Result<bool> {
-        let inner = self.inner.lock().unwrap();
+        let inner = locked(&self.inner);
         let r = inner
             .iter()
             .find(|r| r.id == slot_id)
@@ -284,7 +272,7 @@ impl Residency {
     }
 
     pub fn remove(&self, slot_id: u32) -> anyhow::Result<()> {
-        let mut inner = self.inner.lock().unwrap();
+        let mut inner = locked(&self.inner);
         if let Some(idx) = inner.iter().position(|r| r.id == slot_id) {
             if let Some(child) = inner[idx].child.as_mut() {
                 let _ = child.kill();
@@ -297,7 +285,7 @@ impl Residency {
 
     /// Resolve a warm slot's endpoint + model path for chat.
     pub fn endpoint(&self, slot_id: u32) -> Option<(u16, String)> {
-        let inner = self.inner.lock().unwrap();
+        let inner = locked(&self.inner);
         inner.iter().find(|r| r.id == slot_id).and_then(|r| {
             if matches!(r.state, SlotState::Warm) {
                 r.port.zip(r.model_path.clone()).map(|(p, path)| (p, path))
@@ -312,7 +300,7 @@ impl Residency {
         &self,
         exclude_slot_id: Option<u32>,
     ) -> Option<(u32, u16, String, String)> {
-        let inner = self.inner.lock().unwrap();
+        let inner = locked(&self.inner);
         let candidates: Vec<_> = inner
             .iter()
             .filter(|r| {
@@ -345,7 +333,7 @@ impl Residency {
     pub fn warm(&self, app: &AppHandle, slot_id: u32) -> anyhow::Result<()> {
         // 1. Validate, reserve a port, flip to Loading (one short-lived borrow).
         let (port, model_id, model_path, mem_gb, thinking) = {
-            let mut inner = self.inner.lock().unwrap();
+            let mut inner = locked(&self.inner);
             let r = inner
                 .iter_mut()
                 .find(|r| r.id == slot_id)
@@ -376,7 +364,7 @@ impl Residency {
         {
             Ok(child) => child,
             Err(err) => {
-                let mut inner = self.inner.lock().unwrap();
+                let mut inner = locked(&self.inner);
                 if let Some(r) = inner.iter_mut().find(|r| r.id == slot_id) {
                     r.child = None;
                     r.state = SlotState::Error;
@@ -388,7 +376,7 @@ impl Residency {
             }
         };
         {
-            let mut inner = self.inner.lock().unwrap();
+            let mut inner = locked(&self.inner);
             if let Some(r) = inner.iter_mut().find(|r| r.id == slot_id) {
                 r.child = Some(child);
             }
@@ -401,13 +389,18 @@ impl Residency {
             let ready = wait_ready(port).await;
             let load_ms = started.elapsed().as_millis() as u64;
             let residency = app.state::<Residency>();
-            let mut inner = residency.inner.lock().unwrap();
+            let mut inner = locked(&residency.inner);
             if let Some(r) = inner.iter_mut().find(|r| r.id == slot_id) {
                 if ready {
                     r.state = SlotState::Warm;
                     r.load_ms = Some(load_ms);
                     r.last_used = Instant::now();
-                } else if r.child.is_some() {
+                } else if let Some(mut child) = r.child.take() {
+                    // The server may still be loading weights; kill it so a
+                    // timed-out slot doesn't keep tens of GB resident while
+                    // showing as Error.
+                    let _ = child.kill();
+                    let _ = child.wait();
                     r.state = SlotState::Error;
                 } else {
                     r.state = SlotState::Stopped;
@@ -428,7 +421,7 @@ impl Residency {
     }
 
     pub fn cool(&self, slot_id: u32) -> anyhow::Result<()> {
-        let mut inner = self.inner.lock().unwrap();
+        let mut inner = locked(&self.inner);
         self.cool_locked(&mut inner, slot_id)
     }
 
@@ -444,10 +437,15 @@ impl Residency {
         Ok(())
     }
 
-    fn used_gb_locked(&self, inner: &Vec<Resident>) -> f32 {
+    /// Memory attributed to slots other than `exclude`: warm slots hold their
+    /// weights and loading slots are about to, so both count against the
+    /// budget — otherwise two models can pass the fit check while one is
+    /// still loading.
+    fn used_gb_locked(&self, inner: &[Resident], exclude: Option<u32>) -> f32 {
         inner
             .iter()
-            .filter(|r| matches!(r.state, SlotState::Warm))
+            .filter(|r| Some(r.id) != exclude)
+            .filter(|r| matches!(r.state, SlotState::Warm | SlotState::Loading))
             .map(|r| r.mem_gb)
             .sum()
     }
@@ -455,8 +453,8 @@ impl Residency {
     /// Evict least-recently-used warm slots (never `slot_id`) until `need_gb` fits.
     fn evict_until_fits(&self, slot_id: u32, need_gb: f32) {
         loop {
-            let mut inner = self.inner.lock().unwrap();
-            if self.used_gb_locked(&inner) + need_gb <= self.usable_gb {
+            let mut inner = locked(&self.inner);
+            if self.used_gb_locked(&inner, Some(slot_id)) + need_gb <= self.usable_gb {
                 return;
             }
             let victim = inner
@@ -473,23 +471,18 @@ impl Residency {
         }
     }
 
-    fn snapshot_from(&self, inner: &Vec<Resident>) -> ResidencySnapshot {
-        let mut used = 0.0;
+    fn snapshot_from(&self, inner: &[Resident]) -> ResidencySnapshot {
+        let used = self.used_gb_locked(inner, None);
         let slots = inner
             .iter()
-            .map(|r| {
-                if matches!(r.state, SlotState::Warm) {
-                    used += r.mem_gb;
-                }
-                SlotView {
-                    id: r.id,
-                    model_id: r.model_id.clone(),
-                    state: r.state.as_str().to_string(),
-                    port: r.port,
-                    mem_gb: r.mem_gb,
-                    load_ms: r.load_ms,
-                    thinking: r.thinking,
-                }
+            .map(|r| SlotView {
+                id: r.id,
+                model_id: r.model_id.clone(),
+                state: r.state.as_str().to_string(),
+                port: r.port,
+                mem_gb: r.mem_gb,
+                load_ms: r.load_ms,
+                thinking: r.thinking,
             })
             .collect();
         ResidencySnapshot {
@@ -501,7 +494,7 @@ impl Residency {
 
     /// Persist the current plan (which slots exist + which should be warm).
     pub fn persist(&self, app: &AppHandle) {
-        let inner = self.inner.lock().unwrap();
+        let inner = locked(&self.inner);
         let rows: Vec<PersistedSlot> = inner
             .iter()
             .enumerate()
@@ -528,13 +521,16 @@ impl Residency {
             return;
         }
         let max_id = rows.iter().map(|r| r.slot_id).max().unwrap_or(0);
-        let max_port = rows
+        // Next allocation hands out this value directly, so start one past
+        // the highest restored port (or at MLX_PORT when none had one).
+        let next_port = rows
             .iter()
             .filter_map(|r| r.port)
             .max()
-            .unwrap_or(MLX_PORT - 1);
+            .map(|p| p + 1)
+            .unwrap_or(MLX_PORT);
         {
-            let mut inner = self.inner.lock().unwrap();
+            let mut inner = locked(&self.inner);
             for r in &rows {
                 inner.push(Resident {
                     id: r.slot_id,
@@ -549,8 +545,8 @@ impl Residency {
                     child: None,
                 });
             }
-            *self.next_id.lock().unwrap() = max_id;
-            *self.next_port.lock().unwrap() = max_port;
+            *locked(&self.next_id) = max_id;
+            *locked(&self.next_port) = next_port;
         }
         // Re-warm the previously-warm set (best-effort, background).
         for r in rows.into_iter().filter(|r| r.warm) {
@@ -583,3 +579,64 @@ async fn wait_ready(port: u16) -> bool {
 
 #[allow(dead_code)]
 fn _unused(_: SystemTime) {}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn resident(id: u32, state: SlotState, mem_gb: f32) -> Resident {
+        Resident {
+            id,
+            model_id: Some(format!("model-{id}")),
+            model_path: Some(format!("/tmp/model-{id}")),
+            state,
+            port: None,
+            mem_gb,
+            thinking: false,
+            load_ms: None,
+            last_used: Instant::now(),
+            child: None,
+        }
+    }
+
+    #[test]
+    fn first_port_matches_advertised_base_url() {
+        let residency = Residency::new(64);
+        assert_eq!(residency.alloc_port(), MLX_PORT);
+        assert_eq!(residency.alloc_port(), MLX_PORT + 1);
+        assert!(models::LOCAL_BASE_URL.contains(&MLX_PORT.to_string()));
+    }
+
+    #[test]
+    fn loading_slots_count_against_budget() {
+        let residency = Residency::new(64);
+        {
+            let mut inner = locked(&residency.inner);
+            inner.push(resident(1, SlotState::Warm, 16.0));
+            inner.push(resident(2, SlotState::Loading, 16.0));
+            inner.push(resident(3, SlotState::Error, 16.0));
+            inner.push(resident(4, SlotState::Stopped, 16.0));
+        }
+        let inner = locked(&residency.inner);
+        assert_eq!(residency.used_gb_locked(&inner, None), 32.0);
+        // The fit check for a slot must not double-count that slot itself.
+        assert_eq!(residency.used_gb_locked(&inner, Some(2)), 16.0);
+        drop(inner);
+        assert_eq!(residency.snapshot().used_gb, 32.0);
+    }
+
+    #[test]
+    fn poisoned_lock_does_not_brick_snapshots() {
+        let residency = std::sync::Arc::new(Residency::new(64));
+        locked(&residency.inner).push(resident(1, SlotState::Warm, 8.0));
+        let clone = residency.clone();
+        let _ = std::thread::spawn(move || {
+            let _guard = clone.inner.lock().unwrap();
+            panic!("poison the residency lock");
+        })
+        .join();
+        let snap = residency.snapshot();
+        assert_eq!(snap.slots.len(), 1);
+        assert_eq!(snap.used_gb, 8.0);
+    }
+}

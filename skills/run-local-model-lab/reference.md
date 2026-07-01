@@ -50,15 +50,21 @@ llama-server -hf unsloth/gemma-4-E4B-it-GGUF:Q4_K_M --port 8080 --jinja
 
 ```bash
 pip install mlx-vlm                      # or: uv pip install mlx-vlm
-# pull the Understudy-verified snapshot first, then serve OpenAI-compatible
+# pull the official Understudy snapshot first, then serve OpenAI-compatible.
+# The certified QAT `-understudy` rungs are the primary lab models:
 cd /path/to/understudy-agent-tools/skills/manage-local-models
-understudy models pull gemma-4-e4b-it-mlx-vlm-4bit
-python -m mlx_vlm.server --model ~/.understudy/models/gemma-4-e4b-it-mlx-vlm-4bit --port 8080
+understudy models pull gemma-4-e2b-it-qat-mlx-vlm-understudy
+python -m mlx_vlm.server --model ~/.understudy/models/gemma-4-e2b-it-qat-mlx-vlm-understudy --port 8080 --top-logprobs-k 20
+# E4B tier: official target gemma-4-e4b-it-qat-mlx-vlm-understudy (pending
+# publication); interim verified rung: gemma-4-e4b-it-mlx-vlm-4bit
 # Nemotron 3 Nano on MLX: mlx-community/NVIDIA-Nemotron-3-Nano-30B-A3B-4bit
 ```
 
-Use the Understudy snapshot id above when testing E4B in this lab; it is the
-reproducible verified package (provenance and smoke-test details:
+Prefer the `-understudy` suffixed snapshot ids in this lab — they are the
+certified QAT conversions Understudy trains and stands behind (each ships an
+`understudy.serving.json` with the exact serve flags). Fall back to a vanilla
+`-mlx-vlm-4bit` snapshot only when the `-understudy` rung for that tier is not
+yet published (provenance and smoke-test details:
 [`../manage-local-models/reference.md`](../manage-local-models/reference.md)).
 
 (Ollama / LM Studio also serve OpenAI-compatible if a developer already runs one,
