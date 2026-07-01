@@ -81,11 +81,22 @@ At each tier:
    --traffic-pct <pct>` — after approval.
 2. **Soak.** Hold the tier for an agreed window (hours at 5%, a day at 25%)
    while traffic accumulates.
-3. **Verify from captures.** Pull the window's captures (metadata-first) and
-   compare routed vs passthrough on the same period: error/status-code rate,
-   latency distribution, schema/parse validity of outputs, and token/cost per
-   call. The routed cohort must hold the lab quality bar on whatever the
-   workload's validator can score from captures.
+3. **Verify from reporting + captures.** Check the reporting endpoints first
+   for a fast aggregate view:
+
+   ```
+   GET .../provider-health?window=<soak-window>
+   GET .../status?window=<soak-window>
+   ```
+
+   ([docs](https://docs.understudylabs.com/reference/control-plane/reporting))
+   Use
+   [`../check-routing-health/SKILL.md`](../check-routing-health/SKILL.md)
+   for the full diagnostic flow. Then pull the window's captures
+   (metadata-first) and compare routed vs passthrough on the same period:
+   error/status-code rate, latency distribution, schema/parse validity of
+   outputs, and token/cost per call. The routed cohort must hold the lab
+   quality bar on whatever the workload's validator can score from captures.
 4. **Spot-check determinism.** Re-run a small sample of routed rows against
    the candidate; if repeats disagree materially more than the pre-ramp
    measurement, stop the ramp and re-diagnose.
@@ -124,8 +135,13 @@ recommended next action.
   frozen-eval verdict required by the pre-ramp gate.
 - [`../optimize-workload/SKILL.md`](../optimize-workload/SKILL.md) — the
   claim-packet contract for any measured savings statement.
+- [`../check-routing-health/SKILL.md`](../check-routing-health/SKILL.md) —
+  read-only diagnostics from the reporting endpoints (routing-status,
+  provider-health, compact status).
 - Hosted contracts on the docs site —
   [routing](https://docs.understudylabs.com/concepts/routing),
-  [capture](https://docs.understudylabs.com/concepts/capture), and the
+  [capture](https://docs.understudylabs.com/concepts/capture),
+  [reporting & health](https://docs.understudylabs.com/reference/control-plane/reporting),
+  and the
   [control-plane API](https://docs.understudylabs.com/reference/control-plane)
   behind `routes set/rollback/clear` and `captures list`.

@@ -429,7 +429,7 @@ live in each skill's `references/` directory:
 | **Optimize** | optimize-workload, optimize-agentic-workload (read-only search loops and state-mutating API workflows) |
 | **Train locally** | curate-trajectories, distill-classifier, local-distillation-lab (incl. the pedagogical arm) |
 | **RL handoff** | prepare-verifier-handoff (decide → author env → package → hand off) |
-| **Gateway & routing** | use-understudy-gateway (incl. the frontier-keys decision), ramp-and-verify |
+| **Gateway & routing** | use-understudy-gateway (incl. the frontier-keys decision), ramp-and-verify, check-routing-health (self-service diagnostics) |
 
 [`skills/README.md`](skills/README.md) is the authoritative index with
 per-skill descriptions — keep it in sync when adding skills. See

@@ -211,6 +211,11 @@ shows headroom, no hosted RL until the local arms plateau.
   tier, routed-vs-passthrough verification from captures at each step,
   rollback triggers, and the measured before/after that feeds the claim
   packet.
+- [`check-routing-health`](check-routing-health/SKILL.md) is the read-only
+  self-service diagnostics worker: calls the hosted reporting endpoints
+  (routing-status, provider-health, compact status) to answer "which
+  workloads are routed", "are there provider errors", and "is this us?" —
+  without asking the team. Uses the developer's existing `sk_*` key.
 
 ## Public Safety
 

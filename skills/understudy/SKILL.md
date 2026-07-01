@@ -166,6 +166,11 @@ Identify the developer's current stage and load exactly one:
   "did the route change regress anything", "roll this back", "prove the
   savings are real" →
   [`../ramp-and-verify/SKILL.md`](../ramp-and-verify/SKILL.md).
+- **Routing diagnostics / provider health** — the developer asks "is
+  Understudy causing my errors", "which workloads are routed", "check
+  provider health", "are there 500s", "what's our error rate", or wants
+  self-service diagnostics without asking the team →
+  [`../check-routing-health/SKILL.md`](../check-routing-health/SKILL.md).
 - **Share savings / leaderboard receipt** — the developer wants to share how
   much money they saved, submit an anonymous lower-Anthropic-bill result, or
   send metrics back for the coming leaderboard →
