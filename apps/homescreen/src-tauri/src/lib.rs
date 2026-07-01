@@ -1,9 +1,11 @@
 mod aa;
 mod account;
+mod agent_card;
 mod bin;
 mod bootstrap;
 mod chat;
 mod commands;
+mod creds;
 mod db;
 mod knowledge;
 mod mcp;
@@ -176,6 +178,13 @@ pub fn run() {
             commands::server_info,
             chat::chat_stream,
         ])
-        .run(tauri::generate_context!())
-        .expect("error while running tauri application");
+        .build(tauri::generate_context!())
+        .expect("error while running tauri application")
+        .run(|_app, event| {
+            if let tauri::RunEvent::Exit = event {
+                // Graceful shutdown: the agent card must not keep
+                // advertising a dead pid as a healthy local daemon.
+                agent_card::mark_stopped();
+            }
+        });
 }

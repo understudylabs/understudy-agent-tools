@@ -103,11 +103,15 @@ and build an opportunity ledger before any code edits or provider calls.
    [`reference.md`](reference.md)): experience tier, detected tooling, hardware,
    goal, constraints, and the three meet-them-where-they-are dials — vocabulary,
    coaching depth, opinion strength. Append, don't overwrite, the `history` of
-   workloads and decisions. Also refresh `~/.understudy/agent-card.json` with
-   live runtime facts: the local model, endpoint, serving process, companion
-   status, and the exact command or URL for talking to the local Understudy.
-   If `~/.understudy/companion.json` points at a dead pid, clear it and record
-   the stale pid in the card.
+   workloads and decisions. For `~/.understudy/agent-card.json`, check whether
+   the Understudy desktop app is running first (read the card's `app.running` /
+   `app.pid`, or hit `app.base_url`): the app is the canonical local daemon and
+   maintains the card itself — server endpoint, warm models, shutdown state.
+   Only refresh the card yourself as a **fallback when the app isn't installed
+   or running**, recording live runtime facts: the local model, endpoint,
+   serving process, companion status, and the exact command or URL for talking
+   to the local Understudy. If `~/.understudy/companion.json` points at a dead
+   pid, clear it and record the stale pid in the card.
 
 6. **Land the quick win: show the local Understudy exists.** Once the snapshot is
    cached, route through [`../ladder/SKILL.md`](../ladder/SKILL.md) and start the
