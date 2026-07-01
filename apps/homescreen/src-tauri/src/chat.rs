@@ -4,7 +4,7 @@ use serde_json::{json, Value};
 use std::collections::HashMap;
 use std::path::{Path, PathBuf};
 use std::process::Command;
-use std::sync::{Mutex, OnceLock};
+use std::sync::{Arc, Mutex, OnceLock};
 use std::time::{Duration, Instant};
 use tauri::ipc::Channel;
 use tauri::{AppHandle, Manager, State};
@@ -90,10 +90,67 @@ const CHAT_COMPACTION_TOKEN_THRESHOLD: u64 = 12_000;
 const CHAT_RECENT_CONTEXT_MESSAGES: usize = 12;
 const CHAT_COMPACTED_CONTEXT_PREFIX: &str = "Chat compacted context:";
 
-static SIDEKICK_SESSIONS: OnceLock<Mutex<HashMap<String, Vec<Value>>>> = OnceLock::new();
+const SIDEKICK_SESSION_CACHE_MAX: usize = 32;
 
-fn sidekick_sessions() -> &'static Mutex<HashMap<String, Vec<Value>>> {
-    SIDEKICK_SESSIONS.get_or_init(|| Mutex::new(HashMap::new()))
+/// In-memory transcript cache, bounded by evicting the least-recently-used
+/// session key; evicted sessions reload from SQLite on next use.
+#[derive(Default)]
+struct SidekickSessionCache {
+    tick: u64,
+    entries: HashMap<String, (u64, Vec<Value>)>,
+}
+
+impl SidekickSessionCache {
+    fn get(&mut self, key: &str) -> Option<Vec<Value>> {
+        self.tick += 1;
+        let tick = self.tick;
+        self.entries.get_mut(key).map(|entry| {
+            entry.0 = tick;
+            entry.1.clone()
+        })
+    }
+
+    fn insert(&mut self, key: &str, messages: Vec<Value>) {
+        self.tick += 1;
+        self.entries.insert(key.to_string(), (self.tick, messages));
+        while self.entries.len() > SIDEKICK_SESSION_CACHE_MAX {
+            let Some(oldest) = self
+                .entries
+                .iter()
+                .min_by_key(|(_, (tick, _))| *tick)
+                .map(|(key, _)| key.clone())
+            else {
+                break;
+            };
+            self.entries.remove(&oldest);
+        }
+    }
+}
+
+static SIDEKICK_SESSIONS: OnceLock<Mutex<SidekickSessionCache>> = OnceLock::new();
+
+fn sidekick_sessions() -> &'static Mutex<SidekickSessionCache> {
+    SIDEKICK_SESSIONS.get_or_init(|| Mutex::new(SidekickSessionCache::default()))
+}
+
+type SessionLockMap = HashMap<String, Arc<tokio::sync::Mutex<()>>>;
+
+static SIDEKICK_SESSION_LOCKS: OnceLock<Mutex<SessionLockMap>> = OnceLock::new();
+
+/// Per-session-key async lock so a parallel sidekick and an inline
+/// delegate_to_sidekick call can't interleave load -> HTTP rounds -> save and
+/// overwrite each other's transcript.
+fn sidekick_session_lock(key: &str) -> Result<Arc<tokio::sync::Mutex<()>>, String> {
+    let mut locks = SIDEKICK_SESSION_LOCKS
+        .get_or_init(|| Mutex::new(HashMap::new()))
+        .lock()
+        .map_err(|_| "sidekick session lock map poisoned".to_string())?;
+    if locks.len() > SIDEKICK_SESSION_CACHE_MAX {
+        // Only drop locks nobody holds; an in-flight holder keeps its Arc, and
+        // recreating a held key's lock would break mutual exclusion.
+        locks.retain(|_, lock| Arc::strong_count(lock) > 1);
+    }
+    Ok(locks.entry(key.to_string()).or_default().clone())
 }
 
 fn initial_sidekick_messages(profile: &SidekickProfile) -> Vec<Value> {
@@ -109,11 +166,11 @@ fn load_sidekick_messages(
     profile: &SidekickProfile,
 ) -> Result<Vec<Value>, String> {
     {
-        let sessions = sidekick_sessions()
+        let mut sessions = sidekick_sessions()
             .lock()
             .map_err(|_| "sidekick session lock poisoned".to_string())?;
         if let Some(messages) = sessions.get(key) {
-            return Ok(messages.clone());
+            return Ok(messages);
         }
     }
     let messages = app
@@ -128,7 +185,7 @@ fn load_sidekick_messages(
         let mut sessions = sidekick_sessions()
             .lock()
             .map_err(|_| "sidekick session lock poisoned".to_string())?;
-        sessions.insert(key.to_string(), messages.clone());
+        sessions.insert(key, messages.clone());
     }
     Ok(messages)
 }
@@ -148,7 +205,7 @@ fn save_sidekick_messages(
     let mut sessions = sidekick_sessions()
         .lock()
         .map_err(|_| "sidekick session lock poisoned".to_string())?;
-    sessions.insert(key.to_string(), messages.to_vec());
+    sessions.insert(key, messages.to_vec());
     Ok(())
 }
 
@@ -237,9 +294,21 @@ fn compact_sidekick_messages(messages: Vec<Value>) -> Vec<Value> {
         }
     }
 
-    let recent_start = non_system
+    let mut recent_start = non_system
         .len()
         .saturating_sub(SIDEKICK_RECENT_CONTEXT_MESSAGES);
+    // Never cut between an assistant tool_calls message and its tool replies:
+    // a transcript starting with orphaned tool messages is rejected by
+    // OpenAI-compatible servers on every later turn. Walk back to include the
+    // assistant message that issued the calls.
+    while recent_start > 0
+        && non_system[recent_start]
+            .get("role")
+            .and_then(|v| v.as_str())
+            == Some("tool")
+    {
+        recent_start -= 1;
+    }
     let older = &non_system[..recent_start];
     let recent = non_system[recent_start..].to_vec();
     let mut prior_memory = vec![];
@@ -631,7 +700,10 @@ async fn delegate_to_sidekick(
     let profile = sidekick_profile();
     let started = Instant::now();
     let db = app.state::<crate::db::Db>();
-    let _ = db.record_sidekick_event(session_id, mode, "started", &task);
+    log_db_write(
+        "record_sidekick_event(started)",
+        db.record_sidekick_event(session_id, mode, "started", &task),
+    );
     let result = match call_sidekick_model(
         app,
         port,
@@ -646,38 +718,50 @@ async fn delegate_to_sidekick(
     {
         Ok(result) => result,
         Err(err) => {
-            let _ = db.record_sidekick_event(session_id, mode, "error", &err);
+            log_db_write(
+                "record_sidekick_event(error)",
+                db.record_sidekick_event(session_id, mode, "error", &err),
+            );
             return Err(err);
         }
     };
     let elapsed_ms = started.elapsed().as_millis() as u64;
     let escalate = result.tool_limited || result.content.contains("ESCALATE_TO_MAIN");
-    let _ = db.record_sidekick_run(
-        session_id,
-        mode,
-        &task,
-        Some(&model_id),
-        Some(&result.content),
-        Some(elapsed_ms),
-        result.tool_calls as u64,
-        result.session_messages as u64,
-        escalate,
-    );
-    if result.tool_limited {
-        let _ = db.record_sidekick_event(
+    log_db_write(
+        "record_sidekick_run",
+        db.record_sidekick_run(
             session_id,
             mode,
-            "tool_limit",
-            "sidekick reached bounded tool limit; main should continue or upgrade",
+            &task,
+            Some(&model_id),
+            Some(&result.content),
+            Some(elapsed_ms),
+            result.tool_calls as u64,
+            result.session_messages as u64,
+            escalate,
+        ),
+    );
+    if result.tool_limited {
+        log_db_write(
+            "record_sidekick_event(tool_limit)",
+            db.record_sidekick_event(
+                session_id,
+                mode,
+                "tool_limit",
+                "sidekick reached bounded tool limit; main should continue or upgrade",
+            ),
         );
     }
-    let _ = db.record_sidekick_event(
-        session_id,
-        mode,
-        "finished",
-        &format!(
-            "{}ms · {} tools · {} ctx",
-            elapsed_ms, result.tool_calls, result.session_messages
+    log_db_write(
+        "record_sidekick_event(finished)",
+        db.record_sidekick_event(
+            session_id,
+            mode,
+            "finished",
+            &format!(
+                "{}ms · {} tools · {} ctx",
+                elapsed_ms, result.tool_calls, result.session_messages
+            ),
         ),
     );
     Ok(json!({
@@ -1344,6 +1428,11 @@ async fn call_sidekick_model(
         "Task:\n{task}\n\nContext:\n{context}\n\nExpected output:\n{expected_output}\n\nReturn only the useful result for the main model."
     );
     let key = format!("{session_id}:{model_path}");
+    // Hold the per-session-key lock across the whole load -> tool rounds ->
+    // save span; concurrent callers on the same key would otherwise clobber
+    // each other's transcript with a stale load.
+    let session_lock = sidekick_session_lock(&key)?;
+    let _session_guard = session_lock.lock().await;
     let mut messages = load_sidekick_messages(app, &key, profile)?;
     messages.push(json!({ "role": "user", "content": user }));
 
@@ -1429,6 +1518,12 @@ async fn call_sidekick_model(
         }
     }
 
+    if tool_limited {
+        // Keep the saved transcript consistent with what the caller received:
+        // without this, the session keeps the model's real tool-calling
+        // message while the caller got the synthetic ESCALATE_TO_MAIN string.
+        messages.push(json!({ "role": "assistant", "content": final_content }));
+    }
     if messages.len() > SIDEKICK_MAX_CONTEXT_MESSAGES {
         messages = compact_sidekick_messages(messages);
     }
@@ -1775,8 +1870,19 @@ fn compact_chat_messages(messages: Vec<Value>) -> (Vec<Value>, Option<String>, u
     )
 }
 
+/// Routing metrics and sidekick accounting feed later route decisions, so a
+/// dropped write must at least be visible in the logs.
+fn log_db_write<T>(context: &str, result: anyhow::Result<T>) {
+    if let Err(err) = result {
+        eprintln!("understudy db: {context} failed: {err:#}");
+    }
+}
+
 fn record_chat_run(app: &AppHandle, input: ChatRunInput) {
-    let _ = app.state::<crate::db::Db>().record_chat_run(&input);
+    log_db_write(
+        "record_chat_run",
+        app.state::<crate::db::Db>().record_chat_run(&input),
+    );
 }
 
 fn local_resident_mem_gb(app: &AppHandle) -> Option<f64> {
@@ -1818,11 +1924,14 @@ fn record_compaction_route_decision(
         "{} · {} tokens · recommend {} ({})",
         compaction_reason, context_tokens_before, recommendation.route, recommendation.reason
     );
-    let _ = app.state::<crate::db::Db>().record_sidekick_event(
-        session_id,
-        "routing",
-        "compaction_boundary",
-        &detail,
+    log_db_write(
+        "record_sidekick_event(compaction_boundary)",
+        app.state::<crate::db::Db>().record_sidekick_event(
+            session_id,
+            "routing",
+            "compaction_boundary",
+            &detail,
+        ),
     );
     if let Some(on_event) = on_event {
         let _ = on_event.send(ChatEvent::SidekickEvent {
@@ -1873,11 +1982,14 @@ fn apply_dynamic_chat_route(
             "{} -> {} · {} ({})",
             route, next_route, recommendation.policy_class, recommendation.reason
         );
-        let _ = app.state::<crate::db::Db>().record_sidekick_event(
-            session_id,
-            "routing",
-            "route_applied",
-            &detail,
+        log_db_write(
+            "record_sidekick_event(route_applied)",
+            app.state::<crate::db::Db>().record_sidekick_event(
+                session_id,
+                "routing",
+                "route_applied",
+                &detail,
+            ),
         );
         let _ = on_event.send(ChatEvent::SidekickEvent {
             mode: "routing".to_string(),
@@ -2080,12 +2192,15 @@ fn maybe_spawn_parallel_sidekick(
     let db = app.state::<crate::db::Db>();
     let prompt = latest_user_message(messages).map(str::trim).unwrap_or("");
     let record_decision = |eligible: bool, reason: &'static str| {
-        let _ = db.record_sidekick_decision(
-            session_id,
-            route,
-            &prompt_excerpt(prompt),
-            eligible,
-            reason,
+        log_db_write(
+            "record_sidekick_decision",
+            db.record_sidekick_decision(
+                session_id,
+                route,
+                &prompt_excerpt(prompt),
+                eligible,
+                reason,
+            ),
         );
     };
     if route != "local" {
@@ -2127,7 +2242,10 @@ fn maybe_spawn_parallel_sidekick(
         "expected_output": "Return compact findings, uncertainty, and ESCALATE_TO_MAIN only if the request requires main-agent judgment."
     });
     let detail = format!("{} · wait_ms={}", decision.reason, decision.wait_ms);
-    let _ = db.record_sidekick_event(session_id, "parallel", "queued", &detail);
+    log_db_write(
+        "record_sidekick_event(queued)",
+        db.record_sidekick_event(session_id, "parallel", "queued", &detail),
+    );
     if let Some(on_event) = on_event {
         let _ = on_event.send(ChatEvent::SidekickEvent {
             mode: "parallel".to_string(),
@@ -2155,17 +2273,24 @@ fn maybe_spawn_parallel_sidekick(
     }
 }
 
-fn consume_sidekick_handoffs(app: &AppHandle, session_id: &str) -> Vec<Value> {
-    let Ok(rows) = app
+/// Claim pending handoffs; returns the injected context messages plus the
+/// claimed row ids so a failed turn can hand them back.
+fn consume_sidekick_handoffs(app: &AppHandle, session_id: &str) -> (Vec<Value>, Vec<u64>) {
+    let rows = match app
         .state::<crate::db::Db>()
         .consume_sidekick_handoffs(session_id, 2)
-    else {
-        return vec![];
+    {
+        Ok(rows) => rows,
+        Err(err) => {
+            eprintln!("understudy db: consume_sidekick_handoffs failed: {err:#}");
+            return (vec![], vec![]);
+        }
     };
     if rows.is_empty() {
-        return vec![];
+        return (vec![], vec![]);
     }
 
+    let ids: Vec<u64> = rows.iter().map(|row| row.id).collect();
     let mut body = String::from(
         "Background sidekick findings from prior parallel work. Treat these as advisory context, not final judgment. Use them only if relevant.\n",
     );
@@ -2190,7 +2315,7 @@ fn consume_sidekick_handoffs(app: &AppHandle, session_id: &str) -> Vec<Value> {
         body.push('\n');
     }
 
-    vec![json!({ "role": "system", "content": body })]
+    (vec![json!({ "role": "system", "content": body })], ids)
 }
 
 fn sidekick_progress_context(app: &AppHandle, session_id: &str, wait_ms: u64) -> Vec<Value> {
@@ -2224,7 +2349,7 @@ async fn wait_for_sidekick_handoffs(
     spawned: bool,
     wait_ms: u64,
     on_event: Option<&Channel<ChatEvent>>,
-) -> Vec<Value> {
+) -> (Vec<Value>, Vec<u64>) {
     if !spawned {
         return consume_sidekick_handoffs(app, session_id);
     }
@@ -2239,13 +2364,16 @@ async fn wait_for_sidekick_handoffs(
     let interval_ms = 250;
     let attempts = (wait_ms / interval_ms).max(1);
     for attempt in 0..attempts {
-        let handoffs = consume_sidekick_handoffs(app, session_id);
+        let (handoffs, handoff_ids) = consume_sidekick_handoffs(app, session_id);
         if !handoffs.is_empty() {
-            let _ = app.state::<crate::db::Db>().record_sidekick_event(
-                session_id,
-                "parallel",
-                "handoff_ready",
-                &format!("attempt={attempt}"),
+            log_db_write(
+                "record_sidekick_event(handoff_ready)",
+                app.state::<crate::db::Db>().record_sidekick_event(
+                    session_id,
+                    "parallel",
+                    "handoff_ready",
+                    &format!("attempt={attempt}"),
+                ),
             );
             if let Some(on_event) = on_event {
                 let _ = on_event.send(ChatEvent::SidekickEvent {
@@ -2254,16 +2382,19 @@ async fn wait_for_sidekick_handoffs(
                     detail: format!("attempt={attempt}"),
                 });
             }
-            return handoffs;
+            return (handoffs, handoff_ids);
         }
         tokio::time::sleep(Duration::from_millis(250)).await;
     }
 
-    let _ = app.state::<crate::db::Db>().record_sidekick_event(
-        session_id,
-        "parallel",
-        "handoff_deferred",
-        &format!("main continued after {wait_ms}ms"),
+    log_db_write(
+        "record_sidekick_event(handoff_deferred)",
+        app.state::<crate::db::Db>().record_sidekick_event(
+            session_id,
+            "parallel",
+            "handoff_deferred",
+            &format!("main continued after {wait_ms}ms"),
+        ),
     );
     if let Some(on_event) = on_event {
         let _ = on_event.send(ChatEvent::SidekickEvent {
@@ -2272,7 +2403,7 @@ async fn wait_for_sidekick_handoffs(
             detail: format!("main continued after {wait_ms}ms"),
         });
     }
-    sidekick_progress_context(app, session_id, wait_ms)
+    (sidekick_progress_context(app, session_id, wait_ms), vec![])
 }
 
 /// Stream a chat completion. `route` is "local" (MLX :8089) or "cloud" (gateway).
@@ -2327,16 +2458,15 @@ pub async fn chat_stream(
         "role": "system",
         "content": system_prompt_for(&model_field),
     })];
-    outbound_messages.extend(
-        wait_for_sidekick_handoffs(
-            &app,
-            &session_id,
-            sidekick_plan.spawned,
-            sidekick_plan.wait_ms,
-            Some(&on_event),
-        )
-        .await,
-    );
+    let (handoff_messages, handoff_ids) = wait_for_sidekick_handoffs(
+        &app,
+        &session_id,
+        sidekick_plan.spawned,
+        sidekick_plan.wait_ms,
+        Some(&on_event),
+    )
+    .await;
+    outbound_messages.extend(handoff_messages);
     outbound_messages.extend(
         messages
             .iter()
@@ -2385,11 +2515,14 @@ pub async fn chat_stream(
                     "local -> cloud · compaction_boundary ({reason}, {} tokens)",
                     context_tokens_before
                 );
-                let _ = app.state::<crate::db::Db>().record_sidekick_event(
-                    &session_id,
-                    "routing",
-                    "compaction_route_applied",
-                    &detail,
+                log_db_write(
+                    "record_sidekick_event(compaction_route_applied)",
+                    app.state::<crate::db::Db>().record_sidekick_event(
+                        &session_id,
+                        "routing",
+                        "compaction_route_applied",
+                        &detail,
+                    ),
                 );
                 let _ = on_event.send(ChatEvent::SidekickEvent {
                     mode: "routing".to_string(),
@@ -2439,6 +2572,14 @@ pub async fn chat_stream(
                     error: Some(error),
                 },
             );
+            // The turn failed before the model could use the findings; hand
+            // the claimed handoffs back so the next turn can retry them.
+            if let Err(err) = app
+                .state::<crate::db::Db>()
+                .unconsume_sidekick_handoffs(&handoff_ids)
+            {
+                eprintln!("understudy db: unconsume_sidekick_handoffs failed: {err:#}");
+            }
             let _ = on_event.send(ChatEvent::Done);
             return Ok(());
         }
@@ -2536,11 +2677,14 @@ pub async fn chat_stream(
                     "local -> cloud · mid_session_tool_depth ({} tool calls)",
                     tool_count
                 );
-                let _ = app.state::<crate::db::Db>().record_sidekick_event(
-                    &session_id,
-                    "routing",
-                    "mid_session_route_applied",
-                    &detail,
+                log_db_write(
+                    "record_sidekick_event(mid_session_route_applied)",
+                    app.state::<crate::db::Db>().record_sidekick_event(
+                        &session_id,
+                        "routing",
+                        "mid_session_route_applied",
+                        &detail,
+                    ),
                 );
                 let _ = on_event.send(ChatEvent::SidekickEvent {
                     mode: "routing".to_string(),
@@ -2591,7 +2735,8 @@ pub async fn benchmark_local_chat(
             BENCHMARK_SIDEKICK_WAIT_MS,
             None,
         )
-        .await,
+        .await
+        .0,
     );
     outbound_messages.push(json!({ "role": "user", "content": prompt }));
     let (mut outbound_messages, compaction_reason, context_tokens_before) =
@@ -2708,7 +2853,7 @@ pub async fn benchmark_gateway_chat(
         "role": "system",
         "content": system_prompt_for(model_field),
     })];
-    outbound_messages.extend(consume_sidekick_handoffs(app, session_id));
+    outbound_messages.extend(consume_sidekick_handoffs(app, session_id).0);
     outbound_messages.push(json!({ "role": "user", "content": prompt }));
     let (mut outbound_messages, compaction_reason, context_tokens_before) =
         compact_chat_messages(outbound_messages);
@@ -3060,6 +3205,55 @@ mod tests {
 
     fn feedback(useful: u64, misses: u64) -> SidekickFeedbackSummary {
         SidekickFeedbackSummary { useful, misses }
+    }
+
+    #[test]
+    fn sidekick_compaction_never_orphans_tool_replies() {
+        let mut messages = vec![json!({"role": "system", "content": "sys"})];
+        for i in 0..9 {
+            let role = if i % 2 == 0 { "user" } else { "assistant" };
+            messages.push(json!({"role": role, "content": format!("turn {i}")}));
+        }
+        // Tool replies placed to straddle the default recent-messages cut.
+        messages.push(json!({
+            "role": "assistant",
+            "content": "",
+            "tool_calls": [{"id": "call_1", "type": "function",
+                            "function": {"name": "repo_search", "arguments": "{}"}}],
+        }));
+        messages.push(json!({"role": "tool", "tool_call_id": "call_1", "content": "result a"}));
+        messages.push(json!({"role": "tool", "tool_call_id": "call_1", "content": "result b"}));
+        for i in 0..8 {
+            let role = if i % 2 == 0 { "user" } else { "assistant" };
+            messages.push(json!({"role": role, "content": format!("late turn {i}")}));
+        }
+
+        let compacted = compact_sidekick_messages(messages);
+        let first_kept = compacted
+            .iter()
+            .find(|m| m.get("role").and_then(|v| v.as_str()) != Some("system"))
+            .expect("compaction keeps recent messages");
+        assert_eq!(
+            first_kept.get("role").and_then(|v| v.as_str()),
+            Some("assistant")
+        );
+        assert!(
+            first_kept.get("tool_calls").is_some(),
+            "recent slice must start at the assistant tool_calls message, not an orphaned tool reply"
+        );
+    }
+
+    #[test]
+    fn sidekick_session_cache_is_bounded() {
+        let mut cache = SidekickSessionCache::default();
+        for i in 0..(SIDEKICK_SESSION_CACHE_MAX + 8) {
+            cache.insert(&format!("key-{i}"), vec![]);
+        }
+        assert_eq!(cache.entries.len(), SIDEKICK_SESSION_CACHE_MAX);
+        assert!(cache.get("key-0").is_none(), "oldest entries are evicted");
+        assert!(cache
+            .get(&format!("key-{}", SIDEKICK_SESSION_CACHE_MAX + 7))
+            .is_some());
     }
 
     #[test]

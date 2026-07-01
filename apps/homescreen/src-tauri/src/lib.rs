@@ -35,7 +35,8 @@ pub fn run() {
             let machine = metrics::detect_machine();
             let residency = residency::Residency::new(machine.memory_gb);
 
-            app.manage(db::Db(data_dir));
+            let db = db::Db::open(data_dir).expect("understudy database opened");
+            app.manage(db);
             app.manage(metrics::MetricsReader::new());
             app.manage(machine);
             app.manage(residency);

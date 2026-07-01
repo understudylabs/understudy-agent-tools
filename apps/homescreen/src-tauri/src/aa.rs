@@ -83,7 +83,7 @@ pub async fn models(db: &Db) -> Result<Vec<AaModel>> {
 }
 
 fn cache_path(db: &Db) -> std::path::PathBuf {
-    db.0.join("aa_cache.json")
+    db.data_dir().join("aa_cache.json")
 }
 
 fn read_cache(db: &Db) -> Option<Vec<AaModel>> {

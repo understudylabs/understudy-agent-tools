@@ -1,7 +1,9 @@
-use std::path::Path;
+use std::path::{Path, PathBuf};
+use std::sync::{Mutex, MutexGuard};
+use std::time::Duration;
 
 use anyhow::Result;
-use rusqlite::Connection;
+use rusqlite::{Connection, TransactionBehavior};
 use serde::Serialize;
 
 use crate::residency::PersistedSlot;
@@ -203,14 +205,45 @@ pub struct SidekickFeedbackSummary {
 
 /// App-owned SQLite store, under the macOS app-data dir. Profile, credentials,
 /// and the model cache continue to live under `~/.understudy/`.
-pub struct Db(pub std::path::PathBuf);
+///
+/// A single connection is shared behind a mutex: chat turns, parallel
+/// sidekicks, and Fusion benchmark runs all write concurrently, and per-call
+/// connections raced each other on schema setup and left readers seeing
+/// half-applied writes. WAL + busy_timeout cover any other process holding
+/// the file.
+pub struct Db {
+    data_dir: PathBuf,
+    conn: Mutex<Connection>,
+}
 
 impl Db {
-    fn conn(&self) -> Result<Connection> {
-        std::fs::create_dir_all(&self.0).ok();
-        let conn = Connection::open(self.0.join("understudy.db"))?;
-        conn.execute_batch(
-            "CREATE TABLE IF NOT EXISTS residency (
+    pub fn open(data_dir: PathBuf) -> Result<Self> {
+        std::fs::create_dir_all(&data_dir)?;
+        let conn = Connection::open(data_dir.join("understudy.db"))?;
+        conn.busy_timeout(Duration::from_millis(5_000))?;
+        conn.query_row("PRAGMA journal_mode=WAL", [], |_| Ok(()))?;
+        migrate(&conn)?;
+        Ok(Self {
+            data_dir,
+            conn: Mutex::new(conn),
+        })
+    }
+
+    pub fn data_dir(&self) -> &Path {
+        &self.data_dir
+    }
+
+    fn conn(&self) -> Result<MutexGuard<'_, Connection>> {
+        self.conn
+            .lock()
+            .map_err(|_| anyhow::anyhow!("db connection lock poisoned"))
+    }
+}
+
+/// Run schema setup + column migrations once at startup.
+fn migrate(conn: &Connection) -> Result<()> {
+    conn.execute_batch(
+        "CREATE TABLE IF NOT EXISTS residency (
                 slot_id     INTEGER PRIMARY KEY,
                 model_id    TEXT,
                 model_path  TEXT,
@@ -343,74 +376,45 @@ impl Db {
                 memory      TEXT,
                 updated_at  TEXT NOT NULL
             );",
-        )?;
-        let _ = conn.execute(
-            "ALTER TABLE residency ADD COLUMN thinking INTEGER NOT NULL DEFAULT 0",
-            [],
-        );
-        let _ = conn.execute("ALTER TABLE sidekick_runs ADD COLUMN content TEXT", []);
-        let _ = conn.execute(
-            "ALTER TABLE sidekick_runs ADD COLUMN consumed INTEGER NOT NULL DEFAULT 0",
-            [],
-        );
-        let _ = conn.execute(
-            "ALTER TABLE chat_runs ADD COLUMN compacted INTEGER NOT NULL DEFAULT 0",
-            [],
-        );
-        let _ = conn.execute(
-            "ALTER TABLE chat_runs ADD COLUMN compaction_reason TEXT",
-            [],
-        );
-        let _ = conn.execute(
-            "ALTER TABLE chat_runs ADD COLUMN context_tokens_before INTEGER",
-            [],
-        );
-        let _ = conn.execute("ALTER TABLE chat_runs ADD COLUMN local_mem_gb REAL", []);
-        let _ = conn.execute(
-            "ALTER TABLE chat_runs ADD COLUMN gateway_available INTEGER NOT NULL DEFAULT 0",
-            [],
-        );
-        let _ = conn.execute(
-            "ALTER TABLE chat_runs ADD COLUMN gateway_avoided INTEGER NOT NULL DEFAULT 0",
-            [],
-        );
-        let _ = conn.execute(
-            "ALTER TABLE fusion_benchmarks ADD COLUMN compacted INTEGER NOT NULL DEFAULT 0",
-            [],
-        );
-        let _ = conn.execute(
-            "ALTER TABLE fusion_benchmarks ADD COLUMN context_tokens_before INTEGER",
-            [],
-        );
-        let _ = conn.execute(
-            "ALTER TABLE fusion_benchmarks ADD COLUMN local_mem_gb REAL",
-            [],
-        );
-        let _ = conn.execute("ALTER TABLE fusion_benchmarks ADD COLUMN status TEXT", []);
-        let _ = conn.execute(
-            "ALTER TABLE sidekick_sessions ADD COLUMN message_count INTEGER NOT NULL DEFAULT 0",
-            [],
-        );
-        let _ = conn.execute(
-            "ALTER TABLE sidekick_sessions ADD COLUMN compacted_count INTEGER NOT NULL DEFAULT 0",
-            [],
-        );
-        let _ = conn.execute("ALTER TABLE sidekick_sessions ADD COLUMN memory TEXT", []);
-        let _ = conn.execute(
-            "ALTER TABLE fusion_route_decisions ADD COLUMN policy_class TEXT NOT NULL DEFAULT 'unknown'",
-            [],
-        );
-        let _ = conn.execute(
-            "ALTER TABLE fusion_route_decisions ADD COLUMN signals TEXT",
-            [],
-        );
-        let _ = conn.execute(
-            "ALTER TABLE fusion_route_decisions ADD COLUMN upgrade_sidekick INTEGER NOT NULL DEFAULT 0",
-            [],
-        );
-        Ok(conn)
+    )?;
+    const ALTERS: &[&str] = &[
+        "ALTER TABLE residency ADD COLUMN thinking INTEGER NOT NULL DEFAULT 0",
+        "ALTER TABLE sidekick_runs ADD COLUMN content TEXT",
+        "ALTER TABLE sidekick_runs ADD COLUMN consumed INTEGER NOT NULL DEFAULT 0",
+        "ALTER TABLE chat_runs ADD COLUMN compacted INTEGER NOT NULL DEFAULT 0",
+        "ALTER TABLE chat_runs ADD COLUMN compaction_reason TEXT",
+        "ALTER TABLE chat_runs ADD COLUMN context_tokens_before INTEGER",
+        "ALTER TABLE chat_runs ADD COLUMN local_mem_gb REAL",
+        "ALTER TABLE chat_runs ADD COLUMN gateway_available INTEGER NOT NULL DEFAULT 0",
+        "ALTER TABLE chat_runs ADD COLUMN gateway_avoided INTEGER NOT NULL DEFAULT 0",
+        "ALTER TABLE fusion_benchmarks ADD COLUMN compacted INTEGER NOT NULL DEFAULT 0",
+        "ALTER TABLE fusion_benchmarks ADD COLUMN context_tokens_before INTEGER",
+        "ALTER TABLE fusion_benchmarks ADD COLUMN local_mem_gb REAL",
+        "ALTER TABLE fusion_benchmarks ADD COLUMN status TEXT",
+        "ALTER TABLE sidekick_sessions ADD COLUMN message_count INTEGER NOT NULL DEFAULT 0",
+        "ALTER TABLE sidekick_sessions ADD COLUMN compacted_count INTEGER NOT NULL DEFAULT 0",
+        "ALTER TABLE sidekick_sessions ADD COLUMN memory TEXT",
+        "ALTER TABLE fusion_route_decisions ADD COLUMN policy_class TEXT NOT NULL DEFAULT 'unknown'",
+        "ALTER TABLE fusion_route_decisions ADD COLUMN signals TEXT",
+        "ALTER TABLE fusion_route_decisions ADD COLUMN upgrade_sidekick INTEGER NOT NULL DEFAULT 0",
+    ];
+    for sql in ALTERS {
+        apply_alter(conn, sql)?;
     }
+    Ok(())
+}
 
+/// Apply a column-add migration; a duplicate column just means the migration
+/// already ran, anything else is a real failure.
+fn apply_alter(conn: &Connection, sql: &str) -> Result<()> {
+    match conn.execute(sql, []) {
+        Ok(_) => Ok(()),
+        Err(err) if err.to_string().contains("duplicate column name") => Ok(()),
+        Err(err) => Err(anyhow::anyhow!("migration failed ({sql}): {err}")),
+    }
+}
+
+impl Db {
     pub fn save_residency(&self, slots: &[PersistedSlot]) -> Result<()> {
         let conn = self.conn()?;
         conn.execute("DELETE FROM residency", [])?;
@@ -861,13 +865,18 @@ impl Db {
         })
     }
 
+    /// Atomically claim unconsumed handoffs: the SELECT and the consumed=1
+    /// marks commit together so concurrent consumers can't double-inject the
+    /// same handoff. A failed turn should hand claims back via
+    /// [`Db::unconsume_sidekick_handoffs`].
     pub fn consume_sidekick_handoffs(
         &self,
         session_id: &str,
         limit: u32,
     ) -> Result<Vec<SidekickRunRow>> {
-        let conn = self.conn()?;
-        let mut stmt = conn.prepare(
+        let mut conn = self.conn()?;
+        let tx = conn.transaction_with_behavior(TransactionBehavior::Immediate)?;
+        let mut stmt = tx.prepare(
             "SELECT id, session_id, mode, task, model, content, elapsed_ms, tool_calls, session_messages, escalated, accepted, consumed, run_at
              FROM sidekick_runs
              WHERE session_id=?1 AND mode='parallel' AND consumed=0 AND content IS NOT NULL
@@ -896,13 +905,32 @@ impl Db {
         let out = rows
             .collect::<rusqlite::Result<Vec<_>>>()
             .map_err(anyhow::Error::from)?;
+        drop(stmt);
         for row in &out {
-            conn.execute(
+            tx.execute(
                 "UPDATE sidekick_runs SET consumed=1 WHERE id=?1",
                 [row.id as i64],
             )?;
         }
+        tx.commit()?;
         Ok(out)
+    }
+
+    /// Hand claimed handoffs back (turn failed before the findings were used).
+    pub fn unconsume_sidekick_handoffs(&self, ids: &[u64]) -> Result<()> {
+        if ids.is_empty() {
+            return Ok(());
+        }
+        let mut conn = self.conn()?;
+        let tx = conn.transaction_with_behavior(TransactionBehavior::Immediate)?;
+        for id in ids {
+            tx.execute(
+                "UPDATE sidekick_runs SET consumed=0 WHERE id=?1",
+                [*id as i64],
+            )?;
+        }
+        tx.commit()?;
+        Ok(())
     }
 
     pub fn record_sidekick_decision(
