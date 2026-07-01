@@ -53,7 +53,9 @@ node dist/bin.js status --json
    understudy status --json
    ```
 
-   Extract `org_id` and `project_slug` from the output. If not signed in, route
+   Extract `org_id` and `project_slug` from the output. Resolve the project
+   slug to a project id via `understudy projects list --json` if needed — the
+   API path requires the `proj_...` id, not the slug. If not signed in, route
    to [`../use-understudy-gateway/SKILL.md`](../use-understudy-gateway/SKILL.md).
 
 2. For a quick overview, call the compact status endpoint:
@@ -61,7 +63,7 @@ node dist/bin.js status --json
    ```sh
    understudy run -- curl -s \
      -H "Authorization: Bearer \$UNDERSTUDY_API_KEY" \
-     "https://api.understudylabs.com/admin/v1/orgs/\$UNDERSTUDY_ORG_ID/projects/$PROJECT_ID/status?window=30m"
+     "https://api.understudylabs.com/admin/v1/orgs/\$UNDERSTUDY_ORG_ID/projects/<project-id>/status?window=30m"
    ```
 
 3. Print the `lines` array first — it is the dense human-readable summary.

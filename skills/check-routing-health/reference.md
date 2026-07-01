@@ -120,14 +120,14 @@ The endpoints accept a standard `Authorization: Bearer sk_*` header. Use
 ```sh
 understudy run -- curl -s \
   -H "Authorization: Bearer \$UNDERSTUDY_API_KEY" \
-  "https://api.understudylabs.com/admin/v1/orgs/\$UNDERSTUDY_ORG_ID/projects/$PROJECT_ID/routing-status"
+  "https://api.understudylabs.com/admin/v1/orgs/\$UNDERSTUDY_ORG_ID/projects/<project-id>/routing-status"
 ```
 
 Or call directly with the key from `~/.understudy/credentials.json`:
 
 ```sh
 curl -s -H "Authorization: Bearer $UNDERSTUDY_API_KEY" \
-  "https://api.understudylabs.com/admin/v1/orgs/$ORG_ID/projects/$PROJECT_ID/provider-health?window=1h"
+  "https://api.understudylabs.com/admin/v1/orgs/$ORG_ID/projects/<project-id>/provider-health?window=1h"
 ```
 
 ## Error responses
