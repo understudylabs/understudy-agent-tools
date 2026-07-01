@@ -136,7 +136,7 @@ availability, license, checkpoint format, and runtime support before use.
 
 | Candidate class | Use when | Notes |
 | --- | --- | --- |
-| E2B / E4B | Router, triage, extraction, easy classification, edge/mobile, audio-first smoke tests | Smallest Gemma 4 rungs. Good for cheap local iteration and compliance-constrained routing. Use the 4-bit snapshots for speed/size; use `gemma-4-e2b-it-mlx-vlm-bf16` when quantization may be the bottleneck. |
+| E2B / E4B | Router, triage, extraction, easy classification, edge/mobile, audio-first smoke tests | Smallest Gemma 4 rungs. Good for cheap local iteration and compliance-constrained routing. Use the 4-bit snapshots for speed/size; when quantization may be the bottleneck, convert a BF16 rung locally or compare against the published `gemma-4-12b-it-mlx-vlm-bf16`. |
 | 12B | Main laptop eval, multimodal/audio tasks, stronger reasoning without workstation hardware | Google announced Gemma 4 12B on 2026-06-03 as a unified encoder-free multimodal model designed for laptops with 16GB VRAM or unified memory. |
 | 26B A4B MoE | Strong local text/image candidate on serious desktop/workstation hardware | Treat as the local quality/latency sweet spot when the runtime and memory fit. MoE active parameters do not remove the need to fit the checkpoint/KV cache. |
 | 31B dense | Maximum local quality when hardware is available, or remote graduation target | Prefer remote/gateway if local ops friction or memory pressure slows the experiment. |

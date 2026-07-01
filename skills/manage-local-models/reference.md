@@ -67,8 +67,9 @@ as MLX 4-bit (lost both wins); DiffusionGemma's only solved task came at
 BF16; AR Gemma 4 26B-A4B's BF16 rung recovered misses its 4-bit made. The
 weaker a model's baseline tool-calling, the larger the tax. For agentic
 evals: treat 4-bit scores as lower bounds, and re-measure on the BF16 rung
-(now published for every ladder model) before concluding a model can't do a
-workload.
+(published for the 12B, 26B A4B, 31B, and DiffusionGemma ladder models; the
+E2B BF16 snapshot is not currently published, so that comparison needs a
+local conversion) before concluding a model can't do a workload.
 
 ## Understudy verified MLX ladder
 
@@ -80,14 +81,14 @@ or graduate remote when local quality is the bottleneck.
 |---|---|---|---|
 | **Gemma 4 E2B QAT (Understudy, g32)** | `mlx_vlm.server` | `https://models.understudylabs.com/session?model=gemma-4-e2b-it-qat-mlx-vlm-understudy` | **Default onboarding rung.** QAT bf16 -> MLX 4-bit `group_size=32`. About 3.6 GB; 4/4 certified (generation, OpenAI-compatible serving, logprobs+top_logprobs, tool_calls) at the prescribed decode (1.0/0.95/k64). Matches-or-beats vanilla BF16 on tool-call fidelity at 2.6x less memory and 2.6x faster decode. Serve with `--top-logprobs-k 20` — see `understudy.serving.json` and `references/serving-manifest.md`. |
 | Gemma 4 E2B 4-bit (vanilla) | `mlx_vlm.server` | `https://models.understudylabs.com/session?model=gemma-4-e2b-it-mlx-vlm-4bit` | Diagnostic rung (vanilla non-QAT bf16 -> MLX 4-bit). Keep it to isolate "is this a quant artifact?" questions against the QAT default. About 3.3 GB; verified generation, OpenAI-compatible serving, logprobs/top-logprobs. |
-| Gemma 4 E2B BF16 | `mlx_vlm.server` | `https://models.understudylabs.com/session?model=gemma-4-e2b-it-mlx-vlm-bf16` | Full-precision diagnostic rung for small-model quality checks. About 9.5 GB. |
+| Gemma 4 E2B BF16 | `mlx_vlm.server` | Not currently published (weights incomplete on the snapshot service); local conversion only | Full-precision diagnostic rung for small-model quality checks. About 9.5 GB. Convert locally from `google/gemma-4-e2b-it` with `mlx-vlm`, or use the published 12B BF16 rung for the quant-vs-capacity comparison. |
 | Gemma 4 E4B 4-bit | `mlx_vlm.server` | `https://models.understudylabs.com/session?model=gemma-4-e4b-it-mlx-vlm-4bit` | First climb when E2B understands the task but lacks quality. About 4.8 GB; verified signed snapshot delivery. Official target for this tier: `gemma-4-e4b-it-qat-mlx-vlm-understudy` (QAT conversion staged; certification + publication pending) — switch to it once its session URL resolves. |
 | Gemma 4 12B 4-bit | `mlx_vlm.server` | `https://models.understudylabs.com/session?model=gemma-4-12b-it-mlx-vlm-4bit` | M4/M5 MacBook Pro or high-RAM Air rung when E4B has the right behavior but not enough depth. About 6.3 GB; verified generation plus OpenAI-compatible logprobs/top-logprobs. Official target for this tier: `gemma-4-12b-it-qat-mlx-vlm-understudy` (QAT conversion staged; certification + publication pending). |
 | Gemma 4 12B BF16 | `mlx_vlm.server` | `https://models.understudylabs.com/session?model=gemma-4-12b-it-mlx-vlm-bf16` | Quality/perf profiling rung on larger-memory Macs. About 22 GB; use when quantization may be the bottleneck. |
 | **Gemma 4 26B A4B QAT (Understudy)** | `mlx_vlm.server` | `https://models.understudylabs.com/session?model=gemma-4-26b-a4b-it-qat-mlx-vlm-understudy` | **Primary MoE-style climb.** Certified MLX 4-bit QAT MoE (`group_size=32` + 8-bit routers) from Google's QAT checkpoint. About 16 GB; certified generation, logprobs/top-logprobs, and tool calls. |
-| Gemma 4 26B A4B 4-bit (vanilla) | `mlx_vlm.server` | `https://models.understudylabs.com/session?model=gemma-4-26b-a4b-it-mlx-vlm-4bit` | Diagnostic sibling of the QAT rung (and interim pull while the QAT snapshot publication lands). About 14 GB; verified generation plus logprobs/top-logprobs. |
+| Gemma 4 26B A4B 4-bit (vanilla) | `mlx_vlm.server` | Not currently published (weights incomplete on the snapshot service); local conversion only | Diagnostic sibling of the QAT rung, which is the primary pull for this tier. About 14 GB if converted locally; only worth the conversion when isolating a quant artifact the QAT rung can't explain. |
 | Gemma 4 26B A4B BF16 | `mlx_vlm.server` | `https://models.understudylabs.com/session?model=gemma-4-26b-a4b-it-mlx-vlm-bf16` | Full-precision MoE high end for 64 GB+ Macs when 4-bit quality is in question. About 52 GB. |
-| Gemma 4 31B 4-bit | `mlx_vlm.server` | `https://models.understudylabs.com/session?model=gemma-4-31b-it-mlx-vlm-4bit` | Workstation/high-memory local rung when dense capacity matters. About 17 GB; verified generation plus logprobs/top-logprobs. |
+| Gemma 4 31B 4-bit | `mlx_vlm.server` | Not currently published (weights incomplete on the snapshot service); local conversion only | Workstation/high-memory local rung when dense capacity matters. About 17 GB if converted locally from `google/gemma-4-31b-it`; the published 31B BF16 snapshot covers this tier for 96 GB+ machines. |
 | Gemma 4 31B BF16 | `mlx_vlm.server` | `https://models.understudylabs.com/session?model=gemma-4-31b-it-mlx-vlm-bf16` | Full-precision dense high end for 96 GB+ Macs. About 62 GB. |
 | DiffusionGemma 26B A4B 4-bit | `mlx_vlm.server` (mlx-vlm ≥ 0.6.3) | `https://models.understudylabs.com/session?model=diffusiongemma-26b-a4b-it-mlx-vlm-4bit` | Block-diffusion variant of the 26B A4B MoE. About 16 GB; verified generation, chat completions, and tool calls. See the diffusion note below before picking it for speed. |
 | DiffusionGemma 26B A4B BF16 | `mlx_vlm.server` (mlx-vlm ≥ 0.6.3) | `https://models.understudylabs.com/session?model=diffusiongemma-26b-a4b-it-mlx-vlm-bf16` | Full-precision diffusion rung for 64 GB+ Macs. About 52 GB; on bandwidth-bound Apple Silicon it decodes slightly *faster* than the 4-bit snapshot (diffusion decode is compute-bound), so prefer it when memory allows. |
@@ -196,27 +197,29 @@ fixed `seed` for reproducibility, never `temperature: 0`.
 When adding a new model to the cache or ladder, append its row here as part of
 the pull — the bench harness should never have to guess.
 
-Small full-precision diagnostic note: `gemma-4-e2b-it-mlx-vlm-bf16` is the
-smallest BF16 rung. Use it to distinguish model-size limits from quantization
-damage before jumping to 12B or remote.
+Small full-precision diagnostic note: `gemma-4-e2b-it-mlx-vlm-bf16` (the
+smallest BF16 rung) is not currently published on the snapshot service —
+convert it locally if you need it, or use the published
+`gemma-4-12b-it-mlx-vlm-bf16` to distinguish model-size limits from
+quantization damage before jumping to remote.
 
 Known-good high-end smoke:
 
 ```bash
 python -m mlx_vlm.server \
-  --model ~/.understudy/models/gemma-4-26b-a4b-it-mlx-vlm-4bit \
+  --model ~/.understudy/models/gemma-4-26b-a4b-it-qat-mlx-vlm-understudy \
   --host 127.0.0.1 --port 8094
 
 curl -s http://127.0.0.1:8094/v1/chat/completions \
   -H 'Content-Type: application/json' \
-  -d '{"model":"~/.understudy/models/gemma-4-26b-a4b-it-mlx-vlm-4bit","messages":[{"role":"user","content":"Answer in exactly three words: what is local inference?"}],"max_tokens":24,"temperature":0}'
+  -d '{"model":"~/.understudy/models/gemma-4-26b-a4b-it-qat-mlx-vlm-understudy","messages":[{"role":"user","content":"Answer in exactly three words: what is local inference?"}],"max_tokens":24,"temperature":0}'
 ```
 
 Expected shape: HTTP 200, a `choices[0].message.content` answer such as
 `Running models locally.` or `AI runs locally.`, `finish_reason: "stop"`, and
-usage counts. Repeat the same smoke for `gemma-4-31b-it-mlx-vlm-4bit`. This is
-the supported functional check; raw `mlx_vlm.generate()` can emit odd text if the
-chat template is bypassed.
+usage counts. Repeat the same smoke for `gemma-4-31b-it-mlx-vlm-bf16` on
+machines with the memory for it. This is the supported functional check; raw
+`mlx_vlm.generate()` can emit odd text if the chat template is bypassed.
 
 Full-precision high end: the BF16 rungs for `gemma-4-26b-a4b-it` and
 `gemma-4-31b-it` are published as Understudy signed snapshots

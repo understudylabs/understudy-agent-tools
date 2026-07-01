@@ -230,11 +230,13 @@ through MLX on Apple Silicon (see
   (about 4.8 GB, `mlx-vlm 0.6.2`, served with `mlx_vlm.server`) — provenance
   and smoke-test details:
   [`../manage-local-models/reference.md`](../manage-local-models/reference.md).
-- **Small BF16 diagnostic rung** — an Understudy-verified BF16 conversion of
-  `google/gemma-4-e2b-it`, served with `mlx_vlm.server`. Use
-  `https://models.understudylabs.com/session?model=gemma-4-e2b-it-mlx-vlm-bf16`
-  when quantization may be hurting a small-model workload. It is about
-  9.5 GB on disk.
+- **Small BF16 diagnostic rung** — `gemma-4-e2b-it-mlx-vlm-bf16` is **not
+  currently published** on the snapshot service (its session URL answers
+  `unknown model`). When quantization may be hurting a small-model workload,
+  either convert it locally from `google/gemma-4-e2b-it` with `mlx-vlm`, or
+  use the published
+  `https://models.understudylabs.com/session?model=gemma-4-12b-it-mlx-vlm-bf16`
+  (about 22 GB) as the full-precision comparison rung.
 - **Delivery shape** — publish the stable
   `models.understudylabs.com/session?model=...` endpoint. It returns a manifest
   with short-lived signed URLs for the actual model files; do not publish the
@@ -248,13 +250,13 @@ through MLX on Apple Silicon (see
   `https://models.understudylabs.com/session?model=gemma-4-12b-it-mlx-vlm-bf16`
   only for larger-memory quality/perf profiling; it is about 22 GB on disk.
 - **Larger local Gemma rungs** — the official MoE-style climb is the
-  **certified** `gemma-4-26b-a4b-it-qat-mlx-vlm-understudy` (QAT MLX 4-bit
-  `group_size=32` + 8-bit routers, about 16 GB; certified generation,
-  logprobs/top-logprobs, and tool calls). If its session URL is not yet
-  published, the interim rung is `gemma-4-26b-a4b-it-mlx-vlm-4bit` (about
-  14 GB). `gemma-4-31b-it-mlx-vlm-4bit` is the dense high-memory local rung at
-  about 17 GB. All use stable
-  `https://models.understudylabs.com/session?model=<id>` endpoints; see
+  **certified, published** `gemma-4-26b-a4b-it-qat-mlx-vlm-understudy` (QAT
+  MLX 4-bit `group_size=32` + 8-bit routers, about 16 GB; certified
+  generation, logprobs/top-logprobs, and tool calls). The vanilla
+  `gemma-4-26b-a4b-it-mlx-vlm-4bit` and `gemma-4-31b-it-mlx-vlm-4bit` are
+  **not currently published** (weights incomplete on the snapshot service) —
+  do not send users to their session URLs; the published dense high-memory
+  rung is `gemma-4-31b-it-mlx-vlm-bf16` (about 62 GB, 96 GB+ Macs). See
   [`../manage-local-models/reference.md`](../manage-local-models/reference.md)
   for the canonical provenance statement and the known-good chat smoke.
 - **DiffusionGemma rungs (specialty, not an onboarding default)** —

@@ -52,6 +52,13 @@ pub fn run() {
                 }
             });
 
+            // Refresh the model catalog from the snapshot service in the
+            // background; snapshots() serves the bundled fallback until (and
+            // unless) a live catalog lands.
+            tauri::async_runtime::spawn(async {
+                let _ = models::refresh_catalog().await;
+            });
+
             // Local API server (HTTP + MCP + A2A) for coding agents.
             server::start(app.handle().clone());
 
