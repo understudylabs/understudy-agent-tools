@@ -558,6 +558,61 @@ describe("understudy CLI", () => {
     }
   });
 
+  it("status treats orgs-map-only credentials as signed in", () => {
+    const home = mkdtempSync(join(tmpdir(), "understudy-status-orgs-home-"));
+    const repo = mkdtempSync(join(tmpdir(), "understudy-status-orgs-repo-"));
+    try {
+      const configDir = join(home, ".understudy");
+      mkdirSync(configDir, { recursive: true });
+      // No legacy top-level api_key/gateway_url: the per-org map is primary.
+      writeFileSync(
+        join(configDir, "credentials.json"),
+        `${JSON.stringify({
+          orgs: {
+            org_only: {
+              api_key: "sk_test_orgs_map_7391",
+              gateway_url: "https://api.understudylabs.com",
+            },
+          },
+        })}\n`,
+      );
+      const result = runWithHome(["status", "--json"], home, repo);
+      assert.equal(result.status, 0, result.stderr);
+      const payload = JSON.parse(result.stdout);
+      assert.equal(payload.signed_in, true);
+      assert.equal(payload.auth_mode, "api_key");
+      assert.equal(payload.org_id, "org_only");
+      assert.equal(payload.api_key_suffix, "7391");
+      assert.equal(payload.gateway_url, "https://api.understudylabs.com");
+    } finally {
+      rmSync(home, { recursive: true, force: true });
+      rmSync(repo, { recursive: true, force: true });
+    }
+  });
+
+  it("status ignores a stale ~/.understudy/config.json project claim", () => {
+    const home = mkdtempSync(join(tmpdir(), "understudy-status-stale-home-"));
+    const repo = mkdtempSync(join(tmpdir(), "understudy-status-stale-repo-"));
+    try {
+      const configDir = join(home, ".understudy");
+      mkdirSync(configDir, { recursive: true });
+      // The pre-fix findProjectRoot fallback wrote per-repo config here.
+      writeFileSync(
+        join(configDir, "config.json"),
+        `${JSON.stringify({ org_id: "org_stale", project_slug: "rehearsal" })}\n`,
+      );
+      // Run from $HOME itself — the worst case for the old walk.
+      const result = runWithHome(["status", "--json"], home, home);
+      assert.equal(result.status, 0, result.stderr);
+      const payload = JSON.parse(result.stdout);
+      assert.equal(payload.configured, false);
+      assert.notEqual(payload.project_slug, "rehearsal");
+    } finally {
+      rmSync(home, { recursive: true, force: true });
+      rmSync(repo, { recursive: true, force: true });
+    }
+  });
+
   it("includes telemetry state in login JSON output", () => {
     const home = mkdtempSync(join(tmpdir(), "understudy-login-home-"));
     try {

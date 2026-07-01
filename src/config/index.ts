@@ -2,7 +2,7 @@ import { existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname } from "node:path";
 import { z } from "zod";
 
-import { projectConfigPath } from "./paths.js";
+import { isGlobalProjectConfigPath, projectConfigPath } from "./paths.js";
 
 /**
  * Per-repo `.understudy/config.json` shape. Contains no secrets — it is
@@ -28,6 +28,12 @@ export type ProjectConfig = z.infer<typeof ProjectConfigSchema>;
  */
 export function readProjectConfig(startDir?: string): ProjectConfig | null {
   const path = projectConfigPath(startDir);
+  // `~/.understudy/config.json` is global config territory, never a
+  // project config — a stale file there must not claim an active
+  // project (only reachable when startDir is `$HOME` itself).
+  if (isGlobalProjectConfigPath(path)) {
+    return null;
+  }
   if (!existsSync(path)) {
     return null;
   }
@@ -48,6 +54,11 @@ export function readProjectConfig(startDir?: string): ProjectConfig | null {
  * the `.understudy/` directory if it doesn't yet exist.
  */
 export function writeProjectConfig(path: string, config: ProjectConfig): void {
+  if (isGlobalProjectConfigPath(path)) {
+    throw new Error(
+      "Refusing to write project config to ~/.understudy/config.json — that is the global Understudy config dir, not a project. cd into your project repo and retry.",
+    );
+  }
   ProjectConfigSchema.parse(config);
   mkdirSync(dirname(path), { recursive: true });
   writeFileSync(path, `${JSON.stringify(config, null, 2)}\n`, { encoding: "utf8" });
