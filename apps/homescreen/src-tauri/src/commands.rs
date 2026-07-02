@@ -823,7 +823,7 @@ fn chat_route_signals(app: &AppHandle, session_id: Option<&str>) -> ChatRouteSig
     }
 }
 
-fn residency<'a>(app: &'a AppHandle) -> &'a Residency {
+fn residency(app: &AppHandle) -> &Residency {
     app.state::<Residency>().inner()
 }
 
@@ -1875,7 +1875,7 @@ pub fn export_fusion_benchmark_comparison(
                 .count() as u64,
         })
         .collect::<Vec<_>>();
-    groups.sort_by(|a, b| b.rows.cmp(&a.rows));
+    groups.sort_by_key(|g| std::cmp::Reverse(g.rows));
     let packet = FusionBenchmarkComparisonPacket {
         schema_version: "understudy.fusion_benchmark_comparison.v1",
         created_at: chrono::Utc::now().to_rfc3339(),
@@ -2081,7 +2081,7 @@ pub fn chat_route_metrics(app: AppHandle, limit: Option<u32>) -> Result<ChatRout
             avg_local_mem_gb: avg(&local_mem_values),
         });
     }
-    out.sort_by(|a, b| b.rows.cmp(&a.rows));
+    out.sort_by_key(|g| std::cmp::Reverse(g.rows));
     Ok(ChatRouteMetrics {
         schema_version: "understudy.chat_route_metrics.v1",
         groups: out,
