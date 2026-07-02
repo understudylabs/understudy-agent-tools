@@ -122,6 +122,23 @@ type FusionRunSummary = {
   }[];
 };
 
+type FusionBenchmarkResultRow = {
+  id: number;
+  run_id: string;
+  task_id: string;
+  mode: string;
+  model: string;
+  elapsed_ms: number | null;
+  prompt_tokens: number | null;
+  completion_tokens: number | null;
+  sidekick_runs: number;
+  sidekick_tool_calls: number;
+  gateway_used: boolean;
+  local_mem_gb: number | null;
+  score: number | null;
+  status: string;
+};
+
 type FusionRouteDecision = {
   id: number;
   prompt_excerpt: string;
@@ -308,6 +325,7 @@ export function TrainingPane({ section }: { section: TrainingPaneId }) {
 function FusionEvaluationPane() {
   const [matrix, setMatrix] = useState<FusionMatrix | null>(null);
   const [runSummary, setRunSummary] = useState<FusionRunSummary | null>(null);
+  const [persistedRows, setPersistedRows] = useState<FusionBenchmarkResultRow[]>([]);
   const [decisions, setDecisions] = useState<FusionRouteDecision[]>([]);
   const [plan, setPlan] = useState<FusionMatrixRun | null>(null);
   const [suite, setSuite] = useState("local-fusion-smoke");
@@ -321,13 +339,15 @@ function FusionEvaluationPane() {
   const [finishedScore, setFinishedScore] = useState<number | null>(null);
 
   const refresh = async () => {
-    const [nextMatrix, nextSummary, nextDecisions] = await Promise.all([
+    const [nextMatrix, nextSummary, nextRows, nextDecisions] = await Promise.all([
       invoke<FusionMatrix>("fusion_benchmark_matrix"),
       invoke<FusionRunSummary>("fusion_benchmark_run_summary", { limit: 80 }),
+      invoke<FusionBenchmarkResultRow[]>("fusion_benchmark_results", { limit: 500 }),
       invoke<FusionRouteDecision[]>("fusion_route_decisions", { limit: 8 }),
     ]);
     setMatrix(nextMatrix);
     setRunSummary(nextSummary);
+    setPersistedRows(nextRows);
     setDecisions(nextDecisions);
   };
 
@@ -470,34 +490,10 @@ function FusionEvaluationPane() {
     (completedRows.length
       ? completedRows.reduce((sum, row) => sum + (row.score ?? 0), 0) / completedRows.length
       : null);
-  const candidateResults = useMemo(() => {
-    const rows = new Map<string, CandidateResult>();
-    const candidateLabels = new Map(matrix?.candidates.map((item) => [item.id, item.label]) ?? []);
-
-    for (const run of runSummary?.runs ?? []) {
-      for (const mode of run.modes) {
-        const existing = rows.get(mode.mode) ?? {
-          id: mode.mode,
-          label: candidateLabels.get(mode.mode) ?? mode.mode,
-          suites: 0,
-          rows: 0,
-          okRows: 0,
-          errorRows: 0,
-          skippedRows: 0,
-          avgScore: null,
-          avgLatencyMs: null,
-          avgTokens: null,
-          sidekickRuns: 0,
-          status: "skipped" as const,
-          strongestMode: null,
-          weakestMode: null,
-        };
-        rows.set(mode.mode, mergeCandidateResult(existing, mode));
-      }
-    }
-
-    return Array.from(rows.values()).sort((a, b) => (b.avgScore ?? -1) - (a.avgScore ?? -1));
-  }, [matrix, runSummary]);
+  const candidateResults = useMemo(
+    () => persistedCandidateResults(persistedRows, matrix),
+    [matrix, persistedRows],
+  );
 
   return (
     <>
@@ -689,16 +685,16 @@ function FusionEvaluationPane() {
 }
 
 function ModelCandidateResults({ results, liveRows }: { results: CandidateResult[]; liveRows: FusionLiveRow[] }) {
-  const liveByMode = liveRows.reduce<Record<string, FusionLiveRow[]>>((acc, row) => {
-    acc[row.mode] = [...(acc[row.mode] ?? []), row];
+  const liveByCandidate = liveRows.reduce<Record<string, FusionLiveRow[]>>((acc, row) => {
+    acc[row.candidate] = [...(acc[row.candidate] ?? []), row];
     return acc;
   }, {});
-  const liveResults = Object.entries(liveByMode).map(([mode, rows]) => {
+  const liveResults = Object.entries(liveByCandidate).map(([candidate, rows]) => {
     const finished = rows.filter((row) => ["ok", "error", "skipped"].includes(row.status));
     const scores = finished.flatMap((row) => (row.score == null ? [] : [row.score]));
     return {
-      id: mode,
-      label: mode,
+      id: candidate,
+      label: candidate,
       suites: 1,
       rows: rows.length,
       okRows: finished.filter((row) => row.status === "ok").length,
@@ -709,8 +705,8 @@ function ModelCandidateResults({ results, liveRows }: { results: CandidateResult
       avgTokens: null,
       sidekickRuns: finished.reduce((sum, row) => sum + row.sidekick_runs, 0),
       status: rows.some((row) => row.status === "running") ? "running" as const : resultStatus(finished.length, scores.length ? scores.reduce((sum, score) => sum + score, 0) / scores.length : null, finished.some((row) => row.status === "error")),
-      strongestMode: null,
-      weakestMode: null,
+      strongestMode: bestModeFromRows(finished, "high"),
+      weakestMode: bestModeFromRows(finished, "low"),
     };
   });
   const rows = liveResults.length ? liveResults : results;
@@ -781,32 +777,6 @@ function ResultStat({ label, value, tone }: { label: string; value: number; tone
   );
 }
 
-function mergeCandidateResult(existing: CandidateResult, mode: FusionRunModeSummary): CandidateResult {
-  const rows = existing.rows + mode.rows;
-  const score = weightedAverage(existing.avgScore, existing.rows, mode.avg_score, mode.rows);
-  const latency = weightedAverage(existing.avgLatencyMs, existing.rows, mode.avg_elapsed_ms, mode.rows);
-  const tokens = weightedAverage(existing.avgTokens, existing.rows, mode.avg_total_tokens, mode.rows);
-  const status = resultStatus(rows, score, existing.errorRows + mode.error_rows > 0);
-  const strongestMode = score == null ? existing.strongestMode : bestMode(existing.strongestMode, existing.avgScore, mode.mode, mode.avg_score, "high");
-  const weakestMode = score == null ? existing.weakestMode : bestMode(existing.weakestMode, existing.avgScore, mode.mode, mode.avg_score, "low");
-
-  return {
-    ...existing,
-    suites: existing.suites + 1,
-    rows,
-    okRows: existing.okRows + mode.ok_rows,
-    errorRows: existing.errorRows + mode.error_rows,
-    skippedRows: existing.skippedRows + mode.skipped_rows,
-    avgScore: score,
-    avgLatencyMs: latency,
-    avgTokens: tokens,
-    sidekickRuns: existing.sidekickRuns + Math.round(mode.avg_sidekick_runs * mode.rows),
-    status,
-    strongestMode,
-    weakestMode,
-  };
-}
-
 function weightedAverage(current: number | null, currentRows: number, next: number | null, nextRows: number): number | null {
   if (current == null && next == null) return null;
   if (current == null) return next;
@@ -818,19 +788,79 @@ function avg(values: number[]): number | null {
   return values.length ? values.reduce((sum, value) => sum + value, 0) / values.length : null;
 }
 
-function bestMode(currentMode: string | null, currentScore: number | null, nextMode: string, nextScore: number | null, direction: "high" | "low"): string | null {
-  if (nextScore == null) return currentMode;
-  if (currentScore == null || currentMode == null) return nextMode;
-  return direction === "high"
-    ? (nextScore >= currentScore ? nextMode : currentMode)
-    : (nextScore <= currentScore ? nextMode : currentMode);
-}
-
 function resultStatus(rows: number, score: number | null, hasErrors: boolean): CandidateResult["status"] {
   if (!rows) return "skipped";
   if (hasErrors) return "failed";
   if (score == null) return "skipped";
   return score >= 0.7 ? "passed" : "failed";
+}
+
+function persistedCandidateResults(rows: FusionBenchmarkResultRow[], matrix: FusionMatrix | null): CandidateResult[] {
+  const candidates = matrix?.candidates ?? [];
+  const labels = new Map(candidates.map((item) => [item.id, item.label]));
+  const groups = new Map<string, FusionBenchmarkResultRow[]>();
+
+  for (const row of rows) {
+    const candidate = inferCandidate(row, candidates);
+    groups.set(candidate, [...(groups.get(candidate) ?? []), row]);
+  }
+
+  return Array.from(groups.entries())
+    .map(([candidate, candidateRows]) => {
+      const scores = candidateRows.flatMap((row) => (row.score == null ? [] : [row.score]));
+      const latencies = candidateRows.flatMap((row) => (row.elapsed_ms == null ? [] : [row.elapsed_ms]));
+      const tokens = candidateRows.flatMap((row) =>
+        row.prompt_tokens == null || row.completion_tokens == null
+          ? []
+          : [row.prompt_tokens + row.completion_tokens],
+      );
+      const suites = new Set(candidateRows.map((row) => parentRunId(row.run_id, candidate))).size;
+      const avgScore = avg(scores);
+      return {
+        id: candidate,
+        label: labels.get(candidate) ?? candidate,
+        suites,
+        rows: candidateRows.length,
+        okRows: candidateRows.filter((row) => row.status === "ok").length,
+        errorRows: candidateRows.filter((row) => row.status === "error").length,
+        skippedRows: candidateRows.filter((row) => row.status === "skipped").length,
+        avgScore,
+        avgLatencyMs: avg(latencies),
+        avgTokens: avg(tokens),
+        sidekickRuns: candidateRows.reduce((sum, row) => sum + row.sidekick_runs, 0),
+        status: resultStatus(candidateRows.length, avgScore, candidateRows.some((row) => row.status === "error")),
+        strongestMode: bestModeFromRows(candidateRows, "high"),
+        weakestMode: bestModeFromRows(candidateRows, "low"),
+      };
+    })
+    .sort((a, b) => (b.avgScore ?? -1) - (a.avgScore ?? -1));
+}
+
+function inferCandidate(row: FusionBenchmarkResultRow, candidates: FusionCandidate[]): string {
+  const fromRunId = candidates.find((candidate) => row.run_id.endsWith(`-${candidate.id}`));
+  if (fromRunId) return fromRunId.id;
+  const fromModel = candidates.find((candidate) => row.model === candidate.model_hint || row.model.includes(candidate.model_hint));
+  if (fromModel) return fromModel.id;
+  if (row.gateway_used) return "gateway-glm";
+  return row.model || "unknown";
+}
+
+function parentRunId(runId: string, candidate: string): string {
+  return runId.endsWith(`-${candidate}`) ? runId.slice(0, -(candidate.length + 1)) : runId;
+}
+
+function bestModeFromRows(
+  rows: Array<Pick<FusionBenchmarkResultRow | FusionLiveRow, "mode" | "score">>,
+  direction: "high" | "low",
+): string | null {
+  const scored = rows.filter((row) => row.score != null) as Array<{ mode: string; score: number }>;
+  if (!scored.length) return null;
+  const best = scored.reduce((winner, row) =>
+    direction === "high"
+      ? (row.score >= winner.score ? row : winner)
+      : (row.score <= winner.score ? row : winner),
+  );
+  return best.mode;
 }
 
 function normalizeRowStatus(status: string): FusionLiveRow["status"] {
