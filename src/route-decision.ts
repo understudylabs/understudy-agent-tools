@@ -29,6 +29,49 @@ function isObject(value: unknown): value is JsonObject {
   return typeof value === "object" && value !== null && !Array.isArray(value);
 }
 
+export const ROUTE_DECISION_PACKET_SCHEMA_VERSION = "understudy.route_decision_packet.v1";
+
+/**
+ * Structural validation for `understudy.route_decision_packet.v1` (the shape
+ * `planRouteDecision` writes; mirrored by
+ * schemas/understudy.route_decision_packet.v1.schema.json). `routes promote`
+ * runs this before consuming any field, so an unversioned or malformed
+ * packet is rejected with every issue named instead of silently promoting
+ * from garbage. Extra fields are allowed — packets are additive-extensible.
+ */
+export function validateRouteDecisionPacket(packet: JsonObject): void {
+  const issues: string[] = [];
+  if (packet.schema_version === undefined) {
+    issues.push("missing schema_version");
+  } else if (packet.schema_version !== ROUTE_DECISION_PACKET_SCHEMA_VERSION) {
+    issues.push(
+      `unsupported schema_version ${JSON.stringify(packet.schema_version)} (expected ${ROUTE_DECISION_PACKET_SCHEMA_VERSION})`,
+    );
+  }
+  if (typeof packet.decision !== "string" || packet.decision.length === 0) {
+    issues.push("missing decision");
+  }
+  if (packet.candidate_routes !== undefined && !Array.isArray(packet.candidate_routes)) {
+    issues.push("candidate_routes must be an array when present");
+  }
+  for (const key of ["incumbent", "constraints", "readiness"] as const) {
+    if (packet[key] !== undefined && !isObject(packet[key])) {
+      issues.push(`${key} must be an object when present`);
+    }
+  }
+  if (
+    packet.route_traffic_pct !== undefined &&
+    packet.route_traffic_pct !== null &&
+    typeof packet.route_traffic_pct !== "number" &&
+    typeof packet.route_traffic_pct !== "string"
+  ) {
+    issues.push("route_traffic_pct must be a number when present");
+  }
+  if (issues.length > 0) {
+    throw new Error(`Invalid route decision packet: ${issues.join("; ")}`);
+  }
+}
+
 function optionalString(value: unknown): string | null {
   return typeof value === "string" && value.length > 0 ? value : null;
 }

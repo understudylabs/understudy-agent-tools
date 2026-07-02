@@ -1310,6 +1310,34 @@ describe("understudy CLI", () => {
       const promote = await runWithEnvAsync(["routes", "promote", "--from", packetPath, "--yes"], env, repo);
       assert.notEqual(promote.status, 0);
       assert.match(promote.stderr, /evaluate-first/);
+
+      // Packets without a schema_version stamp are rejected before any field
+      // is consumed — promote never acts on unversioned evidence.
+      const unversionedPath = join(repo, "route-decision-unversioned.json");
+      writeFileSync(unversionedPath, JSON.stringify({ decision: "hosted-promotion-ready", workload_name: "classify", model_id: "glm-5.2" }));
+      const unversioned = await runWithEnvAsync(["routes", "promote", "--from", unversionedPath, "--yes"], env, repo);
+      assert.notEqual(unversioned.status, 0);
+      assert.match(unversioned.stderr, /missing schema_version/);
+
+      const wrongVersionPath = join(repo, "route-decision-wrong-version.json");
+      writeFileSync(wrongVersionPath, JSON.stringify({ schema_version: "understudy.route_decision_packet.v2", decision: "hosted-promotion-ready" }));
+      const wrongVersion = await runWithEnvAsync(["routes", "promote", "--from", wrongVersionPath, "--yes"], env, repo);
+      assert.notEqual(wrongVersion.status, 0);
+      assert.match(wrongVersion.stderr, /unsupported schema_version/);
+
+      // A valid hosted-promotion-ready packet passes validation and promotes.
+      const readyPath = join(repo, "route-decision-ready.json");
+      writeFileSync(readyPath, JSON.stringify({
+        schema_version: "understudy.route_decision_packet.v1",
+        decision: "hosted-promotion-ready",
+        workload_name: "classify",
+        model_id: "glm-5.2",
+        route_traffic_pct: 15,
+      }));
+      const promoted = await runWithEnvAsync(["--json", "routes", "promote", "--from", readyPath, "--yes"], env, repo);
+      assert.equal(promoted.status, 0, promoted.stderr);
+      assert.equal(JSON.parse(promoted.stdout).route_traffic_pct, 15);
+      assert.deepEqual(requests.at(-1).body, { model_id: "glm-5.2", route_traffic_pct: 15 });
     });
   });
 
