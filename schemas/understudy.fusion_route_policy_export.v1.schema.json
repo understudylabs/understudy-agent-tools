@@ -1,0 +1,66 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://understudylabs.com/schemas/understudy.fusion_route_policy_export.v1.schema.json",
+  "title": "understudy.fusion_route_policy_export.v1",
+  "description": "The desktop app's persisted Fusion route-policy decisions, exported inside an understudy.fusion_benchmark_comparison.v1 packet (route_policy field). This is the app-side evidence a CLI route decision can cite: per-prompt routing decisions with the policy class, readiness signals, and token/memory accounting, plus per-policy-class rollups. Additive-extensible; consumers must ignore unknown fields.",
+  "type": "object",
+  "required": ["schema_version", "rows", "groups", "decisions"],
+  "additionalProperties": true,
+  "properties": {
+    "schema_version": {
+      "const": "understudy.fusion_route_policy_export.v1"
+    },
+    "rows": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Number of decision rows in `decisions`."
+    },
+    "groups": {
+      "type": "array",
+      "description": "Per-policy-class rollups, sorted by row count descending.",
+      "items": {
+        "type": "object",
+        "required": ["policy_class", "rows"],
+        "additionalProperties": true,
+        "properties": {
+          "policy_class": { "type": "string" },
+          "rows": { "type": "integer", "minimum": 0 },
+          "sidekick_rows": { "type": "integer", "minimum": 0 },
+          "gateway_rows": { "type": "integer", "minimum": 0 },
+          "sidekick_upgrade_rows": { "type": "integer", "minimum": 0 },
+          "local_rows": { "type": "integer", "minimum": 0 }
+        }
+      }
+    },
+    "decisions": {
+      "type": "array",
+      "description": "One row per routing decision, newest first (the app's fusion_route_decisions table).",
+      "items": {
+        "type": "object",
+        "required": ["id", "recommended_route", "policy_class", "created_at"],
+        "additionalProperties": true,
+        "properties": {
+          "id": { "type": "integer", "minimum": 0 },
+          "prompt_excerpt": { "type": "string", "description": "Truncated prompt only — never the full prompt." },
+          "current_route": { "type": ["string", "null"] },
+          "recommended_route": { "type": "string", "description": "local | gateway" },
+          "use_sidekick": { "type": "boolean" },
+          "escalate_gateway": { "type": "boolean" },
+          "upgrade_sidekick": { "type": "boolean" },
+          "reason": { "type": "string" },
+          "policy_class": { "type": "string" },
+          "signals": { "type": ["string", "null"], "description": "JSON-encoded routing signals snapshot." },
+          "main_model": { "type": ["string", "null"] },
+          "sidekick_model": { "type": ["string", "null"] },
+          "gateway_model": { "type": ["string", "null"] },
+          "local_ready": { "type": "boolean" },
+          "sidekick_ready": { "type": "boolean" },
+          "gateway_ready": { "type": "boolean" },
+          "prompt_tokens": { "type": "integer", "minimum": 0 },
+          "local_mem_gb": { "type": ["number", "null"], "minimum": 0 },
+          "created_at": { "type": "string" }
+        }
+      }
+    }
+  }
+}

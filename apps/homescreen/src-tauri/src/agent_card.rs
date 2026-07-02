@@ -35,8 +35,7 @@ fn card_path() -> Option<PathBuf> {
 }
 
 fn now_iso() -> String {
-    chrono::Utc::now()
-        .to_rfc3339_opts(chrono::SecondsFormat::Secs, true)
+    chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Secs, true)
 }
 
 /// The local API server came up (bind succeeded). Records how a fresh coding
@@ -94,7 +93,9 @@ static CARD_LOCK: std::sync::Mutex<()> = std::sync::Mutex::new(());
 
 fn update<F: FnOnce(&mut Map<String, Value>)>(f: F) {
     let Some(path) = card_path() else { return };
-    let _guard = CARD_LOCK.lock().unwrap_or_else(|poisoned| poisoned.into_inner());
+    let _guard = CARD_LOCK
+        .lock()
+        .unwrap_or_else(|poisoned| poisoned.into_inner());
     if let Err(err) = update_at(&path, f) {
         eprintln!("understudy agent-card: write failed: {err}");
     }
@@ -195,8 +196,7 @@ mod tests {
         })
         .unwrap();
 
-        let card: Value =
-            serde_json::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
+        let card: Value = serde_json::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
         // Skill-written blocks survive untouched.
         assert_eq!(card["understudy"]["name"], "Gemma 4 E2B");
         assert_eq!(card["companion"]["alive"], false);
@@ -216,8 +216,7 @@ mod tests {
             app.insert("running".into(), json!(true));
         })
         .unwrap();
-        let card: Value =
-            serde_json::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
+        let card: Value = serde_json::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
         assert_eq!(card["schema_version"], SCHEMA_VERSION);
         assert!(card["created_at"].is_string());
         assert_eq!(card["app"]["running"], true);
@@ -238,8 +237,7 @@ mod tests {
             app.insert("running".into(), json!(false));
         })
         .unwrap();
-        let card: Value =
-            serde_json::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
+        let card: Value = serde_json::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
         assert_eq!(card["app"]["running"], false);
     }
 }

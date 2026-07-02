@@ -130,7 +130,16 @@ enough provenance for another agent to repeat the step without guessing.
 
 Inspect the repo first to find where LLM calls happen and the current
 model/provider/harness/eval state, then surface that inventory before building
-anything. If the request/response path, dataset/trace shape, prompt purpose, or
+anything. The inventory includes evidence that already exists outside the
+repo: the Understudy desktop app exports benchmark comparison packets
+(`understudy.fusion_benchmark_comparison.v1`) under `~/.understudy/exports/`,
+each carrying `understudy.eval_result.v1` rows plus a packet-level
+`provenance` block (rows in a sibling JSONL file; verify
+`shasum -a 256 <provenance.eval_results_path>` equals
+`provenance.eval_results_sha256` before admitting it). Surface any verified
+packets in the inventory so the developer isn't asked to re-measure what the
+app already measured — the admission checklist lives in
+[`../ramp-and-verify/SKILL.md`](../ramp-and-verify/SKILL.md). If the request/response path, dataset/trace shape, prompt purpose, or
 success criteria are not already clear, route to
 [`../understand-workload/SKILL.md`](../understand-workload/SKILL.md) first and
 use its workload profile as the narrative source of truth. The deep inspection

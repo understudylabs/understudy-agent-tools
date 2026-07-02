@@ -53,3 +53,34 @@ The schema is standard JSON Schema (draft 2020-12). Repo tests use a
 lightweight structural check (required fields, enums, score range) so no
 validator dependency is needed; external consumers can use any draft-2020-12
 validator.
+
+## `understudy.route_decision_packet.v1`
+
+[`understudy.route_decision_packet.v1.schema.json`](understudy.route_decision_packet.v1.schema.json)
+is the route decision for one workload — written by the CLI planner
+(`src/route-decision.ts`) and validated by `understudy routes promote` before
+any field is consumed. `decision: "evaluate-first"` / `"local-only"` packets
+must never mutate hosted traffic; promotion-grade packets should cite their
+eval evidence (an app export packet path + `eval_results_sha256`, or a
+`claim.json`) in the optional `evidence` block.
+
+## `understudy.fusion_route_policy_export.v1`
+
+[`understudy.fusion_route_policy_export.v1.schema.json`](understudy.fusion_route_policy_export.v1.schema.json)
+is the desktop app's persisted Fusion route-decision evidence, carried in the
+`route_policy` field of every `understudy.fusion_benchmark_comparison.v1`
+export packet. It is the app-side counterpart a CLI route decision reconciles
+against: per-prompt decisions with policy class, readiness signals, and
+token/memory accounting.
+
+### Export packet provenance
+
+Every `understudy.fusion_benchmark_comparison.v1` packet also carries a
+packet-level `provenance` block. The eval rows are written to a sibling JSONL
+file (`provenance.eval_results_path`, one compact `eval_result.v1` row per
+line) and `provenance.eval_results_sha256` is the SHA-256 of that file's bytes
+— verify with `shasum -a 256 <file>`, the same file-hash idiom as
+`harness_sha256`/`splits_sha256`. The block also surfaces row count and the
+distinct run ids, split identities, row-level harness/split hashes, and cost
+bases. Skills admit an app export as claim evidence by checking this block;
+see `skills/ramp-and-verify/SKILL.md`.

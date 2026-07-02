@@ -248,7 +248,12 @@ where
 {
     tokio::task::spawn_blocking(f)
         .await
-        .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, format!("task failed: {e}")))?
+        .map_err(|e| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                format!("task failed: {e}"),
+            )
+        })?
         .map_err(|e| (err_status, e))
 }
 
@@ -523,7 +528,7 @@ async fn export_fusion_benchmark_comparison(
     Json(body): Json<crate::commands::ExportFusionBenchmarkComparisonRequest>,
 ) -> Result<Json<Value>, (StatusCode, String)> {
     auth(&ctx, &h)?;
-    crate::commands::export_fusion_benchmark_comparison(ctx.app.clone(), body)
+    crate::commands::export_fusion_benchmark_comparison_constrained(ctx.app.clone(), body)
         .map(|v| Json(json!(v)))
         .map_err(|e| (StatusCode::BAD_GATEWAY, e))
 }
@@ -533,7 +538,7 @@ async fn export_automationbench_handoff(
     Json(body): Json<crate::commands::ExportAutomationBenchHandoffRequest>,
 ) -> Result<Json<Value>, (StatusCode, String)> {
     auth(&ctx, &h)?;
-    crate::commands::export_automationbench_handoff(body)
+    crate::commands::export_automationbench_handoff_constrained(body)
         .map(|v| Json(json!(v)))
         .map_err(|e| (StatusCode::BAD_GATEWAY, e))
 }
@@ -784,7 +789,8 @@ fn run_benchmark_properties(with_candidates: bool) -> Value {
             "description": "Defaults to gateway-glm, local-main, local-fast."
         });
     } else {
-        props["candidate"] = json!({ "type": "string", "enum": ["gateway-glm", "local-main", "local-fast"] });
+        props["candidate"] =
+            json!({ "type": "string", "enum": ["gateway-glm", "local-main", "local-fast"] });
         props["route"] = json!({ "type": "string", "enum": ["local", "gateway"] });
         props["model"] = json!({ "type": "string", "description": "Override the model id/path." });
     }
@@ -1078,8 +1084,15 @@ async fn call_tool(ctx: &Ctx, name: &str, args: &Value) -> Result<Value, String>
                 .map(|x| x as u32);
             let residency = app.state::<crate::residency::Residency>();
             json!(
-                crate::chat::agent_chat(&app, &residency, slot_id, &session_id, &prompt, max_tokens)
-                    .await?
+                crate::chat::agent_chat(
+                    &app,
+                    &residency,
+                    slot_id,
+                    &session_id,
+                    &prompt,
+                    max_tokens
+                )
+                .await?
             )
         }
         "knowledge_dossiers" => json!(c::knowledge_dossiers()),
@@ -1115,13 +1128,16 @@ async fn call_tool(ctx: &Ctx, name: &str, args: &Value) -> Result<Value, String>
             let request =
                 serde_json::from_value::<c::ExportFusionBenchmarkComparisonRequest>(args.clone())
                     .map_err(|e| format!("invalid Fusion comparison export request: {e}"))?;
-            json!(c::export_fusion_benchmark_comparison(app, request).map_err(|e| e.to_string())?)
+            json!(
+                c::export_fusion_benchmark_comparison_constrained(app, request)
+                    .map_err(|e| e.to_string())?
+            )
         }
         "export_automationbench_handoff" => {
             let request =
                 serde_json::from_value::<c::ExportAutomationBenchHandoffRequest>(args.clone())
                     .map_err(|e| format!("invalid AutomationBench handoff request: {e}"))?;
-            json!(c::export_automationbench_handoff(request).map_err(|e| e.to_string())?)
+            json!(c::export_automationbench_handoff_constrained(request).map_err(|e| e.to_string())?)
         }
         "chat_runs" => json!(c::chat_runs(
             app,

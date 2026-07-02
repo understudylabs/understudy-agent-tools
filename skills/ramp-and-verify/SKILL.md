@@ -64,6 +64,11 @@ node dist/bin.js status --json
    incumbent by construction; confirm the workload's passthrough path works
    (`gateway probe`) before sending anything to the candidate.
 
+Desktop app export packets under `~/.understudy/exports/` are admissible for
+gate 1 once verified — shape, sibling-JSONL hash, split identity, and cost
+basis all check out. The admission checklist and verification transcript live
+in [`reference.md`](reference.md).
+
 ## The ladder
 
 Default tiers: **5% → 25% → 100%** (note: `routes set` defaults `--traffic-pct`

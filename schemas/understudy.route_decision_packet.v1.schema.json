@@ -1,0 +1,74 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://understudylabs.com/schemas/understudy.route_decision_packet.v1.schema.json",
+  "title": "understudy.route_decision_packet.v1",
+  "description": "A route decision for one workload: written by the CLI's route-decision planner (src/route-decision.ts) and consumed by `understudy routes promote`. `decision` gates what a consumer may do: 'evaluate-first' and 'local-only' packets must never mutate hosted traffic. Packets are additive-extensible; consumers must ignore fields they do not understand.",
+  "type": "object",
+  "required": ["schema_version", "decision"],
+  "additionalProperties": true,
+  "properties": {
+    "schema_version": {
+      "const": "understudy.route_decision_packet.v1",
+      "description": "Version stamp for this packet shape. Consumers reject packets without it."
+    },
+    "decision": {
+      "type": "string",
+      "minLength": 1,
+      "description": "The routing decision. 'evaluate-first' and 'local-only' block hosted promotion; other values (e.g. 'hosted-promotion-ready') may be promoted after review."
+    },
+    "workload_card": {
+      "type": ["string", "null"],
+      "description": "Path to the workload card the decision was planned from."
+    },
+    "incumbent": {
+      "type": ["object", "null"],
+      "additionalProperties": true,
+      "properties": {
+        "provider": { "type": ["string", "null"] },
+        "model": { "type": ["string", "null"] },
+        "known_latency_ms": { "type": ["number", "null"] },
+        "known_cost_usd": { "type": ["number", "null"] }
+      }
+    },
+    "constraints": {
+      "type": ["object", "null"],
+      "additionalProperties": true,
+      "description": "Workload shape, privacy boundary, data class, context/latency budgets, and the quality gate the route must satisfy."
+    },
+    "readiness": {
+      "type": ["object", "null"],
+      "additionalProperties": true,
+      "description": "What has actually been checked: local runner fit, redacted provider keys, supplier profiles, pricing sources."
+    },
+    "candidate_routes": {
+      "type": ["array", "null"],
+      "items": { "type": "object", "additionalProperties": true },
+      "description": "Ranked candidate routes with kind, provider/model, approval requirements, and pricing provenance."
+    },
+    "evidence": {
+      "type": ["object", "null"],
+      "additionalProperties": true,
+      "description": "Optional pointers to the eval evidence behind the decision — e.g. an app export packet path plus its provenance.eval_results_sha256, or a claim.json path. Promotion-grade packets should cite evidence here.",
+      "properties": {
+        "packet_path": { "type": ["string", "null"] },
+        "eval_results_sha256": { "type": ["string", "null"] },
+        "claim_path": { "type": ["string", "null"] }
+      }
+    },
+    "project_id": { "type": ["string", "null"] },
+    "project_slug": { "type": ["string", "null"] },
+    "workload_id": { "type": ["string", "null"], "description": "Hosted workload id for promotion." },
+    "workload_name": { "type": ["string", "null"], "description": "Hosted workload name for promotion." },
+    "model_id": { "type": ["string", "null"], "description": "Model id to route to on promotion." },
+    "route_model_id": { "type": ["string", "null"] },
+    "route_traffic_pct": {
+      "type": ["number", "null"],
+      "description": "Traffic percentage for the promoted route; defaults to 10 when absent."
+    },
+    "recommended_next_command": { "type": ["string", "null"] },
+    "approval_required_before": {
+      "type": ["array", "null"],
+      "items": { "type": "string" }
+    }
+  }
+}

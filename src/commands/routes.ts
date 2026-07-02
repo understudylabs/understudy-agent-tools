@@ -14,6 +14,7 @@ import {
   writeRouteSnapshot,
   type Workload,
 } from "../internal/workloads.js";
+import { validateRouteDecisionPacket } from "../route-decision.js";
 
 interface RouteOpts extends ProjectResolutionOptions {}
 
@@ -154,6 +155,7 @@ async function runRollback(cmd: Command, workloadValue: string, opts: RouteOpts)
 
 async function runPromote(cmd: Command, opts: PromoteOpts): Promise<void> {
   const packet = readPacket(opts.from);
+  validateRouteDecisionPacket(packet);
   const decision = stringValue(packet.decision);
   if (decision === "evaluate-first" || decision === "local-only") {
     throw new Error("Route packet is evaluate-first, not hosted-promotion-ready. Run local evaluation or pass explicit route inputs after review.");

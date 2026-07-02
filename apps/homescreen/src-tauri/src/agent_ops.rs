@@ -91,7 +91,10 @@ pub fn apply_download_event(progress: &mut DownloadProgress, event: &Value) {
             let Some(name) = event.get("name").and_then(|n| n.as_str()) else {
                 return;
             };
-            let downloaded = event.get("downloaded").and_then(|v| v.as_u64()).unwrap_or(0);
+            let downloaded = event
+                .get("downloaded")
+                .and_then(|v| v.as_u64())
+                .unwrap_or(0);
             let total = event.get("total").and_then(|v| v.as_u64());
             progress
                 .files
@@ -400,9 +403,14 @@ mod tests {
     fn second_concurrent_run_is_rejected_until_guard_drops() {
         let runs = BenchRuns::new();
         let guard = runs.begin("run-a").expect("first run starts");
-        let err = runs.begin("run-b").expect_err("second run must be rejected");
+        let err = runs
+            .begin("run-b")
+            .expect_err("second run must be rejected");
         assert!(err.starts_with(RUN_CONFLICT), "conflict prefix: {err}");
-        assert!(err.contains("run-a"), "conflict names the active run: {err}");
+        assert!(
+            err.contains("run-a"),
+            "conflict names the active run: {err}"
+        );
         drop(guard);
         // Slot is free again after the guard drops (ok, error, or panic path).
         let _guard = runs.begin("run-b").expect("slot freed after drop");
@@ -483,12 +491,18 @@ mod tests {
     #[test]
     fn done_and_error_events_are_terminal() {
         let mut done = DownloadProgress::new("dl-1", "model-x");
-        apply_download_event(&mut done, &json!({ "type": "Done", "dest": "/models/x", "files": 3 }));
+        apply_download_event(
+            &mut done,
+            &json!({ "type": "Done", "dest": "/models/x", "files": 3 }),
+        );
         assert_eq!(done.status, "done");
         assert_eq!(done.dest.as_deref(), Some("/models/x"));
 
         let mut failed = DownloadProgress::new("dl-2", "model-x");
-        apply_download_event(&mut failed, &json!({ "type": "Error", "message": "sha256 mismatch" }));
+        apply_download_event(
+            &mut failed,
+            &json!({ "type": "Error", "message": "sha256 mismatch" }),
+        );
         assert_eq!(failed.status, "error");
         assert_eq!(failed.error.as_deref(), Some("sha256 mismatch"));
     }
@@ -497,8 +511,14 @@ mod tests {
     fn cancelled_download_ignores_late_events_from_aborted_task() {
         let mut p = DownloadProgress::new("dl-1", "model-x");
         p.status = "cancelled".to_string();
-        apply_download_event(&mut p, &json!({ "type": "Done", "dest": "/models/x", "files": 3 }));
-        apply_download_event(&mut p, &json!({ "type": "File", "name": "a", "downloaded": 1 }));
+        apply_download_event(
+            &mut p,
+            &json!({ "type": "Done", "dest": "/models/x", "files": 3 }),
+        );
+        apply_download_event(
+            &mut p,
+            &json!({ "type": "File", "name": "a", "downloaded": 1 }),
+        );
         assert_eq!(p.status, "cancelled");
         assert!(p.files.is_empty());
     }
@@ -507,7 +527,10 @@ mod tests {
     fn logs_are_bounded() {
         let mut p = DownloadProgress::new("dl-1", "model-x");
         for i in 0..(DOWNLOAD_LOG_CAP + 10) {
-            apply_download_event(&mut p, &json!({ "type": "Log", "message": format!("m{i}") }));
+            apply_download_event(
+                &mut p,
+                &json!({ "type": "Log", "message": format!("m{i}") }),
+            );
         }
         assert_eq!(p.logs.len(), DOWNLOAD_LOG_CAP);
         assert_eq!(p.logs.last().map(String::as_str), Some("m29"));

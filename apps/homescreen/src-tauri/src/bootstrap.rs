@@ -471,8 +471,7 @@ fn safe_target(root: &Path, name: &str) -> Result<PathBuf, String> {
 /// Shared model cache root (UNDERSTUDY_MODEL_HOME override, else
 /// ~/.understudy/models) — see `models::models_dir`.
 fn models_dir() -> PathBuf {
-    models::models_dir()
-        .unwrap_or_else(|| PathBuf::from(".").join(".understudy").join("models"))
+    models::models_dir().unwrap_or_else(|| PathBuf::from(".").join(".understudy").join("models"))
 }
 
 fn command_status(id: &str, label: &str, command: String, args: &[&str]) -> ToolStatus {
