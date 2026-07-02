@@ -102,6 +102,10 @@ pub fn parse_examples(
     format: &str,
     rule: ScoringRule,
 ) -> Result<(Vec<ParsedExample>, Vec<ImportRowError>), String> {
+    // Spreadsheet exports commonly lead with a UTF-8 BOM; without stripping
+    // it the first JSONL row fails to parse and the first CSV header cell
+    // never matches its column name.
+    let content = content.strip_prefix('\u{feff}').unwrap_or(content);
     let (candidates, mut errors) = match format {
         "jsonl" => parse_jsonl_rows(content),
         "csv" => parse_csv_rows(content)?,
@@ -216,18 +220,22 @@ fn id_field(object: &serde_json::Map<String, Value>) -> Option<String> {
     }
 }
 
-/// CSV import. The first record is a header naming at least an
+/// CSV import. The first non-blank record is a header naming at least an
 /// `input`/`prompt` column and an `expected`/`expected_output`/`scoring_hint`
-/// column (case-insensitive); an `id`/`task_id` column is optional. Record
-/// numbers in errors count the header as record 1.
+/// column (case-insensitive); an `id`/`task_id` column is optional. Error
+/// line numbers are absolute 1-based record numbers (blank records keep
+/// their slot, so a blank line mid-file never shifts later numbers).
 type CsvRows = (Vec<(usize, ParsedExample)>, Vec<ImportRowError>);
 
 fn parse_csv_rows(content: &str) -> Result<CsvRows, String> {
     let records = parse_csv_records(content);
-    let Some((header, data)) = records.split_first() else {
-        return Err("CSV file is empty".to_string());
-    };
-    let header: Vec<String> = header
+    let is_blank =
+        |record: &[String]| record.iter().all(|cell| cell.trim().is_empty());
+    let header_idx = records
+        .iter()
+        .position(|record| !is_blank(record))
+        .ok_or_else(|| "CSV file is empty".to_string())?;
+    let header: Vec<String> = records[header_idx]
         .iter()
         .map(|cell| cell.trim().to_ascii_lowercase())
         .collect();
@@ -246,9 +254,9 @@ fn parse_csv_rows(content: &str) -> Result<CsvRows, String> {
 
     let mut rows = vec![];
     let mut errors = vec![];
-    for (index, record) in data.iter().enumerate() {
-        let line = index + 2; // header is record 1
-        if record.iter().all(|cell| cell.trim().is_empty()) {
+    for (index, record) in records.iter().enumerate().skip(header_idx + 1) {
+        let line = index + 1; // absolute 1-based record number
+        if is_blank(record) {
             continue;
         }
         let needed = 1 + prompt_idx.max(expected_idx).max(id_idx.unwrap_or(0));
@@ -344,11 +352,9 @@ fn parse_csv_records(content: &str) -> Vec<Vec<String>> {
         record.push(field);
         records.push(record);
     }
-    // Drop records that are entirely one empty cell (blank lines).
+    // Blank lines stay as single-empty-cell records so callers can keep
+    // absolute record numbers; parse_csv_rows skips them explicitly.
     records
-        .into_iter()
-        .filter(|record| !(record.len() == 1 && record[0].is_empty()))
-        .collect()
 }
 
 /// Content hash of the eval definition — the custom-eval analogue of the
@@ -659,38 +665,43 @@ async fn run_custom_eval_inner(
                 String::new(),
                 format!("error={}", err.replace('\n', " ")),
             ),
-            Ok(result) if result.status == "ok" => match score_output(
-                rule,
-                &example.expected,
-                &result.content,
-            ) {
-                Ok(score) => (
-                    "ok".to_string(),
-                    Some(score),
-                    Some(result.elapsed_ms),
-                    Some((result.prompt_tokens, result.completion_tokens)),
-                    result.content,
-                    format!("output_chars_scored={score}"),
-                ),
-                // The pattern was validated at import; a compile failure here
-                // means the stored definition changed underneath us.
-                Err(err) => (
-                    "error".to_string(),
+            Ok(result) if result.status == "ok" => {
+                match score_output(rule, &example.expected, &result.content) {
+                    Ok(score) => {
+                        let note =
+                            format!("score={score}; output_chars={}", result.content.len());
+                        (
+                            "ok".to_string(),
+                            Some(score),
+                            Some(result.elapsed_ms),
+                            Some((result.prompt_tokens, result.completion_tokens)),
+                            result.content,
+                            note,
+                        )
+                    }
+                    // The pattern was validated at import; a compile failure
+                    // here means the stored definition changed underneath us.
+                    Err(err) => (
+                        "error".to_string(),
+                        Some(0.0),
+                        Some(result.elapsed_ms),
+                        Some((result.prompt_tokens, result.completion_tokens)),
+                        result.content,
+                        format!("error={err}"),
+                    ),
+                }
+            }
+            Ok(result) => {
+                let note = format!("status={}", result.status);
+                (
+                    result.status.clone(),
                     Some(0.0),
                     Some(result.elapsed_ms),
                     Some((result.prompt_tokens, result.completion_tokens)),
                     result.content,
-                    format!("error={err}"),
-                ),
-            },
-            Ok(result) => (
-                result.status.clone(),
-                Some(0.0),
-                Some(result.elapsed_ms),
-                Some((result.prompt_tokens, result.completion_tokens)),
-                result.content.clone(),
-                format!("status={}", result.status),
-            ),
+                    note,
+                )
+            }
         };
         db.record_fusion_benchmark(&FusionBenchmarkInput {
             run_id: run_id.clone(),
@@ -942,6 +953,32 @@ mod tests {
         assert!(examples.is_empty());
         assert_eq!(errors.len(), 1);
         assert!(errors[0].reason.contains("columns"));
+    }
+
+    #[test]
+    fn csv_blank_lines_keep_absolute_record_numbers() {
+        // Blank record between header and data, and between data rows: the
+        // reported record number for the bad row must stay absolute.
+        let content = "\ninput,expected\n\nq1,a1\n\nq2,\n";
+        let (examples, errors) = parse_examples(content, "csv", ScoringRule::Exact).unwrap();
+        assert_eq!(examples.len(), 1);
+        assert_eq!(examples[0].task_id, "row-4");
+        assert_eq!(errors.len(), 1);
+        assert_eq!(errors[0].line, 6);
+        assert!(errors[0].reason.contains("empty expected cell"));
+    }
+
+    #[test]
+    fn leading_utf8_bom_is_stripped_for_both_formats() {
+        let jsonl = "\u{feff}{\"input\": \"q\", \"expected\": \"a\"}\n";
+        let (examples, errors) = parse_examples(jsonl, "jsonl", ScoringRule::Exact).unwrap();
+        assert_eq!(examples.len(), 1);
+        assert!(errors.is_empty());
+
+        let csv = "\u{feff}input,expected\nq,a\n";
+        let (examples, errors) = parse_examples(csv, "csv", ScoringRule::Exact).unwrap();
+        assert_eq!(examples.len(), 1);
+        assert!(errors.is_empty());
     }
 
     #[test]
