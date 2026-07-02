@@ -3567,3 +3567,24 @@ mod tests {
         );
     }
 }
+
+// ----- Anthropic (Claude) provider -----
+
+#[tauri::command]
+pub fn anthropic_models() -> Value {
+    crate::anthropic::models_json()
+}
+
+#[tauri::command]
+pub fn anthropic_status(app: AppHandle) -> Value {
+    match crate::anthropic::api_key(&app) {
+        Some((_, source)) => json!({ "present": true, "source": source }),
+        None => json!({ "present": false, "source": Value::Null }),
+    }
+}
+
+#[tauri::command]
+pub fn anthropic_key_set(app: AppHandle, key: String) -> Result<Value, String> {
+    crate::anthropic::set_api_key(&app, &key)?;
+    Ok(anthropic_status(app))
+}

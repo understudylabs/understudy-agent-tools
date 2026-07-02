@@ -101,7 +101,18 @@ type ModelChoice =
       route: "cloud";
       slotId: null;
       active: boolean;
+    }
+  | {
+      id: string;
+      label: string;
+      detail: string;
+      route: "anthropic";
+      slotId: null;
+      active: boolean;
     };
+
+type AnthropicModel = { id: string; label: string; detail: string };
+type AnthropicStatus = { present: boolean; source: string | null };
 
 const CLOUD_MODEL: ModelChoice = {
   id: "cloud:glm-5.2",
@@ -244,10 +255,21 @@ export function ChatPane({ resetToken }: { resetToken: number }) {
 
   const refreshModels = async () => {
     try {
-      const [residency, snapshots] = await Promise.all([
+      const [residency, snapshots, anthropicStatus] = await Promise.all([
         invoke<ResidencySnapshot>("get_residency"),
         invoke<SnapshotModel[]>("list_snapshot_models"),
+        invoke<AnthropicStatus>("anthropic_status").catch(() => ({ present: false, source: null })),
       ]);
+      const anthropic: ModelChoice[] = anthropicStatus.present
+        ? (await invoke<AnthropicModel[]>("anthropic_models").catch(() => [])).map((model) => ({
+            id: `anthropic:${model.id}`,
+            label: model.label,
+            detail: model.detail,
+            route: "anthropic" as const,
+            slotId: null,
+            active: true,
+          }))
+        : [];
       const local = residency.slots
         .filter((slot) => (slot.state === "running" || slot.state === "loading") && slot.model_id)
         .map<LocalModelChoice>((slot) => ({
@@ -266,7 +288,7 @@ export function ChatPane({ resetToken }: { resetToken: number }) {
         if (slot?.active && slot.thinking === pending.thinking) return null;
         return pending;
       });
-      const next = [...local, CLOUD_MODEL];
+      const next = [...local, CLOUD_MODEL, ...anthropic];
       setChoices(next);
       setSelectedModel((current) => {
         if (current && next.some((choice) => choice.id === current)) return current;
@@ -417,7 +439,8 @@ export function ChatPane({ resetToken }: { resetToken: number }) {
     try {
       await invoke("chat_stream", {
         messages: toSend.map(({ role, content }) => ({ role, content })),
-        route: choice.route,
+        // Anthropic choices encode the model in the id (anthropic:<model>).
+        route: choice.route === "anthropic" ? choice.id : choice.route,
         slotId: choice.slotId,
         sessionId,
         onEvent: ch,
@@ -426,6 +449,19 @@ export function ChatPane({ resetToken }: { resetToken: number }) {
       setErr(String(e));
       setStreaming(false);
       setAssistantSpeaking(false);
+    }
+  };
+
+  const connectAnthropic = async () => {
+    const key = window.prompt(
+      "Anthropic API key (stored locally in the app database, never uploaded):",
+    );
+    if (!key?.trim()) return;
+    try {
+      await invoke("anthropic_key_set", { key: key.trim() });
+      await refreshModels();
+    } catch (e: unknown) {
+      setErr(String(e));
     }
   };
 
@@ -634,6 +670,7 @@ export function ChatPane({ resetToken }: { resetToken: number }) {
                 choices={choices}
                 selected={selectedChoice}
                 onSelect={(id) => setSelectedModel(id)}
+                onConnectAnthropic={connectAnthropic}
               />
               <ThinkingToggle
                 selected={selectedChoice}
@@ -684,17 +721,26 @@ function ModelPicker({
   choices,
   selected,
   onSelect,
+  onConnectAnthropic,
 }: {
   choices: ModelChoice[];
   selected: ModelChoice;
   onSelect: (id: string) => void;
+  onConnectAnthropic: () => void;
 }) {
+  const anthropicChoices = choices.filter((choice) => choice.route === "anthropic");
   return (
     <ModelSelector>
       <ModelSelectorTrigger asChild>
         <button type="button" className="ai-model-trigger">
           <span>{selected.label}</span>
-          <span>{selected.route === "local" ? "local" : "gateway"}</span>
+          <span>
+            {selected.route === "local"
+              ? "local"
+              : selected.route === "anthropic"
+                ? "anthropic"
+                : "gateway"}
+          </span>
         </button>
       </ModelSelectorTrigger>
       <ModelSelectorContent>
@@ -720,6 +766,26 @@ function ModelPicker({
                   <span className="font-mono text-[11px] text-muted-foreground">{choice.detail}</span>
                 </ModelSelectorItem>
               ))}
+          </ModelSelectorGroup>
+          <ModelSelectorGroup heading="Anthropic">
+            {anthropicChoices.map((choice) => (
+              <ModelSelectorItem key={choice.id} value={choice.id} onSelect={() => onSelect(choice.id)}>
+                <ModelSelectorName>{choice.label}</ModelSelectorName>
+                <span className="font-mono text-[11px] text-muted-foreground">{choice.detail}</span>
+              </ModelSelectorItem>
+            ))}
+            {anthropicChoices.length === 0 && (
+              <ModelSelectorItem
+                key="anthropic:connect"
+                value="anthropic:connect"
+                onSelect={onConnectAnthropic}
+              >
+                <ModelSelectorName>Connect Anthropic…</ModelSelectorName>
+                <span className="font-mono text-[11px] text-muted-foreground">
+                  add an API key to chat with Claude
+                </span>
+              </ModelSelectorItem>
+            )}
           </ModelSelectorGroup>
         </ModelSelectorList>
       </ModelSelectorContent>
