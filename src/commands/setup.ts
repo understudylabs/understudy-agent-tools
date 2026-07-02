@@ -33,11 +33,11 @@ interface SetupOpts {
  * `install-agent-adapter` skill, which handles Claude Code, Cursor, Codex, and
  * OpenCode without copying skill content per platform.
  *
- * The skill content (master task + per-target recipes) is shipped
- * inside the CLI at `dist/skills/` (copied from repo-root `skills/`
- * by the build script). This means a user who just installed `understudy` via
- * curl or npm has the latest skill content embedded — no separate
- * download, no network dependency at install time.
+ * The skill content (`SKILL.md` + per-target recipes) ships inside the
+ * package at `skills/` (with a `dist/skills/` fallback for older layouts).
+ * This means a user who just installed `understudy` via curl or npm has the
+ * latest skill content embedded — no separate download, no network dependency
+ * at install time.
  */
 export function registerSetupCommand(program: Command): void {
   program
@@ -66,29 +66,34 @@ async function runSetup(cmd: Command, opts: SetupOpts): Promise<void> {
     : join(process.cwd(), ".claude", "skills", SKILL_NAME);
 
   mkdirSync(destRoot, { recursive: true });
-  mkdirSync(join(destRoot, "references"), { recursive: true });
 
-  // Write the master SKILL.md = frontmatter + focused setup-code recipe.
-  const frontmatter = readFileSync(
-    join(skillsSource, "onboard", "frontmatter.md"),
-    "utf8",
-  );
-  const taskBody = readFileSync(
-    join(skillsSource, "onboard", "setup-code.md"),
+  // Write the master SKILL.md straight from the bundled onboarding skill.
+  // `skills/onboard/SKILL.md` carries its own frontmatter (name/description
+  // + body); only the skill name is rewritten so it matches the installed
+  // directory name.
+  const skillSource = readFileSync(
+    join(skillsSource, "onboard", "SKILL.md"),
     "utf8",
   );
   const skillPath = join(destRoot, "SKILL.md");
-  writeFileSync(skillPath, `${frontmatter.trimEnd()}\n\n${taskBody}`, "utf8");
+  writeFileSync(
+    skillPath,
+    skillSource.replace(/^name:.*$/m, `name: ${SKILL_NAME}`),
+    "utf8",
+  );
 
-  // Copy every per-target recipe into references/. We don't pick by
-  // language here — the agent reads the dispatch table in SKILL.md and
-  // picks the right recipe at run time. Shipping all of them lets the
-  // agent handle whichever stack the user actually has.
+  // Copy the supporting docs (per-target recipes, setup-code task,
+  // reference.md) next to SKILL.md, mirroring `skills/onboard/` so relative
+  // links keep working. We don't pick by language here — the agent reads the
+  // dispatch table and picks the right recipe at run time. Shipping all of
+  // them lets the agent handle whichever stack the user actually has.
   const recipesDir = join(skillsSource, "onboard");
-  const recipeFiles = readdirSync(recipesDir).filter((f) => f.endsWith(".md") && f !== "frontmatter.md");
+  const recipeFiles = readdirSync(recipesDir).filter(
+    (f) => f.endsWith(".md") && f !== "SKILL.md",
+  );
   const referencePaths: string[] = [];
   for (const filename of recipeFiles) {
-    const dest = join(destRoot, "references", filename);
+    const dest = join(destRoot, filename);
     copyFileSync(join(recipesDir, filename), dest);
     referencePaths.push(dest);
   }
