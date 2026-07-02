@@ -141,10 +141,10 @@ fn parse_catalog(body: &str) -> Result<Vec<SnapshotInfo>, String> {
     for row in &rows {
         if row.id.trim().is_empty()
             || row.loader.trim().is_empty()
-            || !row
+            || row
                 .session_url
                 .as_deref()
-                .is_some_and(|u| !u.trim().is_empty())
+                .is_none_or(|u| u.trim().is_empty())
         {
             return Err(format!("catalog row invalid: {:?}", row.id));
         }

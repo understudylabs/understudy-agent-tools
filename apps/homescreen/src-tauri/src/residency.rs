@@ -288,7 +288,7 @@ impl Residency {
         let inner = locked(&self.inner);
         inner.iter().find(|r| r.id == slot_id).and_then(|r| {
             if matches!(r.state, SlotState::Warm) {
-                r.port.zip(r.model_path.clone()).map(|(p, path)| (p, path))
+                r.port.zip(r.model_path.clone())
             } else {
                 None
             }
@@ -428,7 +428,7 @@ impl Residency {
         self.cool_locked(&mut inner, slot_id)
     }
 
-    fn cool_locked(&self, inner: &mut Vec<Resident>, slot_id: u32) -> anyhow::Result<()> {
+    fn cool_locked(&self, inner: &mut [Resident], slot_id: u32) -> anyhow::Result<()> {
         if let Some(r) = inner.iter_mut().find(|r| r.id == slot_id) {
             if let Some(child) = r.child.as_mut() {
                 let _ = child.kill();
