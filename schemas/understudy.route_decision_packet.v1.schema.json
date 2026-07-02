@@ -62,7 +62,7 @@
     "model_id": { "type": ["string", "null"], "description": "Model id to route to on promotion." },
     "route_model_id": { "type": ["string", "null"] },
     "route_traffic_pct": {
-      "type": ["number", "string", "null"],
+      "type": ["number", "null"],
       "description": "Traffic percentage for the promoted route; defaults to 10 when absent."
     },
     "recommended_next_command": { "type": ["string", "null"] },

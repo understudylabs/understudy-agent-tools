@@ -830,6 +830,11 @@ fn resolve_export_output_path_under(
     default_rel: PathBuf,
     constrain_to_exports: bool,
 ) -> Result<PathBuf, String> {
+    // An empty/whitespace path is treated as "no path": joining it would
+    // resolve to the root itself and put sibling files one level above it.
+    let requested = requested
+        .map(|r| r.trim().to_string())
+        .filter(|r| !r.is_empty());
     let Some(requested) = requested else {
         return Ok(root.join(default_rel));
     };
@@ -841,17 +846,27 @@ fn resolve_export_output_path_under(
     {
         return Err("output_path may not contain '..'".to_string());
     }
-    if path.is_absolute() {
+    let path = if path.is_absolute() {
         if constrain_to_exports && !path.starts_with(root) {
             return Err(format!(
                 "output_path must stay under {} for API/MCP callers",
                 root.display()
             ));
         }
-        Ok(path)
+        path
     } else {
-        Ok(root.join(path))
+        root.join(path)
+    };
+    if constrain_to_exports {
+        // The sibling JSONL lands in the packet's parent directory, so the
+        // requested path must name a file whose parent is still inside the
+        // root ("." or the root itself would escape one level up).
+        let parent_ok = path.parent().is_some_and(|p| p.starts_with(root));
+        if path.file_name().is_none() || !parent_ok {
+            return Err("output_path must name a file inside the exports root".to_string());
+        }
     }
+    Ok(path)
 }
 
 #[derive(Default)]
@@ -2088,7 +2103,13 @@ fn export_fusion_benchmark_comparison_impl(
     let bytes = serde_json::to_vec_pretty(&packet).map_err(|e| e.to_string())?;
     let mut text = String::from_utf8(bytes).map_err(|e| e.to_string())?;
     text.push('\n');
-    fs::write(&path, text).map_err(|e| e.to_string())?;
+    if let Err(err) = fs::write(&path, text) {
+        // Don't leave a hash-committed JSONL with no packet citing it.
+        if let Some(parent) = path.parent() {
+            let _ = fs::remove_file(parent.join(&jsonl_name));
+        }
+        return Err(err.to_string());
+    }
     let path = fs::canonicalize(&path).unwrap_or(path);
     Ok(FusionBenchmarkComparisonExport {
         schema_version: "understudy.fusion_benchmark_comparison_export.v1",
@@ -3079,11 +3100,8 @@ mod tests {
             .map(eval_result_v1)
             .collect();
         let jsonl = eval_results_jsonl(&rows).unwrap();
-        let provenance = export_packet_provenance(
-            &rows,
-            &jsonl,
-            "comparison-x.eval-results.jsonl".to_string(),
-        );
+        let provenance =
+            export_packet_provenance(&rows, &jsonl, "comparison-x.eval-results.jsonl".to_string());
 
         assert_eq!(provenance.eval_result_rows, 2);
         // The hash commits to the JSONL sibling file's bytes, so a consumer
@@ -3171,6 +3189,44 @@ mod tests {
             .unwrap(),
             inside
         );
+
+        // Empty/whitespace paths are "no path" (joining them would resolve
+        // to the root itself and place sibling files one level above it).
+        assert_eq!(
+            resolve_export_output_path_under(
+                &root,
+                Some("".to_string()),
+                default_rel.clone(),
+                true
+            )
+            .unwrap(),
+            root.join(&default_rel)
+        );
+        assert_eq!(
+            resolve_export_output_path_under(
+                &root,
+                Some("  ".to_string()),
+                default_rel.clone(),
+                true
+            )
+            .unwrap(),
+            root.join(&default_rel)
+        );
+        // "." and the root itself don't name a file inside the root.
+        assert!(resolve_export_output_path_under(
+            &root,
+            Some(".".to_string()),
+            default_rel.clone(),
+            true
+        )
+        .is_err());
+        assert!(resolve_export_output_path_under(
+            &root,
+            Some(root.to_string_lossy().to_string()),
+            default_rel.clone(),
+            true
+        )
+        .is_err());
 
         // The GUI (webview) may write anywhere it names explicitly.
         assert_eq!(

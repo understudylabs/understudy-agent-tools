@@ -51,19 +51,24 @@ export function validateRouteDecisionPacket(packet: JsonObject): void {
   if (typeof packet.decision !== "string" || packet.decision.length === 0) {
     issues.push("missing decision");
   }
-  if (packet.candidate_routes !== undefined && !Array.isArray(packet.candidate_routes)) {
+  if (
+    packet.candidate_routes !== undefined &&
+    packet.candidate_routes !== null &&
+    !Array.isArray(packet.candidate_routes)
+  ) {
     issues.push("candidate_routes must be an array when present");
   }
   for (const key of ["incumbent", "constraints", "readiness"] as const) {
-    if (packet[key] !== undefined && !isObject(packet[key])) {
+    if (packet[key] !== undefined && packet[key] !== null && !isObject(packet[key])) {
       issues.push(`${key} must be an object when present`);
     }
   }
+  // Strictly a number: promote's numberValue ignores strings, so admitting
+  // "15" here would silently promote at the default percentage instead.
   if (
     packet.route_traffic_pct !== undefined &&
     packet.route_traffic_pct !== null &&
-    typeof packet.route_traffic_pct !== "number" &&
-    typeof packet.route_traffic_pct !== "string"
+    typeof packet.route_traffic_pct !== "number"
   ) {
     issues.push("route_traffic_pct must be a number when present");
   }
