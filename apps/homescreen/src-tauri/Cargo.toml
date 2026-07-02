@@ -30,3 +30,6 @@ chrono = { version = "0.4", default-features = false, features = ["clock"] }
 axum = { version = "0.7", default-features = false, features = ["http1", "json", "query", "tokio"] }
 sha2 = "0.10"
 getrandom = "0.2"
+# Deterministic regex scoring for build-your-own evals; the -lite build keeps
+# the dependency footprint at a single crate.
+regex-lite = "0.1"
