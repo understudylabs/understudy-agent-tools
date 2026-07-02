@@ -69,8 +69,9 @@ Queued (this directory):
   (it usually carries uncommitted work).
 - Verify before opening the PR: `npm ci && npm test` at root AND
   `cargo check --all-targets && cargo test` in `apps/homescreen/src-tauri`
-  when Rust changed. CI does NOT run cargo (see the hygiene plan) — you are
-  the Rust gate.
+  when Rust changed. Since PR #125 CI also runs
+  `cargo clippy --all-targets -- -D warnings` + `cargo test` on every PR —
+  keep your branch clippy-clean.
 - Commit messages end with the agent's Co-Authored-By line. PR bodies state
   test evidence and caveats honestly.
 - The platform pieces (Cloudflare Worker `understudy-model-downloads`, R2

@@ -56,8 +56,8 @@ comparison.
 
 4. **Run the frozen matrix.** Call the same harness once per candidate with the
    same rows, split, tool-access mode, prompt, seed, and export path. Keep each
-   export under
-   `.understudy/model-sweeps/<timestamp>/candidate-runs/<candidate>/`.
+   export under `.understudy/model-sweeps/<timestamp>/candidate-runs/<candidate>/`,
+   with per-row results in the required `understudy.eval_result.v1` eval-evidence format ([schema](../../schemas/understudy.eval_result.v1.schema.json)).
 
 5. **Summarize at the same grain.** Build `summary.csv` with candidate, route,
    route type, requested model, effective model, model family, tool-access mode,

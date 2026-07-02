@@ -97,6 +97,12 @@ pub struct RecordFusionBenchmarkRequest {
     pub score: Option<f64>,
     pub status: Option<String>,
     pub notes: Option<String>,
+    // understudy.eval_result.v1 adoption fields (all optional/additive).
+    pub cost_usd: Option<f64>,
+    pub cost_basis: Option<String>,
+    pub split: Option<String>,
+    pub harness_sha256: Option<String>,
+    pub split_sha256: Option<String>,
 }
 
 #[derive(serde::Deserialize)]
@@ -328,12 +334,100 @@ pub struct ExportAutomationBenchHandoffRequest {
 }
 
 #[derive(Serialize, Clone)]
+pub struct EvalResultCost {
+    pub usd: Option<f64>,
+    pub basis: Option<String>,
+}
+
+#[derive(Serialize, Clone)]
+pub struct EvalResultTokens {
+    pub prompt: Option<u64>,
+    pub completion: Option<u64>,
+}
+
+#[derive(Serialize, Clone)]
+pub struct EvalResultProvenance {
+    pub harness_sha256: Option<String>,
+    pub split_sha256: Option<String>,
+    pub artifact_refs: Vec<String>,
+}
+
+/// One eval row in the shared cross-surface shape
+/// (`schemas/understudy.eval_result.v1.schema.json` at the repo root).
+#[derive(Serialize, Clone)]
+pub struct EvalResultV1 {
+    pub schema_version: &'static str,
+    pub run_id: String,
+    pub task_id: String,
+    pub split: String,
+    pub score: Option<f64>,
+    pub subscores: Option<std::collections::BTreeMap<String, f64>>,
+    pub status: String,
+    pub model: Option<String>,
+    pub route: Option<String>,
+    pub cost: EvalResultCost,
+    pub tokens: EvalResultTokens,
+    pub latency_ms: Option<u64>,
+    pub created_at: Option<String>,
+    pub provenance: EvalResultProvenance,
+    /// Producer extension (allowed by the schema): the Fusion harness mode.
+    pub mode: Option<String>,
+}
+
+/// Map one recorded Fusion benchmark row onto `understudy.eval_result.v1`.
+///
+/// Status semantics follow the scorer introduced with the unscored-rows fix:
+/// executed rubric-covered rows are `ok`; executed rows without a rubric stay
+/// `unscored` (excluded from averages, never counted as 0); `skipped` rows
+/// never executed; every other terminal status (`error`, `tool_limit`, ...)
+/// maps to `error`.
+fn eval_result_v1(row: &FusionBenchmarkRow) -> EvalResultV1 {
+    let status = match row.status.as_str() {
+        "skipped" => "skipped",
+        "ok" if row.score.is_some() => "ok",
+        "ok" => "unscored",
+        _ => "error",
+    };
+    EvalResultV1 {
+        schema_version: "understudy.eval_result.v1",
+        run_id: row.run_id.clone(),
+        task_id: row.task_id.clone(),
+        split: row.split.clone().unwrap_or_else(|| "none".to_string()),
+        score: row.score,
+        subscores: None,
+        status: status.to_string(),
+        model: Some(row.model.clone()),
+        route: Some(if row.gateway_used { "gateway" } else { "local" }.to_string()),
+        cost: EvalResultCost {
+            usd: row.cost_usd,
+            basis: row.cost_basis.clone(),
+        },
+        tokens: EvalResultTokens {
+            prompt: row.prompt_tokens,
+            completion: row.completion_tokens,
+        },
+        latency_ms: row.elapsed_ms,
+        created_at: Some(row.run_at.clone()),
+        provenance: EvalResultProvenance {
+            harness_sha256: row.harness_sha256.clone(),
+            split_sha256: row.split_sha256.clone(),
+            artifact_refs: vec![],
+        },
+        mode: Some(row.mode.clone()),
+    }
+}
+
+#[derive(Serialize, Clone)]
 pub struct FusionBenchmarkComparisonPacket {
     pub schema_version: &'static str,
     pub created_at: String,
     pub source: &'static str,
     pub summary: FusionBenchmarkRunSummary,
     pub route_policy: FusionRoutePolicyExport,
+    /// Additive: the same recorded rows in the shared cross-surface
+    /// `understudy.eval_result.v1` shape. Existing consumers of `summary` and
+    /// `route_policy` are unaffected.
+    pub eval_results: Vec<EvalResultV1>,
 }
 
 #[derive(Serialize, Clone)]
@@ -467,6 +561,10 @@ fn valid_fusion_result_mode(mode: &str) -> bool {
 
 fn valid_fusion_route(route: &str) -> bool {
     matches!(route, "local" | "gateway")
+}
+
+fn valid_eval_split(split: &str) -> bool {
+    matches!(split, "train" | "dev" | "holdout" | "none")
 }
 
 fn valid_fusion_candidate(candidate: &str) -> bool {
@@ -1506,6 +1604,12 @@ pub fn record_fusion_benchmark(
     if result.model.trim().is_empty() {
         return Err("model is required".to_string());
     }
+    let split = result.split.unwrap_or_else(|| "none".to_string());
+    if !valid_eval_split(&split) {
+        return Err(format!(
+            "unknown eval split: {split} (expected train, dev, holdout, or none)"
+        ));
+    }
     let input = FusionBenchmarkInput {
         run_id: result.run_id,
         task_id: result.task_id,
@@ -1523,6 +1627,11 @@ pub fn record_fusion_benchmark(
         score: result.score,
         status: result.status.unwrap_or_else(|| "ok".to_string()),
         notes: result.notes,
+        cost_usd: result.cost_usd,
+        cost_basis: result.cost_basis,
+        split: Some(split),
+        harness_sha256: result.harness_sha256,
+        split_sha256: result.split_sha256,
     };
     app.state::<crate::db::Db>()
         .record_fusion_benchmark(&input)
@@ -1730,6 +1839,13 @@ pub fn export_fusion_benchmark_comparison(
 ) -> Result<FusionBenchmarkComparisonExport, String> {
     let limit = request.limit.unwrap_or(500);
     let summary = fusion_benchmark_run_summary(app.clone(), Some(limit))?;
+    let eval_results = app
+        .state::<crate::db::Db>()
+        .list_fusion_benchmarks(limit)
+        .map_err(|e| e.to_string())?
+        .iter()
+        .map(eval_result_v1)
+        .collect::<Vec<_>>();
     let decisions = app
         .state::<crate::db::Db>()
         .list_fusion_route_decisions(limit)
@@ -1771,6 +1887,7 @@ pub fn export_fusion_benchmark_comparison(
             groups,
             decisions,
         },
+        eval_results,
     };
     let path = request.output_path.map(PathBuf::from).unwrap_or_else(|| {
         PathBuf::from(".understudy")
@@ -2218,6 +2335,12 @@ async fn run_fusion_benchmark_inner(
                                     policy_reason,
                                     err.replace('\n', " ")
                                 )),
+                                // No price table exists in-app; never invent costs.
+                                cost_usd: None,
+                                cost_basis: None,
+                                split: Some("none".to_string()),
+                                harness_sha256: None,
+                                split_sha256: None,
                             })
                             .map_err(|e| e.to_string())?;
                         if let Some(on_event) = on_event {
@@ -2280,6 +2403,12 @@ async fn run_fusion_benchmark_inner(
                             result.content.len(),
                             result.reasoning_tokens
                         )),
+                        // No price table exists in-app; never invent costs.
+                        cost_usd: None,
+                        cost_basis: None,
+                        split: Some("none".to_string()),
+                        harness_sha256: None,
+                        split_sha256: None,
                     })
                     .map_err(|e| e.to_string())?;
                 if let Some(on_event) = on_event {
@@ -2320,6 +2449,11 @@ async fn run_fusion_benchmark_inner(
                         score: None,
                         status: "skipped".to_string(),
                         notes: Some(format!("skipped:{reason}; policy_reason={policy_reason}")),
+                        cost_usd: None,
+                        cost_basis: None,
+                        split: Some("none".to_string()),
+                        harness_sha256: None,
+                        split_sha256: None,
                     })
                     .map_err(|e| e.to_string())?;
                 recorded_skips += 1;
@@ -2704,7 +2838,98 @@ pub fn server_info(app: AppHandle) -> Option<Value> {
 
 #[cfg(test)]
 mod tests {
-    use super::fusion_benchmark_score;
+    use super::{eval_result_v1, fusion_benchmark_score};
+    use crate::db::{Db, FusionBenchmarkInput};
+
+    fn benchmark_input(task_id: &str, score: Option<f64>, status: &str) -> FusionBenchmarkInput {
+        FusionBenchmarkInput {
+            run_id: "fusion-run-1".to_string(),
+            task_id: task_id.to_string(),
+            mode: "sidekick-routing".to_string(),
+            model: "gemma-4-e2b-it-qat-understudy".to_string(),
+            elapsed_ms: Some(950),
+            prompt_tokens: Some(120),
+            completion_tokens: Some(40),
+            sidekick_runs: 1,
+            sidekick_tool_calls: 2,
+            gateway_used: false,
+            compacted: false,
+            context_tokens_before: None,
+            local_mem_gb: Some(3.6),
+            score,
+            status: status.to_string(),
+            notes: None,
+            cost_usd: None,
+            cost_basis: None,
+            split: Some("none".to_string()),
+            harness_sha256: None,
+            split_sha256: None,
+        }
+    }
+
+    /// A recorded benchmark row must round-trip (record -> list -> map) into a
+    /// JSON object that satisfies schemas/understudy.eval_result.v1.schema.json:
+    /// required fields present, enums valid, score in 0..1 or null.
+    #[test]
+    fn recorded_benchmark_row_round_trips_to_valid_eval_result_v1() {
+        let dir = std::env::temp_dir().join(format!(
+            "understudy-eval-result-v1-test-{}",
+            std::process::id()
+        ));
+        let _ = std::fs::remove_dir_all(&dir);
+        let db = Db::open(dir.clone()).expect("open temp db");
+        // Scored failure (score 0 is a real value, not missing), an executed
+        // row without a rubric (stays unscored), a skip, and a tool_limit
+        // failure that must map into the closed status enum.
+        db.record_fusion_benchmark(&benchmark_input("repo-search-summary", Some(0.0), "ok"))
+            .unwrap();
+        db.record_fusion_benchmark(&benchmark_input("repo-open-grounding", None, "ok"))
+            .unwrap();
+        db.record_fusion_benchmark(&benchmark_input("judgment-boundary", None, "skipped"))
+            .unwrap();
+        db.record_fusion_benchmark(&benchmark_input(
+            "runtime-status-check",
+            Some(0.0),
+            "tool_limit",
+        ))
+        .unwrap();
+
+        let rows = db.list_fusion_benchmarks(10).unwrap();
+        assert_eq!(rows.len(), 4);
+        for row in &rows {
+            let value = serde_json::to_value(eval_result_v1(row)).unwrap();
+            assert_eq!(value["schema_version"], "understudy.eval_result.v1");
+            assert!(value["run_id"].as_str().is_some_and(|v| !v.is_empty()));
+            assert!(value["task_id"].as_str().is_some_and(|v| !v.is_empty()));
+            let status = value["status"].as_str().unwrap();
+            assert!(
+                matches!(status, "ok" | "error" | "skipped" | "unscored"),
+                "status {status} outside the eval_result.v1 enum"
+            );
+            let split = value["split"].as_str().unwrap();
+            assert!(matches!(split, "train" | "dev" | "holdout" | "none"));
+            if !value["score"].is_null() {
+                let score = value["score"].as_f64().unwrap();
+                assert!((0.0..=1.0).contains(&score));
+            }
+            assert!(value["cost"].is_object());
+            assert!(
+                value["cost"]["usd"].is_null(),
+                "no price table: cost stays null"
+            );
+            assert!(value["tokens"].is_object());
+            assert!(value["provenance"]["artifact_refs"].is_array());
+            assert!(value["created_at"].as_str().is_some());
+        }
+
+        // Rows come back newest-first.
+        assert_eq!(eval_result_v1(&rows[3]).status, "ok"); // scored 0 stays ok
+        assert_eq!(eval_result_v1(&rows[3]).score, Some(0.0));
+        assert_eq!(eval_result_v1(&rows[2]).status, "unscored"); // executed, no rubric
+        assert_eq!(eval_result_v1(&rows[1]).status, "skipped");
+        assert_eq!(eval_result_v1(&rows[0]).status, "error"); // tool_limit maps to error
+        let _ = std::fs::remove_dir_all(&dir);
+    }
 
     #[test]
     fn score_is_none_without_rubric() {

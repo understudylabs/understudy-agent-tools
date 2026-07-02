@@ -1,0 +1,107 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://understudylabs.com/schemas/understudy.eval_result.v1.schema.json",
+  "title": "understudy.eval_result.v1",
+  "description": "One evaluated task attempt (one row) in a run. The shared eval-row shape for every Understudy surface: the desktop Fusion benchmark exports, the onboarding-ladder JSONL runs, the skill claim/evidence packets, and the CLI proof packets. Most fields are nullable so every producer can adopt the schema today and enrich rows over time. Producers may add extra fields; consumers must ignore fields they do not understand.",
+  "type": "object",
+  "required": ["schema_version", "run_id", "task_id", "status"],
+  "additionalProperties": true,
+  "properties": {
+    "schema_version": {
+      "const": "understudy.eval_result.v1",
+      "description": "Version stamp for this row shape."
+    },
+    "run_id": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Identifier of the run this row belongs to. All rows produced by one invocation of a harness share a run_id."
+    },
+    "task_id": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Identifier of the task/example within the eval set."
+    },
+    "split": {
+      "enum": ["train", "dev", "holdout", "none", null],
+      "description": "Which frozen split the task belongs to. 'none' means the producer has no split contract (e.g. smoke suites); null means unknown."
+    },
+    "score": {
+      "type": ["number", "null"],
+      "minimum": 0,
+      "maximum": 1,
+      "description": "Primary score normalized to 0..1. Null when the row is unscored (no rubric/gold for this task) or was skipped. A real 0 is a scored failure, never a missing value."
+    },
+    "subscores": {
+      "type": ["object", "null"],
+      "additionalProperties": { "type": ["number", "null"] },
+      "description": "Optional named component scores (e.g. {\"strict\": 0.0, \"dense\": 0.6}). Keys are producer-defined."
+    },
+    "status": {
+      "enum": ["ok", "error", "skipped", "unscored"],
+      "description": "Row outcome. ok = executed and scored; error = the attempt failed to execute or crashed (a scored 0 for a bad answer is ok, not error); skipped = never executed (missing model, gate); unscored = executed but no rubric/gold covers this (task, mode), matching the desktop scorer's semantics where such rows are excluded from averages."
+    },
+    "model": {
+      "type": ["string", "null"],
+      "description": "Resolved model id that produced the attempt."
+    },
+    "route": {
+      "type": ["string", "null"],
+      "description": "Route or lane the attempt ran on, e.g. local | gateway | byo-provider."
+    },
+    "cost": {
+      "type": ["object", "null"],
+      "properties": {
+        "usd": {
+          "type": ["number", "null"],
+          "description": "Cost of this attempt in USD. Null when no price basis exists — never invent prices."
+        },
+        "basis": {
+          "type": ["string", "null"],
+          "description": "How the cost was derived, e.g. 'local-zero-marginal-cost', 'gateway-metered', 'provider-price-table'."
+        }
+      },
+      "additionalProperties": true
+    },
+    "tokens": {
+      "type": ["object", "null"],
+      "properties": {
+        "prompt": { "type": ["integer", "null"], "minimum": 0 },
+        "completion": { "type": ["integer", "null"], "minimum": 0 }
+      },
+      "additionalProperties": true,
+      "description": "Token counts when the runtime reports them; approximate counts should be noted by the producer."
+    },
+    "latency_ms": {
+      "type": ["number", "null"],
+      "minimum": 0,
+      "description": "End-to-end wall clock for the attempt in milliseconds."
+    },
+    "started_at": {
+      "type": ["string", "null"],
+      "description": "ISO 8601 timestamp for when the attempt started, when known."
+    },
+    "created_at": {
+      "type": ["string", "null"],
+      "description": "ISO 8601 timestamp for when the row was recorded."
+    },
+    "provenance": {
+      "type": ["object", "null"],
+      "properties": {
+        "harness_sha256": {
+          "type": ["string", "null"],
+          "description": "sha256 of the harness definition that produced the row (matches the capture-evidence harness_sha256 chain)."
+        },
+        "split_sha256": {
+          "type": ["string", "null"],
+          "description": "sha256 of the frozen split contract the row was drawn from (splits_sha256 in capture-evidence)."
+        },
+        "artifact_refs": {
+          "type": "array",
+          "items": { "type": "string" },
+          "description": "Paths or ids of supporting artifacts (fixtures, trace files, packet paths)."
+        }
+      },
+      "additionalProperties": true
+    }
+  }
+}
