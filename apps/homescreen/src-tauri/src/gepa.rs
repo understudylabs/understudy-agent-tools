@@ -131,12 +131,7 @@ pub fn parse_run(raw: &str, source: &str, is_demo: bool) -> Result<GepaRunView, 
     let parents = parse_parents(obj.get("parents"), n)?;
     let val_scores = parse_scores(obj.get("val_aggregate_scores"), n)?;
     let (val_ids, subscores) = parse_subscores(obj.get("val_subscores"), n, schema_version)?;
-    let fronts = parse_fronts(
-        obj.get("per_val_instance_best_candidates"),
-        n,
-        schema_version,
-        &val_ids,
-    )?;
+    let fronts = parse_fronts(obj.get("per_val_instance_best_candidates"), n, schema_version)?;
     let discovery = parse_discovery(obj.get("discovery_eval_counts"), n)?;
 
     // Merge front-map val ids into the subscore-derived ordering so every
@@ -347,7 +342,6 @@ fn parse_fronts(
     v: Option<&Value>,
     n: usize,
     schema_version: u64,
-    _val_ids: &[String],
 ) -> Result<BTreeMap<String, BTreeSet<usize>>, String> {
     let mut out = BTreeMap::new();
     let entries: Vec<(String, &Value)> = match v {
@@ -406,13 +400,18 @@ fn parse_discovery(v: Option<&Value>, n: usize) -> Result<Vec<Option<u64>>, Stri
     Ok(arr.iter().map(Value::as_u64).collect())
 }
 
+/// First index with the maximum score — ties break toward the earlier
+/// candidate, matching Python's `max(range(n), key=...)` in
+/// `GEPAResult.best_idx`.
 fn best_index(scores: &[Option<f64>]) -> Result<usize, String> {
-    scores
-        .iter()
-        .enumerate()
-        .filter_map(|(i, s)| s.map(|s| (i, s)))
-        .max_by(|a, b| a.1.total_cmp(&b.1))
-        .map(|(i, _)| i)
+    let mut best: Option<(usize, f64)> = None;
+    for (i, score) in scores.iter().enumerate() {
+        let Some(score) = *score else { continue };
+        if best.is_none_or(|(_, top)| score > top) {
+            best = Some((i, score));
+        }
+    }
+    best.map(|(i, _)| i)
         .ok_or_else(|| "run has no scored candidates".into())
 }
 
@@ -627,6 +626,19 @@ mod tests {
         assert!(run.val_ids.is_empty());
         assert!(run.dominators.is_empty());
         assert_eq!(run.candidates[0].discovery_evals, None);
+    }
+
+    #[test]
+    fn best_index_tie_breaks_toward_earlier_candidate() {
+        // Matches Python's max(range(n), key=...) in GEPAResult.best_idx.
+        let raw = r#"{
+            "validation_schema_version": 2,
+            "candidates": [{"p": "a"}, {"p": "b"}, {"p": "c"}],
+            "parents": [[null], [0], [0]],
+            "val_aggregate_scores": [0.25, 0.75, 0.75]
+        }"#;
+        let run = parse_run(raw, "test", false).expect("tie artifact parses");
+        assert_eq!(run.best_idx, 1);
     }
 
     #[test]

@@ -365,16 +365,22 @@ function ScoreScatter({
   const plotW = W - M.left - M.right;
   const plotH = H - M.top - M.bottom;
 
-  const points = run.candidates
-    .filter((candidate) => candidate.val_score != null)
-    .map((candidate) => ({
-      candidate,
-      evals: candidate.discovery_evals ?? candidate.idx,
-      score: candidate.val_score as number,
-    }));
-  const maxEvals = Math.max(1, ...points.map((p) => p.evals), run.total_metric_calls ?? 0);
+  const scored = run.candidates.filter((candidate) => candidate.val_score != null);
+  // Only use the rollout budget as the x axis when every scored candidate
+  // recorded one — otherwise indices and rollout counts would share a scale.
+  const hasBudget = scored.length > 0 && scored.every((candidate) => candidate.discovery_evals != null);
+  const points = scored.map((candidate) => ({
+    candidate,
+    evals: hasBudget ? (candidate.discovery_evals as number) : candidate.idx,
+    score: candidate.val_score as number,
+  }));
+  const maxEvals = Math.max(1, ...points.map((p) => p.evals), hasBudget ? run.total_metric_calls ?? 0 : 0);
+  // GEPA metrics are arbitrary-scale; keep the canonical 0–1 frame when the
+  // scores fit it, widen the domain when they don't.
+  const scoreLo = Math.min(0, ...points.map((p) => p.score));
+  const scoreHi = Math.max(1, ...points.map((p) => p.score));
   const x = (evals: number) => M.left + (evals / maxEvals) * plotW;
-  const y = (score: number) => M.top + (1 - clamp01(score)) * plotH;
+  const y = (score: number) => M.top + (1 - (score - scoreLo) / (scoreHi - scoreLo)) * plotH;
 
   // Running best: the frontier of "best score found so far" over budget.
   const frontier = [...points].sort((a, b) => a.evals - b.evals || a.candidate.idx - b.candidate.idx);
@@ -393,7 +399,7 @@ function ScoreScatter({
     steps.push(`H ${x(maxEvals)}`);
   }
 
-  const yTicks = [0, 0.25, 0.5, 0.75, 1];
+  const yTicks = [0, 0.25, 0.5, 0.75, 1].map((f) => scoreLo + f * (scoreHi - scoreLo));
   const xTicks = [0, 0.25, 0.5, 0.75, 1].map((f) => Math.round(f * maxEvals));
 
   const show = (candidate: GepaCandidate, evals: number) => (event: React.MouseEvent) => {
@@ -404,7 +410,9 @@ function ScoreScatter({
       y: event.clientY - bounds.top,
       lines: [
         `candidate ${candidate.idx} · ${roleLabel(candidate)}`,
-        `score ${fmtScore(candidate.val_score)} at ${evals} rollouts`,
+        hasBudget
+          ? `score ${fmtScore(candidate.val_score)} at ${evals} rollouts`
+          : `score ${fmtScore(candidate.val_score)}`,
       ],
     });
   };
@@ -433,9 +441,9 @@ function ScoreScatter({
           </text>
         ))}
         <text className="gepa-axis-label" x={M.left + plotW / 2} y={H - 3} textAnchor="middle">
-          rollouts consumed at discovery
+          {hasBudget ? "rollouts consumed at discovery" : "candidate index (discovery order)"}
         </text>
-        <line className="gepa-baseline" x1={M.left} x2={W - M.right} y1={y(0)} y2={y(0)} />
+        <line className="gepa-baseline" x1={M.left} x2={W - M.right} y1={y(scoreLo)} y2={y(scoreLo)} />
         {steps.length > 0 && <path className="gepa-frontier" d={steps.join(" ")} />}
         {points.map(({ candidate, evals, score }) => (
           <g
@@ -457,15 +465,11 @@ function ScoreScatter({
   );
 }
 
-function clamp01(value: number): number {
-  return Math.max(0, Math.min(1, value));
-}
-
 function ChartTooltip({ tooltip }: { tooltip: Tooltip }) {
   return (
     <div className="gepa-tooltip" style={{ left: tooltip.x + 12, top: tooltip.y + 12 }}>
-      {tooltip.lines.map((line) => (
-        <div key={line}>{line}</div>
+      {tooltip.lines.map((line, i) => (
+        <div key={i}>{line}</div>
       ))}
     </div>
   );
