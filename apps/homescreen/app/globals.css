@@ -2244,3 +2244,207 @@ select,
   border-radius: var(--r-control);
   padding: 8px 10px;
 }
+
+/* ---------- GEPA optimization pane ---------- */
+.gepa-root {
+  /* Chart mark colors. Best/front pair validated for CVD separation and
+     3:1 surface contrast in both modes (dataviz six checks). */
+  --gepa-best: var(--c-stamp);
+  --gepa-front: #3987e5;
+  --gepa-other: var(--c-ink-muted);
+}
+:root[data-theme="light"] .gepa-root,
+:root[data-theme="system"][data-sys="light"] .gepa-root {
+  --gepa-front: #2a78d6;
+}
+
+.gepa-demo-pill {
+  display: inline-block;
+  margin-left: 8px;
+  padding: 1px 8px;
+  border-radius: var(--r-pill);
+  border: 1px solid var(--border-strong);
+  color: var(--text-2);
+  font-size: 11px;
+  font-weight: 500;
+  vertical-align: 1px;
+}
+.gepa-loader { display: flex; gap: 8px; margin-top: 12px; }
+.gepa-loader input {
+  flex: 1;
+  min-width: 0;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--r-control);
+  color: var(--text);
+  font-family: var(--mono);
+  font-size: 12px;
+  padding: 7px 10px;
+}
+.gepa-loader input::placeholder { color: var(--text-3); }
+
+.gepa-stats { display: flex; gap: 10px; margin-top: 12px; flex-wrap: wrap; }
+.gepa-stat {
+  flex: 1;
+  min-width: 90px;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--r-control);
+  padding: 8px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+.gepa-stat strong { font-size: 16px; font-variant-numeric: tabular-nums; }
+.gepa-stat.accent strong { color: var(--accent); }
+.gepa-stat span { color: var(--text-3); font-size: 11px; }
+
+.gepa-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; margin-top: 14px; }
+.gepa-grid > .gepa-detail { grid-column: 1 / -1; }
+@media (max-width: 980px) {
+  .gepa-grid { grid-template-columns: 1fr; }
+}
+
+.gepa-legend {
+  display: flex;
+  gap: 14px;
+  margin: 8px 0 4px;
+  color: var(--text-2);
+  font-size: 12px;
+}
+.gepa-legend span { display: inline-flex; align-items: center; gap: 6px; }
+.gepa-swatch { width: 9px; height: 9px; border-radius: 50%; display: inline-block; }
+.gepa-swatch.best { background: var(--gepa-best); }
+.gepa-swatch.front { background: var(--gepa-front); }
+.gepa-swatch.other { background: var(--gepa-other); }
+
+.gepa-chart-wrap { position: relative; overflow-x: auto; }
+.gepa-tree, .gepa-scatter { display: block; margin: 4px auto 0; }
+
+.gepa-edge { fill: none; stroke: var(--border-strong); stroke-width: 1.5; }
+.gepa-node { cursor: pointer; }
+.gepa-node-dot { stroke: none; }
+.gepa-node.best .gepa-node-dot { fill: var(--gepa-best); }
+.gepa-node.front .gepa-node-dot { fill: var(--gepa-front); }
+.gepa-node.other .gepa-node-dot { fill: var(--gepa-other); }
+.gepa-node:hover .gepa-node-dot { stroke: var(--text); stroke-width: 1.5; }
+.gepa-select-ring { fill: none; stroke: var(--text); stroke-width: 1.5; }
+.gepa-node-idx {
+  fill: var(--c-paper);
+  font-size: 12px;
+  font-weight: 600;
+  text-anchor: middle;
+  pointer-events: none;
+}
+.gepa-node-score {
+  fill: var(--text-2);
+  font-size: 10px;
+  text-anchor: middle;
+  font-variant-numeric: tabular-nums;
+  pointer-events: none;
+}
+
+.gepa-grid-line, .gepa-grid { stroke: var(--border); stroke-width: 1; }
+.gepa-baseline { stroke: var(--border-strong); stroke-width: 1; }
+.gepa-tick { fill: var(--text-3); font-size: 9.5px; font-variant-numeric: tabular-nums; }
+.gepa-axis-label { fill: var(--text-3); font-size: 10px; }
+.gepa-frontier {
+  fill: none;
+  stroke: var(--gepa-best);
+  stroke-width: 2;
+  stroke-linejoin: round;
+  opacity: 0.55;
+}
+
+.gepa-tooltip {
+  position: absolute;
+  z-index: 5;
+  pointer-events: none;
+  background: var(--elevated);
+  border: 1px solid var(--border-strong);
+  border-radius: var(--r-control);
+  padding: 6px 9px;
+  font-size: 11.5px;
+  color: var(--text);
+  line-height: 1.5;
+  white-space: nowrap;
+  box-shadow: 0 4px 14px rgba(0, 0, 0, 0.25);
+}
+.gepa-tooltip div:first-child { font-weight: 600; }
+
+.gepa-role-pill {
+  display: inline-block;
+  margin-left: 8px;
+  padding: 1px 8px;
+  border-radius: var(--r-pill);
+  font-size: 11px;
+  font-weight: 500;
+  vertical-align: 1px;
+  border: 1px solid var(--border);
+  color: var(--text-2);
+}
+.gepa-role-pill.best { color: var(--gepa-best); border-color: var(--gepa-best); }
+.gepa-role-pill.front { color: var(--gepa-front); border-color: var(--gepa-front); }
+
+.gepa-link {
+  background: none;
+  border: none;
+  padding: 0;
+  color: var(--accent);
+  cursor: pointer;
+  font-size: inherit;
+  font-family: inherit;
+}
+.gepa-link:hover { text-decoration: underline; }
+
+.gepa-detail-grid { display: grid; grid-template-columns: 3fr 2fr; gap: 16px; margin-top: 10px; }
+@media (max-width: 980px) {
+  .gepa-detail-grid { grid-template-columns: 1fr; }
+}
+.gepa-component { margin-bottom: 12px; }
+.gepa-component-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  margin-bottom: 6px;
+}
+.gepa-component-name { font-size: 12px; font-weight: 600; color: var(--text); }
+.gepa-component-note { font-size: 11px; color: var(--text-3); }
+.gepa-diff {
+  margin: 0;
+  background: var(--bg);
+  border: 1px solid var(--border);
+  border-radius: var(--r-control);
+  padding: 8px 0;
+  font-family: var(--mono);
+  font-size: 11.5px;
+  line-height: 1.55;
+  color: var(--text-2);
+  overflow-x: auto;
+  max-height: 340px;
+  overflow-y: auto;
+}
+.gepa-diff-line { padding: 0 10px; white-space: pre-wrap; }
+.gepa-diff-sign { display: inline-block; width: 14px; color: var(--text-3); }
+.gepa-diff-line.added { background: color-mix(in srgb, var(--c-ok) 12%, transparent); color: var(--text); }
+.gepa-diff-line.added .gepa-diff-sign { color: var(--c-ok); }
+.gepa-diff-line.removed { background: color-mix(in srgb, var(--c-bad) 10%, transparent); }
+.gepa-diff-line.removed .gepa-diff-sign { color: var(--c-bad); }
+
+.gepa-subscores { width: 100%; border-collapse: collapse; font-size: 12px; }
+.gepa-subscores th {
+  text-align: left;
+  color: var(--text-3);
+  font-weight: 500;
+  font-size: 11px;
+  padding: 4px 8px;
+  border-bottom: 1px solid var(--border);
+}
+.gepa-subscores td {
+  padding: 4px 8px;
+  border-bottom: 1px solid var(--border);
+  color: var(--text-2);
+  font-variant-numeric: tabular-nums;
+}
+.gepa-subscores td.up { color: var(--c-ok); }
+.gepa-subscores td.down { color: var(--c-bad); }

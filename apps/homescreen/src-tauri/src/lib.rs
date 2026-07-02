@@ -9,6 +9,7 @@ mod chat;
 mod commands;
 mod creds;
 mod db;
+mod gepa;
 mod knowledge;
 mod mcp;
 mod metrics;
@@ -160,6 +161,8 @@ pub fn run() {
             commands::account_login_code,
             commands::account_logout,
             commands::knowledge_dossiers,
+            gepa::gepa_demo_run,
+            gepa::gepa_load_run,
             commands::local_benchmarks,
             commands::fusion_benchmark_matrix,
             commands::fusion_route_recommendation,

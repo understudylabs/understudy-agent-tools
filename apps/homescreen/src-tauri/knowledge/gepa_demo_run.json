@@ -1,0 +1,270 @@
+{
+ "candidates": [
+  {
+   "system_prompt": "Choose the correct replacement item ids for a retail exchange request.\nReturn a JSON list of replacement item ids."
+  },
+  {
+   "system_prompt": "Choose the correct replacement item ids for a retail exchange request.\n\nRespect the customer's stated preference ordering: when they list acceptable\nalternatives, pick the first one that is in stock.\n\nReturn a JSON list of replacement item ids."
+  },
+  {
+   "system_prompt": "Choose the correct replacement item ids for a retail exchange request.\n\nOutput rules:\n- Return ONLY a JSON list of item ids, no prose, no markdown.\n- Item ids are strings, exactly as they appear in the catalog."
+  },
+  {
+   "system_prompt": "Choose the correct replacement item ids for a retail exchange request.\n\nRespect the customer's stated preference ordering: when they list acceptable\nalternatives, pick the first one that is in stock.\n\nFallbacks: if the preferred variant (size/color) is unavailable, fall back to\nthe same item in the closest available variant before considering a different\nitem.\n\nReturn a JSON list of replacement item ids."
+  },
+  {
+   "system_prompt": "Choose the correct replacement item ids for a retail exchange request.\n\nOutput rules:\n- Return ONLY a JSON list of item ids, no prose, no markdown.\n- Item ids are strings, exactly as they appear in the catalog.\n- Keep the list in the same order as the items being replaced.\n- Never repeat an item id."
+  },
+  {
+   "system_prompt": "Choose the correct replacement item ids for a retail exchange request.\n\nRespect the customer's stated preference ordering: when they list acceptable\nalternatives, pick the first one that is in stock.\n\nFallbacks: if the preferred variant (size/color) is unavailable, fall back to\nthe same item in the closest available variant before considering a different\nitem.\n\nTie-breaking: when two candidates are equally acceptable, prefer the lower\npriced one; if prices match, prefer the lexicographically smaller item id.\nNever invent an item id that is not in the catalog.\n\nReturn a JSON list of replacement item ids."
+  },
+  {
+   "system_prompt": "Choose the correct replacement item ids for a retail exchange request.\n\nOutput rules:\n- Return ONLY a JSON list of item ids, no prose, no markdown.\n- Item ids are strings, exactly as they appear in the catalog.\n- Keep the list in the same order as the items being replaced.\n- Never repeat an item id.\n- If no valid replacement exists for an item, return an empty list [] rather\n  than guessing."
+  },
+  {
+   "system_prompt": "Choose the correct replacement item ids for a retail exchange request.\n\nRespect the customer's stated preference ordering: when they list acceptable\nalternatives, pick the first one that is in stock.\n\nFallbacks: if the preferred variant (size/color) is unavailable, fall back to\nthe same item in the closest available variant before considering a different\nitem.\n\nTie-breaking: when two candidates are equally acceptable, prefer the lower\npriced one; if prices match, prefer the lexicographically smaller item id.\nNever invent an item id that is not in the catalog.\n\nOutput rules:\n- Return ONLY a JSON list of item ids, no prose, no markdown.\n- Item ids are strings, exactly as they appear in the catalog.\n- Keep the list in the same order as the items being replaced.\n- Never repeat an item id.\n\nReturn a JSON list of replacement item ids."
+  },
+  {
+   "system_prompt": "Choose the correct replacement item ids for a retail exchange request.\n\nRespect the customer's stated preference ordering: when they list acceptable\nalternatives, pick the first one that is in stock.\n\nFallbacks: if the preferred variant (size/color) is unavailable, fall back to\nthe same item in the closest available variant before considering a different\nitem.\n\nTie-breaking: when two candidates are equally acceptable, prefer the lower\npriced one; if prices match, prefer the lexicographically smaller item id.\nNever invent an item id that is not in the catalog.\n\nMulti-item requests: treat each replaced item independently — resolve its\npreferences, fallbacks, and tie-breaks on its own, then concatenate results in\nthe original order. One item having no replacement does not affect the others.\n\nOutput rules:\n- Return ONLY a JSON list of item ids, no prose, no markdown.\n- Item ids are strings, exactly as they appear in the catalog.\n- Keep the list in the same order as the items being replaced.\n- Never repeat an item id.\n- If an item has no valid replacement, omit it; if none do, return [].\n\nReturn a JSON list of replacement item ids."
+  },
+  {
+   "system_prompt": "Choose the correct replacement item ids for a retail exchange request.\n\nRespect the customer's stated preference ordering: when they list acceptable\nalternatives, pick the first one that is in stock.\n\nFallbacks: if the preferred variant (size/color) is unavailable, fall back to\nthe same item in the closest available variant before considering a different\nitem. Only ever consider items from the same product category, the same brand,\nand the same price band; reject anything else even if the customer asked for it.\n\nTie-breaking: when two candidates are equally acceptable, prefer the lower\npriced one; if prices match, prefer the lexicographically smaller item id.\nNever invent an item id that is not in the catalog.\n\nReturn a JSON list of replacement item ids."
+  }
+ ],
+ "parents": [
+  [
+   null
+  ],
+  [
+   0
+  ],
+  [
+   0
+  ],
+  [
+   1
+  ],
+  [
+   2
+  ],
+  [
+   3
+  ],
+  [
+   4
+  ],
+  [
+   5,
+   4
+  ],
+  [
+   7
+  ],
+  [
+   5
+  ]
+ ],
+ "val_aggregate_scores": [
+  0.4375,
+  0.5625,
+  0.5,
+  0.625,
+  0.5625,
+  0.6875,
+  0.625,
+  0.8125,
+  0.875,
+  0.6875
+ ],
+ "val_subscores": [
+  {
+   "exchange-011": 1,
+   "exchange-023": 0,
+   "exchange-031": 0.5,
+   "exchange-044": 0,
+   "exchange-052": 1,
+   "exchange-057": 0,
+   "exchange-063": 0.5,
+   "exchange-078": 0.5
+  },
+  {
+   "exchange-011": 1,
+   "exchange-023": 0.5,
+   "exchange-031": 0.5,
+   "exchange-044": 0,
+   "exchange-052": 1,
+   "exchange-057": 0,
+   "exchange-063": 1,
+   "exchange-078": 0.5
+  },
+  {
+   "exchange-011": 1,
+   "exchange-023": 0,
+   "exchange-031": 1,
+   "exchange-044": 0,
+   "exchange-052": 1,
+   "exchange-057": 0,
+   "exchange-063": 0.5,
+   "exchange-078": 0.5
+  },
+  {
+   "exchange-011": 1,
+   "exchange-023": 1,
+   "exchange-031": 0.5,
+   "exchange-044": 0.5,
+   "exchange-052": 1,
+   "exchange-057": 0,
+   "exchange-063": 1,
+   "exchange-078": 0
+  },
+  {
+   "exchange-011": 1,
+   "exchange-023": 0,
+   "exchange-031": 1,
+   "exchange-044": 0.5,
+   "exchange-052": 1,
+   "exchange-057": 0,
+   "exchange-063": 0.5,
+   "exchange-078": 0.5
+  },
+  {
+   "exchange-011": 1,
+   "exchange-023": 1,
+   "exchange-031": 0.5,
+   "exchange-044": 1,
+   "exchange-052": 1,
+   "exchange-057": 0,
+   "exchange-063": 1,
+   "exchange-078": 0
+  },
+  {
+   "exchange-011": 1,
+   "exchange-023": 0,
+   "exchange-031": 1,
+   "exchange-044": 0.5,
+   "exchange-052": 1,
+   "exchange-057": 1,
+   "exchange-063": 0.5,
+   "exchange-078": 0
+  },
+  {
+   "exchange-011": 1,
+   "exchange-023": 1,
+   "exchange-031": 1,
+   "exchange-044": 1,
+   "exchange-052": 1,
+   "exchange-057": 0,
+   "exchange-063": 1,
+   "exchange-078": 0.5
+  },
+  {
+   "exchange-011": 1,
+   "exchange-023": 1,
+   "exchange-031": 1,
+   "exchange-044": 1,
+   "exchange-052": 1,
+   "exchange-057": 0.5,
+   "exchange-063": 1,
+   "exchange-078": 0.5
+  },
+  {
+   "exchange-011": 1,
+   "exchange-023": 1,
+   "exchange-031": 0,
+   "exchange-044": 1,
+   "exchange-052": 1,
+   "exchange-057": 0,
+   "exchange-063": 1,
+   "exchange-078": 0.5
+  }
+ ],
+ "best_outputs_valset": null,
+ "per_val_instance_best_candidates": {
+  "exchange-011": [
+   0,
+   1,
+   2,
+   3,
+   4,
+   5,
+   6,
+   7,
+   8,
+   9
+  ],
+  "exchange-023": [
+   3,
+   5,
+   7,
+   8,
+   9
+  ],
+  "exchange-031": [
+   2,
+   4,
+   6,
+   7,
+   8
+  ],
+  "exchange-044": [
+   5,
+   7,
+   8,
+   9
+  ],
+  "exchange-052": [
+   0,
+   1,
+   2,
+   3,
+   4,
+   5,
+   6,
+   7,
+   8,
+   9
+  ],
+  "exchange-057": [
+   6
+  ],
+  "exchange-063": [
+   1,
+   3,
+   5,
+   7,
+   8,
+   9
+  ],
+  "exchange-078": [
+   0,
+   1,
+   2,
+   4,
+   7,
+   8,
+   9
+  ]
+ },
+ "val_aggregate_subscores": null,
+ "per_objective_best_candidates": null,
+ "objective_pareto_front": null,
+ "discovery_eval_counts": [
+  8,
+  26,
+  44,
+  60,
+  78,
+  96,
+  112,
+  132,
+  152,
+  168
+ ],
+ "total_metric_calls": 180,
+ "num_full_val_evals": 10,
+ "run_dir": null,
+ "seed": 7,
+ "_str_candidate_key": null,
+ "best_idx": 8,
+ "validation_schema_version": 2
+}

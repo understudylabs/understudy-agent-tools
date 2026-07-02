@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useState } from "react";
 import { Channel, invoke } from "@tauri-apps/api/core";
+import { GepaPane } from "./GepaPane";
 import type { PaneId } from "./Sidebar";
 
 export type TrainingPaneId = Extract<
@@ -291,6 +292,7 @@ const SECTIONS: Record<TrainingPaneId, {
 
 export function TrainingPane({ section }: { section: TrainingPaneId }) {
   if (section === "training-evals") return <FusionEvaluationPane />;
+  if (section === "training-optimization") return <GepaPane />;
 
   const current = SECTIONS[section];
   return (
