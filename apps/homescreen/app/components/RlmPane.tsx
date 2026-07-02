@@ -295,6 +295,7 @@ export function RlmPane() {
       setSummary(result);
     } catch (err) {
       setError(String(err));
+      setMode(null);
     } finally {
       setBusy(null);
     }
