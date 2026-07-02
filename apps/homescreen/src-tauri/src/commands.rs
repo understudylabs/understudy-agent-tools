@@ -2091,8 +2091,14 @@ pub fn chat_route_metrics(app: AppHandle, limit: Option<u32>) -> Result<ChatRout
 #[tauri::command]
 pub async fn run_fusion_benchmark(
     app: AppHandle,
-    request: RunFusionBenchmarkRequest,
+    mut request: RunFusionBenchmarkRequest,
 ) -> Result<FusionBenchmarkRun, String> {
+    // Resolve the run id up front so the single-flight registration and the
+    // rows persist under the same id.
+    let run_id = request.run_id.take().unwrap_or_else(default_fusion_run_id);
+    request.run_id = Some(run_id.clone());
+    // Single-flight: a second concurrent run would interleave rows.
+    let _run_guard = crate::agent_ops::begin_benchmark_run(&app, &run_id)?;
     run_fusion_benchmark_inner(app, request, None, None, None).await
 }
 
@@ -2187,6 +2193,11 @@ async fn run_fusion_benchmark_inner(
             .find(|task| task.id == task_id)
             .ok_or_else(|| format!("unknown Fusion benchmark task: {task_id}"))?;
         for mode in &requested_modes {
+            // Cooperative cancellation between rows: an agent cancelled the
+            // run via the local server; stop before spending on the next row.
+            if crate::agent_ops::benchmark_run_cancelled(&app, &run_id) {
+                return Err(format!("benchmark run cancelled: {run_id}"));
+            }
             let recommendation =
                 (mode == "sidekick-routing" && candidate != "gateway-glm").then(|| {
                     fusion_route_recommendation_with_persist(
@@ -2553,6 +2564,9 @@ async fn run_fusion_benchmark_matrix_impl(
     if run_id.trim().is_empty() {
         return Err("run_id is required".to_string());
     }
+    // Single-flight across all benchmark entry points; candidates below run
+    // sequentially under this one registration.
+    let _run_guard = crate::agent_ops::begin_benchmark_run(&app, &run_id)?;
     let suite = request.suite.unwrap_or_else(|| "full-matrix".to_string());
     let candidates = request.candidates.unwrap_or_else(|| {
         vec![

@@ -8,6 +8,7 @@ import { planRouteDecision } from "./route-decision.js";
 import { buildValueReport } from "./value-report.js";
 import { type AgentPlatformAdapter, agentPlatformAdapters, findAgentPlatformAdapter } from "./agent-platforms.js";
 import { registerCapturesCommand } from "./commands/captures.js";
+import { registerDaemonCommand } from "./commands/daemon.js";
 import { registerDoctorCommand } from "./commands/doctor.js";
 import { registerGatewayCommand } from "./commands/gateway.js";
 import { registerKeysCommand } from "./commands/keys.js";
@@ -23,6 +24,7 @@ import { registerStatusCommand } from "./commands/status.js";
 import { registerOptimizeWorkloadCommand } from "./commands/optimize-workload.js";
 import { registerWorkloadsCommand } from "./commands/workloads.js";
 import { registerExperimentsCommands, registerNextCommand } from "./commands/experiments.js";
+import { daemonStatus } from "./internal/daemon.js";
 import { readCliVersion, readManifestVersions } from "./internal/version.js";
 
 export const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
@@ -215,7 +217,7 @@ function printPlatforms(json: boolean, inspect?: string): void {
   }
 }
 
-function printDoctorJson(): void {
+async function printDoctorJson(): Promise<void> {
   const required = [
     "README.md",
     "LICENSE",
@@ -237,6 +239,9 @@ function printDoctorJson(): void {
     versions.cli === versions.codexMarketplace &&
     versions.cli === versions.opencodeAdapter &&
     versions.cli === versions.hermesAdapter;
+  // Desktop-app daemon discovery (agent-card + pid check + health probe).
+  // Informational: a missing daemon never fails the doctor.
+  const daemon = await daemonStatus();
   console.log(
     JSON.stringify(
       {
@@ -246,6 +251,8 @@ function printDoctorJson(): void {
         versions,
         versions_consistent: versionsConsistent,
         missing,
+        desktop_app_daemon: daemon.running ? `running at ${daemon.baseUrl}` : "not detected",
+        daemon,
         ok: missing.length === 0 && versionsConsistent,
       },
       null,
@@ -433,6 +440,7 @@ export function buildProgram(): Command {
   });
 
   registerDoctorCommand(program, printDoctorJson);
+  registerDaemonCommand(program);
 
   registerLoginCommand(program);
   registerLogoutCommand(program);
