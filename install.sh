@@ -425,6 +425,8 @@ select_agent_platforms() {
     7|none|cli|cli-only|cli_only) AGENT_PLATFORMS="none" ;;
     *) AGENT_PLATFORMS="$answer" ;;
   esac
+  log "AGENT_SELECTION input='$answer' resolved='$AGENT_PLATFORMS'"
+  say "Agent adapter selection: $AGENT_PLATFORMS"
   validate_agent_platforms || exit 2
 }
 should_install_claude_adapter() {
@@ -679,6 +681,7 @@ install_claude_plugin() {
     run_logged "Install the Understudy plugin" claude plugin install understudy@understudy-skills
     ok "Understudy plugin installed."
   fi
+  adapter_installed
   say "In Claude Code, type /reload-plugins once to activate the skills."
   say "Then type /understudy:onboard so the agent can guide the first local Understudy."
 }
@@ -700,6 +703,8 @@ install_cursor_plugin() {
   mkdir -p "$(dirname "$dest")"
   if [ -L "$dest" ] && [ "$(readlink "$dest" 2>/dev/null || true)" = "$repo" ]; then
     ok "Understudy Cursor plugin already points at $repo."
+    adapter_installed
+    return 0
   elif [ -L "$dest" ]; then
     local current
     current="$(readlink "$dest" 2>/dev/null || true)"
@@ -724,6 +729,7 @@ install_cursor_plugin() {
     ln -s "$repo" "$dest"
     ok "Understudy Cursor plugin linked at $dest."
   fi
+  adapter_installed
   say "In Cursor, restart the app or run Developer: Reload Window."
   say "Then ask Cursor Agent: Use the Understudy onboarding skill for this project."
 }
@@ -764,6 +770,7 @@ install_codex_plugin() {
       return 0
     fi
   fi
+  adapter_installed
   say "In Codex, run /plugins, choose the understudy-skills marketplace, and install or enable the understudy plugin."
   say "Then ask Codex: Use the Understudy onboarding skill for this project."
 }
@@ -827,6 +834,9 @@ install_opencode_adapter() {
     link_opencode_path "$command_src" "$command_dest" "command" || true
   fi
 
+  if [ "$linked" -gt 0 ]; then
+    adapter_installed
+  fi
   ok "Understudy OpenCode skills linked: $linked; skipped existing conflicts: $skipped."
   say "In OpenCode, restart the TUI or open a new session so skills and commands reload."
   say "Then run /understudy-onboard, or ask OpenCode: Use the Understudy onboarding skill for this project."
@@ -914,6 +924,7 @@ install_hermes_adapter() {
   # A plain substring check avoids a YAML dependency on the fast path.
   if [ -f "$config" ] && grep -qF "$register_dir" "$config" 2>/dev/null; then
     ok "Understudy skills already registered in $config (skills.external_dirs)."
+    adapter_installed
   elif [ ! -f "$config" ]; then
     # Fresh Hermes: write a minimal user config. Hermes merges defaults at load
     # and `hermes config migrate` keeps our block, so this is non-destructive.
@@ -924,6 +935,7 @@ install_hermes_adapter() {
       printf '    - %s\n' "$register_dir"
     } >"$config"
     ok "Created $config and registered Understudy skills in skills.external_dirs."
+    adapter_installed
   elif py="$(hermes_yaml_python)"; then
     cp "$config" "$config.understudy.bak-$(date -u +"%Y%m%dT%H%M%SZ")"
     if "$py" - "$config" "$register_dir" >>"$LOG_FILE" 2>&1 <<'PY'
@@ -953,6 +965,7 @@ with open(cfg_path, "w", encoding="utf-8") as f:
 PY
     then
       ok "Registered Understudy skills in $config (skills.external_dirs)."
+      adapter_installed
     else
       warn "Could not update $config automatically; continuing with the rest of the install."
       say "Manual step: add \"$register_dir\" to skills.external_dirs in $config (or run: hermes config edit)."
@@ -966,12 +979,47 @@ PY
   say "Then run /onboard, or ask Hermes: Use the Understudy onboarding skill for this project."
 }
 
+ADAPTERS_INSTALLED=0
+adapter_installed() {
+  ADAPTERS_INSTALLED=$((ADAPTERS_INSTALLED + 1))
+}
+
 install_agent_adapters() {
+  ADAPTERS_INSTALLED=0
   install_claude_plugin
   install_cursor_plugin
   install_codex_plugin
   install_opencode_adapter
   install_hermes_adapter
+  log "ADAPTERS_INSTALLED count=$ADAPTERS_INSTALLED platforms='$AGENT_PLATFORMS'"
+  if [ "$ADAPTERS_INSTALLED" -eq 0 ]; then
+    case "$(normalize_agent_platform "$AGENT_PLATFORMS")" in
+      none)
+        say "CLI-only install — no coding-agent adapters installed."
+        ;;
+      *)
+        warn "No coding-agent adapters were installed."
+        warn "This usually means no supported coding agent was detected on this machine, or an existing install blocked the adapter."
+        say "Detected agents: $(list_detected_agents)"
+        say "To install for a specific agent, rerun with --agents claude-code (or cursor, codex, opencode, hermes)."
+        say "To continue with CLI only, rerun with --agents none."
+        ;;
+    esac
+  fi
+}
+
+list_detected_agents() {
+  local found=""
+  detect_claude_code && found="${found}claude-code "
+  detect_cursor && found="${found}cursor "
+  detect_codex && found="${found}codex "
+  detect_opencode && found="${found}opencode "
+  detect_hermes && found="${found}hermes "
+  if [ -z "$found" ]; then
+    printf '%s\n' "none"
+  else
+    printf '%s\n' "$found"
+  fi
 }
 
 launch_claude_code() {
@@ -1126,6 +1174,7 @@ say "Source: $INSTALL_REPO_URL#$INSTALL_REF ${D}(installer commit: $INSTALLER_CO
 say "Install log: $LOG_FILE"
 say ""
 select_agent_platforms
+log "AGENT_PLATFORMS final='$AGENT_PLATFORMS' explicit=$AGENT_PLATFORMS_EXPLICIT"
 say "${B}Install plan${R}"
 say "  ${G2}1.${R} Install the Understudy CLI."
 if [ "$KEEP_LOGIN" = "1" ]; then
@@ -1168,16 +1217,21 @@ fi
 compose_initial_prompt
 
 section "Where this goes next"
-say "The installer is done. The next experience belongs inside your coding agent:"
-say "  Claude Code: run /reload-plugins and then /understudy:onboard."
-say "  Cursor: restart Cursor or run Developer: Reload Window, then ask Cursor Agent to use the Understudy onboarding skill."
-say "  Codex: run /plugins, install or enable understudy, then ask Codex to use the Understudy onboarding skill."
-say "  OpenCode: restart the TUI or open a new session, then run /understudy-onboard."
-say "  Hermes: run /reload-skills in an open session (or start a new hermes session), then run /onboard or ask Hermes to use the Understudy onboarding skill."
+if [ "$ADAPTERS_INSTALLED" -gt 0 ]; then
+  say "The installer is done ($ADAPTERS_INSTALLED adapter(s) installed). The next experience belongs inside your coding agent:"
+  should_install_claude_adapter  && say "  Claude Code: run /reload-plugins and then /understudy:onboard."
+  should_install_cursor_adapter  && say "  Cursor: restart Cursor or run Developer: Reload Window, then ask Cursor Agent to use the Understudy onboarding skill."
+  should_install_codex_adapter   && say "  Codex: run /plugins, install or enable understudy, then ask Codex to use the Understudy onboarding skill."
+  should_install_opencode_adapter && say "  OpenCode: restart the TUI or open a new session, then run /understudy-onboard."
+  should_install_hermes_adapter  && say "  Hermes: run /reload-skills in an open session (or start a new hermes session), then run /onboard or ask Hermes to use the Understudy onboarding skill."
+  say "That lets the coding agent run the email-code sign-up itself, explain the first local Understudy, and open a terminal of the user's choice when needed."
+else
+  say "CLI-only install complete. Run \`understudy\` to explore the CLI."
+  say "To install coding-agent adapters later, rerun with --agents claude-code (or cursor, codex, opencode, hermes, all)."
+fi
 if lower_my_ant_bill_enabled; then
   say "Focused path: lower Anthropic bill. Ask the agent to use onboarding with the lower-Anthropic-bill path, then run the lower-anthropic-bill skill."
 fi
-say "That lets the coding agent run the email-code sign-up itself, explain the first local Understudy, and open a terminal of the user's choice when needed."
 if should_run_step 3; then
   launch_selected_agent
 else
