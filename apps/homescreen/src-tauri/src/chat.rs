@@ -52,6 +52,7 @@ pub struct ChatMsg {
     pub content: String,
 }
 
+#[derive(Serialize)]
 pub struct BenchmarkChatResult {
     pub content: String,
     pub status: String,
@@ -78,6 +79,10 @@ struct NonstreamChatOnceResult {
 
 const CHAT_MAX_TOKENS: u32 = 8192;
 const BENCHMARK_MAX_TOKENS: u32 = 384;
+/// Default cap for agent-driven chat over the local server. Deliberately much
+/// larger than the benchmark cap: reasoning-enabled models spend their budget
+/// thinking, and a benchmark-sized cap reads as an empty final answer.
+const AGENT_CHAT_DEFAULT_MAX_TOKENS: u32 = 2048;
 const CHAT_THINKING_BUDGET: u32 = 2048;
 const BENCHMARK_THINKING_BUDGET: u32 = 0;
 const BENCHMARK_SIDEKICK_WAIT_MS: u64 = 2_500;
@@ -2861,6 +2866,114 @@ pub async fn benchmark_gateway_chat(
         tool_calls: tool_count,
         compacted,
         context_tokens_before,
+    })
+}
+
+/// Agent-facing, non-streaming chat completion against one warm slot, served
+/// over the local API server. Reuses the benchmark chat plumbing
+/// (`nonstream_chat_once` + the local tool loop) — NOT the GUI `chat_stream`
+/// — but without the benchmark prompt wrapper, sidekick spawning, or
+/// persistence, and with an agent-sized token cap.
+pub async fn agent_chat(
+    app: &AppHandle,
+    mgr: &Residency,
+    slot_id: u32,
+    session_id: &str,
+    prompt: &str,
+    max_tokens: Option<u32>,
+) -> Result<BenchmarkChatResult, String> {
+    let started = Instant::now();
+    let max_tokens = max_tokens
+        .unwrap_or(AGENT_CHAT_DEFAULT_MAX_TOKENS)
+        .clamp(1, CHAT_MAX_TOKENS);
+    let (port, model_field) = mgr
+        .endpoint(slot_id)
+        .ok_or_else(|| format!("slot {slot_id} is not warm; warm it first"))?;
+    let url = format!("http://127.0.0.1:{port}/v1/chat/completions");
+    let mut outbound_messages = vec![
+        json!({ "role": "system", "content": system_prompt_for(&model_field) }),
+        json!({ "role": "user", "content": prompt }),
+    ];
+
+    let client = reqwest::Client::builder()
+        .build()
+        .map_err(|e| e.to_string())?;
+    let mut final_content = String::new();
+    let mut reasoning_tokens = 0u64;
+    let mut tool_count = 0u64;
+    let mut status = "tool_limit".to_string();
+    let mut repaired_empty_final = false;
+
+    for _round in 0..=BENCHMARK_MAX_TOOL_ROUNDS {
+        let result = nonstream_chat_once(
+            &client,
+            &url,
+            None,
+            &model_field,
+            &outbound_messages,
+            max_tokens,
+            BENCHMARK_THINKING_BUDGET,
+            false,
+        )
+        .await?;
+        final_content = result.content.clone();
+        reasoning_tokens += approximate_token_count(&result.reasoning);
+        let tool_calls = result.tool_calls;
+        if tool_calls.is_empty() {
+            if final_content.trim().is_empty() && !repaired_empty_final {
+                repaired_empty_final = true;
+                outbound_messages.push(benchmark_finalize_prompt(&result.reasoning));
+                continue;
+            }
+            if final_content.trim().is_empty() {
+                status = "empty_final".to_string();
+                break;
+            }
+            status = "ok".to_string();
+            break;
+        }
+        let assistant_tool_calls: Vec<Value> = tool_calls
+            .iter()
+            .map(|call| {
+                json!({
+                    "id": call.id,
+                    "type": "function",
+                    "function": { "name": call.name, "arguments": call.arguments },
+                })
+            })
+            .collect();
+        outbound_messages.push(json!({
+            "role": "assistant",
+            "content": final_content,
+            "tool_calls": assistant_tool_calls,
+        }));
+
+        for call in tool_calls {
+            let args = serde_json::from_str::<Value>(&call.arguments).unwrap_or_else(|_| json!({}));
+            let result =
+                match tool_result(app, mgr, Some(slot_id), session_id, &call.name, &args).await {
+                    Ok(value) => value,
+                    Err(err) => json!({ "error": err }),
+                };
+            tool_count += 1;
+            outbound_messages.push(json!({
+                "role": "tool",
+                "tool_call_id": call.id,
+                "content": result.to_string(),
+            }));
+        }
+    }
+
+    Ok(BenchmarkChatResult {
+        prompt_tokens: approximate_messages_tokens(&outbound_messages),
+        completion_tokens: final_content.split_whitespace().count() as u64,
+        reasoning_tokens,
+        content: final_content,
+        status,
+        elapsed_ms: started.elapsed().as_millis() as u64,
+        tool_calls: tool_count,
+        compacted: false,
+        context_tokens_before: 0,
     })
 }
 

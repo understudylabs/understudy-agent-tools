@@ -1,6 +1,7 @@
 mod aa;
 mod account;
 mod agent_card;
+mod agent_ops;
 mod bin;
 mod bootstrap;
 mod chat;
@@ -43,6 +44,10 @@ pub fn run() {
             app.manage(metrics::MetricsReader::new());
             app.manage(machine);
             app.manage(residency);
+            // Agent-facing registries behind the local API server: model
+            // download progress + the single-flight benchmark run gate.
+            app.manage(agent_ops::Downloads::new());
+            app.manage(agent_ops::BenchRuns::new());
 
             // Re-warm the previously-warm model set (background-safe).
             let handle = app.handle().clone();
