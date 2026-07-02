@@ -142,11 +142,19 @@ fn convert_messages(messages: &[Value]) -> (Option<String>, Vec<Value>) {
         let role = message.get("role").and_then(|r| r.as_str()).unwrap_or("");
         match role {
             "system" => {
+                let content = message.get("content").and_then(|c| c.as_str()).unwrap_or("");
                 if system.is_none() {
-                    system = message
-                        .get("content")
-                        .and_then(|c| c.as_str())
-                        .map(str::to_string);
+                    system = Some(content.to_string());
+                } else if !content.trim().is_empty() {
+                    // Mid-transcript system content (compaction summaries,
+                    // sidekick handoffs) has no top-level slot on the
+                    // Messages API: keep it in position as an operator-marked
+                    // user turn instead of dropping it.
+                    flush_tools(&mut pending_tool_results, &mut out);
+                    out.push(json!({
+                        "role": "user",
+                        "content": format!("<system-reminder>\n{content}\n</system-reminder>"),
+                    }));
                 }
             }
             "tool" => {
@@ -277,7 +285,7 @@ pub async fn stream_chat_once(
 
     use futures_util::StreamExt;
     let mut stream = resp.bytes_stream();
-    let mut buf = String::new();
+    let mut buf: Vec<u8> = Vec::new();
     let mut content = String::new();
     let mut raw_blocks: Vec<Value> = vec![];
     let mut tool_calls: Vec<ToolCallAcc> = vec![];
@@ -288,11 +296,10 @@ pub async fn stream_chat_once(
             Ok(c) => c,
             Err(e) => return error_turn(format!("anthropic stream failed: {e}"), on_event),
         };
-        buf.push_str(&String::from_utf8_lossy(&chunk));
+        buf.extend_from_slice(&chunk);
 
-        while let Some(pos) = buf.find('\n') {
-            let line = buf[..pos].trim().to_string();
-            buf.drain(..=pos);
+        for line in drain_lines(&mut buf) {
+            let line = line.trim();
             let Some(data) = line.strip_prefix("data: ") else {
                 continue;
             };
@@ -425,6 +432,21 @@ pub async fn stream_chat_once(
     }
 }
 
+/// Split complete `\n`-terminated lines out of a raw byte buffer, decoding
+/// per line. Decoding AFTER the split means a multi-byte UTF-8 character
+/// split across network chunks is never corrupted: a UTF-8 continuation
+/// byte can never be 0x0A, so byte-level newline splits are char-safe.
+/// (Corrupted thinking text would otherwise be replayed against its
+/// signature on the next tool round and rejected by the API.)
+fn drain_lines(buf: &mut Vec<u8>) -> Vec<String> {
+    let mut lines = vec![];
+    while let Some(pos) = buf.iter().position(|&b| b == b'\n') {
+        let line: Vec<u8> = buf.drain(..=pos).collect();
+        lines.push(String::from_utf8_lossy(&line).to_string());
+    }
+    lines
+}
+
 fn append_str(block: &mut Value, key: &str, text: &str) {
     let existing = block.get(key).and_then(|v| v.as_str()).unwrap_or("");
     block[key] = json!(format!("{existing}{text}"));
@@ -507,6 +529,45 @@ mod tests {
         // The raw blocks (thinking included) are echoed unmodified — never
         // re-derived from the OpenAI shape.
         assert_eq!(messages[1]["content"], raw);
+    }
+
+    #[test]
+    fn later_system_messages_stay_in_position_as_system_reminders() {
+        // Compaction summaries and sidekick handoffs arrive as a SECOND
+        // role:"system" message mid-transcript; dropping them would silently
+        // erase the model's compressed history.
+        let transcript = vec![
+            json!({ "role": "system", "content": "base prompt" }),
+            json!({ "role": "user", "content": "hi" }),
+            json!({ "role": "system", "content": "[compacted] earlier turns summary" }),
+            json!({ "role": "user", "content": "continue" }),
+        ];
+        let (system, messages) = convert_messages(&transcript);
+        assert_eq!(system.as_deref(), Some("base prompt"));
+        assert_eq!(messages.len(), 3);
+        let reminder = messages[1]["content"].as_str().unwrap();
+        assert_eq!(messages[1]["role"], "user");
+        assert!(reminder.contains("<system-reminder>"));
+        assert!(reminder.contains("earlier turns summary"));
+        assert_eq!(messages[2]["content"], "continue");
+    }
+
+    #[test]
+    fn drain_lines_survives_multibyte_chars_split_across_chunks() {
+        // Worst-case chunking: one byte at a time. Curly quotes/em-dashes are
+        // 3-byte UTF-8; decoding per chunk would corrupt them (and corrupted
+        // thinking text is later rejected against its signature on replay).
+        let payload = "data: {\"text\":\"café — “ok”\"}\n".as_bytes();
+        let mut buf: Vec<u8> = Vec::new();
+        let mut lines: Vec<String> = vec![];
+        for byte in payload {
+            buf.push(*byte);
+            lines.extend(drain_lines(&mut buf));
+        }
+        assert_eq!(lines.len(), 1);
+        assert!(lines[0].contains("café — “ok”"));
+        assert!(!lines[0].contains('\u{FFFD}'));
+        assert!(buf.is_empty());
     }
 
     #[test]
