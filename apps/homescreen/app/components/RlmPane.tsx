@@ -133,6 +133,9 @@ export function RlmPane() {
   const [quests, setQuests] = useState<QuestNode[]>([]);
   const [reduce, setReduce] = useState<ReduceNode | null>(null);
   const [runId, setRunId] = useState<string | null>(null);
+  // Effective width from RunStarted: the backend clamps fan-out to one
+  // in-flight request per warm slot, which can be below the requested width.
+  const [liveConcurrency, setLiveConcurrency] = useState<number | null>(null);
   const [summary, setSummary] = useState<RlmRunSummary | null>(null);
   const [selected, setSelected] = useState<Selected | null>(null);
 
@@ -195,6 +198,7 @@ export function RlmPane() {
       setQuests(freshQuestNodes(next.quest_count, "planned"));
       setReduce({ ...IDLE_QUEST, state: "planned", prompt: "" });
       setRunId(null);
+      setLiveConcurrency(null);
       setSummary(null);
       setSelected({ kind: "orchestrator" });
     } catch (err) {
@@ -216,6 +220,7 @@ export function RlmPane() {
       setQuests(freshQuestNodes(next.quest_count, "pending"));
       setReduce({ ...IDLE_QUEST, state: "pending", prompt: "" });
       setRunId(null);
+      setLiveConcurrency(null);
       setSummary(null);
       setSelected({ kind: "orchestrator" });
 
@@ -223,6 +228,7 @@ export function RlmPane() {
       ch.onmessage = (event) => {
         if (event.type === "RunStarted") {
           setRunId(event.run_id);
+          setLiveConcurrency(event.concurrency);
           return;
         }
         if (event.type === "QuestStarted") {
@@ -421,7 +427,7 @@ export function RlmPane() {
                 <div className="card-sub">
                   {mode === "plan"
                     ? `Dry-run of the fan-out: ${plan.quest_count} quests (each would ${plan.quest_verb}), then one reduce call. Warm a slot and press Run live to execute it.`
-                    : `${runId ?? "starting"} · ${doneQuests}/${plan.quest_count} quests · ${plan.concurrency} at a time`}
+                    : `${runId ?? "starting"} · ${doneQuests}/${plan.quest_count} quests · ${liveConcurrency ?? plan.concurrency} at a time`}
                 </div>
               </div>
               <span className="svc-state">
@@ -431,7 +437,9 @@ export function RlmPane() {
                     ? summary.status
                     : busy === "run"
                       ? "running"
-                      : "idle"}
+                      : error
+                        ? "failed"
+                        : "idle"}
               </span>
             </div>
 

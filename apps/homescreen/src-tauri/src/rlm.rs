@@ -451,6 +451,14 @@ pub struct RlmRunSummary {
 
 pub(crate) type CallFuture = Pin<Box<dyn Future<Output = QuestOutcome> + Send>>;
 
+/// One request in flight per warm slot: each wave covers consecutive quest
+/// indices and assignment is round-robin, so a wave no wider than the warm
+/// fleet always hits distinct slots. Two concurrent generations on one local
+/// server process would contend (or wedge a busy shared machine).
+pub(crate) fn effective_concurrency(planned: u32, warm_slots: usize) -> u32 {
+    planned.min(warm_slots as u32).max(1)
+}
+
 fn truncate_event_text(text: &str, max: usize) -> String {
     if text.len() <= max {
         return text.to_string();
@@ -661,7 +669,7 @@ pub async fn run_rlm_live(
     request: RlmRunRequest,
     on_event: Channel<RlmEvent>,
 ) -> Result<RlmRunSummary, String> {
-    let plan = plan_rlm_run(&RlmPlanRequest {
+    let mut plan = plan_rlm_run(&RlmPlanRequest {
         task_id: request.task_id.clone(),
         quest_count: request.quest_count,
         concurrency: request.concurrency,
@@ -700,6 +708,7 @@ pub async fn run_rlm_live(
         });
         return Err(message);
     }
+    plan.concurrency = effective_concurrency(plan.concurrency, warm_slots.len());
 
     let assignments: Vec<QuestAssignment> = (0..plan.quests.len())
         .map(|index| warm_slots[index % warm_slots.len()].clone())
@@ -940,7 +949,18 @@ mod tests {
             assert_eq!(plan.quest_count, task.default_quests);
             assert!(task.default_quests as usize <= task.units.len());
             assert!(!plan.reduce_instruction.is_empty());
+            // clamp() panics when min > max, so guard the static task data.
+            assert!(task.min_quests <= task.max_quests.min(task.units.len() as u32));
         }
+    }
+
+    #[test]
+    fn live_concurrency_never_exceeds_the_warm_fleet() {
+        assert_eq!(effective_concurrency(4, 1), 1);
+        assert_eq!(effective_concurrency(4, 2), 2);
+        assert_eq!(effective_concurrency(2, 8), 2);
+        // Degenerate input still yields a driveable width.
+        assert_eq!(effective_concurrency(0, 3), 1);
     }
 
     // ---- reduce prompt ---------------------------------------------------
