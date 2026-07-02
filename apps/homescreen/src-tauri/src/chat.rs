@@ -1561,6 +1561,12 @@ async fn call_sidekick_model(
     })
 }
 
+/// MCP tools that legitimately run for many minutes over one request (a
+/// non-dry-run benchmark awaits the whole run inline). These keep the
+/// connect timeout but skip the whole-request cap; the run registry's
+/// single-flight guard and cancel tool bound them instead.
+const LONG_RUNNING_MCP_TOOLS: &[&str] = &["run_fusion_benchmark", "run_fusion_benchmark_matrix"];
+
 async fn call_understudy_mcp(app: &AppHandle, args: &Value) -> Result<Value, String> {
     let tool_name = args
         .get("tool_name")
@@ -1575,14 +1581,18 @@ async fn call_understudy_mcp(app: &AppHandle, args: &Value) -> Result<Value, Str
         "method": "tools/call",
         "params": { "name": tool_name, "arguments": arguments }
     });
-    let response = reqwest::Client::builder()
+    let client = reqwest::Client::builder()
         .connect_timeout(Duration::from_secs(CHAT_CONNECT_TIMEOUT_SECS))
-        .timeout(Duration::from_secs(CHAT_REQUEST_TIMEOUT_SECS))
         .build()
-        .map_err(|e| format!("understudy MCP client failed: {e}"))?
+        .map_err(|e| format!("understudy MCP client failed: {e}"))?;
+    let mut request = client
         .post(format!("{}/mcp", base.trim_end_matches('/')))
         .bearer_auth(token)
-        .json(&body)
+        .json(&body);
+    if !LONG_RUNNING_MCP_TOOLS.contains(&tool_name) {
+        request = request.timeout(Duration::from_secs(CHAT_REQUEST_TIMEOUT_SECS));
+    }
+    let response = request
         .send()
         .await
         .map_err(|e| format!("understudy MCP request failed: {e}"))?;

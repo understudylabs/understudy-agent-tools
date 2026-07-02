@@ -125,10 +125,19 @@ pub fn start(app: AppHandle) {
         // 256-bit token and persist it. Old tokens stop working on upgrade.
         _ => {
             let t = gen_token();
-            if let Err(err) = db.setting_set(TOKEN_KEY, &t) {
-                eprintln!("understudy db: persisting server token failed: {err:#}");
+            match db.setting_set(TOKEN_KEY, &t) {
+                Ok(()) => t,
+                Err(err) => {
+                    eprintln!("understudy db: persisting server token failed: {err:#}");
+                    // Serve whatever the DB holds: `info()` reads the token
+                    // from the DB, so serving the unpersisted one would 401
+                    // every caller. Retry the upgrade next launch.
+                    match db.setting_get(TOKEN_KEY) {
+                        Some(existing) => existing,
+                        None => t,
+                    }
+                }
             }
-            t
         }
     };
     let port = db
