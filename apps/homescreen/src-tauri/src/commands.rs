@@ -435,15 +435,18 @@ pub struct FusionBenchmarkComparisonPacket {
     pub provenance: ExportPacketProvenance,
 }
 
-/// Packet-level provenance for exported eval evidence. `eval_results_sha256`
-/// is the SHA-256 of the compact JSON serialization of the `eval_results`
-/// array, so a consumer can verify the rows were not edited after export.
-/// The remaining fields are the distinct row-level identities, surfaced at
-/// packet level so a skill can check split identity and cost basis without
-/// re-scanning every row.
+/// Packet-level provenance for exported eval evidence. The eval rows are
+/// also written to a sibling JSONL file (`eval_results_path`, one compact
+/// row per line) and `eval_results_sha256` is the SHA-256 of that file's
+/// bytes — so a consumer verifies the rows with a plain
+/// `shasum -a 256 <file>`, the same file-hash idiom the skills already use
+/// for `harness_sha256`/`splits_sha256`. The remaining fields are the
+/// distinct row-level identities, surfaced at packet level so a skill can
+/// check split identity and cost basis without re-scanning every row.
 #[derive(Serialize, Clone)]
 pub struct ExportPacketProvenance {
     pub eval_results_sha256: String,
+    pub eval_results_path: String,
     pub eval_result_rows: u64,
     pub run_ids: Vec<String>,
     pub splits: Vec<String>,
@@ -460,10 +463,22 @@ fn sha256_hex(bytes: &[u8]) -> String {
         .collect()
 }
 
+/// One compact `understudy.eval_result.v1` row per line — the byte-stable
+/// artifact the packet-level hash commits to.
+fn eval_results_jsonl(eval_results: &[EvalResultV1]) -> Result<String, String> {
+    let mut out = String::new();
+    for row in eval_results {
+        out.push_str(&serde_json::to_string(row).map_err(|e| e.to_string())?);
+        out.push('\n');
+    }
+    Ok(out)
+}
+
 fn export_packet_provenance(
     eval_results: &[EvalResultV1],
-) -> Result<ExportPacketProvenance, String> {
-    let canonical = serde_json::to_vec(eval_results).map_err(|e| e.to_string())?;
+    jsonl: &str,
+    eval_results_path: String,
+) -> ExportPacketProvenance {
     let mut run_ids = std::collections::BTreeSet::new();
     let mut splits = std::collections::BTreeSet::new();
     let mut harness_sha256s = std::collections::BTreeSet::new();
@@ -482,15 +497,16 @@ fn export_packet_provenance(
             cost_bases.insert(basis.clone());
         }
     }
-    Ok(ExportPacketProvenance {
-        eval_results_sha256: sha256_hex(&canonical),
+    ExportPacketProvenance {
+        eval_results_sha256: sha256_hex(jsonl.as_bytes()),
+        eval_results_path,
         eval_result_rows: eval_results.len() as u64,
         run_ids: run_ids.into_iter().collect(),
         splits: splits.into_iter().collect(),
         harness_sha256s: harness_sha256s.into_iter().collect(),
         split_sha256s: split_sha256s.into_iter().collect(),
         cost_bases: cost_bases.into_iter().collect(),
-    })
+    }
 }
 
 #[derive(Serialize, Clone)]
@@ -2033,7 +2049,24 @@ fn export_fusion_benchmark_comparison_impl(
         })
         .collect::<Vec<_>>();
     groups.sort_by_key(|g| std::cmp::Reverse(g.rows));
-    let provenance = export_packet_provenance(&eval_results)?;
+    let path = resolve_export_output_path(
+        request.output_path,
+        PathBuf::from("fusion-benchmark").join(format!(
+            "comparison-{}.json",
+            chrono::Utc::now().format("%Y%m%dT%H%M%SZ")
+        )),
+        constrain_to_exports,
+    )?;
+    // The rows also go to a sibling JSONL file whose bytes the packet-level
+    // hash commits to, so consumers verify with `shasum -a 256`.
+    let jsonl_name = format!(
+        "{}.eval-results.jsonl",
+        path.file_stem()
+            .map(|s| s.to_string_lossy().to_string())
+            .unwrap_or_else(|| "comparison".to_string())
+    );
+    let jsonl = eval_results_jsonl(&eval_results)?;
+    let provenance = export_packet_provenance(&eval_results, &jsonl, jsonl_name.clone());
     let packet = FusionBenchmarkComparisonPacket {
         schema_version: "understudy.fusion_benchmark_comparison.v1",
         created_at: chrono::Utc::now().to_rfc3339(),
@@ -2048,16 +2081,9 @@ fn export_fusion_benchmark_comparison_impl(
         eval_results,
         provenance,
     };
-    let path = resolve_export_output_path(
-        request.output_path,
-        PathBuf::from("fusion-benchmark").join(format!(
-            "comparison-{}.json",
-            chrono::Utc::now().format("%Y%m%dT%H%M%SZ")
-        )),
-        constrain_to_exports,
-    )?;
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent).map_err(|e| e.to_string())?;
+        fs::write(parent.join(&jsonl_name), &jsonl).map_err(|e| e.to_string())?;
     }
     let bytes = serde_json::to_vec_pretty(&packet).map_err(|e| e.to_string())?;
     let mut text = String::from_utf8(bytes).map_err(|e| e.to_string())?;
@@ -3024,7 +3050,7 @@ pub fn server_info(app: AppHandle) -> Option<Value> {
 #[cfg(test)]
 mod tests {
     use super::{
-        eval_result_v1, export_packet_provenance, fusion_benchmark_score,
+        eval_result_v1, eval_results_jsonl, export_packet_provenance, fusion_benchmark_score,
         resolve_export_output_path_under, sha256_hex,
     };
     use crate::db::{Db, FusionBenchmarkInput};
@@ -3052,14 +3078,28 @@ mod tests {
             .iter()
             .map(eval_result_v1)
             .collect();
-        let provenance = export_packet_provenance(&rows).unwrap();
+        let jsonl = eval_results_jsonl(&rows).unwrap();
+        let provenance = export_packet_provenance(
+            &rows,
+            &jsonl,
+            "comparison-x.eval-results.jsonl".to_string(),
+        );
 
         assert_eq!(provenance.eval_result_rows, 2);
-        // The hash is over the compact serialization of exactly these rows,
-        // so a consumer can recompute and compare.
-        let recomputed = sha256_hex(&serde_json::to_vec(&rows).unwrap());
-        assert_eq!(provenance.eval_results_sha256, recomputed);
+        // The hash commits to the JSONL sibling file's bytes, so a consumer
+        // verifies with a plain file hash (shasum -a 256).
+        assert_eq!(provenance.eval_results_sha256, sha256_hex(jsonl.as_bytes()));
         assert_eq!(provenance.eval_results_sha256.len(), 64);
+        assert_eq!(
+            provenance.eval_results_path,
+            "comparison-x.eval-results.jsonl"
+        );
+        // One compact row per line, each still a valid eval_result.v1 object.
+        assert_eq!(jsonl.lines().count(), 2);
+        for line in jsonl.lines() {
+            let row: serde_json::Value = serde_json::from_str(line).unwrap();
+            assert_eq!(row["schema_version"], "understudy.eval_result.v1");
+        }
         assert_eq!(provenance.run_ids, vec!["fusion-run-1".to_string()]);
         assert_eq!(provenance.splits, vec!["none".to_string()]);
         assert_eq!(provenance.harness_sha256s, vec!["h-abc".to_string()]);

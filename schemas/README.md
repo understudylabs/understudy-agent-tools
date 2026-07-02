@@ -76,8 +76,11 @@ token/memory accounting.
 ### Export packet provenance
 
 Every `understudy.fusion_benchmark_comparison.v1` packet also carries a
-packet-level `provenance` block: `eval_results_sha256` (SHA-256 of the compact
-JSON serialization of the `eval_results` array — recompute it to verify the
-rows were not edited), row count, and the distinct run ids, split identities,
-row-level harness/split hashes, and cost bases. Skills admit an app export as
-claim evidence by checking this block; see `skills/ramp-and-verify/SKILL.md`.
+packet-level `provenance` block. The eval rows are written to a sibling JSONL
+file (`provenance.eval_results_path`, one compact `eval_result.v1` row per
+line) and `provenance.eval_results_sha256` is the SHA-256 of that file's bytes
+— verify with `shasum -a 256 <file>`, the same file-hash idiom as
+`harness_sha256`/`splits_sha256`. The block also surfaces row count and the
+distinct run ids, split identities, row-level harness/split hashes, and cost
+bases. Skills admit an app export as claim evidence by checking this block;
+see `skills/ramp-and-verify/SKILL.md`.
