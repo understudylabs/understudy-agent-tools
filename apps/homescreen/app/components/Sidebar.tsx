@@ -8,6 +8,7 @@ export type PaneId =
   | "account"
   | "usage"
   | "traces"
+  | "rlm"
   | "training-evals"
   | "training-optimization"
   | "training-datasets"
@@ -38,6 +39,17 @@ const ICONS: Record<PaneId, ReactNode> = {
     <svg viewBox="0 0 16 16" fill="none" className="nav-icon">
       <path d="M2.5 4.5h4l1.2-1.5h5.8v9.5h-11z" stroke="currentColor" strokeWidth="1.3" strokeLinejoin="round" />
       <path d="M5 8h6M8 5.5v5" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" opacity=".72" />
+    </svg>
+  ),
+  rlm: (
+    // Fan-out tree: one root, three workers, one reduce.
+    <svg viewBox="0 0 16 16" fill="none" className="nav-icon">
+      <circle cx="8" cy="2.8" r="1.6" stroke="currentColor" strokeWidth="1.2" />
+      <circle cx="3" cy="8" r="1.5" stroke="currentColor" strokeWidth="1.2" />
+      <circle cx="8" cy="8" r="1.5" stroke="currentColor" strokeWidth="1.2" />
+      <circle cx="13" cy="8" r="1.5" stroke="currentColor" strokeWidth="1.2" />
+      <circle cx="8" cy="13.2" r="1.6" stroke="currentColor" strokeWidth="1.2" />
+      <path d="M7 4 4 6.7M8 4.4V6.5M9 4l3 2.7M4 9.2l3 2.8M8 9.5v2.1M12 9.2l-3 2.8" stroke="currentColor" strokeWidth="1.1" strokeLinecap="round" />
     </svg>
   ),
   "training-evals": (
@@ -98,6 +110,7 @@ const SERVING_NAV: { id: PaneId; label: string }[] = [
   { id: "status", label: "Status" },
   { id: "capture", label: "Capture" },
   { id: "models", label: "Models" },
+  { id: "rlm", label: "RLM" },
   { id: "traces", label: "Traces" },
   { id: "usage", label: "Usage" },
 ];
