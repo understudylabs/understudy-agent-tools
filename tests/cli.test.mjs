@@ -1113,6 +1113,15 @@ describe("understudy CLI", () => {
       const skill = readFileSync(skillPath, "utf8");
       assert.match(skill, /^---\nname: understudy-onboard\n/);
       assert.match(skill, /\ndescription: .+/);
+      // The description must trigger on both surfaces this copy serves:
+      // first-run onboarding and repo conversion (the README flow says
+      // "run understudy setup, then ask the agent to convert this repo").
+      const description = skill.match(/\ndescription: (.+)/)[1];
+      assert.match(description, /onboard me/);
+      assert.match(description, /convert to Understudy/);
+      // The body must route conversion requests to the sibling recipes.
+      assert.match(skill, /\[setup-code\.md\]\(setup-code\.md\)/);
+      assert.match(skill, /\[openai-typescript\.md\]\(openai-typescript\.md\)/);
       // Per-stack recipes ship alongside SKILL.md.
       assert.ok(payload.references.length > 0);
       assert.ok(payload.references.some((ref) => ref.endsWith("openai-typescript.md")));
