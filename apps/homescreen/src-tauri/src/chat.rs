@@ -90,6 +90,15 @@ const MAX_TOOL_ROUNDS: usize = 4;
 const BENCHMARK_MAX_TOOL_ROUNDS: usize = 4;
 const SIDEKICK_MAX_TOOL_ROUNDS: usize = 2;
 const SIDEKICK_REQUEST_TIMEOUT_SECS: u64 = 120;
+/// Connect timeout for every chat/benchmark HTTP client: a local server that
+/// isn't accepting should fail in seconds, not hang the turn.
+const CHAT_CONNECT_TIMEOUT_SECS: u64 = 10;
+/// Streaming path: idle (per-read) timeout instead of a whole-request
+/// timeout, so long generations survive as long as tokens keep flowing.
+const CHAT_STREAM_IDLE_TIMEOUT_SECS: u64 = 300;
+/// Non-streaming path (benchmark rows, agent chat, MCP tool calls): nothing
+/// arrives until generation finishes, so cap the whole request generously.
+const CHAT_REQUEST_TIMEOUT_SECS: u64 = 600;
 const SIDEKICK_MAX_CONTEXT_MESSAGES: usize = 16;
 const SIDEKICK_RECENT_CONTEXT_MESSAGES: usize = 10;
 const SIDEKICK_FILE_READ_LIMIT: usize = 48 * 1024;
@@ -657,23 +666,26 @@ async fn tool_result(
         "list_models" => json!(c::list_models()),
         "list_snapshot_models" => json!(c::list_snapshot_models()),
         "list_traces" => {
-            c::list_traces(args.get("limit").and_then(|v| v.as_u64()).map(|x| x as u32))
-                .map_err(|e| e.to_string())?
+            c::list_traces(args.get("limit").and_then(|v| v.as_u64()).map(|x| x as u32)).await?
         }
-        "search_traces" => c::search_traces(
-            args.get("q")
-                .and_then(|v| v.as_str())
-                .unwrap_or("")
-                .to_string(),
-        )
-        .map_err(|e| e.to_string())?,
-        "open_trace" => c::open_trace(
-            args.get("id")
-                .and_then(|v| v.as_str())
-                .unwrap_or("")
-                .to_string(),
-        )
-        .map_err(|e| e.to_string())?,
+        "search_traces" => {
+            c::search_traces(
+                args.get("q")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("")
+                    .to_string(),
+            )
+            .await?
+        }
+        "open_trace" => {
+            c::open_trace(
+                args.get("id")
+                    .and_then(|v| v.as_str())
+                    .unwrap_or("")
+                    .to_string(),
+            )
+            .await?
+        }
         "delegate_to_sidekick" => {
             delegate_to_sidekick(app, mgr, active_slot_id, session_id, "tool", args).await?
         }
@@ -1016,24 +1028,23 @@ fn sidekick_tool_result(app: &AppHandle, name: &str, args: &Value) -> Result<Val
         "status" => json!(c::get_status(app.clone())),
         "residency" => json!(c::get_residency(app.clone())),
         "list_models" => json!(c::list_models()),
+        // Sync dispatch: the _sync trace lookups block, bounded by the
+        // moraine-mcp call deadline.
         "list_traces" => {
-            c::list_traces(args.get("limit").and_then(|v| v.as_u64()).map(|x| x as u32))
-                .map_err(|e| e.to_string())?
+            c::list_traces_sync(args.get("limit").and_then(|v| v.as_u64()).map(|x| x as u32))?
         }
-        "search_traces" => c::search_traces(
+        "search_traces" => c::search_traces_sync(
             args.get("q")
                 .and_then(|v| v.as_str())
                 .unwrap_or("")
                 .to_string(),
-        )
-        .map_err(|e| e.to_string())?,
-        "open_trace" => c::open_trace(
+        )?,
+        "open_trace" => c::open_trace_sync(
             args.get("id")
                 .and_then(|v| v.as_str())
                 .unwrap_or("")
                 .to_string(),
-        )
-        .map_err(|e| e.to_string())?,
+        )?,
         "repo_files" => sidekick_repo_files(args)?,
         "repo_search" => sidekick_repo_search(args)?,
         "repo_open" => sidekick_repo_open(args)?,
@@ -1395,29 +1406,26 @@ fn sidekick_understudy_mcp_read(app: &AppHandle, args: &Value) -> Result<Value, 
                 .map(|x| x as u32)
         )
         .map_err(|e| e.to_string())?),
-        "list_traces" => c::list_traces(
+        "list_traces" => c::list_traces_sync(
             arguments
                 .get("limit")
                 .and_then(|v| v.as_u64())
                 .map(|x| x as u32),
-        )
-        .map_err(|e| e.to_string())?,
-        "search_traces" => c::search_traces(
+        )?,
+        "search_traces" => c::search_traces_sync(
             arguments
                 .get("q")
                 .and_then(|v| v.as_str())
                 .unwrap_or("")
                 .to_string(),
-        )
-        .map_err(|e| e.to_string())?,
-        "open_trace" => c::open_trace(
+        )?,
+        "open_trace" => c::open_trace_sync(
             arguments
                 .get("id")
                 .and_then(|v| v.as_str())
                 .unwrap_or("")
                 .to_string(),
-        )
-        .map_err(|e| e.to_string())?,
+        )?,
         other => return Err(format!("unsupported sidekick MCP read tool: {other}")),
     })
 }
@@ -1567,7 +1575,11 @@ async fn call_understudy_mcp(app: &AppHandle, args: &Value) -> Result<Value, Str
         "method": "tools/call",
         "params": { "name": tool_name, "arguments": arguments }
     });
-    let response = reqwest::Client::new()
+    let response = reqwest::Client::builder()
+        .connect_timeout(Duration::from_secs(CHAT_CONNECT_TIMEOUT_SECS))
+        .timeout(Duration::from_secs(CHAT_REQUEST_TIMEOUT_SECS))
+        .build()
+        .map_err(|e| format!("understudy MCP client failed: {e}"))?
         .post(format!("{}/mcp", base.trim_end_matches('/')))
         .bearer_auth(token)
         .json(&body)
@@ -2450,6 +2462,8 @@ pub async fn chat_stream(
     }
 
     let client = reqwest::Client::builder()
+        .connect_timeout(Duration::from_secs(CHAT_CONNECT_TIMEOUT_SECS))
+        .read_timeout(Duration::from_secs(CHAT_STREAM_IDLE_TIMEOUT_SECS))
         .build()
         .map_err(|e| e.to_string())?;
 
@@ -2685,6 +2699,8 @@ pub async fn benchmark_local_chat(
     }
 
     let client = reqwest::Client::builder()
+        .connect_timeout(Duration::from_secs(CHAT_CONNECT_TIMEOUT_SECS))
+        .timeout(Duration::from_secs(CHAT_REQUEST_TIMEOUT_SECS))
         .build()
         .map_err(|e| e.to_string())?;
     let mut final_content = String::new();
@@ -2789,6 +2805,8 @@ pub async fn benchmark_gateway_chat(
     let compacted = compaction_reason.is_some();
 
     let client = reqwest::Client::builder()
+        .connect_timeout(Duration::from_secs(CHAT_CONNECT_TIMEOUT_SECS))
+        .timeout(Duration::from_secs(CHAT_REQUEST_TIMEOUT_SECS))
         .build()
         .map_err(|e| e.to_string())?;
     let mut final_content = String::new();
@@ -2896,6 +2914,8 @@ pub async fn agent_chat(
     ];
 
     let client = reqwest::Client::builder()
+        .connect_timeout(Duration::from_secs(CHAT_CONNECT_TIMEOUT_SECS))
+        .timeout(Duration::from_secs(CHAT_REQUEST_TIMEOUT_SECS))
         .build()
         .map_err(|e| e.to_string())?;
     let mut final_content = String::new();
