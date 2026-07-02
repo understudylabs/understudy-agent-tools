@@ -1,0 +1,285 @@
+{
+  "3cd57708-890c-4186-9c4c-1f023cfec0a0": {
+    "lastAccessedAt": 1782584466840,
+    "clientCapabilities": {
+      "sampling": {},
+      "elicitation": {
+        "form": {},
+        "url": {}
+      },
+      "roots": {
+        "listChanged": true
+      }
+    },
+    "clientInfo": {
+      "name": "mcp-use Inspector",
+      "title": "mcp-use",
+      "icons": [
+        {
+          "src": "https://mcp-use.com/logo.png"
+        }
+      ],
+      "version": "10.0.1",
+      "websiteUrl": "https://mcp-use.com",
+      "description": "mcp-use is a complete TypeScript framework for building and using MCP"
+    },
+    "protocolVersion": "unknown"
+  },
+  "b117a6ad-f451-47c8-b913-0837e074c9c4": {
+    "lastAccessedAt": 1782584471616,
+    "clientCapabilities": {
+      "roots": {
+        "listChanged": true
+      }
+    },
+    "clientInfo": {
+      "name": "mcp-use CLI",
+      "title": "mcp-use CLI",
+      "icons": [
+        {
+          "src": "https://manufact.com/logo.png"
+        }
+      ],
+      "version": "1.33.0",
+      "websiteUrl": "https://manufact.com",
+      "description": "mcp-use CLI - Command-line interface for MCP servers"
+    },
+    "protocolVersion": "unknown"
+  },
+  "d180de7c-724d-4a91-bf3e-364673f88bf3": {
+    "lastAccessedAt": 1782584489086,
+    "clientCapabilities": {
+      "roots": {
+        "listChanged": true
+      }
+    },
+    "clientInfo": {
+      "name": "mcp-use CLI",
+      "title": "mcp-use CLI",
+      "icons": [
+        {
+          "src": "https://manufact.com/logo.png"
+        }
+      ],
+      "version": "1.33.0",
+      "websiteUrl": "https://manufact.com",
+      "description": "mcp-use CLI - Command-line interface for MCP servers"
+    },
+    "protocolVersion": "unknown"
+  },
+  "995de735-cf4d-43d9-b967-2104648746a7": {
+    "lastAccessedAt": 1782584489090,
+    "clientCapabilities": {
+      "roots": {
+        "listChanged": true
+      }
+    },
+    "clientInfo": {
+      "name": "mcp-use CLI",
+      "title": "mcp-use CLI",
+      "icons": [
+        {
+          "src": "https://manufact.com/logo.png"
+        }
+      ],
+      "version": "1.33.0",
+      "websiteUrl": "https://manufact.com",
+      "description": "mcp-use CLI - Command-line interface for MCP servers"
+    },
+    "protocolVersion": "unknown"
+  },
+  "89fac483-d0b9-4f35-83f9-6908d8c1ca2c": {
+    "lastAccessedAt": 1782584489093,
+    "clientCapabilities": {
+      "roots": {
+        "listChanged": true
+      }
+    },
+    "clientInfo": {
+      "name": "mcp-use CLI",
+      "title": "mcp-use CLI",
+      "icons": [
+        {
+          "src": "https://manufact.com/logo.png"
+        }
+      ],
+      "version": "1.33.0",
+      "websiteUrl": "https://manufact.com",
+      "description": "mcp-use CLI - Command-line interface for MCP servers"
+    },
+    "protocolVersion": "unknown"
+  },
+  "197a9a46-02fa-44f6-97e1-87acb85b0f63": {
+    "lastAccessedAt": 1782584516853,
+    "clientCapabilities": {
+      "sampling": {},
+      "elicitation": {
+        "form": {},
+        "url": {}
+      },
+      "roots": {
+        "listChanged": true
+      }
+    },
+    "clientInfo": {
+      "name": "mcp-use Inspector",
+      "title": "mcp-use",
+      "icons": [
+        {
+          "src": "https://mcp-use.com/logo.png"
+        }
+      ],
+      "version": "10.0.1",
+      "websiteUrl": "https://mcp-use.com",
+      "description": "mcp-use is a complete TypeScript framework for building and using MCP"
+    },
+    "protocolVersion": "unknown"
+  },
+  "f157e46b-3e3b-45b7-a84c-40c57d003e02": {
+    "lastAccessedAt": 1782584524962,
+    "clientCapabilities": {
+      "roots": {
+        "listChanged": true
+      }
+    },
+    "clientInfo": {
+      "name": "mcp-use CLI",
+      "title": "mcp-use CLI",
+      "icons": [
+        {
+          "src": "https://manufact.com/logo.png"
+        }
+      ],
+      "version": "1.33.0",
+      "websiteUrl": "https://manufact.com",
+      "description": "mcp-use CLI - Command-line interface for MCP servers"
+    },
+    "protocolVersion": "unknown"
+  },
+  "efc20155-de9a-4506-86cb-7fe3fd8db1ca": {
+    "lastAccessedAt": 1782584524968,
+    "clientCapabilities": {
+      "roots": {
+        "listChanged": true
+      }
+    },
+    "clientInfo": {
+      "name": "mcp-use CLI",
+      "title": "mcp-use CLI",
+      "icons": [
+        {
+          "src": "https://manufact.com/logo.png"
+        }
+      ],
+      "version": "1.33.0",
+      "websiteUrl": "https://manufact.com",
+      "description": "mcp-use CLI - Command-line interface for MCP servers"
+    },
+    "protocolVersion": "unknown"
+  },
+  "fa4cb376-7776-45c4-ab57-aafd9aa0cdc8": {
+    "lastAccessedAt": 1782584524971,
+    "clientCapabilities": {
+      "roots": {
+        "listChanged": true
+      }
+    },
+    "clientInfo": {
+      "name": "mcp-use CLI",
+      "title": "mcp-use CLI",
+      "icons": [
+        {
+          "src": "https://manufact.com/logo.png"
+        }
+      ],
+      "version": "1.33.0",
+      "websiteUrl": "https://manufact.com",
+      "description": "mcp-use CLI - Command-line interface for MCP servers"
+    },
+    "protocolVersion": "unknown"
+  },
+  "fd1e1819-f1c2-4b9d-8f63-e9442a843d74": {
+    "lastAccessedAt": 1782584530220,
+    "clientCapabilities": {
+      "roots": {
+        "listChanged": true
+      }
+    },
+    "clientInfo": {
+      "name": "mcp-use CLI",
+      "title": "mcp-use CLI",
+      "icons": [
+        {
+          "src": "https://manufact.com/logo.png"
+        }
+      ],
+      "version": "1.33.0",
+      "websiteUrl": "https://manufact.com",
+      "description": "mcp-use CLI - Command-line interface for MCP servers"
+    },
+    "protocolVersion": "unknown"
+  },
+  "fc72c9e2-a63e-484e-80eb-7a5294f2818e": {
+    "lastAccessedAt": 1782584571850,
+    "clientCapabilities": {
+      "roots": {
+        "listChanged": true
+      }
+    },
+    "clientInfo": {
+      "name": "mcp-use CLI",
+      "title": "mcp-use CLI",
+      "icons": [
+        {
+          "src": "https://manufact.com/logo.png"
+        }
+      ],
+      "version": "1.33.0",
+      "websiteUrl": "https://manufact.com",
+      "description": "mcp-use CLI - Command-line interface for MCP servers"
+    },
+    "protocolVersion": "unknown"
+  },
+  "1c2192a7-02b9-4981-bf74-f24c5b21aa02": {
+    "lastAccessedAt": 1782584571853,
+    "clientCapabilities": {
+      "roots": {
+        "listChanged": true
+      }
+    },
+    "clientInfo": {
+      "name": "mcp-use CLI",
+      "title": "mcp-use CLI",
+      "icons": [
+        {
+          "src": "https://manufact.com/logo.png"
+        }
+      ],
+      "version": "1.33.0",
+      "websiteUrl": "https://manufact.com",
+      "description": "mcp-use CLI - Command-line interface for MCP servers"
+    },
+    "protocolVersion": "unknown"
+  },
+  "d6b7aa75-ea92-46a7-adec-19d6907c97c5": {
+    "lastAccessedAt": 1782584571854,
+    "clientCapabilities": {
+      "roots": {
+        "listChanged": true
+      }
+    },
+    "clientInfo": {
+      "name": "mcp-use CLI",
+      "title": "mcp-use CLI",
+      "icons": [
+        {
+          "src": "https://manufact.com/logo.png"
+        }
+      ],
+      "version": "1.33.0",
+      "websiteUrl": "https://manufact.com",
+      "description": "mcp-use CLI - Command-line interface for MCP servers"
+    },
+    "protocolVersion": "unknown"
+  }
+}

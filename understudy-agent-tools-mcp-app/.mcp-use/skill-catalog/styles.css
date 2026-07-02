@@ -1,0 +1,5 @@
+@import "tailwindcss";
+
+/* Configure Tailwind to scan the resources directory and mcp-use package */
+@source "../../resources";
+@source "../../node_modules/mcp-use/**/*.{ts,tsx,js,jsx}";
