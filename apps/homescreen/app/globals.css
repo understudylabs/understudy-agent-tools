@@ -1243,7 +1243,8 @@ select,
   text-transform: uppercase;
   font-family: var(--mono);
 }
-.eval-controls select {
+.eval-controls select,
+.eval-controls input {
   width: 100%;
   border: 1px solid var(--border);
   border-radius: var(--r-control);
