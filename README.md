@@ -418,15 +418,22 @@ email-code prompt by reading the fresh Understudy sign-in email directly. The
 agent should search only for the current login email, use the code once, and not
 print the code or retain it in artifacts.
 
-For agent-led onboarding, run:
+For agent-led onboarding in Claude Code, install the plugin from a clone of
+this repo (see [Install as a Claude Code plugin](#install-as-a-claude-code-plugin)):
 
 ```bash
-understudy setup
+claude plugin marketplace add /path/to/understudy-agent-tools
+claude plugin install understudy@understudy-skills
 ```
 
-Then ask the coding agent to convert the current repo to Understudy or add a
-thin GEPA/DSPy optimizer. The installed onboarding skill starts by checking
-`understudy status --json` and stops with a clear login instruction if
+Then run `/reload-plugins` and `/understudy:onboard`. For agents that read
+loose `.claude/skills/` directories but not plugins, `understudy setup` remains
+as the legacy fallback: it copies the onboarding skill into `./.claude/skills/`
+(`--global` for `~/.claude/skills/`).
+
+Either way, then ask the coding agent to convert the current repo to Understudy
+or add a thin GEPA/DSPy optimizer. The installed onboarding skill starts by
+checking `understudy status --json` and stops with a clear login instruction if
 the user is not authenticated.
 
 ## Public Benchmark Golden Path

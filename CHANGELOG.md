@@ -15,6 +15,23 @@ uses semantic-ish versioning (minor = new skill or new capability, patch = fixes
 
 ## [Unreleased]
 
+### Fixed
+
+- **`understudy setup` crash.** The legacy Claude-compatible skill-copy path
+  crashed with `ENOENT ... skills/onboard/frontmatter.md` on every run:
+  `frontmatter.md` was folded into `skills/onboard/SKILL.md` in the
+  plugin-first onboarding change (0.2.0) without updating `setup.ts`, so every
+  release 0.2.0–0.6.0 shipped the command broken. `setup` now installs
+  `SKILL.md` directly, rewriting the frontmatter `name` to match the installed
+  `understudy-onboard` directory and the `description` to carry both trigger
+  surfaces the loose copy serves (first-run onboarding *and* the historical
+  "convert to Understudy" / "add GEPA" conversion phrases), appending a short
+  routing section that points conversion requests at `setup-code.md`, and
+  copying the per-stack recipes and reference docs alongside it, mirroring
+  `skills/onboard/` so relative links keep working. README now presents the
+  Claude Code plugin install as the primary path with `understudy setup` as
+  the legacy loose-copy fallback.
+
 ## [0.6.0] — 2026-06-22
 
 ### Added
