@@ -17,7 +17,7 @@ the entry point -- the viewer always runs live against /run (no pre-baked mode).
   GET /models                     -> the model catalog
   GET /<file>                     -> static file from viewer/
 """
-import ast, json, os, queue, re, sys, time, threading
+import ast, itertools, json, os, queue, re, sys, time, threading
 from http.server import BaseHTTPRequestHandler, ThreadingHTTPServer
 from urllib.parse import urlparse, parse_qs
 
