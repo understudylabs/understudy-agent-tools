@@ -16,6 +16,7 @@ mod metrics;
 mod models;
 mod moraine;
 mod residency;
+mod rlm;
 mod route_policy;
 mod server;
 mod sidecar;
@@ -192,6 +193,9 @@ pub fn run() {
             commands::get_setting,
             commands::set_setting,
             commands::server_info,
+            rlm::rlm_demo_catalog,
+            rlm::rlm_plan,
+            rlm::run_rlm_live,
             chat::chat_stream,
         ])
         .build(tauri::generate_context!())

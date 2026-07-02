@@ -12,6 +12,7 @@ import { AccountPane } from "./components/AccountPane";
 import { UsagePane } from "./components/UsagePane";
 import { DownloadQrButton } from "./components/DownloadQrButton";
 import { isTrainingPane, TrainingPane } from "./components/TrainingPane";
+import { RlmPane } from "./components/RlmPane";
 import { useStatus } from "./lib/useStatus";
 
 export default function Page() {
@@ -36,6 +37,7 @@ export default function Page() {
       "account",
       "usage",
       "traces",
+      "rlm",
       "training-evals",
       "training-optimization",
       "training-datasets",
@@ -105,6 +107,7 @@ export default function Page() {
         {pane === "chat" && <ChatPane resetToken={chatResetToken} />}
         {pane === "models" && <ModelsPane />}
         {pane === "capture" && <CapturePane />}
+        {pane === "rlm" && <RlmPane />}
         {isTrainingPane(pane) && <TrainingPane section={pane} />}
         {pane === "account" && <AccountPane />}
         {pane === "usage" && <UsagePane status={status} />}
