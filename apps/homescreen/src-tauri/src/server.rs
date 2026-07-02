@@ -11,9 +11,10 @@
 // run on the Tauri async runtime.
 
 use axum::{
-    extract::{Path, Query, State},
+    extract::{Path, Query, Request, State},
     http::{HeaderMap, StatusCode},
-    response::IntoResponse,
+    middleware::Next,
+    response::{IntoResponse, Response},
     routing::{get, post},
     Json, Router,
 };
@@ -92,7 +93,22 @@ pub fn router(ctx: Ctx) -> Router {
         .route("/mcp", post(mcp))
         .route("/.well-known/agent.json", get(a2a_card))
         .route("/a2a", post(a2a_task))
+        .layer(axum::middleware::from_fn_with_state(ctx.clone(), auth_mw))
         .with_state(ctx)
+}
+
+/// Reject unauthenticated requests before any extractor runs, so callers
+/// without a token get a bare 401 instead of 422 body-schema detail they
+/// could use to probe the API shape. Handlers keep their own `auth` call as
+/// defense in depth.
+async fn auth_mw(State(ctx): State<Ctx>, req: Request, next: Next) -> Response {
+    if req.uri().path() == "/health" {
+        return next.run(req).await;
+    }
+    match auth(&ctx, req.headers()) {
+        Ok(()) => next.run(req).await,
+        Err(e) => e.into_response(),
+    }
 }
 
 /// Resolve (or create) a bearer token + port, then run the server on a dedicated
@@ -103,13 +119,25 @@ pub fn start(app: AppHandle) {
         None => return,
     };
     let token = match db.setting_get(TOKEN_KEY) {
-        Some(t) => t,
-        None => {
+        Some(t) if !is_legacy_token(&t) => t,
+        // Missing, or minted by the old 64-bit time/pid scheme (guessable by
+        // any local process that can estimate install time): mint a fresh
+        // 256-bit token and persist it. Old tokens stop working on upgrade.
+        _ => {
             let t = gen_token();
-            if let Err(err) = db.setting_set(TOKEN_KEY, &t) {
-                eprintln!("understudy db: persisting server token failed: {err:#}");
+            match db.setting_set(TOKEN_KEY, &t) {
+                Ok(()) => t,
+                Err(err) => {
+                    eprintln!("understudy db: persisting server token failed: {err:#}");
+                    // Serve whatever the DB holds: `info()` reads the token
+                    // from the DB, so serving the unpersisted one would 401
+                    // every caller. Retry the upgrade next launch.
+                    match db.setting_get(TOKEN_KEY) {
+                        Some(existing) => existing,
+                        None => t,
+                    }
+                }
             }
-            t
         }
     };
     let port = db
@@ -150,17 +178,33 @@ fn auth(ctx: &Ctx, headers: &HeaderMap) -> Result<(), (StatusCode, String)> {
         .and_then(|v| v.to_str().ok())
         .unwrap_or("");
     let provided = h.strip_prefix("Bearer ").unwrap_or("");
-    if provided.is_empty() || provided != ctx.token {
+    if provided.is_empty() || !token_matches(provided, &ctx.token) {
         return Err((StatusCode::UNAUTHORIZED, "unauthorized".into()));
     }
     Ok(())
+}
+
+/// Constant-time bearer comparison: compare fixed-size digests so neither
+/// content nor length differences shape the timing.
+fn token_matches(provided: &str, expected: &str) -> bool {
+    use sha2::{Digest, Sha256};
+    let a = Sha256::digest(provided.as_bytes());
+    let b = Sha256::digest(expected.as_bytes());
+    a.iter()
+        .zip(b.iter())
+        .fold(0u8, |acc, (x, y)| acc | (x ^ y))
+        == 0
 }
 
 // ---------------- REST handlers ----------------
 
 async fn status(State(ctx): State<Ctx>, h: HeaderMap) -> Result<Json<Value>, (StatusCode, String)> {
     auth(&ctx, &h)?;
-    Ok(Json(json!(crate::commands::get_status(ctx.app.clone()))))
+    // get_status can probe `moraine status` on a cold cache — keep it off
+    // the axum workers.
+    let app = ctx.app.clone();
+    let snapshot = blocking(move || Ok::<_, String>(crate::commands::get_status(app))).await?;
+    Ok(Json(json!(snapshot)))
 }
 async fn models(State(ctx): State<Ctx>, h: HeaderMap) -> Result<Json<Value>, (StatusCode, String)> {
     auth(&ctx, &h)?;
@@ -193,10 +237,19 @@ where
     T: Send + 'static,
     F: FnOnce() -> Result<T, String> + Send + 'static,
 {
+    blocking_status(f, StatusCode::BAD_REQUEST).await
+}
+
+/// `blocking`, with the caller's error status (trace lookups report 502).
+async fn blocking_status<T, F>(f: F, err_status: StatusCode) -> Result<T, (StatusCode, String)>
+where
+    T: Send + 'static,
+    F: FnOnce() -> Result<T, String> + Send + 'static,
+{
     tokio::task::spawn_blocking(f)
         .await
         .map_err(|e| (StatusCode::INTERNAL_SERVER_ERROR, format!("task failed: {e}")))?
-        .map_err(|e| (StatusCode::BAD_REQUEST, e))
+        .map_err(|e| (err_status, e))
 }
 
 #[derive(serde::Deserialize)]
@@ -582,9 +635,12 @@ async fn traces_list(
     Query(q): Query<LimitQ>,
 ) -> Result<Json<Value>, (StatusCode, String)> {
     auth(&ctx, &h)?;
-    crate::commands::list_traces(q.limit)
-        .map(Json)
-        .map_err(|e| (StatusCode::BAD_GATEWAY, e))
+    blocking_status(
+        move || crate::commands::list_traces_sync(q.limit),
+        StatusCode::BAD_GATEWAY,
+    )
+    .await
+    .map(Json)
 }
 #[derive(serde::Deserialize)]
 struct SearchQ {
@@ -596,9 +652,12 @@ async fn traces_search(
     Query(q): Query<SearchQ>,
 ) -> Result<Json<Value>, (StatusCode, String)> {
     auth(&ctx, &h)?;
-    crate::commands::search_traces(q.q)
-        .map(Json)
-        .map_err(|e| (StatusCode::BAD_GATEWAY, e))
+    blocking_status(
+        move || crate::commands::search_traces_sync(q.q),
+        StatusCode::BAD_GATEWAY,
+    )
+    .await
+    .map(Json)
 }
 async fn traces_open(
     State(ctx): State<Ctx>,
@@ -606,9 +665,12 @@ async fn traces_open(
     Path(id): Path<String>,
 ) -> Result<Json<Value>, (StatusCode, String)> {
     auth(&ctx, &h)?;
-    crate::commands::open_trace(id)
-        .map(Json)
-        .map_err(|e| (StatusCode::BAD_GATEWAY, e))
+    blocking_status(
+        move || crate::commands::open_trace_sync(id),
+        StatusCode::BAD_GATEWAY,
+    )
+    .await
+    .map(Json)
 }
 
 /// Inbound: an agent asks the GUI to focus a pane / show something.
@@ -941,7 +1003,7 @@ async fn call_tool(ctx: &Ctx, name: &str, args: &Value) -> Result<Value, String>
     use crate::commands as c;
     let app = ctx.app.clone();
     Ok(match name {
-        "status" => json!(c::get_status(app)),
+        "status" => json!(call_blocking(move || Ok::<_, String>(c::get_status(app))).await?),
         "list_models" => json!(c::list_models()),
         "list_snapshot_models" => json!(c::list_snapshot_models()),
         "residency" => json!(c::get_residency(app)),
@@ -1104,23 +1166,25 @@ async fn call_tool(ctx: &Ctx, name: &str, args: &Value) -> Result<Value, String>
         }
         "aa_models" => json!(c::aa_models(app).await.map_err(|e| e.to_string())?),
         "list_traces" => {
-            c::list_traces(args.get("limit").and_then(|v| v.as_u64()).map(|x| x as u32))
-                .map_err(|e| e.to_string())?
+            let limit = args.get("limit").and_then(|v| v.as_u64()).map(|x| x as u32);
+            call_blocking(move || c::list_traces_sync(limit)).await?
         }
-        "search_traces" => c::search_traces(
-            args.get("q")
+        "search_traces" => {
+            let q = args
+                .get("q")
                 .and_then(|v| v.as_str())
                 .unwrap_or("")
-                .to_string(),
-        )
-        .map_err(|e| e.to_string())?,
-        "open_trace" => c::open_trace(
-            args.get("id")
+                .to_string();
+            call_blocking(move || c::search_traces_sync(q)).await?
+        }
+        "open_trace" => {
+            let id = args
+                .get("id")
                 .and_then(|v| v.as_str())
                 .unwrap_or("")
-                .to_string(),
-        )
-        .map_err(|e| e.to_string())?,
+                .to_string();
+            call_blocking(move || c::open_trace_sync(id)).await?
+        }
         "ui_focus" => {
             let _ = app.emit(
                 "server-focus",
@@ -1169,15 +1233,22 @@ async fn a2a_task(
     })))
 }
 
+/// 256-bit random bearer token, hex-encoded (64 chars).
 fn gen_token() -> String {
-    use std::time::{SystemTime, UNIX_EPOCH};
-    let mut x: u64 = SystemTime::now()
-        .duration_since(UNIX_EPOCH)
-        .map(|d| d.as_nanos() as u64)
-        .unwrap_or(0);
-    x ^= std::process::id() as u64;
-    x = x.wrapping_mul(0x9E3779B97F4A7C15).rotate_left(13) ^ x;
-    format!("{x:016x}")
+    let mut bytes = [0u8; 32];
+    if getrandom::getrandom(&mut bytes).is_err() {
+        // Last-resort entropy; getrandom does not fail on supported platforms.
+        use sha2::{Digest, Sha256};
+        let seed = format!("{:?}:{}", std::time::SystemTime::now(), std::process::id());
+        bytes = Sha256::digest(seed.as_bytes()).into();
+    }
+    bytes.iter().map(|b| format!("{b:02x}")).collect()
+}
+
+/// Tokens minted before the random scheme were 16 hex chars derived from
+/// time XOR pid — treat anything but 64 hex chars as legacy.
+fn is_legacy_token(token: &str) -> bool {
+    token.len() != 64 || !token.bytes().all(|b| b.is_ascii_hexdigit())
 }
 
 /// Info for the GUI (Account/Status): how to reach the local server + its token.
@@ -1200,6 +1271,34 @@ fn _unused() -> impl IntoResponse {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn gen_token_is_64_hex_and_unique() {
+        let a = gen_token();
+        let b = gen_token();
+        assert_eq!(a.len(), 64);
+        assert!(a.bytes().all(|c| c.is_ascii_hexdigit()));
+        assert_ne!(a, b, "two generated tokens collided");
+        assert!(!is_legacy_token(&a));
+    }
+
+    #[test]
+    fn legacy_tokens_are_detected() {
+        // The old scheme emitted 16 hex chars from time XOR pid.
+        assert!(is_legacy_token("9e3779b97f4a7c15"));
+        assert!(is_legacy_token(""));
+        // Right length, non-hex content is still not one of ours.
+        assert!(is_legacy_token(&"g".repeat(64)));
+    }
+
+    #[test]
+    fn token_matches_is_exact_and_length_safe() {
+        let token = gen_token();
+        assert!(token_matches(&token, &token));
+        assert!(!token_matches(&token[..32], &token));
+        assert!(!token_matches(&gen_token(), &token));
+        assert!(!token_matches("", &token));
+    }
 
     #[test]
     fn every_mcp_tool_advertises_a_real_object_schema() {

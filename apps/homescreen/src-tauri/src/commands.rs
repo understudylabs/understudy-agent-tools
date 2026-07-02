@@ -860,6 +860,7 @@ pub fn connect(app: AppHandle) -> Result<(), String> {
     if !status.success() {
         return Err(format!("moraine up exited with {status}"));
     }
+    crate::sidecar::invalidate_moraine_state_cache();
     let _ = app.emit("status-changed", get_status(app.clone()));
     Ok(())
 }
@@ -873,6 +874,7 @@ pub fn disconnect(app: AppHandle) -> Result<(), String> {
     if !status.success() {
         return Err(format!("moraine down exited with {status}"));
     }
+    crate::sidecar::invalidate_moraine_state_cache();
     let _ = app.emit("status-changed", get_status(app.clone()));
     Ok(())
 }
@@ -1036,8 +1038,13 @@ pub fn get_moraine_state() -> MoraineState {
     crate::moraine::detect()
 }
 
-#[tauri::command]
-pub fn list_traces(limit: Option<u32>) -> Result<Value, String> {
+// The trace lookups spawn `moraine-mcp` and block on its stdout (bounded by
+// the deadline in `mcp::call_tool`). The `_sync` cores exist for callers that
+// already run on a blocking thread (the local server); the Tauri commands are
+// async and push the work off the main thread so a slow child never freezes
+// the GUI.
+
+pub fn list_traces_sync(limit: Option<u32>) -> Result<Value, String> {
     let end = chrono::Utc::now();
     let start = end - chrono::Duration::days(60);
     let args = json!({
@@ -1049,15 +1056,37 @@ pub fn list_traces(limit: Option<u32>) -> Result<Value, String> {
     mcp::call_tool("list_sessions", args).map_err(|e| e.to_string())
 }
 
-#[tauri::command]
-pub fn search_traces(query: String) -> Result<Value, String> {
+pub fn search_traces_sync(query: String) -> Result<Value, String> {
     mcp::call_tool("search_sessions", json!({ "query": query, "n_hits": 20 }))
         .map_err(|e| e.to_string())
 }
 
-#[tauri::command]
-pub fn open_trace(id: String) -> Result<Value, String> {
+pub fn open_trace_sync(id: String) -> Result<Value, String> {
     mcp::call_tool("open", json!({ "id": id })).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn list_traces(limit: Option<u32>) -> Result<Value, String> {
+    run_trace_blocking(move || list_traces_sync(limit)).await
+}
+
+#[tauri::command]
+pub async fn search_traces(query: String) -> Result<Value, String> {
+    run_trace_blocking(move || search_traces_sync(query)).await
+}
+
+#[tauri::command]
+pub async fn open_trace(id: String) -> Result<Value, String> {
+    run_trace_blocking(move || open_trace_sync(id)).await
+}
+
+async fn run_trace_blocking<F>(f: F) -> Result<Value, String>
+where
+    F: FnOnce() -> Result<Value, String> + Send + 'static,
+{
+    tauri::async_runtime::spawn_blocking(f)
+        .await
+        .map_err(|e| format!("trace task failed: {e}"))?
 }
 
 #[tauri::command]
@@ -1083,6 +1112,7 @@ pub fn start_moraine(app: AppHandle) -> Result<(), String> {
     if !status.success() {
         return Err(format!("moraine up exited with {status}"));
     }
+    crate::sidecar::invalidate_moraine_state_cache();
     let _ = app.emit("status-changed", get_status(app.clone()));
     Ok(())
 }
@@ -1096,6 +1126,7 @@ pub fn stop_moraine(app: AppHandle) -> Result<(), String> {
     if !status.success() {
         return Err(format!("moraine down exited with {status}"));
     }
+    crate::sidecar::invalidate_moraine_state_cache();
     let _ = app.emit("status-changed", get_status(app.clone()));
     Ok(())
 }
