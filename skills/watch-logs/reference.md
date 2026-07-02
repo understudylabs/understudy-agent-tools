@@ -59,17 +59,31 @@ payload with the changed sources' full content is written to
 Only exit code 1 may proceed to the review. Exit 2 is an error — alert,
 don't review. cron (every 5 minutes):
 
+Put the pipeline in a wrapper script (say `~/.understudy/watch-logs/tick.sh`)
+so cron and launchd share it:
+
 ```sh
-*/5 * * * * node /path/to/skills/watch-logs/scripts/watch-logs.mjs check \
+#!/bin/sh
+node /path/to/skills/watch-logs/scripts/watch-logs.mjs check \
   --config "$HOME/.understudy/watch-logs/ops.json" --json \
-  >> "$HOME/.understudy/watch-logs/check.log" 2>&1; \
-  case $? in 1) /path/to/run-review.sh ;; 2) /path/to/alert-error.sh ;; esac
+  >> "$HOME/.understudy/watch-logs/check.log" 2>&1
+case $? in
+  1) /path/to/run-review.sh ;;
+  2) /path/to/alert-error.sh ;;
+esac
 ```
 
-launchd (macOS) — save as
-`~/Library/LaunchAgents/com.understudy.watch-logs.ops.plist`, then
-`launchctl load` it; point `ProgramArguments` at a small wrapper shell script
-containing the same `check → case` pipeline, with `StartInterval` set to `300`.
+cron (Linux — `flock` prevents overlapping ticks if a review runs long):
+
+```sh
+*/5 * * * * flock -n "$HOME/.understudy/watch-logs/ops.lock" "$HOME/.understudy/watch-logs/tick.sh"
+```
+
+launchd (macOS, which has no `flock(1)`) — save a plist as
+`~/Library/LaunchAgents/com.understudy.watch-logs.ops.plist` with
+`ProgramArguments` pointing at `tick.sh` and `StartInterval` set to `300`,
+then `launchctl load` it; launchd never starts a job that is still running,
+so no extra lock is needed.
 
 `run-review.sh` reads the newest snapshot, runs the review call, and pipes the
 result JSON to `watch-logs.mjs record`. Keep the whole pipeline idempotent:

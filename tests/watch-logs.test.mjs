@@ -226,6 +226,17 @@ describe("watch-logs record (eval rows)", () => {
   it("rejects rows without a verdict, summary, or identifiers", () => {
     assert.throws(() => recordReview({ review: { ...review, verdict: "maybe" }, stateDir }), /verdict/);
     assert.throws(() => recordReview({ review: { ...review, summary: "" }, stateDir }), /summary/);
+    assert.throws(() => recordReview({ review: { ...review, anomalies: [] }, stateDir }), /at least one/);
+    assert.throws(
+      () => recordReview({ review: { ...review, verdict: "nothing-wrong" }, stateDir }),
+      /empty anomalies/,
+    );
+    // an honest all-clear review records cleanly
+    const clear = recordReview({
+      review: { ...review, verdict: "nothing-wrong", anomalies: [], summary: "Deploy noise only; healthy." },
+      stateDir,
+    }).row;
+    assert.equal(clear.review.verdict, "nothing-wrong");
     assert.throws(
       () => recordReview({ review: { ...review, watch_id: undefined, snapshot_id: undefined }, stateDir }),
       /run_id|task_id/,

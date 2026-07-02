@@ -32,6 +32,7 @@ import {
 } from "node:fs";
 import { homedir } from "node:os";
 import { basename, dirname, join, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 
 const SNAPSHOT_SCHEMA = "understudy.watch_logs_snapshot.v1";
 const EVAL_ROW_SCHEMA = "understudy.eval_result.v1";
@@ -222,6 +223,13 @@ export function recordReview({ review, stateDir, now = new Date() }) {
   if (typeof review.summary !== "string" || review.summary.length === 0) {
     throw new Error("review needs a non-empty summary string");
   }
+  const anomalies = Array.isArray(review.anomalies) ? review.anomalies : [];
+  if (verdict === "anomaly" && anomalies.length === 0) {
+    throw new Error('verdict "anomaly" requires at least one anomalies entry');
+  }
+  if (verdict === "nothing-wrong" && anomalies.length > 0) {
+    throw new Error('verdict "nothing-wrong" requires an empty anomalies array');
+  }
   const score = typeof review.score === "number" ? review.score : null;
   const status = verdict === "review-failed" ? "error" : score === null ? "unscored" : "ok";
   const row = {
@@ -242,7 +250,7 @@ export function recordReview({ review, stateDir, now = new Date() }) {
     review: {
       verdict,
       summary: review.summary,
-      anomalies: Array.isArray(review.anomalies) ? review.anomalies : [],
+      anomalies,
     },
   };
   const reviewsPath = join(stateDir, "reviews", "reviews.jsonl");
@@ -289,6 +297,6 @@ function main() {
   }
 }
 
-if (process.argv[1] && resolve(process.argv[1]) === new URL(import.meta.url).pathname) {
+if (process.argv[1] && resolve(process.argv[1]) === fileURLToPath(import.meta.url)) {
   main();
 }
