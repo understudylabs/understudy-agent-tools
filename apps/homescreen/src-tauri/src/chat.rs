@@ -65,10 +65,10 @@ pub struct BenchmarkChatResult {
     pub context_tokens_before: u64,
 }
 
-struct StreamChatOnceResult {
-    content: String,
-    tool_calls: Vec<ToolCallAcc>,
-    error: Option<String>,
+pub(crate) struct StreamChatOnceResult {
+    pub(crate) content: String,
+    pub(crate) tool_calls: Vec<ToolCallAcc>,
+    pub(crate) error: Option<String>,
 }
 
 struct NonstreamChatOnceResult {
@@ -479,11 +479,11 @@ fn system_prompt_for(model: &str) -> String {
 }
 
 #[derive(Clone, Debug, Default)]
-struct ToolCallAcc {
-    index: usize,
-    id: String,
-    name: String,
-    arguments: String,
+pub(crate) struct ToolCallAcc {
+    pub(crate) index: usize,
+    pub(crate) id: String,
+    pub(crate) name: String,
+    pub(crate) arguments: String,
 }
 
 fn tool_schemas() -> Vec<Value> {
@@ -1919,6 +1919,19 @@ fn cloud_route_binding() -> Option<RouteBinding> {
     })
 }
 
+fn anthropic_route_binding(app: &AppHandle, model: &str) -> Result<RouteBinding, String> {
+    let (key, _source) = crate::anthropic::api_key(app).ok_or_else(|| {
+        "no Anthropic API key configured — add one in the model picker or set ANTHROPIC_API_KEY"
+            .to_string()
+    })?;
+    Ok(RouteBinding {
+        route: "anthropic".to_string(),
+        url: crate::anthropic::API_URL.to_string(),
+        bearer: Some(key),
+        model_field: model.to_string(),
+    })
+}
+
 fn local_route_binding(
     route: &str,
     mgr: &Residency,
@@ -2395,7 +2408,13 @@ pub async fn chat_stream(
 ) -> Result<(), String> {
     let started = Instant::now();
     let session_id = session_id.unwrap_or_else(|| "default".to_string());
-    let route = apply_dynamic_chat_route(&app, &session_id, &route, slot_id, &messages, &on_event);
+    // Anthropic routes are an explicit user choice — never rewritten by the
+    // Fusion routing policy (which only reasons about local vs gateway).
+    let route = if route.starts_with("anthropic") {
+        route
+    } else {
+        apply_dynamic_chat_route(&app, &session_id, &route, slot_id, &messages, &on_event)
+    };
     let sidekick_plan = maybe_spawn_parallel_sidekick(
         &app,
         &route,
@@ -2404,9 +2423,13 @@ pub async fn chat_stream(
         &messages,
         Some(&on_event),
     );
-    let mut binding = match route.as_str() {
-        "cloud" => cloud_route_binding().ok_or_else(|| "not signed in".to_string())?,
-        _ => local_route_binding(&route, &mgr, slot_id)?,
+    let mut binding = if let Some(model) = route.strip_prefix("anthropic:") {
+        anthropic_route_binding(&app, model)?
+    } else {
+        match route.as_str() {
+            "cloud" => cloud_route_binding().ok_or_else(|| "not signed in".to_string())?,
+            _ => local_route_binding(&route, &mgr, slot_id)?,
+        }
     };
 
     let mut outbound_messages = vec![json!({
@@ -2477,17 +2500,33 @@ pub async fn chat_stream(
         .build()
         .map_err(|e| e.to_string())?;
 
+    let mut pending_anthropic_content: Option<Value> = None;
     for _round in 0..=MAX_TOOL_ROUNDS {
         prompt_tokens = prompt_tokens.max(approximate_messages_tokens(&outbound_messages));
-        let result = stream_chat_once(
-            &client,
-            &binding.url,
-            binding.bearer.as_deref(),
-            &binding.model_field,
-            &outbound_messages,
-            &on_event,
-        )
-        .await?;
+        let result = if binding.route == "anthropic" {
+            let turn = crate::anthropic::stream_chat_once(
+                &client,
+                binding.bearer.as_deref().unwrap_or(""),
+                &binding.model_field,
+                &outbound_messages,
+                &tool_schemas(),
+                CHAT_MAX_TOKENS,
+                &on_event,
+            )
+            .await;
+            pending_anthropic_content = Some(turn.assistant_content);
+            turn.result
+        } else {
+            stream_chat_once(
+                &client,
+                &binding.url,
+                binding.bearer.as_deref(),
+                &binding.model_field,
+                &outbound_messages,
+                &on_event,
+            )
+            .await?
+        };
         completion_tokens += approximate_token_count(&result.content);
         if let Some(error) = result.error {
             record_chat_run(
@@ -2562,11 +2601,18 @@ pub async fn chat_stream(
                 })
             })
             .collect();
-        outbound_messages.push(json!({
+        let mut assistant_message = json!({
             "role": "assistant",
             "content": "",
             "tool_calls": assistant_tool_calls,
-        }));
+        });
+        // Anthropic tool rounds must replay the assistant turn's original
+        // content blocks (thinking included, unmodified) — carry them on the
+        // transcript for the translator; other providers ignore the field.
+        if let Some(raw) = pending_anthropic_content.take() {
+            assistant_message["anthropic_content"] = raw;
+        }
+        outbound_messages.push(assistant_message);
 
         for call in tool_calls {
             let args = serde_json::from_str::<Value>(&call.arguments).unwrap_or_else(|_| json!({}));

@@ -1,5 +1,6 @@
 mod aa;
 mod account;
+mod anthropic;
 mod agent_card;
 mod agent_ops;
 mod bin;
@@ -123,6 +124,9 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             commands::get_status,
+            commands::anthropic_models,
+            commands::anthropic_status,
+            commands::anthropic_key_set,
             commands::connect,
             commands::disconnect,
             commands::list_models,
