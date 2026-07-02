@@ -253,7 +253,10 @@ mod tests {
         // Nothing anywhere: not signed in.
         assert_eq!(resolve_from(None, None, None), None);
         let empty = temp_credentials_file(&json!({ "orgs": {} }));
-        assert_eq!(resolve_from(None, None, read_credentials_value(&empty)), None);
+        assert_eq!(
+            resolve_from(None, None, read_credentials_value(&empty)),
+            None
+        );
     }
 
     #[test]

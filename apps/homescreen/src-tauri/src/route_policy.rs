@@ -335,12 +335,7 @@ pub struct RouteDecision {
 }
 
 impl RouteDecision {
-    fn new(
-        route: &'static str,
-        use_sidekick: bool,
-        escalate_gateway: bool,
-        reason: &str,
-    ) -> Self {
+    fn new(route: &'static str, use_sidekick: bool, escalate_gateway: bool, reason: &str) -> Self {
         RouteDecision {
             route,
             use_sidekick,

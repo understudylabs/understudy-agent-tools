@@ -405,11 +405,16 @@ mod tests {
         assert_eq!(rows[0].certified, Some(true));
         assert!(rows[0].default_rung);
 
-        let wrong_schema = good.replace("understudy.model_catalog.v1", "understudy.model_catalog.v2");
-        assert!(parse_catalog(&wrong_schema).is_err(), "unknown schema_version must be rejected");
+        let wrong_schema =
+            good.replace("understudy.model_catalog.v1", "understudy.model_catalog.v2");
+        assert!(
+            parse_catalog(&wrong_schema).is_err(),
+            "unknown schema_version must be rejected"
+        );
         assert!(parse_catalog("not json").is_err());
         assert!(
-            parse_catalog(r#"{"schema_version":"understudy.model_catalog.v1","models":[]}"#).is_err(),
+            parse_catalog(r#"{"schema_version":"understudy.model_catalog.v1","models":[]}"#)
+                .is_err(),
             "an empty catalog must not clobber the fallback"
         );
     }

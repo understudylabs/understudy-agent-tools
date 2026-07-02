@@ -428,6 +428,69 @@ pub struct FusionBenchmarkComparisonPacket {
     /// `understudy.eval_result.v1` shape. Existing consumers of `summary` and
     /// `route_policy` are unaffected.
     pub eval_results: Vec<EvalResultV1>,
+    /// Additive: packet-level provenance so skills can admit this packet as
+    /// claim evidence — hash of the eval rows, the frozen-split identities,
+    /// and the cost bases present (see the claim-packet contract in
+    /// skills/optimize-workload/SKILL.md).
+    pub provenance: ExportPacketProvenance,
+}
+
+/// Packet-level provenance for exported eval evidence. `eval_results_sha256`
+/// is the SHA-256 of the compact JSON serialization of the `eval_results`
+/// array, so a consumer can verify the rows were not edited after export.
+/// The remaining fields are the distinct row-level identities, surfaced at
+/// packet level so a skill can check split identity and cost basis without
+/// re-scanning every row.
+#[derive(Serialize, Clone)]
+pub struct ExportPacketProvenance {
+    pub eval_results_sha256: String,
+    pub eval_result_rows: u64,
+    pub run_ids: Vec<String>,
+    pub splits: Vec<String>,
+    pub harness_sha256s: Vec<String>,
+    pub split_sha256s: Vec<String>,
+    pub cost_bases: Vec<String>,
+}
+
+fn sha256_hex(bytes: &[u8]) -> String {
+    use sha2::{Digest, Sha256};
+    Sha256::digest(bytes)
+        .iter()
+        .map(|b| format!("{b:02x}"))
+        .collect()
+}
+
+fn export_packet_provenance(
+    eval_results: &[EvalResultV1],
+) -> Result<ExportPacketProvenance, String> {
+    let canonical = serde_json::to_vec(eval_results).map_err(|e| e.to_string())?;
+    let mut run_ids = std::collections::BTreeSet::new();
+    let mut splits = std::collections::BTreeSet::new();
+    let mut harness_sha256s = std::collections::BTreeSet::new();
+    let mut split_sha256s = std::collections::BTreeSet::new();
+    let mut cost_bases = std::collections::BTreeSet::new();
+    for row in eval_results {
+        run_ids.insert(row.run_id.clone());
+        splits.insert(row.split.clone());
+        if let Some(h) = &row.provenance.harness_sha256 {
+            harness_sha256s.insert(h.clone());
+        }
+        if let Some(s) = &row.provenance.split_sha256 {
+            split_sha256s.insert(s.clone());
+        }
+        if let Some(basis) = &row.cost.basis {
+            cost_bases.insert(basis.clone());
+        }
+    }
+    Ok(ExportPacketProvenance {
+        eval_results_sha256: sha256_hex(&canonical),
+        eval_result_rows: eval_results.len() as u64,
+        run_ids: run_ids.into_iter().collect(),
+        splits: splits.into_iter().collect(),
+        harness_sha256s: harness_sha256s.into_iter().collect(),
+        split_sha256s: split_sha256s.into_iter().collect(),
+        cost_bases: cost_bases.into_iter().collect(),
+    })
 }
 
 #[derive(Serialize, Clone)]
@@ -713,15 +776,65 @@ fn default_fusion_run_id() -> String {
     format!("fusion-{}", chrono::Utc::now().timestamp_millis())
 }
 
-fn resolve_repo_output_path(path: PathBuf) -> PathBuf {
+/// Root for app-generated evidence exports. Skills (ramp-and-verify,
+/// capture-evidence) discover packets here; keep the location stable.
+pub fn exports_root() -> PathBuf {
+    let home = std::env::var_os("HOME")
+        .map(PathBuf::from)
+        .unwrap_or_else(|| PathBuf::from("."));
+    exports_root_under(&home)
+}
+
+fn exports_root_under(home: &std::path::Path) -> PathBuf {
+    home.join(".understudy").join("exports")
+}
+
+/// Resolve where an export packet is written. No path → the default name
+/// under the exports root. A relative path lands under the exports root. An
+/// absolute path is an explicit override — honored for the GUI (webview),
+/// but HTTP/MCP callers (`constrain_to_exports`) hold nothing more than the
+/// bearer token, so their writes must stay inside the exports root and `..`
+/// components are rejected outright.
+fn resolve_export_output_path(
+    requested: Option<String>,
+    default_rel: PathBuf,
+    constrain_to_exports: bool,
+) -> Result<PathBuf, String> {
+    resolve_export_output_path_under(
+        &exports_root(),
+        requested,
+        default_rel,
+        constrain_to_exports,
+    )
+}
+
+fn resolve_export_output_path_under(
+    root: &std::path::Path,
+    requested: Option<String>,
+    default_rel: PathBuf,
+    constrain_to_exports: bool,
+) -> Result<PathBuf, String> {
+    let Some(requested) = requested else {
+        return Ok(root.join(default_rel));
+    };
+    let path = PathBuf::from(requested);
+    if constrain_to_exports
+        && path
+            .components()
+            .any(|c| matches!(c, std::path::Component::ParentDir))
+    {
+        return Err("output_path may not contain '..'".to_string());
+    }
     if path.is_absolute() {
-        path
+        if constrain_to_exports && !path.starts_with(root) {
+            return Err(format!(
+                "output_path must stay under {} for API/MCP callers",
+                root.display()
+            ));
+        }
+        Ok(path)
     } else {
-        PathBuf::from(env!("CARGO_MANIFEST_DIR"))
-            .join("..")
-            .join("..")
-            .join("..")
-            .join(path)
+        Ok(root.join(path))
     }
 }
 
@@ -786,9 +899,7 @@ fn chat_route_signals(app: &AppHandle, session_id: Option<&str>) -> ChatRouteSig
     let local_tool_calls: Vec<f64> = tool_scope.iter().map(|row| row.tool_calls as f64).collect();
     let local_tool_depth_rows = tool_scope
         .iter()
-        .filter(|row| {
-            row.tool_calls >= TOOL_DEPTH_ESCALATION_CALLS || row.status == "tool_limit"
-        })
+        .filter(|row| row.tool_calls >= TOOL_DEPTH_ESCALATION_CALLS || row.status == "tool_limit")
         .count() as u64;
     let benchmark_rows = app
         .state::<crate::db::Db>()
@@ -803,9 +914,7 @@ fn chat_route_signals(app: &AppHandle, session_id: Option<&str>) -> ChatRouteSig
         local_rows: local.len() as u64,
         // Rows are newest-first; decay old errors so a bad patch fades instead
         // of pinning the local route unhealthy for the whole window.
-        local_error_rate: route_policy::decayed_rate(
-            local.iter().map(|row| row.status != "ok"),
-        ),
+        local_error_rate: route_policy::decayed_rate(local.iter().map(|row| row.status != "ok")),
         sidekick_rows: sidekick.len() as u64,
         compacted_rows: rows.iter().filter(|row| row.compacted).count() as u64,
         session_compacted_rows: session_rows.iter().filter(|row| row.compacted).count() as u64,
@@ -1868,6 +1977,23 @@ pub fn export_fusion_benchmark_comparison(
     app: AppHandle,
     request: ExportFusionBenchmarkComparisonRequest,
 ) -> Result<FusionBenchmarkComparisonExport, String> {
+    export_fusion_benchmark_comparison_impl(app, request, false)
+}
+
+/// HTTP/MCP entry point: same export, but `output_path` is constrained to
+/// the exports root (any local token holder can call this).
+pub fn export_fusion_benchmark_comparison_constrained(
+    app: AppHandle,
+    request: ExportFusionBenchmarkComparisonRequest,
+) -> Result<FusionBenchmarkComparisonExport, String> {
+    export_fusion_benchmark_comparison_impl(app, request, true)
+}
+
+fn export_fusion_benchmark_comparison_impl(
+    app: AppHandle,
+    request: ExportFusionBenchmarkComparisonRequest,
+    constrain_to_exports: bool,
+) -> Result<FusionBenchmarkComparisonExport, String> {
     let limit = request.limit.unwrap_or(500);
     let summary = fusion_benchmark_run_summary(app.clone(), Some(limit))?;
     let eval_results = app
@@ -1907,6 +2033,7 @@ pub fn export_fusion_benchmark_comparison(
         })
         .collect::<Vec<_>>();
     groups.sort_by_key(|g| std::cmp::Reverse(g.rows));
+    let provenance = export_packet_provenance(&eval_results)?;
     let packet = FusionBenchmarkComparisonPacket {
         schema_version: "understudy.fusion_benchmark_comparison.v1",
         created_at: chrono::Utc::now().to_rfc3339(),
@@ -1919,16 +2046,16 @@ pub fn export_fusion_benchmark_comparison(
             decisions,
         },
         eval_results,
+        provenance,
     };
-    let path = request.output_path.map(PathBuf::from).unwrap_or_else(|| {
-        PathBuf::from(".understudy")
-            .join("fusion-benchmark")
-            .join(format!(
-                "comparison-{}.json",
-                chrono::Utc::now().format("%Y%m%dT%H%M%SZ")
-            ))
-    });
-    let path = resolve_repo_output_path(path);
+    let path = resolve_export_output_path(
+        request.output_path,
+        PathBuf::from("fusion-benchmark").join(format!(
+            "comparison-{}.json",
+            chrono::Utc::now().format("%Y%m%dT%H%M%SZ")
+        )),
+        constrain_to_exports,
+    )?;
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent).map_err(|e| e.to_string())?;
     }
@@ -1947,6 +2074,20 @@ pub fn export_fusion_benchmark_comparison(
 #[tauri::command]
 pub fn export_automationbench_handoff(
     request: ExportAutomationBenchHandoffRequest,
+) -> Result<AutomationBenchHandoffExport, String> {
+    export_automationbench_handoff_impl(request, false)
+}
+
+/// HTTP/MCP entry point: `output_path` constrained to the exports root.
+pub fn export_automationbench_handoff_constrained(
+    request: ExportAutomationBenchHandoffRequest,
+) -> Result<AutomationBenchHandoffExport, String> {
+    export_automationbench_handoff_impl(request, true)
+}
+
+fn export_automationbench_handoff_impl(
+    request: ExportAutomationBenchHandoffRequest,
+    constrain_to_exports: bool,
 ) -> Result<AutomationBenchHandoffExport, String> {
     let run_id = request
         .run_id
@@ -2033,15 +2174,14 @@ pub fn export_automationbench_handoff(
             "Use the candidate run_id when posting each result row so desktop summaries can compare gateway-glm, local-main, and local-fast.".to_string(),
         ],
     };
-    let path = request.output_path.map(PathBuf::from).unwrap_or_else(|| {
-        PathBuf::from(".understudy")
-            .join("fusion-benchmark")
-            .join(format!(
-                "automationbench-handoff-{}.json",
-                chrono::Utc::now().format("%Y%m%dT%H%M%SZ")
-            ))
-    });
-    let path = resolve_repo_output_path(path);
+    let path = resolve_export_output_path(
+        request.output_path,
+        PathBuf::from("fusion-benchmark").join(format!(
+            "automationbench-handoff-{}.json",
+            chrono::Utc::now().format("%Y%m%dT%H%M%SZ")
+        )),
+        constrain_to_exports,
+    )?;
     if let Some(parent) = path.parent() {
         fs::create_dir_all(parent).map_err(|e| e.to_string())?;
     }
@@ -2883,8 +3023,188 @@ pub fn server_info(app: AppHandle) -> Option<Value> {
 
 #[cfg(test)]
 mod tests {
-    use super::{eval_result_v1, fusion_benchmark_score};
+    use super::{
+        eval_result_v1, export_packet_provenance, fusion_benchmark_score,
+        resolve_export_output_path_under, sha256_hex,
+    };
     use crate::db::{Db, FusionBenchmarkInput};
+    use std::path::PathBuf;
+
+    #[test]
+    fn export_packet_provenance_hashes_and_summarizes_rows() {
+        let dir = std::env::temp_dir().join(format!(
+            "understudy-export-provenance-test-{}",
+            std::process::id()
+        ));
+        let _ = std::fs::remove_dir_all(&dir);
+        let db = Db::open(dir.clone()).expect("open temp db");
+        let mut scored = benchmark_input("repo-search-summary", Some(0.6), "ok");
+        scored.harness_sha256 = Some("h-abc".to_string());
+        scored.split_sha256 = Some("s-def".to_string());
+        scored.cost_basis = Some("local-zero-marginal-cost".to_string());
+        db.record_fusion_benchmark(&scored).unwrap();
+        db.record_fusion_benchmark(&benchmark_input("repo-open-grounding", None, "skipped"))
+            .unwrap();
+
+        let rows: Vec<_> = db
+            .list_fusion_benchmarks(10)
+            .unwrap()
+            .iter()
+            .map(eval_result_v1)
+            .collect();
+        let provenance = export_packet_provenance(&rows).unwrap();
+
+        assert_eq!(provenance.eval_result_rows, 2);
+        // The hash is over the compact serialization of exactly these rows,
+        // so a consumer can recompute and compare.
+        let recomputed = sha256_hex(&serde_json::to_vec(&rows).unwrap());
+        assert_eq!(provenance.eval_results_sha256, recomputed);
+        assert_eq!(provenance.eval_results_sha256.len(), 64);
+        assert_eq!(provenance.run_ids, vec!["fusion-run-1".to_string()]);
+        assert_eq!(provenance.splits, vec!["none".to_string()]);
+        assert_eq!(provenance.harness_sha256s, vec!["h-abc".to_string()]);
+        assert_eq!(provenance.split_sha256s, vec!["s-def".to_string()]);
+        assert_eq!(
+            provenance.cost_bases,
+            vec!["local-zero-marginal-cost".to_string()]
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn export_output_paths_default_and_constrain_to_exports_root() {
+        let root = std::env::temp_dir().join("understudy-exports-root-test");
+        let default_rel = PathBuf::from("fusion-benchmark").join("d.json");
+
+        // No path: default name under the exports root.
+        let p = resolve_export_output_path_under(&root, None, default_rel.clone(), true).unwrap();
+        assert_eq!(p, root.join(&default_rel));
+
+        // Relative paths land under the exports root for every caller.
+        let p = resolve_export_output_path_under(
+            &root,
+            Some("sub/file.json".to_string()),
+            default_rel.clone(),
+            true,
+        )
+        .unwrap();
+        assert_eq!(p, root.join("sub/file.json"));
+
+        // Constrained callers: `..` rejected, absolute-outside rejected,
+        // absolute-inside allowed.
+        assert!(resolve_export_output_path_under(
+            &root,
+            Some("../escape.json".to_string()),
+            default_rel.clone(),
+            true
+        )
+        .is_err());
+        assert!(resolve_export_output_path_under(
+            &root,
+            Some(
+                root.join("inside")
+                    .join("..")
+                    .join("..")
+                    .join("escape.json")
+                    .to_string_lossy()
+                    .to_string()
+            ),
+            default_rel.clone(),
+            true
+        )
+        .is_err());
+        assert!(resolve_export_output_path_under(
+            &root,
+            Some("/tmp/elsewhere.json".to_string()),
+            default_rel.clone(),
+            true
+        )
+        .is_err());
+        let inside = root.join("ok.json");
+        assert_eq!(
+            resolve_export_output_path_under(
+                &root,
+                Some(inside.to_string_lossy().to_string()),
+                default_rel.clone(),
+                true
+            )
+            .unwrap(),
+            inside
+        );
+
+        // The GUI (webview) may write anywhere it names explicitly.
+        assert_eq!(
+            resolve_export_output_path_under(
+                &root,
+                Some("/tmp/elsewhere.json".to_string()),
+                default_rel,
+                false
+            )
+            .unwrap(),
+            PathBuf::from("/tmp/elsewhere.json")
+        );
+    }
+
+    /// The rows an export packet carries must satisfy the shared schema file
+    /// itself (schemas/understudy.eval_result.v1.schema.json), not just our
+    /// hardcoded expectations — required fields, status/split enums, score
+    /// range, all read from the schema.
+    #[test]
+    fn export_eval_rows_validate_against_the_schema_file() {
+        let schema_path = PathBuf::from(env!("CARGO_MANIFEST_DIR"))
+            .join("..")
+            .join("..")
+            .join("..")
+            .join("schemas")
+            .join("understudy.eval_result.v1.schema.json");
+        let schema: serde_json::Value =
+            serde_json::from_str(&std::fs::read_to_string(&schema_path).expect("schema file"))
+                .expect("schema parses");
+        let required: Vec<&str> = schema["required"]
+            .as_array()
+            .expect("required list")
+            .iter()
+            .filter_map(|v| v.as_str())
+            .collect();
+        let status_enum: Vec<&str> = schema["properties"]["status"]["enum"]
+            .as_array()
+            .expect("status enum")
+            .iter()
+            .filter_map(|v| v.as_str())
+            .collect();
+        let split_enum: Vec<serde_json::Value> = schema["properties"]["split"]["enum"]
+            .as_array()
+            .expect("split enum")
+            .to_vec();
+
+        let dir = std::env::temp_dir().join(format!(
+            "understudy-export-schema-test-{}",
+            std::process::id()
+        ));
+        let _ = std::fs::remove_dir_all(&dir);
+        let db = Db::open(dir.clone()).expect("open temp db");
+        db.record_fusion_benchmark(&benchmark_input("repo-search-summary", Some(1.0), "ok"))
+            .unwrap();
+        db.record_fusion_benchmark(&benchmark_input("judgment-boundary", None, "error"))
+            .unwrap();
+
+        for row in db.list_fusion_benchmarks(10).unwrap().iter() {
+            let value = serde_json::to_value(eval_result_v1(row)).unwrap();
+            for field in &required {
+                assert!(
+                    !value[*field].is_null(),
+                    "required field {field} missing/null in exported row"
+                );
+            }
+            assert_eq!(value["schema_version"], "understudy.eval_result.v1");
+            assert!(status_enum.contains(&value["status"].as_str().unwrap()));
+            assert!(split_enum.contains(&value["split"]));
+            if let Some(score) = value["score"].as_f64() {
+                assert!((0.0..=1.0).contains(&score));
+            }
+        }
+        let _ = std::fs::remove_dir_all(&dir);
+    }
 
     fn benchmark_input(task_id: &str, score: Option<f64>, status: &str) -> FusionBenchmarkInput {
         FusionBenchmarkInput {

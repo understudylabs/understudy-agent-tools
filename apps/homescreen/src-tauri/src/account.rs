@@ -42,10 +42,7 @@ pub fn status() -> Result<Value> {
                     ("api_key_suffix", json!(resolved.api_key_suffix())),
                     ("org_id", json!(resolved.org_id)),
                 ] {
-                    let missing = obj
-                        .get(key)
-                        .map(|v| v.is_null())
-                        .unwrap_or(true);
+                    let missing = obj.get(key).map(|v| v.is_null()).unwrap_or(true);
                     if missing && !fill.is_null() {
                         obj.insert(key.into(), fill);
                     }
