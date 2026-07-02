@@ -381,7 +381,7 @@ pub struct EvalResultV1 {
 /// `unscored` (excluded from averages, never counted as 0); `skipped` rows
 /// never executed; every other terminal status (`error`, `tool_limit`, ...)
 /// maps to `error`.
-fn eval_result_v1(row: &FusionBenchmarkRow) -> EvalResultV1 {
+pub(crate) fn eval_result_v1(row: &FusionBenchmarkRow) -> EvalResultV1 {
     let status = match row.status.as_str() {
         "skipped" => "skipped",
         "ok" if row.score.is_some() => "ok",
@@ -455,7 +455,7 @@ pub struct ExportPacketProvenance {
     pub cost_bases: Vec<String>,
 }
 
-fn sha256_hex(bytes: &[u8]) -> String {
+pub(crate) fn sha256_hex(bytes: &[u8]) -> String {
     use sha2::{Digest, Sha256};
     Sha256::digest(bytes)
         .iter()
@@ -631,7 +631,10 @@ fn valid_fusion_mode(mode: &str) -> bool {
 }
 
 fn valid_fusion_result_mode(mode: &str) -> bool {
-    if valid_fusion_mode(mode) || mode == "automationbench" {
+    if valid_fusion_mode(mode)
+        || mode == "automationbench"
+        || mode == crate::custom_evals::CUSTOM_EVAL_MODE
+    {
         return true;
     }
     mode.strip_prefix("candidate-")
@@ -2745,7 +2748,7 @@ async fn run_fusion_benchmark_inner(
     })
 }
 
-fn truncate_for_event(text: &str, max: usize) -> String {
+pub(crate) fn truncate_for_event(text: &str, max: usize) -> String {
     if text.len() <= max {
         return text.to_string();
     }
@@ -3390,6 +3393,14 @@ mod tests {
         assert_eq!(eval_result_v1(&rows[1]).status, "skipped");
         assert_eq!(eval_result_v1(&rows[0]).status, "error"); // tool_limit maps to error
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn custom_eval_mode_is_a_valid_result_mode() {
+        assert!(super::valid_fusion_result_mode(
+            crate::custom_evals::CUSTOM_EVAL_MODE
+        ));
+        assert!(!super::valid_fusion_result_mode("custom-eval-other"));
     }
 
     #[test]

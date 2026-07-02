@@ -173,6 +173,22 @@ type FusionLiveRow = {
   reason: string;
 };
 
+type CustomEvalSummary = {
+  eval_id: string;
+  name: string;
+  scoring_rule: string;
+  example_count: number;
+  created_at: string;
+};
+
+type CustomEvalImportResult = {
+  eval_id: string;
+  name: string;
+  imported: number;
+  skipped_total: number;
+  skipped: { line: number; reason: string }[];
+};
+
 type FusionEvalEvent =
   | { type: "RunStarted"; run_id: string; suite: string; candidates: string[]; rows: number }
   | { type: "CandidateStarted"; run_id: string; candidate: string }
@@ -330,8 +346,14 @@ function FusionEvaluationPane() {
   const [plan, setPlan] = useState<FusionMatrixRun | null>(null);
   const [suite, setSuite] = useState("local-fusion-smoke");
   const [candidate, setCandidate] = useState("local-fast");
-  const [busy, setBusy] = useState<"plan" | "run" | null>(null);
+  const [busy, setBusy] = useState<"plan" | "run" | "import" | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [customEvals, setCustomEvals] = useState<CustomEvalSummary[]>([]);
+  const [importName, setImportName] = useState("");
+  const [importRule, setImportRule] = useState("contains");
+  const [importFile, setImportFile] = useState<File | null>(null);
+  const [importNotice, setImportNotice] = useState<string | null>(null);
+  const [fileInputKey, setFileInputKey] = useState(0);
   const [liveRunId, setLiveRunId] = useState<string | null>(null);
   const [liveSuite, setLiveSuite] = useState<string | null>(null);
   const [liveRows, setLiveRows] = useState<FusionLiveRow[]>([]);
@@ -339,16 +361,18 @@ function FusionEvaluationPane() {
   const [finishedScore, setFinishedScore] = useState<number | null>(null);
 
   const refresh = async () => {
-    const [nextMatrix, nextSummary, nextRows, nextDecisions] = await Promise.all([
+    const [nextMatrix, nextSummary, nextRows, nextDecisions, nextCustomEvals] = await Promise.all([
       invoke<FusionMatrix>("fusion_benchmark_matrix"),
       invoke<FusionRunSummary>("fusion_benchmark_run_summary", { limit: 80 }),
       invoke<FusionBenchmarkResultRow[]>("fusion_benchmark_results", { limit: 500 }),
       invoke<FusionRouteDecision[]>("fusion_route_decisions", { limit: 8 }),
+      invoke<CustomEvalSummary[]>("list_custom_evals"),
     ]);
     setMatrix(nextMatrix);
     setRunSummary(nextSummary);
     setPersistedRows(nextRows);
     setDecisions(nextDecisions);
+    setCustomEvals(nextCustomEvals);
   };
 
   useEffect(() => {
@@ -380,79 +404,81 @@ function FusionEvaluationPane() {
     [],
   );
 
+  const handleLiveEvent = (event: FusionEvalEvent) => {
+    if (event.type === "RunStarted") {
+      setLiveRunId(event.run_id);
+      setLiveSuite(event.suite);
+      setFinishedScore(null);
+      setLiveRows([]);
+      setActiveRowKey(null);
+      return;
+    }
+    if (event.type === "RowStarted") {
+      const key = `${event.candidate}:${event.task_id}:${event.mode}`;
+      setActiveRowKey(key);
+      setLiveRows((rows) => {
+        const nextRow: FusionLiveRow = {
+          key,
+          run_id: event.run_id,
+          candidate: event.candidate,
+          task_id: event.task_id,
+          mode: event.mode,
+          route: event.route,
+          model: event.model,
+          prompt: event.prompt,
+          expected_signal: event.expected_signal,
+          status: "running",
+          score: null,
+          elapsed_ms: null,
+          sidekick_runs: 0,
+          sidekick_tool_calls: 0,
+          output: "",
+          reason: "",
+        };
+        const existing = rows.findIndex((row) => row.key === key);
+        if (existing === -1) return [...rows, nextRow];
+        return rows.map((row, index) => index === existing ? { ...row, ...nextRow } : row);
+      });
+      return;
+    }
+    if (event.type === "RowFinished") {
+      const key = `${event.candidate}:${event.task_id}:${event.mode}`;
+      setActiveRowKey(key);
+      setLiveRows((rows) =>
+        rows.map((row) =>
+          row.key === key
+            ? {
+                ...row,
+                status: normalizeRowStatus(event.status),
+                score: event.score,
+                elapsed_ms: event.elapsed_ms,
+                sidekick_runs: event.sidekick_runs,
+                sidekick_tool_calls: event.sidekick_tool_calls,
+                output: event.output,
+                reason: event.reason,
+              }
+            : row,
+        ),
+      );
+      return;
+    }
+    if (event.type === "RunFinished") {
+      setFinishedScore(event.avg_score);
+      setActiveRowKey(null);
+      return;
+    }
+    if (event.type === "Error") {
+      setError(event.message);
+    }
+  };
+
   const invokeRun = async (dryRun: boolean) => {
     setBusy(dryRun ? "plan" : "run");
     setError(null);
     try {
       if (!dryRun) {
         const ch = new Channel<FusionEvalEvent>();
-        ch.onmessage = (event) => {
-          if (event.type === "RunStarted") {
-            setLiveRunId(event.run_id);
-            setLiveSuite(event.suite);
-            setFinishedScore(null);
-            setLiveRows([]);
-            setActiveRowKey(null);
-            return;
-          }
-          if (event.type === "RowStarted") {
-            const key = `${event.candidate}:${event.task_id}:${event.mode}`;
-            setActiveRowKey(key);
-            setLiveRows((rows) => {
-              const nextRow: FusionLiveRow = {
-                key,
-                run_id: event.run_id,
-                candidate: event.candidate,
-                task_id: event.task_id,
-                mode: event.mode,
-                route: event.route,
-                model: event.model,
-                prompt: event.prompt,
-                expected_signal: event.expected_signal,
-                status: "running",
-                score: null,
-                elapsed_ms: null,
-                sidekick_runs: 0,
-                sidekick_tool_calls: 0,
-                output: "",
-                reason: "",
-              };
-              const existing = rows.findIndex((row) => row.key === key);
-              if (existing === -1) return [...rows, nextRow];
-              return rows.map((row, index) => index === existing ? { ...row, ...nextRow } : row);
-            });
-            return;
-          }
-          if (event.type === "RowFinished") {
-            const key = `${event.candidate}:${event.task_id}:${event.mode}`;
-            setActiveRowKey(key);
-            setLiveRows((rows) =>
-              rows.map((row) =>
-                row.key === key
-                  ? {
-                      ...row,
-                      status: normalizeRowStatus(event.status),
-                      score: event.score,
-                      elapsed_ms: event.elapsed_ms,
-                      sidekick_runs: event.sidekick_runs,
-                      sidekick_tool_calls: event.sidekick_tool_calls,
-                      output: event.output,
-                      reason: event.reason,
-                    }
-                  : row,
-              ),
-            );
-            return;
-          }
-          if (event.type === "RunFinished") {
-            setFinishedScore(event.avg_score);
-            setActiveRowKey(null);
-            return;
-          }
-          if (event.type === "Error") {
-            setError(event.message);
-          }
-        };
+        ch.onmessage = handleLiveEvent;
         const result = await invoke<FusionMatrixRun>("run_fusion_benchmark_matrix_live", {
           request: {
             suite,
@@ -483,6 +509,74 @@ function FusionEvaluationPane() {
       setBusy(null);
     }
   };
+  const importCustomEval = async () => {
+    if (!importName.trim()) {
+      setImportNotice("Name the eval before importing.");
+      return;
+    }
+    if (!importFile) {
+      setImportNotice("Choose a .jsonl or .csv file of examples.");
+      return;
+    }
+    setBusy("import");
+    setImportNotice(null);
+    try {
+      const content = await importFile.text();
+      const format = importFile.name.toLowerCase().endsWith(".csv") ? "csv" : "jsonl";
+      const result = await invoke<CustomEvalImportResult>("import_custom_eval", {
+        request: {
+          name: importName.trim(),
+          scoring_rule: importRule,
+          format,
+          content,
+          source_file: importFile.name,
+        },
+      });
+      const skipped = result.skipped_total
+        ? ` · ${result.skipped_total} malformed rows skipped (${result.skipped
+            .slice(0, 3)
+            .map((row) => `line ${row.line}: ${row.reason}`)
+            .join("; ")}${result.skipped_total > 3 ? "; ..." : ""})`
+        : "";
+      setImportNotice(`Imported ${result.imported} examples into "${result.name}"${skipped}.`);
+      setImportName("");
+      setImportFile(null);
+      setFileInputKey((key) => key + 1);
+      await refresh();
+    } catch (err) {
+      setImportNotice(String(err));
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const runCustomEval = async (evalId: string) => {
+    setBusy("run");
+    setError(null);
+    try {
+      const ch = new Channel<FusionEvalEvent>();
+      ch.onmessage = handleLiveEvent;
+      await invoke("run_custom_eval_live", {
+        request: { eval_id: evalId },
+        onEvent: ch,
+      });
+      await refresh();
+    } catch (err) {
+      setError(String(err));
+    } finally {
+      setBusy(null);
+    }
+  };
+
+  const removeCustomEval = async (evalId: string) => {
+    try {
+      await invoke("delete_custom_eval", { evalId });
+      await refresh();
+    } catch (err) {
+      setError(String(err));
+    }
+  };
+
   const activeRow = liveRows.find((row) => row.key === activeRowKey) ?? liveRows.at(-1) ?? null;
   const completedRows = liveRows.filter((row) => ["ok", "error", "skipped"].includes(row.status));
   const visibleScore =
@@ -561,6 +655,88 @@ function FusionEvaluationPane() {
             </label>
           </div>
           {error && <div className="eval-error">{error}</div>}
+        </div>
+
+        <div className="card evals-wide">
+          <div className="card-row">
+            <div>
+              <div className="card-title">Custom evals</div>
+              <div className="card-sub">
+                Import a JSONL or CSV of prompts and expected outputs, then score a warm local model
+                with a deterministic rule — exact match, contains, or regex.
+              </div>
+            </div>
+            <span className="svc-state">{customEvals.length} registered</span>
+          </div>
+          <div className="eval-controls">
+            <label>
+              Name
+              <input
+                value={importName}
+                placeholder="support-triage"
+                onChange={(event) => setImportName(event.target.value)}
+              />
+            </label>
+            <label>
+              Scoring rule
+              <select value={importRule} onChange={(event) => setImportRule(event.target.value)}>
+                <option value="exact">Exact match</option>
+                <option value="contains">Contains</option>
+                <option value="regex">Regex</option>
+              </select>
+            </label>
+            <label>
+              Examples file
+              <input
+                key={fileInputKey}
+                type="file"
+                accept=".jsonl,.csv"
+                onChange={(event) => setImportFile(event.target.files?.[0] ?? null)}
+              />
+            </label>
+            <label>
+              Import
+              <button className="btn" type="button" onClick={importCustomEval} disabled={busy !== null}>
+                {busy === "import" ? "Importing..." : "Import eval"}
+              </button>
+            </label>
+          </div>
+          {importNotice && <div className="svc-desc" style={{ marginTop: 10 }}>{importNotice}</div>}
+          {customEvals.length ? (
+            <div className="eval-table">
+              {customEvals.map((row) => (
+                <div className="eval-row" key={row.eval_id}>
+                  <span>{row.name}</span>
+                  <span>{row.example_count} examples</span>
+                  <span>{row.scoring_rule}</span>
+                  <span>{row.created_at}</span>
+                  <span style={{ display: "flex", gap: 8 }}>
+                    <button
+                      className="btn"
+                      type="button"
+                      onClick={() => runCustomEval(row.eval_id)}
+                      disabled={busy !== null}
+                    >
+                      Run
+                    </button>
+                    <button
+                      className="btn"
+                      type="button"
+                      onClick={() => removeCustomEval(row.eval_id)}
+                      disabled={busy !== null}
+                    >
+                      Delete
+                    </button>
+                  </span>
+                </div>
+              ))}
+            </div>
+          ) : (
+            <div className="svc-desc" style={{ marginTop: 10 }}>
+              No custom evals yet. JSONL rows need input/prompt and expected fields; CSV needs those
+              column headers. Runs use the first warm local slot and land in the results below.
+            </div>
+          )}
         </div>
 
         <ModelCandidateResults results={candidateResults} liveRows={liveRows} />

@@ -8,6 +8,7 @@ mod bootstrap;
 mod chat;
 mod commands;
 mod creds;
+mod custom_evals;
 mod db;
 mod knowledge;
 mod mcp;
@@ -175,6 +176,11 @@ pub fn run() {
             commands::run_fusion_benchmark,
             commands::run_fusion_benchmark_matrix,
             commands::run_fusion_benchmark_matrix_live,
+            custom_evals::import_custom_eval,
+            custom_evals::list_custom_evals,
+            custom_evals::delete_custom_eval,
+            custom_evals::run_custom_eval,
+            custom_evals::run_custom_eval_live,
             commands::sidekick_runs,
             commands::sidekick_metrics,
             commands::set_sidekick_run_feedback,

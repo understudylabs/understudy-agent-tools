@@ -217,6 +217,43 @@ pub struct SidekickFeedbackSummary {
     pub misses: u64,
 }
 
+#[derive(Serialize, Clone)]
+pub struct CustomEvalRow {
+    pub eval_id: String,
+    pub name: String,
+    pub scoring_rule: String,
+    pub example_count: u64,
+    pub harness_sha256: Option<String>,
+    pub source_file: Option<String>,
+    pub created_at: String,
+}
+
+#[derive(Serialize, Clone)]
+pub struct CustomEvalExampleRow {
+    pub eval_id: String,
+    pub task_id: String,
+    pub prompt: String,
+    pub expected: String,
+    pub ordinal: u64,
+}
+
+#[derive(Clone, Debug)]
+pub struct CustomEvalExampleInput {
+    pub task_id: String,
+    pub prompt: String,
+    pub expected: String,
+}
+
+#[derive(Clone, Debug)]
+pub struct CustomEvalInput {
+    pub eval_id: String,
+    pub name: String,
+    pub scoring_rule: String,
+    pub harness_sha256: Option<String>,
+    pub source_file: Option<String>,
+    pub examples: Vec<CustomEvalExampleInput>,
+}
+
 /// App-owned SQLite store, under the macOS app-data dir. Profile, credentials,
 /// and the model cache continue to live under `~/.understudy/`.
 ///
@@ -394,7 +431,27 @@ fn migrate(conn: &Connection) -> Result<()> {
                 compacted_count INTEGER NOT NULL DEFAULT 0,
                 memory      TEXT,
                 updated_at  TEXT NOT NULL
-            );",
+            );
+            CREATE TABLE IF NOT EXISTS custom_evals (
+                id             INTEGER PRIMARY KEY,
+                eval_id        TEXT NOT NULL UNIQUE,
+                name           TEXT NOT NULL,
+                scoring_rule   TEXT NOT NULL,
+                example_count  INTEGER NOT NULL DEFAULT 0,
+                harness_sha256 TEXT,
+                source_file    TEXT,
+                created_at     TEXT NOT NULL
+            );
+            CREATE TABLE IF NOT EXISTS custom_eval_examples (
+                id       INTEGER PRIMARY KEY,
+                eval_id  TEXT NOT NULL,
+                task_id  TEXT NOT NULL,
+                prompt   TEXT NOT NULL,
+                expected TEXT NOT NULL,
+                ordinal  INTEGER NOT NULL DEFAULT 0
+            );
+            CREATE INDEX IF NOT EXISTS idx_custom_eval_examples_eval
+                ON custom_eval_examples(eval_id);",
     )?;
     const ALTERS: &[&str] = &[
         "ALTER TABLE residency ADD COLUMN thinking INTEGER NOT NULL DEFAULT 0",
@@ -790,6 +847,121 @@ impl Db {
         })?;
         rows.collect::<rusqlite::Result<Vec<_>>>()
             .map_err(Into::into)
+    }
+
+    /// Register a custom eval and its examples atomically: readers never see
+    /// an eval row without its examples (or the other way around).
+    pub fn insert_custom_eval(&self, input: &CustomEvalInput) -> Result<()> {
+        let mut conn = self.conn()?;
+        let tx = conn.transaction_with_behavior(TransactionBehavior::Immediate)?;
+        tx.execute(
+            "INSERT INTO custom_evals (
+                eval_id, name, scoring_rule, example_count, harness_sha256, source_file, created_at
+             ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
+            rusqlite::params![
+                input.eval_id,
+                input.name,
+                input.scoring_rule,
+                input.examples.len() as i64,
+                input.harness_sha256,
+                input.source_file,
+                now_iso(),
+            ],
+        )?;
+        for (ordinal, example) in input.examples.iter().enumerate() {
+            tx.execute(
+                "INSERT INTO custom_eval_examples (eval_id, task_id, prompt, expected, ordinal)
+                 VALUES (?1, ?2, ?3, ?4, ?5)",
+                rusqlite::params![
+                    input.eval_id,
+                    example.task_id,
+                    example.prompt,
+                    example.expected,
+                    ordinal as i64,
+                ],
+            )?;
+        }
+        tx.commit()?;
+        Ok(())
+    }
+
+    pub fn list_custom_evals(&self) -> Result<Vec<CustomEvalRow>> {
+        let conn = self.conn()?;
+        let mut stmt = conn.prepare(
+            "SELECT eval_id, name, scoring_rule, example_count, harness_sha256, source_file, created_at
+             FROM custom_evals ORDER BY id DESC",
+        )?;
+        let rows = stmt.query_map([], |r| {
+            Ok(CustomEvalRow {
+                eval_id: r.get(0)?,
+                name: r.get(1)?,
+                scoring_rule: r.get(2)?,
+                example_count: r.get::<_, i64>(3)?.max(0) as u64,
+                harness_sha256: r.get(4)?,
+                source_file: r.get(5)?,
+                created_at: r.get(6)?,
+            })
+        })?;
+        rows.collect::<rusqlite::Result<Vec<_>>>()
+            .map_err(Into::into)
+    }
+
+    pub fn get_custom_eval(&self, eval_id: &str) -> Result<Option<CustomEvalRow>> {
+        let conn = self.conn()?;
+        match conn.query_row(
+            "SELECT eval_id, name, scoring_rule, example_count, harness_sha256, source_file, created_at
+             FROM custom_evals WHERE eval_id=?1",
+            [eval_id],
+            |r| {
+                Ok(CustomEvalRow {
+                    eval_id: r.get(0)?,
+                    name: r.get(1)?,
+                    scoring_rule: r.get(2)?,
+                    example_count: r.get::<_, i64>(3)?.max(0) as u64,
+                    harness_sha256: r.get(4)?,
+                    source_file: r.get(5)?,
+                    created_at: r.get(6)?,
+                })
+            },
+        ) {
+            Ok(row) => Ok(Some(row)),
+            Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
+            Err(err) => Err(err.into()),
+        }
+    }
+
+    pub fn list_custom_eval_examples(&self, eval_id: &str) -> Result<Vec<CustomEvalExampleRow>> {
+        let conn = self.conn()?;
+        let mut stmt = conn.prepare(
+            "SELECT eval_id, task_id, prompt, expected, ordinal
+             FROM custom_eval_examples WHERE eval_id=?1 ORDER BY ordinal ASC, id ASC",
+        )?;
+        let rows = stmt.query_map([eval_id], |r| {
+            Ok(CustomEvalExampleRow {
+                eval_id: r.get(0)?,
+                task_id: r.get(1)?,
+                prompt: r.get(2)?,
+                expected: r.get(3)?,
+                ordinal: r.get::<_, i64>(4)?.max(0) as u64,
+            })
+        })?;
+        rows.collect::<rusqlite::Result<Vec<_>>>()
+            .map_err(Into::into)
+    }
+
+    /// Remove a custom eval definition and its examples together. Recorded
+    /// benchmark result rows stay: they are run history, not eval definition.
+    /// Returns false when no such eval existed.
+    pub fn delete_custom_eval(&self, eval_id: &str) -> Result<bool> {
+        let mut conn = self.conn()?;
+        let tx = conn.transaction_with_behavior(TransactionBehavior::Immediate)?;
+        let deleted = tx.execute("DELETE FROM custom_evals WHERE eval_id=?1", [eval_id])?;
+        tx.execute(
+            "DELETE FROM custom_eval_examples WHERE eval_id=?1",
+            [eval_id],
+        )?;
+        tx.commit()?;
+        Ok(deleted > 0)
     }
 
     pub fn setting_get(&self, key: &str) -> Option<String> {
@@ -1323,6 +1495,92 @@ mod tests {
         // Handing claims back makes them consumable again (failed-turn path).
         db.unconsume_sidekick_handoffs(&all).unwrap();
         assert_eq!(db.consume_sidekick_handoffs("s", 5).unwrap().len(), 5);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn custom_eval_round_trips_with_ordered_examples() {
+        let (dir, db) = temp_db("custom-eval");
+        db.insert_custom_eval(&CustomEvalInput {
+            eval_id: "support-triage-1".into(),
+            name: "Support triage".into(),
+            scoring_rule: "contains".into(),
+            harness_sha256: Some("b".repeat(64)),
+            source_file: Some("triage.jsonl".into()),
+            examples: vec![
+                CustomEvalExampleInput {
+                    task_id: "row-1".into(),
+                    prompt: "Classify: refund request".into(),
+                    expected: "billing".into(),
+                },
+                CustomEvalExampleInput {
+                    task_id: "row-2".into(),
+                    prompt: "Classify: login broken".into(),
+                    expected: "auth".into(),
+                },
+            ],
+        })
+        .unwrap();
+
+        let evals = db.list_custom_evals().unwrap();
+        assert_eq!(evals.len(), 1);
+        assert_eq!(evals[0].eval_id, "support-triage-1");
+        assert_eq!(evals[0].scoring_rule, "contains");
+        assert_eq!(evals[0].example_count, 2);
+        assert_eq!(evals[0].harness_sha256.as_deref(), Some("b".repeat(64).as_str()));
+
+        let fetched = db.get_custom_eval("support-triage-1").unwrap().unwrap();
+        assert_eq!(fetched.name, "Support triage");
+        assert!(db.get_custom_eval("missing").unwrap().is_none());
+
+        let examples = db.list_custom_eval_examples("support-triage-1").unwrap();
+        assert_eq!(examples.len(), 2);
+        assert_eq!(examples[0].task_id, "row-1");
+        assert_eq!(examples[0].ordinal, 0);
+        assert_eq!(examples[1].task_id, "row-2");
+        assert_eq!(examples[1].expected, "auth");
+
+        // Duplicate eval_id is rejected (UNIQUE), and the failed transaction
+        // leaves the original examples intact.
+        assert!(db
+            .insert_custom_eval(&CustomEvalInput {
+                eval_id: "support-triage-1".into(),
+                name: "dup".into(),
+                scoring_rule: "exact".into(),
+                harness_sha256: None,
+                source_file: None,
+                examples: vec![CustomEvalExampleInput {
+                    task_id: "x".into(),
+                    prompt: "p".into(),
+                    expected: "e".into(),
+                }],
+            })
+            .is_err());
+        assert_eq!(db.list_custom_eval_examples("support-triage-1").unwrap().len(), 2);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn delete_custom_eval_removes_definition_and_examples() {
+        let (dir, db) = temp_db("custom-eval-delete");
+        db.insert_custom_eval(&CustomEvalInput {
+            eval_id: "e1".into(),
+            name: "E1".into(),
+            scoring_rule: "exact".into(),
+            harness_sha256: None,
+            source_file: None,
+            examples: vec![CustomEvalExampleInput {
+                task_id: "t".into(),
+                prompt: "p".into(),
+                expected: "e".into(),
+            }],
+        })
+        .unwrap();
+        assert!(db.delete_custom_eval("e1").unwrap());
+        assert!(db.list_custom_evals().unwrap().is_empty());
+        assert!(db.list_custom_eval_examples("e1").unwrap().is_empty());
+        // Deleting again reports that nothing existed.
+        assert!(!db.delete_custom_eval("e1").unwrap());
         let _ = std::fs::remove_dir_all(&dir);
     }
 
