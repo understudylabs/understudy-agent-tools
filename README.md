@@ -9,6 +9,7 @@ evidence you can trust.**
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![Docs](https://img.shields.io/badge/docs-docs.understudylabs.com-6e56cf)](https://docs.understudylabs.com)
 [![Skills](https://img.shields.io/badge/skill%20library-skills%2F-2ea44f)](skills/README.md)
+[![Backed by Y Combinator](https://img.shields.io/badge/backed%20by-Y%20Combinator-F0652F)](https://www.ycombinator.com)
 
 Works with **Claude Code** · **Cursor** · **Codex** · **OpenCode** · **Hermes Agent**
 
