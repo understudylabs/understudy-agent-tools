@@ -2,9 +2,9 @@
 
 # Understudy Agent Tools
 
-**Type `/understudy:onboard` in your coding agent and it walks your LLM app
-from captured traces to a measured, cheaper — often local — model, with
-evidence you can trust.**
+**Type `/understudy:onboard` in Claude Code — or the matching onboarding
+command in your agent — and it walks your LLM app from captured traces to a
+measured, cheaper — often local — model, with evidence you can trust.**
 
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
 [![Docs](https://img.shields.io/badge/docs-docs.understudylabs.com-6e56cf)](https://docs.understudylabs.com)
@@ -30,7 +30,7 @@ curl -fsSL https://raw.githubusercontent.com/UnderstudyLabs/understudy-agent-too
 
 The installer sets up the CLI, asks which coding agents to attach to (Claude
 Code, Cursor, Codex, OpenCode, Hermes Agent, all, or CLI-only), and — if you
-pick Claude Code — opens it in the current directory. Then:
+pick Claude Code — opens it in the current directory. Then, in Claude Code:
 
 ```text
 /reload-plugins
@@ -38,7 +38,9 @@ pick Claude Code — opens it in the current directory. Then:
 ```
 
 That's it. Onboarding profiles your machine, interviews you about your
-workload, and starts the improvement loop. No registration required.
+workload, and starts the improvement loop. No registration required. On other
+agents the activation command differs slightly — see
+[Pick your platform](#pick-your-platform).
 
 > The installer intentionally does **not** download model weights, start MLX,
 > launch the ladder server, or make frontier calls. Those happen inside the
@@ -161,6 +163,7 @@ the agent-run install/update/verify flow for every platform.
 Every path is local-only: installing an adapter does not authenticate, upload
 data, download model weights, or make provider calls.
 
+<a id="install-as-a-claude-code-plugin"></a>
 <details>
 <summary><b>Claude Code — install as a plugin (recommended)</b></summary>
 
@@ -202,6 +205,7 @@ claude plugin marketplace remove understudy-skills
 
 </details>
 
+<a id="install-as-a-cursor-plugin"></a>
 <details>
 <summary><b>Cursor — install as a plugin</b></summary>
 
@@ -231,6 +235,7 @@ remains as a compatibility shim.
 
 </details>
 
+<a id="install-as-a-codex-plugin"></a>
 <details>
 <summary><b>Codex — install as a plugin</b></summary>
 
@@ -264,6 +269,7 @@ reusable distribution unit for the skills.
 
 </details>
 
+<a id="install-as-opencode-skills"></a>
 <details>
 <summary><b>OpenCode — install as skills</b></summary>
 
@@ -315,6 +321,7 @@ rm -f ~/.config/opencode/commands/understudy-onboard.md
 
 </details>
 
+<a id="install-as-hermes-skills"></a>
 <details>
 <summary><b>Hermes Agent — install as skills</b></summary>
 
