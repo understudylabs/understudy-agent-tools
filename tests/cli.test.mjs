@@ -12,14 +12,19 @@ const uvAvailable = spawnSync("uv", ["--version"], { encoding: "utf8" }).status 
 
 // Ambient Understudy credentials (a developer's shell, a CI secret) must not
 // leak into spawned CLIs — fixtures provide their own.
+// FORCE_COLOR (set by actions/setup-node and npm in TTY contexts) must also be
+// stripped so kleur in child processes falls back to isTTY detection and does
+// not emit ANSI codes into piped stdout that break regex assertions.
 const baseEnv = { ...process.env };
 delete baseEnv.UNDERSTUDY_API_KEY;
 delete baseEnv.UNDERSTUDY_GATEWAY_URL;
+delete baseEnv.FORCE_COLOR;
 
 function run(args) {
   return spawnSync(cli[0], [cli[1], ...args], {
     cwd: process.cwd(),
     encoding: "utf8",
+    env: baseEnv,
   });
 }
 
