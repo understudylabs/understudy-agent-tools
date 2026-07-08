@@ -17,6 +17,21 @@ uses semantic-ish versioning (minor = new skill or new capability, patch = fixes
 
 ### Fixed
 
+- **The curl installer can no longer finish looking successful with zero
+  coding-agent adapters installed.** `install.sh` now logs the raw agent-menu
+  answer and the resolved `--agents` selection to the install log ("Agent
+  adapter selection: …"), records installed / skipped / failed per adapter,
+  and prints an adapter summary after step 2. The final "Where this goes next"
+  section only shows per-agent next steps (e.g. `/reload-plugins` +
+  `/understudy:onboard`) for adapters that actually installed. When adapters
+  were requested (anything other than `--agents none`) but none installed, or
+  an explicitly requested adapter failed on a missing CLI/manifest, the
+  installer prints a loud warning with per-platform manual install commands
+  and exits with the new status code 3 instead of a clean 0. Adapters the
+  user disabled themselves (e.g. `--agents claude-code --no-claude`) count as
+  intentional CLI-only installs, not failures, and still exit 0. An
+  incomplete adapter step is no longer marked resumable-complete, so
+  `--resume` retries adapter installation instead of skipping past it.
 - **`understudy setup` crash.** The legacy Claude-compatible skill-copy path
   crashed with `ENOENT ... skills/onboard/frontmatter.md` on every run:
   `frontmatter.md` was folded into `skills/onboard/SKILL.md` in the

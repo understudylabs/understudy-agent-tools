@@ -15,7 +15,12 @@ USER_PROMPT_OVERRIDE="${UNDERSTUDY_INITIAL_CLAUDE_PROMPT:-}"
 INITIAL_CLAUDE_PROMPT=""
 AGENT_PLATFORMS="${UNDERSTUDY_AGENT_PLATFORMS:-auto}"
 AGENT_PLATFORMS_EXPLICIT=0
-[ -n "${UNDERSTUDY_AGENT_PLATFORMS:-}" ] && AGENT_PLATFORMS_EXPLICIT=1
+AGENT_SELECTION_SOURCE="default"
+AGENT_SELECTION_ANSWER=""
+if [ -n "${UNDERSTUDY_AGENT_PLATFORMS:-}" ]; then
+  AGENT_PLATFORMS_EXPLICIT=1
+  AGENT_SELECTION_SOURCE="UNDERSTUDY_AGENT_PLATFORMS"
+fi
 LOWER_MY_ANT_BILL="${UNDERSTUDY_LOWER_MY_ANT_BILL:-0}"
 KEEP_LOGIN="${UNDERSTUDY_KEEP_LOGIN:-0}"
 NO_CLAUDE=0
@@ -32,8 +37,8 @@ while [ "$#" -gt 0 ]; do
     --non-interactive|--noninteractive|--no-input) NONINTERACTIVE=1 ;;
     --require-confirm) REQUIRE_CONFIRM=1 ;;
     --no-claude) NO_CLAUDE=1 ;;
-    --agents|--agent) AGENT_PLATFORMS="${2:?missing agent platform list}"; AGENT_PLATFORMS_EXPLICIT=1; shift ;;
-    --no-agents) AGENT_PLATFORMS="none"; AGENT_PLATFORMS_EXPLICIT=1; NO_CLAUDE=1; LAUNCH_CLAUDE=0 ;;
+    --agents|--agent) AGENT_PLATFORMS="${2:?missing agent platform list}"; AGENT_PLATFORMS_EXPLICIT=1; AGENT_SELECTION_SOURCE="--agents flag"; shift ;;
+    --no-agents) AGENT_PLATFORMS="none"; AGENT_PLATFORMS_EXPLICIT=1; AGENT_SELECTION_SOURCE="--no-agents flag"; NO_CLAUDE=1; LAUNCH_CLAUDE=0 ;;
     --no-launch-claude|--no-launch-agent) LAUNCH_CLAUDE=0 ;;
     --launch-claude|--launch-agent) LAUNCH_CLAUDE=1 ;;
     --lower-my-ant-bill|--lower-my-anthropic-bill) LOWER_MY_ANT_BILL=1 ;;
@@ -80,6 +85,13 @@ Options:
   --launch-agent        open a supported coding agent at the end (default)
   --launch-claude       legacy alias for --launch-agent
   --lab PATH            local Understudy runtime/log directory
+
+Exit codes:
+  0  success
+  1  aborted or missing prerequisite
+  2  usage error
+  3  adapter install incomplete: adapters were requested but none installed,
+     or an explicitly requested adapter failed
 
 Environment overrides:
   UNDERSTUDY_LAB                 local runtime/log directory, default ~/.understudy/agent-tools
@@ -423,6 +435,8 @@ select_agent_platforms() {
   if ! read -r answer </dev/tty 2>/dev/null; then
     return 0
   fi
+  AGENT_SELECTION_SOURCE="menu"
+  AGENT_SELECTION_ANSWER="$answer"
   case "$answer" in
     "") AGENT_PLATFORMS="$default" ;;
     1|claude|claude-code|claude_code|claudecode) AGENT_PLATFORMS="claude-code" ;;
@@ -487,6 +501,142 @@ agent_plan_label() {
     all) printf '%s\n' "Install all supported agent adapters." ;;
     *) printf '%s\n' "Install requested agent adapter(s): $AGENT_PLATFORMS." ;;
   esac
+}
+# Support depends on this line: the install log must always record what was
+# answered and what it resolved to, or a silent no-adapter install cannot be
+# diagnosed from a customer log afterwards.
+report_agent_selection() {
+  if [ "$AGENT_SELECTION_SOURCE" = "menu" ]; then
+    say "Agent adapter selection: $AGENT_PLATFORMS (answer: '$AGENT_SELECTION_ANSWER')"
+  else
+    say "Agent adapter selection: $AGENT_PLATFORMS (source: $AGENT_SELECTION_SOURCE)"
+  fi
+}
+
+# ── adapter install accounting ───────────────────────────────────────
+# Every install_* adapter function records installed / skipped / failed so
+# the installer can summarize what actually happened, keep the final handoff
+# honest, and refuse to look successful when the user asked for adapters and
+# got none.
+ADAPTER_RESULTS=""
+ADAPTERS_ATTEMPTED=0
+ADAPTERS_INSTALLED_COUNT=0
+ADAPTERS_UNMET_COUNT=0
+EXPLICIT_ADAPTER_FAILED=0
+
+record_adapter() {
+  local name="$1" status="$2" reason="$3"
+  ADAPTER_RESULTS="${ADAPTER_RESULTS}${name}|${status}|${reason}
+"
+  log "ADAPTER $name $status ($reason)"
+}
+adapter_installed() {
+  case "$ADAPTER_RESULTS" in
+    *"$1|installed|"*) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+adapter_explicitly_requested() {
+  case "$(normalize_agent_platform "$AGENT_PLATFORMS")" in
+    auto|all|none) return 1 ;;
+  esac
+  agent_platform_requested "$1"
+}
+record_adapter_failure() {
+  local name="$1" reason="$2"
+  record_adapter "$name" "failed" "$reason"
+  if adapter_explicitly_requested "$name"; then
+    EXPLICIT_ADAPTER_FAILED=1
+  fi
+}
+# A missing prerequisite is a quiet skip under autodetection, but an error
+# when the user explicitly asked for this adapter (--agents / env): warn
+# loudly and mark the run as failed instead of silently skipping.
+adapter_prereq_missing() {
+  local name="$1" reason="$2"
+  if adapter_explicitly_requested "$name"; then
+    warn "The $name adapter was explicitly requested but $reason."
+    record_adapter_failure "$name" "$reason"
+  else
+    record_adapter "$name" "skipped" "$reason"
+  fi
+}
+manual_adapter_instructions() {
+  local repo
+  repo="$(resolve_skill_repo 2>/dev/null || printf '%s' "$PKG_DIR")"
+  say "Manual install commands, per platform:"
+  say "  Claude Code: claude plugin marketplace add $repo && claude plugin install understudy@understudy-skills"
+  say "  Cursor:      ln -s $repo \$HOME/.cursor/plugins/local/understudy"
+  say "  Codex:       codex plugin marketplace add $repo"
+  say "  OpenCode:    ln -s $repo/skills/understudy \$HOME/.config/opencode/skills/understudy"
+  say "  Hermes:      add $repo/skills to skills.external_dirs in $(hermes_config_path), then /reload-skills"
+  say "  Devin:       cloud-based, no local install — ask Devin to use the Understudy onboarding skill for this project"
+  say "Or rerun this installer with an explicit adapter, e.g.: --agents claude-code"
+}
+summarize_agent_adapters() {
+  local name status reason installed=0 unmet=0 selection
+  selection="$(normalize_agent_platform "$AGENT_PLATFORMS")"
+  ADAPTERS_ATTEMPTED=1
+  say ""
+  say "${B}Adapter summary${R}"
+  while IFS='|' read -r name status reason; do
+    [ -n "$name" ] || continue
+    case "$status" in
+      installed) ok "$name: $reason"; installed=$((installed + 1)) ;;
+      failed) fail_line "$name: failed — $reason"; unmet=$((unmet + 1)) ;;
+      disabled) say "$name: skipped — $reason" ;;
+      *)
+        say "$name: skipped — $reason"
+        # A skip counts as an unmet adapter when it was a real candidate:
+        # any candidate under auto/all, or an explicitly requested adapter.
+        # Skips of adapters the user never asked for don't count, and
+        # "disabled" (an explicit user flag) is handled above.
+        case "$selection" in
+          auto|all) unmet=$((unmet + 1)) ;;
+          *) if adapter_explicitly_requested "$name"; then unmet=$((unmet + 1)); fi ;;
+        esac
+        ;;
+    esac
+  done <<EOF
+$ADAPTER_RESULTS
+EOF
+  ADAPTERS_INSTALLED_COUNT="$installed"
+  ADAPTERS_UNMET_COUNT="$unmet"
+
+  if [ "$installed" -eq 0 ] && [ "$selection" != "none" ] && [ "$unmet" -gt 0 ]; then
+    printf '\n'
+    fail_line "${B}NO CODING-AGENT PLUGIN WAS INSTALLED.${R}"
+    warn "The adapter selection was '$AGENT_PLATFORMS', but every candidate was skipped or failed (reasons above)."
+    warn "The understudy CLI is installed, but the Understudy skills are NOT available in any coding agent until an adapter is installed."
+    manual_adapter_instructions
+    say "Install log: $LOG_FILE"
+  elif [ "$installed" -eq 0 ] && [ "$selection" != "none" ]; then
+    printf '\n'
+    say "Every selected coding-agent adapter was disabled by a flag; treating this as a CLI-only install."
+  elif [ "$EXPLICIT_ADAPTER_FAILED" = "1" ]; then
+    printf '\n'
+    fail_line "An explicitly requested agent adapter failed to install (see the adapter summary above)."
+    manual_adapter_instructions
+  fi
+}
+# Exit status for the whole install: 3 when adapters were requested but none
+# installed, or when an explicitly requested adapter failed. 0 otherwise.
+# Adapters the user disabled with an explicit flag (--no-claude) are the
+# user's own choice and never turn the run into a failure.
+adapter_exit_code() {
+  if [ "$ADAPTERS_ATTEMPTED" != "1" ]; then
+    printf '0\n'
+    return 0
+  fi
+  if [ "$EXPLICIT_ADAPTER_FAILED" = "1" ]; then
+    printf '3\n'
+    return 0
+  fi
+  if [ "$ADAPTERS_INSTALLED_COUNT" -eq 0 ] && [ "$ADAPTERS_UNMET_COUNT" -gt 0 ] && [ "$(normalize_agent_platform "$AGENT_PLATFORMS")" != "none" ]; then
+    printf '3\n'
+    return 0
+  fi
+  printf '0\n'
 }
 confirm() {
   local answer
@@ -695,27 +845,38 @@ resolve_skill_repo() {
 install_claude_plugin() {
   if ! should_install_claude_adapter; then
     say "Claude Code adapter not selected or not detected; skipping Claude Code plugin install."
+    # An explicit --no-claude is the user's own choice, not a missing adapter:
+    # record it as "disabled" so it never trips the zero-adapter failure exit.
+    if [ "$NO_CLAUDE" = "1" ]; then
+      record_adapter "claude-code" "disabled" "disabled by --no-claude"
+    else
+      record_adapter "claude-code" "skipped" "not selected or not detected"
+    fi
     return 0
   fi
   if ! need claude; then
     say "Claude Code CLI not found; skipping plugin install."
     say "Later, from a checkout, run: claude plugin marketplace add <repo> && claude plugin install understudy@understudy-skills"
+    adapter_prereq_missing "claude-code" "the claude CLI is not on PATH"
     return 0
   fi
 
   local repo
   if ! repo="$(resolve_plugin_repo ".claude-plugin")"; then
     say "Could not find .claude-plugin/plugin.json; skipping Claude Code plugin install."
+    adapter_prereq_missing "claude-code" ".claude-plugin/plugin.json was not found"
     return 0
   fi
 
   say "Installing the Understudy Claude Code plugin from $repo."
   if claude plugin list --json 2>/dev/null | grep -q 'understudy@understudy-skills'; then
     ok "Understudy plugin already appears installed."
+    record_adapter "claude-code" "installed" "already installed"
   else
     run_logged "Register the plugin marketplace" claude plugin marketplace add "$repo"
     run_logged "Install the Understudy plugin" claude plugin install understudy@understudy-skills
     ok "Understudy plugin installed."
+    record_adapter "claude-code" "installed" "plugin installed"
   fi
   say "In Claude Code, type /reload-plugins once to activate the skills."
   say "Then type /understudy:onboard so the agent can guide the first local Understudy."
@@ -724,12 +885,14 @@ install_claude_plugin() {
 install_cursor_plugin() {
   if ! should_install_cursor_adapter; then
     say "Cursor adapter not selected or not detected; skipping Cursor plugin install."
+    record_adapter "cursor" "skipped" "not selected or not detected"
     return 0
   fi
 
   local repo dest
   if ! repo="$(resolve_plugin_repo ".cursor-plugin")"; then
     say "Could not find .cursor-plugin/plugin.json; skipping Cursor plugin install."
+    adapter_prereq_missing "cursor" ".cursor-plugin/plugin.json was not found"
     return 0
   fi
 
@@ -738,6 +901,7 @@ install_cursor_plugin() {
   mkdir -p "$(dirname "$dest")"
   if [ -L "$dest" ] && [ "$(readlink "$dest" 2>/dev/null || true)" = "$repo" ]; then
     ok "Understudy Cursor plugin already points at $repo."
+    record_adapter "cursor" "installed" "already installed"
   elif [ -L "$dest" ]; then
     local current
     current="$(readlink "$dest" 2>/dev/null || true)"
@@ -746,21 +910,25 @@ install_cursor_plugin() {
         rm -f "$dest"
         ln -s "$repo" "$dest"
         ok "Understudy Cursor plugin refreshed at $dest."
+        record_adapter "cursor" "installed" "link refreshed"
         ;;
       *)
         warn "Cursor plugin path already exists at $dest; leaving it unchanged."
         say "Manual recovery: move that path aside, then rerun this installer."
+        adapter_prereq_missing "cursor" "an existing non-Understudy path occupies $dest"
         return 0
         ;;
     esac
   elif [ -e "$dest" ]; then
     warn "Cursor plugin path already exists at $dest; leaving it unchanged."
     say "Manual recovery: move that path aside, then rerun this installer."
+    adapter_prereq_missing "cursor" "an existing non-Understudy path occupies $dest"
     return 0
   else
     rm -rf "$dest"
     ln -s "$repo" "$dest"
     ok "Understudy Cursor plugin linked at $dest."
+    record_adapter "cursor" "installed" "plugin linked"
   fi
   say "In Cursor, restart the app or run Developer: Reload Window."
   say "Then ask Cursor Agent: Use the Understudy onboarding skill for this project."
@@ -769,36 +937,43 @@ install_cursor_plugin() {
 install_codex_plugin() {
   if ! should_install_codex_adapter; then
     say "Codex adapter not selected or not detected; skipping Codex marketplace registration."
+    record_adapter "codex" "skipped" "not selected or not detected"
     return 0
   fi
   if ! need codex; then
     say "Codex CLI not found; skipping Codex marketplace registration."
     say "Later, from a checkout, run: codex plugin marketplace add <repo>"
+    adapter_prereq_missing "codex" "the codex CLI is not on PATH"
     return 0
   fi
 
   local repo
   if ! repo="$(resolve_plugin_repo ".codex-plugin")"; then
     say "Could not find .codex-plugin/plugin.json; skipping Codex marketplace registration."
+    adapter_prereq_missing "codex" ".codex-plugin/plugin.json was not found"
     return 0
   fi
   if [ ! -f "$repo/.agents/plugins/marketplace.json" ]; then
     say "Could not find .agents/plugins/marketplace.json; skipping Codex marketplace registration."
+    adapter_prereq_missing "codex" ".agents/plugins/marketplace.json was not found"
     return 0
   fi
 
   say "Registering the Understudy Codex marketplace from $repo."
   if codex plugin marketplace add "$repo" >>"$LOG_FILE" 2>&1; then
     ok "Understudy Codex marketplace registered."
+    record_adapter "codex" "installed" "marketplace registered"
   else
     say "Codex marketplace add failed; trying marketplace refresh."
     log "RUN codex plugin marketplace upgrade understudy-skills"
     if codex plugin marketplace upgrade understudy-skills >>"$LOG_FILE" 2>&1; then
       ok "Understudy Codex marketplace refreshed."
+      record_adapter "codex" "installed" "marketplace refreshed"
     else
       warn "Codex marketplace registration failed; continuing with the rest of the install."
       say "Manual recovery: run \`codex plugin marketplace remove understudy-skills\`, then \`codex plugin marketplace add $repo\`."
       say "Codex details are in the install log: $LOG_FILE"
+      record_adapter_failure "codex" "marketplace registration failed"
       return 0
     fi
   fi
@@ -833,12 +1008,14 @@ link_opencode_path() {
 install_opencode_adapter() {
   if ! should_install_opencode_adapter; then
     say "OpenCode adapter not selected or not detected; skipping OpenCode skill install."
+    record_adapter "opencode" "skipped" "not selected or not detected"
     return 0
   fi
 
   local repo skill_root command_root skill skill_name linked skipped command_src command_dest
   if ! repo="$(resolve_skill_repo)"; then
     say "Could not find skills/understudy/SKILL.md; skipping OpenCode skill install."
+    adapter_prereq_missing "opencode" "skills/understudy/SKILL.md was not found"
     return 0
   fi
 
@@ -866,6 +1043,11 @@ install_opencode_adapter() {
   fi
 
   ok "Understudy OpenCode skills linked: $linked; skipped existing conflicts: $skipped."
+  if [ "$linked" -gt 0 ]; then
+    record_adapter "opencode" "installed" "linked $linked skills"
+  else
+    adapter_prereq_missing "opencode" "no skills were linked ($skipped existing path conflicts)"
+  fi
   say "In OpenCode, restart the TUI or open a new session so skills and commands reload."
   say "Then run /understudy-onboard, or ask OpenCode: Use the Understudy onboarding skill for this project."
 }
@@ -933,12 +1115,14 @@ hermes_register_dir() {
 install_hermes_adapter() {
   if ! should_install_hermes_adapter; then
     say "Hermes adapter not selected or not detected; skipping Hermes skill registration."
+    record_adapter "hermes" "skipped" "not selected or not detected"
     return 0
   fi
 
   local repo skills_dir register_dir config py
   if ! repo="$(resolve_skill_repo)"; then
     say "Could not find skills/understudy/SKILL.md; skipping Hermes skill registration."
+    adapter_prereq_missing "hermes" "skills/understudy/SKILL.md was not found"
     return 0
   fi
   skills_dir="$repo/skills"
@@ -952,6 +1136,7 @@ install_hermes_adapter() {
   # A plain substring check avoids a YAML dependency on the fast path.
   if [ -f "$config" ] && grep -qF "$register_dir" "$config" 2>/dev/null; then
     ok "Understudy skills already registered in $config (skills.external_dirs)."
+    record_adapter "hermes" "installed" "already registered"
   elif [ ! -f "$config" ]; then
     # Fresh Hermes: write a minimal user config. Hermes merges defaults at load
     # and `hermes config migrate` keeps our block, so this is non-destructive.
@@ -962,6 +1147,7 @@ install_hermes_adapter() {
       printf '    - %s\n' "$register_dir"
     } >"$config"
     ok "Created $config and registered Understudy skills in skills.external_dirs."
+    record_adapter "hermes" "installed" "registered in new config"
   elif py="$(hermes_yaml_python)"; then
     cp "$config" "$config.understudy.bak-$(date -u +"%Y%m%dT%H%M%SZ")"
     if "$py" - "$config" "$register_dir" >>"$LOG_FILE" 2>&1 <<'PY'
@@ -991,13 +1177,16 @@ with open(cfg_path, "w", encoding="utf-8") as f:
 PY
     then
       ok "Registered Understudy skills in $config (skills.external_dirs)."
+      record_adapter "hermes" "installed" "registered"
     else
       warn "Could not update $config automatically; continuing with the rest of the install."
       say "Manual step: add \"$register_dir\" to skills.external_dirs in $config (or run: hermes config edit)."
+      record_adapter_failure "hermes" "could not update $config automatically"
     fi
   else
     warn "No YAML-capable Python found to edit $config safely; leaving it unchanged."
     say "Manual step: add \"$register_dir\" to skills.external_dirs in $config (run: hermes config edit)."
+    record_adapter_failure "hermes" "no YAML-capable Python to edit $config"
   fi
 
   say "In Hermes, run /reload-skills (or start a new session) so it rescans skills.external_dirs."
@@ -1007,12 +1196,14 @@ PY
 install_devin_adapter() {
   if ! should_install_devin_adapter; then
     say "Devin adapter not selected or not detected; skipping Devin skill install."
+    record_adapter "devin" "skipped" "not selected or not detected"
     return 0
   fi
 
   local repo
   if ! repo="$(resolve_skill_repo)"; then
     say "Could not find skills/understudy/SKILL.md; skipping Devin skill install."
+    adapter_prereq_missing "devin" "skills/understudy/SKILL.md was not found"
     return 0
   fi
 
@@ -1022,21 +1213,26 @@ install_devin_adapter() {
   # .devin/adapter.json sentinel is present.
   if [ -f "$repo/.devin/adapter.json" ]; then
     ok "Understudy Devin adapter sentinel found at $repo/.devin/adapter.json."
+    record_adapter "devin" "installed" "skills tree accessible; sentinel present"
   else
     warn "Could not find .devin/adapter.json; the Devin version sentinel is missing."
     say "This does not block skill access — Devin reads AGENTS.md and the skills/ tree directly."
+    record_adapter "devin" "installed" "skills tree accessible; sentinel missing"
   fi
   say "In Devin, ask: Use the Understudy onboarding skill for this project."
   say "For persistent installs, add the npm install to the Devin environment blueprint."
 }
 
 install_agent_adapters() {
+  ADAPTER_RESULTS=""
+  EXPLICIT_ADAPTER_FAILED=0
   install_claude_plugin
   install_cursor_plugin
   install_codex_plugin
   install_opencode_adapter
   install_hermes_adapter
   install_devin_adapter
+  summarize_agent_adapters
 }
 
 launch_claude_code() {
@@ -1057,7 +1253,11 @@ launch_claude_code() {
     return 0
   fi
   if ! need claude; then
-    say "Claude Code CLI not found; open Claude Code manually and run /reload-plugins then /understudy:onboard."
+    if adapter_installed "claude-code"; then
+      say "Claude Code CLI not found; open Claude Code manually and run /reload-plugins then /understudy:onboard."
+    else
+      say "Claude Code CLI not found and the Understudy plugin is not installed; install Claude Code, rerun this installer (or the manual plugin commands above), then run /reload-plugins and /understudy:onboard."
+    fi
     mark_step_done 3
     return 0
   fi
@@ -1213,6 +1413,7 @@ say "Source: $INSTALL_REPO_URL#$INSTALL_REF ${D}(installer commit: $INSTALLER_CO
 say "Install log: $LOG_FILE"
 say ""
 select_agent_platforms
+report_agent_selection
 say "${B}Install plan${R}"
 say "  ${G2}1.${R} Install the Understudy CLI."
 if [ "$KEEP_LOGIN" = "1" ]; then
@@ -1247,7 +1448,13 @@ prepare_agent_first_signin
 if should_run_step 2; then
   section "Step 2/3 · Install agent adapters"
   install_agent_adapters
-  mark_step_done 2
+  # An incomplete adapter install must not be marked resumable-complete, or a
+  # later --resume would start at step 3 and exit 0 with no plugin installed.
+  if [ "$(adapter_exit_code)" = "0" ]; then
+    mark_step_done 2
+  else
+    warn "Step 2 is not marked complete because adapter installation was incomplete; rerun with --resume to retry the adapters."
+  fi
 else
   say "Skipping step 2/3: install agent adapters."
 fi
@@ -1255,19 +1462,64 @@ fi
 compose_initial_prompt
 
 section "Where this goes next"
-say "The installer is done. The next experience belongs inside your coding agent:"
-say "  Claude Code: run /reload-plugins and then /understudy:onboard."
-say "  Cursor: restart Cursor or run Developer: Reload Window, then ask Cursor Agent to use the Understudy onboarding skill."
-say "  Codex: run /plugins, install or enable understudy, then ask Codex to use the Understudy onboarding skill."
-say "  OpenCode: restart the TUI or open a new session, then run /understudy-onboard."
-say "  Hermes: run /reload-skills in an open session (or start a new hermes session), then run /onboard or ask Hermes to use the Understudy onboarding skill."
-say "  Devin: ask Devin to use the Understudy onboarding skill for this project. For persistent installs, add the npm install to the Devin environment blueprint."
+# Only promise per-agent next steps for adapters that actually installed;
+# when the adapter step ran and installed nothing, hand out recovery
+# instructions instead of claiming the skills are ready.
+if [ "$ADAPTERS_ATTEMPTED" != "1" ]; then
+  say "The installer is done. The next experience belongs inside your coding agent:"
+  say "  Claude Code: run /reload-plugins and then /understudy:onboard."
+  say "  Cursor: restart Cursor or run Developer: Reload Window, then ask Cursor Agent to use the Understudy onboarding skill."
+  say "  Codex: run /plugins, install or enable understudy, then ask Codex to use the Understudy onboarding skill."
+  say "  OpenCode: restart the TUI or open a new session, then run /understudy-onboard."
+  say "  Hermes: run /reload-skills in an open session (or start a new hermes session), then run /onboard or ask Hermes to use the Understudy onboarding skill."
+  say "  Devin: ask Devin to use the Understudy onboarding skill for this project. For persistent installs, add the npm install to the Devin environment blueprint."
+elif [ "$ADAPTERS_INSTALLED_COUNT" -eq 0 ]; then
+  if [ "$(normalize_agent_platform "$AGENT_PLATFORMS")" = "none" ]; then
+    say "The installer is done. No coding-agent plugins were requested, so only the understudy CLI was installed."
+    say "Rerun this installer with --agents claude-code (or another adapter) when you want the skills inside a coding agent."
+  elif [ "${ADAPTERS_UNMET_COUNT:-0}" -eq 0 ]; then
+    say "The installer is done. Every selected coding-agent adapter was disabled by a flag (e.g. --no-claude), so only the understudy CLI was installed."
+    say "Rerun this installer without the disable flag (or with --agents <adapter>) when you want the skills inside a coding agent."
+  else
+    fail_line "The installer finished, but no coding-agent plugin was installed — the Understudy skills are NOT ready in any coding agent."
+    say "Use the manual install commands above (or rerun this installer with --agents <adapter>), then run the platform's reload step before onboarding."
+  fi
+else
+  say "The installer is done. The next experience belongs inside your coding agent:"
+  if adapter_installed "claude-code"; then
+    say "  Claude Code: run /reload-plugins and then /understudy:onboard."
+  fi
+  if adapter_installed "cursor"; then
+    say "  Cursor: restart Cursor or run Developer: Reload Window, then ask Cursor Agent to use the Understudy onboarding skill."
+  fi
+  if adapter_installed "codex"; then
+    say "  Codex: run /plugins, install or enable understudy, then ask Codex to use the Understudy onboarding skill."
+  fi
+  if adapter_installed "opencode"; then
+    say "  OpenCode: restart the TUI or open a new session, then run /understudy-onboard."
+  fi
+  if adapter_installed "hermes"; then
+    say "  Hermes: run /reload-skills in an open session (or start a new hermes session), then run /onboard or ask Hermes to use the Understudy onboarding skill."
+  fi
+  if adapter_installed "devin"; then
+    say "  Devin: ask Devin to use the Understudy onboarding skill for this project. For persistent installs, add the npm install to the Devin environment blueprint."
+  fi
+fi
 if lower_my_ant_bill_enabled; then
   say "Focused path: lower Anthropic bill. Ask the agent to use onboarding with the lower-Anthropic-bill path, then run the lower-anthropic-bill skill."
 fi
-say "That lets the coding agent run the email-code sign-up itself, explain the first local Understudy, and open a terminal of the user's choice when needed."
+if [ "$ADAPTERS_ATTEMPTED" != "1" ] || [ "$ADAPTERS_INSTALLED_COUNT" -gt 0 ]; then
+  say "That lets the coding agent run the email-code sign-up itself, explain the first local Understudy, and open a terminal of the user's choice when needed."
+fi
 if should_run_step 3; then
   launch_selected_agent
 else
   say "Skipping step 3/3: open coding agent."
+fi
+
+INSTALL_EXIT="$(adapter_exit_code)"
+if [ "$INSTALL_EXIT" != "0" ]; then
+  fail_line "Installer finished, but adapter installation was incomplete; exiting with status $INSTALL_EXIT."
+  say "See the adapter summary above and the install log: $LOG_FILE"
+  exit "$INSTALL_EXIT"
 fi

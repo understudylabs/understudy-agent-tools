@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
-import { chmodSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, readlinkSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, existsSync, mkdirSync, mkdtempSync, readdirSync, readFileSync, readlinkSync, rmSync, symlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 import { spawnSync } from "node:child_process";
 import { afterEach, beforeEach, describe, it } from "node:test";
 
@@ -363,8 +363,12 @@ describe("install.sh", () => {
       },
     );
 
-    assert.equal(result.status, 0, result.stderr || result.stdout);
+    // The path is preserved, but an explicitly requested adapter that ends up
+    // not installed is no longer a silent success: exit 3 with a loud warning.
+    assert.equal(result.status, 3, result.stderr || result.stdout);
     assert.match(result.stdout, /Cursor plugin path already exists/);
+    assert.match(result.stdout, /NO CODING-AGENT PLUGIN WAS INSTALLED/);
+    assert.match(result.stdout, /adapter installation was incomplete/);
     assert.equal(readFileSync(join(dest, "marker.txt"), "utf8"), "keep me\n");
   });
 
@@ -720,10 +724,14 @@ describe("install.sh", () => {
       },
     );
 
-    assert.equal(result.status, 0, result.stderr || result.stdout);
+    // The install still continues through the remaining adapters, but an
+    // explicitly requested adapter that failed now yields exit code 3.
+    assert.equal(result.status, 3, result.stderr || result.stdout);
     assert.match(result.stdout, /Codex marketplace add failed; trying marketplace refresh/);
     assert.match(result.stdout, /Codex marketplace registration failed; continuing/);
     assert.match(result.stdout, /Manual recovery: run `codex plugin marketplace remove understudy-skills`/);
+    assert.match(result.stdout, /codex: failed — marketplace registration failed/);
+    assert.match(result.stdout, /NO CODING-AGENT PLUGIN WAS INSTALLED/);
     const callsText = readFileSync(calls, "utf8");
     assert.match(callsText, /plugin marketplace add /);
     assert.match(callsText, /plugin marketplace upgrade understudy-skills/);
@@ -775,6 +783,224 @@ describe("install.sh", () => {
     assert.match(result.stdout, /Codex adapter not selected or not detected/);
     assert.match(result.stdout, /OpenCode adapter not selected or not detected/);
     assert.match(result.stdout, /Hermes adapter not selected or not detected/);
+    assert.match(result.stdout, /No coding-agent plugins were requested/);
+    assert.doesNotMatch(result.stdout, /NO CODING-AGENT PLUGIN WAS INSTALLED/);
     assert.equal(existsSync(join(home, ".cursor", "plugins", "local", "understudy")), false);
+  });
+
+  it("logs the resolved adapter selection to stdout and the install log", () => {
+    const script = readFileSync("install.sh", "utf8");
+    const home = join(root, "home");
+    const logDir = join(root, "logs");
+    const result = spawnSync(
+      "bash",
+      ["-s", "--", "--non-interactive", "--only-step", "2", "--agents", "none", "--lab", join(root, "lab")],
+      {
+        cwd: process.cwd(),
+        input: script,
+        encoding: "utf8",
+        env: {
+          ...process.env,
+          CI: "1",
+          HOME: home,
+          UNDERSTUDY_INSTALL_LOG_DIR: logDir,
+        },
+      },
+    );
+
+    assert.equal(result.status, 0, result.stderr || result.stdout);
+    assert.match(result.stdout, /Agent adapter selection: none \(source: --agents flag\)/);
+    const logs = readdirSync(logDir).filter((name) => name.startsWith("install-"));
+    assert.equal(logs.length, 1);
+    assert.match(
+      readFileSync(join(logDir, logs[0]), "utf8"),
+      /Agent adapter selection: none \(source: --agents flag\)/,
+    );
+  });
+
+  it("fails loudly when an explicitly requested adapter has no CLI on PATH", () => {
+    const script = readFileSync("install.sh", "utf8");
+    const home = join(root, "home");
+    // A minimal PATH with node + npm but no claude: the explicit request must
+    // become a recorded failure with recovery commands and exit code 3.
+    const bin = join(root, "bin");
+    mkdirSync(bin, { recursive: true });
+    symlinkSync(process.execPath, join(bin, "node"));
+    symlinkSync(join(dirname(process.execPath), "npm"), join(bin, "npm"));
+    const result = spawnSync(
+      "bash",
+      [
+        "-s",
+        "--",
+        "--non-interactive",
+        "--only-step",
+        "2",
+        "--agents",
+        "claude-code",
+        "--no-launch-agent",
+        "--lab",
+        join(root, "lab"),
+      ],
+      {
+        cwd: process.cwd(),
+        input: script,
+        encoding: "utf8",
+        env: {
+          ...process.env,
+          CI: "1",
+          HOME: home,
+          PATH: `${bin}:/usr/bin:/bin:/usr/sbin:/sbin`,
+          UNDERSTUDY_INSTALL_LOG_DIR: join(root, "logs"),
+        },
+      },
+    );
+
+    assert.equal(result.status, 3, result.stderr || result.stdout);
+    assert.match(result.stdout, /Agent adapter selection: claude-code \(source: --agents flag\)/);
+    assert.match(result.stdout, /explicitly requested but the claude CLI is not on PATH/);
+    assert.match(result.stdout, /claude-code: failed — the claude CLI is not on PATH/);
+    assert.match(result.stdout, /NO CODING-AGENT PLUGIN WAS INSTALLED/);
+    assert.match(result.stdout, /claude plugin marketplace add .+ && claude plugin install understudy@understudy-skills/);
+    assert.match(result.stdout, /skills are NOT ready in any coding agent/);
+    assert.doesNotMatch(result.stdout, /Claude Code: run \/reload-plugins and then \/understudy:onboard\./);
+  });
+
+  it("only prints next steps for adapters that actually installed", () => {
+    const script = readFileSync("install.sh", "utf8");
+    const home = join(root, "home");
+    const bin = join(root, "bin");
+    const calls = join(root, "claude-calls.txt");
+    mkdirSync(bin, { recursive: true });
+    writeFileSync(
+      join(bin, "claude"),
+      `#!/usr/bin/env bash\nprintf 'claude %s\\n' "$*" >> "${calls}"\nif [ "$*" = "plugin list --json" ]; then printf '[]\\n'; fi\nexit 0\n`,
+    );
+    chmodSync(join(bin, "claude"), 0o755);
+
+    const result = spawnSync(
+      "bash",
+      [
+        "-s",
+        "--",
+        "--non-interactive",
+        "--only-step",
+        "2",
+        "--agents",
+        "claude-code",
+        "--no-launch-agent",
+        "--lab",
+        join(root, "lab"),
+      ],
+      {
+        cwd: process.cwd(),
+        input: script,
+        encoding: "utf8",
+        env: {
+          ...process.env,
+          CI: "1",
+          HOME: home,
+          PATH: `${bin}:${process.env.PATH}`,
+          UNDERSTUDY_INSTALL_LOG_DIR: join(root, "logs"),
+        },
+      },
+    );
+
+    assert.equal(result.status, 0, result.stderr || result.stdout);
+    assert.match(result.stdout, /Adapter summary/);
+    assert.match(result.stdout, /claude-code: plugin installed/);
+    assert.match(result.stdout, /cursor: skipped — not selected or not detected/);
+    assert.match(result.stdout, /Claude Code: run \/reload-plugins and then \/understudy:onboard\./);
+    assert.doesNotMatch(result.stdout, /Cursor: restart Cursor or run Developer: Reload Window/);
+    assert.doesNotMatch(result.stdout, /Codex: run \/plugins/);
+    assert.doesNotMatch(result.stdout, /NO CODING-AGENT PLUGIN WAS INSTALLED/);
+  });
+
+  it("treats --agents claude-code --no-claude as an intentional CLI-only install", () => {
+    const script = readFileSync("install.sh", "utf8");
+    const home = join(root, "home");
+    const result = spawnSync(
+      "bash",
+      [
+        "-s",
+        "--",
+        "--non-interactive",
+        "--only-step",
+        "2",
+        "--agents",
+        "claude-code",
+        "--no-claude",
+        "--no-launch-agent",
+        "--lab",
+        join(root, "lab"),
+      ],
+      {
+        cwd: process.cwd(),
+        input: script,
+        encoding: "utf8",
+        env: {
+          ...process.env,
+          CI: "1",
+          HOME: home,
+          UNDERSTUDY_INSTALL_LOG_DIR: join(root, "logs"),
+        },
+      },
+    );
+
+    // The user disabled the adapter themselves, so this is a CLI-only
+    // install by choice, not a zero-adapter failure: exit 0, no loud block.
+    assert.equal(result.status, 0, result.stderr || result.stdout);
+    assert.match(result.stdout, /claude-code: skipped — disabled by --no-claude/);
+    assert.match(result.stdout, /disabled by a flag/);
+    assert.doesNotMatch(result.stdout, /NO CODING-AGENT PLUGIN WAS INSTALLED/);
+    assert.doesNotMatch(result.stdout, /skills are NOT ready in any coding agent/);
+  });
+
+  it("does not mark step 2 resumable when adapter installation is incomplete", () => {
+    const script = readFileSync("install.sh", "utf8");
+    const home = join(root, "home");
+    const lab = join(root, "lab");
+    const bin = join(root, "bin");
+    mkdirSync(bin, { recursive: true });
+    symlinkSync(process.execPath, join(bin, "node"));
+    symlinkSync(join(dirname(process.execPath), "npm"), join(bin, "npm"));
+    const result = spawnSync(
+      "bash",
+      [
+        "-s",
+        "--",
+        "--non-interactive",
+        "--only-step",
+        "2",
+        "--agents",
+        "claude-code",
+        "--no-launch-agent",
+        "--lab",
+        lab,
+      ],
+      {
+        cwd: process.cwd(),
+        input: script,
+        encoding: "utf8",
+        env: {
+          ...process.env,
+          CI: "1",
+          HOME: home,
+          PATH: `${bin}:/usr/bin:/bin:/usr/sbin:/sbin`,
+          UNDERSTUDY_INSTALL_LOG_DIR: join(root, "logs"),
+        },
+      },
+    );
+
+    // The failed adapter step must not write last-step=2, or --resume would
+    // start at step 3 and exit 0 while the plugin is still missing. The state
+    // dir resolves from the default lab under HOME, not the --lab override.
+    assert.equal(result.status, 3, result.stderr || result.stdout);
+    assert.match(result.stdout, /Step 2 is not marked complete/);
+    const stateDir = join(home, ".understudy", "agent-tools", "install-state");
+    const lastStep = join(stateDir, "last-step");
+    if (existsSync(lastStep)) {
+      assert.notEqual(readFileSync(lastStep, "utf8").trim(), "2");
+    }
+    assert.equal(existsSync(join(stateDir, "step-2.done")), false);
   });
 });
