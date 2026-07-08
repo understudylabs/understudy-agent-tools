@@ -50,7 +50,7 @@ while [ "$#" -gt 0 ]; do
     --lab) LAB="${2:?missing path}"; shift ;;
     -h|--help)
       cat <<'EOF'
-Usage: install.sh [--yes] [--non-interactive] [--resume] [--from-step N] [--only-step N] [--keep-login] [--lower-my-ant-bill] [--agents auto|all|claude-code|cursor|codex|opencode|hermes|none] [--no-claude] [--no-launch-agent]
+Usage: install.sh [--yes] [--non-interactive] [--resume] [--from-step N] [--only-step N] [--keep-login] [--lower-my-ant-bill] [--agents auto|all|claude-code|cursor|codex|opencode|hermes|devin|none] [--no-claude] [--no-launch-agent]
 
 Installs the Understudy CLI + detected coding-agent skill/plugin surfaces, then
 hands the user back to the selected coding agent when possible. It does not
@@ -76,7 +76,7 @@ Options:
   --lower-my-ant-bill   focus onboarding on lowering Anthropic/Claude API spend
   --lower-my-anthropic-bill
                         alias for --lower-my-ant-bill
-  --agents LIST         agent adapters to install: auto, all, claude-code, cursor, codex, opencode, hermes, none
+  --agents LIST         agent adapters to install: auto, all, claude-code, cursor, codex, opencode, hermes, devin, none
                         comma-separated lists are accepted, e.g. claude-code,cursor
   --no-agents           skip all coding-agent plugin installs and launches
   --no-claude           skip Claude Code plugin install and final Claude launch
@@ -107,7 +107,7 @@ Environment overrides:
   UNDERSTUDY_REQUIRE_CONFIRM     set to 1 to fail when no prompt TTY exists
   UNDERSTUDY_KEEP_LOGIN          set to 1 to keep an existing sign-in
   UNDERSTUDY_LOWER_MY_ANT_BILL   set to 1 to focus onboarding on lowering Anthropic/Claude API spend
-  UNDERSTUDY_AGENT_PLATFORMS     auto, all, claude-code, cursor, codex, opencode, hermes, none, or comma list
+  UNDERSTUDY_AGENT_PLATFORMS     auto, all, claude-code, cursor, codex, opencode, hermes, devin, none, or comma list
   UNDERSTUDY_LAUNCH_AGENT       set to 0 to skip opening a coding agent
   UNDERSTUDY_LAUNCH_CLAUDE      set to 0 to skip opening a coding agent
   UNDERSTUDY_CLAUDE_ARGS        optional extra args when launching Claude Code
@@ -291,7 +291,7 @@ normalize_agent_platform() {
   case "$1" in
     claude|claude_code|claudecode) printf '%s\n' "claude-code" ;;
     hermes|hermes_agent|hermes-agent) printf '%s\n' "hermes" ;;
-    cursor|codex|opencode|all|auto|none|claude-code) printf '%s\n' "$1" ;;
+    cursor|codex|opencode|devin|all|auto|none|claude-code) printf '%s\n' "$1" ;;
     *) printf '%s\n' "$1" ;;
   esac
 }
@@ -304,15 +304,15 @@ validate_agent_platforms() {
     normalized="$(normalize_agent_platform "$token")"
     case "$normalized" in
       auto|all|none) mode="$normalized" ;;
-      claude-code|cursor|codex|opencode|hermes) ;;
+      claude-code|cursor|codex|opencode|hermes|devin) ;;
       *)
-        fail_line "Unknown agent adapter '$token'. Use auto, all, claude-code, cursor, codex, opencode, hermes, none, or a comma list of explicit adapters."
+        fail_line "Unknown agent adapter '$token'. Use auto, all, claude-code, cursor, codex, opencode, hermes, devin, none, or a comma list of explicit adapters."
         return 1
         ;;
     esac
   done
   if [ "$count" -eq 0 ]; then
-    fail_line "No agent adapter selection provided. Use auto, all, claude-code, cursor, codex, opencode, hermes, or none."
+    fail_line "No agent adapter selection provided. Use auto, all, claude-code, cursor, codex, opencode, hermes, devin, or none."
     return 1
   fi
   if [ -n "$mode" ] && [ "$count" -gt 1 ]; then
@@ -355,6 +355,11 @@ detect_hermes() {
   need hermes ||
     [ -d "${HERMES_HOME:-$HOME/.hermes}" ]
 }
+detect_devin() {
+  [ -n "${DEVIN:-}" ] ||
+    [ -n "${DEVIN_SESSION_ID:-}" ] ||
+    [ -d "$HOME/.devin" ]
+}
 default_agent_platform() {
   if [ "$NO_CLAUDE" != "1" ] && detect_claude_code; then
     printf '%s\n' "claude-code"
@@ -366,6 +371,8 @@ default_agent_platform() {
     printf '%s\n' "opencode"
   elif detect_hermes; then
     printf '%s\n' "hermes"
+  elif detect_devin; then
+    printf '%s\n' "devin"
   else
     printf '%s\n' "none"
   fi
@@ -380,6 +387,7 @@ detected_agent_label() {
       codex) detect_codex ;;
       opencode) detect_opencode ;;
       hermes) detect_hermes ;;
+      devin) detect_devin ;;
       *) return 1 ;;
     esac
   then
@@ -416,11 +424,12 @@ select_agent_platforms() {
   say "  ${G4}3.${R} $(detected_agent_label "codex" "Codex")"
   say "  ${G5}4.${R} $(detected_agent_label "opencode" "OpenCode")"
   say "  ${G6}5.${R} $(detected_agent_label "hermes" "Hermes Agent")"
-  say "  ${G6}6.${R} All detected coding agents"
-  say "  ${G6}7.${R} CLI only, no coding-agent plugins"
+  say "  ${G6}6.${R} $(detected_agent_label "devin" "Devin")"
+  say "  ${G6}7.${R} All detected coding agents"
+  say "  ${G6}8.${R} CLI only, no coding-agent plugins"
   say "Press Enter for: $default."
 
-  if ! printf "  %s?%s Install target %s[1-7 or name]%s " "$G4" "$R" "$D" "$R" >/dev/tty 2>/dev/null; then
+  if ! printf "  %s?%s Install target %s[1-8 or name]%s " "$G4" "$R" "$D" "$R" >/dev/tty 2>/dev/null; then
     return 0
   fi
   if ! read -r answer </dev/tty 2>/dev/null; then
@@ -435,8 +444,9 @@ select_agent_platforms() {
     3|codex) AGENT_PLATFORMS="codex" ;;
     4|opencode|open-code|open_code) AGENT_PLATFORMS="opencode" ;;
     5|hermes|hermes-agent|hermes_agent) AGENT_PLATFORMS="hermes" ;;
-    6|all|auto) AGENT_PLATFORMS="auto" ;;
-    7|none|cli|cli-only|cli_only) AGENT_PLATFORMS="none" ;;
+    6|devin) AGENT_PLATFORMS="devin" ;;
+    7|all|auto) AGENT_PLATFORMS="auto" ;;
+    8|none|cli|cli-only|cli_only) AGENT_PLATFORMS="none" ;;
     *) AGENT_PLATFORMS="$answer" ;;
   esac
   validate_agent_platforms || exit 2
@@ -477,6 +487,13 @@ should_install_hermes_adapter() {
   esac
   agent_platform_requested "hermes"
 }
+should_install_devin_adapter() {
+  case "$(normalize_agent_platform "$AGENT_PLATFORMS")" in
+    none) return 1 ;;
+    auto) detect_devin; return ;;
+  esac
+  agent_platform_requested "devin"
+}
 agent_plan_label() {
   case "$(normalize_agent_platform "$AGENT_PLATFORMS")" in
     auto) printf '%s\n' "Autodetect and install available agent adapters." ;;
@@ -504,6 +521,7 @@ report_agent_selection() {
 ADAPTER_RESULTS=""
 ADAPTERS_ATTEMPTED=0
 ADAPTERS_INSTALLED_COUNT=0
+ADAPTERS_UNMET_COUNT=0
 EXPLICIT_ADAPTER_FAILED=0
 
 record_adapter() {
@@ -552,10 +570,12 @@ manual_adapter_instructions() {
   say "  Codex:       codex plugin marketplace add $repo"
   say "  OpenCode:    ln -s $repo/skills/understudy \$HOME/.config/opencode/skills/understudy"
   say "  Hermes:      add $repo/skills to skills.external_dirs in $(hermes_config_path), then /reload-skills"
+  say "  Devin:       cloud-based, no local install — ask Devin to use the Understudy onboarding skill for this project"
   say "Or rerun this installer with an explicit adapter, e.g.: --agents claude-code"
 }
 summarize_agent_adapters() {
-  local name status reason installed=0
+  local name status reason installed=0 unmet=0 selection
+  selection="$(normalize_agent_platform "$AGENT_PLATFORMS")"
   ADAPTERS_ATTEMPTED=1
   say ""
   say "${B}Adapter summary${R}"
@@ -563,21 +583,36 @@ summarize_agent_adapters() {
     [ -n "$name" ] || continue
     case "$status" in
       installed) ok "$name: $reason"; installed=$((installed + 1)) ;;
-      failed) fail_line "$name: failed — $reason" ;;
-      *) say "$name: skipped — $reason" ;;
+      failed) fail_line "$name: failed — $reason"; unmet=$((unmet + 1)) ;;
+      disabled) say "$name: skipped — $reason" ;;
+      *)
+        say "$name: skipped — $reason"
+        # A skip counts as an unmet adapter when it was a real candidate:
+        # any candidate under auto/all, or an explicitly requested adapter.
+        # Skips of adapters the user never asked for don't count, and
+        # "disabled" (an explicit user flag) is handled above.
+        case "$selection" in
+          auto|all) unmet=$((unmet + 1)) ;;
+          *) if adapter_explicitly_requested "$name"; then unmet=$((unmet + 1)); fi ;;
+        esac
+        ;;
     esac
   done <<EOF
 $ADAPTER_RESULTS
 EOF
   ADAPTERS_INSTALLED_COUNT="$installed"
+  ADAPTERS_UNMET_COUNT="$unmet"
 
-  if [ "$installed" -eq 0 ] && [ "$(normalize_agent_platform "$AGENT_PLATFORMS")" != "none" ]; then
+  if [ "$installed" -eq 0 ] && [ "$selection" != "none" ] && [ "$unmet" -gt 0 ]; then
     printf '\n'
     fail_line "${B}NO CODING-AGENT PLUGIN WAS INSTALLED.${R}"
     warn "The adapter selection was '$AGENT_PLATFORMS', but every candidate was skipped or failed (reasons above)."
     warn "The understudy CLI is installed, but the Understudy skills are NOT available in any coding agent until an adapter is installed."
     manual_adapter_instructions
     say "Install log: $LOG_FILE"
+  elif [ "$installed" -eq 0 ] && [ "$selection" != "none" ]; then
+    printf '\n'
+    say "Every selected coding-agent adapter was disabled by a flag; treating this as a CLI-only install."
   elif [ "$EXPLICIT_ADAPTER_FAILED" = "1" ]; then
     printf '\n'
     fail_line "An explicitly requested agent adapter failed to install (see the adapter summary above)."
@@ -586,6 +621,8 @@ EOF
 }
 # Exit status for the whole install: 3 when adapters were requested but none
 # installed, or when an explicitly requested adapter failed. 0 otherwise.
+# Adapters the user disabled with an explicit flag (--no-claude) are the
+# user's own choice and never turn the run into a failure.
 adapter_exit_code() {
   if [ "$ADAPTERS_ATTEMPTED" != "1" ]; then
     printf '0\n'
@@ -595,7 +632,7 @@ adapter_exit_code() {
     printf '3\n'
     return 0
   fi
-  if [ "$ADAPTERS_INSTALLED_COUNT" -eq 0 ] && [ "$(normalize_agent_platform "$AGENT_PLATFORMS")" != "none" ]; then
+  if [ "$ADAPTERS_INSTALLED_COUNT" -eq 0 ] && [ "$ADAPTERS_UNMET_COUNT" -gt 0 ] && [ "$(normalize_agent_platform "$AGENT_PLATFORMS")" != "none" ]; then
     printf '3\n'
     return 0
   fi
@@ -699,11 +736,30 @@ credentials_email() {
   node -e 'try{const c=JSON.parse(require("fs").readFileSync(process.argv[1],"utf8"));if(c.email)process.stdout.write(c.email)}catch(e){}' "$CREDENTIALS_FILE" 2>/dev/null || true
 }
 
+is_github_noreply_email() {
+  case "${1:-}" in
+    *@users.noreply.github.com|*@noreply.github.com|noreply@github.com) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
+remember_known_email() {
+  local candidate="${1:-}" source_label="${2:-email source}"
+  [ -z "$candidate" ] && return 0
+  if is_github_noreply_email "$candidate"; then
+    say "Ignoring GitHub noreply email from $source_label; the agent will ask for a real sign-in email."
+    return 0
+  fi
+  KNOWN_EMAIL="$candidate"
+}
+
 prepare_agent_first_signin() {
+  local existing_email=""
   [ -n "$ONLY_STEP" ] && return 0
   section "Prepare the agent-first sign-in."
   if [ -f "$CREDENTIALS_FILE" ]; then
-    KNOWN_EMAIL="$(credentials_email)"
+    existing_email="$(credentials_email)"
+    remember_known_email "$existing_email" "existing Understudy credentials"
     if [ "$KEEP_LOGIN" = "1" ]; then
       say "Keeping the existing Understudy sign-in (--keep-login)."
       return 0
@@ -714,6 +770,8 @@ prepare_agent_first_signin() {
     rm -f "$HOME/.understudy/login-pending.json"
     if [ -n "$KNOWN_EMAIL" ]; then
       ok "Signed out $KNOWN_EMAIL so the agent can run the sign-up from scratch."
+    elif [ -n "$existing_email" ]; then
+      ok "Signed out the existing Understudy sign-in so the agent can run the sign-up from scratch."
     else
       ok "Signed out so the agent can run the sign-up from scratch."
     fi
@@ -725,7 +783,7 @@ prepare_agent_first_signin() {
     say "No existing sign-in found; the coding agent will run the first sign-up."
   fi
   if [ -z "$KNOWN_EMAIL" ]; then
-    KNOWN_EMAIL="$(git config --get user.email 2>/dev/null || true)"
+    remember_known_email "$(git config --get user.email 2>/dev/null || true)" "git config user.email"
   fi
 }
 
@@ -786,10 +844,14 @@ resolve_skill_repo() {
 
 install_claude_plugin() {
   if ! should_install_claude_adapter; then
-    local skip_reason="not selected or not detected"
-    [ "$NO_CLAUDE" = "1" ] && skip_reason="disabled by --no-claude"
     say "Claude Code adapter not selected or not detected; skipping Claude Code plugin install."
-    record_adapter "claude-code" "skipped" "$skip_reason"
+    # An explicit --no-claude is the user's own choice, not a missing adapter:
+    # record it as "disabled" so it never trips the zero-adapter failure exit.
+    if [ "$NO_CLAUDE" = "1" ]; then
+      record_adapter "claude-code" "disabled" "disabled by --no-claude"
+    else
+      record_adapter "claude-code" "skipped" "not selected or not detected"
+    fi
     return 0
   fi
   if ! need claude; then
@@ -1131,6 +1193,36 @@ PY
   say "Then run /onboard, or ask Hermes: Use the Understudy onboarding skill for this project."
 }
 
+install_devin_adapter() {
+  if ! should_install_devin_adapter; then
+    say "Devin adapter not selected or not detected; skipping Devin skill install."
+    record_adapter "devin" "skipped" "not selected or not detected"
+    return 0
+  fi
+
+  local repo
+  if ! repo="$(resolve_skill_repo)"; then
+    say "Could not find skills/understudy/SKILL.md; skipping Devin skill install."
+    adapter_prereq_missing "devin" "skills/understudy/SKILL.md was not found"
+    return 0
+  fi
+
+  say "Installing the Understudy Devin adapter from $repo."
+  # Devin is cloud-based: the CLI is the install surface (already handled in
+  # step 1). The adapter just confirms the skills tree is accessible and the
+  # .devin/adapter.json sentinel is present.
+  if [ -f "$repo/.devin/adapter.json" ]; then
+    ok "Understudy Devin adapter sentinel found at $repo/.devin/adapter.json."
+    record_adapter "devin" "installed" "skills tree accessible; sentinel present"
+  else
+    warn "Could not find .devin/adapter.json; the Devin version sentinel is missing."
+    say "This does not block skill access — Devin reads AGENTS.md and the skills/ tree directly."
+    record_adapter "devin" "installed" "skills tree accessible; sentinel missing"
+  fi
+  say "In Devin, ask: Use the Understudy onboarding skill for this project."
+  say "For persistent installs, add the npm install to the Devin environment blueprint."
+}
+
 install_agent_adapters() {
   ADAPTER_RESULTS=""
   EXPLICIT_ADAPTER_FAILED=0
@@ -1139,6 +1231,7 @@ install_agent_adapters() {
   install_codex_plugin
   install_opencode_adapter
   install_hermes_adapter
+  install_devin_adapter
   summarize_agent_adapters
 }
 
@@ -1261,8 +1354,28 @@ launch_hermes() {
   mark_step_done 3
 }
 
+launch_devin() {
+  if ! should_install_devin_adapter; then
+    say "Skipping Devin launch because the Devin adapter is not selected or detected."
+    mark_step_done 3
+    return 0
+  fi
+  if [ "$LAUNCH_CLAUDE" != "1" ]; then
+    say "Skipping coding-agent launch because --no-launch-agent is set."
+    mark_step_done 3
+    return 0
+  fi
+
+  section "Step 3/3 · Devin"
+  say "The Understudy CLI and skills are installed."
+  say "Devin is a cloud-based agent — it reads AGENTS.md and accesses the skills/ tree directly."
+  say "Ask Devin: Use the Understudy onboarding skill for this project."
+  say "For persistent installs, add the npm install to the Devin environment blueprint."
+  mark_step_done 3
+}
+
 launch_selected_agent() {
-  if [ "$NO_CLAUDE" != "0" ] && ! should_install_opencode_adapter && ! should_install_hermes_adapter; then
+  if [ "$NO_CLAUDE" != "0" ] && ! should_install_opencode_adapter && ! should_install_hermes_adapter && ! should_install_devin_adapter; then
     say "Skipping coding-agent launch because --no-claude is set and no other launchable adapter is available."
     mark_step_done 3
     return 0
@@ -1273,6 +1386,8 @@ launch_selected_agent() {
     launch_opencode
   elif should_install_hermes_adapter; then
     launch_hermes
+  elif should_install_devin_adapter; then
+    launch_devin
   else
     say "Skipping coding-agent launch because the selected adapter has no automatic launch path."
     mark_step_done 3
@@ -1333,7 +1448,13 @@ prepare_agent_first_signin
 if should_run_step 2; then
   section "Step 2/3 · Install agent adapters"
   install_agent_adapters
-  mark_step_done 2
+  # An incomplete adapter install must not be marked resumable-complete, or a
+  # later --resume would start at step 3 and exit 0 with no plugin installed.
+  if [ "$(adapter_exit_code)" = "0" ]; then
+    mark_step_done 2
+  else
+    warn "Step 2 is not marked complete because adapter installation was incomplete; rerun with --resume to retry the adapters."
+  fi
 else
   say "Skipping step 2/3: install agent adapters."
 fi
@@ -1351,10 +1472,14 @@ if [ "$ADAPTERS_ATTEMPTED" != "1" ]; then
   say "  Codex: run /plugins, install or enable understudy, then ask Codex to use the Understudy onboarding skill."
   say "  OpenCode: restart the TUI or open a new session, then run /understudy-onboard."
   say "  Hermes: run /reload-skills in an open session (or start a new hermes session), then run /onboard or ask Hermes to use the Understudy onboarding skill."
+  say "  Devin: ask Devin to use the Understudy onboarding skill for this project. For persistent installs, add the npm install to the Devin environment blueprint."
 elif [ "$ADAPTERS_INSTALLED_COUNT" -eq 0 ]; then
   if [ "$(normalize_agent_platform "$AGENT_PLATFORMS")" = "none" ]; then
     say "The installer is done. No coding-agent plugins were requested, so only the understudy CLI was installed."
     say "Rerun this installer with --agents claude-code (or another adapter) when you want the skills inside a coding agent."
+  elif [ "${ADAPTERS_UNMET_COUNT:-0}" -eq 0 ]; then
+    say "The installer is done. Every selected coding-agent adapter was disabled by a flag (e.g. --no-claude), so only the understudy CLI was installed."
+    say "Rerun this installer without the disable flag (or with --agents <adapter>) when you want the skills inside a coding agent."
   else
     fail_line "The installer finished, but no coding-agent plugin was installed — the Understudy skills are NOT ready in any coding agent."
     say "Use the manual install commands above (or rerun this installer with --agents <adapter>), then run the platform's reload step before onboarding."
@@ -1375,6 +1500,9 @@ else
   fi
   if adapter_installed "hermes"; then
     say "  Hermes: run /reload-skills in an open session (or start a new hermes session), then run /onboard or ask Hermes to use the Understudy onboarding skill."
+  fi
+  if adapter_installed "devin"; then
+    say "  Devin: ask Devin to use the Understudy onboarding skill for this project. For persistent installs, add the npm install to the Devin environment blueprint."
   fi
 fi
 if lower_my_ant_bill_enabled; then

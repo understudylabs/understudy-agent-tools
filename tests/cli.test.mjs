@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { spawn, spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { existsSync, mkdtempSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, mkdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
 import { createServer } from "node:http";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
@@ -12,14 +12,19 @@ const uvAvailable = spawnSync("uv", ["--version"], { encoding: "utf8" }).status 
 
 // Ambient Understudy credentials (a developer's shell, a CI secret) must not
 // leak into spawned CLIs — fixtures provide their own.
+// FORCE_COLOR (set by actions/setup-node and npm in TTY contexts) must also be
+// stripped so kleur in child processes falls back to isTTY detection and does
+// not emit ANSI codes into piped stdout that break regex assertions.
 const baseEnv = { ...process.env };
 delete baseEnv.UNDERSTUDY_API_KEY;
 delete baseEnv.UNDERSTUDY_GATEWAY_URL;
+delete baseEnv.FORCE_COLOR;
 
 function run(args) {
   return spawnSync(cli[0], [cli[1], ...args], {
     cwd: process.cwd(),
     encoding: "utf8",
+    env: baseEnv,
   });
 }
 
@@ -425,7 +430,7 @@ describe("understudy CLI", () => {
     const payload = JSON.parse(result.stdout);
     assert.deepEqual(
       payload.adapters.map((adapter) => adapter.id),
-      ["claude-code", "cursor", "codex", "opencode", "hermes"],
+      ["claude-code", "cursor", "codex", "opencode", "hermes", "devin"],
     );
     assert.equal(payload.adapters.find((adapter) => adapter.id === "cursor").manifestPath, ".cursor-plugin/plugin.json");
     assert.equal(payload.adapters.find((adapter) => adapter.id === "codex").manifestPath, ".codex-plugin/plugin.json");
@@ -434,6 +439,8 @@ describe("understudy CLI", () => {
     assert.equal(payload.adapters.find((adapter) => adapter.id === "codex").status, "supported");
     assert.equal(payload.adapters.find((adapter) => adapter.id === "opencode").status, "supported");
     assert.equal(payload.adapters.find((adapter) => adapter.id === "hermes").status, "supported");
+    assert.equal(payload.adapters.find((adapter) => adapter.id === "devin").manifestPath, ".devin/adapter.json");
+    assert.equal(payload.adapters.find((adapter) => adapter.id === "devin").status, "supported");
   });
 
   it("inspects one agent platform adapter", () => {
@@ -1094,6 +1101,54 @@ describe("understudy CLI", () => {
     assert.equal(payload.skill, "skills/onboard/setup-code.md");
     assert.equal(payload.recipe, "skills/onboard/openai-typescript.md");
     assert.equal(payload.file_hint, "src/client.ts");
+  });
+
+  it("installs a valid onboarding skill copy via setup", () => {
+    // realpathSync: the CLI reports paths from the resolved cwd, and macOS
+    // tmpdir() is a symlink (/var -> /private/var).
+    const repo = realpathSync(mkdtempSync(join(tmpdir(), "understudy-setup-")));
+    const home = realpathSync(mkdtempSync(join(tmpdir(), "understudy-setup-home-")));
+    try {
+      const result = runWithEnv(["setup", "--json"], { HOME: home, USERPROFILE: home }, repo);
+      assert.equal(result.status, 0, result.stderr);
+      const payload = JSON.parse(result.stdout);
+      assert.equal(payload.ok, true);
+      const skillPath = join(repo, ".claude", "skills", "understudy-onboard", "SKILL.md");
+      assert.equal(payload.skill_path, skillPath);
+      // The installed SKILL.md must be a valid Claude skill: frontmatter with
+      // a name matching the install directory, plus a description and body.
+      const skill = readFileSync(skillPath, "utf8");
+      assert.match(skill, /^---\nname: understudy-onboard\n/);
+      assert.match(skill, /\ndescription: .+/);
+      // The description must trigger on both surfaces this copy serves:
+      // first-run onboarding and repo conversion (the README flow says
+      // "run understudy setup, then ask the agent to convert this repo").
+      const description = skill.match(/\ndescription: (.+)/)[1];
+      assert.match(description, /onboard me/);
+      assert.match(description, /convert to Understudy/);
+      // The body must route conversion requests to the sibling recipes.
+      assert.match(skill, /\[setup-code\.md\]\(setup-code\.md\)/);
+      assert.match(skill, /\[openai-typescript\.md\]\(openai-typescript\.md\)/);
+      // Per-stack recipes ship alongside SKILL.md.
+      assert.ok(payload.references.length > 0);
+      assert.ok(payload.references.some((ref) => ref.endsWith("openai-typescript.md")));
+      for (const ref of payload.references) {
+        assert.ok(existsSync(ref), `missing reference ${ref}`);
+      }
+
+      const globalResult = runWithEnv(
+        ["setup", "--global", "--json"],
+        { HOME: home, USERPROFILE: home },
+        repo,
+      );
+      assert.equal(globalResult.status, 0, globalResult.stderr);
+      assert.ok(
+        existsSync(join(home, ".claude", "skills", "understudy-onboard", "SKILL.md")),
+      );
+    } finally {
+      rmSync(repo, { recursive: true, force: true });
+      rmSync(home, { recursive: true, force: true });
+    }
   });
 
   it("exposes model routing commands in the public CLI", () => {

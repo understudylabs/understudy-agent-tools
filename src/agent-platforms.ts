@@ -130,6 +130,29 @@ export const agentPlatformAdapters: AgentPlatformAdapter[] = [
       "Local ~/.hermes/skills entries win on name conflicts, so a few generically named skills may be shadowed by Hermes bundled skills.",
     ],
   },
+  {
+    id: "devin",
+    displayName: "Devin",
+    status: "supported",
+    manifestPath: ".devin/adapter.json",
+    discovery:
+      "Devin reads AGENTS.md as an injected rule and accesses the shared skills/ tree directly from the cloned repo; .devin/skills is a symlink to skills/ for project-level discovery",
+    install: [
+      "npm install -g @understudylabs/understudy-agent-tools",
+    ],
+    reload: "Each Devin session starts fresh from a snapshot; no reload step is needed.",
+    uninstall: [
+      "npm uninstall -g @understudylabs/understudy-agent-tools",
+    ],
+    onboarding: "Ask Devin: Use the Understudy onboarding skill for this project.",
+    notes: [
+      ".devin/adapter.json is an Understudy version/staleness sentinel, not a manifest consumed by Devin.",
+      "Devin is cloud-based: each session boots from a snapshot, so the install is a global npm package rather than a local plugin registration.",
+      "Devin reads AGENTS.md automatically as a repository rule; the shared skills/ tree is accessible from the cloned repo without additional linking.",
+      "For persistent installs, add the npm install to the Devin environment blueprint so every session starts with the CLI on PATH.",
+      "Knowledge notes or playbooks can reference specific skills for guided workflows.",
+    ],
+  },
 ];
 
 export function findAgentPlatformAdapter(id: string): AgentPlatformAdapter | undefined {

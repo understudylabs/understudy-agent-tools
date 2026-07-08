@@ -24,7 +24,8 @@ contact channel listed on the organization profile.
 
 - Keep dependency installs deterministic.
 - Do not add automatic dependency update bots without an explicit request.
-- Vendored code must be listed in `vendor/MANIFEST.md` with source and license
+- Do not vendor compatibility shims or mirrored source unless a future release
+  explicitly reintroduces a reviewed vendoring spine with source and license
   metadata.
 - Public release checks should inspect built packages for ignored docs, env
   files, private paths, and secret-shaped strings.

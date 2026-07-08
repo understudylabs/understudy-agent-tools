@@ -232,6 +232,15 @@ comparing a workload's quality and cost across the split.
    requests error. For keyless accounts, use the **keyless catalog sweep** recipe
    first, then route only after choosing a candidate.
 
+## Diagnostics
+
+When the developer asks whether the gateway is causing errors, wants to check
+provider health, or asks "is this us?", route to
+[`../check-routing-health/SKILL.md`](../check-routing-health/SKILL.md). That
+worker calls the read-only reporting endpoints (routing-status, provider-health,
+compact status) and interprets the results. The full endpoint reference is at
+[docs.understudylabs.com/reference/control-plane/reporting](https://docs.understudylabs.com/reference/control-plane/reporting).
+
 ## Output Standard
 
 End with:
@@ -252,7 +261,9 @@ End with:
   [routing semantics](https://docs.understudylabs.com/concepts/routing),
   [capture](https://docs.understudylabs.com/concepts/capture), the
   [control-plane API](https://docs.understudylabs.com/reference/control-plane)
-  behind `workloads`/`routes`/`captures`, and the gateway
+  behind `workloads`/`routes`/`captures`,
+  [reporting & health](https://docs.understudylabs.com/reference/control-plane/reporting)
+  for self-service diagnostics, and the gateway
   [request headers](https://docs.understudylabs.com/reference/request-headers) /
   [response headers](https://docs.understudylabs.com/reference/response-headers).
 

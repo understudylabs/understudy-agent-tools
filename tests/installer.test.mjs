@@ -126,6 +126,95 @@ describe("install.sh", () => {
     assert.equal(readFileSync(join(understudyDir, "profile.json"), "utf8"), '{"keep":"me"}\n');
   });
 
+  it("does not reuse a GitHub noreply email from existing credentials", () => {
+    const script = readFileSync("install.sh", "utf8");
+    const home = join(root, "home");
+    const understudyDir = join(home, ".understudy");
+    mkdirSync(understudyDir, { recursive: true });
+    writeFileSync(
+      join(understudyDir, "credentials.json"),
+      `${JSON.stringify({
+        api_key: "sk_demo",
+        gateway_url: "https://api.understudylabs.com",
+        email: "166242911+lluisinthedesert@users.noreply.github.com",
+        orgs: {},
+      })}\n`,
+    );
+
+    const result = spawnSync(
+      "bash",
+      [
+        "-s",
+        "--",
+        "--non-interactive",
+        "--from-step",
+        "3",
+        "--no-claude",
+        "--agents",
+        "none",
+        "--lab",
+        join(root, "lab"),
+      ],
+      {
+        cwd: process.cwd(),
+        input: script,
+        encoding: "utf8",
+        env: {
+          ...process.env,
+          CI: "1",
+          HOME: home,
+          UNDERSTUDY_INSTALL_LOG_DIR: join(root, "logs"),
+        },
+      },
+    );
+
+    assert.equal(result.status, 0, result.stderr || result.stdout);
+    assert.match(result.stdout, /Ignoring GitHub noreply email from existing Understudy credentials/);
+    assert.match(result.stdout, /Signed out the existing Understudy sign-in/);
+    assert.doesNotMatch(result.stdout, /users\.noreply\.github\.com/);
+  });
+
+  it("does not seed the launch prompt from a GitHub noreply git email", () => {
+    const script = readFileSync("install.sh", "utf8");
+    const home = join(root, "home");
+    mkdirSync(home, { recursive: true });
+    writeFileSync(
+      join(home, ".gitconfig"),
+      "[user]\n\temail = 166242911+lluisinthedesert@users.noreply.github.com\n",
+    );
+
+    const result = spawnSync(
+      "bash",
+      [
+        "-s",
+        "--",
+        "--non-interactive",
+        "--from-step",
+        "3",
+        "--no-claude",
+        "--agents",
+        "none",
+        "--lab",
+        join(root, "lab"),
+      ],
+      {
+        cwd: process.cwd(),
+        input: script,
+        encoding: "utf8",
+        env: {
+          ...process.env,
+          CI: "1",
+          HOME: home,
+          UNDERSTUDY_INSTALL_LOG_DIR: join(root, "logs"),
+        },
+      },
+    );
+
+    assert.equal(result.status, 0, result.stderr || result.stdout);
+    assert.match(result.stdout, /Ignoring GitHub noreply email from git config user\.email/);
+    assert.doesNotMatch(result.stdout, /users\.noreply\.github\.com/);
+  });
+
   it("keeps the sign-in with --keep-login", () => {
     const script = readFileSync("install.sh", "utf8");
     const home = join(root, "home");
@@ -824,5 +913,94 @@ describe("install.sh", () => {
     assert.doesNotMatch(result.stdout, /Cursor: restart Cursor or run Developer: Reload Window/);
     assert.doesNotMatch(result.stdout, /Codex: run \/plugins/);
     assert.doesNotMatch(result.stdout, /NO CODING-AGENT PLUGIN WAS INSTALLED/);
+  });
+
+  it("treats --agents claude-code --no-claude as an intentional CLI-only install", () => {
+    const script = readFileSync("install.sh", "utf8");
+    const home = join(root, "home");
+    const result = spawnSync(
+      "bash",
+      [
+        "-s",
+        "--",
+        "--non-interactive",
+        "--only-step",
+        "2",
+        "--agents",
+        "claude-code",
+        "--no-claude",
+        "--no-launch-agent",
+        "--lab",
+        join(root, "lab"),
+      ],
+      {
+        cwd: process.cwd(),
+        input: script,
+        encoding: "utf8",
+        env: {
+          ...process.env,
+          CI: "1",
+          HOME: home,
+          UNDERSTUDY_INSTALL_LOG_DIR: join(root, "logs"),
+        },
+      },
+    );
+
+    // The user disabled the adapter themselves, so this is a CLI-only
+    // install by choice, not a zero-adapter failure: exit 0, no loud block.
+    assert.equal(result.status, 0, result.stderr || result.stdout);
+    assert.match(result.stdout, /claude-code: skipped — disabled by --no-claude/);
+    assert.match(result.stdout, /disabled by a flag/);
+    assert.doesNotMatch(result.stdout, /NO CODING-AGENT PLUGIN WAS INSTALLED/);
+    assert.doesNotMatch(result.stdout, /skills are NOT ready in any coding agent/);
+  });
+
+  it("does not mark step 2 resumable when adapter installation is incomplete", () => {
+    const script = readFileSync("install.sh", "utf8");
+    const home = join(root, "home");
+    const lab = join(root, "lab");
+    const bin = join(root, "bin");
+    mkdirSync(bin, { recursive: true });
+    symlinkSync(process.execPath, join(bin, "node"));
+    symlinkSync(join(dirname(process.execPath), "npm"), join(bin, "npm"));
+    const result = spawnSync(
+      "bash",
+      [
+        "-s",
+        "--",
+        "--non-interactive",
+        "--only-step",
+        "2",
+        "--agents",
+        "claude-code",
+        "--no-launch-agent",
+        "--lab",
+        lab,
+      ],
+      {
+        cwd: process.cwd(),
+        input: script,
+        encoding: "utf8",
+        env: {
+          ...process.env,
+          CI: "1",
+          HOME: home,
+          PATH: `${bin}:/usr/bin:/bin:/usr/sbin:/sbin`,
+          UNDERSTUDY_INSTALL_LOG_DIR: join(root, "logs"),
+        },
+      },
+    );
+
+    // The failed adapter step must not write last-step=2, or --resume would
+    // start at step 3 and exit 0 while the plugin is still missing. The state
+    // dir resolves from the default lab under HOME, not the --lab override.
+    assert.equal(result.status, 3, result.stderr || result.stdout);
+    assert.match(result.stdout, /Step 2 is not marked complete/);
+    const stateDir = join(home, ".understudy", "agent-tools", "install-state");
+    const lastStep = join(stateDir, "last-step");
+    if (existsSync(lastStep)) {
+      assert.notEqual(readFileSync(lastStep, "utf8").trim(), "2");
+    }
+    assert.equal(existsSync(join(stateDir, "step-2.done")), false);
   });
 });

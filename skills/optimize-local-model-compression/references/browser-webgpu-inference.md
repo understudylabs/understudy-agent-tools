@@ -14,7 +14,7 @@ opportunity to deploy Understudy's stacked QAT compression in a new runtime.
 - Custom WGSL compute kernels for every operation: quantized matmul, fused
   attention, RMSNorm, GELU, argmax. The 550 KB JS bundle (`gemma-4-e2b.js`)
   is a complete inference engine — it does not use transformers.js or ONNX
-  Runtime Web. Every kernel was written and optimized by Fable 5.
+  Runtime Web.
 - Per-tensor quantization baked into the kernel design: each weight tensor
   carries its own `bits`, `scaleT` (scale factor), and `codesT` (codebook
   indices), enabling mixed-precision decode at the WGSL level.
@@ -133,5 +133,5 @@ preserve the full mixed-precision allocation.
 
 - **HF Space:** https://huggingface.co/spaces/webml-community/gemma-4-webgpu-kernels
 - **Model:** `google/gemma-4-E2B-it-qat-mobile-transformers`
-- **Kernels:** Custom WGSL, authored by Fable 5
+- **Kernels:** Custom WGSL (see the space source)
 - **License:** Check the space README for current terms

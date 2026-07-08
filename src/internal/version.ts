@@ -28,6 +28,7 @@ export function readManifestVersions(): {
   codexMarketplace: string | null;
   opencodeAdapter: string | null;
   hermesAdapter: string | null;
+  devinAdapter: string | null;
 } {
   return {
     cli: readManifestVersion(join(packageRoot, "package.json")),
@@ -44,6 +45,7 @@ export function readManifestVersions(): {
     ),
     opencodeAdapter: readManifestVersion(join(packageRoot, ".opencode", "adapter.json")),
     hermesAdapter: readManifestVersion(join(packageRoot, ".hermes", "adapter.json")),
+    devinAdapter: readManifestVersion(join(packageRoot, ".devin", "adapter.json")),
   };
 }
 

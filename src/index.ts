@@ -224,7 +224,6 @@ async function printDoctorJson(): Promise<void> {
     "package.json",
     "src/index.ts",
     "skills/understudy/SKILL.md",
-    "vendor/MANIFEST.md",
   ];
   const missing = required.filter((path) => !existsSync(join(repoRoot, path)));
   // package.json and the plugin manifests must move together: installed
@@ -238,7 +237,8 @@ async function printDoctorJson(): Promise<void> {
     versions.cli === versions.codexPlugin &&
     versions.cli === versions.codexMarketplace &&
     versions.cli === versions.opencodeAdapter &&
-    versions.cli === versions.hermesAdapter;
+    versions.cli === versions.hermesAdapter &&
+    versions.cli === versions.devinAdapter;
   // Desktop-app daemon discovery (agent-card + pid check + health probe).
   // Informational: a missing daemon never fails the doctor.
   const daemon = await daemonStatus();

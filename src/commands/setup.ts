@@ -18,6 +18,38 @@ import { trackSetupCompleted } from "../internal/telemetry.js";
 
 const SKILL_NAME = "understudy-onboard";
 
+/**
+ * Frontmatter description for the installed copy. The plugin ships
+ * onboarding (`SKILL.md`) and code conversion (`setup-code.md` + per-stack
+ * recipes) as separate surfaces, but this loose copy is a single skill — and
+ * Claude-style skill discovery selects on the description. So it must carry
+ * both trigger sets: the first-run onboarding phrases from
+ * `skills/onboard/SKILL.md` and the conversion phrases from the historical
+ * pre-plugin frontmatter ("convert to Understudy", "add GEPA", ...).
+ */
+const INSTALLED_DESCRIPTION =
+  'Use as the engaging first-run experience right after installing Understudy — whenever a developer says "get started", "set me up", "I\'m new to this", "onboard me", or asks what Understudy is and where to begin — and to convert an existing application to route LLM calls through the Understudy gateway or add thin Understudy cookbooks such as a DSPy-style GEPA prompt optimizer. Use when the user asks to "convert to Understudy", "set up Understudy in this repo", "route through Understudy", "siphon traffic to Understudy", "add GEPA", "optimize this prompt", "improve this eval", or any similar phrasing about wiring up Understudy or using an Understudy API key from an agent. Onboarding profiles the machine and the developer, writes a durable ~/.understudy/profile.json, and hands off to the understudy orchestrator; conversion detects the SDK or framework in use (raw Anthropic SDK, raw OpenAI SDK, Mastra, Vercel AI SDK, LangChain, LlamaIndex, DSPy/GEPA, or anything else that speaks Anthropic/OpenAI wire shape) and applies the matching recipe.';
+
+/**
+ * Routing section appended to the installed SKILL.md body. The plugin build
+ * of the onboard skill never mentions the conversion recipes, so the flat
+ * legacy copy needs an explicit pointer from the skill body to the sibling
+ * files it ships with.
+ */
+const CONVERSION_ROUTING = `
+## Converting a repo to Understudy
+
+For "convert this to Understudy", "route through Understudy", "add GEPA", or
+any other request about wiring an application to the Understudy gateway,
+follow [setup-code.md](setup-code.md) in this directory. Its dispatch table
+picks the matching per-stack recipe shipped alongside this file:
+[anthropic-typescript.md](anthropic-typescript.md),
+[openai-typescript.md](openai-typescript.md),
+[mastra-typescript.md](mastra-typescript.md),
+[gepa-typescript.md](gepa-typescript.md),
+[universal-typescript.md](universal-typescript.md).
+`;
+
 interface SetupOpts {
   global?: boolean;
   force?: boolean;
@@ -33,11 +65,11 @@ interface SetupOpts {
  * `install-agent-adapter` skill, which handles Claude Code, Cursor, Codex, and
  * OpenCode without copying skill content per platform.
  *
- * The skill content (master task + per-target recipes) is shipped
- * inside the CLI at `dist/skills/` (copied from repo-root `skills/`
- * by the build script). This means a user who just installed `understudy` via
- * curl or npm has the latest skill content embedded — no separate
- * download, no network dependency at install time.
+ * The skill content (`SKILL.md` + per-target recipes) ships inside the
+ * package at `skills/` (with a `dist/skills/` fallback for older layouts).
+ * This means a user who just installed `understudy` via curl or npm has the
+ * latest skill content embedded — no separate download, no network dependency
+ * at install time.
  */
 export function registerSetupCommand(program: Command): void {
   program
@@ -66,29 +98,35 @@ async function runSetup(cmd: Command, opts: SetupOpts): Promise<void> {
     : join(process.cwd(), ".claude", "skills", SKILL_NAME);
 
   mkdirSync(destRoot, { recursive: true });
-  mkdirSync(join(destRoot, "references"), { recursive: true });
 
-  // Write the master SKILL.md = frontmatter + focused setup-code recipe.
-  const frontmatter = readFileSync(
-    join(skillsSource, "onboard", "frontmatter.md"),
-    "utf8",
-  );
-  const taskBody = readFileSync(
-    join(skillsSource, "onboard", "setup-code.md"),
+  // Write the master SKILL.md from the bundled onboarding skill, with three
+  // legacy-copy adjustments: the frontmatter name matches the installed
+  // directory, the description covers both onboarding and conversion
+  // triggers, and the body ends with a routing section for the conversion
+  // recipes shipped alongside.
+  const skillSource = readFileSync(
+    join(skillsSource, "onboard", "SKILL.md"),
     "utf8",
   );
   const skillPath = join(destRoot, "SKILL.md");
-  writeFileSync(skillPath, `${frontmatter.trimEnd()}\n\n${taskBody}`, "utf8");
+  const installedSkill = `${skillSource
+    .replace(/^name:.*$/m, `name: ${SKILL_NAME}`)
+    .replace(/^description:.*$/m, `description: ${INSTALLED_DESCRIPTION}`)
+    .trimEnd()}\n${CONVERSION_ROUTING}`;
+  writeFileSync(skillPath, installedSkill, "utf8");
 
-  // Copy every per-target recipe into references/. We don't pick by
-  // language here — the agent reads the dispatch table in SKILL.md and
-  // picks the right recipe at run time. Shipping all of them lets the
-  // agent handle whichever stack the user actually has.
+  // Copy the supporting docs (per-target recipes, setup-code task,
+  // reference.md) next to SKILL.md, mirroring `skills/onboard/` so relative
+  // links keep working. We don't pick by language here — the agent reads the
+  // dispatch table and picks the right recipe at run time. Shipping all of
+  // them lets the agent handle whichever stack the user actually has.
   const recipesDir = join(skillsSource, "onboard");
-  const recipeFiles = readdirSync(recipesDir).filter((f) => f.endsWith(".md") && f !== "frontmatter.md");
+  const recipeFiles = readdirSync(recipesDir).filter(
+    (f) => f.endsWith(".md") && f !== "SKILL.md",
+  );
   const referencePaths: string[] = [];
   for (const filename of recipeFiles) {
-    const dest = join(destRoot, "references", filename);
+    const dest = join(destRoot, filename);
     copyFileSync(join(recipesDir, filename), dest);
     referencePaths.push(dest);
   }
