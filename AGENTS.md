@@ -162,12 +162,11 @@ When importing code from private Understudy repos:
 
 1. Remove private data and internal-only assumptions.
 2. Replace customer examples with synthetic fixtures.
-3. Add or preserve license metadata for vendored code.
-4. Add a smoke test or dry-run command.
-5. Keep the commit scoped to one spine.
+3. Add a smoke test or dry-run command.
+4. Keep the commit scoped to one spine.
 
-Before opening a PR that changes skills, docs, scripts, package metadata, or
-vendored files, run:
+Before opening a PR that changes skills, docs, scripts, or package metadata,
+run:
 
 ```sh
 npm run check
