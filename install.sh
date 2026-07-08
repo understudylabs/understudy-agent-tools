@@ -569,11 +569,30 @@ credentials_email() {
   node -e 'try{const c=JSON.parse(require("fs").readFileSync(process.argv[1],"utf8"));if(c.email)process.stdout.write(c.email)}catch(e){}' "$CREDENTIALS_FILE" 2>/dev/null || true
 }
 
+is_github_noreply_email() {
+  case "${1:-}" in
+    *@users.noreply.github.com|*@noreply.github.com|noreply@github.com) return 0 ;;
+    *) return 1 ;;
+  esac
+}
+
+remember_known_email() {
+  local candidate="${1:-}" source_label="${2:-email source}"
+  [ -z "$candidate" ] && return 0
+  if is_github_noreply_email "$candidate"; then
+    say "Ignoring GitHub noreply email from $source_label; the agent will ask for a real sign-in email."
+    return 0
+  fi
+  KNOWN_EMAIL="$candidate"
+}
+
 prepare_agent_first_signin() {
+  local existing_email=""
   [ -n "$ONLY_STEP" ] && return 0
   section "Prepare the agent-first sign-in."
   if [ -f "$CREDENTIALS_FILE" ]; then
-    KNOWN_EMAIL="$(credentials_email)"
+    existing_email="$(credentials_email)"
+    remember_known_email "$existing_email" "existing Understudy credentials"
     if [ "$KEEP_LOGIN" = "1" ]; then
       say "Keeping the existing Understudy sign-in (--keep-login)."
       return 0
@@ -584,6 +603,8 @@ prepare_agent_first_signin() {
     rm -f "$HOME/.understudy/login-pending.json"
     if [ -n "$KNOWN_EMAIL" ]; then
       ok "Signed out $KNOWN_EMAIL so the agent can run the sign-up from scratch."
+    elif [ -n "$existing_email" ]; then
+      ok "Signed out the existing Understudy sign-in so the agent can run the sign-up from scratch."
     else
       ok "Signed out so the agent can run the sign-up from scratch."
     fi
@@ -595,7 +616,7 @@ prepare_agent_first_signin() {
     say "No existing sign-in found; the coding agent will run the first sign-up."
   fi
   if [ -z "$KNOWN_EMAIL" ]; then
-    KNOWN_EMAIL="$(git config --get user.email 2>/dev/null || true)"
+    remember_known_email "$(git config --get user.email 2>/dev/null || true)" "git config user.email"
   fi
 }
 
