@@ -15,6 +15,16 @@ uv venv .understudy/venvs/mlx && uv pip install --python .understudy/venvs/mlx/b
 uv pip install --python .understudy/venvs/mlx/bin/python 'mlx-optiq'
 ```
 
+> **Before installing mlx-optiq, tell the user and get consent.** The package
+> is published on PyPI without a public source repository, so the code cannot
+> be audited before install. Its model-loading path enables
+> `trust_remote_code` by default, which executes arbitrary Python shipped
+> inside model repos — pass `trust_remote_code=False` (or the CLI equivalent)
+> unless the model source is trusted, and prefer weights from
+> `mlx-community` or `models.understudylabs.com`. Known issue: its
+> Anthropic-compatible streaming endpoint can hang; use the OpenAI-compatible
+> path for serving.
+
 ## QAT group-size conversion (the g32 fix)
 
 The single most impactful parameter. Google's QAT checkpoints are trained
@@ -215,7 +225,6 @@ leveled. Always serve all variants through the same runtime when comparing.
 ## Reproduction
 
 All experiments are reproducible from:
-- **Runner scripts:** `understudy-rollout-lab/experiments/optiq_*.sh`
 - **Eval harness:** `understudy workload evaluate automationbench-next-tool-call`
 - **Models:** `mlx-community` on HuggingFace or `models.understudylabs.com`
 - **Hardware:** Apple M5 Max, 128 GB unified memory
