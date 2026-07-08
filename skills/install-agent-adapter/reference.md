@@ -275,3 +275,42 @@ yaml.safe_dump(cfg, open(cfg_path, "w"), sort_keys=False)
 PY
 [ -L "$LINK" ] && rm -f "$LINK"
 ```
+
+## Devin
+
+Devin is a cloud-based coding agent. Each session boots from a snapshot, so
+there is no persistent local plugin registration. The adapter surface is the
+globally installed npm package, and skill discovery happens through `AGENTS.md`
+(which Devin reads as an injected repository rule) and the shared `skills/`
+tree in the cloned repo. `.devin/adapter.json` is an Understudy version/staleness
+sentinel for `understudy doctor`, not a manifest consumed by Devin.
+
+Install (typically done once in the Devin environment blueprint so every
+session starts with the CLI on PATH):
+
+```bash
+npm install -g @understudylabs/understudy-agent-tools
+```
+
+Verify:
+
+```bash
+understudy platforms --inspect devin
+ls "$(git rev-parse --show-toplevel)/.devin/adapter.json"
+ls "$(git rev-parse --show-toplevel)/skills/understudy/SKILL.md"
+```
+
+Activation — no reload step needed; Devin reads `AGENTS.md` automatically:
+
+```text
+Use the Understudy onboarding skill for this project.
+```
+
+For persistent installs across sessions, add the `npm install -g` command to
+the Devin environment blueprint (repository or organization level).
+
+Uninstall:
+
+```bash
+npm uninstall -g @understudylabs/understudy-agent-tools
+```
