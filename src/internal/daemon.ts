@@ -7,7 +7,7 @@
 // probe, because a crashed app (no graceful shutdown) leaves a stale card
 // behind.
 
-import { readFileSync } from "node:fs";
+import { readFileSync, statSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 
@@ -28,13 +28,47 @@ export interface DaemonStatus {
   pid: number | null;
   version: string | null;
   warmModels: DaemonWarmModel[];
+  /** Protected local HTTP/MCP calls can be authenticated without exposing the token. */
+  controlReady: boolean;
   /** Human-readable reason for the verdict. */
   detail: string;
   cardPath: string;
+  capabilityPath: string;
 }
 
 export function agentCardPath(): string {
   return join(homedir(), ".understudy", "agent-card.json");
+}
+
+export function desktopCapabilityPath(): string {
+  return join(homedir(), ".understudy", "desktop-api.json");
+}
+
+type DesktopCapability = {
+  baseUrl: string;
+  mcpUrl: string;
+  pid: number;
+  token: string;
+};
+
+function readDesktopCapability(path: string): DesktopCapability | null {
+  try {
+    if (process.platform !== "win32" && (statSync(path).mode & 0o077) !== 0) return null;
+    const value: unknown = JSON.parse(readFileSync(path, "utf8"));
+    if (typeof value !== "object" || value === null || Array.isArray(value)) return null;
+    const row = value as Record<string, unknown>;
+    if (row.schema_version !== "understudy.desktop_api.v1") return null;
+    if (typeof row.base_url !== "string" || typeof row.mcp_url !== "string") return null;
+    if (typeof row.pid !== "number" || !Number.isInteger(row.pid) || row.pid <= 0) return null;
+    if (typeof row.token !== "string" || row.token.length < 32) return null;
+    const base = new URL(row.base_url);
+    const mcp = new URL(row.mcp_url);
+    if (base.protocol !== "http:" || base.hostname !== "127.0.0.1") return null;
+    if (mcp.origin !== base.origin || mcp.pathname !== "/mcp") return null;
+    return { baseUrl: base.origin, mcpUrl: mcp.toString(), pid: row.pid, token: row.token };
+  } catch {
+    return null;
+  }
 }
 
 /** Parse the agent card; null when missing or unreadable JSON. */
@@ -90,10 +124,13 @@ export interface DaemonStatusOptions {
   cardPath?: string;
   /** Health probe timeout in milliseconds. */
   timeoutMs?: number;
+  /** Override the private desktop capability location (tests use a temp fixture). */
+  capabilityPath?: string;
 }
 
 export async function daemonStatus(options: DaemonStatusOptions = {}): Promise<DaemonStatus> {
   const cardPath = options.cardPath ?? agentCardPath();
+  const capabilityPath = options.capabilityPath ?? desktopCapabilityPath();
   const notRunning = (detail: string, extra: Partial<DaemonStatus> = {}): DaemonStatus => ({
     detected: false,
     running: false,
@@ -101,8 +138,10 @@ export async function daemonStatus(options: DaemonStatusOptions = {}): Promise<D
     pid: null,
     version: null,
     warmModels: [],
+    controlReady: false,
     detail,
     cardPath,
+    capabilityPath,
     ...extra,
   });
 
@@ -157,6 +196,9 @@ export async function daemonStatus(options: DaemonStatusOptions = {}): Promise<D
         ];
       })
     : [];
+  const capability = readDesktopCapability(capabilityPath);
+  const controlReady =
+    capability !== null && capability.pid === pid && capability.baseUrl === new URL(baseUrl).origin;
 
   return {
     detected: true,
@@ -165,9 +207,44 @@ export async function daemonStatus(options: DaemonStatusOptions = {}): Promise<D
     pid,
     version,
     warmModels,
-    detail: `desktop app daemon running at ${baseUrl}`,
+    controlReady,
+    detail: `desktop app daemon running at ${baseUrl}${controlReady ? ", control ready" : ", health only"}`,
     cardPath,
+    capabilityPath,
   };
+}
+
+export async function daemonMcpRequest(
+  method: "tools/list" | "tools/call",
+  params: Record<string, unknown> = {},
+  options: DaemonStatusOptions = {},
+): Promise<unknown> {
+  const status = await daemonStatus(options);
+  if (!status.running) throw new Error(`desktop app is not running: ${status.detail}`);
+  if (!status.controlReady) {
+    throw new Error(
+      `desktop app control is unavailable: no matching owner-only capability at ${status.capabilityPath}`,
+    );
+  }
+  const capability = readDesktopCapability(status.capabilityPath);
+  if (!capability) throw new Error("desktop app capability became unavailable");
+  const response = await fetch(capability.mcpUrl, {
+    method: "POST",
+    headers: {
+      Authorization: `Bearer ${capability.token}`,
+      "content-type": "application/json",
+    },
+    body: JSON.stringify({ jsonrpc: "2.0", id: "understudy-cli", method, params }),
+    signal: AbortSignal.timeout(options.timeoutMs ?? 10_000),
+  });
+  const body: unknown = await response.json().catch(() => null);
+  if (!response.ok) throw new Error(`desktop app returned HTTP ${response.status}`);
+  if (typeof body !== "object" || body === null || Array.isArray(body)) {
+    throw new Error("desktop app returned an invalid MCP response");
+  }
+  const envelope = body as Record<string, unknown>;
+  if (envelope.error) throw new Error(`desktop MCP error: ${JSON.stringify(envelope.error)}`);
+  return envelope.result;
 }
 
 /** One-line summary for doctor-style output. */

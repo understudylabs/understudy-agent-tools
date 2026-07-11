@@ -1,13 +1,14 @@
 import assert from "node:assert/strict";
 import { spawnSync } from "node:child_process";
 import { createServer } from "node:http";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdtempSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { after, afterEach, before, beforeEach, describe, it } from "node:test";
 
 import {
   daemonStatus,
+  daemonMcpRequest,
   describeDaemon,
   pidAlive,
   probeDaemonHealth,
@@ -117,12 +118,28 @@ describe("desktop-app daemon discovery from the agent card", () => {
 describe("daemon discovery against a live health endpoint", () => {
   let server;
   let baseUrl;
+  const token = "test-token-that-is-long-enough-for-capability";
 
   before(async () => {
     server = createServer((req, res) => {
       if (req.url === "/health") {
         res.writeHead(200, { "content-type": "text/plain" });
         res.end("ok");
+        return;
+      }
+      if (req.url === "/mcp" && req.method === "POST") {
+        if (req.headers.authorization !== `Bearer ${token}`) {
+          res.writeHead(401);
+          res.end();
+          return;
+        }
+        const chunks = [];
+        req.on("data", (chunk) => chunks.push(chunk));
+        req.on("end", () => {
+          const body = JSON.parse(Buffer.concat(chunks).toString("utf8"));
+          res.writeHead(200, { "content-type": "application/json" });
+          res.end(JSON.stringify({ jsonrpc: "2.0", id: body.id, result: { tools: [{ name: "status" }] } }));
+        });
         return;
       }
       res.writeHead(404);
@@ -168,6 +185,45 @@ describe("daemon discovery against a live health endpoint", () => {
       assert.equal(status.warmModels[0].port, 8089);
       assert.equal(status.warmModels[1].port, null);
       assert.equal(describeDaemon(status), `running at ${baseUrl}`);
+    } finally {
+      rmSync(dir, { recursive: true, force: true });
+    }
+  });
+
+  it("authenticates protected MCP calls through a matching owner-only capability", async () => {
+    const dir = mkdtempSync(join(tmpdir(), "understudy-daemon-control-"));
+    const cardPath = join(dir, "agent-card.json");
+    const capabilityPath = join(dir, "desktop-api.json");
+    try {
+      writeCard(cardPath, {
+        running: true,
+        pid: process.pid,
+        base_url: baseUrl,
+        version: "0.3.1",
+      });
+      writeFileSync(
+        capabilityPath,
+        JSON.stringify({
+          schema_version: "understudy.desktop_api.v1",
+          base_url: baseUrl,
+          mcp_url: `${baseUrl}/mcp`,
+          pid: process.pid,
+          token,
+        }),
+        { mode: 0o600 },
+      );
+      chmodSync(capabilityPath, 0o600);
+      const status = await daemonStatus({ cardPath, capabilityPath });
+      assert.equal(status.running, true);
+      assert.equal(status.controlReady, true);
+      const result = await daemonMcpRequest("tools/list", {}, { cardPath, capabilityPath });
+      assert.deepEqual(result, { tools: [{ name: "status" }] });
+
+      if (process.platform !== "win32") {
+        chmodSync(capabilityPath, 0o644);
+        const insecure = await daemonStatus({ cardPath, capabilityPath });
+        assert.equal(insecure.controlReady, false);
+      }
     } finally {
       rmSync(dir, { recursive: true, force: true });
     }

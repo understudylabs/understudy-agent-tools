@@ -28,6 +28,17 @@ provider calls, and nothing spent by default**.
 curl -fsSL https://raw.githubusercontent.com/UnderstudyLabs/understudy-agent-tools/main/install.sh | bash
 ```
 
+When Understudy Desktop is running, the CLI discovers it through the local
+agent card and uses a separate owner-only capability file for authenticated
+HTTP/MCP control. The token is never printed or stored in the agent card:
+
+```bash
+understudy daemon status
+understudy daemon tools
+understudy daemon call list_snapshot_models
+understudy daemon call start_model_download --arguments '{"model_id":"gemma-4-e2b-it-qat-mlx-vlm-understudy"}'
+```
+
 The installer sets up the CLI, asks which coding agents to attach to (Claude
 Code, Cursor, Codex, OpenCode, Hermes Agent, all, or CLI-only), and — if you
 pick Claude Code — opens it in the current directory. Then, in Claude Code:
