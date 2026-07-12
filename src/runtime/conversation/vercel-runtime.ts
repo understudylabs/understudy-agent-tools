@@ -114,6 +114,8 @@ function usageData(
     outputTokenDetails?: { reasoningTokens?: number };
   },
 ): Record<string, unknown> {
+  const promptInput = usage.inputTokens ?? 0;
+  const cacheRead = usage.inputTokenDetails?.cacheReadTokens ?? 0;
   const complete =
     usage.inputTokens != null &&
     usage.outputTokens != null &&
@@ -124,7 +126,14 @@ function usageData(
     input_tokens: usage.inputTokens ?? 0,
     output_tokens: usage.outputTokens ?? 0,
     reasoning_tokens: usage.outputTokenDetails?.reasoningTokens ?? 0,
-    cached_input_tokens: usage.inputTokenDetails?.cacheReadTokens ?? 0,
+    cached_input_tokens: cacheRead,
+    cache_write_input_tokens: 0,
+    prompt_input_tokens: promptInput,
+    cache_reported: cacheRead > 0,
+    cache_read_pct:
+      cacheRead > 0 && promptInput > 0
+        ? Math.round((cacheRead / promptInput) * 1_000) / 10
+        : null,
     total_tokens:
       usage.totalTokens ??
       (usage.inputTokens ?? 0) + (usage.outputTokens ?? 0),

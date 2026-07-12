@@ -129,6 +129,7 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             commands::get_status,
+            commands::runtime_cache_health,
             commands::anthropic_models,
             commands::anthropic_status,
             commands::anthropic_key_set,

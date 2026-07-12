@@ -4,15 +4,46 @@ import { invoke } from "@tauri-apps/api/core";
 import type { StatusController } from "../lib/useStatus";
 
 type Any = Record<string, unknown>;
+type CacheHealth = {
+  status: "unavailable" | "warming" | "healthy" | "regressed";
+  alert: boolean;
+  score_pct: number | null;
+  baseline_score_pct: number | null;
+  regression_points: number | null;
+  comparable_turns: number;
+  recent_comparable_turns: number;
+  recent_missed_tokens: number;
+  detail: string;
+};
 
 export function UsagePane({ status }: { status: StatusController }) {
   const [captures, setCaptures] = useState<Any | null>(null);
+  const [cacheHealth, setCacheHealth] = useState<CacheHealth | null>(null);
   const [err, setErr] = useState<string | null>(null);
 
   useEffect(() => {
     invoke<Any>("account_captures")
       .then(setCaptures)
       .catch((e) => setErr(String(e)));
+  }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    const refresh = () => {
+      invoke<CacheHealth>("runtime_cache_health")
+        .then((health) => {
+          if (!cancelled) setCacheHealth(health);
+        })
+        .catch(() => {
+          if (!cancelled) setCacheHealth(null);
+        });
+    };
+    refresh();
+    const timer = window.setInterval(refresh, 10_000);
+    return () => {
+      cancelled = true;
+      window.clearInterval(timer);
+    };
   }, []);
 
   const snap = status.snap;
@@ -39,6 +70,7 @@ export function UsagePane({ status }: { status: StatusController }) {
           <Metric label="CPU" value={m ? `${m.cpu_pct.toFixed(0)}%` : "…"} pct={m?.cpu_pct ?? 0} />
           <Metric label="Memory" value={m ? `${m.mem_used_gb.toFixed(1)} / ${m.mem_total_gb.toFixed(0)} GB` : "…"} pct={m && m.mem_total_gb ? (m.mem_used_gb / m.mem_total_gb) * 100 : 0} />
           <Metric label="Model memory (warm)" value={res ? `${res.used_gb.toFixed(1)} / ${res.usable_gb.toFixed(0)} GB` : "…"} pct={res && res.usable_gb > 0 ? (res.used_gb / res.usable_gb) * 100 : 0} />
+          <CacheHealthMetric health={cacheHealth} />
         </div>
 
         <div className="card">
@@ -76,6 +108,23 @@ export function UsagePane({ status }: { status: StatusController }) {
         </div>
       </div>
     </>
+  );
+}
+
+function CacheHealthMetric({ health }: { health: CacheHealth | null }) {
+  const value = health?.score_pct == null ? "—" : `${health.score_pct.toFixed(0)}%`;
+  const detail = health?.detail ?? "Cache evidence becomes available after supported Pi turns.";
+  return (
+    <div className={`cache-health${health?.alert ? " regressed" : ""}`}>
+      <div className="card-row">
+        <span className="cache-health-label">
+          <i aria-hidden="true" />
+          Cache health
+        </span>
+        <span className="metric">{value}</span>
+      </div>
+      <div className="cache-health-detail">{detail}</div>
+    </div>
   );
 }
 

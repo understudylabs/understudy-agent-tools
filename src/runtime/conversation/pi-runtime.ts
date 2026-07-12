@@ -102,6 +102,7 @@ function usageData(
       output?: number;
       reasoning?: number;
       cacheRead?: number;
+      cacheWrite?: number;
       totalTokens?: number;
     };
   },
@@ -111,6 +112,9 @@ function usageData(
   const usage = message.usage ?? {};
   const input = Number.isFinite(usage.input) ? usage.input! : 0;
   const output = Number.isFinite(usage.output) ? usage.output! : 0;
+  const cacheRead = Number.isFinite(usage.cacheRead) ? usage.cacheRead! : 0;
+  const cacheWrite = Number.isFinite(usage.cacheWrite) ? usage.cacheWrite! : 0;
+  const promptInput = input + cacheRead + cacheWrite;
   const total = Number.isFinite(usage.totalTokens) ? usage.totalTokens! : input + output;
   const complete =
     Number.isFinite(usage.input) &&
@@ -123,8 +127,15 @@ function usageData(
     input_tokens: input,
     output_tokens: output,
     reasoning_tokens: Number.isFinite(usage.reasoning) ? usage.reasoning : 0,
-    cached_input_tokens: Number.isFinite(usage.cacheRead) ? usage.cacheRead : 0,
-    total_tokens: Math.max(total, input + output),
+    cached_input_tokens: cacheRead,
+    cache_write_input_tokens: cacheWrite,
+    prompt_input_tokens: promptInput,
+    cache_reported: cacheRead + cacheWrite > 0,
+    cache_read_pct:
+      cacheRead + cacheWrite > 0 && promptInput > 0
+        ? Math.round((cacheRead / promptInput) * 1_000) / 10
+        : null,
+    total_tokens: Math.max(total, promptInput + output),
     source: complete ? "provider" : "unavailable",
     complete,
   };
@@ -299,6 +310,12 @@ function buildTools(request: RuntimeRunRequest) {
     }),
   );
 }
+
+// Pi 0.80.6 supports changing active tools, but its published behavior rebuilds
+// the normal tool list and can invalidate prompt caches. Keep the full static
+// set until the post-2026-07-10 release containing native additive deferred
+// definitions is published and pinned. Do not emulate that release with the
+// older cache-busting setActiveTools path.
 
 function deterministicCompactionFixture(pi: ExtensionAPI): void {
   pi.on("session_before_compact", (event) => ({

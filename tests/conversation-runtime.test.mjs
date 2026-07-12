@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
 import { createServer } from "node:http";
-import { mkdtempSync, readFileSync, rmSync, statSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { createHash } from "node:crypto";
@@ -37,6 +37,9 @@ import {
   classifyShellToolCall,
   commandGuardBlockMessage,
 } from "../dist/runtime/conversation/command-guard.js";
+import {
+  computeCacheHealth,
+} from "../dist/runtime/conversation/cache-health.js";
 
 const runtimeHome = mkdtempSync(join(tmpdir(), "understudy-conversation-runtime-"));
 const basicChatFixture = JSON.parse(
@@ -133,6 +136,90 @@ test("runtime errors redact provider-shaped secrets", () => {
     new Error(`provider rejected ${anthropicShaped} and ${understudyShaped}`),
   );
   assert.equal(message, "provider rejected [redacted] and [redacted]");
+});
+
+test("cache health stays quiet until supported evidence exists and alerts only on regression", () => {
+  const sample = (index, input, read, write = 0) => ({
+    session_id: "cache-session",
+    timestamp: 1_000 + index * 1_000,
+    model_key: "provider/model",
+    input_tokens: input,
+    cache_read_tokens: read,
+    cache_write_tokens: write,
+  });
+  const unavailable = computeCacheHealth([
+    sample(0, 1_000, 0),
+    sample(1, 1_000, 0),
+  ]);
+  assert.equal(unavailable.status, "unavailable");
+  assert.equal(unavailable.score_pct, null);
+  assert.equal(unavailable.alert, false);
+
+  const mixed = computeCacheHealth([
+    sample(0, 100, 0, 900),
+    sample(1, 100, 900),
+    {
+      ...sample(2, 5_000, 0),
+      session_id: "provider-without-cache-reporting",
+    },
+    {
+      ...sample(3, 5_000, 0),
+      session_id: "provider-without-cache-reporting",
+    },
+  ]);
+  assert.equal(mixed.score_pct, 90);
+  assert.equal(mixed.comparable_turns, 1);
+  assert.equal(mixed.alert, false);
+
+  const regression = computeCacheHealth([
+    sample(0, 100, 0, 4_900),
+    ...Array.from({ length: 5 }, (_, offset) => sample(offset + 1, 500, 4_500)),
+    ...Array.from({ length: 5 }, (_, offset) => sample(offset + 6, 4_000, 1_000)),
+  ]);
+  assert.equal(regression.status, "regressed");
+  assert.equal(regression.alert, true);
+  assert.equal(regression.baseline_score_pct, 90);
+  assert.equal(regression.score_pct, 20);
+  assert.equal(regression.regression_points, 70);
+  assert.equal(regression.recent_missed_tokens, 20_000);
+});
+
+test("runtime cache-health command reads the private Pi session ledger", async () => {
+  const root = mkdtempSync(join(tmpdir(), "understudy-cache-health-cli-"));
+  // Pi partitions public session ids by hash, then lets its session manager
+  // create a nested sessions ledger below that partition.
+  const sessions = join(root, "pi-sessions", "fixture-session-hash", "sessions");
+  mkdirSync(sessions, { recursive: true });
+  const rows = [
+    { input: 100, cacheRead: 0, cacheWrite: 900 },
+    { input: 100, cacheRead: 900, cacheWrite: 0 },
+    { input: 100, cacheRead: 900, cacheWrite: 0 },
+    { input: 100, cacheRead: 900, cacheWrite: 0 },
+  ].map((usage, index) => JSON.stringify({
+    type: "message",
+    message: {
+      role: "assistant",
+      provider: "fixture-provider",
+      model: "fixture-model",
+      usage,
+      timestamp: 1_000 + index * 1_000,
+    },
+  }));
+  writeFileSync(join(sessions, "fixture.jsonl"), `${rows.join("\n")}\n`);
+  try {
+    const result = await runCli(
+      ["runtime", "cache-health", "--json"],
+      { UNDERSTUDY_CONVERSATION_RUNTIME_HOME: root },
+    );
+    assert.equal(result.code, 0, result.stderr);
+    const health = JSON.parse(result.stdout);
+    assert.equal(health.status, "healthy");
+    assert.equal(health.score_pct, 90);
+    assert.equal(health.comparable_turns, 3);
+    assert.equal(health.alert, false);
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
 });
 
 test("CLI lifecycle installs, starts, diagnoses, and stops the packaged sidecar", async () => {
@@ -1400,7 +1487,12 @@ test("managed sidecar dispatches an authenticated Pi run", async () => {
         created: 1,
         model: "managed-sidecar-pi",
         choices: [{ index: 0, delta: {}, finish_reason: "stop" }],
-        usage: { prompt_tokens: 3, completion_tokens: 4, total_tokens: 7 },
+        usage: {
+          prompt_tokens: 3,
+          completion_tokens: 4,
+          total_tokens: 7,
+          prompt_tokens_details: { cached_tokens: 2 },
+        },
       },
     ]);
   });
@@ -1436,6 +1528,12 @@ test("managed sidecar dispatches an authenticated Pi run", async () => {
       .map((line) => JSON.parse(line));
     assert.deepEqual(events.map((event) => event.event), ["message", "delta", "usage"]);
     assert.ok(events.every((event) => event.runtime_id === "pi-agent-session"));
+    const usage = events.find((event) => event.event === "usage").data;
+    assert.equal(usage.cached_input_tokens, 2);
+    assert.equal(usage.cache_write_input_tokens, 0);
+    assert.equal(usage.prompt_input_tokens, 3);
+    assert.equal(usage.cache_reported, true);
+    assert.equal(usage.cache_read_pct, 66.7);
     validateRuntimeTrace(events);
   } finally {
     await stopConversationRuntime().catch(() => {});

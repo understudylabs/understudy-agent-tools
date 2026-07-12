@@ -1198,6 +1198,31 @@ pub fn get_moraine_state() -> MoraineState {
     crate::moraine::detect()
 }
 
+/// Read the canonical Pi session ledger through the bundled CLI and return one
+/// quiet aggregate for the desktop. Unsupported providers are represented as
+/// `status: unavailable`; they are not treated as a 0% cache hit rate.
+#[tauri::command]
+pub async fn runtime_cache_health() -> Result<Value, String> {
+    tauri::async_runtime::spawn_blocking(|| {
+        let output = bin::command("understudy")
+            .args(["runtime", "cache-health", "--json"])
+            .output()
+            .map_err(|error| format!("understudy cache-health failed to start: {error}"))?;
+        if !output.status.success() {
+            let detail = String::from_utf8_lossy(&output.stderr).trim().to_string();
+            return Err(if detail.is_empty() {
+                format!("understudy cache-health exited with {}", output.status)
+            } else {
+                detail
+            });
+        }
+        serde_json::from_slice::<Value>(&output.stdout)
+            .map_err(|error| format!("understudy cache-health returned invalid JSON: {error}"))
+    })
+    .await
+    .map_err(|error| format!("cache-health task failed: {error}"))?
+}
+
 // The trace lookups spawn `moraine-mcp` and block on its stdout (bounded by
 // the deadline in `mcp::call_tool`). The `_sync` cores exist for callers that
 // already run on a blocking thread (the local server); the Tauri commands are
