@@ -325,10 +325,12 @@ function attachCanonicalAdapter(
     plannedAbort?: () => boolean;
     abortReason?: () => unknown;
     onTextDelta?: (delta: string) => void;
+    transformTextDelta?: (delta: string, first: boolean) => string;
   } = {},
 ) {
   let chain = Promise.resolve();
   let terminalEmitted = false;
+  let emittedTextDelta = false;
   let compactionSourceMessages = 0;
   const rawToolArguments = new Map<string, string>();
   const enqueue = (event: Parameters<RuntimeEventWriter["emit"]>[0], data: Record<string, unknown>) => {
@@ -338,12 +340,15 @@ function attachCanonicalAdapter(
     if (event.type === "message_update") {
       const update = event.assistantMessageEvent;
       if (update.type === "text_delta") {
+        const delta =
+          options.transformTextDelta?.(update.delta, !emittedTextDelta) ?? update.delta;
+        if (update.delta.length > 0) emittedTextDelta = true;
         enqueue("delta", {
           role: options.role ?? request.role,
-          text: update.delta,
+          text: delta,
           model: options.model ?? request.model,
         });
-        options.onTextDelta?.(update.delta);
+        options.onTextDelta?.(delta);
       } else if (update.type === "thinking_delta") {
         enqueue("reasoning_delta", {
           role: options.role ?? request.role,
@@ -444,6 +449,12 @@ function attachCanonicalAdapter(
     flush: () => chain,
     terminalEmitted: () => terminalEmitted,
   };
+}
+
+export function teacherContinuationBoundary(partial: string, firstDelta: string): string {
+  if (!partial || !firstDelta || /\s$/.test(partial) || /^\s/.test(firstDelta)) return "";
+  if (/^[,.;:!?)}\]]/.test(firstDelta)) return "";
+  return " ";
 }
 
 async function createPiRuntimeSession(options: {
@@ -1004,6 +1015,8 @@ async function runTeacherContinuation(options: {
     role: "teacher",
     model: options.config.teacher.model,
     abortReason: () => options.abortSignal?.reason,
+    transformTextDelta: (delta, first) =>
+      first ? `${teacherContinuationBoundary(options.partial, delta)}${delta}` : delta,
   });
   const abort = () => void session.abort();
   options.abortSignal?.addEventListener("abort", abort, { once: true });

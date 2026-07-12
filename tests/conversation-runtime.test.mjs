@@ -18,6 +18,7 @@ import {
   piCompactionSettings,
   piPreflightCompactionRequired,
   runPiConversation,
+  teacherContinuationBoundary,
 } from "../dist/runtime/conversation/pi-runtime.js";
 import {
   parseRuntimeRequest,
@@ -434,7 +435,7 @@ test("Pi runtime deterministically interrupts a student and continues with the t
         choices: [
           {
             index: 0,
-            delta: { role: "assistant", content: " Correction: Paris is in France." },
+            delta: { role: "assistant", content: "Correction: Paris is in France." },
             finish_reason: null,
           },
         ],
@@ -502,6 +503,18 @@ test("Pi runtime deterministically interrupts a student and continues with the t
   );
   assert.match(JSON.stringify(requests.at(-1).messages), /Paris is in Germany/);
   validateRuntimeTrace(events);
+  const rendered = events
+    .filter((event) => event.event === "delta")
+    .map((event) => event.data.text)
+    .join("");
+  assert.doesNotMatch(rendered, /\w\.\w/);
+});
+
+test("teacher continuation inserts only a missing word boundary", () => {
+  assert.equal(teacherContinuationBoundary("inventory is 9.", "but the price"), " ");
+  assert.equal(teacherContinuationBoundary("inventory is 9. ", "but the price"), "");
+  assert.equal(teacherContinuationBoundary("inventory is 9", ", but the price"), "");
+  assert.equal(teacherContinuationBoundary("", "fresh answer"), "");
 });
 
 test("Pi supervision turns a user abort during a judge check into canonical cancellation", async () => {
