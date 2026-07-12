@@ -3031,7 +3031,7 @@ pub async fn chat_stream(
                     crate::conversation_sidecar::SidecarAttempt::NativeFallback(reason) => {
                         let _ = on_event.send(ChatEvent::Notice {
                             message: format!(
-                                "Canonical runtime unavailable ({reason}). Continuing with the local compatibility engine."
+                                "Canonical runtime unavailable ({reason}). Continuing with the local compatibility engine. Open Status → First-run setup to update Understudy agent tools."
                             ),
                         });
                     }
@@ -3075,7 +3075,7 @@ pub async fn chat_stream(
             Err(reason) => {
                 let _ = on_event.send(ChatEvent::Notice {
                     message: format!(
-                        "Canonical runtime could not accept this turn ({reason}). Continuing with the local compatibility engine."
+                        "Canonical runtime could not accept this turn ({reason}). Continuing with the local compatibility engine. Open Status → First-run setup to update Understudy agent tools."
                     ),
                 });
             }

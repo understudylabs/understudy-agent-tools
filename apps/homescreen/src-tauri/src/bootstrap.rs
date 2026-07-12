@@ -18,9 +18,14 @@ pub struct ToolStatus {
     pub id: String,
     pub label: String,
     pub installed: bool,
+    pub update_available: bool,
     pub command: String,
     pub detail: String,
 }
+
+const MIN_UNDERSTUDY_CLI_VERSION: &str = "0.6.1";
+const UNDERSTUDY_INSTALLER_URL: &str =
+    "https://raw.githubusercontent.com/UnderstudyLabs/understudy-agent-tools/main/install.sh";
 
 #[derive(Serialize, Clone)]
 pub struct BootstrapStatus {
@@ -93,12 +98,7 @@ pub fn status() -> BootstrapStatus {
     let snapshots = models::snapshots();
     BootstrapStatus {
         uv: command_status("uv", "uv", bin::uv(), &["--version"]),
-        understudy: command_status(
-            "understudy",
-            "Understudy agent tools",
-            bin::understudy(),
-            &["--version"],
-        ),
+        understudy: understudy_status(),
         moraine: command_status("moraine", "Moraine CLI", bin::moraine(), &["--version"]),
         moraine_mcp: command_status(
             "moraine_mcp",
@@ -133,12 +133,42 @@ pub fn install_mlx_runtime() -> Result<String, String> {
 }
 
 pub fn install_understudy_agent_tools() -> Result<String, String> {
-    let out = Command::new("npm")
-        .args(["install", "-g", "@understudylabs/understudy-agent-tools"])
+    let script = std::env::temp_dir().join(format!(
+        "understudy-agent-tools-install-{}.sh",
+        std::process::id()
+    ));
+    let download = Command::new("curl")
+        .args([
+            "--proto",
+            "=https",
+            "--tlsv1.2",
+            "--fail",
+            "--silent",
+            "--show-error",
+            "--location",
+            UNDERSTUDY_INSTALLER_URL,
+            "--output",
+        ])
+        .arg(&script)
         .env("PATH", bin::runtime_path())
         .output()
-        .map_err(|e| format!("npm install failed to start: {e}"))?;
-    command_output(out)
+        .map_err(|e| format!("Understudy installer download failed to start: {e}"))?;
+    if let Err(error) = command_output(download) {
+        let _ = std::fs::remove_file(&script);
+        return Err(error);
+    }
+
+    let installed = Command::new("sh")
+        .arg(&script)
+        .args(["--noninteractive", "--agents", "none", "--keep-login"])
+        .env("UNDERSTUDY_NONINTERACTIVE", "1")
+        .env("UNDERSTUDY_AGENT_PLATFORMS", "none")
+        .env("UNDERSTUDY_KEEP_LOGIN", "1")
+        .env("PATH", bin::runtime_path())
+        .output()
+        .map_err(|e| format!("Understudy installer failed to start: {e}"));
+    let _ = std::fs::remove_file(&script);
+    installed.and_then(command_output)
 }
 
 pub async fn download_model(
@@ -484,6 +514,7 @@ fn command_status(id: &str, label: &str, command: String, args: &[&str]) -> Tool
             id: id.to_string(),
             label: label.to_string(),
             installed: true,
+            update_available: false,
             command,
             detail: String::from_utf8_lossy(&out.stdout).trim().to_string(),
         },
@@ -491,6 +522,7 @@ fn command_status(id: &str, label: &str, command: String, args: &[&str]) -> Tool
             id: id.to_string(),
             label: label.to_string(),
             installed: false,
+            update_available: false,
             command,
             detail: String::from_utf8_lossy(&out.stderr).trim().to_string(),
         },
@@ -498,10 +530,50 @@ fn command_status(id: &str, label: &str, command: String, args: &[&str]) -> Tool
             id: id.to_string(),
             label: label.to_string(),
             installed: false,
+            update_available: false,
             command,
             detail: err.to_string(),
         },
     }
+}
+
+fn understudy_status() -> ToolStatus {
+    let mut status = command_status(
+        "understudy",
+        "Understudy agent tools",
+        bin::understudy(),
+        &["--version"],
+    );
+    if status.installed
+        && parse_version(&status.detail)
+            .zip(parse_version(MIN_UNDERSTUDY_CLI_VERSION))
+            .is_none_or(|(installed, required)| installed < required)
+    {
+        status.update_available = true;
+        status.detail = format!(
+            "{} installed · update required (Desktop needs {}+)",
+            status.detail, MIN_UNDERSTUDY_CLI_VERSION
+        );
+    }
+    status
+}
+
+fn parse_version(value: &str) -> Option<(u64, u64, u64)> {
+    let mut parts = value
+        .split_whitespace()
+        .next()?
+        .trim_start_matches('v')
+        .split('.');
+    let major = parts.next()?.parse().ok()?;
+    let minor = parts.next()?.parse().ok()?;
+    let patch = parts
+        .next()?
+        .chars()
+        .take_while(|ch| ch.is_ascii_digit())
+        .collect::<String>()
+        .parse()
+        .ok()?;
+    Some((major, minor, patch))
 }
 
 fn mlx_status() -> ToolStatus {
@@ -510,6 +582,7 @@ fn mlx_status() -> ToolStatus {
         id: "mlx".to_string(),
         label: "MLX serving runtime".to_string(),
         installed: runtime.available,
+        update_available: false,
         command: runtime.command,
         detail: runtime.detail,
     }
@@ -522,5 +595,25 @@ fn command_output(out: std::process::Output) -> Result<String, String> {
         Ok(format!("{stdout}{stderr}"))
     } else {
         Err(format!("{stdout}{stderr}"))
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn cli_version_check_is_fail_closed_and_tracks_the_package_release() {
+        assert_eq!(parse_version("0.6.0"), Some((0, 6, 0)));
+        assert_eq!(parse_version("v0.6.1"), Some((0, 6, 1)));
+        assert_eq!(parse_version("0.6.1-beta.1"), Some((0, 6, 1)));
+        assert_eq!(parse_version("unknown"), None);
+
+        let package: serde_json::Value =
+            serde_json::from_str(include_str!("../../../../package.json")).unwrap();
+        assert_eq!(
+            package.get("version").and_then(serde_json::Value::as_str),
+            Some(MIN_UNDERSTUDY_CLI_VERSION)
+        );
     }
 }
