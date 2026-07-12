@@ -144,10 +144,21 @@ if (await healthReady()) {
 const warmBefore = sqliteRows(
   "SELECT slot_id, model_id, port, server_pid, mem_gb FROM residency WHERE warm=1 ORDER BY slot_id",
 );
-const liveOrphans = warmBefore.filter((slot) => processAlive(Number(slot.server_pid)));
+// Older residency rows may have a null/stale persisted PID even while the
+// model server still owns its configured loopback port. A release readiness
+// claim must reject either form or it can accidentally measure a warm process.
+const liveOrphans = warmBefore
+  .map((slot) => {
+    const persistedPid = Number(slot.server_pid);
+    const livePid = processAlive(persistedPid)
+      ? persistedPid
+      : listenerPid(Number(slot.port));
+    return { ...slot, live_pid: livePid };
+  })
+  .filter((slot) => slot.live_pid !== null);
 if (liveOrphans.length > 0) {
   throw new Error(
-    `warm model processes are still alive for slots ${liveOrphans.map((slot) => slot.slot_id).join(", ")}; stop them before measuring cold startup`,
+    `warm model processes are still alive for slots ${liveOrphans.map((slot) => `${slot.slot_id} (pid ${slot.live_pid})`).join(", ")}; stop them before measuring cold startup`,
   );
 }
 
