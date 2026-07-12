@@ -22,6 +22,9 @@ node experiments/desktop-grocery-proof/run.mjs \
 Keep the resulting proof directory open. Do not use customer prompts, traces,
 or credentials in the demo.
 
+Open `report.html` first. It is the buyer-facing decision packet; keep the
+JSONL files behind it for drill-down rather than making the terminal the demo.
+
 ## 0-3 minutes: state the decision
 
 Say:
@@ -61,7 +64,8 @@ jq '{proof_id, suite_sha256, task_count, run_count, slots}' "$PROOF/summary.json
 
 ## 8-15 minutes: make the comparison legible
 
-Show only the buyer-facing fields:
+Start with the report's route comparison and per-task recommendations. If the
+buyer wants the underlying numbers, show only these fields:
 
 ```sh
 jq '.by_mode | with_entries(.value |= {

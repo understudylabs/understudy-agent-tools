@@ -1,0 +1,329 @@
+import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { join, resolve } from "node:path";
+
+const modeLabels = {
+  small: "Small local",
+  main: "Main local",
+  supervised: "Small + supervisor",
+};
+
+function escapeHtml(value) {
+  return String(value)
+    .replaceAll("&", "&amp;")
+    .replaceAll("<", "&lt;")
+    .replaceAll(">", "&gt;")
+    .replaceAll('"', "&quot;")
+    .replaceAll("'", "&#39;");
+}
+
+function percent(value, digits = 0) {
+  return value == null ? "—" : `${(Number(value) * 100).toFixed(digits)}%`;
+}
+
+function signedPercent(value) {
+  if (value == null) return "—";
+  const scaled = Number(value) * 100;
+  return `${scaled >= 0 ? "+" : ""}${scaled.toFixed(0)}%`;
+}
+
+function integer(value) {
+  return new Intl.NumberFormat("en-US", { maximumFractionDigits: 0 }).format(Number(value ?? 0));
+}
+
+function decisionForTask(task, rows) {
+  const small = rows.find((row) => row.mode === "small");
+  const main = rows.find((row) => row.mode === "main");
+  const supervised = rows.find((row) => row.mode === "supervised");
+  if (!main?.score?.exact) {
+    return {
+      task_id: task.id,
+      task_title: task.title,
+      state: "expand",
+      decision: "Expand the baseline",
+      reason: "The main route missed this task, so the slice cannot support a routing decision yet.",
+    };
+  }
+  if (small?.score?.exact) {
+    return {
+      task_id: task.id,
+      task_title: task.title,
+      state: "pilot",
+      decision: "Pilot the smaller model",
+      reason: "The smaller route matched every required field; supervision also allowed it to continue.",
+    };
+  }
+  if (supervised?.supervisor_correct_intervention && supervised?.score?.exact) {
+    return {
+      task_id: task.id,
+      task_title: task.title,
+      state: "supervise",
+      decision: "Pilot with supervision",
+      reason: "The smaller route missed, the supervisor interrupted correctly, and the teacher recovered the exact answer.",
+    };
+  }
+  if (supervised?.supervisor_missed_error) {
+    return {
+      task_id: task.id,
+      task_title: task.title,
+      state: "hold",
+      decision: "Keep on the main model",
+      reason: "The smaller route missed and the supervisor allowed the error to pass.",
+    };
+  }
+  return {
+    task_id: task.id,
+    task_title: task.title,
+    state: "hold",
+    decision: "Keep on the main model",
+    reason: "This slice does not yet show a safe smaller or supervised route.",
+  };
+}
+
+function recommendation(decisions) {
+  const groups = Object.groupBy(decisions, (decision) => decision.state);
+  const clauses = [];
+  if (groups.pilot?.length) clauses.push(`pilot the smaller model on ${groups.pilot.map((row) => row.task_title).join(", ")}`);
+  if (groups.supervise?.length) clauses.push(`pilot supervision on ${groups.supervise.map((row) => row.task_title).join(", ")}`);
+  if (groups.hold?.length) clauses.push(`keep ${groups.hold.map((row) => row.task_title).join(", ")} on the main model`);
+  if (groups.expand?.length) clauses.push(`expand the baseline for ${groups.expand.map((row) => row.task_title).join(", ")}`);
+  if (!clauses.length) return "Collect a larger frozen slice before choosing a route.";
+  const sentence = clauses.join("; ");
+  return `${sentence[0].toUpperCase()}${sentence.slice(1)}.`;
+}
+
+export function buildReportModel(summary, rows, tasks) {
+  if (!summary?.proof_id || !summary?.suite_sha256 || !summary?.by_mode) {
+    throw new Error("proof summary is missing identity or route metrics");
+  }
+  if (!Array.isArray(rows) || rows.length !== summary.run_count) {
+    throw new Error("proof results do not match the recorded run count");
+  }
+  if (!Array.isArray(tasks) || tasks.length !== summary.task_count) {
+    throw new Error("proof tasks do not match the recorded task count");
+  }
+  if (rows.some((row) => row.proof_id !== summary.proof_id || row.suite_sha256 !== summary.suite_sha256)) {
+    throw new Error("proof result identity does not match the summary");
+  }
+
+  const decisions = tasks.map((task) => decisionForTask(
+    task,
+    rows.filter((row) => row.task_id === task.id),
+  ));
+  const modes = ["small", "main", "supervised"].map((id) => ({
+    id,
+    label: modeLabels[id],
+    ...summary.by_mode[id],
+  }));
+  const main = summary.by_mode.main;
+  const small = summary.by_mode.small;
+  const supervised = summary.by_mode.supervised;
+  const smallLatency = Number(small.latency_reduction_vs_main ?? 0);
+  const supervisedLatency = Number(supervised.latency_reduction_vs_main ?? 0);
+
+  return {
+    schema_version: "understudy.desktop_grocery_buyer_report.v1",
+    title: "Grocery AI routing decision",
+    proof_id: summary.proof_id,
+    suite_sha256: summary.suite_sha256,
+    generated_at: summary.completed_at,
+    scope: `${summary.task_count} frozen synthetic tasks × 3 routes; ${summary.run_count} exact runs`,
+    recommendation: recommendation(decisions),
+    executive_summary: [
+      `The main local route passed ${main.exact_passes}/${main.task_count} tasks and is the only clean baseline on this slice.`,
+      `The smaller route passed ${small.exact_passes}/${small.task_count} tasks at ${Math.abs(smallLatency * 100).toFixed(0)}% ${smallLatency >= 0 ? "lower" : "higher"} mean latency than main.`,
+      `Supervision corrected ${supervised.supervisor_correct_interventions} error, missed ${supervised.supervisor_missed_errors}, and ran at ${Math.abs(supervisedLatency * 100).toFixed(0)}% ${supervisedLatency >= 0 ? "lower" : "higher"} mean latency than main.`,
+      "This is integration evidence, not a production promotion claim; the next gate is a larger frozen slice from each real workflow cluster.",
+    ],
+    modes,
+    decisions,
+    supervision: {
+      verdicts: supervised.supervisor_verdicts,
+      interventions: supervised.interventions,
+      correct_interventions: supervised.supervisor_correct_interventions,
+      missed_errors: supervised.supervisor_missed_errors,
+      false_positives: supervised.supervisor_false_positives,
+      small_model_output_share: supervised.mean_small_model_output_share,
+      supervisor_token_overhead: supervised.mean_supervisor_token_overhead,
+    },
+    next_steps: [
+      "Freeze 30–50 representative examples for each workflow cluster before changing traffic.",
+      "Require zero missed critical errors and report intervention precision, recall, latency, and token overhead.",
+      "Add the incumbent hosted route on the identical slice so cost and quality deltas become buyer-decision evidence.",
+    ],
+    further_questions: [
+      "Does the smaller route remain exact on long-tail substitutions and policy exceptions?",
+      "Which failure clusters can prompt changes fix before any fine-tuning or RL work?",
+      "What fallback rate and added latency are acceptable for the production workflow?",
+    ],
+    caveats: [
+      "Synthetic local tasks only; no customer prompts, production traffic, or remote judge were used.",
+      "Three examples expose integration and failure modes but are too small for a replacement claim.",
+      "Token counts are provider-reported by model role; dollar cost requires an explicit incumbent cost basis.",
+    ],
+    sources: ["summary.json", "results.jsonl", "tasks.json", "*.events.jsonl"],
+    chart_map: [
+      {
+        section: "Route comparison",
+        question: "How do exact quality and latency compare across the three routes?",
+        family: "comparison",
+        type: "horizontal bar",
+        fields: ["mode", "mean_field_accuracy", "mean_latency_ms"],
+        takeaway: "Main is the clean baseline; supervision improves quality but adds latency.",
+      },
+    ],
+  };
+}
+
+function routeCard(mode, maxLatency) {
+  const quality = Math.max(0, Math.min(100, Number(mode.mean_field_accuracy) * 100));
+  const latency = Math.max(0, Math.min(100, (Number(mode.mean_latency_ms) / maxLatency) * 100));
+  const routeNote = mode.id === "supervised"
+    ? `${mode.supervisor_correct_interventions} corrected · ${mode.supervisor_missed_errors} missed`
+    : `${mode.exact_passes}/${mode.task_count} exact`;
+  return `<article class="route-card" data-source="summary.json">
+    <header><h3>${escapeHtml(mode.label)}</h3><span>${escapeHtml(routeNote)}</span></header>
+    <div class="measure"><div><span>Field accuracy</span><strong>${percent(mode.mean_field_accuracy)}</strong></div><div class="bar"><i style="width:${quality}%"></i></div></div>
+    <div class="measure"><div><span>Mean latency</span><strong>${integer(mode.mean_latency_ms)} ms</strong></div><div class="bar latency"><i style="width:${latency}%"></i></div></div>
+    <footer>${integer(mode.total_tokens)} total tokens</footer>
+  </article>`;
+}
+
+function decisionCard(decision, rows) {
+  const byMode = Object.fromEntries(rows.map((row) => [row.mode, row]));
+  const result = (id) => byMode[id]?.score?.exact ? "Exact" : "Miss";
+  return `<article class="decision ${escapeHtml(decision.state)}" data-source="results.jsonl">
+    <div class="decision-top"><div><span class="eyebrow">${escapeHtml(decision.task_id)}</span><h3>${escapeHtml(decision.task_title)}</h3></div><span class="pill">${escapeHtml(decision.decision)}</span></div>
+    <p>${escapeHtml(decision.reason)}</p>
+    <div class="route-results"><span>Small <b>${result("small")}</b></span><span>Main <b>${result("main")}</b></span><span>Supervised <b>${result("supervised")}</b></span></div>
+  </article>`;
+}
+
+export function buildBuyerReport(summary, rows, tasks) {
+  const model = buildReportModel(summary, rows, tasks);
+  const maxLatency = Math.max(...model.modes.map((mode) => Number(mode.mean_latency_ms)));
+  const decisionCards = model.decisions.map((decision) => decisionCard(
+    decision,
+    rows.filter((row) => row.task_id === decision.task_id),
+  )).join("\n");
+  const summaryItems = model.executive_summary
+    .map((item) => `<li>${escapeHtml(item)}</li>`)
+    .join("\n");
+  const nextSteps = model.next_steps.map((item) => `<li>${escapeHtml(item)}</li>`).join("\n");
+  const questions = model.further_questions.map((item) => `<li>${escapeHtml(item)}</li>`).join("\n");
+  const caveats = model.caveats.map((item) => `<li>${escapeHtml(item)}</li>`).join("\n");
+  const shortHash = model.suite_sha256.slice(0, 16);
+  const main = summary.by_mode.main;
+  const small = summary.by_mode.small;
+  const supervised = summary.by_mode.supervised;
+  const routeHeading = main.exact_passes === main.task_count
+    ? "The main model is the clean baseline"
+    : "No route clears the frozen slice";
+  const routeIntro = `Exact field scoring shows the quality/latency tradeoff directly. The smaller model passes ${small.exact_passes}/${small.task_count}; supervision passes ${supervised.exact_passes}/${supervised.task_count} with ${supervised.supervisor_correct_interventions} correct intervention${supervised.supervisor_correct_interventions === 1 ? "" : "s"} and ${supervised.supervisor_missed_errors} missed error${supervised.supervisor_missed_errors === 1 ? "" : "s"}.`;
+  const supervisionHeading = supervised.supervisor_correct_interventions > 0 && supervised.supervisor_missed_errors > 0
+    ? `The supervisor helped ${supervised.supervisor_correct_interventions === 1 ? "once" : `${supervised.supervisor_correct_interventions} times`} and missed ${supervised.supervisor_missed_errors === 1 ? "once" : supervised.supervisor_missed_errors}`
+    : supervised.supervisor_correct_interventions > 0
+      ? `The supervisor corrected ${supervised.supervisor_correct_interventions} error${supervised.supervisor_correct_interventions === 1 ? "" : "s"}`
+      : supervised.supervisor_missed_errors > 0
+        ? `The supervisor missed ${supervised.supervisor_missed_errors} error${supervised.supervisor_missed_errors === 1 ? "" : "s"}`
+        : "The supervisor stayed quiet on this slice";
+
+  return `<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <meta name="color-scheme" content="light dark">
+  <title>${escapeHtml(model.title)}</title>
+  <style>
+    :root { color-scheme: light dark; --bg:#f4f1e9; --paper:#fffdf8; --ink:#171713; --muted:#6a685f; --line:#d8d2c4; --accent:#c85a32; --gold:#c9972d; --olive:#6d7755; --blue:#3d6f89; --open:#ece5d7; }
+    @media (prefers-color-scheme: dark) { :root { --bg:#11110f; --paper:#191916; --ink:#f4f0e6; --muted:#a9a59a; --line:#3a3933; --accent:#e2764f; --gold:#ddb34e; --olive:#9aaa78; --blue:#6e9eb5; --open:#292823; } }
+    * { box-sizing:border-box; } body { margin:0; background:var(--bg); color:var(--ink); font:16px/1.55 Inter,ui-sans-serif,system-ui,-apple-system,sans-serif; }
+    main { width:min(1040px,calc(100% - 32px)); margin:0 auto; padding:56px 0 80px; } h1,h2,h3,p { margin-top:0; } h1 { max-width:720px; font-size:clamp(42px,7vw,76px); line-height:.95; letter-spacing:-.055em; margin-bottom:24px; } h2 { font-size:clamp(27px,4vw,38px); line-height:1.1; letter-spacing:-.035em; margin-bottom:14px; } h3 { font-size:18px; line-height:1.25; margin-bottom:0; } section { margin-top:64px; } .kicker,.eyebrow { text-transform:uppercase; letter-spacing:.12em; font-size:12px; font-weight:750; color:var(--accent); }
+    .scope { color:var(--muted); max-width:720px; } .recommendation { font-size:clamp(22px,3vw,32px); line-height:1.25; max-width:880px; margin:22px 0 0; }
+    .summary { border-top:1px solid var(--line); border-bottom:1px solid var(--line); padding:28px 0; } .summary ul { margin:0; padding-left:22px; display:grid; gap:10px; }
+    .section-intro { color:var(--muted); max-width:760px; margin-bottom:24px; } .route-grid { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:14px; }
+    .route-card,.decision,.audit { background:var(--paper); border:1px solid var(--line); border-radius:16px; padding:20px; } .route-card header { display:flex; justify-content:space-between; gap:16px; align-items:baseline; margin-bottom:22px; } .route-card header span,.route-card footer { color:var(--muted); font-size:13px; }
+    .measure { margin-top:14px; } .measure>div:first-child { display:flex; justify-content:space-between; gap:12px; font-size:13px; } .bar { height:10px; background:var(--open); border-radius:999px; overflow:hidden; margin-top:7px; } .bar i { display:block; height:100%; background:var(--olive); border-radius:inherit; } .bar.latency i { background:var(--blue); } .route-card footer { margin-top:20px; border-top:1px solid var(--line); padding-top:12px; }
+    .decision-list { display:grid; gap:12px; } .decision-top { display:flex; justify-content:space-between; gap:18px; align-items:flex-start; } .decision p { color:var(--muted); margin:14px 0; } .pill { border:1px solid var(--line); border-radius:999px; padding:6px 10px; font-size:12px; font-weight:700; white-space:nowrap; } .decision.pilot .pill { color:var(--olive); } .decision.supervise .pill { color:var(--gold); } .decision.hold .pill { color:var(--accent); } .route-results { display:flex; gap:8px; flex-wrap:wrap; } .route-results span { background:var(--open); border-radius:8px; padding:6px 9px; font-size:12px; } .route-results b { margin-left:5px; }
+    .audit { display:grid; grid-template-columns:repeat(6,minmax(0,1fr)); gap:10px; } .audit div { min-width:0; } .audit strong { display:block; font-size:24px; letter-spacing:-.03em; } .audit span { color:var(--muted); font-size:12px; }
+    .two-col { display:grid; grid-template-columns:1.2fr .8fr; gap:44px; } ol,ul { padding-left:22px; } li+li { margin-top:8px; } .caveat { color:var(--muted); font-size:14px; }
+    .provenance { margin-top:64px; border-top:1px solid var(--line); padding-top:18px; display:flex; flex-wrap:wrap; gap:12px 24px; color:var(--muted); font:12px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace; }
+    @media (max-width:760px) { main { padding-top:36px; } section { margin-top:48px; } .route-grid,.two-col { grid-template-columns:1fr; } .audit { grid-template-columns:repeat(2,minmax(0,1fr)); } .decision-top { flex-direction:column; } }
+    @media print { :root { --bg:#fff; --paper:#fff; --ink:#111; --muted:#555; --line:#ccc; } main { width:100%; padding:0; } .route-card,.decision,.audit { break-inside:avoid; } }
+  </style>
+</head>
+<body>
+<main data-proof-id="${escapeHtml(model.proof_id)}">
+  <header>
+    <div class="kicker">Understudy · frozen local proof</div>
+    <h1>${escapeHtml(model.title)}</h1>
+    <p class="scope">${escapeHtml(model.scope)}</p>
+    <p class="recommendation">${escapeHtml(model.recommendation)}</p>
+  </header>
+
+  <section class="summary" aria-labelledby="executive-summary"><h2 id="executive-summary">Executive Summary</h2><ul>${summaryItems}</ul></section>
+
+  <section aria-labelledby="route-comparison">
+    <h2 id="route-comparison">${escapeHtml(routeHeading)}</h2>
+    <p class="section-intro">${escapeHtml(routeIntro)}</p>
+    <div class="route-grid" role="group" aria-label="Quality and latency by route">${model.modes.map((mode) => routeCard(mode, maxLatency)).join("\n")}</div>
+  </section>
+
+  <section aria-labelledby="task-routing">
+    <h2 id="task-routing">Route by failure cluster, not model reputation</h2>
+    <p class="section-intro">Each recommendation is bounded to one frozen task. The useful decision is where to pilot next—not whether one model is universally good or bad.</p>
+    <div class="decision-list">${decisionCards}</div>
+  </section>
+
+  <section aria-labelledby="supervision-audit">
+    <h2 id="supervision-audit">${escapeHtml(supervisionHeading)}</h2>
+    <p class="section-intro">That miss is decision-useful evidence. It prevents an unsafe broad rollout and becomes a labeled correction target for prompt work, GEPA, SFT, or later RL.</p>
+    <div class="audit" data-source="summary.json">
+      <div><strong>${integer(model.supervision.verdicts)}</strong><span>verdicts</span></div>
+      <div><strong>${integer(model.supervision.interventions)}</strong><span>interventions</span></div>
+      <div><strong>${integer(model.supervision.correct_interventions)}</strong><span>correct</span></div>
+      <div><strong>${integer(model.supervision.missed_errors)}</strong><span>missed errors</span></div>
+      <div><strong>${percent(model.supervision.small_model_output_share)}</strong><span>small-model output</span></div>
+      <div><strong>${percent(model.supervision.supervisor_token_overhead)}</strong><span>supervisor overhead</span></div>
+    </div>
+  </section>
+
+  <section class="two-col" aria-label="Next steps and open questions">
+    <div><h2>Turn this into a pilot decision</h2><ol>${nextSteps}</ol></div>
+    <div><h2>Questions to answer next</h2><ul>${questions}</ul></div>
+  </section>
+
+  <section class="caveat" aria-labelledby="caveats"><h2 id="caveats">Caveats and assumptions</h2><ul>${caveats}</ul></section>
+  <footer class="provenance"><span>proof ${escapeHtml(model.proof_id)}</span><span>suite ${escapeHtml(shortHash)}…</span><span>events ${escapeHtml(model.sources.join(" · "))}</span></footer>
+</main>
+</body>
+</html>`;
+}
+
+export function writeBuyerReport(outputDir, summary, rows, tasks) {
+  const modelPath = join(outputDir, "report.json");
+  const reportPath = join(outputDir, "report.html");
+  if (existsSync(modelPath) || existsSync(reportPath)) {
+    throw new Error(`buyer report already exists in immutable proof directory: ${outputDir}`);
+  }
+  const model = buildReportModel(summary, rows, tasks);
+  const html = buildBuyerReport(summary, rows, tasks);
+  writeFileSync(modelPath, `${JSON.stringify(model, null, 2)}\n`, { flag: "wx", mode: 0o600 });
+  writeFileSync(reportPath, html, { flag: "wx", mode: 0o600 });
+  return { modelPath, reportPath, model };
+}
+
+function readJsonl(path) {
+  return readFileSync(path, "utf8")
+    .split("\n")
+    .filter((line) => line.trim())
+    .map((line) => JSON.parse(line));
+}
+
+export function renderExistingProof(path) {
+  const outputDir = resolve(path);
+  const summary = JSON.parse(readFileSync(join(outputDir, "summary.json"), "utf8"));
+  const rows = readJsonl(join(outputDir, "results.jsonl"));
+  const tasks = JSON.parse(readFileSync(join(outputDir, "tasks.json"), "utf8"));
+  return { outputDir, ...writeBuyerReport(outputDir, summary, rows, tasks) };
+}

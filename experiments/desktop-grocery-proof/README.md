@@ -24,6 +24,19 @@ Evidence is written owner-only beneath
 canonical event JSONL per run, scored results JSONL, and a summary. Every row
 retains the exact `run_id` and frozen suite SHA-256.
 
+Each run also writes a self-contained `report.html` plus its structured
+`report.json` model. The report leads with a bounded route recommendation,
+quality/latency comparison, per-task decision, supervisor audit, caveats, and
+next pilot gate. It contains no raw prompts or completions and makes no remote
+requests.
+
+To add the report to an older immutable proof without rerunning models:
+
+```sh
+node experiments/desktop-grocery-proof/run.mjs \
+  --report-from ~/.understudy/proofs/grocery-marketplace/<proof-id>
+```
+
 For a buyer-facing walkthrough, use the
 [30-minute grocery-platform demo](DEMO.md). It keeps the measured judge miss in
 the story and separates deterministic synthetic evidence from a production
