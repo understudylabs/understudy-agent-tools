@@ -10,6 +10,7 @@ import {
 
 import {
   RuntimeEventWriter,
+  VERCEL_RUNTIME_ID,
   type EmitRuntimeEvent,
   type RuntimeInputMessage,
   type RuntimeRunRequest,
@@ -158,7 +159,7 @@ export async function runVercelConversation(
 ): Promise<void> {
   const request = parseRuntimeRequest(rawRequest);
   const providerUrl = requireSafeProviderUrl(request);
-  const writer = new RuntimeEventWriter(request, emit);
+  const writer = new RuntimeEventWriter(request, emit, VERCEL_RUNTIME_ID);
   const provider = createOpenAICompatible({
     name: "understudy-runtime",
     baseURL: providerUrl.toString().replace(/\/$/, ""),

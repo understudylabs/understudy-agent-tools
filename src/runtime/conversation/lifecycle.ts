@@ -3,9 +3,15 @@ import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { randomBytes } from "node:crypto";
-import { spawn } from "node:child_process";
+import { spawn, spawnSync } from "node:child_process";
 
-import { CONFORMANCE_SCHEMA, EVENT_SCHEMA, RUNTIME_ID, RUNTIME_VERSION } from "./contract.js";
+import {
+  CONFORMANCE_SCHEMA,
+  EVENT_SCHEMA,
+  RUNTIME_ID,
+  RUNTIME_VERSION,
+  piNodeSupported,
+} from "./contract.js";
 
 export type ConversationRuntimeState = {
   schema_version: string;
@@ -38,6 +44,20 @@ export function conversationRuntimeHome(): string {
     process.env.UNDERSTUDY_CONVERSATION_RUNTIME_HOME ??
       join(homedir(), ".understudy", "runtime", "conversation"),
   );
+}
+
+function managedNodeBinary(): string {
+  return process.env.UNDERSTUDY_RUNTIME_NODE_BIN ?? process.execPath;
+}
+
+function managedNodeVersion(): string {
+  const binary = managedNodeBinary();
+  const result = spawnSync(binary, ["--version"], {
+    encoding: "utf8",
+    timeout: 2_000,
+  });
+  const reported = result.status === 0 ? result.stdout.trim().replace(/^v/, "") : "";
+  return reported || process.versions.node;
 }
 function paths() {
   const root = conversationRuntimeHome();
@@ -166,6 +186,12 @@ export async function conversationRuntimeStatus(): Promise<ConversationRuntimeSt
 export async function startConversationRuntime(): Promise<ConversationRuntimeStatus> {
   const current = await conversationRuntimeStatus();
   if (current.healthy) return current;
+  if (current.running) {
+    // A live process with a failed health/version check must be reaped before
+    // replacing its state file; otherwise an upgrade can orphan the old
+    // sidecar while the new one starts on another ephemeral port.
+    await stopConversationRuntime();
+  }
   const location = paths();
   installConversationRuntime();
   rmSync(location.state, { force: true });
@@ -174,8 +200,9 @@ export async function startConversationRuntime(): Promise<ConversationRuntimeSta
   // can execute tools without creating a second unauditable auth domain.
   const toolToken = writeToolSecret(location.toolToken);
   const logFd = openSync(location.log, "a", 0o600);
+  const runtimeNode = managedNodeBinary();
   const child = spawn(
-    process.execPath,
+    runtimeNode,
     [conversationSidecarEntry(), "--port", "0", "--state-file", location.state],
     {
       detached: true,
@@ -232,12 +259,13 @@ export async function doctorConversationRuntime(): Promise<{
   repair_command: string;
 }> {
   const status = await conversationRuntimeStatus();
-  const nodeMajor = Number(process.versions.node.split(".")[0]);
+  const runtimeNode = managedNodeBinary();
+  const runtimeNodeVersion = managedNodeVersion();
   const checks = [
     {
-      name: "node",
-      ok: Number.isInteger(nodeMajor) && nodeMajor >= 20,
-      detail: process.version,
+      name: "node_for_pi",
+      ok: piNodeSupported(runtimeNodeVersion),
+      detail: `v${runtimeNodeVersion}; managed binary ${runtimeNode}; Pi requires Node 22.19+`,
     },
     {
       name: "runtime_asset",

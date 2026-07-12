@@ -45,9 +45,12 @@ residency code. Its persisted chats are linear and its `/agents/{id}/run` path
 adds a second autonomous loop, so neither replaces Pi's session tree. See
 `OSAURUS-EVALUATION.md` for the source review and live promotion gate.
 
-Next gate: send the frozen desktop tool/image/cancel/restart/supervision inputs
-through a Pi sidecar using the authenticated native tool bridge, then run the
-long-chat crash/restart soak and signed-app packaging checks.
+The selected Pi adapter has now moved into the managed sidecar. Canonical text,
+authenticated tool/image, deterministic partial-preserving cancellation,
+persisted restart, managed-process dispatch, and a three-turn live desktop
+restart smoke pass. The remaining gates are live supervisor takeover, a
+user-facing stop control, long-chat/crash soak, a bundled Node 22.19+ runtime,
+and signed-app packaging.
 
 References: [Pi SDK](https://pi.dev/docs/latest/sdk),
 [Flue durable agents](https://flueframework.com/docs/concepts/durable-execution/),

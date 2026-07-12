@@ -1,9 +1,9 @@
 # Conversation harness bakeoff
 
 This isolated bakeoff tests Vercel AI SDK, Pi `AgentSession`, Flue, OpenCode,
-and LangChain Deep Agents against Understudy's conversation-runtime needs. The
-high-level contenders remain isolated dependencies: the public CLI still
-supports Node 20 while Pi and Flue require Node 22.19+.
+and LangChain Deep Agents against Understudy's conversation-runtime needs. Pi
+has since moved into the managed runtime, so the public package now states its
+real Node 22.19+ minimum; Flue, OpenCode, and Deep Agents remain bakeoff-only.
 
 Run after building the repository root:
 

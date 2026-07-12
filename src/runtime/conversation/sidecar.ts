@@ -6,8 +6,11 @@ import { fileURLToPath } from "node:url";
 import {
   CONFORMANCE_SCHEMA,
   EVENT_SCHEMA,
+  PI_RUNTIME_ID,
   RUNTIME_ID,
   RUNTIME_VERSION,
+  VERCEL_RUNTIME_ID,
+  piNodeSupported,
   safeErrorMessage,
 } from "./contract.js";
 import { runVercelConversation } from "./vercel-runtime.js";
@@ -74,6 +77,7 @@ export async function startConversationSidecar(options: {
     );
   }
   const controllers = new Map<string, AbortController>();
+  const activePiSessions = new Map<string, string>();
   const server = createServer(async (request, response) => {
     const url = new URL(request.url ?? "/", "http://127.0.0.1");
     if (request.method === "GET" && url.pathname === "/health") {
@@ -83,6 +87,10 @@ export async function startConversationSidecar(options: {
         runtime_version: RUNTIME_VERSION,
         event_schema: EVENT_SCHEMA,
         conformance_schema: CONFORMANCE_SCHEMA,
+        backends: {
+          pi: piNodeSupported(),
+          vercel: true,
+        },
         active_runs: controllers.size,
       });
       return;
@@ -111,8 +119,30 @@ export async function startConversationSidecar(options: {
         sendJson(response, 409, { error: "run_id is already active" });
         return;
       }
+      const backend =
+        typeof payload === "object" &&
+        payload !== null &&
+        "runtime_backend" in payload &&
+        payload.runtime_backend === "pi"
+          ? "pi"
+          : "vercel";
+      const sessionId =
+        typeof payload === "object" && payload !== null && "session_id" in payload
+          ? String(payload.session_id)
+          : "";
+      if (backend === "pi" && !sessionId) {
+        sendJson(response, 400, { error: "session_id is required for Pi" });
+        return;
+      }
+      if (backend === "pi" && activePiSessions.has(sessionId)) {
+        sendJson(response, 409, {
+          error: `session_id is already active in run ${activePiSessions.get(sessionId)}`,
+        });
+        return;
+      }
       const controller = new AbortController();
       controllers.set(runId, controller);
+      if (backend === "pi") activePiSessions.set(sessionId, runId);
       response.writeHead(200, {
         "content-type": "application/x-ndjson; charset=utf-8",
         "cache-control": "no-store",
@@ -121,10 +151,21 @@ export async function startConversationSidecar(options: {
       response.on("close", () => {
         if (!response.writableEnded) controller.abort("client_disconnected");
       });
+      let nextSequence = 0;
       try {
-        await runVercelConversation(
+        if (backend === "pi" && !piNodeSupported()) {
+          throw new Error(
+            `Pi conversation runtime requires Node 22.19 or newer; current runtime is ${process.version}`,
+          );
+        }
+        const runner =
+          backend === "pi"
+            ? (await import("./pi-runtime.js")).runPiConversation
+            : runVercelConversation;
+        await runner(
           payload,
           (event) => {
+            nextSequence = Math.max(nextSequence, event.sequence + 1);
             if (!response.writableEnded && !response.destroyed) {
               response.write(`${JSON.stringify(event)}\n`);
             }
@@ -133,10 +174,30 @@ export async function startConversationSidecar(options: {
         );
       } catch (error) {
         if (!response.writableEnded && !response.destroyed) {
-          response.write(`${JSON.stringify({ error: safeErrorMessage(error) })}\n`);
+          response.write(
+            `${JSON.stringify({
+              schema_version: EVENT_SCHEMA,
+              event_id: `${runId}:${nextSequence}`,
+              run_id: runId,
+              session_id: sessionId,
+              runtime_id: backend === "pi" ? PI_RUNTIME_ID : VERCEL_RUNTIME_ID,
+              sequence: nextSequence,
+              emitted_at: new Date().toISOString(),
+              event: "error",
+              data: {
+                stage: "runtime_dispatch",
+                code: "runtime_dispatch_error",
+                message: safeErrorMessage(error),
+                recoverable: false,
+              },
+            })}\n`,
+          );
         }
       } finally {
         controllers.delete(runId);
+        if (backend === "pi" && activePiSessions.get(sessionId) === runId) {
+          activePiSessions.delete(sessionId);
+        }
         if (!response.writableEnded && !response.destroyed) response.end();
       }
       return;

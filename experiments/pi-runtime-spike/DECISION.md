@@ -1,9 +1,9 @@
 # Pi runtime promotion decision — 2026-07-11
 
-Decision: promote Pi `AgentSession` to the production-shaped desktop
-integration as the selected stateful harness. Keep it isolated from the public
-CLI's Node 20 root dependency graph and do not make it the default runtime
-until the desktop gates below pass.
+Decision: Pi `AgentSession` is the selected stateful harness and now runs inside
+the CLI-managed sidecar. The desktop can opt into it while retaining the native
+Rust path as a pre-output fallback. Do not make it the release default until
+the remaining packaging, supervision, cancellation, and soak gates pass.
 
 ## Evidence
 
@@ -20,9 +20,10 @@ until the desktop gates below pass.
 - A supervisor interrupted a streamed student answer for a stored reason and a
   teacher continued from the partial. The planned interruption was not
   misclassified as a runtime cancellation.
-- The supported Pi line requires Node 22.19+. The public CLI supports Node
-  20.6+, and the Vercel contender now runs on actual Node 20.20.2 using
-  `ai@6.0.224` plus `@ai-sdk/openai-compatible@2.0.59`.
+- The supported Pi line requires Node 22.19+. Now that Pi is the selected
+  managed runtime, the public package states the same minimum and runtime
+  doctor verifies the exact managed binary. Vercel remains the control, not a
+  reason to preserve a misleading Node 20 production claim.
 - Download size is not a decision factor because local model weights are
   already tens of gigabytes. Cold start, idle memory, signed bundling,
   offline completeness, update/repair reliability, and dependency security
@@ -44,6 +45,19 @@ until the desktop gates below pass.
   bespoke MLX/VLM lifecycle code, but its chat persistence is linear and its
   agent endpoint adds another autonomous loop. It does not change the Pi
   harness selection. See `OSAURUS-EVALUATION.md`.
+- The production adapter (not the bakeoff copy) now passes canonical text,
+  authenticated tool plus image, deterministic partial-preserving
+  cancellation, persisted restart, and managed-process tests. Vercel remains
+  selectable only as the thin control backend.
+- A live desktop smoke used a warm local 26B VLM for three turns. All three
+  traversed `pi-agent-session`, kept one session id with distinct exact run
+  ids, recorded provider usage, and recalled the synthetic phrase after the
+  sidecar was stopped and relaunched on a new process and port.
+- The desktop refuses native retry after any Pi delta/tool output, preventing a
+  partial answer from being duplicated. Pre-output startup, schema, transport,
+  or provider failures retain the native fallback and surface the reason.
+- The expanded dependency graph passed the package smoke and `npm audit` with
+  zero known vulnerabilities at this checkpoint.
 
 ## What Pi would buy later
 
@@ -61,7 +75,9 @@ true:
 1. The signed desktop distribution can install, update, diagnose, and repair a
    pinned Node 22 sidecar without requiring the user's system Node.
 2. The desktop's authenticated native tool bridge passes the same frozen
-   tool/image/cancel/restart/supervision traces through Pi.
+   tool/image/cancel/restart/supervision traces through Pi. Text, tool/image,
+   runtime cancellation, and restart are now proven; the user-facing stop
+   control and live supervision remain.
 3. Crash recovery and compaction survive a production-shaped long-chat soak.
 4. A dependency/license/security review accepts the bundled surface.
 5. The integration replaces enough native orchestration to reduce total

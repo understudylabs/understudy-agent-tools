@@ -5,8 +5,15 @@ export const EVENT_SCHEMA = "understudy-conversation-runtime-event-v1";
 export const INPUT_SCHEMA = "understudy-conversation-runtime-input-v1";
 export const CONFORMANCE_SCHEMA =
   "understudy-conversation-runtime-conformance-v1";
-export const RUNTIME_ID = "vercel-ai-sdk";
-export const RUNTIME_VERSION = "0.1.0";
+export const RUNTIME_ID = "understudy-conversation-sidecar";
+export const VERCEL_RUNTIME_ID = "vercel-ai-sdk";
+export const PI_RUNTIME_ID = "pi-agent-session";
+export const RUNTIME_VERSION = "0.2.0";
+
+export function piNodeSupported(version = process.versions.node): boolean {
+  const [major, minor] = version.split(".").map(Number);
+  return Number.isInteger(major) && (major > 22 || (major === 22 && minor >= 19));
+}
 
 const attachmentSchema = z
   .object({
@@ -58,6 +65,7 @@ export const runtimeRequestSchema = z
     initial_sequence: z.number().int().nonnegative().default(0),
     emit_input: z.boolean().default(true),
     allow_remote: z.boolean().default(false),
+    runtime_backend: z.enum(["pi", "vercel"]).default("vercel"),
   })
   .strict();
 
@@ -113,7 +121,7 @@ export type RuntimeEventEnvelope = {
   event_id: string;
   run_id: string;
   session_id: string;
-  runtime_id: typeof RUNTIME_ID;
+  runtime_id: string;
   sequence: number;
   emitted_at: string;
   event: RuntimeEventName;
@@ -128,6 +136,7 @@ export class RuntimeEventWriter {
   constructor(
     private readonly request: RuntimeRunRequest,
     private readonly emitEnvelope: EmitRuntimeEvent,
+    private readonly runtimeId = RUNTIME_ID,
   ) {
     this.#sequence = request.initial_sequence;
   }
@@ -142,7 +151,7 @@ export class RuntimeEventWriter {
       event_id: `${this.request.run_id}:${sequence}`,
       run_id: this.request.run_id,
       session_id: this.request.session_id,
-      runtime_id: RUNTIME_ID,
+      runtime_id: this.runtimeId,
       sequence,
       emitted_at: new Date().toISOString(),
       event,
