@@ -62,15 +62,32 @@ so the native Anthropic translator remains only as the one-release fallback.
 The release artifact exposes the gate directly:
 
 ```sh
+HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 HF_DATASETS_OFFLINE=1 \
+understudy runtime conformance \
+  --backend pi \
+  --base-url <offline-mlx-vlm-base-url> \
+  --model <served-model-id> \
+  --capabilities compaction,restart,supervision \
+  --deterministic-supervisor \
+  --deterministic-malformed-tool \
+  --deterministic-compaction \
+  --tool-executor-url <authenticated-loopback-tool-executor-url> \
+  --require-complete \
+  --output .understudy/capture-evidence/desktop-runtime-conformance.json
+npm run runtime:desktop-readiness -- \
+  --output .understudy/capture-evidence/desktop-runtime-readiness.json
 understudy desktop migration-status --require-ready --json
 ```
 
 The command exits `2` while observation is incomplete. The underlying
 versioned Desktop API cohorts rows by both app version and canonical-runtime
 version; legacy and development rows remain in SQLite but cannot poison or
-falsely satisfy the denominator. Delete the compatibility engine only after
-one released app/runtime cohort records a rolling window of at least 100
-canonical runs with:
+falsely satisfy the denominator. The CLI additionally verifies that both
+owner-only evidence files match the live app/runtime versions, current event
+schema, and exact frozen-scenario hashes; missing or stale evidence fails
+closed even after the cohort reaches 100 runs. Delete the compatibility engine
+only after one released app/runtime cohort records a rolling window of at least
+100 canonical runs with:
 
 - `compatibility_fallback_rows == 0`;
 - `pi_runtime_share == 1.0`;

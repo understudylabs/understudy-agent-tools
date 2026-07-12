@@ -11,6 +11,11 @@ import {
   requireDesktopApi,
   responseError,
 } from "../internal/desktop-api.js";
+import {
+  DEFAULT_DESKTOP_CONFORMANCE_EVIDENCE,
+  DEFAULT_DESKTOP_READINESS_EVIDENCE,
+  evaluateDesktopRuntimeReleaseEvidence,
+} from "../runtime/conversation/release-gate.js";
 
 interface RuntimeEvent {
   run_id?: string;
@@ -195,11 +200,27 @@ export function registerDesktopCommand(program: Command): void {
     .command("migration-status")
     .description("Check the one-release Pi adoption gate before deleting the Rust fallback.")
     .option("--limit <n>", "Most-recent canonical/fallback rows to inspect", positiveInteger, 250)
-    .option("--require-ready", "Exit non-zero until 100 canonical runs have zero fallbacks")
+    .option(
+      "--conformance-evidence <path>",
+      "Private executable Pi conformance report",
+      DEFAULT_DESKTOP_CONFORMANCE_EVIDENCE,
+    )
+    .option(
+      "--readiness-evidence <path>",
+      "Private desktop startup and memory readiness report",
+      DEFAULT_DESKTOP_READINESS_EVIDENCE,
+    )
+    .option("--require-ready", "Exit non-zero until cohort and release evidence are ready")
     .option("--json", "Output JSON")
     .action(async function (
       this: Command,
-      opts: { limit: number; requireReady?: boolean; json?: boolean },
+      opts: {
+        limit: number;
+        conformanceEvidence: string;
+        readinessEvidence: string;
+        requireReady?: boolean;
+        json?: boolean;
+      },
     ) {
       const capability = await requireDesktopApi();
       const query = `?limit=${opts.limit}`;
@@ -214,15 +235,29 @@ export function registerDesktopCommand(program: Command): void {
       const canonical = Number(value.canonical_runtime_rows ?? 0);
       const piRows = Number(value.pi_runtime_rows ?? 0);
       const fallbacks = Number(value.compatibility_fallback_rows ?? 0);
-      const ready = value.compatibility_engine_delete_ready === true;
+      const cohortReady =
+        value.compatibility_engine_delete_ready === true &&
+        canonical >= required &&
+        piRows === canonical &&
+        fallbacks === 0;
       const remaining = Number(
         value.remaining_canonical_runtime_rows ?? Math.max(0, required - canonical),
       );
+      const releaseEvidence = evaluateDesktopRuntimeReleaseEvidence({
+        app_version: value.app_version ?? "unknown",
+        runtime_version: value.runtime_version ?? "unknown",
+        conformance_path: opts.conformanceEvidence,
+        readiness_path: opts.readinessEvidence,
+      });
+      const ready = cohortReady && releaseEvidence.ready;
       const output = {
         ...value,
         required_canonical_runtime_rows: required,
         remaining_canonical_runtime_rows: remaining,
         observed_row_limit: value.observed_row_limit ?? opts.limit,
+        release_cohort_ready: cohortReady,
+        release_evidence: releaseEvidence,
+        compatibility_engine_delete_ready: ready,
       };
       const share = value.pi_runtime_share == null
         ? "unavailable"
@@ -235,6 +270,9 @@ export function registerDesktopCommand(program: Command): void {
           `release cohort: app ${value.app_version ?? "unknown"}, runtime ${value.runtime_version ?? "unknown"}`,
           `canonical runs: ${canonical}/${required} (${remaining} remaining)`,
           `Pi runs: ${piRows} (${share}); compatibility fallbacks: ${fallbacks}`,
+          `conformance evidence: ${releaseEvidence.conformance.ready ? "ready" : "missing or stale"}`,
+          `startup/memory evidence: ${releaseEvidence.readiness.ready ? "ready" : "missing or stale"}`,
+          ...releaseEvidence.reasons.map((reason) => `blocked: ${reason}`),
         ].join("\n"),
       );
       if (opts.requireReady && !ready) process.exitCode = 2;

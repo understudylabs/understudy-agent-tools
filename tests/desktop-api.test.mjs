@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
-import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { chmodSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { createServer } from "node:http";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
@@ -10,6 +10,8 @@ const cli = ["node", resolve("dist/bin.js")];
 const root = mkdtempSync(join(tmpdir(), "understudy-desktop-api-"));
 const capabilityPath = join(root, "desktop-api.json");
 const imagePath = join(root, "shelf.png");
+const conformanceEvidencePath = join(root, "desktop-runtime-conformance.json");
+const readinessEvidencePath = join(root, "desktop-runtime-readiness.json");
 const token = "desktop-api-test-token-".padEnd(64, "a");
 let server;
 let port;
@@ -50,7 +52,75 @@ function envelope(sequence, event, data) {
   };
 }
 
+function writeReleaseEvidence() {
+  const manifest = JSON.parse(readFileSync(
+    resolve("schemas/conversation-runtime-conformance/manifest.json"),
+    "utf8",
+  ));
+  writeFileSync(conformanceEvidencePath, `${JSON.stringify({
+    schema_version: "understudy-conversation-runtime-conformance-v1",
+    suite_id: manifest.suite_id,
+    adapter_id: "pi",
+    generated_at: "2026-07-12T20:00:00.000Z",
+    metadata: {
+      runtime_version: "0.3.4",
+      event_schema: "understudy-conversation-runtime-event-v1",
+      network_mode: "offline",
+      provider: { base_url: "http://127.0.0.1:9000/v1", model: "understudy-small" },
+      offline_environment: {
+        hf_hub_offline: true,
+        transformers_offline: true,
+        hf_datasets_offline: true,
+      },
+    },
+    passed: true,
+    complete: true,
+    eligible_for_promotion: true,
+    scenarios: manifest.input_fixtures.map((fixture) => ({
+      id: fixture.id,
+      fixture: fixture.fixture,
+      fixture_sha256: fixture.fixture_sha256,
+      status: "passed",
+      event_count: 1,
+      output_chars: 0,
+    })),
+  }, null, 2)}\n`);
+  chmodSync(conformanceEvidencePath, 0o600);
+  writeFileSync(readinessEvidencePath, `${JSON.stringify({
+    schema_version: "understudy-desktop-runtime-readiness-v1",
+    generated_at: "2026-07-12T20:05:00.000Z",
+    measurement_class: "process-cold-filesystem-warm",
+    passed: true,
+    thresholds: {
+      app_ready_ms: 2500,
+      runtime_ready_ms: 3000,
+      max_model_load_ms: 45000,
+      app_plus_runtime_rss_mb: 750,
+      total_model_rss_gb: 32,
+    },
+    checks: {
+      app_ready: true,
+      runtime_ready: true,
+      models_ready: true,
+      app_plus_runtime_memory: true,
+      model_memory: true,
+    },
+    app: { version: "0.3.2", ready_ms: 200, rss_mb: 100 },
+    runtime: {
+      runtime_version: "0.3.4",
+      event_schema: "understudy-conversation-runtime-event-v1",
+      ready_ms: 700,
+      rss_mb: 120,
+    },
+    app_plus_runtime_rss_mb: 220,
+    total_model_rss_gb: 4,
+    models: [{ model_id: "understudy-small", load_ms: 2000, rss_gb: 4 }],
+  }, null, 2)}\n`);
+  chmodSync(readinessEvidencePath, 0o600);
+}
+
 before(async () => {
+  writeReleaseEvidence();
   server = createServer(async (request, response) => {
     if (request.url === "/health") {
       response.writeHead(200);
@@ -95,8 +165,8 @@ before(async () => {
       response.writeHead(200, { "content-type": "application/json" });
       response.end(JSON.stringify({
         schema_version: "understudy.chat_route_metrics.v1",
-        app_version: "0.2.5",
-        runtime_version: "0.3.3",
+        app_version: "0.3.2",
+        runtime_version: "0.3.4",
         observed_row_limit: ready ? 100 : 99,
         required_canonical_runtime_rows: 100,
         remaining_canonical_runtime_rows: ready ? 0 : 1,
@@ -296,23 +366,62 @@ describe("desktop API CLI", () => {
 
   it("exposes a fail-closed release observation gate for Rust fallback deletion", async () => {
     const ready = await runCli([
-      "desktop", "migration-status", "--limit", "100", "--require-ready", "--json",
+      "desktop", "migration-status", "--limit", "100", "--require-ready",
+      "--conformance-evidence", conformanceEvidencePath,
+      "--readiness-evidence", readinessEvidencePath,
+      "--json",
     ]);
     assert.equal(ready.status, 0, ready.stderr);
     const value = JSON.parse(ready.stdout);
     assert.equal(value.canonical_runtime_rows, 100);
     assert.equal(value.compatibility_fallback_rows, 0);
     assert.equal(value.remaining_canonical_runtime_rows, 0);
+    assert.equal(value.release_cohort_ready, true);
+    assert.equal(value.release_evidence.ready, true);
     assert.equal(value.compatibility_engine_delete_ready, true);
 
     const observing = await runCli([
-      "desktop", "migration-status", "--limit", "99", "--require-ready", "--json",
+      "desktop", "migration-status", "--limit", "99", "--require-ready",
+      "--conformance-evidence", conformanceEvidencePath,
+      "--readiness-evidence", readinessEvidencePath,
+      "--json",
     ]);
     assert.equal(observing.status, 2, observing.stderr);
     const pending = JSON.parse(observing.stdout);
     assert.equal(pending.compatibility_fallback_rows, 1);
     assert.equal(pending.remaining_canonical_runtime_rows, 1);
+    assert.equal(pending.release_evidence.ready, true);
     assert.equal(pending.compatibility_engine_delete_ready, false);
+
+    const missingEvidence = await runCli([
+      "desktop", "migration-status", "--limit", "100", "--require-ready",
+      "--conformance-evidence", join(root, "missing-conformance.json"),
+      "--readiness-evidence", readinessEvidencePath,
+      "--json",
+    ]);
+    assert.equal(missingEvidence.status, 2, missingEvidence.stderr);
+    const missing = JSON.parse(missingEvidence.stdout);
+    assert.equal(missing.release_cohort_ready, true);
+    assert.equal(missing.release_evidence.ready, false);
+    assert.equal(missing.compatibility_engine_delete_ready, false);
+    assert.match(missing.release_evidence.reasons.join("\n"), /conformance evidence is missing/);
+
+    const staleConformancePath = join(root, "stale-conformance.json");
+    const staleConformance = JSON.parse(readFileSync(conformanceEvidencePath, "utf8"));
+    staleConformance.scenarios[0].fixture_sha256 = "0".repeat(64);
+    writeFileSync(staleConformancePath, `${JSON.stringify(staleConformance, null, 2)}\n`);
+    chmodSync(staleConformancePath, 0o600);
+    const staleEvidence = await runCli([
+      "desktop", "migration-status", "--limit", "100", "--require-ready",
+      "--conformance-evidence", staleConformancePath,
+      "--readiness-evidence", readinessEvidencePath,
+      "--json",
+    ]);
+    assert.equal(staleEvidence.status, 2, staleEvidence.stderr);
+    const stale = JSON.parse(staleEvidence.stdout);
+    assert.equal(stale.release_cohort_ready, true);
+    assert.equal(stale.compatibility_engine_delete_ready, false);
+    assert.match(stale.release_evidence.reasons.join("\n"), /fixture hash is stale/);
   });
 
   it("operates model downloads and residency through versioned REST with one-release fallback", async () => {
