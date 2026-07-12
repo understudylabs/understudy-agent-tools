@@ -27,7 +27,9 @@ retains the exact `run_id` and frozen suite SHA-256.
 Each run also writes a self-contained `report.html` plus its structured
 `report.json` model. The report leads with a bounded route recommendation,
 quality/latency comparison, per-task decision, supervisor audit, caveats, and
-next pilot gate. It contains no raw prompts or completions and makes no remote
+next pilot gate. The supervisor audit preserves each verdict reason and shows
+chosen-verdict first-token probability without presenting it as calibrated
+correctness. It contains no raw prompts or completions and makes no remote
 requests.
 
 To add the report to an older immutable proof without rerunning models:

@@ -11,6 +11,7 @@ import {
 import {
   buildBuyerReport,
   buildReportModel,
+  verdictProbabilityEvidence,
 } from "../experiments/desktop-grocery-proof/report.mjs";
 
 describe("desktop grocery proof", () => {
@@ -65,6 +66,27 @@ describe("desktop grocery proof", () => {
     });
   });
 
+  it("labels logprobs honestly and derives bounded first-token probabilities", () => {
+    const explicit = verdictProbabilityEvidence({
+      verdict: "interrupt",
+      probability_kind: "logprob",
+      probabilities: { interrupt: -0.0704345703125, continue: -5.223102569580078 },
+    });
+    assert.equal(explicit.source_probability_kind, "logprob");
+    assert.equal(explicit.probability_kind, "first_token_probability_from_logprob");
+    assert.equal(explicit.inferred_source_kind, false);
+    assert.ok(explicit.chosen_probability > 0.93 && explicit.chosen_probability < 0.94);
+    assert.ok(Object.values(explicit.probabilities).every((value) => value >= 0 && value <= 1));
+
+    const legacy = verdictProbabilityEvidence({
+      verdict: "continue",
+      probabilities: { continue: -0.0034, stop: -6.1 },
+    });
+    assert.equal(legacy.source_probability_kind, "logprob");
+    assert.equal(legacy.inferred_source_kind, true);
+    assert.ok(legacy.chosen_probability > 0.99);
+  });
+
   it("turns exact route evidence into bounded buyer recommendations", () => {
     const tasks = [
       { id: "code", title: "Code review", prompt: "private prompt" },
@@ -85,6 +107,18 @@ describe("desktop grocery proof", () => {
       score: { exact: outcome[task.id][mode], field_accuracy: outcome[task.id][mode] ? 1 : 2 / 3 },
       supervisor_correct_intervention: mode === "supervised" && Boolean(outcome[task.id].corrected),
       supervisor_missed_error: mode === "supervised" && Boolean(outcome[task.id].missed),
+      student_score: mode === "supervised"
+        ? { exact: outcome[task.id].small, field_accuracy: outcome[task.id].small ? 1 : 2 / 3 }
+        : null,
+      verdicts: mode === "supervised" ? [{
+        verdict: outcome[task.id].corrected ? "interrupt" : "continue",
+        reason: outcome[task.id].corrected ? "The student selected the wrong constraint result." : null,
+        marker_id: `marker-${task.id}`,
+        probability_kind: "logprob",
+        probabilities: outcome[task.id].corrected
+          ? { interrupt: -0.01, continue: -5 }
+          : { continue: -0.01, interrupt: -5 },
+      }] : [],
     })));
     const summary = {
       proof_id: "proof-1",
@@ -102,10 +136,19 @@ describe("desktop grocery proof", () => {
     assert.deepEqual(model.decisions.map(({ state }) => state), ["hold", "supervise", "pilot"]);
     assert.match(model.recommendation, /pilot the smaller model on Ops classification/i);
     assert.match(model.recommendation, /keep Code review on the main model/i);
+    assert.deepEqual(
+      model.supervision.judgments.map(({ outcome: judgmentOutcome }) => judgmentOutcome),
+      ["missed error", "correct intervention", "correct continue"],
+    );
+    assert.ok(model.supervision.judgments.every(
+      (judgment) => judgment.chosen_probability > 0.98,
+    ));
 
     const html = buildBuyerReport(summary, rows, tasks);
     assert.match(html, /<h2 id="executive-summary">Executive Summary<\/h2>/);
     assert.match(html, /The supervisor helped once and missed once/);
+    assert.match(html, /chosen-verdict first-token probability/);
+    assert.match(html, /The student selected the wrong constraint result/);
     assert.doesNotMatch(html, /private prompt/);
     assert.doesNotMatch(html, /https?:\/\//);
   });

@@ -474,6 +474,42 @@ export function validateRuntimeTrace(values: readonly unknown[]): RuntimeEventEn
       if (["interrupt", "nudge"].includes(verdict)) {
         requiredString(data, "reason", "supervisor_verdict.reason");
       }
+      if ("probabilities" in data && data.probabilities != null) {
+        const probabilities = record(
+          data.probabilities,
+          "supervisor_verdict.probabilities",
+        );
+        if (Object.keys(probabilities).length === 0) {
+          throw new Error("supervisor_verdict.probabilities cannot be empty");
+        }
+        for (const [name, value] of Object.entries(probabilities)) {
+          if (!["continue", "interrupt", "stop", "nudge"].includes(name)) {
+            throw new Error(`unknown supervisor verdict probability key ${name}`);
+          }
+          if (typeof value !== "number" || !Number.isFinite(value)) {
+            throw new Error(`supervisor_verdict.probabilities.${name} must be finite`);
+          }
+        }
+      }
+      if ("probability_kind" in data && data.probability_kind != null) {
+        const kind = requiredString(
+          data,
+          "probability_kind",
+          "supervisor_verdict.probability_kind",
+        );
+        if (kind !== "logprob") {
+          throw new Error(`unknown supervisor verdict probability_kind ${kind}`);
+        }
+        const probabilities = record(
+          data.probabilities,
+          "supervisor_verdict.probabilities",
+        );
+        for (const [name, value] of Object.entries(probabilities)) {
+          if ((value as number) > 0) {
+            throw new Error(`supervisor_verdict logprob ${name} must be at most zero`);
+          }
+        }
+      }
       if (verdict === "interrupt") {
         interruptMarkers.add(requiredString(data, "marker_id", "supervisor_verdict.marker_id"));
       }
