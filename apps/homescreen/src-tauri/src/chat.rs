@@ -53,6 +53,16 @@ pub enum ChatEvent {
 pub struct ChatMsg {
     pub role: String,
     pub content: String,
+    #[serde(default)]
+    pub attachments: Vec<ChatAttachment>,
+}
+
+#[derive(Clone, Deserialize)]
+pub struct ChatAttachment {
+    pub id: String,
+    pub filename: String,
+    pub media_type: String,
+    pub data_url: String,
 }
 
 #[derive(Serialize)]
@@ -1806,17 +1816,44 @@ fn approximate_messages_tokens(messages: &[Value]) -> u64 {
     messages
         .iter()
         .filter_map(|message| message.get("content"))
-        .map(|content| match content {
-            Value::String(text) => approximate_token_count(text),
-            other => approximate_token_count(&other.to_string()),
-        })
+        .map(approximate_content_tokens)
         .sum()
+}
+
+fn approximate_content_tokens(content: &Value) -> u64 {
+    match content {
+        Value::String(text) => approximate_token_count(text),
+        Value::Array(parts) => parts
+            .iter()
+            .map(|part| match part.get("type").and_then(Value::as_str) {
+                Some("text") => part
+                    .get("text")
+                    .and_then(Value::as_str)
+                    .map(approximate_token_count)
+                    .unwrap_or(0),
+                Some("image_url") => 1_200,
+                _ => 0,
+            })
+            .sum(),
+        _ => 0,
+    }
 }
 
 fn chat_message_content(message: &Value) -> Option<String> {
     match message.get("content")? {
         Value::String(text) => Some(text.to_string()),
-        other => Some(other.to_string()),
+        Value::Array(parts) => Some(
+            parts
+                .iter()
+                .filter_map(|part| match part.get("type").and_then(Value::as_str) {
+                    Some("text") => part.get("text").and_then(Value::as_str).map(str::to_string),
+                    Some("image_url") => Some("[image attachment]".to_string()),
+                    _ => None,
+                })
+                .collect::<Vec<_>>()
+                .join(" "),
+        ),
+        _ => None,
     }
 }
 
@@ -1920,7 +1957,65 @@ fn sidecar_provider_base_url(endpoint: &str) -> String {
         .to_string()
 }
 
-fn sidecar_runtime_messages(outbound: &[Value]) -> Result<Vec<Value>, String> {
+fn validate_chat_attachment(attachment: &ChatAttachment) -> Result<usize, String> {
+    use base64::Engine as _;
+    use sha2::Digest as _;
+
+    if attachment.filename.trim().is_empty() || attachment.filename.len() > 200 {
+        return Err("image filename must be between 1 and 200 bytes".to_string());
+    }
+    if !attachment.media_type.starts_with("image/") {
+        return Err("image media type must start with image/".to_string());
+    }
+    let prefix = format!("data:{};base64,", attachment.media_type);
+    let encoded = attachment
+        .data_url
+        .strip_prefix(&prefix)
+        .ok_or_else(|| "image data URL does not match its media type".to_string())?;
+    let bytes = base64::engine::general_purpose::STANDARD
+        .decode(encoded)
+        .map_err(|_| "image data URL contains invalid base64".to_string())?;
+    if bytes.is_empty() || bytes.len() > 8 * 1024 * 1024 {
+        return Err("image must be between 1 byte and 8 MB".to_string());
+    }
+    let digest = format!("{:x}", sha2::Sha256::digest(&bytes));
+    if digest != attachment.id {
+        return Err("image content hash does not match its id".to_string());
+    }
+    Ok(bytes.len())
+}
+
+fn openai_chat_message(message: &ChatMsg) -> Result<Value, String> {
+    if message.attachments.is_empty() {
+        return Ok(json!({ "role": message.role, "content": message.content }));
+    }
+    if message.role != "user" {
+        return Err("only user messages may contain image attachments".to_string());
+    }
+    if message.attachments.len() > 4 {
+        return Err("at most four image attachments are allowed per message".to_string());
+    }
+    let mut content = vec![json!({ "type": "text", "text": message.content })];
+    let mut total_bytes = 0usize;
+    for attachment in &message.attachments {
+        total_bytes = total_bytes.saturating_add(validate_chat_attachment(attachment)?);
+        if total_bytes > 24 * 1024 * 1024 {
+            return Err("combined image attachments must not exceed 24 MB".to_string());
+        }
+        content.push(json!({
+            "type": "image_url",
+            "image_url": { "url": attachment.data_url },
+        }));
+    }
+    Ok(json!({ "role": message.role, "content": content }))
+}
+
+fn sidecar_runtime_messages(original: &[ChatMsg], outbound: &[Value]) -> Result<Vec<Value>, String> {
+    let attachment_meta: HashMap<&str, &ChatAttachment> = original
+        .iter()
+        .flat_map(|message| message.attachments.iter())
+        .map(|attachment| (attachment.data_url.as_str(), attachment))
+        .collect();
     outbound
         .iter()
         .map(|message| {
@@ -1930,9 +2025,43 @@ fn sidecar_runtime_messages(outbound: &[Value]) -> Result<Vec<Value>, String> {
                 .ok_or_else(|| "conversation runtime message is missing role".to_string())?;
             let content = message
                 .get("content")
-                .and_then(Value::as_str)
-                .ok_or_else(|| "conversation runtime message content must be text".to_string())?;
-            Ok(json!({ "role": role, "content": content }))
+                .ok_or_else(|| "conversation runtime message is missing content".to_string())?;
+            if let Some(text) = content.as_str() {
+                return Ok(json!({ "role": role, "content": text }));
+            }
+            if role != "user" {
+                return Err("only user runtime messages may contain multimodal parts".to_string());
+            }
+            let parts = content
+                .as_array()
+                .ok_or_else(|| "conversation runtime message content is invalid".to_string())?;
+            let mut text = String::new();
+            let mut attachments = Vec::new();
+            for part in parts {
+                match part.get("type").and_then(Value::as_str) {
+                    Some("text") => text.push_str(
+                        part.get("text").and_then(Value::as_str).unwrap_or_default(),
+                    ),
+                    Some("image_url") => {
+                        let data_url = part
+                            .pointer("/image_url/url")
+                            .and_then(Value::as_str)
+                            .ok_or_else(|| "runtime image is missing its data URL".to_string())?;
+                        let metadata = attachment_meta.get(data_url).ok_or_else(|| {
+                            "runtime image metadata does not match the submitted attachment"
+                                .to_string()
+                        })?;
+                        attachments.push(json!({
+                            "id": metadata.id,
+                            "filename": metadata.filename,
+                            "media_type": metadata.media_type,
+                            "data_url": metadata.data_url,
+                        }));
+                    }
+                    _ => return Err("conversation runtime message part is unsupported".to_string()),
+                }
+            }
+            Ok(json!({ "role": role, "content": text, "attachments": attachments }))
         })
         .collect()
 }
@@ -1961,13 +2090,14 @@ fn sidecar_tool_definitions() -> Vec<Value> {
 
 fn sidecar_run_request(
     app: &AppHandle,
+    original: &[ChatMsg],
     outbound: &[Value],
     binding: &RouteBinding,
     slot_id: Option<u32>,
     session_id: &str,
     run_id: &str,
 ) -> Result<Value, String> {
-    let messages = sidecar_runtime_messages(outbound)?;
+    let messages = sidecar_runtime_messages(original, outbound)?;
     let tool_executor_url = crate::server::info(app).map(|(base_url, _)| {
         let query = slot_id
             .map(|slot| format!("?slot_id={slot}"))
@@ -2523,6 +2653,13 @@ pub async fn chat_stream(
             _ => local_route_binding(&route, &mgr, slot_id)?,
         }
     };
+    if binding.route == "anthropic" && messages.iter().any(|message| !message.attachments.is_empty())
+    {
+        return Err(
+            "Image attachments currently require a local model or the Understudy gateway"
+                .to_string(),
+        );
+    }
 
     let mut outbound_messages = vec![json!({
         "role": "system",
@@ -2537,12 +2674,12 @@ pub async fn chat_stream(
     )
     .await;
     outbound_messages.extend(handoff_messages);
-    outbound_messages.extend(
-        messages
-            .iter()
-            .filter(|m| m.role != "system")
-            .map(|m| json!({ "role": m.role, "content": m.content })),
-    );
+    let projected_messages = messages
+        .iter()
+        .filter(|message| message.role != "system")
+        .map(openai_chat_message)
+        .collect::<Result<Vec<_>, _>>()?;
+    outbound_messages.extend(projected_messages);
     let (mut outbound_messages, compaction_reason, context_tokens_before) =
         compact_chat_messages(outbound_messages);
     let mut prompt_tokens = approximate_messages_tokens(&outbound_messages);
@@ -2590,6 +2727,7 @@ pub async fn chat_stream(
     if binding.route != "anthropic" {
         match sidecar_run_request(
             &app,
+            &messages,
             &outbound_messages,
             &binding,
             slot_id,
@@ -2914,6 +3052,7 @@ pub async fn benchmark_local_chat(
     let messages = vec![ChatMsg {
         role: "user".to_string(),
         content: prompt.clone(),
+        attachments: vec![],
     }];
     let sidekick_plan = if enable_parallel_sidekick {
         maybe_spawn_parallel_sidekick(app, "local", Some(slot_id), session_id, &messages, None)
@@ -3519,6 +3658,43 @@ fn finalize_tool_calls(mut tool_calls: Vec<ToolCallAcc>) -> Vec<ToolCallAcc> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn image_message() -> ChatMsg {
+        use base64::Engine as _;
+        use sha2::Digest as _;
+
+        let bytes = b"desktop-image-fixture";
+        let encoded = base64::engine::general_purpose::STANDARD.encode(bytes);
+        ChatMsg {
+            role: "user".to_string(),
+            content: "inspect this".to_string(),
+            attachments: vec![ChatAttachment {
+                id: format!("{:x}", sha2::Sha256::digest(bytes)),
+                filename: "fixture.png".to_string(),
+                media_type: "image/png".to_string(),
+                data_url: format!("data:image/png;base64,{encoded}"),
+            }],
+        }
+    }
+
+    #[test]
+    fn image_projection_preserves_hash_metadata_and_bounded_token_estimate() {
+        let original = vec![image_message()];
+        let outbound = vec![openai_chat_message(&original[0]).unwrap()];
+        assert_eq!(outbound[0]["content"][1]["type"], "image_url");
+        assert_eq!(approximate_messages_tokens(&outbound), 1_202);
+
+        let projected = sidecar_runtime_messages(&original, &outbound).unwrap();
+        assert_eq!(projected[0]["content"], "inspect this");
+        assert_eq!(projected[0]["attachments"][0]["id"], original[0].attachments[0].id);
+        assert_eq!(projected[0]["attachments"][0]["filename"], "fixture.png");
+
+        let mut tampered = image_message();
+        tampered.attachments[0].id = "0".repeat(64);
+        assert!(openai_chat_message(&tampered)
+            .unwrap_err()
+            .contains("content hash"));
+    }
 
     #[test]
     fn sidekick_compaction_never_orphans_tool_replies() {

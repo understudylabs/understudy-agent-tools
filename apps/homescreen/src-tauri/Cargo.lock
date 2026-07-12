@@ -4430,6 +4430,7 @@ version = "0.2.5"
 dependencies = [
  "anyhow",
  "axum",
+ "base64 0.22.1",
  "chrono",
  "futures-util",
  "getrandom 0.2.17",

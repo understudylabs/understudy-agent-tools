@@ -45,6 +45,7 @@ import {
   type ToolPart,
 } from "@/components/ai-elements/tool";
 import { modelShortName, type SnapshotAlias } from "../lib/model-aliases";
+import type { FileUIPart } from "ai";
 
 type Role = "user" | "assistant";
 type ToolTrace = {
@@ -54,7 +55,20 @@ type ToolTrace = {
   output?: unknown;
   errorText?: string;
 };
-type Msg = { role: Role; content: string; model?: string; reasoning?: string; tools?: ToolTrace[] };
+type ChatAttachment = {
+  id: string;
+  filename: string;
+  media_type: string;
+  data_url: string;
+};
+type Msg = {
+  role: Role;
+  content: string;
+  model?: string;
+  reasoning?: string;
+  tools?: ToolTrace[];
+  attachments?: ChatAttachment[];
+};
 type ChatEvent =
   | { type: "Notice"; message: string }
   | { type: "Chunk"; text: string }
@@ -75,6 +89,25 @@ type ResidencySnapshot = {
 };
 type SnapshotModel = SnapshotAlias;
 type ChatStatus = "ready" | "streaming" | "error";
+
+const canonicalAttachment = async (file: FileUIPart): Promise<ChatAttachment> => {
+  const mediaType = file.mediaType || "";
+  if (!mediaType.startsWith("image/") || !file.url.startsWith(`data:${mediaType};base64,`)) {
+    throw new Error("Only valid image attachments are supported.");
+  }
+  const bytes = new Uint8Array(await (await fetch(file.url)).arrayBuffer());
+  if (bytes.byteLength === 0 || bytes.byteLength > 8 * 1024 * 1024) {
+    throw new Error("Each image must be between 1 byte and 8 MB.");
+  }
+  const digest = new Uint8Array(await crypto.subtle.digest("SHA-256", bytes));
+  const id = Array.from(digest, (byte) => byte.toString(16).padStart(2, "0")).join("");
+  return {
+    id,
+    filename: file.filename || "image",
+    media_type: mediaType,
+    data_url: file.url,
+  };
+};
 type SidekickEvent = {
   id: number;
   session_id: string;
@@ -353,16 +386,20 @@ export function ChatPane({ resetToken }: { resetToken: number }) {
     [choices, selectedModel],
   );
 
-  const send = async (text: string, files = 0) => {
+  const send = async (text: string, files: FileUIPart[] = []) => {
     const clean = text.trim();
-    if ((!clean && files === 0) || streaming) return;
-    if (files > 0) {
-      setErr("Image/file attachment UI is enabled, but multimodal chat payloads are not wired yet.");
-      return;
-    }
+    if ((!clean && files.length === 0) || streaming) return;
     setInput("");
     setErr(null);
     setNotice(null);
+
+    let attachments: ChatAttachment[];
+    try {
+      attachments = await Promise.all(files.map(canonicalAttachment));
+    } catch (error) {
+      setErr(String(error));
+      throw error;
+    }
 
     const choice = selectedChoice;
     if (choice.route === "local" && choice.slotId == null) {
@@ -374,7 +411,10 @@ export function ChatPane({ resetToken }: { resetToken: number }) {
       return;
     }
 
-    const toSend: Msg[] = [...messages, { role: "user", content: clean, model: choice.label }];
+    const toSend: Msg[] = [
+      ...messages,
+      { role: "user", content: clean, model: choice.label, attachments },
+    ];
     setMessages([...toSend, { role: "assistant", content: "", reasoning: "", model: choice.label }]);
     setStreaming(true);
     setAssistantSpeaking(false);
@@ -457,7 +497,11 @@ export function ChatPane({ resetToken }: { resetToken: number }) {
 
     try {
       await invoke("chat_stream", {
-        messages: toSend.map(({ role, content }) => ({ role, content })),
+        messages: toSend.map(({ role, content, attachments: messageAttachments }) => ({
+          role,
+          content,
+          attachments: messageAttachments ?? [],
+        })),
         // Anthropic choices encode the model in the id (anthropic:<model>).
         route: choice.route === "anthropic" ? choice.id : choice.route,
         slotId: choice.slotId,
@@ -617,6 +661,16 @@ export function ChatPane({ resetToken }: { resetToken: number }) {
                 >
                   <div className="chat-role">{m.role === "assistant" ? m.model ?? "Assistant" : "You"}</div>
                   <MessageContent>
+                    {m.role === "user" && m.attachments && m.attachments.length > 0 && (
+                      <div className="chat-image-list">
+                        {m.attachments.map((attachment) => (
+                          <figure className="chat-image" key={attachment.id}>
+                            <img src={attachment.data_url} alt={attachment.filename} />
+                            <figcaption>{attachment.filename}</figcaption>
+                          </figure>
+                        ))}
+                      </div>
+                    )}
                     {m.role === "assistant" && reasoningText && (
                       <ReasoningSubstream active={isActiveAssistant} text={reasoningText} />
                     )}
@@ -668,7 +722,9 @@ export function ChatPane({ resetToken }: { resetToken: number }) {
           accept="image/*"
           multiple
           maxFiles={4}
-          onSubmit={(message) => send(message.text, message.files.length)}
+          maxFileSize={8 * 1024 * 1024}
+          onError={(error) => setErr(error.message)}
+          onSubmit={(message) => send(message.text, message.files)}
           className="border-rule bg-card"
         >
           <PromptInputBody>
