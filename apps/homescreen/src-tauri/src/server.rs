@@ -485,6 +485,7 @@ struct ChatBody {
     prompt: String,
     session_id: Option<String>,
     max_tokens: Option<u32>,
+    capture_run_id: Option<String>,
 }
 
 async fn chat_completion(
@@ -504,6 +505,7 @@ async fn chat_completion(
         &session_id,
         &b.prompt,
         b.max_tokens,
+        b.capture_run_id.as_deref(),
     )
     .await
     .map(|r| Json(json!(r)))
@@ -944,6 +946,7 @@ fn tools() -> Vec<Value> {
             obj_schema(
                 json!({
                     "run_id": { "type": "string" },
+                    "capture_run_id": { "type": "string", "description": "Per-attempt id joining this row to canonical runtime evidence." },
                     "candidates": { "type": "array", "items": { "type": "string" } },
                     "domains": { "type": "array", "items": { "type": "string" } },
                     "num_examples": { "type": "integer", "minimum": 1 },
@@ -996,12 +999,13 @@ fn tools() -> Vec<Value> {
         // ----- chat -----
         (
             "chat_completion",
-            "Non-streaming chat completion against a warm residency slot (local tool loop included). Warm a slot first.",
+            "Non-streaming canonical-runtime chat completion against a warm residency slot. Returns capture_run_id for immutable evidence correlation; warm a slot first.",
             obj_schema(
                 json!({
                     "slot_id": { "type": "integer", "minimum": 1, "description": "A warm slot from residency." },
                     "prompt": { "type": "string" },
                     "session_id": { "type": "string" },
+                    "capture_run_id": { "type": "string", "minLength": 1, "maxLength": 200, "description": "Optional caller-owned per-attempt evidence id; generated when omitted." },
                     "max_tokens": { "type": "integer", "minimum": 1, "maximum": 8192, "description": "Completion cap; default 2048." }
                 }),
                 &["slot_id", "prompt"],
@@ -1143,6 +1147,7 @@ async fn call_tool(ctx: &Ctx, name: &str, args: &Value) -> Result<Value, String>
                 .get("max_tokens")
                 .and_then(|v| v.as_u64())
                 .map(|x| x as u32);
+            let capture_run_id = args.get("capture_run_id").and_then(|v| v.as_str());
             let residency = app.state::<crate::residency::Residency>();
             json!(
                 crate::chat::agent_chat(
@@ -1151,7 +1156,8 @@ async fn call_tool(ctx: &Ctx, name: &str, args: &Value) -> Result<Value, String>
                     slot_id,
                     &session_id,
                     &prompt,
-                    max_tokens
+                    max_tokens,
+                    capture_run_id
                 )
                 .await?
             )
@@ -1413,6 +1419,14 @@ mod tests {
         assert_eq!(required_of("start_model_download"), ["model_id"]);
         assert_eq!(required_of("cancel_model_download"), ["download_id"]);
         assert_eq!(required_of("chat_completion"), ["slot_id", "prompt"]);
+        let chat = tools
+            .iter()
+            .find(|tool| tool["name"] == "chat_completion")
+            .expect("chat completion tool exists");
+        assert_eq!(
+            chat["inputSchema"]["properties"]["capture_run_id"]["maxLength"],
+            200
+        );
         assert_eq!(required_of("fusion_route_recommendation"), ["prompt"]);
         assert_eq!(required_of("search_traces"), ["q"]);
         assert_eq!(required_of("open_trace"), ["id"]);

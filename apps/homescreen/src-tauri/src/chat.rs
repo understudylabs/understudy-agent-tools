@@ -67,8 +67,10 @@ pub struct ChatAttachment {
 
 #[derive(Serialize)]
 pub struct BenchmarkChatResult {
+    pub capture_run_id: String,
     pub content: String,
     pub status: String,
+    pub runtime_backend: String,
     pub elapsed_ms: u64,
     pub tool_calls: u64,
     pub prompt_tokens: u64,
@@ -2851,6 +2853,14 @@ pub async fn chat_stream(
                         let prompt_tokens =
                             sidecar_usage_tokens(sidecar.usage.as_ref(), "prompt_tokens")
                                 .unwrap_or(prompt_tokens);
+                        let runtime_compacted = compacted || sidecar.compacted;
+                        let runtime_compaction_reason = if sidecar.compacted {
+                            Some("runtime_compaction_boundary".to_string())
+                        } else {
+                            compaction_reason.clone()
+                        };
+                        let runtime_context_tokens_before =
+                            context_tokens_before.max(sidecar.context_tokens_before);
                         record_chat_run(
                             &app,
                             ChatRunInput {
@@ -2865,9 +2875,9 @@ pub async fn chat_stream(
                                 tool_calls: sidecar.tool_calls,
                                 sidekick_spawned: sidekick_plan.spawned,
                                 gateway_used: binding.route == "cloud",
-                                compacted,
-                                compaction_reason: compaction_reason.clone(),
-                                context_tokens_before: Some(context_tokens_before),
+                                compacted: runtime_compacted,
+                                compaction_reason: runtime_compaction_reason,
+                                context_tokens_before: Some(runtime_context_tokens_before),
                                 local_mem_gb,
                                 gateway_available,
                                 gateway_avoided: gateway_available && binding.route != "cloud",
@@ -3143,11 +3153,12 @@ pub async fn benchmark_local_chat(
     app: &AppHandle,
     mgr: &Residency,
     slot_id: u32,
-    session_id: &str,
+    identity: (&str, &str),
     prompt: &str,
     enable_parallel_sidekick: bool,
     allow_sidekick_tool: bool,
 ) -> Result<BenchmarkChatResult, String> {
+    let (session_id, capture_run_id) = identity;
     let started = Instant::now();
     let prompt = benchmark_prompt(prompt);
     let (port, model_field) = mgr
@@ -3271,11 +3282,13 @@ pub async fn benchmark_local_chat(
     }
 
     Ok(BenchmarkChatResult {
+        capture_run_id: capture_run_id.to_string(),
         prompt_tokens: approximate_messages_tokens(&outbound_messages),
         completion_tokens: final_content.split_whitespace().count() as u64,
         reasoning_tokens,
         content: final_content,
         status,
+        runtime_backend: "native-rust".to_string(),
         elapsed_ms: started.elapsed().as_millis() as u64,
         tool_calls: tool_count,
         compacted,
@@ -3290,6 +3303,7 @@ pub async fn benchmark_gateway_chat(
     prompt: &str,
     model_field: &str,
     allow_sidekick_tool: bool,
+    capture_run_id: &str,
 ) -> Result<BenchmarkChatResult, String> {
     let started = Instant::now();
     let prompt = benchmark_prompt(prompt);
@@ -3376,11 +3390,13 @@ pub async fn benchmark_gateway_chat(
     }
 
     Ok(BenchmarkChatResult {
+        capture_run_id: capture_run_id.to_string(),
         prompt_tokens: approximate_messages_tokens(&outbound_messages),
         completion_tokens: final_content.split_whitespace().count() as u64,
         reasoning_tokens,
         content: final_content,
         status,
+        runtime_backend: "native-rust".to_string(),
         elapsed_ms: started.elapsed().as_millis() as u64,
         tool_calls: tool_count,
         compacted,
@@ -3388,11 +3404,9 @@ pub async fn benchmark_gateway_chat(
     })
 }
 
-/// Agent-facing, non-streaming chat completion against one warm slot, served
-/// over the local API server. Reuses the benchmark chat plumbing
-/// (`nonstream_chat_once` + the local tool loop) — NOT the GUI `chat_stream`
-/// — but without the benchmark prompt wrapper, sidekick spawning, or
-/// persistence, and with an agent-sized token cap.
+/// Agent-facing, non-streaming chat completion against one warm slot. The
+/// canonical runtime is authoritative; the native loop remains a pre-output
+/// compatibility fallback for one release.
 pub async fn agent_chat(
     app: &AppHandle,
     mgr: &Residency,
@@ -3400,6 +3414,105 @@ pub async fn agent_chat(
     session_id: &str,
     prompt: &str,
     max_tokens: Option<u32>,
+    capture_run_id: Option<&str>,
+) -> Result<BenchmarkChatResult, String> {
+    let max_tokens = max_tokens
+        .unwrap_or(AGENT_CHAT_DEFAULT_MAX_TOKENS)
+        .clamp(1, CHAT_MAX_TOKENS);
+    let (port, model_field) = mgr
+        .endpoint(slot_id)
+        .ok_or_else(|| format!("slot {slot_id} is not warm; warm it first"))?;
+    let messages = vec![ChatMsg {
+        role: "user".to_string(),
+        content: prompt.to_string(),
+        attachments: vec![],
+    }];
+    let outbound = vec![
+        json!({ "role": "system", "content": system_prompt_for(&model_field) }),
+        json!({ "role": "user", "content": prompt }),
+    ];
+    let binding = RouteBinding {
+        route: "local".to_string(),
+        url: format!("http://127.0.0.1:{port}/v1/chat/completions"),
+        bearer: None,
+        model_field,
+    };
+    let run_id = match capture_run_id {
+        Some(value) if !value.trim().is_empty() && value.len() <= 200 => value.to_string(),
+        Some(_) => return Err("capture_run_id must contain 1 to 200 bytes".to_string()),
+        None => crate::conversation_runtime::new_run_id()?,
+    };
+    let attempt = match sidecar_run_request(
+        app,
+        &messages,
+        &outbound,
+        &binding,
+        None,
+        Some(slot_id),
+        (session_id, &run_id),
+    ) {
+        Ok(mut request) => {
+            request["max_output_tokens"] = json!(max_tokens);
+            request["max_tool_rounds"] = json!(BENCHMARK_MAX_TOOL_ROUNDS);
+            request["tools"] = json!(sidecar_tool_definitions(false));
+            crate::conversation_sidecar::try_run_chat_headless(app, request).await
+        }
+        Err(reason) => crate::conversation_sidecar::SidecarAttempt::NativeFallback(reason),
+    };
+    match attempt {
+        crate::conversation_sidecar::SidecarAttempt::Completed(sidecar) => {
+            let prompt_tokens =
+                sidecar_usage_tokens(sidecar.usage.as_ref(), "prompt_tokens").unwrap_or(0);
+            let completion_tokens =
+                sidecar_usage_tokens(sidecar.usage.as_ref(), "completion_tokens")
+                    .unwrap_or_else(|| approximate_token_count(&sidecar.content));
+            let reasoning_tokens =
+                sidecar_usage_tokens(sidecar.usage.as_ref(), "reasoning_tokens").unwrap_or(0);
+            Ok(BenchmarkChatResult {
+                capture_run_id: run_id,
+                status: if sidecar.content.trim().is_empty() {
+                    "empty_final".to_string()
+                } else {
+                    "ok".to_string()
+                },
+                runtime_backend: "pi".to_string(),
+                content: sidecar.content,
+                elapsed_ms: sidecar.elapsed_ms,
+                tool_calls: sidecar.tool_calls,
+                prompt_tokens,
+                completion_tokens,
+                reasoning_tokens,
+                compacted: sidecar.compacted,
+                context_tokens_before: sidecar.context_tokens_before,
+            })
+        }
+        crate::conversation_sidecar::SidecarAttempt::FailedAfterOutput(reason) => Err(format!(
+            "conversation runtime stopped after the headless turn began: {reason}; native retry was suppressed"
+        )),
+        crate::conversation_sidecar::SidecarAttempt::NativeFallback(_)
+        | crate::conversation_sidecar::SidecarAttempt::NotSelected => {
+            agent_chat_native(
+                app,
+                mgr,
+                slot_id,
+                session_id,
+                prompt,
+                Some(max_tokens),
+                &run_id,
+            )
+            .await
+        }
+    }
+}
+
+async fn agent_chat_native(
+    app: &AppHandle,
+    mgr: &Residency,
+    slot_id: u32,
+    session_id: &str,
+    prompt: &str,
+    max_tokens: Option<u32>,
+    capture_run_id: &str,
 ) -> Result<BenchmarkChatResult, String> {
     let started = Instant::now();
     let max_tokens = max_tokens
@@ -3486,11 +3599,13 @@ pub async fn agent_chat(
     }
 
     Ok(BenchmarkChatResult {
+        capture_run_id: capture_run_id.to_string(),
         prompt_tokens: approximate_messages_tokens(&outbound_messages),
         completion_tokens: final_content.split_whitespace().count() as u64,
         reasoning_tokens,
         content: final_content,
         status,
+        runtime_backend: "native-rust".to_string(),
         elapsed_ms: started.elapsed().as_millis() as u64,
         tool_calls: tool_count,
         compacted: false,

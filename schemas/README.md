@@ -37,22 +37,26 @@ shape:
 
 Rules for producers and consumers:
 
-1. **Rows are additive-extensible.** Producers may attach extra fields
+1. **Run and attempt identity are different.** `run_id` groups every row from
+   one benchmark invocation. `capture_run_id` identifies one task attempt and,
+   when present, joins it to immutable canonical conversation-runtime JSONL.
+   New Desktop benchmark rows always assign it; legacy rows may be null.
+2. **Rows are additive-extensible.** Producers may attach extra fields
    (`additionalProperties: true`); consumers must ignore fields they do not
    understand. Never change the meaning of an existing field — that requires
    `eval_result.v2`.
-2. **Most fields are nullable by design** so a producer can adopt the schema
+3. **Most fields are nullable by design** so a producer can adopt the schema
    today with whatever it can compute, and enrich rows over time. Only
    `schema_version`, `run_id`, `task_id`, and `status` are required.
-3. **A score of `0` is a scored failure**, never a missing value. Missing means
+4. **A score of `0` is a scored failure**, never a missing value. Missing means
    `score: null`. UI code must use null checks, not truthiness.
-4. **`status` semantics** (matching the desktop scorer): `ok` = executed and
+5. **`status` semantics** (matching the desktop scorer): `ok` = executed and
    scored; `error` = the attempt failed to execute; `skipped` = never executed;
    `unscored` = executed but no rubric/gold covers the task, so the row must be
    excluded from score averages rather than counted as 0.
-5. **Never invent prices.** `cost.usd` stays null unless a real price basis
+6. **Never invent prices.** `cost.usd` stays null unless a real price basis
    exists, and `cost.basis` must say what that basis is.
-6. **Provenance chains are optional but standardized**: `harness_sha256` and
+7. **Provenance chains are optional but standardized**: `harness_sha256` and
    `split_sha256` line up with the `harness_sha256` / `splits_sha256` hash
    chain the `capture-evidence` and `optimize-workload` skills already require
    in `baseline.json` and `claim.json`.

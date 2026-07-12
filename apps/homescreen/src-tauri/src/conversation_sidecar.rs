@@ -133,6 +133,8 @@ pub(crate) struct SidecarRunResult {
     pub(crate) usage: Option<Value>,
     pub(crate) tool_calls: u64,
     pub(crate) elapsed_ms: u64,
+    pub(crate) compacted: bool,
+    pub(crate) context_tokens_before: u64,
 }
 
 #[derive(Debug)]
@@ -156,6 +158,8 @@ struct SidecarAccumulator {
     usage_cached: u64,
     usage_complete: bool,
     usage_seen: bool,
+    compacted: bool,
+    context_tokens_before: u64,
     pending_tools: HashMap<String, String>,
 }
 
@@ -275,9 +279,16 @@ impl SidecarAccumulator {
                 stage: "teacher_continuation".to_string(),
                 detail: format!("run={} marker={} · {reason}", envelope.run_id, marker_id),
             }),
-            RuntimeEvent::Message { .. }
-            | RuntimeEvent::ImageAttachment { .. }
-            | RuntimeEvent::CompactionBoundary { .. } => None,
+            RuntimeEvent::CompactionBoundary {
+                estimated_tokens_before,
+                ..
+            } => {
+                self.compacted = true;
+                self.context_tokens_before =
+                    self.context_tokens_before.max(*estimated_tokens_before);
+                None
+            }
+            RuntimeEvent::Message { .. } | RuntimeEvent::ImageAttachment { .. } => None,
         }
     }
 
@@ -298,7 +309,7 @@ impl SidecarAccumulator {
 fn publish_chat_event(
     app: &AppHandle,
     session_id: &str,
-    on_event: &Channel<ChatEvent>,
+    on_event: Option<&Channel<ChatEvent>>,
     event: ChatEvent,
 ) {
     if let ChatEvent::SidekickEvent {
@@ -314,7 +325,9 @@ fn publish_chat_event(
             eprintln!("understudy db: record supervision event failed: {error:#}");
         }
     }
-    let _ = on_event.send(event);
+    if let Some(on_event) = on_event {
+        let _ = on_event.send(event);
+    }
 }
 
 fn parse_status(output: std::process::Output) -> Result<CliRuntimeStatus, String> {
@@ -435,7 +448,7 @@ fn bounded_error_body(bytes: &[u8]) -> String {
 async fn execute_run(
     app: &AppHandle,
     request: Value,
-    on_event: &Channel<ChatEvent>,
+    on_event: Option<&Channel<ChatEvent>>,
 ) -> Result<SidecarRunResult, (String, bool)> {
     let started = Instant::now();
     let run_id = request
@@ -590,6 +603,8 @@ async fn execute_run(
         usage,
         tool_calls: accumulator.tool_calls,
         elapsed_ms: started.elapsed().as_millis() as u64,
+        compacted: accumulator.compacted,
+        context_tokens_before: accumulator.context_tokens_before,
     })
 }
 
@@ -627,7 +642,18 @@ pub(crate) async fn try_run_chat(
     if !runtime_selected(app) {
         return SidecarAttempt::NotSelected;
     }
-    match execute_run(app, request, on_event).await {
+    match execute_run(app, request, Some(on_event)).await {
+        Ok(result) => SidecarAttempt::Completed(result),
+        Err((error, true)) => SidecarAttempt::FailedAfterOutput(error),
+        Err((error, false)) => SidecarAttempt::NativeFallback(error),
+    }
+}
+
+pub(crate) async fn try_run_chat_headless(app: &AppHandle, request: Value) -> SidecarAttempt {
+    if !runtime_selected(app) {
+        return SidecarAttempt::NotSelected;
+    }
+    match execute_run(app, request, None).await {
         Ok(result) => SidecarAttempt::Completed(result),
         Err((error, true)) => SidecarAttempt::FailedAfterOutput(error),
         Err((error, false)) => SidecarAttempt::NativeFallback(error),

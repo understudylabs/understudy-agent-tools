@@ -1,6 +1,6 @@
 # Desktop runtime migration removal map
 
-Status: release gate, snapshot after `1c6261c` on 2026-07-12.
+Status: release gate, snapshot after `79b9d25` on 2026-07-12.
 
 The migration is successful only when the canonical conversation runtime owns
 conversation state and the native app becomes a thin authenticated adapter. The
@@ -32,6 +32,14 @@ passed all gates:
 This is not a reboot-cold claim: macOS may retain model weights in its filesystem
 cache. Release qualification should repeat it on one clean install and one
 ordinary warm restart.
+
+The rebuilt debug app also passed a caller-correlated headless tool round. The
+HTTP response returned the caller's `capture_run_id`, `runtime_backend: "pi"`,
+one tool call, and exact provider usage. The joined private JSONL contained one
+`status` call and one matching successful result under the same run/session
+identity, with mode `0600`. This proves HTTP, MCP, custom-eval, and RLM calls can
+use the same immutable evidence spine as GUI chat; Fusion's specialized
+sidekick/gateway benchmark paths remain native below.
 
 ## Deletion gate
 
@@ -74,9 +82,10 @@ diff. The conservative gross target is about 4,200 lines; the final claim is
 1. Merge the canonical desktop bridge and release the compatibility build.
 2. Rebase cache-health onto it and align the desktop runtime compatibility
    constant with the released CLI.
-3. Move `agent_chat`, custom eval, RLM, HTTP completion, and Fusion benchmark
-   callers to a headless canonical-runtime adapter. These are the remaining
-   callers keeping the native non-streaming loop alive.
+3. Finish the headless migration. `agent_chat`, custom eval, RLM, HTTP
+   completion, and MCP completion now use the canonical runtime with a
+   pre-output one-release fallback. The specialized Fusion sidekick/gateway
+   benchmark callers still keep the native non-streaming loop alive.
 4. Route direct Anthropic through the canonical provider contract; retain only
    local key presence and catalog management in Rust.
 5. Replace legacy parallel-sidekick metrics/UI with canonical intervention and

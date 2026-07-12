@@ -82,6 +82,7 @@ pub struct FusionBenchmarkCandidate {
 #[derive(serde::Deserialize)]
 pub struct RecordFusionBenchmarkRequest {
     pub run_id: String,
+    pub capture_run_id: Option<String>,
     pub task_id: String,
     pub mode: String,
     pub model: String,
@@ -358,6 +359,8 @@ pub struct EvalResultProvenance {
 pub struct EvalResultV1 {
     pub schema_version: &'static str,
     pub run_id: String,
+    /// Per-attempt canonical runtime id; unlike run_id, this is unique per row.
+    pub capture_run_id: Option<String>,
     pub task_id: String,
     pub split: String,
     pub score: Option<f64>,
@@ -391,6 +394,7 @@ pub(crate) fn eval_result_v1(row: &FusionBenchmarkRow) -> EvalResultV1 {
     EvalResultV1 {
         schema_version: "understudy.eval_result.v1",
         run_id: row.run_id.clone(),
+        capture_run_id: row.capture_run_id.clone(),
         task_id: row.task_id.clone(),
         split: row.split.clone().unwrap_or_else(|| "none".to_string()),
         score: row.score,
@@ -1791,6 +1795,7 @@ pub fn record_fusion_benchmark(
     }
     let input = FusionBenchmarkInput {
         run_id: result.run_id,
+        capture_run_id: result.capture_run_id,
         task_id: result.task_id,
         mode: result.mode,
         model: result.model,
@@ -2567,6 +2572,7 @@ async fn run_fusion_benchmark_inner(
                 });
             }
             if ready && !dry_run {
+                let capture_run_id = crate::conversation_runtime::new_run_id()?;
                 let before_sidekick_run_ids = app
                     .state::<crate::db::Db>()
                     .list_sidekick_runs(100)
@@ -2583,6 +2589,7 @@ async fn run_fusion_benchmark_inner(
                         task.prompt,
                         &effective_model,
                         allow_sidekick_tool,
+                        &capture_run_id,
                     )
                     .await
                 } else {
@@ -2591,7 +2598,7 @@ async fn run_fusion_benchmark_inner(
                         &app,
                         residency(&app),
                         slot_id,
-                        &run_id,
+                        (&run_id, &capture_run_id),
                         task.prompt,
                         needs_sidekick,
                         allow_sidekick_tool,
@@ -2624,6 +2631,7 @@ async fn run_fusion_benchmark_inner(
                         app.state::<crate::db::Db>()
                             .record_fusion_benchmark(&FusionBenchmarkInput {
                                 run_id: run_id.clone(),
+                                capture_run_id: Some(capture_run_id.clone()),
                                 task_id: task.id.to_string(),
                                 mode: mode.clone(),
                                 model: effective_model.clone(),
@@ -2692,6 +2700,7 @@ async fn run_fusion_benchmark_inner(
                 app.state::<crate::db::Db>()
                     .record_fusion_benchmark(&FusionBenchmarkInput {
                         run_id: run_id.clone(),
+                        capture_run_id: Some(result.capture_run_id.clone()),
                         task_id: task.id.to_string(),
                         mode: mode.clone(),
                         model: effective_model.clone(),
@@ -2741,9 +2750,11 @@ async fn run_fusion_benchmark_inner(
                     });
                 }
             } else if !ready && record_skips {
+                let capture_run_id = crate::conversation_runtime::new_run_id()?;
                 app.state::<crate::db::Db>()
                     .record_fusion_benchmark(&FusionBenchmarkInput {
                         run_id: run_id.clone(),
+                        capture_run_id: Some(capture_run_id),
                         task_id: task.id.to_string(),
                         mode: mode.clone(),
                         model: effective_model.clone(),
@@ -3388,6 +3399,7 @@ mod tests {
     fn benchmark_input(task_id: &str, score: Option<f64>, status: &str) -> FusionBenchmarkInput {
         FusionBenchmarkInput {
             run_id: "fusion-run-1".to_string(),
+            capture_run_id: Some(format!("desktop-{task_id}")),
             task_id: task_id.to_string(),
             mode: "sidekick-routing".to_string(),
             model: "gemma-4-e2b-it-qat-understudy".to_string(),

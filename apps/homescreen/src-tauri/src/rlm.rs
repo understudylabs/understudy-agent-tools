@@ -294,10 +294,10 @@ fn clamp_tokens(requested: Option<u32>, default: u32) -> u32 {
 
 pub(crate) fn plan_rlm_run(request: &RlmPlanRequest) -> Result<RlmPlan, String> {
     let task = demo_task(&request.task_id)?;
-    let quest_count = request
-        .quest_count
-        .unwrap_or(task.default_quests)
-        .clamp(task.min_quests, task.max_quests.min(task.units.len() as u32));
+    let quest_count = request.quest_count.unwrap_or(task.default_quests).clamp(
+        task.min_quests,
+        task.max_quests.min(task.units.len() as u32),
+    );
     let concurrency = request
         .concurrency
         .unwrap_or(RLM_DEFAULT_CONCURRENCY)
@@ -784,6 +784,7 @@ async fn bounded_agent_chat(
 ) -> QuestOutcome {
     let started = std::time::Instant::now();
     let residency = app.state::<Residency>();
+    let capture_run_id = crate::conversation_runtime::new_run_id().ok();
     let call = crate::chat::agent_chat(
         app,
         residency.inner(),
@@ -791,6 +792,7 @@ async fn bounded_agent_chat(
         session_id,
         prompt,
         Some(max_tokens),
+        capture_run_id.as_deref(),
     );
     match tokio::time::timeout(Duration::from_secs(timeout_secs), call).await {
         Err(_) => QuestOutcome {
