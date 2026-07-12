@@ -132,3 +132,31 @@ export async function responseError(response: Response): Promise<Error> {
   const text = (await response.text()).trim().slice(0, 4_096);
   return new Error(`desktop API returned ${response.status}: ${text || response.statusText}`);
 }
+
+export async function desktopMcpCall(
+  capability: DesktopApiCapability,
+  name: string,
+  args: Record<string, unknown> = {},
+): Promise<unknown> {
+  const response = await desktopApiFetch(capability, "/mcp", {
+    method: "POST",
+    body: JSON.stringify({
+      jsonrpc: "2.0",
+      id: `understudy-cli-${process.pid}`,
+      method: "tools/call",
+      params: { name, arguments: args },
+    }),
+  });
+  if (!response.ok) throw await responseError(response);
+  const value = await response.json() as {
+    error?: { message?: unknown };
+    result?: { structuredContent?: unknown };
+  };
+  if (value.error) {
+    throw new Error(`desktop MCP ${name} failed: ${String(value.error.message ?? "unknown error")}`);
+  }
+  if (!value.result || !("structuredContent" in value.result)) {
+    throw new Error(`desktop MCP ${name} returned no structured content`);
+  }
+  return value.result.structuredContent;
+}

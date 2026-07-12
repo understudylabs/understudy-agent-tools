@@ -462,6 +462,13 @@ without discovering ports or handling tokens themselves:
 ```bash
 understudy desktop contract --json
 understudy desktop capabilities
+understudy desktop status --json
+understudy desktop model catalog --json
+understudy desktop download start understudy-small
+understudy desktop download status <download-id> --json
+understudy desktop slot add --json
+understudy desktop slot assign <slot-id> understudy-small
+understudy desktop slot warm <slot-id>
 understudy desktop chat --slot 9 --session my-task --run-id my-task-1 "Inspect this"
 understudy desktop chat --slot 9 --image screenshot.png "What is wrong here?"
 understudy desktop run cancel my-task-1
@@ -477,6 +484,8 @@ runtime and exact `run_id`; the CLI does not drive UI controls or create a
 second chat harness. `understudy desktop contract` prints the packaged OpenAPI
 3.1 contract even when Desktop is not running, so agents can plan calls without
 probing private implementation routes or handling the bearer token themselves.
+Model inventory, download, and residency commands reuse Desktop's authenticated
+MCP tools; they do not duplicate model-process ownership inside the CLI.
 
 ## The skill tree
 

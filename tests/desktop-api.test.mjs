@@ -15,6 +15,7 @@ let server;
 let port;
 let lastTurn;
 let lastFeedback;
+const mcpCalls = [];
 
 function runCli(args) {
   return new Promise((accept, reject) => {
@@ -102,6 +103,49 @@ before(async () => {
       response.end(JSON.stringify({ ok: true }));
       return;
     }
+    if (request.method === "POST" && request.url === "/mcp") {
+      let raw = "";
+      for await (const chunk of request) raw += chunk;
+      const message = JSON.parse(raw);
+      mcpCalls.push(message);
+      const name = message.params?.name;
+      const args = message.params?.arguments ?? {};
+      const values = {
+        status: { app: "running", repair_required: false },
+        list_models: [{ id: "understudy-small", ready: true }],
+        list_snapshot_models: [{ id: "understudy-small", tier: "small" }],
+        residency: [{ slot_id: 7, state: "running", model_id: "understudy-small" }],
+        add_slot: { ok: true, slot_id: 8 },
+        assign_slot: { ok: true, slot_id: args.slot_id },
+        warm_slot: { ok: true, slot_id: args.slot_id, state: "loading" },
+        cool_slot: { ok: true, slot_id: args.slot_id },
+        remove_slot: { ok: true, slot_id: args.slot_id },
+        list_model_downloads: { downloads: [] },
+        start_model_download: {
+          ok: true,
+          download_id: "download-1",
+          model_id: args.model_id,
+        },
+        model_download_status: { id: args.download_id, status: "running" },
+        cancel_model_download: { id: args.download_id, status: "cancelled" },
+      };
+      if (!(name in values)) {
+        response.writeHead(200, { "content-type": "application/json" });
+        response.end(JSON.stringify({
+          jsonrpc: "2.0",
+          id: message.id,
+          error: { code: -32603, message: `unknown tool ${name}` },
+        }));
+        return;
+      }
+      response.writeHead(200, { "content-type": "application/json" });
+      response.end(JSON.stringify({
+        jsonrpc: "2.0",
+        id: message.id,
+        result: { structuredContent: values[name] },
+      }));
+      return;
+    }
     response.writeHead(404);
     response.end("not found");
   });
@@ -155,6 +199,41 @@ describe("desktop API CLI", () => {
     assert.equal(result.status, 0, result.stderr);
     const value = JSON.parse(result.stdout);
     assert.equal(value.schema_version, "understudy.desktop_api.v2");
+  });
+
+  it("operates model downloads and residency through the existing desktop MCP", async () => {
+    const status = await runCli(["desktop", "status", "--json"]);
+    assert.equal(status.status, 0, status.stderr);
+    assert.equal(JSON.parse(status.stdout).app, "running");
+
+    const catalog = await runCli(["desktop", "model", "catalog", "--json"]);
+    assert.equal(catalog.status, 0, catalog.stderr);
+    assert.equal(JSON.parse(catalog.stdout)[0].id, "understudy-small");
+
+    const started = await runCli([
+      "desktop", "download", "start", "understudy-small", "--json",
+    ]);
+    assert.equal(started.status, 0, started.stderr);
+    assert.equal(JSON.parse(started.stdout).download_id, "download-1");
+
+    const assigned = await runCli([
+      "desktop", "slot", "assign", "7", "understudy-small", "--json",
+    ]);
+    assert.equal(assigned.status, 0, assigned.stderr);
+    assert.equal(JSON.parse(assigned.stdout).slot_id, 7);
+
+    const warmed = await runCli(["desktop", "slot", "warm", "7", "--json"]);
+    assert.equal(warmed.status, 0, warmed.stderr);
+    assert.equal(JSON.parse(warmed.stdout).state, "loading");
+
+    assert.deepEqual(
+      mcpCalls.slice(-5).map((call) => call.params.name),
+      ["status", "list_snapshot_models", "start_model_download", "assign_slot", "warm_slot"],
+    );
+    assert.deepEqual(mcpCalls.at(-2).params.arguments, {
+      slot_id: 7,
+      model_id: "understudy-small",
+    });
   });
 
   it("streams canonical image-chat events with caller-owned identity", async () => {

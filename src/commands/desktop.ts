@@ -6,6 +6,7 @@ import { randomUUID } from "node:crypto";
 import {
   desktopApiContractPath,
   desktopApiFetch,
+  desktopMcpCall,
   readDesktopApiContract,
   requireDesktopApi,
   responseError,
@@ -26,6 +27,18 @@ function positiveInteger(value: string): number {
 
 function collect(value: string, previous: string[]): string[] {
   return [...previous, value];
+}
+
+function jsonRequested(command: Command, local?: boolean): boolean {
+  return local === true || command.optsWithGlobals<{ json?: boolean }>().json === true;
+}
+
+function printStructured(value: unknown, json: boolean, summary?: string): void {
+  if (json || !summary) {
+    process.stdout.write(`${JSON.stringify(value, null, 2)}\n`);
+  } else {
+    process.stdout.write(`${summary}\n`);
+  }
 }
 
 function imageMediaType(path: string): string {
@@ -136,6 +149,122 @@ export function registerDesktopCommand(program: Command): void {
         );
       }
     });
+
+  desktop
+    .command("status")
+    .description("Inspect the running app, runtime, warm slots, and repair state.")
+    .option("--json", "Output JSON")
+    .action(async function (this: Command, opts: { json?: boolean }) {
+      const capability = await requireDesktopApi();
+      const value = await desktopMcpCall(capability, "status");
+      printStructured(value, jsonRequested(this, opts.json));
+    });
+
+  const models = desktop.command("model").description("Inspect Desktop model inventory.");
+  models
+    .command("list")
+    .description("List model snapshots already available to Desktop.")
+    .option("--json", "Output JSON")
+    .action(async function (this: Command, opts: { json?: boolean }) {
+      const capability = await requireDesktopApi();
+      const value = await desktopMcpCall(capability, "list_models");
+      printStructured(value, jsonRequested(this, opts.json));
+    });
+  models
+    .command("catalog")
+    .description("List the bundled certified snapshot catalog.")
+    .option("--json", "Output JSON")
+    .action(async function (this: Command, opts: { json?: boolean }) {
+      const capability = await requireDesktopApi();
+      const value = await desktopMcpCall(capability, "list_snapshot_models");
+      printStructured(value, jsonRequested(this, opts.json));
+    });
+
+  const slots = desktop.command("slot").description("Manage Desktop model residency slots.");
+  slots
+    .command("list")
+    .option("--json", "Output JSON")
+    .action(async function (this: Command, opts: { json?: boolean }) {
+      const capability = await requireDesktopApi();
+      const value = await desktopMcpCall(capability, "residency");
+      printStructured(value, jsonRequested(this, opts.json));
+    });
+  slots
+    .command("add")
+    .option("--json", "Output JSON")
+    .action(async function (this: Command, opts: { json?: boolean }) {
+      const capability = await requireDesktopApi();
+      const value = await desktopMcpCall(capability, "add_slot");
+      printStructured(value, jsonRequested(this, opts.json), "added residency slot");
+    });
+  slots
+    .command("assign")
+    .argument("<slot-id>", "Residency slot id", positiveInteger)
+    .argument("<model-id>", "Installed model id")
+    .option("--json", "Output JSON")
+    .action(async function (
+      this: Command,
+      slotId: number,
+      modelId: string,
+      opts: { json?: boolean },
+    ) {
+      const capability = await requireDesktopApi();
+      const value = await desktopMcpCall(capability, "assign_slot", {
+        slot_id: slotId,
+        model_id: modelId,
+      });
+      printStructured(value, jsonRequested(this, opts.json), `assigned slot ${slotId}`);
+    });
+  for (const [verb, tool, past] of [
+    ["warm", "warm_slot", "warming"],
+    ["cool", "cool_slot", "cooled"],
+    ["remove", "remove_slot", "removed"],
+  ] as const) {
+    slots
+      .command(verb)
+      .argument("<slot-id>", "Residency slot id", positiveInteger)
+      .option("--json", "Output JSON")
+      .action(async function (this: Command, slotId: number, opts: { json?: boolean }) {
+        const capability = await requireDesktopApi();
+        const value = await desktopMcpCall(capability, tool, { slot_id: slotId });
+        printStructured(value, jsonRequested(this, opts.json), `${past} slot ${slotId}`);
+      });
+  }
+
+  const downloads = desktop.command("download").description("Manage Desktop model downloads.");
+  downloads
+    .command("list")
+    .option("--json", "Output JSON")
+    .action(async function (this: Command, opts: { json?: boolean }) {
+      const capability = await requireDesktopApi();
+      const value = await desktopMcpCall(capability, "list_model_downloads");
+      printStructured(value, jsonRequested(this, opts.json));
+    });
+  downloads
+    .command("start")
+    .argument("<model-id>", "Certified snapshot id from desktop model catalog")
+    .option("--json", "Output JSON")
+    .action(async function (this: Command, modelId: string, opts: { json?: boolean }) {
+      const capability = await requireDesktopApi();
+      const value = await desktopMcpCall(capability, "start_model_download", {
+        model_id: modelId,
+      });
+      printStructured(value, jsonRequested(this, opts.json), `started download for ${modelId}`);
+    });
+  for (const [verb, tool, past] of [
+    ["status", "model_download_status", "download"],
+    ["cancel", "cancel_model_download", "cancelled download"],
+  ] as const) {
+    downloads
+      .command(verb)
+      .argument("<download-id>")
+      .option("--json", "Output JSON")
+      .action(async function (this: Command, downloadId: string, opts: { json?: boolean }) {
+        const capability = await requireDesktopApi();
+        const value = await desktopMcpCall(capability, tool, { download_id: downloadId });
+        printStructured(value, jsonRequested(this, opts.json), `${past} ${downloadId}`);
+      });
+  }
 
   desktop
     .command("chat")
