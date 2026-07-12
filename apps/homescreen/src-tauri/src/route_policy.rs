@@ -5,8 +5,6 @@
 //! `chat.rs` (live chat loop) and `commands.rs` (route recommendation command)
 //! both call into this module; neither may hand-copy a policy value.
 
-use crate::db::SidekickFeedbackSummary;
-
 /// Gateway chat model used whenever a turn escalates to the cloud route.
 pub const GATEWAY_CHAT_MODEL: &str = "glm-5.2";
 
@@ -70,10 +68,6 @@ pub const ESCALATION_RATE_CEILING: f64 = 0.6;
 pub const SIDEKICK_BENCHMARK_SCORE_FLOOR: f64 = 0.5;
 /// Useful-feedback rate below which delegation is suppressed.
 pub const USEFUL_RATE_FLOOR: f64 = 0.25;
-/// Useful-feedback rate treated as a positive prior for delegation.
-pub const USEFUL_RATE_SUCCESS_PRIOR: f64 = 0.75;
-/// Handoff (consumed) rate below which mechanical delegation is suppressed.
-pub const HANDOFF_RATE_FLOOR: f64 = 0.2;
 /// Pending-handoff rate above which new parallel spawns are suppressed.
 pub const PENDING_HANDOFF_RATE_CEILING: f64 = 0.5;
 /// Local error rate at or above which the local route is unhealthy.
@@ -93,10 +87,7 @@ pub const LONG_PROMPT_COMPACTION_CHARS: usize = 16_000;
 pub const MIN_ROWS_FOR_RATE_GATES: u64 = 5;
 pub const MIN_ROWS_FOR_LATENCY_GATE: u64 = 3;
 pub const MIN_ROWS_FOR_BENCHMARK_GATE: u64 = 4;
-pub const MIN_ROWS_FOR_HANDOFF_GATE: u64 = 3;
 pub const MIN_ROWS_FOR_TOOL_AVG_GATE: u64 = 3;
-/// Useful/miss feedback rows required before feedback priors apply.
-pub const MIN_FEEDBACK_FOR_PRIOR: u64 = 3;
 
 // ----- signal windows (rows read from the durable stores) -----
 
@@ -104,17 +95,10 @@ pub const CHAT_RUNS_SIGNAL_WINDOW: u32 = 60;
 pub const SESSION_CHAT_RUNS_SIGNAL_WINDOW: u32 = 20;
 pub const FUSION_BENCHMARK_SIGNAL_WINDOW: u32 = 40;
 pub const SIDEKICK_RUNS_SIGNAL_WINDOW: u32 = 30;
-pub const SIDEKICK_FEEDBACK_SIGNAL_WINDOW: u32 = 20;
 
 /// Per-row weight decay applied to global (cross-session) rate signals so a
 /// burst of old failures cannot ratchet routing for the whole window.
 pub const SIGNAL_DECAY: f64 = 0.9;
-
-// ----- sidekick wait budgets by delegation class -----
-
-pub const CHAT_SIDEKICK_QUICK_WAIT_MS: u64 = 600;
-pub const CHAT_SIDEKICK_DEFAULT_WAIT_MS: u64 = 1_000;
-pub const CHAT_SIDEKICK_VERIFICATION_WAIT_MS: u64 = 1_800;
 
 // ----- prompt classification -----
 
@@ -189,117 +173,6 @@ pub fn escalation_high(rows: u64, escalation_rate: Option<f64>) -> bool {
 pub fn usefulness_low(feedback_rows: u64, useful_rate: Option<f64>) -> bool {
     feedback_rows >= MIN_ROWS_FOR_RATE_GATES
         && useful_rate.is_some_and(|rate| rate < USEFUL_RATE_FLOOR)
-}
-
-// ----- parallel sidekick delegation policy -----
-
-pub struct SidekickRoutingDecision {
-    pub eligible: bool,
-    pub reason: &'static str,
-    pub wait_ms: u64,
-}
-
-fn sidekick_ineligible(reason: &'static str) -> SidekickRoutingDecision {
-    SidekickRoutingDecision {
-        eligible: false,
-        reason,
-        wait_ms: 0,
-    }
-}
-
-fn sidekick_eligible(reason: &'static str, wait_ms: u64) -> SidekickRoutingDecision {
-    SidekickRoutingDecision {
-        eligible: true,
-        reason,
-        wait_ms,
-    }
-}
-
-#[derive(Default)]
-pub struct SidekickRoutingSignals {
-    /// Total sidekick runs in the window (denominator of `escalation_rate`).
-    pub rows: u64,
-    /// Rows with explicit useful/miss feedback.
-    pub feedback_rows: u64,
-    pub useful_rate: Option<f64>,
-    pub handoff_rate: Option<f64>,
-    pub escalation_rate: Option<f64>,
-    pub sidekick_rows: u64,
-    pub sidekick_benchmark_rows: u64,
-    pub sidekick_benchmark_score: Option<f64>,
-    pub avg_local_elapsed_ms: Option<f64>,
-    pub avg_sidekick_elapsed_ms: Option<f64>,
-}
-
-/// Decide whether a prompt is eligible for a background parallel sidekick
-/// pass, and how long the main turn should wait for its findings.
-pub fn route_parallel_sidekick(
-    prompt: &str,
-    feedback: SidekickFeedbackSummary,
-    signals: SidekickRoutingSignals,
-) -> SidekickRoutingDecision {
-    let class = classify_prompt(prompt);
-    if class.judgment {
-        return sidekick_ineligible("main_keeps_judgment");
-    }
-    if usefulness_low(signals.feedback_rows, signals.useful_rate) {
-        return sidekick_ineligible("metrics_low_usefulness");
-    }
-    if escalation_high(signals.rows, signals.escalation_rate) {
-        return sidekick_ineligible("metrics_high_escalation");
-    }
-    if sidekick_latency_high(
-        signals.sidekick_rows,
-        signals.avg_sidekick_elapsed_ms,
-        signals.avg_local_elapsed_ms,
-    ) {
-        return sidekick_ineligible("metrics_sidekick_latency_high");
-    }
-    if sidekick_benchmark_low(
-        signals.sidekick_benchmark_rows,
-        signals.sidekick_benchmark_score,
-    ) {
-        return sidekick_ineligible("benchmark_sidekick_score_low");
-    }
-    if let Some(term) = class.mechanical_term {
-        if signals.feedback_rows >= MIN_ROWS_FOR_HANDOFF_GATE
-            && signals
-                .handoff_rate
-                .is_some_and(|rate| rate < HANDOFF_RATE_FLOOR)
-        {
-            return sidekick_ineligible("metrics_low_handoff");
-        }
-        if feedback.misses >= MIN_FEEDBACK_FOR_PRIOR
-            && feedback.misses > feedback.useful.saturating_mul(2)
-        {
-            return sidekick_ineligible("feedback_recent_misses");
-        }
-        let (reason, wait_ms) = match term {
-            "search" | "find" | "trace" => ("mechanical_search", CHAT_SIDEKICK_DEFAULT_WAIT_MS),
-            "check" | "verify" | "inspect" | "review" => {
-                ("verification", CHAT_SIDEKICK_VERIFICATION_WAIT_MS)
-            }
-            "summarize" | "reminder" | "what's left" | "whats left" => {
-                ("summary", CHAT_SIDEKICK_QUICK_WAIT_MS)
-            }
-            "status" | "models" | "compare" => ("runtime_inspection", CHAT_SIDEKICK_QUICK_WAIT_MS),
-            _ => ("eligible", CHAT_SIDEKICK_DEFAULT_WAIT_MS),
-        };
-        return sidekick_eligible(reason, wait_ms);
-    }
-    if feedback.useful >= MIN_FEEDBACK_FOR_PRIOR
-        && feedback.useful >= feedback.misses.saturating_mul(2).max(1)
-    {
-        return sidekick_eligible("feedback_positive_prior", CHAT_SIDEKICK_DEFAULT_WAIT_MS);
-    }
-    if signals.feedback_rows >= MIN_ROWS_FOR_RATE_GATES
-        && signals
-            .useful_rate
-            .is_some_and(|rate| rate >= USEFUL_RATE_SUCCESS_PRIOR)
-    {
-        return sidekick_eligible("metrics_success_prior", CHAT_SIDEKICK_DEFAULT_WAIT_MS);
-    }
-    sidekick_ineligible("no_mechanical_subtask")
 }
 
 // ----- route recommendation policy -----
@@ -466,67 +339,6 @@ pub fn fusion_policy_class(
 #[cfg(test)]
 mod tests {
     use super::*;
-
-    fn feedback(useful: u64, misses: u64) -> SidekickFeedbackSummary {
-        SidekickFeedbackSummary { useful, misses }
-    }
-
-    #[test]
-    fn sidekick_policy_keeps_judgment_with_main() {
-        let decision = route_parallel_sidekick(
-            "should we redesign the routing architecture?",
-            feedback(0, 0),
-            SidekickRoutingSignals::default(),
-        );
-        assert!(!decision.eligible);
-        assert_eq!(decision.reason, "main_keeps_judgment");
-        assert_eq!(decision.wait_ms, 0);
-    }
-
-    #[test]
-    fn sidekick_policy_waits_longer_for_verification() {
-        let decision = route_parallel_sidekick(
-            "please verify the current model status",
-            feedback(0, 0),
-            SidekickRoutingSignals::default(),
-        );
-        assert!(decision.eligible);
-        assert_eq!(decision.reason, "verification");
-        assert_eq!(decision.wait_ms, CHAT_SIDEKICK_VERIFICATION_WAIT_MS);
-    }
-
-    #[test]
-    fn sidekick_policy_uses_quick_wait_for_summary() {
-        let decision = route_parallel_sidekick(
-            "what's left for fusion reminder",
-            feedback(0, 0),
-            SidekickRoutingSignals::default(),
-        );
-        assert!(decision.eligible);
-        assert_eq!(decision.reason, "summary");
-        assert_eq!(decision.wait_ms, CHAT_SIDEKICK_QUICK_WAIT_MS);
-    }
-
-    #[test]
-    fn escalation_gate_requires_enough_total_rows() {
-        // 4 rows is below the evidence gate: high escalation must not suppress.
-        let signals = SidekickRoutingSignals {
-            rows: MIN_ROWS_FOR_RATE_GATES - 1,
-            escalation_rate: Some(1.0),
-            ..Default::default()
-        };
-        let decision = route_parallel_sidekick("check the runtime status", feedback(0, 0), signals);
-        assert!(decision.eligible);
-
-        let signals = SidekickRoutingSignals {
-            rows: MIN_ROWS_FOR_RATE_GATES,
-            escalation_rate: Some(ESCALATION_RATE_CEILING + 0.01),
-            ..Default::default()
-        };
-        let decision = route_parallel_sidekick("check the runtime status", feedback(0, 0), signals);
-        assert!(!decision.eligible);
-        assert_eq!(decision.reason, "metrics_high_escalation");
-    }
 
     #[test]
     fn decayed_rate_weights_recent_rows_higher() {

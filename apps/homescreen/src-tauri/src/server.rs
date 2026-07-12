@@ -531,8 +531,8 @@ struct ConversationRuntimeToolRequest {
 }
 
 /// Authenticated executor used by the CLI-owned runtime. Keeping this a thin
-/// adapter guarantees Pi and the one-release Rust fallback expose the exact
-/// same desktop tools and residency semantics.
+/// adapter guarantees Pi exposes the exact same desktop tools and residency
+/// semantics.
 async fn conversation_runtime_tool(
     State(ctx): State<Ctx>,
     h: HeaderMap,
@@ -1112,7 +1112,7 @@ fn run_benchmark_properties(with_candidates: bool) -> Value {
     let mut props = json!({
         "run_id": { "type": "string", "description": "Run id; generated when omitted." },
         "suite": { "type": "string", "enum": ["routing-smoke", "local-comparison", "full-matrix", "automationbench-proxy"] },
-        "modes": { "type": "array", "items": { "type": "string", "enum": ["main-only", "sidekick-advisory", "sidekick-parallel", "sidekick-routing"] } },
+        "modes": { "type": "array", "items": { "type": "string", "enum": ["main-only"], "description": "Canonical Pi runtime. Legacy sidekick modes remain readable in historical evidence but cannot be scheduled." } },
         "task_ids": { "type": "array", "items": { "type": "string" } },
         "dry_run": { "type": "boolean", "description": "Default true: plan without spending tokens." },
         "record_skips": { "type": "boolean" }
@@ -1233,7 +1233,7 @@ fn tools() -> Vec<Value> {
                 json!({
                     "run_id": { "type": "string" },
                     "capture_run_id": { "type": "string", "description": "Per-attempt id joining this row to canonical runtime evidence." },
-                    "runtime_backend": { "type": "string", "description": "Runtime that executed the attempt, such as pi, native-rust, or external." },
+                    "runtime_backend": { "type": "string", "description": "Runtime that executed the attempt, such as pi or external. Historical rows may contain native-rust." },
                     "task_id": { "type": "string" },
                     "mode": { "type": "string" },
                     "model": { "type": "string" },

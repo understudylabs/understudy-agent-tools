@@ -641,6 +641,10 @@ pub struct SidekickMetrics {
 }
 
 fn valid_fusion_mode(mode: &str) -> bool {
+    mode == "main-only"
+}
+
+fn valid_historical_fusion_mode(mode: &str) -> bool {
     matches!(
         mode,
         "main-only" | "sidekick-advisory" | "sidekick-parallel" | "sidekick-routing"
@@ -648,7 +652,7 @@ fn valid_fusion_mode(mode: &str) -> bool {
 }
 
 fn valid_fusion_result_mode(mode: &str) -> bool {
-    if valid_fusion_mode(mode)
+    if valid_historical_fusion_mode(mode)
         || mode == "automationbench"
         || mode == crate::custom_evals::CUSTOM_EVAL_MODE
     {
@@ -673,15 +677,7 @@ fn valid_fusion_candidate(candidate: &str) -> bool {
 fn fusion_benchmark_suite(suite: Option<&str>) -> Result<(Vec<String>, Vec<String>), String> {
     match suite.unwrap_or("full-matrix") {
         "full-matrix" => Ok((
-            vec![
-                "main-only",
-                "sidekick-advisory",
-                "sidekick-parallel",
-                "sidekick-routing",
-            ]
-            .into_iter()
-            .map(str::to_string)
-            .collect(),
+            vec!["main-only"].into_iter().map(str::to_string).collect(),
             fusion_benchmark_matrix()
                 .tasks
                 .iter()
@@ -689,10 +685,7 @@ fn fusion_benchmark_suite(suite: Option<&str>) -> Result<(Vec<String>, Vec<Strin
                 .collect(),
         )),
         "routing-smoke" => Ok((
-            vec!["sidekick-routing"]
-                .into_iter()
-                .map(str::to_string)
-                .collect(),
+            vec!["main-only"].into_iter().map(str::to_string).collect(),
             vec![
                 "repo-search-summary",
                 "runtime-status-check",
@@ -704,20 +697,14 @@ fn fusion_benchmark_suite(suite: Option<&str>) -> Result<(Vec<String>, Vec<Strin
             .collect(),
         )),
         "local-fusion-smoke" => Ok((
-            vec!["main-only", "sidekick-parallel"]
-                .into_iter()
-                .map(str::to_string)
-                .collect(),
+            vec!["main-only"].into_iter().map(str::to_string).collect(),
             vec!["repo-search-summary", "runtime-status-check"]
                 .into_iter()
                 .map(str::to_string)
                 .collect(),
         )),
         "local-comparison" => Ok((
-            vec!["main-only", "sidekick-parallel", "sidekick-routing"]
-                .into_iter()
-                .map(str::to_string)
-                .collect(),
+            vec!["main-only"].into_iter().map(str::to_string).collect(),
             vec![
                 "repo-search-summary",
                 "runtime-status-check",
@@ -729,10 +716,7 @@ fn fusion_benchmark_suite(suite: Option<&str>) -> Result<(Vec<String>, Vec<Strin
             .collect(),
         )),
         "automationbench-proxy" => Ok((
-            vec!["main-only", "sidekick-parallel", "sidekick-routing"]
-                .into_iter()
-                .map(str::to_string)
-                .collect(),
+            vec!["main-only"].into_iter().map(str::to_string).collect(),
             vec![
                 "automationbench-api-discovery",
                 "automationbench-state-verification",
@@ -1369,15 +1353,15 @@ pub fn fusion_benchmark_matrix() -> FusionBenchmarkMatrix {
             FusionBenchmarkSuite {
                 id: "local-fusion-smoke",
                 label: "Local Fusion smoke",
-                description: "Fast local-only check comparing the main lane against the sidekick lane.",
-                modes: vec!["main-only", "sidekick-parallel"],
+                description: "Fast canonical-runtime smoke on local-friendly tasks.",
+                modes: vec!["main-only"],
                 task_ids: vec!["repo-search-summary", "runtime-status-check"],
             },
             FusionBenchmarkSuite {
                 id: "routing-smoke",
                 label: "Routing smoke",
-                description: "Small policy smoke for sidekick routing and gateway escalation.",
-                modes: vec!["sidekick-routing"],
+                description: "Small canonical-runtime subset for route-sensitive tasks.",
+                modes: vec!["main-only"],
                 task_ids: vec![
                     "repo-search-summary",
                     "runtime-status-check",
@@ -1388,8 +1372,8 @@ pub fn fusion_benchmark_matrix() -> FusionBenchmarkMatrix {
             FusionBenchmarkSuite {
                 id: "local-comparison",
                 label: "Local comparison",
-                description: "Compare main local against parallel sidekick and routing on local-friendly tasks.",
-                modes: vec!["main-only", "sidekick-parallel", "sidekick-routing"],
+                description: "Compare canonical candidates on the same local-friendly tasks.",
+                modes: vec!["main-only"],
                 task_ids: vec![
                     "repo-search-summary",
                     "runtime-status-check",
@@ -1400,20 +1384,15 @@ pub fn fusion_benchmark_matrix() -> FusionBenchmarkMatrix {
             FusionBenchmarkSuite {
                 id: "full-matrix",
                 label: "Full matrix",
-                description: "Run every bundled Fusion task across every harness mode.",
-                modes: vec![
-                    "main-only",
-                    "sidekick-advisory",
-                    "sidekick-parallel",
-                    "sidekick-routing",
-                ],
+                description: "Run every bundled Fusion task through the canonical runtime.",
+                modes: vec!["main-only"],
                 task_ids: vec![],
             },
             FusionBenchmarkSuite {
                 id: "automationbench-proxy",
                 label: "AutomationBench proxy",
                 description: "Directional local proxy for AutomationBench-style SaaS workflow/tool-state tasks before the external verifier run.",
-                modes: vec!["main-only", "sidekick-parallel", "sidekick-routing"],
+                modes: vec!["main-only"],
                 task_ids: vec![
                     "automationbench-api-discovery",
                     "automationbench-state-verification",
@@ -1449,23 +1428,8 @@ pub fn fusion_benchmark_matrix() -> FusionBenchmarkMatrix {
         modes: vec![
             FusionBenchmarkMode {
                 id: "main-only",
-                label: "Main only",
-                description: "Run the selected main model with sidekick disabled.",
-            },
-            FusionBenchmarkMode {
-                id: "sidekick-advisory",
-                label: "Sidekick advisory",
-                description: "Allow explicit delegate_to_sidekick tool calls only.",
-            },
-            FusionBenchmarkMode {
-                id: "sidekick-parallel",
-                label: "Sidekick parallel",
-                description: "Enable non-visual background sidekick on eligible prompts.",
-            },
-            FusionBenchmarkMode {
-                id: "sidekick-routing",
-                label: "Sidekick + routing",
-                description: "Enable parallel sidekick plus feedback-aware routing policy.",
+                label: "Canonical runtime",
+                description: "Run the selected candidate through Pi; supervision is configured by the runtime rather than a parallel Rust harness.",
             },
         ],
         tasks: vec![

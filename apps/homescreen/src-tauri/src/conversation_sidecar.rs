@@ -1,8 +1,8 @@
 //! Desktop bridge to the CLI-owned Pi conversation runtime.
 //!
-//! A native retry is safe only before the sidecar emits user-visible output or
-//! starts a tool. After that boundary, failures are terminal for the turn so a
-//! tool or answer can never execute twice.
+//! The canonical runtime is the only conversation engine. Failures before any
+//! visible output are reported as unavailable; failures after output or a tool
+//! starts are terminal for the turn so a tool or answer can never execute twice.
 
 use futures_util::StreamExt;
 use serde::{Deserialize, Serialize};
@@ -159,7 +159,7 @@ pub(crate) struct SidecarRunResult {
 pub(crate) enum SidecarAttempt {
     NotSelected,
     Completed(SidecarRunResult),
-    NativeFallback(String),
+    UnavailableBeforeOutput(String),
     FailedAfterOutput(String),
 }
 
@@ -707,7 +707,7 @@ pub(crate) async fn try_run_chat(
     match execute_run(app, request, Some(on_event), None, None).await {
         Ok(result) => SidecarAttempt::Completed(result),
         Err((error, true)) => SidecarAttempt::FailedAfterOutput(error),
-        Err((error, false)) => SidecarAttempt::NativeFallback(error),
+        Err((error, false)) => SidecarAttempt::UnavailableBeforeOutput(error),
     }
 }
 
@@ -718,7 +718,7 @@ pub(crate) async fn try_run_chat_headless(app: &AppHandle, request: Value) -> Si
     match execute_run(app, request, None, None, None).await {
         Ok(result) => SidecarAttempt::Completed(result),
         Err((error, true)) => SidecarAttempt::FailedAfterOutput(error),
-        Err((error, false)) => SidecarAttempt::NativeFallback(error),
+        Err((error, false)) => SidecarAttempt::UnavailableBeforeOutput(error),
     }
 }
 
@@ -885,7 +885,7 @@ mod tests {
     }
 
     #[test]
-    fn visible_output_closes_native_retry_boundary() {
+    fn visible_output_makes_runtime_failure_terminal() {
         let mut accumulator = SidecarAccumulator::default();
         let envelope = envelope(
             0,
