@@ -508,18 +508,24 @@ the first auth journey is intentionally narrow:
 understudy login --email you@company.com   # emails a one-time code
 understudy login --code 123456             # completes sign-in (non-TTY shells)
 understudy doctor --hosted
-understudy workloads list
-understudy workloads create classify --capture
-understudy gateway probe --provider anthropic --project rehearsal --workload classify
-understudy captures list --project rehearsal --workload classify
-understudy routes set classify --project rehearsal --model-id glm-5.1 --traffic-pct 10
-understudy routes show classify --project rehearsal
-understudy routes clear classify --project rehearsal
+understudy projects create customer-support --name "Customer support"
+understudy workloads create answer-ticket --project customer-support --capture
+understudy gateway probe --provider anthropic --project customer-support --workload answer-ticket
+understudy captures list --project customer-support --workload answer-ticket
+understudy routes set answer-ticket --project customer-support --model-id glm-5.1 --traffic-pct 10
+understudy routes show answer-ticket --project customer-support
+understudy routes clear answer-ticket --project customer-support
 ```
 
 `routes set` writes control-plane route config: your application keeps calling
 the normal gateway while a percentage of traffic goes to the selected
 Understudy model and the rest remains passthrough/frontier.
+
+Every application request should also send the same
+`x-understudy-project: customer-support` and
+`x-understudy-workload: answer-ticket` headers. They bind a trace, capture,
+and future replacement route to a stable call site instead of whichever default
+the organization happens to have.
 
 <details>
 <summary><b>How login, doctor, probes, captures, and routes behave</b></summary>

@@ -101,26 +101,45 @@ node dist/bin.js status --json
    Understudy sign-in email and pass the code to `understudy login --code`. Read
    only that email, and do not persist the code anywhere else.
 
-3. Confirm project/key readiness:
+3. With the developer's approval, create one explicit project and one
+   workload for the call site being connected. Capture attaches to the
+   workload, and future route changes replace only that workload's behavior.
+   Do not rely on the default `rehearsal` / `main` pair for a production app.
+
+   ```sh
+   understudy projects create customer-support --name "Customer support"
+   understudy workloads create answer-ticket --project customer-support --capture
+   ```
+
+   Project slugs use lowercase letters, numbers, and hyphens; workload names
+   additionally allow underscores. Reuse an existing project or workload when
+   it already represents the same stable call site rather than creating a
+   duplicate.
+
+4. Confirm project/workload/key readiness:
 
    ```sh
    understudy projects list --json
+   understudy workloads list --project customer-support --json
    understudy keys list --json
    ```
 
-4. For frontier-vs-Understudy comparison, list public model IDs first. If the
+5. For frontier-vs-Understudy comparison, list public model IDs first. If the
    account is keyless for frontier providers, prefer the **keyless catalog
    sweep** recipe below: clear the workload route and vary the request-body
    `model`. Use traffic-split A/B only after confirming the non-routed
    passthrough share has a managed provider credential or BYO key.
 
-5. Run the local command through the gateway wrapper only after approval:
+6. Run the local command through the gateway wrapper only after approval. Make
+   the application send both `x-understudy-project: customer-support` and
+   `x-understudy-workload: answer-ticket` on every gateway request; this keeps
+   captures and replacement routes attributable to the intended workload.
 
    ```sh
    understudy run -- <local command>
    ```
 
-6. Monitor the command output and local artifacts. For optimization work, route
+7. Monitor the command output and local artifacts. For optimization work, route
    back to [`../optimize-workload/SKILL.md`](../optimize-workload/SKILL.md) once
    the run has produced candidate/proof evidence.
 
