@@ -40,7 +40,12 @@ function sessionComponent(sessionId: string): string {
   return createHash("sha256").update(sessionId).digest("hex");
 }
 
-function modelFor(target: RuntimeProviderTarget, baseUrl: URL, maxTokens: number) {
+function modelFor(
+  target: RuntimeProviderTarget,
+  baseUrl: URL,
+  maxTokens: number,
+  contextWindow: number,
+) {
   return {
     id: target.model,
     name: target.model,
@@ -50,8 +55,8 @@ function modelFor(target: RuntimeProviderTarget, baseUrl: URL, maxTokens: number
     reasoning: true,
     input: ["text", "image"] as Array<"text" | "image">,
     cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
-    contextWindow: 32_768,
-    maxTokens,
+    contextWindow,
+    maxTokens: Math.min(maxTokens, Math.max(1, Math.floor(contextWindow / 2))),
   };
 }
 
@@ -75,7 +80,8 @@ function usageData(
   const complete =
     Number.isFinite(usage.input) &&
     Number.isFinite(usage.output) &&
-    Number.isFinite(usage.totalTokens);
+    Number.isFinite(usage.totalTokens) &&
+    total > 0;
   return {
     role,
     model,
@@ -316,7 +322,10 @@ function attachCanonicalAdapter(
             options.abortReason?.() ?? event.message.errorMessage ?? "aborted",
           ),
         });
-      } else if (event.message.stopReason === "error") {
+      } else if (
+        event.message.stopReason === "error" &&
+        !isContextOverflowMessage(event.message.errorMessage)
+      ) {
         terminalEmitted = true;
         enqueue("error", {
           stage: "model_stream",
@@ -374,6 +383,14 @@ async function createPiRuntimeSession(options: {
     target,
     providerUrl,
     options.maxTokens ?? request.max_output_tokens,
+    request.context_window_tokens,
+  );
+  const compactionReserve = Math.min(
+    16_384,
+    Math.max(
+      512,
+      Math.min(request.max_output_tokens + 4_096, Math.floor(request.context_window_tokens / 2)),
+    ),
   );
   const authStorage = AuthStorage.inMemory();
   authStorage.setRuntimeApiKey(
@@ -385,8 +402,8 @@ async function createPiRuntimeSession(options: {
     {
       compaction: {
         enabled: true,
-        reserveTokens: Math.min(16_384, request.max_output_tokens + 4_096),
-        keepRecentTokens: 8_192,
+        reserveTokens: compactionReserve,
+        keepRecentTokens: Math.min(8_192, Math.max(256, Math.floor(compactionReserve / 2))),
       },
       retry: { enabled: false, maxRetries: 0 },
       images: { autoResize: false, blockImages: false },
@@ -461,6 +478,15 @@ function unavailableSupervisorUsage(model: string): Record<string, unknown> {
 
 function characterCount(value: string): number {
   return [...value].length;
+}
+
+function isContextOverflowMessage(value: string | undefined): boolean {
+  return Boolean(
+    value &&
+      /(context.{0,24}(length|window|limit)|maximum context|too many tokens|token limit)/i.test(
+        value,
+      ),
+  );
 }
 
 function supervisionBoundaryDue(

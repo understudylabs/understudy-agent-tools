@@ -20,7 +20,12 @@ type FixtureGate = {
 type ConformanceManifest = {
   schema_version: string;
   suite_id: string;
-  input_fixtures?: Array<{ id: string; fixture: string; fixture_sha256: string }>;
+  input_fixtures?: Array<{
+    id: string;
+    fixture: string;
+    fixture_sha256: string;
+    required_capabilities?: string[];
+  }>;
   scenario_gates: FixtureGate[];
 };
 
@@ -45,11 +50,13 @@ export type LoadedConformanceInput = {
   id: string;
   fixture: string;
   sha256: string;
+  required_capabilities: string[];
   input: RuntimeInputFixture;
 };
 
 export type RuntimeConformanceAdapter = {
   id: string;
+  capabilities?: readonly string[];
   run(input: RuntimeInputFixture): Promise<readonly unknown[]>;
 };
 
@@ -57,7 +64,7 @@ export type RuntimeConformanceScenarioResult = {
   id: string;
   fixture: string;
   fixture_sha256: string;
-  status: "passed" | "failed";
+  status: "passed" | "failed" | "not_applicable";
   event_count: number;
   runtime_id?: string;
   output_chars: number;
@@ -69,6 +76,8 @@ export type RuntimeConformanceAdapterReport = {
   suite_id: string;
   adapter_id: string;
   passed: boolean;
+  complete: boolean;
+  eligible_for_promotion: boolean;
   scenarios: RuntimeConformanceScenarioResult[];
 };
 
@@ -116,6 +125,7 @@ export function loadConversationConformanceInputs(
       id: fixture.id,
       fixture: fixture.fixture,
       sha256: digest,
+      required_capabilities: fixture.required_capabilities ?? [],
       input: parsed,
     };
   });
@@ -157,7 +167,23 @@ export async function runConversationAdapterConformance(
 ): Promise<RuntimeConformanceAdapterReport> {
   const suite = loadConversationConformanceInputs(root);
   const scenarios: RuntimeConformanceScenarioResult[] = [];
+  const capabilities = new Set(adapter.capabilities ?? []);
   for (const fixture of suite.inputs) {
+    const missing = fixture.required_capabilities.filter(
+      (capability) => !capabilities.has(capability),
+    );
+    if (missing.length > 0) {
+      scenarios.push({
+        id: fixture.id,
+        fixture: fixture.fixture,
+        fixture_sha256: fixture.sha256,
+        status: "not_applicable",
+        event_count: 0,
+        output_chars: 0,
+        error: `adapter does not declare required capabilities: ${missing.join(", ")}`,
+      });
+      continue;
+    }
     try {
       const events = assertScenarioEvidence(fixture.input, await adapter.run(fixture.input));
       scenarios.push({
@@ -183,11 +209,15 @@ export async function runConversationAdapterConformance(
       });
     }
   }
+  const passed = scenarios.every((scenario) => scenario.status !== "failed");
+  const complete = scenarios.every((scenario) => scenario.status === "passed");
   return {
     schema_version: CONFORMANCE_SCHEMA,
     suite_id: suite.suite_id,
     adapter_id: adapter.id,
-    passed: scenarios.every((scenario) => scenario.status === "passed"),
+    passed,
+    complete,
+    eligible_for_promotion: passed && complete,
     scenarios,
   };
 }

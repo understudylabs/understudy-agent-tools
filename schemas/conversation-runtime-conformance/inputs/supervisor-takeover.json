@@ -1,0 +1,20 @@
+{
+  "schema_version": "understudy-conversation-runtime-input-v1",
+  "fixture_id": "supervisor-takeover",
+  "role": "student",
+  "messages": [
+    {
+      "role": "user",
+      "content": "Which country contains Paris?"
+    }
+  ],
+  "tools": [],
+  "expected_events": [
+    "message",
+    "delta",
+    "supervisor_verdict",
+    "student_interruption",
+    "teacher_continuation",
+    "usage"
+  ]
+}

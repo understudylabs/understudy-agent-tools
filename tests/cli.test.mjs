@@ -1087,6 +1087,33 @@ describe("understudy CLI", () => {
       assert.match(report.caveats.join("\n"), /Do not publish savings/);
     }));
 
+  it("reports the hashed conversation-runtime conformance suite", () => {
+    const result = run(["--json", "runtime", "conformance"]);
+    assert.equal(result.status, 0, result.stderr);
+    const report = JSON.parse(result.stdout);
+    assert.equal(report.passed, true);
+    assert.deepEqual(
+      report.inputs.map((input) => input.id),
+      [
+        "basic-chat",
+        "offline-image",
+        "tool-round",
+        "malformed-tool-call",
+        "supervisor-takeover",
+        "long-chat-compaction",
+        "restart-resume",
+        "cancellation",
+      ],
+    );
+    assert.equal(report.gates.length, 5);
+  });
+
+  it("requires a provider target for executable runtime conformance", () => {
+    const result = run(["runtime", "conformance", "--backend", "pi"]);
+    assert.notEqual(result.status, 0);
+    assert.match(result.stderr, /requires --base-url and --model/);
+  });
+
   it("rejects removed full runtime commands", () => {
     const result = run(["gateway", "--port", "23333"]);
     assert.notEqual(result.status, 0);

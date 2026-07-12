@@ -36,6 +36,24 @@
       "fixture_sha256": "7de7b979741c8c9c466819fe303dc0831bdf40225ee9c50adb12e33dd5fc3e4a"
     },
     {
+      "id": "supervisor-takeover",
+      "fixture": "inputs/supervisor-takeover.json",
+      "fixture_sha256": "b921b023b2bd6e9d64549c7dd932a1001e9d5840f3ead292f8fdec7a7f44f3b0",
+      "required_capabilities": ["supervision"]
+    },
+    {
+      "id": "long-chat-compaction",
+      "fixture": "inputs/long-chat-compaction.json",
+      "fixture_sha256": "073771d34929e6f020e14fa4697003bcd96a2df63942b72670e2db0694deba9d",
+      "required_capabilities": ["compaction"]
+    },
+    {
+      "id": "restart-resume",
+      "fixture": "inputs/restart-resume.json",
+      "fixture_sha256": "71ad250cc57450ba0bebca62d3e2b277b985da3d9e7ce38375e032ce7f2a1be6",
+      "required_capabilities": ["restart"]
+    },
+    {
       "id": "cancellation",
       "fixture": "inputs/cancellation.json",
       "fixture_sha256": "e545c0a16aa59b3c5ea355ad64e807786dfcd6f694cd01b3b23faf2e6aecbc65"

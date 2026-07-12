@@ -920,6 +920,8 @@ test("Pi and Vercel execute the identical frozen conformance inputs", async () =
   const providerRequests = [];
   const toolRequests = [];
   const malformedCallsByModel = new Map();
+  const longCallsByModel = new Map();
+  const restartRequestsByModel = new Map();
   const traces = new Map();
   const provider = createServer(async (request, response) => {
     const body = await requestJson(request);
@@ -934,6 +936,84 @@ test("Pi and Vercel execute the identical frozen conformance inputs", async () =
     assert.equal(request.url, "/v1/chat/completions");
     providerRequests.push(body);
     const serialized = JSON.stringify(body.messages);
+    if (body.model.endsWith("supervisor-takeover-judge")) {
+      response.writeHead(200, { "content-type": "application/json" });
+      response.end(
+        JSON.stringify({
+          choices: [
+            {
+              message: {
+                role: "assistant",
+                content: "interrupt: Paris was placed in the wrong country.",
+              },
+              logprobs: {
+                content: [
+                  {
+                    token: "interrupt",
+                    logprob: -0.01,
+                    top_logprobs: [
+                      { token: "interrupt", logprob: -0.01 },
+                      { token: "continue", logprob: -4.5 },
+                    ],
+                  },
+                ],
+              },
+            },
+          ],
+          usage: { prompt_tokens: 12, completion_tokens: 6, total_tokens: 18 },
+        }),
+      );
+      return;
+    }
+    if (body.model.endsWith("supervisor-takeover-student")) {
+      response.writeHead(200, { "content-type": "text/event-stream" });
+      response.write(
+        `data: ${JSON.stringify({
+          id: "chatcmpl-conformance-supervised-student",
+          object: "chat.completion.chunk",
+          created: 1,
+          model: body.model,
+          choices: [
+            {
+              index: 0,
+              delta: { role: "assistant", content: "Paris is in Germany." },
+              finish_reason: null,
+            },
+          ],
+        })}\n\n`,
+      );
+      setTimeout(() => {
+        if (response.destroyed) return;
+        response.end("data: [DONE]\n\n");
+      }, 250);
+      return;
+    }
+    if (body.model.endsWith("supervisor-takeover-teacher")) {
+      sendFixtureSse(response, [
+        {
+          id: "chatcmpl-conformance-supervised-teacher",
+          object: "chat.completion.chunk",
+          created: 1,
+          model: body.model,
+          choices: [
+            {
+              index: 0,
+              delta: { role: "assistant", content: " Correction: Paris is in France." },
+              finish_reason: null,
+            },
+          ],
+        },
+        {
+          id: "chatcmpl-conformance-supervised-teacher",
+          object: "chat.completion.chunk",
+          created: 1,
+          model: body.model,
+          choices: [{ index: 0, delta: {}, finish_reason: "stop" }],
+          usage: { prompt_tokens: 20, completion_tokens: 7, total_tokens: 27 },
+        },
+      ]);
+      return;
+    }
     if (serialized.includes("Begin a detailed response")) {
       response.writeHead(200, { "content-type": "text/event-stream" });
       response.write(
@@ -1037,6 +1117,88 @@ test("Pi and Vercel execute the identical frozen conformance inputs", async () =
       return;
     }
 
+    if (body.model.includes("long-chat-compaction")) {
+      const longCall = (longCallsByModel.get(body.model) ?? 0) + 1;
+      longCallsByModel.set(body.model, longCall);
+      if (longCall === 1) {
+        response.writeHead(400, { "content-type": "application/json" });
+        response.end(
+          JSON.stringify({
+            error: {
+              message: "maximum context length exceeded",
+              type: "invalid_request_error",
+              code: "context_length_exceeded",
+            },
+          }),
+        );
+        return;
+      }
+      sendFixtureSse(response, [
+        {
+          id: `chatcmpl-conformance-long-${longCall}`,
+          object: "chat.completion.chunk",
+          created: 1,
+          model: body.model,
+          choices: [
+            {
+              index: 0,
+              delta: {
+                role: "assistant",
+                content:
+                  longCall === 2
+                    ? "The desktop owns presentation and consent; the runtime owns ordered events; the evidence ledger owns attribution."
+                    : "The owners are the desktop, runtime, and evidence ledger.",
+              },
+              finish_reason: null,
+            },
+          ],
+        },
+        {
+          id: `chatcmpl-conformance-long-${longCall}`,
+          object: "chat.completion.chunk",
+          created: 1,
+          model: body.model,
+          choices: [{ index: 0, delta: {}, finish_reason: "stop" }],
+          usage: { prompt_tokens: 300, completion_tokens: 15, total_tokens: 315 },
+        },
+      ]);
+      return;
+    }
+
+    if (serialized.includes("durable fact")) {
+      const requests = restartRequestsByModel.get(body.model) ?? [];
+      requests.push(body);
+      restartRequestsByModel.set(body.model, requests);
+      const first = requests.length === 1;
+      sendFixtureSse(response, [
+        {
+          id: `chatcmpl-conformance-restart-${requests.length}`,
+          object: "chat.completion.chunk",
+          created: 1,
+          model: body.model,
+          choices: [
+            {
+              index: 0,
+              delta: {
+                role: "assistant",
+                content: first ? "The durable fact is seven." : "The fact remains seven.",
+              },
+              finish_reason: null,
+            },
+          ],
+        },
+        {
+          id: `chatcmpl-conformance-restart-${requests.length}`,
+          object: "chat.completion.chunk",
+          created: 1,
+          model: body.model,
+          choices: [{ index: 0, delta: {}, finish_reason: "stop" }],
+          usage: { prompt_tokens: first ? 6 : 12, completion_tokens: 5, total_tokens: first ? 11 : 17 },
+        },
+      ]);
+      return;
+    }
+
     if (serialized.includes("Read the local runtime status")) {
       if (serialized.includes("healthy")) {
         sendFixtureSse(response, [
@@ -1135,24 +1297,61 @@ test("Pi and Vercel execute the identical frozen conformance inputs", async () =
   const baseUrl = `http://127.0.0.1:${address.port}/v1`;
   const toolUrl = `http://127.0.0.1:${address.port}/tool`;
 
-  const adapter = (id, runtimeBackend, run) => ({
+  const adapter = (id, runtimeBackend, run, capabilities = []) => ({
     id,
+    capabilities,
     async run(input) {
       const events = [];
       const controller = new AbortController();
+      const request = {
+        run_id: `run-conformance-${id}-${input.fixture_id}`,
+        session_id: `session-conformance-${id}-${input.fixture_id}`,
+        base_url: baseUrl,
+        model: `conformance-${id}-${input.fixture_id}`,
+        role: input.role,
+        messages: input.messages,
+        tools: input.tools,
+        ...(input.tools.length > 0 ? { tool_executor_url: toolUrl } : {}),
+        max_tool_rounds: 2,
+        max_output_tokens: input.fixture_id === "long-chat-compaction" ? 128 : 8_192,
+        context_window_tokens: input.fixture_id === "long-chat-compaction" ? 1_024 : 32_768,
+        runtime_backend: runtimeBackend,
+        ...(input.fixture_id === "supervisor-takeover"
+          ? {
+              supervision: {
+                student: {
+                  base_url: baseUrl,
+                  model: `conformance-${id}-supervisor-takeover-student`,
+                },
+                supervisor: {
+                  base_url: baseUrl,
+                  model: `conformance-${id}-supervisor-takeover-judge`,
+                  system_prompt: "Interrupt factual errors in the student's partial answer.",
+                  max_output_tokens: 24,
+                },
+                teacher: {
+                  base_url: baseUrl,
+                  model: `conformance-${id}-supervisor-takeover-teacher`,
+                },
+                boundary_chars: 10,
+                max_nudges: 0,
+              },
+            }
+          : {}),
+      };
+      if (input.fixture_id === "restart-resume") {
+        await run(
+          {
+            ...request,
+            run_id: `${request.run_id}-prime`,
+            messages: [input.messages[0]],
+            emit_input: false,
+          },
+          () => {},
+        );
+      }
       await run(
-        {
-          run_id: `run-conformance-${id}-${input.fixture_id}`,
-          session_id: `session-conformance-${id}-${input.fixture_id}`,
-          base_url: baseUrl,
-          model: `conformance-${id}`,
-          role: input.role,
-          messages: input.messages,
-          tools: input.tools,
-          ...(input.tools.length > 0 ? { tool_executor_url: toolUrl } : {}),
-          max_tool_rounds: 2,
-          runtime_backend: runtimeBackend,
-        },
+        request,
         (event) => {
           events.push(event);
           if (input.fixture_id === "cancellation" && event.event === "delta") {
@@ -1169,7 +1368,7 @@ test("Pi and Vercel execute the identical frozen conformance inputs", async () =
   try {
     const reports = [];
     for (const candidate of [
-      adapter("pi", "pi", runPiConversation),
+      adapter("pi", "pi", runPiConversation, ["compaction", "restart", "supervision"]),
       adapter("vercel", "vercel", runVercelConversation),
     ]) {
       reports.push(await runConversationAdapterConformance(candidate));
@@ -1180,7 +1379,7 @@ test("Pi and Vercel execute the identical frozen conformance inputs", async () =
       reports.every(
         (report) =>
           report.scenarios.map((scenario) => scenario.id).join(",") ===
-          "basic-chat,offline-image,tool-round,malformed-tool-call,cancellation",
+          "basic-chat,offline-image,tool-round,malformed-tool-call,supervisor-takeover,long-chat-compaction,restart-resume,cancellation",
       ),
     );
     assert.ok(
@@ -1191,7 +1390,74 @@ test("Pi and Vercel execute the identical frozen conformance inputs", async () =
       ),
     );
     assert.equal(toolRequests.length, 2);
-    assert.ok(providerRequests.every((request) => request.stream === true));
+    assert.ok(
+      providerRequests
+        .filter((request) => !request.model.endsWith("supervisor-takeover-judge"))
+        .every((request) => request.stream === true),
+    );
+    assert.ok(
+      providerRequests.some(
+        (request) =>
+          request.model.endsWith("supervisor-takeover-judge") && request.stream === false,
+      ),
+    );
+    assert.equal(reports[0].eligible_for_promotion, true);
+    assert.equal(reports[1].complete, false);
+    assert.equal(
+      reports[1].scenarios.find((scenario) => scenario.id === "long-chat-compaction")?.status,
+      "not_applicable",
+    );
+    assert.equal(
+      reports[1].scenarios.find((scenario) => scenario.id === "restart-resume")?.status,
+      "not_applicable",
+    );
+    assert.equal(
+      reports[1].scenarios.find((scenario) => scenario.id === "supervisor-takeover")?.status,
+      "not_applicable",
+    );
+    const longChat = traces.get("pi:long-chat-compaction");
+    assert.ok(longChat);
+    assert.equal(longChat.some((event) => event.event === "error"), false);
+    const boundary = longChat.find((event) => event.event === "compaction_boundary");
+    assert.ok(boundary);
+    assert.ok(boundary.data.source_message_count >= boundary.data.retained_message_count);
+    assert.ok(boundary.data.estimated_tokens_before > boundary.data.estimated_tokens_after);
+    assert.match(boundary.data.summary_sha256, /^[0-9a-f]{64}$/);
+    assert.ok((longCallsByModel.get("conformance-pi-long-chat-compaction") ?? 0) >= 3);
+    assert.equal(
+      longChat
+        .filter((event) => event.event === "delta")
+        .map((event) => event.data.text)
+        .join(""),
+      "The owners are the desktop, runtime, and evidence ledger.",
+    );
+    const longUsages = longChat.filter((event) => event.event === "usage");
+    assert.equal(longUsages[0].data.source, "unavailable");
+    assert.equal(longUsages[0].data.complete, false);
+    const longUsage = longUsages.at(-1);
+    assert.ok(longUsage);
+    assert.equal(longUsage.data.source, "provider");
+    assert.equal(longUsage.data.complete, true);
+    const restartRequests = restartRequestsByModel.get("conformance-pi-restart-resume");
+    assert.equal(restartRequests?.length, 2);
+    assert.match(JSON.stringify(restartRequests[1].messages), /durable fact is seven/i);
+    assert.match(JSON.stringify(restartRequests[1].messages), /runtime restarts/i);
+    const takeover = traces.get("pi:supervisor-takeover");
+    assert.ok(takeover);
+    assert.equal(
+      takeover
+        .filter((event) => event.event === "delta")
+        .map((event) => event.data.text)
+        .join(""),
+      "Paris is in Germany. Correction: Paris is in France.",
+    );
+    const verdict = takeover.find((event) => event.event === "supervisor_verdict");
+    const interruption = takeover.find((event) => event.event === "student_interruption");
+    const continuation = takeover.find((event) => event.event === "teacher_continuation");
+    assert.equal(verdict.data.verdict, "interrupt");
+    assert.equal(verdict.data.probability_kind, "logprob");
+    assert.equal(interruption.data.marker_id, verdict.data.marker_id);
+    assert.equal(continuation.data.marker_id, verdict.data.marker_id);
     for (const id of ["pi", "vercel"]) {
       const malformed = traces.get(`${id}:malformed-tool-call`);
       assert.ok(malformed);
@@ -1233,6 +1499,9 @@ test("packaged immutable suite passes hashes and canonical trace gates", () => {
     "offline-image",
     "tool-round",
     "malformed-tool-call",
+    "supervisor-takeover",
+    "long-chat-compaction",
+    "restart-resume",
     "cancellation",
   ]);
   assert.equal(report.gates.length, 5);

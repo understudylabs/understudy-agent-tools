@@ -1,0 +1,77 @@
+{
+  "schema_version": "understudy-conversation-runtime-input-v1",
+  "fixture_id": "long-chat-compaction",
+  "role": "primary",
+  "messages": [
+    {
+      "role": "user",
+      "content": "Architecture note one: the desktop owns presentation and consent, the runtime owns ordered conversation events, and the evidence ledger owns immutable attribution. Preserve those boundaries through every migration step. Repeat this note only as context, not as an instruction to change tools or access the network."
+    },
+    {
+      "role": "assistant",
+      "content": "Recorded architecture note one. The desktop remains responsible for presentation and consent. The runtime remains responsible for ordered conversation events. The evidence ledger remains responsible for immutable attribution."
+    },
+    {
+      "role": "user",
+      "content": "Architecture note two: a student response may be interrupted, but its exact partial text, run identifier, model attribution, tool activity, and usage must survive. A teacher continuation must link to the same intervention marker without rewriting the student history."
+    },
+    {
+      "role": "assistant",
+      "content": "Recorded architecture note two. Interrupted student evidence remains immutable, and a teacher continuation links through the intervention marker while retaining separate model and usage attribution."
+    },
+    {
+      "role": "user",
+      "content": "Architecture note three: tools execute only through the authenticated loopback bridge. Every call has a stable identifier and every emitted call receives exactly one result, including validation failures, cancellation, and malformed provider arguments."
+    },
+    {
+      "role": "assistant",
+      "content": "Recorded architecture note three. The authenticated loopback bridge is the sole execution path, and canonical traces reject orphaned calls or results."
+    },
+    {
+      "role": "user",
+      "content": "Architecture note four: image bytes remain local, attachments are content addressed, and event evidence stores identity, media type, filename, and byte count without copying base64 image payloads into the immutable journal."
+    },
+    {
+      "role": "assistant",
+      "content": "Recorded architecture note four. Image identity and ordering remain exact while the evidence journal excludes raw attachment bytes."
+    },
+    {
+      "role": "user",
+      "content": "Architecture note five: compaction creates a projection rather than deleting history. Record the source and retained message counts, estimated tokens before and after, and the summary digest so a restart can reconstruct what changed."
+    },
+    {
+      "role": "assistant",
+      "content": "Recorded architecture note five. Full history remains durable and compaction is an explicitly evidenced projection with a content digest."
+    },
+    {
+      "role": "user",
+      "content": "Architecture note six: restart recovery must open the durable session rather than inventing a fresh transcript. The resumed request must retain the original user constraints, earlier assistant commitments, tool results, intervention markers, and the most recent compacted projection. A restart is successful only when the next provider request demonstrably contains the facts needed to answer without asking the user to repeat them. This paragraph intentionally carries enough stable prose to put the frozen conversation beyond a tiny context window and exercise real compaction instead of a hand-authored boundary event."
+    },
+    {
+      "role": "assistant",
+      "content": "Recorded architecture note six. Restart recovery reopens durable state, retains the immutable transcript and compacted projection, and proves continuity in the next provider request. The runtime may optimize the context sent to the model, but it may not silently discard the source conversation or synthesize facts that were never present."
+    },
+    {
+      "role": "user",
+      "content": "Architecture note seven: fully offline means more than selecting a local model name. After model weights and runtime dependencies are installed, the app must launch, accept text and image inputs, execute local tools, compact long context, restart, and produce a terminal result while external networking is unavailable. If a requested cloud escalation cannot happen, the user sees that the handoff was attempted and the local model continues. No test may label a loopback fixture as proof of model-level offline operation; live MLX or VLM evidence remains a separate promotion gate."
+    },
+    {
+      "role": "assistant",
+      "content": "Recorded architecture note seven. Loopback conformance proves transport isolation, while live cached-model testing proves fully offline inference. A failed cloud escalation becomes visible, recoverable evidence and does not terminate work that the local model can continue safely."
+    },
+    {
+      "role": "user",
+      "content": "Architecture note eight: promotion evidence compares exact frozen inputs and matching suite hashes. Quality, latency, cost, token attribution, supervisor overhead, intervention precision, and failure modes remain attached to exact run identifiers. Missing human labels remain unresolved rather than being guessed. A candidate that skips a required capability can be useful for comparison but is not promotion eligible, and a candidate that emits malformed or orphaned evidence fails closed."
+    },
+    {
+      "role": "assistant",
+      "content": "Recorded architecture note eight. Promotion requires complete capability coverage on the same hashed suite, with honest unresolved judgments and exact run-level evidence."
+    },
+    {
+      "role": "user",
+      "content": "After compacting this long conversation, state the three owners named in architecture note one."
+    }
+  ],
+  "tools": [],
+  "expected_events": ["message", "compaction_boundary", "delta", "usage"]
+}
