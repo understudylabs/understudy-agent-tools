@@ -186,7 +186,9 @@ test("cache health stays quiet until supported evidence exists and alerts only o
 
 test("runtime cache-health command reads the private Pi session ledger", async () => {
   const root = mkdtempSync(join(tmpdir(), "understudy-cache-health-cli-"));
-  const sessions = join(root, "sessions");
+  // Pi partitions public session ids by hash, then lets its session manager
+  // create a nested sessions ledger below that partition.
+  const sessions = join(root, "pi-sessions", "fixture-session-hash", "sessions");
   mkdirSync(sessions, { recursive: true });
   const rows = [
     { input: 100, cacheRead: 0, cacheWrite: 900 },

@@ -307,7 +307,7 @@ export function registerRuntimeCommand(program: Command): void {
     .option("--json", "Output JSON")
     .action(function (this: Command) {
       const health = cacheHealthFromSessionRoot(
-        join(conversationRuntimeHome(), "sessions"),
+        join(conversationRuntimeHome(), "pi-sessions"),
       );
       const score = health.score_pct === null ? "unavailable" : `${health.score_pct.toFixed(1)}%`;
       emit(
