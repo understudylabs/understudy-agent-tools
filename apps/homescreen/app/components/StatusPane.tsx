@@ -8,6 +8,7 @@ type ToolStatus = {
   id: string;
   label: string;
   installed: boolean;
+  update_available: boolean;
   command: string;
   detail: string;
 };
@@ -440,10 +441,10 @@ export function StatusPane({ status }: { status: StatusController }) {
                   ? bootstrap.understudy.detail || bootstrap.understudy.command
                   : "Installs the understudy CLI and public agent skills."
               }
-              done={bootstrap.understudy.installed}
+              done={bootstrap.understudy.installed && !bootstrap.understudy.update_available}
               busy={action === "install_understudy_agent_tools"}
-              action={bootstrap.understudy.installed ? undefined : () => runInstall("install_understudy_agent_tools")}
-              actionLabel="Install"
+              action={bootstrap.understudy.installed && !bootstrap.understudy.update_available ? undefined : () => runInstall("install_understudy_agent_tools")}
+              actionLabel={bootstrap.understudy.update_available ? "Update" : "Install"}
             />
             <SetupRow
               title="Moraine traces"
