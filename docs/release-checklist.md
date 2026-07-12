@@ -14,9 +14,10 @@ git ls-files
 - versions bumped **together** in `package.json`, `.claude-plugin/plugin.json`,
   `.claude-plugin/marketplace.json`, `.cursor-plugin/plugin.json`,
   `.codex-plugin/plugin.json`, `.agents/plugins/marketplace.json`,
-  `.opencode/adapter.json`, and `.hermes/adapter.json` on any release that changes
-  the skill catalog or CLI surface — installed adapters have no other staleness
-  signal; `understudy doctor --json` fails if they drift;
+  `.opencode/adapter.json`, `.hermes/adapter.json`, and `.devin/adapter.json` on
+  any release that changes the skill catalog or CLI surface — installed
+  adapters have no other staleness signal; `understudy doctor --json` fails if
+  they drift;
 - adapter install and onboarding parity checked across Claude Code, Cursor,
   Codex, OpenCode, and Hermes Agent: `install.sh --agents ...`, `understudy
   platforms`, and `skills/install-agent-adapter/reference.md` describe the same
