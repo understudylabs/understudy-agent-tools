@@ -6,7 +6,7 @@ import { fileURLToPath } from "node:url";
 import { pidAlive, probeDaemonHealth } from "./daemon.js";
 
 export const DESKTOP_API_SCHEMA = "understudy.desktop_api.v2";
-export const DESKTOP_API_OPENAPI_VERSION = "2.0.0";
+export const DESKTOP_API_OPENAPI_VERSION = "2.1.0";
 
 export function desktopApiContractPath(): string {
   return fileURLToPath(
@@ -126,6 +126,23 @@ export async function desktopApiFetch(
     headers.set("content-type", "application/json");
   }
   return fetch(new URL(path, capability.baseUrl), { ...init, headers });
+}
+
+/**
+ * Prefer the stable v1 control-plane route and fall back to its unversioned
+ * predecessor for the single native-fallback release. The legacy routes use
+ * the same handlers and payloads; this bridge can be deleted once desktop
+ * 0.3.2 is the minimum supported version.
+ */
+export async function desktopApiFetchCompat(
+  capability: DesktopApiCapability,
+  versionedPath: string,
+  legacyPath: string,
+  init: RequestInit = {},
+): Promise<Response> {
+  const response = await desktopApiFetch(capability, versionedPath, init);
+  if (response.status !== 404) return response;
+  return desktopApiFetch(capability, legacyPath, init);
 }
 
 export async function responseError(response: Response): Promise<Error> {

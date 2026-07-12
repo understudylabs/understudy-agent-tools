@@ -6,7 +6,7 @@ import { randomUUID } from "node:crypto";
 import {
   desktopApiContractPath,
   desktopApiFetch,
-  desktopMcpCall,
+  desktopApiFetchCompat,
   readDesktopApiContract,
   requireDesktopApi,
   responseError,
@@ -39,6 +39,17 @@ function printStructured(value: unknown, json: boolean, summary?: string): void 
   } else {
     process.stdout.write(`${summary}\n`);
   }
+}
+
+async function desktopControlJson(
+  capability: Awaited<ReturnType<typeof requireDesktopApi>>,
+  versionedPath: string,
+  legacyPath: string,
+  init: RequestInit = {},
+): Promise<unknown> {
+  const response = await desktopApiFetchCompat(capability, versionedPath, legacyPath, init);
+  if (!response.ok) throw await responseError(response);
+  return response.json();
 }
 
 function imageMediaType(path: string): string {
@@ -142,9 +153,13 @@ export function registerDesktopCommand(program: Command): void {
       if (opts.json || this.optsWithGlobals<{ json?: boolean }>().json) {
         process.stdout.write(`${JSON.stringify(value, null, 2)}\n`);
       } else {
-        const row = value as { schema_version?: string; event_schema?: string };
+        const row = value as {
+          schema_version?: string;
+          api_version?: string;
+          event_schema?: string;
+        };
         process.stdout.write(
-          `desktop API ${row.schema_version ?? "unknown"} at ${capability.baseUrl}\n` +
+          `desktop API ${row.api_version ?? row.schema_version ?? "unknown"} at ${capability.baseUrl}\n` +
           `events: ${row.event_schema ?? "unknown"}\n`,
         );
       }
@@ -156,7 +171,7 @@ export function registerDesktopCommand(program: Command): void {
     .option("--json", "Output JSON")
     .action(async function (this: Command, opts: { json?: boolean }) {
       const capability = await requireDesktopApi();
-      const value = await desktopMcpCall(capability, "status");
+      const value = await desktopControlJson(capability, "/v1/status", "/api/status");
       printStructured(value, jsonRequested(this, opts.json));
     });
 
@@ -167,7 +182,7 @@ export function registerDesktopCommand(program: Command): void {
     .option("--json", "Output JSON")
     .action(async function (this: Command, opts: { json?: boolean }) {
       const capability = await requireDesktopApi();
-      const value = await desktopMcpCall(capability, "list_models");
+      const value = await desktopControlJson(capability, "/v1/models", "/api/models");
       printStructured(value, jsonRequested(this, opts.json));
     });
   models
@@ -176,7 +191,11 @@ export function registerDesktopCommand(program: Command): void {
     .option("--json", "Output JSON")
     .action(async function (this: Command, opts: { json?: boolean }) {
       const capability = await requireDesktopApi();
-      const value = await desktopMcpCall(capability, "list_snapshot_models");
+      const value = await desktopControlJson(
+        capability,
+        "/v1/models/catalog",
+        "/api/snapshots",
+      );
       printStructured(value, jsonRequested(this, opts.json));
     });
 
@@ -186,7 +205,7 @@ export function registerDesktopCommand(program: Command): void {
     .option("--json", "Output JSON")
     .action(async function (this: Command, opts: { json?: boolean }) {
       const capability = await requireDesktopApi();
-      const value = await desktopMcpCall(capability, "residency");
+      const value = await desktopControlJson(capability, "/v1/residency", "/api/residency");
       printStructured(value, jsonRequested(this, opts.json));
     });
   slots
@@ -194,7 +213,12 @@ export function registerDesktopCommand(program: Command): void {
     .option("--json", "Output JSON")
     .action(async function (this: Command, opts: { json?: boolean }) {
       const capability = await requireDesktopApi();
-      const value = await desktopMcpCall(capability, "add_slot");
+      const value = await desktopControlJson(
+        capability,
+        "/v1/residency/slots",
+        "/api/residency/slots",
+        { method: "POST" },
+      );
       printStructured(value, jsonRequested(this, opts.json), "added residency slot");
     });
   slots
@@ -209,16 +233,21 @@ export function registerDesktopCommand(program: Command): void {
       opts: { json?: boolean },
     ) {
       const capability = await requireDesktopApi();
-      const value = await desktopMcpCall(capability, "assign_slot", {
-        slot_id: slotId,
-        model_id: modelId,
-      });
+      const value = await desktopControlJson(
+        capability,
+        "/v1/residency/assign",
+        "/api/residency/assign",
+        {
+          method: "POST",
+          body: JSON.stringify({ slot_id: slotId, model_id: modelId }),
+        },
+      );
       printStructured(value, jsonRequested(this, opts.json), `assigned slot ${slotId}`);
     });
-  for (const [verb, tool, past] of [
-    ["warm", "warm_slot", "warming"],
-    ["cool", "cool_slot", "cooled"],
-    ["remove", "remove_slot", "removed"],
+  for (const [verb, past] of [
+    ["warm", "warming"],
+    ["cool", "cooled"],
+    ["remove", "removed"],
   ] as const) {
     slots
       .command(verb)
@@ -226,7 +255,12 @@ export function registerDesktopCommand(program: Command): void {
       .option("--json", "Output JSON")
       .action(async function (this: Command, slotId: number, opts: { json?: boolean }) {
         const capability = await requireDesktopApi();
-        const value = await desktopMcpCall(capability, tool, { slot_id: slotId });
+        const value = await desktopControlJson(
+          capability,
+          `/v1/residency/${verb}`,
+          `/api/residency/${verb}`,
+          { method: "POST", body: JSON.stringify({ slot_id: slotId }) },
+        );
         printStructured(value, jsonRequested(this, opts.json), `${past} slot ${slotId}`);
       });
   }
@@ -237,7 +271,7 @@ export function registerDesktopCommand(program: Command): void {
     .option("--json", "Output JSON")
     .action(async function (this: Command, opts: { json?: boolean }) {
       const capability = await requireDesktopApi();
-      const value = await desktopMcpCall(capability, "list_model_downloads");
+      const value = await desktopControlJson(capability, "/v1/downloads", "/api/downloads");
       printStructured(value, jsonRequested(this, opts.json));
     });
   downloads
@@ -246,14 +280,17 @@ export function registerDesktopCommand(program: Command): void {
     .option("--json", "Output JSON")
     .action(async function (this: Command, modelId: string, opts: { json?: boolean }) {
       const capability = await requireDesktopApi();
-      const value = await desktopMcpCall(capability, "start_model_download", {
-        model_id: modelId,
-      });
+      const value = await desktopControlJson(
+        capability,
+        "/v1/downloads",
+        "/api/downloads",
+        { method: "POST", body: JSON.stringify({ model_id: modelId }) },
+      );
       printStructured(value, jsonRequested(this, opts.json), `started download for ${modelId}`);
     });
-  for (const [verb, tool, past] of [
-    ["status", "model_download_status", "download"],
-    ["cancel", "cancel_model_download", "cancelled download"],
+  for (const [verb, past] of [
+    ["status", "download"],
+    ["cancel", "cancelled download"],
   ] as const) {
     downloads
       .command(verb)
@@ -261,7 +298,13 @@ export function registerDesktopCommand(program: Command): void {
       .option("--json", "Output JSON")
       .action(async function (this: Command, downloadId: string, opts: { json?: boolean }) {
         const capability = await requireDesktopApi();
-        const value = await desktopMcpCall(capability, tool, { download_id: downloadId });
+        const suffix = verb === "cancel" ? "/cancel" : "";
+        const value = await desktopControlJson(
+          capability,
+          `/v1/downloads/${encodeURIComponent(downloadId)}${suffix}`,
+          `/api/downloads/${encodeURIComponent(downloadId)}${suffix}`,
+          verb === "cancel" ? { method: "POST" } : {},
+        );
         printStructured(value, jsonRequested(this, opts.json), `${past} ${downloadId}`);
       });
   }

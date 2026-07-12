@@ -487,8 +487,10 @@ runtime and exact `run_id`; the CLI does not drive UI controls or create a
 second chat harness. `understudy desktop contract` prints the packaged OpenAPI
 3.1 contract even when Desktop is not running, so agents can plan calls without
 probing private implementation routes or handling the bearer token themselves.
-Model inventory, download, and residency commands reuse Desktop's authenticated
-MCP tools; they do not duplicate model-process ownership inside the CLI.
+Model inventory, download, and residency commands use the versioned Desktop
+REST contract and fall back to the equivalent legacy routes for one release;
+they do not duplicate model-process ownership inside the CLI. MCP remains an
+adapter for agents that prefer tool calls, not the CLI's hidden transport.
 
 ## The skill tree
 

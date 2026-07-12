@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Understudy Desktop Agent API",
-    "version": "2.0.0",
+    "version": "2.1.0",
     "description": "Authenticated loopback API for agents operating a running Understudy Desktop app. The desktop capability file supplies the ephemeral base URL and bearer token. Prompts, images, traces, and model outputs remain local unless a caller explicitly selects a remote route."
   },
   "servers": [
@@ -36,6 +36,340 @@
                 }
               }
             }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          }
+        }
+      }
+    },
+    "/v1/status": {
+      "get": {
+        "operationId": "desktopStatus",
+        "summary": "Inspect desktop, local runtime, warm models, and repair state",
+        "responses": {
+          "200": {
+            "description": "Current desktop status",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StatusDocument"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          }
+        }
+      }
+    },
+    "/v1/models": {
+      "get": {
+        "operationId": "desktopModels",
+        "summary": "List local model snapshots available to Desktop",
+        "responses": {
+          "200": {
+            "description": "Installed local models",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ModelList"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          }
+        }
+      }
+    },
+    "/v1/models/catalog": {
+      "get": {
+        "operationId": "desktopModelCatalog",
+        "summary": "List the certified model snapshot catalog with local cache state",
+        "responses": {
+          "200": {
+            "description": "Certified snapshot catalog",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ModelList"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          }
+        }
+      }
+    },
+    "/v1/residency": {
+      "get": {
+        "operationId": "desktopResidency",
+        "summary": "Inspect local model residency and unified-memory budget",
+        "responses": {
+          "200": {
+            "description": "Residency snapshot",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResidencySnapshot"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          }
+        }
+      }
+    },
+    "/v1/residency/slots": {
+      "post": {
+        "operationId": "desktopResidencyAddSlot",
+        "summary": "Add an empty local model residency slot",
+        "responses": {
+          "200": {
+            "description": "Slot added",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SlotOperationResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          }
+        }
+      }
+    },
+    "/v1/residency/assign": {
+      "post": {
+        "operationId": "desktopResidencyAssign",
+        "summary": "Assign an installed model to a residency slot",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AssignSlotRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Model assigned",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SlotOperationResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          }
+        }
+      }
+    },
+    "/v1/residency/warm": {
+      "post": {
+        "operationId": "desktopResidencyWarm",
+        "summary": "Warm the assigned model asynchronously",
+        "requestBody": {
+          "$ref": "#/components/requestBodies/SlotAction"
+        },
+        "responses": {
+          "200": {
+            "description": "Warm-up started",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SlotOperationResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          }
+        }
+      }
+    },
+    "/v1/residency/cool": {
+      "post": {
+        "operationId": "desktopResidencyCool",
+        "summary": "Stop the model process in a residency slot",
+        "requestBody": {
+          "$ref": "#/components/requestBodies/SlotAction"
+        },
+        "responses": {
+          "200": {
+            "description": "Slot cooled",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SlotOperationResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          }
+        }
+      }
+    },
+    "/v1/residency/remove": {
+      "post": {
+        "operationId": "desktopResidencyRemove",
+        "summary": "Remove a residency slot",
+        "requestBody": {
+          "$ref": "#/components/requestBodies/SlotAction"
+        },
+        "responses": {
+          "200": {
+            "description": "Slot removed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SlotOperationResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          }
+        }
+      }
+    },
+    "/v1/downloads": {
+      "get": {
+        "operationId": "desktopDownloads",
+        "summary": "List active and recent model downloads",
+        "responses": {
+          "200": {
+            "description": "Download registry",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DownloadList"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          }
+        }
+      },
+      "post": {
+        "operationId": "desktopDownloadStart",
+        "summary": "Start downloading one certified model snapshot",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DownloadStartRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Download started",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DownloadStartResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          }
+        }
+      }
+    },
+    "/v1/downloads/{download_id}": {
+      "get": {
+        "operationId": "desktopDownloadStatus",
+        "summary": "Inspect one exact model download",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/DownloadId"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Download progress",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DownloadProgress"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      }
+    },
+    "/v1/downloads/{download_id}/cancel": {
+      "post": {
+        "operationId": "desktopDownloadCancel",
+        "summary": "Cancel one exact model download",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/DownloadId"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Cancelled download state",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DownloadProgress"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
           },
           "401": {
             "$ref": "#/components/responses/Unauthorized"
@@ -221,6 +555,28 @@
         "schema": {
           "$ref": "#/components/schemas/AgentId"
         }
+      },
+      "DownloadId": {
+        "name": "download_id",
+        "in": "path",
+        "required": true,
+        "schema": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        }
+      }
+    },
+    "requestBodies": {
+      "SlotAction": {
+        "required": true,
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/SlotActionRequest"
+            }
+          }
+        }
       }
     },
     "schemas": {
@@ -234,6 +590,7 @@
         "type": "object",
         "required": [
           "schema_version",
+          "api_version",
           "event_schema",
           "runtime",
           "features",
@@ -242,6 +599,9 @@
         "properties": {
           "schema_version": {
             "const": "understudy.desktop_api.v2"
+          },
+          "api_version": {
+            "const": "2.1.0"
           },
           "event_schema": {
             "const": "understudy-conversation-runtime-event-v1"
@@ -264,6 +624,224 @@
           }
         },
         "additionalProperties": true
+      },
+      "StatusDocument": {
+        "type": "object",
+        "description": "Desktop status is forward-compatible; clients should inspect only fields they understand.",
+        "additionalProperties": true
+      },
+      "ModelList": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "required": [
+            "id"
+          ],
+          "properties": {
+            "id": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          "additionalProperties": true
+        }
+      },
+      "ResidencySnapshot": {
+        "type": "object",
+        "required": [
+          "slots",
+          "used_gb",
+          "usable_gb"
+        ],
+        "properties": {
+          "slots": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": [
+                "id",
+                "state"
+              ],
+              "properties": {
+                "id": {
+                  "type": "integer",
+                  "minimum": 1
+                },
+                "model_id": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "state": {
+                  "type": "string",
+                  "enum": [
+                    "running",
+                    "loading",
+                    "stopped",
+                    "error"
+                  ]
+                }
+              },
+              "additionalProperties": true
+            }
+          },
+          "used_gb": {
+            "type": "number",
+            "minimum": 0
+          },
+          "usable_gb": {
+            "type": "number",
+            "minimum": 0
+          }
+        },
+        "additionalProperties": true
+      },
+      "SlotActionRequest": {
+        "type": "object",
+        "required": [
+          "slot_id"
+        ],
+        "properties": {
+          "slot_id": {
+            "type": "integer",
+            "minimum": 1
+          }
+        },
+        "additionalProperties": false
+      },
+      "AssignSlotRequest": {
+        "type": "object",
+        "required": [
+          "slot_id",
+          "model_id"
+        ],
+        "properties": {
+          "slot_id": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "model_id": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "additionalProperties": false
+      },
+      "SlotOperationResponse": {
+        "type": "object",
+        "required": [
+          "ok",
+          "slot_id"
+        ],
+        "properties": {
+          "ok": {
+            "const": true
+          },
+          "slot_id": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "state": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": true
+      },
+      "DownloadStartRequest": {
+        "type": "object",
+        "required": [
+          "model_id"
+        ],
+        "properties": {
+          "model_id": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "additionalProperties": false
+      },
+      "DownloadStartResponse": {
+        "type": "object",
+        "required": [
+          "ok",
+          "download_id",
+          "model_id"
+        ],
+        "properties": {
+          "ok": {
+            "const": true
+          },
+          "download_id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "model_id": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "additionalProperties": false
+      },
+      "DownloadProgress": {
+        "type": "object",
+        "required": [
+          "id",
+          "model_id",
+          "status"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "model_id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "running",
+              "done",
+              "error",
+              "cancelled"
+            ]
+          },
+          "downloaded_bytes": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "total_bytes": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 0
+          },
+          "error": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "additionalProperties": true
+      },
+      "DownloadList": {
+        "type": "object",
+        "required": [
+          "downloads"
+        ],
+        "properties": {
+          "downloads": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/DownloadProgress"
+            }
+          }
+        },
+        "additionalProperties": false
       },
       "ConversationTurnRequest": {
         "type": "object",
@@ -555,14 +1133,13 @@
     "recommended_adapter": "understudy desktop"
   },
   "x-understudy-extension-surfaces": {
-    "available_via_authenticated_mcp_and_cli": [
+    "available_via_versioned_rest_mcp_and_cli": [
       "runtime status",
       "model inventory and certified catalog",
       "model download lifecycle",
       "residency slot lifecycle"
     ],
     "not_yet_versioned_in_v2_rest": [
-      "model catalog and residency lifecycle",
       "conversation inspect, branch, compact, and resume",
       "runtime and CLI diagnostics with repair actions",
       "capture and correction-pair export",

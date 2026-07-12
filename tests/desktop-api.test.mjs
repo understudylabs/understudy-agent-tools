@@ -16,6 +16,7 @@ let port;
 let lastTurn;
 let lastFeedback;
 const mcpCalls = [];
+const controlCalls = [];
 
 function runCli(args) {
   return new Promise((accept, reject) => {
@@ -65,8 +66,60 @@ before(async () => {
       response.writeHead(200, { "content-type": "application/json" });
       response.end(JSON.stringify({
         schema_version: "understudy.desktop_api.v2",
+        api_version: "2.1.0",
         event_schema: "understudy-conversation-runtime-event-v1",
       }));
+      return;
+    }
+    if (request.url === "/v1/status") {
+      controlCalls.push({ method: request.method, url: request.url });
+      response.writeHead(404);
+      response.end("old desktop without versioned control routes");
+      return;
+    }
+    if (request.url === "/api/status") {
+      controlCalls.push({ method: request.method, url: request.url });
+      response.writeHead(200, { "content-type": "application/json" });
+      response.end(JSON.stringify({ app: "running", repair_required: false }));
+      return;
+    }
+    const controlValues = {
+      "GET /v1/models": [{ id: "understudy-small", ready: true }],
+      "GET /v1/models/catalog": [{ id: "understudy-small", tier: "small" }],
+      "GET /v1/residency": {
+        slots: [{ id: 7, state: "running", model_id: "understudy-small" }],
+        used_gb: 2,
+        usable_gb: 8,
+      },
+      "POST /v1/residency/slots": { ok: true, slot_id: 8 },
+      "POST /v1/residency/assign": { ok: true, slot_id: 7 },
+      "POST /v1/residency/warm": { ok: true, slot_id: 7, state: "loading" },
+      "POST /v1/residency/cool": { ok: true, slot_id: 7 },
+      "POST /v1/residency/remove": { ok: true, slot_id: 7 },
+      "GET /v1/downloads": { downloads: [] },
+      "POST /v1/downloads": {
+        ok: true,
+        download_id: "download-1",
+        model_id: "understudy-small",
+      },
+      "GET /v1/downloads/download-1": {
+        id: "download-1", model_id: "understudy-small", status: "running",
+      },
+      "POST /v1/downloads/download-1/cancel": {
+        id: "download-1", model_id: "understudy-small", status: "cancelled",
+      },
+    };
+    const controlKey = `${request.method} ${request.url}`;
+    if (controlKey in controlValues) {
+      let raw = "";
+      for await (const chunk of request) raw += chunk;
+      controlCalls.push({
+        method: request.method,
+        url: request.url,
+        body: raw ? JSON.parse(raw) : undefined,
+      });
+      response.writeHead(200, { "content-type": "application/json" });
+      response.end(JSON.stringify(controlValues[controlKey]));
       return;
     }
     if (request.method === "POST" && request.url === "/v1/conversations/session-desktop/turns") {
@@ -175,13 +228,25 @@ describe("desktop API CLI", () => {
     assert.equal(result.status, 0, result.stderr);
     const contract = JSON.parse(result.stdout);
     assert.equal(contract.openapi, "3.1.0");
-    assert.equal(contract.info.version, "2.0.0");
+    assert.equal(contract.info.version, "2.1.0");
     assert.deepEqual(Object.keys(contract.paths).sort(), [
       "/v1/capabilities",
       "/v1/conversations/{session_id}/turns",
+      "/v1/downloads",
+      "/v1/downloads/{download_id}",
+      "/v1/downloads/{download_id}/cancel",
       "/v1/feedback/supervisor",
+      "/v1/models",
+      "/v1/models/catalog",
+      "/v1/residency",
+      "/v1/residency/assign",
+      "/v1/residency/cool",
+      "/v1/residency/remove",
+      "/v1/residency/slots",
+      "/v1/residency/warm",
       "/v1/runs/{run_id}/cancel",
       "/v1/runs/{run_id}/events",
+      "/v1/status",
     ]);
     assert.deepEqual(
       contract.components.schemas.RuntimeEventEnvelope.properties.event.enum,
@@ -199,9 +264,11 @@ describe("desktop API CLI", () => {
     assert.equal(result.status, 0, result.stderr);
     const value = JSON.parse(result.stdout);
     assert.equal(value.schema_version, "understudy.desktop_api.v2");
+    assert.equal(value.api_version, "2.1.0");
   });
 
-  it("operates model downloads and residency through the existing desktop MCP", async () => {
+  it("operates model downloads and residency through versioned REST with one-release fallback", async () => {
+    const initialControlCallCount = controlCalls.length;
     const status = await runCli(["desktop", "status", "--json"]);
     assert.equal(status.status, 0, status.stderr);
     assert.equal(JSON.parse(status.stdout).app, "running");
@@ -209,6 +276,18 @@ describe("desktop API CLI", () => {
     const catalog = await runCli(["desktop", "model", "catalog", "--json"]);
     assert.equal(catalog.status, 0, catalog.stderr);
     assert.equal(JSON.parse(catalog.stdout)[0].id, "understudy-small");
+
+    const models = await runCli(["desktop", "model", "list", "--json"]);
+    assert.equal(models.status, 0, models.stderr);
+    assert.equal(JSON.parse(models.stdout)[0].ready, true);
+
+    const slots = await runCli(["desktop", "slot", "list", "--json"]);
+    assert.equal(slots.status, 0, slots.stderr);
+    assert.equal(JSON.parse(slots.stdout).slots[0].id, 7);
+
+    const added = await runCli(["desktop", "slot", "add", "--json"]);
+    assert.equal(added.status, 0, added.stderr);
+    assert.equal(JSON.parse(added.stdout).slot_id, 8);
 
     const started = await runCli([
       "desktop", "download", "start", "understudy-small", "--json",
@@ -226,14 +305,50 @@ describe("desktop API CLI", () => {
     assert.equal(warmed.status, 0, warmed.stderr);
     assert.equal(JSON.parse(warmed.stdout).state, "loading");
 
-    assert.deepEqual(
-      mcpCalls.slice(-5).map((call) => call.params.name),
-      ["status", "list_snapshot_models", "start_model_download", "assign_slot", "warm_slot"],
-    );
-    assert.deepEqual(mcpCalls.at(-2).params.arguments, {
+    const cooled = await runCli(["desktop", "slot", "cool", "7", "--json"]);
+    assert.equal(cooled.status, 0, cooled.stderr);
+
+    const removed = await runCli(["desktop", "slot", "remove", "7", "--json"]);
+    assert.equal(removed.status, 0, removed.stderr);
+
+    const downloads = await runCli(["desktop", "download", "list", "--json"]);
+    assert.equal(downloads.status, 0, downloads.stderr);
+    assert.deepEqual(JSON.parse(downloads.stdout).downloads, []);
+
+    const download = await runCli([
+      "desktop", "download", "status", "download-1", "--json",
+    ]);
+    assert.equal(download.status, 0, download.stderr);
+    assert.equal(JSON.parse(download.stdout).status, "running");
+
+    const cancelled = await runCli([
+      "desktop", "download", "cancel", "download-1", "--json",
+    ]);
+    assert.equal(cancelled.status, 0, cancelled.stderr);
+    assert.equal(JSON.parse(cancelled.stdout).status, "cancelled");
+
+    const calls = controlCalls.slice(initialControlCallCount);
+    assert.deepEqual(calls.map((call) => call.url), [
+      "/v1/status",
+      "/api/status",
+      "/v1/models/catalog",
+      "/v1/models",
+      "/v1/residency",
+      "/v1/residency/slots",
+      "/v1/downloads",
+      "/v1/residency/assign",
+      "/v1/residency/warm",
+      "/v1/residency/cool",
+      "/v1/residency/remove",
+      "/v1/downloads",
+      "/v1/downloads/download-1",
+      "/v1/downloads/download-1/cancel",
+    ]);
+    assert.deepEqual(calls.find((call) => call.url === "/v1/residency/assign").body, {
       slot_id: 7,
       model_id: "understudy-small",
     });
+    assert.equal(mcpCalls.length, 0, "the public CLI must not tunnel stable controls through MCP");
   });
 
   it("streams canonical image-chat events with caller-owned identity", async () => {
