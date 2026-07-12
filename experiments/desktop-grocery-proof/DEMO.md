@@ -2,9 +2,9 @@
 
 This script is for an engineering or applied-AI buyer evaluating whether a
 smaller open-weight model can safely handle part of an existing workload. It
-uses synthetic tasks and local models only. The purpose is to show the
-replacement loop and its evidence, not to claim production readiness from
-three examples.
+uses synthetic tasks and local models by default, with an optional explicitly
+approved hosted-incumbent route. The purpose is to show the replacement loop
+and its evidence, not to claim production readiness from three examples.
 
 ## Before the call
 
@@ -21,6 +21,11 @@ node experiments/desktop-grocery-proof/run.mjs \
 
 Keep the resulting proof directory open. Do not use customer prompts, traces,
 or credentials in the demo.
+
+If the buyer wants their hosted incumbent in the comparison, configure the
+fourth route before the call using the approval-gated command in `README.md`.
+Verify the model id and current token prices with them. Never improvise prices
+or infer consent from an existing key.
 
 Open `report.html` first. It is the buyer-facing decision packet; keep the
 JSONL files behind it for drill-down rather than making the terminal the demo.
@@ -46,11 +51,14 @@ support, cancellation, replay, and supervisor feedback.
 
 ## 3-8 minutes: show one runtime, multiple routes
 
-Explain the three frozen routes:
+Explain the three default frozen routes:
 
 1. E2B alone;
 2. 26B alone;
 3. E2B working first while 26B supervises.
+
+If configured, add the fourth route: the hosted incumbent, executed by Pi with
+the same run identity, canonical events, and deterministic scorer.
 
 The same three tasks run through every route: codebase analysis, cart
 substitution, and operations classification. The suite hash prevents a route
@@ -59,7 +67,7 @@ from receiving an easier slice.
 ```sh
 PROOF=$(find ~/.understudy/proofs/grocery-marketplace \
   -mindepth 1 -maxdepth 1 -type d | sort | tail -1)
-jq '{proof_id, suite_sha256, task_count, run_count, slots}' "$PROOF/summary.json"
+jq '{proof_id, suite_sha256, task_count, run_count, slots, incumbent}' "$PROOF/summary.json"
 ```
 
 ## 8-15 minutes: make the comparison legible
@@ -74,6 +82,7 @@ jq '.by_mode | with_entries(.value |= {
   mean_field_accuracy,
   mean_latency_ms,
   total_tokens,
+  cost_usd,
   supervisor_missed_errors,
   mean_small_model_output_share,
   mean_supervisor_token_overhead

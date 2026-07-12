@@ -6,6 +6,8 @@ import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
+import { validateRuntimeTrace } from "../../dist/runtime/conversation/contract.js";
+import { runPiConversation } from "../../dist/runtime/conversation/pi-runtime.js";
 import { renderExistingProof, writeBuyerReport } from "./report.mjs";
 
 const here = dirname(fileURLToPath(import.meta.url));
@@ -53,10 +55,18 @@ export function summarizeEvents(events, elapsedMs) {
   const usage = {};
   for (const event of events.filter((event) => event.event === "usage")) {
     const role = String(event.data?.role ?? "unknown");
-    const row = usage[role] ?? { input_tokens: 0, output_tokens: 0, total_tokens: 0 };
+    const row = usage[role] ?? {
+      input_tokens: 0,
+      output_tokens: 0,
+      total_tokens: 0,
+      complete: true,
+      source: "provider",
+    };
     row.input_tokens += Number(event.data?.input_tokens ?? 0);
     row.output_tokens += Number(event.data?.output_tokens ?? 0);
     row.total_tokens += Number(event.data?.total_tokens ?? 0);
+    row.complete = row.complete && event.data?.complete === true;
+    if (event.data?.source !== "provider") row.source = String(event.data?.source ?? "unavailable");
     usage[role] = row;
   }
   const studentOutput = usage.student?.output_tokens ?? 0;
@@ -80,6 +90,114 @@ export function summarizeEvents(events, elapsedMs) {
   };
 }
 
+function isRemoteUrl(value) {
+  const { hostname } = new URL(value);
+  return !["127.0.0.1", "localhost", "::1", "[::1]"].includes(hostname);
+}
+
+function priceTokens(inputTokens, outputTokens, inputUsdPerMillion, outputUsdPerMillion) {
+  return ((inputTokens * inputUsdPerMillion) + (outputTokens * outputUsdPerMillion)) / 1_000_000;
+}
+
+export function incumbentBudgetPreflight(tasks, options) {
+  const inputTokens = tasks.reduce(
+    (sum, task) => sum + Math.ceil([...task.prompt].length / 4) + 2_048,
+    0,
+  );
+  const outputTokens = tasks.length * options.maxTokens;
+  const estimatedMaxCostUsd = priceTokens(
+    inputTokens,
+    outputTokens,
+    options.incumbentInputUsdPerMillion,
+    options.incumbentOutputUsdPerMillion,
+  );
+  return {
+    input_tokens: inputTokens,
+    output_tokens: outputTokens,
+    estimated_max_cost_usd: estimatedMaxCostUsd,
+    budget_usd: options.budgetUsd,
+    within_budget: estimatedMaxCostUsd <= options.budgetUsd,
+    basis: "prompt chars / 4 + 2048 input-token overhead per task; max output tokens",
+  };
+}
+
+export async function runHostedIncumbent({ task, runId, sessionId, options }) {
+  const { remote } = validateIncumbentOptions(options);
+  const apiKey = options.incumbentApiKeyEnv
+    ? process.env[options.incumbentApiKeyEnv]
+    : undefined;
+  if (remote && !options.confirmSpend) {
+    throw new Error("remote incumbent comparison requires --confirm-spend");
+  }
+  if (remote && !apiKey) {
+    throw new Error(`remote incumbent credential is missing from ${options.incumbentApiKeyEnv}`);
+  }
+  const previousRemote = process.env.UNDERSTUDY_RUNTIME_ALLOW_REMOTE;
+  if (remote) process.env.UNDERSTUDY_RUNTIME_ALLOW_REMOTE = "1";
+  const events = [];
+  try {
+    await runPiConversation(
+      {
+        run_id: runId,
+        session_id: sessionId,
+        base_url: options.incumbentBaseUrl,
+        model: options.incumbentModel,
+        provider_kind: options.incumbentProviderKind,
+        provider_api_key: apiKey,
+        role: "primary",
+        messages: [{ role: "user", content: task.prompt }],
+        max_output_tokens: options.maxTokens,
+        max_tool_rounds: 0,
+        allow_remote: remote,
+        runtime_backend: "pi",
+      },
+      (event) => events.push(event),
+    );
+  } finally {
+    if (previousRemote === undefined) delete process.env.UNDERSTUDY_RUNTIME_ALLOW_REMOTE;
+    else process.env.UNDERSTUDY_RUNTIME_ALLOW_REMOTE = previousRemote;
+  }
+  validateRuntimeTrace(events);
+  return events;
+}
+
+export function validateIncumbentOptions(options) {
+  const incumbentEnabled = options.incumbentBaseUrl != null || options.incumbentModel != null;
+  if (incumbentEnabled && (!options.incumbentBaseUrl || !options.incumbentModel)) {
+    throw new Error("hosted incumbent comparison requires both --incumbent-base-url and --incumbent-model");
+  }
+  if (!["openai-compatible", "anthropic"].includes(options.incumbentProviderKind)) {
+    throw new Error("incumbentProviderKind must be openai-compatible or anthropic");
+  }
+  if (options.incumbentApiKeyEnv && !/^[A-Z][A-Z0-9_]*$/.test(options.incumbentApiKeyEnv)) {
+    throw new Error("incumbentApiKeyEnv must be an uppercase environment variable name");
+  }
+  if (incumbentEnabled && (!Number.isInteger(options.maxTokens) || options.maxTokens <= 0)) {
+    throw new Error("maxTokens must be a positive integer for an incumbent comparison");
+  }
+  const remote = incumbentEnabled && isRemoteUrl(options.incumbentBaseUrl);
+  if (remote) {
+    for (const [name, value] of Object.entries({
+      incumbentInputUsdPerMillion: options.incumbentInputUsdPerMillion,
+      incumbentOutputUsdPerMillion: options.incumbentOutputUsdPerMillion,
+    })) {
+      if (!Number.isFinite(value) || value < 0) {
+        throw new Error(`${name} must be a non-negative number for a remote incumbent`);
+      }
+    }
+    if (!Number.isFinite(options.budgetUsd) || options.budgetUsd <= 0) {
+      throw new Error("budgetUsd must be positive for a remote incumbent");
+    }
+    if (!options.incumbentApiKeyEnv) {
+      throw new Error("remote incumbent comparison requires --incumbent-api-key-env");
+    }
+    if (!options.confirmSpend) {
+      throw new Error("remote incumbent comparison requires --confirm-spend");
+    }
+  }
+  return { incumbentEnabled, remote };
+}
+
 function parseArgs(argv) {
   const options = {
     studentSlot: 9,
@@ -87,15 +205,36 @@ function parseArgs(argv) {
     maxTokens: 384,
     outputRoot: join(homedir(), ".understudy", "proofs", "grocery-marketplace"),
     reportFrom: null,
+    incumbentBaseUrl: null,
+    incumbentModel: null,
+    incumbentProviderKind: "openai-compatible",
+    incumbentApiKeyEnv: null,
+    incumbentInputUsdPerMillion: null,
+    incumbentOutputUsdPerMillion: null,
+    budgetUsd: null,
+    confirmSpend: false,
   };
   for (let index = 0; index < argv.length; index += 1) {
     const value = argv[index];
     const next = argv[index + 1];
+    if (value === "--confirm-spend") {
+      options.confirmSpend = true;
+      continue;
+    }
     if (value === "--student-slot") options.studentSlot = Number(next);
     else if (value === "--teacher-slot") options.teacherSlot = Number(next);
     else if (value === "--max-tokens") options.maxTokens = Number(next);
     else if (value === "--output-root") options.outputRoot = resolve(next);
     else if (value === "--report-from") options.reportFrom = resolve(next);
+    else if (value === "--incumbent-base-url") options.incumbentBaseUrl = next;
+    else if (value === "--incumbent-model") options.incumbentModel = next;
+    else if (value === "--incumbent-provider-kind") options.incumbentProviderKind = next;
+    else if (value === "--incumbent-api-key-env") options.incumbentApiKeyEnv = next;
+    else if (value === "--incumbent-input-usd-per-million") {
+      options.incumbentInputUsdPerMillion = Number(next);
+    } else if (value === "--incumbent-output-usd-per-million") {
+      options.incumbentOutputUsdPerMillion = Number(next);
+    } else if (value === "--budget-usd") options.budgetUsd = Number(next);
     else throw new Error(`unknown argument: ${value}`);
     index += 1;
   }
@@ -109,6 +248,7 @@ function parseArgs(argv) {
   if (options.studentSlot === options.teacherSlot) {
     throw new Error("student and teacher slots must be distinct");
   }
+  validateIncumbentOptions(options);
   return options;
 }
 
@@ -168,6 +308,18 @@ export async function runProof(options = parseArgs(process.argv.slice(2))) {
   const tasksBytes = readFileSync(join(here, "tasks.json"));
   const tasks = JSON.parse(tasksBytes);
   const suiteHash = createHash("sha256").update(tasksBytes).digest("hex");
+  const {
+    incumbentEnabled,
+    remote: incumbentRemote,
+  } = validateIncumbentOptions(options);
+  const incumbentBudget = incumbentEnabled && incumbentRemote
+    ? incumbentBudgetPreflight(tasks, options)
+    : null;
+  if (incumbentBudget && !incumbentBudget.within_budget) {
+    throw new Error(
+      `incumbent worst-case cost $${incumbentBudget.estimated_max_cost_usd.toFixed(6)} exceeds budget $${options.budgetUsd.toFixed(6)}`,
+    );
+  }
   const startedAt = new Date();
   const proofId = `grocery-${suiteHash.slice(0, 10)}-${startedAt.toISOString().replaceAll(/[-:.]/g, "")}`;
   const outputDir = join(options.outputRoot, proofId);
@@ -198,30 +350,37 @@ export async function runProof(options = parseArgs(process.argv.slice(2))) {
       supervisorSlotId: options.teacherSlot,
     },
   ];
+  if (incumbentEnabled) modes.push({ id: "hosted" });
   const rows = [];
+  let hostedCostUsd = 0;
   for (const mode of modes) {
     for (const task of tasks) {
       const runId = `${proofId}-${mode.id}-${task.id}`;
       const sessionId = `${proofId}-${mode.id}`;
       const before = performance.now();
-      const response = await apiFetch(
-        capability,
-        `/v1/conversations/${encodeURIComponent(sessionId)}/turns`,
-        {
-          method: "POST",
-          body: JSON.stringify({
-            slotId: mode.slotId,
-            supervisorSlotId: mode.supervisorSlotId,
-            text: task.prompt,
-            runId,
-            maxTokens: options.maxTokens,
-          }),
-        },
-      );
-      if (!response.ok) {
-        throw new Error(`${mode.id}/${task.id} returned ${response.status}: ${await response.text()}`);
+      let events;
+      if (mode.id === "hosted") {
+        events = await runHostedIncumbent({ task, runId, sessionId, options });
+      } else {
+        const response = await apiFetch(
+          capability,
+          `/v1/conversations/${encodeURIComponent(sessionId)}/turns`,
+          {
+            method: "POST",
+            body: JSON.stringify({
+              slotId: mode.slotId,
+              supervisorSlotId: mode.supervisorSlotId,
+              text: task.prompt,
+              runId,
+              maxTokens: options.maxTokens,
+            }),
+          },
+        );
+        if (!response.ok) {
+          throw new Error(`${mode.id}/${task.id} returned ${response.status}: ${await response.text()}`);
+        }
+        events = await readNdjson(response);
       }
-      const events = await readNdjson(response);
       const evidence = summarizeEvents(events, Math.round(performance.now() - before));
       const parsed = extractJsonObject(evidence.output);
       const score = scoreObject(parsed, task.expected);
@@ -234,6 +393,32 @@ export async function runProof(options = parseArgs(process.argv.slice(2))) {
       const intervened = evidence.verdicts.some(
         (verdict) => verdict.verdict === "nudge" || verdict.verdict === "interrupt",
       );
+      const hostedUsage = mode.id === "hosted" ? evidence.usage.primary : null;
+      if (
+        mode.id === "hosted"
+        && incumbentRemote
+        && (hostedUsage?.complete !== true || hostedUsage.source !== "provider")
+      ) {
+        throw new Error(
+          `hosted/${task.id} did not report complete provider usage; cannot enforce spend or report cost`,
+        );
+      }
+      const costUsd = mode.id === "hosted" && hostedUsage?.complete === true
+        ? priceTokens(
+          hostedUsage.input_tokens,
+          hostedUsage.output_tokens,
+          options.incumbentInputUsdPerMillion ?? 0,
+          options.incumbentOutputUsdPerMillion ?? 0,
+        )
+        : null;
+      if (mode.id === "hosted" && incumbentRemote) {
+        hostedCostUsd += costUsd;
+        if (hostedCostUsd > options.budgetUsd) {
+          throw new Error(
+            `hosted incumbent reported cost $${hostedCostUsd.toFixed(6)} exceeds budget $${options.budgetUsd.toFixed(6)}`,
+          );
+        }
+      }
       const row = {
         proof_id: proofId,
         suite_sha256: suiteHash,
@@ -242,8 +427,9 @@ export async function runProof(options = parseArgs(process.argv.slice(2))) {
         task_id: task.id,
         task_title: task.title,
         mode: mode.id,
-        student_slot_id: options.studentSlot,
-        teacher_slot_id: options.teacherSlot,
+        student_slot_id: mode.id === "hosted" ? null : options.studentSlot,
+        teacher_slot_id: mode.id === "hosted" ? null : options.teacherSlot,
+        model: mode.id === "hosted" ? options.incumbentModel : null,
         parsed_output: parsed,
         score,
         student_parsed_output: studentParsed,
@@ -257,6 +443,10 @@ export async function runProof(options = parseArgs(process.argv.slice(2))) {
           : null,
         supervisor_correct_intervention: mode.id === "supervised"
           ? intervened && !studentScore.exact && score.exact
+          : null,
+        cost_usd: costUsd,
+        cost_basis: mode.id === "hosted" && incumbentRemote
+          ? "provider usage × user-supplied token prices"
           : null,
         ...evidence,
       };
@@ -282,6 +472,10 @@ export async function runProof(options = parseArgs(process.argv.slice(2))) {
       mean_field_accuracy: mean(selected.map((row) => row.score.field_accuracy)),
       mean_latency_ms: Math.round(mean(selected.map((row) => row.elapsed_ms))),
       total_tokens: tokens,
+      cost_usd: mode.id === "hosted"
+        && selected.every((row) => typeof row.cost_usd === "number")
+        ? selected.reduce((sum, row) => sum + row.cost_usd, 0)
+        : null,
       interventions: selected.filter((row) => row.supervisor_intervened).length,
       student_interruptions: selected.reduce((sum, row) => sum + row.student_interruptions, 0),
       supervisor_verdicts: selected.reduce((sum, row) => sum + row.verdicts.length, 0),
@@ -306,7 +500,7 @@ export async function runProof(options = parseArgs(process.argv.slice(2))) {
   byMode.supervised.quality_delta_vs_main = byMode.supervised.mean_field_accuracy
     - byMode.main.mean_field_accuracy;
   const summary = {
-    format: "understudy.desktop_grocery_proof.v1",
+    format: "understudy.desktop_grocery_proof.v2",
     proof_id: proofId,
     suite_sha256: suiteHash,
     started_at: startedAt.toISOString(),
@@ -316,6 +510,15 @@ export async function runProof(options = parseArgs(process.argv.slice(2))) {
     task_count: tasks.length,
     run_count: rows.length,
     slots: { student: options.studentSlot, teacher: options.teacherSlot },
+    incumbent: incumbentEnabled ? {
+      model: options.incumbentModel,
+      provider_kind: options.incumbentProviderKind,
+      remote: incumbentRemote,
+      base_url_sha256: createHash("sha256").update(options.incumbentBaseUrl).digest("hex"),
+      input_usd_per_million: options.incumbentInputUsdPerMillion,
+      output_usd_per_million: options.incumbentOutputUsdPerMillion,
+      budget: incumbentBudget,
+    } : null,
     report_file: "report.html",
     report_model_file: "report.json",
     by_mode: byMode,

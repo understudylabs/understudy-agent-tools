@@ -1,12 +1,18 @@
 import assert from "node:assert/strict";
+import { createServer } from "node:http";
+import { mkdtempSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { spawnSync } from "node:child_process";
 import { describe, it } from "node:test";
 
 import {
   extractJsonObject,
+  incumbentBudgetPreflight,
+  runHostedIncumbent,
   scoreObject,
   summarizeEvents,
+  validateIncumbentOptions,
 } from "../experiments/desktop-grocery-proof/run.mjs";
 import {
   buildBuyerReport,
@@ -64,6 +70,108 @@ describe("desktop grocery proof", () => {
       student: '{"answer":"wrong"}',
       teacher: '{"answer":"correct"}',
     });
+  });
+
+  it("fails closed when the hosted incumbent worst case exceeds its spend fuse", () => {
+    const tasks = [{ prompt: "x".repeat(400) }, { prompt: "y".repeat(800) }];
+    const preflight = incumbentBudgetPreflight(tasks, {
+      maxTokens: 384,
+      incumbentInputUsdPerMillion: 5,
+      incumbentOutputUsdPerMillion: 20,
+      budgetUsd: 0.001,
+    });
+    assert.equal(preflight.input_tokens, 4_396);
+    assert.equal(preflight.output_tokens, 768);
+    assert.ok(preflight.estimated_max_cost_usd > preflight.budget_usd);
+    assert.equal(preflight.within_budget, false);
+  });
+
+  it("does not let programmatic callers bypass remote approval and budget gates", () => {
+    assert.throws(
+      () => validateIncumbentOptions({
+        incumbentBaseUrl: "https://provider.invalid/v1",
+        incumbentModel: "hosted-model",
+        incumbentProviderKind: "openai-compatible",
+        incumbentApiKeyEnv: "HOSTED_API_KEY",
+        incumbentInputUsdPerMillion: 5,
+        incumbentOutputUsdPerMillion: 20,
+        budgetUsd: null,
+        confirmSpend: true,
+        maxTokens: 64,
+      }),
+      /budgetUsd must be positive/,
+    );
+    assert.throws(
+      () => validateIncumbentOptions({
+        incumbentBaseUrl: "https://provider.invalid/v1",
+        incumbentModel: "hosted-model",
+        incumbentProviderKind: "openai-compatible",
+        incumbentApiKeyEnv: "HOSTED_API_KEY",
+        incumbentInputUsdPerMillion: 5,
+        incumbentOutputUsdPerMillion: 20,
+        budgetUsd: 0.25,
+        confirmSpend: false,
+        maxTokens: 64,
+      }),
+      /requires --confirm-spend/,
+    );
+  });
+
+  it("runs a hosted candidate through Pi and emits canonical evidence without spend", async () => {
+    const runtimeHome = mkdtempSync(join(tmpdir(), "understudy-grocery-hosted-"));
+    const previousRuntimeHome = process.env.UNDERSTUDY_CONVERSATION_RUNTIME_HOME;
+    process.env.UNDERSTUDY_CONVERSATION_RUNTIME_HOME = runtimeHome;
+    let requestBody = null;
+    const server = createServer(async (request, response) => {
+      let raw = "";
+      for await (const chunk of request) raw += chunk;
+      requestBody = JSON.parse(raw);
+      response.writeHead(200, { "content-type": "text/event-stream" });
+      response.write(`data: ${JSON.stringify({
+        id: "chatcmpl-grocery-hosted",
+        object: "chat.completion.chunk",
+        created: 1,
+        model: "hosted-fixture",
+        choices: [{ index: 0, delta: { role: "assistant", content: '{"answer":"ok"}' }, finish_reason: null }],
+      })}\n\n`);
+      response.write(`data: ${JSON.stringify({
+        id: "chatcmpl-grocery-hosted",
+        object: "chat.completion.chunk",
+        created: 1,
+        model: "hosted-fixture",
+        choices: [{ index: 0, delta: {}, finish_reason: "stop" }],
+        usage: { prompt_tokens: 10, completion_tokens: 5, total_tokens: 15 },
+      })}\n\n`);
+      response.end("data: [DONE]\n\n");
+    });
+    await new Promise((accept) => server.listen(0, "127.0.0.1", accept));
+    const address = server.address();
+    assert.ok(address && typeof address !== "string");
+    try {
+      const events = await runHostedIncumbent({
+        task: { prompt: "Return the frozen answer." },
+        runId: "grocery-hosted-fixture-run",
+        sessionId: "grocery-hosted-fixture-session",
+        options: {
+          incumbentBaseUrl: `http://127.0.0.1:${address.port}/v1`,
+          incumbentModel: "hosted-fixture",
+          incumbentProviderKind: "openai-compatible",
+          incumbentApiKeyEnv: null,
+          maxTokens: 64,
+          confirmSpend: false,
+        },
+      });
+      assert.deepEqual(events.map((event) => event.event), ["message", "delta", "usage"]);
+      assert.ok(events.every((event) => event.runtime_id === "pi-agent-session"));
+      assert.equal(summarizeEvents(events, 12).output, '{"answer":"ok"}');
+      assert.equal(requestBody.model, "hosted-fixture");
+      assert.equal(requestBody.max_tokens, 64);
+    } finally {
+      await new Promise((accept) => server.close(accept));
+      if (previousRuntimeHome === undefined) delete process.env.UNDERSTUDY_CONVERSATION_RUNTIME_HOME;
+      else process.env.UNDERSTUDY_CONVERSATION_RUNTIME_HOME = previousRuntimeHome;
+      rmSync(runtimeHome, { recursive: true, force: true });
+    }
   });
 
   it("labels logprobs honestly and derives bounded first-token probabilities", () => {
@@ -151,6 +259,58 @@ describe("desktop grocery proof", () => {
     assert.match(html, /The student selected the wrong constraint result/);
     assert.doesNotMatch(html, /private prompt/);
     assert.doesNotMatch(html, /https?:\/\//);
+  });
+
+  it("compares a hosted incumbent on the same frozen report contract", () => {
+    const tasks = [{ id: "cart", title: "Cart", prompt: "synthetic" }];
+    const metric = {
+      exact_passes: 1,
+      task_count: 1,
+      mean_field_accuracy: 1,
+      mean_latency_ms: 100,
+      total_tokens: 20,
+    };
+    const rows = ["small", "main", "supervised", "hosted"].map((mode) => ({
+      proof_id: "proof-hosted",
+      suite_sha256: "c".repeat(64),
+      task_id: "cart",
+      task_title: "Cart",
+      mode,
+      score: { exact: true, field_accuracy: 1 },
+      student_score: mode === "supervised" ? { exact: true } : null,
+      verdicts: mode === "supervised" ? [{ verdict: "continue" }] : [],
+    }));
+    const summary = {
+      proof_id: "proof-hosted",
+      suite_sha256: "c".repeat(64),
+      completed_at: "2026-07-12T00:00:00Z",
+      task_count: 1,
+      run_count: 4,
+      by_mode: {
+        small: { ...metric, latency_reduction_vs_main: 0.5 },
+        main: metric,
+        supervised: {
+          ...metric,
+          latency_reduction_vs_main: -0.1,
+          supervisor_verdicts: 1,
+          interventions: 0,
+          supervisor_correct_interventions: 0,
+          supervisor_missed_errors: 0,
+          supervisor_false_positives: 0,
+          mean_small_model_output_share: 1,
+          mean_supervisor_token_overhead: 0.1,
+        },
+        hosted: { ...metric, mean_latency_ms: 250, total_tokens: 30, cost_usd: 0.0042 },
+      },
+    };
+    const model = buildReportModel(summary, rows, tasks);
+    assert.equal(model.schema_version, "understudy.desktop_grocery_buyer_report.v3");
+    assert.deepEqual(model.modes.map((mode) => mode.id), ["small", "main", "supervised", "hosted"]);
+    assert.match(model.executive_summary.join(" "), /hosted incumbent passed 1\/1/i);
+    assert.match(model.executive_summary.join(" "), /\$0\.0042/);
+    const html = buildBuyerReport(summary, rows, tasks);
+    assert.match(html, /Hosted incumbent/);
+    assert.match(html, /Hosted <b>Exact<\/b>/);
   });
 
   it("escapes task labels in the portable report", () => {

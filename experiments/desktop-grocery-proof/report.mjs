@@ -5,6 +5,7 @@ const modeLabels = {
   small: "Small local",
   main: "Main local",
   supervised: "Small + supervisor",
+  hosted: "Hosted incumbent",
 };
 
 function escapeHtml(value) {
@@ -28,6 +29,11 @@ function signedPercent(value) {
 
 function integer(value) {
   return new Intl.NumberFormat("en-US", { maximumFractionDigits: 0 }).format(Number(value ?? 0));
+}
+
+function dollars(value) {
+  if (value == null) return null;
+  return `$${Number(value).toFixed(Number(value) < 0.01 ? 4 : 2)}`;
 }
 
 export function verdictProbabilityEvidence(verdict) {
@@ -93,13 +99,17 @@ function decisionForTask(task, rows) {
   const small = rows.find((row) => row.mode === "small");
   const main = rows.find((row) => row.mode === "main");
   const supervised = rows.find((row) => row.mode === "supervised");
-  if (!main?.score?.exact) {
+  const hosted = rows.find((row) => row.mode === "hosted");
+  const baseline = hosted ?? main;
+  const baselineName = hosted ? "hosted incumbent" : "main model";
+  if (!baseline?.score?.exact) {
     return {
       task_id: task.id,
       task_title: task.title,
       state: "expand",
       decision: "Expand the baseline",
-      reason: "The main route missed this task, so the slice cannot support a routing decision yet.",
+      reason: `The ${baselineName} missed this task, so the slice cannot support a routing decision yet.`,
+      baseline: hosted ? "hosted" : "main",
     };
   }
   if (small?.score?.exact) {
@@ -109,6 +119,7 @@ function decisionForTask(task, rows) {
       state: "pilot",
       decision: "Pilot the smaller model",
       reason: "The smaller route matched every required field; supervision also allowed it to continue.",
+      baseline: hosted ? "hosted" : "main",
     };
   }
   if (supervised?.supervisor_correct_intervention && supervised?.score?.exact) {
@@ -118,6 +129,7 @@ function decisionForTask(task, rows) {
       state: "supervise",
       decision: "Pilot with supervision",
       reason: "The smaller route missed, the supervisor interrupted correctly, and the teacher recovered the exact answer.",
+      baseline: hosted ? "hosted" : "main",
     };
   }
   if (supervised?.supervisor_missed_error) {
@@ -125,16 +137,18 @@ function decisionForTask(task, rows) {
       task_id: task.id,
       task_title: task.title,
       state: "hold",
-      decision: "Keep on the main model",
-      reason: "The smaller route missed and the supervisor allowed the error to pass.",
+      decision: hosted ? "Keep on the hosted incumbent" : "Keep on the main model",
+      reason: `The smaller route missed and the supervisor allowed the error to pass; retain the ${baselineName}.`,
+      baseline: hosted ? "hosted" : "main",
     };
   }
   return {
     task_id: task.id,
     task_title: task.title,
     state: "hold",
-    decision: "Keep on the main model",
+    decision: hosted ? "Keep on the hosted incumbent" : "Keep on the main model",
     reason: "This slice does not yet show a safe smaller or supervised route.",
+    baseline: hosted ? "hosted" : "main",
   };
 }
 
@@ -143,7 +157,12 @@ function recommendation(decisions) {
   const clauses = [];
   if (groups.pilot?.length) clauses.push(`pilot the smaller model on ${groups.pilot.map((row) => row.task_title).join(", ")}`);
   if (groups.supervise?.length) clauses.push(`pilot supervision on ${groups.supervise.map((row) => row.task_title).join(", ")}`);
-  if (groups.hold?.length) clauses.push(`keep ${groups.hold.map((row) => row.task_title).join(", ")} on the main model`);
+  if (groups.hold?.length) {
+    const baseline = groups.hold.some((row) => row.baseline === "hosted")
+      ? "hosted incumbent"
+      : "main model";
+    clauses.push(`keep ${groups.hold.map((row) => row.task_title).join(", ")} on the ${baseline}`);
+  }
   if (groups.expand?.length) clauses.push(`expand the baseline for ${groups.expand.map((row) => row.task_title).join(", ")}`);
   if (!clauses.length) return "Collect a larger frozen slice before choosing a route.";
   const sentence = clauses.join("; ");
@@ -168,7 +187,9 @@ export function buildReportModel(summary, rows, tasks) {
     task,
     rows.filter((row) => row.task_id === task.id),
   ));
-  const modes = ["small", "main", "supervised"].map((id) => ({
+  const modeIds = ["small", "main", "supervised"];
+  if (summary.by_mode.hosted) modeIds.push("hosted");
+  const modes = modeIds.map((id) => ({
     id,
     label: modeLabels[id],
     ...summary.by_mode[id],
@@ -176,6 +197,7 @@ export function buildReportModel(summary, rows, tasks) {
   const main = summary.by_mode.main;
   const small = summary.by_mode.small;
   const supervised = summary.by_mode.supervised;
+  const hosted = summary.by_mode.hosted ?? null;
   const smallLatency = Number(small.latency_reduction_vs_main ?? 0);
   const supervisedLatency = Number(supervised.latency_reduction_vs_main ?? 0);
   const judgments = rows
@@ -192,20 +214,31 @@ export function buildReportModel(summary, rows, tasks) {
       ...verdictProbabilityEvidence(verdict),
     })));
 
+  const executiveSummary = [
+    hosted
+      ? `The hosted incumbent passed ${hosted.exact_passes}/${hosted.task_count} tasks; the main local route passed ${main.exact_passes}/${main.task_count} on the identical slice.`
+      : `The main local route passed ${main.exact_passes}/${main.task_count} tasks and is the only clean baseline on this slice.`,
+    `The smaller route passed ${small.exact_passes}/${small.task_count} tasks at ${Math.abs(smallLatency * 100).toFixed(0)}% ${smallLatency >= 0 ? "lower" : "higher"} mean latency than main.`,
+    `Supervision corrected ${supervised.supervisor_correct_interventions} error, missed ${supervised.supervisor_missed_errors}, and ran at ${Math.abs(supervisedLatency * 100).toFixed(0)}% ${supervisedLatency >= 0 ? "lower" : "higher"} mean latency than main.`,
+  ];
+  if (hosted) {
+    executiveSummary.push(
+      `The hosted lane used ${hosted.total_tokens} provider-reported tokens${hosted.cost_usd == null ? "" : ` at ${dollars(hosted.cost_usd)} using the supplied price basis`}.`,
+    );
+  }
+  executiveSummary.push(
+    "This is integration evidence, not a production promotion claim; the next gate is a larger frozen slice from each real workflow cluster.",
+  );
+
   return {
-    schema_version: "understudy.desktop_grocery_buyer_report.v2",
+    schema_version: "understudy.desktop_grocery_buyer_report.v3",
     title: "Grocery AI routing decision",
     proof_id: summary.proof_id,
     suite_sha256: summary.suite_sha256,
     generated_at: summary.completed_at,
-    scope: `${summary.task_count} frozen synthetic tasks × 3 routes; ${summary.run_count} exact runs`,
+    scope: `${summary.task_count} frozen synthetic tasks × ${modes.length} routes; ${summary.run_count} exact runs`,
     recommendation: recommendation(decisions),
-    executive_summary: [
-      `The main local route passed ${main.exact_passes}/${main.task_count} tasks and is the only clean baseline on this slice.`,
-      `The smaller route passed ${small.exact_passes}/${small.task_count} tasks at ${Math.abs(smallLatency * 100).toFixed(0)}% ${smallLatency >= 0 ? "lower" : "higher"} mean latency than main.`,
-      `Supervision corrected ${supervised.supervisor_correct_interventions} error, missed ${supervised.supervisor_missed_errors}, and ran at ${Math.abs(supervisedLatency * 100).toFixed(0)}% ${supervisedLatency >= 0 ? "lower" : "higher"} mean latency than main.`,
-      "This is integration evidence, not a production promotion claim; the next gate is a larger frozen slice from each real workflow cluster.",
-    ],
+    executive_summary: executiveSummary,
     modes,
     decisions,
     supervision: {
@@ -221,7 +254,9 @@ export function buildReportModel(summary, rows, tasks) {
     next_steps: [
       "Freeze 30–50 representative examples for each workflow cluster before changing traffic.",
       "Require zero missed critical errors and report intervention precision, recall, latency, and token overhead.",
-      "Add the incumbent hosted route on the identical slice so cost and quality deltas become buyer-decision evidence.",
+      hosted
+        ? "Replace the synthetic slice with consented workflow examples and retain the same incumbent price basis."
+        : "Add the incumbent hosted route on the identical slice so cost and quality deltas become buyer-decision evidence.",
     ],
     further_questions: [
       "Does the smaller route remain exact on long-tail substitutions and policy exceptions?",
@@ -229,7 +264,9 @@ export function buildReportModel(summary, rows, tasks) {
       "What fallback rate and added latency are acceptable for the production workflow?",
     ],
     caveats: [
-      "Synthetic local tasks only; no customer prompts, production traffic, or remote judge were used.",
+      hosted
+        ? "Synthetic tasks only; the explicitly approved hosted lane sent those synthetic prompts to the configured incumbent."
+        : "Synthetic local tasks only; no customer prompts, production traffic, or remote judge were used.",
       "Three examples expose integration and failure modes but are too small for a replacement claim.",
       "Token counts are provider-reported by model role; dollar cost requires an explicit incumbent cost basis.",
       "Verdict confidence is the provider's first-token probability derived from logprobs; it is not a calibrated probability that the judgment is correct.",
@@ -238,11 +275,13 @@ export function buildReportModel(summary, rows, tasks) {
     chart_map: [
       {
         section: "Route comparison",
-        question: "How do exact quality and latency compare across the three routes?",
+        question: `How do exact quality and latency compare across the ${modes.length} routes?`,
         family: "comparison",
         type: "horizontal bar",
         fields: ["mode", "mean_field_accuracy", "mean_latency_ms"],
-        takeaway: "Main is the clean baseline; supervision improves quality but adds latency.",
+        takeaway: hosted
+          ? "The hosted incumbent and open-weight routes share one frozen slice and evidence contract."
+          : "Main is the clean baseline; supervision improves quality but adds latency.",
       },
     ],
   };
@@ -254,21 +293,25 @@ function routeCard(mode, maxLatency) {
   const routeNote = mode.id === "supervised"
     ? `${mode.supervisor_correct_interventions} corrected · ${mode.supervisor_missed_errors} missed`
     : `${mode.exact_passes}/${mode.task_count} exact`;
+  const cost = dollars(mode.cost_usd);
   return `<article class="route-card" data-source="summary.json">
     <header><h3>${escapeHtml(mode.label)}</h3><span>${escapeHtml(routeNote)}</span></header>
     <div class="measure"><div><span>Field accuracy</span><strong>${percent(mode.mean_field_accuracy)}</strong></div><div class="bar"><i style="width:${quality}%"></i></div></div>
     <div class="measure"><div><span>Mean latency</span><strong>${integer(mode.mean_latency_ms)} ms</strong></div><div class="bar latency"><i style="width:${latency}%"></i></div></div>
-    <footer>${integer(mode.total_tokens)} total tokens</footer>
+    <footer>${integer(mode.total_tokens)} total tokens${cost ? ` · ${escapeHtml(cost)}` : ""}</footer>
   </article>`;
 }
 
 function decisionCard(decision, rows) {
   const byMode = Object.fromEntries(rows.map((row) => [row.mode, row]));
   const result = (id) => byMode[id]?.score?.exact ? "Exact" : "Miss";
+  const hosted = byMode.hosted
+    ? `<span>Hosted <b>${result("hosted")}</b></span>`
+    : "";
   return `<article class="decision ${escapeHtml(decision.state)}" data-source="results.jsonl">
     <div class="decision-top"><div><span class="eyebrow">${escapeHtml(decision.task_id)}</span><h3>${escapeHtml(decision.task_title)}</h3></div><span class="pill">${escapeHtml(decision.decision)}</span></div>
     <p>${escapeHtml(decision.reason)}</p>
-    <div class="route-results"><span>Small <b>${result("small")}</b></span><span>Main <b>${result("main")}</b></span><span>Supervised <b>${result("supervised")}</b></span></div>
+    <div class="route-results"><span>Small <b>${result("small")}</b></span><span>Main <b>${result("main")}</b></span><span>Supervised <b>${result("supervised")}</b></span>${hosted}</div>
   </article>`;
 }
 
@@ -311,10 +354,12 @@ export function buildBuyerReport(summary, rows, tasks) {
   const main = summary.by_mode.main;
   const small = summary.by_mode.small;
   const supervised = summary.by_mode.supervised;
-  const routeHeading = main.exact_passes === main.task_count
-    ? "The main model is the clean baseline"
+  const hosted = summary.by_mode.hosted ?? null;
+  const baseline = hosted ?? main;
+  const routeHeading = baseline.exact_passes === baseline.task_count
+    ? hosted ? "The hosted incumbent is a clean baseline" : "The main model is the clean baseline"
     : "No route clears the frozen slice";
-  const routeIntro = `Exact field scoring shows the quality/latency tradeoff directly. The smaller model passes ${small.exact_passes}/${small.task_count}; supervision passes ${supervised.exact_passes}/${supervised.task_count} with ${supervised.supervisor_correct_interventions} correct intervention${supervised.supervisor_correct_interventions === 1 ? "" : "s"} and ${supervised.supervisor_missed_errors} missed error${supervised.supervisor_missed_errors === 1 ? "" : "s"}.`;
+  const routeIntro = `Exact field scoring shows the quality/latency tradeoff directly. The smaller model passes ${small.exact_passes}/${small.task_count}; supervision passes ${supervised.exact_passes}/${supervised.task_count} with ${supervised.supervisor_correct_interventions} correct intervention${supervised.supervisor_correct_interventions === 1 ? "" : "s"} and ${supervised.supervisor_missed_errors} missed error${supervised.supervisor_missed_errors === 1 ? "" : "s"}.${hosted ? ` The hosted incumbent passes ${hosted.exact_passes}/${hosted.task_count}.` : ""}`;
   const supervisionHeading = supervised.supervisor_correct_interventions > 0 && supervised.supervisor_missed_errors > 0
     ? `The supervisor helped ${supervised.supervisor_correct_interventions === 1 ? "once" : `${supervised.supervisor_correct_interventions} times`} and missed ${supervised.supervisor_missed_errors === 1 ? "once" : supervised.supervisor_missed_errors}`
     : supervised.supervisor_correct_interventions > 0
@@ -337,7 +382,7 @@ export function buildBuyerReport(summary, rows, tasks) {
     main { width:min(1040px,calc(100% - 32px)); margin:0 auto; padding:56px 0 80px; } h1,h2,h3,p { margin-top:0; } h1 { max-width:720px; font-size:clamp(42px,7vw,76px); line-height:.95; letter-spacing:-.055em; margin-bottom:24px; } h2 { font-size:clamp(27px,4vw,38px); line-height:1.1; letter-spacing:-.035em; margin-bottom:14px; } h3 { font-size:18px; line-height:1.25; margin-bottom:0; } section { margin-top:64px; } .kicker,.eyebrow { text-transform:uppercase; letter-spacing:.12em; font-size:12px; font-weight:750; color:var(--accent); }
     .scope { color:var(--muted); max-width:720px; } .recommendation { font-size:clamp(22px,3vw,32px); line-height:1.25; max-width:880px; margin:22px 0 0; }
     .summary { border-top:1px solid var(--line); border-bottom:1px solid var(--line); padding:28px 0; } .summary ul { margin:0; padding-left:22px; display:grid; gap:10px; }
-    .section-intro { color:var(--muted); max-width:760px; margin-bottom:24px; } .route-grid { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:14px; }
+    .section-intro { color:var(--muted); max-width:760px; margin-bottom:24px; } .route-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(220px,1fr)); gap:14px; }
     .route-card,.decision,.audit,.judgment { background:var(--paper); border:1px solid var(--line); border-radius:16px; padding:20px; } .route-card header { display:flex; justify-content:space-between; gap:16px; align-items:baseline; margin-bottom:22px; } .route-card header span,.route-card footer { color:var(--muted); font-size:13px; }
     .measure { margin-top:14px; } .measure>div:first-child { display:flex; justify-content:space-between; gap:12px; font-size:13px; } .bar { height:10px; background:var(--open); border-radius:999px; overflow:hidden; margin-top:7px; } .bar i { display:block; height:100%; background:var(--olive); border-radius:inherit; } .bar.latency i { background:var(--blue); } .route-card footer { margin-top:20px; border-top:1px solid var(--line); padding-top:12px; }
     .decision-list { display:grid; gap:12px; } .decision-top { display:flex; justify-content:space-between; gap:18px; align-items:flex-start; } .decision p { color:var(--muted); margin:14px 0; } .pill { border:1px solid var(--line); border-radius:999px; padding:6px 10px; font-size:12px; font-weight:700; white-space:nowrap; } .decision.pilot .pill { color:var(--olive); } .decision.supervise .pill { color:var(--gold); } .decision.hold .pill { color:var(--accent); } .route-results { display:flex; gap:8px; flex-wrap:wrap; } .route-results span { background:var(--open); border-radius:8px; padding:6px 9px; font-size:12px; } .route-results b { margin-left:5px; }
@@ -352,7 +397,7 @@ export function buildBuyerReport(summary, rows, tasks) {
 <body>
 <main data-proof-id="${escapeHtml(model.proof_id)}">
   <header>
-    <div class="kicker">Understudy · frozen local proof</div>
+    <div class="kicker">Understudy · frozen comparison proof</div>
     <h1>${escapeHtml(model.title)}</h1>
     <p class="scope">${escapeHtml(model.scope)}</p>
     <p class="recommendation">${escapeHtml(model.recommendation)}</p>
