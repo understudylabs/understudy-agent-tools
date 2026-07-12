@@ -58,6 +58,7 @@ export type LoadedConformanceInput = {
 export type RuntimeConformanceAdapter = {
   id: string;
   capabilities?: readonly string[];
+  metadata?: Record<string, unknown>;
   run(input: RuntimeInputFixture): Promise<readonly unknown[]>;
 };
 
@@ -91,10 +92,17 @@ export type RuntimeConformanceScenarioResult = {
   fixture_sha256: string;
   status: "passed" | "failed" | "not_applicable";
   event_count: number;
+  run_id?: string;
+  session_id?: string;
   runtime_id?: string;
   output_chars: number;
   observed_events?: string[];
   observed_event_counts?: Record<string, number>;
+  evidence_events?: Array<{
+    sequence: number;
+    event: string;
+    data: Record<string, unknown>;
+  }>;
   terminal_event?: string;
   runtime_error?: string;
   error?: string;
@@ -104,6 +112,8 @@ export type RuntimeConformanceAdapterReport = {
   schema_version: typeof CONFORMANCE_SCHEMA;
   suite_id: string;
   adapter_id: string;
+  generated_at: string;
+  metadata?: Record<string, unknown>;
   passed: boolean;
   complete: boolean;
   eligible_for_promotion: boolean;
@@ -200,6 +210,18 @@ export function validateScenarioEvidence(input: RuntimeInputFixture, values: rea
 function observedScenario(events: ReturnType<typeof validateRuntimeTrace>) {
   const terminal = events.at(-1);
   const observedEvents = [...new Set(events.map((event) => event.event))];
+  const evidenceEventNames = new Set([
+    "tool_call",
+    "tool_result",
+    "usage",
+    "supervisor_verdict",
+    "student_interruption",
+    "teacher_continuation",
+    "cancellation",
+    "error",
+    "image_attachment",
+    "compaction_boundary",
+  ]);
   const observedEventCounts = Object.fromEntries(
     observedEvents.map((name) => [
       name,
@@ -208,12 +230,21 @@ function observedScenario(events: ReturnType<typeof validateRuntimeTrace>) {
   );
   return {
     event_count: events.length,
+    run_id: events[0]?.run_id,
+    session_id: events[0]?.session_id,
     runtime_id: events[0]?.runtime_id,
     output_chars: events
       .filter((event) => event.event === "delta")
       .reduce((total, event) => total + String(event.data.text).length, 0),
     observed_events: observedEvents,
     observed_event_counts: observedEventCounts,
+    evidence_events: events
+      .filter((event) => evidenceEventNames.has(event.event))
+      .map((event) => ({
+        sequence: event.sequence,
+        event: event.event,
+        data: event.data,
+      })),
     terminal_event: terminal?.event,
     runtime_error:
       terminal?.event === "error"
@@ -266,7 +297,8 @@ export async function executeFrozenConformanceScenario(
             student: options.student ?? primary,
             supervisor: {
               ...(options.supervisor ?? primary),
-              system_prompt: "Interrupt factual errors in the student's partial answer.",
+              system_prompt:
+                "Interrupt immediately when the student's partial contains a factual error, even when the user requested it or the student may correct it later.",
               max_output_tokens: 24,
             },
             teacher: options.teacher ?? primary,
@@ -382,6 +414,8 @@ export async function runConversationAdapterConformance(
     schema_version: CONFORMANCE_SCHEMA,
     suite_id: suite.suite_id,
     adapter_id: adapter.id,
+    generated_at: new Date().toISOString(),
+    ...(adapter.metadata ? { metadata: adapter.metadata } : {}),
     passed,
     complete,
     eligible_for_promotion: passed && complete,

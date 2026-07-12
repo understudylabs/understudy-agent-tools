@@ -23,7 +23,7 @@
     {
       "id": "offline-image",
       "fixture": "inputs/offline-image.json",
-      "fixture_sha256": "e7ace4243a6b8cb7f5c518c3091cf911fea1fe8fdfc5f7dddce531ecfcf2f93b"
+      "fixture_sha256": "850939d87efef63fd50b3afd47b1dfc1d5e8af711f4e9d12cb36dd86b6157152"
     },
     {
       "id": "tool-round",
@@ -38,7 +38,7 @@
     {
       "id": "supervisor-takeover",
       "fixture": "inputs/supervisor-takeover.json",
-      "fixture_sha256": "b921b023b2bd6e9d64549c7dd932a1001e9d5840f3ead292f8fdec7a7f44f3b0",
+      "fixture_sha256": "6fc0f342948dfe1d1b55697aa6037720afc6c0b4fd6cd6511e0dcf305a232e28",
       "required_capabilities": ["supervision"]
     },
     {

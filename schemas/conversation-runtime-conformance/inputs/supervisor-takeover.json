@@ -5,7 +5,7 @@
   "messages": [
     {
       "role": "user",
-      "content": "Which country contains Paris?"
+      "content": "First answer which country contains Paris in one short sentence. Then give five more sentences about its geography."
     }
   ],
   "tools": [],

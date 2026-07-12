@@ -11,6 +11,7 @@ import {
   SettingsManager,
   createAgentSession,
   defineTool,
+  estimateTokens,
 } from "@earendil-works/pi-coding-agent";
 import { Type } from "@earendil-works/pi-ai";
 
@@ -340,18 +341,21 @@ function attachCanonicalAdapter(
     } else if (event.type === "compaction_end" && event.result) {
       const retained = session.messages.length;
       const before = Math.max(0, event.result.tokensBefore);
-      const after = Math.min(
-        before,
-        Math.max(
-          0,
-          event.result.estimatedTokensAfter ?? Math.ceil(event.result.summary.length / 4),
-        ),
+      const runtimeEstimatedAfter = Math.max(
+        0,
+        event.result.estimatedTokensAfter ?? Math.ceil(event.result.summary.length / 4),
       );
+      const canonicalEstimatedAfter = session.messages.reduce(
+        (total, message) => total + estimateTokens(message),
+        0,
+      );
+      const after = Math.min(before, Math.max(0, canonicalEstimatedAfter));
       enqueue("compaction_boundary", {
         source_message_count: Math.max(compactionSourceMessages, retained),
         retained_message_count: retained,
         estimated_tokens_before: before,
         estimated_tokens_after: after,
+        runtime_estimated_tokens_after: runtimeEstimatedAfter,
         summary_sha256: createHash("sha256").update(event.result.summary).digest("hex"),
       });
     }
@@ -454,6 +458,16 @@ async function createPiRuntimeSession(options: {
 }
 
 type SupervisionConfig = NonNullable<RuntimeRunRequest["supervision"]>;
+const SUPERVISOR_RESPONSE_PROTOCOL = [
+  "You supervise a smaller model's partial answer.",
+  "Do not answer or continue the user's task yourself.",
+  "Return exactly one line beginning with one of these uppercase verdicts:",
+  "CONTINUE",
+  "INTERRUPT: <brief reason>",
+  "STOP",
+  "NUDGE: <brief reason>",
+  "The first token must be the verdict. INTERRUPT and NUDGE require a reason.",
+].join("\n");
 type SupervisorDecision = {
   verdict: "continue" | "interrupt" | "stop" | "nudge";
   reason?: string;
@@ -608,11 +622,14 @@ async function checkSupervisor(
       body: JSON.stringify({
         model: config.supervisor.model,
         messages: [
-          { role: "system", content: config.supervisor.system_prompt },
+          {
+            role: "system",
+            content: `${SUPERVISOR_RESPONSE_PROTOCOL}\n\nEvaluation policy:\n${config.supervisor.system_prompt}`,
+          },
           ...messages.filter((message) => message.role !== "system").map(openAiMessage),
           {
             role: "user",
-            content: `[smaller model's partial answer so far]\n${partial}\n\nVerdict?`,
+            content: `[smaller model's partial answer so far]\n${partial}\n\nReturn the verdict now.`,
           },
         ],
         stream: false,

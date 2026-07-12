@@ -1,5 +1,9 @@
 import { Command } from "commander";
 import kleur from "kleur";
+import { closeSync, mkdirSync, openSync, writeFileSync } from "node:fs";
+import { createServer } from "node:http";
+import type { AddressInfo } from "node:net";
+import { dirname, resolve } from "node:path";
 
 import { isJsonMode, runAction } from "../internal/output.js";
 import {
@@ -35,6 +39,93 @@ function statusLine(status: Awaited<ReturnType<typeof conversationRuntimeStatus>
   const mark = status.healthy ? kleur.green("●") : kleur.dim("○");
   const endpoint = status.base_url ? ` at ${status.base_url}` : "";
   return `${mark} conversation runtime: ${status.detail}${endpoint} (${status.runtime_version})`;
+}
+
+function persistImmutableReport(path: string, report: unknown): string {
+  const target = resolve(path);
+  mkdirSync(dirname(target), { recursive: true, mode: 0o700 });
+  const descriptor = openSync(target, "wx", 0o600);
+  try {
+    writeFileSync(descriptor, `${JSON.stringify(report, null, 2)}\n`);
+  } finally {
+    closeSync(descriptor);
+  }
+  return target;
+}
+
+async function startDeterministicSupervisorFixture(): Promise<{
+  target: { base_url: string; model: string };
+  close(): Promise<void>;
+}> {
+  const server = createServer(async (request, response) => {
+    try {
+      if (request.method !== "POST" || request.url !== "/v1/chat/completions") {
+        response.writeHead(404, { "content-type": "application/json" });
+        response.end(JSON.stringify({ error: "not found" }));
+        return;
+      }
+      let raw = "";
+      for await (const chunk of request) raw += chunk;
+      const body = JSON.parse(raw) as {
+        messages?: Array<{ role?: string; content?: unknown }>;
+      };
+      const evidence = (body.messages ?? [])
+        .map((message) => String(message.content ?? ""))
+        .join("\n");
+      if (!evidence.includes("[smaller model's partial answer so far]")) {
+        response.writeHead(422, { "content-type": "application/json" });
+        response.end(JSON.stringify({ error: "frozen supervisor partial changed" }));
+        return;
+      }
+      response.writeHead(200, { "content-type": "application/json" });
+      response.end(
+        JSON.stringify({
+          choices: [
+            {
+              message: {
+                role: "assistant",
+                content: "INTERRUPT: Frozen conformance forced intervention.",
+              },
+              logprobs: {
+                content: [
+                  {
+                    token: "INTER",
+                    logprob: -0.01,
+                    top_logprobs: [
+                      { token: "INTER", logprob: -0.01 },
+                      { token: "CONTIN", logprob: -10 },
+                    ],
+                  },
+                ],
+              },
+            },
+          ],
+          usage: { prompt_tokens: 1, completion_tokens: 1, total_tokens: 2 },
+        }),
+      );
+    } catch (error) {
+      response.writeHead(400, { "content-type": "application/json" });
+      response.end(JSON.stringify({ error: String(error) }));
+    }
+  });
+  await new Promise<void>((accept, reject) => {
+    server.once("error", reject);
+    server.listen(0, "127.0.0.1", () => {
+      server.off("error", reject);
+      accept();
+    });
+  });
+  const address = server.address() as AddressInfo;
+  return {
+    target: {
+      base_url: `http://127.0.0.1:${address.port}/v1`,
+      model: "understudy-deterministic-supervisor-v1",
+    },
+    close: () =>
+      new Promise<void>((accept, reject) =>
+        server.close((error) => (error ? reject(error) : accept())),
+      ),
+  };
 }
 
 export function registerRuntimeCommand(program: Command): void {
@@ -130,12 +221,17 @@ export function registerRuntimeCommand(program: Command): void {
     .option("--student-model <id>", "Student model for the supervision scenario")
     .option("--supervisor-base-url <url>", "Supervisor provider URL for the supervision scenario")
     .option("--supervisor-model <id>", "Supervisor model for the supervision scenario")
+    .option(
+      "--deterministic-supervisor",
+      "Use the built-in offline supervisor fixture to prove interruption mechanics",
+    )
     .option("--teacher-base-url <url>", "Teacher provider URL for the supervision scenario")
     .option("--teacher-model <id>", "Teacher model for the supervision scenario")
     .option("--tool-executor-url <url>", "Authenticated loopback tool executor")
     .option("--capabilities <list>", "Comma-separated adapter capabilities to execute")
     .option("--require-complete", "Fail when any frozen capability is not applicable")
     .option("--scenario-timeout-ms <ms>", "Abort one frozen scenario after this many ms", "60000")
+    .option("--output <path>", "Write one immutable private JSON evidence report")
     .option("--allow-remote", "Allow a remote HTTPS provider (also requires the environment gate)")
     .option("--json", "Output JSON")
     .action(async function (
@@ -149,12 +245,14 @@ export function registerRuntimeCommand(program: Command): void {
         studentModel?: string;
         supervisorBaseUrl?: string;
         supervisorModel?: string;
+        deterministicSupervisor?: boolean;
         teacherBaseUrl?: string;
         teacherModel?: string;
         toolExecutorUrl?: string;
         capabilities?: string;
         requireComplete?: boolean;
         scenarioTimeoutMs?: string;
+        output?: string;
         allowRemote?: boolean;
       },
     ) {
@@ -177,6 +275,17 @@ export function registerRuntimeCommand(program: Command): void {
           throw new Error("--backend requires --base-url and --model");
         }
         const backend = options.backend as "pi" | "vercel";
+        if (options.deterministicSupervisor && backend !== "pi") {
+          throw new Error("--deterministic-supervisor requires --backend pi");
+        }
+        if (
+          options.deterministicSupervisor &&
+          (options.supervisorBaseUrl || options.supervisorModel)
+        ) {
+          throw new Error(
+            "--deterministic-supervisor cannot be combined with supervisor provider flags",
+          );
+        }
         const run = backend === "pi" ? runPiConversation : runVercelConversation;
         const defaultCapabilities =
           backend === "pi" ? "compaction,restart,supervision" : "";
@@ -193,36 +302,73 @@ export function registerRuntimeCommand(program: Command): void {
           throw new Error("--scenario-timeout-ms must be an integer from 1000 to 600000");
         }
         const invocationId = `${Date.now()}-${process.pid}`;
-        const report = await runConversationAdapterConformance(
-          {
-            id: backend,
-            capabilities,
-            async run(input) {
-              return executeFrozenConformanceScenario(input, run, {
+        const supervisorFixture = options.deterministicSupervisor
+          ? await startDeterministicSupervisorFixture()
+          : undefined;
+        const supervisorTarget = supervisorFixture?.target ?? {
+          base_url: options.supervisorBaseUrl ?? options.baseUrl,
+          model: options.supervisorModel ?? options.model,
+        };
+        let report;
+        try {
+          report = await runConversationAdapterConformance(
+            {
+              id: backend,
+              capabilities,
+              metadata: {
                 backend,
-                base_url: options.baseUrl!,
-                model: options.model!,
-                invocation_id: invocationId,
+                provider: { base_url: options.baseUrl, model: options.model },
+                supervision: {
+                  student: {
+                    base_url: options.studentBaseUrl ?? options.baseUrl,
+                    model: options.studentModel ?? options.model,
+                  },
+                  supervisor: {
+                    ...supervisorTarget,
+                  },
+                  teacher: {
+                    base_url: options.teacherBaseUrl ?? options.baseUrl,
+                    model: options.teacherModel ?? options.model,
+                  },
+                },
+                supervisor_mode: options.deterministicSupervisor
+                  ? "deterministic_fixture"
+                  : "model",
                 scenario_timeout_ms: scenarioTimeoutMs,
-                tool_executor_url: options.toolExecutorUrl,
-                allow_remote: options.allowRemote,
-                student: {
-                  base_url: options.studentBaseUrl ?? options.baseUrl!,
-                  model: options.studentModel ?? options.model!,
-                },
-                supervisor: {
-                  base_url: options.supervisorBaseUrl ?? options.baseUrl!,
-                  model: options.supervisorModel ?? options.model!,
-                },
-                teacher: {
-                  base_url: options.teacherBaseUrl ?? options.baseUrl!,
-                  model: options.teacherModel ?? options.model!,
-                },
-              });
+                tool_executor_configured: Boolean(options.toolExecutorUrl),
+                allow_remote: options.allowRemote ?? false,
+              },
+              async run(input) {
+                return executeFrozenConformanceScenario(input, run, {
+                  backend,
+                  base_url: options.baseUrl!,
+                  model: options.model!,
+                  invocation_id: invocationId,
+                  scenario_timeout_ms: scenarioTimeoutMs,
+                  tool_executor_url: options.toolExecutorUrl,
+                  allow_remote: options.allowRemote,
+                  student: {
+                    base_url: options.studentBaseUrl ?? options.baseUrl!,
+                    model: options.studentModel ?? options.model!,
+                  },
+                  supervisor: {
+                    ...supervisorTarget,
+                  },
+                  teacher: {
+                    base_url: options.teacherBaseUrl ?? options.baseUrl!,
+                    model: options.teacherModel ?? options.model!,
+                  },
+                });
+              },
             },
-          },
-          options.fixtures,
-        );
+            options.fixtures,
+          );
+        } finally {
+          await supervisorFixture?.close();
+        }
+        const outputPath = options.output
+          ? persistImmutableReport(options.output, report)
+          : undefined;
         if (isJsonMode(this)) {
           process.stdout.write(`${JSON.stringify(report, null, 2)}\n`);
         } else {
@@ -243,6 +389,7 @@ export function registerRuntimeCommand(program: Command): void {
           )) {
             process.stdout.write(`  ${kleur.yellow("-")} ${scenario.id}: ${scenario.error}\n`);
           }
+          if (outputPath) process.stdout.write(`evidence: ${outputPath}\n`);
         }
         if (!report.passed || (options.requireComplete && !report.eligible_for_promotion)) {
           process.exitCode = 1;

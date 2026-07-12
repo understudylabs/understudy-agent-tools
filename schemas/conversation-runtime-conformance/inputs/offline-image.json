@@ -5,13 +5,13 @@
   "messages": [
     {
       "role": "user",
-      "content": "Describe the attached one-pixel image using only the local runtime.",
+      "content": "Describe the attached two-by-two image using only the local runtime.",
       "attachments": [
         {
-          "id": "1f163b441b8543d3d4c6386b76dde285497ed42a474e80f9d6e3f933041e00d9",
-          "filename": "pixel.png",
+          "id": "9983e1746b56623a77f5ecf58c9a95eb30c4c3c2a79de7efad45038d9f57603f",
+          "filename": "two-by-two.png",
           "media_type": "image/png",
-          "data_url": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Wl2nGQAAAAASUVORK5CYII="
+          "data_url": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAIAAAD91JpzAAAAEklEQVR4nGNUcEhgYGBgYgADAAjqAMQuSECmAAAAAElFTkSuQmCC"
         }
       ]
     }

@@ -34,7 +34,7 @@ const basicChatFixture = JSON.parse(
   ),
 );
 const PNG_BASE64 =
-  "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Wl2nGQAAAAASUVORK5CYII=";
+  "iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAIAAAD91JpzAAAAEklEQVR4nGNUcEhgYGBgYgADAAjqAMQuSECmAAAAAElFTkSuQmCC";
 const PNG_BYTES = Buffer.from(PNG_BASE64, "base64");
 const PNG_ID = createHash("sha256").update(PNG_BYTES).digest("hex");
 
@@ -1392,6 +1392,10 @@ test("Pi and Vercel execute the identical frozen conformance inputs", async () =
       usage: 1,
       cancellation: 1,
     });
+    assert.equal(
+      cancellationSummary?.evidence_events?.at(-1)?.data.reason,
+      "frozen_conformance_cancel",
+    );
     assert.equal(toolRequests.length, 2);
     assert.ok(
       providerRequests
@@ -1404,6 +1408,11 @@ test("Pi and Vercel execute the identical frozen conformance inputs", async () =
           request.model.endsWith("supervisor-takeover-judge") && request.stream === false,
       ),
     );
+    const judgeRequest = providerRequests.find((request) =>
+      request.model.endsWith("supervisor-takeover-judge"),
+    );
+    assert.match(judgeRequest.messages[0].content, /The first token must be the verdict/);
+    assert.match(judgeRequest.messages.at(-1).content, /Return the verdict now\./);
     assert.equal(reports[0].eligible_for_promotion, true);
     assert.equal(reports[1].complete, false);
     assert.equal(
@@ -1461,6 +1470,19 @@ test("Pi and Vercel execute the identical frozen conformance inputs", async () =
     assert.equal(verdict.data.probability_kind, "logprob");
     assert.equal(interruption.data.marker_id, verdict.data.marker_id);
     assert.equal(continuation.data.marker_id, verdict.data.marker_id);
+    const takeoverSummary = reports[0].scenarios.find(
+      (scenario) => scenario.id === "supervisor-takeover",
+    );
+    assert.deepEqual(
+      takeoverSummary.evidence_events
+        .filter((event) =>
+          ["supervisor_verdict", "student_interruption", "teacher_continuation"].includes(
+            event.event,
+          ),
+        )
+        .map((event) => event.event),
+      ["supervisor_verdict", "student_interruption", "teacher_continuation"],
+    );
     for (const id of ["pi", "vercel"]) {
       const malformed = traces.get(`${id}:malformed-tool-call`);
       assert.ok(malformed);
@@ -1500,8 +1522,7 @@ test("Pi and Vercel execute the identical frozen conformance inputs", async () =
       "conformance-cli",
       "--student-model",
       "conformance-cli-supervisor-takeover-student",
-      "--supervisor-model",
-      "conformance-cli-supervisor-takeover-judge",
+      "--deterministic-supervisor",
       "--teacher-model",
       "conformance-cli-supervisor-takeover-teacher",
       "--tool-executor-url",
@@ -1509,6 +1530,8 @@ test("Pi and Vercel execute the identical frozen conformance inputs", async () =
       "--scenario-timeout-ms",
       "5000",
       "--require-complete",
+      "--output",
+      join(runtimeHome, "live-conformance.json"),
       "--json",
     ]);
     assert.equal(cli.code, 0, `stdout:\n${cli.stdout}\nstderr:\n${cli.stderr}`);
@@ -1517,6 +1540,26 @@ test("Pi and Vercel execute the identical frozen conformance inputs", async () =
     assert.equal(cliReport.complete, true);
     assert.equal(cliReport.eligible_for_promotion, true);
     assert.ok(cliReport.scenarios.every((scenario) => scenario.status === "passed"));
+    assert.match(cliReport.generated_at, /^\d{4}-\d{2}-\d{2}T/);
+    assert.deepEqual(cliReport.metadata.provider, {
+      base_url: baseUrl,
+      model: "conformance-cli",
+    });
+    assert.equal(cliReport.metadata.supervisor_mode, "deterministic_fixture");
+    assert.equal(
+      cliReport.metadata.supervision.supervisor.model,
+      "understudy-deterministic-supervisor-v1",
+    );
+    assert.ok(
+      cliReport.scenarios.every(
+        (scenario) => scenario.run_id?.startsWith(`conformance-pi-${scenario.id}-`) === true,
+      ),
+    );
+    const persistedPath = join(runtimeHome, "live-conformance.json");
+    assert.equal(statSync(persistedPath).mode & 0o077, 0);
+    const persisted = JSON.parse(readFileSync(persistedPath, "utf8"));
+    assert.equal(persisted.suite_id, cliReport.suite_id);
+    assert.equal(persisted.generated_at, cliReport.generated_at);
   } finally {
     await new Promise((accept) => provider.close(accept));
     delete process.env.UNDERSTUDY_RUNTIME_TOOL_TOKEN;
