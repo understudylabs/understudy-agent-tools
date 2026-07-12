@@ -237,6 +237,7 @@ function attachCanonicalAdapter(
     role?: RuntimeRunRequest["role"];
     model?: string;
     plannedAbort?: () => boolean;
+    abortReason?: () => unknown;
     onTextDelta?: (delta: string) => void;
   } = {},
 ) {
@@ -290,7 +291,9 @@ function attachCanonicalAdapter(
         terminalEmitted = true;
         enqueue("cancellation", {
           stage: "model_stream",
-          reason: event.message.errorMessage || "aborted",
+          reason: safeErrorMessage(
+            options.abortReason?.() ?? event.message.errorMessage ?? "aborted",
+          ),
         });
       } else if (event.message.stopReason === "error") {
         terminalEmitted = true;
@@ -668,6 +671,7 @@ async function runSupervisedStudentSegment(options: {
     role: "student",
     model: config.student.model,
     plannedAbort: () => plannedAbort,
+    abortReason: () => abortSignal?.reason,
     onTextDelta(delta) {
       partial += delta;
       if (
@@ -708,6 +712,19 @@ async function runSupervisedStudentSegment(options: {
             void session.abort();
           }
         })
+        .catch((error) => {
+          // A user Stop aborts the student stream and an in-flight supervisor
+          // request together. The canonical cancellation is emitted below;
+          // never let the supervisor fetch rejection escape to the sidecar's
+          // generic runtime_dispatch error boundary.
+          if (!abortSignal?.aborted) {
+            decision = {
+              verdict: "continue",
+              error: safeErrorMessage(error),
+              usage: unavailableSupervisorUsage(config.supervisor.model),
+            };
+          }
+        })
         .finally(() => {
           checkInFlight = undefined;
         });
@@ -732,7 +749,12 @@ async function runSupervisedStudentSegment(options: {
   }
   if (checkInFlight) await checkInFlight;
   await adapter.flush();
-  if (promptError && !adapter.terminalEmitted()) {
+  if (abortSignal?.aborted && !adapter.terminalEmitted()) {
+    await writer.emit("cancellation", {
+      stage: "student_stream",
+      reason: safeErrorMessage(abortSignal.reason ?? promptError ?? "aborted"),
+    });
+  } else if (promptError && !decision && !adapter.terminalEmitted()) {
     await writer.emit("error", {
       stage: "student_stream",
       code: "pi_student_exception",
@@ -776,7 +798,9 @@ async function runSupervisedStudentSegment(options: {
       },
     markerId,
     nextBoundaryOrdinal: boundaryOrdinal,
-    terminal: Boolean(abortSignal?.aborted || promptError || adapter.terminalEmitted()),
+    terminal: Boolean(
+      abortSignal?.aborted || (!decision && promptError) || adapter.terminalEmitted(),
+    ),
   };
 }
 
@@ -816,6 +840,7 @@ async function runTeacherContinuation(options: {
   const adapter = attachCanonicalAdapter(session, options.request, options.writer, {
     role: "teacher",
     model: options.config.teacher.model,
+    abortReason: () => options.abortSignal?.reason,
   });
   const abort = () => void session.abort();
   options.abortSignal?.addEventListener("abort", abort, { once: true });
@@ -944,7 +969,9 @@ export async function runPiConversation(
     messages: request.messages,
     persistent: true,
   });
-  const adapter = attachCanonicalAdapter(session, request, writer);
+  const adapter = attachCanonicalAdapter(session, request, writer, {
+    abortReason: () => abortSignal?.reason,
+  });
   const latest = [...request.messages]
     .reverse()
     .find((message) => message.role === "user");

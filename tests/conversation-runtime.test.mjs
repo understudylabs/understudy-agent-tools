@@ -374,6 +374,92 @@ test("Pi runtime deterministically interrupts a student and continues with the t
   validateRuntimeTrace(events);
 });
 
+test("Pi supervision turns a user abort during a judge check into canonical cancellation", async () => {
+  const server = createServer(async (request, response) => {
+    const body = await requestJson(request);
+    if (body.model === "supervisor-model") {
+      setTimeout(() => {
+        if (response.destroyed) return;
+        response.writeHead(200, { "content-type": "application/json" });
+        response.end(
+          JSON.stringify({
+            choices: [{ message: { role: "assistant", content: "continue" } }],
+            usage: { prompt_tokens: 12, completion_tokens: 1, total_tokens: 13 },
+          }),
+        );
+      }, 500);
+      return;
+    }
+    response.writeHead(200, { "content-type": "text/event-stream" });
+    response.write(
+      `data: ${JSON.stringify({
+        id: "chatcmpl-supervised-cancel",
+        object: "chat.completion.chunk",
+        created: 1,
+        model: "student-model",
+        choices: [
+          {
+            index: 0,
+            delta: { role: "assistant", content: "partial under review ".repeat(20) },
+            finish_reason: null,
+          },
+        ],
+      })}\n\n`,
+    );
+    setTimeout(() => {
+      if (!response.destroyed) response.end("data: [DONE]\n\n");
+    }, 1_000);
+  });
+  await new Promise((accept) => server.listen(0, "127.0.0.1", accept));
+  const address = server.address();
+  assert.ok(address && typeof address !== "string");
+  const baseUrl = `http://127.0.0.1:${address.port}/v1`;
+  const controller = new AbortController();
+  const events = [];
+  let cancelScheduled = false;
+  try {
+    await runPiConversation(
+      {
+        run_id: "run-supervised-user-cancel",
+        session_id: "session-supervised-user-cancel",
+        base_url: baseUrl,
+        model: "student-model",
+        role: "student",
+        messages: [{ role: "user", content: "Generate until stopped." }],
+        tools: [],
+        runtime_backend: "pi",
+        supervision: {
+          student: { base_url: baseUrl, model: "student-model" },
+          supervisor: {
+            base_url: baseUrl,
+            model: "supervisor-model",
+            system_prompt: "Judge the partial answer.",
+            max_output_tokens: 24,
+          },
+          teacher: { base_url: baseUrl, model: "teacher-model" },
+          boundary_chars: 50,
+          max_nudges: 0,
+        },
+      },
+      (event) => {
+        events.push(event);
+        if (event.event === "delta" && !cancelScheduled) {
+          cancelScheduled = true;
+          setTimeout(() => controller.abort("supervised_user_cancel"), 25);
+        }
+      },
+      controller.signal,
+    );
+  } finally {
+    await new Promise((accept) => server.close(accept));
+  }
+  assert.ok(events.some((event) => event.event === "delta"));
+  assert.equal(events.some((event) => event.event === "error"), false);
+  assert.equal(events.at(-1).event, "cancellation");
+  assert.equal(events.at(-1).data.reason, "supervised_user_cancel");
+  validateRuntimeTrace(events);
+});
+
 test("Pi runtime owns the image and authenticated tool round", async () => {
   let providerCalls = 0;
   let imageSeen = false;
@@ -648,8 +734,116 @@ test("Pi runtime cancellation preserves the partial and terminates canonically",
     "partial output",
   );
   assert.equal(events.at(-1).event, "cancellation");
-  assert.match(events.at(-1).data.reason, /abort|cancel/i);
+  assert.equal(events.at(-1).data.reason, "deterministic_test_cancel");
   validateRuntimeTrace(events);
+});
+
+test("managed sidecar DELETE cancels the exact Pi run and preserves its partial", async () => {
+  const provider = createServer((_request, response) => {
+    response.writeHead(200, { "content-type": "text/event-stream" });
+    response.write(
+      `data: ${JSON.stringify({
+        id: "chatcmpl-sidecar-cancel",
+        object: "chat.completion.chunk",
+        created: 1,
+        model: "sidecar-cancel-model",
+        choices: [
+          {
+            index: 0,
+            delta: { role: "assistant", content: "partial from exact run" },
+            finish_reason: null,
+          },
+        ],
+      })}\n\n`,
+    );
+    setTimeout(() => {
+      if (response.destroyed) return;
+      response.write(
+        `data: ${JSON.stringify({
+          id: "chatcmpl-sidecar-cancel",
+          object: "chat.completion.chunk",
+          created: 1,
+          model: "sidecar-cancel-model",
+          choices: [
+            { index: 0, delta: { content: " must not arrive" }, finish_reason: null },
+          ],
+        })}\n\n`,
+      );
+      response.end("data: [DONE]\n\n");
+    }, 500);
+  });
+  await new Promise((accept) => provider.listen(0, "127.0.0.1", accept));
+  const providerAddress = provider.address();
+  assert.ok(providerAddress && typeof providerAddress !== "string");
+  const runId = "run-sidecar-delete-cancel";
+  let status;
+  try {
+    status = await startConversationRuntime();
+    const token = readFileSync(status.token_path, "utf8").trim();
+    const response = await fetch(`${status.base_url}/v1/runs`, {
+      method: "POST",
+      headers: {
+        authorization: `Bearer ${token}`,
+        "content-type": "application/json",
+      },
+      body: JSON.stringify({
+        run_id: runId,
+        session_id: "session-sidecar-delete-cancel",
+        base_url: `http://127.0.0.1:${providerAddress.port}/v1`,
+        model: "sidecar-cancel-model",
+        role: "primary",
+        messages: [{ role: "user", content: "Start and wait." }],
+        tools: [],
+        runtime_backend: "pi",
+      }),
+    });
+    assert.equal(response.status, 200);
+    assert.ok(response.body);
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    const events = [];
+    let buffered = "";
+    while (!events.some((event) => event.event === "delta")) {
+      const chunk = await reader.read();
+      assert.equal(chunk.done, false);
+      buffered += decoder.decode(chunk.value, { stream: true });
+      const lines = buffered.split("\n");
+      buffered = lines.pop() ?? "";
+      for (const line of lines.filter(Boolean)) events.push(JSON.parse(line));
+    }
+
+    const cancelled = await fetch(
+      `${status.base_url}/v1/runs/${encodeURIComponent(runId)}`,
+      {
+        method: "DELETE",
+        headers: { authorization: `Bearer ${token}` },
+      },
+    );
+    assert.equal(cancelled.status, 200);
+    assert.deepEqual(await cancelled.json(), { status: "cancelling", run_id: runId });
+
+    for (;;) {
+      const chunk = await reader.read();
+      if (chunk.done) break;
+      buffered += decoder.decode(chunk.value, { stream: true });
+      const lines = buffered.split("\n");
+      buffered = lines.pop() ?? "";
+      for (const line of lines.filter(Boolean)) events.push(JSON.parse(line));
+    }
+    buffered += decoder.decode();
+    if (buffered.trim()) events.push(JSON.parse(buffered));
+
+    assert.equal(
+      events.filter((event) => event.event === "delta").map((event) => event.data.text).join(""),
+      "partial from exact run",
+    );
+    assert.equal(events.at(-1).event, "cancellation");
+    assert.equal(events.at(-1).data.reason, "cancelled_by_client");
+    validateRuntimeTrace(events);
+  } finally {
+    await stopConversationRuntime().catch(() => {});
+    await new Promise((accept) => provider.close(accept));
+  }
 });
 
 test("managed sidecar dispatches an authenticated Pi run", async () => {
