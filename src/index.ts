@@ -9,6 +9,7 @@ import { buildValueReport } from "./value-report.js";
 import { type AgentPlatformAdapter, agentPlatformAdapters, findAgentPlatformAdapter } from "./agent-platforms.js";
 import { registerCapturesCommand } from "./commands/captures.js";
 import { registerDaemonCommand } from "./commands/daemon.js";
+import { registerDesktopCommand } from "./commands/desktop.js";
 import { registerDoctorCommand } from "./commands/doctor.js";
 import { registerGatewayCommand } from "./commands/gateway.js";
 import { registerKeysCommand } from "./commands/keys.js";
@@ -442,6 +443,7 @@ export function buildProgram(): Command {
 
   registerDoctorCommand(program, printDoctorJson);
   registerDaemonCommand(program);
+  registerDesktopCommand(program);
 
   registerLoginCommand(program);
   registerLogoutCommand(program);

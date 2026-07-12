@@ -456,6 +456,25 @@ commit-pinned MLX/VLM engine under `~/.understudy`; `doctor` verifies its
 provenance and the required Gemma compatibility fix, and `repair` reinstalls
 that exact runtime when first-use diagnostics fail.
 
+When Desktop is running, agents can use its authenticated local control plane
+without discovering ports or handling tokens themselves:
+
+```bash
+understudy desktop capabilities
+understudy desktop chat --slot 9 --session my-task --run-id my-task-1 "Inspect this"
+understudy desktop chat --slot 9 --image screenshot.png "What is wrong here?"
+understudy desktop run cancel my-task-1
+understudy desktop run events my-task-1 --json
+understudy desktop supervisor-feedback --session my-task --run-id my-task-1 \
+  --marker my-task-1:intervention:0 --stage take_over --correct-action continue
+```
+
+The CLI reads the private mode-0600 `~/.understudy/desktop-api.json`, verifies
+the recorded PID and loopback health endpoint, and streams the canonical
+ConversationRuntime events. The desktop UI, REST API, CLI, and MCP use the same
+runtime and exact `run_id`; the CLI does not drive UI controls or create a
+second chat harness.
+
 ## The skill tree
 
 `skills/understudy/SKILL.md` is the public entrypoint. It routes to exactly

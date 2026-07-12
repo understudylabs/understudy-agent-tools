@@ -46,12 +46,14 @@ locations and registry links are in [`reference.md`](reference.md).
 **If the Understudy desktop app is running, prefer its daemon.** Check
 `~/.understudy/agent-card.json` and trust the `app` block only after a pid
 check on `app.pid` plus a health probe of `<app.base_url>/health`
-(`understudy daemon status` does exactly this; schema in
+(`understudy daemon status` does exactly this; then run
+`understudy desktop capabilities`; schema in
 [`../onboard/reference.md`](../onboard/reference.md)). A running app can
 start/poll/cancel verified snapshot downloads into the same
 `~/.understudy/models` cache and already serves warm slots
-(`app.warm_models`) — reuse it instead of spawning your own mlx servers or a
-second download of the same weights.
+(`app.warm_models`) and exposes them through `understudy desktop chat` with
+canonical runtime evidence — reuse it instead of spawning your own MLX servers
+or a second download of the same weights.
 
 ## Flow
 
