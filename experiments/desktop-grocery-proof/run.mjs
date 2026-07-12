@@ -6,6 +6,8 @@ import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 
+import { renderExistingProof, writeBuyerReport } from "./report.mjs";
+
 const here = dirname(fileURLToPath(import.meta.url));
 
 export function extractJsonObject(text) {
@@ -84,6 +86,7 @@ function parseArgs(argv) {
     teacherSlot: 5,
     maxTokens: 384,
     outputRoot: join(homedir(), ".understudy", "proofs", "grocery-marketplace"),
+    reportFrom: null,
   };
   for (let index = 0; index < argv.length; index += 1) {
     const value = argv[index];
@@ -92,6 +95,7 @@ function parseArgs(argv) {
     else if (value === "--teacher-slot") options.teacherSlot = Number(next);
     else if (value === "--max-tokens") options.maxTokens = Number(next);
     else if (value === "--output-root") options.outputRoot = resolve(next);
+    else if (value === "--report-from") options.reportFrom = resolve(next);
     else throw new Error(`unknown argument: ${value}`);
     index += 1;
   }
@@ -312,20 +316,31 @@ export async function runProof(options = parseArgs(process.argv.slice(2))) {
     task_count: tasks.length,
     run_count: rows.length,
     slots: { student: options.studentSlot, teacher: options.teacherSlot },
+    report_file: "report.html",
+    report_model_file: "report.json",
     by_mode: byMode,
   };
   writeProofFile(
     join(outputDir, "results.jsonl"),
     `${rows.map((row) => JSON.stringify(row)).join("\n")}\n`,
   );
-  writeProofFile(join(outputDir, "summary.json"), `${JSON.stringify(summary, null, 2)}\n`);
   writeProofFile(join(outputDir, "tasks.json"), tasksBytes);
+  const report = writeBuyerReport(outputDir, summary, rows, tasks);
+  // Publish the immutable summary last so its report references cannot dangle
+  // if report validation or writing fails.
+  writeProofFile(join(outputDir, "summary.json"), `${JSON.stringify(summary, null, 2)}\n`);
   process.stdout.write(`${JSON.stringify({ output_dir: outputDir, summary }, null, 2)}\n`);
-  return { outputDir, summary, rows };
+  return { outputDir, summary, rows, report };
 }
 
 if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) {
-  runProof().catch((error) => {
+  const options = parseArgs(process.argv.slice(2));
+  const operation = options.reportFrom
+    ? Promise.resolve().then(() => renderExistingProof(options.reportFrom))
+    : runProof(options);
+  operation.then((result) => {
+    if (options.reportFrom) process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
+  }).catch((error) => {
     process.stderr.write(`${error instanceof Error ? error.message : String(error)}\n`);
     process.exitCode = 1;
   });
