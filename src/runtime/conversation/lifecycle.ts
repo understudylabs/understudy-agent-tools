@@ -2,7 +2,7 @@ import { closeSync, existsSync, mkdirSync, openSync, readFileSync, rmSync, write
 import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { randomBytes } from "node:crypto";
+import { randomBytes, timingSafeEqual } from "node:crypto";
 import { spawn, spawnSync } from "node:child_process";
 
 import {
@@ -96,6 +96,27 @@ function writeToolSecret(path: string): string {
   return writeSecret(path);
 }
 
+function requestedToolSecret(): string | null {
+  const provided = process.env.UNDERSTUDY_RUNTIME_TOOL_TOKEN?.trim();
+  if (provided === undefined) return null;
+  if (provided.length < 32) {
+    throw new Error("UNDERSTUDY_RUNTIME_TOOL_TOKEN must contain at least 32 characters");
+  }
+  return provided;
+}
+
+function toolSecretMatches(path: string, requested: string | null): boolean {
+  if (requested === null) return true;
+  try {
+    const existing = readFileSync(path, "utf8").trim();
+    const left = Buffer.from(existing);
+    const right = Buffer.from(requested);
+    return left.length === right.length && timingSafeEqual(left, right);
+  } catch {
+    return false;
+  }
+}
+
 function readState(path: string): ConversationRuntimeState | null {
   try {
     const value = JSON.parse(readFileSync(path, "utf8")) as ConversationRuntimeState;
@@ -184,15 +205,16 @@ export async function conversationRuntimeStatus(): Promise<ConversationRuntimeSt
 }
 
 export async function startConversationRuntime(): Promise<ConversationRuntimeStatus> {
+  const location = paths();
+  const requestedToolToken = requestedToolSecret();
   const current = await conversationRuntimeStatus();
-  if (current.healthy) return current;
+  if (current.healthy && toolSecretMatches(location.toolToken, requestedToolToken)) return current;
   if (current.running) {
     // A live process with a failed health/version check must be reaped before
     // replacing its state file; otherwise an upgrade can orphan the old
     // sidecar while the new one starts on another ephemeral port.
     await stopConversationRuntime();
   }
-  const location = paths();
   installConversationRuntime();
   rmSync(location.state, { force: true });
   const token = writeSecret(location.token);

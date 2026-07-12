@@ -31,6 +31,12 @@ uses semantic-ish versioning (minor = new skill or new capability, patch = fixes
 
 ### Fixed
 
+- **Desktop restart no longer strands tool calls on a stale sidecar token.**
+  Idempotent runtime start now compares an injected Desktop tool credential
+  with the owner-only stored credential using a timing-safe comparison. If the
+  Desktop token rotated while the sidecar stayed healthy, the CLI replaces the
+  sidecar before the next turn instead of allowing post-restart tool execution
+  to fail with 401.
 - **The curl installer can no longer finish looking successful with zero
   coding-agent adapters installed.** `install.sh` now logs the raw agent-menu
   answer and the resolved `--agents` selection to the install log ("Agent

@@ -105,6 +105,14 @@ test("CLI lifecycle installs, starts, diagnoses, and stops the packaged sidecar"
   assert.ok(readFileSync(running.token_path, "utf8").trim().length >= 64);
   assert.equal(readFileSync(running.tool_token_path, "utf8").trim(), injectedToolToken);
 
+  const firstPid = running.pid;
+  const rotatedToolToken = "rotated-desktop-loopback-token-".padEnd(64, "b");
+  process.env.UNDERSTUDY_RUNTIME_TOOL_TOKEN = rotatedToolToken;
+  const rotated = await startConversationRuntime();
+  assert.equal(rotated.healthy, true);
+  assert.notEqual(rotated.pid, firstPid);
+  assert.equal(readFileSync(rotated.tool_token_path, "utf8").trim(), rotatedToolToken);
+
   const probed = await conversationRuntimeStatus();
   assert.equal(probed.healthy, true);
 
