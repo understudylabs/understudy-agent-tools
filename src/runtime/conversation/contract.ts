@@ -8,7 +8,7 @@ export const CONFORMANCE_SCHEMA =
 export const RUNTIME_ID = "understudy-conversation-sidecar";
 export const VERCEL_RUNTIME_ID = "vercel-ai-sdk";
 export const PI_RUNTIME_ID = "pi-agent-session";
-export const RUNTIME_VERSION = "0.2.0";
+export const RUNTIME_VERSION = "0.3.0";
 
 export function piNodeSupported(version = process.versions.node): boolean {
   const [major, minor] = version.split(".").map(Number);
@@ -50,6 +50,26 @@ const toolSchema = z
   })
   .strict();
 
+const providerTargetSchema = z
+  .object({
+    base_url: z.string().url(),
+    model: z.string().min(1).max(500),
+  })
+  .strict();
+
+const supervisionSchema = z
+  .object({
+    student: providerTargetSchema,
+    supervisor: providerTargetSchema.extend({
+      system_prompt: z.string().min(1).max(8_000),
+      max_output_tokens: z.number().int().positive().max(256).default(24),
+    }),
+    teacher: providerTargetSchema,
+    boundary_chars: z.number().int().positive().max(8_192).default(300),
+    max_nudges: z.number().int().min(0).max(8).default(2),
+  })
+  .strict();
+
 export const runtimeRequestSchema = z
   .object({
     run_id: z.string().min(1).max(200),
@@ -66,8 +86,18 @@ export const runtimeRequestSchema = z
     emit_input: z.boolean().default(true),
     allow_remote: z.boolean().default(false),
     runtime_backend: z.enum(["pi", "vercel"]).default("vercel"),
+    supervision: supervisionSchema.optional(),
   })
-  .strict();
+  .strict()
+  .superRefine((request, context) => {
+    if (request.supervision && request.runtime_backend !== "pi") {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["supervision"],
+        message: "supervision currently requires the Pi runtime backend",
+      });
+    }
+  });
 
 export const runtimeInputFixtureSchema = z
   .object({
@@ -101,6 +131,7 @@ export const runtimeInputFixtureSchema = z
 export type RuntimeRunRequest = z.infer<typeof runtimeRequestSchema>;
 export type RuntimeInputFixture = z.infer<typeof runtimeInputFixtureSchema>;
 export type RuntimeInputMessage = RuntimeRunRequest["messages"][number];
+export type RuntimeProviderTarget = { base_url: string; model: string };
 export type RuntimeEventName =
   | "message"
   | "delta"
@@ -167,8 +198,11 @@ export function parseRuntimeInputFixture(value: unknown): RuntimeInputFixture {
   return runtimeInputFixtureSchema.parse(value);
 }
 
-export function requireSafeProviderUrl(request: RuntimeRunRequest): URL {
-  const url = new URL(request.base_url);
+export function requireSafeProviderTargetUrl(
+  target: RuntimeProviderTarget,
+  allowRemote: boolean,
+): URL {
+  const url = new URL(target.base_url);
   if (["127.0.0.1", "localhost", "::1", "[::1]"].includes(url.hostname)) {
     if (url.protocol !== "http:" && url.protocol !== "https:") {
       throw new Error("local runtime base_url must use http or https");
@@ -176,7 +210,7 @@ export function requireSafeProviderUrl(request: RuntimeRunRequest): URL {
     return url;
   }
   if (
-    !request.allow_remote ||
+    !allowRemote ||
     process.env.UNDERSTUDY_RUNTIME_ALLOW_REMOTE !== "1"
   ) {
     throw new Error(
@@ -187,6 +221,10 @@ export function requireSafeProviderUrl(request: RuntimeRunRequest): URL {
     throw new Error("remote runtime base_url must use https");
   }
   return url;
+}
+
+export function requireSafeProviderUrl(request: RuntimeRunRequest): URL {
+  return requireSafeProviderTargetUrl(request, request.allow_remote);
 }
 
 export function requireLocalToolExecutorUrl(request: RuntimeRunRequest): URL | null {

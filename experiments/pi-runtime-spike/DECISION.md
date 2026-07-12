@@ -3,7 +3,7 @@
 Decision: Pi `AgentSession` is the selected stateful harness and now runs inside
 the CLI-managed sidecar. The desktop can opt into it while retaining the native
 Rust path as a pre-output fallback. Do not make it the release default until
-the remaining packaging, supervision, cancellation, and soak gates pass.
+the remaining packaging, user-cancellation, and soak gates pass.
 
 ## Evidence
 
@@ -56,6 +56,22 @@ the remaining packaging, supervision, cancellation, and soak gates pass.
 - The desktop refuses native retry after any Pi delta/tool output, preventing a
   partial answer from being duplicated. Pre-output startup, schema, transport,
   or provider failures retain the native fallback and surface the reason.
+- Production small-first supervision now runs through the managed Pi sidecar.
+  A live local run (`run-20260712T030234.656-0357`) used a 1.2B student and the
+  warm 26B teacher: the supervisor interrupted at 339 characters because the
+  student violated the user's no-tool instruction, recorded the four-way
+  logprob distribution, and the teacher continued from the exact partial.
+  The 748-event immutable trace had one run id, contiguous sequence numbers,
+  no cancellation/error, and no orphaned tool calls/results.
+- That live trace attributed 2,398 tokens to the student, 331 to supervision,
+  and 1,252 to the teacher. The capture journal retained separate student and
+  teacher rows plus supervisor usage, and the local correction-pair exporter
+  reproduced the marker, reason, probabilities, partial, continuation, and
+  empty human judgment without guessing a label.
+- A broken local model artifact now exits the residency `loading` state in
+  roughly two seconds, retains its actionable weight-shape error, and raises
+  the existing CLI repair prompt instead of waiting for the 180-second health
+  timeout with stderr discarded.
 - The expanded dependency graph passed the package smoke and `npm audit` with
   zero known vulnerabilities at this checkpoint.
 
@@ -76,8 +92,8 @@ true:
    pinned Node 22 sidecar without requiring the user's system Node.
 2. The desktop's authenticated native tool bridge passes the same frozen
    tool/image/cancel/restart/supervision traces through Pi. Text, tool/image,
-   runtime cancellation, and restart are now proven; the user-facing stop
-   control and live supervision remain.
+   runtime cancellation, restart, and live supervision are now proven; the
+   user-facing stop control remains.
 3. Crash recovery and compaction survive a production-shaped long-chat soak.
 4. A dependency/license/security review accepts the bundled surface.
 5. The integration replaces enough native orchestration to reduce total

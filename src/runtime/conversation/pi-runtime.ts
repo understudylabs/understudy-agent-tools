@@ -19,11 +19,13 @@ import {
   RuntimeEventWriter,
   parseRuntimeRequest,
   requireLocalToolExecutorUrl,
+  requireSafeProviderTargetUrl,
   requireSafeProviderUrl,
   safeErrorMessage,
   validateAttachmentBytes,
   type EmitRuntimeEvent,
   type RuntimeInputMessage,
+  type RuntimeProviderTarget,
   type RuntimeRunRequest,
 } from "./contract.js";
 
@@ -38,10 +40,10 @@ function sessionComponent(sessionId: string): string {
   return createHash("sha256").update(sessionId).digest("hex");
 }
 
-function modelFor(request: RuntimeRunRequest, baseUrl: URL) {
+function modelFor(target: RuntimeProviderTarget, baseUrl: URL, maxTokens: number) {
   return {
-    id: request.model,
-    name: request.model,
+    id: target.model,
+    name: target.model,
     api: "openai-completions" as const,
     provider: "understudy-runtime",
     baseUrl: baseUrl.toString().replace(/\/$/, ""),
@@ -49,7 +51,7 @@ function modelFor(request: RuntimeRunRequest, baseUrl: URL) {
     input: ["text", "image"] as Array<"text" | "image">,
     cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
     contextWindow: 32_768,
-    maxTokens: request.max_output_tokens,
+    maxTokens,
   };
 }
 
@@ -63,7 +65,8 @@ function usageData(
       totalTokens?: number;
     };
   },
-  request: RuntimeRunRequest,
+  role: RuntimeRunRequest["role"],
+  model: string,
 ): Record<string, unknown> {
   const usage = message.usage ?? {};
   const input = Number.isFinite(usage.input) ? usage.input! : 0;
@@ -74,8 +77,8 @@ function usageData(
     Number.isFinite(usage.output) &&
     Number.isFinite(usage.totalTokens);
   return {
-    role: request.role,
-    model: request.model,
+    role,
+    model,
     input_tokens: input,
     output_tokens: output,
     reasoning_tokens: Number.isFinite(usage.reasoning) ? usage.reasoning : 0,
@@ -121,7 +124,7 @@ function zeroUsage() {
 
 function seedHistory(
   manager: SessionManager,
-  request: RuntimeRunRequest,
+  model: string,
   messages: RuntimeInputMessage[],
 ): void {
   if (manager.getEntries().length > 0) return;
@@ -143,7 +146,7 @@ function seedHistory(
         content: [{ type: "text", text: message.content }],
         api: "openai-completions",
         provider: "understudy-runtime",
-        model: request.model,
+        model,
         usage: zeroUsage(),
         stopReason: "stop",
         timestamp: Date.now() + index,
@@ -230,6 +233,12 @@ function attachCanonicalAdapter(
   session: Awaited<ReturnType<typeof createAgentSession>>["session"],
   request: RuntimeRunRequest,
   writer: RuntimeEventWriter,
+  options: {
+    role?: RuntimeRunRequest["role"];
+    model?: string;
+    plannedAbort?: () => boolean;
+    onTextDelta?: (delta: string) => void;
+  } = {},
 ) {
   let chain = Promise.resolve();
   let terminalEmitted = false;
@@ -241,12 +250,17 @@ function attachCanonicalAdapter(
     if (event.type === "message_update") {
       const update = event.assistantMessageEvent;
       if (update.type === "text_delta") {
-        enqueue("delta", { role: request.role, text: update.delta, model: request.model });
+        enqueue("delta", {
+          role: options.role ?? request.role,
+          text: update.delta,
+          model: options.model ?? request.model,
+        });
+        options.onTextDelta?.(update.delta);
       } else if (update.type === "thinking_delta") {
         enqueue("reasoning_delta", {
-          role: request.role,
+          role: options.role ?? request.role,
           text: update.delta,
-          model: request.model,
+          model: options.model ?? request.model,
         });
       }
     } else if (event.type === "tool_execution_start") {
@@ -264,8 +278,15 @@ function attachCanonicalAdapter(
         result: event.result,
       });
     } else if (event.type === "message_end" && event.message.role === "assistant") {
-      enqueue("usage", usageData(event.message, request));
-      if (event.message.stopReason === "aborted") {
+      enqueue(
+        "usage",
+        usageData(
+          event.message,
+          options.role ?? request.role,
+          options.model ?? request.model,
+        ),
+      );
+      if (event.message.stopReason === "aborted" && !options.plannedAbort?.()) {
         terminalEmitted = true;
         enqueue("cancellation", {
           stage: "model_stream",
@@ -303,26 +324,33 @@ function attachCanonicalAdapter(
   });
   return {
     unsubscribe,
+    enqueue,
     flush: () => chain,
     terminalEmitted: () => terminalEmitted,
   };
 }
 
-export async function runPiConversation(
-  rawRequest: unknown,
-  emit: EmitRuntimeEvent,
-  abortSignal?: AbortSignal,
-): Promise<void> {
-  const request = parseRuntimeRequest(rawRequest);
-  const providerUrl = requireSafeProviderUrl(request);
-  const writer = new RuntimeEventWriter(request, emit, PI_RUNTIME_ID);
-  const root = join(runtimeHome(), "pi-sessions", sessionComponent(request.session_id));
+async function createPiRuntimeSession(options: {
+  request: RuntimeRunRequest;
+  target: RuntimeProviderTarget;
+  root: string;
+  messages: RuntimeInputMessage[];
+  persistent: boolean;
+  maxTokens?: number;
+  toolsEnabled?: boolean;
+}) {
+  const { request, target, root, messages, persistent } = options;
+  const providerUrl = requireSafeProviderTargetUrl(target, request.allow_remote);
   const cwd = join(root, "cwd");
   const sessionDir = join(root, "sessions");
   mkdirSync(cwd, { recursive: true, mode: 0o700 });
-  mkdirSync(sessionDir, { recursive: true, mode: 0o700 });
+  if (persistent) mkdirSync(sessionDir, { recursive: true, mode: 0o700 });
 
-  const selectedModel = modelFor(request, providerUrl);
+  const selectedModel = modelFor(
+    target,
+    providerUrl,
+    options.maxTokens ?? request.max_output_tokens,
+  );
   const authStorage = AuthStorage.inMemory();
   authStorage.setRuntimeApiKey(
     selectedModel.provider,
@@ -342,11 +370,13 @@ export async function runPiConversation(
     },
     { projectTrusted: false },
   );
-  const systemPrompt = request.messages
-    .filter((message) => message.role === "system")
-    .map(textContent)
-    .filter(Boolean)
-    .join("\n\n") || "You are the Understudy conversation runtime. Use only explicitly provided tools.";
+  const systemPrompt =
+    messages
+      .filter((message) => message.role === "system")
+      .map(textContent)
+      .filter(Boolean)
+      .join("\n\n") ||
+    "You are the Understudy conversation runtime. Use only explicitly provided tools.";
   const resourceLoader = new DefaultResourceLoader({
     cwd,
     agentDir: join(root, "agent"),
@@ -359,9 +389,11 @@ export async function runPiConversation(
     systemPrompt,
   });
   await resourceLoader.reload();
-  const sessionManager = SessionManager.continueRecent(cwd, sessionDir);
-  seedHistory(sessionManager, request, request.messages);
-  const tools = buildTools(request);
+  const sessionManager = persistent
+    ? SessionManager.continueRecent(cwd, sessionDir)
+    : SessionManager.inMemory(cwd);
+  seedHistory(sessionManager, target.model, messages);
+  const tools = options.toolsEnabled === false ? [] : buildTools(request);
   const { session } = await createAgentSession({
     cwd,
     agentDir: join(root, "agent"),
@@ -375,6 +407,542 @@ export async function runPiConversation(
     settingsManager,
     authStorage,
     modelRegistry,
+  });
+  return { session };
+}
+
+type SupervisionConfig = NonNullable<RuntimeRunRequest["supervision"]>;
+type SupervisorDecision = {
+  verdict: "continue" | "interrupt" | "stop" | "nudge";
+  reason?: string;
+  probabilities?: Record<string, number>;
+  raw?: string;
+  error?: string;
+  usage: Record<string, unknown>;
+};
+
+function unavailableSupervisorUsage(model: string): Record<string, unknown> {
+  return {
+    role: "supervisor",
+    model,
+    input_tokens: 0,
+    output_tokens: 0,
+    reasoning_tokens: 0,
+    cached_input_tokens: 0,
+    total_tokens: 0,
+    source: "unavailable",
+    complete: false,
+  };
+}
+
+function characterCount(value: string): number {
+  return [...value].length;
+}
+
+function supervisionBoundaryDue(
+  partial: string,
+  checkedChars: number,
+  boundaryChars: number,
+): boolean {
+  if (characterCount(partial) - checkedChars < boundaryChars) return false;
+  const trimmed = partial.trimEnd();
+  return partial.endsWith("\n") || /[.!?]$/.test(trimmed);
+}
+
+function openAiMessage(message: RuntimeInputMessage): Record<string, unknown> {
+  if (message.role === "tool") {
+    return {
+      role: "tool",
+      tool_call_id: message.tool_call_id,
+      name: message.tool_name,
+      content: JSON.stringify(message.result ?? null),
+    };
+  }
+  if (message.role === "user" && message.attachments?.length) {
+    return {
+      role: message.role,
+      content: [
+        { type: "text", text: message.content },
+        ...message.attachments.map((attachment) => ({
+          type: "image_url",
+          image_url: { url: attachment.data_url },
+        })),
+      ],
+    };
+  }
+  return { role: message.role, content: message.content };
+}
+
+function chatCompletionsUrl(baseUrl: URL): URL {
+  const path = baseUrl.pathname.replace(/\/$/, "");
+  if (path.endsWith("/chat/completions")) return baseUrl;
+  baseUrl.pathname = `${path}/chat/completions`.replace(/^\/\//, "/");
+  return baseUrl;
+}
+
+function verdictLogprobs(payload: unknown): Record<string, number> | undefined {
+  if (!payload || typeof payload !== "object") return undefined;
+  const top = (
+    payload as {
+      choices?: Array<{
+        logprobs?: { content?: Array<{ top_logprobs?: Array<{ token?: string; logprob?: number }> }> };
+      }>;
+    }
+  ).choices?.[0]?.logprobs?.content?.[0]?.top_logprobs;
+  if (!Array.isArray(top)) return undefined;
+  const distribution: Record<string, number> = {};
+  for (const verdict of ["continue", "interrupt", "stop", "nudge"] as const) {
+    const matches = top
+      .filter(
+        (entry) =>
+          typeof entry.token === "string" &&
+          typeof entry.logprob === "number" &&
+          verdict.startsWith(entry.token.trim().toLowerCase()),
+      )
+      .map((entry) => entry.logprob as number);
+    if (matches.length) distribution[verdict] = Math.max(...matches);
+  }
+  return Object.keys(distribution).length ? distribution : undefined;
+}
+
+function parseSupervisorDecision(raw: string): SupervisorDecision {
+  const afterThinking = raw.includes("</think>")
+    ? raw.slice(raw.lastIndexOf("</think>") + "</think>".length)
+    : raw;
+  const trimmed = afterThinking.trim();
+  const match = trimmed.match(/^\W*(continue|interrupt|stop|nudge)\b[\s:,-]*(.*)$/i);
+  if (!match) {
+    return {
+      verdict: "continue",
+      raw: raw.slice(0, 500),
+      error: "supervisor output did not start with a supported verdict",
+      usage: {},
+    };
+  }
+  const verdict = match[1].toLowerCase() as SupervisorDecision["verdict"];
+  const detail = match[2].trim();
+  if ((verdict === "interrupt" || verdict === "nudge") && !detail) {
+    return {
+      verdict: "continue",
+      raw: raw.slice(0, 500),
+      error: `${verdict} verdict omitted its required reason`,
+      usage: {},
+    };
+  }
+  return {
+    verdict,
+    reason: detail || undefined,
+    raw: raw.slice(0, 500),
+    usage: {},
+  };
+}
+
+async function checkSupervisor(
+  request: RuntimeRunRequest,
+  config: SupervisionConfig,
+  messages: RuntimeInputMessage[],
+  partial: string,
+  signal?: AbortSignal,
+): Promise<SupervisorDecision> {
+  const targetUrl = requireSafeProviderTargetUrl(config.supervisor, request.allow_remote);
+  const headers: Record<string, string> = { "content-type": "application/json" };
+  if (process.env.UNDERSTUDY_RUNTIME_API_KEY) {
+    headers.authorization = `Bearer ${process.env.UNDERSTUDY_RUNTIME_API_KEY}`;
+  }
+  try {
+    const response = await fetch(chatCompletionsUrl(targetUrl), {
+      method: "POST",
+      signal,
+      headers,
+      body: JSON.stringify({
+        model: config.supervisor.model,
+        messages: [
+          { role: "system", content: config.supervisor.system_prompt },
+          ...messages.filter((message) => message.role !== "system").map(openAiMessage),
+          {
+            role: "user",
+            content: `[smaller model's partial answer so far]\n${partial}\n\nVerdict?`,
+          },
+        ],
+        stream: false,
+        max_tokens: config.supervisor.max_output_tokens,
+        temperature: 0,
+        logprobs: true,
+        top_logprobs: 5,
+      }),
+    });
+    const payload = (await response.json()) as {
+      choices?: Array<{ message?: { content?: string } }>;
+      usage?: { prompt_tokens?: number; completion_tokens?: number; total_tokens?: number };
+    };
+    if (!response.ok) {
+      throw new Error(`supervisor returned HTTP ${response.status}`);
+    }
+    const raw = payload.choices?.[0]?.message?.content ?? "";
+    const parsed = parseSupervisorDecision(raw);
+    const input = payload.usage?.prompt_tokens;
+    const output = payload.usage?.completion_tokens;
+    const total = payload.usage?.total_tokens;
+    const complete = [input, output, total].every(Number.isFinite);
+    return {
+      ...parsed,
+      probabilities: verdictLogprobs(payload),
+      usage: complete
+        ? {
+            role: "supervisor",
+            model: config.supervisor.model,
+            input_tokens: input,
+            output_tokens: output,
+            reasoning_tokens: 0,
+            cached_input_tokens: 0,
+            total_tokens: Math.max(total!, input! + output!),
+            source: "provider",
+            complete: true,
+          }
+        : unavailableSupervisorUsage(config.supervisor.model),
+    };
+  } catch (error) {
+    if (signal?.aborted) throw error;
+    return {
+      verdict: "continue",
+      error: safeErrorMessage(error),
+      usage: unavailableSupervisorUsage(config.supervisor.model),
+    };
+  }
+}
+
+function verdictEventData(
+  decision: SupervisorDecision,
+  boundaryOrdinal: number,
+  afterChars: number,
+  markerId?: string,
+): Record<string, unknown> {
+  return {
+    verdict: decision.verdict,
+    source: "model",
+    marker_id: markerId,
+    reason: decision.reason,
+    probabilities: decision.probabilities,
+    probability_kind: decision.probabilities ? "logprob" : undefined,
+    boundary_ordinal: boundaryOrdinal,
+    after_chars: afterChars,
+    raw: decision.raw,
+    error: decision.error,
+  };
+}
+
+async function runSupervisedStudentSegment(options: {
+  request: RuntimeRunRequest;
+  config: SupervisionConfig;
+  writer: RuntimeEventWriter;
+  root: string;
+  messages: RuntimeInputMessage[];
+  segmentOrdinal: number;
+  markerOrdinal: number;
+  boundaryOrdinal: number;
+  allowNudge: boolean;
+  abortSignal?: AbortSignal;
+}): Promise<{
+  partial: string;
+  decision: SupervisorDecision;
+  markerId?: string;
+  nextBoundaryOrdinal: number;
+  terminal: boolean;
+}> {
+  const { request, config, writer, messages, abortSignal } = options;
+  const { session } = await createPiRuntimeSession({
+    request,
+    target: config.student,
+    root: join(options.root, `student-${options.segmentOrdinal}`),
+    messages,
+    persistent: false,
+  });
+  let partial = "";
+  let checkedChars = 0;
+  let boundaryOrdinal = options.boundaryOrdinal;
+  let decision: SupervisorDecision | undefined;
+  let markerId: string | undefined;
+  let plannedAbort = false;
+  let checkInFlight: Promise<void> | undefined;
+  const adapter = attachCanonicalAdapter(session, request, writer, {
+    role: "student",
+    model: config.student.model,
+    plannedAbort: () => plannedAbort,
+    onTextDelta(delta) {
+      partial += delta;
+      if (
+        decision ||
+        checkInFlight ||
+        abortSignal?.aborted ||
+        !supervisionBoundaryDue(partial, checkedChars, config.boundary_chars)
+      ) {
+        return;
+      }
+      const snapshot = partial;
+      const afterChars = characterCount(snapshot);
+      checkedChars = afterChars;
+      const thisBoundary = boundaryOrdinal++;
+      checkInFlight = checkSupervisor(request, config, messages, snapshot, abortSignal)
+        .then((result) => {
+          if (abortSignal?.aborted) return;
+          if (result.verdict === "nudge" && !options.allowNudge) {
+            result = {
+              verdict: "continue",
+              error: "nudge budget exhausted; degraded to continue",
+              usage: result.usage,
+            };
+          }
+          const intervention = result.verdict === "interrupt" || result.verdict === "nudge";
+          const currentMarker = intervention
+            ? `${request.run_id}:intervention:${options.markerOrdinal}`
+            : undefined;
+          adapter.enqueue(
+            "supervisor_verdict",
+            verdictEventData(result, thisBoundary, afterChars, currentMarker),
+          );
+          adapter.enqueue("usage", result.usage);
+          if (result.verdict !== "continue") {
+            decision = result;
+            markerId = currentMarker;
+            plannedAbort = true;
+            void session.abort();
+          }
+        })
+        .finally(() => {
+          checkInFlight = undefined;
+        });
+    },
+  });
+  const latest = [...messages].reverse().find((message) => message.role === "user");
+  if (!latest || latest.role !== "user") {
+    adapter.unsubscribe();
+    session.dispose();
+    throw new Error("supervised Pi segment requires a user message");
+  }
+  const abort = () => void session.abort();
+  abortSignal?.addEventListener("abort", abort, { once: true });
+  let promptError: unknown;
+  try {
+    await session.prompt(latest.content, {
+      images: imageContent(latest),
+      expandPromptTemplates: false,
+    });
+  } catch (error) {
+    promptError = error;
+  }
+  if (checkInFlight) await checkInFlight;
+  await adapter.flush();
+  if (promptError && !adapter.terminalEmitted()) {
+    await writer.emit("error", {
+      stage: "student_stream",
+      code: "pi_student_exception",
+      message: safeErrorMessage(promptError),
+      recoverable: false,
+    });
+  }
+  if (!decision && !abortSignal?.aborted && !promptError) {
+    const afterChars = characterCount(partial);
+    if (afterChars !== checkedChars || boundaryOrdinal === options.boundaryOrdinal) {
+      let finalDecision = await checkSupervisor(request, config, messages, partial, abortSignal);
+      if (finalDecision.verdict === "nudge" && !options.allowNudge) {
+        finalDecision = {
+          verdict: "continue",
+          error: "nudge budget exhausted; degraded to continue",
+          usage: finalDecision.usage,
+        };
+      }
+      const intervention =
+        finalDecision.verdict === "interrupt" || finalDecision.verdict === "nudge";
+      markerId = intervention
+        ? `${request.run_id}:intervention:${options.markerOrdinal}`
+        : undefined;
+      await writer.emit(
+        "supervisor_verdict",
+        verdictEventData(finalDecision, boundaryOrdinal++, afterChars, markerId),
+      );
+      await writer.emit("usage", finalDecision.usage);
+      decision = finalDecision;
+    }
+  }
+  abortSignal?.removeEventListener("abort", abort);
+  adapter.unsubscribe();
+  session.dispose();
+  return {
+    partial,
+    decision:
+      decision ?? {
+        verdict: "continue",
+        usage: unavailableSupervisorUsage(config.supervisor.model),
+      },
+    markerId,
+    nextBoundaryOrdinal: boundaryOrdinal,
+    terminal: Boolean(abortSignal?.aborted || promptError || adapter.terminalEmitted()),
+  };
+}
+
+async function runTeacherContinuation(options: {
+  request: RuntimeRunRequest;
+  config: SupervisionConfig;
+  writer: RuntimeEventWriter;
+  root: string;
+  partial: string;
+  markerId: string;
+  reason: string;
+  abortSignal?: AbortSignal;
+}): Promise<void> {
+  const prompt =
+    "The partial assistant answer above was written by a smaller model that has been interrupted. " +
+    "Continue it seamlessly from the exact point it stopped. Correct the problem identified by the " +
+    "supervisor without repeating, rephrasing, or summarizing text already written.";
+  const messages: RuntimeInputMessage[] = [
+    ...options.request.messages,
+    { role: "assistant", content: options.partial },
+    { role: "user", content: prompt },
+  ];
+  await options.writer.emit("teacher_continuation", {
+    marker_id: options.markerId,
+    reason: options.reason,
+    teacher_model: options.config.teacher.model,
+    from_partial_chars: characterCount(options.partial),
+  });
+  const { session } = await createPiRuntimeSession({
+    request: options.request,
+    target: options.config.teacher,
+    root: join(options.root, "teacher"),
+    messages,
+    persistent: false,
+    toolsEnabled: false,
+  });
+  const adapter = attachCanonicalAdapter(session, options.request, options.writer, {
+    role: "teacher",
+    model: options.config.teacher.model,
+  });
+  const abort = () => void session.abort();
+  options.abortSignal?.addEventListener("abort", abort, { once: true });
+  try {
+    await session.prompt(prompt, { expandPromptTemplates: false });
+  } catch (error) {
+    if (!adapter.terminalEmitted()) {
+      await options.writer.emit(
+        options.abortSignal?.aborted ? "cancellation" : "error",
+        options.abortSignal?.aborted
+          ? { stage: "teacher_stream", reason: safeErrorMessage(options.abortSignal.reason ?? error) }
+          : {
+              stage: "teacher_stream",
+              code: "pi_teacher_exception",
+              message: safeErrorMessage(error),
+              recoverable: false,
+            },
+      );
+    }
+  } finally {
+    await adapter.flush();
+    options.abortSignal?.removeEventListener("abort", abort);
+    adapter.unsubscribe();
+    session.dispose();
+  }
+}
+
+async function runPiSupervisedConversation(
+  request: RuntimeRunRequest,
+  emit: EmitRuntimeEvent,
+  abortSignal?: AbortSignal,
+): Promise<void> {
+  const config = request.supervision;
+  if (!config) throw new Error("supervision configuration is required");
+  requireSafeProviderTargetUrl(config.student, request.allow_remote);
+  requireSafeProviderTargetUrl(config.supervisor, request.allow_remote);
+  requireSafeProviderTargetUrl(config.teacher, request.allow_remote);
+  const writer = new RuntimeEventWriter(request, emit, PI_RUNTIME_ID);
+  const root = join(
+    runtimeHome(),
+    "pi-supervised",
+    sessionComponent(request.session_id),
+    sessionComponent(request.run_id),
+  );
+  await emitInputEvidence(request, writer);
+  let messages = request.messages;
+  let totalPartial = "";
+  let markerOrdinal = 0;
+  let boundaryOrdinal = 0;
+  let nudges = 0;
+  for (let segmentOrdinal = 0; ; segmentOrdinal += 1) {
+    const segment = await runSupervisedStudentSegment({
+      request,
+      config,
+      writer,
+      root,
+      messages,
+      segmentOrdinal,
+      markerOrdinal,
+      boundaryOrdinal,
+      allowNudge: nudges < config.max_nudges,
+      abortSignal,
+    });
+    totalPartial += segment.partial;
+    boundaryOrdinal = segment.nextBoundaryOrdinal;
+    if (segment.terminal || segment.decision.verdict === "continue" || segment.decision.verdict === "stop") {
+      return;
+    }
+    if (segment.decision.verdict === "nudge") {
+      markerOrdinal += 1;
+      nudges += 1;
+      messages = [
+        ...request.messages,
+        { role: "assistant", content: totalPartial },
+        {
+          role: "user",
+          content:
+            `[supervisor guidance] ${segment.decision.reason} — continue from exactly where the answer stopped. ` +
+            "Apply the guidance without restarting or repeating text.",
+        },
+      ];
+      continue;
+    }
+    const markerId = segment.markerId;
+    const reason = segment.decision.reason;
+    if (!markerId || !reason) {
+      throw new Error("interrupt verdict lost its marker or reason");
+    }
+    await writer.emit("student_interruption", {
+      marker_id: markerId,
+      reason,
+      partial_text: totalPartial,
+      after_chars: characterCount(totalPartial),
+    });
+    await runTeacherContinuation({
+      request,
+      config,
+      writer,
+      root,
+      partial: totalPartial,
+      markerId,
+      reason,
+      abortSignal,
+    });
+    return;
+  }
+}
+
+export async function runPiConversation(
+  rawRequest: unknown,
+  emit: EmitRuntimeEvent,
+  abortSignal?: AbortSignal,
+): Promise<void> {
+  const request = parseRuntimeRequest(rawRequest);
+  if (request.supervision) {
+    await runPiSupervisedConversation(request, emit, abortSignal);
+    return;
+  }
+  requireSafeProviderUrl(request);
+  const writer = new RuntimeEventWriter(request, emit, PI_RUNTIME_ID);
+  const root = join(runtimeHome(), "pi-sessions", sessionComponent(request.session_id));
+  const { session } = await createPiRuntimeSession({
+    request,
+    target: request,
+    root,
+    messages: request.messages,
+    persistent: true,
   });
   const adapter = attachCanonicalAdapter(session, request, writer);
   const latest = [...request.messages]

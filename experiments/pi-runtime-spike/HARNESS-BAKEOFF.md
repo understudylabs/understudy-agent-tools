@@ -47,8 +47,9 @@ adds a second autonomous loop, so neither replaces Pi's session tree. See
 
 The selected Pi adapter has now moved into the managed sidecar. Canonical text,
 authenticated tool/image, deterministic partial-preserving cancellation,
-persisted restart, managed-process dispatch, and a three-turn live desktop
-restart smoke pass. The remaining gates are live supervisor takeover, a
+persisted restart, managed-process dispatch, a three-turn live desktop restart
+smoke, and a real 1.2B-student → 26B-supervisor/teacher takeover with exact
+per-role usage and correction-pair export. The remaining gates are a
 user-facing stop control, long-chat/crash soak, a bundled Node 22.19+ runtime,
 and signed-app packaging.
 

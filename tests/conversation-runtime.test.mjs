@@ -226,6 +226,154 @@ test("Pi runtime emits the same canonical basic-chat evidence", async () => {
   validateRuntimeTrace(events);
 });
 
+test("Pi runtime deterministically interrupts a student and continues with the teacher", async () => {
+  const requests = [];
+  const server = createServer(async (request, response) => {
+    const body = await requestJson(request);
+    requests.push(body);
+    if (body.model === "supervisor-model") {
+      response.writeHead(200, { "content-type": "application/json" });
+      response.end(
+        JSON.stringify({
+          choices: [
+            {
+              message: {
+                role: "assistant",
+                content: "interrupt: Paris was placed in the wrong country.",
+              },
+              logprobs: {
+                content: [
+                  {
+                    token: "interrupt",
+                    logprob: -0.01,
+                    top_logprobs: [
+                      { token: "interrupt", logprob: -0.01 },
+                      { token: "continue", logprob: -4.5 },
+                    ],
+                  },
+                ],
+              },
+            },
+          ],
+          usage: { prompt_tokens: 12, completion_tokens: 6, total_tokens: 18 },
+        }),
+      );
+      return;
+    }
+    if (body.model === "student-model") {
+      response.writeHead(200, { "content-type": "text/event-stream" });
+      response.write(
+        `data: ${JSON.stringify({
+          id: "chatcmpl-supervised-student",
+          object: "chat.completion.chunk",
+          created: 1,
+          model: "student-model",
+          choices: [
+            {
+              index: 0,
+              delta: { role: "assistant", content: "Paris is in Germany." },
+              finish_reason: null,
+            },
+          ],
+        })}\n\n`,
+      );
+      setTimeout(() => {
+        if (response.destroyed) return;
+        response.write(
+          `data: ${JSON.stringify({
+            id: "chatcmpl-supervised-student",
+            object: "chat.completion.chunk",
+            created: 1,
+            model: "student-model",
+            choices: [
+              { index: 0, delta: { content: " This must not survive." }, finish_reason: null },
+            ],
+          })}\n\n`,
+        );
+        response.end("data: [DONE]\n\n");
+      }, 250);
+      return;
+    }
+    assert.equal(body.model, "teacher-model");
+    sendFixtureSse(response, [
+      {
+        id: "chatcmpl-supervised-teacher",
+        object: "chat.completion.chunk",
+        created: 1,
+        model: "teacher-model",
+        choices: [
+          {
+            index: 0,
+            delta: { role: "assistant", content: " Correction: Paris is in France." },
+            finish_reason: null,
+          },
+        ],
+      },
+      {
+        id: "chatcmpl-supervised-teacher",
+        object: "chat.completion.chunk",
+        created: 1,
+        model: "teacher-model",
+        choices: [{ index: 0, delta: {}, finish_reason: "stop" }],
+        usage: { prompt_tokens: 20, completion_tokens: 7, total_tokens: 27 },
+      },
+    ]);
+  });
+  await new Promise((accept) => server.listen(0, "127.0.0.1", accept));
+  const address = server.address();
+  assert.ok(address && typeof address !== "string");
+  const baseUrl = `http://127.0.0.1:${address.port}/v1`;
+  const events = [];
+  try {
+    await runPiConversation(
+      {
+        run_id: "run-managed-pi-supervision",
+        session_id: "session-managed-pi-supervision",
+        base_url: baseUrl,
+        model: "student-model",
+        role: "student",
+        messages: [{ role: "user", content: "Which country contains Paris?" }],
+        tools: [],
+        runtime_backend: "pi",
+        supervision: {
+          student: { base_url: baseUrl, model: "student-model" },
+          supervisor: {
+            base_url: baseUrl,
+            model: "supervisor-model",
+            system_prompt: "Judge the partial answer and interrupt factual errors.",
+            max_output_tokens: 24,
+          },
+          teacher: { base_url: baseUrl, model: "teacher-model" },
+          boundary_chars: 10,
+          max_nudges: 0,
+        },
+      },
+      (event) => events.push(event),
+    );
+  } finally {
+    await new Promise((accept) => server.close(accept));
+  }
+  assert.equal(
+    events.filter((event) => event.event === "delta").map((event) => event.data.text).join(""),
+    "Paris is in Germany. Correction: Paris is in France.",
+  );
+  assert.equal(events.some((event) => event.event === "cancellation"), false);
+  const verdict = events.find((event) => event.event === "supervisor_verdict");
+  const interruption = events.find((event) => event.event === "student_interruption");
+  const continuation = events.find((event) => event.event === "teacher_continuation");
+  assert.equal(verdict.data.verdict, "interrupt");
+  assert.equal(verdict.data.probability_kind, "logprob");
+  assert.equal(interruption.data.partial_text, "Paris is in Germany.");
+  assert.equal(interruption.data.marker_id, verdict.data.marker_id);
+  assert.equal(continuation.data.marker_id, verdict.data.marker_id);
+  assert.deepEqual(
+    events.filter((event) => event.event === "usage").map((event) => event.data.role),
+    ["supervisor", "student", "teacher"],
+  );
+  assert.match(JSON.stringify(requests.at(-1).messages), /Paris is in Germany/);
+  validateRuntimeTrace(events);
+});
+
 test("Pi runtime owns the image and authenticated tool round", async () => {
   let providerCalls = 0;
   let imageSeen = false;
