@@ -386,5 +386,16 @@ describe("desktop API CLI", () => {
     assert.equal(lastFeedback.helpful, false);
     assert.equal(lastFeedback.correctAction, "continue");
     assert.equal(lastFeedback.markerId, "marker-1");
+
+    const missed = await runCli([
+      "desktop", "supervisor-feedback", "--session", "session-desktop",
+      "--run-id", "run-desktop", "--marker", "run-desktop:verdict:0", "--stage", "stop",
+      "--correct-action", "interrupt", "--justification", "missed known error", "--json",
+    ]);
+    assert.equal(missed.status, 0, missed.stderr);
+    assert.equal(lastFeedback.helpful, false);
+    assert.equal(lastFeedback.stage, "stop");
+    assert.equal(lastFeedback.correctAction, "interrupt");
+    assert.equal(lastFeedback.markerId, "run-desktop:verdict:0");
   });
 });

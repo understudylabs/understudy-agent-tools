@@ -499,7 +499,7 @@
     "/v1/feedback/supervisor": {
       "post": {
         "operationId": "recordSupervisorFeedback",
-        "summary": "Record a human judgment for one supervisor intervention",
+        "summary": "Record a human judgment for one identified supervisor decision",
         "requestBody": {
           "required": true,
           "content": {
@@ -1038,8 +1038,10 @@
           "stage": {
             "type": "string",
             "enum": [
+              "continue",
               "nudge",
-              "take_over"
+              "take_over",
+              "stop"
             ]
           },
           "helpful": {

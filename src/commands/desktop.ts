@@ -405,11 +405,15 @@ export function registerDesktopCommand(program: Command): void {
 
   desktop
     .command("supervisor-feedback")
-    .description("Record a human judgment for one supervisor intervention marker.")
+    .description("Record a human judgment for one identified supervisor decision.")
     .requiredOption("--session <id>")
     .requiredOption("--run-id <id>")
     .requiredOption("--marker <id>")
-    .addOption(new Option("--stage <stage>").choices(["nudge", "take_over"]).makeOptionMandatory())
+    .addOption(
+      new Option("--stage <stage>")
+        .choices(["continue", "nudge", "take_over", "stop"])
+        .makeOptionMandatory(),
+    )
     .addOption(new Option("--correct-action <action>").choices(["continue", "nudge", "interrupt", "stop"]).makeOptionMandatory())
     .option("--justification <text>")
     .option("--json", "Output JSON")
@@ -417,13 +421,18 @@ export function registerDesktopCommand(program: Command): void {
       session: string;
       runId: string;
       marker: string;
-      stage: "nudge" | "take_over";
+      stage: "continue" | "nudge" | "take_over" | "stop";
       correctAction: "continue" | "nudge" | "interrupt" | "stop";
       justification?: string;
       json?: boolean;
     }) {
       const capability = await requireDesktopApi();
-      const recordedAction = opts.stage === "take_over" ? "interrupt" : "nudge";
+      const recordedAction = {
+        continue: "continue",
+        nudge: "nudge",
+        take_over: "interrupt",
+        stop: "stop",
+      }[opts.stage];
       const response = await desktopApiFetch(capability, "/v1/feedback/supervisor", {
         method: "POST",
         body: JSON.stringify({

@@ -15,6 +15,20 @@ uses semantic-ish versioning (minor = new skill or new capability, patch = fixes
 
 ## [Unreleased]
 
+### Added
+
+- **Understudy Desktop agent control plane.** The public CLI now discovers the
+  owner-only Desktop capability file and exposes a versioned OpenAPI 3.1
+  contract for capabilities, models, downloads, residency, canonical turns,
+  exact cancellation/replay, and supervisor feedback. Agent turns can pair a
+  small local slot with a distinct local supervisor slot while preserving
+  student, supervisor, and teacher events and usage. A frozen synthetic
+  grocery-marketplace proof compares small, main, and supervised routes without
+  uploads, provider calls, or an LLM judge.
+- **Supervisor-decision labeling.** Runtime 0.3.1 gives every supervisor verdict
+  a stable marker, including accepted `continue` and `stop` decisions, so human
+  feedback can measure missed errors as well as bad nudges and takeovers.
+
 ### Fixed
 
 - **The curl installer can no longer finish looking successful with zero

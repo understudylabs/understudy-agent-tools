@@ -18,6 +18,7 @@ import {
   piCompactionSettings,
   piPreflightCompactionRequired,
   runPiConversation,
+  supervisorDecisionMarker,
   teacherContinuationBoundary,
 } from "../dist/runtime/conversation/pi-runtime.js";
 import {
@@ -515,6 +516,11 @@ test("teacher continuation inserts only a missing word boundary", () => {
   assert.equal(teacherContinuationBoundary("inventory is 9. ", "but the price"), "");
   assert.equal(teacherContinuationBoundary("inventory is 9", ", but the price"), "");
   assert.equal(teacherContinuationBoundary("", "fresh answer"), "");
+});
+
+test("every supervisor decision gets a stable labelable marker", () => {
+  assert.equal(supervisorDecisionMarker("run-1", 3, 0, false), "run-1:verdict:3");
+  assert.equal(supervisorDecisionMarker("run-1", 3, 2, true), "run-1:intervention:2");
 });
 
 test("Pi supervision turns a user abort during a judge check into canonical cancellation", async () => {

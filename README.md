@@ -479,6 +479,8 @@ understudy desktop run cancel my-task-1
 understudy desktop run events my-task-1 --json
 understudy desktop supervisor-feedback --session my-task --run-id my-task-1 \
   --marker my-task-1:intervention:0 --stage take_over --correct-action continue
+understudy desktop supervisor-feedback --session my-task --run-id my-task-1 \
+  --marker my-task-1:verdict:0 --stage stop --correct-action interrupt
 ```
 
 The CLI reads the private mode-0600 `~/.understudy/desktop-api.json`, verifies

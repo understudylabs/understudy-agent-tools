@@ -787,6 +787,17 @@ function verdictEventData(
   };
 }
 
+export function supervisorDecisionMarker(
+  runId: string,
+  boundaryOrdinal: number,
+  markerOrdinal: number,
+  intervention: boolean,
+): string {
+  return intervention
+    ? `${runId}:intervention:${markerOrdinal}`
+    : `${runId}:verdict:${boundaryOrdinal}`;
+}
+
 async function runSupervisedStudentSegment(options: {
   request: RuntimeRunRequest;
   config: SupervisionConfig;
@@ -850,9 +861,12 @@ async function runSupervisedStudentSegment(options: {
             };
           }
           const intervention = result.verdict === "interrupt" || result.verdict === "nudge";
-          const currentMarker = intervention
-            ? `${request.run_id}:intervention:${options.markerOrdinal}`
-            : undefined;
+          const currentMarker = supervisorDecisionMarker(
+            request.run_id,
+            thisBoundary,
+            options.markerOrdinal,
+            intervention,
+          );
           adapter.enqueue(
             "supervisor_verdict",
             verdictEventData(result, thisBoundary, afterChars, currentMarker),
@@ -949,12 +963,16 @@ async function runSupervisedStudentSegment(options: {
       }
       const intervention =
         finalDecision.verdict === "interrupt" || finalDecision.verdict === "nudge";
-      markerId = intervention
-        ? `${request.run_id}:intervention:${options.markerOrdinal}`
-        : undefined;
+      const thisBoundary = boundaryOrdinal++;
+      markerId = supervisorDecisionMarker(
+        request.run_id,
+        thisBoundary,
+        options.markerOrdinal,
+        intervention,
+      );
       await writer.emit(
         "supervisor_verdict",
-        verdictEventData(finalDecision, boundaryOrdinal++, afterChars, markerId),
+        verdictEventData(finalDecision, thisBoundary, afterChars, markerId),
       );
       await writer.emit("usage", finalDecision.usage);
       decision = finalDecision;
