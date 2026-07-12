@@ -324,9 +324,11 @@ export async function runProof(options = parseArgs(process.argv.slice(2))) {
     join(outputDir, "results.jsonl"),
     `${rows.map((row) => JSON.stringify(row)).join("\n")}\n`,
   );
-  writeProofFile(join(outputDir, "summary.json"), `${JSON.stringify(summary, null, 2)}\n`);
   writeProofFile(join(outputDir, "tasks.json"), tasksBytes);
   const report = writeBuyerReport(outputDir, summary, rows, tasks);
+  // Publish the immutable summary last so its report references cannot dangle
+  // if report validation or writing fails.
+  writeProofFile(join(outputDir, "summary.json"), `${JSON.stringify(summary, null, 2)}\n`);
   process.stdout.write(`${JSON.stringify({ output_dir: outputDir, summary }, null, 2)}\n`);
   return { outputDir, summary, rows, report };
 }
@@ -334,7 +336,7 @@ export async function runProof(options = parseArgs(process.argv.slice(2))) {
 if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) {
   const options = parseArgs(process.argv.slice(2));
   const operation = options.reportFrom
-    ? Promise.resolve(renderExistingProof(options.reportFrom))
+    ? Promise.resolve().then(() => renderExistingProof(options.reportFrom))
     : runProof(options);
   operation.then((result) => {
     if (options.reportFrom) process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);

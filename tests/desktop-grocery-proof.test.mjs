@@ -1,4 +1,6 @@
 import assert from "node:assert/strict";
+import { join } from "node:path";
+import { spawnSync } from "node:child_process";
 import { describe, it } from "node:test";
 
 import {
@@ -133,5 +135,15 @@ describe("desktop grocery proof", () => {
     const html = buildBuyerReport(summary, rows, tasks);
     assert.match(html, /&lt;script&gt;alert\(1\)&lt;\/script&gt;/);
     assert.doesNotMatch(html, /<script>alert\(1\)<\/script>/);
+  });
+
+  it("prints one clean error when an existing proof cannot be rendered", () => {
+    const script = join(process.cwd(), "experiments", "desktop-grocery-proof", "run.mjs");
+    const result = spawnSync(process.execPath, [script, "--report-from", "/proof/does-not-exist"], {
+      encoding: "utf8",
+    });
+    assert.equal(result.status, 1);
+    assert.match(result.stderr, /ENOENT/);
+    assert.doesNotMatch(result.stderr, /\n\s+at /);
   });
 });
