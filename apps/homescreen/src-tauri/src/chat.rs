@@ -119,6 +119,7 @@ const SIDEKICK_MEMORY_PREFIX: &str = "Sidekick compacted memory:";
 const CHAT_COMPACTION_TOKEN_THRESHOLD: u64 = 12_000;
 const CHAT_RECENT_CONTEXT_MESSAGES: usize = 12;
 const CHAT_COMPACTED_CONTEXT_PREFIX: &str = "Chat compacted context:";
+const SMALL_FIRST_SUPERVISOR_PROMPT: &str = "Judge whether the smaller student's partial answer is correct, relevant, safe, and using tools appropriately. INTERRUPT factual errors, invented evidence, wrong tool arguments, irrelevant refusals, or confident claims unsupported by tool results so the teacher can correct them. NUDGE only when a short concrete correction can let the student continue. CONTINUE when the partial is sound, including when a sound answer is complete. Never use STOP for an incorrect, incomplete, irrelevant, or otherwise correctable answer; STOP is reserved for a turn that must end without any teacher response. Give one concise, specific reason for every INTERRUPT or NUDGE.";
 
 const SIDEKICK_SESSION_CACHE_MAX: usize = 32;
 
@@ -1949,6 +1950,61 @@ struct RouteBinding {
     model_field: String,
 }
 
+fn model_size_billions(model: &str) -> Option<f64> {
+    let regex = regex_lite::Regex::new(r"(?i)(?:^|[^0-9])(\d+(?:\.\d+)?)b(?:[^a-z0-9]|$)")
+        .expect("model-size regex is valid");
+    regex
+        .captures(model)
+        .and_then(|captures| captures.get(1))
+        .and_then(|value| value.as_str().parse::<f64>().ok())
+}
+
+fn automatic_supervision_config(
+    app: &AppHandle,
+    mgr: &Residency,
+    binding: &RouteBinding,
+    active_slot_id: Option<u32>,
+) -> Option<Value> {
+    if binding.route == "anthropic"
+        || matches!(
+            app.state::<crate::db::Db>()
+                .setting_get("conversation.supervision")
+                .as_deref(),
+            Some("off" | "disabled" | "false")
+        )
+    {
+        return None;
+    }
+    let (_student_slot, student_port, student_path, _student_id) =
+        mgr.sidekick_endpoint(active_slot_id)?;
+    if binding.route == "local" {
+        let student_size = model_size_billions(&student_path)?;
+        let teacher_size = model_size_billions(&binding.model_field)?;
+        if student_size >= teacher_size {
+            return None;
+        }
+    }
+    let teacher_base_url = sidecar_provider_base_url(&binding.url);
+    Some(json!({
+        "student": {
+            "base_url": format!("http://127.0.0.1:{student_port}/v1"),
+            "model": student_path,
+        },
+        "supervisor": {
+            "base_url": teacher_base_url,
+            "model": binding.model_field,
+            "system_prompt": SMALL_FIRST_SUPERVISOR_PROMPT,
+            "max_output_tokens": 48,
+        },
+        "teacher": {
+            "base_url": sidecar_provider_base_url(&binding.url),
+            "model": binding.model_field,
+        },
+        "boundary_chars": 240,
+        "max_nudges": 2,
+    }))
+}
+
 fn sidecar_provider_base_url(endpoint: &str) -> String {
     endpoint
         .trim_end_matches('/')
@@ -2010,7 +2066,10 @@ fn openai_chat_message(message: &ChatMsg) -> Result<Value, String> {
     Ok(json!({ "role": message.role, "content": content }))
 }
 
-fn sidecar_runtime_messages(original: &[ChatMsg], outbound: &[Value]) -> Result<Vec<Value>, String> {
+fn sidecar_runtime_messages(
+    original: &[ChatMsg],
+    outbound: &[Value],
+) -> Result<Vec<Value>, String> {
     let attachment_meta: HashMap<&str, &ChatAttachment> = original
         .iter()
         .flat_map(|message| message.attachments.iter())
@@ -2039,9 +2098,9 @@ fn sidecar_runtime_messages(original: &[ChatMsg], outbound: &[Value]) -> Result<
             let mut attachments = Vec::new();
             for part in parts {
                 match part.get("type").and_then(Value::as_str) {
-                    Some("text") => text.push_str(
-                        part.get("text").and_then(Value::as_str).unwrap_or_default(),
-                    ),
+                    Some("text") => {
+                        text.push_str(part.get("text").and_then(Value::as_str).unwrap_or_default())
+                    }
                     Some("image_url") => {
                         let data_url = part
                             .pointer("/image_url/url")
@@ -2066,14 +2125,22 @@ fn sidecar_runtime_messages(original: &[ChatMsg], outbound: &[Value]) -> Result<
         .collect()
 }
 
-fn sidecar_tool_definitions() -> Vec<Value> {
+fn sidecar_tool_definitions(allow_sidekick_delegation: bool) -> Vec<Value> {
     tool_schemas()
         .into_iter()
+        .filter(|tool| {
+            allow_sidekick_delegation
+                || tool.pointer("/function/name").and_then(Value::as_str)
+                    != Some("delegate_to_sidekick")
+        })
         .filter_map(|tool| {
             let function = tool.get("function")?;
             let mut definition = serde_json::Map::new();
             definition.insert("name".to_string(), function.get("name")?.clone());
-            if let Some(description) = function.get("description").filter(|value| value.is_string()) {
+            if let Some(description) = function
+                .get("description")
+                .filter(|value| value.is_string())
+            {
                 definition.insert("description".to_string(), description.clone());
             }
             definition.insert(
@@ -2093,10 +2160,11 @@ fn sidecar_run_request(
     original: &[ChatMsg],
     outbound: &[Value],
     binding: &RouteBinding,
+    supervision: Option<&Value>,
     slot_id: Option<u32>,
-    session_id: &str,
-    run_id: &str,
+    identity: (&str, &str),
 ) -> Result<Value, String> {
+    let (session_id, run_id) = identity;
     let messages = sidecar_runtime_messages(original, outbound)?;
     let tool_executor_url = crate::server::info(app).map(|(base_url, _)| {
         let query = slot_id
@@ -2109,9 +2177,9 @@ fn sidecar_run_request(
         "session_id": session_id,
         "base_url": sidecar_provider_base_url(&binding.url),
         "model": binding.model_field,
-        "role": "primary",
+        "role": if supervision.is_some() { "student" } else { "primary" },
         "messages": messages,
-        "tools": sidecar_tool_definitions(),
+        "tools": sidecar_tool_definitions(supervision.is_none()),
         "max_output_tokens": CHAT_MAX_TOKENS,
         "max_tool_rounds": MAX_TOOL_ROUNDS,
         "initial_sequence": 0,
@@ -2121,6 +2189,9 @@ fn sidecar_run_request(
     });
     if let Some(url) = tool_executor_url {
         request["tool_executor_url"] = json!(url);
+    }
+    if let Some(supervision) = supervision {
+        request["supervision"] = supervision.clone();
     }
     Ok(request)
 }
@@ -2637,14 +2708,6 @@ pub async fn chat_stream(
     } else {
         apply_dynamic_chat_route(&app, &session_id, &route, slot_id, &messages, &on_event)
     };
-    let sidekick_plan = maybe_spawn_parallel_sidekick(
-        &app,
-        &route,
-        slot_id,
-        &session_id,
-        &messages,
-        Some(&on_event),
-    );
     let mut binding = if let Some(model) = route.strip_prefix("anthropic:") {
         anthropic_route_binding(&app, model)?
     } else {
@@ -2653,7 +2716,26 @@ pub async fn chat_stream(
             _ => local_route_binding(&route, &mgr, slot_id)?,
         }
     };
-    if binding.route == "anthropic" && messages.iter().any(|message| !message.attachments.is_empty())
+    let mut supervision = automatic_supervision_config(&app, &mgr, &binding, slot_id);
+    let sidekick_plan = if supervision.is_some() {
+        ParallelSidekickPlan {
+            spawned: false,
+            wait_ms: 0,
+        }
+    } else {
+        maybe_spawn_parallel_sidekick(
+            &app,
+            &route,
+            slot_id,
+            &session_id,
+            &messages,
+            Some(&on_event),
+        )
+    };
+    if binding.route == "anthropic"
+        && messages
+            .iter()
+            .any(|message| !message.attachments.is_empty())
     {
         return Err(
             "Image attachments currently require a local model or the Understudy gateway"
@@ -2721,32 +2803,54 @@ pub async fn chat_stream(
                 &detail,
                 Some(&on_event),
             );
+            supervision = automatic_supervision_config(&app, &mgr, &binding, slot_id);
         }
     }
 
     if binding.route != "anthropic" {
+        if let Some(config) = supervision.as_ref() {
+            let student = config
+                .pointer("/student/model")
+                .and_then(Value::as_str)
+                .unwrap_or("smaller local model");
+            let teacher = config
+                .pointer("/teacher/model")
+                .and_then(Value::as_str)
+                .unwrap_or(&binding.model_field);
+            let detail = format!("run={run_id} · {student} is answering; {teacher} is supervising");
+            log_db_write(
+                "record_sidekick_event(supervision_started)",
+                app.state::<crate::db::Db>().record_sidekick_event(
+                    &session_id,
+                    "supervision",
+                    "started",
+                    &detail,
+                ),
+            );
+            let _ = on_event.send(ChatEvent::SidekickEvent {
+                mode: "supervision".to_string(),
+                stage: "started".to_string(),
+                detail,
+            });
+        }
         match sidecar_run_request(
             &app,
             &messages,
             &outbound_messages,
             &binding,
+            supervision.as_ref(),
             slot_id,
-            &session_id,
-            &run_id,
+            (&session_id, &run_id),
         ) {
             Ok(request) => {
                 match crate::conversation_sidecar::try_run_chat(&app, request, &on_event).await {
                     crate::conversation_sidecar::SidecarAttempt::Completed(sidecar) => {
-                        let completion_tokens = sidecar_usage_tokens(
-                            sidecar.usage.as_ref(),
-                            "completion_tokens",
-                        )
-                        .unwrap_or_else(|| approximate_token_count(&sidecar.content));
-                        let prompt_tokens = sidecar_usage_tokens(
-                            sidecar.usage.as_ref(),
-                            "prompt_tokens",
-                        )
-                        .unwrap_or(prompt_tokens);
+                        let completion_tokens =
+                            sidecar_usage_tokens(sidecar.usage.as_ref(), "completion_tokens")
+                                .unwrap_or_else(|| approximate_token_count(&sidecar.content));
+                        let prompt_tokens =
+                            sidecar_usage_tokens(sidecar.usage.as_ref(), "prompt_tokens")
+                                .unwrap_or(prompt_tokens);
                         record_chat_run(
                             &app,
                             ChatRunInput {
@@ -3686,7 +3790,10 @@ mod tests {
 
         let projected = sidecar_runtime_messages(&original, &outbound).unwrap();
         assert_eq!(projected[0]["content"], "inspect this");
-        assert_eq!(projected[0]["attachments"][0]["id"], original[0].attachments[0].id);
+        assert_eq!(
+            projected[0]["attachments"][0]["id"],
+            original[0].attachments[0].id
+        );
         assert_eq!(projected[0]["attachments"][0]["filename"], "fixture.png");
 
         let mut tampered = image_message();
@@ -3694,6 +3801,29 @@ mod tests {
         assert!(openai_chat_message(&tampered)
             .unwrap_err()
             .contains("content hash"));
+    }
+
+    #[test]
+    fn supervision_requires_a_strictly_smaller_model_size() {
+        assert_eq!(model_size_billions("gemma-4-2b-understudy"), Some(2.0));
+        assert_eq!(
+            model_size_billions("gemma-4-26b-a4b-it-qat-mlx-vlm-understudy"),
+            Some(26.0)
+        );
+        assert_eq!(model_size_billions("frontier-model"), None);
+    }
+
+    #[test]
+    fn supervised_runtime_cannot_delegate_recursively_to_the_sidekick() {
+        let supervised = sidecar_tool_definitions(false);
+        assert!(supervised.iter().all(|tool| {
+            tool.get("name").and_then(Value::as_str) != Some("delegate_to_sidekick")
+        }));
+
+        let unsupervised = sidecar_tool_definitions(true);
+        assert!(unsupervised.iter().any(|tool| {
+            tool.get("name").and_then(Value::as_str) == Some("delegate_to_sidekick")
+        }));
     }
 
     #[test]

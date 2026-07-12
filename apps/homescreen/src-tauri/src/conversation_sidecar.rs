@@ -295,6 +295,28 @@ impl SidecarAccumulator {
     }
 }
 
+fn publish_chat_event(
+    app: &AppHandle,
+    session_id: &str,
+    on_event: &Channel<ChatEvent>,
+    event: ChatEvent,
+) {
+    if let ChatEvent::SidekickEvent {
+        mode,
+        stage,
+        detail,
+    } = &event
+    {
+        if let Err(error) = app
+            .state::<crate::db::Db>()
+            .record_sidekick_event(session_id, mode, stage, detail)
+        {
+            eprintln!("understudy db: record supervision event failed: {error:#}");
+        }
+    }
+    let _ = on_event.send(event);
+}
+
 fn parse_status(output: std::process::Output) -> Result<CliRuntimeStatus, String> {
     let stdout = String::from_utf8_lossy(&output.stdout);
     serde_json::from_str::<CliRuntimeStatus>(&stdout).map_err(|error| {
@@ -525,7 +547,7 @@ async fn execute_run(
                 )
             })?;
             if let Some(event) = accumulator.observe(&envelope) {
-                let _ = on_event.send(event);
+                publish_chat_event(app, &session_id, on_event, event);
             }
             events.push(envelope);
         }
@@ -539,7 +561,7 @@ async fn execute_run(
                 )
             })?;
         if let Some(event) = accumulator.observe(&envelope) {
-            let _ = on_event.send(event);
+            publish_chat_event(app, &session_id, on_event, event);
         }
         events.push(envelope);
     }

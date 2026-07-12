@@ -587,8 +587,17 @@ export function ChatPane({ resetToken }: { resetToken: number }) {
     latestSidekickEvent?.stage === "queued" ||
     latestSidekickEvent?.stage === "started" ||
     latestSidekickEvent?.stage === "waiting";
+  const supervisionVisible =
+    latestSidekickEvent?.mode === "supervision" &&
+    (streaming ||
+      latestSidekickEvent.stage === "interrupt" ||
+      latestSidekickEvent.stage === "nudge" ||
+      latestSidekickEvent.stage === "stop" ||
+      latestSidekickEvent.stage === "student_interrupted" ||
+      latestSidekickEvent.stage === "teacher_continuation");
   const sidekickMonitorVisible =
     backgroundSidekickActive ||
+    supervisionVisible ||
     (streaming &&
       (latestSidekickEvent?.stage === "handoff_ready" ||
         latestSidekickEvent?.stage === "handoff_deferred" ||
@@ -696,13 +705,29 @@ export function ChatPane({ resetToken }: { resetToken: number }) {
               <div className="sidekick-orbit" aria-hidden="true" />
               <div className="sidekick-active-copy">
                 <div className="sidekick-active-kicker">
-                  {latestSidekickEvent.mode === "routing" ? "Routing" : "Sidekick"}
+                  {latestSidekickEvent.mode === "routing"
+                    ? "Routing"
+                    : latestSidekickEvent.mode === "supervision"
+                      ? "Supervisor"
+                      : "Sidekick"}
                 </div>
                 <div className="sidekick-active-title">
                   {latestSidekickEvent.stage === "compaction_boundary"
                     ? "Compaction boundary"
                     : latestSidekickEvent.stage === "route_applied"
                       ? "Route switched"
+                    : latestSidekickEvent.stage === "student_interrupted"
+                      ? "Student interrupted"
+                    : latestSidekickEvent.stage === "teacher_continuation"
+                      ? "Teacher continuing"
+                    : latestSidekickEvent.stage === "interrupt"
+                      ? "Intervention requested"
+                    : latestSidekickEvent.stage === "nudge"
+                      ? "Student nudged"
+                    : latestSidekickEvent.stage === "stop"
+                      ? "Turn stopped"
+                    : latestSidekickEvent.mode === "supervision"
+                      ? "Checking the smaller model"
                     : backgroundSidekickActive
                       ? "Working in background"
                       : "Background update"}
