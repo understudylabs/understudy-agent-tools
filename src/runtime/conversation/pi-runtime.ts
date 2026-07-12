@@ -15,6 +15,7 @@ import {
 } from "@earendil-works/pi-coding-agent";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { Type } from "@earendil-works/pi-ai";
+import { getModels, type Api, type Model } from "@earendil-works/pi-ai/compat";
 
 import {
   PI_RUNTIME_ID,
@@ -51,7 +52,24 @@ function modelFor(
   baseUrl: URL,
   maxTokens: number,
   contextWindow: number,
-) {
+  providerKind: RuntimeRunRequest["provider_kind"],
+): Model<Api> {
+  if (providerKind === "anthropic") {
+    const model = getModels("anthropic").find((candidate) => candidate.id === target.model);
+    if (!model) {
+      throw new Error(`Pi does not recognize Anthropic model ${target.model}`);
+    }
+    return {
+      ...model,
+      baseUrl: baseUrl.toString().replace(/\/$/, ""),
+      contextWindow,
+      maxTokens: Math.min(
+        model.maxTokens,
+        maxTokens,
+        Math.max(1, Math.floor(contextWindow / 2)),
+      ),
+    };
+  }
   return {
     id: target.model,
     name: target.model,
@@ -197,7 +215,7 @@ function runtimeInputTokenEstimate(message: RuntimeInputMessage): number {
 
 function seedHistory(
   manager: SessionManager,
-  model: string,
+  model: Model<Api>,
   messages: RuntimeInputMessage[],
 ): void {
   if (manager.getEntries().length > 0) return;
@@ -217,9 +235,9 @@ function seedHistory(
       manager.appendMessage({
         role: "assistant",
         content: [{ type: "text", text: message.content }],
-        api: "openai-completions",
-        provider: "understudy-runtime",
-        model,
+        api: model.api,
+        provider: model.provider,
+        model: model.id,
         usage: zeroUsage(),
         stopReason: "stop",
         timestamp: Date.now() + index,
@@ -483,15 +501,23 @@ async function createPiRuntimeSession(options: {
     providerUrl,
     options.maxTokens ?? request.max_output_tokens,
     request.provider_context_window_tokens ?? request.context_window_tokens,
+    request.provider_kind,
   );
   const compaction = piCompactionSettings(
     request.context_window_tokens,
     request.max_output_tokens,
   );
   const authStorage = AuthStorage.inMemory();
+  const providerApiKey =
+    request.provider_api_key ??
+    process.env.UNDERSTUDY_RUNTIME_API_KEY ??
+    (request.provider_kind === "openai-compatible" ? "local-runtime" : undefined);
+  if (!providerApiKey) {
+    throw new Error("Anthropic API key is unavailable to the conversation runtime");
+  }
   authStorage.setRuntimeApiKey(
     selectedModel.provider,
-    process.env.UNDERSTUDY_RUNTIME_API_KEY ?? "local-runtime",
+    providerApiKey,
   );
   const modelRegistry = ModelRegistry.inMemory(authStorage);
   const settingsManager = SettingsManager.inMemory(
@@ -541,13 +567,13 @@ async function createPiRuntimeSession(options: {
   const sessionManager = persistent
     ? SessionManager.continueRecent(cwd, sessionDir)
     : SessionManager.inMemory(cwd);
-  seedHistory(sessionManager, target.model, messages);
+  seedHistory(sessionManager, selectedModel, messages);
   const tools = options.toolsEnabled === false ? [] : buildTools(request);
   const { session } = await createAgentSession({
     cwd,
     agentDir: join(root, "agent"),
     model: selectedModel,
-    thinkingLevel: "off",
+    thinkingLevel: request.provider_kind === "anthropic" ? "medium" : "off",
     tools: tools.map((tool) => tool.name),
     noTools: "all",
     customTools: tools,

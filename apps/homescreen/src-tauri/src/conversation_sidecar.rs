@@ -361,13 +361,16 @@ fn runtime_selected(app: &AppHandle) -> bool {
 fn runtime_command(action: &str, app: &AppHandle) -> std::process::Command {
     let mut command = crate::bin::command("understudy");
     command.args(["runtime", action, "--json"]);
+    // Every remote run still has to opt in on its authenticated request. Keep
+    // the process gate available from startup so adding a provider key later
+    // does not create a hidden restart requirement.
+    command.env("UNDERSTUDY_RUNTIME_ALLOW_REMOTE", "1");
     if let Some((base_url, token)) = crate::server::info(app) {
         command.env("UNDERSTUDY_RUNTIME_TOOL_TOKEN", token);
         command.env("UNDERSTUDY_RUNTIME_TOOL_BASE_URL", base_url);
     }
     if let Some(credentials) = crate::creds::resolve() {
         command.env("UNDERSTUDY_RUNTIME_API_KEY", credentials.api_key);
-        command.env("UNDERSTUDY_RUNTIME_ALLOW_REMOTE", "1");
     }
     command
 }

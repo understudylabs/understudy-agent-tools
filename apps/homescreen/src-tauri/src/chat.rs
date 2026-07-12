@@ -2008,10 +2008,11 @@ fn automatic_supervision_config(
 }
 
 fn sidecar_provider_base_url(endpoint: &str) -> String {
+    let endpoint = endpoint.trim_end_matches('/');
     endpoint
-        .trim_end_matches('/')
         .strip_suffix("/chat/completions")
-        .unwrap_or(endpoint.trim_end_matches('/'))
+        .or_else(|| endpoint.strip_suffix("/v1/messages"))
+        .unwrap_or(endpoint)
         .to_string()
 }
 
@@ -2179,6 +2180,7 @@ fn sidecar_run_request(
         "session_id": session_id,
         "base_url": sidecar_provider_base_url(&binding.url),
         "model": binding.model_field,
+        "provider_kind": if binding.route == "anthropic" { "anthropic" } else { "openai-compatible" },
         "role": if supervision.is_some() { "student" } else { "primary" },
         "messages": messages,
         "tools": sidecar_tool_definitions(supervision.is_none()),
@@ -2186,9 +2188,14 @@ fn sidecar_run_request(
         "max_tool_rounds": MAX_TOOL_ROUNDS,
         "initial_sequence": 0,
         "emit_input": true,
-        "allow_remote": binding.route == "cloud",
+        "allow_remote": matches!(binding.route.as_str(), "cloud" | "anthropic"),
         "runtime_backend": "pi",
     });
+    if binding.route == "anthropic" {
+        request["provider_api_key"] = json!(binding.bearer.as_deref().ok_or_else(|| {
+            "Anthropic route lost its in-memory provider credential".to_string()
+        })?);
+    }
     if let Some(url) = tool_executor_url {
         request["tool_executor_url"] = json!(url);
     }
@@ -2809,7 +2816,7 @@ pub async fn chat_stream(
         }
     }
 
-    if binding.route != "anthropic" {
+    {
         if let Some(config) = supervision.as_ref() {
             let student = config
                 .pointer("/student/model")
@@ -4040,6 +4047,18 @@ mod tests {
         assert!(result.elapsed_ms >= 777);
         assert!(result.compacted);
         assert_eq!(result.context_tokens_before, 15_000);
+    }
+
+    #[test]
+    fn canonical_runtime_receives_provider_base_urls_not_completion_endpoints() {
+        assert_eq!(
+            sidecar_provider_base_url("https://api.anthropic.com/v1/messages"),
+            "https://api.anthropic.com"
+        );
+        assert_eq!(
+            sidecar_provider_base_url("https://gateway.example/v1/chat/completions"),
+            "https://gateway.example/v1"
+        );
     }
 
     #[test]

@@ -50,6 +50,13 @@ through Pi and durably recorded why no background handoff ran
 (`benchmark_sidekick_score_low`). The benchmark readiness check now delegates
 sidekick selection to residency instead of rejecting valid warm models by name.
 
+Direct Anthropic chat now selects Pi's native `anthropic-messages` provider and
+uses the same authenticated tool/evidence path. The frozen local provider
+fixture proved two Messages API rounds, one matched tool call/result, exact
+provider usage, and no credential in the provider payload or canonical events.
+Runtime contract version `0.3.2` makes older sidecars fail closed before output,
+so the native Anthropic translator remains only as the one-release fallback.
+
 ## Deletion gate
 
 `chat_route_metrics` counts only rows with a canonical `run_id`; legacy rows
@@ -95,8 +102,8 @@ diff. The conservative gross target is about 4,200 lines; the final claim is
    completion, MCP completion, and specialized Fusion local/gateway benchmarks
    now use the canonical runtime with one consolidated pre-output, one-release
    fallback.
-4. Route direct Anthropic through the canonical provider contract; retain only
-   local key presence and catalog management in Rust.
+4. Direct Anthropic now uses Pi's canonical provider contract; retain only key
+   presence, catalog management, and the one-release fallback in Rust.
 5. Replace legacy parallel-sidekick metrics/UI with canonical intervention and
    human-label evidence.
 6. Observe the deletion gate for one release, then remove the ranges above in a
