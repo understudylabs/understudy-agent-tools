@@ -169,6 +169,28 @@ export async function runVercelConversation(
   });
   const pendingInputs = new Map<string, { name: string; raw: string }>();
   const emittedCalls = new Set<string>();
+  const resolvedCalls = new Set<string>();
+  const flushPendingToolFailures = async (error: unknown): Promise<void> => {
+    for (const [callId, pending] of pendingInputs) {
+      if (resolvedCalls.has(callId)) continue;
+      if (!emittedCalls.has(callId)) {
+        emittedCalls.add(callId);
+        await writer.emit("tool_call", {
+          call_id: callId,
+          name: pending.name,
+          raw_arguments: pending.raw,
+          parse_error: safeErrorMessage(error),
+        });
+      }
+      await writer.emit("tool_result", {
+        call_id: callId,
+        name: pending.name,
+        ok: false,
+        result: { error: "tool call did not complete" },
+      });
+      resolvedCalls.add(callId);
+    }
+  };
 
   await emitInputEvidence(request, writer);
   try {
@@ -227,6 +249,7 @@ export async function runVercelConversation(
             ok: true,
             result: part.output,
           });
+          resolvedCalls.add(part.toolCallId);
           break;
         case "tool-error":
           await writer.emit("tool_result", {
@@ -235,29 +258,17 @@ export async function runVercelConversation(
             ok: false,
             result: { error: safeErrorMessage(part.error) },
           });
+          resolvedCalls.add(part.toolCallId);
           break;
         case "abort":
+          await flushPendingToolFailures(part.reason || "aborted");
           await writer.emit("cancellation", {
             stage: "model_stream",
             reason: part.reason || "aborted",
           });
           return;
         case "error":
-          for (const [callId, pending] of pendingInputs) {
-            if (emittedCalls.has(callId)) continue;
-            await writer.emit("tool_call", {
-              call_id: callId,
-              name: pending.name,
-              raw_arguments: pending.raw,
-              parse_error: safeErrorMessage(part.error),
-            });
-            await writer.emit("tool_result", {
-              call_id: callId,
-              name: pending.name,
-              ok: false,
-              result: { error: "invalid tool arguments" },
-            });
-          }
+          await flushPendingToolFailures(part.error);
           await writer.emit("error", {
             stage: "model_stream",
             code: "provider_stream_error",
@@ -272,6 +283,7 @@ export async function runVercelConversation(
     }
   } catch (error) {
     const aborted = abortSignal?.aborted;
+    await flushPendingToolFailures(abortSignal?.reason ?? error);
     await writer.emit(
       aborted ? "cancellation" : "error",
       aborted

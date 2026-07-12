@@ -16,6 +16,7 @@ import {
   RUNTIME_ID,
   RUNTIME_VERSION,
 } from "../runtime/conversation/contract.js";
+import { runConversationConformance } from "../runtime/conversation/conformance.js";
 
 function emit(command: Command, payload: Record<string, unknown>, human: string): void {
   if (isJsonMode(command)) {
@@ -110,6 +111,22 @@ export function registerRuntimeCommand(program: Command): void {
         if (!result.ok) process.stdout.write(`repair: ${result.repair_command}\n`);
       }
       if (!result.ok) process.exitCode = 1;
+    });
+
+  runtime
+    .command("conformance")
+    .description("Replay the immutable runtime event suite and verify fixture hashes.")
+    .option("--fixtures <path>", "Use a specific conformance fixture directory")
+    .option("--json", "Output JSON")
+    .action(function (this: Command, options: { fixtures?: string }) {
+      const report = runConversationConformance(options.fixtures);
+      if (isJsonMode(this)) {
+        process.stdout.write(`${JSON.stringify(report, null, 2)}\n`);
+      } else {
+        process.stdout.write(
+          `${kleur.green("✓")} ${report.suite_id}: ${report.gates.length} immutable gates passed\n`,
+        );
+      }
     });
 
   runtime

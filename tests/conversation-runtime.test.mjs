@@ -12,6 +12,8 @@ import {
   stopConversationRuntime,
 } from "../dist/runtime/conversation/lifecycle.js";
 import { runVercelConversation } from "../dist/runtime/conversation/vercel-runtime.js";
+import { validateRuntimeTrace } from "../dist/runtime/conversation/contract.js";
+import { runConversationConformance } from "../dist/runtime/conversation/conformance.js";
 
 const runtimeHome = mkdtempSync(join(tmpdir(), "understudy-conversation-runtime-"));
 
@@ -126,6 +128,23 @@ test("Vercel runtime emits canonical input, delta, and provider usage", async ()
       source: "provider",
       complete: true,
     },
+  );
+  validateRuntimeTrace(events);
+});
+
+test("packaged immutable suite passes hashes and canonical trace gates", () => {
+  const report = runConversationConformance();
+  assert.equal(report.passed, true);
+  assert.equal(report.gates.length, 5);
+  assert.deepEqual(
+    report.gates.map((gate) => gate.id),
+    [
+      "offline-image",
+      "supervisor-takeover",
+      "malformed-tool-call",
+      "long-chat-restart",
+      "cancellation",
+    ],
   );
 });
 

@@ -1,0 +1,46 @@
+{
+  "schema_version": "understudy-conversation-runtime-conformance-v1",
+  "suite_id": "desktop-runtime-conformance-2026-07-11",
+  "source": {
+    "manifest": "desktop trustworthy-loop soak manifest",
+    "scenario_ids": [
+      "exact-factual",
+      "arithmetic-json",
+      "instruction-order",
+      "bounded-synthesis",
+      "status-tool",
+      "repo-search-tool",
+      "moraine-history-tool",
+      "safe-boundary"
+    ]
+  },
+  "runtimes": [
+    {"id": "native-rust-reference", "status": "reference"},
+    {"id": "vercel-ai-sdk", "status": "candidate"},
+    {"id": "pi-agent-core", "status": "planned"}
+  ],
+  "shared_gates": [
+    "exact_run_id",
+    "contiguous_sequence",
+    "capture_fidelity",
+    "no_orphaned_tool_calls",
+    "per_model_token_attribution",
+    "terminal_error_or_cancellation",
+    "immutable_jsonl"
+  ],
+  "scenario_gates": [
+    {"id": "exact-factual", "required_events": ["message", "delta", "usage"]},
+    {"id": "arithmetic-json", "required_events": ["message", "delta", "usage"]},
+    {"id": "instruction-order", "required_events": ["message", "delta", "usage"]},
+    {"id": "bounded-synthesis", "required_events": ["message", "delta", "usage"]},
+    {"id": "status-tool", "required_events": ["tool_call", "tool_result", "usage"]},
+    {"id": "repo-search-tool", "required_events": ["tool_call", "tool_result", "usage"]},
+    {"id": "moraine-history-tool", "required_events": ["tool_call", "tool_result", "usage"]},
+    {"id": "safe-boundary", "required_events": ["message", "delta", "usage"]},
+    {"id": "offline-image", "fixture": "offline-image.jsonl", "fixture_sha256": "80a83ad4bcb833eddc55aa149cb35fa04bf8b08d9bebb9ab9cb05c2ab40f4f6b", "required_events": ["image_attachment", "message", "delta", "usage"], "network": "off"},
+    {"id": "supervisor-takeover", "fixture": "supervisor-takeover.jsonl", "fixture_sha256": "36825ed3384ae4d0939973dfda0f5cc2c8e7a4f1312cc082925bac978b3f3efa", "required_events": ["supervisor_verdict", "student_interruption", "teacher_continuation", "usage"]},
+    {"id": "malformed-tool-call", "fixture": "malformed-tool-call.jsonl", "fixture_sha256": "a7643f02d630a3abe547d078ba37e3a83a1d06e16ebcf86aa627b8148855c821", "required_events": ["tool_call", "tool_result", "delta"]},
+    {"id": "long-chat-restart", "fixture": "long-chat-restart.jsonl", "fixture_sha256": "84aef19c992873f7a8716d9c9de54e3eb85b6b59b0cbbc55a14808e55ac71643", "required_events": ["compaction_boundary", "delta", "usage"], "restart_after_sequence": 1},
+    {"id": "cancellation", "fixture": "cancellation.jsonl", "fixture_sha256": "7b7fd701f26502e06273fc2c1995627167dd47db29d2f8118c69f5bd421442d5", "required_events": ["message", "delta", "cancellation"]}
+  ]
+}
