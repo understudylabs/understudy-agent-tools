@@ -69,11 +69,15 @@ of standing up a second server against the same weights and memory budget.
 ## Flow
 
 1. **Inventory hardware + runtime.** Confirm Apple Silicon (M-series) and the
-   unified memory / free disk available. Set up the MLX runtime once with `uv`:
-   `uv venv .understudy/venvs/mlx && uv pip install --python
-   .understudy/venvs/mlx/bin/python 'mlx-lm>=0.31' 'huggingface_hub[cli]>=0.27'`.
-   Do not download weights yet. Surface what you found. (Not on Apple Silicon?
-   This skill does not apply — local serving here is MLX-only.)
+   unified memory / free disk available. Check Python first: Gemma 4 needs
+   **Python >= 3.10** and **`mlx-lm>=0.31`** (Gemma 4 landed at `>=0.30`;
+   macOS system Python 3.9 installs 0.29.x and fails with
+   `Model type gemma4 not supported`). Bootstrap with uv — never system pip:
+   `uv venv --python 3.13 .understudy/venvs/mlx && uv pip install --python
+   .understudy/venvs/mlx/bin/python 'mlx-lm>=0.31' 'mlx-vlm>=0.6.2'
+   'huggingface_hub[cli]>=0.27'`. Do not download weights yet. Surface what
+   you found. (Not on Apple Silicon? This skill does not apply — local
+   serving here is MLX-only.)
 2. **Pick a candidate tier** (candidate chooser + hardware-fit guidance in [`reference.md`](reference.md)):
    choose the smallest model that is reasonable for the task, not the smallest
    model available. If a ladder climb or prior local gap report already exists,
