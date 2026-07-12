@@ -17,6 +17,7 @@ import {
   RUNTIME_VERSION,
 } from "../runtime/conversation/contract.js";
 import {
+  executeFrozenConformanceScenario,
   runConversationAdapterConformance,
   runConversationConformance,
 } from "../runtime/conversation/conformance.js";
@@ -125,7 +126,16 @@ export function registerRuntimeCommand(program: Command): void {
     .option("--backend <backend>", "Execute inputs through pi or vercel")
     .option("--base-url <url>", "OpenAI-compatible provider base URL")
     .option("--model <id>", "Provider model identifier")
+    .option("--student-base-url <url>", "Student provider URL for the supervision scenario")
+    .option("--student-model <id>", "Student model for the supervision scenario")
+    .option("--supervisor-base-url <url>", "Supervisor provider URL for the supervision scenario")
+    .option("--supervisor-model <id>", "Supervisor model for the supervision scenario")
+    .option("--teacher-base-url <url>", "Teacher provider URL for the supervision scenario")
+    .option("--teacher-model <id>", "Teacher model for the supervision scenario")
     .option("--tool-executor-url <url>", "Authenticated loopback tool executor")
+    .option("--capabilities <list>", "Comma-separated adapter capabilities to execute")
+    .option("--require-complete", "Fail when any frozen capability is not applicable")
+    .option("--scenario-timeout-ms <ms>", "Abort one frozen scenario after this many ms", "60000")
     .option("--allow-remote", "Allow a remote HTTPS provider (also requires the environment gate)")
     .option("--json", "Output JSON")
     .action(async function (
@@ -135,7 +145,16 @@ export function registerRuntimeCommand(program: Command): void {
         backend?: string;
         baseUrl?: string;
         model?: string;
+        studentBaseUrl?: string;
+        studentModel?: string;
+        supervisorBaseUrl?: string;
+        supervisorModel?: string;
+        teacherBaseUrl?: string;
+        teacherModel?: string;
         toolExecutorUrl?: string;
+        capabilities?: string;
+        requireComplete?: boolean;
+        scenarioTimeoutMs?: string;
         allowRemote?: boolean;
       },
     ) {
@@ -159,37 +178,47 @@ export function registerRuntimeCommand(program: Command): void {
         }
         const backend = options.backend as "pi" | "vercel";
         const run = backend === "pi" ? runPiConversation : runVercelConversation;
+        const defaultCapabilities =
+          backend === "pi" ? "compaction,restart,supervision" : "";
+        const capabilities = (options.capabilities ?? defaultCapabilities)
+          .split(",")
+          .map((capability) => capability.trim())
+          .filter(Boolean);
+        const scenarioTimeoutMs = Number(options.scenarioTimeoutMs ?? "60000");
+        if (
+          !Number.isInteger(scenarioTimeoutMs) ||
+          scenarioTimeoutMs < 1_000 ||
+          scenarioTimeoutMs > 600_000
+        ) {
+          throw new Error("--scenario-timeout-ms must be an integer from 1000 to 600000");
+        }
+        const invocationId = `${Date.now()}-${process.pid}`;
         const report = await runConversationAdapterConformance(
           {
             id: backend,
-            capabilities: backend === "pi" ? ["compaction", "restart", "supervision"] : [],
+            capabilities,
             async run(input) {
-              const events: unknown[] = [];
-              const controller = new AbortController();
-              await run(
-                {
-                  run_id: `conformance-${backend}-${input.fixture_id}-${Date.now()}`,
-                  session_id: `conformance-${backend}-${input.fixture_id}`,
-                  base_url: options.baseUrl!,
-                  model: options.model!,
-                  role: input.role,
-                  messages: input.messages,
-                  tools: input.tools,
-                  ...(input.tools.length > 0 && options.toolExecutorUrl
-                    ? { tool_executor_url: options.toolExecutorUrl }
-                    : {}),
-                  allow_remote: options.allowRemote ?? false,
-                  runtime_backend: backend,
+              return executeFrozenConformanceScenario(input, run, {
+                backend,
+                base_url: options.baseUrl!,
+                model: options.model!,
+                invocation_id: invocationId,
+                scenario_timeout_ms: scenarioTimeoutMs,
+                tool_executor_url: options.toolExecutorUrl,
+                allow_remote: options.allowRemote,
+                student: {
+                  base_url: options.studentBaseUrl ?? options.baseUrl!,
+                  model: options.studentModel ?? options.model!,
                 },
-                (event) => {
-                  events.push(event);
-                  if (input.fixture_id === "cancellation" && event.event === "delta") {
-                    controller.abort("frozen_conformance_cancel");
-                  }
+                supervisor: {
+                  base_url: options.supervisorBaseUrl ?? options.baseUrl!,
+                  model: options.supervisorModel ?? options.model!,
                 },
-                controller.signal,
-              );
-              return events;
+                teacher: {
+                  base_url: options.teacherBaseUrl ?? options.baseUrl!,
+                  model: options.teacherModel ?? options.model!,
+                },
+              });
             },
           },
           options.fixtures,
@@ -197,7 +226,11 @@ export function registerRuntimeCommand(program: Command): void {
         if (isJsonMode(this)) {
           process.stdout.write(`${JSON.stringify(report, null, 2)}\n`);
         } else {
-          const mark = report.eligible_for_promotion ? kleur.green("✓") : kleur.red("✗");
+          const mark = report.eligible_for_promotion
+            ? kleur.green("✓")
+            : report.passed
+              ? kleur.yellow("△")
+              : kleur.red("✗");
           const passed = report.scenarios.filter((scenario) => scenario.status === "passed").length;
           process.stdout.write(
             `${mark} ${report.suite_id}: ${passed}/${report.scenarios.length} ${backend} execution gates passed\n`,
@@ -211,7 +244,9 @@ export function registerRuntimeCommand(program: Command): void {
             process.stdout.write(`  ${kleur.yellow("-")} ${scenario.id}: ${scenario.error}\n`);
           }
         }
-        if (!report.eligible_for_promotion) process.exitCode = 1;
+        if (!report.passed || (options.requireComplete && !report.eligible_for_promotion)) {
+          process.exitCode = 1;
+        }
       });
     });
 

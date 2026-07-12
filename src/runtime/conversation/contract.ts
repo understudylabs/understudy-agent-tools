@@ -126,8 +126,21 @@ export const runtimeInputFixtureSchema = z
         ]),
       )
       .min(1),
+    expected_cancellation_reason: z.string().min(1).max(500).optional(),
   })
-  .strict();
+  .strict()
+  .superRefine((fixture, context) => {
+    if (
+      fixture.expected_cancellation_reason &&
+      !fixture.expected_events.includes("cancellation")
+    ) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["expected_cancellation_reason"],
+        message: "expected_cancellation_reason requires a cancellation event",
+      });
+    }
+  });
 
 export type RuntimeRunRequest = z.infer<typeof runtimeRequestSchema>;
 export type RuntimeInputFixture = z.infer<typeof runtimeInputFixtureSchema>;

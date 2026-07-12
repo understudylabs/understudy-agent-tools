@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { spawn } from "node:child_process";
 import { createServer } from "node:http";
 import { mkdtempSync, readFileSync, rmSync, statSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -16,8 +17,10 @@ import { runVercelConversation } from "../dist/runtime/conversation/vercel-runti
 import { runPiConversation } from "../dist/runtime/conversation/pi-runtime.js";
 import { validateRuntimeTrace } from "../dist/runtime/conversation/contract.js";
 import {
+  executeFrozenConformanceScenario,
   runConversationAdapterConformance,
   runConversationConformance,
+  validateScenarioEvidence,
 } from "../dist/runtime/conversation/conformance.js";
 
 const runtimeHome = mkdtempSync(join(tmpdir(), "understudy-conversation-runtime-"));
@@ -45,6 +48,27 @@ function sendFixtureSse(response, chunks) {
   response.writeHead(200, { "content-type": "text/event-stream" });
   for (const chunk of chunks) response.write(`data: ${JSON.stringify(chunk)}\n\n`);
   response.end("data: [DONE]\n\n");
+}
+
+function runCli(args, env = {}) {
+  return new Promise((resolve, reject) => {
+    const child = spawn(process.execPath, [join(process.cwd(), "dist", "bin.js"), ...args], {
+      env: { ...process.env, ...env },
+      stdio: ["ignore", "pipe", "pipe"],
+    });
+    let stdout = "";
+    let stderr = "";
+    child.stdout.setEncoding("utf8");
+    child.stderr.setEncoding("utf8");
+    child.stdout.on("data", (chunk) => {
+      stdout += chunk;
+    });
+    child.stderr.on("data", (chunk) => {
+      stderr += chunk;
+    });
+    child.once("error", reject);
+    child.once("close", (code, signal) => resolve({ code, signal, stdout, stderr }));
+  });
 }
 
 before(() => {
@@ -1117,7 +1141,10 @@ test("Pi and Vercel execute the identical frozen conformance inputs", async () =
       return;
     }
 
-    if (body.model.includes("long-chat-compaction")) {
+    if (
+      body.model.includes("long-chat-compaction") ||
+      serialized.includes("Architecture note seven")
+    ) {
       const longCall = (longCallsByModel.get(body.model) ?? 0) + 1;
       longCallsByModel.set(body.model, longCall);
       if (longCall === 1) {
@@ -1301,65 +1328,26 @@ test("Pi and Vercel execute the identical frozen conformance inputs", async () =
     id,
     capabilities,
     async run(input) {
-      const events = [];
-      const controller = new AbortController();
-      const request = {
-        run_id: `run-conformance-${id}-${input.fixture_id}`,
-        session_id: `session-conformance-${id}-${input.fixture_id}`,
+      const events = await executeFrozenConformanceScenario(input, run, {
+        backend: runtimeBackend,
         base_url: baseUrl,
         model: `conformance-${id}-${input.fixture_id}`,
-        role: input.role,
-        messages: input.messages,
-        tools: input.tools,
-        ...(input.tools.length > 0 ? { tool_executor_url: toolUrl } : {}),
-        max_tool_rounds: 2,
-        max_output_tokens: input.fixture_id === "long-chat-compaction" ? 128 : 8_192,
-        context_window_tokens: input.fixture_id === "long-chat-compaction" ? 1_024 : 32_768,
-        runtime_backend: runtimeBackend,
-        ...(input.fixture_id === "supervisor-takeover"
-          ? {
-              supervision: {
-                student: {
-                  base_url: baseUrl,
-                  model: `conformance-${id}-supervisor-takeover-student`,
-                },
-                supervisor: {
-                  base_url: baseUrl,
-                  model: `conformance-${id}-supervisor-takeover-judge`,
-                  system_prompt: "Interrupt factual errors in the student's partial answer.",
-                  max_output_tokens: 24,
-                },
-                teacher: {
-                  base_url: baseUrl,
-                  model: `conformance-${id}-supervisor-takeover-teacher`,
-                },
-                boundary_chars: 10,
-                max_nudges: 0,
-              },
-            }
-          : {}),
-      };
-      if (input.fixture_id === "restart-resume") {
-        await run(
-          {
-            ...request,
-            run_id: `${request.run_id}-prime`,
-            messages: [input.messages[0]],
-            emit_input: false,
-          },
-          () => {},
-        );
-      }
-      await run(
-        request,
-        (event) => {
-          events.push(event);
-          if (input.fixture_id === "cancellation" && event.event === "delta") {
-            controller.abort("frozen_conformance_cancel");
-          }
+        invocation_id: id,
+        scenario_timeout_ms: 5_000,
+        tool_executor_url: toolUrl,
+        student: {
+          base_url: baseUrl,
+          model: `conformance-${id}-supervisor-takeover-student`,
         },
-        controller.signal,
-      );
+        supervisor: {
+          base_url: baseUrl,
+          model: `conformance-${id}-supervisor-takeover-judge`,
+        },
+        teacher: {
+          base_url: baseUrl,
+          model: `conformance-${id}-supervisor-takeover-teacher`,
+        },
+      });
       traces.set(`${id}:${input.fixture_id}`, events);
       return events;
     },
@@ -1389,6 +1377,21 @@ test("Pi and Vercel execute the identical frozen conformance inputs", async () =
           "passed",
       ),
     );
+    const cancellationSummary = reports[0].scenarios.find(
+      (scenario) => scenario.id === "cancellation",
+    );
+    assert.deepEqual(cancellationSummary?.observed_events, [
+      "message",
+      "delta",
+      "usage",
+      "cancellation",
+    ]);
+    assert.deepEqual(cancellationSummary?.observed_event_counts, {
+      message: 1,
+      delta: 1,
+      usage: 1,
+      cancellation: 1,
+    });
     assert.equal(toolRequests.length, 2);
     assert.ok(
       providerRequests
@@ -1485,10 +1488,65 @@ test("Pi and Vercel execute the identical frozen conformance inputs", async () =
         "partial frozen output",
       );
     }
+
+    const cli = await runCli([
+      "runtime",
+      "conformance",
+      "--backend",
+      "pi",
+      "--base-url",
+      baseUrl,
+      "--model",
+      "conformance-cli",
+      "--student-model",
+      "conformance-cli-supervisor-takeover-student",
+      "--supervisor-model",
+      "conformance-cli-supervisor-takeover-judge",
+      "--teacher-model",
+      "conformance-cli-supervisor-takeover-teacher",
+      "--tool-executor-url",
+      toolUrl,
+      "--scenario-timeout-ms",
+      "5000",
+      "--require-complete",
+      "--json",
+    ]);
+    assert.equal(cli.code, 0, `stdout:\n${cli.stdout}\nstderr:\n${cli.stderr}`);
+    const cliReport = JSON.parse(cli.stdout);
+    assert.equal(cliReport.adapter_id, "pi");
+    assert.equal(cliReport.complete, true);
+    assert.equal(cliReport.eligible_for_promotion, true);
+    assert.ok(cliReport.scenarios.every((scenario) => scenario.status === "passed"));
   } finally {
     await new Promise((accept) => provider.close(accept));
     delete process.env.UNDERSTUDY_RUNTIME_TOOL_TOKEN;
   }
+});
+
+test("frozen cancellation rejects a timeout disguised as a successful stop", () => {
+  const input = JSON.parse(
+    readFileSync(
+      new URL(
+        "../schemas/conversation-runtime-conformance/inputs/cancellation.json",
+        import.meta.url,
+      ),
+      "utf8",
+    ),
+  );
+  const events = readFileSync(
+    new URL("../schemas/conversation-runtime-conformance/cancellation.jsonl", import.meta.url),
+    "utf8",
+  )
+    .trim()
+    .split("\n")
+    .map((line) => JSON.parse(line));
+  events.at(-1).data.reason = "frozen_conformance_cancel";
+  assert.doesNotThrow(() => validateScenarioEvidence(input, events));
+  events.at(-1).data.reason = "conformance_timeout_1000ms";
+  assert.throws(
+    () => validateScenarioEvidence(input, events),
+    /cancellation reason changed.*conformance_timeout_1000ms/,
+  );
 });
 
 test("packaged immutable suite passes hashes and canonical trace gates", () => {

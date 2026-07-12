@@ -57,6 +57,7 @@ function modelFor(
     cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
     contextWindow,
     maxTokens: Math.min(maxTokens, Math.max(1, Math.floor(contextWindow / 2))),
+    compat: { supportsDeveloperRole: false },
   };
 }
 

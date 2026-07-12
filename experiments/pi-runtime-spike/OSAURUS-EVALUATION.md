@@ -2,7 +2,7 @@
 
 Status: source-reviewed at upstream commit
 [`7bdb440f`](https://github.com/osaurus-ai/osaurus/commit/7bdb440f4d5275c1731967ccb98dd9191d8dd88a),
-not yet live-proven on this machine.
+then live-tested on this machine with signed/notarized Osaurus `0.22.1`.
 
 ## Decision
 
@@ -66,6 +66,36 @@ The loopback API also gives us a reversible bakeoff against the current
 `mlx-vlm` server. If Osaurus wins, we can later ask upstream for a smaller
 inference-only Swift package instead of forking the monolith.
 
+## Live result
+
+The signed release was installed with telemetry and crash reporting disabled.
+Pi executed the core frozen suite through Osaurus's loopback API using both a
+text model and a Gemma VLM.
+
+Observed wins:
+
+- signed and notarized application;
+- loopback-only serving and explicit local model policy;
+- text streaming and authenticated Pi tool round passed;
+- malformed tool-call containment passed;
+- deterministic cancellation passed on the text model;
+- Gemma image inference worked directly after role compatibility was corrected;
+- `osaurus stop` followed by `osaurus serve` recovered a wedged server.
+
+Observed blockers:
+
+- the provider rejected `logprobs`/`top_logprobs`, which blocks the current
+  trustworthy supervisor probability lane;
+- Pi's standard `developer` role was rejected, requiring the adapter to force
+  a `system` role;
+- interrupting a Gemma VLM/tool run left serving wedged until explicit repair;
+- a complete frozen Gemma suite did not finish successfully;
+- Osaurus duplicates a large agent, plugin, MCP, memory, and application
+  surface that Understudy does not need from an inference provider.
+
+These are provider-level findings. They do not change Pi's successful harness
+promotion.
+
 ## Live promotion gate
 
 Install and launch the signed release in an isolated test configuration, then
@@ -89,10 +119,14 @@ security, and whether the integration deletes more code than it adds.
 
 ## Current conclusion
 
-**Pi + Osaurus is more promising than Pi + a hand-maintained MLX server, but it
-is not yet proven.** Promote Pi now. Run Osaurus as a provider bakeoff before
-investing further in native model lifecycle code. Keep the current `mlx-vlm`
-path until the signed runtime passes every live gate above.
+**Do not promote Osaurus.** Promote Pi as the conversation runtime and keep the
+current `mlx-vlm` provider. The full Osaurus application adds too much duplicate
+harness surface and failed required provider gates. If native Swift inference
+remains attractive, evaluate a thin provider built directly on Apple's
+`mlx-swift-lm` after the current migration—not Osaurus's complete runtime.
+
+See [the local inference stack decision](LOCAL-INFERENCE-STACK.md) for the
+`mlx-vlm` versus MLX Swift boundary and frozen promotion gates.
 
 Primary sources: [Osaurus repository](https://github.com/osaurus-ai/osaurus),
 [OpenAI-compatible API guide](https://github.com/osaurus-ai/osaurus/blob/main/docs/OpenAI_API_GUIDE.md),

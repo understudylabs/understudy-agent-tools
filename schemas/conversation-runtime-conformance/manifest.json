@@ -56,7 +56,7 @@
     {
       "id": "cancellation",
       "fixture": "inputs/cancellation.json",
-      "fixture_sha256": "e545c0a16aa59b3c5ea355ad64e807786dfcd6f694cd01b3b23faf2e6aecbc65"
+      "fixture_sha256": "dac1a85c30eb3107f102f220bce5797dee957cbc7ffa6f8f32f4313d688337a4"
     }
   ],
   "runtimes": [

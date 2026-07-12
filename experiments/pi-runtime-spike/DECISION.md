@@ -3,7 +3,7 @@
 Decision: Pi `AgentSession` is the selected stateful harness and now runs inside
 the CLI-managed sidecar. The desktop can opt into it while retaining the native
 Rust path as a pre-output fallback. Do not make it the release default until
-the remaining packaging, user-cancellation, and soak gates pass.
+the remaining packaging and production soak gates pass.
 
 ## Evidence
 
@@ -40,11 +40,11 @@ the remaining packaging, user-cancellation, and soak gates pass.
   Deep Agents. Pi was the only stateful harness contender that did not add an
   auxiliary model call, autonomous coding policy, or unrequested tool surface.
   See `HARNESS-BAKEOFF.md`.
-- Osaurus was source-reviewed as a separate inference-provider candidate. Its
-  plain OpenAI endpoint preserves client-owned tool execution and may replace
-  bespoke MLX/VLM lifecycle code, but its chat persistence is linear and its
-  agent endpoint adds another autonomous loop. It does not change the Pi
-  harness selection. See `OSAURUS-EVALUATION.md`.
+- Osaurus was source-reviewed and live-tested as a separate inference-provider
+  candidate. It preserved client-owned tool execution, but failed required
+  logprob and uninterrupted VLM conformance gates and wedged until explicit
+  repair after an interrupted VLM/tool run. It is not promoted and does not
+  change the Pi harness selection. See `OSAURUS-EVALUATION.md`.
 - The production adapter (not the bakeoff copy) now passes canonical text,
   authenticated tool plus image, deterministic partial-preserving
   cancellation, persisted restart, and managed-process tests. Vercel remains
@@ -99,7 +99,9 @@ true:
 5. The integration replaces enough native orchestration to reduce total
    maintained code instead of creating a second permanent engine.
 6. The provider boundary can switch between the current local server and
-   Osaurus without changing Pi session history or canonical evidence.
+   another conforming local provider without changing Pi session history or
+   canonical evidence. `mlx-vlm` remains the incumbent; MLX Swift is an
+   optional later bakeoff, not a release dependency.
 
 Until then, keep the Vercel implementation as the simpler control and native
 Rust as one release fallback. Delete Rust orchestration only after the selected

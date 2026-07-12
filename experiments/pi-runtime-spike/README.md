@@ -23,5 +23,7 @@ that a harness injects.
 
 The comparative result is in [HARNESS-BAKEOFF.md](HARNESS-BAKEOFF.md). Pi's
 desktop promotion gates remain in [DECISION.md](DECISION.md). Osaurus is
-evaluated separately as an inference/model-lifecycle provider in
-[OSAURUS-EVALUATION.md](OSAURUS-EVALUATION.md).
+rejected as the inference/model-lifecycle provider in
+[OSAURUS-EVALUATION.md](OSAURUS-EVALUATION.md). The incumbent `mlx-vlm` versus
+optional MLX Swift boundary is recorded in
+[LOCAL-INFERENCE-STACK.md](LOCAL-INFERENCE-STACK.md).

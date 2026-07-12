@@ -7,6 +7,7 @@ import {
   CONFORMANCE_SCHEMA,
   parseRuntimeInputFixture,
   validateRuntimeTrace,
+  type EmitRuntimeEvent,
   type RuntimeInputFixture,
 } from "./contract.js";
 
@@ -60,6 +61,30 @@ export type RuntimeConformanceAdapter = {
   run(input: RuntimeInputFixture): Promise<readonly unknown[]>;
 };
 
+export type RuntimeConformanceRunner = (
+  request: unknown,
+  emit: EmitRuntimeEvent,
+  abortSignal?: AbortSignal,
+) => Promise<void>;
+
+export type RuntimeConformanceProviderTarget = {
+  base_url: string;
+  model: string;
+};
+
+export type ExecutableConformanceOptions = {
+  backend: "pi" | "vercel";
+  base_url: string;
+  model: string;
+  invocation_id: string;
+  scenario_timeout_ms: number;
+  tool_executor_url?: string;
+  allow_remote?: boolean;
+  student?: RuntimeConformanceProviderTarget;
+  supervisor?: RuntimeConformanceProviderTarget;
+  teacher?: RuntimeConformanceProviderTarget;
+};
+
 export type RuntimeConformanceScenarioResult = {
   id: string;
   fixture: string;
@@ -68,6 +93,10 @@ export type RuntimeConformanceScenarioResult = {
   event_count: number;
   runtime_id?: string;
   output_chars: number;
+  observed_events?: string[];
+  observed_event_counts?: Record<string, number>;
+  terminal_event?: string;
+  runtime_error?: string;
   error?: string;
 };
 
@@ -133,7 +162,7 @@ export function loadConversationConformanceInputs(
   return { suite_id: manifest.suite_id, fixture_root: fixtureRoot, inputs };
 }
 
-function assertScenarioEvidence(input: RuntimeInputFixture, values: readonly unknown[]) {
+export function validateScenarioEvidence(input: RuntimeInputFixture, values: readonly unknown[]) {
   const events = validateRuntimeTrace(values);
   const emitted = new Set(events.map((event) => event.event));
   for (const required of input.expected_events) {
@@ -143,6 +172,14 @@ function assertScenarioEvidence(input: RuntimeInputFixture, values: readonly unk
   }
   if (input.expected_events.includes("cancellation") && events.at(-1)?.event !== "cancellation") {
     throw new Error(`${input.fixture_id} cancellation was not terminal`);
+  }
+  if (
+    input.expected_cancellation_reason &&
+    events.at(-1)?.data.reason !== input.expected_cancellation_reason
+  ) {
+    throw new Error(
+      `${input.fixture_id} cancellation reason changed: expected ${input.expected_cancellation_reason}, got ${String(events.at(-1)?.data.reason)}`,
+    );
   }
   const expectedAttachments = input.messages.flatMap((message) =>
     message.role === "user" ? (message.attachments ?? []).map((attachment) => attachment.id) : [],
@@ -158,6 +195,130 @@ function assertScenarioEvidence(input: RuntimeInputFixture, values: readonly unk
     throw new Error(`${input.fixture_id} changed image attachment identity or ordering`);
   }
   return events;
+}
+
+function observedScenario(events: ReturnType<typeof validateRuntimeTrace>) {
+  const terminal = events.at(-1);
+  const observedEvents = [...new Set(events.map((event) => event.event))];
+  const observedEventCounts = Object.fromEntries(
+    observedEvents.map((name) => [
+      name,
+      events.filter((event) => event.event === name).length,
+    ]),
+  );
+  return {
+    event_count: events.length,
+    runtime_id: events[0]?.runtime_id,
+    output_chars: events
+      .filter((event) => event.event === "delta")
+      .reduce((total, event) => total + String(event.data.text).length, 0),
+    observed_events: observedEvents,
+    observed_event_counts: observedEventCounts,
+    terminal_event: terminal?.event,
+    runtime_error:
+      terminal?.event === "error"
+        ? String(terminal.data.message)
+        : terminal?.event === "cancellation"
+          ? String(terminal.data.reason)
+          : undefined,
+  };
+}
+
+/**
+ * Execute one frozen input with the production-shaped setup required by that
+ * scenario. Tests and the public CLI call this same helper so restart,
+ * compaction, supervision, timeout, and cancellation cannot drift into
+ * test-only behavior.
+ */
+export async function executeFrozenConformanceScenario(
+  input: RuntimeInputFixture,
+  runner: RuntimeConformanceRunner,
+  options: ExecutableConformanceOptions,
+): Promise<readonly unknown[]> {
+  const events: unknown[] = [];
+  const controller = new AbortController();
+  const timeout = setTimeout(
+    () => controller.abort(`conformance_timeout_${options.scenario_timeout_ms}ms`),
+    options.scenario_timeout_ms,
+  );
+  const runId = `conformance-${options.backend}-${input.fixture_id}-${options.invocation_id}`;
+  const sessionId = `conformance-${options.backend}-${input.fixture_id}-${options.invocation_id}`;
+  const primary = { base_url: options.base_url, model: options.model };
+  const request = {
+    run_id: runId,
+    session_id: sessionId,
+    base_url: primary.base_url,
+    model: primary.model,
+    role: input.role,
+    messages: input.messages,
+    tools: input.tools,
+    max_output_tokens: input.fixture_id === "long-chat-compaction" ? 128 : 256,
+    context_window_tokens: input.fixture_id === "long-chat-compaction" ? 1_024 : 32_768,
+    max_tool_rounds: 2,
+    ...(input.tools.length > 0 && options.tool_executor_url
+      ? { tool_executor_url: options.tool_executor_url }
+      : {}),
+    allow_remote: options.allow_remote ?? false,
+    runtime_backend: options.backend,
+    ...(input.fixture_id === "supervisor-takeover" && options.backend === "pi"
+      ? {
+          supervision: {
+            student: options.student ?? primary,
+            supervisor: {
+              ...(options.supervisor ?? primary),
+              system_prompt: "Interrupt factual errors in the student's partial answer.",
+              max_output_tokens: 24,
+            },
+            teacher: options.teacher ?? primary,
+            boundary_chars: 10,
+            max_nudges: 0,
+          },
+        }
+      : {}),
+  };
+
+  try {
+    if (input.fixture_id === "restart-resume" && options.backend === "pi") {
+      const primeEvents: unknown[] = [];
+      await runner(
+        {
+          ...request,
+          run_id: `${runId}-prime`,
+          messages: [input.messages[0]],
+          emit_input: false,
+        },
+        (event) => {
+          primeEvents.push(event);
+        },
+        controller.signal,
+      );
+      const primeTrace = validateRuntimeTrace(primeEvents);
+      const terminal = primeTrace.at(-1);
+      if (terminal?.event === "error" || terminal?.event === "cancellation") {
+        throw new Error(
+          `restart-resume prime failed: ${String(terminal.data.message ?? terminal.data.reason)}`,
+        );
+      }
+    }
+
+    await runner(
+      request,
+      (event) => {
+        events.push(event);
+        if (
+          input.fixture_id === "cancellation" &&
+          event.event === "delta" &&
+          !controller.signal.aborted
+        ) {
+          controller.abort(input.expected_cancellation_reason ?? "frozen_conformance_cancel");
+        }
+      },
+      controller.signal,
+    );
+    return events;
+  } finally {
+    clearTimeout(timeout);
+  }
 }
 
 /** Execute every frozen input through one real adapter and retain failures. */
@@ -184,27 +345,33 @@ export async function runConversationAdapterConformance(
       });
       continue;
     }
+    let values: readonly unknown[] = [];
     try {
-      const events = assertScenarioEvidence(fixture.input, await adapter.run(fixture.input));
+      values = await adapter.run(fixture.input);
+      const events = validateScenarioEvidence(fixture.input, values);
       scenarios.push({
         id: fixture.id,
         fixture: fixture.fixture,
         fixture_sha256: fixture.sha256,
         status: "passed",
-        event_count: events.length,
-        runtime_id: events[0]?.runtime_id,
-        output_chars: events
-          .filter((event) => event.event === "delta")
-          .reduce((total, event) => total + String(event.data.text).length, 0),
+        ...observedScenario(events),
       });
     } catch (error) {
+      let observed = { event_count: 0, output_chars: 0 };
+      if (values.length > 0) {
+        try {
+          observed = observedScenario(validateRuntimeTrace(values));
+        } catch {
+          // Never summarize unvalidated envelopes; the validation error below
+          // remains the authoritative failure evidence.
+        }
+      }
       scenarios.push({
         id: fixture.id,
         fixture: fixture.fixture,
         fixture_sha256: fixture.sha256,
         status: "failed",
-        event_count: 0,
-        output_chars: 0,
+        ...observed,
         error: error instanceof Error ? error.message : String(error),
       });
     }

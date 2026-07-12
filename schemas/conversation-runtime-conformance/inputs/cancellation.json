@@ -9,5 +9,6 @@
     }
   ],
   "tools": [],
-  "expected_events": ["message", "delta", "cancellation"]
+  "expected_events": ["message", "delta", "cancellation"],
+  "expected_cancellation_reason": "frozen_conformance_cancel"
 }
