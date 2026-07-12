@@ -851,7 +851,28 @@ async function runSupervisedStudentSegment(options: {
   if (!decision && !abortSignal?.aborted && !promptError) {
     const afterChars = characterCount(partial);
     if (afterChars !== checkedChars || boundaryOrdinal === options.boundaryOrdinal) {
-      let finalDecision = await checkSupervisor(request, config, messages, partial, abortSignal);
+      let finalDecision: SupervisorDecision;
+      try {
+        finalDecision = await checkSupervisor(request, config, messages, partial, abortSignal);
+      } catch (error) {
+        if (!abortSignal?.aborted) throw error;
+        await writer.emit("cancellation", {
+          stage: "supervisor_check",
+          reason: safeErrorMessage(abortSignal.reason ?? error),
+        });
+        abortSignal.removeEventListener("abort", abort);
+        adapter.unsubscribe();
+        session.dispose();
+        return {
+          partial,
+          decision: {
+            verdict: "continue",
+            usage: unavailableSupervisorUsage(config.supervisor.model),
+          },
+          nextBoundaryOrdinal: boundaryOrdinal,
+          terminal: true,
+        };
+      }
       if (finalDecision.verdict === "nudge" && !options.allowNudge) {
         finalDecision = {
           verdict: "continue",

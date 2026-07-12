@@ -490,6 +490,90 @@ test("Pi supervision turns a user abort during a judge check into canonical canc
   validateRuntimeTrace(events);
 });
 
+test("Pi supervision cancels canonically during the final judge check", async () => {
+  const controller = new AbortController();
+  const server = createServer(async (request, response) => {
+    const body = await requestJson(request);
+    if (body.model === "supervisor-model") {
+      setTimeout(() => controller.abort("final_supervisor_user_cancel"), 20);
+      setTimeout(() => {
+        if (response.destroyed) return;
+        response.writeHead(200, { "content-type": "application/json" });
+        response.end(
+          JSON.stringify({
+            choices: [{ message: { role: "assistant", content: "continue" } }],
+            usage: { prompt_tokens: 12, completion_tokens: 1, total_tokens: 13 },
+          }),
+        );
+      }, 500);
+      return;
+    }
+    sendFixtureSse(response, [
+      {
+        id: "chatcmpl-supervised-final-cancel",
+        object: "chat.completion.chunk",
+        created: 1,
+        model: "student-model",
+        choices: [
+          {
+            index: 0,
+            delta: { role: "assistant", content: "short completed student answer" },
+            finish_reason: null,
+          },
+        ],
+      },
+      {
+        id: "chatcmpl-supervised-final-cancel",
+        object: "chat.completion.chunk",
+        created: 1,
+        model: "student-model",
+        choices: [{ index: 0, delta: {}, finish_reason: "stop" }],
+        usage: { prompt_tokens: 8, completion_tokens: 4, total_tokens: 12 },
+      },
+    ]);
+  });
+  await new Promise((accept) => server.listen(0, "127.0.0.1", accept));
+  const address = server.address();
+  assert.ok(address && typeof address !== "string");
+  const baseUrl = `http://127.0.0.1:${address.port}/v1`;
+  const events = [];
+  try {
+    await runPiConversation(
+      {
+        run_id: "run-supervised-final-user-cancel",
+        session_id: "session-supervised-final-user-cancel",
+        base_url: baseUrl,
+        model: "student-model",
+        role: "student",
+        messages: [{ role: "user", content: "Finish, then wait for review." }],
+        tools: [],
+        runtime_backend: "pi",
+        supervision: {
+          student: { base_url: baseUrl, model: "student-model" },
+          supervisor: {
+            base_url: baseUrl,
+            model: "supervisor-model",
+            system_prompt: "Judge the completed answer.",
+            max_output_tokens: 24,
+          },
+          teacher: { base_url: baseUrl, model: "teacher-model" },
+          boundary_chars: 1_000,
+          max_nudges: 0,
+        },
+      },
+      (event) => events.push(event),
+      controller.signal,
+    );
+  } finally {
+    await new Promise((accept) => server.close(accept));
+  }
+  assert.equal(events.some((event) => event.event === "error"), false);
+  assert.equal(events.at(-1).event, "cancellation");
+  assert.equal(events.at(-1).data.stage, "supervisor_check");
+  assert.equal(events.at(-1).data.reason, "final_supervisor_user_cancel");
+  validateRuntimeTrace(events);
+});
+
 test("Pi runtime owns the image and authenticated tool round", async () => {
   let providerCalls = 0;
   let imageSeen = false;
