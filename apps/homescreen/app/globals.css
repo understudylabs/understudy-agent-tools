@@ -620,6 +620,40 @@ select,
 }
 .meter.warn > i { background: var(--loading); }
 
+/* One aggregate for prompt-prefix reuse. It stays visually quiet unless the
+   evidence window crosses the significant-regression threshold. */
+.cache-health {
+  margin-top: 4px;
+  padding-top: 12px;
+  border-top: 1px solid var(--border);
+}
+.cache-health-label {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  color: var(--text-2);
+  font-size: 12px;
+}
+.cache-health-label i {
+  width: 6px;
+  height: 6px;
+  border-radius: 50%;
+  background: var(--text-3);
+}
+.cache-health-detail {
+  margin-top: 4px;
+  color: var(--text-3);
+  font-size: 11px;
+}
+.cache-health.regressed .cache-health-label,
+.cache-health.regressed .metric,
+.cache-health.regressed .cache-health-detail {
+  color: var(--loading);
+}
+.cache-health.regressed .cache-health-label i {
+  background: var(--loading);
+}
+
 /* ---------- Service list ---------- */
 .svc {
   display: grid;

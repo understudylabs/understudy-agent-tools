@@ -431,7 +431,33 @@ export function validateRuntimeTrace(values: readonly unknown[]): RuntimeEventEn
       const input = nonNegativeInteger(data, "input_tokens", "usage.input_tokens");
       const output = nonNegativeInteger(data, "output_tokens", "usage.output_tokens");
       nonNegativeInteger(data, "reasoning_tokens", "usage.reasoning_tokens");
-      nonNegativeInteger(data, "cached_input_tokens", "usage.cached_input_tokens");
+      const cached = nonNegativeInteger(data, "cached_input_tokens", "usage.cached_input_tokens");
+      if ("cache_write_input_tokens" in data) {
+        nonNegativeInteger(data, "cache_write_input_tokens", "usage.cache_write_input_tokens");
+      }
+      if ("prompt_input_tokens" in data) {
+        const promptInput = nonNegativeInteger(
+          data,
+          "prompt_input_tokens",
+          "usage.prompt_input_tokens",
+        );
+        if (promptInput < cached) {
+          throw new Error("usage.prompt_input_tokens cannot be less than cached input");
+        }
+      }
+      if ("cache_reported" in data && typeof data.cache_reported !== "boolean") {
+        throw new Error("usage.cache_reported must be a boolean");
+      }
+      if (
+        "cache_read_pct" in data &&
+        data.cache_read_pct !== null &&
+        (typeof data.cache_read_pct !== "number" ||
+          !Number.isFinite(data.cache_read_pct) ||
+          data.cache_read_pct < 0 ||
+          data.cache_read_pct > 100)
+      ) {
+        throw new Error("usage.cache_read_pct must be null or a percentage from 0 to 100");
+      }
       const total = nonNegativeInteger(data, "total_tokens", "usage.total_tokens");
       if (total < input + output) {
         throw new Error("usage.total_tokens cannot be less than input + output");

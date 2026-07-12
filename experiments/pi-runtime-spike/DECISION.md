@@ -74,6 +74,12 @@ the remaining packaging and production soak gates pass.
   timeout with stderr discarded.
 - The expanded dependency graph passed the package smoke and `npm audit` with
   zero known vulnerabilities at this checkpoint.
+- Canonical usage events now retain provider-reported cache reads, cache writes,
+  total prompt input, and per-turn reuse. `understudy runtime cache-health`
+  derives a quiet rolling metric from the private append-only Pi session ledger.
+  It shows unavailable rather than a false 0% for providers that do not report
+  caching, and alerts only after a same-model, within-TTL window drops at least
+  20 points with at least 2,048 newly missed tokens.
 - The CLI-managed, fully offline MLX-VLM runtime passed all eight frozen
   scenarios in one immutable run. The long-chat case compacted 18 messages to
   6 and reduced its estimate from 1,043 tokens to 463. The image, tool,
@@ -102,6 +108,15 @@ One shared prefix can retain the small-model attempt, uninterrupted
 counterfactual, teacher correction, alternate candidate, and human-selected
 path. That can simplify correction-pair export and judge evaluation while
 keeping normal chat UI linear.
+
+Cache-preserving dynamic tool loading remains release-gated. Pi `main` now
+documents additive deferred definitions for supported Anthropic and OpenAI
+models, with a safe normal-tool fallback elsewhere, but the latest published
+package (`0.80.6`, released before the 2026-07-10 change) does not contain that
+contract. Do not use the older cache-busting `setActiveTools` behavior as a
+substitute. Once Pi publishes the supporting release: pin the exact version,
+keep one loader tool active, add tools monotonically, omit active-only prompt
+metadata, and use this cache-health metric as the regression gate.
 
 ## Promotion gate
 

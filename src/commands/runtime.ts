@@ -3,10 +3,11 @@ import kleur from "kleur";
 import { closeSync, mkdirSync, openSync, writeFileSync } from "node:fs";
 import { createServer } from "node:http";
 import type { AddressInfo } from "node:net";
-import { dirname, resolve } from "node:path";
+import { dirname, join, resolve } from "node:path";
 
 import { isJsonMode, runAction } from "../internal/output.js";
 import {
+  conversationRuntimeHome,
   conversationRuntimeStatus,
   doctorConversationRuntime,
   installConversationRuntime,
@@ -14,6 +15,7 @@ import {
   startConversationRuntime,
   stopConversationRuntime,
 } from "../runtime/conversation/lifecycle.js";
+import { cacheHealthFromSessionRoot } from "../runtime/conversation/cache-health.js";
 import {
   CONFORMANCE_SCHEMA,
   EVENT_SCHEMA,
@@ -297,6 +299,22 @@ export function registerRuntimeCommand(program: Command): void {
       const status = await conversationRuntimeStatus();
       emit(this, status, statusLine(status));
       if (!status.healthy) process.exitCode = 1;
+    });
+
+  runtime
+    .command("cache-health")
+    .description("Summarize prompt-cache reuse without printing per-turn notices.")
+    .option("--json", "Output JSON")
+    .action(function (this: Command) {
+      const health = cacheHealthFromSessionRoot(
+        join(conversationRuntimeHome(), "sessions"),
+      );
+      const score = health.score_pct === null ? "unavailable" : `${health.score_pct.toFixed(1)}%`;
+      emit(
+        this,
+        health,
+        `cache health: ${score} · ${health.detail}`,
+      );
     });
 
   runtime
