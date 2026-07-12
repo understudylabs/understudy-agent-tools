@@ -1,10 +1,38 @@
 import { lstatSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 
 import { pidAlive, probeDaemonHealth } from "./daemon.js";
 
 export const DESKTOP_API_SCHEMA = "understudy.desktop_api.v2";
+export const DESKTOP_API_OPENAPI_VERSION = "2.0.0";
+
+export function desktopApiContractPath(): string {
+  return fileURLToPath(
+    new URL("../../schemas/understudy.desktop_api.v2.openapi.json", import.meta.url),
+  );
+}
+
+export function readDesktopApiContract(): Record<string, unknown> {
+  const path = desktopApiContractPath();
+  const value = JSON.parse(readFileSync(path, "utf8")) as unknown;
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    throw new Error(`desktop API contract is malformed: ${path}`);
+  }
+  const contract = value as Record<string, unknown>;
+  const info = contract.info;
+  if (
+    contract.openapi !== "3.1.0" ||
+    !info ||
+    typeof info !== "object" ||
+    Array.isArray(info) ||
+    (info as Record<string, unknown>).version !== DESKTOP_API_OPENAPI_VERSION
+  ) {
+    throw new Error(`desktop API contract version is incompatible: ${path}`);
+  }
+  return contract;
+}
 
 export interface DesktopApiCapability {
   schemaVersion: string;

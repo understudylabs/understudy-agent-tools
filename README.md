@@ -460,6 +460,7 @@ When Desktop is running, agents can use its authenticated local control plane
 without discovering ports or handling tokens themselves:
 
 ```bash
+understudy desktop contract --json
 understudy desktop capabilities
 understudy desktop chat --slot 9 --session my-task --run-id my-task-1 "Inspect this"
 understudy desktop chat --slot 9 --image screenshot.png "What is wrong here?"
@@ -473,7 +474,9 @@ The CLI reads the private mode-0600 `~/.understudy/desktop-api.json`, verifies
 the recorded PID and loopback health endpoint, and streams the canonical
 ConversationRuntime events. The desktop UI, REST API, CLI, and MCP use the same
 runtime and exact `run_id`; the CLI does not drive UI controls or create a
-second chat harness.
+second chat harness. `understudy desktop contract` prints the packaged OpenAPI
+3.1 contract even when Desktop is not running, so agents can plan calls without
+probing private implementation routes or handling the bearer token themselves.
 
 ## The skill tree
 

@@ -4,7 +4,9 @@ import { readFileSync } from "node:fs";
 import { randomUUID } from "node:crypto";
 
 import {
+  desktopApiContractPath,
   desktopApiFetch,
+  readDesktopApiContract,
   requireDesktopApi,
   responseError,
 } from "../internal/desktop-api.js";
@@ -95,6 +97,25 @@ export function registerDesktopCommand(program: Command): void {
   const desktop = program
     .command("desktop")
     .description("Use the authenticated local API of the running Understudy Desktop app.");
+
+  desktop
+    .command("contract")
+    .description("Print the versioned OpenAPI contract without requiring Desktop to be running.")
+    .option("--json", "Output the complete OpenAPI document")
+    .action(function (this: Command, opts: { json?: boolean }) {
+      const contract = readDesktopApiContract();
+      if (opts.json || this.optsWithGlobals<{ json?: boolean }>().json) {
+        process.stdout.write(`${JSON.stringify(contract, null, 2)}\n`);
+        return;
+      }
+      const info = contract.info as { title?: string; version?: string };
+      const paths = contract.paths as Record<string, unknown>;
+      process.stdout.write(
+        `${info.title ?? "Understudy Desktop Agent API"} ${info.version ?? "unknown"}\n` +
+        `operations: ${Object.keys(paths).length}\n` +
+        `contract: ${desktopApiContractPath()}\n`,
+      );
+    });
 
   desktop
     .command("capabilities")

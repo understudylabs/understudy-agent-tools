@@ -3,6 +3,15 @@
 Versioned JSON Schemas for artifacts that cross surface boundaries (desktop
 app, skills, CLI, ladder). One spine, adopted everywhere.
 
+## `understudy.desktop_api.v2`
+
+[`understudy.desktop_api.v2.openapi.json`](understudy.desktop_api.v2.openapi.json)
+is the OpenAPI 3.1 contract for agents operating a running Understudy Desktop
+app. It documents only the authenticated v2 operations currently implemented;
+future control-plane families are explicitly listed as unimplemented extension
+areas. `understudy desktop contract --json` prints the packaged document
+without requiring Desktop to be running.
+
 ## `understudy.eval_result.v1`
 
 [`understudy.eval_result.v1.schema.json`](understudy.eval_result.v1.schema.json)

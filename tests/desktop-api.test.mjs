@@ -126,6 +126,30 @@ after(async () => {
 });
 
 describe("desktop API CLI", () => {
+  it("ships an offline OpenAPI contract for every implemented v2 operation", async () => {
+    const result = await runCli(["desktop", "contract", "--json"]);
+    assert.equal(result.status, 0, result.stderr);
+    const contract = JSON.parse(result.stdout);
+    assert.equal(contract.openapi, "3.1.0");
+    assert.equal(contract.info.version, "2.0.0");
+    assert.deepEqual(Object.keys(contract.paths).sort(), [
+      "/v1/capabilities",
+      "/v1/conversations/{session_id}/turns",
+      "/v1/feedback/supervisor",
+      "/v1/runs/{run_id}/cancel",
+      "/v1/runs/{run_id}/events",
+    ]);
+    assert.deepEqual(
+      contract.components.schemas.RuntimeEventEnvelope.properties.event.enum,
+      [
+        "message", "delta", "reasoning_delta", "tool_call", "tool_result", "usage",
+        "supervisor_verdict", "student_interruption", "teacher_continuation",
+        "cancellation", "error", "image_attachment", "compaction_boundary",
+      ],
+    );
+    assert.equal(contract.security[0].desktopBearer.length, 0);
+  });
+
   it("discovers the authenticated v2 capability contract", async () => {
     const result = await runCli(["desktop", "capabilities", "--json"]);
     assert.equal(result.status, 0, result.stderr);
