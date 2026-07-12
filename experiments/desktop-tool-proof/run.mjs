@@ -7,11 +7,73 @@ import { dirname, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { isDeepStrictEqual } from "node:util";
 
+import { validateRuntimeTrace } from "../../dist/runtime/conversation/contract.js";
+import { runPiConversation } from "../../dist/runtime/conversation/pi-runtime.js";
+
 const here = dirname(fileURLToPath(import.meta.url));
+
+const directMcpToolNames = [
+  "status",
+  "residency",
+  "list_models",
+  "list_snapshot_models",
+  "list_traces",
+  "search_traces",
+  "open_trace",
+];
+
+const directWrapperTools = [
+  {
+    name: "understudy_mcp_tool",
+    description: "Call the local Understudy Desktop MCP tool surface.",
+    input_schema: {
+      type: "object",
+      properties: {
+        tool_name: {
+          type: "string",
+          enum: ["knowledge_dossiers", "local_benchmarks", "ui_focus"],
+        },
+        arguments: { type: "object" },
+      },
+      required: ["tool_name"],
+      additionalProperties: false,
+    },
+  },
+  {
+    name: "understudy_agent_tools",
+    description: "Run a safe, read-only Understudy agent-tools CLI command.",
+    input_schema: {
+      type: "object",
+      properties: {
+        command: {
+          type: "string",
+          enum: [
+            "version",
+            "spine",
+            "platforms",
+            "skills_list",
+            "skills_search",
+            "skills_inspect",
+            "doctor",
+            "models_pull_plan",
+          ],
+        },
+        query: { type: "string" },
+        name: { type: "string" },
+        model_id: { type: "string" },
+      },
+      required: ["command"],
+      additionalProperties: false,
+    },
+  },
+];
 
 export function scoreToolTrace(events, task) {
   const calls = events.filter((event) => event.event === "tool_call");
   const results = events.filter((event) => event.event === "tool_result");
+  const terminalError = events.find(
+    (event) => event.event === "error" || event.event === "cancellation",
+  );
   const call = calls[0]?.data ?? null;
   const result = results.find((event) => event.data?.call_id === call?.call_id)?.data ?? null;
   const output = events
@@ -20,6 +82,7 @@ export function scoreToolTrace(events, task) {
     .join("")
     .trim();
   const checks = {
+    terminal_error_free: terminalError == null,
     exactly_one_call: calls.length === 1,
     exact_tool_name: call?.name === task.tool,
     exact_arguments:
@@ -38,6 +101,9 @@ export function scoreToolTrace(events, task) {
     parsed_arguments: call?.parsed_arguments ?? null,
     parse_error: call?.parse_error ?? null,
     result_ok: result?.ok ?? false,
+    terminal_error: terminalError?.data?.message
+      ?? terminalError?.data?.reason
+      ?? (terminalError ? terminalError.event : null),
     orphan_result_count: results.filter(
       (candidate) => !calls.some((item) => item.data?.call_id === candidate.data?.call_id),
     ).length,
@@ -53,6 +119,8 @@ export function summarizeRows(rows) {
   }
   return Object.fromEntries([...groups].map(([candidate, selected]) => [candidate, {
     slot_id: selected[0]?.slot_id ?? null,
+    model_id: selected[0]?.model_id ?? null,
+    runtime_backend: selected[0]?.runtime_backend ?? null,
     strict_passes: selected.filter((row) => row.strict_pass).length,
     attempts: selected.length,
     strict_accuracy: selected.filter((row) => row.strict_pass).length / selected.length,
@@ -62,6 +130,7 @@ export function summarizeRows(rows) {
       selected.filter((row) => row.checks.paired_successful_result).length / selected.length,
     exact_output_rate: selected.filter((row) => row.checks.exact_output).length / selected.length,
     parse_errors: selected.filter((row) => row.parse_error != null).length,
+    terminal_errors: selected.filter((row) => row.terminal_error != null).length,
     orphan_results: selected.reduce((sum, row) => sum + row.orphan_result_count, 0),
     mean_latency_ms: Math.round(
       selected.reduce((sum, row) => sum + row.elapsed_ms, 0) / selected.length,
@@ -75,10 +144,49 @@ export function summarizeRows(rows) {
         called_tool: row.called_tool,
         parsed_arguments: row.parsed_arguments,
         result_ok: row.result_ok,
+        terminal_error: row.terminal_error,
         output: row.output,
         checks: row.checks,
       })),
   }]));
+}
+
+export function directToolDefinitions(mcpTools) {
+  const selected = directMcpToolNames.map((name) => {
+    const tool = mcpTools.find((candidate) => candidate.name === name);
+    if (!tool) throw new Error(`Desktop MCP is missing required direct-proof tool: ${name}`);
+    return {
+      name: tool.name,
+      ...(tool.description ? { description: tool.description } : {}),
+      input_schema: tool.inputSchema ?? { type: "object", properties: {} },
+    };
+  });
+  return [...selected, ...directWrapperTools];
+}
+
+export function resolveDirectCandidates(candidates, residency, agentCard) {
+  const warmModels = agentCard?.app?.warm_models;
+  if (!Array.isArray(warmModels)) {
+    throw new Error("agent card does not contain warm model paths");
+  }
+  return candidates.map((candidate) => {
+    const slot = residency?.slots?.find((row) => row.id === candidate.slotId);
+    if (!slot || slot.state !== "running" || !Number.isInteger(slot.port)) {
+      throw new Error(`candidate ${candidate.label} slot ${candidate.slotId} is not warm`);
+    }
+    const warm = warmModels.find(
+      (row) => row.id === slot.model_id && row.port === slot.port,
+    );
+    if (!warm || typeof warm.model_path !== "string" || !warm.model_path) {
+      throw new Error(`candidate ${candidate.label} has no attested warm model path`);
+    }
+    return {
+      ...candidate,
+      modelId: slot.model_id,
+      modelPath: warm.model_path,
+      baseUrl: `http://127.0.0.1:${slot.port}/v1`,
+    };
+  });
 }
 
 function parseArgs(argv) {
@@ -87,10 +195,19 @@ function parseArgs(argv) {
     repetitions: 3,
     maxTokens: 160,
     outputRoot: join(homedir(), ".understudy", "proofs", "tool-correctness"),
+    executionMode: "direct-pi",
   };
   for (let index = 0; index < argv.length; index += 1) {
     const value = argv[index];
     const next = argv[index + 1];
+    if (value === "--desktop-api") {
+      options.executionMode = "desktop-api";
+      continue;
+    }
+    if (value === "--direct-runtime") {
+      options.executionMode = "direct-pi";
+      continue;
+    }
     if (value === "--candidate") {
       const [label, rawSlot] = String(next).split(":");
       options.candidates.push({ label, slotId: Number(rawSlot) });
@@ -147,6 +264,89 @@ async function apiFetch(capability, path, init = {}) {
   return fetch(new URL(path, capability.baseUrl), { ...init, headers });
 }
 
+function readAgentCard() {
+  const path = process.env.UNDERSTUDY_AGENT_CARD_FILE
+    ?? join(homedir(), ".understudy", "agent-card.json");
+  return JSON.parse(readFileSync(path, "utf8"));
+}
+
+async function mcpRequest(capability, method, params) {
+  const response = await apiFetch(capability, "/mcp", {
+    method: "POST",
+    body: JSON.stringify({ jsonrpc: "2.0", id: 1, method, params }),
+  });
+  if (!response.ok) throw new Error(`Desktop MCP ${method} returned ${response.status}`);
+  const body = await response.json();
+  if (body.error) throw new Error(`Desktop MCP ${method} failed: ${body.error.message}`);
+  return body.result;
+}
+
+function modelSystemPrompt(modelId) {
+  const cards = JSON.parse(readFileSync(
+    resolve(here, "../../apps/homescreen/src-tauri/knowledge/model_cards.json"),
+    "utf8",
+  ));
+  const card = cards.find((candidate) => candidate.id === modelId);
+  const targetId = card?.alias_for ?? modelId;
+  return cards.find((candidate) => candidate.id === targetId)?.system_prompt
+    ?? cards.find((candidate) => candidate.id === "default")?.system_prompt
+    ?? "You are an AI assistant in the Understudy desktop app.";
+}
+
+async function loadDirectContext(capability, candidates) {
+  const [toolResult, residencyResult] = await Promise.all([
+    mcpRequest(capability, "tools/list", {}),
+    mcpRequest(capability, "tools/call", { name: "residency", arguments: {} }),
+  ]);
+  const tools = directToolDefinitions(toolResult?.tools ?? []);
+  const targets = resolveDirectCandidates(
+    candidates,
+    residencyResult?.structuredContent,
+    readAgentCard(),
+  );
+  return {
+    tools,
+    targets: new Map(targets.map((target) => [target.label, target])),
+    toolSchemaSha256: createHash("sha256").update(JSON.stringify(tools)).digest("hex"),
+  };
+}
+
+async function runDirectTurn(capability, context, candidate, task, runId, sessionId, maxTokens) {
+  const target = context.targets.get(candidate.label);
+  if (!target) throw new Error(`direct target is missing for ${candidate.label}`);
+  const previousToolToken = process.env.UNDERSTUDY_RUNTIME_TOOL_TOKEN;
+  process.env.UNDERSTUDY_RUNTIME_TOOL_TOKEN = capability.token;
+  const events = [];
+  try {
+    await runPiConversation(
+      {
+        run_id: runId,
+        session_id: sessionId,
+        base_url: target.baseUrl,
+        model: target.modelPath,
+        provider_kind: "openai-compatible",
+        role: "primary",
+        messages: [
+          { role: "system", content: modelSystemPrompt(target.modelId) },
+          { role: "user", content: task.prompt },
+        ],
+        tools: context.tools,
+        tool_executor_url: `${capability.baseUrl}/api/conversation-runtime/tool?slot_id=${target.slotId}`,
+        max_output_tokens: maxTokens,
+        max_tool_rounds: 4,
+        allow_remote: false,
+        runtime_backend: "pi",
+      },
+      (event) => events.push(event),
+    );
+  } finally {
+    if (previousToolToken === undefined) delete process.env.UNDERSTUDY_RUNTIME_TOOL_TOKEN;
+    else process.env.UNDERSTUDY_RUNTIME_TOOL_TOKEN = previousToolToken;
+  }
+  validateRuntimeTrace(events);
+  return { events, target };
+}
+
 async function readNdjson(response) {
   if (!response.body) return [];
   const events = [];
@@ -198,6 +398,9 @@ export async function runProof(options = parseArgs(process.argv.slice(2))) {
   ) {
     throw new Error("Understudy Desktop API v2 canonical streaming evidence is required");
   }
+  const directContext = options.executionMode === "direct-pi"
+    ? await loadDirectContext(capability, options.candidates)
+    : null;
 
   const rows = [];
   for (const candidate of options.candidates) {
@@ -206,31 +409,49 @@ export async function runProof(options = parseArgs(process.argv.slice(2))) {
         const runId = `${proofId}-${candidate.label}-r${repetition}-${task.id}`;
         const sessionId = runId;
         const before = performance.now();
-        const response = await apiFetch(
-          capability,
-          `/v1/conversations/${encodeURIComponent(sessionId)}/turns`,
-          {
-            method: "POST",
-            body: JSON.stringify({
-              slotId: candidate.slotId,
-              text: task.prompt,
-              runId,
-              maxTokens: options.maxTokens,
-            }),
-          },
-        );
-        if (!response.ok) {
-          throw new Error(
-            `${candidate.label}/r${repetition}/${task.id} returned ${response.status}: ${await response.text()}`,
+        let events;
+        let modelId = null;
+        if (directContext) {
+          const direct = await runDirectTurn(
+            capability,
+            directContext,
+            candidate,
+            task,
+            runId,
+            sessionId,
+            options.maxTokens,
           );
+          events = direct.events;
+          modelId = direct.target.modelId;
+        } else {
+          const response = await apiFetch(
+            capability,
+            `/v1/conversations/${encodeURIComponent(sessionId)}/turns`,
+            {
+              method: "POST",
+              body: JSON.stringify({
+                slotId: candidate.slotId,
+                text: task.prompt,
+                runId,
+                maxTokens: options.maxTokens,
+              }),
+            },
+          );
+          if (!response.ok) {
+            throw new Error(
+              `${candidate.label}/r${repetition}/${task.id} returned ${response.status}: ${await response.text()}`,
+            );
+          }
+          events = await readNdjson(response);
         }
-        const events = await readNdjson(response);
         const score = scoreToolTrace(events, task);
         const row = {
           proof_id: proofId,
           suite_sha256: suiteSha256,
           candidate: candidate.label,
           slot_id: candidate.slotId,
+          model_id: modelId,
+          runtime_backend: directContext ? "pi" : "desktop-api",
           repetition,
           task_id: task.id,
           expected_tool: task.tool,
@@ -255,7 +476,7 @@ export async function runProof(options = parseArgs(process.argv.slice(2))) {
     }
   }
   const summary = {
-    format: "understudy.desktop_tool_proof.v1",
+    format: "understudy.desktop_tool_proof.v2",
     proof_id: proofId,
     suite_sha256: suiteSha256,
     started_at: startedAt.toISOString(),
@@ -265,6 +486,9 @@ export async function runProof(options = parseArgs(process.argv.slice(2))) {
     task_count: tasks.length,
     repetitions: options.repetitions,
     run_count: rows.length,
+    execution_mode: options.executionMode,
+    release_cohort_eligible: false,
+    tool_schema_sha256: directContext?.toolSchemaSha256 ?? null,
     candidates: summarizeRows(rows),
   };
   writeProofFile(
