@@ -166,6 +166,14 @@ pub struct ChatRunInput {
 }
 
 #[derive(Serialize, Clone)]
+pub struct ChatSessionRow {
+    pub session_id: String,
+    pub schema: String,
+    pub messages: String,
+    pub updated_at: String,
+}
+
+#[derive(Serialize, Clone)]
 pub struct SidekickRunRow {
     pub id: u64,
     pub session_id: String,
@@ -368,6 +376,12 @@ fn migrate(conn: &Connection) -> Result<()> {
                 content     TEXT NOT NULL,
                 route       TEXT,
                 created_at  TEXT NOT NULL
+            );
+            CREATE TABLE IF NOT EXISTS chat_sessions (
+                session_id TEXT PRIMARY KEY,
+                schema     TEXT NOT NULL,
+                messages   TEXT NOT NULL,
+                updated_at TEXT NOT NULL
             );
             CREATE TABLE IF NOT EXISTS chat_runs (
                 id                INTEGER PRIMARY KEY,
@@ -1000,6 +1014,44 @@ impl Db {
         Ok(())
     }
 
+    pub fn save_active_chat_session(
+        &self,
+        session_id: &str,
+        schema: &str,
+        messages: &str,
+    ) -> Result<()> {
+        let conn = self.conn()?;
+        conn.execute(
+            "INSERT INTO chat_sessions(session_id, schema, messages, updated_at)
+             VALUES (?1, ?2, ?3, ?4)
+             ON CONFLICT(session_id) DO UPDATE SET
+                schema=excluded.schema,
+                messages=excluded.messages,
+                updated_at=excluded.updated_at",
+            rusqlite::params![session_id, schema, messages, now_iso()],
+        )?;
+        Ok(())
+    }
+
+    pub fn latest_chat_session(&self, schema: &str) -> Result<Option<ChatSessionRow>> {
+        let conn = self.conn()?;
+        let mut stmt = conn.prepare(
+            "SELECT session_id, schema, messages, updated_at
+             FROM chat_sessions WHERE schema=?1
+             ORDER BY updated_at DESC, rowid DESC LIMIT 1",
+        )?;
+        let mut rows = stmt.query([schema])?;
+        let Some(row) = rows.next()? else {
+            return Ok(None);
+        };
+        Ok(Some(ChatSessionRow {
+            session_id: row.get(0)?,
+            schema: row.get(1)?,
+            messages: row.get(2)?,
+            updated_at: row.get(3)?,
+        }))
+    }
+
     // Mirrors the sidekick_runs column list; not restructured to avoid churn.
     #[allow(clippy::too_many_arguments)]
     pub fn record_sidekick_run(
@@ -1460,6 +1512,31 @@ mod tests {
     }
 
     #[test]
+    fn active_chat_session_preserves_history_and_selects_latest_schema() {
+        let (dir, db) = temp_db("active-chat-session");
+        db.save_active_chat_session("session-1", "desktop-chat-v1", "[]")
+            .unwrap();
+        db.save_active_chat_session(
+            "session-2",
+            "desktop-chat-v1",
+            r#"[{"role":"user","content":"resume me"}]"#,
+        )
+        .unwrap();
+        db.save_active_chat_session("legacy", "legacy-chat-v0", "[]")
+            .unwrap();
+        let row = db.latest_chat_session("desktop-chat-v1").unwrap().unwrap();
+        assert_eq!(row.session_id, "session-2");
+        assert!(row.messages.contains("resume me"));
+        let count: u64 = db
+            .conn()
+            .unwrap()
+            .query_row("SELECT COUNT(*) FROM chat_sessions", [], |row| row.get(0))
+            .unwrap();
+        assert_eq!(count, 3);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
     fn fusion_benchmark_rows_round_trip_eval_result_columns() {
         let (dir, db) = temp_db("fusion-eval-cols");
         db.record_fusion_benchmark(&FusionBenchmarkInput {
@@ -1579,7 +1656,10 @@ mod tests {
         assert_eq!(evals[0].eval_id, "support-triage-1");
         assert_eq!(evals[0].scoring_rule, "contains");
         assert_eq!(evals[0].example_count, 2);
-        assert_eq!(evals[0].harness_sha256.as_deref(), Some("b".repeat(64).as_str()));
+        assert_eq!(
+            evals[0].harness_sha256.as_deref(),
+            Some("b".repeat(64).as_str())
+        );
 
         let fetched = db.get_custom_eval("support-triage-1").unwrap().unwrap();
         assert_eq!(fetched.name, "Support triage");
@@ -1608,7 +1688,12 @@ mod tests {
                 }],
             })
             .is_err());
-        assert_eq!(db.list_custom_eval_examples("support-triage-1").unwrap().len(), 2);
+        assert_eq!(
+            db.list_custom_eval_examples("support-triage-1")
+                .unwrap()
+                .len(),
+            2
+        );
         let _ = std::fs::remove_dir_all(&dir);
     }
 

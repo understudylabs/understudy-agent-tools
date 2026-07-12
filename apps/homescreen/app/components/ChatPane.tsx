@@ -116,6 +116,11 @@ type SidekickEvent = {
   detail: string;
   created_at: string;
 };
+type PersistedChatSession = {
+  session_id: string;
+  messages: Msg[];
+  updated_at: string;
+};
 type LocalModelChoice = {
   id: string;
   label: string;
@@ -287,6 +292,8 @@ export function ChatPane({ resetToken }: { resetToken: number }) {
   const [personaCycle, setPersonaCycle] = useState(0);
   const [introThinking, setIntroThinking] = useState(true);
   const [sidekickEvents, setSidekickEvents] = useState<SidekickEvent[]>([]);
+  const [sessionHydrated, setSessionHydrated] = useState(false);
+  const observedResetToken = useRef(false);
 
   const refreshModels = async () => {
     try {
@@ -354,6 +361,35 @@ export function ChatPane({ resetToken }: { resetToken: number }) {
     const timer = window.setInterval(refreshModels, 2500);
     return () => window.clearInterval(timer);
   }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    invoke<PersistedChatSession | null>("chat_session_latest")
+      .then((saved) => {
+        if (cancelled || !saved) return;
+        setSessionId(saved.session_id);
+        setMessages(saved.messages);
+      })
+      .catch(() => {
+        // A corrupt or legacy session must never block a fresh local chat.
+      })
+      .finally(() => {
+        if (!cancelled) setSessionHydrated(true);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!sessionHydrated || streaming) return;
+    const timer = window.setTimeout(() => {
+      invoke("chat_session_save", { sessionId, messages }).catch(() => {
+        setNotice("This chat could not be saved for restart; the current turn is unaffected.");
+      });
+    }, 150);
+    return () => window.clearTimeout(timer);
+  }, [messages, sessionHydrated, sessionId, streaming]);
 
   useEffect(() => {
     setIntroThinking(true);
@@ -542,6 +578,10 @@ export function ChatPane({ resetToken }: { resetToken: number }) {
   };
 
   useEffect(() => {
+    if (!observedResetToken.current) {
+      observedResetToken.current = true;
+      return;
+    }
     restartChat();
   }, [resetToken]);
 
@@ -584,9 +624,10 @@ export function ChatPane({ resetToken }: { resetToken: number }) {
   const sidekickTool = latestAssistant?.tools?.find((tool) => tool.name === "delegate_to_sidekick");
   const latestSidekickEvent = sidekickEvents[0];
   const backgroundSidekickActive =
-    latestSidekickEvent?.stage === "queued" ||
-    latestSidekickEvent?.stage === "started" ||
-    latestSidekickEvent?.stage === "waiting";
+    latestSidekickEvent?.mode !== "supervision" &&
+    (latestSidekickEvent?.stage === "queued" ||
+      latestSidekickEvent?.stage === "started" ||
+      latestSidekickEvent?.stage === "waiting");
   const supervisionVisible =
     latestSidekickEvent?.mode === "supervision" &&
     (streaming ||

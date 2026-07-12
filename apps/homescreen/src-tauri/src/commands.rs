@@ -2254,6 +2254,64 @@ pub fn chat_runs(app: AppHandle, limit: Option<u32>) -> Result<Vec<ChatRunRow>, 
         .map_err(|e| e.to_string())
 }
 
+const DESKTOP_CHAT_SESSION_SCHEMA: &str = "understudy-desktop-chat-session-v1";
+const MAX_PERSISTED_CHAT_BYTES: usize = 48 * 1024 * 1024;
+const MAX_PERSISTED_CHAT_MESSAGES: usize = 500;
+
+#[derive(Serialize)]
+pub struct DesktopChatSession {
+    session_id: String,
+    messages: Value,
+    updated_at: String,
+}
+
+#[tauri::command]
+pub fn chat_session_latest(app: AppHandle) -> Result<Option<DesktopChatSession>, String> {
+    let Some(row) = app
+        .state::<crate::db::Db>()
+        .latest_chat_session(DESKTOP_CHAT_SESSION_SCHEMA)
+        .map_err(|error| error.to_string())?
+    else {
+        return Ok(None);
+    };
+    if row.schema != DESKTOP_CHAT_SESSION_SCHEMA {
+        return Ok(None);
+    }
+    let messages = serde_json::from_str(&row.messages)
+        .map_err(|error| format!("saved chat transcript is invalid: {error}"))?;
+    Ok(Some(DesktopChatSession {
+        session_id: row.session_id,
+        messages,
+        updated_at: row.updated_at,
+    }))
+}
+
+#[tauri::command]
+pub fn chat_session_save(
+    app: AppHandle,
+    session_id: String,
+    messages: Value,
+) -> Result<(), String> {
+    if session_id.trim().is_empty() || session_id.len() > 200 {
+        return Err("invalid chat session id".to_string());
+    }
+    let Some(items) = messages.as_array() else {
+        return Err("chat transcript must be an array".to_string());
+    };
+    if items.len() > MAX_PERSISTED_CHAT_MESSAGES {
+        return Err(format!(
+            "chat transcript exceeds {MAX_PERSISTED_CHAT_MESSAGES} messages"
+        ));
+    }
+    let encoded = serde_json::to_string(&messages).map_err(|error| error.to_string())?;
+    if encoded.len() > MAX_PERSISTED_CHAT_BYTES {
+        return Err("chat transcript exceeds the 48 MB local resume limit".to_string());
+    }
+    app.state::<crate::db::Db>()
+        .save_active_chat_session(&session_id, DESKTOP_CHAT_SESSION_SCHEMA, &encoded)
+        .map_err(|error| error.to_string())
+}
+
 #[tauri::command]
 pub fn chat_route_metrics(app: AppHandle, limit: Option<u32>) -> Result<ChatRouteMetrics, String> {
     let rows = app

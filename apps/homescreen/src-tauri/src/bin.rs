@@ -1,4 +1,4 @@
-use std::path::PathBuf;
+use std::path::{Path, PathBuf};
 use std::process::Command;
 
 /// Resolve a sidecar/CLI binary to an absolute path so the app works when
@@ -23,7 +23,19 @@ pub fn resolve(name: &str) -> String {
 }
 
 pub fn command(name: &str) -> Command {
-    let mut cmd = Command::new(resolve(name));
+    let resolved = resolve(name);
+    let mut cmd = if name == "understudy"
+        && Path::new(&resolved)
+            .extension()
+            .and_then(|value| value.to_str())
+            == Some("js")
+    {
+        let mut command = Command::new("node");
+        command.arg(resolved);
+        command
+    } else {
+        Command::new(resolved)
+    };
     cmd.env("PATH", runtime_path());
     cmd
 }
