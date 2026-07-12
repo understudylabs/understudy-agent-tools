@@ -5,6 +5,14 @@ use std::process::Command;
 /// launched from Finder (no shell PATH). Falls back to the bare name under
 /// `tauri dev`, which inherits the terminal PATH.
 pub fn resolve(name: &str) -> String {
+    if name == "understudy" {
+        if let Some(candidate) = std::env::var_os("UNDERSTUDY_BIN") {
+            let candidate = PathBuf::from(candidate);
+            if candidate.is_file() {
+                return candidate.to_string_lossy().into_owned();
+            }
+        }
+    }
     if let Some(home) = std::env::var_os("HOME") {
         let candidate = PathBuf::from(&home).join(".local/bin").join(name);
         if candidate.is_file() {

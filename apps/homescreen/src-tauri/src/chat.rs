@@ -20,6 +20,9 @@ use crate::route_policy::{
 #[derive(Serialize, Clone)]
 #[serde(tag = "type")]
 pub enum ChatEvent {
+    Notice {
+        message: String,
+    },
     Chunk {
         text: String,
     },
@@ -486,7 +489,7 @@ pub(crate) struct ToolCallAcc {
     pub(crate) arguments: String,
 }
 
-fn tool_schemas() -> Vec<Value> {
+pub(crate) fn tool_schemas() -> Vec<Value> {
     vec![
         json!({
             "type": "function",
@@ -651,7 +654,7 @@ fn benchmark_tool_schemas(allow_sidekick_tool: bool) -> Vec<Value> {
         .collect()
 }
 
-async fn tool_result(
+pub(crate) async fn tool_result(
     app: &AppHandle,
     mgr: &Residency,
     active_slot_id: Option<u32>,
@@ -1909,6 +1912,95 @@ struct RouteBinding {
     model_field: String,
 }
 
+fn sidecar_provider_base_url(endpoint: &str) -> String {
+    endpoint
+        .trim_end_matches('/')
+        .strip_suffix("/chat/completions")
+        .unwrap_or(endpoint.trim_end_matches('/'))
+        .to_string()
+}
+
+fn sidecar_runtime_messages(outbound: &[Value]) -> Result<Vec<Value>, String> {
+    outbound
+        .iter()
+        .map(|message| {
+            let role = message
+                .get("role")
+                .and_then(Value::as_str)
+                .ok_or_else(|| "conversation runtime message is missing role".to_string())?;
+            let content = message
+                .get("content")
+                .and_then(Value::as_str)
+                .ok_or_else(|| "conversation runtime message content must be text".to_string())?;
+            Ok(json!({ "role": role, "content": content }))
+        })
+        .collect()
+}
+
+fn sidecar_tool_definitions() -> Vec<Value> {
+    tool_schemas()
+        .into_iter()
+        .filter_map(|tool| {
+            let function = tool.get("function")?;
+            let mut definition = serde_json::Map::new();
+            definition.insert("name".to_string(), function.get("name")?.clone());
+            if let Some(description) = function.get("description").filter(|value| value.is_string()) {
+                definition.insert("description".to_string(), description.clone());
+            }
+            definition.insert(
+                "input_schema".to_string(),
+                function
+                    .get("parameters")
+                    .cloned()
+                    .unwrap_or_else(|| json!({ "type": "object" })),
+            );
+            Some(Value::Object(definition))
+        })
+        .collect()
+}
+
+fn sidecar_run_request(
+    app: &AppHandle,
+    outbound: &[Value],
+    binding: &RouteBinding,
+    slot_id: Option<u32>,
+    session_id: &str,
+    run_id: &str,
+) -> Result<Value, String> {
+    let messages = sidecar_runtime_messages(outbound)?;
+    let tool_executor_url = crate::server::info(app).map(|(base_url, _)| {
+        let query = slot_id
+            .map(|slot| format!("?slot_id={slot}"))
+            .unwrap_or_default();
+        format!("{base_url}/api/conversation-runtime/tool{query}")
+    });
+    let mut request = json!({
+        "run_id": run_id,
+        "session_id": session_id,
+        "base_url": sidecar_provider_base_url(&binding.url),
+        "model": binding.model_field,
+        "role": "primary",
+        "messages": messages,
+        "tools": sidecar_tool_definitions(),
+        "max_output_tokens": CHAT_MAX_TOKENS,
+        "max_tool_rounds": MAX_TOOL_ROUNDS,
+        "initial_sequence": 0,
+        "emit_input": true,
+        "allow_remote": binding.route == "cloud",
+        "runtime_backend": "pi",
+    });
+    if let Some(url) = tool_executor_url {
+        request["tool_executor_url"] = json!(url);
+    }
+    Ok(request)
+}
+
+fn sidecar_usage_tokens(usage: Option<&Value>, key: &str) -> Option<u64> {
+    usage
+        .and_then(|value| value.get(key))
+        .and_then(Value::as_u64)
+}
+
 fn cloud_route_binding() -> Option<RouteBinding> {
     let (base, key) = credentials()?;
     Some(RouteBinding {
@@ -2460,6 +2552,7 @@ pub async fn chat_stream(
     let compacted = compaction_reason.is_some();
     let gateway_available = credentials().is_some();
     let local_mem_gb = local_resident_mem_gb(&app);
+    let run_id = crate::conversation_runtime::new_run_id()?;
     if let Some(reason) = compaction_reason.as_deref() {
         let recommendation = record_compaction_route_decision(
             &app,
@@ -2491,6 +2584,109 @@ pub async fn chat_stream(
                 &detail,
                 Some(&on_event),
             );
+        }
+    }
+
+    if binding.route != "anthropic" {
+        match sidecar_run_request(
+            &app,
+            &outbound_messages,
+            &binding,
+            slot_id,
+            &session_id,
+            &run_id,
+        ) {
+            Ok(request) => {
+                match crate::conversation_sidecar::try_run_chat(&app, request, &on_event).await {
+                    crate::conversation_sidecar::SidecarAttempt::Completed(sidecar) => {
+                        let completion_tokens = sidecar_usage_tokens(
+                            sidecar.usage.as_ref(),
+                            "completion_tokens",
+                        )
+                        .unwrap_or_else(|| approximate_token_count(&sidecar.content));
+                        let prompt_tokens = sidecar_usage_tokens(
+                            sidecar.usage.as_ref(),
+                            "prompt_tokens",
+                        )
+                        .unwrap_or(prompt_tokens);
+                        record_chat_run(
+                            &app,
+                            ChatRunInput {
+                                run_id: run_id.clone(),
+                                runtime_backend: "pi".to_string(),
+                                session_id: session_id.clone(),
+                                route: binding.route.clone(),
+                                model: binding.model_field.clone(),
+                                elapsed_ms: Some(sidecar.elapsed_ms),
+                                prompt_tokens: Some(prompt_tokens),
+                                completion_tokens: Some(completion_tokens),
+                                tool_calls: sidecar.tool_calls,
+                                sidekick_spawned: sidekick_plan.spawned,
+                                gateway_used: binding.route == "cloud",
+                                compacted,
+                                compaction_reason: compaction_reason.clone(),
+                                context_tokens_before: Some(context_tokens_before),
+                                local_mem_gb,
+                                gateway_available,
+                                gateway_avoided: gateway_available && binding.route != "cloud",
+                                status: "ok".to_string(),
+                                error: None,
+                            },
+                        );
+                        let _ = on_event.send(ChatEvent::Done);
+                        return Ok(());
+                    }
+                    crate::conversation_sidecar::SidecarAttempt::NativeFallback(reason) => {
+                        let _ = on_event.send(ChatEvent::Notice {
+                            message: format!(
+                                "Canonical runtime unavailable ({reason}). Continuing with the local compatibility engine."
+                            ),
+                        });
+                    }
+                    crate::conversation_sidecar::SidecarAttempt::FailedAfterOutput(reason) => {
+                        let message = format!(
+                            "Conversation runtime stopped after the turn began: {reason}. The compatibility engine was not retried, preventing a duplicate answer or tool execution."
+                        );
+                        let _ = on_event.send(ChatEvent::Error {
+                            message: message.clone(),
+                        });
+                        record_chat_run(
+                            &app,
+                            ChatRunInput {
+                                run_id: run_id.clone(),
+                                runtime_backend: "pi".to_string(),
+                                session_id: session_id.clone(),
+                                route: binding.route.clone(),
+                                model: binding.model_field.clone(),
+                                elapsed_ms: Some(started.elapsed().as_millis() as u64),
+                                prompt_tokens: Some(prompt_tokens),
+                                completion_tokens: None,
+                                tool_calls: 0,
+                                sidekick_spawned: sidekick_plan.spawned,
+                                gateway_used: binding.route == "cloud",
+                                compacted,
+                                compaction_reason: compaction_reason.clone(),
+                                context_tokens_before: Some(context_tokens_before),
+                                local_mem_gb,
+                                gateway_available,
+                                gateway_avoided: gateway_available && binding.route != "cloud",
+                                status: "error".to_string(),
+                                error: Some(reason),
+                            },
+                        );
+                        let _ = on_event.send(ChatEvent::Done);
+                        return Ok(());
+                    }
+                    crate::conversation_sidecar::SidecarAttempt::NotSelected => {}
+                }
+            }
+            Err(reason) => {
+                let _ = on_event.send(ChatEvent::Notice {
+                    message: format!(
+                        "Canonical runtime could not accept this turn ({reason}). Continuing with the local compatibility engine."
+                    ),
+                });
+            }
         }
     }
 
@@ -2532,6 +2728,8 @@ pub async fn chat_stream(
             record_chat_run(
                 &app,
                 ChatRunInput {
+                    run_id: run_id.clone(),
+                    runtime_backend: "native-rust".to_string(),
                     session_id: session_id.clone(),
                     route: binding.route.clone(),
                     model: binding.model_field.clone(),
@@ -2567,6 +2765,8 @@ pub async fn chat_stream(
             record_chat_run(
                 &app,
                 ChatRunInput {
+                    run_id: run_id.clone(),
+                    runtime_backend: "native-rust".to_string(),
                     session_id: session_id.clone(),
                     route: binding.route.clone(),
                     model: binding.model_field.clone(),
@@ -2664,6 +2864,8 @@ pub async fn chat_stream(
     record_chat_run(
         &app,
         ChatRunInput {
+            run_id,
+            runtime_backend: "native-rust".to_string(),
             session_id: session_id.clone(),
             route: binding.route.clone(),
             model: binding.model_field.clone(),

@@ -82,6 +82,10 @@ pub fn router(ctx: Ctx) -> Router {
         .route("/api/fusion/run-active", get(fusion_run_active))
         .route("/api/fusion/run-cancel", post(fusion_run_cancel))
         .route("/api/chat/completion", post(chat_completion))
+        .route(
+            "/api/conversation-runtime/tool",
+            post(conversation_runtime_tool),
+        )
         .route("/api/sidekick/metrics", get(sidekick_metrics))
         .route("/api/sidekick/sessions", get(sidekick_session_summaries))
         .route("/api/profile/:id", get(profile))
@@ -238,6 +242,63 @@ where
     F: FnOnce() -> Result<T, String> + Send + 'static,
 {
     blocking_status(f, StatusCode::BAD_REQUEST).await
+}
+
+#[derive(serde::Deserialize)]
+struct ConversationRuntimeToolQuery {
+    slot_id: Option<u32>,
+}
+
+#[derive(serde::Deserialize)]
+struct ConversationRuntimeToolRequest {
+    run_id: String,
+    session_id: String,
+    tool_call_id: String,
+    name: String,
+    arguments: Value,
+}
+
+/// Authenticated executor used by the CLI-owned runtime. Keeping this a thin
+/// adapter guarantees Pi and the one-release Rust fallback expose the exact
+/// same desktop tools and residency semantics.
+async fn conversation_runtime_tool(
+    State(ctx): State<Ctx>,
+    h: HeaderMap,
+    Query(query): Query<ConversationRuntimeToolQuery>,
+    Json(request): Json<ConversationRuntimeToolRequest>,
+) -> Result<Json<Value>, (StatusCode, Json<Value>)> {
+    auth(&ctx, &h)
+        .map_err(|(status, error)| (status, Json(json!({ "ok": false, "error": error }))))?;
+    if request.run_id.trim().is_empty()
+        || request.session_id.trim().is_empty()
+        || request.tool_call_id.trim().is_empty()
+        || request.name.trim().is_empty()
+        || request.run_id.len() > 200
+        || request.session_id.len() > 200
+        || request.tool_call_id.len() > 500
+        || request.name.len() > 128
+    {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            Json(json!({ "ok": false, "error": "invalid conversation runtime tool request" })),
+        ));
+    }
+    let result = crate::chat::tool_result(
+        &ctx.app,
+        ctx.app.state::<crate::residency::Residency>().inner(),
+        query.slot_id,
+        &request.session_id,
+        &request.name,
+        &request.arguments,
+    )
+    .await
+    .map_err(|error| {
+        (
+            StatusCode::BAD_REQUEST,
+            Json(json!({ "ok": false, "error": error })),
+        )
+    })?;
+    Ok(Json(json!({ "ok": true, "result": result })))
 }
 
 /// `blocking`, with the caller's error status (trace lookups report 502).

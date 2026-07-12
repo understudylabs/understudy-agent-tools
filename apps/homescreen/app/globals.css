@@ -2319,6 +2319,12 @@ select,
   font-size: 12px;
   padding: 6px 0;
 }
+.chat-runtime-notice {
+  color: var(--text-muted);
+  font-size: 11px;
+  line-height: 1.4;
+  padding: 5px 0;
+}
 .chat-input {
   display: flex;
   gap: 10px;

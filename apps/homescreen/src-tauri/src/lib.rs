@@ -7,6 +7,8 @@ mod bin;
 mod bootstrap;
 mod chat;
 mod commands;
+mod conversation_runtime;
+mod conversation_sidecar;
 mod creds;
 mod custom_evals;
 mod db;
@@ -196,6 +198,9 @@ pub fn run() {
             commands::get_setting,
             commands::set_setting,
             commands::server_info,
+            conversation_sidecar::conversation_runtime_start,
+            conversation_sidecar::conversation_runtime_repair,
+            conversation_sidecar::conversation_runtime_cancel,
             rlm::rlm_demo_catalog,
             rlm::rlm_plan,
             rlm::run_rlm_live,

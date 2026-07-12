@@ -56,6 +56,7 @@ type ToolTrace = {
 };
 type Msg = { role: Role; content: string; model?: string; reasoning?: string; tools?: ToolTrace[] };
 type ChatEvent =
+  | { type: "Notice"; message: string }
   | { type: "Chunk"; text: string }
   | { type: "ReasoningChunk"; text: string }
   | { type: "ToolCall"; name: string; args: unknown }
@@ -245,6 +246,7 @@ export function ChatPane({ resetToken }: { resetToken: number }) {
   const [streaming, setStreaming] = useState(false);
   const [assistantSpeaking, setAssistantSpeaking] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
   const [choices, setChoices] = useState<ModelChoice[]>([CLOUD_MODEL]);
   const [selectedModel, setSelectedModel] = useState<string | null>(null);
   const [thinkingPending, setThinkingPending] = useState<{ slotId: number; thinking: boolean } | null>(null);
@@ -300,6 +302,20 @@ export function ChatPane({ resetToken }: { resetToken: number }) {
     }
   };
 
+  const stopStreaming = () => {
+    void invoke<{ status: string }>("conversation_runtime_cancel", { sessionId })
+      .then((result) => {
+        if (result.status === "idle") {
+          setNotice("This turn is using the one-release compatibility engine and cannot be stopped yet.");
+        }
+      })
+      .catch((e) => {
+        setErr(String(e));
+        setStreaming(false);
+        setAssistantSpeaking(false);
+      });
+  };
+
   useEffect(() => {
     refreshModels();
     const timer = window.setInterval(refreshModels, 2500);
@@ -346,6 +362,7 @@ export function ChatPane({ resetToken }: { resetToken: number }) {
     }
     setInput("");
     setErr(null);
+    setNotice(null);
 
     const choice = selectedChoice;
     if (choice.route === "local" && choice.slotId == null) {
@@ -364,7 +381,9 @@ export function ChatPane({ resetToken }: { resetToken: number }) {
 
     const ch = new Channel<ChatEvent>();
     ch.onmessage = (msg) => {
-      if (msg.type === "Chunk") {
+      if (msg.type === "Notice") {
+        setNotice(msg.message);
+      } else if (msg.type === "Chunk") {
         setAssistantSpeaking(true);
         setMessages((prev) => {
           if (prev.length === 0) return prev;
@@ -470,6 +489,7 @@ export function ChatPane({ resetToken }: { resetToken: number }) {
     setMessages([]);
     setInput("");
     setErr(null);
+    setNotice(null);
     setSessionId(crypto.randomUUID());
     setAssistantSpeaking(false);
     setPersonaReady(false);
@@ -638,6 +658,7 @@ export function ChatPane({ resetToken }: { resetToken: number }) {
             </div>
           )}
           {err && <div className="chat-err">{err}</div>}
+          {notice && !err && <div className="chat-runtime-notice">{notice}</div>}
         </ConversationContent>
         <ConversationScrollButton />
       </Conversation>
@@ -681,7 +702,8 @@ export function ChatPane({ resetToken }: { resetToken: number }) {
             </PromptInputTools>
             <PromptInputSubmit
               status={streaming ? "streaming" : err ? "error" : "ready"}
-              disabled={streaming || !input.trim() || (selectedChoice.route === "local" && !selectedChoice.active)}
+              onStop={stopStreaming}
+              disabled={!streaming && (!input.trim() || (selectedChoice.route === "local" && !selectedChoice.active))}
             />
           </PromptInputFooter>
         </PromptInput>

@@ -120,6 +120,8 @@ pub struct FusionRouteDecisionInput {
 #[derive(Serialize, Clone)]
 pub struct ChatRunRow {
     pub id: u64,
+    pub run_id: Option<String>,
+    pub runtime_backend: String,
     pub session_id: String,
     pub route: String,
     pub model: String,
@@ -142,6 +144,8 @@ pub struct ChatRunRow {
 
 #[derive(Clone, Debug)]
 pub struct ChatRunInput {
+    pub run_id: String,
+    pub runtime_backend: String,
     pub session_id: String,
     pub route: String,
     pub model: String,
@@ -367,6 +371,8 @@ fn migrate(conn: &Connection) -> Result<()> {
             );
             CREATE TABLE IF NOT EXISTS chat_runs (
                 id                INTEGER PRIMARY KEY,
+                run_id            TEXT,
+                runtime_backend   TEXT NOT NULL DEFAULT 'native-rust',
                 session_id        TEXT NOT NULL,
                 route             TEXT NOT NULL,
                 model             TEXT NOT NULL,
@@ -463,6 +469,8 @@ fn migrate(conn: &Connection) -> Result<()> {
         "ALTER TABLE chat_runs ADD COLUMN local_mem_gb REAL",
         "ALTER TABLE chat_runs ADD COLUMN gateway_available INTEGER NOT NULL DEFAULT 0",
         "ALTER TABLE chat_runs ADD COLUMN gateway_avoided INTEGER NOT NULL DEFAULT 0",
+        "ALTER TABLE chat_runs ADD COLUMN run_id TEXT",
+        "ALTER TABLE chat_runs ADD COLUMN runtime_backend TEXT NOT NULL DEFAULT 'native-rust'",
         "ALTER TABLE fusion_benchmarks ADD COLUMN compacted INTEGER NOT NULL DEFAULT 0",
         "ALTER TABLE fusion_benchmarks ADD COLUMN context_tokens_before INTEGER",
         "ALTER TABLE fusion_benchmarks ADD COLUMN local_mem_gb REAL",
@@ -694,11 +702,13 @@ impl Db {
         let conn = self.conn()?;
         conn.execute(
             "INSERT INTO chat_runs (
-                session_id, route, model, elapsed_ms, prompt_tokens, completion_tokens, tool_calls,
+                run_id, runtime_backend, session_id, route, model, elapsed_ms, prompt_tokens, completion_tokens, tool_calls,
                 sidekick_spawned, gateway_used, compacted, compaction_reason, context_tokens_before,
                 local_mem_gb, gateway_available, gateway_avoided, status, error, run_at
-             ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18)",
+             ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20)",
             rusqlite::params![
+                input.run_id,
+                input.runtime_backend,
                 input.session_id,
                 input.route,
                 input.model,
@@ -726,6 +736,8 @@ impl Db {
         let conn = self.conn()?;
         let mut stmt = conn.prepare(
             "SELECT id, session_id, route, model, elapsed_ms, prompt_tokens, completion_tokens,
+                    run_id,
+                    runtime_backend,
                     tool_calls, sidekick_spawned, gateway_used, compacted, compaction_reason,
                     context_tokens_before, local_mem_gb, gateway_available, gateway_avoided,
                     status, error, run_at
@@ -740,18 +752,20 @@ impl Db {
                 elapsed_ms: r.get::<_, Option<i64>>(4)?.map(|v| v as u64),
                 prompt_tokens: r.get::<_, Option<i64>>(5)?.map(|v| v as u64),
                 completion_tokens: r.get::<_, Option<i64>>(6)?.map(|v| v as u64),
-                tool_calls: r.get::<_, i64>(7)? as u64,
-                sidekick_spawned: r.get::<_, i64>(8)? != 0,
-                gateway_used: r.get::<_, i64>(9)? != 0,
-                compacted: r.get::<_, i64>(10)? != 0,
-                compaction_reason: r.get(11)?,
-                context_tokens_before: r.get::<_, Option<i64>>(12)?.map(|v| v as u64),
-                local_mem_gb: r.get(13)?,
-                gateway_available: r.get::<_, i64>(14)? != 0,
-                gateway_avoided: r.get::<_, i64>(15)? != 0,
-                status: r.get(16)?,
-                error: r.get(17)?,
-                run_at: r.get(18)?,
+                run_id: r.get(7)?,
+                runtime_backend: r.get(8)?,
+                tool_calls: r.get::<_, i64>(9)? as u64,
+                sidekick_spawned: r.get::<_, i64>(10)? != 0,
+                gateway_used: r.get::<_, i64>(11)? != 0,
+                compacted: r.get::<_, i64>(12)? != 0,
+                compaction_reason: r.get(13)?,
+                context_tokens_before: r.get::<_, Option<i64>>(14)?.map(|v| v as u64),
+                local_mem_gb: r.get(15)?,
+                gateway_available: r.get::<_, i64>(16)? != 0,
+                gateway_avoided: r.get::<_, i64>(17)? != 0,
+                status: r.get(18)?,
+                error: r.get(19)?,
+                run_at: r.get(20)?,
             })
         })?;
         rows.collect::<rusqlite::Result<Vec<_>>>()
@@ -766,6 +780,8 @@ impl Db {
         let conn = self.conn()?;
         let mut stmt = conn.prepare(
             "SELECT id, session_id, route, model, elapsed_ms, prompt_tokens, completion_tokens,
+                    run_id,
+                    runtime_backend,
                     tool_calls, sidekick_spawned, gateway_used, compacted, compaction_reason,
                     context_tokens_before, local_mem_gb, gateway_available, gateway_avoided,
                     status, error, run_at
@@ -784,18 +800,20 @@ impl Db {
                     elapsed_ms: r.get::<_, Option<i64>>(4)?.map(|v| v as u64),
                     prompt_tokens: r.get::<_, Option<i64>>(5)?.map(|v| v as u64),
                     completion_tokens: r.get::<_, Option<i64>>(6)?.map(|v| v as u64),
-                    tool_calls: r.get::<_, i64>(7)? as u64,
-                    sidekick_spawned: r.get::<_, i64>(8)? != 0,
-                    gateway_used: r.get::<_, i64>(9)? != 0,
-                    compacted: r.get::<_, i64>(10)? != 0,
-                    compaction_reason: r.get(11)?,
-                    context_tokens_before: r.get::<_, Option<i64>>(12)?.map(|v| v as u64),
-                    local_mem_gb: r.get(13)?,
-                    gateway_available: r.get::<_, i64>(14)? != 0,
-                    gateway_avoided: r.get::<_, i64>(15)? != 0,
-                    status: r.get(16)?,
-                    error: r.get(17)?,
-                    run_at: r.get(18)?,
+                    run_id: r.get(7)?,
+                    runtime_backend: r.get(8)?,
+                    tool_calls: r.get::<_, i64>(9)? as u64,
+                    sidekick_spawned: r.get::<_, i64>(10)? != 0,
+                    gateway_used: r.get::<_, i64>(11)? != 0,
+                    compacted: r.get::<_, i64>(12)? != 0,
+                    compaction_reason: r.get(13)?,
+                    context_tokens_before: r.get::<_, Option<i64>>(14)?.map(|v| v as u64),
+                    local_mem_gb: r.get(15)?,
+                    gateway_available: r.get::<_, i64>(16)? != 0,
+                    gateway_avoided: r.get::<_, i64>(17)? != 0,
+                    status: r.get(18)?,
+                    error: r.get(19)?,
+                    run_at: r.get(20)?,
                 })
             },
         )?;
@@ -1404,6 +1422,40 @@ mod tests {
         // file: duplicate columns must be tolerated, data preserved.
         let db = Db::open(dir.clone()).expect("re-open existing db");
         assert_eq!(db.setting_get("k").as_deref(), Some("v"));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn chat_run_round_trips_canonical_identity_and_backend() {
+        let (dir, db) = temp_db("chat-runtime-identity");
+        db.record_chat_run(&ChatRunInput {
+            run_id: "desktop-run-1".into(),
+            runtime_backend: "pi".into(),
+            session_id: "session-1".into(),
+            route: "local".into(),
+            model: "understudy-small".into(),
+            elapsed_ms: Some(25),
+            prompt_tokens: Some(10),
+            completion_tokens: Some(4),
+            tool_calls: 1,
+            sidekick_spawned: false,
+            gateway_used: false,
+            compacted: false,
+            compaction_reason: None,
+            context_tokens_before: Some(10),
+            local_mem_gb: Some(2.0),
+            gateway_available: false,
+            gateway_avoided: false,
+            status: "ok".into(),
+            error: None,
+        })
+        .unwrap();
+        let rows = db.list_chat_runs(1).unwrap();
+        assert_eq!(rows[0].run_id.as_deref(), Some("desktop-run-1"));
+        assert_eq!(rows[0].runtime_backend, "pi");
+        let session_rows = db.list_chat_runs_for_session("session-1", 1).unwrap();
+        assert_eq!(session_rows[0].run_id.as_deref(), Some("desktop-run-1"));
+        assert_eq!(session_rows[0].runtime_backend, "pi");
         let _ = std::fs::remove_dir_all(&dir);
     }
 
