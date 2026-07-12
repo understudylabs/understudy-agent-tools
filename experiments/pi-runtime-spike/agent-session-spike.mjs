@@ -17,6 +17,7 @@ import {
 import { Type } from "@earendil-works/pi-ai";
 
 import { EVENT_SCHEMA, validateRuntimeTrace } from "../../dist/runtime/conversation/contract.js";
+import { basicChatPrompt } from "./shared-input.mjs";
 
 const PNG_BASE64 =
   "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAQAAAC1HAwCAAAAC0lEQVR42mP8/x8AAusB9Wl2nGQAAAAASUVORK5CYII=";
@@ -244,6 +245,44 @@ function assertEvents(writer, required) {
   validateRuntimeTrace(writer.events);
   const emitted = new Set(writer.events.map((event) => event.event));
   for (const event of required) assert.ok(emitted.has(event), `missing ${event}`);
+}
+
+async function basicChatScenario() {
+  const server = await fixtureServer((_body, response) => {
+    sendSse(response, [
+      completionChunk("pi-basic-chat", {
+        role: "assistant",
+        content: "Pi local fixture passed.",
+      }),
+      completionChunk("pi-basic-chat", {}, "stop", {
+        prompt_tokens: 4,
+        completion_tokens: 5,
+        total_tokens: 9,
+      }),
+    ]);
+  });
+  const root = mkdtempSync(join(tmpdir(), "understudy-pi-basic-chat-"));
+  const writer = canonicalWriter("run-pi-basic-chat", "session-pi-basic-chat");
+  let session;
+  try {
+    session = (
+      await createUnderstudySession({
+        root,
+        selectedModel: model(server.port, "pi-basic-chat"),
+        sessionManager: SessionManager.inMemory(join(root, "cwd")),
+      })
+    ).session;
+    const unsubscribe = attachCanonicalAdapter(session, writer);
+    writer.emit("message", { role: "user", text: basicChatPrompt, model: null });
+    await session.prompt(basicChatPrompt, { expandPromptTemplates: false });
+    unsubscribe();
+    assertEvents(writer, ["message", "delta", "usage"]);
+  } finally {
+    session?.dispose();
+    await server.close();
+    rmSync(root, { recursive: true, force: true });
+  }
+  return writer.events;
 }
 
 async function toolImageScenario() {
@@ -675,6 +714,7 @@ async function supervisorTakeoverScenario() {
 
 const started = performance.now();
 const scenarios = [
+  ["basic-chat", await basicChatScenario()],
   ["tool-image", await toolImageScenario()],
   ["cancellation", await cancellationScenario()],
   ["compaction-restart", await compactionRestartScenario()],

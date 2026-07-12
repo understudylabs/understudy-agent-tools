@@ -6,10 +6,18 @@
     "node": ">=22.19.0"
   },
   "scripts": {
+    "bakeoff": "node bakeoff.mjs",
     "spike:core": "node spike.mjs",
-    "spike": "node agent-session-spike.mjs"
+    "spike": "node agent-session-spike.mjs",
+    "spike:deepagents": "node deepagents-spike.mjs",
+    "spike:flue": "node flue-spike.mjs",
+    "spike:opencode": "node opencode-spike.mjs",
+    "spike:vercel": "node vercel-spike.mjs"
   },
   "dependencies": {
-    "@earendil-works/pi-coding-agent": "0.80.6"
+    "@earendil-works/pi-coding-agent": "0.80.6",
+    "@flue/runtime": "1.0.0-beta.9",
+    "@langchain/openai": "1.5.5",
+    "deepagents": "1.10.7"
   }
 }

@@ -14,6 +14,13 @@
       "safe-boundary"
     ]
   },
+  "input_fixtures": [
+    {
+      "id": "basic-chat",
+      "fixture": "inputs/basic-chat.json",
+      "fixture_sha256": "07e662eef352984767beacf8a8300054c009103a18aac60e78f82ccd880f00c4"
+    }
+  ],
   "runtimes": [
     {"id": "native-rust-reference", "status": "reference"},
     {"id": "vercel-ai-sdk", "status": "candidate"},

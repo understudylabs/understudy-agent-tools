@@ -3,7 +3,11 @@ import { readFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
-import { CONFORMANCE_SCHEMA, validateRuntimeTrace } from "./contract.js";
+import {
+  CONFORMANCE_SCHEMA,
+  parseRuntimeInputFixture,
+  validateRuntimeTrace,
+} from "./contract.js";
 
 type FixtureGate = {
   id: string;
@@ -15,6 +19,7 @@ type FixtureGate = {
 type ConformanceManifest = {
   schema_version: string;
   suite_id: string;
+  input_fixtures?: Array<{ id: string; fixture: string; fixture_sha256: string }>;
   scenario_gates: FixtureGate[];
 };
 
@@ -31,6 +36,7 @@ export type ConformanceReport = {
   suite_id: string;
   fixture_root: string;
   passed: true;
+  inputs: Array<{ id: string; fixture: string; sha256: string; passed: true }>;
   gates: ConformanceGateResult[];
 };
 
@@ -53,6 +59,25 @@ export function runConversationConformance(root = bundledConformanceRoot()): Con
   if (!manifest.suite_id || !Array.isArray(manifest.scenario_gates)) {
     throw new Error("invalid conversation-runtime conformance manifest");
   }
+
+  const inputs = (manifest.input_fixtures ?? []).map((fixture) => {
+    const fixturePath = join(dirname(manifestPath), fixture.fixture);
+    const raw = readFileSync(fixturePath, "utf8");
+    const digest = createHash("sha256").update(raw).digest("hex");
+    if (digest !== fixture.fixture_sha256) {
+      throw new Error(`${fixture.id} input fixture hash mismatch: ${digest}`);
+    }
+    const parsed = parseRuntimeInputFixture(JSON.parse(raw) as unknown);
+    if (parsed.fixture_id !== fixture.id) {
+      throw new Error(`${fixture.id} input fixture changed identity to ${parsed.fixture_id}`);
+    }
+    return {
+      id: fixture.id,
+      fixture: fixture.fixture,
+      sha256: digest,
+      passed: true as const,
+    };
+  });
 
   const gates: ConformanceGateResult[] = [];
   for (const gate of manifest.scenario_gates) {
@@ -91,6 +116,7 @@ export function runConversationConformance(root = bundledConformanceRoot()): Con
     suite_id: manifest.suite_id,
     fixture_root: fixtureRoot,
     passed: true,
+    inputs,
     gates,
   };
 }

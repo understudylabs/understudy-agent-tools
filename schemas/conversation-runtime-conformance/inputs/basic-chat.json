@@ -1,0 +1,13 @@
+{
+  "schema_version": "understudy-conversation-runtime-input-v1",
+  "fixture_id": "basic-chat",
+  "role": "primary",
+  "messages": [
+    {
+      "role": "user",
+      "content": "Run the local fixture."
+    }
+  ],
+  "tools": [],
+  "expected_events": ["message", "delta", "usage"]
+}

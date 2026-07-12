@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import { z } from "zod";
 
 export const EVENT_SCHEMA = "understudy-conversation-runtime-event-v1";
+export const INPUT_SCHEMA = "understudy-conversation-runtime-input-v1";
 export const CONFORMANCE_SCHEMA =
   "understudy-conversation-runtime-conformance-v1";
 export const RUNTIME_ID = "vercel-ai-sdk";
@@ -60,7 +61,37 @@ export const runtimeRequestSchema = z
   })
   .strict();
 
+export const runtimeInputFixtureSchema = z
+  .object({
+    schema_version: z.literal(INPUT_SCHEMA),
+    fixture_id: z.string().min(1).max(200),
+    role: z.enum(["student", "teacher", "primary", "supervisor"]),
+    messages: z.array(z.union([textMessageSchema, toolMessageSchema])).min(1),
+    tools: z.array(toolSchema).max(128).default([]),
+    expected_events: z
+      .array(
+        z.enum([
+          "message",
+          "delta",
+          "reasoning_delta",
+          "tool_call",
+          "tool_result",
+          "usage",
+          "supervisor_verdict",
+          "student_interruption",
+          "teacher_continuation",
+          "cancellation",
+          "error",
+          "image_attachment",
+          "compaction_boundary",
+        ]),
+      )
+      .min(1),
+  })
+  .strict();
+
 export type RuntimeRunRequest = z.infer<typeof runtimeRequestSchema>;
+export type RuntimeInputFixture = z.infer<typeof runtimeInputFixtureSchema>;
 export type RuntimeInputMessage = RuntimeRunRequest["messages"][number];
 export type RuntimeEventName =
   | "message"
@@ -121,6 +152,10 @@ export class RuntimeEventWriter {
 }
 export function parseRuntimeRequest(value: unknown): RuntimeRunRequest {
   return runtimeRequestSchema.parse(value);
+}
+
+export function parseRuntimeInputFixture(value: unknown): RuntimeInputFixture {
+  return runtimeInputFixtureSchema.parse(value);
 }
 
 export function requireSafeProviderUrl(request: RuntimeRunRequest): URL {

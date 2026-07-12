@@ -16,6 +16,15 @@ import { validateRuntimeTrace } from "../dist/runtime/conversation/contract.js";
 import { runConversationConformance } from "../dist/runtime/conversation/conformance.js";
 
 const runtimeHome = mkdtempSync(join(tmpdir(), "understudy-conversation-runtime-"));
+const basicChatFixture = JSON.parse(
+  readFileSync(
+    new URL(
+      "../schemas/conversation-runtime-conformance/inputs/basic-chat.json",
+      import.meta.url,
+    ),
+    "utf8",
+  ),
+);
 
 before(() => {
   process.env.UNDERSTUDY_CONVERSATION_RUNTIME_HOME = runtimeHome;
@@ -64,7 +73,7 @@ test("Vercel runtime emits canonical input, delta, and provider usage", async ()
         choices: [
           {
             index: 0,
-            delta: { role: "assistant", content: "hello back" },
+            delta: { role: "assistant", content: "Vercel local fixture passed." },
             finish_reason: null,
           },
         ],
@@ -101,7 +110,8 @@ test("Vercel runtime emits canonical input, delta, and provider usage", async ()
         base_url: `http://127.0.0.1:${address.port}/v1`,
         model: "fixture-model",
         role: "primary",
-        messages: [{ role: "user", content: "hello" }],
+        messages: basicChatFixture.messages,
+        tools: basicChatFixture.tools,
       },
       (event) => events.push(event),
     );
@@ -139,6 +149,7 @@ test("Vercel runtime emits canonical input, delta, and provider usage", async ()
 test("packaged immutable suite passes hashes and canonical trace gates", () => {
   const report = runConversationConformance();
   assert.equal(report.passed, true);
+  assert.deepEqual(report.inputs.map((input) => input.id), ["basic-chat"]);
   assert.equal(report.gates.length, 5);
   assert.deepEqual(
     report.gates.map((gate) => gate.id),
