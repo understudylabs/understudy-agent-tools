@@ -58,8 +58,18 @@ function modelFor(
     input: ["text", "image"] as Array<"text" | "image">,
     cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0 },
     contextWindow,
-    maxTokens: Math.min(maxTokens, Math.max(1, Math.floor(contextWindow / 2))),
-    compat: { supportsDeveloperRole: false },
+    maxTokens: Math.min(
+      maxTokens,
+      Math.max(1, Math.floor(contextWindow / 2)),
+    ),
+    compat: {
+      supportsDeveloperRole: false,
+      // MLX-VLM implements the OpenAI-compatible `max_tokens` field. Pi's
+      // modern OpenAI default is `max_completion_tokens`, which MLX-VLM
+      // currently ignores and would let compaction summaries exceed their
+      // explicit budget.
+      maxTokensField: "max_tokens" as const,
+    },
   };
 }
 
@@ -129,6 +139,56 @@ function zeroUsage() {
     totalTokens: 0,
     cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: 0 },
   };
+}
+
+/**
+ * Pi uses `reserveTokens` both as the compaction trigger headroom and as the
+ * summary generation budget. Its upstream default is tuned for coding-agent
+ * contexts and can make a small local model produce a summary larger than the
+ * conversation it replaces. Keep the summary bounded so compaction is an
+ * actual reduction even on the 1K frozen stress context, while retaining a
+ * useful ceiling for normal long conversations.
+ */
+export function piCompactionSettings(
+  contextWindowTokens: number,
+  maxOutputTokens: number,
+): { reserveTokens: number; keepRecentTokens: number } {
+  const reserveTokens = Math.min(
+    4_096,
+    Math.max(
+      128,
+      Math.min(maxOutputTokens, Math.floor(contextWindowTokens / 8)),
+    ),
+  );
+  return {
+    reserveTokens,
+    keepRecentTokens: Math.min(
+      8_192,
+      Math.max(256, Math.floor(reserveTokens / 2)),
+    ),
+  };
+}
+
+export function piPreflightCompactionRequired(
+  historyTokens: number,
+  pendingUserTokens: number,
+  contextWindowTokens: number,
+  maxOutputTokens: number,
+): boolean {
+  const { reserveTokens } = piCompactionSettings(
+    contextWindowTokens,
+    maxOutputTokens,
+  );
+  return historyTokens + pendingUserTokens > contextWindowTokens - reserveTokens;
+}
+
+function runtimeInputTokenEstimate(message: RuntimeInputMessage): number {
+  if (message.role === "tool") {
+    return Math.ceil(JSON.stringify(message.result ?? null).length / 4);
+  }
+  const imageTokens =
+    message.role === "user" ? (message.attachments?.length ?? 0) * 1_200 : 0;
+  return Math.ceil(message.content.length / 4) + imageTokens;
 }
 
 function seedHistory(
@@ -406,14 +466,11 @@ async function createPiRuntimeSession(options: {
     target,
     providerUrl,
     options.maxTokens ?? request.max_output_tokens,
-    request.context_window_tokens,
+    request.provider_context_window_tokens ?? request.context_window_tokens,
   );
-  const compactionReserve = Math.min(
-    16_384,
-    Math.max(
-      512,
-      Math.min(request.max_output_tokens + 4_096, Math.floor(request.context_window_tokens / 2)),
-    ),
+  const compaction = piCompactionSettings(
+    request.context_window_tokens,
+    request.max_output_tokens,
   );
   const authStorage = AuthStorage.inMemory();
   authStorage.setRuntimeApiKey(
@@ -425,8 +482,7 @@ async function createPiRuntimeSession(options: {
     {
       compaction: {
         enabled: true,
-        reserveTokens: compactionReserve,
-        keepRecentTokens: Math.min(8_192, Math.max(256, Math.floor(compactionReserve / 2))),
+        ...compaction,
       },
       retry: { enabled: false, maxRetries: 0 },
       images: { autoResize: false, blockImages: false },
@@ -1091,6 +1147,22 @@ export async function runPiConversation(
   const abort = () => void session.abort();
   abortSignal?.addEventListener("abort", abort, { once: true });
   try {
+    const historyTokens = session.messages.reduce(
+      (total, message) => total + estimateTokens(message),
+      0,
+    );
+    if (
+      piPreflightCompactionRequired(
+        historyTokens,
+        runtimeInputTokenEstimate(latest),
+        request.context_window_tokens,
+        request.max_output_tokens,
+      )
+    ) {
+      await session.compact(
+        "Keep the checkpoint concise. Preserve exact user constraints, named facts, tool results, unresolved work, and decisions needed for the next response. Copy every named label or identifier and the sentence it names verbatim; do not shorten or paraphrase named facts. Keep each label adjacent to its fact so later references remain resolvable.",
+      );
+    }
     await session.prompt(latest.content, {
       images: imageContent(latest),
       expandPromptTemplates: false,

@@ -83,8 +83,17 @@ the remaining packaging and production soak gates pass.
   machine-independent, source-hash-linked summary. Interrupted student and
   cancelled-stream usage remain explicitly unavailable rather than falsely
   attributed as zero. The bounded compaction fixture proves deterministic
-  runtime mechanics; model-generated summary quality remains a separate soak
-  gate.
+  runtime mechanics.
+- The separate production-shaped compaction soak now passes with the cached
+  26B sparse Understudy model and deterministic compaction disabled. It
+  compacted 448 source messages to 10 retained messages, reduced the estimate
+  from 14,337 to 658 tokens, and preserved the exact desktop/runtime/evidence
+  ledger ownership mapping in the next model answer. The soak also exposed and
+  fixed two provider-compatibility bugs: MLX-VLM requires `max_tokens`, and the
+  logical compaction threshold must not masquerade as the model's physical
+  context window. See
+  `evidence/production-compaction-soak-2026-07-11.json`; reproduce it with
+  `npm run runtime:compaction-soak -- --base-url <local-v1-url> --model <id>`.
 
 ## What Pi would buy later
 
@@ -106,6 +115,8 @@ true:
    runtime cancellation, restart, and live supervision are now proven; the
    user-facing stop control remains.
 3. Crash recovery and compaction survive a production-shaped long-chat soak.
+   Frozen restart, packaged-app restart, and the 448-message live local
+   compaction soak now satisfy this gate.
 4. A dependency/license/security review accepts the bundled surface.
 5. The integration replaces enough native orchestration to reduce total
    maintained code instead of creating a second permanent engine.

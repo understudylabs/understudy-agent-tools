@@ -82,6 +82,12 @@ export const runtimeRequestSchema = z
     tool_executor_url: z.string().url().optional(),
     max_output_tokens: z.number().int().positive().max(65_536).default(8_192),
     context_window_tokens: z.number().int().min(1_024).max(2_000_000).default(32_768),
+    provider_context_window_tokens: z
+      .number()
+      .int()
+      .min(1_024)
+      .max(2_000_000)
+      .optional(),
     max_tool_rounds: z.number().int().min(0).max(16).default(4),
     initial_sequence: z.number().int().nonnegative().default(0),
     emit_input: z.boolean().default(true),

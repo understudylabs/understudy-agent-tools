@@ -322,6 +322,9 @@ export async function executeFrozenConformanceScenario(
     tools: input.tools,
     max_output_tokens: input.fixture_id === "long-chat-compaction" ? 128 : 256,
     context_window_tokens: input.fixture_id === "long-chat-compaction" ? 1_024 : 32_768,
+    ...(input.fixture_id === "long-chat-compaction"
+      ? { provider_context_window_tokens: 32_768 }
+      : {}),
     max_tool_rounds: 2,
     ...(input.tools.length > 0 && options.tool_executor_url
       ? { tool_executor_url: options.tool_executor_url }

@@ -36,6 +36,7 @@
     "clean": "rm -rf dist",
     "prepare": "npm run build",
     "package:smoke": "node scripts/package-smoke.mjs",
+    "runtime:compaction-soak": "npm run build && node scripts/runtime-compaction-soak.mjs",
     "skills:validate": "node scripts/validate-public-skills.mjs --repo",
     "test": "node --test tests/*.test.mjs",
     "typecheck": "tsc --noEmit",

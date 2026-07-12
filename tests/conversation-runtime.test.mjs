@@ -14,7 +14,11 @@ import {
   stopConversationRuntime,
 } from "../dist/runtime/conversation/lifecycle.js";
 import { runVercelConversation } from "../dist/runtime/conversation/vercel-runtime.js";
-import { runPiConversation } from "../dist/runtime/conversation/pi-runtime.js";
+import {
+  piCompactionSettings,
+  piPreflightCompactionRequired,
+  runPiConversation,
+} from "../dist/runtime/conversation/pi-runtime.js";
 import {
   parseRuntimeRequest,
   validateRuntimeTrace,
@@ -195,8 +199,11 @@ test("Vercel runtime emits canonical input, delta, and provider usage", async ()
 });
 
 test("Pi runtime emits the same canonical basic-chat evidence", async () => {
-  const server = createServer((request, response) => {
+  const server = createServer(async (request, response) => {
     assert.equal(request.url, "/v1/chat/completions");
+    const body = await requestJson(request);
+    assert.equal(body.max_tokens, 8_192);
+    assert.equal(body.max_completion_tokens, undefined);
     response.writeHead(200, { "content-type": "text/event-stream" });
     for (const chunk of [
       {
@@ -254,6 +261,99 @@ test("Pi runtime emits the same canonical basic-chat evidence", async () => {
   assert.equal(events.at(-1).data.input_tokens, 4);
   assert.equal(events.at(-1).data.output_tokens, 4);
   validateRuntimeTrace(events);
+});
+
+test("Pi runtime recovers from an unexpected provider context overflow", async () => {
+  const longInput = JSON.parse(
+    readFileSync(
+      new URL(
+        "../schemas/conversation-runtime-conformance/inputs/long-chat-compaction.json",
+        import.meta.url,
+      ),
+      "utf8",
+    ),
+  );
+  let calls = 0;
+  const server = createServer(async (request, response) => {
+    const body = await requestJson(request);
+    calls += 1;
+    if (calls === 1) {
+      response.writeHead(400, { "content-type": "application/json" });
+      response.end(
+        JSON.stringify({
+          error: {
+            message: "maximum context length exceeded",
+            type: "invalid_request_error",
+            code: "context_length_exceeded",
+          },
+        }),
+      );
+      return;
+    }
+    sendFixtureSse(response, [
+      {
+        id: `chatcmpl-overflow-recovery-${calls}`,
+        object: "chat.completion.chunk",
+        created: 1,
+        model: body.model,
+        choices: [
+          {
+            index: 0,
+            delta: {
+              role: "assistant",
+              content:
+                calls === 2
+                  ? "Architecture note one preserves the desktop, runtime, and evidence ledger ownership mapping."
+                  : "The desktop, runtime, and evidence ledger remain the owners.",
+            },
+            finish_reason: null,
+          },
+        ],
+      },
+      {
+        id: `chatcmpl-overflow-recovery-${calls}`,
+        object: "chat.completion.chunk",
+        created: 1,
+        model: body.model,
+        choices: [{ index: 0, delta: {}, finish_reason: "stop" }],
+        usage: { prompt_tokens: 300, completion_tokens: 15, total_tokens: 315 },
+      },
+    ]);
+  });
+  await new Promise((accept) => server.listen(0, "127.0.0.1", accept));
+  const address = server.address();
+  assert.ok(address && typeof address !== "string");
+  const events = [];
+  try {
+    await runPiConversation(
+      {
+        run_id: "run-provider-overflow-recovery",
+        session_id: "session-provider-overflow-recovery",
+        base_url: `http://127.0.0.1:${address.port}/v1`,
+        model: "provider-overflow-fixture",
+        role: "primary",
+        messages: longInput.messages,
+        max_output_tokens: 128,
+        context_window_tokens: 2_048,
+        provider_context_window_tokens: 32_768,
+        runtime_backend: "pi",
+      },
+      (event) => events.push(event),
+    );
+  } finally {
+    await new Promise((accept) => server.close(accept));
+  }
+  validateRuntimeTrace(events);
+  assert.ok(calls >= 3, `expected overflow, summary, and retry calls; saw ${calls}`);
+  assert.equal(events.some((event) => event.event === "error"), false);
+  assert.ok(events.some((event) => event.event === "compaction_boundary"));
+  assert.match(
+    events
+      .filter((event) => event.event === "delta")
+      .map((event) => event.data.text)
+      .join(""),
+    /desktop, runtime, and evidence ledger/,
+  );
 });
 
 test("Pi runtime deterministically interrupts a student and continues with the teacher", async () => {
@@ -1235,16 +1335,33 @@ test("Pi and Vercel execute the identical frozen conformance inputs", async () =
       const longCall = (longCallsByModel.get(body.model) ?? 0) + 1;
       longCallsByModel.set(body.model, longCall);
       if (longCall === 1) {
-        response.writeHead(400, { "content-type": "application/json" });
-        response.end(
-          JSON.stringify({
-            error: {
-              message: "maximum context length exceeded",
-              type: "invalid_request_error",
-              code: "context_length_exceeded",
-            },
-          }),
-        );
+        sendFixtureSse(response, [
+          {
+            id: "chatcmpl-conformance-long-summary",
+            object: "chat.completion.chunk",
+            created: 1,
+            model: body.model,
+            choices: [
+              {
+                index: 0,
+                delta: {
+                  role: "assistant",
+                  content:
+                    "Architecture note one: the desktop owns presentation and consent, the runtime owns ordered events, and the evidence ledger owns attribution.",
+                },
+                finish_reason: null,
+              },
+            ],
+          },
+          {
+            id: "chatcmpl-conformance-long-summary",
+            object: "chat.completion.chunk",
+            created: 1,
+            model: body.model,
+            choices: [{ index: 0, delta: {}, finish_reason: "stop" }],
+            usage: { prompt_tokens: 300, completion_tokens: 15, total_tokens: 315 },
+          },
+        ]);
         return;
       }
       sendFixtureSse(response, [
@@ -1259,9 +1376,7 @@ test("Pi and Vercel execute the identical frozen conformance inputs", async () =
               delta: {
                 role: "assistant",
                 content:
-                  longCall === 2
-                    ? "The desktop owns presentation and consent; the runtime owns ordered events; the evidence ledger owns attribution."
-                    : "The owners are the desktop, runtime, and evidence ledger.",
+                  "The owners are the desktop, runtime, and evidence ledger.",
               },
               finish_reason: null,
             },
@@ -1522,7 +1637,7 @@ test("Pi and Vercel execute the identical frozen conformance inputs", async () =
     assert.ok(boundary.data.source_message_count >= boundary.data.retained_message_count);
     assert.ok(boundary.data.estimated_tokens_before > boundary.data.estimated_tokens_after);
     assert.match(boundary.data.summary_sha256, /^[0-9a-f]{64}$/);
-    assert.ok((longCallsByModel.get("conformance-pi-long-chat-compaction") ?? 0) >= 3);
+    assert.ok((longCallsByModel.get("conformance-pi-long-chat-compaction") ?? 0) >= 2);
     assert.equal(
       longChat
         .filter((event) => event.event === "delta")
@@ -1531,8 +1646,7 @@ test("Pi and Vercel execute the identical frozen conformance inputs", async () =
       "The owners are the desktop, runtime, and evidence ledger.",
     );
     const longUsages = longChat.filter((event) => event.event === "usage");
-    assert.equal(longUsages[0].data.source, "unavailable");
-    assert.equal(longUsages[0].data.complete, false);
+    assert.equal(longUsages.length, 1);
     const longUsage = longUsages.at(-1);
     assert.ok(longUsage);
     assert.equal(longUsage.data.source, "provider");
@@ -1740,6 +1854,23 @@ test("long-chat conformance requires actual token reduction", () => {
     () => validateScenarioEvidence(input, events),
     /did not reduce the estimated token count/,
   );
+});
+
+test("Pi compaction budgets cannot outgrow small local conversations", () => {
+  assert.deepEqual(piCompactionSettings(1_024, 128), {
+    reserveTokens: 128,
+    keepRecentTokens: 256,
+  });
+  assert.deepEqual(piCompactionSettings(32_768, 8_192), {
+    reserveTokens: 4_096,
+    keepRecentTokens: 2_048,
+  });
+  assert.deepEqual(piCompactionSettings(128_000, 65_536), {
+    reserveTokens: 4_096,
+    keepRecentTokens: 2_048,
+  });
+  assert.equal(piPreflightCompactionRequired(800, 100, 1_024, 128), true);
+  assert.equal(piPreflightCompactionRequired(700, 100, 1_024, 128), false);
 });
 
 test("deterministic compaction is restricted to its frozen Pi gate", () => {

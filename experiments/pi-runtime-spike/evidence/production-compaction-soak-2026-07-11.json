@@ -1,0 +1,18 @@
+{
+  "format": "understudy-production-compaction-soak-v1",
+  "generated_at": "2026-07-12T06:16:32.508Z",
+  "passed": true,
+  "run_id": "production-compaction-1783836973967",
+  "session_id": "production-compaction-1783836973967",
+  "runtime_id": "pi-agent-session",
+  "model": "gemma-4-26b-a4b-it-qat-mlx-vlm-understudy",
+  "logical_context_window_tokens": 8192,
+  "provider_context_window_tokens": 262144,
+  "source_message_count": 448,
+  "retained_message_count": 10,
+  "estimated_tokens_before": 14337,
+  "estimated_tokens_after": 658,
+  "summary_sha256": "a35a6ab99e3edb6bb68b043347115923f53d7d2579c5a9a633935b7d4dad0852",
+  "answer": "Based on Architecture Note 1, the owners and their responsibilities are:\n\n*   **The desktop**: owns presentation and consent.\n*   **The runtime**: owns ordered conversation events.\n*   **The evidence ledger**: owns immutable attribution.",
+  "terminal_event": "usage"
+}
