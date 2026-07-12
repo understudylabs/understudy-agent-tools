@@ -36,6 +36,35 @@ contact channel listed on the organization profile.
 eventually contain private payloads. Do not commit it unless a specific public
 fixture is intentionally synthetic and reviewed.
 
+## Agent Tool Execution
+
+The conversation runtime does not enable Pi's built-in Bash tool. It accepts
+only tool definitions supplied by the desktop and sends calls to an
+authenticated loopback executor. If a future desktop surface supplies a
+shell-shaped tool (`bash`, `shell`, `exec_command`, and the other recognized
+aliases), the runtime applies a small app-owned command guard:
+
+- a Pi `tool_call` extension blocks the call before execution;
+- the Pi and Vercel executor adapters enforce the same policy again before any
+  loopback request;
+- blocked results include a stable rule ID and a human-readable reason;
+- ordinary commands and inert searches or documentation examples remain
+  allowed.
+
+The guard covers high-confidence destructive filesystem, disk, process, Git,
+database, infrastructure, cloud-delete, and remote-script-pipe patterns. It is
+not a shell parser or a sandbox. Before arbitrary shell access becomes a public
+feature, add an explicit consent flow bound to the exact command hash, a scoped
+working directory, environment filtering, execution timeouts, and output caps.
+
+We evaluated
+[`destructive_command_guard`](https://github.com/Dicklesworthstone/destructive_command_guard)
+as a possible source, but did not vendor or derive from it. Its
+[canonical license](https://github.com/Dicklesworthstone/destructive_command_guard/blob/main/LICENSE)
+adds a restricted-party rider that is incompatible with this repository's
+normal MIT reuse expectations. The Understudy classifier is independently
+implemented and intentionally much smaller.
+
 ## Public Claims
 
 Do not claim quality, latency, cost savings, or route superiority unless the

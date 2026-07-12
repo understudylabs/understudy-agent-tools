@@ -30,6 +30,10 @@ import {
   type RuntimeProviderTarget,
   type RuntimeRunRequest,
 } from "./contract.js";
+import {
+  enforceShellToolCall,
+  piCommandGuardExtension,
+} from "./command-guard.js";
 
 function runtimeHome(): string {
   return resolve(
@@ -245,6 +249,7 @@ function buildTools(request: RuntimeRunRequest) {
       parameters: Type.Unsafe(definition.input_schema),
       async execute(toolCallId, parameters, signal) {
         if (!executorUrl) throw new Error("local tool executor is unavailable");
+        enforceShellToolCall(definition.name, parameters);
         const response = await fetch(executorUrl, {
           method: "POST",
           signal,
@@ -512,10 +517,20 @@ async function createPiRuntimeSession(options: {
     cwd,
     agentDir: join(root, "agent"),
     settingsManager,
-    extensionFactories: request.conformance_deterministic_compaction
-      ? [{ name: "understudy-deterministic-compaction", factory: deterministicCompactionFixture }]
-      : [],
-    noExtensions: !request.conformance_deterministic_compaction,
+    extensionFactories: [
+      { name: "understudy-command-guard", factory: piCommandGuardExtension },
+      ...(request.conformance_deterministic_compaction
+        ? [
+            {
+              name: "understudy-deterministic-compaction",
+              factory: deterministicCompactionFixture,
+            },
+          ]
+        : []),
+    ],
+    // Keep user/project extensions disabled. Inline runtime extensions above
+    // still load, so the safety boundary is deterministic and app-owned.
+    noExtensions: true,
     noSkills: true,
     noPromptTemplates: true,
     noThemes: true,

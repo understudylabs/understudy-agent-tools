@@ -20,6 +20,7 @@ import {
   safeErrorMessage,
   validateAttachmentBytes,
 } from "./contract.js";
+import { enforceShellToolCall } from "./command-guard.js";
 
 type JsonValue = null | boolean | number | string | JsonValue[] | { [key: string]: JsonValue };
 
@@ -72,6 +73,7 @@ function buildTools(request: RuntimeRunRequest): ToolSet | undefined {
               if (!executorUrl) {
                 throw new Error("local tool executor is unavailable");
               }
+              enforceShellToolCall(definition.name, input);
               const response = await fetch(executorUrl, {
                 method: "POST",
                 signal: abortSignal,
