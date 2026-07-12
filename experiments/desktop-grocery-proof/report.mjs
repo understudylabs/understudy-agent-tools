@@ -30,6 +30,65 @@ function integer(value) {
   return new Intl.NumberFormat("en-US", { maximumFractionDigits: 0 }).format(Number(value ?? 0));
 }
 
+export function verdictProbabilityEvidence(verdict) {
+  const raw = verdict?.probabilities;
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) {
+    return {
+      chosen_probability: null,
+      probabilities: null,
+      probability_kind: null,
+      source_probability_kind: verdict?.probability_kind ?? null,
+      inferred_source_kind: false,
+    };
+  }
+  const entries = Object.entries(raw)
+    .filter(([, value]) => typeof value === "number" && Number.isFinite(value));
+  if (!entries.length) {
+    return {
+      chosen_probability: null,
+      probabilities: null,
+      probability_kind: null,
+      source_probability_kind: verdict?.probability_kind ?? null,
+      inferred_source_kind: false,
+    };
+  }
+  const explicitKind = verdict?.probability_kind ?? null;
+  const legacyLogprob = explicitKind == null
+    && entries.some(([, value]) => value < 0)
+    && entries.every(([, value]) => value <= 0);
+  const isLogprob = explicitKind === "logprob" || legacyLogprob;
+  const probabilities = Object.fromEntries(entries.map(([name, value]) => [
+    name,
+    isLogprob ? Math.exp(value) : value,
+  ]));
+  if (Object.values(probabilities).some(
+    (value) => !Number.isFinite(value) || value < 0 || value > 1,
+  )) {
+    return {
+      chosen_probability: null,
+      probabilities: null,
+      probability_kind: null,
+      source_probability_kind: explicitKind,
+      inferred_source_kind: legacyLogprob,
+    };
+  }
+  return {
+    chosen_probability: probabilities[verdict?.verdict] ?? null,
+    probabilities,
+    probability_kind: isLogprob ? "first_token_probability_from_logprob" : explicitKind,
+    source_probability_kind: explicitKind ?? (legacyLogprob ? "logprob" : null),
+    inferred_source_kind: legacyLogprob,
+  };
+}
+
+function judgmentOutcome(row, verdict) {
+  if (row.supervisor_correct_intervention) return "correct intervention";
+  if (row.supervisor_missed_error) return "missed error";
+  if (row.supervisor_false_positive) return "false positive";
+  if (verdict.verdict === "continue" && row.student_score?.exact) return "correct continue";
+  return "review";
+}
+
 function decisionForTask(task, rows) {
   const small = rows.find((row) => row.mode === "small");
   const main = rows.find((row) => row.mode === "main");
@@ -119,9 +178,22 @@ export function buildReportModel(summary, rows, tasks) {
   const supervised = summary.by_mode.supervised;
   const smallLatency = Number(small.latency_reduction_vs_main ?? 0);
   const supervisedLatency = Number(supervised.latency_reduction_vs_main ?? 0);
+  const judgments = rows
+    .filter((row) => row.mode === "supervised")
+    .flatMap((row) => (row.verdicts ?? []).map((verdict, ordinal) => ({
+      task_id: row.task_id,
+      task_title: row.task_title,
+      marker_id: verdict.marker_id ?? null,
+      ordinal,
+      verdict: verdict.verdict,
+      reason: verdict.reason ?? null,
+      reason_recorded: typeof verdict.reason === "string" && verdict.reason.trim().length > 0,
+      outcome: judgmentOutcome(row, verdict),
+      ...verdictProbabilityEvidence(verdict),
+    })));
 
   return {
-    schema_version: "understudy.desktop_grocery_buyer_report.v1",
+    schema_version: "understudy.desktop_grocery_buyer_report.v2",
     title: "Grocery AI routing decision",
     proof_id: summary.proof_id,
     suite_sha256: summary.suite_sha256,
@@ -144,6 +216,7 @@ export function buildReportModel(summary, rows, tasks) {
       false_positives: supervised.supervisor_false_positives,
       small_model_output_share: supervised.mean_small_model_output_share,
       supervisor_token_overhead: supervised.mean_supervisor_token_overhead,
+      judgments,
     },
     next_steps: [
       "Freeze 30–50 representative examples for each workflow cluster before changing traffic.",
@@ -159,6 +232,7 @@ export function buildReportModel(summary, rows, tasks) {
       "Synthetic local tasks only; no customer prompts, production traffic, or remote judge were used.",
       "Three examples expose integration and failure modes but are too small for a replacement claim.",
       "Token counts are provider-reported by model role; dollar cost requires an explicit incumbent cost basis.",
+      "Verdict confidence is the provider's first-token probability derived from logprobs; it is not a calibrated probability that the judgment is correct.",
     ],
     sources: ["summary.json", "results.jsonl", "tasks.json", "*.events.jsonl"],
     chart_map: [
@@ -198,6 +272,27 @@ function decisionCard(decision, rows) {
   </article>`;
 }
 
+function judgmentCard(judgment) {
+  const confidence = judgment.chosen_probability == null
+    ? "Not available"
+    : percent(judgment.chosen_probability, 1);
+  const reason = judgment.reason_recorded
+    ? judgment.reason
+    : judgment.verdict === "continue"
+      ? "No reason required for a continue verdict."
+      : "No reason was recorded.";
+  const sourceNote = judgment.inferred_source_kind
+    ? "Legacy evidence: probability kind inferred from negative logprobs."
+    : judgment.probability_kind === "first_token_probability_from_logprob"
+      ? "Derived from the provider's first-token logprob."
+      : "Provider confidence was not available.";
+  return `<article class="judgment ${escapeHtml(judgment.outcome.replaceAll(" ", "-"))}" data-source="results.jsonl">
+    <div class="judgment-top"><div><span class="eyebrow">${escapeHtml(judgment.task_id)}</span><h3>${escapeHtml(judgment.verdict)}</h3></div><span class="pill">${escapeHtml(judgment.outcome)}</span></div>
+    <p>${escapeHtml(reason)}</p>
+    <footer><strong>${escapeHtml(confidence)}</strong> chosen-verdict first-token probability · ${escapeHtml(sourceNote)}</footer>
+  </article>`;
+}
+
 export function buildBuyerReport(summary, rows, tasks) {
   const model = buildReportModel(summary, rows, tasks);
   const maxLatency = Math.max(...model.modes.map((mode) => Number(mode.mean_latency_ms)));
@@ -211,6 +306,7 @@ export function buildBuyerReport(summary, rows, tasks) {
   const nextSteps = model.next_steps.map((item) => `<li>${escapeHtml(item)}</li>`).join("\n");
   const questions = model.further_questions.map((item) => `<li>${escapeHtml(item)}</li>`).join("\n");
   const caveats = model.caveats.map((item) => `<li>${escapeHtml(item)}</li>`).join("\n");
+  const judgmentCards = model.supervision.judgments.map(judgmentCard).join("\n");
   const shortHash = model.suite_sha256.slice(0, 16);
   const main = summary.by_mode.main;
   const small = summary.by_mode.small;
@@ -242,10 +338,11 @@ export function buildBuyerReport(summary, rows, tasks) {
     .scope { color:var(--muted); max-width:720px; } .recommendation { font-size:clamp(22px,3vw,32px); line-height:1.25; max-width:880px; margin:22px 0 0; }
     .summary { border-top:1px solid var(--line); border-bottom:1px solid var(--line); padding:28px 0; } .summary ul { margin:0; padding-left:22px; display:grid; gap:10px; }
     .section-intro { color:var(--muted); max-width:760px; margin-bottom:24px; } .route-grid { display:grid; grid-template-columns:repeat(3,minmax(0,1fr)); gap:14px; }
-    .route-card,.decision,.audit { background:var(--paper); border:1px solid var(--line); border-radius:16px; padding:20px; } .route-card header { display:flex; justify-content:space-between; gap:16px; align-items:baseline; margin-bottom:22px; } .route-card header span,.route-card footer { color:var(--muted); font-size:13px; }
+    .route-card,.decision,.audit,.judgment { background:var(--paper); border:1px solid var(--line); border-radius:16px; padding:20px; } .route-card header { display:flex; justify-content:space-between; gap:16px; align-items:baseline; margin-bottom:22px; } .route-card header span,.route-card footer { color:var(--muted); font-size:13px; }
     .measure { margin-top:14px; } .measure>div:first-child { display:flex; justify-content:space-between; gap:12px; font-size:13px; } .bar { height:10px; background:var(--open); border-radius:999px; overflow:hidden; margin-top:7px; } .bar i { display:block; height:100%; background:var(--olive); border-radius:inherit; } .bar.latency i { background:var(--blue); } .route-card footer { margin-top:20px; border-top:1px solid var(--line); padding-top:12px; }
     .decision-list { display:grid; gap:12px; } .decision-top { display:flex; justify-content:space-between; gap:18px; align-items:flex-start; } .decision p { color:var(--muted); margin:14px 0; } .pill { border:1px solid var(--line); border-radius:999px; padding:6px 10px; font-size:12px; font-weight:700; white-space:nowrap; } .decision.pilot .pill { color:var(--olive); } .decision.supervise .pill { color:var(--gold); } .decision.hold .pill { color:var(--accent); } .route-results { display:flex; gap:8px; flex-wrap:wrap; } .route-results span { background:var(--open); border-radius:8px; padding:6px 9px; font-size:12px; } .route-results b { margin-left:5px; }
     .audit { display:grid; grid-template-columns:repeat(6,minmax(0,1fr)); gap:10px; } .audit div { min-width:0; } .audit strong { display:block; font-size:24px; letter-spacing:-.03em; } .audit span { color:var(--muted); font-size:12px; }
+    .judgment-list { display:grid; gap:12px; margin-top:14px; } .judgment-top { display:flex; justify-content:space-between; gap:18px; align-items:flex-start; } .judgment h3 { text-transform:capitalize; } .judgment p { color:var(--muted); margin:14px 0; } .judgment footer { color:var(--muted); font-size:12px; } .judgment footer strong { color:var(--ink); font-size:15px; }
     .two-col { display:grid; grid-template-columns:1.2fr .8fr; gap:44px; } ol,ul { padding-left:22px; } li+li { margin-top:8px; } .caveat { color:var(--muted); font-size:14px; }
     .provenance { margin-top:64px; border-top:1px solid var(--line); padding-top:18px; display:flex; flex-wrap:wrap; gap:12px 24px; color:var(--muted); font:12px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace; }
     @media (max-width:760px) { main { padding-top:36px; } section { margin-top:48px; } .route-grid,.two-col { grid-template-columns:1fr; } .audit { grid-template-columns:repeat(2,minmax(0,1fr)); } .decision-top { flex-direction:column; } }
@@ -286,6 +383,7 @@ export function buildBuyerReport(summary, rows, tasks) {
       <div><strong>${percent(model.supervision.small_model_output_share)}</strong><span>small-model output</span></div>
       <div><strong>${percent(model.supervision.supervisor_token_overhead)}</strong><span>supervisor overhead</span></div>
     </div>
+    <div class="judgment-list" aria-label="Supervisor judgments with reasons and confidence">${judgmentCards}</div>
   </section>
 
   <section class="two-col" aria-label="Next steps and open questions">

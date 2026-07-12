@@ -108,6 +108,7 @@ Call out:
 
 - one exact `run_id` across the trace;
 - stable verdict/intervention marker IDs;
+- the supervisor's recorded reason and chosen-verdict first-token probability;
 - separate student and supervisor token counts;
 - the student partial and any teacher continuation remain separate;
 - a human can label a missed intervention without rewriting history.
@@ -115,6 +116,10 @@ Call out:
 The question changes from “should we trust small models?” to “which workload
 clusters have enough evidence to route, supervise, improve, or keep on the
 incumbent?”
+
+Do not call the first-token probability a calibrated correctness score. A
+confident missed error is evidence that the judge needs work, not evidence that
+the rejected student was safe.
 
 ## 22-27 minutes: show deployment safety
 

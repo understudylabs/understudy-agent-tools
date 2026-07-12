@@ -789,6 +789,30 @@ test("every supervisor decision gets a stable labelable marker", () => {
   assert.equal(supervisorDecisionMarker("run-1", 3, 2, true), "run-1:intervention:2");
 });
 
+test("canonical verdict evidence rejects impossible positive logprobs", () => {
+  const verdict = {
+    schema_version: "understudy-conversation-runtime-event-v1",
+    event_id: "run-probability:0",
+    run_id: "run-probability",
+    session_id: "session-probability",
+    runtime_id: "pi-agent-session",
+    sequence: 0,
+    emitted_at: "2026-07-12T00:00:00Z",
+    event: "supervisor_verdict",
+    data: {
+      verdict: "continue",
+      source: "model",
+      marker_id: "run-probability:verdict:0",
+      probabilities: { continue: 0.9 },
+      probability_kind: "logprob",
+    },
+  };
+  assert.throws(
+    () => validateRuntimeTrace([verdict]),
+    /logprob continue must be at most zero/,
+  );
+});
+
 test("Pi supervision turns a user abort during a judge check into canonical cancellation", async () => {
   const server = createServer(async (request, response) => {
     const body = await requestJson(request);

@@ -106,6 +106,8 @@ pub(crate) enum RuntimeEvent {
         reason: Option<String>,
         #[serde(default)]
         probabilities: Option<Value>,
+        #[serde(default)]
+        probability_kind: Option<String>,
     },
     StudentInterruption {
         marker_id: String,
@@ -289,6 +291,54 @@ fn is_sha256(value: &str) -> bool {
             .all(|byte| byte.is_ascii_hexdigit() && !byte.is_ascii_uppercase())
 }
 
+fn validate_verdict_probabilities(
+    probabilities: &Option<Value>,
+    probability_kind: &Option<String>,
+) -> Result<(), String> {
+    let Some(probabilities) = probabilities else {
+        if probability_kind.is_some() {
+            return Err("supervisor verdict probability_kind requires probabilities".to_string());
+        }
+        return Ok(());
+    };
+    let Some(kind) = probability_kind.as_deref() else {
+        // Runtime 0.3.4 initially omitted the kind at the Rust bridge. Keep
+        // those already-persisted traces readable while requiring all new Pi
+        // evidence to carry an explicit interpretation.
+        return Ok(());
+    };
+    if kind != "logprob" {
+        return Err(format!(
+            "unknown supervisor verdict probability_kind {kind}"
+        ));
+    }
+    let values = probabilities
+        .as_object()
+        .ok_or_else(|| "supervisor verdict probabilities must be an object".to_string())?;
+    if values.is_empty() {
+        return Err("supervisor verdict probabilities cannot be empty".to_string());
+    }
+    for (verdict, value) in values {
+        if !matches!(
+            verdict.as_str(),
+            "continue" | "interrupt" | "stop" | "nudge"
+        ) {
+            return Err(format!(
+                "unknown supervisor verdict probability key {verdict}"
+            ));
+        }
+        let value = value
+            .as_f64()
+            .ok_or_else(|| format!("supervisor verdict probability {verdict} must be finite"))?;
+        if !value.is_finite() || value > 0.0 {
+            return Err(format!(
+                "supervisor verdict logprob {verdict} must be finite and at most zero"
+            ));
+        }
+    }
+    Ok(())
+}
+
 pub(crate) fn validate_trace(events: &[RuntimeEventEnvelope]) -> Result<(), String> {
     let Some(first) = events.first() else {
         return Err("runtime trace must contain at least one event".to_string());
@@ -384,7 +434,8 @@ pub(crate) fn validate_trace(events: &[RuntimeEventEnvelope]) -> Result<(), Stri
                 source,
                 marker_id,
                 reason,
-                ..
+                probabilities,
+                probability_kind,
             } => {
                 if !matches!(source.as_str(), "model" | "policy" | "human") {
                     return Err(format!("unknown supervisor verdict source {source}"));
@@ -403,6 +454,7 @@ pub(crate) fn validate_trace(events: &[RuntimeEventEnvelope]) -> Result<(), Stri
                         .ok_or_else(|| "interrupt verdict requires marker_id".to_string())?;
                     interrupt_markers.insert(marker);
                 }
+                validate_verdict_probabilities(probabilities, probability_kind)?;
             }
             RuntimeEvent::StudentInterruption {
                 marker_id, reason, ..
@@ -531,7 +583,8 @@ mod tests {
                     source: "model".to_string(),
                     marker_id: Some("marker-1".to_string()),
                     reason: Some("wrong tool".to_string()),
-                    probabilities: Some(json!({"interrupt": 0.9})),
+                    probabilities: Some(json!({"interrupt": -0.1})),
+                    probability_kind: Some("logprob".to_string()),
                 },
             ),
             envelope(
@@ -555,5 +608,26 @@ mod tests {
             ),
         ];
         validate_trace(&events).unwrap();
+        let serialized = serde_json::to_value(&events[0]).unwrap();
+        assert_eq!(serialized["data"]["probability_kind"], json!("logprob"));
+        assert_eq!(serialized["data"]["probabilities"]["interrupt"], -0.1);
+    }
+
+    #[test]
+    fn rejects_invalid_typed_verdict_probability_evidence() {
+        let invalid = vec![envelope(
+            0,
+            RuntimeEvent::SupervisorVerdict {
+                verdict: RuntimeVerdict::Continue,
+                source: "model".to_string(),
+                marker_id: Some("marker-1".to_string()),
+                reason: None,
+                probabilities: Some(json!({"continue": 0.9})),
+                probability_kind: Some("logprob".to_string()),
+            },
+        )];
+        assert!(validate_trace(&invalid)
+            .unwrap_err()
+            .contains("must be finite and at most zero"));
     }
 }
