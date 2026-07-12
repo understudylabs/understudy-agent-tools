@@ -554,9 +554,14 @@
     "required_file_mode": "0600",
     "recommended_adapter": "understudy desktop"
   },
-  "x-understudy-planned-control-plane": {
-    "status": "not_yet_implemented",
-    "operations": [
+  "x-understudy-extension-surfaces": {
+    "available_via_authenticated_mcp_and_cli": [
+      "runtime status",
+      "model inventory and certified catalog",
+      "model download lifecycle",
+      "residency slot lifecycle"
+    ],
+    "not_yet_versioned_in_v2_rest": [
       "model catalog and residency lifecycle",
       "conversation inspect, branch, compact, and resume",
       "runtime and CLI diagnostics with repair actions",

@@ -8,9 +8,10 @@ app, skills, CLI, ladder). One spine, adopted everywhere.
 [`understudy.desktop_api.v2.openapi.json`](understudy.desktop_api.v2.openapi.json)
 is the OpenAPI 3.1 contract for agents operating a running Understudy Desktop
 app. It documents only the authenticated v2 operations currently implemented;
-future control-plane families are explicitly listed as unimplemented extension
-areas. `understudy desktop contract --json` prints the packaged document
-without requiring Desktop to be running.
+the extension metadata distinguishes model controls already available through
+authenticated MCP/CLI from operations not yet versioned in REST.
+`understudy desktop contract --json` prints the packaged document without
+requiring Desktop to be running.
 
 ## `understudy.eval_result.v1`
 
