@@ -19,15 +19,9 @@ const DEAD_CATALOG_URL = "http://127.0.0.1:1/catalog";
 
 const EXPECTED_PULLABLE_IDS = [
   "gemma-4-e2b-it-qat-mlx-vlm-understudy",
-  "gemma-4-e2b-it-mlx-vlm-4bit",
-  "gemma-4-e4b-it-mlx-vlm-4bit",
-  "gemma-4-12b-it-mlx-vlm-4bit",
-  "gemma-4-12b-it-mlx-vlm-bf16",
-  "gemma-4-26b-a4b-it-mlx-vlm-bf16",
+  "gemma-4-e4b-it-qat-mlx-vlm-understudy",
+  "gemma-4-12b-it-qat-mlx-vlm-understudy",
   "gemma-4-26b-a4b-it-qat-mlx-vlm-understudy",
-  "gemma-4-31b-it-mlx-vlm-bf16",
-  "diffusiongemma-26b-a4b-it-mlx-vlm-4bit",
-  "diffusiongemma-26b-a4b-it-mlx-vlm-bf16",
 ];
 
 function sha256(text) {
@@ -129,7 +123,7 @@ describe("fetchSnapshotCatalog", () => {
     assert.equal(result.source, "fallback");
     assert.deepEqual(result.models, VERIFIED_SNAPSHOT_MODELS);
     assert.deepEqual(Object.keys(result.models).sort(), [...EXPECTED_PULLABLE_IDS].sort());
-    assert.equal(Object.keys(result.models).length, 10);
+    assert.equal(Object.keys(result.models).length, 4);
   });
 
   it("falls back on schema_version mismatch and on non-200 responses", async () => {
@@ -158,15 +152,15 @@ describe("fetchSnapshotCatalog", () => {
 });
 
 describe("models snapshots CLI", () => {
-  it("lists the 10 bundled models offline and notes the fallback source", () => {
+  it("lists the four certified bundled models offline and notes the fallback source", () => {
     const result = runCli(["models", "snapshots", "--json"], { UNDERSTUDY_CATALOG_URL: DEAD_CATALOG_URL });
     assert.equal(result.status, 0, result.stderr);
     const parsed = JSON.parse(result.stdout);
     assert.equal(parsed.source, "fallback");
-    assert.equal(parsed.models.length, 10);
+    assert.equal(parsed.models.length, 4);
     assert.deepEqual(parsed.models.map((m) => m.id).sort(), [...EXPECTED_PULLABLE_IDS].sort());
     assert.equal(parsed.models.filter((m) => m.default).length, 1);
-    assert.equal(parsed.models.filter((m) => m.certified).length, 2);
+    assert.equal(parsed.models.filter((m) => m.certified).length, 4);
 
     const human = runCli(["models", "snapshots"], { UNDERSTUDY_CATALOG_URL: DEAD_CATALOG_URL });
     assert.equal(human.status, 0, human.stderr);

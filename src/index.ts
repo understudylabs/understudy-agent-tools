@@ -9,6 +9,7 @@ import { buildValueReport } from "./value-report.js";
 import { type AgentPlatformAdapter, agentPlatformAdapters, findAgentPlatformAdapter } from "./agent-platforms.js";
 import { registerCapturesCommand } from "./commands/captures.js";
 import { registerDaemonCommand } from "./commands/daemon.js";
+import { registerDesktopCommand } from "./commands/desktop.js";
 import { registerDoctorCommand } from "./commands/doctor.js";
 import { registerGatewayCommand } from "./commands/gateway.js";
 import { registerKeysCommand } from "./commands/keys.js";
@@ -18,6 +19,7 @@ import { registerModelsCommand } from "./commands/models.js";
 import { registerProjectsCommand } from "./commands/projects.js";
 import { registerRoutesCommand } from "./commands/routes.js";
 import { registerRunCommand } from "./commands/run.js";
+import { registerRuntimeCommand } from "./commands/runtime.js";
 import { registerSetupCodeCommand } from "./commands/setup-code.js";
 import { registerSetupCommand } from "./commands/setup.js";
 import { registerStatusCommand } from "./commands/status.js";
@@ -441,6 +443,7 @@ export function buildProgram(): Command {
 
   registerDoctorCommand(program, printDoctorJson);
   registerDaemonCommand(program);
+  registerDesktopCommand(program);
 
   registerLoginCommand(program);
   registerLogoutCommand(program);
@@ -455,6 +458,7 @@ export function buildProgram(): Command {
   registerSetupCommand(program);
   registerSetupCodeCommand(program);
   registerRunCommand(program);
+  registerRuntimeCommand(program);
 
   const understand = program
     .command("capture-evidence")

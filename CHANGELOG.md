@@ -15,8 +15,28 @@ uses semantic-ish versioning (minor = new skill or new capability, patch = fixes
 
 ## [Unreleased]
 
+### Added
+
+- **Understudy Desktop agent control plane.** The public CLI now discovers the
+  owner-only Desktop capability file and exposes a versioned OpenAPI 3.1
+  contract for capabilities, models, downloads, residency, canonical turns,
+  exact cancellation/replay, and supervisor feedback. Agent turns can pair a
+  small local slot with a distinct local supervisor slot while preserving
+  student, supervisor, and teacher events and usage. A frozen synthetic
+  grocery-marketplace proof compares small, main, and supervised routes without
+  uploads, provider calls, or an LLM judge.
+- **Supervisor-decision labeling.** Runtime 0.3.1 gives every supervisor verdict
+  a stable marker, including accepted `continue` and `stop` decisions, so human
+  feedback can measure missed errors as well as bad nudges and takeovers.
+
 ### Fixed
 
+- **Desktop restart no longer strands tool calls on a stale sidecar token.**
+  Idempotent runtime start now compares an injected Desktop tool credential
+  with the owner-only stored credential using a timing-safe comparison. If the
+  Desktop token rotated while the sidecar stayed healthy, the CLI replaces the
+  sidecar before the next turn instead of allowing post-restart tool execution
+  to fail with 401.
 - **The curl installer can no longer finish looking successful with zero
   coding-agent adapters installed.** `install.sh` now logs the raw agent-menu
   answer and the resolved `--agents` selection to the install log ("Agent

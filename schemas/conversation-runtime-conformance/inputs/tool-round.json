@@ -1,0 +1,26 @@
+{
+  "schema_version": "understudy-conversation-runtime-input-v1",
+  "fixture_id": "tool-round",
+  "role": "primary",
+  "messages": [
+    {
+      "role": "user",
+      "content": "Read the local runtime status and summarize it."
+    }
+  ],
+  "tools": [
+    {
+      "name": "status",
+      "description": "Read local runtime status.",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "query": {"type": "string"}
+        },
+        "required": ["query"],
+        "additionalProperties": false
+      }
+    }
+  ],
+  "expected_events": ["message", "tool_call", "tool_result", "delta", "usage"]
+}

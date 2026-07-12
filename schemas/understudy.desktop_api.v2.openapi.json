@@ -1,0 +1,1156 @@
+{
+  "openapi": "3.1.0",
+  "info": {
+    "title": "Understudy Desktop Agent API",
+    "version": "2.1.0",
+    "description": "Authenticated loopback API for agents operating a running Understudy Desktop app. The desktop capability file supplies the ephemeral base URL and bearer token. Prompts, images, traces, and model outputs remain local unless a caller explicitly selects a remote route."
+  },
+  "servers": [
+    {
+      "url": "http://127.0.0.1:{port}",
+      "description": "Discovered from the private desktop capability file",
+      "variables": {
+        "port": {
+          "default": "17790"
+        }
+      }
+    }
+  ],
+  "security": [
+    {
+      "desktopBearer": []
+    }
+  ],
+  "paths": {
+    "/v1/capabilities": {
+      "get": {
+        "operationId": "desktopCapabilities",
+        "summary": "Discover the live runtime and supported desktop operations",
+        "responses": {
+          "200": {
+            "description": "Desktop capability document",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DesktopCapabilities"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          }
+        }
+      }
+    },
+    "/v1/status": {
+      "get": {
+        "operationId": "desktopStatus",
+        "summary": "Inspect desktop, local runtime, warm models, and repair state",
+        "responses": {
+          "200": {
+            "description": "Current desktop status",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/StatusDocument"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          }
+        }
+      }
+    },
+    "/v1/models": {
+      "get": {
+        "operationId": "desktopModels",
+        "summary": "List local model snapshots available to Desktop",
+        "responses": {
+          "200": {
+            "description": "Installed local models",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ModelList"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          }
+        }
+      }
+    },
+    "/v1/models/catalog": {
+      "get": {
+        "operationId": "desktopModelCatalog",
+        "summary": "List the certified model snapshot catalog with local cache state",
+        "responses": {
+          "200": {
+            "description": "Certified snapshot catalog",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ModelList"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          }
+        }
+      }
+    },
+    "/v1/residency": {
+      "get": {
+        "operationId": "desktopResidency",
+        "summary": "Inspect local model residency and unified-memory budget",
+        "responses": {
+          "200": {
+            "description": "Residency snapshot",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/ResidencySnapshot"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          }
+        }
+      }
+    },
+    "/v1/residency/slots": {
+      "post": {
+        "operationId": "desktopResidencyAddSlot",
+        "summary": "Add an empty local model residency slot",
+        "responses": {
+          "200": {
+            "description": "Slot added",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SlotOperationResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          }
+        }
+      }
+    },
+    "/v1/residency/assign": {
+      "post": {
+        "operationId": "desktopResidencyAssign",
+        "summary": "Assign an installed model to a residency slot",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/AssignSlotRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Model assigned",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SlotOperationResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          }
+        }
+      }
+    },
+    "/v1/residency/warm": {
+      "post": {
+        "operationId": "desktopResidencyWarm",
+        "summary": "Warm the assigned model asynchronously",
+        "requestBody": {
+          "$ref": "#/components/requestBodies/SlotAction"
+        },
+        "responses": {
+          "200": {
+            "description": "Warm-up started",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SlotOperationResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          }
+        }
+      }
+    },
+    "/v1/residency/cool": {
+      "post": {
+        "operationId": "desktopResidencyCool",
+        "summary": "Stop the model process in a residency slot",
+        "requestBody": {
+          "$ref": "#/components/requestBodies/SlotAction"
+        },
+        "responses": {
+          "200": {
+            "description": "Slot cooled",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SlotOperationResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          }
+        }
+      }
+    },
+    "/v1/residency/remove": {
+      "post": {
+        "operationId": "desktopResidencyRemove",
+        "summary": "Remove a residency slot",
+        "requestBody": {
+          "$ref": "#/components/requestBodies/SlotAction"
+        },
+        "responses": {
+          "200": {
+            "description": "Slot removed",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SlotOperationResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          }
+        }
+      }
+    },
+    "/v1/downloads": {
+      "get": {
+        "operationId": "desktopDownloads",
+        "summary": "List active and recent model downloads",
+        "responses": {
+          "200": {
+            "description": "Download registry",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DownloadList"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          }
+        }
+      },
+      "post": {
+        "operationId": "desktopDownloadStart",
+        "summary": "Start downloading one certified model snapshot",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/DownloadStartRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Download started",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DownloadStartResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          }
+        }
+      }
+    },
+    "/v1/downloads/{download_id}": {
+      "get": {
+        "operationId": "desktopDownloadStatus",
+        "summary": "Inspect one exact model download",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/DownloadId"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Download progress",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DownloadProgress"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      }
+    },
+    "/v1/downloads/{download_id}/cancel": {
+      "post": {
+        "operationId": "desktopDownloadCancel",
+        "summary": "Cancel one exact model download",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/DownloadId"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Cancelled download state",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/DownloadProgress"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          }
+        }
+      }
+    },
+    "/v1/conversations/{session_id}/turns": {
+      "post": {
+        "operationId": "conversationTurn",
+        "summary": "Run one local conversation turn and stream canonical events",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/SessionId"
+          }
+        ],
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/ConversationTurnRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "One RuntimeEventEnvelope per line. The accepted identity is repeated in x-understudy-run-id and x-understudy-session-id.",
+            "headers": {
+              "x-understudy-run-id": {
+                "required": true,
+                "schema": {
+                  "$ref": "#/components/schemas/AgentId"
+                }
+              },
+              "x-understudy-session-id": {
+                "required": true,
+                "schema": {
+                  "$ref": "#/components/schemas/AgentId"
+                }
+              }
+            },
+            "content": {
+              "application/x-ndjson": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeEventEnvelope"
+                },
+                "x-understudy-stream-item": true
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "409": {
+            "$ref": "#/components/responses/Conflict"
+          },
+          "503": {
+            "$ref": "#/components/responses/Unavailable"
+          }
+        }
+      }
+    },
+    "/v1/runs/{run_id}/cancel": {
+      "post": {
+        "operationId": "cancelConversationRun",
+        "summary": "Cancel one exact active run",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/RunId"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Cancellation was requested for the exact run",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/CancelResponse"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      }
+    },
+    "/v1/runs/{run_id}/events": {
+      "get": {
+        "operationId": "conversationRunEvents",
+        "summary": "Replay the immutable canonical trace for one exact run",
+        "parameters": [
+          {
+            "$ref": "#/components/parameters/RunId"
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Persisted RuntimeEventEnvelope records in sequence order",
+            "content": {
+              "application/x-ndjson": {
+                "schema": {
+                  "$ref": "#/components/schemas/RuntimeEventEnvelope"
+                },
+                "x-understudy-stream-item": true
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          },
+          "404": {
+            "$ref": "#/components/responses/NotFound"
+          }
+        }
+      }
+    },
+    "/v1/feedback/supervisor": {
+      "post": {
+        "operationId": "recordSupervisorFeedback",
+        "summary": "Record a human judgment for one identified supervisor decision",
+        "requestBody": {
+          "required": true,
+          "content": {
+            "application/json": {
+              "schema": {
+                "$ref": "#/components/schemas/SupervisorFeedbackRequest"
+              }
+            }
+          }
+        },
+        "responses": {
+          "200": {
+            "description": "Judgment recorded idempotently for the marker",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/OkResponse"
+                }
+              }
+            }
+          },
+          "400": {
+            "$ref": "#/components/responses/BadRequest"
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          }
+        }
+      }
+    }
+  },
+  "components": {
+    "securitySchemes": {
+      "desktopBearer": {
+        "type": "http",
+        "scheme": "bearer",
+        "description": "Ephemeral token read from the owner-only desktop capability file. Agents should use the Understudy CLI or MCP adapter instead of printing this token."
+      }
+    },
+    "parameters": {
+      "SessionId": {
+        "name": "session_id",
+        "in": "path",
+        "required": true,
+        "schema": {
+          "$ref": "#/components/schemas/AgentId"
+        }
+      },
+      "RunId": {
+        "name": "run_id",
+        "in": "path",
+        "required": true,
+        "schema": {
+          "$ref": "#/components/schemas/AgentId"
+        }
+      },
+      "DownloadId": {
+        "name": "download_id",
+        "in": "path",
+        "required": true,
+        "schema": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200
+        }
+      }
+    },
+    "requestBodies": {
+      "SlotAction": {
+        "required": true,
+        "content": {
+          "application/json": {
+            "schema": {
+              "$ref": "#/components/schemas/SlotActionRequest"
+            }
+          }
+        }
+      }
+    },
+    "schemas": {
+      "AgentId": {
+        "type": "string",
+        "minLength": 1,
+        "maxLength": 200,
+        "pattern": "^[A-Za-z0-9._:-]+$"
+      },
+      "DesktopCapabilities": {
+        "type": "object",
+        "required": [
+          "schema_version",
+          "api_version",
+          "event_schema",
+          "runtime",
+          "features",
+          "endpoints"
+        ],
+        "properties": {
+          "schema_version": {
+            "const": "understudy.desktop_api.v2"
+          },
+          "api_version": {
+            "const": "2.1.0"
+          },
+          "event_schema": {
+            "const": "understudy-conversation-runtime-event-v1"
+          },
+          "runtime": {
+            "type": "object",
+            "additionalProperties": true
+          },
+          "features": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "boolean"
+            }
+          },
+          "endpoints": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "string"
+            }
+          }
+        },
+        "additionalProperties": true
+      },
+      "StatusDocument": {
+        "type": "object",
+        "description": "Desktop status is forward-compatible; clients should inspect only fields they understand.",
+        "additionalProperties": true
+      },
+      "ModelList": {
+        "type": "array",
+        "items": {
+          "type": "object",
+          "required": [
+            "id"
+          ],
+          "properties": {
+            "id": {
+              "type": "string",
+              "minLength": 1
+            }
+          },
+          "additionalProperties": true
+        }
+      },
+      "ResidencySnapshot": {
+        "type": "object",
+        "required": [
+          "slots",
+          "used_gb",
+          "usable_gb"
+        ],
+        "properties": {
+          "slots": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "required": [
+                "id",
+                "state"
+              ],
+              "properties": {
+                "id": {
+                  "type": "integer",
+                  "minimum": 1
+                },
+                "model_id": {
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
+                "state": {
+                  "type": "string",
+                  "enum": [
+                    "running",
+                    "loading",
+                    "stopped",
+                    "error"
+                  ]
+                }
+              },
+              "additionalProperties": true
+            }
+          },
+          "used_gb": {
+            "type": "number",
+            "minimum": 0
+          },
+          "usable_gb": {
+            "type": "number",
+            "minimum": 0
+          }
+        },
+        "additionalProperties": true
+      },
+      "SlotActionRequest": {
+        "type": "object",
+        "required": [
+          "slot_id"
+        ],
+        "properties": {
+          "slot_id": {
+            "type": "integer",
+            "minimum": 1
+          }
+        },
+        "additionalProperties": false
+      },
+      "AssignSlotRequest": {
+        "type": "object",
+        "required": [
+          "slot_id",
+          "model_id"
+        ],
+        "properties": {
+          "slot_id": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "model_id": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "additionalProperties": false
+      },
+      "SlotOperationResponse": {
+        "type": "object",
+        "required": [
+          "ok",
+          "slot_id"
+        ],
+        "properties": {
+          "ok": {
+            "const": true
+          },
+          "slot_id": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "state": {
+            "type": "string"
+          }
+        },
+        "additionalProperties": true
+      },
+      "DownloadStartRequest": {
+        "type": "object",
+        "required": [
+          "model_id"
+        ],
+        "properties": {
+          "model_id": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "additionalProperties": false
+      },
+      "DownloadStartResponse": {
+        "type": "object",
+        "required": [
+          "ok",
+          "download_id",
+          "model_id"
+        ],
+        "properties": {
+          "ok": {
+            "const": true
+          },
+          "download_id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "model_id": {
+            "type": "string",
+            "minLength": 1
+          }
+        },
+        "additionalProperties": false
+      },
+      "DownloadProgress": {
+        "type": "object",
+        "required": [
+          "id",
+          "model_id",
+          "status"
+        ],
+        "properties": {
+          "id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "model_id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "status": {
+            "type": "string",
+            "enum": [
+              "running",
+              "done",
+              "error",
+              "cancelled"
+            ]
+          },
+          "downloaded_bytes": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "total_bytes": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 0
+          },
+          "error": {
+            "type": [
+              "string",
+              "null"
+            ]
+          }
+        },
+        "additionalProperties": true
+      },
+      "DownloadList": {
+        "type": "object",
+        "required": [
+          "downloads"
+        ],
+        "properties": {
+          "downloads": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/DownloadProgress"
+            }
+          }
+        },
+        "additionalProperties": false
+      },
+      "ConversationTurnRequest": {
+        "type": "object",
+        "required": [
+          "slotId"
+        ],
+        "properties": {
+          "slotId": {
+            "type": "integer",
+            "minimum": 1
+          },
+          "supervisorSlotId": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "Optional distinct warm model that judges the student and continues after an interruption. When present, canonical events attribute student, supervisor, and teacher usage separately."
+          },
+          "text": {
+            "type": "string",
+            "default": ""
+          },
+          "runId": {
+            "$ref": "#/components/schemas/AgentId"
+          },
+          "maxTokens": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 65536
+          },
+          "attachments": {
+            "type": "array",
+            "maxItems": 4,
+            "items": {
+              "$ref": "#/components/schemas/ImageUpload"
+            },
+            "default": []
+          }
+        },
+        "anyOf": [
+          {
+            "required": [
+              "text"
+            ],
+            "properties": {
+              "text": {
+                "type": "string",
+                "minLength": 1
+              }
+            }
+          },
+          {
+            "required": [
+              "attachments"
+            ],
+            "properties": {
+              "attachments": {
+                "type": "array",
+                "minItems": 1
+              }
+            }
+          }
+        ],
+        "additionalProperties": false
+      },
+      "ImageUpload": {
+        "type": "object",
+        "required": [
+          "filename",
+          "mediaType",
+          "dataUrl"
+        ],
+        "properties": {
+          "filename": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 200
+          },
+          "mediaType": {
+            "type": "string",
+            "pattern": "^image/"
+          },
+          "dataUrl": {
+            "type": "string",
+            "pattern": "^data:image/"
+          }
+        },
+        "additionalProperties": false
+      },
+      "RuntimeEventEnvelope": {
+        "type": "object",
+        "required": [
+          "schema_version",
+          "event_id",
+          "run_id",
+          "session_id",
+          "runtime_id",
+          "sequence",
+          "emitted_at",
+          "event",
+          "data"
+        ],
+        "properties": {
+          "schema_version": {
+            "const": "understudy-conversation-runtime-event-v1"
+          },
+          "event_id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "run_id": {
+            "$ref": "#/components/schemas/AgentId"
+          },
+          "session_id": {
+            "$ref": "#/components/schemas/AgentId"
+          },
+          "runtime_id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "sequence": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "emitted_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "event": {
+            "type": "string",
+            "enum": [
+              "message",
+              "delta",
+              "reasoning_delta",
+              "tool_call",
+              "tool_result",
+              "usage",
+              "supervisor_verdict",
+              "student_interruption",
+              "teacher_continuation",
+              "cancellation",
+              "error",
+              "image_attachment",
+              "compaction_boundary"
+            ]
+          },
+          "data": {
+            "type": "object",
+            "additionalProperties": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "CancelResponse": {
+        "type": "object",
+        "required": [
+          "ok",
+          "status",
+          "run_id"
+        ],
+        "properties": {
+          "ok": {
+            "const": true
+          },
+          "status": {
+            "const": "cancelling"
+          },
+          "run_id": {
+            "$ref": "#/components/schemas/AgentId"
+          }
+        },
+        "additionalProperties": false
+      },
+      "SupervisorFeedbackRequest": {
+        "type": "object",
+        "required": [
+          "sessionId",
+          "runId",
+          "markerId",
+          "stage",
+          "helpful",
+          "correctAction"
+        ],
+        "properties": {
+          "sessionId": {
+            "$ref": "#/components/schemas/AgentId"
+          },
+          "runId": {
+            "$ref": "#/components/schemas/AgentId"
+          },
+          "markerId": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 500
+          },
+          "stage": {
+            "type": "string",
+            "enum": [
+              "continue",
+              "nudge",
+              "take_over",
+              "stop"
+            ]
+          },
+          "helpful": {
+            "type": "boolean"
+          },
+          "correctAction": {
+            "type": "string",
+            "enum": [
+              "continue",
+              "nudge",
+              "interrupt",
+              "stop"
+            ]
+          },
+          "justification": {
+            "type": "string",
+            "maxLength": 4000
+          }
+        },
+        "additionalProperties": false
+      },
+      "OkResponse": {
+        "type": "object",
+        "required": [
+          "ok"
+        ],
+        "properties": {
+          "ok": {
+            "const": true
+          }
+        },
+        "additionalProperties": true
+      },
+      "ErrorResponse": {
+        "type": "string",
+        "description": "A bounded plain-text error. Clients must not treat it as model output."
+      }
+    },
+    "responses": {
+      "BadRequest": {
+        "description": "Invalid request",
+        "content": {
+          "text/plain": {
+            "schema": {
+              "$ref": "#/components/schemas/ErrorResponse"
+            }
+          }
+        }
+      },
+      "Unauthorized": {
+        "description": "Missing or invalid desktop bearer token",
+        "content": {
+          "text/plain": {
+            "schema": {
+              "$ref": "#/components/schemas/ErrorResponse"
+            }
+          }
+        }
+      },
+      "NotFound": {
+        "description": "The requested run or trace was not found",
+        "content": {
+          "text/plain": {
+            "schema": {
+              "$ref": "#/components/schemas/ErrorResponse"
+            }
+          }
+        }
+      },
+      "Conflict": {
+        "description": "The run or session identity is already active",
+        "content": {
+          "text/plain": {
+            "schema": {
+              "$ref": "#/components/schemas/ErrorResponse"
+            }
+          }
+        }
+      },
+      "Unavailable": {
+        "description": "The packaged ConversationRuntime could not be started or diagnosed",
+        "content": {
+          "text/plain": {
+            "schema": {
+              "$ref": "#/components/schemas/ErrorResponse"
+            }
+          }
+        }
+      }
+    }
+  },
+  "x-understudy-discovery": {
+    "capability_file": "~/.understudy/desktop-api.json",
+    "capability_schema": "understudy.desktop_api.v2",
+    "required_file_mode": "0600",
+    "recommended_adapter": "understudy desktop"
+  },
+  "x-understudy-extension-surfaces": {
+    "available_via_versioned_rest_mcp_and_cli": [
+      "runtime status",
+      "model inventory and certified catalog",
+      "model download lifecycle",
+      "residency slot lifecycle"
+    ],
+    "not_yet_versioned_in_v2_rest": [
+      "conversation inspect, branch, compact, and resume",
+      "runtime and CLI diagnostics with repair actions",
+      "capture and correction-pair export",
+      "resumable desktop-wide event subscription"
+    ]
+  }
+}

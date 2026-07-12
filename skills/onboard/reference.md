@@ -212,85 +212,35 @@ through MLX on Apple Silicon (see
   It is about 3.6 GB on disk, ~3.9 GB peak memory in testing, generated
   locally at about 218 tok/s, and exposes logprobs/top-logprobs through the
   OpenAI-compatible server.
-- **Publication status (check before promising a pull).** The official ladder
-  is the QAT-derived `-understudy` snapshots — they are what Understudy trains,
-  certifies, and stands behind. If
-  `https://models.understudylabs.com/session?model=<id>` answers
-  `{"error":"unknown model"}` for an `-understudy` id, that rung has not been
-  published to the snapshot service yet: fall back to the matching vanilla
-  4-bit snapshot as the *interim* rung, tell the user it is a stand-in, and
-  retry the official rung later. Never let onboarding dead-end on a 404.
-- **Gemma 4 E4B climb rung** — official target:
-  `gemma-4-e4b-it-qat-mlx-vlm-understudy` (QAT weights, MLX 4-bit
-  `group_size=32`, about 5.3 GB), the first quality climb when E2B understands
-  the task but lacks enough capability. Until that snapshot is published and
-  certified, the pullable interim rung is the Understudy-verified vanilla
-  conversion
-  `https://models.understudylabs.com/session?model=gemma-4-e4b-it-mlx-vlm-4bit`
-  (about 4.8 GB, `mlx-vlm 0.6.2`, served with `mlx_vlm.server`) — provenance
-  and smoke-test details:
-  [`../manage-local-models/reference.md`](../manage-local-models/reference.md).
-- **Small BF16 diagnostic rung** — `gemma-4-e2b-it-mlx-vlm-bf16` is **not
-  currently published** on the snapshot service (its session URL answers
-  `unknown model`). When quantization may be hurting a small-model workload,
-  either convert it locally from `google/gemma-4-e2b-it` with `mlx-vlm`, or
-  use the published
-  `https://models.understudylabs.com/session?model=gemma-4-12b-it-mlx-vlm-bf16`
-  (about 22 GB) as the full-precision comparison rung.
+- **Supported ladder** — use only the four catalog-backed QAT
+  `-understudy` snapshots during onboarding: E2B (`understudy-small`, about
+  3.6 GB), E4B (`understudy-balanced`, about 5.6 GB), 12B
+  (`understudy-quality`, about 7.5 GB), and 26B-A4B (`understudy-fast`, about
+  16 GB). E4B is the first capability climb; 12B is the dense quality rung;
+  26B-A4B is the sparse fast-quality rung. Each passed the frozen runtime
+  suite and includes `SHA256SUMS` plus `understudy.serving.json`.
+- **Publication status** — read `understudy models snapshots`; do not guess
+  session URLs. An `unknown model` response for one of those four ids is a
+  catalog deployment mismatch. Surface and repair it rather than silently
+  substituting a vanilla or BF16 artifact.
+- **Diagnostic conversions** — vanilla, BF16, 31B, and DiffusionGemma builds
+  are research inputs, not supported desktop downloads. Convert one locally
+  only after an eval makes quantization or architecture the named hypothesis.
 - **Delivery shape** — publish the stable
   `models.understudylabs.com/session?model=...` endpoint. It returns a manifest
   with short-lived signed URLs for the actual model files; do not publish the
   expiring per-object URLs directly.
-- **12B local climb rungs** — official target:
-  `gemma-4-12b-it-qat-mlx-vlm-understudy` (publication and certification
-  pending). Until it lands, use the Understudy-verified vanilla conversion
-  `https://models.understudylabs.com/session?model=gemma-4-12b-it-mlx-vlm-4bit`
-  first on high-RAM Apple Silicon; it is about 6.3 GB on disk and verified with
-  local generation plus OpenAI-compatible logprobs/top-logprobs. Use
-  `https://models.understudylabs.com/session?model=gemma-4-12b-it-mlx-vlm-bf16`
-  only for larger-memory quality/perf profiling; it is about 22 GB on disk.
-- **Larger local Gemma rungs** — the official MoE-style climb is the
-  **certified, published** `gemma-4-26b-a4b-it-qat-mlx-vlm-understudy` (QAT
-  MLX 4-bit `group_size=32` + 8-bit routers, about 16 GB; certified
-  generation, logprobs/top-logprobs, and tool calls). The vanilla
-  `gemma-4-26b-a4b-it-mlx-vlm-4bit` and `gemma-4-31b-it-mlx-vlm-4bit` are
-  **not currently published** (weights incomplete on the snapshot service) —
-  do not send users to their session URLs; the published dense high-memory
-  rung is `gemma-4-31b-it-mlx-vlm-bf16` (about 62 GB, 96 GB+ Macs). See
-  [`../manage-local-models/reference.md`](../manage-local-models/reference.md)
-  for the canonical provenance statement and the known-good chat smoke.
-- **DiffusionGemma rungs (specialty, not an onboarding default)** —
-  `diffusiongemma-26b-a4b-it-mlx-vlm-4bit` (about 16 GB) and
-  `diffusiongemma-26b-a4b-it-mlx-vlm-bf16` (about 52 GB), converted from
-  `google/diffusiongemma-26B-A4B-it` with `mlx-vlm 0.6.3` and served with
-  `mlx_vlm.server` (requires mlx-vlm ≥ 0.6.3 for the `diffusion_gemma`
-  architecture). Block-diffusion decoding: pick it to explore whole-block
-  drafting/infilling behavior, not for speed — on Apple Silicon the
-  autoregressive 26B-A4B rung decodes faster (see the DiffusionGemma note in
-  [`../manage-local-models/reference.md`](../manage-local-models/reference.md)).
-- **Full-precision high end** — Understudy-verified BF16 snapshots
-  `gemma-4-26b-a4b-it-mlx-vlm-bf16` (about 52 GB) and
-  `gemma-4-31b-it-mlx-vlm-bf16` (about 62 GB), converted with `mlx-vlm 0.6.3`
-  and served with `mlx_vlm.server`. They are not the default onboarding pull:
-  they are large downloads that require explicit approval plus a disk/RAM
-  check.
-- **First-rung fallback order** — if the official
-  `gemma-4-e2b-it-qat-mlx-vlm-understudy` session URL is unavailable, fall back
-  first to the published vanilla
-  `https://models.understudylabs.com/session?model=gemma-4-e2b-it-mlx-vlm-4bit`
-  (about 3.3 GB, same family and serving stack — the aha moment survives), and
-  only then to the tiny `mlx-community/gemma-3-1b-it-4bit` (`mlx_lm.server`,
-  about 772 MB, loads on `mlx-lm 0.31.3`) when disk/RAM is severely
-  constrained.
+- **Fallback order** — if `understudy-small` cannot be downloaded, keep the
+  app usable in cloud-only or already-cached local mode and offer the CLI
+  repair flow. Do not make an uncertified model the invisible fallback.
 - **Stock Gemma 4 MLX caveat** — `mlx-community/Gemma4-E2B-IT-Text-int4` and
   `mlx-community/gemma-4-e2b-it-4bit` failed on the tested stack with a Gemma 4
   shared-KV weight/config mismatch. The Understudy snapshot exists to give users
   a known-good first rung instead of sending them into loader debugging.
 - **Do not use `*-assistant` Gemma 4 repos as the first model.** They are MTP
   draft models for speculative decoding, not standalone chat models.
-- **Next rungs** — Gemma 4 12B, Nemotron 3 Nano 4B, Nemotron 3
-  Nano 30B-A3B, then remote/hybrid Gemma/Nemotron routes after the first
-  local-vs-frontier gap is visible.
+- **Next rungs** — E4B, 12B, 26B-A4B, then a named remote/hybrid route after
+  the first local-vs-frontier gap is visible.
 
 Acquisition, caching, disk locations, and the larger ladder live in
 [`../manage-local-models/SKILL.md`](../manage-local-models/SKILL.md).

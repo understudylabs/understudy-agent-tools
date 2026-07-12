@@ -1,0 +1,21 @@
+{
+  "schema_version": "understudy-conversation-runtime-input-v1",
+  "fixture_id": "restart-resume",
+  "role": "primary",
+  "messages": [
+    {
+      "role": "user",
+      "content": "Remember that the durable fact is seven."
+    },
+    {
+      "role": "assistant",
+      "content": "The durable fact is seven."
+    },
+    {
+      "role": "user",
+      "content": "After the runtime restarts, what was the durable fact?"
+    }
+  ],
+  "tools": [],
+  "expected_events": ["message", "delta", "usage"]
+}

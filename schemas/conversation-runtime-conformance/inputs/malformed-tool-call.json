@@ -1,0 +1,26 @@
+{
+  "schema_version": "understudy-conversation-runtime-input-v1",
+  "fixture_id": "malformed-tool-call",
+  "role": "primary",
+  "messages": [
+    {
+      "role": "user",
+      "content": "Ask the local status tool once; malformed arguments must never execute."
+    }
+  ],
+  "tools": [
+    {
+      "name": "status",
+      "description": "Read local runtime status.",
+      "input_schema": {
+        "type": "object",
+        "properties": {
+          "query": {"type": "string"}
+        },
+        "required": ["query"],
+        "additionalProperties": false
+      }
+    }
+  ],
+  "expected_events": ["message", "tool_call", "tool_result"]
+}

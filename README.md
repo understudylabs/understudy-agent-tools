@@ -395,17 +395,20 @@ PY
 <summary><b>Devin — install as a global CLI</b></summary>
 
 Devin is a cloud-based coding agent: each session boots from a snapshot, so the
-install surface is a global npm package rather than a local plugin registration.
-Devin reads `AGENTS.md` as an injected repository rule and accesses the shared
-[`skills/`](skills/) tree directly from the cloned repo.
+install surface is a global CLI rather than a local plugin registration. Until
+the npm package is published, the public installer clones the reviewed GitHub
+source, builds it, and globally links the CLI. Devin reads `AGENTS.md` as an
+injected repository rule and accesses the shared [`skills/`](skills/) tree
+directly from that checkout.
 [`.devin/adapter.json`](.devin/adapter.json) is an Understudy version/staleness
 sentinel for release checks, not a manifest consumed by Devin.
 
-Install the CLI globally (typically added to the Devin environment blueprint
-for persistence across sessions):
+Install the CLI without launching an interactive local agent (typically add
+the same command to the Devin environment blueprint for persistence):
 
 ```bash
-npm install -g @understudylabs/understudy-agent-tools
+curl -fsSL https://raw.githubusercontent.com/UnderstudyLabs/understudy-agent-tools/main/install.sh \
+  | bash -s -- --yes --agents devin --no-launch-agent
 ```
 
 Then ask Devin:
@@ -444,10 +447,53 @@ understudy skills --list      # list every installed skill
 understudy skills --search gateway
 understudy platforms          # supported agent adapters
 understudy doctor             # local environment check
+understudy models runtime doctor  # verify the pinned Apple Silicon VLM engine
 ```
 
 `spine` prints the public workflow and points agents at
 `skills/understudy/SKILL.md`.
+
+Understudy Desktop does not depend on a user's global Python environment. On
+Apple Silicon, `understudy models runtime install` creates a private,
+commit-pinned MLX/VLM engine under `~/.understudy`; `doctor` verifies its
+provenance and the required Gemma compatibility fix, and `repair` reinstalls
+that exact runtime when first-use diagnostics fail.
+
+When Desktop is running, agents can use its authenticated local control plane
+without discovering ports or handling tokens themselves:
+
+```bash
+understudy desktop contract --json
+understudy desktop capabilities
+understudy desktop status --json
+understudy desktop model catalog --json
+understudy desktop download start understudy-small
+understudy desktop download status <download-id> --json
+understudy desktop slot add --json
+understudy desktop slot assign <slot-id> understudy-small
+understudy desktop slot warm <slot-id>
+understudy desktop chat --slot 9 --session my-task --run-id my-task-1 "Inspect this"
+understudy desktop chat --slot 9 --supervisor-slot 5 "Let the small model work first"
+understudy desktop chat --slot 9 --image screenshot.png "What is wrong here?"
+understudy desktop run cancel my-task-1
+understudy desktop run events my-task-1 --json
+understudy desktop supervisor-feedback --session my-task --run-id my-task-1 \
+  --marker my-task-1:intervention:0 --stage take_over --correct-action continue
+understudy desktop supervisor-feedback --session my-task --run-id my-task-1 \
+  --marker my-task-1:verdict:0 --stage stop --correct-action interrupt
+```
+
+The CLI reads the private mode-0600 `~/.understudy/desktop-api.json`, verifies
+the recorded PID and loopback health endpoint, and streams the canonical
+ConversationRuntime events. The desktop UI, REST API, CLI, and MCP use the same
+runtime and exact `run_id`; the CLI does not drive UI controls or create a
+second chat harness. `understudy desktop contract` prints the packaged OpenAPI
+3.1 contract even when Desktop is not running, so agents can plan calls without
+probing private implementation routes or handling the bearer token themselves.
+Model inventory, download, and residency commands use the versioned Desktop
+REST contract and fall back to the equivalent legacy routes for one release;
+they do not duplicate model-process ownership inside the CLI. MCP remains an
+adapter for agents that prefer tool calls, not the CLI's hidden transport.
 
 ## The skill tree
 

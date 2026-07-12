@@ -1,0 +1,91 @@
+{
+  "schema_version": "understudy-conversation-runtime-conformance-v1",
+  "suite_id": "desktop-runtime-conformance-2026-07-11",
+  "source": {
+    "manifest": "desktop trustworthy-loop soak manifest",
+    "scenario_ids": [
+      "exact-factual",
+      "arithmetic-json",
+      "instruction-order",
+      "bounded-synthesis",
+      "status-tool",
+      "repo-search-tool",
+      "moraine-history-tool",
+      "safe-boundary"
+    ]
+  },
+  "input_fixtures": [
+    {
+      "id": "basic-chat",
+      "fixture": "inputs/basic-chat.json",
+      "fixture_sha256": "07e662eef352984767beacf8a8300054c009103a18aac60e78f82ccd880f00c4"
+    },
+    {
+      "id": "offline-image",
+      "fixture": "inputs/offline-image.json",
+      "fixture_sha256": "850939d87efef63fd50b3afd47b1dfc1d5e8af711f4e9d12cb36dd86b6157152"
+    },
+    {
+      "id": "tool-round",
+      "fixture": "inputs/tool-round.json",
+      "fixture_sha256": "cb7349f844f8a83be86276960f37e53d439823271c53c528a0370a3b906cdc69"
+    },
+    {
+      "id": "malformed-tool-call",
+      "fixture": "inputs/malformed-tool-call.json",
+      "fixture_sha256": "7de7b979741c8c9c466819fe303dc0831bdf40225ee9c50adb12e33dd5fc3e4a"
+    },
+    {
+      "id": "supervisor-takeover",
+      "fixture": "inputs/supervisor-takeover.json",
+      "fixture_sha256": "6fc0f342948dfe1d1b55697aa6037720afc6c0b4fd6cd6511e0dcf305a232e28",
+      "required_capabilities": ["supervision"]
+    },
+    {
+      "id": "long-chat-compaction",
+      "fixture": "inputs/long-chat-compaction.json",
+      "fixture_sha256": "073771d34929e6f020e14fa4697003bcd96a2df63942b72670e2db0694deba9d",
+      "required_capabilities": ["compaction"]
+    },
+    {
+      "id": "restart-resume",
+      "fixture": "inputs/restart-resume.json",
+      "fixture_sha256": "71ad250cc57450ba0bebca62d3e2b277b985da3d9e7ce38375e032ce7f2a1be6",
+      "required_capabilities": ["restart"]
+    },
+    {
+      "id": "cancellation",
+      "fixture": "inputs/cancellation.json",
+      "fixture_sha256": "dac1a85c30eb3107f102f220bce5797dee957cbc7ffa6f8f32f4313d688337a4"
+    }
+  ],
+  "runtimes": [
+    {"id": "native-rust-reference", "status": "reference"},
+    {"id": "vercel-ai-sdk", "status": "candidate"},
+    {"id": "pi-agent-core", "status": "candidate"}
+  ],
+  "shared_gates": [
+    "exact_run_id",
+    "contiguous_sequence",
+    "capture_fidelity",
+    "no_orphaned_tool_calls",
+    "per_model_token_attribution",
+    "terminal_error_or_cancellation",
+    "immutable_jsonl"
+  ],
+  "scenario_gates": [
+    {"id": "exact-factual", "required_events": ["message", "delta", "usage"]},
+    {"id": "arithmetic-json", "required_events": ["message", "delta", "usage"]},
+    {"id": "instruction-order", "required_events": ["message", "delta", "usage"]},
+    {"id": "bounded-synthesis", "required_events": ["message", "delta", "usage"]},
+    {"id": "status-tool", "required_events": ["tool_call", "tool_result", "usage"]},
+    {"id": "repo-search-tool", "required_events": ["tool_call", "tool_result", "usage"]},
+    {"id": "moraine-history-tool", "required_events": ["tool_call", "tool_result", "usage"]},
+    {"id": "safe-boundary", "required_events": ["message", "delta", "usage"]},
+    {"id": "offline-image", "fixture": "offline-image.jsonl", "fixture_sha256": "80a83ad4bcb833eddc55aa149cb35fa04bf8b08d9bebb9ab9cb05c2ab40f4f6b", "required_events": ["image_attachment", "message", "delta", "usage"], "network": "off"},
+    {"id": "supervisor-takeover", "fixture": "supervisor-takeover.jsonl", "fixture_sha256": "36825ed3384ae4d0939973dfda0f5cc2c8e7a4f1312cc082925bac978b3f3efa", "required_events": ["supervisor_verdict", "student_interruption", "teacher_continuation", "usage"]},
+    {"id": "malformed-tool-call", "fixture": "malformed-tool-call.jsonl", "fixture_sha256": "a7643f02d630a3abe547d078ba37e3a83a1d06e16ebcf86aa627b8148855c821", "required_events": ["tool_call", "tool_result", "delta"]},
+    {"id": "long-chat-restart", "fixture": "long-chat-restart.jsonl", "fixture_sha256": "84aef19c992873f7a8716d9c9de54e3eb85b6b59b0cbbc55a14808e55ac71643", "required_events": ["compaction_boundary", "delta", "usage"], "restart_after_sequence": 1},
+    {"id": "cancellation", "fixture": "cancellation.jsonl", "fixture_sha256": "7b7fd701f26502e06273fc2c1995627167dd47db29d2f8118c69f5bd421442d5", "required_events": ["message", "delta", "cancellation"]}
+  ]
+}
