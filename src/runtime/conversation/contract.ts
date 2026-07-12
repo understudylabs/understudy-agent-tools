@@ -87,6 +87,7 @@ export const runtimeRequestSchema = z
     emit_input: z.boolean().default(true),
     allow_remote: z.boolean().default(false),
     runtime_backend: z.enum(["pi", "vercel"]).default("vercel"),
+    conformance_deterministic_compaction: z.boolean().default(false),
     supervision: supervisionSchema.optional(),
   })
   .strict()
@@ -96,6 +97,17 @@ export const runtimeRequestSchema = z
         code: z.ZodIssueCode.custom,
         path: ["supervision"],
         message: "supervision currently requires the Pi runtime backend",
+      });
+    }
+    if (
+      request.conformance_deterministic_compaction &&
+      (request.runtime_backend !== "pi" ||
+        !request.run_id.startsWith("conformance-pi-long-chat-compaction-"))
+    ) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["conformance_deterministic_compaction"],
+        message: "deterministic compaction is restricted to the frozen Pi conformance case",
       });
     }
   });

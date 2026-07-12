@@ -128,6 +128,125 @@ async function startDeterministicSupervisorFixture(): Promise<{
   };
 }
 
+async function startDeterministicMalformedToolFixture(): Promise<{
+  target: { base_url: string; model: string };
+  close(): Promise<void>;
+}> {
+  let callCount = 0;
+  const server = createServer(async (request, response) => {
+    try {
+      if (request.method !== "POST" || request.url !== "/v1/chat/completions") {
+        response.writeHead(404, { "content-type": "application/json" });
+        response.end(JSON.stringify({ error: "not found" }));
+        return;
+      }
+      let raw = "";
+      for await (const chunk of request) raw += chunk;
+      const body = JSON.parse(raw) as {
+        model?: string;
+        messages?: Array<{ role?: string; content?: unknown }>;
+      };
+      const evidence = JSON.stringify(body.messages ?? []);
+      if (!evidence.includes("malformed arguments must never execute")) {
+        response.writeHead(422, { "content-type": "application/json" });
+        response.end(JSON.stringify({ error: "frozen malformed-tool input changed" }));
+        return;
+      }
+      callCount += 1;
+      const model = body.model ?? "understudy-deterministic-malformed-tool-v1";
+      response.writeHead(200, { "content-type": "text/event-stream" });
+      if (callCount === 1) {
+        response.write(
+          `data: ${JSON.stringify({
+            id: "chatcmpl-deterministic-malformed",
+            object: "chat.completion.chunk",
+            created: 1,
+            model,
+            choices: [
+              {
+                index: 0,
+                delta: {
+                  role: "assistant",
+                  tool_calls: [
+                    {
+                      index: 0,
+                      id: "call-deterministic-malformed",
+                      type: "function",
+                      function: { name: "status", arguments: "{bad" },
+                    },
+                  ],
+                },
+                finish_reason: null,
+              },
+            ],
+          })}\n\n`,
+        );
+        response.write(
+          `data: ${JSON.stringify({
+            id: "chatcmpl-deterministic-malformed",
+            object: "chat.completion.chunk",
+            created: 1,
+            model,
+            choices: [{ index: 0, delta: {}, finish_reason: "tool_calls" }],
+            usage: { prompt_tokens: 8, completion_tokens: 2, total_tokens: 10 },
+          })}\n\n`,
+        );
+      } else {
+        response.write(
+          `data: ${JSON.stringify({
+            id: "chatcmpl-deterministic-malformed-final",
+            object: "chat.completion.chunk",
+            created: 1,
+            model,
+            choices: [
+              {
+                index: 0,
+                delta: {
+                  role: "assistant",
+                  content: "The malformed request was rejected without execution.",
+                },
+                finish_reason: null,
+              },
+            ],
+          })}\n\n`,
+        );
+        response.write(
+          `data: ${JSON.stringify({
+            id: "chatcmpl-deterministic-malformed-final",
+            object: "chat.completion.chunk",
+            created: 1,
+            model,
+            choices: [{ index: 0, delta: {}, finish_reason: "stop" }],
+            usage: { prompt_tokens: 12, completion_tokens: 8, total_tokens: 20 },
+          })}\n\n`,
+        );
+      }
+      response.end("data: [DONE]\n\n");
+    } catch (error) {
+      response.writeHead(400, { "content-type": "application/json" });
+      response.end(JSON.stringify({ error: String(error) }));
+    }
+  });
+  await new Promise<void>((accept, reject) => {
+    server.once("error", reject);
+    server.listen(0, "127.0.0.1", () => {
+      server.off("error", reject);
+      accept();
+    });
+  });
+  const address = server.address() as AddressInfo;
+  return {
+    target: {
+      base_url: `http://127.0.0.1:${address.port}/v1`,
+      model: "understudy-deterministic-malformed-tool-v1",
+    },
+    close: () =>
+      new Promise<void>((accept, reject) =>
+        server.close((error) => (error ? reject(error) : accept())),
+      ),
+  };
+}
+
 export function registerRuntimeCommand(program: Command): void {
   const runtime = program
     .command("runtime")
@@ -225,6 +344,14 @@ export function registerRuntimeCommand(program: Command): void {
       "--deterministic-supervisor",
       "Use the built-in offline supervisor fixture to prove interruption mechanics",
     )
+    .option(
+      "--deterministic-malformed-tool",
+      "Use the built-in malformed tool-call fixture to prove parser rejection",
+    )
+    .option(
+      "--deterministic-compaction",
+      "Use the built-in bounded summary to prove compaction mechanics",
+    )
     .option("--teacher-base-url <url>", "Teacher provider URL for the supervision scenario")
     .option("--teacher-model <id>", "Teacher model for the supervision scenario")
     .option("--tool-executor-url <url>", "Authenticated loopback tool executor")
@@ -246,6 +373,8 @@ export function registerRuntimeCommand(program: Command): void {
         supervisorBaseUrl?: string;
         supervisorModel?: string;
         deterministicSupervisor?: boolean;
+        deterministicMalformedTool?: boolean;
+        deterministicCompaction?: boolean;
         teacherBaseUrl?: string;
         teacherModel?: string;
         toolExecutorUrl?: string;
@@ -305,6 +434,9 @@ export function registerRuntimeCommand(program: Command): void {
         const supervisorFixture = options.deterministicSupervisor
           ? await startDeterministicSupervisorFixture()
           : undefined;
+        const malformedToolFixture = options.deterministicMalformedTool
+          ? await startDeterministicMalformedToolFixture()
+          : undefined;
         const supervisorTarget = supervisorFixture?.target ?? {
           base_url: options.supervisorBaseUrl ?? options.baseUrl,
           model: options.supervisorModel ?? options.model,
@@ -334,6 +466,12 @@ export function registerRuntimeCommand(program: Command): void {
                 supervisor_mode: options.deterministicSupervisor
                   ? "deterministic_fixture"
                   : "model",
+                malformed_tool_mode: options.deterministicMalformedTool
+                  ? "deterministic_fixture"
+                  : "model",
+                compaction_mode: options.deterministicCompaction
+                  ? "deterministic_fixture"
+                  : "model",
                 scenario_timeout_ms: scenarioTimeoutMs,
                 tool_executor_configured: Boolean(options.toolExecutorUrl),
                 allow_remote: options.allowRemote ?? false,
@@ -358,6 +496,8 @@ export function registerRuntimeCommand(program: Command): void {
                     base_url: options.teacherBaseUrl ?? options.baseUrl!,
                     model: options.teacherModel ?? options.model!,
                   },
+                  malformed_tool: malformedToolFixture?.target,
+                  deterministic_compaction: options.deterministicCompaction,
                 });
               },
             },
@@ -365,6 +505,7 @@ export function registerRuntimeCommand(program: Command): void {
           );
         } finally {
           await supervisorFixture?.close();
+          await malformedToolFixture?.close();
         }
         const outputPath = options.output
           ? persistImmutableReport(options.output, report)

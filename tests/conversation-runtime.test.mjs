@@ -15,7 +15,10 @@ import {
 } from "../dist/runtime/conversation/lifecycle.js";
 import { runVercelConversation } from "../dist/runtime/conversation/vercel-runtime.js";
 import { runPiConversation } from "../dist/runtime/conversation/pi-runtime.js";
-import { validateRuntimeTrace } from "../dist/runtime/conversation/contract.js";
+import {
+  parseRuntimeRequest,
+  validateRuntimeTrace,
+} from "../dist/runtime/conversation/contract.js";
 import {
   executeFrozenConformanceScenario,
   runConversationAdapterConformance,
@@ -1523,6 +1526,8 @@ test("Pi and Vercel execute the identical frozen conformance inputs", async () =
       "--student-model",
       "conformance-cli-supervisor-takeover-student",
       "--deterministic-supervisor",
+      "--deterministic-malformed-tool",
+      "--deterministic-compaction",
       "--teacher-model",
       "conformance-cli-supervisor-takeover-teacher",
       "--tool-executor-url",
@@ -1546,6 +1551,8 @@ test("Pi and Vercel execute the identical frozen conformance inputs", async () =
       model: "conformance-cli",
     });
     assert.equal(cliReport.metadata.supervisor_mode, "deterministic_fixture");
+    assert.equal(cliReport.metadata.malformed_tool_mode, "deterministic_fixture");
+    assert.equal(cliReport.metadata.compaction_mode, "deterministic_fixture");
     assert.equal(
       cliReport.metadata.supervision.supervisor.model,
       "understudy-deterministic-supervisor-v1",
@@ -1589,6 +1596,82 @@ test("frozen cancellation rejects a timeout disguised as a successful stop", () 
   assert.throws(
     () => validateScenarioEvidence(input, events),
     /cancellation reason changed.*conformance_timeout_1000ms/,
+  );
+});
+
+test("malformed-tool conformance rejects shallow event-only evidence", () => {
+  const input = JSON.parse(
+    readFileSync(
+      new URL(
+        "../schemas/conversation-runtime-conformance/inputs/malformed-tool-call.json",
+        import.meta.url,
+      ),
+      "utf8",
+    ),
+  );
+  const events = readFileSync(
+    new URL(
+      "../schemas/conversation-runtime-conformance/malformed-tool-call.jsonl",
+      import.meta.url,
+    ),
+    "utf8",
+  )
+    .trim()
+    .split("\n")
+    .map((line) => JSON.parse(line));
+  assert.doesNotThrow(() => validateScenarioEvidence(input, events));
+  delete events[1].data.parse_error;
+  events[1].data.parsed_arguments = { query: "status" };
+  events[2].data.ok = true;
+  assert.throws(
+    () => validateScenarioEvidence(input, events),
+    /did not preserve a tool argument parse error/,
+  );
+});
+
+test("long-chat conformance requires actual token reduction", () => {
+  const input = JSON.parse(
+    readFileSync(
+      new URL(
+        "../schemas/conversation-runtime-conformance/inputs/long-chat-compaction.json",
+        import.meta.url,
+      ),
+      "utf8",
+    ),
+  );
+  const events = readFileSync(
+    new URL(
+      "../schemas/conversation-runtime-conformance/long-chat-restart.jsonl",
+      import.meta.url,
+    ),
+    "utf8",
+  )
+    .trim()
+    .split("\n")
+    .map((line) => JSON.parse(line));
+  assert.doesNotThrow(() => validateScenarioEvidence(input, events));
+  const compaction = events.find((event) => event.event === "compaction_boundary");
+  compaction.data.estimated_tokens_after = compaction.data.estimated_tokens_before;
+  assert.throws(
+    () => validateScenarioEvidence(input, events),
+    /did not reduce the estimated token count/,
+  );
+});
+
+test("deterministic compaction is restricted to its frozen Pi gate", () => {
+  assert.throws(
+    () =>
+      parseRuntimeRequest({
+        run_id: "ordinary-run",
+        session_id: "ordinary-session",
+        base_url: "http://127.0.0.1:1/v1",
+        model: "local-model",
+        role: "primary",
+        messages: [{ role: "user", content: "hello" }],
+        runtime_backend: "pi",
+        conformance_deterministic_compaction: true,
+      }),
+    /deterministic compaction is restricted to the frozen Pi conformance case/,
   );
 });
 

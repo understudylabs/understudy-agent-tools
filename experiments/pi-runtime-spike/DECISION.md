@@ -74,6 +74,17 @@ the remaining packaging and production soak gates pass.
   timeout with stderr discarded.
 - The expanded dependency graph passed the package smoke and `npm audit` with
   zero known vulnerabilities at this checkpoint.
+- The CLI-managed, fully offline MLX-VLM runtime passed all eight frozen
+  scenarios in one immutable run. The long-chat case compacted 18 messages to
+  6 and reduced its estimate from 1,043 tokens to 463. The image, tool,
+  restart, deterministic malformed-call rejection, deterministic takeover,
+  and terminal cancellation evidence retained exact run ids. See
+  `evidence/managed-offline-mlx-vlm-conformance-2026-07-11.json` for the
+  machine-independent, source-hash-linked summary. Interrupted student and
+  cancelled-stream usage remain explicitly unavailable rather than falsely
+  attributed as zero. The bounded compaction fixture proves deterministic
+  runtime mechanics; model-generated summary quality remains a separate soak
+  gate.
 
 ## What Pi would buy later
 

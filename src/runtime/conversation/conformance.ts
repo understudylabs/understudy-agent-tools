@@ -84,6 +84,8 @@ export type ExecutableConformanceOptions = {
   student?: RuntimeConformanceProviderTarget;
   supervisor?: RuntimeConformanceProviderTarget;
   teacher?: RuntimeConformanceProviderTarget;
+  malformed_tool?: RuntimeConformanceProviderTarget;
+  deterministic_compaction?: boolean;
 };
 
 export type RuntimeConformanceScenarioResult = {
@@ -204,6 +206,38 @@ export function validateScenarioEvidence(input: RuntimeInputFixture, values: rea
   ) {
     throw new Error(`${input.fixture_id} changed image attachment identity or ordering`);
   }
+  if (input.fixture_id === "malformed-tool-call") {
+    const malformedCalls = events.filter(
+      (event) =>
+        event.event === "tool_call" &&
+        typeof event.data.parse_error === "string" &&
+        event.data.parse_error.length > 0,
+    );
+    if (malformedCalls.length === 0) {
+      throw new Error("malformed-tool-call did not preserve a tool argument parse error");
+    }
+    for (const call of malformedCalls) {
+      const rejected = events.some(
+        (event) =>
+          event.event === "tool_result" &&
+          event.data.call_id === call.data.call_id &&
+          event.data.ok === false,
+      );
+      if (!rejected) {
+        throw new Error(`malformed tool call ${String(call.data.call_id)} was not rejected`);
+      }
+    }
+  }
+  if (input.fixture_id === "long-chat-compaction") {
+    const reduced = events.some(
+      (event) =>
+        event.event === "compaction_boundary" &&
+        Number(event.data.estimated_tokens_after) < Number(event.data.estimated_tokens_before),
+    );
+    if (!reduced) {
+      throw new Error("long-chat-compaction did not reduce the estimated token count");
+    }
+  }
   return events;
 }
 
@@ -274,7 +308,10 @@ export async function executeFrozenConformanceScenario(
   );
   const runId = `conformance-${options.backend}-${input.fixture_id}-${options.invocation_id}`;
   const sessionId = `conformance-${options.backend}-${input.fixture_id}-${options.invocation_id}`;
-  const primary = { base_url: options.base_url, model: options.model };
+  const primary =
+    input.fixture_id === "malformed-tool-call" && options.malformed_tool
+      ? options.malformed_tool
+      : { base_url: options.base_url, model: options.model };
   const request = {
     run_id: runId,
     session_id: sessionId,
@@ -291,6 +328,11 @@ export async function executeFrozenConformanceScenario(
       : {}),
     allow_remote: options.allow_remote ?? false,
     runtime_backend: options.backend,
+    ...(input.fixture_id === "long-chat-compaction" &&
+    options.backend === "pi" &&
+    options.deterministic_compaction
+      ? { conformance_deterministic_compaction: true }
+      : {}),
     ...(input.fixture_id === "supervisor-takeover" && options.backend === "pi"
       ? {
           supervision: {

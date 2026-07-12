@@ -13,6 +13,7 @@ import {
   defineTool,
   estimateTokens,
 } from "@earendil-works/pi-coding-agent";
+import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { Type } from "@earendil-works/pi-ai";
 
 import {
@@ -214,6 +215,23 @@ function buildTools(request: RuntimeRunRequest) {
       },
     }),
   );
+}
+
+function deterministicCompactionFixture(pi: ExtensionAPI): void {
+  pi.on("session_before_compact", (event) => ({
+    compaction: {
+      summary: [
+        "# Frozen conversation summary",
+        "The desktop owns presentation and consent. The runtime owns ordered conversation events. The evidence ledger owns immutable attribution.",
+        "Student partials, exact run ids, model attribution, tool activity, usage, intervention markers, image identity, and restart state remain durable.",
+        "Tools execute only through the authenticated loopback bridge; malformed calls are rejected and every call has exactly one result.",
+        "Compaction is a projection over immutable history, and fully offline proof requires live local text, image, tool, restart, and terminal evidence.",
+      ].join("\n\n"),
+      firstKeptEntryId: event.preparation.firstKeptEntryId,
+      tokensBefore: event.preparation.tokensBefore,
+      details: { fixture: "understudy-deterministic-compaction-v1" },
+    },
+  }));
 }
 
 async function emitInputEvidence(
@@ -427,7 +445,10 @@ async function createPiRuntimeSession(options: {
     cwd,
     agentDir: join(root, "agent"),
     settingsManager,
-    noExtensions: true,
+    extensionFactories: request.conformance_deterministic_compaction
+      ? [{ name: "understudy-deterministic-compaction", factory: deterministicCompactionFixture }]
+      : [],
+    noExtensions: !request.conformance_deterministic_compaction,
     noSkills: true,
     noPromptTemplates: true,
     noThemes: true,
