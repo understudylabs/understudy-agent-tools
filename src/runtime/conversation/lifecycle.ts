@@ -64,6 +64,18 @@ function writeSecret(path: string): string {
   return value;
 }
 
+function writeToolSecret(path: string): string {
+  const provided = process.env.UNDERSTUDY_RUNTIME_TOOL_TOKEN?.trim();
+  if (provided !== undefined) {
+    if (provided.length < 32) {
+      throw new Error("UNDERSTUDY_RUNTIME_TOOL_TOKEN must contain at least 32 characters");
+    }
+    writeFileSync(path, `${provided}\n`, { mode: 0o600 });
+    return provided;
+  }
+  return writeSecret(path);
+}
+
 function readState(path: string): ConversationRuntimeState | null {
   try {
     const value = JSON.parse(readFileSync(path, "utf8")) as ConversationRuntimeState;
@@ -158,7 +170,9 @@ export async function startConversationRuntime(): Promise<ConversationRuntimeSta
   installConversationRuntime();
   rmSync(location.state, { force: true });
   const token = writeSecret(location.token);
-  const toolToken = writeSecret(location.toolToken);
+  // Desktop may inject its existing private loopback bearer so the sidecar
+  // can execute tools without creating a second unauditable auth domain.
+  const toolToken = writeToolSecret(location.toolToken);
   const logFd = openSync(location.log, "a", 0o600);
   const child = spawn(
     process.execPath,

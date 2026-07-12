@@ -41,10 +41,10 @@
     "check": "npm run build && npm run typecheck && npm test && npm run skills:validate && npm run package:smoke"
   },
   "dependencies": {
-    "@ai-sdk/openai-compatible": "3.0.7",
+    "@ai-sdk/openai-compatible": "2.0.59",
     "@anthropic-ai/sdk": "^0.102.0",
     "@inquirer/prompts": "^8.4.3",
-    "ai": "7.0.7",
+    "ai": "6.0.224",
     "commander": "^14.0.3",
     "kleur": "^4.1.5",
     "openai": "^6.42.0",

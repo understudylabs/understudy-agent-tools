@@ -48,10 +48,7 @@ function toModelMessage(message: RuntimeInputMessage): ModelMessage {
         { type: "text", text: message.content },
         ...message.attachments.map((attachment) => ({
           type: "file" as const,
-          data: {
-            type: "data" as const,
-            data: validateAttachmentBytes(attachment),
-          },
+          data: validateAttachmentBytes(attachment),
           mediaType: attachment.media_type,
           filename: attachment.filename,
         })),
@@ -70,8 +67,10 @@ function buildTools(request: RuntimeRunRequest): ToolSet | undefined {
       dynamicTool({
         description: definition.description,
         inputSchema: jsonSchema(definition.input_schema),
-        execute: executorUrl
-          ? async (input, { toolCallId, abortSignal }) => {
+        execute: async (input, { toolCallId, abortSignal }) => {
+              if (!executorUrl) {
+                throw new Error("local tool executor is unavailable");
+              }
               const response = await fetch(executorUrl, {
                 method: "POST",
                 signal: abortSignal,
@@ -96,8 +95,7 @@ function buildTools(request: RuntimeRunRequest): ToolSet | undefined {
                 throw new Error(payload.error || `tool executor returned ${response.status}`);
               }
               return payload.result ?? null;
-            }
-          : undefined,
+            },
       }),
     ]),
   );

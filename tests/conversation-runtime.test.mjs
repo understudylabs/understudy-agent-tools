@@ -27,6 +27,8 @@ after(async () => {
 });
 
 test("CLI lifecycle installs, starts, diagnoses, and stops the packaged sidecar", async () => {
+  const injectedToolToken = "desktop-loopback-token-".padEnd(64, "a");
+  process.env.UNDERSTUDY_RUNTIME_TOOL_TOKEN = injectedToolToken;
   const installed = installConversationRuntime();
   assert.equal(installed.installed, true);
   assert.equal(installed.running, false);
@@ -38,6 +40,7 @@ test("CLI lifecycle installs, starts, diagnoses, and stops the packaged sidecar"
   assert.equal(statSync(running.token_path).mode & 0o077, 0);
   assert.equal(statSync(running.tool_token_path).mode & 0o077, 0);
   assert.ok(readFileSync(running.token_path, "utf8").trim().length >= 64);
+  assert.equal(readFileSync(running.tool_token_path, "utf8").trim(), injectedToolToken);
 
   const probed = await conversationRuntimeStatus();
   assert.equal(probed.healthy, true);
@@ -45,6 +48,7 @@ test("CLI lifecycle installs, starts, diagnoses, and stops the packaged sidecar"
   const stopped = await stopConversationRuntime();
   assert.equal(stopped.running, false);
   assert.equal(stopped.healthy, false);
+  delete process.env.UNDERSTUDY_RUNTIME_TOOL_TOKEN;
 });
 
 test("Vercel runtime emits canonical input, delta, and provider usage", async () => {
