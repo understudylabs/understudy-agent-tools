@@ -20,6 +20,7 @@ import {
   runPiConversation,
   supervisorDecisionMarker,
   teacherContinuationBoundary,
+  teacherOutputMode,
 } from "../dist/runtime/conversation/pi-runtime.js";
 import {
   parseRuntimeRequest,
@@ -669,11 +670,13 @@ test("Pi runtime deterministically interrupts a student and continues with the t
   assert.equal(interruption.data.partial_text, "Paris is in Germany.");
   assert.equal(interruption.data.marker_id, verdict.data.marker_id);
   assert.equal(continuation.data.marker_id, verdict.data.marker_id);
+  assert.equal(continuation.data.output_mode, "append");
   assert.deepEqual(
     events.filter((event) => event.event === "usage").map((event) => event.data.role),
     ["supervisor", "student", "teacher"],
   );
   assert.match(JSON.stringify(requests.at(-1).messages), /Paris is in Germany/);
+  assert.match(JSON.stringify(requests.at(-1).messages), /wrong country/);
   validateRuntimeTrace(events);
   const rendered = events
     .filter((event) => event.event === "delta")
@@ -687,6 +690,11 @@ test("teacher continuation inserts only a missing word boundary", () => {
   assert.equal(teacherContinuationBoundary("inventory is 9. ", "but the price"), "");
   assert.equal(teacherContinuationBoundary("inventory is 9", ", but the price"), "");
   assert.equal(teacherContinuationBoundary("", "fresh answer"), "");
+});
+
+test("teacher output replaces only a completed rejected answer", () => {
+  assert.equal(teacherOutputMode(false), "append");
+  assert.equal(teacherOutputMode(true), "replace");
 });
 
 test("every supervisor decision gets a stable labelable marker", () => {

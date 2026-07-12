@@ -37,16 +37,17 @@ export function scoreObject(actual, expected) {
 
 export function summarizeEvents(events, elapsedMs) {
   const outputByRole = {};
-  for (const event of events.filter(
-    (event) => event.event === "delta" && typeof event.data?.text === "string",
-  )) {
+  let output = "";
+  for (const event of events) {
+    if (event.event === "teacher_continuation" && event.data?.output_mode === "replace") {
+      output = "";
+      continue;
+    }
+    if (event.event !== "delta" || typeof event.data?.text !== "string") continue;
     const role = String(event.data?.role ?? "unknown");
     outputByRole[role] = `${outputByRole[role] ?? ""}${event.data.text}`;
+    output += event.data.text;
   }
-  const output = events
-    .filter((event) => event.event === "delta" && typeof event.data?.text === "string")
-    .map((event) => event.data.text)
-    .join("");
   const usage = {};
   for (const event of events.filter((event) => event.event === "usage")) {
     const role = String(event.data?.role ?? "unknown");

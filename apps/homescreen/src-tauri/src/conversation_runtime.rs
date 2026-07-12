@@ -16,7 +16,7 @@ use sha2::{Digest, Sha256};
 use tauri::{AppHandle, Manager};
 
 pub(crate) const EVENT_SCHEMA: &str = "understudy-conversation-runtime-event-v1";
-pub(crate) const RUNTIME_VERSION: &str = "0.3.2";
+pub(crate) const RUNTIME_VERSION: &str = "0.3.3";
 
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
@@ -37,6 +37,14 @@ pub(crate) enum RuntimeVerdict {
     Interrupt,
     Stop,
     Nudge,
+}
+
+#[derive(Clone, Copy, Debug, Default, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub(crate) enum TeacherOutputMode {
+    #[default]
+    Append,
+    Replace,
 }
 
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq)]
@@ -110,6 +118,8 @@ pub(crate) enum RuntimeEvent {
         reason: String,
         teacher_model: String,
         from_partial_chars: u64,
+        #[serde(default)]
+        output_mode: TeacherOutputMode,
     },
     Cancellation {
         stage: String,
@@ -540,6 +550,7 @@ mod tests {
                     reason: "correct it".to_string(),
                     teacher_model: "teacher".to_string(),
                     from_partial_chars: 7,
+                    output_mode: TeacherOutputMode::Append,
                 },
             ),
         ];

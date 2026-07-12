@@ -480,6 +480,10 @@ export function teacherContinuationBoundary(partial: string, firstDelta: string)
   return " ";
 }
 
+export function teacherOutputMode(studentCompleted: boolean): "append" | "replace" {
+  return studentCompleted ? "replace" : "append";
+}
+
 async function createPiRuntimeSession(options: {
   request: RuntimeRunRequest;
   target: RuntimeProviderTarget;
@@ -856,6 +860,7 @@ async function runSupervisedStudentSegment(options: {
   markerId?: string;
   nextBoundaryOrdinal: number;
   terminal: boolean;
+  studentCompleted: boolean;
 }> {
   const { request, config, writer, messages, abortSignal } = options;
   const { session } = await createPiRuntimeSession({
@@ -947,11 +952,13 @@ async function runSupervisedStudentSegment(options: {
   const abort = () => void session.abort();
   abortSignal?.addEventListener("abort", abort, { once: true });
   let promptError: unknown;
+  let studentCompleted = false;
   try {
     await session.prompt(latest.content, {
       images: imageContent(latest),
       expandPromptTemplates: false,
     });
+    studentCompleted = !plannedAbort;
   } catch (error) {
     promptError = error;
   }
@@ -993,6 +1000,7 @@ async function runSupervisedStudentSegment(options: {
           },
           nextBoundaryOrdinal: boundaryOrdinal,
           terminal: true,
+          studentCompleted,
         };
       }
       if (finalDecision.verdict === "nudge" && !options.allowNudge) {
@@ -1034,6 +1042,7 @@ async function runSupervisedStudentSegment(options: {
     terminal: Boolean(
       abortSignal?.aborted || (!decision && promptError) || adapter.terminalEmitted(),
     ),
+    studentCompleted,
   };
 }
 
@@ -1045,12 +1054,17 @@ async function runTeacherContinuation(options: {
   partial: string;
   markerId: string;
   reason: string;
+  outputMode: "append" | "replace";
   abortSignal?: AbortSignal;
 }): Promise<void> {
-  const prompt =
-    "The partial assistant answer above was written by a smaller model that has been interrupted. " +
-    "Continue it seamlessly from the exact point it stopped. Correct the problem identified by the " +
-    "supervisor without repeating, rephrasing, or summarizing text already written.";
+  const supervisorReason =
+    `\n\nThe supervisor identified this specific problem:\n<supervisor_reason>\n${options.reason}\n</supervisor_reason>`;
+  const prompt = options.outputMode === "replace"
+    ? "The completed assistant answer above was rejected by a supervisor. Produce one complete corrected replacement answer that satisfies the original user request. Do not mention the rejected answer or the supervision process." +
+      supervisorReason
+    : "The partial assistant answer above was written by a smaller model that has been interrupted. " +
+      "Continue it seamlessly from the exact point it stopped without repeating, rephrasing, or summarizing text already written." +
+      supervisorReason;
   const messages: RuntimeInputMessage[] = [
     ...options.request.messages,
     { role: "assistant", content: options.partial },
@@ -1061,6 +1075,7 @@ async function runTeacherContinuation(options: {
     reason: options.reason,
     teacher_model: options.config.teacher.model,
     from_partial_chars: characterCount(options.partial),
+    output_mode: options.outputMode,
   });
   const { session } = await createPiRuntimeSession({
     request: options.request,
@@ -1074,8 +1089,10 @@ async function runTeacherContinuation(options: {
     role: "teacher",
     model: options.config.teacher.model,
     abortReason: () => options.abortSignal?.reason,
-    transformTextDelta: (delta, first) =>
-      first ? `${teacherContinuationBoundary(options.partial, delta)}${delta}` : delta,
+    transformTextDelta: (delta, first) => {
+      if (options.outputMode === "replace") return delta;
+      return first ? `${teacherContinuationBoundary(options.partial, delta)}${delta}` : delta;
+    },
   });
   const abort = () => void session.abort();
   options.abortSignal?.addEventListener("abort", abort, { once: true });
@@ -1178,6 +1195,7 @@ async function runPiSupervisedConversation(
       partial: totalPartial,
       markerId,
       reason,
+      outputMode: teacherOutputMode(segment.studentCompleted),
       abortSignal,
     });
     return;

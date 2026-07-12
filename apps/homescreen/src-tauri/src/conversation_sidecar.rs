@@ -179,15 +179,23 @@ struct SidecarAccumulator {
     compacted: bool,
     context_tokens_before: u64,
     pending_tools: HashMap<String, String>,
+    replace_next_teacher_delta: bool,
 }
 
 impl SidecarAccumulator {
     fn observe(&mut self, envelope: &RuntimeEventEnvelope) -> Option<ChatEvent> {
         match &envelope.event {
-            RuntimeEvent::Delta { text, .. } => {
+            RuntimeEvent::Delta { role, text, .. } => {
                 self.content.push_str(text);
                 self.emitted_output |= !text.is_empty();
-                Some(ChatEvent::Chunk { text: text.clone() })
+                if self.replace_next_teacher_delta
+                    && matches!(role, crate::conversation_runtime::RuntimeRole::Teacher)
+                {
+                    self.replace_next_teacher_delta = false;
+                    Some(ChatEvent::ReplaceChunk { text: text.clone() })
+                } else {
+                    Some(ChatEvent::Chunk { text: text.clone() })
+                }
             }
             RuntimeEvent::ReasoningDelta { text, .. } => {
                 self.emitted_output |= !text.is_empty();
@@ -291,12 +299,24 @@ impl SidecarAccumulator {
                 detail: format!("run={} marker={} · {reason}", envelope.run_id, marker_id),
             }),
             RuntimeEvent::TeacherContinuation {
-                reason, marker_id, ..
-            } => Some(ChatEvent::SidekickEvent {
-                mode: "supervision".to_string(),
-                stage: "teacher_continuation".to_string(),
-                detail: format!("run={} marker={} · {reason}", envelope.run_id, marker_id),
-            }),
+                reason,
+                marker_id,
+                output_mode,
+                ..
+            } => {
+                if matches!(
+                    output_mode,
+                    crate::conversation_runtime::TeacherOutputMode::Replace
+                ) {
+                    self.content.clear();
+                    self.replace_next_teacher_delta = true;
+                }
+                Some(ChatEvent::SidekickEvent {
+                    mode: "supervision".to_string(),
+                    stage: "teacher_continuation".to_string(),
+                    detail: format!("run={} marker={} · {reason}", envelope.run_id, marker_id),
+                })
+            }
             RuntimeEvent::CompactionBoundary {
                 estimated_tokens_before,
                 ..
@@ -851,28 +871,79 @@ pub(crate) async fn conversation_runtime_cancel(session_id: String) -> Result<Va
 mod tests {
     use super::*;
 
-    #[test]
-    fn visible_output_closes_native_retry_boundary() {
-        let mut accumulator = SidecarAccumulator::default();
-        let envelope = RuntimeEventEnvelope {
+    fn envelope(sequence: u64, event: RuntimeEvent) -> RuntimeEventEnvelope {
+        RuntimeEventEnvelope {
             schema_version: EVENT_SCHEMA.to_string(),
-            event_id: "run-1:0".to_string(),
+            event_id: format!("run-1:{sequence}"),
             run_id: "run-1".to_string(),
             session_id: "session-1".to_string(),
             runtime_id: "pi-agent-session".to_string(),
-            sequence: 0,
+            sequence,
             emitted_at: "2026-07-12T00:00:00Z".to_string(),
-            event: RuntimeEvent::Delta {
+            event,
+        }
+    }
+
+    #[test]
+    fn visible_output_closes_native_retry_boundary() {
+        let mut accumulator = SidecarAccumulator::default();
+        let envelope = envelope(
+            0,
+            RuntimeEvent::Delta {
                 role: crate::conversation_runtime::RuntimeRole::Primary,
                 text: "visible".to_string(),
                 model: Some("local".to_string()),
             },
-        };
+        );
         assert!(matches!(
             accumulator.observe(&envelope),
             Some(ChatEvent::Chunk { .. })
         ));
         assert!(accumulator.emitted_output);
+    }
+
+    #[test]
+    fn rejected_completed_output_is_replaced_by_teacher_delta() {
+        let mut accumulator = SidecarAccumulator::default();
+        accumulator.observe(&envelope(
+            0,
+            RuntimeEvent::Delta {
+                role: crate::conversation_runtime::RuntimeRole::Student,
+                text: "wrong".to_string(),
+                model: Some("student".to_string()),
+            },
+        ));
+        let continuation = accumulator.observe(&envelope(
+            1,
+            RuntimeEvent::TeacherContinuation {
+                marker_id: "run-1:intervention:0".to_string(),
+                reason: "wrong answer".to_string(),
+                teacher_model: "teacher".to_string(),
+                from_partial_chars: 5,
+                output_mode: crate::conversation_runtime::TeacherOutputMode::Replace,
+            },
+        ));
+        assert!(matches!(
+            continuation,
+            Some(ChatEvent::SidekickEvent { .. })
+        ));
+        assert!(accumulator.content.is_empty());
+        assert!(accumulator.replace_next_teacher_delta);
+
+        let replacement = accumulator.observe(&envelope(
+            2,
+            RuntimeEvent::Delta {
+                role: crate::conversation_runtime::RuntimeRole::Teacher,
+                text: "correct".to_string(),
+                model: Some("teacher".to_string()),
+            },
+        ));
+        assert!(matches!(
+            replacement,
+            Some(ChatEvent::ReplaceChunk { ref text }) if text == "correct"
+        ));
+        assert_eq!(accumulator.content, "correct");
+        assert!(!accumulator.replace_next_teacher_delta);
     }
 
     #[test]

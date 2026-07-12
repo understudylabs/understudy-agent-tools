@@ -26,6 +26,9 @@ pub enum ChatEvent {
     Chunk {
         text: String,
     },
+    ReplaceChunk {
+        text: String,
+    },
     ReasoningChunk {
         text: String,
     },

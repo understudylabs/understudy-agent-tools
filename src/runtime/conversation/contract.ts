@@ -8,7 +8,7 @@ export const CONFORMANCE_SCHEMA =
 export const RUNTIME_ID = "understudy-conversation-sidecar";
 export const VERCEL_RUNTIME_ID = "vercel-ai-sdk";
 export const PI_RUNTIME_ID = "pi-agent-session";
-export const RUNTIME_VERSION = "0.3.2";
+export const RUNTIME_VERSION = "0.3.3";
 
 export function piNodeSupported(version = process.versions.node): boolean {
   const [major, minor] = version.split(".").map(Number);
@@ -462,6 +462,12 @@ export function validateRuntimeTrace(values: readonly unknown[]): RuntimeEventEn
       const marker = requiredString(data, "marker_id", "teacher_continuation.marker_id");
       requiredString(data, "reason", "teacher_continuation.reason");
       requiredString(data, "teacher_model", "teacher_continuation.teacher_model");
+      if (
+        "output_mode" in data &&
+        !["append", "replace"].includes(String(data.output_mode))
+      ) {
+        throw new Error("teacher_continuation.output_mode must be append or replace");
+      }
       if (!interruptedMarkers.has(marker)) {
         throw new Error(`teacher continuation ${marker} has no student interruption`);
       }

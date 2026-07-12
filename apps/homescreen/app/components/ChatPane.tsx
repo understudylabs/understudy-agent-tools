@@ -72,6 +72,7 @@ type Msg = {
 type ChatEvent =
   | { type: "Notice"; message: string }
   | { type: "Chunk"; text: string }
+  | { type: "ReplaceChunk"; text: string }
   | { type: "ReasoningChunk"; text: string }
   | { type: "ToolCall"; name: string; args: unknown }
   | { type: "ToolResult"; name: string; ok: boolean; result: unknown }
@@ -466,6 +467,15 @@ export function ChatPane({ resetToken }: { resetToken: number }) {
           const p = [...prev];
           const last = p.length - 1;
           p[last] = { ...p[last], content: p[last].content + msg.text };
+          return p;
+        });
+      } else if (msg.type === "ReplaceChunk") {
+        setAssistantSpeaking(true);
+        setMessages((prev) => {
+          if (prev.length === 0) return prev;
+          const p = [...prev];
+          const last = p.length - 1;
+          p[last] = { ...p[last], content: msg.text };
           return p;
         });
       } else if (msg.type === "ReasoningChunk") {
