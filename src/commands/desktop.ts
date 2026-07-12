@@ -19,6 +19,22 @@ interface RuntimeEvent {
   data?: Record<string, unknown>;
 }
 
+interface DesktopMigrationStatus {
+  schema_version?: string;
+  app_version?: string;
+  runtime_version?: string;
+  observed_row_limit?: number;
+  required_canonical_runtime_rows?: number;
+  remaining_canonical_runtime_rows?: number;
+  canonical_runtime_rows?: number;
+  pi_runtime_rows?: number;
+  compatibility_fallback_rows?: number;
+  pi_runtime_share?: number | null;
+  compatibility_engine_delete_ready?: boolean;
+}
+
+const REQUIRED_CANONICAL_RELEASE_RUNS = 100;
+
 function positiveInteger(value: string): number {
   const parsed = Number(value);
   if (!Number.isInteger(parsed) || parsed <= 0) throw new Error("value must be a positive integer");
@@ -173,6 +189,55 @@ export function registerDesktopCommand(program: Command): void {
       const capability = await requireDesktopApi();
       const value = await desktopControlJson(capability, "/v1/status", "/api/status");
       printStructured(value, jsonRequested(this, opts.json));
+    });
+
+  desktop
+    .command("migration-status")
+    .description("Check the one-release Pi adoption gate before deleting the Rust fallback.")
+    .option("--limit <n>", "Most-recent canonical/fallback rows to inspect", positiveInteger, 250)
+    .option("--require-ready", "Exit non-zero until 100 canonical runs have zero fallbacks")
+    .option("--json", "Output JSON")
+    .action(async function (
+      this: Command,
+      opts: { limit: number; requireReady?: boolean; json?: boolean },
+    ) {
+      const capability = await requireDesktopApi();
+      const query = `?limit=${opts.limit}`;
+      const value = await desktopControlJson(
+        capability,
+        `/v1/metrics/chat-routes${query}`,
+        `/api/chat/route-metrics${query}`,
+      ) as DesktopMigrationStatus;
+      const required = Number(
+        value.required_canonical_runtime_rows ?? REQUIRED_CANONICAL_RELEASE_RUNS,
+      );
+      const canonical = Number(value.canonical_runtime_rows ?? 0);
+      const piRows = Number(value.pi_runtime_rows ?? 0);
+      const fallbacks = Number(value.compatibility_fallback_rows ?? 0);
+      const ready = value.compatibility_engine_delete_ready === true;
+      const remaining = Number(
+        value.remaining_canonical_runtime_rows ?? Math.max(0, required - canonical),
+      );
+      const output = {
+        ...value,
+        required_canonical_runtime_rows: required,
+        remaining_canonical_runtime_rows: remaining,
+        observed_row_limit: value.observed_row_limit ?? opts.limit,
+      };
+      const share = value.pi_runtime_share == null
+        ? "unavailable"
+        : `${(value.pi_runtime_share * 100).toFixed(1)}%`;
+      printStructured(
+        output,
+        jsonRequested(this, opts.json),
+        [
+          `Pi migration: ${ready ? "ready for Rust fallback deletion" : "observing compatibility release"}`,
+          `release cohort: app ${value.app_version ?? "unknown"}, runtime ${value.runtime_version ?? "unknown"}`,
+          `canonical runs: ${canonical}/${required} (${remaining} remaining)`,
+          `Pi runs: ${piRows} (${share}); compatibility fallbacks: ${fallbacks}`,
+        ].join("\n"),
+      );
+      if (opts.requireReady && !ready) process.exitCode = 2;
     });
 
   const models = desktop.command("model").description("Inspect Desktop model inventory.");

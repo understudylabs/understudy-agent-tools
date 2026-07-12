@@ -43,4 +43,19 @@ describe("desktop grocery proof", () => {
     assert.equal(summary.small_model_output_share, 0.5);
     assert.equal(summary.supervisor_token_overhead, 9 / 26);
   });
+
+  it("replaces a rejected completed answer while retaining role evidence", () => {
+    const events = [
+      { event: "delta", data: { role: "student", text: '{"answer":"wrong"}' } },
+      { event: "student_interruption", data: { partial_text: '{"answer":"wrong"}' } },
+      { event: "teacher_continuation", data: { output_mode: "replace" } },
+      { event: "delta", data: { role: "teacher", text: '{"answer":"correct"}' } },
+    ];
+    const summary = summarizeEvents(events, 42);
+    assert.equal(summary.output, '{"answer":"correct"}');
+    assert.deepEqual(summary.output_by_role, {
+      student: '{"answer":"wrong"}',
+      teacher: '{"answer":"correct"}',
+    });
+  });
 });

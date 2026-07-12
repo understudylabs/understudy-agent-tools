@@ -259,7 +259,11 @@ pub fn snapshots() -> Vec<SnapshotInfo> {
 
 pub fn mlx_runtime_status() -> MlxRuntimeStatus {
     let command = crate::bin::mlx_server();
-    match crate::bin::command("mlx_vlm.server").arg("--help").output() {
+    match std::process::Command::new(&command)
+        .arg("--help")
+        .env("PATH", crate::bin::runtime_path())
+        .output()
+    {
         Ok(out) if out.status.success() => MlxRuntimeStatus {
             available: true,
             command,

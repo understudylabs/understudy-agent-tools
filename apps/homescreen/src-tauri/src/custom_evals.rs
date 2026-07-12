@@ -229,8 +229,7 @@ type CsvRows = (Vec<(usize, ParsedExample)>, Vec<ImportRowError>);
 
 fn parse_csv_rows(content: &str) -> Result<CsvRows, String> {
     let records = parse_csv_records(content);
-    let is_blank =
-        |record: &[String]| record.iter().all(|cell| cell.trim().is_empty());
+    let is_blank = |record: &[String]| record.iter().all(|cell| cell.trim().is_empty());
     let header_idx = records
         .iter()
         .position(|record| !is_blank(record))
@@ -246,10 +245,11 @@ fn parse_csv_rows(content: &str) -> Result<CsvRows, String> {
     };
     let prompt_idx = column(&["input", "prompt"])
         .ok_or_else(|| "CSV header must include an 'input' or 'prompt' column".to_string())?;
-    let expected_idx = column(&["expected", "expected_output", "scoring_hint"]).ok_or_else(
-        || "CSV header must include an 'expected', 'expected_output', or 'scoring_hint' column"
-            .to_string(),
-    )?;
+    let expected_idx =
+        column(&["expected", "expected_output", "scoring_hint"]).ok_or_else(|| {
+            "CSV header must include an 'expected', 'expected_output', or 'scoring_hint' column"
+                .to_string()
+        })?;
     let id_idx = column(&["id", "task_id"]);
 
     let mut rows = vec![];
@@ -263,10 +263,7 @@ fn parse_csv_rows(content: &str) -> Result<CsvRows, String> {
         if record.len() < needed {
             errors.push(ImportRowError {
                 line,
-                reason: format!(
-                    "expected at least {needed} columns, found {}",
-                    record.len()
-                ),
+                reason: format!("expected at least {needed} columns, found {}", record.len()),
             });
             continue;
         }
@@ -642,6 +639,7 @@ async fn run_custom_eval_inner(
                 expected_signal: format!("{}: {}", rule.as_str(), example.expected),
             });
         }
+        let capture_run_id = crate::conversation_runtime::new_run_id()?;
         let attempt = crate::chat::agent_chat(
             &app,
             mgr.inner(),
@@ -649,8 +647,13 @@ async fn run_custom_eval_inner(
             &run_id,
             &example.prompt,
             None,
+            Some(&capture_run_id),
         )
         .await;
+        let runtime_backend = attempt
+            .as_ref()
+            .map(|result| result.runtime_backend.clone())
+            .unwrap_or_else(|_| "unknown".to_string());
         // Mirror the Fusion harness semantics: an executed non-ok attempt and
         // a failed request both count as scored failures (score 0) because a
         // gold answer exists for every example; the recorded status keeps the
@@ -668,8 +671,7 @@ async fn run_custom_eval_inner(
             Ok(result) if result.status == "ok" => {
                 match score_output(rule, &example.expected, &result.content) {
                     Ok(score) => {
-                        let note =
-                            format!("score={score}; output_chars={}", result.content.len());
+                        let note = format!("score={score}; output_chars={}", result.content.len());
                         (
                             "ok".to_string(),
                             Some(score),
@@ -705,6 +707,8 @@ async fn run_custom_eval_inner(
         };
         db.record_fusion_benchmark(&FusionBenchmarkInput {
             run_id: run_id.clone(),
+            capture_run_id: Some(capture_run_id),
+            runtime_backend,
             task_id: example.task_id.clone(),
             mode: CUSTOM_EVAL_MODE.to_string(),
             model: model.clone(),
@@ -818,7 +822,12 @@ mod tests {
     #[test]
     fn contains_rule_is_substring_match() {
         assert_eq!(
-            score_output(ScoringRule::Contains, "billing", "Route this to billing please").unwrap(),
+            score_output(
+                ScoringRule::Contains,
+                "billing",
+                "Route this to billing please"
+            )
+            .unwrap(),
             1.0
         );
         assert_eq!(
@@ -858,8 +867,7 @@ mod tests {
             "{\"input\": \"no expected here\"}\n",
             "{\"input\": \"numeric id\", \"scoring_hint\": \"hint\", \"task_id\": 7}\n",
         );
-        let (examples, errors) =
-            parse_examples(content, "jsonl", ScoringRule::Contains).unwrap();
+        let (examples, errors) = parse_examples(content, "jsonl", ScoringRule::Contains).unwrap();
         assert_eq!(examples.len(), 3);
         assert_eq!(examples[0].task_id, "row-1");
         assert_eq!(examples[0].prompt, "What is 2+2?");
@@ -1069,6 +1077,8 @@ mod tests {
         let row = |task_id: &str, score: Option<f64>, status: &str, elapsed: Option<u64>| {
             crate::db::FusionBenchmarkInput {
                 run_id: "custom-support-triage-1-99".into(),
+                capture_run_id: Some(format!("desktop-{task_id}")),
+                runtime_backend: "pi".into(),
                 task_id: task_id.into(),
                 mode: CUSTOM_EVAL_MODE.into(),
                 model: "gemma-4-e2b-it-qat-understudy".into(),

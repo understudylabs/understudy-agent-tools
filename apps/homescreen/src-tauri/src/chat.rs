@@ -20,7 +20,13 @@ use crate::route_policy::{
 #[derive(Serialize, Clone)]
 #[serde(tag = "type")]
 pub enum ChatEvent {
+    Notice {
+        message: String,
+    },
     Chunk {
+        text: String,
+    },
+    ReplaceChunk {
         text: String,
     },
     ReasoningChunk {
@@ -50,12 +56,32 @@ pub enum ChatEvent {
 pub struct ChatMsg {
     pub role: String,
     pub content: String,
+    #[serde(default)]
+    pub attachments: Vec<ChatAttachment>,
+}
+
+#[derive(Clone, Deserialize)]
+pub struct ChatAttachment {
+    pub id: String,
+    pub filename: String,
+    pub media_type: String,
+    pub data_url: String,
+}
+
+#[derive(Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct AgentChatAttachmentUpload {
+    pub(crate) filename: String,
+    pub(crate) media_type: String,
+    pub(crate) data_url: String,
 }
 
 #[derive(Serialize)]
 pub struct BenchmarkChatResult {
+    pub capture_run_id: String,
     pub content: String,
     pub status: String,
+    pub runtime_backend: String,
     pub elapsed_ms: u64,
     pub tool_calls: u64,
     pub prompt_tokens: u64,
@@ -106,6 +132,7 @@ const SIDEKICK_MEMORY_PREFIX: &str = "Sidekick compacted memory:";
 const CHAT_COMPACTION_TOKEN_THRESHOLD: u64 = 12_000;
 const CHAT_RECENT_CONTEXT_MESSAGES: usize = 12;
 const CHAT_COMPACTED_CONTEXT_PREFIX: &str = "Chat compacted context:";
+const SMALL_FIRST_SUPERVISOR_PROMPT: &str = "Judge whether the smaller student's partial answer is correct, relevant, safe, and using tools appropriately. INTERRUPT factual errors, invented evidence, wrong tool arguments, irrelevant refusals, or confident claims unsupported by tool results so the teacher can correct them. NUDGE only when a short concrete correction can let the student continue. CONTINUE when the partial is sound, including when a sound answer is complete. Never use STOP for an incorrect, incomplete, irrelevant, or otherwise correctable answer; STOP is reserved for a turn that must end without any teacher response. Give one concise, specific reason for every INTERRUPT or NUDGE.";
 
 const SIDEKICK_SESSION_CACHE_MAX: usize = 32;
 
@@ -486,7 +513,7 @@ pub(crate) struct ToolCallAcc {
     pub(crate) arguments: String,
 }
 
-fn tool_schemas() -> Vec<Value> {
+pub(crate) fn tool_schemas() -> Vec<Value> {
     vec![
         json!({
             "type": "function",
@@ -586,15 +613,8 @@ fn tool_schemas() -> Vec<Value> {
                         "tool_name": {
                             "type": "string",
                             "enum": [
-                                "status",
-                                "list_models",
-                                "list_snapshot_models",
-                                "residency",
                                 "knowledge_dossiers",
                                 "local_benchmarks",
-                                "list_traces",
-                                "search_traces",
-                                "open_trace",
                                 "ui_focus"
                             ]
                         },
@@ -623,8 +643,6 @@ fn tool_schemas() -> Vec<Value> {
                                 "skills_search",
                                 "skills_inspect",
                                 "doctor",
-                                "status",
-                                "models_snapshots",
                                 "models_pull_plan"
                             ]
                         },
@@ -651,7 +669,7 @@ fn benchmark_tool_schemas(allow_sidekick_tool: bool) -> Vec<Value> {
         .collect()
 }
 
-async fn tool_result(
+pub(crate) async fn tool_result(
     app: &AppHandle,
     mgr: &Residency,
     active_slot_id: Option<u32>,
@@ -993,10 +1011,6 @@ fn sidekick_tool_schemas() -> Vec<Value> {
                         "tool_name": {
                             "type": "string",
                             "enum": [
-                                "status",
-                                "list_models",
-                                "list_snapshot_models",
-                                "residency",
                                 "knowledge_dossiers",
                                 "local_benchmarks",
                                 "fusion_benchmark_matrix",
@@ -1006,10 +1020,7 @@ fn sidekick_tool_schemas() -> Vec<Value> {
                                 "chat_runs",
                                 "chat_route_metrics",
                                 "sidekick_metrics",
-                                "sidekick_session_summaries",
-                                "list_traces",
-                                "search_traces",
-                                "open_trace"
+                                "sidekick_session_summaries"
                             ]
                         },
                         "arguments": { "type": "object" }
@@ -1803,17 +1814,44 @@ fn approximate_messages_tokens(messages: &[Value]) -> u64 {
     messages
         .iter()
         .filter_map(|message| message.get("content"))
-        .map(|content| match content {
-            Value::String(text) => approximate_token_count(text),
-            other => approximate_token_count(&other.to_string()),
-        })
+        .map(approximate_content_tokens)
         .sum()
+}
+
+fn approximate_content_tokens(content: &Value) -> u64 {
+    match content {
+        Value::String(text) => approximate_token_count(text),
+        Value::Array(parts) => parts
+            .iter()
+            .map(|part| match part.get("type").and_then(Value::as_str) {
+                Some("text") => part
+                    .get("text")
+                    .and_then(Value::as_str)
+                    .map(approximate_token_count)
+                    .unwrap_or(0),
+                Some("image_url") => 1_200,
+                _ => 0,
+            })
+            .sum(),
+        _ => 0,
+    }
 }
 
 fn chat_message_content(message: &Value) -> Option<String> {
     match message.get("content")? {
         Value::String(text) => Some(text.to_string()),
-        other => Some(other.to_string()),
+        Value::Array(parts) => Some(
+            parts
+                .iter()
+                .filter_map(|part| match part.get("type").and_then(Value::as_str) {
+                    Some("text") => part.get("text").and_then(Value::as_str).map(str::to_string),
+                    Some("image_url") => Some("[image attachment]".to_string()),
+                    _ => None,
+                })
+                .collect::<Vec<_>>()
+                .join(" "),
+        ),
+        _ => None,
     }
 }
 
@@ -1907,6 +1945,403 @@ struct RouteBinding {
     url: String,
     bearer: Option<String>,
     model_field: String,
+}
+
+fn model_size_billions(model: &str) -> Option<f64> {
+    let regex = regex_lite::Regex::new(r"(?i)(?:^|[^0-9])(\d+(?:\.\d+)?)b(?:[^a-z0-9]|$)")
+        .expect("model-size regex is valid");
+    regex
+        .captures(model)
+        .and_then(|captures| captures.get(1))
+        .and_then(|value| value.as_str().parse::<f64>().ok())
+}
+
+fn automatic_supervision_config(
+    app: &AppHandle,
+    mgr: &Residency,
+    binding: &RouteBinding,
+    active_slot_id: Option<u32>,
+) -> Option<Value> {
+    if binding.route == "anthropic"
+        || matches!(
+            app.state::<crate::db::Db>()
+                .setting_get("conversation.supervision")
+                .as_deref(),
+            Some("off" | "disabled" | "false")
+        )
+    {
+        return None;
+    }
+    let (_student_slot, student_port, student_path, _student_id) =
+        mgr.sidekick_endpoint(active_slot_id)?;
+    if binding.route == "local" {
+        let student_size = model_size_billions(&student_path)?;
+        let teacher_size = model_size_billions(&binding.model_field)?;
+        if student_size >= teacher_size {
+            return None;
+        }
+    }
+    let teacher_base_url = sidecar_provider_base_url(&binding.url);
+    Some(json!({
+        "student": {
+            "base_url": format!("http://127.0.0.1:{student_port}/v1"),
+            "model": student_path,
+        },
+        "supervisor": {
+            "base_url": teacher_base_url,
+            "model": binding.model_field,
+            "system_prompt": SMALL_FIRST_SUPERVISOR_PROMPT,
+            "max_output_tokens": 48,
+        },
+        "teacher": {
+            "base_url": sidecar_provider_base_url(&binding.url),
+            "model": binding.model_field,
+        },
+        "boundary_chars": 240,
+        "max_nudges": 2,
+    }))
+}
+
+fn sidecar_provider_base_url(endpoint: &str) -> String {
+    let endpoint = endpoint.trim_end_matches('/');
+    endpoint
+        .strip_suffix("/chat/completions")
+        .or_else(|| endpoint.strip_suffix("/v1/messages"))
+        .unwrap_or(endpoint)
+        .to_string()
+}
+
+fn validate_chat_attachment(attachment: &ChatAttachment) -> Result<usize, String> {
+    use base64::Engine as _;
+    use sha2::Digest as _;
+
+    if attachment.filename.trim().is_empty() || attachment.filename.len() > 200 {
+        return Err("image filename must be between 1 and 200 bytes".to_string());
+    }
+    if !attachment.media_type.starts_with("image/") {
+        return Err("image media type must start with image/".to_string());
+    }
+    let prefix = format!("data:{};base64,", attachment.media_type);
+    let encoded = attachment
+        .data_url
+        .strip_prefix(&prefix)
+        .ok_or_else(|| "image data URL does not match its media type".to_string())?;
+    let bytes = base64::engine::general_purpose::STANDARD
+        .decode(encoded)
+        .map_err(|_| "image data URL contains invalid base64".to_string())?;
+    if bytes.is_empty() || bytes.len() > 8 * 1024 * 1024 {
+        return Err("image must be between 1 byte and 8 MB".to_string());
+    }
+    let digest = format!("{:x}", sha2::Sha256::digest(&bytes));
+    if digest != attachment.id {
+        return Err("image content hash does not match its id".to_string());
+    }
+    Ok(bytes.len())
+}
+
+fn openai_chat_message(message: &ChatMsg) -> Result<Value, String> {
+    if message.attachments.is_empty() {
+        return Ok(json!({ "role": message.role, "content": message.content }));
+    }
+    if message.role != "user" {
+        return Err("only user messages may contain image attachments".to_string());
+    }
+    if message.attachments.len() > 4 {
+        return Err("at most four image attachments are allowed per message".to_string());
+    }
+    let mut content = vec![json!({ "type": "text", "text": message.content })];
+    let mut total_bytes = 0usize;
+    for attachment in &message.attachments {
+        total_bytes = total_bytes.saturating_add(validate_chat_attachment(attachment)?);
+        if total_bytes > 24 * 1024 * 1024 {
+            return Err("combined image attachments must not exceed 24 MB".to_string());
+        }
+        content.push(json!({
+            "type": "image_url",
+            "image_url": { "url": attachment.data_url },
+        }));
+    }
+    Ok(json!({ "role": message.role, "content": content }))
+}
+
+fn sidecar_runtime_messages(
+    original: &[ChatMsg],
+    outbound: &[Value],
+) -> Result<Vec<Value>, String> {
+    let attachment_meta: HashMap<&str, &ChatAttachment> = original
+        .iter()
+        .flat_map(|message| message.attachments.iter())
+        .map(|attachment| (attachment.data_url.as_str(), attachment))
+        .collect();
+    outbound
+        .iter()
+        .map(|message| {
+            let role = message
+                .get("role")
+                .and_then(Value::as_str)
+                .ok_or_else(|| "conversation runtime message is missing role".to_string())?;
+            let content = message
+                .get("content")
+                .ok_or_else(|| "conversation runtime message is missing content".to_string())?;
+            if let Some(text) = content.as_str() {
+                return Ok(json!({ "role": role, "content": text }));
+            }
+            if role != "user" {
+                return Err("only user runtime messages may contain multimodal parts".to_string());
+            }
+            let parts = content
+                .as_array()
+                .ok_or_else(|| "conversation runtime message content is invalid".to_string())?;
+            let mut text = String::new();
+            let mut attachments = Vec::new();
+            for part in parts {
+                match part.get("type").and_then(Value::as_str) {
+                    Some("text") => {
+                        text.push_str(part.get("text").and_then(Value::as_str).unwrap_or_default())
+                    }
+                    Some("image_url") => {
+                        let data_url = part
+                            .pointer("/image_url/url")
+                            .and_then(Value::as_str)
+                            .ok_or_else(|| "runtime image is missing its data URL".to_string())?;
+                        let metadata = attachment_meta.get(data_url).ok_or_else(|| {
+                            "runtime image metadata does not match the submitted attachment"
+                                .to_string()
+                        })?;
+                        attachments.push(json!({
+                            "id": metadata.id,
+                            "filename": metadata.filename,
+                            "media_type": metadata.media_type,
+                            "data_url": metadata.data_url,
+                        }));
+                    }
+                    _ => return Err("conversation runtime message part is unsupported".to_string()),
+                }
+            }
+            Ok(json!({ "role": role, "content": text, "attachments": attachments }))
+        })
+        .collect()
+}
+
+fn sidecar_tool_definitions(allow_sidekick_delegation: bool) -> Vec<Value> {
+    tool_schemas()
+        .into_iter()
+        .filter(|tool| {
+            allow_sidekick_delegation
+                || tool.pointer("/function/name").and_then(Value::as_str)
+                    != Some("delegate_to_sidekick")
+        })
+        .filter_map(|tool| {
+            let function = tool.get("function")?;
+            let mut definition = serde_json::Map::new();
+            definition.insert("name".to_string(), function.get("name")?.clone());
+            if let Some(description) = function
+                .get("description")
+                .filter(|value| value.is_string())
+            {
+                definition.insert("description".to_string(), description.clone());
+            }
+            definition.insert(
+                "input_schema".to_string(),
+                function
+                    .get("parameters")
+                    .cloned()
+                    .unwrap_or_else(|| json!({ "type": "object" })),
+            );
+            Some(Value::Object(definition))
+        })
+        .collect()
+}
+
+fn sidecar_run_request(
+    app: &AppHandle,
+    original: &[ChatMsg],
+    outbound: &[Value],
+    binding: &RouteBinding,
+    supervision: Option<&Value>,
+    slot_id: Option<u32>,
+    identity: (&str, &str),
+) -> Result<Value, String> {
+    let (session_id, run_id) = identity;
+    let messages = sidecar_runtime_messages(original, outbound)?;
+    let tool_executor_url = crate::server::info(app).map(|(base_url, _)| {
+        let query = slot_id
+            .map(|slot| format!("?slot_id={slot}"))
+            .unwrap_or_default();
+        format!("{base_url}/api/conversation-runtime/tool{query}")
+    });
+    let mut request = json!({
+        "run_id": run_id,
+        "session_id": session_id,
+        "base_url": sidecar_provider_base_url(&binding.url),
+        "model": binding.model_field,
+        "provider_kind": if binding.route == "anthropic" { "anthropic" } else { "openai-compatible" },
+        "role": if supervision.is_some() { "student" } else { "primary" },
+        "messages": messages,
+        "tools": sidecar_tool_definitions(supervision.is_none()),
+        "max_output_tokens": CHAT_MAX_TOKENS,
+        "max_tool_rounds": MAX_TOOL_ROUNDS,
+        "initial_sequence": 0,
+        "emit_input": true,
+        "allow_remote": matches!(binding.route.as_str(), "cloud" | "anthropic"),
+        "runtime_backend": "pi",
+    });
+    if binding.route == "anthropic" {
+        request["provider_api_key"] = json!(binding.bearer.as_deref().ok_or_else(|| {
+            "Anthropic route lost its in-memory provider credential".to_string()
+        })?);
+    }
+    if let Some(url) = tool_executor_url {
+        request["tool_executor_url"] = json!(url);
+    }
+    if let Some(supervision) = supervision {
+        request["supervision"] = supervision.clone();
+    }
+    Ok(request)
+}
+
+fn sidecar_usage_tokens(usage: Option<&Value>, key: &str) -> Option<u64> {
+    usage
+        .and_then(|value| value.get(key))
+        .and_then(Value::as_u64)
+}
+
+/// Build the canonical Pi request used by the authenticated Desktop API. This
+/// is deliberately a projection into the existing runtime contract, not a
+/// second agent loop.
+pub(crate) struct AgentSidecarRequest<'a> {
+    pub(crate) slot_id: u32,
+    pub(crate) supervisor_slot_id: Option<u32>,
+    pub(crate) session_id: &'a str,
+    pub(crate) run_id: &'a str,
+    pub(crate) prompt: &'a str,
+    pub(crate) attachments: &'a [AgentChatAttachmentUpload],
+    pub(crate) max_tokens: Option<u32>,
+}
+
+pub(crate) fn agent_sidecar_request(
+    app: &AppHandle,
+    mgr: &Residency,
+    input: AgentSidecarRequest<'_>,
+) -> Result<Value, String> {
+    use sha2::Digest as _;
+
+    if input.attachments.len() > 4 {
+        return Err("at most four image attachments are allowed per message".to_string());
+    }
+    let decoded_attachments = input
+        .attachments
+        .iter()
+        .map(|upload| {
+            let prefix = format!("data:{};base64,", upload.media_type);
+            let encoded = upload
+                .data_url
+                .strip_prefix(&prefix)
+                .ok_or_else(|| "image data URL does not match its media type".to_string())?;
+            let bytes = {
+                use base64::Engine as _;
+                base64::engine::general_purpose::STANDARD
+                    .decode(encoded)
+                    .map_err(|_| "image data URL contains invalid base64".to_string())?
+            };
+            let attachment = ChatAttachment {
+                id: format!("{:x}", sha2::Sha256::digest(&bytes)),
+                filename: upload.filename.clone(),
+                media_type: upload.media_type.clone(),
+                data_url: upload.data_url.clone(),
+            };
+            let size = validate_chat_attachment(&attachment)?;
+            Ok((attachment, size))
+        })
+        .collect::<Result<Vec<_>, String>>()?;
+    let total_bytes = decoded_attachments
+        .iter()
+        .map(|(_, size)| *size)
+        .sum::<usize>();
+    if total_bytes > 24 * 1024 * 1024 {
+        return Err("combined image attachments must not exceed 24 MB".to_string());
+    }
+    let attachments = decoded_attachments
+        .into_iter()
+        .map(|(attachment, _)| attachment)
+        .collect::<Vec<_>>();
+    let (port, model_field) = mgr
+        .endpoint(input.slot_id)
+        .ok_or_else(|| format!("slot {} is not warm; warm it first", input.slot_id))?;
+    let supervision = input
+        .supervisor_slot_id
+        .map(|supervisor_slot_id| {
+            let (supervisor_port, supervisor_model) =
+                mgr.endpoint(supervisor_slot_id).ok_or_else(|| {
+                    format!("supervisor slot {supervisor_slot_id} is not warm; warm it first")
+                })?;
+            if supervisor_port == port || supervisor_model == model_field {
+                return Err(
+                    "supervisor slot must use a different warm model from the student slot"
+                        .to_string(),
+                );
+            }
+            if let (Some(student_size), Some(supervisor_size)) = (
+                model_size_billions(&model_field),
+                model_size_billions(&supervisor_model),
+            ) {
+                if student_size >= supervisor_size {
+                    return Err(
+                        "supervisor slot must use a larger model than the student slot".to_string(),
+                    );
+                }
+            }
+            let supervisor_base_url = format!("http://127.0.0.1:{supervisor_port}/v1");
+            Ok(json!({
+                "student": {
+                    "base_url": format!("http://127.0.0.1:{port}/v1"),
+                    "model": model_field.clone(),
+                },
+                "supervisor": {
+                    "base_url": supervisor_base_url,
+                    "model": supervisor_model.clone(),
+                    "system_prompt": SMALL_FIRST_SUPERVISOR_PROMPT,
+                    "max_output_tokens": 48,
+                },
+                "teacher": {
+                    "base_url": format!("http://127.0.0.1:{supervisor_port}/v1"),
+                    "model": supervisor_model,
+                },
+                "boundary_chars": 240,
+                "max_nudges": 2,
+            }))
+        })
+        .transpose()?;
+    let messages = vec![ChatMsg {
+        role: "user".to_string(),
+        content: input.prompt.to_string(),
+        attachments,
+    }];
+    let outbound = vec![
+        json!({ "role": "system", "content": system_prompt_for(&model_field) }),
+        openai_chat_message(&messages[0])?,
+    ];
+    let binding = RouteBinding {
+        route: "local".to_string(),
+        url: format!("http://127.0.0.1:{port}/v1/chat/completions"),
+        bearer: None,
+        model_field,
+    };
+    let mut request = sidecar_run_request(
+        app,
+        &messages,
+        &outbound,
+        &binding,
+        supervision.as_ref(),
+        Some(input.slot_id),
+        (input.session_id, input.run_id),
+    )?;
+    request["max_output_tokens"] = json!(input
+        .max_tokens
+        .unwrap_or(AGENT_CHAT_DEFAULT_MAX_TOKENS)
+        .clamp(1, CHAT_MAX_TOKENS));
+    request["max_tool_rounds"] = json!(MAX_TOOL_ROUNDS);
+    Ok(request)
 }
 
 fn cloud_route_binding() -> Option<RouteBinding> {
@@ -2415,14 +2850,6 @@ pub async fn chat_stream(
     } else {
         apply_dynamic_chat_route(&app, &session_id, &route, slot_id, &messages, &on_event)
     };
-    let sidekick_plan = maybe_spawn_parallel_sidekick(
-        &app,
-        &route,
-        slot_id,
-        &session_id,
-        &messages,
-        Some(&on_event),
-    );
     let mut binding = if let Some(model) = route.strip_prefix("anthropic:") {
         anthropic_route_binding(&app, model)?
     } else {
@@ -2431,6 +2858,32 @@ pub async fn chat_stream(
             _ => local_route_binding(&route, &mgr, slot_id)?,
         }
     };
+    let mut supervision = automatic_supervision_config(&app, &mgr, &binding, slot_id);
+    let sidekick_plan = if supervision.is_some() {
+        ParallelSidekickPlan {
+            spawned: false,
+            wait_ms: 0,
+        }
+    } else {
+        maybe_spawn_parallel_sidekick(
+            &app,
+            &route,
+            slot_id,
+            &session_id,
+            &messages,
+            Some(&on_event),
+        )
+    };
+    if binding.route == "anthropic"
+        && messages
+            .iter()
+            .any(|message| !message.attachments.is_empty())
+    {
+        return Err(
+            "Image attachments currently require a local model or the Understudy gateway"
+                .to_string(),
+        );
+    }
 
     let mut outbound_messages = vec![json!({
         "role": "system",
@@ -2445,12 +2898,12 @@ pub async fn chat_stream(
     )
     .await;
     outbound_messages.extend(handoff_messages);
-    outbound_messages.extend(
-        messages
-            .iter()
-            .filter(|m| m.role != "system")
-            .map(|m| json!({ "role": m.role, "content": m.content })),
-    );
+    let projected_messages = messages
+        .iter()
+        .filter(|message| message.role != "system")
+        .map(openai_chat_message)
+        .collect::<Result<Vec<_>, _>>()?;
+    outbound_messages.extend(projected_messages);
     let (mut outbound_messages, compaction_reason, context_tokens_before) =
         compact_chat_messages(outbound_messages);
     let mut prompt_tokens = approximate_messages_tokens(&outbound_messages);
@@ -2460,6 +2913,7 @@ pub async fn chat_stream(
     let compacted = compaction_reason.is_some();
     let gateway_available = credentials().is_some();
     let local_mem_gb = local_resident_mem_gb(&app);
+    let run_id = crate::conversation_runtime::new_run_id()?;
     if let Some(reason) = compaction_reason.as_deref() {
         let recommendation = record_compaction_route_decision(
             &app,
@@ -2491,6 +2945,140 @@ pub async fn chat_stream(
                 &detail,
                 Some(&on_event),
             );
+            supervision = automatic_supervision_config(&app, &mgr, &binding, slot_id);
+        }
+    }
+
+    {
+        if let Some(config) = supervision.as_ref() {
+            let student = config
+                .pointer("/student/model")
+                .and_then(Value::as_str)
+                .unwrap_or("smaller local model");
+            let teacher = config
+                .pointer("/teacher/model")
+                .and_then(Value::as_str)
+                .unwrap_or(&binding.model_field);
+            let detail = format!("run={run_id} · {student} is answering; {teacher} is supervising");
+            log_db_write(
+                "record_sidekick_event(supervision_started)",
+                app.state::<crate::db::Db>().record_sidekick_event(
+                    &session_id,
+                    "supervision",
+                    "started",
+                    &detail,
+                ),
+            );
+            let _ = on_event.send(ChatEvent::SidekickEvent {
+                mode: "supervision".to_string(),
+                stage: "started".to_string(),
+                detail,
+            });
+        }
+        match sidecar_run_request(
+            &app,
+            &messages,
+            &outbound_messages,
+            &binding,
+            supervision.as_ref(),
+            slot_id,
+            (&session_id, &run_id),
+        ) {
+            Ok(request) => {
+                match crate::conversation_sidecar::try_run_chat(&app, request, &on_event).await {
+                    crate::conversation_sidecar::SidecarAttempt::Completed(sidecar) => {
+                        let completion_tokens =
+                            sidecar_usage_tokens(sidecar.usage.as_ref(), "completion_tokens")
+                                .unwrap_or_else(|| approximate_token_count(&sidecar.content));
+                        let prompt_tokens =
+                            sidecar_usage_tokens(sidecar.usage.as_ref(), "prompt_tokens")
+                                .unwrap_or(prompt_tokens);
+                        let runtime_compacted = compacted || sidecar.compacted;
+                        let runtime_compaction_reason = if sidecar.compacted {
+                            Some("runtime_compaction_boundary".to_string())
+                        } else {
+                            compaction_reason.clone()
+                        };
+                        let runtime_context_tokens_before =
+                            context_tokens_before.max(sidecar.context_tokens_before);
+                        record_chat_run(
+                            &app,
+                            ChatRunInput {
+                                run_id: run_id.clone(),
+                                runtime_backend: "pi".to_string(),
+                                session_id: session_id.clone(),
+                                route: binding.route.clone(),
+                                model: binding.model_field.clone(),
+                                elapsed_ms: Some(sidecar.elapsed_ms),
+                                prompt_tokens: Some(prompt_tokens),
+                                completion_tokens: Some(completion_tokens),
+                                tool_calls: sidecar.tool_calls,
+                                sidekick_spawned: sidekick_plan.spawned,
+                                gateway_used: binding.route == "cloud",
+                                compacted: runtime_compacted,
+                                compaction_reason: runtime_compaction_reason,
+                                context_tokens_before: Some(runtime_context_tokens_before),
+                                local_mem_gb,
+                                gateway_available,
+                                gateway_avoided: gateway_available && binding.route != "cloud",
+                                status: "ok".to_string(),
+                                error: None,
+                            },
+                        );
+                        let _ = on_event.send(ChatEvent::Done);
+                        return Ok(());
+                    }
+                    crate::conversation_sidecar::SidecarAttempt::NativeFallback(reason) => {
+                        let _ = on_event.send(ChatEvent::Notice {
+                            message: format!(
+                                "Canonical runtime unavailable ({reason}). Continuing with the local compatibility engine."
+                            ),
+                        });
+                    }
+                    crate::conversation_sidecar::SidecarAttempt::FailedAfterOutput(reason) => {
+                        let message = format!(
+                            "Conversation runtime stopped after the turn began: {reason}. The compatibility engine was not retried, preventing a duplicate answer or tool execution."
+                        );
+                        let _ = on_event.send(ChatEvent::Error {
+                            message: message.clone(),
+                        });
+                        record_chat_run(
+                            &app,
+                            ChatRunInput {
+                                run_id: run_id.clone(),
+                                runtime_backend: "pi".to_string(),
+                                session_id: session_id.clone(),
+                                route: binding.route.clone(),
+                                model: binding.model_field.clone(),
+                                elapsed_ms: Some(started.elapsed().as_millis() as u64),
+                                prompt_tokens: Some(prompt_tokens),
+                                completion_tokens: None,
+                                tool_calls: 0,
+                                sidekick_spawned: sidekick_plan.spawned,
+                                gateway_used: binding.route == "cloud",
+                                compacted,
+                                compaction_reason: compaction_reason.clone(),
+                                context_tokens_before: Some(context_tokens_before),
+                                local_mem_gb,
+                                gateway_available,
+                                gateway_avoided: gateway_available && binding.route != "cloud",
+                                status: "error".to_string(),
+                                error: Some(reason),
+                            },
+                        );
+                        let _ = on_event.send(ChatEvent::Done);
+                        return Ok(());
+                    }
+                    crate::conversation_sidecar::SidecarAttempt::NotSelected => {}
+                }
+            }
+            Err(reason) => {
+                let _ = on_event.send(ChatEvent::Notice {
+                    message: format!(
+                        "Canonical runtime could not accept this turn ({reason}). Continuing with the local compatibility engine."
+                    ),
+                });
+            }
         }
     }
 
@@ -2532,6 +3120,8 @@ pub async fn chat_stream(
             record_chat_run(
                 &app,
                 ChatRunInput {
+                    run_id: run_id.clone(),
+                    runtime_backend: "native-rust".to_string(),
                     session_id: session_id.clone(),
                     route: binding.route.clone(),
                     model: binding.model_field.clone(),
@@ -2567,6 +3157,8 @@ pub async fn chat_stream(
             record_chat_run(
                 &app,
                 ChatRunInput {
+                    run_id: run_id.clone(),
+                    runtime_backend: "native-rust".to_string(),
                     session_id: session_id.clone(),
                     route: binding.route.clone(),
                     model: binding.model_field.clone(),
@@ -2664,6 +3256,8 @@ pub async fn chat_stream(
     record_chat_run(
         &app,
         ChatRunInput {
+            run_id,
+            runtime_backend: "native-rust".to_string(),
             session_id: session_id.clone(),
             route: binding.route.clone(),
             model: binding.model_field.clone(),
@@ -2695,16 +3289,197 @@ pub async fn chat_stream(
     Ok(())
 }
 
+struct PreparedBenchmarkRun {
+    started: Instant,
+    session_id: String,
+    capture_run_id: String,
+    messages: Vec<ChatMsg>,
+    outbound_messages: Vec<Value>,
+    binding: RouteBinding,
+    slot_id: Option<u32>,
+    allow_sidekick_tool: bool,
+    compacted: bool,
+    context_tokens_before: u64,
+}
+
+fn benchmark_sidecar_result(
+    prepared: &PreparedBenchmarkRun,
+    sidecar: crate::conversation_sidecar::SidecarRunResult,
+) -> BenchmarkChatResult {
+    let prompt_tokens = sidecar_usage_tokens(sidecar.usage.as_ref(), "prompt_tokens").unwrap_or(0);
+    let completion_tokens = sidecar_usage_tokens(sidecar.usage.as_ref(), "completion_tokens")
+        .unwrap_or_else(|| approximate_token_count(&sidecar.content));
+    let reasoning_tokens =
+        sidecar_usage_tokens(sidecar.usage.as_ref(), "reasoning_tokens").unwrap_or(0);
+    BenchmarkChatResult {
+        capture_run_id: prepared.capture_run_id.clone(),
+        status: if sidecar.content.trim().is_empty() {
+            "empty_final".to_string()
+        } else {
+            "ok".to_string()
+        },
+        runtime_backend: "pi".to_string(),
+        content: sidecar.content,
+        elapsed_ms: prepared.started.elapsed().as_millis() as u64,
+        tool_calls: sidecar.tool_calls,
+        prompt_tokens,
+        completion_tokens,
+        reasoning_tokens,
+        compacted: prepared.compacted || sidecar.compacted,
+        context_tokens_before: prepared
+            .context_tokens_before
+            .max(sidecar.context_tokens_before),
+    }
+}
+
+async fn benchmark_chat_native(
+    app: &AppHandle,
+    mgr: &Residency,
+    mut prepared: PreparedBenchmarkRun,
+) -> Result<BenchmarkChatResult, String> {
+    let client = reqwest::Client::builder()
+        .connect_timeout(Duration::from_secs(CHAT_CONNECT_TIMEOUT_SECS))
+        .timeout(Duration::from_secs(CHAT_REQUEST_TIMEOUT_SECS))
+        .build()
+        .map_err(|e| e.to_string())?;
+    let mut final_content = String::new();
+    let mut reasoning_tokens = 0u64;
+    let mut tool_count = 0u64;
+    let mut status = "tool_limit".to_string();
+    let mut repaired_empty_final = false;
+
+    for _round in 0..=BENCHMARK_MAX_TOOL_ROUNDS {
+        let result = nonstream_chat_once(
+            &client,
+            &prepared.binding.url,
+            prepared.binding.bearer.as_deref(),
+            &prepared.binding.model_field,
+            &prepared.outbound_messages,
+            BENCHMARK_MAX_TOKENS,
+            BENCHMARK_THINKING_BUDGET,
+            prepared.allow_sidekick_tool,
+        )
+        .await?;
+        final_content = result.content.clone();
+        reasoning_tokens += approximate_token_count(&result.reasoning);
+        let tool_calls = result.tool_calls;
+        if tool_calls.is_empty() {
+            if final_content.trim().is_empty() && !repaired_empty_final {
+                repaired_empty_final = true;
+                prepared
+                    .outbound_messages
+                    .push(benchmark_finalize_prompt(&result.reasoning));
+                continue;
+            }
+            if final_content.trim().is_empty() {
+                status = "empty_final".to_string();
+                break;
+            }
+            status = "ok".to_string();
+            break;
+        }
+        let assistant_tool_calls: Vec<Value> = tool_calls
+            .iter()
+            .map(|call| {
+                json!({
+                    "id": call.id,
+                    "type": "function",
+                    "function": { "name": call.name, "arguments": call.arguments },
+                })
+            })
+            .collect();
+        prepared.outbound_messages.push(json!({
+            "role": "assistant",
+            "content": final_content,
+            "tool_calls": assistant_tool_calls,
+        }));
+
+        for call in tool_calls {
+            let args = serde_json::from_str::<Value>(&call.arguments).unwrap_or_else(|_| json!({}));
+            let result = match tool_result(
+                app,
+                mgr,
+                prepared.slot_id,
+                &prepared.session_id,
+                &call.name,
+                &args,
+            )
+            .await
+            {
+                Ok(value) => value,
+                Err(err) => json!({ "error": err }),
+            };
+            tool_count += 1;
+            prepared.outbound_messages.push(json!({
+                "role": "tool",
+                "tool_call_id": call.id,
+                "content": result.to_string(),
+            }));
+        }
+    }
+
+    Ok(BenchmarkChatResult {
+        capture_run_id: prepared.capture_run_id,
+        prompt_tokens: approximate_messages_tokens(&prepared.outbound_messages),
+        completion_tokens: final_content.split_whitespace().count() as u64,
+        reasoning_tokens,
+        content: final_content,
+        status,
+        runtime_backend: "native-rust".to_string(),
+        elapsed_ms: prepared.started.elapsed().as_millis() as u64,
+        tool_calls: tool_count,
+        compacted: prepared.compacted,
+        context_tokens_before: prepared.context_tokens_before,
+    })
+}
+
+async fn execute_prepared_benchmark(
+    app: &AppHandle,
+    mgr: &Residency,
+    prepared: PreparedBenchmarkRun,
+) -> Result<BenchmarkChatResult, String> {
+    let attempt = match sidecar_run_request(
+        app,
+        &prepared.messages,
+        &prepared.outbound_messages,
+        &prepared.binding,
+        None,
+        prepared.slot_id,
+        (&prepared.session_id, &prepared.capture_run_id),
+    ) {
+        Ok(mut request) => {
+            request["max_output_tokens"] = json!(BENCHMARK_MAX_TOKENS);
+            request["max_tool_rounds"] = json!(BENCHMARK_MAX_TOOL_ROUNDS);
+            request["tools"] = json!(sidecar_tool_definitions(prepared.allow_sidekick_tool));
+            crate::conversation_sidecar::try_run_chat_headless(app, request).await
+        }
+        Err(reason) => crate::conversation_sidecar::SidecarAttempt::NativeFallback(reason),
+    };
+    match attempt {
+        crate::conversation_sidecar::SidecarAttempt::Completed(sidecar) => {
+            Ok(benchmark_sidecar_result(&prepared, sidecar))
+        }
+        crate::conversation_sidecar::SidecarAttempt::FailedAfterOutput(reason) => Err(format!(
+            "conversation runtime stopped after the benchmark began: {reason}; native retry was suppressed"
+        )),
+        crate::conversation_sidecar::SidecarAttempt::NativeFallback(_)
+        | crate::conversation_sidecar::SidecarAttempt::NotSelected => {
+            benchmark_chat_native(app, mgr, prepared).await
+        }
+    }
+}
+
 pub async fn benchmark_local_chat(
     app: &AppHandle,
     mgr: &Residency,
     slot_id: u32,
-    session_id: &str,
+    identity: (&str, &str),
     prompt: &str,
     enable_parallel_sidekick: bool,
     allow_sidekick_tool: bool,
 ) -> Result<BenchmarkChatResult, String> {
     let started = Instant::now();
+    let (session_id, capture_run_id) = identity;
     let prompt = benchmark_prompt(prompt);
     let (port, model_field) = mgr
         .endpoint(slot_id)
@@ -2712,6 +3487,7 @@ pub async fn benchmark_local_chat(
     let messages = vec![ChatMsg {
         role: "user".to_string(),
         content: prompt.clone(),
+        attachments: vec![],
     }];
     let sidekick_plan = if enable_parallel_sidekick {
         maybe_spawn_parallel_sidekick(app, "local", Some(slot_id), session_id, &messages, None)
@@ -2721,7 +3497,6 @@ pub async fn benchmark_local_chat(
             wait_ms: 0,
         }
     };
-    let url = format!("http://127.0.0.1:{port}/v1/chat/completions");
     let mut outbound_messages = vec![json!({
         "role": "system",
         "content": system_prompt_for(&model_field),
@@ -2738,7 +3513,7 @@ pub async fn benchmark_local_chat(
         .0,
     );
     outbound_messages.push(json!({ "role": "user", "content": prompt }));
-    let (mut outbound_messages, compaction_reason, context_tokens_before) =
+    let (outbound_messages, compaction_reason, context_tokens_before) =
         compact_chat_messages(outbound_messages);
     let compacted = compaction_reason.is_some();
     if let Some(reason) = compaction_reason.as_deref() {
@@ -2753,89 +3528,28 @@ pub async fn benchmark_local_chat(
             None,
         );
     }
-
-    let client = reqwest::Client::builder()
-        .connect_timeout(Duration::from_secs(CHAT_CONNECT_TIMEOUT_SECS))
-        .timeout(Duration::from_secs(CHAT_REQUEST_TIMEOUT_SECS))
-        .build()
-        .map_err(|e| e.to_string())?;
-    let mut final_content = String::new();
-    let mut reasoning_tokens = 0u64;
-    let mut tool_count = 0u64;
-    let mut status = "tool_limit".to_string();
-    let mut repaired_empty_final = false;
-
-    for _round in 0..=BENCHMARK_MAX_TOOL_ROUNDS {
-        let result = nonstream_chat_once(
-            &client,
-            &url,
-            None,
-            &model_field,
-            &outbound_messages,
-            BENCHMARK_MAX_TOKENS,
-            BENCHMARK_THINKING_BUDGET,
+    execute_prepared_benchmark(
+        app,
+        mgr,
+        PreparedBenchmarkRun {
+            started,
+            session_id: session_id.to_string(),
+            capture_run_id: capture_run_id.to_string(),
+            messages,
+            outbound_messages,
+            binding: RouteBinding {
+                route: "local".to_string(),
+                url: format!("http://127.0.0.1:{port}/v1/chat/completions"),
+                bearer: None,
+                model_field,
+            },
+            slot_id: Some(slot_id),
             allow_sidekick_tool,
-        )
-        .await?;
-        final_content = result.content.clone();
-        reasoning_tokens += approximate_token_count(&result.reasoning);
-        let tool_calls = result.tool_calls;
-        if tool_calls.is_empty() {
-            if final_content.trim().is_empty() && !repaired_empty_final {
-                repaired_empty_final = true;
-                outbound_messages.push(benchmark_finalize_prompt(&result.reasoning));
-                continue;
-            }
-            if final_content.trim().is_empty() {
-                status = "empty_final".to_string();
-                break;
-            }
-            status = "ok".to_string();
-            break;
-        }
-        let assistant_tool_calls: Vec<Value> = tool_calls
-            .iter()
-            .map(|call| {
-                json!({
-                    "id": call.id,
-                    "type": "function",
-                    "function": { "name": call.name, "arguments": call.arguments },
-                })
-            })
-            .collect();
-        outbound_messages.push(json!({
-            "role": "assistant",
-            "content": final_content,
-            "tool_calls": assistant_tool_calls,
-        }));
-
-        for call in tool_calls {
-            let args = serde_json::from_str::<Value>(&call.arguments).unwrap_or_else(|_| json!({}));
-            let result =
-                match tool_result(app, mgr, Some(slot_id), session_id, &call.name, &args).await {
-                    Ok(value) => value,
-                    Err(err) => json!({ "error": err }),
-                };
-            tool_count += 1;
-            outbound_messages.push(json!({
-                "role": "tool",
-                "tool_call_id": call.id,
-                "content": result.to_string(),
-            }));
-        }
-    }
-
-    Ok(BenchmarkChatResult {
-        prompt_tokens: approximate_messages_tokens(&outbound_messages),
-        completion_tokens: final_content.split_whitespace().count() as u64,
-        reasoning_tokens,
-        content: final_content,
-        status,
-        elapsed_ms: started.elapsed().as_millis() as u64,
-        tool_calls: tool_count,
-        compacted,
-        context_tokens_before,
-    })
+            compacted,
+            context_tokens_before,
+        },
+    )
+    .await
 }
 
 pub async fn benchmark_gateway_chat(
@@ -2845,109 +3559,50 @@ pub async fn benchmark_gateway_chat(
     prompt: &str,
     model_field: &str,
     allow_sidekick_tool: bool,
+    capture_run_id: &str,
 ) -> Result<BenchmarkChatResult, String> {
     let started = Instant::now();
     let prompt = benchmark_prompt(prompt);
     let (base, key) = credentials().ok_or_else(|| "not signed in".to_string())?;
-    let url = format!("{}/v1/chat/completions", base.trim_end_matches('/'));
     let mut outbound_messages = vec![json!({
         "role": "system",
         "content": system_prompt_for(model_field),
     })];
     outbound_messages.extend(consume_sidekick_handoffs(app, session_id).0);
-    outbound_messages.push(json!({ "role": "user", "content": prompt }));
-    let (mut outbound_messages, compaction_reason, context_tokens_before) =
+    outbound_messages.push(json!({ "role": "user", "content": prompt.clone() }));
+    let (outbound_messages, compaction_reason, context_tokens_before) =
         compact_chat_messages(outbound_messages);
-    let compacted = compaction_reason.is_some();
-
-    let client = reqwest::Client::builder()
-        .connect_timeout(Duration::from_secs(CHAT_CONNECT_TIMEOUT_SECS))
-        .timeout(Duration::from_secs(CHAT_REQUEST_TIMEOUT_SECS))
-        .build()
-        .map_err(|e| e.to_string())?;
-    let mut final_content = String::new();
-    let mut reasoning_tokens = 0u64;
-    let mut tool_count = 0u64;
-    let mut status = "tool_limit".to_string();
-    let mut repaired_empty_final = false;
-
-    for _round in 0..=BENCHMARK_MAX_TOOL_ROUNDS {
-        let result = nonstream_chat_once(
-            &client,
-            &url,
-            Some(&key),
-            model_field,
-            &outbound_messages,
-            BENCHMARK_MAX_TOKENS,
-            BENCHMARK_THINKING_BUDGET,
+    execute_prepared_benchmark(
+        app,
+        mgr,
+        PreparedBenchmarkRun {
+            started,
+            session_id: session_id.to_string(),
+            capture_run_id: capture_run_id.to_string(),
+            messages: vec![ChatMsg {
+                role: "user".to_string(),
+                content: prompt,
+                attachments: vec![],
+            }],
+            outbound_messages,
+            binding: RouteBinding {
+                route: "cloud".to_string(),
+                url: format!("{}/v1/chat/completions", base.trim_end_matches('/')),
+                bearer: Some(key),
+                model_field: model_field.to_string(),
+            },
+            slot_id: None,
             allow_sidekick_tool,
-        )
-        .await?;
-        final_content = result.content.clone();
-        reasoning_tokens += approximate_token_count(&result.reasoning);
-        let tool_calls = result.tool_calls;
-        if tool_calls.is_empty() {
-            if final_content.trim().is_empty() && !repaired_empty_final {
-                repaired_empty_final = true;
-                outbound_messages.push(benchmark_finalize_prompt(&result.reasoning));
-                continue;
-            }
-            if final_content.trim().is_empty() {
-                status = "empty_final".to_string();
-                break;
-            }
-            status = "ok".to_string();
-            break;
-        }
-        let assistant_tool_calls: Vec<Value> = tool_calls
-            .iter()
-            .map(|call| {
-                json!({
-                    "id": call.id,
-                    "type": "function",
-                    "function": { "name": call.name, "arguments": call.arguments },
-                })
-            })
-            .collect();
-        outbound_messages.push(json!({
-            "role": "assistant",
-            "content": final_content,
-            "tool_calls": assistant_tool_calls,
-        }));
-
-        for call in tool_calls {
-            let args = serde_json::from_str::<Value>(&call.arguments).unwrap_or_else(|_| json!({}));
-            let result = match tool_result(app, mgr, None, session_id, &call.name, &args).await {
-                Ok(value) => value,
-                Err(err) => json!({ "error": err }),
-            };
-            tool_count += 1;
-            outbound_messages.push(json!({
-                "role": "tool",
-                "tool_call_id": call.id,
-                "content": result.to_string(),
-            }));
-        }
-    }
-
-    Ok(BenchmarkChatResult {
-        prompt_tokens: approximate_messages_tokens(&outbound_messages),
-        completion_tokens: final_content.split_whitespace().count() as u64,
-        reasoning_tokens,
-        content: final_content,
-        status,
-        elapsed_ms: started.elapsed().as_millis() as u64,
-        tool_calls: tool_count,
-        compacted,
-        context_tokens_before,
-    })
+            compacted: compaction_reason.is_some(),
+            context_tokens_before,
+        },
+    )
+    .await
 }
 
-/// Agent-facing, non-streaming chat completion against one warm slot, served
-/// over the local API server. Reuses the benchmark chat plumbing
-/// (`nonstream_chat_once` + the local tool loop) — NOT the GUI `chat_stream`
-/// — but without the benchmark prompt wrapper, sidekick spawning, or
-/// persistence, and with an agent-sized token cap.
+/// Agent-facing, non-streaming chat completion against one warm slot. The
+/// canonical runtime is authoritative; the native loop remains a pre-output
+/// compatibility fallback for one release.
 pub async fn agent_chat(
     app: &AppHandle,
     mgr: &Residency,
@@ -2955,6 +3610,105 @@ pub async fn agent_chat(
     session_id: &str,
     prompt: &str,
     max_tokens: Option<u32>,
+    capture_run_id: Option<&str>,
+) -> Result<BenchmarkChatResult, String> {
+    let max_tokens = max_tokens
+        .unwrap_or(AGENT_CHAT_DEFAULT_MAX_TOKENS)
+        .clamp(1, CHAT_MAX_TOKENS);
+    let (port, model_field) = mgr
+        .endpoint(slot_id)
+        .ok_or_else(|| format!("slot {slot_id} is not warm; warm it first"))?;
+    let messages = vec![ChatMsg {
+        role: "user".to_string(),
+        content: prompt.to_string(),
+        attachments: vec![],
+    }];
+    let outbound = vec![
+        json!({ "role": "system", "content": system_prompt_for(&model_field) }),
+        json!({ "role": "user", "content": prompt }),
+    ];
+    let binding = RouteBinding {
+        route: "local".to_string(),
+        url: format!("http://127.0.0.1:{port}/v1/chat/completions"),
+        bearer: None,
+        model_field,
+    };
+    let run_id = match capture_run_id {
+        Some(value) if !value.trim().is_empty() && value.len() <= 200 => value.to_string(),
+        Some(_) => return Err("capture_run_id must contain 1 to 200 bytes".to_string()),
+        None => crate::conversation_runtime::new_run_id()?,
+    };
+    let attempt = match sidecar_run_request(
+        app,
+        &messages,
+        &outbound,
+        &binding,
+        None,
+        Some(slot_id),
+        (session_id, &run_id),
+    ) {
+        Ok(mut request) => {
+            request["max_output_tokens"] = json!(max_tokens);
+            request["max_tool_rounds"] = json!(BENCHMARK_MAX_TOOL_ROUNDS);
+            request["tools"] = json!(sidecar_tool_definitions(false));
+            crate::conversation_sidecar::try_run_chat_headless(app, request).await
+        }
+        Err(reason) => crate::conversation_sidecar::SidecarAttempt::NativeFallback(reason),
+    };
+    match attempt {
+        crate::conversation_sidecar::SidecarAttempt::Completed(sidecar) => {
+            let prompt_tokens =
+                sidecar_usage_tokens(sidecar.usage.as_ref(), "prompt_tokens").unwrap_or(0);
+            let completion_tokens =
+                sidecar_usage_tokens(sidecar.usage.as_ref(), "completion_tokens")
+                    .unwrap_or_else(|| approximate_token_count(&sidecar.content));
+            let reasoning_tokens =
+                sidecar_usage_tokens(sidecar.usage.as_ref(), "reasoning_tokens").unwrap_or(0);
+            Ok(BenchmarkChatResult {
+                capture_run_id: run_id,
+                status: if sidecar.content.trim().is_empty() {
+                    "empty_final".to_string()
+                } else {
+                    "ok".to_string()
+                },
+                runtime_backend: "pi".to_string(),
+                content: sidecar.content,
+                elapsed_ms: sidecar.elapsed_ms,
+                tool_calls: sidecar.tool_calls,
+                prompt_tokens,
+                completion_tokens,
+                reasoning_tokens,
+                compacted: sidecar.compacted,
+                context_tokens_before: sidecar.context_tokens_before,
+            })
+        }
+        crate::conversation_sidecar::SidecarAttempt::FailedAfterOutput(reason) => Err(format!(
+            "conversation runtime stopped after the headless turn began: {reason}; native retry was suppressed"
+        )),
+        crate::conversation_sidecar::SidecarAttempt::NativeFallback(_)
+        | crate::conversation_sidecar::SidecarAttempt::NotSelected => {
+            agent_chat_native(
+                app,
+                mgr,
+                slot_id,
+                session_id,
+                prompt,
+                Some(max_tokens),
+                &run_id,
+            )
+            .await
+        }
+    }
+}
+
+async fn agent_chat_native(
+    app: &AppHandle,
+    mgr: &Residency,
+    slot_id: u32,
+    session_id: &str,
+    prompt: &str,
+    max_tokens: Option<u32>,
+    capture_run_id: &str,
 ) -> Result<BenchmarkChatResult, String> {
     let started = Instant::now();
     let max_tokens = max_tokens
@@ -3041,11 +3795,13 @@ pub async fn agent_chat(
     }
 
     Ok(BenchmarkChatResult {
+        capture_run_id: capture_run_id.to_string(),
         prompt_tokens: approximate_messages_tokens(&outbound_messages),
         completion_tokens: final_content.split_whitespace().count() as u64,
         reasoning_tokens,
         content: final_content,
         status,
+        runtime_backend: "native-rust".to_string(),
         elapsed_ms: started.elapsed().as_millis() as u64,
         tool_calls: tool_count,
         compacted: false,
@@ -3317,6 +4073,151 @@ fn finalize_tool_calls(mut tool_calls: Vec<ToolCallAcc>) -> Vec<ToolCallAcc> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    fn image_message() -> ChatMsg {
+        use base64::Engine as _;
+        use sha2::Digest as _;
+
+        let bytes = b"desktop-image-fixture";
+        let encoded = base64::engine::general_purpose::STANDARD.encode(bytes);
+        ChatMsg {
+            role: "user".to_string(),
+            content: "inspect this".to_string(),
+            attachments: vec![ChatAttachment {
+                id: format!("{:x}", sha2::Sha256::digest(bytes)),
+                filename: "fixture.png".to_string(),
+                media_type: "image/png".to_string(),
+                data_url: format!("data:image/png;base64,{encoded}"),
+            }],
+        }
+    }
+
+    #[test]
+    fn image_projection_preserves_hash_metadata_and_bounded_token_estimate() {
+        let original = vec![image_message()];
+        let outbound = vec![openai_chat_message(&original[0]).unwrap()];
+        assert_eq!(outbound[0]["content"][1]["type"], "image_url");
+        assert_eq!(approximate_messages_tokens(&outbound), 1_202);
+
+        let projected = sidecar_runtime_messages(&original, &outbound).unwrap();
+        assert_eq!(projected[0]["content"], "inspect this");
+        assert_eq!(
+            projected[0]["attachments"][0]["id"],
+            original[0].attachments[0].id
+        );
+        assert_eq!(projected[0]["attachments"][0]["filename"], "fixture.png");
+
+        let mut tampered = image_message();
+        tampered.attachments[0].id = "0".repeat(64);
+        assert!(openai_chat_message(&tampered)
+            .unwrap_err()
+            .contains("content hash"));
+    }
+
+    #[test]
+    fn supervision_requires_a_strictly_smaller_model_size() {
+        assert_eq!(model_size_billions("gemma-4-2b-understudy"), Some(2.0));
+        assert_eq!(
+            model_size_billions("gemma-4-26b-a4b-it-qat-mlx-vlm-understudy"),
+            Some(26.0)
+        );
+        assert_eq!(model_size_billions("frontier-model"), None);
+    }
+
+    #[test]
+    fn supervised_runtime_cannot_delegate_recursively_to_the_sidekick() {
+        let supervised = sidecar_tool_definitions(false);
+        assert!(supervised.iter().all(|tool| {
+            tool.get("name").and_then(Value::as_str) != Some("delegate_to_sidekick")
+        }));
+
+        let unsupervised = sidecar_tool_definitions(true);
+        assert!(unsupervised.iter().any(|tool| {
+            tool.get("name").and_then(Value::as_str) == Some("delegate_to_sidekick")
+        }));
+    }
+
+    #[test]
+    fn direct_tools_are_not_duplicated_inside_generic_wrappers() {
+        let tools = tool_schemas();
+        let direct = tools
+            .iter()
+            .filter_map(|tool| tool.pointer("/function/name").and_then(Value::as_str))
+            .filter(|name| !name.starts_with("understudy_"))
+            .collect::<std::collections::HashSet<_>>();
+        let wrapper = tools
+            .iter()
+            .find(|tool| {
+                tool.pointer("/function/name").and_then(Value::as_str)
+                    == Some("understudy_mcp_tool")
+            })
+            .expect("MCP wrapper exists");
+        let wrapped_names = wrapper
+            .pointer("/function/parameters/properties/tool_name/enum")
+            .and_then(Value::as_array)
+            .expect("wrapper names are enumerated");
+        assert!(wrapped_names.iter().all(|name| {
+            name.as_str()
+                .is_some_and(|name| !direct.contains(name))
+        }));
+    }
+
+    #[test]
+    fn benchmark_sidecar_result_preserves_exact_usage_and_compaction() {
+        let prepared = PreparedBenchmarkRun {
+            started: Instant::now() - Duration::from_millis(777),
+            session_id: "fusion-session".to_string(),
+            capture_run_id: "desktop-fusion-capture".to_string(),
+            messages: vec![],
+            outbound_messages: vec![],
+            binding: RouteBinding {
+                route: "local".to_string(),
+                url: "http://127.0.0.1:8091/v1/chat/completions".to_string(),
+                bearer: None,
+                model_field: "model-under-test".to_string(),
+            },
+            slot_id: Some(5),
+            allow_sidekick_tool: false,
+            compacted: true,
+            context_tokens_before: 12_000,
+        };
+        let result = benchmark_sidecar_result(
+            &prepared,
+            crate::conversation_sidecar::SidecarRunResult {
+                content: "measured answer".to_string(),
+                usage: Some(json!({
+                    "prompt_tokens": 321,
+                    "completion_tokens": 45,
+                    "reasoning_tokens": 9
+                })),
+                tool_calls: 2,
+                elapsed_ms: 777,
+                compacted: true,
+                context_tokens_before: 15_000,
+            },
+        );
+        assert_eq!(result.capture_run_id, "desktop-fusion-capture");
+        assert_eq!(result.runtime_backend, "pi");
+        assert_eq!(result.prompt_tokens, 321);
+        assert_eq!(result.completion_tokens, 45);
+        assert_eq!(result.reasoning_tokens, 9);
+        assert_eq!(result.tool_calls, 2);
+        assert!(result.elapsed_ms >= 777);
+        assert!(result.compacted);
+        assert_eq!(result.context_tokens_before, 15_000);
+    }
+
+    #[test]
+    fn canonical_runtime_receives_provider_base_urls_not_completion_endpoints() {
+        assert_eq!(
+            sidecar_provider_base_url("https://api.anthropic.com/v1/messages"),
+            "https://api.anthropic.com"
+        );
+        assert_eq!(
+            sidecar_provider_base_url("https://gateway.example/v1/chat/completions"),
+            "https://gateway.example/v1"
+        );
+    }
 
     #[test]
     fn sidekick_compaction_never_orphans_tool_replies() {

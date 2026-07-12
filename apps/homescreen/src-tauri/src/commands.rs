@@ -20,7 +20,7 @@ use crate::route_policy::{
     TOOL_DEPTH_ESCALATION_CALLS,
 };
 use crate::sidecar::{ServiceState, Services};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::fs;
 use std::path::PathBuf;
@@ -82,6 +82,8 @@ pub struct FusionBenchmarkCandidate {
 #[derive(serde::Deserialize)]
 pub struct RecordFusionBenchmarkRequest {
     pub run_id: String,
+    pub capture_run_id: Option<String>,
+    pub runtime_backend: Option<String>,
     pub task_id: String,
     pub mode: String,
     pub model: String,
@@ -358,6 +360,9 @@ pub struct EvalResultProvenance {
 pub struct EvalResultV1 {
     pub schema_version: &'static str,
     pub run_id: String,
+    /// Per-attempt canonical runtime id; unlike run_id, this is unique per row.
+    pub capture_run_id: Option<String>,
+    pub runtime_backend: Option<String>,
     pub task_id: String,
     pub split: String,
     pub score: Option<f64>,
@@ -391,6 +396,8 @@ pub(crate) fn eval_result_v1(row: &FusionBenchmarkRow) -> EvalResultV1 {
     EvalResultV1 {
         schema_version: "understudy.eval_result.v1",
         run_id: row.run_id.clone(),
+        capture_run_id: row.capture_run_id.clone(),
+        runtime_backend: Some(row.runtime_backend.clone()),
         task_id: row.task_id.clone(),
         split: row.split.clone().unwrap_or_else(|| "none".to_string()),
         score: row.score,
@@ -589,6 +596,16 @@ pub struct ChatRouteMetricGroup {
 #[derive(Serialize, Clone)]
 pub struct ChatRouteMetrics {
     pub schema_version: &'static str,
+    pub app_version: &'static str,
+    pub runtime_version: &'static str,
+    pub observed_row_limit: u32,
+    pub required_canonical_runtime_rows: u64,
+    pub remaining_canonical_runtime_rows: u64,
+    pub canonical_runtime_rows: u64,
+    pub pi_runtime_rows: u64,
+    pub compatibility_fallback_rows: u64,
+    pub pi_runtime_share: Option<f64>,
+    pub compatibility_engine_delete_ready: bool,
     pub groups: Vec<ChatRouteMetricGroup>,
 }
 
@@ -1786,6 +1803,10 @@ pub fn record_fusion_benchmark(
     }
     let input = FusionBenchmarkInput {
         run_id: result.run_id,
+        capture_run_id: result.capture_run_id,
+        runtime_backend: result
+            .runtime_backend
+            .unwrap_or_else(|| "external".to_string()),
         task_id: result.task_id,
         mode: result.mode,
         model: result.model,
@@ -2254,12 +2275,94 @@ pub fn chat_runs(app: AppHandle, limit: Option<u32>) -> Result<Vec<ChatRunRow>, 
         .map_err(|e| e.to_string())
 }
 
+const DESKTOP_CHAT_SESSION_SCHEMA: &str = "understudy-desktop-chat-session-v1";
+const MAX_PERSISTED_CHAT_BYTES: usize = 48 * 1024 * 1024;
+const MAX_PERSISTED_CHAT_MESSAGES: usize = 500;
+
+#[derive(Serialize)]
+pub struct DesktopChatSession {
+    session_id: String,
+    messages: Value,
+    updated_at: String,
+}
+
+#[tauri::command]
+pub fn chat_session_latest(app: AppHandle) -> Result<Option<DesktopChatSession>, String> {
+    let Some(row) = app
+        .state::<crate::db::Db>()
+        .latest_chat_session(DESKTOP_CHAT_SESSION_SCHEMA)
+        .map_err(|error| error.to_string())?
+    else {
+        return Ok(None);
+    };
+    if row.schema != DESKTOP_CHAT_SESSION_SCHEMA {
+        return Ok(None);
+    }
+    let messages = serde_json::from_str(&row.messages)
+        .map_err(|error| format!("saved chat transcript is invalid: {error}"))?;
+    Ok(Some(DesktopChatSession {
+        session_id: row.session_id,
+        messages,
+        updated_at: row.updated_at,
+    }))
+}
+
+#[tauri::command]
+pub fn chat_session_save(
+    app: AppHandle,
+    session_id: String,
+    messages: Value,
+) -> Result<(), String> {
+    if session_id.trim().is_empty() || session_id.len() > 200 {
+        return Err("invalid chat session id".to_string());
+    }
+    let Some(items) = messages.as_array() else {
+        return Err("chat transcript must be an array".to_string());
+    };
+    if items.len() > MAX_PERSISTED_CHAT_MESSAGES {
+        return Err(format!(
+            "chat transcript exceeds {MAX_PERSISTED_CHAT_MESSAGES} messages"
+        ));
+    }
+    let encoded = serde_json::to_string(&messages).map_err(|error| error.to_string())?;
+    if encoded.len() > MAX_PERSISTED_CHAT_BYTES {
+        return Err("chat transcript exceeds the 48 MB local resume limit".to_string());
+    }
+    app.state::<crate::db::Db>()
+        .save_active_chat_session(&session_id, DESKTOP_CHAT_SESSION_SCHEMA, &encoded)
+        .map_err(|error| error.to_string())
+}
+
 #[tauri::command]
 pub fn chat_route_metrics(app: AppHandle, limit: Option<u32>) -> Result<ChatRouteMetrics, String> {
+    let observed_row_limit = limit.unwrap_or(250).clamp(1, 500);
     let rows = app
         .state::<crate::db::Db>()
-        .list_chat_runs(limit.unwrap_or(250))
+        .list_chat_runs(observed_row_limit)
         .map_err(|e| e.to_string())?;
+    Ok(chat_route_metrics_for_rows(rows, observed_row_limit))
+}
+
+fn chat_route_metrics_for_rows(rows: Vec<ChatRunRow>, observed_row_limit: u32) -> ChatRouteMetrics {
+    const REQUIRED_CANONICAL_RUNTIME_ROWS: u64 = 100;
+    // Count only the compatibility release cohort. Older development and
+    // migrated rows remain preserved in SQLite, but cannot poison or falsely
+    // satisfy the 100-run Rust deletion gate.
+    let rows: Vec<_> = rows
+        .into_iter()
+        .filter(|row| {
+            row.app_version == env!("CARGO_PKG_VERSION")
+                && row.runtime_version == crate::conversation_runtime::RUNTIME_VERSION
+        })
+        .collect();
+    let canonical_runtime_rows = rows.iter().filter(|row| row.run_id.is_some()).count() as u64;
+    let pi_runtime_rows = rows
+        .iter()
+        .filter(|row| row.run_id.is_some() && row.runtime_backend == "pi")
+        .count() as u64;
+    let compatibility_fallback_rows = canonical_runtime_rows.saturating_sub(pi_runtime_rows);
+    let pi_runtime_share = (canonical_runtime_rows > 0)
+        .then_some(pi_runtime_rows as f64 / canonical_runtime_rows as f64);
     let mut groups: std::collections::BTreeMap<(String, String), Vec<ChatRunRow>> =
         std::collections::BTreeMap::new();
     for row in rows {
@@ -2303,10 +2406,23 @@ pub fn chat_route_metrics(app: AppHandle, limit: Option<u32>) -> Result<ChatRout
         });
     }
     out.sort_by_key(|g| std::cmp::Reverse(g.rows));
-    Ok(ChatRouteMetrics {
+    ChatRouteMetrics {
         schema_version: "understudy.chat_route_metrics.v1",
+        app_version: env!("CARGO_PKG_VERSION"),
+        runtime_version: crate::conversation_runtime::RUNTIME_VERSION,
+        observed_row_limit,
+        required_canonical_runtime_rows: REQUIRED_CANONICAL_RUNTIME_ROWS,
+        remaining_canonical_runtime_rows: REQUIRED_CANONICAL_RUNTIME_ROWS
+            .saturating_sub(canonical_runtime_rows),
+        canonical_runtime_rows,
+        pi_runtime_rows,
+        compatibility_fallback_rows,
+        pi_runtime_share,
+        compatibility_engine_delete_ready: canonical_runtime_rows
+            >= REQUIRED_CANONICAL_RUNTIME_ROWS
+            && compatibility_fallback_rows == 0,
         groups: out,
-    })
+    }
 }
 
 #[tauri::command]
@@ -2366,15 +2482,15 @@ async fn run_fusion_benchmark_inner(
         }
     }
 
-    let snapshot = residency(&app).snapshot();
+    let residency_manager = residency(&app);
+    let snapshot = residency_manager.snapshot();
     let warm_main = snapshot.slots.iter().find(|slot| slot.state == "running");
-    let warm_sidekick = snapshot.slots.iter().find(|slot| {
-        slot.state == "running"
-            && slot
-                .model_id
-                .as_deref()
-                .is_some_and(|id| id.contains("understudy-small") || id.contains("e2b"))
-    });
+    // Use the same endpoint selection as live chat. Model-name heuristics made
+    // valid small models such as LFM look unavailable to the benchmark even
+    // while the runtime was actively serving them.
+    let warm_sidekick = warm_main
+        .and_then(|main| residency_manager.sidekick_endpoint(Some(main.id)))
+        .and_then(|(slot_id, _, _, _)| snapshot.slots.iter().find(|slot| slot.id == slot_id));
     let candidate_main = if candidate == "local-fast" {
         warm_sidekick.or(warm_main)
     } else {
@@ -2487,6 +2603,7 @@ async fn run_fusion_benchmark_inner(
                 });
             }
             if ready && !dry_run {
+                let capture_run_id = crate::conversation_runtime::new_run_id()?;
                 let before_sidekick_run_ids = app
                     .state::<crate::db::Db>()
                     .list_sidekick_runs(100)
@@ -2503,6 +2620,7 @@ async fn run_fusion_benchmark_inner(
                         task.prompt,
                         &effective_model,
                         allow_sidekick_tool,
+                        &capture_run_id,
                     )
                     .await
                 } else {
@@ -2511,7 +2629,7 @@ async fn run_fusion_benchmark_inner(
                         &app,
                         residency(&app),
                         slot_id,
-                        &run_id,
+                        (&run_id, &capture_run_id),
                         task.prompt,
                         needs_sidekick,
                         allow_sidekick_tool,
@@ -2544,6 +2662,8 @@ async fn run_fusion_benchmark_inner(
                         app.state::<crate::db::Db>()
                             .record_fusion_benchmark(&FusionBenchmarkInput {
                                 run_id: run_id.clone(),
+                                capture_run_id: Some(capture_run_id.clone()),
+                                runtime_backend: "unknown".to_string(),
                                 task_id: task.id.to_string(),
                                 mode: mode.clone(),
                                 model: effective_model.clone(),
@@ -2612,6 +2732,8 @@ async fn run_fusion_benchmark_inner(
                 app.state::<crate::db::Db>()
                     .record_fusion_benchmark(&FusionBenchmarkInput {
                         run_id: run_id.clone(),
+                        capture_run_id: Some(result.capture_run_id.clone()),
+                        runtime_backend: result.runtime_backend.clone(),
                         task_id: task.id.to_string(),
                         mode: mode.clone(),
                         model: effective_model.clone(),
@@ -2661,9 +2783,12 @@ async fn run_fusion_benchmark_inner(
                     });
                 }
             } else if !ready && record_skips {
+                let capture_run_id = crate::conversation_runtime::new_run_id()?;
                 app.state::<crate::db::Db>()
                     .record_fusion_benchmark(&FusionBenchmarkInput {
                         run_id: run_id.clone(),
+                        capture_run_id: Some(capture_run_id),
+                        runtime_backend: "not-run".to_string(),
                         task_id: task.id.to_string(),
                         mode: mode.clone(),
                         model: effective_model.clone(),
@@ -3012,6 +3137,93 @@ pub fn set_sidekick_run_feedback(
         .map_err(|e| e.to_string())
 }
 
+/// Explicit human verdict on one local supervisor decision. `correct_action`
+/// is optional so a one-tap helpful/not-helpful label stays cheap, while a
+/// richer label remains available for evaluator and training exports.
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SupervisorFeedbackRequest {
+    session_id: String,
+    run_id: Option<String>,
+    marker_id: Option<String>,
+    intervention_at: Option<u64>,
+    stage: String,
+    helpful: bool,
+    correct_action: Option<String>,
+    justification: Option<String>,
+}
+
+fn validate_correct_supervisor_action(
+    stage: &str,
+    helpful: bool,
+    correct_action: Option<&str>,
+) -> Result<(), String> {
+    let Some(correct_action) = correct_action else {
+        return Ok(());
+    };
+    if !matches!(correct_action, "continue" | "nudge" | "interrupt" | "stop") {
+        return Err(format!(
+            "unknown correct supervisor action: {correct_action}"
+        ));
+    }
+    let recorded_action = match stage {
+        "take_over" => "interrupt",
+        "nudge" => "nudge",
+        "continue" => "continue",
+        "stop" => "stop",
+        _ => return Err(format!("unknown supervisor stage: {stage}")),
+    };
+    if helpful != (correct_action == recorded_action) {
+        return Err(format!(
+            "correct_action {correct_action} is inconsistent with helpful={helpful} for {recorded_action}"
+        ));
+    }
+    Ok(())
+}
+
+#[tauri::command]
+pub fn record_supervisor_feedback(
+    app: AppHandle,
+    feedback: SupervisorFeedbackRequest,
+) -> Result<(), String> {
+    if !matches!(
+        feedback.stage.as_str(),
+        "continue" | "nudge" | "take_over" | "stop"
+    ) {
+        return Err(format!("unknown supervisor stage: {}", feedback.stage));
+    }
+    if feedback.run_id.is_some() && feedback.marker_id.as_deref().is_none_or(str::is_empty) {
+        return Err("run-attributed supervisor feedback requires marker_id".to_string());
+    }
+    validate_correct_supervisor_action(
+        &feedback.stage,
+        feedback.helpful,
+        feedback.correct_action.as_deref(),
+    )?;
+    app.state::<crate::db::Db>()
+        .record_supervisor_feedback(&crate::db::SupervisorFeedbackInput {
+            session_id: feedback.session_id,
+            run_id: feedback.run_id,
+            marker_id: feedback.marker_id,
+            intervention_at: feedback.intervention_at,
+            stage: feedback.stage,
+            helpful: feedback.helpful,
+            correct_action: feedback.correct_action,
+            justification: feedback.justification,
+        })
+        .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+pub fn supervisor_feedback_for_session(
+    app: AppHandle,
+    session_id: String,
+) -> Result<Vec<crate::db::SupervisorFeedbackRow>, String> {
+    app.state::<crate::db::Db>()
+        .list_supervisor_feedback_for_session(&session_id)
+        .map_err(|error| error.to_string())
+}
+
 #[tauri::command]
 pub fn sidekick_decisions(
     app: AppHandle,
@@ -3074,11 +3286,72 @@ pub fn server_info(app: AppHandle) -> Option<Value> {
 #[cfg(test)]
 mod tests {
     use super::{
-        eval_result_v1, eval_results_jsonl, export_packet_provenance, fusion_benchmark_score,
-        resolve_export_output_path_under, sha256_hex,
+        chat_route_metrics_for_rows, eval_result_v1, eval_results_jsonl, export_packet_provenance,
+        fusion_benchmark_score, resolve_export_output_path_under, sha256_hex,
     };
-    use crate::db::{Db, FusionBenchmarkInput};
+    use crate::db::{ChatRunRow, Db, FusionBenchmarkInput};
     use std::path::PathBuf;
+
+    fn migration_row(
+        runtime_backend: &str,
+        app_version: &str,
+        runtime_version: &str,
+    ) -> ChatRunRow {
+        ChatRunRow {
+            id: 1,
+            run_id: Some("run-1".to_string()),
+            runtime_backend: runtime_backend.to_string(),
+            app_version: app_version.to_string(),
+            runtime_version: runtime_version.to_string(),
+            session_id: "session-1".to_string(),
+            route: "local".to_string(),
+            model: "understudy-small".to_string(),
+            elapsed_ms: Some(1),
+            prompt_tokens: Some(1),
+            completion_tokens: Some(1),
+            tool_calls: 0,
+            sidekick_spawned: false,
+            gateway_used: false,
+            compacted: false,
+            compaction_reason: None,
+            context_tokens_before: None,
+            local_mem_gb: None,
+            gateway_available: false,
+            gateway_avoided: false,
+            status: "ok".to_string(),
+            error: None,
+            run_at: "2026-07-12T00:00:00Z".to_string(),
+        }
+    }
+
+    #[test]
+    fn migration_gate_counts_only_the_current_release_cohort() {
+        let mut rows = vec![migration_row("native-rust", "legacy", "legacy"); 50];
+        rows.extend(vec![
+            migration_row(
+                "pi",
+                env!("CARGO_PKG_VERSION"),
+                crate::conversation_runtime::RUNTIME_VERSION,
+            );
+            100
+        ]);
+        let ready = chat_route_metrics_for_rows(rows.clone(), 250);
+        assert_eq!(ready.canonical_runtime_rows, 100);
+        assert_eq!(ready.pi_runtime_rows, 100);
+        assert_eq!(ready.compatibility_fallback_rows, 0);
+        assert_eq!(ready.remaining_canonical_runtime_rows, 0);
+        assert!(ready.compatibility_engine_delete_ready);
+
+        rows.push(migration_row(
+            "native-rust",
+            env!("CARGO_PKG_VERSION"),
+            crate::conversation_runtime::RUNTIME_VERSION,
+        ));
+        let fallback = chat_route_metrics_for_rows(rows, 250);
+        assert_eq!(fallback.canonical_runtime_rows, 101);
+        assert_eq!(fallback.compatibility_fallback_rows, 1);
+        assert!(!fallback.compatibility_engine_delete_ready);
+    }
 
     #[test]
     fn export_packet_provenance_hashes_and_summarizes_rows() {
@@ -3308,6 +3581,8 @@ mod tests {
     fn benchmark_input(task_id: &str, score: Option<f64>, status: &str) -> FusionBenchmarkInput {
         FusionBenchmarkInput {
             run_id: "fusion-run-1".to_string(),
+            capture_run_id: Some(format!("desktop-{task_id}")),
+            runtime_backend: "pi".to_string(),
             task_id: task_id.to_string(),
             mode: "sidekick-routing".to_string(),
             model: "gemma-4-e2b-it-qat-understudy".to_string(),

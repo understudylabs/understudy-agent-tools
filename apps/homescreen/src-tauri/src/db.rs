@@ -21,6 +21,9 @@ pub struct BenchRow {
 pub struct FusionBenchmarkRow {
     pub id: u64,
     pub run_id: String,
+    /// Per-attempt id that joins this indexed row to canonical runtime JSONL.
+    pub capture_run_id: Option<String>,
+    pub runtime_backend: String,
     pub task_id: String,
     pub mode: String,
     pub model: String,
@@ -48,6 +51,8 @@ pub struct FusionBenchmarkRow {
 #[derive(Clone, Debug)]
 pub struct FusionBenchmarkInput {
     pub run_id: String,
+    pub capture_run_id: Option<String>,
+    pub runtime_backend: String,
     pub task_id: String,
     pub mode: String,
     pub model: String,
@@ -120,6 +125,10 @@ pub struct FusionRouteDecisionInput {
 #[derive(Serialize, Clone)]
 pub struct ChatRunRow {
     pub id: u64,
+    pub run_id: Option<String>,
+    pub runtime_backend: String,
+    pub app_version: String,
+    pub runtime_version: String,
     pub session_id: String,
     pub route: String,
     pub model: String,
@@ -142,6 +151,8 @@ pub struct ChatRunRow {
 
 #[derive(Clone, Debug)]
 pub struct ChatRunInput {
+    pub run_id: String,
+    pub runtime_backend: String,
     pub session_id: String,
     pub route: String,
     pub model: String,
@@ -159,6 +170,14 @@ pub struct ChatRunInput {
     pub gateway_avoided: bool,
     pub status: String,
     pub error: Option<String>,
+}
+
+#[derive(Serialize, Clone)]
+pub struct ChatSessionRow {
+    pub session_id: String,
+    pub schema: String,
+    pub messages: String,
+    pub updated_at: String,
 }
 
 #[derive(Serialize, Clone)]
@@ -197,6 +216,32 @@ pub struct SidekickEventRow {
     pub stage: String,
     pub detail: String,
     pub created_at: String,
+}
+
+#[derive(Serialize, Clone, Debug)]
+pub struct SupervisorFeedbackRow {
+    pub id: u64,
+    pub session_id: String,
+    pub run_id: Option<String>,
+    pub marker_id: Option<String>,
+    pub intervention_at: Option<u64>,
+    pub stage: String,
+    pub helpful: bool,
+    pub correct_action: Option<String>,
+    pub justification: Option<String>,
+    pub created_at: String,
+}
+
+#[derive(Clone, Debug)]
+pub struct SupervisorFeedbackInput {
+    pub session_id: String,
+    pub run_id: Option<String>,
+    pub marker_id: Option<String>,
+    pub intervention_at: Option<u64>,
+    pub stage: String,
+    pub helpful: bool,
+    pub correct_action: Option<String>,
+    pub justification: Option<String>,
 }
 
 #[derive(Serialize, Clone)]
@@ -315,6 +360,8 @@ fn migrate(conn: &Connection) -> Result<()> {
             CREATE TABLE IF NOT EXISTS fusion_benchmarks (
                 id                  INTEGER PRIMARY KEY,
                 run_id              TEXT NOT NULL,
+                capture_run_id      TEXT,
+                runtime_backend     TEXT NOT NULL DEFAULT 'native-rust',
                 task_id             TEXT NOT NULL,
                 mode                TEXT NOT NULL,
                 model               TEXT NOT NULL,
@@ -365,8 +412,18 @@ fn migrate(conn: &Connection) -> Result<()> {
                 route       TEXT,
                 created_at  TEXT NOT NULL
             );
+            CREATE TABLE IF NOT EXISTS chat_sessions (
+                session_id TEXT PRIMARY KEY,
+                schema     TEXT NOT NULL,
+                messages   TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            );
             CREATE TABLE IF NOT EXISTS chat_runs (
                 id                INTEGER PRIMARY KEY,
+                run_id            TEXT,
+                runtime_backend   TEXT NOT NULL DEFAULT 'native-rust',
+                app_version       TEXT NOT NULL DEFAULT 'legacy',
+                runtime_version   TEXT NOT NULL DEFAULT 'legacy',
                 session_id        TEXT NOT NULL,
                 route             TEXT NOT NULL,
                 model             TEXT NOT NULL,
@@ -422,6 +479,18 @@ fn migrate(conn: &Connection) -> Result<()> {
                 detail     TEXT NOT NULL,
                 created_at TEXT NOT NULL
             );
+            CREATE TABLE IF NOT EXISTS supervisor_feedback (
+                id              INTEGER PRIMARY KEY,
+                session_id      TEXT NOT NULL,
+                run_id          TEXT,
+                marker_id       TEXT,
+                intervention_at INTEGER,
+                stage           TEXT NOT NULL,
+                helpful         INTEGER NOT NULL,
+                correct_action  TEXT,
+                justification   TEXT,
+                created_at      TEXT NOT NULL
+            );
             CREATE TABLE IF NOT EXISTS sidekick_sessions (
                 session_key TEXT PRIMARY KEY,
                 session_id  TEXT NOT NULL,
@@ -463,6 +532,10 @@ fn migrate(conn: &Connection) -> Result<()> {
         "ALTER TABLE chat_runs ADD COLUMN local_mem_gb REAL",
         "ALTER TABLE chat_runs ADD COLUMN gateway_available INTEGER NOT NULL DEFAULT 0",
         "ALTER TABLE chat_runs ADD COLUMN gateway_avoided INTEGER NOT NULL DEFAULT 0",
+        "ALTER TABLE chat_runs ADD COLUMN run_id TEXT",
+        "ALTER TABLE chat_runs ADD COLUMN runtime_backend TEXT NOT NULL DEFAULT 'native-rust'",
+        "ALTER TABLE chat_runs ADD COLUMN app_version TEXT NOT NULL DEFAULT 'legacy'",
+        "ALTER TABLE chat_runs ADD COLUMN runtime_version TEXT NOT NULL DEFAULT 'legacy'",
         "ALTER TABLE fusion_benchmarks ADD COLUMN compacted INTEGER NOT NULL DEFAULT 0",
         "ALTER TABLE fusion_benchmarks ADD COLUMN context_tokens_before INTEGER",
         "ALTER TABLE fusion_benchmarks ADD COLUMN local_mem_gb REAL",
@@ -472,16 +545,26 @@ fn migrate(conn: &Connection) -> Result<()> {
         "ALTER TABLE fusion_benchmarks ADD COLUMN split TEXT",
         "ALTER TABLE fusion_benchmarks ADD COLUMN harness_sha256 TEXT",
         "ALTER TABLE fusion_benchmarks ADD COLUMN split_sha256 TEXT",
+        "ALTER TABLE fusion_benchmarks ADD COLUMN capture_run_id TEXT",
+        "ALTER TABLE fusion_benchmarks ADD COLUMN runtime_backend TEXT NOT NULL DEFAULT 'native-rust'",
         "ALTER TABLE sidekick_sessions ADD COLUMN message_count INTEGER NOT NULL DEFAULT 0",
         "ALTER TABLE sidekick_sessions ADD COLUMN compacted_count INTEGER NOT NULL DEFAULT 0",
         "ALTER TABLE sidekick_sessions ADD COLUMN memory TEXT",
         "ALTER TABLE fusion_route_decisions ADD COLUMN policy_class TEXT NOT NULL DEFAULT 'unknown'",
         "ALTER TABLE fusion_route_decisions ADD COLUMN signals TEXT",
         "ALTER TABLE fusion_route_decisions ADD COLUMN upgrade_sidekick INTEGER NOT NULL DEFAULT 0",
+        "ALTER TABLE supervisor_feedback ADD COLUMN marker_id TEXT",
+        "ALTER TABLE supervisor_feedback ADD COLUMN intervention_at INTEGER",
+        "ALTER TABLE supervisor_feedback ADD COLUMN correct_action TEXT",
     ];
     for sql in ALTERS {
         apply_alter(conn, sql)?;
     }
+    conn.execute(
+        "CREATE UNIQUE INDEX IF NOT EXISTS supervisor_feedback_marker_id
+         ON supervisor_feedback(marker_id)",
+        [],
+    )?;
     Ok(())
 }
 
@@ -591,9 +674,10 @@ impl Db {
                 run_id, task_id, mode, model, elapsed_ms, prompt_tokens, completion_tokens,
                 sidekick_runs, sidekick_tool_calls, gateway_used, compacted, context_tokens_before,
                 local_mem_gb, score, status, notes, run_at,
-                cost_usd, cost_basis, split, harness_sha256, split_sha256
+                cost_usd, cost_basis, split, harness_sha256, split_sha256, capture_run_id,
+                runtime_backend
              ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17,
-                       ?18, ?19, ?20, ?21, ?22)",
+                       ?18, ?19, ?20, ?21, ?22, ?23, ?24)",
             rusqlite::params![
                 input.run_id,
                 input.task_id,
@@ -617,6 +701,8 @@ impl Db {
                 input.split,
                 input.harness_sha256,
                 input.split_sha256,
+                input.capture_run_id,
+                input.runtime_backend,
             ],
         )?;
         Ok(())
@@ -694,11 +780,15 @@ impl Db {
         let conn = self.conn()?;
         conn.execute(
             "INSERT INTO chat_runs (
-                session_id, route, model, elapsed_ms, prompt_tokens, completion_tokens, tool_calls,
+                run_id, runtime_backend, app_version, runtime_version, session_id, route, model, elapsed_ms, prompt_tokens, completion_tokens, tool_calls,
                 sidekick_spawned, gateway_used, compacted, compaction_reason, context_tokens_before,
                 local_mem_gb, gateway_available, gateway_avoided, status, error, run_at
-             ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18)",
+             ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21, ?22)",
             rusqlite::params![
+                input.run_id,
+                input.runtime_backend,
+                env!("CARGO_PKG_VERSION"),
+                crate::conversation_runtime::RUNTIME_VERSION,
                 input.session_id,
                 input.route,
                 input.model,
@@ -726,6 +816,10 @@ impl Db {
         let conn = self.conn()?;
         let mut stmt = conn.prepare(
             "SELECT id, session_id, route, model, elapsed_ms, prompt_tokens, completion_tokens,
+                    run_id,
+                    runtime_backend,
+                    app_version,
+                    runtime_version,
                     tool_calls, sidekick_spawned, gateway_used, compacted, compaction_reason,
                     context_tokens_before, local_mem_gb, gateway_available, gateway_avoided,
                     status, error, run_at
@@ -740,18 +834,22 @@ impl Db {
                 elapsed_ms: r.get::<_, Option<i64>>(4)?.map(|v| v as u64),
                 prompt_tokens: r.get::<_, Option<i64>>(5)?.map(|v| v as u64),
                 completion_tokens: r.get::<_, Option<i64>>(6)?.map(|v| v as u64),
-                tool_calls: r.get::<_, i64>(7)? as u64,
-                sidekick_spawned: r.get::<_, i64>(8)? != 0,
-                gateway_used: r.get::<_, i64>(9)? != 0,
-                compacted: r.get::<_, i64>(10)? != 0,
-                compaction_reason: r.get(11)?,
-                context_tokens_before: r.get::<_, Option<i64>>(12)?.map(|v| v as u64),
-                local_mem_gb: r.get(13)?,
-                gateway_available: r.get::<_, i64>(14)? != 0,
-                gateway_avoided: r.get::<_, i64>(15)? != 0,
-                status: r.get(16)?,
-                error: r.get(17)?,
-                run_at: r.get(18)?,
+                run_id: r.get(7)?,
+                runtime_backend: r.get(8)?,
+                app_version: r.get(9)?,
+                runtime_version: r.get(10)?,
+                tool_calls: r.get::<_, i64>(11)? as u64,
+                sidekick_spawned: r.get::<_, i64>(12)? != 0,
+                gateway_used: r.get::<_, i64>(13)? != 0,
+                compacted: r.get::<_, i64>(14)? != 0,
+                compaction_reason: r.get(15)?,
+                context_tokens_before: r.get::<_, Option<i64>>(16)?.map(|v| v as u64),
+                local_mem_gb: r.get(17)?,
+                gateway_available: r.get::<_, i64>(18)? != 0,
+                gateway_avoided: r.get::<_, i64>(19)? != 0,
+                status: r.get(20)?,
+                error: r.get(21)?,
+                run_at: r.get(22)?,
             })
         })?;
         rows.collect::<rusqlite::Result<Vec<_>>>()
@@ -766,6 +864,10 @@ impl Db {
         let conn = self.conn()?;
         let mut stmt = conn.prepare(
             "SELECT id, session_id, route, model, elapsed_ms, prompt_tokens, completion_tokens,
+                    run_id,
+                    runtime_backend,
+                    app_version,
+                    runtime_version,
                     tool_calls, sidekick_spawned, gateway_used, compacted, compaction_reason,
                     context_tokens_before, local_mem_gb, gateway_available, gateway_avoided,
                     status, error, run_at
@@ -784,18 +886,22 @@ impl Db {
                     elapsed_ms: r.get::<_, Option<i64>>(4)?.map(|v| v as u64),
                     prompt_tokens: r.get::<_, Option<i64>>(5)?.map(|v| v as u64),
                     completion_tokens: r.get::<_, Option<i64>>(6)?.map(|v| v as u64),
-                    tool_calls: r.get::<_, i64>(7)? as u64,
-                    sidekick_spawned: r.get::<_, i64>(8)? != 0,
-                    gateway_used: r.get::<_, i64>(9)? != 0,
-                    compacted: r.get::<_, i64>(10)? != 0,
-                    compaction_reason: r.get(11)?,
-                    context_tokens_before: r.get::<_, Option<i64>>(12)?.map(|v| v as u64),
-                    local_mem_gb: r.get(13)?,
-                    gateway_available: r.get::<_, i64>(14)? != 0,
-                    gateway_avoided: r.get::<_, i64>(15)? != 0,
-                    status: r.get(16)?,
-                    error: r.get(17)?,
-                    run_at: r.get(18)?,
+                    run_id: r.get(7)?,
+                    runtime_backend: r.get(8)?,
+                    app_version: r.get(9)?,
+                    runtime_version: r.get(10)?,
+                    tool_calls: r.get::<_, i64>(11)? as u64,
+                    sidekick_spawned: r.get::<_, i64>(12)? != 0,
+                    gateway_used: r.get::<_, i64>(13)? != 0,
+                    compacted: r.get::<_, i64>(14)? != 0,
+                    compaction_reason: r.get(15)?,
+                    context_tokens_before: r.get::<_, Option<i64>>(16)?.map(|v| v as u64),
+                    local_mem_gb: r.get(17)?,
+                    gateway_available: r.get::<_, i64>(18)? != 0,
+                    gateway_avoided: r.get::<_, i64>(19)? != 0,
+                    status: r.get(20)?,
+                    error: r.get(21)?,
+                    run_at: r.get(22)?,
                 })
             },
         )?;
@@ -815,7 +921,8 @@ impl Db {
                         ELSE 'ok'
                     END) AS status,
                     notes, run_at,
-                    cost_usd, cost_basis, split, harness_sha256, split_sha256
+                    cost_usd, cost_basis, split, harness_sha256, split_sha256, capture_run_id,
+                    runtime_backend
              FROM fusion_benchmarks ORDER BY id DESC LIMIT ?1",
         )?;
         let rows = stmt.query_map([limit.clamp(1, 500) as i64], |r| {
@@ -843,6 +950,8 @@ impl Db {
                 split: r.get(20)?,
                 harness_sha256: r.get(21)?,
                 split_sha256: r.get(22)?,
+                capture_run_id: r.get(23)?,
+                runtime_backend: r.get(24)?,
             })
         })?;
         rows.collect::<rusqlite::Result<Vec<_>>>()
@@ -982,6 +1091,44 @@ impl Db {
         Ok(())
     }
 
+    pub fn save_active_chat_session(
+        &self,
+        session_id: &str,
+        schema: &str,
+        messages: &str,
+    ) -> Result<()> {
+        let conn = self.conn()?;
+        conn.execute(
+            "INSERT INTO chat_sessions(session_id, schema, messages, updated_at)
+             VALUES (?1, ?2, ?3, ?4)
+             ON CONFLICT(session_id) DO UPDATE SET
+                schema=excluded.schema,
+                messages=excluded.messages,
+                updated_at=excluded.updated_at",
+            rusqlite::params![session_id, schema, messages, now_iso()],
+        )?;
+        Ok(())
+    }
+
+    pub fn latest_chat_session(&self, schema: &str) -> Result<Option<ChatSessionRow>> {
+        let conn = self.conn()?;
+        let mut stmt = conn.prepare(
+            "SELECT session_id, schema, messages, updated_at
+             FROM chat_sessions WHERE schema=?1
+             ORDER BY updated_at DESC, rowid DESC LIMIT 1",
+        )?;
+        let mut rows = stmt.query([schema])?;
+        let Some(row) = rows.next()? else {
+            return Ok(None);
+        };
+        Ok(Some(ChatSessionRow {
+            session_id: row.get(0)?,
+            schema: row.get(1)?,
+            messages: row.get(2)?,
+            updated_at: row.get(3)?,
+        }))
+    }
+
     // Mirrors the sidekick_runs column list; not restructured to avoid churn.
     #[allow(clippy::too_many_arguments)]
     pub fn record_sidekick_run(
@@ -1054,6 +1201,72 @@ impl Db {
             ],
         )?;
         Ok(())
+    }
+
+    /// Persist an explicit human judgment about one supervisor decision.
+    /// Marker identity makes retries idempotent and keeps labels joined to the
+    /// exact interruption that the user saw.
+    pub fn record_supervisor_feedback(&self, input: &SupervisorFeedbackInput) -> Result<()> {
+        let conn = self.conn()?;
+        conn.execute(
+            "INSERT INTO supervisor_feedback (
+                session_id, run_id, marker_id, intervention_at, stage, helpful,
+                correct_action, justification, created_at
+             ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)
+             ON CONFLICT(marker_id) DO UPDATE SET
+                session_id=excluded.session_id,
+                run_id=excluded.run_id,
+                intervention_at=excluded.intervention_at,
+                stage=excluded.stage,
+                helpful=excluded.helpful,
+                correct_action=CASE
+                    WHEN excluded.correct_action IS NOT NULL THEN excluded.correct_action
+                    WHEN excluded.helpful=supervisor_feedback.helpful THEN supervisor_feedback.correct_action
+                    ELSE NULL
+                END,
+                justification=COALESCE(excluded.justification, supervisor_feedback.justification),
+                created_at=excluded.created_at",
+            rusqlite::params![
+                input.session_id,
+                input.run_id,
+                input.marker_id,
+                input.intervention_at.map(|value| value as i64),
+                input.stage,
+                input.helpful as i64,
+                input.correct_action,
+                input.justification,
+                now_iso(),
+            ],
+        )?;
+        Ok(())
+    }
+
+    pub fn list_supervisor_feedback_for_session(
+        &self,
+        session_id: &str,
+    ) -> Result<Vec<SupervisorFeedbackRow>> {
+        let conn = self.conn()?;
+        let mut stmt = conn.prepare(
+            "SELECT id, session_id, run_id, marker_id, intervention_at, stage,
+                    helpful, correct_action, justification, created_at
+             FROM supervisor_feedback WHERE session_id=?1 ORDER BY id",
+        )?;
+        let rows = stmt.query_map([session_id], |row| {
+            Ok(SupervisorFeedbackRow {
+                id: row.get::<_, i64>(0)? as u64,
+                session_id: row.get(1)?,
+                run_id: row.get(2)?,
+                marker_id: row.get(3)?,
+                intervention_at: row.get::<_, Option<i64>>(4)?.map(|value| value as u64),
+                stage: row.get(5)?,
+                helpful: row.get::<_, i64>(6)? != 0,
+                correct_action: row.get(7)?,
+                justification: row.get(8)?,
+                created_at: row.get(9)?,
+            })
+        })?;
+        rows.collect::<rusqlite::Result<Vec<_>>>()
+            .map_err(Into::into)
     }
 
     pub fn sidekick_feedback_summary(&self, limit: u32) -> Result<SidekickFeedbackSummary> {
@@ -1408,10 +1621,76 @@ mod tests {
     }
 
     #[test]
+    fn chat_run_round_trips_canonical_identity_and_backend() {
+        let (dir, db) = temp_db("chat-runtime-identity");
+        db.record_chat_run(&ChatRunInput {
+            run_id: "desktop-run-1".into(),
+            runtime_backend: "pi".into(),
+            session_id: "session-1".into(),
+            route: "local".into(),
+            model: "understudy-small".into(),
+            elapsed_ms: Some(25),
+            prompt_tokens: Some(10),
+            completion_tokens: Some(4),
+            tool_calls: 1,
+            sidekick_spawned: false,
+            gateway_used: false,
+            compacted: false,
+            compaction_reason: None,
+            context_tokens_before: Some(10),
+            local_mem_gb: Some(2.0),
+            gateway_available: false,
+            gateway_avoided: false,
+            status: "ok".into(),
+            error: None,
+        })
+        .unwrap();
+        let rows = db.list_chat_runs(1).unwrap();
+        assert_eq!(rows[0].run_id.as_deref(), Some("desktop-run-1"));
+        assert_eq!(rows[0].runtime_backend, "pi");
+        assert_eq!(rows[0].app_version, env!("CARGO_PKG_VERSION"));
+        assert_eq!(
+            rows[0].runtime_version,
+            crate::conversation_runtime::RUNTIME_VERSION
+        );
+        let session_rows = db.list_chat_runs_for_session("session-1", 1).unwrap();
+        assert_eq!(session_rows[0].run_id.as_deref(), Some("desktop-run-1"));
+        assert_eq!(session_rows[0].runtime_backend, "pi");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn active_chat_session_preserves_history_and_selects_latest_schema() {
+        let (dir, db) = temp_db("active-chat-session");
+        db.save_active_chat_session("session-1", "desktop-chat-v1", "[]")
+            .unwrap();
+        db.save_active_chat_session(
+            "session-2",
+            "desktop-chat-v1",
+            r#"[{"role":"user","content":"resume me"}]"#,
+        )
+        .unwrap();
+        db.save_active_chat_session("legacy", "legacy-chat-v0", "[]")
+            .unwrap();
+        let row = db.latest_chat_session("desktop-chat-v1").unwrap().unwrap();
+        assert_eq!(row.session_id, "session-2");
+        assert!(row.messages.contains("resume me"));
+        let count: u64 = db
+            .conn()
+            .unwrap()
+            .query_row("SELECT COUNT(*) FROM chat_sessions", [], |row| row.get(0))
+            .unwrap();
+        assert_eq!(count, 3);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
     fn fusion_benchmark_rows_round_trip_eval_result_columns() {
         let (dir, db) = temp_db("fusion-eval-cols");
         db.record_fusion_benchmark(&FusionBenchmarkInput {
             run_id: "run-1".into(),
+            capture_run_id: Some("desktop-capture-1".into()),
+            runtime_backend: "pi".into(),
             task_id: "task-1".into(),
             mode: "sidekick-routing".into(),
             model: "model-x".into(),
@@ -1439,6 +1718,8 @@ mod tests {
         assert_eq!(rows.len(), 1);
         let row = &rows[0];
         assert_eq!(row.score, Some(0.0));
+        assert_eq!(row.capture_run_id.as_deref(), Some("desktop-capture-1"));
+        assert_eq!(row.runtime_backend, "pi");
         assert_eq!(row.split.as_deref(), Some("none"));
         assert_eq!(row.cost_usd, None);
         assert_eq!(row.cost_basis.as_deref(), Some("local-zero-marginal-cost"));
@@ -1499,6 +1780,58 @@ mod tests {
     }
 
     #[test]
+    fn supervisor_feedback_is_idempotent_per_marker() {
+        let (dir, db) = temp_db("supervisor-feedback");
+        db.record_supervisor_feedback(&SupervisorFeedbackInput {
+            session_id: "session-1".into(),
+            run_id: Some("run-1".into()),
+            marker_id: Some("run-1:intervention:0".into()),
+            intervention_at: Some(42),
+            stage: "take_over".into(),
+            helpful: true,
+            correct_action: Some("interrupt".into()),
+            justification: None,
+        })
+        .unwrap();
+        db.record_supervisor_feedback(&SupervisorFeedbackInput {
+            session_id: "session-1".into(),
+            run_id: Some("run-1".into()),
+            marker_id: Some("run-1:intervention:0".into()),
+            intervention_at: Some(42),
+            stage: "take_over".into(),
+            helpful: false,
+            correct_action: Some("continue".into()),
+            justification: Some("changed after review".into()),
+        })
+        .unwrap();
+        // A repeated one-tap label must not erase the richer correction.
+        db.record_supervisor_feedback(&SupervisorFeedbackInput {
+            session_id: "session-1".into(),
+            run_id: Some("run-1".into()),
+            marker_id: Some("run-1:intervention:0".into()),
+            intervention_at: Some(42),
+            stage: "take_over".into(),
+            helpful: false,
+            correct_action: None,
+            justification: None,
+        })
+        .unwrap();
+        let rows = db
+            .list_supervisor_feedback_for_session("session-1")
+            .unwrap();
+        assert_eq!(rows.len(), 1);
+        assert!(!rows[0].helpful);
+        assert_eq!(rows[0].marker_id.as_deref(), Some("run-1:intervention:0"));
+        assert_eq!(rows[0].intervention_at, Some(42));
+        assert_eq!(rows[0].correct_action.as_deref(), Some("continue"));
+        assert_eq!(
+            rows[0].justification.as_deref(),
+            Some("changed after review")
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
     fn custom_eval_round_trips_with_ordered_examples() {
         let (dir, db) = temp_db("custom-eval");
         db.insert_custom_eval(&CustomEvalInput {
@@ -1527,7 +1860,10 @@ mod tests {
         assert_eq!(evals[0].eval_id, "support-triage-1");
         assert_eq!(evals[0].scoring_rule, "contains");
         assert_eq!(evals[0].example_count, 2);
-        assert_eq!(evals[0].harness_sha256.as_deref(), Some("b".repeat(64).as_str()));
+        assert_eq!(
+            evals[0].harness_sha256.as_deref(),
+            Some("b".repeat(64).as_str())
+        );
 
         let fetched = db.get_custom_eval("support-triage-1").unwrap().unwrap();
         assert_eq!(fetched.name, "Support triage");
@@ -1556,7 +1892,12 @@ mod tests {
                 }],
             })
             .is_err());
-        assert_eq!(db.list_custom_eval_examples("support-triage-1").unwrap().len(), 2);
+        assert_eq!(
+            db.list_custom_eval_examples("support-triage-1")
+                .unwrap()
+                .len(),
+            2
+        );
         let _ = std::fs::remove_dir_all(&dir);
     }
 

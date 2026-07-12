@@ -7,6 +7,8 @@ mod bin;
 mod bootstrap;
 mod chat;
 mod commands;
+mod conversation_runtime;
+mod conversation_sidecar;
 mod creds;
 mod custom_evals;
 mod db;
@@ -177,6 +179,8 @@ pub fn run() {
             commands::export_automationbench_handoff,
             commands::chat_runs,
             commands::chat_route_metrics,
+            commands::chat_session_latest,
+            commands::chat_session_save,
             commands::run_fusion_benchmark,
             commands::run_fusion_benchmark_matrix,
             commands::run_fusion_benchmark_matrix_live,
@@ -188,6 +192,8 @@ pub fn run() {
             commands::sidekick_runs,
             commands::sidekick_metrics,
             commands::set_sidekick_run_feedback,
+            commands::record_supervisor_feedback,
+            commands::supervisor_feedback_for_session,
             commands::sidekick_decisions,
             commands::sidekick_events,
             commands::sidekick_session_summaries,
@@ -196,6 +202,9 @@ pub fn run() {
             commands::get_setting,
             commands::set_setting,
             commands::server_info,
+            conversation_sidecar::conversation_runtime_start,
+            conversation_sidecar::conversation_runtime_repair,
+            conversation_sidecar::conversation_runtime_cancel,
             rlm::rlm_demo_catalog,
             rlm::rlm_plan,
             rlm::run_rlm_live,

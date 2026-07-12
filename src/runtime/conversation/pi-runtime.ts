@@ -15,6 +15,7 @@ import {
 } from "@earendil-works/pi-coding-agent";
 import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import { Type } from "@earendil-works/pi-ai";
+import { getModels, type Api, type Model } from "@earendil-works/pi-ai/compat";
 
 import {
   PI_RUNTIME_ID,
@@ -51,7 +52,24 @@ function modelFor(
   baseUrl: URL,
   maxTokens: number,
   contextWindow: number,
-) {
+  providerKind: RuntimeRunRequest["provider_kind"],
+): Model<Api> {
+  if (providerKind === "anthropic") {
+    const model = getModels("anthropic").find((candidate) => candidate.id === target.model);
+    if (!model) {
+      throw new Error(`Pi does not recognize Anthropic model ${target.model}`);
+    }
+    return {
+      ...model,
+      baseUrl: baseUrl.toString().replace(/\/$/, ""),
+      contextWindow,
+      maxTokens: Math.min(
+        model.maxTokens,
+        maxTokens,
+        Math.max(1, Math.floor(contextWindow / 2)),
+      ),
+    };
+  }
   return {
     id: target.model,
     name: target.model,
@@ -197,7 +215,7 @@ function runtimeInputTokenEstimate(message: RuntimeInputMessage): number {
 
 function seedHistory(
   manager: SessionManager,
-  model: string,
+  model: Model<Api>,
   messages: RuntimeInputMessage[],
 ): void {
   if (manager.getEntries().length > 0) return;
@@ -217,9 +235,9 @@ function seedHistory(
       manager.appendMessage({
         role: "assistant",
         content: [{ type: "text", text: message.content }],
-        api: "openai-completions",
-        provider: "understudy-runtime",
-        model,
+        api: model.api,
+        provider: model.provider,
+        model: model.id,
         usage: zeroUsage(),
         stopReason: "stop",
         timestamp: Date.now() + index,
@@ -462,6 +480,10 @@ export function teacherContinuationBoundary(partial: string, firstDelta: string)
   return " ";
 }
 
+export function teacherOutputMode(studentCompleted: boolean): "append" | "replace" {
+  return studentCompleted ? "replace" : "append";
+}
+
 async function createPiRuntimeSession(options: {
   request: RuntimeRunRequest;
   target: RuntimeProviderTarget;
@@ -483,15 +505,23 @@ async function createPiRuntimeSession(options: {
     providerUrl,
     options.maxTokens ?? request.max_output_tokens,
     request.provider_context_window_tokens ?? request.context_window_tokens,
+    request.provider_kind,
   );
   const compaction = piCompactionSettings(
     request.context_window_tokens,
     request.max_output_tokens,
   );
   const authStorage = AuthStorage.inMemory();
+  const providerApiKey =
+    request.provider_api_key ??
+    process.env.UNDERSTUDY_RUNTIME_API_KEY ??
+    (request.provider_kind === "openai-compatible" ? "local-runtime" : undefined);
+  if (!providerApiKey) {
+    throw new Error("Anthropic API key is unavailable to the conversation runtime");
+  }
   authStorage.setRuntimeApiKey(
     selectedModel.provider,
-    process.env.UNDERSTUDY_RUNTIME_API_KEY ?? "local-runtime",
+    providerApiKey,
   );
   const modelRegistry = ModelRegistry.inMemory(authStorage);
   const settingsManager = SettingsManager.inMemory(
@@ -541,13 +571,13 @@ async function createPiRuntimeSession(options: {
   const sessionManager = persistent
     ? SessionManager.continueRecent(cwd, sessionDir)
     : SessionManager.inMemory(cwd);
-  seedHistory(sessionManager, target.model, messages);
+  seedHistory(sessionManager, selectedModel, messages);
   const tools = options.toolsEnabled === false ? [] : buildTools(request);
   const { session } = await createAgentSession({
     cwd,
     agentDir: join(root, "agent"),
     model: selectedModel,
-    thinkingLevel: "off",
+    thinkingLevel: request.provider_kind === "anthropic" ? "medium" : "off",
     tools: tools.map((tool) => tool.name),
     noTools: "all",
     customTools: tools,
@@ -830,6 +860,7 @@ async function runSupervisedStudentSegment(options: {
   markerId?: string;
   nextBoundaryOrdinal: number;
   terminal: boolean;
+  studentCompleted: boolean;
 }> {
   const { request, config, writer, messages, abortSignal } = options;
   const { session } = await createPiRuntimeSession({
@@ -921,11 +952,13 @@ async function runSupervisedStudentSegment(options: {
   const abort = () => void session.abort();
   abortSignal?.addEventListener("abort", abort, { once: true });
   let promptError: unknown;
+  let studentCompleted = false;
   try {
     await session.prompt(latest.content, {
       images: imageContent(latest),
       expandPromptTemplates: false,
     });
+    studentCompleted = !plannedAbort;
   } catch (error) {
     promptError = error;
   }
@@ -967,6 +1000,7 @@ async function runSupervisedStudentSegment(options: {
           },
           nextBoundaryOrdinal: boundaryOrdinal,
           terminal: true,
+          studentCompleted,
         };
       }
       if (finalDecision.verdict === "nudge" && !options.allowNudge) {
@@ -1008,6 +1042,7 @@ async function runSupervisedStudentSegment(options: {
     terminal: Boolean(
       abortSignal?.aborted || (!decision && promptError) || adapter.terminalEmitted(),
     ),
+    studentCompleted,
   };
 }
 
@@ -1019,12 +1054,17 @@ async function runTeacherContinuation(options: {
   partial: string;
   markerId: string;
   reason: string;
+  outputMode: "append" | "replace";
   abortSignal?: AbortSignal;
 }): Promise<void> {
-  const prompt =
-    "The partial assistant answer above was written by a smaller model that has been interrupted. " +
-    "Continue it seamlessly from the exact point it stopped. Correct the problem identified by the " +
-    "supervisor without repeating, rephrasing, or summarizing text already written.";
+  const supervisorReason =
+    `\n\nThe supervisor identified this specific problem:\n<supervisor_reason>\n${options.reason}\n</supervisor_reason>`;
+  const prompt = options.outputMode === "replace"
+    ? "The completed assistant answer above was rejected by a supervisor. Produce one complete corrected replacement answer that satisfies the original user request. Do not mention the rejected answer or the supervision process." +
+      supervisorReason
+    : "The partial assistant answer above was written by a smaller model that has been interrupted. " +
+      "Continue it seamlessly from the exact point it stopped without repeating, rephrasing, or summarizing text already written." +
+      supervisorReason;
   const messages: RuntimeInputMessage[] = [
     ...options.request.messages,
     { role: "assistant", content: options.partial },
@@ -1035,6 +1075,7 @@ async function runTeacherContinuation(options: {
     reason: options.reason,
     teacher_model: options.config.teacher.model,
     from_partial_chars: characterCount(options.partial),
+    output_mode: options.outputMode,
   });
   const { session } = await createPiRuntimeSession({
     request: options.request,
@@ -1048,8 +1089,10 @@ async function runTeacherContinuation(options: {
     role: "teacher",
     model: options.config.teacher.model,
     abortReason: () => options.abortSignal?.reason,
-    transformTextDelta: (delta, first) =>
-      first ? `${teacherContinuationBoundary(options.partial, delta)}${delta}` : delta,
+    transformTextDelta: (delta, first) => {
+      if (options.outputMode === "replace") return delta;
+      return first ? `${teacherContinuationBoundary(options.partial, delta)}${delta}` : delta;
+    },
   });
   const abort = () => void session.abort();
   options.abortSignal?.addEventListener("abort", abort, { once: true });
@@ -1152,6 +1195,7 @@ async function runPiSupervisedConversation(
       partial: totalPartial,
       markerId,
       reason,
+      outputMode: teacherOutputMode(segment.studentCompleted),
       abortSignal,
     });
     return;

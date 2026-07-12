@@ -83,6 +83,32 @@ before(async () => {
       response.end(JSON.stringify({ app: "running", repair_required: false }));
       return;
     }
+    if (
+      request.method === "GET"
+      && [
+        "/v1/metrics/chat-routes?limit=100",
+        "/v1/metrics/chat-routes?limit=99",
+      ].includes(request.url)
+    ) {
+      const ready = request.url.endsWith("=100");
+      controlCalls.push({ method: request.method, url: request.url });
+      response.writeHead(200, { "content-type": "application/json" });
+      response.end(JSON.stringify({
+        schema_version: "understudy.chat_route_metrics.v1",
+        app_version: "0.2.5",
+        runtime_version: "0.3.3",
+        observed_row_limit: ready ? 100 : 99,
+        required_canonical_runtime_rows: 100,
+        remaining_canonical_runtime_rows: ready ? 0 : 1,
+        canonical_runtime_rows: ready ? 100 : 99,
+        pi_runtime_rows: ready ? 100 : 98,
+        compatibility_fallback_rows: ready ? 0 : 1,
+        pi_runtime_share: ready ? 1 : 98 / 99,
+        compatibility_engine_delete_ready: ready,
+        groups: [],
+      }));
+      return;
+    }
     const controlValues = {
       "GET /v1/models": [{ id: "understudy-small", ready: true }],
       "GET /v1/models/catalog": [{ id: "understudy-small", tier: "small" }],
@@ -236,6 +262,7 @@ describe("desktop API CLI", () => {
       "/v1/downloads/{download_id}",
       "/v1/downloads/{download_id}/cancel",
       "/v1/feedback/supervisor",
+      "/v1/metrics/chat-routes",
       "/v1/models",
       "/v1/models/catalog",
       "/v1/residency",
@@ -265,6 +292,27 @@ describe("desktop API CLI", () => {
     const value = JSON.parse(result.stdout);
     assert.equal(value.schema_version, "understudy.desktop_api.v2");
     assert.equal(value.api_version, "2.1.0");
+  });
+
+  it("exposes a fail-closed release observation gate for Rust fallback deletion", async () => {
+    const ready = await runCli([
+      "desktop", "migration-status", "--limit", "100", "--require-ready", "--json",
+    ]);
+    assert.equal(ready.status, 0, ready.stderr);
+    const value = JSON.parse(ready.stdout);
+    assert.equal(value.canonical_runtime_rows, 100);
+    assert.equal(value.compatibility_fallback_rows, 0);
+    assert.equal(value.remaining_canonical_runtime_rows, 0);
+    assert.equal(value.compatibility_engine_delete_ready, true);
+
+    const observing = await runCli([
+      "desktop", "migration-status", "--limit", "99", "--require-ready", "--json",
+    ]);
+    assert.equal(observing.status, 2, observing.stderr);
+    const pending = JSON.parse(observing.stdout);
+    assert.equal(pending.compatibility_fallback_rows, 1);
+    assert.equal(pending.remaining_canonical_runtime_rows, 1);
+    assert.equal(pending.compatibility_engine_delete_ready, false);
   });
 
   it("operates model downloads and residency through versioned REST with one-release fallback", async () => {

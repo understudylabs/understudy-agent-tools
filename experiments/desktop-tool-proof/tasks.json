@@ -1,0 +1,58 @@
+[
+  {
+    "id": "status-empty",
+    "tool": "status",
+    "arguments": {},
+    "prompt": "Call the status tool exactly once with an empty object. If its result succeeds, reply with only OK. Do not call any other tool.",
+    "expected_output": "OK"
+  },
+  {
+    "id": "residency-empty",
+    "tool": "residency",
+    "arguments": {},
+    "prompt": "Call the residency tool exactly once with an empty object. If its result succeeds, reply with only OK. Do not call any other tool.",
+    "expected_output": "OK"
+  },
+  {
+    "id": "models-empty",
+    "tool": "list_models",
+    "arguments": {},
+    "prompt": "Call the list_models tool exactly once with an empty object. If its result succeeds, reply with only OK. Do not call any other tool.",
+    "expected_output": "OK"
+  },
+  {
+    "id": "catalog-empty",
+    "tool": "list_snapshot_models",
+    "arguments": {},
+    "prompt": "Call the list_snapshot_models tool exactly once with an empty object. If its result succeeds, reply with only OK. Do not call any other tool.",
+    "expected_output": "OK"
+  },
+  {
+    "id": "traces-limit",
+    "tool": "list_traces",
+    "arguments": { "limit": 1 },
+    "prompt": "Call the list_traces tool exactly once with limit 1. If its result succeeds, reply with only OK. Do not call any other tool.",
+    "expected_output": "OK"
+  },
+  {
+    "id": "trace-search-required",
+    "tool": "search_traces",
+    "arguments": { "q": "runtime" },
+    "prompt": "Call the search_traces tool exactly once with q set to runtime. If its result succeeds, reply with only OK. Do not call any other tool.",
+    "expected_output": "OK"
+  },
+  {
+    "id": "mcp-wrapper",
+    "tool": "understudy_mcp_tool",
+    "arguments": { "tool_name": "knowledge_dossiers", "arguments": {} },
+    "prompt": "Call the understudy_mcp_tool exactly once with tool_name knowledge_dossiers and arguments as an empty object. If its result succeeds, reply with only OK. Do not call any other tool.",
+    "expected_output": "OK"
+  },
+  {
+    "id": "cli-wrapper",
+    "tool": "understudy_agent_tools",
+    "arguments": { "command": "version" },
+    "prompt": "Call the understudy_agent_tools tool exactly once with command version. If its result succeeds, reply with only OK. Do not call any other tool.",
+    "expected_output": "OK"
+  }
+]

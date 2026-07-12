@@ -20,9 +20,11 @@ import {
   runPiConversation,
   supervisorDecisionMarker,
   teacherContinuationBoundary,
+  teacherOutputMode,
 } from "../dist/runtime/conversation/pi-runtime.js";
 import {
   parseRuntimeRequest,
+  safeErrorMessage,
   validateRuntimeTrace,
 } from "../dist/runtime/conversation/contract.js";
 import {
@@ -122,6 +124,15 @@ test("command guard permits ordinary work and inert discussion of dangerous synt
   ]) {
     assert.deepEqual(classifyShellToolCall(tool, input), { decision: "allow" });
   }
+});
+
+test("runtime errors redact provider-shaped secrets", () => {
+  const anthropicShaped = ["sk", "ant", "api03", "fixturesecret"].join("-");
+  const understudyShaped = ["sk", "org", "fixturesecret"].join("_");
+  const message = safeErrorMessage(
+    new Error(`provider rejected ${anthropicShaped} and ${understudyShaped}`),
+  );
+  assert.equal(message, "provider rejected [redacted] and [redacted]");
 });
 
 test("CLI lifecycle installs, starts, diagnoses, and stops the packaged sidecar", async () => {
@@ -305,6 +316,124 @@ test("Pi runtime emits the same canonical basic-chat evidence", async () => {
   assert.ok(events.every((event) => event.runtime_id === "pi-agent-session"));
   assert.equal(events.at(-1).data.input_tokens, 4);
   assert.equal(events.at(-1).data.output_tokens, 4);
+  validateRuntimeTrace(events);
+});
+
+test("Pi runtime uses native Anthropic Messages without leaking the provider key", async () => {
+  const providerKey = "fixture-anthropic-secret";
+  const toolToken = "anthropic-tool-token-".padEnd(64, "a");
+  process.env.UNDERSTUDY_RUNTIME_TOOL_TOKEN = toolToken;
+  let providerCalls = 0;
+  let toolCalls = 0;
+  const server = createServer(async (request, response) => {
+    const body = await requestJson(request);
+    if (request.url === "/tool") {
+      toolCalls += 1;
+      assert.equal(request.headers.authorization, `Bearer ${toolToken}`);
+      assert.equal(body.name, "status");
+      response.writeHead(200, { "content-type": "application/json" });
+      response.end(JSON.stringify({ ok: true, result: { status: "healthy" } }));
+      return;
+    }
+    providerCalls += 1;
+    assert.equal(request.url, "/v1/messages");
+    assert.equal(request.headers["x-api-key"], providerKey);
+    assert.equal(body.model, "claude-haiku-4-5");
+    assert.doesNotMatch(JSON.stringify(body), new RegExp(providerKey));
+    if (providerCalls === 2) assert.match(JSON.stringify(body.messages), /tool_result/);
+    response.writeHead(200, { "content-type": "text/event-stream" });
+    const contentEvents =
+      providerCalls === 1
+        ? [
+            {
+              type: "content_block_start",
+              index: 0,
+              content_block: { type: "tool_use", id: "toolu_fixture", name: "status", input: {} },
+            },
+            { type: "content_block_stop", index: 0 },
+          ]
+        : [
+            {
+              type: "content_block_start",
+              index: 0,
+              content_block: { type: "text", text: "" },
+            },
+            {
+              type: "content_block_delta",
+              index: 0,
+              delta: { type: "text_delta", text: "Pi Anthropic tool fixture passed." },
+            },
+            { type: "content_block_stop", index: 0 },
+          ];
+    for (const event of [
+      {
+        type: "message_start",
+        message: {
+          id: `msg_anthropic_fixture_${providerCalls}`,
+          type: "message",
+          role: "assistant",
+          content: [],
+          model: "claude-haiku-4-5",
+          stop_reason: null,
+          stop_sequence: null,
+          usage: { input_tokens: providerCalls === 1 ? 11 : 19, output_tokens: 1 },
+        },
+      },
+      ...contentEvents,
+      {
+        type: "message_delta",
+        delta: {
+          stop_reason: providerCalls === 1 ? "tool_use" : "end_turn",
+          stop_sequence: null,
+        },
+        usage: { output_tokens: providerCalls === 1 ? 4 : 6 },
+      },
+      { type: "message_stop" },
+    ]) {
+      response.write(`event: ${event.type}\ndata: ${JSON.stringify(event)}\n\n`);
+    }
+    response.end();
+  });
+  await new Promise((accept) => server.listen(0, "127.0.0.1", accept));
+  const address = server.address();
+  assert.ok(address && typeof address !== "string");
+  const events = [];
+  try {
+    await runPiConversation(
+      {
+        run_id: "run-managed-pi-anthropic",
+        session_id: "session-managed-pi-anthropic",
+        base_url: `http://127.0.0.1:${address.port}`,
+        model: "claude-haiku-4-5",
+        provider_kind: "anthropic",
+        provider_api_key: providerKey,
+        role: "primary",
+        messages: basicChatFixture.messages,
+        tools: [
+          {
+            name: "status",
+            description: "Read runtime status.",
+            input_schema: { type: "object", properties: {}, additionalProperties: false },
+          },
+        ],
+        tool_executor_url: `http://127.0.0.1:${address.port}/tool`,
+        runtime_backend: "pi",
+      },
+      (event) => events.push(event),
+    );
+  } finally {
+    await new Promise((accept) => server.close(accept));
+    delete process.env.UNDERSTUDY_RUNTIME_TOOL_TOKEN;
+  }
+  assert.equal(providerCalls, 2);
+  assert.equal(toolCalls, 1);
+  assert.deepEqual(
+    events.map((event) => event.event),
+    ["message", "usage", "tool_call", "tool_result", "delta", "usage"],
+  );
+  assert.equal(events.at(-1).data.input_tokens, 19);
+  assert.equal(events.at(-1).data.output_tokens, 6);
+  assert.doesNotMatch(JSON.stringify(events), new RegExp(providerKey));
   validateRuntimeTrace(events);
 });
 
@@ -541,11 +670,13 @@ test("Pi runtime deterministically interrupts a student and continues with the t
   assert.equal(interruption.data.partial_text, "Paris is in Germany.");
   assert.equal(interruption.data.marker_id, verdict.data.marker_id);
   assert.equal(continuation.data.marker_id, verdict.data.marker_id);
+  assert.equal(continuation.data.output_mode, "append");
   assert.deepEqual(
     events.filter((event) => event.event === "usage").map((event) => event.data.role),
     ["supervisor", "student", "teacher"],
   );
   assert.match(JSON.stringify(requests.at(-1).messages), /Paris is in Germany/);
+  assert.match(JSON.stringify(requests.at(-1).messages), /wrong country/);
   validateRuntimeTrace(events);
   const rendered = events
     .filter((event) => event.event === "delta")
@@ -559,6 +690,11 @@ test("teacher continuation inserts only a missing word boundary", () => {
   assert.equal(teacherContinuationBoundary("inventory is 9. ", "but the price"), "");
   assert.equal(teacherContinuationBoundary("inventory is 9", ", but the price"), "");
   assert.equal(teacherContinuationBoundary("", "fresh answer"), "");
+});
+
+test("teacher output replaces only a completed rejected answer", () => {
+  assert.equal(teacherOutputMode(false), "append");
+  assert.equal(teacherOutputMode(true), "replace");
 });
 
 test("every supervisor decision gets a stable labelable marker", () => {

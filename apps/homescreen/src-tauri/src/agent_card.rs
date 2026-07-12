@@ -13,6 +13,7 @@
 //   - Writes are atomic: temp file in the same directory, then rename.
 
 use serde_json::{json, Map, Value};
+use std::io::Write;
 use std::path::{Path, PathBuf};
 
 const SCHEMA_VERSION: &str = "understudy.agent_card.v1";
@@ -31,6 +32,15 @@ fn card_path() -> Option<PathBuf> {
         PathBuf::from(home)
             .join(".understudy")
             .join("agent-card.json"),
+    )
+}
+
+fn api_capability_path() -> Option<PathBuf> {
+    let home = std::env::var_os("HOME")?;
+    Some(
+        PathBuf::from(home)
+            .join(".understudy")
+            .join("desktop-api.json"),
     )
 }
 
@@ -55,6 +65,53 @@ pub fn record_server_started(port: u16, token_present: bool) {
             app.insert("warm_models".into(), json!([]));
         }
     });
+}
+
+/// Owner-only CLI-to-app capability. Unlike the public agent card, this file
+/// contains the bearer token for the authenticated loopback API. The CLI also
+/// verifies the pid and `/health` before accepting it.
+pub fn record_api_capability(port: u16, token: &str) {
+    let Some(path) = api_capability_path() else {
+        return;
+    };
+    let value = json!({
+        "schema_version": "understudy.desktop_api.v2",
+        "api_version": "2.1.0",
+        "base_url": format!("http://127.0.0.1:{port}"),
+        "mcp_url": format!("http://127.0.0.1:{port}/mcp"),
+        "status_url": format!("http://127.0.0.1:{port}/v1/status"),
+        "capabilities_url": format!("http://127.0.0.1:{port}/v1/capabilities"),
+        "conversation_api": {
+            "event_schema": crate::conversation_runtime::EVENT_SCHEMA,
+            "start_turn_template": format!("http://127.0.0.1:{port}/v1/conversations/{{session_id}}/turns"),
+            "cancel_run_template": format!("http://127.0.0.1:{port}/v1/runs/{{run_id}}/cancel"),
+            "run_events_template": format!("http://127.0.0.1:{port}/v1/runs/{{run_id}}/events"),
+            "supervisor_feedback_url": format!("http://127.0.0.1:{port}/v1/feedback/supervisor"),
+        },
+        "control_api": {
+            "status_url": format!("http://127.0.0.1:{port}/v1/status"),
+            "migration_status_url": format!("http://127.0.0.1:{port}/v1/metrics/chat-routes"),
+            "models_url": format!("http://127.0.0.1:{port}/v1/models"),
+            "model_catalog_url": format!("http://127.0.0.1:{port}/v1/models/catalog"),
+            "residency_url": format!("http://127.0.0.1:{port}/v1/residency"),
+            "downloads_url": format!("http://127.0.0.1:{port}/v1/downloads"),
+        },
+        "chat": {
+            "supports_inline_images": true,
+            "supports_local_supervision": true,
+            "max_images_per_turn": 4,
+            "max_image_bytes": 8 * 1024 * 1024,
+            "accepted_media_types": ["image/png", "image/jpeg", "image/webp", "image/gif"],
+            "attachment_fields": ["filename", "mediaType", "dataUrl"],
+        },
+        "pid": std::process::id(),
+        "app_version": env!("CARGO_PKG_VERSION"),
+        "token": token,
+        "updated_at": now_iso(),
+    });
+    if let Err(err) = write_private_atomic(&path, &value) {
+        eprintln!("understudy desktop capability: write failed: {err}");
+    }
 }
 
 /// Residency changed (warm/cool/assign committed): refresh the warm set.
@@ -83,6 +140,9 @@ pub fn mark_stopped() {
         app.insert("stopped_at".into(), json!(now_iso()));
         app.insert("warm_models".into(), json!([]));
     });
+    if let Some(path) = api_capability_path() {
+        let _ = std::fs::remove_file(path);
+    }
 }
 
 /// Serializes every card writer in this process. The three writers run on
@@ -149,6 +209,42 @@ fn write_atomic(path: &Path, value: &Value) -> std::io::Result<()> {
     ));
     let result = std::fs::write(&tmp, format!("{}\n", serde_json::to_string_pretty(value)?))
         .and_then(|_| std::fs::rename(&tmp, path));
+    if result.is_err() {
+        let _ = std::fs::remove_file(&tmp);
+    }
+    result
+}
+
+fn write_private_atomic(path: &Path, value: &Value) -> std::io::Result<()> {
+    static PRIVATE_TMP_SEQ: std::sync::atomic::AtomicU64 = std::sync::atomic::AtomicU64::new(0);
+    let dir = path
+        .parent()
+        .ok_or_else(|| std::io::Error::other("capability path has no parent"))?;
+    std::fs::create_dir_all(dir)?;
+    let tmp = dir.join(format!(
+        ".desktop-api.json.tmp-{}-{}",
+        std::process::id(),
+        PRIVATE_TMP_SEQ.fetch_add(1, std::sync::atomic::Ordering::Relaxed)
+    ));
+    let mut options = std::fs::OpenOptions::new();
+    options.write(true).create_new(true);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        options.mode(0o600);
+    }
+    let result = (|| {
+        let mut file = options.open(&tmp)?;
+        file.write_all(format!("{}\n", serde_json::to_string_pretty(value)?).as_bytes())?;
+        file.sync_all()?;
+        std::fs::rename(&tmp, path)?;
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            std::fs::set_permissions(path, std::fs::Permissions::from_mode(0o600))?;
+        }
+        Ok(())
+    })();
     if result.is_err() {
         let _ = std::fs::remove_file(&tmp);
     }
@@ -239,5 +335,38 @@ mod tests {
         .unwrap();
         let card: Value = serde_json::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
         assert_eq!(card["app"]["running"], false);
+    }
+
+    #[test]
+    fn private_api_capability_is_atomic_and_owner_only() {
+        let path = temp_card_path().with_file_name("desktop-api.json");
+        let value = json!({
+            "schema_version": "understudy.desktop_api.v2",
+            "base_url": "http://127.0.0.1:17790",
+            "pid": 123,
+            "token": "secret-test-token"
+        });
+        write_private_atomic(&path, &value).unwrap();
+        let parsed: Value = serde_json::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
+        assert_eq!(parsed["token"], "secret-test-token");
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            assert_eq!(
+                std::fs::metadata(&path).unwrap().permissions().mode() & 0o077,
+                0
+            );
+        }
+        let leftovers: Vec<_> = std::fs::read_dir(path.parent().unwrap())
+            .unwrap()
+            .filter_map(|entry| entry.ok())
+            .filter(|entry| {
+                entry
+                    .file_name()
+                    .to_string_lossy()
+                    .contains("desktop-api.json.tmp")
+            })
+            .collect();
+        assert!(leftovers.is_empty());
     }
 }

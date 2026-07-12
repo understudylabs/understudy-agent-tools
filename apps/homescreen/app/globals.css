@@ -2319,6 +2319,35 @@ select,
   font-size: 12px;
   padding: 6px 0;
 }
+.chat-runtime-notice {
+  color: var(--text-muted);
+  font-size: 11px;
+  line-height: 1.4;
+  padding: 5px 0;
+}
+.chat-image-list {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 8px;
+  margin-bottom: 8px;
+}
+.chat-image {
+  margin: 0;
+  max-width: min(280px, 100%);
+}
+.chat-image img {
+  display: block;
+  max-height: 220px;
+  max-width: 100%;
+  border: 1px solid var(--border);
+  border-radius: var(--r-control);
+  object-fit: contain;
+}
+.chat-image figcaption {
+  color: var(--text-muted);
+  font-size: 10px;
+  margin-top: 3px;
+}
 .chat-input {
   display: flex;
   gap: 10px;

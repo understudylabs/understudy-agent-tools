@@ -8,7 +8,7 @@ export const CONFORMANCE_SCHEMA =
 export const RUNTIME_ID = "understudy-conversation-sidecar";
 export const VERCEL_RUNTIME_ID = "vercel-ai-sdk";
 export const PI_RUNTIME_ID = "pi-agent-session";
-export const RUNTIME_VERSION = "0.3.1";
+export const RUNTIME_VERSION = "0.3.3";
 
 export function piNodeSupported(version = process.versions.node): boolean {
   const [major, minor] = version.split(".").map(Number);
@@ -76,6 +76,12 @@ export const runtimeRequestSchema = z
     session_id: z.string().min(1).max(200),
     base_url: z.string().url(),
     model: z.string().min(1).max(500),
+    provider_kind: z
+      .enum(["openai-compatible", "anthropic"])
+      .default("openai-compatible"),
+    // Delivered only over the authenticated loopback request. The runtime
+    // consumes this in memory and must never copy it into canonical events.
+    provider_api_key: z.string().min(1).max(4_096).optional(),
     role: z.enum(["student", "teacher", "primary", "supervisor"]),
     messages: z.array(z.union([textMessageSchema, toolMessageSchema])).min(1),
     tools: z.array(toolSchema).max(128).optional(),
@@ -298,7 +304,12 @@ export function validateAttachmentBytes(attachment: {
 
 export function safeErrorMessage(error: unknown): string {
   const raw = error instanceof Error ? error.message : String(error);
-  return raw.replace(/[\r\n\t]+/g, " ").slice(0, 1_000) || "unknown error";
+  return (
+    raw
+      .replace(/\bsk[-_][A-Za-z0-9_-]{6,}\b/g, "[redacted]")
+      .replace(/[\r\n\t]+/g, " ")
+      .slice(0, 1_000) || "unknown error"
+  );
 }
 
 const EVENT_NAMES = new Set<RuntimeEventName>([
@@ -451,6 +462,12 @@ export function validateRuntimeTrace(values: readonly unknown[]): RuntimeEventEn
       const marker = requiredString(data, "marker_id", "teacher_continuation.marker_id");
       requiredString(data, "reason", "teacher_continuation.reason");
       requiredString(data, "teacher_model", "teacher_continuation.teacher_model");
+      if (
+        "output_mode" in data &&
+        !["append", "replace"].includes(String(data.output_mode))
+      ) {
+        throw new Error("teacher_continuation.output_mode must be append or replace");
+      }
       if (!interruptedMarkers.has(marker)) {
         throw new Error(`teacher continuation ${marker} has no student interruption`);
       }

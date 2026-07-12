@@ -45,6 +45,7 @@ import {
   type ToolPart,
 } from "@/components/ai-elements/tool";
 import { modelShortName, type SnapshotAlias } from "../lib/model-aliases";
+import type { FileUIPart } from "ai";
 
 type Role = "user" | "assistant";
 type ToolTrace = {
@@ -54,9 +55,24 @@ type ToolTrace = {
   output?: unknown;
   errorText?: string;
 };
-type Msg = { role: Role; content: string; model?: string; reasoning?: string; tools?: ToolTrace[] };
+type ChatAttachment = {
+  id: string;
+  filename: string;
+  media_type: string;
+  data_url: string;
+};
+type Msg = {
+  role: Role;
+  content: string;
+  model?: string;
+  reasoning?: string;
+  tools?: ToolTrace[];
+  attachments?: ChatAttachment[];
+};
 type ChatEvent =
+  | { type: "Notice"; message: string }
   | { type: "Chunk"; text: string }
+  | { type: "ReplaceChunk"; text: string }
   | { type: "ReasoningChunk"; text: string }
   | { type: "ToolCall"; name: string; args: unknown }
   | { type: "ToolResult"; name: string; ok: boolean; result: unknown }
@@ -74,6 +90,25 @@ type ResidencySnapshot = {
 };
 type SnapshotModel = SnapshotAlias;
 type ChatStatus = "ready" | "streaming" | "error";
+
+const canonicalAttachment = async (file: FileUIPart): Promise<ChatAttachment> => {
+  const mediaType = file.mediaType || "";
+  if (!mediaType.startsWith("image/") || !file.url.startsWith(`data:${mediaType};base64,`)) {
+    throw new Error("Only valid image attachments are supported.");
+  }
+  const bytes = new Uint8Array(await (await fetch(file.url)).arrayBuffer());
+  if (bytes.byteLength === 0 || bytes.byteLength > 8 * 1024 * 1024) {
+    throw new Error("Each image must be between 1 byte and 8 MB.");
+  }
+  const digest = new Uint8Array(await crypto.subtle.digest("SHA-256", bytes));
+  const id = Array.from(digest, (byte) => byte.toString(16).padStart(2, "0")).join("");
+  return {
+    id,
+    filename: file.filename || "image",
+    media_type: mediaType,
+    data_url: file.url,
+  };
+};
 type SidekickEvent = {
   id: number;
   session_id: string;
@@ -81,6 +116,11 @@ type SidekickEvent = {
   stage: string;
   detail: string;
   created_at: string;
+};
+type PersistedChatSession = {
+  session_id: string;
+  messages: Msg[];
+  updated_at: string;
 };
 type LocalModelChoice = {
   id: string;
@@ -245,6 +285,7 @@ export function ChatPane({ resetToken }: { resetToken: number }) {
   const [streaming, setStreaming] = useState(false);
   const [assistantSpeaking, setAssistantSpeaking] = useState(false);
   const [err, setErr] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
   const [choices, setChoices] = useState<ModelChoice[]>([CLOUD_MODEL]);
   const [selectedModel, setSelectedModel] = useState<string | null>(null);
   const [thinkingPending, setThinkingPending] = useState<{ slotId: number; thinking: boolean } | null>(null);
@@ -252,6 +293,8 @@ export function ChatPane({ resetToken }: { resetToken: number }) {
   const [personaCycle, setPersonaCycle] = useState(0);
   const [introThinking, setIntroThinking] = useState(true);
   const [sidekickEvents, setSidekickEvents] = useState<SidekickEvent[]>([]);
+  const [sessionHydrated, setSessionHydrated] = useState(false);
+  const observedResetToken = useRef(false);
 
   const refreshModels = async () => {
     try {
@@ -300,11 +343,54 @@ export function ChatPane({ resetToken }: { resetToken: number }) {
     }
   };
 
+  const stopStreaming = () => {
+    void invoke<{ status: string }>("conversation_runtime_cancel", { sessionId })
+      .then((result) => {
+        if (result.status === "idle") {
+          setNotice("This turn is using the one-release compatibility engine and cannot be stopped yet.");
+        }
+      })
+      .catch((e) => {
+        setErr(String(e));
+        setStreaming(false);
+        setAssistantSpeaking(false);
+      });
+  };
+
   useEffect(() => {
     refreshModels();
     const timer = window.setInterval(refreshModels, 2500);
     return () => window.clearInterval(timer);
   }, []);
+
+  useEffect(() => {
+    let cancelled = false;
+    invoke<PersistedChatSession | null>("chat_session_latest")
+      .then((saved) => {
+        if (cancelled || !saved) return;
+        setSessionId(saved.session_id);
+        setMessages(saved.messages);
+      })
+      .catch(() => {
+        // A corrupt or legacy session must never block a fresh local chat.
+      })
+      .finally(() => {
+        if (!cancelled) setSessionHydrated(true);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!sessionHydrated || streaming) return;
+    const timer = window.setTimeout(() => {
+      invoke("chat_session_save", { sessionId, messages }).catch(() => {
+        setNotice("This chat could not be saved for restart; the current turn is unaffected.");
+      });
+    }, 150);
+    return () => window.clearTimeout(timer);
+  }, [messages, sessionHydrated, sessionId, streaming]);
 
   useEffect(() => {
     setIntroThinking(true);
@@ -337,15 +423,20 @@ export function ChatPane({ resetToken }: { resetToken: number }) {
     [choices, selectedModel],
   );
 
-  const send = async (text: string, files = 0) => {
+  const send = async (text: string, files: FileUIPart[] = []) => {
     const clean = text.trim();
-    if ((!clean && files === 0) || streaming) return;
-    if (files > 0) {
-      setErr("Image/file attachment UI is enabled, but multimodal chat payloads are not wired yet.");
-      return;
-    }
+    if ((!clean && files.length === 0) || streaming) return;
     setInput("");
     setErr(null);
+    setNotice(null);
+
+    let attachments: ChatAttachment[];
+    try {
+      attachments = await Promise.all(files.map(canonicalAttachment));
+    } catch (error) {
+      setErr(String(error));
+      throw error;
+    }
 
     const choice = selectedChoice;
     if (choice.route === "local" && choice.slotId == null) {
@@ -357,20 +448,34 @@ export function ChatPane({ resetToken }: { resetToken: number }) {
       return;
     }
 
-    const toSend: Msg[] = [...messages, { role: "user", content: clean, model: choice.label }];
+    const toSend: Msg[] = [
+      ...messages,
+      { role: "user", content: clean, model: choice.label, attachments },
+    ];
     setMessages([...toSend, { role: "assistant", content: "", reasoning: "", model: choice.label }]);
     setStreaming(true);
     setAssistantSpeaking(false);
 
     const ch = new Channel<ChatEvent>();
     ch.onmessage = (msg) => {
-      if (msg.type === "Chunk") {
+      if (msg.type === "Notice") {
+        setNotice(msg.message);
+      } else if (msg.type === "Chunk") {
         setAssistantSpeaking(true);
         setMessages((prev) => {
           if (prev.length === 0) return prev;
           const p = [...prev];
           const last = p.length - 1;
           p[last] = { ...p[last], content: p[last].content + msg.text };
+          return p;
+        });
+      } else if (msg.type === "ReplaceChunk") {
+        setAssistantSpeaking(true);
+        setMessages((prev) => {
+          if (prev.length === 0) return prev;
+          const p = [...prev];
+          const last = p.length - 1;
+          p[last] = { ...p[last], content: msg.text };
           return p;
         });
       } else if (msg.type === "ReasoningChunk") {
@@ -438,7 +543,11 @@ export function ChatPane({ resetToken }: { resetToken: number }) {
 
     try {
       await invoke("chat_stream", {
-        messages: toSend.map(({ role, content }) => ({ role, content })),
+        messages: toSend.map(({ role, content, attachments: messageAttachments }) => ({
+          role,
+          content,
+          attachments: messageAttachments ?? [],
+        })),
         // Anthropic choices encode the model in the id (anthropic:<model>).
         route: choice.route === "anthropic" ? choice.id : choice.route,
         slotId: choice.slotId,
@@ -470,6 +579,7 @@ export function ChatPane({ resetToken }: { resetToken: number }) {
     setMessages([]);
     setInput("");
     setErr(null);
+    setNotice(null);
     setSessionId(crypto.randomUUID());
     setAssistantSpeaking(false);
     setPersonaReady(false);
@@ -478,6 +588,10 @@ export function ChatPane({ resetToken }: { resetToken: number }) {
   };
 
   useEffect(() => {
+    if (!observedResetToken.current) {
+      observedResetToken.current = true;
+      return;
+    }
     restartChat();
   }, [resetToken]);
 
@@ -520,11 +634,21 @@ export function ChatPane({ resetToken }: { resetToken: number }) {
   const sidekickTool = latestAssistant?.tools?.find((tool) => tool.name === "delegate_to_sidekick");
   const latestSidekickEvent = sidekickEvents[0];
   const backgroundSidekickActive =
-    latestSidekickEvent?.stage === "queued" ||
-    latestSidekickEvent?.stage === "started" ||
-    latestSidekickEvent?.stage === "waiting";
+    latestSidekickEvent?.mode !== "supervision" &&
+    (latestSidekickEvent?.stage === "queued" ||
+      latestSidekickEvent?.stage === "started" ||
+      latestSidekickEvent?.stage === "waiting");
+  const supervisionVisible =
+    latestSidekickEvent?.mode === "supervision" &&
+    (streaming ||
+      latestSidekickEvent.stage === "interrupt" ||
+      latestSidekickEvent.stage === "nudge" ||
+      latestSidekickEvent.stage === "stop" ||
+      latestSidekickEvent.stage === "student_interrupted" ||
+      latestSidekickEvent.stage === "teacher_continuation");
   const sidekickMonitorVisible =
     backgroundSidekickActive ||
+    supervisionVisible ||
     (streaming &&
       (latestSidekickEvent?.stage === "handoff_ready" ||
         latestSidekickEvent?.stage === "handoff_deferred" ||
@@ -597,6 +721,16 @@ export function ChatPane({ resetToken }: { resetToken: number }) {
                 >
                   <div className="chat-role">{m.role === "assistant" ? m.model ?? "Assistant" : "You"}</div>
                   <MessageContent>
+                    {m.role === "user" && m.attachments && m.attachments.length > 0 && (
+                      <div className="chat-image-list">
+                        {m.attachments.map((attachment) => (
+                          <figure className="chat-image" key={attachment.id}>
+                            <img src={attachment.data_url} alt={attachment.filename} />
+                            <figcaption>{attachment.filename}</figcaption>
+                          </figure>
+                        ))}
+                      </div>
+                    )}
                     {m.role === "assistant" && reasoningText && (
                       <ReasoningSubstream active={isActiveAssistant} text={reasoningText} />
                     )}
@@ -622,13 +756,29 @@ export function ChatPane({ resetToken }: { resetToken: number }) {
               <div className="sidekick-orbit" aria-hidden="true" />
               <div className="sidekick-active-copy">
                 <div className="sidekick-active-kicker">
-                  {latestSidekickEvent.mode === "routing" ? "Routing" : "Sidekick"}
+                  {latestSidekickEvent.mode === "routing"
+                    ? "Routing"
+                    : latestSidekickEvent.mode === "supervision"
+                      ? "Supervisor"
+                      : "Sidekick"}
                 </div>
                 <div className="sidekick-active-title">
                   {latestSidekickEvent.stage === "compaction_boundary"
                     ? "Compaction boundary"
                     : latestSidekickEvent.stage === "route_applied"
                       ? "Route switched"
+                    : latestSidekickEvent.stage === "student_interrupted"
+                      ? "Student interrupted"
+                    : latestSidekickEvent.stage === "teacher_continuation"
+                      ? "Teacher continuing"
+                    : latestSidekickEvent.stage === "interrupt"
+                      ? "Intervention requested"
+                    : latestSidekickEvent.stage === "nudge"
+                      ? "Student nudged"
+                    : latestSidekickEvent.stage === "stop"
+                      ? "Turn stopped"
+                    : latestSidekickEvent.mode === "supervision"
+                      ? "Checking the smaller model"
                     : backgroundSidekickActive
                       ? "Working in background"
                       : "Background update"}
@@ -638,6 +788,7 @@ export function ChatPane({ resetToken }: { resetToken: number }) {
             </div>
           )}
           {err && <div className="chat-err">{err}</div>}
+          {notice && !err && <div className="chat-runtime-notice">{notice}</div>}
         </ConversationContent>
         <ConversationScrollButton />
       </Conversation>
@@ -647,7 +798,9 @@ export function ChatPane({ resetToken }: { resetToken: number }) {
           accept="image/*"
           multiple
           maxFiles={4}
-          onSubmit={(message) => send(message.text, message.files.length)}
+          maxFileSize={8 * 1024 * 1024}
+          onError={(error) => setErr(error.message)}
+          onSubmit={(message) => send(message.text, message.files)}
           className="border-rule bg-card"
         >
           <PromptInputBody>
@@ -681,7 +834,8 @@ export function ChatPane({ resetToken }: { resetToken: number }) {
             </PromptInputTools>
             <PromptInputSubmit
               status={streaming ? "streaming" : err ? "error" : "ready"}
-              disabled={streaming || !input.trim() || (selectedChoice.route === "local" && !selectedChoice.active)}
+              onStop={stopStreaming}
+              disabled={!streaming && (!input.trim() || (selectedChoice.route === "local" && !selectedChoice.active))}
             />
           </PromptInputFooter>
         </PromptInput>
