@@ -589,6 +589,11 @@ pub struct ChatRouteMetricGroup {
 #[derive(Serialize, Clone)]
 pub struct ChatRouteMetrics {
     pub schema_version: &'static str,
+    pub canonical_runtime_rows: u64,
+    pub pi_runtime_rows: u64,
+    pub compatibility_fallback_rows: u64,
+    pub pi_runtime_share: Option<f64>,
+    pub compatibility_engine_delete_ready: bool,
     pub groups: Vec<ChatRouteMetricGroup>,
 }
 
@@ -2318,6 +2323,17 @@ pub fn chat_route_metrics(app: AppHandle, limit: Option<u32>) -> Result<ChatRout
         .state::<crate::db::Db>()
         .list_chat_runs(limit.unwrap_or(250))
         .map_err(|e| e.to_string())?;
+    // Rows predating the canonical bridge have no run_id and inherited the
+    // native-rust column default during migration. Exclude those legacy rows
+    // or they permanently poison the rollout denominator.
+    let canonical_runtime_rows = rows.iter().filter(|row| row.run_id.is_some()).count() as u64;
+    let pi_runtime_rows = rows
+        .iter()
+        .filter(|row| row.run_id.is_some() && row.runtime_backend == "pi")
+        .count() as u64;
+    let compatibility_fallback_rows = canonical_runtime_rows.saturating_sub(pi_runtime_rows);
+    let pi_runtime_share = (canonical_runtime_rows > 0)
+        .then_some(pi_runtime_rows as f64 / canonical_runtime_rows as f64);
     let mut groups: std::collections::BTreeMap<(String, String), Vec<ChatRunRow>> =
         std::collections::BTreeMap::new();
     for row in rows {
@@ -2363,6 +2379,12 @@ pub fn chat_route_metrics(app: AppHandle, limit: Option<u32>) -> Result<ChatRout
     out.sort_by_key(|g| std::cmp::Reverse(g.rows));
     Ok(ChatRouteMetrics {
         schema_version: "understudy.chat_route_metrics.v1",
+        canonical_runtime_rows,
+        pi_runtime_rows,
+        compatibility_fallback_rows,
+        pi_runtime_share,
+        compatibility_engine_delete_ready: canonical_runtime_rows >= 100
+            && compatibility_fallback_rows == 0,
         groups: out,
     })
 }
