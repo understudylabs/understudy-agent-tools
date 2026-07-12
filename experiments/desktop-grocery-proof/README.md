@@ -23,3 +23,8 @@ Evidence is written owner-only beneath
 `~/.understudy/proofs/grocery-marketplace/<proof-id>/`: frozen tasks, one
 canonical event JSONL per run, scored results JSONL, and a summary. Every row
 retains the exact `run_id` and frozen suite SHA-256.
+
+For a buyer-facing walkthrough, use the
+[30-minute grocery-platform demo](DEMO.md). It keeps the measured judge miss in
+the story and separates deterministic synthetic evidence from a production
+promotion claim.
