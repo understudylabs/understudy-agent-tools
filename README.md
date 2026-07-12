@@ -444,10 +444,17 @@ understudy skills --list      # list every installed skill
 understudy skills --search gateway
 understudy platforms          # supported agent adapters
 understudy doctor             # local environment check
+understudy models runtime doctor  # verify the pinned Apple Silicon VLM engine
 ```
 
 `spine` prints the public workflow and points agents at
 `skills/understudy/SKILL.md`.
+
+Understudy Desktop does not depend on a user's global Python environment. On
+Apple Silicon, `understudy models runtime install` creates a private,
+commit-pinned MLX/VLM engine under `~/.understudy`; `doctor` verifies its
+provenance and the required Gemma compatibility fix, and `repair` reinstalls
+that exact runtime when first-use diagnostics fail.
 
 ## The skill tree
 

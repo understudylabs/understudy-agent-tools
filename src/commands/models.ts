@@ -13,6 +13,14 @@ import {
   resolveSnapshotPlan,
   type SnapshotCatalog,
 } from "../model-snapshots.js";
+import {
+  doctorMlxVlmRuntime,
+  installMlxVlmRuntime,
+  MLX_VLM_COMMIT,
+  MLX_VLM_RUNTIME_VERSION,
+  MLX_VLM_SOURCE,
+  mlxVlmRuntimeStatus,
+} from "../runtime/mlx-vlm/lifecycle.js";
 
 const PublicModelSchema = z.object({
   id: z.string(),
@@ -73,6 +81,87 @@ export function registerModelsCommand(program: Command): void {
     .action(async function (this: Command, model: string | undefined, opts: PullOpts) {
       await runAction(this, () => runPull(this, model, opts));
     });
+
+  const runtime = models
+    .command("runtime")
+    .description("Manage the pinned local MLX/VLM engine used by Understudy Desktop.");
+
+  runtime
+    .command("version")
+    .description("Print the managed MLX/VLM source and exact commit pin.")
+    .option("--json", "Output JSON.")
+    .action(function (this: Command, opts: { json?: boolean }) {
+      const payload = {
+        runtime_version: MLX_VLM_RUNTIME_VERSION,
+        commit: MLX_VLM_COMMIT,
+        source: MLX_VLM_SOURCE,
+      };
+      if (opts.json || isJsonMode(this)) {
+        process.stdout.write(`${JSON.stringify(payload, null, 2)}\n`);
+      } else {
+        process.stdout.write(`${MLX_VLM_RUNTIME_VERSION}\n${MLX_VLM_SOURCE}\n`);
+      }
+    });
+
+  runtime
+    .command("status")
+    .description("Check whether the managed MLX/VLM engine is installed and compatible.")
+    .option("--json", "Output JSON.")
+    .action(function (this: Command, opts: { json?: boolean }) {
+      const status = mlxVlmRuntimeStatus();
+      if (opts.json || isJsonMode(this)) {
+        process.stdout.write(`${JSON.stringify(status, null, 2)}\n`);
+      } else {
+        const mark = status.healthy ? kleur.green("✓") : kleur.yellow("△");
+        process.stdout.write(`${mark} ${status.detail}\n${kleur.gray(status.root)}\n`);
+      }
+      if (!status.healthy) process.exitCode = 1;
+    });
+
+  runtime
+    .command("doctor")
+    .description("Diagnose uv, runtime provenance, server import, and Gemma compatibility.")
+    .option("--json", "Output JSON.")
+    .action(function (this: Command, opts: { json?: boolean }) {
+      const report = doctorMlxVlmRuntime();
+      if (opts.json || isJsonMode(this)) {
+        process.stdout.write(`${JSON.stringify(report, null, 2)}\n`);
+      } else {
+        process.stdout.write(`${kleur.bold("managed MLX/VLM doctor")}\n`);
+        for (const check of report.checks) {
+          const mark = check.ok ? kleur.green("✓") : kleur.red("✗");
+          process.stdout.write(`${mark} ${check.name} — ${check.detail}\n`);
+        }
+        if (!report.ok) process.stdout.write(`repair: ${report.repair_command}\n`);
+      }
+      if (!report.ok) process.exitCode = 1;
+    });
+
+  for (const [name, description, force] of [
+    ["install", "Install the exact managed MLX/VLM runtime into ~/.understudy.", false],
+    ["repair", "Reinstall and verify the exact managed MLX/VLM runtime.", true],
+  ] as const) {
+    runtime
+      .command(name)
+      .description(description)
+      .option("--json", "Output JSON.")
+      .action(async function (this: Command, opts: { json?: boolean }) {
+        await runAction(this, async () => {
+          const report = await installMlxVlmRuntime({
+            force,
+            onLog: (line) => {
+              if (!opts.json && !isJsonMode(this)) process.stdout.write(`${line}\n`);
+            },
+          });
+          if (opts.json || isJsonMode(this)) {
+            process.stdout.write(`${JSON.stringify(report, null, 2)}\n`);
+          } else {
+            process.stdout.write(`${kleur.green("✓")} ${report.status.detail}\n`);
+            process.stdout.write(`${kleur.gray(report.status.server_binary)}\n`);
+          }
+        });
+      });
+  }
 }
 
 async function runList(cmd: Command, opts: OrgOpt): Promise<void> {
