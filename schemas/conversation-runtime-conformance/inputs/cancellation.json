@@ -1,0 +1,13 @@
+{
+  "schema_version": "understudy-conversation-runtime-input-v1",
+  "fixture_id": "cancellation",
+  "role": "primary",
+  "messages": [
+    {
+      "role": "user",
+      "content": "Begin a detailed response and preserve the partial when stopped."
+    }
+  ],
+  "tools": [],
+  "expected_events": ["message", "delta", "cancellation"]
+}

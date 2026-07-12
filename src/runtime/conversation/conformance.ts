@@ -7,6 +7,7 @@ import {
   CONFORMANCE_SCHEMA,
   parseRuntimeInputFixture,
   validateRuntimeTrace,
+  type RuntimeInputFixture,
 } from "./contract.js";
 
 type FixtureGate = {
@@ -40,14 +41,48 @@ export type ConformanceReport = {
   gates: ConformanceGateResult[];
 };
 
+export type LoadedConformanceInput = {
+  id: string;
+  fixture: string;
+  sha256: string;
+  input: RuntimeInputFixture;
+};
+
+export type RuntimeConformanceAdapter = {
+  id: string;
+  run(input: RuntimeInputFixture): Promise<readonly unknown[]>;
+};
+
+export type RuntimeConformanceScenarioResult = {
+  id: string;
+  fixture: string;
+  fixture_sha256: string;
+  status: "passed" | "failed";
+  event_count: number;
+  runtime_id?: string;
+  output_chars: number;
+  error?: string;
+};
+
+export type RuntimeConformanceAdapterReport = {
+  schema_version: typeof CONFORMANCE_SCHEMA;
+  suite_id: string;
+  adapter_id: string;
+  passed: boolean;
+  scenarios: RuntimeConformanceScenarioResult[];
+};
+
 export function bundledConformanceRoot(): string {
   return fileURLToPath(
     new URL("../../../schemas/conversation-runtime-conformance/", import.meta.url),
   );
 }
 
-/** Replay the immutable suite through the same validator used for live output. */
-export function runConversationConformance(root = bundledConformanceRoot()): ConformanceReport {
+function loadManifest(root: string): {
+  fixtureRoot: string;
+  manifestPath: string;
+  manifest: ConformanceManifest;
+} {
   const fixtureRoot = resolve(root);
   const manifestPath = join(fixtureRoot, "manifest.json");
   const manifest = JSON.parse(readFileSync(manifestPath, "utf8")) as ConformanceManifest;
@@ -59,7 +94,13 @@ export function runConversationConformance(root = bundledConformanceRoot()): Con
   if (!manifest.suite_id || !Array.isArray(manifest.scenario_gates)) {
     throw new Error("invalid conversation-runtime conformance manifest");
   }
+  return { fixtureRoot, manifestPath, manifest };
+}
 
+export function loadConversationConformanceInputs(
+  root = bundledConformanceRoot(),
+): { suite_id: string; fixture_root: string; inputs: LoadedConformanceInput[] } {
+  const { fixtureRoot, manifestPath, manifest } = loadManifest(root);
   const inputs = (manifest.input_fixtures ?? []).map((fixture) => {
     const fixturePath = join(dirname(manifestPath), fixture.fixture);
     const raw = readFileSync(fixturePath, "utf8");
@@ -75,9 +116,91 @@ export function runConversationConformance(root = bundledConformanceRoot()): Con
       id: fixture.id,
       fixture: fixture.fixture,
       sha256: digest,
-      passed: true as const,
+      input: parsed,
     };
   });
+  if (inputs.length === 0) throw new Error("conformance suite has no frozen inputs");
+  return { suite_id: manifest.suite_id, fixture_root: fixtureRoot, inputs };
+}
+
+function assertScenarioEvidence(input: RuntimeInputFixture, values: readonly unknown[]) {
+  const events = validateRuntimeTrace(values);
+  const emitted = new Set(events.map((event) => event.event));
+  for (const required of input.expected_events) {
+    if (!emitted.has(required)) {
+      throw new Error(`${input.fixture_id} did not emit required event ${required}`);
+    }
+  }
+  if (input.expected_events.includes("cancellation") && events.at(-1)?.event !== "cancellation") {
+    throw new Error(`${input.fixture_id} cancellation was not terminal`);
+  }
+  const expectedAttachments = input.messages.flatMap((message) =>
+    message.role === "user" ? (message.attachments ?? []).map((attachment) => attachment.id) : [],
+  );
+  const emittedAttachments = events
+    .filter((event) => event.event === "image_attachment")
+    .map((event) => String(event.data.attachment_id));
+  if (
+    expectedAttachments.length > 0 &&
+    (expectedAttachments.length !== emittedAttachments.length ||
+      expectedAttachments.some((id, index) => emittedAttachments[index] !== id))
+  ) {
+    throw new Error(`${input.fixture_id} changed image attachment identity or ordering`);
+  }
+  return events;
+}
+
+/** Execute every frozen input through one real adapter and retain failures. */
+export async function runConversationAdapterConformance(
+  adapter: RuntimeConformanceAdapter,
+  root = bundledConformanceRoot(),
+): Promise<RuntimeConformanceAdapterReport> {
+  const suite = loadConversationConformanceInputs(root);
+  const scenarios: RuntimeConformanceScenarioResult[] = [];
+  for (const fixture of suite.inputs) {
+    try {
+      const events = assertScenarioEvidence(fixture.input, await adapter.run(fixture.input));
+      scenarios.push({
+        id: fixture.id,
+        fixture: fixture.fixture,
+        fixture_sha256: fixture.sha256,
+        status: "passed",
+        event_count: events.length,
+        runtime_id: events[0]?.runtime_id,
+        output_chars: events
+          .filter((event) => event.event === "delta")
+          .reduce((total, event) => total + String(event.data.text).length, 0),
+      });
+    } catch (error) {
+      scenarios.push({
+        id: fixture.id,
+        fixture: fixture.fixture,
+        fixture_sha256: fixture.sha256,
+        status: "failed",
+        event_count: 0,
+        output_chars: 0,
+        error: error instanceof Error ? error.message : String(error),
+      });
+    }
+  }
+  return {
+    schema_version: CONFORMANCE_SCHEMA,
+    suite_id: suite.suite_id,
+    adapter_id: adapter.id,
+    passed: scenarios.every((scenario) => scenario.status === "passed"),
+    scenarios,
+  };
+}
+
+/** Replay the immutable suite through the same validator used for live output. */
+export function runConversationConformance(root = bundledConformanceRoot()): ConformanceReport {
+  const { fixtureRoot, manifestPath, manifest } = loadManifest(root);
+  const inputs = loadConversationConformanceInputs(root).inputs.map((fixture) => ({
+    id: fixture.id,
+    fixture: fixture.fixture,
+    sha256: fixture.sha256,
+    passed: true as const,
+  }));
 
   const gates: ConformanceGateResult[] = [];
   for (const gate of manifest.scenario_gates) {

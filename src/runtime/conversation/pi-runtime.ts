@@ -244,6 +244,7 @@ function attachCanonicalAdapter(
   let chain = Promise.resolve();
   let terminalEmitted = false;
   let compactionSourceMessages = 0;
+  const rawToolArguments = new Map<string, string>();
   const enqueue = (event: Parameters<RuntimeEventWriter["emit"]>[0], data: Record<string, unknown>) => {
     chain = chain.then(() => writer.emit(event, data));
   };
@@ -263,13 +264,33 @@ function attachCanonicalAdapter(
           text: update.delta,
           model: options.model ?? request.model,
         });
+      } else if (update.type === "toolcall_start" || update.type === "toolcall_delta") {
+        const toolCall = update.partial.content[update.contentIndex];
+        if (toolCall?.type === "toolCall") {
+          const previous = rawToolArguments.get(toolCall.id) ?? "";
+          rawToolArguments.set(
+            toolCall.id,
+            update.type === "toolcall_delta" ? previous + update.delta : previous,
+          );
+        }
+      } else if (update.type === "toolcall_end") {
+        if (!rawToolArguments.get(update.toolCall.id)) {
+          rawToolArguments.set(update.toolCall.id, JSON.stringify(update.toolCall.arguments));
+        }
       }
     } else if (event.type === "tool_execution_start") {
+      const rawArguments = rawToolArguments.get(event.toolCallId) ?? JSON.stringify(event.args);
+      let parseError: string | undefined;
+      try {
+        JSON.parse(rawArguments);
+      } catch (error) {
+        parseError = safeErrorMessage(error);
+      }
       enqueue("tool_call", {
         call_id: event.toolCallId,
         name: event.toolName,
-        raw_arguments: JSON.stringify(event.args),
-        parsed_arguments: event.args,
+        raw_arguments: rawArguments,
+        ...(parseError ? { parse_error: parseError } : { parsed_arguments: event.args }),
       });
     } else if (event.type === "tool_execution_end") {
       enqueue("tool_result", {

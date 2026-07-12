@@ -15,7 +15,10 @@ import {
 import { runVercelConversation } from "../dist/runtime/conversation/vercel-runtime.js";
 import { runPiConversation } from "../dist/runtime/conversation/pi-runtime.js";
 import { validateRuntimeTrace } from "../dist/runtime/conversation/contract.js";
-import { runConversationConformance } from "../dist/runtime/conversation/conformance.js";
+import {
+  runConversationAdapterConformance,
+  runConversationConformance,
+} from "../dist/runtime/conversation/conformance.js";
 
 const runtimeHome = mkdtempSync(join(tmpdir(), "understudy-conversation-runtime-"));
 const basicChatFixture = JSON.parse(
@@ -911,10 +914,327 @@ test("managed sidecar dispatches an authenticated Pi run", async () => {
   }
 });
 
+test("Pi and Vercel execute the identical frozen conformance inputs", async () => {
+  const toolToken = "conformance-tool-token-".padEnd(64, "c");
+  process.env.UNDERSTUDY_RUNTIME_TOOL_TOKEN = toolToken;
+  const providerRequests = [];
+  const toolRequests = [];
+  const malformedCallsByModel = new Map();
+  const traces = new Map();
+  const provider = createServer(async (request, response) => {
+    const body = await requestJson(request);
+    if (request.url === "/tool") {
+      assert.equal(request.headers.authorization, `Bearer ${toolToken}`);
+      toolRequests.push(body);
+      response.writeHead(200, { "content-type": "application/json" });
+      response.end(JSON.stringify({ ok: true, result: { status: "healthy", local: true } }));
+      return;
+    }
+
+    assert.equal(request.url, "/v1/chat/completions");
+    providerRequests.push(body);
+    const serialized = JSON.stringify(body.messages);
+    if (serialized.includes("Begin a detailed response")) {
+      response.writeHead(200, { "content-type": "text/event-stream" });
+      response.write(
+        `data: ${JSON.stringify({
+          id: "chatcmpl-conformance-cancel",
+          object: "chat.completion.chunk",
+          created: 1,
+          model: body.model,
+          choices: [
+            {
+              index: 0,
+              delta: { role: "assistant", content: "partial frozen output" },
+              finish_reason: null,
+            },
+          ],
+        })}\n\n`,
+      );
+      setTimeout(() => {
+        if (response.destroyed) return;
+        response.write(
+          `data: ${JSON.stringify({
+            id: "chatcmpl-conformance-cancel",
+            object: "chat.completion.chunk",
+            created: 1,
+            model: body.model,
+            choices: [
+              { index: 0, delta: { content: " late output" }, finish_reason: null },
+            ],
+          })}\n\n`,
+        );
+        response.end("data: [DONE]\n\n");
+      }, 250);
+      return;
+    }
+
+    if (serialized.includes("malformed arguments must never execute")) {
+      const malformedCall = (malformedCallsByModel.get(body.model) ?? 0) + 1;
+      malformedCallsByModel.set(body.model, malformedCall);
+      if (malformedCall > 1) {
+        sendFixtureSse(response, [
+          {
+            id: "chatcmpl-conformance-malformed-final",
+            object: "chat.completion.chunk",
+            created: 1,
+            model: body.model,
+            choices: [
+              {
+                index: 0,
+                delta: {
+                  role: "assistant",
+                  content: "The malformed request was rejected without execution.",
+                },
+                finish_reason: null,
+              },
+            ],
+          },
+          {
+            id: "chatcmpl-conformance-malformed-final",
+            object: "chat.completion.chunk",
+            created: 1,
+            model: body.model,
+            choices: [{ index: 0, delta: {}, finish_reason: "stop" }],
+            usage: { prompt_tokens: 12, completion_tokens: 6, total_tokens: 18 },
+          },
+        ]);
+      } else {
+        sendFixtureSse(response, [
+          {
+            id: "chatcmpl-conformance-malformed",
+            object: "chat.completion.chunk",
+            created: 1,
+            model: body.model,
+            choices: [
+              {
+                index: 0,
+                delta: {
+                  role: "assistant",
+                  tool_calls: [
+                    {
+                      index: 0,
+                      id: "call-conformance-malformed",
+                      type: "function",
+                      function: { name: "status", arguments: "{bad" },
+                    },
+                  ],
+                },
+                finish_reason: null,
+              },
+            ],
+          },
+          {
+            id: "chatcmpl-conformance-malformed",
+            object: "chat.completion.chunk",
+            created: 1,
+            model: body.model,
+            choices: [{ index: 0, delta: {}, finish_reason: "tool_calls" }],
+            usage: { prompt_tokens: 8, completion_tokens: 2, total_tokens: 10 },
+          },
+        ]);
+      }
+      return;
+    }
+
+    if (serialized.includes("Read the local runtime status")) {
+      if (serialized.includes("healthy")) {
+        sendFixtureSse(response, [
+          {
+            id: "chatcmpl-conformance-tool-final",
+            object: "chat.completion.chunk",
+            created: 1,
+            model: body.model,
+            choices: [
+              {
+                index: 0,
+                delta: { role: "assistant", content: "The local runtime is healthy." },
+                finish_reason: null,
+              },
+            ],
+          },
+          {
+            id: "chatcmpl-conformance-tool-final",
+            object: "chat.completion.chunk",
+            created: 1,
+            model: body.model,
+            choices: [{ index: 0, delta: {}, finish_reason: "stop" }],
+            usage: { prompt_tokens: 12, completion_tokens: 5, total_tokens: 17 },
+          },
+        ]);
+      } else {
+        sendFixtureSse(response, [
+          {
+            id: "chatcmpl-conformance-tool",
+            object: "chat.completion.chunk",
+            created: 1,
+            model: body.model,
+            choices: [
+              {
+                index: 0,
+                delta: {
+                  role: "assistant",
+                  tool_calls: [
+                    {
+                      index: 0,
+                      id: "call-conformance-status",
+                      type: "function",
+                      function: { name: "status", arguments: '{"query":"runtime"}' },
+                    },
+                  ],
+                },
+                finish_reason: null,
+              },
+            ],
+          },
+          {
+            id: "chatcmpl-conformance-tool",
+            object: "chat.completion.chunk",
+            created: 1,
+            model: body.model,
+            choices: [{ index: 0, delta: {}, finish_reason: "tool_calls" }],
+            usage: { prompt_tokens: 8, completion_tokens: 3, total_tokens: 11 },
+          },
+        ]);
+      }
+      return;
+    }
+
+    const isImage = serialized.includes("Describe the attached one-pixel image");
+    if (isImage) assert.match(serialized, /data:image\/png;base64,/);
+    sendFixtureSse(response, [
+      {
+        id: `chatcmpl-conformance-${isImage ? "image" : "basic"}`,
+        object: "chat.completion.chunk",
+        created: 1,
+        model: body.model,
+        choices: [
+          {
+            index: 0,
+            delta: {
+              role: "assistant",
+              content: isImage ? "The local image is one pixel." : "The local fixture passed.",
+            },
+            finish_reason: null,
+          },
+        ],
+      },
+      {
+        id: `chatcmpl-conformance-${isImage ? "image" : "basic"}`,
+        object: "chat.completion.chunk",
+        created: 1,
+        model: body.model,
+        choices: [{ index: 0, delta: {}, finish_reason: "stop" }],
+        usage: { prompt_tokens: 5, completion_tokens: 5, total_tokens: 10 },
+      },
+    ]);
+  });
+  await new Promise((accept) => provider.listen(0, "127.0.0.1", accept));
+  const address = provider.address();
+  assert.ok(address && typeof address !== "string");
+  const baseUrl = `http://127.0.0.1:${address.port}/v1`;
+  const toolUrl = `http://127.0.0.1:${address.port}/tool`;
+
+  const adapter = (id, runtimeBackend, run) => ({
+    id,
+    async run(input) {
+      const events = [];
+      const controller = new AbortController();
+      await run(
+        {
+          run_id: `run-conformance-${id}-${input.fixture_id}`,
+          session_id: `session-conformance-${id}-${input.fixture_id}`,
+          base_url: baseUrl,
+          model: `conformance-${id}`,
+          role: input.role,
+          messages: input.messages,
+          tools: input.tools,
+          ...(input.tools.length > 0 ? { tool_executor_url: toolUrl } : {}),
+          max_tool_rounds: 2,
+          runtime_backend: runtimeBackend,
+        },
+        (event) => {
+          events.push(event);
+          if (input.fixture_id === "cancellation" && event.event === "delta") {
+            controller.abort("frozen_conformance_cancel");
+          }
+        },
+        controller.signal,
+      );
+      traces.set(`${id}:${input.fixture_id}`, events);
+      return events;
+    },
+  });
+
+  try {
+    const reports = [];
+    for (const candidate of [
+      adapter("pi", "pi", runPiConversation),
+      adapter("vercel", "vercel", runVercelConversation),
+    ]) {
+      reports.push(await runConversationAdapterConformance(candidate));
+    }
+    assert.deepEqual(reports.map((report) => report.adapter_id), ["pi", "vercel"]);
+    assert.ok(reports.every((report) => report.passed), JSON.stringify(reports, null, 2));
+    assert.ok(
+      reports.every(
+        (report) =>
+          report.scenarios.map((scenario) => scenario.id).join(",") ===
+          "basic-chat,offline-image,tool-round,malformed-tool-call,cancellation",
+      ),
+    );
+    assert.ok(
+      reports.every(
+        (report) =>
+          report.scenarios.find((scenario) => scenario.id === "cancellation")?.status ===
+          "passed",
+      ),
+    );
+    assert.equal(toolRequests.length, 2);
+    assert.ok(providerRequests.every((request) => request.stream === true));
+    for (const id of ["pi", "vercel"]) {
+      const malformed = traces.get(`${id}:malformed-tool-call`);
+      assert.ok(malformed);
+      assert.ok(
+        malformed.some(
+          (event) => event.event === "tool_call" && typeof event.data.parse_error === "string",
+        ),
+        `${id} did not preserve malformed tool parse evidence: ${JSON.stringify(malformed)}`,
+      );
+      assert.ok(
+        malformed.some(
+          (event) => event.event === "tool_result" && event.data.ok === false,
+        ),
+        `${id} did not preserve a failed malformed tool result: ${JSON.stringify(malformed)}`,
+      );
+      const cancellation = traces.get(`${id}:cancellation`);
+      assert.ok(cancellation);
+      assert.equal(cancellation.at(-1).event, "cancellation");
+      assert.equal(cancellation.at(-1).data.reason, "frozen_conformance_cancel");
+      assert.equal(
+        cancellation
+          .filter((event) => event.event === "delta")
+          .map((event) => event.data.text)
+          .join(""),
+        "partial frozen output",
+      );
+    }
+  } finally {
+    await new Promise((accept) => provider.close(accept));
+    delete process.env.UNDERSTUDY_RUNTIME_TOOL_TOKEN;
+  }
+});
+
 test("packaged immutable suite passes hashes and canonical trace gates", () => {
   const report = runConversationConformance();
   assert.equal(report.passed, true);
-  assert.deepEqual(report.inputs.map((input) => input.id), ["basic-chat"]);
+  assert.deepEqual(report.inputs.map((input) => input.id), [
+    "basic-chat",
+    "offline-image",
+    "tool-round",
+    "malformed-tool-call",
+    "cancellation",
+  ]);
   assert.equal(report.gates.length, 5);
   assert.deepEqual(
     report.gates.map((gate) => gate.id),
