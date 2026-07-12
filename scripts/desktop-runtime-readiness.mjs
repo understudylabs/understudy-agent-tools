@@ -178,6 +178,16 @@ try {
     throw new Error("desktop server token is missing or malformed");
   }
   const authorization = { authorization: `Bearer ${token}` };
+  const cohortResponse = await fetchWithTimeout(`${baseUrl}/v1/metrics/chat-routes?limit=1`, {
+    headers: authorization,
+  });
+  if (!cohortResponse.ok) {
+    throw new Error(`migration metrics returned HTTP ${cohortResponse.status}`);
+  }
+  const cohort = await cohortResponse.json();
+  if (typeof cohort.app_version !== "string" || cohort.app_version.length === 0) {
+    throw new Error("migration metrics did not report the desktop app version");
+  }
 
   const runtimeStarted = performance.now();
   const runtimeRaw = run(
@@ -264,6 +274,7 @@ try {
     thresholds,
     checks,
     app: {
+      version: cohort.app_version,
       pid: app.pid,
       ready_ms: appReady.elapsed_ms,
       rss_mb: appRssKb === null ? null : appRssKb / 1024,

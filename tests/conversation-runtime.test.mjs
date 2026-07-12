@@ -2164,6 +2164,22 @@ test("Pi and Vercel execute the identical frozen conformance inputs", async () =
       base_url: baseUrl,
       model: "conformance-cli",
     });
+    assert.equal(cliReport.metadata.runtime_id, "understudy-conversation-sidecar");
+    assert.equal(cliReport.metadata.runtime_version, "0.3.4");
+    assert.equal(
+      cliReport.metadata.event_schema,
+      "understudy-conversation-runtime-event-v1",
+    );
+    assert.equal(
+      cliReport.metadata.conformance_schema,
+      "understudy-conversation-runtime-conformance-v1",
+    );
+    assert.equal(cliReport.metadata.network_mode, "offline");
+    assert.deepEqual(cliReport.metadata.offline_environment, {
+      hf_hub_offline: false,
+      transformers_offline: false,
+      hf_datasets_offline: false,
+    });
     assert.equal(cliReport.metadata.supervisor_mode, "deterministic_fixture");
     assert.equal(cliReport.metadata.malformed_tool_mode, "deterministic_fixture");
     assert.equal(cliReport.metadata.compaction_mode, "deterministic_fixture");

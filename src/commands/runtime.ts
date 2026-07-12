@@ -467,6 +467,16 @@ export function registerRuntimeCommand(program: Command): void {
               capabilities,
               metadata: {
                 backend,
+                runtime_id: RUNTIME_ID,
+                runtime_version: RUNTIME_VERSION,
+                event_schema: EVENT_SCHEMA,
+                conformance_schema: CONFORMANCE_SCHEMA,
+                network_mode: options.allowRemote ? "remote_allowed" : "offline",
+                offline_environment: {
+                  hf_hub_offline: process.env.HF_HUB_OFFLINE === "1",
+                  transformers_offline: process.env.TRANSFORMERS_OFFLINE === "1",
+                  hf_datasets_offline: process.env.HF_DATASETS_OFFLINE === "1",
+                },
                 provider: { base_url: options.baseUrl, model: options.model },
                 supervision: {
                   student: {
