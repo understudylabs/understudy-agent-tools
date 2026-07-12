@@ -946,7 +946,6 @@ fn tools() -> Vec<Value> {
             obj_schema(
                 json!({
                     "run_id": { "type": "string" },
-                    "capture_run_id": { "type": "string", "description": "Per-attempt id joining this row to canonical runtime evidence." },
                     "candidates": { "type": "array", "items": { "type": "string" } },
                     "domains": { "type": "array", "items": { "type": "string" } },
                     "num_examples": { "type": "integer", "minimum": 1 },
@@ -961,6 +960,8 @@ fn tools() -> Vec<Value> {
             obj_schema(
                 json!({
                     "run_id": { "type": "string" },
+                    "capture_run_id": { "type": "string", "description": "Per-attempt id joining this row to canonical runtime evidence." },
+                    "runtime_backend": { "type": "string", "description": "Runtime that executed the attempt, such as pi, native-rust, or external." },
                     "task_id": { "type": "string" },
                     "mode": { "type": "string" },
                     "model": { "type": "string" },
@@ -1426,6 +1427,14 @@ mod tests {
         assert_eq!(
             chat["inputSchema"]["properties"]["capture_run_id"]["maxLength"],
             200
+        );
+        let record = tools
+            .iter()
+            .find(|tool| tool["name"] == "record_fusion_benchmark")
+            .expect("record benchmark tool exists");
+        assert_eq!(
+            record["inputSchema"]["properties"]["runtime_backend"]["type"],
+            "string"
         );
         assert_eq!(required_of("fusion_route_recommendation"), ["prompt"]);
         assert_eq!(required_of("search_traces"), ["q"]);

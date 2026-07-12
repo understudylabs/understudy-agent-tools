@@ -21,6 +21,10 @@
       "minLength": 1,
       "description": "Per-attempt identifier that joins this row to immutable canonical conversation-runtime evidence. Unlike run_id, this value is unique for each task attempt."
     },
+    "runtime_backend": {
+      "type": ["string", "null"],
+      "description": "Conversation runtime that executed the attempt, such as pi, native-rust, external, or not-run."
+    },
     "task_id": {
       "type": "string",
       "minLength": 1,

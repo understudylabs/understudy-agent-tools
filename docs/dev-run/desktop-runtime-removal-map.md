@@ -38,8 +38,17 @@ HTTP response returned the caller's `capture_run_id`, `runtime_backend: "pi"`,
 one tool call, and exact provider usage. The joined private JSONL contained one
 `status` call and one matching successful result under the same run/session
 identity, with mode `0600`. This proves HTTP, MCP, custom-eval, and RLM calls can
-use the same immutable evidence spine as GUI chat; Fusion's specialized
-sidekick/gateway benchmark paths remain native below.
+use the same immutable evidence spine as GUI chat.
+
+Fusion now uses that same canonical path for local and gateway benchmark
+attempts while preserving the existing routing and sidekick policy around it.
+The local `runtime-status-check` proof (`fusion-pi-proof-1783882706`) persisted
+`runtime_backend: "pi"`, one matched `residency` tool round, and exact summed
+provider usage (2,267 input and 185 output tokens) under capture id
+`desktop-839bd2b9189f996e99e12074e9bda426`. A parallel-mode proof also executed
+through Pi and durably recorded why no background handoff ran
+(`benchmark_sidekick_score_low`). The benchmark readiness check now delegates
+sidekick selection to residency instead of rejecting valid warm models by name.
 
 ## Deletion gate
 
@@ -69,7 +78,7 @@ diff. The conservative gross target is about 4,200 lines; the final claim is
 | Legacy sidekick session, compaction, model loop, repo/skill tools | `chat.rs:129-464`, `712-1583` | ~1,200 | Pi supervision plus authenticated desktop tool executor |
 | Parallel-sidekick policy, handoff waiting, and duplicate state machine | `chat.rs:2394-2688`, sidekick portions of `route_policy.rs` | ~550 | Canonical supervisor verdict/interruption/continuation events |
 | Native streaming/tool-round fallback | `chat.rs:2935-3139`, `3503-3760` | ~470 | CLI-managed Pi runtime |
-| Native benchmark/headless model loops | `chat.rs:3142-3502` | ~360 | Headless canonical-runtime adapter |
+| Native benchmark/headless model loops | consolidated compatibility fallback near `chat.rs:3150-3435` | ~360 | Headless canonical-runtime adapter |
 | Native prompt compaction/thinking parser | `chat.rs:1721-1777`, `1816-1917` | ~160 | Pi compaction and reasoning events |
 | Direct Anthropic stream translation | `anthropic.rs:130-429` | ~300 | Canonical provider adapter; key/catalog storage remains native |
 | Legacy sidekick SQLite rows, metrics, commands, and tests | sidekick-only portions of `db.rs:177-227`, `413-459`, `1055-1419`; `commands.rs` sidekick endpoints/accounting | ~650 | Canonical event ledger and correction-pair exporter |
@@ -83,9 +92,9 @@ diff. The conservative gross target is about 4,200 lines; the final claim is
 2. Rebase cache-health onto it and align the desktop runtime compatibility
    constant with the released CLI.
 3. Finish the headless migration. `agent_chat`, custom eval, RLM, HTTP
-   completion, and MCP completion now use the canonical runtime with a
-   pre-output one-release fallback. The specialized Fusion sidekick/gateway
-   benchmark callers still keep the native non-streaming loop alive.
+   completion, MCP completion, and specialized Fusion local/gateway benchmarks
+   now use the canonical runtime with one consolidated pre-output, one-release
+   fallback.
 4. Route direct Anthropic through the canonical provider contract; retain only
    local key presence and catalog management in Rust.
 5. Replace legacy parallel-sidekick metrics/UI with canonical intervention and

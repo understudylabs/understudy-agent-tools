@@ -23,6 +23,7 @@ pub struct FusionBenchmarkRow {
     pub run_id: String,
     /// Per-attempt id that joins this indexed row to canonical runtime JSONL.
     pub capture_run_id: Option<String>,
+    pub runtime_backend: String,
     pub task_id: String,
     pub mode: String,
     pub model: String,
@@ -51,6 +52,7 @@ pub struct FusionBenchmarkRow {
 pub struct FusionBenchmarkInput {
     pub run_id: String,
     pub capture_run_id: Option<String>,
+    pub runtime_backend: String,
     pub task_id: String,
     pub mode: String,
     pub model: String,
@@ -331,6 +333,7 @@ fn migrate(conn: &Connection) -> Result<()> {
                 id                  INTEGER PRIMARY KEY,
                 run_id              TEXT NOT NULL,
                 capture_run_id      TEXT,
+                runtime_backend     TEXT NOT NULL DEFAULT 'native-rust',
                 task_id             TEXT NOT NULL,
                 mode                TEXT NOT NULL,
                 model               TEXT NOT NULL,
@@ -499,6 +502,7 @@ fn migrate(conn: &Connection) -> Result<()> {
         "ALTER TABLE fusion_benchmarks ADD COLUMN harness_sha256 TEXT",
         "ALTER TABLE fusion_benchmarks ADD COLUMN split_sha256 TEXT",
         "ALTER TABLE fusion_benchmarks ADD COLUMN capture_run_id TEXT",
+        "ALTER TABLE fusion_benchmarks ADD COLUMN runtime_backend TEXT NOT NULL DEFAULT 'native-rust'",
         "ALTER TABLE sidekick_sessions ADD COLUMN message_count INTEGER NOT NULL DEFAULT 0",
         "ALTER TABLE sidekick_sessions ADD COLUMN compacted_count INTEGER NOT NULL DEFAULT 0",
         "ALTER TABLE sidekick_sessions ADD COLUMN memory TEXT",
@@ -618,9 +622,10 @@ impl Db {
                 run_id, task_id, mode, model, elapsed_ms, prompt_tokens, completion_tokens,
                 sidekick_runs, sidekick_tool_calls, gateway_used, compacted, context_tokens_before,
                 local_mem_gb, score, status, notes, run_at,
-                cost_usd, cost_basis, split, harness_sha256, split_sha256, capture_run_id
+                cost_usd, cost_basis, split, harness_sha256, split_sha256, capture_run_id,
+                runtime_backend
              ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17,
-                       ?18, ?19, ?20, ?21, ?22, ?23)",
+                       ?18, ?19, ?20, ?21, ?22, ?23, ?24)",
             rusqlite::params![
                 input.run_id,
                 input.task_id,
@@ -645,6 +650,7 @@ impl Db {
                 input.harness_sha256,
                 input.split_sha256,
                 input.capture_run_id,
+                input.runtime_backend,
             ],
         )?;
         Ok(())
@@ -853,7 +859,8 @@ impl Db {
                         ELSE 'ok'
                     END) AS status,
                     notes, run_at,
-                    cost_usd, cost_basis, split, harness_sha256, split_sha256, capture_run_id
+                    cost_usd, cost_basis, split, harness_sha256, split_sha256, capture_run_id,
+                    runtime_backend
              FROM fusion_benchmarks ORDER BY id DESC LIMIT ?1",
         )?;
         let rows = stmt.query_map([limit.clamp(1, 500) as i64], |r| {
@@ -882,6 +889,7 @@ impl Db {
                 harness_sha256: r.get(21)?,
                 split_sha256: r.get(22)?,
                 capture_run_id: r.get(23)?,
+                runtime_backend: r.get(24)?,
             })
         })?;
         rows.collect::<rusqlite::Result<Vec<_>>>()
@@ -1549,6 +1557,7 @@ mod tests {
         db.record_fusion_benchmark(&FusionBenchmarkInput {
             run_id: "run-1".into(),
             capture_run_id: Some("desktop-capture-1".into()),
+            runtime_backend: "pi".into(),
             task_id: "task-1".into(),
             mode: "sidekick-routing".into(),
             model: "model-x".into(),
@@ -1577,6 +1586,7 @@ mod tests {
         let row = &rows[0];
         assert_eq!(row.score, Some(0.0));
         assert_eq!(row.capture_run_id.as_deref(), Some("desktop-capture-1"));
+        assert_eq!(row.runtime_backend, "pi");
         assert_eq!(row.split.as_deref(), Some("none"));
         assert_eq!(row.cost_usd, None);
         assert_eq!(row.cost_basis.as_deref(), Some("local-zero-marginal-cost"));

@@ -83,6 +83,7 @@ pub struct FusionBenchmarkCandidate {
 pub struct RecordFusionBenchmarkRequest {
     pub run_id: String,
     pub capture_run_id: Option<String>,
+    pub runtime_backend: Option<String>,
     pub task_id: String,
     pub mode: String,
     pub model: String,
@@ -361,6 +362,7 @@ pub struct EvalResultV1 {
     pub run_id: String,
     /// Per-attempt canonical runtime id; unlike run_id, this is unique per row.
     pub capture_run_id: Option<String>,
+    pub runtime_backend: Option<String>,
     pub task_id: String,
     pub split: String,
     pub score: Option<f64>,
@@ -395,6 +397,7 @@ pub(crate) fn eval_result_v1(row: &FusionBenchmarkRow) -> EvalResultV1 {
         schema_version: "understudy.eval_result.v1",
         run_id: row.run_id.clone(),
         capture_run_id: row.capture_run_id.clone(),
+        runtime_backend: Some(row.runtime_backend.clone()),
         task_id: row.task_id.clone(),
         split: row.split.clone().unwrap_or_else(|| "none".to_string()),
         score: row.score,
@@ -1796,6 +1799,9 @@ pub fn record_fusion_benchmark(
     let input = FusionBenchmarkInput {
         run_id: result.run_id,
         capture_run_id: result.capture_run_id,
+        runtime_backend: result
+            .runtime_backend
+            .unwrap_or_else(|| "external".to_string()),
         task_id: result.task_id,
         mode: result.mode,
         model: result.model,
@@ -2451,15 +2457,15 @@ async fn run_fusion_benchmark_inner(
         }
     }
 
-    let snapshot = residency(&app).snapshot();
+    let residency_manager = residency(&app);
+    let snapshot = residency_manager.snapshot();
     let warm_main = snapshot.slots.iter().find(|slot| slot.state == "running");
-    let warm_sidekick = snapshot.slots.iter().find(|slot| {
-        slot.state == "running"
-            && slot
-                .model_id
-                .as_deref()
-                .is_some_and(|id| id.contains("understudy-small") || id.contains("e2b"))
-    });
+    // Use the same endpoint selection as live chat. Model-name heuristics made
+    // valid small models such as LFM look unavailable to the benchmark even
+    // while the runtime was actively serving them.
+    let warm_sidekick = warm_main
+        .and_then(|main| residency_manager.sidekick_endpoint(Some(main.id)))
+        .and_then(|(slot_id, _, _, _)| snapshot.slots.iter().find(|slot| slot.id == slot_id));
     let candidate_main = if candidate == "local-fast" {
         warm_sidekick.or(warm_main)
     } else {
@@ -2632,6 +2638,7 @@ async fn run_fusion_benchmark_inner(
                             .record_fusion_benchmark(&FusionBenchmarkInput {
                                 run_id: run_id.clone(),
                                 capture_run_id: Some(capture_run_id.clone()),
+                                runtime_backend: "unknown".to_string(),
                                 task_id: task.id.to_string(),
                                 mode: mode.clone(),
                                 model: effective_model.clone(),
@@ -2701,6 +2708,7 @@ async fn run_fusion_benchmark_inner(
                     .record_fusion_benchmark(&FusionBenchmarkInput {
                         run_id: run_id.clone(),
                         capture_run_id: Some(result.capture_run_id.clone()),
+                        runtime_backend: result.runtime_backend.clone(),
                         task_id: task.id.to_string(),
                         mode: mode.clone(),
                         model: effective_model.clone(),
@@ -2755,6 +2763,7 @@ async fn run_fusion_benchmark_inner(
                     .record_fusion_benchmark(&FusionBenchmarkInput {
                         run_id: run_id.clone(),
                         capture_run_id: Some(capture_run_id),
+                        runtime_backend: "not-run".to_string(),
                         task_id: task.id.to_string(),
                         mode: mode.clone(),
                         model: effective_model.clone(),
@@ -3400,6 +3409,7 @@ mod tests {
         FusionBenchmarkInput {
             run_id: "fusion-run-1".to_string(),
             capture_run_id: Some(format!("desktop-{task_id}")),
+            runtime_backend: "pi".to_string(),
             task_id: task_id.to_string(),
             mode: "sidekick-routing".to_string(),
             model: "gemma-4-e2b-it-qat-understudy".to_string(),

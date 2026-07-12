@@ -650,6 +650,10 @@ async fn run_custom_eval_inner(
             Some(&capture_run_id),
         )
         .await;
+        let runtime_backend = attempt
+            .as_ref()
+            .map(|result| result.runtime_backend.clone())
+            .unwrap_or_else(|_| "unknown".to_string());
         // Mirror the Fusion harness semantics: an executed non-ok attempt and
         // a failed request both count as scored failures (score 0) because a
         // gold answer exists for every example; the recorded status keeps the
@@ -704,6 +708,7 @@ async fn run_custom_eval_inner(
         db.record_fusion_benchmark(&FusionBenchmarkInput {
             run_id: run_id.clone(),
             capture_run_id: Some(capture_run_id),
+            runtime_backend,
             task_id: example.task_id.clone(),
             mode: CUSTOM_EVAL_MODE.to_string(),
             model: model.clone(),
@@ -1073,6 +1078,7 @@ mod tests {
             crate::db::FusionBenchmarkInput {
                 run_id: "custom-support-triage-1-99".into(),
                 capture_run_id: Some(format!("desktop-{task_id}")),
+                runtime_backend: "pi".into(),
                 task_id: task_id.into(),
                 mode: CUSTOM_EVAL_MODE.into(),
                 model: "gemma-4-e2b-it-qat-understudy".into(),

@@ -3149,6 +3149,186 @@ pub async fn chat_stream(
     Ok(())
 }
 
+struct PreparedBenchmarkRun {
+    started: Instant,
+    session_id: String,
+    capture_run_id: String,
+    messages: Vec<ChatMsg>,
+    outbound_messages: Vec<Value>,
+    binding: RouteBinding,
+    slot_id: Option<u32>,
+    allow_sidekick_tool: bool,
+    compacted: bool,
+    context_tokens_before: u64,
+}
+
+fn benchmark_sidecar_result(
+    prepared: &PreparedBenchmarkRun,
+    sidecar: crate::conversation_sidecar::SidecarRunResult,
+) -> BenchmarkChatResult {
+    let prompt_tokens = sidecar_usage_tokens(sidecar.usage.as_ref(), "prompt_tokens").unwrap_or(0);
+    let completion_tokens = sidecar_usage_tokens(sidecar.usage.as_ref(), "completion_tokens")
+        .unwrap_or_else(|| approximate_token_count(&sidecar.content));
+    let reasoning_tokens =
+        sidecar_usage_tokens(sidecar.usage.as_ref(), "reasoning_tokens").unwrap_or(0);
+    BenchmarkChatResult {
+        capture_run_id: prepared.capture_run_id.clone(),
+        status: if sidecar.content.trim().is_empty() {
+            "empty_final".to_string()
+        } else {
+            "ok".to_string()
+        },
+        runtime_backend: "pi".to_string(),
+        content: sidecar.content,
+        elapsed_ms: prepared.started.elapsed().as_millis() as u64,
+        tool_calls: sidecar.tool_calls,
+        prompt_tokens,
+        completion_tokens,
+        reasoning_tokens,
+        compacted: prepared.compacted || sidecar.compacted,
+        context_tokens_before: prepared
+            .context_tokens_before
+            .max(sidecar.context_tokens_before),
+    }
+}
+
+async fn benchmark_chat_native(
+    app: &AppHandle,
+    mgr: &Residency,
+    mut prepared: PreparedBenchmarkRun,
+) -> Result<BenchmarkChatResult, String> {
+    let client = reqwest::Client::builder()
+        .connect_timeout(Duration::from_secs(CHAT_CONNECT_TIMEOUT_SECS))
+        .timeout(Duration::from_secs(CHAT_REQUEST_TIMEOUT_SECS))
+        .build()
+        .map_err(|e| e.to_string())?;
+    let mut final_content = String::new();
+    let mut reasoning_tokens = 0u64;
+    let mut tool_count = 0u64;
+    let mut status = "tool_limit".to_string();
+    let mut repaired_empty_final = false;
+
+    for _round in 0..=BENCHMARK_MAX_TOOL_ROUNDS {
+        let result = nonstream_chat_once(
+            &client,
+            &prepared.binding.url,
+            prepared.binding.bearer.as_deref(),
+            &prepared.binding.model_field,
+            &prepared.outbound_messages,
+            BENCHMARK_MAX_TOKENS,
+            BENCHMARK_THINKING_BUDGET,
+            prepared.allow_sidekick_tool,
+        )
+        .await?;
+        final_content = result.content.clone();
+        reasoning_tokens += approximate_token_count(&result.reasoning);
+        let tool_calls = result.tool_calls;
+        if tool_calls.is_empty() {
+            if final_content.trim().is_empty() && !repaired_empty_final {
+                repaired_empty_final = true;
+                prepared
+                    .outbound_messages
+                    .push(benchmark_finalize_prompt(&result.reasoning));
+                continue;
+            }
+            if final_content.trim().is_empty() {
+                status = "empty_final".to_string();
+                break;
+            }
+            status = "ok".to_string();
+            break;
+        }
+        let assistant_tool_calls: Vec<Value> = tool_calls
+            .iter()
+            .map(|call| {
+                json!({
+                    "id": call.id,
+                    "type": "function",
+                    "function": { "name": call.name, "arguments": call.arguments },
+                })
+            })
+            .collect();
+        prepared.outbound_messages.push(json!({
+            "role": "assistant",
+            "content": final_content,
+            "tool_calls": assistant_tool_calls,
+        }));
+
+        for call in tool_calls {
+            let args = serde_json::from_str::<Value>(&call.arguments).unwrap_or_else(|_| json!({}));
+            let result = match tool_result(
+                app,
+                mgr,
+                prepared.slot_id,
+                &prepared.session_id,
+                &call.name,
+                &args,
+            )
+            .await
+            {
+                Ok(value) => value,
+                Err(err) => json!({ "error": err }),
+            };
+            tool_count += 1;
+            prepared.outbound_messages.push(json!({
+                "role": "tool",
+                "tool_call_id": call.id,
+                "content": result.to_string(),
+            }));
+        }
+    }
+
+    Ok(BenchmarkChatResult {
+        capture_run_id: prepared.capture_run_id,
+        prompt_tokens: approximate_messages_tokens(&prepared.outbound_messages),
+        completion_tokens: final_content.split_whitespace().count() as u64,
+        reasoning_tokens,
+        content: final_content,
+        status,
+        runtime_backend: "native-rust".to_string(),
+        elapsed_ms: prepared.started.elapsed().as_millis() as u64,
+        tool_calls: tool_count,
+        compacted: prepared.compacted,
+        context_tokens_before: prepared.context_tokens_before,
+    })
+}
+
+async fn execute_prepared_benchmark(
+    app: &AppHandle,
+    mgr: &Residency,
+    prepared: PreparedBenchmarkRun,
+) -> Result<BenchmarkChatResult, String> {
+    let attempt = match sidecar_run_request(
+        app,
+        &prepared.messages,
+        &prepared.outbound_messages,
+        &prepared.binding,
+        None,
+        prepared.slot_id,
+        (&prepared.session_id, &prepared.capture_run_id),
+    ) {
+        Ok(mut request) => {
+            request["max_output_tokens"] = json!(BENCHMARK_MAX_TOKENS);
+            request["max_tool_rounds"] = json!(BENCHMARK_MAX_TOOL_ROUNDS);
+            request["tools"] = json!(sidecar_tool_definitions(prepared.allow_sidekick_tool));
+            crate::conversation_sidecar::try_run_chat_headless(app, request).await
+        }
+        Err(reason) => crate::conversation_sidecar::SidecarAttempt::NativeFallback(reason),
+    };
+    match attempt {
+        crate::conversation_sidecar::SidecarAttempt::Completed(sidecar) => {
+            Ok(benchmark_sidecar_result(&prepared, sidecar))
+        }
+        crate::conversation_sidecar::SidecarAttempt::FailedAfterOutput(reason) => Err(format!(
+            "conversation runtime stopped after the benchmark began: {reason}; native retry was suppressed"
+        )),
+        crate::conversation_sidecar::SidecarAttempt::NativeFallback(_)
+        | crate::conversation_sidecar::SidecarAttempt::NotSelected => {
+            benchmark_chat_native(app, mgr, prepared).await
+        }
+    }
+}
+
 pub async fn benchmark_local_chat(
     app: &AppHandle,
     mgr: &Residency,
@@ -3158,8 +3338,8 @@ pub async fn benchmark_local_chat(
     enable_parallel_sidekick: bool,
     allow_sidekick_tool: bool,
 ) -> Result<BenchmarkChatResult, String> {
-    let (session_id, capture_run_id) = identity;
     let started = Instant::now();
+    let (session_id, capture_run_id) = identity;
     let prompt = benchmark_prompt(prompt);
     let (port, model_field) = mgr
         .endpoint(slot_id)
@@ -3177,7 +3357,6 @@ pub async fn benchmark_local_chat(
             wait_ms: 0,
         }
     };
-    let url = format!("http://127.0.0.1:{port}/v1/chat/completions");
     let mut outbound_messages = vec![json!({
         "role": "system",
         "content": system_prompt_for(&model_field),
@@ -3194,7 +3373,7 @@ pub async fn benchmark_local_chat(
         .0,
     );
     outbound_messages.push(json!({ "role": "user", "content": prompt }));
-    let (mut outbound_messages, compaction_reason, context_tokens_before) =
+    let (outbound_messages, compaction_reason, context_tokens_before) =
         compact_chat_messages(outbound_messages);
     let compacted = compaction_reason.is_some();
     if let Some(reason) = compaction_reason.as_deref() {
@@ -3209,91 +3388,28 @@ pub async fn benchmark_local_chat(
             None,
         );
     }
-
-    let client = reqwest::Client::builder()
-        .connect_timeout(Duration::from_secs(CHAT_CONNECT_TIMEOUT_SECS))
-        .timeout(Duration::from_secs(CHAT_REQUEST_TIMEOUT_SECS))
-        .build()
-        .map_err(|e| e.to_string())?;
-    let mut final_content = String::new();
-    let mut reasoning_tokens = 0u64;
-    let mut tool_count = 0u64;
-    let mut status = "tool_limit".to_string();
-    let mut repaired_empty_final = false;
-
-    for _round in 0..=BENCHMARK_MAX_TOOL_ROUNDS {
-        let result = nonstream_chat_once(
-            &client,
-            &url,
-            None,
-            &model_field,
-            &outbound_messages,
-            BENCHMARK_MAX_TOKENS,
-            BENCHMARK_THINKING_BUDGET,
+    execute_prepared_benchmark(
+        app,
+        mgr,
+        PreparedBenchmarkRun {
+            started,
+            session_id: session_id.to_string(),
+            capture_run_id: capture_run_id.to_string(),
+            messages,
+            outbound_messages,
+            binding: RouteBinding {
+                route: "local".to_string(),
+                url: format!("http://127.0.0.1:{port}/v1/chat/completions"),
+                bearer: None,
+                model_field,
+            },
+            slot_id: Some(slot_id),
             allow_sidekick_tool,
-        )
-        .await?;
-        final_content = result.content.clone();
-        reasoning_tokens += approximate_token_count(&result.reasoning);
-        let tool_calls = result.tool_calls;
-        if tool_calls.is_empty() {
-            if final_content.trim().is_empty() && !repaired_empty_final {
-                repaired_empty_final = true;
-                outbound_messages.push(benchmark_finalize_prompt(&result.reasoning));
-                continue;
-            }
-            if final_content.trim().is_empty() {
-                status = "empty_final".to_string();
-                break;
-            }
-            status = "ok".to_string();
-            break;
-        }
-        let assistant_tool_calls: Vec<Value> = tool_calls
-            .iter()
-            .map(|call| {
-                json!({
-                    "id": call.id,
-                    "type": "function",
-                    "function": { "name": call.name, "arguments": call.arguments },
-                })
-            })
-            .collect();
-        outbound_messages.push(json!({
-            "role": "assistant",
-            "content": final_content,
-            "tool_calls": assistant_tool_calls,
-        }));
-
-        for call in tool_calls {
-            let args = serde_json::from_str::<Value>(&call.arguments).unwrap_or_else(|_| json!({}));
-            let result =
-                match tool_result(app, mgr, Some(slot_id), session_id, &call.name, &args).await {
-                    Ok(value) => value,
-                    Err(err) => json!({ "error": err }),
-                };
-            tool_count += 1;
-            outbound_messages.push(json!({
-                "role": "tool",
-                "tool_call_id": call.id,
-                "content": result.to_string(),
-            }));
-        }
-    }
-
-    Ok(BenchmarkChatResult {
-        capture_run_id: capture_run_id.to_string(),
-        prompt_tokens: approximate_messages_tokens(&outbound_messages),
-        completion_tokens: final_content.split_whitespace().count() as u64,
-        reasoning_tokens,
-        content: final_content,
-        status,
-        runtime_backend: "native-rust".to_string(),
-        elapsed_ms: started.elapsed().as_millis() as u64,
-        tool_calls: tool_count,
-        compacted,
-        context_tokens_before,
-    })
+            compacted,
+            context_tokens_before,
+        },
+    )
+    .await
 }
 
 pub async fn benchmark_gateway_chat(
@@ -3308,100 +3424,40 @@ pub async fn benchmark_gateway_chat(
     let started = Instant::now();
     let prompt = benchmark_prompt(prompt);
     let (base, key) = credentials().ok_or_else(|| "not signed in".to_string())?;
-    let url = format!("{}/v1/chat/completions", base.trim_end_matches('/'));
     let mut outbound_messages = vec![json!({
         "role": "system",
         "content": system_prompt_for(model_field),
     })];
     outbound_messages.extend(consume_sidekick_handoffs(app, session_id).0);
-    outbound_messages.push(json!({ "role": "user", "content": prompt }));
-    let (mut outbound_messages, compaction_reason, context_tokens_before) =
+    outbound_messages.push(json!({ "role": "user", "content": prompt.clone() }));
+    let (outbound_messages, compaction_reason, context_tokens_before) =
         compact_chat_messages(outbound_messages);
-    let compacted = compaction_reason.is_some();
-
-    let client = reqwest::Client::builder()
-        .connect_timeout(Duration::from_secs(CHAT_CONNECT_TIMEOUT_SECS))
-        .timeout(Duration::from_secs(CHAT_REQUEST_TIMEOUT_SECS))
-        .build()
-        .map_err(|e| e.to_string())?;
-    let mut final_content = String::new();
-    let mut reasoning_tokens = 0u64;
-    let mut tool_count = 0u64;
-    let mut status = "tool_limit".to_string();
-    let mut repaired_empty_final = false;
-
-    for _round in 0..=BENCHMARK_MAX_TOOL_ROUNDS {
-        let result = nonstream_chat_once(
-            &client,
-            &url,
-            Some(&key),
-            model_field,
-            &outbound_messages,
-            BENCHMARK_MAX_TOKENS,
-            BENCHMARK_THINKING_BUDGET,
+    execute_prepared_benchmark(
+        app,
+        mgr,
+        PreparedBenchmarkRun {
+            started,
+            session_id: session_id.to_string(),
+            capture_run_id: capture_run_id.to_string(),
+            messages: vec![ChatMsg {
+                role: "user".to_string(),
+                content: prompt,
+                attachments: vec![],
+            }],
+            outbound_messages,
+            binding: RouteBinding {
+                route: "cloud".to_string(),
+                url: format!("{}/v1/chat/completions", base.trim_end_matches('/')),
+                bearer: Some(key),
+                model_field: model_field.to_string(),
+            },
+            slot_id: None,
             allow_sidekick_tool,
-        )
-        .await?;
-        final_content = result.content.clone();
-        reasoning_tokens += approximate_token_count(&result.reasoning);
-        let tool_calls = result.tool_calls;
-        if tool_calls.is_empty() {
-            if final_content.trim().is_empty() && !repaired_empty_final {
-                repaired_empty_final = true;
-                outbound_messages.push(benchmark_finalize_prompt(&result.reasoning));
-                continue;
-            }
-            if final_content.trim().is_empty() {
-                status = "empty_final".to_string();
-                break;
-            }
-            status = "ok".to_string();
-            break;
-        }
-        let assistant_tool_calls: Vec<Value> = tool_calls
-            .iter()
-            .map(|call| {
-                json!({
-                    "id": call.id,
-                    "type": "function",
-                    "function": { "name": call.name, "arguments": call.arguments },
-                })
-            })
-            .collect();
-        outbound_messages.push(json!({
-            "role": "assistant",
-            "content": final_content,
-            "tool_calls": assistant_tool_calls,
-        }));
-
-        for call in tool_calls {
-            let args = serde_json::from_str::<Value>(&call.arguments).unwrap_or_else(|_| json!({}));
-            let result = match tool_result(app, mgr, None, session_id, &call.name, &args).await {
-                Ok(value) => value,
-                Err(err) => json!({ "error": err }),
-            };
-            tool_count += 1;
-            outbound_messages.push(json!({
-                "role": "tool",
-                "tool_call_id": call.id,
-                "content": result.to_string(),
-            }));
-        }
-    }
-
-    Ok(BenchmarkChatResult {
-        capture_run_id: capture_run_id.to_string(),
-        prompt_tokens: approximate_messages_tokens(&outbound_messages),
-        completion_tokens: final_content.split_whitespace().count() as u64,
-        reasoning_tokens,
-        content: final_content,
-        status,
-        runtime_backend: "native-rust".to_string(),
-        elapsed_ms: started.elapsed().as_millis() as u64,
-        tool_calls: tool_count,
-        compacted,
-        context_tokens_before,
-    })
+            compacted: compaction_reason.is_some(),
+            context_tokens_before,
+        },
+    )
+    .await
 }
 
 /// Agent-facing, non-streaming chat completion against one warm slot. The
@@ -3939,6 +3995,51 @@ mod tests {
         assert!(unsupervised.iter().any(|tool| {
             tool.get("name").and_then(Value::as_str) == Some("delegate_to_sidekick")
         }));
+    }
+
+    #[test]
+    fn benchmark_sidecar_result_preserves_exact_usage_and_compaction() {
+        let prepared = PreparedBenchmarkRun {
+            started: Instant::now() - Duration::from_millis(777),
+            session_id: "fusion-session".to_string(),
+            capture_run_id: "desktop-fusion-capture".to_string(),
+            messages: vec![],
+            outbound_messages: vec![],
+            binding: RouteBinding {
+                route: "local".to_string(),
+                url: "http://127.0.0.1:8091/v1/chat/completions".to_string(),
+                bearer: None,
+                model_field: "model-under-test".to_string(),
+            },
+            slot_id: Some(5),
+            allow_sidekick_tool: false,
+            compacted: true,
+            context_tokens_before: 12_000,
+        };
+        let result = benchmark_sidecar_result(
+            &prepared,
+            crate::conversation_sidecar::SidecarRunResult {
+                content: "measured answer".to_string(),
+                usage: Some(json!({
+                    "prompt_tokens": 321,
+                    "completion_tokens": 45,
+                    "reasoning_tokens": 9
+                })),
+                tool_calls: 2,
+                elapsed_ms: 777,
+                compacted: true,
+                context_tokens_before: 15_000,
+            },
+        );
+        assert_eq!(result.capture_run_id, "desktop-fusion-capture");
+        assert_eq!(result.runtime_backend, "pi");
+        assert_eq!(result.prompt_tokens, 321);
+        assert_eq!(result.completion_tokens, 45);
+        assert_eq!(result.reasoning_tokens, 9);
+        assert_eq!(result.tool_calls, 2);
+        assert!(result.elapsed_ms >= 777);
+        assert!(result.compacted);
+        assert_eq!(result.context_tokens_before, 15_000);
     }
 
     #[test]
