@@ -395,17 +395,20 @@ PY
 <summary><b>Devin — install as a global CLI</b></summary>
 
 Devin is a cloud-based coding agent: each session boots from a snapshot, so the
-install surface is a global npm package rather than a local plugin registration.
-Devin reads `AGENTS.md` as an injected repository rule and accesses the shared
-[`skills/`](skills/) tree directly from the cloned repo.
+install surface is a global CLI rather than a local plugin registration. Until
+the npm package is published, the public installer clones the reviewed GitHub
+source, builds it, and globally links the CLI. Devin reads `AGENTS.md` as an
+injected repository rule and accesses the shared [`skills/`](skills/) tree
+directly from that checkout.
 [`.devin/adapter.json`](.devin/adapter.json) is an Understudy version/staleness
 sentinel for release checks, not a manifest consumed by Devin.
 
-Install the CLI globally (typically added to the Devin environment blueprint
-for persistence across sessions):
+Install the CLI without launching an interactive local agent (typically add
+the same command to the Devin environment blueprint for persistence):
 
 ```bash
-npm install -g @understudylabs/understudy-agent-tools
+curl -fsSL https://raw.githubusercontent.com/UnderstudyLabs/understudy-agent-tools/main/install.sh \
+  | bash -s -- --yes --agents devin --no-launch-agent
 ```
 
 Then ask Devin:
