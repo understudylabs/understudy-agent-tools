@@ -192,6 +192,8 @@ pub fn run() {
             commands::sidekick_runs,
             commands::sidekick_metrics,
             commands::set_sidekick_run_feedback,
+            commands::record_supervisor_feedback,
+            commands::supervisor_feedback_for_session,
             commands::sidekick_decisions,
             commands::sidekick_events,
             commands::sidekick_session_summaries,

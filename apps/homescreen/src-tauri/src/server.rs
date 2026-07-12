@@ -11,8 +11,9 @@
 // run on the Tauri async runtime.
 
 use axum::{
+    body::{Body, Bytes},
     extract::{Path, Query, Request, State},
-    http::{HeaderMap, StatusCode},
+    http::{header, HeaderMap, HeaderValue, StatusCode},
     middleware::Next,
     response::{IntoResponse, Response},
     routing::{get, post},
@@ -24,6 +25,7 @@ use tauri::{AppHandle, Emitter, Manager};
 const DEFAULT_PORT: u16 = 17790;
 const TOKEN_KEY: &str = "server_token";
 const PORT_KEY: &str = "server_port";
+const AGENT_CHAT_BODY_LIMIT: usize = 44 * 1024 * 1024;
 
 #[derive(Clone)]
 pub struct Ctx {
@@ -93,6 +95,28 @@ pub fn router(ctx: Ctx) -> Router {
         .route("/api/traces/search", get(traces_search))
         .route("/api/traces/:id", get(traces_open))
         .route("/api/ui/focus", post(ui_focus))
+        // Stable versioned aliases for the CLI and third-party desktop agents.
+        .route("/v1/capabilities", get(agent_capabilities))
+        .route("/v1/status", get(status))
+        .route("/v1/models", get(models))
+        .route("/v1/models/catalog", get(snapshots))
+        .route("/v1/residency", get(residency))
+        .route("/v1/residency/slots", post(residency_add_slot))
+        .route("/v1/residency/assign", post(residency_assign))
+        .route("/v1/residency/warm", post(residency_warm))
+        .route("/v1/residency/cool", post(residency_cool))
+        .route("/v1/residency/remove", post(residency_remove))
+        .route("/v1/downloads", get(downloads_list).post(download_start))
+        .route("/v1/downloads/:id", get(download_status))
+        .route("/v1/downloads/:id/cancel", post(download_cancel))
+        .route(
+            "/v1/conversations/:session_id/turns",
+            post(agent_conversation_turn)
+                .layer(axum::extract::DefaultBodyLimit::max(AGENT_CHAT_BODY_LIMIT)),
+        )
+        .route("/v1/runs/:run_id/cancel", post(agent_run_cancel))
+        .route("/v1/runs/:run_id/events", get(agent_run_events))
+        .route("/v1/feedback/supervisor", post(agent_supervisor_feedback))
         // agent fronts
         .route("/mcp", post(mcp))
         .route("/.well-known/agent.json", get(a2a_card))
@@ -172,6 +196,7 @@ async fn serve(ctx: Ctx, port: u16) {
     };
     // The app is the canonical local daemon: advertise it in the agent card
     // once the server is actually reachable (never the token itself).
+    crate::agent_card::record_api_capability(port, &ctx.token);
     crate::agent_card::record_server_started(port, !ctx.token.is_empty());
     let _ = axum::serve(listener, router(ctx)).await;
 }
@@ -200,7 +225,251 @@ fn token_matches(provided: &str, expected: &str) -> bool {
         == 0
 }
 
+fn validate_agent_id(value: &str, label: &str) -> Result<(), (StatusCode, String)> {
+    if value.is_empty()
+        || value.len() > 200
+        || !value
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_' | b'.' | b':'))
+    {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            format!(
+                "{label} must be 1-200 ASCII letters, digits, dots, colons, underscores, or hyphens"
+            ),
+        ));
+    }
+    Ok(())
+}
+
 // ---------------- REST handlers ----------------
+
+async fn agent_capabilities(
+    State(ctx): State<Ctx>,
+    h: HeaderMap,
+) -> Result<Json<Value>, (StatusCode, String)> {
+    auth(&ctx, &h)?;
+    Ok(Json(agent_capabilities_value()))
+}
+
+fn agent_capabilities_value() -> Value {
+    json!({
+        "schema_version": "understudy.desktop_api.v2",
+        "api_version": "2.1.0",
+        "event_schema": crate::conversation_runtime::EVENT_SCHEMA,
+        "runtime": {
+            "id": "understudy-conversation-runtime",
+            "required_version": crate::conversation_runtime::RUNTIME_VERSION,
+        },
+        "features": {
+            "streaming_ndjson": true,
+            "inline_images": true,
+            "exact_run_cancellation": true,
+            "persisted_run_events": true,
+            "supervisor_feedback": true,
+            "local_supervision": true,
+            "fully_offline_local_models": true,
+            "model_inventory": true,
+            "model_downloads": true,
+            "model_residency": true,
+        },
+        "endpoints": {
+            "status": "/v1/status",
+            "models": "/v1/models",
+            "model_catalog": "/v1/models/catalog",
+            "residency": "/v1/residency",
+            "residency_add_slot": "/v1/residency/slots",
+            "residency_assign": "/v1/residency/assign",
+            "residency_warm": "/v1/residency/warm",
+            "residency_cool": "/v1/residency/cool",
+            "residency_remove": "/v1/residency/remove",
+            "downloads": "/v1/downloads",
+            "download_status": "/v1/downloads/{download_id}",
+            "download_cancel": "/v1/downloads/{download_id}/cancel",
+            "start_turn": "/v1/conversations/{session_id}/turns",
+            "cancel_run": "/v1/runs/{run_id}/cancel",
+            "run_events": "/v1/runs/{run_id}/events",
+            "supervisor_feedback": "/v1/feedback/supervisor",
+        }
+    })
+}
+
+#[derive(serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct AgentConversationTurnBody {
+    slot_id: u32,
+    supervisor_slot_id: Option<u32>,
+    #[serde(default)]
+    text: String,
+    #[serde(default)]
+    attachments: Vec<crate::chat::AgentChatAttachmentUpload>,
+    run_id: Option<String>,
+    max_tokens: Option<u32>,
+}
+
+async fn agent_conversation_turn(
+    State(ctx): State<Ctx>,
+    Path(session_id): Path<String>,
+    h: HeaderMap,
+    Json(body): Json<AgentConversationTurnBody>,
+) -> Result<Response, (StatusCode, String)> {
+    auth(&ctx, &h)?;
+    validate_agent_id(&session_id, "session_id")?;
+    if body.text.trim().is_empty() && body.attachments.is_empty() {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            "text or at least one image attachment is required".to_string(),
+        ));
+    }
+    let run_id = match body.run_id {
+        Some(run_id) => run_id,
+        None => crate::conversation_runtime::new_run_id()
+            .map_err(|error| (StatusCode::INTERNAL_SERVER_ERROR, error))?,
+    };
+    validate_agent_id(&run_id, "run_id")?;
+    crate::conversation_sidecar::ensure_agent_ready(ctx.app.clone())
+        .await
+        .map_err(|error| (StatusCode::SERVICE_UNAVAILABLE, error))?;
+    let residency = ctx.app.state::<crate::residency::Residency>();
+    let request = crate::chat::agent_sidecar_request(
+        &ctx.app,
+        &residency,
+        crate::chat::AgentSidecarRequest {
+            slot_id: body.slot_id,
+            supervisor_slot_id: body.supervisor_slot_id,
+            session_id: &session_id,
+            run_id: &run_id,
+            prompt: body.text.trim(),
+            attachments: &body.attachments,
+            max_tokens: body.max_tokens,
+        },
+    )
+    .map_err(|error| (StatusCode::BAD_REQUEST, error))?;
+    let reservation = crate::conversation_sidecar::reserve_agent_run(&session_id, &run_id)
+        .map_err(|error| (StatusCode::CONFLICT, error))?;
+
+    let (events_tx, events_rx) =
+        tokio::sync::mpsc::unbounded_channel::<crate::conversation_runtime::RuntimeEventEnvelope>();
+    let app = ctx.app.clone();
+    tauri::async_runtime::spawn(async move {
+        if let Err((error, _)) =
+            crate::conversation_sidecar::execute_agent_run(&app, request, &events_tx, reservation)
+                .await
+        {
+            eprintln!("understudy desktop API conversation run failed: {error}");
+        }
+    });
+
+    let stream = futures_util::stream::unfold(events_rx, |mut receiver| async move {
+        let event = receiver.recv().await?;
+        let mut line = serde_json::to_vec(&event).unwrap_or_default();
+        line.push(b'\n');
+        Some((
+            Ok::<Bytes, std::convert::Infallible>(Bytes::from(line)),
+            receiver,
+        ))
+    });
+    let mut response = Response::new(Body::from_stream(stream));
+    response.headers_mut().insert(
+        header::CONTENT_TYPE,
+        HeaderValue::from_static("application/x-ndjson; charset=utf-8"),
+    );
+    response
+        .headers_mut()
+        .insert(header::CACHE_CONTROL, HeaderValue::from_static("no-store"));
+    response.headers_mut().insert(
+        "x-understudy-run-id",
+        HeaderValue::from_str(&run_id).map_err(|_| {
+            (
+                StatusCode::BAD_REQUEST,
+                "run_id is not a valid header value".into(),
+            )
+        })?,
+    );
+    response.headers_mut().insert(
+        "x-understudy-session-id",
+        HeaderValue::from_str(&session_id).map_err(|_| {
+            (
+                StatusCode::BAD_REQUEST,
+                "session_id is not a valid header value".into(),
+            )
+        })?,
+    );
+    Ok(response)
+}
+
+async fn agent_run_cancel(
+    State(ctx): State<Ctx>,
+    Path(run_id): Path<String>,
+    h: HeaderMap,
+) -> Result<Json<Value>, (StatusCode, String)> {
+    auth(&ctx, &h)?;
+    validate_agent_id(&run_id, "run_id")?;
+    let cancelled = crate::conversation_sidecar::cancel_run_by_id(&run_id)
+        .await
+        .map_err(|error| (StatusCode::BAD_GATEWAY, error))?;
+    if !cancelled {
+        return Err((StatusCode::NOT_FOUND, "active run not found".to_string()));
+    }
+    Ok(Json(json!({
+        "ok": true,
+        "status": "cancelling",
+        "run_id": run_id,
+    })))
+}
+
+async fn agent_run_events(
+    State(ctx): State<Ctx>,
+    Path(run_id): Path<String>,
+    h: HeaderMap,
+) -> Result<Response, (StatusCode, String)> {
+    auth(&ctx, &h)?;
+    validate_agent_id(&run_id, "run_id")?;
+    let app = ctx.app.clone();
+    let events = tokio::task::spawn_blocking(move || {
+        crate::conversation_runtime::load_persisted_trace(&app, &run_id)
+    })
+    .await
+    .map_err(|error| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            format!("read run task failed: {error}"),
+        )
+    })?
+    .map_err(|error| (StatusCode::INTERNAL_SERVER_ERROR, error))?
+    .ok_or_else(|| (StatusCode::NOT_FOUND, "persisted run not found".to_string()))?;
+    let mut body = String::new();
+    for event in events {
+        body.push_str(&serde_json::to_string(&event).map_err(|error| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                format!("serialize persisted run: {error}"),
+            )
+        })?);
+        body.push('\n');
+    }
+    let mut response = Response::new(Body::from(body));
+    response.headers_mut().insert(
+        header::CONTENT_TYPE,
+        HeaderValue::from_static("application/x-ndjson; charset=utf-8"),
+    );
+    response.headers_mut().insert(
+        header::CACHE_CONTROL,
+        HeaderValue::from_static("private, no-store"),
+    );
+    Ok(response)
+}
+
+async fn agent_supervisor_feedback(
+    State(ctx): State<Ctx>,
+    h: HeaderMap,
+    Json(feedback): Json<crate::commands::SupervisorFeedbackRequest>,
+) -> Result<Json<Value>, (StatusCode, String)> {
+    auth(&ctx, &h)?;
+    crate::commands::record_supervisor_feedback(ctx.app.clone(), feedback)
+        .map_err(|error| (StatusCode::BAD_REQUEST, error))?;
+    Ok(Json(json!({ "ok": true })))
+}
 
 async fn status(State(ctx): State<Ctx>, h: HeaderMap) -> Result<Json<Value>, (StatusCode, String)> {
     auth(&ctx, &h)?;
@@ -1382,6 +1651,55 @@ mod tests {
         assert!(!token_matches(&token[..32], &token));
         assert!(!token_matches(&gen_token(), &token));
         assert!(!token_matches("", &token));
+    }
+
+    #[test]
+    fn agent_api_ids_are_bounded_before_reaching_runtime_state() {
+        assert!(validate_agent_id("session-1", "session_id").is_ok());
+        assert!(validate_agent_id("", "session_id").is_err());
+        assert!(validate_agent_id(&"x".repeat(201), "run_id").is_err());
+        assert!(validate_agent_id("bad/slash", "run_id").is_err());
+    }
+
+    #[test]
+    fn agent_capabilities_advertise_the_versioned_control_plane() {
+        let capabilities = agent_capabilities_value();
+        assert_eq!(capabilities["schema_version"], "understudy.desktop_api.v2");
+        assert_eq!(capabilities["api_version"], "2.1.0");
+        assert_eq!(
+            capabilities["event_schema"],
+            crate::conversation_runtime::EVENT_SCHEMA
+        );
+        assert_eq!(capabilities["features"]["local_supervision"], true);
+        assert_eq!(capabilities["features"]["persisted_run_events"], true);
+        assert_eq!(capabilities["features"]["supervisor_feedback"], true);
+        assert_eq!(capabilities["endpoints"]["status"], "/v1/status");
+        assert_eq!(
+            capabilities["endpoints"]["start_turn"],
+            "/v1/conversations/{session_id}/turns"
+        );
+    }
+
+    #[test]
+    fn agent_turn_body_accepts_camel_case_images_and_exact_run_id() {
+        let body: AgentConversationTurnBody = serde_json::from_value(json!({
+            "slotId": 3,
+            "supervisorSlotId": 9,
+            "text": "review this shelf",
+            "runId": "agent-run-3",
+            "maxTokens": 512,
+            "attachments": [{
+                "filename": "shelf.png",
+                "mediaType": "image/png",
+                "dataUrl": "data:image/png;base64,iVBORw0KGgo="
+            }]
+        }))
+        .unwrap();
+        assert_eq!(body.slot_id, 3);
+        assert_eq!(body.supervisor_slot_id, Some(9));
+        assert_eq!(body.run_id.as_deref(), Some("agent-run-3"));
+        assert_eq!(body.attachments.len(), 1);
+        assert_eq!(body.max_tokens, Some(512));
     }
 
     #[test]

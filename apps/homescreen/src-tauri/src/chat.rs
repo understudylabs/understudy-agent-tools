@@ -65,6 +65,14 @@ pub struct ChatAttachment {
     pub data_url: String,
 }
 
+#[derive(Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub(crate) struct AgentChatAttachmentUpload {
+    pub(crate) filename: String,
+    pub(crate) media_type: String,
+    pub(crate) data_url: String,
+}
+
 #[derive(Serialize)]
 pub struct BenchmarkChatResult {
     pub capture_run_id: String,
@@ -602,15 +610,8 @@ pub(crate) fn tool_schemas() -> Vec<Value> {
                         "tool_name": {
                             "type": "string",
                             "enum": [
-                                "status",
-                                "list_models",
-                                "list_snapshot_models",
-                                "residency",
                                 "knowledge_dossiers",
                                 "local_benchmarks",
-                                "list_traces",
-                                "search_traces",
-                                "open_trace",
                                 "ui_focus"
                             ]
                         },
@@ -639,8 +640,6 @@ pub(crate) fn tool_schemas() -> Vec<Value> {
                                 "skills_search",
                                 "skills_inspect",
                                 "doctor",
-                                "status",
-                                "models_snapshots",
                                 "models_pull_plan"
                             ]
                         },
@@ -1009,10 +1008,6 @@ fn sidekick_tool_schemas() -> Vec<Value> {
                         "tool_name": {
                             "type": "string",
                             "enum": [
-                                "status",
-                                "list_models",
-                                "list_snapshot_models",
-                                "residency",
                                 "knowledge_dossiers",
                                 "local_benchmarks",
                                 "fusion_benchmark_matrix",
@@ -1022,10 +1017,7 @@ fn sidekick_tool_schemas() -> Vec<Value> {
                                 "chat_runs",
                                 "chat_route_metrics",
                                 "sidekick_metrics",
-                                "sidekick_session_summaries",
-                                "list_traces",
-                                "search_traces",
-                                "open_trace"
+                                "sidekick_session_summaries"
                             ]
                         },
                         "arguments": { "type": "object" }
@@ -2209,6 +2201,144 @@ fn sidecar_usage_tokens(usage: Option<&Value>, key: &str) -> Option<u64> {
     usage
         .and_then(|value| value.get(key))
         .and_then(Value::as_u64)
+}
+
+/// Build the canonical Pi request used by the authenticated Desktop API. This
+/// is deliberately a projection into the existing runtime contract, not a
+/// second agent loop.
+pub(crate) struct AgentSidecarRequest<'a> {
+    pub(crate) slot_id: u32,
+    pub(crate) supervisor_slot_id: Option<u32>,
+    pub(crate) session_id: &'a str,
+    pub(crate) run_id: &'a str,
+    pub(crate) prompt: &'a str,
+    pub(crate) attachments: &'a [AgentChatAttachmentUpload],
+    pub(crate) max_tokens: Option<u32>,
+}
+
+pub(crate) fn agent_sidecar_request(
+    app: &AppHandle,
+    mgr: &Residency,
+    input: AgentSidecarRequest<'_>,
+) -> Result<Value, String> {
+    use sha2::Digest as _;
+
+    if input.attachments.len() > 4 {
+        return Err("at most four image attachments are allowed per message".to_string());
+    }
+    let decoded_attachments = input
+        .attachments
+        .iter()
+        .map(|upload| {
+            let prefix = format!("data:{};base64,", upload.media_type);
+            let encoded = upload
+                .data_url
+                .strip_prefix(&prefix)
+                .ok_or_else(|| "image data URL does not match its media type".to_string())?;
+            let bytes = {
+                use base64::Engine as _;
+                base64::engine::general_purpose::STANDARD
+                    .decode(encoded)
+                    .map_err(|_| "image data URL contains invalid base64".to_string())?
+            };
+            let attachment = ChatAttachment {
+                id: format!("{:x}", sha2::Sha256::digest(&bytes)),
+                filename: upload.filename.clone(),
+                media_type: upload.media_type.clone(),
+                data_url: upload.data_url.clone(),
+            };
+            let size = validate_chat_attachment(&attachment)?;
+            Ok((attachment, size))
+        })
+        .collect::<Result<Vec<_>, String>>()?;
+    let total_bytes = decoded_attachments
+        .iter()
+        .map(|(_, size)| *size)
+        .sum::<usize>();
+    if total_bytes > 24 * 1024 * 1024 {
+        return Err("combined image attachments must not exceed 24 MB".to_string());
+    }
+    let attachments = decoded_attachments
+        .into_iter()
+        .map(|(attachment, _)| attachment)
+        .collect::<Vec<_>>();
+    let (port, model_field) = mgr
+        .endpoint(input.slot_id)
+        .ok_or_else(|| format!("slot {} is not warm; warm it first", input.slot_id))?;
+    let supervision = input
+        .supervisor_slot_id
+        .map(|supervisor_slot_id| {
+            let (supervisor_port, supervisor_model) =
+                mgr.endpoint(supervisor_slot_id).ok_or_else(|| {
+                    format!("supervisor slot {supervisor_slot_id} is not warm; warm it first")
+                })?;
+            if supervisor_port == port || supervisor_model == model_field {
+                return Err(
+                    "supervisor slot must use a different warm model from the student slot"
+                        .to_string(),
+                );
+            }
+            if let (Some(student_size), Some(supervisor_size)) = (
+                model_size_billions(&model_field),
+                model_size_billions(&supervisor_model),
+            ) {
+                if student_size >= supervisor_size {
+                    return Err(
+                        "supervisor slot must use a larger model than the student slot".to_string(),
+                    );
+                }
+            }
+            let supervisor_base_url = format!("http://127.0.0.1:{supervisor_port}/v1");
+            Ok(json!({
+                "student": {
+                    "base_url": format!("http://127.0.0.1:{port}/v1"),
+                    "model": model_field.clone(),
+                },
+                "supervisor": {
+                    "base_url": supervisor_base_url,
+                    "model": supervisor_model.clone(),
+                    "system_prompt": SMALL_FIRST_SUPERVISOR_PROMPT,
+                    "max_output_tokens": 48,
+                },
+                "teacher": {
+                    "base_url": format!("http://127.0.0.1:{supervisor_port}/v1"),
+                    "model": supervisor_model,
+                },
+                "boundary_chars": 240,
+                "max_nudges": 2,
+            }))
+        })
+        .transpose()?;
+    let messages = vec![ChatMsg {
+        role: "user".to_string(),
+        content: input.prompt.to_string(),
+        attachments,
+    }];
+    let outbound = vec![
+        json!({ "role": "system", "content": system_prompt_for(&model_field) }),
+        openai_chat_message(&messages[0])?,
+    ];
+    let binding = RouteBinding {
+        route: "local".to_string(),
+        url: format!("http://127.0.0.1:{port}/v1/chat/completions"),
+        bearer: None,
+        model_field,
+    };
+    let mut request = sidecar_run_request(
+        app,
+        &messages,
+        &outbound,
+        &binding,
+        supervision.as_ref(),
+        Some(input.slot_id),
+        (input.session_id, input.run_id),
+    )?;
+    request["max_output_tokens"] = json!(input
+        .max_tokens
+        .unwrap_or(AGENT_CHAT_DEFAULT_MAX_TOKENS)
+        .clamp(1, CHAT_MAX_TOKENS));
+    request["max_tool_rounds"] = json!(MAX_TOOL_ROUNDS);
+    Ok(request)
 }
 
 fn cloud_route_binding() -> Option<RouteBinding> {
@@ -4001,6 +4131,31 @@ mod tests {
         let unsupervised = sidecar_tool_definitions(true);
         assert!(unsupervised.iter().any(|tool| {
             tool.get("name").and_then(Value::as_str) == Some("delegate_to_sidekick")
+        }));
+    }
+
+    #[test]
+    fn direct_tools_are_not_duplicated_inside_generic_wrappers() {
+        let tools = tool_schemas();
+        let direct = tools
+            .iter()
+            .filter_map(|tool| tool.pointer("/function/name").and_then(Value::as_str))
+            .filter(|name| !name.starts_with("understudy_"))
+            .collect::<std::collections::HashSet<_>>();
+        let wrapper = tools
+            .iter()
+            .find(|tool| {
+                tool.pointer("/function/name").and_then(Value::as_str)
+                    == Some("understudy_mcp_tool")
+            })
+            .expect("MCP wrapper exists");
+        let wrapped_names = wrapper
+            .pointer("/function/parameters/properties/tool_name/enum")
+            .and_then(Value::as_array)
+            .expect("wrapper names are enumerated");
+        assert!(wrapped_names.iter().all(|name| {
+            name.as_str()
+                .is_some_and(|name| !direct.contains(name))
         }));
     }
 

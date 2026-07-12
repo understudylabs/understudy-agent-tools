@@ -52,6 +52,8 @@ struct ActiveRunGuard {
     run_id: String,
 }
 
+pub(crate) struct AgentRunReservation(ActiveRunGuard);
+
 impl ActiveRunGuard {
     fn register(session_id: &str, run_id: &str) -> Result<Self, String> {
         let mut runs = locked(active_runs());
@@ -104,11 +106,27 @@ impl Drop for ActiveRunGuard {
     }
 }
 
+pub(crate) fn reserve_agent_run(
+    session_id: &str,
+    run_id: &str,
+) -> Result<AgentRunReservation, String> {
+    ActiveRunGuard::register(session_id, run_id).map(AgentRunReservation)
+}
+
 fn request_cancel(session_id: &str) -> Option<ActiveRunTarget> {
     let mut runs = locked(active_runs());
     let active = runs.get_mut(session_id)?;
     active.cancel_requested = true;
     active.target.clone()
+}
+
+fn request_cancel_run(run_id: &str) -> (bool, Option<ActiveRunTarget>) {
+    let mut runs = locked(active_runs());
+    let Some(active) = runs.values_mut().find(|active| active.run_id == run_id) else {
+        return (false, None);
+    };
+    active.cancel_requested = true;
+    (true, active.target.clone())
 }
 
 #[derive(Debug, Deserialize, Serialize)]
@@ -452,6 +470,8 @@ async fn execute_run(
     app: &AppHandle,
     request: Value,
     on_event: Option<&Channel<ChatEvent>>,
+    runtime_events: Option<&tokio::sync::mpsc::UnboundedSender<RuntimeEventEnvelope>>,
+    reservation: Option<AgentRunReservation>,
 ) -> Result<SidecarRunResult, (String, bool)> {
     let started = Instant::now();
     let run_id = request
@@ -474,7 +494,20 @@ async fn execute_run(
             )
         })?
         .to_string();
-    let active = ActiveRunGuard::register(&session_id, &run_id).map_err(|error| (error, false))?;
+    let active = match reservation {
+        Some(AgentRunReservation(active))
+            if active.session_id == session_id && active.run_id == run_id =>
+        {
+            active
+        }
+        Some(_) => {
+            return Err((
+                "conversation runtime reservation identity changed".to_string(),
+                false,
+            ));
+        }
+        None => ActiveRunGuard::register(&session_id, &run_id).map_err(|error| (error, false))?,
+    };
     let status = {
         let app = app.clone();
         tokio::task::spawn_blocking(move || ensure_ready(&app))
@@ -565,6 +598,9 @@ async fn execute_run(
             if let Some(event) = accumulator.observe(&envelope) {
                 publish_chat_event(app, &session_id, on_event, event);
             }
+            if let Some(runtime_events) = runtime_events {
+                let _ = runtime_events.send(envelope.clone());
+            }
             events.push(envelope);
         }
     }
@@ -578,6 +614,9 @@ async fn execute_run(
             })?;
         if let Some(event) = accumulator.observe(&envelope) {
             publish_chat_event(app, &session_id, on_event, event);
+        }
+        if let Some(runtime_events) = runtime_events {
+            let _ = runtime_events.send(envelope.clone());
         }
         events.push(envelope);
     }
@@ -645,7 +684,7 @@ pub(crate) async fn try_run_chat(
     if !runtime_selected(app) {
         return SidecarAttempt::NotSelected;
     }
-    match execute_run(app, request, Some(on_event)).await {
+    match execute_run(app, request, Some(on_event), None, None).await {
         Ok(result) => SidecarAttempt::Completed(result),
         Err((error, true)) => SidecarAttempt::FailedAfterOutput(error),
         Err((error, false)) => SidecarAttempt::NativeFallback(error),
@@ -656,11 +695,120 @@ pub(crate) async fn try_run_chat_headless(app: &AppHandle, request: Value) -> Si
     if !runtime_selected(app) {
         return SidecarAttempt::NotSelected;
     }
-    match execute_run(app, request, None).await {
+    match execute_run(app, request, None, None, None).await {
         Ok(result) => SidecarAttempt::Completed(result),
         Err((error, true)) => SidecarAttempt::FailedAfterOutput(error),
         Err((error, false)) => SidecarAttempt::NativeFallback(error),
     }
+}
+
+pub(crate) async fn ensure_agent_ready(app: AppHandle) -> Result<(), String> {
+    tokio::task::spawn_blocking(move || ensure_ready(&app).map(|_| ()))
+        .await
+        .map_err(|error| format!("conversation runtime start task failed: {error}"))?
+}
+
+pub(crate) async fn execute_agent_run(
+    app: &AppHandle,
+    request: Value,
+    runtime_events: &tokio::sync::mpsc::UnboundedSender<RuntimeEventEnvelope>,
+    reservation: AgentRunReservation,
+) -> Result<SidecarRunResult, (String, bool)> {
+    let run_id = request
+        .get("run_id")
+        .and_then(Value::as_str)
+        .unwrap_or("unknown-run")
+        .to_string();
+    let session_id = request
+        .get("session_id")
+        .and_then(Value::as_str)
+        .unwrap_or("unknown-session")
+        .to_string();
+    let (internal_tx, mut internal_rx) = tokio::sync::mpsc::unbounded_channel();
+    let app_for_run = app.clone();
+    let mut task = tokio::spawn(async move {
+        execute_run(
+            &app_for_run,
+            request,
+            None,
+            Some(&internal_tx),
+            Some(reservation),
+        )
+        .await
+    });
+    let mut observed = Vec::new();
+    let outcome = loop {
+        tokio::select! {
+            event = internal_rx.recv() => {
+                if let Some(event) = event {
+                    let _ = runtime_events.send(event.clone());
+                    observed.push(event);
+                }
+            }
+            result = &mut task => {
+                while let Ok(event) = internal_rx.try_recv() {
+                    let _ = runtime_events.send(event.clone());
+                    observed.push(event);
+                }
+                break result.map_err(|error| {
+                    (format!("conversation runtime task failed: {error}"), false)
+                })?;
+            }
+        }
+    };
+    match outcome {
+        Ok(result) => Ok(result),
+        Err((error, emitted_output)) => {
+            let terminal_seen = observed.last().is_some_and(|event| {
+                matches!(
+                    event.event,
+                    RuntimeEvent::Cancellation { .. } | RuntimeEvent::Error { .. }
+                )
+            });
+            if !terminal_seen {
+                let sequence = observed.last().map(|event| event.sequence + 1).unwrap_or(0);
+                let terminal = RuntimeEventEnvelope {
+                    schema_version: EVENT_SCHEMA.to_string(),
+                    event_id: format!("{run_id}:{sequence}"),
+                    run_id: run_id.clone(),
+                    session_id: session_id.clone(),
+                    runtime_id: observed
+                        .first()
+                        .map(|event| event.runtime_id.clone())
+                        .unwrap_or_else(|| "understudy-desktop-bridge-v1".to_string()),
+                    sequence,
+                    emitted_at: chrono::Utc::now().to_rfc3339(),
+                    event: RuntimeEvent::Error {
+                        stage: "desktop_bridge".to_string(),
+                        code: "desktop_runtime_bridge_error".to_string(),
+                        message: error.clone(),
+                        recoverable: false,
+                    },
+                };
+                let _ = runtime_events.send(terminal.clone());
+                observed.push(terminal);
+                if let Err(persist_error) =
+                    crate::conversation_runtime::persist_trace(app, &session_id, &run_id, &observed)
+                {
+                    eprintln!(
+                        "understudy desktop API: persist terminal bridge error failed: {persist_error}"
+                    );
+                }
+            }
+            Err((error, emitted_output))
+        }
+    }
+}
+
+pub(crate) async fn cancel_run_by_id(run_id: &str) -> Result<bool, String> {
+    let (found, target) = request_cancel_run(run_id);
+    if !found {
+        return Ok(false);
+    }
+    if let Some(target) = target {
+        cancel_target(target).await?;
+    }
+    Ok(true)
 }
 
 #[tauri::command]

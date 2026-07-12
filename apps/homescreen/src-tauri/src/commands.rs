@@ -20,7 +20,7 @@ use crate::route_policy::{
     TOOL_DEPTH_ESCALATION_CALLS,
 };
 use crate::sidecar::{ServiceState, Services};
-use serde::Serialize;
+use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use std::fs;
 use std::path::PathBuf;
@@ -3110,6 +3110,93 @@ pub fn set_sidekick_run_feedback(
     app.state::<crate::db::Db>()
         .set_sidekick_run_feedback(run_id, accepted)
         .map_err(|e| e.to_string())
+}
+
+/// Explicit human verdict on one local supervisor decision. `correct_action`
+/// is optional so a one-tap helpful/not-helpful label stays cheap, while a
+/// richer label remains available for evaluator and training exports.
+#[derive(Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct SupervisorFeedbackRequest {
+    session_id: String,
+    run_id: Option<String>,
+    marker_id: Option<String>,
+    intervention_at: Option<u64>,
+    stage: String,
+    helpful: bool,
+    correct_action: Option<String>,
+    justification: Option<String>,
+}
+
+fn validate_correct_supervisor_action(
+    stage: &str,
+    helpful: bool,
+    correct_action: Option<&str>,
+) -> Result<(), String> {
+    let Some(correct_action) = correct_action else {
+        return Ok(());
+    };
+    if !matches!(correct_action, "continue" | "nudge" | "interrupt" | "stop") {
+        return Err(format!(
+            "unknown correct supervisor action: {correct_action}"
+        ));
+    }
+    let recorded_action = match stage {
+        "take_over" => "interrupt",
+        "nudge" => "nudge",
+        "continue" => "continue",
+        "stop" => "stop",
+        _ => return Err(format!("unknown supervisor stage: {stage}")),
+    };
+    if helpful != (correct_action == recorded_action) {
+        return Err(format!(
+            "correct_action {correct_action} is inconsistent with helpful={helpful} for {recorded_action}"
+        ));
+    }
+    Ok(())
+}
+
+#[tauri::command]
+pub fn record_supervisor_feedback(
+    app: AppHandle,
+    feedback: SupervisorFeedbackRequest,
+) -> Result<(), String> {
+    if !matches!(
+        feedback.stage.as_str(),
+        "continue" | "nudge" | "take_over" | "stop"
+    ) {
+        return Err(format!("unknown supervisor stage: {}", feedback.stage));
+    }
+    if feedback.run_id.is_some() && feedback.marker_id.as_deref().is_none_or(str::is_empty) {
+        return Err("run-attributed supervisor feedback requires marker_id".to_string());
+    }
+    validate_correct_supervisor_action(
+        &feedback.stage,
+        feedback.helpful,
+        feedback.correct_action.as_deref(),
+    )?;
+    app.state::<crate::db::Db>()
+        .record_supervisor_feedback(&crate::db::SupervisorFeedbackInput {
+            session_id: feedback.session_id,
+            run_id: feedback.run_id,
+            marker_id: feedback.marker_id,
+            intervention_at: feedback.intervention_at,
+            stage: feedback.stage,
+            helpful: feedback.helpful,
+            correct_action: feedback.correct_action,
+            justification: feedback.justification,
+        })
+        .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+pub fn supervisor_feedback_for_session(
+    app: AppHandle,
+    session_id: String,
+) -> Result<Vec<crate::db::SupervisorFeedbackRow>, String> {
+    app.state::<crate::db::Db>()
+        .list_supervisor_feedback_for_session(&session_id)
+        .map_err(|error| error.to_string())
 }
 
 #[tauri::command]

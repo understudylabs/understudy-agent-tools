@@ -216,6 +216,32 @@ pub struct SidekickEventRow {
     pub created_at: String,
 }
 
+#[derive(Serialize, Clone, Debug)]
+pub struct SupervisorFeedbackRow {
+    pub id: u64,
+    pub session_id: String,
+    pub run_id: Option<String>,
+    pub marker_id: Option<String>,
+    pub intervention_at: Option<u64>,
+    pub stage: String,
+    pub helpful: bool,
+    pub correct_action: Option<String>,
+    pub justification: Option<String>,
+    pub created_at: String,
+}
+
+#[derive(Clone, Debug)]
+pub struct SupervisorFeedbackInput {
+    pub session_id: String,
+    pub run_id: Option<String>,
+    pub marker_id: Option<String>,
+    pub intervention_at: Option<u64>,
+    pub stage: String,
+    pub helpful: bool,
+    pub correct_action: Option<String>,
+    pub justification: Option<String>,
+}
+
 #[derive(Serialize, Clone)]
 pub struct SidekickSessionSummaryRow {
     pub session_key: String,
@@ -449,6 +475,18 @@ fn migrate(conn: &Connection) -> Result<()> {
                 detail     TEXT NOT NULL,
                 created_at TEXT NOT NULL
             );
+            CREATE TABLE IF NOT EXISTS supervisor_feedback (
+                id              INTEGER PRIMARY KEY,
+                session_id      TEXT NOT NULL,
+                run_id          TEXT,
+                marker_id       TEXT,
+                intervention_at INTEGER,
+                stage           TEXT NOT NULL,
+                helpful         INTEGER NOT NULL,
+                correct_action  TEXT,
+                justification   TEXT,
+                created_at      TEXT NOT NULL
+            );
             CREATE TABLE IF NOT EXISTS sidekick_sessions (
                 session_key TEXT PRIMARY KEY,
                 session_id  TEXT NOT NULL,
@@ -509,10 +547,18 @@ fn migrate(conn: &Connection) -> Result<()> {
         "ALTER TABLE fusion_route_decisions ADD COLUMN policy_class TEXT NOT NULL DEFAULT 'unknown'",
         "ALTER TABLE fusion_route_decisions ADD COLUMN signals TEXT",
         "ALTER TABLE fusion_route_decisions ADD COLUMN upgrade_sidekick INTEGER NOT NULL DEFAULT 0",
+        "ALTER TABLE supervisor_feedback ADD COLUMN marker_id TEXT",
+        "ALTER TABLE supervisor_feedback ADD COLUMN intervention_at INTEGER",
+        "ALTER TABLE supervisor_feedback ADD COLUMN correct_action TEXT",
     ];
     for sql in ALTERS {
         apply_alter(conn, sql)?;
     }
+    conn.execute(
+        "CREATE UNIQUE INDEX IF NOT EXISTS supervisor_feedback_marker_id
+         ON supervisor_feedback(marker_id)",
+        [],
+    )?;
     Ok(())
 }
 
@@ -1141,6 +1187,72 @@ impl Db {
         Ok(())
     }
 
+    /// Persist an explicit human judgment about one supervisor decision.
+    /// Marker identity makes retries idempotent and keeps labels joined to the
+    /// exact interruption that the user saw.
+    pub fn record_supervisor_feedback(&self, input: &SupervisorFeedbackInput) -> Result<()> {
+        let conn = self.conn()?;
+        conn.execute(
+            "INSERT INTO supervisor_feedback (
+                session_id, run_id, marker_id, intervention_at, stage, helpful,
+                correct_action, justification, created_at
+             ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)
+             ON CONFLICT(marker_id) DO UPDATE SET
+                session_id=excluded.session_id,
+                run_id=excluded.run_id,
+                intervention_at=excluded.intervention_at,
+                stage=excluded.stage,
+                helpful=excluded.helpful,
+                correct_action=CASE
+                    WHEN excluded.correct_action IS NOT NULL THEN excluded.correct_action
+                    WHEN excluded.helpful=supervisor_feedback.helpful THEN supervisor_feedback.correct_action
+                    ELSE NULL
+                END,
+                justification=COALESCE(excluded.justification, supervisor_feedback.justification),
+                created_at=excluded.created_at",
+            rusqlite::params![
+                input.session_id,
+                input.run_id,
+                input.marker_id,
+                input.intervention_at.map(|value| value as i64),
+                input.stage,
+                input.helpful as i64,
+                input.correct_action,
+                input.justification,
+                now_iso(),
+            ],
+        )?;
+        Ok(())
+    }
+
+    pub fn list_supervisor_feedback_for_session(
+        &self,
+        session_id: &str,
+    ) -> Result<Vec<SupervisorFeedbackRow>> {
+        let conn = self.conn()?;
+        let mut stmt = conn.prepare(
+            "SELECT id, session_id, run_id, marker_id, intervention_at, stage,
+                    helpful, correct_action, justification, created_at
+             FROM supervisor_feedback WHERE session_id=?1 ORDER BY id",
+        )?;
+        let rows = stmt.query_map([session_id], |row| {
+            Ok(SupervisorFeedbackRow {
+                id: row.get::<_, i64>(0)? as u64,
+                session_id: row.get(1)?,
+                run_id: row.get(2)?,
+                marker_id: row.get(3)?,
+                intervention_at: row.get::<_, Option<i64>>(4)?.map(|value| value as u64),
+                stage: row.get(5)?,
+                helpful: row.get::<_, i64>(6)? != 0,
+                correct_action: row.get(7)?,
+                justification: row.get(8)?,
+                created_at: row.get(9)?,
+            })
+        })?;
+        rows.collect::<rusqlite::Result<Vec<_>>>()
+            .map_err(Into::into)
+    }
+
     pub fn sidekick_feedback_summary(&self, limit: u32) -> Result<SidekickFeedbackSummary> {
         let conn = self.conn()?;
         let (useful, misses): (i64, i64) = conn.query_row(
@@ -1643,6 +1755,58 @@ mod tests {
         // Handing claims back makes them consumable again (failed-turn path).
         db.unconsume_sidekick_handoffs(&all).unwrap();
         assert_eq!(db.consume_sidekick_handoffs("s", 5).unwrap().len(), 5);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn supervisor_feedback_is_idempotent_per_marker() {
+        let (dir, db) = temp_db("supervisor-feedback");
+        db.record_supervisor_feedback(&SupervisorFeedbackInput {
+            session_id: "session-1".into(),
+            run_id: Some("run-1".into()),
+            marker_id: Some("run-1:intervention:0".into()),
+            intervention_at: Some(42),
+            stage: "take_over".into(),
+            helpful: true,
+            correct_action: Some("interrupt".into()),
+            justification: None,
+        })
+        .unwrap();
+        db.record_supervisor_feedback(&SupervisorFeedbackInput {
+            session_id: "session-1".into(),
+            run_id: Some("run-1".into()),
+            marker_id: Some("run-1:intervention:0".into()),
+            intervention_at: Some(42),
+            stage: "take_over".into(),
+            helpful: false,
+            correct_action: Some("continue".into()),
+            justification: Some("changed after review".into()),
+        })
+        .unwrap();
+        // A repeated one-tap label must not erase the richer correction.
+        db.record_supervisor_feedback(&SupervisorFeedbackInput {
+            session_id: "session-1".into(),
+            run_id: Some("run-1".into()),
+            marker_id: Some("run-1:intervention:0".into()),
+            intervention_at: Some(42),
+            stage: "take_over".into(),
+            helpful: false,
+            correct_action: None,
+            justification: None,
+        })
+        .unwrap();
+        let rows = db
+            .list_supervisor_feedback_for_session("session-1")
+            .unwrap();
+        assert_eq!(rows.len(), 1);
+        assert!(!rows[0].helpful);
+        assert_eq!(rows[0].marker_id.as_deref(), Some("run-1:intervention:0"));
+        assert_eq!(rows[0].intervention_at, Some(42));
+        assert_eq!(rows[0].correct_action.as_deref(), Some("continue"));
+        assert_eq!(
+            rows[0].justification.as_deref(),
+            Some("changed after review")
+        );
         let _ = std::fs::remove_dir_all(&dir);
     }
 

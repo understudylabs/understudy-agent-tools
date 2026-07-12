@@ -223,6 +223,47 @@ pub(crate) fn persist_trace(
     Ok(path)
 }
 
+/// Load one immutable trace by public run id without exposing its hashed local
+/// path. Journals are partitioned by session hash, so lookup scans only the
+/// first-level runtime directories.
+pub(crate) fn load_persisted_trace(
+    app: &AppHandle,
+    run_id: &str,
+) -> Result<Option<Vec<RuntimeEventEnvelope>>, String> {
+    let root = app
+        .state::<crate::db::Db>()
+        .data_dir()
+        .join("runtime-events");
+    let filename = format!("{}.jsonl", sha256(run_id));
+    let directories = match std::fs::read_dir(&root) {
+        Ok(entries) => entries,
+        Err(error) if error.kind() == std::io::ErrorKind::NotFound => return Ok(None),
+        Err(error) => return Err(format!("read runtime event root: {error}")),
+    };
+    for directory in directories.flatten() {
+        let path = directory.path().join(&filename);
+        if !path.is_file() {
+            continue;
+        }
+        let raw = std::fs::read_to_string(&path)
+            .map_err(|error| format!("read persisted runtime trace: {error}"))?;
+        let events = raw
+            .lines()
+            .filter(|line| !line.trim().is_empty())
+            .map(|line| {
+                serde_json::from_str::<RuntimeEventEnvelope>(line)
+                    .map_err(|error| format!("parse persisted runtime trace: {error}"))
+            })
+            .collect::<Result<Vec<_>, _>>()?;
+        validate_trace(&events)?;
+        if events.first().is_some_and(|event| event.run_id == run_id) {
+            return Ok(Some(events));
+        }
+        return Err("persisted runtime trace hash did not match run_id".to_string());
+    }
+    Ok(None)
+}
+
 fn required(value: &str, field: &str) -> Result<(), String> {
     if value.trim().is_empty() {
         Err(format!("{field} must be a non-empty string"))
