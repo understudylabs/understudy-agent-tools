@@ -354,12 +354,13 @@ describe("desktop API CLI", () => {
   it("streams canonical image-chat events with caller-owned identity", async () => {
     const result = await runCli([
       "desktop", "chat", "inspect", "--slot", "7", "--session", "session-desktop",
-      "--run-id", "run-desktop", "--image", imagePath, "--json",
+      "--supervisor-slot", "5", "--run-id", "run-desktop", "--image", imagePath, "--json",
     ]);
     assert.equal(result.status, 0, result.stderr);
     const events = result.stdout.trim().split("\n").map(JSON.parse);
     assert.deepEqual(events.map((event) => event.event), ["message", "delta", "usage"]);
     assert.equal(lastTurn.slotId, 7);
+    assert.equal(lastTurn.supervisorSlotId, 5);
     assert.equal(lastTurn.runId, "run-desktop");
     assert.equal(lastTurn.attachments[0].mediaType, "image/png");
     assert.match(lastTurn.attachments[0].dataUrl, /^data:image\/png;base64,/);

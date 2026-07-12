@@ -473,6 +473,7 @@ understudy desktop slot add --json
 understudy desktop slot assign <slot-id> understudy-small
 understudy desktop slot warm <slot-id>
 understudy desktop chat --slot 9 --session my-task --run-id my-task-1 "Inspect this"
+understudy desktop chat --slot 9 --supervisor-slot 5 "Let the small model work first"
 understudy desktop chat --slot 9 --image screenshot.png "What is wrong here?"
 understudy desktop run cancel my-task-1
 understudy desktop run events my-task-1 --json

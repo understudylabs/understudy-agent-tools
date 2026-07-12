@@ -313,7 +313,12 @@ export function registerDesktopCommand(program: Command): void {
     .command("chat")
     .description("Run one canonical local conversation turn and stream its runtime events.")
     .argument("[prompt]", "User text; optional when at least one --image is supplied")
-    .requiredOption("--slot <id>", "Warm desktop residency slot", positiveInteger)
+    .requiredOption("--slot <id>", "Warm student or primary desktop residency slot", positiveInteger)
+    .option(
+      "--supervisor-slot <id>",
+      "Distinct warm model that judges the student and continues after interruption",
+      positiveInteger,
+    )
     .option("--session <id>", "Stable conversation session id")
     .option("--run-id <id>", "Caller-supplied exact run id")
     .option("--max-tokens <n>", "Maximum output tokens", positiveInteger)
@@ -324,6 +329,7 @@ export function registerDesktopCommand(program: Command): void {
       prompt: string | undefined,
       opts: {
         slot: number;
+        supervisorSlot?: number;
         session?: string;
         runId?: string;
         maxTokens?: number;
@@ -345,6 +351,7 @@ export function registerDesktopCommand(program: Command): void {
           method: "POST",
           body: JSON.stringify({
             slotId: opts.slot,
+            supervisorSlotId: opts.supervisorSlot,
             text: prompt?.trim() ?? "",
             runId,
             maxTokens: opts.maxTokens,

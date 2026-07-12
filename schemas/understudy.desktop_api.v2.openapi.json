@@ -853,6 +853,11 @@
             "type": "integer",
             "minimum": 1
           },
+          "supervisorSlotId": {
+            "type": "integer",
+            "minimum": 1,
+            "description": "Optional distinct warm model that judges the student and continues after an interruption. When present, canonical events attribute student, supervisor, and teacher usage separately."
+          },
           "text": {
             "type": "string",
             "default": ""
