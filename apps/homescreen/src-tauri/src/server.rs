@@ -98,6 +98,7 @@ pub fn router(ctx: Ctx) -> Router {
         // Stable versioned aliases for the CLI and third-party desktop agents.
         .route("/v1/capabilities", get(agent_capabilities))
         .route("/v1/status", get(status))
+        .route("/v1/metrics/chat-routes", get(chat_route_metrics))
         .route("/v1/models", get(models))
         .route("/v1/models/catalog", get(snapshots))
         .route("/v1/residency", get(residency))
@@ -272,9 +273,11 @@ fn agent_capabilities_value() -> Value {
             "model_inventory": true,
             "model_downloads": true,
             "model_residency": true,
+            "migration_observation": true,
         },
         "endpoints": {
             "status": "/v1/status",
+            "migration_status": "/v1/metrics/chat-routes",
             "models": "/v1/models",
             "model_catalog": "/v1/models/catalog",
             "residency": "/v1/residency",
@@ -1673,7 +1676,12 @@ mod tests {
         assert_eq!(capabilities["features"]["local_supervision"], true);
         assert_eq!(capabilities["features"]["persisted_run_events"], true);
         assert_eq!(capabilities["features"]["supervisor_feedback"], true);
+        assert_eq!(capabilities["features"]["migration_observation"], true);
         assert_eq!(capabilities["endpoints"]["status"], "/v1/status");
+        assert_eq!(
+            capabilities["endpoints"]["migration_status"],
+            "/v1/metrics/chat-routes"
+        );
         assert_eq!(
             capabilities["endpoints"]["start_turn"],
             "/v1/conversations/{session_id}/turns"

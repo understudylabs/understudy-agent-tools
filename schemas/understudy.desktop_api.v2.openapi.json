@@ -64,6 +64,39 @@
         }
       }
     },
+    "/v1/metrics/chat-routes": {
+      "get": {
+        "operationId": "desktopMigrationStatus",
+        "summary": "Inspect the rolling Pi adoption and Rust fallback deletion gate",
+        "parameters": [
+          {
+            "name": "limit",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "integer",
+              "minimum": 1,
+              "default": 250
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Rolling canonical-runtime adoption metrics",
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/MigrationStatus"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          }
+        }
+      }
+    },
     "/v1/models": {
       "get": {
         "operationId": "desktopModels",
@@ -628,6 +661,80 @@
       "StatusDocument": {
         "type": "object",
         "description": "Desktop status is forward-compatible; clients should inspect only fields they understand.",
+        "additionalProperties": true
+      },
+      "MigrationStatus": {
+        "type": "object",
+        "required": [
+          "schema_version",
+          "app_version",
+          "runtime_version",
+          "observed_row_limit",
+          "required_canonical_runtime_rows",
+          "remaining_canonical_runtime_rows",
+          "canonical_runtime_rows",
+          "pi_runtime_rows",
+          "compatibility_fallback_rows",
+          "pi_runtime_share",
+          "compatibility_engine_delete_ready",
+          "groups"
+        ],
+        "properties": {
+          "schema_version": {
+            "const": "understudy.chat_route_metrics.v1"
+          },
+          "app_version": {
+            "type": "string",
+            "minLength": 1
+          },
+          "runtime_version": {
+            "type": "string",
+            "minLength": 1
+          },
+          "observed_row_limit": {
+            "type": "integer",
+            "minimum": 1,
+            "maximum": 500
+          },
+          "required_canonical_runtime_rows": {
+            "const": 100
+          },
+          "remaining_canonical_runtime_rows": {
+            "type": "integer",
+            "minimum": 0,
+            "maximum": 100
+          },
+          "canonical_runtime_rows": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "pi_runtime_rows": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "compatibility_fallback_rows": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "pi_runtime_share": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "minimum": 0,
+            "maximum": 1
+          },
+          "compatibility_engine_delete_ready": {
+            "type": "boolean"
+          },
+          "groups": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": true
+            }
+          }
+        },
         "additionalProperties": true
       },
       "ModelList": {

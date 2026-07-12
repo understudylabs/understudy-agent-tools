@@ -127,6 +127,8 @@ pub struct ChatRunRow {
     pub id: u64,
     pub run_id: Option<String>,
     pub runtime_backend: String,
+    pub app_version: String,
+    pub runtime_version: String,
     pub session_id: String,
     pub route: String,
     pub model: String,
@@ -420,6 +422,8 @@ fn migrate(conn: &Connection) -> Result<()> {
                 id                INTEGER PRIMARY KEY,
                 run_id            TEXT,
                 runtime_backend   TEXT NOT NULL DEFAULT 'native-rust',
+                app_version       TEXT NOT NULL DEFAULT 'legacy',
+                runtime_version   TEXT NOT NULL DEFAULT 'legacy',
                 session_id        TEXT NOT NULL,
                 route             TEXT NOT NULL,
                 model             TEXT NOT NULL,
@@ -530,6 +534,8 @@ fn migrate(conn: &Connection) -> Result<()> {
         "ALTER TABLE chat_runs ADD COLUMN gateway_avoided INTEGER NOT NULL DEFAULT 0",
         "ALTER TABLE chat_runs ADD COLUMN run_id TEXT",
         "ALTER TABLE chat_runs ADD COLUMN runtime_backend TEXT NOT NULL DEFAULT 'native-rust'",
+        "ALTER TABLE chat_runs ADD COLUMN app_version TEXT NOT NULL DEFAULT 'legacy'",
+        "ALTER TABLE chat_runs ADD COLUMN runtime_version TEXT NOT NULL DEFAULT 'legacy'",
         "ALTER TABLE fusion_benchmarks ADD COLUMN compacted INTEGER NOT NULL DEFAULT 0",
         "ALTER TABLE fusion_benchmarks ADD COLUMN context_tokens_before INTEGER",
         "ALTER TABLE fusion_benchmarks ADD COLUMN local_mem_gb REAL",
@@ -774,13 +780,15 @@ impl Db {
         let conn = self.conn()?;
         conn.execute(
             "INSERT INTO chat_runs (
-                run_id, runtime_backend, session_id, route, model, elapsed_ms, prompt_tokens, completion_tokens, tool_calls,
+                run_id, runtime_backend, app_version, runtime_version, session_id, route, model, elapsed_ms, prompt_tokens, completion_tokens, tool_calls,
                 sidekick_spawned, gateway_used, compacted, compaction_reason, context_tokens_before,
                 local_mem_gb, gateway_available, gateway_avoided, status, error, run_at
-             ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20)",
+             ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15, ?16, ?17, ?18, ?19, ?20, ?21, ?22)",
             rusqlite::params![
                 input.run_id,
                 input.runtime_backend,
+                env!("CARGO_PKG_VERSION"),
+                crate::conversation_runtime::RUNTIME_VERSION,
                 input.session_id,
                 input.route,
                 input.model,
@@ -810,6 +818,8 @@ impl Db {
             "SELECT id, session_id, route, model, elapsed_ms, prompt_tokens, completion_tokens,
                     run_id,
                     runtime_backend,
+                    app_version,
+                    runtime_version,
                     tool_calls, sidekick_spawned, gateway_used, compacted, compaction_reason,
                     context_tokens_before, local_mem_gb, gateway_available, gateway_avoided,
                     status, error, run_at
@@ -826,18 +836,20 @@ impl Db {
                 completion_tokens: r.get::<_, Option<i64>>(6)?.map(|v| v as u64),
                 run_id: r.get(7)?,
                 runtime_backend: r.get(8)?,
-                tool_calls: r.get::<_, i64>(9)? as u64,
-                sidekick_spawned: r.get::<_, i64>(10)? != 0,
-                gateway_used: r.get::<_, i64>(11)? != 0,
-                compacted: r.get::<_, i64>(12)? != 0,
-                compaction_reason: r.get(13)?,
-                context_tokens_before: r.get::<_, Option<i64>>(14)?.map(|v| v as u64),
-                local_mem_gb: r.get(15)?,
-                gateway_available: r.get::<_, i64>(16)? != 0,
-                gateway_avoided: r.get::<_, i64>(17)? != 0,
-                status: r.get(18)?,
-                error: r.get(19)?,
-                run_at: r.get(20)?,
+                app_version: r.get(9)?,
+                runtime_version: r.get(10)?,
+                tool_calls: r.get::<_, i64>(11)? as u64,
+                sidekick_spawned: r.get::<_, i64>(12)? != 0,
+                gateway_used: r.get::<_, i64>(13)? != 0,
+                compacted: r.get::<_, i64>(14)? != 0,
+                compaction_reason: r.get(15)?,
+                context_tokens_before: r.get::<_, Option<i64>>(16)?.map(|v| v as u64),
+                local_mem_gb: r.get(17)?,
+                gateway_available: r.get::<_, i64>(18)? != 0,
+                gateway_avoided: r.get::<_, i64>(19)? != 0,
+                status: r.get(20)?,
+                error: r.get(21)?,
+                run_at: r.get(22)?,
             })
         })?;
         rows.collect::<rusqlite::Result<Vec<_>>>()
@@ -854,6 +866,8 @@ impl Db {
             "SELECT id, session_id, route, model, elapsed_ms, prompt_tokens, completion_tokens,
                     run_id,
                     runtime_backend,
+                    app_version,
+                    runtime_version,
                     tool_calls, sidekick_spawned, gateway_used, compacted, compaction_reason,
                     context_tokens_before, local_mem_gb, gateway_available, gateway_avoided,
                     status, error, run_at
@@ -874,18 +888,20 @@ impl Db {
                     completion_tokens: r.get::<_, Option<i64>>(6)?.map(|v| v as u64),
                     run_id: r.get(7)?,
                     runtime_backend: r.get(8)?,
-                    tool_calls: r.get::<_, i64>(9)? as u64,
-                    sidekick_spawned: r.get::<_, i64>(10)? != 0,
-                    gateway_used: r.get::<_, i64>(11)? != 0,
-                    compacted: r.get::<_, i64>(12)? != 0,
-                    compaction_reason: r.get(13)?,
-                    context_tokens_before: r.get::<_, Option<i64>>(14)?.map(|v| v as u64),
-                    local_mem_gb: r.get(15)?,
-                    gateway_available: r.get::<_, i64>(16)? != 0,
-                    gateway_avoided: r.get::<_, i64>(17)? != 0,
-                    status: r.get(18)?,
-                    error: r.get(19)?,
-                    run_at: r.get(20)?,
+                    app_version: r.get(9)?,
+                    runtime_version: r.get(10)?,
+                    tool_calls: r.get::<_, i64>(11)? as u64,
+                    sidekick_spawned: r.get::<_, i64>(12)? != 0,
+                    gateway_used: r.get::<_, i64>(13)? != 0,
+                    compacted: r.get::<_, i64>(14)? != 0,
+                    compaction_reason: r.get(15)?,
+                    context_tokens_before: r.get::<_, Option<i64>>(16)?.map(|v| v as u64),
+                    local_mem_gb: r.get(17)?,
+                    gateway_available: r.get::<_, i64>(18)? != 0,
+                    gateway_avoided: r.get::<_, i64>(19)? != 0,
+                    status: r.get(20)?,
+                    error: r.get(21)?,
+                    run_at: r.get(22)?,
                 })
             },
         )?;
@@ -1632,6 +1648,11 @@ mod tests {
         let rows = db.list_chat_runs(1).unwrap();
         assert_eq!(rows[0].run_id.as_deref(), Some("desktop-run-1"));
         assert_eq!(rows[0].runtime_backend, "pi");
+        assert_eq!(rows[0].app_version, env!("CARGO_PKG_VERSION"));
+        assert_eq!(
+            rows[0].runtime_version,
+            crate::conversation_runtime::RUNTIME_VERSION
+        );
         let session_rows = db.list_chat_runs_for_session("session-1", 1).unwrap();
         assert_eq!(session_rows[0].run_id.as_deref(), Some("desktop-run-1"));
         assert_eq!(session_rows[0].runtime_backend, "pi");

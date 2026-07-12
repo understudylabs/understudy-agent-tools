@@ -59,9 +59,18 @@ so the native Anthropic translator remains only as the one-release fallback.
 
 ## Deletion gate
 
-`chat_route_metrics` counts only rows with a canonical `run_id`; legacy rows
-cannot poison the denominator. Delete the compatibility engine only after one
-released version records a rolling window of at least 100 canonical runs with:
+The release artifact exposes the gate directly:
+
+```sh
+understudy desktop migration-status --require-ready --json
+```
+
+The command exits `2` while observation is incomplete. The underlying
+versioned Desktop API cohorts rows by both app version and canonical-runtime
+version; legacy and development rows remain in SQLite but cannot poison or
+falsely satisfy the denominator. Delete the compatibility engine only after
+one released app/runtime cohort records a rolling window of at least 100
+canonical runs with:
 
 - `compatibility_fallback_rows == 0`;
 - `pi_runtime_share == 1.0`;

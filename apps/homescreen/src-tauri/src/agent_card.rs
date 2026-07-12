@@ -90,6 +90,7 @@ pub fn record_api_capability(port: u16, token: &str) {
         },
         "control_api": {
             "status_url": format!("http://127.0.0.1:{port}/v1/status"),
+            "migration_status_url": format!("http://127.0.0.1:{port}/v1/metrics/chat-routes"),
             "models_url": format!("http://127.0.0.1:{port}/v1/models"),
             "model_catalog_url": format!("http://127.0.0.1:{port}/v1/models/catalog"),
             "residency_url": format!("http://127.0.0.1:{port}/v1/residency"),

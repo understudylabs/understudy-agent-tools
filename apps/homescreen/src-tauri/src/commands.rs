@@ -596,6 +596,11 @@ pub struct ChatRouteMetricGroup {
 #[derive(Serialize, Clone)]
 pub struct ChatRouteMetrics {
     pub schema_version: &'static str,
+    pub app_version: &'static str,
+    pub runtime_version: &'static str,
+    pub observed_row_limit: u32,
+    pub required_canonical_runtime_rows: u64,
+    pub remaining_canonical_runtime_rows: u64,
     pub canonical_runtime_rows: u64,
     pub pi_runtime_rows: u64,
     pub compatibility_fallback_rows: u64,
@@ -2330,13 +2335,26 @@ pub fn chat_session_save(
 
 #[tauri::command]
 pub fn chat_route_metrics(app: AppHandle, limit: Option<u32>) -> Result<ChatRouteMetrics, String> {
+    let observed_row_limit = limit.unwrap_or(250).clamp(1, 500);
     let rows = app
         .state::<crate::db::Db>()
-        .list_chat_runs(limit.unwrap_or(250))
+        .list_chat_runs(observed_row_limit)
         .map_err(|e| e.to_string())?;
-    // Rows predating the canonical bridge have no run_id and inherited the
-    // native-rust column default during migration. Exclude those legacy rows
-    // or they permanently poison the rollout denominator.
+    Ok(chat_route_metrics_for_rows(rows, observed_row_limit))
+}
+
+fn chat_route_metrics_for_rows(rows: Vec<ChatRunRow>, observed_row_limit: u32) -> ChatRouteMetrics {
+    const REQUIRED_CANONICAL_RUNTIME_ROWS: u64 = 100;
+    // Count only the compatibility release cohort. Older development and
+    // migrated rows remain preserved in SQLite, but cannot poison or falsely
+    // satisfy the 100-run Rust deletion gate.
+    let rows: Vec<_> = rows
+        .into_iter()
+        .filter(|row| {
+            row.app_version == env!("CARGO_PKG_VERSION")
+                && row.runtime_version == crate::conversation_runtime::RUNTIME_VERSION
+        })
+        .collect();
     let canonical_runtime_rows = rows.iter().filter(|row| row.run_id.is_some()).count() as u64;
     let pi_runtime_rows = rows
         .iter()
@@ -2388,16 +2406,23 @@ pub fn chat_route_metrics(app: AppHandle, limit: Option<u32>) -> Result<ChatRout
         });
     }
     out.sort_by_key(|g| std::cmp::Reverse(g.rows));
-    Ok(ChatRouteMetrics {
+    ChatRouteMetrics {
         schema_version: "understudy.chat_route_metrics.v1",
+        app_version: env!("CARGO_PKG_VERSION"),
+        runtime_version: crate::conversation_runtime::RUNTIME_VERSION,
+        observed_row_limit,
+        required_canonical_runtime_rows: REQUIRED_CANONICAL_RUNTIME_ROWS,
+        remaining_canonical_runtime_rows: REQUIRED_CANONICAL_RUNTIME_ROWS
+            .saturating_sub(canonical_runtime_rows),
         canonical_runtime_rows,
         pi_runtime_rows,
         compatibility_fallback_rows,
         pi_runtime_share,
-        compatibility_engine_delete_ready: canonical_runtime_rows >= 100
+        compatibility_engine_delete_ready: canonical_runtime_rows
+            >= REQUIRED_CANONICAL_RUNTIME_ROWS
             && compatibility_fallback_rows == 0,
         groups: out,
-    })
+    }
 }
 
 #[tauri::command]
@@ -3261,11 +3286,72 @@ pub fn server_info(app: AppHandle) -> Option<Value> {
 #[cfg(test)]
 mod tests {
     use super::{
-        eval_result_v1, eval_results_jsonl, export_packet_provenance, fusion_benchmark_score,
-        resolve_export_output_path_under, sha256_hex,
+        chat_route_metrics_for_rows, eval_result_v1, eval_results_jsonl, export_packet_provenance,
+        fusion_benchmark_score, resolve_export_output_path_under, sha256_hex,
     };
-    use crate::db::{Db, FusionBenchmarkInput};
+    use crate::db::{ChatRunRow, Db, FusionBenchmarkInput};
     use std::path::PathBuf;
+
+    fn migration_row(
+        runtime_backend: &str,
+        app_version: &str,
+        runtime_version: &str,
+    ) -> ChatRunRow {
+        ChatRunRow {
+            id: 1,
+            run_id: Some("run-1".to_string()),
+            runtime_backend: runtime_backend.to_string(),
+            app_version: app_version.to_string(),
+            runtime_version: runtime_version.to_string(),
+            session_id: "session-1".to_string(),
+            route: "local".to_string(),
+            model: "understudy-small".to_string(),
+            elapsed_ms: Some(1),
+            prompt_tokens: Some(1),
+            completion_tokens: Some(1),
+            tool_calls: 0,
+            sidekick_spawned: false,
+            gateway_used: false,
+            compacted: false,
+            compaction_reason: None,
+            context_tokens_before: None,
+            local_mem_gb: None,
+            gateway_available: false,
+            gateway_avoided: false,
+            status: "ok".to_string(),
+            error: None,
+            run_at: "2026-07-12T00:00:00Z".to_string(),
+        }
+    }
+
+    #[test]
+    fn migration_gate_counts_only_the_current_release_cohort() {
+        let mut rows = vec![migration_row("native-rust", "legacy", "legacy"); 50];
+        rows.extend(vec![
+            migration_row(
+                "pi",
+                env!("CARGO_PKG_VERSION"),
+                crate::conversation_runtime::RUNTIME_VERSION,
+            );
+            100
+        ]);
+        let ready = chat_route_metrics_for_rows(rows.clone(), 250);
+        assert_eq!(ready.canonical_runtime_rows, 100);
+        assert_eq!(ready.pi_runtime_rows, 100);
+        assert_eq!(ready.compatibility_fallback_rows, 0);
+        assert_eq!(ready.remaining_canonical_runtime_rows, 0);
+        assert!(ready.compatibility_engine_delete_ready);
+
+        rows.push(migration_row(
+            "native-rust",
+            env!("CARGO_PKG_VERSION"),
+            crate::conversation_runtime::RUNTIME_VERSION,
+        ));
+        let fallback = chat_route_metrics_for_rows(rows, 250);
+        assert_eq!(fallback.canonical_runtime_rows, 101);
+        assert_eq!(fallback.compatibility_fallback_rows, 1);
+        assert!(!fallback.compatibility_engine_delete_ready);
+    }
 
     #[test]
     fn export_packet_provenance_hashes_and_summarizes_rows() {
