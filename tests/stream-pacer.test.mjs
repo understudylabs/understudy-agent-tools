@@ -104,4 +104,6 @@ test("teacher replacement drops the rejected text and skip stays immediate", () 
   assert.equal(pacer.received, "final teacher answer");
   assert.equal(pacer.revealed, "final teacher answer".length);
   pacer.dispose();
+  pacer.append(" ignored late event");
+  assert.equal(pacer.received, "final teacher answer");
 });

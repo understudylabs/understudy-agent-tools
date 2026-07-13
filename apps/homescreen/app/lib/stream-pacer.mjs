@@ -82,6 +82,7 @@ export class StreamPacer {
   #state = initialDrainState();
   #done = false;
   #skipped = false;
+  #disposed = false;
   #timer = null;
   #lastTick = 0;
   #onUpdate;
@@ -107,7 +108,7 @@ export class StreamPacer {
   }
 
   append(chunk) {
-    if (!chunk) return;
+    if (this.#disposed || !chunk) return;
     this.#text += chunk;
     if (this.#skipped) {
       this.#revealAll();
@@ -121,6 +122,7 @@ export class StreamPacer {
    * cursor so rejected student text can never survive in the hidden buffer.
    */
   replace(text) {
+    if (this.#disposed) return;
     this.#teardown();
     this.#text = text;
     this.#done = false;
@@ -134,6 +136,7 @@ export class StreamPacer {
   }
 
   finish() {
+    if (this.#disposed) return;
     this.#done = true;
     this.#state.holdMs = 0;
     if (this.#skipped) {
@@ -145,6 +148,7 @@ export class StreamPacer {
 
   /** Reveal everything received now and keep later chunks immediate. */
   skip() {
+    if (this.#disposed) return;
     this.#skipped = true;
     this.#done = true;
     this.#teardown();
@@ -152,6 +156,7 @@ export class StreamPacer {
   }
 
   reset() {
+    if (this.#disposed) return;
     this.#teardown();
     this.#text = "";
     this.#done = false;
@@ -161,6 +166,7 @@ export class StreamPacer {
 
   dispose() {
     this.#teardown();
+    this.#disposed = true;
   }
 
   #revealAll() {
