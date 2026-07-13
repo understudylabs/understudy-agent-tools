@@ -2,7 +2,8 @@ use serde::{Deserialize, Serialize};
 use std::path::Path;
 use std::process::{Child, Command, Stdio};
 use std::sync::{Mutex, MutexGuard, PoisonError};
-use std::time::{Instant, SystemTime};
+use std::time::{Duration, Instant, SystemTime};
+use sysinfo::System;
 use tauri::{AppHandle, Emitter, Manager};
 
 use crate::db::Db;
@@ -12,6 +13,20 @@ const SERVING_MANIFEST_VERSION: &str = "understudy.serving.v1";
 
 /// Reserved unified memory for macOS + this app, off-limits to warm models.
 pub const HEADROOM_GB: f32 = 24.0;
+
+/// Weight files are not the runtime peak: Metal allocations, KV cache, prompt
+/// buffers, and one Python server add material unified-memory pressure. Keep
+/// the budget deliberately conservative because an IOGPU allocation failure
+/// can panic macOS rather than returning a recoverable process error.
+const RUNTIME_WEIGHT_MULTIPLIER: f32 = 1.30;
+const RUNTIME_SERVER_OVERHEAD_GB: f32 = 2.0;
+const DYNAMIC_HEADROOM_GB: f32 = 16.0;
+const GPU_EVICTION_SETTLE_TIME: Duration = Duration::from_secs(2);
+
+/// Very large checkpoints run exclusively. This includes current 8-bit and
+/// BF16 26B candidates while allowing the certified compressed ladder to stay
+/// warm together when the conservative aggregate budget fits.
+const EXCLUSIVE_MODEL_WEIGHTS_GB: f32 = 24.0;
 
 /// What we persist + restore across launches.
 #[derive(Clone)]
@@ -113,6 +128,16 @@ fn expand_home(value: &str) -> String {
         }
     }
     value.to_string()
+}
+
+fn estimated_runtime_gb(weights_gb: f32) -> f32 {
+    weights_gb * RUNTIME_WEIGHT_MULTIPLIER + RUNTIME_SERVER_OVERHEAD_GB
+}
+
+fn available_memory_gb() -> f32 {
+    let mut system = System::new_all();
+    system.refresh_memory();
+    system.available_memory() as f32 / (1024.0 * 1024.0 * 1024.0)
 }
 
 fn serving_command(model_path: &str, port: u16, thinking: bool) -> anyhow::Result<Command> {
@@ -329,23 +354,27 @@ impl Residency {
         ))
     }
 
-    /// Warm a slot: enforce budget (LRU evict), spawn mlx_vlm.server, poll until ready.
+    /// Warm a slot: enforce a conservative runtime budget, spawn mlx_vlm.server,
+    /// and poll until ready. Heavy checkpoints are exclusive by construction.
     pub fn warm(&self, app: &AppHandle, slot_id: u32) -> anyhow::Result<()> {
-        // 1. Validate, reserve a port, flip to Loading (one short-lived borrow).
-        let (port, model_id, model_path, mem_gb, thinking) = {
-            let mut inner = locked(&self.inner);
+        // 1. Validate without changing state. A rejected preflight must never
+        // leave a slot stuck in Loading.
+        let (model_id, model_path, mem_gb, thinking) = {
+            let inner = locked(&self.inner);
             let r = inner
-                .iter_mut()
+                .iter()
                 .find(|r| r.id == slot_id)
                 .ok_or_else(|| anyhow::anyhow!("slot not found: {slot_id}"))?;
+            if matches!(r.state, SlotState::Warm) {
+                return Ok(());
+            }
+            if matches!(r.state, SlotState::Loading) {
+                anyhow::bail!("slot {slot_id} is already loading");
+            }
             if r.model_path.is_none() {
                 anyhow::bail!("slot has no model assigned");
             }
-            let port = r.port.unwrap_or_else(|| self.alloc_port());
-            r.port = Some(port);
-            r.state = SlotState::Loading;
             (
-                port,
                 r.model_id.clone().unwrap_or_default(),
                 r.model_path.clone().unwrap_or_default(),
                 r.mem_gb,
@@ -353,15 +382,53 @@ impl Residency {
             )
         };
 
-        // 2. Make room under the budget before the process loads weights.
-        self.evict_until_fits(slot_id, mem_gb);
+        // 2. Make room before loading any Metal buffers. Large checkpoints
+        // evict every other active server; all checkpoints use the estimated
+        // runtime peak rather than their on-disk weight size.
+        let evicted = self.evict_until_fits(slot_id, mem_gb)?;
+        if evicted {
+            // Child::wait confirms process exit, but Metal/IOGPU teardown can
+            // finish asynchronously. Do not load the next checkpoint into the
+            // same allocator teardown window.
+            std::thread::sleep(GPU_EVICTION_SETTLE_TIME);
+        }
+        let estimated_gb = estimated_runtime_gb(mem_gb);
+        let available_gb = available_memory_gb();
+        if available_gb < estimated_gb + DYNAMIC_HEADROOM_GB {
+            // Eviction may already have changed the live plan. Persist that
+            // safer state even though this candidate is rejected.
+            self.persist(app);
+            let _ = app.emit("residency-changed", self.snapshot());
+            anyhow::bail!(
+                "refusing to warm {model_id}: estimated runtime {:.1} GB plus {:.0} GB dynamic headroom exceeds {:.1} GB currently available; cool other workloads and retry",
+                estimated_gb,
+                DYNAMIC_HEADROOM_GB,
+                available_gb,
+            );
+        }
 
-        // 3. Spawn the server process and attach it.
-        let child = match serving_command(&model_path, port, thinking)?
-            .stdout(Stdio::null())
-            .stderr(Stdio::null())
-            .spawn()
-        {
+        // Validate a serving manifest before changing the slot state.
+        let _ = serving_command(&model_path, 0, thinking)?;
+
+        // 3. Reserve a port and flip to Loading only after preflight passes.
+        let port = {
+            let mut inner = locked(&self.inner);
+            let r = inner
+                .iter_mut()
+                .find(|r| r.id == slot_id)
+                .ok_or_else(|| anyhow::anyhow!("slot not found: {slot_id}"))?;
+            let port = r.port.unwrap_or_else(|| self.alloc_port());
+            r.port = Some(port);
+            r.state = SlotState::Loading;
+            port
+        };
+
+        // The command was validated with a placeholder port. Build it again
+        // with the reserved port before spawning.
+        let mut command = serving_command(&model_path, port, thinking)?;
+
+        // 4. Spawn the server process and attach it.
+        let child = match command.stdout(Stdio::null()).stderr(Stdio::null()).spawn() {
             Ok(child) => child,
             Err(err) => {
                 let mut inner = locked(&self.inner);
@@ -440,36 +507,80 @@ impl Residency {
         Ok(())
     }
 
-    /// Memory attributed to slots other than `exclude`: warm slots hold their
-    /// weights and loading slots are about to, so both count against the
-    /// budget — otherwise two models can pass the fit check while one is
-    /// still loading.
+    /// Estimated runtime memory attributed to slots other than `exclude`.
+    /// Warm and loading slots both count so concurrent loads cannot each pass
+    /// preflight against the same memory.
     fn used_gb_locked(&self, inner: &[Resident], exclude: Option<u32>) -> f32 {
         inner
             .iter()
             .filter(|r| Some(r.id) != exclude)
             .filter(|r| matches!(r.state, SlotState::Warm | SlotState::Loading))
-            .map(|r| r.mem_gb)
+            .map(|r| estimated_runtime_gb(r.mem_gb))
             .sum()
     }
 
-    /// Evict least-recently-used warm slots (never `slot_id`) until `need_gb` fits.
-    fn evict_until_fits(&self, slot_id: u32, need_gb: f32) {
+    /// Prepare one candidate safely. Very large checkpoints are exclusive;
+    /// otherwise evict least-recently-used active slots until the conservative
+    /// runtime estimate fits. Fail closed if even an empty machine is too small.
+    fn evict_until_fits(&self, slot_id: u32, weights_gb: f32) -> anyhow::Result<bool> {
+        let need_gb = estimated_runtime_gb(weights_gb);
+        if need_gb > self.usable_gb {
+            anyhow::bail!(
+                "model needs an estimated {:.1} GB runtime memory, above the {:.1} GB safe residency budget",
+                need_gb,
+                self.usable_gb,
+            );
+        }
+        let mut evicted = false;
         loop {
             let mut inner = locked(&self.inner);
+            // Exclusivity is symmetric: warming a heavy model clears every
+            // other active slot, and warming a small model clears any active
+            // heavy slot. A later small warm must not silently recreate the
+            // dangerous mixed residency state.
+            if weights_gb >= EXCLUSIVE_MODEL_WEIGHTS_GB {
+                let victims: Vec<u32> = inner
+                    .iter()
+                    .filter(|r| r.id != slot_id)
+                    .filter(|r| matches!(r.state, SlotState::Warm | SlotState::Loading))
+                    .map(|r| r.id)
+                    .collect();
+                for victim in victims {
+                    self.cool_locked(&mut inner, victim)?;
+                    evicted = true;
+                }
+            } else {
+                let heavy_victims: Vec<u32> = inner
+                    .iter()
+                    .filter(|r| r.id != slot_id)
+                    .filter(|r| matches!(r.state, SlotState::Warm | SlotState::Loading))
+                    .filter(|r| r.mem_gb >= EXCLUSIVE_MODEL_WEIGHTS_GB)
+                    .map(|r| r.id)
+                    .collect();
+                for victim in heavy_victims {
+                    self.cool_locked(&mut inner, victim)?;
+                    evicted = true;
+                }
+            }
             if self.used_gb_locked(&inner, Some(slot_id)) + need_gb <= self.usable_gb {
-                return;
+                return Ok(evicted);
             }
             let victim = inner
                 .iter()
-                .filter(|x| x.id != slot_id && matches!(x.state, SlotState::Warm))
+                .filter(|x| {
+                    x.id != slot_id && matches!(x.state, SlotState::Warm | SlotState::Loading)
+                })
                 .min_by_key(|x| x.last_used)
                 .map(|x| x.id);
             match victim {
                 Some(vid) => {
-                    let _ = self.cool_locked(&mut inner, vid);
+                    self.cool_locked(&mut inner, vid)?;
+                    evicted = true;
                 }
-                None => return,
+                None => anyhow::bail!(
+                    "model needs an estimated {:.1} GB runtime memory but no safe eviction plan remains",
+                    need_gb,
+                ),
             }
         }
     }
@@ -565,8 +676,17 @@ impl Residency {
             *locked(&self.next_id) = max_id;
             *locked(&self.next_port) = next_port;
         }
-        // Re-warm the previously-warm set (best-effort, background).
+        // Re-warm the previously-warm set (best-effort, background). Heavy
+        // experiment checkpoints never auto-restore after a crash or restart;
+        // an explicit warm is required so a bad GPU-memory state cannot loop.
         for r in rows.into_iter().filter(|r| r.warm) {
+            if r.mem_gb >= EXCLUSIVE_MODEL_WEIGHTS_GB {
+                eprintln!(
+                    "understudy residency: leaving heavy model {} stopped after restart; explicit warm required",
+                    r.model_id.as_deref().unwrap_or("unknown"),
+                );
+                continue;
+            }
             let _ = self.warm(app, r.slot_id);
         }
     }
@@ -635,11 +755,51 @@ mod tests {
             inner.push(resident(4, SlotState::Stopped, 16.0));
         }
         let inner = locked(&residency.inner);
-        assert_eq!(residency.used_gb_locked(&inner, None), 32.0);
+        assert_eq!(residency.used_gb_locked(&inner, None), 45.6);
         // The fit check for a slot must not double-count that slot itself.
-        assert_eq!(residency.used_gb_locked(&inner, Some(2)), 16.0);
+        assert_eq!(residency.used_gb_locked(&inner, Some(2)), 22.8);
         drop(inner);
-        assert_eq!(residency.snapshot().used_gb, 32.0);
+        assert_eq!(residency.snapshot().used_gb, 45.6);
+    }
+
+    #[test]
+    fn heavy_models_are_exclusive_and_runtime_budgeted() {
+        let residency = Residency::new(128);
+        {
+            let mut inner = locked(&residency.inner);
+            inner.push(resident(1, SlotState::Warm, 16.0));
+            inner.push(resident(2, SlotState::Loading, 7.0));
+            inner.push(resident(3, SlotState::Stopped, 48.0));
+        }
+        residency.evict_until_fits(3, 48.0).unwrap();
+        let inner = locked(&residency.inner);
+        assert!(matches!(inner[0].state, SlotState::Stopped));
+        assert!(matches!(inner[1].state, SlotState::Stopped));
+        assert!(matches!(inner[2].state, SlotState::Stopped));
+        assert!((estimated_runtime_gb(48.0) - 64.4).abs() < 0.001);
+    }
+
+    #[test]
+    fn warming_small_model_evicts_active_heavy_model() {
+        let residency = Residency::new(128);
+        {
+            let mut inner = locked(&residency.inner);
+            inner.push(resident(1, SlotState::Warm, 48.0));
+            inner.push(resident(2, SlotState::Stopped, 7.0));
+        }
+        assert!(residency.evict_until_fits(2, 7.0).unwrap());
+        let inner = locked(&residency.inner);
+        assert!(matches!(inner[0].state, SlotState::Stopped));
+        assert!(matches!(inner[1].state, SlotState::Stopped));
+    }
+
+    #[test]
+    fn model_larger_than_safe_runtime_budget_is_rejected() {
+        let residency = Residency::new(64);
+        let error = residency.evict_until_fits(1, 48.0).unwrap_err();
+        assert!(error
+            .to_string()
+            .contains("above the 40.0 GB safe residency budget"));
     }
 
     #[test]
@@ -654,6 +814,6 @@ mod tests {
         .join();
         let snap = residency.snapshot();
         assert_eq!(snap.slots.len(), 1);
-        assert_eq!(snap.used_gb, 8.0);
+        assert!((snap.used_gb - 12.4).abs() < 0.001);
     }
 }
