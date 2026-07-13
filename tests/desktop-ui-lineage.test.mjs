@@ -50,11 +50,19 @@ const statusPanePath = new URL(
   "../apps/homescreen/app/components/StatusPane.tsx",
   import.meta.url,
 );
+const modelsPanePath = new URL(
+  "../apps/homescreen/app/components/ModelsPane.tsx",
+  import.meta.url,
+);
 const rlmPanePath = new URL(
   "../apps/homescreen/app/components/RlmPane.tsx",
   import.meta.url,
 );
 const parityPath = new URL("../docs/desktop-product-parity.json", import.meta.url);
+const modelMemoryPath = new URL(
+  "../apps/homescreen/app/lib/model-memory.mjs",
+  import.meta.url,
+);
 
 test("public desktop preserves the reviewed Train interaction language", async () => {
   const [css, chat, sidebar] = await Promise.all([
@@ -141,6 +149,23 @@ test("desktop model downloads are app-owned, pausable, and resumable", async () 
   assert.match(statusPane, /busyActionLabel="Pause"/);
   assert.doesNotMatch(statusPane, /new Channel<DownloadEvent>/);
   assert.doesNotMatch(statusPane, /invoke\([^\n]*"download_snapshot_model"/);
+});
+
+test("large local models warn before consuming the residency budget", async () => {
+  const { modelMemoryWarning } = await import(modelMemoryPath);
+  const residencyPanel = await readFile(
+    new URL("../apps/homescreen/app/components/ResidencyPanel.tsx", import.meta.url),
+    "utf8",
+  );
+  const modelsPane = await readFile(modelsPanePath, "utf8");
+
+  assert.equal(modelMemoryWarning("understudy-small", 3.6, 2), null);
+  assert.equal(modelMemoryWarning("understudy-4b", 4.2, 8), null);
+  assert.match(modelMemoryWarning("understudy-26b", 15.8, 8), /exceeds the 8\.0 GB/);
+  assert.match(modelMemoryWarning("understudy-12b", 7.5, 40), /safer default/);
+  assert.match(residencyPanel, /Prepare this model anyway\?/);
+  assert.match(residencyPanel, /window\.confirm/);
+  assert.match(modelsPane, /snapshotMemoryWarning/);
 });
 
 test("Experiments is one guided review, strict compare, improve loop", async () => {

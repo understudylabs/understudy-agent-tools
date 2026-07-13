@@ -3,7 +3,7 @@ use std::path::Path;
 use std::process::{Child, Command, Stdio};
 use std::sync::{Mutex, MutexGuard, PoisonError};
 use std::time::{Duration, Instant, SystemTime};
-use sysinfo::System;
+use sysinfo::{Pid, Signal, System};
 use tauri::{AppHandle, Emitter, Manager};
 
 use crate::db::Db;
@@ -153,6 +153,103 @@ fn available_memory_gb() -> f32 {
     let mut system = System::new_all();
     system.refresh_memory();
     system.available_memory() as f32 / (1024.0 * 1024.0 * 1024.0)
+}
+
+fn command_has_value(args: &[String], flag_fragment: &str, value: &str) -> bool {
+    args.windows(2)
+        .any(|pair| pair[0].contains(flag_fragment) && pair[1] == value)
+}
+
+fn command_matches_persisted_slot(args: &[String], slot: &PersistedSlot) -> bool {
+    let Some(model_path) = slot.model_path.as_deref() else {
+        return false;
+    };
+    let Some(port) = slot.port else {
+        return false;
+    };
+    command_has_value(args, "model", model_path)
+        && command_has_value(args, "port", &port.to_string())
+}
+
+fn remaining_processes(pids: &[Pid]) -> Vec<Pid> {
+    let system = System::new_all();
+    pids.iter()
+        .copied()
+        .filter(|pid| system.process(*pid).is_some())
+        .collect()
+}
+
+fn wait_for_process_exit(pids: &[Pid], attempts: usize) -> Vec<Pid> {
+    let mut remaining = pids.to_vec();
+    for _ in 0..attempts {
+        if remaining.is_empty() {
+            break;
+        }
+        std::thread::sleep(Duration::from_millis(100));
+        remaining = remaining_processes(&remaining);
+    }
+    remaining
+}
+
+/// Kill only orphaned servers that match an exact persisted model path and
+/// reserved port. A second live Desktop instance must never kill the first
+/// instance's children; a crashed app's children are re-parented to launchd.
+fn reconcile_orphaned_servers(rows: &[PersistedSlot]) -> anyhow::Result<usize> {
+    let system = System::new_all();
+    let mut matched = Vec::new();
+    for (pid, process) in system.processes() {
+        let orphaned = process
+            .parent()
+            .map(|parent| parent.as_u32() == 1)
+            .unwrap_or(true);
+        if !orphaned {
+            continue;
+        }
+        let args: Vec<String> = process
+            .cmd()
+            .iter()
+            .map(|arg| arg.to_string_lossy().into_owned())
+            .collect();
+        if rows
+            .iter()
+            .any(|slot| command_matches_persisted_slot(&args, slot))
+        {
+            matched.push(*pid);
+        }
+    }
+    if matched.is_empty() {
+        return Ok(0);
+    }
+
+    for pid in &matched {
+        if let Some(process) = system.process(*pid) {
+            let _ = process.kill_with(Signal::Term);
+        }
+    }
+    let remaining = wait_for_process_exit(&matched, 20);
+    if !remaining.is_empty() {
+        let refreshed = System::new_all();
+        for pid in &remaining {
+            if let Some(process) = refreshed.process(*pid) {
+                let _ = process.kill();
+            }
+        }
+    }
+    let remaining = wait_for_process_exit(&remaining, 20);
+    if !remaining.is_empty() {
+        anyhow::bail!(
+            "refusing to restore model residency because orphaned server pid(s) {} did not exit",
+            remaining
+                .iter()
+                .map(|pid| pid.as_u32().to_string())
+                .collect::<Vec<_>>()
+                .join(", "),
+        );
+    }
+    // Metal teardown can outlive process exit. Keep the same settle window as
+    // an in-app heavy-model eviction before any automatic re-warm.
+    std::thread::sleep(GPU_EVICTION_SETTLE_TIME);
+    Ok(matched.len())
 }
 
 fn append_mlx_cache_defaults(command: &mut Command, existing_flags: &[String]) {
@@ -538,6 +635,18 @@ impl Residency {
         self.cool_locked(&mut inner, slot_id)
     }
 
+    /// Graceful app exit must reap every server child. Do not mutate the
+    /// persisted warm preference: a normal relaunch may re-warm small models.
+    pub fn shutdown(&self) {
+        let mut inner = locked(&self.inner);
+        for resident in inner.iter_mut() {
+            if let Some(mut child) = resident.child.take() {
+                let _ = child.kill();
+                let _ = child.wait();
+            }
+        }
+    }
+
     fn cool_locked(&self, inner: &mut [Resident], slot_id: u32) -> anyhow::Result<()> {
         if let Some(r) = inner.iter_mut().find(|r| r.id == slot_id) {
             if let Some(child) = r.child.as_mut() {
@@ -691,6 +800,18 @@ impl Residency {
         let rows = app.state::<Db>().load_residency().unwrap_or_default();
         if rows.is_empty() {
             return;
+        }
+        match reconcile_orphaned_servers(&rows) {
+            Ok(0) => {}
+            Ok(count) => eprintln!(
+                "understudy residency: reaped {count} orphaned local model server(s) before restore"
+            ),
+            Err(err) => {
+                let reason = format!("local model process reconciliation failed: {err:#}");
+                eprintln!("understudy residency: {reason}");
+                emit_mlx_repair(app, &reason);
+                return;
+            }
         }
         let max_id = rows.iter().map(|r| r.slot_id).max().unwrap_or(0);
         // Next allocation hands out this value directly, so start one past
@@ -943,5 +1064,65 @@ mod tests {
         let snap = residency.snapshot();
         assert_eq!(snap.slots.len(), 1);
         assert!((snap.used_gb - 12.4).abs() < 0.001);
+    }
+
+    #[test]
+    fn orphan_reconciliation_requires_exact_model_and_port_arguments() {
+        let slot = PersistedSlot {
+            slot_id: 7,
+            model_id: Some("understudy-small".to_string()),
+            model_path: Some("/models/understudy-small".to_string()),
+            warm: true,
+            thinking: false,
+            port: Some(8096),
+            mem_gb: 4.0,
+            ordinal: 0,
+        };
+        assert!(command_matches_persisted_slot(
+            &[
+                "mlx_vlm.server".to_string(),
+                "--model".to_string(),
+                "/models/understudy-small".to_string(),
+                "--port".to_string(),
+                "8096".to_string(),
+            ],
+            &slot,
+        ));
+        assert!(!command_matches_persisted_slot(
+            &[
+                "mlx_vlm.server".to_string(),
+                "--model".to_string(),
+                "/models/understudy-small-copy".to_string(),
+                "--port".to_string(),
+                "8096".to_string(),
+            ],
+            &slot,
+        ));
+        assert!(!command_matches_persisted_slot(
+            &[
+                "mlx_vlm.server".to_string(),
+                "--model".to_string(),
+                "/models/understudy-small".to_string(),
+                "--port".to_string(),
+                "8097".to_string(),
+            ],
+            &slot,
+        ));
+    }
+
+    #[cfg(unix)]
+    #[test]
+    fn graceful_shutdown_reaps_every_tracked_server_child() {
+        let residency = Residency::new(64);
+        let child = Command::new("sleep").arg("30").spawn().unwrap();
+        let pid = Pid::from_u32(child.id());
+        let mut running = resident(1, SlotState::Warm, 4.0);
+        running.child = Some(child);
+        locked(&residency.inner).push(running);
+
+        residency.shutdown();
+
+        assert!(locked(&residency.inner)[0].child.is_none());
+        assert!(System::new_all().process(pid).is_none());
     }
 }

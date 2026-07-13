@@ -189,8 +189,8 @@
     },
     {
       "id": "heavy-model-preflight-and-process-reconciliation",
-      "status": "partial",
-      "evidence": "Residency now fail-closes unsafe memory plans, cools before warming, serializes heavy experiments, waits for Metal teardown, and never auto-restores heavy models. It still needs a plain-language pre-warm warning and durable reconciliation of model-server ownership after an app crash so an orphan cannot overlap a newly launched server."
+      "status": "shipped",
+      "evidence": "Residency fail-closes unsafe memory plans, cools before warming, serializes heavy experiments, waits for Metal teardown, never auto-restores heavy models, reaps every tracked child on normal exit, and before restart kills only orphaned processes matching an exact persisted model path and reserved port. Model and residency views warn plainly before preparing large models and require confirmation at the warm action."
     },
     {
       "id": "legacy-desktop-retirement-guard",
