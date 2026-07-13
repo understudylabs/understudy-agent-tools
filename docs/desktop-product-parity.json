@@ -57,8 +57,8 @@
     },
     {
       "id": "unified-experiment-hub",
-      "status": "partial",
-      "evidence": "Experiments now presents one compact Review -> Compare -> Improve loop. Compare preflights two distinct warm local models, runs an identical direct frozen slice without cloud traffic, projects the existing benchmark ledger into quality, latency, token, capture, and failure evidence, and refuses promotion without matching immutable hashes and complete capture IDs. The improvement handoff and canonical immutable hash writer still need to move behind the shared CLI/runtime before this feature is shipped."
+      "status": "shipped",
+      "evidence": "Experiments presents one compact Review -> Compare -> Improve loop. The public CLI owns the fixed 17-task regression suite and 30-task promotion suite, direct Pi execution, serial residency isolation, exact trace scoring, suite and tool-schema hashes, owner-only canonical event evidence, and immutable failed-case improvement packets. Desktop is a bounded adapter: it preflights two distinct warm models, fixes promotion at three repetitions, reports strict model misses separately from terminal runtime errors, and refuses promotion when task bytes, result rows, event files, permissions, hashes, or attempt counts are incomplete. No cloud call or upload occurs."
     },
     {
       "id": "legacy-desktop-retirement-guard",

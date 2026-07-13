@@ -1,110 +1,73 @@
 "use client";
 
-import { Channel, invoke } from "@tauri-apps/api/core";
+import { invoke } from "@tauri-apps/api/core";
 import { useEffect, useMemo, useState } from "react";
 import {
-  comparisonNextAction,
-  listMatchedComparisons,
+  projectToolProof,
+  toolProofNextAction,
+  type ToolProofProjection,
 } from "../lib/experiment-comparison.mjs";
 
-type BenchmarkCandidate = {
-  id: string;
-  label: string;
-  route: string;
-  model_hint: string;
-  description: string;
-};
-
-type BenchmarkSuite = {
-  id: string;
-  label: string;
-  description: string;
-  task_ids: string[];
-};
-
-type BenchmarkMatrix = {
-  schema_version: string;
-  suites: BenchmarkSuite[];
-  candidates: BenchmarkCandidate[];
-};
-
 type PlanRow = {
-  task_id: string;
-  mode: string;
   model: string;
   ready: boolean;
   reason: string;
 };
 
 type MatrixRun = {
-  run_id: string;
-  suite: string;
-  dry_run: boolean;
-  rows: number;
   candidates: Array<{ candidate: string; run: { rows: PlanRow[] } }>;
 };
 
-type BenchmarkRow = {
-  id: number;
-  run_id: string;
-  capture_run_id?: string | null;
-  runtime_backend: string;
-  task_id: string;
-  mode: string;
-  model: string;
-  elapsed_ms?: number | null;
-  prompt_tokens?: number | null;
-  completion_tokens?: number | null;
-  score?: number | null;
-  status: string;
-  cost_usd?: number | null;
-  harness_sha256?: string | null;
-  split_sha256?: string | null;
+type ResidencySnapshot = {
+  slots: Array<{ id: number; model_id?: string | null; state: string }>;
 };
 
-type ComparisonCandidate = {
-  candidate_id: string;
-  label: string;
-  run_id: string;
-  rows: number;
-  executed: number;
-  ok_rows: number;
-  error_rows: number;
-  skipped_rows: number;
-  terminal_rows: number;
-  score_coverage: number;
-  capture_coverage: number;
-  avg_score: number | null;
-  avg_latency_ms: number | null;
-  avg_tokens: number | null;
-  cost_usd: number | null;
-  models: string[];
-  task_mode_keys: string[];
-  runtime_backends: string[];
+type ToolProofCandidate = {
+  slot_id: number | null;
+  model_id: string | null;
+  strict_passes: number;
+  attempts: number;
+  strict_accuracy: number;
+  terminal_errors: number;
+  mean_latency_ms: number;
+  total_tokens: number;
+  failures: Array<Record<string, unknown>>;
 };
 
-type MatchedComparison = {
-  parent_run_id: string;
-  newest_id: number;
-  candidates: ComparisonCandidate[];
-  matched_slice: boolean;
-  harness_sha256: string | null;
-  split_sha256: string | null;
-  promotion_ready: boolean;
-  blockers: string[];
-  winner_id: string | null;
+type ToolProof = {
+  output_dir: string;
+  summary: {
+    proof_id: string;
+    suite: "core" | "hard";
+    source_task_file: string;
+    suite_sha256: string;
+    tool_schema_sha256: string | null;
+    task_count: number;
+    repetitions: number;
+    run_count: number;
+    completed_at: string;
+    candidates: Record<string, ToolProofCandidate>;
+  };
+  evidence: {
+    complete: boolean;
+    private_files: boolean;
+    suite_hash_matches: boolean;
+    result_rows: number;
+    event_files: number;
+    expected_rows: number;
+  };
 };
 
-type BenchmarkEvent =
-  | { type: "RunStarted"; run_id: string; rows: number }
-  | { type: "RowStarted"; task_id: string; candidate: string }
-  | { type: "RowFinished"; task_id: string; candidate: string; status: string }
-  | { type: "RunFinished"; run_id: string; rows: number }
-  | { type: "Error"; message: string };
+type ToolProofList = { proofs: ToolProof[] };
 
-const LOCAL_CANDIDATES = ["local-main", "local-fast"];
-const DIRECT_MODE = ["main-only"];
-const VISIBLE_SUITES = new Set(["local-fusion-smoke", "local-comparison"]);
+const LOCAL_CANDIDATES = ["local-main", "local-fast"] as const;
+const PREFLIGHT_REQUEST = {
+  suite: "local-fusion-smoke",
+  candidates: LOCAL_CANDIDATES,
+  modes: ["main-only"],
+  dry_run: true,
+  record_skips: false,
+};
 
 function fmtPercent(value: number | null) {
   return value == null ? "—" : `${Math.round(value * 100)}%`;
@@ -114,102 +77,90 @@ function fmtNumber(value: number | null, suffix = "") {
   return value == null ? "—" : `${Math.round(value).toLocaleString()}${suffix}`;
 }
 
-function shortModel(value: string | undefined) {
+function shortModel(value: string | null | undefined) {
   if (!value) return "not recorded";
   const tail = value.split("/").at(-1) ?? value;
   return tail.length > 30 ? `${tail.slice(0, 29)}…` : tail;
 }
 
-function comparisonStatus(comparison: MatchedComparison | null) {
-  if (!comparison) return "no evidence";
-  if (comparison.promotion_ready) return "promotion-grade";
-  if (comparison.matched_slice) return "directional";
-  return "not comparable";
+function proofStatus(proof: ToolProofProjection | null) {
+  if (!proof) return "no evidence";
+  if (proof.promotion_ready) return "promotion-grade";
+  if (proof.evidence_complete) return "directional";
+  return "evidence blocked";
+}
+
+function isMatchedProof(proof: ToolProof) {
+  return LOCAL_CANDIDATES.every((candidate) => proof.summary.candidates[candidate]);
 }
 
 export function ExperimentCompareView({ onReview }: { onReview: () => void }) {
-  const [matrix, setMatrix] = useState<BenchmarkMatrix | null>(null);
-  const [rows, setRows] = useState<BenchmarkRow[]>([]);
-  const [suite, setSuite] = useState("local-fusion-smoke");
-  const [phase, setPhase] = useState<"idle" | "preflight" | "running" | "exporting">("idle");
+  const [proofs, setProofs] = useState<ToolProof[]>([]);
+  const [suite, setSuite] = useState<"core" | "hard">("core");
+  const [phase, setPhase] = useState<"idle" | "preflight" | "running" | "preparing">("idle");
   const [error, setError] = useState<string | null>(null);
-  const [progress, setProgress] = useState({ done: 0, total: 0, label: "" });
-  const [exportPath, setExportPath] = useState<string | null>(null);
+  const [noticePath, setNoticePath] = useState<string | null>(null);
 
-  const localCandidateRows = useMemo(
-    () => matrix?.candidates.filter((candidate) => LOCAL_CANDIDATES.includes(candidate.id)) ?? [],
-    [matrix],
-  );
-  const comparisons = useMemo(
-    () => listMatchedComparisons(rows, localCandidateRows) as MatchedComparison[],
-    [rows, localCandidateRows],
-  );
-  const latest = comparisons[0] ?? null;
-  const next = comparisonNextAction(latest) as { title: string; body: string };
-  const visibleSuites = matrix?.suites.filter((item) => VISIBLE_SUITES.has(item.id)) ?? [];
+  const matchedProofs = useMemo(() => proofs.filter(isMatchedProof), [proofs]);
+  const latest = matchedProofs[0] ?? null;
+  const projected = projectToolProof(latest) as ToolProofProjection | null;
+  const next = toolProofNextAction(projected) as { title: string; body: string };
+  const failureCount = projected?.candidates.reduce(
+    (sum, candidate) => sum + Math.max(0, candidate.attempts - candidate.strict_passes),
+    0,
+  ) ?? 0;
 
   const refresh = async () => {
-    const [nextMatrix, nextRows] = await Promise.all([
-      invoke<BenchmarkMatrix>("fusion_benchmark_matrix"),
-      invoke<BenchmarkRow[]>("fusion_benchmark_results", { limit: 500 }),
-    ]);
-    setMatrix(nextMatrix);
-    setRows(nextRows);
+    const list = await invoke<ToolProofList>("desktop_tool_proof_list");
+    setProofs(list.proofs);
   };
 
   useEffect(() => {
     void refresh().catch((cause) => setError(String(cause)));
   }, []);
 
+  const resolveCandidateSlots = async () => {
+    const [plan, residency] = await Promise.all([
+      invoke<MatrixRun>("run_fusion_benchmark_matrix", { request: PREFLIGHT_REQUEST }),
+      invoke<ResidencySnapshot>("get_residency"),
+    ]);
+    const planRows = plan.candidates.flatMap((candidate) => candidate.run.rows);
+    const blockers = [...new Set(planRows.filter((row) => !row.ready).map((row) => row.reason))];
+    if (blockers.length) {
+      throw new Error(`Load distinct main and fast local models first (${blockers.join(", ")}).`);
+    }
+    const models = new Map(plan.candidates.map((candidate) => [
+      candidate.candidate,
+      [...new Set(candidate.run.rows.map((row) => row.model))][0],
+    ]));
+    const mainModel = models.get("local-main");
+    const fastModel = models.get("local-fast");
+    if (!mainModel || !fastModel || mainModel === fastModel) {
+      throw new Error("Load a distinct fast model; this plan would compare the same model twice.");
+    }
+    return LOCAL_CANDIDATES.map((label) => {
+      const model = models.get(label);
+      const slot = residency.slots.find((candidate) =>
+        candidate.state === "running" && candidate.model_id === model,
+      );
+      if (!slot) throw new Error(`${label} is not attached to a warm Desktop slot.`);
+      return { label, slotId: slot.id };
+    });
+  };
+
   const runComparison = async () => {
     if (phase !== "idle") return;
     setPhase("preflight");
     setError(null);
-    setExportPath(null);
-    setProgress({ done: 0, total: 0, label: "Checking both local models…" });
-    const request = {
-      suite,
-      candidates: LOCAL_CANDIDATES,
-      modes: DIRECT_MODE,
-      dry_run: true,
-      record_skips: false,
-    };
+    setNoticePath(null);
     try {
-      const plan = await invoke<MatrixRun>("run_fusion_benchmark_matrix", { request });
-      const planRows = plan.candidates.flatMap((candidate) => candidate.run.rows);
-      const blockers = [...new Set(planRows.filter((row) => !row.ready).map((row) => row.reason))];
-      if (blockers.length) {
-        throw new Error(`Load distinct main and fast local models first (${blockers.join(", ")}).`);
-      }
-      const models = plan.candidates.map((candidate) => ({
-        candidate: candidate.candidate,
-        models: [...new Set(candidate.run.rows.map((row) => row.model))],
-      }));
-      const mainModel = models.find((row) => row.candidate === "local-main")?.models[0];
-      const fastModel = models.find((row) => row.candidate === "local-fast")?.models[0];
-      if (!mainModel || !fastModel || mainModel === fastModel) {
-        throw new Error("Load a distinct fast model; this plan would compare the same model twice.");
-      }
-
+      const candidates = await resolveCandidateSlots();
       setPhase("running");
-      const channel = new Channel<BenchmarkEvent>();
-      channel.onmessage = (event) => {
-        if (event.type === "RunStarted") {
-          setProgress({ done: 0, total: event.rows, label: "Running the same frozen slice…" });
-        } else if (event.type === "RowStarted") {
-          setProgress((current) => ({ ...current, label: `${event.candidate} · ${event.task_id}` }));
-        } else if (event.type === "RowFinished") {
-          setProgress((current) => ({ ...current, done: Math.min(current.total, current.done + 1) }));
-        } else if (event.type === "Error") {
-          setError(event.message);
-        }
-      };
-      await invoke<MatrixRun>("run_fusion_benchmark_matrix_live", {
-        request: { ...request, dry_run: false, record_skips: true },
-        onEvent: channel,
+      const result = await invoke<ToolProof>("desktop_tool_proof_run", {
+        request: { suite, candidates },
       });
+      setNoticePath(result.output_dir);
       await refresh();
-      setProgress((current) => ({ ...current, done: current.total, label: "Comparison captured." }));
     } catch (cause) {
       setError(String(cause));
     } finally {
@@ -217,15 +168,16 @@ export function ExperimentCompareView({ onReview }: { onReview: () => void }) {
     }
   };
 
-  const exportEvidence = async () => {
-    if (phase !== "idle") return;
-    setPhase("exporting");
+  const prepareImprovement = async () => {
+    if (phase !== "idle" || !projected) return;
+    setPhase("preparing");
     setError(null);
+    setNoticePath(null);
     try {
-      const result = await invoke<{ path: string }>("export_fusion_benchmark_comparison", {
-        request: { limit: 500, output_path: null },
+      const result = await invoke<{ path: string }>("desktop_tool_proof_prepare", {
+        proofId: projected.proof_id,
       });
-      setExportPath(result.path);
+      setNoticePath(result.path);
     } catch (cause) {
       setError(String(cause));
     } finally {
@@ -233,7 +185,7 @@ export function ExperimentCompareView({ onReview }: { onReview: () => void }) {
     }
   };
 
-  const progressPercent = progress.total ? Math.round((progress.done / progress.total) * 100) : 0;
+  const plannedRows = suite === "hard" ? 180 : 34;
 
   return (
     <main className="experiment-compare">
@@ -249,8 +201,12 @@ export function ExperimentCompareView({ onReview }: { onReview: () => void }) {
         </div>
         <nav>
           <button type="button" onClick={onReview}>Review decisions</button>
-          <button type="button" disabled={!latest || phase !== "idle"} onClick={() => void exportEvidence()}>
-            {phase === "exporting" ? "Exporting…" : "Export evidence"}
+          <button
+            type="button"
+            disabled={!projected?.evidence_complete || failureCount === 0 || phase !== "idle"}
+            onClick={() => void prepareImprovement()}
+          >
+            {phase === "preparing" ? "Preparing…" : "Prepare improvement"}
           </button>
         </nav>
       </header>
@@ -259,36 +215,38 @@ export function ExperimentCompareView({ onReview }: { onReview: () => void }) {
         <article className="experiment-run-card">
           <div className="experiment-kicker">One fair question</div>
           <h2>Can the fast local model replace the main model?</h2>
-          <p>Same frozen tasks, direct model calls, no cloud traffic, and one shared run identity.</p>
+          <p>Exact Pi tool traces, frozen tasks, no cloud traffic, and private immutable evidence.</p>
           <label>
-            <span>Difficulty</span>
-            <select value={suite} onChange={(event) => setSuite(event.target.value)} disabled={phase !== "idle"}>
-              {visibleSuites.map((item) => (
-                <option value={item.id} key={item.id}>{item.label}</option>
-              ))}
+            <span>Evidence level</span>
+            <select value={suite} onChange={(event) => setSuite(event.target.value as "core" | "hard")} disabled={phase !== "idle"}>
+              <option value="core">Quick · 17 tasks × 1</option>
+              <option value="hard">Promotion · 30 tasks × 3</option>
             </select>
           </label>
-          <button className="experiment-run-primary" type="button" disabled={phase !== "idle" || !matrix} onClick={() => void runComparison()}>
+          <button className="experiment-run-primary" type="button" disabled={phase !== "idle"} onClick={() => void runComparison()}>
             {phase === "preflight" ? "Checking models…" : phase === "running" ? "Comparing…" : "Compare local models"}
           </button>
-          <small>Preflight fails closed if the models are missing, identical, or not warm.</small>
+          <small>Models run one at a time and residency is restored afterward to protect unified memory.</small>
 
-          {(phase === "running" || progress.total > 0) && (
+          {phase === "running" && (
             <div className="experiment-live-progress">
-              <div><span>{progress.label}</span><em>{progress.done}/{progress.total}</em></div>
-              <i><b style={{ width: `${progressPercent}%` }} /></i>
+              <div><span>Capturing strict canonical traces…</span><em>{plannedRows} rows</em></div>
+              <i><b className="indeterminate" /></i>
             </div>
           )}
 
           <div className="experiment-ledger">
-            <div><strong>Recent matched runs</strong><span>{comparisons.length}</span></div>
-            {comparisons.slice(0, 3).map((comparison) => (
-              <div className="experiment-ledger-row" key={comparison.parent_run_id}>
-                <span>{comparison.parent_run_id}</span>
-                <em>{comparisonStatus(comparison)}</em>
-              </div>
-            ))}
-            {!comparisons.length && <p>No comparison evidence yet.</p>}
+            <div><strong>Recent strict proofs</strong><span>{matchedProofs.length}</span></div>
+            {matchedProofs.slice(0, 3).map((proof) => {
+              const row = projectToolProof(proof) as ToolProofProjection;
+              return (
+                <div className="experiment-ledger-row" key={row.proof_id}>
+                  <span>{row.proof_id}</span>
+                  <em>{proofStatus(row)}</em>
+                </div>
+              );
+            })}
+            {!matchedProofs.length && <p>No matched local proof yet.</p>}
           </div>
         </article>
 
@@ -296,44 +254,44 @@ export function ExperimentCompareView({ onReview }: { onReview: () => void }) {
           <header>
             <div>
               <span>Latest evidence</span>
-              <strong>{latest?.parent_run_id ?? "No matched run yet"}</strong>
+              <strong>{projected?.proof_id ?? "No matched proof yet"}</strong>
             </div>
-            <em className={latest?.promotion_ready ? "ready" : latest?.matched_slice ? "directional" : "blocked"}>
-              {comparisonStatus(latest)}
+            <em className={projected?.promotion_ready ? "ready" : projected?.evidence_complete ? "directional" : "blocked"}>
+              {proofStatus(projected)}
             </em>
           </header>
 
-          {latest ? (
+          {projected && latest ? (
             <>
               <div className="experiment-candidates">
-                {latest.candidates.map((candidate) => (
-                  <section className={candidate.candidate_id === latest.winner_id ? "winner" : ""} key={candidate.candidate_id}>
+                {projected.candidates.map((candidate) => (
+                  <section className={candidate.candidate_id === projected.winner_id ? "winner" : ""} key={candidate.candidate_id}>
                     <header>
-                      <div><span>{candidate.candidate_id === "local-fast" ? "Candidate" : "Baseline"}</span><strong>{candidate.label}</strong></div>
-                      {candidate.candidate_id === latest.winner_id && <em>best on slice</em>}
+                      <div><span>{candidate.candidate_id === "local-fast" ? "Candidate" : "Baseline"}</span><strong>{candidate.candidate_id === "local-fast" ? "Local fast" : "Local main"}</strong></div>
+                      {candidate.candidate_id === projected.winner_id && <em>best strict result</em>}
                     </header>
-                    <code>{shortModel(candidate.models[0])}</code>
+                    <code>{shortModel(candidate.model_id)}</code>
                     <dl>
-                      <div><dt>Quality</dt><dd>{fmtPercent(candidate.avg_score)}</dd></div>
-                      <div><dt>Latency</dt><dd>{fmtNumber(candidate.avg_latency_ms, " ms")}</dd></div>
-                      <div><dt>Tokens</dt><dd>{fmtNumber(candidate.avg_tokens)}</dd></div>
-                      <div><dt>Captured</dt><dd>{fmtPercent(candidate.capture_coverage)}</dd></div>
+                      <div><dt>Strict</dt><dd>{fmtPercent(candidate.strict_accuracy)}</dd></div>
+                      <div><dt>Latency</dt><dd>{fmtNumber(candidate.mean_latency_ms, " ms")}</dd></div>
+                      <div><dt>Tokens / task</dt><dd>{fmtNumber(candidate.attempts ? candidate.total_tokens / candidate.attempts : null)}</dd></div>
+                      <div><dt>Runtime errors</dt><dd>{candidate.terminal_errors}</dd></div>
                     </dl>
-                    <small>{candidate.ok_rows} ok · {candidate.error_rows} errors · {candidate.skipped_rows} skipped</small>
+                    <small>{candidate.strict_passes}/{candidate.attempts} exact · {candidate.attempts - candidate.strict_passes} misses</small>
                   </section>
                 ))}
               </div>
               <div className="experiment-evidence-gate">
-                <div><span>Same task + mode slice</span><strong>{latest.matched_slice ? "yes" : "no"}</strong></div>
-                <div><span>Canonical capture coverage</span><strong>{latest.candidates.every((candidate) => candidate.capture_coverage === 1) ? "100%" : "incomplete"}</strong></div>
-                <div><span>Matching immutable hashes</span><strong>{latest.harness_sha256 && latest.split_sha256 ? "yes" : "missing"}</strong></div>
+                <div><span>Frozen suite hash</span><strong>{latest.evidence.suite_hash_matches ? "matched" : "failed"}</strong></div>
+                <div><span>Canonical event files</span><strong>{latest.evidence.event_files}/{latest.evidence.expected_rows}</strong></div>
+                <div><span>Private evidence set</span><strong>{latest.evidence.complete ? "complete" : "incomplete"}</strong></div>
               </div>
-              {latest.blockers.length > 0 && <p className="experiment-directional-note">{latest.blockers[0]}</p>}
+              {projected.blockers.length > 0 && <p className="experiment-directional-note">{projected.blockers[0]}</p>}
             </>
           ) : (
             <div className="experiment-empty-result">
-              <strong>Start with the local smoke.</strong>
-              <p>Four direct rows answer the first question without uploading data or contacting a cloud model.</p>
+              <strong>Start with the quick proof.</strong>
+              <p>Seventeen strict tool tasks reveal malformed calls, extra calls, bad arguments, failed results, and wrong final output.</p>
             </div>
           )}
         </article>
@@ -341,14 +299,14 @@ export function ExperimentCompareView({ onReview }: { onReview: () => void }) {
 
       <footer className="experiment-next-action">
         <div><span>Next</span><strong>{next.title}</strong><p>{next.body}</p></div>
-        <span className={latest?.promotion_ready ? "ready" : "closed"}>
-          {latest?.promotion_ready ? "ready for improvement handoff" : "promotion gate closed"}
+        <span className={projected?.promotion_ready ? "ready" : "closed"}>
+          {projected?.promotion_ready ? "promotion evidence complete" : "promotion gate closed"}
         </span>
       </footer>
 
-      {(error || exportPath) && (
+      {(error || noticePath) && (
         <div className={`experiment-notice${error ? " error" : ""}`} role={error ? "alert" : "status"}>
-          {error ?? `Evidence exported to ${exportPath}`}
+          {error ?? `Private evidence: ${noticePath}`}
         </div>
       )}
     </main>

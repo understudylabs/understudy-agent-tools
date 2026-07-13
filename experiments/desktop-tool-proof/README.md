@@ -14,6 +14,24 @@ Each attempt has a 30-second terminal timeout by default so a slow local tool or
 model becomes explicit cancellation evidence instead of hanging the suite; use
 `--timeout-ms` only when deliberately testing a slower environment.
 
+The supported product path is the Desktop **Experiments** screen or the public
+CLI. The quick proof uses the 17-task core suite once; the promotion proof uses
+all 30 hard tasks three times:
+
+```sh
+understudy desktop tool-proof run \
+  --suite core \
+  --candidate local-main:7 \
+  --candidate local-fast:6 \
+  --repetitions 1
+understudy desktop tool-proof list --json
+understudy desktop tool-proof prepare --proof <proof-id> --json
+```
+
+`prepare` creates an immutable owner-only packet containing only the failed
+strict rows and recommends GEPA prompt/policy repair first. It performs no
+upload and does not silently start training.
+
 ```sh
 node experiments/desktop-tool-proof/run.mjs \
   --candidate 4b:7 \
@@ -22,7 +40,8 @@ node experiments/desktop-tool-proof/run.mjs \
   --repetitions 3
 ```
 
-Direct-Pi proofs manage residency exclusively by default: the harness snapshots
+The direct runner remains available for harness development. Direct-Pi proofs
+manage residency exclusively by default: the harness snapshots
 the current warm set, cools and verifies every non-candidate slot, warms one
 candidate, runs its frozen rows, cools it, and restores the prior set in a
 `finally` path. This makes repeated comparisons sequential instead of stacking

@@ -482,6 +482,10 @@ understudy desktop supervisor-feedback --session my-task --run-id my-task-1 \
 understudy desktop supervisor-feedback --session my-task --run-id my-task-1 \
   --marker my-task-1:verdict:0 --stage stop --correct-action interrupt
 understudy desktop supervision export --reviewed-only --json
+understudy desktop tool-proof run --suite core \
+  --candidate local-main:7 --candidate local-fast:6 --repetitions 1
+understudy desktop tool-proof list --json
+understudy desktop tool-proof prepare --proof <proof-id> --json
 ```
 
 The CLI reads the private mode-0600 `~/.understudy/desktop-api.json`, verifies
@@ -503,6 +507,11 @@ missing or estimated usage is counted as excluded rather than treated as zero.
 The export also reports incomplete interventions and any journal or intervention
 rows omitted by its bounded recent-evidence window, so aggregates are never
 presented as all-time metrics when the safety cap was reached.
+The strict tool proof is also local-only: Pi runs each selected model serially,
+the CLI restores the previous residency set in a `finally` path, and promotion
+requires the frozen 30-task suite repeated three times with complete owner-only
+result and canonical-event evidence. Failed exact calls can be projected into
+an immutable GEPA-first improvement packet without uploading local traces.
 
 ## The skill tree
 

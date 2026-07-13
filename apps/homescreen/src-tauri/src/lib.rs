@@ -27,6 +27,7 @@ mod sidecar;
 mod supervision_export;
 mod supervision_review;
 mod supervision_tiebreaker;
+mod tool_proof;
 
 use tauri::menu::{Menu, MenuItem, PredefinedMenuItem};
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
@@ -212,6 +213,9 @@ pub fn run() {
             supervision_tiebreaker::supervision_tiebreaker_set_enabled,
             supervision_tiebreaker::supervision_tiebreaker_analyze,
             supervision_tiebreaker::record_tiebreaker_feedback,
+            tool_proof::desktop_tool_proof_run,
+            tool_proof::desktop_tool_proof_list,
+            tool_proof::desktop_tool_proof_prepare,
             commands::sidekick_decisions,
             commands::sidekick_events,
             commands::sidekick_session_summaries,

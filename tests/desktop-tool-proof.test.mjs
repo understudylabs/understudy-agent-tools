@@ -1,5 +1,8 @@
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { createHash } from "node:crypto";
+import { chmodSync, mkdirSync, mkdtempSync, readFileSync, statSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import { describe, it } from "node:test";
 
 import {
@@ -11,6 +14,10 @@ import {
   selectTasks,
   summarizeRows,
 } from "../experiments/desktop-tool-proof/run.mjs";
+import {
+  listDesktopToolProofs,
+  prepareDesktopToolProofImprovement,
+} from "../dist/desktop/tool-proof.js";
 
 const task = {
   tool: "list_traces",
@@ -19,6 +26,128 @@ const task = {
 };
 
 describe("desktop strict-tool proof", () => {
+  it("lists only owner-only valid summaries in newest-first order", () => {
+    const root = mkdtempSync(join(tmpdir(), "understudy-tool-proof-list-"));
+    const summary = (proofId, completedAt) => ({
+      format: "understudy.desktop_tool_proof.v3",
+      proof_id: proofId,
+      suite: "hard",
+      suite_sha256: "a".repeat(64),
+      completed_at: completedAt,
+      run_count: 0,
+      tool_schema_sha256: null,
+      candidates: { fast: { strict_passes: 1, attempts: 1 } },
+    });
+    for (const [id, completedAt, mode] of [
+      ["older", "2026-07-12T00:00:00.000Z", 0o600],
+      ["newer", "2026-07-13T00:00:00.000Z", 0o600],
+      ["broad", "2026-07-14T00:00:00.000Z", 0o644],
+    ]) {
+      const dir = join(root, id);
+      mkdirSync(dir, { mode: 0o700 });
+      const path = join(dir, "summary.json");
+      writeFileSync(path, `${JSON.stringify(summary(id, completedAt))}\n`, { mode });
+      chmodSync(path, mode);
+    }
+    assert.deepEqual(
+      listDesktopToolProofs(root, 20).map((proof) => proof.summary.proof_id),
+      ["newer", "older"],
+    );
+  });
+
+  it("prepares an immutable local improvement packet from failed strict rows", () => {
+    const root = mkdtempSync(join(tmpdir(), "understudy-tool-proof-improve-"));
+    const proofId = "tools-hard-20260713";
+    const dir = join(root, proofId);
+    mkdirSync(dir, { mode: 0o700 });
+    const tasks = [{
+      id: "exact-list",
+      calls: [{ tool: "list_traces", arguments: { limit: 1 } }],
+      expected_output: "OK",
+    }];
+    const taskBytes = `${JSON.stringify(tasks)}\n`;
+    const suiteSha256 = createHash("sha256").update(taskBytes).digest("hex");
+    const summary = {
+      format: "understudy.desktop_tool_proof.v3",
+      proof_id: proofId,
+      suite: "hard",
+      suite_sha256: suiteSha256,
+      completed_at: "2026-07-13T00:00:00.000Z",
+      tool_schema_sha256: "c".repeat(64),
+      run_count: 1,
+      candidates: { fast: { strict_passes: 0, attempts: 1 } },
+    };
+    const failed = {
+      candidate: "fast",
+      model_id: "model-understudy",
+      repetition: 1,
+      task_id: "exact-list",
+      expected_calls: tasks[0].calls,
+      call_sequence: [{ tool: "list_traces", arguments: { limit: 2 }, parse_error: null }],
+      output: "NO_TOOL",
+      checks: { exact_arguments: false, exact_output: false },
+      terminal_error: null,
+      strict_pass: false,
+      proof_id: proofId,
+      suite: "hard",
+      suite_sha256: suiteSha256,
+      canonical_event_count: 1,
+    };
+    for (const [filename, value] of [
+      ["summary.json", `${JSON.stringify(summary)}\n`],
+      ["tasks.json", taskBytes],
+      ["results.jsonl", `${JSON.stringify(failed)}\n`],
+    ]) {
+      writeFileSync(join(dir, filename), value, { mode: 0o600 });
+    }
+    writeFileSync(join(dir, "fast-r1-exact-list.events.jsonl"), "{}\n", { mode: 0o600 });
+    const first = prepareDesktopToolProofImprovement(proofId, root);
+    const second = prepareDesktopToolProofImprovement(proofId, root);
+    assert.deepEqual(second, first);
+    assert.equal(first.packet.failure_count, 1);
+    assert.equal(first.packet.recommended_method, "gepa_prompt_policy_first");
+    assert.deepEqual(first.packet.failures, [{
+      candidate: "fast",
+      model_id: "model-understudy",
+      repetition: 1,
+      task_id: "exact-list",
+      expected_calls: tasks[0].calls,
+      observed_call_sequence: failed.call_sequence,
+      expected_output: "OK",
+      observed_output: "NO_TOOL",
+      checks: failed.checks,
+      terminal_error: null,
+    }]);
+    assert.equal(JSON.parse(readFileSync(first.path, "utf8")).uploads_performed, false);
+    assert.equal(statSync(first.path).mode & 0o777, 0o600);
+  });
+
+  it("rejects improvement evidence with broad permissions", () => {
+    if (process.platform === "win32") return;
+    const root = mkdtempSync(join(tmpdir(), "understudy-tool-proof-permissions-"));
+    const proofId = "tools-broad-20260713";
+    const dir = join(root, proofId);
+    mkdirSync(dir, { mode: 0o700 });
+    const summary = {
+      format: "understudy.desktop_tool_proof.v3",
+      proof_id: proofId,
+      suite: "core",
+      suite_sha256: "d".repeat(64),
+      completed_at: "2026-07-13T00:00:00.000Z",
+      tool_schema_sha256: null,
+      candidates: {},
+    };
+    writeFileSync(join(dir, "summary.json"), JSON.stringify(summary), { mode: 0o600 });
+    writeFileSync(join(dir, "tasks.json"), "[]\n", { mode: 0o600 });
+    const resultsPath = join(dir, "results.jsonl");
+    writeFileSync(resultsPath, "", { mode: 0o644 });
+    chmodSync(resultsPath, 0o644);
+    assert.throws(
+      () => prepareDesktopToolProofImprovement(proofId, root),
+      /permissions are broader than 0600/,
+    );
+  });
+
   it("selects an exact ordered subset for causal probes", () => {
     const tasks = [{ id: "one" }, { id: "two" }];
     assert.deepEqual(selectTasks(tasks, ["two"]), [{ id: "two" }]);

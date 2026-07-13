@@ -3440,6 +3440,14 @@ select,
 .experiment-live-progress em { color: var(--mb-cyan); font-style: normal; }
 .experiment-live-progress i { display: block; height: 3px; margin-top: 7px; overflow: hidden; border-radius: 99px; background: var(--border); }
 .experiment-live-progress i b { display: block; height: 100%; background: var(--mb-cyan); transition: width 180ms ease; }
+.experiment-live-progress i b.indeterminate {
+  width: 34%;
+  animation: experiment-progress 1.15s ease-in-out infinite alternate;
+}
+@keyframes experiment-progress {
+  from { transform: translateX(-20%); }
+  to { transform: translateX(210%); }
+}
 
 .experiment-ledger {
   display: grid;

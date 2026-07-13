@@ -5,6 +5,8 @@ import {
   comparisonNextAction,
   identifyCandidateRun,
   listMatchedComparisons,
+  projectToolProof,
+  toolProofNextAction,
 } from "../apps/homescreen/app/lib/experiment-comparison.mjs";
 
 const candidates = [
@@ -92,4 +94,75 @@ test("the newest matched parent run wins over older ledger rows", () => {
   const comparisons = listMatchedComparisons(rows, candidates);
   assert.equal(comparisons[0].parent_run_id, "newer");
   assert.equal(comparisons[1].parent_run_id, "older");
+});
+
+function strictProof(overrides = {}) {
+  return {
+    output_dir: "/private/proof",
+    evidence: { complete: true },
+    summary: {
+      proof_id: "tools-hard-one",
+      suite: "hard",
+      source_task_file: "tasks-hard.json",
+      suite_sha256: "a".repeat(64),
+      tool_schema_sha256: "b".repeat(64),
+      task_count: 30,
+      repetitions: 3,
+      candidates: {
+        "local-main": {
+          model_id: "main-model",
+          attempts: 90,
+          strict_passes: 81,
+          strict_accuracy: 0.9,
+          terminal_errors: 0,
+          mean_latency_ms: 400,
+          total_tokens: 9000,
+          failures: [{}],
+        },
+        "local-fast": {
+          model_id: "fast-model",
+          attempts: 90,
+          strict_passes: 84,
+          strict_accuracy: 0.9333,
+          terminal_errors: 0,
+          mean_latency_ms: 200,
+          total_tokens: 7000,
+          failures: [{}],
+        },
+      },
+      ...overrides,
+    },
+  };
+}
+
+test("a complete three-repetition strict proof is promotion-grade", () => {
+  const proof = projectToolProof(strictProof());
+  assert.equal(proof.promotion_ready, true);
+  assert.equal(proof.winner_id, "local-fast");
+  assert.equal(proof.expected_attempts, 90);
+  assert.match(toolProofNextAction(proof).title, /promotion/i);
+});
+
+test("a perfect quick proof still requires the hard frozen suite", () => {
+  const proof = projectToolProof(strictProof({
+    suite: "core",
+    source_task_file: "tasks.json",
+    task_count: 17,
+    repetitions: 1,
+    candidates: {
+      "local-main": { attempts: 17, strict_passes: 17, strict_accuracy: 1, terminal_errors: 0, mean_latency_ms: 400, total_tokens: 1000, failures: [] },
+      "local-fast": { attempts: 17, strict_passes: 17, strict_accuracy: 1, terminal_errors: 0, mean_latency_ms: 200, total_tokens: 800, failures: [] },
+    },
+  }));
+  assert.equal(proof.promotion_ready, false);
+  assert.match(proof.blockers.join(" "), /30-task hard suite/i);
+  assert.match(toolProofNextAction(proof).title, /hard proof/i);
+});
+
+test("terminal errors block promotion instead of counting as model misses", () => {
+  const source = strictProof();
+  source.summary.candidates["local-fast"].terminal_errors = 1;
+  const proof = projectToolProof(source);
+  assert.equal(proof.promotion_ready, false);
+  assert.match(toolProofNextAction(proof).title, /evidence path/i);
 });
