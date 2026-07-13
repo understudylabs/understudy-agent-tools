@@ -142,6 +142,7 @@ pub struct CorrectionPair {
     pub verdict_event_id: String,
     pub verdict_sequence: u64,
     pub boundary_ordinal: Option<u64>,
+    pub decision_phase: Option<String>,
     pub captured_at: String,
     pub user_request: String,
     pub student: CorrectionStudent,
@@ -267,6 +268,7 @@ fn pair_from_item(item: &SupervisionReviewItem, usage: RunUsage) -> CorrectionPa
         verdict_event_id: item.verdict_event_id.clone(),
         verdict_sequence: item.verdict_sequence,
         boundary_ordinal: item.boundary_ordinal,
+        decision_phase: item.decision_phase.map(|phase| phase.as_str().to_string()),
         captured_at: item.created_at.clone(),
         user_request: item.user_request.clone(),
         student: CorrectionStudent {
@@ -544,6 +546,9 @@ mod tests {
                     probability_kind: Some("logprob".to_string()),
                     boundary_ordinal: Some(0),
                     after_chars: Some(5),
+                    decision_phase: Some(
+                        crate::conversation_runtime::RuntimeDecisionPhase::Streaming,
+                    ),
                     raw: Some("INTERRUPT: factual error".to_string()),
                     error: None,
                     failure_kind: None,
@@ -605,6 +610,7 @@ mod tests {
         assert_eq!(pair.schema_version, CORRECTION_PAIR_SCHEMA);
         assert_eq!(pair.run_id, "run-export");
         assert_eq!(pair.verdict_event_id, "run-export:2");
+        assert_eq!(pair.decision_phase.as_deref(), Some("streaming"));
         assert_eq!(pair.supervisor.probability_kind.as_deref(), Some("logprob"));
         assert_eq!(pair.student.partial_output, "wrong");
         assert_eq!(pair.continuation.output, " corrected");
@@ -694,6 +700,9 @@ mod tests {
                     probability_kind: Some("probability".to_string()),
                     boundary_ordinal: Some(0),
                     after_chars: Some(15),
+                    decision_phase: Some(
+                        crate::conversation_runtime::RuntimeDecisionPhase::Streaming,
+                    ),
                     raw: Some("NUDGE: unnecessary nudge".to_string()),
                     error: None,
                     failure_kind: None,

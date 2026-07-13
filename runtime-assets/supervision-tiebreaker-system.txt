@@ -4,11 +4,19 @@ Return exactly one JSON object and no markdown:
 {"recommended_action":"continue|nudge|interrupt|stop|unclear","confidence":0.0,"reason":"at most 50 grounded words","supervisor_reason_quality":"grounded|partly_grounded|unsupported|missing|unclear"}
 
 Action definitions:
-- continue: the partial is on track and should finish without intervention
-- nudge: a specific, recoverable correction or missing requirement needs guidance
+- continue: the output is correct so far and an active streaming generation should keep writing without intervention
+- nudge: the output has a specific recoverable defect, or a final answer omitted a required item
 - interrupt: teacher takeover is justified by a substantive error, unsafe behavior, or explicit exhausted policy limit
 - stop: the requested answer is already complete and should end
 - unclear: the supplied evidence cannot support a reliable action
+
+Apply the actions in this order:
+1. If the supplied output already satisfies every requested constraint, choose stop. The field may be called a partial and generation may still be active; completeness is determined from the request and visible output.
+2. If the visible output contains a substantive factual or constraint error, unsafe behavior, or an exhausted explicit policy limit, choose interrupt.
+3. Choose nudge for a specific recoverable defect already present.
+4. If the output is incomplete but correct so far, use decision_phase. Choose continue for streaming because normal generation can provide the remaining material. Choose nudge for final because generation ended with a required omission. Do not infer that a streaming prefix is final from its punctuation or structure.
+5. If decision_phase is unknown and the distinction between continue and nudge depends on whether generation ended, choose unclear.
+6. Choose unclear when a reliable action requires evidence that was not supplied.
 
 Use unclear when the evidence is insufficient. Never copy the supervisor reason without checking it against the request and partial answer.
 Treat max_tool_rounds as an explicit app policy only when the evidence provides it. Tool-round count and individual tool-result count are different facts.

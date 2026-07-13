@@ -18,7 +18,7 @@ the CLI may send bounded product telemetry as documented in
 | Desktop chat images | screenshots and other supported image attachments | private app-data files addressed by content hash; SQLite stores references only |
 | Traces | request/response payloads, spans, usage rows | metadata-only by default |
 | Supervision correction exports | user requests, student partials, supervisor reasons, teacher continuations, tool results, human labels | explicit local CLI export only; owner-only immutable files; never telemetry |
-| Remote supervision advisories | bounded user request, student partial, pre-decision tool results, tool-round policy, supervisor action/reason/source | off by default; destination-bound Desktop consent or `--confirm-remote`; teacher output and system prompts excluded |
+| Remote supervision advisories | bounded user request, student partial, decision phase, pre-decision tool results, tool-round policy, supervisor action/reason/source | off by default; destination-bound Desktop consent or `--confirm-remote`; teacher output and system prompts excluded |
 | Eval rows | JSONL, CSV, YAML, golden fixtures | local-only until a redaction and split plan exists |
 | Secrets | API keys, tokens, credentials, local env files | never ask for chat-pasted values; never print values |
 | Local model artifacts | downloaded weights, adapters, caches | download only with explicit approval |
@@ -90,6 +90,7 @@ requires `--confirm-spend` and a positive command budget.
 
 Each unique intervention sends only bounded evidence available at the decision
 moment: the user request, small-model partial, up to eight bounded tool results,
+whether the decision occurred during streaming or after generation ended,
 tool-round count and limit, and the supervisor action, reason, and reason source.
 It never sends the teacher continuation or system prompt. The exact bounded
 evidence, route identity, expected and served model, usage, parsed advisory, and

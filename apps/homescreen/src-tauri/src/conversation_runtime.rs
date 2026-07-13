@@ -39,6 +39,22 @@ pub(crate) enum RuntimeVerdict {
     Nudge,
 }
 
+#[derive(Clone, Copy, Debug, Deserialize, Serialize, PartialEq, Eq)]
+#[serde(rename_all = "snake_case")]
+pub(crate) enum RuntimeDecisionPhase {
+    Streaming,
+    Final,
+}
+
+impl RuntimeDecisionPhase {
+    pub(crate) const fn as_str(self) -> &'static str {
+        match self {
+            Self::Streaming => "streaming",
+            Self::Final => "final",
+        }
+    }
+}
+
 #[derive(Clone, Copy, Debug, Default, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]
 pub(crate) enum TeacherOutputMode {
@@ -118,6 +134,8 @@ pub(crate) enum RuntimeEvent {
         boundary_ordinal: Option<u64>,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         after_chars: Option<u64>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        decision_phase: Option<RuntimeDecisionPhase>,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         raw: Option<String>,
         #[serde(default, skip_serializing_if = "Option::is_none")]
@@ -805,6 +823,7 @@ mod tests {
                     probability_kind: Some("logprob".to_string()),
                     boundary_ordinal: Some(0),
                     after_chars: Some(7),
+                    decision_phase: Some(RuntimeDecisionPhase::Streaming),
                     raw: Some("interrupt: wrong tool".to_string()),
                     error: None,
                     failure_kind: None,
@@ -861,6 +880,7 @@ mod tests {
                 probability_kind: Some("logprob".to_string()),
                 boundary_ordinal: Some(0),
                 after_chars: Some(1),
+                decision_phase: Some(RuntimeDecisionPhase::Final),
                 raw: None,
                 error: None,
                 failure_kind: None,

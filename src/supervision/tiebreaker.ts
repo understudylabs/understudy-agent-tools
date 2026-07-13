@@ -67,6 +67,7 @@ export const RemoteReviewInputSchema = z.object({
   user_request: z.string(),
   small_model: z.string(),
   small_output: z.string(),
+  decision_phase: z.enum(["streaming", "final", "unknown"]).optional().default("unknown"),
   reason: z.string(),
   reason_source: z.string(),
   tool_rounds_before_decision: z.number().int().nonnegative(),
@@ -87,6 +88,7 @@ export interface RemoteReviewEvidence {
   user_request: string;
   small_model: string;
   small_output_at_decision: string;
+  decision_phase: "streaming" | "final" | "unknown";
   tool_rounds_before_decision: number;
   max_tool_rounds: number;
   tool_results_before_decision: Array<{ name: string; ok: boolean; result: string }>;
@@ -193,6 +195,7 @@ export function buildRemoteReviewEvidence(inputValue: unknown): RemoteReviewEvid
     user_request: truncateChars(input.user_request, MAX_REQUEST_CHARS),
     small_model: truncateChars(input.small_model, 500),
     small_output_at_decision: truncateChars(input.small_output, MAX_SMALL_OUTPUT_CHARS),
+    decision_phase: input.decision_phase,
     tool_rounds_before_decision: input.tool_rounds_before_decision,
     max_tool_rounds: input.max_tool_rounds,
     tool_results_before_decision: input.tool_results.slice(0, MAX_TOOL_RESULTS).map((tool) => ({

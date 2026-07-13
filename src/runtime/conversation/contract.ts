@@ -504,6 +504,16 @@ export function validateRuntimeTrace(values: readonly unknown[]): RuntimeEventEn
       if (!["model", "policy", "human"].includes(source)) {
         throw new Error(`unknown supervisor verdict source ${source}`);
       }
+      if ("decision_phase" in data && data.decision_phase != null) {
+        const phase = requiredString(
+          data,
+          "decision_phase",
+          "supervisor_verdict.decision_phase",
+        );
+        if (!["streaming", "final"].includes(phase)) {
+          throw new Error(`unknown supervisor verdict decision_phase ${phase}`);
+        }
+      }
       if (["interrupt", "nudge"].includes(verdict)) {
         requiredString(data, "reason", "supervisor_verdict.reason");
       }

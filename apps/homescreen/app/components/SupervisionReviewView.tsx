@@ -398,6 +398,7 @@ export function SupervisionReviewView({ onCompare }: { onCompare?: () => void })
             <div><dt>Run</dt><dd>{active.run_id}</dd></div>
             <div><dt>Marker</dt><dd>{active.marker_id}</dd></div>
             <div><dt>Boundary</dt><dd>{active.boundary_ordinal ?? "not recorded"}</dd></div>
+            <div><dt>Decision phase</dt><dd>{active.decision_phase ?? "legacy capture"}</dd></div>
             <div><dt>Action</dt><dd>{ACTION_LABELS[expected]}</dd></div>
           </dl>
           {probabilities.length > 0 && (

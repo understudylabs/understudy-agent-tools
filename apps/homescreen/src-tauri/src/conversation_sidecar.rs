@@ -998,6 +998,7 @@ mod tests {
                 probability_kind: None,
                 boundary_ordinal: Some(0),
                 after_chars: Some(0),
+                decision_phase: Some(crate::conversation_runtime::RuntimeDecisionPhase::Streaming),
                 raw: None,
                 error: Some("request failed: offline".to_string()),
                 failure_kind: Some("unavailable".to_string()),

@@ -11,7 +11,7 @@ use serde_json::Value;
 use tauri::{AppHandle, Manager};
 
 use crate::conversation_runtime::{
-    RuntimeEvent, RuntimeEventEnvelope, RuntimeRole, RuntimeVerdict,
+    RuntimeDecisionPhase, RuntimeEvent, RuntimeEventEnvelope, RuntimeRole, RuntimeVerdict,
 };
 
 pub(crate) const REVIEW_QUEUE_SCHEMA: &str = "understudy.supervision.review_queue.v2";
@@ -57,6 +57,7 @@ pub struct SupervisionReviewItem {
     pub reason_source: String,
     pub supervisor_raw: Option<String>,
     pub boundary_ordinal: Option<u64>,
+    pub decision_phase: Option<RuntimeDecisionPhase>,
     pub verdict_logprobs: Option<Value>,
     pub verdict_probability_kind: Option<String>,
     pub intervention_at: Option<u64>,
@@ -333,6 +334,7 @@ fn build_item(
         probability_kind,
         boundary_ordinal,
         after_chars,
+        decision_phase,
         raw,
         ..
     } = &envelope.event
@@ -419,6 +421,7 @@ fn build_item(
         reason_source: source.clone(),
         supervisor_raw: raw.clone(),
         boundary_ordinal: *boundary_ordinal,
+        decision_phase: *decision_phase,
         verdict_logprobs: probabilities.clone(),
         verdict_probability_kind: probability_kind.clone(),
         intervention_at,
@@ -525,6 +528,7 @@ mod tests {
             probability_kind: Some("logprob".to_string()),
             boundary_ordinal: Some(boundary),
             after_chars: Some(7),
+            decision_phase: Some(crate::conversation_runtime::RuntimeDecisionPhase::Streaming),
             raw: Some(format!("interrupt: {reason}")),
             error: None,
             failure_kind: None,
@@ -620,6 +624,7 @@ mod tests {
                     probability_kind: None,
                     boundary_ordinal: Some(2),
                     after_chars: Some(17),
+                    decision_phase: Some(crate::conversation_runtime::RuntimeDecisionPhase::Final),
                     raw: None,
                     error: None,
                     failure_kind: None,
@@ -657,6 +662,7 @@ mod tests {
         assert_eq!(item.reason, "missed the second constraint");
         assert_eq!(item.tool_results[0].name, "repo_search");
         assert_eq!(item.boundary_ordinal, Some(1));
+        assert_eq!(item.decision_phase, Some(RuntimeDecisionPhase::Streaming));
         assert!(item.judgment.as_ref().unwrap().helpful);
     }
 
@@ -712,6 +718,7 @@ mod tests {
                     probability_kind: None,
                     boundary_ordinal: Some(0),
                     after_chars: Some(11),
+                    decision_phase: Some(crate::conversation_runtime::RuntimeDecisionPhase::Streaming),
                     raw: None,
                     error: None,
                     failure_kind: None,
@@ -774,6 +781,7 @@ mod tests {
                     probability_kind: None,
                     boundary_ordinal: Some(2),
                     after_chars: Some(14),
+                    decision_phase: Some(crate::conversation_runtime::RuntimeDecisionPhase::Final),
                     raw: None,
                     error: None,
                     failure_kind: None,

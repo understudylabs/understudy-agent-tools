@@ -15,7 +15,7 @@ const ENABLED_SETTING: &str = "supervision.remote_tiebreaker.consent";
 const PROVIDER_SETTING: &str = "supervision.remote_tiebreaker.provider";
 const PROJECT_SETTING: &str = "supervision.remote_tiebreaker.project";
 const WORKLOAD_SETTING: &str = "supervision.remote_tiebreaker.workload";
-const CONSENT_VERSION: &str = "pre-intervention-v1";
+const CONSENT_VERSION: &str = "pre-intervention-v2";
 const MODEL: &str = "glm-5.2";
 
 #[derive(Clone, Debug, PartialEq)]
@@ -92,7 +92,7 @@ fn status_for(app: &AppHandle) -> TiebreakerStatus {
         project: route.as_ref().map(|value| value.project.clone()),
         workload: route.as_ref().map(|value| value.workload.clone()),
         model: MODEL,
-        disclosure: "When enabled, each unique case may send one bounded remote advisory request through the named Understudy project/workload route. It contains the user request, small-model partial, bounded tool results, tool-round count and limit, and supervisor action/reason/source. Teacher continuations and system prompts are never sent. Exact evidence, route identity, served model, token usage, result, and your judgment of GLM are cached privately on this Mac. Human labels remain final. If the route is offline, local review continues without GLM.",
+        disclosure: "When enabled, each unique case may send one bounded remote advisory request through the named Understudy project/workload route. It contains the user request, small-model partial, whether the decision occurred during streaming or after generation ended, bounded tool results, tool-round count and limit, and supervisor action/reason/source. Teacher continuations and system prompts are never sent. Exact evidence, route identity, served model, token usage, result, and your judgment of GLM are cached privately on this Mac. Human labels remain final. If the route is offline, local review continues without GLM.",
     }
 }
 
@@ -197,6 +197,7 @@ pub async fn supervision_tiebreaker_analyze(
         "user_request": item.user_request,
         "small_model": item.small_model,
         "small_output": item.small_output,
+        "decision_phase": item.decision_phase.map(|phase| phase.as_str()).unwrap_or("unknown"),
         "reason": item.reason,
         "reason_source": item.reason_source,
         "tool_rounds_before_decision": item.tool_rounds_before_decision,
@@ -259,6 +260,7 @@ mod tests {
         assert_eq!(route.provider, "fireworks");
         assert!(validate_route("other", "rehearsal", "judge").is_err());
         assert!(validate_route("lilac", "Bad/Project", "judge").is_err());
+        assert_eq!(CONSENT_VERSION, "pre-intervention-v2");
     }
 
     #[test]
