@@ -3,6 +3,15 @@
 Versioned JSON Schemas for artifacts that cross surface boundaries (desktop
 app, skills, CLI, ladder). One spine, adopted everywhere.
 
+## `understudy.desktop_grocery_report_package.v1`
+
+[`understudy.desktop_grocery_report_package.v1.schema.json`](understudy.desktop_grocery_report_package.v1.schema.json)
+binds a derived buyer report to the immutable grocery proof and exact renderer
+that produced it. The manifest hashes `summary.json`, `results.jsonl`,
+`tasks.json`, `report.json`, `report.html`, and the renderer source. Refreshing
+an old proof therefore creates a new owner-only package instead of rewriting
+evidence or silently presenting a stale report.
+
 ## `understudy.desktop_api.v2`
 
 [`understudy.desktop_api.v2.openapi.json`](understudy.desktop_api.v2.openapi.json)

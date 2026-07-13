@@ -1,6 +1,14 @@
 import assert from "node:assert/strict";
+import { createHash } from "node:crypto";
 import { createServer } from "node:http";
-import { mkdtempSync, rmSync } from "node:fs";
+import {
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  statSync,
+  writeFileSync,
+} from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { spawnSync } from "node:child_process";
@@ -17,6 +25,7 @@ import {
 import {
   buildBuyerReport,
   buildReportModel,
+  renderExistingProof,
   verdictProbabilityEvidence,
 } from "../experiments/desktop-grocery-proof/report.mjs";
 
@@ -348,5 +357,113 @@ describe("desktop grocery proof", () => {
     assert.equal(result.status, 1);
     assert.match(result.stderr, /ENOENT/);
     assert.doesNotMatch(result.stderr, /\n\s+at /);
+  });
+
+  it("refreshes a stale immutable proof into an owner-only derived report package", () => {
+    const root = mkdtempSync(join(tmpdir(), "understudy-grocery-report-refresh-"));
+    const sourceDir = join(root, "proof");
+    const reportRoot = join(root, "reports");
+    mkdirSync(sourceDir, { mode: 0o700 });
+    const tasks = [{ id: "ops", title: "Ops classification", prompt: "private synthetic prompt" }];
+    const tasksBytes = Buffer.from(`${JSON.stringify(tasks)}\n`);
+    const suiteHash = createHash("sha256").update(tasksBytes).digest("hex");
+    const metric = {
+      exact_passes: 1,
+      task_count: 1,
+      mean_field_accuracy: 1,
+      mean_latency_ms: 100,
+      total_tokens: 20,
+    };
+    const rows = ["small", "main", "supervised"].map((mode) => ({
+      proof_id: "proof-refresh",
+      suite_sha256: suiteHash,
+      task_id: "ops",
+      task_title: "Ops classification",
+      mode,
+      score: { exact: true, field_accuracy: 1 },
+      student_score: mode === "supervised" ? { exact: true, field_accuracy: 1 } : null,
+      verdicts: mode === "supervised" ? [{ verdict: "continue", marker_id: "marker-ops" }] : [],
+    }));
+    const summary = {
+      proof_id: "proof-refresh",
+      suite_sha256: suiteHash,
+      completed_at: "2026-07-12T00:00:00Z",
+      task_count: 1,
+      run_count: 3,
+      by_mode: {
+        small: { ...metric, latency_reduction_vs_main: 0 },
+        main: metric,
+        supervised: {
+          ...metric,
+          latency_reduction_vs_main: 0,
+          supervisor_verdicts: 1,
+          interventions: 0,
+          supervisor_correct_interventions: 0,
+          supervisor_missed_errors: 0,
+          supervisor_false_positives: 0,
+          mean_small_model_output_share: 1,
+          mean_supervisor_token_overhead: 0,
+        },
+      },
+    };
+    try {
+      writeFileSync(join(sourceDir, "summary.json"), `${JSON.stringify(summary)}\n`, { mode: 0o600 });
+      writeFileSync(
+        join(sourceDir, "results.jsonl"),
+        `${rows.map((row) => JSON.stringify(row)).join("\n")}\n`,
+        { mode: 0o600 },
+      );
+      writeFileSync(join(sourceDir, "tasks.json"), tasksBytes, { mode: 0o600 });
+      writeFileSync(join(sourceDir, "report.json"), '{"schema_version":"stale.v1"}\n', { mode: 0o600 });
+      writeFileSync(join(sourceDir, "report.html"), "stale report", { mode: 0o600 });
+
+      const first = renderExistingProof(sourceDir, { outputRoot: reportRoot });
+      assert.equal(first.reused, false);
+      assert.equal(first.sourceDir, sourceDir);
+      assert.notEqual(first.outputDir, sourceDir);
+      assert.equal(first.model.schema_version, "understudy.desktop_grocery_buyer_report.v3");
+      assert.equal(JSON.parse(readFileSync(join(sourceDir, "report.json"), "utf8")).schema_version, "stale.v1");
+      assert.match(readFileSync(first.reportPath, "utf8"), /Ops classification/);
+      assert.doesNotMatch(readFileSync(first.reportPath, "utf8"), /private synthetic prompt/);
+      assert.equal(first.manifest.source.proof_id, "proof-refresh");
+      assert.equal(first.manifest.renderer.report_schema_version, first.model.schema_version);
+      const packageSchema = JSON.parse(readFileSync(
+        new URL("../schemas/understudy.desktop_grocery_report_package.v1.schema.json", import.meta.url),
+        "utf8",
+      ));
+      assert.equal(packageSchema.properties.schema_version.const, first.manifest.schema_version);
+      assert.deepEqual(packageSchema.required, ["schema_version", "source", "renderer", "files"]);
+      for (const value of [
+        first.manifest.source.suite_sha256,
+        first.manifest.source.summary_sha256,
+        first.manifest.source.results_sha256,
+        first.manifest.source.tasks_sha256,
+        first.manifest.renderer.renderer_sha256,
+        first.manifest.files.report_json_sha256,
+        first.manifest.files.report_html_sha256,
+      ]) {
+        assert.match(value, /^[a-f0-9]{64}$/);
+      }
+      for (const path of [first.outputDir, first.manifestPath, first.modelPath, first.reportPath]) {
+        if (process.platform !== "win32") assert.equal(statSync(path).mode & 0o077, 0);
+      }
+
+      const second = renderExistingProof(sourceDir, { outputRoot: reportRoot });
+      assert.equal(second.reused, true);
+      assert.equal(second.outputDir, first.outputDir);
+      assert.deepEqual(second.manifest, first.manifest);
+
+      writeFileSync(
+        join(sourceDir, "summary.json"),
+        `${JSON.stringify({ ...summary, proof_id: "../../escape" })}\n`,
+        { mode: 0o600 },
+      );
+      assert.throws(
+        () => renderExistingProof(sourceDir, { outputRoot: reportRoot }),
+        /proof_id must be a safe path segment/,
+      );
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
   });
 });

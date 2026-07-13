@@ -22,13 +22,26 @@ node experiments/desktop-grocery-proof/run.mjs \
 Keep the resulting proof directory open. Do not use customer prompts, traces,
 or credentials in the demo.
 
+If reusing an existing proof, derive a report with the current renderer instead
+of trusting a report file produced by older code:
+
+```sh
+PROOF=~/.understudy/proofs/grocery-marketplace/<proof-id>
+REPORT=$(node experiments/desktop-grocery-proof/run.mjs \
+  --report-from "$PROOF" | jq -r .outputDir)
+```
+
+This does not run a model, contact a provider, alter the proof, or add a
+migration-cohort turn.
+
 If the buyer wants their hosted incumbent in the comparison, configure the
 fourth route before the call using the approval-gated command in `README.md`.
 Verify the model id and current token prices with them. Never improvise prices
 or infer consent from an existing key.
 
-Open `report.html` first. It is the buyer-facing decision packet; keep the
-JSONL files behind it for drill-down rather than making the terminal the demo.
+Open the fresh proof's `report.html`, or `$REPORT/report.html` when reusing
+evidence. It is the buyer-facing decision packet; keep the JSONL files behind
+it for drill-down rather than making the terminal the demo.
 
 ## 0-3 minutes: state the decision
 

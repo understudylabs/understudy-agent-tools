@@ -1,5 +1,20 @@
-import { existsSync, readFileSync, writeFileSync } from "node:fs";
+import { createHash } from "node:crypto";
+import {
+  existsSync,
+  mkdtempSync,
+  mkdirSync,
+  readFileSync,
+  renameSync,
+  rmSync,
+  statSync,
+  writeFileSync,
+} from "node:fs";
+import { homedir } from "node:os";
 import { join, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
+
+const REPORT_PACKAGE_SCHEMA = "understudy.desktop_grocery_report_package.v1";
+const DEFAULT_REPORT_ROOT = join(homedir(), ".understudy", "reports", "grocery-marketplace");
 
 const modeLabels = {
   small: "Small local",
@@ -34,6 +49,48 @@ function integer(value) {
 function dollars(value) {
   if (value == null) return null;
   return `$${Number(value).toFixed(Number(value) < 0.01 ? 4 : 2)}`;
+}
+
+function sha256(value) {
+  return createHash("sha256").update(value).digest("hex");
+}
+
+function assertOwnerOnly(path) {
+  if (process.platform === "win32") return;
+  if ((statSync(path).mode & 0o077) !== 0) {
+    throw new Error(`derived buyer report permissions are broader than owner-only: ${path}`);
+  }
+}
+
+function validateProofSource(summary, rows, tasks, tasksBytes) {
+  if (!/^[a-zA-Z0-9][a-zA-Z0-9._-]{0,199}$/.test(summary?.proof_id ?? "")) {
+    throw new Error("source proof_id must be a safe path segment");
+  }
+  if (!/^[a-f0-9]{64}$/.test(summary?.suite_sha256 ?? "")) {
+    throw new Error("source suite_sha256 must be a lowercase SHA-256 digest");
+  }
+  if (sha256(tasksBytes) !== summary.suite_sha256) {
+    throw new Error("source tasks.json does not match suite_sha256");
+  }
+  if (!Array.isArray(tasks) || summary.task_count !== tasks.length) {
+    throw new Error("source task_count does not match tasks.json");
+  }
+  if (!Array.isArray(rows) || summary.run_count !== rows.length) {
+    throw new Error("source run_count does not match results.jsonl");
+  }
+  const taskIds = new Set(tasks.map((task) => task?.id));
+  if (taskIds.size !== tasks.length || taskIds.has(undefined)) {
+    throw new Error("source tasks.json has missing or duplicate task ids");
+  }
+  for (const row of rows) {
+    if (
+      row?.proof_id !== summary.proof_id
+      || row?.suite_sha256 !== summary.suite_sha256
+      || !taskIds.has(row?.task_id)
+    ) {
+      throw new Error("source results.jsonl does not match proof, suite, or task identity");
+    }
+  }
 }
 
 export function verdictProbabilityEvidence(verdict) {
@@ -463,10 +520,114 @@ function readJsonl(path) {
     .map((line) => JSON.parse(line));
 }
 
-export function renderExistingProof(path) {
-  const outputDir = resolve(path);
-  const summary = JSON.parse(readFileSync(join(outputDir, "summary.json"), "utf8"));
-  const rows = readJsonl(join(outputDir, "results.jsonl"));
-  const tasks = JSON.parse(readFileSync(join(outputDir, "tasks.json"), "utf8"));
-  return { outputDir, ...writeBuyerReport(outputDir, summary, rows, tasks) };
+function validateReportPackage(outputDir, expectedManifest) {
+  const manifestPath = join(outputDir, "manifest.json");
+  const modelPath = join(outputDir, "report.json");
+  const reportPath = join(outputDir, "report.html");
+  const manifest = JSON.parse(readFileSync(manifestPath, "utf8"));
+  if (
+    manifest.schema_version !== expectedManifest.schema_version
+    || JSON.stringify(manifest.source) !== JSON.stringify(expectedManifest.source)
+    || JSON.stringify(manifest.renderer) !== JSON.stringify(expectedManifest.renderer)
+  ) {
+    throw new Error(`derived buyer report identity mismatch: ${outputDir}`);
+  }
+  const modelBytes = readFileSync(modelPath);
+  const reportBytes = readFileSync(reportPath);
+  if (
+    sha256(modelBytes) !== manifest.files.report_json_sha256
+    || sha256(reportBytes) !== manifest.files.report_html_sha256
+  ) {
+    throw new Error(`derived buyer report content hash mismatch: ${outputDir}`);
+  }
+  for (const path of [outputDir, manifestPath, modelPath, reportPath]) assertOwnerOnly(path);
+  return {
+    outputDir,
+    manifestPath,
+    modelPath,
+    reportPath,
+    manifest,
+    model: JSON.parse(modelBytes.toString("utf8")),
+  };
+}
+
+export function renderExistingProof(path, { outputRoot = DEFAULT_REPORT_ROOT } = {}) {
+  const sourceDir = resolve(path);
+  const summaryBytes = readFileSync(join(sourceDir, "summary.json"));
+  const resultsBytes = readFileSync(join(sourceDir, "results.jsonl"));
+  const tasksBytes = readFileSync(join(sourceDir, "tasks.json"));
+  const summary = JSON.parse(summaryBytes.toString("utf8"));
+  const rows = readJsonl(join(sourceDir, "results.jsonl"));
+  const tasks = JSON.parse(tasksBytes.toString("utf8"));
+  validateProofSource(summary, rows, tasks, tasksBytes);
+  const model = buildReportModel(summary, rows, tasks);
+  const modelBytes = Buffer.from(`${JSON.stringify(model, null, 2)}\n`);
+  const reportBytes = Buffer.from(buildBuyerReport(summary, rows, tasks));
+  const rendererHash = sha256(readFileSync(fileURLToPath(import.meta.url)));
+  const source = {
+    proof_id: summary.proof_id,
+    suite_sha256: summary.suite_sha256,
+    summary_sha256: sha256(summaryBytes),
+    results_sha256: sha256(resultsBytes),
+    tasks_sha256: sha256(tasksBytes),
+  };
+  const sourceBundleHash = sha256(Object.values(source).join("\n"));
+  const renderer = {
+    report_schema_version: model.schema_version,
+    renderer_sha256: rendererHash,
+  };
+  const manifest = {
+    schema_version: REPORT_PACKAGE_SCHEMA,
+    source,
+    renderer,
+    files: {
+      report_json_sha256: sha256(modelBytes),
+      report_html_sha256: sha256(reportBytes),
+    },
+  };
+  const packageId = [
+    summary.proof_id,
+    model.schema_version.replaceAll(/[^a-zA-Z0-9.-]/g, "-"),
+    sourceBundleHash.slice(0, 12),
+    rendererHash.slice(0, 12),
+  ].join("-");
+  const reportRoot = resolve(outputRoot);
+  const outputDir = join(reportRoot, packageId);
+  mkdirSync(reportRoot, { recursive: true, mode: 0o700 });
+  assertOwnerOnly(reportRoot);
+  const expectedManifest = { schema_version: REPORT_PACKAGE_SCHEMA, source, renderer };
+  if (existsSync(outputDir)) {
+    return {
+      sourceDir,
+      reused: true,
+      ...validateReportPackage(outputDir, expectedManifest),
+    };
+  }
+
+  const temporaryDir = mkdtempSync(join(reportRoot, `.${packageId}.tmp-`));
+  try {
+    writeFileSync(join(temporaryDir, "report.json"), modelBytes, { flag: "wx", mode: 0o600 });
+    writeFileSync(join(temporaryDir, "report.html"), reportBytes, { flag: "wx", mode: 0o600 });
+    writeFileSync(
+      join(temporaryDir, "manifest.json"),
+      `${JSON.stringify(manifest, null, 2)}\n`,
+      { flag: "wx", mode: 0o600 },
+    );
+    renameSync(temporaryDir, outputDir);
+  } catch (error) {
+    rmSync(temporaryDir, { recursive: true, force: true });
+    if (existsSync(outputDir)) {
+      return {
+        sourceDir,
+        reused: true,
+        ...validateReportPackage(outputDir, expectedManifest),
+      };
+    }
+    throw error;
+  }
+  return {
+    sourceDir,
+    reused: false,
+    ...validateReportPackage(outputDir, expectedManifest),
+  };
 }
