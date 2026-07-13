@@ -402,7 +402,10 @@ export function compileCaptureImport(
     throw new Error(`Capture/import source must be a file or directory: ${source}`);
   }
   const repo = sourceStat.isDirectory() ? source : dirname(source);
-  const dropId = createHash("sha256").update(source).digest("hex").slice(0, 12);
+  const dropId = createHash("sha256")
+    .update(`${source}\0${now.toISOString()}`)
+    .digest("hex")
+    .slice(0, 12);
   const outputDir = join(resolve(outputRootInput), dropId);
   const manifest = scanCaptureImport(repo, now, source, outputDir);
   const card = buildWorkloadCard(repo, now, outputDir);
@@ -443,7 +446,10 @@ function collectSources(
   const walked = walkBounded(inputSource, MAX_SCAN_FILES);
   const files = walked.files
     .map((path) => ({ absolutePath: path, relativePath: relative(repo, path) }))
-    .filter(({ relativePath }) => !relativePath.startsWith(".."))
+    .filter(({ relativePath }) =>
+      relativePath !== ".." &&
+      !relativePath.startsWith("../") &&
+      !relativePath.startsWith("..\\"))
     .sort((left, right) => left.relativePath.localeCompare(right.relativePath));
 
   const sources: CaptureSource[] = [];

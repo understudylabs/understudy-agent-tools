@@ -1628,6 +1628,10 @@ describe("understudy CLI", () => {
         assert.equal(statSync(compiled.artifact_root).mode & 0o777, 0o700);
         assert.equal(statSync(compiled.workload_card_path).mode & 0o777, 0o600);
       }
+
+      const repeated = run(["capture-import", "compile", "--source", source, "--output-root", outputRoot, "--json"]);
+      assert.equal(repeated.status, 0, repeated.stderr);
+      assert.notEqual(JSON.parse(repeated.stdout).artifact_root, compiled.artifact_root);
     } finally {
       rmSync(root, { recursive: true, force: true });
     }
