@@ -1910,6 +1910,7 @@ select,
 
 /* ---------- Chat pane ---------- */
 .chat {
+  position: relative;
   max-width: 1080px;
   margin: 0 auto;
   height: 100%;
@@ -2000,6 +2001,19 @@ select,
   height: 48px;
   flex: 0 0 48px;
   min-height: 48px;
+}
+.ai-chat.has-workload .persona-stage {
+  height: 48px;
+  flex: 0 0 48px;
+  min-height: 48px;
+}
+.ai-chat.has-workload .persona-halo {
+  width: 42px;
+  height: 42px;
+}
+.ai-chat.has-workload .persona-stamp {
+  width: 34px;
+  height: 34px;
 }
 .ai-chat.has-messages .persona-halo {
   width: 42px;
@@ -2383,6 +2397,110 @@ select,
   font-size: 11px;
   line-height: 1.4;
   padding: 5px 0;
+}
+.workload-drop-overlay {
+  position: absolute;
+  z-index: 50;
+  inset: calc(var(--titlebar-h) + 8px) 24px 24px;
+  display: grid;
+  place-content: center;
+  gap: 6px;
+  border: 1px solid color-mix(in srgb, var(--mb-cyan) 70%, var(--border));
+  border-radius: 18px;
+  background: color-mix(in srgb, var(--bg) 88%, transparent);
+  color: var(--text-2);
+  font-family: var(--mono);
+  font-size: 11px;
+  text-align: center;
+  backdrop-filter: blur(18px);
+  pointer-events: none;
+}
+.workload-drop-overlay-title {
+  color: var(--mb-cyan);
+  font-family: var(--sans);
+  font-size: 18px;
+  font-weight: 650;
+}
+.workload-draft {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  width: min(680px, 92%);
+  margin: 0 auto;
+  padding: 14px 16px;
+  border: 1px solid color-mix(in srgb, var(--mb-cyan) 26%, var(--border));
+  border-radius: 14px;
+  background: color-mix(in srgb, var(--surface) 92%, transparent);
+  box-shadow: 0 12px 32px rgb(0 0 0 / 12%);
+}
+.workload-draft-copy {
+  min-width: 0;
+}
+.workload-draft-kicker {
+  margin-bottom: 3px;
+  color: var(--mb-cyan);
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+.workload-draft-title {
+  overflow: hidden;
+  color: var(--text);
+  font-size: 15px;
+  font-weight: 650;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.workload-draft-meta,
+.workload-draft-kinds {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px 10px;
+  margin-top: 6px;
+  color: var(--text-3);
+  font-family: var(--mono);
+  font-size: 10px;
+}
+.workload-draft-meta span:not(:last-child)::after {
+  content: " ·";
+  margin-left: 8px;
+}
+.workload-draft-kinds span {
+  padding: 2px 6px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  color: var(--text-2);
+}
+.workload-draft-actions {
+  display: flex;
+  flex: 0 0 auto;
+  gap: 6px;
+}
+.workload-draft-loading {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  color: var(--text-2);
+  font-size: 12px;
+}
+.workload-draft-loading span {
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  background: var(--mb-cyan);
+  box-shadow: 0 0 12px color-mix(in srgb, var(--mb-cyan) 70%, transparent);
+  animation: pulse 1.2s ease-in-out infinite;
+}
+@media (max-width: 720px) {
+  .workload-draft {
+    align-items: stretch;
+    flex-direction: column;
+  }
+  .workload-draft-actions {
+    justify-content: flex-end;
+  }
 }
 .runtime-repair-prompt {
   position: fixed;

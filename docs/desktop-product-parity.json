@@ -169,8 +169,8 @@
     },
     {
       "id": "drop-to-workload-compilation",
-      "status": "planned",
-      "evidence": "The legacy drop analyzer was coupled to an unauthenticated Python environment bridge, private workflow links, and duplicate chart dependencies. Preserve the user outcome by routing a local file or directory into the public CLI workload compiler and bounded result cards; do not port that bridge or UI wholesale."
+      "status": "shipped",
+      "evidence": "Chat accepts one native file or directory drop and passes the exact canonical path to the public capture-import compiler through a thin Tauri command. The CLI performs metadata-only discovery with 5,000-file and 1,000-source ceilings, ignores dependency/build directories and symlinks, writes a private isolated Workload Card under ~/.understudy without modifying the source, and returns a bounded summary. Desktop rejects results that do not attest local_only=true and payload_read=false, renders one compact draft card, and never restores the unauthenticated environment bridge, private workflow links, charts, or drop-action protocol."
     },
     {
       "id": "model-card-transparency",

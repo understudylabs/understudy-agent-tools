@@ -63,6 +63,11 @@ const modelMemoryPath = new URL(
   "../apps/homescreen/app/lib/model-memory.mjs",
   import.meta.url,
 );
+const workloadDropRustPath = new URL(
+  "../apps/homescreen/src-tauri/src/workload_drop.rs",
+  import.meta.url,
+);
+const captureImportPath = new URL("../src/capture-import.ts", import.meta.url);
 
 test("public desktop preserves the reviewed Train interaction language", async () => {
   const [css, chat, sidebar] = await Promise.all([
@@ -152,6 +157,35 @@ test("desktop persists image references instead of transcript-embedded bytes", a
   assert.match(attachmentRust, /from_mode\(0o700\)/);
   assert.match(attachmentRust, /options\.mode\(0o600\)/);
   assert.match(attachmentRust, /migrate_legacy_messages/);
+});
+
+test("desktop compiles one dropped path through the bounded public CLI", async () => {
+  const [chat, bridge, compiler, parity] = await Promise.all([
+    readFile(chatPath, "utf8"),
+    readFile(workloadDropRustPath, "utf8"),
+    readFile(captureImportPath, "utf8"),
+    readFile(parityPath, "utf8").then(JSON.parse),
+  ]);
+
+  assert.match(chat, /getCurrentWebview\(\)\s*\.onDragDropEvent/);
+  assert.match(chat, /"compile_dropped_workload"/);
+  assert.match(chat, /dropRequestGeneration\.current !== requestGeneration/);
+  assert.match(chat, /dropRequestGeneration\.current \+= 1/);
+  assert.match(chat, /Drop one file or folder/);
+  assert.match(chat, /Metadata only · stays on this Mac/);
+  assert.match(chat, /Review next steps/);
+  assert.doesNotMatch(chat, /\/analyze-drop|\/drop-act/);
+  assert.match(bridge, /CLI owns discovery, privacy boundaries, scan limits/);
+  assert.match(bridge, /"capture-import", "compile", "--source"/);
+  assert.match(bridge, /value\.get\("local_only"\)/);
+  assert.match(bridge, /value\.get\("payload_read"\)/);
+  assert.match(compiler, /const MAX_SCAN_FILES = 5_000/);
+  assert.match(compiler, /const MAX_CAPTURE_SOURCES = 1_000/);
+  assert.match(compiler, /payload_read: false/);
+  assert.equal(
+    parity.features.find((feature) => feature.id === "drop-to-workload-compilation")?.status,
+    "shipped",
+  );
 });
 
 test("desktop model downloads are app-owned, pausable, and resumable", async () => {

@@ -3,7 +3,7 @@ import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { dirname, join, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { runUnderstandCheck, runUnderstandWorkloadCard } from "./understand.js";
-import { buildWorkloadCard, previewCaptureImport, scanCaptureImport } from "./capture-import.js";
+import { buildWorkloadCard, compileCaptureImport, previewCaptureImport, scanCaptureImport } from "./capture-import.js";
 import { planRouteDecision } from "./route-decision.js";
 import { buildValueReport } from "./value-report.js";
 import { type AgentPlatformAdapter, agentPlatformAdapters, findAgentPlatformAdapter } from "./agent-platforms.js";
@@ -299,9 +299,10 @@ function registerCaptureImportCommands(program: Command): void {
     .command("scan")
     .description("Scan a local repo for capture/import source metadata")
     .option("--repo <path>", "Repository to scan", ".")
+    .option("--source <path>", "Exact file or directory to scan inside the repository")
     .option("--json", "Output JSON")
-    .action((options: { repo: string; json?: boolean }) => {
-      const manifest = scanCaptureImport(options.repo);
+    .action((options: { repo: string; source?: string; json?: boolean }) => {
+      const manifest = scanCaptureImport(options.repo, new Date(), options.source);
       if (commandJsonEnabled(program, options)) {
         console.log(JSON.stringify(manifest, null, 2));
         return;
@@ -309,6 +310,23 @@ function registerCaptureImportCommands(program: Command): void {
       console.log(`capture-import scan: ${manifest.source_count} metadata-only sources`);
       console.log(`manifest: ${relative(process.cwd(), join(resolve(options.repo), ".understudy/capture-import/capture-sources.json"))}`);
       console.log(`redaction: ${manifest.redaction_manifest_path}`);
+    });
+
+  captureImport
+    .command("compile")
+    .description("Compile one dropped local file or directory into a metadata-only Workload Card")
+    .requiredOption("--source <path>", "Local file or directory to compile")
+    .option("--output-root <path>", "Private local artifact root; defaults under ~/.understudy")
+    .option("--json", "Output JSON")
+    .action((options: { source: string; outputRoot?: string; json?: boolean }) => {
+      const result = compileCaptureImport(options.source, new Date(), options.outputRoot);
+      if (commandJsonEnabled(program, options)) {
+        console.log(JSON.stringify(result, null, 2));
+        return;
+      }
+      console.log(`capture-import compile: ${result.source_count} source(s) from ${result.source_name}`);
+      console.log(`workload card: ${result.workload_card_path}`);
+      console.log("payload_read: false");
     });
 
   captureImport
