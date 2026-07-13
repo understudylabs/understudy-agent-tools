@@ -4071,6 +4071,21 @@ mod tests {
     use super::*;
 
     #[test]
+    fn public_model_cards_resolve_without_inventing_post_training() {
+        let alias_prompt = system_prompt_for(
+            "/tmp/models/gemma-4-e2b-it-qat-mlx-vlm-4-bit-understudy",
+        );
+        assert!(alias_prompt.contains("compression and serving certification"));
+        assert!(alias_prompt.contains("Do not claim Understudy SFT, RL"));
+        assert!(!alias_prompt.contains("quantized and post-trained"));
+
+        let sparse_prompt =
+            system_prompt_for("gemma-4-26b-a4b-it-qat-mlx-vlm-understudy");
+        assert!(sparse_prompt.contains("with 8-bit routers"));
+        assert!(!sparse_prompt.contains("self-distillation"));
+    }
+
+    #[test]
     fn native_reference_is_restricted_to_the_frozen_basic_case() {
         validate_native_reference_request(
             "Run the local fixture.",

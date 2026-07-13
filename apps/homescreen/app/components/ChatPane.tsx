@@ -51,6 +51,7 @@ import {
   type ChatAttachmentUpload,
 } from "../lib/chat-attachments";
 import { modelShortName, type SnapshotAlias } from "../lib/model-aliases";
+import { ModelCardDrawer } from "./ModelCardDrawer";
 import type { FileUIPart } from "ai";
 
 type Role = "user" | "assistant";
@@ -124,6 +125,7 @@ type PersistedChatSession = {
 };
 type LocalModelChoice = {
   id: string;
+  modelId: string;
   label: string;
   detail: string;
   route: "local";
@@ -362,6 +364,7 @@ export function ChatPane({ resetToken }: { resetToken: number }) {
         .filter((slot) => (slot.state === "running" || slot.state === "loading") && slot.model_id)
         .map<LocalModelChoice>((slot) => ({
           id: `local:${slot.id}`,
+          modelId: slot.model_id!,
           label: modelShortName(slot.model_id, snapshots) ?? `slot ${slot.id}`,
           detail: `${slot.model_id}${slot.port ? ` · :${slot.port}` : ""}${slot.state === "loading" ? " · loading" : ""}`,
           route: "local",
@@ -1039,6 +1042,17 @@ export function ChatPane({ resetToken }: { resetToken: number }) {
               selected={selectedChoice}
               onSelect={(id) => setSelectedModel(id)}
               onConnectAnthropic={connectAnthropic}
+            />
+            <ModelCardDrawer
+              modelId={selectedChoice.route === "local" ? selectedChoice.modelId : selectedChoice.id}
+              label={selectedChoice.label}
+              route={selectedChoice.route}
+              runtime={{
+                slotId: selectedChoice.route === "local" ? selectedChoice.slotId : undefined,
+                active: selectedChoice.active,
+                loading: selectedChoice.route === "local" ? selectedChoice.loading : false,
+                thinking: selectedChoice.route === "local" ? selectedChoice.thinking : false,
+              }}
             />
             <PromptInputBody className="composer-row-body">
               <PromptInputTextarea
