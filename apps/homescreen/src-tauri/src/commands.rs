@@ -16,8 +16,7 @@ use crate::route_policy::{
     self, AVG_LOCAL_TOOL_CALLS_CEILING, CHAT_RUNS_SIGNAL_WINDOW, FUSION_BENCHMARK_SIGNAL_WINDOW,
     GATEWAY_CHAT_MODEL, LOCAL_ERROR_RATE_CEILING, LONG_PROMPT_COMPACTION_CHARS,
     MIN_ROWS_FOR_RATE_GATES, MIN_ROWS_FOR_TOOL_AVG_GATE, MIN_TOOL_DEPTH_ROWS,
-    PENDING_HANDOFF_RATE_CEILING, SESSION_CHAT_RUNS_SIGNAL_WINDOW, SIDEKICK_RUNS_SIGNAL_WINDOW,
-    TOOL_DEPTH_ESCALATION_CALLS,
+    SESSION_CHAT_RUNS_SIGNAL_WINDOW, TOOL_DEPTH_ESCALATION_CALLS,
 };
 use crate::sidecar::{ServiceState, Services};
 use serde::{Deserialize, Serialize};
@@ -643,6 +642,10 @@ pub struct SidekickMetrics {
 }
 
 fn valid_fusion_mode(mode: &str) -> bool {
+    mode == "main-only"
+}
+
+fn valid_historical_fusion_mode(mode: &str) -> bool {
     matches!(
         mode,
         "main-only" | "sidekick-advisory" | "sidekick-parallel" | "sidekick-routing"
@@ -650,7 +653,7 @@ fn valid_fusion_mode(mode: &str) -> bool {
 }
 
 fn valid_fusion_result_mode(mode: &str) -> bool {
-    if valid_fusion_mode(mode)
+    if valid_historical_fusion_mode(mode)
         || mode == "automationbench"
         || mode == crate::custom_evals::CUSTOM_EVAL_MODE
     {
@@ -675,15 +678,7 @@ fn valid_fusion_candidate(candidate: &str) -> bool {
 fn fusion_benchmark_suite(suite: Option<&str>) -> Result<(Vec<String>, Vec<String>), String> {
     match suite.unwrap_or("full-matrix") {
         "full-matrix" => Ok((
-            vec![
-                "main-only",
-                "sidekick-advisory",
-                "sidekick-parallel",
-                "sidekick-routing",
-            ]
-            .into_iter()
-            .map(str::to_string)
-            .collect(),
+            vec!["main-only"].into_iter().map(str::to_string).collect(),
             fusion_benchmark_matrix()
                 .tasks
                 .iter()
@@ -691,10 +686,7 @@ fn fusion_benchmark_suite(suite: Option<&str>) -> Result<(Vec<String>, Vec<Strin
                 .collect(),
         )),
         "routing-smoke" => Ok((
-            vec!["sidekick-routing"]
-                .into_iter()
-                .map(str::to_string)
-                .collect(),
+            vec!["main-only"].into_iter().map(str::to_string).collect(),
             vec![
                 "repo-search-summary",
                 "runtime-status-check",
@@ -706,20 +698,14 @@ fn fusion_benchmark_suite(suite: Option<&str>) -> Result<(Vec<String>, Vec<Strin
             .collect(),
         )),
         "local-fusion-smoke" => Ok((
-            vec!["main-only", "sidekick-parallel"]
-                .into_iter()
-                .map(str::to_string)
-                .collect(),
+            vec!["main-only"].into_iter().map(str::to_string).collect(),
             vec!["repo-search-summary", "runtime-status-check"]
                 .into_iter()
                 .map(str::to_string)
                 .collect(),
         )),
         "local-comparison" => Ok((
-            vec!["main-only", "sidekick-parallel", "sidekick-routing"]
-                .into_iter()
-                .map(str::to_string)
-                .collect(),
+            vec!["main-only"].into_iter().map(str::to_string).collect(),
             vec![
                 "repo-search-summary",
                 "runtime-status-check",
@@ -731,10 +717,7 @@ fn fusion_benchmark_suite(suite: Option<&str>) -> Result<(Vec<String>, Vec<Strin
             .collect(),
         )),
         "automationbench-proxy" => Ok((
-            vec!["main-only", "sidekick-parallel", "sidekick-routing"]
-                .into_iter()
-                .map(str::to_string)
-                .collect(),
+            vec!["main-only"].into_iter().map(str::to_string).collect(),
             vec![
                 "automationbench-api-discovery",
                 "automationbench-state-verification",
@@ -1405,15 +1388,15 @@ pub fn fusion_benchmark_matrix() -> FusionBenchmarkMatrix {
             FusionBenchmarkSuite {
                 id: "local-fusion-smoke",
                 label: "Local Fusion smoke",
-                description: "Fast local-only check comparing the main lane against the sidekick lane.",
-                modes: vec!["main-only", "sidekick-parallel"],
+                description: "Fast canonical-runtime smoke on local-friendly tasks.",
+                modes: vec!["main-only"],
                 task_ids: vec!["repo-search-summary", "runtime-status-check"],
             },
             FusionBenchmarkSuite {
                 id: "routing-smoke",
                 label: "Routing smoke",
-                description: "Small policy smoke for sidekick routing and gateway escalation.",
-                modes: vec!["sidekick-routing"],
+                description: "Small canonical-runtime subset for route-sensitive tasks.",
+                modes: vec!["main-only"],
                 task_ids: vec![
                     "repo-search-summary",
                     "runtime-status-check",
@@ -1424,8 +1407,8 @@ pub fn fusion_benchmark_matrix() -> FusionBenchmarkMatrix {
             FusionBenchmarkSuite {
                 id: "local-comparison",
                 label: "Local comparison",
-                description: "Compare main local against parallel sidekick and routing on local-friendly tasks.",
-                modes: vec!["main-only", "sidekick-parallel", "sidekick-routing"],
+                description: "Compare canonical candidates on the same local-friendly tasks.",
+                modes: vec!["main-only"],
                 task_ids: vec![
                     "repo-search-summary",
                     "runtime-status-check",
@@ -1436,20 +1419,15 @@ pub fn fusion_benchmark_matrix() -> FusionBenchmarkMatrix {
             FusionBenchmarkSuite {
                 id: "full-matrix",
                 label: "Full matrix",
-                description: "Run every bundled Fusion task across every harness mode.",
-                modes: vec![
-                    "main-only",
-                    "sidekick-advisory",
-                    "sidekick-parallel",
-                    "sidekick-routing",
-                ],
+                description: "Run every bundled Fusion task through the canonical runtime.",
+                modes: vec!["main-only"],
                 task_ids: vec![],
             },
             FusionBenchmarkSuite {
                 id: "automationbench-proxy",
                 label: "AutomationBench proxy",
                 description: "Directional local proxy for AutomationBench-style SaaS workflow/tool-state tasks before the external verifier run.",
-                modes: vec!["main-only", "sidekick-parallel", "sidekick-routing"],
+                modes: vec!["main-only"],
                 task_ids: vec![
                     "automationbench-api-discovery",
                     "automationbench-state-verification",
@@ -1485,23 +1463,8 @@ pub fn fusion_benchmark_matrix() -> FusionBenchmarkMatrix {
         modes: vec![
             FusionBenchmarkMode {
                 id: "main-only",
-                label: "Main only",
-                description: "Run the selected main model with sidekick disabled.",
-            },
-            FusionBenchmarkMode {
-                id: "sidekick-advisory",
-                label: "Sidekick advisory",
-                description: "Allow explicit delegate_to_sidekick tool calls only.",
-            },
-            FusionBenchmarkMode {
-                id: "sidekick-parallel",
-                label: "Sidekick parallel",
-                description: "Enable non-visual background sidekick on eligible prompts.",
-            },
-            FusionBenchmarkMode {
-                id: "sidekick-routing",
-                label: "Sidekick + routing",
-                description: "Enable parallel sidekick plus feedback-aware routing policy.",
+                label: "Canonical runtime",
+                description: "Run the selected candidate through Pi; supervision is configured by the runtime rather than a parallel Rust harness.",
             },
         ],
         tasks: vec![
@@ -1638,8 +1601,10 @@ pub fn fusion_route_recommendation_with_persist(
     let local_ready = main_slot
         .as_ref()
         .is_some_and(|slot| slot.state == "running");
-    let sidekick = residency(&app).sidekick_endpoint(main_slot.as_ref().map(|slot| slot.id));
-    let sidekick_ready = sidekick.is_some();
+    // The Rust parallel-sidekick scheduler is retired. Keep compatibility
+    // fields in the response and persisted rows, but never advertise an
+    // executable sidekick route from the active recommendation endpoint.
+    let sidekick_ready = false;
     let gateway_ready = crate::chat::gateway_credentials_available();
     let local_mem_gb = snapshot
         .slots
@@ -1653,30 +1618,7 @@ pub fn fusion_route_recommendation_with_persist(
     let class = route_policy::classify_prompt(prompt);
     let (mechanical, judgment, complex) = (class.mechanical(), class.judgment, class.complex);
 
-    let metrics = sidekick_metrics(app.clone(), Some(SIDEKICK_RUNS_SIGNAL_WINDOW)).ok();
     let route_signals = chat_route_signals(&app, request.session_id.as_deref());
-    let low_usefulness = metrics.as_ref().is_some_and(|m| {
-        let parallel_feedback = m.parallel_useful_rows + m.parallel_miss_rows;
-        let (feedback_rows, useful_rate) = if parallel_feedback >= MIN_ROWS_FOR_RATE_GATES {
-            (parallel_feedback, m.parallel_useful_rate)
-        } else {
-            (m.useful_rows + m.miss_rows, m.useful_rate)
-        };
-        route_policy::usefulness_low(feedback_rows, useful_rate)
-    });
-    let high_escalation = metrics.as_ref().is_some_and(|m| {
-        let escalation_rate = if m.parallel_rows >= MIN_ROWS_FOR_RATE_GATES {
-            m.parallel_escalation_rate
-        } else {
-            m.escalation_rate
-        };
-        route_policy::escalation_high(m.rows, escalation_rate)
-    });
-    let pending_sidekick_handoffs = metrics.as_ref().is_some_and(|m| {
-        m.parallel_rows >= MIN_ROWS_FOR_RATE_GATES
-            && m.parallel_pending_handoff_rate
-                .is_some_and(|rate| rate > PENDING_HANDOFF_RATE_CEILING)
-    });
     let local_unhealthy = route_signals.local_rows >= MIN_ROWS_FOR_RATE_GATES
         && route_signals
             .local_error_rate
@@ -1686,18 +1628,7 @@ pub fn fusion_route_recommendation_with_persist(
             route_signals.local_tool_rows >= MIN_ROWS_FOR_TOOL_AVG_GATE
                 && avg >= AVG_LOCAL_TOOL_CALLS_CEILING
         });
-    let sidekick_slow = route_policy::sidekick_latency_high(
-        route_signals.sidekick_rows,
-        route_signals.avg_sidekick_elapsed_ms,
-        route_signals.avg_local_elapsed_ms,
-    );
-    let sidekick_benchmark_low = route_policy::sidekick_benchmark_low(
-        route_signals.sidekick_benchmark_rows,
-        route_signals.sidekick_benchmark_score,
-    );
-    let upgrade_sidekick = sidekick_ready
-        && (high_escalation || sidekick_slow || sidekick_benchmark_low)
-        && !low_usefulness;
+    let upgrade_sidekick = false;
     let session_compaction_boundary = route_signals.session_compacted_rows > 0;
     let long_prompt = prompt.len() > LONG_PROMPT_COMPACTION_CHARS;
     // Compaction is per-conversation state: a compaction in some other
@@ -1708,15 +1639,9 @@ pub fn fusion_route_recommendation_with_persist(
         current_route,
         class,
         local_ready,
-        sidekick_ready,
         gateway_ready,
-        low_usefulness,
-        high_escalation,
-        pending_sidekick_handoffs,
         local_unhealthy,
         local_tool_depth_high,
-        sidekick_slow,
-        sidekick_benchmark_low,
         session_compaction_boundary,
         long_prompt,
         session_last_compaction_reason: route_signals.session_last_compaction_reason.as_deref(),
@@ -1729,15 +1654,9 @@ pub fn fusion_route_recommendation_with_persist(
     );
 
     let main_model = main_slot.and_then(|slot| slot.model_id);
-    let sidekick_model = sidekick.map(|(_, _, _, model_id)| model_id);
+    let sidekick_model: Option<String> = None;
     let gateway_model = gateway_ready.then(|| GATEWAY_CHAT_MODEL.to_string());
-    let policy_class = route_policy::fusion_policy_class(
-        route,
-        use_sidekick,
-        escalate_gateway,
-        upgrade_sidekick,
-        &reason,
-    );
+    let policy_class = route_policy::fusion_policy_class(route, escalate_gateway, &reason);
     let signals = json!({
         "mechanical": mechanical,
         "judgment": judgment,
@@ -1745,13 +1664,13 @@ pub fn fusion_route_recommendation_with_persist(
         "local_ready": local_ready,
         "sidekick_ready": sidekick_ready,
         "gateway_ready": gateway_ready,
-        "low_usefulness": low_usefulness,
-        "high_escalation": high_escalation,
-        "pending_sidekick_handoffs": pending_sidekick_handoffs,
+        "low_usefulness": false,
+        "high_escalation": false,
+        "pending_sidekick_handoffs": false,
         "local_unhealthy": local_unhealthy,
         "local_tool_depth_high": local_tool_depth_high,
-        "sidekick_slow": sidekick_slow,
-        "sidekick_benchmark_low": sidekick_benchmark_low,
+        "sidekick_slow": false,
+        "sidekick_benchmark_low": false,
         "upgrade_sidekick": upgrade_sidekick,
         "session_compaction_boundary": session_compaction_boundary,
         "compaction_boundary": compaction_boundary,
@@ -1770,21 +1689,7 @@ pub fn fusion_route_recommendation_with_persist(
             "avg_local_elapsed_ms": route_signals.avg_local_elapsed_ms,
             "avg_sidekick_elapsed_ms": route_signals.avg_sidekick_elapsed_ms,
         },
-        "sidekick_metrics": metrics.as_ref().map(|m| json!({
-            "rows": m.rows,
-            "session_rows": m.session_rows,
-            "memory_session_rows": m.memory_session_rows,
-            "parallel_rows": m.parallel_rows,
-            "useful_rate": m.useful_rate,
-            "parallel_useful_rate": m.parallel_useful_rate,
-            "escalation_rate": m.escalation_rate,
-            "parallel_escalation_rate": m.parallel_escalation_rate,
-            "parallel_pending_handoff_rows": m.parallel_pending_handoff_rows,
-            "parallel_pending_handoff_rate": m.parallel_pending_handoff_rate,
-            "handoff_rate": m.handoff_rate,
-            "parallel_handoff_rate": m.parallel_handoff_rate,
-            "avg_compacted_entries": m.avg_compacted_entries,
-        })),
+        "sidekick_metrics": Value::Null,
     });
     let recommendation = FusionRouteRecommendation {
         schema_version: "understudy.fusion_route_recommendation.v1",

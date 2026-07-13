@@ -562,8 +562,8 @@ struct ConversationRuntimeToolRequest {
 }
 
 /// Authenticated executor used by the CLI-owned runtime. Keeping this a thin
-/// adapter guarantees Pi and the one-release Rust fallback expose the exact
-/// same desktop tools and residency semantics.
+/// adapter guarantees Pi exposes the exact same desktop tools and residency
+/// semantics.
 async fn conversation_runtime_tool(
     State(ctx): State<Ctx>,
     h: HeaderMap,
@@ -789,7 +789,6 @@ struct ChatBody {
     session_id: Option<String>,
     max_tokens: Option<u32>,
     capture_run_id: Option<String>,
-    runtime_backend: Option<String>,
 }
 
 async fn chat_completion(
@@ -802,44 +801,18 @@ async fn chat_completion(
         .session_id
         .unwrap_or_else(|| format!("agent-{}", chrono::Utc::now().timestamp_millis()));
     let residency = ctx.app.state::<crate::residency::Residency>();
-    let result = match b.runtime_backend.as_deref() {
-        None | Some("pi") => {
-            crate::chat::agent_chat(
-                &ctx.app,
-                &residency,
-                b.slot_id,
-                &session_id,
-                &b.prompt,
-                b.max_tokens,
-                b.capture_run_id.as_deref(),
-            )
-            .await
-        }
-        Some("native-rust-reference") => {
-            let run_id = b.capture_run_id.as_deref().ok_or_else(|| {
-                (
-                    StatusCode::BAD_REQUEST,
-                    "native-rust-reference requires capture_run_id".to_string(),
-                )
-            })?;
-            crate::chat::agent_chat_native_reference(
-                &ctx.app,
-                &residency,
-                b.slot_id,
-                &session_id,
-                &b.prompt,
-                b.max_tokens,
-                run_id,
-            )
-            .await
-        }
-        Some(value) => Err(format!(
-            "runtime_backend must be pi or native-rust-reference, got {value}"
-        )),
-    };
-    result
-        .map(|r| Json(json!(r)))
-        .map_err(|e| (StatusCode::BAD_REQUEST, e))
+    crate::chat::agent_chat(
+        &ctx.app,
+        &residency,
+        b.slot_id,
+        &session_id,
+        &b.prompt,
+        b.max_tokens,
+        b.capture_run_id.as_deref(),
+    )
+    .await
+    .map(|r| Json(json!(r)))
+    .map_err(|e| (StatusCode::BAD_REQUEST, e))
 }
 async fn dossiers(
     State(ctx): State<Ctx>,
@@ -1170,7 +1143,7 @@ fn run_benchmark_properties(with_candidates: bool) -> Value {
     let mut props = json!({
         "run_id": { "type": "string", "description": "Run id; generated when omitted." },
         "suite": { "type": "string", "enum": ["routing-smoke", "local-comparison", "full-matrix", "automationbench-proxy"] },
-        "modes": { "type": "array", "items": { "type": "string", "enum": ["main-only", "sidekick-advisory", "sidekick-parallel", "sidekick-routing"] } },
+        "modes": { "type": "array", "items": { "type": "string", "enum": ["main-only"], "description": "Canonical Pi runtime. Legacy sidekick modes remain readable in historical evidence but cannot be scheduled." } },
         "task_ids": { "type": "array", "items": { "type": "string" } },
         "dry_run": { "type": "boolean", "description": "Default true: plan without spending tokens." },
         "record_skips": { "type": "boolean" }
@@ -1291,7 +1264,7 @@ fn tools() -> Vec<Value> {
                 json!({
                     "run_id": { "type": "string" },
                     "capture_run_id": { "type": "string", "description": "Per-attempt id joining this row to canonical runtime evidence." },
-                    "runtime_backend": { "type": "string", "description": "Runtime that executed the attempt, such as pi, native-rust, or external." },
+                    "runtime_backend": { "type": "string", "description": "Runtime that executed the attempt, such as pi or external. Historical rows may contain native-rust." },
                     "task_id": { "type": "string" },
                     "mode": { "type": "string" },
                     "model": { "type": "string" },

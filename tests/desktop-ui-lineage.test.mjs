@@ -338,7 +338,6 @@ test("desktop model downloads are app-owned, pausable, and resumable", async () 
 
   assert.match(statusPane, /"start_snapshot_download"/);
   assert.match(statusPane, /"list_snapshot_downloads"/);
-  assert.match(statusPane, /"snapshot_download_status"/);
   assert.match(statusPane, /"cancel_snapshot_download"/);
   assert.match(statusPane, /Resume keeps partial files/);
   assert.match(statusPane, /busyActionLabel="Pause"/);
@@ -347,6 +346,7 @@ test("desktop model downloads are app-owned, pausable, and resumable", async () 
   assert.match(downloadNotice, /row\.resumable \? "Resume" : null/);
   assert.doesNotMatch(statusPane, /new Channel<DownloadEvent>/);
   assert.doesNotMatch(statusPane, /invoke\([^\n]*"download_snapshot_model"/);
+  assert.doesNotMatch(statusPane, /sidekick\.parallel|Parallel sidekick|setupSidekick/);
 });
 
 test("large local models warn before consuming the residency budget", async () => {

@@ -200,7 +200,7 @@
     {
       "id": "native-runtime-deletion",
       "status": "planned",
-      "evidence": "Deletion waits for the full genuine-run observation gate and conformance proof from the canonical runtime. A separate authenticated native reference adapter now forces the prompt-only Rust headless boundary and reports all richer frozen scenarios as explicit gaps rather than overstating parity."
+      "evidence": "The draft deletion rehearsal is rebased onto merged Desktop 0.3.8 source and removes the native provider, tool-round, compaction, benchmark, Anthropic transport, and parallel-sidekick execution paths while preserving every accepted Train-derived improvement. It remains intentionally unmerged until an exact released compatibility cohort reaches 100 consecutive genuine Pi turns with green conformance and readiness evidence. The installed notarized 0.3.7 cohort currently has 5 qualifying Pi turns, zero compatibility fallbacks, and 95 genuine turns remaining; Desktop 0.3.8 is not yet published."
     }
   ]
 }
