@@ -58,12 +58,22 @@ chosen-verdict first-token probability without presenting it as calibrated
 correctness. It contains no raw prompts or completions and makes no remote
 requests.
 
-To add the report to an older immutable proof without rerunning models:
+To render the current buyer report from older immutable evidence without
+rerunning models:
 
 ```sh
 node experiments/desktop-grocery-proof/run.mjs \
   --report-from ~/.understudy/proofs/grocery-marketplace/<proof-id>
 ```
+
+The command never edits the source proof. It writes a content-addressed,
+owner-only report package beneath
+`~/.understudy/reports/grocery-marketplace/`, including the current
+`report.html`, structured `report.json`, and a manifest binding source-file and
+renderer hashes. Repeating the command is idempotent; a changed source or
+renderer produces a new package rather than overwriting evidence. Use
+`--report-output-root <path>` only when automation needs a different local
+destination.
 
 For a buyer-facing walkthrough, use the
 [30-minute grocery-platform demo](DEMO.md). It keeps the measured judge miss in

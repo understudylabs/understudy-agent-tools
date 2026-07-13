@@ -205,6 +205,7 @@ function parseArgs(argv) {
     maxTokens: 384,
     outputRoot: join(homedir(), ".understudy", "proofs", "grocery-marketplace"),
     reportFrom: null,
+    reportOutputRoot: null,
     incumbentBaseUrl: null,
     incumbentModel: null,
     incumbentProviderKind: "openai-compatible",
@@ -226,6 +227,7 @@ function parseArgs(argv) {
     else if (value === "--max-tokens") options.maxTokens = Number(next);
     else if (value === "--output-root") options.outputRoot = resolve(next);
     else if (value === "--report-from") options.reportFrom = resolve(next);
+    else if (value === "--report-output-root") options.reportOutputRoot = resolve(next);
     else if (value === "--incumbent-base-url") options.incumbentBaseUrl = next;
     else if (value === "--incumbent-model") options.incumbentModel = next;
     else if (value === "--incumbent-provider-kind") options.incumbentProviderKind = next;
@@ -247,6 +249,9 @@ function parseArgs(argv) {
   }
   if (options.studentSlot === options.teacherSlot) {
     throw new Error("student and teacher slots must be distinct");
+  }
+  if (options.reportOutputRoot && !options.reportFrom) {
+    throw new Error("--report-output-root requires --report-from");
   }
   validateIncumbentOptions(options);
   return options;
@@ -539,7 +544,9 @@ export async function runProof(options = parseArgs(process.argv.slice(2))) {
 if (process.argv[1] && import.meta.url === pathToFileURL(resolve(process.argv[1])).href) {
   const options = parseArgs(process.argv.slice(2));
   const operation = options.reportFrom
-    ? Promise.resolve().then(() => renderExistingProof(options.reportFrom))
+    ? Promise.resolve().then(() => renderExistingProof(options.reportFrom, {
+      outputRoot: options.reportOutputRoot ?? undefined,
+    }))
     : runProof(options);
   operation.then((result) => {
     if (options.reportFrom) process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);

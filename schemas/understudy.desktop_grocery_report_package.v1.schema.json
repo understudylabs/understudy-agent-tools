@@ -1,0 +1,60 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.understudylabs.com/understudy.desktop_grocery_report_package.v1.schema.json",
+  "title": "Understudy desktop grocery report package v1",
+  "type": "object",
+  "required": ["schema_version", "source", "renderer", "files"],
+  "properties": {
+    "schema_version": {
+      "const": "understudy.desktop_grocery_report_package.v1"
+    },
+    "source": {
+      "type": "object",
+      "required": [
+        "proof_id",
+        "suite_sha256",
+        "summary_sha256",
+        "results_sha256",
+        "tasks_sha256"
+      ],
+      "properties": {
+        "proof_id": {
+          "type": "string",
+          "minLength": 1,
+          "maxLength": 200,
+          "pattern": "^[a-zA-Z0-9][a-zA-Z0-9._-]*$"
+        },
+        "suite_sha256": { "$ref": "#/$defs/sha256" },
+        "summary_sha256": { "$ref": "#/$defs/sha256" },
+        "results_sha256": { "$ref": "#/$defs/sha256" },
+        "tasks_sha256": { "$ref": "#/$defs/sha256" }
+      },
+      "additionalProperties": false
+    },
+    "renderer": {
+      "type": "object",
+      "required": ["report_schema_version", "renderer_sha256"],
+      "properties": {
+        "report_schema_version": { "type": "string", "minLength": 1 },
+        "renderer_sha256": { "$ref": "#/$defs/sha256" }
+      },
+      "additionalProperties": false
+    },
+    "files": {
+      "type": "object",
+      "required": ["report_json_sha256", "report_html_sha256"],
+      "properties": {
+        "report_json_sha256": { "$ref": "#/$defs/sha256" },
+        "report_html_sha256": { "$ref": "#/$defs/sha256" }
+      },
+      "additionalProperties": false
+    }
+  },
+  "$defs": {
+    "sha256": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    }
+  },
+  "additionalProperties": false
+}
