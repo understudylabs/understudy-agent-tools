@@ -19,6 +19,7 @@ import {
   piPreflightCompactionRequired,
   runPiConversation,
   supervisorDecisionMarker,
+  supervisorHandoffTarget,
   teacherContinuationBoundary,
   teacherOutputMode,
 } from "../dist/runtime/conversation/pi-runtime.js";
@@ -776,6 +777,116 @@ test("Pi runtime deterministically interrupts a student and continues with the t
     .map((event) => event.data.text)
     .join("");
   assert.doesNotMatch(rendered, /\w\.\w/);
+});
+
+test("Pi records a failed remote supervisor handoff and continues locally", async () => {
+  assert.equal(
+    supervisorHandoffTarget({
+      base_url: "https://offline-supervisor.example/v1",
+      model: "remote-supervisor",
+    }),
+    "remote",
+  );
+  const server = createServer(async (request, response) => {
+    const body = await requestJson(request);
+    assert.equal(body.model, "student-model");
+    sendFixtureSse(response, [
+      {
+        id: "chatcmpl-offline-supervisor-student",
+        object: "chat.completion.chunk",
+        created: 1,
+        model: "student-model",
+        choices: [
+          {
+            index: 0,
+            delta: {
+              role: "assistant",
+              content: "The local model keeps working while the cloud supervisor is offline.",
+            },
+            finish_reason: null,
+          },
+        ],
+      },
+      {
+        id: "chatcmpl-offline-supervisor-student",
+        object: "chat.completion.chunk",
+        created: 1,
+        model: "student-model",
+        choices: [{ index: 0, delta: {}, finish_reason: "stop" }],
+        usage: { prompt_tokens: 10, completion_tokens: 12, total_tokens: 22 },
+      },
+    ]);
+  });
+  await new Promise((accept) => server.listen(0, "127.0.0.1", accept));
+  const address = server.address();
+  assert.ok(address && typeof address !== "string");
+  const localBaseUrl = `http://127.0.0.1:${address.port}/v1`;
+  const remoteBaseUrl = "https://offline-supervisor.example/v1";
+  const events = [];
+  const originalFetch = globalThis.fetch;
+  const previousAllowRemote = process.env.UNDERSTUDY_RUNTIME_ALLOW_REMOTE;
+  process.env.UNDERSTUDY_RUNTIME_ALLOW_REMOTE = "1";
+  globalThis.fetch = async (input, init) => {
+    const url =
+      typeof input === "string"
+        ? input
+        : input instanceof URL
+          ? input.href
+          : input.url;
+    if (url.startsWith(remoteBaseUrl)) {
+      throw new TypeError("fixture cloud supervisor is offline");
+    }
+    return originalFetch(input, init);
+  };
+  try {
+    await runPiConversation(
+      {
+        run_id: "run-offline-remote-supervisor",
+        session_id: "session-offline-remote-supervisor",
+        base_url: localBaseUrl,
+        model: "student-model",
+        role: "student",
+        allow_remote: true,
+        messages: [{ role: "user", content: "Keep answering if cloud review is unavailable." }],
+        tools: [],
+        runtime_backend: "pi",
+        supervision: {
+          student: { base_url: localBaseUrl, model: "student-model" },
+          supervisor: {
+            base_url: remoteBaseUrl,
+            model: "remote-supervisor",
+            system_prompt: "Judge the partial answer.",
+            max_output_tokens: 24,
+          },
+          teacher: { base_url: remoteBaseUrl, model: "remote-teacher" },
+          boundary_chars: 10,
+          max_nudges: 0,
+        },
+      },
+      (event) => events.push(event),
+    );
+  } finally {
+    globalThis.fetch = originalFetch;
+    if (previousAllowRemote === undefined) {
+      delete process.env.UNDERSTUDY_RUNTIME_ALLOW_REMOTE;
+    } else {
+      process.env.UNDERSTUDY_RUNTIME_ALLOW_REMOTE = previousAllowRemote;
+    }
+    await new Promise((accept) => server.close(accept));
+  }
+  validateRuntimeTrace(events);
+  const verdicts = events.filter((event) => event.event === "supervisor_verdict");
+  assert.equal(verdicts.length, 1, "offline supervisor is attempted only once per segment");
+  assert.equal(verdicts[0].data.verdict, "continue");
+  assert.equal(verdicts[0].data.failure_kind, "unavailable");
+  assert.equal(verdicts[0].data.handoff_target, "remote");
+  assert.match(verdicts[0].data.error, /cloud supervisor is offline/);
+  assert.equal(events.some((event) => event.event === "student_interruption"), false);
+  assert.equal(events.some((event) => event.event === "teacher_continuation"), false);
+  assert.equal(
+    events.filter((event) => event.event === "delta").map((event) => event.data.text).join(""),
+    "The local model keeps working while the cloud supervisor is offline.",
+  );
 });
 
 test("teacher continuation inserts only a missing word boundary", () => {

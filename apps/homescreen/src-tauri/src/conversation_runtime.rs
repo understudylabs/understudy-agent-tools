@@ -112,6 +112,12 @@ pub(crate) enum RuntimeEvent {
         probabilities: Option<Value>,
         #[serde(default)]
         probability_kind: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        error: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        failure_kind: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        handoff_target: Option<String>,
     },
     StudentInterruption {
         marker_id: String,
@@ -440,6 +446,9 @@ pub(crate) fn validate_trace(events: &[RuntimeEventEnvelope]) -> Result<(), Stri
                 reason,
                 probabilities,
                 probability_kind,
+                error,
+                failure_kind,
+                handoff_target,
             } => {
                 if !matches!(source.as_str(), "model" | "policy" | "human") {
                     return Err(format!("unknown supervisor verdict source {source}"));
@@ -457,6 +466,33 @@ pub(crate) fn validate_trace(events: &[RuntimeEventEnvelope]) -> Result<(), Stri
                         .filter(|value| !value.trim().is_empty())
                         .ok_or_else(|| "interrupt verdict requires marker_id".to_string())?;
                     interrupt_markers.insert(marker);
+                }
+                if let Some(target) = handoff_target.as_deref() {
+                    if !matches!(target, "local" | "remote") {
+                        return Err(format!(
+                            "unknown supervisor verdict handoff_target {target}"
+                        ));
+                    }
+                }
+                if let Some(kind) = failure_kind.as_deref() {
+                    if !matches!(kind, "unavailable" | "invalid_response" | "policy_degrade") {
+                        return Err(format!("unknown supervisor verdict failure_kind {kind}"));
+                    }
+                    if error.as_deref().is_none_or(|value| value.trim().is_empty()) {
+                        return Err("supervisor verdict failure_kind requires error".to_string());
+                    }
+                    if kind == "unavailable" {
+                        if !matches!(verdict, RuntimeVerdict::Continue) {
+                            return Err(
+                                "an unavailable supervisor must degrade to continue".to_string()
+                            );
+                        }
+                        if handoff_target.is_none() {
+                            return Err(
+                                "an unavailable supervisor requires handoff_target".to_string()
+                            );
+                        }
+                    }
                 }
                 validate_verdict_probabilities(probabilities, probability_kind)?;
             }
@@ -589,6 +625,9 @@ mod tests {
                     reason: Some("wrong tool".to_string()),
                     probabilities: Some(json!({"interrupt": -0.1})),
                     probability_kind: Some("logprob".to_string()),
+                    error: None,
+                    failure_kind: None,
+                    handoff_target: Some("local".to_string()),
                 },
             ),
             envelope(
@@ -628,6 +667,9 @@ mod tests {
                 reason: None,
                 probabilities: Some(json!({"continue": 0.9})),
                 probability_kind: Some("logprob".to_string()),
+                error: None,
+                failure_kind: None,
+                handoff_target: Some("local".to_string()),
             },
         )];
         assert!(validate_trace(&invalid)

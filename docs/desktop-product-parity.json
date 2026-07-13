@@ -1,0 +1,74 @@
+{
+  "manifest_version": 1,
+  "release_authority": "apps/homescreen",
+  "legacy_desktop_policy": "extraction_only",
+  "migration_complete": false,
+  "status_values": [
+    "shipped",
+    "partial",
+    "planned",
+    "retired"
+  ],
+  "features": [
+    {
+      "id": "canonical-conversation-runtime",
+      "status": "shipped",
+      "evidence": "Provider-neutral events, Pi and Vercel adapters, immutable run journals, and the one-release native fallback are present."
+    },
+    {
+      "id": "reviewed-desktop-shell",
+      "status": "shipped",
+      "evidence": "The public desktop owns the reviewed cyan and mint shell, compact composer, and four-item navigation."
+    },
+    {
+      "id": "offline-supervisor-fallback",
+      "status": "shipped",
+      "evidence": "A failed supervisor handoff is recorded canonically, attempted once, surfaced to the user, and degrades to continued local generation."
+    },
+    {
+      "id": "runtime-repair-experience",
+      "status": "partial",
+      "evidence": "CLI lifecycle and repair exist; the desktop still needs the reviewed contextual repair prompt on every relevant failure."
+    },
+    {
+      "id": "durable-image-and-chat-persistence",
+      "status": "partial",
+      "evidence": "Images and restart sessions work, but attachment bytes still need content-addressed local storage instead of transcript-embedded data URLs."
+    },
+    {
+      "id": "resumable-model-downloads",
+      "status": "partial",
+      "evidence": "First-use downloads work; background resume, cancellation, and repair-oriented progress remain to be unified."
+    },
+    {
+      "id": "supervision-review-desk",
+      "status": "planned",
+      "evidence": "Canonical verdicts exist; the one-frame review and human labeling workflow has not moved to the public desktop."
+    },
+    {
+      "id": "correction-pair-export-and-metrics",
+      "status": "planned",
+      "evidence": "Run evidence exists; correction export, intervention precision, false-positive, model-share, and overhead reporting remain."
+    },
+    {
+      "id": "remote-review-tiebreaker",
+      "status": "planned",
+      "evidence": "Remote review consent, stability checks, and judge-quality feedback have not moved to the canonical event workflow."
+    },
+    {
+      "id": "unified-experiment-hub",
+      "status": "partial",
+      "evidence": "GEPA, RLM, custom eval, and benchmark capabilities exist, but the reviewed benchmark, ledger, and comparison experience is not one coherent surface."
+    },
+    {
+      "id": "legacy-desktop-retirement-guard",
+      "status": "planned",
+      "evidence": "The public desktop is the release authority, but automation must still prevent new product work or releases from the legacy surface."
+    },
+    {
+      "id": "native-runtime-deletion",
+      "status": "planned",
+      "evidence": "Deletion waits for the full genuine-run observation gate and conformance proof from the canonical runtime."
+    }
+  ]
+}
