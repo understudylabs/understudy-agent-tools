@@ -187,6 +187,8 @@ before(async () => {
         canonical_runtime_rows: ready ? 100 : 99,
         pi_runtime_rows: ready ? 100 : 98,
         compatibility_fallback_rows: ready ? 0 : 1,
+        consecutive_pi_rows: ready ? 100 : 98,
+        remaining_consecutive_pi_rows: ready ? 0 : 2,
         pi_runtime_share: ready ? 1 : 98 / 99,
         compatibility_engine_delete_ready: ready,
         groups: [],
@@ -503,6 +505,8 @@ describe("desktop API CLI", () => {
     assert.equal(value.canonical_runtime_rows, 100);
     assert.equal(value.compatibility_fallback_rows, 0);
     assert.equal(value.remaining_canonical_runtime_rows, 0);
+    assert.equal(value.consecutive_pi_rows, 100);
+    assert.equal(value.remaining_consecutive_pi_rows, 0);
     assert.equal(value.release_cohort_ready, true);
     assert.equal(value.release_evidence.ready, true);
     assert.equal(value.compatibility_engine_delete_ready, true);
@@ -517,6 +521,8 @@ describe("desktop API CLI", () => {
     const pending = JSON.parse(observing.stdout);
     assert.equal(pending.compatibility_fallback_rows, 1);
     assert.equal(pending.remaining_canonical_runtime_rows, 1);
+    assert.equal(pending.consecutive_pi_rows, 98);
+    assert.equal(pending.remaining_consecutive_pi_rows, 2);
     assert.equal(pending.release_evidence.ready, true);
     assert.equal(pending.compatibility_engine_delete_ready, false);
 

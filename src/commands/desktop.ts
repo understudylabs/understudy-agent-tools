@@ -60,6 +60,8 @@ interface DesktopMigrationStatus {
   canonical_runtime_rows?: number;
   pi_runtime_rows?: number;
   compatibility_fallback_rows?: number;
+  consecutive_pi_rows?: number;
+  remaining_consecutive_pi_rows?: number;
   pi_runtime_share?: number | null;
   compatibility_engine_delete_ready?: boolean;
 }
@@ -478,13 +480,19 @@ export function registerDesktopCommand(program: Command): void {
       const canonical = Number(value.canonical_runtime_rows ?? 0);
       const piRows = Number(value.pi_runtime_rows ?? 0);
       const fallbacks = Number(value.compatibility_fallback_rows ?? 0);
+      const consecutivePiRows = Number(value.consecutive_pi_rows ?? piRows);
       const cohortReady =
         value.compatibility_engine_delete_ready === true &&
         canonical >= required &&
         piRows === canonical &&
-        fallbacks === 0;
+        fallbacks === 0 &&
+        consecutivePiRows >= required;
       const remaining = Number(
         value.remaining_canonical_runtime_rows ?? Math.max(0, required - canonical),
+      );
+      const remainingConsecutive = Number(
+        value.remaining_consecutive_pi_rows
+          ?? Math.max(0, required - consecutivePiRows),
       );
       const releaseEvidence = evaluateDesktopRuntimeReleaseEvidence({
         app_version: value.app_version ?? "unknown",
@@ -497,6 +505,8 @@ export function registerDesktopCommand(program: Command): void {
         ...value,
         required_canonical_runtime_rows: required,
         remaining_canonical_runtime_rows: remaining,
+        consecutive_pi_rows: consecutivePiRows,
+        remaining_consecutive_pi_rows: remainingConsecutive,
         observed_row_limit: value.observed_row_limit ?? opts.limit,
         release_cohort_ready: cohortReady,
         release_evidence: releaseEvidence,
@@ -513,6 +523,7 @@ export function registerDesktopCommand(program: Command): void {
           `release cohort: app ${value.app_version ?? "unknown"}, runtime ${value.runtime_version ?? "unknown"}`,
           `canonical runs: ${canonical}/${required} (${remaining} remaining)`,
           `Pi runs: ${piRows} (${share}); compatibility fallbacks: ${fallbacks}`,
+          `clean Pi streak: ${consecutivePiRows}/${required} (${remainingConsecutive} remaining)`,
           `conformance evidence: ${releaseEvidence.conformance.ready ? "ready" : "missing or stale"}`,
           `startup/memory evidence: ${releaseEvidence.readiness.ready ? "ready" : "missing or stale"}`,
           ...releaseEvidence.reasons.map((reason) => `blocked: ${reason}`),
