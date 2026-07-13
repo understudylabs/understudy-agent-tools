@@ -305,6 +305,7 @@ export function ChatPane({ resetToken }: { resetToken: number }) {
   const [droppedWorkload, setDroppedWorkload] = useState<DroppedWorkload | null>(null);
   const observedResetToken = useRef(false);
   const dropInFlight = useRef(false);
+  const dropRequestGeneration = useRef(0);
 
   const refreshModels = async () => {
     try {
@@ -398,13 +399,15 @@ export function ChatPane({ resetToken }: { resetToken: number }) {
           return;
         }
         dropInFlight.current = true;
+        const requestGeneration = dropRequestGeneration.current + 1;
+        dropRequestGeneration.current = requestGeneration;
         setDropRunning(true);
         setDroppedWorkload(null);
         setErr(null);
         setNotice("Creating a local metadata-only Workload Card…");
         void invoke<DroppedWorkload>("compile_dropped_workload", { path: paths[0] })
           .then((result) => {
-            if (disposed) return;
+            if (disposed || dropRequestGeneration.current !== requestGeneration) return;
             setDroppedWorkload(result);
             setNotice(
               result.truncated
@@ -413,9 +416,10 @@ export function ChatPane({ resetToken }: { resetToken: number }) {
             );
           })
           .catch((error) => {
-            if (!disposed) setErr(String(error));
+            if (!disposed && dropRequestGeneration.current === requestGeneration) setErr(String(error));
           })
           .finally(() => {
+            if (dropRequestGeneration.current !== requestGeneration) return;
             dropInFlight.current = false;
             if (!disposed) setDropRunning(false);
           });
@@ -699,6 +703,8 @@ export function ChatPane({ resetToken }: { resetToken: number }) {
     setNotice(null);
     setSessionId(crypto.randomUUID());
     setAssistantSpeaking(false);
+    dropRequestGeneration.current += 1;
+    dropInFlight.current = false;
     setDroppedWorkload(null);
     setDropRunning(false);
     setPersonaReady(false);

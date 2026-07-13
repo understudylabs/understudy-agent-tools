@@ -169,6 +169,8 @@ test("desktop compiles one dropped path through the bounded public CLI", async (
 
   assert.match(chat, /getCurrentWebview\(\)\s*\.onDragDropEvent/);
   assert.match(chat, /"compile_dropped_workload"/);
+  assert.match(chat, /dropRequestGeneration\.current !== requestGeneration/);
+  assert.match(chat, /dropRequestGeneration\.current \+= 1/);
   assert.match(chat, /Drop one file or folder/);
   assert.match(chat, /Metadata only · stays on this Mac/);
   assert.match(chat, /Review next steps/);
