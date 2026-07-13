@@ -60,6 +60,8 @@ pub struct MlxRuntimeStatus {
 /// The port the MLX server binds — matches Understudy's configured local base URL.
 pub const MLX_PORT: u16 = 8089;
 pub const LOCAL_BASE_URL: &str = "http://127.0.0.1:8089/v1";
+const MIN_CONTEXT_WINDOW_TOKENS: u64 = 1_024;
+const MAX_CONTEXT_WINDOW_TOKENS: u64 = 2_000_000;
 
 /// Marker dropped at the start of a snapshot download and removed only after
 /// every file has landed and verified. While it exists the snapshot must not
@@ -76,6 +78,26 @@ pub fn models_dir() -> Option<PathBuf> {
     }
     let home = std::env::var_os("HOME")?;
     Some(PathBuf::from(home).join(".understudy").join("models"))
+}
+
+/// Read the provider's native attention window from a local MLX model config.
+/// The conversation runtime keeps this separate from its smaller logical
+/// compaction boundary so long inputs remain possible without letting every
+/// multi-turn session grow raw KV state to the model maximum.
+pub fn context_window_tokens(model_path: &str) -> Option<u64> {
+    let raw = std::fs::read_to_string(Path::new(model_path).join("config.json")).ok()?;
+    let config: serde_json::Value = serde_json::from_str(&raw).ok()?;
+    [
+        "/text_config/max_position_embeddings",
+        "/max_position_embeddings",
+        "/model_config/max_position_embeddings",
+        "/text_config/context_length",
+        "/context_length",
+        "/n_ctx",
+    ]
+    .into_iter()
+    .find_map(|pointer| config.pointer(pointer).and_then(serde_json::Value::as_u64))
+    .filter(|tokens| (MIN_CONTEXT_WINDOW_TOKENS..=MAX_CONTEXT_WINDOW_TOKENS).contains(tokens))
 }
 
 /// Live model catalog served by the snapshot service.
@@ -326,6 +348,48 @@ mod tests {
         std::fs::remove_file(dir.join(INCOMPLETE_MARKER)).unwrap();
         assert!(snapshot_ready(&dir));
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn reads_nested_and_top_level_native_context_windows() {
+        let nested = temp_snapshot_dir("nested-context-window");
+        std::fs::write(
+            nested.join("config.json"),
+            r#"{"text_config":{"max_position_embeddings":262144}}"#,
+        )
+        .unwrap();
+        assert_eq!(
+            context_window_tokens(nested.to_str().unwrap()),
+            Some(262_144)
+        );
+        let top_level = temp_snapshot_dir("top-level-context-window");
+        std::fs::write(
+            top_level.join("config.json"),
+            r#"{"max_position_embeddings":131072}"#,
+        )
+        .unwrap();
+        assert_eq!(
+            context_window_tokens(top_level.to_str().unwrap()),
+            Some(131_072),
+        );
+        let _ = std::fs::remove_dir_all(nested);
+        let _ = std::fs::remove_dir_all(top_level);
+    }
+
+    #[test]
+    fn rejects_missing_malformed_and_implausible_context_windows() {
+        let missing = temp_snapshot_dir("missing-context-window");
+        std::fs::write(missing.join("config.json"), "{}").unwrap();
+        assert_eq!(context_window_tokens(missing.to_str().unwrap()), None);
+        let too_large = temp_snapshot_dir("large-context-window");
+        std::fs::write(
+            too_large.join("config.json"),
+            r#"{"max_position_embeddings":3000000}"#,
+        )
+        .unwrap();
+        assert_eq!(context_window_tokens(too_large.to_str().unwrap()), None);
+        let _ = std::fs::remove_dir_all(missing);
+        let _ = std::fs::remove_dir_all(too_large);
     }
 
     #[test]

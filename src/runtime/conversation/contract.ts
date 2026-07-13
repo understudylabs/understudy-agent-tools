@@ -104,6 +104,16 @@ export const runtimeRequestSchema = z
   })
   .strict()
   .superRefine((request, context) => {
+    if (
+      request.provider_context_window_tokens != null &&
+      request.provider_context_window_tokens < request.context_window_tokens
+    ) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["provider_context_window_tokens"],
+        message: "provider context window must be at least the logical context window",
+      });
+    }
     if (request.supervision && request.runtime_backend !== "pi") {
       context.addIssue({
         code: z.ZodIssueCode.custom,
@@ -399,6 +409,23 @@ export function validateRuntimeTrace(values: readonly unknown[]): RuntimeEventEn
     if (["message", "delta", "reasoning_delta"].includes(event)) {
       requiredString(data, "role", `${event}.role`);
       if (typeof data.text !== "string") throw new Error(`${event}.text must be a string`);
+      if (event === "message" && "logical_context_window_tokens" in data) {
+        const logical = nonNegativeInteger(
+          data,
+          "logical_context_window_tokens",
+          "message.logical_context_window_tokens",
+        );
+        const provider = nonNegativeInteger(
+          data,
+          "provider_context_window_tokens",
+          "message.provider_context_window_tokens",
+        );
+        if (logical < 1_024 || provider < logical) {
+          throw new Error(
+            "message context windows require provider >= logical >= 1024 tokens",
+          );
+        }
+      }
     } else if (event === "tool_call") {
       const callId = requiredString(data, "call_id", "tool_call.call_id");
       const name = requiredString(data, "name", "tool_call.name");

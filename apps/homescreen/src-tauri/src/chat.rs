@@ -2153,6 +2153,16 @@ fn sidecar_tool_definitions(allow_sidekick_delegation: bool) -> Vec<Value> {
         .collect()
 }
 
+const LOCAL_LOGICAL_CONTEXT_WINDOW_TOKENS: u64 = 32_768;
+
+fn local_context_windows(binding: &RouteBinding) -> Option<(u64, u64)> {
+    if binding.route != "local" {
+        return None;
+    }
+    let provider = crate::models::context_window_tokens(&binding.model_field)?;
+    Some((provider.min(LOCAL_LOGICAL_CONTEXT_WINDOW_TOKENS), provider))
+}
+
 fn sidecar_run_request(
     app: &AppHandle,
     original: &[ChatMsg],
@@ -2190,6 +2200,10 @@ fn sidecar_run_request(
         request["provider_api_key"] = json!(binding.bearer.as_deref().ok_or_else(|| {
             "Anthropic route lost its in-memory provider credential".to_string()
         })?);
+    }
+    if let Some((logical, provider)) = local_context_windows(binding) {
+        request["context_window_tokens"] = json!(logical);
+        request["provider_context_window_tokens"] = json!(provider);
     }
     if let Some(url) = tool_executor_url {
         request["tool_executor_url"] = json!(url);
@@ -4156,10 +4170,9 @@ mod tests {
             .pointer("/function/parameters/properties/tool_name/enum")
             .and_then(Value::as_array)
             .expect("wrapper names are enumerated");
-        assert!(wrapped_names.iter().all(|name| {
-            name.as_str()
-                .is_some_and(|name| !direct.contains(name))
-        }));
+        assert!(wrapped_names
+            .iter()
+            .all(|name| { name.as_str().is_some_and(|name| !direct.contains(name)) }));
     }
 
     #[test]
@@ -4217,6 +4230,36 @@ mod tests {
             sidecar_provider_base_url("https://gateway.example/v1/chat/completions"),
             "https://gateway.example/v1"
         );
+    }
+
+    #[test]
+    fn local_runtime_separates_logical_and_native_provider_windows() {
+        let dir = std::env::temp_dir().join(format!(
+            "understudy-chat-context-window-test-{}",
+            std::process::id(),
+        ));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(
+            dir.join("config.json"),
+            r#"{"text_config":{"max_position_embeddings":262144}}"#,
+        )
+        .unwrap();
+        let local = RouteBinding {
+            route: "local".to_string(),
+            url: "http://127.0.0.1:8091/v1/chat/completions".to_string(),
+            bearer: None,
+            model_field: dir.to_string_lossy().into_owned(),
+        };
+        assert_eq!(local_context_windows(&local), Some((32_768, 262_144)));
+        let cloud = RouteBinding {
+            route: "cloud".to_string(),
+            url: "https://gateway.example/v1/chat/completions".to_string(),
+            bearer: Some("fixture".to_string()),
+            model_field: local.model_field.clone(),
+        };
+        assert_eq!(local_context_windows(&cloud), None);
+        let _ = std::fs::remove_dir_all(dir);
     }
 
     #[test]
