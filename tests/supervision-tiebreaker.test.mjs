@@ -6,6 +6,7 @@ import { after, before, test } from "node:test";
 
 import {
   TIEBREAKER_MODEL,
+  TIEBREAKER_PROMPT_PATH,
   analyzeTiebreaker,
   buildRemoteReviewEvidence,
   parseTiebreakerDecision,
@@ -29,6 +30,7 @@ const input = {
   user_request: "Return exactly two words.",
   small_model: "understudy-small",
   small_output: "three incorrect words",
+  decision_phase: "streaming",
   reason: "The answer contains three words instead of two.",
   reason_source: "supervisor",
   tool_rounds_before_decision: 0,
@@ -73,6 +75,7 @@ test("remote evidence is strictly pre-intervention and bounded", () => {
   const text = JSON.stringify(evidence);
   assert.match(text, /three incorrect words/);
   assert.match(text, /max_tool_rounds/);
+  assert.equal(evidence.decision_phase, "streaming");
   assert.doesNotMatch(text, /teacher output/);
   assert.doesNotMatch(text, /must stay local/);
   assert.equal(evidence.recorded_supervisor_action, "interrupt");
@@ -110,6 +113,14 @@ test("provider routes and response contract are exact", () => {
       supervisor_reason_quality: "grounded",
     },
   );
+});
+
+test("judge policy distinguishes complete, unfinished, and recoverable output", () => {
+  const prompt = readFileSync(TIEBREAKER_PROMPT_PATH, "utf8");
+  assert.match(prompt, /already satisfies every requested constraint, choose stop/);
+  assert.match(prompt, /use decision_phase/);
+  assert.match(prompt, /Do not infer that a streaming prefix is final/);
+  assert.match(prompt, /specific recoverable defect already present/);
 });
 
 test("analysis requires explicit consent before any remote request", async () => {
@@ -280,7 +291,7 @@ test("frozen eval defaults to a no-call dry run with immutable suite identity", 
   assert.equal(result.rows.length, 0);
   assert.equal(result.manifest.live, false);
   assert.equal(result.manifest.examples.length, 5);
-  assert.equal(result.manifest.suite_ref, "supervision-tiebreaker-eval-v1.jsonl");
+  assert.equal(result.manifest.suite_ref, "supervision-tiebreaker-eval-v2.jsonl");
   assert.equal("suite_path" in result.manifest, false);
   assert.match(result.manifest.suite_sha256, /^[a-f0-9]{64}$/);
   assert.equal(result.summary.recommendation, "plumbing_only_collect_more_evidence");

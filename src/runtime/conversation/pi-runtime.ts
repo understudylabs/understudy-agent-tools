@@ -858,6 +858,7 @@ function verdictEventData(
   supervisorModel: string,
   boundaryOrdinal: number,
   afterChars: number,
+  decisionPhase: "streaming" | "final",
   markerId?: string,
 ): Record<string, unknown> {
   return {
@@ -870,6 +871,7 @@ function verdictEventData(
     probability_kind: decision.probabilities ? "logprob" : undefined,
     boundary_ordinal: boundaryOrdinal,
     after_chars: afterChars,
+    decision_phase: decisionPhase,
     raw: decision.raw,
     error: decision.error,
     failure_kind: decision.failureKind,
@@ -968,6 +970,7 @@ async function runSupervisedStudentSegment(options: {
               config.supervisor.model,
               thisBoundary,
               afterChars,
+              "streaming",
               currentMarker,
             ),
           );
@@ -1089,6 +1092,7 @@ async function runSupervisedStudentSegment(options: {
           config.supervisor.model,
           thisBoundary,
           afterChars,
+          "final",
           markerId,
         ),
       );

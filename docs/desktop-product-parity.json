@@ -154,8 +154,8 @@
     },
     {
       "id": "remote-review-tiebreaker",
-      "status": "partial",
-      "evidence": "The public CLI and desktop provide destination-bound opt-in GLM 5.2 review over bounded pre-intervention evidence, exact served-model validation, private content-addressed analysis caching, offline-safe fallback, and explicit human judge-quality feedback. The 2026-07-13 frozen 10-case live qualification completed with 100% contract and route validity, but only 70% action accuracy and two high-confidence wrong actions, so the recorded recommendation is do_not_enable and the advisory remains off by default pending prompt-policy repair and requalification."
+      "status": "shipped",
+      "evidence": "The public CLI and desktop provide destination-bound opt-in GLM 5.2 review over bounded pre-intervention evidence, including the canonical streaming-versus-final decision phase, exact served-model validation, private content-addressed analysis caching, offline-safe fallback, and explicit human judge-quality feedback. The frozen 12-case v2 live qualification reached 100% contract and route validity, 91.7% action and assessment accuracy, 83.3% reason-quality accuracy, and zero high-confidence wrong actions, making it eligible for an advisory-only opt-in pilot. It remains off by default and human labels remain final."
     },
     {
       "id": "unified-experiment-hub",

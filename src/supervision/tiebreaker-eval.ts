@@ -13,7 +13,7 @@ import {
 } from "./tiebreaker.js";
 
 export const TIEBREAKER_EVAL_SUITE_PATH = fileURLToPath(
-  new URL("../../runtime-assets/supervision-tiebreaker-eval-v1.jsonl", import.meta.url),
+  new URL("../../runtime-assets/supervision-tiebreaker-eval-v2.jsonl", import.meta.url),
 );
 export const TIEBREAKER_EVAL_MANIFEST_SCHEMA =
   "understudy.supervision.tiebreaker_eval_manifest.v1";
@@ -22,11 +22,15 @@ export const TIEBREAKER_EVAL_SUMMARY_SCHEMA =
 export const CONSERVATIVE_CASE_FUSE_USD = 0.02;
 
 const EvalCaseSchema = z.object({
-  schema: z.literal("understudy.supervision.tiebreaker_eval_case.v1"),
+  schema: z.enum([
+    "understudy.supervision.tiebreaker_eval_case.v1",
+    "understudy.supervision.tiebreaker_eval_case.v2",
+  ]),
   case_id: z.string().min(1),
   split: z.enum(["validation", "test"]),
   user_request: z.string(),
   small_output_at_decision: z.string(),
+  decision_phase: z.enum(["streaming", "final"]).optional(),
   small_model: z.string().optional(),
   tool_rounds_before_decision: z.number().int().nonnegative().optional(),
   max_tool_rounds: z.number().int().positive().optional(),
@@ -44,6 +48,14 @@ const EvalCaseSchema = z.object({
     "grounded", "partly_grounded", "unsupported", "missing", "unclear",
   ]),
   ground_truth: z.string(),
+}).superRefine((value, context) => {
+  if (value.schema.endsWith(".v2") && !value.decision_phase) {
+    context.addIssue({
+      code: "custom",
+      path: ["decision_phase"],
+      message: "v2 cases require decision_phase",
+    });
+  }
 });
 
 type EvalCase = z.infer<typeof EvalCaseSchema>;
@@ -93,6 +105,7 @@ function evalInput(testCase: EvalCase) {
     user_request: testCase.user_request,
     small_model: testCase.small_model ?? "frozen-eval-small",
     small_output: testCase.small_output_at_decision,
+    decision_phase: testCase.decision_phase ?? "unknown",
     reason: testCase.recorded_supervisor_reason,
     reason_source: testCase.supervisor_reason_source ?? "supervisor",
     tool_rounds_before_decision: testCase.tool_rounds_before_decision ?? 0,
@@ -216,7 +229,7 @@ export async function runTiebreakerEval(options: TiebreakerEvalOptions): Promise
     examples: selected.map((row) => row.case_id),
     suite_ref: options.suitePath
       ? basename(suitePath)
-      : "runtime-assets/supervision-tiebreaker-eval-v1.jsonl",
+      : "runtime-assets/supervision-tiebreaker-eval-v2.jsonl",
     suite_sha256: sha256(raw),
     prompt_sha256: sha256(prompt),
     conservative_case_fuse_usd: CONSERVATIVE_CASE_FUSE_USD,

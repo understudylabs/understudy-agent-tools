@@ -761,6 +761,7 @@ test("Pi runtime deterministically interrupts a student and continues with the t
   const interruption = events.find((event) => event.event === "student_interruption");
   const continuation = events.find((event) => event.event === "teacher_continuation");
   assert.equal(verdict.data.verdict, "interrupt");
+  assert.equal(verdict.data.decision_phase, "streaming");
   assert.equal(verdict.data.probability_kind, "logprob");
   assert.equal(interruption.data.partial_text, "Paris is in Germany.");
   assert.equal(interruption.data.marker_id, verdict.data.marker_id);
@@ -924,11 +925,19 @@ test("canonical verdict evidence rejects impossible positive logprobs", () => {
       marker_id: "run-probability:verdict:0",
       probabilities: { continue: 0.9 },
       probability_kind: "logprob",
+      decision_phase: "final",
     },
   };
   assert.throws(
     () => validateRuntimeTrace([verdict]),
     /logprob continue must be at most zero/,
+  );
+  const invalidPhase = structuredClone(verdict);
+  invalidPhase.data.probabilities = { continue: -0.1 };
+  invalidPhase.data.decision_phase = "between";
+  assert.throws(
+    () => validateRuntimeTrace([invalidPhase]),
+    /unknown supervisor verdict decision_phase between/,
   );
 });
 

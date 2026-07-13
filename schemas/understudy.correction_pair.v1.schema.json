@@ -59,6 +59,10 @@
       "type": ["integer", "null"],
       "minimum": 0
     },
+    "decision_phase": {
+      "type": ["string", "null"],
+      "enum": ["streaming", "final", null]
+    },
     "captured_at": {
       "type": "string",
       "minLength": 1

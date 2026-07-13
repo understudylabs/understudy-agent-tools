@@ -34,6 +34,7 @@ export type SupervisionReviewItem = {
   reason_source: string;
   supervisor_raw?: string | null;
   boundary_ordinal?: number | null;
+  decision_phase?: "streaming" | "final" | null;
   verdict_logprobs?: Record<string, number> | null;
   intervention_at?: number | null;
   tool_rounds_before_decision: number;

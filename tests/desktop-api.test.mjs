@@ -298,6 +298,7 @@ before(async () => {
           verdict_event_id: "run-desktop:3",
           verdict_sequence: 3,
           boundary_ordinal: 0,
+          decision_phase: "streaming",
           captured_at: "2026-07-13T00:00:00Z",
           user_request: "inspect",
           student: {
@@ -476,6 +477,7 @@ describe("desktop API CLI", () => {
     assert.equal(pairSchema.properties.schema_version.const, "understudy.correction_pair.v1");
     assert.ok(pairSchema.required.includes("run_id"));
     assert.ok(pairSchema.required.includes("human_judgment"));
+    assert.deepEqual(pairSchema.properties.decision_phase.enum, ["streaming", "final", null]);
     assert.equal(
       metricsSchema.properties.objective.const,
       "maximize_correct_interventions_not_minimize_rejections",
