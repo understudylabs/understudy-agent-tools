@@ -42,14 +42,9 @@ const ICONS: Record<PaneId, ReactNode> = {
     </svg>
   ),
   rlm: (
-    // Fan-out tree: one root, three workers, one reduce.
     <svg viewBox="0 0 16 16" fill="none" className="nav-icon">
-      <circle cx="8" cy="2.8" r="1.6" stroke="currentColor" strokeWidth="1.2" />
-      <circle cx="3" cy="8" r="1.5" stroke="currentColor" strokeWidth="1.2" />
-      <circle cx="8" cy="8" r="1.5" stroke="currentColor" strokeWidth="1.2" />
-      <circle cx="13" cy="8" r="1.5" stroke="currentColor" strokeWidth="1.2" />
-      <circle cx="8" cy="13.2" r="1.6" stroke="currentColor" strokeWidth="1.2" />
-      <path d="M7 4 4 6.7M8 4.4V6.5M9 4l3 2.7M4 9.2l3 2.8M8 9.5v2.1M12 9.2l-3 2.8" stroke="currentColor" strokeWidth="1.1" strokeLinecap="round" />
+      <path d="M6.5 2h3M8 2v4.2l4 6.3c.5.8 0 1.5-.9 1.5H4.9c-.9 0-1.4-.7-.9-1.5l4-6.3" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" />
+      <path d="M5.5 10.5h5" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" opacity=".72" />
     </svg>
   ),
   "training-evals": (
@@ -108,20 +103,13 @@ const ICONS: Record<PaneId, ReactNode> = {
 const SERVING_NAV: { id: PaneId; label: string }[] = [
   { id: "chat", label: "Chat" },
   { id: "status", label: "Status" },
-  { id: "capture", label: "Capture" },
   { id: "models", label: "Models" },
-  { id: "rlm", label: "RLM" },
-  { id: "traces", label: "Traces" },
-  { id: "usage", label: "Usage" },
+  { id: "rlm", label: "Experiments" },
 ];
 
+// Keep the implementation available to agents and deep links while the human
+// navigation stays focused on the four product-level jobs reviewed in Train.
 const TRAINING_NAV: { id: PaneId; label: string }[] = [
-  { id: "training-evals", label: "Evals" },
-  { id: "training-optimization", label: "Optimization" },
-  { id: "training-datasets", label: "Datasets" },
-  { id: "training-finetuning", label: "Fine-tuning" },
-  { id: "training-rl", label: "RL" },
-  { id: "training-jobs", label: "Jobs" },
 ];
 
 export function Sidebar({
@@ -147,7 +135,7 @@ export function Sidebar({
         </div>
       ))}
 
-      <div className="nav-section">Training</div>
+      {TRAINING_NAV.length > 0 && <div className="nav-section">Training</div>}
       {TRAINING_NAV.map((n) => (
         <div
           key={n.id}

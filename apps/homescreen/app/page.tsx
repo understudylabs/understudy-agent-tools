@@ -33,11 +33,14 @@ export default function Page() {
       "status",
       "chat",
       "models",
-      "capture",
       "account",
+      "rlm",
+    ];
+    const hidden = [
+      "capture",
       "usage",
       "traces",
-      "rlm",
+      "training",
       "training-evals",
       "training-optimization",
       "training-datasets",
@@ -46,10 +49,11 @@ export default function Page() {
       "training-jobs",
     ];
     const u = listen<{ pane?: string }>("server-focus", (e) => {
+      const requested = e.payload?.pane;
       const p = (
-        e.payload?.pane === "marketplace" ? "models" :
-        e.payload?.pane === "training" ? "training-jobs" :
-        e.payload?.pane
+        requested === "marketplace" ? "models" :
+        requested && hidden.includes(requested) ? "status" :
+        requested
       ) as PaneId;
       if (p && (valid as string[]).includes(p)) setPane(p);
     });
