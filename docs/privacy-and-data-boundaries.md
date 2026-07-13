@@ -15,6 +15,7 @@ the CLI may send bounded product telemetry as documented in
 | Source snippets | code fragments, prompt builders, parser logic | do not print, upload, or commit without approval |
 | Prompt bodies | system prompts, messages, templates | local-only unless explicitly approved |
 | Completions | model outputs, judge outputs, failed rows | local-only unless explicitly approved |
+| Desktop chat images | screenshots and other supported image attachments | private app-data files addressed by content hash; SQLite stores references only |
 | Traces | request/response payloads, spans, usage rows | metadata-only by default |
 | Eval rows | JSONL, CSV, YAML, golden fixtures | local-only until a redaction and split plan exists |
 | Secrets | API keys, tokens, credentials, local env files | never ask for chat-pasted values; never print values |
@@ -51,6 +52,16 @@ completions, or tool payloads to stdout.
 Gateway probes are explicit live calls. BYOK provider keys are read only from an
 environment variable named by `--byok-env`; they are not requested in chat, not
 persisted, and not printed.
+
+## Desktop Chat Storage
+
+Desktop chat history stays under the operating system's private app-data
+directory. Image bytes are validated, capped at 8 MB each, written atomically
+with owner-only permissions on Unix, and referenced from SQLite by SHA-256
+content ID. Reopening a chat hydrates only bounded previews. Starting a new chat
+deletes the previous session's image directory on a best-effort basis; removing
+the desktop app-data directory deletes chat history and its attachments
+together.
 
 ## Never Collected By Default
 

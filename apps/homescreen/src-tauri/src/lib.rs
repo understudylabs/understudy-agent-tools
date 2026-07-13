@@ -6,6 +6,7 @@ mod agent_ops;
 mod bin;
 mod bootstrap;
 mod chat;
+mod chat_attachments;
 mod commands;
 mod conversation_runtime;
 mod conversation_sidecar;
@@ -183,6 +184,9 @@ pub fn run() {
             commands::chat_route_metrics,
             commands::chat_session_latest,
             commands::chat_session_save,
+            chat_attachments::chat_attachments_store,
+            chat_attachments::chat_attachments_hydrate,
+            chat_attachments::chat_attachments_delete_session,
             commands::run_fusion_benchmark,
             commands::run_fusion_benchmark_matrix,
             commands::run_fusion_benchmark_matrix_live,

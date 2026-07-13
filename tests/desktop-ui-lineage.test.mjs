@@ -14,6 +14,14 @@ const runtimeRepairLibPath = new URL(
   "../apps/homescreen/app/lib/runtime-repair.ts",
   import.meta.url,
 );
+const attachmentLibPath = new URL(
+  "../apps/homescreen/app/lib/chat-attachments.ts",
+  import.meta.url,
+);
+const attachmentRustPath = new URL(
+  "../apps/homescreen/src-tauri/src/chat_attachments.rs",
+  import.meta.url,
+);
 const parityPath = new URL("../docs/desktop-product-parity.json", import.meta.url);
 
 test("public desktop preserves the reviewed Train interaction language", async () => {
@@ -67,6 +75,29 @@ test("desktop has one managed runtime repair surface", async () => {
   assert.doesNotMatch(repair, /understudy update/);
 });
 
+test("desktop persists image references instead of transcript-embedded bytes", async () => {
+  const [chat, attachmentLib, attachmentRust] = await Promise.all([
+    readFile(chatPath, "utf8"),
+    readFile(attachmentLibPath, "utf8"),
+    readFile(attachmentRustPath, "utf8"),
+  ]);
+
+  assert.match(chat, /"chat_attachments_store"/);
+  assert.match(chat, /"chat_attachments_hydrate"/);
+  assert.match(chat, /"chat_attachments_delete_session"/);
+  assert.match(chat, /persistableChatMessages\(messages\)/);
+  assert.match(attachmentLib, /previewUrl: _previewUrl/);
+  assert.match(
+    attachmentLib,
+    /return previewUrl \? \{ \.\.\.attachment, previewUrl \} : attachment;/,
+  );
+  assert.match(attachmentRust, /join\("chat-attachments"\)/);
+  assert.match(attachmentRust, /content_id\(&bytes\)/);
+  assert.match(attachmentRust, /from_mode\(0o700\)/);
+  assert.match(attachmentRust, /options\.mode\(0o600\)/);
+  assert.match(attachmentRust, /migrate_legacy_messages/);
+});
+
 test("desktop migration claims stay tied to explicit product parity", async () => {
   const parity = JSON.parse(await readFile(parityPath, "utf8"));
   assert.equal(parity.release_authority, "apps/homescreen");
@@ -76,6 +107,7 @@ test("desktop migration claims stay tied to explicit product parity", async () =
   for (const required of [
     "offline-supervisor-fallback",
     "runtime-repair-experience",
+    "durable-image-and-chat-persistence",
     "supervision-review-desk",
     "correction-pair-export-and-metrics",
     "unified-experiment-hub",
@@ -85,6 +117,10 @@ test("desktop migration claims stay tied to explicit product parity", async () =
   }
   assert.equal(
     parity.features.find((feature) => feature.id === "runtime-repair-experience")?.status,
+    "shipped",
+  );
+  assert.equal(
+    parity.features.find((feature) => feature.id === "durable-image-and-chat-persistence")?.status,
     "shipped",
   );
   for (const feature of parity.features) {

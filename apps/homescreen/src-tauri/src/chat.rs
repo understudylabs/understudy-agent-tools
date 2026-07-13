@@ -57,24 +57,10 @@ pub struct ChatMsg {
     pub role: String,
     pub content: String,
     #[serde(default)]
-    pub attachments: Vec<ChatAttachment>,
+    pub attachments: Vec<crate::chat_attachments::ChatAttachmentRef>,
 }
 
-#[derive(Clone, Deserialize)]
-pub struct ChatAttachment {
-    pub id: String,
-    pub filename: String,
-    pub media_type: String,
-    pub data_url: String,
-}
-
-#[derive(Clone, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub(crate) struct AgentChatAttachmentUpload {
-    pub(crate) filename: String,
-    pub(crate) media_type: String,
-    pub(crate) data_url: String,
-}
+pub(crate) type AgentChatAttachmentUpload = crate::chat_attachments::ChatAttachmentUpload;
 
 #[derive(Serialize)]
 pub struct BenchmarkChatResult {
@@ -2011,35 +1997,11 @@ fn sidecar_provider_base_url(endpoint: &str) -> String {
         .to_string()
 }
 
-fn validate_chat_attachment(attachment: &ChatAttachment) -> Result<usize, String> {
-    use base64::Engine as _;
-    use sha2::Digest as _;
-
-    if attachment.filename.trim().is_empty() || attachment.filename.len() > 200 {
-        return Err("image filename must be between 1 and 200 bytes".to_string());
-    }
-    if !attachment.media_type.starts_with("image/") {
-        return Err("image media type must start with image/".to_string());
-    }
-    let prefix = format!("data:{};base64,", attachment.media_type);
-    let encoded = attachment
-        .data_url
-        .strip_prefix(&prefix)
-        .ok_or_else(|| "image data URL does not match its media type".to_string())?;
-    let bytes = base64::engine::general_purpose::STANDARD
-        .decode(encoded)
-        .map_err(|_| "image data URL contains invalid base64".to_string())?;
-    if bytes.is_empty() || bytes.len() > 8 * 1024 * 1024 {
-        return Err("image must be between 1 byte and 8 MB".to_string());
-    }
-    let digest = format!("{:x}", sha2::Sha256::digest(&bytes));
-    if digest != attachment.id {
-        return Err("image content hash does not match its id".to_string());
-    }
-    Ok(bytes.len())
-}
-
-fn openai_chat_message(message: &ChatMsg) -> Result<Value, String> {
+fn openai_chat_message(
+    app: &AppHandle,
+    session_id: &str,
+    message: &ChatMsg,
+) -> Result<Value, String> {
     if message.attachments.is_empty() {
         return Ok(json!({ "role": message.role, "content": message.content }));
     }
@@ -2050,15 +2012,19 @@ fn openai_chat_message(message: &ChatMsg) -> Result<Value, String> {
         return Err("at most four image attachments are allowed per message".to_string());
     }
     let mut content = vec![json!({ "type": "text", "text": message.content })];
-    let mut total_bytes = 0usize;
+    let mut total_bytes = 0u64;
     for attachment in &message.attachments {
-        total_bytes = total_bytes.saturating_add(validate_chat_attachment(attachment)?);
+        crate::chat_attachments::validate_ref(attachment)?;
+        total_bytes = total_bytes.saturating_add(crate::chat_attachments::attachment_byte_count(
+            app, session_id, attachment,
+        )?);
         if total_bytes > 24 * 1024 * 1024 {
             return Err("combined image attachments must not exceed 24 MB".to_string());
         }
+        let data_url = crate::chat_attachments::resolve_data_url(app, session_id, attachment)?;
         content.push(json!({
             "type": "image_url",
-            "image_url": { "url": attachment.data_url },
+            "image_url": { "url": data_url },
         }));
     }
     Ok(json!({ "role": message.role, "content": content }))
@@ -2068,10 +2034,10 @@ fn sidecar_runtime_messages(
     original: &[ChatMsg],
     outbound: &[Value],
 ) -> Result<Vec<Value>, String> {
-    let attachment_meta: HashMap<&str, &ChatAttachment> = original
+    let attachment_meta: HashMap<&str, &crate::chat_attachments::ChatAttachmentRef> = original
         .iter()
         .flat_map(|message| message.attachments.iter())
-        .map(|attachment| (attachment.data_url.as_str(), attachment))
+        .map(|attachment| (attachment.id.as_str(), attachment))
         .collect();
     outbound
         .iter()
@@ -2104,15 +2070,17 @@ fn sidecar_runtime_messages(
                             .pointer("/image_url/url")
                             .and_then(Value::as_str)
                             .ok_or_else(|| "runtime image is missing its data URL".to_string())?;
-                        let metadata = attachment_meta.get(data_url).ok_or_else(|| {
+                        let id = crate::chat_attachments::data_url_content_id(data_url)
+                            .ok_or_else(|| "runtime image data URL is invalid".to_string())?;
+                        let metadata = attachment_meta.get(id.as_str()).ok_or_else(|| {
                             "runtime image metadata does not match the submitted attachment"
                                 .to_string()
                         })?;
                         attachments.push(json!({
-                            "id": metadata.id,
+                            "id": id,
                             "filename": metadata.filename,
                             "media_type": metadata.media_type,
-                            "data_url": metadata.data_url,
+                            "data_url": data_url,
                         }));
                     }
                     _ => return Err("conversation runtime message part is unsupported".to_string()),
@@ -2238,47 +2206,23 @@ pub(crate) fn agent_sidecar_request(
     mgr: &Residency,
     input: AgentSidecarRequest<'_>,
 ) -> Result<Value, String> {
-    use sha2::Digest as _;
-
-    if input.attachments.len() > 4 {
-        return Err("at most four image attachments are allowed per message".to_string());
-    }
-    let decoded_attachments = input
-        .attachments
+    crate::chat_attachments::validate_uploads(input.attachments)?;
+    let attachments = if input.attachments.is_empty() {
+        Vec::new()
+    } else {
+        crate::chat_attachments::store_uploads(app, input.session_id, input.attachments.to_vec())?
+    };
+    let total_bytes = attachments
         .iter()
-        .map(|upload| {
-            let prefix = format!("data:{};base64,", upload.media_type);
-            let encoded = upload
-                .data_url
-                .strip_prefix(&prefix)
-                .ok_or_else(|| "image data URL does not match its media type".to_string())?;
-            let bytes = {
-                use base64::Engine as _;
-                base64::engine::general_purpose::STANDARD
-                    .decode(encoded)
-                    .map_err(|_| "image data URL contains invalid base64".to_string())?
-            };
-            let attachment = ChatAttachment {
-                id: format!("{:x}", sha2::Sha256::digest(&bytes)),
-                filename: upload.filename.clone(),
-                media_type: upload.media_type.clone(),
-                data_url: upload.data_url.clone(),
-            };
-            let size = validate_chat_attachment(&attachment)?;
-            Ok((attachment, size))
+        .map(|attachment| {
+            crate::chat_attachments::attachment_byte_count(app, input.session_id, attachment)
         })
-        .collect::<Result<Vec<_>, String>>()?;
-    let total_bytes = decoded_attachments
-        .iter()
-        .map(|(_, size)| *size)
-        .sum::<usize>();
+        .collect::<Result<Vec<_>, String>>()?
+        .into_iter()
+        .sum::<u64>();
     if total_bytes > 24 * 1024 * 1024 {
         return Err("combined image attachments must not exceed 24 MB".to_string());
     }
-    let attachments = decoded_attachments
-        .into_iter()
-        .map(|(attachment, _)| attachment)
-        .collect::<Vec<_>>();
     let (port, model_field) = mgr
         .endpoint(input.slot_id)
         .ok_or_else(|| format!("slot {} is not warm; warm it first", input.slot_id))?;
@@ -2333,7 +2277,7 @@ pub(crate) fn agent_sidecar_request(
     }];
     let outbound = vec![
         json!({ "role": "system", "content": system_prompt_for(&model_field) }),
-        openai_chat_message(&messages[0])?,
+        openai_chat_message(app, input.session_id, &messages[0])?,
     ];
     let binding = RouteBinding {
         route: "local".to_string(),
@@ -2915,7 +2859,7 @@ pub async fn chat_stream(
     let projected_messages = messages
         .iter()
         .filter(|message| message.role != "system")
-        .map(openai_chat_message)
+        .map(|message| openai_chat_message(&app, &session_id, message))
         .collect::<Result<Vec<_>, _>>()?;
     outbound_messages.extend(projected_messages);
     let (mut outbound_messages, compaction_reason, context_tokens_before) =
@@ -4088,28 +4032,37 @@ fn finalize_tool_calls(mut tool_calls: Vec<ToolCallAcc>) -> Vec<ToolCallAcc> {
 mod tests {
     use super::*;
 
-    fn image_message() -> ChatMsg {
+    fn image_message() -> (ChatMsg, String) {
         use base64::Engine as _;
         use sha2::Digest as _;
 
-        let bytes = b"desktop-image-fixture";
+        let bytes = b"\x89PNG\r\n\x1a\ndesktop-image-fixture";
         let encoded = base64::engine::general_purpose::STANDARD.encode(bytes);
-        ChatMsg {
-            role: "user".to_string(),
-            content: "inspect this".to_string(),
-            attachments: vec![ChatAttachment {
-                id: format!("{:x}", sha2::Sha256::digest(bytes)),
-                filename: "fixture.png".to_string(),
-                media_type: "image/png".to_string(),
-                data_url: format!("data:image/png;base64,{encoded}"),
-            }],
-        }
+        (
+            ChatMsg {
+                role: "user".to_string(),
+                content: "inspect this".to_string(),
+                attachments: vec![crate::chat_attachments::ChatAttachmentRef {
+                    id: format!("{:x}", sha2::Sha256::digest(bytes)),
+                    filename: "fixture.png".to_string(),
+                    media_type: "image/png".to_string(),
+                }],
+            },
+            format!("data:image/png;base64,{encoded}"),
+        )
     }
 
     #[test]
     fn image_projection_preserves_hash_metadata_and_bounded_token_estimate() {
-        let original = vec![image_message()];
-        let outbound = vec![openai_chat_message(&original[0]).unwrap()];
+        let (message, data_url) = image_message();
+        let original = vec![message];
+        let outbound = vec![json!({
+            "role": "user",
+            "content": [
+                { "type": "text", "text": "inspect this" },
+                { "type": "image_url", "image_url": { "url": data_url } },
+            ],
+        })];
         assert_eq!(outbound[0]["content"][1]["type"], "image_url");
         assert_eq!(approximate_messages_tokens(&outbound), 1_202);
 
@@ -4121,11 +4074,11 @@ mod tests {
         );
         assert_eq!(projected[0]["attachments"][0]["filename"], "fixture.png");
 
-        let mut tampered = image_message();
+        let (mut tampered, _) = image_message();
         tampered.attachments[0].id = "0".repeat(64);
-        assert!(openai_chat_message(&tampered)
+        assert!(sidecar_runtime_messages(&[tampered], &outbound)
             .unwrap_err()
-            .contains("content hash"));
+            .contains("metadata does not match"));
     }
 
     #[test]

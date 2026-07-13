@@ -2309,7 +2309,8 @@ pub fn chat_runs(app: AppHandle, limit: Option<u32>) -> Result<Vec<ChatRunRow>, 
         .map_err(|e| e.to_string())
 }
 
-const DESKTOP_CHAT_SESSION_SCHEMA: &str = "understudy-desktop-chat-session-v1";
+const DESKTOP_CHAT_SESSION_SCHEMA: &str = "understudy-desktop-chat-session-v2";
+const LEGACY_DESKTOP_CHAT_SESSION_SCHEMA: &str = "understudy-desktop-chat-session-v1";
 const MAX_PERSISTED_CHAT_BYTES: usize = 48 * 1024 * 1024;
 const MAX_PERSISTED_CHAT_MESSAGES: usize = 500;
 
@@ -2322,22 +2323,34 @@ pub struct DesktopChatSession {
 
 #[tauri::command]
 pub fn chat_session_latest(app: AppHandle) -> Result<Option<DesktopChatSession>, String> {
-    let Some(row) = app
-        .state::<crate::db::Db>()
+    let db = app.state::<crate::db::Db>();
+    let row = db
         .latest_chat_session(DESKTOP_CHAT_SESSION_SCHEMA)
-        .map_err(|error| error.to_string())?
-    else {
-        return Ok(None);
+        .map_err(|error| error.to_string())?;
+    let (session_id, messages, updated_at) = if let Some(row) = row {
+        let messages = serde_json::from_str(&row.messages)
+            .map_err(|error| format!("saved chat transcript is invalid: {error}"))?;
+        (row.session_id, messages, row.updated_at)
+    } else {
+        let Some(legacy) = db
+            .latest_chat_session(LEGACY_DESKTOP_CHAT_SESSION_SCHEMA)
+            .map_err(|error| error.to_string())?
+        else {
+            return Ok(None);
+        };
+        let messages: Value = serde_json::from_str(&legacy.messages)
+            .map_err(|error| format!("saved legacy chat transcript is invalid: {error}"))?;
+        let messages =
+            crate::chat_attachments::migrate_legacy_messages(&app, &legacy.session_id, &messages)?;
+        let encoded = serde_json::to_string(&messages).map_err(|error| error.to_string())?;
+        db.save_active_chat_session(&legacy.session_id, DESKTOP_CHAT_SESSION_SCHEMA, &encoded)
+            .map_err(|error| error.to_string())?;
+        (legacy.session_id, messages, chrono::Utc::now().to_rfc3339())
     };
-    if row.schema != DESKTOP_CHAT_SESSION_SCHEMA {
-        return Ok(None);
-    }
-    let messages = serde_json::from_str(&row.messages)
-        .map_err(|error| format!("saved chat transcript is invalid: {error}"))?;
     Ok(Some(DesktopChatSession {
-        session_id: row.session_id,
+        session_id,
         messages,
-        updated_at: row.updated_at,
+        updated_at,
     }))
 }
 

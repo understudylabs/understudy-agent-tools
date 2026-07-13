@@ -2453,6 +2453,16 @@ select,
   border-radius: var(--r-control);
   object-fit: contain;
 }
+.chat-image-unavailable {
+  display: grid;
+  min-height: 72px;
+  padding: 10px;
+  border: 1px dashed var(--border);
+  border-radius: var(--r-control);
+  color: var(--text-2);
+  font-size: 10px;
+  place-items: center;
+}
 .chat-image figcaption {
   color: var(--text-2);
   font-size: 10px;

@@ -32,8 +32,8 @@
     },
     {
       "id": "durable-image-and-chat-persistence",
-      "status": "partial",
-      "evidence": "Images and restart sessions work, but attachment bytes still need content-addressed local storage instead of transcript-embedded data URLs."
+      "status": "shipped",
+      "evidence": "Image bytes are validated and stored atomically with private permissions under content hashes; SQLite keeps references only, legacy data URLs migrate on reopen, and previews hydrate after restart."
     },
     {
       "id": "resumable-model-downloads",

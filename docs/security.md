@@ -36,6 +36,11 @@ contact channel listed on the organization profile.
 eventually contain private payloads. Do not commit it unless a specific public
 fixture is intentionally synthetic and reviewed.
 
+Desktop image attachments live under private app data, outside `.understudy/`.
+The app accepts only bounded PNG, JPEG, WebP, and GIF bytes with matching file
+signatures. Filenames never select filesystem paths: session directories are
+hashed and stored filenames are derived from verified SHA-256 content IDs.
+
 ## Agent Tool Execution
 
 The conversation runtime does not enable Pi's built-in Bash tool. It accepts
