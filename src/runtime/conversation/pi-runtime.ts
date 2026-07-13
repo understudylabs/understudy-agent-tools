@@ -174,6 +174,13 @@ function zeroUsage() {
   };
 }
 
+const MAX_LENGTH_CONTINUATIONS = 2;
+const LENGTH_CONTINUATION_PROMPT = [
+  "Finish the original user request now.",
+  "Continue from exactly where the visible response stopped and do not repeat earlier prose.",
+  "Use the tool results already in context; call another tool only if it is required to answer.",
+].join(" ");
+
 /**
  * Pi uses `reserveTokens` both as the compaction trigger headroom and as the
  * summary generation budget. Its upstream default is tuned for coding-agent
@@ -377,6 +384,13 @@ function attachCanonicalAdapter(
 ) {
   let chain = Promise.resolve();
   let terminalEmitted = false;
+  let lastAssistantStopReason:
+    | "stop"
+    | "length"
+    | "toolUse"
+    | "error"
+    | "aborted"
+    | undefined;
   let emittedTextDelta = false;
   let compactionSourceMessages = 0;
   const rawToolArguments = new Map<string, string>();
@@ -438,6 +452,7 @@ function attachCanonicalAdapter(
         result: event.result,
       });
     } else if (event.type === "message_end" && event.message.role === "assistant") {
+      lastAssistantStopReason = event.message.stopReason;
       enqueue(
         "usage",
         usageData(
@@ -495,6 +510,17 @@ function attachCanonicalAdapter(
     enqueue,
     flush: () => chain,
     terminalEmitted: () => terminalEmitted,
+    lastAssistantStopReason: () => lastAssistantStopReason,
+    enqueueTerminalError: (code: string, message: string, recoverable: boolean) => {
+      if (terminalEmitted) return;
+      terminalEmitted = true;
+      enqueue("error", {
+        stage: "model_stream",
+        code,
+        message,
+        recoverable,
+      });
+    },
   };
 }
 
@@ -1295,6 +1321,8 @@ export async function runPiConversation(
     messages: request.messages,
     persistent: true,
   });
+  let lengthContinuationAttempts = 0;
+  let lengthContinuationFailure: unknown;
   const adapter = attachCanonicalAdapter(session, request, writer, {
     abortReason: () => abortSignal?.reason,
   });
@@ -1326,10 +1354,53 @@ export async function runPiConversation(
         "Keep the checkpoint concise. Preserve exact user constraints, named facts, tool results, unresolved work, and decisions needed for the next response. Copy every named label or identifier and the sentence it names verbatim; do not shorten or paraphrase named facts. Keep each label adjacent to its fact so later references remain resolvable.",
       );
     }
-    await session.prompt(latest.content, {
-      images: imageContent(latest),
-      expandPromptTemplates: false,
-    });
+    try {
+      await session.prompt(latest.content, {
+        images: imageContent(latest),
+        expandPromptTemplates: false,
+      });
+    } catch (error) {
+      lengthContinuationFailure = error;
+    }
+    while (
+      !abortSignal?.aborted &&
+      adapter.lastAssistantStopReason() === "length" &&
+      lengthContinuationAttempts < MAX_LENGTH_CONTINUATIONS
+    ) {
+      lengthContinuationAttempts += 1;
+      try {
+        // Start a fresh Pi prompt only after the previous run has settled. This
+        // lets Pi compact first; queueing a follow-up from message_end would be
+        // consumed before its post-run compaction check and could overflow the
+        // same context a second time.
+        await session.prompt(LENGTH_CONTINUATION_PROMPT, {
+          expandPromptTemplates: false,
+        });
+        lengthContinuationFailure = undefined;
+      } catch (error) {
+        lengthContinuationFailure = error;
+      }
+    }
+    if (lengthContinuationFailure && !adapter.terminalEmitted()) {
+      if (adapter.lastAssistantStopReason() === "length") {
+        adapter.enqueueTerminalError(
+          "pi_length_continuation_failed",
+          safeErrorMessage(lengthContinuationFailure),
+          true,
+        );
+      } else {
+        throw lengthContinuationFailure;
+      }
+    } else if (
+      adapter.lastAssistantStopReason() === "length" &&
+      !adapter.terminalEmitted()
+    ) {
+      adapter.enqueueTerminalError(
+        "pi_length_continuation_exhausted",
+        `Provider stopped at its output limit after ${lengthContinuationAttempts} continuation attempts.`,
+        true,
+      );
+    }
   } catch (error) {
     if (!adapter.terminalEmitted()) {
       await writer.emit(
