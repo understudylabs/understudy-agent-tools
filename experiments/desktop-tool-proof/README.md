@@ -34,6 +34,20 @@ node experiments/desktop-tool-proof/run.mjs \
 Filtered proofs hash and persist only the selected task subset, so they cannot
 be confused with evidence from the full frozen suite.
 
+For Gemma 4 MoE compression repair, the local converter preserves QAT's
+group-size-32 contract, keeps routers at 8-bit, and protects an explicit layer
+set at 6-bit while leaving the remaining body at 4-bit:
+
+```bash
+python experiments/desktop-tool-proof/convert-gemma4-moe-mixed.py \
+  --source <qat-bf16-source> \
+  --output <candidate-output> \
+  --protected-layers 15-29
+```
+
+Every generated artifact is a candidate until it passes both the exact
+10-attempt causal probe and the full 51-attempt strict suite.
+
 The direct runner resolves the selected slot from the authenticated residency
 surface and cross-checks its model path against the local agent card. Portable
 summary/results rows record the model id, Pi runtime, task hash, and exact

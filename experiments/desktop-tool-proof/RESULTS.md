@@ -12,9 +12,9 @@ Status: local promotion evidence, not a production replacement claim
 - **Sparse 26B Understudy:** hold strict-tool certification. The matched BF16
   probe passes, so repair the 4-bit quantization path before promotion; do not
   normalize malformed tool names inside the runtime.
-- **Sparse 26B QAT 6-bit candidate:** pass the current strict-tool gate. It is
-  the smallest currently safe 26B rung; keep 8-bit as the higher-precision
-  reference while mixed allocation tries to approach the 4-bit footprint.
+- **Sparse 26B QAT mixed 4/6-bit candidate:** pass the current strict-tool gate.
+  It is the smallest currently safe 26B rung; keep uniform 6-bit and 8-bit as
+  higher-precision references for broader promotion work.
 
 ## Frozen comparison
 
@@ -103,6 +103,29 @@ Owner-only 6-bit proof ids are `tools-b5b607e19e-20260713T011137245Z` for the
 suite. Together, the BF16, 8-bit, 6-bit, and 4-bit results place the observed
 strict-tool failure threshold between 4 and 6 body bits for this artifact.
 
+### Mixed 4/6-bit layer ablation
+
+A QAT-aware mixed recipe recovered most of the 4-bit footprint without hiding
+the failure in the runtime. All candidates kept group size 32, routers at
+8-bit, embeddings/head at 6-bit, and the unprotected body at 4-bit:
+
+| Protected 6-bit layers | Installed size | Exact probe |
+| --- | ---: | ---: |
+| 0–7 | 17.5 GB | 1/10 |
+| 0–14 | about 19 GB | 8/10 |
+| **15–29** | **18.8 GB** | **10/10** |
+
+The late-half candidate then passed the full 17-task suite **51/51** across
+three repetitions with zero parse, terminal, or orphan-result errors. Mean
+end-to-end latency was **4,348 ms**. Its quantized module allocation is 149 at
+4-bit, 148 at 6-bit, and 30 router modules at 8-bit.
+
+Owner-only proof ids are `tools-b5b607e19e-20260713T012832871Z` for the exact
+probe and `tools-2286836959-20260713T012949919Z` for the full suite. This result
+also corrects the earlier generalization from broad tool-trigger analysis:
+early-layer protection helps general triggering, but this exact punctuation
+regression is late-half sensitive.
+
 This is useful correction-pair material:
 
 - rejected: colon-suffixed tool names;
@@ -141,7 +164,6 @@ paths or trace data. They are not part of this repository.
    held-out slice.
 4. General task-quality comparison showing whether 12B adds enough value over
    the faster 4B to justify its memory and latency.
-5. For 26B, use the 6-bit candidate as the safe rung while protecting
-   tool-name-sensitive expert/body layers with mixed precision or tool-heavy
-   calibration. Any smaller candidate must repeat the exact 10-run probe and
-   the full 51-attempt strict gate.
+5. For 26B, use the late-half mixed 4/6-bit candidate as the safe strict-tool
+   rung. It still needs frozen VLM, long-context, and broader quality evidence
+   before publication or default routing.
