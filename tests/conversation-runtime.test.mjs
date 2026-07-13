@@ -2433,6 +2433,13 @@ test("supervisor conformance requires exact per-model usage attribution", () => 
       .map((line) => JSON.parse(line));
   assert.doesNotThrow(() => validateScenarioEvidence(input, fixture()));
 
+  const changedInput = fixture();
+  changedInput.find((event) => event.event === "message").data.text = "different input";
+  assert.throws(
+    () => validateScenarioEvidence(input, changedInput),
+    /changed canonical input message identity/,
+  );
+
   const missingSupervisor = fixture().filter(
     (event) => !(event.event === "usage" && event.data.role === "supervisor"),
   );

@@ -15,6 +15,7 @@ type FixtureGate = {
   id: string;
   fixture?: string;
   fixture_sha256?: string;
+  input_fixture_id?: string;
   required_events: string[];
 };
 
@@ -180,6 +181,20 @@ export function validateScenarioEvidence(input: RuntimeInputFixture, values: rea
   for (const required of input.expected_events) {
     if (!emitted.has(required)) {
       throw new Error(`${input.fixture_id} did not emit required event ${required}`);
+    }
+  }
+  const latestUser = [...input.messages]
+    .reverse()
+    .find((message) => message.role === "user");
+  if (latestUser?.role === "user") {
+    const messages = events.filter(
+      (event) => event.event === "message" && event.data.role === "user",
+    );
+    if (
+      messages.length !== 1 ||
+      messages[0].data.text !== latestUser.content
+    ) {
+      throw new Error(`${input.fixture_id} changed canonical input message identity`);
     }
   }
   if (input.expected_events.includes("cancellation") && events.at(-1)?.event !== "cancellation") {
@@ -511,7 +526,9 @@ export async function runConversationAdapterConformance(
 /** Replay the immutable suite through the same validator used for live output. */
 export function runConversationConformance(root = bundledConformanceRoot()): ConformanceReport {
   const { fixtureRoot, manifestPath, manifest } = loadManifest(root);
-  const inputs = loadConversationConformanceInputs(root).inputs.map((fixture) => ({
+  const loadedInputs = loadConversationConformanceInputs(root).inputs;
+  const inputById = new Map(loadedInputs.map((fixture) => [fixture.id, fixture]));
+  const inputs = loadedInputs.map((fixture) => ({
     id: fixture.id,
     fixture: fixture.fixture,
     sha256: fixture.sha256,
@@ -535,6 +552,15 @@ export function runConversationConformance(root = bundledConformanceRoot()): Con
       .filter((line) => line.trim().length > 0)
       .map((line) => JSON.parse(line) as unknown);
     const events = validateRuntimeTrace(rows);
+    if (gate.input_fixture_id) {
+      const input = inputById.get(gate.input_fixture_id);
+      if (!input) {
+        throw new Error(
+          `${gate.id} references missing input fixture ${gate.input_fixture_id}`,
+        );
+      }
+      validateScenarioEvidence(input.input, events);
+    }
     const emitted = new Set(events.map((event) => event.event));
     for (const required of gate.required_events) {
       if (!emitted.has(required as never)) {

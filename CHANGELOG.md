@@ -35,9 +35,10 @@ uses semantic-ish versioning (minor = new skill or new capability, patch = fixes
   Runtime 0.3.5 requires every usage event to name its exact model, records the
   supervisor model on every verdict, and makes the frozen takeover gate prove
   separate student, supervisor, and teacher usage whose model identities match
-  the emitted deltas and teacher continuation. The suite id and fixture hash
-  changed so older evidence fails closed instead of satisfying the release
-  deletion gate.
+  the emitted deltas and teacher continuation. Reference traces must also carry
+  the exact frozen user message and image identity instead of merely containing
+  similarly named event types. The suite id and fixture hashes changed so older
+  evidence fails closed instead of satisfying the release deletion gate.
 
 - **Desktop restart no longer strands tool calls on a stale sidecar token.**
   Idempotent runtime start now compares an injected Desktop tool credential

@@ -82,10 +82,10 @@
     {"id": "repo-search-tool", "required_events": ["tool_call", "tool_result", "usage"]},
     {"id": "moraine-history-tool", "required_events": ["tool_call", "tool_result", "usage"]},
     {"id": "safe-boundary", "required_events": ["message", "delta", "usage"]},
-    {"id": "offline-image", "fixture": "offline-image.jsonl", "fixture_sha256": "80a83ad4bcb833eddc55aa149cb35fa04bf8b08d9bebb9ab9cb05c2ab40f4f6b", "required_events": ["image_attachment", "message", "delta", "usage"], "network": "off"},
-    {"id": "supervisor-takeover", "fixture": "supervisor-takeover.jsonl", "fixture_sha256": "aa427dcf3437ec149eb72456665839111f441a7b7ee123bcb5437b69b6c0cad5", "required_events": ["supervisor_verdict", "student_interruption", "teacher_continuation", "usage"]},
-    {"id": "malformed-tool-call", "fixture": "malformed-tool-call.jsonl", "fixture_sha256": "a7643f02d630a3abe547d078ba37e3a83a1d06e16ebcf86aa627b8148855c821", "required_events": ["tool_call", "tool_result", "delta"]},
-    {"id": "long-chat-restart", "fixture": "long-chat-restart.jsonl", "fixture_sha256": "84aef19c992873f7a8716d9c9de54e3eb85b6b59b0cbbc55a14808e55ac71643", "required_events": ["compaction_boundary", "delta", "usage"], "restart_after_sequence": 1},
-    {"id": "cancellation", "fixture": "cancellation.jsonl", "fixture_sha256": "7b7fd701f26502e06273fc2c1995627167dd47db29d2f8118c69f5bd421442d5", "required_events": ["message", "delta", "cancellation"]}
+    {"id": "offline-image", "fixture": "offline-image.jsonl", "fixture_sha256": "cdaa52effb7a860d66208d307fd51adf84895a4453c9fa7f731d558142be6ca8", "input_fixture_id": "offline-image", "required_events": ["image_attachment", "message", "delta", "usage"], "network": "off"},
+    {"id": "supervisor-takeover", "fixture": "supervisor-takeover.jsonl", "fixture_sha256": "aa427dcf3437ec149eb72456665839111f441a7b7ee123bcb5437b69b6c0cad5", "input_fixture_id": "supervisor-takeover", "required_events": ["supervisor_verdict", "student_interruption", "teacher_continuation", "usage"]},
+    {"id": "malformed-tool-call", "fixture": "malformed-tool-call.jsonl", "fixture_sha256": "96f5212716f9309a443f4a73154e9bf429c8ae5198d46d563dd2380dbb6f9068", "input_fixture_id": "malformed-tool-call", "required_events": ["tool_call", "tool_result", "delta"]},
+    {"id": "long-chat-restart", "fixture": "long-chat-restart.jsonl", "fixture_sha256": "e6491d770b415836cf6870cd773a85e8424bc37856d9457190e28102d04f5853", "input_fixture_id": "long-chat-compaction", "required_events": ["compaction_boundary", "delta", "usage"], "restart_after_sequence": 1},
+    {"id": "cancellation", "fixture": "cancellation.jsonl", "fixture_sha256": "ced730f636e79df676847616ae36dabe11eeaf0827668c0b0b3ae0a74bce22f0", "input_fixture_id": "cancellation", "required_events": ["message", "delta", "cancellation"]}
   ]
 }
