@@ -179,8 +179,8 @@
     },
     {
       "id": "reading-pace-streaming",
-      "status": "planned",
-      "evidence": "The tested reading-rate buffer and skip affordance remain absent. Port only after a small usability check proves that display pacing reduces disorientation without making local answers feel artificially slow; retain an immediate-display escape hatch."
+      "status": "shipped",
+      "evidence": "Chat keeps the full canonical stream as its persistence and evidence source while revealing only the latest answer at a brisk reading rate with bounded elastic catch-up. Direct simulations show a 20-character-per-second provider stays within two characters of live display, while a 1,000-character local burst drains within two seconds after Done. A visible Show full answer escape hatch appears only beyond a 300-character backlog, reduced-motion and understudy.pacing=off disable pacing, and teacher ReplaceChunk events reset the hidden buffer so rejected student text cannot leak into the correction."
     },
     {
       "id": "always-on-top-window-pin",

@@ -75,6 +75,10 @@ const modelMemoryPath = new URL(
   "../apps/homescreen/app/lib/model-memory.mjs",
   import.meta.url,
 );
+const streamPacerPath = new URL(
+  "../apps/homescreen/app/lib/stream-pacer.mjs",
+  import.meta.url,
+);
 const workloadDropRustPath = new URL(
   "../apps/homescreen/src-tauri/src/workload_drop.rs",
   import.meta.url,
@@ -111,6 +115,23 @@ test("public desktop preserves the reviewed Train interaction language", async (
   assert.doesNotMatch(serving, /label: "Capture"/);
   assert.doesNotMatch(serving, /label: "Traces"/);
   assert.doesNotMatch(serving, /label: "Usage"/);
+});
+
+test("reading pace is quiet, optional, and safe across teacher replacement", async () => {
+  const [chat, css, pacer] = await Promise.all([
+    readFile(chatPath, "utf8"),
+    readFile(cssPath, "utf8"),
+    readFile(streamPacerPath, "utf8"),
+  ]);
+
+  assert.match(chat, /turnPacer\?\.replace\(msg\.text\)/);
+  assert.match(chat, /Show full answer/);
+  assert.match(chat, /pacedBacklog > SKIP_HINT_THRESHOLD/);
+  assert.match(chat, /turnPacer\?\.skip\(\)/);
+  assert.match(css, /\.paced-answer-skip/);
+  assert.match(pacer, /understudy\.pacing/);
+  assert.match(pacer, /prefers-reduced-motion: reduce/);
+  assert.match(pacer, /rejected student text can never survive in the hidden buffer/);
 });
 
 test("desktop restores the reviewed persisted always-on-top pin", async () => {
@@ -290,6 +311,10 @@ test("chat exposes compact, truthful model cards from the canonical local catalo
   );
   assert.equal(
     parity.features.find((feature) => feature.id === "model-card-transparency")?.status,
+    "shipped",
+  );
+  assert.equal(
+    parity.features.find((feature) => feature.id === "reading-pace-streaming")?.status,
     "shipped",
   );
 });

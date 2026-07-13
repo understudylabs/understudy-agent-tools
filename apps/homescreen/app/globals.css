@@ -2387,6 +2387,26 @@ select,
   text-decoration: underline;
   text-underline-offset: 2px;
 }
+.paced-answer {
+  min-width: 0;
+}
+.paced-answer-skip {
+  margin-top: 8px;
+  border: 0;
+  background: transparent;
+  color: var(--text-3);
+  cursor: pointer;
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: 0.04em;
+  padding: 2px 0;
+}
+.paced-answer-skip:hover,
+.paced-answer-skip:focus-visible {
+  color: var(--accent);
+  text-decoration: underline;
+  text-underline-offset: 3px;
+}
 .chat-err {
   color: var(--error);
   font-size: 12px;
