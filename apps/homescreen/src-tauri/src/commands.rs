@@ -1191,13 +1191,36 @@ pub async fn install_understudy_agent_tools() -> Result<String, String> {
         .map_err(|e| format!("install_understudy_agent_tools task failed: {e}"))?
 }
 
+/// Start the same background download registry exposed to agents. The UI
+/// polls this app-level task instead of owning a Channel-bound future,
+/// so navigating away cannot cancel or forget a multi-hour model pull.
 #[tauri::command]
-pub async fn download_snapshot_model(
+pub fn start_snapshot_download(app: AppHandle, model_id: String) -> Result<String, String> {
+    crate::agent_ops::start_model_download(&app, model_id)
+}
+
+#[tauri::command]
+pub fn list_snapshot_downloads(app: AppHandle) -> Vec<crate::agent_ops::DownloadProgress> {
+    app.state::<crate::agent_ops::Downloads>().list()
+}
+
+#[tauri::command]
+pub fn snapshot_download_status(
     app: AppHandle,
-    model_id: String,
-    on_event: Channel<crate::bootstrap::DownloadEvent>,
-) -> Result<(), String> {
-    crate::bootstrap::download_model(app, model_id, on_event).await
+    download_id: String,
+) -> Result<crate::agent_ops::DownloadProgress, String> {
+    app.state::<crate::agent_ops::Downloads>()
+        .get(&download_id)
+        .ok_or_else(|| format!("unknown download id: {download_id}"))
+}
+
+#[tauri::command]
+pub fn cancel_snapshot_download(
+    app: AppHandle,
+    download_id: String,
+) -> Result<crate::agent_ops::DownloadProgress, String> {
+    app.state::<crate::agent_ops::Downloads>()
+        .cancel(&download_id)
 }
 
 // ----- moraine / traces (MCP) -----

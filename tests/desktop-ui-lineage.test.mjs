@@ -30,6 +30,10 @@ const reviewRustPath = new URL(
   "../apps/homescreen/src-tauri/src/supervision_review.rs",
   import.meta.url,
 );
+const statusPanePath = new URL(
+  "../apps/homescreen/app/components/StatusPane.tsx",
+  import.meta.url,
+);
 const rlmPanePath = new URL(
   "../apps/homescreen/app/components/RlmPane.tsx",
   import.meta.url,
@@ -110,6 +114,19 @@ test("desktop persists image references instead of transcript-embedded bytes", a
   assert.match(attachmentRust, /migrate_legacy_messages/);
 });
 
+test("desktop model downloads are app-owned, pausable, and resumable", async () => {
+  const statusPane = await readFile(statusPanePath, "utf8");
+
+  assert.match(statusPane, /"start_snapshot_download"/);
+  assert.match(statusPane, /"list_snapshot_downloads"/);
+  assert.match(statusPane, /"snapshot_download_status"/);
+  assert.match(statusPane, /"cancel_snapshot_download"/);
+  assert.match(statusPane, /Resume keeps partial files/);
+  assert.match(statusPane, /busyActionLabel="Pause"/);
+  assert.doesNotMatch(statusPane, /new Channel<DownloadEvent>/);
+  assert.doesNotMatch(statusPane, /invoke\([^\n]*"download_snapshot_model"/);
+});
+
 test("Experiments starts with canonical one-frame intervention review", async () => {
   const [review, reviewRust, rlmPane, css] = await Promise.all([
     readFile(reviewViewPath, "utf8"),
@@ -142,6 +159,7 @@ test("desktop migration claims stay tied to explicit product parity", async () =
     "offline-supervisor-fallback",
     "runtime-repair-experience",
     "durable-image-and-chat-persistence",
+    "resumable-model-downloads",
     "supervision-review-desk",
     "correction-pair-export-and-metrics",
     "unified-experiment-hub",
@@ -155,6 +173,10 @@ test("desktop migration claims stay tied to explicit product parity", async () =
   );
   assert.equal(
     parity.features.find((feature) => feature.id === "durable-image-and-chat-persistence")?.status,
+    "shipped",
+  );
+  assert.equal(
+    parity.features.find((feature) => feature.id === "resumable-model-downloads")?.status,
     "shipped",
   );
   assert.equal(

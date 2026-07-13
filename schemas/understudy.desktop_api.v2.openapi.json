@@ -934,7 +934,17 @@
         "required": [
           "id",
           "model_id",
-          "status"
+          "status",
+          "started_at",
+          "planned_files",
+          "files",
+          "downloaded_bytes",
+          "resumed_bytes",
+          "total_bytes",
+          "dest",
+          "error",
+          "resumable",
+          "logs"
         ],
         "properties": {
           "id": {
@@ -954,7 +964,43 @@
               "cancelled"
             ]
           },
+          "started_at": {
+            "type": "string",
+            "format": "date-time"
+          },
+          "planned_files": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "files": {
+            "type": "object",
+            "additionalProperties": {
+              "type": "object",
+              "required": [
+                "downloaded",
+                "total"
+              ],
+              "properties": {
+                "downloaded": {
+                  "type": "integer",
+                  "minimum": 0
+                },
+                "total": {
+                  "type": [
+                    "integer",
+                    "null"
+                  ],
+                  "minimum": 0
+                }
+              },
+              "additionalProperties": false
+            }
+          },
           "downloaded_bytes": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "resumed_bytes": {
             "type": "integer",
             "minimum": 0
           },
@@ -965,14 +1011,29 @@
             ],
             "minimum": 0
           },
+          "dest": {
+            "type": [
+              "string",
+              "null"
+            ]
+          },
           "error": {
             "type": [
               "string",
               "null"
             ]
+          },
+          "resumable": {
+            "type": "boolean"
+          },
+          "logs": {
+            "type": "array",
+            "items": {
+              "type": "string"
+            }
           }
         },
-        "additionalProperties": true
+        "additionalProperties": false
       },
       "DownloadList": {
         "type": "object",
