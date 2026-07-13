@@ -34,6 +34,7 @@ const forbiddenMemberParts = [
 ];
 
 const requiredPackageMembers = [
+  "dist/bin.js",
   ".agents/plugins/marketplace.json",
   ".codex-plugin/plugin.json",
   ".cursor-plugin/plugin.json",
@@ -95,6 +96,10 @@ for (const required of requiredPackageMembers) {
   if (!packagePaths.has(required)) {
     errors.push(`package/${required}: required package file missing`);
   }
+}
+const cliEntry = packageFiles.find((entry) => entry.path === "dist/bin.js");
+if (cliEntry && (!Number.isInteger(cliEntry.mode) || (cliEntry.mode & 0o111) === 0)) {
+  errors.push("package/dist/bin.js: CLI entry must be executable on Unix");
 }
 for (const entry of packageFiles) {
   const path = entry.path;
