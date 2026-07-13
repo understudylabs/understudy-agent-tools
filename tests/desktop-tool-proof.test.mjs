@@ -1,9 +1,12 @@
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import { describe, it } from "node:test";
 
 import {
   directToolDefinitions,
   resolveDirectCandidates,
+  resolveSuiteFile,
+  residencyIsolationPlan,
   scoreToolTrace,
   selectTasks,
   summarizeRows,
@@ -22,6 +25,41 @@ describe("desktop strict-tool proof", () => {
     assert.throws(() => selectTasks(tasks, ["missing"]), /unknown task-id: missing/);
     assert.throws(() => selectTasks(tasks, ["one", "one"]), /must be unique/);
     assert.throws(() => selectTasks(tasks, ["missing", "missing"]), /must be unique/);
+  });
+
+  it("resolves only committed frozen suites", () => {
+    assert.equal(resolveSuiteFile("core"), "tasks.json");
+    assert.equal(resolveSuiteFile("hard"), "tasks-hard.json");
+    assert.throws(() => resolveSuiteFile("../private"), /unknown suite/);
+    assert.throws(() => resolveSuiteFile("custom"), /expected one of core, hard/);
+  });
+
+  it("plans exclusive managed residency before each candidate", () => {
+    const slots = [
+      { id: 5, state: "running" },
+      { id: 6, state: "loading" },
+      { id: 9, state: "stopped" },
+    ];
+    assert.deepEqual(residencyIsolationPlan(slots, 9), {
+      coolSlotIds: [5, 6],
+      targetAction: "warm",
+    });
+    assert.deepEqual(residencyIsolationPlan(slots, 5), {
+      coolSlotIds: [6],
+      targetAction: "ready",
+    });
+    assert.throws(() => residencyIsolationPlan(slots, 99), /does not exist/);
+  });
+
+  it("keeps the hard promotion suite frozen, unique, and within runtime rounds", () => {
+    const tasks = JSON.parse(readFileSync(
+      new URL("../experiments/desktop-tool-proof/tasks-hard.json", import.meta.url),
+      "utf8",
+    ));
+    assert.equal(tasks.length, 30);
+    assert.equal(new Set(tasks.map(({ id }) => id)).size, tasks.length);
+    assert.equal(Math.max(...tasks.map((candidate) => candidate.calls?.length ?? 1)), 4);
+    assert.ok(tasks.every((candidate) => typeof candidate.expected_output === "string"));
   });
 
   it("builds the bounded direct tool set from the authenticated MCP contract", () => {
