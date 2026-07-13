@@ -38,6 +38,14 @@ const tiebreakerCliPath = new URL(
   "../src/supervision/tiebreaker.ts",
   import.meta.url,
 );
+const toolProofRustPath = new URL(
+  "../apps/homescreen/src-tauri/src/tool_proof.rs",
+  import.meta.url,
+);
+const toolProofCliPath = new URL(
+  "../src/desktop/tool-proof.ts",
+  import.meta.url,
+);
 const statusPanePath = new URL(
   "../apps/homescreen/app/components/StatusPane.tsx",
   import.meta.url,
@@ -135,12 +143,14 @@ test("desktop model downloads are app-owned, pausable, and resumable", async () 
   assert.doesNotMatch(statusPane, /invoke\([^\n]*"download_snapshot_model"/);
 });
 
-test("Experiments is one guided review, compare, improve loop", async () => {
-  const [review, compare, comparisonRules, reviewRust, rlmPane, css] = await Promise.all([
+test("Experiments is one guided review, strict compare, improve loop", async () => {
+  const [review, compare, comparisonRules, reviewRust, proofRust, proofCli, rlmPane, css] = await Promise.all([
     readFile(reviewViewPath, "utf8"),
     readFile(new URL("../apps/homescreen/app/components/ExperimentCompareView.tsx", import.meta.url), "utf8"),
     readFile(new URL("../apps/homescreen/app/lib/experiment-comparison.mjs", import.meta.url), "utf8"),
     readFile(reviewRustPath, "utf8"),
+    readFile(toolProofRustPath, "utf8"),
+    readFile(toolProofCliPath, "utf8"),
     readFile(rlmPanePath, "utf8"),
     readFile(cssPath, "utf8"),
   ]);
@@ -157,12 +167,19 @@ test("Experiments is one guided review, compare, improve loop", async () => {
   assert.match(reviewRust, /RuntimeEvent::TeacherContinuation/);
   assert.match(reviewRust, /load_recent_persisted_traces/);
   assert.match(compare, /LOCAL_CANDIDATES = \["local-main", "local-fast"\]/);
-  assert.match(compare, /DIRECT_MODE = \["main-only"\]/);
+  assert.match(compare, /modes: \["main-only"\]/);
   assert.match(compare, /compare the same model twice/);
-  assert.match(compare, /run_fusion_benchmark_matrix_live/);
+  assert.match(compare, /"desktop_tool_proof_run"/);
+  assert.match(compare, /"desktop_tool_proof_list"/);
+  assert.match(compare, /"desktop_tool_proof_prepare"/);
   assert.doesNotMatch(compare, /gateway-supervised/);
-  assert.match(comparisonRules, /Immutable suite hashes are missing or do not match/);
-  assert.match(comparisonRules, /canonical capture_run_id/);
+  assert.match(comparisonRules, /full 30-task hard suite repeated three times/);
+  assert.match(comparisonRules, /canonical event evidence is incomplete/);
+  assert.match(proofRust, /CLI owns suite bytes, Pi execution, residency isolation, scoring/);
+  assert.match(proofRust, /"--repetitions"/);
+  assert.match(proofCli, /suite_hash_matches/);
+  assert.match(proofCli, /eventFiles\.length === expectedRows/);
+  assert.match(proofCli, /gepa_prompt_policy_first/);
   assert.match(css, /\.content:has\(\.supervision-review\)\s*\{[\s\S]*?overflow: hidden/);
   assert.match(css, /\.content:has\(\.experiment-compare\)\s*\{[\s\S]*?overflow: hidden/);
   assert.match(css, /grid-template-rows: auto minmax\(0, 1fr\) auto/);

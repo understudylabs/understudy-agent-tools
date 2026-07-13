@@ -169,3 +169,89 @@ export function comparisonNextAction(comparison) {
     body: "Keep the main model as fallback and use the failed fast-model rows for prompt repair or targeted training data.",
   };
 }
+
+/**
+ * Project the CLI-owned strict Pi proof into the one-screen product decision.
+ * Strict failures are quality evidence; infrastructure errors and missing
+ * artifacts are promotion blockers.
+ * @param {Record<string, any> | null} proof
+ */
+export function projectToolProof(proof) {
+  if (!proof) return null;
+  const summary = proof.summary ?? {};
+  const candidates = ["local-main", "local-fast"].flatMap((id) => {
+    const row = summary.candidates?.[id];
+    return row ? [{ candidate_id: id, ...row }] : [];
+  });
+  const expectedAttempts = Number(summary.task_count ?? 0) * Number(summary.repetitions ?? 0);
+  const blockers = [];
+  if (candidates.length !== 2) blockers.push("The proof does not contain both local candidates.");
+  if (proof.evidence?.complete !== true) {
+    blockers.push("Immutable task, result, and canonical event evidence is incomplete.");
+  }
+  if (candidates.some((candidate) => candidate.attempts !== expectedAttempts)) {
+    blockers.push("Candidate attempt counts do not match the frozen suite.");
+  }
+  if (candidates.some((candidate) => candidate.terminal_errors > 0)) {
+    blockers.push("Runtime errors must be resolved before comparing model quality.");
+  }
+  const isPromotionSlice = summary.suite === "hard"
+    && summary.source_task_file === "tasks-hard.json"
+    && summary.task_count === 30
+    && summary.repetitions === 3;
+  if (!isPromotionSlice) blockers.push("Promotion requires the full 30-task hard suite repeated three times.");
+  const ranked = [...candidates].sort((left, right) =>
+    (right.strict_accuracy - left.strict_accuracy)
+    || (left.mean_latency_ms - right.mean_latency_ms)
+    || (left.total_tokens - right.total_tokens),
+  );
+  return {
+    proof_id: summary.proof_id,
+    suite: summary.suite,
+    suite_sha256: summary.suite_sha256,
+    tool_schema_sha256: summary.tool_schema_sha256,
+    task_count: summary.task_count,
+    repetitions: summary.repetitions,
+    expected_attempts: expectedAttempts,
+    output_dir: proof.output_dir,
+    evidence_complete: proof.evidence?.complete === true,
+    promotion_ready: blockers.length === 0,
+    blockers,
+    candidates,
+    winner_id: ranked[0]?.candidate_id ?? null,
+  };
+}
+
+/** @param {ReturnType<typeof projectToolProof>} proof */
+export function toolProofNextAction(proof) {
+  if (!proof) {
+    return {
+      title: "Run the quick local proof",
+      body: "Compare both warm models on 17 frozen strict tool tasks before spending time on repair.",
+    };
+  }
+  const infrastructureBlocker = proof.blockers.find((blocker) =>
+    blocker.startsWith("Immutable")
+    || blocker.startsWith("Candidate")
+    || blocker.startsWith("Runtime"),
+  );
+  if (infrastructureBlocker) {
+    return { title: "Fix the evidence path, then rerun", body: infrastructureBlocker };
+  }
+  if (!proof.promotion_ready) {
+    return {
+      title: "Run the hard proof",
+      body: "The quick result is directional. Promotion needs all 30 hard tasks, three repetitions, and matching immutable hashes.",
+    };
+  }
+  if (proof.winner_id === "local-fast") {
+    return {
+      title: "Review fast-model promotion",
+      body: "The fast model won a complete strict proof. Keep the main route as fallback while the promoted lane accumulates live evidence.",
+    };
+  }
+  return {
+    title: "Prepare the fast-model improvement packet",
+    body: "Use exact failed calls for GEPA prompt and policy repair first; escalate to training only if the error cluster persists.",
+  };
+}

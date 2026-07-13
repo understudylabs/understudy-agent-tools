@@ -576,6 +576,8 @@ function eventTokens(events) {
 }
 
 export async function runProof(options = parseArgs(process.argv.slice(2))) {
+  const reportProgress = options.onProgress ?? ((line) => process.stdout.write(line));
+  const reportResult = options.reportResult ?? true;
   const suite = options.suite ?? "core";
   const sourceTaskFile = resolveSuiteFile(suite);
   const sourceTaskBytes = readFileSync(join(here, sourceTaskFile));
@@ -682,6 +684,7 @@ export async function runProof(options = parseArgs(process.argv.slice(2))) {
             repetition,
             task_id: task.id,
             expected_calls: expectedCallsForTask(task),
+            expected_output: task.expected_output,
             run_id: runId,
             session_id: sessionId,
             elapsed_ms: Math.round(performance.now() - before),
@@ -694,7 +697,7 @@ export async function runProof(options = parseArgs(process.argv.slice(2))) {
             join(outputDir, `${candidate.label}-r${repetition}-${task.id}.events.jsonl`),
             `${events.map((event) => JSON.stringify(event)).join("\n")}\n`,
           );
-          process.stdout.write(
+          reportProgress(
             `${candidate.label.padEnd(10)} r${repetition} ${task.id.padEnd(22)} `
             + `${score.strict_pass ? "PASS" : "FAIL"} tools=${score.call_sequence
               .map(({ tool }) => tool)
@@ -737,7 +740,9 @@ export async function runProof(options = parseArgs(process.argv.slice(2))) {
   );
   writeProofFile(join(outputDir, "summary.json"), `${JSON.stringify(summary, null, 2)}\n`);
   writeProofFile(join(outputDir, "tasks.json"), taskBytes);
-  process.stdout.write(`${JSON.stringify({ output_dir: outputDir, summary }, null, 2)}\n`);
+  if (reportResult) {
+    process.stdout.write(`${JSON.stringify({ output_dir: outputDir, summary }, null, 2)}\n`);
+  }
   return { outputDir, rows, summary };
 }
 

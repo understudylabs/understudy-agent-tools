@@ -44,3 +44,35 @@ export function listMatchedComparisons(
 export function comparisonNextAction(
   comparison: MatchedComparisonProjection | null,
 ): { title: string; body: string };
+
+export type ToolProofProjection = {
+  proof_id: string;
+  suite: "core" | "hard";
+  suite_sha256: string;
+  tool_schema_sha256: string | null;
+  task_count: number;
+  repetitions: number;
+  expected_attempts: number;
+  output_dir: string;
+  evidence_complete: boolean;
+  promotion_ready: boolean;
+  blockers: string[];
+  candidates: Array<{
+    candidate_id: "local-main" | "local-fast";
+    slot_id: number | null;
+    model_id: string | null;
+    strict_passes: number;
+    attempts: number;
+    strict_accuracy: number;
+    terminal_errors: number;
+    mean_latency_ms: number;
+    total_tokens: number;
+    failures: Array<Record<string, unknown>>;
+  }>;
+  winner_id: "local-main" | "local-fast" | null;
+};
+
+export function projectToolProof(proof: Record<string, unknown> | null): ToolProofProjection | null;
+export function toolProofNextAction(
+  proof: ToolProofProjection | null,
+): { title: string; body: string };

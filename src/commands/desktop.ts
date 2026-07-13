@@ -35,6 +35,13 @@ import {
   TIEBREAKER_EVAL_SUITE_PATH,
   runTiebreakerEval,
 } from "../supervision/tiebreaker-eval.js";
+import {
+  DEFAULT_TOOL_PROOF_ROOT,
+  listDesktopToolProofs,
+  prepareDesktopToolProofImprovement,
+  runDesktopToolProof,
+  type ToolProofCandidate,
+} from "../desktop/tool-proof.js";
 
 interface RuntimeEvent {
   run_id?: string;
@@ -95,6 +102,22 @@ function nonNegativeNumber(value: string): number {
 
 function collect(value: string, previous: string[]): string[] {
   return [...previous, value];
+}
+
+function toolProofCandidate(value: string): ToolProofCandidate {
+  const [label, rawSlot, ...extra] = value.split(":");
+  const slotId = Number(rawSlot);
+  if (extra.length || !label || !Number.isInteger(slotId) || slotId <= 0) {
+    throw new Error("candidate must be label:slot-id");
+  }
+  return { label, slotId };
+}
+
+function collectToolProofCandidate(
+  value: string,
+  previous: ToolProofCandidate[],
+): ToolProofCandidate[] {
+  return [...previous, toolProofCandidate(value)];
 }
 
 async function readStandardInput(): Promise<string> {
@@ -314,6 +337,106 @@ export function registerDesktopCommand(program: Command): void {
       const capability = await requireDesktopApi();
       const value = await desktopControlJson(capability, "/v1/status", "/api/status");
       printStructured(value, jsonRequested(this, opts.json));
+    });
+
+  const toolProof = desktop
+    .command("tool-proof")
+    .description("Run or inspect the frozen local strict tool-call proof through Pi.");
+
+  toolProof
+    .command("run")
+    .description("Compare one or more Desktop model slots on the exact same frozen tool traces.")
+    .requiredOption(
+      "--candidate <label:slot-id>",
+      "Candidate label and Desktop slot; repeat for a matched comparison",
+      collectToolProofCandidate,
+      [],
+    )
+    .addOption(new Option("--suite <suite>").choices(["core", "hard"]).default("core"))
+    .option("--repetitions <n>", "Attempts per frozen task", positiveInteger, 3)
+    .option("--max-tokens <n>", "Maximum output tokens per attempt", positiveInteger, 160)
+    .option("--timeout-ms <n>", "Terminal timeout per attempt", positiveInteger, 30_000)
+    .option("--task-id <id>", "Run an exact frozen task; repeat to select an ordered subset", collect, [])
+    .option("--output-root <path>", "Owner-only proof root", DEFAULT_TOOL_PROOF_ROOT)
+    .option("--prewarmed", "Do not manage exclusive residency (diagnostic only)")
+    .option("--desktop-api", "Route turns through the Desktop API instead of direct Pi")
+    .option("--json", "Output JSON")
+    .action(async function (this: Command, opts: {
+      candidate: ToolProofCandidate[];
+      suite: "core" | "hard";
+      repetitions: number;
+      maxTokens: number;
+      timeoutMs: number;
+      taskId: string[];
+      outputRoot: string;
+      prewarmed?: boolean;
+      desktopApi?: boolean;
+      json?: boolean;
+    }) {
+      const json = jsonRequested(this, opts.json);
+      const result = await runDesktopToolProof({
+        candidates: opts.candidate,
+        suite: opts.suite,
+        repetitions: opts.repetitions,
+        maxTokens: opts.maxTokens,
+        timeoutMs: opts.timeoutMs,
+        outputRoot: opts.outputRoot,
+        taskIds: opts.taskId,
+        manageResidency: opts.prewarmed !== true,
+        executionMode: opts.desktopApi ? "desktop-api" : "direct-pi",
+        onProgress: json ? () => {} : (line) => process.stdout.write(line),
+      });
+      printStructured(
+        result,
+        json,
+        [
+          `proof: ${result.summary.proof_id}`,
+          `suite: ${result.summary.suite} (${result.summary.suite_sha256})`,
+          ...Object.entries(result.summary.candidates).map(([candidate, row]) =>
+            `${candidate}: ${row.strict_passes}/${row.attempts} strict; ${row.mean_latency_ms} ms mean`,
+          ),
+          `evidence: ${result.output_dir}`,
+          "uploads performed: false",
+        ].join("\n"),
+      );
+    });
+
+  toolProof
+    .command("list")
+    .description("List private immutable strict-tool summaries without reading raw tool results.")
+    .option("--limit <n>", "Most recent proofs", positiveInteger, 20)
+    .option("--root <path>", "Owner-only proof root", DEFAULT_TOOL_PROOF_ROOT)
+    .option("--json", "Output JSON")
+    .action(function (this: Command, opts: { limit: number; root: string; json?: boolean }) {
+      const proofs = listDesktopToolProofs(resolve(opts.root), opts.limit);
+      printStructured(
+        { schema_version: "understudy.desktop_tool_proof_list.v1", proofs },
+        jsonRequested(this, opts.json),
+        proofs.length
+          ? proofs.map((proof) => `${proof.summary.proof_id} · ${proof.summary.suite} · ${proof.summary.completed_at}`).join("\n")
+          : "No strict-tool proofs yet.",
+      );
+    });
+
+  toolProof
+    .command("prepare")
+    .description("Create an immutable local improvement packet from a strict tool-proof's failures.")
+    .requiredOption("--proof <id>", "Strict tool-proof id")
+    .option("--root <path>", "Owner-only proof root", DEFAULT_TOOL_PROOF_ROOT)
+    .option("--json", "Output JSON")
+    .action(function (this: Command, opts: { proof: string; root: string; json?: boolean }) {
+      const result = prepareDesktopToolProofImprovement(opts.proof, resolve(opts.root));
+      printStructured(
+        result,
+        jsonRequested(this, opts.json),
+        [
+          `proof: ${result.packet.proof_id}`,
+          `failures: ${result.packet.failure_count}`,
+          `method: ${result.packet.recommended_method}`,
+          `packet: ${result.path}`,
+          "uploads performed: false",
+        ].join("\n"),
+      );
     });
 
   desktop
