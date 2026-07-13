@@ -78,14 +78,14 @@ export function expectedCallsForTask(task) {
 
 export function selectTasks(tasks, taskIds = []) {
   if (taskIds.length === 0) return tasks;
+  if (new Set(taskIds).size !== taskIds.length) {
+    throw new Error("task-id values must be unique");
+  }
   const selected = taskIds.map((taskId) => {
     const task = tasks.find((candidate) => candidate.id === taskId);
     if (!task) throw new Error(`unknown task-id: ${taskId}`);
     return task;
   });
-  if (new Set(taskIds).size !== taskIds.length) {
-    throw new Error("task-id values must be unique");
-  }
   return selected;
 }
 

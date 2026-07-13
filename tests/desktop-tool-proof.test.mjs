@@ -21,6 +21,7 @@ describe("desktop strict-tool proof", () => {
     assert.deepEqual(selectTasks(tasks, ["two"]), [{ id: "two" }]);
     assert.throws(() => selectTasks(tasks, ["missing"]), /unknown task-id: missing/);
     assert.throws(() => selectTasks(tasks, ["one", "one"]), /must be unique/);
+    assert.throws(() => selectTasks(tasks, ["missing", "missing"]), /must be unique/);
   });
 
   it("builds the bounded direct tool set from the authenticated MCP contract", () => {
