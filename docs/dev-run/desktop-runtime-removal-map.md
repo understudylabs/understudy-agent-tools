@@ -65,19 +65,22 @@ The release artifact exposes the gate directly:
 HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 HF_DATASETS_OFFLINE=1 \
 understudy runtime conformance \
   --backend pi \
-  --base-url <offline-mlx-vlm-base-url> \
-  --model <served-model-id> \
+  --slot <warm-desktop-slot> \
   --capabilities compaction,restart,supervision \
   --deterministic-supervisor \
   --deterministic-malformed-tool \
   --deterministic-compaction \
-  --tool-executor-url <authenticated-loopback-tool-executor-url> \
   --require-complete \
   --output .understudy/capture-evidence/desktop-runtime-conformance.json
 npm run runtime:desktop-readiness -- \
   --output .understudy/capture-evidence/desktop-runtime-readiness.json
 understudy desktop migration-status --require-ready --json
 ```
+
+For Pi or Vercel, `--slot` resolves the exact local weights path and serving
+port from the authenticated Desktop capability. It also wires the slot-bound
+tool executor and its bearer token in memory for the duration of the run; the
+token is neither printed nor persisted in conformance evidence.
 
 The one-release Rust fallback can be measured separately without making it a
 promotion gate:

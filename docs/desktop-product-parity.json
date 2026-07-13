@@ -115,7 +115,7 @@
     {
       "id": "desktop-slot-provider-identity",
       "status": "shipped",
-      "evidence": "Authenticated residency snapshots expose the exact local weights path and port. Pi and Vercel conformance can resolve those values from one warm slot and reject manual alias overrides, preventing catalog names from producing false runtime failures."
+      "evidence": "Authenticated residency snapshots expose the exact local weights path and port. Pi and Vercel conformance resolve those values plus the slot-bound Desktop tool executor from one warm slot, inject its private bearer only in memory for the run, and reject manual alias overrides, preventing catalog names from producing false runtime failures."
     },
     {
       "id": "reviewed-desktop-shell",
