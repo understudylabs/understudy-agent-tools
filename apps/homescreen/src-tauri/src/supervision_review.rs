@@ -518,6 +518,7 @@ mod tests {
         RuntimeEvent::SupervisorVerdict {
             verdict,
             source: "model".to_string(),
+            supervisor_model: "understudy-supervisor".to_string(),
             marker_id: Some(marker.to_string()),
             reason: Some(reason.to_string()),
             probabilities: Some(json!({"continue": -2.0, "interrupt": -0.1})),
@@ -612,6 +613,7 @@ mod tests {
                 RuntimeEvent::SupervisorVerdict {
                     verdict: RuntimeVerdict::Continue,
                     source: "model".to_string(),
+                    supervisor_model: "understudy-supervisor".to_string(),
                     marker_id: Some("run-1:verdict:1".to_string()),
                     reason: None,
                     probabilities: None,
@@ -703,6 +705,7 @@ mod tests {
                 RuntimeEvent::SupervisorVerdict {
                     verdict: RuntimeVerdict::Continue,
                     source: "model".to_string(),
+                    supervisor_model: "understudy-supervisor".to_string(),
                     marker_id: Some("run-1:verdict:0".to_string()),
                     reason: None,
                     probabilities: None,
@@ -764,6 +767,7 @@ mod tests {
                 RuntimeEvent::SupervisorVerdict {
                     verdict: RuntimeVerdict::Continue,
                     source: "model".to_string(),
+                    supervisor_model: "understudy-supervisor".to_string(),
                     marker_id: Some("run-1:verdict:2".to_string()),
                     reason: None,
                     probabilities: None,

@@ -855,6 +855,7 @@ async function checkSupervisor(
 
 function verdictEventData(
   decision: SupervisorDecision,
+  supervisorModel: string,
   boundaryOrdinal: number,
   afterChars: number,
   markerId?: string,
@@ -862,6 +863,7 @@ function verdictEventData(
   return {
     verdict: decision.verdict,
     source: "model",
+    supervisor_model: supervisorModel,
     marker_id: markerId,
     reason: decision.reason,
     probabilities: decision.probabilities,
@@ -961,7 +963,13 @@ async function runSupervisedStudentSegment(options: {
           );
           adapter.enqueue(
             "supervisor_verdict",
-            verdictEventData(result, thisBoundary, afterChars, currentMarker),
+            verdictEventData(
+              result,
+              config.supervisor.model,
+              thisBoundary,
+              afterChars,
+              currentMarker,
+            ),
           );
           adapter.enqueue("usage", result.usage);
           if (result.failureKind === "unavailable") {
@@ -1076,7 +1084,13 @@ async function runSupervisedStudentSegment(options: {
       );
       await writer.emit(
         "supervisor_verdict",
-        verdictEventData(finalDecision, thisBoundary, afterChars, markerId),
+        verdictEventData(
+          finalDecision,
+          config.supervisor.model,
+          thisBoundary,
+          afterChars,
+          markerId,
+        ),
       );
       await writer.emit("usage", finalDecision.usage);
       decision = finalDecision;

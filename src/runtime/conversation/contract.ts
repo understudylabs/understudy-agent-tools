@@ -8,7 +8,7 @@ export const CONFORMANCE_SCHEMA =
 export const RUNTIME_ID = "understudy-conversation-sidecar";
 export const VERCEL_RUNTIME_ID = "vercel-ai-sdk";
 export const PI_RUNTIME_ID = "pi-agent-session";
-export const RUNTIME_VERSION = "0.3.4";
+export const RUNTIME_VERSION = "0.3.5";
 
 export function piNodeSupported(version = process.versions.node): boolean {
   const [major, minor] = version.split(".").map(Number);
@@ -447,6 +447,7 @@ export function validateRuntimeTrace(values: readonly unknown[]): RuntimeEventEn
       if (!("result" in data)) throw new Error("tool_result.result is required");
     } else if (event === "usage") {
       requiredString(data, "role", "usage.role");
+      requiredString(data, "model", "usage.model");
       const source = requiredString(data, "source", "usage.source");
       if (!["provider", "estimated", "unavailable"].includes(source)) {
         throw new Error(`unknown usage source ${source}`);
@@ -491,6 +492,11 @@ export function validateRuntimeTrace(values: readonly unknown[]): RuntimeEventEn
       }
     } else if (event === "supervisor_verdict") {
       const verdict = requiredString(data, "verdict", "supervisor_verdict.verdict");
+      requiredString(
+        data,
+        "supervisor_model",
+        "supervisor_verdict.supervisor_model",
+      );
       if (!["continue", "interrupt", "stop", "nudge"].includes(verdict)) {
         throw new Error(`unknown supervisor verdict ${verdict}`);
       }

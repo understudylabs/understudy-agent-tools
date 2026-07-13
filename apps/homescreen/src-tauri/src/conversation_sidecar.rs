@@ -991,6 +991,7 @@ mod tests {
             RuntimeEvent::SupervisorVerdict {
                 verdict: crate::conversation_runtime::RuntimeVerdict::Continue,
                 source: "model".to_string(),
+                supervisor_model: "remote-supervisor".to_string(),
                 marker_id: Some("run-1:verdict:0".to_string()),
                 reason: None,
                 probabilities: None,
