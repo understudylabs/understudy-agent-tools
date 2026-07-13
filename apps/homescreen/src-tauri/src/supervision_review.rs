@@ -97,16 +97,31 @@ fn feedback_for(
         })
 }
 
-fn text_for_role(events: &[RuntimeEventEnvelope], through: usize, role: RuntimeRole) -> String {
+fn student_segment_before_verdict(events: &[RuntimeEventEnvelope], verdict_index: usize) -> String {
+    let segment_start = events
+        .iter()
+        .take(verdict_index)
+        .rposition(|envelope| {
+            matches!(
+                envelope.event,
+                RuntimeEvent::SupervisorVerdict { .. }
+                    | RuntimeEvent::Message {
+                        role: RuntimeRole::User,
+                        ..
+                    }
+            )
+        })
+        .map_or(0, |index| index + 1);
     events
         .iter()
-        .take(through + 1)
+        .take(verdict_index)
+        .skip(segment_start)
         .filter_map(|envelope| match &envelope.event {
             RuntimeEvent::Delta {
-                role: event_role,
+                role: RuntimeRole::Student,
                 text,
                 ..
-            } if *event_role == role => Some(text.as_str()),
+            } => Some(text.as_str()),
             _ => None,
         })
         .collect::<Vec<_>>()
@@ -227,6 +242,22 @@ fn teacher_evidence(
     let output = events
         .iter()
         .skip(continuation_index.0 + 1)
+        .take_while(|envelope| {
+            !matches!(
+                &envelope.event,
+                RuntimeEvent::SupervisorVerdict { .. }
+                    | RuntimeEvent::StudentInterruption { .. }
+                    | RuntimeEvent::TeacherContinuation { .. }
+                    | RuntimeEvent::Message {
+                        role: RuntimeRole::User,
+                        ..
+                    }
+                    | RuntimeEvent::Delta {
+                        role: RuntimeRole::Student,
+                        ..
+                    }
+            )
+        })
         .filter_map(|envelope| match &envelope.event {
             RuntimeEvent::Delta {
                 role: RuntimeRole::Teacher,
@@ -248,7 +279,13 @@ fn student_after_nudge(
     let mut model = None;
     for envelope in events.iter().skip(verdict_index + 1) {
         match &envelope.event {
-            RuntimeEvent::SupervisorVerdict { .. } => break,
+            RuntimeEvent::SupervisorVerdict { .. }
+            | RuntimeEvent::StudentInterruption { .. }
+            | RuntimeEvent::TeacherContinuation { .. }
+            | RuntimeEvent::Message {
+                role: RuntimeRole::User,
+                ..
+            } => break,
             RuntimeEvent::Delta {
                 role: RuntimeRole::Student,
                 text,
@@ -295,7 +332,7 @@ fn build_item(
     let marker_id = marker_id
         .clone()
         .unwrap_or_else(|| format!("{}:{stage}:{}", envelope.run_id, envelope.sequence));
-    let mut small_output = text_for_role(events, verdict_index, RuntimeRole::Student);
+    let mut small_output = student_segment_before_verdict(events, verdict_index);
     let mut intervention_at = *after_chars;
     if *verdict == RuntimeVerdict::Interrupt {
         if let Some((partial, after)) =
@@ -533,6 +570,31 @@ mod tests {
                     model: Some("understudy-teacher".to_string()),
                 },
             ),
+            envelope(
+                8,
+                RuntimeEvent::SupervisorVerdict {
+                    verdict: RuntimeVerdict::Continue,
+                    source: "model".to_string(),
+                    marker_id: Some("run-1:verdict:1".to_string()),
+                    reason: None,
+                    probabilities: None,
+                    probability_kind: None,
+                    boundary_ordinal: Some(2),
+                    after_chars: Some(17),
+                    raw: None,
+                    error: None,
+                    failure_kind: None,
+                    handoff_target: Some("local".to_string()),
+                },
+            ),
+            envelope(
+                9,
+                RuntimeEvent::Delta {
+                    role: RuntimeRole::Teacher,
+                    text: " unrelated later teacher text".to_string(),
+                    model: Some("understudy-teacher".to_string()),
+                },
+            ),
         ];
         let feedback = vec![crate::db::SupervisorFeedbackRow {
             id: 1,
@@ -576,21 +638,46 @@ mod tests {
                 1,
                 RuntimeEvent::Delta {
                     role: RuntimeRole::Student,
-                    text: "first half".to_string(),
+                    text: "old segment".to_string(),
                     model: Some("small".to_string()),
                 },
             ),
             envelope(
                 2,
+                RuntimeEvent::SupervisorVerdict {
+                    verdict: RuntimeVerdict::Continue,
+                    source: "model".to_string(),
+                    marker_id: Some("run-1:verdict:0".to_string()),
+                    reason: None,
+                    probabilities: None,
+                    probability_kind: None,
+                    boundary_ordinal: Some(0),
+                    after_chars: Some(11),
+                    raw: None,
+                    error: None,
+                    failure_kind: None,
+                    handoff_target: Some("local".to_string()),
+                },
+            ),
+            envelope(
+                3,
+                RuntimeEvent::Delta {
+                    role: RuntimeRole::Student,
+                    text: "first half".to_string(),
+                    model: Some("small".to_string()),
+                },
+            ),
+            envelope(
+                4,
                 verdict(
                     RuntimeVerdict::Nudge,
                     "run-1:intervention:0",
                     "include the evidence",
-                    0,
+                    1,
                 ),
             ),
             envelope(
-                3,
+                5,
                 RuntimeEvent::Delta {
                     role: RuntimeRole::Student,
                     text: " plus evidence".to_string(),
@@ -598,15 +685,15 @@ mod tests {
                 },
             ),
             envelope(
-                4,
+                6,
                 RuntimeEvent::SupervisorVerdict {
                     verdict: RuntimeVerdict::Continue,
                     source: "model".to_string(),
-                    marker_id: Some("run-1:verdict:1".to_string()),
+                    marker_id: Some("run-1:verdict:2".to_string()),
                     reason: None,
                     probabilities: None,
                     probability_kind: None,
-                    boundary_ordinal: Some(1),
+                    boundary_ordinal: Some(2),
                     after_chars: Some(14),
                     raw: None,
                     error: None,
