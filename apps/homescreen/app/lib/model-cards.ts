@@ -47,12 +47,31 @@ export type PublicModelCard = {
   routing_hints?: ModelCardRoutingHints;
 };
 
+export type DetailedPublicModelCard = PublicModelCard & {
+  provenance: ModelCardProvenance;
+  decode_contract: ModelCardDecodeContract;
+  certification: ModelCardCertification;
+  footprint: ModelCardFootprint;
+  routing_hints: ModelCardRoutingHints;
+};
+
 const cards = rawModelCards as PublicModelCard[];
 const cardsById = new Map(cards.map((card) => [card.id.toLowerCase(), card]));
 
 export function normalizeModelCardId(modelId: string): string {
   const withoutRoute = modelId.replace(/^(?:local|cloud|anthropic):/i, "");
-  return withoutRoute.split(/[\\/]/).filter(Boolean).at(-1)?.toLowerCase() ?? withoutRoute.toLowerCase();
+  const basename = withoutRoute.split(/[\\/]/).filter(Boolean).at(-1) ?? withoutRoute;
+  return basename.toLowerCase().replaceAll("-4-bit", "-4bit");
+}
+
+export function isDetailedModelCard(card: PublicModelCard | null): card is DetailedPublicModelCard {
+  return Boolean(
+    card?.provenance &&
+    card.decode_contract &&
+    card.certification &&
+    card.footprint &&
+    card.routing_hints,
+  );
 }
 
 export function modelCardFor(modelId: string): PublicModelCard | null {

@@ -9,7 +9,7 @@ import {
   DialogTitle,
   DialogTrigger,
 } from "./base-ui/dialog";
-import { compactModelId, modelCardFor } from "../lib/model-cards";
+import { compactModelId, isDetailedModelCard, modelCardFor } from "../lib/model-cards";
 
 type ModelRoute = "local" | "cloud" | "anthropic";
 
@@ -32,7 +32,7 @@ export function ModelCardDrawer({
   runtime: ModelRuntimeContext;
 }) {
   const card = modelCardFor(modelId);
-  const isLocalCard = route === "local" && card?.provenance;
+  const localCard = route === "local" && isDetailedModelCard(card) ? card : null;
   const runtimeLabel = runtime.loading
     ? "Loading"
     : runtime.active
@@ -65,57 +65,57 @@ export function ModelCardDrawer({
           </div>
         </DialogHeader>
 
-        {isLocalCard ? (
+        {localCard ? (
           <div className="model-card-grid">
             <section className="model-card-section provenance">
               <h3>What this is</h3>
-              <ModelCardFact label="Base" value={card.provenance!.base_model} mono />
-              <ModelCardFact label="Source" value={card.provenance!.source_checkpoint} mono />
-              <ModelCardFact label="Conversion" value={card.provenance!.conversion} mono />
-              <ModelCardFact label="Training" value={card.provenance!.understudy_training} />
-              <ModelCardFact label="License" value={card.provenance!.license} />
+              <ModelCardFact label="Base" value={localCard.provenance.base_model} mono />
+              <ModelCardFact label="Source" value={localCard.provenance.source_checkpoint} mono />
+              <ModelCardFact label="Conversion" value={localCard.provenance.conversion} mono />
+              <ModelCardFact label="Training" value={localCard.provenance.understudy_training} />
+              <ModelCardFact label="License" value={localCard.provenance.license} />
             </section>
 
             <section className="model-card-section">
               <h3>How it runs</h3>
               <div className="model-card-decode">
-                <span><b>{card.decode_contract!.temperature}</b> temp</span>
-                <span><b>{card.decode_contract!.top_p}</b> top-p</span>
-                <span><b>{card.decode_contract!.top_k}</b> top-k</span>
+                <span><b>{localCard.decode_contract.temperature}</b> temp</span>
+                <span><b>{localCard.decode_contract.top_p}</b> top-p</span>
+                <span><b>{localCard.decode_contract.top_k}</b> top-k</span>
               </div>
-              <p>{card.decode_contract!.warning}</p>
+              <p>{localCard.decode_contract.warning}</p>
               <p className="model-card-mono">
-                Required: {card.decode_contract!.required_server_flags.join(" ")}
+                Required: {localCard.decode_contract.required_server_flags.join(" ")}
               </p>
             </section>
 
             <section className="model-card-section">
               <h3>What we verified</h3>
               <div className="model-card-certification">
-                <span>{card.certification!.status}</span>
-                <time>{card.certification!.certified_at}</time>
+                <span>{localCard.certification.status}</span>
+                <time>{localCard.certification.certified_at}</time>
               </div>
               <div className="model-card-checks">
-                {card.certification!.verified.map((item) => <span key={item}>{item}</span>)}
+                {localCard.certification.verified.map((item) => <span key={item}>{item}</span>)}
               </div>
-              <p>{card.certification!.scope}</p>
+              <p>{localCard.certification.scope}</p>
             </section>
 
             <section className="model-card-section">
               <h3>When to use it</h3>
-              <ModelCardFact label="Role" value={card.routing_hints!.role} />
+              <ModelCardFact label="Role" value={localCard.routing_hints.role} />
               <ModelCardFact
                 label="Escalate"
-                value={card.routing_hints!.escalate_when.join(" · ")}
+                value={localCard.routing_hints.escalate_when.join(" · ")}
               />
-              <ModelCardFact label="Next" value={card.routing_hints!.escalate_to} />
+              <ModelCardFact label="Next" value={localCard.routing_hints.escalate_to} />
               <ModelCardFact
                 label="Footprint"
-                value={`${card.footprint!.disk_gb} GB disk${
-                  card.footprint!.peak_runtime_memory_gb
-                    ? ` · ${card.footprint!.peak_runtime_memory_gb} GB measured peak`
+                value={`${localCard.footprint.disk_gb} GB disk${
+                  localCard.footprint.peak_runtime_memory_gb
+                    ? ` · ${localCard.footprint.peak_runtime_memory_gb} GB measured peak`
                     : ""
-                } · ${card.footprint!.runtime}`}
+                } · ${localCard.footprint.runtime}`}
               />
             </section>
           </div>

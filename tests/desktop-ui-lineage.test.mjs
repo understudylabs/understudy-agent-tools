@@ -258,8 +258,12 @@ test("chat exposes compact, truthful model cards from the canonical local catalo
   assert.match(drawer, /When to use it/);
   assert.match(drawer, /No frozen experiment is linked to this chat/);
   assert.doesNotMatch(drawer, /system_prompt/);
+  assert.match(drawer, /isDetailedModelCard\(card\)/);
+  assert.doesNotMatch(drawer, /decode_contract!|certification!|footprint!|routing_hints!/);
   assert.match(cardLib, /rawModelCards/);
   assert.match(cardLib, /while \(card\?\.alias_for/);
+  assert.match(cardLib, /replaceAll\("-4-bit", "-4bit"\)/);
+  assert.match(cardLib, /card\?\.provenance &&[\s\S]*?card\.routing_hints/);
 
   const ids = [
     "gemma-4-e2b-it-qat-mlx-vlm-understudy",
