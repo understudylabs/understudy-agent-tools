@@ -148,7 +148,11 @@ export function SupervisionReviewView() {
   const interrupted = active.stage === "take_over";
   const expected = recordedAction(active);
   const probabilities = verdictProbabilities(active.verdict_logprobs);
-  const evidenceWarning = queue.incomplete + queue.invalid_journals + queue.missing_journals;
+  const evidenceWarning = queue.incomplete
+    + queue.truncated_interventions
+    + queue.invalid_journals
+    + queue.missing_journals
+    + queue.truncated_journals;
 
   return (
     <main className="supervision-review">
@@ -276,7 +280,7 @@ export function SupervisionReviewView() {
           )}
           {evidenceWarning > 0 && (
             <p className="supervision-review-warning">
-              {queue.incomplete} incomplete interventions withheld · {queue.invalid_journals} invalid journals · {queue.missing_journals} missing journals
+              {queue.incomplete} incomplete interventions withheld · {queue.truncated_interventions} older interventions outside this page · {queue.invalid_journals} invalid journals · {queue.missing_journals} missing journals · {queue.truncated_journals} older journals outside this window
             </p>
           )}
           <button className="supervision-review-history" type="button" onClick={() => setShowReviewed((value) => !value)}>

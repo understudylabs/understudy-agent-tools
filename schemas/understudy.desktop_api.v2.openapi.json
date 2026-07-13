@@ -2,7 +2,7 @@
   "openapi": "3.1.0",
   "info": {
     "title": "Understudy Desktop Agent API",
-    "version": "2.1.0",
+    "version": "2.2.0",
     "description": "Authenticated loopback API for agents operating a running Understudy Desktop app. The desktop capability file supplies the ephemeral base URL and bearer token. Prompts, images, traces, and model outputs remain local unless a caller explicitly selects a remote route."
   },
   "servers": [
@@ -529,6 +529,45 @@
         }
       }
     },
+    "/v1/supervision/corrections": {
+      "get": {
+        "operationId": "exportSupervisionCorrections",
+        "summary": "Project canonical local journals into correction pairs and attributed metrics",
+        "parameters": [
+          {
+            "name": "reviewed_only",
+            "in": "query",
+            "required": false,
+            "schema": {
+              "type": "boolean",
+              "default": false
+            }
+          }
+        ],
+        "responses": {
+          "200": {
+            "description": "Local correction pairs and metrics; the CLI writes immutable owner-only artifacts",
+            "headers": {
+              "Cache-Control": {
+                "schema": {
+                  "const": "private, no-store"
+                }
+              }
+            },
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/SupervisionExportPacket"
+                }
+              }
+            }
+          },
+          "401": {
+            "$ref": "#/components/responses/Unauthorized"
+          }
+        }
+      }
+    },
     "/v1/feedback/supervisor": {
       "post": {
         "operationId": "recordSupervisorFeedback",
@@ -634,7 +673,7 @@
             "const": "understudy.desktop_api.v2"
           },
           "api_version": {
-            "const": "2.1.0"
+            "const": "2.2.0"
           },
           "event_schema": {
             "const": "understudy-conversation-runtime-event-v1"
@@ -1120,6 +1159,226 @@
         },
         "additionalProperties": false
       },
+      "SupervisionExportPacket": {
+        "type": "object",
+        "required": [
+          "schema_version",
+          "correction_pairs",
+          "metrics"
+        ],
+        "properties": {
+          "schema_version": {
+            "const": "understudy.supervision.export_packet.v1"
+          },
+          "correction_pairs": {
+            "type": "array",
+            "items": {
+              "$ref": "#/components/schemas/CorrectionPair"
+            }
+          },
+          "metrics": {
+            "$ref": "#/components/schemas/SupervisionMetrics"
+          }
+        },
+        "additionalProperties": false
+      },
+      "CorrectionPair": {
+        "type": "object",
+        "required": [
+          "schema_version",
+          "event_schema",
+          "runtime_id",
+          "session_id",
+          "run_id",
+          "marker_id",
+          "verdict_event_id",
+          "verdict_sequence",
+          "captured_at",
+          "user_request",
+          "student",
+          "supervisor",
+          "continuation",
+          "tool_results",
+          "run_usage",
+          "human_judgment"
+        ],
+        "properties": {
+          "schema_version": {
+            "const": "understudy.correction_pair.v1"
+          },
+          "event_schema": {
+            "const": "understudy-conversation-runtime-event-v1"
+          },
+          "runtime_id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "session_id": {
+            "$ref": "#/components/schemas/AgentId"
+          },
+          "run_id": {
+            "$ref": "#/components/schemas/AgentId"
+          },
+          "marker_id": {
+            "type": "string",
+            "minLength": 1,
+            "maxLength": 500
+          },
+          "verdict_event_id": {
+            "type": "string",
+            "minLength": 1
+          },
+          "verdict_sequence": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "boundary_ordinal": {
+            "type": [
+              "integer",
+              "null"
+            ],
+            "minimum": 0
+          },
+          "captured_at": {
+            "type": "string",
+            "minLength": 1
+          },
+          "user_request": {
+            "type": "string"
+          },
+          "student": {
+            "type": "object",
+            "additionalProperties": true
+          },
+          "supervisor": {
+            "type": "object",
+            "additionalProperties": true
+          },
+          "continuation": {
+            "type": "object",
+            "additionalProperties": true
+          },
+          "tool_results": {
+            "type": "array",
+            "items": {
+              "type": "object",
+              "additionalProperties": true
+            }
+          },
+          "run_usage": {
+            "type": "object",
+            "additionalProperties": true
+          },
+          "human_judgment": {
+            "type": [
+              "object",
+              "null"
+            ],
+            "additionalProperties": true
+          }
+        },
+        "additionalProperties": false
+      },
+      "SupervisionMetrics": {
+        "type": "object",
+        "required": [
+          "schema_version",
+          "objective",
+          "review_filter",
+          "exported_pair_count",
+          "complete_pair_count",
+          "reviewed_pair_count",
+          "pending_pair_count",
+          "incomplete_intervention_count",
+          "truncated_intervention_count",
+          "invalid_journal_count",
+          "missing_journal_count",
+          "truncated_journal_count",
+          "intervention_precision",
+          "false_positive_nudge_rate",
+          "usage"
+        ],
+        "properties": {
+          "schema_version": {
+            "const": "understudy.supervision_metrics.v1"
+          },
+          "objective": {
+            "const": "maximize_correct_interventions_not_minimize_rejections"
+          },
+          "review_filter": {
+            "enum": [
+              "all",
+              "reviewed_only"
+            ]
+          },
+          "exported_pair_count": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "complete_pair_count": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "reviewed_pair_count": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "pending_pair_count": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "incomplete_intervention_count": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "truncated_intervention_count": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "invalid_journal_count": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "missing_journal_count": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "truncated_journal_count": {
+            "type": "integer",
+            "minimum": 0
+          },
+          "intervention_precision": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "minimum": 0,
+            "maximum": 1
+          },
+          "false_positive_nudge_rate": {
+            "type": [
+              "number",
+              "null"
+            ],
+            "minimum": 0,
+            "maximum": 1
+          },
+          "usage": {
+            "type": "object",
+            "required": [
+              "eligible_run_count",
+              "excluded_run_count",
+              "student",
+              "supervisor",
+              "teacher",
+              "small_model_output_share",
+              "supervisor_token_overhead"
+            ],
+            "additionalProperties": true
+          }
+        },
+        "additionalProperties": true
+      },
       "SupervisorFeedbackRequest": {
         "type": "object",
         "required": [
@@ -1251,12 +1510,13 @@
       "runtime status",
       "model inventory and certified catalog",
       "model download lifecycle",
-      "residency slot lifecycle"
+      "residency slot lifecycle",
+      "local correction-pair export and supervision metrics"
     ],
     "not_yet_versioned_in_v2_rest": [
       "conversation inspect, branch, compact, and resume",
       "runtime and CLI diagnostics with repair actions",
-      "capture and correction-pair export",
+      "general capture export outside desktop supervision",
       "resumable desktop-wide event subscription"
     ]
   }

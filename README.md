@@ -481,6 +481,7 @@ understudy desktop supervisor-feedback --session my-task --run-id my-task-1 \
   --marker my-task-1:intervention:0 --stage take_over --correct-action continue
 understudy desktop supervisor-feedback --session my-task --run-id my-task-1 \
   --marker my-task-1:verdict:0 --stage stop --correct-action interrupt
+understudy desktop supervision export --reviewed-only --json
 ```
 
 The CLI reads the private mode-0600 `~/.understudy/desktop-api.json`, verifies
@@ -494,6 +495,14 @@ Model inventory, download, and residency commands use the versioned Desktop
 REST contract and fall back to the equivalent legacy routes for one release;
 they do not duplicate model-process ownership inside the CLI. MCP remains an
 adapter for agents that prefer tool calls, not the CLI's hidden transport.
+The supervision export is explicit and local-only. It writes content-addressed,
+owner-only correction-pair JSONL and metrics under
+`~/.understudy/exports/supervision/` without printing prompt or completion
+payloads to the terminal. Metrics use only provider-complete role attribution;
+missing or estimated usage is counted as excluded rather than treated as zero.
+The export also reports incomplete interventions and any journal or intervention
+rows omitted by its bounded recent-evidence window, so aggregates are never
+presented as all-time metrics when the safety cap was reached.
 
 ## The skill tree
 

@@ -152,6 +152,11 @@ Identify the developer's current stage and load exactly one:
   [`../ingest-traces/SKILL.md`](../ingest-traces/SKILL.md) and its fleet
   lenses (`references/profile-captures.md` for structure/cost,
   `references/lotus-semantic-triage.md` for content-level bulk triage).
+  When the source is Desktop supervisor interventions, first run
+  `understudy desktop supervision export --reviewed-only --json`; use its
+  content-addressed correction-pair JSONL as the local input and inspect the
+  accompanying attribution metrics. Unreviewed pairs may support error
+  analysis, but are not human-approved training labels.
 - **Inference / routing / capture / auth / deploy** — Understudy inference,
   gateway trace capture, project/key management, model A/B via route traffic %,
   `understudy run`, or registering an improved route →

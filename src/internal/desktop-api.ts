@@ -6,7 +6,7 @@ import { fileURLToPath } from "node:url";
 import { pidAlive, probeDaemonHealth } from "./daemon.js";
 
 export const DESKTOP_API_SCHEMA = "understudy.desktop_api.v2";
-export const DESKTOP_API_OPENAPI_VERSION = "2.1.0";
+export const DESKTOP_API_OPENAPI_VERSION = "2.2.0";
 
 export function desktopApiContractPath(): string {
   return fileURLToPath(

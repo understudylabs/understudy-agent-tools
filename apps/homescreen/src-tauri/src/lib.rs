@@ -1,8 +1,8 @@
 mod aa;
 mod account;
-mod anthropic;
 mod agent_card;
 mod agent_ops;
+mod anthropic;
 mod bin;
 mod bootstrap;
 mod chat;
@@ -24,6 +24,7 @@ mod rlm;
 mod route_policy;
 mod server;
 mod sidecar;
+mod supervision_export;
 mod supervision_review;
 
 use tauri::menu::{Menu, MenuItem, PredefinedMenuItem};

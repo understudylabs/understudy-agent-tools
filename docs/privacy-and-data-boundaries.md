@@ -17,6 +17,7 @@ the CLI may send bounded product telemetry as documented in
 | Completions | model outputs, judge outputs, failed rows | local-only unless explicitly approved |
 | Desktop chat images | screenshots and other supported image attachments | private app-data files addressed by content hash; SQLite stores references only |
 | Traces | request/response payloads, spans, usage rows | metadata-only by default |
+| Supervision correction exports | user requests, student partials, supervisor reasons, teacher continuations, tool results, human labels | explicit local CLI export only; owner-only immutable files; never telemetry |
 | Eval rows | JSONL, CSV, YAML, golden fixtures | local-only until a redaction and split plan exists |
 | Secrets | API keys, tokens, credentials, local env files | never ask for chat-pasted values; never print values |
 | Local model artifacts | downloaded weights, adapters, caches | download only with explicit approval |
@@ -62,6 +63,21 @@ content ID. Reopening a chat hydrates only bounded previews. Starting a new chat
 deletes the previous session's image directory on a best-effort basis; removing
 the desktop app-data directory deletes chat history and its attachments
 together.
+
+## Supervision Correction Exports
+
+`understudy desktop supervision export` is an explicit local action. It reads
+the running desktop's authenticated loopback API and writes correction-pair
+JSONL plus aggregate metrics under `~/.understudy/exports/supervision/` by
+default. The files are content-addressed, owner-only on Unix, and never replace
+different existing content. They can contain raw prompts, model outputs, tool
+results, supervisor responses, and human judgments. The command prints only
+artifact paths, hashes, counts, and aggregate metrics; it performs no upload and
+sends none of the exported content through telemetry.
+The reader is bounded to recent local evidence for memory safety. Both the
+review desk and exported metrics disclose invalid, missing, incomplete, and
+truncated evidence counts instead of silently treating a bounded window as the
+entire ledger.
 
 ## Never Collected By Default
 

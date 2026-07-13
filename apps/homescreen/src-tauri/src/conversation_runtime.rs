@@ -298,7 +298,7 @@ pub(crate) fn load_persisted_trace(
 pub(crate) fn load_recent_persisted_traces(
     app: &AppHandle,
     limit: usize,
-) -> (Vec<Vec<RuntimeEventEnvelope>>, usize, usize) {
+) -> (Vec<Vec<RuntimeEventEnvelope>>, usize, usize, usize) {
     let root = app
         .state::<crate::db::Db>()
         .data_dir()
@@ -309,7 +309,7 @@ pub(crate) fn load_recent_persisted_traces(
 pub(crate) fn load_recent_persisted_traces_from_root(
     root: &Path,
     limit: usize,
-) -> (Vec<Vec<RuntimeEventEnvelope>>, usize, usize) {
+) -> (Vec<Vec<RuntimeEventEnvelope>>, usize, usize, usize) {
     const MAX_TRACE_BYTES: u64 = 64 * 1024 * 1024;
     let mut paths = Vec::new();
     if let Ok(session_dirs) = std::fs::read_dir(root) {
@@ -331,7 +331,9 @@ pub(crate) fn load_recent_persisted_traces_from_root(
         }
     }
     paths.sort_by_key(|entry| std::cmp::Reverse(entry.0));
-    paths.truncate(limit.clamp(1, 500));
+    let effective_limit = limit.clamp(1, 500);
+    let truncated = paths.len().saturating_sub(effective_limit);
+    paths.truncate(effective_limit);
 
     let mut traces = Vec::new();
     let mut invalid = 0;
@@ -380,7 +382,7 @@ pub(crate) fn load_recent_persisted_traces_from_root(
         }
         traces.push(events);
     }
-    (traces, invalid, missing)
+    (traces, invalid, missing, truncated)
 }
 
 fn required(value: &str, field: &str) -> Result<(), String> {
@@ -713,10 +715,8 @@ mod tests {
 
     #[test]
     fn recent_trace_loader_is_bounded_and_rejects_wrong_path_identity() {
-        let root = std::env::temp_dir().join(format!(
-            "understudy-runtime-traces-{}",
-            std::process::id()
-        ));
+        let root =
+            std::env::temp_dir().join(format!("understudy-runtime-traces-{}", std::process::id()));
         let _ = std::fs::remove_dir_all(&root);
         let valid = envelope(
             0,
@@ -737,11 +737,15 @@ mod tests {
         .unwrap();
         std::fs::write(session_dir.join("wrong-name.jsonl"), "{}\n").unwrap();
 
-        let (traces, invalid, missing) = load_recent_persisted_traces_from_root(&root, 500);
+        let (traces, invalid, missing, truncated) =
+            load_recent_persisted_traces_from_root(&root, 500);
         assert_eq!(traces.len(), 1);
         assert_eq!(invalid, 1);
         assert_eq!(missing, 0);
+        assert_eq!(truncated, 0);
         assert_eq!(traces[0][0].run_id, "run-1");
+        let (_, _, _, truncated_at_one) = load_recent_persisted_traces_from_root(&root, 1);
+        assert_eq!(truncated_at_one, 1);
         let _ = std::fs::remove_dir_all(&root);
     }
 
@@ -750,11 +754,15 @@ mod tests {
     fn opens_a_real_runtime_evidence_copy() {
         let root = std::env::var("UNDERSTUDY_TEST_RUNTIME_EVENTS_DIR")
             .expect("UNDERSTUDY_TEST_RUNTIME_EVENTS_DIR is required");
-        let (traces, invalid, missing) =
+        let (traces, invalid, missing, truncated) =
             load_recent_persisted_traces_from_root(Path::new(&root), 500);
         assert!(!traces.is_empty());
         assert_eq!(invalid, 0, "real evidence copy contains invalid journals");
         assert_eq!(missing, 0, "real evidence copy lost journals while reading");
+        assert_eq!(
+            truncated, 0,
+            "real evidence copy exceeded the bounded test window"
+        );
         let interventions = traces
             .iter()
             .flat_map(|trace| trace.iter())
