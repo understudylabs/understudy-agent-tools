@@ -919,6 +919,7 @@ test("canonical verdict evidence rejects impossible positive logprobs", () => {
     data: {
       verdict: "continue",
       source: "model",
+      supervisor_model: "supervisor-model",
       marker_id: "run-probability:verdict:0",
       probabilities: { continue: 0.9 },
       probability_kind: "logprob",
@@ -2225,9 +2226,18 @@ test("Pi and Vercel execute the identical frozen conformance inputs", async () =
     const interruption = takeover.find((event) => event.event === "student_interruption");
     const continuation = takeover.find((event) => event.event === "teacher_continuation");
     assert.equal(verdict.data.verdict, "interrupt");
+    assert.equal(verdict.data.supervisor_model, "conformance-pi-supervisor-takeover-judge");
     assert.equal(verdict.data.probability_kind, "logprob");
     assert.equal(interruption.data.marker_id, verdict.data.marker_id);
     assert.equal(continuation.data.marker_id, verdict.data.marker_id);
+    const takeoverUsage = Object.fromEntries(
+      takeover
+        .filter((event) => event.event === "usage")
+        .map((event) => [event.data.role, event.data]),
+    );
+    assert.equal(takeoverUsage.student.model, "conformance-pi-supervisor-takeover-student");
+    assert.equal(takeoverUsage.supervisor.model, "conformance-pi-supervisor-takeover-judge");
+    assert.equal(takeoverUsage.teacher.model, "conformance-pi-supervisor-takeover-teacher");
     const takeoverSummary = reports[0].scenarios.find(
       (scenario) => scenario.id === "supervisor-takeover",
     );
@@ -2306,7 +2316,7 @@ test("Pi and Vercel execute the identical frozen conformance inputs", async () =
       model: "conformance-cli",
     });
     assert.equal(cliReport.metadata.runtime_id, "understudy-conversation-sidecar");
-    assert.equal(cliReport.metadata.runtime_version, "0.3.4");
+    assert.equal(cliReport.metadata.runtime_version, "0.3.5");
     assert.equal(
       cliReport.metadata.event_schema,
       "understudy-conversation-runtime-event-v1",
@@ -2398,6 +2408,55 @@ test("malformed-tool conformance rejects shallow event-only evidence", () => {
     () => validateScenarioEvidence(input, events),
     /did not preserve a tool argument parse error/,
   );
+});
+
+test("supervisor conformance requires exact per-model usage attribution", () => {
+  const input = JSON.parse(
+    readFileSync(
+      new URL(
+        "../schemas/conversation-runtime-conformance/inputs/supervisor-takeover.json",
+        import.meta.url,
+      ),
+      "utf8",
+    ),
+  );
+  const fixture = () =>
+    readFileSync(
+      new URL(
+        "../schemas/conversation-runtime-conformance/supervisor-takeover.jsonl",
+        import.meta.url,
+      ),
+      "utf8",
+    )
+      .trim()
+      .split("\n")
+      .map((line) => JSON.parse(line));
+  assert.doesNotThrow(() => validateScenarioEvidence(input, fixture()));
+
+  const missingSupervisor = fixture().filter(
+    (event) => !(event.event === "usage" && event.data.role === "supervisor"),
+  );
+  missingSupervisor.forEach((event, sequence) => {
+    event.sequence = sequence;
+    event.event_id = `${event.run_id}:${sequence}`;
+  });
+  assert.throws(
+    () => validateScenarioEvidence(input, missingSupervisor),
+    /did not attribute supervisor usage/,
+  );
+
+  const mismatchedTeacher = fixture();
+  mismatchedTeacher.find(
+    (event) => event.event === "usage" && event.data.role === "teacher",
+  ).data.model = "wrong-teacher";
+  assert.throws(
+    () => validateScenarioEvidence(input, mismatchedTeacher),
+    /continuation and usage disagree on teacher model/,
+  );
+
+  const missingModel = fixture();
+  delete missingModel.find((event) => event.event === "usage").data.model;
+  assert.throws(() => validateRuntimeTrace(missingModel), /usage\.model must be a non-empty string/);
 });
 
 test("long-chat conformance requires actual token reduction", () => {

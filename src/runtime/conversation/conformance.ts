@@ -228,6 +228,46 @@ export function validateScenarioEvidence(input: RuntimeInputFixture, values: rea
       }
     }
   }
+  if (input.fixture_id === "supervisor-takeover") {
+    const usageByRole = new Map<string, Array<(typeof events)[number]>>();
+    for (const event of events.filter((event) => event.event === "usage")) {
+      const role = String(event.data.role);
+      usageByRole.set(role, [...(usageByRole.get(role) ?? []), event]);
+    }
+    for (const role of ["student", "supervisor", "teacher"]) {
+      if (!usageByRole.has(role)) {
+        throw new Error(`supervisor-takeover did not attribute ${role} usage`);
+      }
+    }
+    const verdict = events.find((event) => event.event === "supervisor_verdict");
+    const continuation = events.find((event) => event.event === "teacher_continuation");
+    const supervisorModels = new Set(
+      (usageByRole.get("supervisor") ?? []).map((event) => String(event.data.model)),
+    );
+    const teacherModels = new Set(
+      (usageByRole.get("teacher") ?? []).map((event) => String(event.data.model)),
+    );
+    if (!supervisorModels.has(String(verdict?.data.supervisor_model))) {
+      throw new Error("supervisor-takeover verdict and usage disagree on supervisor model");
+    }
+    if (!teacherModels.has(String(continuation?.data.teacher_model))) {
+      throw new Error("supervisor-takeover continuation and usage disagree on teacher model");
+    }
+    const deltaModels = new Map<string, Set<string>>();
+    for (const event of events.filter((event) => event.event === "delta")) {
+      const role = String(event.data.role);
+      deltaModels.set(role, new Set([...(deltaModels.get(role) ?? []), String(event.data.model)]));
+    }
+    for (const role of ["student", "teacher"]) {
+      const observed = deltaModels.get(role);
+      const attributed = new Set(
+        (usageByRole.get(role) ?? []).map((event) => String(event.data.model)),
+      );
+      if (!observed || [...observed].some((model) => !attributed.has(model))) {
+        throw new Error(`supervisor-takeover ${role} deltas and usage disagree on model`);
+      }
+    }
+  }
   if (input.fixture_id === "long-chat-compaction") {
     const reduced = events.some(
       (event) =>
