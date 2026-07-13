@@ -53,12 +53,12 @@
     {
       "id": "remote-review-tiebreaker",
       "status": "partial",
-      "evidence": "The public CLI and desktop now provide destination-bound opt-in GLM 5.2 review over bounded pre-intervention evidence, exact served-model validation, private content-addressed analysis caching, offline-safe fallback, and explicit human judge-quality feedback. A frozen fail-closed promotion suite is public and dry-run verified; a fresh live 10+ case provider run is still required before recommending the advisory by default."
+      "evidence": "The public CLI and desktop provide destination-bound opt-in GLM 5.2 review over bounded pre-intervention evidence, exact served-model validation, private content-addressed analysis caching, offline-safe fallback, and explicit human judge-quality feedback. The 2026-07-13 frozen 10-case live qualification completed with 100% contract and route validity, but only 70% action accuracy and two high-confidence wrong actions, so the recorded recommendation is do_not_enable and the advisory remains off by default pending prompt-policy repair and requalification."
     },
     {
       "id": "unified-experiment-hub",
       "status": "partial",
-      "evidence": "GEPA, RLM, custom eval, and benchmark capabilities exist, but the reviewed benchmark, ledger, and comparison experience is not one coherent surface."
+      "evidence": "Experiments now presents one compact Review -> Compare -> Improve loop. Compare preflights two distinct warm local models, runs an identical direct frozen slice without cloud traffic, projects the existing benchmark ledger into quality, latency, token, capture, and failure evidence, and refuses promotion without matching immutable hashes and complete capture IDs. The improvement handoff and canonical immutable hash writer still need to move behind the shared CLI/runtime before this feature is shipped."
     },
     {
       "id": "legacy-desktop-retirement-guard",

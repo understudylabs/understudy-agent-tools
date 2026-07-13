@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Channel, invoke } from "@tauri-apps/api/core";
 import type { ResidencySnapshot } from "../lib/useStatus";
+import { ExperimentCompareView } from "./ExperimentCompareView";
 import { SupervisionReviewView } from "./SupervisionReviewView";
 
 type RlmTask = {
@@ -120,7 +121,10 @@ function shortModel(model: string | null): string {
 
 /** The human-facing Experiments job starts with trustworthy intervention labels. */
 export function RlmPane() {
-  return <SupervisionReviewView />;
+  const [view, setView] = useState<"review" | "compare">("review");
+  return view === "review"
+    ? <SupervisionReviewView onCompare={() => setView("compare")} />
+    : <ExperimentCompareView onReview={() => setView("review")} />;
 }
 
 // Kept during the one-release migration window for extraction and conformance
