@@ -89,6 +89,11 @@ type ResidencySnapshot = {
 type SnapshotModel = SnapshotAlias;
 type ChatStatus = "ready" | "streaming" | "error";
 
+const CLOUD_SUPERVISOR_FALLBACK_NOTICE =
+  "Tried to hand off to a larger cloud model, but it is unavailable. Continuing with the local model.";
+const LOCAL_SUPERVISOR_FALLBACK_NOTICE =
+  "The supervising model is unavailable. Continuing with the selected local model.";
+
 const canonicalAttachment = async (file: FileUIPart): Promise<ChatAttachment> => {
   const mediaType = file.mediaType || "";
   if (!mediaType.startsWith("image/") || !file.url.startsWith(`data:${mediaType};base64,`)) {
@@ -518,6 +523,11 @@ export function ChatPane({ resetToken }: { resetToken: number }) {
           return p;
         });
       } else if (msg.type === "SidekickEvent") {
+        if (msg.mode === "supervision" && msg.stage === "cloud_fallback_local") {
+          setNotice(CLOUD_SUPERVISOR_FALLBACK_NOTICE);
+        } else if (msg.mode === "supervision" && msg.stage === "supervisor_fallback_local") {
+          setNotice(LOCAL_SUPERVISOR_FALLBACK_NOTICE);
+        }
         setSidekickEvents((prev) => [
           {
             id: Date.now(),
@@ -642,6 +652,8 @@ export function ChatPane({ resetToken }: { resetToken: number }) {
       latestSidekickEvent.stage === "interrupt" ||
       latestSidekickEvent.stage === "nudge" ||
       latestSidekickEvent.stage === "stop" ||
+      latestSidekickEvent.stage === "cloud_fallback_local" ||
+      latestSidekickEvent.stage === "supervisor_fallback_local" ||
       latestSidekickEvent.stage === "student_interrupted" ||
       latestSidekickEvent.stage === "teacher_continuation");
   const sidekickMonitorVisible =
@@ -766,6 +778,10 @@ export function ChatPane({ resetToken }: { resetToken: number }) {
                 <div className="sidekick-active-title">
                   {latestSidekickEvent.stage === "compaction_boundary"
                     ? "Compaction boundary"
+                    : latestSidekickEvent.stage === "cloud_fallback_local"
+                      ? "Cloud supervisor unavailable"
+                    : latestSidekickEvent.stage === "supervisor_fallback_local"
+                      ? "Supervisor unavailable"
                     : latestSidekickEvent.stage === "route_applied"
                       ? "Route switched"
                     : latestSidekickEvent.stage === "student_interrupted"

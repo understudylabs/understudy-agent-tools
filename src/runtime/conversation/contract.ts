@@ -501,6 +501,37 @@ export function validateRuntimeTrace(values: readonly unknown[]): RuntimeEventEn
       if (["interrupt", "nudge"].includes(verdict)) {
         requiredString(data, "reason", "supervisor_verdict.reason");
       }
+      if ("handoff_target" in data && data.handoff_target != null) {
+        const target = requiredString(
+          data,
+          "handoff_target",
+          "supervisor_verdict.handoff_target",
+        );
+        if (!["local", "remote"].includes(target)) {
+          throw new Error(`unknown supervisor verdict handoff_target ${target}`);
+        }
+      }
+      if ("failure_kind" in data && data.failure_kind != null) {
+        const failureKind = requiredString(
+          data,
+          "failure_kind",
+          "supervisor_verdict.failure_kind",
+        );
+        if (!["unavailable", "invalid_response", "policy_degrade"].includes(failureKind)) {
+          throw new Error(`unknown supervisor verdict failure_kind ${failureKind}`);
+        }
+        requiredString(data, "error", "supervisor_verdict.error");
+        if (failureKind === "unavailable") {
+          if (verdict !== "continue") {
+            throw new Error("an unavailable supervisor must degrade to continue");
+          }
+          requiredString(
+            data,
+            "handoff_target",
+            "supervisor_verdict.handoff_target",
+          );
+        }
+      }
       if ("probabilities" in data && data.probabilities != null) {
         const probabilities = record(
           data.probabilities,

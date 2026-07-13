@@ -163,6 +163,11 @@ pub(crate) enum SidecarAttempt {
     FailedAfterOutput(String),
 }
 
+pub(crate) const CLOUD_SUPERVISOR_FALLBACK_NOTICE: &str =
+    "Tried to hand off to a larger cloud model, but it is unavailable. Continuing with the local model.";
+pub(crate) const LOCAL_SUPERVISOR_FALLBACK_NOTICE: &str =
+    "The supervising model is unavailable. Continuing with the selected local model.";
+
 #[derive(Default)]
 struct SidecarAccumulator {
     content: String,
@@ -277,20 +282,52 @@ impl SidecarAccumulator {
                 verdict,
                 reason,
                 marker_id,
+                error,
+                failure_kind,
+                handoff_target,
                 ..
-            } => Some(ChatEvent::SidekickEvent {
-                mode: "supervision".to_string(),
-                stage: format!("{verdict:?}").to_lowercase(),
-                detail: format!(
-                    "run={}{} · {}",
-                    envelope.run_id,
-                    marker_id
-                        .as_deref()
-                        .map(|marker| format!(" marker={marker}"))
-                        .unwrap_or_default(),
-                    reason.as_deref().unwrap_or("supervisor verdict")
-                ),
-            }),
+            } => {
+                let unavailable = failure_kind.as_deref() == Some("unavailable");
+                let (stage, summary) = if unavailable {
+                    if handoff_target.as_deref() == Some("remote") {
+                        ("cloud_fallback_local", CLOUD_SUPERVISOR_FALLBACK_NOTICE)
+                    } else {
+                        (
+                            "supervisor_fallback_local",
+                            LOCAL_SUPERVISOR_FALLBACK_NOTICE,
+                        )
+                    }
+                } else {
+                    (
+                        match verdict {
+                            crate::conversation_runtime::RuntimeVerdict::Continue => "continue",
+                            crate::conversation_runtime::RuntimeVerdict::Interrupt => "interrupt",
+                            crate::conversation_runtime::RuntimeVerdict::Stop => "stop",
+                            crate::conversation_runtime::RuntimeVerdict::Nudge => "nudge",
+                        },
+                        reason.as_deref().unwrap_or("supervisor verdict"),
+                    )
+                };
+                let error_detail = unavailable
+                    .then_some(error.as_deref())
+                    .flatten()
+                    .map(|value| format!(" · {value}"))
+                    .unwrap_or_default();
+                Some(ChatEvent::SidekickEvent {
+                    mode: "supervision".to_string(),
+                    stage: stage.to_string(),
+                    detail: format!(
+                        "run={}{} · {}{}",
+                        envelope.run_id,
+                        marker_id
+                            .as_deref()
+                            .map(|marker| format!(" marker={marker}"))
+                            .unwrap_or_default(),
+                        summary,
+                        error_detail,
+                    ),
+                })
+            }
             RuntimeEvent::StudentInterruption {
                 reason, marker_id, ..
             } => Some(ChatEvent::SidekickEvent {
@@ -900,6 +937,32 @@ mod tests {
             Some(ChatEvent::Chunk { .. })
         ));
         assert!(accumulator.emitted_output);
+    }
+
+    #[test]
+    fn failed_remote_supervisor_handoff_becomes_a_visible_local_fallback() {
+        let mut accumulator = SidecarAccumulator::default();
+        let event = accumulator.observe(&envelope(
+            0,
+            RuntimeEvent::SupervisorVerdict {
+                verdict: crate::conversation_runtime::RuntimeVerdict::Continue,
+                source: "model".to_string(),
+                marker_id: Some("run-1:verdict:0".to_string()),
+                reason: None,
+                probabilities: None,
+                probability_kind: None,
+                error: Some("request failed: offline".to_string()),
+                failure_kind: Some("unavailable".to_string()),
+                handoff_target: Some("remote".to_string()),
+            },
+        ));
+        assert!(matches!(
+            event,
+            Some(ChatEvent::SidekickEvent { ref stage, ref detail, .. })
+                if stage == "cloud_fallback_local"
+                    && detail.contains(CLOUD_SUPERVISOR_FALLBACK_NOTICE)
+        ));
+        assert!(!accumulator.emitted_output);
     }
 
     #[test]
