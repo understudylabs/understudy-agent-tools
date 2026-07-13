@@ -14,6 +14,24 @@ Each attempt has a 30-second terminal timeout by default so a slow local tool or
 model becomes explicit cancellation evidence instead of hanging the suite; use
 `--timeout-ms` only when deliberately testing a slower environment.
 
+The supported product path is the Desktop **Experiments** screen or the public
+CLI. The quick proof uses the 17-task core suite once; the promotion proof uses
+all 30 hard tasks three times:
+
+```sh
+understudy desktop tool-proof run \
+  --suite core \
+  --candidate local-main:7 \
+  --candidate local-fast:6 \
+  --repetitions 1
+understudy desktop tool-proof list --json
+understudy desktop tool-proof prepare --proof <proof-id> --json
+```
+
+`prepare` creates an immutable owner-only packet containing only the failed
+strict rows and recommends GEPA prompt/policy repair first. It performs no
+upload and does not silently start training.
+
 ```sh
 node experiments/desktop-tool-proof/run.mjs \
   --candidate 4b:7 \
@@ -21,6 +39,34 @@ node experiments/desktop-tool-proof/run.mjs \
   --candidate 26b:5 \
   --repetitions 3
 ```
+
+The direct runner remains available for harness development. Direct-Pi proofs
+manage residency exclusively by default: the harness snapshots
+the current warm set, cools and verifies every non-candidate slot, warms one
+candidate, runs its frozen rows, cools it, and restores the prior set in a
+`finally` path. This makes repeated comparisons sequential instead of stacking
+Metal allocations. `--prewarmed` is an explicit diagnostic escape hatch; do not
+use it for heavy-model experiments.
+
+The 17-task `core` suite is the stable regression gate. A separate 30-task
+`hard` promotion suite adds semantic tool selection, exact Unicode and escaped
+arguments, repeated calls, three- and four-step plans, near-collision names,
+quoted prompt-injection decoys, wrapper/direct routing, and unsupported-action
+abstention:
+
+```sh
+node experiments/desktop-tool-proof/run.mjs \
+  --suite hard \
+  --candidate mixed46:9 \
+  --repetitions 3
+```
+
+Only the committed `core` and `hard` suite names are accepted. The selected
+suite name, source filename, and exact task bytes hash are persisted with the
+proof so an arbitrary local task file cannot be mistaken for promotion
+evidence. Image grounding, long-chat compaction, cancellation, offline fallback,
+and restart recovery remain a separate runtime-conformance gate rather than
+being blended into model tool-call accuracy.
 
 For a causal probe against an exact frozen task, repeat `--task-id` as needed:
 
@@ -33,6 +79,20 @@ node experiments/desktop-tool-proof/run.mjs \
 
 Filtered proofs hash and persist only the selected task subset, so they cannot
 be confused with evidence from the full frozen suite.
+
+For Gemma 4 MoE compression repair, the local converter preserves QAT's
+group-size-32 contract, keeps routers at 8-bit, and protects an explicit layer
+set at 6-bit while leaving the remaining body at 4-bit:
+
+```bash
+python experiments/desktop-tool-proof/convert-gemma4-moe-mixed.py \
+  --source <qat-bf16-source> \
+  --output <candidate-output> \
+  --protected-layers 15-29
+```
+
+Every generated artifact is a candidate until it passes both the exact
+10-attempt causal probe and the full 51-attempt strict suite.
 
 The direct runner resolves the selected slot from the authenticated residency
 surface and cross-checks its model path against the local agent card. Portable

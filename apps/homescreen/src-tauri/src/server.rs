@@ -117,6 +117,10 @@ pub fn router(ctx: Ctx) -> Router {
         )
         .route("/v1/runs/:run_id/cancel", post(agent_run_cancel))
         .route("/v1/runs/:run_id/events", get(agent_run_events))
+        .route(
+            "/v1/supervision/corrections",
+            get(agent_supervision_corrections),
+        )
         .route("/v1/feedback/supervisor", post(agent_supervisor_feedback))
         // agent fronts
         .route("/mcp", post(mcp))
@@ -256,7 +260,7 @@ async fn agent_capabilities(
 fn agent_capabilities_value() -> Value {
     json!({
         "schema_version": "understudy.desktop_api.v2",
-        "api_version": "2.1.0",
+        "api_version": "2.2.0",
         "event_schema": crate::conversation_runtime::EVENT_SCHEMA,
         "runtime": {
             "id": "understudy-conversation-runtime",
@@ -268,6 +272,7 @@ fn agent_capabilities_value() -> Value {
             "exact_run_cancellation": true,
             "persisted_run_events": true,
             "supervisor_feedback": true,
+            "supervision_correction_export": true,
             "local_supervision": true,
             "fully_offline_local_models": true,
             "model_inventory": true,
@@ -293,6 +298,7 @@ fn agent_capabilities_value() -> Value {
             "cancel_run": "/v1/runs/{run_id}/cancel",
             "run_events": "/v1/runs/{run_id}/events",
             "supervisor_feedback": "/v1/feedback/supervisor",
+            "supervision_corrections": "/v1/supervision/corrections",
         }
     })
 }
@@ -472,6 +478,31 @@ async fn agent_supervisor_feedback(
     crate::commands::record_supervisor_feedback(ctx.app.clone(), feedback)
         .map_err(|error| (StatusCode::BAD_REQUEST, error))?;
     Ok(Json(json!({ "ok": true })))
+}
+
+#[derive(serde::Deserialize)]
+struct SupervisionCorrectionsQuery {
+    #[serde(default)]
+    reviewed_only: bool,
+}
+
+async fn agent_supervision_corrections(
+    State(ctx): State<Ctx>,
+    h: HeaderMap,
+    Query(query): Query<SupervisionCorrectionsQuery>,
+) -> Result<Response, (StatusCode, String)> {
+    auth(&ctx, &h)?;
+    let app = ctx.app.clone();
+    let packet = blocking(move || {
+        crate::supervision_export::supervision_export_packet(&app, query.reviewed_only)
+    })
+    .await?;
+    let mut response = Json(packet).into_response();
+    response.headers_mut().insert(
+        header::CACHE_CONTROL,
+        HeaderValue::from_static("private, no-store"),
+    );
+    Ok(response)
 }
 
 async fn status(State(ctx): State<Ctx>, h: HeaderMap) -> Result<Json<Value>, (StatusCode, String)> {
@@ -1668,7 +1699,15 @@ mod tests {
     fn agent_capabilities_advertise_the_versioned_control_plane() {
         let capabilities = agent_capabilities_value();
         assert_eq!(capabilities["schema_version"], "understudy.desktop_api.v2");
-        assert_eq!(capabilities["api_version"], "2.1.0");
+        assert_eq!(capabilities["api_version"], "2.2.0");
+        assert_eq!(
+            capabilities["features"]["supervision_correction_export"],
+            true
+        );
+        assert_eq!(
+            capabilities["endpoints"]["supervision_corrections"],
+            "/v1/supervision/corrections"
+        );
         assert_eq!(
             capabilities["event_schema"],
             crate::conversation_runtime::EVENT_SCHEMA

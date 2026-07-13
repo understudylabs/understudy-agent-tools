@@ -2,6 +2,8 @@ use crate::account;
 use crate::bin;
 use crate::models::{self, SnapshotInfo};
 use futures_util::StreamExt;
+use reqwest::header::{CONTENT_RANGE, RANGE};
+use reqwest::StatusCode;
 use serde::{Deserialize, Serialize};
 use sha2::{Digest, Sha256};
 use std::collections::{HashMap, HashSet};
@@ -10,7 +12,7 @@ use std::process::Command;
 use std::time::Duration;
 use tauri::ipc::Channel;
 use tauri::{AppHandle, Emitter};
-use tokio::fs;
+use tokio::fs::{self, OpenOptions};
 use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
 #[derive(Serialize, Clone)]
@@ -23,7 +25,7 @@ pub struct ToolStatus {
     pub detail: String,
 }
 
-const MIN_UNDERSTUDY_CLI_VERSION: &str = "0.6.1";
+const MIN_UNDERSTUDY_CLI_VERSION: &str = "0.6.4";
 const UNDERSTUDY_INSTALLER_URL: &str =
     "https://raw.githubusercontent.com/UnderstudyLabs/understudy-agent-tools/main/install.sh";
 
@@ -41,10 +43,40 @@ pub struct BootstrapStatus {
 }
 
 #[derive(Serialize, Clone)]
+pub struct VersionHealth {
+    pub id: String,
+    pub label: String,
+    pub available: bool,
+    pub installed_version: Option<String>,
+    pub latest_version: Option<String>,
+    pub update_available: Option<bool>,
+    pub detail: String,
+}
+
+#[derive(Serialize, Clone)]
+pub struct DesktopHealth {
+    pub checked_at: String,
+    pub online: bool,
+    pub desktop: VersionHealth,
+    pub cli: VersionHealth,
+    pub mlx_vlm: VersionHealth,
+    pub conversation_runtime: VersionHealth,
+}
+
+#[derive(Serialize, Clone)]
 #[serde(tag = "type")]
 pub enum DownloadEvent {
+    Plan {
+        files: usize,
+        total: Option<u64>,
+    },
     Log {
         message: String,
+    },
+    Resume {
+        name: String,
+        bytes: u64,
+        total: Option<u64>,
     },
     File {
         name: String,
@@ -92,6 +124,7 @@ struct FileMetadata {
     name: String,
     bytes: u64,
     cached: bool,
+    resumed: bool,
 }
 
 pub fn status() -> BootstrapStatus {
@@ -125,10 +158,10 @@ pub fn install_uv() -> Result<String, String> {
 }
 
 pub fn install_mlx_runtime() -> Result<String, String> {
-    let out = bin::command("uv")
-        .args(["tool", "install", "mlx-vlm"])
+    let out = bin::command("understudy")
+        .args(["models", "runtime", "repair", "--json"])
         .output()
-        .map_err(|e| format!("uv not found: {e}"))?;
+        .map_err(|e| format!("Understudy CLI not found: {e}"))?;
     command_output(out)
 }
 
@@ -169,6 +202,161 @@ pub fn install_understudy_agent_tools() -> Result<String, String> {
         .map_err(|e| format!("Understudy installer failed to start: {e}"));
     let _ = std::fs::remove_file(&script);
     installed.and_then(command_output)
+}
+
+/// Aggregate bounded public update checks and local runtime diagnostics for
+/// the desktop repair surface. Network failure only leaves latest versions
+/// unknown; local availability and repair remain fully functional offline.
+pub async fn desktop_health(app: &AppHandle) -> DesktopHealth {
+    let cli_local = command_version(bin::command("understudy").arg("--version").output());
+    let mlx_status = models::mlx_runtime_status();
+    let mlx_local = mlx_status
+        .available
+        .then_some(mlx_status.installed_version.clone())
+        .flatten();
+    let client = reqwest::Client::builder()
+        .connect_timeout(Duration::from_secs(3))
+        .read_timeout(Duration::from_secs(5))
+        .user_agent("Understudy-Desktop/health-check")
+        .build();
+
+    let (cli_latest, desktop_latest, desktop_url) = if let Ok(client) = client {
+        let cli = fetch_json(
+            &client,
+            "https://raw.githubusercontent.com/understudylabs/understudy-agent-tools/main/package.json",
+        );
+        let desktop = fetch_json(
+            &client,
+            "https://api.github.com/repos/understudylabs/understudy-agent-tools/releases/latest",
+        );
+        let (cli, desktop) = tokio::join!(cli, desktop);
+        (
+            cli.ok().and_then(|value| json_string(&value, &["version"])),
+            desktop
+                .as_ref()
+                .ok()
+                .and_then(|value| json_string(value, &["tag_name"]))
+                .and_then(|tag| extract_version(&tag)),
+            desktop
+                .ok()
+                .and_then(|value| json_string(&value, &["html_url"])),
+        )
+    } else {
+        (None, None, None)
+    };
+
+    let mut cli_health = version_health(
+        "cli",
+        "Understudy CLI",
+        cli_local,
+        cli_latest,
+        "Run the official agent-tools installer to repair or update.".to_string(),
+    );
+    if cli_health.available && !mlx_status.managed {
+        cli_health.update_available = Some(true);
+        cli_health.detail =
+            "Installed CLI lacks the managed MLX/VLM lifecycle; update it before repairing local models."
+                .to_string();
+    }
+    DesktopHealth {
+        checked_at: chrono::Utc::now().to_rfc3339(),
+        online: cli_health.latest_version.is_some() || desktop_latest.is_some(),
+        desktop: version_health(
+            "desktop",
+            "Desktop app",
+            Some(env!("CARGO_PKG_VERSION").to_string()),
+            desktop_latest,
+            desktop_url.unwrap_or_else(|| {
+                "https://github.com/understudylabs/understudy-agent-tools/releases/latest"
+                    .to_string()
+            }),
+        ),
+        cli: cli_health,
+        mlx_vlm: version_health(
+            "mlx-vlm",
+            "Local model runtime",
+            mlx_local,
+            None,
+            mlx_status.detail,
+        ),
+        conversation_runtime: crate::conversation_sidecar::health(app),
+    }
+}
+
+async fn fetch_json(client: &reqwest::Client, url: &str) -> Result<serde_json::Value, String> {
+    client
+        .get(url)
+        .send()
+        .await
+        .map_err(|e| e.to_string())?
+        .error_for_status()
+        .map_err(|e| e.to_string())?
+        .json()
+        .await
+        .map_err(|e| e.to_string())
+}
+
+fn json_string(value: &serde_json::Value, path: &[&str]) -> Option<String> {
+    path.iter()
+        .try_fold(value, |current, key| current.get(*key))
+        .and_then(serde_json::Value::as_str)
+        .map(str::to_string)
+}
+
+fn command_version(output: std::io::Result<std::process::Output>) -> Option<String> {
+    let output = output.ok()?;
+    if !output.status.success() {
+        return None;
+    }
+    extract_version(&String::from_utf8_lossy(&output.stdout))
+        .or_else(|| extract_version(&String::from_utf8_lossy(&output.stderr)))
+}
+
+fn version_health(
+    id: &str,
+    label: &str,
+    installed: Option<String>,
+    latest: Option<String>,
+    detail: String,
+) -> VersionHealth {
+    VersionHealth {
+        id: id.to_string(),
+        label: label.to_string(),
+        available: installed.is_some(),
+        update_available: match (&installed, &latest) {
+            (Some(local), Some(remote)) => version_is_newer(remote, local),
+            _ => None,
+        },
+        installed_version: installed,
+        latest_version: latest,
+        detail,
+    }
+}
+
+fn extract_version(value: &str) -> Option<String> {
+    value
+        .split(|character: char| !(character.is_ascii_digit() || character == '.'))
+        .find(|part| {
+            let pieces: Vec<&str> = part.split('.').collect();
+            pieces.len() >= 2 && pieces.iter().all(|piece| piece.parse::<u64>().is_ok())
+        })
+        .map(str::to_string)
+}
+
+fn version_is_newer(candidate: &str, current: &str) -> Option<bool> {
+    fn numbers(value: &str) -> Option<Vec<u64>> {
+        extract_version(value)?
+            .split('.')
+            .map(str::parse)
+            .collect::<Result<Vec<_>, _>>()
+            .ok()
+    }
+    let mut candidate = numbers(candidate)?;
+    let mut current = numbers(current)?;
+    let length = candidate.len().max(current.len());
+    candidate.resize(length, 0);
+    current.resize(length, 0);
+    Some(candidate > current)
 }
 
 pub async fn download_model(
@@ -260,6 +448,14 @@ async fn download_model_inner(
         .map_err(|e| format!("session manifest parse failed: {e}"))?;
     let mut files = manifest.files;
     files.sort_by_key(file_name);
+    let planned_total = files
+        .iter()
+        .map(|file| file.size_bytes.or(file.size))
+        .sum::<Option<u64>>();
+    let _ = on_event.send(DownloadEvent::Plan {
+        files: files.len(),
+        total: planned_total,
+    });
     let mut out = Vec::with_capacity(files.len());
 
     // Pull SHA256SUMS first (never cache-skipped) so every other file,
@@ -332,10 +528,16 @@ async fn download_file(
                 let _ = on_event.send(DownloadEvent::Log {
                     message: format!("cached {name}"),
                 });
+                let _ = on_event.send(DownloadEvent::File {
+                    name: name.clone(),
+                    downloaded: meta.len(),
+                    total: Some(meta.len()),
+                });
                 return Ok(FileMetadata {
                     name,
                     bytes: meta.len(),
                     cached: true,
+                    resumed: false,
                 });
             }
             // Self-heal: a cached file that fails verification is replaced by
@@ -346,27 +548,126 @@ async fn download_file(
         }
     }
 
-    let _ = on_event.send(DownloadEvent::Log {
-        message: format!("downloading {name}"),
-    });
-    let response = client
-        .get(&file.url)
+    let part = partial_path(&target);
+    // SHA256SUMS is tiny and is the authority for every weight file. Never
+    // splice bytes from a prior session into it; all other `.part` files are
+    // intentionally durable across cancellation, network failure, and app
+    // restart.
+    if is_sums_file(&name) {
+        let _ = fs::remove_file(&part).await;
+    }
+    let mut resume_from = fs::metadata(&part).await.map(|m| m.len()).unwrap_or(0);
+    if total.is_some_and(|expected| resume_from > expected) {
+        let _ = on_event.send(DownloadEvent::Log {
+            message: format!("partial {name} is larger than expected; restarting safely"),
+        });
+        let _ = fs::remove_file(&part).await;
+        resume_from = 0;
+    }
+
+    // A previous run may have received every byte and then stopped before the
+    // atomic rename. Verify that complete partial locally instead of spending
+    // the network request again.
+    if resume_from > 0 && total == Some(resume_from) {
+        let valid = match expected.as_deref() {
+            Some(expected) => sha256_of_file(&part).await.ok().as_deref() == Some(expected),
+            None => true,
+        };
+        if valid {
+            let _ = on_event.send(DownloadEvent::Resume {
+                name: name.clone(),
+                bytes: resume_from,
+                total,
+            });
+            replace_with_partial(&part, &target, &name).await?;
+            let _ = on_event.send(DownloadEvent::File {
+                name: name.clone(),
+                downloaded: resume_from,
+                total,
+            });
+            return Ok(FileMetadata {
+                name,
+                bytes: resume_from,
+                cached: false,
+                resumed: true,
+            });
+        }
+        let _ = on_event.send(DownloadEvent::Log {
+            message: format!("complete partial {name} failed verification; restarting safely"),
+        });
+        let _ = fs::remove_file(&part).await;
+        resume_from = 0;
+    }
+
+    let mut request = client.get(&file.url);
+    if resume_from > 0 {
+        request = request.header(RANGE, format!("bytes={resume_from}-"));
+    }
+    let response = request
         .send()
         .await
-        .map_err(|e| format!("download request failed for {name}: {e}"))?
+        .map_err(|e| format!("download request failed for {name}: {e}"))?;
+    let append = resume_response_appends(
+        response.status(),
+        response
+            .headers()
+            .get(CONTENT_RANGE)
+            .and_then(|value| value.to_str().ok()),
+        resume_from,
+    )?;
+    let response = response
         .error_for_status()
         .map_err(|e| format!("download failed for {name}: {e}"))?;
-    let total = total.or_else(|| response.content_length());
-    let part = target.with_extension(format!(
-        "{}part",
-        target.extension().and_then(|s| s.to_str()).unwrap_or("")
-    ));
-    let mut writer = fs::File::create(&part)
-        .await
-        .map_err(|e| format!("create partial file failed for {name}: {e}"))?;
+    if resume_from > 0 && !append {
+        let _ = on_event.send(DownloadEvent::Log {
+            message: format!("server did not accept resume for {name}; restarting safely"),
+        });
+        resume_from = 0;
+    }
+    let response_total = response
+        .headers()
+        .get(CONTENT_RANGE)
+        .and_then(|value| value.to_str().ok())
+        .and_then(content_range)
+        .and_then(|(_, total)| total)
+        .or_else(|| {
+            response
+                .content_length()
+                .map(|remaining| remaining + resume_from)
+        });
+    let total = total.or(response_total);
+    if resume_from > 0 {
+        let _ = on_event.send(DownloadEvent::Log {
+            message: format!("resuming {name} from {resume_from} bytes"),
+        });
+        let _ = on_event.send(DownloadEvent::Resume {
+            name: name.clone(),
+            bytes: resume_from,
+            total,
+        });
+    } else {
+        let _ = on_event.send(DownloadEvent::Log {
+            message: format!("downloading {name}"),
+        });
+    }
+    let mut writer = if append {
+        OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open(&part)
+            .await
+    } else {
+        fs::File::create(&part).await
+    }
+    .map_err(|e| format!("open partial file failed for {name}: {e}"))?;
     let mut stream = response.bytes_stream();
-    let mut downloaded = 0u64;
+    let mut downloaded = resume_from;
     let mut hasher = expected.as_ref().map(|_| Sha256::new());
+    if let Some(hasher) = hasher.as_mut() {
+        if resume_from > 0 {
+            hash_file_into(&part, hasher).await?;
+        }
+    }
     while let Some(chunk) = stream.next().await {
         let chunk = chunk.map_err(|e| format!("download stream failed for {name}: {e}"))?;
         downloaded += chunk.len() as u64;
@@ -402,14 +703,87 @@ async fn download_file(
             return Err(format!("sha256 mismatch for {name}"));
         }
     }
-    fs::rename(&part, &target)
-        .await
-        .map_err(|e| format!("finalize download failed for {name}: {e}"))?;
+    replace_with_partial(&part, &target, &name).await?;
     Ok(FileMetadata {
         name,
         bytes: downloaded,
         cached: false,
+        resumed: resume_from > 0,
     })
+}
+
+fn partial_path(target: &Path) -> PathBuf {
+    target.with_extension(format!(
+        "{}part",
+        target.extension().and_then(|s| s.to_str()).unwrap_or("")
+    ))
+}
+
+/// Decide whether a response may be appended to an existing partial. A 206
+/// without the exact requested start is rejected instead of corrupting a
+/// multi-GB file; a 200 means the origin ignored Range and must restart from
+/// byte zero.
+fn resume_response_appends(
+    status: StatusCode,
+    content_range_header: Option<&str>,
+    requested_start: u64,
+) -> Result<bool, String> {
+    if requested_start == 0 {
+        return Ok(false);
+    }
+    if status == StatusCode::PARTIAL_CONTENT {
+        let (actual_start, _) = content_range_header
+            .and_then(content_range)
+            .ok_or_else(|| "resume response omitted a valid Content-Range".to_string())?;
+        if actual_start != requested_start {
+            return Err(format!(
+                "resume response started at {actual_start}, expected {requested_start}"
+            ));
+        }
+        return Ok(true);
+    }
+    if status == StatusCode::OK {
+        return Ok(false);
+    }
+    Ok(false)
+}
+
+fn content_range(value: &str) -> Option<(u64, Option<u64>)> {
+    let value = value.strip_prefix("bytes ")?;
+    let (range, raw_total) = value.split_once('/')?;
+    let (raw_start, _) = range.split_once('-')?;
+    let start = raw_start.parse().ok()?;
+    let total = (raw_total != "*").then(|| raw_total.parse().ok()).flatten();
+    Some((start, total))
+}
+
+async fn replace_with_partial(part: &Path, target: &Path, name: &str) -> Result<(), String> {
+    if target.exists() {
+        fs::remove_file(target)
+            .await
+            .map_err(|e| format!("replace stale file failed for {name}: {e}"))?;
+    }
+    fs::rename(part, target)
+        .await
+        .map_err(|e| format!("finalize download failed for {name}: {e}"))
+}
+
+async fn hash_file_into(path: &Path, hasher: &mut Sha256) -> Result<(), String> {
+    let mut file = fs::File::open(path)
+        .await
+        .map_err(|e| format!("open partial for SHA256 failed: {e}"))?;
+    let mut buf = vec![0u8; 4 * 1024 * 1024];
+    loop {
+        let n = file
+            .read(&mut buf)
+            .await
+            .map_err(|e| format!("read partial for SHA256 failed: {e}"))?;
+        if n == 0 {
+            break;
+        }
+        hasher.update(&buf[..n]);
+    }
+    Ok(())
 }
 
 /// Parse the snapshot's SHA256SUMS into normalized-name -> lowercase hex.
@@ -602,6 +976,44 @@ fn command_output(out: std::process::Output) -> Result<String, String> {
 mod tests {
     use super::*;
 
+    fn test_download_dir(label: &str) -> PathBuf {
+        std::env::temp_dir().join(format!(
+            "understudy-download-{label}-{}-{}",
+            std::process::id(),
+            chrono::Utc::now().timestamp_nanos_opt().unwrap_or_default()
+        ))
+    }
+
+    async fn serve_download_once(
+        body: &'static [u8],
+        status: &str,
+        content_range: Option<&str>,
+    ) -> String {
+        let listener = tokio::net::TcpListener::bind(("127.0.0.1", 0))
+            .await
+            .unwrap();
+        let address = listener.local_addr().unwrap();
+        let status = status.to_string();
+        let content_range = content_range.map(str::to_string);
+        tauri::async_runtime::spawn(async move {
+            let (mut socket, _) = listener.accept().await.unwrap();
+            let mut request = vec![0u8; 4096];
+            let read = socket.read(&mut request).await.unwrap();
+            let request = String::from_utf8_lossy(&request[..read]).to_ascii_lowercase();
+            assert!(request.contains("range: bytes=5-"), "{request}");
+            let range_header = content_range
+                .map(|value| format!("Content-Range: {value}\r\n"))
+                .unwrap_or_default();
+            let response = format!(
+                "HTTP/1.1 {status}\r\nContent-Length: {}\r\n{range_header}Connection: close\r\n\r\n",
+                body.len()
+            );
+            socket.write_all(response.as_bytes()).await.unwrap();
+            socket.write_all(body).await.unwrap();
+        });
+        format!("http://{address}/weights.bin")
+    }
+
     #[test]
     fn cli_version_check_is_fail_closed_and_tracks_the_package_release() {
         assert_eq!(parse_version("0.6.0"), Some((0, 6, 0)));
@@ -615,5 +1027,118 @@ mod tests {
             package.get("version").and_then(serde_json::Value::as_str),
             Some(MIN_UNDERSTUDY_CLI_VERSION)
         );
+    }
+
+    #[test]
+    fn public_update_versions_compare_without_string_ordering() {
+        assert_eq!(
+            extract_version("understudy 0.6.10"),
+            Some("0.6.10".to_string())
+        );
+        assert_eq!(extract_version("v0.7.0-beta.1"), Some("0.7.0".to_string()));
+        assert_eq!(version_is_newer("0.6.10", "0.6.9"), Some(true));
+        assert_eq!(version_is_newer("0.6.1", "0.6.1"), Some(false));
+        assert_eq!(version_is_newer("not-a-version", "0.6.1"), None);
+    }
+
+    #[test]
+    fn resume_requires_an_exact_partial_content_boundary() {
+        assert_eq!(
+            content_range("bytes 4096-8191/16384"),
+            Some((4096, Some(16384)))
+        );
+        assert!(resume_response_appends(
+            StatusCode::PARTIAL_CONTENT,
+            Some("bytes 4096-8191/16384"),
+            4096,
+        )
+        .unwrap());
+        assert!(!resume_response_appends(StatusCode::OK, None, 4096).unwrap());
+        assert!(resume_response_appends(
+            StatusCode::PARTIAL_CONTENT,
+            Some("bytes 0-8191/16384"),
+            4096,
+        )
+        .is_err());
+        assert!(resume_response_appends(StatusCode::PARTIAL_CONTENT, None, 4096).is_err());
+    }
+
+    #[test]
+    fn partial_path_is_stable_across_restarts() {
+        assert_eq!(
+            partial_path(Path::new("weights/model.safetensors")),
+            PathBuf::from("weights/model.safetensorspart")
+        );
+        assert_eq!(
+            partial_path(Path::new("weights/config")),
+            PathBuf::from("weights/config.part")
+        );
+    }
+
+    #[tokio::test]
+    async fn partial_download_resumes_and_verifies_the_combined_file() {
+        let dest = test_download_dir("range");
+        fs::create_dir_all(&dest).await.unwrap();
+        let target = dest.join("weights.bin");
+        fs::write(partial_path(&target), b"hello").await.unwrap();
+        let url =
+            serve_download_once(b" world", "206 Partial Content", Some("bytes 5-10/11")).await;
+        let expected = format!("{:x}", Sha256::digest(b"hello world"));
+        let channel = Channel::<DownloadEvent>::new(|_| Ok(()));
+
+        let metadata = download_file(
+            &reqwest::Client::new(),
+            &dest,
+            SessionFile {
+                name: Some("weights.bin".to_string()),
+                path: None,
+                url,
+                size_bytes: Some(11),
+                size: None,
+                sha256: None,
+            },
+            Some(expected),
+            &channel,
+        )
+        .await
+        .unwrap();
+
+        assert!(metadata.resumed);
+        assert_eq!(fs::read(&target).await.unwrap(), b"hello world");
+        assert!(!partial_path(&target).exists());
+        let _ = fs::remove_dir_all(dest).await;
+    }
+
+    #[tokio::test]
+    async fn origin_ignoring_range_restarts_without_splicing_partial_bytes() {
+        let dest = test_download_dir("range-ignored");
+        fs::create_dir_all(&dest).await.unwrap();
+        let target = dest.join("weights.bin");
+        fs::write(partial_path(&target), b"hello").await.unwrap();
+        let url = serve_download_once(b"replacement", "200 OK", None).await;
+        let expected = format!("{:x}", Sha256::digest(b"replacement"));
+        let channel = Channel::<DownloadEvent>::new(|_| Ok(()));
+
+        let metadata = download_file(
+            &reqwest::Client::new(),
+            &dest,
+            SessionFile {
+                name: Some("weights.bin".to_string()),
+                path: None,
+                url,
+                size_bytes: Some(11),
+                size: None,
+                sha256: None,
+            },
+            Some(expected),
+            &channel,
+        )
+        .await
+        .unwrap();
+
+        assert!(!metadata.resumed);
+        assert_eq!(fs::read(&target).await.unwrap(), b"replacement");
+        assert!(!partial_path(&target).exists());
+        let _ = fs::remove_dir_all(dest).await;
     }
 }

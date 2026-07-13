@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { spawn, spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { existsSync, mkdtempSync, mkdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, mkdirSync, readFileSync, realpathSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { createServer } from "node:http";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
@@ -1114,6 +1114,23 @@ describe("understudy CLI", () => {
     assert.match(result.stderr, /requires --base-url and --model/);
   });
 
+  it("does not let manual aliases override a desktop slot identity", () => {
+    const result = run([
+      "runtime",
+      "conformance",
+      "--backend",
+      "pi",
+      "--slot",
+      "7",
+      "--base-url",
+      "http://127.0.0.1:8096/v1",
+      "--model",
+      "understudy-small",
+    ]);
+    assert.notEqual(result.status, 0);
+    assert.match(result.stderr, /--slot resolves --base-url and --model/);
+  });
+
   it("rejects removed full runtime commands", () => {
     const result = run(["gateway", "--port", "23333"]);
     assert.notEqual(result.status, 0);
@@ -1569,6 +1586,74 @@ describe("understudy CLI", () => {
       assert.equal(packet.schema_version, "understudy.route_decision_packet.v1");
       assert.equal(packet.constraints.data_class, "source-metadata-only");
     }));
+
+  it("compiles one dropped file into an isolated metadata-only Workload Card", () => {
+    const root = mkdtempSync(join(tmpdir(), "understudy-drop-file-"));
+    try {
+      const source = join(root, "customer-payload.unknown");
+      writeFileSync(source, "payload must stay unread\n");
+      const outputRoot = join(root, "artifacts");
+      const result = run(["capture-import", "compile", "--source", source, "--output-root", outputRoot, "--json"]);
+      assert.equal(result.status, 0, result.stderr);
+      assert.ok(!result.stdout.includes("payload must stay unread"));
+
+      const compiled = JSON.parse(result.stdout);
+      assert.equal(compiled.source_name, "customer-payload.unknown");
+      assert.equal(compiled.source_type, "file");
+      assert.equal(compiled.source_count, 1);
+      assert.equal(compiled.source_kinds["local-file"], 1);
+      assert.equal(compiled.local_only, true);
+      assert.equal(compiled.payload_read, false);
+      assert.match(compiled.workload_card_path, /artifacts\/[a-f0-9]{12}\/workload-card\.json$/);
+
+      const card = JSON.parse(readFileSync(compiled.workload_card_path, "utf8"));
+      assert.equal(card.schema_version, "understudy.workload_card.v1");
+      assert.equal(card.mode, "local-only");
+      assert.equal(card.source_path, source);
+      assert.equal(card.evaluation_inputs[0].kind, "local-file");
+      if (process.platform !== "win32") {
+        assert.equal(statSync(compiled.artifact_root).mode & 0o777, 0o700);
+        assert.equal(statSync(compiled.workload_card_path).mode & 0o777, 0o600);
+      }
+
+      const repeated = run(["capture-import", "compile", "--source", source, "--output-root", outputRoot, "--json"]);
+      assert.equal(repeated.status, 0, repeated.stderr);
+      assert.notEqual(JSON.parse(repeated.stdout).artifact_root, compiled.artifact_root);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it("bounds a dropped directory and classifies broad local source material", () => {
+    const root = mkdtempSync(join(tmpdir(), "understudy-drop-directory-"));
+    try {
+      mkdirSync(join(root, "node_modules"), { recursive: true });
+      writeFileSync(join(root, "00-brief.pdf"), "not read");
+      writeFileSync(join(root, "01-scores.xlsx"), "not read");
+      writeFileSync(join(root, "02-worker.rs"), "not read");
+      writeFileSync(join(root, "03-raw.unknown"), "not read");
+      writeFileSync(join(root, "node_modules", "ignored.ts"), "not scanned");
+      for (let index = 0; index < 1_001; index += 1) {
+        writeFileSync(join(root, `sample-${String(index).padStart(4, "0")}.txt`), "x");
+      }
+
+      const outputRoot = join(root, "artifacts");
+      const result = run(["capture-import", "compile", "--source", root, "--output-root", outputRoot, "--json"]);
+      assert.equal(result.status, 0, result.stderr);
+      const compiled = JSON.parse(result.stdout);
+      assert.equal(compiled.source_type, "directory");
+      assert.equal(compiled.scanned_file_count, 1_005);
+      assert.equal(compiled.source_count, 1_000);
+      assert.equal(compiled.truncated, true);
+      assert.ok(compiled.source_kinds.document > 0);
+      assert.equal(compiled.source_kinds.spreadsheet, 1);
+      assert.equal(compiled.source_kinds["source-file"], 1);
+      assert.equal(compiled.source_kinds["local-file"], 1);
+      assert.ok(!result.stdout.includes("node_modules"));
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
 });
 
 describe("two-phase email login", () => {

@@ -1,11 +1,12 @@
 mod aa;
 mod account;
-mod anthropic;
 mod agent_card;
 mod agent_ops;
+mod anthropic;
 mod bin;
 mod bootstrap;
 mod chat;
+mod chat_attachments;
 mod commands;
 mod conversation_runtime;
 mod conversation_sidecar;
@@ -23,6 +24,11 @@ mod rlm;
 mod route_policy;
 mod server;
 mod sidecar;
+mod supervision_export;
+mod supervision_review;
+mod supervision_tiebreaker;
+mod tool_proof;
+mod workload_drop;
 
 use tauri::menu::{Menu, MenuItem, PredefinedMenuItem};
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
@@ -140,10 +146,14 @@ pub fn run() {
             commands::mlx_runtime_status,
             commands::set_app_icon,
             commands::bootstrap_status,
+            commands::desktop_health,
             commands::install_uv,
             commands::install_mlx_runtime,
             commands::install_understudy_agent_tools,
-            commands::download_snapshot_model,
+            commands::start_snapshot_download,
+            commands::list_snapshot_downloads,
+            commands::snapshot_download_status,
+            commands::cancel_snapshot_download,
             commands::get_residency,
             commands::add_slot,
             commands::assign_slot,
@@ -182,6 +192,9 @@ pub fn run() {
             commands::chat_route_metrics,
             commands::chat_session_latest,
             commands::chat_session_save,
+            chat_attachments::chat_attachments_store,
+            chat_attachments::chat_attachments_hydrate,
+            chat_attachments::chat_attachments_delete_session,
             commands::run_fusion_benchmark,
             commands::run_fusion_benchmark_matrix,
             commands::run_fusion_benchmark_matrix_live,
@@ -195,6 +208,16 @@ pub fn run() {
             commands::set_sidekick_run_feedback,
             commands::record_supervisor_feedback,
             commands::supervisor_feedback_for_session,
+            supervision_review::supervision_review_queue,
+            supervision_tiebreaker::supervision_tiebreaker_status,
+            supervision_tiebreaker::supervision_tiebreaker_set_route,
+            supervision_tiebreaker::supervision_tiebreaker_set_enabled,
+            supervision_tiebreaker::supervision_tiebreaker_analyze,
+            supervision_tiebreaker::record_tiebreaker_feedback,
+            tool_proof::desktop_tool_proof_run,
+            tool_proof::desktop_tool_proof_list,
+            tool_proof::desktop_tool_proof_prepare,
+            workload_drop::compile_dropped_workload,
             commands::sidekick_decisions,
             commands::sidekick_events,
             commands::sidekick_session_summaries,
@@ -213,8 +236,14 @@ pub fn run() {
         ])
         .build(tauri::generate_context!())
         .expect("error while running tauri application")
-        .run(|_app, event| {
+        .run(|app, event| {
             if let tauri::RunEvent::Exit = event {
+                // A normal quit owns server teardown. If the app crashes,
+                // residency restore reaps only exact orphaned path+port
+                // matches before it can warm another model.
+                if let Some(residency) = app.try_state::<residency::Residency>() {
+                    residency.shutdown();
+                }
                 // Graceful shutdown: the agent card must not keep
                 // advertising a dead pid as a healthy local daemon.
                 agent_card::mark_stopped();

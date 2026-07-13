@@ -1,7 +1,16 @@
 import { Command, Option } from "commander";
-import { basename, extname, resolve } from "node:path";
-import { readFileSync } from "node:fs";
-import { randomUUID } from "node:crypto";
+import { basename, dirname, extname, join, resolve } from "node:path";
+import {
+  chmodSync,
+  existsSync,
+  linkSync,
+  mkdirSync,
+  readFileSync,
+  unlinkSync,
+  writeFileSync,
+} from "node:fs";
+import { homedir } from "node:os";
+import { createHash, randomUUID } from "node:crypto";
 
 import {
   desktopApiContractPath,
@@ -16,6 +25,23 @@ import {
   DEFAULT_DESKTOP_READINESS_EVIDENCE,
   evaluateDesktopRuntimeReleaseEvidence,
 } from "../runtime/conversation/release-gate.js";
+import {
+  TIEBREAKER_MODEL,
+  analyzeTiebreaker,
+  recordTiebreakerFeedback,
+  type TiebreakerProvider,
+} from "../supervision/tiebreaker.js";
+import {
+  TIEBREAKER_EVAL_SUITE_PATH,
+  runTiebreakerEval,
+} from "../supervision/tiebreaker-eval.js";
+import {
+  DEFAULT_TOOL_PROOF_ROOT,
+  listDesktopToolProofs,
+  prepareDesktopToolProofImprovement,
+  runDesktopToolProof,
+  type ToolProofCandidate,
+} from "../desktop/tool-proof.js";
 
 interface RuntimeEvent {
   run_id?: string;
@@ -34,8 +60,32 @@ interface DesktopMigrationStatus {
   canonical_runtime_rows?: number;
   pi_runtime_rows?: number;
   compatibility_fallback_rows?: number;
+  consecutive_pi_rows?: number;
+  remaining_consecutive_pi_rows?: number;
   pi_runtime_share?: number | null;
   compatibility_engine_delete_ready?: boolean;
+}
+
+interface SupervisionExportPacket {
+  schema_version?: string;
+  correction_pairs?: Array<Record<string, unknown>>;
+  metrics?: SupervisionMetricsPayload;
+}
+
+interface SupervisionMetricsPayload extends Record<string, unknown> {
+  schema_version?: string;
+  incomplete_intervention_count?: number;
+  truncated_intervention_count?: number;
+  invalid_journal_count?: number;
+  missing_journal_count?: number;
+  truncated_journal_count?: number;
+  intervention_precision?: number | null;
+  false_positive_nudge_rate?: number | null;
+  usage?: {
+    small_model_output_share?: number | null;
+    supervisor_token_overhead?: number | null;
+    [key: string]: unknown;
+  };
 }
 
 const REQUIRED_CANONICAL_RELEASE_RUNS = 100;
@@ -46,8 +96,103 @@ function positiveInteger(value: string): number {
   return parsed;
 }
 
+function nonNegativeNumber(value: string): number {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed) || parsed < 0) throw new Error("value must be a non-negative number");
+  return parsed;
+}
+
 function collect(value: string, previous: string[]): string[] {
   return [...previous, value];
+}
+
+function toolProofCandidate(value: string): ToolProofCandidate {
+  const [label, rawSlot, ...extra] = value.split(":");
+  const slotId = Number(rawSlot);
+  if (extra.length || !label || !Number.isInteger(slotId) || slotId <= 0) {
+    throw new Error("candidate must be label:slot-id");
+  }
+  return { label, slotId };
+}
+
+function collectToolProofCandidate(
+  value: string,
+  previous: ToolProofCandidate[],
+): ToolProofCandidate[] {
+  return [...previous, toolProofCandidate(value)];
+}
+
+async function readStandardInput(): Promise<string> {
+  let value = "";
+  for await (const chunk of process.stdin) value += String(chunk);
+  return value;
+}
+
+function sha256(value: string): string {
+  return createHash("sha256").update(value).digest("hex");
+}
+
+function requireObject(value: unknown, label: string): Record<string, unknown> {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    throw new Error(`${label} must be an object`);
+  }
+  return value as Record<string, unknown>;
+}
+
+function requireNonNegativeInteger(value: unknown, label: string): number {
+  if (typeof value !== "number" || !Number.isInteger(value) || value < 0) {
+    throw new Error(`${label} must be a non-negative integer`);
+  }
+  return value;
+}
+
+function validateCorrectionPair(row: Record<string, unknown>, index: number): void {
+  if (row.schema_version !== "understudy.correction_pair.v1") {
+    throw new Error(`correction pair ${index} has an unsupported schema_version`);
+  }
+  for (const field of [
+    "event_schema", "runtime_id", "session_id", "run_id", "marker_id",
+    "verdict_event_id", "captured_at", "user_request",
+  ]) {
+    if (typeof row[field] !== "string") throw new Error(`correction pair ${index} is missing ${field}`);
+  }
+  if (typeof row.verdict_sequence !== "number" || !Number.isInteger(row.verdict_sequence)) {
+    throw new Error(`correction pair ${index} is missing verdict_sequence`);
+  }
+  requireObject(row.student, `correction pair ${index} student`);
+  requireObject(row.supervisor, `correction pair ${index} supervisor`);
+  requireObject(row.continuation, `correction pair ${index} continuation`);
+  requireObject(row.run_usage, `correction pair ${index} run_usage`);
+  if (!Array.isArray(row.tool_results)) {
+    throw new Error(`correction pair ${index} tool_results must be an array`);
+  }
+}
+
+function writeImmutableArtifact(path: string, content: string): "created" | "existing" {
+  const parent = dirname(path);
+  const parentExisted = existsSync(parent);
+  mkdirSync(parent, { recursive: true, mode: 0o700 });
+  if (process.platform !== "win32" && !parentExisted) chmodSync(parent, 0o700);
+  if (existsSync(path)) {
+    if (readFileSync(path, "utf8") !== content) {
+      throw new Error(`refusing to replace immutable artifact with different content: ${path}`);
+    }
+    return "existing";
+  }
+
+  const temporary = join(parent, `.${basename(path)}.${process.pid}.${randomUUID()}.tmp`);
+  writeFileSync(temporary, content, { encoding: "utf8", flag: "wx", mode: 0o600 });
+  if (process.platform !== "win32") chmodSync(temporary, 0o600);
+  try {
+    linkSync(temporary, path);
+  } catch (cause) {
+    const code = (cause as NodeJS.ErrnoException).code;
+    if (code !== "EEXIST" || readFileSync(path, "utf8") !== content) throw cause;
+    return "existing";
+  } finally {
+    unlinkSync(temporary);
+  }
+  return "created";
 }
 
 function jsonRequested(command: Command, local?: boolean): boolean {
@@ -196,6 +341,106 @@ export function registerDesktopCommand(program: Command): void {
       printStructured(value, jsonRequested(this, opts.json));
     });
 
+  const toolProof = desktop
+    .command("tool-proof")
+    .description("Run or inspect the frozen local strict tool-call proof through Pi.");
+
+  toolProof
+    .command("run")
+    .description("Compare one or more Desktop model slots on the exact same frozen tool traces.")
+    .requiredOption(
+      "--candidate <label:slot-id>",
+      "Candidate label and Desktop slot; repeat for a matched comparison",
+      collectToolProofCandidate,
+      [],
+    )
+    .addOption(new Option("--suite <suite>").choices(["core", "hard"]).default("core"))
+    .option("--repetitions <n>", "Attempts per frozen task", positiveInteger, 3)
+    .option("--max-tokens <n>", "Maximum output tokens per attempt", positiveInteger, 160)
+    .option("--timeout-ms <n>", "Terminal timeout per attempt", positiveInteger, 30_000)
+    .option("--task-id <id>", "Run an exact frozen task; repeat to select an ordered subset", collect, [])
+    .option("--output-root <path>", "Owner-only proof root", DEFAULT_TOOL_PROOF_ROOT)
+    .option("--prewarmed", "Do not manage exclusive residency (diagnostic only)")
+    .option("--desktop-api", "Route turns through the Desktop API instead of direct Pi")
+    .option("--json", "Output JSON")
+    .action(async function (this: Command, opts: {
+      candidate: ToolProofCandidate[];
+      suite: "core" | "hard";
+      repetitions: number;
+      maxTokens: number;
+      timeoutMs: number;
+      taskId: string[];
+      outputRoot: string;
+      prewarmed?: boolean;
+      desktopApi?: boolean;
+      json?: boolean;
+    }) {
+      const json = jsonRequested(this, opts.json);
+      const result = await runDesktopToolProof({
+        candidates: opts.candidate,
+        suite: opts.suite,
+        repetitions: opts.repetitions,
+        maxTokens: opts.maxTokens,
+        timeoutMs: opts.timeoutMs,
+        outputRoot: opts.outputRoot,
+        taskIds: opts.taskId,
+        manageResidency: opts.prewarmed !== true,
+        executionMode: opts.desktopApi ? "desktop-api" : "direct-pi",
+        onProgress: json ? () => {} : (line) => process.stdout.write(line),
+      });
+      printStructured(
+        result,
+        json,
+        [
+          `proof: ${result.summary.proof_id}`,
+          `suite: ${result.summary.suite} (${result.summary.suite_sha256})`,
+          ...Object.entries(result.summary.candidates).map(([candidate, row]) =>
+            `${candidate}: ${row.strict_passes}/${row.attempts} strict; ${row.mean_latency_ms} ms mean`,
+          ),
+          `evidence: ${result.output_dir}`,
+          "uploads performed: false",
+        ].join("\n"),
+      );
+    });
+
+  toolProof
+    .command("list")
+    .description("List private immutable strict-tool summaries without reading raw tool results.")
+    .option("--limit <n>", "Most recent proofs", positiveInteger, 20)
+    .option("--root <path>", "Owner-only proof root", DEFAULT_TOOL_PROOF_ROOT)
+    .option("--json", "Output JSON")
+    .action(function (this: Command, opts: { limit: number; root: string; json?: boolean }) {
+      const proofs = listDesktopToolProofs(resolve(opts.root), opts.limit);
+      printStructured(
+        { schema_version: "understudy.desktop_tool_proof_list.v1", proofs },
+        jsonRequested(this, opts.json),
+        proofs.length
+          ? proofs.map((proof) => `${proof.summary.proof_id} · ${proof.summary.suite} · ${proof.summary.completed_at}`).join("\n")
+          : "No strict-tool proofs yet.",
+      );
+    });
+
+  toolProof
+    .command("prepare")
+    .description("Create an immutable local improvement packet from a strict tool-proof's failures.")
+    .requiredOption("--proof <id>", "Strict tool-proof id")
+    .option("--root <path>", "Owner-only proof root", DEFAULT_TOOL_PROOF_ROOT)
+    .option("--json", "Output JSON")
+    .action(function (this: Command, opts: { proof: string; root: string; json?: boolean }) {
+      const result = prepareDesktopToolProofImprovement(opts.proof, resolve(opts.root));
+      printStructured(
+        result,
+        jsonRequested(this, opts.json),
+        [
+          `proof: ${result.packet.proof_id}`,
+          `failures: ${result.packet.failure_count}`,
+          `method: ${result.packet.recommended_method}`,
+          `packet: ${result.path}`,
+          "uploads performed: false",
+        ].join("\n"),
+      );
+    });
+
   desktop
     .command("migration-status")
     .description("Check the one-release Pi adoption gate before deleting the Rust fallback.")
@@ -235,13 +480,19 @@ export function registerDesktopCommand(program: Command): void {
       const canonical = Number(value.canonical_runtime_rows ?? 0);
       const piRows = Number(value.pi_runtime_rows ?? 0);
       const fallbacks = Number(value.compatibility_fallback_rows ?? 0);
+      const consecutivePiRows = Number(value.consecutive_pi_rows ?? piRows);
       const cohortReady =
         value.compatibility_engine_delete_ready === true &&
         canonical >= required &&
         piRows === canonical &&
-        fallbacks === 0;
+        fallbacks === 0 &&
+        consecutivePiRows >= required;
       const remaining = Number(
         value.remaining_canonical_runtime_rows ?? Math.max(0, required - canonical),
+      );
+      const remainingConsecutive = Number(
+        value.remaining_consecutive_pi_rows
+          ?? Math.max(0, required - consecutivePiRows),
       );
       const releaseEvidence = evaluateDesktopRuntimeReleaseEvidence({
         app_version: value.app_version ?? "unknown",
@@ -254,6 +505,8 @@ export function registerDesktopCommand(program: Command): void {
         ...value,
         required_canonical_runtime_rows: required,
         remaining_canonical_runtime_rows: remaining,
+        consecutive_pi_rows: consecutivePiRows,
+        remaining_consecutive_pi_rows: remainingConsecutive,
         observed_row_limit: value.observed_row_limit ?? opts.limit,
         release_cohort_ready: cohortReady,
         release_evidence: releaseEvidence,
@@ -270,6 +523,7 @@ export function registerDesktopCommand(program: Command): void {
           `release cohort: app ${value.app_version ?? "unknown"}, runtime ${value.runtime_version ?? "unknown"}`,
           `canonical runs: ${canonical}/${required} (${remaining} remaining)`,
           `Pi runs: ${piRows} (${share}); compatibility fallbacks: ${fallbacks}`,
+          `clean Pi streak: ${consecutivePiRows}/${required} (${remainingConsecutive} remaining)`,
           `conformance evidence: ${releaseEvidence.conformance.ready ? "ready" : "missing or stale"}`,
           `startup/memory evidence: ${releaseEvidence.readiness.ready ? "ready" : "missing or stale"}`,
           ...releaseEvidence.reasons.map((reason) => `blocked: ${reason}`),
@@ -504,6 +758,294 @@ export function registerDesktopCommand(program: Command): void {
       if (!response.ok) throw await responseError(response);
       const json = opts.json === true || this.optsWithGlobals<{ json?: boolean }>().json === true;
       await printRuntimeEvents(response, json);
+    });
+
+  const supervision = desktop
+    .command("supervision")
+    .description("Review and export canonical local supervision evidence.");
+  supervision
+    .command("export")
+    .description("Write immutable correction-pair JSONL and trustworthy metrics locally.")
+    .option("--reviewed-only", "Export only pairs with an explicit human judgment")
+    .option("--output <path>", "Correction-pair JSONL path; defaults to a content-addressed local path")
+    .option("--metrics-output <path>", "Metrics JSON path; defaults to a content-addressed local path")
+    .option("--json", "Output artifact metadata as JSON")
+    .action(async function (this: Command, opts: {
+      reviewedOnly?: boolean;
+      output?: string;
+      metricsOutput?: string;
+      json?: boolean;
+    }) {
+      const capability = await requireDesktopApi();
+      const query = opts.reviewedOnly ? "?reviewed_only=true" : "";
+      const response = await desktopApiFetch(
+        capability,
+        `/v1/supervision/corrections${query}`,
+      );
+      if (!response.ok) throw await responseError(response);
+      const packet = await response.json() as SupervisionExportPacket;
+      if (packet.schema_version !== "understudy.supervision.export_packet.v1") {
+        throw new Error(`unsupported supervision export schema: ${String(packet.schema_version)}`);
+      }
+      if (!Array.isArray(packet.correction_pairs) || !packet.metrics) {
+        throw new Error("desktop returned an incomplete supervision export packet");
+      }
+      for (const [index, row] of packet.correction_pairs.entries()) {
+        validateCorrectionPair(row, index);
+      }
+
+      const jsonl = packet.correction_pairs.length > 0
+        ? `${packet.correction_pairs.map((row) => JSON.stringify(row)).join("\n")}\n`
+        : "";
+      const pairsSha256 = sha256(jsonl);
+      const metrics = {
+        ...packet.metrics,
+        correction_pairs: {
+          schema_version: "understudy.correction_pair.v1",
+          sha256: pairsSha256,
+          row_count: packet.correction_pairs.length,
+        },
+      };
+      if (metrics.schema_version !== "understudy.supervision_metrics.v1") {
+        throw new Error(`unsupported supervision metrics schema: ${String(metrics.schema_version)}`);
+      }
+      requireObject(metrics.usage, "supervision metrics usage");
+      const evidenceWindow = {
+        incomplete_interventions: requireNonNegativeInteger(
+          metrics.incomplete_intervention_count,
+          "supervision metrics incomplete_intervention_count",
+        ),
+        truncated_interventions: requireNonNegativeInteger(
+          metrics.truncated_intervention_count,
+          "supervision metrics truncated_intervention_count",
+        ),
+        invalid_journals: requireNonNegativeInteger(
+          metrics.invalid_journal_count,
+          "supervision metrics invalid_journal_count",
+        ),
+        missing_journals: requireNonNegativeInteger(
+          metrics.missing_journal_count,
+          "supervision metrics missing_journal_count",
+        ),
+        truncated_journals: requireNonNegativeInteger(
+          metrics.truncated_journal_count,
+          "supervision metrics truncated_journal_count",
+        ),
+      };
+      const metricsContent = `${JSON.stringify(metrics, null, 2)}\n`;
+      const metricsSha256 = sha256(metricsContent);
+      const outputRoot = join(homedir(), ".understudy", "exports", "supervision");
+      const outputPath = opts.output
+        ? resolve(opts.output)
+        : join(outputRoot, `${pairsSha256}.correction-pairs.jsonl`);
+      const metricsPath = opts.metricsOutput
+        ? resolve(opts.metricsOutput)
+        : join(outputRoot, `${metricsSha256}.metrics.json`);
+      const pairWrite = writeImmutableArtifact(outputPath, jsonl);
+      const metricsWrite = writeImmutableArtifact(metricsPath, metricsContent);
+      const result = {
+        schema_version: "understudy.supervision_export_result.v1",
+        reviewed_only: opts.reviewedOnly === true,
+        correction_pairs: {
+          path: outputPath,
+          sha256: pairsSha256,
+          row_count: packet.correction_pairs.length,
+          write: pairWrite,
+        },
+        metrics: {
+          path: metricsPath,
+          sha256: metricsSha256,
+          write: metricsWrite,
+          intervention_precision: metrics.intervention_precision ?? null,
+          false_positive_nudge_rate: metrics.false_positive_nudge_rate ?? null,
+          small_model_output_share: metrics.usage?.small_model_output_share ?? null,
+          supervisor_token_overhead: metrics.usage?.supervisor_token_overhead ?? null,
+        },
+        evidence_window: evidenceWindow,
+        upload_performed: false,
+      };
+      printStructured(
+        result,
+        jsonRequested(this, opts.json),
+        [
+          `correction pairs: ${packet.correction_pairs.length}`,
+          `pairs: ${outputPath} (${pairWrite})`,
+          `metrics: ${metricsPath} (${metricsWrite})`,
+          `evidence omitted: ${evidenceWindow.incomplete_interventions + evidenceWindow.truncated_interventions + evidenceWindow.invalid_journals + evidenceWindow.missing_journals + evidenceWindow.truncated_journals}`,
+          "upload performed: false",
+        ].join("\n"),
+      );
+    });
+
+  const tiebreaker = supervision
+    .command("tiebreaker")
+    .description("Run an explicitly consented remote second opinion over one local intervention.");
+  tiebreaker
+    .command("analyze")
+    .description("Send bounded pre-intervention evidence to GLM 5.2 and cache the advisory locally.")
+    .requiredOption("--input <path>", "Private review-input JSON path, or - for stdin")
+    .addOption(
+      new Option("--provider <provider>")
+        .choices(["lilac", "fireworks"])
+        .makeOptionMandatory(),
+    )
+    .requiredOption("--project <slug>", "Exact Understudy project route")
+    .requiredOption("--workload <slug>", "Exact Understudy workload route")
+    .option("--org <id>", "Org credential to use when more than one is configured")
+    .option("--confirm-remote", "Confirm this bounded evidence may be sent to the named route")
+    .option("--force", "Run a new advisory instead of returning cached evidence")
+    .option("--json", "Output JSON")
+    .action(async function (this: Command, opts: {
+      input: string;
+      provider: TiebreakerProvider;
+      project: string;
+      workload: string;
+      org?: string;
+      confirmRemote?: boolean;
+      force?: boolean;
+      json?: boolean;
+    }) {
+      const raw = opts.input === "-"
+        ? await readStandardInput()
+        : readFileSync(resolve(opts.input), "utf8");
+      const result = await analyzeTiebreaker({
+        input: JSON.parse(raw) as unknown,
+        route: {
+          provider: opts.provider,
+          project: opts.project,
+          workload: opts.workload,
+          orgId: opts.org,
+        },
+        confirmRemote: opts.confirmRemote === true,
+        force: opts.force,
+      });
+      printStructured(
+        result,
+        jsonRequested(this, opts.json),
+        [
+          `GLM advisory: ${result.status}`,
+          `assessment: ${result.assessment ?? "unavailable"}`,
+          `recommended action: ${result.recommended_action ?? "unavailable"}`,
+          `provider route: ${result.provider} -> ${result.served_model ?? "unavailable"}`,
+          `cache hit: ${result.cache_hit}`,
+          `private evidence hash: ${result.evidence_sha256}`,
+        ].join("\n"),
+      );
+    });
+  tiebreaker
+    .command("feedback")
+    .description("Record whether the cached GLM advisory helped the human reviewer.")
+    .requiredOption("--evidence-sha256 <sha256>")
+    .option("--model <id>", "Advisory model", TIEBREAKER_MODEL)
+    .addOption(
+      new Option("--helpful <yes-or-no>")
+        .choices(["yes", "no"])
+        .makeOptionMandatory(),
+    )
+    .option("--json", "Output JSON")
+    .action(function (this: Command, opts: {
+      evidenceSha256: string;
+      model: string;
+      helpful: "yes" | "no";
+      json?: boolean;
+    }) {
+      const result = recordTiebreakerFeedback({
+        evidenceSha256: opts.evidenceSha256,
+        model: opts.model,
+        helpful: opts.helpful === "yes",
+      });
+      printStructured(
+        result,
+        jsonRequested(this, opts.json),
+        `recorded GLM advisory feedback for ${result.marker_id}`,
+      );
+    });
+  tiebreaker
+    .command("eval")
+    .description("Run the frozen judge-the-judger suite; dry-run makes no provider calls.")
+    .option("--suite <path>", "Frozen JSONL suite", TIEBREAKER_EVAL_SUITE_PATH)
+    .addOption(new Option("--split <split>").choices(["validation", "test", "all"]).default("validation"))
+    .option("--max-examples <n>", "Maximum frozen cases", positiveInteger, 5)
+    .option("--live", "Perform bounded GLM calls instead of a local plan")
+    .addOption(new Option("--provider <provider>").choices(["lilac", "fireworks"]))
+    .option("--project <slug>", "Exact Understudy project route")
+    .option("--workload <slug>", "Exact Understudy workload route")
+    .option("--org <id>", "Org credential to use when more than one is configured")
+    .option("--confirm-remote", "Confirm frozen evidence may be sent to the named route")
+    .option("--confirm-spend", "Confirm the displayed per-case spend fuse")
+    .option("--budget-usd <usd>", "Hard command budget fuse", nonNegativeNumber, 0)
+    .option("--output <dir>", "Immutable evidence directory")
+    .option("--json", "Output artifact metadata as JSON")
+    .action(async function (this: Command, opts: {
+      suite: string;
+      split: "validation" | "test" | "all";
+      maxExamples: number;
+      live?: boolean;
+      provider?: TiebreakerProvider;
+      project?: string;
+      workload?: string;
+      org?: string;
+      confirmRemote?: boolean;
+      confirmSpend?: boolean;
+      budgetUsd: number;
+      output?: string;
+      json?: boolean;
+    }) {
+      const route = opts.provider && opts.project && opts.workload
+        ? {
+            provider: opts.provider,
+            project: opts.project,
+            workload: opts.workload,
+            orgId: opts.org,
+          }
+        : undefined;
+      const result = await runTiebreakerEval({
+        suitePath: resolve(opts.suite),
+        split: opts.split,
+        maxExamples: opts.maxExamples,
+        live: opts.live === true,
+        confirmRemote: opts.confirmRemote === true,
+        confirmSpend: opts.confirmSpend === true,
+        budgetUsd: opts.budgetUsd,
+        route,
+      });
+      const createdAt = String(result.manifest.created_at).replaceAll(":", "-");
+      const suiteSha = String(result.manifest.suite_sha256).slice(0, 12);
+      const output = opts.output
+        ? resolve(opts.output)
+        : join(homedir(), ".understudy", "evals", "supervision-tiebreaker", `${createdAt}-${suiteSha}`);
+      const manifestPath = join(output, "manifest.json");
+      const evidencePath = join(output, "evidence.jsonl");
+      const summaryPath = join(output, "summary.json");
+      writeImmutableArtifact(manifestPath, `${JSON.stringify(result.manifest, null, 2)}\n`);
+      writeImmutableArtifact(
+        evidencePath,
+        result.rows.length ? `${result.rows.map((row) => JSON.stringify(row)).join("\n")}\n` : "",
+      );
+      writeImmutableArtifact(summaryPath, `${JSON.stringify(result.summary, null, 2)}\n`);
+      const outputValue = {
+        schema_version: "understudy.supervision.tiebreaker_eval_result.v1",
+        mode: opts.live ? "live" : "dry_run",
+        examples: result.manifest.examples,
+        recommendation: result.summary.recommendation,
+        manifest_path: manifestPath,
+        evidence_path: evidencePath,
+        summary_path: summaryPath,
+        provider_calls_performed: result.summary.provider_calls_performed,
+        uploads_performed: false,
+      };
+      printStructured(
+        outputValue,
+        jsonRequested(this, opts.json),
+        [
+          `mode: ${outputValue.mode}`,
+          `examples: ${(outputValue.examples as string[]).length}`,
+          `recommendation: ${String(outputValue.recommendation)}`,
+          `manifest: ${manifestPath}`,
+          `provider calls performed: ${String(outputValue.provider_calls_performed)}`,
+          "uploads performed: false",
+        ].join("\n"),
+      );
     });
 
   desktop

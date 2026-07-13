@@ -1,10 +1,22 @@
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
-import { chmodSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import {
+  chmodSync,
+  mkdirSync,
+  mkdtempSync,
+  readFileSync,
+  rmSync,
+  statSync,
+  writeFileSync,
+} from "node:fs";
 import { createServer } from "node:http";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { after, before, describe, it } from "node:test";
+
+import {
+  resolveDesktopSlotProviderTarget,
+} from "../dist/internal/desktop-api.js";
 
 const cli = ["node", resolve("dist/bin.js")];
 const root = mkdtempSync(join(tmpdir(), "understudy-desktop-api-"));
@@ -12,6 +24,8 @@ const capabilityPath = join(root, "desktop-api.json");
 const imagePath = join(root, "shelf.png");
 const conformanceEvidencePath = join(root, "desktop-runtime-conformance.json");
 const readinessEvidencePath = join(root, "desktop-runtime-readiness.json");
+const correctionOutputPath = join(root, "exports", "correction-pairs.jsonl");
+const correctionMetricsPath = join(root, "exports", "supervision-metrics.json");
 const token = "desktop-api-test-token-".padEnd(64, "a");
 let server;
 let port;
@@ -63,7 +77,7 @@ function writeReleaseEvidence() {
     adapter_id: "pi",
     generated_at: "2026-07-12T20:00:00.000Z",
     metadata: {
-      runtime_version: "0.3.4",
+      runtime_version: "0.3.5",
       event_schema: "understudy-conversation-runtime-event-v1",
       network_mode: "offline",
       provider: { base_url: "http://127.0.0.1:9000/v1", model: "understudy-small" },
@@ -107,7 +121,7 @@ function writeReleaseEvidence() {
     },
     app: { version: "0.3.2", ready_ms: 200, rss_mb: 100 },
     runtime: {
-      runtime_version: "0.3.4",
+      runtime_version: "0.3.5",
       event_schema: "understudy-conversation-runtime-event-v1",
       ready_ms: 700,
       rss_mb: 120,
@@ -136,7 +150,7 @@ before(async () => {
       response.writeHead(200, { "content-type": "application/json" });
       response.end(JSON.stringify({
         schema_version: "understudy.desktop_api.v2",
-        api_version: "2.1.0",
+        api_version: "2.2.0",
         event_schema: "understudy-conversation-runtime-event-v1",
       }));
       return;
@@ -166,13 +180,15 @@ before(async () => {
       response.end(JSON.stringify({
         schema_version: "understudy.chat_route_metrics.v1",
         app_version: "0.3.2",
-        runtime_version: "0.3.4",
+        runtime_version: "0.3.5",
         observed_row_limit: ready ? 100 : 99,
         required_canonical_runtime_rows: 100,
         remaining_canonical_runtime_rows: ready ? 0 : 1,
         canonical_runtime_rows: ready ? 100 : 99,
         pi_runtime_rows: ready ? 100 : 98,
         compatibility_fallback_rows: ready ? 0 : 1,
+        consecutive_pi_rows: ready ? 100 : 98,
+        remaining_consecutive_pi_rows: ready ? 0 : 2,
         pi_runtime_share: ready ? 1 : 98 / 99,
         compatibility_engine_delete_ready: ready,
         groups: [],
@@ -183,7 +199,13 @@ before(async () => {
       "GET /v1/models": [{ id: "understudy-small", ready: true }],
       "GET /v1/models/catalog": [{ id: "understudy-small", tier: "small" }],
       "GET /v1/residency": {
-        slots: [{ id: 7, state: "running", model_id: "understudy-small" }],
+        slots: [{
+          id: 7,
+          state: "running",
+          model_id: "understudy-small",
+          model_path: "/models/understudy-small",
+          port: 8096,
+        }],
         used_gb: 2,
         usable_gb: 8,
       },
@@ -250,6 +272,92 @@ before(async () => {
       lastFeedback = JSON.parse(raw);
       response.writeHead(200, { "content-type": "application/json" });
       response.end(JSON.stringify({ ok: true }));
+      return;
+    }
+    if (
+      request.method === "GET"
+      && [
+        "/v1/supervision/corrections",
+        "/v1/supervision/corrections?reviewed_only=true",
+      ].includes(request.url)
+    ) {
+      const reviewedOnly = request.url.endsWith("=true");
+      response.writeHead(200, {
+        "content-type": "application/json",
+        "cache-control": "private, no-store",
+      });
+      response.end(JSON.stringify({
+        schema_version: "understudy.supervision.export_packet.v1",
+        correction_pairs: [{
+          schema_version: "understudy.correction_pair.v1",
+          event_schema: "understudy-conversation-runtime-event-v1",
+          runtime_id: "understudy-pi-runtime-v1",
+          session_id: "session-desktop",
+          run_id: "run-desktop",
+          marker_id: "run-desktop:intervention:0",
+          verdict_event_id: "run-desktop:3",
+          verdict_sequence: 3,
+          boundary_ordinal: 0,
+          decision_phase: "streaming",
+          captured_at: "2026-07-13T00:00:00Z",
+          user_request: "inspect",
+          student: {
+            model: "small",
+            status: "interrupted",
+            partial_output: "wrong",
+            intervention_at_chars: 5,
+          },
+          supervisor: {
+            action: "interrupt",
+            source: "model",
+            reason: "wrong answer",
+            raw: "INTERRUPT: wrong answer",
+            probabilities: { interrupt: 0.9, continue: 0.1 },
+            probability_kind: "probability",
+          },
+          continuation: {
+            model: "teacher",
+            authorship: "teacher_continuation",
+            output: "correct",
+          },
+          tool_results: [],
+          run_usage: {
+            scope: "entire_canonical_run",
+            student: {},
+            supervisor: {},
+            teacher: {},
+            attribution_complete: true,
+            incomplete_roles: [],
+          },
+          human_judgment: reviewedOnly ? {
+            helpful: true,
+            correct_action: "interrupt",
+            justification: null,
+            created_at: "2026-07-13T00:01:00Z",
+          } : null,
+        }],
+        metrics: {
+          schema_version: "understudy.supervision_metrics.v1",
+          review_filter: reviewedOnly ? "reviewed_only" : "all",
+          exported_pair_count: 1,
+          complete_pair_count: 1,
+          reviewed_pair_count: reviewedOnly ? 1 : 0,
+          pending_pair_count: reviewedOnly ? 0 : 1,
+          incomplete_intervention_count: 0,
+          truncated_intervention_count: 0,
+          invalid_journal_count: 0,
+          missing_journal_count: 0,
+          truncated_journal_count: 0,
+          intervention_precision: reviewedOnly ? 1 : null,
+          false_positive_nudge_rate: null,
+          usage: {
+            eligible_run_count: 1,
+            excluded_run_count: 0,
+            small_model_output_share: 0.75,
+            supervisor_token_overhead: 0.2,
+          },
+        },
+      }));
       return;
     }
     if (request.method === "POST" && request.url === "/mcp") {
@@ -324,7 +432,7 @@ describe("desktop API CLI", () => {
     assert.equal(result.status, 0, result.stderr);
     const contract = JSON.parse(result.stdout);
     assert.equal(contract.openapi, "3.1.0");
-    assert.equal(contract.info.version, "2.1.0");
+    assert.equal(contract.info.version, "2.2.0");
     assert.deepEqual(Object.keys(contract.paths).sort(), [
       "/v1/capabilities",
       "/v1/conversations/{session_id}/turns",
@@ -344,6 +452,7 @@ describe("desktop API CLI", () => {
       "/v1/runs/{run_id}/cancel",
       "/v1/runs/{run_id}/events",
       "/v1/status",
+      "/v1/supervision/corrections",
     ]);
     assert.deepEqual(
       contract.components.schemas.RuntimeEventEnvelope.properties.event.enum,
@@ -353,6 +462,28 @@ describe("desktop API CLI", () => {
         "cancellation", "error", "image_attachment", "compaction_boundary",
       ],
     );
+    assert.deepEqual(
+      contract.components.schemas.ResidencySnapshot.properties.slots.items.properties.model_path.type,
+      ["string", "null"],
+    );
+    const pairSchema = JSON.parse(readFileSync(
+      resolve("schemas/understudy.correction_pair.v1.schema.json"),
+      "utf8",
+    ));
+    const metricsSchema = JSON.parse(readFileSync(
+      resolve("schemas/understudy.supervision_metrics.v1.schema.json"),
+      "utf8",
+    ));
+    assert.equal(pairSchema.properties.schema_version.const, "understudy.correction_pair.v1");
+    assert.ok(pairSchema.required.includes("run_id"));
+    assert.ok(pairSchema.required.includes("human_judgment"));
+    assert.deepEqual(pairSchema.properties.decision_phase.enum, ["streaming", "final", null]);
+    assert.equal(
+      metricsSchema.properties.objective.const,
+      "maximize_correct_interventions_not_minimize_rejections",
+    );
+    assert.ok(metricsSchema.required.includes("intervention_precision"));
+    assert.ok(metricsSchema.required.includes("false_positive_nudge_rate"));
     assert.equal(contract.security[0].desktopBearer.length, 0);
   });
 
@@ -361,7 +492,7 @@ describe("desktop API CLI", () => {
     assert.equal(result.status, 0, result.stderr);
     const value = JSON.parse(result.stdout);
     assert.equal(value.schema_version, "understudy.desktop_api.v2");
-    assert.equal(value.api_version, "2.1.0");
+    assert.equal(value.api_version, "2.2.0");
   });
 
   it("exposes a fail-closed release observation gate for Rust fallback deletion", async () => {
@@ -376,6 +507,8 @@ describe("desktop API CLI", () => {
     assert.equal(value.canonical_runtime_rows, 100);
     assert.equal(value.compatibility_fallback_rows, 0);
     assert.equal(value.remaining_canonical_runtime_rows, 0);
+    assert.equal(value.consecutive_pi_rows, 100);
+    assert.equal(value.remaining_consecutive_pi_rows, 0);
     assert.equal(value.release_cohort_ready, true);
     assert.equal(value.release_evidence.ready, true);
     assert.equal(value.compatibility_engine_delete_ready, true);
@@ -390,6 +523,8 @@ describe("desktop API CLI", () => {
     const pending = JSON.parse(observing.stdout);
     assert.equal(pending.compatibility_fallback_rows, 1);
     assert.equal(pending.remaining_canonical_runtime_rows, 1);
+    assert.equal(pending.consecutive_pi_rows, 98);
+    assert.equal(pending.remaining_consecutive_pi_rows, 2);
     assert.equal(pending.release_evidence.ready, true);
     assert.equal(pending.compatibility_engine_delete_ready, false);
 
@@ -508,6 +643,26 @@ describe("desktop API CLI", () => {
     assert.equal(mcpCalls.length, 0, "the public CLI must not tunnel stable controls through MCP");
   });
 
+  it("resolves a warm slot to its exact local provider identity", async () => {
+    const target = await resolveDesktopSlotProviderTarget(
+      {
+        schemaVersion: "understudy.desktop_api.v2",
+        baseUrl: `http://127.0.0.1:${port}`,
+        token,
+        pid: process.pid,
+        appVersion: "test",
+        path: capabilityPath,
+      },
+      7,
+    );
+    assert.deepEqual(target, {
+      slotId: 7,
+      artifactId: "understudy-small",
+      baseUrl: "http://127.0.0.1:8096/v1",
+      model: "/models/understudy-small",
+    });
+  });
+
   it("streams canonical image-chat events with caller-owned identity", async () => {
     const result = await runCli([
       "desktop", "chat", "inspect", "--slot", "7", "--session", "session-desktop",
@@ -531,6 +686,65 @@ describe("desktop API CLI", () => {
     const cancel = await runCli(["desktop", "run", "cancel", "run-desktop", "--json"]);
     assert.equal(cancel.status, 0, cancel.stderr);
     assert.equal(JSON.parse(cancel.stdout).run_id, "run-desktop");
+  });
+
+  it("writes owner-only immutable correction pairs and attributed metrics", async () => {
+    mkdirSync(join(root, "exports"), { recursive: true, mode: 0o755 });
+    if (process.platform !== "win32") chmodSync(join(root, "exports"), 0o755);
+    const result = await runCli([
+      "desktop", "supervision", "export", "--reviewed-only",
+      "--output", correctionOutputPath,
+      "--metrics-output", correctionMetricsPath,
+      "--json",
+    ]);
+    assert.equal(result.status, 0, result.stderr);
+    const value = JSON.parse(result.stdout);
+    assert.equal(value.upload_performed, false);
+    assert.equal(value.reviewed_only, true);
+    assert.equal(value.correction_pairs.row_count, 1);
+    assert.equal(value.metrics.intervention_precision, 1);
+    assert.equal(value.metrics.small_model_output_share, 0.75);
+    assert.equal(value.metrics.supervisor_token_overhead, 0.2);
+    assert.deepEqual(value.evidence_window, {
+      incomplete_interventions: 0,
+      truncated_interventions: 0,
+      invalid_journals: 0,
+      missing_journals: 0,
+      truncated_journals: 0,
+    });
+    const rows = readFileSync(correctionOutputPath, "utf8").trim().split("\n").map(JSON.parse);
+    assert.equal(rows[0].schema_version, "understudy.correction_pair.v1");
+    assert.equal(rows[0].run_id, "run-desktop");
+    const metrics = JSON.parse(readFileSync(correctionMetricsPath, "utf8"));
+    assert.equal(metrics.schema_version, "understudy.supervision_metrics.v1");
+    assert.equal(metrics.truncated_intervention_count, 0);
+    assert.equal(metrics.truncated_journal_count, 0);
+    assert.equal(metrics.correction_pairs.sha256, value.correction_pairs.sha256);
+    if (process.platform !== "win32") {
+      assert.equal(statSync(correctionOutputPath).mode & 0o077, 0);
+      assert.equal(statSync(correctionMetricsPath).mode & 0o077, 0);
+      assert.equal(statSync(join(root, "exports")).mode & 0o777, 0o755);
+    }
+
+    const repeated = await runCli([
+      "desktop", "supervision", "export", "--reviewed-only",
+      "--output", correctionOutputPath,
+      "--metrics-output", correctionMetricsPath,
+      "--json",
+    ]);
+    assert.equal(repeated.status, 0, repeated.stderr);
+    assert.equal(JSON.parse(repeated.stdout).correction_pairs.write, "existing");
+
+    const conflict = join(root, "exports", "conflict.jsonl");
+    writeFileSync(conflict, "different\n", { mode: 0o600 });
+    const refused = await runCli([
+      "desktop", "supervision", "export",
+      "--output", conflict,
+      "--metrics-output", join(root, "exports", "unused-metrics.json"),
+      "--json",
+    ]);
+    assert.notEqual(refused.status, 0);
+    assert.match(refused.stderr, /refusing to replace immutable artifact/);
   });
 
   it("records an explicit supervisor judgment", async () => {

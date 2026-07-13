@@ -1,41 +1,38 @@
 # Desktop runtime migration removal map
 
-Status: gated deletion rehearsal based on `e8ab699` on 2026-07-12. Do not merge
-the rehearsal until the released cohort gate passes.
+Status: deletion rehearsal refreshed against released Desktop 0.3.5 commit
+`1579ab3` on 2026-07-13. Do not merge until the released cohort gate passes.
 
 The migration is successful only when the canonical conversation runtime owns
 conversation state and the native app becomes a thin authenticated adapter. The
-one-release Rust compatibility engine is temporary. This rehearsal removes it
-without changing the released build; new chat-harness behavior remains frozen
-except for P0 reliability and release bugs.
+one-release Rust compatibility engine is temporary. This draft removes it while
+preserving the shipped Train-derived product improvements; new chat-harness
+behavior remains frozen except for P0 reliability and release bugs.
 
 ## Deletion rehearsal
 
 Branch `yolo/runtime-fallback-deletion-rehearsal` removes the native provider,
 tool-round, compaction, benchmark/headless, Anthropic transport, and parallel
-sidekick conversation paths. Pi is the only engine for new GUI, headless, and
-benchmark runs. Historical `native-rust` and legacy sidekick rows remain
-readable, but new Fusion runs cannot schedule the removed modes.
+sidekick conversation paths. Pi becomes the only conversation engine for GUI,
+headless, and benchmark runs. Historical `native-rust` and legacy sidekick rows
+remain readable, but no active code can schedule those modes.
 
-The review diff currently removes 4,370 gross Rust lines and adds 418, for a
-net reduction of 3,952 Rust lines. Including the simplified chat UI, the full
-diff removes 4,513 lines and adds 495, for a net reduction of 4,018 lines.
-These counts come from `git diff --numstat origin/main...HEAD` at `e8ab699`;
-update them if the rehearsal changes.
-
-The rebased rehearsal has passed clippy with warnings denied, all Rust tests
-(114 passed, one ignored), and the root package check (225 tests, 33 public
-skills, package smoke). Earlier rehearsal rounds also passed `cargo check` and
-the homescreen production build. These are rehearsal checks, not permission to
-merge. The merge condition remains:
+Against released main, the refreshed review diff removes 4,546 gross Rust
+lines and adds 488, for a net reduction of 4,058 Rust lines. Across the full
+tree it removes 5,165 lines and adds 617, for a net reduction of 4,548 lines.
+The branch passed clippy with warnings denied, all Rust tests (155 passed, four
+ignored), the homescreen production build, all 280 root tests, 33 public-skill
+validations, and the npm package smoke. It is implementation-ready but
+intentionally not promotion-ready. Its merge condition remains:
 
 ```sh
 understudy desktop migration-status --require-ready --json
 ```
 
-The command must exit zero for the exact released app/runtime cohort. At the
-time of this rehearsal, the honest cohort is 1/100 with zero compatibility
-fallbacks, so this branch is intentionally blocked from merge.
+That command must exit zero for the exact released app/runtime cohort. The
+current honest cohort has one consecutive Pi turn, three canonical rows total,
+and two historical compatibility-fallback rows. Ninety-nine genuine newer Pi
+turns remain; synthetic traffic must not be used to satisfy the gate.
 
 ## Acceptance evidence
 
@@ -47,17 +44,16 @@ npm run runtime:desktop-readiness -- --output .understudy/capture-evidence/deskt
 ```
 
 The output is private, contains no token values, and is not packaged. It fails
-closed if app, runtime, or model RSS is unavailable. The 2026-07-12
-process-cold/filesystem-warm run on a 128 GB Apple Silicon development machine
-passed all gates:
+closed if app, runtime, or model RSS is unavailable. The final notarized 0.3.5
+release evidence passed all gates:
 
 | Gate | Result | Ceiling |
 | --- | ---: | ---: |
-| Desktop HTTP ready | 312 ms | 2,500 ms |
-| Canonical runtime ready | 644 ms | 3,000 ms |
-| All four restored models ready | 5,940 ms | 45,000 ms |
-| Desktop + runtime RSS | 203.8 MB | 750 MB |
-| Restored model RSS | 31.45 GB | 32 GB |
+| Desktop HTTP ready | 212 ms | 2,500 ms |
+| Canonical runtime ready | 622 ms | 3,000 ms |
+| Restored model ready | 4,792 ms | 45,000 ms |
+| Desktop + runtime RSS | 203.109 MB | 750 MB |
+| Restored model RSS | 5.9388 GB | 32 GB |
 
 This is not a reboot-cold claim: macOS may retain model weights in its filesystem
 cache. Release qualification should repeat it on one clean install and one
@@ -77,16 +73,16 @@ The local `runtime-status-check` proof (`fusion-pi-proof-1783882706`) persisted
 provider usage (2,267 input and 185 output tokens) under capture id
 `desktop-839bd2b9189f996e99e12074e9bda426`. A historical parallel-mode proof also
 executed through Pi and durably recorded why no background handoff ran
-(`benchmark_sidekick_score_low`). The deletion rehearsal no longer schedules
-those Rust-owned modes; supervision is a canonical-runtime concern.
+(`benchmark_sidekick_score_low`). This rehearsal removes the Rust-owned
+parallel scheduler; supervision remains a canonical-runtime concern.
 
 Direct Anthropic chat now selects Pi's native `anthropic-messages` provider and
 uses the same authenticated tool/evidence path. The frozen local provider
 fixture proved two Messages API rounds, one matched tool call/result, exact
 provider usage, and no credential in the provider payload or canonical events.
 Runtime contract version `0.3.2` makes older sidecars fail closed before output.
-The deletion rehearsal retains Anthropic key/catalog storage but removes the
-native Messages translator.
+The released build retains the one-release fallback; this draft retains only
+Anthropic key and catalog storage in Rust.
 
 ## Deletion gate
 
@@ -96,13 +92,11 @@ The release artifact exposes the gate directly:
 HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 HF_DATASETS_OFFLINE=1 \
 understudy runtime conformance \
   --backend pi \
-  --base-url <offline-mlx-vlm-base-url> \
-  --model <served-model-id> \
+  --slot <warm-desktop-slot> \
   --capabilities compaction,restart,supervision \
   --deterministic-supervisor \
   --deterministic-malformed-tool \
   --deterministic-compaction \
-  --tool-executor-url <authenticated-loopback-tool-executor-url> \
   --require-complete \
   --output .understudy/capture-evidence/desktop-runtime-conformance.json
 npm run runtime:desktop-readiness -- \
@@ -110,15 +104,29 @@ npm run runtime:desktop-readiness -- \
 understudy desktop migration-status --require-ready --json
 ```
 
+For Pi or Vercel, `--slot` resolves the exact local weights path and serving
+port from the authenticated Desktop capability. It also wires the slot-bound
+tool executor and its bearer token in memory for the duration of the run; the
+token is neither printed nor persisted in conformance evidence.
+
+The released fallback had a deliberately incomplete native reference adapter.
+This canonical-only branch removes that adapter as well as the execution path.
+Frozen `native-rust-reference` fixtures remain labeled
+`retired-fixture-only` so historical evidence stays truthful without exposing
+an executable native backend.
+
 The command exits `2` while observation is incomplete. The underlying
-versioned Desktop API cohorts rows by both app version and canonical-runtime
-version; legacy and development rows remain in SQLite but cannot poison or
-falsely satisfy the denominator. The CLI additionally verifies that both
+versioned Desktop API evaluates the newest 100 canonical turns for the exact
+app and runtime versions. Legacy rows remain in SQLite but cannot falsely
+satisfy the denominator, and an early fallback probe ages out only after 100
+newer Pi turns. The API reports both total window coverage and the clean Pi
+streak so "remaining" cannot hide a fallback inside an otherwise full window.
+The CLI additionally verifies that both
 owner-only evidence files match the live app/runtime versions, current event
 schema, and exact frozen-scenario hashes; missing or stale evidence fails
 closed even after the cohort reaches 100 runs. Delete the compatibility engine
-only after one released app/runtime cohort records a rolling window of at least
-100 canonical runs with:
+only after one released app/runtime cohort records a rolling window of exactly
+the latest 100 canonical runs with:
 
 - `compatibility_fallback_rows == 0`;
 - `pi_runtime_share == 1.0`;
@@ -127,8 +135,11 @@ only after one released app/runtime cohort records a rolling window of at least
   conformance scenarios;
 - the readiness probe passing on release artifacts.
 
-The current released cohort is intentionally incomplete at 1/100. Synthetic
-traffic must not be used to fill it.
+The 2026-07-13 installed-app proof recorded the first 0.3.5 Pi-backed GUI turn.
+The cohort currently contains three canonical rows total: one Pi row and two
+earlier compatibility fallbacks. Ninety-nine newer clean Pi turns are required
+before the rolling window can become eligible. Do not manufacture those rows;
+they are release-adoption evidence.
 
 ## Removable ownership
 
@@ -160,9 +171,9 @@ diff. The conservative gross target is about 4,200 lines; the final claim is
    canonical runtime.
 4. Direct Anthropic uses Pi's canonical provider contract; retain only key
    presence and catalog management in Rust.
-5. Replace legacy parallel-sidekick UI with canonical intervention and
+5. Replace legacy parallel-sidekick metrics/UI with canonical intervention and
    human-label evidence while retaining historical evidence readability.
-6. Keep the deletion rehearsal as a draft until the released cohort passes,
+6. Keep the deletion rehearsal draft until the exact released cohort passes,
    then merge it. Do not retain two permanent conversation engines.
 
 ## Explicitly retained native responsibilities

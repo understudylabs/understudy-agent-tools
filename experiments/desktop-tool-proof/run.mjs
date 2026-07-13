@@ -12,6 +12,11 @@ import { runPiConversation } from "../../dist/runtime/conversation/pi-runtime.js
 
 const here = dirname(fileURLToPath(import.meta.url));
 
+const suiteFiles = Object.freeze({
+  core: "tasks.json",
+  hard: "tasks-hard.json",
+});
+
 const directMcpToolNames = [
   "status",
   "residency",
@@ -87,6 +92,29 @@ export function selectTasks(tasks, taskIds = []) {
     return task;
   });
   return selected;
+}
+
+export function resolveSuiteFile(suite) {
+  const filename = suiteFiles[suite];
+  if (!filename) {
+    throw new Error(`unknown suite: ${suite}; expected one of ${Object.keys(suiteFiles).join(", ")}`);
+  }
+  return filename;
+}
+
+export function residencyIsolationPlan(slots, targetSlotId) {
+  const target = slots.find((slot) => slot.id === targetSlotId);
+  if (!target) throw new Error(`candidate slot ${targetSlotId} does not exist`);
+  const coolSlotIds = slots
+    .filter((slot) => slot.id !== targetSlotId)
+    .filter((slot) => slot.state === "running" || slot.state === "loading")
+    .map((slot) => slot.id);
+  const targetAction = target.state === "running"
+    ? "ready"
+    : target.state === "loading"
+      ? "wait"
+      : "warm";
+  return { coolSlotIds, targetAction };
 }
 
 export function scoreToolTrace(events, task) {
@@ -246,6 +274,8 @@ function parseArgs(argv) {
     outputRoot: join(homedir(), ".understudy", "proofs", "tool-correctness"),
     executionMode: "direct-pi",
     taskIds: [],
+    suite: "core",
+    manageResidency: true,
   };
   for (let index = 0; index < argv.length; index += 1) {
     const value = argv[index];
@@ -258,6 +288,10 @@ function parseArgs(argv) {
       options.executionMode = "direct-pi";
       continue;
     }
+    if (value === "--prewarmed") {
+      options.manageResidency = false;
+      continue;
+    }
     if (value === "--candidate") {
       const [label, rawSlot] = String(next).split(":");
       options.candidates.push({ label, slotId: Number(rawSlot) });
@@ -265,6 +299,7 @@ function parseArgs(argv) {
     else if (value === "--max-tokens") options.maxTokens = Number(next);
     else if (value === "--timeout-ms") options.timeoutMs = Number(next);
     else if (value === "--task-id") options.taskIds.push(String(next));
+    else if (value === "--suite") options.suite = String(next);
     else if (value === "--output-root") options.outputRoot = resolve(next);
     else throw new Error(`unknown argument: ${value}`);
     index += 1;
@@ -273,6 +308,7 @@ function parseArgs(argv) {
     throw new Error("provide at least one --candidate label:slot");
   }
   const labels = new Set();
+  const slots = new Set();
   for (const candidate of options.candidates) {
     if (!/^[a-z0-9][a-z0-9-]{0,39}$/.test(candidate.label) || labels.has(candidate.label)) {
       throw new Error(`candidate label must be unique and URL-safe: ${candidate.label}`);
@@ -280,7 +316,11 @@ function parseArgs(argv) {
     if (!Number.isInteger(candidate.slotId) || candidate.slotId <= 0) {
       throw new Error(`candidate slot must be a positive integer: ${candidate.slotId}`);
     }
+    if (slots.has(candidate.slotId)) {
+      throw new Error(`candidate slots must be unique: ${candidate.slotId}`);
+    }
     labels.add(candidate.label);
+    slots.add(candidate.slotId);
   }
   if (!Number.isInteger(options.repetitions) || options.repetitions < 1 || options.repetitions > 20) {
     throw new Error("repetitions must be an integer from 1 to 20");
@@ -291,6 +331,7 @@ function parseArgs(argv) {
   if (!Number.isInteger(options.timeoutMs) || options.timeoutMs < 1_000 || options.timeoutMs > 300_000) {
     throw new Error("timeout-ms must be an integer from 1000 to 300000");
   }
+  resolveSuiteFile(options.suite);
   return options;
 }
 
@@ -334,6 +375,99 @@ async function mcpRequest(capability, method, params) {
   const body = await response.json();
   if (body.error) throw new Error(`Desktop MCP ${method} failed: ${body.error.message}`);
   return body.result;
+}
+
+async function residencySnapshot(capability) {
+  const result = await mcpRequest(capability, "tools/call", {
+    name: "residency",
+    arguments: {},
+  });
+  const snapshot = result?.structuredContent;
+  if (!snapshot || !Array.isArray(snapshot.slots)) {
+    throw new Error("Desktop residency returned no slot list");
+  }
+  return snapshot;
+}
+
+async function setSlotState(capability, toolName, slotId) {
+  await mcpRequest(capability, "tools/call", {
+    name: toolName,
+    arguments: { slot_id: slotId },
+  });
+}
+
+async function waitForSlot(capability, slotId, desiredState, timeoutMs = 180_000) {
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    const snapshot = await residencySnapshot(capability);
+    const slot = snapshot.slots.find((candidate) => candidate.id === slotId);
+    if (!slot) throw new Error(`candidate slot ${slotId} disappeared during residency change`);
+    if (slot.state === desiredState) return slot;
+    if (slot.state === "error") throw new Error(`candidate slot ${slotId} entered error state`);
+    await new Promise((resolvePromise) => setTimeout(resolvePromise, 500));
+  }
+  throw new Error(`candidate slot ${slotId} did not reach ${desiredState} within ${timeoutMs}ms`);
+}
+
+async function waitForPortClosed(port, timeoutMs = 10_000) {
+  if (!Number.isInteger(port)) return;
+  const url = `http://127.0.0.1:${port}/v1/models`;
+  const deadline = Date.now() + timeoutMs;
+  while (Date.now() < deadline) {
+    try {
+      await fetch(url, { signal: AbortSignal.timeout(500) });
+    } catch {
+      return;
+    }
+    await new Promise((resolvePromise) => setTimeout(resolvePromise, 250));
+  }
+  throw new Error(`model server port ${port} stayed open after slot cooling`);
+}
+
+async function coolSlotAndVerify(capability, slotId) {
+  const before = await residencySnapshot(capability);
+  const port = before.slots.find((slot) => slot.id === slotId)?.port;
+  await setSlotState(capability, "cool_slot", slotId);
+  await waitForSlot(capability, slotId, "stopped", 10_000);
+  await waitForPortClosed(port);
+}
+
+async function isolateCandidate(capability, slotId) {
+  const before = await residencySnapshot(capability);
+  const plan = residencyIsolationPlan(before.slots, slotId);
+  for (const victim of plan.coolSlotIds) {
+    await coolSlotAndVerify(capability, victim);
+  }
+  if (plan.coolSlotIds.length > 0) {
+    // Metal/IOGPU teardown can outlive process exit. Keep the next model load
+    // out of the allocator completion window that triggered the kernel panic.
+    await new Promise((resolvePromise) => setTimeout(resolvePromise, 2_000));
+  }
+  if (plan.targetAction === "warm") {
+    await setSlotState(capability, "warm_slot", slotId);
+  }
+  if (plan.targetAction !== "ready") {
+    await waitForSlot(capability, slotId, "running");
+  }
+}
+
+async function restoreResidency(capability, originalRunningSlotIds) {
+  const current = await residencySnapshot(capability);
+  for (const slot of current.slots) {
+    if (
+      (slot.state === "running" || slot.state === "loading")
+      && !originalRunningSlotIds.includes(slot.id)
+    ) {
+      await coolSlotAndVerify(capability, slot.id);
+    }
+  }
+  for (const slotId of originalRunningSlotIds) {
+    const snapshot = await residencySnapshot(capability);
+    const slot = snapshot.slots.find((candidate) => candidate.id === slotId);
+    if (!slot || slot.state === "running") continue;
+    if (slot.state !== "loading") await setSlotState(capability, "warm_slot", slotId);
+    await waitForSlot(capability, slotId, "running");
+  }
 }
 
 function modelSystemPrompt(modelId) {
@@ -442,7 +576,11 @@ function eventTokens(events) {
 }
 
 export async function runProof(options = parseArgs(process.argv.slice(2))) {
-  const sourceTaskBytes = readFileSync(join(here, "tasks.json"));
+  const reportProgress = options.onProgress ?? ((line) => process.stdout.write(line));
+  const reportResult = options.reportResult ?? true;
+  const suite = options.suite ?? "core";
+  const sourceTaskFile = resolveSuiteFile(suite);
+  const sourceTaskBytes = readFileSync(join(here, sourceTaskFile));
   const tasks = selectTasks(JSON.parse(sourceTaskBytes), options.taskIds);
   const taskBytes = options.taskIds.length === 0
     ? sourceTaskBytes
@@ -466,89 +604,120 @@ export async function runProof(options = parseArgs(process.argv.slice(2))) {
   ) {
     throw new Error("Understudy Desktop API v2 canonical streaming evidence is required");
   }
-  const directContext = options.executionMode === "direct-pi"
-    ? await loadDirectContext(capability, options.candidates)
-    : null;
+  const managedResidency = options.executionMode === "direct-pi" && options.manageResidency !== false;
+  const originalResidency = managedResidency ? await residencySnapshot(capability) : null;
+  if (originalResidency?.slots.some((slot) => slot.state === "loading")) {
+    throw new Error("managed proof cannot start while a residency slot is loading; wait and retry");
+  }
+  const originalRunningSlotIds = originalResidency?.slots
+    .filter((slot) => slot.state === "running")
+    .map((slot) => slot.id) ?? [];
+  let sharedToolSchemaSha256 = null;
 
   const rows = [];
-  for (const candidate of options.candidates) {
-    for (let repetition = 1; repetition <= options.repetitions; repetition += 1) {
-      for (const task of tasks) {
-        const runId = `${proofId}-${candidate.label}-r${repetition}-${task.id}`;
-        const sessionId = runId;
-        const before = performance.now();
-        let events;
-        let modelId = null;
-        if (directContext) {
-          const direct = await runDirectTurn(
-            capability,
-            directContext,
-            candidate,
-            task,
-            runId,
-            sessionId,
-            options.maxTokens,
-            options.timeoutMs,
-          );
-          events = direct.events;
-          modelId = direct.target.modelId;
-        } else {
-          const response = await apiFetch(
-            capability,
-            `/v1/conversations/${encodeURIComponent(sessionId)}/turns`,
-            {
-              method: "POST",
-              signal: AbortSignal.timeout(options.timeoutMs),
-              body: JSON.stringify({
-                slotId: candidate.slotId,
-                text: task.prompt,
-                runId,
-                maxTokens: options.maxTokens,
-              }),
-            },
-          );
-          if (!response.ok) {
-            throw new Error(
-              `${candidate.label}/r${repetition}/${task.id} returned ${response.status}: ${await response.text()}`,
-            );
-          }
-          events = await readNdjson(response);
+  try {
+    for (const candidate of options.candidates) {
+      if (managedResidency) await isolateCandidate(capability, candidate.slotId);
+      const directContext = options.executionMode === "direct-pi"
+        ? await loadDirectContext(capability, [candidate])
+        : null;
+      if (directContext) {
+        if (
+          sharedToolSchemaSha256 != null
+          && sharedToolSchemaSha256 !== directContext.toolSchemaSha256
+        ) {
+          throw new Error("Desktop tool schema changed during managed proof");
         }
-        const score = scoreToolTrace(events, task);
-        const row = {
-          proof_id: proofId,
-          suite_sha256: suiteSha256,
-          candidate: candidate.label,
-          slot_id: candidate.slotId,
-          model_id: modelId,
-          runtime_backend: directContext ? "pi" : "desktop-api",
-          repetition,
-          task_id: task.id,
-          expected_calls: expectedCallsForTask(task),
-          run_id: runId,
-          session_id: sessionId,
-          elapsed_ms: Math.round(performance.now() - before),
-          total_tokens: eventTokens(events),
-          canonical_event_count: events.length,
-          ...score,
-        };
-        rows.push(row);
-        writeProofFile(
-          join(outputDir, `${candidate.label}-r${repetition}-${task.id}.events.jsonl`),
-          `${events.map((event) => JSON.stringify(event)).join("\n")}\n`,
-        );
-        process.stdout.write(
-          `${candidate.label.padEnd(10)} r${repetition} ${task.id.padEnd(22)} `
-          + `${score.strict_pass ? "PASS" : "FAIL"} tools=${score.call_sequence
-            .map(({ tool }) => tool)
-            .join(",") || "none"}\n`,
-        );
+        sharedToolSchemaSha256 = directContext.toolSchemaSha256;
+      }
+      for (let repetition = 1; repetition <= options.repetitions; repetition += 1) {
+        for (const task of tasks) {
+          const runId = `${proofId}-${candidate.label}-r${repetition}-${task.id}`;
+          const sessionId = runId;
+          const before = performance.now();
+          let events;
+          let modelId = null;
+          if (directContext) {
+            const direct = await runDirectTurn(
+              capability,
+              directContext,
+              candidate,
+              task,
+              runId,
+              sessionId,
+              options.maxTokens,
+              options.timeoutMs,
+            );
+            events = direct.events;
+            modelId = direct.target.modelId;
+          } else {
+            const response = await apiFetch(
+              capability,
+              `/v1/conversations/${encodeURIComponent(sessionId)}/turns`,
+              {
+                method: "POST",
+                signal: AbortSignal.timeout(options.timeoutMs),
+                body: JSON.stringify({
+                  slotId: candidate.slotId,
+                  text: task.prompt,
+                  runId,
+                  maxTokens: options.maxTokens,
+                }),
+              },
+            );
+            if (!response.ok) {
+              throw new Error(
+                `${candidate.label}/r${repetition}/${task.id} returned ${response.status}: ${await response.text()}`,
+              );
+            }
+            events = await readNdjson(response);
+          }
+          const score = scoreToolTrace(events, task);
+          const row = {
+            proof_id: proofId,
+            suite,
+            suite_sha256: suiteSha256,
+            candidate: candidate.label,
+            slot_id: candidate.slotId,
+            model_id: modelId,
+            runtime_backend: directContext ? "pi" : "desktop-api",
+            repetition,
+            task_id: task.id,
+            expected_calls: expectedCallsForTask(task),
+            expected_output: task.expected_output,
+            run_id: runId,
+            session_id: sessionId,
+            elapsed_ms: Math.round(performance.now() - before),
+            total_tokens: eventTokens(events),
+            canonical_event_count: events.length,
+            ...score,
+          };
+          rows.push(row);
+          writeProofFile(
+            join(outputDir, `${candidate.label}-r${repetition}-${task.id}.events.jsonl`),
+            `${events.map((event) => JSON.stringify(event)).join("\n")}\n`,
+          );
+          reportProgress(
+            `${candidate.label.padEnd(10)} r${repetition} ${task.id.padEnd(22)} `
+            + `${score.strict_pass ? "PASS" : "FAIL"} tools=${score.call_sequence
+              .map(({ tool }) => tool)
+              .join(",") || "none"}\n`,
+          );
+        }
+      }
+      if (managedResidency) {
+        await coolSlotAndVerify(capability, candidate.slotId);
+        await new Promise((resolvePromise) => setTimeout(resolvePromise, 2_000));
       }
     }
+  } finally {
+    if (managedResidency) await restoreResidency(capability, originalRunningSlotIds);
   }
   const summary = {
     format: "understudy.desktop_tool_proof.v3",
     proof_id: proofId,
+    suite,
+    source_task_file: sourceTaskFile,
     suite_sha256: suiteSha256,
     started_at: startedAt.toISOString(),
     completed_at: new Date().toISOString(),
@@ -559,8 +728,10 @@ export async function runProof(options = parseArgs(process.argv.slice(2))) {
     run_count: rows.length,
     timeout_ms: options.timeoutMs,
     execution_mode: options.executionMode,
+    residency_mode: managedResidency ? "managed-exclusive" : "prewarmed",
+    original_running_slot_ids: originalRunningSlotIds,
     release_cohort_eligible: false,
-    tool_schema_sha256: directContext?.toolSchemaSha256 ?? null,
+    tool_schema_sha256: sharedToolSchemaSha256,
     candidates: summarizeRows(rows),
   };
   writeProofFile(
@@ -569,7 +740,9 @@ export async function runProof(options = parseArgs(process.argv.slice(2))) {
   );
   writeProofFile(join(outputDir, "summary.json"), `${JSON.stringify(summary, null, 2)}\n`);
   writeProofFile(join(outputDir, "tasks.json"), taskBytes);
-  process.stdout.write(`${JSON.stringify({ output_dir: outputDir, summary }, null, 2)}\n`);
+  if (reportResult) {
+    process.stdout.write(`${JSON.stringify({ output_dir: outputDir, summary }, null, 2)}\n`);
+  }
   return { outputDir, rows, summary };
 }
 

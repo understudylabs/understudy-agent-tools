@@ -29,6 +29,10 @@ import {
 } from "../runtime/conversation/conformance.js";
 import { runPiConversation } from "../runtime/conversation/pi-runtime.js";
 import { runVercelConversation } from "../runtime/conversation/vercel-runtime.js";
+import {
+  requireDesktopApi,
+  resolveDesktopSlotProviderTarget,
+} from "../internal/desktop-api.js";
 
 function emit(command: Command, payload: Record<string, unknown>, human: string): void {
   if (isJsonMode(command)) {
@@ -53,6 +57,14 @@ function persistImmutableReport(path: string, report: unknown): string {
     closeSync(descriptor);
   }
   return target;
+}
+
+function positiveInteger(value: string): number {
+  const parsed = Number(value);
+  if (!Number.isInteger(parsed) || parsed <= 0) {
+    throw new Error("value must be a positive integer");
+  }
+  return parsed;
 }
 
 async function startDeterministicSupervisorFixture(): Promise<{
@@ -354,6 +366,11 @@ export function registerRuntimeCommand(program: Command): void {
     .option("--backend <backend>", "Execute inputs through pi or vercel")
     .option("--base-url <url>", "OpenAI-compatible provider base URL")
     .option("--model <id>", "Provider model identifier")
+    .option(
+      "--slot <id>",
+      "Warm desktop slot (auto-resolves the exact local Pi/Vercel provider identity)",
+      positiveInteger,
+    )
     .option("--student-base-url <url>", "Student provider URL for the supervision scenario")
     .option("--student-model <id>", "Student model for the supervision scenario")
     .option("--supervisor-base-url <url>", "Supervisor provider URL for the supervision scenario")
@@ -386,6 +403,7 @@ export function registerRuntimeCommand(program: Command): void {
         backend?: string;
         baseUrl?: string;
         model?: string;
+        slot?: number;
         studentBaseUrl?: string;
         studentModel?: string;
         supervisorBaseUrl?: string;
@@ -418,10 +436,14 @@ export function registerRuntimeCommand(program: Command): void {
         if (!["pi", "vercel"].includes(options.backend)) {
           throw new Error("--backend must be pi or vercel");
         }
-        if (!options.baseUrl || !options.model) {
-          throw new Error("--backend requires --base-url and --model");
-        }
         const backend = options.backend as "pi" | "vercel";
+        if (options.slot && (options.baseUrl || options.model)) {
+          throw new Error(
+            "--slot resolves --base-url and --model from Desktop; do not combine them",
+          );
+        } else if (!options.slot && (!options.baseUrl || !options.model)) {
+          throw new Error("--backend pi or vercel requires --base-url and --model");
+        }
         if (options.deterministicSupervisor && backend !== "pi") {
           throw new Error("--deterministic-supervisor requires --backend pi");
         }
@@ -449,6 +471,25 @@ export function registerRuntimeCommand(program: Command): void {
           throw new Error("--scenario-timeout-ms must be an integer from 1000 to 600000");
         }
         const invocationId = `${Date.now()}-${process.pid}`;
+        const desktopSlotCapability = options.slot
+          ? await requireDesktopApi()
+          : undefined;
+        const desktopSlotTarget = desktopSlotCapability
+          ? await resolveDesktopSlotProviderTarget(
+              desktopSlotCapability,
+              options.slot!,
+              scenarioTimeoutMs,
+            )
+          : undefined;
+        const providerBaseUrl = desktopSlotTarget?.baseUrl ?? options.baseUrl!;
+        const providerModel = desktopSlotTarget?.model ?? options.model!;
+        const desktopToolExecutor = desktopSlotCapability && !options.toolExecutorUrl
+          ? {
+              url: `${desktopSlotCapability.baseUrl}/api/conversation-runtime/tool?slot_id=${options.slot}`,
+              token: desktopSlotCapability.token,
+            }
+          : undefined;
+        const toolExecutorUrl = options.toolExecutorUrl ?? desktopToolExecutor?.url;
         const supervisorFixture = options.deterministicSupervisor
           ? await startDeterministicSupervisorFixture()
           : undefined;
@@ -456,9 +497,13 @@ export function registerRuntimeCommand(program: Command): void {
           ? await startDeterministicMalformedToolFixture()
           : undefined;
         const supervisorTarget = supervisorFixture?.target ?? {
-          base_url: options.supervisorBaseUrl ?? options.baseUrl,
-          model: options.supervisorModel ?? options.model,
+          base_url: options.supervisorBaseUrl ?? providerBaseUrl,
+          model: options.supervisorModel ?? providerModel,
         };
+        const previousToolToken = process.env.UNDERSTUDY_RUNTIME_TOOL_TOKEN;
+        if (desktopToolExecutor) {
+          process.env.UNDERSTUDY_RUNTIME_TOOL_TOKEN = desktopToolExecutor.token;
+        }
         let report;
         try {
           report = await runConversationAdapterConformance(
@@ -477,18 +522,28 @@ export function registerRuntimeCommand(program: Command): void {
                   transformers_offline: process.env.TRANSFORMERS_OFFLINE === "1",
                   hf_datasets_offline: process.env.HF_DATASETS_OFFLINE === "1",
                 },
-                provider: { base_url: options.baseUrl, model: options.model },
+                provider: {
+                  base_url: providerBaseUrl,
+                  model: providerModel,
+                  ...(desktopSlotTarget
+                    ? {
+                        slot_id: desktopSlotTarget.slotId,
+                        artifact_id: desktopSlotTarget.artifactId,
+                        identity_source: "desktop_residency_model_path",
+                      }
+                    : {}),
+                },
                 supervision: {
                   student: {
-                    base_url: options.studentBaseUrl ?? options.baseUrl,
-                    model: options.studentModel ?? options.model,
+                    base_url: options.studentBaseUrl ?? providerBaseUrl,
+                    model: options.studentModel ?? providerModel,
                   },
                   supervisor: {
                     ...supervisorTarget,
                   },
                   teacher: {
-                    base_url: options.teacherBaseUrl ?? options.baseUrl,
-                    model: options.teacherModel ?? options.model,
+                    base_url: options.teacherBaseUrl ?? providerBaseUrl,
+                    model: options.teacherModel ?? providerModel,
                   },
                 },
                 supervisor_mode: options.deterministicSupervisor
@@ -501,28 +556,33 @@ export function registerRuntimeCommand(program: Command): void {
                   ? "deterministic_fixture"
                   : "model",
                 scenario_timeout_ms: scenarioTimeoutMs,
-                tool_executor_configured: Boolean(options.toolExecutorUrl),
+                tool_executor_configured: Boolean(toolExecutorUrl),
+                tool_executor_source: desktopToolExecutor
+                  ? "desktop_authenticated_slot"
+                  : toolExecutorUrl
+                    ? "explicit"
+                    : "none",
                 allow_remote: options.allowRemote ?? false,
               },
               async run(input) {
                 return executeFrozenConformanceScenario(input, run, {
                   backend,
-                  base_url: options.baseUrl!,
-                  model: options.model!,
+                  base_url: providerBaseUrl,
+                  model: providerModel,
                   invocation_id: invocationId,
                   scenario_timeout_ms: scenarioTimeoutMs,
-                  tool_executor_url: options.toolExecutorUrl,
+                  tool_executor_url: toolExecutorUrl,
                   allow_remote: options.allowRemote,
                   student: {
-                    base_url: options.studentBaseUrl ?? options.baseUrl!,
-                    model: options.studentModel ?? options.model!,
+                    base_url: options.studentBaseUrl ?? providerBaseUrl,
+                    model: options.studentModel ?? providerModel,
                   },
                   supervisor: {
                     ...supervisorTarget,
                   },
                   teacher: {
-                    base_url: options.teacherBaseUrl ?? options.baseUrl!,
-                    model: options.teacherModel ?? options.model!,
+                    base_url: options.teacherBaseUrl ?? providerBaseUrl,
+                    model: options.teacherModel ?? providerModel,
                   },
                   malformed_tool: malformedToolFixture?.target,
                   deterministic_compaction: options.deterministicCompaction,
@@ -534,6 +594,13 @@ export function registerRuntimeCommand(program: Command): void {
         } finally {
           await supervisorFixture?.close();
           await malformedToolFixture?.close();
+          if (desktopToolExecutor) {
+            if (previousToolToken === undefined) {
+              delete process.env.UNDERSTUDY_RUNTIME_TOOL_TOKEN;
+            } else {
+              process.env.UNDERSTUDY_RUNTIME_TOOL_TOKEN = previousToolToken;
+            }
+          }
         }
         const outputPath = options.output
           ? persistImmutableReport(options.output, report)

@@ -19,6 +19,7 @@ import {
   piPreflightCompactionRequired,
   runPiConversation,
   supervisorDecisionMarker,
+  supervisorHandoffTarget,
   teacherContinuationBoundary,
   teacherOutputMode,
 } from "../dist/runtime/conversation/pi-runtime.js";
@@ -322,6 +323,8 @@ test("Vercel runtime emits canonical input, delta, and provider usage", async ()
     events.map((event) => event.sequence),
     [0, 1, 2],
   );
+  assert.equal(events[0].data.logical_context_window_tokens, 32_768);
+  assert.equal(events[0].data.provider_context_window_tokens, 32_768);
   assert.deepEqual(
     {
       input_tokens: events[2].data.input_tokens,
@@ -401,6 +404,8 @@ test("Pi runtime emits the same canonical basic-chat evidence", async () => {
     ["message", "delta", "usage"],
   );
   assert.ok(events.every((event) => event.runtime_id === "pi-agent-session"));
+  assert.equal(events[0].data.logical_context_window_tokens, 32_768);
+  assert.equal(events[0].data.provider_context_window_tokens, 32_768);
   assert.equal(events.at(-1).data.input_tokens, 4);
   assert.equal(events.at(-1).data.output_tokens, 4);
   validateRuntimeTrace(events);
@@ -605,6 +610,8 @@ test("Pi runtime recovers from an unexpected provider context overflow", async (
     await new Promise((accept) => server.close(accept));
   }
   validateRuntimeTrace(events);
+  assert.equal(events[0].data.logical_context_window_tokens, 2_048);
+  assert.equal(events[0].data.provider_context_window_tokens, 32_768);
   assert.ok(calls >= 3, `expected overflow, summary, and retry calls; saw ${calls}`);
   assert.equal(events.some((event) => event.event === "error"), false);
   assert.ok(events.some((event) => event.event === "compaction_boundary"));
@@ -753,6 +760,7 @@ test("Pi runtime deterministically interrupts a student and continues with the t
   const interruption = events.find((event) => event.event === "student_interruption");
   const continuation = events.find((event) => event.event === "teacher_continuation");
   assert.equal(verdict.data.verdict, "interrupt");
+  assert.equal(verdict.data.decision_phase, "streaming");
   assert.equal(verdict.data.probability_kind, "logprob");
   assert.equal(interruption.data.partial_text, "Paris is in Germany.");
   assert.equal(interruption.data.marker_id, verdict.data.marker_id);
@@ -770,6 +778,116 @@ test("Pi runtime deterministically interrupts a student and continues with the t
     .map((event) => event.data.text)
     .join("");
   assert.doesNotMatch(rendered, /\w\.\w/);
+});
+
+test("Pi records a failed remote supervisor handoff and continues locally", async () => {
+  assert.equal(
+    supervisorHandoffTarget({
+      base_url: "https://offline-supervisor.example/v1",
+      model: "remote-supervisor",
+    }),
+    "remote",
+  );
+  const server = createServer(async (request, response) => {
+    const body = await requestJson(request);
+    assert.equal(body.model, "student-model");
+    sendFixtureSse(response, [
+      {
+        id: "chatcmpl-offline-supervisor-student",
+        object: "chat.completion.chunk",
+        created: 1,
+        model: "student-model",
+        choices: [
+          {
+            index: 0,
+            delta: {
+              role: "assistant",
+              content: "The local model keeps working while the cloud supervisor is offline.",
+            },
+            finish_reason: null,
+          },
+        ],
+      },
+      {
+        id: "chatcmpl-offline-supervisor-student",
+        object: "chat.completion.chunk",
+        created: 1,
+        model: "student-model",
+        choices: [{ index: 0, delta: {}, finish_reason: "stop" }],
+        usage: { prompt_tokens: 10, completion_tokens: 12, total_tokens: 22 },
+      },
+    ]);
+  });
+  await new Promise((accept) => server.listen(0, "127.0.0.1", accept));
+  const address = server.address();
+  assert.ok(address && typeof address !== "string");
+  const localBaseUrl = `http://127.0.0.1:${address.port}/v1`;
+  const remoteBaseUrl = "https://offline-supervisor.example/v1";
+  const events = [];
+  const originalFetch = globalThis.fetch;
+  const previousAllowRemote = process.env.UNDERSTUDY_RUNTIME_ALLOW_REMOTE;
+  process.env.UNDERSTUDY_RUNTIME_ALLOW_REMOTE = "1";
+  globalThis.fetch = async (input, init) => {
+    const url =
+      typeof input === "string"
+        ? input
+        : input instanceof URL
+          ? input.href
+          : input.url;
+    if (url.startsWith(remoteBaseUrl)) {
+      throw new TypeError("fixture cloud supervisor is offline");
+    }
+    return originalFetch(input, init);
+  };
+  try {
+    await runPiConversation(
+      {
+        run_id: "run-offline-remote-supervisor",
+        session_id: "session-offline-remote-supervisor",
+        base_url: localBaseUrl,
+        model: "student-model",
+        role: "student",
+        allow_remote: true,
+        messages: [{ role: "user", content: "Keep answering if cloud review is unavailable." }],
+        tools: [],
+        runtime_backend: "pi",
+        supervision: {
+          student: { base_url: localBaseUrl, model: "student-model" },
+          supervisor: {
+            base_url: remoteBaseUrl,
+            model: "remote-supervisor",
+            system_prompt: "Judge the partial answer.",
+            max_output_tokens: 24,
+          },
+          teacher: { base_url: remoteBaseUrl, model: "remote-teacher" },
+          boundary_chars: 10,
+          max_nudges: 0,
+        },
+      },
+      (event) => events.push(event),
+    );
+  } finally {
+    globalThis.fetch = originalFetch;
+    if (previousAllowRemote === undefined) {
+      delete process.env.UNDERSTUDY_RUNTIME_ALLOW_REMOTE;
+    } else {
+      process.env.UNDERSTUDY_RUNTIME_ALLOW_REMOTE = previousAllowRemote;
+    }
+    await new Promise((accept) => server.close(accept));
+  }
+  validateRuntimeTrace(events);
+  const verdicts = events.filter((event) => event.event === "supervisor_verdict");
+  assert.equal(verdicts.length, 1, "offline supervisor is attempted only once per segment");
+  assert.equal(verdicts[0].data.verdict, "continue");
+  assert.equal(verdicts[0].data.failure_kind, "unavailable");
+  assert.equal(verdicts[0].data.handoff_target, "remote");
+  assert.match(verdicts[0].data.error, /cloud supervisor is offline/);
+  assert.equal(events.some((event) => event.event === "student_interruption"), false);
+  assert.equal(events.some((event) => event.event === "teacher_continuation"), false);
+  assert.equal(
+    events.filter((event) => event.event === "delta").map((event) => event.data.text).join(""),
+    "The local model keeps working while the cloud supervisor is offline.",
+  );
 });
 
 test("teacher continuation inserts only a missing word boundary", () => {
@@ -802,14 +920,23 @@ test("canonical verdict evidence rejects impossible positive logprobs", () => {
     data: {
       verdict: "continue",
       source: "model",
+      supervisor_model: "supervisor-model",
       marker_id: "run-probability:verdict:0",
       probabilities: { continue: 0.9 },
       probability_kind: "logprob",
+      decision_phase: "final",
     },
   };
   assert.throws(
     () => validateRuntimeTrace([verdict]),
     /logprob continue must be at most zero/,
+  );
+  const invalidPhase = structuredClone(verdict);
+  invalidPhase.data.probabilities = { continue: -0.1 };
+  invalidPhase.data.decision_phase = "between";
+  assert.throws(
+    () => validateRuntimeTrace([invalidPhase]),
+    /unknown supervisor verdict decision_phase between/,
   );
 });
 
@@ -1575,8 +1702,32 @@ test("Pi and Vercel execute the identical frozen conformance inputs", async () =
   const restartRequestsByModel = new Map();
   const traces = new Map();
   const provider = createServer(async (request, response) => {
+    if (request.url === "/health") {
+      response.writeHead(200, { "content-type": "application/json" });
+      response.end(JSON.stringify({ ok: true }));
+      return;
+    }
+    if (request.url === "/v1/residency") {
+      assert.equal(request.headers.authorization, `Bearer ${toolToken}`);
+      const address = provider.address();
+      assert.ok(address && typeof address !== "string");
+      response.writeHead(200, { "content-type": "application/json" });
+      response.end(JSON.stringify({
+        slots: [{
+          id: 7,
+          state: "running",
+          model_id: "conformance-slot-artifact",
+          model_path: "/models/conformance-slot-weights",
+          port: address.port,
+        }],
+      }));
+      return;
+    }
     const body = await requestJson(request);
-    if (request.url === "/tool") {
+    if (
+      request.url === "/tool" ||
+      request.url === "/api/conversation-runtime/tool?slot_id=7"
+    ) {
       assert.equal(request.headers.authorization, `Bearer ${toolToken}`);
       toolRequests.push(body);
       response.writeHead(200, { "content-type": "application/json" });
@@ -2108,9 +2259,18 @@ test("Pi and Vercel execute the identical frozen conformance inputs", async () =
     const interruption = takeover.find((event) => event.event === "student_interruption");
     const continuation = takeover.find((event) => event.event === "teacher_continuation");
     assert.equal(verdict.data.verdict, "interrupt");
+    assert.equal(verdict.data.supervisor_model, "conformance-pi-supervisor-takeover-judge");
     assert.equal(verdict.data.probability_kind, "logprob");
     assert.equal(interruption.data.marker_id, verdict.data.marker_id);
     assert.equal(continuation.data.marker_id, verdict.data.marker_id);
+    const takeoverUsage = Object.fromEntries(
+      takeover
+        .filter((event) => event.event === "usage")
+        .map((event) => [event.data.role, event.data]),
+    );
+    assert.equal(takeoverUsage.student.model, "conformance-pi-supervisor-takeover-student");
+    assert.equal(takeoverUsage.supervisor.model, "conformance-pi-supervisor-takeover-judge");
+    assert.equal(takeoverUsage.teacher.model, "conformance-pi-supervisor-takeover-teacher");
     const takeoverSummary = reports[0].scenarios.find(
       (scenario) => scenario.id === "supervisor-takeover",
     );
@@ -2189,7 +2349,7 @@ test("Pi and Vercel execute the identical frozen conformance inputs", async () =
       model: "conformance-cli",
     });
     assert.equal(cliReport.metadata.runtime_id, "understudy-conversation-sidecar");
-    assert.equal(cliReport.metadata.runtime_version, "0.3.4");
+    assert.equal(cliReport.metadata.runtime_version, "0.3.5");
     assert.equal(
       cliReport.metadata.event_schema,
       "understudy-conversation-runtime-event-v1",
@@ -2221,6 +2381,48 @@ test("Pi and Vercel execute the identical frozen conformance inputs", async () =
     const persisted = JSON.parse(readFileSync(persistedPath, "utf8"));
     assert.equal(persisted.suite_id, cliReport.suite_id);
     assert.equal(persisted.generated_at, cliReport.generated_at);
+
+    const capabilityPath = join(runtimeHome, "desktop-api-slot-conformance.json");
+    writeFileSync(capabilityPath, JSON.stringify({
+      schema_version: "understudy.desktop_api.v2",
+      base_url: `http://127.0.0.1:${address.port}`,
+      token: toolToken,
+      pid: process.pid,
+      app_version: "0.3.5",
+    }), { mode: 0o600 });
+    const slotCli = await runCli([
+      "runtime",
+      "conformance",
+      "--backend",
+      "pi",
+      "--slot",
+      "7",
+      "--deterministic-supervisor",
+      "--deterministic-malformed-tool",
+      "--deterministic-compaction",
+      "--scenario-timeout-ms",
+      "5000",
+      "--require-complete",
+      "--output",
+      join(runtimeHome, "slot-live-conformance.json"),
+      "--json",
+    ], {
+      UNDERSTUDY_DESKTOP_API_FILE: capabilityPath,
+      UNDERSTUDY_RUNTIME_TOOL_TOKEN: "",
+    });
+    assert.equal(slotCli.code, 0, `stdout:\n${slotCli.stdout}\nstderr:\n${slotCli.stderr}`);
+    const slotReport = JSON.parse(slotCli.stdout);
+    assert.equal(slotReport.complete, true);
+    assert.equal(slotReport.eligible_for_promotion, true);
+    assert.equal(slotReport.metadata.tool_executor_configured, true);
+    assert.equal(slotReport.metadata.tool_executor_source, "desktop_authenticated_slot");
+    assert.deepEqual(slotReport.metadata.provider, {
+      base_url: `http://127.0.0.1:${address.port}/v1`,
+      model: "/models/conformance-slot-weights",
+      slot_id: 7,
+      artifact_id: "conformance-slot-artifact",
+      identity_source: "desktop_residency_model_path",
+    });
   } finally {
     await new Promise((accept) => provider.close(accept));
     delete process.env.UNDERSTUDY_RUNTIME_TOOL_TOKEN;
@@ -2283,6 +2485,62 @@ test("malformed-tool conformance rejects shallow event-only evidence", () => {
   );
 });
 
+test("supervisor conformance requires exact per-model usage attribution", () => {
+  const input = JSON.parse(
+    readFileSync(
+      new URL(
+        "../schemas/conversation-runtime-conformance/inputs/supervisor-takeover.json",
+        import.meta.url,
+      ),
+      "utf8",
+    ),
+  );
+  const fixture = () =>
+    readFileSync(
+      new URL(
+        "../schemas/conversation-runtime-conformance/supervisor-takeover.jsonl",
+        import.meta.url,
+      ),
+      "utf8",
+    )
+      .trim()
+      .split("\n")
+      .map((line) => JSON.parse(line));
+  assert.doesNotThrow(() => validateScenarioEvidence(input, fixture()));
+
+  const changedInput = fixture();
+  changedInput.find((event) => event.event === "message").data.text = "different input";
+  assert.throws(
+    () => validateScenarioEvidence(input, changedInput),
+    /changed canonical input message identity/,
+  );
+
+  const missingSupervisor = fixture().filter(
+    (event) => !(event.event === "usage" && event.data.role === "supervisor"),
+  );
+  missingSupervisor.forEach((event, sequence) => {
+    event.sequence = sequence;
+    event.event_id = `${event.run_id}:${sequence}`;
+  });
+  assert.throws(
+    () => validateScenarioEvidence(input, missingSupervisor),
+    /did not attribute supervisor usage/,
+  );
+
+  const mismatchedTeacher = fixture();
+  mismatchedTeacher.find(
+    (event) => event.event === "usage" && event.data.role === "teacher",
+  ).data.model = "wrong-teacher";
+  assert.throws(
+    () => validateScenarioEvidence(input, mismatchedTeacher),
+    /continuation and usage disagree on teacher model/,
+  );
+
+  const missingModel = fixture();
+  delete missingModel.find((event) => event.event === "usage").data.model;
+  assert.throws(() => validateRuntimeTrace(missingModel), /usage\.model must be a non-empty string/);
+});
+
 test("long-chat conformance requires actual token reduction", () => {
   const input = JSON.parse(
     readFileSync(
@@ -2327,6 +2585,22 @@ test("Pi compaction budgets cannot outgrow small local conversations", () => {
   });
   assert.equal(piPreflightCompactionRequired(800, 100, 1_024, 128), true);
   assert.equal(piPreflightCompactionRequired(700, 100, 1_024, 128), false);
+});
+
+test("runtime context evidence rejects a provider window below the logical window", () => {
+  assert.throws(
+    () => parseRuntimeRequest({
+      run_id: "bad-context-run",
+      session_id: "bad-context-session",
+      base_url: "http://127.0.0.1:1/v1",
+      model: "local-model",
+      role: "primary",
+      messages: [{ role: "user", content: "hello" }],
+      context_window_tokens: 32_768,
+      provider_context_window_tokens: 16_384,
+    }),
+    /provider context window must be at least the logical context window/,
+  );
 });
 
 test("deterministic compaction is restricted to its frozen Pi gate", () => {

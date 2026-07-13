@@ -17,6 +17,19 @@ uses semantic-ish versioning (minor = new skill or new capability, patch = fixes
 
 ### Added
 
+- **Truthful model cards in Chat.** One quiet info action beside the selected
+  model now shows its QAT source, MLX conversion, decode contract, scoped
+  certification, footprint, routing hints, and current slot state without
+  leaving the conversation. The four `-understudy` cards explicitly distinguish
+  compression and runtime certification from SFT or RL, and unknown provider or
+  local routes stay neutral instead of receiving invented provenance.
+- **Truthful native Rust migration baseline.** `understudy runtime conformance
+  --backend native` now uses the owner-only authenticated Desktop API to force
+  the one-release Rust fallback against a named warm slot. It passes only the
+  exact prompt-only case the legacy headless boundary actually supports and
+  records richer frozen scenarios as explicit gaps, preventing synthetic
+  wrapper events from overstating image, tool, cancellation, compaction,
+  restart, or supervision parity.
 - **Understudy Desktop agent control plane.** The public CLI now discovers the
   owner-only Desktop capability file and exposes a versioned OpenAPI 3.1
   contract for capabilities, models, downloads, residency, canonical turns,
@@ -30,6 +43,21 @@ uses semantic-ish versioning (minor = new skill or new capability, patch = fixes
   feedback can measure missed errors as well as bad nudges and takeovers.
 
 ### Fixed
+
+- **Dropped Workload Card review no longer asks a local model to open an
+  inaccessible filesystem path.** Desktop now passes only the bounded,
+  metadata-only summary into chat, treats its fields as untrusted data, and
+  frames a frozen behavior benchmark instead of a file-count check. Structured
+  eval rows plus a prompt produce a 10-example incumbent-versus-candidate plan
+  while source payloads remain unread until the user explicitly continues.
+- **Runtime conformance can no longer pass with ambiguous token attribution.**
+  Runtime 0.3.5 requires every usage event to name its exact model, records the
+  supervisor model on every verdict, and makes the frozen takeover gate prove
+  separate student, supervisor, and teacher usage whose model identities match
+  the emitted deltas and teacher continuation. Reference traces must also carry
+  the exact frozen user message and image identity instead of merely containing
+  similarly named event types. The suite id and fixture hashes changed so older
+  evidence fails closed instead of satisfying the release deletion gate.
 
 - **Desktop restart no longer strands tool calls on a stale sidecar token.**
   Idempotent runtime start now compares an injected Desktop tool credential

@@ -352,7 +352,14 @@ async function emitInputEvidence(
       byte_count: bytes.byteLength,
     });
   }
-  await writer.emit("message", { role: "user", text: latest.content, model: null });
+  await writer.emit("message", {
+    role: "user",
+    text: latest.content,
+    model: null,
+    logical_context_window_tokens: request.context_window_tokens,
+    provider_context_window_tokens:
+      request.provider_context_window_tokens ?? request.context_window_tokens,
+  });
 }
 
 function attachCanonicalAdapter(
@@ -624,8 +631,19 @@ type SupervisorDecision = {
   probabilities?: Record<string, number>;
   raw?: string;
   error?: string;
+  failureKind?: "unavailable" | "invalid_response" | "policy_degrade";
+  handoffTarget?: "local" | "remote";
   usage: Record<string, unknown>;
 };
+
+export function supervisorHandoffTarget(
+  target: RuntimeProviderTarget,
+): "local" | "remote" {
+  const hostname = new URL(target.base_url).hostname;
+  return ["127.0.0.1", "localhost", "::1", "[::1]"].includes(hostname)
+    ? "local"
+    : "remote";
+}
 
 function unavailableSupervisorUsage(model: string): Record<string, unknown> {
   return {
@@ -759,12 +777,14 @@ async function checkSupervisor(
   partial: string,
   signal?: AbortSignal,
 ): Promise<SupervisorDecision> {
-  const targetUrl = requireSafeProviderTargetUrl(config.supervisor, request.allow_remote);
   const headers: Record<string, string> = { "content-type": "application/json" };
   if (process.env.UNDERSTUDY_RUNTIME_API_KEY) {
     headers.authorization = `Bearer ${process.env.UNDERSTUDY_RUNTIME_API_KEY}`;
   }
+  let handoffTarget: SupervisorDecision["handoffTarget"];
   try {
+    handoffTarget = supervisorHandoffTarget(config.supervisor);
+    const targetUrl = requireSafeProviderTargetUrl(config.supervisor, request.allow_remote);
     const response = await fetch(chatCompletionsUrl(targetUrl), {
       method: "POST",
       signal,
@@ -804,6 +824,8 @@ async function checkSupervisor(
     const complete = [input, output, total].every(Number.isFinite);
     return {
       ...parsed,
+      failureKind: parsed.error ? "invalid_response" : undefined,
+      handoffTarget,
       probabilities: verdictLogprobs(payload),
       usage: complete
         ? {
@@ -824,6 +846,8 @@ async function checkSupervisor(
     return {
       verdict: "continue",
       error: safeErrorMessage(error),
+      failureKind: "unavailable",
+      handoffTarget,
       usage: unavailableSupervisorUsage(config.supervisor.model),
     };
   }
@@ -831,21 +855,27 @@ async function checkSupervisor(
 
 function verdictEventData(
   decision: SupervisorDecision,
+  supervisorModel: string,
   boundaryOrdinal: number,
   afterChars: number,
+  decisionPhase: "streaming" | "final",
   markerId?: string,
 ): Record<string, unknown> {
   return {
     verdict: decision.verdict,
     source: "model",
+    supervisor_model: supervisorModel,
     marker_id: markerId,
     reason: decision.reason,
     probabilities: decision.probabilities,
     probability_kind: decision.probabilities ? "logprob" : undefined,
     boundary_ordinal: boundaryOrdinal,
     after_chars: afterChars,
+    decision_phase: decisionPhase,
     raw: decision.raw,
     error: decision.error,
+    failure_kind: decision.failureKind,
+    handoff_target: decision.handoffTarget,
   };
 }
 
@@ -918,9 +948,12 @@ async function runSupervisedStudentSegment(options: {
           if (abortSignal?.aborted) return;
           if (result.verdict === "nudge" && !options.allowNudge) {
             result = {
+              ...result,
               verdict: "continue",
+              reason: undefined,
+              probabilities: undefined,
               error: "nudge budget exhausted; degraded to continue",
-              usage: result.usage,
+              failureKind: "policy_degrade",
             };
           }
           const intervention = result.verdict === "interrupt" || result.verdict === "nudge";
@@ -932,9 +965,22 @@ async function runSupervisedStudentSegment(options: {
           );
           adapter.enqueue(
             "supervisor_verdict",
-            verdictEventData(result, thisBoundary, afterChars, currentMarker),
+            verdictEventData(
+              result,
+              config.supervisor.model,
+              thisBoundary,
+              afterChars,
+              "streaming",
+              currentMarker,
+            ),
           );
           adapter.enqueue("usage", result.usage);
+          if (result.failureKind === "unavailable") {
+            // One failed handoff is enough evidence for this segment. Keep the
+            // student running, but do not repeatedly call an offline judge at
+            // every later boundary.
+            decision = result;
+          }
           if (result.verdict !== "continue") {
             decision = result;
             markerId = currentMarker;
@@ -1022,9 +1068,12 @@ async function runSupervisedStudentSegment(options: {
       }
       if (finalDecision.verdict === "nudge" && !options.allowNudge) {
         finalDecision = {
+          ...finalDecision,
           verdict: "continue",
+          reason: undefined,
+          probabilities: undefined,
           error: "nudge budget exhausted; degraded to continue",
-          usage: finalDecision.usage,
+          failureKind: "policy_degrade",
         };
       }
       const intervention =
@@ -1038,7 +1087,14 @@ async function runSupervisedStudentSegment(options: {
       );
       await writer.emit(
         "supervisor_verdict",
-        verdictEventData(finalDecision, thisBoundary, afterChars, markerId),
+        verdictEventData(
+          finalDecision,
+          config.supervisor.model,
+          thisBoundary,
+          afterChars,
+          "final",
+          markerId,
+        ),
       );
       await writer.emit("usage", finalDecision.usage);
       decision = finalDecision;

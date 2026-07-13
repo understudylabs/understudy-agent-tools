@@ -47,24 +47,10 @@ pub struct ChatMsg {
     pub role: String,
     pub content: String,
     #[serde(default)]
-    pub attachments: Vec<ChatAttachment>,
+    pub attachments: Vec<crate::chat_attachments::ChatAttachmentRef>,
 }
 
-#[derive(Clone, Deserialize)]
-pub struct ChatAttachment {
-    pub id: String,
-    pub filename: String,
-    pub media_type: String,
-    pub data_url: String,
-}
-
-#[derive(Clone, Deserialize)]
-#[serde(rename_all = "camelCase")]
-pub(crate) struct AgentChatAttachmentUpload {
-    pub(crate) filename: String,
-    pub(crate) media_type: String,
-    pub(crate) data_url: String,
-}
+pub(crate) type AgentChatAttachmentUpload = crate::chat_attachments::ChatAttachmentUpload;
 
 #[derive(Serialize)]
 pub struct BenchmarkChatResult {
@@ -84,7 +70,7 @@ pub struct BenchmarkChatResult {
 const CHAT_MAX_TOKENS: u32 = 8192;
 const AGENT_CHAT_DEFAULT_MAX_TOKENS: u32 = 2048;
 const BENCHMARK_MAX_TOKENS: u32 = 384;
-const MAX_TOOL_ROUNDS: usize = 4;
+pub(crate) const MAX_TOOL_ROUNDS: usize = 4;
 const CHAT_CONNECT_TIMEOUT_SECS: u64 = 10;
 const CHAT_REQUEST_TIMEOUT_SECS: u64 = 600;
 const SMALL_FIRST_SUPERVISOR_PROMPT: &str = "Judge whether the smaller student's partial answer is correct, relevant, safe, and using tools appropriately. INTERRUPT factual errors, invented evidence, wrong tool arguments, irrelevant refusals, or confident claims unsupported by tool results so the teacher can correct them. NUDGE only when a short concrete correction can let the student continue. CONTINUE when the partial is sound, including when a sound answer is complete. Never use STOP for an incorrect, incomplete, irrelevant, or otherwise correctable answer; STOP is reserved for a turn that must end without any teacher response. Give one concise, specific reason for every INTERRUPT or NUDGE.";
@@ -499,6 +485,16 @@ fn sidecar_provider_base_url(endpoint: &str) -> String {
         .to_string()
 }
 
+const LOCAL_LOGICAL_CONTEXT_WINDOW_TOKENS: u64 = 32_768;
+
+fn local_context_windows(binding: &RouteBinding) -> Option<(u64, u64)> {
+    if binding.route != "local" {
+        return None;
+    }
+    let provider = crate::models::context_window_tokens(&binding.model_field)?;
+    Some((provider.min(LOCAL_LOGICAL_CONTEXT_WINDOW_TOKENS), provider))
+}
+
 fn automatic_supervision_config(
     app: &AppHandle,
     mgr: &Residency,
@@ -545,35 +541,11 @@ fn automatic_supervision_config(
     }))
 }
 
-fn validate_chat_attachment(attachment: &ChatAttachment) -> Result<usize, String> {
-    use base64::Engine as _;
-    use sha2::Digest as _;
-
-    if attachment.filename.trim().is_empty() || attachment.filename.len() > 200 {
-        return Err("image filename must be between 1 and 200 bytes".to_string());
-    }
-    if !attachment.media_type.starts_with("image/") {
-        return Err("image media type must start with image/".to_string());
-    }
-    let prefix = format!("data:{};base64,", attachment.media_type);
-    let encoded = attachment
-        .data_url
-        .strip_prefix(&prefix)
-        .ok_or_else(|| "image data URL does not match its media type".to_string())?;
-    let bytes = base64::engine::general_purpose::STANDARD
-        .decode(encoded)
-        .map_err(|_| "image data URL contains invalid base64".to_string())?;
-    if bytes.is_empty() || bytes.len() > 8 * 1024 * 1024 {
-        return Err("image must be between 1 byte and 8 MB".to_string());
-    }
-    let digest = format!("{:x}", sha2::Sha256::digest(&bytes));
-    if digest != attachment.id {
-        return Err("image content hash does not match its id".to_string());
-    }
-    Ok(bytes.len())
-}
-
-fn openai_chat_message(message: &ChatMsg) -> Result<Value, String> {
+fn openai_chat_message(
+    app: &AppHandle,
+    session_id: &str,
+    message: &ChatMsg,
+) -> Result<Value, String> {
     if message.attachments.is_empty() {
         return Ok(json!({ "role": message.role, "content": message.content }));
     }
@@ -584,15 +556,19 @@ fn openai_chat_message(message: &ChatMsg) -> Result<Value, String> {
         return Err("at most four image attachments are allowed per message".to_string());
     }
     let mut content = vec![json!({ "type": "text", "text": message.content })];
-    let mut total_bytes = 0usize;
+    let mut total_bytes = 0u64;
     for attachment in &message.attachments {
-        total_bytes = total_bytes.saturating_add(validate_chat_attachment(attachment)?);
+        crate::chat_attachments::validate_ref(attachment)?;
+        total_bytes = total_bytes.saturating_add(crate::chat_attachments::attachment_byte_count(
+            app, session_id, attachment,
+        )?);
         if total_bytes > 24 * 1024 * 1024 {
             return Err("combined image attachments must not exceed 24 MB".to_string());
         }
+        let data_url = crate::chat_attachments::resolve_data_url(app, session_id, attachment)?;
         content.push(json!({
             "type": "image_url",
-            "image_url": { "url": attachment.data_url },
+            "image_url": { "url": data_url },
         }));
     }
     Ok(json!({ "role": message.role, "content": content }))
@@ -602,10 +578,10 @@ fn sidecar_runtime_messages(
     original: &[ChatMsg],
     outbound: &[Value],
 ) -> Result<Vec<Value>, String> {
-    let attachment_meta: HashMap<&str, &ChatAttachment> = original
+    let attachment_meta: HashMap<&str, &crate::chat_attachments::ChatAttachmentRef> = original
         .iter()
         .flat_map(|message| message.attachments.iter())
-        .map(|attachment| (attachment.data_url.as_str(), attachment))
+        .map(|attachment| (attachment.id.as_str(), attachment))
         .collect();
     outbound
         .iter()
@@ -638,15 +614,17 @@ fn sidecar_runtime_messages(
                             .pointer("/image_url/url")
                             .and_then(Value::as_str)
                             .ok_or_else(|| "runtime image is missing its data URL".to_string())?;
-                        let metadata = attachment_meta.get(data_url).ok_or_else(|| {
+                        let id = crate::chat_attachments::data_url_content_id(data_url)
+                            .ok_or_else(|| "runtime image data URL is invalid".to_string())?;
+                        let metadata = attachment_meta.get(id.as_str()).ok_or_else(|| {
                             "runtime image metadata does not match the submitted attachment"
                                 .to_string()
                         })?;
                         attachments.push(json!({
-                            "id": metadata.id,
+                            "id": id,
                             "filename": metadata.filename,
                             "media_type": metadata.media_type,
-                            "data_url": metadata.data_url,
+                            "data_url": data_url,
                         }));
                     }
                     _ => return Err("conversation runtime message part is unsupported".to_string()),
@@ -720,6 +698,10 @@ fn sidecar_run_request(
             "Anthropic route lost its in-memory provider credential".to_string()
         })?);
     }
+    if let Some((logical, provider)) = local_context_windows(binding) {
+        request["context_window_tokens"] = json!(logical);
+        request["provider_context_window_tokens"] = json!(provider);
+    }
     if let Some(url) = tool_executor_url {
         request["tool_executor_url"] = json!(url);
     }
@@ -750,47 +732,23 @@ pub(crate) fn agent_sidecar_request(
     mgr: &Residency,
     input: AgentSidecarRequest<'_>,
 ) -> Result<Value, String> {
-    use sha2::Digest as _;
-
-    if input.attachments.len() > 4 {
-        return Err("at most four image attachments are allowed per message".to_string());
-    }
-    let decoded_attachments = input
-        .attachments
+    crate::chat_attachments::validate_uploads(input.attachments)?;
+    let attachments = if input.attachments.is_empty() {
+        Vec::new()
+    } else {
+        crate::chat_attachments::store_uploads(app, input.session_id, input.attachments.to_vec())?
+    };
+    let total_bytes = attachments
         .iter()
-        .map(|upload| {
-            let prefix = format!("data:{};base64,", upload.media_type);
-            let encoded = upload
-                .data_url
-                .strip_prefix(&prefix)
-                .ok_or_else(|| "image data URL does not match its media type".to_string())?;
-            let bytes = {
-                use base64::Engine as _;
-                base64::engine::general_purpose::STANDARD
-                    .decode(encoded)
-                    .map_err(|_| "image data URL contains invalid base64".to_string())?
-            };
-            let attachment = ChatAttachment {
-                id: format!("{:x}", sha2::Sha256::digest(&bytes)),
-                filename: upload.filename.clone(),
-                media_type: upload.media_type.clone(),
-                data_url: upload.data_url.clone(),
-            };
-            let size = validate_chat_attachment(&attachment)?;
-            Ok((attachment, size))
+        .map(|attachment| {
+            crate::chat_attachments::attachment_byte_count(app, input.session_id, attachment)
         })
-        .collect::<Result<Vec<_>, String>>()?;
-    let total_bytes = decoded_attachments
-        .iter()
-        .map(|(_, size)| *size)
-        .sum::<usize>();
+        .collect::<Result<Vec<_>, String>>()?
+        .into_iter()
+        .sum::<u64>();
     if total_bytes > 24 * 1024 * 1024 {
         return Err("combined image attachments must not exceed 24 MB".to_string());
     }
-    let attachments = decoded_attachments
-        .into_iter()
-        .map(|(attachment, _)| attachment)
-        .collect::<Vec<_>>();
     let (port, model_field) = mgr
         .endpoint(input.slot_id)
         .ok_or_else(|| format!("slot {} is not warm; warm it first", input.slot_id))?;
@@ -845,7 +803,7 @@ pub(crate) fn agent_sidecar_request(
     }];
     let outbound = vec![
         json!({ "role": "system", "content": system_prompt_for(&model_field) }),
-        openai_chat_message(&messages[0])?,
+        openai_chat_message(app, input.session_id, &messages[0])?,
     ];
     let binding = RouteBinding {
         route: "local".to_string(),
@@ -988,7 +946,7 @@ pub async fn chat_stream(
         messages
             .iter()
             .filter(|message| message.role != "system")
-            .map(openai_chat_message)
+            .map(|message| openai_chat_message(&app, &session_id, message))
             .collect::<Result<Vec<_>, _>>()?,
     );
     let prompt_tokens = approximate_messages_tokens(&outbound);
@@ -1086,28 +1044,6 @@ pub async fn chat_stream(
             let _ = on_event.send(ChatEvent::Done);
             Ok(())
         }
-        crate::conversation_sidecar::SidecarAttempt::NotSelected => {
-            let message =
-                "Canonical runtime is disabled. Enable it or run Understudy repair.".to_string();
-            let _ = on_event.send(ChatEvent::Error {
-                message: message.clone(),
-            });
-            record_runtime_error(
-                &app,
-                &run_id,
-                &session_id,
-                &binding,
-                started,
-                Some(prompt_tokens),
-                false,
-                0,
-                local_mem_gb,
-                gateway_available,
-                message,
-            );
-            let _ = on_event.send(ChatEvent::Done);
-            Ok(())
-        }
     }
 }
 
@@ -1172,9 +1108,6 @@ async fn execute_prepared_benchmark(
         crate::conversation_sidecar::SidecarAttempt::UnavailableBeforeOutput(reason) => Err(
             format!("canonical runtime unavailable before benchmark output: {reason}"),
         ),
-        crate::conversation_sidecar::SidecarAttempt::NotSelected => {
-            Err("canonical runtime is disabled for benchmarks".to_string())
-        }
     }
 }
 
@@ -1337,15 +1270,70 @@ pub async fn agent_chat(
         crate::conversation_sidecar::SidecarAttempt::UnavailableBeforeOutput(reason) => Err(
             format!("canonical runtime unavailable before headless output: {reason}"),
         ),
-        crate::conversation_sidecar::SidecarAttempt::NotSelected => {
-            Err("canonical runtime is disabled for headless chat".to_string())
-        }
     }
 }
 
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn public_model_cards_resolve_without_inventing_post_training() {
+        let alias_prompt =
+            system_prompt_for("/tmp/models/gemma-4-e2b-it-qat-mlx-vlm-4-bit-understudy");
+        assert!(alias_prompt.contains("compression and serving certification"));
+        assert!(alias_prompt.contains("Do not claim Understudy SFT, RL"));
+        assert!(!alias_prompt.contains("quantized and post-trained"));
+
+        let sparse_prompt = system_prompt_for("gemma-4-26b-a4b-it-qat-mlx-vlm-understudy");
+        assert!(sparse_prompt.contains("with 8-bit routers"));
+        assert!(!sparse_prompt.contains("self-distillation"));
+    }
+
+    fn image_message() -> (ChatMsg, String) {
+        use base64::Engine as _;
+        use sha2::Digest as _;
+
+        let bytes = b"\x89PNG\r\n\x1a\ndesktop-image-fixture";
+        let encoded = base64::engine::general_purpose::STANDARD.encode(bytes);
+        (
+            ChatMsg {
+                role: "user".to_string(),
+                content: "inspect this".to_string(),
+                attachments: vec![crate::chat_attachments::ChatAttachmentRef {
+                    id: format!("{:x}", sha2::Sha256::digest(bytes)),
+                    filename: "fixture.png".to_string(),
+                    media_type: "image/png".to_string(),
+                }],
+            },
+            format!("data:image/png;base64,{encoded}"),
+        )
+    }
+
+    #[test]
+    fn image_projection_preserves_hash_metadata_and_bounded_token_estimate() {
+        let (message, data_url) = image_message();
+        let original = vec![message];
+        let outbound = vec![json!({
+            "role": "user",
+            "content": [
+                { "type": "text", "text": "inspect this" },
+                { "type": "image_url", "image_url": { "url": data_url } },
+            ],
+        })];
+        assert_eq!(outbound[0]["content"][1]["type"], "image_url");
+        assert_eq!(approximate_messages_tokens(&outbound), 1_202);
+
+        let projected = sidecar_runtime_messages(&original, &outbound).unwrap();
+        assert_eq!(projected[0]["content"], "inspect this");
+        assert_eq!(projected[0]["attachments"][0]["filename"], "fixture.png");
+
+        let (mut tampered, _) = image_message();
+        tampered.attachments[0].id = "0".repeat(64);
+        assert!(sidecar_runtime_messages(&[tampered], &outbound)
+            .unwrap_err()
+            .contains("metadata does not match"));
+    }
 
     #[test]
     fn provider_base_url_strips_completion_suffixes() {
@@ -1364,6 +1352,36 @@ mod tests {
         assert!(tool_schemas().iter().all(|tool| {
             tool.pointer("/function/name").and_then(Value::as_str) != Some("delegate_to_sidekick")
         }));
+    }
+
+    #[test]
+    fn local_runtime_separates_logical_and_native_provider_windows() {
+        let dir = std::env::temp_dir().join(format!(
+            "understudy-chat-context-window-test-{}",
+            std::process::id(),
+        ));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(
+            dir.join("config.json"),
+            r#"{"text_config":{"max_position_embeddings":262144}}"#,
+        )
+        .unwrap();
+        let local = RouteBinding {
+            route: "local".to_string(),
+            url: "http://127.0.0.1:8091/v1/chat/completions".to_string(),
+            bearer: None,
+            model_field: dir.to_string_lossy().into_owned(),
+        };
+        assert_eq!(local_context_windows(&local), Some((32_768, 262_144)));
+        let cloud = RouteBinding {
+            route: "cloud".to_string(),
+            url: "https://gateway.example/v1/chat/completions".to_string(),
+            bearer: Some("fixture".to_string()),
+            model_field: local.model_field.clone(),
+        };
+        assert_eq!(local_context_windows(&cloud), None);
+        let _ = std::fs::remove_dir_all(dir);
     }
 
     #[test]

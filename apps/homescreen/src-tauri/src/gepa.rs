@@ -103,8 +103,7 @@ pub fn gepa_load_run(path: String) -> Result<GepaRunView, String> {
 }
 
 pub fn parse_run(raw: &str, source: &str, is_demo: bool) -> Result<GepaRunView, String> {
-    let root: Value =
-        serde_json::from_str(raw).map_err(|e| format!("not valid JSON: {e}"))?;
+    let root: Value = serde_json::from_str(raw).map_err(|e| format!("not valid JSON: {e}"))?;
     let obj = root
         .as_object()
         .ok_or("expected a JSON object (GEPAResult.to_dict())")?;
@@ -131,7 +130,11 @@ pub fn parse_run(raw: &str, source: &str, is_demo: bool) -> Result<GepaRunView, 
     let parents = parse_parents(obj.get("parents"), n)?;
     let val_scores = parse_scores(obj.get("val_aggregate_scores"), n)?;
     let (val_ids, subscores) = parse_subscores(obj.get("val_subscores"), n, schema_version)?;
-    let fronts = parse_fronts(obj.get("per_val_instance_best_candidates"), n, schema_version)?;
+    let fronts = parse_fronts(
+        obj.get("per_val_instance_best_candidates"),
+        n,
+        schema_version,
+    )?;
     let discovery = parse_discovery(obj.get("discovery_eval_counts"), n)?;
 
     // Merge front-map val ids into the subscore-derived ordering so every
@@ -204,9 +207,7 @@ fn parse_candidates(v: Option<&Value>) -> Result<Vec<BTreeMap<String, String>>, 
             map.iter()
                 .map(|(k, val)| match val {
                     Value::String(s) => Ok((k.clone(), s.clone())),
-                    other => Err(format!(
-                        "candidates[{i}].{k} must be a string, got {other}"
-                    )),
+                    other => Err(format!("candidates[{i}].{k} must be a string, got {other}")),
                 })
                 .collect()
         })
@@ -249,7 +250,9 @@ fn parse_parents(v: Option<&Value>, n: usize) -> Result<Vec<Vec<usize>>, String>
                         out.push(idx);
                     }
                     other => {
-                        return Err(format!("parents[{child}] contains {other}, expected an index or null"))
+                        return Err(format!(
+                            "parents[{child}] contains {other}, expected an index or null"
+                        ))
                     }
                 }
             }
@@ -273,7 +276,9 @@ fn parse_scores(v: Option<&Value>, n: usize) -> Result<Vec<Option<f64>>, String>
         .map(|(i, s)| match s {
             Value::Null => Ok(None),
             Value::Number(num) => Ok(num.as_f64()),
-            other => Err(format!("val_aggregate_scores[{i}] is {other}, expected a number")),
+            other => Err(format!(
+                "val_aggregate_scores[{i}] is {other}, expected a number"
+            )),
         })
         .collect()
 }
@@ -361,9 +366,9 @@ fn parse_fronts(
             .collect(),
     };
     for (id, front) in entries {
-        let front = front
-            .as_array()
-            .ok_or(format!("per_val_instance_best_candidates[{id}] must be a list"))?;
+        let front = front.as_array().ok_or(format!(
+            "per_val_instance_best_candidates[{id}] must be a list"
+        ))?;
         let mut set = BTreeSet::new();
         for member in front {
             let idx = member
@@ -440,8 +445,16 @@ fn find_dominators(
         .into_iter()
         .collect();
     programs.sort_by(|&a, &b| {
-        let sa = scores.get(a).copied().flatten().unwrap_or(f64::NEG_INFINITY);
-        let sb = scores.get(b).copied().flatten().unwrap_or(f64::NEG_INFINITY);
+        let sa = scores
+            .get(a)
+            .copied()
+            .flatten()
+            .unwrap_or(f64::NEG_INFINITY);
+        let sb = scores
+            .get(b)
+            .copied()
+            .flatten()
+            .unwrap_or(f64::NEG_INFINITY);
         sa.total_cmp(&sb).then(a.cmp(&b))
     });
 

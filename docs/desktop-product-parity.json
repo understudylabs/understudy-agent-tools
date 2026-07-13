@@ -1,0 +1,206 @@
+{
+  "manifest_version": 2,
+  "release_authority": "apps/homescreen",
+  "distribution_authority": "@understudylabs/understudy-agent-tools",
+  "external_research_bridge_policy": "documented_uv_bridge_only",
+  "legacy_desktop_policy": "extraction_only",
+  "migration_complete": false,
+  "status_values": [
+    "shipped",
+    "partial",
+    "planned",
+    "retired"
+  ],
+  "legacy_inventory": {
+    "scope": "Final legacy production-only files absent from the canonical desktop tree.",
+    "audited_file_count": 30,
+    "disposition_values": [
+      "port_capability",
+      "superseded",
+      "retired"
+    ],
+    "groups": [
+      {
+        "disposition": "port_capability",
+        "target_feature": "drop-to-workload-compilation",
+        "files": [
+          "app/components/DropAnalysisCards.tsx"
+        ]
+      },
+      {
+        "disposition": "port_capability",
+        "target_feature": "model-card-transparency",
+        "files": [
+          "app/components/ModelCardDrawer.tsx",
+          "app/lib/model-cards.ts",
+          "app/lib/useActiveExperiment.ts"
+        ]
+      },
+      {
+        "disposition": "port_capability",
+        "target_feature": "reading-pace-streaming",
+        "files": [
+          "app/lib/stream-pacer.test.ts",
+          "app/lib/stream-pacer.ts"
+        ]
+      },
+      {
+        "disposition": "superseded",
+        "replacement": "The compact Review -> Compare -> Improve hub and CLI-owned evidence ledger.",
+        "files": [
+          "app/components/ExperimentsPane.tsx",
+          "app/lib/scatter-math.test.ts",
+          "app/lib/scatter-math.ts"
+        ]
+      },
+      {
+        "disposition": "superseded",
+        "replacement": "The authenticated Desktop API and the public CLI; no unauthenticated environment bridge.",
+        "files": [
+          "app/lib/env-bridge.test.ts",
+          "app/lib/env-bridge.ts"
+        ]
+      },
+      {
+        "disposition": "superseded",
+        "replacement": "Canonical Pi journals, the supervision review projection, and correction-pair export.",
+        "files": [
+          "app/lib/supervision-evidence.test.ts",
+          "app/lib/supervision-evidence.ts",
+          "app/lib/supervision-review.test.ts",
+          "src-tauri/src/supervision.rs"
+        ]
+      },
+      {
+        "disposition": "superseded",
+        "replacement": "Inline canonical runtime stages and quiet fallback notices.",
+        "files": [
+          "app/lib/sidekick-toasts.test.ts",
+          "app/lib/sidekick-toasts.ts"
+        ]
+      },
+      {
+        "disposition": "superseded",
+        "replacement": "CLI-owned frozen tool proof, immutable event evidence, Pi tool rounds, command guard, and SQLite chat persistence.",
+        "files": [
+          "src-tauri/src/bench.rs",
+          "src-tauri/src/capture.rs",
+          "src-tauri/src/chat_history.rs",
+          "src-tauri/src/executor.rs",
+          "src-tauri/src/tool_round.rs"
+        ]
+      },
+      {
+        "disposition": "retired",
+        "replacement": "Removed debug telemetry, duplicate charting, global toast, and content-bearing UI-state surfaces from the minimal local-first app.",
+        "files": [
+          "app/components/PerfOverlay.tsx",
+          "app/components/base-ui/sonner.tsx",
+          "app/components/ui/chart.tsx",
+          "app/lib/frame-stats.test.ts",
+          "app/lib/frame-stats.ts",
+          "app/lib/telemetry.ts",
+          "app/lib/ui-snapshot.ts",
+          "src-tauri/src/ui_state.rs"
+        ]
+      }
+    ]
+  },
+  "features": [
+    {
+      "id": "canonical-conversation-runtime",
+      "status": "shipped",
+      "evidence": "Provider-neutral events, Pi and Vercel adapters, immutable run journals, and the one-release native fallback are present."
+    },
+    {
+      "id": "desktop-slot-provider-identity",
+      "status": "shipped",
+      "evidence": "Authenticated residency snapshots expose the exact local weights path and port. Pi and Vercel conformance resolve those values plus the slot-bound Desktop tool executor from one warm slot, inject its private bearer only in memory for the run, and reject manual alias overrides, preventing catalog names from producing false runtime failures."
+    },
+    {
+      "id": "reviewed-desktop-shell",
+      "status": "shipped",
+      "evidence": "The public desktop owns the reviewed cyan and mint shell, compact composer, and four-item navigation."
+    },
+    {
+      "id": "offline-supervisor-fallback",
+      "status": "shipped",
+      "evidence": "A failed supervisor handoff is recorded canonically, attempted once, surfaced to the user, and degrades to continued local generation."
+    },
+    {
+      "id": "runtime-repair-experience",
+      "status": "shipped",
+      "evidence": "Desktop health checks cover CLI, MLX/VLM, ConversationRuntime, and desktop versions; contextual failures offer the single managed CLI repair path while offline operation remains available."
+    },
+    {
+      "id": "durable-image-and-chat-persistence",
+      "status": "shipped",
+      "evidence": "Image bytes are validated and stored atomically with private permissions under content hashes; SQLite keeps references only, legacy data URLs migrate on reopen, and previews hydrate after restart."
+    },
+    {
+      "id": "resumable-model-downloads",
+      "status": "shipped",
+      "evidence": "The app owns background download tasks across navigation, exposes stable whole-snapshot progress and pause controls, preserves partial files through cancellation, errors, and restart, resumes only from an exact HTTP Range boundary, and safely restarts when an origin ignores or mismatches that boundary. Incomplete snapshots remain blocked from serving until atomic finalization."
+    },
+    {
+      "id": "supervision-review-desk",
+      "status": "shipped",
+      "evidence": "Experiments opens a one-frame local review over immutable canonical Pi journals, showing the small-model partial, stored intervention reason, teacher or post-nudge output, tool evidence, verdict confidence, and one explicit human action label."
+    },
+    {
+      "id": "correction-pair-export-and-metrics",
+      "status": "shipped",
+      "evidence": "The authenticated desktop API and `understudy desktop supervision export` project canonical journals into content-addressed owner-only correction-pair JSONL with tool results, verdict probability evidence, optional human judgment, exact run identity, and per-role usage. Metrics report intervention precision, false-positive nudges, small-model output share, and supervisor overhead while excluding incomplete attribution instead of treating it as zero; bounded evidence windows disclose every truncated journal or intervention."
+    },
+    {
+      "id": "remote-review-tiebreaker",
+      "status": "shipped",
+      "evidence": "The public CLI and desktop provide destination-bound opt-in GLM 5.2 review over bounded pre-intervention evidence, including the canonical streaming-versus-final decision phase, exact served-model validation, private content-addressed analysis caching, offline-safe fallback, and explicit human judge-quality feedback. The frozen 12-case v2 live qualification reached 100% contract and route validity, 91.7% action and assessment accuracy, 83.3% reason-quality accuracy, and zero high-confidence wrong actions, making it eligible for an advisory-only opt-in pilot. It remains off by default and human labels remain final."
+    },
+    {
+      "id": "unified-experiment-hub",
+      "status": "shipped",
+      "evidence": "Experiments presents one compact Review -> Compare -> Improve loop. The public CLI owns the fixed 17-task regression suite and 30-task promotion suite, direct Pi execution, serial residency isolation, exact trace scoring, suite and tool-schema hashes, owner-only canonical event evidence, and immutable failed-case improvement packets. Desktop is a bounded adapter: it preflights two distinct warm models, fixes promotion at three repetitions, reports strict model misses separately from terminal runtime errors, and refuses promotion when task bytes, result rows, event files, permissions, hashes, or attempt counts are incomplete. No cloud call or upload occurs."
+    },
+    {
+      "id": "experiment-ledger-first-run",
+      "status": "shipped",
+      "evidence": "A clean install offers one local Create ledger action. It idempotently creates the canonical index.jsonl and append-only rounds.jsonl without truncating a partially initialized ledger, then opens the empty experiment view."
+    },
+    {
+      "id": "drop-to-workload-compilation",
+      "status": "shipped",
+      "evidence": "Chat accepts one native file or directory drop and passes the exact canonical path to the public capture-import compiler through a thin Tauri command. The CLI performs metadata-only discovery with 5,000-file and 1,000-source ceilings, ignores dependency/build directories and symlinks, writes a private isolated Workload Card under ~/.understudy without modifying the source, and returns a bounded summary. Desktop rejects results that do not attest local_only=true and payload_read=false, renders one compact draft card, and never restores the unauthenticated environment bridge, private workflow links, charts, or drop-action protocol."
+    },
+    {
+      "id": "model-card-transparency",
+      "status": "shipped",
+      "evidence": "Chat exposes one quiet model-info action beside the selected route. Its compact in-frame card resolves aliases from the same embedded public catalog used by the native runtime and shows exact QAT source, MLX group-32 conversion, the absence of Understudy SFT or RL, decode contract, scoped serving/runtime certification, footprint, escalation hints, exact slot state, thinking state, and an explicit no-linked-experiment state. Unknown local and provider routes fall back to neutral cards rather than inventing provenance or certification."
+    },
+    {
+      "id": "reading-pace-streaming",
+      "status": "shipped",
+      "evidence": "Chat keeps the full canonical stream as its persistence and evidence source while revealing only the latest answer at a brisk reading rate with bounded elastic catch-up. Direct simulations show a 20-character-per-second provider stays within two characters of live display, while a 1,000-character local burst drains within two seconds after Done. A visible Show full answer escape hatch appears only beyond a 300-character backlog, reduced-motion and understudy.pacing=off disable pacing, and teacher ReplaceChunk events reset the hidden buffer so rejected student text cannot leak into the correction."
+    },
+    {
+      "id": "always-on-top-window-pin",
+      "status": "shipped",
+      "evidence": "The canonical titlebar exposes the reviewed user-controlled always-on-top pin, persists the preference locally, restores it on launch, reports its pressed state accessibly, and reverts the UI if the native window operation fails."
+    },
+    {
+      "id": "heavy-model-preflight-and-process-reconciliation",
+      "status": "shipped",
+      "evidence": "Residency fail-closes unsafe memory plans, cools before warming, serializes heavy experiments, waits for Metal teardown, never auto-restores heavy models, reaps every tracked child on normal exit, and before restart kills only orphaned processes matching an exact persisted model path and reserved port. Model and residency views warn plainly before preparing large models and require confirmation at the warm action."
+    },
+    {
+      "id": "legacy-desktop-retirement-guard",
+      "status": "shipped",
+      "evidence": "The legacy desktop source is explicitly extraction-only: its stale npm package is private, both archived Tauri apps have bundling disabled, and a trusted-base PR guard rejects additions or modifications while allowing deletion or auditable shelving. The public apps/homescreen remains the sole desktop release authority."
+    },
+    {
+      "id": "native-runtime-deletion",
+      "status": "planned",
+      "evidence": "The draft deletion rehearsal removes the native provider, tool-round, compaction, benchmark, Anthropic transport, and parallel-sidekick execution paths while preserving the released 0.3.5 product improvements. It remains intentionally unmerged until the exact released cohort reaches 100 consecutive genuine Pi turns with green conformance and readiness evidence; the current clean streak is 1/100."
+    }
+  ]
+}

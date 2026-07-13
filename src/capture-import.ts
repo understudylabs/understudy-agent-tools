@@ -1,5 +1,7 @@
-import { existsSync, mkdirSync, readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
-import { basename, extname, join, relative, resolve } from "node:path";
+import { createHash } from "node:crypto";
+import { chmodSync, existsSync, mkdirSync, readdirSync, readFileSync, realpathSync, statSync, writeFileSync } from "node:fs";
+import { basename, dirname, extname, join, relative, resolve } from "node:path";
+import { globalConfigDir } from "./config/paths.js";
 
 export type CaptureSourceKind =
   | "eval-fixture"
@@ -8,7 +10,12 @@ export type CaptureSourceKind =
   | "csv-data"
   | "prompt-file"
   | "app-route"
-  | "provider-trace";
+  | "provider-trace"
+  | "document"
+  | "spreadsheet"
+  | "source-file"
+  | "media-file"
+  | "local-file";
 
 export type CaptureSource = {
   id: string;
@@ -31,9 +38,32 @@ export type RedactionManifest = {
 export type CaptureScanManifest = {
   generated_at: string;
   repo: string;
+  input_source: string;
+  input_kind: "file" | "directory";
+  scanned_file_count: number;
+  scan_file_limit: number;
+  scan_source_limit: number;
+  truncated: boolean;
   source_count: number;
   sources: CaptureSource[];
   redaction_manifest_path: string;
+};
+
+export type CaptureCompileResult = {
+  generated_at: string;
+  source_name: string;
+  source_path: string;
+  source_type: "file" | "directory";
+  scanned_file_count: number;
+  source_count: number;
+  total_bytes: number;
+  source_kinds: Partial<Record<CaptureSourceKind, number>>;
+  truncated: boolean;
+  local_only: true;
+  payload_read: false;
+  artifact_root: string;
+  manifest_path: string;
+  workload_card_path: string;
 };
 
 export type CapturePreview = {
@@ -142,18 +172,56 @@ const kindOrder: CaptureSourceKind[] = [
   "prompt-file",
   "app-route",
   "provider-trace",
+  "document",
+  "spreadsheet",
+  "source-file",
+  "media-file",
+  "local-file",
 ];
+
+const MAX_SCAN_FILES = 5_000;
+const MAX_CAPTURE_SOURCES = 1_000;
 
 export function artifactDir(repo: string): string {
   return join(repo, ".understudy", "capture-import");
 }
 
-export function scanCaptureImport(repoInput: string, now = new Date()): CaptureScanManifest {
-  const repo = resolve(repoInput);
-  const sources = collectSources(repo);
+export function scanCaptureImport(
+  repoInput: string,
+  now = new Date(),
+  sourceInput?: string,
+  outputDirInput?: string,
+): CaptureScanManifest {
+  const repoResolved = resolve(repoInput);
+  if (!existsSync(repoResolved)) {
+    throw new Error(`Repository path does not exist: ${repoResolved}`);
+  }
+  const repo = repoResolved;
+  const sourceResolved = resolve(sourceInput ?? repo);
+  if (!existsSync(sourceResolved)) {
+    throw new Error(`Capture/import source does not exist: ${sourceResolved}`);
+  }
+  const inputSource = sourceResolved;
+  const canonicalRepo = realpathSync(repo);
+  const canonicalSource = realpathSync(inputSource);
+  const sourceRelativeToRepo = relative(canonicalRepo, canonicalSource);
+  if (
+    sourceRelativeToRepo === ".." ||
+    sourceRelativeToRepo.startsWith("../") ||
+    sourceRelativeToRepo.startsWith("..\\") ||
+    resolve(canonicalRepo, sourceRelativeToRepo) !== canonicalSource
+  ) {
+    throw new Error(`Capture/import source must be inside the repository root: ${inputSource}`);
+  }
+  const inputStat = statSync(inputSource);
+  if (!inputStat.isFile() && !inputStat.isDirectory()) {
+    throw new Error(`Capture/import source must be a file or directory: ${inputSource}`);
+  }
+  const collected = collectSources(repo, inputSource, sourceInput !== undefined);
   const generated_at = now.toISOString();
-  const outputDir = artifactDir(repo);
-  mkdirSync(outputDir, { recursive: true });
+  const outputDir = outputDirInput ? resolve(outputDirInput) : artifactDir(repo);
+  mkdirSync(outputDir, { recursive: true, mode: 0o700 });
+  setPrivateMode(outputDir, 0o700);
 
   const redactionManifest: RedactionManifest = {
     generated_at,
@@ -164,7 +232,7 @@ export function scanCaptureImport(repoInput: string, now = new Date()): CaptureS
       "Do not read or persist prompts, completions, traces, examples, customer data, or secrets.",
       "Keep artifacts local under .understudy/capture-import.",
     ],
-    source_count: sources.length,
+    source_count: collected.sources.length,
     payload_fields_omitted: ["contents", "prompt", "completion", "messages", "input", "output", "trace"],
   };
 
@@ -174,17 +242,24 @@ export function scanCaptureImport(repoInput: string, now = new Date()): CaptureS
   const manifest: CaptureScanManifest = {
     generated_at,
     repo,
-    source_count: sources.length,
-    sources,
-    redaction_manifest_path: relative(repo, redactionPath),
+    input_source: inputSource,
+    input_kind: inputStat.isFile() ? "file" : "directory",
+    scanned_file_count: collected.scannedFileCount,
+    scan_file_limit: MAX_SCAN_FILES,
+    scan_source_limit: MAX_CAPTURE_SOURCES,
+    truncated: collected.truncated,
+    source_count: collected.sources.length,
+    sources: collected.sources,
+    redaction_manifest_path: artifactReference(repo, redactionPath),
   };
   writeJson(join(outputDir, "capture-sources.json"), manifest);
   return manifest;
 }
 
-export function readCaptureManifest(repoInput: string): CaptureScanManifest {
+export function readCaptureManifest(repoInput: string, outputDirInput?: string): CaptureScanManifest {
   const repo = resolve(repoInput);
-  const manifestPath = join(artifactDir(repo), "capture-sources.json");
+  const outputDir = outputDirInput ? resolve(outputDirInput) : artifactDir(repo);
+  const manifestPath = join(outputDir, "capture-sources.json");
   if (!existsSync(manifestPath)) {
     throw new Error(`Missing capture/import scan manifest: ${relative(process.cwd(), manifestPath)}`);
   }
@@ -212,9 +287,10 @@ export function previewCaptureImport(repoInput: string, sourceId: string, limit:
   return preview;
 }
 
-export function buildWorkloadCard(repoInput: string, now = new Date()): WorkloadCard {
+export function buildWorkloadCard(repoInput: string, now = new Date(), outputDirInput?: string): WorkloadCard {
   const repo = resolve(repoInput);
-  const manifest = readCaptureManifest(repo);
+  const outputDir = outputDirInput ? resolve(outputDirInput) : artifactDir(repo);
+  const manifest = readCaptureManifest(repo, outputDir);
   const source_kinds = Object.fromEntries(kindOrder.map((kind) => [kind, 0])) as Record<CaptureSourceKind, number>;
   for (const source of manifest.sources) {
     source_kinds[source.kind] += 1;
@@ -222,10 +298,10 @@ export function buildWorkloadCard(repoInput: string, now = new Date()): Workload
   const card: WorkloadCard = {
     schema_version: "understudy.workload_card.v1",
     workload_id: "capture-import",
-    workload_name: null,
+    workload_name: basename(manifest.input_source),
     owner: null,
     candidate_id: "metadata-discovery",
-    source_path: null,
+    source_path: manifest.input_source,
     mode: "local-only",
     workload_shape: ["metadata-discovered"],
     value_lens: ["quality", "cost", "latency"],
@@ -300,27 +376,92 @@ export function buildWorkloadCard(repoInput: string, now = new Date()): Workload
         "Run optimize-workload only after the workload contract is hash-bound.",
       ],
       evidence_paths: [
-        ".understudy/capture-import/capture-sources.json",
-        ".understudy/capture-import/redaction-manifest.json",
+        artifactReference(repo, join(outputDir, "capture-sources.json")),
+        artifactReference(repo, join(outputDir, "redaction-manifest.json")),
       ],
-      capture_sources: ".understudy/capture-import/capture-sources.json",
-      redaction_manifest: ".understudy/capture-import/redaction-manifest.json",
+      capture_sources: artifactReference(repo, join(outputDir, "capture-sources.json")),
+      redaction_manifest: artifactReference(repo, join(outputDir, "redaction-manifest.json")),
     },
   };
-  writeJson(join(artifactDir(repo), "workload-card.json"), card);
+  writeJson(join(outputDir, "workload-card.json"), card);
   return card;
 }
 
-function collectSources(repo: string): CaptureSource[] {
-  const files = walk(repo)
+export function compileCaptureImport(
+  sourceInput: string,
+  now = new Date(),
+  outputRootInput = join(globalConfigDir(), "capture-imports"),
+): CaptureCompileResult {
+  const sourceResolved = resolve(sourceInput);
+  if (!existsSync(sourceResolved)) {
+    throw new Error(`Capture/import source does not exist: ${sourceResolved}`);
+  }
+  const source = sourceResolved;
+  const sourceStat = statSync(source);
+  if (!sourceStat.isFile() && !sourceStat.isDirectory()) {
+    throw new Error(`Capture/import source must be a file or directory: ${source}`);
+  }
+  const repo = sourceStat.isDirectory() ? source : dirname(source);
+  const dropId = createHash("sha256")
+    .update(`${source}\0${now.toISOString()}`)
+    .digest("hex")
+    .slice(0, 12);
+  const outputDir = join(resolve(outputRootInput), dropId);
+  const manifest = scanCaptureImport(repo, now, source, outputDir);
+  const card = buildWorkloadCard(repo, now, outputDir);
+  const sourceKinds = Object.fromEntries(
+    Object.entries(card.discovery.source_kinds).filter(([, count]) => count > 0),
+  ) as Partial<Record<CaptureSourceKind, number>>;
+  return {
+    generated_at: now.toISOString(),
+    source_name: basename(source),
+    source_path: source,
+    source_type: sourceStat.isFile() ? "file" : "directory",
+    scanned_file_count: manifest.scanned_file_count,
+    source_count: manifest.source_count,
+    total_bytes: manifest.sources.reduce((total, item) => total + item.bytes, 0),
+    source_kinds: sourceKinds,
+    truncated: manifest.truncated,
+    local_only: true,
+    payload_read: false,
+    artifact_root: outputDir,
+    manifest_path: join(outputDir, "capture-sources.json"),
+    workload_card_path: join(outputDir, "workload-card.json"),
+  };
+}
+
+function artifactReference(repo: string, path: string): string {
+  const repoRelative = relative(repo, path);
+  if (repoRelative === ".." || repoRelative.startsWith("../") || repoRelative.startsWith("..\\")) {
+    return path;
+  }
+  return repoRelative;
+}
+
+function collectSources(
+  repo: string,
+  inputSource: string,
+  includeUnknownFiles: boolean,
+): { sources: CaptureSource[]; scannedFileCount: number; truncated: boolean } {
+  const walked = walkBounded(inputSource, MAX_SCAN_FILES);
+  const files = walked.files
     .map((path) => ({ absolutePath: path, relativePath: relative(repo, path) }))
-    .filter(({ relativePath }) => !relativePath.startsWith(".."))
+    .filter(({ relativePath }) =>
+      relativePath !== ".." &&
+      !relativePath.startsWith("../") &&
+      !relativePath.startsWith("..\\"))
     .sort((left, right) => left.relativePath.localeCompare(right.relativePath));
 
   const sources: CaptureSource[] = [];
+  let sourceLimitReached = false;
   for (const file of files) {
-    const detection = detectKind(file.relativePath);
+    const detection = detectKind(file.relativePath) ??
+      (includeUnknownFiles ? { kind: "local-file" as const, evidence: ["explicit:path-drop"] } : null);
     if (!detection) {
+      continue;
+    }
+    if (sources.length >= MAX_CAPTURE_SOURCES) {
+      sourceLimitReached = true;
       continue;
     }
     const stat = statSync(file.absolutePath);
@@ -333,7 +474,11 @@ function collectSources(repo: string): CaptureSource[] {
       evidence: detection.evidence,
     });
   }
-  return sources;
+  return {
+    sources,
+    scannedFileCount: files.length,
+    truncated: walked.truncated || sourceLimitReached,
+  };
 }
 
 function detectKind(path: string): { kind: CaptureSourceKind; evidence: string[] } | null {
@@ -361,29 +506,67 @@ function detectKind(path: string): { kind: CaptureSourceKind; evidence: string[]
   if (/trace|span|otel|openai|anthropic|provider/.test(normalized) && [".json", ".jsonl", ".ndjson"].includes(ext)) {
     return { kind: "provider-trace", evidence: ["path:trace-or-provider"] };
   }
+  if ([".pdf", ".doc", ".docx", ".rtf", ".txt", ".md", ".markdown"].includes(ext)) {
+    return { kind: "document", evidence: [`extension:${ext}`] };
+  }
+  if ([".xlsx", ".xls", ".ods", ".tsv"].includes(ext)) {
+    return { kind: "spreadsheet", evidence: [`extension:${ext}`] };
+  }
+  if ([".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs", ".py", ".rs", ".go", ".java", ".kt", ".swift", ".rb", ".php", ".c", ".cc", ".cpp", ".h", ".hpp"].includes(ext)) {
+    return { kind: "source-file", evidence: [`extension:${ext}`] };
+  }
+  if ([".png", ".jpg", ".jpeg", ".gif", ".webp", ".heic", ".wav", ".mp3", ".m4a", ".mp4", ".mov"].includes(ext)) {
+    return { kind: "media-file", evidence: [`extension:${ext}`] };
+  }
   return null;
 }
 
-function walk(root: string): string[] {
+function walkBounded(root: string, maxFiles: number): { files: string[]; truncated: boolean } {
   if (!existsSync(root)) {
-    throw new Error(`Repository path does not exist: ${root}`);
+    throw new Error(`Capture/import source does not exist: ${root}`);
   }
-  const entries = readdirSync(root, { withFileTypes: true });
+  const rootStat = statSync(root);
+  if (rootStat.isFile()) {
+    return { files: [root], truncated: false };
+  }
+  if (!rootStat.isDirectory()) {
+    throw new Error(`Capture/import source must be a file or directory: ${root}`);
+  }
   const files: string[] = [];
-  for (const entry of entries) {
-    if (entry.isDirectory()) {
-      if (!ignoredDirs.has(entry.name)) {
-        files.push(...walk(join(root, entry.name)));
+  const pending = [root];
+  while (pending.length > 0) {
+    const directory = pending.pop()!;
+    const entries = readdirSync(directory, { withFileTypes: true })
+      .sort((left, right) => left.name.localeCompare(right.name));
+    const childDirectories: string[] = [];
+    for (const entry of entries) {
+      if (entry.isDirectory()) {
+        if (!ignoredDirs.has(entry.name)) {
+          childDirectories.push(join(directory, entry.name));
+        }
+        continue;
       }
-      continue;
+      if (!entry.isFile()) {
+        continue;
+      }
+      if (files.length >= maxFiles) {
+        return { files, truncated: true };
+      }
+      files.push(join(directory, entry.name));
     }
-    if (entry.isFile()) {
-      files.push(join(root, entry.name));
+    for (const child of childDirectories.reverse()) {
+      pending.push(child);
     }
   }
-  return files;
+  return { files, truncated: false };
 }
 
 function writeJson(path: string, payload: unknown): void {
-  writeFileSync(path, `${JSON.stringify(payload, null, 2)}\n`, "utf8");
+  writeFileSync(path, `${JSON.stringify(payload, null, 2)}\n`, { encoding: "utf8", mode: 0o600 });
+  setPrivateMode(path, 0o600);
+}
+
+function setPrivateMode(path: string, mode: number): void {
+  if (process.platform === "win32") return;
+  chmodSync(path, mode);
 }

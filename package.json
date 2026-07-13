@@ -1,6 +1,6 @@
 {
   "name": "@understudylabs/understudy-agent-tools",
-  "version": "0.6.1",
+  "version": "0.6.4",
   "description": "Public Understudy agent tools CLI and skill library.",
   "type": "module",
   "bin": {
@@ -24,6 +24,7 @@
     "skills",
     "schemas",
     "docs",
+    "experiments/desktop-tool-proof",
     "README.md",
     "AGENTS.md",
     "LICENSE",
@@ -32,7 +33,7 @@
     "!**/*.py"
   ],
   "scripts": {
-    "build": "rm -rf dist && tsc -p tsconfig.build.json",
+    "build": "rm -rf dist && tsc -p tsconfig.build.json && node scripts/ensure-bin-mode.mjs",
     "clean": "rm -rf dist",
     "prepare": "npm run build",
     "package:smoke": "node scripts/package-smoke.mjs",
