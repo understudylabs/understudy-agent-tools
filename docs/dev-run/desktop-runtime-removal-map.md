@@ -1,6 +1,6 @@
 # Desktop runtime migration removal map
 
-Status: gated deletion rehearsal based on `5f6fdce` on 2026-07-12. Do not merge
+Status: gated deletion rehearsal based on `e8ab699` on 2026-07-12. Do not merge
 the rehearsal until the released cohort gate passes.
 
 The migration is successful only when the canonical conversation runtime owns
@@ -20,7 +20,7 @@ readable, but new Fusion runs cannot schedule the removed modes.
 The review diff currently removes 4,370 gross Rust lines and adds 418, for a
 net reduction of 3,952 Rust lines. Including the simplified chat UI, the full
 diff removes 4,513 lines and adds 495, for a net reduction of 4,018 lines.
-These counts come from `git diff --numstat origin/main...HEAD` at `5f6fdce`;
+These counts come from `git diff --numstat origin/main...HEAD` at `e8ab699`;
 update them if the rehearsal changes.
 
 The rebased rehearsal has passed clippy with warnings denied, all Rust tests
