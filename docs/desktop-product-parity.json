@@ -27,8 +27,8 @@
     },
     {
       "id": "runtime-repair-experience",
-      "status": "partial",
-      "evidence": "CLI lifecycle and repair exist; the desktop still needs the reviewed contextual repair prompt on every relevant failure."
+      "status": "shipped",
+      "evidence": "Desktop health checks cover CLI, MLX/VLM, ConversationRuntime, and desktop versions; contextual failures offer the single managed CLI repair path while offline operation remains available."
     },
     {
       "id": "durable-image-and-chat-persistence",

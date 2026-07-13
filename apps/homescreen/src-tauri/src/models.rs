@@ -54,7 +54,28 @@ pub struct SnapshotInfo {
 pub struct MlxRuntimeStatus {
     pub available: bool,
     pub command: String,
+    pub installed_version: Option<String>,
+    pub managed: bool,
     pub detail: String,
+}
+
+#[derive(Deserialize)]
+struct ManagedMlxRuntimeStatus {
+    healthy: bool,
+    runtime_version: String,
+    server_binary: String,
+    detail: String,
+}
+
+fn parse_managed_mlx_status(raw: &str) -> Result<MlxRuntimeStatus, serde_json::Error> {
+    let status = serde_json::from_str::<ManagedMlxRuntimeStatus>(raw)?;
+    Ok(MlxRuntimeStatus {
+        available: status.healthy,
+        command: status.server_binary,
+        installed_version: Some(status.runtime_version),
+        managed: true,
+        detail: status.detail,
+    })
 }
 
 /// The port the MLX server binds — matches Understudy's configured local base URL.
@@ -280,26 +301,33 @@ pub fn snapshots() -> Vec<SnapshotInfo> {
 }
 
 pub fn mlx_runtime_status() -> MlxRuntimeStatus {
-    let command = crate::bin::mlx_server();
-    match std::process::Command::new(&command)
-        .arg("--help")
-        .env("PATH", crate::bin::runtime_path())
+    let fallback_command = crate::bin::mlx_server();
+    match crate::bin::command("understudy")
+        .args(["models", "runtime", "status", "--json"])
         .output()
     {
-        Ok(out) if out.status.success() => MlxRuntimeStatus {
-            available: true,
-            command,
-            detail: "mlx_vlm.server is available".to_string(),
+        // `models runtime status` may exit non-zero while unhealthy but still
+        // emits the complete JSON diagnosis. Parse stdout regardless of exit.
+        Ok(out) => match parse_managed_mlx_status(&String::from_utf8_lossy(&out.stdout)) {
+            Ok(status) => status,
+            Err(error) => MlxRuntimeStatus {
+                available: false,
+                command: fallback_command,
+                installed_version: None,
+                managed: false,
+                detail: format!(
+                    "Understudy CLI does not expose a compatible managed MLX/VLM runtime ({error}); update the CLI, then run `understudy models runtime repair`"
+                ),
+            },
         },
-        Ok(out) => MlxRuntimeStatus {
+        Err(error) => MlxRuntimeStatus {
             available: false,
-            command,
-            detail: String::from_utf8_lossy(&out.stderr).trim().to_string(),
-        },
-        Err(err) => MlxRuntimeStatus {
-            available: false,
-            command,
-            detail: err.to_string(),
+            command: fallback_command,
+            installed_version: None,
+            managed: false,
+            detail: format!(
+                "Understudy CLI is unavailable ({error}); install or update it, then run `understudy models runtime repair`"
+            ),
         },
     }
 }
@@ -321,6 +349,19 @@ fn dir_size_gb(p: &Path) -> f32 {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn managed_mlx_status_preserves_cli_binary_and_version() {
+        let status = parse_managed_mlx_status(
+            r#"{"healthy":true,"runtime_version":"0.6.4+abc","server_binary":"/managed/mlx_vlm.server","detail":"ready"}"#,
+        )
+        .unwrap();
+        assert!(status.available);
+        assert!(status.managed);
+        assert_eq!(status.command, "/managed/mlx_vlm.server");
+        assert_eq!(status.installed_version.as_deref(), Some("0.6.4+abc"));
+        assert_eq!(status.detail, "ready");
+    }
 
     fn temp_snapshot_dir(tag: &str) -> PathBuf {
         let dir = std::env::temp_dir().join(format!(

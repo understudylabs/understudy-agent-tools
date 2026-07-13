@@ -5,6 +5,15 @@ import test from "node:test";
 const cssPath = new URL("../apps/homescreen/app/globals.css", import.meta.url);
 const chatPath = new URL("../apps/homescreen/app/components/ChatPane.tsx", import.meta.url);
 const sidebarPath = new URL("../apps/homescreen/app/components/Sidebar.tsx", import.meta.url);
+const pagePath = new URL("../apps/homescreen/app/page.tsx", import.meta.url);
+const runtimeRepairPromptPath = new URL(
+  "../apps/homescreen/app/components/RuntimeRepairPrompt.tsx",
+  import.meta.url,
+);
+const runtimeRepairLibPath = new URL(
+  "../apps/homescreen/app/lib/runtime-repair.ts",
+  import.meta.url,
+);
 const parityPath = new URL("../docs/desktop-product-parity.json", import.meta.url);
 
 test("public desktop preserves the reviewed Train interaction language", async () => {
@@ -39,6 +48,25 @@ test("public desktop preserves the reviewed Train interaction language", async (
   assert.doesNotMatch(serving, /label: "Usage"/);
 });
 
+test("desktop has one managed runtime repair surface", async () => {
+  const [page, prompt, repair] = await Promise.all([
+    readFile(pagePath, "utf8"),
+    readFile(runtimeRepairPromptPath, "utf8"),
+    readFile(runtimeRepairLibPath, "utf8"),
+  ]);
+
+  assert.match(page, /<RuntimeRepairPrompt\s*\/>/);
+  assert.match(prompt, /invoke<DesktopHealth>\("desktop_health"\)/);
+  assert.match(prompt, /listen<RuntimeRepairRequest>\("runtime-repair-needed"/);
+  assert.match(prompt, /"install_understudy_agent_tools"/);
+  assert.match(prompt, /"install_mlx_runtime"/);
+  assert.match(prompt, /"conversation_runtime_repair"/);
+  assert.match(repair, /understudy models runtime repair/);
+  assert.match(repair, /understudy runtime repair/);
+  assert.match(repair, /install\.sh \| bash -s -- --yes/);
+  assert.doesNotMatch(repair, /understudy update/);
+});
+
 test("desktop migration claims stay tied to explicit product parity", async () => {
   const parity = JSON.parse(await readFile(parityPath, "utf8"));
   assert.equal(parity.release_authority, "apps/homescreen");
@@ -47,6 +75,7 @@ test("desktop migration claims stay tied to explicit product parity", async () =
   assert.equal(new Set(ids).size, ids.length, "parity feature ids must remain unique");
   for (const required of [
     "offline-supervisor-fallback",
+    "runtime-repair-experience",
     "supervision-review-desk",
     "correction-pair-export-and-metrics",
     "unified-experiment-hub",
@@ -54,6 +83,10 @@ test("desktop migration claims stay tied to explicit product parity", async () =
   ]) {
     assert.ok(ids.includes(required), `parity manifest is missing ${required}`);
   }
+  assert.equal(
+    parity.features.find((feature) => feature.id === "runtime-repair-experience")?.status,
+    "shipped",
+  );
   for (const feature of parity.features) {
     assert.ok(parity.status_values.includes(feature.status), `${feature.id} has an unknown status`);
     assert.ok(feature.evidence.length > 20, `${feature.id} needs concrete evidence`);

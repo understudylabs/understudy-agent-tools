@@ -1168,18 +1168,27 @@ pub fn bootstrap_status() -> crate::bootstrap::BootstrapStatus {
 }
 
 #[tauri::command]
+pub async fn desktop_health(app: AppHandle) -> crate::bootstrap::DesktopHealth {
+    crate::bootstrap::desktop_health(&app).await
+}
+
+#[tauri::command]
 pub fn install_uv() -> Result<String, String> {
     crate::bootstrap::install_uv()
 }
 
 #[tauri::command]
-pub fn install_mlx_runtime() -> Result<String, String> {
-    crate::bootstrap::install_mlx_runtime()
+pub async fn install_mlx_runtime() -> Result<String, String> {
+    tauri::async_runtime::spawn_blocking(crate::bootstrap::install_mlx_runtime)
+        .await
+        .map_err(|e| format!("install_mlx_runtime task failed: {e}"))?
 }
 
 #[tauri::command]
-pub fn install_understudy_agent_tools() -> Result<String, String> {
-    crate::bootstrap::install_understudy_agent_tools()
+pub async fn install_understudy_agent_tools() -> Result<String, String> {
+    tauri::async_runtime::spawn_blocking(crate::bootstrap::install_understudy_agent_tools)
+        .await
+        .map_err(|e| format!("install_understudy_agent_tools task failed: {e}"))?
 }
 
 #[tauri::command]

@@ -41,6 +41,27 @@ pub struct BootstrapStatus {
 }
 
 #[derive(Serialize, Clone)]
+pub struct VersionHealth {
+    pub id: String,
+    pub label: String,
+    pub available: bool,
+    pub installed_version: Option<String>,
+    pub latest_version: Option<String>,
+    pub update_available: Option<bool>,
+    pub detail: String,
+}
+
+#[derive(Serialize, Clone)]
+pub struct DesktopHealth {
+    pub checked_at: String,
+    pub online: bool,
+    pub desktop: VersionHealth,
+    pub cli: VersionHealth,
+    pub mlx_vlm: VersionHealth,
+    pub conversation_runtime: VersionHealth,
+}
+
+#[derive(Serialize, Clone)]
 #[serde(tag = "type")]
 pub enum DownloadEvent {
     Log {
@@ -125,10 +146,10 @@ pub fn install_uv() -> Result<String, String> {
 }
 
 pub fn install_mlx_runtime() -> Result<String, String> {
-    let out = bin::command("uv")
-        .args(["tool", "install", "mlx-vlm"])
+    let out = bin::command("understudy")
+        .args(["models", "runtime", "repair", "--json"])
         .output()
-        .map_err(|e| format!("uv not found: {e}"))?;
+        .map_err(|e| format!("Understudy CLI not found: {e}"))?;
     command_output(out)
 }
 
@@ -169,6 +190,161 @@ pub fn install_understudy_agent_tools() -> Result<String, String> {
         .map_err(|e| format!("Understudy installer failed to start: {e}"));
     let _ = std::fs::remove_file(&script);
     installed.and_then(command_output)
+}
+
+/// Aggregate bounded public update checks and local runtime diagnostics for
+/// the desktop repair surface. Network failure only leaves latest versions
+/// unknown; local availability and repair remain fully functional offline.
+pub async fn desktop_health(app: &AppHandle) -> DesktopHealth {
+    let cli_local = command_version(bin::command("understudy").arg("--version").output());
+    let mlx_status = models::mlx_runtime_status();
+    let mlx_local = mlx_status
+        .available
+        .then_some(mlx_status.installed_version.clone())
+        .flatten();
+    let client = reqwest::Client::builder()
+        .connect_timeout(Duration::from_secs(3))
+        .read_timeout(Duration::from_secs(5))
+        .user_agent("Understudy-Desktop/health-check")
+        .build();
+
+    let (cli_latest, desktop_latest, desktop_url) = if let Ok(client) = client {
+        let cli = fetch_json(
+            &client,
+            "https://raw.githubusercontent.com/understudylabs/understudy-agent-tools/main/package.json",
+        );
+        let desktop = fetch_json(
+            &client,
+            "https://api.github.com/repos/understudylabs/understudy-agent-tools/releases/latest",
+        );
+        let (cli, desktop) = tokio::join!(cli, desktop);
+        (
+            cli.ok().and_then(|value| json_string(&value, &["version"])),
+            desktop
+                .as_ref()
+                .ok()
+                .and_then(|value| json_string(value, &["tag_name"]))
+                .and_then(|tag| extract_version(&tag)),
+            desktop
+                .ok()
+                .and_then(|value| json_string(&value, &["html_url"])),
+        )
+    } else {
+        (None, None, None)
+    };
+
+    let mut cli_health = version_health(
+        "cli",
+        "Understudy CLI",
+        cli_local,
+        cli_latest,
+        "Run the official agent-tools installer to repair or update.".to_string(),
+    );
+    if cli_health.available && !mlx_status.managed {
+        cli_health.update_available = Some(true);
+        cli_health.detail =
+            "Installed CLI lacks the managed MLX/VLM lifecycle; update it before repairing local models."
+                .to_string();
+    }
+    DesktopHealth {
+        checked_at: chrono::Utc::now().to_rfc3339(),
+        online: cli_health.latest_version.is_some() || desktop_latest.is_some(),
+        desktop: version_health(
+            "desktop",
+            "Desktop app",
+            Some(env!("CARGO_PKG_VERSION").to_string()),
+            desktop_latest,
+            desktop_url.unwrap_or_else(|| {
+                "https://github.com/understudylabs/understudy-agent-tools/releases/latest"
+                    .to_string()
+            }),
+        ),
+        cli: cli_health,
+        mlx_vlm: version_health(
+            "mlx-vlm",
+            "Local model runtime",
+            mlx_local,
+            None,
+            mlx_status.detail,
+        ),
+        conversation_runtime: crate::conversation_sidecar::health(app),
+    }
+}
+
+async fn fetch_json(client: &reqwest::Client, url: &str) -> Result<serde_json::Value, String> {
+    client
+        .get(url)
+        .send()
+        .await
+        .map_err(|e| e.to_string())?
+        .error_for_status()
+        .map_err(|e| e.to_string())?
+        .json()
+        .await
+        .map_err(|e| e.to_string())
+}
+
+fn json_string(value: &serde_json::Value, path: &[&str]) -> Option<String> {
+    path.iter()
+        .try_fold(value, |current, key| current.get(*key))
+        .and_then(serde_json::Value::as_str)
+        .map(str::to_string)
+}
+
+fn command_version(output: std::io::Result<std::process::Output>) -> Option<String> {
+    let output = output.ok()?;
+    if !output.status.success() {
+        return None;
+    }
+    extract_version(&String::from_utf8_lossy(&output.stdout))
+        .or_else(|| extract_version(&String::from_utf8_lossy(&output.stderr)))
+}
+
+fn version_health(
+    id: &str,
+    label: &str,
+    installed: Option<String>,
+    latest: Option<String>,
+    detail: String,
+) -> VersionHealth {
+    VersionHealth {
+        id: id.to_string(),
+        label: label.to_string(),
+        available: installed.is_some(),
+        update_available: match (&installed, &latest) {
+            (Some(local), Some(remote)) => version_is_newer(remote, local),
+            _ => None,
+        },
+        installed_version: installed,
+        latest_version: latest,
+        detail,
+    }
+}
+
+fn extract_version(value: &str) -> Option<String> {
+    value
+        .split(|character: char| !(character.is_ascii_digit() || character == '.'))
+        .find(|part| {
+            let pieces: Vec<&str> = part.split('.').collect();
+            pieces.len() >= 2 && pieces.iter().all(|piece| piece.parse::<u64>().is_ok())
+        })
+        .map(str::to_string)
+}
+
+fn version_is_newer(candidate: &str, current: &str) -> Option<bool> {
+    fn numbers(value: &str) -> Option<Vec<u64>> {
+        extract_version(value)?
+            .split('.')
+            .map(str::parse)
+            .collect::<Result<Vec<_>, _>>()
+            .ok()
+    }
+    let mut candidate = numbers(candidate)?;
+    let mut current = numbers(current)?;
+    let length = candidate.len().max(current.len());
+    candidate.resize(length, 0);
+    current.resize(length, 0);
+    Some(candidate > current)
 }
 
 pub async fn download_model(
@@ -615,5 +791,17 @@ mod tests {
             package.get("version").and_then(serde_json::Value::as_str),
             Some(MIN_UNDERSTUDY_CLI_VERSION)
         );
+    }
+
+    #[test]
+    fn public_update_versions_compare_without_string_ordering() {
+        assert_eq!(
+            extract_version("understudy 0.6.10"),
+            Some("0.6.10".to_string())
+        );
+        assert_eq!(extract_version("v0.7.0-beta.1"), Some("0.7.0".to_string()));
+        assert_eq!(version_is_newer("0.6.10", "0.6.9"), Some(true));
+        assert_eq!(version_is_newer("0.6.1", "0.6.1"), Some(false));
+        assert_eq!(version_is_newer("not-a-version", "0.6.1"), None);
     }
 }

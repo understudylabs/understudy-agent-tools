@@ -14,6 +14,7 @@ use std::time::{Duration, Instant};
 use tauri::ipc::Channel;
 use tauri::{AppHandle, Manager};
 
+use crate::bootstrap::VersionHealth;
 use crate::chat::ChatEvent;
 use crate::conversation_runtime::{
     RuntimeEvent, RuntimeEventEnvelope, EVENT_SCHEMA, RUNTIME_VERSION,
@@ -416,6 +417,49 @@ fn parse_status(output: std::process::Output) -> Result<CliRuntimeStatus, String
             format!("Understudy CLI runtime status failed: {detail}")
         }
     })
+}
+
+pub(crate) fn health(app: &AppHandle) -> VersionHealth {
+    match run_cli_status("status", app) {
+        Ok(status) => {
+            let schema_matches = status.event_schema == EVENT_SCHEMA;
+            let version_matches = status.runtime_version == RUNTIME_VERSION;
+            let ready = compatible(&status, app);
+            let detail = if ready {
+                status.detail
+            } else if !schema_matches {
+                format!(
+                    "runtime schema {} is incompatible with {}; native fallback remains active",
+                    status.event_schema, EVENT_SCHEMA
+                )
+            } else if !version_matches {
+                format!(
+                    "runtime {} does not match required {}; update or repair the CLI; native fallback remains active",
+                    status.runtime_version, RUNTIME_VERSION
+                )
+            } else {
+                format!("{}; native fallback remains active", status.detail)
+            };
+            VersionHealth {
+                id: "conversation-runtime".to_string(),
+                label: "Conversation runtime".to_string(),
+                available: ready,
+                installed_version: status.installed.then_some(status.runtime_version),
+                latest_version: Some(RUNTIME_VERSION.to_string()),
+                update_available: Some(!schema_matches || !version_matches),
+                detail,
+            }
+        }
+        Err(error) => VersionHealth {
+            id: "conversation-runtime".to_string(),
+            label: "Conversation runtime".to_string(),
+            available: false,
+            installed_version: None,
+            latest_version: Some(RUNTIME_VERSION.to_string()),
+            update_available: None,
+            detail: format!("{error}; native fallback remains active"),
+        },
+    }
 }
 
 fn runtime_selected(app: &AppHandle) -> bool {
