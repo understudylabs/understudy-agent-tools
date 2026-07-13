@@ -14,6 +14,10 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { after, before, describe, it } from "node:test";
 
+import {
+  resolveDesktopSlotProviderTarget,
+} from "../dist/internal/desktop-api.js";
+
 const cli = ["node", resolve("dist/bin.js")];
 const root = mkdtempSync(join(tmpdir(), "understudy-desktop-api-"));
 const capabilityPath = join(root, "desktop-api.json");
@@ -193,7 +197,13 @@ before(async () => {
       "GET /v1/models": [{ id: "understudy-small", ready: true }],
       "GET /v1/models/catalog": [{ id: "understudy-small", tier: "small" }],
       "GET /v1/residency": {
-        slots: [{ id: 7, state: "running", model_id: "understudy-small" }],
+        slots: [{
+          id: 7,
+          state: "running",
+          model_id: "understudy-small",
+          model_path: "/models/understudy-small",
+          port: 8096,
+        }],
         used_gb: 2,
         usable_gb: 8,
       },
@@ -449,6 +459,10 @@ describe("desktop API CLI", () => {
         "cancellation", "error", "image_attachment", "compaction_boundary",
       ],
     );
+    assert.deepEqual(
+      contract.components.schemas.ResidencySnapshot.properties.slots.items.properties.model_path.type,
+      ["string", "null"],
+    );
     const pairSchema = JSON.parse(readFileSync(
       resolve("schemas/understudy.correction_pair.v1.schema.json"),
       "utf8",
@@ -619,6 +633,26 @@ describe("desktop API CLI", () => {
       model_id: "understudy-small",
     });
     assert.equal(mcpCalls.length, 0, "the public CLI must not tunnel stable controls through MCP");
+  });
+
+  it("resolves a warm slot to its exact local provider identity", async () => {
+    const target = await resolveDesktopSlotProviderTarget(
+      {
+        schemaVersion: "understudy.desktop_api.v2",
+        baseUrl: `http://127.0.0.1:${port}`,
+        token,
+        pid: process.pid,
+        appVersion: "test",
+        path: capabilityPath,
+      },
+      7,
+    );
+    assert.deepEqual(target, {
+      slotId: 7,
+      artifactId: "understudy-small",
+      baseUrl: "http://127.0.0.1:8096/v1",
+      model: "/models/understudy-small",
+    });
   });
 
   it("streams canonical image-chat events with caller-owned identity", async () => {

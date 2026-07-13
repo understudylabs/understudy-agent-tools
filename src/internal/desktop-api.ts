@@ -43,6 +43,13 @@ export interface DesktopApiCapability {
   path: string;
 }
 
+export interface DesktopSlotProviderTarget {
+  slotId: number;
+  artifactId: string;
+  baseUrl: string;
+  model: string;
+}
+
 export function desktopApiPath(): string {
   return process.env.UNDERSTUDY_DESKTOP_API_FILE ??
     join(homedir(), ".understudy", "desktop-api.json");
@@ -143,6 +150,60 @@ export async function desktopApiFetchCompat(
   const response = await desktopApiFetch(capability, versionedPath, init);
   if (response.status !== 404) return response;
   return desktopApiFetch(capability, legacyPath, init);
+}
+
+/**
+ * Resolve one live Desktop residency slot into the exact OpenAI-compatible
+ * provider identity used by the app. MLX accepts the weights path reliably;
+ * a catalog/artifact alias may not match the model id exposed by the server.
+ */
+export async function resolveDesktopSlotProviderTarget(
+  capability: DesktopApiCapability,
+  slotId: number,
+  timeoutMs: number = 1_500,
+): Promise<DesktopSlotProviderTarget> {
+  const response = await desktopApiFetchCompat(
+    capability,
+    "/v1/residency",
+    "/api/residency",
+    { signal: AbortSignal.timeout(timeoutMs) },
+  );
+  if (!response.ok) throw await responseError(response);
+  const value = await response.json() as { slots?: unknown };
+  const slots = Array.isArray(value.slots) ? value.slots : [];
+  const slot = slots.find(
+    (candidate): candidate is Record<string, unknown> =>
+      Boolean(candidate) &&
+      typeof candidate === "object" &&
+      !Array.isArray(candidate) &&
+      (candidate as Record<string, unknown>).id === slotId,
+  );
+  if (!slot) throw new Error(`desktop residency slot ${slotId} does not exist`);
+  if (slot.state !== "running") {
+    throw new Error(`desktop residency slot ${slotId} is ${String(slot.state ?? "not running")}`);
+  }
+  if (
+    typeof slot.port !== "number" ||
+    !Number.isInteger(slot.port) ||
+    slot.port < 1 ||
+    slot.port > 65_535
+  ) {
+    throw new Error(`desktop residency slot ${slotId} has no valid provider port`);
+  }
+  if (typeof slot.model_path !== "string" || slot.model_path.trim() === "") {
+    throw new Error(
+      `desktop residency slot ${slotId} does not expose its exact model path; update Understudy Desktop`,
+    );
+  }
+  if (typeof slot.model_id !== "string" || slot.model_id.trim() === "") {
+    throw new Error(`desktop residency slot ${slotId} has no assigned model id`);
+  }
+  return {
+    slotId,
+    artifactId: slot.model_id,
+    baseUrl: `http://127.0.0.1:${slot.port}/v1`,
+    model: slot.model_path,
+  };
 }
 
 export async function responseError(response: Response): Promise<Error> {

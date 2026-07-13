@@ -819,6 +819,13 @@
                     "null"
                   ]
                 },
+                "model_path": {
+                  "description": "Exact local weights path accepted by the slot's provider server.",
+                  "type": [
+                    "string",
+                    "null"
+                  ]
+                },
                 "state": {
                   "type": "string",
                   "enum": [
