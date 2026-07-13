@@ -579,6 +579,13 @@ export function registerRuntimeCommand(program: Command): void {
           : undefined;
         const providerBaseUrl = desktopSlotTarget?.baseUrl ?? options.baseUrl!;
         const providerModel = desktopSlotTarget?.model ?? options.model!;
+        const desktopToolExecutor = desktopSlotCapability && !options.toolExecutorUrl
+          ? {
+              url: `${desktopSlotCapability.baseUrl}/api/conversation-runtime/tool?slot_id=${options.slot}`,
+              token: desktopSlotCapability.token,
+            }
+          : undefined;
+        const toolExecutorUrl = options.toolExecutorUrl ?? desktopToolExecutor?.url;
         const supervisorFixture = options.deterministicSupervisor
           ? await startDeterministicSupervisorFixture()
           : undefined;
@@ -589,6 +596,10 @@ export function registerRuntimeCommand(program: Command): void {
           base_url: options.supervisorBaseUrl ?? providerBaseUrl,
           model: options.supervisorModel ?? providerModel,
         };
+        const previousToolToken = process.env.UNDERSTUDY_RUNTIME_TOOL_TOKEN;
+        if (desktopToolExecutor) {
+          process.env.UNDERSTUDY_RUNTIME_TOOL_TOKEN = desktopToolExecutor.token;
+        }
         let report;
         try {
           report = await runConversationAdapterConformance(
@@ -651,7 +662,12 @@ export function registerRuntimeCommand(program: Command): void {
                         : "model",
                     }),
                 scenario_timeout_ms: scenarioTimeoutMs,
-                tool_executor_configured: Boolean(options.toolExecutorUrl),
+                tool_executor_configured: Boolean(toolExecutorUrl),
+                tool_executor_source: desktopToolExecutor
+                  ? "desktop_authenticated_slot"
+                  : toolExecutorUrl
+                    ? "explicit"
+                    : "none",
                 allow_remote: options.allowRemote ?? false,
               },
               async run(input) {
@@ -674,7 +690,7 @@ export function registerRuntimeCommand(program: Command): void {
                   model: providerModel,
                   invocation_id: invocationId,
                   scenario_timeout_ms: scenarioTimeoutMs,
-                  tool_executor_url: options.toolExecutorUrl,
+                  tool_executor_url: toolExecutorUrl,
                   allow_remote: options.allowRemote,
                   student: {
                     base_url: options.studentBaseUrl ?? providerBaseUrl,
@@ -697,6 +713,13 @@ export function registerRuntimeCommand(program: Command): void {
         } finally {
           await supervisorFixture?.close();
           await malformedToolFixture?.close();
+          if (desktopToolExecutor) {
+            if (previousToolToken === undefined) {
+              delete process.env.UNDERSTUDY_RUNTIME_TOOL_TOKEN;
+            } else {
+              process.env.UNDERSTUDY_RUNTIME_TOOL_TOKEN = previousToolToken;
+            }
+          }
         }
         const outputPath = options.output
           ? persistImmutableReport(options.output, report)

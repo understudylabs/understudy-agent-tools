@@ -1694,8 +1694,32 @@ test("Pi and Vercel execute the identical frozen conformance inputs", async () =
   const restartRequestsByModel = new Map();
   const traces = new Map();
   const provider = createServer(async (request, response) => {
+    if (request.url === "/health") {
+      response.writeHead(200, { "content-type": "application/json" });
+      response.end(JSON.stringify({ ok: true }));
+      return;
+    }
+    if (request.url === "/v1/residency") {
+      assert.equal(request.headers.authorization, `Bearer ${toolToken}`);
+      const address = provider.address();
+      assert.ok(address && typeof address !== "string");
+      response.writeHead(200, { "content-type": "application/json" });
+      response.end(JSON.stringify({
+        slots: [{
+          id: 7,
+          state: "running",
+          model_id: "conformance-slot-artifact",
+          model_path: "/models/conformance-slot-weights",
+          port: address.port,
+        }],
+      }));
+      return;
+    }
     const body = await requestJson(request);
-    if (request.url === "/tool") {
+    if (
+      request.url === "/tool" ||
+      request.url === "/api/conversation-runtime/tool?slot_id=7"
+    ) {
       assert.equal(request.headers.authorization, `Bearer ${toolToken}`);
       toolRequests.push(body);
       response.writeHead(200, { "content-type": "application/json" });
@@ -2349,6 +2373,48 @@ test("Pi and Vercel execute the identical frozen conformance inputs", async () =
     const persisted = JSON.parse(readFileSync(persistedPath, "utf8"));
     assert.equal(persisted.suite_id, cliReport.suite_id);
     assert.equal(persisted.generated_at, cliReport.generated_at);
+
+    const capabilityPath = join(runtimeHome, "desktop-api-slot-conformance.json");
+    writeFileSync(capabilityPath, JSON.stringify({
+      schema_version: "understudy.desktop_api.v2",
+      base_url: `http://127.0.0.1:${address.port}`,
+      token: toolToken,
+      pid: process.pid,
+      app_version: "0.3.5",
+    }), { mode: 0o600 });
+    const slotCli = await runCli([
+      "runtime",
+      "conformance",
+      "--backend",
+      "pi",
+      "--slot",
+      "7",
+      "--deterministic-supervisor",
+      "--deterministic-malformed-tool",
+      "--deterministic-compaction",
+      "--scenario-timeout-ms",
+      "5000",
+      "--require-complete",
+      "--output",
+      join(runtimeHome, "slot-live-conformance.json"),
+      "--json",
+    ], {
+      UNDERSTUDY_DESKTOP_API_FILE: capabilityPath,
+      UNDERSTUDY_RUNTIME_TOOL_TOKEN: "",
+    });
+    assert.equal(slotCli.code, 0, `stdout:\n${slotCli.stdout}\nstderr:\n${slotCli.stderr}`);
+    const slotReport = JSON.parse(slotCli.stdout);
+    assert.equal(slotReport.complete, true);
+    assert.equal(slotReport.eligible_for_promotion, true);
+    assert.equal(slotReport.metadata.tool_executor_configured, true);
+    assert.equal(slotReport.metadata.tool_executor_source, "desktop_authenticated_slot");
+    assert.deepEqual(slotReport.metadata.provider, {
+      base_url: `http://127.0.0.1:${address.port}/v1`,
+      model: "/models/conformance-slot-weights",
+      slot_id: 7,
+      artifact_id: "conformance-slot-artifact",
+      identity_source: "desktop_residency_model_path",
+    });
   } finally {
     await new Promise((accept) => provider.close(accept));
     delete process.env.UNDERSTUDY_RUNTIME_TOOL_TOKEN;
