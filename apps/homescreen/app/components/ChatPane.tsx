@@ -42,6 +42,13 @@ import {
   ToolOutput,
   type ToolPart,
 } from "@/components/ai-elements/tool";
+import {
+  persistableChatMessages,
+  recentUniqueAttachmentRefs,
+  withHydratedAttachments,
+  type ChatAttachment,
+  type ChatAttachmentUpload,
+} from "../lib/chat-attachments";
 import { modelShortName, type SnapshotAlias } from "../lib/model-aliases";
 import type { FileUIPart } from "ai";
 
@@ -52,12 +59,6 @@ type ToolTrace = {
   input?: unknown;
   output?: unknown;
   errorText?: string;
-};
-type ChatAttachment = {
-  id: string;
-  filename: string;
-  media_type: string;
-  data_url: string;
 };
 type Msg = {
   role: Role;
@@ -94,24 +95,6 @@ const CLOUD_SUPERVISOR_FALLBACK_NOTICE =
 const LOCAL_SUPERVISOR_FALLBACK_NOTICE =
   "The supervising model is unavailable. Continuing with the selected local model.";
 
-const canonicalAttachment = async (file: FileUIPart): Promise<ChatAttachment> => {
-  const mediaType = file.mediaType || "";
-  if (!mediaType.startsWith("image/") || !file.url.startsWith(`data:${mediaType};base64,`)) {
-    throw new Error("Only valid image attachments are supported.");
-  }
-  const bytes = new Uint8Array(await (await fetch(file.url)).arrayBuffer());
-  if (bytes.byteLength === 0 || bytes.byteLength > 8 * 1024 * 1024) {
-    throw new Error("Each image must be between 1 byte and 8 MB.");
-  }
-  const digest = new Uint8Array(await crypto.subtle.digest("SHA-256", bytes));
-  const id = Array.from(digest, (byte) => byte.toString(16).padStart(2, "0")).join("");
-  return {
-    id,
-    filename: file.filename || "image",
-    media_type: mediaType,
-    data_url: file.url,
-  };
-};
 type SidekickEvent = {
   id: number;
   session_id: string;
@@ -369,13 +352,35 @@ export function ChatPane({ resetToken }: { resetToken: number }) {
   useEffect(() => {
     let cancelled = false;
     invoke<PersistedChatSession | null>("chat_session_latest")
-      .then((saved) => {
+      .then(async (saved) => {
         if (cancelled || !saved) return;
+        const attachmentRefs = recentUniqueAttachmentRefs(saved.messages);
+        const hydrated =
+          attachmentRefs.length > 0
+            ? await invoke<Array<ChatAttachment & { dataUrl: string }>>(
+                "chat_attachments_hydrate",
+                {
+                  sessionId: saved.session_id,
+                  attachments: attachmentRefs,
+                },
+              ).catch((error) => {
+                if (!cancelled) {
+                  setNotice(`Some saved image previews could not be restored: ${String(error)}`);
+                }
+                return [];
+              })
+            : [];
+        if (cancelled) return;
+        if (hydrated.length < attachmentRefs.length) {
+          setNotice("Some saved image previews are unavailable; their history references were preserved.");
+        }
         setSessionId(saved.session_id);
-        setMessages(saved.messages);
+        setMessages(withHydratedAttachments(saved.messages, hydrated));
       })
-      .catch(() => {
-        // A corrupt or legacy session must never block a fresh local chat.
+      .catch((error) => {
+        // A corrupt or legacy session must never block a fresh local chat, but
+        // the user should know why the previous conversation is not visible.
+        if (!cancelled) setNotice(`Saved chat could not be restored: ${String(error)}`);
       })
       .finally(() => {
         if (!cancelled) setSessionHydrated(true);
@@ -388,7 +393,10 @@ export function ChatPane({ resetToken }: { resetToken: number }) {
   useEffect(() => {
     if (!sessionHydrated || streaming) return;
     const timer = window.setTimeout(() => {
-      invoke("chat_session_save", { sessionId, messages }).catch(() => {
+      invoke("chat_session_save", {
+        sessionId,
+        messages: persistableChatMessages(messages),
+      }).catch(() => {
         setNotice("This chat could not be saved for restart; the current turn is unaffected.");
       });
     }, 150);
@@ -433,14 +441,6 @@ export function ChatPane({ resetToken }: { resetToken: number }) {
     setErr(null);
     setNotice(null);
 
-    let attachments: ChatAttachment[];
-    try {
-      attachments = await Promise.all(files.map(canonicalAttachment));
-    } catch (error) {
-      setErr(String(error));
-      throw error;
-    }
-
     const choice = selectedChoice;
     if (choice.route === "local" && choice.slotId == null) {
       setErr("No local model is warm. Open Serving, warm a local model slot, then send again.");
@@ -449,6 +449,28 @@ export function ChatPane({ resetToken }: { resetToken: number }) {
     if (choice.route === "local" && !choice.active) {
       setErr("The selected local model is still loading. Try again in a moment.");
       return;
+    }
+
+    let attachments: ChatAttachment[] = [];
+    if (files.length > 0) {
+      const uploads: ChatAttachmentUpload[] = files.map((file) => ({
+        filename: file.filename || "image",
+        mediaType: file.mediaType || "",
+        dataUrl: file.url,
+      }));
+      try {
+        const stored = await invoke<Array<Omit<ChatAttachment, "previewUrl">>>(
+          "chat_attachments_store",
+          { sessionId, attachments: uploads },
+        );
+        attachments = stored.map((attachment, index) => ({
+          ...attachment,
+          previewUrl: files[index]?.url,
+        }));
+      } catch (error) {
+        setErr(`Could not attach image: ${String(error)}`);
+        throw error;
+      }
     }
 
     const toSend: Msg[] = [
@@ -584,6 +606,9 @@ export function ChatPane({ resetToken }: { resetToken: number }) {
 
   const restartChat = () => {
     if (streaming) return;
+    void invoke("chat_attachments_delete_session", { sessionId }).catch(() => {
+      // Starting a fresh chat still succeeds; orphan cleanup is local and best-effort.
+    });
     setMessages([]);
     setInput("");
     setErr(null);
@@ -738,7 +763,11 @@ export function ChatPane({ resetToken }: { resetToken: number }) {
                       <div className="chat-image-list">
                         {m.attachments.map((attachment) => (
                           <figure className="chat-image" key={attachment.id}>
-                            <img src={attachment.data_url} alt={attachment.filename} />
+                            {attachment.previewUrl ? (
+                              <img src={attachment.previewUrl} alt={attachment.filename} />
+                            ) : (
+                              <div className="chat-image-unavailable">Preview unavailable</div>
+                            )}
                             <figcaption>{attachment.filename}</figcaption>
                           </figure>
                         ))}
