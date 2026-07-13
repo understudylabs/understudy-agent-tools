@@ -234,8 +234,14 @@ pub fn run() {
         ])
         .build(tauri::generate_context!())
         .expect("error while running tauri application")
-        .run(|_app, event| {
+        .run(|app, event| {
             if let tauri::RunEvent::Exit = event {
+                // A normal quit owns server teardown. If the app crashes,
+                // residency restore reaps only exact orphaned path+port
+                // matches before it can warm another model.
+                if let Some(residency) = app.try_state::<residency::Residency>() {
+                    residency.shutdown();
+                }
                 // Graceful shutdown: the agent card must not keep
                 // advertising a dead pid as a healthy local daemon.
                 agent_card::mark_stopped();
