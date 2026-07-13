@@ -215,13 +215,14 @@ test("served-model mismatch is durable evidence, not a trusted advisory", async 
 
 test("remote provider failures are persisted without provider-shaped secrets", async () => {
   const redactionRoot = join(root, "redaction");
+  const providerShapedSecret = ["sk", "ant", "api03", "fixturesecret"].join("-");
   const result = await analyzeTiebreaker({
     input: { ...input, marker_id: "run-3:intervention:0" },
     route: { provider: "lilac", project: "rehearsal", workload: "supervision-judge", orgId: "org_test" },
     confirmRemote: true,
     root: redactionRoot,
     fetchImpl: async () => new Response(
-      JSON.stringify({ error: "provider rejected sk-ant-api03-fixturesecret" }),
+      JSON.stringify({ error: `provider rejected ${providerShapedSecret}` }),
       { status: 401 },
     ),
   });
