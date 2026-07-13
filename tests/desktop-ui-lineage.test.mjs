@@ -161,6 +161,10 @@ test("desktop migration claims stay tied to explicit product parity", async () =
     parity.features.find((feature) => feature.id === "supervision-review-desk")?.status,
     "shipped",
   );
+  assert.equal(
+    parity.features.find((feature) => feature.id === "correction-pair-export-and-metrics")?.status,
+    "shipped",
+  );
   for (const feature of parity.features) {
     assert.ok(parity.status_values.includes(feature.status), `${feature.id} has an unknown status`);
     assert.ok(feature.evidence.length > 20, `${feature.id} needs concrete evidence`);

@@ -36,6 +36,10 @@ pub struct ReviewJudgment {
 
 #[derive(Clone, Debug, Serialize)]
 pub struct SupervisionReviewItem {
+    pub event_schema: String,
+    pub runtime_id: String,
+    pub verdict_event_id: String,
+    pub verdict_sequence: u64,
     pub marker_id: String,
     pub legacy_marker: bool,
     pub session_id: String,
@@ -54,6 +58,7 @@ pub struct SupervisionReviewItem {
     pub supervisor_raw: Option<String>,
     pub boundary_ordinal: Option<u64>,
     pub verdict_logprobs: Option<Value>,
+    pub verdict_probability_kind: Option<String>,
     pub intervention_at: Option<u64>,
     pub tool_rounds_before_decision: u32,
     pub tool_results: Vec<ReviewToolResult>,
@@ -67,8 +72,10 @@ pub struct SupervisionReviewQueue {
     pub reviewed: usize,
     pub pending: usize,
     pub incomplete: usize,
+    pub truncated_interventions: usize,
     pub invalid_journals: usize,
     pub missing_journals: usize,
+    pub truncated_journals: usize,
     pub items: Vec<SupervisionReviewItem>,
 }
 
@@ -97,8 +104,8 @@ fn feedback_for(
         })
 }
 
-fn student_segment_before_verdict(events: &[RuntimeEventEnvelope], verdict_index: usize) -> String {
-    let segment_start = events
+fn segment_start_index(events: &[RuntimeEventEnvelope], verdict_index: usize) -> usize {
+    events
         .iter()
         .take(verdict_index)
         .rposition(|envelope| {
@@ -111,7 +118,11 @@ fn student_segment_before_verdict(events: &[RuntimeEventEnvelope], verdict_index
                     }
             )
         })
-        .map_or(0, |index| index + 1);
+        .map_or(0, |index| index + 1)
+}
+
+fn student_segment_before_verdict(events: &[RuntimeEventEnvelope], verdict_index: usize) -> String {
+    let segment_start = segment_start_index(events, verdict_index);
     events
         .iter()
         .take(verdict_index)
@@ -174,10 +185,14 @@ fn latest_model(events: &[RuntimeEventEnvelope], through: usize, role: RuntimeRo
         })
 }
 
-fn tool_results_through(events: &[RuntimeEventEnvelope], through: usize) -> Vec<ReviewToolResult> {
+fn tool_results_for_segment(
+    events: &[RuntimeEventEnvelope],
+    start: usize,
+    through: usize,
+) -> Vec<ReviewToolResult> {
     let mut pending: HashMap<String, (String, String, bool, Option<String>)> = HashMap::new();
     let mut results = Vec::new();
-    for envelope in events.iter().take(through + 1) {
+    for envelope in events.iter().take(through + 1).skip(start) {
         match &envelope.event {
             RuntimeEvent::ToolCall {
                 call_id,
@@ -315,6 +330,7 @@ fn build_item(
         marker_id,
         reason,
         probabilities,
+        probability_kind,
         boundary_ordinal,
         after_chars,
         raw,
@@ -369,9 +385,17 @@ fn build_item(
     if small_output.trim().is_empty() {
         return None;
     }
-    let tool_results = tool_results_through(events, verdict_index);
+    let tool_results = tool_results_for_segment(
+        events,
+        segment_start_index(events, verdict_index),
+        verdict_index,
+    );
     Some(SupervisionReviewItem {
         judgment: feedback_for(feedback, &marker_id, &envelope.run_id, stage),
+        event_schema: envelope.schema_version.clone(),
+        runtime_id: envelope.runtime_id.clone(),
+        verdict_event_id: envelope.event_id.clone(),
+        verdict_sequence: envelope.sequence,
         marker_id,
         legacy_marker,
         session_id: envelope.session_id.clone(),
@@ -396,17 +420,19 @@ fn build_item(
         supervisor_raw: raw.clone(),
         boundary_ordinal: *boundary_ordinal,
         verdict_logprobs: probabilities.clone(),
+        verdict_probability_kind: probability_kind.clone(),
         intervention_at,
         tool_rounds_before_decision: tool_results.len() as u32,
         tool_results,
     })
 }
 
-fn build_review_queue(
-    traces: Vec<Vec<RuntimeEventEnvelope>>,
+pub(crate) fn build_review_queue(
+    traces: &[Vec<RuntimeEventEnvelope>],
     feedback: &[crate::db::SupervisorFeedbackRow],
     invalid_journals: usize,
     missing_journals: usize,
+    truncated_journals: usize,
 ) -> SupervisionReviewQueue {
     let mut items = Vec::new();
     let mut incomplete = 0;
@@ -422,13 +448,14 @@ fn build_review_queue(
             if !is_intervention {
                 continue;
             }
-            match build_item(&events, index, feedback) {
+            match build_item(events, index, feedback) {
                 Some(item) => items.push(item),
                 None => incomplete += 1,
             }
         }
     }
     items.sort_by(|left, right| right.created_at.cmp(&left.created_at));
+    let truncated_interventions = items.len().saturating_sub(500);
     items.truncate(500);
     let reviewed = items.iter().filter(|item| item.judgment.is_some()).count();
     SupervisionReviewQueue {
@@ -437,26 +464,36 @@ fn build_review_queue(
         reviewed,
         pending: items.len().saturating_sub(reviewed),
         incomplete,
+        truncated_interventions,
         invalid_journals,
         missing_journals,
+        truncated_journals,
         items,
     }
 }
 
 #[tauri::command]
 pub fn supervision_review_queue(app: AppHandle) -> Result<SupervisionReviewQueue, String> {
+    load_supervision_evidence(&app).map(|(queue, _)| queue)
+}
+
+pub(crate) fn load_supervision_evidence(
+    app: &AppHandle,
+) -> Result<(SupervisionReviewQueue, Vec<Vec<RuntimeEventEnvelope>>), String> {
     let db = app.state::<crate::db::Db>();
     let feedback = db
         .list_supervisor_feedback()
         .map_err(|error| format!("cannot list supervision feedback: {error}"))?;
-    let (traces, invalid_journals, missing_journals) =
-        crate::conversation_runtime::load_recent_persisted_traces(&app, 500);
-    Ok(build_review_queue(
-        traces,
+    let (traces, invalid_journals, missing_journals, truncated_journals) =
+        crate::conversation_runtime::load_recent_persisted_traces(app, 500);
+    let queue = build_review_queue(
+        &traces,
         &feedback,
         invalid_journals,
         missing_journals,
-    ))
+        truncated_journals,
+    );
+    Ok((queue, traces))
 }
 
 #[cfg(test)]
@@ -608,7 +645,7 @@ mod tests {
             justification: None,
             created_at: "2026-07-12T01:00:00Z".to_string(),
         }];
-        let queue = build_review_queue(vec![events], &feedback, 0, 0);
+        let queue = build_review_queue(&[events], &feedback, 0, 0, 0);
         assert_eq!(queue.total, 1);
         assert_eq!(queue.reviewed, 1);
         let item = &queue.items[0];
@@ -636,6 +673,25 @@ mod tests {
             ),
             envelope(
                 1,
+                RuntimeEvent::ToolCall {
+                    call_id: "old-call".to_string(),
+                    name: "old_tool".to_string(),
+                    raw_arguments: "{}".to_string(),
+                    parsed_arguments: Some(json!({})),
+                    parse_error: None,
+                },
+            ),
+            envelope(
+                2,
+                RuntimeEvent::ToolResult {
+                    call_id: "old-call".to_string(),
+                    name: "old_tool".to_string(),
+                    ok: true,
+                    result: json!({"scope": "old"}),
+                },
+            ),
+            envelope(
+                3,
                 RuntimeEvent::Delta {
                     role: RuntimeRole::Student,
                     text: "old segment".to_string(),
@@ -643,7 +699,7 @@ mod tests {
                 },
             ),
             envelope(
-                2,
+                4,
                 RuntimeEvent::SupervisorVerdict {
                     verdict: RuntimeVerdict::Continue,
                     source: "model".to_string(),
@@ -660,7 +716,26 @@ mod tests {
                 },
             ),
             envelope(
-                3,
+                5,
+                RuntimeEvent::ToolCall {
+                    call_id: "current-call".to_string(),
+                    name: "current_tool".to_string(),
+                    raw_arguments: r#"{"query":"evidence"}"#.to_string(),
+                    parsed_arguments: Some(json!({"query": "evidence"})),
+                    parse_error: None,
+                },
+            ),
+            envelope(
+                6,
+                RuntimeEvent::ToolResult {
+                    call_id: "current-call".to_string(),
+                    name: "current_tool".to_string(),
+                    ok: true,
+                    result: json!({"scope": "current"}),
+                },
+            ),
+            envelope(
+                7,
                 RuntimeEvent::Delta {
                     role: RuntimeRole::Student,
                     text: "first half".to_string(),
@@ -668,7 +743,7 @@ mod tests {
                 },
             ),
             envelope(
-                4,
+                8,
                 verdict(
                     RuntimeVerdict::Nudge,
                     "run-1:intervention:0",
@@ -677,7 +752,7 @@ mod tests {
                 ),
             ),
             envelope(
-                5,
+                9,
                 RuntimeEvent::Delta {
                     role: RuntimeRole::Student,
                     text: " plus evidence".to_string(),
@@ -685,7 +760,7 @@ mod tests {
                 },
             ),
             envelope(
-                6,
+                10,
                 RuntimeEvent::SupervisorVerdict {
                     verdict: RuntimeVerdict::Continue,
                     source: "model".to_string(),
@@ -702,11 +777,13 @@ mod tests {
                 },
             ),
         ];
-        let queue = build_review_queue(vec![events], &[], 0, 0);
+        let queue = build_review_queue(&[events], &[], 0, 0, 0);
         assert_eq!(queue.total, 1);
         assert_eq!(queue.items[0].small_output, "first half");
         assert_eq!(queue.items[0].after_output, " plus evidence");
         assert_eq!(queue.items[0].stage, "nudge");
+        assert_eq!(queue.items[0].tool_results.len(), 1);
+        assert_eq!(queue.items[0].tool_results[0].name, "current_tool");
     }
 
     #[test]
@@ -720,11 +797,13 @@ mod tests {
                 0,
             ),
         )];
-        let queue = build_review_queue(vec![events], &[], 2, 1);
+        let queue = build_review_queue(&[events], &[], 2, 1, 3);
         assert_eq!(queue.total, 0);
         assert_eq!(queue.incomplete, 1);
+        assert_eq!(queue.truncated_interventions, 0);
         assert_eq!(queue.invalid_journals, 2);
         assert_eq!(queue.missing_journals, 1);
+        assert_eq!(queue.truncated_journals, 3);
     }
 
     #[test]
@@ -732,12 +811,12 @@ mod tests {
     fn builds_a_queue_from_a_real_runtime_evidence_copy() {
         let root = std::env::var("UNDERSTUDY_TEST_RUNTIME_EVENTS_DIR")
             .expect("UNDERSTUDY_TEST_RUNTIME_EVENTS_DIR is required");
-        let (traces, invalid, missing) =
+        let (traces, invalid, missing, truncated) =
             crate::conversation_runtime::load_recent_persisted_traces_from_root(
                 std::path::Path::new(&root),
                 500,
             );
-        let queue = build_review_queue(traces, &[], invalid, missing);
+        let queue = build_review_queue(&traces, &[], invalid, missing, truncated);
         assert!(
             queue.total > 0,
             "real evidence produced no reviewable pairs"

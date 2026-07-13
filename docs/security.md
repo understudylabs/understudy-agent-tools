@@ -36,6 +36,11 @@ contact channel listed on the organization profile.
 eventually contain private payloads. Do not commit it unless a specific public
 fixture is intentionally synthetic and reviewed.
 
+Supervision correction exports are content-addressed local evidence. The CLI
+writes them with owner-only permissions on Unix and refuses to replace an
+existing path with different content. They contain raw prompts and outputs, so
+they remain private artifacts even when their SHA-256 hashes are safe to share.
+
 Desktop image attachments live under private app data, outside `.understudy/`.
 The app accepts only bounded PNG, JPEG, WebP, and GIF bytes with matching file
 signatures. Filenames never select filesystem paths: session directories are

@@ -76,7 +76,7 @@ pub fn record_api_capability(port: u16, token: &str) {
     };
     let value = json!({
         "schema_version": "understudy.desktop_api.v2",
-        "api_version": "2.1.0",
+        "api_version": "2.2.0",
         "base_url": format!("http://127.0.0.1:{port}"),
         "mcp_url": format!("http://127.0.0.1:{port}/mcp"),
         "status_url": format!("http://127.0.0.1:{port}/v1/status"),

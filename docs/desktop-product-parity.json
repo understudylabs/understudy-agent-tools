@@ -47,8 +47,8 @@
     },
     {
       "id": "correction-pair-export-and-metrics",
-      "status": "planned",
-      "evidence": "Run evidence exists; correction export, intervention precision, false-positive, model-share, and overhead reporting remain."
+      "status": "shipped",
+      "evidence": "The authenticated desktop API and `understudy desktop supervision export` project canonical journals into content-addressed owner-only correction-pair JSONL with tool results, verdict probability evidence, optional human judgment, exact run identity, and per-role usage. Metrics report intervention precision, false-positive nudges, small-model output share, and supervisor overhead while excluding incomplete attribution instead of treating it as zero; bounded evidence windows disclose every truncated journal or intervention."
     },
     {
       "id": "remote-review-tiebreaker",

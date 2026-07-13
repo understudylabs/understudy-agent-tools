@@ -142,7 +142,10 @@ fn convert_messages(messages: &[Value]) -> (Option<String>, Vec<Value>) {
         let role = message.get("role").and_then(|r| r.as_str()).unwrap_or("");
         match role {
             "system" => {
-                let content = message.get("content").and_then(|c| c.as_str()).unwrap_or("");
+                let content = message
+                    .get("content")
+                    .and_then(|c| c.as_str())
+                    .unwrap_or("");
                 if system.is_none() {
                     system = Some(content.to_string());
                 } else if !content.trim().is_empty() {
@@ -162,7 +165,10 @@ fn convert_messages(messages: &[Value]) -> (Option<String>, Vec<Value>) {
                     .get("tool_call_id")
                     .and_then(|v| v.as_str())
                     .unwrap_or("");
-                let content = message.get("content").and_then(|c| c.as_str()).unwrap_or("");
+                let content = message
+                    .get("content")
+                    .and_then(|c| c.as_str())
+                    .unwrap_or("");
                 pending_tool_results.push(json!({
                     "type": "tool_result",
                     "tool_use_id": id,
@@ -175,7 +181,10 @@ fn convert_messages(messages: &[Value]) -> (Option<String>, Vec<Value>) {
                     out.push(json!({ "role": "assistant", "content": raw.clone() }));
                     continue;
                 }
-                let text = message.get("content").and_then(|c| c.as_str()).unwrap_or("");
+                let text = message
+                    .get("content")
+                    .and_then(|c| c.as_str())
+                    .unwrap_or("");
                 let calls = message.get("tool_calls").and_then(|v| v.as_array());
                 match calls {
                     Some(calls) if !calls.is_empty() => {
@@ -208,7 +217,10 @@ fn convert_messages(messages: &[Value]) -> (Option<String>, Vec<Value>) {
             }
             _ => {
                 flush_tools(&mut pending_tool_results, &mut out);
-                let text = message.get("content").and_then(|c| c.as_str()).unwrap_or("");
+                let text = message
+                    .get("content")
+                    .and_then(|c| c.as_str())
+                    .unwrap_or("");
                 out.push(json!({ "role": "user", "content": text }));
             }
         }
@@ -385,9 +397,8 @@ pub async fn stream_chat_once(
                     }
                 }
                 "message_delta" => {
-                    if let Some(reason) = event
-                        .pointer("/delta/stop_reason")
-                        .and_then(|r| r.as_str())
+                    if let Some(reason) =
+                        event.pointer("/delta/stop_reason").and_then(|r| r.as_str())
                     {
                         stop_reason = Some(reason.to_string());
                     }
@@ -408,18 +419,17 @@ pub async fn stream_chat_once(
 
     // A pre-output safety decline arrives as a clean 200 with an empty
     // content array — surface it instead of showing a silent empty turn.
-    let error = if stop_reason.as_deref() == Some("refusal")
-        && content.is_empty()
-        && tool_calls.is_empty()
-    {
-        let message = "Anthropic declined this request (stop_reason: refusal)".to_string();
-        let _ = on_event.send(ChatEvent::Error {
-            message: message.clone(),
-        });
-        Some(message)
-    } else {
-        None
-    };
+    let error =
+        if stop_reason.as_deref() == Some("refusal") && content.is_empty() && tool_calls.is_empty()
+        {
+            let message = "Anthropic declined this request (stop_reason: refusal)".to_string();
+            let _ = on_event.send(ChatEvent::Error {
+                message: message.clone(),
+            });
+            Some(message)
+        } else {
+            None
+        };
 
     tool_calls.retain(|call| !call.name.is_empty());
     AnthropicTurn {

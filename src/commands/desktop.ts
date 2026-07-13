@@ -1,7 +1,16 @@
 import { Command, Option } from "commander";
-import { basename, extname, resolve } from "node:path";
-import { readFileSync } from "node:fs";
-import { randomUUID } from "node:crypto";
+import { basename, dirname, extname, join, resolve } from "node:path";
+import {
+  chmodSync,
+  existsSync,
+  linkSync,
+  mkdirSync,
+  readFileSync,
+  unlinkSync,
+  writeFileSync,
+} from "node:fs";
+import { homedir } from "node:os";
+import { createHash, randomUUID } from "node:crypto";
 
 import {
   desktopApiContractPath,
@@ -38,6 +47,28 @@ interface DesktopMigrationStatus {
   compatibility_engine_delete_ready?: boolean;
 }
 
+interface SupervisionExportPacket {
+  schema_version?: string;
+  correction_pairs?: Array<Record<string, unknown>>;
+  metrics?: SupervisionMetricsPayload;
+}
+
+interface SupervisionMetricsPayload extends Record<string, unknown> {
+  schema_version?: string;
+  incomplete_intervention_count?: number;
+  truncated_intervention_count?: number;
+  invalid_journal_count?: number;
+  missing_journal_count?: number;
+  truncated_journal_count?: number;
+  intervention_precision?: number | null;
+  false_positive_nudge_rate?: number | null;
+  usage?: {
+    small_model_output_share?: number | null;
+    supervisor_token_overhead?: number | null;
+    [key: string]: unknown;
+  };
+}
+
 const REQUIRED_CANONICAL_RELEASE_RUNS = 100;
 
 function positiveInteger(value: string): number {
@@ -48,6 +79,73 @@ function positiveInteger(value: string): number {
 
 function collect(value: string, previous: string[]): string[] {
   return [...previous, value];
+}
+
+function sha256(value: string): string {
+  return createHash("sha256").update(value).digest("hex");
+}
+
+function requireObject(value: unknown, label: string): Record<string, unknown> {
+  if (!value || typeof value !== "object" || Array.isArray(value)) {
+    throw new Error(`${label} must be an object`);
+  }
+  return value as Record<string, unknown>;
+}
+
+function requireNonNegativeInteger(value: unknown, label: string): number {
+  if (typeof value !== "number" || !Number.isInteger(value) || value < 0) {
+    throw new Error(`${label} must be a non-negative integer`);
+  }
+  return value;
+}
+
+function validateCorrectionPair(row: Record<string, unknown>, index: number): void {
+  if (row.schema_version !== "understudy.correction_pair.v1") {
+    throw new Error(`correction pair ${index} has an unsupported schema_version`);
+  }
+  for (const field of [
+    "event_schema", "runtime_id", "session_id", "run_id", "marker_id",
+    "verdict_event_id", "captured_at", "user_request",
+  ]) {
+    if (typeof row[field] !== "string") throw new Error(`correction pair ${index} is missing ${field}`);
+  }
+  if (typeof row.verdict_sequence !== "number" || !Number.isInteger(row.verdict_sequence)) {
+    throw new Error(`correction pair ${index} is missing verdict_sequence`);
+  }
+  requireObject(row.student, `correction pair ${index} student`);
+  requireObject(row.supervisor, `correction pair ${index} supervisor`);
+  requireObject(row.continuation, `correction pair ${index} continuation`);
+  requireObject(row.run_usage, `correction pair ${index} run_usage`);
+  if (!Array.isArray(row.tool_results)) {
+    throw new Error(`correction pair ${index} tool_results must be an array`);
+  }
+}
+
+function writeImmutableArtifact(path: string, content: string): "created" | "existing" {
+  const parent = dirname(path);
+  const parentExisted = existsSync(parent);
+  mkdirSync(parent, { recursive: true, mode: 0o700 });
+  if (process.platform !== "win32" && !parentExisted) chmodSync(parent, 0o700);
+  if (existsSync(path)) {
+    if (readFileSync(path, "utf8") !== content) {
+      throw new Error(`refusing to replace immutable artifact with different content: ${path}`);
+    }
+    return "existing";
+  }
+
+  const temporary = join(parent, `.${basename(path)}.${process.pid}.${randomUUID()}.tmp`);
+  writeFileSync(temporary, content, { encoding: "utf8", flag: "wx", mode: 0o600 });
+  if (process.platform !== "win32") chmodSync(temporary, 0o600);
+  try {
+    linkSync(temporary, path);
+  } catch (cause) {
+    const code = (cause as NodeJS.ErrnoException).code;
+    if (code !== "EEXIST" || readFileSync(path, "utf8") !== content) throw cause;
+    return "existing";
+  } finally {
+    unlinkSync(temporary);
+  }
+  return "created";
 }
 
 function jsonRequested(command: Command, local?: boolean): boolean {
@@ -504,6 +602,123 @@ export function registerDesktopCommand(program: Command): void {
       if (!response.ok) throw await responseError(response);
       const json = opts.json === true || this.optsWithGlobals<{ json?: boolean }>().json === true;
       await printRuntimeEvents(response, json);
+    });
+
+  const supervision = desktop
+    .command("supervision")
+    .description("Review and export canonical local supervision evidence.");
+  supervision
+    .command("export")
+    .description("Write immutable correction-pair JSONL and trustworthy metrics locally.")
+    .option("--reviewed-only", "Export only pairs with an explicit human judgment")
+    .option("--output <path>", "Correction-pair JSONL path; defaults to a content-addressed local path")
+    .option("--metrics-output <path>", "Metrics JSON path; defaults to a content-addressed local path")
+    .option("--json", "Output artifact metadata as JSON")
+    .action(async function (this: Command, opts: {
+      reviewedOnly?: boolean;
+      output?: string;
+      metricsOutput?: string;
+      json?: boolean;
+    }) {
+      const capability = await requireDesktopApi();
+      const query = opts.reviewedOnly ? "?reviewed_only=true" : "";
+      const response = await desktopApiFetch(
+        capability,
+        `/v1/supervision/corrections${query}`,
+      );
+      if (!response.ok) throw await responseError(response);
+      const packet = await response.json() as SupervisionExportPacket;
+      if (packet.schema_version !== "understudy.supervision.export_packet.v1") {
+        throw new Error(`unsupported supervision export schema: ${String(packet.schema_version)}`);
+      }
+      if (!Array.isArray(packet.correction_pairs) || !packet.metrics) {
+        throw new Error("desktop returned an incomplete supervision export packet");
+      }
+      for (const [index, row] of packet.correction_pairs.entries()) {
+        validateCorrectionPair(row, index);
+      }
+
+      const jsonl = packet.correction_pairs.length > 0
+        ? `${packet.correction_pairs.map((row) => JSON.stringify(row)).join("\n")}\n`
+        : "";
+      const pairsSha256 = sha256(jsonl);
+      const metrics = {
+        ...packet.metrics,
+        correction_pairs: {
+          schema_version: "understudy.correction_pair.v1",
+          sha256: pairsSha256,
+          row_count: packet.correction_pairs.length,
+        },
+      };
+      if (metrics.schema_version !== "understudy.supervision_metrics.v1") {
+        throw new Error(`unsupported supervision metrics schema: ${String(metrics.schema_version)}`);
+      }
+      requireObject(metrics.usage, "supervision metrics usage");
+      const evidenceWindow = {
+        incomplete_interventions: requireNonNegativeInteger(
+          metrics.incomplete_intervention_count,
+          "supervision metrics incomplete_intervention_count",
+        ),
+        truncated_interventions: requireNonNegativeInteger(
+          metrics.truncated_intervention_count,
+          "supervision metrics truncated_intervention_count",
+        ),
+        invalid_journals: requireNonNegativeInteger(
+          metrics.invalid_journal_count,
+          "supervision metrics invalid_journal_count",
+        ),
+        missing_journals: requireNonNegativeInteger(
+          metrics.missing_journal_count,
+          "supervision metrics missing_journal_count",
+        ),
+        truncated_journals: requireNonNegativeInteger(
+          metrics.truncated_journal_count,
+          "supervision metrics truncated_journal_count",
+        ),
+      };
+      const metricsContent = `${JSON.stringify(metrics, null, 2)}\n`;
+      const metricsSha256 = sha256(metricsContent);
+      const outputRoot = join(homedir(), ".understudy", "exports", "supervision");
+      const outputPath = opts.output
+        ? resolve(opts.output)
+        : join(outputRoot, `${pairsSha256}.correction-pairs.jsonl`);
+      const metricsPath = opts.metricsOutput
+        ? resolve(opts.metricsOutput)
+        : join(outputRoot, `${metricsSha256}.metrics.json`);
+      const pairWrite = writeImmutableArtifact(outputPath, jsonl);
+      const metricsWrite = writeImmutableArtifact(metricsPath, metricsContent);
+      const result = {
+        schema_version: "understudy.supervision_export_result.v1",
+        reviewed_only: opts.reviewedOnly === true,
+        correction_pairs: {
+          path: outputPath,
+          sha256: pairsSha256,
+          row_count: packet.correction_pairs.length,
+          write: pairWrite,
+        },
+        metrics: {
+          path: metricsPath,
+          sha256: metricsSha256,
+          write: metricsWrite,
+          intervention_precision: metrics.intervention_precision ?? null,
+          false_positive_nudge_rate: metrics.false_positive_nudge_rate ?? null,
+          small_model_output_share: metrics.usage?.small_model_output_share ?? null,
+          supervisor_token_overhead: metrics.usage?.supervisor_token_overhead ?? null,
+        },
+        evidence_window: evidenceWindow,
+        upload_performed: false,
+      };
+      printStructured(
+        result,
+        jsonRequested(this, opts.json),
+        [
+          `correction pairs: ${packet.correction_pairs.length}`,
+          `pairs: ${outputPath} (${pairWrite})`,
+          `metrics: ${metricsPath} (${metricsWrite})`,
+          `evidence omitted: ${evidenceWindow.incomplete_interventions + evidenceWindow.truncated_interventions + evidenceWindow.invalid_journals + evidenceWindow.missing_journals + evidenceWindow.truncated_journals}`,
+          "upload performed: false",
+        ].join("\n"),
+      );
     });
 
   desktop

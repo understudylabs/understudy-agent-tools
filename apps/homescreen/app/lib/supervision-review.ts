@@ -47,8 +47,10 @@ export type SupervisionReviewQueue = {
   reviewed: number;
   pending: number;
   incomplete: number;
+  truncated_interventions: number;
   invalid_journals: number;
   missing_journals: number;
+  truncated_journals: number;
   items: SupervisionReviewItem[];
 };
 
