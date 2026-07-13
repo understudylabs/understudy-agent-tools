@@ -1,5 +1,5 @@
 "use client";
-import { Channel, invoke } from "@tauri-apps/api/core";
+import { invoke } from "@tauri-apps/api/core";
 import { useEffect, useMemo, useState } from "react";
 import type { StatusController, ServiceState, SlotView } from "../lib/useStatus";
 import { ResidencyPanel } from "./ResidencyPanel";
@@ -19,6 +19,7 @@ type SnapshotModel = {
   name: string;
   approx_gb: number;
   cached: boolean;
+  incomplete: boolean;
   default_rung: boolean;
 };
 
@@ -33,11 +34,44 @@ type BootstrapStatus = {
   snapshots: SnapshotModel[];
 };
 
-type DownloadEvent =
-  | { type: "Log"; message: string }
-  | { type: "File"; name: string; downloaded: number; total?: number | null }
-  | { type: "Done"; dest: string; files: number }
-  | { type: "Error"; message: string };
+type DownloadProgress = {
+  id: string;
+  model_id: string;
+  status: "running" | "done" | "error" | "cancelled";
+  planned_files: number;
+  files: Record<string, { downloaded: number; total?: number | null }>;
+  downloaded_bytes: number;
+  resumed_bytes: number;
+  total_bytes?: number | null;
+  error?: string | null;
+  resumable: boolean;
+  logs: string[];
+};
+
+function formatBytes(bytes: number) {
+  if (bytes < 1024 * 1024) return `${Math.max(0, bytes / 1024).toFixed(0)} KB`;
+  if (bytes < 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+  return `${(bytes / (1024 * 1024 * 1024)).toFixed(1)} GB`;
+}
+
+function downloadPct(row?: DownloadProgress) {
+  return row?.total_bytes ? (row.downloaded_bytes / row.total_bytes) * 100 : null;
+}
+
+function downloadDetail(row: DownloadProgress | undefined, fallback: string, incomplete = false) {
+  if (!row) return incomplete ? `Interrupted download · Resume keeps verified partial files · ${fallback}` : fallback;
+  const pct = downloadPct(row);
+  const progress = `${formatBytes(row.downloaded_bytes)}${row.total_bytes ? ` / ${formatBytes(row.total_bytes)}` : ""}`;
+  if (row.status === "running") {
+    const resumed = row.resumed_bytes > 0 ? ` · resumed ${formatBytes(row.resumed_bytes)}` : "";
+    return `${progress}${pct == null ? "" : ` · ${pct.toFixed(0)}%`}${resumed}`;
+  }
+  if (row.status === "error") {
+    return `Paused after an error · ${row.error || "Retry to continue"} · partial files are kept`;
+  }
+  if (row.status === "cancelled") return `Paused at ${progress} · Resume keeps partial files`;
+  return `Downloaded ${row.planned_files || Object.keys(row.files).length} files`;
+}
 
 type SidekickRun = {
   id: number;
@@ -93,7 +127,7 @@ export function StatusPane({ status }: { status: StatusController }) {
   const { snap, busy, connect, disconnect } = status;
   const [bootstrap, setBootstrap] = useState<BootstrapStatus | null>(null);
   const [action, setAction] = useState<string | null>(null);
-  const [download, setDownload] = useState<{ model: string; label: string; pct: number | null } | null>(null);
+  const [downloads, setDownloads] = useState<DownloadProgress[]>([]);
   const [bootErr, setBootErr] = useState<string | null>(null);
   const [parallelSidekick, setParallelSidekick] = useState(false);
   const [sidekickRuns, setSidekickRuns] = useState<SidekickRun[]>([]);
@@ -110,9 +144,21 @@ export function StatusPane({ status }: { status: StatusController }) {
       .catch((e) => setBootErr(String(e)));
   };
 
+  const refreshDownloads = () => {
+    invoke<DownloadProgress[]>("list_snapshot_downloads")
+      .then(setDownloads)
+      .catch((e) => setBootErr(String(e)));
+  };
+
   useEffect(() => {
     refreshBootstrap();
     const timer = setInterval(refreshBootstrap, 5000);
+    return () => clearInterval(timer);
+  }, []);
+
+  useEffect(() => {
+    refreshDownloads();
+    const timer = setInterval(refreshDownloads, 1000);
     return () => clearInterval(timer);
   }, []);
 
@@ -181,6 +227,8 @@ export function StatusPane({ status }: { status: StatusController }) {
       return id.includes("understudy-small") || id.includes("e2b");
     });
   }, [snap]);
+  const defaultDownload = model ? downloadFor(model.id) : undefined;
+  const sidekickDownload = sidekickModel ? downloadFor(sidekickModel.id) : undefined;
 
   async function runInstall(id: "install_uv" | "install_moraine" | "install_mlx_runtime" | "install_understudy_agent_tools") {
     setAction(id);
@@ -196,32 +244,50 @@ export function StatusPane({ status }: { status: StatusController }) {
     }
   }
 
-  async function downloadModel(modelId: string) {
-    const ch = new Channel<DownloadEvent>();
-    setDownload({ model: modelId, label: "Starting download", pct: null });
+  function downloadFor(modelId: string) {
+    return (
+      downloads.find((row) => row.model_id === modelId && row.status === "running") ??
+      downloads.find((row) => row.model_id === modelId)
+    );
+  }
+
+  async function waitForDownload(downloadId: string): Promise<boolean> {
+    while (true) {
+      await new Promise((resolve) => setTimeout(resolve, 500));
+      const row = await invoke<DownloadProgress>("snapshot_download_status", { downloadId });
+      setDownloads((current) => [row, ...current.filter((item) => item.id !== row.id)]);
+      if (row.status === "done") return true;
+      if (row.status === "error") throw new Error(row.error || "Model download failed");
+      if (row.status === "cancelled") throw new Error("Model download paused");
+    }
+  }
+
+  async function downloadModel(modelId: string, wait = false): Promise<boolean> {
     setBootErr(null);
-    ch.onmessage = (msg) => {
-      if (msg.type === "Log") setDownload((prev) => prev && { ...prev, label: msg.message });
-      if (msg.type === "File") {
-        const pct = msg.total ? (msg.downloaded / msg.total) * 100 : null;
-        setDownload({ model: modelId, label: msg.name, pct });
-      }
-      if (msg.type === "Done") {
-        setDownload({ model: modelId, label: `Downloaded ${msg.files} files`, pct: 100 });
+    try {
+      const downloadId = await invoke<string>("start_snapshot_download", { modelId });
+      refreshDownloads();
+      if (wait) {
+        await waitForDownload(downloadId);
         refreshBootstrap();
         status.refresh();
-        setTimeout(() => setDownload(null), 1800);
       }
-      if (msg.type === "Error") {
-        setBootErr(msg.message);
-        setDownload(null);
-      }
-    };
-    try {
-      await invoke("download_snapshot_model", { modelId, onEvent: ch });
+      return true;
     } catch (e) {
       setBootErr(String(e));
-      setDownload(null);
+      refreshDownloads();
+      return false;
+    }
+  }
+
+  async function cancelDownload(downloadId: string) {
+    setBootErr(null);
+    try {
+      await invoke("cancel_snapshot_download", { downloadId });
+      refreshDownloads();
+      refreshBootstrap();
+    } catch (e) {
+      setBootErr(String(e));
     }
   }
 
@@ -231,7 +297,7 @@ export function StatusPane({ status }: { status: StatusController }) {
     setBootErr(null);
     try {
       if (!sidekickModel.cached) {
-        await downloadModel(sidekickModel.id);
+        if (!(await downloadModel(sidekickModel.id, true))) return;
       }
       const slotId =
         sidekickSlot?.id ??
@@ -318,17 +384,19 @@ export function StatusPane({ status }: { status: StatusController }) {
             <SetupRow
               title={sidekickModel.short_name ?? sidekickModel.id}
               detail={
-                download?.model === sidekickModel.id
-                  ? `${download.label}${download.pct == null ? "" : ` · ${download.pct.toFixed(0)}%`}`
+                sidekickDownload
+                  ? downloadDetail(sidekickDownload, `${sidekickModel.name} · ${sidekickModel.approx_gb} GB`, sidekickModel.incomplete)
                   : sidekickSlot
                     ? `${sidekickSlot.state} · ${sidekickModel.name} · ${sidekickModel.approx_gb} GB`
-                    : `${sidekickModel.cached ? "cached" : "not cached"} · ${sidekickModel.name} · ${sidekickModel.approx_gb} GB`
+                    : downloadDetail(undefined, `${sidekickModel.cached ? "cached" : "not cached"} · ${sidekickModel.name} · ${sidekickModel.approx_gb} GB`, sidekickModel.incomplete)
               }
               done={sidekickSlot?.state === "running"}
-              busy={action === "setup_sidekick" || download?.model === sidekickModel.id || sidekickSlot?.state === "loading"}
+              busy={action === "setup_sidekick" || sidekickDownload?.status === "running" || sidekickSlot?.state === "loading"}
               action={sidekickSlot?.state === "running" ? undefined : setupSidekick}
-              actionLabel={sidekickModel.cached || sidekickSlot ? "Warm" : "Download + warm"}
-              pct={download?.model === sidekickModel.id ? download.pct : undefined}
+              actionLabel={sidekickModel.cached || sidekickSlot ? "Warm" : sidekickModel.incomplete || sidekickDownload?.resumable ? "Resume + warm" : "Download + warm"}
+              busyAction={sidekickDownload?.status === "running" ? () => cancelDownload(sidekickDownload.id) : undefined}
+              busyActionLabel="Pause"
+              pct={sidekickDownload?.status === "running" ? downloadPct(sidekickDownload) : undefined}
             />
             <ToggleRow
               title="Parallel sidekick"
@@ -466,15 +534,15 @@ export function StatusPane({ status }: { status: StatusController }) {
               <SetupRow
                 title={model.short_name ?? model.id}
                 detail={
-                  download?.model === model.id
-                    ? `${download.label}${download.pct == null ? "" : ` · ${download.pct.toFixed(0)}%`}`
-                    : `${model.name} · ${model.approx_gb} GB`
+                  downloadDetail(defaultDownload, `${model.name} · ${model.approx_gb} GB`, model.incomplete)
                 }
                 done={model.cached}
-                busy={download?.model === model.id}
+                busy={defaultDownload?.status === "running"}
                 action={model.cached ? undefined : () => downloadModel(model.id)}
-                actionLabel="Download"
-                pct={download?.model === model.id ? download.pct : undefined}
+                actionLabel={model.incomplete || defaultDownload?.resumable ? "Resume" : "Download"}
+                busyAction={defaultDownload?.status === "running" ? () => cancelDownload(defaultDownload.id) : undefined}
+                busyActionLabel="Pause"
+                pct={defaultDownload?.status === "running" ? downloadPct(defaultDownload) : undefined}
               />
             )}
             <SetupRow
@@ -502,6 +570,8 @@ function SetupRow({
   busy,
   action,
   actionLabel,
+  busyAction,
+  busyActionLabel,
   pct,
 }: {
   title: string;
@@ -510,6 +580,8 @@ function SetupRow({
   busy?: boolean;
   action?: () => void;
   actionLabel?: string;
+  busyAction?: () => void;
+  busyActionLabel?: string;
   pct?: number | null;
 }) {
   return (
@@ -525,8 +597,12 @@ function SetupRow({
         )}
       </div>
       {action ? (
-        <button className="mini-btn" disabled={busy} onClick={action}>
-          {busy ? "…" : actionLabel}
+        <button
+          className="mini-btn"
+          disabled={busy && !busyAction}
+          onClick={busy && busyAction ? busyAction : action}
+        >
+          {busy ? busyActionLabel ?? "…" : actionLabel}
         </button>
       ) : (
         <span className="svc-state">{done ? "ready" : "pending"}</span>

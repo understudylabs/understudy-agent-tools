@@ -37,8 +37,8 @@
     },
     {
       "id": "resumable-model-downloads",
-      "status": "partial",
-      "evidence": "First-use downloads work; background resume, cancellation, and repair-oriented progress remain to be unified."
+      "status": "shipped",
+      "evidence": "The app owns background download tasks across navigation, exposes stable whole-snapshot progress and pause controls, preserves partial files through cancellation, errors, and restart, resumes only from an exact HTTP Range boundary, and safely restarts when an origin ignores or mismatches that boundary. Incomplete snapshots remain blocked from serving until atomic finalization."
     },
     {
       "id": "supervision-review-desk",

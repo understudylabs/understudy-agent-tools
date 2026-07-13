@@ -45,6 +45,8 @@ pub struct SnapshotInfo {
     #[serde(default)]
     pub cached: bool,
     #[serde(default)]
+    pub incomplete: bool,
+    #[serde(default)]
     pub path: Option<String>,
     #[serde(default)]
     pub manifest: bool,
@@ -292,6 +294,7 @@ pub fn snapshots() -> Vec<SnapshotInfo> {
             continue;
         };
         row.cached = snapshot_ready(&dir);
+        row.incomplete = dir.join(INCOMPLETE_MARKER).exists();
         row.manifest = dir.join("understudy.serving.json").exists();
         if row.cached {
             row.path = Some(dir.to_string_lossy().into_owned());
