@@ -604,6 +604,8 @@ pub struct ChatRouteMetrics {
     pub canonical_runtime_rows: u64,
     pub pi_runtime_rows: u64,
     pub compatibility_fallback_rows: u64,
+    pub consecutive_pi_rows: u64,
+    pub remaining_consecutive_pi_rows: u64,
     pub pi_runtime_share: Option<f64>,
     pub compatibility_engine_delete_ready: bool,
     pub groups: Vec<ChatRouteMetricGroup>,
@@ -2415,22 +2417,31 @@ pub fn chat_route_metrics(app: AppHandle, limit: Option<u32>) -> Result<ChatRout
 
 fn chat_route_metrics_for_rows(rows: Vec<ChatRunRow>, observed_row_limit: u32) -> ChatRouteMetrics {
     const REQUIRED_CANONICAL_RUNTIME_ROWS: u64 = 100;
-    // Count only the compatibility release cohort. Older development and
-    // migrated rows remain preserved in SQLite, but cannot poison or falsely
-    // satisfy the 100-run Rust deletion gate.
+    // The deletion cohort is the latest 100 canonical turns from this exact
+    // app/runtime release. Older development rows remain preserved in SQLite,
+    // while an early compatibility probe naturally ages out only after 100
+    // newer Pi turns. `list_chat_runs` supplies newest-first rows.
     let rows: Vec<_> = rows
         .into_iter()
         .filter(|row| {
             row.app_version == env!("CARGO_PKG_VERSION")
                 && row.runtime_version == crate::conversation_runtime::RUNTIME_VERSION
+                && row.run_id.is_some()
         })
+        .take(REQUIRED_CANONICAL_RUNTIME_ROWS as usize)
         .collect();
-    let canonical_runtime_rows = rows.iter().filter(|row| row.run_id.is_some()).count() as u64;
+    let canonical_runtime_rows = rows.len() as u64;
     let pi_runtime_rows = rows
         .iter()
-        .filter(|row| row.run_id.is_some() && row.runtime_backend == "pi")
+        .filter(|row| row.runtime_backend == "pi")
         .count() as u64;
     let compatibility_fallback_rows = canonical_runtime_rows.saturating_sub(pi_runtime_rows);
+    let consecutive_pi_rows = rows
+        .iter()
+        .take_while(|row| row.runtime_backend == "pi")
+        .count() as u64;
+    let remaining_consecutive_pi_rows =
+        REQUIRED_CANONICAL_RUNTIME_ROWS.saturating_sub(consecutive_pi_rows);
     let pi_runtime_share = (canonical_runtime_rows > 0)
         .then_some(pi_runtime_rows as f64 / canonical_runtime_rows as f64);
     let mut groups: std::collections::BTreeMap<(String, String), Vec<ChatRunRow>> =
@@ -2487,6 +2498,8 @@ fn chat_route_metrics_for_rows(rows: Vec<ChatRunRow>, observed_row_limit: u32) -
         canonical_runtime_rows,
         pi_runtime_rows,
         compatibility_fallback_rows,
+        consecutive_pi_rows,
+        remaining_consecutive_pi_rows,
         pi_runtime_share,
         compatibility_engine_delete_ready: canonical_runtime_rows
             >= REQUIRED_CANONICAL_RUNTIME_ROWS
@@ -3395,32 +3408,60 @@ mod tests {
     }
 
     #[test]
-    fn migration_gate_counts_only_the_current_release_cohort() {
-        let mut rows = vec![migration_row("native-rust", "legacy", "legacy"); 50];
-        rows.extend(vec![
-            migration_row(
-                "pi",
-                env!("CARGO_PKG_VERSION"),
-                crate::conversation_runtime::RUNTIME_VERSION,
-            );
-            100
-        ]);
+    fn migration_gate_uses_the_latest_hundred_current_release_turns() {
+        let pi = migration_row(
+            "pi",
+            env!("CARGO_PKG_VERSION"),
+            crate::conversation_runtime::RUNTIME_VERSION,
+        );
+        let fallback = migration_row(
+            "native-rust",
+            env!("CARGO_PKG_VERSION"),
+            crate::conversation_runtime::RUNTIME_VERSION,
+        );
+        let mut rows = vec![pi.clone(); 100];
+        rows.extend(vec![fallback.clone(); 2]);
+        rows.extend(vec![migration_row("native-rust", "legacy", "legacy"); 50]);
+
         let ready = chat_route_metrics_for_rows(rows.clone(), 250);
         assert_eq!(ready.canonical_runtime_rows, 100);
         assert_eq!(ready.pi_runtime_rows, 100);
         assert_eq!(ready.compatibility_fallback_rows, 0);
+        assert_eq!(ready.consecutive_pi_rows, 100);
+        assert_eq!(ready.remaining_consecutive_pi_rows, 0);
         assert_eq!(ready.remaining_canonical_runtime_rows, 0);
         assert!(ready.compatibility_engine_delete_ready);
 
-        rows.push(migration_row(
+        rows.insert(0, fallback);
+        let blocked = chat_route_metrics_for_rows(rows, 250);
+        assert_eq!(blocked.canonical_runtime_rows, 100);
+        assert_eq!(blocked.pi_runtime_rows, 99);
+        assert_eq!(blocked.compatibility_fallback_rows, 1);
+        assert_eq!(blocked.consecutive_pi_rows, 0);
+        assert_eq!(blocked.remaining_consecutive_pi_rows, 100);
+        assert!(!blocked.compatibility_engine_delete_ready);
+    }
+
+    #[test]
+    fn migration_gate_reports_the_clean_pi_streak_separately_from_volume() {
+        let pi = migration_row(
+            "pi",
+            env!("CARGO_PKG_VERSION"),
+            crate::conversation_runtime::RUNTIME_VERSION,
+        );
+        let fallback = migration_row(
             "native-rust",
             env!("CARGO_PKG_VERSION"),
             crate::conversation_runtime::RUNTIME_VERSION,
-        ));
-        let fallback = chat_route_metrics_for_rows(rows, 250);
-        assert_eq!(fallback.canonical_runtime_rows, 101);
-        assert_eq!(fallback.compatibility_fallback_rows, 1);
-        assert!(!fallback.compatibility_engine_delete_ready);
+        );
+        let rows = vec![pi, fallback.clone(), fallback];
+        let metrics = chat_route_metrics_for_rows(rows, 250);
+        assert_eq!(metrics.canonical_runtime_rows, 3);
+        assert_eq!(metrics.pi_runtime_rows, 1);
+        assert_eq!(metrics.compatibility_fallback_rows, 2);
+        assert_eq!(metrics.remaining_canonical_runtime_rows, 97);
+        assert_eq!(metrics.consecutive_pi_rows, 1);
+        assert_eq!(metrics.remaining_consecutive_pi_rows, 99);
     }
 
     #[test]

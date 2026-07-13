@@ -1,6 +1,6 @@
 # Desktop runtime migration removal map
 
-Status: release gate, snapshot after `79b9d25` on 2026-07-12.
+Status: release gate, refreshed after `ca01b04` on 2026-07-13.
 
 The migration is successful only when the canonical conversation runtime owns
 conversation state and the native app becomes a thin authenticated adapter. The
@@ -99,14 +99,17 @@ do not interpret synthetic event projection or a loopback provider as proof of
 native image, tool, cancellation, restart, compaction, or supervision parity.
 
 The command exits `2` while observation is incomplete. The underlying
-versioned Desktop API cohorts rows by both app version and canonical-runtime
-version; legacy and development rows remain in SQLite but cannot poison or
-falsely satisfy the denominator. The CLI additionally verifies that both
+versioned Desktop API evaluates the newest 100 canonical turns for the exact
+app and runtime versions. Legacy rows remain in SQLite but cannot falsely
+satisfy the denominator, and an early fallback probe ages out only after 100
+newer Pi turns. The API reports both total window coverage and the clean Pi
+streak so "remaining" cannot hide a fallback inside an otherwise full window.
+The CLI additionally verifies that both
 owner-only evidence files match the live app/runtime versions, current event
 schema, and exact frozen-scenario hashes; missing or stale evidence fails
 closed even after the cohort reaches 100 runs. Delete the compatibility engine
-only after one released app/runtime cohort records a rolling window of at least
-100 canonical runs with:
+only after one released app/runtime cohort records a rolling window of exactly
+the latest 100 canonical runs with:
 
 - `compatibility_fallback_rows == 0`;
 - `pi_runtime_share == 1.0`;
@@ -115,8 +118,10 @@ only after one released app/runtime cohort records a rolling window of at least
   conformance scenarios;
 - the readiness probe passing on release artifacts.
 
-The current development window is intentionally not eligible because mismatch
-and repair probes exercised the fallback.
+The 2026-07-13 installed-app proof recorded the first 0.3.5 Pi-backed GUI turn.
+Two earlier 0.3.5 compatibility probes remain preserved, so 99 newer clean Pi
+turns are required before the rolling window can become eligible. Do not
+manufacture those rows; they are release-adoption evidence.
 
 ## Removable ownership
 
