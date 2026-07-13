@@ -35,6 +35,7 @@
   "scripts": {
     "build": "rm -rf dist && tsc -p tsconfig.build.json && node scripts/ensure-bin-mode.mjs",
     "clean": "rm -rf dist",
+    "desktop:release-check": "node scripts/desktop-release-check.mjs",
     "prepare": "npm run build",
     "package:smoke": "node scripts/package-smoke.mjs",
     "runtime:compaction-soak": "npm run build && node scripts/runtime-compaction-soak.mjs",
