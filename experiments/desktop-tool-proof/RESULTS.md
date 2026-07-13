@@ -12,6 +12,9 @@ Status: local promotion evidence, not a production replacement claim
 - **Sparse 26B Understudy:** hold strict-tool certification. The matched BF16
   probe passes, so repair the 4-bit quantization path before promotion; do not
   normalize malformed tool names inside the runtime.
+- **Sparse 26B QAT 8-bit candidate:** pass the current strict-tool gate. Keep it
+  as the safe compressed 26B rung while mixed-precision work tries to recover
+  the 4-bit artifact's smaller footprint.
 
 ## Frozen comparison
 
@@ -63,6 +66,28 @@ itself sufficient to preserve this function-name token sequence.
 The one-task probe SHA-256 is
 `b5b607e19ed5fbba1a9c3be64abee439d7e783193ea33ed6d18149c76f1d91d6`.
 
+### 8-bit repair candidate
+
+Changing the QAT 26B body from 4-bit to 8-bit, while preserving the checkpoint,
+group-size-32 conversion, automatic 8-bit router policy, template, tool schema,
+decode path, and Pi runtime, repaired the regression:
+
+- exact `two-step-catalog-models` probe: **10/10 strict**;
+- full frozen 17-task suite: **51/51 strict** across three repetitions;
+- parse, terminal, and orphan-result errors: **zero**;
+- mean full-suite end-to-end latency: **5,192 ms**;
+- installed size / Desktop residency estimate: **27.5 GB**;
+- provider spend and uploads: **none**.
+
+Owner-only proof ids are `tools-b5b607e19e-20260713T005800825Z` for the
+10-attempt causal probe and `tools-2286836959-20260713T005905552Z` for the full
+suite.
+
+The 8-bit result isolates the failing token sequence to the 4-bit body/expert
+path rather than the shared router policy or sparse-MoE architecture itself.
+It is promotion evidence for strict tool use, not yet for VLM, long-context, or
+general task quality.
+
 This is useful correction-pair material:
 
 - rejected: colon-suffixed tool names;
@@ -101,5 +126,7 @@ paths or trace data. They are not part of this repository.
    held-out slice.
 4. General task-quality comparison showing whether 12B adds enough value over
    the faster 4B to justify its memory and latency.
-5. For 26B, protect the tool-name-sensitive layers with mixed precision or
-   tool-heavy calibration, then repeat the full 17-task strict gate.
+5. For 26B, use the 8-bit candidate as the safe rung while protecting
+   tool-name-sensitive expert/body layers with mixed precision or tool-heavy
+   calibration. Any smaller candidate must repeat the exact 10-run probe and
+   the full 51-attempt strict gate.
