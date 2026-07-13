@@ -76,6 +76,19 @@ export function expectedCallsForTask(task) {
   return [];
 }
 
+export function selectTasks(tasks, taskIds = []) {
+  if (taskIds.length === 0) return tasks;
+  if (new Set(taskIds).size !== taskIds.length) {
+    throw new Error("task-id values must be unique");
+  }
+  const selected = taskIds.map((taskId) => {
+    const task = tasks.find((candidate) => candidate.id === taskId);
+    if (!task) throw new Error(`unknown task-id: ${taskId}`);
+    return task;
+  });
+  return selected;
+}
+
 export function scoreToolTrace(events, task) {
   const calls = events.filter((event) => event.event === "tool_call");
   const results = events.filter((event) => event.event === "tool_result");
@@ -232,6 +245,7 @@ function parseArgs(argv) {
     timeoutMs: 30_000,
     outputRoot: join(homedir(), ".understudy", "proofs", "tool-correctness"),
     executionMode: "direct-pi",
+    taskIds: [],
   };
   for (let index = 0; index < argv.length; index += 1) {
     const value = argv[index];
@@ -250,6 +264,7 @@ function parseArgs(argv) {
     } else if (value === "--repetitions") options.repetitions = Number(next);
     else if (value === "--max-tokens") options.maxTokens = Number(next);
     else if (value === "--timeout-ms") options.timeoutMs = Number(next);
+    else if (value === "--task-id") options.taskIds.push(String(next));
     else if (value === "--output-root") options.outputRoot = resolve(next);
     else throw new Error(`unknown argument: ${value}`);
     index += 1;
@@ -427,8 +442,11 @@ function eventTokens(events) {
 }
 
 export async function runProof(options = parseArgs(process.argv.slice(2))) {
-  const taskBytes = readFileSync(join(here, "tasks.json"));
-  const tasks = JSON.parse(taskBytes);
+  const sourceTaskBytes = readFileSync(join(here, "tasks.json"));
+  const tasks = selectTasks(JSON.parse(sourceTaskBytes), options.taskIds);
+  const taskBytes = options.taskIds.length === 0
+    ? sourceTaskBytes
+    : Buffer.from(`${JSON.stringify(tasks, null, 2)}\n`);
   const suiteSha256 = createHash("sha256").update(taskBytes).digest("hex");
   const startedAt = new Date();
   const proofId = `tools-${suiteSha256.slice(0, 10)}-${startedAt.toISOString().replaceAll(/[-:.]/g, "")}`;

@@ -22,6 +22,18 @@ node experiments/desktop-tool-proof/run.mjs \
   --repetitions 3
 ```
 
+For a causal probe against an exact frozen task, repeat `--task-id` as needed:
+
+```bash
+node experiments/desktop-tool-proof/run.mjs \
+  --candidate 26b-bf16:9 \
+  --task-id two-step-catalog-models \
+  --repetitions 3
+```
+
+Filtered proofs hash and persist only the selected task subset, so they cannot
+be confused with evidence from the full frozen suite.
+
 The direct runner resolves the selected slot from the authenticated residency
 surface and cross-checks its model path against the local agent card. Portable
 summary/results rows record the model id, Pi runtime, task hash, and exact
