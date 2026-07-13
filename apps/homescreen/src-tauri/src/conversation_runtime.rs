@@ -105,6 +105,8 @@ pub(crate) enum RuntimeEvent {
         verdict: RuntimeVerdict,
         source: String,
         #[serde(default)]
+        supervisor_model: String,
+        #[serde(default)]
         marker_id: Option<String>,
         #[serde(default)]
         reason: Option<String>,
@@ -521,6 +523,7 @@ pub(crate) fn validate_trace(events: &[RuntimeEventEnvelope]) -> Result<(), Stri
                 }
             }
             RuntimeEvent::Usage {
+                model,
                 input_tokens,
                 output_tokens,
                 total_tokens,
@@ -528,6 +531,12 @@ pub(crate) fn validate_trace(events: &[RuntimeEventEnvelope]) -> Result<(), Stri
                 complete,
                 ..
             } => {
+                if model
+                    .as_deref()
+                    .is_none_or(|value| value.trim().is_empty())
+                {
+                    return Err("usage requires model attribution".to_string());
+                }
                 if !matches!(source.as_str(), "provider" | "estimated" | "unavailable") {
                     return Err(format!("unknown usage source {source}"));
                 }
@@ -541,6 +550,7 @@ pub(crate) fn validate_trace(events: &[RuntimeEventEnvelope]) -> Result<(), Stri
             RuntimeEvent::SupervisorVerdict {
                 verdict,
                 source,
+                supervisor_model,
                 marker_id,
                 reason,
                 probabilities,
@@ -550,6 +560,7 @@ pub(crate) fn validate_trace(events: &[RuntimeEventEnvelope]) -> Result<(), Stri
                 handoff_target,
                 ..
             } => {
+                required(supervisor_model, "supervisor_verdict.supervisor_model")?;
                 if !matches!(source.as_str(), "model" | "policy" | "human") {
                     return Err(format!("unknown supervisor verdict source {source}"));
                 }
@@ -790,6 +801,7 @@ mod tests {
                 RuntimeEvent::SupervisorVerdict {
                     verdict: RuntimeVerdict::Interrupt,
                     source: "model".to_string(),
+                    supervisor_model: "understudy-supervisor".to_string(),
                     marker_id: Some("marker-1".to_string()),
                     reason: Some("wrong tool".to_string()),
                     probabilities: Some(json!({"interrupt": -0.1})),
@@ -826,6 +838,16 @@ mod tests {
         let serialized = serde_json::to_value(&events[0]).unwrap();
         assert_eq!(serialized["data"]["probability_kind"], json!("logprob"));
         assert_eq!(serialized["data"]["probabilities"]["interrupt"], -0.1);
+        assert_eq!(
+            serialized["data"]["supervisor_model"],
+            json!("understudy-supervisor")
+        );
+        let round_trip: RuntimeEventEnvelope = serde_json::from_value(serialized).unwrap();
+        assert!(matches!(
+            round_trip.event,
+            RuntimeEvent::SupervisorVerdict { supervisor_model, .. }
+                if supervisor_model == "understudy-supervisor"
+        ));
     }
 
     #[test]
@@ -835,6 +857,7 @@ mod tests {
             RuntimeEvent::SupervisorVerdict {
                 verdict: RuntimeVerdict::Continue,
                 source: "model".to_string(),
+                supervisor_model: "understudy-supervisor".to_string(),
                 marker_id: Some("marker-1".to_string()),
                 reason: None,
                 probabilities: Some(json!({"continue": 0.9})),
@@ -850,5 +873,50 @@ mod tests {
         assert!(validate_trace(&invalid)
             .unwrap_err()
             .contains("must be finite and at most zero"));
+    }
+
+    #[test]
+    fn rejects_missing_runtime_model_attribution() {
+        let missing_supervisor_model: RuntimeEventEnvelope = serde_json::from_value(json!({
+            "schema_version": EVENT_SCHEMA,
+            "event_id": "run-1:0",
+            "run_id": "run-1",
+            "session_id": "session-1",
+            "runtime_id": "pi-agent-session",
+            "sequence": 0,
+            "emitted_at": "2026-07-13T00:00:00Z",
+            "event": "supervisor_verdict",
+            "data": {
+                "verdict": "continue",
+                "source": "model"
+            }
+        }))
+        .unwrap();
+        assert!(validate_trace(&[missing_supervisor_model])
+            .unwrap_err()
+            .contains("supervisor_verdict.supervisor_model"));
+
+        let missing_usage_model: RuntimeEventEnvelope = serde_json::from_value(json!({
+            "schema_version": EVENT_SCHEMA,
+            "event_id": "run-1:0",
+            "run_id": "run-1",
+            "session_id": "session-1",
+            "runtime_id": "pi-agent-session",
+            "sequence": 0,
+            "emitted_at": "2026-07-13T00:00:00Z",
+            "event": "usage",
+            "data": {
+                "role": "student",
+                "input_tokens": 1,
+                "output_tokens": 1,
+                "total_tokens": 2,
+                "source": "provider",
+                "complete": true
+            }
+        }))
+        .unwrap();
+        assert!(validate_trace(&[missing_usage_model])
+            .unwrap_err()
+            .contains("usage requires model attribution"));
     }
 }

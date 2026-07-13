@@ -537,6 +537,7 @@ mod tests {
                 RuntimeEvent::SupervisorVerdict {
                     verdict: RuntimeVerdict::Interrupt,
                     source: "model".to_string(),
+                    supervisor_model: "understudy-supervisor".to_string(),
                     marker_id: Some("run-export:intervention:0".to_string()),
                     reason: Some("factual error".to_string()),
                     probabilities: Some(json!({"interrupt": -0.1, "continue": -2.0})),
@@ -686,6 +687,7 @@ mod tests {
                 RuntimeEvent::SupervisorVerdict {
                     verdict: RuntimeVerdict::Nudge,
                     source: "model".to_string(),
+                    supervisor_model: "understudy-supervisor".to_string(),
                     marker_id: Some("run-export:intervention:0".to_string()),
                     reason: Some("unnecessary nudge".to_string()),
                     probabilities: Some(json!({"nudge": 0.6, "continue": 0.4})),
