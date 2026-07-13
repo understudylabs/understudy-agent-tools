@@ -322,6 +322,8 @@ test("Vercel runtime emits canonical input, delta, and provider usage", async ()
     events.map((event) => event.sequence),
     [0, 1, 2],
   );
+  assert.equal(events[0].data.logical_context_window_tokens, 32_768);
+  assert.equal(events[0].data.provider_context_window_tokens, 32_768);
   assert.deepEqual(
     {
       input_tokens: events[2].data.input_tokens,
@@ -401,6 +403,8 @@ test("Pi runtime emits the same canonical basic-chat evidence", async () => {
     ["message", "delta", "usage"],
   );
   assert.ok(events.every((event) => event.runtime_id === "pi-agent-session"));
+  assert.equal(events[0].data.logical_context_window_tokens, 32_768);
+  assert.equal(events[0].data.provider_context_window_tokens, 32_768);
   assert.equal(events.at(-1).data.input_tokens, 4);
   assert.equal(events.at(-1).data.output_tokens, 4);
   validateRuntimeTrace(events);
@@ -605,6 +609,8 @@ test("Pi runtime recovers from an unexpected provider context overflow", async (
     await new Promise((accept) => server.close(accept));
   }
   validateRuntimeTrace(events);
+  assert.equal(events[0].data.logical_context_window_tokens, 2_048);
+  assert.equal(events[0].data.provider_context_window_tokens, 32_768);
   assert.ok(calls >= 3, `expected overflow, summary, and retry calls; saw ${calls}`);
   assert.equal(events.some((event) => event.event === "error"), false);
   assert.ok(events.some((event) => event.event === "compaction_boundary"));
@@ -2327,6 +2333,22 @@ test("Pi compaction budgets cannot outgrow small local conversations", () => {
   });
   assert.equal(piPreflightCompactionRequired(800, 100, 1_024, 128), true);
   assert.equal(piPreflightCompactionRequired(700, 100, 1_024, 128), false);
+});
+
+test("runtime context evidence rejects a provider window below the logical window", () => {
+  assert.throws(
+    () => parseRuntimeRequest({
+      run_id: "bad-context-run",
+      session_id: "bad-context-session",
+      base_url: "http://127.0.0.1:1/v1",
+      model: "local-model",
+      role: "primary",
+      messages: [{ role: "user", content: "hello" }],
+      context_window_tokens: 32_768,
+      provider_context_window_tokens: 16_384,
+    }),
+    /provider context window must be at least the logical context window/,
+  );
 });
 
 test("deterministic compaction is restricted to its frozen Pi gate", () => {

@@ -55,6 +55,10 @@ pub(crate) enum RuntimeEvent {
         text: String,
         #[serde(default)]
         model: Option<String>,
+        #[serde(default)]
+        logical_context_window_tokens: Option<u64>,
+        #[serde(default)]
+        provider_context_window_tokens: Option<u64>,
     },
     Delta {
         role: RuntimeRole,

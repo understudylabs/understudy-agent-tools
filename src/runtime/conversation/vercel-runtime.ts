@@ -160,7 +160,14 @@ async function emitInputEvidence(
       byte_count: bytes.byteLength,
     });
   }
-  await writer.emit("message", { role: "user", text: latest.content, model: null });
+  await writer.emit("message", {
+    role: "user",
+    text: latest.content,
+    model: null,
+    logical_context_window_tokens: request.context_window_tokens,
+    provider_context_window_tokens:
+      request.provider_context_window_tokens ?? request.context_window_tokens,
+  });
 }
 
 export async function runVercelConversation(
