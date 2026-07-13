@@ -30,10 +30,8 @@ import {
   PromptInputActionMenuContent,
   PromptInputActionMenuTrigger,
   PromptInputBody,
-  PromptInputFooter,
   PromptInputSubmit,
   PromptInputTextarea,
-  PromptInputTools,
 } from "@/components/ai-elements/prompt-input";
 import { Persona, type PersonaState } from "@/components/ai-elements/persona";
 import {
@@ -687,7 +685,10 @@ export function ChatPane({ resetToken }: { resetToken: number }) {
           key={personaCycle}
           variant="halo"
           state={personaState}
-          className="persona-halo"
+          className={
+            "persona-halo" +
+            (streaming && latestSidekickEvent?.mode === "supervision" ? " supervised" : "")
+          }
           onReady={() => setPersonaReady(true)}
         />
         {showSidekickPersona && (
@@ -803,41 +804,39 @@ export function ChatPane({ resetToken }: { resetToken: number }) {
           onSubmit={(message) => send(message.text, message.files)}
           className="border-rule bg-card"
         >
-          <PromptInputBody>
-            <PromptInputTextarea
-              value={input}
-              onChange={(e) => setInput(e.target.value)}
-              placeholder="Ask Understudy..."
-              disabled={streaming}
+          <div className="composer-row">
+            <PromptInputActionMenu>
+              <PromptInputActionMenuTrigger tooltip="Add image or file" />
+              <PromptInputActionMenuContent>
+                <PromptInputActionAddAttachments label="Add image or file" />
+              </PromptInputActionMenuContent>
+            </PromptInputActionMenu>
+            <ModelPicker
+              choices={choices}
+              selected={selectedChoice}
+              onSelect={(id) => setSelectedModel(id)}
+              onConnectAnthropic={connectAnthropic}
             />
-          </PromptInputBody>
-          <PromptInputFooter>
-            <PromptInputTools>
-              <PromptInputActionMenu>
-                <PromptInputActionMenuTrigger tooltip="Add image or file" />
-                <PromptInputActionMenuContent>
-                  <PromptInputActionAddAttachments label="Add image or file" />
-                </PromptInputActionMenuContent>
-              </PromptInputActionMenu>
-              <ModelPicker
-                choices={choices}
-                selected={selectedChoice}
-                onSelect={(id) => setSelectedModel(id)}
-                onConnectAnthropic={connectAnthropic}
-              />
-              <ThinkingToggle
-                selected={selectedChoice}
+            <PromptInputBody className="composer-row-body">
+              <PromptInputTextarea
+                value={input}
+                onChange={(e) => setInput(e.target.value)}
+                placeholder="Ask Understudy..."
                 disabled={streaming}
-                loading={selectedChoice.route === "local" && thinkingPending?.slotId === selectedChoice.slotId}
-                onToggle={setThinking}
               />
-            </PromptInputTools>
+            </PromptInputBody>
+            <ThinkingToggle
+              selected={selectedChoice}
+              disabled={streaming}
+              loading={selectedChoice.route === "local" && thinkingPending?.slotId === selectedChoice.slotId}
+              onToggle={setThinking}
+            />
             <PromptInputSubmit
               status={streaming ? "streaming" : err ? "error" : "ready"}
               onStop={stopStreaming}
               disabled={!streaming && (!input.trim() || (selectedChoice.route === "local" && !selectedChoice.active))}
             />
-          </PromptInputFooter>
+          </div>
         </PromptInput>
       </div>
     </div>

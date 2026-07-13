@@ -29,7 +29,8 @@
   --color-popover-foreground: var(--c-ink);
   --color-border: var(--c-rule);
   --color-input: var(--c-card);
-  --color-ring: var(--c-stamp);
+  /* The reviewed Train desktop uses cyan for model focus and activity. */
+  --color-ring: color-mix(in srgb, #67e8f9 55%, rgba(255,255,255,0.25));
   --color-primary: var(--c-stamp);
   --color-primary-foreground: var(--c-paper);
   --color-secondary: var(--c-hover);
@@ -1916,6 +1917,9 @@ select,
   height: min(52vh, 420px);
   opacity: 0;
   transform: scale(0.96);
+  /* understudy-fast family tint from the merged Train desktop. */
+  --pc-tint: #67e8f9;
+  filter: drop-shadow(0 0 22px color-mix(in srgb, var(--pc-tint) 34%, transparent));
   transition: width 260ms cubic-bezier(0.2, 0.7, 0.2, 1),
     height 260ms cubic-bezier(0.2, 0.7, 0.2, 1),
     opacity 300ms cubic-bezier(0.2, 0.7, 0.2, 1),
@@ -2683,3 +2687,121 @@ select,
 }
 .gepa-subscores td.up { color: var(--c-ok); }
 .gepa-subscores td.down { color: var(--c-bad); }
+
+/* --------------------------------------------------------------------------
+ * Reviewed Train desktop treatment
+ *
+ * Ported from understudy-agent@3f025022 after the public desktop runtime moved
+ * to this repository. Keep the visual language here so release builds do not
+ * regress to the pre-Train terracotta composer while the canonical Pi runtime
+ * and residency guard remain owned by understudy-agent-tools.
+ * -------------------------------------------------------------------------- */
+:root {
+  --mb-cyan: #67e8f9;
+  --mb-mint: #9edbd3;
+}
+
+.ai-chat-composer {
+  width: min(560px, 88%);
+  margin-left: auto;
+  margin-right: auto;
+}
+
+.ai-chat-composer form {
+  width: 100%;
+  background: rgba(255, 255, 255, 0.03);
+  border-color: rgba(255, 255, 255, 0.14) !important;
+  backdrop-filter: blur(12px);
+  -webkit-backdrop-filter: blur(12px);
+}
+
+.ai-chat-composer form:focus-within {
+  border-color: color-mix(in srgb, var(--mb-cyan) 50%, rgba(255, 255, 255, 0.2)) !important;
+  box-shadow: 0 0 24px -10px color-mix(in srgb, var(--mb-cyan) 35%, transparent);
+}
+
+.composer-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 2px 6px;
+}
+
+.composer-row [data-slot="input-group"],
+.composer-row [data-slot="prompt-input-body"] {
+  width: auto;
+  min-width: 80px;
+  flex: 1 1 auto;
+}
+
+.composer-row textarea {
+  width: 100%;
+  min-width: 0;
+  min-height: 24px;
+  max-height: 120px;
+  padding: 9px 4px;
+}
+
+.composer-row .ai-model-trigger {
+  max-width: 132px;
+  border: 0;
+  background: transparent;
+  padding-inline: 4px;
+}
+
+.composer-row .ai-thinking-toggle {
+  border-color: transparent;
+  background: transparent;
+  padding-inline: 6px;
+}
+
+.composer-row > button:first-child {
+  color: var(--text-2);
+}
+
+.composer-row > button:first-child:hover {
+  color: var(--text);
+}
+
+.ai-chat-composer textarea {
+  caret-color: var(--mb-cyan);
+}
+
+.ai-chat-composer button[type="submit"] {
+  width: 32px;
+  height: 32px;
+  flex: 0 0 32px;
+  border: 0;
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--mb-cyan) 20%, transparent);
+  color: var(--mb-cyan);
+  transition: background 140ms ease, opacity 140ms ease;
+}
+
+.ai-chat-composer button[type="submit"]:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--mb-cyan) 32%, transparent);
+}
+
+.ai-chat-composer button[type="submit"]:disabled {
+  opacity: 0.35;
+}
+
+/* Mint identifies the smaller worker; cyan remains the supervising route. */
+.sidekick-persona-halo {
+  --pc-tint: var(--mb-mint);
+  filter: drop-shadow(0 0 14px color-mix(in srgb, var(--pc-tint) 34%, transparent));
+}
+
+.persona-halo.supervised {
+  --pc-tint: var(--mb-mint);
+  filter: drop-shadow(0 0 22px color-mix(in srgb, var(--pc-tint) 34%, transparent));
+}
+
+.persona-halo.supervised::after {
+  content: "";
+  position: absolute;
+  inset: -7px;
+  border: 1px solid color-mix(in srgb, var(--mb-cyan) 45%, transparent);
+  border-radius: 999px;
+  pointer-events: none;
+}
