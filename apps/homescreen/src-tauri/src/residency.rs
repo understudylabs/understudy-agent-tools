@@ -27,6 +27,8 @@ const GPU_EVICTION_SETTLE_TIME: Duration = Duration::from_secs(2);
 /// BF16 26B candidates while allowing the certified compressed ladder to stay
 /// warm together when the conservative aggregate budget fits.
 const EXCLUSIVE_MODEL_WEIGHTS_GB: f32 = 24.0;
+const DEFAULT_MAX_KV_TOKENS: &str = "32768";
+const DEFAULT_VISION_CACHE_SIZE: &str = "4";
 
 /// What we persist + restore across launches.
 #[derive(Clone)]
@@ -140,6 +142,18 @@ fn available_memory_gb() -> f32 {
     system.available_memory() as f32 / (1024.0 * 1024.0 * 1024.0)
 }
 
+fn append_server_memory_limits(command: &mut Command, existing_flags: &[String]) {
+    if !existing_flags.iter().any(|flag| flag == "--max-kv-size") {
+        command.args(["--max-kv-size", DEFAULT_MAX_KV_TOKENS]);
+    }
+    if !existing_flags
+        .iter()
+        .any(|flag| flag == "--vision-cache-size")
+    {
+        command.args(["--vision-cache-size", DEFAULT_VISION_CACHE_SIZE]);
+    }
+}
+
 fn serving_command(model_path: &str, port: u16, thinking: bool) -> anyhow::Result<Command> {
     let manifest_path = Path::new(model_path).join("understudy.serving.json");
     if !manifest_path.exists() {
@@ -155,6 +169,7 @@ fn serving_command(model_path: &str, port: u16, thinking: bool) -> anyhow::Resul
         if thinking {
             cmd.arg("--enable-thinking");
         }
+        append_server_memory_limits(&mut cmd, &[]);
         return Ok(cmd);
     }
 
@@ -190,9 +205,9 @@ fn serving_command(model_path: &str, port: u16, thinking: bool) -> anyhow::Resul
         "--port",
         &port.to_string(),
     ]);
-    if let Some(flags) = manifest.server.required_flags {
-        cmd.args(flags);
-    }
+    let required_flags = manifest.server.required_flags.unwrap_or_default();
+    cmd.args(&required_flags);
+    append_server_memory_limits(&mut cmd, &required_flags);
     if thinking {
         cmd.arg("--enable-thinking");
     }
@@ -721,6 +736,13 @@ fn _unused(_: SystemTime) {}
 mod tests {
     use super::*;
 
+    fn command_args(command: &Command) -> Vec<String> {
+        command
+            .get_args()
+            .map(|arg| arg.to_string_lossy().into_owned())
+            .collect()
+    }
+
     fn resident(id: u32, state: SlotState, mem_gb: f32) -> Resident {
         Resident {
             id,
@@ -742,6 +764,59 @@ mod tests {
         assert_eq!(residency.alloc_port(), MLX_PORT);
         assert_eq!(residency.alloc_port(), MLX_PORT + 1);
         assert!(models::LOCAL_BASE_URL.contains(&MLX_PORT.to_string()));
+    }
+
+    #[test]
+    fn default_server_command_caps_kv_and_vision_caches() {
+        let command = serving_command("/tmp/model", 8090, false).unwrap();
+        let args = command_args(&command);
+        assert!(args
+            .windows(2)
+            .any(|pair| pair == ["--max-kv-size", "32768"]));
+        assert!(args
+            .windows(2)
+            .any(|pair| pair == ["--vision-cache-size", "4"]));
+    }
+
+    #[test]
+    fn serving_manifest_can_tighten_memory_caps_without_duplicate_flags() {
+        let dir = std::env::temp_dir().join(format!(
+            "understudy-serving-limits-test-{}",
+            std::process::id(),
+        ));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(
+            dir.join("understudy.serving.json"),
+            r#"{
+              "schema_version": "understudy.serving.v1",
+              "server": {
+                "launcher": "python -m mlx_vlm.server",
+                "model_arg": "--model",
+                "required_flags": [
+                  "--max-kv-size", "8192",
+                  "--vision-cache-size", "2"
+                ]
+              }
+            }"#,
+        )
+        .unwrap();
+        let command = serving_command(dir.to_str().unwrap(), 8090, false).unwrap();
+        let args = command_args(&command);
+        assert_eq!(args.iter().filter(|arg| *arg == "--max-kv-size").count(), 1);
+        assert_eq!(
+            args.iter()
+                .filter(|arg| *arg == "--vision-cache-size")
+                .count(),
+            1,
+        );
+        assert!(args
+            .windows(2)
+            .any(|pair| pair == ["--max-kv-size", "8192"]));
+        assert!(args
+            .windows(2)
+            .any(|pair| pair == ["--vision-cache-size", "2"]));
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]
