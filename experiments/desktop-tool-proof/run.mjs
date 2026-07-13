@@ -68,44 +68,75 @@ const directWrapperTools = [
   },
 ];
 
+export function expectedCallsForTask(task) {
+  if (Array.isArray(task.calls)) return task.calls;
+  if (typeof task.tool === "string") {
+    return [{ tool: task.tool, arguments: task.arguments ?? {} }];
+  }
+  return [];
+}
+
 export function scoreToolTrace(events, task) {
   const calls = events.filter((event) => event.event === "tool_call");
   const results = events.filter((event) => event.event === "tool_result");
+  const expectedCalls = expectedCallsForTask(task);
   const terminalError = events.find(
     (event) => event.event === "error" || event.event === "cancellation",
   );
-  const call = calls[0]?.data ?? null;
-  const result = results.find((event) => event.data?.call_id === call?.call_id)?.data ?? null;
+  const callData = calls.map((event) => event.data ?? {});
+  const matchedResults = callData.map((call) => (
+    results.find((event) => event.data?.call_id === call.call_id)?.data ?? null
+  ));
   const output = events
     .filter((event) => event.event === "delta" && typeof event.data?.text === "string")
     .map((event) => event.data.text)
     .join("")
     .trim();
+  const exactCallCount = calls.length === expectedCalls.length;
   const checks = {
     terminal_error_free: terminalError == null,
-    exactly_one_call: calls.length === 1,
-    exact_tool_name: call?.name === task.tool,
-    exact_arguments:
-      call?.parse_error == null && isDeepStrictEqual(call?.parsed_arguments, task.arguments),
-    paired_successful_result:
-      results.length === 1 && result?.name === task.tool && result?.ok === true,
+    exact_call_count: exactCallCount,
+    exact_tool_sequence: exactCallCount && expectedCalls.every(
+      (expected, index) => callData[index]?.name === expected.tool,
+    ),
+    exact_arguments: exactCallCount && expectedCalls.every((expected, index) => (
+      callData[index]?.parse_error == null
+      && isDeepStrictEqual(callData[index]?.parsed_arguments, expected.arguments)
+    )),
+    paired_successful_results:
+      results.length === expectedCalls.length
+      && expectedCalls.every((expected, index) => (
+        matchedResults[index]?.name === expected.tool && matchedResults[index]?.ok === true
+      )),
+    no_orphan_results: results.every(
+      (result) => callData.some((call) => call.call_id === result.data?.call_id),
+    ),
     exact_output: output === task.expected_output,
   };
+  const parseErrors = callData
+    .map((call) => call.parse_error)
+    .filter((value) => value != null);
   return {
     strict_pass: Object.values(checks).every(Boolean),
     checks,
     output,
     call_count: calls.length,
     result_count: results.length,
-    called_tool: call?.name ?? null,
-    parsed_arguments: call?.parsed_arguments ?? null,
-    parse_error: call?.parse_error ?? null,
-    result_ok: result?.ok ?? false,
+    called_tool: callData[0]?.name ?? null,
+    parsed_arguments: callData[0]?.parsed_arguments ?? null,
+    call_sequence: callData.map((call) => ({
+      tool: call.name ?? null,
+      arguments: call.parsed_arguments ?? null,
+      parse_error: call.parse_error ?? null,
+    })),
+    parse_error: parseErrors[0] ?? null,
+    parse_error_count: parseErrors.length,
+    result_ok: matchedResults.every((result) => result?.ok === true),
     terminal_error: terminalError?.data?.message
       ?? terminalError?.data?.reason
       ?? (terminalError ? terminalError.event : null),
     orphan_result_count: results.filter(
-      (candidate) => !calls.some((item) => item.data?.call_id === candidate.data?.call_id),
+      (candidate) => !callData.some((call) => call.call_id === candidate.data?.call_id),
     ).length,
   };
 }
@@ -124,12 +155,15 @@ export function summarizeRows(rows) {
     strict_passes: selected.filter((row) => row.strict_pass).length,
     attempts: selected.length,
     strict_accuracy: selected.filter((row) => row.strict_pass).length / selected.length,
-    exact_name_rate: selected.filter((row) => row.checks.exact_tool_name).length / selected.length,
+    exact_call_count_rate:
+      selected.filter((row) => row.checks.exact_call_count).length / selected.length,
+    exact_name_rate:
+      selected.filter((row) => row.checks.exact_tool_sequence).length / selected.length,
     exact_arguments_rate: selected.filter((row) => row.checks.exact_arguments).length / selected.length,
     successful_result_rate:
-      selected.filter((row) => row.checks.paired_successful_result).length / selected.length,
+      selected.filter((row) => row.checks.paired_successful_results).length / selected.length,
     exact_output_rate: selected.filter((row) => row.checks.exact_output).length / selected.length,
-    parse_errors: selected.filter((row) => row.parse_error != null).length,
+    parse_errors: selected.reduce((sum, row) => sum + row.parse_error_count, 0),
     terminal_errors: selected.filter((row) => row.terminal_error != null).length,
     orphan_results: selected.reduce((sum, row) => sum + row.orphan_result_count, 0),
     mean_latency_ms: Math.round(
@@ -143,6 +177,7 @@ export function summarizeRows(rows) {
         task_id: row.task_id,
         called_tool: row.called_tool,
         parsed_arguments: row.parsed_arguments,
+        call_sequence: row.call_sequence,
         result_ok: row.result_ok,
         terminal_error: row.terminal_error,
         output: row.output,
@@ -194,6 +229,7 @@ function parseArgs(argv) {
     candidates: [],
     repetitions: 3,
     maxTokens: 160,
+    timeoutMs: 30_000,
     outputRoot: join(homedir(), ".understudy", "proofs", "tool-correctness"),
     executionMode: "direct-pi",
   };
@@ -213,6 +249,7 @@ function parseArgs(argv) {
       options.candidates.push({ label, slotId: Number(rawSlot) });
     } else if (value === "--repetitions") options.repetitions = Number(next);
     else if (value === "--max-tokens") options.maxTokens = Number(next);
+    else if (value === "--timeout-ms") options.timeoutMs = Number(next);
     else if (value === "--output-root") options.outputRoot = resolve(next);
     else throw new Error(`unknown argument: ${value}`);
     index += 1;
@@ -235,6 +272,9 @@ function parseArgs(argv) {
   }
   if (!Number.isInteger(options.maxTokens) || options.maxTokens < 16 || options.maxTokens > 2_048) {
     throw new Error("max-tokens must be an integer from 16 to 2048");
+  }
+  if (!Number.isInteger(options.timeoutMs) || options.timeoutMs < 1_000 || options.timeoutMs > 300_000) {
+    throw new Error("timeout-ms must be an integer from 1000 to 300000");
   }
   return options;
 }
@@ -311,7 +351,16 @@ async function loadDirectContext(capability, candidates) {
   };
 }
 
-async function runDirectTurn(capability, context, candidate, task, runId, sessionId, maxTokens) {
+async function runDirectTurn(
+  capability,
+  context,
+  candidate,
+  task,
+  runId,
+  sessionId,
+  maxTokens,
+  timeoutMs,
+) {
   const target = context.targets.get(candidate.label);
   if (!target) throw new Error(`direct target is missing for ${candidate.label}`);
   const previousToolToken = process.env.UNDERSTUDY_RUNTIME_TOOL_TOKEN;
@@ -338,6 +387,7 @@ async function runDirectTurn(capability, context, candidate, task, runId, sessio
         runtime_backend: "pi",
       },
       (event) => events.push(event),
+      AbortSignal.timeout(timeoutMs),
     );
   } finally {
     if (previousToolToken === undefined) delete process.env.UNDERSTUDY_RUNTIME_TOOL_TOKEN;
@@ -420,6 +470,7 @@ export async function runProof(options = parseArgs(process.argv.slice(2))) {
             runId,
             sessionId,
             options.maxTokens,
+            options.timeoutMs,
           );
           events = direct.events;
           modelId = direct.target.modelId;
@@ -429,6 +480,7 @@ export async function runProof(options = parseArgs(process.argv.slice(2))) {
             `/v1/conversations/${encodeURIComponent(sessionId)}/turns`,
             {
               method: "POST",
+              signal: AbortSignal.timeout(options.timeoutMs),
               body: JSON.stringify({
                 slotId: candidate.slotId,
                 text: task.prompt,
@@ -454,8 +506,7 @@ export async function runProof(options = parseArgs(process.argv.slice(2))) {
           runtime_backend: directContext ? "pi" : "desktop-api",
           repetition,
           task_id: task.id,
-          expected_tool: task.tool,
-          expected_arguments: task.arguments,
+          expected_calls: expectedCallsForTask(task),
           run_id: runId,
           session_id: sessionId,
           elapsed_ms: Math.round(performance.now() - before),
@@ -470,13 +521,15 @@ export async function runProof(options = parseArgs(process.argv.slice(2))) {
         );
         process.stdout.write(
           `${candidate.label.padEnd(10)} r${repetition} ${task.id.padEnd(22)} `
-          + `${score.strict_pass ? "PASS" : "FAIL"} tool=${score.called_tool ?? "none"}\n`,
+          + `${score.strict_pass ? "PASS" : "FAIL"} tools=${score.call_sequence
+            .map(({ tool }) => tool)
+            .join(",") || "none"}\n`,
         );
       }
     }
   }
   const summary = {
-    format: "understudy.desktop_tool_proof.v2",
+    format: "understudy.desktop_tool_proof.v3",
     proof_id: proofId,
     suite_sha256: suiteSha256,
     started_at: startedAt.toISOString(),
@@ -486,6 +539,7 @@ export async function runProof(options = parseArgs(process.argv.slice(2))) {
     task_count: tasks.length,
     repetitions: options.repetitions,
     run_count: rows.length,
+    timeout_ms: options.timeoutMs,
     execution_mode: options.executionMode,
     release_cohort_eligible: false,
     tool_schema_sha256: directContext?.toolSchemaSha256 ?? null,
