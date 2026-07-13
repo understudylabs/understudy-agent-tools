@@ -1269,6 +1269,33 @@ impl Db {
             .map_err(Into::into)
     }
 
+    /// All explicit supervisor judgments, used only for the local review and
+    /// export joins. The immutable runtime journal remains the evidence source.
+    pub fn list_supervisor_feedback(&self) -> Result<Vec<SupervisorFeedbackRow>> {
+        let conn = self.conn()?;
+        let mut stmt = conn.prepare(
+            "SELECT id, session_id, run_id, marker_id, intervention_at, stage,
+                    helpful, correct_action, justification, created_at
+             FROM supervisor_feedback ORDER BY id",
+        )?;
+        let rows = stmt.query_map([], |row| {
+            Ok(SupervisorFeedbackRow {
+                id: row.get::<_, i64>(0)? as u64,
+                session_id: row.get(1)?,
+                run_id: row.get(2)?,
+                marker_id: row.get(3)?,
+                intervention_at: row.get::<_, Option<i64>>(4)?.map(|value| value as u64),
+                stage: row.get(5)?,
+                helpful: row.get::<_, i64>(6)? != 0,
+                correct_action: row.get(7)?,
+                justification: row.get(8)?,
+                created_at: row.get(9)?,
+            })
+        })?;
+        rows.collect::<rusqlite::Result<Vec<_>>>()
+            .map_err(Into::into)
+    }
+
     pub fn sidekick_feedback_summary(&self, limit: u32) -> Result<SidekickFeedbackSummary> {
         let conn = self.conn()?;
         let (useful, misses): (i64, i64) = conn.query_row(
@@ -1828,6 +1855,9 @@ mod tests {
             rows[0].justification.as_deref(),
             Some("changed after review")
         );
+        let all_rows = db.list_supervisor_feedback().unwrap();
+        assert_eq!(all_rows.len(), 1);
+        assert_eq!(all_rows[0].marker_id, rows[0].marker_id);
         let _ = std::fs::remove_dir_all(&dir);
     }
 

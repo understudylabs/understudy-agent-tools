@@ -113,6 +113,12 @@ pub(crate) enum RuntimeEvent {
         #[serde(default)]
         probability_kind: Option<String>,
         #[serde(default, skip_serializing_if = "Option::is_none")]
+        boundary_ordinal: Option<u64>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        after_chars: Option<u64>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
+        raw: Option<String>,
+        #[serde(default, skip_serializing_if = "Option::is_none")]
         error: Option<String>,
         #[serde(default, skip_serializing_if = "Option::is_none")]
         failure_kind: Option<String>,
@@ -286,6 +292,97 @@ pub(crate) fn load_persisted_trace(
     Ok(None)
 }
 
+/// Read a bounded, newest-first set of immutable traces. Review and export
+/// must include eval/benchmark runs that are not chat rows, while remaining
+/// safe when a local ledger is large or contains a damaged journal.
+pub(crate) fn load_recent_persisted_traces(
+    app: &AppHandle,
+    limit: usize,
+) -> (Vec<Vec<RuntimeEventEnvelope>>, usize, usize) {
+    let root = app
+        .state::<crate::db::Db>()
+        .data_dir()
+        .join("runtime-events");
+    load_recent_persisted_traces_from_root(&root, limit)
+}
+
+pub(crate) fn load_recent_persisted_traces_from_root(
+    root: &Path,
+    limit: usize,
+) -> (Vec<Vec<RuntimeEventEnvelope>>, usize, usize) {
+    const MAX_TRACE_BYTES: u64 = 64 * 1024 * 1024;
+    let mut paths = Vec::new();
+    if let Ok(session_dirs) = std::fs::read_dir(root) {
+        for session_dir in session_dirs.flatten() {
+            let Ok(entries) = std::fs::read_dir(session_dir.path()) else {
+                continue;
+            };
+            for entry in entries.flatten() {
+                let path = entry.path();
+                if path.extension().and_then(|value| value.to_str()) != Some("jsonl") {
+                    continue;
+                }
+                let modified = entry
+                    .metadata()
+                    .and_then(|metadata| metadata.modified())
+                    .unwrap_or(std::time::SystemTime::UNIX_EPOCH);
+                paths.push((modified, path));
+            }
+        }
+    }
+    paths.sort_by_key(|entry| std::cmp::Reverse(entry.0));
+    paths.truncate(limit.clamp(1, 500));
+
+    let mut traces = Vec::new();
+    let mut invalid = 0;
+    let mut missing = 0;
+    for (_, path) in paths {
+        let metadata = match std::fs::metadata(&path) {
+            Ok(metadata) => metadata,
+            Err(error) if error.kind() == std::io::ErrorKind::NotFound => {
+                missing += 1;
+                continue;
+            }
+            Err(_) => {
+                invalid += 1;
+                continue;
+            }
+        };
+        if metadata.len() > MAX_TRACE_BYTES {
+            invalid += 1;
+            continue;
+        }
+        let Ok(raw) = std::fs::read_to_string(&path) else {
+            invalid += 1;
+            continue;
+        };
+        let events = raw
+            .lines()
+            .filter(|line| !line.trim().is_empty())
+            .map(serde_json::from_str::<RuntimeEventEnvelope>)
+            .collect::<Result<Vec<_>, _>>();
+        let Ok(events) = events else {
+            invalid += 1;
+            continue;
+        };
+        let identity_matches_path = events.first().is_some_and(|event| {
+            path.file_name().and_then(|value| value.to_str())
+                == Some(format!("{}.jsonl", sha256(&event.run_id)).as_str())
+                && path
+                    .parent()
+                    .and_then(Path::file_name)
+                    .and_then(|value| value.to_str())
+                    == Some(sha256(&event.session_id).as_str())
+        });
+        if !identity_matches_path || validate_trace(&events).is_err() {
+            invalid += 1;
+            continue;
+        }
+        traces.push(events);
+    }
+    (traces, invalid, missing)
+}
+
 fn required(value: &str, field: &str) -> Result<(), String> {
     if value.trim().is_empty() {
         Err(format!("{field} must be a non-empty string"))
@@ -449,6 +546,7 @@ pub(crate) fn validate_trace(events: &[RuntimeEventEnvelope]) -> Result<(), Stri
                 error,
                 failure_kind,
                 handoff_target,
+                ..
             } => {
                 if !matches!(source.as_str(), "model" | "policy" | "human") {
                     return Err(format!("unknown supervisor verdict source {source}"));
@@ -614,6 +712,69 @@ mod tests {
     }
 
     #[test]
+    fn recent_trace_loader_is_bounded_and_rejects_wrong_path_identity() {
+        let root = std::env::temp_dir().join(format!(
+            "understudy-runtime-traces-{}",
+            std::process::id()
+        ));
+        let _ = std::fs::remove_dir_all(&root);
+        let valid = envelope(
+            0,
+            RuntimeEvent::Message {
+                role: RuntimeRole::User,
+                text: "review this".to_string(),
+                model: None,
+                logical_context_window_tokens: None,
+                provider_context_window_tokens: None,
+            },
+        );
+        let session_dir = root.join(sha256(&valid.session_id));
+        std::fs::create_dir_all(&session_dir).unwrap();
+        std::fs::write(
+            session_dir.join(format!("{}.jsonl", sha256(&valid.run_id))),
+            format!("{}\n", serde_json::to_string(&valid).unwrap()),
+        )
+        .unwrap();
+        std::fs::write(session_dir.join("wrong-name.jsonl"), "{}\n").unwrap();
+
+        let (traces, invalid, missing) = load_recent_persisted_traces_from_root(&root, 500);
+        assert_eq!(traces.len(), 1);
+        assert_eq!(invalid, 1);
+        assert_eq!(missing, 0);
+        assert_eq!(traces[0][0].run_id, "run-1");
+        let _ = std::fs::remove_dir_all(&root);
+    }
+
+    #[test]
+    #[ignore = "set UNDERSTUDY_TEST_RUNTIME_EVENTS_DIR to a copy of a real runtime-events dir"]
+    fn opens_a_real_runtime_evidence_copy() {
+        let root = std::env::var("UNDERSTUDY_TEST_RUNTIME_EVENTS_DIR")
+            .expect("UNDERSTUDY_TEST_RUNTIME_EVENTS_DIR is required");
+        let (traces, invalid, missing) =
+            load_recent_persisted_traces_from_root(Path::new(&root), 500);
+        assert!(!traces.is_empty());
+        assert_eq!(invalid, 0, "real evidence copy contains invalid journals");
+        assert_eq!(missing, 0, "real evidence copy lost journals while reading");
+        let interventions = traces
+            .iter()
+            .flat_map(|trace| trace.iter())
+            .filter(|envelope| {
+                matches!(
+                    envelope.event,
+                    RuntimeEvent::SupervisorVerdict {
+                        verdict: RuntimeVerdict::Interrupt | RuntimeVerdict::Nudge,
+                        ..
+                    }
+                )
+            })
+            .count();
+        eprintln!(
+            "loaded {} canonical traces with {interventions} reviewable interventions",
+            traces.len()
+        );
+    }
+
+    #[test]
     fn accepts_linked_supervisor_takeover() {
         let events = vec![
             envelope(
@@ -625,6 +786,9 @@ mod tests {
                     reason: Some("wrong tool".to_string()),
                     probabilities: Some(json!({"interrupt": -0.1})),
                     probability_kind: Some("logprob".to_string()),
+                    boundary_ordinal: Some(0),
+                    after_chars: Some(7),
+                    raw: Some("interrupt: wrong tool".to_string()),
                     error: None,
                     failure_kind: None,
                     handoff_target: Some("local".to_string()),
@@ -667,6 +831,9 @@ mod tests {
                 reason: None,
                 probabilities: Some(json!({"continue": 0.9})),
                 probability_kind: Some("logprob".to_string()),
+                boundary_ordinal: Some(0),
+                after_chars: Some(1),
+                raw: None,
                 error: None,
                 failure_kind: None,
                 handoff_target: Some("local".to_string()),

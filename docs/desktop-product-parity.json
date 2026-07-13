@@ -42,8 +42,8 @@
     },
     {
       "id": "supervision-review-desk",
-      "status": "planned",
-      "evidence": "Canonical verdicts exist; the one-frame review and human labeling workflow has not moved to the public desktop."
+      "status": "shipped",
+      "evidence": "Experiments opens a one-frame local review over immutable canonical Pi journals, showing the small-model partial, stored intervention reason, teacher or post-nudge output, tool evidence, verdict confidence, and one explicit human action label."
     },
     {
       "id": "correction-pair-export-and-metrics",

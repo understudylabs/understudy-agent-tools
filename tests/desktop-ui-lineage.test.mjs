@@ -22,6 +22,18 @@ const attachmentRustPath = new URL(
   "../apps/homescreen/src-tauri/src/chat_attachments.rs",
   import.meta.url,
 );
+const reviewViewPath = new URL(
+  "../apps/homescreen/app/components/SupervisionReviewView.tsx",
+  import.meta.url,
+);
+const reviewRustPath = new URL(
+  "../apps/homescreen/src-tauri/src/supervision_review.rs",
+  import.meta.url,
+);
+const rlmPanePath = new URL(
+  "../apps/homescreen/app/components/RlmPane.tsx",
+  import.meta.url,
+);
 const parityPath = new URL("../docs/desktop-product-parity.json", import.meta.url);
 
 test("public desktop preserves the reviewed Train interaction language", async () => {
@@ -98,6 +110,28 @@ test("desktop persists image references instead of transcript-embedded bytes", a
   assert.match(attachmentRust, /migrate_legacy_messages/);
 });
 
+test("Experiments starts with canonical one-frame intervention review", async () => {
+  const [review, reviewRust, rlmPane, css] = await Promise.all([
+    readFile(reviewViewPath, "utf8"),
+    readFile(reviewRustPath, "utf8"),
+    readFile(rlmPanePath, "utf8"),
+    readFile(cssPath, "utf8"),
+  ]);
+
+  assert.match(rlmPane, /return <SupervisionReviewView \/>/);
+  assert.match(review, /"supervision_review_queue"/);
+  assert.match(review, /"record_supervisor_feedback"/);
+  assert.match(review, /1 · Small model/);
+  assert.match(review, /2 · Supervisor/);
+  assert.match(review, /3 · \{interrupted \? "Teacher" : "After the nudge"\}/);
+  assert.match(review, /Was this the right intervention\?/);
+  assert.match(reviewRust, /RuntimeEvent::StudentInterruption/);
+  assert.match(reviewRust, /RuntimeEvent::TeacherContinuation/);
+  assert.match(reviewRust, /load_recent_persisted_traces/);
+  assert.match(css, /\.content:has\(\.supervision-review\)\s*\{[\s\S]*?overflow: hidden/);
+  assert.match(css, /grid-template-rows: auto minmax\(0, 1fr\) auto/);
+});
+
 test("desktop migration claims stay tied to explicit product parity", async () => {
   const parity = JSON.parse(await readFile(parityPath, "utf8"));
   assert.equal(parity.release_authority, "apps/homescreen");
@@ -121,6 +155,10 @@ test("desktop migration claims stay tied to explicit product parity", async () =
   );
   assert.equal(
     parity.features.find((feature) => feature.id === "durable-image-and-chat-persistence")?.status,
+    "shipped",
+  );
+  assert.equal(
+    parity.features.find((feature) => feature.id === "supervision-review-desk")?.status,
     "shipped",
   );
   for (const feature of parity.features) {

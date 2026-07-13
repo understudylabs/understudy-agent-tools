@@ -2887,3 +2887,376 @@ select,
   border-radius: 999px;
   pointer-events: none;
 }
+
+/* ---------- Experiments: one-frame supervision review ---------- */
+.content:has(.supervision-review) {
+  overflow: hidden;
+  padding: calc(var(--titlebar-h) + 14px) 24px 18px;
+}
+
+.supervision-review {
+  position: relative;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  gap: 14px;
+  width: min(1160px, 100%);
+  height: 100%;
+  margin: 0 auto;
+  color: var(--text);
+}
+
+.supervision-review button,
+.supervision-review-state button {
+  border: 1px solid var(--border-strong);
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text-2);
+  font: 500 11px/1.2 var(--mono);
+  cursor: pointer;
+}
+
+.supervision-review button:hover:not(:disabled),
+.supervision-review-state button:hover:not(:disabled) {
+  border-color: color-mix(in srgb, var(--mb-cyan) 42%, var(--border-strong));
+  background: var(--hover);
+  color: var(--text);
+}
+
+.supervision-review button:disabled { opacity: 0.45; cursor: wait; }
+
+.supervision-review-topbar {
+  display: grid;
+  grid-template-columns: 1fr minmax(220px, 0.8fr) 1fr;
+  align-items: center;
+  gap: 24px;
+  min-height: 40px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--border);
+}
+
+.supervision-review-topbar > div:first-child {
+  display: flex;
+  align-items: baseline;
+  gap: 10px;
+}
+
+.supervision-review-topbar span,
+.supervision-review-card header span,
+.supervision-review-request > span,
+.supervision-review-output > span,
+.supervision-review-labeler > div:first-child > span {
+  color: var(--text-3);
+  font: 10px/1.3 var(--mono);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.supervision-review-topbar strong {
+  font: 500 14px/1.2 var(--mono);
+}
+
+.supervision-review-progress {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 12px;
+  color: var(--text-2);
+  font: 11px/1.2 var(--mono);
+}
+
+.supervision-review-progress > i {
+  display: block;
+  width: min(180px, 45%);
+  height: 3px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: var(--border);
+}
+
+.supervision-review-progress > i > b {
+  display: block;
+  height: 100%;
+  background: var(--mb-mint);
+  transition: width 180ms ease;
+}
+
+.supervision-review-topbar nav {
+  display: flex;
+  justify-content: flex-end;
+  gap: 7px;
+}
+
+.supervision-review-topbar nav button { padding: 7px 10px; }
+
+.supervision-review-evidence {
+  display: grid;
+  grid-template-columns: minmax(0, 1.15fr) minmax(230px, 0.8fr) minmax(0, 1.15fr);
+  gap: 12px;
+  min-height: 0;
+}
+
+.supervision-review-card {
+  display: flex;
+  min-width: 0;
+  min-height: 0;
+  flex-direction: column;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--surface) 82%, transparent);
+}
+
+.supervision-review-card > header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 13px 14px 11px;
+  border-bottom: 1px solid var(--border);
+}
+
+.supervision-review-card header code {
+  overflow: hidden;
+  color: var(--text-3);
+  font-size: 10px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.supervision-review-card.small { border-top: 2px solid var(--mb-mint); }
+.supervision-review-card.after { border-top: 2px solid var(--mb-cyan); }
+.supervision-review-card.decision { border-top: 2px solid var(--c-warn); }
+.supervision-review-card.decision.nudge { border-top-color: var(--mb-mint); }
+
+.supervision-review-request {
+  padding: 13px 14px;
+  border-bottom: 1px solid var(--border);
+}
+
+.supervision-review-request p {
+  display: -webkit-box;
+  margin: 6px 0 0;
+  overflow: hidden;
+  color: var(--text);
+  font-size: 12px;
+  line-height: 1.45;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 4;
+}
+
+.supervision-review-output {
+  display: flex;
+  min-height: 0;
+  flex: 1;
+  flex-direction: column;
+  padding: 13px 14px;
+}
+
+.supervision-review-output pre,
+.supervision-review-details pre {
+  min-height: 0;
+  margin: 8px 0 0;
+  overflow: auto;
+  color: var(--text-2);
+  font: 11px/1.55 var(--mono);
+  overflow-wrap: anywhere;
+  white-space: pre-wrap;
+}
+
+.supervision-review-decision-copy {
+  display: flex;
+  flex: 1;
+  flex-direction: column;
+  justify-content: center;
+  padding: 20px 17px;
+  background: color-mix(in srgb, var(--c-warn) 5%, transparent);
+}
+
+.supervision-review-card.nudge .supervision-review-decision-copy {
+  background: color-mix(in srgb, var(--mb-mint) 5%, transparent);
+}
+
+.supervision-review-decision-copy strong {
+  font-size: clamp(15px, 1.8vw, 20px);
+  font-weight: 500;
+  line-height: 1.25;
+  letter-spacing: -0.02em;
+}
+
+.supervision-review-decision-copy p {
+  max-height: 130px;
+  margin: 13px 0 0;
+  overflow: auto;
+  color: var(--text-2);
+  font-size: 12px;
+  line-height: 1.5;
+}
+
+.supervision-review-decision-meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 11px 13px;
+  border-top: 1px solid var(--border);
+}
+
+.supervision-review-decision-meta span {
+  padding: 4px 7px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  color: var(--text-3);
+  font: 9px/1.2 var(--mono);
+}
+
+.supervision-review-labeler {
+  display: grid;
+  grid-template-columns: minmax(230px, 0.65fr) minmax(0, 1.35fr);
+  align-items: center;
+  gap: 24px;
+  min-height: 82px;
+  padding: 13px 15px;
+  border: 1px solid color-mix(in srgb, var(--mb-cyan) 24%, var(--border));
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--surface) 94%, transparent);
+}
+
+.supervision-review-labeler > div:first-child {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.supervision-review-labeler > div:first-child strong {
+  font-size: 15px;
+  font-weight: 500;
+}
+
+.supervision-review-labeler small {
+  color: var(--text-3);
+  font: 9px/1.3 var(--mono);
+}
+
+.supervision-review-primary-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 9px;
+}
+
+.supervision-review-primary-actions button,
+.supervision-review-alternatives button {
+  min-height: 42px;
+  padding: 9px 12px;
+}
+
+.supervision-review-primary-actions .yes {
+  border-color: color-mix(in srgb, var(--mb-cyan) 55%, var(--border));
+  background: color-mix(in srgb, var(--mb-cyan) 18%, transparent);
+  color: var(--text);
+}
+
+.supervision-review-alternatives {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr)) auto;
+  gap: 7px;
+}
+
+.supervision-review-alternatives .cancel {
+  min-width: 62px;
+  border-color: transparent;
+}
+
+.supervision-review-details {
+  position: absolute;
+  z-index: 15;
+  top: 48px;
+  right: 0;
+  bottom: 0;
+  width: min(440px, 92%);
+  overflow: auto;
+  padding: 16px;
+  border: 1px solid var(--border-strong);
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--surface) 98%, black);
+  box-shadow: 0 20px 70px rgba(0, 0, 0, 0.42);
+}
+
+.supervision-review-details > header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 13px;
+}
+
+.supervision-review-details > header strong { font: 500 13px/1.2 var(--mono); }
+.supervision-review-details > header button,
+.supervision-review-history { padding: 6px 8px; }
+
+.supervision-review-details dl { margin: 0 0 16px; }
+.supervision-review-details dl > div {
+  display: grid;
+  grid-template-columns: 76px minmax(0, 1fr);
+  gap: 10px;
+  padding: 7px 0;
+  border-bottom: 1px solid var(--border);
+  font: 10px/1.4 var(--mono);
+}
+.supervision-review-details dt { color: var(--text-3); }
+.supervision-review-details dd { min-width: 0; margin: 0; overflow-wrap: anywhere; color: var(--text-2); }
+.supervision-review-details section > strong { display: block; margin-bottom: 8px; font: 10px/1.3 var(--mono); }
+
+.supervision-review-probability {
+  display: grid;
+  grid-template-columns: 72px 1fr 34px;
+  align-items: center;
+  gap: 8px;
+  margin: 6px 0;
+  color: var(--text-3);
+  font: 9px/1.2 var(--mono);
+}
+.supervision-review-probability i { height: 3px; overflow: hidden; border-radius: 99px; background: var(--border); }
+.supervision-review-probability i b { display: block; height: 100%; background: var(--mb-mint); }
+.supervision-review-probability em { font-style: normal; text-align: right; }
+.supervision-review-details details { padding: 10px 0; border-top: 1px solid var(--border); }
+.supervision-review-details summary { color: var(--text-2); font: 10px/1.3 var(--mono); cursor: pointer; }
+.supervision-review-details pre { max-height: 180px; }
+.supervision-review-warning { color: var(--c-warn); font: 9px/1.5 var(--mono); }
+
+.supervision-review-error {
+  position: absolute;
+  right: 0;
+  bottom: 96px;
+  max-width: 520px;
+  padding: 9px 11px;
+  border: 1px solid color-mix(in srgb, var(--error) 45%, var(--border));
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--error);
+  font-size: 11px;
+}
+
+.supervision-review-state {
+  display: flex;
+  width: min(720px, 100%);
+  margin: 15vh auto 0;
+  flex-direction: column;
+  align-items: flex-start;
+  gap: 10px;
+  color: var(--text-2);
+  font: 12px/1.5 var(--mono);
+}
+.supervision-review-state > span { color: var(--text-3); text-transform: uppercase; letter-spacing: 0.08em; }
+.supervision-review-state > strong { color: var(--text); font-size: 28px; font-weight: 400; }
+.supervision-review-state > p { margin: 0; }
+.supervision-review-state button { padding: 9px 12px; }
+.supervision-review-state.error { color: var(--error); }
+
+@media (max-width: 900px) {
+  .content:has(.supervision-review) { overflow-y: auto; }
+  .supervision-review { height: auto; min-height: 100%; }
+  .supervision-review-topbar { grid-template-columns: 1fr auto; }
+  .supervision-review-progress { display: none; }
+  .supervision-review-evidence { grid-template-columns: 1fr; }
+  .supervision-review-card { min-height: 220px; }
+  .supervision-review-labeler { grid-template-columns: 1fr; }
+  .supervision-review-alternatives { grid-template-columns: 1fr 1fr; }
+}
