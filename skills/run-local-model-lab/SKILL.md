@@ -75,8 +75,12 @@ GUI or stand up a second server against the same weights and memory budget.
    unified memory / free disk available. Set up the MLX runtime once with `uv`:
    `uv venv .understudy/venvs/mlx && uv pip install --python
    .understudy/venvs/mlx/bin/python 'mlx-lm>=0.31' 'huggingface_hub[cli]>=0.27'`.
-   Do not download weights yet. Surface what you found. (Not on Apple Silicon?
-   This skill does not apply — local serving here is MLX-only.)
+   Run the install as a background task — it may pull several hundred MB; do not
+   block the agent on it. While it runs, inventory the hardware and proceed to
+   step 2. Do not download weights yet. Surface what you found. (Not on Apple
+   Silicon? This skill does not apply — local serving here is MLX-only.)
+   See [`../../docs/background-ops.md`](../../docs/background-ops.md) for the
+   background-launch and poll-readiness mechanics.
 2. **Pick a candidate tier** (candidate chooser + hardware-fit guidance in [`reference.md`](reference.md)):
    choose the smallest model that is reasonable for the task, not the smallest
    model available. If a ladder climb or prior local gap report already exists,
@@ -97,6 +101,16 @@ GUI or stand up a second server against the same weights and memory budget.
    architectures (e.g. Nemotron-H). Write artifacts to
    `.understudy/local-model-lab/`, recording: model id, quantization, runtime
    (mlx_lm version), hardware, context length, latency, tokens/sec, and score.
+
+   **Launch `mlx_lm.server` as a background process — do not block on it.**
+   Weight loading can take seconds to several minutes depending on model size and
+   disk speed. Send the server to the background immediately, then poll
+   `http://localhost:8080/v1/models` at 5-second intervals until it responds
+   before running the eval or smoke-test. While the server is loading, advance
+   the steps that don't need it: freeze the eval contract, scaffold the artifact
+   record, and cost-model the remote comparison (step 4). See
+   [`../../docs/background-ops.md`](../../docs/background-ops.md) for the exact
+   shell patterns and poll loop.
 
    **Sampling is part of the contract — per model, not per harness.** Read the
    model's `generation_config.json` and pin `(temperature, top_p/top_k, seed)`
