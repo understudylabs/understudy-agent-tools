@@ -118,10 +118,13 @@ the latest 100 canonical runs with:
   conformance scenarios;
 - the readiness probe passing on release artifacts.
 
-The 2026-07-13 installed-app proof recorded the first 0.3.5 Pi-backed GUI turn.
-Two earlier 0.3.5 compatibility probes remain preserved, so 99 newer clean Pi
-turns are required before the rolling window can become eligible. Do not
-manufacture those rows; they are release-adoption evidence.
+The 2026-07-13 installed-app proof found that 0.3.5 could compact after a
+length-limited response without delivering a final answer, then record the run
+as successful. Those 0.3.5 rows remain preserved for diagnosis but are not
+release-adoption evidence for deletion. Runtime 0.3.6 resumes a bounded
+continuation only after the prior run and compaction settle, and fails closed
+if the provider remains truncated. Its exact-version cohort starts at zero.
+Do not manufacture those rows; they are release-adoption evidence.
 
 ## Removable ownership
 

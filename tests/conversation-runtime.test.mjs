@@ -625,6 +625,174 @@ test("Pi runtime recovers from an unexpected provider context overflow", async (
   );
 });
 
+test("Pi runtime resumes a length-limited turn after compaction", async () => {
+  const longInput = JSON.parse(
+    readFileSync(
+      new URL(
+        "../schemas/conversation-runtime-conformance/inputs/long-chat-compaction.json",
+        import.meta.url,
+      ),
+      "utf8",
+    ),
+  );
+  const requests = [];
+  let primaryCalls = 0;
+  let compactionCalls = 0;
+  const server = createServer(async (request, response) => {
+    const body = await requestJson(request);
+    requests.push(body);
+    const isCompaction = JSON.stringify(body.messages).includes(
+      "You are a context summarization assistant",
+    );
+    const call = isCompaction ? ++compactionCalls : ++primaryCalls;
+    sendFixtureSse(response, [
+      {
+        id: `chatcmpl-${isCompaction ? "compaction" : "length-continuation"}-${call}`,
+        object: "chat.completion.chunk",
+        created: 1,
+        model: body.model,
+        choices: [
+          {
+            index: 0,
+            delta: {
+              role: "assistant",
+              content: isCompaction
+                ? call === 1
+                  ? "The original request and gathered evidence remain available after compaction."
+                  : "Architecture note one assigns presentation and consent to the desktop, ordered conversation events to the runtime, and immutable attribution to the evidence ledger."
+                : call === 1
+                  ? "Let me inspect the existing evidence."
+                  : " The three owners are the desktop, the runtime, and the evidence ledger.",
+            },
+            finish_reason: null,
+          },
+        ],
+      },
+      {
+        id: `chatcmpl-${isCompaction ? "compaction" : "length-continuation"}-${call}`,
+        object: "chat.completion.chunk",
+        created: 1,
+        model: body.model,
+        choices: [
+          {
+            index: 0,
+            delta: {},
+            finish_reason: !isCompaction && call === 1 ? "length" : "stop",
+          },
+        ],
+        usage:
+          !isCompaction && call === 1
+            ? { prompt_tokens: 40_000, completion_tokens: 16, total_tokens: 40_016 }
+            : { prompt_tokens: 300, completion_tokens: 15, total_tokens: 315 },
+      },
+    ]);
+  });
+  await new Promise((accept) => server.listen(0, "127.0.0.1", accept));
+  const address = server.address();
+  assert.ok(address && typeof address !== "string");
+  const events = [];
+  try {
+    await runPiConversation(
+      {
+        run_id: "run-length-continuation",
+        session_id: "session-length-continuation",
+        base_url: `http://127.0.0.1:${address.port}/v1`,
+        model: "length-continuation-fixture",
+        role: "primary",
+        messages: longInput.messages,
+        max_output_tokens: 128,
+        context_window_tokens: 2_048,
+        provider_context_window_tokens: 32_768,
+        runtime_backend: "pi",
+      },
+      (event) => events.push(event),
+    );
+  } finally {
+    await new Promise((accept) => server.close(accept));
+  }
+
+  validateRuntimeTrace(events);
+  assert.equal(primaryCalls, 2);
+  assert.ok(compactionCalls >= 1);
+  assert.match(
+    JSON.stringify(
+      requests.findLast((request) =>
+        JSON.stringify(request.messages).includes("Finish the original user request now"),
+      )?.messages,
+    ),
+    /Finish the original user request now/,
+  );
+  assert.ok(events.some((event) => event.event === "compaction_boundary"));
+  assert.equal(events.some((event) => event.event === "error"), false);
+  assert.match(
+    events
+      .filter((event) => event.event === "delta")
+      .map((event) => event.data.text)
+      .join(""),
+    /three owners are the desktop, the runtime, and the evidence ledger/,
+  );
+});
+
+test("Pi runtime fails closed when bounded length continuations are exhausted", async () => {
+  let requests = 0;
+  const server = createServer(async (request, response) => {
+    const body = await requestJson(request);
+    requests += 1;
+    sendFixtureSse(response, [
+      {
+        id: `chatcmpl-length-exhausted-${requests}`,
+        object: "chat.completion.chunk",
+        created: 1,
+        model: body.model,
+        choices: [
+          {
+            index: 0,
+            delta: { role: "assistant", content: "Still working." },
+            finish_reason: null,
+          },
+        ],
+      },
+      {
+        id: `chatcmpl-length-exhausted-${requests}`,
+        object: "chat.completion.chunk",
+        created: 1,
+        model: body.model,
+        choices: [{ index: 0, delta: {}, finish_reason: "length" }],
+        usage: { prompt_tokens: 32, completion_tokens: 2, total_tokens: 34 },
+      },
+    ]);
+  });
+  await new Promise((accept) => server.listen(0, "127.0.0.1", accept));
+  const address = server.address();
+  assert.ok(address && typeof address !== "string");
+  const events = [];
+  try {
+    await runPiConversation(
+      {
+        run_id: "run-length-exhausted",
+        session_id: "session-length-exhausted",
+        base_url: `http://127.0.0.1:${address.port}/v1`,
+        model: "length-exhausted-fixture",
+        role: "primary",
+        messages: [{ role: "user", content: "Give me the complete answer." }],
+        max_output_tokens: 8,
+        context_window_tokens: 2_048,
+        provider_context_window_tokens: 32_768,
+        runtime_backend: "pi",
+      },
+      (event) => events.push(event),
+    );
+  } finally {
+    await new Promise((accept) => server.close(accept));
+  }
+
+  validateRuntimeTrace(events);
+  assert.equal(requests, 3);
+  const terminalError = events.find((event) => event.event === "error");
+  assert.equal(terminalError?.data.code, "pi_length_continuation_exhausted");
+  assert.equal(terminalError?.data.recoverable, true);
+});
+
 test("Pi runtime deterministically interrupts a student and continues with the teacher", async () => {
   const requests = [];
   const server = createServer(async (request, response) => {
@@ -2350,7 +2518,7 @@ test("Pi and Vercel execute the identical frozen conformance inputs", async () =
       model: "conformance-cli",
     });
     assert.equal(cliReport.metadata.runtime_id, "understudy-conversation-sidecar");
-    assert.equal(cliReport.metadata.runtime_version, "0.3.5");
+    assert.equal(cliReport.metadata.runtime_version, "0.3.6");
     assert.equal(
       cliReport.metadata.event_schema,
       "understudy-conversation-runtime-event-v1",
