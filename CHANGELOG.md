@@ -17,6 +17,13 @@ uses semantic-ish versioning (minor = new skill or new capability, patch = fixes
 
 ### Added
 
+- **Truthful native Rust migration baseline.** `understudy runtime conformance
+  --backend native` now uses the owner-only authenticated Desktop API to force
+  the one-release Rust fallback against a named warm slot. It passes only the
+  exact prompt-only case the legacy headless boundary actually supports and
+  records richer frozen scenarios as explicit gaps, preventing synthetic
+  wrapper events from overstating image, tool, cancellation, compaction,
+  restart, or supervision parity.
 - **Understudy Desktop agent control plane.** The public CLI now discovers the
   owner-only Desktop capability file and exposes a versioned OpenAPI 3.1
   contract for capabilities, models, downloads, residency, canonical turns,

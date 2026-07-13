@@ -1114,6 +1114,19 @@ describe("understudy CLI", () => {
     assert.match(result.stderr, /requires --base-url and --model/);
   });
 
+  it("requires an explicit warm slot for the native Rust reference", () => {
+    const result = run([
+      "runtime",
+      "conformance",
+      "--backend",
+      "native",
+      "--model",
+      "understudy-reference-model",
+    ]);
+    assert.notEqual(result.status, 0);
+    assert.match(result.stderr, /--backend native requires --slot/);
+  });
+
   it("rejects removed full runtime commands", () => {
     const result = run(["gateway", "--port", "23333"]);
     assert.notEqual(result.status, 0);

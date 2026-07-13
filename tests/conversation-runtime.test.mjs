@@ -30,6 +30,7 @@ import {
 } from "../dist/runtime/conversation/contract.js";
 import {
   executeFrozenConformanceScenario,
+  executeFrozenNativeDesktopReferenceScenario,
   runConversationAdapterConformance,
   runConversationConformance,
   validateScenarioEvidence,
@@ -2569,6 +2570,171 @@ test("packaged immutable suite passes hashes and canonical trace gates", () => {
       "cancellation",
     ],
   );
+});
+
+test("native Rust reference wraps only the exact prompt-only boundary", async () => {
+  const calls = [];
+  const events = await executeFrozenNativeDesktopReferenceScenario(basicChatFixture, {
+    model: "understudy-reference-model",
+    invocation_id: "native-test",
+    async complete(request) {
+      calls.push(request);
+      return {
+        capture_run_id: request.run_id,
+        content: "The local fixture passed.",
+        status: "ok",
+        runtime_backend: "native-rust",
+        prompt_tokens: 4,
+        completion_tokens: 5,
+        reasoning_tokens: 0,
+      };
+    },
+  });
+  assert.equal(calls.length, 1);
+  assert.equal(calls[0].prompt, "Run the local fixture.");
+  assert.doesNotThrow(() => validateScenarioEvidence(basicChatFixture, events));
+  assert.equal(events[0].runtime_id, "native-rust-reference");
+  assert.equal(events[0].run_id, "conformance-native-basic-chat-native-test");
+  assert.equal(events[1].data.model, "understudy-reference-model");
+  assert.deepEqual(events[2].data, {
+    role: "primary",
+    model: "understudy-reference-model",
+    input_tokens: 4,
+    output_tokens: 5,
+    reasoning_tokens: 0,
+    cached_input_tokens: 0,
+    total_tokens: 9,
+    source: "estimated",
+    complete: false,
+  });
+
+  const image = JSON.parse(
+    readFileSync(
+      new URL(
+        "../schemas/conversation-runtime-conformance/inputs/offline-image.json",
+        import.meta.url,
+      ),
+      "utf8",
+    ),
+  );
+  await assert.rejects(
+    () =>
+      executeFrozenNativeDesktopReferenceScenario(image, {
+        model: "understudy-reference-model",
+        invocation_id: "native-test",
+        async complete(request) {
+          calls.push(request);
+          throw new Error("must not execute");
+        },
+      }),
+    /does not expose canonical offline-image execution/,
+  );
+  assert.equal(calls.length, 1, "unsupported inputs must fail before the desktop call");
+});
+
+test("native CLI adapter forces the authenticated desktop reference and reports honest gaps", async () => {
+  const requests = [];
+  const token = "native-reference-test-token".padEnd(64, "x");
+  const server = createServer(async (request, response) => {
+    if (request.url === "/health") {
+      response.writeHead(200, { "content-type": "text/plain" });
+      response.end("ok");
+      return;
+    }
+    if (request.headers.authorization !== `Bearer ${token}`) {
+      response.writeHead(401);
+      response.end("unauthorized");
+      return;
+    }
+    if (request.method === "GET" && request.url === "/v1/residency") {
+      response.writeHead(200, { "content-type": "application/json" });
+      response.end(JSON.stringify({
+        slots: [
+          { id: 7, model_id: "understudy-reference-model", state: "running" },
+        ],
+      }));
+      return;
+    }
+    if (request.method === "POST" && request.url === "/api/chat/completion") {
+      const body = await requestJson(request);
+      requests.push(body);
+      response.writeHead(200, { "content-type": "application/json" });
+      response.end(JSON.stringify({
+        capture_run_id: body.capture_run_id,
+        content: "The local fixture passed.",
+        status: "ok",
+        runtime_backend: "native-rust",
+        prompt_tokens: 4,
+        completion_tokens: 5,
+        reasoning_tokens: 0,
+      }));
+      return;
+    }
+    response.writeHead(404);
+    response.end("not found");
+  });
+  const home = mkdtempSync(join(tmpdir(), "understudy-native-reference-"));
+  try {
+    await new Promise((accept) => server.listen(0, "127.0.0.1", accept));
+    const address = server.address();
+    assert.ok(address && typeof address !== "string");
+    const capabilityPath = join(home, "desktop-api.json");
+    writeFileSync(
+      capabilityPath,
+      JSON.stringify({
+        schema_version: "understudy.desktop_api.v2",
+        base_url: `http://127.0.0.1:${address.port}`,
+        token,
+        pid: process.pid,
+        app_version: "0.3.5",
+      }),
+      { mode: 0o600 },
+    );
+    const result = await runCli(
+      [
+        "runtime",
+        "conformance",
+        "--backend",
+        "native",
+        "--slot",
+        "7",
+        "--model",
+        "understudy-reference-model",
+        "--scenario-timeout-ms",
+        "5000",
+        "--json",
+      ],
+      { UNDERSTUDY_DESKTOP_API_FILE: capabilityPath },
+    );
+    assert.equal(result.code, 1, result.stderr);
+    const report = JSON.parse(result.stdout);
+    assert.equal(report.adapter_id, "native");
+    assert.equal(report.passed, false);
+    assert.equal(report.complete, false);
+    assert.equal(report.eligible_for_promotion, false);
+    assert.equal(report.metadata.runtime_id, "native-rust-reference");
+    assert.equal(report.metadata.evidence_projection, "legacy_prompt_only_completion_summary");
+    assert.deepEqual(
+      Object.fromEntries(report.scenarios.map((scenario) => [scenario.id, scenario.status])),
+      {
+        "basic-chat": "passed",
+        "offline-image": "failed",
+        "tool-round": "failed",
+        "malformed-tool-call": "failed",
+        "supervisor-takeover": "not_applicable",
+        "long-chat-compaction": "not_applicable",
+        "restart-resume": "not_applicable",
+        cancellation: "failed",
+      },
+    );
+    assert.equal(requests.length, 1);
+    assert.equal(requests[0].runtime_backend, "native-rust-reference");
+    assert.equal(requests[0].prompt, "Run the local fixture.");
+    assert.match(requests[0].capture_run_id, /^conformance-native-basic-chat-/);
+  } finally {
+    await new Promise((accept) => server.close(() => accept()));
+    rmSync(home, { recursive: true, force: true });
+  }
 });
 
 test("remote model endpoints fail closed unless both gates are enabled", async () => {

@@ -531,10 +531,7 @@ pub(crate) fn validate_trace(events: &[RuntimeEventEnvelope]) -> Result<(), Stri
                 complete,
                 ..
             } => {
-                if model
-                    .as_deref()
-                    .is_none_or(|value| value.trim().is_empty())
-                {
+                if model.as_deref().is_none_or(|value| value.trim().is_empty()) {
                     return Err("usage requires model attribution".to_string());
                 }
                 if !matches!(source.as_str(), "provider" | "estimated" | "unavailable") {
