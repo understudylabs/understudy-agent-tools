@@ -27,7 +27,6 @@ const GPU_EVICTION_SETTLE_TIME: Duration = Duration::from_secs(2);
 /// BF16 26B candidates while allowing the certified compressed ladder to stay
 /// warm together when the conservative aggregate budget fits.
 const EXCLUSIVE_MODEL_WEIGHTS_GB: f32 = 24.0;
-const DEFAULT_MAX_KV_TOKENS: &str = "32768";
 const DEFAULT_VISION_CACHE_SIZE: &str = "4";
 
 /// What we persist + restore across launches.
@@ -142,10 +141,7 @@ fn available_memory_gb() -> f32 {
     system.available_memory() as f32 / (1024.0 * 1024.0 * 1024.0)
 }
 
-fn append_server_memory_limits(command: &mut Command, existing_flags: &[String]) {
-    if !existing_flags.iter().any(|flag| flag == "--max-kv-size") {
-        command.args(["--max-kv-size", DEFAULT_MAX_KV_TOKENS]);
-    }
+fn append_mlx_cache_defaults(command: &mut Command, existing_flags: &[String]) {
     if !existing_flags
         .iter()
         .any(|flag| flag == "--vision-cache-size")
@@ -169,7 +165,7 @@ fn serving_command(model_path: &str, port: u16, thinking: bool) -> anyhow::Resul
         if thinking {
             cmd.arg("--enable-thinking");
         }
-        append_server_memory_limits(&mut cmd, &[]);
+        append_mlx_cache_defaults(&mut cmd, &[]);
         return Ok(cmd);
     }
 
@@ -207,7 +203,9 @@ fn serving_command(model_path: &str, port: u16, thinking: bool) -> anyhow::Resul
     ]);
     let required_flags = manifest.server.required_flags.unwrap_or_default();
     cmd.args(&required_flags);
-    append_server_memory_limits(&mut cmd, &required_flags);
+    if use_mlx_script {
+        append_mlx_cache_defaults(&mut cmd, &required_flags);
+    }
     if thinking {
         cmd.arg("--enable-thinking");
     }
@@ -767,19 +765,17 @@ mod tests {
     }
 
     #[test]
-    fn default_server_command_caps_kv_and_vision_caches() {
+    fn default_server_command_does_not_shrink_context_window() {
         let command = serving_command("/tmp/model", 8090, false).unwrap();
         let args = command_args(&command);
-        assert!(args
-            .windows(2)
-            .any(|pair| pair == ["--max-kv-size", "32768"]));
+        assert!(!args.iter().any(|arg| arg == "--max-kv-size"));
         assert!(args
             .windows(2)
             .any(|pair| pair == ["--vision-cache-size", "4"]));
     }
 
     #[test]
-    fn serving_manifest_can_tighten_memory_caps_without_duplicate_flags() {
+    fn mlx_manifest_preserves_explicit_context_and_vision_caps() {
         let dir = std::env::temp_dir().join(format!(
             "understudy-serving-limits-test-{}",
             std::process::id(),
@@ -816,6 +812,32 @@ mod tests {
         assert!(args
             .windows(2)
             .any(|pair| pair == ["--vision-cache-size", "2"]));
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn custom_launcher_does_not_receive_mlx_cache_flags() {
+        let dir = std::env::temp_dir().join(format!(
+            "understudy-custom-serving-test-{}",
+            std::process::id(),
+        ));
+        let _ = std::fs::remove_dir_all(&dir);
+        std::fs::create_dir_all(&dir).unwrap();
+        std::fs::write(
+            dir.join("understudy.serving.json"),
+            r#"{
+              "schema_version": "understudy.serving.v1",
+              "server": {
+                "launcher": "custom-server serve",
+                "model_arg": "--model"
+              }
+            }"#,
+        )
+        .unwrap();
+        let command = serving_command(dir.to_str().unwrap(), 8090, false).unwrap();
+        let args = command_args(&command);
+        assert!(!args.iter().any(|arg| arg == "--max-kv-size"));
+        assert!(!args.iter().any(|arg| arg == "--vision-cache-size"));
         let _ = std::fs::remove_dir_all(&dir);
     }
 
