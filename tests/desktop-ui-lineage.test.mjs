@@ -96,6 +96,22 @@ test("public desktop preserves the reviewed Train interaction language", async (
   assert.doesNotMatch(serving, /label: "Usage"/);
 });
 
+test("desktop restores the reviewed persisted always-on-top pin", async () => {
+  const [page, permissions] = await Promise.all([
+    readFile(new URL("../apps/homescreen/app/page.tsx", import.meta.url), "utf8"),
+    readFile(
+      new URL("../apps/homescreen/src-tauri/capabilities/default.json", import.meta.url),
+      "utf8",
+    ),
+  ]);
+
+  assert.match(page, /understudy\.alwaysOnTop/);
+  assert.match(page, /setAlwaysOnTop\(true\)/);
+  assert.match(page, /setAlwaysOnTop\(next\)/);
+  assert.match(page, /aria-pressed=\{pinned\}/);
+  assert.match(permissions, /core:window:allow-set-always-on-top/);
+});
+
 test("desktop has one managed runtime repair surface", async () => {
   const [page, prompt, repair] = await Promise.all([
     readFile(pagePath, "utf8"),
