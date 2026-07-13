@@ -513,11 +513,25 @@ export function writeBuyerReport(outputDir, summary, rows, tasks) {
   return { modelPath, reportPath, model };
 }
 
-function readJsonl(path) {
-  return readFileSync(path, "utf8")
+function parseJsonlBytes(bytes) {
+  return bytes.toString("utf8")
     .split("\n")
     .filter((line) => line.trim())
     .map((line) => JSON.parse(line));
+}
+
+export function readImmutableProofSource(sourceDir, readSource = readFileSync) {
+  const summaryBytes = readSource(join(sourceDir, "summary.json"));
+  const resultsBytes = readSource(join(sourceDir, "results.jsonl"));
+  const tasksBytes = readSource(join(sourceDir, "tasks.json"));
+  return {
+    summaryBytes,
+    resultsBytes,
+    tasksBytes,
+    summary: JSON.parse(summaryBytes.toString("utf8")),
+    rows: parseJsonlBytes(resultsBytes),
+    tasks: JSON.parse(tasksBytes.toString("utf8")),
+  };
 }
 
 function validateReportPackage(outputDir, expectedManifest) {
@@ -553,12 +567,14 @@ function validateReportPackage(outputDir, expectedManifest) {
 
 export function renderExistingProof(path, { outputRoot = DEFAULT_REPORT_ROOT } = {}) {
   const sourceDir = resolve(path);
-  const summaryBytes = readFileSync(join(sourceDir, "summary.json"));
-  const resultsBytes = readFileSync(join(sourceDir, "results.jsonl"));
-  const tasksBytes = readFileSync(join(sourceDir, "tasks.json"));
-  const summary = JSON.parse(summaryBytes.toString("utf8"));
-  const rows = readJsonl(join(sourceDir, "results.jsonl"));
-  const tasks = JSON.parse(tasksBytes.toString("utf8"));
+  const {
+    summaryBytes,
+    resultsBytes,
+    tasksBytes,
+    summary,
+    rows,
+    tasks,
+  } = readImmutableProofSource(sourceDir);
   validateProofSource(summary, rows, tasks, tasksBytes);
   const model = buildReportModel(summary, rows, tasks);
   const modelBytes = Buffer.from(`${JSON.stringify(model, null, 2)}\n`);

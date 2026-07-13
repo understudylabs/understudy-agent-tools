@@ -25,6 +25,7 @@ import {
 import {
   buildBuyerReport,
   buildReportModel,
+  readImmutableProofSource,
   renderExistingProof,
   verdictProbabilityEvidence,
 } from "../experiments/desktop-grocery-proof/report.mjs";
@@ -357,6 +358,29 @@ describe("desktop grocery proof", () => {
     assert.equal(result.status, 1);
     assert.match(result.stderr, /ENOENT/);
     assert.doesNotMatch(result.stderr, /\n\s+at /);
+  });
+
+  it("parses report rows from the exact results bytes read for provenance", () => {
+    const sourceDir = "/immutable-proof";
+    const reads = new Map();
+    const resultsBytes = Buffer.from('{"task_id":"ops","score":{"exact":true}}\n');
+    const files = new Map([
+      [join(sourceDir, "summary.json"), Buffer.from('{"proof_id":"proof"}\n')],
+      [join(sourceDir, "results.jsonl"), resultsBytes],
+      [join(sourceDir, "tasks.json"), Buffer.from('[{"id":"ops"}]\n')],
+    ]);
+    const source = readImmutableProofSource(sourceDir, (path) => {
+      reads.set(path, (reads.get(path) ?? 0) + 1);
+      if ((reads.get(path) ?? 0) > 1) throw new Error(`source file read twice: ${path}`);
+      return files.get(path);
+    });
+    assert.equal(reads.get(join(sourceDir, "results.jsonl")), 1);
+    assert.equal(source.resultsBytes, resultsBytes);
+    assert.deepEqual(source.rows, [{ task_id: "ops", score: { exact: true } }]);
+    assert.equal(
+      createHash("sha256").update(source.resultsBytes).digest("hex"),
+      createHash("sha256").update(resultsBytes).digest("hex"),
+    );
   });
 
   it("refreshes a stale immutable proof into an owner-only derived report package", () => {
