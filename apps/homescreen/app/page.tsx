@@ -13,6 +13,7 @@ import { UsagePane } from "./components/UsagePane";
 import { DownloadQrButton } from "./components/DownloadQrButton";
 import { isTrainingPane, TrainingPane } from "./components/TrainingPane";
 import { RlmPane } from "./components/RlmPane";
+import { RuntimeRepairPrompt } from "./components/RuntimeRepairPrompt";
 import { useStatus } from "./lib/useStatus";
 
 export default function Page() {
@@ -98,6 +99,7 @@ export default function Page() {
         </button>
       )}
       <DownloadQrButton />
+      <RuntimeRepairPrompt />
       <Sidebar
         active={pane}
         onSelect={(next) => {

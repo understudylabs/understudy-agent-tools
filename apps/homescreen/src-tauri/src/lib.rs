@@ -140,6 +140,7 @@ pub fn run() {
             commands::mlx_runtime_status,
             commands::set_app_icon,
             commands::bootstrap_status,
+            commands::desktop_health,
             commands::install_uv,
             commands::install_mlx_runtime,
             commands::install_understudy_agent_tools,

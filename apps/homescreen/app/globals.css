@@ -2358,10 +2358,82 @@ select,
   padding: 6px 0;
 }
 .chat-runtime-notice {
-  color: var(--text-muted);
+  color: var(--text-2);
   font-size: 11px;
   line-height: 1.4;
   padding: 5px 0;
+}
+.runtime-repair-prompt {
+  position: fixed;
+  z-index: 80;
+  top: 42px;
+  right: 16px;
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto auto;
+  align-items: center;
+  gap: 10px;
+  width: min(520px, calc(100vw - 32px));
+  padding: 10px 10px 10px 12px;
+  border: 1px solid color-mix(in srgb, var(--accent) 42%, var(--border));
+  border-radius: var(--r-control);
+  background: color-mix(in srgb, var(--surface) 94%, transparent);
+  box-shadow: 0 12px 32px rgb(0 0 0 / 24%);
+  backdrop-filter: blur(16px);
+}
+.runtime-repair-icon {
+  color: var(--accent);
+}
+.runtime-repair-copy {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+.runtime-repair-copy strong {
+  color: var(--text);
+  font-size: 11px;
+  font-weight: 600;
+}
+.runtime-repair-copy span,
+.runtime-repair-copy code {
+  overflow: hidden;
+  color: var(--text-2);
+  font-size: 10px;
+  line-height: 1.35;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.runtime-repair-copy code {
+  color: var(--accent);
+}
+.runtime-repair-action,
+.runtime-repair-dismiss {
+  border: 1px solid var(--border);
+  border-radius: var(--r-control);
+  background: var(--elevated);
+  color: var(--text);
+}
+.runtime-repair-action {
+  min-height: 30px;
+  padding: 0 10px;
+  font: inherit;
+  font-size: 10px;
+  white-space: nowrap;
+}
+.runtime-repair-action:hover:not(:disabled) {
+  border-color: var(--accent);
+}
+.runtime-repair-action:disabled {
+  opacity: 0.6;
+}
+.runtime-repair-dismiss {
+  display: grid;
+  width: 28px;
+  height: 28px;
+  padding: 0;
+  place-items: center;
+}
+.runtime-repair-dismiss:hover {
+  color: var(--accent);
 }
 .chat-image-list {
   display: flex;
@@ -2382,7 +2454,7 @@ select,
   object-fit: contain;
 }
 .chat-image figcaption {
-  color: var(--text-muted);
+  color: var(--text-2);
   font-size: 10px;
   margin-top: 3px;
 }

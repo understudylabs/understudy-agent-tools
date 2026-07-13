@@ -131,6 +131,17 @@ fn expand_home(value: &str) -> String {
     value.to_string()
 }
 
+fn emit_mlx_repair(app: &AppHandle, reason: &str) {
+    let _ = app.emit(
+        "runtime-repair-needed",
+        serde_json::json!({
+            "runtime": "mlx-vlm",
+            "reason": reason,
+            "command": "understudy models runtime repair",
+        }),
+    );
+}
+
 fn estimated_runtime_gb(weights_gb: f32) -> f32 {
     weights_gb * RUNTIME_WEIGHT_MULTIPLIER + RUNTIME_SERVER_OVERHEAD_GB
 }
@@ -370,6 +381,14 @@ impl Residency {
     /// Warm a slot: enforce a conservative runtime budget, spawn mlx_vlm.server,
     /// and poll until ready. Heavy checkpoints are exclusive by construction.
     pub fn warm(&self, app: &AppHandle, slot_id: u32) -> anyhow::Result<()> {
+        let runtime = crate::models::mlx_runtime_status();
+        if !runtime.available {
+            emit_mlx_repair(app, &runtime.detail);
+            anyhow::bail!(
+                "mlx-vlm is required to run local models but is unavailable: {}",
+                runtime.detail
+            );
+        }
         // 1. Validate without changing state. A rejected preflight must never
         // leave a slot stuck in Loading.
         let (model_id, model_path, mem_gb, thinking) = {
@@ -452,7 +471,9 @@ impl Residency {
                 let snapshot = self.snapshot_from(&inner);
                 drop(inner);
                 let _ = app.emit("residency-changed", snapshot);
-                anyhow::bail!("failed to start local model server: {err}");
+                let reason = format!("failed to start local model server: {err}");
+                emit_mlx_repair(app, &reason);
+                anyhow::bail!(reason);
             }
         };
         {
@@ -489,6 +510,12 @@ impl Residency {
             let snapshot = residency.snapshot_from(&inner);
             drop(inner);
             let _ = app.emit("residency-changed", snapshot);
+            if !ready {
+                emit_mlx_repair(
+                    &app,
+                    "local model server did not become ready before the startup timeout",
+                );
+            }
             // Persist + benchmark record.
             if ready {
                 residency.persist(&app);
