@@ -3308,8 +3308,273 @@ select,
 .supervision-review-state button { padding: 9px 12px; }
 .supervision-review-state.error { color: var(--error); }
 
+/* ---------- Experiments: compact compare + evidence ledger ---------- */
+.content:has(.experiment-compare) {
+  overflow: hidden;
+  padding: calc(var(--titlebar-h) + 14px) 24px 18px;
+}
+
+.experiment-compare {
+  position: relative;
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto;
+  gap: 14px;
+  width: min(1160px, 100%);
+  height: 100%;
+  margin: 0 auto;
+  color: var(--text);
+}
+
+.experiment-compare button {
+  border: 1px solid var(--border-strong);
+  border-radius: 8px;
+  background: transparent;
+  color: var(--text-2);
+  font: 500 11px/1.2 var(--mono);
+  cursor: pointer;
+}
+.experiment-compare button:hover:not(:disabled) {
+  border-color: color-mix(in srgb, var(--mb-cyan) 42%, var(--border-strong));
+  background: var(--hover);
+  color: var(--text);
+}
+.experiment-compare button:disabled { opacity: 0.42; cursor: not-allowed; }
+
+.experiment-compare-topbar {
+  display: grid;
+  grid-template-columns: 1fr minmax(280px, 0.9fr) 1fr;
+  align-items: center;
+  gap: 20px;
+  min-height: 40px;
+  padding-bottom: 12px;
+  border-bottom: 1px solid var(--border);
+}
+.experiment-compare-topbar > div:first-child { display: flex; align-items: baseline; gap: 10px; }
+.experiment-compare-topbar > div:first-child span,
+.experiment-kicker,
+.experiment-result-card > header span,
+.experiment-candidates header span,
+.experiment-next-action span {
+  color: var(--text-3);
+  font: 10px/1.3 var(--mono);
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+.experiment-compare-topbar > div:first-child strong { font: 500 14px/1.2 var(--mono); }
+.experiment-compare-topbar nav { display: flex; justify-content: flex-end; gap: 7px; }
+.experiment-compare-topbar nav button { padding: 7px 10px; }
+
+.experiment-loop {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  align-items: center;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  color: var(--text-3);
+  font: 9px/1.2 var(--mono);
+}
+.experiment-loop button,
+.experiment-loop b,
+.experiment-loop span { padding: 7px 10px; text-align: center; }
+.experiment-loop button { border: 0; border-radius: 999px; font-size: 9px; }
+.experiment-loop b { background: color-mix(in srgb, var(--mb-cyan) 15%, transparent); color: var(--text); font-weight: 500; }
+
+.experiment-compare-body {
+  display: grid;
+  grid-template-columns: minmax(250px, 0.7fr) minmax(0, 1.3fr);
+  gap: 12px;
+  min-height: 0;
+}
+.experiment-run-card,
+.experiment-result-card {
+  min-width: 0;
+  min-height: 0;
+  overflow: hidden;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--surface) 86%, transparent);
+}
+.experiment-run-card {
+  display: flex;
+  flex-direction: column;
+  padding: clamp(16px, 2.4vw, 26px);
+  border-top: 2px solid var(--mb-mint);
+}
+.experiment-run-card h2 {
+  max-width: 380px;
+  margin: 10px 0 8px;
+  font-size: clamp(19px, 2.4vw, 28px);
+  font-weight: 500;
+  line-height: 1.12;
+  letter-spacing: -0.035em;
+}
+.experiment-run-card > p {
+  margin: 0 0 18px;
+  color: var(--text-2);
+  font-size: 11px;
+  line-height: 1.5;
+}
+.experiment-run-card > label { display: grid; gap: 7px; margin-bottom: 9px; }
+.experiment-run-card > label span { color: var(--text-3); font: 9px/1.2 var(--mono); text-transform: uppercase; letter-spacing: 0.07em; }
+.experiment-run-card select {
+  width: 100%;
+  padding: 9px 10px;
+  border: 1px solid var(--border-strong);
+  border-radius: 8px;
+  background: var(--bg);
+  color: var(--text);
+  font: 11px/1.2 var(--mono);
+}
+.experiment-run-primary {
+  min-height: 42px;
+  padding: 10px 12px;
+  border-color: color-mix(in srgb, var(--mb-cyan) 54%, var(--border)) !important;
+  background: color-mix(in srgb, var(--mb-cyan) 17%, transparent) !important;
+  color: var(--text) !important;
+}
+.experiment-run-card > small { margin-top: 8px; color: var(--text-3); font: 9px/1.4 var(--mono); }
+
+.experiment-live-progress { margin-top: 15px; }
+.experiment-live-progress > div { display: flex; justify-content: space-between; gap: 8px; color: var(--text-2); font: 9px/1.3 var(--mono); }
+.experiment-live-progress em { color: var(--mb-cyan); font-style: normal; }
+.experiment-live-progress i { display: block; height: 3px; margin-top: 7px; overflow: hidden; border-radius: 99px; background: var(--border); }
+.experiment-live-progress i b { display: block; height: 100%; background: var(--mb-cyan); transition: width 180ms ease; }
+
+.experiment-ledger {
+  display: grid;
+  gap: 1px;
+  margin-top: auto;
+  padding-top: 17px;
+  border-top: 1px solid var(--border);
+}
+.experiment-ledger > div:first-child,
+.experiment-ledger-row { display: flex; align-items: center; justify-content: space-between; gap: 9px; }
+.experiment-ledger > div:first-child { margin-bottom: 4px; color: var(--text-3); font: 9px/1.3 var(--mono); }
+.experiment-ledger > div:first-child strong { color: var(--text-2); font-weight: 500; }
+.experiment-ledger-row { min-width: 0; padding: 5px 0; color: var(--text-3); font: 9px/1.2 var(--mono); }
+.experiment-ledger-row span { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.experiment-ledger-row em { flex: 0 0 auto; color: var(--text-2); font-style: normal; }
+.experiment-ledger > p { margin: 6px 0 0; color: var(--text-3); font: 9px/1.4 var(--mono); }
+
+.experiment-result-card {
+  display: grid;
+  grid-template-rows: auto minmax(0, 1fr) auto auto;
+  border-top: 2px solid var(--mb-cyan);
+}
+.experiment-result-card > header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 14px 16px 12px;
+  border-bottom: 1px solid var(--border);
+}
+.experiment-result-card > header > div { display: grid; gap: 3px; min-width: 0; }
+.experiment-result-card > header strong { overflow: hidden; font: 500 12px/1.3 var(--mono); text-overflow: ellipsis; white-space: nowrap; }
+.experiment-result-card > header > em {
+  padding: 4px 7px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  color: var(--text-3);
+  font: 8px/1.2 var(--mono);
+  font-style: normal;
+  text-transform: uppercase;
+  letter-spacing: 0.05em;
+}
+.experiment-result-card > header > em.ready { border-color: color-mix(in srgb, var(--mb-mint) 45%, var(--border)); color: var(--mb-mint); }
+.experiment-result-card > header > em.directional { border-color: color-mix(in srgb, var(--c-warn) 45%, var(--border)); color: var(--c-warn); }
+
+.experiment-candidates {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  min-height: 0;
+  padding: 14px;
+}
+.experiment-candidates > section {
+  display: flex;
+  min-width: 0;
+  min-height: 0;
+  flex-direction: column;
+  padding: 14px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--bg) 48%, transparent);
+}
+.experiment-candidates > section.winner { border-color: color-mix(in srgb, var(--mb-mint) 42%, var(--border)); }
+.experiment-candidates header { display: flex; align-items: flex-start; justify-content: space-between; gap: 8px; }
+.experiment-candidates header > div { display: grid; gap: 3px; }
+.experiment-candidates header strong { font-size: 15px; font-weight: 500; }
+.experiment-candidates header em { color: var(--mb-mint); font: 8px/1.2 var(--mono); font-style: normal; }
+.experiment-candidates code { margin: 12px 0; overflow: hidden; color: var(--text-3); font: 9px/1.2 var(--mono); text-overflow: ellipsis; white-space: nowrap; }
+.experiment-candidates dl { display: grid; grid-template-columns: 1fr 1fr; gap: 1px; margin: auto 0 10px; }
+.experiment-candidates dl > div { padding: 8px; border: 1px solid var(--border); margin: -1px 0 0 -1px; }
+.experiment-candidates dt { color: var(--text-3); font: 8px/1.2 var(--mono); text-transform: uppercase; letter-spacing: 0.05em; }
+.experiment-candidates dd { margin: 4px 0 0; color: var(--text); font: 500 16px/1.1 var(--mono); }
+.experiment-candidates > section > small { color: var(--text-3); font: 8px/1.3 var(--mono); }
+
+.experiment-evidence-gate {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  border-top: 1px solid var(--border);
+}
+.experiment-evidence-gate > div { display: grid; gap: 4px; padding: 10px 13px; border-right: 1px solid var(--border); }
+.experiment-evidence-gate > div:last-child { border-right: 0; }
+.experiment-evidence-gate span { color: var(--text-3); font: 8px/1.3 var(--mono); }
+.experiment-evidence-gate strong { color: var(--text-2); font: 500 10px/1.2 var(--mono); }
+.experiment-directional-note { margin: 0; padding: 9px 13px; border-top: 1px solid var(--border); color: var(--c-warn); font: 9px/1.4 var(--mono); }
+.experiment-empty-result { align-self: center; max-width: 360px; margin: auto; padding: 30px; text-align: center; }
+.experiment-empty-result strong { font-size: 20px; font-weight: 500; }
+.experiment-empty-result p { margin: 10px 0 0; color: var(--text-2); font-size: 11px; line-height: 1.55; }
+
+.experiment-next-action {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  align-items: center;
+  gap: 20px;
+  min-height: 76px;
+  padding: 12px 15px;
+  border: 1px solid color-mix(in srgb, var(--mb-cyan) 24%, var(--border));
+  border-radius: 12px;
+  background: color-mix(in srgb, var(--surface) 94%, transparent);
+}
+.experiment-next-action > div { display: grid; grid-template-columns: auto 1fr; gap: 3px 10px; align-items: baseline; }
+.experiment-next-action strong { font-size: 14px; font-weight: 500; }
+.experiment-next-action p { grid-column: 2; margin: 0; color: var(--text-3); font-size: 10px; line-height: 1.4; }
+.experiment-next-action > span:last-child {
+  min-width: 150px;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  color: var(--text-3);
+  font: 8px/1.2 var(--mono);
+  letter-spacing: 0.05em;
+  text-align: center;
+  text-transform: uppercase;
+}
+.experiment-next-action > span:last-child.ready {
+  border-color: color-mix(in srgb, var(--mb-mint) 44%, var(--border));
+  color: var(--mb-mint);
+}
+.experiment-notice {
+  position: absolute;
+  right: 0;
+  bottom: 88px;
+  max-width: 560px;
+  padding: 9px 11px;
+  border: 1px solid color-mix(in srgb, var(--mb-mint) 38%, var(--border));
+  border-radius: 8px;
+  background: var(--surface);
+  color: var(--text-2);
+  font: 9px/1.4 var(--mono);
+  overflow-wrap: anywhere;
+}
+.experiment-notice.error { border-color: color-mix(in srgb, var(--error) 45%, var(--border)); color: var(--error); }
+
 @media (max-width: 900px) {
-  .content:has(.supervision-review) { overflow-y: auto; }
+  .content:has(.supervision-review),
+  .content:has(.experiment-compare) { overflow-y: auto; }
   .supervision-review { height: auto; min-height: 100%; }
   .supervision-review-topbar { grid-template-columns: 1fr auto; }
   .supervision-review-progress { display: none; }
@@ -3317,4 +3582,10 @@ select,
   .supervision-review-card { min-height: 220px; }
   .supervision-review-labeler { grid-template-columns: 1fr; }
   .supervision-review-alternatives { grid-template-columns: 1fr 1fr; }
+  .experiment-compare { height: auto; min-height: 100%; }
+  .experiment-compare-topbar { grid-template-columns: 1fr auto; }
+  .experiment-loop { display: none; }
+  .experiment-compare-body { grid-template-columns: 1fr; }
+  .experiment-run-card,
+  .experiment-result-card { min-height: 440px; }
 }

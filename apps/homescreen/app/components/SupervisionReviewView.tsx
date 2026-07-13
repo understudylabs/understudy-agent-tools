@@ -40,7 +40,7 @@ function groupForMarker(groups: ReviewEvidenceGroup[], marker: string | null) {
   );
 }
 
-export function SupervisionReviewView() {
+export function SupervisionReviewView({ onCompare }: { onCompare?: () => void }) {
   const [queue, setQueue] = useState<SupervisionReviewQueue | null>(null);
   const [activeMarker, setActiveMarker] = useState<string | null>(null);
   const [showReviewed, setShowReviewed] = useState(false);
@@ -262,6 +262,11 @@ export function SupervisionReviewView() {
             Review past decisions
           </button>
         )}
+        {onCompare && (
+          <button type="button" onClick={onCompare}>
+            Compare local models
+          </button>
+        )}
       </div>
     );
   }
@@ -291,6 +296,7 @@ export function SupervisionReviewView() {
         <nav aria-label="Review queue">
           <button type="button" disabled={saving || visibleGroups.length < 2} onClick={() => move(-1)}>Previous</button>
           <button type="button" disabled={saving || visibleGroups.length < 2} onClick={() => move(1)}>Skip</button>
+          {onCompare && <button type="button" onClick={onCompare}>Compare</button>}
           <button type="button" aria-expanded={showDetails} onClick={() => setShowDetails((value) => !value)}>Details</button>
         </nav>
       </header>
