@@ -33,7 +33,7 @@
     "!**/*.py"
   ],
   "scripts": {
-    "build": "rm -rf dist && tsc -p tsconfig.build.json",
+    "build": "rm -rf dist && tsc -p tsconfig.build.json && node scripts/ensure-bin-mode.mjs",
     "clean": "rm -rf dist",
     "prepare": "npm run build",
     "package:smoke": "node scripts/package-smoke.mjs",
