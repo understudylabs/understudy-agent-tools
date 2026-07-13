@@ -184,8 +184,8 @@
     },
     {
       "id": "always-on-top-window-pin",
-      "status": "planned",
-      "evidence": "The reviewed desktop supported a persisted, user-controlled always-on-top pin. The canonical shell does not yet expose it, despite the low implementation cost and usefulness while working alongside an editor or terminal."
+      "status": "shipped",
+      "evidence": "The canonical titlebar exposes the reviewed user-controlled always-on-top pin, persists the preference locally, restores it on launch, reports its pressed state accessibly, and reverts the UI if the native window operation fails."
     },
     {
       "id": "heavy-model-preflight-and-process-reconciliation",
