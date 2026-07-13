@@ -51,6 +51,11 @@ import {
   type ChatAttachmentUpload,
 } from "../lib/chat-attachments";
 import { modelShortName, type SnapshotAlias } from "../lib/model-aliases";
+import {
+  SKIP_HINT_THRESHOLD,
+  StreamPacer,
+  pacingEnabled,
+} from "../lib/stream-pacer.mjs";
 import { ModelCardDrawer } from "./ModelCardDrawer";
 import type { FileUIPart } from "ai";
 
@@ -339,9 +344,34 @@ export function ChatPane({ resetToken }: { resetToken: number }) {
   const [dropHovering, setDropHovering] = useState(false);
   const [dropRunning, setDropRunning] = useState(false);
   const [droppedWorkload, setDroppedWorkload] = useState<DroppedWorkload | null>(null);
+  const [pacingMessageIndex, setPacingMessageIndex] = useState<number | null>(null);
+  const [pacedRevealed, setPacedRevealed] = useState<number | null>(null);
   const observedResetToken = useRef(false);
   const dropInFlight = useRef(false);
   const dropRequestGeneration = useRef(0);
+  const streamPacer = useRef<StreamPacer | null>(null);
+  const streamPacerGeneration = useRef(0);
+
+  const resetStreamPacer = () => {
+    streamPacerGeneration.current += 1;
+    streamPacer.current?.dispose();
+    streamPacer.current = null;
+    setPacingMessageIndex(null);
+    setPacedRevealed(null);
+  };
+
+  const startStreamPacer = (messageIndex: number) => {
+    resetStreamPacer();
+    if (!pacingEnabled()) return null;
+    const generation = streamPacerGeneration.current;
+    const pacer = new StreamPacer((revealed: number) => {
+      if (streamPacerGeneration.current === generation) setPacedRevealed(revealed);
+    });
+    streamPacer.current = pacer;
+    setPacingMessageIndex(messageIndex);
+    setPacedRevealed(0);
+    return pacer;
+  };
 
   const refreshModels = async () => {
     try {
@@ -392,6 +422,7 @@ export function ChatPane({ resetToken }: { resetToken: number }) {
   };
 
   const stopStreaming = () => {
+    streamPacer.current?.skip();
     void invoke<{ status: string }>("conversation_runtime_cancel", { sessionId })
       .then((result) => {
         if (result.status === "idle") {
@@ -408,7 +439,11 @@ export function ChatPane({ resetToken }: { resetToken: number }) {
   useEffect(() => {
     refreshModels();
     const timer = window.setInterval(refreshModels, 2500);
-    return () => window.clearInterval(timer);
+    return () => {
+      window.clearInterval(timer);
+      streamPacerGeneration.current += 1;
+      streamPacer.current?.dispose();
+    };
   }, []);
 
   useEffect(() => {
@@ -602,6 +637,7 @@ export function ChatPane({ resetToken }: { resetToken: number }) {
       ...messages,
       { role: "user", content: clean, model: choice.label, attachments },
     ];
+    const turnPacer = startStreamPacer(toSend.length);
     setMessages([...toSend, { role: "assistant", content: "", reasoning: "", model: choice.label }]);
     setStreaming(true);
     setAssistantSpeaking(false);
@@ -612,6 +648,7 @@ export function ChatPane({ resetToken }: { resetToken: number }) {
         setNotice(msg.message);
       } else if (msg.type === "Chunk") {
         setAssistantSpeaking(true);
+        turnPacer?.append(msg.text);
         setMessages((prev) => {
           if (prev.length === 0) return prev;
           const p = [...prev];
@@ -621,6 +658,7 @@ export function ChatPane({ resetToken }: { resetToken: number }) {
         });
       } else if (msg.type === "ReplaceChunk") {
         setAssistantSpeaking(true);
+        turnPacer?.replace(msg.text);
         setMessages((prev) => {
           if (prev.length === 0) return prev;
           const p = [...prev];
@@ -687,10 +725,12 @@ export function ChatPane({ resetToken }: { resetToken: number }) {
           ...prev.filter((event) => event.session_id === sessionId),
         ].slice(0, 12));
       } else if (msg.type === "Error") {
+        turnPacer?.skip();
         setErr(msg.message);
         setStreaming(false);
         setAssistantSpeaking(false);
       } else if (msg.type === "Done") {
+        turnPacer?.finish();
         setStreaming(false);
         setAssistantSpeaking(false);
       }
@@ -710,6 +750,7 @@ export function ChatPane({ resetToken }: { resetToken: number }) {
         onEvent: ch,
       });
     } catch (e: unknown) {
+      turnPacer?.skip();
       setErr(String(e));
       setStreaming(false);
       setAssistantSpeaking(false);
@@ -731,6 +772,7 @@ export function ChatPane({ resetToken }: { resetToken: number }) {
 
   const restartChat = () => {
     if (streaming) return;
+    resetStreamPacer();
     void invoke("chat_attachments_delete_session", { sessionId }).catch(() => {
       // Starting a fresh chat still succeeds; orphan cleanup is local and best-effort.
     });
@@ -886,6 +928,9 @@ export function ChatPane({ resetToken }: { resetToken: number }) {
             messages.map((m, i) => {
               const isLastAssistant = m.role === "assistant" && i === messages.length - 1;
               const isActiveAssistant = isLastAssistant && streaming;
+              const isPacedAssistant = m.role === "assistant" && i === pacingMessageIndex && pacedRevealed !== null;
+              const shownContent = isPacedAssistant ? m.content.slice(0, pacedRevealed) : m.content;
+              const pacedBacklog = isPacedAssistant ? Math.max(0, m.content.length - pacedRevealed) : 0;
               const reasoningText = cleanReasoningText(m.reasoning ?? "");
               return (
                 <Message
@@ -920,7 +965,18 @@ export function ChatPane({ resetToken }: { resetToken: number }) {
                       </div>
                     )}
                     {m.role === "assistant" ? (
-                      <MessageResponse>{m.content || (isActiveAssistant ? "..." : "")}</MessageResponse>
+                      <div className="paced-answer">
+                        <MessageResponse>{shownContent || (isActiveAssistant ? "..." : "")}</MessageResponse>
+                        {pacedBacklog > SKIP_HINT_THRESHOLD && (
+                          <button
+                            type="button"
+                            className="paced-answer-skip"
+                            onClick={() => streamPacer.current?.skip()}
+                          >
+                            Show full answer
+                          </button>
+                        )}
+                      </div>
                     ) : (
                       m.content
                     )}
