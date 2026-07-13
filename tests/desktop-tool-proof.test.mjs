@@ -101,12 +101,78 @@ describe("desktop strict-tool proof", () => {
     assert.equal(score.orphan_result_count, 0);
     assert.deepEqual(score.checks, {
       terminal_error_free: true,
-      exactly_one_call: true,
-      exact_tool_name: true,
+      exact_call_count: true,
+      exact_tool_sequence: true,
       exact_arguments: true,
-      paired_successful_result: true,
+      paired_successful_results: true,
+      no_orphan_results: true,
       exact_output: true,
     });
+  });
+
+  it("scores intentional no-tool abstention as a strict behavior", () => {
+    const score = scoreToolTrace(
+      [{ event: "delta", data: { text: "NO_TOOL" } }],
+      { calls: [], expected_output: "NO_TOOL" },
+    );
+    assert.equal(score.strict_pass, true);
+    assert.equal(score.call_count, 0);
+    assert.equal(score.checks.exact_call_count, true);
+    assert.equal(score.checks.paired_successful_results, true);
+  });
+
+  it("requires multi-step calls, arguments, and results in the frozen order", () => {
+    const multiTask = {
+      calls: [
+        { tool: "status", arguments: {} },
+        { tool: "residency", arguments: {} },
+      ],
+      expected_output: "OK",
+    };
+    const events = [
+      { event: "tool_call", data: { call_id: "one", name: "status", parsed_arguments: {}, parse_error: null } },
+      { event: "tool_result", data: { call_id: "one", name: "status", ok: true } },
+      { event: "tool_call", data: { call_id: "two", name: "residency", parsed_arguments: {}, parse_error: null } },
+      { event: "tool_result", data: { call_id: "two", name: "residency", ok: true } },
+      { event: "delta", data: { text: "OK" } },
+    ];
+    assert.equal(scoreToolTrace(events, multiTask).strict_pass, true);
+    const reversed = structuredClone(events);
+    reversed[0].data.name = "residency";
+    reversed[1].data.name = "residency";
+    reversed[2].data.name = "status";
+    reversed[3].data.name = "status";
+    const score = scoreToolTrace(reversed, multiTask);
+    assert.equal(score.strict_pass, false);
+    assert.equal(score.checks.exact_call_count, true);
+    assert.equal(score.checks.exact_tool_sequence, false);
+  });
+
+  it("rejects punctuation-suffixed tool names instead of normalizing execution", () => {
+    const score = scoreToolTrace([
+      {
+        event: "tool_call",
+        data: {
+          call_id: "one",
+          name: "list_snapshot_models:",
+          parsed_arguments: {},
+          parse_error: null,
+        },
+      },
+      {
+        event: "tool_result",
+        data: { call_id: "one", name: "list_snapshot_models:", ok: false },
+      },
+      { event: "delta", data: { text: "OK" } },
+    ], {
+      calls: [{ tool: "list_snapshot_models", arguments: {} }],
+      expected_output: "OK",
+    });
+    assert.equal(score.strict_pass, false);
+    assert.equal(score.checks.exact_call_count, true);
+    assert.equal(score.checks.exact_tool_sequence, false);
+    assert.equal(score.checks.exact_arguments, true);
+    assert.equal(score.checks.paired_successful_results, false);
   });
 
   it("rejects wrappers, malformed arguments, duplicates, and orphan results", () => {
@@ -125,9 +191,10 @@ describe("desktop strict-tool proof", () => {
     ], task);
     assert.equal(score.strict_pass, false);
     assert.equal(score.orphan_result_count, 1);
-    assert.equal(score.checks.exact_tool_name, false);
+    assert.equal(score.checks.exact_tool_sequence, false);
     assert.equal(score.checks.exact_arguments, false);
-    assert.equal(score.checks.paired_successful_result, false);
+    assert.equal(score.checks.paired_successful_results, false);
+    assert.equal(score.checks.no_orphan_results, false);
     assert.equal(score.checks.exact_output, false);
   });
 
@@ -148,9 +215,11 @@ describe("desktop strict-tool proof", () => {
       elapsed_ms: 100,
       total_tokens: 20,
       parse_error: null,
+      parse_error_count: 0,
       orphan_result_count: 0,
       called_tool: "status",
       parsed_arguments: {},
+      call_sequence: [{ tool: "status", arguments: {}, parse_error: null }],
       result_ok: true,
       terminal_error: null,
       output: "OK",
@@ -163,10 +232,11 @@ describe("desktop strict-tool proof", () => {
         strict_pass: true,
         checks: {
           terminal_error_free: true,
-          exactly_one_call: true,
-          exact_tool_name: true,
+          exact_call_count: true,
+          exact_tool_sequence: true,
           exact_arguments: true,
-          paired_successful_result: true,
+          paired_successful_results: true,
+          no_orphan_results: true,
           exact_output: true,
         },
       },
@@ -177,10 +247,11 @@ describe("desktop strict-tool proof", () => {
         strict_pass: false,
         checks: {
           terminal_error_free: true,
-          exactly_one_call: false,
-          exact_tool_name: false,
+          exact_call_count: false,
+          exact_tool_sequence: false,
           exact_arguments: false,
-          paired_successful_result: false,
+          paired_successful_results: false,
+          no_orphan_results: true,
           exact_output: false,
         },
       },
@@ -188,6 +259,7 @@ describe("desktop strict-tool proof", () => {
     assert.equal(summary["12b"].strict_passes, 1);
     assert.equal(summary["12b"].attempts, 2);
     assert.equal(summary["12b"].strict_accuracy, 0.5);
+    assert.equal(summary["12b"].exact_call_count_rate, 0.5);
     assert.equal(summary["12b"].terminal_errors, 0);
     assert.equal(summary["12b"].failures.length, 1);
   });

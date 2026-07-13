@@ -5,8 +5,14 @@ versioned tool-call inputs. By default it calls each warm model directly through
 Pi, using Desktop only for the authenticated read-only tool executor. Synthetic
 benchmark attempts therefore do not enter the genuine Desktop release cohort.
 It scores the canonical trace rather than trusting the final prose: one exact
-named tool, exact parsed arguments, one paired successful result, no orphan
-result, and the requested final output.
+zero, one, or an ordered sequence of exact named tools; exact parsed arguments;
+paired successful results; no orphan results; and the requested final output.
+The frozen suite includes no-tool abstention, decoy tool names, numeric argument
+typing, malformed-JSON pressure, nested wrapper arguments, and ordered two-step
+tool rounds in addition to the basic one-call cases.
+Each attempt has a 30-second terminal timeout by default so a slow local tool or
+model becomes explicit cancellation evidence instead of hanging the suite; use
+`--timeout-ms` only when deliberately testing a slower environment.
 
 ```sh
 node experiments/desktop-tool-proof/run.mjs \
@@ -33,3 +39,6 @@ Evidence is written owner-only under
 stored in every row and the summary. A tiny local slice proves integration and
 identifies failure modes; it is not sufficient by itself for a production
 replacement claim.
+
+See [`RESULTS.md`](RESULTS.md) for the latest sanitized aggregate comparison and
+promotion decision. Raw canonical event files stay local.
