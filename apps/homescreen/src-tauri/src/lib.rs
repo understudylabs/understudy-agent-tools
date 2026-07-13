@@ -28,6 +28,7 @@ mod supervision_export;
 mod supervision_review;
 mod supervision_tiebreaker;
 mod tool_proof;
+mod workload_drop;
 
 use tauri::menu::{Menu, MenuItem, PredefinedMenuItem};
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
@@ -216,6 +217,7 @@ pub fn run() {
             tool_proof::desktop_tool_proof_run,
             tool_proof::desktop_tool_proof_list,
             tool_proof::desktop_tool_proof_prepare,
+            workload_drop::compile_dropped_workload,
             commands::sidekick_decisions,
             commands::sidekick_events,
             commands::sidekick_session_summaries,

@@ -2,6 +2,7 @@
 
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Channel, invoke } from "@tauri-apps/api/core";
+import { getCurrentWebview } from "@tauri-apps/api/webview";
 import {
   Conversation,
   ConversationContent,
@@ -89,6 +90,19 @@ type ResidencySnapshot = {
 };
 type SnapshotModel = SnapshotAlias;
 type ChatStatus = "ready" | "streaming" | "error";
+type DroppedWorkload = {
+  source_name: string;
+  source_path: string;
+  source_type: "file" | "directory";
+  scanned_file_count: number;
+  source_count: number;
+  total_bytes: number;
+  source_kinds: Record<string, number>;
+  truncated: boolean;
+  local_only: true;
+  payload_read: false;
+  workload_card_path: string;
+};
 
 const CLOUD_SUPERVISOR_FALLBACK_NOTICE =
   "Tried to hand off to a larger cloud model, but it is unavailable. Continuing with the local model.";
@@ -148,6 +162,12 @@ const CLOUD_MODEL: ModelChoice = {
   slotId: null,
   active: true,
 };
+
+function compactBytes(bytes: number): string {
+  if (bytes < 1_024) return `${bytes} B`;
+  if (bytes < 1_024 * 1_024) return `${(bytes / 1_024).toFixed(1)} KB`;
+  return `${(bytes / (1_024 * 1_024)).toFixed(1)} MB`;
+}
 
 function cleanReasoningText(text: string) {
   return text
@@ -280,7 +300,11 @@ export function ChatPane({ resetToken }: { resetToken: number }) {
   const [introThinking, setIntroThinking] = useState(true);
   const [sidekickEvents, setSidekickEvents] = useState<SidekickEvent[]>([]);
   const [sessionHydrated, setSessionHydrated] = useState(false);
+  const [dropHovering, setDropHovering] = useState(false);
+  const [dropRunning, setDropRunning] = useState(false);
+  const [droppedWorkload, setDroppedWorkload] = useState<DroppedWorkload | null>(null);
   const observedResetToken = useRef(false);
+  const dropInFlight = useRef(false);
 
   const refreshModels = async () => {
     try {
@@ -347,6 +371,66 @@ export function ChatPane({ resetToken }: { resetToken: number }) {
     refreshModels();
     const timer = window.setInterval(refreshModels, 2500);
     return () => window.clearInterval(timer);
+  }, []);
+
+  useEffect(() => {
+    let disposed = false;
+    let unlisten: (() => void) | null = null;
+    void getCurrentWebview()
+      .onDragDropEvent((event) => {
+        if (event.payload.type === "enter" || event.payload.type === "over") {
+          setDropHovering(true);
+          return;
+        }
+        if (event.payload.type === "leave") {
+          setDropHovering(false);
+          return;
+        }
+
+        setDropHovering(false);
+        const paths = event.payload.paths;
+        if (paths.length !== 1) {
+          setErr("Drop one file or folder at a time so each Workload Card has a clear source.");
+          return;
+        }
+        if (dropInFlight.current) {
+          setNotice("The current dropped workload is still being compiled locally.");
+          return;
+        }
+        dropInFlight.current = true;
+        setDropRunning(true);
+        setDroppedWorkload(null);
+        setErr(null);
+        setNotice("Creating a local metadata-only Workload Card…");
+        void invoke<DroppedWorkload>("compile_dropped_workload", { path: paths[0] })
+          .then((result) => {
+            if (disposed) return;
+            setDroppedWorkload(result);
+            setNotice(
+              result.truncated
+                ? "Workload draft created at the safety limit; no file contents were read."
+                : "Workload draft created locally; no file contents were read.",
+            );
+          })
+          .catch((error) => {
+            if (!disposed) setErr(String(error));
+          })
+          .finally(() => {
+            dropInFlight.current = false;
+            if (!disposed) setDropRunning(false);
+          });
+      })
+      .then((stop) => {
+        if (disposed) stop();
+        else unlisten = stop;
+      })
+      .catch((error) => {
+        if (!disposed) setNotice(`File and folder drop is unavailable: ${String(error)}`);
+      });
+    return () => {
+      disposed = true;
+      unlisten?.();
+    };
   }, []);
 
   useEffect(() => {
@@ -615,6 +699,8 @@ export function ChatPane({ resetToken }: { resetToken: number }) {
     setNotice(null);
     setSessionId(crypto.randomUUID());
     setAssistantSpeaking(false);
+    setDroppedWorkload(null);
+    setDropRunning(false);
     setPersonaReady(false);
     setIntroThinking(true);
     setPersonaCycle((value) => value + 1);
@@ -707,9 +793,16 @@ export function ChatPane({ resetToken }: { resetToken: number }) {
       className={
         "chat ai-chat" +
         (messages.length > 0 ? " has-messages" : "") +
+        (dropRunning || droppedWorkload ? " has-workload" : "") +
         (streaming ? " is-streaming" : "")
       }
     >
+      {dropHovering && (
+        <div className="workload-drop-overlay" role="status">
+          <div className="workload-drop-overlay-title">Drop one file or folder</div>
+          <div>Metadata only · stays on this Mac</div>
+        </div>
+      )}
       <div className={"persona-stage" + (personaReady ? " persona-ready" : "")} aria-hidden="true">
         <img
           key={`stamp-${personaCycle}`}
@@ -832,6 +925,53 @@ export function ChatPane({ resetToken }: { resetToken: number }) {
                 <div className="sidekick-active-task">{latestSidekickEvent.detail}</div>
               </div>
             </div>
+          )}
+          {(dropRunning || droppedWorkload) && (
+            <section className="workload-draft" aria-live="polite">
+              {dropRunning || !droppedWorkload ? (
+                <div className="workload-draft-loading">
+                  <span />
+                  Building a bounded local Workload Card…
+                </div>
+              ) : (
+                <>
+                  <div className="workload-draft-copy">
+                    <div className="workload-draft-kicker">Workload draft</div>
+                    <div className="workload-draft-title" title={droppedWorkload.source_path}>
+                      {droppedWorkload.source_name}
+                    </div>
+                    <div className="workload-draft-meta">
+                      <span>{droppedWorkload.source_type}</span>
+                      <span>{droppedWorkload.source_count} source{droppedWorkload.source_count === 1 ? "" : "s"}</span>
+                      <span>{compactBytes(droppedWorkload.total_bytes)}</span>
+                      <span>contents unread</span>
+                      {droppedWorkload.truncated && <span>safety limit reached</span>}
+                    </div>
+                    <div className="workload-draft-kinds">
+                      {Object.entries(droppedWorkload.source_kinds).map(([kind, count]) => (
+                        <span key={kind}>{kind.replaceAll("-", " ")} · {count}</span>
+                      ))}
+                    </div>
+                  </div>
+                  <div className="workload-draft-actions">
+                    <button
+                      type="button"
+                      className="btn primary"
+                      onClick={() => {
+                        setInput(
+                          `Review this local metadata-only Workload Card and propose the smallest useful benchmark: ${droppedWorkload.workload_card_path}`,
+                        );
+                      }}
+                    >
+                      Review next steps
+                    </button>
+                    <button type="button" className="btn ghost" onClick={() => setDroppedWorkload(null)}>
+                      Dismiss
+                    </button>
+                  </div>
+                </>
+              )}
+            </section>
           )}
           {err && <div className="chat-err">{err}</div>}
           {notice && !err && <div className="chat-runtime-notice">{notice}</div>}
