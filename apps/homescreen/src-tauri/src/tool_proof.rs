@@ -92,6 +92,16 @@ fn proof_args(request: ToolProofRunRequest) -> Result<Vec<String>, String> {
     Ok(args)
 }
 
+fn valid_proof_id(value: &str) -> bool {
+    let mut characters = value.chars();
+    let Some(first) = characters.next() else {
+        return false;
+    };
+    value.len() <= 120
+        && (first.is_ascii_lowercase() || first.is_ascii_digit())
+        && characters.all(|ch| ch.is_ascii_lowercase() || ch.is_ascii_digit() || ch == '-')
+}
+
 #[tauri::command]
 pub async fn desktop_tool_proof_run(request: ToolProofRunRequest) -> Result<Value, String> {
     let args = proof_args(request)?;
@@ -117,12 +127,7 @@ pub async fn desktop_tool_proof_list() -> Result<Value, String> {
 
 #[tauri::command]
 pub async fn desktop_tool_proof_prepare(proof_id: String) -> Result<Value, String> {
-    if proof_id.is_empty()
-        || proof_id.len() > 120
-        || !proof_id
-            .chars()
-            .all(|ch| ch.is_ascii_lowercase() || ch.is_ascii_digit() || ch == '-')
-    {
+    if !valid_proof_id(&proof_id) {
         return Err("strict tool proof id is invalid".to_string());
     }
     let args = vec![
@@ -164,5 +169,8 @@ mod tests {
             candidates: vec![],
         })
         .is_err());
+        assert!(valid_proof_id("tools-hard-20260713"));
+        assert!(!valid_proof_id("--help"));
+        assert!(!valid_proof_id("-tools-hard"));
     }
 }
