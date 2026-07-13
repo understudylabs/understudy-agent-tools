@@ -249,7 +249,7 @@ export function ExperimentCompareView({ onReview }: { onReview: () => void }) {
         </div>
         <nav>
           <button type="button" onClick={onReview}>Review decisions</button>
-          <button type="button" disabled={!latest} onClick={() => void exportEvidence()}>
+          <button type="button" disabled={!latest || phase !== "idle"} onClick={() => void exportEvidence()}>
             {phase === "exporting" ? "Exporting…" : "Export evidence"}
           </button>
         </nav>
