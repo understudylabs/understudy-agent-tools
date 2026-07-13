@@ -24,6 +24,7 @@ mod rlm;
 mod route_policy;
 mod server;
 mod sidecar;
+mod supervision_review;
 
 use tauri::menu::{Menu, MenuItem, PredefinedMenuItem};
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
@@ -200,6 +201,7 @@ pub fn run() {
             commands::set_sidekick_run_feedback,
             commands::record_supervisor_feedback,
             commands::supervisor_feedback_for_session,
+            supervision_review::supervision_review_queue,
             commands::sidekick_decisions,
             commands::sidekick_events,
             commands::sidekick_session_summaries,

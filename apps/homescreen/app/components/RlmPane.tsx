@@ -3,6 +3,7 @@
 import { useEffect, useMemo, useState } from "react";
 import { Channel, invoke } from "@tauri-apps/api/core";
 import type { ResidencySnapshot } from "../lib/useStatus";
+import { SupervisionReviewView } from "./SupervisionReviewView";
 
 type RlmTask = {
   id: string;
@@ -117,7 +118,14 @@ function shortModel(model: string | null): string {
   return tail.length > 26 ? `${tail.slice(0, 25)}…` : tail;
 }
 
+/** The human-facing Experiments job starts with trustworthy intervention labels. */
 export function RlmPane() {
+  return <SupervisionReviewView />;
+}
+
+// Kept during the one-release migration window for extraction and conformance
+// work. It is intentionally not exposed as a second product navigation path.
+function RlmLabPane() {
   const [catalog, setCatalog] = useState<RlmCatalog | null>(null);
   const [residency, setResidency] = useState<ResidencySnapshot | null>(null);
   const [taskId, setTaskId] = useState("perspectives");
