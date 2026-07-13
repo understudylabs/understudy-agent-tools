@@ -789,6 +789,7 @@ struct ChatBody {
     session_id: Option<String>,
     max_tokens: Option<u32>,
     capture_run_id: Option<String>,
+    runtime_backend: Option<String>,
 }
 
 async fn chat_completion(
@@ -801,18 +802,44 @@ async fn chat_completion(
         .session_id
         .unwrap_or_else(|| format!("agent-{}", chrono::Utc::now().timestamp_millis()));
     let residency = ctx.app.state::<crate::residency::Residency>();
-    crate::chat::agent_chat(
-        &ctx.app,
-        &residency,
-        b.slot_id,
-        &session_id,
-        &b.prompt,
-        b.max_tokens,
-        b.capture_run_id.as_deref(),
-    )
-    .await
-    .map(|r| Json(json!(r)))
-    .map_err(|e| (StatusCode::BAD_REQUEST, e))
+    let result = match b.runtime_backend.as_deref() {
+        None | Some("pi") => {
+            crate::chat::agent_chat(
+                &ctx.app,
+                &residency,
+                b.slot_id,
+                &session_id,
+                &b.prompt,
+                b.max_tokens,
+                b.capture_run_id.as_deref(),
+            )
+            .await
+        }
+        Some("native-rust-reference") => {
+            let run_id = b.capture_run_id.as_deref().ok_or_else(|| {
+                (
+                    StatusCode::BAD_REQUEST,
+                    "native-rust-reference requires capture_run_id".to_string(),
+                )
+            })?;
+            crate::chat::agent_chat_native_reference(
+                &ctx.app,
+                &residency,
+                b.slot_id,
+                &session_id,
+                &b.prompt,
+                b.max_tokens,
+                run_id,
+            )
+            .await
+        }
+        Some(value) => Err(format!(
+            "runtime_backend must be pi or native-rust-reference, got {value}"
+        )),
+    };
+    result
+        .map(|r| Json(json!(r)))
+        .map_err(|e| (StatusCode::BAD_REQUEST, e))
 }
 async fn dossiers(
     State(ctx): State<Ctx>,

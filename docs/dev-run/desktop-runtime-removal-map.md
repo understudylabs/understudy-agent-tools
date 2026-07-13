@@ -79,6 +79,22 @@ npm run runtime:desktop-readiness -- \
 understudy desktop migration-status --require-ready --json
 ```
 
+The one-release Rust fallback can be measured separately without making it a
+promotion gate:
+
+```sh
+understudy runtime conformance \
+  --backend native \
+  --slot <warm-desktop-slot> \
+  --model <exact-served-model-id> \
+  --output .understudy/capture-evidence/native-rust-reference.json
+```
+
+This reference is intentionally incomplete. It forces the existing
+prompt-only headless Rust boundary and fails richer scenarios before execution;
+do not interpret synthetic event projection or a loopback provider as proof of
+native image, tool, cancellation, restart, compaction, or supervision parity.
+
 The command exits `2` while observation is incomplete. The underlying
 versioned Desktop API cohorts rows by both app version and canonical-runtime
 version; legacy and development rows remain in SQLite but cannot poison or

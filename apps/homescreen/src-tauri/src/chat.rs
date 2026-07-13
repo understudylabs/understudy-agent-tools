@@ -3659,6 +3659,44 @@ pub async fn agent_chat(
     }
 }
 
+/// Execute the frozen one-release compatibility engine directly. This exists
+/// only so migration evidence can compare the legacy Rust baseline with the
+/// canonical runtime without making runtime unavailability part of the test.
+/// New product callers must continue to use `agent_chat`.
+pub(crate) async fn agent_chat_native_reference(
+    app: &AppHandle,
+    mgr: &Residency,
+    slot_id: u32,
+    session_id: &str,
+    prompt: &str,
+    max_tokens: Option<u32>,
+    capture_run_id: &str,
+) -> Result<BenchmarkChatResult, String> {
+    validate_native_reference_request(prompt, capture_run_id)?;
+    agent_chat_native(
+        app,
+        mgr,
+        slot_id,
+        session_id,
+        prompt,
+        max_tokens,
+        capture_run_id,
+    )
+    .await
+}
+
+fn validate_native_reference_request(prompt: &str, capture_run_id: &str) -> Result<(), String> {
+    if !capture_run_id.starts_with("conformance-native-basic-chat-")
+        || capture_run_id.len() > 200
+    {
+        return Err("native Rust reference requires the frozen basic-chat run identity".to_string());
+    }
+    if prompt != "Run the local fixture." {
+        return Err("native Rust reference requires the frozen basic-chat prompt".to_string());
+    }
+    Ok(())
+}
+
 async fn agent_chat_native(
     app: &AppHandle,
     mgr: &Residency,
@@ -4031,6 +4069,27 @@ fn finalize_tool_calls(mut tool_calls: Vec<ToolCallAcc>) -> Vec<ToolCallAcc> {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn native_reference_is_restricted_to_the_frozen_basic_case() {
+        validate_native_reference_request(
+            "Run the local fixture.",
+            "conformance-native-basic-chat-test",
+        )
+        .unwrap();
+        assert!(validate_native_reference_request(
+            "Run an arbitrary local prompt.",
+            "conformance-native-basic-chat-test",
+        )
+        .unwrap_err()
+        .contains("frozen basic-chat prompt"));
+        assert!(validate_native_reference_request(
+            "Run the local fixture.",
+            "arbitrary-native-run",
+        )
+        .unwrap_err()
+        .contains("frozen basic-chat run identity"));
+    }
 
     fn image_message() -> (ChatMsg, String) {
         use base64::Engine as _;

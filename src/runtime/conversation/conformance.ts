@@ -5,9 +5,11 @@ import { fileURLToPath } from "node:url";
 
 import {
   CONFORMANCE_SCHEMA,
+  EVENT_SCHEMA,
   parseRuntimeInputFixture,
   validateRuntimeTrace,
   type EmitRuntimeEvent,
+  type RuntimeEventName,
   type RuntimeInputFixture,
 } from "./contract.js";
 
@@ -87,6 +89,27 @@ export type ExecutableConformanceOptions = {
   teacher?: RuntimeConformanceProviderTarget;
   malformed_tool?: RuntimeConformanceProviderTarget;
   deterministic_compaction?: boolean;
+};
+
+export type NativeDesktopReferenceResult = {
+  capture_run_id: string;
+  content: string;
+  status: string;
+  runtime_backend: string;
+  prompt_tokens: number;
+  completion_tokens: number;
+  reasoning_tokens: number;
+};
+
+export type NativeDesktopReferenceOptions = {
+  model: string;
+  invocation_id: string;
+  complete(request: {
+    run_id: string;
+    session_id: string;
+    prompt: string;
+    max_tokens: number;
+  }): Promise<NativeDesktopReferenceResult>;
 };
 
 export type RuntimeConformanceScenarioResult = {
@@ -451,6 +474,96 @@ export async function executeFrozenConformanceScenario(
   } finally {
     clearTimeout(timeout);
   }
+}
+
+/**
+ * Exercise the legacy Rust fallback through its existing prompt-only headless
+ * boundary. Unsupported frozen scenarios fail before any request is sent; the
+ * reference report must expose those gaps instead of projecting richer
+ * canonical evidence around a narrower call.
+ */
+export async function executeFrozenNativeDesktopReferenceScenario(
+  input: RuntimeInputFixture,
+  options: NativeDesktopReferenceOptions,
+): Promise<readonly unknown[]> {
+  if (
+    input.fixture_id !== "basic-chat" ||
+    input.messages.length !== 1 ||
+    input.messages[0]?.role !== "user" ||
+    (input.messages[0].attachments?.length ?? 0) > 0 ||
+    input.tools.length > 0
+  ) {
+    throw new Error(
+      `native Rust reference does not expose canonical ${input.fixture_id} execution through its prompt-only headless boundary`,
+    );
+  }
+  const runId = `conformance-native-${input.fixture_id}-${options.invocation_id}`;
+  const sessionId = runId;
+  const prompt = input.messages[0].content;
+  const result = await options.complete({
+    run_id: runId,
+    session_id: sessionId,
+    prompt,
+    max_tokens: 256,
+  });
+  if (result.capture_run_id !== runId) {
+    throw new Error(
+      `native Rust reference changed run identity: expected ${runId}, got ${result.capture_run_id}`,
+    );
+  }
+  if (result.runtime_backend !== "native-rust") {
+    throw new Error(
+      `desktop did not force the native Rust reference; observed ${result.runtime_backend}`,
+    );
+  }
+  if (result.status !== "ok" || result.content.trim().length === 0) {
+    throw new Error(`native Rust reference ended with ${result.status || "unknown status"}`);
+  }
+  for (const [label, value] of Object.entries({
+    prompt_tokens: result.prompt_tokens,
+    completion_tokens: result.completion_tokens,
+    reasoning_tokens: result.reasoning_tokens,
+  })) {
+    if (!Number.isInteger(value) || value < 0) {
+      throw new Error(`native Rust reference returned invalid ${label}`);
+    }
+  }
+  const emittedAt = new Date().toISOString();
+  const envelope = (
+    sequence: number,
+    event: RuntimeEventName,
+    data: Record<string, unknown>,
+  ) => ({
+    schema_version: EVENT_SCHEMA,
+    event_id: `${runId}:${sequence}`,
+    run_id: runId,
+    session_id: sessionId,
+    runtime_id: "native-rust-reference",
+    sequence,
+    emitted_at: emittedAt,
+    event,
+    data,
+  });
+  return [
+    envelope(0, "message", { role: "user", text: prompt }),
+    envelope(1, "delta", {
+      role: "primary",
+      text: result.content,
+      model: options.model,
+    }),
+    envelope(2, "usage", {
+      role: "primary",
+      model: options.model,
+      input_tokens: result.prompt_tokens,
+      output_tokens: result.completion_tokens,
+      reasoning_tokens: result.reasoning_tokens,
+      cached_input_tokens: 0,
+      total_tokens:
+        result.prompt_tokens + result.completion_tokens + result.reasoning_tokens,
+      source: "estimated",
+      complete: false,
+    }),
+  ];
 }
 
 /** Execute every frozen input through one real adapter and retain failures. */

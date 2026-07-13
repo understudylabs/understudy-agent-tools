@@ -68,7 +68,7 @@
     {
       "id": "native-runtime-deletion",
       "status": "planned",
-      "evidence": "Deletion waits for the full genuine-run observation gate and conformance proof from the canonical runtime."
+      "evidence": "Deletion waits for the full genuine-run observation gate and conformance proof from the canonical runtime. A separate authenticated native reference adapter now forces the prompt-only Rust headless boundary and reports all richer frozen scenarios as explicit gaps rather than overstating parity."
     }
   ]
 }
