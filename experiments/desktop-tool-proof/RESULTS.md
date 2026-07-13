@@ -132,6 +132,38 @@ This is useful correction-pair material:
 - corrected: exact schema names without punctuation;
 - invariant: preserve call order and `{}` arguments.
 
+## Hard promotion suite
+
+The 17-task suite is now the stable regression gate, not sufficient promotion
+evidence. A separate committed 30-task `hard` suite adds semantic tool
+selection, exact escaped and Unicode arguments, repeated calls, three- and
+four-step plans, near-collision names, quoted prompt-injection decoys,
+wrapper/direct routing, and unsupported-action abstention.
+
+One matched exploratory pass broke the 100% ceiling immediately:
+
+| Candidate | Strict | Exact names | Arguments | Exact output | Terminal errors | Mean latency |
+| --- | ---: | ---: | ---: | ---: | ---: | ---: |
+| dense 12B | **25/30** | 96.7% | 90.0% | 90.0% | 3 | 12,029 ms |
+| dense 4B | 21/30 | 90.0% | 83.3% | 83.3% | 2 | 7,709 ms |
+| sparse 26B mixed 4/6 | 20/30 | 93.3% | 76.7% | 86.7% | 3 | 9,922 ms |
+| sparse 26B uniform 4-bit | 19/30 | 96.7% | 80.0% | 80.0% | 5 | 10,708 ms |
+
+The hard-suite SHA-256 is
+`5f0dd65395272200e4719fc94347d9e50c8cac0c7fc7679891219338edc21cee`.
+These are one-pass diagnostic results, not certification. The mixed recipe
+recovered one strict task over uniform 4-bit, but still trailed both dense
+models. A full matched BF16 run is required before attributing the remaining
+sparse-26B gap to compression rather than the base model or instruction
+behavior.
+
+The attempted BF16 full-suite comparison was discarded after a host GPU-memory
+fault; partial rows and the subsequent connection-error artifact are not model
+evidence. Future runs use managed-exclusive residency: snapshot the warm set,
+verify every non-candidate process and port has stopped, wait for Metal teardown,
+warm one candidate, run, cool it, and restore the prior safe set in `finally`.
+No heavy-model checkpoint should be tested through `--prewarmed` mode.
+
 ## Reproduction contract
 
 - proof schema: `understudy.desktop_tool_proof.v3`
@@ -144,6 +176,7 @@ This is useful correction-pair material:
 ```sh
 npm run build
 node experiments/desktop-tool-proof/run.mjs \
+  --suite core \
   --candidate 4b:7 \
   --candidate 12b:6 \
   --candidate 26b:5 \
@@ -167,3 +200,7 @@ paths or trace data. They are not part of this repository.
 5. For 26B, use the late-half mixed 4/6-bit candidate as the safe strict-tool
    rung. It still needs frozen VLM, long-context, and broader quality evidence
    before publication or default routing.
+6. Re-run the hard suite for three managed-exclusive repetitions, including a
+   BF16 sparse-26B reference only after the release build contains the residency
+   panic guard. Do not infer compression causality from the current one-pass
+   table.

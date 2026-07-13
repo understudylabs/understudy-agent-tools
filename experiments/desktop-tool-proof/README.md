@@ -22,6 +22,33 @@ node experiments/desktop-tool-proof/run.mjs \
   --repetitions 3
 ```
 
+Direct-Pi proofs manage residency exclusively by default: the harness snapshots
+the current warm set, cools and verifies every non-candidate slot, warms one
+candidate, runs its frozen rows, cools it, and restores the prior set in a
+`finally` path. This makes repeated comparisons sequential instead of stacking
+Metal allocations. `--prewarmed` is an explicit diagnostic escape hatch; do not
+use it for heavy-model experiments.
+
+The 17-task `core` suite is the stable regression gate. A separate 30-task
+`hard` promotion suite adds semantic tool selection, exact Unicode and escaped
+arguments, repeated calls, three- and four-step plans, near-collision names,
+quoted prompt-injection decoys, wrapper/direct routing, and unsupported-action
+abstention:
+
+```sh
+node experiments/desktop-tool-proof/run.mjs \
+  --suite hard \
+  --candidate mixed46:9 \
+  --repetitions 3
+```
+
+Only the committed `core` and `hard` suite names are accepted. The selected
+suite name, source filename, and exact task bytes hash are persisted with the
+proof so an arbitrary local task file cannot be mistaken for promotion
+evidence. Image grounding, long-chat compaction, cancellation, offline fallback,
+and restart recovery remain a separate runtime-conformance gate rather than
+being blended into model tool-call accuracy.
+
 For a causal probe against an exact frozen task, repeat `--task-id` as needed:
 
 ```bash
