@@ -17,6 +17,12 @@ uses semantic-ish versioning (minor = new skill or new capability, patch = fixes
 
 ### Added
 
+- **Truthful model cards in Chat.** One quiet info action beside the selected
+  model now shows its QAT source, MLX conversion, decode contract, scoped
+  certification, footprint, routing hints, and current slot state without
+  leaving the conversation. The four `-understudy` cards explicitly distinguish
+  compression and runtime certification from SFT or RL, and unknown provider or
+  local routes stay neutral instead of receiving invented provenance.
 - **Truthful native Rust migration baseline.** `understudy runtime conformance
   --backend native` now uses the owner-only authenticated Desktop API to force
   the one-release Rust fallback against a named warm slot. It passes only the

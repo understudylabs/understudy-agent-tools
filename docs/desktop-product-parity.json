@@ -174,8 +174,8 @@
     },
     {
       "id": "model-card-transparency",
-      "status": "planned",
-      "evidence": "The canonical model list still needs one compact drawer for provenance, decode contract, certification, footprint, routing hints, and active-experiment context sourced from public model manifests."
+      "status": "shipped",
+      "evidence": "Chat exposes one quiet model-info action beside the selected route. Its compact in-frame card resolves aliases from the same embedded public catalog used by the native runtime and shows exact QAT source, MLX group-32 conversion, the absence of Understudy SFT or RL, decode contract, scoped serving/runtime certification, footprint, escalation hints, exact slot state, thinking state, and an explicit no-linked-experiment state. Unknown local and provider routes fall back to neutral cards rather than inventing provenance or certification."
     },
     {
       "id": "reading-pace-streaming",

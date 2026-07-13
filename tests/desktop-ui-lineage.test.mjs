@@ -54,6 +54,18 @@ const modelsPanePath = new URL(
   "../apps/homescreen/app/components/ModelsPane.tsx",
   import.meta.url,
 );
+const modelCardDrawerPath = new URL(
+  "../apps/homescreen/app/components/ModelCardDrawer.tsx",
+  import.meta.url,
+);
+const modelCardLibPath = new URL(
+  "../apps/homescreen/app/lib/model-cards.ts",
+  import.meta.url,
+);
+const modelCardsPath = new URL(
+  "../apps/homescreen/src-tauri/knowledge/model_cards.json",
+  import.meta.url,
+);
 const rlmPanePath = new URL(
   "../apps/homescreen/app/components/RlmPane.tsx",
   import.meta.url,
@@ -228,6 +240,60 @@ test("large local models warn before consuming the residency budget", async () =
   assert.match(modelsPane, /snapshotMemoryWarning/);
 });
 
+test("chat exposes compact, truthful model cards from the canonical local catalog", async () => {
+  const [chat, drawer, cardLib, modelCards, parity] = await Promise.all([
+    readFile(chatPath, "utf8"),
+    readFile(modelCardDrawerPath, "utf8"),
+    readFile(modelCardLibPath, "utf8"),
+    readFile(modelCardsPath, "utf8").then(JSON.parse),
+    readFile(parityPath, "utf8").then(JSON.parse),
+  ]);
+
+  assert.match(chat, /<ModelCardDrawer/);
+  assert.match(chat, /modelId: slot\.model_id!/);
+  assert.match(chat, /selectedChoice\.modelId/);
+  assert.match(drawer, /What this is/);
+  assert.match(drawer, /How it runs/);
+  assert.match(drawer, /What we verified/);
+  assert.match(drawer, /When to use it/);
+  assert.match(drawer, /No frozen experiment is linked to this chat/);
+  assert.doesNotMatch(drawer, /system_prompt/);
+  assert.match(drawer, /isDetailedModelCard\(card\)/);
+  assert.doesNotMatch(drawer, /decode_contract!|certification!|footprint!|routing_hints!/);
+  assert.match(cardLib, /rawModelCards/);
+  assert.match(cardLib, /while \(card\?\.alias_for/);
+  assert.match(cardLib, /replaceAll\("-4-bit", "-4bit"\)/);
+  assert.match(cardLib, /card\?\.provenance &&[\s\S]*?card\.routing_hints/);
+
+  const ids = [
+    "gemma-4-e2b-it-qat-mlx-vlm-understudy",
+    "gemma-4-e4b-it-qat-mlx-vlm-understudy",
+    "gemma-4-12b-it-qat-mlx-vlm-understudy",
+    "gemma-4-26b-a4b-it-qat-mlx-vlm-understudy",
+  ];
+  for (const id of ids) {
+    const card = modelCards.find((candidate) => candidate.id === id);
+    assert.ok(card, `missing public model card for ${id}`);
+    assert.equal(card.card_schema, "understudy.model_card.v2");
+    assert.match(card.provenance.source_checkpoint, /qat-q4_0-unquantized$/);
+    assert.match(card.provenance.understudy_training, /^None\./);
+    assert.equal(card.decode_contract.temperature, 1);
+    assert.equal(card.decode_contract.top_p, 0.95);
+    assert.equal(card.decode_contract.top_k, 64);
+    assert.deepEqual(card.decode_contract.required_server_flags, ["--top-logprobs-k", "20"]);
+    assert.match(card.certification.scope, /not broad task-quality certification/);
+    assert.doesNotMatch(card.system_prompt, /Your post-training was|quantized and post-trained/i);
+  }
+  assert.equal(
+    modelCards.find((card) => card.id === ids[3]).provenance.conversion,
+    "MLX 4-bit group-32 experts with 8-bit routers",
+  );
+  assert.equal(
+    parity.features.find((feature) => feature.id === "model-card-transparency")?.status,
+    "shipped",
+  );
+});
+
 test("Experiments is one guided review, strict compare, improve loop", async () => {
   const [review, compare, comparisonRules, reviewRust, proofRust, proofCli, rlmPane, css] = await Promise.all([
     readFile(reviewViewPath, "utf8"),
@@ -336,6 +402,10 @@ test("desktop migration claims stay tied to explicit product parity", async () =
   );
   assert.equal(
     parity.features.find((feature) => feature.id === "correction-pair-export-and-metrics")?.status,
+    "shipped",
+  );
+  assert.equal(
+    parity.features.find((feature) => feature.id === "model-card-transparency")?.status,
     "shipped",
   );
   assert.equal(
