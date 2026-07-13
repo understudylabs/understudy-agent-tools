@@ -38,6 +38,12 @@ uses semantic-ish versioning (minor = new skill or new capability, patch = fixes
 
 ### Fixed
 
+- **Dropped Workload Card review no longer asks a local model to open an
+  inaccessible filesystem path.** Desktop now passes only the bounded,
+  metadata-only summary into chat, treats its fields as untrusted data, and
+  frames a frozen behavior benchmark instead of a file-count check. Structured
+  eval rows plus a prompt produce a 10-example incumbent-versus-candidate plan
+  while source payloads remain unread until the user explicitly continues.
 - **Runtime conformance can no longer pass with ambiguous token attribution.**
   Runtime 0.3.5 requires every usage event to name its exact model, records the
   supervisor model on every verdict, and makes the frozen takeover gate prove
