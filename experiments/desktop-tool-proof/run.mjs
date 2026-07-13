@@ -92,13 +92,14 @@ export function scoreToolTrace(events, task) {
     .map((event) => event.data.text)
     .join("")
     .trim();
+  const exactCallCount = calls.length === expectedCalls.length;
   const checks = {
     terminal_error_free: terminalError == null,
-    exact_call_count: calls.length === expectedCalls.length,
-    exact_tool_sequence: expectedCalls.every(
+    exact_call_count: exactCallCount,
+    exact_tool_sequence: exactCallCount && expectedCalls.every(
       (expected, index) => callData[index]?.name === expected.tool,
     ),
-    exact_arguments: expectedCalls.every((expected, index) => (
+    exact_arguments: exactCallCount && expectedCalls.every((expected, index) => (
       callData[index]?.parse_error == null
       && isDeepStrictEqual(callData[index]?.parsed_arguments, expected.arguments)
     )),

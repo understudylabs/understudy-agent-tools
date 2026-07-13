@@ -121,6 +121,20 @@ describe("desktop strict-tool proof", () => {
     assert.equal(score.checks.paired_successful_results, true);
   });
 
+  it("does not inflate component rates when abstention makes an unwanted call", () => {
+    const score = scoreToolTrace(
+      [{
+        event: "tool_call",
+        data: { call_id: "unexpected", name: "status", parsed_arguments: {}, parse_error: null },
+      }],
+      { calls: [], expected_output: "NO_TOOL" },
+    );
+    assert.equal(score.strict_pass, false);
+    assert.equal(score.checks.exact_call_count, false);
+    assert.equal(score.checks.exact_tool_sequence, false);
+    assert.equal(score.checks.exact_arguments, false);
+  });
+
   it("requires multi-step calls, arguments, and results in the frozen order", () => {
     const multiTask = {
       calls: [
