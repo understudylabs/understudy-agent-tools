@@ -9,9 +9,9 @@ Status: local promotion evidence, not a production replacement claim
   long-context, and broader task-quality certification.
 - **12B Understudy:** pass the current strict-tool gate. The evidence does not
   support changing this artifact to a sparse MoE for tool correctness.
-- **Sparse 26B Understudy:** hold strict-tool certification. Fix the checkpoint,
-  chat template, or tool-call renderer before promotion; do not normalize
-  malformed tool names inside the runtime.
+- **Sparse 26B Understudy:** hold strict-tool certification. The matched BF16
+  probe passes, so repair the 4-bit quantization path before promotion; do not
+  normalize malformed tool names inside the runtime.
 
 ## Frozen comparison
 
@@ -43,6 +43,25 @@ list_models:
 The arguments, call count, order, and final `OK` text were otherwise correct.
 The executor rejected both calls because the colon-suffixed tools do not exist.
 The 4B and 12B artifacts emitted the exact names on every repetition.
+
+### Causal BF16 probe
+
+The matching QAT BF16 26B artifact passed only this frozen task 3/3 through the
+same Pi runtime, tool schema, prompt, and decode path. Both 4-bit 26B artifacts
+failed the task 3/3: the correct group-size-32 Understudy artifact and the older
+group-size-64 conversion. This isolates the new failure to 4-bit quantization
+fidelity rather than sparse-MoE reasoning or the chat template. Group size 32
+remains required—it fixed the earlier QAT block-size mismatch—but is not by
+itself sufficient to preserve this function-name token sequence.
+
+| 26B causal probe | Quantization | Strict |
+| --- | --- | ---: |
+| QAT BF16 | none | 3/3 |
+| QAT MLX 4-bit Understudy | group size 32 | 0/3 |
+| QAT MLX 4-bit legacy | group size 64 | 0/3 |
+
+The one-task probe SHA-256 is
+`b5b607e19ed5fbba1a9c3be64abee439d7e783193ea33ed6d18149c76f1d91d6`.
 
 This is useful correction-pair material:
 
@@ -82,3 +101,5 @@ paths or trace data. They are not part of this repository.
    held-out slice.
 4. General task-quality comparison showing whether 12B adds enough value over
    the faster 4B to justify its memory and latency.
+5. For 26B, protect the tool-name-sensitive layers with mixed precision or
+   tool-heavy calibration, then repeat the full 17-task strict gate.

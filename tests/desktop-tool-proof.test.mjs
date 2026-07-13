@@ -5,6 +5,7 @@ import {
   directToolDefinitions,
   resolveDirectCandidates,
   scoreToolTrace,
+  selectTasks,
   summarizeRows,
 } from "../experiments/desktop-tool-proof/run.mjs";
 
@@ -15,6 +16,13 @@ const task = {
 };
 
 describe("desktop strict-tool proof", () => {
+  it("selects an exact ordered subset for causal probes", () => {
+    const tasks = [{ id: "one" }, { id: "two" }];
+    assert.deepEqual(selectTasks(tasks, ["two"]), [{ id: "two" }]);
+    assert.throws(() => selectTasks(tasks, ["missing"]), /unknown task-id: missing/);
+    assert.throws(() => selectTasks(tasks, ["one", "one"]), /must be unique/);
+  });
+
   it("builds the bounded direct tool set from the authenticated MCP contract", () => {
     const names = [
       "status",
