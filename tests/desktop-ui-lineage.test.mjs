@@ -79,6 +79,10 @@ const streamPacerPath = new URL(
   "../apps/homescreen/app/lib/stream-pacer.mjs",
   import.meta.url,
 );
+const modelSelectionPath = new URL(
+  "../apps/homescreen/app/lib/model-selection.mjs",
+  import.meta.url,
+);
 const workloadDropRustPath = new URL(
   "../apps/homescreen/src-tauri/src/workload_drop.rs",
   import.meta.url,
@@ -132,6 +136,19 @@ test("reading pace is quiet, optional, and safe across teacher replacement", asy
   assert.match(pacer, /understudy\.pacing/);
   assert.match(pacer, /prefers-reduced-motion: reduce/);
   assert.match(pacer, /rejected student text can never survive in the hidden buffer/);
+});
+
+test("cold-start cloud fallback yields to local without overriding a human choice", async () => {
+  const [chat, selection] = await Promise.all([
+    readFile(chatPath, "utf8"),
+    readFile(modelSelectionPath, "utf8"),
+  ]);
+
+  assert.match(chat, /selectedModelUserOwned/);
+  assert.match(chat, /resolveChatModelSelection/);
+  assert.match(chat, /selectedModelUserOwned\.current = true/);
+  assert.match(selection, /if \(userSelected && currentExists\)/);
+  assert.match(selection, /preferredLocalId/);
 });
 
 test("desktop restores the reviewed persisted always-on-top pin", async () => {

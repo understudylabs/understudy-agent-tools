@@ -51,6 +51,7 @@ import {
   type ChatAttachmentUpload,
 } from "../lib/chat-attachments";
 import { modelShortName, type SnapshotAlias } from "../lib/model-aliases";
+import { resolveChatModelSelection } from "../lib/model-selection.mjs";
 import {
   SKIP_HINT_THRESHOLD,
   StreamPacer,
@@ -349,6 +350,7 @@ export function ChatPane({ resetToken }: { resetToken: number }) {
   const observedResetToken = useRef(false);
   const dropInFlight = useRef(false);
   const dropRequestGeneration = useRef(0);
+  const selectedModelUserOwned = useRef(false);
   const streamPacer = useRef<StreamPacer | null>(null);
   const streamPacerGeneration = useRef(0);
 
@@ -412,8 +414,14 @@ export function ChatPane({ resetToken }: { resetToken: number }) {
       const next = [...local, CLOUD_MODEL, ...anthropic];
       setChoices(next);
       setSelectedModel((current) => {
-        if (current && next.some((choice) => choice.id === current)) return current;
-        return local[0]?.id ?? CLOUD_MODEL.id;
+        const resolved = resolveChatModelSelection({
+          currentId: current,
+          choiceIds: next.map((choice) => choice.id),
+          preferredLocalId: local[0]?.id ?? null,
+          userSelected: selectedModelUserOwned.current,
+        });
+        selectedModelUserOwned.current = resolved.userSelected;
+        return resolved.selectedId;
       });
     } catch {
       setChoices([CLOUD_MODEL]);
@@ -1096,7 +1104,10 @@ export function ChatPane({ resetToken }: { resetToken: number }) {
             <ModelPicker
               choices={choices}
               selected={selectedChoice}
-              onSelect={(id) => setSelectedModel(id)}
+              onSelect={(id) => {
+                selectedModelUserOwned.current = true;
+                setSelectedModel(id);
+              }}
               onConnectAnthropic={connectAnthropic}
             />
             <ModelCardDrawer
