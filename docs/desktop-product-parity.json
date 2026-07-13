@@ -62,8 +62,8 @@
     },
     {
       "id": "legacy-desktop-retirement-guard",
-      "status": "planned",
-      "evidence": "The public desktop is the release authority, but automation must still prevent new product work or releases from the legacy surface."
+      "status": "shipped",
+      "evidence": "The legacy desktop source is explicitly extraction-only: its stale npm package is private, both archived Tauri apps have bundling disabled, and a trusted-base PR guard rejects additions or modifications while allowing deletion or auditable shelving. The public apps/homescreen remains the sole desktop release authority."
     },
     {
       "id": "native-runtime-deletion",
