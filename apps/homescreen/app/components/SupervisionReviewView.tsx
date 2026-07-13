@@ -9,6 +9,8 @@ import {
   type ReviewEvidenceGroup,
   type SupervisionReviewItem,
   type SupervisionReviewQueue,
+  type TiebreakerAnalysis,
+  type TiebreakerStatus,
 } from "../lib/supervision-review";
 
 const ACTION_LABELS: Record<CorrectSupervisorAction, string> = {
@@ -26,6 +28,12 @@ function recordedAction(item: SupervisionReviewItem): CorrectSupervisorAction {
   return item.stage === "take_over" ? "interrupt" : "nudge";
 }
 
+function advisoryActionLabel(action?: TiebreakerAnalysis["recommended_action"]) {
+  if (!action) return "No recommendation";
+  if (action === "unclear") return "Evidence is unclear";
+  return ACTION_LABELS[action];
+}
+
 function groupForMarker(groups: ReviewEvidenceGroup[], marker: string | null) {
   return groups.find((group) =>
     group.items.some((item) => item.marker_id === marker),
@@ -40,6 +48,13 @@ export function SupervisionReviewView() {
   const [showDetails, setShowDetails] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [tiebreakerStatus, setTiebreakerStatus] = useState<TiebreakerStatus | null>(null);
+  const [tiebreaker, setTiebreaker] = useState<TiebreakerAnalysis | null>(null);
+  const [tiebreakerError, setTiebreakerError] = useState<string | null>(null);
+  const [tiebreakerSaving, setTiebreakerSaving] = useState(false);
+  const [routeProvider, setRouteProvider] = useState<"lilac" | "fireworks">("lilac");
+  const [routeProject, setRouteProject] = useState("");
+  const [routeWorkload, setRouteWorkload] = useState("");
 
   const refresh = async (preferredMarker?: string | null) => {
     try {
@@ -63,7 +78,17 @@ export function SupervisionReviewView() {
 
   useEffect(() => {
     void refresh();
+    void invoke<TiebreakerStatus>("supervision_tiebreaker_status")
+      .then(setTiebreakerStatus)
+      .catch((cause) => setTiebreakerError(String(cause)));
   }, []);
+
+  useEffect(() => {
+    if (!tiebreakerStatus) return;
+    setRouteProvider(tiebreakerStatus.provider ?? "lilac");
+    setRouteProject(tiebreakerStatus.project ?? "");
+    setRouteWorkload(tiebreakerStatus.workload ?? "");
+  }, [tiebreakerStatus]);
 
   const groups = useMemo(() => reviewEvidenceGroups(queue?.items ?? []), [queue]);
   const pendingGroups = useMemo(
@@ -85,6 +110,29 @@ export function SupervisionReviewView() {
     setShowDetails(false);
   }, [activeMarker]);
 
+  useEffect(() => {
+    setTiebreaker(null);
+    setTiebreakerError(null);
+    if (!activeMarker || !tiebreakerStatus?.enabled || !tiebreakerStatus.route_configured) return;
+    let cancelled = false;
+    void invoke<TiebreakerAnalysis>("supervision_tiebreaker_analyze", {
+      markerId: activeMarker,
+      force: null,
+    }).then((result) => {
+      if (!cancelled) setTiebreaker(result);
+    }).catch((cause) => {
+      if (!cancelled) setTiebreakerError(String(cause));
+    });
+    return () => { cancelled = true; };
+  }, [
+    activeMarker,
+    tiebreakerStatus?.enabled,
+    tiebreakerStatus?.route_configured,
+    tiebreakerStatus?.provider,
+    tiebreakerStatus?.project,
+    tiebreakerStatus?.workload,
+  ]);
+
   const move = (offset: number) => {
     if (!active || visibleGroups.length < 2) return;
     const index = visibleGroups.findIndex((group) =>
@@ -92,6 +140,79 @@ export function SupervisionReviewView() {
     );
     const next = (Math.max(0, index) + offset + visibleGroups.length) % visibleGroups.length;
     setActiveMarker(visibleGroups[next]?.representative.marker_id ?? null);
+  };
+
+  const toggleTiebreaker = async () => {
+    if (!tiebreakerStatus || tiebreakerSaving) return;
+    setTiebreakerSaving(true);
+    try {
+      const next = await invoke<TiebreakerStatus>("supervision_tiebreaker_set_enabled", {
+        enabled: !tiebreakerStatus.enabled,
+      });
+      setTiebreakerStatus(next);
+      setTiebreakerError(null);
+      if (!next.enabled) setTiebreaker(null);
+    } catch (cause) {
+      setTiebreakerError(String(cause));
+    } finally {
+      setTiebreakerSaving(false);
+    }
+  };
+
+  const saveTiebreakerRoute = async () => {
+    if (tiebreakerSaving) return;
+    setTiebreakerSaving(true);
+    try {
+      const next = await invoke<TiebreakerStatus>("supervision_tiebreaker_set_route", {
+        provider: routeProvider,
+        project: routeProject,
+        workload: routeWorkload,
+      });
+      setTiebreakerStatus(next);
+      setTiebreaker(null);
+      setTiebreakerError(null);
+    } catch (cause) {
+      setTiebreakerError(String(cause));
+    } finally {
+      setTiebreakerSaving(false);
+    }
+  };
+
+  const retryTiebreaker = async () => {
+    if (!active || tiebreakerSaving) return;
+    setTiebreakerSaving(true);
+    setTiebreakerError(null);
+    try {
+      const result = await invoke<TiebreakerAnalysis>("supervision_tiebreaker_analyze", {
+        markerId: active.marker_id,
+        force: true,
+      });
+      setTiebreaker(result);
+    } catch (cause) {
+      setTiebreakerError(String(cause));
+    } finally {
+      setTiebreakerSaving(false);
+    }
+  };
+
+  const judgeTiebreaker = async (helpful: boolean) => {
+    if (!tiebreaker || tiebreakerSaving) return;
+    setTiebreakerSaving(true);
+    try {
+      const result = await invoke<TiebreakerAnalysis>("record_tiebreaker_feedback", {
+        feedback: {
+          evidenceSha256: tiebreaker.evidence_sha256,
+          model: tiebreaker.model,
+          helpful,
+        },
+      });
+      setTiebreaker(result);
+      setTiebreakerError(null);
+    } catch (cause) {
+      setTiebreakerError(String(cause));
+    } finally {
+      setTiebreakerSaving(false);
+    }
   };
 
   const vote = async (action: CorrectSupervisorAction) => {
@@ -203,6 +324,23 @@ export function SupervisionReviewView() {
             <span>{active.reason_source} decision</span>
             {active.tool_results.length > 0 && <span>{active.tool_results.length} tool result{active.tool_results.length === 1 ? "" : "s"}</span>}
           </div>
+          {tiebreakerStatus?.enabled && !tiebreaker && !tiebreakerError && (
+            <div className="supervision-review-advisory loading">GLM is checking this decision…</div>
+          )}
+          {tiebreaker?.status === "ok" && (
+            <div className={`supervision-review-advisory ${tiebreaker.assessment ?? "unclear"}`}>
+              <span>GLM second opinion</span>
+              <strong>{advisoryActionLabel(tiebreaker.recommended_action)}</strong>
+              <em>{Math.round((tiebreaker.confidence ?? 0) * 100)}%</em>
+              <p>{tiebreaker.reason}</p>
+            </div>
+          )}
+          {(tiebreaker?.status === "error" || tiebreakerError) && tiebreakerStatus?.enabled && (
+            <div className="supervision-review-advisory error">
+              <span>GLM unavailable · local review still works</span>
+              <button type="button" disabled={tiebreakerSaving} onClick={() => void retryTiebreaker()}>Retry</button>
+            </div>
+          )}
         </article>
 
         <article className="supervision-review-card after">
@@ -266,6 +404,21 @@ export function SupervisionReviewView() {
               ))}
             </section>
           )}
+          {tiebreaker?.status === "ok" && (
+            <section className="supervision-review-judge">
+              <strong>GLM second opinion</strong>
+              <p>{tiebreaker.reason}</p>
+              <small>
+                {tiebreaker.provider} → {tiebreaker.served_model ?? tiebreaker.model}
+                {` · ${tiebreaker.latency_ms} ms · ${tiebreaker.cache_hit ? "cached" : "fresh"}`}
+              </small>
+              <div>
+                <span>Was this analysis useful?</span>
+                <button className={tiebreaker.user_helpful === true ? "active" : ""} type="button" disabled={tiebreakerSaving} onClick={() => void judgeTiebreaker(true)}>Yes</button>
+                <button className={tiebreaker.user_helpful === false ? "active" : ""} type="button" disabled={tiebreakerSaving} onClick={() => void judgeTiebreaker(false)}>No</button>
+              </div>
+            </section>
+          )}
           {active.tool_results.map((tool, index) => (
             <details key={`${tool.name}-${index}`}>
               <summary>{tool.name} · {tool.result_ok ? "ok" : "failed"}</summary>
@@ -276,6 +429,35 @@ export function SupervisionReviewView() {
             <details>
               <summary>Raw supervisor response</summary>
               <pre>{active.supervisor_raw}</pre>
+            </details>
+          )}
+          {tiebreakerStatus && (
+            <details className="supervision-review-remote-settings">
+              <summary>Remote analysis settings</summary>
+              <p>{tiebreakerStatus.disclosure}</p>
+              <label>
+                <span>Provider</span>
+                <select value={routeProvider} onChange={(event) => setRouteProvider(event.target.value as "lilac" | "fireworks")}>
+                  <option value="lilac">Lilac</option>
+                  <option value="fireworks">Fireworks</option>
+                </select>
+              </label>
+              <label>
+                <span>Project</span>
+                <input value={routeProject} onChange={(event) => setRouteProject(event.target.value)} placeholder="project slug" autoCapitalize="none" spellCheck={false} />
+              </label>
+              <label>
+                <span>Workload</span>
+                <input value={routeWorkload} onChange={(event) => setRouteWorkload(event.target.value)} placeholder="provider-pinned workload" autoCapitalize="none" spellCheck={false} />
+              </label>
+              <div>
+                <button type="button" disabled={tiebreakerSaving || !routeProject.trim() || !routeWorkload.trim()} onClick={() => void saveTiebreakerRoute()}>Save route</button>
+                <button type="button" disabled={tiebreakerSaving || (!tiebreakerStatus.enabled && !tiebreakerStatus.route_configured)} onClick={() => void toggleTiebreaker()}>
+                  {tiebreakerStatus.enabled ? "Turn off" : tiebreakerStatus.gateway_ready ? "Enable remote analysis" : "Enable for when online"}
+                </button>
+              </div>
+              {!tiebreakerStatus.gateway_ready && <small>Not signed in or offline. Human review remains fully local.</small>}
+              {tiebreakerError && <small className="error">{tiebreakerError}</small>}
             </details>
           )}
           {evidenceWarning > 0 && (

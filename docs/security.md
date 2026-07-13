@@ -41,6 +41,12 @@ writes them with owner-only permissions on Unix and refuses to replace an
 existing path with different content. They contain raw prompts and outputs, so
 they remain private artifacts even when their SHA-256 hashes are safe to share.
 
+Remote supervision advisories use the same private-artifact posture. Consent is
+bound to the exact provider/project/workload route; a route change disables the
+feature until the user explicitly enables it again. The CLI rejects a response
+whose served model does not exactly match the provider contract, persists the
+mismatch as error evidence, and never treats that response as a recommendation.
+
 Desktop image attachments live under private app data, outside `.understudy/`.
 The app accepts only bounded PNG, JPEG, WebP, and GIF bytes with matching file
 signatures. Filenames never select filesystem paths: session directories are

@@ -18,6 +18,7 @@ the CLI may send bounded product telemetry as documented in
 | Desktop chat images | screenshots and other supported image attachments | private app-data files addressed by content hash; SQLite stores references only |
 | Traces | request/response payloads, spans, usage rows | metadata-only by default |
 | Supervision correction exports | user requests, student partials, supervisor reasons, teacher continuations, tool results, human labels | explicit local CLI export only; owner-only immutable files; never telemetry |
+| Remote supervision advisories | bounded user request, student partial, pre-decision tool results, tool-round policy, supervisor action/reason/source | off by default; destination-bound Desktop consent or `--confirm-remote`; teacher output and system prompts excluded |
 | Eval rows | JSONL, CSV, YAML, golden fixtures | local-only until a redaction and split plan exists |
 | Secrets | API keys, tokens, credentials, local env files | never ask for chat-pasted values; never print values |
 | Local model artifacts | downloaded weights, adapters, caches | download only with explicit approval |
@@ -78,6 +79,26 @@ The reader is bounded to recent local evidence for memory safety. Both the
 review desk and exported metrics disclose invalid, missing, incomplete, and
 truncated evidence counts instead of silently treating a bounded window as the
 entire ledger.
+
+## Remote Supervision Advisories
+
+The optional GLM second opinion is advisory and off by default. Enabling it in
+Desktop names an exact provider, project, and workload and discloses the fields
+that leave the Mac. Changing that route revokes the previous consent. The CLI
+equivalent requires `--confirm-remote`; live judge evaluation additionally
+requires `--confirm-spend` and a positive command budget.
+
+Each unique intervention sends only bounded evidence available at the decision
+moment: the user request, small-model partial, up to eight bounded tool results,
+tool-round count and limit, and the supervisor action, reason, and reason source.
+It never sends the teacher continuation or system prompt. The exact bounded
+evidence, route identity, expected and served model, usage, parsed advisory, and
+human judgment of the advisory are stored in owner-only content-addressed files
+under `~/.understudy/supervision-tiebreaker/`. They are never telemetry.
+
+An unavailable gateway or offline machine records an advisory error without
+blocking the local review desk or changing the human label. Human intervention
+labels remain the source of truth.
 
 ## Never Collected By Default
 

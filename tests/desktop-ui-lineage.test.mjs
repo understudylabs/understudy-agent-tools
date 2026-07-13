@@ -30,6 +30,14 @@ const reviewRustPath = new URL(
   "../apps/homescreen/src-tauri/src/supervision_review.rs",
   import.meta.url,
 );
+const tiebreakerRustPath = new URL(
+  "../apps/homescreen/src-tauri/src/supervision_tiebreaker.rs",
+  import.meta.url,
+);
+const tiebreakerCliPath = new URL(
+  "../src/supervision/tiebreaker.ts",
+  import.meta.url,
+);
 const statusPanePath = new URL(
   "../apps/homescreen/app/components/StatusPane.tsx",
   import.meta.url,
@@ -149,6 +157,27 @@ test("Experiments starts with canonical one-frame intervention review", async ()
   assert.match(css, /grid-template-rows: auto minmax\(0, 1fr\) auto/);
 });
 
+test("remote review is opt-in, CLI-owned, and never replaces the human label", async () => {
+  const [review, bridge, cli] = await Promise.all([
+    readFile(reviewViewPath, "utf8"),
+    readFile(tiebreakerRustPath, "utf8"),
+    readFile(tiebreakerCliPath, "utf8"),
+  ]);
+
+  assert.match(review, /"supervision_tiebreaker_analyze"/);
+  assert.match(review, /"record_tiebreaker_feedback"/);
+  assert.match(review, /GLM second opinion/);
+  assert.match(review, /Was this analysis useful\?/);
+  assert.match(review, /Was this the right intervention\?/);
+  assert.match(bridge, /Consent is bound to the destination/);
+  assert.match(bridge, /"--confirm-remote"/);
+  assert.doesNotMatch(bridge, /item\.after_output/);
+  assert.match(cli, /TIEBREAKER_MODEL = "glm-5\.2"/);
+  assert.match(cli, /served-model mismatch/);
+  assert.match(cli, /writePrivateImmutable/);
+  assert.match(cli, /recordTiebreakerFeedback/);
+});
+
 test("desktop migration claims stay tied to explicit product parity", async () => {
   const parity = JSON.parse(await readFile(parityPath, "utf8"));
   assert.equal(parity.release_authority, "apps/homescreen");
@@ -162,6 +191,7 @@ test("desktop migration claims stay tied to explicit product parity", async () =
     "resumable-model-downloads",
     "supervision-review-desk",
     "correction-pair-export-and-metrics",
+    "remote-review-tiebreaker",
     "unified-experiment-hub",
     "native-runtime-deletion",
   ]) {

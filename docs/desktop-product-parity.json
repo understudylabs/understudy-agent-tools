@@ -52,8 +52,8 @@
     },
     {
       "id": "remote-review-tiebreaker",
-      "status": "planned",
-      "evidence": "Remote review consent, stability checks, and judge-quality feedback have not moved to the canonical event workflow."
+      "status": "partial",
+      "evidence": "The public CLI and desktop now provide destination-bound opt-in GLM 5.2 review over bounded pre-intervention evidence, exact served-model validation, private content-addressed analysis caching, offline-safe fallback, and explicit human judge-quality feedback. A frozen fail-closed promotion suite is public and dry-run verified; a fresh live 10+ case provider run is still required before recommending the advisory by default."
     },
     {
       "id": "unified-experiment-hub",
