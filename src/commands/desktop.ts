@@ -25,6 +25,16 @@ import {
   DEFAULT_DESKTOP_READINESS_EVIDENCE,
   evaluateDesktopRuntimeReleaseEvidence,
 } from "../runtime/conversation/release-gate.js";
+import {
+  TIEBREAKER_MODEL,
+  analyzeTiebreaker,
+  recordTiebreakerFeedback,
+  type TiebreakerProvider,
+} from "../supervision/tiebreaker.js";
+import {
+  TIEBREAKER_EVAL_SUITE_PATH,
+  runTiebreakerEval,
+} from "../supervision/tiebreaker-eval.js";
 
 interface RuntimeEvent {
   run_id?: string;
@@ -77,8 +87,20 @@ function positiveInteger(value: string): number {
   return parsed;
 }
 
+function nonNegativeNumber(value: string): number {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed) || parsed < 0) throw new Error("value must be a non-negative number");
+  return parsed;
+}
+
 function collect(value: string, previous: string[]): string[] {
   return [...previous, value];
+}
+
+async function readStandardInput(): Promise<string> {
+  let value = "";
+  for await (const chunk of process.stdin) value += String(chunk);
+  return value;
 }
 
 function sha256(value: string): string {
@@ -717,6 +739,177 @@ export function registerDesktopCommand(program: Command): void {
           `metrics: ${metricsPath} (${metricsWrite})`,
           `evidence omitted: ${evidenceWindow.incomplete_interventions + evidenceWindow.truncated_interventions + evidenceWindow.invalid_journals + evidenceWindow.missing_journals + evidenceWindow.truncated_journals}`,
           "upload performed: false",
+        ].join("\n"),
+      );
+    });
+
+  const tiebreaker = supervision
+    .command("tiebreaker")
+    .description("Run an explicitly consented remote second opinion over one local intervention.");
+  tiebreaker
+    .command("analyze")
+    .description("Send bounded pre-intervention evidence to GLM 5.2 and cache the advisory locally.")
+    .requiredOption("--input <path>", "Private review-input JSON path, or - for stdin")
+    .addOption(
+      new Option("--provider <provider>")
+        .choices(["lilac", "fireworks"])
+        .makeOptionMandatory(),
+    )
+    .requiredOption("--project <slug>", "Exact Understudy project route")
+    .requiredOption("--workload <slug>", "Exact Understudy workload route")
+    .option("--org <id>", "Org credential to use when more than one is configured")
+    .option("--confirm-remote", "Confirm this bounded evidence may be sent to the named route")
+    .option("--force", "Run a new advisory instead of returning cached evidence")
+    .option("--json", "Output JSON")
+    .action(async function (this: Command, opts: {
+      input: string;
+      provider: TiebreakerProvider;
+      project: string;
+      workload: string;
+      org?: string;
+      confirmRemote?: boolean;
+      force?: boolean;
+      json?: boolean;
+    }) {
+      const raw = opts.input === "-"
+        ? await readStandardInput()
+        : readFileSync(resolve(opts.input), "utf8");
+      const result = await analyzeTiebreaker({
+        input: JSON.parse(raw) as unknown,
+        route: {
+          provider: opts.provider,
+          project: opts.project,
+          workload: opts.workload,
+          orgId: opts.org,
+        },
+        confirmRemote: opts.confirmRemote === true,
+        force: opts.force,
+      });
+      printStructured(
+        result,
+        jsonRequested(this, opts.json),
+        [
+          `GLM advisory: ${result.status}`,
+          `assessment: ${result.assessment ?? "unavailable"}`,
+          `recommended action: ${result.recommended_action ?? "unavailable"}`,
+          `provider route: ${result.provider} -> ${result.served_model ?? "unavailable"}`,
+          `cache hit: ${result.cache_hit}`,
+          `private evidence hash: ${result.evidence_sha256}`,
+        ].join("\n"),
+      );
+    });
+  tiebreaker
+    .command("feedback")
+    .description("Record whether the cached GLM advisory helped the human reviewer.")
+    .requiredOption("--evidence-sha256 <sha256>")
+    .option("--model <id>", "Advisory model", TIEBREAKER_MODEL)
+    .addOption(
+      new Option("--helpful <yes-or-no>")
+        .choices(["yes", "no"])
+        .makeOptionMandatory(),
+    )
+    .option("--json", "Output JSON")
+    .action(function (this: Command, opts: {
+      evidenceSha256: string;
+      model: string;
+      helpful: "yes" | "no";
+      json?: boolean;
+    }) {
+      const result = recordTiebreakerFeedback({
+        evidenceSha256: opts.evidenceSha256,
+        model: opts.model,
+        helpful: opts.helpful === "yes",
+      });
+      printStructured(
+        result,
+        jsonRequested(this, opts.json),
+        `recorded GLM advisory feedback for ${result.marker_id}`,
+      );
+    });
+  tiebreaker
+    .command("eval")
+    .description("Run the frozen judge-the-judger suite; dry-run makes no provider calls.")
+    .option("--suite <path>", "Frozen JSONL suite", TIEBREAKER_EVAL_SUITE_PATH)
+    .addOption(new Option("--split <split>").choices(["validation", "test", "all"]).default("validation"))
+    .option("--max-examples <n>", "Maximum frozen cases", positiveInteger, 5)
+    .option("--live", "Perform bounded GLM calls instead of a local plan")
+    .addOption(new Option("--provider <provider>").choices(["lilac", "fireworks"]))
+    .option("--project <slug>", "Exact Understudy project route")
+    .option("--workload <slug>", "Exact Understudy workload route")
+    .option("--org <id>", "Org credential to use when more than one is configured")
+    .option("--confirm-remote", "Confirm frozen evidence may be sent to the named route")
+    .option("--confirm-spend", "Confirm the displayed per-case spend fuse")
+    .option("--budget-usd <usd>", "Hard command budget fuse", nonNegativeNumber, 0)
+    .option("--output <dir>", "Immutable evidence directory")
+    .option("--json", "Output artifact metadata as JSON")
+    .action(async function (this: Command, opts: {
+      suite: string;
+      split: "validation" | "test" | "all";
+      maxExamples: number;
+      live?: boolean;
+      provider?: TiebreakerProvider;
+      project?: string;
+      workload?: string;
+      org?: string;
+      confirmRemote?: boolean;
+      confirmSpend?: boolean;
+      budgetUsd: number;
+      output?: string;
+      json?: boolean;
+    }) {
+      const route = opts.provider && opts.project && opts.workload
+        ? {
+            provider: opts.provider,
+            project: opts.project,
+            workload: opts.workload,
+            orgId: opts.org,
+          }
+        : undefined;
+      const result = await runTiebreakerEval({
+        suitePath: resolve(opts.suite),
+        split: opts.split,
+        maxExamples: opts.maxExamples,
+        live: opts.live === true,
+        confirmRemote: opts.confirmRemote === true,
+        confirmSpend: opts.confirmSpend === true,
+        budgetUsd: opts.budgetUsd,
+        route,
+      });
+      const createdAt = String(result.manifest.created_at).replaceAll(":", "-");
+      const suiteSha = String(result.manifest.suite_sha256).slice(0, 12);
+      const output = opts.output
+        ? resolve(opts.output)
+        : join(homedir(), ".understudy", "evals", "supervision-tiebreaker", `${createdAt}-${suiteSha}`);
+      const manifestPath = join(output, "manifest.json");
+      const evidencePath = join(output, "evidence.jsonl");
+      const summaryPath = join(output, "summary.json");
+      writeImmutableArtifact(manifestPath, `${JSON.stringify(result.manifest, null, 2)}\n`);
+      writeImmutableArtifact(
+        evidencePath,
+        result.rows.length ? `${result.rows.map((row) => JSON.stringify(row)).join("\n")}\n` : "",
+      );
+      writeImmutableArtifact(summaryPath, `${JSON.stringify(result.summary, null, 2)}\n`);
+      const outputValue = {
+        schema_version: "understudy.supervision.tiebreaker_eval_result.v1",
+        mode: opts.live ? "live" : "dry_run",
+        examples: result.manifest.examples,
+        recommendation: result.summary.recommendation,
+        manifest_path: manifestPath,
+        evidence_path: evidencePath,
+        summary_path: summaryPath,
+        provider_calls_performed: result.summary.provider_calls_performed,
+        uploads_performed: false,
+      };
+      printStructured(
+        outputValue,
+        jsonRequested(this, opts.json),
+        [
+          `mode: ${outputValue.mode}`,
+          `examples: ${(outputValue.examples as string[]).length}`,
+          `recommendation: ${String(outputValue.recommendation)}`,
+          `manifest: ${manifestPath}`,
+          `provider calls performed: ${String(outputValue.provider_calls_performed)}`,
+          "uploads performed: false",
         ].join("\n"),
       );
     });

@@ -54,6 +54,47 @@ export type SupervisionReviewQueue = {
   items: SupervisionReviewItem[];
 };
 
+export type TiebreakerStatus = {
+  enabled: boolean;
+  gateway_ready: boolean;
+  route_configured: boolean;
+  provider?: "lilac" | "fireworks" | null;
+  project?: string | null;
+  workload?: string | null;
+  model: "glm-5.2";
+  disclosure: string;
+};
+
+export type TiebreakerAnalysis = {
+  schema_version: "understudy.supervision.tiebreaker_analysis.v1";
+  marker_id: string;
+  evidence_sha256: string;
+  analysis_sha256: string;
+  model: string;
+  provider: "lilac" | "fireworks";
+  expected_served_model: string;
+  served_model?: string | null;
+  gateway_mode?: string | null;
+  gateway_route?: string | null;
+  effective_model?: string | null;
+  route_project: string;
+  route_workload: string;
+  recommended_action?: "continue" | "nudge" | "interrupt" | "stop" | "unclear" | null;
+  assessment?: "agree" | "disagree" | "unclear" | null;
+  confidence?: number | null;
+  reason?: string | null;
+  reason_quality?: "grounded" | "partly_grounded" | "unsupported" | "missing" | "unclear" | null;
+  status: "ok" | "error";
+  error?: string | null;
+  latency_ms: number;
+  prompt_tokens?: number | null;
+  completion_tokens?: number | null;
+  created_at: string;
+  cache_hit: boolean;
+  user_helpful?: boolean | null;
+  remote_call_performed: boolean;
+};
+
 export type ReviewEvidenceGroup = {
   key: string;
   representative: SupervisionReviewItem;
