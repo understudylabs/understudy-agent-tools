@@ -47,6 +47,9 @@ pub struct PersistedSlot {
 pub struct SlotView {
     pub id: u32,
     pub model_id: Option<String>,
+    /// Exact local provider identity. MLX accepts this weights path even when
+    /// a catalog alias differs from the id exposed by the server.
+    pub model_path: Option<String>,
     pub state: String, // running | loading | stopped | error
     pub port: Option<u16>,
     pub mem_gb: f32,
@@ -632,6 +635,7 @@ impl Residency {
             .map(|r| SlotView {
                 id: r.id,
                 model_id: r.model_id.clone(),
+                model_path: r.model_path.clone(),
                 state: r.state.as_str().to_string(),
                 port: r.port,
                 mem_gb: r.mem_gb,

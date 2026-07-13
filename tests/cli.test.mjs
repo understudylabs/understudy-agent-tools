@@ -1114,6 +1114,23 @@ describe("understudy CLI", () => {
     assert.match(result.stderr, /requires --base-url and --model/);
   });
 
+  it("does not let manual aliases override a desktop slot identity", () => {
+    const result = run([
+      "runtime",
+      "conformance",
+      "--backend",
+      "pi",
+      "--slot",
+      "7",
+      "--base-url",
+      "http://127.0.0.1:8096/v1",
+      "--model",
+      "understudy-small",
+    ]);
+    assert.notEqual(result.status, 0);
+    assert.match(result.stderr, /--slot resolves --base-url and --model/);
+  });
+
   it("requires an explicit warm slot for the native Rust reference", () => {
     const result = run([
       "runtime",

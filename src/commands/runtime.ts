@@ -33,6 +33,7 @@ import { runVercelConversation } from "../runtime/conversation/vercel-runtime.js
 import {
   desktopApiFetch,
   requireDesktopApi,
+  resolveDesktopSlotProviderTarget,
   responseError,
   type DesktopApiCapability,
 } from "../internal/desktop-api.js";
@@ -445,7 +446,11 @@ export function registerRuntimeCommand(program: Command): void {
     .option("--backend <backend>", "Execute inputs through pi, vercel, or native")
     .option("--base-url <url>", "OpenAI-compatible provider base URL")
     .option("--model <id>", "Provider model identifier")
-    .option("--slot <id>", "Warm desktop slot for the native Rust reference", positiveInteger)
+    .option(
+      "--slot <id>",
+      "Warm desktop slot (auto-resolves the exact local Pi/Vercel provider identity)",
+      positiveInteger,
+    )
     .option("--student-base-url <url>", "Student provider URL for the supervision scenario")
     .option("--student-model <id>", "Student model for the supervision scenario")
     .option("--supervisor-base-url <url>", "Supervisor provider URL for the supervision scenario")
@@ -519,7 +524,11 @@ export function registerRuntimeCommand(program: Command): void {
             throw new Error("--backend native uses the authenticated desktop API, not --base-url");
           }
           if (options.allowRemote) throw new Error("--backend native cannot use --allow-remote");
-        } else if (!options.baseUrl || !options.model) {
+        } else if (options.slot && (options.baseUrl || options.model)) {
+          throw new Error(
+            "--slot resolves --base-url and --model from Desktop; do not combine them",
+          );
+        } else if (!options.slot && (!options.baseUrl || !options.model)) {
           throw new Error("--backend pi or vercel requires --base-url and --model");
         }
         if (options.deterministicSupervisor && backend !== "pi") {
@@ -554,10 +563,22 @@ export function registerRuntimeCommand(program: Command): void {
           await requireNativeReferenceSlot(
             nativeCapability,
             options.slot!,
-            options.model,
+            options.model!,
             scenarioTimeoutMs,
           );
         }
+        const desktopSlotCapability = backend !== "native" && options.slot
+          ? await requireDesktopApi()
+          : undefined;
+        const desktopSlotTarget = desktopSlotCapability
+          ? await resolveDesktopSlotProviderTarget(
+              desktopSlotCapability,
+              options.slot!,
+              scenarioTimeoutMs,
+            )
+          : undefined;
+        const providerBaseUrl = desktopSlotTarget?.baseUrl ?? options.baseUrl!;
+        const providerModel = desktopSlotTarget?.model ?? options.model!;
         const supervisorFixture = options.deterministicSupervisor
           ? await startDeterministicSupervisorFixture()
           : undefined;
@@ -565,8 +586,8 @@ export function registerRuntimeCommand(program: Command): void {
           ? await startDeterministicMalformedToolFixture()
           : undefined;
         const supervisorTarget = supervisorFixture?.target ?? {
-          base_url: options.supervisorBaseUrl ?? options.baseUrl!,
-          model: options.supervisorModel ?? options.model!,
+          base_url: options.supervisorBaseUrl ?? providerBaseUrl,
+          model: options.supervisorModel ?? providerModel,
         };
         let report;
         try {
@@ -592,21 +613,31 @@ export function registerRuntimeCommand(program: Command): void {
                       model: options.model,
                       slot_id: options.slot,
                     }
-                  : { base_url: options.baseUrl, model: options.model },
+                  : {
+                      base_url: providerBaseUrl,
+                      model: providerModel,
+                      ...(desktopSlotTarget
+                        ? {
+                            slot_id: desktopSlotTarget.slotId,
+                            artifact_id: desktopSlotTarget.artifactId,
+                            identity_source: "desktop_residency_model_path",
+                          }
+                        : {}),
+                    },
                 ...(backend === "native"
                   ? { evidence_projection: "legacy_prompt_only_completion_summary" }
                   : {
                       supervision: {
                         student: {
-                          base_url: options.studentBaseUrl ?? options.baseUrl,
-                          model: options.studentModel ?? options.model,
+                          base_url: options.studentBaseUrl ?? providerBaseUrl,
+                          model: options.studentModel ?? providerModel,
                         },
                         supervisor: {
                           ...supervisorTarget,
                         },
                         teacher: {
-                          base_url: options.teacherBaseUrl ?? options.baseUrl,
-                          model: options.teacherModel ?? options.model,
+                          base_url: options.teacherBaseUrl ?? providerBaseUrl,
+                          model: options.teacherModel ?? providerModel,
                         },
                       },
                       supervisor_mode: options.deterministicSupervisor
@@ -639,22 +670,22 @@ export function registerRuntimeCommand(program: Command): void {
                 }
                 return executeFrozenConformanceScenario(input, run, {
                   backend,
-                  base_url: options.baseUrl!,
-                  model: options.model!,
+                  base_url: providerBaseUrl,
+                  model: providerModel,
                   invocation_id: invocationId,
                   scenario_timeout_ms: scenarioTimeoutMs,
                   tool_executor_url: options.toolExecutorUrl,
                   allow_remote: options.allowRemote,
                   student: {
-                    base_url: options.studentBaseUrl ?? options.baseUrl!,
-                    model: options.studentModel ?? options.model!,
+                    base_url: options.studentBaseUrl ?? providerBaseUrl,
+                    model: options.studentModel ?? providerModel,
                   },
                   supervisor: {
                     ...supervisorTarget,
                   },
                   teacher: {
-                    base_url: options.teacherBaseUrl ?? options.baseUrl!,
-                    model: options.teacherModel ?? options.model!,
+                    base_url: options.teacherBaseUrl ?? providerBaseUrl,
+                    model: options.teacherModel ?? providerModel,
                   },
                   malformed_tool: malformedToolFixture?.target,
                   deterministic_compaction: options.deterministicCompaction,

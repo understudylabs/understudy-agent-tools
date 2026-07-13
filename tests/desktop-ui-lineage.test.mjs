@@ -209,6 +209,8 @@ test("remote review is opt-in, CLI-owned, and never replaces the human label", a
 test("desktop migration claims stay tied to explicit product parity", async () => {
   const parity = JSON.parse(await readFile(parityPath, "utf8"));
   assert.equal(parity.release_authority, "apps/homescreen");
+  assert.equal(parity.distribution_authority, "@understudylabs/understudy-agent-tools");
+  assert.equal(parity.external_research_bridge_policy, "documented_uv_bridge_only");
   assert.equal(parity.legacy_desktop_policy, "extraction_only");
   const ids = parity.features.map((feature) => feature.id);
   assert.equal(new Set(ids).size, ids.length, "parity feature ids must remain unique");
@@ -221,6 +223,12 @@ test("desktop migration claims stay tied to explicit product parity", async () =
     "correction-pair-export-and-metrics",
     "remote-review-tiebreaker",
     "unified-experiment-hub",
+    "experiment-ledger-first-run",
+    "drop-to-workload-compilation",
+    "model-card-transparency",
+    "reading-pace-streaming",
+    "always-on-top-window-pin",
+    "heavy-model-preflight-and-process-reconciliation",
     "native-runtime-deletion",
   ]) {
     assert.ok(ids.includes(required), `parity manifest is missing ${required}`);
@@ -252,6 +260,21 @@ test("desktop migration claims stay tied to explicit product parity", async () =
   for (const feature of parity.features) {
     assert.ok(parity.status_values.includes(feature.status), `${feature.id} has an unknown status`);
     assert.ok(feature.evidence.length > 20, `${feature.id} needs concrete evidence`);
+  }
+  const dispositionGroups = parity.legacy_inventory.groups;
+  const legacyFiles = dispositionGroups.flatMap((group) => group.files);
+  assert.equal(legacyFiles.length, parity.legacy_inventory.audited_file_count);
+  assert.equal(new Set(legacyFiles).size, legacyFiles.length, "legacy files need one disposition");
+  for (const group of dispositionGroups) {
+    assert.ok(
+      parity.legacy_inventory.disposition_values.includes(group.disposition),
+      `unknown legacy disposition ${group.disposition}`,
+    );
+    if (group.disposition === "port_capability") {
+      assert.ok(ids.includes(group.target_feature), `${group.target_feature} needs a parity feature`);
+    } else {
+      assert.ok(group.replacement.length > 20, `${group.disposition} needs a replacement rationale`);
+    }
   }
   const actuallyComplete = parity.features.every((feature) =>
     ["shipped", "retired"].includes(feature.status),

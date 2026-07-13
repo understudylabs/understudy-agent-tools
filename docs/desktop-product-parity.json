@@ -1,6 +1,8 @@
 {
-  "manifest_version": 1,
+  "manifest_version": 2,
   "release_authority": "apps/homescreen",
+  "distribution_authority": "@understudylabs/understudy-agent-tools",
+  "external_research_bridge_policy": "documented_uv_bridge_only",
   "legacy_desktop_policy": "extraction_only",
   "migration_complete": false,
   "status_values": [
@@ -9,11 +11,111 @@
     "planned",
     "retired"
   ],
+  "legacy_inventory": {
+    "scope": "Final legacy production-only files absent from the canonical desktop tree.",
+    "audited_file_count": 30,
+    "disposition_values": [
+      "port_capability",
+      "superseded",
+      "retired"
+    ],
+    "groups": [
+      {
+        "disposition": "port_capability",
+        "target_feature": "drop-to-workload-compilation",
+        "files": [
+          "app/components/DropAnalysisCards.tsx"
+        ]
+      },
+      {
+        "disposition": "port_capability",
+        "target_feature": "model-card-transparency",
+        "files": [
+          "app/components/ModelCardDrawer.tsx",
+          "app/lib/model-cards.ts",
+          "app/lib/useActiveExperiment.ts"
+        ]
+      },
+      {
+        "disposition": "port_capability",
+        "target_feature": "reading-pace-streaming",
+        "files": [
+          "app/lib/stream-pacer.test.ts",
+          "app/lib/stream-pacer.ts"
+        ]
+      },
+      {
+        "disposition": "superseded",
+        "replacement": "The compact Review -> Compare -> Improve hub and CLI-owned evidence ledger.",
+        "files": [
+          "app/components/ExperimentsPane.tsx",
+          "app/lib/scatter-math.test.ts",
+          "app/lib/scatter-math.ts"
+        ]
+      },
+      {
+        "disposition": "superseded",
+        "replacement": "The authenticated Desktop API and the public CLI; no unauthenticated environment bridge.",
+        "files": [
+          "app/lib/env-bridge.test.ts",
+          "app/lib/env-bridge.ts"
+        ]
+      },
+      {
+        "disposition": "superseded",
+        "replacement": "Canonical Pi journals, the supervision review projection, and correction-pair export.",
+        "files": [
+          "app/lib/supervision-evidence.test.ts",
+          "app/lib/supervision-evidence.ts",
+          "app/lib/supervision-review.test.ts",
+          "src-tauri/src/supervision.rs"
+        ]
+      },
+      {
+        "disposition": "superseded",
+        "replacement": "Inline canonical runtime stages and quiet fallback notices.",
+        "files": [
+          "app/lib/sidekick-toasts.test.ts",
+          "app/lib/sidekick-toasts.ts"
+        ]
+      },
+      {
+        "disposition": "superseded",
+        "replacement": "CLI-owned frozen tool proof, immutable event evidence, Pi tool rounds, command guard, and SQLite chat persistence.",
+        "files": [
+          "src-tauri/src/bench.rs",
+          "src-tauri/src/capture.rs",
+          "src-tauri/src/chat_history.rs",
+          "src-tauri/src/executor.rs",
+          "src-tauri/src/tool_round.rs"
+        ]
+      },
+      {
+        "disposition": "retired",
+        "replacement": "Removed debug telemetry, duplicate charting, global toast, and content-bearing UI-state surfaces from the minimal local-first app.",
+        "files": [
+          "app/components/PerfOverlay.tsx",
+          "app/components/base-ui/sonner.tsx",
+          "app/components/ui/chart.tsx",
+          "app/lib/frame-stats.test.ts",
+          "app/lib/frame-stats.ts",
+          "app/lib/telemetry.ts",
+          "app/lib/ui-snapshot.ts",
+          "src-tauri/src/ui_state.rs"
+        ]
+      }
+    ]
+  },
   "features": [
     {
       "id": "canonical-conversation-runtime",
       "status": "shipped",
       "evidence": "Provider-neutral events, Pi and Vercel adapters, immutable run journals, and the one-release native fallback are present."
+    },
+    {
+      "id": "desktop-slot-provider-identity",
+      "status": "shipped",
+      "evidence": "Authenticated residency snapshots expose the exact local weights path and port. Pi and Vercel conformance can resolve those values from one warm slot and reject manual alias overrides, preventing catalog names from producing false runtime failures."
     },
     {
       "id": "reviewed-desktop-shell",
@@ -59,6 +161,36 @@
       "id": "unified-experiment-hub",
       "status": "shipped",
       "evidence": "Experiments presents one compact Review -> Compare -> Improve loop. The public CLI owns the fixed 17-task regression suite and 30-task promotion suite, direct Pi execution, serial residency isolation, exact trace scoring, suite and tool-schema hashes, owner-only canonical event evidence, and immutable failed-case improvement packets. Desktop is a bounded adapter: it preflights two distinct warm models, fixes promotion at three repetitions, reports strict model misses separately from terminal runtime errors, and refuses promotion when task bytes, result rows, event files, permissions, hashes, or attempt counts are incomplete. No cloud call or upload occurs."
+    },
+    {
+      "id": "experiment-ledger-first-run",
+      "status": "shipped",
+      "evidence": "A clean install offers one local Create ledger action. It idempotently creates the canonical index.jsonl and append-only rounds.jsonl without truncating a partially initialized ledger, then opens the empty experiment view."
+    },
+    {
+      "id": "drop-to-workload-compilation",
+      "status": "planned",
+      "evidence": "The legacy drop analyzer was coupled to an unauthenticated Python environment bridge, private workflow links, and duplicate chart dependencies. Preserve the user outcome by routing a local file or directory into the public CLI workload compiler and bounded result cards; do not port that bridge or UI wholesale."
+    },
+    {
+      "id": "model-card-transparency",
+      "status": "planned",
+      "evidence": "The canonical model list still needs one compact drawer for provenance, decode contract, certification, footprint, routing hints, and active-experiment context sourced from public model manifests."
+    },
+    {
+      "id": "reading-pace-streaming",
+      "status": "planned",
+      "evidence": "The tested reading-rate buffer and skip affordance remain absent. Port only after a small usability check proves that display pacing reduces disorientation without making local answers feel artificially slow; retain an immediate-display escape hatch."
+    },
+    {
+      "id": "always-on-top-window-pin",
+      "status": "planned",
+      "evidence": "The reviewed desktop supported a persisted, user-controlled always-on-top pin. The canonical shell does not yet expose it, despite the low implementation cost and usefulness while working alongside an editor or terminal."
+    },
+    {
+      "id": "heavy-model-preflight-and-process-reconciliation",
+      "status": "partial",
+      "evidence": "Residency now fail-closes unsafe memory plans, cools before warming, serializes heavy experiments, waits for Metal teardown, and never auto-restores heavy models. It still needs a plain-language pre-warm warning and durable reconciliation of model-server ownership after an app crash so an orphan cannot overlap a newly launched server."
     },
     {
       "id": "legacy-desktop-retirement-guard",
