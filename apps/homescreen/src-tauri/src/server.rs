@@ -354,18 +354,63 @@ async fn agent_conversation_turn(
         },
     )
     .map_err(|error| (StatusCode::BAD_REQUEST, error))?;
+    let model = request
+        .get("model")
+        .and_then(Value::as_str)
+        .ok_or_else(|| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "conversation runtime request is missing its model".to_string(),
+            )
+        })?
+        .to_string();
+    let supervised = request.get("supervision").is_some();
+    let prompt_tokens = crate::chat::agent_runtime_prompt_tokens(&request);
     let reservation = crate::conversation_sidecar::reserve_agent_run(&session_id, &run_id)
         .map_err(|error| (StatusCode::CONFLICT, error))?;
 
     let (events_tx, events_rx) =
         tokio::sync::mpsc::unbounded_channel::<crate::conversation_runtime::RuntimeEventEnvelope>();
     let app = ctx.app.clone();
+    let run_id_for_task = run_id.clone();
+    let session_id_for_task = session_id.clone();
     tauri::async_runtime::spawn(async move {
-        if let Err((error, _)) =
-            crate::conversation_sidecar::execute_agent_run(&app, request, &events_tx, reservation)
-                .await
+        let started = std::time::Instant::now();
+        match crate::conversation_sidecar::execute_agent_run(&app, request, &events_tx, reservation)
+            .await
         {
-            eprintln!("understudy desktop API conversation run failed: {error}");
+            Ok(result) => crate::chat::record_agent_runtime_run(
+                &app,
+                &run_id_for_task,
+                &session_id_for_task,
+                &model,
+                supervised,
+                Some(&result),
+                prompt_tokens,
+                started.elapsed().as_millis() as u64,
+                "ok",
+                None,
+            ),
+            Err((error, _)) => {
+                let status = if crate::conversation_sidecar::is_runtime_cancellation(&error) {
+                    "cancelled"
+                } else {
+                    "error"
+                };
+                crate::chat::record_agent_runtime_run(
+                    &app,
+                    &run_id_for_task,
+                    &session_id_for_task,
+                    &model,
+                    supervised,
+                    None,
+                    prompt_tokens,
+                    started.elapsed().as_millis() as u64,
+                    status,
+                    Some(error.clone()),
+                );
+                eprintln!("understudy desktop API conversation run failed: {error}");
+            }
         }
     });
 
