@@ -1,21 +1,22 @@
 # Desktop runtime migration removal map
 
-Status: deletion rehearsal refreshed against merged Desktop 0.3.8 source commit
-`9fba0f0` on 2026-07-13. Desktop 0.3.8 is not yet notarized or published. Keep
-this draft unmerged until a released compatibility cohort passes the exact
-gate below.
+Status: deletion approved against the published, notarized Desktop 0.3.8
+compatibility release on 2026-07-13. The owner explicitly accepted early
+promotion before the 100-turn observation window completed; the exact-version
+cohort remains a post-merge adoption monitor rather than a code-removal gate.
 
 The migration is successful only when the canonical conversation runtime owns
 conversation state and the native app becomes a thin authenticated adapter. The
-one-release Rust compatibility engine is temporary. This draft removes it while
+one-release Rust compatibility engine was temporary. This promotion removes it while
 preserving every accepted Train-derived product improvement, the 0.3.6 Pi
 continuation fix, the 0.3.7 composer, model-alias, and cancellation polish, and
 the 0.3.8 cyan selection and composer layout fixes; new chat-harness behavior
 remains frozen except for P0 reliability and release bugs.
 
-## Deletion rehearsal
+## Deletion promotion
 
-Draft PR #203 applies the deletion patch to the current 0.3.8 source head and
+PR #203 applies the deletion patch after the Desktop 0.3.8 compatibility
+release and
 removes the native provider, tool-round,
 compaction, benchmark/headless, Anthropic transport, and parallel sidekick
 conversation paths. Pi becomes the only conversation engine for GUI, headless,
@@ -25,21 +26,20 @@ readable, but no active code can schedule those modes.
 Against the 0.3.8 source head, the refreshed review diff removes 4,721 gross Rust
 lines and adds 518, for a net reduction of 4,203 Rust lines. Across the full
 tree it removes 5,658 lines and adds 663, for a net reduction of 4,995 lines.
-The branch passed clippy with warnings denied, all Rust tests (157 passed, four
-ignored), the homescreen production build, all 288 root tests, 33 public-skill
-validations, and the npm package smoke. It is implementation-ready but
-intentionally not promotion-ready. Its merge condition remains:
+The branch passed clippy with warnings denied, the Rust suite, the homescreen
+production build, the root Node suite, public-skill validation, and the npm
+package smoke. Its observation monitor remains:
 
 ```sh
 understudy desktop migration-status --require-ready --json
 ```
 
-That command must exit zero for an exact released app/runtime compatibility
-cohort. The installed notarized Desktop 0.3.7 build currently has 5/100
-qualifying canonical rows: all five used Pi and none used the compatibility
-fallback. Ninety-five genuine turns remain. Desktop 0.3.8 source is merged but
-not released, so it has no release cohort. Preserved older rows are diagnostic
-evidence only; synthetic traffic must not be used to satisfy the gate.
+At promotion time, the last exact released cohort contained 5/100 qualifying
+canonical rows: all five used Pi and none used the compatibility fallback.
+The owner accepted the remaining empirical uncertainty after Desktop 0.3.8 was
+notarized and published with the fallback still present for one release.
+Preserved older rows remain diagnostic evidence only; synthetic traffic must
+not be used to complete the monitor.
 
 ## Acceptance evidence
 
@@ -84,7 +84,7 @@ The local `runtime-status-check` proof (`fusion-pi-proof-1783882706`) persisted
 provider usage (2,267 input and 185 output tokens) under capture id
 `desktop-839bd2b9189f996e99e12074e9bda426`. A historical parallel-mode proof also
 executed through Pi and durably recorded why no background handoff ran
-(`benchmark_sidekick_score_low`). This rehearsal removes the Rust-owned
+(`benchmark_sidekick_score_low`). This promotion removes the Rust-owned
 parallel scheduler; supervision remains a canonical-runtime concern.
 
 Direct Anthropic chat now selects Pi's native `anthropic-messages` provider and
@@ -92,7 +92,7 @@ uses the same authenticated tool/evidence path. The frozen local provider
 fixture proved two Messages API rounds, one matched tool call/result, exact
 provider usage, and no credential in the provider payload or canonical events.
 Runtime 0.3.7 makes older sidecars fail closed before output.
-The released build retains the one-release fallback; this draft retains only
+Desktop 0.3.8 retained the one-release fallback; this promotion retains only
 Anthropic key and catalog storage in Rust.
 
 ## Deletion gate
@@ -126,7 +126,9 @@ Frozen `native-rust-reference` fixtures remain labeled
 `retired-fixture-only` so historical evidence stays truthful without exposing
 an executable native backend.
 
-The command exits `2` while observation is incomplete. The underlying
+The command exits `2` while observation is incomplete. After the explicit
+promotion override, that exit remains a useful adoption warning rather than a
+signal that the retired engine should be restored. The underlying
 versioned Desktop API evaluates the newest 100 canonical turns for the exact
 app and runtime versions. Legacy rows remain in SQLite but cannot falsely
 satisfy the denominator, and an early fallback probe ages out only after 100
@@ -135,8 +137,8 @@ streak so "remaining" cannot hide a fallback inside an otherwise full window.
 The CLI additionally verifies that both
 owner-only evidence files match the live app/runtime versions, current event
 schema, and exact frozen-scenario hashes; missing or stale evidence fails
-closed even after the cohort reaches 100 runs. Delete the compatibility engine
-only after one released app/runtime cohort records a rolling window of exactly
+closed even after the cohort reaches 100 runs. The original conservative policy
+required one released app/runtime cohort to record a rolling window of exactly
 the latest 100 canonical runs with:
 
 - `compatibility_fallback_rows == 0`;
@@ -152,16 +154,15 @@ as successful. Those 0.3.5 rows remain preserved for diagnosis but are not
 release-adoption evidence for deletion. Runtime 0.3.6 resumes a bounded
 continuation only after the prior run and compaction settle, and fails closed
 if the provider remains truncated. Runtime 0.3.7 preserves that fix and records
-intentional cancellation separately from runtime failure. Its exact-version
-cohort currently contains five qualifying Pi rows and no compatibility
-fallback. Do not manufacture the remaining rows; they are release-adoption
+intentional cancellation separately from runtime failure. At promotion time,
+the exact-version cohort contained five qualifying Pi rows and no compatibility
+fallback. Do not manufacture the remaining rows; they remain release-adoption
 evidence.
 
 ## Removable ownership
 
-The ranges below are a review map, not permission to delete them early. Line
-numbers are approximate anchors and must be replaced by the actual deletion
-diff. The conservative gross target is about 4,200 lines; the final claim is
+The ranges below preserve the ownership map used to review the deletion. Line
+numbers are historical approximate anchors; the final claim is the actual
 `git diff --numstat` from the post-release deletion PR.
 
 | Owner being replaced | Current anchors | Gross removable LOC | Replacement |
@@ -189,8 +190,9 @@ diff. The conservative gross target is about 4,200 lines; the final claim is
    presence and catalog management in Rust.
 5. Replace legacy parallel-sidekick metrics/UI with canonical intervention and
    human-label evidence while retaining historical evidence readability.
-6. Keep the deletion rehearsal draft until the exact released cohort passes,
-   then merge it. Do not retain two permanent conversation engines.
+6. Delete the compatibility engine after one fallback release. Continue the
+   exact released cohort as an adoption monitor; do not retain two permanent
+   conversation engines to satisfy an observation denominator.
 
 ## Explicitly retained native responsibilities
 

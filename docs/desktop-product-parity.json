@@ -4,7 +4,7 @@
   "distribution_authority": "@understudylabs/understudy-agent-tools",
   "external_research_bridge_policy": "documented_uv_bridge_only",
   "legacy_desktop_policy": "extraction_only",
-  "migration_complete": false,
+  "migration_complete": true,
   "status_values": [
     "shipped",
     "partial",
@@ -199,8 +199,8 @@
     },
     {
       "id": "native-runtime-deletion",
-      "status": "planned",
-      "evidence": "The draft deletion rehearsal is rebased onto merged Desktop 0.3.8 source and removes the native provider, tool-round, compaction, benchmark, Anthropic transport, and parallel-sidekick execution paths while preserving every accepted Train-derived improvement. It remains intentionally unmerged until an exact released compatibility cohort reaches 100 consecutive genuine Pi turns with green conformance and readiness evidence. The installed notarized 0.3.7 cohort currently has 5 qualifying Pi turns, zero compatibility fallbacks, and 95 genuine turns remaining; Desktop 0.3.8 is not yet published."
+      "status": "shipped",
+      "evidence": "After shipping notarized Desktop 0.3.8 as the one-release compatibility build, PR #203 removes the native provider, tool-round, compaction, benchmark, Anthropic transport, and parallel-sidekick execution paths while preserving the accepted Train-derived product improvements and canonical Pi sidecar. The owner explicitly accepted early promotion before the 100-turn observation monitor completed; the remaining genuine Pi cohort is tracked as post-merge adoption evidence rather than a reason to maintain two permanent conversation engines."
     }
   ]
 }
