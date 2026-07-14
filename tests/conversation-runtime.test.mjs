@@ -2518,7 +2518,7 @@ test("Pi and Vercel execute the identical frozen conformance inputs", async () =
       model: "conformance-cli",
     });
     assert.equal(cliReport.metadata.runtime_id, "understudy-conversation-sidecar");
-    assert.equal(cliReport.metadata.runtime_version, "0.3.6");
+    assert.equal(cliReport.metadata.runtime_version, "0.3.7");
     assert.equal(
       cliReport.metadata.event_schema,
       "understudy-conversation-runtime-event-v1",

@@ -92,7 +92,7 @@ function writeReleaseEvidence() {
     adapter_id: "pi",
     generated_at: "2026-07-12T20:00:00.000Z",
     metadata: {
-      runtime_version: "0.3.6",
+      runtime_version: "0.3.7",
       event_schema: "understudy-conversation-runtime-event-v1",
       network_mode: "offline",
       provider: { base_url: "http://127.0.0.1:9000/v1", model: "understudy-small" },
@@ -136,7 +136,7 @@ function writeReleaseEvidence() {
     },
     app: { version: "0.3.2", ready_ms: 200, rss_mb: 100 },
     runtime: {
-      runtime_version: "0.3.6",
+      runtime_version: "0.3.7",
       event_schema: "understudy-conversation-runtime-event-v1",
       ready_ms: 700,
       rss_mb: 120,
@@ -195,7 +195,7 @@ before(async () => {
       response.end(JSON.stringify({
         schema_version: "understudy.chat_route_metrics.v1",
         app_version: "0.3.2",
-        runtime_version: "0.3.6",
+        runtime_version: "0.3.7",
         observed_row_limit: ready ? 100 : 99,
         required_canonical_runtime_rows: 100,
         remaining_canonical_runtime_rows: ready ? 0 : 1,
@@ -222,7 +222,7 @@ before(async () => {
         run_id: `cohort-run-${index}`,
         runtime_backend: "pi",
         app_version: "0.3.2",
-        runtime_version: "0.3.6",
+        runtime_version: "0.3.7",
         session_id: `cohort-session-${index}`,
         status: "ok",
         prompt_tokens: cohortFailure === "token-mismatch" && index === 0 ? 11 : 10,
