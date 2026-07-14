@@ -31,6 +31,7 @@ let server;
 let port;
 let lastTurn;
 let lastFeedback;
+let cohortFailure = null;
 const mcpCalls = [];
 const controlCalls = [];
 
@@ -59,6 +60,20 @@ function envelope(sequence, event, data) {
     run_id: "run-desktop",
     session_id: "session-desktop",
     runtime_id: "understudy-pi-runtime-v1",
+    sequence,
+    emitted_at: "2026-07-12T00:00:00Z",
+    event,
+    data,
+  };
+}
+
+function cohortEnvelope(runId, sessionId, sequence, event, data) {
+  return {
+    schema_version: "understudy-conversation-runtime-event-v1",
+    event_id: `${runId}:${sequence}`,
+    run_id: runId,
+    session_id: sessionId,
+    runtime_id: "pi-agent-session",
     sequence,
     emitted_at: "2026-07-12T00:00:00Z",
     event,
@@ -193,6 +208,57 @@ before(async () => {
         compatibility_engine_delete_ready: ready,
         groups: [],
       }));
+      return;
+    }
+    if (request.method === "GET" && request.url === "/v1/chat/runs?limit=100") {
+      response.writeHead(404);
+      response.end("old desktop without versioned chat-run routes");
+      return;
+    }
+    if (request.method === "GET" && request.url === "/api/chat/runs?limit=100") {
+      response.writeHead(200, { "content-type": "application/json" });
+      response.end(JSON.stringify(Array.from({ length: 100 }, (_, index) => ({
+        id: 100 - index,
+        run_id: `cohort-run-${index}`,
+        runtime_backend: "pi",
+        app_version: "0.3.2",
+        runtime_version: "0.3.6",
+        session_id: `cohort-session-${index}`,
+        status: "ok",
+        prompt_tokens: cohortFailure === "token-mismatch" && index === 0 ? 11 : 10,
+        completion_tokens: 3,
+        tool_calls: 0,
+      }))));
+      return;
+    }
+    const cohortRunMatch = request.url?.match(/^\/v1\/runs\/(cohort-run-(\d+))\/events$/);
+    if (request.method === "GET" && cohortRunMatch) {
+      const [, runId, index] = cohortRunMatch;
+      const sessionId = `cohort-session-${index}`;
+      const events = [
+        cohortEnvelope(runId, sessionId, 0, "message", { role: "user", text: "inspect" }),
+        cohortEnvelope(runId, sessionId, 1, "delta", { role: "primary", text: "ok" }),
+      ];
+      if (cohortFailure === "orphan-tool" && index === "0") {
+        events.push(cohortEnvelope(runId, sessionId, 2, "tool_call", {
+          call_id: "orphan-call",
+          name: "inspect",
+          raw_arguments: "{}",
+        }));
+      }
+      events.push(cohortEnvelope(runId, sessionId, events.length, "usage", {
+        role: "primary",
+        model: "understudy-small",
+        input_tokens: 10,
+        output_tokens: 3,
+        reasoning_tokens: 0,
+        cached_input_tokens: 0,
+        total_tokens: 13,
+        source: "provider",
+        complete: true,
+      }));
+      response.writeHead(200, { "content-type": "application/x-ndjson" });
+      response.end(`${events.map((event) => JSON.stringify(event)).join("\n")}\n`);
       return;
     }
     const controlValues = {
@@ -509,6 +575,11 @@ describe("desktop API CLI", () => {
     assert.equal(value.remaining_canonical_runtime_rows, 0);
     assert.equal(value.consecutive_pi_rows, 100);
     assert.equal(value.remaining_consecutive_pi_rows, 0);
+    assert.equal(value.release_cohort_volume_ready, true);
+    assert.equal(value.release_cohort_trace_audit.evaluated, true);
+    assert.equal(value.release_cohort_trace_audit.ready, true);
+    assert.equal(value.release_cohort_trace_audit.inspected_rows, 100);
+    assert.equal(value.release_cohort_trace_audit.valid_trace_rows, 100);
     assert.equal(value.release_cohort_ready, true);
     assert.equal(value.release_evidence.ready, true);
     assert.equal(value.compatibility_engine_delete_ready, true);
@@ -525,6 +596,9 @@ describe("desktop API CLI", () => {
     assert.equal(pending.remaining_canonical_runtime_rows, 1);
     assert.equal(pending.consecutive_pi_rows, 98);
     assert.equal(pending.remaining_consecutive_pi_rows, 2);
+    assert.equal(pending.release_cohort_volume_ready, false);
+    assert.equal(pending.release_cohort_trace_audit.evaluated, false);
+    assert.equal(pending.release_cohort_ready, false);
     assert.equal(pending.release_evidence.ready, true);
     assert.equal(pending.compatibility_engine_delete_ready, false);
 
@@ -536,7 +610,9 @@ describe("desktop API CLI", () => {
     ]);
     assert.equal(missingEvidence.status, 2, missingEvidence.stderr);
     const missing = JSON.parse(missingEvidence.stdout);
-    assert.equal(missing.release_cohort_ready, true);
+    assert.equal(missing.release_cohort_volume_ready, true);
+    assert.equal(missing.release_cohort_trace_audit.evaluated, false);
+    assert.equal(missing.release_cohort_ready, false);
     assert.equal(missing.release_evidence.ready, false);
     assert.equal(missing.compatibility_engine_delete_ready, false);
     assert.match(missing.release_evidence.reasons.join("\n"), /conformance evidence is missing/);
@@ -554,9 +630,55 @@ describe("desktop API CLI", () => {
     ]);
     assert.equal(staleEvidence.status, 2, staleEvidence.stderr);
     const stale = JSON.parse(staleEvidence.stdout);
-    assert.equal(stale.release_cohort_ready, true);
+    assert.equal(stale.release_cohort_volume_ready, true);
+    assert.equal(stale.release_cohort_trace_audit.evaluated, false);
+    assert.equal(stale.release_cohort_ready, false);
     assert.equal(stale.compatibility_engine_delete_ready, false);
     assert.match(stale.release_evidence.reasons.join("\n"), /fixture hash is stale/);
+
+    cohortFailure = "orphan-tool";
+    try {
+      const invalidTrace = await runCli([
+        "desktop", "migration-status", "--limit", "100", "--require-ready",
+        "--conformance-evidence", conformanceEvidencePath,
+        "--readiness-evidence", readinessEvidencePath,
+        "--json",
+      ]);
+      assert.equal(invalidTrace.status, 2, invalidTrace.stderr);
+      const invalid = JSON.parse(invalidTrace.stdout);
+      assert.equal(invalid.release_cohort_volume_ready, true);
+      assert.equal(invalid.release_cohort_trace_audit.evaluated, true);
+      assert.equal(invalid.release_cohort_trace_audit.ready, false);
+      assert.equal(invalid.release_cohort_trace_audit.invalid_trace_rows, 1);
+      assert.equal(invalid.release_cohort_ready, false);
+      assert.equal(invalid.compatibility_engine_delete_ready, false);
+      assert.match(
+        invalid.release_cohort_trace_audit.reasons.join("\n"),
+        /orphaned tool calls without results/,
+      );
+    } finally {
+      cohortFailure = null;
+    }
+
+    cohortFailure = "token-mismatch";
+    try {
+      const invalidAttribution = await runCli([
+        "desktop", "migration-status", "--limit", "100", "--require-ready",
+        "--conformance-evidence", conformanceEvidencePath,
+        "--readiness-evidence", readinessEvidencePath,
+        "--json",
+      ]);
+      assert.equal(invalidAttribution.status, 2, invalidAttribution.stderr);
+      const invalid = JSON.parse(invalidAttribution.stdout);
+      assert.equal(invalid.release_cohort_trace_audit.ready, false);
+      assert.equal(invalid.release_cohort_trace_audit.invalid_trace_rows, 1);
+      assert.match(
+        invalid.release_cohort_trace_audit.reasons.join("\n"),
+        /chat-row token totals do not match persisted usage/,
+      );
+    } finally {
+      cohortFailure = null;
+    }
   });
 
   it("operates model downloads and residency through versioned REST with one-release fallback", async () => {
