@@ -162,7 +162,7 @@ pub(crate) enum SidecarAttempt {
     FailedAfterOutput(String),
 }
 
-fn is_runtime_cancellation(error: &str) -> bool {
+pub(crate) fn is_runtime_cancellation(error: &str) -> bool {
     error.starts_with("conversation runtime cancelled:")
 }
 

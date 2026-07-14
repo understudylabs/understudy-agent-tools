@@ -447,6 +447,97 @@ fn record_chat_run(app: &AppHandle, input: ChatRunInput) {
     );
 }
 
+pub(crate) fn agent_runtime_prompt_tokens(request: &Value) -> Option<u64> {
+    request
+        .get("messages")
+        .and_then(Value::as_array)
+        .map(|messages| approximate_messages_tokens(messages))
+}
+
+#[allow(clippy::too_many_arguments)]
+fn agent_runtime_chat_run_input(
+    run_id: &str,
+    session_id: &str,
+    model: &str,
+    supervised: bool,
+    result: Option<&crate::conversation_sidecar::SidecarRunResult>,
+    fallback_prompt_tokens: Option<u64>,
+    fallback_elapsed_ms: u64,
+    local_mem_gb: Option<f64>,
+    gateway_available: bool,
+    status: &str,
+    error: Option<String>,
+) -> ChatRunInput {
+    let prompt_tokens = result
+        .and_then(|run| sidecar_usage_tokens(run.usage.as_ref(), "prompt_tokens"))
+        .or(fallback_prompt_tokens);
+    let completion_tokens = result.map(|run| {
+        sidecar_usage_tokens(run.usage.as_ref(), "completion_tokens")
+            .unwrap_or_else(|| approximate_token_count(&run.content))
+    });
+    let compacted = result.is_some_and(|run| run.compacted);
+
+    ChatRunInput {
+        run_id: run_id.to_string(),
+        runtime_backend: "pi".to_string(),
+        session_id: session_id.to_string(),
+        route: "local".to_string(),
+        model: model.to_string(),
+        elapsed_ms: Some(
+            result
+                .map(|run| run.elapsed_ms)
+                .unwrap_or(fallback_elapsed_ms),
+        ),
+        prompt_tokens,
+        completion_tokens,
+        tool_calls: result.map(|run| run.tool_calls).unwrap_or(0),
+        sidekick_spawned: supervised,
+        gateway_used: false,
+        compacted,
+        compaction_reason: compacted.then(|| "runtime_compaction_boundary".to_string()),
+        context_tokens_before: result
+            .map(|run| run.context_tokens_before)
+            .or(fallback_prompt_tokens),
+        local_mem_gb,
+        gateway_available,
+        gateway_avoided: gateway_available,
+        status: status.to_string(),
+        error: (status != "ok").then_some(error).flatten(),
+    }
+}
+
+#[allow(clippy::too_many_arguments)]
+pub(crate) fn record_agent_runtime_run(
+    app: &AppHandle,
+    run_id: &str,
+    session_id: &str,
+    model: &str,
+    supervised: bool,
+    result: Option<&crate::conversation_sidecar::SidecarRunResult>,
+    fallback_prompt_tokens: Option<u64>,
+    fallback_elapsed_ms: u64,
+    status: &str,
+    error: Option<String>,
+) {
+    let gateway_available = credentials().is_some();
+    record_chat_run(
+        app,
+        agent_runtime_chat_run_input(
+            run_id,
+            session_id,
+            model,
+            supervised,
+            result,
+            fallback_prompt_tokens,
+            fallback_elapsed_ms,
+            local_resident_mem_gb(app),
+            gateway_available,
+            status,
+            error,
+        ),
+    );
+}
+
 fn local_resident_mem_gb(app: &AppHandle) -> Option<f64> {
     let memory = app
         .state::<Residency>()
@@ -1420,5 +1511,86 @@ mod tests {
     #[test]
     fn approximate_tokens_never_claim_char_precision() {
         assert_eq!(approximate_token_count("one two three"), 3);
+    }
+
+    #[test]
+    fn agent_runtime_success_preserves_canonical_route_accounting() {
+        let result = crate::conversation_sidecar::SidecarRunResult {
+            content: "the final answer".to_string(),
+            usage: Some(json!({
+                "prompt_tokens": 144,
+                "completion_tokens": 23,
+            })),
+            tool_calls: 2,
+            elapsed_ms: 987,
+            compacted: true,
+            context_tokens_before: 32_000,
+        };
+        let input = agent_runtime_chat_run_input(
+            "run-api-1",
+            "session-api-1",
+            "understudy-4b",
+            true,
+            Some(&result),
+            Some(11),
+            1_500,
+            Some(9.5),
+            true,
+            "ok",
+            Some("must not leak".to_string()),
+        );
+
+        assert_eq!(input.run_id, "run-api-1");
+        assert_eq!(input.session_id, "session-api-1");
+        assert_eq!(input.runtime_backend, "pi");
+        assert_eq!(input.route, "local");
+        assert_eq!(input.model, "understudy-4b");
+        assert_eq!(input.elapsed_ms, Some(987));
+        assert_eq!(input.prompt_tokens, Some(144));
+        assert_eq!(input.completion_tokens, Some(23));
+        assert_eq!(input.tool_calls, 2);
+        assert!(input.sidekick_spawned);
+        assert!(!input.gateway_used);
+        assert!(input.compacted);
+        assert_eq!(
+            input.compaction_reason.as_deref(),
+            Some("runtime_compaction_boundary")
+        );
+        assert_eq!(input.context_tokens_before, Some(32_000));
+        assert_eq!(input.local_mem_gb, Some(9.5));
+        assert!(input.gateway_available);
+        assert!(input.gateway_avoided);
+        assert_eq!(input.status, "ok");
+        assert_eq!(input.error, None);
+    }
+
+    #[test]
+    fn agent_runtime_failure_uses_fallback_accounting() {
+        let input = agent_runtime_chat_run_input(
+            "run-api-2",
+            "session-api-2",
+            "understudy-12b",
+            false,
+            None,
+            Some(41),
+            212,
+            None,
+            false,
+            "cancelled",
+            Some("conversation runtime cancelled: user requested".to_string()),
+        );
+
+        assert_eq!(input.elapsed_ms, Some(212));
+        assert_eq!(input.prompt_tokens, Some(41));
+        assert_eq!(input.completion_tokens, None);
+        assert_eq!(input.tool_calls, 0);
+        assert!(!input.sidekick_spawned);
+        assert!(!input.compacted);
+        assert_eq!(input.context_tokens_before, Some(41));
+        assert_eq!(input.status, "cancelled");
+        assert_eq!(
+            input.error.as_deref(),
+            Some("conversation runtime cancelled: user requested")
+        );
     }
 }
