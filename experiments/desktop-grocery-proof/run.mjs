@@ -12,6 +12,26 @@ import { renderExistingProof, writeBuyerReport } from "./report.mjs";
 
 const here = dirname(fileURLToPath(import.meta.url));
 
+const suiteFiles = {
+  smoke: "tasks.json",
+  promotion: "tasks.promotion.json",
+};
+
+export function resolveGrocerySuiteFile(suite) {
+  const file = suiteFiles[suite];
+  if (!file) throw new Error(`unknown grocery proof suite: ${suite}`);
+  return file;
+}
+
+export function groceryProofIdentity(proofId, modeId, taskId) {
+  const runId = `${proofId}-${modeId}-${taskId}`;
+  return {
+    runId,
+    captureRunId: runId,
+    sessionId: `${runId}-session`,
+  };
+}
+
 export function extractJsonObject(text) {
   const trimmed = text.trim();
   for (const candidate of [trimmed, trimmed.slice(trimmed.indexOf("{"), trimmed.lastIndexOf("}") + 1)]) {
@@ -74,6 +94,9 @@ export function summarizeEvents(events, elapsedMs) {
   const answerOutput = studentOutput + teacherOutput;
   const answerTokens = (usage.student?.total_tokens ?? 0) + (usage.teacher?.total_tokens ?? 0);
   const supervisorTokens = usage.supervisor?.total_tokens ?? 0;
+  const terminal = [...events].reverse().find(
+    (event) => event.event === "cancellation" || event.event === "error",
+  );
   return {
     output,
     output_by_role: outputByRole,
@@ -86,6 +109,8 @@ export function summarizeEvents(events, elapsedMs) {
     teacher_continuations: events.filter((event) => event.event === "teacher_continuation").length,
     small_model_output_share: answerOutput > 0 ? studentOutput / answerOutput : null,
     supervisor_token_overhead: answerTokens > 0 ? supervisorTokens / answerTokens : null,
+    terminal_status: terminal?.event ?? "completed",
+    terminal_reason: terminal?.data?.reason ?? terminal?.data?.message ?? null,
     canonical_event_count: events.length,
   };
 }
@@ -135,6 +160,11 @@ export async function runHostedIncumbent({ task, runId, sessionId, options }) {
   const previousRemote = process.env.UNDERSTUDY_RUNTIME_ALLOW_REMOTE;
   if (remote) process.env.UNDERSTUDY_RUNTIME_ALLOW_REMOTE = "1";
   const events = [];
+  const abortController = new AbortController();
+  const turnTimeoutMs = options.turnTimeoutMs ?? 120_000;
+  const timeout = setTimeout(() => {
+    abortController.abort(new Error(`grocery proof turn timed out after ${turnTimeoutMs}ms`));
+  }, turnTimeoutMs);
   try {
     await runPiConversation(
       {
@@ -152,8 +182,10 @@ export async function runHostedIncumbent({ task, runId, sessionId, options }) {
         runtime_backend: "pi",
       },
       (event) => events.push(event),
+      abortController.signal,
     );
   } finally {
+    clearTimeout(timeout);
     if (previousRemote === undefined) delete process.env.UNDERSTUDY_RUNTIME_ALLOW_REMOTE;
     else process.env.UNDERSTUDY_RUNTIME_ALLOW_REMOTE = previousRemote;
   }
@@ -202,7 +234,9 @@ function parseArgs(argv) {
   const options = {
     studentSlot: 9,
     teacherSlot: 5,
+    suite: "smoke",
     maxTokens: 384,
+    turnTimeoutMs: 120_000,
     outputRoot: join(homedir(), ".understudy", "proofs", "grocery-marketplace"),
     reportFrom: null,
     reportOutputRoot: null,
@@ -224,7 +258,9 @@ function parseArgs(argv) {
     }
     if (value === "--student-slot") options.studentSlot = Number(next);
     else if (value === "--teacher-slot") options.teacherSlot = Number(next);
+    else if (value === "--suite") options.suite = next;
     else if (value === "--max-tokens") options.maxTokens = Number(next);
+    else if (value === "--turn-timeout-ms") options.turnTimeoutMs = Number(next);
     else if (value === "--output-root") options.outputRoot = resolve(next);
     else if (value === "--report-from") options.reportFrom = resolve(next);
     else if (value === "--report-output-root") options.reportOutputRoot = resolve(next);
@@ -244,12 +280,14 @@ function parseArgs(argv) {
     studentSlot: options.studentSlot,
     teacherSlot: options.teacherSlot,
     maxTokens: options.maxTokens,
+    turnTimeoutMs: options.turnTimeoutMs,
   })) {
     if (!Number.isInteger(value) || value <= 0) throw new Error(`${name} must be a positive integer`);
   }
   if (options.studentSlot === options.teacherSlot) {
     throw new Error("student and teacher slots must be distinct");
   }
+  resolveGrocerySuiteFile(options.suite);
   if (options.reportOutputRoot && !options.reportFrom) {
     throw new Error("--report-output-root requires --report-from");
   }
@@ -310,7 +348,8 @@ function writeProofFile(path, data) {
 }
 
 export async function runProof(options = parseArgs(process.argv.slice(2))) {
-  const tasksBytes = readFileSync(join(here, "tasks.json"));
+  const suite = options.suite ?? "smoke";
+  const tasksBytes = readFileSync(join(here, resolveGrocerySuiteFile(suite)));
   const tasks = JSON.parse(tasksBytes);
   const suiteHash = createHash("sha256").update(tasksBytes).digest("hex");
   const {
@@ -360,13 +399,27 @@ export async function runProof(options = parseArgs(process.argv.slice(2))) {
   let hostedCostUsd = 0;
   for (const mode of modes) {
     for (const task of tasks) {
-      const runId = `${proofId}-${mode.id}-${task.id}`;
-      const sessionId = `${proofId}-${mode.id}`;
+      const { runId, captureRunId, sessionId } = groceryProofIdentity(
+        proofId,
+        mode.id,
+        task.id,
+      );
       const before = performance.now();
       let events;
       if (mode.id === "hosted") {
         events = await runHostedIncumbent({ task, runId, sessionId, options });
       } else {
+        const timeout = setTimeout(() => {
+          void apiFetch(
+            capability,
+            `/v1/runs/${encodeURIComponent(runId)}/cancel`,
+            { method: "POST" },
+          ).catch((error) => {
+            process.stderr.write(
+              `could not cancel timed-out ${mode.id}/${task.id}: ${error instanceof Error ? error.message : String(error)}\n`,
+            );
+          });
+        }, options.turnTimeoutMs);
         const response = await apiFetch(
           capability,
           `/v1/conversations/${encodeURIComponent(sessionId)}/turns`,
@@ -382,9 +435,14 @@ export async function runProof(options = parseArgs(process.argv.slice(2))) {
           },
         );
         if (!response.ok) {
+          clearTimeout(timeout);
           throw new Error(`${mode.id}/${task.id} returned ${response.status}: ${await response.text()}`);
         }
-        events = await readNdjson(response);
+        try {
+          events = await readNdjson(response);
+        } finally {
+          clearTimeout(timeout);
+        }
       }
       const evidence = summarizeEvents(events, Math.round(performance.now() - before));
       const parsed = extractJsonObject(evidence.output);
@@ -398,6 +456,7 @@ export async function runProof(options = parseArgs(process.argv.slice(2))) {
       const intervened = evidence.verdicts.some(
         (verdict) => verdict.verdict === "nudge" || verdict.verdict === "interrupt",
       );
+      const studentIncorrect = mode.id === "supervised" && !studentScore.exact;
       const hostedUsage = mode.id === "hosted" ? evidence.usage.primary : null;
       if (
         mode.id === "hosted"
@@ -408,7 +467,7 @@ export async function runProof(options = parseArgs(process.argv.slice(2))) {
           `hosted/${task.id} did not report complete provider usage; cannot enforce spend or report cost`,
         );
       }
-      const costUsd = mode.id === "hosted" && hostedUsage?.complete === true
+      const costUsd = mode.id === "hosted" && incumbentRemote && hostedUsage?.complete === true
         ? priceTokens(
           hostedUsage.input_tokens,
           hostedUsage.output_tokens,
@@ -428,6 +487,7 @@ export async function runProof(options = parseArgs(process.argv.slice(2))) {
         proof_id: proofId,
         suite_sha256: suiteHash,
         run_id: runId,
+        capture_run_id: captureRunId,
         session_id: sessionId,
         task_id: task.id,
         task_title: task.title,
@@ -447,7 +507,10 @@ export async function runProof(options = parseArgs(process.argv.slice(2))) {
           ? intervened && studentScore.exact
           : null,
         supervisor_correct_intervention: mode.id === "supervised"
-          ? intervened && !studentScore.exact && score.exact
+          ? intervened && studentIncorrect && score.exact
+          : null,
+        supervisor_unsuccessful_intervention: mode.id === "supervised"
+          ? intervened && studentIncorrect && !score.exact
           : null,
         cost_usd: costUsd,
         cost_basis: mode.id === "hosted" && incumbentRemote
@@ -462,13 +525,22 @@ export async function runProof(options = parseArgs(process.argv.slice(2))) {
       );
       process.stdout.write(
         `${mode.id.padEnd(10)} ${task.id.padEnd(20)} accuracy=${score.field_accuracy.toFixed(2)} `
-        + `latency=${evidence.elapsed_ms}ms verdicts=${evidence.verdicts.length}\n`,
+        + `latency=${evidence.elapsed_ms}ms verdicts=${evidence.verdicts.length} `
+        + `status=${evidence.terminal_status}\n`,
       );
     }
   }
 
   const byMode = Object.fromEntries(modes.map((mode) => {
     const selected = rows.filter((row) => row.mode === mode.id);
+    const interventions = selected.filter((row) => row.supervisor_intervened).length;
+    const trueInterventions = selected.filter(
+      (row) => row.supervisor_intervened && row.student_score?.exact === false,
+    ).length;
+    const studentErrors = selected.filter((row) => row.student_score?.exact === false).length;
+    const correctInterventions = selected.filter(
+      (row) => row.supervisor_correct_intervention,
+    ).length;
     const tokens = selected.reduce((sum, row) => sum + Object.values(row.usage)
       .reduce((inner, usage) => inner + usage.total_tokens, 0), 0);
     return [mode.id, {
@@ -481,14 +553,30 @@ export async function runProof(options = parseArgs(process.argv.slice(2))) {
         && selected.every((row) => typeof row.cost_usd === "number")
         ? selected.reduce((sum, row) => sum + row.cost_usd, 0)
         : null,
-      interventions: selected.filter((row) => row.supervisor_intervened).length,
+      interventions,
       student_interruptions: selected.reduce((sum, row) => sum + row.student_interruptions, 0),
       supervisor_verdicts: selected.reduce((sum, row) => sum + row.verdicts.length, 0),
       supervisor_missed_errors: selected.filter((row) => row.supervisor_missed_error).length,
       supervisor_false_positives: selected.filter((row) => row.supervisor_false_positive).length,
-      supervisor_correct_interventions: selected.filter(
-        (row) => row.supervisor_correct_intervention,
+      supervisor_correct_interventions: correctInterventions,
+      supervisor_unsuccessful_interventions: selected.filter(
+        (row) => row.supervisor_unsuccessful_intervention,
       ).length,
+      supervisor_student_errors: studentErrors,
+      supervisor_intervention_precision: interventions > 0
+        ? trueInterventions / interventions
+        : null,
+      supervisor_intervention_recall: studentErrors > 0
+        ? trueInterventions / studentErrors
+        : null,
+      supervisor_correction_success_rate: trueInterventions > 0
+        ? correctInterventions / trueInterventions
+        : null,
+      supervisor_false_positive_rate: interventions > 0
+        ? selected.filter((row) => row.supervisor_false_positive).length / interventions
+        : null,
+      terminal_errors: selected.filter((row) => row.terminal_status === "error").length,
+      cancellations: selected.filter((row) => row.terminal_status === "cancellation").length,
       mean_small_model_output_share: mode.id === "supervised"
         ? mean(selected.map((row) => row.small_model_output_share ?? 0))
         : null,
@@ -505,13 +593,14 @@ export async function runProof(options = parseArgs(process.argv.slice(2))) {
   byMode.supervised.quality_delta_vs_main = byMode.supervised.mean_field_accuracy
     - byMode.main.mean_field_accuracy;
   const summary = {
-    format: "understudy.desktop_grocery_proof.v2",
+    format: "understudy.desktop_grocery_proof.v3",
     proof_id: proofId,
     suite_sha256: suiteHash,
     started_at: startedAt.toISOString(),
     completed_at: new Date().toISOString(),
     api_version: capabilities.api_version,
     event_schema: capabilities.event_schema,
+    suite_id: suite,
     task_count: tasks.length,
     run_count: rows.length,
     slots: { student: options.studentSlot, teacher: options.teacherSlot },
