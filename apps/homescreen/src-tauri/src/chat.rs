@@ -576,6 +576,11 @@ fn sidecar_provider_base_url(endpoint: &str) -> String {
 }
 
 const LOCAL_LOGICAL_CONTEXT_WINDOW_TOKENS: u64 = 32_768;
+const SUPERVISION_SETTING: &str = "conversation.supervision";
+
+fn interactive_supervision_enabled(value: Option<&str>) -> bool {
+    matches!(value, Some("on" | "enabled" | "true"))
+}
 
 fn local_context_windows(binding: &RouteBinding) -> Option<(u64, u64)> {
     if binding.route != "local" {
@@ -591,13 +596,14 @@ fn automatic_supervision_config(
     binding: &RouteBinding,
     active_slot_id: Option<u32>,
 ) -> Option<Value> {
+    // Interactive chat is a normal, direct model picker by default. The
+    // supervision runtime remains available for explicit eval/conformance
+    // work while its intervention policy and user-facing explanations mature.
+    let supervision_setting = app
+        .state::<crate::db::Db>()
+        .setting_get(SUPERVISION_SETTING);
     if binding.route == "anthropic"
-        || matches!(
-            app.state::<crate::db::Db>()
-                .setting_get("conversation.supervision")
-                .as_deref(),
-            Some("off" | "disabled" | "false")
-        )
+        || !interactive_supervision_enabled(supervision_setting.as_deref())
     {
         return None;
     }
@@ -1400,6 +1406,18 @@ pub async fn agent_chat(
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn interactive_supervision_is_off_unless_explicitly_enabled() {
+        assert!(!interactive_supervision_enabled(None));
+        assert!(!interactive_supervision_enabled(Some("off")));
+        assert!(!interactive_supervision_enabled(Some("disabled")));
+        assert!(!interactive_supervision_enabled(Some("false")));
+        assert!(!interactive_supervision_enabled(Some("unexpected")));
+        assert!(interactive_supervision_enabled(Some("on")));
+        assert!(interactive_supervision_enabled(Some("enabled")));
+        assert!(interactive_supervision_enabled(Some("true")));
+    }
 
     #[test]
     fn public_model_cards_resolve_without_inventing_post_training() {
