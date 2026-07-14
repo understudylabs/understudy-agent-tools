@@ -393,6 +393,13 @@ export function ChatPane({ resetToken, historyToken }: { resetToken: number; his
     setPacedRevealed(null);
   };
 
+  const resetDroppedWorkload = () => {
+    dropRequestGeneration.current += 1;
+    dropInFlight.current = false;
+    setDroppedWorkload(null);
+    setDropRunning(false);
+  };
+
   const startStreamPacer = (messageIndex: number) => {
     resetStreamPacer();
     if (!pacingEnabled()) return null;
@@ -843,10 +850,7 @@ export function ChatPane({ resetToken, historyToken }: { resetToken: number; his
     setSessionHydrated(true);
     setHistoryOpen(false);
     setAssistantSpeaking(false);
-    dropRequestGeneration.current += 1;
-    dropInFlight.current = false;
-    setDroppedWorkload(null);
-    setDropRunning(false);
+    resetDroppedWorkload();
     setPersonaReady(false);
     setIntroThinking(true);
     setPersonaCycle((value) => value + 1);
@@ -910,7 +914,7 @@ export function ChatPane({ resetToken, historyToken }: { resetToken: number; his
       setMessages(restored);
       setInput("");
       setAssistantSpeaking(false);
-      setDroppedWorkload(null);
+      resetDroppedWorkload();
       setHistoryOpen(false);
       setPersonaCycle((value) => value + 1);
     } catch (error) {

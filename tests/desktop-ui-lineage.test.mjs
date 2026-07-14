@@ -222,6 +222,11 @@ test("desktop starts fresh on launch and can reopen an exact Pi session", async 
   assert.match(chat, /"chat_sessions_list"/);
   assert.match(chat, /"chat_session_get"/);
   assert.match(chat, /activeChatSessionId = saved\.session_id/);
+  assert.match(
+    chat,
+    /const resetDroppedWorkload = \(\) => \{[\s\S]*dropRequestGeneration\.current \+= 1;[\s\S]*dropInFlight\.current = false;[\s\S]*setDropRunning\(false\);/,
+  );
+  assert.equal(chat.match(/resetDroppedWorkload\(\);/g)?.length, 2);
   assert.match(page, /aria-label="Chat history"/);
   assert.match(commands, /pub fn chat_sessions_list/);
   assert.match(commands, /pub fn chat_session_get/);
