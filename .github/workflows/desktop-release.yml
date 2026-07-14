@@ -199,7 +199,7 @@ jobs:
           tar -czf "$updater" -C "$(dirname "$app")" "$(basename "$app")"
           (
             cd apps/homescreen
-            bun run tauri signer sign \
+            env -u TAURI_SIGNING_PRIVATE_KEY bun run tauri signer sign \
               --private-key-path "$UNDERSTUDY_UPDATER_KEY" \
               "$updater"
           )
