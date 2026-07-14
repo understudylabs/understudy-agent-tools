@@ -44,6 +44,14 @@ uses semantic-ish versioning (minor = new skill or new capability, patch = fixes
 
 ### Fixed
 
+- **macOS memory headroom stays conservative without collapsing to zero under
+  compression.** Desktop 0.3.12 updates the pinned system-memory reader to the
+  current Apple XNU available-memory calculation. Model warming still keeps
+  the runtime multiplier, 16 GB dynamic reserve, heavy-model exclusivity, and
+  GPU teardown delay, but active compressed-memory workloads no longer turn a
+  nonzero safe margin into a misleading `0.0 GB`. CLI and adapter manifests
+  advance to 0.6.8 with runtime/Desktop 0.3.12.
+
 - **Healthy runtimes reconnect instead of asking for repair.** Desktop 0.3.11
   quietly rebinds the CLI-owned conversation runtime to the current
   authenticated Desktop tool session at launch. A healthy process with a
