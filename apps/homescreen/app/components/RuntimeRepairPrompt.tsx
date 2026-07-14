@@ -11,7 +11,9 @@ import {
   isConversationRuntimeError,
   isMissingMlxVlmError,
   promptForHealth,
+  promptForRepairFailure,
   promptForRuntimeRequest,
+  repairPromptMeta,
   type DesktopHealth,
   type RepairPrompt,
   type RuntimeRepairRequest,
@@ -227,17 +229,15 @@ export function RuntimeRepairPrompt() {
         successTimer.current = null;
       }, SUCCESS_VISIBLE_MS);
     } catch (error) {
+      const failurePrompt = promptForRepairFailure(activePrompt, error);
       setProgress((current) => ({
         ...current,
         status: "error",
         message: "Repair stopped",
-        detail: String(error),
+        detail: failurePrompt.reason,
         startedAt: null,
       }));
-      setPrompt({
-        ...activePrompt,
-        reason: `${String(error)} Run ${activePrompt.command} in Terminal.`,
-      });
+      setPrompt(failurePrompt);
     }
   };
 
@@ -268,7 +268,7 @@ export function RuntimeRepairPrompt() {
           ? `${progress.detail} · ${elapsedSeconds}s`
           : progress.status === "success"
             ? "Verified"
-            : prompt.command
+            : repairPromptMeta(prompt)
       }
       progress={
         progress.status === "running"

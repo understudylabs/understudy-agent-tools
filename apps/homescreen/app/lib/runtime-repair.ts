@@ -28,7 +28,7 @@ export type RepairPrompt = RuntimeRepairRequest & {
   actionLabel: string;
 };
 
-export const CLI_INSTALL_COMMAND =
+export const DESKTOP_DOWNLOAD_URL =
   "https://github.com/understudylabs/understudy-agent-tools/releases/latest";
 
 export const MLX_REPAIR_REQUEST: RuntimeRepairRequest = {
@@ -78,7 +78,7 @@ export function promptForHealth(health: DesktopHealth): RepairPrompt | null {
       runtime: "cli",
       title: "Desktop CLI needs repair",
       reason: "Restore the self-contained CLI included with Understudy Desktop.",
-      command: CLI_INSTALL_COMMAND,
+      command: DESKTOP_DOWNLOAD_URL,
       actionLabel: "Restore CLI",
     };
   }
@@ -90,7 +90,7 @@ export function promptForHealth(health: DesktopHealth): RepairPrompt | null {
       runtime: "cli",
       title: "Understudy Desktop update required",
       reason: versions,
-      command: CLI_INSTALL_COMMAND,
+      command: DESKTOP_DOWNLOAD_URL,
       actionLabel: "Update Desktop",
     };
   }
@@ -121,9 +121,32 @@ export function promptForHealth(health: DesktopHealth): RepairPrompt | null {
       runtime: "desktop",
       title: "Understudy Desktop update available",
       reason: `${health.desktop.installed_version ?? "installed"} → ${health.desktop.latest_version ?? "latest"}`,
-      command: "https://github.com/understudylabs/understudy-agent-tools/releases/latest",
+      command: DESKTOP_DOWNLOAD_URL,
       actionLabel: "Open download",
     };
   }
   return null;
+}
+
+export function promptForRepairFailure(prompt: RepairPrompt, error: unknown): RepairPrompt {
+  const detail = String(error);
+  if (prompt.runtime === "cli") {
+    return {
+      runtime: "desktop",
+      title: "Reinstall Understudy Desktop",
+      reason: `${detail} The CLI is included with Understudy Desktop; install the latest Desktop release to restore it.`,
+      command: DESKTOP_DOWNLOAD_URL,
+      actionLabel: "Open download",
+    };
+  }
+  return {
+    ...prompt,
+    reason: `${detail} Run ${prompt.command} in Terminal.`,
+  };
+}
+
+export function repairPromptMeta(prompt: RepairPrompt): string {
+  if (prompt.runtime === "desktop") return "Latest Desktop release";
+  if (prompt.runtime === "cli") return "Included with Understudy Desktop";
+  return prompt.command;
 }

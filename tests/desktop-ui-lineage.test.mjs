@@ -239,6 +239,8 @@ test("desktop has one shared managed-operation notice surface", async () => {
   assert.match(prompt, /setTimeout\(\(\) => void refreshHealth\(\), 2_500\)/);
   assert.match(prompt, /Updating the version-coupled conversation runtime/);
   assert.match(prompt, /Verifying the CLI and local runtimes/);
+  assert.match(prompt, /promptForRepairFailure\(activePrompt, error\)/);
+  assert.doesNotMatch(prompt, /Run \$\{activePrompt\.command\} in Terminal/);
   assert.match(prompt, /elapsedSeconds/);
   assert.match(prompt, /busy \|\| progress\.status === "success"/);
   assert.match(prompt, /actionDisabled=\{busy \|\| progress\.status === "success"\}/);
@@ -249,6 +251,9 @@ test("desktop has one shared managed-operation notice surface", async () => {
   assert.match(repair, /understudy runtime repair/);
   assert.match(repair, /Runtime reconnecting/);
   assert.match(repair, /Reconnect now/);
+  assert.match(repair, /Reinstall Understudy Desktop/);
+  assert.match(repair, /The CLI is included with Understudy Desktop/);
+  assert.match(repair, /Latest Desktop release/);
   assert.match(
     repair,
     /github\.com\/understudylabs\/understudy-agent-tools\/releases\/latest/,
