@@ -130,3 +130,8 @@ gh release edit "$tag" --repo understudylabs/understudy-agent-tools \
 For a runtime migration release, regenerate the exact-version conformance and
 readiness evidence from the installed notarized app after publication. Evidence
 from an older version cannot qualify the new release cohort.
+
+The readiness probe is process-cold and refuses to overlap any active MLX/VLM
+server, including one it does not own. Stop those workloads explicitly first;
+the probe reports bounded process identity but never terminates an unowned
+server, preventing a release check from colliding with another Metal workload.
