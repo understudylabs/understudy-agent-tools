@@ -191,6 +191,8 @@ pub fn run() {
             commands::chat_runs,
             commands::chat_route_metrics,
             commands::chat_session_latest,
+            commands::chat_sessions_list,
+            commands::chat_session_get,
             commands::chat_session_save,
             chat_attachments::chat_attachments_store,
             chat_attachments::chat_attachments_hydrate,

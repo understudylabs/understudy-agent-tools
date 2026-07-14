@@ -2,7 +2,7 @@
 import { useEffect, useState } from "react";
 import { listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
-import { PanelLeftIcon, PinIcon, PinOffIcon, SquarePenIcon } from "lucide-react";
+import { HistoryIcon, PanelLeftIcon, PinIcon, PinOffIcon, SquarePenIcon } from "lucide-react";
 import { Sidebar, type PaneId } from "./components/Sidebar";
 import { StatusPane } from "./components/StatusPane";
 import { ModelsPane } from "./components/ModelsPane";
@@ -21,6 +21,7 @@ export default function Page() {
   const [pane, setPane] = useState<PaneId>("chat");
   const [railOpen, setRailOpen] = useState(false);
   const [chatResetToken, setChatResetToken] = useState(0);
+  const [chatHistoryToken, setChatHistoryToken] = useState(0);
   const [pinned, setPinned] = useState(false);
   const status = useStatus();
   const connected = status.snap?.connected ?? false;
@@ -117,19 +118,30 @@ export default function Page() {
         <PanelLeftIcon aria-hidden="true" size={16} strokeWidth={2} />
       </button>
       {pane === "chat" && (
-        <button
-          type="button"
-          className="titlebar-new-chat"
-          aria-label="New chat"
-          title="New chat (Cmd+N)"
-          onClick={newChat}
-        >
-          <SquarePenIcon aria-hidden="true" size={15} strokeWidth={2} />
-        </button>
+        <>
+          <button
+            type="button"
+            className="titlebar-new-chat"
+            aria-label="New chat"
+            title="New chat (Cmd+N)"
+            onClick={newChat}
+          >
+            <SquarePenIcon aria-hidden="true" size={15} strokeWidth={2} />
+          </button>
+          <button
+            type="button"
+            className="titlebar-chat-history"
+            aria-label="Chat history"
+            title="Chat history"
+            onClick={() => setChatHistoryToken((token) => token + 1)}
+          >
+            <HistoryIcon aria-hidden="true" size={15} strokeWidth={2} />
+          </button>
+        </>
       )}
       <button
         type="button"
-        className={"titlebar-pin" + (pinned ? " pinned" : "")}
+        className={"titlebar-pin" + (pane === "chat" ? " with-chat-controls" : "") + (pinned ? " pinned" : "")}
         aria-label={pinned ? "Unpin window (always on top)" : "Pin window always on top"}
         aria-pressed={pinned}
         title={pinned ? "Unpin window" : "Keep window on top"}
@@ -153,7 +165,7 @@ export default function Page() {
       />
       <main className="content">
         {pane === "status" && <StatusPane status={status} />}
-        {pane === "chat" && <ChatPane resetToken={chatResetToken} />}
+        {pane === "chat" && <ChatPane resetToken={chatResetToken} historyToken={chatHistoryToken} />}
         {pane === "models" && <ModelsPane />}
         {pane === "capture" && <CapturePane />}
         {pane === "rlm" && <RlmPane />}

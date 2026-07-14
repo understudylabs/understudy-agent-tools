@@ -129,6 +129,12 @@ type PersistedChatSession = {
   messages: Msg[];
   updated_at: string;
 };
+type ChatSessionSummary = {
+  session_id: string;
+  title: string;
+  message_count: number;
+  updated_at: string;
+};
 type LocalModelChoice = {
   id: string;
   modelId: string;
@@ -170,6 +176,21 @@ const CLOUD_MODEL: ModelChoice = {
   slotId: null,
   active: true,
 };
+
+// This survives ChatPane remounts while the app is open (for example, after
+// visiting Models) but resets with the webview on a new app launch.
+let activeChatSessionId: string | null = null;
+
+function chatHistoryTime(value: string): string {
+  const date = new Date(value);
+  if (Number.isNaN(date.getTime())) return "Saved chat";
+  return date.toLocaleString([], {
+    month: "short",
+    day: "numeric",
+    hour: "numeric",
+    minute: "2-digit",
+  });
+}
 
 function compactBytes(bytes: number): string {
   if (bytes < 1_024) return `${bytes} B`;
@@ -326,10 +347,16 @@ function ChatToolTrace({ tool }: { tool: ToolTrace }) {
   );
 }
 
-export function ChatPane({ resetToken }: { resetToken: number }) {
+export function ChatPane({ resetToken, historyToken }: { resetToken: number; historyToken: number }) {
+  const [initialSession] = useState(() => {
+    const restore = activeChatSessionId !== null;
+    const sessionId = activeChatSessionId ?? crypto.randomUUID();
+    activeChatSessionId = sessionId;
+    return { sessionId, restore };
+  });
   const [messages, setMessages] = useState<Msg[]>([]);
   const [input, setInput] = useState("");
-  const [sessionId, setSessionId] = useState(() => crypto.randomUUID());
+  const [sessionId, setSessionId] = useState(initialSession.sessionId);
   const [streaming, setStreaming] = useState(false);
   const [assistantSpeaking, setAssistantSpeaking] = useState(false);
   const [err, setErr] = useState<string | null>(null);
@@ -341,13 +368,17 @@ export function ChatPane({ resetToken }: { resetToken: number }) {
   const [personaCycle, setPersonaCycle] = useState(0);
   const [introThinking, setIntroThinking] = useState(true);
   const [sidekickEvents, setSidekickEvents] = useState<SidekickEvent[]>([]);
-  const [sessionHydrated, setSessionHydrated] = useState(false);
+  const [sessionHydrated, setSessionHydrated] = useState(!initialSession.restore);
+  const [historyOpen, setHistoryOpen] = useState(false);
+  const [historyLoading, setHistoryLoading] = useState(false);
+  const [historySessions, setHistorySessions] = useState<ChatSessionSummary[]>([]);
   const [dropHovering, setDropHovering] = useState(false);
   const [dropRunning, setDropRunning] = useState(false);
   const [droppedWorkload, setDroppedWorkload] = useState<DroppedWorkload | null>(null);
   const [pacingMessageIndex, setPacingMessageIndex] = useState<number | null>(null);
   const [pacedRevealed, setPacedRevealed] = useState<number | null>(null);
   const observedResetToken = useRef(false);
+  const observedHistoryToken = useRef(false);
   const dropInFlight = useRef(false);
   const dropRequestGeneration = useRef(0);
   const selectedModelUserOwned = useRef(false);
@@ -517,38 +548,50 @@ export function ChatPane({ resetToken }: { resetToken: number }) {
     };
   }, []);
 
+  const hydrateSavedMessages = async (
+    saved: PersistedChatSession,
+    isCancelled: () => boolean = () => false,
+  ): Promise<Msg[] | null> => {
+    const attachmentRefs = recentUniqueAttachmentRefs(saved.messages);
+    const hydrated =
+      attachmentRefs.length > 0
+        ? await invoke<Array<ChatAttachment & { dataUrl: string }>>(
+            "chat_attachments_hydrate",
+            {
+              sessionId: saved.session_id,
+              attachments: attachmentRefs,
+            },
+          ).catch((error) => {
+            if (!isCancelled()) {
+              setNotice(`Some saved image previews could not be restored: ${String(error)}`);
+            }
+            return [];
+          })
+        : [];
+    if (isCancelled()) return null;
+    if (hydrated.length < attachmentRefs.length) {
+      setNotice("Some saved image previews are unavailable; their history references were preserved.");
+    }
+    return withHydratedAttachments(saved.messages, hydrated);
+  };
+
   useEffect(() => {
+    // A cold launch intentionally begins with a new blank session. If the user
+    // merely navigated away from Chat and back, restore the active session by
+    // its exact ID instead of whichever historical chat happens to be newest.
+    if (!initialSession.restore) return;
     let cancelled = false;
-    invoke<PersistedChatSession | null>("chat_session_latest")
+    invoke<PersistedChatSession | null>("chat_session_get", {
+      sessionId: initialSession.sessionId,
+    })
       .then(async (saved) => {
         if (cancelled || !saved) return;
-        const attachmentRefs = recentUniqueAttachmentRefs(saved.messages);
-        const hydrated =
-          attachmentRefs.length > 0
-            ? await invoke<Array<ChatAttachment & { dataUrl: string }>>(
-                "chat_attachments_hydrate",
-                {
-                  sessionId: saved.session_id,
-                  attachments: attachmentRefs,
-                },
-              ).catch((error) => {
-                if (!cancelled) {
-                  setNotice(`Some saved image previews could not be restored: ${String(error)}`);
-                }
-                return [];
-              })
-            : [];
-        if (cancelled) return;
-        if (hydrated.length < attachmentRefs.length) {
-          setNotice("Some saved image previews are unavailable; their history references were preserved.");
-        }
-        setSessionId(saved.session_id);
-        setMessages(withHydratedAttachments(saved.messages, hydrated));
+        const restored = await hydrateSavedMessages(saved, () => cancelled);
+        if (!restored || cancelled) return;
+        setMessages(restored);
       })
       .catch((error) => {
-        // A corrupt or legacy session must never block a fresh local chat, but
-        // the user should know why the previous conversation is not visible.
-        if (!cancelled) setNotice(`Saved chat could not be restored: ${String(error)}`);
+        if (!cancelled) setNotice(`Current chat could not be restored: ${String(error)}`);
       })
       .finally(() => {
         if (!cancelled) setSessionHydrated(true);
@@ -559,7 +602,7 @@ export function ChatPane({ resetToken }: { resetToken: number }) {
   }, []);
 
   useEffect(() => {
-    if (!sessionHydrated || streaming) return;
+    if (!sessionHydrated || streaming || messages.length === 0) return;
     const timer = window.setTimeout(() => {
       invoke("chat_session_save", {
         sessionId,
@@ -781,14 +824,24 @@ export function ChatPane({ resetToken }: { resetToken: number }) {
   const restartChat = () => {
     if (streaming) return;
     resetStreamPacer();
-    void invoke("chat_attachments_delete_session", { sessionId }).catch(() => {
-      // Starting a fresh chat still succeeds; orphan cleanup is local and best-effort.
-    });
+    if (messages.length > 0) {
+      void invoke("chat_session_save", {
+        sessionId,
+        messages: persistableChatMessages(messages),
+      }).catch(() => {
+        // The debounced save normally ran already. Starting a new chat should
+        // remain available if this final best-effort flush fails.
+      });
+    }
+    const nextSessionId = crypto.randomUUID();
+    activeChatSessionId = nextSessionId;
     setMessages([]);
     setInput("");
     setErr(null);
     setNotice(null);
-    setSessionId(crypto.randomUUID());
+    setSessionId(nextSessionId);
+    setSessionHydrated(true);
+    setHistoryOpen(false);
     setAssistantSpeaking(false);
     dropRequestGeneration.current += 1;
     dropInFlight.current = false;
@@ -806,6 +859,66 @@ export function ChatPane({ resetToken }: { resetToken: number }) {
     }
     restartChat();
   }, [resetToken]);
+
+  const showHistory = () => {
+    if (streaming) {
+      setNotice("Finish or stop the current turn before opening another chat.");
+      return;
+    }
+    setHistoryOpen(true);
+    setHistoryLoading(true);
+    invoke<ChatSessionSummary[]>("chat_sessions_list", { limit: 30 })
+      .then(setHistorySessions)
+      .catch((error) => setNotice(`Chat history could not be loaded: ${String(error)}`))
+      .finally(() => setHistoryLoading(false));
+  };
+
+  useEffect(() => {
+    if (!observedHistoryToken.current) {
+      observedHistoryToken.current = true;
+      return;
+    }
+    showHistory();
+  }, [historyToken]);
+
+  const restoreHistorySession = async (historySessionId: string) => {
+    if (streaming) return;
+    setHistoryLoading(true);
+    setErr(null);
+    setNotice(null);
+    try {
+      if (messages.length > 0) {
+        await invoke("chat_session_save", {
+          sessionId,
+          messages: persistableChatMessages(messages),
+        }).catch(() => {
+          setNotice("The current chat could not be saved before switching.");
+        });
+      }
+      const saved = await invoke<PersistedChatSession | null>("chat_session_get", {
+        sessionId: historySessionId,
+      });
+      if (!saved) {
+        setNotice("That saved chat is no longer available.");
+        return;
+      }
+      const restored = await hydrateSavedMessages(saved);
+      if (!restored) return;
+      resetStreamPacer();
+      activeChatSessionId = saved.session_id;
+      setSessionId(saved.session_id);
+      setMessages(restored);
+      setInput("");
+      setAssistantSpeaking(false);
+      setDroppedWorkload(null);
+      setHistoryOpen(false);
+      setPersonaCycle((value) => value + 1);
+    } catch (error) {
+      setNotice(`Saved chat could not be opened: ${String(error)}`);
+    } finally {
+      setHistoryLoading(false);
+    }
+  };
 
   const setThinking = async (thinking: boolean) => {
     if (selectedChoice.route !== "local") return;
@@ -894,6 +1007,52 @@ export function ChatPane({ resetToken }: { resetToken: number }) {
         <div className="workload-drop-overlay" role="status">
           <div className="workload-drop-overlay-title">Drop one file or folder</div>
           <div>Metadata only · stays on this Mac</div>
+        </div>
+      )}
+      {historyOpen && (
+        <div
+          className="chat-history-overlay"
+          role="presentation"
+          onMouseDown={(event) => {
+            if (event.target === event.currentTarget) setHistoryOpen(false);
+          }}
+        >
+          <section className="chat-history-panel" role="dialog" aria-modal="true" aria-labelledby="chat-history-title">
+            <header className="chat-history-header">
+              <div>
+                <h2 id="chat-history-title">Chat history</h2>
+                <p>Open an earlier conversation on this Mac.</p>
+              </div>
+              <button type="button" aria-label="Close chat history" onClick={() => setHistoryOpen(false)}>
+                ×
+              </button>
+            </header>
+            <div className="chat-history-list">
+              {historyLoading && historySessions.length === 0 ? (
+                <div className="chat-history-empty">Loading…</div>
+              ) : historySessions.length === 0 ? (
+                <div className="chat-history-empty">No earlier chats yet.</div>
+              ) : (
+                historySessions.map((saved) => (
+                  <button
+                    type="button"
+                    className={"chat-history-row" + (saved.session_id === sessionId ? " current" : "")}
+                    key={saved.session_id}
+                    onClick={() => void restoreHistorySession(saved.session_id)}
+                    disabled={historyLoading}
+                  >
+                    <span className="chat-history-row-title">
+                      {saved.title.trim().replace(/\s+/g, " ") || "Untitled chat"}
+                    </span>
+                    <span className="chat-history-row-meta">
+                      {chatHistoryTime(saved.updated_at)} · {saved.message_count} message{saved.message_count === 1 ? "" : "s"}
+                      {saved.session_id === sessionId ? " · current" : ""}
+                    </span>
+                  </button>
+                ))
+              )}
+            </div>
+          </section>
         </div>
       )}
       <div className={"persona-stage" + (personaReady ? " persona-ready" : "")} aria-hidden="true">
