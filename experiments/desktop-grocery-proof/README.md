@@ -1,6 +1,6 @@
 # Desktop grocery-marketplace proof
 
-By default this local-only experiment sends one frozen synthetic slice through
+By default this local-only experiment sends a three-task frozen synthetic smoke slice through
 three routes behind the same authenticated Desktop API:
 
 1. the small local model alone;
@@ -18,6 +18,31 @@ node experiments/desktop-grocery-proof/run.mjs \
   --student-slot 9 \
   --teacher-slot 5
 ```
+
+The separate promotion suite freezes 30 harder tasks—10 per workflow—behind
+the same routes, scorer, run identity, and evidence contract. Use it after the
+smoke passes:
+
+```sh
+node experiments/desktop-grocery-proof/run.mjs \
+  --suite promotion \
+  --student-slot 9 \
+  --teacher-slot 5
+```
+
+The buyer report summarizes a promotion run at the three workflow-cluster
+level and keeps all 30 task decisions in a collapsed audit. It remains
+synthetic qualification evidence, not a production replacement claim.
+Every route-task pair gets a unique session plus an exact `capture_run_id`, so
+later tasks cannot inherit earlier answers and every result joins directly to
+its canonical event trace. Supervisor reporting separates intervention
+precision and recall from correction success, missed errors, false positives,
+and interventions that noticed a bad answer but still failed to repair it.
+Every turn has a two-minute default ceiling. A timeout requests exact Desktop
+run cancellation or aborts the Pi incumbent run, preserves the canonical
+terminal event, and counts as a failed task rather than hanging or disappearing.
+Use `--turn-timeout-ms <milliseconds>` only when a deliberately slower baseline
+needs a different frozen ceiling.
 
 To compare a hosted incumbent on the identical slice, opt in explicitly. This
 fourth route uses Pi and the same canonical event contract; it does not add a

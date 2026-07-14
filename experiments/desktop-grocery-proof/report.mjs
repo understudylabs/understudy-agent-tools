@@ -91,6 +91,17 @@ function validateProofSource(summary, rows, tasks, tasksBytes) {
       throw new Error("source results.jsonl does not match proof, suite, or task identity");
     }
   }
+  if (summary.format === "understudy.desktop_grocery_proof.v3") {
+    if (rows.some((row) => !row.run_id || row.capture_run_id !== row.run_id || !row.session_id)) {
+      throw new Error("source v3 results require exact run, capture, and session identity");
+    }
+    if (new Set(rows.map((row) => row.run_id)).size !== rows.length) {
+      throw new Error("source v3 results contain duplicate run ids");
+    }
+    if (new Set(rows.map((row) => row.session_id)).size !== rows.length) {
+      throw new Error("source v3 results contain cross-task session reuse");
+    }
+  }
 }
 
 export function verdictProbabilityEvidence(verdict) {
@@ -146,19 +157,20 @@ export function verdictProbabilityEvidence(verdict) {
 
 function judgmentOutcome(row, verdict) {
   if (row.supervisor_correct_intervention) return "correct intervention";
+  if (row.supervisor_unsuccessful_intervention) return "uncorrected intervention";
   if (row.supervisor_missed_error) return "missed error";
   if (row.supervisor_false_positive) return "false positive";
   if (verdict.verdict === "continue" && row.student_score?.exact) return "correct continue";
   return "review";
 }
 
-function decisionForTask(task, rows) {
+function decisionForTask(task, rows, incumbentName = "hosted incumbent") {
   const small = rows.find((row) => row.mode === "small");
   const main = rows.find((row) => row.mode === "main");
   const supervised = rows.find((row) => row.mode === "supervised");
   const hosted = rows.find((row) => row.mode === "hosted");
   const baseline = hosted ?? main;
-  const baselineName = hosted ? "hosted incumbent" : "main model";
+  const baselineName = hosted ? incumbentName : "main model";
   if (!baseline?.score?.exact) {
     return {
       task_id: task.id,
@@ -167,6 +179,7 @@ function decisionForTask(task, rows) {
       decision: "Expand the baseline",
       reason: `The ${baselineName} missed this task, so the slice cannot support a routing decision yet.`,
       baseline: hosted ? "hosted" : "main",
+      baseline_label: baselineName,
     };
   }
   if (small?.score?.exact) {
@@ -177,6 +190,7 @@ function decisionForTask(task, rows) {
       decision: "Pilot the smaller model",
       reason: "The smaller route matched every required field; supervision also allowed it to continue.",
       baseline: hosted ? "hosted" : "main",
+      baseline_label: baselineName,
     };
   }
   if (supervised?.supervisor_correct_intervention && supervised?.score?.exact) {
@@ -187,6 +201,7 @@ function decisionForTask(task, rows) {
       decision: "Pilot with supervision",
       reason: "The smaller route missed, the supervisor interrupted correctly, and the teacher recovered the exact answer.",
       baseline: hosted ? "hosted" : "main",
+      baseline_label: baselineName,
     };
   }
   if (supervised?.supervisor_missed_error) {
@@ -194,18 +209,92 @@ function decisionForTask(task, rows) {
       task_id: task.id,
       task_title: task.title,
       state: "hold",
-      decision: hosted ? "Keep on the hosted incumbent" : "Keep on the main model",
+      decision: hosted ? `Keep on the ${incumbentName}` : "Keep on the main model",
       reason: `The smaller route missed and the supervisor allowed the error to pass; retain the ${baselineName}.`,
       baseline: hosted ? "hosted" : "main",
+      baseline_label: baselineName,
     };
   }
   return {
     task_id: task.id,
     task_title: task.title,
     state: "hold",
-    decision: hosted ? "Keep on the hosted incumbent" : "Keep on the main model",
+    decision: hosted ? `Keep on the ${incumbentName}` : "Keep on the main model",
     reason: "This slice does not yet show a safe smaller or supervised route.",
     baseline: hosted ? "hosted" : "main",
+    baseline_label: baselineName,
+  };
+}
+
+function decisionForWorkflow(workflow, tasks, rows, incumbentName = "hosted incumbent") {
+  const taskIds = new Set(tasks.map((task) => task.id));
+  const selected = rows.filter((row) => taskIds.has(row.task_id));
+  const taskCount = tasks.length;
+  const hosted = selected.some((row) => row.mode === "hosted");
+  const baseline = hosted ? "hosted" : "main";
+  const baselineName = hosted ? incumbentName : "main model";
+  const exactPasses = Object.fromEntries(
+    ["small", "main", "supervised", ...(hosted ? ["hosted"] : [])].map((mode) => [
+      mode,
+      selected.filter((row) => row.mode === mode && row.score?.exact).length,
+    ]),
+  );
+  const supervised = selected.filter((row) => row.mode === "supervised");
+  const correctInterventions = supervised.filter((row) => row.supervisor_correct_intervention).length;
+  const missedErrors = supervised.filter((row) => row.supervisor_missed_error).length;
+  const falsePositives = supervised.filter((row) => row.supervisor_false_positive).length;
+  const unsuccessfulInterventions = supervised.filter(
+    (row) => row.supervisor_unsuccessful_intervention,
+  ).length;
+  const workflowTitle = tasks[0]?.workflow_title ?? tasks[0]?.title ?? workflow;
+  const common = {
+    workflow,
+    workflow_title: workflowTitle,
+    task_id: workflow,
+    task_title: workflowTitle,
+    task_count: taskCount,
+    exact_passes: exactPasses,
+    correct_interventions: correctInterventions,
+    missed_errors: missedErrors,
+    false_positives: falsePositives,
+    unsuccessful_interventions: unsuccessfulInterventions,
+    baseline,
+    baseline_label: baselineName,
+  };
+  if (exactPasses[baseline] !== taskCount) {
+    return {
+      ...common,
+      state: "expand",
+      decision: "Expand the baseline",
+      reason: `The ${baselineName} passed ${exactPasses[baseline]}/${taskCount}; this workflow cannot support a routing decision yet.`,
+    };
+  }
+  if (exactPasses.small === taskCount) {
+    return {
+      ...common,
+      state: "pilot",
+      decision: "Pilot the smaller model",
+      reason: `The smaller route passed all ${taskCount} frozen tasks without needing supervision.`,
+    };
+  }
+  if (
+    exactPasses.supervised === taskCount
+    && correctInterventions > 0
+    && missedErrors === 0
+    && falsePositives === 0
+  ) {
+    return {
+      ...common,
+      state: "supervise",
+      decision: "Pilot with supervision",
+      reason: `Supervision recovered all ${taskCount} tasks with ${correctInterventions} correct interventions and no missed errors or false positives.`,
+    };
+  }
+  return {
+    ...common,
+    state: "hold",
+      decision: hosted ? `Keep on the ${incumbentName}` : "Keep on the main model",
+      reason: `Small passed ${exactPasses.small}/${taskCount}; supervision passed ${exactPasses.supervised}/${taskCount} with ${missedErrors} missed errors, ${unsuccessfulInterventions} uncorrected interventions, and ${falsePositives} false positives.`,
   };
 }
 
@@ -215,9 +304,8 @@ function recommendation(decisions) {
   if (groups.pilot?.length) clauses.push(`pilot the smaller model on ${groups.pilot.map((row) => row.task_title).join(", ")}`);
   if (groups.supervise?.length) clauses.push(`pilot supervision on ${groups.supervise.map((row) => row.task_title).join(", ")}`);
   if (groups.hold?.length) {
-    const baseline = groups.hold.some((row) => row.baseline === "hosted")
-      ? "hosted incumbent"
-      : "main model";
+    const baseline = groups.hold.find((row) => row.baseline === "hosted")?.baseline_label
+      ?? "main model";
     clauses.push(`keep ${groups.hold.map((row) => row.task_title).join(", ")} on the ${baseline}`);
   }
   if (groups.expand?.length) clauses.push(`expand the baseline for ${groups.expand.map((row) => row.task_title).join(", ")}`);
@@ -240,15 +328,28 @@ export function buildReportModel(summary, rows, tasks) {
     throw new Error("proof result identity does not match the summary");
   }
 
+  const incumbentName = summary.incumbent?.remote === false
+    ? "local incumbent"
+    : "hosted incumbent";
   const decisions = tasks.map((task) => decisionForTask(
     task,
     rows.filter((row) => row.task_id === task.id),
+    incumbentName,
   ));
+  const workflows = Object.groupBy(tasks, (task) => task.workflow ?? task.id);
+  const workflowDecisions = Object.entries(workflows).map(([workflow, workflowTasks]) => (
+    decisionForWorkflow(workflow, workflowTasks, rows, incumbentName)
+  ));
+  const recommendationDecisions = workflowDecisions.some((decision) => decision.task_count > 1)
+    ? workflowDecisions
+    : decisions;
   const modeIds = ["small", "main", "supervised"];
   if (summary.by_mode.hosted) modeIds.push("hosted");
   const modes = modeIds.map((id) => ({
     id,
-    label: modeLabels[id],
+    label: id === "hosted" && summary.incumbent?.remote === false
+      ? "Local incumbent"
+      : modeLabels[id],
     ...summary.by_mode[id],
   }));
   const main = summary.by_mode.main;
@@ -273,47 +374,65 @@ export function buildReportModel(summary, rows, tasks) {
 
   const executiveSummary = [
     hosted
-      ? `The hosted incumbent passed ${hosted.exact_passes}/${hosted.task_count} tasks; the main local route passed ${main.exact_passes}/${main.task_count} on the identical slice.`
+      ? `The ${incumbentName} passed ${hosted.exact_passes}/${hosted.task_count} tasks; the main local route passed ${main.exact_passes}/${main.task_count} on the identical slice.`
       : `The main local route passed ${main.exact_passes}/${main.task_count} tasks and is the only clean baseline on this slice.`,
     `The smaller route passed ${small.exact_passes}/${small.task_count} tasks at ${Math.abs(smallLatency * 100).toFixed(0)}% ${smallLatency >= 0 ? "lower" : "higher"} mean latency than main.`,
-    `Supervision corrected ${supervised.supervisor_correct_interventions} error, missed ${supervised.supervisor_missed_errors}, and ran at ${Math.abs(supervisedLatency * 100).toFixed(0)}% ${supervisedLatency >= 0 ? "lower" : "higher"} mean latency than main.`,
+    `Supervision corrected ${supervised.supervisor_correct_interventions} errors, left ${supervised.supervisor_unsuccessful_interventions ?? 0} interventions uncorrected, missed ${supervised.supervisor_missed_errors}, and ran at ${Math.abs(supervisedLatency * 100).toFixed(0)}% ${supervisedLatency >= 0 ? "lower" : "higher"} mean latency than main.`,
   ];
   if (hosted) {
     executiveSummary.push(
-      `The hosted lane used ${hosted.total_tokens} provider-reported tokens${hosted.cost_usd == null ? "" : ` at ${dollars(hosted.cost_usd)} using the supplied price basis`}.`,
+      `The ${incumbentName} lane used ${hosted.total_tokens} provider-reported tokens${hosted.cost_usd == null ? "" : ` at ${dollars(hosted.cost_usd)} using the supplied price basis`}.`,
+    );
+  }
+  const terminalErrors = modes.reduce((sum, mode) => sum + Number(mode.terminal_errors ?? 0), 0);
+  const cancellations = modes.reduce((sum, mode) => sum + Number(mode.cancellations ?? 0), 0);
+  if (terminalErrors > 0 || cancellations > 0) {
+    executiveSummary.push(
+      `The evidence records ${terminalErrors} terminal runtime errors and ${cancellations} timed-out or user-cancelled turns; neither is counted as a pass.`,
     );
   }
   executiveSummary.push(
-    "This is integration evidence, not a production promotion claim; the next gate is a larger frozen slice from each real workflow cluster.",
+    summary.task_count >= 30
+      ? "This is synthetic qualification evidence, not a production promotion claim; the next gate is consented examples from each real workflow cluster."
+      : "This is integration evidence, not a production promotion claim; the next gate is a larger frozen slice from each real workflow cluster.",
   );
 
   return {
-    schema_version: "understudy.desktop_grocery_buyer_report.v3",
+    schema_version: "understudy.desktop_grocery_buyer_report.v4",
     title: "Grocery AI routing decision",
     proof_id: summary.proof_id,
     suite_sha256: summary.suite_sha256,
+    suite_id: summary.suite_id ?? "legacy",
     generated_at: summary.completed_at,
     scope: `${summary.task_count} frozen synthetic tasks × ${modes.length} routes; ${summary.run_count} exact runs`,
-    recommendation: recommendation(decisions),
+    recommendation: recommendation(recommendationDecisions),
     executive_summary: executiveSummary,
     modes,
+    workflow_decisions: workflowDecisions,
     decisions,
     supervision: {
       verdicts: supervised.supervisor_verdicts,
       interventions: supervised.interventions,
       correct_interventions: supervised.supervisor_correct_interventions,
+      unsuccessful_interventions: supervised.supervisor_unsuccessful_interventions ?? 0,
       missed_errors: supervised.supervisor_missed_errors,
       false_positives: supervised.supervisor_false_positives,
+      intervention_precision: supervised.supervisor_intervention_precision ?? null,
+      intervention_recall: supervised.supervisor_intervention_recall ?? null,
+      correction_success_rate: supervised.supervisor_correction_success_rate ?? null,
+      false_positive_rate: supervised.supervisor_false_positive_rate ?? null,
       small_model_output_share: supervised.mean_small_model_output_share,
       supervisor_token_overhead: supervised.mean_supervisor_token_overhead,
       judgments,
     },
     next_steps: [
-      "Freeze 30–50 representative examples for each workflow cluster before changing traffic.",
+      summary.task_count >= 30
+        ? "Replace each synthetic workflow cluster with 30–50 consented representative examples before changing traffic."
+        : "Freeze 30–50 representative examples for each workflow cluster before changing traffic.",
       "Require zero missed critical errors and report intervention precision, recall, latency, and token overhead.",
-      hosted
+      hosted && summary.incumbent?.remote === true
         ? "Replace the synthetic slice with consented workflow examples and retain the same incumbent price basis."
-        : "Add the incumbent hosted route on the identical slice so cost and quality deltas become buyer-decision evidence.",
+        : "Add the hosted incumbent route on the identical slice with an explicit price basis so cost and quality deltas become buyer-decision evidence.",
     ],
     further_questions: [
       "Does the smaller route remain exact on long-tail substitutions and policy exceptions?",
@@ -321,10 +440,12 @@ export function buildReportModel(summary, rows, tasks) {
       "What fallback rate and added latency are acceptable for the production workflow?",
     ],
     caveats: [
-      hosted
+      hosted && summary.incumbent?.remote === true
         ? "Synthetic tasks only; the explicitly approved hosted lane sent those synthetic prompts to the configured incumbent."
-        : "Synthetic local tasks only; no customer prompts, production traffic, or remote judge were used.",
-      "Three examples expose integration and failure modes but are too small for a replacement claim.",
+        : "Synthetic local tasks only; no customer prompts, production traffic, remote judge, or provider calls were used.",
+      summary.task_count >= 30
+        ? "The promotion slice is synthetic; its workflow coverage is useful for model qualification but cannot substitute for consented production examples."
+        : "Three examples expose integration and failure modes but are too small for a replacement claim.",
       "Token counts are provider-reported by model role; dollar cost requires an explicit incumbent cost basis.",
       "Verdict confidence is the provider's first-token probability derived from logprobs; it is not a calibrated probability that the judgment is correct.",
     ],
@@ -337,7 +458,7 @@ export function buildReportModel(summary, rows, tasks) {
         type: "horizontal bar",
         fields: ["mode", "mean_field_accuracy", "mean_latency_ms"],
         takeaway: hosted
-          ? "The hosted incumbent and open-weight routes share one frozen slice and evidence contract."
+          ? `The ${incumbentName} and open-weight routes share one frozen slice and evidence contract.`
           : "Main is the clean baseline; supervision improves quality but adds latency.",
       },
     ],
@@ -351,22 +472,37 @@ function routeCard(mode, maxLatency) {
     ? `${mode.supervisor_correct_interventions} corrected · ${mode.supervisor_missed_errors} missed`
     : `${mode.exact_passes}/${mode.task_count} exact`;
   const cost = dollars(mode.cost_usd);
+  const terminalNote = Number(mode.terminal_errors ?? 0) + Number(mode.cancellations ?? 0) > 0
+    ? ` · ${integer(mode.terminal_errors)} errors · ${integer(mode.cancellations)} cancelled`
+    : "";
   return `<article class="route-card" data-source="summary.json">
     <header><h3>${escapeHtml(mode.label)}</h3><span>${escapeHtml(routeNote)}</span></header>
     <div class="measure"><div><span>Field accuracy</span><strong>${percent(mode.mean_field_accuracy)}</strong></div><div class="bar"><i style="width:${quality}%"></i></div></div>
     <div class="measure"><div><span>Mean latency</span><strong>${integer(mode.mean_latency_ms)} ms</strong></div><div class="bar latency"><i style="width:${latency}%"></i></div></div>
-    <footer>${integer(mode.total_tokens)} total tokens${cost ? ` · ${escapeHtml(cost)}` : ""}</footer>
+    <footer>${integer(mode.total_tokens)} total tokens${cost ? ` · ${escapeHtml(cost)}` : ""}${terminalNote}</footer>
   </article>`;
 }
 
-function decisionCard(decision, rows) {
+function decisionCard(decision, rows, incumbentLabel = "Hosted") {
   const byMode = Object.fromEntries(rows.map((row) => [row.mode, row]));
   const result = (id) => byMode[id]?.score?.exact ? "Exact" : "Miss";
   const hosted = byMode.hosted
-    ? `<span>Hosted <b>${result("hosted")}</b></span>`
+    ? `<span>${escapeHtml(incumbentLabel)} <b>${result("hosted")}</b></span>`
     : "";
   return `<article class="decision ${escapeHtml(decision.state)}" data-source="results.jsonl">
     <div class="decision-top"><div><span class="eyebrow">${escapeHtml(decision.task_id)}</span><h3>${escapeHtml(decision.task_title)}</h3></div><span class="pill">${escapeHtml(decision.decision)}</span></div>
+    <p>${escapeHtml(decision.reason)}</p>
+    <div class="route-results"><span>Small <b>${result("small")}</b></span><span>Main <b>${result("main")}</b></span><span>Supervised <b>${result("supervised")}</b></span>${hosted}</div>
+  </article>`;
+}
+
+function workflowDecisionCard(decision, incumbentLabel = "Hosted") {
+  const result = (id) => `${decision.exact_passes[id] ?? 0}/${decision.task_count}`;
+  const hosted = Object.hasOwn(decision.exact_passes, "hosted")
+    ? `<span>${escapeHtml(incumbentLabel)} <b>${result("hosted")}</b></span>`
+    : "";
+  return `<article class="decision ${escapeHtml(decision.state)}" data-source="results.jsonl">
+    <div class="decision-top"><div><span class="eyebrow">${integer(decision.task_count)} frozen tasks</span><h3>${escapeHtml(decision.workflow_title)}</h3></div><span class="pill">${escapeHtml(decision.decision)}</span></div>
     <p>${escapeHtml(decision.reason)}</p>
     <div class="route-results"><span>Small <b>${result("small")}</b></span><span>Main <b>${result("main")}</b></span><span>Supervised <b>${result("supervised")}</b></span>${hosted}</div>
   </article>`;
@@ -396,9 +532,15 @@ function judgmentCard(judgment) {
 export function buildBuyerReport(summary, rows, tasks) {
   const model = buildReportModel(summary, rows, tasks);
   const maxLatency = Math.max(...model.modes.map((mode) => Number(mode.mean_latency_ms)));
+  const hasPromotionClusters = model.workflow_decisions.some((decision) => decision.task_count > 1);
+  const incumbentLabel = model.modes.find((mode) => mode.id === "hosted")?.label ?? "Hosted";
+  const workflowCards = model.workflow_decisions
+    .map((decision) => workflowDecisionCard(decision, incumbentLabel))
+    .join("\n");
   const decisionCards = model.decisions.map((decision) => decisionCard(
     decision,
     rows.filter((row) => row.task_id === decision.task_id),
+    incumbentLabel,
   )).join("\n");
   const summaryItems = model.executive_summary
     .map((item) => `<li>${escapeHtml(item)}</li>`)
@@ -414,9 +556,9 @@ export function buildBuyerReport(summary, rows, tasks) {
   const hosted = summary.by_mode.hosted ?? null;
   const baseline = hosted ?? main;
   const routeHeading = baseline.exact_passes === baseline.task_count
-    ? hosted ? "The hosted incumbent is a clean baseline" : "The main model is the clean baseline"
+    ? hosted ? `The ${incumbentLabel.toLowerCase()} is a clean baseline` : "The main model is the clean baseline"
     : "No route clears the frozen slice";
-  const routeIntro = `Exact field scoring shows the quality/latency tradeoff directly. The smaller model passes ${small.exact_passes}/${small.task_count}; supervision passes ${supervised.exact_passes}/${supervised.task_count} with ${supervised.supervisor_correct_interventions} correct intervention${supervised.supervisor_correct_interventions === 1 ? "" : "s"} and ${supervised.supervisor_missed_errors} missed error${supervised.supervisor_missed_errors === 1 ? "" : "s"}.${hosted ? ` The hosted incumbent passes ${hosted.exact_passes}/${hosted.task_count}.` : ""}`;
+  const routeIntro = `Exact field scoring shows the quality/latency tradeoff directly. The smaller model passes ${small.exact_passes}/${small.task_count}; supervision passes ${supervised.exact_passes}/${supervised.task_count} with ${supervised.supervisor_correct_interventions} correct intervention${supervised.supervisor_correct_interventions === 1 ? "" : "s"}, ${supervised.supervisor_unsuccessful_interventions ?? 0} uncorrected intervention${supervised.supervisor_unsuccessful_interventions === 1 ? "" : "s"}, and ${supervised.supervisor_missed_errors} missed error${supervised.supervisor_missed_errors === 1 ? "" : "s"}.${hosted ? ` The ${incumbentLabel.toLowerCase()} passes ${hosted.exact_passes}/${hosted.task_count}.` : ""}`;
   const supervisionHeading = supervised.supervisor_correct_interventions > 0 && supervised.supervisor_missed_errors > 0
     ? `The supervisor helped ${supervised.supervisor_correct_interventions === 1 ? "once" : `${supervised.supervisor_correct_interventions} times`} and missed ${supervised.supervisor_missed_errors === 1 ? "once" : supervised.supervisor_missed_errors}`
     : supervised.supervisor_correct_interventions > 0
@@ -442,8 +584,8 @@ export function buildBuyerReport(summary, rows, tasks) {
     .section-intro { color:var(--muted); max-width:760px; margin-bottom:24px; } .route-grid { display:grid; grid-template-columns:repeat(auto-fit,minmax(220px,1fr)); gap:14px; }
     .route-card,.decision,.audit,.judgment { background:var(--paper); border:1px solid var(--line); border-radius:16px; padding:20px; } .route-card header { display:flex; justify-content:space-between; gap:16px; align-items:baseline; margin-bottom:22px; } .route-card header span,.route-card footer { color:var(--muted); font-size:13px; }
     .measure { margin-top:14px; } .measure>div:first-child { display:flex; justify-content:space-between; gap:12px; font-size:13px; } .bar { height:10px; background:var(--open); border-radius:999px; overflow:hidden; margin-top:7px; } .bar i { display:block; height:100%; background:var(--olive); border-radius:inherit; } .bar.latency i { background:var(--blue); } .route-card footer { margin-top:20px; border-top:1px solid var(--line); padding-top:12px; }
-    .decision-list { display:grid; gap:12px; } .decision-top { display:flex; justify-content:space-between; gap:18px; align-items:flex-start; } .decision p { color:var(--muted); margin:14px 0; } .pill { border:1px solid var(--line); border-radius:999px; padding:6px 10px; font-size:12px; font-weight:700; white-space:nowrap; } .decision.pilot .pill { color:var(--olive); } .decision.supervise .pill { color:var(--gold); } .decision.hold .pill { color:var(--accent); } .route-results { display:flex; gap:8px; flex-wrap:wrap; } .route-results span { background:var(--open); border-radius:8px; padding:6px 9px; font-size:12px; } .route-results b { margin-left:5px; }
-    .audit { display:grid; grid-template-columns:repeat(6,minmax(0,1fr)); gap:10px; } .audit div { min-width:0; } .audit strong { display:block; font-size:24px; letter-spacing:-.03em; } .audit span { color:var(--muted); font-size:12px; }
+    .decision-list { display:grid; gap:12px; } .decision-top { display:flex; justify-content:space-between; gap:18px; align-items:flex-start; } .decision p { color:var(--muted); margin:14px 0; } .pill { border:1px solid var(--line); border-radius:999px; padding:6px 10px; font-size:12px; font-weight:700; white-space:nowrap; } .decision.pilot .pill { color:var(--olive); } .decision.supervise .pill { color:var(--gold); } .decision.hold .pill { color:var(--accent); } .route-results { display:flex; gap:8px; flex-wrap:wrap; } .route-results span { background:var(--open); border-radius:8px; padding:6px 9px; font-size:12px; } .route-results b { margin-left:5px; } .task-audit { margin-top:16px; } .task-audit summary { cursor:pointer; color:var(--muted); font-weight:700; padding:12px 0; } .task-audit[open] summary { margin-bottom:12px; }
+    .audit { display:grid; grid-template-columns:repeat(auto-fit,minmax(110px,1fr)); gap:10px; } .audit div { min-width:0; } .audit strong { display:block; font-size:24px; letter-spacing:-.03em; } .audit span { color:var(--muted); font-size:12px; }
     .judgment-list { display:grid; gap:12px; margin-top:14px; } .judgment-top { display:flex; justify-content:space-between; gap:18px; align-items:flex-start; } .judgment h3 { text-transform:capitalize; } .judgment p { color:var(--muted); margin:14px 0; } .judgment footer { color:var(--muted); font-size:12px; } .judgment footer strong { color:var(--ink); font-size:15px; }
     .two-col { display:grid; grid-template-columns:1.2fr .8fr; gap:44px; } ol,ul { padding-left:22px; } li+li { margin-top:8px; } .caveat { color:var(--muted); font-size:14px; }
     .provenance { margin-top:64px; border-top:1px solid var(--line); padding-top:18px; display:flex; flex-wrap:wrap; gap:12px 24px; color:var(--muted); font:12px/1.5 ui-monospace,SFMono-Regular,Menlo,monospace; }
@@ -469,9 +611,10 @@ export function buildBuyerReport(summary, rows, tasks) {
   </section>
 
   <section aria-labelledby="task-routing">
-    <h2 id="task-routing">Route by failure cluster, not model reputation</h2>
-    <p class="section-intro">Each recommendation is bounded to one frozen task. The useful decision is where to pilot next—not whether one model is universally good or bad.</p>
-    <div class="decision-list">${decisionCards}</div>
+    <h2 id="task-routing">Route by workflow, not model reputation</h2>
+    <p class="section-intro">Each recommendation is bounded to one frozen workflow slice. The useful decision is where to pilot next—not whether one model is universally good or bad.</p>
+    <div class="decision-list">${hasPromotionClusters ? workflowCards : decisionCards}</div>
+    ${hasPromotionClusters ? `<details class="task-audit"><summary>Inspect all ${model.decisions.length} task-level decisions</summary><div class="decision-list">${decisionCards}</div></details>` : ""}
   </section>
 
   <section aria-labelledby="supervision-audit">
@@ -480,8 +623,13 @@ export function buildBuyerReport(summary, rows, tasks) {
     <div class="audit" data-source="summary.json">
       <div><strong>${integer(model.supervision.verdicts)}</strong><span>verdicts</span></div>
       <div><strong>${integer(model.supervision.interventions)}</strong><span>interventions</span></div>
+      <div><strong>${percent(model.supervision.intervention_precision)}</strong><span>intervention precision</span></div>
+      <div><strong>${percent(model.supervision.intervention_recall)}</strong><span>error recall</span></div>
       <div><strong>${integer(model.supervision.correct_interventions)}</strong><span>correct</span></div>
+      <div><strong>${percent(model.supervision.correction_success_rate)}</strong><span>correction success</span></div>
+      <div><strong>${integer(model.supervision.unsuccessful_interventions)}</strong><span>uncorrected</span></div>
       <div><strong>${integer(model.supervision.missed_errors)}</strong><span>missed errors</span></div>
+      <div><strong>${integer(model.supervision.false_positives)}</strong><span>false positives</span></div>
       <div><strong>${percent(model.supervision.small_model_output_share)}</strong><span>small-model output</span></div>
       <div><strong>${percent(model.supervision.supervisor_token_overhead)}</strong><span>supervisor overhead</span></div>
     </div>

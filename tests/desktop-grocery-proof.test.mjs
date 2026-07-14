@@ -16,7 +16,9 @@ import { describe, it } from "node:test";
 
 import {
   extractJsonObject,
+  groceryProofIdentity,
   incumbentBudgetPreflight,
+  resolveGrocerySuiteFile,
   runHostedIncumbent,
   scoreObject,
   summarizeEvents,
@@ -31,6 +33,40 @@ import {
 } from "../experiments/desktop-grocery-proof/report.mjs";
 
 describe("desktop grocery proof", () => {
+  it("keeps the 30-task grocery promotion suite frozen and balanced", () => {
+    assert.equal(resolveGrocerySuiteFile("smoke"), "tasks.json");
+    assert.equal(resolveGrocerySuiteFile("promotion"), "tasks.promotion.json");
+    assert.throws(() => resolveGrocerySuiteFile("unknown"), /unknown grocery proof suite/);
+    const bytes = readFileSync(join(
+      process.cwd(),
+      "experiments",
+      "desktop-grocery-proof",
+      "tasks.promotion.json",
+    ));
+    assert.equal(
+      createHash("sha256").update(bytes).digest("hex"),
+      "4c141afecfea8dd7570e60be4cb50bb5f44b62c35bb3e6b894443af16c3e6f48",
+    );
+    const tasks = JSON.parse(bytes);
+    assert.equal(tasks.length, 30);
+    assert.equal(new Set(tasks.map((task) => task.id)).size, 30);
+    assert.deepEqual(
+      Object.fromEntries(Object.entries(Object.groupBy(tasks, (task) => task.workflow))
+        .map(([workflow, rows]) => [workflow, rows.length])),
+      { "codebase-analysis": 10, "cart-assistant": 10, "ops-classification": 10 },
+    );
+    assert.ok(tasks.every((task) => Object.keys(task.expected).length === 3));
+    assert.ok(tasks.every((task) => /one minified JSON object/i.test(task.prompt)));
+    const identities = ["small", "main", "supervised", "hosted"].flatMap((mode) => (
+      tasks.map((task) => groceryProofIdentity("grocery-proof", mode, task.id))
+    ));
+    assert.equal(new Set(identities.map(({ runId }) => runId)).size, 120);
+    assert.equal(new Set(identities.map(({ sessionId }) => sessionId)).size, 120);
+    assert.ok(identities.every(({ runId, captureRunId }) => runId === captureRunId));
+    assert.ok(identities.every(({ sessionId }) => sessionId.endsWith("-session")));
+    assert.ok(identities.every(({ runId, sessionId }) => runId.length <= 200 && sessionId.length <= 200));
+  });
+
   it("extracts bounded JSON and scores exact fields without an LLM judge", () => {
     const expected = { bug: "lost_update", fix: "atomic_conditional_decrement" };
     const actual = extractJsonObject(`answer: {"bug":"lost_update","fix":"atomic_conditional_decrement"}`);
@@ -184,6 +220,53 @@ describe("desktop grocery proof", () => {
     }
   });
 
+  it("terminally records an incumbent timeout instead of hanging the proof", async () => {
+    const runtimeHome = mkdtempSync(join(tmpdir(), "understudy-grocery-timeout-"));
+    const previousRuntimeHome = process.env.UNDERSTUDY_CONVERSATION_RUNTIME_HOME;
+    process.env.UNDERSTUDY_CONVERSATION_RUNTIME_HOME = runtimeHome;
+    const server = createServer(async (request, response) => {
+      for await (const _chunk of request) {
+        // Drain the request before holding the stream open.
+      }
+      response.writeHead(200, { "content-type": "text/event-stream" });
+      response.write(`data: ${JSON.stringify({
+        id: "chatcmpl-timeout",
+        object: "chat.completion.chunk",
+        created: 1,
+        model: "slow-fixture",
+        choices: [{ index: 0, delta: { role: "assistant", content: "{" }, finish_reason: null }],
+      })}\n\n`);
+    });
+    await new Promise((accept) => server.listen(0, "127.0.0.1", accept));
+    const address = server.address();
+    assert.ok(address && typeof address !== "string");
+    try {
+      const events = await runHostedIncumbent({
+        task: { prompt: "Return JSON slowly." },
+        runId: "grocery-timeout-run",
+        sessionId: "grocery-timeout-session",
+        options: {
+          incumbentBaseUrl: `http://127.0.0.1:${address.port}/v1`,
+          incumbentModel: "slow-fixture",
+          incumbentProviderKind: "openai-compatible",
+          incumbentApiKeyEnv: null,
+          maxTokens: 64,
+          turnTimeoutMs: 50,
+          confirmSpend: false,
+        },
+      });
+      assert.equal(events.at(-1).event, "cancellation");
+      assert.match(events.at(-1).data.reason, /timed out after 50ms/);
+      assert.equal(summarizeEvents(events, 50).terminal_status, "cancellation");
+    } finally {
+      server.closeAllConnections();
+      await new Promise((accept) => server.close(accept));
+      if (previousRuntimeHome === undefined) delete process.env.UNDERSTUDY_CONVERSATION_RUNTIME_HOME;
+      else process.env.UNDERSTUDY_CONVERSATION_RUNTIME_HOME = previousRuntimeHome;
+      rmSync(runtimeHome, { recursive: true, force: true });
+    }
+  });
+
   it("labels logprobs honestly and derives bounded first-token probabilities", () => {
     const explicit = verdictProbabilityEvidence({
       verdict: "interrupt",
@@ -271,6 +354,79 @@ describe("desktop grocery proof", () => {
     assert.doesNotMatch(html, /https?:\/\//);
   });
 
+  it("makes promotion recommendations at the workflow-cluster level", () => {
+    const tasks = [
+      { id: "code-a", workflow: "codebase-analysis", workflow_title: "Codebase analysis", title: "Code A" },
+      { id: "code-b", workflow: "codebase-analysis", workflow_title: "Codebase analysis", title: "Code B" },
+      { id: "ops-a", workflow: "ops-classification", workflow_title: "Operations classification", title: "Ops A" },
+      { id: "ops-b", workflow: "ops-classification", workflow_title: "Operations classification", title: "Ops B" },
+    ];
+    const exact = {
+      "code-a": { small: false, main: true, supervised: true },
+      "code-b": { small: true, main: true, supervised: true },
+      "ops-a": { small: true, main: true, supervised: true },
+      "ops-b": { small: true, main: true, supervised: true },
+    };
+    const rows = tasks.flatMap((task) => ["small", "main", "supervised"].map((mode) => ({
+      proof_id: "proof-workflows",
+      suite_sha256: "d".repeat(64),
+      task_id: task.id,
+      task_title: task.title,
+      mode,
+      score: { exact: exact[task.id][mode], field_accuracy: exact[task.id][mode] ? 1 : 2 / 3 },
+      student_score: mode === "supervised"
+        ? { exact: exact[task.id].small, field_accuracy: exact[task.id].small ? 1 : 2 / 3 }
+        : null,
+      supervisor_correct_intervention: mode === "supervised" && task.id === "code-a",
+      supervisor_missed_error: false,
+      supervisor_false_positive: false,
+      verdicts: [],
+    })));
+    const metric = {
+      exact_passes: 4,
+      task_count: 4,
+      mean_field_accuracy: 1,
+      mean_latency_ms: 100,
+      total_tokens: 100,
+    };
+    const summary = {
+      proof_id: "proof-workflows",
+      suite_sha256: "d".repeat(64),
+      suite_id: "promotion",
+      completed_at: "2026-07-14T00:00:00Z",
+      task_count: 4,
+      run_count: 12,
+      by_mode: {
+        small: { ...metric, exact_passes: 3, mean_field_accuracy: 11 / 12, latency_reduction_vs_main: 0.2 },
+        main: metric,
+        supervised: {
+          ...metric,
+          latency_reduction_vs_main: -0.1,
+          supervisor_verdicts: 4,
+          interventions: 1,
+          supervisor_correct_interventions: 1,
+          supervisor_missed_errors: 0,
+          supervisor_false_positives: 0,
+          mean_small_model_output_share: 0.8,
+          mean_supervisor_token_overhead: 0.2,
+        },
+      },
+    };
+    const model = buildReportModel(summary, rows, tasks);
+    assert.deepEqual(
+      model.workflow_decisions.map(({ workflow, state, task_count: taskCount }) => ({ workflow, state, taskCount })),
+      [
+        { workflow: "codebase-analysis", state: "supervise", taskCount: 2 },
+        { workflow: "ops-classification", state: "pilot", taskCount: 2 },
+      ],
+    );
+    assert.match(model.recommendation, /pilot the smaller model on Operations classification/i);
+    assert.match(model.recommendation, /pilot supervision on Codebase analysis/i);
+    const html = buildBuyerReport(summary, rows, tasks);
+    assert.match(html, /Inspect all 4 task-level decisions/);
+    assert.match(html, /2 frozen tasks/);
+  });
+
   it("compares a hosted incumbent on the same frozen report contract", () => {
     const tasks = [{ id: "cart", title: "Cart", prompt: "synthetic" }];
     const metric = {
@@ -314,13 +470,27 @@ describe("desktop grocery proof", () => {
       },
     };
     const model = buildReportModel(summary, rows, tasks);
-    assert.equal(model.schema_version, "understudy.desktop_grocery_buyer_report.v3");
+    assert.equal(model.schema_version, "understudy.desktop_grocery_buyer_report.v4");
     assert.deepEqual(model.modes.map((mode) => mode.id), ["small", "main", "supervised", "hosted"]);
     assert.match(model.executive_summary.join(" "), /hosted incumbent passed 1\/1/i);
     assert.match(model.executive_summary.join(" "), /\$0\.0042/);
     const html = buildBuyerReport(summary, rows, tasks);
     assert.match(html, /Hosted incumbent/);
-    assert.match(html, /Hosted <b>Exact<\/b>/);
+    assert.match(html, /Hosted incumbent <b>Exact<\/b>/);
+
+    const localSummary = {
+      ...summary,
+      incumbent: { remote: false, model: "local-31b" },
+      by_mode: {
+        ...summary.by_mode,
+        hosted: { ...summary.by_mode.hosted, cost_usd: null },
+      },
+    };
+    const localModel = buildReportModel(localSummary, rows, tasks);
+    assert.equal(localModel.modes.find((mode) => mode.id === "hosted").label, "Local incumbent");
+    assert.match(localModel.executive_summary.join(" "), /local incumbent passed 1\/1/i);
+    assert.match(localModel.caveats.join(" "), /no .*provider calls/i);
+    assert.doesNotMatch(localModel.executive_summary.join(" "), /hosted incumbent/i);
   });
 
   it("escapes task labels in the portable report", () => {
@@ -381,6 +551,40 @@ describe("desktop grocery proof", () => {
       createHash("sha256").update(source.resultsBytes).digest("hex"),
       createHash("sha256").update(resultsBytes).digest("hex"),
     );
+  });
+
+  it("rejects v3 proof evidence that reuses a conversation across tasks", () => {
+    const root = mkdtempSync(join(tmpdir(), "understudy-grocery-session-reuse-"));
+    const tasks = [{ id: "task-a" }, { id: "task-b" }];
+    const tasksBytes = Buffer.from(`${JSON.stringify(tasks)}\n`);
+    const suiteHash = createHash("sha256").update(tasksBytes).digest("hex");
+    const rows = tasks.map((task) => ({
+      proof_id: "proof-session-reuse",
+      suite_sha256: suiteHash,
+      task_id: task.id,
+      run_id: `run-${task.id}`,
+      capture_run_id: `run-${task.id}`,
+      session_id: "shared-session",
+    }));
+    const summary = {
+      format: "understudy.desktop_grocery_proof.v3",
+      proof_id: "proof-session-reuse",
+      suite_sha256: suiteHash,
+      task_count: 2,
+      run_count: 2,
+    };
+    try {
+      writeFileSync(join(root, "summary.json"), `${JSON.stringify(summary)}\n`, { mode: 0o600 });
+      writeFileSync(
+        join(root, "results.jsonl"),
+        `${rows.map((row) => JSON.stringify(row)).join("\n")}\n`,
+        { mode: 0o600 },
+      );
+      writeFileSync(join(root, "tasks.json"), tasksBytes, { mode: 0o600 });
+      assert.throws(() => renderExistingProof(root), /cross-task session reuse/);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
   });
 
   it("refreshes a stale immutable proof into an owner-only derived report package", () => {
@@ -445,7 +649,7 @@ describe("desktop grocery proof", () => {
       assert.equal(first.reused, false);
       assert.equal(first.sourceDir, sourceDir);
       assert.notEqual(first.outputDir, sourceDir);
-      assert.equal(first.model.schema_version, "understudy.desktop_grocery_buyer_report.v3");
+      assert.equal(first.model.schema_version, "understudy.desktop_grocery_buyer_report.v4");
       assert.equal(JSON.parse(readFileSync(join(sourceDir, "report.json"), "utf8")).schema_version, "stale.v1");
       assert.match(readFileSync(first.reportPath, "utf8"), /Ops classification/);
       assert.doesNotMatch(readFileSync(first.reportPath, "utf8"), /private synthetic prompt/);

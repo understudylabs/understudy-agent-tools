@@ -22,6 +22,16 @@ node experiments/desktop-grocery-proof/run.mjs \
 Keep the resulting proof directory open. Do not use customer prompts, traces,
 or credentials in the demo.
 
+Before a pilot decision, run the 30-task promotion suite rather than
+extrapolating from the three-task demo:
+
+```sh
+node experiments/desktop-grocery-proof/run.mjs \
+  --suite promotion \
+  --student-slot 9 \
+  --teacher-slot 5
+```
+
 If reusing an existing proof, derive a report with the current renderer instead
 of trusting a report file produced by older code:
 
@@ -73,9 +83,9 @@ Explain the three default frozen routes:
 If configured, add the fourth route: the hosted incumbent, executed by Pi with
 the same run identity, canonical events, and deterministic scorer.
 
-The same three tasks run through every route: codebase analysis, cart
-substitution, and operations classification. The suite hash prevents a route
-from receiving an easier slice.
+The smoke uses one task per workflow: codebase analysis, cart substitution,
+and operations classification. The promotion gate uses 10 frozen tasks per
+workflow. The suite hash prevents a route from receiving an easier slice.
 
 ```sh
 PROOF=$(find ~/.understudy/proofs/grocery-marketplace \
