@@ -355,6 +355,22 @@ impl Residency {
         self.snapshot_from(&inner)
     }
 
+    /// Return a usable OpenAI-compatible endpoint for status/tool consumers.
+    /// Persisted slots may have moved well beyond MLX_PORT, so advertising the
+    /// fresh-install default while another port is warm sends agents to a dead
+    /// listener. Prefer the lowest-id warm slot for deterministic output and
+    /// retain the configured default only when no model is currently serving.
+    pub fn local_base_url(&self) -> String {
+        let inner = locked(&self.inner);
+        inner
+            .iter()
+            .filter(|resident| matches!(resident.state, SlotState::Warm))
+            .filter_map(|resident| resident.port.map(|port| (resident.id, port)))
+            .min_by_key(|(id, _)| *id)
+            .map(|(_, port)| format!("http://127.0.0.1:{port}/v1"))
+            .unwrap_or_else(|| models::LOCAL_BASE_URL.to_string())
+    }
+
     /// Add an empty slot; returns its id.
     pub fn add_slot(&self) -> u32 {
         let id = self.alloc_id();
@@ -914,6 +930,26 @@ mod tests {
         assert_eq!(residency.alloc_port(), MLX_PORT);
         assert_eq!(residency.alloc_port(), MLX_PORT + 1);
         assert!(models::LOCAL_BASE_URL.contains(&MLX_PORT.to_string()));
+        assert_eq!(residency.local_base_url(), models::LOCAL_BASE_URL);
+    }
+
+    #[test]
+    fn local_base_url_prefers_lowest_id_warm_slot() {
+        let residency = Residency::new(64);
+        {
+            let mut inner = locked(&residency.inner);
+            let mut later = resident(7, SlotState::Warm, 4.0);
+            later.port = Some(8096);
+            inner.push(later);
+            let mut earlier = resident(6, SlotState::Warm, 8.0);
+            earlier.port = Some(8095);
+            inner.push(earlier);
+            let mut stopped = resident(5, SlotState::Stopped, 2.0);
+            stopped.port = Some(8091);
+            inner.push(stopped);
+        }
+
+        assert_eq!(residency.local_base_url(), "http://127.0.0.1:8095/v1");
     }
 
     #[test]
