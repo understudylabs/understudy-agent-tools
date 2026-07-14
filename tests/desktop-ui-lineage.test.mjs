@@ -186,7 +186,7 @@ test("desktop has one managed runtime repair surface", async () => {
   assert.doesNotMatch(repair, /understudy update/);
 });
 
-test("desktop persists image references instead of transcript-embedded bytes", async () => {
+test("desktop persists image references and retains them with chat history", async () => {
   const [chat, attachmentLib, attachmentRust] = await Promise.all([
     readFile(chatPath, "utf8"),
     readFile(attachmentLibPath, "utf8"),
@@ -195,7 +195,7 @@ test("desktop persists image references instead of transcript-embedded bytes", a
 
   assert.match(chat, /"chat_attachments_store"/);
   assert.match(chat, /"chat_attachments_hydrate"/);
-  assert.match(chat, /"chat_attachments_delete_session"/);
+  assert.doesNotMatch(chat, /"chat_attachments_delete_session"/);
   assert.match(chat, /persistableChatMessages\(messages\)/);
   assert.match(attachmentLib, /previewUrl: _previewUrl/);
   assert.match(
@@ -207,6 +207,29 @@ test("desktop persists image references instead of transcript-embedded bytes", a
   assert.match(attachmentRust, /from_mode\(0o700\)/);
   assert.match(attachmentRust, /options\.mode\(0o600\)/);
   assert.match(attachmentRust, /migrate_legacy_messages/);
+});
+
+test("desktop starts fresh on launch and can reopen an exact Pi session", async () => {
+  const [chat, page, commands] = await Promise.all([
+    readFile(chatPath, "utf8"),
+    readFile(pagePath, "utf8"),
+    readFile(new URL("../apps/homescreen/src-tauri/src/commands.rs", import.meta.url), "utf8"),
+  ]);
+
+  assert.match(chat, /let activeChatSessionId: string \| null = null/);
+  assert.match(chat, /const restore = activeChatSessionId !== null/);
+  assert.doesNotMatch(chat, /invoke<PersistedChatSession \| null>\("chat_session_latest"\)/);
+  assert.match(chat, /"chat_sessions_list"/);
+  assert.match(chat, /"chat_session_get"/);
+  assert.match(chat, /activeChatSessionId = saved\.session_id/);
+  assert.match(
+    chat,
+    /const resetDroppedWorkload = \(\) => \{[\s\S]*dropRequestGeneration\.current \+= 1;[\s\S]*dropInFlight\.current = false;[\s\S]*setDropRunning\(false\);/,
+  );
+  assert.equal(chat.match(/resetDroppedWorkload\(\);/g)?.length, 2);
+  assert.match(page, /aria-label="Chat history"/);
+  assert.match(commands, /pub fn chat_sessions_list/);
+  assert.match(commands, /pub fn chat_session_get/);
 });
 
 test("desktop compiles one dropped path through the bounded public CLI", async () => {

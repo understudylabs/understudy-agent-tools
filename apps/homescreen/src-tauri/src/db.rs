@@ -181,6 +181,14 @@ pub struct ChatSessionRow {
 }
 
 #[derive(Serialize, Clone)]
+pub struct ChatSessionSummaryRow {
+    pub session_id: String,
+    pub title: String,
+    pub message_count: u64,
+    pub updated_at: String,
+}
+
+#[derive(Serialize, Clone)]
 pub struct SidekickRunRow {
     pub id: u64,
     pub session_id: String,
@@ -1129,6 +1137,51 @@ impl Db {
         }))
     }
 
+    pub fn chat_session(&self, session_id: &str, schema: &str) -> Result<Option<ChatSessionRow>> {
+        let conn = self.conn()?;
+        let mut stmt = conn.prepare(
+            "SELECT session_id, schema, messages, updated_at
+             FROM chat_sessions WHERE session_id=?1 AND schema=?2 LIMIT 1",
+        )?;
+        let mut rows = stmt.query(rusqlite::params![session_id, schema])?;
+        let Some(row) = rows.next()? else {
+            return Ok(None);
+        };
+        Ok(Some(ChatSessionRow {
+            session_id: row.get(0)?,
+            schema: row.get(1)?,
+            messages: row.get(2)?,
+            updated_at: row.get(3)?,
+        }))
+    }
+
+    pub fn list_chat_sessions(
+        &self,
+        schema: &str,
+        limit: u32,
+    ) -> Result<Vec<ChatSessionSummaryRow>> {
+        let conn = self.conn()?;
+        let mut stmt = conn.prepare(
+            "SELECT session_id,
+                    substr(CAST(COALESCE(json_extract(messages, '$[0].content'), '') AS TEXT), 1, 160),
+                    COALESCE(json_array_length(messages), 0),
+                    updated_at
+             FROM chat_sessions
+             WHERE schema=?1 AND COALESCE(json_array_length(messages), 0) > 0
+             ORDER BY updated_at DESC, rowid DESC
+             LIMIT ?2",
+        )?;
+        let rows = stmt.query_map(rusqlite::params![schema, limit.clamp(1, 100)], |row| {
+            Ok(ChatSessionSummaryRow {
+                session_id: row.get(0)?,
+                title: row.get(1)?,
+                message_count: row.get(2)?,
+                updated_at: row.get(3)?,
+            })
+        })?;
+        Ok(rows.collect::<rusqlite::Result<Vec<_>>>()?)
+    }
+
     // Mirrors the sidekick_runs column list; not restructured to avoid churn.
     #[allow(clippy::too_many_arguments)]
     pub fn record_sidekick_run(
@@ -1708,6 +1761,43 @@ mod tests {
             .query_row("SELECT COUNT(*) FROM chat_sessions", [], |row| row.get(0))
             .unwrap();
         assert_eq!(count, 3);
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn chat_session_history_lists_non_empty_chats_and_loads_exact_session() {
+        let (dir, db) = temp_db("chat-session-history");
+        db.save_active_chat_session("empty", "desktop-chat-v2", "[]")
+            .unwrap();
+        db.save_active_chat_session(
+            "first",
+            "desktop-chat-v2",
+            r#"[{"role":"user","content":"Plan the launch"},{"role":"assistant","content":"Okay"}]"#,
+        )
+        .unwrap();
+        db.save_active_chat_session(
+            "second",
+            "desktop-chat-v2",
+            r#"[{"role":"user","content":"Review the benchmark"}]"#,
+        )
+        .unwrap();
+
+        let summaries = db.list_chat_sessions("desktop-chat-v2", 20).unwrap();
+        assert_eq!(summaries.len(), 2);
+        assert_eq!(summaries[0].session_id, "second");
+        assert_eq!(summaries[0].title, "Review the benchmark");
+        assert_eq!(summaries[0].message_count, 1);
+        assert_eq!(summaries[1].title, "Plan the launch");
+
+        let exact = db
+            .chat_session("first", "desktop-chat-v2")
+            .unwrap()
+            .unwrap();
+        assert!(exact.messages.contains("Plan the launch"));
+        assert!(db
+            .chat_session("missing", "desktop-chat-v2")
+            .unwrap()
+            .is_none());
         let _ = std::fs::remove_dir_all(&dir);
     }
 

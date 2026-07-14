@@ -2346,6 +2346,18 @@ pub struct DesktopChatSession {
     updated_at: String,
 }
 
+fn desktop_chat_session_from_row(
+    row: crate::db::ChatSessionRow,
+) -> Result<DesktopChatSession, String> {
+    let messages = serde_json::from_str(&row.messages)
+        .map_err(|error| format!("saved chat transcript is invalid: {error}"))?;
+    Ok(DesktopChatSession {
+        session_id: row.session_id,
+        messages,
+        updated_at: row.updated_at,
+    })
+}
+
 #[tauri::command]
 pub fn chat_session_latest(app: AppHandle) -> Result<Option<DesktopChatSession>, String> {
     let db = app.state::<crate::db::Db>();
@@ -2377,6 +2389,34 @@ pub fn chat_session_latest(app: AppHandle) -> Result<Option<DesktopChatSession>,
         messages,
         updated_at,
     }))
+}
+
+#[tauri::command]
+pub fn chat_sessions_list(
+    app: AppHandle,
+    limit: Option<u32>,
+) -> Result<Vec<crate::db::ChatSessionSummaryRow>, String> {
+    // Preserve the v1-to-v2 migration now that cold launches no longer reopen
+    // the newest chat automatically.
+    let _ = chat_session_latest(app.clone())?;
+    app.state::<crate::db::Db>()
+        .list_chat_sessions(DESKTOP_CHAT_SESSION_SCHEMA, limit.unwrap_or(30))
+        .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+pub fn chat_session_get(
+    app: AppHandle,
+    session_id: String,
+) -> Result<Option<DesktopChatSession>, String> {
+    if session_id.trim().is_empty() || session_id.len() > 200 {
+        return Err("invalid chat session id".to_string());
+    }
+    app.state::<crate::db::Db>()
+        .chat_session(&session_id, DESKTOP_CHAT_SESSION_SCHEMA)
+        .map_err(|error| error.to_string())?
+        .map(desktop_chat_session_from_row)
+        .transpose()
 }
 
 #[tauri::command]
