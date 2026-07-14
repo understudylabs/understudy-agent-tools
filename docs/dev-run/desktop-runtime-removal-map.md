@@ -49,28 +49,34 @@ never terminates them, so release qualification cannot overlap another Metal
 workload:
 
 ```sh
-npm run runtime:desktop-readiness -- --output .understudy/capture-evidence/desktop-runtime-readiness.json
+APP_VERSION=0.3.13
+npm run runtime:desktop-readiness -- \
+  --output ".understudy/capture-evidence/desktop-runtime-readiness-${APP_VERSION}.json"
 ```
 
 The output is private, contains no token values, and is not packaged. It fails
-closed if app, runtime, or model RSS is unavailable. The final notarized 0.3.7
-release evidence passes all gates:
+closed if app, runtime, or model RSS is unavailable. Evidence filenames are
+version-bound so a later run cannot silently stand in for the installed cohort.
+The last fully regenerated exact-version evidence before Desktop 0.3.13 is the
+notarized 0.3.12 release, which passes all gates:
 
 | Gate | Result | Ceiling |
 | --- | ---: | ---: |
-| Desktop HTTP ready | 310 ms | 2,500 ms |
-| Canonical runtime ready | 933 ms | 3,000 ms |
-| Restored model ready | 2,578 ms | 45,000 ms |
-| Desktop + runtime RSS | 208.375 MB | 750 MB |
-| Restored model RSS | 5.9391 GB | 32 GB |
+| Desktop HTTP ready | 309 ms | 2,500 ms |
+| Canonical runtime ready | 746 ms | 3,000 ms |
+| Restored model ready | 5,181 ms | 45,000 ms |
+| Desktop + runtime RSS | 209.266 MB | 750 MB |
+| Restored model RSS | 5.9411 GB | 32 GB |
 
 This is not a reboot-cold claim: macOS may retain model weights in its filesystem
 cache. Release qualification should repeat it on one clean install and one
 ordinary warm restart.
 
-The exact-version 0.3.7 conformance report also passes every frozen scenario:
+The exact-version 0.3.12 conformance report also passes every frozen scenario:
 basic chat, offline image, authenticated tool round, malformed-tool recovery,
 supervisor takeover, long-chat compaction, restart/resume, and cancellation.
+Desktop 0.3.13 must regenerate both reports before its release cohort is called
+qualified; passing 0.3.12 evidence is intentionally insufficient.
 
 The rebuilt debug app also passed a caller-correlated headless tool round. The
 HTTP response returned the caller's `capture_run_id`, `runtime_backend: "pi"`,
@@ -102,6 +108,8 @@ Anthropic key and catalog storage in Rust.
 The release artifact exposes the gate directly:
 
 ```sh
+APP_VERSION=0.3.13
+RUNTIME_VERSION=0.3.13
 HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 HF_DATASETS_OFFLINE=1 \
 understudy runtime conformance \
   --backend pi \
@@ -111,10 +119,13 @@ understudy runtime conformance \
   --deterministic-malformed-tool \
   --deterministic-compaction \
   --require-complete \
-  --output .understudy/capture-evidence/desktop-runtime-conformance.json
+  --output ".understudy/capture-evidence/desktop-runtime-conformance-${RUNTIME_VERSION}.json"
 npm run runtime:desktop-readiness -- \
-  --output .understudy/capture-evidence/desktop-runtime-readiness.json
-understudy desktop migration-status --require-ready --json
+  --output ".understudy/capture-evidence/desktop-runtime-readiness-${APP_VERSION}.json"
+understudy desktop migration-status \
+  --conformance-evidence ".understudy/capture-evidence/desktop-runtime-conformance-${RUNTIME_VERSION}.json" \
+  --readiness-evidence ".understudy/capture-evidence/desktop-runtime-readiness-${APP_VERSION}.json" \
+  --require-ready --json
 ```
 
 For Pi or Vercel, `--slot` resolves the exact local weights path and serving

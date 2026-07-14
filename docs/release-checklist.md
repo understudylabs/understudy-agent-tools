@@ -131,6 +131,12 @@ For a runtime migration release, regenerate the exact-version conformance and
 readiness evidence from the installed notarized app after publication. Evidence
 from an older version cannot qualify the new release cohort.
 
+Write both reports to version-bound paths, for example
+`desktop-runtime-conformance-0.3.13.json` and
+`desktop-runtime-readiness-0.3.13.json`. `understudy desktop migration-status`
+selects these exact-version defaults from the live app/runtime cohort; explicit
+paths remain available for archived or isolated evidence roots.
+
 The readiness probe is process-cold and refuses to overlap any active MLX/VLM
 server, including one it does not own. Stop those workloads explicitly first;
 the probe reports bounded process identity but never terminates an unowned

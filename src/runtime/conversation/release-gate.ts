@@ -8,10 +8,25 @@ import {
 } from "./contract.js";
 import { loadConversationConformanceInputs } from "./conformance.js";
 
-export const DEFAULT_DESKTOP_CONFORMANCE_EVIDENCE =
-  ".understudy/capture-evidence/desktop-runtime-conformance.json";
-export const DEFAULT_DESKTOP_READINESS_EVIDENCE =
-  ".understudy/capture-evidence/desktop-runtime-readiness.json";
+const DEFAULT_DESKTOP_EVIDENCE_ROOT = ".understudy/capture-evidence";
+
+function evidenceVersion(version: string): string {
+  const sanitized = version
+    .trim()
+    .replace(/[^a-zA-Z0-9._-]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+  return sanitized || "unknown";
+}
+
+export function defaultDesktopConformanceEvidencePath(runtimeVersion: string): string {
+  const version = evidenceVersion(runtimeVersion);
+  return `${DEFAULT_DESKTOP_EVIDENCE_ROOT}/desktop-runtime-conformance-${version}.json`;
+}
+
+export function defaultDesktopReadinessEvidencePath(appVersion: string): string {
+  const version = evidenceVersion(appVersion);
+  return `${DEFAULT_DESKTOP_EVIDENCE_ROOT}/desktop-runtime-readiness-${version}.json`;
+}
 
 type EvidenceCheck = {
   path: string;
@@ -268,11 +283,11 @@ export function evaluateDesktopRuntimeReleaseEvidence(
   options: ReleaseEvidenceOptions,
 ): DesktopRuntimeReleaseEvidence {
   const conformance = conformanceEvidence(
-    options.conformance_path ?? DEFAULT_DESKTOP_CONFORMANCE_EVIDENCE,
+    options.conformance_path ?? defaultDesktopConformanceEvidencePath(options.runtime_version),
     options.runtime_version,
   );
   const readiness = readinessEvidence(
-    options.readiness_path ?? DEFAULT_DESKTOP_READINESS_EVIDENCE,
+    options.readiness_path ?? defaultDesktopReadinessEvidencePath(options.app_version),
     options.app_version,
     options.runtime_version,
   );
