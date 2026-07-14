@@ -22,6 +22,7 @@ import {
   supervisorHandoffTarget,
   teacherContinuationBoundary,
   teacherOutputMode,
+  shouldResumeNudgedStudent,
 } from "../dist/runtime/conversation/pi-runtime.js";
 import {
   parseRuntimeRequest,
@@ -1068,11 +1069,52 @@ test("teacher continuation inserts only a missing word boundary", () => {
 test("teacher output replaces only a completed rejected answer", () => {
   assert.equal(teacherOutputMode(false), "append");
   assert.equal(teacherOutputMode(true), "replace");
+  assert.equal(shouldResumeNudgedStudent(false), true);
+  assert.equal(shouldResumeNudgedStudent(true), false);
 });
 
 test("every supervisor decision gets a stable labelable marker", () => {
   assert.equal(supervisorDecisionMarker("run-1", 3, 0, false), "run-1:verdict:3");
   assert.equal(supervisorDecisionMarker("run-1", 3, 2, true), "run-1:intervention:2");
+});
+
+test("a completed nudge can link replacement continuation evidence", () => {
+  const envelope = (sequence, event, data) => ({
+    schema_version: "understudy-conversation-runtime-event-v1",
+    event_id: `run-completed-nudge:${sequence}`,
+    run_id: "run-completed-nudge",
+    session_id: "session-completed-nudge",
+    runtime_id: "pi-agent-session",
+    sequence,
+    emitted_at: "2026-07-14T00:00:00Z",
+    event,
+    data,
+  });
+  assert.doesNotThrow(() =>
+    validateRuntimeTrace([
+      envelope(0, "supervisor_verdict", {
+        verdict: "nudge",
+        source: "model",
+        supervisor_model: "supervisor-model",
+        marker_id: "run-completed-nudge:intervention:0",
+        reason: "Replace the incorrect structured field.",
+        decision_phase: "final",
+      }),
+      envelope(1, "student_interruption", {
+        marker_id: "run-completed-nudge:intervention:0",
+        reason: "Replace the incorrect structured field.",
+        partial_text: '{"answer":"wrong"}',
+        after_chars: 18,
+      }),
+      envelope(2, "teacher_continuation", {
+        marker_id: "run-completed-nudge:intervention:0",
+        reason: "Replace the incorrect structured field.",
+        teacher_model: "teacher-model",
+        from_partial_chars: 18,
+        output_mode: "replace",
+      }),
+    ]),
+  );
 });
 
 test("canonical verdict evidence rejects impossible positive logprobs", () => {

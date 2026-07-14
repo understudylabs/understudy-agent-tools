@@ -481,7 +481,7 @@ pub(crate) fn validate_trace(events: &[RuntimeEventEnvelope]) -> Result<(), Stri
 
     let mut event_ids = HashSet::new();
     let mut pending_tools: HashMap<&str, &str> = HashMap::new();
-    let mut interrupt_markers = HashSet::new();
+    let mut intervention_markers = HashSet::new();
     let mut interrupted_markers = HashSet::new();
     let mut terminal_seen = false;
 
@@ -586,12 +586,12 @@ pub(crate) fn validate_trace(events: &[RuntimeEventEnvelope]) -> Result<(), Stri
                 {
                     return Err("interrupt/nudge verdict requires a reason".to_string());
                 }
-                if matches!(verdict, RuntimeVerdict::Interrupt) {
+                if matches!(verdict, RuntimeVerdict::Interrupt | RuntimeVerdict::Nudge) {
                     let marker = marker_id
                         .as_deref()
                         .filter(|value| !value.trim().is_empty())
-                        .ok_or_else(|| "interrupt verdict requires marker_id".to_string())?;
-                    interrupt_markers.insert(marker);
+                        .ok_or_else(|| "interrupt/nudge verdict requires marker_id".to_string())?;
+                    intervention_markers.insert(marker);
                 }
                 if let Some(target) = handoff_target.as_deref() {
                     if !matches!(target, "local" | "remote") {
@@ -626,7 +626,7 @@ pub(crate) fn validate_trace(events: &[RuntimeEventEnvelope]) -> Result<(), Stri
                 marker_id, reason, ..
             } => {
                 required(reason, "student_interruption.reason")?;
-                if !interrupt_markers.contains(marker_id.as_str()) {
+                if !intervention_markers.contains(marker_id.as_str()) {
                     return Err(format!(
                         "student interruption {marker_id} has no supervisor verdict"
                     ));
@@ -809,22 +809,22 @@ mod tests {
     }
 
     #[test]
-    fn accepts_linked_supervisor_takeover() {
+    fn accepts_linked_supervisor_nudge_takeover() {
         let events = vec![
             envelope(
                 0,
                 RuntimeEvent::SupervisorVerdict {
-                    verdict: RuntimeVerdict::Interrupt,
+                    verdict: RuntimeVerdict::Nudge,
                     source: "model".to_string(),
                     supervisor_model: "understudy-supervisor".to_string(),
                     marker_id: Some("marker-1".to_string()),
                     reason: Some("wrong tool".to_string()),
-                    probabilities: Some(json!({"interrupt": -0.1})),
+                    probabilities: Some(json!({"nudge": -0.1})),
                     probability_kind: Some("logprob".to_string()),
                     boundary_ordinal: Some(0),
                     after_chars: Some(7),
                     decision_phase: Some(RuntimeDecisionPhase::Streaming),
-                    raw: Some("interrupt: wrong tool".to_string()),
+                    raw: Some("nudge: wrong tool".to_string()),
                     error: None,
                     failure_kind: None,
                     handoff_target: Some("local".to_string()),
@@ -846,14 +846,14 @@ mod tests {
                     reason: "correct it".to_string(),
                     teacher_model: "teacher".to_string(),
                     from_partial_chars: 7,
-                    output_mode: TeacherOutputMode::Append,
+                    output_mode: TeacherOutputMode::Replace,
                 },
             ),
         ];
         validate_trace(&events).unwrap();
         let serialized = serde_json::to_value(&events[0]).unwrap();
         assert_eq!(serialized["data"]["probability_kind"], json!("logprob"));
-        assert_eq!(serialized["data"]["probabilities"]["interrupt"], -0.1);
+        assert_eq!(serialized["data"]["probabilities"]["nudge"], -0.1);
         assert_eq!(
             serialized["data"]["supervisor_model"],
             json!("understudy-supervisor")
