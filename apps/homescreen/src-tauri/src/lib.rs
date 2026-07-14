@@ -41,11 +41,20 @@ fn show_window(app: &tauri::AppHandle) {
     }
 }
 
+#[tauri::command]
+fn restart_app(app: tauri::AppHandle) {
+    app.restart();
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
         .setup(|app| {
+            #[cfg(desktop)]
+            app.handle()
+                .plugin(tauri_plugin_updater::Builder::new().build())?;
+
             let data_dir = app.path().app_data_dir().expect("app data dir resolved");
 
             let machine = metrics::detect_machine();
@@ -251,6 +260,7 @@ pub fn run() {
             rlm::rlm_plan,
             rlm::run_rlm_live,
             chat::chat_stream,
+            restart_app,
         ])
         .build(tauri::generate_context!())
         .expect("error while running tauri application")

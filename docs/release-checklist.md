@@ -61,37 +61,67 @@ npm run desktop:release-check -- --stage source
 ```
 
 On macOS, select a Developer ID Application identity already present in the
-login Keychain and a `notarytool` Keychain profile. Profile names and signing
-identities are machine configuration, not repository constants:
+login Keychain, a `notarytool` Keychain profile, and the long-lived Tauri updater
+private key stored as `Understudy Desktop Tauri Updater Private Key` in the
+`Engineering - Prod` 1Password vault. Profile names, signing identities, and
+private-key paths are machine configuration, not repository constants:
 
 ```sh
 security find-identity -v -p codesigning
 export APPLE_SIGNING_IDENTITY='Developer ID Application: Example Company (TEAMID)'
 export APPLE_NOTARY_KEYCHAIN_PROFILE='understudy'
 xcrun notarytool history --keychain-profile "$APPLE_NOTARY_KEYCHAIN_PROFILE"
+updater_key_dir="$(mktemp -d)"
+chmod 700 "$updater_key_dir"
+trap 'rm -rf "$updater_key_dir"' EXIT
+op document get "Understudy Desktop Tauri Updater Private Key" \
+  --vault "Engineering - Prod" \
+  --output "$updater_key_dir/understudy-desktop-updater.key"
+chmod 600 "$updater_key_dir/understudy-desktop-updater.key"
+export TAURI_SIGNING_PRIVATE_KEY="$updater_key_dir/understudy-desktop-updater.key"
+export TAURI_SIGNING_PRIVATE_KEY_PASSWORD=''
 ```
 
 Never pass an app-specific password on the command line or commit it to a file
 in this repository. Create or repair the named Keychain profile separately with
 `notarytool store-credentials`, which prompts without echoing the password.
 
-Build the exact signed app and DMG, then verify the signature, embedded version,
-disk image, and SHA-256 locally:
+Build the exact signed app, updater archive, updater signature, and DMG. Tauri's
+updater signature is separate from Apple code signing and cannot be disabled:
 
 ```sh
 cd apps/homescreen
 bun install --frozen-lockfile
 bun run tauri build --bundles app,dmg
 cd ../..
-npm run desktop:release-check -- --stage signed
 ```
 
-The build inherits `APPLE_SIGNING_IDENTITY`. Submit the DMG, staple the accepted
-ticket, and run the stronger notarized gate:
+The build inherits `APPLE_SIGNING_IDENTITY` and `TAURI_SIGNING_PRIVATE_KEY`.
+Submit both the app and DMG to Apple. Staple the app before rebuilding and
+re-signing the updater archive so an offline update contains the notarization
+ticket; then generate the static `latest.json` contract:
 
 ```sh
 version="$(node -p "require('./apps/homescreen/package.json').version")"
-dmg="apps/homescreen/src-tauri/target/release/bundle/dmg/Understudy_${version}_aarch64.dmg"
+repo="$(pwd)"
+dmg="$repo/apps/homescreen/src-tauri/target/release/bundle/dmg/Understudy_${version}_aarch64.dmg"
+app="$repo/apps/homescreen/src-tauri/target/release/bundle/macos/Understudy.app"
+updater="$repo/apps/homescreen/src-tauri/target/release/bundle/macos/Understudy.app.tar.gz"
+app_zip="${TMPDIR:-/tmp}/Understudy-${version}.app.zip"
+ditto -c -k --keepParent "$app" "$app_zip"
+xcrun notarytool submit "$app_zip" \
+  --keychain-profile "$APPLE_NOTARY_KEYCHAIN_PROFILE" \
+  --wait --output-format json
+xcrun stapler staple "$app"
+rm -f "$updater" "${updater}.sig"
+tar -czf "$updater" -C "$(dirname "$app")" "$(basename "$app")"
+cd apps/homescreen
+bun run tauri signer sign -- \
+  --private-key-path "$TAURI_SIGNING_PRIVATE_KEY" \
+  "$updater"
+cd ../..
+npm run desktop:updater-manifest
+npm run desktop:release-check -- --stage signed
 xcrun notarytool submit "$dmg" \
   --keychain-profile "$APPLE_NOTARY_KEYCHAIN_PROFILE" \
   --wait --output-format json
@@ -99,16 +129,18 @@ xcrun stapler staple "$dmg"
 npm run desktop:release-check -- --stage notarized
 ```
 
-Create a draft release targeted at the exact commit, upload the stapled DMG,
-download that asset into a new temporary directory, and compare its SHA-256 to
-the local artifact before publishing. Validate the downloaded copy with
-`xcrun stapler validate` and `spctl` as well; the uploaded bytes, not the local
-path, are the public product.
+Create a draft release targeted at the exact commit and upload the stapled DMG,
+notarized updater archive, signature, and manifest. Download those assets into a
+new temporary directory and compare their hashes before publishing. Validate
+the downloaded DMG with `stapler` and `spctl`; the uploaded bytes, not the local
+paths, are the public product.
 
 ```sh
 tag="desktop-v${version}-mvp"
 commit="$(git rev-parse HEAD)"
-gh release create "$tag" "$dmg" \
+updater_sig="${updater}.sig"
+updater_manifest="$(dirname "$updater")/latest.json"
+gh release create "$tag" "$dmg" "$updater" "$updater_sig" "$updater_manifest" \
   --repo understudylabs/understudy-agent-tools \
   --target "$commit" --title "Understudy Desktop v${version}" \
   --generate-notes --draft
@@ -117,14 +149,23 @@ download_dir="$(mktemp -d)"
 chmod 700 "$download_dir"
 gh release download "$tag" \
   --repo understudylabs/understudy-agent-tools \
-  --pattern "Understudy_${version}_aarch64.dmg" --dir "$download_dir"
+  --pattern "Understudy_${version}_aarch64.dmg" \
+  --pattern "Understudy.app.tar.gz" \
+  --pattern "Understudy.app.tar.gz.sig" \
+  --pattern "latest.json" \
+  --dir "$download_dir"
 downloaded="$download_dir/Understudy_${version}_aarch64.dmg"
 test "$(shasum -a 256 "$dmg" | awk '{print $1}')" = \
   "$(shasum -a 256 "$downloaded" | awk '{print $1}')"
+test "$(shasum -a 256 "$updater" | awk '{print $1}')" = \
+  "$(shasum -a 256 "$download_dir/Understudy.app.tar.gz" | awk '{print $1}')"
+cmp "$updater_sig" "$download_dir/Understudy.app.tar.gz.sig"
+cmp "$updater_manifest" "$download_dir/latest.json"
 xcrun stapler validate "$downloaded"
 spctl --assess --type open --context context:primary-signature --verbose=2 "$downloaded"
 gh release edit "$tag" --repo understudylabs/understudy-agent-tools \
   --draft=false --latest
+rm -rf "$updater_key_dir"
 ```
 
 For a runtime migration release, regenerate the exact-version conformance and
@@ -132,8 +173,8 @@ readiness evidence from the installed notarized app after publication. Evidence
 from an older version cannot qualify the new release cohort.
 
 Write both reports to version-bound paths, for example
-`desktop-runtime-conformance-0.3.16.json` and
-`desktop-runtime-readiness-0.3.16.json`. `understudy desktop migration-status`
+`desktop-runtime-conformance-0.3.17.json` and
+`desktop-runtime-readiness-0.3.17.json`. `understudy desktop migration-status`
 selects these exact-version defaults from the live app/runtime cohort; explicit
 paths remain available for archived or isolated evidence roots.
 

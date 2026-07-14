@@ -44,6 +44,14 @@ uses semantic-ish versioning (minor = new skill or new capability, patch = fixes
 
 ### Fixed
 
+- **Desktop chat is direct by default and releases can update in place.**
+  Desktop/runtime 0.3.17 and CLI 0.6.14 stop attaching the experimental
+  supervisor to ordinary model-picker turns. Explicit evaluation and agent API
+  supervision remain available. This release also bootstraps Tauri's signed
+  updater: future Desktop releases can download, verify, install, and restart
+  through the shared in-app operation notice, with a manual signed-download
+  fallback if an update cannot be applied.
+
 - **Desktop installation no longer depends on npm or a machine-local Node.**
   Desktop/runtime 0.3.16 and CLI 0.6.13 ship one version-coupled cohort: a
   pinned Node 22.23.0 runtime, bundled CLI, Pi conversation sidecar, public

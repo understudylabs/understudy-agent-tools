@@ -133,6 +133,11 @@
       "evidence": "Desktop health checks cover CLI, MLX/VLM, ConversationRuntime, and desktop versions; contextual failures offer the single managed CLI repair path while offline operation remains available."
     },
     {
+      "id": "signed-in-app-updates",
+      "status": "shipped",
+      "evidence": "Desktop checks the canonical GitHub release endpoint, downloads only Tauri-signature-verified macOS updater archives, shows progress through the shared managed-operation notice, installs and restarts in place, and falls back to the signed manual download when automatic installation fails."
+    },
+    {
       "id": "durable-image-and-chat-persistence",
       "status": "shipped",
       "evidence": "Image bytes are validated and stored atomically with private permissions under content hashes; SQLite keeps references only, legacy data URLs migrate on reopen, and previews hydrate after restart."

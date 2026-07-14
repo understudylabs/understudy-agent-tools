@@ -1,6 +1,6 @@
 {
   "name": "@understudylabs/understudy-agent-tools",
-  "version": "0.6.13",
+  "version": "0.6.14",
   "description": "Public Understudy agent tools CLI and skill library.",
   "type": "module",
   "bin": {
@@ -38,6 +38,7 @@
     "desktop:bundle-cli": "node scripts/build-desktop-cli.mjs",
     "desktop:bundle-cli:smoke": "node scripts/desktop-cli-smoke.mjs --build",
     "desktop:release-check": "node scripts/desktop-release-check.mjs",
+    "desktop:updater-manifest": "node scripts/desktop-updater-manifest.mjs",
     "prepare": "npm run build",
     "package:smoke": "node scripts/package-smoke.mjs",
     "runtime:compaction-soak": "npm run build && node scripts/runtime-compaction-soak.mjs",

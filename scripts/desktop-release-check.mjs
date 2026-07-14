@@ -85,6 +85,9 @@ export function inspectDesktopVersions(root = repositoryRoot) {
   const cliPackage = readJson(join(root, "package.json")).version;
   const bootstrap = readFileSync(join(tauri, "src", "bootstrap.rs"), "utf8");
   const tauriConfig = readJson(join(tauri, "tauri.conf.json"));
+  const desktopPackage = readJson(join(homescreen, "package.json"));
+  const capability = readJson(join(tauri, "capabilities", "default.json"));
+  const tauriLib = readFileSync(join(tauri, "src", "lib.rs"), "utf8");
   const macTauriConfig = readJson(join(tauri, "tauri.macos.conf.json"));
   const entitlementsPath = join(tauri, "Entitlements.plist");
   const minimumCli = firstMatch(
@@ -129,8 +132,35 @@ export function inspectDesktopVersions(root = repositoryRoot) {
   if (!String(tauriConfig.build?.beforeBuildCommand ?? "").includes("build-desktop-cli.mjs")) {
     errors.push("Desktop beforeBuildCommand must prepare the self-contained CLI bundle");
   }
+  if (tauriConfig.bundle?.createUpdaterArtifacts !== true) {
+    errors.push("Desktop bundle must create Tauri v2 updater artifacts");
+  }
+  const updater = tauriConfig.plugins?.updater;
+  if (typeof updater?.pubkey !== "string" || updater.pubkey.trim().length < 80) {
+    errors.push("Desktop updater must embed its public signing key");
+  }
+  const updaterEndpoints = Array.isArray(updater?.endpoints) ? updater.endpoints : [];
+  if (
+    updaterEndpoints.length !== 1 ||
+    updaterEndpoints[0] !==
+      "https://github.com/understudylabs/understudy-agent-tools/releases/latest/download/latest.json"
+  ) {
+    errors.push("Desktop updater must use the canonical HTTPS latest.json endpoint");
+  }
+  if (!capability.permissions?.includes("updater:default")) {
+    errors.push("Desktop main-window capability must allow the updater plugin");
+  }
+  if (!/tauri-plugin-updater\s*=\s*"2\.10\.1"/.test(cargoToml)) {
+    errors.push("Desktop Rust updater dependency must be pinned to 2.10.1");
+  }
+  if (!tauriLib.includes("tauri_plugin_updater::Builder::new().build()")) {
+    errors.push("Desktop must initialize the Tauri updater plugin");
+  }
+  if (desktopPackage.dependencies?.["@tauri-apps/plugin-updater"] !== "2.10.1") {
+    errors.push("Desktop JavaScript updater dependency must be pinned to 2.10.1");
+  }
   const versions = {
-    desktop_package: readJson(join(homescreen, "package.json")).version,
+    desktop_package: desktopPackage.version,
     tauri_config: readJson(join(tauri, "tauri.conf.json")).version,
     cargo_manifest: firstMatch(
       cargoToml,
@@ -233,6 +263,9 @@ export function desktopArtifactPaths(version, root = repositoryRoot, arch = "aar
   return {
     app: join(bundle, "macos", "Understudy.app"),
     dmg: join(bundle, "dmg", `Understudy_${version}_${arch}.dmg`),
+    updater_archive: join(bundle, "macos", "Understudy.app.tar.gz"),
+    updater_signature: join(bundle, "macos", "Understudy.app.tar.gz.sig"),
+    updater_manifest: join(bundle, "macos", "latest.json"),
   };
 }
 
@@ -336,6 +369,21 @@ export async function inspectDesktopRelease({
     ? {
         app: { path: artifacts.app, exists: existsSync(artifacts.app) },
         dmg: { path: artifacts.dmg, exists: existsSync(artifacts.dmg), sha256: null },
+        updater: {
+          archive: {
+            path: artifacts.updater_archive,
+            exists: existsSync(artifacts.updater_archive),
+            sha256: null,
+          },
+          signature: {
+            path: artifacts.updater_signature,
+            exists: existsSync(artifacts.updater_signature),
+          },
+          manifest: {
+            path: artifacts.updater_manifest,
+            exists: existsSync(artifacts.updater_manifest),
+          },
+        },
         cli: {
           node: join(artifacts.app, "Contents", "MacOS", "understudy-node"),
           node_version: null,
@@ -371,6 +419,15 @@ export async function inspectDesktopRelease({
   if (stage !== "source" && artifactState) {
     if (!artifactState.app.exists) errors.push(`signed app is missing: ${artifacts.app}`);
     if (!artifactState.dmg.exists) errors.push(`signed DMG is missing: ${artifacts.dmg}`);
+    if (!artifactState.updater.archive.exists) {
+      errors.push(`signed updater archive is missing: ${artifacts.updater_archive}`);
+    }
+    if (!artifactState.updater.signature.exists) {
+      errors.push(`updater signature is missing: ${artifacts.updater_signature}`);
+    }
+    if (!artifactState.updater.manifest.exists) {
+      errors.push(`updater manifest is missing: ${artifacts.updater_manifest}`);
+    }
     if (artifactState.app.exists) {
       runCheck(
         "app code-signature verification",
@@ -549,9 +606,45 @@ export async function inspectDesktopRelease({
       runCheck("DMG verification", "hdiutil", ["verify", artifacts.dmg], root, errors);
       artifactState.dmg.sha256 = await sha256(artifacts.dmg);
     }
+    if (artifactState.updater.archive.exists) {
+      artifactState.updater.archive.sha256 = await sha256(artifacts.updater_archive);
+    }
+    if (artifactState.updater.signature.exists && artifactState.updater.manifest.exists) {
+      try {
+        const signature = readFileSync(artifacts.updater_signature, "utf8").trim();
+        const manifest = readJson(artifacts.updater_manifest);
+        const platform = manifest.platforms?.["darwin-aarch64"];
+        const expectedUrl =
+          `https://github.com/understudylabs/understudy-agent-tools/releases/download/` +
+          `desktop-v${versionState.version}-mvp/Understudy.app.tar.gz`;
+        if (manifest.version !== versionState.version) {
+          errors.push(
+            `updater manifest version ${manifest.version ?? "missing"} does not match source ` +
+              versionState.version,
+          );
+        }
+        if (!signature || platform?.signature !== signature) {
+          errors.push("updater manifest does not embed the exact artifact signature");
+        }
+        if (platform?.url !== expectedUrl) {
+          errors.push(`updater manifest URL must be ${expectedUrl}`);
+        }
+      } catch (error) {
+        errors.push(`could not validate updater manifest: ${error.message}`);
+      }
+    }
   }
 
   if (stage === "notarized" && artifactState?.dmg.exists) {
+    if (artifactState.app.exists) {
+      runCheck(
+        "app notarization ticket validation",
+        "xcrun",
+        ["stapler", "validate", artifacts.app],
+        root,
+        errors,
+      );
+    }
     runCheck(
       "notarization ticket validation",
       "xcrun",
@@ -609,6 +702,9 @@ async function main(args = process.argv.slice(2)) {
     );
     if (report.artifacts?.dmg.sha256) {
       process.stdout.write(`DMG SHA-256 ${report.artifacts.dmg.sha256}\n`);
+    }
+    if (report.artifacts?.updater.archive.sha256) {
+      process.stdout.write(`Updater SHA-256 ${report.artifacts.updater.archive.sha256}\n`);
     }
     for (const error of report.errors) process.stderr.write(`- ${error}\n`);
   }

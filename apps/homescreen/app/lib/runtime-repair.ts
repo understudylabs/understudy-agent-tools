@@ -73,6 +73,15 @@ export function promptForRuntimeRequest(request: RuntimeRepairRequest): RepairPr
 }
 
 export function promptForHealth(health: DesktopHealth): RepairPrompt | null {
+  if (health.desktop.update_available === true) {
+    return {
+      runtime: "desktop",
+      title: "Understudy Desktop update available",
+      reason: `${health.desktop.installed_version ?? "installed"} → ${health.desktop.latest_version ?? "latest"}`,
+      command: DESKTOP_DOWNLOAD_URL,
+      actionLabel: "Install update",
+    };
+  }
   if (!health.cli.available) {
     return {
       runtime: "cli",
@@ -116,20 +125,19 @@ export function promptForHealth(health: DesktopHealth): RepairPrompt | null {
         }
       : prompt;
   }
-  if (health.desktop.update_available === true) {
-    return {
-      runtime: "desktop",
-      title: "Understudy Desktop update available",
-      reason: `${health.desktop.installed_version ?? "installed"} → ${health.desktop.latest_version ?? "latest"}`,
-      command: DESKTOP_DOWNLOAD_URL,
-      actionLabel: "Open download",
-    };
-  }
   return null;
 }
 
 export function promptForRepairFailure(prompt: RepairPrompt, error: unknown): RepairPrompt {
   const detail = String(error);
+  if (prompt.runtime === "desktop") {
+    return {
+      ...prompt,
+      title: "Automatic update stopped",
+      reason: `${detail} You can still install the signed release manually.`,
+      actionLabel: "Open download",
+    };
+  }
   if (prompt.runtime === "cli") {
     return {
       runtime: "desktop",
@@ -146,7 +154,7 @@ export function promptForRepairFailure(prompt: RepairPrompt, error: unknown): Re
 }
 
 export function repairPromptMeta(prompt: RepairPrompt): string {
-  if (prompt.runtime === "desktop") return "Latest Desktop release";
+  if (prompt.runtime === "desktop") return "Signed Tauri update";
   if (prompt.runtime === "cli") return "Included with Understudy Desktop";
   return prompt.command;
 }
