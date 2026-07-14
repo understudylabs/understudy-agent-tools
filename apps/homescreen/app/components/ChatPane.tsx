@@ -893,6 +893,10 @@ export function ChatPane({
       onHistoryChanged?.();
     } catch (error) {
       setNotice(`Saved chat could not be opened: ${String(error)}`);
+    } finally {
+      // A missing or damaged saved session must not permanently disable
+      // persistence for whatever conversation the user starts next.
+      setSessionHydrated(true);
     }
   };
 

@@ -327,6 +327,10 @@ test("desktop starts fresh on launch and can reopen an exact Pi session", async 
   assert.match(chat, /activeChatSessionId = saved\.session_id/);
   assert.match(
     chat,
+    /const restoreHistorySession = async[\s\S]*?finally \{[\s\S]*?setSessionHydrated\(true\);/,
+  );
+  assert.match(
+    chat,
     /const resetDroppedWorkload = \(\) => \{[\s\S]*dropRequestGeneration\.current \+= 1;[\s\S]*dropInFlight\.current = false;[\s\S]*setDropRunning\(false\);/,
   );
   assert.equal(chat.match(/resetDroppedWorkload\(\);/g)?.length, 2);
