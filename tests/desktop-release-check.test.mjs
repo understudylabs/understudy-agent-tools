@@ -57,28 +57,28 @@ test("desktop release source drift fails closed with every version named", () =>
 test("runtime releases require a newer distributed CLI sidecar", () => {
   assert.equal(
     runtimeCliAdvancementError({
-      runtime_version: "0.3.11",
-      cli_version: "0.6.7",
-      baseline_runtime_version: "0.3.10",
-      baseline_cli_version: "0.6.6",
+      runtime_version: "0.3.12",
+      cli_version: "0.6.8",
+      baseline_runtime_version: "0.3.11",
+      baseline_cli_version: "0.6.7",
     }),
     null,
   );
   assert.match(
     runtimeCliAdvancementError({
-      runtime_version: "0.3.11",
-      cli_version: "0.6.6",
-      baseline_runtime_version: "0.3.10",
-      baseline_cli_version: "0.6.6",
+      runtime_version: "0.3.12",
+      cli_version: "0.6.7",
+      baseline_runtime_version: "0.3.11",
+      baseline_cli_version: "0.6.7",
     }),
-    /CLI 0\.6\.6 did not advance/,
+    /CLI 0\.6\.7 did not advance/,
   );
   assert.equal(
     runtimeCliAdvancementError({
-      runtime_version: "0.3.10",
-      cli_version: "0.6.6",
-      baseline_runtime_version: "0.3.10",
-      baseline_cli_version: "0.6.6",
+      runtime_version: "0.3.11",
+      cli_version: "0.6.7",
+      baseline_runtime_version: "0.3.11",
+      baseline_cli_version: "0.6.7",
     }),
     null,
   );
