@@ -44,6 +44,12 @@ uses semantic-ish versioning (minor = new skill or new capability, patch = fixes
 
 ### Fixed
 
+- **Desktop repair and the canonical runtime ship with the current CLI
+  contract.** Desktop/runtime 0.3.13 requires CLI 0.6.9, so a newly installed
+  app cannot repair itself back to the older 0.6.8 command surface that lacks
+  proof-scoped correction handoff, the GEPA spend fuse, and the portable
+  fail-closed grocery proof.
+
 - **CLI installs expose one honest staleness signal for the current command
   surface.** CLI and adapter manifests advance to 0.6.9 after the
   proof-scoped correction handoff, GEPA spend fuse, and portable fail-closed
