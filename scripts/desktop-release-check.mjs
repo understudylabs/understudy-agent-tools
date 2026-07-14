@@ -2,7 +2,8 @@
 
 import { createHash } from "node:crypto";
 import { execFileSync } from "node:child_process";
-import { createReadStream, existsSync, readFileSync } from "node:fs";
+import { createReadStream, existsSync, mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { fileURLToPath } from "node:url";
 import { dirname, join, resolve } from "node:path";
 
@@ -13,10 +14,11 @@ function readJson(path) {
   return JSON.parse(readFileSync(path, "utf8"));
 }
 
-function capture(command, args, cwd) {
+function capture(command, args, cwd, env = process.env) {
   return execFileSync(command, args, {
     cwd,
     encoding: "utf8",
+    env,
     stdio: ["ignore", "pipe", "pipe"],
   }).trim();
 }
@@ -84,6 +86,7 @@ export function inspectDesktopVersions(root = repositoryRoot) {
   const bootstrap = readFileSync(join(tauri, "src", "bootstrap.rs"), "utf8");
   const tauriConfig = readJson(join(tauri, "tauri.conf.json"));
   const macTauriConfig = readJson(join(tauri, "tauri.macos.conf.json"));
+  const entitlementsPath = join(tauri, "Entitlements.plist");
   const minimumCli = firstMatch(
     bootstrap,
     /MIN_UNDERSTUDY_CLI_VERSION:\s*&str\s*=\s*"([^"]+)"/,
@@ -108,6 +111,20 @@ export function inspectDesktopVersions(root = repositoryRoot) {
     errors.push(
       "Desktop bundle must map self-contained CLI resources to understudy-cli-resources/",
     );
+  }
+  if (macTauriConfig.bundle?.macOS?.entitlements !== "Entitlements.plist") {
+    errors.push("Desktop bundle must apply Entitlements.plist to its signed Node sidecar");
+  }
+  try {
+    const entitlements = readFileSync(entitlementsPath, "utf8");
+    if (
+      !entitlements.includes("com.apple.security.cs.allow-jit") ||
+      !/<true\s*\/>/.test(entitlements)
+    ) {
+      errors.push("Desktop entitlements must allow JIT for the signed Node/V8 runtime");
+    }
+  } catch (error) {
+    errors.push(`could not read Desktop entitlements: ${error.message}`);
   }
   if (!String(tauriConfig.build?.beforeBuildCommand ?? "").includes("build-desktop-cli.mjs")) {
     errors.push("Desktop beforeBuildCommand must prepare the self-contained CLI bundle");
@@ -338,6 +355,7 @@ export async function inspectDesktopRelease({
           ),
           exists: false,
           version: null,
+          sha256: null,
           resources: null,
         },
       }
@@ -381,16 +399,37 @@ export async function inspectDesktopRelease({
       } else if (!existsSync(artifactState.cli.node)) {
         errors.push(`bundled Node runtime is missing: ${artifactState.cli.node}`);
       } else {
+        const runtimeHome = mkdtempSync(join(tmpdir(), "understudy-signed-cli-smoke-"));
+        const bundledEnvironment = {
+          ...process.env,
+          HOME: process.env.HOME ?? runtimeHome,
+          PATH: "/usr/bin:/bin",
+          UNDERSTUDY_PACKAGE_ROOT: artifactState.cli.resource_root,
+          UNDERSTUDY_CONVERSATION_RUNTIME_HOME: runtimeHome,
+          UNDERSTUDY_RUNTIME_TOOL_TOKEN: "desktop-signed-smoke-token-000000000000",
+          UNDERSTUDY_TELEMETRY: "0",
+        };
         try {
+          artifactState.cli.sha256 = await sha256(artifactState.cli.node);
+          const nodeEntitlements = capture(
+            "codesign",
+            ["-d", "--entitlements", ":-", artifactState.cli.node],
+            root,
+          );
+          if (!nodeEntitlements.includes("com.apple.security.cs.allow-jit")) {
+            errors.push("signed bundled Node is missing the allow-jit entitlement");
+          }
           artifactState.cli.node_version = capture(
             artifactState.cli.node,
             ["--version"],
             root,
+            bundledEnvironment,
           );
           artifactState.cli.version = capture(
             artifactState.cli.node,
             [artifactState.cli.path, "--version"],
             root,
+            bundledEnvironment,
           );
           if (artifactState.cli.version !== versionState.compatibility.cli_package) {
             errors.push(
@@ -398,8 +437,42 @@ export async function inspectDesktopRelease({
                 versionState.compatibility.cli_package,
             );
           }
+          const started = JSON.parse(
+            capture(
+              artifactState.cli.node,
+              [artifactState.cli.path, "runtime", "start", "--json"],
+              root,
+              bundledEnvironment,
+            ),
+          );
+          if (!started.installed || !started.running || !started.healthy) {
+            errors.push(`signed bundled runtime did not become healthy: ${JSON.stringify(started)}`);
+          }
+          const doctor = JSON.parse(
+            capture(
+              artifactState.cli.node,
+              [artifactState.cli.path, "runtime", "doctor", "--json"],
+              root,
+              bundledEnvironment,
+            ),
+          );
+          if (!doctor.ok) {
+            errors.push(`signed bundled runtime doctor failed: ${JSON.stringify(doctor)}`);
+          }
         } catch (error) {
           errors.push(`bundled Desktop CLI failed to start: ${error.message}`);
+        } finally {
+          try {
+            capture(
+              artifactState.cli.node,
+              [artifactState.cli.path, "runtime", "stop", "--json"],
+              root,
+              bundledEnvironment,
+            );
+          } catch {
+            // Best-effort cleanup after a failed runtime assertion.
+          }
+          rmSync(runtimeHome, { recursive: true, force: true });
         }
       }
       if (!existsSync(artifactState.cli.resources)) {
@@ -419,11 +492,8 @@ export async function inspectDesktopRelease({
                 `manifest ${manifest.node_version ?? "missing"}`,
             );
           }
-          if (existsSync(artifactState.cli.node)) {
-            const nodeHash = await sha256(artifactState.cli.node);
-            if (nodeHash !== manifest.node_sha256) {
-              errors.push("bundled Node checksum does not match its manifest");
-            }
+          if (!/^[a-f0-9]{64}$/.test(String(manifest.node_sha256 ?? ""))) {
+            errors.push("bundled CLI manifest is missing the unsigned Node provenance hash");
           }
           if (existsSync(artifactState.cli.path)) {
             const cliHash = await sha256(artifactState.cli.path);
