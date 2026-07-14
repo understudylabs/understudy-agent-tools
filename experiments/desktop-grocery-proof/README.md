@@ -30,6 +30,21 @@ node experiments/desktop-grocery-proof/run.mjs \
   --teacher-slot 5
 ```
 
+Prompt or policy optimization uses a separate 18-task development slice,
+never the promotion proof:
+
+```sh
+node experiments/desktop-grocery-proof/run.mjs \
+  --suite development \
+  --student-slot 9 \
+  --teacher-slot 5
+```
+
+The development suite is tagged `data_split: development` and can produce
+training-eligible proof corrections. The promotion suite is tagged
+`data_split: holdout`; the proof-scoped exporter refuses to treat it as
+training data.
+
 The buyer report summarizes a promotion run at the three workflow-cluster
 level and keeps all 30 task decisions in a collapsed audit. It remains
 synthetic qualification evidence, not a production replacement claim.
@@ -74,6 +89,23 @@ Evidence is written owner-only beneath
 `~/.understudy/proofs/grocery-marketplace/<proof-id>/`: frozen tasks, one
 canonical event JSONL per run, scored results JSONL, and a summary. Every row
 retains the exact `run_id` and frozen suite SHA-256.
+
+After a run, prepare proof-scoped correction evidence through the authenticated
+Desktop API:
+
+```sh
+understudy desktop supervision prepare-proof --proof <proof-directory> --json
+```
+
+The command fails closed unless every proof intervention matches exactly one
+canonical correction pair by run, capture, session, and marker identity.
+Promotion proofs are always marked `holdout` and cannot become GEPA training
+rows. Deterministic exact-output scoring remains explicitly non-human; actual
+human feedback is preserved separately when present. A development proof with
+at least two eligible interventions also produces a local GEPA handoff. It uses
+the small-model partial, supervisor reason, and teacher attempt as inputs and
+the frozen expected JSON as the target, with a hash-stable 75/25 train/dev
+split. This prepares optimizer evidence only; it does not call a provider.
 
 Each run also writes a self-contained `report.html` plus its structured
 `report.json` model. The report leads with a bounded route recommendation,

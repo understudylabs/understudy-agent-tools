@@ -14,6 +14,7 @@ const here = dirname(fileURLToPath(import.meta.url));
 
 const suiteFiles = {
   smoke: "tasks.json",
+  development: "tasks.development.json",
   promotion: "tasks.promotion.json",
 };
 
@@ -601,6 +602,11 @@ export async function runProof(options = parseArgs(process.argv.slice(2))) {
     api_version: capabilities.api_version,
     event_schema: capabilities.event_schema,
     suite_id: suite,
+    data_split: suite === "promotion"
+      ? "holdout"
+      : suite === "development"
+        ? "development"
+        : "smoke",
     task_count: tasks.length,
     run_count: rows.length,
     slots: { student: options.studentSlot, teacher: options.teacherSlot },

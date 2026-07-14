@@ -43,6 +43,10 @@ import {
   runDesktopToolProof,
   type ToolProofCandidate,
 } from "../desktop/tool-proof.js";
+import {
+  prepareProofCorrectionEvidence,
+  prepareProofCorrectionGepaHandoff,
+} from "../desktop/proof-corrections.js";
 
 interface RuntimeEvent {
   run_id?: string;
@@ -1084,6 +1088,132 @@ export function registerDesktopCommand(program: Command): void {
           `pairs: ${outputPath} (${pairWrite})`,
           `metrics: ${metricsPath} (${metricsWrite})`,
           `evidence omitted: ${evidenceWindow.incomplete_interventions + evidenceWindow.truncated_interventions + evidenceWindow.invalid_journals + evidenceWindow.missing_journals + evidenceWindow.truncated_journals}`,
+          "upload performed: false",
+        ].join("\n"),
+      );
+    });
+
+  supervision
+    .command("prepare-proof")
+    .description(
+      "Join one immutable proof to canonical correction pairs with explicit judgment provenance.",
+    )
+    .requiredOption("--proof <path>", "Immutable proof directory containing summary, results, and tasks")
+    .option("--output <path>", "Proof-scoped correction evidence JSONL path")
+    .option("--manifest-output <path>", "Proof-scoped correction manifest JSON path")
+    .option("--gepa-samples-output <path>", "Owner-only GEPA correction samples JSON path")
+    .option("--gepa-handoff-output <path>", "Owner-only GEPA handoff manifest JSON path")
+    .option("--json", "Output artifact metadata as JSON")
+    .action(async function (this: Command, opts: {
+      proof: string;
+      output?: string;
+      manifestOutput?: string;
+      gepaSamplesOutput?: string;
+      gepaHandoffOutput?: string;
+      json?: boolean;
+    }) {
+      const capability = await requireDesktopApi();
+      const response = await desktopApiFetch(capability, "/v1/supervision/corrections");
+      if (!response.ok) throw await responseError(response);
+      const packet = await response.json() as SupervisionExportPacket;
+      if (packet.schema_version !== "understudy.supervision.export_packet.v1") {
+        throw new Error(`unsupported supervision export schema: ${String(packet.schema_version)}`);
+      }
+      if (!Array.isArray(packet.correction_pairs)) {
+        throw new Error("desktop returned an incomplete supervision export packet");
+      }
+      for (const [index, row] of packet.correction_pairs.entries()) {
+        validateCorrectionPair(row, index);
+      }
+      const prepared = prepareProofCorrectionEvidence(opts.proof, packet.correction_pairs);
+      const gepa = prepareProofCorrectionGepaHandoff(prepared);
+      const safeProofId = prepared.manifest.source.proof_id.replaceAll(/[^a-zA-Z0-9._-]/g, "-");
+      const outputRoot = join(
+        homedir(),
+        ".understudy",
+        "exports",
+        "supervision",
+        "proofs",
+        safeProofId,
+      );
+      const outputPath = opts.output
+        ? resolve(opts.output)
+        : join(outputRoot, `${prepared.evidence_sha256}.proof-corrections.jsonl`);
+      const manifestSha256 = sha256(prepared.manifest_json);
+      const manifestPath = opts.manifestOutput
+        ? resolve(opts.manifestOutput)
+        : join(outputRoot, `${manifestSha256}.manifest.json`);
+      const gepaSamplesPath = opts.gepaSamplesOutput
+        ? resolve(opts.gepaSamplesOutput)
+        : join(outputRoot, `${gepa.samples_sha256}.gepa-samples.json`);
+      const gepaHandoffSha256 = sha256(gepa.handoff_json);
+      const gepaHandoffPath = opts.gepaHandoffOutput
+        ? resolve(opts.gepaHandoffOutput)
+        : join(outputRoot, `${gepaHandoffSha256}.gepa-handoff.json`);
+      const evidenceWrite = writeImmutableArtifact(outputPath, prepared.evidence_jsonl);
+      const manifestWrite = writeImmutableArtifact(manifestPath, prepared.manifest_json);
+      const gepaSamplesWrite = writeImmutableArtifact(gepaSamplesPath, gepa.samples_json);
+      const gepaHandoffWrite = writeImmutableArtifact(gepaHandoffPath, gepa.handoff_json);
+      const result = {
+        schema_version: "understudy.proof_correction_export_result.v1",
+        proof_id: prepared.manifest.source.proof_id,
+        suite_id: prepared.manifest.source.suite_id,
+        data_split: prepared.manifest.source.data_split,
+        correction_evidence: {
+          path: outputPath,
+          sha256: prepared.evidence_sha256,
+          row_count: prepared.rows.length,
+          write: evidenceWrite,
+        },
+        manifest: {
+          path: manifestPath,
+          sha256: manifestSha256,
+          write: manifestWrite,
+        },
+        judgments: {
+          human_reviewed: prepared.manifest.human_reviewed_count,
+          deterministic_only: prepared.manifest.deterministic_only_count,
+          deterministic_evaluator_is_human_label: false,
+        },
+        training: {
+          eligible_rows: prepared.manifest.training_eligible_count,
+          holdout_rows_are_training_eligible: false,
+          recommended_method: prepared.manifest.optimizer_boundary.recommended_method,
+          next_action: prepared.manifest.optimizer_boundary.next_action,
+        },
+        gepa_handoff: {
+          status: gepa.handoff.status,
+          reason: gepa.handoff.reason,
+          samples: {
+            path: gepaSamplesPath,
+            sha256: gepa.samples_sha256,
+            row_count: gepa.handoff.row_count,
+            train_count: gepa.handoff.train_count,
+            dev_count: gepa.handoff.dev_count,
+            write: gepaSamplesWrite,
+          },
+          manifest: {
+            path: gepaHandoffPath,
+            sha256: gepaHandoffSha256,
+            write: gepaHandoffWrite,
+          },
+          provider_calls_performed: false,
+        },
+        outcomes: prepared.manifest.outcomes,
+        upload_performed: false,
+      };
+      printStructured(
+        result,
+        jsonRequested(this, opts.json),
+        [
+          `proof: ${result.proof_id} (${result.data_split})`,
+          `correction evidence: ${prepared.rows.length}`,
+          `human reviewed: ${prepared.manifest.human_reviewed_count}`,
+          `training eligible: ${prepared.manifest.training_eligible_count}`,
+          `evidence: ${outputPath} (${evidenceWrite})`,
+          `manifest: ${manifestPath} (${manifestWrite})`,
+          `GEPA handoff: ${gepa.handoff.status} (${gepa.handoff.train_count} train / ${gepa.handoff.dev_count} dev)`,
+          `next: ${prepared.manifest.optimizer_boundary.next_action}`,
           "upload performed: false",
         ].join("\n"),
       );

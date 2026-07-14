@@ -482,6 +482,7 @@ understudy desktop supervisor-feedback --session my-task --run-id my-task-1 \
 understudy desktop supervisor-feedback --session my-task --run-id my-task-1 \
   --marker my-task-1:verdict:0 --stage stop --correct-action interrupt
 understudy desktop supervision export --reviewed-only --json
+understudy desktop supervision prepare-proof --proof ~/.understudy/proofs/<proof-id> --json
 understudy desktop tool-proof run --suite core \
   --candidate local-main:7 --candidate local-fast:6 --repetitions 1
 understudy desktop tool-proof list --json
@@ -507,6 +508,17 @@ missing or estimated usage is counted as excluded rather than treated as zero.
 The export also reports incomplete interventions and any journal or intervention
 rows omitted by its bounded recent-evidence window, so aggregates are never
 presented as all-time metrics when the safety cap was reached.
+`supervision prepare-proof` joins only exact proof/run/session/marker identities
+to those canonical pairs. It records deterministic structured-output scores
+separately from human judgment, keeps promotion and smoke proofs
+evaluation-only, and emits training-eligible rows only for a separately
+declared train or development split. The content-addressed JSONL and manifest
+remain owner-only and local; the command performs no upload. When at least two
+eligible rows exist, the same command also prepares an owner-only DSPy/GEPA
+handoff with a deterministic 75/25 train/dev split. Its inputs preserve the
+small-model partial, supervisor reason, and failed teacher attempt; its target
+is the frozen expected JSON. The handoff is preparation only: it performs no
+provider call and never admits promotion or smoke rows.
 The strict tool proof is also local-only: Pi runs each selected model serially,
 the CLI restores the previous residency set in a `finally` path, and promotion
 requires the frozen 30-task suite repeated three times with complete owner-only

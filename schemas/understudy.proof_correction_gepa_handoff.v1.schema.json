@@ -1,0 +1,54 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.understudylabs.com/understudy.proof_correction_gepa_handoff.v1.schema.json",
+  "title": "Understudy proof correction GEPA handoff v1",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "source",
+    "evidence_sha256",
+    "status",
+    "reason",
+    "row_count",
+    "train_count",
+    "dev_count",
+    "excluded_count",
+    "split_strategy",
+    "input_keys",
+    "output_keys",
+    "recommended_adapter",
+    "command_template",
+    "files",
+    "provider_calls_performed",
+    "upload_performed"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": { "const": "understudy.proof_correction_gepa_handoff.v1" },
+    "source": { "type": "object" },
+    "evidence_sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+    "status": { "enum": ["ready", "blocked"] },
+    "reason": { "type": ["string", "null"] },
+    "row_count": { "type": "integer", "minimum": 0 },
+    "train_count": { "type": "integer", "minimum": 0 },
+    "dev_count": { "type": "integer", "minimum": 0 },
+    "excluded_count": { "type": "integer", "minimum": 0 },
+    "split_strategy": { "const": "sha256_stratified_75_25_v1" },
+    "input_keys": {
+      "const": ["workflow", "prompt", "student_partial", "supervisor_reason", "teacher_attempt"]
+    },
+    "output_keys": { "const": ["answer_json"] },
+    "recommended_adapter": { "const": "dspy-gepa" },
+    "command_template": { "type": "string", "minLength": 1 },
+    "files": {
+      "type": "object",
+      "required": ["samples_sha256"],
+      "additionalProperties": false,
+      "properties": {
+        "samples_sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" }
+      }
+    },
+    "provider_calls_performed": { "const": false },
+    "upload_performed": { "const": false }
+  }
+}
