@@ -21,8 +21,6 @@ import {
   responseError,
 } from "../internal/desktop-api.js";
 import {
-  DEFAULT_DESKTOP_CONFORMANCE_EVIDENCE,
-  DEFAULT_DESKTOP_READINESS_EVIDENCE,
   evaluateDesktopRuntimeReleaseEvidence,
 } from "../runtime/conversation/release-gate.js";
 import { validateRuntimeTrace } from "../runtime/conversation/contract.js";
@@ -643,13 +641,11 @@ export function registerDesktopCommand(program: Command): void {
     .option("--limit <n>", "Most-recent canonical/fallback rows to inspect", positiveInteger, 250)
     .option(
       "--conformance-evidence <path>",
-      "Private executable Pi conformance report",
-      DEFAULT_DESKTOP_CONFORMANCE_EVIDENCE,
+      "Private executable Pi report (default: version-bound runtime evidence path)",
     )
     .option(
       "--readiness-evidence <path>",
-      "Private desktop startup and memory readiness report",
-      DEFAULT_DESKTOP_READINESS_EVIDENCE,
+      "Private startup/memory report (default: version-bound app evidence path)",
     )
     .option("--require-ready", "Exit non-zero until cohort and release evidence are ready")
     .option("--json", "Output JSON")
@@ -657,8 +653,8 @@ export function registerDesktopCommand(program: Command): void {
       this: Command,
       opts: {
         limit: number;
-        conformanceEvidence: string;
-        readinessEvidence: string;
+        conformanceEvidence?: string;
+        readinessEvidence?: string;
         requireReady?: boolean;
         json?: boolean;
       },
