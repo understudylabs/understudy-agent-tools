@@ -63,6 +63,9 @@ export function registerOptimizeWorkloadCommand(program: Command): void {
     .option("--train-split <value>", "Train split value", "train")
     .option("--dev-split <value>", "Dev split value", "dev")
     .option("--max-tokens <number>", "Per-call max token cap", "256")
+    .option("--budget-usd <amount>", "Required spend cap under the supplied DSPy token-price basis")
+    .option("--input-usd-per-million <amount>", "Required input-token price basis for DSPy GEPA")
+    .option("--output-usd-per-million <amount>", "Required output-token price basis for DSPy GEPA")
     .option("--score-objective <name>", "exact_match, tool_call, or mixed", "exact_match")
     .option("--reflection-minibatch-size <number>", "GEPA reflection minibatch size", "1")
     .option("--execute", "After explicit approval, create a uv env and run the adapter")
@@ -81,6 +84,9 @@ export function registerOptimizeWorkloadCommand(program: Command): void {
         trainSplit?: string;
         devSplit?: string;
         maxTokens?: string;
+        budgetUsd?: string;
+        inputUsdPerMillion?: string;
+        outputUsdPerMillion?: string;
         scoreObjective?: string;
         reflectionMinibatchSize?: string;
         execute?: boolean;

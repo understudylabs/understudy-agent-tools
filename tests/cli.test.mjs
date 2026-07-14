@@ -9,6 +9,7 @@ import { describe, it } from "node:test";
 
 const cli = ["node", resolve("dist/bin.js")];
 const uvAvailable = spawnSync("uv", ["--version"], { encoding: "utf8" }).status === 0;
+const pythonAvailable = spawnSync("python3", ["--version"], { encoding: "utf8" }).status === 0;
 
 // Ambient Understudy credentials (a developer's shell, a CI secret) must not
 // leak into spawned CLIs — fixtures provide their own.
@@ -932,6 +933,380 @@ describe("understudy CLI", () => {
       assert.equal(payload.status, "blocked");
       assert.equal(payload.provider_calls, false);
       assert.equal(payload.optimizer_execution, false);
+    }));
+
+  it("requires a hard budget and price basis before resolving live DSPy auth", () =>
+    withOptimizerFixtureRepo(({ repo, samplesPath }) => {
+      const result = run([
+        "optimize-workload",
+        "adapter",
+        "run",
+        "--repo",
+        repo,
+        "--adapter",
+        "dspy-gepa",
+        "--samples",
+        samplesPath,
+        "--input-keys",
+        "question",
+        "--output-keys",
+        "answer",
+        "--model",
+        "synthetic-deployment",
+        "--execute",
+      ]);
+      assert.notEqual(result.status, 0);
+      assert.match(result.stderr, /--budget-usd is required/);
+      assert.doesNotMatch(result.stderr, /login|gateway|api key|uv run/i);
+    }));
+
+  it("rejects a zero DSPy price basis before auth or provider execution", () =>
+    withOptimizerFixtureRepo(({ repo, samplesPath }) => {
+      const result = run([
+        "optimize-workload",
+        "adapter",
+        "run",
+        "--repo",
+        repo,
+        "--adapter",
+        "dspy-gepa",
+        "--samples",
+        samplesPath,
+        "--input-keys",
+        "question",
+        "--output-keys",
+        "answer",
+        "--model",
+        "synthetic-deployment",
+        "--budget-usd",
+        "1",
+        "--input-usd-per-million",
+        "0",
+        "--output-usd-per-million",
+        "0",
+        "--execute",
+      ]);
+      assert.notEqual(result.status, 0);
+      assert.match(result.stderr, /non-zero input or output price basis/);
+      assert.doesNotMatch(result.stderr, /login|gateway|api key|uv run/i);
+    }));
+
+  it("preflights cumulative DSPy reservations without importing DSPy or calling a provider", { skip: !pythonAvailable }, () =>
+    withOptimizerFixtureRepo(({ repo, samplesPath }) => {
+      const scaffold = run([
+        "optimize-workload",
+        "adapter",
+        "run",
+        "--repo",
+        repo,
+        "--adapter",
+        "dspy-gepa",
+        "--samples",
+        samplesPath,
+        "--input-keys",
+        "question",
+        "--output-keys",
+        "answer",
+        "--model",
+        "synthetic-deployment",
+      ]);
+      assert.equal(scaffold.status, 1);
+      const runtime = join(repo, ".understudy", "optimize-workload", "uv-runtime", "optimizer_runtime.py");
+      const common = [
+        runtime,
+        "budget-preflight",
+        "--message-bytes",
+        "1000",
+        "--message-count",
+        "1",
+        "--max-tokens",
+        "256",
+        "--input-usd-per-million",
+        "1",
+        "--output-usd-per-million",
+        "2",
+      ];
+      const allowed = spawnSync("python3", [...common, "--call-count", "1", "--budget-usd", "0.01"], {
+        encoding: "utf8",
+      });
+      assert.equal(allowed.status, 0, allowed.stderr);
+      const allowedPayload = JSON.parse(allowed.stdout);
+      assert.equal(allowedPayload.allowed, true);
+      assert.equal(allowedPayload.provider_calls, false);
+      assert.equal(allowedPayload.input_token_ceiling, 5160);
+      assert.equal(allowedPayload.simulated_reservation_count, 1);
+      assert.equal(allowedPayload.price_basis.scope, "token-price-attribution-not-provider-invoice");
+
+      const blocked = spawnSync("python3", [...common, "--call-count", "2", "--budget-usd", "0.01"], {
+        encoding: "utf8",
+      });
+      assert.equal(blocked.status, 4, blocked.stderr);
+      const blockedPayload = JSON.parse(blocked.stdout);
+      assert.equal(blockedPayload.allowed, false);
+      assert.equal(blockedPayload.status, "budget-blocked");
+      assert.equal(blockedPayload.provider_calls, false);
+      assert.equal(blockedPayload.requested_call_count, 2);
+      assert.equal(blockedPayload.simulated_reservation_count, 1);
+      assert.ok(blockedPayload.reserved_upper_bound_usd <= blockedPayload.approved_budget_usd);
+    }));
+
+  it("blocks before the first DSPy provider call and persists terminal spend evidence", { skip: !pythonAvailable }, () =>
+    withOptimizerFixtureRepo(({ repo, samplesPath }) => {
+      const scaffold = run([
+        "optimize-workload",
+        "adapter",
+        "run",
+        "--repo",
+        repo,
+        "--adapter",
+        "dspy-gepa",
+        "--samples",
+        samplesPath,
+        "--input-keys",
+        "question",
+        "--output-keys",
+        "answer",
+        "--model",
+        "synthetic-deployment",
+      ]);
+      assert.equal(scaffold.status, 1);
+      const runtime = join(repo, ".understudy", "optimize-workload", "uv-runtime", "optimizer_runtime.py");
+      const stubDir = join(repo, "python-stubs");
+      const sentinel = join(repo, "provider-was-called");
+      mkdirSync(stubDir, { recursive: true });
+      writeFileSync(join(stubDir, "dspy.py"), `
+import os
+
+configured_lm = None
+
+def configure(lm):
+    global configured_lm
+    configured_lm = lm
+
+class LM:
+    def __init__(self, model, max_tokens=None, **kwargs):
+        self.model = model
+        self.kwargs = {"max_tokens": max_tokens}
+    def __call__(self, prompt=None, messages=None, **kwargs):
+        return self.forward(prompt=prompt, messages=messages, **kwargs)
+    def forward(self, prompt=None, messages=None, **kwargs):
+        with open(os.environ["PROVIDER_SENTINEL"], "w", encoding="utf-8") as handle:
+            handle.write("called")
+        raise AssertionError("provider boundary reached")
+
+class Signature:
+    def __init__(self, value):
+        self.value = value
+
+class Example:
+    def __init__(self, **kwargs):
+        self.__dict__.update(kwargs)
+    def with_inputs(self, *keys):
+        return self
+
+class Predict:
+    def __init__(self, signature):
+        self.signature = signature
+    def __call__(self, **kwargs):
+        return configured_lm(prompt=str(kwargs))
+
+class ChainOfThought(Predict):
+    pass
+`, "utf8");
+      const result = spawnSync("python3", [
+        runtime,
+        "dspy-gepa",
+        "--repo",
+        repo,
+        "--samples",
+        samplesPath,
+        "--input-keys",
+        "question",
+        "--output-keys",
+        "answer",
+        "--model",
+        "synthetic-deployment",
+        "--max-tokens",
+        "256",
+        "--budget-usd",
+        "0.000001",
+        "--input-usd-per-million",
+        "1",
+        "--output-usd-per-million",
+        "2",
+      ], {
+        encoding: "utf8",
+        env: {
+          ...baseEnv,
+          PYTHONPATH: stubDir,
+          PROVIDER_SENTINEL: sentinel,
+          UNDERSTUDY_API_KEY: "fixture-key",
+          UNDERSTUDY_GATEWAY_URL: "http://127.0.0.1:9",
+        },
+      });
+      assert.equal(result.status, 4, result.stderr);
+      assert.equal(existsSync(sentinel), false);
+      const payload = JSON.parse(result.stdout);
+      assert.equal(payload.status, "budget-blocked");
+      assert.equal(payload.reason, "next-call-reservation-exceeds-budget");
+      assert.equal(payload.provider_calls, false);
+      assert.equal(payload.spend_evidence.calls_attempted, 0);
+      assert.equal(payload.spend_evidence.reserved_upper_bound_usd, 0);
+
+      const runStatePath = join(repo, ".understudy", "optimize-workload", "dspy-gepa", "run-state.json");
+      const runState = JSON.parse(readFileSync(runStatePath, "utf8"));
+      assert.equal(runState.status, "budget-blocked");
+      assert.equal(runState.provider_calls, false);
+      assert.equal(statSync(runStatePath).mode & 0o777, 0o600);
+    }));
+
+  it("shares one metered ledger across DSPy LM copies and disables retries", { skip: !pythonAvailable }, () =>
+    withOptimizerFixtureRepo(({ repo, samplesPath }) => {
+      const scaffold = run([
+        "optimize-workload",
+        "adapter",
+        "run",
+        "--repo",
+        repo,
+        "--adapter",
+        "dspy-gepa",
+        "--samples",
+        samplesPath,
+        "--input-keys",
+        "question",
+        "--output-keys",
+        "answer",
+        "--model",
+        "synthetic-deployment",
+      ]);
+      assert.equal(scaffold.status, 1);
+      const runtime = join(repo, ".understudy", "optimize-workload", "uv-runtime", "optimizer_runtime.py");
+      const stubRoot = join(repo, "metered-python-stubs");
+      const dspyRoot = join(stubRoot, "dspy");
+      const gepaRoot = join(dspyRoot, "teleprompt", "gepa");
+      const sentinel = join(repo, "provider-call-count");
+      mkdirSync(gepaRoot, { recursive: true });
+      writeFileSync(join(dspyRoot, "__init__.py"), `
+import copy
+import os
+from types import SimpleNamespace
+
+configured_lm = None
+
+def configure(lm):
+    global configured_lm
+    configured_lm = lm
+
+class LM:
+    def __init__(self, model, max_tokens=None, num_retries=3, **kwargs):
+        self.model = model
+        self.kwargs = {"max_tokens": max_tokens}
+        self.num_retries = num_retries
+    def __call__(self, prompt=None, messages=None, **kwargs):
+        return self.forward(prompt=prompt, messages=messages, **kwargs)
+    def forward(self, prompt=None, messages=None, **kwargs):
+        if self.num_retries != 0:
+            raise AssertionError("retries were not disabled")
+        with open(os.environ["PROVIDER_SENTINEL"], "a", encoding="utf-8") as handle:
+            handle.write("called\\n")
+        return SimpleNamespace(usage={"prompt_tokens": 10, "completion_tokens": 5})
+
+class Signature:
+    def __init__(self, value):
+        self.value = value
+
+class Example:
+    def __init__(self, **kwargs):
+        self.__dict__.update(kwargs)
+    def with_inputs(self, *keys):
+        return self
+
+class Predict:
+    def __init__(self, signature):
+        self.signature = signature
+    def __call__(self, **kwargs):
+        configured_lm.forward(prompt=str(kwargs))
+        return SimpleNamespace(answer="a1")
+
+class ChainOfThought(Predict):
+    pass
+
+class GEPA:
+    def __init__(self, reflection_lm=None, **kwargs):
+        self.reflection_lm = reflection_lm
+    def compile(self, student, trainset=None, valset=None):
+        copied = copy.deepcopy(self.reflection_lm)
+        copied.forward(prompt="reflection")
+        return student
+`, "utf8");
+      writeFileSync(join(dspyRoot, "teleprompt", "__init__.py"), "", "utf8");
+      writeFileSync(join(gepaRoot, "__init__.py"), "", "utf8");
+      writeFileSync(join(gepaRoot, "gepa_utils.py"), `
+class ScoreWithFeedback:
+    def __init__(self, score, feedback):
+        self.score = score
+        self.feedback = feedback
+`, "utf8");
+      const result = spawnSync("python3", [
+        runtime,
+        "dspy-gepa",
+        "--repo",
+        repo,
+        "--samples",
+        samplesPath,
+        "--input-keys",
+        "question",
+        "--output-keys",
+        "answer",
+        "--model",
+        "synthetic-deployment",
+        "--max-metric-calls",
+        "2",
+        "--max-tokens",
+        "256",
+        "--budget-usd",
+        "0.02",
+        "--input-usd-per-million",
+        "1",
+        "--output-usd-per-million",
+        "2",
+      ], {
+        encoding: "utf8",
+        env: {
+          ...baseEnv,
+          PYTHONPATH: stubRoot,
+          PROVIDER_SENTINEL: sentinel,
+          UNDERSTUDY_API_KEY: "fixture-key",
+          UNDERSTUDY_GATEWAY_URL: "http://127.0.0.1:9",
+          UNDERSTUDY_AUTH_SOURCE: "fixture",
+        },
+      });
+      assert.equal(result.status, 0, result.stderr);
+      assert.equal(readFileSync(sentinel, "utf8").trim().split("\n").length, 2);
+      const payload = JSON.parse(result.stdout);
+      assert.equal(payload.status, "candidate-created");
+      assert.equal(payload.provider_calls, true);
+      assert.equal(payload.spend_evidence.calls_attempted, 2);
+      assert.equal(payload.spend_evidence.calls_completed, 2);
+      assert.equal(payload.spend_evidence.usage_complete, true);
+      assert.equal(payload.spend_evidence.client_num_retries, 0);
+      assert.equal(payload.spend_evidence.provider_invoice_verified, false);
+      assert.equal(payload.spend_evidence.attributed_cost_usd, 0.00004);
+      assert.equal(payload.spend_evidence.entries.length, 2);
+      assert.ok(
+        payload.spend_evidence.attributed_cost_usd
+          < payload.spend_evidence.reserved_upper_bound_usd,
+      );
+
+      const candidatePath = join(repo, ".understudy", "optimize-workload", "candidate.json");
+      const proofPath = join(repo, ".understudy", "optimize-workload", "proof-packet.json");
+      const runStatePath = join(repo, ".understudy", "optimize-workload", "dspy-gepa", "run-state.json");
+      for (const artifactPath of [candidatePath, proofPath, runStatePath]) {
+        assert.equal(statSync(artifactPath).mode & 0o777, 0o600);
+      }
+      const proof = JSON.parse(readFileSync(proofPath, "utf8"));
+      assert.equal(proof.holdout_accessed_during_optimization, false);
+      assert.equal(proof.spend_evidence.calls_completed, 2);
     }));
 
   it("blocks a registry optimizer adapter unless execution is explicit", () =>

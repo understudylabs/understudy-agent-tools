@@ -519,6 +519,14 @@ handoff with a deterministic 75/25 train/dev split. Its inputs preserve the
 small-model partial, supervisor reason, and failed teacher attempt; its target
 is the frozen expected JSON. The handoff is preparation only: it performs no
 provider call and never admits promotion or smoke rows.
+Executing the provider-backed DSPy adapter additionally requires an approved
+dollar cap and explicit input/output token prices. Before every request, the
+runtime reserves a conservative upper bound from the serialized input bytes and
+the configured output-token ceiling; it disables client-side retries and stops
+before a request whose reservation could exceed the cap. Candidate, proof, and terminal
+run-state artifacts record the cumulative reservation, metered token
+attribution, and user-supplied price basis. This is a fail-closed cap under that
+declared basis, not a claim about the provider's final invoice.
 The strict tool proof is also local-only: Pi runs each selected model serially,
 the CLI restores the previous residency set in a `finally` path, and promotion
 requires the frozen 30-task suite repeated three times with complete owner-only

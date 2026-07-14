@@ -561,7 +561,7 @@ export function prepareProofCorrectionGepaHandoff(
     input_keys: ["workflow", "prompt", "student_partial", "supervisor_reason", "teacher_attempt"],
     output_keys: ["answer_json"],
     recommended_adapter: "dspy-gepa",
-    command_template: "understudy optimize-workload adapter run --repo . --adapter dspy-gepa --samples <samples-path> --input-keys workflow,prompt,student_partial,supervisor_reason,teacher_attempt --output-keys answer_json --model <gateway-model> --max-metric-calls 24",
+    command_template: "understudy optimize-workload adapter run --repo . --adapter dspy-gepa --samples <samples-path> --input-keys workflow,prompt,student_partial,supervisor_reason,teacher_attempt --output-keys answer_json --model <gateway-model> --max-metric-calls 24 --budget-usd <approved-usd> --input-usd-per-million <input-price> --output-usd-per-million <output-price> --execute",
     files: { samples_sha256: samplesSha256 },
     provider_calls_performed: false,
     upload_performed: false,
