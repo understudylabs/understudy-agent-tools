@@ -1,11 +1,12 @@
 import assert from "node:assert/strict";
-import { readFileSync } from "node:fs";
+import { readFileSync, readdirSync } from "node:fs";
 import { test } from "node:test";
 
 const workflow = readFileSync(
   new URL("../.github/workflows/desktop-release.yml", import.meta.url),
   "utf8",
 );
+const workflowRoot = new URL("../.github/workflows/", import.meta.url);
 
 test("Desktop releases are main-only, serialized, and use pinned actions", () => {
   assert.match(workflow, /workflow_dispatch:/);
@@ -19,6 +20,17 @@ test("Desktop releases are main-only, serialized, and use pinned actions", () =>
   assert.doesNotMatch(workflow, /uses: [^\n]+@(v\d+|main|stable)\b/);
   const actionPins = [...workflow.matchAll(/uses: [^@\n]+@([0-9a-f]{40})/g)];
   assert.equal(actionPins.length, 4);
+});
+
+test("Every GitHub Action is pinned by a full commit SHA", () => {
+  const files = readdirSync(workflowRoot).filter((name) => /\.ya?ml$/.test(name));
+  assert.ok(files.length >= 2);
+  for (const name of files) {
+    const source = readFileSync(new URL(name, workflowRoot), "utf8");
+    for (const match of source.matchAll(/uses: ([^\s#]+)/g)) {
+      assert.match(match[1], /@[0-9a-f]{40}$/, `${name}: ${match[1]}`);
+    }
+  }
 });
 
 test("Desktop release automation keeps every trust gate before publication", () => {
