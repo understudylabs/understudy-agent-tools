@@ -133,7 +133,7 @@ export function RuntimeRepairPrompt() {
   }, [refreshHealth]);
 
   const repair = async () => {
-    if (!prompt || busy) return;
+    if (!prompt || busy || progress.status === "success") return;
     if (prompt.runtime === "desktop") {
       await openUrl(prompt.command);
       return;
@@ -272,7 +272,7 @@ export function RuntimeRepairPrompt() {
           : null
       }
       actionLabel={busy ? "Working…" : progress.status === "success" ? "Ready" : prompt.actionLabel}
-      actionDisabled={busy}
+      actionDisabled={busy || progress.status === "success"}
       onAction={() => void repair()}
       dismissLabel={busy ? "Repair in progress" : "Dismiss repair prompt"}
       dismissDisabled={busy}

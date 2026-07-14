@@ -234,6 +234,8 @@ test("desktop has one shared managed-operation notice surface", async () => {
   assert.match(prompt, /Updating the version-coupled conversation runtime/);
   assert.match(prompt, /Verifying the CLI and local runtimes/);
   assert.match(prompt, /elapsedSeconds/);
+  assert.match(prompt, /busy \|\| progress\.status === "success"/);
+  assert.match(prompt, /actionDisabled=\{busy \|\| progress\.status === "success"\}/);
   assert.match(downloadNotice, /"list_snapshot_downloads"/);
   assert.match(downloadNotice, /"cancel_snapshot_download"/);
   assert.match(downloadNotice, /"start_snapshot_download"/);
