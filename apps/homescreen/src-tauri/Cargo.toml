@@ -1,6 +1,6 @@
 [package]
 name = "understudy"
-version = "0.3.16"
+version = "0.3.17"
 description = "Understudy Desktop"
 authors = ["Understudy Labs"]
 edition = "2021"
@@ -34,3 +34,6 @@ base64 = "0.22"
 # Deterministic regex scoring for build-your-own evals; the -lite build keeps
 # the dependency footprint at a single crate.
 regex-lite = "0.1"
+
+[target.'cfg(any(target_os = "macos", windows, target_os = "linux"))'.dependencies]
+tauri-plugin-updater = "2.10.1"

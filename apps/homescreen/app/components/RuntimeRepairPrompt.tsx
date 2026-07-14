@@ -4,6 +4,7 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { invoke, isTauri } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { openUrl } from "@tauri-apps/plugin-opener";
+import { check, type DownloadEvent } from "@tauri-apps/plugin-updater";
 import { OperationNotice } from "./OperationNotice";
 import {
   CONVERSATION_RUNTIME_REPAIR_REQUEST,
@@ -144,15 +145,17 @@ export function RuntimeRepairPrompt() {
 
   const repair = async () => {
     if (!prompt || busy || progress.status === "success") return;
-    if (prompt.runtime === "desktop") {
+    if (prompt.runtime === "desktop" && progress.status === "error") {
       await openUrl(prompt.command);
       return;
     }
     const activePrompt = prompt;
-    const total = activePrompt.runtime === "cli" ? 4 : 2;
+    const total = activePrompt.runtime === "cli" ? 4 : activePrompt.runtime === "desktop" ? 1 : 2;
     const initialMessage =
       activePrompt.runtime === "cli"
         ? "Preparing the CLI bundled with Understudy Desktop…"
+        : activePrompt.runtime === "desktop"
+          ? "Checking the signed update…"
         : activePrompt.runtime === "conversation-runtime"
           ? "Updating the managed conversation runtime…"
           : "Repairing the local model runtime…";
@@ -165,7 +168,68 @@ export function RuntimeRepairPrompt() {
       startedAt: Date.now(),
     });
     try {
-      if (activePrompt.runtime === "cli") {
+      if (activePrompt.runtime === "desktop") {
+        const update = await check({ timeout: 10_000 });
+        if (!update) {
+          const health = await refreshHealth();
+          if (health && health.desktop.update_available !== true) {
+            setPrompt(promptForHealth(health));
+            setProgress(IDLE_PROGRESS);
+            return;
+          }
+          throw new Error("The release does not include a signed updater artifact yet.");
+        }
+
+        let downloaded = 0;
+        let contentLength = 0;
+        setProgress((current) => ({
+          ...current,
+          message: `Downloading Understudy ${update.version}…`,
+          detail: "Starting secure download",
+        }));
+        await update.downloadAndInstall((event: DownloadEvent) => {
+          if (event.event === "Started") {
+            contentLength = event.data.contentLength ?? 0;
+            setProgress((current) => ({
+              ...current,
+              message: `Downloading Understudy ${update.version}…`,
+              detail: contentLength > 0 ? "0% downloaded" : "Downloading signed update",
+              step: 0,
+              total: Math.max(1, contentLength),
+            }));
+            return;
+          }
+          if (event.event === "Progress") {
+            downloaded += event.data.chunkLength;
+            const percent = contentLength > 0
+              ? Math.min(100, Math.round((downloaded / contentLength) * 100))
+              : null;
+            setProgress((current) => ({
+              ...current,
+              detail: percent === null ? "Downloading signed update" : `${percent}% downloaded`,
+              step: downloaded,
+              total: Math.max(1, contentLength || downloaded + 1),
+            }));
+            return;
+          }
+          setProgress((current) => ({
+            ...current,
+            message: "Verifying and installing the update…",
+            detail: "Download complete",
+            step: Math.max(1, current.total),
+          }));
+        });
+        setProgress({
+          status: "success",
+          message: "Update installed",
+          detail: `Restarting into Understudy ${update.version}…`,
+          step: 1,
+          total: 1,
+          startedAt: null,
+        });
+        await invoke("restart_app");
+        return;
+      } else if (activePrompt.runtime === "cli") {
         await invoke("install_understudy_agent_tools");
         const health = await invoke<DesktopHealth>("desktop_health");
         if (!health.cli.available || health.cli.update_available === true) {
@@ -260,7 +324,7 @@ export function RuntimeRepairPrompt() {
     <OperationNotice
       className="runtime-repair-prompt"
       state={progress.status}
-      icon="repair"
+      icon={prompt.runtime === "desktop" ? "download" : "repair"}
       title={title}
       message={reason}
       meta={

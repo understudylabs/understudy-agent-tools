@@ -17,6 +17,10 @@ contact channel listed on the organization profile.
 - Use redacted presence checks only.
 - Treat `.env*`, shell history, local credential files, and provider config as
   non-release material.
+- Treat the Tauri updater private key as permanent production signing material.
+  Store it in the production secrets vault, never in GitHub or a checkout, and
+  publish only its public key. Losing or rotating it strands clients that trust
+  the embedded public key.
 - If a secret appears in output or a committed file, stop and rotate it before
   continuing.
 

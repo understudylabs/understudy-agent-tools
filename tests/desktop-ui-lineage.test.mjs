@@ -234,6 +234,10 @@ test("desktop has one shared managed-operation notice surface", async () => {
   assert.match(prompt, /"install_understudy_agent_tools"/);
   assert.match(prompt, /"install_mlx_runtime"/);
   assert.match(prompt, /"conversation_runtime_repair"/);
+  assert.match(prompt, /check\(\{ timeout: 10_000 \}\)/);
+  assert.match(prompt, /update\.downloadAndInstall/);
+  assert.match(prompt, /invoke\("restart_app"\)/);
+  assert.match(prompt, /percent.*downloaded/s);
   assert.match(prompt, /listen<NativeRepairProgress>\("runtime-repair-progress"/);
   assert.match(prompt, /listen\("conversation-runtime-ready"/);
   assert.match(prompt, /setTimeout\(\(\) => void refreshHealth\(\), 2_500\)/);
@@ -252,8 +256,10 @@ test("desktop has one shared managed-operation notice surface", async () => {
   assert.match(repair, /Runtime reconnecting/);
   assert.match(repair, /Reconnect now/);
   assert.match(repair, /Reinstall Understudy Desktop/);
+  assert.match(repair, /Install update/);
+  assert.match(repair, /Automatic update stopped/);
   assert.match(repair, /The CLI is included with Understudy Desktop/);
-  assert.match(repair, /Latest Desktop release/);
+  assert.match(repair, /Signed Tauri update/);
   assert.match(
     repair,
     /github\.com\/understudylabs\/understudy-agent-tools\/releases\/latest/,
@@ -516,6 +522,7 @@ test("desktop migration claims stay tied to explicit product parity", async () =
   for (const required of [
     "offline-supervisor-fallback",
     "runtime-repair-experience",
+    "signed-in-app-updates",
     "durable-image-and-chat-persistence",
     "resumable-model-downloads",
     "supervision-review-desk",
