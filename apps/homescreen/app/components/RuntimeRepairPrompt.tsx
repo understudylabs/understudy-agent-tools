@@ -1,7 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { invoke } from "@tauri-apps/api/core";
+import { invoke, isTauri } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { openUrl } from "@tauri-apps/plugin-opener";
 import { WrenchIcon, XIcon } from "lucide-react";
@@ -36,9 +36,11 @@ export function RuntimeRepairPrompt() {
   useEffect(() => {
     void refreshHealth();
     const timer = window.setInterval(() => void refreshHealth(), HEALTH_REFRESH_MS);
-    const unlisten = listen<RuntimeRepairRequest>("runtime-repair-needed", (event) => {
-      setPrompt(promptForRuntimeRequest(event.payload));
-    });
+    const unlisten = isTauri()
+      ? listen<RuntimeRepairRequest>("runtime-repair-needed", (event) => {
+          setPrompt(promptForRuntimeRequest(event.payload));
+        })
+      : Promise.resolve(() => {});
     const onError = (event: ErrorEvent) => {
       const error = event.error ?? event.message;
       if (isMissingMlxVlmError(error)) setPrompt(promptForRuntimeRequest(MLX_REPAIR_REQUEST));

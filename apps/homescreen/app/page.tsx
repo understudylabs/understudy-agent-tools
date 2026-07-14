@@ -1,5 +1,6 @@
 "use client";
 import { useEffect, useState } from "react";
+import { isTauri } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { getCurrentWindow } from "@tauri-apps/api/window";
 import { HistoryIcon, PanelLeftIcon, PinIcon, PinOffIcon, SquarePenIcon } from "lucide-react";
@@ -33,6 +34,7 @@ export default function Page() {
 
   // Inbound: a coding agent (via the local server) can drive the GUI to a pane.
   useEffect(() => {
+    if (!isTauri()) return;
     const valid: PaneId[] = [
       "status",
       "chat",

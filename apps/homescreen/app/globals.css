@@ -131,8 +131,8 @@
     overflow: hidden;
   }
   ::selection {
-    background: var(--c-stamp);
-    color: var(--c-paper);
+    background: color-mix(in srgb, var(--mb-cyan) 68%, transparent);
+    color: #071114;
   }
 }
 
@@ -3045,16 +3045,18 @@ select,
 .composer-row {
   display: flex;
   align-items: center;
+  width: 100%;
   gap: 8px;
   min-height: 48px;
   padding: 5px 8px;
 }
 
 .composer-row [data-slot="input-group"],
-.composer-row [data-slot="prompt-input-body"] {
+.composer-row .composer-row-body {
+  display: flex;
   width: auto;
-  min-width: 160px;
-  flex: 1 1 auto;
+  min-width: 0;
+  flex: 1 1 0;
 }
 
 .composer-row textarea {
@@ -3361,6 +3363,7 @@ select,
   width: 32px;
   height: 32px;
   flex: 0 0 32px;
+  margin-left: auto;
   border: 0;
   border-radius: 999px;
   background: color-mix(in srgb, var(--mb-cyan) 20%, transparent);

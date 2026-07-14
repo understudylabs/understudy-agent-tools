@@ -1,7 +1,7 @@
 "use client";
 
 import { useEffect, useMemo, useRef, useState } from "react";
-import { Channel, invoke } from "@tauri-apps/api/core";
+import { Channel, invoke, isTauri } from "@tauri-apps/api/core";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
 import {
   Conversation,
@@ -493,6 +493,7 @@ export function ChatPane({ resetToken, historyToken }: { resetToken: number; his
   }, []);
 
   useEffect(() => {
+    if (!isTauri()) return;
     let disposed = false;
     let unlisten: (() => void) | null = null;
     void getCurrentWebview()
