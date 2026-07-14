@@ -59,7 +59,10 @@ test("Desktop release automation keeps every trust gate before publication", () 
   assert.equal([...workflow.matchAll(/if: inputs\.mode == 'release'/g)].length, 9);
   assert.match(workflow, /notarytool submit "\$app_zip"/);
   assert.match(workflow, /stapler staple "\$app"/);
-  assert.match(workflow, /tauri signer sign \\\n+              --private-key-path/);
+  assert.match(
+    workflow,
+    /env -u TAURI_SIGNING_PRIVATE_KEY bun run tauri signer sign \\\n+              --private-key-path/,
+  );
   assert.doesNotMatch(workflow, /tauri signer sign -- \\/);
   assert.match(workflow, /desktop:updater-manifest/);
   assert.match(workflow, /desktop:release-check -- --stage signed/);
