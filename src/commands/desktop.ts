@@ -25,6 +25,7 @@ import {
   DEFAULT_DESKTOP_READINESS_EVIDENCE,
   evaluateDesktopRuntimeReleaseEvidence,
 } from "../runtime/conversation/release-gate.js";
+import { validateRuntimeTrace } from "../runtime/conversation/contract.js";
 import {
   TIEBREAKER_MODEL,
   analyzeTiebreaker,
@@ -64,6 +65,28 @@ interface DesktopMigrationStatus {
   remaining_consecutive_pi_rows?: number;
   pi_runtime_share?: number | null;
   compatibility_engine_delete_ready?: boolean;
+}
+
+interface DesktopChatRun {
+  run_id?: string | null;
+  runtime_backend?: string;
+  app_version?: string;
+  runtime_version?: string;
+  session_id?: string;
+  status?: string;
+  prompt_tokens?: number | null;
+  completion_tokens?: number | null;
+  tool_calls?: number;
+}
+
+interface ReleaseCohortTraceAudit {
+  evaluated: boolean;
+  ready: boolean;
+  expected_rows: number;
+  inspected_rows: number;
+  valid_trace_rows: number;
+  invalid_trace_rows: number;
+  reasons: string[];
 }
 
 interface SupervisionExportPacket {
@@ -259,6 +282,175 @@ async function* ndjson(response: Response): AsyncGenerator<RuntimeEvent> {
   }
   buffer += decoder.decode();
   if (buffer.trim()) yield JSON.parse(buffer.trim()) as RuntimeEvent;
+}
+
+async function mapLimited<T, R>(
+  values: readonly T[],
+  concurrency: number,
+  task: (value: T, index: number) => Promise<R>,
+): Promise<R[]> {
+  const results = new Array<R>(values.length);
+  let next = 0;
+  const workers = Array.from(
+    { length: Math.min(Math.max(1, concurrency), values.length) },
+    async () => {
+      while (next < values.length) {
+        const index = next;
+        next += 1;
+        results[index] = await task(values[index], index);
+      }
+    },
+  );
+  await Promise.all(workers);
+  return results;
+}
+
+function skippedCohortTraceAudit(expectedRows: number, reason: string): ReleaseCohortTraceAudit {
+  return {
+    evaluated: false,
+    ready: false,
+    expected_rows: expectedRows,
+    inspected_rows: 0,
+    valid_trace_rows: 0,
+    invalid_trace_rows: 0,
+    reasons: [reason],
+  };
+}
+
+async function auditReleaseCohortTraces(
+  capability: Awaited<ReturnType<typeof requireDesktopApi>>,
+  migration: DesktopMigrationStatus,
+  expectedRows: number,
+  observedRowLimit: number,
+): Promise<ReleaseCohortTraceAudit> {
+  const query = `?limit=${observedRowLimit}`;
+  let value: unknown;
+  try {
+    value = await desktopControlJson(
+      capability,
+      `/v1/chat/runs${query}`,
+      `/api/chat/runs${query}`,
+    );
+  } catch (error) {
+    return skippedCohortTraceAudit(
+      expectedRows,
+      `release chat rows are unavailable: ${String(error)}`,
+    );
+  }
+  if (!Array.isArray(value)) {
+    return skippedCohortTraceAudit(expectedRows, "release chat rows must be an array");
+  }
+
+  const rows = value
+    .filter((candidate): candidate is DesktopChatRun => {
+      if (!candidate || typeof candidate !== "object" || Array.isArray(candidate)) return false;
+      const row = candidate as DesktopChatRun;
+      return row.app_version === migration.app_version
+        && row.runtime_version === migration.runtime_version
+        && typeof row.run_id === "string"
+        && row.run_id.trim() !== "";
+    })
+    .slice(0, expectedRows);
+  const reasons: string[] = [];
+  if (rows.length !== expectedRows) {
+    reasons.push(`expected ${expectedRows} exact-release chat rows, found ${rows.length}`);
+  }
+  const runIds = rows.map((row) => row.run_id as string);
+  if (new Set(runIds).size !== runIds.length) {
+    reasons.push("release cohort contains duplicate run_id values");
+  }
+
+  const results = await mapLimited(rows, 8, async (row) => {
+    const runId = row.run_id as string;
+    if (row.runtime_backend !== "pi") {
+      return `${runId}: runtime backend is ${String(row.runtime_backend ?? "missing")}`;
+    }
+    if (row.status !== "ok") {
+      return `${runId}: chat row status is ${String(row.status ?? "missing")}`;
+    }
+    for (const [field, candidate] of [
+      ["prompt_tokens", row.prompt_tokens],
+      ["completion_tokens", row.completion_tokens],
+      ["tool_calls", row.tool_calls],
+    ] as const) {
+      if (typeof candidate !== "number" || !Number.isInteger(candidate) || candidate < 0) {
+        return `${runId}: ${field} attribution is missing or invalid`;
+      }
+    }
+
+    try {
+      const response = await desktopApiFetch(
+        capability,
+        `/v1/runs/${encodeURIComponent(runId)}/events`,
+        { signal: AbortSignal.timeout(5_000) },
+      );
+      if (!response.ok) throw await responseError(response);
+      const events: RuntimeEvent[] = [];
+      for await (const event of ndjson(response)) events.push(event);
+      validateRuntimeTrace(events);
+      const first = events[0];
+      if (first?.run_id !== runId || first.session_id !== row.session_id) {
+        return `${runId}: persisted trace identity does not match the chat row`;
+      }
+      if (events.some((event) => event.event === "error" || event.event === "cancellation")) {
+        return `${runId}: successful chat row contains a terminal runtime failure`;
+      }
+      const usageEvents = events.filter((event) => event.event === "usage");
+      const usageRoles = new Set(usageEvents.map((event) => String(event.data?.role)));
+      if (!["primary", "student", "teacher"].some((role) => usageRoles.has(role))) {
+        return `${runId}: persisted trace has no primary, student, or teacher usage`;
+      }
+      if (
+        usageEvents.some(
+          (event) => !["primary", "student", "teacher", "supervisor"].includes(
+            String(event.data?.role),
+          ),
+        )
+      ) {
+        return `${runId}: persisted trace contains unattributed usage`;
+      }
+      if (usageEvents.some((event) => event.data?.complete !== true)) {
+        return `${runId}: persisted trace contains incomplete usage attribution`;
+      }
+      const inputTokens = usageEvents.reduce(
+        (total, event) => total + Number(event.data?.input_tokens ?? 0),
+        0,
+      );
+      const outputTokens = usageEvents.reduce(
+        (total, event) => total + Number(event.data?.output_tokens ?? 0),
+        0,
+      );
+      if (inputTokens !== row.prompt_tokens || outputTokens !== row.completion_tokens) {
+        return `${runId}: chat-row token totals do not match persisted usage`;
+      }
+      const toolCalls = events.filter((event) => event.event === "tool_call").length;
+      if (row.tool_calls !== toolCalls) {
+        return `${runId}: chat-row tool count does not match persisted trace`;
+      }
+      const terminal = events.at(-1);
+      if (terminal?.event !== "usage" || terminal.data?.complete !== true) {
+        return `${runId}: persisted trace does not end in complete usage`;
+      }
+      return null;
+    } catch (error) {
+      return `${runId}: ${String(error)}`;
+    }
+  });
+  reasons.push(...results.filter((reason): reason is string => reason !== null));
+  const boundedReasons = reasons.slice(0, 10);
+  if (reasons.length > boundedReasons.length) {
+    boundedReasons.push(`${reasons.length - boundedReasons.length} additional cohort failures omitted`);
+  }
+  const invalidTraceRows = results.filter((reason) => reason !== null).length;
+  return {
+    evaluated: true,
+    ready: reasons.length === 0 && rows.length === expectedRows,
+    expected_rows: expectedRows,
+    inspected_rows: rows.length,
+    valid_trace_rows: rows.length - invalidTraceRows,
+    invalid_trace_rows: invalidTraceRows,
+    reasons: boundedReasons,
+  };
 }
 
 async function printRuntimeEvents(response: Response, json: boolean): Promise<number> {
@@ -481,7 +673,7 @@ export function registerDesktopCommand(program: Command): void {
       const piRows = Number(value.pi_runtime_rows ?? 0);
       const fallbacks = Number(value.compatibility_fallback_rows ?? 0);
       const consecutivePiRows = Number(value.consecutive_pi_rows ?? piRows);
-      const cohortReady =
+      const cohortVolumeReady =
         value.compatibility_engine_delete_ready === true &&
         canonical >= required &&
         piRows === canonical &&
@@ -500,6 +692,20 @@ export function registerDesktopCommand(program: Command): void {
         conformance_path: opts.conformanceEvidence,
         readiness_path: opts.readinessEvidence,
       });
+      const cohortTraceAudit = cohortVolumeReady && releaseEvidence.ready
+        ? await auditReleaseCohortTraces(
+            capability,
+            value,
+            required,
+            Number(value.observed_row_limit ?? opts.limit),
+          )
+        : skippedCohortTraceAudit(
+            required,
+            cohortVolumeReady
+              ? "static release evidence is not ready"
+              : "release cohort volume is incomplete",
+          );
+      const cohortReady = cohortVolumeReady && cohortTraceAudit.ready;
       const ready = cohortReady && releaseEvidence.ready;
       const output = {
         ...value,
@@ -508,6 +714,8 @@ export function registerDesktopCommand(program: Command): void {
         consecutive_pi_rows: consecutivePiRows,
         remaining_consecutive_pi_rows: remainingConsecutive,
         observed_row_limit: value.observed_row_limit ?? opts.limit,
+        release_cohort_volume_ready: cohortVolumeReady,
+        release_cohort_trace_audit: cohortTraceAudit,
         release_cohort_ready: cohortReady,
         release_evidence: releaseEvidence,
         compatibility_engine_delete_ready: ready,
@@ -524,8 +732,12 @@ export function registerDesktopCommand(program: Command): void {
           `canonical runs: ${canonical}/${required} (${remaining} remaining)`,
           `Pi runs: ${piRows} (${share}); compatibility fallbacks: ${fallbacks}`,
           `clean Pi streak: ${consecutivePiRows}/${required} (${remainingConsecutive} remaining)`,
+          `persisted trace audit: ${cohortTraceAudit.valid_trace_rows}/${required} valid${
+            cohortTraceAudit.evaluated ? "" : " (not yet evaluated)"
+          }`,
           `conformance evidence: ${releaseEvidence.conformance.ready ? "ready" : "missing or stale"}`,
           `startup/memory evidence: ${releaseEvidence.readiness.ready ? "ready" : "missing or stale"}`,
+          ...cohortTraceAudit.reasons.map((reason) => `blocked: ${reason}`),
           ...releaseEvidence.reasons.map((reason) => `blocked: ${reason}`),
         ].join("\n"),
       );
