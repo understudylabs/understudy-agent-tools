@@ -64,6 +64,34 @@ pub struct DesktopHealth {
 }
 
 #[derive(Serialize, Clone)]
+struct RuntimeRepairProgress {
+    operation: &'static str,
+    phase: &'static str,
+    message: &'static str,
+    step: u8,
+    total: u8,
+}
+
+fn emit_runtime_repair_progress(
+    app: &AppHandle,
+    phase: &'static str,
+    message: &'static str,
+    step: u8,
+    total: u8,
+) {
+    let _ = app.emit(
+        "runtime-repair-progress",
+        RuntimeRepairProgress {
+            operation: "cli-update",
+            phase,
+            message,
+            step,
+            total,
+        },
+    );
+}
+
+#[derive(Serialize, Clone)]
 #[serde(tag = "type")]
 pub enum DownloadEvent {
     Plan {
@@ -165,7 +193,14 @@ pub fn install_mlx_runtime() -> Result<String, String> {
     command_output(out)
 }
 
-pub fn install_understudy_agent_tools() -> Result<String, String> {
+pub fn install_understudy_agent_tools(app: &AppHandle) -> Result<String, String> {
+    emit_runtime_repair_progress(
+        app,
+        "download",
+        "Downloading the latest Understudy installer…",
+        1,
+        4,
+    );
     let script = std::env::temp_dir().join(format!(
         "understudy-agent-tools-install-{}.sh",
         std::process::id()
@@ -191,6 +226,14 @@ pub fn install_understudy_agent_tools() -> Result<String, String> {
         return Err(error);
     }
 
+    emit_runtime_repair_progress(
+        app,
+        "install",
+        "Installing the CLI and its dependencies…",
+        2,
+        4,
+    );
+
     let installed = Command::new("sh")
         .arg(&script)
         .args(["--noninteractive", "--agents", "none", "--keep-login"])
@@ -201,7 +244,17 @@ pub fn install_understudy_agent_tools() -> Result<String, String> {
         .output()
         .map_err(|e| format!("Understudy installer failed to start: {e}"));
     let _ = std::fs::remove_file(&script);
-    installed.and_then(command_output)
+    let result = installed.and_then(command_output);
+    if result.is_ok() {
+        emit_runtime_repair_progress(
+            app,
+            "cli-ready",
+            "CLI installed. Checking the managed runtimes…",
+            3,
+            4,
+        );
+    }
+    result
 }
 
 /// Aggregate bounded public update checks and local runtime diagnostics for

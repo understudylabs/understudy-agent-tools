@@ -10,6 +10,14 @@ const runtimeRepairPromptPath = new URL(
   "../apps/homescreen/app/components/RuntimeRepairPrompt.tsx",
   import.meta.url,
 );
+const operationNoticePath = new URL(
+  "../apps/homescreen/app/components/OperationNotice.tsx",
+  import.meta.url,
+);
+const modelDownloadNoticePath = new URL(
+  "../apps/homescreen/app/components/ModelDownloadNotice.tsx",
+  import.meta.url,
+);
 const runtimeRepairLibPath = new URL(
   "../apps/homescreen/app/lib/runtime-repair.ts",
   import.meta.url,
@@ -202,19 +210,35 @@ test("desktop restores the reviewed persisted always-on-top pin", async () => {
   assert.match(permissions, /core:window:allow-set-always-on-top/);
 });
 
-test("desktop has one managed runtime repair surface", async () => {
-  const [page, prompt, repair] = await Promise.all([
+test("desktop has one shared managed-operation notice surface", async () => {
+  const [page, prompt, operationNotice, downloadNotice, repair] = await Promise.all([
     readFile(pagePath, "utf8"),
     readFile(runtimeRepairPromptPath, "utf8"),
+    readFile(operationNoticePath, "utf8"),
+    readFile(modelDownloadNoticePath, "utf8"),
     readFile(runtimeRepairLibPath, "utf8"),
   ]);
 
   assert.match(page, /<RuntimeRepairPrompt\s*\/>/);
+  assert.match(page, /<ModelDownloadNotice\s*\/>/);
+  assert.match(page, /className="operation-notice-stack"/);
+  assert.match(prompt, /<OperationNotice/);
+  assert.match(downloadNotice, /<OperationNotice/);
+  assert.match(operationNotice, /aria-busy=\{state === "running"\}/);
   assert.match(prompt, /invoke<DesktopHealth>\("desktop_health"\)/);
   assert.match(prompt, /listen<RuntimeRepairRequest>\("runtime-repair-needed"/);
   assert.match(prompt, /"install_understudy_agent_tools"/);
   assert.match(prompt, /"install_mlx_runtime"/);
   assert.match(prompt, /"conversation_runtime_repair"/);
+  assert.match(prompt, /listen<NativeRepairProgress>\("runtime-repair-progress"/);
+  assert.match(prompt, /Updating the version-coupled conversation runtime/);
+  assert.match(prompt, /Verifying the CLI and local runtimes/);
+  assert.match(prompt, /elapsedSeconds/);
+  assert.match(prompt, /busy \|\| progress\.status === "success"/);
+  assert.match(prompt, /actionDisabled=\{busy \|\| progress\.status === "success"\}/);
+  assert.match(downloadNotice, /"list_snapshot_downloads"/);
+  assert.match(downloadNotice, /"cancel_snapshot_download"/);
+  assert.match(downloadNotice, /"start_snapshot_download"/);
   assert.match(repair, /understudy models runtime repair/);
   assert.match(repair, /understudy runtime repair/);
   assert.match(repair, /install\.sh \| bash -s -- --yes/);
@@ -307,7 +331,10 @@ test("desktop compiles one dropped path through the bounded public CLI", async (
 });
 
 test("desktop model downloads are app-owned, pausable, and resumable", async () => {
-  const statusPane = await readFile(statusPanePath, "utf8");
+  const [statusPane, downloadNotice] = await Promise.all([
+    readFile(statusPanePath, "utf8"),
+    readFile(modelDownloadNoticePath, "utf8"),
+  ]);
 
   assert.match(statusPane, /"start_snapshot_download"/);
   assert.match(statusPane, /"list_snapshot_downloads"/);
@@ -315,6 +342,9 @@ test("desktop model downloads are app-owned, pausable, and resumable", async () 
   assert.match(statusPane, /"cancel_snapshot_download"/);
   assert.match(statusPane, /Resume keeps partial files/);
   assert.match(statusPane, /busyActionLabel="Pause"/);
+  assert.match(downloadNotice, /title = "Downloading model"/);
+  assert.match(downloadNotice, /actionLabel = "Pause"/);
+  assert.match(downloadNotice, /row\.resumable \? "Resume" : null/);
   assert.doesNotMatch(statusPane, /new Channel<DownloadEvent>/);
   assert.doesNotMatch(statusPane, /invoke\([^\n]*"download_snapshot_model"/);
 });

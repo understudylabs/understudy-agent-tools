@@ -1187,10 +1187,12 @@ pub async fn install_mlx_runtime() -> Result<String, String> {
 }
 
 #[tauri::command]
-pub async fn install_understudy_agent_tools() -> Result<String, String> {
-    tauri::async_runtime::spawn_blocking(crate::bootstrap::install_understudy_agent_tools)
-        .await
-        .map_err(|e| format!("install_understudy_agent_tools task failed: {e}"))?
+pub async fn install_understudy_agent_tools(app: AppHandle) -> Result<String, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        crate::bootstrap::install_understudy_agent_tools(&app)
+    })
+    .await
+    .map_err(|e| format!("install_understudy_agent_tools task failed: {e}"))?
 }
 
 /// Start the same background download registry exposed to agents. The UI

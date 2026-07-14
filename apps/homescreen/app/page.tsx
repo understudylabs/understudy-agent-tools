@@ -16,6 +16,7 @@ import { DownloadQrButton } from "./components/DownloadQrButton";
 import { isTrainingPane, TrainingPane } from "./components/TrainingPane";
 import { RlmPane } from "./components/RlmPane";
 import { RuntimeRepairPrompt } from "./components/RuntimeRepairPrompt";
+import { ModelDownloadNotice } from "./components/ModelDownloadNotice";
 import { useStatus } from "./lib/useStatus";
 
 export default function Page() {
@@ -156,7 +157,10 @@ export default function Page() {
         )}
       </button>
       <DownloadQrButton />
-      <RuntimeRepairPrompt />
+      <div className="operation-notice-stack">
+        <RuntimeRepairPrompt />
+        <ModelDownloadNotice />
+      </div>
       <Sidebar
         active={pane}
         onSelect={(next) => {
