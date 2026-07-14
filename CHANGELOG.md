@@ -44,6 +44,13 @@ uses semantic-ish versioning (minor = new skill or new capability, patch = fixes
 
 ### Fixed
 
+- **Desktop window controls are simpler and updates are easier to verify.**
+  Desktop/runtime 0.3.18 and CLI 0.6.15 remove the persisted always-on-top
+  titlebar pin and its native capability. The macOS application menu and
+  menu-bar tray now both expose **Check for Updates…**, with current,
+  available, and failed checks reported through the shared operation notice.
+  Automatic availability checks still run at launch and every 15 minutes.
+
 - **Desktop chat is direct by default and releases can update in place.**
   Desktop/runtime 0.3.17 and CLI 0.6.14 stop attaching the experimental
   supervisor to ordinary model-picker turns. Explicit evaluation and agent API

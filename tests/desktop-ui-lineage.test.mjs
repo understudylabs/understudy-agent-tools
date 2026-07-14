@@ -22,6 +22,10 @@ const runtimeRepairLibPath = new URL(
   "../apps/homescreen/app/lib/runtime-repair.ts",
   import.meta.url,
 );
+const tauriLibPath = new URL(
+  "../apps/homescreen/src-tauri/src/lib.rs",
+  import.meta.url,
+);
 const attachmentLibPath = new URL(
   "../apps/homescreen/app/lib/chat-attachments.ts",
   import.meta.url,
@@ -194,20 +198,36 @@ test("cold-start cloud fallback yields to local without overriding a human choic
   assert.match(selection, /preferredLocalId/);
 });
 
-test("desktop restores the reviewed persisted always-on-top pin", async () => {
-  const [page, permissions] = await Promise.all([
+test("desktop omits the always-on-top pin and its capability", async () => {
+  const [page, css, permissions] = await Promise.all([
     readFile(new URL("../apps/homescreen/app/page.tsx", import.meta.url), "utf8"),
+    readFile(cssPath, "utf8"),
     readFile(
       new URL("../apps/homescreen/src-tauri/capabilities/default.json", import.meta.url),
       "utf8",
     ),
   ]);
 
-  assert.match(page, /understudy\.alwaysOnTop/);
-  assert.match(page, /setAlwaysOnTop\(true\)/);
-  assert.match(page, /setAlwaysOnTop\(next\)/);
-  assert.match(page, /aria-pressed=\{pinned\}/);
-  assert.match(permissions, /core:window:allow-set-always-on-top/);
+  assert.doesNotMatch(page, /understudy\.alwaysOnTop/);
+  assert.doesNotMatch(page, /setAlwaysOnTop/);
+  assert.doesNotMatch(page, /PinIcon|PinOffIcon|titlebar-pin/);
+  assert.doesNotMatch(css, /\.titlebar-pin/);
+  assert.doesNotMatch(permissions, /core:window:allow-set-always-on-top/);
+});
+
+test("desktop offers an explicit signed update check from macOS menus", async () => {
+  const [native, prompt] = await Promise.all([
+    readFile(tauriLibPath, "utf8"),
+    readFile(runtimeRepairPromptPath, "utf8"),
+  ]);
+
+  assert.match(native, /SubmenuBuilder::new\(app, "Understudy"\)/);
+  assert.match(native, /"Check for Updates…"/);
+  assert.match(native, /CHECK_FOR_UPDATES_TRAY_ID/);
+  assert.match(native, /app\.emit\(CHECK_FOR_UPDATES_EVENT/);
+  assert.match(prompt, /listen\("check-for-updates"/);
+  assert.match(prompt, /Understudy is up to date/);
+  assert.match(prompt, /const HEALTH_REFRESH_MS = 15 \* 60 \* 1_000/);
 });
 
 test("desktop has one shared managed-operation notice surface", async () => {
@@ -533,7 +553,6 @@ test("desktop migration claims stay tied to explicit product parity", async () =
     "drop-to-workload-compilation",
     "model-card-transparency",
     "reading-pace-streaming",
-    "always-on-top-window-pin",
     "heavy-model-preflight-and-process-reconciliation",
     "native-runtime-deletion",
   ]) {

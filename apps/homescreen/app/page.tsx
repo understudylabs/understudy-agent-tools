@@ -2,8 +2,7 @@
 import { useEffect, useState } from "react";
 import { isTauri } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
-import { getCurrentWindow } from "@tauri-apps/api/window";
-import { HistoryIcon, PanelLeftIcon, PinIcon, PinOffIcon, SquarePenIcon } from "lucide-react";
+import { HistoryIcon, PanelLeftIcon, SquarePenIcon } from "lucide-react";
 import { Sidebar, type PaneId } from "./components/Sidebar";
 import { StatusPane } from "./components/StatusPane";
 import { ModelsPane } from "./components/ModelsPane";
@@ -24,7 +23,6 @@ export default function Page() {
   const [railOpen, setRailOpen] = useState(false);
   const [chatResetToken, setChatResetToken] = useState(0);
   const [chatHistoryToken, setChatHistoryToken] = useState(0);
-  const [pinned, setPinned] = useState(false);
   const status = useStatus();
   const connected = status.snap?.connected ?? false;
 
@@ -68,33 +66,6 @@ export default function Page() {
       u.then((f) => f());
     };
   }, []);
-
-  useEffect(() => {
-    let saved = false;
-    try {
-      saved = localStorage.getItem("understudy.alwaysOnTop") === "1";
-    } catch {
-      // Storage can be unavailable in browser-only development.
-    }
-    if (!saved) return;
-    setPinned(true);
-    getCurrentWindow()
-      .setAlwaysOnTop(true)
-      .catch(() => setPinned(false));
-  }, []);
-
-  const togglePin = () => {
-    const next = !pinned;
-    setPinned(next);
-    try {
-      localStorage.setItem("understudy.alwaysOnTop", next ? "1" : "0");
-    } catch {
-      // Best effort; the window behavior still works for this session.
-    }
-    getCurrentWindow()
-      .setAlwaysOnTop(next)
-      .catch(() => setPinned(!next));
-  };
 
   useEffect(() => {
     const onKeyDown = (event: KeyboardEvent) => {
@@ -142,20 +113,6 @@ export default function Page() {
           </button>
         </>
       )}
-      <button
-        type="button"
-        className={"titlebar-pin" + (pane === "chat" ? " with-chat-controls" : "") + (pinned ? " pinned" : "")}
-        aria-label={pinned ? "Unpin window (always on top)" : "Pin window always on top"}
-        aria-pressed={pinned}
-        title={pinned ? "Unpin window" : "Keep window on top"}
-        onClick={togglePin}
-      >
-        {pinned ? (
-          <PinOffIcon aria-hidden="true" size={15} strokeWidth={2} />
-        ) : (
-          <PinIcon aria-hidden="true" size={15} strokeWidth={2} />
-        )}
-      </button>
       <DownloadQrButton />
       <div className="operation-notice-stack">
         <RuntimeRepairPrompt />
