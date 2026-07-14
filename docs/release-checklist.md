@@ -18,6 +18,10 @@ git ls-files
   any release that changes the skill catalog or CLI surface — installed
   adapters have no other staleness signal; `understudy doctor --json` fails if
   they drift;
+- the CLI package and every adapter manifest advance on every ConversationRuntime
+  release, even when no command surface changed: the CLI distributes the canonical
+  sidecar, and Desktop must raise `MIN_UNDERSTUDY_CLI_VERSION` to that exact package
+  version;
 - adapter install and onboarding parity checked across Claude Code, Cursor,
   Codex, OpenCode, and Hermes Agent: `install.sh --agents ...`, `understudy
   platforms`, and `skills/install-agent-adapter/reference.md` describe the same
@@ -46,8 +50,9 @@ and secret-shaped strings.
 
 Desktop releases must come from the exact merged `origin/main` commit. The
 release check fails closed if the worktree is dirty, `HEAD` differs from the
-locally fetched `origin/main`, or any of the six desktop/runtime version sources
-drift. Fetch first, then run the source gate:
+locally fetched `origin/main`, any of the six desktop/runtime version sources
+drift, the Desktop CLI floor differs from the distributed package, or a runtime
+version advances without a newer CLI package. Fetch first, then run the source gate:
 
 ```sh
 git fetch origin
