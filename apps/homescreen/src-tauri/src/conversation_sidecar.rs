@@ -426,7 +426,13 @@ pub(crate) fn health(app: &AppHandle) -> VersionHealth {
         Ok(status) => {
             let schema_matches = status.event_schema == EVENT_SCHEMA;
             let version_matches = status.runtime_version == RUNTIME_VERSION;
-            let ready = compatible(&status, app);
+            let process_ready = status.installed
+                && status.running
+                && status.healthy
+                && schema_matches
+                && version_matches;
+            let desktop_connected = tool_token_matches(&status, app);
+            let ready = process_ready && desktop_connected;
             let detail = if ready {
                 status.detail
             } else if !schema_matches {
@@ -439,6 +445,9 @@ pub(crate) fn health(app: &AppHandle) -> VersionHealth {
                     "runtime {} does not match required {}; update or repair the CLI before chatting",
                     status.runtime_version, RUNTIME_VERSION
                 )
+            } else if process_ready && !desktop_connected {
+                "runtime is healthy but is not connected to this Desktop session; reconnecting automatically"
+                    .to_string()
             } else {
                 format!("{}; run Understudy repair before chatting", status.detail)
             };

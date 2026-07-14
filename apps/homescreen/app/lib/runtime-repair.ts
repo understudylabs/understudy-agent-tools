@@ -101,10 +101,20 @@ export function promptForHealth(health: DesktopHealth): RepairPrompt | null {
     });
   }
   if (!health.conversation_runtime.available) {
-    return promptForRuntimeRequest({
+    const reconnecting = health.conversation_runtime.detail.includes(
+      "reconnecting automatically",
+    );
+    const prompt = promptForRuntimeRequest({
       ...CONVERSATION_RUNTIME_REPAIR_REQUEST,
       reason: health.conversation_runtime.detail || CONVERSATION_RUNTIME_REPAIR_REQUEST.reason,
     });
+    return reconnecting
+      ? {
+          ...prompt,
+          title: "Runtime reconnecting",
+          actionLabel: "Reconnect now",
+        }
+      : prompt;
   }
   if (health.desktop.update_available === true) {
     return {
