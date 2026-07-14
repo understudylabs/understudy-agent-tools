@@ -1272,6 +1272,11 @@ export function ChatPane({ resetToken, historyToken }: { resetToken: number; his
                 setSelectedModel(id);
               }}
               onConnectAnthropic={connectAnthropic}
+              thinkingDisabled={streaming}
+              thinkingLoading={
+                selectedChoice.route === "local" && thinkingPending?.slotId === selectedChoice.slotId
+              }
+              onThinkingToggle={setThinking}
             />
             <ModelCardDrawer
               modelId={selectedChoice.route === "local" ? selectedChoice.modelId : selectedChoice.id}
@@ -1292,13 +1297,8 @@ export function ChatPane({ resetToken, historyToken }: { resetToken: number; his
                 disabled={streaming}
               />
             </PromptInputBody>
-            <ThinkingToggle
-              selected={selectedChoice}
-              disabled={streaming}
-              loading={selectedChoice.route === "local" && thinkingPending?.slotId === selectedChoice.slotId}
-              onToggle={setThinking}
-            />
             <PromptInputSubmit
+              className="composer-submit"
               status={streaming ? "streaming" : err ? "error" : "ready"}
               onStop={stopStreaming}
               disabled={!streaming && (!input.trim() || (selectedChoice.route === "local" && !selectedChoice.active))}
@@ -1310,57 +1310,34 @@ export function ChatPane({ resetToken, historyToken }: { resetToken: number; his
   );
 }
 
-function ThinkingToggle({
-  selected,
-  disabled,
-  loading,
-  onToggle,
-}: {
-  selected: ModelChoice;
-  disabled: boolean;
-  loading: boolean;
-  onToggle: (thinking: boolean) => void;
-}) {
-  const isLocal = selected.route === "local";
-  const isBusy = loading || (isLocal && selected.loading);
-  return (
-    <button
-      type="button"
-      className={"ai-thinking-toggle" + (isLocal && selected.thinking ? " active" : "") + (isBusy ? " loading" : "")}
-      disabled={!isLocal || disabled || isBusy}
-      title={isLocal ? "Reload this local model with thinking mode." : "Thinking is available for local models."}
-      onClick={() => isLocal && onToggle(!selected.thinking)}
-    >
-      <span className="thinking-loading-dot" />
-      {isBusy ? "Loading" : "Thinking"}
-    </button>
-  );
-}
-
 function ModelPicker({
   choices,
   selected,
   onSelect,
   onConnectAnthropic,
+  thinkingDisabled,
+  thinkingLoading,
+  onThinkingToggle,
 }: {
   choices: ModelChoice[];
   selected: ModelChoice;
   onSelect: (id: string) => void;
   onConnectAnthropic: () => void;
+  thinkingDisabled: boolean;
+  thinkingLoading: boolean;
+  onThinkingToggle: (thinking: boolean) => void;
 }) {
   const anthropicChoices = choices.filter((choice) => choice.route === "anthropic");
+  const thinkingBusy = selected.route === "local" && (selected.loading || thinkingLoading);
   return (
     <ModelSelector>
       <ModelSelectorTrigger asChild>
-        <button type="button" className="ai-model-trigger">
+        <button
+          type="button"
+          className="ai-model-trigger"
+          title={`${selected.label} · ${selected.route}`}
+        >
           <span>{selected.label}</span>
-          <span>
-            {selected.route === "local"
-              ? "local"
-              : selected.route === "anthropic"
-                ? "anthropic"
-                : "gateway"}
-          </span>
         </button>
       </ModelSelectorTrigger>
       <ModelSelectorContent>
@@ -1408,6 +1385,22 @@ function ModelPicker({
             )}
           </ModelSelectorGroup>
         </ModelSelectorList>
+        {selected.route === "local" && (
+          <div className="model-picker-controls">
+            <div>
+              <strong>Thinking</strong>
+              <span>Reload this local model with extended reasoning.</span>
+            </div>
+            <button
+              type="button"
+              className={selected.thinking ? "active" : ""}
+              disabled={thinkingDisabled || thinkingBusy}
+              onClick={() => onThinkingToggle(!selected.thinking)}
+            >
+              {thinkingBusy ? "Loading…" : selected.thinking ? "On" : "Off"}
+            </button>
+          </div>
+        )}
       </ModelSelectorContent>
     </ModelSelector>
   );
