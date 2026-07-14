@@ -430,7 +430,7 @@ export function prepareProofCorrectionEvidence(
       holdout_rows_are_training_eligible: false,
       recommended_method: "gepa_prompt_policy_first",
       next_action: trainingEligibleCount > 0
-        ? "Use only eligible development or train rows; preserve holdout rows for promotion evaluation."
+        ? "Optimize only eligible development or train rows, freeze the candidate, and validate non-zero correction success plus quality and overhead gates on development before touching the preserved promotion holdout."
         : "Collect a separate development split before optimization; this proof remains evaluation-only.",
     },
     upload_performed: false,
@@ -551,7 +551,7 @@ export function prepareProofCorrectionGepaHandoff(
     evidence_sha256: evidenceSha256,
     status: ready ? "ready" : "blocked",
     reason: ready
-      ? null
+      ? "Optimizer input is ready; promotion remains blocked until a frozen candidate demonstrates non-zero correction success, a quality gain over the unmodified student, and compliance with configured latency and supervisor-token-overhead bounds on the development split."
       : `GEPA requires at least two eligible development or train rows; found ${candidates.length}`,
     row_count: samples.length,
     train_count: trainCount,
