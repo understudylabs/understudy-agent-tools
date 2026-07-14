@@ -44,6 +44,12 @@ uses semantic-ish versioning (minor = new skill or new capability, patch = fixes
 
 ### Fixed
 
+- **Completed supervisor nudges replace the student answer cleanly.**
+  Desktop/runtime 0.3.15 and CLI 0.6.12 preserve the original nudge verdict,
+  interruption reason, and teacher continuation while replacing a completed
+  structured answer instead of appending a second payload. Streaming nudges
+  can still resume the student in place.
+
 - **Desktop API conversations now count toward the exact-release migration
   cohort.** Desktop/runtime 0.3.14 and CLI 0.6.11 record versioned API turns in
   the same local route ledger as GUI turns, including caller-owned run and
