@@ -4,9 +4,9 @@ Notable, user-facing changes to the Understudy skills + CLI. Versions track the
 plugin: `package.json`, `.claude-plugin/plugin.json`,
 `.claude-plugin/marketplace.json`, `.cursor-plugin/plugin.json`,
 `.codex-plugin/plugin.json`, `.agents/plugins/marketplace.json`,
-`.opencode/adapter.json`, and `.hermes/adapter.json` are bumped together on any
-release that changes the skill catalog, CLI surface, or agent-platform adapter
-surface, because an installed plugin has no other
+`.opencode/adapter.json`, `.hermes/adapter.json`, and `.devin/adapter.json` are
+bumped together on any release that changes the skill catalog, CLI surface, or
+agent-platform adapter surface, because an installed plugin has no other
 staleness signal. After upgrading, reload or enable the plugin in your coding
 agent.
 
@@ -43,6 +43,11 @@ uses semantic-ish versioning (minor = new skill or new capability, patch = fixes
   feedback can measure missed errors as well as bad nudges and takeovers.
 
 ### Fixed
+
+- **Desktop repair now installs the ConversationRuntime version the app
+  requires.** CLI and adapter manifests advance to 0.6.5 with runtime 0.3.8,
+  and Desktop 0.3.8 requires that CLI release. The health check can no longer
+  accept a stale 0.6.4 checkout and repeatedly repair back to runtime 0.3.7.
 
 - **Dropped Workload Card review no longer asks a local model to open an
   inaccessible filesystem path.** Desktop now passes only the bounded,
