@@ -11,13 +11,20 @@ The tasks cover codebase analysis, cart substitution, and operations
 classification. Scoring is deterministic field equality; no remote judge,
 provider call, upload, or customer data is involved.
 
-With Understudy Desktop 0.3.2+ running and both slots warm:
+With Understudy Desktop running and at least two local model slots warm:
 
 ```sh
-node experiments/desktop-grocery-proof/run.mjs \
-  --student-slot 9 \
-  --teacher-slot 5
+understudy desktop status --json
+node experiments/desktop-grocery-proof/run.mjs
 ```
+
+The runner discovers the current residency set through the versioned Desktop
+API. It assigns the smallest warm model to the student route and the largest
+warm model to the main/teacher route, then records both model ids and the
+selection source in the immutable summary. Machine-specific slot ids are never
+required for the normal demo. Use `--student-slot <id> --teacher-slot <id>`
+together only when deliberately comparing a different warm pair; a missing or
+stopped requested slot fails before any task runs.
 
 The separate promotion suite freezes 30 harder tasks—10 per workflow—behind
 the same routes, scorer, run identity, and evidence contract. Use it after the
@@ -25,9 +32,7 @@ smoke passes:
 
 ```sh
 node experiments/desktop-grocery-proof/run.mjs \
-  --suite promotion \
-  --student-slot 9 \
-  --teacher-slot 5
+  --suite promotion
 ```
 
 Prompt or policy optimization uses a separate 18-task development slice,
@@ -35,9 +40,7 @@ never the promotion proof:
 
 ```sh
 node experiments/desktop-grocery-proof/run.mjs \
-  --suite development \
-  --student-slot 9 \
-  --teacher-slot 5
+  --suite development
 ```
 
 The development suite is tagged `data_split: development` and can produce
@@ -58,6 +61,10 @@ run cancellation or aborts the Pi incumbent run, preserves the canonical
 terminal event, and counts as a failed task rather than hanging or disappearing.
 Use `--turn-timeout-ms <milliseconds>` only when a deliberately slower baseline
 needs a different frozen ceiling.
+The runner also fails the whole proof immediately on a canonical error,
+cancellation, or a turn with no complete provider usage. It preserves that
+turn's owner-only event JSONL for diagnosis but does not publish `summary.json`
+or a buyer report from incomplete evidence.
 
 To compare a hosted incumbent on the identical slice, opt in explicitly. This
 fourth route uses Pi and the same canonical event contract; it does not add a
@@ -68,8 +75,6 @@ and `--confirm-spend` before any synthetic prompt leaves the machine:
 ```sh
 export INCUMBENT_API_KEY='<set in the terminal, never in chat>'
 node experiments/desktop-grocery-proof/run.mjs \
-  --student-slot 9 \
-  --teacher-slot 5 \
   --incumbent-base-url https://provider.example/v1 \
   --incumbent-model incumbent-model-id \
   --incumbent-provider-kind openai-compatible \

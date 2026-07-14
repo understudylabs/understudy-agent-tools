@@ -2,8 +2,10 @@ import assert from "node:assert/strict";
 import { createHash } from "node:crypto";
 import { createServer } from "node:http";
 import {
+  existsSync,
   mkdirSync,
   mkdtempSync,
+  readdirSync,
   readFileSync,
   rmSync,
   statSync,
@@ -18,7 +20,10 @@ import {
   extractJsonObject,
   groceryProofIdentity,
   incumbentBudgetPreflight,
+  requireSuccessfulProofTurn,
+  resolveProofSlots,
   resolveGrocerySuiteFile,
+  runProof,
   runHostedIncumbent,
   scoreObject,
   summarizeEvents,
@@ -33,6 +38,49 @@ import {
 } from "../experiments/desktop-grocery-proof/report.mjs";
 
 describe("desktop grocery proof", () => {
+  it("discovers the smallest and largest warm models without machine-specific slot ids", () => {
+    const residency = {
+      slots: [
+        { id: 5, model_id: "large-stopped", state: "stopped", mem_gb: 24 },
+        { id: 7, model_id: "small-running", state: "running", mem_gb: 5.25 },
+        { id: 6, model_id: "teacher-running", state: "running", mem_gb: 7 },
+        { id: 9, model_id: "largest-running", state: "running", mem_gb: 18.8 },
+      ],
+    };
+    assert.deepEqual(resolveProofSlots(residency), {
+      source: "auto",
+      studentSlot: 7,
+      teacherSlot: 9,
+      studentModel: "small-running",
+      teacherModel: "largest-running",
+    });
+    assert.deepEqual(resolveProofSlots(residency, { studentSlot: 7, teacherSlot: 6 }), {
+      source: "explicit",
+      studentSlot: 7,
+      teacherSlot: 6,
+      studentModel: "small-running",
+      teacherModel: "teacher-running",
+    });
+  });
+
+  it("fails clearly when automatic or explicit grocery proof slots are not runnable", () => {
+    const oneWarm = {
+      slots: [
+        { id: 7, model_id: "small-running", state: "running", mem_gb: 5.25 },
+        { id: 6, model_id: "teacher-stopped", state: "stopped", mem_gb: 7 },
+      ],
+    };
+    assert.throws(() => resolveProofSlots(oneWarm), /requires two warm local models; found 1/);
+    assert.throws(
+      () => resolveProofSlots(oneWarm, { studentSlot: 7 }),
+      /pass both student and teacher slots/,
+    );
+    assert.throws(
+      () => resolveProofSlots(oneWarm, { studentSlot: 7, teacherSlot: 6 }),
+      /must both be running; available running slots: 7/,
+    );
+  });
+
   it("keeps the 30-task grocery promotion suite frozen and balanced", () => {
     assert.equal(resolveGrocerySuiteFile("smoke"), "tasks.json");
     assert.equal(resolveGrocerySuiteFile("development"), "tasks.development.json");
@@ -135,6 +183,131 @@ describe("desktop grocery proof", () => {
     assert.equal(summary.teacher_continuations, 1);
     assert.equal(summary.small_model_output_share, 0.5);
     assert.equal(summary.supervisor_token_overhead, 9 / 26);
+  });
+
+  it("refuses to publish a buyer proof from terminal errors or missing usage", () => {
+    assert.throws(
+      () => requireSuccessfulProofTurn("small", "cart", {
+        terminal_status: "error",
+        terminal_reason: "runtime dependency missing",
+        usage: {},
+      }),
+      /small\/cart ended in error: runtime dependency missing/,
+    );
+    assert.throws(
+      () => requireSuccessfulProofTurn("main", "ops", {
+        terminal_status: "completed",
+        terminal_reason: null,
+        usage: {},
+      }),
+      /did not report any complete provider usage/,
+    );
+    assert.doesNotThrow(() => requireSuccessfulProofTurn("supervised", "code", {
+      terminal_status: "completed",
+      terminal_reason: null,
+      usage: {
+        student: { complete: false, source: "unavailable" },
+        teacher: { complete: true, source: "provider" },
+      },
+    }));
+  });
+
+  it("preserves a failed turn but does not publish an incomplete buyer report", async () => {
+    const root = mkdtempSync(join(tmpdir(), "understudy-grocery-failed-proof-"));
+    const outputRoot = join(root, "proofs");
+    const capabilityPath = join(root, "desktop-api.json");
+    const previousCapability = process.env.UNDERSTUDY_DESKTOP_API_FILE;
+    const server = createServer(async (request, response) => {
+      if (request.url === "/v1/capabilities") {
+        response.writeHead(200, { "content-type": "application/json" });
+        response.end(JSON.stringify({
+          schema_version: "understudy.desktop_api.v2",
+          api_version: "2.2.0",
+          event_schema: "understudy-conversation-runtime-event-v1",
+          features: { local_supervision: true },
+        }));
+        return;
+      }
+      if (request.url === "/v1/residency") {
+        response.writeHead(200, { "content-type": "application/json" });
+        response.end(JSON.stringify({
+          slots: [
+            { id: 7, model_id: "small-fixture", state: "running", mem_gb: 5 },
+            { id: 6, model_id: "teacher-fixture", state: "running", mem_gb: 7 },
+          ],
+        }));
+        return;
+      }
+      if (request.url?.startsWith("/v1/conversations/") && request.method === "POST") {
+        let body = "";
+        for await (const chunk of request) body += chunk;
+        const input = JSON.parse(body);
+        const sessionId = decodeURIComponent(request.url.split("/")[3]);
+        response.writeHead(200, { "content-type": "application/x-ndjson" });
+        response.end(`${JSON.stringify({
+          schema_version: "understudy-conversation-runtime-event-v1",
+          event_id: `${input.runId}:0`,
+          run_id: input.runId,
+          session_id: sessionId,
+          runtime_id: "grocery-proof-fixture",
+          sequence: 0,
+          emitted_at: "2026-07-14T00:00:00Z",
+          event: "error",
+          data: {
+            stage: "dispatch",
+            code: "fixture_dispatch_failed",
+            message: "fixture dispatch failed",
+            recoverable: false,
+          },
+        })}\n`);
+        return;
+      }
+      response.writeHead(404);
+      response.end();
+    });
+    await new Promise((accept) => server.listen(0, "127.0.0.1", accept));
+    const address = server.address();
+    assert.ok(address && typeof address !== "string");
+    writeFileSync(capabilityPath, `${JSON.stringify({
+      base_url: `http://127.0.0.1:${address.port}`,
+      token: "a".repeat(64),
+    })}\n`, { mode: 0o600 });
+    process.env.UNDERSTUDY_DESKTOP_API_FILE = capabilityPath;
+    try {
+      await assert.rejects(
+        () => runProof({
+          studentSlot: null,
+          teacherSlot: null,
+          suite: "smoke",
+          maxTokens: 64,
+          turnTimeoutMs: 5_000,
+          outputRoot,
+          reportFrom: null,
+          reportOutputRoot: null,
+          incumbentBaseUrl: null,
+          incumbentModel: null,
+          incumbentProviderKind: "openai-compatible",
+          incumbentApiKeyEnv: null,
+          incumbentInputUsdPerMillion: null,
+          incumbentOutputUsdPerMillion: null,
+          budgetUsd: null,
+          confirmSpend: false,
+        }),
+        /small\/codebase-analysis ended in error: fixture dispatch failed/,
+      );
+      const proofDirs = readdirSync(outputRoot);
+      assert.equal(proofDirs.length, 1);
+      const proofDir = join(outputRoot, proofDirs[0]);
+      assert.equal(existsSync(join(proofDir, "small-codebase-analysis.events.jsonl")), true);
+      assert.equal(existsSync(join(proofDir, "summary.json")), false);
+      assert.equal(existsSync(join(proofDir, "report.json")), false);
+      assert.equal(existsSync(join(proofDir, "report.html")), false);
+    } finally {
+      await new Promise((accept) => server.close(accept));
+      if (previousCapability === undefined) delete process.env.UNDERSTUDY_DESKTOP_API_FILE;
+      else process.env.UNDERSTUDY_DESKTOP_API_FILE = previousCapability;
+      rmSync(root, { recursive: true, force: true });
+    }
   });
 
   it("replaces a rejected completed answer while retaining role evidence", () => {
