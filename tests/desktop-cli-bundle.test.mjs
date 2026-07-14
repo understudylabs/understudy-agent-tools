@@ -53,6 +53,14 @@ test("Desktop CLI bundle paths match Tauri externalBin and resource layout", () 
   assert.deepEqual(macConfig.bundle.resources, {
     "resources/understudy-cli/": "understudy-cli-resources/",
   });
+  assert.deepEqual(macConfig.bundle.macOS, { entitlements: "Entitlements.plist" });
   assert.match(config.build.beforeBuildCommand, /build-desktop-cli\.mjs/);
   assert.match(config.build.beforeDevCommand, /build-desktop-cli\.mjs/);
+
+  const entitlements = readFileSync(
+    join(repositoryRoot, "apps/homescreen/src-tauri/Entitlements.plist"),
+    "utf8",
+  );
+  assert.match(entitlements, /com\.apple\.security\.cs\.allow-jit/);
+  assert.match(entitlements, /<true\s*\/>/);
 });

@@ -3,6 +3,9 @@
     "externalBin": [
       "binaries/understudy-node"
     ],
+    "macOS": {
+      "entitlements": "Entitlements.plist"
+    },
     "resources": {
       "resources/understudy-cli/": "understudy-cli-resources/"
     }
