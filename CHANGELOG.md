@@ -44,6 +44,13 @@ uses semantic-ish versioning (minor = new skill or new capability, patch = fixes
 
 ### Fixed
 
+- **Desktop API conversations now count toward the exact-release migration
+  cohort.** Desktop/runtime 0.3.14 and CLI 0.6.11 record versioned API turns in
+  the same local route ledger as GUI turns, including caller-owned run and
+  session identity, provider usage, tool rounds, supervision, compaction,
+  latency, memory, and terminal status. Canonical traces can no longer succeed
+  while the release monitor incorrectly remains at zero observed turns.
+
 - **Every canonical-runtime build has an unambiguous CLI distribution
   identity.** Desktop/runtime 0.3.13 requires CLI 0.6.10. Reusing 0.6.9 after
   its runtime advanced from 0.3.12 to 0.3.13 would have let an installed older
