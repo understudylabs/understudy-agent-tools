@@ -175,7 +175,8 @@ Three ways to optimize, picked by commitment and workload shape:
 3. **Program lane (opt-in).** The agent can scaffold a reusable DSPy program
    from local samples using the program-scaffold pattern, verify parity, then
    run the approval-gated `adapter run --adapter dspy-gepa --execute` path
-   against the Understudy gateway. Full GEPA optimization over that program is
+   against the Understudy gateway with an explicit dollar cap and input/output
+   token-price basis. Full GEPA optimization over that program is
    gated by parity: the scaffolded program must reproduce the incumbent
    baseline before optimization, or you optimize a reconstruction that diverges
    from production.

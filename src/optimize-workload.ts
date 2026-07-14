@@ -80,6 +80,9 @@ type AdapterRunOptions = {
   trainSplit?: string;
   devSplit?: string;
   maxTokens?: string;
+  budgetUsd?: string;
+  inputUsdPerMillion?: string;
+  outputUsdPerMillion?: string;
   scoreObjective?: string;
   reflectionMinibatchSize?: string;
 };
@@ -118,6 +121,18 @@ const adapterRegistry: Record<string, UvAdapterSpec> = {
       if (!options.model) {
         throw new Error("--model is required for dspy-gepa");
       }
+      const budgetUsd = requiredPositiveNumber(options.budgetUsd, "--budget-usd");
+      const inputUsdPerMillion = requiredNonNegativeNumber(
+        options.inputUsdPerMillion,
+        "--input-usd-per-million",
+      );
+      const outputUsdPerMillion = requiredNonNegativeNumber(
+        options.outputUsdPerMillion,
+        "--output-usd-per-million",
+      );
+      if (inputUsdPerMillion === 0 && outputUsdPerMillion === 0) {
+        throw new Error("dspy-gepa requires a non-zero input or output price basis");
+      }
       return [
         "dspy-gepa",
         "--repo",
@@ -142,6 +157,12 @@ const adapterRegistry: Record<string, UvAdapterSpec> = {
         options.devSplit ?? "dev",
         "--max-tokens",
         options.maxTokens ?? "256",
+        "--budget-usd",
+        String(budgetUsd),
+        "--input-usd-per-million",
+        String(inputUsdPerMillion),
+        "--output-usd-per-million",
+        String(outputUsdPerMillion),
       ];
     },
   },
@@ -242,6 +263,24 @@ function parseBudgetUsd(budgetUsd: string | undefined): number | null {
   const parsed = Number(budgetUsd);
   if (!Number.isFinite(parsed) || parsed < 0) {
     throw new Error(`Invalid --budget-usd value "${budgetUsd}". Use a non-negative number.`);
+  }
+  return parsed;
+}
+
+function requiredPositiveNumber(value: string | undefined, flag: string): number {
+  if (value === undefined) throw new Error(`${flag} is required for provider-backed dspy-gepa`);
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed) || parsed <= 0) {
+    throw new Error(`${flag} must be a positive number`);
+  }
+  return parsed;
+}
+
+function requiredNonNegativeNumber(value: string | undefined, flag: string): number {
+  if (value === undefined) throw new Error(`${flag} is required for provider-backed dspy-gepa`);
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed) || parsed < 0) {
+    throw new Error(`${flag} must be a non-negative number`);
   }
   return parsed;
 }
@@ -399,6 +438,7 @@ export function runOptimizerAdapter(options: AdapterRunOptions): Record<string, 
       reason: "pass --execute after explicit approval to run this adapter",
     };
   }
+  const args = adapter.buildArgs(repo, options);
   const env: Record<string, string> = {};
   if (adapter.requiresAuth(options)) {
     const auth = resolveOptimizerAuth(repo);
@@ -406,7 +446,7 @@ export function runOptimizerAdapter(options: AdapterRunOptions): Record<string, 
     env.UNDERSTUDY_GATEWAY_URL = auth.gatewayUrl;
     env.UNDERSTUDY_AUTH_SOURCE = auth.source;
   }
-  const out = runUvPython(repo, runtimePath, adapter.buildArgs(repo, options), adapter.packages, env);
+  const out = runUvPython(repo, runtimePath, args, adapter.packages, env);
   freezeCandidateIntoActiveExperiment(repo, out);
   return out;
 }

@@ -196,6 +196,10 @@ describe("proof-scoped correction evidence", () => {
       assert.equal(gepa.handoff.provider_calls_performed, false);
       assert.equal(gepa.handoff.upload_performed, false);
       assert.deepEqual(gepa.handoff.output_keys, ["answer_json"]);
+      assert.match(gepa.handoff.command_template, /--budget-usd <approved-usd>/);
+      assert.match(gepa.handoff.command_template, /--input-usd-per-million <input-price>/);
+      assert.match(gepa.handoff.command_template, /--output-usd-per-million <output-price>/);
+      assert.match(gepa.handoff.command_template, /--execute$/);
       assert.equal(new Set(gepa.samples.map((row) => row.input_id)).size, 4);
       assert.equal(gepa.samples.filter((row) => row.split === "dev").length, 1);
       assert.ok(gepa.samples.every(

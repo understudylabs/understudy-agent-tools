@@ -55,7 +55,7 @@ understudy route-decision plan --workload-card .understudy/workload-discovery/wo
 understudy skills --search gepa
 understudy optimize-workload check --repo .
 understudy optimize-workload dry-run --repo .
-understudy optimize-workload adapter run --repo . --adapter dspy-gepa --samples samples.json --input-keys question --output-keys answer --model gpt-4o-mini --execute
+understudy optimize-workload adapter run --repo . --adapter dspy-gepa --samples samples.json --input-keys question --output-keys answer --model gpt-4o-mini --budget-usd <approved-usd> --input-usd-per-million <input-price> --output-usd-per-million <output-price> --execute
 understudy optimize-workload adapter run --repo . --adapter eval-input-gepa --manifest eval-input-manifest.json --execute
 understudy value report --workload-card .understudy/workload-discovery/workload-card.json --route-decision .understudy/route-decision/route-decision-packet.json --requests-per-month 10000
 ```
@@ -152,7 +152,14 @@ exposed through
 authenticated Understudy gateway key, passes it into the local `uv` runtime as
 environment, configures DSPy against the gateway, runs train/dev rows only,
 excludes holdout, and writes `.understudy/optimize-workload/candidate.json`
-plus `proof-packet.json`.
+plus `proof-packet.json`. Live execution requires `--budget-usd`,
+`--input-usd-per-million`, and `--output-usd-per-million` before auth is
+resolved. The runtime disables client-side retries, shares one cumulative spend
+ledger across DSPy LM copies, and reserves a conservative per-call upper bound
+before provider execution. Missing usage, usage beyond the reservation, or a
+next call that could cross the cap produces an owner-only terminal run state
+instead of continuing. Recorded cost is attribution under the supplied token
+prices, not the provider's final bill.
 
 The generic adapter registry is exposed through
 `optimize-workload adapter run`. The first registry-backed non-DSPy adapter
