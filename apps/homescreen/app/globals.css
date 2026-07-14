@@ -2603,38 +2603,63 @@ select,
     justify-content: flex-end;
   }
 }
-.runtime-repair-prompt {
+.operation-notice-stack {
   position: fixed;
   z-index: 80;
   top: 42px;
   right: 16px;
   display: grid;
-  grid-template-columns: auto minmax(0, 1fr) auto auto;
+  gap: 8px;
+  width: min(520px, calc(100vw - 32px));
+}
+.operation-notice {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr) auto;
   align-items: center;
   gap: 10px;
-  width: min(520px, calc(100vw - 32px));
+  width: 100%;
   padding: 10px 10px 10px 12px;
-  border: 1px solid color-mix(in srgb, var(--accent) 42%, var(--border));
+  border: 1px solid color-mix(in srgb, var(--mb-cyan) 42%, var(--border));
   border-radius: var(--r-control);
   background: color-mix(in srgb, var(--surface) 94%, transparent);
   box-shadow: 0 12px 32px rgb(0 0 0 / 24%);
   backdrop-filter: blur(16px);
 }
-.runtime-repair-icon {
-  color: var(--accent);
+.operation-notice-icon {
+  color: var(--mb-cyan);
 }
-.runtime-repair-copy {
+.operation-notice-icon.is-spinning {
+  animation: spin 900ms linear infinite;
+}
+.operation-notice.is-running {
+  background: color-mix(in srgb, var(--mb-cyan) 5%, var(--surface));
+}
+.operation-notice.is-success {
+  border-color: color-mix(in srgb, var(--running) 50%, var(--border));
+}
+.operation-notice.is-success .operation-notice-icon,
+.operation-notice.is-success .operation-notice-copy code {
+  color: var(--running);
+}
+.operation-notice.is-error {
+  border-color: color-mix(in srgb, var(--error) 55%, var(--border));
+}
+.operation-notice.is-error .operation-notice-icon,
+.operation-notice.is-error .operation-notice-copy code {
+  color: var(--error);
+}
+.operation-notice-copy {
   display: grid;
   gap: 2px;
   min-width: 0;
 }
-.runtime-repair-copy strong {
+.operation-notice-copy strong {
   color: var(--text);
   font-size: 11px;
   font-weight: 600;
 }
-.runtime-repair-copy span,
-.runtime-repair-copy code {
+.operation-notice-copy span,
+.operation-notice-copy code {
   overflow: hidden;
   color: var(--text-2);
   font-size: 10px;
@@ -2642,38 +2667,74 @@ select,
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.runtime-repair-copy code {
-  color: var(--accent);
+.operation-notice-copy code {
+  color: var(--mb-cyan);
 }
-.runtime-repair-action,
-.runtime-repair-dismiss {
+.operation-notice-progress {
+  display: grid;
+  grid-template-columns: minmax(84px, 1fr) auto;
+  align-items: center;
+  gap: 8px;
+  margin-top: 2px;
+}
+.operation-notice-progress progress {
+  width: 100%;
+  height: 3px;
+  overflow: hidden;
+  border: 0;
+  border-radius: var(--r-pill);
+  appearance: none;
+}
+.operation-notice-progress progress::-webkit-progress-bar {
+  background: color-mix(in srgb, var(--mb-cyan) 14%, var(--border));
+}
+.operation-notice-progress progress::-webkit-progress-value {
+  border-radius: var(--r-pill);
+  background: var(--mb-cyan);
+}
+.operation-notice-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.operation-notice-action,
+.operation-notice-dismiss {
   border: 1px solid var(--border);
   border-radius: var(--r-control);
   background: var(--elevated);
   color: var(--text);
 }
-.runtime-repair-action {
+.operation-notice-action {
   min-height: 30px;
   padding: 0 10px;
   font: inherit;
   font-size: 10px;
   white-space: nowrap;
 }
-.runtime-repair-action:hover:not(:disabled) {
-  border-color: var(--accent);
+.operation-notice-action:hover:not(:disabled) {
+  border-color: var(--mb-cyan);
 }
-.runtime-repair-action:disabled {
+.operation-notice-action:disabled {
   opacity: 0.6;
 }
-.runtime-repair-dismiss {
+.operation-notice-dismiss {
   display: grid;
   width: 28px;
   height: 28px;
   padding: 0;
   place-items: center;
 }
-.runtime-repair-dismiss:hover {
-  color: var(--accent);
+.operation-notice-dismiss:hover {
+  color: var(--mb-cyan);
+}
+.operation-notice-dismiss:disabled {
+  cursor: default;
+  opacity: 0.35;
+}
+@media (prefers-reduced-motion: reduce) {
+  .operation-notice-icon.is-spinning {
+    animation: none;
+  }
 }
 .chat-image-list {
   display: flex;
