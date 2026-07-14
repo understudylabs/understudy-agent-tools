@@ -4,10 +4,14 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Channel, invoke, isTauri } from "@tauri-apps/api/core";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
 import {
-  Conversation,
-  ConversationContent,
-  ConversationScrollButton,
-} from "@/components/ai-elements/conversation";
+  MessageScroller,
+  MessageScrollerButton,
+  MessageScrollerContent,
+  MessageScrollerItem,
+  MessageScrollerProvider,
+  MessageScrollerViewport,
+  useMessageScrollerVisibility,
+} from "@/app/components/base-ui/message-scroller";
 import {
   Message,
   MessageContent,
@@ -59,6 +63,7 @@ import {
 } from "../lib/stream-pacer.mjs";
 import { ModelCardDrawer } from "./ModelCardDrawer";
 import type { FileUIPart } from "ai";
+import { ArrowDownIcon } from "lucide-react";
 
 type Role = "user" | "assistant";
 type ToolTrace = {
@@ -302,6 +307,36 @@ function ChatToolTrace({ tool }: { tool: ToolTrace }) {
         )}
       </ToolContent>
     </Tool>
+  );
+}
+
+function ChatScrollTracker({
+  anchorIds,
+  streaming,
+}: {
+  anchorIds: string[];
+  streaming: boolean;
+}) {
+  const { currentAnchorId, visibleMessageIds } = useMessageScrollerVisibility();
+  if (anchorIds.length === 0) return null;
+
+  const anchorIndex = currentAnchorId ? anchorIds.indexOf(currentAnchorId) : -1;
+  const currentTurn = Math.max(0, anchorIndex) + 1;
+  const visibleLabel = `${visibleMessageIds.length} message${visibleMessageIds.length === 1 ? "" : "s"} visible`;
+
+  return (
+    <MessageScrollerButton
+      className="chat-scroll-tracker"
+      aria-label={`Turn ${currentTurn} of ${anchorIds.length}. ${visibleLabel}. Jump to latest.`}
+      title="Jump to latest"
+    >
+      {streaming && <span className="chat-scroll-live-dot" aria-hidden="true" />}
+      <span className="chat-scroll-turn">Turn {currentTurn} of {anchorIds.length}</span>
+      <span className="chat-scroll-latest">
+        Latest
+        <ArrowDownIcon aria-hidden="true" size={13} strokeWidth={2} />
+      </span>
+    </MessageScrollerButton>
   );
 }
 
@@ -931,6 +966,18 @@ export function ChatPane({ resetToken, historyToken }: { resetToken: number; his
       latestSupervisorEvent?.stage === "supervisor_fallback_local" ||
       latestSupervisorEvent?.stage === "student_interrupted" ||
       latestSupervisorEvent?.stage === "teacher_continuation");
+  const transcriptRows = useMemo(
+    () => messages.map((message, index) => ({
+      id: `${sessionId}:message:${index}`,
+      index,
+      message,
+    })),
+    [messages, sessionId],
+  );
+  const turnAnchorIds = useMemo(
+    () => transcriptRows.filter((row) => row.message.role === "user").map((row) => row.id),
+    [transcriptRows],
+  );
 
   return (
     <div
@@ -1012,10 +1059,18 @@ export function ChatPane({ resetToken, historyToken }: { resetToken: number; his
           onReady={() => setPersonaReady(true)}
         />
       </div>
-      <Conversation className="min-h-0">
-        <ConversationContent className="gap-5 px-4 pb-3 pt-0">
+      <MessageScrollerProvider
+        key={sessionId}
+        autoScroll
+        defaultScrollPosition="last-anchor"
+        scrollEdgeThreshold={24}
+        scrollPreviousItemPeek={56}
+      >
+        <MessageScroller className="min-h-0 flex-1">
+          <MessageScrollerViewport>
+            <MessageScrollerContent className="gap-5 px-4 pb-12 pt-0">
           {messages.length > 0 &&
-            messages.map((m, i) => {
+            transcriptRows.map(({ id: messageId, index: i, message: m }) => {
               const isLastAssistant = m.role === "assistant" && i === messages.length - 1;
               const isActiveAssistant = isLastAssistant && streaming;
               const isPacedAssistant = m.role === "assistant" && i === pacingMessageIndex && pacedRevealed !== null;
@@ -1023,86 +1078,94 @@ export function ChatPane({ resetToken, historyToken }: { resetToken: number; his
               const pacedBacklog = isPacedAssistant ? Math.max(0, m.content.length - pacedRevealed) : 0;
               const reasoningText = cleanReasoningText(m.reasoning ?? "");
               return (
-                <Message
-                  key={i}
-                  from={m.role}
-                  className={`chat-msg ${m.role} ${m.role === "user" ? "max-w-[80%]" : "max-w-[92%]"}`}
+                <MessageScrollerItem
+                  key={messageId}
+                  messageId={messageId}
+                  scrollAnchor={m.role === "user"}
                 >
-                  <div className="chat-role">{m.role === "assistant" ? m.model ?? "Assistant" : "You"}</div>
-                  <MessageContent>
-                    {m.role === "user" && m.attachments && m.attachments.length > 0 && (
-                      <div className="chat-image-list">
-                        {m.attachments.map((attachment) => (
-                          <figure className="chat-image" key={attachment.id}>
-                            {attachment.previewUrl ? (
-                              <img src={attachment.previewUrl} alt={attachment.filename} />
-                            ) : (
-                              <div className="chat-image-unavailable">Preview unavailable</div>
-                            )}
-                            <figcaption>{attachment.filename}</figcaption>
-                          </figure>
-                        ))}
-                      </div>
-                    )}
-                    {m.role === "assistant" && reasoningText && (
-                      <ReasoningSubstream active={isActiveAssistant} text={reasoningText} />
-                    )}
-                    {m.role === "assistant" && m.tools && m.tools.length > 0 && (
-                      <div className="tool-trace-list">
-                        {m.tools.map((tool, idx) => (
-                          <ChatToolTrace key={`${tool.name}-${idx}`} tool={tool} />
-                        ))}
-                      </div>
-                    )}
-                    {m.role === "assistant" ? (
-                      <div className="paced-answer">
-                        <MessageResponse>{shownContent || (isActiveAssistant ? "..." : "")}</MessageResponse>
-                        {pacedBacklog > SKIP_HINT_THRESHOLD && (
-                          <button
-                            type="button"
-                            className="paced-answer-skip"
-                            onClick={() => streamPacer.current?.skip()}
-                          >
-                            Show full answer
-                          </button>
-                        )}
-                      </div>
-                    ) : (
-                      m.content
-                    )}
-                  </MessageContent>
-                </Message>
+                  <Message
+                    from={m.role}
+                    className={`chat-msg ${m.role} ${m.role === "user" ? "max-w-[80%]" : "max-w-[92%]"}`}
+                  >
+                    <div className="chat-role">{m.role === "assistant" ? m.model ?? "Assistant" : "You"}</div>
+                    <MessageContent>
+                      {m.role === "user" && m.attachments && m.attachments.length > 0 && (
+                        <div className="chat-image-list">
+                          {m.attachments.map((attachment) => (
+                            <figure className="chat-image" key={attachment.id}>
+                              {attachment.previewUrl ? (
+                                <img src={attachment.previewUrl} alt={attachment.filename} />
+                              ) : (
+                                <div className="chat-image-unavailable">Preview unavailable</div>
+                              )}
+                              <figcaption>{attachment.filename}</figcaption>
+                            </figure>
+                          ))}
+                        </div>
+                      )}
+                      {m.role === "assistant" && reasoningText && (
+                        <ReasoningSubstream active={isActiveAssistant} text={reasoningText} />
+                      )}
+                      {m.role === "assistant" && m.tools && m.tools.length > 0 && (
+                        <div className="tool-trace-list">
+                          {m.tools.map((tool, idx) => (
+                            <ChatToolTrace key={`${tool.name}-${idx}`} tool={tool} />
+                          ))}
+                        </div>
+                      )}
+                      {m.role === "assistant" ? (
+                        <div className="paced-answer">
+                          <MessageResponse>{shownContent || (isActiveAssistant ? "..." : "")}</MessageResponse>
+                          {pacedBacklog > SKIP_HINT_THRESHOLD && (
+                            <button
+                              type="button"
+                              className="paced-answer-skip"
+                              onClick={() => streamPacer.current?.skip()}
+                            >
+                              Show full answer
+                            </button>
+                          )}
+                        </div>
+                      ) : (
+                        m.content
+                      )}
+                    </MessageContent>
+                  </Message>
+                </MessageScrollerItem>
               );
             })
           }
           {supervisionVisible && latestSupervisorEvent && (
-            <div className="sidekick-active-card chat-sidekick-monitor">
-              <div className="sidekick-orbit" aria-hidden="true" />
-              <div className="sidekick-active-copy">
-                <div className="sidekick-active-kicker">Supervisor</div>
-                <div className="sidekick-active-title">
-                  {latestSupervisorEvent.stage === "cloud_fallback_local"
-                      ? "Cloud supervisor unavailable"
-                    : latestSupervisorEvent.stage === "supervisor_fallback_local"
-                      ? "Supervisor unavailable"
-                    : latestSupervisorEvent.stage === "student_interrupted"
-                      ? "Student interrupted"
-                    : latestSupervisorEvent.stage === "teacher_continuation"
-                      ? "Teacher continuing"
-                    : latestSupervisorEvent.stage === "interrupt"
-                      ? "Intervention requested"
-                    : latestSupervisorEvent.stage === "nudge"
-                      ? "Student nudged"
-                    : latestSupervisorEvent.stage === "stop"
-                      ? "Turn stopped"
-                      : "Checking the smaller model"}
+            <MessageScrollerItem messageId={`${sessionId}:supervisor:${latestSupervisorEvent.id}`}>
+              <div className="sidekick-active-card chat-sidekick-monitor">
+                <div className="sidekick-orbit" aria-hidden="true" />
+                <div className="sidekick-active-copy">
+                  <div className="sidekick-active-kicker">Supervisor</div>
+                  <div className="sidekick-active-title">
+                    {latestSupervisorEvent.stage === "cloud_fallback_local"
+                        ? "Cloud supervisor unavailable"
+                      : latestSupervisorEvent.stage === "supervisor_fallback_local"
+                        ? "Supervisor unavailable"
+                      : latestSupervisorEvent.stage === "student_interrupted"
+                        ? "Student interrupted"
+                      : latestSupervisorEvent.stage === "teacher_continuation"
+                        ? "Teacher continuing"
+                      : latestSupervisorEvent.stage === "interrupt"
+                        ? "Intervention requested"
+                      : latestSupervisorEvent.stage === "nudge"
+                        ? "Student nudged"
+                      : latestSupervisorEvent.stage === "stop"
+                        ? "Turn stopped"
+                        : "Checking the smaller model"}
+                  </div>
+                  <div className="sidekick-active-task">{latestSupervisorEvent.detail}</div>
                 </div>
-                <div className="sidekick-active-task">{latestSupervisorEvent.detail}</div>
               </div>
-            </div>
+            </MessageScrollerItem>
           )}
           {(dropRunning || droppedWorkload) && (
-            <section className="workload-draft" aria-live="polite">
+            <MessageScrollerItem messageId={`${sessionId}:workload`}>
+              <section className="workload-draft" aria-live="polite">
               {dropRunning || !droppedWorkload ? (
                 <div className="workload-draft-loading">
                   <span />
@@ -1144,13 +1207,24 @@ export function ChatPane({ resetToken, historyToken }: { resetToken: number; his
                   </div>
                 </>
               )}
-            </section>
+              </section>
+            </MessageScrollerItem>
           )}
-          {err && <div className="chat-err">{err}</div>}
-          {notice && !err && <div className="chat-runtime-notice">{notice}</div>}
-        </ConversationContent>
-        <ConversationScrollButton />
-      </Conversation>
+          {err && (
+            <MessageScrollerItem messageId={`${sessionId}:error`}>
+              <div className="chat-err">{err}</div>
+            </MessageScrollerItem>
+          )}
+          {notice && !err && (
+            <MessageScrollerItem messageId={`${sessionId}:notice`}>
+              <div className="chat-runtime-notice">{notice}</div>
+            </MessageScrollerItem>
+          )}
+            </MessageScrollerContent>
+          </MessageScrollerViewport>
+          <ChatScrollTracker anchorIds={turnAnchorIds} streaming={streaming} />
+        </MessageScroller>
+      </MessageScrollerProvider>
 
       <div className="ai-chat-composer">
         <PromptInput
