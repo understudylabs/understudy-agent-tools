@@ -8,15 +8,15 @@ and its evidence, not to claim production readiness from three examples.
 
 ## Before the call
 
-Run Understudy Desktop 0.3.2+ with an Understudy E2B slot and 26B slot warm.
-Confirm that agents can discover the app, then create a fresh proof:
+Run the current Understudy Desktop with at least two local model slots warm.
+Confirm that agents can discover the app, then create a fresh proof. The runner
+selects the smallest warm model as the student and the largest warm model as
+the main/teacher, so the demo has no machine-specific slot ids:
 
 ```sh
 understudy desktop capabilities
 understudy desktop status --json
-node experiments/desktop-grocery-proof/run.mjs \
-  --student-slot 9 \
-  --teacher-slot 5
+node experiments/desktop-grocery-proof/run.mjs
 ```
 
 Keep the resulting proof directory open. Do not use customer prompts, traces,
@@ -27,9 +27,7 @@ extrapolating from the three-task demo:
 
 ```sh
 node experiments/desktop-grocery-proof/run.mjs \
-  --suite promotion \
-  --student-slot 9 \
-  --teacher-slot 5
+  --suite promotion
 ```
 
 If reusing an existing proof, derive a report with the current renderer instead
@@ -74,11 +72,12 @@ support, cancellation, replay, and supervisor feedback.
 
 ## 3-8 minutes: show one runtime, multiple routes
 
-Explain the three default frozen routes:
+Explain the three default frozen routes using the model ids recorded in the
+new proof summary:
 
-1. E2B alone;
-2. 26B alone;
-3. E2B working first while 26B supervises.
+1. the smallest warm local model alone;
+2. the largest warm local model alone;
+3. the smaller model working first while the larger model supervises.
 
 If configured, add the fourth route: the hosted incumbent, executed by Pi with
 the same run identity, canonical events, and deterministic scorer.
@@ -112,15 +111,10 @@ jq '.by_mode | with_entries(.value |= {
 })' "$PROOF/summary.json"
 ```
 
-For the measured synthetic slice, the expected story is:
-
-- E2B handles cart substitution and operations classification.
-- 26B handles all three tasks.
-- E2B is faster, but misses the required atomic inventory fix.
-- Supervision retains the E2B answer and the 26B judge misses that known error.
-
-Do not hide the miss. It is the strongest product moment: Understudy tells the
-team that supervision is not yet safe for code analysis instead of turning an
+Do not memorize or pre-script a winning route. State the result in the fresh
+report, including any incumbent miss, supervisor miss, false positive, or
+unsuccessful correction. That is the strongest product moment: Understudy tells
+the team where a smaller or supervised route is unsafe instead of turning an
 architecture idea into an unsupported savings claim.
 
 ## 15-22 minutes: inspect the failed judgment

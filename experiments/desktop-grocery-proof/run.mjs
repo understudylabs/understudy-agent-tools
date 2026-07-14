@@ -116,6 +116,18 @@ export function summarizeEvents(events, elapsedMs) {
   };
 }
 
+export function requireSuccessfulProofTurn(modeId, taskId, evidence) {
+  if (evidence.terminal_status !== "completed") {
+    throw new Error(
+      `${modeId}/${taskId} ended in ${evidence.terminal_status}: ${String(evidence.terminal_reason ?? "unknown runtime failure")}`,
+    );
+  }
+  const usage = Object.values(evidence.usage ?? {});
+  if (!usage.some((row) => row?.complete === true && row?.source === "provider")) {
+    throw new Error(`${modeId}/${taskId} did not report any complete provider usage`);
+  }
+}
+
 function isRemoteUrl(value) {
   const { hostname } = new URL(value);
   return !["127.0.0.1", "localhost", "::1", "[::1]"].includes(hostname);
@@ -233,8 +245,8 @@ export function validateIncumbentOptions(options) {
 
 function parseArgs(argv) {
   const options = {
-    studentSlot: 9,
-    teacherSlot: 5,
+    studentSlot: null,
+    teacherSlot: null,
     suite: "smoke",
     maxTokens: 384,
     turnTimeoutMs: 120_000,
@@ -278,14 +290,25 @@ function parseArgs(argv) {
     index += 1;
   }
   for (const [name, value] of Object.entries({
-    studentSlot: options.studentSlot,
-    teacherSlot: options.teacherSlot,
     maxTokens: options.maxTokens,
     turnTimeoutMs: options.turnTimeoutMs,
   })) {
     if (!Number.isInteger(value) || value <= 0) throw new Error(`${name} must be a positive integer`);
   }
-  if (options.studentSlot === options.teacherSlot) {
+  const studentSpecified = options.studentSlot !== null;
+  const teacherSpecified = options.teacherSlot !== null;
+  if (studentSpecified !== teacherSpecified) {
+    throw new Error("pass both --student-slot and --teacher-slot, or omit both for automatic discovery");
+  }
+  for (const [name, value] of Object.entries({
+    studentSlot: options.studentSlot,
+    teacherSlot: options.teacherSlot,
+  })) {
+    if (value !== null && (!Number.isInteger(value) || value <= 0)) {
+      throw new Error(`${name} must be a positive integer`);
+    }
+  }
+  if (studentSpecified && options.studentSlot === options.teacherSlot) {
     throw new Error("student and teacher slots must be distinct");
   }
   resolveGrocerySuiteFile(options.suite);
@@ -319,6 +342,64 @@ async function apiFetch(capability, path, init = {}) {
   headers.set("authorization", `Bearer ${capability.token}`);
   if (init.body !== undefined) headers.set("content-type", "application/json");
   return fetch(new URL(path, capability.baseUrl), { ...init, headers });
+}
+
+export function resolveProofSlots(residency, requested = {}) {
+  const slots = Array.isArray(residency?.slots) ? residency.slots : [];
+  const running = slots.filter((slot) => (
+    Number.isInteger(Number(slot?.id))
+    && Number(slot.id) > 0
+    && slot?.state === "running"
+    && typeof slot?.model_id === "string"
+    && slot.model_id.length > 0
+  ));
+  const studentSpecified = requested.studentSlot != null;
+  const teacherSpecified = requested.teacherSlot != null;
+  if (studentSpecified !== teacherSpecified) {
+    throw new Error("pass both student and teacher slots, or omit both for automatic discovery");
+  }
+
+  if (studentSpecified) {
+    const student = running.find((slot) => Number(slot.id) === requested.studentSlot);
+    const teacher = running.find((slot) => Number(slot.id) === requested.teacherSlot);
+    if (!student || !teacher) {
+      throw new Error(
+        `requested grocery proof slots must both be running; available running slots: ${running.map((slot) => slot.id).join(", ") || "none"}`,
+      );
+    }
+    if (student.id === teacher.id) throw new Error("student and teacher slots must be distinct");
+    return {
+      source: "explicit",
+      studentSlot: Number(student.id),
+      teacherSlot: Number(teacher.id),
+      studentModel: student.model_id,
+      teacherModel: teacher.model_id,
+    };
+  }
+
+  if (running.length < 2) {
+    throw new Error(
+      `grocery proof requires two warm local models; found ${running.length}. Warm a small and a larger model, or pass explicit slots.`,
+    );
+  }
+  const ranked = [...running].sort((left, right) => {
+    const leftMemory = typeof left.mem_gb === "number" && Number.isFinite(left.mem_gb)
+      ? left.mem_gb
+      : Number.POSITIVE_INFINITY;
+    const rightMemory = typeof right.mem_gb === "number" && Number.isFinite(right.mem_gb)
+      ? right.mem_gb
+      : Number.POSITIVE_INFINITY;
+    return leftMemory - rightMemory || Number(left.id) - Number(right.id);
+  });
+  const student = ranked[0];
+  const teacher = ranked.at(-1);
+  return {
+    source: "auto",
+    studentSlot: Number(student.id),
+    teacherSlot: Number(teacher.id),
+    studentModel: student.model_id,
+    teacherModel: teacher.model_id,
+  };
 }
 
 async function readNdjson(response) {
@@ -385,14 +466,22 @@ export async function runProof(options = parseArgs(process.argv.slice(2))) {
   ) {
     throw new Error("Understudy Desktop 2.1.0 local supervision API is required");
   }
+  const residencyResponse = await apiFetch(capability, "/v1/residency");
+  if (!residencyResponse.ok) throw new Error(`residency returned ${residencyResponse.status}`);
+  const slotSelection = resolveProofSlots(await residencyResponse.json(), options);
+  process.stdout.write(
+    `slots      student=${slotSelection.studentSlot} (${slotSelection.studentModel}) `
+    + `teacher=${slotSelection.teacherSlot} (${slotSelection.teacherModel}) `
+    + `source=${slotSelection.source}\n`,
+  );
 
   const modes = [
-    { id: "small", slotId: options.studentSlot },
-    { id: "main", slotId: options.teacherSlot },
+    { id: "small", slotId: slotSelection.studentSlot },
+    { id: "main", slotId: slotSelection.teacherSlot },
     {
       id: "supervised",
-      slotId: options.studentSlot,
-      supervisorSlotId: options.teacherSlot,
+      slotId: slotSelection.studentSlot,
+      supervisorSlotId: slotSelection.teacherSlot,
     },
   ];
   if (incumbentEnabled) modes.push({ id: "hosted" });
@@ -445,6 +534,11 @@ export async function runProof(options = parseArgs(process.argv.slice(2))) {
           clearTimeout(timeout);
         }
       }
+      writeProofFile(
+        join(outputDir, `${mode.id}-${task.id}.events.jsonl`),
+        `${events.map((event) => JSON.stringify(event)).join("\n")}\n`,
+      );
+      validateRuntimeTrace(events);
       const evidence = summarizeEvents(events, Math.round(performance.now() - before));
       const parsed = extractJsonObject(evidence.output);
       const score = scoreObject(parsed, task.expected);
@@ -493,8 +587,8 @@ export async function runProof(options = parseArgs(process.argv.slice(2))) {
         task_id: task.id,
         task_title: task.title,
         mode: mode.id,
-        student_slot_id: mode.id === "hosted" ? null : options.studentSlot,
-        teacher_slot_id: mode.id === "hosted" ? null : options.teacherSlot,
+        student_slot_id: mode.id === "hosted" ? null : slotSelection.studentSlot,
+        teacher_slot_id: mode.id === "hosted" ? null : slotSelection.teacherSlot,
         model: mode.id === "hosted" ? options.incumbentModel : null,
         parsed_output: parsed,
         score,
@@ -519,11 +613,8 @@ export async function runProof(options = parseArgs(process.argv.slice(2))) {
           : null,
         ...evidence,
       };
+      requireSuccessfulProofTurn(mode.id, task.id, evidence);
       rows.push(row);
-      writeProofFile(
-        join(outputDir, `${mode.id}-${task.id}.events.jsonl`),
-        `${events.map((event) => JSON.stringify(event)).join("\n")}\n`,
-      );
       process.stdout.write(
         `${mode.id.padEnd(10)} ${task.id.padEnd(20)} accuracy=${score.field_accuracy.toFixed(2)} `
         + `latency=${evidence.elapsed_ms}ms verdicts=${evidence.verdicts.length} `
@@ -609,7 +700,13 @@ export async function runProof(options = parseArgs(process.argv.slice(2))) {
         : "smoke",
     task_count: tasks.length,
     run_count: rows.length,
-    slots: { student: options.studentSlot, teacher: options.teacherSlot },
+    slots: {
+      student: slotSelection.studentSlot,
+      teacher: slotSelection.teacherSlot,
+      source: slotSelection.source,
+      student_model: slotSelection.studentModel,
+      teacher_model: slotSelection.teacherModel,
+    },
     incumbent: incumbentEnabled ? {
       model: options.incumbentModel,
       provider_kind: options.incumbentProviderKind,
