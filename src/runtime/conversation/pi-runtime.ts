@@ -534,6 +534,10 @@ export function teacherOutputMode(studentCompleted: boolean): "append" | "replac
   return studentCompleted ? "replace" : "append";
 }
 
+export function shouldResumeNudgedStudent(studentCompleted: boolean): boolean {
+  return !studentCompleted;
+}
+
 async function createPiRuntimeSession(options: {
   request: RuntimeRunRequest;
   target: RuntimeProviderTarget;
@@ -1260,7 +1264,10 @@ async function runPiSupervisedConversation(
     if (segment.terminal || segment.decision.verdict === "continue" || segment.decision.verdict === "stop") {
       return;
     }
-    if (segment.decision.verdict === "nudge") {
+    if (
+      segment.decision.verdict === "nudge" &&
+      shouldResumeNudgedStudent(segment.studentCompleted)
+    ) {
       markerOrdinal += 1;
       nudges += 1;
       messages = [
@@ -1278,7 +1285,7 @@ async function runPiSupervisedConversation(
     const markerId = segment.markerId;
     const reason = segment.decision.reason;
     if (!markerId || !reason) {
-      throw new Error("interrupt verdict lost its marker or reason");
+      throw new Error("intervention verdict lost its marker or reason");
     }
     await writer.emit("student_interruption", {
       marker_id: markerId,

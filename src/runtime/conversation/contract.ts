@@ -380,7 +380,7 @@ export function validateRuntimeTrace(values: readonly unknown[]): RuntimeEventEn
   const runtimeId = requiredString(first, "runtime_id");
   const eventIds = new Set<string>();
   const pendingTools = new Map<string, string>();
-  const interruptMarkers = new Set<string>();
+  const interventionMarkers = new Set<string>();
   const interruptedMarkers = new Set<string>();
   let terminalSeen = false;
 
@@ -584,13 +584,15 @@ export function validateRuntimeTrace(values: readonly unknown[]): RuntimeEventEn
           }
         }
       }
-      if (verdict === "interrupt") {
-        interruptMarkers.add(requiredString(data, "marker_id", "supervisor_verdict.marker_id"));
+      if (verdict === "interrupt" || verdict === "nudge") {
+        interventionMarkers.add(
+          requiredString(data, "marker_id", "supervisor_verdict.marker_id"),
+        );
       }
     } else if (event === "student_interruption") {
       const marker = requiredString(data, "marker_id", "student_interruption.marker_id");
       requiredString(data, "reason", "student_interruption.reason");
-      if (!interruptMarkers.has(marker)) {
+      if (!interventionMarkers.has(marker)) {
         throw new Error(`student interruption ${marker} has no supervisor verdict`);
       }
       interruptedMarkers.add(marker);
