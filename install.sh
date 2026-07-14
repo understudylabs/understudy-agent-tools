@@ -964,8 +964,8 @@ install_codex_plugin() {
   # and injects a ref, which it then rejects for the local source. Hand Codex
   # the physical directory so local marketplace registration stays local.
   if ! repo="$(cd "$repo" && pwd -P)"; then
-    warn "Could not resolve the Codex marketplace source directory."
-    record_adapter_failure "codex" "marketplace source could not be resolved"
+    say "Could not resolve the Codex marketplace source directory."
+    adapter_prereq_missing "codex" "the marketplace source could not be resolved"
     return 0
   fi
 
