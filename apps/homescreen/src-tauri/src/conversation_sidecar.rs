@@ -161,7 +161,12 @@ pub(crate) enum SidecarAttempt {
     NotSelected,
     Completed(SidecarRunResult),
     NativeFallback(String),
+    Cancelled(String),
     FailedAfterOutput(String),
+}
+
+fn is_runtime_cancellation(error: &str) -> bool {
+    error.starts_with("conversation runtime cancelled:")
 }
 
 pub(crate) const CLOUD_SUPERVISOR_FALLBACK_NOTICE: &str =
@@ -787,6 +792,7 @@ pub(crate) async fn try_run_chat(
     }
     match execute_run(app, request, Some(on_event), None, None).await {
         Ok(result) => SidecarAttempt::Completed(result),
+        Err((error, _)) if is_runtime_cancellation(&error) => SidecarAttempt::Cancelled(error),
         Err((error, true)) => SidecarAttempt::FailedAfterOutput(error),
         Err((error, false)) => SidecarAttempt::NativeFallback(error),
     }
@@ -798,6 +804,7 @@ pub(crate) async fn try_run_chat_headless(app: &AppHandle, request: Value) -> Si
     }
     match execute_run(app, request, None, None, None).await {
         Ok(result) => SidecarAttempt::Completed(result),
+        Err((error, _)) if is_runtime_cancellation(&error) => SidecarAttempt::Cancelled(error),
         Err((error, true)) => SidecarAttempt::FailedAfterOutput(error),
         Err((error, false)) => SidecarAttempt::NativeFallback(error),
     }
@@ -1068,5 +1075,15 @@ mod tests {
         assert_eq!(target.run_id, "run-cancel-1");
         drop(guard);
         assert!(!locked(active_runs()).contains_key(session));
+    }
+
+    #[test]
+    fn runtime_cancellation_is_not_classified_as_an_error() {
+        assert!(is_runtime_cancellation(
+            "conversation runtime cancelled: cancelled_by_client"
+        ));
+        assert!(!is_runtime_cancellation(
+            "conversation runtime connection closed unexpectedly"
+        ));
     }
 }

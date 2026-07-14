@@ -2993,6 +2993,34 @@ pub async fn chat_stream(
                             ),
                         });
                     }
+                    crate::conversation_sidecar::SidecarAttempt::Cancelled(reason) => {
+                        record_chat_run(
+                            &app,
+                            ChatRunInput {
+                                run_id: run_id.clone(),
+                                runtime_backend: "pi".to_string(),
+                                session_id: session_id.clone(),
+                                route: binding.route.clone(),
+                                model: binding.model_field.clone(),
+                                elapsed_ms: Some(started.elapsed().as_millis() as u64),
+                                prompt_tokens: Some(prompt_tokens),
+                                completion_tokens: None,
+                                tool_calls: 0,
+                                sidekick_spawned: sidekick_plan.spawned,
+                                gateway_used: binding.route == "cloud",
+                                compacted,
+                                compaction_reason: compaction_reason.clone(),
+                                context_tokens_before: Some(context_tokens_before),
+                                local_mem_gb,
+                                gateway_available,
+                                gateway_avoided: gateway_available && binding.route != "cloud",
+                                status: "cancelled".to_string(),
+                                error: Some(reason),
+                            },
+                        );
+                        let _ = on_event.send(ChatEvent::Done);
+                        return Ok(());
+                    }
                     crate::conversation_sidecar::SidecarAttempt::FailedAfterOutput(reason) => {
                         let message = format!(
                             "Conversation runtime stopped after the turn began: {reason}. The compatibility engine was not retried, preventing a duplicate answer or tool execution."
@@ -3420,6 +3448,9 @@ async fn execute_prepared_benchmark(
         crate::conversation_sidecar::SidecarAttempt::FailedAfterOutput(reason) => Err(format!(
             "conversation runtime stopped after the benchmark began: {reason}; native retry was suppressed"
         )),
+        crate::conversation_sidecar::SidecarAttempt::Cancelled(reason) => Err(format!(
+            "conversation runtime benchmark cancelled: {reason}"
+        )),
         crate::conversation_sidecar::SidecarAttempt::NativeFallback(_)
         | crate::conversation_sidecar::SidecarAttempt::NotSelected => {
             benchmark_chat_native(app, mgr, prepared).await
@@ -3642,6 +3673,9 @@ pub async fn agent_chat(
         }
         crate::conversation_sidecar::SidecarAttempt::FailedAfterOutput(reason) => Err(format!(
             "conversation runtime stopped after the headless turn began: {reason}; native retry was suppressed"
+        )),
+        crate::conversation_sidecar::SidecarAttempt::Cancelled(reason) => Err(format!(
+            "conversation runtime headless turn cancelled: {reason}"
         )),
         crate::conversation_sidecar::SidecarAttempt::NativeFallback(_)
         | crate::conversation_sidecar::SidecarAttempt::NotSelected => {

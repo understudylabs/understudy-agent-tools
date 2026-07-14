@@ -66,6 +66,10 @@ const modelCardsPath = new URL(
   "../apps/homescreen/src-tauri/knowledge/model_cards.json",
   import.meta.url,
 );
+const modelAliasesPath = new URL(
+  "../apps/homescreen/app/lib/model-aliases.ts",
+  import.meta.url,
+);
 const rlmPanePath = new URL(
   "../apps/homescreen/app/components/RlmPane.tsx",
   import.meta.url,
@@ -90,18 +94,25 @@ const workloadDropRustPath = new URL(
 const captureImportPath = new URL("../src/capture-import.ts", import.meta.url);
 
 test("public desktop preserves the reviewed Train interaction language", async () => {
-  const [css, chat, sidebar] = await Promise.all([
+  const [css, chat, sidebar, aliases] = await Promise.all([
     readFile(cssPath, "utf8"),
     readFile(chatPath, "utf8"),
     readFile(sidebarPath, "utf8"),
+    readFile(modelAliasesPath, "utf8"),
   ]);
 
   assert.match(css, /understudy-agent@3f025022/);
   assert.match(css, /--mb-cyan:\s*#67e8f9/);
   assert.match(css, /--mb-mint:\s*#9edbd3/);
   assert.match(css, /\.composer-row\s*\{/);
+  assert.match(css, /\.ai-chat-composer \.composer-submit\s*\{/);
   assert.match(css, /\.persona-halo\.supervised/);
   assert.match(chat, /className="composer-row"/);
+  assert.match(chat, /className="composer-submit"/);
+  assert.doesNotMatch(chat, /<ThinkingToggle/);
+  assert.match(chat, /className="model-picker-controls"/);
+  assert.match(aliases, /"gemma-4-e4b-it-qat-mlx-vlm-understudy": "understudy-balanced"/);
+  assert.match(aliases, /"gemma-4-12b-it-qat-mlx-vlm-understudy": "understudy-quality"/);
   assert.match(
     chat,
     /Tried to hand off to a larger cloud model, but it is unavailable\. Continuing with the local model\./,

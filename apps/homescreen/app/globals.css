@@ -2203,45 +2203,6 @@ select,
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.ai-model-trigger span:last-child {
-  color: var(--text-3);
-  text-transform: uppercase;
-}
-.ai-thinking-toggle {
-  display: inline-flex;
-  align-items: center;
-  gap: 7px;
-  min-height: 30px;
-  border: 1px solid var(--border);
-  border-radius: var(--r-control);
-  background: var(--surface-2);
-  color: var(--text-3);
-  padding: 5px 9px;
-  font-family: var(--mono);
-  font-size: 11px;
-  line-height: 1;
-}
-.ai-thinking-toggle.active {
-  border-color: color-mix(in srgb, var(--accent) 55%, var(--border));
-  color: var(--text);
-}
-.ai-thinking-toggle:disabled {
-  opacity: 0.45;
-}
-.ai-thinking-toggle.loading {
-  opacity: 1;
-}
-.thinking-loading-dot {
-  display: none;
-  width: 6px;
-  height: 6px;
-  border-radius: 50%;
-  background: currentColor;
-}
-.ai-thinking-toggle.loading .thinking-loading-dot {
-  display: inline-block;
-  animation: pulse 1.1s ease-in-out infinite;
-}
 .chat-role {
   margin-bottom: 5px;
   font-family: var(--mono);
@@ -3063,7 +3024,7 @@ select,
 }
 
 .ai-chat-composer {
-  width: min(560px, 88%);
+  width: min(640px, 92%);
   margin-left: auto;
   margin-right: auto;
 }
@@ -3084,30 +3045,80 @@ select,
 .composer-row {
   display: flex;
   align-items: center;
-  gap: 6px;
-  padding: 2px 6px;
+  gap: 8px;
+  min-height: 48px;
+  padding: 5px 8px;
 }
 
 .composer-row [data-slot="input-group"],
 .composer-row [data-slot="prompt-input-body"] {
   width: auto;
-  min-width: 80px;
+  min-width: 160px;
   flex: 1 1 auto;
 }
 
 .composer-row textarea {
   width: 100%;
   min-width: 0;
-  min-height: 24px;
+  min-height: 32px;
   max-height: 120px;
-  padding: 9px 4px;
+  padding: 9px 6px;
+  font-size: 14px;
+  line-height: 1.35;
 }
 
 .composer-row .ai-model-trigger {
-  max-width: 132px;
+  max-width: 154px;
   border: 0;
   background: transparent;
   padding-inline: 4px;
+}
+
+.model-picker-controls {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 18px;
+  border-top: 1px solid var(--border);
+  padding: 12px 14px;
+}
+
+.model-picker-controls > div {
+  display: grid;
+  gap: 2px;
+}
+
+.model-picker-controls strong {
+  color: var(--text);
+  font-size: 12px;
+  font-weight: 600;
+}
+
+.model-picker-controls span {
+  color: var(--text-3);
+  font-size: 11px;
+}
+
+.model-picker-controls button {
+  min-width: 48px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: transparent;
+  padding: 5px 10px;
+  color: var(--text-2);
+  font-family: var(--mono);
+  font-size: 10px;
+}
+
+.model-picker-controls button.active {
+  border-color: color-mix(in srgb, var(--mb-cyan) 42%, var(--border));
+  background: color-mix(in srgb, var(--mb-cyan) 10%, transparent);
+  color: var(--mb-cyan);
+}
+
+.model-picker-controls button:disabled {
+  cursor: default;
+  opacity: 0.45;
 }
 
 .model-card-trigger {
@@ -3334,12 +3345,6 @@ select,
   }
 }
 
-.composer-row .ai-thinking-toggle {
-  border-color: transparent;
-  background: transparent;
-  padding-inline: 6px;
-}
-
 .composer-row > button:first-child {
   color: var(--text-2);
 }
@@ -3352,7 +3357,7 @@ select,
   caret-color: var(--mb-cyan);
 }
 
-.ai-chat-composer button[type="submit"] {
+.ai-chat-composer .composer-submit {
   width: 32px;
   height: 32px;
   flex: 0 0 32px;
@@ -3363,12 +3368,31 @@ select,
   transition: background 140ms ease, opacity 140ms ease;
 }
 
-.ai-chat-composer button[type="submit"]:hover:not(:disabled) {
+.ai-chat-composer .composer-submit:hover:not(:disabled) {
   background: color-mix(in srgb, var(--mb-cyan) 32%, transparent);
 }
 
-.ai-chat-composer button[type="submit"]:disabled {
+.ai-chat-composer .composer-submit:disabled {
   opacity: 0.35;
+}
+
+@media (max-width: 720px) {
+  .ai-chat-composer {
+    width: 96%;
+  }
+
+  .composer-row {
+    gap: 5px;
+    padding-inline: 6px;
+  }
+
+  .composer-row .ai-model-trigger {
+    max-width: 118px;
+  }
+
+  .model-card-trigger {
+    display: none;
+  }
 }
 
 /* Mint identifies the smaller worker; cyan remains the supervising route. */
