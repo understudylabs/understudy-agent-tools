@@ -167,6 +167,8 @@ describe("proof-scoped correction evidence", () => {
       );
       const row = prepared.rows[0];
       assert.equal(prepared.manifest.training_eligible_count, 1);
+      assert.match(prepared.manifest.optimizer_boundary.next_action, /freeze the candidate/i);
+      assert.match(prepared.manifest.optimizer_boundary.next_action, /quality and overhead gates/i);
       assert.equal(prepared.manifest.human_reviewed_count, 1);
       assert.equal(row.judgment_provenance.primary_source, "human");
       assert.equal(row.judgment_provenance.human_judgment, humanJudgment);
@@ -189,6 +191,10 @@ describe("proof-scoped correction evidence", () => {
       );
       const gepa = prepareProofCorrectionGepaHandoff(prepared);
       assert.equal(gepa.handoff.status, "ready");
+      assert.match(gepa.handoff.reason, /optimizer input is ready/i);
+      assert.match(gepa.handoff.reason, /promotion remains blocked/i);
+      assert.match(gepa.handoff.reason, /non-zero correction success/i);
+      assert.match(gepa.handoff.reason, /latency and supervisor-token-overhead bounds/i);
       assert.equal(gepa.handoff.row_count, 4);
       assert.equal(gepa.handoff.train_count, 3);
       assert.equal(gepa.handoff.dev_count, 1);
