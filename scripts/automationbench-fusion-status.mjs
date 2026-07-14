@@ -21,11 +21,18 @@ function argValue(args, name) {
 
 function run(command, args) {
   const result = spawnSync(command, args, { encoding: "utf8", stdio: "pipe" });
+  const stdout = typeof result.stdout === "string" ? result.stdout.trim() : "";
+  const stderr = [
+    typeof result.stderr === "string" ? result.stderr.trim() : "",
+    result.error instanceof Error ? result.error.message : "",
+  ]
+    .filter(Boolean)
+    .join("\n");
   return {
     ok: result.status === 0,
     status: result.status,
-    stdout: result.stdout.trim(),
-    stderr: result.stderr.trim(),
+    stdout,
+    stderr,
   };
 }
 

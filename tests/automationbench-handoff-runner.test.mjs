@@ -99,6 +99,31 @@ describe("automationbench handoff runner", () => {
     assert.equal(payload.results.length, 1);
   });
 
+  it("reports missing status utilities instead of crashing", () => {
+    const result = spawnSync(
+      process.execPath,
+      [
+        ...statusRunner.slice(1),
+        "--session",
+        "missing-understudy-test-session",
+        "--log",
+        join(dir, "missing.log"),
+        "--out-dir",
+        join(dir, "missing-results"),
+        "--json",
+      ],
+      {
+        encoding: "utf8",
+        env: { ...process.env, PATH: dir },
+      },
+    );
+    assert.equal(result.status, 0, result.stderr);
+    const payload = JSON.parse(result.stdout);
+    assert.equal(payload.tmux.active, false);
+    assert.match(payload.tmux.error, /spawnSync tmux ENOENT/);
+    assert.deepEqual(payload.processes, []);
+  });
+
   it("prints local Fusion rollout demo status", () => {
     const outDir = join(dir, "demo");
     const runDir = join(outDir, "fusion-demo-test");
