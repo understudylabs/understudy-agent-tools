@@ -162,6 +162,36 @@ function priorDesktopReleaseBaseline(root, head) {
   return null;
 }
 
+export function priorRuntimeTransitionBaseline(root, head, runtimeVersion) {
+  const commits = capture(
+    "git",
+    ["rev-list", "--first-parent", head],
+    root,
+  ).split("\n").filter(Boolean);
+  for (const commit of commits) {
+    const runtimeSource = capture(
+      "git",
+      ["show", `${commit}:src/runtime/conversation/contract.ts`],
+      root,
+    );
+    const runtimeMatch = runtimeSource.match(/RUNTIME_VERSION\s*=\s*"([^"]+)"/);
+    if (!runtimeMatch) {
+      throw new Error(`could not read runtime version from ${commit}`);
+    }
+    if (runtimeMatch[1] === runtimeVersion) continue;
+    const cliPackage = JSON.parse(capture("git", ["show", `${commit}:package.json`], root));
+    if (typeof cliPackage.version !== "string") {
+      throw new Error(`could not read CLI version from ${commit}`);
+    }
+    return {
+      commit,
+      runtime_version: runtimeMatch[1],
+      cli_version: cliPackage.version,
+    };
+  }
+  return null;
+}
+
 export function desktopArtifactPaths(version, root = repositoryRoot, arch = "aarch64") {
   const bundle = join(root, "apps", "homescreen", "src-tauri", "target", "release", "bundle");
   return {
@@ -211,6 +241,7 @@ export async function inspectDesktopRelease({
   let originMain = null;
   let clean = null;
   let baseline = null;
+  let runtimeTransition = null;
   try {
     head = capture("git", ["rev-parse", "HEAD"], root);
     originMain = capture("git", ["rev-parse", "origin/main"], root);
@@ -236,6 +267,29 @@ export async function inspectDesktopRelease({
       }
     } catch (error) {
       errors.push(`release baseline inspection failed: ${error.message}`);
+    }
+    try {
+      runtimeTransition = priorRuntimeTransitionBaseline(
+        root,
+        head,
+        versionState.version,
+      );
+      if (runtimeTransition) {
+        const error = runtimeCliAdvancementError({
+          runtime_version: versionState.version,
+          cli_version: versionState.compatibility.cli_package,
+          baseline_runtime_version: runtimeTransition.runtime_version,
+          baseline_cli_version: runtimeTransition.cli_version,
+        });
+        if (error) errors.push(`runtime transition: ${error}`);
+      } else if (baseline && baseline.runtime_version !== versionState.version) {
+        errors.push(
+          `could not locate the ${baseline.runtime_version} -> ${versionState.version} ` +
+          "runtime transition in first-parent history",
+        );
+      }
+    } catch (error) {
+      errors.push(`runtime transition inspection failed: ${error.message}`);
     }
   }
 
@@ -311,7 +365,11 @@ export async function inspectDesktopRelease({
     ok: errors.length === 0,
     version: versionState.version,
     versions: versionState.versions,
-    compatibility: { ...versionState.compatibility, baseline },
+    compatibility: {
+      ...versionState.compatibility,
+      baseline,
+      runtime_transition: runtimeTransition,
+    },
     git: { head, origin_main: originMain, clean },
     artifacts: artifactState,
     errors,
