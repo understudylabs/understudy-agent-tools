@@ -1285,7 +1285,7 @@ async function runPiSupervisedConversation(
     const markerId = segment.markerId;
     const reason = segment.decision.reason;
     if (!markerId || !reason) {
-      throw new Error("interrupt verdict lost its marker or reason");
+      throw new Error("intervention verdict lost its marker or reason");
     }
     await writer.emit("student_interruption", {
       marker_id: markerId,
