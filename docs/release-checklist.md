@@ -48,6 +48,24 @@ and secret-shaped strings.
 
 ## Desktop release
 
+The normal production path is the **Desktop Release** GitHub Actions workflow.
+Run its `validate` mode from `main` to check the remote certificate and Apple
+credentials without building or publishing. After the version-bump PR is green,
+run `release` mode. The serialized workflow
+uses the protected `desktop-release` environment to build on Apple silicon,
+import an ephemeral Developer ID identity, sign the Tauri updater, submit the
+app and DMG to Apple, verify the downloaded draft assets byte-for-byte, and
+publish only after every gate passes. No local Keychain or 1Password prompt is
+required during a normal release.
+
+The environment owns these secrets: `APPLE_CERTIFICATE`,
+`APPLE_CERTIFICATE_PASSWORD`, `APPLE_ID`, `APPLE_PASSWORD`,
+`APPLE_SIGNING_IDENTITY`, `APPLE_TEAM_ID`, and
+`TAURI_SIGNING_PRIVATE_KEY`. Rotate them deliberately; never copy them into
+workflow inputs, logs, repository variables, or committed files.
+
+The commands below remain the local break-glass path.
+
 Desktop releases must come from the exact merged `origin/main` commit. The
 release check fails closed if the worktree is dirty, `HEAD` differs from the
 locally fetched `origin/main`, any of the six desktop/runtime version sources
@@ -116,7 +134,7 @@ xcrun stapler staple "$app"
 rm -f "$updater" "${updater}.sig"
 tar -czf "$updater" -C "$(dirname "$app")" "$(basename "$app")"
 cd apps/homescreen
-bun run tauri signer sign -- \
+bun run tauri signer sign \
   --private-key-path "$TAURI_SIGNING_PRIVATE_KEY" \
   "$updater"
 cd ../..
