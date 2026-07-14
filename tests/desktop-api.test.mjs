@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
+import { createHash } from "node:crypto";
 import {
   chmodSync,
   mkdirSync,
@@ -26,6 +27,11 @@ const conformanceEvidencePath = join(root, "desktop-runtime-conformance.json");
 const readinessEvidencePath = join(root, "desktop-runtime-readiness.json");
 const correctionOutputPath = join(root, "exports", "correction-pairs.jsonl");
 const correctionMetricsPath = join(root, "exports", "supervision-metrics.json");
+const proofCorrectionRoot = join(root, "proof-correction-fixture");
+const proofCorrectionOutputPath = join(root, "exports", "proof-corrections.jsonl");
+const proofCorrectionManifestPath = join(root, "exports", "proof-corrections.manifest.json");
+const proofCorrectionGepaSamplesPath = join(root, "exports", "proof-corrections.gepa-samples.json");
+const proofCorrectionGepaHandoffPath = join(root, "exports", "proof-corrections.gepa-handoff.json");
 const token = "desktop-api-test-token-".padEnd(64, "a");
 let server;
 let port;
@@ -148,8 +154,51 @@ function writeReleaseEvidence() {
   chmodSync(readinessEvidencePath, 0o600);
 }
 
+function writeProofCorrectionFixture() {
+  mkdirSync(proofCorrectionRoot, { recursive: true, mode: 0o700 });
+  const tasks = [{
+    id: "desktop-proof-task",
+    workflow: "ops-classification",
+    title: "Desktop proof task",
+    prompt: "synthetic",
+    expected: { answer: "correct" },
+  }];
+  const tasksBytes = Buffer.from(`${JSON.stringify(tasks)}\n`);
+  const suiteSha256 = createHash("sha256").update(tasksBytes).digest("hex");
+  const summary = {
+    format: "understudy.desktop_grocery_proof.v3",
+    proof_id: "desktop-proof-fixture",
+    suite_id: "promotion",
+    suite_sha256: suiteSha256,
+    task_count: 1,
+    run_count: 1,
+  };
+  const result = {
+    proof_id: summary.proof_id,
+    suite_sha256: suiteSha256,
+    run_id: "run-desktop",
+    capture_run_id: "run-desktop",
+    session_id: "session-desktop",
+    task_id: "desktop-proof-task",
+    mode: "supervised",
+    score: { exact: true, matched_fields: 1, total_fields: 1, field_accuracy: 1 },
+    student_score: { exact: false, matched_fields: 0, total_fields: 1, field_accuracy: 0 },
+    supervisor_intervened: true,
+    verdicts: [{ verdict: "interrupt", marker_id: "run-desktop:intervention:0" }],
+    terminal_status: "completed",
+  };
+  writeFileSync(join(proofCorrectionRoot, "summary.json"), `${JSON.stringify(summary)}\n`, {
+    mode: 0o600,
+  });
+  writeFileSync(join(proofCorrectionRoot, "results.jsonl"), `${JSON.stringify(result)}\n`, {
+    mode: 0o600,
+  });
+  writeFileSync(join(proofCorrectionRoot, "tasks.json"), tasksBytes, { mode: 0o600 });
+}
+
 before(async () => {
   writeReleaseEvidence();
+  writeProofCorrectionFixture();
   server = createServer(async (request, response) => {
     if (request.url === "/health") {
       response.writeHead(200);
@@ -540,6 +589,22 @@ describe("desktop API CLI", () => {
       resolve("schemas/understudy.supervision_metrics.v1.schema.json"),
       "utf8",
     ));
+    const proofCorrectionSchema = JSON.parse(readFileSync(
+      resolve("schemas/understudy.proof_correction_evidence.v1.schema.json"),
+      "utf8",
+    ));
+    const proofCorrectionExportSchema = JSON.parse(readFileSync(
+      resolve("schemas/understudy.proof_correction_export.v1.schema.json"),
+      "utf8",
+    ));
+    const proofCorrectionGepaSamplesSchema = JSON.parse(readFileSync(
+      resolve("schemas/understudy.proof_correction_gepa_samples.v1.schema.json"),
+      "utf8",
+    ));
+    const proofCorrectionGepaHandoffSchema = JSON.parse(readFileSync(
+      resolve("schemas/understudy.proof_correction_gepa_handoff.v1.schema.json"),
+      "utf8",
+    ));
     assert.equal(pairSchema.properties.schema_version.const, "understudy.correction_pair.v1");
     assert.ok(pairSchema.required.includes("run_id"));
     assert.ok(pairSchema.required.includes("human_judgment"));
@@ -550,6 +615,33 @@ describe("desktop API CLI", () => {
     );
     assert.ok(metricsSchema.required.includes("intervention_precision"));
     assert.ok(metricsSchema.required.includes("false_positive_nudge_rate"));
+    assert.equal(
+      proofCorrectionSchema.properties.evaluator_judgment.properties.human.const,
+      false,
+    );
+    assert.equal(
+      proofCorrectionSchema.properties.judgment_provenance.properties
+        .deterministic_evaluator_is_human_label.const,
+      false,
+    );
+    assert.equal(
+      proofCorrectionExportSchema.properties.optimizer_boundary.properties
+        .holdout_rows_are_training_eligible.const,
+      false,
+    );
+    assert.equal(
+      proofCorrectionGepaSamplesSchema.properties.rows.items.properties
+        .provenance.properties.deterministic_evaluator_is_human_label.const,
+      false,
+    );
+    assert.equal(
+      proofCorrectionGepaHandoffSchema.properties.provider_calls_performed.const,
+      false,
+    );
+    assert.equal(
+      proofCorrectionGepaHandoffSchema.properties.recommended_adapter.const,
+      "dspy-gepa",
+    );
     assert.equal(contract.security[0].desktopBearer.length, 0);
   });
 
@@ -867,6 +959,60 @@ describe("desktop API CLI", () => {
     ]);
     assert.notEqual(refused.status, 0);
     assert.match(refused.stderr, /refusing to replace immutable artifact/);
+  });
+
+  it("prepares proof-scoped deterministic correction evidence without claiming human labels", async () => {
+    const result = await runCli([
+      "desktop", "supervision", "prepare-proof",
+      "--proof", proofCorrectionRoot,
+      "--output", proofCorrectionOutputPath,
+      "--manifest-output", proofCorrectionManifestPath,
+      "--gepa-samples-output", proofCorrectionGepaSamplesPath,
+      "--gepa-handoff-output", proofCorrectionGepaHandoffPath,
+      "--json",
+    ]);
+    assert.equal(result.status, 0, result.stderr);
+    const value = JSON.parse(result.stdout);
+    assert.equal(value.upload_performed, false);
+    assert.equal(value.data_split, "holdout");
+    assert.equal(value.correction_evidence.row_count, 1);
+    assert.equal(value.judgments.human_reviewed, 0);
+    assert.equal(value.judgments.deterministic_only, 1);
+    assert.equal(value.judgments.deterministic_evaluator_is_human_label, false);
+    assert.equal(value.training.eligible_rows, 0);
+    assert.equal(value.training.holdout_rows_are_training_eligible, false);
+    assert.equal(value.gepa_handoff.status, "blocked");
+    assert.equal(value.gepa_handoff.samples.row_count, 0);
+    assert.equal(value.gepa_handoff.provider_calls_performed, false);
+    assert.deepEqual(value.outcomes, {
+      correct_intervention: 1,
+      unsuccessful_intervention: 0,
+      false_positive_intervention: 0,
+    });
+    const rows = readFileSync(proofCorrectionOutputPath, "utf8")
+      .trim()
+      .split("\n")
+      .map(JSON.parse);
+    assert.equal(rows[0].schema_version, "understudy.proof_correction_evidence.v1");
+    assert.equal(rows[0].proof.run_id, rows[0].proof.capture_run_id);
+    assert.equal(rows[0].judgment_provenance.human_reviewed, false);
+    assert.equal(rows[0].training.eligible, false);
+    const manifest = JSON.parse(readFileSync(proofCorrectionManifestPath, "utf8"));
+    assert.equal(manifest.schema_version, "understudy.proof_correction_export.v1");
+    assert.equal(manifest.files.evidence_jsonl_sha256, value.correction_evidence.sha256);
+    const gepaSamples = JSON.parse(readFileSync(proofCorrectionGepaSamplesPath, "utf8"));
+    const gepaHandoff = JSON.parse(readFileSync(proofCorrectionGepaHandoffPath, "utf8"));
+    assert.equal(gepaSamples.schema_version, "understudy.proof_correction_gepa_samples.v1");
+    assert.deepEqual(gepaSamples.rows, []);
+    assert.equal(gepaHandoff.schema_version, "understudy.proof_correction_gepa_handoff.v1");
+    assert.equal(gepaHandoff.status, "blocked");
+    assert.equal(gepaHandoff.files.samples_sha256, value.gepa_handoff.samples.sha256);
+    if (process.platform !== "win32") {
+      assert.equal(statSync(proofCorrectionOutputPath).mode & 0o077, 0);
+      assert.equal(statSync(proofCorrectionManifestPath).mode & 0o077, 0);
+      assert.equal(statSync(proofCorrectionGepaSamplesPath).mode & 0o077, 0);
+      assert.equal(statSync(proofCorrectionGepaHandoffPath).mode & 0o077, 0);
+    }
   });
 
   it("records an explicit supervisor judgment", async () => {

@@ -192,3 +192,14 @@ required to learn whether the opportunity is real.
   owner-only evidence, cached offline models, and explicit remote-route consent.
 - Product or finance: emphasize measured route coverage and avoided migration
   risk; do not extrapolate savings until the buyer's frozen slice is scored.
+
+For the applied-AI handoff, run:
+
+```sh
+understudy desktop supervision prepare-proof --proof <proof-directory> --json
+```
+
+Call out the provenance line explicitly: deterministic evaluator judgments are
+not human labels, the frozen promotion proof remains evaluation-only, and GEPA
+handoff preparation makes no provider call. Only a separately frozen
+development/train proof can produce optimizer samples.

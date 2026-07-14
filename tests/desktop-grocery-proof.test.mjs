@@ -35,6 +35,7 @@ import {
 describe("desktop grocery proof", () => {
   it("keeps the 30-task grocery promotion suite frozen and balanced", () => {
     assert.equal(resolveGrocerySuiteFile("smoke"), "tasks.json");
+    assert.equal(resolveGrocerySuiteFile("development"), "tasks.development.json");
     assert.equal(resolveGrocerySuiteFile("promotion"), "tasks.promotion.json");
     assert.throws(() => resolveGrocerySuiteFile("unknown"), /unknown grocery proof suite/);
     const bytes = readFileSync(join(
@@ -65,6 +66,39 @@ describe("desktop grocery proof", () => {
     assert.ok(identities.every(({ runId, captureRunId }) => runId === captureRunId));
     assert.ok(identities.every(({ sessionId }) => sessionId.endsWith("-session")));
     assert.ok(identities.every(({ runId, sessionId }) => runId.length <= 200 && sessionId.length <= 200));
+  });
+
+  it("keeps a separate balanced development suite out of the frozen promotion slice", () => {
+    const developmentBytes = readFileSync(join(
+      process.cwd(),
+      "experiments",
+      "desktop-grocery-proof",
+      "tasks.development.json",
+    ));
+    assert.equal(
+      createHash("sha256").update(developmentBytes).digest("hex"),
+      "e124fd535000d3c3eb259eb0ae17b43a7e1bcd98a66e735a3cfa6aebadd36ca5",
+    );
+    const development = JSON.parse(developmentBytes);
+    const promotion = JSON.parse(readFileSync(join(
+      process.cwd(),
+      "experiments",
+      "desktop-grocery-proof",
+      "tasks.promotion.json",
+    )));
+    assert.equal(development.length, 18);
+    assert.equal(new Set(development.map((task) => task.id)).size, 18);
+    assert.deepEqual(
+      Object.fromEntries(Object.entries(Object.groupBy(development, (task) => task.workflow))
+        .map(([workflow, rows]) => [workflow, rows.length])),
+      { "codebase-analysis": 6, "cart-assistant": 6, "ops-classification": 6 },
+    );
+    assert.ok(development.every((task) => Object.keys(task.expected).length === 3));
+    assert.ok(development.every((task) => /one minified JSON object/i.test(task.prompt)));
+    assert.deepEqual(
+      development.map((task) => task.id).filter((id) => promotion.some((task) => task.id === id)),
+      [],
+    );
   });
 
   it("extracts bounded JSON and scores exact fields without an LLM judge", () => {

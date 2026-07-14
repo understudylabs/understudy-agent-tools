@@ -1,0 +1,136 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.understudylabs.com/understudy.proof_correction_evidence.v1.schema.json",
+  "title": "Understudy proof-scoped correction evidence v1",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "proof",
+    "correction_pair",
+    "evaluator_judgment",
+    "judgment_provenance",
+    "training"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": { "const": "understudy.proof_correction_evidence.v1" },
+    "proof": {
+      "type": "object",
+      "required": [
+        "proof_id",
+        "suite_id",
+        "suite_sha256",
+        "summary_sha256",
+        "results_sha256",
+        "tasks_sha256",
+        "data_split",
+        "task_id",
+        "workflow",
+        "run_id",
+        "capture_run_id",
+        "session_id",
+        "marker_id"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "proof_id": { "type": "string", "minLength": 1 },
+        "suite_id": { "type": "string", "minLength": 1 },
+        "suite_sha256": { "$ref": "#/$defs/sha256" },
+        "summary_sha256": { "$ref": "#/$defs/sha256" },
+        "results_sha256": { "$ref": "#/$defs/sha256" },
+        "tasks_sha256": { "$ref": "#/$defs/sha256" },
+        "data_split": { "enum": ["train", "development", "holdout", "smoke"] },
+        "task_id": { "type": "string", "minLength": 1 },
+        "workflow": { "type": "string", "minLength": 1 },
+        "run_id": { "type": "string", "minLength": 1 },
+        "capture_run_id": { "type": "string", "minLength": 1 },
+        "session_id": { "type": "string", "minLength": 1 },
+        "marker_id": { "type": "string", "minLength": 1 }
+      }
+    },
+    "correction_pair": {
+      "$ref": "understudy.correction_pair.v1.schema.json"
+    },
+    "evaluator_judgment": {
+      "type": "object",
+      "required": [
+        "source",
+        "human",
+        "evaluator_version",
+        "student_exact",
+        "final_exact",
+        "student_field_accuracy",
+        "final_field_accuracy",
+        "intervention_was_warranted",
+        "correction_succeeded",
+        "outcome"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "source": { "const": "deterministic_structured_output_evaluator" },
+        "human": { "const": false },
+        "evaluator_version": { "const": "understudy.exact_object_score.v1" },
+        "student_exact": { "type": "boolean" },
+        "final_exact": { "type": "boolean" },
+        "student_field_accuracy": { "type": "number", "minimum": 0, "maximum": 1 },
+        "final_field_accuracy": { "type": "number", "minimum": 0, "maximum": 1 },
+        "intervention_was_warranted": { "type": "boolean" },
+        "correction_succeeded": { "type": "boolean" },
+        "outcome": {
+          "enum": [
+            "correct_intervention",
+            "unsuccessful_intervention",
+            "false_positive_intervention"
+          ]
+        }
+      }
+    },
+    "judgment_provenance": {
+      "type": "object",
+      "required": [
+        "primary_source",
+        "human_reviewed",
+        "human_judgment",
+        "deterministic_evaluator_is_human_label"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "primary_source": { "enum": ["human", "deterministic_evaluator"] },
+        "human_reviewed": { "type": "boolean" },
+        "human_judgment": { "type": ["object", "null"] },
+        "deterministic_evaluator_is_human_label": { "const": false }
+      }
+    },
+    "training": {
+      "type": "object",
+      "required": ["eligible", "recommended_method", "targets", "exclusion_reasons"],
+      "additionalProperties": false,
+      "properties": {
+        "eligible": { "type": "boolean" },
+        "recommended_method": { "const": "gepa_prompt_policy_first" },
+        "targets": {
+          "type": "array",
+          "items": {
+            "enum": [
+              "supervisor_policy",
+              "teacher_continuation_positive",
+              "teacher_continuation_repair"
+            ]
+          },
+          "uniqueItems": true
+        },
+        "exclusion_reasons": {
+          "type": "array",
+          "items": { "type": "string", "minLength": 1 },
+          "uniqueItems": true
+        }
+      }
+    }
+  },
+  "$defs": {
+    "sha256": {
+      "type": "string",
+      "pattern": "^[a-f0-9]{64}$"
+    }
+  }
+}
