@@ -82,6 +82,8 @@ export function inspectDesktopVersions(root = repositoryRoot) {
   );
   const cliPackage = readJson(join(root, "package.json")).version;
   const bootstrap = readFileSync(join(tauri, "src", "bootstrap.rs"), "utf8");
+  const tauriConfig = readJson(join(tauri, "tauri.conf.json"));
+  const macTauriConfig = readJson(join(tauri, "tauri.macos.conf.json"));
   const minimumCli = firstMatch(
     bootstrap,
     /MIN_UNDERSTUDY_CLI_VERSION:\s*&str\s*=\s*"([^"]+)"/,
@@ -92,6 +94,23 @@ export function inspectDesktopVersions(root = repositoryRoot) {
     errors.push(
       `Desktop minimum CLI must match the distributed package: package=${cliPackage}, minimum=${minimumCli ?? "missing"}`,
     );
+  }
+  if (
+    !Array.isArray(macTauriConfig.bundle?.externalBin) ||
+    !macTauriConfig.bundle.externalBin.includes("binaries/understudy-node")
+  ) {
+    errors.push("Desktop bundle must include its pinned Node runtime");
+  }
+  if (
+    macTauriConfig.bundle?.resources?.["resources/understudy-cli/"] !==
+      "understudy-cli-resources/"
+  ) {
+    errors.push(
+      "Desktop bundle must map self-contained CLI resources to understudy-cli-resources/",
+    );
+  }
+  if (!String(tauriConfig.build?.beforeBuildCommand ?? "").includes("build-desktop-cli.mjs")) {
+    errors.push("Desktop beforeBuildCommand must prepare the self-contained CLI bundle");
   }
   const versions = {
     desktop_package: readJson(join(homescreen, "package.json")).version,
@@ -300,8 +319,36 @@ export async function inspectDesktopRelease({
     ? {
         app: { path: artifacts.app, exists: existsSync(artifacts.app) },
         dmg: { path: artifacts.dmg, exists: existsSync(artifacts.dmg), sha256: null },
+        cli: {
+          node: join(artifacts.app, "Contents", "MacOS", "understudy-node"),
+          node_version: null,
+          resource_root: join(
+            artifacts.app,
+            "Contents",
+            "Resources",
+            "understudy-cli-resources",
+          ),
+          path: join(
+            artifacts.app,
+            "Contents",
+            "Resources",
+            "understudy-cli-resources",
+            "bundle",
+            "understudy.js",
+          ),
+          exists: false,
+          version: null,
+          resources: null,
+        },
       }
     : null;
+
+  if (artifactState) {
+    artifactState.cli.resources = join(
+      artifactState.cli.resource_root,
+      "desktop-cli-bundle.json",
+    );
+  }
 
   if (stage !== "source" && artifactState) {
     if (!artifactState.app.exists) errors.push(`signed app is missing: ${artifacts.app}`);
@@ -327,6 +374,105 @@ export async function inspectDesktopRelease({
         }
       } catch (error) {
         errors.push(`could not read the built app version: ${error.message}`);
+      }
+      artifactState.cli.exists = existsSync(artifactState.cli.path);
+      if (!artifactState.cli.exists) {
+        errors.push(`bundled Desktop CLI is missing: ${artifactState.cli.path}`);
+      } else if (!existsSync(artifactState.cli.node)) {
+        errors.push(`bundled Node runtime is missing: ${artifactState.cli.node}`);
+      } else {
+        try {
+          artifactState.cli.node_version = capture(
+            artifactState.cli.node,
+            ["--version"],
+            root,
+          );
+          artifactState.cli.version = capture(
+            artifactState.cli.node,
+            [artifactState.cli.path, "--version"],
+            root,
+          );
+          if (artifactState.cli.version !== versionState.compatibility.cli_package) {
+            errors.push(
+              `bundled CLI version ${artifactState.cli.version} does not match source ` +
+                versionState.compatibility.cli_package,
+            );
+          }
+        } catch (error) {
+          errors.push(`bundled Desktop CLI failed to start: ${error.message}`);
+        }
+      }
+      if (!existsSync(artifactState.cli.resources)) {
+        errors.push(`bundled Desktop CLI resources are missing: ${artifactState.cli.resources}`);
+      } else {
+        try {
+          const manifest = readJson(artifactState.cli.resources);
+          if (manifest.cli_version !== versionState.compatibility.cli_package) {
+            errors.push(
+              `bundled CLI manifest ${manifest.cli_version ?? "missing"} does not match source ` +
+              versionState.compatibility.cli_package,
+            );
+          }
+          if (manifest.node_version !== artifactState.cli.node_version) {
+            errors.push(
+              `bundled Node ${artifactState.cli.node_version ?? "missing"} does not match ` +
+                `manifest ${manifest.node_version ?? "missing"}`,
+            );
+          }
+          if (existsSync(artifactState.cli.node)) {
+            const nodeHash = await sha256(artifactState.cli.node);
+            if (nodeHash !== manifest.node_sha256) {
+              errors.push("bundled Node checksum does not match its manifest");
+            }
+          }
+          if (existsSync(artifactState.cli.path)) {
+            const cliHash = await sha256(artifactState.cli.path);
+            if (cliHash !== manifest.cli_bundle_sha256) {
+              errors.push("bundled CLI checksum does not match its manifest");
+            }
+          }
+          const nodeLicense = join(
+            artifactState.cli.resource_root,
+            "third-party",
+            "node",
+            "LICENSE",
+          );
+          if (!existsSync(nodeLicense)) {
+            errors.push(`bundled Node license is missing: ${nodeLicense}`);
+          }
+          const externalModules = Array.isArray(manifest.external_modules)
+            ? manifest.external_modules
+            : [];
+          const expectedExternalModules = ["@silvia-odwyer/photon-node", "undici"];
+          for (const expected of expectedExternalModules) {
+            if (!externalModules.some((dependency) => dependency?.name === expected)) {
+              errors.push(`bundled CLI manifest is missing dependency: ${expected}`);
+            }
+          }
+          for (const dependency of externalModules) {
+            const packageJsonPath = join(
+              artifactState.cli.resource_root,
+              "bundle",
+              "node_modules",
+              ...String(dependency.name).split("/"),
+              "package.json",
+            );
+            if (!existsSync(packageJsonPath)) {
+              errors.push(`bundled CLI dependency is missing: ${dependency.name}`);
+              continue;
+            }
+            const bundledDependency = readJson(packageJsonPath);
+            if (bundledDependency.version !== dependency.version) {
+              errors.push(
+                `bundled CLI dependency ${dependency.name} is ` +
+                  `${bundledDependency.version ?? "missing"}; manifest requires ` +
+                  `${dependency.version ?? "missing"}`,
+              );
+            }
+          }
+        } catch (error) {
+          errors.push(`could not read bundled CLI manifest: ${error.message}`);
+        }
       }
     }
     if (artifactState.dmg.exists) {

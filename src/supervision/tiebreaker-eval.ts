@@ -1,6 +1,5 @@
 import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
-import { fileURLToPath } from "node:url";
 import { basename } from "node:path";
 
 import { z } from "zod";
@@ -11,9 +10,11 @@ import {
   type TiebreakerAnalysis,
   type TiebreakerRoute,
 } from "./tiebreaker.js";
+import { packagePath } from "../internal/package-root.js";
 
-export const TIEBREAKER_EVAL_SUITE_PATH = fileURLToPath(
-  new URL("../../runtime-assets/supervision-tiebreaker-eval-v2.jsonl", import.meta.url),
+export const TIEBREAKER_EVAL_SUITE_PATH = packagePath(
+  "runtime-assets",
+  "supervision-tiebreaker-eval-v2.jsonl",
 );
 export const TIEBREAKER_EVAL_MANIFEST_SCHEMA =
   "understudy.supervision.tiebreaker_eval_manifest.v1";

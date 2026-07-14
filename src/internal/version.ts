@@ -1,9 +1,7 @@
 import { readFileSync } from "node:fs";
-import { dirname, join, resolve } from "node:path";
-import { fileURLToPath } from "node:url";
+import { join } from "node:path";
 
-// Compiled to dist/internal/version.js, so the package root is two levels up.
-const packageRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..", "..");
+import { installedPackageRoot } from "./package-root.js";
 
 /**
  * The CLI version from package.json. Single source of truth for
@@ -11,7 +9,7 @@ const packageRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..", "..")
  * check against the plugin manifests.
  */
 export function readCliVersion(): string {
-  return readManifestVersion(join(packageRoot, "package.json")) ?? "0.0.0";
+  return readManifestVersion(join(installedPackageRoot(), "package.json")) ?? "0.0.0";
 }
 
 /**
@@ -30,6 +28,7 @@ export function readManifestVersions(): {
   hermesAdapter: string | null;
   devinAdapter: string | null;
 } {
+  const packageRoot = installedPackageRoot();
   return {
     cli: readManifestVersion(join(packageRoot, "package.json")),
     plugin: readManifestVersion(join(packageRoot, ".claude-plugin", "plugin.json")),

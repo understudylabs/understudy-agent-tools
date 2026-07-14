@@ -211,12 +211,16 @@ test("desktop restores the reviewed persisted always-on-top pin", async () => {
 });
 
 test("desktop has one shared managed-operation notice surface", async () => {
-  const [page, prompt, operationNotice, downloadNotice, repair] = await Promise.all([
+  const [page, prompt, operationNotice, downloadNotice, repair, bootstrap] = await Promise.all([
     readFile(pagePath, "utf8"),
     readFile(runtimeRepairPromptPath, "utf8"),
     readFile(operationNoticePath, "utf8"),
     readFile(modelDownloadNoticePath, "utf8"),
     readFile(runtimeRepairLibPath, "utf8"),
+    readFile(
+      new URL("../apps/homescreen/src-tauri/src/bootstrap.rs", import.meta.url),
+      "utf8",
+    ),
   ]);
 
   assert.match(page, /<RuntimeRepairPrompt\s*\/>/);
@@ -235,6 +239,8 @@ test("desktop has one shared managed-operation notice surface", async () => {
   assert.match(prompt, /setTimeout\(\(\) => void refreshHealth\(\), 2_500\)/);
   assert.match(prompt, /Updating the version-coupled conversation runtime/);
   assert.match(prompt, /Verifying the CLI and local runtimes/);
+  assert.match(prompt, /promptForRepairFailure\(activePrompt, error\)/);
+  assert.doesNotMatch(prompt, /Run \$\{activePrompt\.command\} in Terminal/);
   assert.match(prompt, /elapsedSeconds/);
   assert.match(prompt, /busy \|\| progress\.status === "success"/);
   assert.match(prompt, /actionDisabled=\{busy \|\| progress\.status === "success"\}/);
@@ -245,8 +251,16 @@ test("desktop has one shared managed-operation notice surface", async () => {
   assert.match(repair, /understudy runtime repair/);
   assert.match(repair, /Runtime reconnecting/);
   assert.match(repair, /Reconnect now/);
-  assert.match(repair, /install\.sh \| bash -s -- --yes/);
+  assert.match(repair, /Reinstall Understudy Desktop/);
+  assert.match(repair, /The CLI is included with Understudy Desktop/);
+  assert.match(repair, /Latest Desktop release/);
+  assert.match(
+    repair,
+    /github\.com\/understudylabs\/understudy-agent-tools\/releases\/latest/,
+  );
+  assert.doesNotMatch(repair, /install\.sh|npm install/);
   assert.doesNotMatch(repair, /understudy update/);
+  assert.match(bootstrap, /if !bundled_cli && cli_health\.available && !mlx_status\.managed/);
 });
 
 test("desktop persists image references and retains them with chat history", async () => {

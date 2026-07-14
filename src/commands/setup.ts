@@ -14,6 +14,7 @@ import { Command } from "commander";
 import kleur from "kleur";
 
 import { isJsonMode, runAction } from "../internal/output.js";
+import { packagePath } from "../internal/package-root.js";
 import { trackSetupCompleted } from "../internal/telemetry.js";
 
 const SKILL_NAME = "understudy-onboard";
@@ -190,6 +191,10 @@ async function runSetup(cmd: Command, opts: SetupOpts): Promise<void> {
  * first path.
  */
 function locateSkillsSource(): string {
+  const packagedSkills = packagePath("skills");
+  if (existsSync(join(packagedSkills, "onboard", "setup-code.md"))) {
+    return packagedSkills;
+  }
   const here = dirname(fileURLToPath(import.meta.url));
   // Try `dist/skills/` (the shipping layout).
   const distSkills = join(here, "..", "skills");

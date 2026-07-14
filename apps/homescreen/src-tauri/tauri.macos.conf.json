@@ -1,0 +1,10 @@
+{
+  "bundle": {
+    "externalBin": [
+      "binaries/understudy-node"
+    ],
+    "resources": {
+      "resources/understudy-cli/": "understudy-cli-resources/"
+    }
+  }
+}

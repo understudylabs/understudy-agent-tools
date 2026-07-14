@@ -1,7 +1,6 @@
 import { Command } from "commander";
 import { existsSync, readdirSync, readFileSync } from "node:fs";
-import { dirname, join, relative, resolve } from "node:path";
-import { fileURLToPath } from "node:url";
+import { join, relative, resolve } from "node:path";
 import { runUnderstandCheck, runUnderstandWorkloadCard } from "./understand.js";
 import { buildWorkloadCard, compileCaptureImport, previewCaptureImport, scanCaptureImport } from "./capture-import.js";
 import { planRouteDecision } from "./route-decision.js";
@@ -28,8 +27,9 @@ import { registerWorkloadsCommand } from "./commands/workloads.js";
 import { registerExperimentsCommands, registerNextCommand } from "./commands/experiments.js";
 import { daemonStatus } from "./internal/daemon.js";
 import { readCliVersion, readManifestVersions } from "./internal/version.js";
+import { installedPackageRoot } from "./internal/package-root.js";
 
-export const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
+export const repoRoot = installedPackageRoot();
 
 type SkillSummary = {
   name: string;
@@ -224,7 +224,7 @@ async function printDoctorJson(): Promise<void> {
     "README.md",
     "LICENSE",
     "package.json",
-    "src/index.ts",
+    "dist/index.js",
     "skills/understudy/SKILL.md",
   ];
   const missing = required.filter((path) => !existsSync(join(repoRoot, path)));

@@ -12,17 +12,18 @@ import {
 } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
-import { fileURLToPath } from "node:url";
 
 import { z } from "zod";
 
 import { assertCustomerScope, resolveAuth } from "../internal/http.js";
+import { packagePath } from "../internal/package-root.js";
 
 export const TIEBREAKER_MODEL = "glm-5.2";
 export const TIEBREAKER_SCHEMA = "understudy.supervision.tiebreaker_analysis.v1";
 export const TIEBREAKER_FEEDBACK_SCHEMA = "understudy.supervision.tiebreaker_feedback.v1";
-export const TIEBREAKER_PROMPT_PATH = fileURLToPath(
-  new URL("../../runtime-assets/supervision-tiebreaker-system.txt", import.meta.url),
+export const TIEBREAKER_PROMPT_PATH = packagePath(
+  "runtime-assets",
+  "supervision-tiebreaker-system.txt",
 );
 
 const MAX_COMPLETION_TOKENS = 512;

@@ -4,6 +4,8 @@ use std::process::Command;
 
 use serde_json::Value;
 
+const BUNDLED_NODE_NAME: &str = "understudy-node";
+
 /// Resolve a sidecar/CLI binary to an absolute path so the app works when
 /// launched from Finder (no shell PATH). Falls back to the bare name under
 /// `tauri dev`, which inherits the terminal PATH.
@@ -17,6 +19,9 @@ pub fn resolve(name: &str) -> String {
                     .to_string_lossy()
                     .into_owned();
             }
+        }
+        if let Some(candidate) = bundled_understudy() {
+            return candidate.to_string_lossy().into_owned();
         }
     }
     let supplied = Path::new(name);
@@ -67,20 +72,109 @@ fn is_executable(candidate: &Path) -> bool {
 
 pub fn command(name: &str) -> Command {
     let resolved = resolve(name);
+    let uses_bundle = name == "understudy" && is_bundled_understudy(Path::new(&resolved));
     let mut cmd = if name == "understudy"
         && Path::new(&resolved)
             .extension()
             .and_then(|value| value.to_str())
             == Some("js")
     {
-        let mut command = Command::new("node");
-        command.arg(resolved);
+        let runtime = if uses_bundle {
+            bundled_node().unwrap_or_else(|| PathBuf::from("node"))
+        } else {
+            PathBuf::from("node")
+        };
+        let mut command = Command::new(runtime);
+        command.arg(&resolved);
         command
     } else {
-        Command::new(resolved)
+        Command::new(&resolved)
     };
+    if uses_bundle {
+        if let Some(package_root) = bundled_package_root() {
+            cmd.env("UNDERSTUDY_PACKAGE_ROOT", package_root);
+        }
+    }
     cmd.env("PATH", runtime_path());
     cmd
+}
+
+pub fn using_bundled_understudy() -> bool {
+    is_bundled_understudy(Path::new(&resolve("understudy")))
+}
+
+fn is_bundled_understudy(path: &Path) -> bool {
+    let Some(bundled) = bundled_understudy() else {
+        return false;
+    };
+    canonical_candidate(path) == canonical_candidate(&bundled)
+}
+
+/// The Desktop-owned single-file CLI bundle. A signed Node sidecar executes
+/// it, so Finder launches and clean Macs never depend on system Node/npm.
+pub fn bundled_understudy() -> Option<PathBuf> {
+    if let Some(candidate) = std::env::var_os("UNDERSTUDY_BUNDLED_BIN") {
+        if let Some(candidate) = canonical_candidate(Path::new(&candidate)) {
+            return Some(candidate);
+        }
+    }
+    let package_root = bundled_package_root()?;
+    canonical_candidate(&package_root.join("bundle").join("understudy.js"))
+}
+
+pub fn bundled_node() -> Option<PathBuf> {
+    if let Some(candidate) = std::env::var_os("UNDERSTUDY_BUNDLED_NODE") {
+        if let Some(candidate) = canonical_candidate(Path::new(&candidate)) {
+            return Some(candidate);
+        }
+    }
+    let mut candidates = Vec::new();
+    if let Ok(executable) = std::env::current_exe() {
+        if let Some(directory) = executable.parent() {
+            candidates.push(directory.join(BUNDLED_NODE_NAME));
+        }
+    }
+    let target = match (std::env::consts::OS, std::env::consts::ARCH) {
+        ("macos", "aarch64") => Some("aarch64-apple-darwin"),
+        ("macos", "x86_64") => Some("x86_64-apple-darwin"),
+        ("linux", "aarch64") => Some("aarch64-unknown-linux-gnu"),
+        ("linux", "x86_64") => Some("x86_64-unknown-linux-gnu"),
+        ("windows", "x86_64") => Some("x86_64-pc-windows-msvc"),
+        _ => None,
+    };
+    if let Some(target) = target {
+        candidates.push(
+            Path::new(env!("CARGO_MANIFEST_DIR"))
+                .join("binaries")
+                .join(format!("{BUNDLED_NODE_NAME}-{target}")),
+        );
+    }
+    candidates
+        .into_iter()
+        .find_map(|candidate| canonical_candidate(&candidate))
+}
+
+pub fn bundled_package_root() -> Option<PathBuf> {
+    if let Some(candidate) = std::env::var_os("UNDERSTUDY_BUNDLED_PACKAGE_ROOT") {
+        let candidate = PathBuf::from(candidate);
+        if candidate.join("package.json").is_file() {
+            return Some(candidate);
+        }
+    }
+    let mut candidates = Vec::new();
+    if let Ok(executable) = std::env::current_exe() {
+        if let Some(contents) = executable.parent().and_then(Path::parent) {
+            candidates.push(contents.join("Resources").join("understudy-cli-resources"));
+        }
+    }
+    candidates.push(
+        Path::new(env!("CARGO_MANIFEST_DIR"))
+            .join("resources")
+            .join("understudy-cli"),
+    );
+    candidates
+        .into_iter()
+        .find(|candidate| candidate.join("package.json").is_file())
 }
 
 pub fn runtime_path() -> String {

@@ -1,7 +1,8 @@
 import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
-import { fileURLToPath } from "node:url";
+
+import { packagePath } from "../../internal/package-root.js";
 
 import {
   CONFORMANCE_SCHEMA,
@@ -124,9 +125,7 @@ export type RuntimeConformanceAdapterReport = {
 };
 
 export function bundledConformanceRoot(): string {
-  return fileURLToPath(
-    new URL("../../../schemas/conversation-runtime-conformance/", import.meta.url),
-  );
+  return packagePath("schemas", "conversation-runtime-conformance");
 }
 
 function loadManifest(root: string): {

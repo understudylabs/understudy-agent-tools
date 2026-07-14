@@ -14,6 +14,7 @@ import {
   safeErrorMessage,
 } from "./contract.js";
 import { runVercelConversation } from "./vercel-runtime.js";
+import { isDesktopSingleFileBundle } from "../../internal/package-root.js";
 
 const MAX_REQUEST_BYTES = 40 * 1024 * 1024;
 
@@ -247,7 +248,7 @@ export async function startConversationSidecar(options: {
   return { baseUrl, close };
 }
 
-async function main(): Promise<void> {
+export async function runConversationSidecarMain(): Promise<void> {
   const stateFile = option("--state-file");
   const runtime = await startConversationSidecar({ stateFile });
   process.stdout.write(
@@ -270,8 +271,10 @@ async function main(): Promise<void> {
 }
 
 const isMain =
+  !import.meta.url.includes("/$bunfs/") &&
+  !isDesktopSingleFileBundle() &&
   process.argv[1] !== undefined &&
   resolve(fileURLToPath(import.meta.url)) === resolve(process.argv[1]);
 if (isMain) {
-  await main();
+  await runConversationSidecarMain();
 }

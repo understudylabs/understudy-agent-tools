@@ -49,7 +49,7 @@ never terminates them, so release qualification cannot overlap another Metal
 workload:
 
 ```sh
-APP_VERSION=0.3.15
+APP_VERSION=0.3.16
 npm run runtime:desktop-readiness -- \
   --output ".understudy/capture-evidence/desktop-runtime-readiness-${APP_VERSION}.json"
 ```
@@ -57,7 +57,7 @@ npm run runtime:desktop-readiness -- \
 The output is private, contains no token values, and is not packaged. It fails
 closed if app, runtime, or model RSS is unavailable. Evidence filenames are
 version-bound so a later run cannot silently stand in for the installed cohort.
-The last fully regenerated exact-version evidence before Desktop 0.3.15 is the
+The last fully regenerated exact-version evidence before Desktop 0.3.16 is the
 notarized 0.3.12 release, which passes all gates:
 
 | Gate | Result | Ceiling |
@@ -75,7 +75,7 @@ ordinary warm restart.
 The exact-version 0.3.12 conformance report also passes every frozen scenario:
 basic chat, offline image, authenticated tool round, malformed-tool recovery,
 supervisor takeover, long-chat compaction, restart/resume, and cancellation.
-Desktop 0.3.15 must regenerate both reports before its release cohort is called
+Desktop 0.3.16 must regenerate both reports before its release cohort is called
 qualified; passing 0.3.12 evidence is intentionally insufficient.
 
 The rebuilt debug app also passed a caller-correlated headless tool round. The
@@ -108,8 +108,8 @@ Anthropic key and catalog storage in Rust.
 The release artifact exposes the gate directly:
 
 ```sh
-APP_VERSION=0.3.15
-RUNTIME_VERSION=0.3.15
+APP_VERSION=0.3.16
+RUNTIME_VERSION=0.3.16
 HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 HF_DATASETS_OFFLINE=1 \
 understudy runtime conformance \
   --backend pi \
