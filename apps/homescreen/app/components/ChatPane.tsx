@@ -55,6 +55,7 @@ import {
   type ChatAttachmentUpload,
 } from "../lib/chat-attachments";
 import { modelShortName, type SnapshotAlias } from "../lib/model-aliases";
+import type { ChatSessionRequest } from "../lib/chat-history";
 import { resolveChatModelSelection } from "../lib/model-selection.mjs";
 import {
   SKIP_HINT_THRESHOLD,
@@ -134,12 +135,6 @@ type PersistedChatSession = {
   messages: Msg[];
   updated_at: string;
 };
-type ChatSessionSummary = {
-  session_id: string;
-  title: string;
-  message_count: number;
-  updated_at: string;
-};
 type LocalModelChoice = {
   id: string;
   modelId: string;
@@ -185,17 +180,6 @@ const CLOUD_MODEL: ModelChoice = {
 // This survives ChatPane remounts while the app is open (for example, after
 // visiting Models) but resets with the webview on a new app launch.
 let activeChatSessionId: string | null = null;
-
-function chatHistoryTime(value: string): string {
-  const date = new Date(value);
-  if (Number.isNaN(date.getTime())) return "Saved chat";
-  return date.toLocaleString([], {
-    month: "short",
-    day: "numeric",
-    hour: "numeric",
-    minute: "2-digit",
-  });
-}
 
 function compactBytes(bytes: number): string {
   if (bytes < 1_024) return `${bytes} B`;
@@ -340,7 +324,17 @@ function ChatScrollTracker({
   );
 }
 
-export function ChatPane({ resetToken, historyToken }: { resetToken: number; historyToken: number }) {
+export function ChatPane({
+  resetToken,
+  requestedSession,
+  onSessionChange,
+  onHistoryChanged,
+}: {
+  resetToken: number;
+  requestedSession: ChatSessionRequest | null;
+  onSessionChange?: (sessionId: string) => void;
+  onHistoryChanged?: () => void;
+}) {
   const [initialSession] = useState(() => {
     const restore = activeChatSessionId !== null;
     const sessionId = activeChatSessionId ?? crypto.randomUUID();
@@ -362,16 +356,13 @@ export function ChatPane({ resetToken, historyToken }: { resetToken: number; his
   const [introThinking, setIntroThinking] = useState(true);
   const [sidekickEvents, setSidekickEvents] = useState<SidekickEvent[]>([]);
   const [sessionHydrated, setSessionHydrated] = useState(!initialSession.restore);
-  const [historyOpen, setHistoryOpen] = useState(false);
-  const [historyLoading, setHistoryLoading] = useState(false);
-  const [historySessions, setHistorySessions] = useState<ChatSessionSummary[]>([]);
   const [dropHovering, setDropHovering] = useState(false);
   const [dropRunning, setDropRunning] = useState(false);
   const [droppedWorkload, setDroppedWorkload] = useState<DroppedWorkload | null>(null);
   const [pacingMessageIndex, setPacingMessageIndex] = useState<number | null>(null);
   const [pacedRevealed, setPacedRevealed] = useState<number | null>(null);
   const observedResetToken = useRef(false);
-  const observedHistoryToken = useRef(false);
+  const observedSessionRequest = useRef<number | null>(null);
   const dropInFlight = useRef(false);
   const dropRequestGeneration = useRef(0);
   const selectedModelUserOwned = useRef(false);
@@ -580,7 +571,7 @@ export function ChatPane({ resetToken, historyToken }: { resetToken: number; his
     // A cold launch intentionally begins with a new blank session. If the user
     // merely navigated away from Chat and back, restore the active session by
     // its exact ID instead of whichever historical chat happens to be newest.
-    if (!initialSession.restore) return;
+    if (!initialSession.restore || requestedSession) return;
     let cancelled = false;
     invoke<PersistedChatSession | null>("chat_session_get", {
       sessionId: initialSession.sessionId,
@@ -608,12 +599,18 @@ export function ChatPane({ resetToken, historyToken }: { resetToken: number; his
       invoke("chat_session_save", {
         sessionId,
         messages: persistableChatMessages(messages),
-      }).catch(() => {
-        setNotice("This chat could not be saved for restart; the current turn is unaffected.");
-      });
+      })
+        .then(() => onHistoryChanged?.())
+        .catch(() => {
+          setNotice("This chat could not be saved for restart; the current turn is unaffected.");
+        });
     }, 150);
     return () => window.clearTimeout(timer);
-  }, [messages, sessionHydrated, sessionId, streaming]);
+  }, [messages, onHistoryChanged, sessionHydrated, sessionId, streaming]);
+
+  useEffect(() => {
+    onSessionChange?.(sessionId);
+  }, [onSessionChange, sessionId]);
 
   useEffect(() => {
     setIntroThinking(true);
@@ -829,10 +826,12 @@ export function ChatPane({ resetToken, historyToken }: { resetToken: number; his
       void invoke("chat_session_save", {
         sessionId,
         messages: persistableChatMessages(messages),
-      }).catch(() => {
-        // The debounced save normally ran already. Starting a new chat should
-        // remain available if this final best-effort flush fails.
-      });
+      })
+        .then(() => onHistoryChanged?.())
+        .catch(() => {
+          // The debounced save normally ran already. Starting a new chat should
+          // remain available if this final best-effort flush fails.
+        });
     }
     const nextSessionId = crypto.randomUUID();
     activeChatSessionId = nextSessionId;
@@ -842,7 +841,6 @@ export function ChatPane({ resetToken, historyToken }: { resetToken: number; his
     setNotice(null);
     setSessionId(nextSessionId);
     setSessionHydrated(true);
-    setHistoryOpen(false);
     setAssistantSpeaking(false);
     resetDroppedWorkload();
     setPersonaReady(false);
@@ -858,30 +856,11 @@ export function ChatPane({ resetToken, historyToken }: { resetToken: number; his
     restartChat();
   }, [resetToken]);
 
-  const showHistory = () => {
+  const restoreHistorySession = async (historySessionId: string) => {
     if (streaming) {
       setNotice("Finish or stop the current turn before opening another chat.");
       return;
     }
-    setHistoryOpen(true);
-    setHistoryLoading(true);
-    invoke<ChatSessionSummary[]>("chat_sessions_list", { limit: 30 })
-      .then(setHistorySessions)
-      .catch((error) => setNotice(`Chat history could not be loaded: ${String(error)}`))
-      .finally(() => setHistoryLoading(false));
-  };
-
-  useEffect(() => {
-    if (!observedHistoryToken.current) {
-      observedHistoryToken.current = true;
-      return;
-    }
-    showHistory();
-  }, [historyToken]);
-
-  const restoreHistorySession = async (historySessionId: string) => {
-    if (streaming) return;
-    setHistoryLoading(true);
     setErr(null);
     setNotice(null);
     try {
@@ -906,17 +885,26 @@ export function ChatPane({ resetToken, historyToken }: { resetToken: number; his
       activeChatSessionId = saved.session_id;
       setSessionId(saved.session_id);
       setMessages(restored);
+      setSessionHydrated(true);
       setInput("");
       setAssistantSpeaking(false);
       resetDroppedWorkload();
-      setHistoryOpen(false);
       setPersonaCycle((value) => value + 1);
+      onHistoryChanged?.();
     } catch (error) {
       setNotice(`Saved chat could not be opened: ${String(error)}`);
     } finally {
-      setHistoryLoading(false);
+      // A missing or damaged saved session must not permanently disable
+      // persistence for whatever conversation the user starts next.
+      setSessionHydrated(true);
     }
   };
+
+  useEffect(() => {
+    if (!requestedSession || observedSessionRequest.current === requestedSession.requestId) return;
+    observedSessionRequest.current = requestedSession.requestId;
+    void restoreHistorySession(requestedSession.sessionId);
+  }, [requestedSession]);
 
   const setThinking = async (thinking: boolean) => {
     if (selectedChoice.route !== "local") return;
@@ -992,52 +980,6 @@ export function ChatPane({ resetToken, historyToken }: { resetToken: number; his
         <div className="workload-drop-overlay" role="status">
           <div className="workload-drop-overlay-title">Drop one file or folder</div>
           <div>Metadata only · stays on this Mac</div>
-        </div>
-      )}
-      {historyOpen && (
-        <div
-          className="chat-history-overlay"
-          role="presentation"
-          onMouseDown={(event) => {
-            if (event.target === event.currentTarget) setHistoryOpen(false);
-          }}
-        >
-          <section className="chat-history-panel" role="dialog" aria-modal="true" aria-labelledby="chat-history-title">
-            <header className="chat-history-header">
-              <div>
-                <h2 id="chat-history-title">Chat history</h2>
-                <p>Open an earlier conversation on this Mac.</p>
-              </div>
-              <button type="button" aria-label="Close chat history" onClick={() => setHistoryOpen(false)}>
-                ×
-              </button>
-            </header>
-            <div className="chat-history-list">
-              {historyLoading && historySessions.length === 0 ? (
-                <div className="chat-history-empty">Loading…</div>
-              ) : historySessions.length === 0 ? (
-                <div className="chat-history-empty">No earlier chats yet.</div>
-              ) : (
-                historySessions.map((saved) => (
-                  <button
-                    type="button"
-                    className={"chat-history-row" + (saved.session_id === sessionId ? " current" : "")}
-                    key={saved.session_id}
-                    onClick={() => void restoreHistorySession(saved.session_id)}
-                    disabled={historyLoading}
-                  >
-                    <span className="chat-history-row-title">
-                      {saved.title.trim().replace(/\s+/g, " ") || "Untitled chat"}
-                    </span>
-                    <span className="chat-history-row-meta">
-                      {chatHistoryTime(saved.updated_at)} · {saved.message_count} message{saved.message_count === 1 ? "" : "s"}
-                      {saved.session_id === sessionId ? " · current" : ""}
-                    </span>
-                  </button>
-                ))
-              )}
-            </div>
-          </section>
         </div>
       )}
       <div className={"persona-stage" + (personaReady ? " persona-ready" : "")} aria-hidden="true">

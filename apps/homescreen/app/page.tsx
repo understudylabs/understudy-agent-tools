@@ -1,8 +1,8 @@
 "use client";
-import { useEffect, useState } from "react";
-import { isTauri } from "@tauri-apps/api/core";
+import { useCallback, useEffect, useState } from "react";
+import { invoke, isTauri } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
-import { HistoryIcon, PanelLeftIcon, SquarePenIcon } from "lucide-react";
+import { PanelLeftIcon, SquarePenIcon } from "lucide-react";
 import { Sidebar, type PaneId } from "./components/Sidebar";
 import { StatusPane } from "./components/StatusPane";
 import { ModelsPane } from "./components/ModelsPane";
@@ -17,14 +17,42 @@ import { RlmPane } from "./components/RlmPane";
 import { RuntimeRepairPrompt } from "./components/RuntimeRepairPrompt";
 import { ModelDownloadNotice } from "./components/ModelDownloadNotice";
 import { useStatus } from "./lib/useStatus";
+import type { ChatSessionRequest, ChatSessionSummary } from "./lib/chat-history";
 
 export default function Page() {
   const [pane, setPane] = useState<PaneId>("chat");
   const [railOpen, setRailOpen] = useState(false);
   const [chatResetToken, setChatResetToken] = useState(0);
-  const [chatHistoryToken, setChatHistoryToken] = useState(0);
+  const [chatHistory, setChatHistory] = useState<ChatSessionSummary[]>([]);
+  const [chatHistoryLoading, setChatHistoryLoading] = useState(false);
+  const [activeChatSessionId, setActiveChatSessionId] = useState<string | null>(null);
+  const [requestedChatSession, setRequestedChatSession] = useState<ChatSessionRequest | null>(null);
   const status = useStatus();
   const connected = status.snap?.connected ?? false;
+
+  const refreshChatHistory = useCallback(() => {
+    if (!isTauri()) {
+      setChatHistory([]);
+      setChatHistoryLoading(false);
+      return;
+    }
+    setChatHistoryLoading(true);
+    invoke<ChatSessionSummary[]>("chat_sessions_list", { limit: 30 })
+      .then(setChatHistory)
+      .catch(() => setChatHistory([]))
+      .finally(() => setChatHistoryLoading(false));
+  }, []);
+
+  const handleChatSessionChange = useCallback((sessionId: string) => {
+    setActiveChatSessionId(sessionId);
+    setRequestedChatSession((current) =>
+      current?.sessionId === sessionId ? null : current,
+    );
+  }, []);
+
+  useEffect(() => {
+    if (railOpen) refreshChatHistory();
+  }, [railOpen, refreshChatHistory]);
 
   const newChat = () => {
     if (pane !== "chat") return;
@@ -102,15 +130,6 @@ export default function Page() {
           >
             <SquarePenIcon aria-hidden="true" size={15} strokeWidth={2} />
           </button>
-          <button
-            type="button"
-            className="titlebar-chat-history"
-            aria-label="Chat history"
-            title="Chat history"
-            onClick={() => setChatHistoryToken((token) => token + 1)}
-          >
-            <HistoryIcon aria-hidden="true" size={15} strokeWidth={2} />
-          </button>
         </>
       )}
       <DownloadQrButton />
@@ -122,13 +141,29 @@ export default function Page() {
         active={pane}
         onSelect={(next) => {
           setPane(next);
-          setRailOpen(false);
         }}
         connected={connected}
+        sessions={chatHistory}
+        activeSessionId={activeChatSessionId}
+        historyLoading={chatHistoryLoading}
+        onSelectSession={(sessionId) => {
+          setPane("chat");
+          setRequestedChatSession((current) => ({
+            sessionId,
+            requestId: (current?.requestId ?? 0) + 1,
+          }));
+        }}
       />
       <main className="content">
         {pane === "status" && <StatusPane status={status} />}
-        {pane === "chat" && <ChatPane resetToken={chatResetToken} historyToken={chatHistoryToken} />}
+        {pane === "chat" && (
+          <ChatPane
+            resetToken={chatResetToken}
+            requestedSession={requestedChatSession}
+            onSessionChange={handleChatSessionChange}
+            onHistoryChanged={refreshChatHistory}
+          />
+        )}
         {pane === "models" && <ModelsPane />}
         {pane === "capture" && <CapturePane />}
         {pane === "rlm" && <RlmPane />}
