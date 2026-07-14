@@ -87,6 +87,10 @@ const modelSelectionPath = new URL(
   "../apps/homescreen/app/lib/model-selection.mjs",
   import.meta.url,
 );
+const statusHookPath = new URL(
+  "../apps/homescreen/app/lib/useStatus.ts",
+  import.meta.url,
+);
 const workloadDropRustPath = new URL(
   "../apps/homescreen/src-tauri/src/workload_drop.rs",
   import.meta.url,
@@ -94,21 +98,41 @@ const workloadDropRustPath = new URL(
 const captureImportPath = new URL("../src/capture-import.ts", import.meta.url);
 
 test("public desktop preserves the reviewed Train interaction language", async () => {
-  const [css, chat, sidebar, aliases] = await Promise.all([
+  const [css, chat, sidebar, aliases, statusHook, page, runtimeRepairPrompt] = await Promise.all([
     readFile(cssPath, "utf8"),
     readFile(chatPath, "utf8"),
     readFile(sidebarPath, "utf8"),
     readFile(modelAliasesPath, "utf8"),
+    readFile(statusHookPath, "utf8"),
+    readFile(pagePath, "utf8"),
+    readFile(runtimeRepairPromptPath, "utf8"),
   ]);
 
   assert.match(css, /understudy-agent@3f025022/);
   assert.match(css, /--mb-cyan:\s*#67e8f9/);
   assert.match(css, /--mb-mint:\s*#9edbd3/);
-  assert.match(css, /\.composer-row\s*\{/);
+  assert.match(
+    css,
+    /::selection\s*\{[\s\S]*?background:\s*color-mix\(in srgb, var\(--mb-cyan\) 68%, transparent\);/,
+  );
+  assert.match(css, /\.composer-row\s*\{[\s\S]*?width:\s*100%;/);
+  assert.match(
+    css,
+    /\.composer-row \.composer-row-body\s*\{[\s\S]*?display:\s*flex;[\s\S]*?flex:\s*1 1 0;/,
+  );
   assert.match(css, /\.ai-chat-composer \.composer-submit\s*\{/);
+  assert.match(
+    css,
+    /\.ai-chat-composer \.composer-submit\s*\{[\s\S]*?margin-left:\s*auto;/,
+  );
   assert.match(css, /\.persona-halo\.supervised/);
   assert.match(chat, /className="composer-row"/);
+  assert.match(chat, /<PromptInputBody className="composer-row-body">/);
   assert.match(chat, /className="composer-submit"/);
+  assert.match(chat, /if \(!isTauri\(\)\) return;/);
+  assert.match(statusHook, /if \(!isTauri\(\)\) return;/);
+  assert.match(page, /if \(!isTauri\(\)\) return;/);
+  assert.match(runtimeRepairPrompt, /const unlisten = isTauri\(\)/);
   assert.doesNotMatch(chat, /<ThinkingToggle/);
   assert.match(chat, /className="model-picker-controls"/);
   assert.match(aliases, /"gemma-4-e4b-it-qat-mlx-vlm-understudy": "understudy-balanced"/);
