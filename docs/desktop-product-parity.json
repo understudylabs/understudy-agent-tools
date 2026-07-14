@@ -135,7 +135,7 @@
     {
       "id": "signed-in-app-updates",
       "status": "shipped",
-      "evidence": "Desktop checks the canonical GitHub release endpoint, downloads only Tauri-signature-verified macOS updater archives, shows progress through the shared managed-operation notice, installs and restarts in place, and falls back to the signed manual download when automatic installation fails."
+      "evidence": "Desktop checks the canonical GitHub release endpoint at launch and every 15 minutes, while both the native macOS application menu and menu-bar tray expose an explicit Check for Updates action. It downloads only Tauri-signature-verified macOS updater archives, shows checks and install progress through the shared managed-operation notice, installs and restarts in place, and falls back to the signed manual download when automatic installation fails."
     },
     {
       "id": "durable-image-and-chat-persistence",
@@ -186,11 +186,6 @@
       "id": "reading-pace-streaming",
       "status": "shipped",
       "evidence": "Chat keeps the full canonical stream as its persistence and evidence source while revealing only the latest answer at a brisk reading rate with bounded elastic catch-up. Direct simulations show a 20-character-per-second provider stays within two characters of live display, while a 1,000-character local burst drains within two seconds after Done. A visible Show full answer escape hatch appears only beyond a 300-character backlog, reduced-motion and understudy.pacing=off disable pacing, and teacher ReplaceChunk events reset the hidden buffer so rejected student text cannot leak into the correction."
-    },
-    {
-      "id": "always-on-top-window-pin",
-      "status": "shipped",
-      "evidence": "The canonical titlebar exposes the reviewed user-controlled always-on-top pin, persists the preference locally, restores it on launch, reports its pressed state accessibly, and reverts the UI if the native window operation fails."
     },
     {
       "id": "heavy-model-preflight-and-process-reconciliation",

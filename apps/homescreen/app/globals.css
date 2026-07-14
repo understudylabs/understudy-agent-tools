@@ -251,30 +251,6 @@ select,
   background: var(--surface-2);
   color: var(--text);
 }
-.titlebar-pin {
-  position: fixed;
-  z-index: 30;
-  top: 9px;
-  left: calc(var(--traffic-left) + 76px);
-  display: inline-grid;
-  place-content: center;
-  width: 30px;
-  height: 30px;
-  border: 0;
-  border-radius: var(--r-control);
-  background: color-mix(in srgb, var(--surface) 88%, transparent);
-  color: var(--text-2);
-}
-.titlebar-pin.with-chat-controls {
-  left: calc(var(--traffic-left) + 114px);
-}
-.titlebar-pin:hover {
-  background: var(--surface-2);
-  color: var(--text);
-}
-.titlebar-pin.pinned {
-  color: var(--text);
-}
 .titlebar-qr {
   position: fixed;
   z-index: 30;

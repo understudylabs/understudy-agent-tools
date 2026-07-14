@@ -30,15 +30,24 @@ mod supervision_tiebreaker;
 mod tool_proof;
 mod workload_drop;
 
-use tauri::menu::{Menu, MenuItem, PredefinedMenuItem};
+use tauri::menu::{Menu, MenuBuilder, MenuItem, PredefinedMenuItem, SubmenuBuilder};
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
 use tauri::{Emitter, Manager};
+
+const CHECK_FOR_UPDATES_MENU_ID: &str = "check-for-updates";
+const CHECK_FOR_UPDATES_TRAY_ID: &str = "tray-check-for-updates";
+const CHECK_FOR_UPDATES_EVENT: &str = "check-for-updates";
 
 fn show_window(app: &tauri::AppHandle) {
     if let Some(w) = app.get_webview_window("main") {
         let _ = w.show();
         let _ = w.set_focus();
     }
+}
+
+fn request_update_check(app: &tauri::AppHandle) {
+    show_window(app);
+    let _ = app.emit(CHECK_FOR_UPDATES_EVENT, ());
 }
 
 #[tauri::command]
@@ -50,6 +59,43 @@ fn restart_app(app: tauri::AppHandle) {
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
+        .menu(|app| {
+            let app_menu = SubmenuBuilder::new(app, "Understudy")
+                .about(None)
+                .text(CHECK_FOR_UPDATES_MENU_ID, "Check for Updates…")
+                .separator()
+                .services()
+                .separator()
+                .hide()
+                .hide_others()
+                .show_all()
+                .separator()
+                .quit()
+                .build()?;
+            let edit_menu = SubmenuBuilder::new(app, "Edit")
+                .undo()
+                .redo()
+                .separator()
+                .cut()
+                .copy()
+                .paste()
+                .select_all()
+                .build()?;
+            let window_menu = SubmenuBuilder::new(app, "Window")
+                .minimize()
+                .fullscreen()
+                .separator()
+                .bring_all_to_front()
+                .build()?;
+            MenuBuilder::new(app)
+                .items(&[&app_menu, &edit_menu, &window_menu])
+                .build()
+        })
+        .on_menu_event(|app, event| {
+            if event.id().as_ref() == CHECK_FOR_UPDATES_MENU_ID {
+                request_update_check(app);
+            }
+        })
         .setup(|app| {
             #[cfg(desktop)]
             app.handle()
@@ -106,6 +152,13 @@ pub fn run() {
 
             // Menu-bar tray.
             let show = MenuItem::with_id(app, "show", "Show Understudy", true, None::<&str>)?;
+            let updates = MenuItem::with_id(
+                app,
+                CHECK_FOR_UPDATES_TRAY_ID,
+                "Check for Updates…",
+                true,
+                None::<&str>,
+            )?;
             let conn = MenuItem::with_id(
                 app,
                 "connect",
@@ -120,9 +173,13 @@ pub fn run() {
                 true,
                 None::<&str>,
             )?;
-            let sep = PredefinedMenuItem::separator(app)?;
+            let update_sep = PredefinedMenuItem::separator(app)?;
+            let quit_sep = PredefinedMenuItem::separator(app)?;
             let quit = MenuItem::with_id(app, "quit", "Quit Understudy", true, None::<&str>)?;
-            let menu = Menu::with_items(app, &[&show, &conn, &disc, &sep, &quit])?;
+            let menu = Menu::with_items(
+                app,
+                &[&show, &updates, &update_sep, &conn, &disc, &quit_sep, &quit],
+            )?;
 
             let icon = app
                 .default_window_icon()
@@ -135,6 +192,7 @@ pub fn run() {
                 .menu(&menu)
                 .on_menu_event(|app, event| match event.id.as_ref() {
                     "show" => show_window(app),
+                    CHECK_FOR_UPDATES_TRAY_ID => request_update_check(app),
                     "connect" => {
                         let _ = bin::command("moraine").arg("up").status();
                     }

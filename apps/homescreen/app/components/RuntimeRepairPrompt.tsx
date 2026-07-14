@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useRef, useState } from "react";
+import { getVersion } from "@tauri-apps/api/app";
 import { invoke, isTauri } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { openUrl } from "@tauri-apps/plugin-opener";
@@ -8,6 +9,7 @@ import { check, type DownloadEvent } from "@tauri-apps/plugin-updater";
 import { OperationNotice } from "./OperationNotice";
 import {
   CONVERSATION_RUNTIME_REPAIR_REQUEST,
+  DESKTOP_DOWNLOAD_URL,
   MLX_REPAIR_REQUEST,
   isConversationRuntimeError,
   isMissingMlxVlmError,
@@ -22,6 +24,14 @@ import {
 
 const HEALTH_REFRESH_MS = 15 * 60 * 1_000;
 const SUCCESS_VISIBLE_MS = 2_400;
+
+const MANUAL_UPDATE_PROMPT: RepairPrompt = {
+  runtime: "desktop",
+  title: "Checking for updates",
+  reason: "Contacting the signed Understudy release channel.",
+  command: DESKTOP_DOWNLOAD_URL,
+  actionLabel: "Check again",
+};
 
 type NativeRepairProgress = {
   operation: string;
@@ -54,6 +64,7 @@ export function RuntimeRepairPrompt() {
   const [progress, setProgress] = useState<RepairProgress>(IDLE_PROGRESS);
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
   const successTimer = useRef<number | null>(null);
+  const updateCheckInFlight = useRef(false);
   const busy = progress.status === "running";
 
   const refreshHealth = useCallback(async (): Promise<DesktopHealth | null> => {
@@ -67,6 +78,73 @@ export function RuntimeRepairPrompt() {
       return null;
     }
   }, []);
+
+  const checkForUpdates = useCallback(async () => {
+    if (busy || updateCheckInFlight.current) return;
+    updateCheckInFlight.current = true;
+    if (successTimer.current !== null) {
+      window.clearTimeout(successTimer.current);
+      successTimer.current = null;
+    }
+    setPrompt(MANUAL_UPDATE_PROMPT);
+    setProgress({
+      status: "running",
+      message: "Checking the signed update channel…",
+      detail: "This usually takes a few seconds",
+      step: 0,
+      total: 1,
+      startedAt: Date.now(),
+    });
+    try {
+      const [update, currentVersion] = await Promise.all([
+        check({ timeout: 10_000 }),
+        getVersion().catch(() => null),
+      ]);
+      if (update) {
+        setPrompt({
+          runtime: "desktop",
+          title: "Understudy Desktop update available",
+          reason: `${currentVersion ?? "installed"} → ${update.version}`,
+          command: DESKTOP_DOWNLOAD_URL,
+          actionLabel: "Install update",
+        });
+        setProgress(IDLE_PROGRESS);
+        return;
+      }
+
+      setProgress({
+        status: "success",
+        message: "Understudy is up to date",
+        detail: currentVersion ? `Version ${currentVersion}` : "No newer signed release found",
+        step: 1,
+        total: 1,
+        startedAt: null,
+      });
+      successTimer.current = window.setTimeout(() => {
+        successTimer.current = null;
+        void refreshHealth().finally(() => setProgress(IDLE_PROGRESS));
+      }, SUCCESS_VISIBLE_MS);
+    } catch (error) {
+      const detail = String(error);
+      setPrompt({
+        runtime: "desktop",
+        title: "Update check failed",
+        reason: detail,
+        command: DESKTOP_DOWNLOAD_URL,
+        actionLabel: "Open downloads",
+      });
+      setProgress({
+        status: "error",
+        message: "Update check failed",
+        detail,
+        step: 0,
+        total: 1,
+        startedAt: null,
+      });
+    } finally {
+      updateCheckInFlight.current = false;
+    }
+  }, [busy, refreshHealth]);
 
   useEffect(() => {
     if (!busy || progress.startedAt === null) {
@@ -87,6 +165,16 @@ export function RuntimeRepairPrompt() {
     },
     [],
   );
+
+  useEffect(() => {
+    if (!isTauri()) return;
+    const unlisten = listen("check-for-updates", () => {
+      void checkForUpdates();
+    });
+    return () => {
+      void unlisten.then((remove) => remove());
+    };
+  }, [checkForUpdates]);
 
   useEffect(() => {
     void refreshHealth();
