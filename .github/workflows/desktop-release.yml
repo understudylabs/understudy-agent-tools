@@ -13,6 +13,7 @@ on:
           - release
 
 permissions:
+  checks: read
   contents: write
 
 concurrency:
@@ -44,25 +45,50 @@ jobs:
           node-version: 22.23.0
           cache: npm
 
+      - name: Require green CI for the exact release commit
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          checks="$RUNNER_TEMP/release-check-runs.json"
+          gh api \
+            "repos/$GITHUB_REPOSITORY/commits/$GITHUB_SHA/check-runs?per_page=100" \
+            > "$checks"
+          for name in gates rust
+          do
+            if ! jq -e \
+              --arg name "$name" \
+              '[.check_runs[] | select(.name == $name and .conclusion == "success")] | length > 0' \
+              "$checks" >/dev/null
+            then
+              echo "Required ${name} check is not successful for ${GITHUB_SHA}." >&2
+              jq -r \
+                --arg name "$name" \
+                '.check_runs[] | select(.name == $name) | [.name, .status, (.conclusion // "")] | @tsv' \
+                "$checks" >&2
+              exit 1
+            fi
+          done
+
+      - name: Validate the exact release source
+        run: |
+          git fetch --no-tags origin main:refs/remotes/origin/main
+          npm run desktop:release-check -- --stage source
+
       - name: Set up Bun 1.3.14
+        if: inputs.mode == 'release'
         uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
         with:
           bun-version: 1.3.14
 
       - name: Set up Rust
+        if: inputs.mode == 'release'
         uses: dtolnay/rust-toolchain@4be7066ada62dd38de10e7b70166bc74ed198c30 # stable
 
       - name: Install locked dependencies
+        if: inputs.mode == 'release'
         run: |
           npm ci
           bun install --cwd apps/homescreen --frozen-lockfile
-
-      - name: Validate source and tests
-        run: |
-          git fetch --no-tags origin main:refs/remotes/origin/main
-          npm run check
-          cargo test --manifest-path apps/homescreen/src-tauri/Cargo.toml
-          npm run desktop:release-check -- --stage source
 
       - name: Validate release credentials
         env:

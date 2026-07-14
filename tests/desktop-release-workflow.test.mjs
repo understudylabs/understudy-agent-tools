@@ -16,7 +16,7 @@ test("Desktop releases are main-only, serialized, and use pinned actions", () =>
   assert.match(workflow, /group: desktop-production-release/);
   assert.match(workflow, /cancel-in-progress: false/);
   assert.match(workflow, /environment: desktop-release/);
-  assert.match(workflow, /permissions:\n  contents: write/);
+  assert.match(workflow, /permissions:\n  checks: read\n  contents: write/);
   assert.doesNotMatch(workflow, /uses: [^\n]+@(v\d+|main|stable)\b/);
   const actionPins = [...workflow.matchAll(/uses: [^@\n]+@([0-9a-f]{40})/g)];
   assert.equal(actionPins.length, 4);
@@ -48,11 +48,15 @@ test("Desktop release automation keeps every trust gate before publication", () 
   assert.ok(workflow.indexOf("npm ci") < workflow.indexOf("secrets.APPLE_CERTIFICATE"));
   assert.match(workflow, /npm ci/);
   assert.match(workflow, /bun install --cwd apps\/homescreen --frozen-lockfile/);
+  assert.match(workflow, /commits\/\$GITHUB_SHA\/check-runs\?per_page=100/);
+  assert.match(workflow, /for name in gates rust/);
+  assert.match(workflow, /\.name == \$name and \.conclusion == "success"/);
   assert.match(workflow, /desktop:release-check -- --stage source/);
-  assert.match(workflow, /cargo test --manifest-path/);
+  assert.doesNotMatch(workflow, /npm run check/);
+  assert.doesNotMatch(workflow, /cargo test/);
   assert.match(workflow, /notarytool history/);
   assert.match(workflow, /jq -e '\.history \| type == "array"'/);
-  assert.equal([...workflow.matchAll(/if: inputs\.mode == 'release'/g)].length, 6);
+  assert.equal([...workflow.matchAll(/if: inputs\.mode == 'release'/g)].length, 9);
   assert.match(workflow, /notarytool submit "\$app_zip"/);
   assert.match(workflow, /stapler staple "\$app"/);
   assert.match(workflow, /tauri signer sign \\\n+              --private-key-path/);
