@@ -58,6 +58,11 @@ app and DMG to Apple, verify the downloaded draft assets byte-for-byte, and
 publish only after every gate passes. No local Keychain or 1Password prompt is
 required during a normal release.
 
+Both modes require successful `gates` and `rust` checks for the exact `main`
+commit. The release workflow reuses that evidence instead of rerunning the full
+test suites on a fresh macOS runner; if main CI is still running, wait for it and
+dispatch again.
+
 The environment owns these secrets: `APPLE_CERTIFICATE`,
 `APPLE_CERTIFICATE_PASSWORD`, `APPLE_ID`, `APPLE_PASSWORD`,
 `APPLE_SIGNING_IDENTITY`, `APPLE_TEAM_ID`, and
