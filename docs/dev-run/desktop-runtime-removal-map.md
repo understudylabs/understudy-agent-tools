@@ -43,8 +43,10 @@ not be used to complete the monitor.
 
 ## Acceptance evidence
 
-Run the local readiness probe only after stopping the desktop app and its warm
-model processes:
+Run the local readiness probe only after stopping the desktop app and every
+MLX/VLM model-server process. The probe fails closed on unrelated servers and
+never terminates them, so release qualification cannot overlap another Metal
+workload:
 
 ```sh
 npm run runtime:desktop-readiness -- --output .understudy/capture-evidence/desktop-runtime-readiness.json

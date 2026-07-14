@@ -6,6 +6,11 @@ import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
+import {
+  findActiveMlxServers,
+  formatActiveMlxServers,
+} from "./desktop-runtime-safety.mjs";
+
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const appBinary = resolve(
   process.env.UNDERSTUDY_DESKTOP_BINARY ||
@@ -26,7 +31,7 @@ if (process.argv.includes("--help")) {
   process.stdout.write(
     "usage: node scripts/desktop-runtime-readiness.mjs [--output <private-json>]\n" +
       "\n" +
-      "Run after stopping Understudy and its warm model processes. The probe launches the\n" +
+      "Run after stopping Understudy and every MLX/VLM model-server process. The probe launches the\n" +
       "debug app bundle, cold-starts the managed runtime, measures restored models, and\n" +
       "leaves the measured app running. No provider calls are made.\n",
   );
@@ -139,6 +144,20 @@ if (!existsSync(database)) {
 }
 if (await healthReady()) {
   throw new Error(`desktop is already serving at ${baseUrl}; stop it before a cold readiness run`);
+}
+
+// A process-cold release claim must not overlap another MLX/VLM workload. Even
+// an unrelated model server consumes unified memory and Metal allocations, so
+// starting restored Desktop slots beside it can invalidate the measurement or
+// destabilize macOS. Detect every exact MLX/VLM server entrypoint, report only
+// bounded process metadata, and leave unowned processes untouched.
+const activeMlxServers = findActiveMlxServers(
+  run("ps", ["-ww", "-axo", "pid=,ppid=,command="]),
+);
+if (activeMlxServers.length > 0) {
+  throw new Error(
+    `MLX/VLM server processes are already active (${formatActiveMlxServers(activeMlxServers)}); stop them before process-cold readiness. The harness will not terminate unowned model servers.`,
+  );
 }
 
 const warmBefore = sqliteRows(
