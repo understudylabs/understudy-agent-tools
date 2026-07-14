@@ -155,17 +155,16 @@ test("public desktop preserves the reviewed Train interaction language", async (
   );
   assert.match(chat, /msg\.stage === "cloud_fallback_local"/);
 
-  const serving = sidebar.match(
-    /const SERVING_NAV:[\s\S]*?= \[([\s\S]*?)\n\];/,
-  )?.[1];
-  assert.ok(serving, "SERVING_NAV remains statically auditable");
-  assert.match(serving, /label: "Chat"/);
-  assert.match(serving, /label: "Status"/);
-  assert.match(serving, /label: "Models"/);
-  assert.match(serving, /label: "Experiments"/);
-  assert.doesNotMatch(serving, /label: "Capture"/);
-  assert.doesNotMatch(serving, /label: "Traces"/);
-  assert.doesNotMatch(serving, /label: "Usage"/);
+  assert.match(sidebar, /<div className="nav-section">Chats<\/div>/);
+  assert.match(sidebar, /aria-label="Recent chats"/);
+  assert.match(sidebar, /sessions\.map\(\(session\) =>/);
+  assert.match(sidebar, /onSelectSession\(session\.session_id\)/);
+  assert.match(sidebar, /onSelect\("account"\)/);
+  assert.doesNotMatch(sidebar, /SERVING_NAV/);
+  assert.doesNotMatch(sidebar, /label: "Status"/);
+  assert.doesNotMatch(sidebar, /label: "Models"/);
+  assert.doesNotMatch(sidebar, /label: "Experiments"/);
+  assert.doesNotMatch(page, /titlebar-chat-history/);
 });
 
 test("reading pace is quiet, optional, and safe across teacher replacement", async () => {
@@ -313,16 +312,17 @@ test("desktop persists image references and retains them with chat history", asy
 });
 
 test("desktop starts fresh on launch and can reopen an exact Pi session", async () => {
-  const [chat, page, commands] = await Promise.all([
+  const [chat, page, sidebar, commands] = await Promise.all([
     readFile(chatPath, "utf8"),
     readFile(pagePath, "utf8"),
+    readFile(sidebarPath, "utf8"),
     readFile(new URL("../apps/homescreen/src-tauri/src/commands.rs", import.meta.url), "utf8"),
   ]);
 
   assert.match(chat, /let activeChatSessionId: string \| null = null/);
   assert.match(chat, /const restore = activeChatSessionId !== null/);
   assert.doesNotMatch(chat, /invoke<PersistedChatSession \| null>\("chat_session_latest"\)/);
-  assert.match(chat, /"chat_sessions_list"/);
+  assert.match(page, /"chat_sessions_list"/);
   assert.match(chat, /"chat_session_get"/);
   assert.match(chat, /activeChatSessionId = saved\.session_id/);
   assert.match(
@@ -330,7 +330,8 @@ test("desktop starts fresh on launch and can reopen an exact Pi session", async 
     /const resetDroppedWorkload = \(\) => \{[\s\S]*dropRequestGeneration\.current \+= 1;[\s\S]*dropInFlight\.current = false;[\s\S]*setDropRunning\(false\);/,
   );
   assert.equal(chat.match(/resetDroppedWorkload\(\);/g)?.length, 2);
-  assert.match(page, /aria-label="Chat history"/);
+  assert.match(sidebar, /aria-label="Recent chats"/);
+  assert.doesNotMatch(page, /aria-label="Chat history"/);
   assert.match(commands, /pub fn chat_sessions_list/);
   assert.match(commands, /pub fn chat_session_get/);
 });
