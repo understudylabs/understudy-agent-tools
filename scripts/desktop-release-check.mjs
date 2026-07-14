@@ -21,6 +21,36 @@ function capture(command, args, cwd) {
   }).trim();
 }
 
+function versionTuple(value) {
+  const match = String(value).match(/^(\d+)\.(\d+)\.(\d+)$/);
+  return match ? match.slice(1).map(Number) : null;
+}
+
+function compareVersions(left, right) {
+  const a = versionTuple(left);
+  const b = versionTuple(right);
+  if (!a || !b) return null;
+  for (let index = 0; index < a.length; index += 1) {
+    if (a[index] !== b[index]) return a[index] > b[index] ? 1 : -1;
+  }
+  return 0;
+}
+
+export function runtimeCliAdvancementError({
+  runtime_version: runtimeVersion,
+  cli_version: cliVersion,
+  baseline_runtime_version: baselineRuntimeVersion,
+  baseline_cli_version: baselineCliVersion,
+}) {
+  if (runtimeVersion === baselineRuntimeVersion) return null;
+  const comparison = compareVersions(cliVersion, baselineCliVersion);
+  if (comparison === 1) return null;
+  return (
+    `conversation runtime advanced from ${baselineRuntimeVersion} to ${runtimeVersion}, ` +
+    `but CLI ${cliVersion} did not advance beyond ${baselineCliVersion}`
+  );
+}
+
 function firstMatch(text, pattern, label, errors) {
   const match = text.match(pattern);
   if (!match) {
@@ -50,6 +80,19 @@ export function inspectDesktopVersions(root = repositoryRoot) {
     join(root, "src", "runtime", "conversation", "contract.ts"),
     "utf8",
   );
+  const cliPackage = readJson(join(root, "package.json")).version;
+  const bootstrap = readFileSync(join(tauri, "src", "bootstrap.rs"), "utf8");
+  const minimumCli = firstMatch(
+    bootstrap,
+    /MIN_UNDERSTUDY_CLI_VERSION:\s*&str\s*=\s*"([^"]+)"/,
+    "minimum Desktop CLI version",
+    errors,
+  );
+  if (cliPackage !== minimumCli) {
+    errors.push(
+      `Desktop minimum CLI must match the distributed package: package=${cliPackage}, minimum=${minimumCli ?? "missing"}`,
+    );
+  }
   const versions = {
     desktop_package: readJson(join(homescreen, "package.json")).version,
     tauri_config: readJson(join(tauri, "tauri.conf.json")).version,
@@ -82,7 +125,41 @@ export function inspectDesktopVersions(root = repositoryRoot) {
         .join(", ")}`,
     );
   }
-  return { version: unique.length === 1 ? unique[0] : null, versions, errors };
+  return {
+    version: unique.length === 1 ? unique[0] : null,
+    versions,
+    compatibility: { cli_package: cliPackage, minimum_cli: minimumCli },
+    errors,
+  };
+}
+
+function priorDesktopReleaseBaseline(root, head) {
+  const tags = capture(
+    "git",
+    ["tag", "--merged", head, "--list", "desktop-v*-mvp", "--sort=-version:refname"],
+    root,
+  ).split("\n").filter(Boolean);
+  for (const tag of tags) {
+    const commit = capture("git", ["rev-list", "-n", "1", tag], root);
+    if (commit === head) continue;
+    const runtimeSource = capture(
+      "git",
+      ["show", `${tag}:src/runtime/conversation/contract.ts`],
+      root,
+    );
+    const runtimeMatch = runtimeSource.match(/RUNTIME_VERSION\s*=\s*"([^"]+)"/);
+    const cliPackage = JSON.parse(capture("git", ["show", `${tag}:package.json`], root));
+    if (!runtimeMatch || typeof cliPackage.version !== "string") {
+      throw new Error(`could not read runtime/CLI versions from ${tag}`);
+    }
+    return {
+      tag,
+      commit,
+      runtime_version: runtimeMatch[1],
+      cli_version: cliPackage.version,
+    };
+  }
+  return null;
 }
 
 export function desktopArtifactPaths(version, root = repositoryRoot, arch = "aarch64") {
@@ -133,6 +210,7 @@ export async function inspectDesktopRelease({
   let head = null;
   let originMain = null;
   let clean = null;
+  let baseline = null;
   try {
     head = capture("git", ["rev-parse", "HEAD"], root);
     originMain = capture("git", ["rev-parse", "origin/main"], root);
@@ -143,6 +221,22 @@ export async function inspectDesktopRelease({
   if (!allowDirty && clean === false) errors.push("release worktree is dirty");
   if (!allowUnmerged && head && originMain && head !== originMain) {
     errors.push(`release HEAD ${head} does not match origin/main ${originMain}`);
+  }
+  if (head && versionState.version) {
+    try {
+      baseline = priorDesktopReleaseBaseline(root, head);
+      if (baseline) {
+        const error = runtimeCliAdvancementError({
+          runtime_version: versionState.version,
+          cli_version: versionState.compatibility.cli_package,
+          baseline_runtime_version: baseline.runtime_version,
+          baseline_cli_version: baseline.cli_version,
+        });
+        if (error) errors.push(error);
+      }
+    } catch (error) {
+      errors.push(`release baseline inspection failed: ${error.message}`);
+    }
   }
 
   const artifacts = versionState.version
@@ -217,6 +311,7 @@ export async function inspectDesktopRelease({
     ok: errors.length === 0,
     version: versionState.version,
     versions: versionState.versions,
+    compatibility: { ...versionState.compatibility, baseline },
     git: { head, origin_main: originMain, clean },
     artifacts: artifactState,
     errors,

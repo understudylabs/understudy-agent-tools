@@ -44,6 +44,13 @@ uses semantic-ish versioning (minor = new skill or new capability, patch = fixes
 
 ### Fixed
 
+- **Desktop and its canonical sidecar now release as one compatibility unit.**
+  CLI and adapter manifests advance to 0.6.6 with runtime/Desktop 0.3.10, and
+  Desktop requires that CLI release. The release gate now rejects a runtime
+  version bump unless the distributed CLI also advances and the Desktop CLI
+  floor matches it, preventing a signed app from repairing back to an older
+  sidecar.
+
 - **Desktop repair now installs the ConversationRuntime version the app
   requires.** CLI and adapter manifests advance to 0.6.5 with runtime 0.3.8,
   and Desktop 0.3.8 requires that CLI release. The health check can no longer

@@ -7,6 +7,7 @@ import {
   desktopArtifactPaths,
   inspectDesktopVersions,
   repositoryRoot,
+  runtimeCliAdvancementError,
 } from "../scripts/desktop-release-check.mjs";
 
 test("desktop release sources share one exact version", () => {
@@ -14,6 +15,7 @@ test("desktop release sources share one exact version", () => {
   assert.deepEqual(report.errors, []);
   assert.match(report.version, /^\d+\.\d+\.\d+$/);
   assert.deepEqual([...new Set(Object.values(report.versions))], [report.version]);
+  assert.equal(report.compatibility.cli_package, report.compatibility.minimum_cli);
   const artifacts = desktopArtifactPaths(report.version);
   assert.match(artifacts.app, /Understudy\.app$/);
   assert.match(artifacts.dmg, new RegExp(`Understudy_${report.version}_aarch64\\.dmg$`));
@@ -27,6 +29,8 @@ test("desktop release source drift fails closed with every version named", () =>
     "apps/homescreen/src-tauri/Cargo.toml",
     "apps/homescreen/src-tauri/Cargo.lock",
     "apps/homescreen/src-tauri/src/conversation_runtime.rs",
+    "apps/homescreen/src-tauri/src/bootstrap.rs",
+    "package.json",
     "src/runtime/conversation/contract.ts",
   ];
   try {
@@ -48,4 +52,34 @@ test("desktop release source drift fails closed with every version named", () =>
   } finally {
     rmSync(root, { recursive: true, force: true });
   }
+});
+
+test("runtime releases require a newer distributed CLI sidecar", () => {
+  assert.equal(
+    runtimeCliAdvancementError({
+      runtime_version: "0.3.10",
+      cli_version: "0.6.6",
+      baseline_runtime_version: "0.3.9",
+      baseline_cli_version: "0.6.5",
+    }),
+    null,
+  );
+  assert.match(
+    runtimeCliAdvancementError({
+      runtime_version: "0.3.10",
+      cli_version: "0.6.5",
+      baseline_runtime_version: "0.3.9",
+      baseline_cli_version: "0.6.5",
+    }),
+    /CLI 0\.6\.5 did not advance/,
+  );
+  assert.equal(
+    runtimeCliAdvancementError({
+      runtime_version: "0.3.9",
+      cli_version: "0.6.5",
+      baseline_runtime_version: "0.3.9",
+      baseline_cli_version: "0.6.5",
+    }),
+    null,
+  );
 });
