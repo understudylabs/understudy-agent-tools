@@ -44,6 +44,14 @@ uses semantic-ish versioning (minor = new skill or new capability, patch = fixes
 
 ### Fixed
 
+- **Healthy runtimes reconnect instead of asking for repair.** Desktop 0.3.11
+  quietly rebinds the CLI-owned conversation runtime to the current
+  authenticated Desktop tool session at launch. A healthy process with a
+  stale tool credential is described as reconnecting, the UI clears the
+  transient state after readiness, and genuine repair failures remain
+  actionable. CLI and adapter manifests advance to 0.6.7 with runtime/Desktop
+  0.3.11.
+
 - **Desktop and its canonical sidecar now release as one compatibility unit.**
   CLI and adapter manifests advance to 0.6.6 with runtime/Desktop 0.3.10, and
   Desktop requires that CLI release. The release gate now rejects a runtime

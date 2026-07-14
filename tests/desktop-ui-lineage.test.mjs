@@ -231,6 +231,8 @@ test("desktop has one shared managed-operation notice surface", async () => {
   assert.match(prompt, /"install_mlx_runtime"/);
   assert.match(prompt, /"conversation_runtime_repair"/);
   assert.match(prompt, /listen<NativeRepairProgress>\("runtime-repair-progress"/);
+  assert.match(prompt, /listen\("conversation-runtime-ready"/);
+  assert.match(prompt, /setTimeout\(\(\) => void refreshHealth\(\), 2_500\)/);
   assert.match(prompt, /Updating the version-coupled conversation runtime/);
   assert.match(prompt, /Verifying the CLI and local runtimes/);
   assert.match(prompt, /elapsedSeconds/);
@@ -241,6 +243,8 @@ test("desktop has one shared managed-operation notice surface", async () => {
   assert.match(downloadNotice, /"start_snapshot_download"/);
   assert.match(repair, /understudy models runtime repair/);
   assert.match(repair, /understudy runtime repair/);
+  assert.match(repair, /Runtime reconnecting/);
+  assert.match(repair, /Reconnect now/);
   assert.match(repair, /install\.sh \| bash -s -- --yes/);
   assert.doesNotMatch(repair, /understudy update/);
 });

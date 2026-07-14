@@ -87,6 +87,10 @@ export function RuntimeRepairPrompt() {
 
   useEffect(() => {
     void refreshHealth();
+    // Startup reconnect is intentionally backgrounded. Reconcile once after
+    // the native side has had time to bind the CLI runtime to this Desktop
+    // session, even if the ready event raced the webview listener.
+    const settleTimer = window.setTimeout(() => void refreshHealth(), 2_500);
     const timer = window.setInterval(() => void refreshHealth(), HEALTH_REFRESH_MS);
     const unlisten = isTauri()
       ? Promise.all([
@@ -103,8 +107,11 @@ export function RuntimeRepairPrompt() {
                     step: event.payload.step,
                     total: event.payload.total,
                   }
-                : current,
+              : current,
             );
+          }),
+          listen("conversation-runtime-ready", () => {
+            void refreshHealth();
           }),
         ]).then((removers) => () => removers.forEach((remove) => remove()))
       : Promise.resolve(() => {});
@@ -125,6 +132,7 @@ export function RuntimeRepairPrompt() {
     window.addEventListener("error", onError);
     window.addEventListener("unhandledrejection", onRejection);
     return () => {
+      window.clearTimeout(settleTimer);
       window.clearInterval(timer);
       void unlisten.then((remove) => remove());
       window.removeEventListener("error", onError);

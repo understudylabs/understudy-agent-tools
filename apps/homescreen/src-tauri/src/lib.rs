@@ -32,7 +32,7 @@ mod workload_drop;
 
 use tauri::menu::{Menu, MenuItem, PredefinedMenuItem};
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
-use tauri::Manager;
+use tauri::{Emitter, Manager};
 
 fn show_window(app: &tauri::AppHandle) {
     if let Some(w) = app.get_webview_window("main") {
@@ -78,6 +78,22 @@ pub fn run() {
 
             // Local API server (HTTP + MCP + A2A) for coding agents.
             server::start(app.handle().clone());
+
+            // The CLI-owned runtime may survive an app restart, while the
+            // Desktop tool credential is bound to the current local API.
+            // Reconcile that binding quietly at launch so a healthy runtime
+            // never becomes a user-facing repair chore.
+            let runtime_handle = app.handle().clone();
+            tauri::async_runtime::spawn(async move {
+                match conversation_sidecar::ensure_agent_ready(runtime_handle.clone()).await {
+                    Ok(()) => {
+                        let _ = runtime_handle.emit("conversation-runtime-ready", ());
+                    }
+                    Err(error) => {
+                        eprintln!("understudy runtime: automatic reconnect failed: {error}");
+                    }
+                }
+            });
 
             // Menu-bar tray.
             let show = MenuItem::with_id(app, "show", "Show Understudy", true, None::<&str>)?;
