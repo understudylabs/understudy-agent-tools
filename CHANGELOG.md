@@ -44,6 +44,12 @@ uses semantic-ish versioning (minor = new skill or new capability, patch = fixes
 
 ### Fixed
 
+- **CLI installs expose one honest staleness signal for the current command
+  surface.** CLI and adapter manifests advance to 0.6.9 after the
+  proof-scoped correction handoff, GEPA spend fuse, and portable fail-closed
+  grocery proof landed. Desktop's required CLI floor advances with them, so an
+  older 0.6.8 checkout can no longer look current while missing those commands.
+
 - **macOS memory headroom stays conservative without collapsing to zero under
   compression.** Desktop 0.3.12 updates the pinned system-memory reader to the
   current Apple XNU available-memory calculation. Model warming still keeps
