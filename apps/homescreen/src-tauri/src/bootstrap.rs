@@ -25,7 +25,7 @@ pub struct ToolStatus {
     pub detail: String,
 }
 
-const MIN_UNDERSTUDY_CLI_VERSION: &str = "0.6.9";
+const MIN_UNDERSTUDY_CLI_VERSION: &str = "0.6.10";
 const UNDERSTUDY_INSTALLER_URL: &str =
     "https://raw.githubusercontent.com/UnderstudyLabs/understudy-agent-tools/main/install.sh";
 
