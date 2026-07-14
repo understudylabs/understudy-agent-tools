@@ -9,7 +9,7 @@ use crate::db::{
 use crate::knowledge::{self, Dossier};
 use crate::mcp;
 use crate::metrics::{Machine, Metrics, MetricsReader};
-use crate::models::{self, LOCAL_BASE_URL};
+use crate::models;
 use crate::moraine::MoraineState;
 use crate::residency::{Residency, ResidencySnapshot};
 use crate::route_policy::{
@@ -33,7 +33,7 @@ pub struct StatusSnapshot {
     pub machine: Machine,
     pub metrics: Metrics,
     pub residency: ResidencySnapshot,
-    pub local_base_url: &'static str,
+    pub local_base_url: String,
 }
 
 #[derive(Serialize, Clone)]
@@ -986,13 +986,14 @@ fn is_connected(app: &AppHandle) -> bool {
 pub fn get_status(app: AppHandle) -> StatusSnapshot {
     let reader = app.state::<MetricsReader>();
     let machine = app.state::<Machine>();
+    let residency = residency(&app);
     StatusSnapshot {
         connected: is_connected(&app),
         services: Services::snapshot(),
         machine: machine.inner().clone(),
         metrics: reader.inner().read(),
-        residency: residency(&app).snapshot(),
-        local_base_url: LOCAL_BASE_URL,
+        residency: residency.snapshot(),
+        local_base_url: residency.local_base_url(),
     }
 }
 
