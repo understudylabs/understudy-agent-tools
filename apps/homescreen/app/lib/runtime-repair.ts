@@ -29,7 +29,7 @@ export type RepairPrompt = RuntimeRepairRequest & {
 };
 
 export const CLI_INSTALL_COMMAND =
-  "curl -fsSL https://raw.githubusercontent.com/UnderstudyLabs/understudy-agent-tools/main/install.sh | bash -s -- --yes";
+  "https://github.com/understudylabs/understudy-agent-tools/releases/latest";
 
 export const MLX_REPAIR_REQUEST: RuntimeRepairRequest = {
   runtime: "mlx-vlm",
@@ -76,10 +76,10 @@ export function promptForHealth(health: DesktopHealth): RepairPrompt | null {
   if (!health.cli.available) {
     return {
       runtime: "cli",
-      title: "Understudy CLI is missing",
-      reason: "Install the public CLI so the desktop can diagnose and repair its runtimes.",
+      title: "Desktop CLI needs repair",
+      reason: "Restore the self-contained CLI included with Understudy Desktop.",
       command: CLI_INSTALL_COMMAND,
-      actionLabel: "Install CLI",
+      actionLabel: "Restore CLI",
     };
   }
   if (health.cli.update_available === true) {
@@ -88,10 +88,10 @@ export function promptForHealth(health: DesktopHealth): RepairPrompt | null {
       : health.cli.detail;
     return {
       runtime: "cli",
-      title: "Understudy CLI update available",
+      title: "Understudy Desktop update required",
       reason: versions,
       command: CLI_INSTALL_COMMAND,
-      actionLabel: "Update CLI",
+      actionLabel: "Update Desktop",
     };
   }
   if (!health.mlx_vlm.available) {

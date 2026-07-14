@@ -25,9 +25,7 @@ pub struct ToolStatus {
     pub detail: String,
 }
 
-const MIN_UNDERSTUDY_CLI_VERSION: &str = "0.6.12";
-const UNDERSTUDY_INSTALLER_URL: &str =
-    "https://raw.githubusercontent.com/UnderstudyLabs/understudy-agent-tools/main/install.sh";
+const MIN_UNDERSTUDY_CLI_VERSION: &str = "0.6.13";
 
 #[derive(Serialize, Clone)]
 pub struct BootstrapStatus {
@@ -196,65 +194,51 @@ pub fn install_mlx_runtime() -> Result<String, String> {
 pub fn install_understudy_agent_tools(app: &AppHandle) -> Result<String, String> {
     emit_runtime_repair_progress(
         app,
-        "download",
-        "Downloading the latest Understudy installer…",
+        "bundle",
+        "Checking the CLI included with Understudy Desktop…",
         1,
         4,
     );
-    let script = std::env::temp_dir().join(format!(
-        "understudy-agent-tools-install-{}.sh",
-        std::process::id()
-    ));
-    let download = Command::new("curl")
-        .args([
-            "--proto",
-            "=https",
-            "--tlsv1.2",
-            "--fail",
-            "--silent",
-            "--show-error",
-            "--location",
-            UNDERSTUDY_INSTALLER_URL,
-            "--output",
-        ])
-        .arg(&script)
-        .env("PATH", bin::runtime_path())
-        .output()
-        .map_err(|e| format!("Understudy installer download failed to start: {e}"))?;
-    if let Err(error) = command_output(download) {
-        let _ = std::fs::remove_file(&script);
-        return Err(error);
-    }
+    let binary = bin::bundled_understudy().ok_or_else(|| {
+        "The CLI bundled with Understudy Desktop is missing. Reinstall the Desktop app.".to_string()
+    })?;
+    let package_root = bin::bundled_package_root().ok_or_else(|| {
+        "The CLI resources bundled with Understudy Desktop are missing. Reinstall the Desktop app."
+            .to_string()
+    })?;
 
     emit_runtime_repair_progress(
         app,
-        "install",
-        "Installing the CLI and its dependencies…",
+        "verify",
+        "Verifying the bundled CLI and runtime assets…",
         2,
         4,
     );
-
-    let installed = Command::new("sh")
-        .arg(&script)
-        .args(["--noninteractive", "--agents", "none", "--keep-login"])
-        .env("UNDERSTUDY_NONINTERACTIVE", "1")
-        .env("UNDERSTUDY_AGENT_PLATFORMS", "none")
-        .env("UNDERSTUDY_KEEP_LOGIN", "1")
-        .env("PATH", bin::runtime_path())
+    let installed = bin::command("understudy")
+        .arg("--version")
         .output()
-        .map_err(|e| format!("Understudy installer failed to start: {e}"));
-    let _ = std::fs::remove_file(&script);
-    let result = installed.and_then(command_output);
-    if result.is_ok() {
-        emit_runtime_repair_progress(
-            app,
-            "cli-ready",
-            "CLI installed. Checking the managed runtimes…",
-            3,
-            4,
-        );
+        .map_err(|e| format!("The bundled Understudy CLI failed to start: {e}"))?;
+    let version = command_output(installed)?.trim().to_string();
+    if parse_version(&version)
+        .zip(parse_version(MIN_UNDERSTUDY_CLI_VERSION))
+        .is_none_or(|(installed, required)| installed < required)
+    {
+        return Err(format!(
+            "Bundled CLI {version} is incompatible; Desktop requires {MIN_UNDERSTUDY_CLI_VERSION}+"
+        ));
     }
-    result
+    emit_runtime_repair_progress(
+        app,
+        "cli-ready",
+        "Bundled CLI ready. Checking the managed runtimes…",
+        3,
+        4,
+    );
+    Ok(format!(
+        "Understudy CLI {version} is ready at {} with resources at {}",
+        binary.display(),
+        package_root.display()
+    ))
 }
 
 /// Aggregate bounded public update checks and local runtime diagnostics for
@@ -273,6 +257,7 @@ pub async fn desktop_health(app: &AppHandle) -> DesktopHealth {
         .user_agent("Understudy-Desktop/health-check")
         .build();
 
+    let bundled_cli = bin::using_bundled_understudy();
     let (cli_latest, desktop_latest, desktop_url) = if let Ok(client) = client {
         let cli = fetch_json(
             &client,
@@ -303,9 +288,21 @@ pub async fn desktop_health(app: &AppHandle) -> DesktopHealth {
         "Understudy CLI",
         cli_local,
         cli_latest,
-        "Run the official agent-tools installer to repair or update.".to_string(),
+        if bundled_cli {
+            "CLI and conversation runtime are included with Desktop; update Desktop to update them."
+                .to_string()
+        } else {
+            "Run the official agent-tools installer to repair or update.".to_string()
+        },
     );
-    if cli_health.available && !mlx_status.managed {
+    if bundled_cli {
+        // Desktop ships one exact CLI/runtime cohort. A newer standalone npm
+        // package is not an in-app repair target; the next Desktop release
+        // supplies the compatible signed bundle.
+        cli_health.latest_version = Some(MIN_UNDERSTUDY_CLI_VERSION.to_string());
+        cli_health.update_available = Some(false);
+    }
+    if !bundled_cli && cli_health.available && !mlx_status.managed {
         cli_health.update_available = Some(true);
         cli_health.detail =
             "Installed CLI lacks the managed MLX/VLM lifecycle; update it before repairing local models."

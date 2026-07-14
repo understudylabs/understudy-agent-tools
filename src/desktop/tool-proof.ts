@@ -2,6 +2,9 @@ import { createHash } from "node:crypto";
 import { readdirSync, readFileSync, statSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join, resolve } from "node:path";
+import { pathToFileURL } from "node:url";
+
+import { packagePath } from "../internal/package-root.js";
 
 export interface ToolProofCandidate {
   label: string;
@@ -135,7 +138,9 @@ export async function runDesktopToolProof(options: RunToolProofOptions): Promise
   if (!Number.isInteger(options.timeoutMs) || options.timeoutMs < 1_000 || options.timeoutMs > 300_000) {
     throw new Error("timeoutMs must be an integer from 1000 to 300000");
   }
-  const runnerUrl = new URL("../../experiments/desktop-tool-proof/run.mjs", import.meta.url);
+  const runnerUrl = pathToFileURL(
+    packagePath("experiments", "desktop-tool-proof", "run.mjs"),
+  );
   const runner = await import(runnerUrl.href) as RunnerModule;
   const result = await runner.runProof({
     candidates: options.candidates,

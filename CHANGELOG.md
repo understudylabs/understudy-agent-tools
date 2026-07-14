@@ -44,6 +44,14 @@ uses semantic-ish versioning (minor = new skill or new capability, patch = fixes
 
 ### Fixed
 
+- **Desktop installation no longer depends on npm or a machine-local Node.**
+  Desktop/runtime 0.3.16 and CLI 0.6.13 ship one version-coupled cohort: a
+  pinned Node 22.23.0 runtime, bundled CLI, Pi conversation sidecar, public
+  package resources, and the two external runtime modules needed for HTTP and
+  image handling. In-app repair verifies that signed local cohort instead of
+  downloading an installer, and release checks verify its versions, hashes,
+  dependencies, and Node license before publication.
+
 - **Completed supervisor nudges replace the student answer cleanly.**
   Desktop/runtime 0.3.15 and CLI 0.6.12 preserve the original nudge verdict,
   interruption reason, and teacher continuation while replacing a completed

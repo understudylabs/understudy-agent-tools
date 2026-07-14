@@ -1,17 +1,15 @@
 import { lstatSync, readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
-import { fileURLToPath } from "node:url";
 
 import { pidAlive, probeDaemonHealth } from "./daemon.js";
+import { packagePath } from "./package-root.js";
 
 export const DESKTOP_API_SCHEMA = "understudy.desktop_api.v2";
 export const DESKTOP_API_OPENAPI_VERSION = "2.2.0";
 
 export function desktopApiContractPath(): string {
-  return fileURLToPath(
-    new URL("../../schemas/understudy.desktop_api.v2.openapi.json", import.meta.url),
-  );
+  return packagePath("schemas", "understudy.desktop_api.v2.openapi.json");
 }
 
 export function readDesktopApiContract(): Record<string, unknown> {

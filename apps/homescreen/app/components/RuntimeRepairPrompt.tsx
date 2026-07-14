@@ -150,7 +150,7 @@ export function RuntimeRepairPrompt() {
     const total = activePrompt.runtime === "cli" ? 4 : 2;
     const initialMessage =
       activePrompt.runtime === "cli"
-        ? "Downloading the latest Understudy CLI…"
+        ? "Preparing the CLI bundled with Understudy Desktop…"
         : activePrompt.runtime === "conversation-runtime"
           ? "Updating the managed conversation runtime…"
           : "Repairing the local model runtime…";
