@@ -4,7 +4,7 @@
   "distribution_authority": "@understudylabs/understudy-agent-tools",
   "external_research_bridge_policy": "documented_uv_bridge_only",
   "legacy_desktop_policy": "extraction_only",
-  "migration_complete": false,
+  "migration_complete": true,
   "status_values": [
     "shipped",
     "partial",
@@ -199,8 +199,8 @@
     },
     {
       "id": "native-runtime-deletion",
-      "status": "planned",
-      "evidence": "Deletion waits for the full genuine-run observation gate and conformance proof from the canonical runtime. A separate authenticated native reference adapter now forces the prompt-only Rust headless boundary and reports all richer frozen scenarios as explicit gaps rather than overstating parity."
+      "status": "shipped",
+      "evidence": "After shipping notarized Desktop 0.3.8 as the one-release compatibility build, PR #203 removes the native provider, tool-round, compaction, benchmark, Anthropic transport, and parallel-sidekick execution paths while preserving the accepted Train-derived product improvements and canonical Pi sidecar. The owner explicitly accepted early promotion before the 100-turn observation monitor completed; the remaining genuine Pi cohort is tracked as post-merge adoption evidence rather than a reason to maintain two permanent conversation engines."
     }
   ]
 }

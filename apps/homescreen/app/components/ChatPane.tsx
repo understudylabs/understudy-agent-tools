@@ -287,59 +287,17 @@ function ReasoningSubstream({
 function ChatToolTrace({ tool }: { tool: ToolTrace }) {
   const shouldAutoOpen = tool.state !== "output-available";
   const [open, setOpen] = useState(shouldAutoOpen);
-  const isSidekick = tool.name === "delegate_to_sidekick";
-  const sidekick =
-    isSidekick && tool.output && typeof tool.output === "object"
-      ? (tool.output as {
-          profile_label?: string;
-          model_id?: string;
-          elapsed_ms?: number;
-          escalate?: boolean;
-          tool_calls?: number;
-          session_messages?: number;
-          content?: string;
-        })
-      : null;
 
   useEffect(() => {
     setOpen(shouldAutoOpen);
   }, [shouldAutoOpen]);
 
-  if (isSidekick && !sidekick) {
-    return (
-      <div className="sidekick-active-card">
-        <div className="sidekick-orbit" aria-hidden="true" />
-        <div className="sidekick-active-copy">
-          <div className="sidekick-active-kicker">Sidekick</div>
-          <div className="sidekick-active-title">Working in parallel</div>
-          <div className="sidekick-active-task">
-            {typeof tool.input === "object" && tool.input && "task" in tool.input
-              ? String((tool.input as { task?: unknown }).task)
-              : "Running a bounded local check."}
-          </div>
-        </div>
-      </div>
-    );
-  }
-
   return (
-    <Tool open={open} onOpenChange={setOpen} className={isSidekick ? "sidekick-tool-card" : undefined}>
+    <Tool open={open} onOpenChange={setOpen}>
       <ToolHeader type="dynamic-tool" toolName={tool.name} state={tool.state} />
       <ToolContent>
         <ToolInput input={tool.input} />
-        {sidekick ? (
-          <div className="sidekick-result">
-            <div className="sidekick-result-meta">
-              <span>{sidekick.profile_label ?? "Sidekick"}</span>
-              {sidekick.model_id && <span>{modelShortName(sidekick.model_id, [])}</span>}
-              {sidekick.elapsed_ms != null && <span>{(sidekick.elapsed_ms / 1000).toFixed(1)}s</span>}
-              {sidekick.tool_calls != null && sidekick.tool_calls > 0 && <span>{sidekick.tool_calls} tools</span>}
-              {sidekick.session_messages != null && <span>{sidekick.session_messages} ctx</span>}
-              {sidekick.escalate && <span>escalated</span>}
-            </div>
-            <div className="sidekick-result-content">{sidekick.content}</div>
-          </div>
-        ) : (tool.output !== undefined || tool.errorText) && (
+        {(tool.output !== undefined || tool.errorText) && (
           <ToolOutput output={tool.output} errorText={tool.errorText} />
         )}
       </ToolContent>
@@ -472,7 +430,7 @@ export function ChatPane({ resetToken, historyToken }: { resetToken: number; his
     void invoke<{ status: string }>("conversation_runtime_cancel", { sessionId })
       .then((result) => {
         if (result.status === "idle") {
-          setNotice("This turn is using the one-release compatibility engine and cannot be stopped yet.");
+          setNotice("No active response was found to stop.");
         }
       })
       .catch((e) => {
@@ -960,44 +918,19 @@ export function ChatPane({ resetToken, historyToken }: { resetToken: number; his
     : input.trim()
       ? "listening"
       : "idle";
-  const latestAssistant = [...messages].reverse().find((message) => message.role === "assistant");
-  const sidekickTool = latestAssistant?.tools?.find((tool) => tool.name === "delegate_to_sidekick");
-  const latestSidekickEvent = sidekickEvents[0];
-  const backgroundSidekickActive =
-    latestSidekickEvent?.mode !== "supervision" &&
-    (latestSidekickEvent?.stage === "queued" ||
-      latestSidekickEvent?.stage === "started" ||
-      latestSidekickEvent?.stage === "waiting");
+  const latestSupervisorEvent = sidekickEvents.find(
+    (event) => event.mode === "supervision",
+  );
   const supervisionVisible =
-    latestSidekickEvent?.mode === "supervision" &&
+    Boolean(latestSupervisorEvent) &&
     (streaming ||
-      latestSidekickEvent.stage === "interrupt" ||
-      latestSidekickEvent.stage === "nudge" ||
-      latestSidekickEvent.stage === "stop" ||
-      latestSidekickEvent.stage === "cloud_fallback_local" ||
-      latestSidekickEvent.stage === "supervisor_fallback_local" ||
-      latestSidekickEvent.stage === "student_interrupted" ||
-      latestSidekickEvent.stage === "teacher_continuation");
-  const sidekickMonitorVisible =
-    backgroundSidekickActive ||
-    supervisionVisible ||
-    (streaming &&
-      (latestSidekickEvent?.stage === "handoff_ready" ||
-        latestSidekickEvent?.stage === "handoff_deferred" ||
-        latestSidekickEvent?.stage === "route_applied" ||
-        latestSidekickEvent?.stage === "compaction_boundary"));
-  const sidekickActive =
-    sidekickTool?.state === "input-available" ||
-    sidekickTool?.state === "input-streaming" ||
-    backgroundSidekickActive;
-  const warmSidekickAvailable = choices.some((choice) => {
-    if (choice.route !== "local" || !choice.active) return false;
-    if (selectedChoice.route === "local" && choice.slotId === selectedChoice.slotId) return false;
-    const id = choice.detail.toLowerCase();
-    return choice.label === "understudy-small" || id.includes("understudy-small") || id.includes("e2b");
-  });
-  const showSidekickPersona = warmSidekickAvailable || Boolean(sidekickTool) || sidekickEvents.length > 0;
-  const sidekickPersonaState: PersonaState = "thinking";
+      latestSupervisorEvent?.stage === "interrupt" ||
+      latestSupervisorEvent?.stage === "nudge" ||
+      latestSupervisorEvent?.stage === "stop" ||
+      latestSupervisorEvent?.stage === "cloud_fallback_local" ||
+      latestSupervisorEvent?.stage === "supervisor_fallback_local" ||
+      latestSupervisorEvent?.stage === "student_interrupted" ||
+      latestSupervisorEvent?.stage === "teacher_continuation");
 
   return (
     <div
@@ -1074,25 +1007,10 @@ export function ChatPane({ resetToken, historyToken }: { resetToken: number; his
           state={personaState}
           className={
             "persona-halo" +
-            (streaming && latestSidekickEvent?.mode === "supervision" ? " supervised" : "")
+            (streaming && latestSupervisorEvent ? " supervised" : "")
           }
           onReady={() => setPersonaReady(true)}
         />
-        {showSidekickPersona && (
-          <div
-            className={
-              "sidekick-persona-orbit" +
-              (sidekickActive ? " active" : "")
-            }
-          >
-            <Persona
-              key={`sidekick-${personaCycle}`}
-              variant="halo"
-              state={sidekickPersonaState}
-              className="sidekick-persona-halo"
-            />
-          </div>
-        )}
       </div>
       <Conversation className="min-h-0">
         <ConversationContent className="gap-5 px-4 pb-3 pt-0">
@@ -1157,43 +1075,29 @@ export function ChatPane({ resetToken, historyToken }: { resetToken: number; his
               );
             })
           }
-          {sidekickMonitorVisible && latestSidekickEvent && (
+          {supervisionVisible && latestSupervisorEvent && (
             <div className="sidekick-active-card chat-sidekick-monitor">
               <div className="sidekick-orbit" aria-hidden="true" />
               <div className="sidekick-active-copy">
-                <div className="sidekick-active-kicker">
-                  {latestSidekickEvent.mode === "routing"
-                    ? "Routing"
-                    : latestSidekickEvent.mode === "supervision"
-                      ? "Supervisor"
-                      : "Sidekick"}
-                </div>
+                <div className="sidekick-active-kicker">Supervisor</div>
                 <div className="sidekick-active-title">
-                  {latestSidekickEvent.stage === "compaction_boundary"
-                    ? "Compaction boundary"
-                    : latestSidekickEvent.stage === "cloud_fallback_local"
+                  {latestSupervisorEvent.stage === "cloud_fallback_local"
                       ? "Cloud supervisor unavailable"
-                    : latestSidekickEvent.stage === "supervisor_fallback_local"
+                    : latestSupervisorEvent.stage === "supervisor_fallback_local"
                       ? "Supervisor unavailable"
-                    : latestSidekickEvent.stage === "route_applied"
-                      ? "Route switched"
-                    : latestSidekickEvent.stage === "student_interrupted"
+                    : latestSupervisorEvent.stage === "student_interrupted"
                       ? "Student interrupted"
-                    : latestSidekickEvent.stage === "teacher_continuation"
+                    : latestSupervisorEvent.stage === "teacher_continuation"
                       ? "Teacher continuing"
-                    : latestSidekickEvent.stage === "interrupt"
+                    : latestSupervisorEvent.stage === "interrupt"
                       ? "Intervention requested"
-                    : latestSidekickEvent.stage === "nudge"
+                    : latestSupervisorEvent.stage === "nudge"
                       ? "Student nudged"
-                    : latestSidekickEvent.stage === "stop"
+                    : latestSupervisorEvent.stage === "stop"
                       ? "Turn stopped"
-                    : latestSidekickEvent.mode === "supervision"
-                      ? "Checking the smaller model"
-                    : backgroundSidekickActive
-                      ? "Working in background"
-                      : "Background update"}
+                      : "Checking the smaller model"}
                 </div>
-                <div className="sidekick-active-task">{latestSidekickEvent.detail}</div>
+                <div className="sidekick-active-task">{latestSupervisorEvent.detail}</div>
               </div>
             </div>
           )}

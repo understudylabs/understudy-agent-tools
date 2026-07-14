@@ -264,12 +264,6 @@ pub struct SidekickSessionSummaryRow {
     pub updated_at: String,
 }
 
-#[derive(Clone, Copy, Debug, Default)]
-pub struct SidekickFeedbackSummary {
-    pub useful: u64,
-    pub misses: u64,
-}
-
 #[derive(Serialize, Clone)]
 pub struct CustomEvalRow {
     pub eval_id: String,
@@ -1182,41 +1176,6 @@ impl Db {
         Ok(rows.collect::<rusqlite::Result<Vec<_>>>()?)
     }
 
-    // Mirrors the sidekick_runs column list; not restructured to avoid churn.
-    #[allow(clippy::too_many_arguments)]
-    pub fn record_sidekick_run(
-        &self,
-        session_id: &str,
-        mode: &str,
-        task: &str,
-        model: Option<&str>,
-        content: Option<&str>,
-        elapsed_ms: Option<u64>,
-        tool_calls: u64,
-        session_messages: u64,
-        escalated: bool,
-    ) -> Result<()> {
-        let conn = self.conn()?;
-        conn.execute(
-            "INSERT INTO sidekick_runs (
-                session_id, mode, task, model, content, elapsed_ms, tool_calls, session_messages, escalated, run_at
-             ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
-            rusqlite::params![
-                session_id,
-                mode,
-                task,
-                model,
-                content,
-                elapsed_ms.map(|m| m as i64),
-                tool_calls as i64,
-                session_messages as i64,
-                escalated as i64,
-                now_iso(),
-            ],
-        )?;
-        Ok(())
-    }
-
     pub fn list_sidekick_runs(&self, limit: u32) -> Result<Vec<SidekickRunRow>> {
         let conn = self.conn()?;
         let mut stmt = conn.prepare(
@@ -1349,118 +1308,6 @@ impl Db {
             .map_err(Into::into)
     }
 
-    pub fn sidekick_feedback_summary(&self, limit: u32) -> Result<SidekickFeedbackSummary> {
-        let conn = self.conn()?;
-        let (useful, misses): (i64, i64) = conn.query_row(
-            "SELECT
-                COALESCE(SUM(CASE WHEN accepted=1 THEN 1 ELSE 0 END), 0),
-                COALESCE(SUM(CASE WHEN accepted=0 THEN 1 ELSE 0 END), 0)
-             FROM (
-                SELECT accepted FROM sidekick_runs
-                WHERE mode='parallel' AND accepted IS NOT NULL
-                ORDER BY id DESC LIMIT ?1
-             )",
-            [limit.clamp(1, 100) as i64],
-            |r| Ok((r.get(0)?, r.get(1)?)),
-        )?;
-        Ok(SidekickFeedbackSummary {
-            useful: useful.max(0) as u64,
-            misses: misses.max(0) as u64,
-        })
-    }
-
-    /// Atomically claim unconsumed handoffs: the SELECT and the consumed=1
-    /// marks commit together so concurrent consumers can't double-inject the
-    /// same handoff. A failed turn should hand claims back via
-    /// [`Db::unconsume_sidekick_handoffs`].
-    pub fn consume_sidekick_handoffs(
-        &self,
-        session_id: &str,
-        limit: u32,
-    ) -> Result<Vec<SidekickRunRow>> {
-        let mut conn = self.conn()?;
-        let tx = conn.transaction_with_behavior(TransactionBehavior::Immediate)?;
-        let mut stmt = tx.prepare(
-            "SELECT id, session_id, mode, task, model, content, elapsed_ms, tool_calls, session_messages, escalated, accepted, consumed, run_at
-             FROM sidekick_runs
-             WHERE session_id=?1 AND mode='parallel' AND consumed=0 AND content IS NOT NULL
-             ORDER BY id ASC LIMIT ?2",
-        )?;
-        let rows = stmt.query_map(
-            rusqlite::params![session_id, limit.clamp(1, 5) as i64],
-            |r| {
-                Ok(SidekickRunRow {
-                    id: r.get::<_, i64>(0)? as u64,
-                    session_id: r.get(1)?,
-                    mode: r.get(2)?,
-                    task: r.get(3)?,
-                    model: r.get(4)?,
-                    content: r.get(5)?,
-                    elapsed_ms: r.get::<_, Option<i64>>(6)?.map(|m| m as u64),
-                    tool_calls: r.get::<_, i64>(7)? as u64,
-                    session_messages: r.get::<_, i64>(8)? as u64,
-                    escalated: r.get::<_, i64>(9)? != 0,
-                    accepted: r.get::<_, Option<i64>>(10)?.map(|v| v != 0),
-                    consumed: r.get::<_, i64>(11)? != 0,
-                    run_at: r.get(12)?,
-                })
-            },
-        )?;
-        let out = rows
-            .collect::<rusqlite::Result<Vec<_>>>()
-            .map_err(anyhow::Error::from)?;
-        drop(stmt);
-        for row in &out {
-            tx.execute(
-                "UPDATE sidekick_runs SET consumed=1 WHERE id=?1",
-                [row.id as i64],
-            )?;
-        }
-        tx.commit()?;
-        Ok(out)
-    }
-
-    /// Hand claimed handoffs back (turn failed before the findings were used).
-    pub fn unconsume_sidekick_handoffs(&self, ids: &[u64]) -> Result<()> {
-        if ids.is_empty() {
-            return Ok(());
-        }
-        let mut conn = self.conn()?;
-        let tx = conn.transaction_with_behavior(TransactionBehavior::Immediate)?;
-        for id in ids {
-            tx.execute(
-                "UPDATE sidekick_runs SET consumed=0 WHERE id=?1",
-                [*id as i64],
-            )?;
-        }
-        tx.commit()?;
-        Ok(())
-    }
-
-    pub fn record_sidekick_decision(
-        &self,
-        session_id: &str,
-        route: &str,
-        prompt_excerpt: &str,
-        eligible: bool,
-        reason: &str,
-    ) -> Result<()> {
-        let conn = self.conn()?;
-        conn.execute(
-            "INSERT INTO sidekick_decisions (session_id, route, prompt_excerpt, eligible, reason, created_at)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
-            rusqlite::params![
-                session_id,
-                route,
-                prompt_excerpt,
-                eligible as i64,
-                reason,
-                now_iso(),
-            ],
-        )?;
-        Ok(())
-    }
-
     pub fn list_sidekick_decisions(&self, limit: u32) -> Result<Vec<SidekickDecisionRow>> {
         let conn = self.conn()?;
         let mut stmt = conn.prepare(
@@ -1516,105 +1363,6 @@ impl Db {
         })?;
         rows.collect::<rusqlite::Result<Vec<_>>>()
             .map_err(Into::into)
-    }
-
-    pub fn list_sidekick_events_for_session(
-        &self,
-        session_id: &str,
-        limit: u32,
-    ) -> Result<Vec<SidekickEventRow>> {
-        let conn = self.conn()?;
-        let mut stmt = conn.prepare(
-            "SELECT id, session_id, mode, stage, detail, created_at
-             FROM sidekick_events
-             WHERE session_id=?1
-             ORDER BY id DESC LIMIT ?2",
-        )?;
-        let rows = stmt.query_map(
-            rusqlite::params![session_id, limit.clamp(1, 50) as i64],
-            |r| {
-                Ok(SidekickEventRow {
-                    id: r.get::<_, i64>(0)? as u64,
-                    session_id: r.get(1)?,
-                    mode: r.get(2)?,
-                    stage: r.get(3)?,
-                    detail: r.get(4)?,
-                    created_at: r.get(5)?,
-                })
-            },
-        )?;
-        rows.collect::<rusqlite::Result<Vec<_>>>()
-            .map_err(Into::into)
-    }
-
-    pub fn load_sidekick_session(&self, session_key: &str) -> Result<Option<String>> {
-        let conn = self.conn()?;
-        match conn.query_row(
-            "SELECT messages FROM sidekick_sessions WHERE session_key=?1",
-            [session_key],
-            |r| r.get::<_, String>(0),
-        ) {
-            Ok(messages) => Ok(Some(messages)),
-            Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
-            Err(err) => Err(err.into()),
-        }
-    }
-
-    pub fn save_sidekick_session(
-        &self,
-        session_key: &str,
-        session_id: &str,
-        model: &str,
-        messages: &str,
-    ) -> Result<()> {
-        let conn = self.conn()?;
-        let parsed_messages =
-            serde_json::from_str::<Vec<serde_json::Value>>(messages).unwrap_or_default();
-        let message_count = parsed_messages.len() as i64;
-        let memory = parsed_messages.iter().find_map(|message| {
-            let role = message.get("role").and_then(|v| v.as_str());
-            let content = message.get("content").and_then(|v| v.as_str())?;
-            if role == Some("system") && content.starts_with("Sidekick compacted memory:") {
-                Some(content.to_string())
-            } else {
-                None
-            }
-        });
-        let compacted_count = memory
-            .as_ref()
-            .map(|value| {
-                value
-                    .lines()
-                    .filter(|line| line.trim_start().starts_with("- "))
-                    .count() as i64
-            })
-            .unwrap_or(0);
-        conn.execute(
-            "INSERT INTO sidekick_sessions(
-                session_key, session_id, model, messages, message_count, compacted_count, memory,
-                updated_at
-             )
-             VALUES(?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)
-             ON CONFLICT(session_key) DO UPDATE SET
-                session_id=excluded.session_id,
-                model=excluded.model,
-                messages=excluded.messages,
-                message_count=excluded.message_count,
-                compacted_count=excluded.compacted_count,
-                memory=excluded.memory,
-                updated_at=excluded.updated_at",
-            rusqlite::params![
-                session_key,
-                session_id,
-                model,
-                messages,
-                message_count,
-                compacted_count,
-                memory,
-                now_iso()
-            ],
-        )?;
-        Ok(())
     }
 
     pub fn list_sidekick_session_summaries(
@@ -1842,57 +1590,6 @@ mod tests {
         assert_eq!(row.cost_basis.as_deref(), Some("local-zero-marginal-cost"));
         assert_eq!(row.harness_sha256.as_deref(), Some("a".repeat(64).as_str()));
         assert_eq!(row.split_sha256, None);
-        let _ = std::fs::remove_dir_all(&dir);
-    }
-
-    #[test]
-    fn concurrent_consumers_never_double_claim_handoffs() {
-        let (dir, db) = temp_db("claim");
-        let db = std::sync::Arc::new(db);
-        for i in 0..8 {
-            db.record_sidekick_run(
-                "s",
-                "parallel",
-                &format!("task {i}"),
-                Some("model"),
-                Some("finding"),
-                Some(5),
-                1,
-                3,
-                false,
-            )
-            .unwrap();
-        }
-
-        let handles: Vec<_> = (0..4)
-            .map(|_| {
-                let db = db.clone();
-                std::thread::spawn(move || {
-                    let mut claimed = vec![];
-                    loop {
-                        let rows = db.consume_sidekick_handoffs("s", 5).unwrap();
-                        if rows.is_empty() {
-                            break;
-                        }
-                        claimed.extend(rows.into_iter().map(|row| row.id));
-                    }
-                    claimed
-                })
-            })
-            .collect();
-        let mut all: Vec<u64> = handles
-            .into_iter()
-            .flat_map(|handle| handle.join().unwrap())
-            .collect();
-        all.sort_unstable();
-        let claims = all.len();
-        all.dedup();
-        assert_eq!(claims, all.len(), "a handoff was claimed by two consumers");
-        assert_eq!(all.len(), 8, "every handoff is claimed exactly once");
-
-        // Handing claims back makes them consumable again (failed-turn path).
-        db.unconsume_sidekick_handoffs(&all).unwrap();
-        assert_eq!(db.consume_sidekick_handoffs("s", 5).unwrap().len(), 5);
         let _ = std::fs::remove_dir_all(&dir);
     }
 

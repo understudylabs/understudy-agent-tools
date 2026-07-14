@@ -718,7 +718,9 @@ mod tests {
                     probability_kind: None,
                     boundary_ordinal: Some(0),
                     after_chars: Some(11),
-                    decision_phase: Some(crate::conversation_runtime::RuntimeDecisionPhase::Streaming),
+                    decision_phase: Some(
+                        crate::conversation_runtime::RuntimeDecisionPhase::Streaming,
+                    ),
                     raw: None,
                     error: None,
                     failure_kind: None,

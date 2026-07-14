@@ -23,7 +23,6 @@ import {
   RUNTIME_VERSION,
 } from "../runtime/conversation/contract.js";
 import {
-  executeFrozenNativeDesktopReferenceScenario,
   executeFrozenConformanceScenario,
   runConversationAdapterConformance,
   runConversationConformance,
@@ -31,11 +30,8 @@ import {
 import { runPiConversation } from "../runtime/conversation/pi-runtime.js";
 import { runVercelConversation } from "../runtime/conversation/vercel-runtime.js";
 import {
-  desktopApiFetch,
   requireDesktopApi,
   resolveDesktopSlotProviderTarget,
-  responseError,
-  type DesktopApiCapability,
 } from "../internal/desktop-api.js";
 
 function emit(command: Command, payload: Record<string, unknown>, human: string): void {
@@ -69,82 +65,6 @@ function positiveInteger(value: string): number {
     throw new Error("value must be a positive integer");
   }
   return parsed;
-}
-
-function requiredNonNegativeInteger(
-  value: Record<string, unknown>,
-  key: string,
-): number {
-  const candidate = value[key];
-  if (!Number.isInteger(candidate) || (candidate as number) < 0) {
-    throw new Error(`native Rust reference returned invalid ${key}`);
-  }
-  return candidate as number;
-}
-
-async function requireNativeReferenceSlot(
-  capability: DesktopApiCapability,
-  slotId: number,
-  model: string,
-  timeoutMs: number,
-): Promise<void> {
-  const response = await desktopApiFetch(capability, "/v1/residency", {
-    signal: AbortSignal.timeout(timeoutMs),
-  });
-  if (!response.ok) throw await responseError(response);
-  const value = await response.json() as { slots?: unknown };
-  const slots = Array.isArray(value.slots) ? value.slots : [];
-  const slot = slots.find(
-    (candidate): candidate is Record<string, unknown> =>
-      Boolean(candidate) &&
-      typeof candidate === "object" &&
-      !Array.isArray(candidate) &&
-      (candidate as Record<string, unknown>).id === slotId,
-  );
-  if (!slot) throw new Error(`desktop residency slot ${slotId} does not exist`);
-  if (slot.state !== "running") {
-    throw new Error(`desktop residency slot ${slotId} is ${String(slot.state ?? "not running")}`);
-  }
-  if (slot.model_id !== model) {
-    throw new Error(
-      `desktop residency slot ${slotId} serves ${String(slot.model_id)}, not requested ${model}`,
-    );
-  }
-}
-
-async function runNativeDesktopReferenceCompletion(
-  capability: DesktopApiCapability,
-  slotId: number,
-  timeoutMs: number,
-  request: { run_id: string; session_id: string; prompt: string; max_tokens: number },
-) {
-  const response = await desktopApiFetch(capability, "/api/chat/completion", {
-    method: "POST",
-    body: JSON.stringify({
-      slot_id: slotId,
-      prompt: request.prompt,
-      session_id: request.session_id,
-      capture_run_id: request.run_id,
-      max_tokens: request.max_tokens,
-      runtime_backend: "native-rust-reference",
-    }),
-    signal: AbortSignal.timeout(timeoutMs),
-  });
-  if (!response.ok) throw await responseError(response);
-  const value = await response.json() as unknown;
-  if (!value || typeof value !== "object" || Array.isArray(value)) {
-    throw new Error("native Rust reference returned a malformed completion");
-  }
-  const row = value as Record<string, unknown>;
-  return {
-    capture_run_id: String(row.capture_run_id ?? ""),
-    content: String(row.content ?? ""),
-    status: String(row.status ?? ""),
-    runtime_backend: String(row.runtime_backend ?? ""),
-    prompt_tokens: requiredNonNegativeInteger(row, "prompt_tokens"),
-    completion_tokens: requiredNonNegativeInteger(row, "completion_tokens"),
-    reasoning_tokens: requiredNonNegativeInteger(row, "reasoning_tokens"),
-  };
 }
 
 async function startDeterministicSupervisorFixture(): Promise<{
@@ -443,7 +363,7 @@ export function registerRuntimeCommand(program: Command): void {
     .command("conformance")
     .description("Verify immutable evidence or execute every frozen input through one adapter.")
     .option("--fixtures <path>", "Use a specific conformance fixture directory")
-    .option("--backend <backend>", "Execute inputs through pi, vercel, or native")
+    .option("--backend <backend>", "Execute inputs through pi or vercel")
     .option("--base-url <url>", "OpenAI-compatible provider base URL")
     .option("--model <id>", "Provider model identifier")
     .option(
@@ -513,18 +433,11 @@ export function registerRuntimeCommand(program: Command): void {
           }
           return;
         }
-        if (!["pi", "vercel", "native"].includes(options.backend)) {
-          throw new Error("--backend must be pi, vercel, or native");
+        if (!["pi", "vercel"].includes(options.backend)) {
+          throw new Error("--backend must be pi or vercel");
         }
-        const backend = options.backend as "pi" | "vercel" | "native";
-        if (backend === "native") {
-          if (!options.model) throw new Error("--backend native requires --model");
-          if (!options.slot) throw new Error("--backend native requires --slot");
-          if (options.baseUrl) {
-            throw new Error("--backend native uses the authenticated desktop API, not --base-url");
-          }
-          if (options.allowRemote) throw new Error("--backend native cannot use --allow-remote");
-        } else if (options.slot && (options.baseUrl || options.model)) {
+        const backend = options.backend as "pi" | "vercel";
+        if (options.slot && (options.baseUrl || options.model)) {
           throw new Error(
             "--slot resolves --base-url and --model from Desktop; do not combine them",
           );
@@ -558,16 +471,7 @@ export function registerRuntimeCommand(program: Command): void {
           throw new Error("--scenario-timeout-ms must be an integer from 1000 to 600000");
         }
         const invocationId = `${Date.now()}-${process.pid}`;
-        const nativeCapability = backend === "native" ? await requireDesktopApi() : undefined;
-        if (nativeCapability) {
-          await requireNativeReferenceSlot(
-            nativeCapability,
-            options.slot!,
-            options.model!,
-            scenarioTimeoutMs,
-          );
-        }
-        const desktopSlotCapability = backend !== "native" && options.slot
+        const desktopSlotCapability = options.slot
           ? await requireDesktopApi()
           : undefined;
         const desktopSlotTarget = desktopSlotCapability
@@ -608,7 +512,7 @@ export function registerRuntimeCommand(program: Command): void {
               capabilities,
               metadata: {
                 backend,
-                runtime_id: backend === "native" ? "native-rust-reference" : RUNTIME_ID,
+                runtime_id: RUNTIME_ID,
                 runtime_version: RUNTIME_VERSION,
                 event_schema: EVENT_SCHEMA,
                 conformance_schema: CONFORMANCE_SCHEMA,
@@ -618,49 +522,39 @@ export function registerRuntimeCommand(program: Command): void {
                   transformers_offline: process.env.TRANSFORMERS_OFFLINE === "1",
                   hf_datasets_offline: process.env.HF_DATASETS_OFFLINE === "1",
                 },
-                provider: backend === "native"
-                  ? {
-                      base_url: nativeCapability!.baseUrl,
-                      model: options.model,
-                      slot_id: options.slot,
-                    }
-                  : {
-                      base_url: providerBaseUrl,
-                      model: providerModel,
-                      ...(desktopSlotTarget
-                        ? {
-                            slot_id: desktopSlotTarget.slotId,
-                            artifact_id: desktopSlotTarget.artifactId,
-                            identity_source: "desktop_residency_model_path",
-                          }
-                        : {}),
-                    },
-                ...(backend === "native"
-                  ? { evidence_projection: "legacy_prompt_only_completion_summary" }
-                  : {
-                      supervision: {
-                        student: {
-                          base_url: options.studentBaseUrl ?? providerBaseUrl,
-                          model: options.studentModel ?? providerModel,
-                        },
-                        supervisor: {
-                          ...supervisorTarget,
-                        },
-                        teacher: {
-                          base_url: options.teacherBaseUrl ?? providerBaseUrl,
-                          model: options.teacherModel ?? providerModel,
-                        },
-                      },
-                      supervisor_mode: options.deterministicSupervisor
-                        ? "deterministic_fixture"
-                        : "model",
-                      malformed_tool_mode: options.deterministicMalformedTool
-                        ? "deterministic_fixture"
-                        : "model",
-                      compaction_mode: options.deterministicCompaction
-                        ? "deterministic_fixture"
-                        : "model",
-                    }),
+                provider: {
+                  base_url: providerBaseUrl,
+                  model: providerModel,
+                  ...(desktopSlotTarget
+                    ? {
+                        slot_id: desktopSlotTarget.slotId,
+                        artifact_id: desktopSlotTarget.artifactId,
+                        identity_source: "desktop_residency_model_path",
+                      }
+                    : {}),
+                },
+                supervision: {
+                  student: {
+                    base_url: options.studentBaseUrl ?? providerBaseUrl,
+                    model: options.studentModel ?? providerModel,
+                  },
+                  supervisor: {
+                    ...supervisorTarget,
+                  },
+                  teacher: {
+                    base_url: options.teacherBaseUrl ?? providerBaseUrl,
+                    model: options.teacherModel ?? providerModel,
+                  },
+                },
+                supervisor_mode: options.deterministicSupervisor
+                  ? "deterministic_fixture"
+                  : "model",
+                malformed_tool_mode: options.deterministicMalformedTool
+                  ? "deterministic_fixture"
+                  : "model",
+                compaction_mode: options.deterministicCompaction
+                  ? "deterministic_fixture"
+                  : "model",
                 scenario_timeout_ms: scenarioTimeoutMs,
                 tool_executor_configured: Boolean(toolExecutorUrl),
                 tool_executor_source: desktopToolExecutor
@@ -671,19 +565,6 @@ export function registerRuntimeCommand(program: Command): void {
                 allow_remote: options.allowRemote ?? false,
               },
               async run(input) {
-                if (backend === "native") {
-                  return executeFrozenNativeDesktopReferenceScenario(input, {
-                    model: options.model!,
-                    invocation_id: invocationId,
-                    complete: (request) =>
-                      runNativeDesktopReferenceCompletion(
-                        nativeCapability!,
-                        options.slot!,
-                        scenarioTimeoutMs,
-                        request,
-                      ),
-                  });
-                }
                 return executeFrozenConformanceScenario(input, run, {
                   backend,
                   base_url: providerBaseUrl,

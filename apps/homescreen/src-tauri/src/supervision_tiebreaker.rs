@@ -100,7 +100,11 @@ fn run_cli_json(args: &[String], input: Option<&Value>) -> Result<Value, String>
     let mut command = crate::bin::command("understudy");
     command
         .args(args)
-        .stdin(if input.is_some() { Stdio::piped() } else { Stdio::null() })
+        .stdin(if input.is_some() {
+            Stdio::piped()
+        } else {
+            Stdio::null()
+        })
         .stdout(Stdio::piped())
         .stderr(Stdio::piped());
     let mut child = command

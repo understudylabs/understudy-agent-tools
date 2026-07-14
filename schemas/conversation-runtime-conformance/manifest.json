@@ -60,7 +60,7 @@
     }
   ],
   "runtimes": [
-    {"id": "native-rust-reference", "status": "reference"},
+    {"id": "native-rust-reference", "status": "retired-fixture-only"},
     {"id": "vercel-ai-sdk", "status": "candidate"},
     {"id": "pi-agent-core", "status": "candidate"}
   ],
