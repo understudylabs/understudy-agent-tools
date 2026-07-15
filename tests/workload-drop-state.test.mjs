@@ -4,6 +4,7 @@ import test from "node:test";
 import {
   INITIAL_WORKLOAD_DROP_PHASE,
   isWorkloadDropBusy,
+  shouldInspectDroppedTable,
   workloadDropPersonaState,
   workloadDropReducer,
   workloadDropStatus,
@@ -59,7 +60,7 @@ test("explicit CSV inspection is a truthful thinking phase", () => {
   assert.equal(workloadDropPersonaState(phase), "thinking");
   assert.deepEqual(workloadDropStatus(phase), {
     title: "Inspecting training data",
-    detail: "Reading this CSV locally · source rows will not be copied",
+    detail: "Reading this table locally · source rows will not be copied",
   });
   phase = workloadDropReducer(phase, { type: "inspection_succeeded" });
   assert.equal(phase, "ready");
@@ -86,6 +87,21 @@ test("classification dataset preparation stays busy until local splits exist", (
 test("out-of-order completion cannot mark an idle lifecycle ready", () => {
   assert.equal(workloadDropReducer("idle", { type: "succeeded" }), "idle");
   assert.equal(workloadDropReducer("ready", { type: "failed" }), "ready");
+});
+
+test("extensionless and common delimited files enter local table inspection", () => {
+  for (const source_name of ["expenses.csv", "messages.tsv", "SMSSpamCollection"]) {
+    assert.equal(shouldInspectDroppedTable({
+      source_name,
+      source_type: "file",
+      source_kinds: { "local-file": 1 },
+    }), true);
+  }
+  assert.equal(shouldInspectDroppedTable({
+    source_name: "notes.md",
+    source_type: "file",
+    source_kinds: { document: 1 },
+  }), false);
 });
 
 test("local training follows only real runner phases and measured progress", () => {

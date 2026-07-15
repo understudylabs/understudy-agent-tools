@@ -134,6 +134,9 @@ export type CaptureClassificationDataset = {
   network_required: false;
   mapping_confirmation: "caller-provided";
   source_rows_persisted_as_transformed_examples: true;
+  source_row_count: number;
+  duplicate_rows_removed: number;
+  unusable_rows_removed: number;
   row_count: number;
   mapping: {
     input_columns: string[];
@@ -552,11 +555,8 @@ export function inspectCaptureCsv(
   if (!sourceStat.isFile()) {
     throw new Error(`CSV inspection requires one file: ${source}`);
   }
-  if (extname(source).toLowerCase() !== ".csv") {
-    throw new Error(`CSV inspection only accepts .csv files: ${source}`);
-  }
   if (sourceStat.size > MAX_CSV_BYTES) {
-    throw new Error(`CSV is ${sourceStat.size} bytes; the local inspection limit is ${MAX_CSV_BYTES} bytes.`);
+    throw new Error(`Table is ${sourceStat.size} bytes; the local inspection limit is ${MAX_CSV_BYTES} bytes.`);
   }
 
   const artifactRoot = resolve(artifactRootInput);
@@ -564,44 +564,24 @@ export function inspectCaptureCsv(
     throw new Error(`Capture artifact root does not exist: ${artifactRoot}`);
   }
 
-  const bytes = readFileSync(source);
-  if (bytes.length > MAX_CSV_BYTES) {
-    throw new Error(`CSV grew beyond the ${MAX_CSV_BYTES}-byte local inspection limit while it was being read.`);
-  }
-  let text: string;
-  try {
-    text = new TextDecoder("utf-8", { fatal: true }).decode(bytes);
-  } catch {
-    throw new Error("CSV must be valid UTF-8 before local inspection.");
-  }
-  if (text.charCodeAt(0) === 0xfeff) text = text.slice(1);
-  const records = parseCsvRecordsBounded(text).filter((record) =>
-    record.some((field) => field.trim().length > 0),
-  );
-  if (records.length < 2) {
-    throw new Error("CSV needs one header row and at least one data row.");
-  }
-
-  const headers = records[0].map((field) => field.trim());
+  const { bytes, headers, rows } = readDelimitedTable(source);
   if (headers.length > MAX_CSV_COLUMNS) {
-    throw new Error(`CSV has ${headers.length} columns; the local inspection limit is ${MAX_CSV_COLUMNS}.`);
+    throw new Error(`Table has ${headers.length} columns; the local inspection limit is ${MAX_CSV_COLUMNS}.`);
   }
   if (headers.some((header) => header.length === 0)) {
-    throw new Error("CSV headers must not be empty.");
+    throw new Error("Table headers must not be empty.");
   }
   const normalizedHeaders = headers.map(normalizeHeader);
   if (new Set(normalizedHeaders).size !== normalizedHeaders.length) {
-    throw new Error("CSV headers must be unique after case and spacing normalization.");
+    throw new Error("Table headers must be unique after case and spacing normalization.");
   }
-
-  const rows = records.slice(1);
   if (rows.length > MAX_CSV_ROWS) {
-    throw new Error(`CSV has more than ${MAX_CSV_ROWS} data rows; split it before local inspection.`);
+    throw new Error(`Table has more than ${MAX_CSV_ROWS} data rows; split it before local inspection.`);
   }
   rows.forEach((row, index) => {
     if (row.length !== headers.length) {
       throw new Error(
-        `CSV record ${index + 2} has ${row.length} fields; expected ${headers.length}.`,
+        `Table record ${index + 1} has ${row.length} fields; expected ${headers.length}.`,
       );
     }
   });
@@ -670,9 +650,6 @@ export function inspectCaptureCsv(
   } else if (columns[labelIndex].empty_count > 0) {
     status = "needs_cleanup";
     reasons.push(`${columns[labelIndex].empty_count} row(s) have an empty label.`);
-  } else if (duplicateRowCount > 0) {
-    status = "needs_cleanup";
-    reasons.push(`${duplicateRowCount} duplicate row(s) must be resolved before splitting the dataset.`);
   } else if (minimumExamples !== null && minimumExamples < MIN_EXAMPLES_PER_CLASS) {
     status = "needs_data";
     reasons.push(
@@ -686,7 +663,16 @@ export function inspectCaptureCsv(
     warnings.push("More than half of the labels are unique; this may be an identifier rather than a reusable category.");
   }
   if (duplicateRowCount > 0) {
-    warnings.push(`${duplicateRowCount} duplicate row(s) should be reviewed before splitting the dataset.`);
+    warnings.push(`${duplicateRowCount} exact duplicate row(s) will be removed before splitting the dataset.`);
+  }
+  if (groupColumn) {
+    const groupIndex = headers.indexOf(groupColumn);
+    const unusableGroupCount = rows.filter((row) =>
+      !normalizeClassificationGroup(row[groupIndex]),
+    ).length;
+    if (unusableGroupCount > 0) {
+      warnings.push(`${unusableGroupCount} row(s) with no usable ${groupColumn} value will be removed before splitting.`);
+    }
   }
   if (sortedLabels.length > MAX_REPORTED_LABELS) {
     warnings.push(`Only the ${MAX_REPORTED_LABELS} most frequent labels are included in this summary.`);
@@ -793,10 +779,17 @@ export function prepareCaptureClassificationDataset(
   const labelIndex = headers.indexOf(labelColumn);
   const groupIndex = headers.indexOf(groupColumn);
   const inputIndexes = inputColumns.map((column) => headers.indexOf(column));
-  const duplicateRowCount = rows.length - new Set(rows.map((row) => JSON.stringify(row))).size;
-  if (duplicateRowCount > 0) {
-    throw new Error(`${duplicateRowCount} duplicate row(s) must be resolved before splitting the dataset.`);
-  }
+  const sourceRowCount = rows.length;
+  const seenRows = new Set<string>();
+  const uniqueRows = rows
+    .map((row, sourceIndex) => ({ row, sourceIndex }))
+    .filter(({ row }) => {
+      const key = JSON.stringify(row);
+      if (seenRows.has(key)) return false;
+      seenRows.add(key);
+      return true;
+    });
+  const duplicateRowsRemoved = sourceRowCount - uniqueRows.length;
 
   type Example = {
     schema_version: "understudy.classification_example.v2";
@@ -807,12 +800,14 @@ export function prepareCaptureClassificationDataset(
   };
   const groupsByLabel = new Map<string, Map<string, Example[]>>();
   const groupOwners = new Map<string, string>();
-  rows.forEach((row, rowIndex) => {
+  let unusableRowsRemoved = 0;
+  uniqueRows.forEach(({ row, sourceIndex }) => {
     const label = row[labelIndex].trim();
-    if (!label) throw new Error(`CSV record ${rowIndex + 2} has an empty label.`);
+    if (!label) throw new Error(`Table record ${sourceIndex + 1} has an empty label.`);
     const normalizedGroup = normalizeClassificationGroup(row[groupIndex]);
     if (!normalizedGroup) {
-      throw new Error(`CSV record ${rowIndex + 2} has no usable leakage group value.`);
+      unusableRowsRemoved += 1;
+      return;
     }
     const groupId = createHash("sha256").update(normalizedGroup).digest("hex").slice(0, 24);
     const existingOwner = groupOwners.get(groupId);
@@ -827,11 +822,14 @@ export function prepareCaptureClassificationDataset(
       .filter(({ value }) => value.length > 0)
       .map(({ name, value }) => `${name}: ${value}`)
       .join("\n");
-    if (!text) throw new Error(`CSV record ${rowIndex + 2} has no mapped input text.`);
+    if (!text) {
+      unusableRowsRemoved += 1;
+      return;
+    }
     const example: Example = {
       schema_version: "understudy.classification_example.v2",
       example_id: createHash("sha256")
-        .update(`${sourceSha256}\0${rowIndex}\0${JSON.stringify(row)}`)
+        .update(`${sourceSha256}\0${sourceIndex}\0${JSON.stringify(row)}`)
         .digest("hex")
         .slice(0, 24),
       group_id: groupId,
@@ -940,6 +938,10 @@ export function prepareCaptureClassificationDataset(
     }),
   ) as CaptureClassificationDataset["splits"];
   const manifestPath = join(datasetRoot, "dataset-manifest.json");
+  const retainedRowCount = [...groupsByLabel.values()].reduce(
+    (total, groups) => total + [...groups.values()].reduce((count, examples) => count + examples.length, 0),
+    0,
+  );
   const dataset: CaptureClassificationDataset = {
     schema_version: "understudy.capture_import.classification_dataset.v2",
     dataset_id: datasetId,
@@ -951,7 +953,10 @@ export function prepareCaptureClassificationDataset(
     network_required: false,
     mapping_confirmation: "caller-provided",
     source_rows_persisted_as_transformed_examples: true,
-    row_count: rows.length,
+    source_row_count: sourceRowCount,
+    duplicate_rows_removed: duplicateRowsRemoved,
+    unusable_rows_removed: unusableRowsRemoved,
+    row_count: retainedRowCount,
     mapping,
     labels,
     label_distribution: labels.map((value) => ({ value, count: labelCounts.get(value)! })),
@@ -975,32 +980,83 @@ export function prepareCaptureClassificationDataset(
 }
 
 function readCsvForTraining(source: string): { bytes: Buffer; headers: string[]; rows: string[][] } {
-  if (!existsSync(source) || !statSync(source).isFile() || extname(source).toLowerCase() !== ".csv") {
-    throw new Error(`Training dataset preparation requires one .csv file: ${source}`);
+  if (!existsSync(source) || !statSync(source).isFile()) {
+    throw new Error(`Training dataset preparation requires one delimited text file: ${source}`);
   }
+  return readDelimitedTable(source);
+}
+
+function readDelimitedTable(source: string): { bytes: Buffer; headers: string[]; rows: string[][] } {
   const bytes = readFileSync(source);
   if (bytes.length > MAX_CSV_BYTES) {
-    throw new Error(`CSV exceeds the ${MAX_CSV_BYTES}-byte local preparation limit.`);
+    throw new Error(`Table exceeds the ${MAX_CSV_BYTES}-byte local preparation limit.`);
   }
   let text: string;
   try {
     text = new TextDecoder("utf-8", { fatal: true }).decode(bytes);
   } catch {
-    throw new Error("CSV must be valid UTF-8 before local preparation.");
+    throw new Error("Table must be valid UTF-8 before local inspection.");
   }
   if (text.charCodeAt(0) === 0xfeff) text = text.slice(1);
-  const records = parseCsvRecordsBounded(text).filter((record) =>
+  const delimiter = detectTableDelimiter(source, text);
+  const records = parseCsvRecordsBounded(text, delimiter).filter((record) =>
     record.some((field) => field.trim().length > 0),
   );
-  if (records.length < 2) throw new Error("CSV needs one header row and at least one data row.");
-  const headers = records[0].map((field) => field.trim());
-  const rows = records.slice(1);
-  rows.forEach((row, index) => {
-    if (row.length !== headers.length) {
-      throw new Error(`CSV record ${index + 2} has ${row.length} fields; expected ${headers.length}.`);
+  if (records.length < 2) throw new Error("Table needs at least two non-empty rows.");
+  const width = records[0].length;
+  records.forEach((row, index) => {
+    if (row.length !== width) {
+      throw new Error(`Table record ${index + 1} has ${row.length} fields; expected ${width}.`);
     }
   });
+  const sourceHeader = looksLikeHeaderRow(records);
+  const headers = sourceHeader
+    ? records[0].map((field) => field.trim())
+    : inferredHeaders(records);
+  const rows = sourceHeader ? records.slice(1) : records;
   return { bytes, headers, rows };
+}
+
+function detectTableDelimiter(source: string, text: string): "," | "\t" {
+  const extension = extname(source).toLowerCase();
+  if (extension === ".tsv" || extension === ".tab") return "\t";
+  if (extension === ".csv") return ",";
+  if (extension && extension !== ".txt") {
+    throw new Error(`Local table inspection supports .csv, .tsv, .tab, .txt, or extensionless files: ${source}`);
+  }
+  const lines = text.split(/\r?\n/).filter((line) => line.trim()).slice(0, 20);
+  if (lines.length < 2) throw new Error("Table needs at least two non-empty rows.");
+  const tabCounts = lines.map((line) => (line.match(/\t/g) ?? []).length);
+  if (tabCounts[0] > 0 && tabCounts.every((count) => count === tabCounts[0])) return "\t";
+  const commaCounts = lines.map((line) => (line.match(/,/g) ?? []).length);
+  if (commaCounts[0] > 0 && commaCounts.every((count) => count === commaCounts[0])) return ",";
+  throw new Error("This file does not have a consistent comma or tab-delimited shape.");
+}
+
+function looksLikeHeaderRow(records: string[][]): boolean {
+  const first = records[0].map((field) => field.trim());
+  if (first.some((field) => !/^[\p{L}_][\p{L}\p{N}_ .-]{0,63}$/u.test(field))) return false;
+  if (new Set(first.map(normalizeHeader)).size !== first.length) return false;
+  return !first.some((field, column) =>
+    records.slice(1, 21).some((row) => row[column]?.trim().toLowerCase() === field.toLowerCase()),
+  );
+}
+
+function inferredHeaders(records: string[][]): string[] {
+  if (records[0].length === 2) {
+    const firstValues = records.map((row) => row[0].trim()).filter(Boolean);
+    const secondValues = records.map((row) => row[1].trim()).filter(Boolean);
+    const firstUnique = new Set(firstValues).size;
+    const secondUnique = new Set(secondValues).size;
+    if (
+      firstUnique >= 2 &&
+      firstUnique <= Math.min(100, Math.max(3, Math.floor(records.length / 4))) &&
+      secondUnique > firstUnique
+    ) {
+      return ["label", "text"];
+    }
+  }
+  return records[0].map((_, index) => `column_${index + 1}`);
 }
 
 function stableGroupRank(sourceSha256: string, label: string, groupId: string): string {
@@ -1021,7 +1077,7 @@ function normalizeClassificationGroup(value: string): string {
     .trim();
 }
 
-function parseCsvRecordsBounded(text: string): string[][] {
+function parseCsvRecordsBounded(text: string, delimiter: "," | "\t" = ","): string[][] {
   const records: string[][] = [];
   let row: string[] = [];
   let field = "";
@@ -1068,7 +1124,7 @@ function parseCsvRecordsBounded(text: string): string[][] {
       continue;
     }
     if (afterQuote) {
-      if (character === ",") {
+      if (character === delimiter) {
         finishField();
       } else if (character === "\n") {
         finishRecord();
@@ -1080,11 +1136,12 @@ function parseCsvRecordsBounded(text: string): string[][] {
       }
       continue;
     }
-    if (character === '"' && field.length === 0) {
+    if (character === '"' && field.length === 0 && delimiter === ",") {
       quoted = true;
     } else if (character === '"') {
-      throw new Error("CSV contains a quote inside an unquoted field.");
-    } else if (character === ",") {
+      if (delimiter === ",") throw new Error("CSV contains a quote inside an unquoted field.");
+      append(character);
+    } else if (character === delimiter) {
       finishField();
     } else if (character === "\n") {
       finishRecord();

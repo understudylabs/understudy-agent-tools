@@ -341,7 +341,7 @@ test("desktop offers an explicit signed update check from macOS menus", async ()
 });
 
 test("desktop has one shared managed-operation notice surface", async () => {
-  const [page, prompt, operationNotice, downloadNotice, repair, bootstrap] = await Promise.all([
+  const [page, prompt, operationNotice, downloadNotice, repair, bootstrap, native] = await Promise.all([
     readFile(pagePath, "utf8"),
     readFile(runtimeRepairPromptPath, "utf8"),
     readFile(operationNoticePath, "utf8"),
@@ -351,6 +351,7 @@ test("desktop has one shared managed-operation notice surface", async () => {
       new URL("../apps/homescreen/src-tauri/src/bootstrap.rs", import.meta.url),
       "utf8",
     ),
+    readFile(tauriLibPath, "utf8"),
   ]);
 
   assert.match(page, /<RuntimeRepairPrompt\s*\/>/);
@@ -383,6 +384,12 @@ test("desktop has one shared managed-operation notice surface", async () => {
   assert.doesNotMatch(downloadNotice, /bootstrap_status|BootstrapStatus/);
   assert.match(downloadNotice, /"cancel_snapshot_download"/);
   assert.match(downloadNotice, /"start_snapshot_download"/);
+  assert.match(downloadNotice, /"prepare_default_local_model"/);
+  assert.match(downloadNotice, /Start with a local model/);
+  assert.match(downloadNotice, /One-time download · stays on this Mac/);
+  assert.match(downloadNotice, /Starting local model/);
+  assert.match(downloadNotice, /Selected for chat/);
+  assert.match(native, /commands::prepare_default_local_model/);
   assert.match(repair, /understudy models runtime repair/);
   assert.match(repair, /understudy runtime repair/);
   assert.match(repair, /Runtime reconnecting/);
@@ -472,6 +479,7 @@ test("desktop starts fresh on launch and can reopen an exact Pi session", async 
   );
   assert.equal(chat.match(/resetDroppedWorkload\(\);/g)?.length, 2);
   assert.match(sidebar, /aria-label=\{showArchived \? "Archived chats" : "Recent chats"\}/);
+  assert.doesNotMatch(sidebar, /No saved chats yet/);
   assert.doesNotMatch(page, /aria-label="Chat history"/);
   assert.match(commands, /pub fn chat_sessions_list/);
   assert.match(commands, /pub fn chat_session_get/);
@@ -500,8 +508,10 @@ test("desktop compiles one dropped path through the bounded public CLI", async (
   assert.match(chat, /workloadDropPersonaState\(dropPhase\)/);
   assert.match(chat, /droppedWorkload && !classificationDataset[\s\S]*\? "listening"/);
   assert.match(chat, /invoke<CsvInspection>\("inspect_dropped_csv"/);
-  assert.match(chat, /const isCsv = result\.source_type === "file"/);
-  assert.match(chat, /dispatchDrop\(\{ type: "inspection_started" \}\);\s*await inspectCsvWorkload/);
+  assert.match(chat, /const inspectTable = shouldInspectDroppedTable\(result\)/);
+  assert.match(chat, /dispatchDrop\(\{ type: "inspection_started" \}\);[\s\S]*await inspectCsvWorkload/);
+  assert.match(dropState, /export function shouldInspectDroppedTable/);
+  assert.match(dropState, /\\\.\(\?:csv\|tsv\|tab\)/);
   assert.match(chat, /<CsvProfile/);
   assert.match(chat, /rowCount=\{csvInspection\.row_count\}/);
   assert.match(chat, /prepare_dropped_csv_classification/);
@@ -528,7 +538,7 @@ test("desktop compiles one dropped path through the bounded public CLI", async (
   assert.match(dropState, /BUSY_PHASES\.has\(phase\)[\s\S]*return "thinking"/);
   assert.match(dropState, /One file or folder · stays on this Mac/);
   assert.match(dropState, /Indexing metadata locally · contents remain unread/);
-  assert.match(dropState, /Reading this CSV locally · source rows will not be copied/);
+  assert.match(dropState, /Reading this table locally · source rows will not be copied/);
   assert.match(dropState, /Writing deterministic train, dev, and holdout examples on this Mac/);
   assert.match(css, /\.persona-stage\.workload-drop-active::before/);
   assert.match(css, /@keyframes workload-intake-ring/);

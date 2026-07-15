@@ -1,5 +1,16 @@
 export const INITIAL_WORKLOAD_DROP_PHASE = "idle";
 
+export function shouldInspectDroppedTable(workload) {
+  if (!workload || workload.source_type !== "file") return false;
+  if ((workload.source_kinds?.["csv-data"] ?? 0) === 1) return true;
+  const name = String(workload.source_name ?? "").trim().toLowerCase();
+  if (/\.(?:csv|tsv|tab)$/.test(name)) return true;
+  // Several public datasets ship as extensionless tab-delimited files. An
+  // explicit file drop may be probed locally; unsupported extensionless files
+  // fall back to the generic metadata-only Workload Card.
+  return name.length > 0 && !name.includes(".");
+}
+
 const BUSY_PHASES = new Set(["validating", "compiling", "inspecting", "preparing_dataset"]);
 
 /**
@@ -67,7 +78,7 @@ export function workloadDropStatus(phase) {
     case "inspecting":
       return {
         title: "Inspecting training data",
-        detail: "Reading this CSV locally · source rows will not be copied",
+        detail: "Reading this table locally · source rows will not be copied",
       };
     case "preparing_dataset":
       return {

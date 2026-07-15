@@ -2098,6 +2098,56 @@ class ScoreWithFeedback:
     }
   });
 
+  it("recognizes a headerless extensionless tab dataset after an explicit drop", () => {
+    const root = mkdtempSync(join(tmpdir(), "understudy-tabular-inspection-"));
+    try {
+      const source = join(root, "SMSSpamCollection");
+      const rows = Array.from({ length: 48 }, (_, index) => {
+        const first = String.fromCharCode(97 + Math.floor(index / 26));
+        const second = String.fromCharCode(97 + (index % 26));
+        return `${index % 2 === 0 ? "ham" : "spam"}\tmessage token ${first}${second} for local classification`;
+      });
+      writeFileSync(source, [...rows, rows[0], "ham\t!!!"].join("\n"));
+      const outputRoot = join(root, "artifacts");
+      const compiledResult = run([
+        "capture-import", "compile", "--source", source, "--output-root", outputRoot, "--json",
+      ]);
+      assert.equal(compiledResult.status, 0, compiledResult.stderr);
+      const compiled = JSON.parse(compiledResult.stdout);
+      assert.equal(compiled.source_kinds["local-file"], 1);
+      assert.equal(compiled.payload_read, false);
+
+      const inspectionResult = run([
+        "capture-import", "inspect-csv", "--source", source,
+        "--artifact-root", compiled.artifact_root, "--json",
+      ]);
+      assert.equal(inspectionResult.status, 0, inspectionResult.stderr);
+      const inspection = JSON.parse(inspectionResult.stdout);
+      assert.equal(inspection.row_count, 50);
+      assert.equal(inspection.duplicate_row_count, 1);
+      assert.deepEqual(inspection.columns.map((column) => column.name), ["label", "text"]);
+      assert.equal(inspection.recommended_mapping.label_column, "label");
+      assert.deepEqual(inspection.recommended_mapping.input_columns, ["text"]);
+      assert.equal(inspection.recommended_mapping.group_column, "text");
+      assert.equal(inspection.training_readiness.ready, true);
+      assert.match(inspection.training_readiness.warnings.join(" "), /duplicate row.*will be removed/);
+
+      const preparedResult = run([
+        "capture-import", "prepare-classification", "--source", source,
+        "--artifact-root", compiled.artifact_root,
+        "--input-column", "text", "--label-column", "label", "--group-column", "text", "--json",
+      ]);
+      assert.equal(preparedResult.status, 0, preparedResult.stderr);
+      const prepared = JSON.parse(preparedResult.stdout);
+      assert.equal(prepared.source_row_count, 50);
+      assert.equal(prepared.duplicate_rows_removed, 1);
+      assert.equal(prepared.unusable_rows_removed, 1);
+      assert.equal(prepared.row_count, 48);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
   it("prepares deterministic stratified classification splits from a confirmed mapping", () => {
     const root = mkdtempSync(join(tmpdir(), "understudy-classification-dataset-"));
     try {
@@ -2228,7 +2278,7 @@ class ScoreWithFeedback:
       assert.match(malformedResult.stderr, /record 3 has 1 fields; expected 2/);
       assert.equal(existsSync(join(artifactRoot, "csv-inspection.json")), false);
 
-      const text = join(root, "not-csv.txt");
+      const text = join(root, "not-table.bin");
       writeFileSync(text, "input,label\none,yes\n");
       const textResult = run([
         "capture-import",
@@ -2240,7 +2290,7 @@ class ScoreWithFeedback:
         "--json",
       ]);
       assert.notEqual(textResult.status, 0);
-      assert.match(textResult.stderr, /only accepts \.csv files/);
+      assert.match(textResult.stderr, /supports \.csv, \.tsv, \.tab, \.txt, or extensionless files/);
     } finally {
       rmSync(root, { recursive: true, force: true });
     }

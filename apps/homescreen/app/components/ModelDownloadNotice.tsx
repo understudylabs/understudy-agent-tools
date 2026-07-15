@@ -2,6 +2,11 @@
 
 import { invoke, isTauri } from "@tauri-apps/api/core";
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import {
+  defaultStarterModel,
+  shouldOfferStarterDownload,
+  shouldPrepareStarter,
+} from "../lib/starter-model.mjs";
 import { OperationNotice, type OperationNoticeState } from "./OperationNotice";
 
 const POLL_MS = 1_000;
@@ -27,6 +32,24 @@ type SnapshotModel = {
   id: string;
   short_name?: string | null;
   name: string;
+  approx_gb: number;
+  default_rung: boolean;
+  cached: boolean;
+  incomplete: boolean;
+};
+
+type ResidencySnapshot = {
+  slots: {
+    id: number;
+    model_id?: string | null;
+    state: string;
+  }[];
+};
+
+type DefaultLocalModelPreparation = {
+  model_id: string;
+  slot_id: number;
+  state: string;
 };
 
 function formatBytes(bytes: number) {
@@ -42,13 +65,22 @@ function fallbackModelName(modelId: string) {
 export function ModelDownloadNotice() {
   const [rows, setRows] = useState<DownloadProgress[]>([]);
   const [models, setModels] = useState<SnapshotModel[]>([]);
+  const [residency, setResidency] = useState<ResidencySnapshot>({ slots: [] });
   const [visibleId, setVisibleId] = useState<string | null>(null);
   const [actionBusy, setActionBusy] = useState(false);
   const [actionError, setActionError] = useState<{ id: string; message: string } | null>(null);
+  const [prepareBusy, setPrepareBusy] = useState(false);
+  const [prepareError, setPrepareError] = useState<string | null>(null);
+  const [starterPromptDismissed, setStarterPromptDismissed] = useState(false);
+  const [starterReadyVisible, setStarterReadyVisible] = useState(false);
   const initialized = useRef(false);
+  const starterPrepareAttempted = useRef(false);
+  const starterPrepareInFlight = useRef(false);
+  const previousStarterState = useRef<string | null>(null);
   const previousStatuses = useRef(new Map<string, DownloadStatus>());
   const dismissed = useRef(new Set<string>());
   const hideTimer = useRef<number | null>(null);
+  const starterHideTimer = useRef<number | null>(null);
 
   const clearHideTimer = useCallback(() => {
     if (hideTimer.current !== null) {
@@ -97,18 +129,24 @@ export function ModelDownloadNotice() {
 
   const refresh = useCallback(() => {
     if (!isTauri()) return Promise.resolve();
-    return invoke<DownloadProgress[]>("list_snapshot_downloads").then(ingest).catch(() => {});
+    return Promise.all([
+      invoke<DownloadProgress[]>("list_snapshot_downloads"),
+      invoke<SnapshotModel[]>("list_snapshot_models"),
+      invoke<ResidencySnapshot>("get_residency"),
+    ])
+      .then(([nextRows, nextModels, nextResidency]) => {
+        setModels(nextModels);
+        setResidency(nextResidency);
+        ingest(nextRows);
+      })
+      .catch(() => {});
   }, [ingest]);
 
   useEffect(() => {
     if (!isTauri()) return;
-    // The download notice only needs display names. The full bootstrap
-    // diagnostic starts several CLI/runtime probes and used to block the
-    // macOS webview during first paint. The catalog is already available from
-    // the bounded, cache-backed snapshot command.
-    void invoke<SnapshotModel[]>("list_snapshot_models")
-      .then(setModels)
-      .catch(() => {});
+    // These are bounded in-memory/SQLite reads. Heavy CLI/runtime probes stay
+    // out of first paint; local warm-up is delayed below and runs through a
+    // spawn_blocking Tauri command.
     void refresh();
     const timer = window.setInterval(() => void refresh(), POLL_MS);
     return () => window.clearInterval(timer);
@@ -117,9 +155,67 @@ export function ModelDownloadNotice() {
   useEffect(
     () => () => {
       clearHideTimer();
+      if (starterHideTimer.current !== null) window.clearTimeout(starterHideTimer.current);
     },
     [clearHideTimer],
   );
+
+  const starter = useMemo(() => defaultStarterModel(models), [models]);
+  const starterSlot = useMemo(
+    () => residency.slots.find((slot) => slot.model_id === starter?.id) ?? null,
+    [residency.slots, starter?.id],
+  );
+
+  const prepareStarter = useCallback(async () => {
+    if (!starter?.id || starterPrepareInFlight.current) return;
+    starterPrepareAttempted.current = true;
+    starterPrepareInFlight.current = true;
+    setPrepareBusy(true);
+    setPrepareError(null);
+    try {
+      const prepared = await invoke<DefaultLocalModelPreparation>("prepare_default_local_model");
+      await refresh();
+      if (prepared.model_id === starter.id && prepared.state === "running") {
+        setStarterReadyVisible(true);
+        if (starterHideTimer.current !== null) window.clearTimeout(starterHideTimer.current);
+        starterHideTimer.current = window.setTimeout(() => {
+          setStarterReadyVisible(false);
+          starterHideTimer.current = null;
+        }, TERMINAL_VISIBLE_MS);
+      }
+    } catch (error) {
+      setPrepareError(String(error));
+    } finally {
+      starterPrepareInFlight.current = false;
+      setPrepareBusy(false);
+    }
+  }, [refresh, starter?.id]);
+
+  const shouldAutoPrepare = shouldPrepareStarter({
+    starter,
+    slots: residency.slots,
+    attempted: starterPrepareAttempted.current,
+    dismissed: starterPromptDismissed,
+  });
+
+  useEffect(() => {
+    if (!isTauri() || !shouldAutoPrepare) return;
+    const timer = window.setTimeout(() => void prepareStarter(), 1_500);
+    return () => window.clearTimeout(timer);
+  }, [prepareStarter, shouldAutoPrepare]);
+
+  useEffect(() => {
+    const state = starterSlot?.state ?? null;
+    if (previousStarterState.current === "loading" && state === "running") {
+      setStarterReadyVisible(true);
+      if (starterHideTimer.current !== null) window.clearTimeout(starterHideTimer.current);
+      starterHideTimer.current = window.setTimeout(() => {
+        setStarterReadyVisible(false);
+        starterHideTimer.current = null;
+      }, TERMINAL_VISIBLE_MS);
+    }
+    previousStarterState.current = state;
+  }, [starterSlot?.state]);
 
   const row = rows.find((candidate) => candidate.id === visibleId) ?? null;
   const activeCount = rows.filter((candidate) => candidate.status === "running").length;
@@ -129,7 +225,93 @@ export function ModelDownloadNotice() {
     return model?.short_name || model?.name || fallbackModelName(row.model_id);
   }, [models, row]);
 
-  if (!row) return null;
+  const offerStarterDownload = shouldOfferStarterDownload({
+    starter,
+    slots: residency.slots,
+    dismissed: starterPromptDismissed,
+  });
+  const starterLoading = starterSlot?.state === "loading";
+  const starterRunning = starterSlot?.state === "running";
+
+  if (!row && !offerStarterDownload && !prepareBusy && !starterLoading && !prepareError && !starterReadyVisible) {
+    return null;
+  }
+
+  if (!row || ((prepareBusy || starterLoading || starterReadyVisible) && row.model_id === starter?.id && row.status === "done")) {
+    const starterLabel = starter?.short_name || starter?.name || "Understudy Small";
+    if (prepareError) {
+      return (
+        <OperationNotice
+          className="model-download-notice"
+          state="error"
+          icon="download"
+          title="Local model needs attention"
+          message={prepareError}
+          meta={starterLabel}
+          actionLabel={prepareBusy ? "Working…" : "Retry"}
+          actionDisabled={prepareBusy}
+          onAction={() => void prepareStarter()}
+          dismissLabel="Dismiss local model status"
+          onDismiss={() => setPrepareError(null)}
+        />
+      );
+    }
+    if (prepareBusy || starterLoading) {
+      return (
+        <OperationNotice
+          className="model-download-notice"
+          state="running"
+          icon="download"
+          title="Starting local model"
+          message={starterLabel}
+          meta="Loading on this Mac"
+          dismissLabel="Dismiss local model status"
+          dismissDisabled
+          onDismiss={() => {}}
+        />
+      );
+    }
+    if (starterReadyVisible || starterRunning) {
+      return (
+        <OperationNotice
+          className="model-download-notice"
+          state="success"
+          icon="download"
+          title="Local model ready"
+          message={starterLabel}
+          meta="Selected for chat"
+          dismissLabel="Dismiss local model status"
+          onDismiss={() => setStarterReadyVisible(false)}
+        />
+      );
+    }
+    if (offerStarterDownload && starter) {
+      const starterDownloadError = actionError?.id === `starter:${starter.id}` ? actionError.message : null;
+      return (
+        <OperationNotice
+          className="model-download-notice"
+          state={starterDownloadError ? "error" : "idle"}
+          icon="download"
+          title={starterDownloadError ? "Model download needs attention" : "Start with a local model"}
+          message={starterDownloadError || `${starter.short_name || starter.name} · ${starter.approx_gb.toFixed(1)} GB`}
+          meta={starter.incomplete ? "Resume download · partial files kept" : "One-time download · stays on this Mac"}
+          actionLabel={actionBusy ? "Starting…" : starterDownloadError ? "Retry" : starter.incomplete ? "Resume" : "Download"}
+          actionDisabled={actionBusy}
+          onAction={() => {
+            setActionBusy(true);
+            setActionError(null);
+            invoke("start_snapshot_download", { modelId: starter.id })
+              .then(() => refresh())
+              .catch((error) => setActionError({ id: `starter:${starter.id}`, message: String(error) }))
+              .finally(() => setActionBusy(false));
+          }}
+          dismissLabel="Dismiss starter model download"
+          onDismiss={() => setStarterPromptDismissed(true)}
+        />
+      );
+    }
+    return null;
+  }
 
   const total = row.total_bytes ?? null;
   const percent = total ? Math.min(100, (row.downloaded_bytes / total) * 100) : null;

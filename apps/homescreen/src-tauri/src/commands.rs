@@ -1123,6 +1123,85 @@ pub fn list_snapshot_models() -> Vec<models::SnapshotInfo> {
     models::snapshots()
 }
 
+#[derive(Serialize, Clone)]
+pub struct DefaultLocalModelPreparation {
+    pub model_id: String,
+    pub slot_id: u32,
+    pub state: String,
+}
+
+/// Make the catalog's certified onboarding rung the first local chat model.
+///
+/// Download consent stays in the UI because the snapshot is several GB. Once
+/// the weights are present, this command idempotently reuses or creates a slot
+/// and starts the model off the webview thread. It never displaces a local
+/// model the user already has running or loading.
+#[tauri::command]
+pub async fn prepare_default_local_model(
+    app: AppHandle,
+) -> Result<DefaultLocalModelPreparation, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let starter = models::snapshots()
+            .into_iter()
+            .find(|snapshot| snapshot.default_rung)
+            .ok_or_else(|| "model catalog has no default local rung".to_string())?;
+        if !starter.cached {
+            return Err(format!("{} is not downloaded yet", starter.id));
+        }
+
+        let manager = residency(&app);
+        let current = manager.snapshot();
+        if let Some(active) = current
+            .slots
+            .iter()
+            .find(|slot| slot.state == "running" || slot.state == "loading")
+        {
+            return Ok(DefaultLocalModelPreparation {
+                model_id: active
+                    .model_id
+                    .clone()
+                    .unwrap_or_else(|| starter.id.clone()),
+                slot_id: active.id,
+                state: active.state.clone(),
+            });
+        }
+
+        let existing_slot = current
+            .slots
+            .iter()
+            .find(|slot| slot.model_id.as_deref() == Some(starter.id.as_str()))
+            .map(|slot| slot.id);
+        let slot_id = existing_slot.unwrap_or_else(|| manager.add_slot());
+        if existing_slot.is_none() {
+            if let Err(error) = manager.assign(slot_id, &starter.id) {
+                let _ = manager.remove(slot_id);
+                commit(&app);
+                return Err(error.to_string());
+            }
+        }
+
+        if let Err(error) = manager.warm(&app, slot_id) {
+            commit(&app);
+            return Err(error.to_string());
+        }
+        commit(&app);
+        let state = manager
+            .snapshot()
+            .slots
+            .into_iter()
+            .find(|slot| slot.id == slot_id)
+            .map(|slot| slot.state)
+            .unwrap_or_else(|| "running".to_string());
+        Ok(DefaultLocalModelPreparation {
+            model_id: starter.id,
+            slot_id,
+            state,
+        })
+    })
+    .await
+    .map_err(|error| format!("default local model task failed: {error}"))?
+}
+
 #[tauri::command]
 pub fn mlx_runtime_status() -> models::MlxRuntimeStatus {
     models::mlx_runtime_status()

@@ -24,6 +24,12 @@ export type WorkloadDropAction =
 
 export const INITIAL_WORKLOAD_DROP_PHASE: WorkloadDropPhase;
 
+export function shouldInspectDroppedTable(workload: {
+  source_type?: string | null;
+  source_name?: string | null;
+  source_kinds?: Record<string, number> | null;
+} | null): boolean;
+
 export function workloadDropReducer(
   phase: WorkloadDropPhase,
   action: WorkloadDropAction,
