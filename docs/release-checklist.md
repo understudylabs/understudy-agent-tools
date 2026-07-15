@@ -196,8 +196,8 @@ readiness evidence from the installed notarized app after publication. Evidence
 from an older version cannot qualify the new release cohort.
 
 Write both reports to version-bound paths, for example
-`desktop-runtime-conformance-0.3.20.json` and
-`desktop-runtime-readiness-0.3.20.json`. `understudy desktop migration-status`
+`desktop-runtime-conformance-0.3.21.json` and
+`desktop-runtime-readiness-0.3.21.json`. `understudy desktop migration-status`
 selects these exact-version defaults from the live app/runtime cohort; explicit
 paths remain available for archived or isolated evidence roots.
 
