@@ -1,6 +1,6 @@
 {
   "name": "@understudylabs/understudy-agent-tools",
-  "version": "0.6.19",
+  "version": "0.6.20",
   "description": "Public Understudy agent tools CLI and skill library.",
   "type": "module",
   "bin": {
@@ -38,7 +38,10 @@
     "clean": "rm -rf dist",
     "desktop:bundle-cli": "node scripts/build-desktop-cli.mjs",
     "desktop:bundle-cli:smoke": "node scripts/desktop-cli-smoke.mjs --build",
+    "desktop:dev-status": "node scripts/desktop-dev-status.mjs",
+    "desktop:e2e": "npm run build && node scripts/desktop-e2e-harness.mjs",
     "desktop:release-check": "node scripts/desktop-release-check.mjs",
+    "desktop:release-plan": "node scripts/desktop-release-plan.mjs",
     "desktop:updater-manifest": "node scripts/desktop-updater-manifest.mjs",
     "prepare": "npm run build",
     "package:smoke": "node scripts/package-smoke.mjs",

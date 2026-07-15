@@ -19,7 +19,7 @@ export function workloadDropReducer(phase, action) {
     case "compilation_started":
       return phase === "validating" || phase === "compiling" ? "compiling" : phase;
     case "inspection_started":
-      return phase === "ready" || phase === "failed" ? "inspecting" : phase;
+      return phase === "compiling" || phase === "ready" || phase === "failed" ? "inspecting" : phase;
     case "inspection_succeeded":
       return phase === "inspecting" ? "ready" : phase;
     case "dataset_started":

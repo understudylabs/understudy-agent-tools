@@ -982,19 +982,27 @@ fn is_connected(app: &AppHandle) -> bool {
     services_up || warm
 }
 
-#[tauri::command]
-pub fn get_status(app: AppHandle) -> StatusSnapshot {
+pub(crate) fn status_snapshot(app: &AppHandle) -> StatusSnapshot {
     let reader = app.state::<MetricsReader>();
     let machine = app.state::<Machine>();
-    let residency = residency(&app);
+    let residency = residency(app);
     StatusSnapshot {
-        connected: is_connected(&app),
+        connected: is_connected(app),
         services: Services::snapshot(),
         machine: machine.inner().clone(),
         metrics: reader.inner().read(),
         residency: residency.snapshot(),
         local_base_url: residency.local_base_url(),
     }
+}
+
+#[tauri::command]
+pub async fn get_status(app: AppHandle) -> Result<StatusSnapshot, String> {
+    // sysinfo refreshes are bounded but still synchronous. Keep them off the
+    // macOS UI thread so the shell remains responsive during first paint.
+    tauri::async_runtime::spawn_blocking(move || status_snapshot(&app))
+        .await
+        .map_err(|error| format!("status refresh task failed: {error}"))
 }
 
 #[tauri::command]
@@ -1007,7 +1015,7 @@ pub fn connect(app: AppHandle) -> Result<(), String> {
         return Err(format!("moraine up exited with {status}"));
     }
     crate::sidecar::invalidate_moraine_state_cache();
-    let _ = app.emit("status-changed", get_status(app.clone()));
+    let _ = app.emit("status-changed", status_snapshot(&app));
     Ok(())
 }
 
@@ -1021,7 +1029,7 @@ pub fn disconnect(app: AppHandle) -> Result<(), String> {
         return Err(format!("moraine down exited with {status}"));
     }
     crate::sidecar::invalidate_moraine_state_cache();
-    let _ = app.emit("status-changed", get_status(app.clone()));
+    let _ = app.emit("status-changed", status_snapshot(&app));
     Ok(())
 }
 
@@ -1030,7 +1038,7 @@ pub fn disconnect(app: AppHandle) -> Result<(), String> {
 fn commit(app: &AppHandle) {
     residency(app).persist(app);
     let _ = app.emit("residency-changed", residency(app).snapshot());
-    let _ = app.emit("status-changed", get_status(app.clone()));
+    let _ = app.emit("status-changed", status_snapshot(app));
 }
 
 #[tauri::command]
@@ -1149,8 +1157,12 @@ fn load_app_icon(icon_id: &str) -> Result<tauri::image::Image<'static>, String> 
 }
 
 #[tauri::command]
-pub fn bootstrap_status() -> crate::bootstrap::BootstrapStatus {
-    crate::bootstrap::status()
+pub async fn bootstrap_status() -> Result<crate::bootstrap::BootstrapStatus, String> {
+    // This intentionally runs multiple executable/version probes. Status is a
+    // user-opened diagnostic surface, never launch-critical work.
+    tauri::async_runtime::spawn_blocking(crate::bootstrap::status)
+        .await
+        .map_err(|error| format!("bootstrap status task failed: {error}"))
 }
 
 #[tauri::command]
@@ -1318,7 +1330,7 @@ pub fn start_moraine(app: AppHandle) -> Result<(), String> {
         return Err(format!("moraine up exited with {status}"));
     }
     crate::sidecar::invalidate_moraine_state_cache();
-    let _ = app.emit("status-changed", get_status(app.clone()));
+    let _ = app.emit("status-changed", status_snapshot(&app));
     Ok(())
 }
 
@@ -1332,7 +1344,7 @@ pub fn stop_moraine(app: AppHandle) -> Result<(), String> {
         return Err(format!("moraine down exited with {status}"));
     }
     crate::sidecar::invalidate_moraine_state_cache();
-    let _ = app.emit("status-changed", get_status(app.clone()));
+    let _ = app.emit("status-changed", status_snapshot(&app));
     Ok(())
 }
 

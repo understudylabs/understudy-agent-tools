@@ -1,6 +1,14 @@
 use serde::Serialize;
 use std::sync::Mutex;
-use sysinfo::System;
+use sysinfo::{CpuRefreshKind, MemoryRefreshKind, RefreshKind, System};
+
+fn resource_system() -> System {
+    System::new_with_specifics(
+        RefreshKind::nothing()
+            .with_cpu(CpuRefreshKind::everything())
+            .with_memory(MemoryRefreshKind::everything()),
+    )
+}
 
 /// Static, detected-once machine summary shown on the Status pane.
 #[derive(Serialize, Clone, Default)]
@@ -10,7 +18,10 @@ pub struct Machine {
 }
 
 pub fn detect_machine() -> Machine {
-    let sys = System::new_all();
+    // A full sysinfo refresh also enumerates every process. Doing that twice in
+    // Tauri setup delayed the event loop long enough for macOS to show a
+    // beachball. Machine identity only needs CPU and memory facts.
+    let sys = resource_system();
     let chip = sys
         .cpus()
         .first()
@@ -37,7 +48,7 @@ pub struct MetricsReader {
 
 impl MetricsReader {
     pub fn new() -> Self {
-        let mut sys = System::new_all();
+        let mut sys = resource_system();
         sys.refresh_cpu_usage();
         Self {
             sys: Mutex::new(sys),

@@ -74,6 +74,8 @@ export type CaptureCsvColumnSummary = {
   unique_ratio: number;
   numeric_count: number;
   numeric_ratio: number;
+  profile_kind: "number" | "date" | "category" | "text";
+  profile_bars: number[];
 };
 
 export type CaptureCsvInspection = {
@@ -94,6 +96,7 @@ export type CaptureCsvInspection = {
   recommended_mapping: {
     label_column: string | null;
     input_columns: string[];
+    group_column: string | null;
     confidence: "high" | "low" | "none";
     requires_confirmation: true;
   };
@@ -121,7 +124,7 @@ export type CaptureCsvInspection = {
 };
 
 export type CaptureClassificationDataset = {
-  schema_version: "understudy.capture_import.classification_dataset.v1";
+  schema_version: "understudy.capture_import.classification_dataset.v2";
   dataset_id: string;
   generated_at: string;
   source_path: string;
@@ -135,13 +138,17 @@ export type CaptureClassificationDataset = {
   mapping: {
     input_columns: string[];
     label_column: string;
+    group_column: string;
     text_template: "named-fields-v1";
   };
   labels: string[];
   label_distribution: { value: string; count: number }[];
   split_policy: {
-    name: "deterministic-stratified-v1";
-    allocation: "per-label-rounded-dev-and-holdout-then-train-remainder";
+    name: "deterministic-stratified-group-aware-v2";
+    allocation: "per-label-deterministic-group-greedy-v1";
+    group_key: string;
+    group_normalization: "casefold-reference-stripping-v1";
+    no_group_overlap: true;
     target_train_ratio: 0.7;
     target_dev_ratio: 0.15;
     target_holdout_ratio: 0.15;
@@ -603,20 +610,34 @@ export function inspectCaptureCsv(
     const values = rows.map((row) => row[columnIndex].trim());
     const nonEmpty = values.filter(Boolean);
     const numericCount = nonEmpty.filter(isFiniteNumber).length;
+    const dateCount = nonEmpty.filter(isDateLike).length;
+    const uniqueCount = new Set(nonEmpty).size;
+    const numericRatio = ratio(numericCount, nonEmpty.length);
+    const dateRatio = ratio(dateCount, nonEmpty.length);
+    const profileKind: CaptureCsvColumnSummary["profile_kind"] = dateRatio >= 0.8
+      ? "date"
+      : numericRatio >= 0.8
+        ? "number"
+        : uniqueCount <= Math.max(3, Math.min(14, Math.floor(rows.length / 4)))
+          ? "category"
+          : "text";
     return {
       name,
       non_empty_count: nonEmpty.length,
       empty_count: rows.length - nonEmpty.length,
-      unique_count: new Set(nonEmpty).size,
-      unique_ratio: ratio(new Set(nonEmpty).size, nonEmpty.length),
+      unique_count: uniqueCount,
+      unique_ratio: ratio(uniqueCount, nonEmpty.length),
       numeric_count: numericCount,
-      numeric_ratio: ratio(numericCount, nonEmpty.length),
+      numeric_ratio: numericRatio,
+      profile_kind: profileKind,
+      profile_bars: profileBars(nonEmpty, profileKind),
     };
   });
 
   const labelCandidate = chooseLabelColumn(headers, columns);
   const labelIndex = labelCandidate ? headers.indexOf(labelCandidate.name) : -1;
   const inputColumns = headers.filter((name, index) => index !== labelIndex && columns[index].non_empty_count > 0);
+  const groupColumn = chooseGroupColumn(headers, columns, labelIndex);
   const labelCounts = new Map<string, number>();
   if (labelIndex >= 0) {
     for (const row of rows) {
@@ -640,6 +661,9 @@ export function inspectCaptureCsv(
   } else if (inputColumns.length === 0) {
     status = "needs_mapping";
     reasons.push("Choose at least one non-label input column.");
+  } else if (!groupColumn) {
+    status = "needs_mapping";
+    reasons.push("Choose a merchant, payee, or description column so related rows stay in one split.");
   } else if (labelCounts.size < 2) {
     status = "needs_data";
     reasons.push("At least two label values are required for classification.");
@@ -687,6 +711,7 @@ export function inspectCaptureCsv(
     recommended_mapping: {
       label_column: labelCandidate?.name ?? null,
       input_columns: inputColumns,
+      group_column: groupColumn,
       confidence: labelCandidate?.confidence ?? "none",
       requires_confirmation: true,
     },
@@ -720,6 +745,7 @@ export function prepareCaptureClassificationDataset(
   artifactRootInput: string,
   inputColumnsInput: string[],
   labelColumnInput: string,
+  groupColumnInput: string,
   now = new Date(),
 ): CaptureClassificationDataset {
   const source = resolve(sourceInput);
@@ -756,8 +782,16 @@ export function prepareCaptureClassificationDataset(
   if (inputColumns.includes(labelColumn)) {
     throw new Error("The label column cannot also be an input column.");
   }
+  const groupColumn = headerByNormalized.get(normalizeHeader(groupColumnInput));
+  if (!groupColumn) {
+    throw new Error(`Unknown leakage group column: ${groupColumnInput}`);
+  }
+  if (groupColumn === labelColumn) {
+    throw new Error("The label column cannot also be the leakage group column.");
+  }
 
   const labelIndex = headers.indexOf(labelColumn);
+  const groupIndex = headers.indexOf(groupColumn);
   const inputIndexes = inputColumns.map((column) => headers.indexOf(column));
   const duplicateRowCount = rows.length - new Set(rows.map((row) => JSON.stringify(row))).size;
   if (duplicateRowCount > 0) {
@@ -765,15 +799,29 @@ export function prepareCaptureClassificationDataset(
   }
 
   type Example = {
-    schema_version: "understudy.classification_example.v1";
+    schema_version: "understudy.classification_example.v2";
     example_id: string;
+    group_id: string;
     text: string;
     label: string;
   };
-  const groups = new Map<string, Example[]>();
+  const groupsByLabel = new Map<string, Map<string, Example[]>>();
+  const groupOwners = new Map<string, string>();
   rows.forEach((row, rowIndex) => {
     const label = row[labelIndex].trim();
     if (!label) throw new Error(`CSV record ${rowIndex + 2} has an empty label.`);
+    const normalizedGroup = normalizeClassificationGroup(row[groupIndex]);
+    if (!normalizedGroup) {
+      throw new Error(`CSV record ${rowIndex + 2} has no usable leakage group value.`);
+    }
+    const groupId = createHash("sha256").update(normalizedGroup).digest("hex").slice(0, 24);
+    const existingOwner = groupOwners.get(groupId);
+    if (existingOwner && existingOwner !== label) {
+      throw new Error(
+        `The confirmed leakage group maps to multiple labels (${existingOwner}, ${label}); choose a more specific group column or clean the labels.`,
+      );
+    }
+    groupOwners.set(groupId, label);
     const text = inputIndexes
       .map((index) => ({ name: headers[index], value: row[index].trim() }))
       .filter(({ value }) => value.length > 0)
@@ -781,38 +829,57 @@ export function prepareCaptureClassificationDataset(
       .join("\n");
     if (!text) throw new Error(`CSV record ${rowIndex + 2} has no mapped input text.`);
     const example: Example = {
-      schema_version: "understudy.classification_example.v1",
+      schema_version: "understudy.classification_example.v2",
       example_id: createHash("sha256")
         .update(`${sourceSha256}\0${rowIndex}\0${JSON.stringify(row)}`)
         .digest("hex")
         .slice(0, 24),
+      group_id: groupId,
       text,
       label,
     };
-    const group = groups.get(label) ?? [];
+    const labelGroups = groupsByLabel.get(label) ?? new Map<string, Example[]>();
+    const group = labelGroups.get(groupId) ?? [];
     group.push(example);
-    groups.set(label, group);
+    labelGroups.set(groupId, group);
+    groupsByLabel.set(label, labelGroups);
   });
-  if (groups.size < 2) {
+  if (groupsByLabel.size < 2) {
     throw new Error("At least two label values are required for classification.");
   }
-  const undersized = [...groups.entries()]
-    .filter(([, examples]) => examples.length < MIN_EXAMPLES_PER_CLASS);
+  const labelCounts = new Map([...groupsByLabel.entries()].map(([label, groups]) => [
+    label,
+    [...groups.values()].reduce((total, examples) => total + examples.length, 0),
+  ]));
+  const undersized = [...labelCounts.entries()]
+    .filter(([, count]) => count < MIN_EXAMPLES_PER_CLASS);
   if (undersized.length > 0) {
     const preview = undersized
       .slice(0, 20)
-      .map(([label, examples]) => `${label.slice(0, 80)} (${examples.length})`)
+      .map(([label, count]) => `${label.slice(0, 80)} (${count})`)
       .join(", ");
     const remainder = undersized.length > 20 ? `, plus ${undersized.length - 20} more` : "";
     throw new Error(
       `Each class needs at least ${MIN_EXAMPLES_PER_CLASS} rows before splitting: ${preview}${remainder}`,
     );
   }
+  const underGrouped = [...groupsByLabel.entries()].filter(([, groups]) => groups.size < 3);
+  if (underGrouped.length > 0) {
+    const preview = underGrouped
+      .slice(0, 20)
+      .map(([label, groups]) => `${label.slice(0, 80)} (${groups.size} distinct group${groups.size === 1 ? "" : "s"})`)
+      .join(", ");
+    const remainder = underGrouped.length > 20 ? `, plus ${underGrouped.length - 20} more` : "";
+    throw new Error(
+      `Each class needs at least three distinct leakage groups for train, dev, and holdout: ${preview}${remainder}`,
+    );
+  }
 
-  const labels = [...groups.keys()].sort((left, right) => left.localeCompare(right));
+  const labels = [...groupsByLabel.keys()].sort((left, right) => left.localeCompare(right));
   const mapping = {
     input_columns: inputColumns,
     label_column: labelColumn,
+    group_column: groupColumn,
     text_template: "named-fields-v1" as const,
   };
   const mappingSha256 = createHash("sha256").update(JSON.stringify(mapping)).digest("hex");
@@ -825,14 +892,38 @@ export function prepareCaptureClassificationDataset(
   setPrivateMode(datasetRoot, 0o700);
   const splitRows = { train: [] as Example[], dev: [] as Example[], holdout: [] as Example[] };
   for (const label of labels) {
-    const ranked = [...groups.get(label)!].sort((left, right) =>
-      stableExampleRank(sourceSha256, left).localeCompare(stableExampleRank(sourceSha256, right)),
+    const rankedGroups = [...groupsByLabel.get(label)!.entries()].sort((left, right) =>
+      stableGroupRank(sourceSha256, label, left[0]).localeCompare(stableGroupRank(sourceSha256, label, right[0])),
     );
-    const devCount = Math.max(1, Math.round(ranked.length * 0.15));
-    const holdoutCount = Math.max(1, Math.round(ranked.length * 0.15));
-    splitRows.dev.push(...ranked.slice(0, devCount));
-    splitRows.holdout.push(...ranked.slice(devCount, devCount + holdoutCount));
-    splitRows.train.push(...ranked.slice(devCount + holdoutCount));
+    const total = labelCounts.get(label)!;
+    const targets = { train: total * 0.7, dev: total * 0.15, holdout: total * 0.15 };
+    const assigned = { train: 0, dev: 0, holdout: 0 };
+    const splitOrder = ["dev", "holdout", "train"] as const;
+    rankedGroups.forEach(([, examples], index) => {
+      let split: keyof typeof splitRows;
+      if (index < splitOrder.length) {
+        split = splitOrder[index];
+      } else {
+        const candidates: (keyof typeof splitRows)[] = ["train", "dev", "holdout"];
+        split = candidates.sort((left, right) => {
+          const leftDeficit = (targets[left] - assigned[left]) / targets[left];
+          const rightDeficit = (targets[right] - assigned[right]) / targets[right];
+          return rightDeficit - leftDeficit;
+        })[0];
+      }
+      splitRows[split].push(...examples);
+      assigned[split] += examples.length;
+    });
+  }
+
+  const splitGroupSets = Object.fromEntries(Object.entries(splitRows).map(([name, examples]) => [
+    name,
+    new Set(examples.map((example) => example.group_id)),
+  ])) as Record<keyof typeof splitRows, Set<string>>;
+  for (const [left, right] of [["train", "dev"], ["train", "holdout"], ["dev", "holdout"]] as const) {
+    if ([...splitGroupSets[left]].some((groupId) => splitGroupSets[right].has(groupId))) {
+      throw new Error(`Internal split error: leakage group overlap between ${left} and ${right}.`);
+    }
   }
 
   const splitArtifacts = Object.fromEntries(
@@ -850,7 +941,7 @@ export function prepareCaptureClassificationDataset(
   ) as CaptureClassificationDataset["splits"];
   const manifestPath = join(datasetRoot, "dataset-manifest.json");
   const dataset: CaptureClassificationDataset = {
-    schema_version: "understudy.capture_import.classification_dataset.v1",
+    schema_version: "understudy.capture_import.classification_dataset.v2",
     dataset_id: datasetId,
     generated_at: now.toISOString(),
     source_path: source,
@@ -863,10 +954,13 @@ export function prepareCaptureClassificationDataset(
     row_count: rows.length,
     mapping,
     labels,
-    label_distribution: labels.map((value) => ({ value, count: groups.get(value)!.length })),
+    label_distribution: labels.map((value) => ({ value, count: labelCounts.get(value)! })),
     split_policy: {
-      name: "deterministic-stratified-v1",
-      allocation: "per-label-rounded-dev-and-holdout-then-train-remainder",
+      name: "deterministic-stratified-group-aware-v2",
+      allocation: "per-label-deterministic-group-greedy-v1",
+      group_key: groupColumn,
+      group_normalization: "casefold-reference-stripping-v1",
+      no_group_overlap: true,
       target_train_ratio: 0.7,
       target_dev_ratio: 0.15,
       target_holdout_ratio: 0.15,
@@ -909,10 +1003,22 @@ function readCsvForTraining(source: string): { bytes: Buffer; headers: string[];
   return { bytes, headers, rows };
 }
 
-function stableExampleRank(sourceSha256: string, example: { example_id: string; label: string }): string {
+function stableGroupRank(sourceSha256: string, label: string, groupId: string): string {
   return createHash("sha256")
-    .update(`${sourceSha256}\0${example.label}\0${example.example_id}`)
+    .update(`${sourceSha256}\0${label}\0${groupId}`)
     .digest("hex");
+}
+
+function normalizeClassificationGroup(value: string): string {
+  return value
+    .normalize("NFKC")
+    .toLowerCase()
+    .replace(/\b(?:ref(?:erence)?|txn|transaction|trace|confirmation|id)\s*[:#-]?\s*[a-z0-9-]{4,}\b/gi, " <reference> ")
+    .replace(/\b[a-f0-9]{8,}\b/gi, " <identifier> ")
+    .replace(/\b(?:rs|inr|usd|eur|gbp|cad|aud)?\s*\d+(?:[.,]\d+)?\b/gi, " <number> ")
+    .replace(/[^a-z0-9<>]+/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
 }
 
 function parseCsvRecordsBounded(text: string): string[][] {
@@ -1017,9 +1123,86 @@ function chooseLabelColumn(
     : null;
 }
 
+function chooseGroupColumn(
+  headers: string[],
+  columns: CaptureCsvColumnSummary[],
+  labelIndex: number,
+): string | null {
+  const preferred = [
+    "merchant",
+    "vendor",
+    "payee",
+    "counterparty",
+    "description",
+    "transaction_narration",
+    "narration",
+    "memo",
+    "title",
+    "text",
+    "input",
+  ];
+  for (const name of preferred) {
+    const index = headers.findIndex((header) => normalizeHeader(header) === name);
+    if (index >= 0 && index !== labelIndex && columns[index].non_empty_count > 0) return headers[index];
+  }
+  const fallback = columns
+    .map((column, index) => ({ column, index }))
+    .filter(({ column, index }) =>
+      index !== labelIndex && column.non_empty_count > 0 && column.numeric_ratio < 0.5,
+    )
+    .sort((left, right) =>
+      right.column.non_empty_count - left.column.non_empty_count || left.index - right.index,
+    )[0];
+  return fallback ? headers[fallback.index] : null;
+}
+
 function isFiniteNumber(value: string): boolean {
   if (value.trim() === "") return false;
-  return Number.isFinite(Number(value));
+  return Number.isFinite(Number(value.replace(/[$,\s]/g, "")));
+}
+
+function isDateLike(value: string): boolean {
+  if (!/\d{4}-\d{2}-\d{2}|\d{1,2}[/-]\d{1,2}[/-]\d{2,4}/.test(value)) return false;
+  return Number.isFinite(Date.parse(value));
+}
+
+function normalizedHistogram(values: number[], bins: number): number[] {
+  if (values.length === 0) return Array.from({ length: bins }, () => 0);
+  const low = Math.min(...values);
+  const high = Math.max(...values);
+  const counts = Array.from({ length: bins }, () => 0);
+  for (const value of values) {
+    const index = high === low
+      ? 0
+      : Math.min(bins - 1, Math.floor(((value - low) / (high - low)) * bins));
+    counts[index] += 1;
+  }
+  const maximum = Math.max(...counts, 1);
+  return counts.map((count) => Number((count / maximum).toFixed(6)));
+}
+
+function profileBars(
+  values: string[],
+  kind: CaptureCsvColumnSummary["profile_kind"],
+): number[] {
+  if (kind === "number") {
+    return normalizedHistogram(
+      values.filter(isFiniteNumber).map((value) => Number(value.replace(/[$,\s]/g, ""))),
+      12,
+    );
+  }
+  if (kind === "date") {
+    return normalizedHistogram(values.filter(isDateLike).map((value) => Date.parse(value)), 12);
+  }
+  if (kind === "category") {
+    const counts = new Map<string, number>();
+    for (const value of values) counts.set(value, (counts.get(value) ?? 0) + 1);
+    const topCounts = [...counts.values()].sort((left, right) => right - left).slice(0, 6);
+    if (topCounts.length === 0) return [0];
+    const maximum = Math.max(...topCounts, 1);
+    return topCounts.map((count) => Number((count / maximum).toFixed(6)));
+  }
+  return normalizedHistogram(values.map((value) => value.length), 12);
 }
 
 function ratio(numerator: number, denominator: number): number {

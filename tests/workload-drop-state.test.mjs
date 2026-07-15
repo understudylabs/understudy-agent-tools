@@ -8,6 +8,15 @@ import {
   workloadDropReducer,
   workloadDropStatus,
 } from "../apps/homescreen/app/lib/workload-drop-state.mjs";
+import {
+  INITIAL_LOCAL_TRAINING_STATE,
+  isLocalTrainingActive,
+  localPredictionConfidence,
+  localTrainingPhaseCopy,
+  localTrainingProgress,
+  localTrainingReducer,
+  localTrainingVerdict,
+} from "../apps/homescreen/app/lib/local-training-state.mjs";
 
 test("workload drop lifecycle maps native hover to the listening persona", () => {
   const hovering = workloadDropReducer(INITIAL_WORKLOAD_DROP_PHASE, { type: "drag_enter" });
@@ -57,6 +66,14 @@ test("explicit CSV inspection is a truthful thinking phase", () => {
   assert.equal(workloadDropReducer("failed", { type: "inspection_started" }), "inspecting");
 });
 
+test("CSV drops move directly from metadata compilation into local inspection", () => {
+  let phase = workloadDropReducer("compiling", { type: "inspection_started" });
+  assert.equal(phase, "inspecting");
+  assert.equal(workloadDropPersonaState(phase), "thinking");
+  phase = workloadDropReducer(phase, { type: "inspection_succeeded" });
+  assert.equal(phase, "ready");
+});
+
 test("classification dataset preparation stays busy until local splits exist", () => {
   let phase = workloadDropReducer("ready", { type: "dataset_started" });
   assert.equal(phase, "preparing_dataset");
@@ -69,4 +86,75 @@ test("classification dataset preparation stays busy until local splits exist", (
 test("out-of-order completion cannot mark an idle lifecycle ready", () => {
   assert.equal(workloadDropReducer("idle", { type: "succeeded" }), "idle");
   assert.equal(workloadDropReducer("ready", { type: "failed" }), "ready");
+});
+
+test("local training follows only real runner phases and measured progress", () => {
+  let state = localTrainingReducer(INITIAL_LOCAL_TRAINING_STATE, {
+    type: "start",
+    runId: "desktop-run-123",
+  });
+  assert.equal(state.phase, "preparing");
+  assert.equal(isLocalTrainingActive(state), true);
+  assert.deepEqual(localTrainingPhaseCopy(state.phase), [
+    "Preparing",
+    "Checking the local runtime and group-isolated splits",
+  ]);
+
+  state = localTrainingReducer(state, {
+    type: "phase",
+    event: { phase: "training", epoch: 2, current: 10, total: 25 },
+  });
+  assert.equal(state.phase, "training");
+  assert.equal(localTrainingProgress(state.event), "Epoch 2 · 10 of 25");
+  assert.equal(localTrainingProgress({ phase: "training" }), null);
+});
+
+test("cancelling a local run cannot be overwritten by a late success", () => {
+  let state = localTrainingReducer(INITIAL_LOCAL_TRAINING_STATE, {
+    type: "start",
+    runId: "desktop-run-123",
+  });
+  state = localTrainingReducer(state, { type: "cancel_requested" });
+  assert.equal(state.phase, "cancelling");
+  state = localTrainingReducer(state, { type: "succeeded", result: { impossible: true } });
+  assert.equal(state.phase, "cancelling");
+  state = localTrainingReducer(state, { type: "cancelled" });
+  assert.equal(state.phase, "cancelled");
+  assert.equal(isLocalTrainingActive(state), false);
+});
+
+test("failed local training remains retryable from the prepared dataset", () => {
+  let state = localTrainingReducer(INITIAL_LOCAL_TRAINING_STATE, {
+    type: "start",
+    runId: "desktop-run-123",
+  });
+  state = localTrainingReducer(state, { type: "failed", error: "runtime missing" });
+  assert.equal(state.phase, "failed");
+  assert.equal(state.error, "runtime missing");
+  state = localTrainingReducer(state, { type: "start", runId: "desktop-run-456" });
+  assert.equal(state.phase, "preparing");
+  assert.equal(state.runId, "desktop-run-456");
+  assert.equal(state.error, null);
+});
+
+test("one-run verdict copy is cautious and flags saturated datasets", () => {
+  assert.deepEqual(localTrainingVerdict({
+    linear_baseline: { accuracy: 0.523, macro_f1: 0.443 },
+    verdict: { status: "improved_not_ready", reason: "Weak classes remain." },
+  }), {
+    tone: "caution",
+    title: "Improved, not ready",
+    detail: "Weak classes remain.",
+  });
+  assert.equal(localTrainingVerdict({
+    linear_baseline: { accuracy: 1, macro_f1: 1 },
+    verdict: { status: "not_better", reason: "No headroom." },
+  }).title, "This dataset is too easy to show model value");
+});
+
+test("prediction confidence warns without inventing certainty", () => {
+  assert.equal(localPredictionConfidence(0.348), "Low confidence—review this prediction.");
+  assert.equal(localPredictionConfidence(0.72), "Uncertain—review before using this prediction.");
+  assert.equal(localPredictionConfidence(0.986), null);
+  assert.equal(localPredictionConfidence(undefined), "Confidence unavailable—review this prediction.");
 });

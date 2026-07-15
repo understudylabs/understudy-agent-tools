@@ -240,7 +240,7 @@ pub(crate) async fn tool_result(
 ) -> Result<Value, String> {
     use crate::commands as c;
     Ok(match name {
-        "status" => json!(c::get_status(app.clone())),
+        "status" => json!(c::status_snapshot(app)),
         "residency" => json!(c::get_residency(app.clone())),
         "list_models" => json!(c::list_models()),
         "list_snapshot_models" => json!(c::list_snapshot_models()),

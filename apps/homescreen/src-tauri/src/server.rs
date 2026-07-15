@@ -555,7 +555,8 @@ async fn status(State(ctx): State<Ctx>, h: HeaderMap) -> Result<Json<Value>, (St
     // get_status can probe `moraine status` on a cold cache — keep it off
     // the axum workers.
     let app = ctx.app.clone();
-    let snapshot = blocking(move || Ok::<_, String>(crate::commands::get_status(app))).await?;
+    let snapshot =
+        blocking(move || Ok::<_, String>(crate::commands::status_snapshot(&app))).await?;
     Ok(Json(json!(snapshot)))
 }
 async fn models(State(ctx): State<Ctx>, h: HeaderMap) -> Result<Json<Value>, (StatusCode, String)> {
@@ -1423,7 +1424,7 @@ async fn call_tool(ctx: &Ctx, name: &str, args: &Value) -> Result<Value, String>
     use crate::commands as c;
     let app = ctx.app.clone();
     Ok(match name {
-        "status" => json!(call_blocking(move || Ok::<_, String>(c::get_status(app))).await?),
+        "status" => json!(call_blocking(move || Ok::<_, String>(c::status_snapshot(&app))).await?),
         "list_models" => json!(c::list_models()),
         "list_snapshot_models" => json!(c::list_snapshot_models()),
         "residency" => json!(c::get_residency(app)),

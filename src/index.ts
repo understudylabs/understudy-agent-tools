@@ -10,6 +10,11 @@ import {
   previewCaptureImport,
   scanCaptureImport,
 } from "./capture-import.js";
+import {
+  DEFAULT_CLASSIFIER_MODEL,
+  predictLocalClassifier,
+  startLocalClassifierTraining,
+} from "./local-classifier/index.js";
 import { planRouteDecision } from "./route-decision.js";
 import { buildValueReport } from "./value-report.js";
 import { type AgentPlatformAdapter, agentPlatformAdapters, findAgentPlatformAdapter } from "./agent-platforms.js";
@@ -364,12 +369,14 @@ function registerCaptureImportCommands(program: Command): void {
     .requiredOption("--source <path>", "Inspected local CSV file")
     .requiredOption("--artifact-root <path>", "Existing private artifact root from capture-import compile")
     .requiredOption("--label-column <name>", "Caller-confirmed label column")
+    .requiredOption("--group-column <name>", "Caller-confirmed merchant, payee, or description leakage group")
     .option("--input-column <name>", "Caller-confirmed input column; repeat for multiple columns", collectRepeated, [])
     .option("--json", "Output JSON")
     .action((options: {
       source: string;
       artifactRoot: string;
       labelColumn: string;
+      groupColumn: string;
       inputColumn: string[];
       json?: boolean;
     }) => {
@@ -378,6 +385,7 @@ function registerCaptureImportCommands(program: Command): void {
         options.artifactRoot,
         options.inputColumn,
         options.labelColumn,
+        options.groupColumn,
       );
       if (commandJsonEnabled(program, options)) {
         console.log(JSON.stringify(result, null, 2));
@@ -389,6 +397,105 @@ function registerCaptureImportCommands(program: Command): void {
       );
       console.log(`manifest: ${result.manifest_path}`);
       console.log("local_only: true (transformed examples were persisted locally)");
+    });
+
+  captureImport
+    .command("train-classification")
+    .description("Fine-tune and evaluate a local text classifier from a prepared dataset")
+    .requiredOption("--manifest <path>", "Prepared classification dataset manifest")
+    .requiredOption("--run-id <id>", "Immutable local training run identifier")
+    .option("--output-root <path>", "Private local training-run root")
+    .option("--runtime-root <path>", "Content-addressed local training runtime root")
+    .option("--model <id>", "Hugging Face sequence-classification model", DEFAULT_CLASSIFIER_MODEL)
+    .option("--model-revision <revision>", "Pinned model revision")
+    .option("--epochs <count>", "Training epochs", parsePositiveInteger)
+    .option("--batch-size <count>", "Training batch size", parsePositiveInteger)
+    .option("--learning-rate <rate>", "Training learning rate", parseNonNegativeNumber)
+    .option("--max-length <tokens>", "Maximum input token length", parsePositiveInteger)
+    .option("--max-runtime-ms <milliseconds>", "Terminal runtime timeout", parsePositiveInteger)
+    .option("--jsonl", "Stream machine-readable phase and terminal result events")
+    .option("--json", "Output the terminal run manifest as JSON")
+    .action(async (options: {
+      manifest: string;
+      runId: string;
+      outputRoot?: string;
+      runtimeRoot?: string;
+      model: string;
+      modelRevision?: string;
+      epochs?: number;
+      batchSize?: number;
+      learningRate?: number;
+      maxLength?: number;
+      maxRuntimeMs?: number;
+      jsonl?: boolean;
+      json?: boolean;
+    }) => {
+      const job = startLocalClassifierTraining({
+        datasetManifestPath: options.manifest,
+        runId: options.runId,
+        outputRoot: options.outputRoot,
+        runtimeRoot: options.runtimeRoot,
+        modelId: options.model,
+        modelRevision: options.modelRevision,
+        epochs: options.epochs,
+        batchSize: options.batchSize,
+        learningRate: options.learningRate,
+        maxLength: options.maxLength,
+        maxRuntimeMs: options.maxRuntimeMs,
+        onEvent: options.jsonl ? (event) => console.log(JSON.stringify(event)) : undefined,
+      });
+      const result = await job.completion;
+      if (options.jsonl) {
+        if (result.status !== "completed") process.exitCode = 1;
+        return;
+      }
+      if (commandJsonEnabled(program, options)) {
+        console.log(JSON.stringify(result, null, 2));
+        if (result.status !== "completed") process.exitCode = 1;
+      } else if (result.status === "completed") {
+        console.log(`capture-import train-classification: ${result.verdict?.status ?? "completed"}`);
+        console.log(`heldout macro-F1: ${result.heldout?.macro_f1.toFixed(4) ?? "unavailable"}`);
+        console.log(`manifest: ${result.manifest_path}`);
+      } else {
+        console.error(result.error?.message ?? `Local training ended with status ${result.status}.`);
+        process.exitCode = 1;
+      }
+    });
+
+  captureImport
+    .command("predict-classification")
+    .description("Run a completed local classifier without retaining the input text")
+    .requiredOption("--run-manifest <path>", "Completed local classification run manifest")
+    .option("--text <text>", "New local text to classify; visible to local process inspection")
+    .option("--text-stdin", "Read new local text from stdin without exposing it in process arguments")
+    .option("--runtime-root <path>", "Content-addressed local training runtime root")
+    .option("--max-length <tokens>", "Maximum input token length", parsePositiveInteger)
+    .option("--json", "Output JSON")
+    .action((options: {
+      runManifest: string;
+      text?: string;
+      textStdin?: boolean;
+      runtimeRoot?: string;
+      maxLength?: number;
+      json?: boolean;
+    }) => {
+      if (Boolean(options.text) === Boolean(options.textStdin)) {
+        throw new Error("Choose exactly one of --text or --text-stdin.");
+      }
+      const text = options.textStdin ? readFileSync(0, "utf8") : options.text!;
+      const prediction = predictLocalClassifier({
+        runManifestPath: options.runManifest,
+        text,
+        runtimeRoot: options.runtimeRoot,
+        maxLength: options.maxLength,
+      });
+      if (commandJsonEnabled(program, options)) {
+        console.log(JSON.stringify(prediction, null, 2));
+        return;
+      }
+      console.log(`prediction: ${prediction.label}`);
+      console.log(`confidence: ${(prediction.scores[0]?.score ?? 0).toFixed(4)}`);
+      console.log("local_only: true (input text was not retained)");
     });
 
   captureImport

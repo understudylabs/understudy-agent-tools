@@ -1,4 +1,10 @@
+use std::collections::HashMap;
+use std::io::{BufRead, BufReader, Read, Write};
 use std::path::PathBuf;
+use std::process::Stdio;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, Mutex, OnceLock};
+use std::time::Duration;
 
 use serde::Serialize;
 use serde_json::Value;
@@ -9,6 +15,28 @@ use tauri::ipc::Channel;
 pub enum WorkloadDropEvent {
     Validating,
     Compiling,
+}
+
+#[derive(Clone, Debug, Serialize)]
+#[serde(tag = "type", rename_all = "snake_case")]
+pub enum ClassificationTrainingEvent {
+    Phase {
+        phase: String,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        epoch: Option<u64>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        current: Option<u64>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        total: Option<u64>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        message: Option<String>,
+    },
+}
+
+static TRAINING_CANCELLATIONS: OnceLock<Mutex<HashMap<String, Arc<AtomicBool>>>> = OnceLock::new();
+
+fn training_cancellations() -> &'static Mutex<HashMap<String, Arc<AtomicBool>>> {
+    TRAINING_CANCELLATIONS.get_or_init(|| Mutex::new(HashMap::new()))
 }
 
 fn validate_compile_result(value: Value) -> Result<Value, String> {
@@ -51,6 +79,30 @@ fn validate_csv_inspection_result(value: Value) -> Result<Value, String> {
             return Err(format!("The CSV inspection omitted {field}."));
         }
     }
+    let columns = value
+        .get("columns")
+        .and_then(Value::as_array)
+        .ok_or_else(|| "The CSV inspection omitted its bounded column profiles.".to_string())?;
+    for column in columns {
+        let profile_kind = column.get("profile_kind").and_then(Value::as_str);
+        if !matches!(profile_kind, Some("number" | "date" | "category" | "text")) {
+            return Err("The CSV inspection returned an unknown column profile kind.".into());
+        }
+        let bars = column
+            .get("profile_bars")
+            .and_then(Value::as_array)
+            .ok_or_else(|| "The CSV inspection omitted a bounded column profile.".to_string())?;
+        if bars.is_empty()
+            || bars.len() > 12
+            || bars.iter().any(|bar| {
+                bar.as_f64()
+                    .map(|value| !value.is_finite() || !(0.0..=1.0).contains(&value))
+                    .unwrap_or(true)
+            })
+        {
+            return Err("The CSV inspection returned an invalid bounded column profile.".into());
+        }
+    }
     Ok(value)
 }
 
@@ -59,7 +111,7 @@ fn validate_classification_dataset_result(value: Value) -> Result<Value, String>
         return Err("The Understudy CLI returned an invalid classification dataset.".into());
     }
     if value.get("schema_version").and_then(Value::as_str)
-        != Some("understudy.capture_import.classification_dataset.v1")
+        != Some("understudy.capture_import.classification_dataset.v2")
         || value.get("local_only").and_then(Value::as_bool) != Some(true)
         || value.get("network_required").and_then(Value::as_bool) != Some(false)
         || value.get("mapping_confirmation").and_then(Value::as_str) != Some("caller-provided")
@@ -82,6 +134,27 @@ fn validate_classification_dataset_result(value: Value) -> Result<Value, String>
         if value.get(field).is_none() {
             return Err(format!("The classification dataset omitted {field}."));
         }
+    }
+    let split_policy = value
+        .get("split_policy")
+        .and_then(Value::as_object)
+        .ok_or_else(|| "The classification dataset omitted split_policy.".to_string())?;
+    if split_policy.get("name").and_then(Value::as_str)
+        != Some("deterministic-stratified-group-aware-v2")
+        || split_policy
+            .get("group_key")
+            .and_then(Value::as_str)
+            .is_none()
+        || split_policy
+            .get("group_normalization")
+            .and_then(Value::as_str)
+            != Some("casefold-reference-stripping-v1")
+        || split_policy
+            .get("no_group_overlap")
+            .and_then(Value::as_bool)
+            != Some(true)
+    {
+        return Err("The classification dataset did not prove a group-isolated holdout.".into());
     }
     Ok(value)
 }
@@ -199,6 +272,7 @@ fn prepare_classification(
     artifact_root: String,
     input_columns: Vec<String>,
     label_column: String,
+    group_column: String,
 ) -> Result<Value, String> {
     let canonical = PathBuf::from(path.trim())
         .canonicalize()
@@ -219,8 +293,17 @@ fn prepare_classification(
     {
         return Err("Prepare training data from the current inspected CSV.".into());
     }
-    if input_columns.is_empty() || input_columns.len() > 127 || label_column.trim().is_empty() {
-        return Err("Choose one label and at least one bounded input column.".into());
+    if input_columns.is_empty()
+        || input_columns.len() > 127
+        || label_column.trim().is_empty()
+        || group_column.trim().is_empty()
+    {
+        return Err(
+            "Choose one label, one leakage group, and at least one bounded input column.".into(),
+        );
+    }
+    if label_column.trim() == group_column.trim() {
+        return Err("The label and leakage group must be different columns.".into());
     }
 
     let mut command = crate::bin::command("understudy");
@@ -230,7 +313,9 @@ fn prepare_classification(
         .arg("--artifact-root")
         .arg(&canonical_artifact_root)
         .arg("--label-column")
-        .arg(label_column.trim());
+        .arg(label_column.trim())
+        .arg("--group-column")
+        .arg(group_column.trim());
     for column in input_columns {
         command.arg("--input-column").arg(column);
     }
@@ -256,12 +341,547 @@ pub async fn prepare_dropped_csv_classification(
     artifact_root: String,
     input_columns: Vec<String>,
     label_column: String,
+    group_column: String,
 ) -> Result<Value, String> {
     tauri::async_runtime::spawn_blocking(move || {
-        prepare_classification(path, artifact_root, input_columns, label_column)
+        prepare_classification(
+            path,
+            artifact_root,
+            input_columns,
+            label_column,
+            group_column,
+        )
     })
     .await
     .map_err(|error| format!("The dataset preparer stopped unexpectedly: {error}"))?
+}
+
+const TRAINING_PHASES: [&str; 5] = [
+    "preparing",
+    "downloading",
+    "training",
+    "evaluating",
+    "saving",
+];
+
+fn safe_identifier(value: &str, name: &str) -> Result<String, String> {
+    let value = value.trim();
+    if value.len() < 8
+        || value.len() > 128
+        || !value
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_' | b'.' | b'/'))
+    {
+        return Err(format!("The {name} is invalid."));
+    }
+    Ok(value.to_string())
+}
+
+fn require_metric(value: &Value, path: &[&str]) -> Result<f64, String> {
+    let mut current = value;
+    for field in path {
+        current = current
+            .get(field)
+            .ok_or_else(|| format!("The training result omitted {}.", path.join(".")))?;
+    }
+    let metric = current
+        .as_f64()
+        .ok_or_else(|| format!("The training result has an invalid {}.", path.join(".")))?;
+    if !(0.0..=1.0).contains(&metric) {
+        return Err(format!(
+            "The training result has an out-of-range {}.",
+            path.join(".")
+        ));
+    }
+    Ok(metric)
+}
+
+fn validate_classification_training_result(value: Value, run_id: &str) -> Result<Value, String> {
+    if value.get("schema_version").and_then(Value::as_str)
+        != Some("understudy.capture_import.classification_run.v1")
+        || value.get("run_id").and_then(Value::as_str) != Some(run_id)
+        || value.get("local_only").and_then(Value::as_bool) != Some(true)
+        || value.get("status").and_then(Value::as_str) != Some("completed")
+    {
+        return Err(
+            "The trainer did not return a completed, local-only classification run.".into(),
+        );
+    }
+    for field in [
+        "data_boundary",
+        "dataset",
+        "split_evidence",
+        "model",
+        "baseline",
+        "linear_baseline",
+        "heldout",
+        "verdict",
+        "timings_ms",
+        "manifest_path",
+    ] {
+        if value.get(field).is_none() {
+            return Err(format!("The training result omitted {field}."));
+        }
+    }
+    let data_boundary = value
+        .get("data_boundary")
+        .and_then(Value::as_object)
+        .ok_or_else(|| "The training result omitted its data boundary.".to_string())?;
+    if data_boundary
+        .get("dataset_uploaded")
+        .and_then(Value::as_bool)
+        != Some(false)
+        || data_boundary.get("telemetry_sent").and_then(Value::as_bool) != Some(false)
+    {
+        return Err("The trainer did not preserve the local data boundary.".into());
+    }
+    let split_evidence = value
+        .get("split_evidence")
+        .and_then(Value::as_object)
+        .ok_or_else(|| "The training result omitted split evidence.".to_string())?;
+    if split_evidence.get("policy").and_then(Value::as_str)
+        != Some("deterministic-stratified-group-aware-v2")
+        || split_evidence
+            .get("group_normalization")
+            .and_then(Value::as_str)
+            != Some("casefold-reference-stripping-v1")
+        || split_evidence
+            .get("no_group_overlap")
+            .and_then(Value::as_bool)
+            != Some(true)
+        || split_evidence
+            .get("verified_no_group_overlap")
+            .and_then(Value::as_bool)
+            != Some(true)
+    {
+        return Err("The training result did not prove a group-isolated holdout.".into());
+    }
+    for path in [
+        ["baseline", "accuracy"],
+        ["baseline", "macro_f1"],
+        ["linear_baseline", "accuracy"],
+        ["linear_baseline", "macro_f1"],
+        ["heldout", "accuracy"],
+        ["heldout", "macro_f1"],
+    ] {
+        require_metric(&value, &path)?;
+    }
+    if value
+        .get("linear_baseline")
+        .and_then(|baseline| baseline.get("name"))
+        .and_then(Value::as_str)
+        != Some("tfidf-logistic-regression")
+    {
+        return Err("The training result omitted its competitive baseline evidence.".into());
+    }
+    let model = value
+        .get("model")
+        .and_then(Value::as_object)
+        .ok_or_else(|| "The training result has invalid model evidence.".to_string())?;
+    if model.get("resolved_id").and_then(Value::as_str).is_none()
+        || model.get("path").and_then(Value::as_str).is_none()
+        || model.get("size_bytes").and_then(Value::as_u64).unwrap_or(0) == 0
+    {
+        return Err("The training result omitted the saved model evidence.".into());
+    }
+    let latency = value
+        .get("heldout")
+        .and_then(|heldout| heldout.get("latency_ms_p50"))
+        .and_then(Value::as_f64)
+        .ok_or_else(|| "The training result omitted holdout latency.".to_string())?;
+    if latency < 0.0 || !latency.is_finite() {
+        return Err("The training result has invalid holdout latency.".into());
+    }
+    if value
+        .get("heldout")
+        .and_then(|heldout| heldout.get("failures"))
+        .and_then(Value::as_array)
+        .map(|failures| failures.len() > 25)
+        .unwrap_or(true)
+    {
+        return Err("The training result has invalid bounded failure evidence.".into());
+    }
+    let heldout = value
+        .get("heldout")
+        .and_then(Value::as_object)
+        .ok_or_else(|| "The training result omitted held-out evidence.".to_string())?;
+    let weakest = heldout
+        .get("weakest_classes")
+        .and_then(Value::as_array)
+        .ok_or_else(|| "The training result omitted weakest-category evidence.".to_string())?;
+    if weakest.len() > 5 {
+        return Err("The training result has unbounded weakest-category evidence.".into());
+    }
+    for category in weakest {
+        if category.get("label").and_then(Value::as_str).is_none()
+            || category.get("support").and_then(Value::as_u64).is_none()
+        {
+            return Err("The training result has invalid weakest-category evidence.".into());
+        }
+        require_metric(category, &["recall"])?;
+        require_metric(category, &["f1"])?;
+    }
+    let verdict = value
+        .get("verdict")
+        .and_then(Value::as_object)
+        .ok_or_else(|| "The training result omitted its one-run verdict.".to_string())?;
+    if !matches!(
+        verdict.get("status").and_then(Value::as_str),
+        Some("not_better" | "improved_not_ready" | "promising")
+    ) || verdict.get("comparison_baseline").and_then(Value::as_str)
+        != Some("tfidf-logistic-regression")
+        || verdict.get("one_run_only").and_then(Value::as_bool) != Some(true)
+        || verdict
+            .get("reason")
+            .and_then(Value::as_str)
+            .filter(|reason| !reason.is_empty() && reason.chars().count() <= 500)
+            .is_none()
+    {
+        return Err("The training result has an invalid one-run verdict.".into());
+    }
+    Ok(value)
+}
+
+fn validate_training_phase(
+    value: &Value,
+    run_id: &str,
+) -> Result<ClassificationTrainingEvent, String> {
+    if value.get("type").and_then(Value::as_str) != Some("phase")
+        || value.get("run_id").and_then(Value::as_str) != Some(run_id)
+    {
+        return Err("The trainer returned an invalid phase event.".into());
+    }
+    let phase = value
+        .get("phase")
+        .and_then(Value::as_str)
+        .filter(|phase| TRAINING_PHASES.contains(phase))
+        .ok_or_else(|| "The trainer returned an unknown phase.".to_string())?;
+    let current = value.get("current").and_then(Value::as_u64);
+    let total = value.get("total").and_then(Value::as_u64);
+    if current
+        .zip(total)
+        .is_some_and(|(current, total)| total == 0 || current > total)
+    {
+        return Err("The trainer returned invalid measured progress.".into());
+    }
+    let message = value
+        .get("message")
+        .and_then(Value::as_str)
+        .map(|message| message.chars().take(240).collect());
+    Ok(ClassificationTrainingEvent::Phase {
+        phase: phase.to_string(),
+        epoch: value.get("epoch").and_then(Value::as_u64),
+        current,
+        total,
+        message,
+    })
+}
+
+fn read_bounded(mut reader: impl Read) -> String {
+    let mut retained = Vec::new();
+    let mut buffer = [0_u8; 4_096];
+    loop {
+        match reader.read(&mut buffer) {
+            Ok(0) | Err(_) => break,
+            Ok(count) => {
+                retained.extend_from_slice(&buffer[..count]);
+                if retained.len() > 8_192 {
+                    retained.drain(..retained.len() - 8_192);
+                }
+            }
+        }
+    }
+    bounded_detail(&retained)
+}
+
+fn terminate_training_child(child: &mut std::process::Child) {
+    #[cfg(unix)]
+    {
+        // The CLI forwards SIGTERM to the detached Python process group. A
+        // direct Child::kill would use SIGKILL and orphan that group.
+        let _ = std::process::Command::new("/bin/kill")
+            .arg("-TERM")
+            .arg(child.id().to_string())
+            .status();
+        for _ in 0..50 {
+            if child.try_wait().ok().flatten().is_some() {
+                return;
+            }
+            std::thread::sleep(Duration::from_millis(100));
+        }
+    }
+    let _ = child.kill();
+    let _ = child.wait();
+}
+
+fn run_classification_training(
+    manifest_path: String,
+    run_id: String,
+    model_id: String,
+    on_event: &Channel<ClassificationTrainingEvent>,
+    cancelled: Arc<AtomicBool>,
+) -> Result<Value, String> {
+    let canonical_manifest = PathBuf::from(manifest_path.trim())
+        .canonicalize()
+        .map_err(|error| format!("The prepared dataset manifest is unavailable: {error}"))?;
+    if !canonical_manifest.is_file() {
+        return Err("Train from the current prepared dataset manifest.".into());
+    }
+    let manifest = std::fs::read(&canonical_manifest)
+        .map_err(|error| format!("The prepared dataset manifest could not be read: {error}"))?;
+    let manifest = serde_json::from_slice::<Value>(&manifest)
+        .map_err(|_| "The prepared dataset manifest is malformed.".to_string())?;
+    validate_classification_dataset_result(manifest)?;
+
+    let mut child = crate::bin::command("understudy")
+        .args(["capture-import", "train-classification", "--manifest"])
+        .arg(&canonical_manifest)
+        .arg("--run-id")
+        .arg(&run_id)
+        .arg("--model")
+        .arg(&model_id)
+        .arg("--jsonl")
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .map_err(|error| {
+            format!(
+                "Could not start local training ({error}). Open Status to repair the training runtime, then try again."
+            )
+        })?;
+    let stdout = child
+        .stdout
+        .take()
+        .ok_or_else(|| "The trainer did not expose progress output.".to_string())?;
+    let stderr = child
+        .stderr
+        .take()
+        .ok_or_else(|| "The trainer did not expose diagnostic output.".to_string())?;
+    let stderr_reader = std::thread::spawn(move || read_bounded(stderr));
+    let (line_tx, line_rx) = std::sync::mpsc::channel();
+    let stdout_reader = std::thread::spawn(move || {
+        for line in BufReader::new(stdout).lines() {
+            if line_tx.send(line).is_err() {
+                break;
+            }
+        }
+    });
+    let mut result = None;
+    let mut protocol_error = None;
+    loop {
+        if cancelled.load(Ordering::Acquire) {
+            terminate_training_child(&mut child);
+            let _ = stdout_reader.join();
+            let _ = stderr_reader.join();
+            return Err(
+                "Local training was cancelled. The prepared dataset is still available.".into(),
+            );
+        }
+        match line_rx.recv_timeout(Duration::from_millis(100)) {
+            Ok(Ok(line)) => {
+                if line.trim().is_empty() {
+                    continue;
+                }
+                let value = match serde_json::from_str::<Value>(&line) {
+                    Ok(value) => value,
+                    Err(_) => {
+                        protocol_error =
+                            Some("The trainer returned malformed progress JSON.".into());
+                        break;
+                    }
+                };
+                match value.get("type").and_then(Value::as_str) {
+                    Some("phase") => match validate_training_phase(&value, &run_id) {
+                        Ok(event) => {
+                            let _ = on_event.send(event);
+                        }
+                        Err(error) => {
+                            protocol_error = Some(error);
+                            break;
+                        }
+                    },
+                    Some("result") => {
+                        let Some(payload) = value.get("result").cloned() else {
+                            protocol_error = Some("The trainer omitted its result.".into());
+                            break;
+                        };
+                        match validate_classification_training_result(payload, &run_id) {
+                            Ok(value) => result = Some(value),
+                            Err(error) => {
+                                protocol_error = Some(error);
+                                break;
+                            }
+                        }
+                    }
+                    _ => {
+                        protocol_error = Some("The trainer returned an unknown event.".into());
+                        break;
+                    }
+                }
+            }
+            Ok(Err(_)) | Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => break,
+            Err(std::sync::mpsc::RecvTimeoutError::Timeout) => match child.try_wait() {
+                Ok(Some(_)) => break,
+                Ok(None) => {}
+                Err(error) => {
+                    protocol_error = Some(format!("Could not monitor local training: {error}"));
+                    break;
+                }
+            },
+        }
+    }
+    if let Some(error) = protocol_error {
+        terminate_training_child(&mut child);
+        let _ = stdout_reader.join();
+        let _ = stderr_reader.join();
+        return Err(error);
+    }
+    let status = child
+        .wait()
+        .map_err(|error| format!("Could not finish local training: {error}"))?;
+    let _ = stdout_reader.join();
+    let detail = stderr_reader
+        .join()
+        .unwrap_or_else(|_| "No diagnostic was returned.".into());
+    if !status.success() {
+        return Err(format!("Local training failed. {detail}"));
+    }
+    result.ok_or_else(|| "Local training finished without a validated result.".into())
+}
+
+#[tauri::command]
+pub async fn start_local_classification_training(
+    manifest_path: String,
+    run_id: String,
+    model_id: String,
+    on_event: Channel<ClassificationTrainingEvent>,
+) -> Result<Value, String> {
+    let run_id = safe_identifier(&run_id, "training run id")?;
+    let model_id = safe_identifier(&model_id, "model id")?;
+    let cancelled = Arc::new(AtomicBool::new(false));
+    {
+        let mut runs = training_cancellations()
+            .lock()
+            .map_err(|_| "The local training registry is unavailable.".to_string())?;
+        if !runs.is_empty() {
+            return Err("Another local training job is already active.".into());
+        }
+        runs.insert(run_id.clone(), cancelled.clone());
+    }
+    let cleanup_run_id = run_id.clone();
+    let joined = tauri::async_runtime::spawn_blocking(move || {
+        run_classification_training(manifest_path, run_id, model_id, &on_event, cancelled)
+    })
+    .await;
+    if let Ok(mut runs) = training_cancellations().lock() {
+        runs.remove(&cleanup_run_id);
+    }
+    joined.map_err(|error| format!("The local trainer stopped unexpectedly: {error}"))?
+}
+
+#[tauri::command]
+pub fn cancel_local_classification_training(run_id: String) -> Result<Value, String> {
+    let run_id = safe_identifier(&run_id, "training run id")?;
+    let runs = training_cancellations()
+        .lock()
+        .map_err(|_| "The local training registry is unavailable.".to_string())?;
+    let Some(cancelled) = runs.get(&run_id) else {
+        return Ok(serde_json::json!({ "status": "idle", "run_id": run_id }));
+    };
+    cancelled.store(true, Ordering::Release);
+    Ok(serde_json::json!({ "status": "cancelling", "run_id": run_id }))
+}
+
+fn validate_classification_prediction(value: Value, run_id: &str) -> Result<Value, String> {
+    if value.get("schema_version").and_then(Value::as_str)
+        != Some("understudy.capture_import.classification_prediction.v1")
+        || value.get("run_id").and_then(Value::as_str) != Some(run_id)
+        || value.get("local_only").and_then(Value::as_bool) != Some(true)
+        || value.get("label").and_then(Value::as_str).is_none()
+        || value.get("text_sha256").and_then(Value::as_str).is_none()
+        || value.get("model_id").and_then(Value::as_str).is_none()
+    {
+        return Err("The local classifier returned an invalid prediction.".into());
+    }
+    let scores = value
+        .get("scores")
+        .and_then(Value::as_array)
+        .ok_or_else(|| "The local classifier omitted bounded scores.".to_string())?;
+    if scores.is_empty() || scores.len() > 100 {
+        return Err("The local classifier returned invalid bounded scores.".into());
+    }
+    for score in scores {
+        let probability = score.get("score").and_then(Value::as_f64).unwrap_or(-1.0);
+        if score.get("label").and_then(Value::as_str).is_none()
+            || !(0.0..=1.0).contains(&probability)
+        {
+            return Err("The local classifier returned an invalid score.".into());
+        }
+    }
+    Ok(value)
+}
+
+fn predict_classification(run_manifest_path: String, text: String) -> Result<Value, String> {
+    let canonical_manifest = PathBuf::from(run_manifest_path.trim())
+        .canonicalize()
+        .map_err(|error| format!("The local training run is unavailable: {error}"))?;
+    if !canonical_manifest.is_file() {
+        return Err("Choose a completed local training run.".into());
+    }
+    let run_manifest = std::fs::read(&canonical_manifest)
+        .map_err(|error| format!("The local training run could not be read: {error}"))?;
+    let run_manifest = serde_json::from_slice::<Value>(&run_manifest)
+        .map_err(|_| "The local training run is malformed.".to_string())?;
+    let run_id = run_manifest
+        .get("run_id")
+        .and_then(Value::as_str)
+        .ok_or_else(|| "The local training run omitted its id.".to_string())?;
+    validate_classification_training_result(run_manifest.clone(), run_id)?;
+    let text = text.trim();
+    if text.is_empty() || text.chars().count() > 4_000 {
+        return Err("Enter a new expense between 1 and 4,000 characters.".into());
+    }
+    let mut child = crate::bin::command("understudy")
+        .args(["capture-import", "predict-classification", "--run-manifest"])
+        .arg(&canonical_manifest)
+        .arg("--text-stdin")
+        .arg("--json")
+        .stdin(Stdio::piped())
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .map_err(|error| format!("Could not run the local classifier: {error}"))?;
+    {
+        let mut stdin = child
+            .stdin
+            .take()
+            .ok_or_else(|| "The local classifier did not accept private input.".to_string())?;
+        stdin.write_all(text.as_bytes()).map_err(|error| {
+            format!("Could not send private input to the local classifier: {error}")
+        })?;
+    }
+    let output = child
+        .wait_with_output()
+        .map_err(|error| format!("Could not finish the local classifier: {error}"))?;
+    if !output.status.success() {
+        return Err(format!(
+            "The local classifier failed. {}",
+            bounded_detail(&output.stderr)
+        ));
+    }
+    let value = serde_json::from_slice::<Value>(&output.stdout)
+        .map_err(|_| "The local classifier returned malformed JSON.".to_string())?;
+    validate_classification_prediction(value, run_id)
+}
+
+#[tauri::command]
+pub async fn predict_local_classification(
+    run_manifest_path: String,
+    text: String,
+) -> Result<Value, String> {
+    tauri::async_runtime::spawn_blocking(move || predict_classification(run_manifest_path, text))
+        .await
+        .map_err(|error| format!("The local classifier stopped unexpectedly: {error}"))?
 }
 
 #[cfg(test)]
@@ -309,7 +929,12 @@ mod tests {
             "local_only": true,
             "payload_read": true,
             "source_rows_persisted": false,
-            "persisted_data": "statistics-and-label-aggregates"
+            "persisted_data": "statistics-and-label-aggregates",
+            "columns": [{
+                "name": "category",
+                "profile_kind": "category",
+                "profile_bars": [1.0, 0.5]
+            }]
         });
         assert!(validate_csv_inspection_result(valid).is_ok());
 
@@ -331,7 +956,7 @@ mod tests {
     #[test]
     fn accepts_only_explicit_local_classification_datasets() {
         let valid = json!({
-            "schema_version": "understudy.capture_import.classification_dataset.v1",
+            "schema_version": "understudy.capture_import.classification_dataset.v2",
             "dataset_id": "dataset",
             "source_sha256": "source",
             "mapping_sha256": "mapping",
@@ -341,11 +966,17 @@ mod tests {
             "network_required": false,
             "mapping_confirmation": "caller-provided",
             "source_rows_persisted_as_transformed_examples": true
+            ,"split_policy": {
+                "name": "deterministic-stratified-group-aware-v2",
+                "group_key": "merchant",
+                "group_normalization": "casefold-reference-stripping-v1",
+                "no_group_overlap": true
+            }
         });
         assert!(validate_classification_dataset_result(valid).is_ok());
 
         let unsafe_result = json!({
-            "schema_version": "understudy.capture_import.classification_dataset.v1",
+            "schema_version": "understudy.capture_import.classification_dataset.v2",
             "dataset_id": "dataset",
             "source_sha256": "source",
             "mapping_sha256": "mapping",
@@ -354,7 +985,13 @@ mod tests {
             "local_only": false,
             "network_required": true,
             "mapping_confirmation": "inferred",
-            "source_rows_persisted_as_transformed_examples": true
+            "source_rows_persisted_as_transformed_examples": true,
+            "split_policy": {
+                "name": "deterministic-stratified-v1",
+                "group_key": "merchant",
+                "group_normalization": "none",
+                "no_group_overlap": false
+            }
         });
         assert!(validate_classification_dataset_result(unsafe_result)
             .unwrap_err()
@@ -371,5 +1008,122 @@ mod tests {
             serde_json::to_value(WorkloadDropEvent::Compiling).unwrap(),
             json!({ "type": "compiling" })
         );
+    }
+
+    #[test]
+    fn validates_measured_training_phases_without_inventing_progress() {
+        let event = validate_training_phase(
+            &json!({
+                "type": "phase",
+                "run_id": "desktop-run-123",
+                "phase": "training",
+                "epoch": 2,
+                "current": 10,
+                "total": 25,
+                "message": "Measured epoch progress"
+            }),
+            "desktop-run-123",
+        )
+        .unwrap();
+        assert_eq!(
+            serde_json::to_value(event).unwrap(),
+            json!({
+                "type": "phase",
+                "phase": "training",
+                "epoch": 2,
+                "current": 10,
+                "total": 25,
+                "message": "Measured epoch progress"
+            })
+        );
+        assert!(validate_training_phase(
+            &json!({
+                "type": "phase",
+                "run_id": "desktop-run-123",
+                "phase": "training",
+                "current": 30,
+                "total": 25
+            }),
+            "desktop-run-123",
+        )
+        .unwrap_err()
+        .contains("measured progress"));
+    }
+
+    #[test]
+    fn accepts_only_completed_local_group_isolated_training_evidence() {
+        let valid = json!({
+            "schema_version": "understudy.capture_import.classification_run.v1",
+            "run_id": "desktop-run-123",
+            "status": "completed",
+            "local_only": true,
+            "data_boundary": {
+                "dataset_uploaded": false,
+                "telemetry_sent": false,
+                "model_download_required": true
+            },
+            "dataset": { "dataset_id": "dataset-123" },
+            "split_evidence": {
+                "policy": "deterministic-stratified-group-aware-v2",
+                "group_key": "merchant",
+                "group_normalization": "casefold-reference-stripping-v1",
+                "no_group_overlap": true,
+                "verified_no_group_overlap": true
+            },
+            "model": {
+                "resolved_id": "answerdotai/ModernBERT-base",
+                "path": "/tmp/model",
+                "size_bytes": 100
+            },
+            "baseline": { "accuracy": 0.4, "macro_f1": 0.2 },
+            "linear_baseline": {
+                "name": "tfidf-logistic-regression",
+                "accuracy": 0.6,
+                "macro_f1": 0.5
+            },
+            "heldout": {
+                "accuracy": 0.8,
+                "macro_f1": 0.7,
+                "latency_ms_p50": 3.2,
+                "failures": [],
+                "weakest_classes": [
+                    { "label": "clothing", "recall": 0.4, "f1": 0.5, "support": 20 }
+                ]
+            },
+            "verdict": {
+                "status": "improved_not_ready",
+                "comparison_baseline": "tfidf-logistic-regression",
+                "one_run_only": true,
+                "reason": "Weak classes remain below the promotion floor."
+            },
+            "timings_ms": { "total": 1000 },
+            "manifest_path": "/tmp/run.json"
+        });
+        assert!(validate_classification_training_result(valid.clone(), "desktop-run-123").is_ok());
+
+        let mut unsafe_result = valid;
+        unsafe_result["split_evidence"]["verified_no_group_overlap"] = json!(false);
+        assert!(
+            validate_classification_training_result(unsafe_result, "desktop-run-123")
+                .unwrap_err()
+                .contains("group-isolated")
+        );
+    }
+
+    #[test]
+    fn rejects_unbounded_or_nonlocal_predictions() {
+        let valid = json!({
+            "schema_version": "understudy.capture_import.classification_prediction.v1",
+            "run_id": "desktop-run-123",
+            "text_sha256": "abc",
+            "label": "travel",
+            "scores": [{ "label": "travel", "score": 0.8 }],
+            "model_id": "answerdotai/ModernBERT-base",
+            "local_only": true
+        });
+        assert!(validate_classification_prediction(valid.clone(), "desktop-run-123").is_ok());
+        let mut unsafe_result = valid;
+        unsafe_result["local_only"] = json!(false);
+        assert!(validate_classification_prediction(unsafe_result, "desktop-run-123").is_err());
     }
 }

@@ -29,10 +29,6 @@ type SnapshotModel = {
   name: string;
 };
 
-type BootstrapStatus = {
-  snapshots: SnapshotModel[];
-};
-
 function formatBytes(bytes: number) {
   if (bytes < 1024 * 1024) return `${Math.max(0, bytes / 1024).toFixed(0)} KB`;
   if (bytes < 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
@@ -106,8 +102,12 @@ export function ModelDownloadNotice() {
 
   useEffect(() => {
     if (!isTauri()) return;
-    void invoke<BootstrapStatus>("bootstrap_status")
-      .then((status) => setModels(status.snapshots))
+    // The download notice only needs display names. The full bootstrap
+    // diagnostic starts several CLI/runtime probes and used to block the
+    // macOS webview during first paint. The catalog is already available from
+    // the bounded, cache-backed snapshot command.
+    void invoke<SnapshotModel[]>("list_snapshot_models")
+      .then(setModels)
       .catch(() => {});
     void refresh();
     const timer = window.setInterval(() => void refresh(), POLL_MS);

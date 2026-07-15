@@ -30,6 +30,7 @@ mod supervision_tiebreaker;
 mod tool_proof;
 mod workload_drop;
 
+use std::time::{Duration, Instant};
 use tauri::menu::{Menu, MenuBuilder, MenuItem, PredefinedMenuItem, SubmenuBuilder};
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
 use tauri::{Emitter, Manager};
@@ -97,16 +98,21 @@ pub fn run() {
             }
         })
         .setup(|app| {
+            let setup_started = Instant::now();
             #[cfg(desktop)]
             app.handle()
                 .plugin(tauri_plugin_updater::Builder::new().build())?;
 
             let data_dir = app.path().app_data_dir().expect("app data dir resolved");
 
+            let machine_started = Instant::now();
             let machine = metrics::detect_machine();
             let residency = residency::Residency::new(machine.memory_gb);
+            let machine_ms = machine_started.elapsed().as_millis();
 
+            let db_started = Instant::now();
             let db = db::Db::open(data_dir).expect("understudy database opened");
+            let db_ms = db_started.elapsed().as_millis();
             app.manage(db);
             app.manage(metrics::MetricsReader::new());
             app.manage(machine);
@@ -116,18 +122,27 @@ pub fn run() {
             app.manage(agent_ops::Downloads::new());
             app.manage(agent_ops::BenchRuns::new());
 
-            // Re-warm the previously-warm model set (background-safe).
+            // Paint the shell before process reconciliation or model re-warm.
+            // This is background work, but starting it during the first frame
+            // still competes for CPU and can make macOS report the app as
+            // unresponsive on slower machines.
             let handle = app.handle().clone();
             tauri::async_runtime::spawn(async move {
-                if let Some(r) = handle.try_state::<residency::Residency>() {
-                    r.inner().restore(&handle);
-                }
+                tokio::time::sleep(Duration::from_millis(500)).await;
+                let restore_handle = handle.clone();
+                let _ = tauri::async_runtime::spawn_blocking(move || {
+                    if let Some(r) = restore_handle.try_state::<residency::Residency>() {
+                        r.inner().restore(&restore_handle);
+                    }
+                })
+                .await;
             });
 
             // Refresh the model catalog from the snapshot service in the
             // background; snapshots() serves the bundled fallback until (and
             // unless) a live catalog lands.
             tauri::async_runtime::spawn(async {
+                tokio::time::sleep(Duration::from_millis(1_500)).await;
                 let _ = models::refresh_catalog().await;
             });
 
@@ -140,6 +155,7 @@ pub fn run() {
             // never becomes a user-facing repair chore.
             let runtime_handle = app.handle().clone();
             tauri::async_runtime::spawn(async move {
+                tokio::time::sleep(Duration::from_millis(900)).await;
                 match conversation_sidecar::ensure_agent_ready(runtime_handle.clone()).await {
                     Ok(()) => {
                         let _ = runtime_handle.emit("conversation-runtime-ready", ());
@@ -213,6 +229,13 @@ pub fn run() {
                     }
                 })
                 .build(app)?;
+
+            eprintln!(
+                "understudy startup: setup-ready={}ms machine={}ms db={}ms",
+                setup_started.elapsed().as_millis(),
+                machine_ms,
+                db_ms,
+            );
 
             Ok(())
         })
@@ -308,6 +331,9 @@ pub fn run() {
             workload_drop::compile_dropped_workload,
             workload_drop::inspect_dropped_csv,
             workload_drop::prepare_dropped_csv_classification,
+            workload_drop::start_local_classification_training,
+            workload_drop::cancel_local_classification_training,
+            workload_drop::predict_local_classification,
             commands::sidekick_decisions,
             commands::sidekick_events,
             commands::sidekick_session_summaries,
