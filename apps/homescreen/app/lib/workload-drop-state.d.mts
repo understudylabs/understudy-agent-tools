@@ -3,6 +3,7 @@ export type WorkloadDropPhase =
   | "hovering"
   | "validating"
   | "compiling"
+  | "inspecting"
   | "ready"
   | "failed";
 
@@ -12,6 +13,8 @@ export type WorkloadDropAction =
   | { type: "drop_received" }
   | { type: "validation_started" }
   | { type: "compilation_started" }
+  | { type: "inspection_started" }
+  | { type: "inspection_succeeded" }
   | { type: "succeeded" }
   | { type: "failed" }
   | { type: "reset" };

@@ -2785,6 +2785,54 @@ select,
   border-radius: 999px;
   color: var(--text-2);
 }
+.workload-inspection {
+  display: grid;
+  gap: 6px;
+  margin-top: 10px;
+  padding-top: 10px;
+  border-top: 1px solid var(--border);
+}
+.workload-inspection-heading {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  color: var(--text-2);
+  font-size: 12px;
+}
+.workload-inspection-heading strong {
+  color: var(--mb-cyan);
+  font-family: var(--mono);
+  font-size: 9px;
+  font-weight: 600;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+}
+.workload-inspection-mapping {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  color: var(--text-2);
+  font-family: var(--mono);
+  font-size: 10px;
+}
+.workload-inspection-mapping span {
+  overflow: hidden;
+  max-width: 250px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.workload-inspection-mapping b {
+  color: var(--mb-cyan);
+  font-weight: 500;
+}
+.workload-inspection p {
+  max-width: 520px;
+  margin: 0;
+  color: var(--text-3);
+  font-size: 11px;
+  line-height: 1.45;
+}
 .workload-draft-actions {
   display: flex;
   flex: 0 0 auto;

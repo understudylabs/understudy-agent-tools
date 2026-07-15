@@ -1999,6 +1999,115 @@ class ScoreWithFeedback:
     }
   });
 
+  it("inspects an explicitly approved CSV locally without copying source rows", () => {
+    const root = mkdtempSync(join(tmpdir(), "understudy-csv-inspection-"));
+    try {
+      const source = join(root, "expenses.csv");
+      writeFileSync(
+        source,
+        [
+          "merchant,description,amount,category",
+          'PRIVATE_COFFEE,"team breakfast, west",24.80,meals',
+          "Harbor Air,customer visit flight,412.15,travel",
+          "Paper Finch,printer paper,37.40,office_supplies",
+          "PRIVATE_COFFEE,candidate interview coffee,18.25,meals",
+          "Metro Cab,airport transfer,56.00,travel",
+        ].join("\n"),
+      );
+      const outputRoot = join(root, "artifacts");
+      const compiledResult = run([
+        "capture-import",
+        "compile",
+        "--source",
+        source,
+        "--output-root",
+        outputRoot,
+        "--json",
+      ]);
+      assert.equal(compiledResult.status, 0, compiledResult.stderr);
+      const compiled = JSON.parse(compiledResult.stdout);
+
+      const result = run([
+        "capture-import",
+        "inspect-csv",
+        "--source",
+        source,
+        "--artifact-root",
+        compiled.artifact_root,
+        "--json",
+      ]);
+      assert.equal(result.status, 0, result.stderr);
+      const inspection = JSON.parse(result.stdout);
+      assert.equal(inspection.schema_version, "understudy.capture_import.csv_inspection.v1");
+      assert.equal(inspection.local_only, true);
+      assert.equal(inspection.payload_read, true);
+      assert.equal(inspection.source_rows_persisted, false);
+      assert.equal(inspection.persisted_data, "statistics-and-label-aggregates");
+      assert.equal(inspection.row_count, 5);
+      assert.equal(inspection.column_count, 4);
+      assert.match(inspection.source_sha256, /^[a-f0-9]{64}$/);
+      assert.equal(inspection.recommended_mapping.label_column, "category");
+      assert.equal(inspection.recommended_mapping.confidence, "high");
+      assert.deepEqual(inspection.recommended_mapping.input_columns, ["merchant", "description", "amount"]);
+      assert.deepEqual(inspection.label_distribution, [
+        { value: "meals", count: 2 },
+        { value: "travel", count: 2 },
+        { value: "office_supplies", count: 1 },
+      ]);
+      assert.equal(inspection.training_readiness.ready, false);
+      assert.equal(inspection.training_readiness.status, "needs_data");
+      assert.equal(inspection.training_readiness.minimum_examples_per_class, 1);
+      assert.deepEqual(inspection.training_readiness.warnings, []);
+
+      const saved = readFileSync(inspection.artifact_path, "utf8");
+      assert.ok(!saved.includes("PRIVATE_COFFEE"));
+      assert.ok(!saved.includes("team breakfast"));
+      if (process.platform !== "win32") {
+        assert.equal(statSync(inspection.artifact_path).mode & 0o777, 0o600);
+      }
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it("fails closed on malformed CSV rows and unsupported payloads", () => {
+    const root = mkdtempSync(join(tmpdir(), "understudy-csv-invalid-"));
+    try {
+      const artifactRoot = join(root, "artifacts");
+      mkdirSync(artifactRoot);
+      const malformed = join(root, "malformed.csv");
+      writeFileSync(malformed, "input,category\none,yes\ntwo\n");
+      const malformedResult = run([
+        "capture-import",
+        "inspect-csv",
+        "--source",
+        malformed,
+        "--artifact-root",
+        artifactRoot,
+        "--json",
+      ]);
+      assert.notEqual(malformedResult.status, 0);
+      assert.match(malformedResult.stderr, /record 3 has 1 fields; expected 2/);
+      assert.equal(existsSync(join(artifactRoot, "csv-inspection.json")), false);
+
+      const text = join(root, "not-csv.txt");
+      writeFileSync(text, "input,label\none,yes\n");
+      const textResult = run([
+        "capture-import",
+        "inspect-csv",
+        "--source",
+        text,
+        "--artifact-root",
+        artifactRoot,
+        "--json",
+      ]);
+      assert.notEqual(textResult.status, 0);
+      assert.match(textResult.stderr, /only accepts \.csv files/);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
   it("bounds a dropped directory and classifies broad local source material", () => {
     const root = mkdtempSync(join(tmpdir(), "understudy-drop-directory-"));
     try {

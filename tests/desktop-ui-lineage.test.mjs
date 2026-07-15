@@ -460,12 +460,16 @@ test("desktop compiles one dropped path through the bounded public CLI", async (
   assert.match(chat, /new Channel<WorkloadDropEvent>/);
   assert.match(chat, /onEvent: channel/);
   assert.match(chat, /workloadDropPersonaState\(dropPhase\)/);
+  assert.match(chat, /invoke<CsvInspection>\("inspect_dropped_csv"/);
+  assert.match(chat, /Inspect CSV locally/);
+  assert.match(chat, /only statistics and mapping evidence were saved/);
   assert.doesNotMatch(chat, /useState\(false\);[\s\S]{0,120}setDropHovering/);
   assert.doesNotMatch(chat, /workload-drop-overlay/);
   assert.match(dropState, /"hovering"[\s\S]*return "listening"/);
   assert.match(dropState, /BUSY_PHASES\.has\(phase\)[\s\S]*return "thinking"/);
   assert.match(dropState, /One file or folder · stays on this Mac/);
   assert.match(dropState, /Indexing metadata locally · contents remain unread/);
+  assert.match(dropState, /Reading this CSV locally · source rows will not be copied/);
   assert.match(css, /\.persona-stage\.workload-drop-active::before/);
   assert.match(css, /@keyframes workload-intake-ring/);
   assert.match(css, /prefers-reduced-motion: reduce[\s\S]*?\.persona-stage\.workload-drop-active::before/);
@@ -486,11 +490,17 @@ test("desktop compiles one dropped path through the bounded public CLI", async (
   assert.match(bridge, /WorkloadDropEvent::Validating/);
   assert.match(bridge, /WorkloadDropEvent::Compiling/);
   assert.match(bridge, /"capture-import", "compile", "--source"/);
+  assert.match(bridge, /"capture-import", "inspect-csv", "--source"/);
+  assert.match(bridge, /source_rows_persisted/);
+  assert.match(bridge, /statistics-and-label-aggregates/);
   assert.match(bridge, /value\.get\("local_only"\)/);
   assert.match(bridge, /value\.get\("payload_read"\)/);
   assert.match(compiler, /const MAX_SCAN_FILES = 5_000/);
   assert.match(compiler, /const MAX_CAPTURE_SOURCES = 1_000/);
+  assert.match(compiler, /const MAX_CSV_BYTES = 16 \* 1024 \* 1024/);
   assert.match(compiler, /payload_read: false/);
+  assert.match(compiler, /source_rows_persisted: false/);
+  assert.match(compiler, /source_sha256/);
   assert.equal(
     parity.features.find((feature) => feature.id === "drop-to-workload-compilation")?.status,
     "shipped",

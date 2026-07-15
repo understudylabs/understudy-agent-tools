@@ -1,6 +1,6 @@
 export const INITIAL_WORKLOAD_DROP_PHASE = "idle";
 
-const BUSY_PHASES = new Set(["validating", "compiling"]);
+const BUSY_PHASES = new Set(["validating", "compiling", "inspecting"]);
 
 /**
  * One explicit lifecycle owns the drop affordance. UI motion and copy derive
@@ -18,6 +18,10 @@ export function workloadDropReducer(phase, action) {
       return "validating";
     case "compilation_started":
       return phase === "validating" || phase === "compiling" ? "compiling" : phase;
+    case "inspection_started":
+      return phase === "ready" || phase === "failed" ? "inspecting" : phase;
+    case "inspection_succeeded":
+      return phase === "inspecting" ? "ready" : phase;
     case "succeeded":
       return BUSY_PHASES.has(phase) ? "ready" : phase;
     case "failed":
@@ -55,6 +59,11 @@ export function workloadDropStatus(phase) {
       return {
         title: "Preparing your workload",
         detail: "Indexing metadata locally · contents remain unread",
+      };
+    case "inspecting":
+      return {
+        title: "Inspecting training data",
+        detail: "Reading this CSV locally · source rows will not be copied",
       };
     default:
       return null;

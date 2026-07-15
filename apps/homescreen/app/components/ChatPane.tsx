@@ -129,9 +129,39 @@ type DroppedWorkload = {
   truncated: boolean;
   local_only: true;
   payload_read: false;
+  artifact_root: string;
   workload_card_path: string;
 };
 type WorkloadDropEvent = { type: "validating" | "compiling" };
+type CsvInspection = {
+  schema_version: "understudy.capture_import.csv_inspection.v1";
+  source_sha256: string;
+  source_bytes: number;
+  local_only: true;
+  payload_read: true;
+  source_rows_persisted: false;
+  persisted_data: "statistics-and-label-aggregates";
+  row_count: number;
+  column_count: number;
+  duplicate_row_count: number;
+  recommended_mapping: {
+    label_column: string | null;
+    input_columns: string[];
+    confidence: "high" | "low" | "none";
+    requires_confirmation: true;
+  };
+  label_distribution: { value: string; count: number }[];
+  label_distribution_truncated: boolean;
+  training_readiness: {
+    ready: boolean;
+    status: "ready" | "needs_mapping" | "needs_data" | "needs_cleanup";
+    class_count: number;
+    minimum_examples_per_class: number | null;
+    reasons: string[];
+    warnings: string[];
+  };
+  artifact_path: string;
+};
 
 const CLOUD_SUPERVISOR_FALLBACK_NOTICE =
   "Tried to hand off to a larger cloud model, but it is unavailable. Continuing with the local model.";
@@ -234,6 +264,23 @@ function workloadReviewPrompt(workload: DroppedWorkload): string {
     JSON.stringify(metadata, null, 2),
     "Return: the benchmark goal, the smallest safe slice, one primary metric, the exact baseline/candidate comparison, and the one question that must be answered before any payload access.",
     "The source payload remains unread and local. Recommend an explicit next action before reading it.",
+  ].join("\n\n");
+}
+
+function csvInspectionReviewPrompt(inspection: CsvInspection): string {
+  return [
+    "Review this local CSV training inspection and explain the smallest honest next step.",
+    "Use only the statistics below. The CSV rows stayed local and are not included here, so do not claim you read individual examples.",
+    "First ask the user to confirm or correct the input and label columns. Then explain any data readiness blockers in plain language. Do not claim the model is trained or recommend uploading the data.",
+    JSON.stringify({
+      row_count: inspection.row_count,
+      column_count: inspection.column_count,
+      duplicate_row_count: inspection.duplicate_row_count,
+      recommended_mapping: inspection.recommended_mapping,
+      label_distribution: inspection.label_distribution,
+      label_distribution_truncated: inspection.label_distribution_truncated,
+      training_readiness: inspection.training_readiness,
+    }, null, 2),
   ].join("\n\n");
 }
 
@@ -383,6 +430,7 @@ export function ChatPane({
     INITIAL_WORKLOAD_DROP_PHASE,
   );
   const [droppedWorkload, setDroppedWorkload] = useState<DroppedWorkload | null>(null);
+  const [csvInspection, setCsvInspection] = useState<CsvInspection | null>(null);
   const [pacingMessageIndex, setPacingMessageIndex] = useState<number | null>(null);
   const [pacedRevealed, setPacedRevealed] = useState<number | null>(null);
   const [animatedMessageId, setAnimatedMessageId] = useState<string | null>(null);
@@ -439,7 +487,42 @@ export function ChatPane({
     dropRequestGeneration.current += 1;
     dropInFlight.current = false;
     setDroppedWorkload(null);
+    setCsvInspection(null);
     dispatchDrop({ type: "reset" });
+  };
+
+  const inspectDroppedCsv = () => {
+    if (
+      !droppedWorkload ||
+      droppedWorkload.source_type !== "file" ||
+      (droppedWorkload.source_kinds["csv-data"] ?? 0) !== 1 ||
+      dropInFlight.current
+    ) return;
+    dropInFlight.current = true;
+    const requestGeneration = dropRequestGeneration.current + 1;
+    dropRequestGeneration.current = requestGeneration;
+    setCsvInspection(null);
+    setErr(null);
+    setNotice(null);
+    dispatchDrop({ type: "inspection_started" });
+    void invoke<CsvInspection>("inspect_dropped_csv", {
+      path: droppedWorkload.source_path,
+      artifactRoot: droppedWorkload.artifact_root,
+    })
+      .then((result) => {
+        if (dropRequestGeneration.current !== requestGeneration) return;
+        setCsvInspection(result);
+        dispatchDrop({ type: "inspection_succeeded" });
+        setNotice("CSV inspected locally; only statistics and mapping evidence were saved.");
+      })
+      .catch((error) => {
+        if (dropRequestGeneration.current !== requestGeneration) return;
+        dispatchDrop({ type: "failed" });
+        setErr(String(error));
+      })
+      .finally(() => {
+        if (dropRequestGeneration.current === requestGeneration) dropInFlight.current = false;
+      });
   };
 
   const startStreamPacer = (messageIndex: number) => {
@@ -573,6 +656,7 @@ export function ChatPane({
         const requestGeneration = dropRequestGeneration.current + 1;
         dropRequestGeneration.current = requestGeneration;
         setDroppedWorkload(null);
+        setCsvInspection(null);
         setErr(null);
         setNotice(null);
         const channel = new Channel<WorkloadDropEvent>();
@@ -1216,6 +1300,8 @@ export function ChatPane({
                   <span />
                   {dropPhase === "validating"
                     ? "Validating one local path…"
+                    : dropPhase === "inspecting"
+                      ? "Inspecting bounded CSV contents locally…"
                     : "Building a bounded local Workload Card…"}
                 </div>
               ) : (
@@ -1237,16 +1323,49 @@ export function ChatPane({
                         <span key={kind}>{kind.replaceAll("-", " ")} · {count}</span>
                       ))}
                     </div>
+                    {csvInspection && (
+                      <div className="workload-inspection">
+                        <div className="workload-inspection-heading">
+                          <span>Training data</span>
+                          <strong>{csvInspection.training_readiness.ready ? "Ready to map" : "Needs attention"}</strong>
+                        </div>
+                        <div className="workload-draft-meta">
+                          <span>{csvInspection.row_count} rows</span>
+                          <span>{csvInspection.column_count} columns</span>
+                          <span>{csvInspection.training_readiness.class_count} labels</span>
+                          <span>local inspection</span>
+                        </div>
+                        <div className="workload-inspection-mapping">
+                          <span>{csvInspection.recommended_mapping.input_columns.join(" + ") || "Choose inputs"}</span>
+                          <b aria-hidden="true">→</b>
+                          <span>{csvInspection.recommended_mapping.label_column ?? "Choose label"}</span>
+                        </div>
+                        {csvInspection.training_readiness.reasons[0] && (
+                          <p>{csvInspection.training_readiness.reasons[0]}</p>
+                        )}
+                      </div>
+                    )}
                   </div>
                   <div className="workload-draft-actions">
+                    {droppedWorkload.source_type === "file" &&
+                      (droppedWorkload.source_kinds["csv-data"] ?? 0) === 1 &&
+                      !csvInspection && (
+                        <button type="button" className="btn primary" onClick={inspectDroppedCsv}>
+                          Inspect CSV locally
+                        </button>
+                      )}
                     <button
                       type="button"
-                      className="btn primary"
+                      className={csvInspection || (droppedWorkload.source_kinds["csv-data"] ?? 0) !== 1
+                        ? "btn primary"
+                        : "btn ghost"}
                       onClick={() => {
-                        setInput(workloadReviewPrompt(droppedWorkload));
+                        setInput(csvInspection
+                          ? csvInspectionReviewPrompt(csvInspection)
+                          : workloadReviewPrompt(droppedWorkload));
                       }}
                     >
-                      Review next steps
+                      {csvInspection ? "Ask about this dataset" : "Review next steps"}
                     </button>
                     <button
                       type="button"
