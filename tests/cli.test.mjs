@@ -2062,9 +2062,112 @@ class ScoreWithFeedback:
       const saved = readFileSync(inspection.artifact_path, "utf8");
       assert.ok(!saved.includes("PRIVATE_COFFEE"));
       assert.ok(!saved.includes("team breakfast"));
+      const prepare = run([
+        "capture-import",
+        "prepare-classification",
+        "--source",
+        source,
+        "--artifact-root",
+        compiled.artifact_root,
+        "--input-column",
+        "merchant",
+        "--input-column",
+        "description",
+        "--label-column",
+        "category",
+        "--json",
+      ]);
+      assert.notEqual(prepare.status, 0);
+      assert.match(prepare.stderr, /Each class needs at least 20 rows/);
       if (process.platform !== "win32") {
         assert.equal(statSync(inspection.artifact_path).mode & 0o777, 0o600);
       }
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it("prepares deterministic stratified classification splits from a confirmed mapping", () => {
+    const root = mkdtempSync(join(tmpdir(), "understudy-classification-dataset-"));
+    try {
+      const source = join(root, "expenses.csv");
+      const labels = ["meals", "office_supplies", "travel"];
+      const rows = Array.from({ length: 90 }, (_, index) => {
+        const label = labels[index % labels.length];
+        return `merchant-${index},expense ${index},${(index + 1).toFixed(2)},${label}`;
+      });
+      writeFileSync(source, ["merchant,description,amount,category", ...rows].join("\n"));
+      const outputRoot = join(root, "artifacts");
+      const compiledResult = run([
+        "capture-import", "compile", "--source", source, "--output-root", outputRoot, "--json",
+      ]);
+      assert.equal(compiledResult.status, 0, compiledResult.stderr);
+      const compiled = JSON.parse(compiledResult.stdout);
+      const inspectionResult = run([
+        "capture-import", "inspect-csv", "--source", source, "--artifact-root", compiled.artifact_root, "--json",
+      ]);
+      assert.equal(inspectionResult.status, 0, inspectionResult.stderr);
+      assert.equal(JSON.parse(inspectionResult.stdout).training_readiness.ready, true);
+
+      const args = [
+        "capture-import",
+        "prepare-classification",
+        "--source",
+        source,
+        "--artifact-root",
+        compiled.artifact_root,
+        "--input-column",
+        "merchant",
+        "--input-column",
+        "description",
+        "--input-column",
+        "amount",
+        "--label-column",
+        "category",
+        "--json",
+      ];
+      const result = run(args);
+      assert.equal(result.status, 0, result.stderr);
+      const dataset = JSON.parse(result.stdout);
+      assert.equal(dataset.schema_version, "understudy.capture_import.classification_dataset.v1");
+      assert.equal(dataset.local_only, true);
+      assert.equal(dataset.network_required, false);
+      assert.equal(dataset.mapping_confirmation, "caller-provided");
+      assert.equal(dataset.source_rows_persisted_as_transformed_examples, true);
+      assert.equal(dataset.row_count, 90);
+      assert.deepEqual(dataset.mapping, {
+        input_columns: ["merchant", "description", "amount"],
+        label_column: "category",
+        text_template: "named-fields-v1",
+      });
+      assert.deepEqual(dataset.labels, labels);
+      assert.equal(dataset.splits.train.row_count, 60);
+      assert.equal(dataset.splits.dev.row_count, 15);
+      assert.equal(dataset.splits.holdout.row_count, 15);
+
+      const splitRows = Object.fromEntries(Object.entries(dataset.splits).map(([name, split]) => [
+        name,
+        readFileSync(split.path, "utf8").trim().split("\n").map(JSON.parse),
+      ]));
+      const allIds = Object.values(splitRows).flat().map((row) => row.example_id);
+      assert.equal(new Set(allIds).size, 90);
+      for (const rowsForSplit of Object.values(splitRows)) {
+        assert.deepEqual([...new Set(rowsForSplit.map((row) => row.label))].sort(), labels);
+        assert.ok(rowsForSplit.every((row) => row.schema_version === "understudy.classification_example.v1"));
+        assert.ok(rowsForSplit.every((row) => row.text.includes("merchant:")));
+      }
+      const repeated = run(args);
+      assert.equal(repeated.status, 0, repeated.stderr);
+      const repeatedDataset = JSON.parse(repeated.stdout);
+      assert.equal(repeatedDataset.dataset_id, dataset.dataset_id);
+      assert.equal(repeatedDataset.splits.train.sha256, dataset.splits.train.sha256);
+      assert.equal(repeatedDataset.splits.dev.sha256, dataset.splits.dev.sha256);
+      assert.equal(repeatedDataset.splits.holdout.sha256, dataset.splits.holdout.sha256);
+
+      writeFileSync(source, ["merchant,description,amount,category", ...rows, "late,row,1.00,meals"].join("\n"));
+      const changed = run(args);
+      assert.notEqual(changed.status, 0);
+      assert.match(changed.stderr, /changed after inspection/);
     } finally {
       rmSync(root, { recursive: true, force: true });
     }

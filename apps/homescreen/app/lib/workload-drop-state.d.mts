@@ -4,6 +4,7 @@ export type WorkloadDropPhase =
   | "validating"
   | "compiling"
   | "inspecting"
+  | "preparing_dataset"
   | "ready"
   | "failed";
 
@@ -15,6 +16,8 @@ export type WorkloadDropAction =
   | { type: "compilation_started" }
   | { type: "inspection_started" }
   | { type: "inspection_succeeded" }
+  | { type: "dataset_started" }
+  | { type: "dataset_succeeded" }
   | { type: "succeeded" }
   | { type: "failed" }
   | { type: "reset" };

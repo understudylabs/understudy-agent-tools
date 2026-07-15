@@ -120,6 +120,48 @@ export type CaptureCsvInspection = {
   artifact_path: string;
 };
 
+export type CaptureClassificationDataset = {
+  schema_version: "understudy.capture_import.classification_dataset.v1";
+  dataset_id: string;
+  generated_at: string;
+  source_path: string;
+  source_sha256: string;
+  mapping_sha256: string;
+  local_only: true;
+  network_required: false;
+  mapping_confirmation: "caller-provided";
+  source_rows_persisted_as_transformed_examples: true;
+  row_count: number;
+  mapping: {
+    input_columns: string[];
+    label_column: string;
+    text_template: "named-fields-v1";
+  };
+  labels: string[];
+  label_distribution: { value: string; count: number }[];
+  split_policy: {
+    name: "deterministic-stratified-v1";
+    allocation: "per-label-rounded-dev-and-holdout-then-train-remainder";
+    target_train_ratio: 0.7;
+    target_dev_ratio: 0.15;
+    target_holdout_ratio: 0.15;
+    holdout_reserved_for_final_validation: true;
+  };
+  splits: {
+    train: CaptureClassificationSplit;
+    dev: CaptureClassificationSplit;
+    holdout: CaptureClassificationSplit;
+  };
+  artifact_root: string;
+  manifest_path: string;
+};
+
+export type CaptureClassificationSplit = {
+  path: string;
+  row_count: number;
+  sha256: string;
+};
+
 export type CapturePreview = {
   generated_at: string;
   repo: string;
@@ -604,6 +646,9 @@ export function inspectCaptureCsv(
   } else if (columns[labelIndex].empty_count > 0) {
     status = "needs_cleanup";
     reasons.push(`${columns[labelIndex].empty_count} row(s) have an empty label.`);
+  } else if (duplicateRowCount > 0) {
+    status = "needs_cleanup";
+    reasons.push(`${duplicateRowCount} duplicate row(s) must be resolved before splitting the dataset.`);
   } else if (minimumExamples !== null && minimumExamples < MIN_EXAMPLES_PER_CLASS) {
     status = "needs_data";
     reasons.push(
@@ -668,6 +713,206 @@ export function inspectCaptureCsv(
   };
   writeJson(artifactPath, inspection);
   return inspection;
+}
+
+export function prepareCaptureClassificationDataset(
+  sourceInput: string,
+  artifactRootInput: string,
+  inputColumnsInput: string[],
+  labelColumnInput: string,
+  now = new Date(),
+): CaptureClassificationDataset {
+  const source = resolve(sourceInput);
+  const artifactRoot = resolve(artifactRootInput);
+  const inspectionPath = join(artifactRoot, "csv-inspection.json");
+  if (!existsSync(inspectionPath)) {
+    throw new Error("Inspect this CSV locally before confirming its training mapping.");
+  }
+  const inspection = JSON.parse(readFileSync(inspectionPath, "utf8")) as Partial<CaptureCsvInspection>;
+  if (inspection.schema_version !== "understudy.capture_import.csv_inspection.v1") {
+    throw new Error("The CSV inspection has an unsupported schema version.");
+  }
+
+  const { bytes, headers, rows } = readCsvForTraining(source);
+  const sourceSha256 = createHash("sha256").update(bytes).digest("hex");
+  if (inspection.source_sha256 !== sourceSha256) {
+    throw new Error("The CSV changed after inspection; inspect it again before preparing training data.");
+  }
+
+  const headerByNormalized = new Map(headers.map((header) => [normalizeHeader(header), header]));
+  const labelColumn = headerByNormalized.get(normalizeHeader(labelColumnInput));
+  if (!labelColumn) {
+    throw new Error(`Unknown label column: ${labelColumnInput}`);
+  }
+  const inputColumns = [...new Set(inputColumnsInput.map((column) =>
+    headerByNormalized.get(normalizeHeader(column)),
+  ))].filter((column): column is string => Boolean(column));
+  if (inputColumns.length !== new Set(inputColumnsInput.map(normalizeHeader)).size) {
+    throw new Error("Every input column must match one inspected CSV header.");
+  }
+  if (inputColumns.length === 0) {
+    throw new Error("Choose at least one input column.");
+  }
+  if (inputColumns.includes(labelColumn)) {
+    throw new Error("The label column cannot also be an input column.");
+  }
+
+  const labelIndex = headers.indexOf(labelColumn);
+  const inputIndexes = inputColumns.map((column) => headers.indexOf(column));
+  const duplicateRowCount = rows.length - new Set(rows.map((row) => JSON.stringify(row))).size;
+  if (duplicateRowCount > 0) {
+    throw new Error(`${duplicateRowCount} duplicate row(s) must be resolved before splitting the dataset.`);
+  }
+
+  type Example = {
+    schema_version: "understudy.classification_example.v1";
+    example_id: string;
+    text: string;
+    label: string;
+  };
+  const groups = new Map<string, Example[]>();
+  rows.forEach((row, rowIndex) => {
+    const label = row[labelIndex].trim();
+    if (!label) throw new Error(`CSV record ${rowIndex + 2} has an empty label.`);
+    const text = inputIndexes
+      .map((index) => ({ name: headers[index], value: row[index].trim() }))
+      .filter(({ value }) => value.length > 0)
+      .map(({ name, value }) => `${name}: ${value}`)
+      .join("\n");
+    if (!text) throw new Error(`CSV record ${rowIndex + 2} has no mapped input text.`);
+    const example: Example = {
+      schema_version: "understudy.classification_example.v1",
+      example_id: createHash("sha256")
+        .update(`${sourceSha256}\0${rowIndex}\0${JSON.stringify(row)}`)
+        .digest("hex")
+        .slice(0, 24),
+      text,
+      label,
+    };
+    const group = groups.get(label) ?? [];
+    group.push(example);
+    groups.set(label, group);
+  });
+  if (groups.size < 2) {
+    throw new Error("At least two label values are required for classification.");
+  }
+  const undersized = [...groups.entries()]
+    .filter(([, examples]) => examples.length < MIN_EXAMPLES_PER_CLASS);
+  if (undersized.length > 0) {
+    const preview = undersized
+      .slice(0, 20)
+      .map(([label, examples]) => `${label.slice(0, 80)} (${examples.length})`)
+      .join(", ");
+    const remainder = undersized.length > 20 ? `, plus ${undersized.length - 20} more` : "";
+    throw new Error(
+      `Each class needs at least ${MIN_EXAMPLES_PER_CLASS} rows before splitting: ${preview}${remainder}`,
+    );
+  }
+
+  const labels = [...groups.keys()].sort((left, right) => left.localeCompare(right));
+  const mapping = {
+    input_columns: inputColumns,
+    label_column: labelColumn,
+    text_template: "named-fields-v1" as const,
+  };
+  const mappingSha256 = createHash("sha256").update(JSON.stringify(mapping)).digest("hex");
+  const datasetId = createHash("sha256")
+    .update(`${sourceSha256}\0${mappingSha256}`)
+    .digest("hex")
+    .slice(0, 16);
+  const datasetRoot = join(artifactRoot, "classification", datasetId);
+  mkdirSync(datasetRoot, { recursive: true, mode: 0o700 });
+  setPrivateMode(datasetRoot, 0o700);
+  const splitRows = { train: [] as Example[], dev: [] as Example[], holdout: [] as Example[] };
+  for (const label of labels) {
+    const ranked = [...groups.get(label)!].sort((left, right) =>
+      stableExampleRank(sourceSha256, left).localeCompare(stableExampleRank(sourceSha256, right)),
+    );
+    const devCount = Math.max(1, Math.round(ranked.length * 0.15));
+    const holdoutCount = Math.max(1, Math.round(ranked.length * 0.15));
+    splitRows.dev.push(...ranked.slice(0, devCount));
+    splitRows.holdout.push(...ranked.slice(devCount, devCount + holdoutCount));
+    splitRows.train.push(...ranked.slice(devCount + holdoutCount));
+  }
+
+  const splitArtifacts = Object.fromEntries(
+    Object.entries(splitRows).map(([name, examples]) => {
+      const ordered = examples.sort((left, right) => left.example_id.localeCompare(right.example_id));
+      const path = join(datasetRoot, `${name}.jsonl`);
+      const content = ordered.map((example) => JSON.stringify(example)).join("\n") + "\n";
+      writePrivateText(path, content);
+      return [name, {
+        path,
+        row_count: ordered.length,
+        sha256: createHash("sha256").update(content).digest("hex"),
+      }];
+    }),
+  ) as CaptureClassificationDataset["splits"];
+  const manifestPath = join(datasetRoot, "dataset-manifest.json");
+  const dataset: CaptureClassificationDataset = {
+    schema_version: "understudy.capture_import.classification_dataset.v1",
+    dataset_id: datasetId,
+    generated_at: now.toISOString(),
+    source_path: source,
+    source_sha256: sourceSha256,
+    mapping_sha256: mappingSha256,
+    local_only: true,
+    network_required: false,
+    mapping_confirmation: "caller-provided",
+    source_rows_persisted_as_transformed_examples: true,
+    row_count: rows.length,
+    mapping,
+    labels,
+    label_distribution: labels.map((value) => ({ value, count: groups.get(value)!.length })),
+    split_policy: {
+      name: "deterministic-stratified-v1",
+      allocation: "per-label-rounded-dev-and-holdout-then-train-remainder",
+      target_train_ratio: 0.7,
+      target_dev_ratio: 0.15,
+      target_holdout_ratio: 0.15,
+      holdout_reserved_for_final_validation: true,
+    },
+    splits: splitArtifacts,
+    artifact_root: datasetRoot,
+    manifest_path: manifestPath,
+  };
+  writeJson(manifestPath, dataset);
+  return dataset;
+}
+
+function readCsvForTraining(source: string): { bytes: Buffer; headers: string[]; rows: string[][] } {
+  if (!existsSync(source) || !statSync(source).isFile() || extname(source).toLowerCase() !== ".csv") {
+    throw new Error(`Training dataset preparation requires one .csv file: ${source}`);
+  }
+  const bytes = readFileSync(source);
+  if (bytes.length > MAX_CSV_BYTES) {
+    throw new Error(`CSV exceeds the ${MAX_CSV_BYTES}-byte local preparation limit.`);
+  }
+  let text: string;
+  try {
+    text = new TextDecoder("utf-8", { fatal: true }).decode(bytes);
+  } catch {
+    throw new Error("CSV must be valid UTF-8 before local preparation.");
+  }
+  if (text.charCodeAt(0) === 0xfeff) text = text.slice(1);
+  const records = parseCsvRecordsBounded(text).filter((record) =>
+    record.some((field) => field.trim().length > 0),
+  );
+  if (records.length < 2) throw new Error("CSV needs one header row and at least one data row.");
+  const headers = records[0].map((field) => field.trim());
+  const rows = records.slice(1);
+  rows.forEach((row, index) => {
+    if (row.length !== headers.length) {
+      throw new Error(`CSV record ${index + 2} has ${row.length} fields; expected ${headers.length}.`);
+    }
+  });
+  return { bytes, headers, rows };
+}
+
+function stableExampleRank(sourceSha256: string, example: { example_id: string; label: string }): string {
+  return createHash("sha256")
+    .update(`${sourceSha256}\0${example.label}\0${example.example_id}`)
+    .digest("hex");
 }
 
 function parseCsvRecordsBounded(text: string): string[][] {
@@ -914,6 +1159,11 @@ function walkBounded(root: string, maxFiles: number): { files: string[]; truncat
 
 function writeJson(path: string, payload: unknown): void {
   writeFileSync(path, `${JSON.stringify(payload, null, 2)}\n`, { encoding: "utf8", mode: 0o600 });
+  setPrivateMode(path, 0o600);
+}
+
+function writePrivateText(path: string, content: string): void {
+  writeFileSync(path, content, { encoding: "utf8", mode: 0o600 });
   setPrivateMode(path, 0o600);
 }
 

@@ -144,6 +144,15 @@ type CsvInspection = {
   row_count: number;
   column_count: number;
   duplicate_row_count: number;
+  columns: {
+    name: string;
+    non_empty_count: number;
+    empty_count: number;
+    unique_count: number;
+    unique_ratio: number;
+    numeric_count: number;
+    numeric_ratio: number;
+  }[];
   recommended_mapping: {
     label_column: string | null;
     input_columns: string[];
@@ -161,6 +170,29 @@ type CsvInspection = {
     warnings: string[];
   };
   artifact_path: string;
+};
+type ClassificationDataset = {
+  schema_version: "understudy.capture_import.classification_dataset.v1";
+  dataset_id: string;
+  source_sha256: string;
+  mapping_sha256: string;
+  local_only: true;
+  network_required: false;
+  mapping_confirmation: "caller-provided";
+  source_rows_persisted_as_transformed_examples: true;
+  row_count: number;
+  mapping: {
+    input_columns: string[];
+    label_column: string;
+    text_template: "named-fields-v1";
+  };
+  labels: string[];
+  splits: {
+    train: { path: string; row_count: number; sha256: string };
+    dev: { path: string; row_count: number; sha256: string };
+    holdout: { path: string; row_count: number; sha256: string };
+  };
+  manifest_path: string;
 };
 
 const CLOUD_SUPERVISOR_FALLBACK_NOTICE =
@@ -267,7 +299,12 @@ function workloadReviewPrompt(workload: DroppedWorkload): string {
   ].join("\n\n");
 }
 
-function csvInspectionReviewPrompt(inspection: CsvInspection): string {
+function csvInspectionReviewPrompt(
+  inspection: CsvInspection,
+  inputColumns: string[],
+  labelColumn: string,
+  dataset: ClassificationDataset | null,
+): string {
   return [
     "Review this local CSV training inspection and explain the smallest honest next step.",
     "Use only the statistics below. The CSV rows stayed local and are not included here, so do not claim you read individual examples.",
@@ -276,10 +313,19 @@ function csvInspectionReviewPrompt(inspection: CsvInspection): string {
       row_count: inspection.row_count,
       column_count: inspection.column_count,
       duplicate_row_count: inspection.duplicate_row_count,
-      recommended_mapping: inspection.recommended_mapping,
+      selected_mapping: {
+        input_columns: inputColumns,
+        label_column: labelColumn || null,
+        caller_prepared: Boolean(dataset),
+      },
       label_distribution: inspection.label_distribution,
       label_distribution_truncated: inspection.label_distribution_truncated,
       training_readiness: inspection.training_readiness,
+      prepared_splits: dataset ? {
+        train: dataset.splits.train.row_count,
+        dev: dataset.splits.dev.row_count,
+        holdout: dataset.splits.holdout.row_count,
+      } : null,
     }, null, 2),
   ].join("\n\n");
 }
@@ -431,6 +477,9 @@ export function ChatPane({
   );
   const [droppedWorkload, setDroppedWorkload] = useState<DroppedWorkload | null>(null);
   const [csvInspection, setCsvInspection] = useState<CsvInspection | null>(null);
+  const [mappingInputColumns, setMappingInputColumns] = useState<string[]>([]);
+  const [mappingLabelColumn, setMappingLabelColumn] = useState("");
+  const [classificationDataset, setClassificationDataset] = useState<ClassificationDataset | null>(null);
   const [pacingMessageIndex, setPacingMessageIndex] = useState<number | null>(null);
   const [pacedRevealed, setPacedRevealed] = useState<number | null>(null);
   const [animatedMessageId, setAnimatedMessageId] = useState<string | null>(null);
@@ -488,6 +537,9 @@ export function ChatPane({
     dropInFlight.current = false;
     setDroppedWorkload(null);
     setCsvInspection(null);
+    setMappingInputColumns([]);
+    setMappingLabelColumn("");
+    setClassificationDataset(null);
     dispatchDrop({ type: "reset" });
   };
 
@@ -502,6 +554,9 @@ export function ChatPane({
     const requestGeneration = dropRequestGeneration.current + 1;
     dropRequestGeneration.current = requestGeneration;
     setCsvInspection(null);
+    setMappingInputColumns([]);
+    setMappingLabelColumn("");
+    setClassificationDataset(null);
     setErr(null);
     setNotice(null);
     dispatchDrop({ type: "inspection_started" });
@@ -512,8 +567,47 @@ export function ChatPane({
       .then((result) => {
         if (dropRequestGeneration.current !== requestGeneration) return;
         setCsvInspection(result);
+        setMappingInputColumns(result.recommended_mapping.input_columns);
+        setMappingLabelColumn(result.recommended_mapping.label_column ?? "");
         dispatchDrop({ type: "inspection_succeeded" });
         setNotice("CSV inspected locally; only statistics and mapping evidence were saved.");
+      })
+      .catch((error) => {
+        if (dropRequestGeneration.current !== requestGeneration) return;
+        dispatchDrop({ type: "failed" });
+        setErr(String(error));
+      })
+      .finally(() => {
+        if (dropRequestGeneration.current === requestGeneration) dropInFlight.current = false;
+      });
+  };
+
+  const prepareDroppedClassification = () => {
+    if (
+      !droppedWorkload ||
+      !csvInspection ||
+      !mappingLabelColumn ||
+      mappingInputColumns.length === 0 ||
+      dropInFlight.current
+    ) return;
+    dropInFlight.current = true;
+    const requestGeneration = dropRequestGeneration.current + 1;
+    dropRequestGeneration.current = requestGeneration;
+    setClassificationDataset(null);
+    setErr(null);
+    setNotice(null);
+    dispatchDrop({ type: "dataset_started" });
+    void invoke<ClassificationDataset>("prepare_dropped_csv_classification", {
+      path: droppedWorkload.source_path,
+      artifactRoot: droppedWorkload.artifact_root,
+      inputColumns: mappingInputColumns,
+      labelColumn: mappingLabelColumn,
+    })
+      .then((result) => {
+        if (dropRequestGeneration.current !== requestGeneration) return;
+        setClassificationDataset(result);
+        dispatchDrop({ type: "dataset_succeeded" });
+        setNotice("Local train, dev, and holdout datasets are ready; nothing was uploaded.");
       })
       .catch((error) => {
         if (dropRequestGeneration.current !== requestGeneration) return;
@@ -657,6 +751,9 @@ export function ChatPane({
         dropRequestGeneration.current = requestGeneration;
         setDroppedWorkload(null);
         setCsvInspection(null);
+        setMappingInputColumns([]);
+        setMappingLabelColumn("");
+        setClassificationDataset(null);
         setErr(null);
         setNotice(null);
         const channel = new Channel<WorkloadDropEvent>();
@@ -1302,6 +1399,8 @@ export function ChatPane({
                     ? "Validating one local path…"
                     : dropPhase === "inspecting"
                       ? "Inspecting bounded CSV contents locally…"
+                    : dropPhase === "preparing_dataset"
+                      ? "Writing deterministic local train, dev, and holdout examples…"
                     : "Building a bounded local Workload Card…"}
                 </div>
               ) : (
@@ -1336,12 +1435,68 @@ export function ChatPane({
                           <span>local inspection</span>
                         </div>
                         <div className="workload-inspection-mapping">
-                          <span>{csvInspection.recommended_mapping.input_columns.join(" + ") || "Choose inputs"}</span>
+                          <span>{mappingInputColumns.join(" + ") || "Choose inputs"}</span>
                           <b aria-hidden="true">→</b>
-                          <span>{csvInspection.recommended_mapping.label_column ?? "Choose label"}</span>
+                          <span>{mappingLabelColumn || "Choose label"}</span>
                         </div>
                         {csvInspection.training_readiness.reasons[0] && (
                           <p>{csvInspection.training_readiness.reasons[0]}</p>
+                        )}
+                        {!classificationDataset ? (
+                          <div className="workload-mapping">
+                            <label>
+                              <span>Label</span>
+                              <select
+                                value={mappingLabelColumn}
+                                onChange={(event) => {
+                                  const label = event.target.value;
+                                  setMappingLabelColumn(label);
+                                  setMappingInputColumns((columns) => columns.filter((column) => column !== label));
+                                  setClassificationDataset(null);
+                                }}
+                              >
+                                <option value="">Choose label</option>
+                                {csvInspection.columns.map((column) => (
+                                  <option key={column.name} value={column.name}>{column.name}</option>
+                                ))}
+                              </select>
+                            </label>
+                            <div className="workload-mapping-inputs" role="group" aria-label="Input columns">
+                              <span>Inputs</span>
+                              <div>
+                                {csvInspection.columns.map((column) => {
+                                  const selected = mappingInputColumns.includes(column.name);
+                                  const unavailable = column.name === mappingLabelColumn;
+                                  return (
+                                    <button
+                                      key={column.name}
+                                      type="button"
+                                      className={selected ? "selected" : ""}
+                                      disabled={unavailable}
+                                      aria-pressed={selected}
+                                      onClick={() => {
+                                        setMappingInputColumns((columns) => selected
+                                          ? columns.filter((name) => name !== column.name)
+                                          : [...columns, column.name]);
+                                        setClassificationDataset(null);
+                                      }}
+                                    >
+                                      {column.name}
+                                    </button>
+                                  );
+                                })}
+                              </div>
+                            </div>
+                            <small>Preparing the dataset saves transformed examples locally. Nothing is uploaded.</small>
+                          </div>
+                        ) : (
+                          <div className="workload-dataset-ready">
+                            <strong>Local dataset ready</strong>
+                            <span>
+                              {classificationDataset.splits.train.row_count} train · {classificationDataset.splits.dev.row_count} dev · {classificationDataset.splits.holdout.row_count} holdout
+                            </span>
+                            <small>Holdout stays reserved for final validation.</small>
+                          </div>
                         )}
                       </div>
                     )}
@@ -1354,14 +1509,34 @@ export function ChatPane({
                           Inspect CSV locally
                         </button>
                       )}
+                    {csvInspection && !classificationDataset && (
+                      <button
+                        type="button"
+                        className="btn primary"
+                        disabled={
+                          !mappingLabelColumn ||
+                          mappingInputColumns.length === 0 ||
+                          (mappingLabelColumn === csvInspection.recommended_mapping.label_column &&
+                            !csvInspection.training_readiness.ready)
+                        }
+                        onClick={prepareDroppedClassification}
+                      >
+                        Prepare local dataset
+                      </button>
+                    )}
                     <button
                       type="button"
-                      className={csvInspection || (droppedWorkload.source_kinds["csv-data"] ?? 0) !== 1
+                      className={classificationDataset || (droppedWorkload.source_kinds["csv-data"] ?? 0) !== 1
                         ? "btn primary"
                         : "btn ghost"}
                       onClick={() => {
                         setInput(csvInspection
-                          ? csvInspectionReviewPrompt(csvInspection)
+                          ? csvInspectionReviewPrompt(
+                              csvInspection,
+                              mappingInputColumns,
+                              mappingLabelColumn,
+                              classificationDataset,
+                            )
                           : workloadReviewPrompt(droppedWorkload));
                       }}
                     >
