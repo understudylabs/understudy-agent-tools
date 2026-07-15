@@ -19,16 +19,23 @@ cd skills/design-simulated-environment/examples/event-categorizer
 #    `renderers` dependency, and uv refuses pre-releases by default.)
 uv run --with verifiers==0.2.0 --prerelease=allow --no-project smoke.py
 
-# 2. Install as an env package so vf-eval can load it by id.
+# 2. End-to-end gate demo — still no keys, no network beyond localhost.
+#    Two scripted "models" (a contract-clean incumbent; a candidate that
+#    fences every 5th JSON answer) run through the REAL verifiers rollout
+#    loop, 60 rollouts per arm. The gate blocks the candidate at
+#    structured_output_ok 80% while quality stays flat at 1.0:
+uv run --with verifiers==0.2.0 --prerelease=allow --no-project demo_gate.py
+
+# 3. Install as an env package so vf-eval can load it by id.
 uv venv && . .venv/bin/activate
 uv pip install --prerelease=allow -e .
 
-# 3. Score a real model through the same serving path production uses
+# 4. Score a real model through the same serving path production uses
 #    (endpoints defined in configs/endpoints.toml; -r repeats each task).
 vf-eval event-categorizer -m gateway-incumbent -n 12 -r 3 \
   --shuffle --shuffle-seed 7 --save-results
 
-# 4. A/B a playbook change on the same frozen tasks — Isabelle's
+# 5. A/B a playbook change on the same frozen tasks —
 #    "I changed the instructions, tell me what worked" in one flag:
 vf-eval event-categorizer -m gateway-incumbent -n 12 -r 3 \
   -a '{"playbook_path": "playbook-variant.md"}' --save-results
@@ -48,6 +55,7 @@ ship/no-ship verdict, use
 | `tasks.jsonl` | task rows: `question` (the input), `gold` (expected answer), `accounts` (per-task fixture the tools read) |
 | `playbook.md` / `playbook-variant.md` | the system prompt as a swappable artifact — prompt variants are an env *argument*, not a code change |
 | `smoke.py` | the oracle + sentinel gates, including the right-answer-wrong-contract sentinel (fenced JSON) that quality metrics alone would pass |
+| `demo_gate.py` + `mock_model_server.py` | the no-keys end-to-end demo: scripted incumbent/candidate policies behind a stdlib OpenAI-compatible server, driven through `env.evaluate_sync` — proves the whole loop (client → tool calls → scoring) and shows the gate blocking a 20% intermittent contract regression |
 | `convert_captures.py` | captures JSONL → `tasks.jsonl` + `playbook.md` — reads OpenAI-style request/response logs AND your own observability: OTel span exports (Vercel AI SDK telemetry / GenAI semconv, flat or OTLP) (redact with `ingest-traces` first; freeze splits with `capture-evidence` after) |
 | `configs/endpoints.toml` | point the eval at the gateway/local serving path, not the raw provider |
 
