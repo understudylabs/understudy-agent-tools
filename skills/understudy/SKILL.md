@@ -166,6 +166,11 @@ Identify the developer's current stage and load exactly one:
   provider keys, or skipping remote frontier calls →
   [`../use-understudy-gateway/SKILL.md`](../use-understudy-gateway/SKILL.md)
   and its frontier-keys lens (`references/frontier-keys.md`).
+- **Pre-launch change gate** — a model-level change (model swap, route change,
+  prompt or playbook edit) is about to ship and the developer wants an offline
+  verdict first: "will this work in prod", "run a simulator before I flip
+  traffic", "gate model changes like a pre-commit check" →
+  [`../simulate-before-launch/SKILL.md`](../simulate-before-launch/SKILL.md).
 - **Production ramp / rollback** — a route decision exists and live traffic
   must move safely: "ramp this route", "move 25% of traffic to the new model",
   "did the route change regress anything", "roll this back", "prove the

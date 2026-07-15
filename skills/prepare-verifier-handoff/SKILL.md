@@ -138,7 +138,11 @@ developer wants a durable artifact:
 .understudy/verifier-handoff/handoff.json
 ```
 
-Recommended fields:
+The packet's JSON Schema is checked in at
+[`../../schemas/understudy.verifier_handoff.v1.schema.json`](../../schemas/understudy.verifier_handoff.v1.schema.json)
+— validate against it before relying on a packet. Like `eval_result.v1` it is
+additive-extensible: producers may add fields; consumers must ignore fields
+they do not understand. Recommended fields:
 
 - `schema_version: "understudy.verifier_handoff.v1"`
 - workload id, owner, and source refs;

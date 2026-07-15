@@ -1,0 +1,22 @@
+# Endpoint registry for vf-eval (`-m <endpoint_id>` picks a block).
+# `key` is the NAME of the env var holding the API key — never the key itself.
+# Run through the same serving path production uses: a gate that calls the
+# provider directly can pass while the served route fails.
+
+[[endpoint]]
+endpoint_id = "gateway-incumbent"
+model = "gpt-4o"                          # the model id your app sends today
+url = "https://api.understudylabs.com/v1"
+key = "UNDERSTUDY_API_KEY"
+
+[[endpoint]]
+endpoint_id = "gateway-candidate"
+model = "gpt-4o"                          # same id — the gateway dial routes it
+url = "https://api.understudylabs.com/v1"
+key = "UNDERSTUDY_API_KEY"
+
+[[endpoint]]
+endpoint_id = "local"
+model = "gemma-4-e2b-understudy"
+url = "http://localhost:8081/v1"
+key = "LOCAL_NOOP_KEY"
