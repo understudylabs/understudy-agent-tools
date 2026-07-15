@@ -38,6 +38,7 @@ export type PersonaState =
 
 interface PersonaProps {
   state: PersonaState;
+  color?: PersonaColor;
   onLoad?: RiveParameters["onLoad"];
   onLoadError?: RiveParameters["onLoadError"];
   onReady?: () => void;
@@ -47,6 +48,12 @@ interface PersonaProps {
   className?: string;
   variant?: keyof typeof sources;
 }
+
+export type PersonaColor = {
+  red: number;
+  green: number;
+  blue: number;
+};
 
 // The state machine name is always 'default' for Elements AI visuals
 const stateMachine = "default";
@@ -93,11 +100,12 @@ const sources = {
 interface PersonaWithModelProps {
   rive: ReturnType<typeof useRive>["rive"];
   source: (typeof sources)[keyof typeof sources];
+  color: PersonaColor;
   children: React.ReactNode;
 }
 
 const PersonaWithModel = memo(
-  ({ rive, source, children }: PersonaWithModelProps) => {
+  ({ rive, source, color, children }: PersonaWithModelProps) => {
     const viewModel = useViewModel(rive, { useDefault: true });
     const viewModelInstance = useViewModelInstance(viewModel, {
       rive,
@@ -113,8 +121,8 @@ const PersonaWithModel = memo(
         return;
       }
 
-      viewModelInstanceColor.setRgb(255, 255, 255);
-    }, [viewModelInstanceColor, source.dynamicColor]);
+      viewModelInstanceColor.setRgb(color.red, color.green, color.blue);
+    }, [color.blue, color.green, color.red, viewModelInstanceColor, source.dynamicColor]);
 
     return children;
   }
@@ -136,6 +144,7 @@ export const Persona: FC<PersonaProps> = memo(
   ({
     variant = "obsidian",
     state = "idle",
+    color = { red: 255, green: 255, blue: 255 },
     onLoad,
     onLoadError,
     onReady,
@@ -241,7 +250,7 @@ export const Persona: FC<PersonaProps> = memo(
     const Component = source.hasModel ? PersonaWithModel : PersonaWithoutModel;
 
     return (
-      <Component rive={rive} source={source}>
+      <Component rive={rive} source={source} color={color}>
         <RiveComponent className={cn("size-16 shrink-0", className)} />
       </Component>
     );
