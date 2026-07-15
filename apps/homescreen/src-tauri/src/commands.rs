@@ -2303,12 +2303,47 @@ pub fn chat_session_latest(app: AppHandle) -> Result<Option<DesktopChatSession>,
 pub fn chat_sessions_list(
     app: AppHandle,
     limit: Option<u32>,
+    archived: Option<bool>,
 ) -> Result<Vec<crate::db::ChatSessionSummaryRow>, String> {
     // Preserve the v1-to-v2 migration now that cold launches no longer reopen
     // the newest chat automatically.
     let _ = chat_session_latest(app.clone())?;
     app.state::<crate::db::Db>()
-        .list_chat_sessions(DESKTOP_CHAT_SESSION_SCHEMA, limit.unwrap_or(30))
+        .list_chat_sessions(
+            DESKTOP_CHAT_SESSION_SCHEMA,
+            limit.unwrap_or(30),
+            archived.unwrap_or(false),
+        )
+        .map_err(|error| error.to_string())
+}
+
+fn validate_chat_session_id(session_id: &str) -> Result<(), String> {
+    if session_id.trim().is_empty() || session_id.len() > 200 {
+        return Err("invalid chat session id".to_string());
+    }
+    Ok(())
+}
+
+#[tauri::command]
+pub fn chat_session_archive(app: AppHandle, session_id: String) -> Result<bool, String> {
+    validate_chat_session_id(&session_id)?;
+    app.state::<crate::db::Db>()
+        .archive_chat_session(&session_id, DESKTOP_CHAT_SESSION_SCHEMA)
+        .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+pub fn chat_session_restore(app: AppHandle, session_id: String) -> Result<bool, String> {
+    validate_chat_session_id(&session_id)?;
+    app.state::<crate::db::Db>()
+        .restore_chat_session(&session_id, DESKTOP_CHAT_SESSION_SCHEMA)
+        .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+pub fn chat_sessions_archive_all(app: AppHandle) -> Result<u64, String> {
+    app.state::<crate::db::Db>()
+        .archive_all_chat_sessions(DESKTOP_CHAT_SESSION_SCHEMA)
         .map_err(|error| error.to_string())
 }
 
@@ -2317,9 +2352,7 @@ pub fn chat_session_get(
     app: AppHandle,
     session_id: String,
 ) -> Result<Option<DesktopChatSession>, String> {
-    if session_id.trim().is_empty() || session_id.len() > 200 {
-        return Err("invalid chat session id".to_string());
-    }
+    validate_chat_session_id(&session_id)?;
     app.state::<crate::db::Db>()
         .chat_session(&session_id, DESKTOP_CHAT_SESSION_SCHEMA)
         .map_err(|error| error.to_string())?
@@ -2333,9 +2366,7 @@ pub fn chat_session_save(
     session_id: String,
     messages: Value,
 ) -> Result<(), String> {
-    if session_id.trim().is_empty() || session_id.len() > 200 {
-        return Err("invalid chat session id".to_string());
-    }
+    validate_chat_session_id(&session_id)?;
     let Some(items) = messages.as_array() else {
         return Err("chat transcript must be an array".to_string());
     };

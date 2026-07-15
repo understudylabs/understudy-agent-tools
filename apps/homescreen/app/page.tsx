@@ -24,24 +24,116 @@ export default function Page() {
   const [railOpen, setRailOpen] = useState(false);
   const [chatResetToken, setChatResetToken] = useState(0);
   const [chatHistory, setChatHistory] = useState<ChatSessionSummary[]>([]);
+  const [archivedChatHistory, setArchivedChatHistory] = useState<ChatSessionSummary[]>([]);
   const [chatHistoryLoading, setChatHistoryLoading] = useState(false);
+  const [chatHistoryError, setChatHistoryError] = useState<string | null>(null);
+  const [chatArchiveBusy, setChatArchiveBusy] = useState<string | null>(null);
+  const [chatStreaming, setChatStreaming] = useState(false);
   const [activeChatSessionId, setActiveChatSessionId] = useState<string | null>(null);
   const [requestedChatSession, setRequestedChatSession] = useState<ChatSessionRequest | null>(null);
   const status = useStatus();
   const connected = status.snap?.connected ?? false;
 
-  const refreshChatHistory = useCallback(() => {
+  const refreshChatHistory = useCallback(async () => {
     if (!isTauri()) {
       setChatHistory([]);
+      setArchivedChatHistory([]);
       setChatHistoryLoading(false);
       return;
     }
     setChatHistoryLoading(true);
-    invoke<ChatSessionSummary[]>("chat_sessions_list", { limit: 30 })
-      .then(setChatHistory)
-      .catch(() => setChatHistory([]))
-      .finally(() => setChatHistoryLoading(false));
+    setChatHistoryError(null);
+    try {
+      const [activeSessions, archivedSessions] = await Promise.all([
+        invoke<ChatSessionSummary[]>("chat_sessions_list", { limit: 100, archived: false }),
+        invoke<ChatSessionSummary[]>("chat_sessions_list", { limit: 100, archived: true }),
+      ]);
+      setChatHistory(activeSessions);
+      setArchivedChatHistory(archivedSessions);
+    } catch (error) {
+      setChatHistoryError(`Chats could not be loaded: ${String(error)}`);
+    } finally {
+      setChatHistoryLoading(false);
+    }
   }, []);
+
+  const startFreshAfterArchive = useCallback(() => {
+    setRequestedChatSession(null);
+    setActiveChatSessionId(null);
+    setPane("chat");
+    setChatResetToken((token) => token + 1);
+  }, []);
+
+  const archiveChatSession = useCallback(async (sessionId: string) => {
+    if (chatStreaming && activeChatSessionId === sessionId) {
+      setChatHistoryError("Stop the current response before archiving this chat.");
+      return false;
+    }
+    setChatArchiveBusy(sessionId);
+    setChatHistoryError(null);
+    try {
+      const archived = await invoke<boolean>("chat_session_archive", { sessionId });
+      if (!archived) {
+        setChatHistoryError("That chat was already archived or is no longer available.");
+        return false;
+      }
+      if (activeChatSessionId === sessionId) startFreshAfterArchive();
+      await refreshChatHistory();
+      return true;
+    } catch (error) {
+      setChatHistoryError(`Chat could not be archived: ${String(error)}`);
+      return false;
+    } finally {
+      setChatArchiveBusy(null);
+    }
+  }, [activeChatSessionId, chatStreaming, refreshChatHistory, startFreshAfterArchive]);
+
+  const restoreChatSession = useCallback(async (sessionId: string) => {
+    setChatArchiveBusy(sessionId);
+    setChatHistoryError(null);
+    try {
+      const restored = await invoke<boolean>("chat_session_restore", { sessionId });
+      if (!restored) {
+        setChatHistoryError("That chat was already restored or is no longer available.");
+        return false;
+      }
+      await refreshChatHistory();
+      setPane("chat");
+      setRequestedChatSession((current) => ({
+        sessionId,
+        requestId: (current?.requestId ?? 0) + 1,
+      }));
+      return true;
+    } catch (error) {
+      setChatHistoryError(`Chat could not be restored: ${String(error)}`);
+      return false;
+    } finally {
+      setChatArchiveBusy(null);
+    }
+  }, [refreshChatHistory]);
+
+  const archiveAllChatSessions = useCallback(async () => {
+    const activeSessionIsSaved = Boolean(
+      activeChatSessionId && chatHistory.some((session) => session.session_id === activeChatSessionId),
+    );
+    if (chatStreaming) {
+      setChatHistoryError("Stop the current response before archiving all chats.");
+      return false;
+    }
+    setChatArchiveBusy("all");
+    setChatHistoryError(null);
+    try {
+      await invoke<number>("chat_sessions_archive_all");
+      if (activeSessionIsSaved) startFreshAfterArchive();
+      await refreshChatHistory();
+      return true;
+    } catch (error) {
+      setChatHistoryError(`Chats could not be archived: ${String(error)}`);
+      return false;
+    } finally {
+      setChatArchiveBusy(null);
+    }
+  }, [activeChatSessionId, chatHistory, chatStreaming, refreshChatHistory, startFreshAfterArchive]);
 
   const handleChatSessionChange = useCallback((sessionId: string) => {
     setActiveChatSessionId(sessionId);
@@ -56,6 +148,8 @@ export default function Page() {
 
   const newChat = () => {
     if (pane !== "chat") return;
+    setRequestedChatSession(null);
+    setActiveChatSessionId(null);
     setChatResetToken((token) => token + 1);
   };
 
@@ -144,8 +238,15 @@ export default function Page() {
         }}
         connected={connected}
         sessions={chatHistory}
+        archivedSessions={archivedChatHistory}
         activeSessionId={activeChatSessionId}
         historyLoading={chatHistoryLoading}
+        historyError={chatHistoryError}
+        archiveBusy={chatArchiveBusy}
+        archiveActiveDisabled={chatStreaming}
+        onArchiveSession={archiveChatSession}
+        onRestoreSession={restoreChatSession}
+        onArchiveAll={archiveAllChatSessions}
         onSelectSession={(sessionId) => {
           setPane("chat");
           setRequestedChatSession((current) => ({
@@ -159,9 +260,11 @@ export default function Page() {
         {pane === "chat" && (
           <ChatPane
             resetToken={chatResetToken}
+            activeSessionId={activeChatSessionId}
             requestedSession={requestedChatSession}
             onSessionChange={handleChatSessionChange}
             onHistoryChanged={refreshChatHistory}
+            onStreamingChange={setChatStreaming}
           />
         )}
         {pane === "models" && <ModelsPane />}

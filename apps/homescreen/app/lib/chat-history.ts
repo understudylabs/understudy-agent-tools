@@ -3,6 +3,7 @@ export type ChatSessionSummary = {
   title: string;
   message_count: number;
   updated_at: string;
+  archived_at: string | null;
 };
 
 export type ChatSessionRequest = {
