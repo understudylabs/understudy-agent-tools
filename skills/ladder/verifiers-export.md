@@ -1,7 +1,7 @@
 # Ladder demo → Verifiers environment (export path)
 
 The ladder is a **local demo**: instant, $0, stdlib, visualize a model on a
-task. [`verifiers`](https://github.com/PrimeIntellect/verifiers) is **RL training
+task. [`verifiers`](https://github.com/PrimeIntellect-ai/verifiers) is **RL training
 infrastructure**. Different jobs. This doc is the on-demand **export** path that
 turns a ladder task into a Verifiers-compatible environment when — and only when —
 a workload has earned real RL.
@@ -86,10 +86,11 @@ and the compiled reward funcs are two projections of it.
 
 ## Install reality (why this stays an export, not a dependency)
 
-Bare `verifiers` needs **no torch/GPU** (training lives in the separate
-`verifiers-rl` extra), but it still pulls ~25 deps / ~200M of wheels
+Bare `verifiers` needs **no torch/GPU** — and as of `0.2.0` the legacy
+`verifiers-rl` training package is removed entirely (training is delegated to
+`prime-rl`) — but core still pulls ~25 deps / ~200M of wheels
 (`pyarrow`, `pandas`, `sympy` via `math-verify`, `mcp`, `prime-sandboxes`,
-`prime-tunnel`, `pyzmq`, `textual`, `gepa`, …). That tail is acceptable for an RL
+`prime-tunnel`, `pyzmq`, `gepa`, …). That tail is acceptable for an RL
 partner environment and unacceptable for a local-first demo that should install
 in seconds. Export-on-demand keeps the demo clean and gives you the interop only
 when it earns it.

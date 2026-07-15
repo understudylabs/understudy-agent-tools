@@ -62,8 +62,10 @@ and Deployments (inference with LoRA adapters).
 **RL story (the differentiator) [V]:**
 - **Verifiers** (MIT) — build an RL **environment** = dataset + harness (tools /
   sandboxes / context mgmt) + reward/rubric, distributed as pip wheels. Native to the
-  Environments Hub; integrates with prime-rl and hosted training. Includes a minimal
-  `vf.RLTrainer` and plugs into other RL stacks.
+  Environments Hub; integrates with prime-rl and hosted training. (As of verifiers
+  `0.2.0`, 2026-07-10, no trainer ships in-package — the legacy `verifiers-rl`
+  package was removed; training runs through prime-rl or third-party stacks such
+  as Tinker/SkyRL/rLLM, and v1 eval traces are consumed by prime-rl directly.)
 - **Prime-RL** — open framework for large-scale **asynchronous** RL; single-node →
   1000+ GPUs; first-class **multi-turn / tool-use (agentic) RL**; covers synthetic
   data → SFT → RL → eval.

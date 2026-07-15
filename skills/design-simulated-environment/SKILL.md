@@ -112,8 +112,11 @@ One env, many uses: the *same* `verifiers` Environment serves eval, RL training,
 synthetic-data generation, and agent-harness experimentation ("playgrounds for RL
 training, evaluation benchmarking, synthetic data generation, and agent-harness
 experimentation" — Prime Intellect, https://www.primeintellect.ai/blog/environments).
-That's why building it well — and validating it cheaply via eval *before* any GPU —
-pays off across all of them.
+Run as an offline gate it is also the replay surface for
+[`../simulate-before-launch/SKILL.md`](../simulate-before-launch/SKILL.md) —
+judging a proposed model/prompt change before traffic moves. That's why building
+it well — and validating it cheaply via eval *before* any GPU — pays off across
+all of them.
 
 **Four LEGO blocks (dataset · parser · rubric · rollout).** A `verifiers` env snaps
 together from four independently-swappable pieces (Will Brown / Prime Intellect):
@@ -138,8 +141,14 @@ When you swap the model brick, re-check the parser/renderer.
 
 When the env is built as an actual `verifiers` Environment (the form
 [`prepare-verifier-handoff`'s authoring and packaging stages](../prepare-verifier-handoff/references/stage-1-author-env.md) consume),
-these API facts save real trial — verified against the `verifiers` library v0.1.14
-(https://github.com/PrimeIntellect-ai/verifiers ; APIs move, re-check the pin):
+these API facts save real trial — re-verified against the `verifiers` `0.2.0`
+source, 2026-07-14 (https://github.com/PrimeIntellect-ai/verifiers ; APIs move,
+re-check the pin). Pin exactly `verifiers==0.2.0`: the tag and `main` diverged
+within days of release. Note `0.2.0` ships **two API generations** — everything
+below is the **v0 API**, still exported and working but frozen upstream
+(deprecated, no new features); new upstream work lands in the `verifiers.v1`
+Taskset/Harness/Runtime namespace (landscape notes in
+[`reference.md`](reference.md)). Never mix v0 and v1 in one environment:
 
 - `vf.ToolEnv(tools=[fns], max_turns=, **kwargs)` — `dataset`, `rubric`,
   `system_prompt` pass through `**kwargs` to `MultiTurnEnv`; tools are plain
@@ -158,8 +167,9 @@ these API facts save real trial — verified against the `verifiers` library v0.
   and pass a verifiers **`ClientConfig`** (a raw `openai.OpenAI` raises
   "Unsupported client type"): `ClientConfig(client_type="openai_chat_completions",
   api_key_var="<ENV_VAR_NAME>", api_base_url="<…/v1>")` — `api_key_var` is the
-  env-var *name* (default `PRIME_API_KEY`). Pointed at the Understudy gateway this
-  runs a full rollout+reward eval on CPU for pennies — strong pre-GPU validation.
+  env-var *name* (default `PRIME_API_KEY`); `extra_headers` carries per-route
+  headers. Pointed at the Understudy gateway this runs a full rollout+reward
+  eval on CPU for pennies — strong pre-GPU validation.
 
 ## Output Standard
 
@@ -174,3 +184,4 @@ recall/precision/policy + cost/latency — with the local-model gap to close.
 - [`../optimize-agentic-workload/SKILL.md`](../optimize-agentic-workload/SKILL.md) — the agentic-workload metric axes and final-state validation.
 - [`../prepare-verifier-handoff/references/stage-1-author-env.md`](../prepare-verifier-handoff/references/stage-1-author-env.md) — inverts this batch-scored env into a `reset`/`step` MDP when the workload needs RL (the direct next rung before a hosted handoff).
 - [`../prepare-verifier-handoff/SKILL.md`](../prepare-verifier-handoff/SKILL.md) — when the env should graduate to a hosted RL/verifiers partner.
+- [`../simulate-before-launch/SKILL.md`](../simulate-before-launch/SKILL.md) — runs this env as the offline ship/no-ship gate for a proposed model or prompt change.

@@ -23,8 +23,11 @@ skill is meant to catch before a hosted RL run.
 
 ## API Facts To Recheck
 
-These details were verified against `verifiers` v0.1.14 and should be rechecked
-when the dependency pin changes:
+These details were re-verified against the `verifiers` `0.2.0` source
+(2026-07-14) and should be rechecked when the dependency pin changes. Pin
+exactly `verifiers==0.2.0` — upstream `main` diverged from the tag within
+days. They describe the **v0 API**, which `0.2.0` still exports unchanged but
+upstream has frozen (deprecated, no new features):
 
 - `vf.ToolEnv(tools=[...], max_turns=, **kwargs)` passes `dataset`, `rubric`,
   and `system_prompt` through to `MultiTurnEnv`.
@@ -38,11 +41,54 @@ when the dependency pin changes:
 - `env.evaluate` is async. Use `evaluate_sync` for blocking calls and pass a
   `ClientConfig`; do not pass a raw client object.
 
+## The `verifiers.v1` Landscape (0.2.0, source-verified 2026-07-14)
+
+"Verifiers v1" is an API namespace inside package `0.2.0`, not a `1.x`
+release. Facts that matter when deciding where a new environment should live:
+
+- **Decomposition:** `Taskset` (data + tools + scoring; `Task`/`TaskData` are
+  typed Pydantic), `Harness` (the program producing a rollout — built-ins:
+  `default`, `null`, `codex`, `terminus_2`, `kimi_code`, `mini_swe_agent`,
+  `rlm`; **no Claude Code harness exists in `0.2.0` or `main`** despite docs
+  mentioning one), `Runtime` (`subprocess`, `docker`, Prime sandboxes,
+  Modal). Never override `__init__` — use `setup()`.
+- **Traces:** an eval run writes `traces.jsonl` (message-graph DAG, one trace
+  per line, consumed directly by the dashboard and by prime-rl for training)
+  plus a re-runnable `config.toml`. Docs pages that say `results.jsonl` for v1
+  are wrong.
+- **Eval knobs:** `EvalConfig` has `model`, `num_tasks` (`-n`),
+  `num_rollouts` (`-r`), `shuffle`, `max_concurrent`, `output_dir`; endpoint =
+  `base_url` + `api_key_var` + `headers` on the client config — pointing at
+  the Understudy gateway is plain config.
+- **Offline re-scoring:** `uv run replay` recomputes trace-only reward
+  handlers and judges from saved traces without re-running any model;
+  runtime-requiring signals and group rewards do not replay.
+- **Tool stubbing** happens at the `Toolset` level (tools are your own
+  Python, served to harnesses as MCP) — the interception proxy records and
+  adapts dialects but exposes no response-rewriting hook in `0.2.0`.
+- **CLI hazard:** v1 console scripts are bare names (`eval`, `init`, `serve`,
+  `debug`, `replay`, `validate`) — always invoke via `uv run` inside the env
+  project; never install globally.
+- **Training:** the legacy `verifiers-rl` package was removed in `0.2.0`;
+  training is delegated to `prime-rl` (plus Tinker/SkyRL/rLLM integrations).
+- **Migration Rosetta stone:** the repo ships side-by-side v0/v1 ports of the
+  same environments (`environments/gsm8k` vs `gsm8k_v1`, `wordle_v1`,
+  `wiki_search_v1`, `alphabet_sort_v1`); a v1 taskset is ~70 idiomatic lines.
+
+Guidance: run existing v0 envs unchanged under the `0.2.0` pin; author a
+**new** environment on v1 when it may outlive the churn (upstream's own rule:
+"always prefer v1.*"), and re-verify the v1 recipes hands-on first — the
+namespace shipped 2026-07-10 and is still moving.
+
 ## Sources
 
 - Prime Intellect Environments Hub:
   https://www.primeintellect.ai/blog/environments
 - `verifiers` source project:
   https://github.com/PrimeIntellect-ai/verifiers
+- `verifiers` 0.2.0 release notes (v1 API, `verifiers-rl` removal):
+  https://github.com/PrimeIntellect-ai/verifiers/releases/tag/v0.2.0
+- "verifiers v1" announcement (Taskset/Harness decomposition, trace DAG):
+  https://www.primeintellect.ai/blog/verifiers-v1
 - Will Brown / Prime Intellect environment framing:
   https://github.com/willccbb/verifiers
