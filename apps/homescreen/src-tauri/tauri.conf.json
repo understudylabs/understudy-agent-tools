@@ -21,7 +21,8 @@
           "x": 17,
           "y": 25
         },
-        "acceptFirstMouse": true
+        "acceptFirstMouse": true,
+        "theme": "Dark"
       }
     ],
     "security": {

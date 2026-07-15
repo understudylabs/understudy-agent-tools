@@ -90,59 +90,6 @@ const sources = {
   },
 };
 
-const getCurrentTheme = (): "light" | "dark" => {
-  if (typeof window !== "undefined") {
-    if (document.documentElement.classList.contains("dark")) {
-      return "dark";
-    }
-    if (window.matchMedia?.("(prefers-color-scheme: dark)").matches) {
-      return "dark";
-    }
-  }
-  return "light";
-};
-
-const useTheme = (enabled: boolean) => {
-  const [theme, setTheme] = useState<"light" | "dark">(getCurrentTheme);
-
-  useEffect(() => {
-    // Skip if not enabled (avoids unnecessary observers for non-dynamic-color variants)
-    if (!enabled) {
-      return;
-    }
-
-    // Watch for classList changes
-    const observer = new MutationObserver(() => {
-      setTheme(getCurrentTheme());
-    });
-
-    observer.observe(document.documentElement, {
-      attributeFilter: ["class"],
-      attributes: true,
-    });
-
-    // Watch for OS-level theme changes
-    let mql: MediaQueryList | null = null;
-    const handleMediaChange = () => {
-      setTheme(getCurrentTheme());
-    };
-
-    if (window.matchMedia) {
-      mql = window.matchMedia("(prefers-color-scheme: dark)");
-      mql.addEventListener("change", handleMediaChange);
-    }
-
-    return () => {
-      observer.disconnect();
-      if (mql) {
-        mql.removeEventListener("change", handleMediaChange);
-      }
-    };
-  }, [enabled]);
-
-  return theme;
-};
-
 interface PersonaWithModelProps {
   rive: ReturnType<typeof useRive>["rive"];
   source: (typeof sources)[keyof typeof sources];
@@ -151,7 +98,6 @@ interface PersonaWithModelProps {
 
 const PersonaWithModel = memo(
   ({ rive, source, children }: PersonaWithModelProps) => {
-    const theme = useTheme(source.dynamicColor);
     const viewModel = useViewModel(rive, { useDefault: true });
     const viewModelInstance = useViewModelInstance(viewModel, {
       rive,
@@ -167,9 +113,8 @@ const PersonaWithModel = memo(
         return;
       }
 
-      const [r, g, b] = theme === "dark" ? [255, 255, 255] : [0, 0, 0];
-      viewModelInstanceColor.setRgb(r, g, b);
-    }, [viewModelInstanceColor, theme, source.dynamicColor]);
+      viewModelInstanceColor.setRgb(255, 255, 255);
+    }, [viewModelInstanceColor, source.dynamicColor]);
 
     return children;
   }

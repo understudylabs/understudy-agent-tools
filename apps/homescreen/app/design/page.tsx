@@ -1,12 +1,9 @@
 "use client";
 import { Button } from "../components/ui/Button";
-import { useTheme, type Theme } from "../lib/theme";
 
 const variants = ["primary", "secondary", "ghost", "danger", "link"] as const;
 
 export default function DesignPage() {
-  const { theme, setTheme } = useTheme();
-
   return (
     <div style={{ background: "var(--color-window)", minHeight: "100vh", color: "var(--color-ink)" }}>
       <div style={{ maxWidth: 880, margin: "0 auto", padding: "40px 32px 80px" }}>
@@ -20,21 +17,8 @@ export default function DesignPage() {
           Reference atom — Button — on the native token system. Lock the look, then systematize.
         </p>
 
-        {/* theme toggle */}
+        {/* accent reference */}
         <Surface>
-          <Row label="theme">
-            <Seg>
-              {(["dark", "system", "light"] as Theme[]).map((t) => (
-                <button
-                  key={t}
-                  onClick={() => setTheme(t)}
-                  className={theme === t ? "active" : ""}
-                >
-                  {t}
-                </button>
-              ))}
-            </Seg>
-          </Row>
           <Row label="accent">
             <Swatch name="stamp" />
             <Swatch name="ok" />
@@ -77,12 +61,6 @@ export default function DesignPage() {
           </Row>
         </Surface>
       </div>
-
-      <style>{`
-        .seg { display:inline-flex; background:var(--color-card); border:1px solid var(--color-rule); border-radius:8px; padding:2px; gap:2px; }
-        .seg button { background:transparent; border:none; color:var(--color-ink-muted); font:inherit; font-size:12px; padding:4px 10px; border-radius:6px; cursor:pointer; text-transform:capitalize; }
-        .seg button.active { background:var(--color-hover); color:var(--color-ink); }
-      `}</style>
     </div>
   );
 }
@@ -131,10 +109,6 @@ function SectionTitle({ children }: { children: React.ReactNode }) {
       {children}
     </div>
   );
-}
-
-function Seg({ children }: { children: React.ReactNode }) {
-  return <div className="seg">{children}</div>;
 }
 
 function Swatch({ name }: { name: string }) {
