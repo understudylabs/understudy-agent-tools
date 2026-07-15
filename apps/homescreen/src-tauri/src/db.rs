@@ -186,6 +186,7 @@ pub struct ChatSessionSummaryRow {
     pub title: String,
     pub message_count: u64,
     pub updated_at: String,
+    pub archived_at: Option<String>,
 }
 
 #[derive(Serialize, Clone)]
@@ -418,7 +419,8 @@ fn migrate(conn: &Connection) -> Result<()> {
                 session_id TEXT PRIMARY KEY,
                 schema     TEXT NOT NULL,
                 messages   TEXT NOT NULL,
-                updated_at TEXT NOT NULL
+                updated_at TEXT NOT NULL,
+                archived_at TEXT
             );
             CREATE TABLE IF NOT EXISTS chat_runs (
                 id                INTEGER PRIMARY KEY,
@@ -558,6 +560,7 @@ fn migrate(conn: &Connection) -> Result<()> {
         "ALTER TABLE supervisor_feedback ADD COLUMN marker_id TEXT",
         "ALTER TABLE supervisor_feedback ADD COLUMN intervention_at INTEGER",
         "ALTER TABLE supervisor_feedback ADD COLUMN correct_action TEXT",
+        "ALTER TABLE chat_sessions ADD COLUMN archived_at TEXT",
     ];
     for sql in ALTERS {
         apply_alter(conn, sql)?;
@@ -565,6 +568,11 @@ fn migrate(conn: &Connection) -> Result<()> {
     conn.execute(
         "CREATE UNIQUE INDEX IF NOT EXISTS supervisor_feedback_marker_id
          ON supervisor_feedback(marker_id)",
+        [],
+    )?;
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS chat_sessions_archive_updated
+         ON chat_sessions(schema, archived_at, updated_at DESC)",
         [],
     )?;
     Ok(())
@@ -1116,7 +1124,7 @@ impl Db {
         let conn = self.conn()?;
         let mut stmt = conn.prepare(
             "SELECT session_id, schema, messages, updated_at
-             FROM chat_sessions WHERE schema=?1
+             FROM chat_sessions WHERE schema=?1 AND archived_at IS NULL
              ORDER BY updated_at DESC, rowid DESC LIMIT 1",
         )?;
         let mut rows = stmt.query([schema])?;
@@ -1153,27 +1161,71 @@ impl Db {
         &self,
         schema: &str,
         limit: u32,
+        archived: bool,
     ) -> Result<Vec<ChatSessionSummaryRow>> {
         let conn = self.conn()?;
         let mut stmt = conn.prepare(
             "SELECT session_id,
                     substr(CAST(COALESCE(json_extract(messages, '$[0].content'), '') AS TEXT), 1, 160),
                     COALESCE(json_array_length(messages), 0),
-                    updated_at
+                    updated_at,
+                    archived_at
              FROM chat_sessions
-             WHERE schema=?1 AND COALESCE(json_array_length(messages), 0) > 0
-             ORDER BY updated_at DESC, rowid DESC
-             LIMIT ?2",
+             WHERE schema=?1
+               AND COALESCE(json_array_length(messages), 0) > 0
+               AND ((?2 = 1 AND archived_at IS NOT NULL)
+                    OR (?2 = 0 AND archived_at IS NULL))
+             ORDER BY CASE WHEN ?2 = 1 THEN archived_at ELSE updated_at END DESC, rowid DESC
+             LIMIT ?3",
         )?;
-        let rows = stmt.query_map(rusqlite::params![schema, limit.clamp(1, 100)], |row| {
-            Ok(ChatSessionSummaryRow {
-                session_id: row.get(0)?,
-                title: row.get(1)?,
-                message_count: row.get(2)?,
-                updated_at: row.get(3)?,
-            })
-        })?;
+        let rows = stmt.query_map(
+            rusqlite::params![schema, archived as i64, limit.clamp(1, 100)],
+            |row| {
+                Ok(ChatSessionSummaryRow {
+                    session_id: row.get(0)?,
+                    title: row.get(1)?,
+                    message_count: row.get(2)?,
+                    updated_at: row.get(3)?,
+                    archived_at: row.get(4)?,
+                })
+            },
+        )?;
         Ok(rows.collect::<rusqlite::Result<Vec<_>>>()?)
+    }
+
+    pub fn archive_chat_session(&self, session_id: &str, schema: &str) -> Result<bool> {
+        let conn = self.conn()?;
+        let changed = conn.execute(
+            "UPDATE chat_sessions
+             SET archived_at=?3
+             WHERE session_id=?1 AND schema=?2 AND archived_at IS NULL",
+            rusqlite::params![session_id, schema, now_iso()],
+        )?;
+        Ok(changed > 0)
+    }
+
+    pub fn restore_chat_session(&self, session_id: &str, schema: &str) -> Result<bool> {
+        let conn = self.conn()?;
+        let changed = conn.execute(
+            "UPDATE chat_sessions
+             SET archived_at=NULL, updated_at=?3
+             WHERE session_id=?1 AND schema=?2 AND archived_at IS NOT NULL",
+            rusqlite::params![session_id, schema, now_iso()],
+        )?;
+        Ok(changed > 0)
+    }
+
+    pub fn archive_all_chat_sessions(&self, schema: &str) -> Result<u64> {
+        let conn = self.conn()?;
+        let changed = conn.execute(
+            "UPDATE chat_sessions
+             SET archived_at=?2
+             WHERE schema=?1
+               AND archived_at IS NULL
+               AND COALESCE(json_array_length(messages), 0) > 0",
+            rusqlite::params![schema, now_iso()],
+        )?;
+        Ok(changed as u64)
     }
 
     pub fn list_sidekick_runs(&self, limit: u32) -> Result<Vec<SidekickRunRow>> {
@@ -1449,6 +1501,38 @@ mod tests {
     }
 
     #[test]
+    fn migrate_adds_archive_state_to_existing_chat_history() {
+        let conn = Connection::open_in_memory().expect("open in-memory db");
+        conn.execute_batch(
+            "CREATE TABLE chat_sessions (
+                session_id TEXT PRIMARY KEY,
+                schema TEXT NOT NULL,
+                messages TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            );
+            INSERT INTO chat_sessions(session_id, schema, messages, updated_at)
+            VALUES ('existing', 'desktop-chat-v2', '[{\"role\":\"user\",\"content\":\"keep me\"}]', '2026-07-15T00:00:00Z');",
+        )
+        .expect("create legacy chat table");
+
+        migrate(&conn).expect("migrate existing chat history");
+        let archived_at: Option<String> = conn
+            .query_row(
+                "SELECT archived_at FROM chat_sessions WHERE session_id='existing'",
+                [],
+                |row| row.get(0),
+            )
+            .expect("read migrated archive column");
+        assert!(archived_at.is_none());
+
+        migrate(&conn).expect("repeat migration");
+        let count: u64 = conn
+            .query_row("SELECT COUNT(*) FROM chat_sessions", [], |row| row.get(0))
+            .expect("preserve existing chat row");
+        assert_eq!(count, 1);
+    }
+
+    #[test]
     fn chat_run_round_trips_canonical_identity_and_backend() {
         let (dir, db) = temp_db("chat-runtime-identity");
         db.record_chat_run(&ChatRunInput {
@@ -1530,11 +1614,12 @@ mod tests {
         )
         .unwrap();
 
-        let summaries = db.list_chat_sessions("desktop-chat-v2", 20).unwrap();
+        let summaries = db.list_chat_sessions("desktop-chat-v2", 20, false).unwrap();
         assert_eq!(summaries.len(), 2);
         assert_eq!(summaries[0].session_id, "second");
         assert_eq!(summaries[0].title, "Review the benchmark");
         assert_eq!(summaries[0].message_count, 1);
+        assert!(summaries[0].archived_at.is_none());
         assert_eq!(summaries[1].title, "Plan the launch");
 
         let exact = db
@@ -1546,6 +1631,77 @@ mod tests {
             .chat_session("missing", "desktop-chat-v2")
             .unwrap()
             .is_none());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn chat_session_archive_is_reversible_and_hidden_from_active_history() {
+        let (dir, db) = temp_db("chat-session-archive");
+        db.save_active_chat_session(
+            "first",
+            "desktop-chat-v2",
+            r#"[{"role":"user","content":"Keep this conversation"}]"#,
+        )
+        .unwrap();
+        db.save_active_chat_session(
+            "second",
+            "desktop-chat-v2",
+            r#"[{"role":"user","content":"Archive this conversation"}]"#,
+        )
+        .unwrap();
+
+        assert!(db
+            .archive_chat_session("second", "desktop-chat-v2")
+            .unwrap());
+        assert!(!db
+            .archive_chat_session("second", "desktop-chat-v2")
+            .unwrap());
+
+        let active = db.list_chat_sessions("desktop-chat-v2", 20, false).unwrap();
+        assert_eq!(active.len(), 1);
+        assert_eq!(active[0].session_id, "first");
+        assert_eq!(
+            db.latest_chat_session("desktop-chat-v2")
+                .unwrap()
+                .unwrap()
+                .session_id,
+            "first"
+        );
+
+        let archived = db.list_chat_sessions("desktop-chat-v2", 20, true).unwrap();
+        assert_eq!(archived.len(), 1);
+        assert_eq!(archived[0].session_id, "second");
+        assert!(archived[0].archived_at.is_some());
+        assert!(db
+            .chat_session("second", "desktop-chat-v2")
+            .unwrap()
+            .is_some());
+
+        assert!(db
+            .restore_chat_session("second", "desktop-chat-v2")
+            .unwrap());
+        assert!(db
+            .list_chat_sessions("desktop-chat-v2", 20, true)
+            .unwrap()
+            .is_empty());
+        assert_eq!(
+            db.list_chat_sessions("desktop-chat-v2", 20, false)
+                .unwrap()
+                .len(),
+            2
+        );
+
+        assert_eq!(db.archive_all_chat_sessions("desktop-chat-v2").unwrap(), 2);
+        assert!(db
+            .list_chat_sessions("desktop-chat-v2", 20, false)
+            .unwrap()
+            .is_empty());
+        assert_eq!(
+            db.list_chat_sessions("desktop-chat-v2", 20, true)
+                .unwrap()
+                .len(),
+            2
+        );
         let _ = std::fs::remove_dir_all(&dir);
     }
 

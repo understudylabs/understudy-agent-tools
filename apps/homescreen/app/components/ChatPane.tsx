@@ -62,6 +62,10 @@ import {
   StreamPacer,
   pacingEnabled,
 } from "../lib/stream-pacer.mjs";
+import {
+  ChatStreamBatcher,
+  type ChatStreamPatch,
+} from "../lib/chat-stream-batcher.mjs";
 import { ModelCardDrawer } from "./ModelCardDrawer";
 import type { FileUIPart } from "ai";
 import { ArrowDownIcon } from "lucide-react";
@@ -177,10 +181,6 @@ const CLOUD_MODEL: ModelChoice = {
   active: true,
 };
 
-// This survives ChatPane remounts while the app is open (for example, after
-// visiting Models) but resets with the webview on a new app launch.
-let activeChatSessionId: string | null = null;
-
 function compactBytes(bytes: number): string {
   if (bytes < 1_024) return `${bytes} B`;
   if (bytes < 1_024 * 1_024) return `${(bytes / 1_024).toFixed(1)} KB`;
@@ -246,7 +246,10 @@ function ReasoningSubstream({
 
   useEffect(() => {
     if (!active || !ref.current) return;
-    ref.current.scrollTop = ref.current.scrollHeight;
+    const frame = requestAnimationFrame(() => {
+      if (ref.current) ref.current.scrollTop = ref.current.scrollHeight;
+    });
+    return () => cancelAnimationFrame(frame);
   }, [active, text]);
 
   const expanded = active || open;
@@ -326,19 +329,22 @@ function ChatScrollTracker({
 
 export function ChatPane({
   resetToken,
+  activeSessionId,
   requestedSession,
   onSessionChange,
   onHistoryChanged,
+  onStreamingChange,
 }: {
   resetToken: number;
+  activeSessionId: string | null;
   requestedSession: ChatSessionRequest | null;
   onSessionChange?: (sessionId: string) => void;
   onHistoryChanged?: () => void;
+  onStreamingChange?: (streaming: boolean) => void;
 }) {
   const [initialSession] = useState(() => {
-    const restore = activeChatSessionId !== null;
-    const sessionId = activeChatSessionId ?? crypto.randomUUID();
-    activeChatSessionId = sessionId;
+    const restore = activeSessionId !== null;
+    const sessionId = activeSessionId ?? crypto.randomUUID();
     return { sessionId, restore };
   });
   const [messages, setMessages] = useState<Msg[]>([]);
@@ -361,6 +367,7 @@ export function ChatPane({
   const [droppedWorkload, setDroppedWorkload] = useState<DroppedWorkload | null>(null);
   const [pacingMessageIndex, setPacingMessageIndex] = useState<number | null>(null);
   const [pacedRevealed, setPacedRevealed] = useState<number | null>(null);
+  const [animatedMessageId, setAnimatedMessageId] = useState<string | null>(null);
   const observedResetToken = useRef(false);
   const observedSessionRequest = useRef<number | null>(null);
   const dropInFlight = useRef(false);
@@ -368,8 +375,38 @@ export function ChatPane({
   const selectedModelUserOwned = useRef(false);
   const streamPacer = useRef<StreamPacer | null>(null);
   const streamPacerGeneration = useRef(0);
+  const streamBatcher = useRef<ChatStreamBatcher | null>(null);
+
+  const applyAssistantPatch = (patch: ChatStreamPatch) => {
+    setMessages((current) => {
+      if (current.length === 0) return current;
+      const next = [...current];
+      const lastIndex = next.length - 1;
+      const last = next[lastIndex];
+      const baseContent = patch.replaceContent ?? last.content;
+      next[lastIndex] = {
+        ...last,
+        content: baseContent + patch.appendContent,
+        reasoning: (last.reasoning ?? "") + patch.appendReasoning,
+      };
+      return next;
+    });
+  };
+
+  useEffect(() => {
+    const batcher = new ChatStreamBatcher(applyAssistantPatch, {
+      schedule: (callback) => window.requestAnimationFrame(callback),
+      cancel: (handle) => window.cancelAnimationFrame(handle),
+    });
+    streamBatcher.current = batcher;
+    return () => {
+      batcher.dispose();
+      streamBatcher.current = null;
+    };
+  }, []);
 
   const resetStreamPacer = () => {
+    streamBatcher.current?.reset();
     streamPacerGeneration.current += 1;
     streamPacer.current?.dispose();
     streamPacer.current = null;
@@ -434,7 +471,9 @@ export function ChatPane({
         return pending;
       });
       const next = [...local, CLOUD_MODEL, ...anthropic];
-      setChoices(next);
+      setChoices((current) =>
+        JSON.stringify(current) === JSON.stringify(next) ? current : next,
+      );
       setSelectedModel((current) => {
         const resolved = resolveChatModelSelection({
           currentId: current,
@@ -446,7 +485,9 @@ export function ChatPane({
         return resolved.selectedId;
       });
     } catch {
-      setChoices([CLOUD_MODEL]);
+      setChoices((current) =>
+        current.length === 1 && current[0]?.id === CLOUD_MODEL.id ? current : [CLOUD_MODEL],
+      );
       setSelectedModel((current) => current ?? CLOUD_MODEL.id);
     }
   };
@@ -467,14 +508,19 @@ export function ChatPane({
   };
 
   useEffect(() => {
-    refreshModels();
+    void refreshModels();
+    if (streaming) return;
     const timer = window.setInterval(refreshModels, 2500);
-    return () => {
-      window.clearInterval(timer);
+    return () => window.clearInterval(timer);
+  }, [streaming]);
+
+  useEffect(
+    () => () => {
       streamPacerGeneration.current += 1;
       streamPacer.current?.dispose();
-    };
-  }, []);
+    },
+    [],
+  );
 
   useEffect(() => {
     if (!isTauri()) return;
@@ -613,6 +659,17 @@ export function ChatPane({
   }, [onSessionChange, sessionId]);
 
   useEffect(() => {
+    onStreamingChange?.(streaming);
+  }, [onStreamingChange, streaming]);
+
+  useEffect(
+    () => () => {
+      onStreamingChange?.(false);
+    },
+    [onStreamingChange],
+  );
+
+  useEffect(() => {
     setIntroThinking(true);
     const timer = window.setTimeout(() => setIntroThinking(false), 1850);
     return () => window.clearTimeout(timer);
@@ -624,10 +681,13 @@ export function ChatPane({
       invoke<SidekickEvent[]>("sidekick_events", { limit: 12 })
         .then((events) => {
           if (cancelled) return;
-          setSidekickEvents(events.filter((event) => event.session_id === sessionId));
+          const next = events.filter((event) => event.session_id === sessionId);
+          setSidekickEvents((current) =>
+            JSON.stringify(current) === JSON.stringify(next) ? current : next,
+          );
         })
         .catch(() => {
-          if (!cancelled) setSidekickEvents([]);
+          if (!cancelled) setSidekickEvents((current) => current.length === 0 ? current : []);
         });
     };
     refreshSidekickEvents();
@@ -686,6 +746,7 @@ export function ChatPane({
       ...messages,
       { role: "user", content: clean, model: choice.label, attachments },
     ];
+    setAnimatedMessageId(`${sessionId}:message:${messages.length}`);
     const turnPacer = startStreamPacer(toSend.length);
     setMessages([...toSend, { role: "assistant", content: "", reasoning: "", model: choice.label }]);
     setStreaming(true);
@@ -698,32 +759,18 @@ export function ChatPane({
       } else if (msg.type === "Chunk") {
         setAssistantSpeaking(true);
         turnPacer?.append(msg.text);
-        setMessages((prev) => {
-          if (prev.length === 0) return prev;
-          const p = [...prev];
-          const last = p.length - 1;
-          p[last] = { ...p[last], content: p[last].content + msg.text };
-          return p;
-        });
+        if (streamBatcher.current) streamBatcher.current.appendContent(msg.text);
+        else applyAssistantPatch({ replaceContent: null, appendContent: msg.text, appendReasoning: "" });
       } else if (msg.type === "ReplaceChunk") {
         setAssistantSpeaking(true);
         turnPacer?.replace(msg.text);
-        setMessages((prev) => {
-          if (prev.length === 0) return prev;
-          const p = [...prev];
-          const last = p.length - 1;
-          p[last] = { ...p[last], content: msg.text };
-          return p;
-        });
+        if (streamBatcher.current) streamBatcher.current.replaceContent(msg.text);
+        else applyAssistantPatch({ replaceContent: msg.text, appendContent: "", appendReasoning: "" });
       } else if (msg.type === "ReasoningChunk") {
-        setMessages((prev) => {
-          if (prev.length === 0) return prev;
-          const p = [...prev];
-          const last = p.length - 1;
-          p[last] = { ...p[last], reasoning: (p[last].reasoning ?? "") + msg.text };
-          return p;
-        });
+        if (streamBatcher.current) streamBatcher.current.appendReasoning(msg.text);
+        else applyAssistantPatch({ replaceContent: null, appendContent: "", appendReasoning: msg.text });
       } else if (msg.type === "ToolCall") {
+        streamBatcher.current?.flush();
         setMessages((prev) => {
           if (prev.length === 0) return prev;
           const p = [...prev];
@@ -738,6 +785,7 @@ export function ChatPane({
           return p;
         });
       } else if (msg.type === "ToolResult") {
+        streamBatcher.current?.flush();
         setMessages((prev) => {
           if (prev.length === 0) return prev;
           const p = [...prev];
@@ -774,11 +822,13 @@ export function ChatPane({
           ...prev.filter((event) => event.session_id === sessionId),
         ].slice(0, 12));
       } else if (msg.type === "Error") {
+        streamBatcher.current?.flush();
         turnPacer?.skip();
         setErr(msg.message);
         setStreaming(false);
         setAssistantSpeaking(false);
       } else if (msg.type === "Done") {
+        streamBatcher.current?.flush();
         turnPacer?.finish();
         setStreaming(false);
         setAssistantSpeaking(false);
@@ -799,6 +849,7 @@ export function ChatPane({
         onEvent: ch,
       });
     } catch (e: unknown) {
+      streamBatcher.current?.flush();
       turnPacer?.skip();
       setErr(String(e));
       setStreaming(false);
@@ -834,7 +885,7 @@ export function ChatPane({
         });
     }
     const nextSessionId = crypto.randomUUID();
-    activeChatSessionId = nextSessionId;
+    setAnimatedMessageId(null);
     setMessages([]);
     setInput("");
     setErr(null);
@@ -882,7 +933,7 @@ export function ChatPane({
       const restored = await hydrateSavedMessages(saved);
       if (!restored) return;
       resetStreamPacer();
-      activeChatSessionId = saved.session_id;
+      setAnimatedMessageId(null);
       setSessionId(saved.session_id);
       setMessages(restored);
       setSessionHydrated(true);
@@ -1024,6 +1075,10 @@ export function ChatPane({
                   key={messageId}
                   messageId={messageId}
                   scrollAnchor={m.role === "user"}
+                  className={messageId === animatedMessageId ? "chat-message-enter" : undefined}
+                  onAnimationEnd={() => {
+                    if (messageId === animatedMessageId) setAnimatedMessageId(null);
+                  }}
                 >
                   <Message
                     from={m.role}

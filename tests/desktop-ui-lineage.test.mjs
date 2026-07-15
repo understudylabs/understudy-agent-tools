@@ -106,6 +106,18 @@ const streamPacerPath = new URL(
   "../apps/homescreen/app/lib/stream-pacer.mjs",
   import.meta.url,
 );
+const streamBatcherPath = new URL(
+  "../apps/homescreen/app/lib/chat-stream-batcher.mjs",
+  import.meta.url,
+);
+const desktopDbPath = new URL(
+  "../apps/homescreen/src-tauri/src/db.rs",
+  import.meta.url,
+);
+const desktopCommandsPath = new URL(
+  "../apps/homescreen/src-tauri/src/commands.rs",
+  import.meta.url,
+);
 const modelSelectionPath = new URL(
   "../apps/homescreen/app/lib/model-selection.mjs",
   import.meta.url,
@@ -166,9 +178,9 @@ test("public desktop preserves the reviewed Train interaction language", async (
   );
   assert.match(chat, /msg\.stage === "cloud_fallback_local"/);
 
-  assert.match(sidebar, /<div className="nav-section">Chats<\/div>/);
-  assert.match(sidebar, /aria-label="Recent chats"/);
-  assert.match(sidebar, /sessions\.map\(\(session\) =>/);
+  assert.match(sidebar, /<div className="nav-section">\{showArchived \? "Archived" : "Chats"\}<\/div>/);
+  assert.match(sidebar, /aria-label=\{showArchived \? "Archived chats" : "Recent chats"\}/);
+  assert.match(sidebar, /visibleSessions\.map\(\(session\) =>/);
   assert.match(sidebar, /onSelectSession\(session\.session_id\)/);
   assert.match(sidebar, /onSelect\("account"\)/);
   assert.doesNotMatch(sidebar, /SERVING_NAV/);
@@ -193,6 +205,55 @@ test("reading pace is quiet, optional, and safe across teacher replacement", asy
   assert.match(pacer, /understudy\.pacing/);
   assert.match(pacer, /prefers-reduced-motion: reduce/);
   assert.match(pacer, /rejected student text can never survive in the hidden buffer/);
+});
+
+test("chat streaming batches paint work and only animates compositor-safe properties", async () => {
+  const [chat, css, batcher] = await Promise.all([
+    readFile(chatPath, "utf8"),
+    readFile(cssPath, "utf8"),
+    readFile(streamBatcherPath, "utf8"),
+  ]);
+
+  assert.match(chat, /new ChatStreamBatcher\(applyAssistantPatch/);
+  assert.match(chat, /streamBatcher\.current\?\.flush\(\)/);
+  assert.match(chat, /requestAnimationFrame\(\(\) =>/);
+  assert.match(chat, /useMessageScrollerVisibility/);
+  assert.match(chat, /defaultScrollPosition="last-anchor"/);
+  assert.match(chat, /messageId=\{messageId\}/);
+  assert.match(chat, /className=\{messageId === animatedMessageId \? "chat-message-enter" : undefined\}/);
+  assert.match(batcher, /this\.#scheduled = this\.#schedule\(\(\) =>/);
+  assert.match(css, /@keyframes chat-message-enter\s*\{[\s\S]*?opacity:[\s\S]*?transform:/);
+  const animationRule = css.match(/@keyframes chat-message-enter\s*\{[\s\S]*?\n\}/)?.[0] ?? "";
+  assert.doesNotMatch(animationRule, /height|margin|padding/);
+  assert.match(css, /prefers-reduced-motion: reduce[\s\S]*?\.chat-message-enter/);
+});
+
+test("chat archive is reversible, excludes active history, and never deletes rows", async () => {
+  const [page, sidebar, commands, db, native] = await Promise.all([
+    readFile(pagePath, "utf8"),
+    readFile(sidebarPath, "utf8"),
+    readFile(desktopCommandsPath, "utf8"),
+    readFile(desktopDbPath, "utf8"),
+    readFile(tauriLibPath, "utf8"),
+  ]);
+
+  assert.match(page, /"chat_session_archive"/);
+  assert.match(page, /"chat_session_restore"/);
+  assert.match(page, /"chat_sessions_archive_all"/);
+  assert.match(page, /Stop the current response before archiving/);
+  assert.match(sidebar, /Archive all chats/);
+  assert.match(sidebar, /remain on this Mac\. You can restore them anytime/);
+  assert.match(sidebar, /aria-label=\{showArchived \? "Archived chats" : "Recent chats"\}/);
+  assert.match(commands, /pub fn chat_session_archive/);
+  assert.match(commands, /pub fn chat_session_restore/);
+  assert.match(commands, /pub fn chat_sessions_archive_all/);
+  assert.match(db, /archived_at TEXT/);
+  assert.match(db, /archived_at IS NULL/);
+  assert.match(db, /SET archived_at=NULL/);
+  assert.doesNotMatch(db, /DELETE FROM chat_sessions/);
+  assert.match(native, /commands::chat_session_archive/);
+  assert.match(native, /commands::chat_session_restore/);
+  assert.match(native, /commands::chat_sessions_archive_all/);
 });
 
 test("cold-start cloud fallback yields to local without overriding a human choice", async () => {
@@ -352,12 +413,14 @@ test("desktop starts fresh on launch and can reopen an exact Pi session", async 
     readFile(new URL("../apps/homescreen/src-tauri/src/commands.rs", import.meta.url), "utf8"),
   ]);
 
-  assert.match(chat, /let activeChatSessionId: string \| null = null/);
-  assert.match(chat, /const restore = activeChatSessionId !== null/);
+  assert.match(page, /const \[activeChatSessionId, setActiveChatSessionId\] = useState<string \| null>\(null\)/);
+  assert.match(chat, /const restore = activeSessionId !== null/);
   assert.doesNotMatch(chat, /invoke<PersistedChatSession \| null>\("chat_session_latest"\)/);
   assert.match(page, /"chat_sessions_list"/);
   assert.match(chat, /"chat_session_get"/);
-  assert.match(chat, /activeChatSessionId = saved\.session_id/);
+  assert.match(chat, /onSessionChange\?\.\(sessionId\)/);
+  assert.match(page, /activeSessionId=\{activeChatSessionId\}/);
+  assert.match(page, /setActiveChatSessionId\(null\);[\s\S]*?setChatResetToken/);
   assert.match(
     chat,
     /const restoreHistorySession = async[\s\S]*?finally \{[\s\S]*?setSessionHydrated\(true\);/,
@@ -367,7 +430,7 @@ test("desktop starts fresh on launch and can reopen an exact Pi session", async 
     /const resetDroppedWorkload = \(\) => \{[\s\S]*dropRequestGeneration\.current \+= 1;[\s\S]*dropInFlight\.current = false;[\s\S]*setDropRunning\(false\);/,
   );
   assert.equal(chat.match(/resetDroppedWorkload\(\);/g)?.length, 2);
-  assert.match(sidebar, /aria-label="Recent chats"/);
+  assert.match(sidebar, /aria-label=\{showArchived \? "Archived chats" : "Recent chats"\}/);
   assert.doesNotMatch(page, /aria-label="Chat history"/);
   assert.match(commands, /pub fn chat_sessions_list/);
   assert.match(commands, /pub fn chat_session_get/);
