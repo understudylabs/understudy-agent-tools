@@ -73,6 +73,7 @@ import {
 import {
   INITIAL_WORKLOAD_DROP_PHASE,
   isWorkloadDropBusy,
+  shouldInspectDroppedTable,
   workloadDropPersonaState,
   workloadDropReducer,
   workloadDropStatus,
@@ -736,10 +737,17 @@ export function ChatPane({
           .then(async (result) => {
             if (disposed || dropRequestGeneration.current !== requestGeneration) return;
             setDroppedWorkload(result);
-            const isCsv = result.source_type === "file" && (result.source_kinds["csv-data"] ?? 0) === 1;
-            if (isCsv) {
+            const inspectTable = shouldInspectDroppedTable(result);
+            if (inspectTable) {
               dispatchDrop({ type: "inspection_started" });
-              await inspectCsvWorkload(result, requestGeneration);
+              try {
+                await inspectCsvWorkload(result, requestGeneration);
+              } catch (error) {
+                const extensionless = !result.source_name.includes(".");
+                if (!extensionless) throw error;
+                dispatchDrop({ type: "succeeded" });
+                setNotice("Workload draft created locally; this extensionless file is not a supported table.");
+              }
             } else {
               dispatchDrop({ type: "succeeded" });
               setNotice(

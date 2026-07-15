@@ -91,6 +91,35 @@ test("Desktop E2E harness prepares identical private splits through fake and lau
   }
 });
 
+test("Desktop E2E harness accepts the extensionless tabular shape used by public UCI datasets", async () => {
+  const root = mkdtempSync(join(tmpdir(), "understudy-desktop-e2e-tabular-"));
+  const source = join(root, "SMSSpamCollection");
+  const rows = Array.from({ length: 48 }, (_, index) => {
+    const first = String.fromCharCode(97 + Math.floor(index / 26));
+    const second = String.fromCharCode(97 + (index % 26));
+    return `${index % 2 === 0 ? "ham" : "spam"}\tmessage token ${first}${second} for local classification`;
+  });
+  writeFileSync(source, `${rows.join("\n")}\n`);
+  try {
+    const report = await runDesktopE2EHarness({
+      mode: "fake",
+      csvPath: source,
+      outputRoot: join(root, "run"),
+      acceptRecommendedMapping: true,
+    });
+    assert.equal(report.ok, true, report.errors.join("\n"));
+    assert.equal(report.terminal_state, "ready");
+    assert.deepEqual(report.dataset.mapping, {
+      input_columns: ["text"],
+      label_column: "label",
+      group_column: "text",
+      text_template: "named-fields-v1",
+    });
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+});
+
 test("Desktop E2E harness stops honestly when the CSV has too little repeated signal", async () => {
   const root = mkdtempSync(join(tmpdir(), "understudy-desktop-e2e-small-"));
   try {

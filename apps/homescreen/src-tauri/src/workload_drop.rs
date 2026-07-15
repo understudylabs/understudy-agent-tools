@@ -219,14 +219,8 @@ fn inspect_csv(path: String, artifact_root: String) -> Result<Value, String> {
     let canonical = PathBuf::from(path.trim())
         .canonicalize()
         .map_err(|error| format!("The CSV is unavailable: {error}"))?;
-    if !canonical.is_file()
-        || canonical
-            .extension()
-            .and_then(|extension| extension.to_str())
-            .map(|extension| !extension.eq_ignore_ascii_case("csv"))
-            .unwrap_or(true)
-    {
-        return Err("Local training inspection requires one .csv file.".into());
+    if !canonical.is_file() {
+        return Err("Local training inspection requires one delimited text file.".into());
     }
     let canonical_artifact_root = PathBuf::from(artifact_root.trim())
         .canonicalize()
@@ -281,17 +275,12 @@ fn prepare_classification(
         .canonicalize()
         .map_err(|error| format!("The workload artifact root is unavailable: {error}"))?;
     if !canonical.is_file()
-        || canonical
-            .extension()
-            .and_then(|extension| extension.to_str())
-            .map(|extension| !extension.eq_ignore_ascii_case("csv"))
-            .unwrap_or(true)
         || !canonical_artifact_root.join("workload-card.json").is_file()
         || !canonical_artifact_root
             .join("csv-inspection.json")
             .is_file()
     {
-        return Err("Prepare training data from the current inspected CSV.".into());
+        return Err("Prepare training data from the current inspected table.".into());
     }
     if input_columns.is_empty()
         || input_columns.len() > 127

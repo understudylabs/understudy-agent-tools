@@ -249,6 +249,7 @@ pub fn run() {
             commands::disconnect,
             commands::list_models,
             commands::list_snapshot_models,
+            commands::prepare_default_local_model,
             commands::mlx_runtime_status,
             commands::set_app_icon,
             commands::bootstrap_status,

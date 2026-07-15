@@ -366,14 +366,15 @@ async function captureScreenshot(command, output, cwd, events) {
   return output;
 }
 
-function validateCsv(path) {
+function validateTable(path) {
   const canonical = realpathSync(path);
   const metadata = statSync(canonical);
-  if (!metadata.isFile() || extname(canonical).toLowerCase() !== ".csv") {
-    throw new Error("Desktop E2E requires one local .csv file");
+  const extension = extname(canonical).toLowerCase();
+  if (!metadata.isFile() || !["", ".csv", ".tsv", ".tab", ".txt"].includes(extension)) {
+    throw new Error("Desktop E2E requires one local delimited text file");
   }
   if (metadata.size > MAX_CSV_BYTES) {
-    throw new Error(`CSV exceeds the harness limit of ${MAX_CSV_BYTES} bytes`);
+    throw new Error(`Table exceeds the harness limit of ${MAX_CSV_BYTES} bytes`);
   }
   return { path: canonical, bytes: metadata.size };
 }
@@ -458,7 +459,7 @@ export async function runDesktopE2EHarness({
 
   transition("idle");
   try {
-    const source = validateCsv(csvPath);
+    const source = validateTable(csvPath);
     const sourceSha256 = await sha256File(source.path);
     transition("launching", mode === "fake" ? "CI desktop API test double" : "real Desktop");
     if (mode === "fake") {
@@ -761,7 +762,7 @@ Modes:
                 drag/drop events or assert Rive animation/rendered pixels.
 
 Options:
-  --csv path                         Source CSV (required).
+  --csv path                         Source CSV, TSV, TXT, or extensionless delimited table (required).
   --output path                      Private local evidence directory.
   --capability path                  Existing Desktop API capability file for real mode.
   --app-command-json '["cmd",...]'  Launch command for real mode.

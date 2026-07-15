@@ -347,8 +347,8 @@ function registerCaptureImportCommands(program: Command): void {
 
   captureImport
     .command("inspect-csv")
-    .description("Read one bounded local CSV and write a statistics-only training inspection")
-    .requiredOption("--source <path>", "Local CSV file to inspect")
+    .description("Read one bounded local delimited table and write a statistics-only training inspection")
+    .requiredOption("--source <path>", "Local CSV, TSV, tab, text, or extensionless table to inspect")
     .requiredOption("--artifact-root <path>", "Existing private artifact root from capture-import compile")
     .option("--json", "Output JSON")
     .action((options: { source: string; artifactRoot: string; json?: boolean }) => {
@@ -365,8 +365,8 @@ function registerCaptureImportCommands(program: Command): void {
 
   captureImport
     .command("prepare-classification")
-    .description("Transform an inspected CSV into deterministic local train, dev, and holdout JSONL")
-    .requiredOption("--source <path>", "Inspected local CSV file")
+    .description("Transform an inspected table into deterministic local train, dev, and holdout JSONL")
+    .requiredOption("--source <path>", "Inspected local delimited table")
     .requiredOption("--artifact-root <path>", "Existing private artifact root from capture-import compile")
     .requiredOption("--label-column <name>", "Caller-confirmed label column")
     .requiredOption("--group-column <name>", "Caller-confirmed merchant, payee, or description leakage group")

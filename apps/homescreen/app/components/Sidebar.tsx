@@ -109,9 +109,7 @@ export function Sidebar({
         {historyLoading && visibleSessions.length === 0 ? (
           <div className="chat-nav-empty">Loading chats…</div>
         ) : visibleSessions.length === 0 ? (
-          <div className="chat-nav-empty">
-            {showArchived ? "No archived chats." : "No saved chats yet."}
-          </div>
+          showArchived ? <div className="chat-nav-empty">No archived chats.</div> : null
         ) : (
           visibleSessions.map((session) => {
             const isActive = active === "chat" && activeSessionId === session.session_id;
