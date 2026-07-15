@@ -434,7 +434,7 @@ test("desktop starts fresh on launch and can reopen an exact Pi session", async 
     chat,
     /const resetDroppedWorkload = \(\) => \{[\s\S]*dropRequestGeneration\.current \+= 1;[\s\S]*dropInFlight\.current = false;[\s\S]*dispatchDrop\(\{ type: "reset" \}\);/,
   );
-  assert.equal(chat.match(/resetDroppedWorkload\(\);/g)?.length, 2);
+  assert.equal(chat.match(/resetDroppedWorkload\(\);/g)?.length, 3);
   assert.match(sidebar, /aria-label=\{showArchived \? "Archived chats" : "Recent chats"\}/);
   assert.doesNotMatch(page, /aria-label="Chat history"/);
   assert.match(commands, /pub fn chat_sessions_list/);

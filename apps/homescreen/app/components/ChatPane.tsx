@@ -1371,8 +1371,8 @@ export function ChatPane({
                       type="button"
                       className="btn ghost"
                       onClick={() => {
-                        setDroppedWorkload(null);
-                        dispatchDrop({ type: "reset" });
+                        setNotice(null);
+                        resetDroppedWorkload();
                       }}
                     >
                       Dismiss
