@@ -132,6 +132,21 @@ url = "https://api.understudylabs.com/v1"
 key = "UNDERSTUDY_API_KEY"
 ```
 
+**Addressing the candidate arm before any dial changes.** The incumbent arm
+is easy — call the workload's current route. For the candidate there are two
+options, by what the change actually is:
+
+- **Model/prompt change:** call the candidate model id directly through the
+  gateway (`model = "<candidate id>"` in its endpoint block). This exercises
+  the same serving path production will use for that model — including
+  structured-output handling — without touching any live route.
+- **Route change** (the production model id stays, the routing behind it
+  changes): use a dedicated test workload or staging project with the
+  proposed route dialed to 100%, so the replay traverses the exact
+  model-id rewrite production will perform. Never point the gate at the
+  production workload's dial — changing that is `ramp-and-verify`'s job,
+  after the verdict.
+
 Then one run per arm, same rows and seed:
 
 ```sh

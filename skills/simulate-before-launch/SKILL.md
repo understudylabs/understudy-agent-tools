@@ -1,6 +1,6 @@
 ---
 name: simulate-before-launch
-description: Use when a model-level change — a model swap, route change, prompt or playbook edit — is about to ship and the developer wants confidence before prod: "will this work in prod", "run a simulator before I flip traffic", "gate model changes like a pre-commit check", "would this have caught the regression". Replays frozen tasks offline, scores output contracts, emits a launch verdict.
+description: Use when a model-level change — a model swap, route change, prompt or playbook edit — is about to ship and the developer wants confidence before prod: "will this work in prod", "run a simulator before I flip traffic", "gate model changes like a pre-commit check". Replays frozen tasks offline, scores output contracts, emits a launch verdict.
 metadata:
   understudy:
     mode: interactive
