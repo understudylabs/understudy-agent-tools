@@ -105,6 +105,13 @@ Two checks beyond the scripted oracle, before any model score is trusted:
   score near 0 — the precision and forbidden-write axes are what keep recall
   un-gameable. A validator that hasn't rejected a sentinel has not been
   tested.
+- **The right-answer-wrong-contract sentinel.** A run whose *content* is
+  correct but whose *shape* breaks the caller — the canonical case is the
+  gold answer as valid JSON wrapped in markdown fences, which leaves an
+  SDK's parsed `.object` undefined while every quality axis passes. Quality
+  must stay high and a separate contract axis must read 0 — proving the
+  validator separates "right answer" from "parseable in production"
+  (implementation in the example env's `smoke.py`).
 
 ## Running it as a real `verifiers` env
 
@@ -148,7 +155,11 @@ within days of release. Note `0.2.0` ships **two API generations** — everythin
 below is the **v0 API**, still exported and working but frozen upstream
 (deprecated, no new features); new upstream work lands in the `verifiers.v1`
 Taskset/Harness/Runtime namespace (landscape notes in
-[`reference.md`](reference.md)). Never mix v0 and v1 in one environment:
+[`reference.md`](reference.md)). Never mix v0 and v1 in one environment.
+Don't start from a blank file: the traces→env recipe is
+[`references/cookbook-traces-to-env.md`](references/cookbook-traces-to-env.md)
+and the copyable, smoke-tested scaffold is
+[`examples/event-categorizer/`](examples/event-categorizer/README.md):
 
 - `vf.ToolEnv(tools=[fns], max_turns=, **kwargs)` — `dataset`, `rubric`,
   `system_prompt` pass through `**kwargs` to `MultiTurnEnv`; tools are plain
@@ -179,6 +190,8 @@ recall/precision/policy + cost/latency — with the local-model gap to close.
 
 ## References
 
+- [`references/cookbook-traces-to-env.md`](references/cookbook-traces-to-env.md) — the stage-by-stage recipe from captured traces/tests to a runnable verifiers env (gold policies, tool-stub strategies, contract rubric, playbook-as-argument, validator gates).
+- [`examples/event-categorizer/`](examples/event-categorizer/README.md) — complete synthetic scaffold: env module, tasks, swappable playbooks, capture converter, and an offline `smoke.py` verified against `verifiers==0.2.0`.
 - [`../understand-workload/SKILL.md`](../understand-workload/SKILL.md) — produces the shape this simulates.
 - [`../recursive-language-model/SKILL.md`](../recursive-language-model/SKILL.md) — the harness that lifts a small model's score in this env.
 - [`../optimize-agentic-workload/SKILL.md`](../optimize-agentic-workload/SKILL.md) — the agentic-workload metric axes and final-state validation.

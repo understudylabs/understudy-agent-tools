@@ -87,7 +87,12 @@ group it belongs to.
   builds a seeded, synthetic, scorable environment (AutomationBench /
   verifiers style) plus final-state validator so any candidate model can run a
   captured agentic workload end-to-end and be judged on outcome — a recorded
-  replay cannot host a different model's trajectory.
+  replay cannot host a different model's trajectory. Its traces→env cookbook
+  ([`references/cookbook-traces-to-env.md`](design-simulated-environment/references/cookbook-traces-to-env.md))
+  and copyable smoke-tested scaffold
+  ([`examples/event-categorizer/`](design-simulated-environment/examples/event-categorizer/README.md))
+  take a developer from captured traces or existing tests to a runnable
+  verifiers environment without starting blank.
 
 ## Local Models
 

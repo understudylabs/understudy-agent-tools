@@ -40,6 +40,15 @@ upstream has frozen (deprecated, no new features):
   kwargs such as `prompt`, `completion`, `answer`, and `state`.
 - `env.evaluate` is async. Use `evaluate_sync` for blocking calls and pass a
   `ClientConfig`; do not pass a raw client object.
+- `Rubric.score_rollout(state)` returns `None` — it writes `state["reward"]`
+  and `state["metrics"]` (verified by running the example env's smoke test
+  against a real `0.2.0` install).
+- `uv` cannot resolve `verifiers==0.2.0` without `--prerelease=allow`: its
+  `renderers` dependency is dev-pinned (`>=0.1.8.dev40`).
+- Reward funcs receive typed message objects in real rollouts (`.role`,
+  `.content`, `.tool_calls` → `ToolCall.name`/`.arguments`); write helpers
+  that accept dicts too so hand-built test states keep working (pattern in
+  [`examples/event-categorizer/event_categorizer.py`](examples/event-categorizer/event_categorizer.py)).
 
 ## The `verifiers.v1` Landscape (0.2.0, source-verified 2026-07-14)
 

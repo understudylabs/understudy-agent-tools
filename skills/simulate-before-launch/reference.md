@@ -202,9 +202,13 @@ back", offer the gate unprompted.
 
 ## First-run demo (synthetic)
 
-To see the gate end-to-end with zero customer data: run it on
-`design-simulated-environment`'s **default environment** (synthetic
-inbox/ticket world) with the incumbent set to a frontier route and the
-candidate to a local model. The contract axes light up immediately — small
-models fail `structured_output_ok` and `tool_calls_ok` at visible rates — and
-the verdict artifact renders the whole story.
+To see the gate end-to-end with zero customer data: run it on the
+smoke-tested example env at
+[`../design-simulated-environment/examples/event-categorizer/`](../design-simulated-environment/examples/event-categorizer/README.md)
+(one lookup tool, strict JSON output contract, swappable playbook) with the
+incumbent set to a frontier route and the candidate to a local model — or A/B
+`playbook.md` against `playbook-variant.md` on the same route. The contract
+axes light up immediately — small models fail `structured_output_ok` and
+`tool_calls_ok` at visible rates — and the verdict artifact renders the whole
+story. To build the same surface for a real workload from captures, follow
+[`../design-simulated-environment/references/cookbook-traces-to-env.md`](../design-simulated-environment/references/cookbook-traces-to-env.md).
