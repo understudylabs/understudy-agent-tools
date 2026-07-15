@@ -43,6 +43,20 @@ test("busy compiler state cannot be replaced by incidental drag events", () => {
   assert.equal(workloadDropReducer("failed", { type: "reset" }), "idle");
 });
 
+test("explicit CSV inspection is a truthful thinking phase", () => {
+  let phase = workloadDropReducer("ready", { type: "inspection_started" });
+  assert.equal(phase, "inspecting");
+  assert.equal(isWorkloadDropBusy(phase), true);
+  assert.equal(workloadDropPersonaState(phase), "thinking");
+  assert.deepEqual(workloadDropStatus(phase), {
+    title: "Inspecting training data",
+    detail: "Reading this CSV locally · source rows will not be copied",
+  });
+  phase = workloadDropReducer(phase, { type: "inspection_succeeded" });
+  assert.equal(phase, "ready");
+  assert.equal(workloadDropReducer("failed", { type: "inspection_started" }), "inspecting");
+});
+
 test("out-of-order completion cannot mark an idle lifecycle ready", () => {
   assert.equal(workloadDropReducer("idle", { type: "succeeded" }), "idle");
   assert.equal(workloadDropReducer("ready", { type: "failed" }), "ready");

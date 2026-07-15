@@ -66,6 +66,60 @@ export type CaptureCompileResult = {
   workload_card_path: string;
 };
 
+export type CaptureCsvColumnSummary = {
+  name: string;
+  non_empty_count: number;
+  empty_count: number;
+  unique_count: number;
+  unique_ratio: number;
+  numeric_count: number;
+  numeric_ratio: number;
+};
+
+export type CaptureCsvInspection = {
+  schema_version: "understudy.capture_import.csv_inspection.v1";
+  generated_at: string;
+  source_name: string;
+  source_path: string;
+  source_sha256: string;
+  source_bytes: number;
+  local_only: true;
+  payload_read: true;
+  source_rows_persisted: false;
+  persisted_data: "statistics-and-label-aggregates";
+  row_count: number;
+  column_count: number;
+  duplicate_row_count: number;
+  columns: CaptureCsvColumnSummary[];
+  recommended_mapping: {
+    label_column: string | null;
+    input_columns: string[];
+    confidence: "high" | "low" | "none";
+    requires_confirmation: true;
+  };
+  label_distribution: {
+    value: string;
+    count: number;
+  }[];
+  label_distribution_truncated: boolean;
+  training_readiness: {
+    ready: boolean;
+    status: "ready" | "needs_mapping" | "needs_data" | "needs_cleanup";
+    class_count: number;
+    minimum_examples_per_class: number | null;
+    reasons: string[];
+    warnings: string[];
+  };
+  limits: {
+    max_bytes: number;
+    max_rows: number;
+    max_columns: number;
+    max_field_characters: number;
+    max_reported_labels: number;
+  };
+  artifact_path: string;
+};
+
 export type CapturePreview = {
   generated_at: string;
   repo: string;
@@ -181,6 +235,12 @@ const kindOrder: CaptureSourceKind[] = [
 
 const MAX_SCAN_FILES = 5_000;
 const MAX_CAPTURE_SOURCES = 1_000;
+const MAX_CSV_BYTES = 16 * 1024 * 1024;
+const MAX_CSV_ROWS = 50_000;
+const MAX_CSV_COLUMNS = 128;
+const MAX_CSV_FIELD_CHARACTERS = 65_536;
+const MAX_REPORTED_LABELS = 50;
+const MIN_EXAMPLES_PER_CLASS = 20;
 
 export function artifactDir(repo: string): string {
   return join(repo, ".understudy", "capture-import");
@@ -428,6 +488,297 @@ export function compileCaptureImport(
     manifest_path: join(outputDir, "capture-sources.json"),
     workload_card_path: join(outputDir, "workload-card.json"),
   };
+}
+
+export function inspectCaptureCsv(
+  sourceInput: string,
+  artifactRootInput: string,
+  now = new Date(),
+): CaptureCsvInspection {
+  const source = resolve(sourceInput);
+  if (!existsSync(source)) {
+    throw new Error(`CSV source does not exist: ${source}`);
+  }
+  const sourceStat = statSync(source);
+  if (!sourceStat.isFile()) {
+    throw new Error(`CSV inspection requires one file: ${source}`);
+  }
+  if (extname(source).toLowerCase() !== ".csv") {
+    throw new Error(`CSV inspection only accepts .csv files: ${source}`);
+  }
+  if (sourceStat.size > MAX_CSV_BYTES) {
+    throw new Error(`CSV is ${sourceStat.size} bytes; the local inspection limit is ${MAX_CSV_BYTES} bytes.`);
+  }
+
+  const artifactRoot = resolve(artifactRootInput);
+  if (!existsSync(artifactRoot) || !statSync(artifactRoot).isDirectory()) {
+    throw new Error(`Capture artifact root does not exist: ${artifactRoot}`);
+  }
+
+  const bytes = readFileSync(source);
+  if (bytes.length > MAX_CSV_BYTES) {
+    throw new Error(`CSV grew beyond the ${MAX_CSV_BYTES}-byte local inspection limit while it was being read.`);
+  }
+  let text: string;
+  try {
+    text = new TextDecoder("utf-8", { fatal: true }).decode(bytes);
+  } catch {
+    throw new Error("CSV must be valid UTF-8 before local inspection.");
+  }
+  if (text.charCodeAt(0) === 0xfeff) text = text.slice(1);
+  const records = parseCsvRecordsBounded(text).filter((record) =>
+    record.some((field) => field.trim().length > 0),
+  );
+  if (records.length < 2) {
+    throw new Error("CSV needs one header row and at least one data row.");
+  }
+
+  const headers = records[0].map((field) => field.trim());
+  if (headers.length > MAX_CSV_COLUMNS) {
+    throw new Error(`CSV has ${headers.length} columns; the local inspection limit is ${MAX_CSV_COLUMNS}.`);
+  }
+  if (headers.some((header) => header.length === 0)) {
+    throw new Error("CSV headers must not be empty.");
+  }
+  const normalizedHeaders = headers.map(normalizeHeader);
+  if (new Set(normalizedHeaders).size !== normalizedHeaders.length) {
+    throw new Error("CSV headers must be unique after case and spacing normalization.");
+  }
+
+  const rows = records.slice(1);
+  if (rows.length > MAX_CSV_ROWS) {
+    throw new Error(`CSV has more than ${MAX_CSV_ROWS} data rows; split it before local inspection.`);
+  }
+  rows.forEach((row, index) => {
+    if (row.length !== headers.length) {
+      throw new Error(
+        `CSV record ${index + 2} has ${row.length} fields; expected ${headers.length}.`,
+      );
+    }
+  });
+
+  const columns = headers.map((name, columnIndex): CaptureCsvColumnSummary => {
+    const values = rows.map((row) => row[columnIndex].trim());
+    const nonEmpty = values.filter(Boolean);
+    const numericCount = nonEmpty.filter(isFiniteNumber).length;
+    return {
+      name,
+      non_empty_count: nonEmpty.length,
+      empty_count: rows.length - nonEmpty.length,
+      unique_count: new Set(nonEmpty).size,
+      unique_ratio: ratio(new Set(nonEmpty).size, nonEmpty.length),
+      numeric_count: numericCount,
+      numeric_ratio: ratio(numericCount, nonEmpty.length),
+    };
+  });
+
+  const labelCandidate = chooseLabelColumn(headers, columns);
+  const labelIndex = labelCandidate ? headers.indexOf(labelCandidate.name) : -1;
+  const inputColumns = headers.filter((name, index) => index !== labelIndex && columns[index].non_empty_count > 0);
+  const labelCounts = new Map<string, number>();
+  if (labelIndex >= 0) {
+    for (const row of rows) {
+      const label = row[labelIndex].trim();
+      if (label) labelCounts.set(label, (labelCounts.get(label) ?? 0) + 1);
+    }
+  }
+  const sortedLabels = [...labelCounts.entries()]
+    .sort((left, right) => right[1] - left[1] || left[0].localeCompare(right[0]));
+  const minimumExamples = sortedLabels.length > 0
+    ? Math.min(...sortedLabels.map(([, count]) => count))
+    : null;
+  const duplicateRowCount = rows.length - new Set(rows.map((row) => JSON.stringify(row))).size;
+  const reasons: string[] = [];
+  const warnings: string[] = [];
+  let status: CaptureCsvInspection["training_readiness"]["status"] = "ready";
+
+  if (!labelCandidate) {
+    status = "needs_mapping";
+    reasons.push("Choose the column containing the expected category or label.");
+  } else if (inputColumns.length === 0) {
+    status = "needs_mapping";
+    reasons.push("Choose at least one non-label input column.");
+  } else if (labelCounts.size < 2) {
+    status = "needs_data";
+    reasons.push("At least two label values are required for classification.");
+  } else if (columns[labelIndex].empty_count > 0) {
+    status = "needs_cleanup";
+    reasons.push(`${columns[labelIndex].empty_count} row(s) have an empty label.`);
+  } else if (minimumExamples !== null && minimumExamples < MIN_EXAMPLES_PER_CLASS) {
+    status = "needs_data";
+    reasons.push(
+      `The smallest class has ${minimumExamples} row(s); collect at least ${MIN_EXAMPLES_PER_CLASS} per class for the first training run.`,
+    );
+  }
+
+  if (labelCandidate && columns[labelIndex].unique_count === columns[labelIndex].non_empty_count && rows.length >= 5) {
+    warnings.push("Every label is unique; this looks like an identifier rather than a reusable category.");
+  } else if (labelCandidate && rows.length >= MIN_EXAMPLES_PER_CLASS && columns[labelIndex].unique_ratio > 0.5) {
+    warnings.push("More than half of the labels are unique; this may be an identifier rather than a reusable category.");
+  }
+  if (duplicateRowCount > 0) {
+    warnings.push(`${duplicateRowCount} duplicate row(s) should be reviewed before splitting the dataset.`);
+  }
+  if (sortedLabels.length > MAX_REPORTED_LABELS) {
+    warnings.push(`Only the ${MAX_REPORTED_LABELS} most frequent labels are included in this summary.`);
+  }
+
+  const artifactPath = join(artifactRoot, "csv-inspection.json");
+  const inspection: CaptureCsvInspection = {
+    schema_version: "understudy.capture_import.csv_inspection.v1",
+    generated_at: now.toISOString(),
+    source_name: basename(source),
+    source_path: source,
+    source_sha256: createHash("sha256").update(bytes).digest("hex"),
+    source_bytes: bytes.length,
+    local_only: true,
+    payload_read: true,
+    source_rows_persisted: false,
+    persisted_data: "statistics-and-label-aggregates",
+    row_count: rows.length,
+    column_count: headers.length,
+    duplicate_row_count: duplicateRowCount,
+    columns,
+    recommended_mapping: {
+      label_column: labelCandidate?.name ?? null,
+      input_columns: inputColumns,
+      confidence: labelCandidate?.confidence ?? "none",
+      requires_confirmation: true,
+    },
+    label_distribution: sortedLabels
+      .slice(0, MAX_REPORTED_LABELS)
+      .map(([value, count]) => ({ value, count })),
+    label_distribution_truncated: sortedLabels.length > MAX_REPORTED_LABELS,
+    training_readiness: {
+      ready: status === "ready",
+      status,
+      class_count: labelCounts.size,
+      minimum_examples_per_class: minimumExamples,
+      reasons,
+      warnings,
+    },
+    limits: {
+      max_bytes: MAX_CSV_BYTES,
+      max_rows: MAX_CSV_ROWS,
+      max_columns: MAX_CSV_COLUMNS,
+      max_field_characters: MAX_CSV_FIELD_CHARACTERS,
+      max_reported_labels: MAX_REPORTED_LABELS,
+    },
+    artifact_path: artifactPath,
+  };
+  writeJson(artifactPath, inspection);
+  return inspection;
+}
+
+function parseCsvRecordsBounded(text: string): string[][] {
+  const records: string[][] = [];
+  let row: string[] = [];
+  let field = "";
+  let quoted = false;
+  let afterQuote = false;
+
+  const append = (character: string) => {
+    field += character;
+    if (field.length > MAX_CSV_FIELD_CHARACTERS) {
+      throw new Error(`CSV field exceeds ${MAX_CSV_FIELD_CHARACTERS} characters.`);
+    }
+  };
+  const finishField = () => {
+    row.push(field);
+    field = "";
+    afterQuote = false;
+    if (row.length > MAX_CSV_COLUMNS) {
+      throw new Error(`CSV has more than ${MAX_CSV_COLUMNS} columns.`);
+    }
+  };
+  const finishRecord = () => {
+    finishField();
+    records.push(row);
+    row = [];
+    if (records.length > MAX_CSV_ROWS + 1) {
+      throw new Error(`CSV has more than ${MAX_CSV_ROWS} data rows; split it before local inspection.`);
+    }
+  };
+
+  for (let index = 0; index < text.length; index += 1) {
+    const character = text[index];
+    if (quoted) {
+      if (character === '"') {
+        if (text[index + 1] === '"') {
+          append('"');
+          index += 1;
+        } else {
+          quoted = false;
+          afterQuote = true;
+        }
+      } else {
+        append(character);
+      }
+      continue;
+    }
+    if (afterQuote) {
+      if (character === ",") {
+        finishField();
+      } else if (character === "\n") {
+        finishRecord();
+      } else if (character === "\r") {
+        if (text[index + 1] === "\n") continue;
+        finishRecord();
+      } else if (character !== " " && character !== "\t") {
+        throw new Error("CSV contains characters after a closing quote.");
+      }
+      continue;
+    }
+    if (character === '"' && field.length === 0) {
+      quoted = true;
+    } else if (character === '"') {
+      throw new Error("CSV contains a quote inside an unquoted field.");
+    } else if (character === ",") {
+      finishField();
+    } else if (character === "\n") {
+      finishRecord();
+    } else if (character === "\r" && text[index + 1] === "\n") {
+      continue;
+    } else if (character === "\r") {
+      finishRecord();
+    } else {
+      append(character);
+    }
+  }
+  if (quoted) throw new Error("CSV contains an unterminated quoted field.");
+  if (field.length > 0 || row.length > 0 || afterQuote) finishRecord();
+  return records;
+}
+
+function normalizeHeader(value: string): string {
+  return value.trim().toLowerCase().replace(/[^a-z0-9]+/g, "_").replace(/^_+|_+$/g, "");
+}
+
+function chooseLabelColumn(
+  headers: string[],
+  columns: CaptureCsvColumnSummary[],
+): { name: string; confidence: "high" | "low" } | null {
+  const preferred = ["label", "target", "category", "class", "intent", "type", "status"];
+  for (const name of preferred) {
+    const index = headers.findIndex((header) => normalizeHeader(header) === name);
+    if (index >= 0) return { name: headers[index], confidence: "high" };
+  }
+  const plausible = columns
+    .map((column, index) => ({ column, index }))
+    .filter(({ column }) => column.unique_count >= 2 && column.unique_count <= 100 && column.unique_ratio <= 0.5)
+    .sort((left, right) => left.column.unique_count - right.column.unique_count || right.index - left.index);
+  return plausible[0]
+    ? { name: plausible[0].column.name, confidence: "low" }
+    : null;
+}
+
+function isFiniteNumber(value: string): boolean {
+  if (value.trim() === "") return false;
+  return Number.isFinite(Number(value));
+}
+
+function ratio(numerator: number, denominator: number): number {
+  return denominator === 0 ? 0 : Number((numerator / denominator).toFixed(6));
 }
 
 function artifactReference(repo: string, path: string): string {

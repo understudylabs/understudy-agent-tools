@@ -2,7 +2,13 @@ import { Command } from "commander";
 import { existsSync, readdirSync, readFileSync } from "node:fs";
 import { join, relative, resolve } from "node:path";
 import { runUnderstandCheck, runUnderstandWorkloadCard } from "./understand.js";
-import { buildWorkloadCard, compileCaptureImport, previewCaptureImport, scanCaptureImport } from "./capture-import.js";
+import {
+  buildWorkloadCard,
+  compileCaptureImport,
+  inspectCaptureCsv,
+  previewCaptureImport,
+  scanCaptureImport,
+} from "./capture-import.js";
 import { planRouteDecision } from "./route-decision.js";
 import { buildValueReport } from "./value-report.js";
 import { type AgentPlatformAdapter, agentPlatformAdapters, findAgentPlatformAdapter } from "./agent-platforms.js";
@@ -293,7 +299,7 @@ function parseNonNegativeNumber(value: string): number {
 function registerCaptureImportCommands(program: Command): void {
   const captureImport = program
     .command("capture-import")
-    .description("Scan and preview local import candidates using metadata only");
+    .description("Compile local import candidates and explicitly inspect approved data");
 
   captureImport
     .command("scan")
@@ -327,6 +333,24 @@ function registerCaptureImportCommands(program: Command): void {
       console.log(`capture-import compile: ${result.source_count} source(s) from ${result.source_name}`);
       console.log(`workload card: ${result.workload_card_path}`);
       console.log("payload_read: false");
+    });
+
+  captureImport
+    .command("inspect-csv")
+    .description("Read one bounded local CSV and write a statistics-only training inspection")
+    .requiredOption("--source <path>", "Local CSV file to inspect")
+    .requiredOption("--artifact-root <path>", "Existing private artifact root from capture-import compile")
+    .option("--json", "Output JSON")
+    .action((options: { source: string; artifactRoot: string; json?: boolean }) => {
+      const result = inspectCaptureCsv(options.source, options.artifactRoot);
+      if (commandJsonEnabled(program, options)) {
+        console.log(JSON.stringify(result, null, 2));
+        return;
+      }
+      console.log(`capture-import inspect-csv: ${result.row_count} row(s), ${result.column_count} column(s)`);
+      console.log(`mapping: ${result.recommended_mapping.label_column ?? "label confirmation required"}`);
+      console.log(`artifact: ${result.artifact_path}`);
+      console.log("payload_read: true (local only; source rows were not copied)");
     });
 
   captureImport
