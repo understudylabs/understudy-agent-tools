@@ -8,6 +8,14 @@ Accepted line shapes (auto-detected per line):
   A) {"request": {"messages": [...], ...}, "response": {"choices": [...]}}
   B) {"messages": [...], "response": {...}}          (flat request + response)
   C) {"body": {...}, "response": {"body": {...}}}    (batch-style)
+  D) OpenTelemetry spans — YOUR OWN observability is a capture source. A span
+     per line with an "attributes" dict (the shape most backends export), or
+     a full OTLP JSON export ({"resourceSpans": [...]}). Understood attribute
+     flavors: Vercel AI SDK telemetry ("ai.prompt.messages",
+     "ai.response.text"/".object"/".toolCalls") and GenAI semantic
+     conventions ("gen_ai.input.messages"/"gen_ai.output.messages", JSON or
+     indexed-flat "gen_ai.prompt.0.role"). Only spans that carry messages are
+     converted, which naturally selects the per-provider-call spans.
 
 What it extracts per call:
   - system message      → the playbook (written once; calls whose system
@@ -46,17 +54,106 @@ def _first(mapping, *keys):
     return None
 
 
-def extract_call(line_obj):
-    """Normalize one capture line to (messages, response_message) or None."""
+def _maybe_json(value):
+    """Span attributes carry JSON as strings; accept either form."""
+    if isinstance(value, str):
+        try:
+            return json.loads(value)
+        except (json.JSONDecodeError, ValueError):
+            return None
+    return value if isinstance(value, (list, dict)) else None
+
+
+def _span_attrs(span):
+    """Attributes as a dict, whether exported flat or in OTLP key/value form."""
+    attrs = span.get("attributes")
+    if isinstance(attrs, dict):
+        return attrs
+    if isinstance(attrs, list):
+        out = {}
+        for kv in attrs:
+            value = kv.get("value")
+            if isinstance(value, dict):  # {"stringValue": ...} / {"intValue": ...}
+                value = next(iter(value.values()), None)
+            out[kv.get("key")] = value
+        return out
+    return None
+
+
+def _span_messages(attrs):
+    for key in ("ai.prompt.messages", "gen_ai.input.messages", "gen_ai.prompt"):
+        messages = _maybe_json(attrs.get(key))
+        if isinstance(messages, list):
+            return messages
+    messages, i = [], 0  # indexed-flat gen_ai.prompt.0.role / .content
+    while f"gen_ai.prompt.{i}.role" in attrs:
+        messages.append(
+            {
+                "role": attrs[f"gen_ai.prompt.{i}.role"],
+                "content": attrs.get(f"gen_ai.prompt.{i}.content", ""),
+            }
+        )
+        i += 1
+    return messages or None
+
+
+def _span_response(attrs):
+    output = _maybe_json(attrs.get("gen_ai.output.messages")) or _maybe_json(
+        attrs.get("gen_ai.completion")
+    )
+    if isinstance(output, list) and output and isinstance(output[-1], dict):
+        return output[-1]
+    content = (
+        attrs.get("ai.response.object")
+        or attrs.get("ai.response.text")
+        or attrs.get("gen_ai.completion.0.content")
+        or ""
+    )
+    message = {"role": "assistant", "content": content}
+    tool_calls = _maybe_json(attrs.get("ai.response.toolCalls"))
+    if isinstance(tool_calls, list) and tool_calls:
+        message["tool_calls"] = [
+            {
+                "function": {
+                    "name": call.get("toolName") or call.get("name"),
+                    "arguments": call.get("args")
+                    if isinstance(call.get("args"), str)
+                    else json.dumps(call.get("args") or {}),
+                }
+            }
+            for call in tool_calls
+            if isinstance(call, dict)
+        ]
+    return message
+
+
+def _spans(line_obj):
+    if "resourceSpans" in line_obj:  # OTLP JSON export
+        for resource in line_obj.get("resourceSpans") or []:
+            for scope in resource.get("scopeSpans") or []:
+                yield from scope.get("spans") or []
+    elif "attributes" in line_obj:  # one exported span per line
+        yield line_obj
+
+
+def calls_from_line(line_obj):
+    """Yield (messages, response_message) for every LLM call on this line."""
     request = _first(line_obj, "request", "body") or line_obj
     messages = _first(request, "messages")
-    if messages is None:
-        return None
-    response = _first(line_obj, "response") or {}
-    response_body = _first(response, "body") or response
-    choices = _first(response_body, "choices") or []
-    response_message = choices[0].get("message") if choices else None
-    return messages, response_message
+    if messages is not None:  # shapes A/B/C
+        response = _first(line_obj, "response") or {}
+        response_body = _first(response, "body") or response
+        choices = _first(response_body, "choices") or []
+        response_message = choices[0].get("message") if choices else None
+        yield messages, response_message
+        return
+    for span in _spans(line_obj):  # shape D: OTel spans
+        attrs = _span_attrs(span)
+        if not attrs:
+            continue
+        span_messages = _span_messages(attrs)
+        if span_messages:
+            yield span_messages, _span_response(attrs)
 
 
 def text_of(message):
@@ -122,24 +219,26 @@ def main():
         if not line.strip():
             continue
         try:
-            extracted = extract_call(json.loads(line))
+            calls = list(calls_from_line(json.loads(line)))
         except (json.JSONDecodeError, ValueError):
-            extracted = None
-        if extracted is None:
+            calls = []
+        if not calls:
             skipped_unparsed += 1
             continue
-        messages, response_message = extracted
-        task, system_text = to_task(messages, response_message, len(tasks), args.gold)
-        if task is None:
-            skipped_unparsed += 1
-            continue
-        current_hash = hashlib.sha256(system_text.encode()).hexdigest()[:12]
-        if playbook_hash is None:
-            playbook_hash, playbook = current_hash, system_text
-        elif current_hash != playbook_hash:
-            skipped_other_workload += 1  # different system prompt = different workload
-            continue
-        tasks.append(task)
+        for messages, response_message in calls:
+            task, system_text = to_task(
+                messages, response_message, len(tasks), args.gold
+            )
+            if task is None:
+                skipped_unparsed += 1
+                continue
+            current_hash = hashlib.sha256(system_text.encode()).hexdigest()[:12]
+            if playbook_hash is None:
+                playbook_hash, playbook = current_hash, system_text
+            elif current_hash != playbook_hash:
+                skipped_other_workload += 1  # different system prompt = different workload
+                continue
+            tasks.append(task)
 
     (out_dir / "tasks.jsonl").write_text(
         "".join(json.dumps(task) + "\n" for task in tasks)

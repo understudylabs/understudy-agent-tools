@@ -48,7 +48,7 @@ ship/no-ship verdict, use
 | `tasks.jsonl` | task rows: `question` (the input), `gold` (expected answer), `accounts` (per-task fixture the tools read) |
 | `playbook.md` / `playbook-variant.md` | the system prompt as a swappable artifact — prompt variants are an env *argument*, not a code change |
 | `smoke.py` | the oracle + sentinel gates, including the right-answer-wrong-contract sentinel (fenced JSON) that quality metrics alone would pass |
-| `convert_captures.py` | captures JSONL → `tasks.jsonl` + `playbook.md` (redact with `ingest-traces` first; freeze splits with `capture-evidence` after) |
+| `convert_captures.py` | captures JSONL → `tasks.jsonl` + `playbook.md` — reads OpenAI-style request/response logs AND your own observability: OTel span exports (Vercel AI SDK telemetry / GenAI semconv, flat or OTLP) (redact with `ingest-traces` first; freeze splits with `capture-evidence` after) |
 | `configs/endpoints.toml` | point the eval at the gateway/local serving path, not the raw provider |
 
 ## Make it yours

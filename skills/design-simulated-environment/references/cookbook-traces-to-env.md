@@ -27,8 +27,17 @@ RL via `prepare-verifier-handoff`.
 
 ## Stage 0 — what you need before authoring
 
-- **Traces**: gateway capture exports, provider logs, or the input/expected
-  pairs from your existing test scripts. **Redact first** via
+- **Traces — and the app's own observability counts.** Before concluding "no
+  traces", *look for the instrumentation the app already has*: OpenTelemetry
+  exporter config (`OTEL_EXPORTER_OTLP_*`, collector/instrumentation files),
+  Vercel AI SDK `experimental_telemetry`, Mastra tracing, or HTTP-client
+  interceptors (e.g. axios) that log LLM request/response bodies. An export
+  of those spans as JSONL from the team's own backend is a first-class
+  capture source — the converter reads Vercel AI SDK and GenAI-semconv span
+  attributes directly (shape D), alongside gateway capture exports, provider
+  logs, and the input/expected pairs from existing test scripts. (Understudy
+  gateway capture retrieval is moving to self-service; until then the team's
+  own telemetry export is usually the fastest path.) **Redact first** via
   [`../../ingest-traces/SKILL.md`](../../ingest-traces/SKILL.md) — everything
   downstream contains whatever you feed it.
 - **One workload at a time.** One system prompt = one workload = one env. The
