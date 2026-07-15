@@ -26,6 +26,13 @@ function replaceOnce(path, from, to) {
   writeFileSync(path, source.replace(from, to));
 }
 
+function previousPatch(version, steps = 1) {
+  const parts = version.split(".").map(Number);
+  parts[2] -= steps;
+  assert.ok(parts[2] >= 0, `cannot decrement ${version} by ${steps} patches`);
+  return parts.join(".");
+}
+
 test("desktop release sources share one exact version", () => {
   const report = inspectDesktopVersions();
   assert.deepEqual(report.errors, []);
@@ -108,6 +115,14 @@ test("runtime releases require a newer distributed CLI sidecar", () => {
 });
 
 test("release history rejects one CLI version for two runtime builds", async () => {
+  const current = inspectDesktopVersions();
+  assert.deepEqual(current.errors, []);
+  const currentRuntimeVersion = current.version;
+  const currentCliVersion = current.compatibility.cli_package;
+  const baselineRuntimeVersion = previousPatch(currentRuntimeVersion, 2);
+  const transitionRuntimeVersion = previousPatch(currentRuntimeVersion);
+  const baselineCliVersion = previousPatch(currentCliVersion, 2);
+  const transitionCliVersion = previousPatch(currentCliVersion);
   const root = mkdtempSync(join(tmpdir(), "understudy-runtime-transition-"));
   const files = [
     "apps/homescreen/package.json",
@@ -132,97 +147,108 @@ test("release history rejects one CLI version for two runtime builds", async () 
     git(root, ["config", "user.name", "Understudy Release Test"]);
     git(root, ["config", "user.email", "release-test@invalid.example"]);
 
-    replaceOnce(paths["package.json"], '"version": "0.6.19"', '"version": "0.6.18"');
+    replaceOnce(
+      paths["package.json"],
+      `"version": "${currentCliVersion}"`,
+      `"version": "${baselineCliVersion}"`,
+    );
     replaceOnce(
       paths["apps/homescreen/src-tauri/src/bootstrap.rs"],
-      'MIN_UNDERSTUDY_CLI_VERSION: &str = "0.6.19"',
-      'MIN_UNDERSTUDY_CLI_VERSION: &str = "0.6.18"',
+      `MIN_UNDERSTUDY_CLI_VERSION: &str = "${currentCliVersion}"`,
+      `MIN_UNDERSTUDY_CLI_VERSION: &str = "${baselineCliVersion}"`,
     );
     replaceOnce(
       paths["apps/homescreen/package.json"],
-      '"version": "0.3.22"',
-      '"version": "0.3.21"',
+      `"version": "${currentRuntimeVersion}"`,
+      `"version": "${baselineRuntimeVersion}"`,
     );
     replaceOnce(
       paths["apps/homescreen/src-tauri/tauri.conf.json"],
-      '"version": "0.3.22"',
-      '"version": "0.3.21"',
+      `"version": "${currentRuntimeVersion}"`,
+      `"version": "${baselineRuntimeVersion}"`,
     );
     replaceOnce(
       paths["apps/homescreen/src-tauri/Cargo.toml"],
-      'version = "0.3.22"',
-      'version = "0.3.21"',
+      `version = "${currentRuntimeVersion}"`,
+      `version = "${baselineRuntimeVersion}"`,
     );
     replaceOnce(
       paths["apps/homescreen/src-tauri/Cargo.lock"],
-      'name = "understudy"\nversion = "0.3.22"',
-      'name = "understudy"\nversion = "0.3.21"',
+      `name = "understudy"\nversion = "${currentRuntimeVersion}"`,
+      `name = "understudy"\nversion = "${baselineRuntimeVersion}"`,
     );
     replaceOnce(
       paths["apps/homescreen/src-tauri/src/conversation_runtime.rs"],
-      'RUNTIME_VERSION: &str = "0.3.22"',
-      'RUNTIME_VERSION: &str = "0.3.21"',
+      `RUNTIME_VERSION: &str = "${currentRuntimeVersion}"`,
+      `RUNTIME_VERSION: &str = "${baselineRuntimeVersion}"`,
     );
     replaceOnce(
       paths["src/runtime/conversation/contract.ts"],
-      'RUNTIME_VERSION = "0.3.22"',
-      'RUNTIME_VERSION = "0.3.21"',
+      `RUNTIME_VERSION = "${currentRuntimeVersion}"`,
+      `RUNTIME_VERSION = "${baselineRuntimeVersion}"`,
     );
     git(root, ["add", "."]);
-    git(root, ["commit", "--quiet", "-m", "runtime 0.3.21 and CLI 0.6.18"]);
+    git(root, ["commit", "--quiet", "-m", "baseline runtime and CLI"]);
     const transitionCommit = git(root, ["rev-parse", "HEAD"]);
 
     replaceOnce(
       paths["apps/homescreen/package.json"],
-      '"version": "0.3.21"',
-      '"version": "0.3.22"',
+      `"version": "${baselineRuntimeVersion}"`,
+      `"version": "${transitionRuntimeVersion}"`,
     );
     replaceOnce(
       paths["apps/homescreen/src-tauri/tauri.conf.json"],
-      '"version": "0.3.21"',
-      '"version": "0.3.22"',
+      `"version": "${baselineRuntimeVersion}"`,
+      `"version": "${transitionRuntimeVersion}"`,
     );
     replaceOnce(
       paths["apps/homescreen/src-tauri/Cargo.toml"],
-      'version = "0.3.21"',
-      'version = "0.3.22"',
+      `version = "${baselineRuntimeVersion}"`,
+      `version = "${transitionRuntimeVersion}"`,
     );
     replaceOnce(
       paths["apps/homescreen/src-tauri/Cargo.lock"],
-      'name = "understudy"\nversion = "0.3.21"',
-      'name = "understudy"\nversion = "0.3.22"',
+      `name = "understudy"\nversion = "${baselineRuntimeVersion}"`,
+      `name = "understudy"\nversion = "${transitionRuntimeVersion}"`,
     );
     replaceOnce(
       paths["apps/homescreen/src-tauri/src/conversation_runtime.rs"],
-      'RUNTIME_VERSION: &str = "0.3.21"',
-      'RUNTIME_VERSION: &str = "0.3.22"',
+      `RUNTIME_VERSION: &str = "${baselineRuntimeVersion}"`,
+      `RUNTIME_VERSION: &str = "${transitionRuntimeVersion}"`,
     );
     replaceOnce(
       paths["src/runtime/conversation/contract.ts"],
-      'RUNTIME_VERSION = "0.3.21"',
-      'RUNTIME_VERSION = "0.3.22"',
+      `RUNTIME_VERSION = "${baselineRuntimeVersion}"`,
+      `RUNTIME_VERSION = "${transitionRuntimeVersion}"`,
     );
     git(root, ["add", "."]);
-    git(root, ["commit", "--quiet", "-m", "runtime 0.3.22 without CLI bump"]);
+    git(root, ["commit", "--quiet", "-m", "runtime without CLI bump"]);
     git(root, ["update-ref", "refs/remotes/origin/main", "HEAD"]);
     const stale = await inspectDesktopRelease({ root });
     assert.equal(stale.ok, false);
-    assert.match(stale.errors.join("\n"), /runtime transition:.*CLI 0\.6\.18 did not advance/);
+    assert.match(
+      stale.errors.join("\n"),
+      new RegExp(`runtime transition:.*CLI ${baselineCliVersion.replaceAll(".", "\\.")} did not advance`),
+    );
     assert.equal(stale.compatibility.runtime_transition.commit, transitionCommit);
 
-    replaceOnce(paths["package.json"], '"version": "0.6.18"', '"version": "0.6.19"');
+    replaceOnce(
+      paths["package.json"],
+      `"version": "${baselineCliVersion}"`,
+      `"version": "${transitionCliVersion}"`,
+    );
     replaceOnce(
       paths["apps/homescreen/src-tauri/src/bootstrap.rs"],
-      'MIN_UNDERSTUDY_CLI_VERSION: &str = "0.6.18"',
-      'MIN_UNDERSTUDY_CLI_VERSION: &str = "0.6.19"',
+      `MIN_UNDERSTUDY_CLI_VERSION: &str = "${baselineCliVersion}"`,
+      `MIN_UNDERSTUDY_CLI_VERSION: &str = "${transitionCliVersion}"`,
     );
     git(root, ["add", "."]);
-    git(root, ["commit", "--quiet", "-m", "advance CLI for runtime 0.3.22"]);
+    git(root, ["commit", "--quiet", "-m", "advance CLI for runtime"]);
     git(root, ["update-ref", "refs/remotes/origin/main", "HEAD"]);
     const ready = await inspectDesktopRelease({ root });
     assert.equal(ready.ok, true, ready.errors.join("\n"));
     assert.equal(ready.compatibility.runtime_transition.commit, transitionCommit);
-    assert.equal(ready.compatibility.runtime_transition.cli_version, "0.6.18");
+    assert.equal(ready.compatibility.runtime_transition.cli_version, baselineCliVersion);
   } finally {
     rmSync(root, { recursive: true, force: true });
   }

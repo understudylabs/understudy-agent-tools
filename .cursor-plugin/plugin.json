@@ -1,9 +1,19 @@
 {
   "name": "understudy",
   "description": "Improve LLM apps and agents from real traces: capture evidence, build evals, optimize prompts/routes, compare models, run local models, and hand off to Understudy.",
-  "version": "0.6.19",
+  "version": "0.6.20",
   "author": {
     "name": "Understudy Labs"
   },
-  "keywords": ["understudy", "llm", "evals", "optimization", "gepa", "routing", "traces", "cost", "latency"]
+  "keywords": [
+    "understudy",
+    "llm",
+    "evals",
+    "optimization",
+    "gepa",
+    "routing",
+    "traces",
+    "cost",
+    "latency"
+  ]
 }

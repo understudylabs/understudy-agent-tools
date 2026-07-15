@@ -177,7 +177,10 @@ export function RuntimeRepairPrompt() {
   }, [checkForUpdates]);
 
   useEffect(() => {
-    void refreshHealth();
+    // Give the native window a clean first paint before starting version and
+    // runtime subprocess probes. The checks remain automatic; they simply no
+    // longer compete with the first interactive frame.
+    const initialHealthTimer = window.setTimeout(() => void refreshHealth(), 900);
     // Startup reconnect is intentionally backgrounded. Reconcile once after
     // the native side has had time to bind the CLI runtime to this Desktop
     // session, even if the ready event raced the webview listener.
@@ -223,6 +226,7 @@ export function RuntimeRepairPrompt() {
     window.addEventListener("error", onError);
     window.addEventListener("unhandledrejection", onRejection);
     return () => {
+      window.clearTimeout(initialHealthTimer);
       window.clearTimeout(settleTimer);
       window.clearInterval(timer);
       void unlisten.then((remove) => remove());

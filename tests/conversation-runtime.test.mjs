@@ -26,6 +26,7 @@ import {
 } from "../dist/runtime/conversation/pi-runtime.js";
 import {
   parseRuntimeRequest,
+  RUNTIME_VERSION,
   safeErrorMessage,
   validateRuntimeTrace,
 } from "../dist/runtime/conversation/contract.js";
@@ -2559,7 +2560,7 @@ test("Pi and Vercel execute the identical frozen conformance inputs", async () =
       model: "conformance-cli",
     });
     assert.equal(cliReport.metadata.runtime_id, "understudy-conversation-sidecar");
-    assert.equal(cliReport.metadata.runtime_version, "0.3.22");
+    assert.equal(cliReport.metadata.runtime_version, RUNTIME_VERSION);
     assert.equal(
       cliReport.metadata.event_schema,
       "understudy-conversation-runtime-event-v1",

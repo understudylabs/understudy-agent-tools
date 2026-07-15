@@ -2045,10 +2045,19 @@ class ScoreWithFeedback:
       assert.equal(inspection.persisted_data, "statistics-and-label-aggregates");
       assert.equal(inspection.row_count, 5);
       assert.equal(inspection.column_count, 4);
+      assert.deepEqual(
+        inspection.columns.map((column) => column.profile_kind),
+        ["text", "text", "number", "category"],
+      );
+      assert.ok(inspection.columns.every((column) =>
+        column.profile_bars.length > 0 &&
+        column.profile_bars.length <= 12 &&
+        column.profile_bars.every((bar) => bar >= 0 && bar <= 1)));
       assert.match(inspection.source_sha256, /^[a-f0-9]{64}$/);
       assert.equal(inspection.recommended_mapping.label_column, "category");
       assert.equal(inspection.recommended_mapping.confidence, "high");
       assert.deepEqual(inspection.recommended_mapping.input_columns, ["merchant", "description", "amount"]);
+      assert.equal(inspection.recommended_mapping.group_column, "merchant");
       assert.deepEqual(inspection.label_distribution, [
         { value: "meals", count: 2 },
         { value: "travel", count: 2 },
@@ -2075,6 +2084,8 @@ class ScoreWithFeedback:
         "description",
         "--label-column",
         "category",
+        "--group-column",
+        "merchant",
         "--json",
       ]);
       assert.notEqual(prepare.status, 0);
@@ -2092,9 +2103,11 @@ class ScoreWithFeedback:
     try {
       const source = join(root, "expenses.csv");
       const labels = ["meals", "office_supplies", "travel"];
+      const merchantGroups = ["alder", "birch", "cedar", "dogwood", "elm", "fir"];
       const rows = Array.from({ length: 90 }, (_, index) => {
         const label = labels[index % labels.length];
-        return `merchant-${index},expense ${index},${(index + 1).toFixed(2)},${label}`;
+        const merchant = merchantGroups[Math.floor(index / labels.length) % merchantGroups.length];
+        return `${label}-${merchant},expense ${index},${(index + 1).toFixed(2)},${label}`;
       });
       writeFileSync(source, ["merchant,description,amount,category", ...rows].join("\n"));
       const outputRoot = join(root, "artifacts");
@@ -2124,12 +2137,14 @@ class ScoreWithFeedback:
         "amount",
         "--label-column",
         "category",
+        "--group-column",
+        "merchant",
         "--json",
       ];
       const result = run(args);
       assert.equal(result.status, 0, result.stderr);
       const dataset = JSON.parse(result.stdout);
-      assert.equal(dataset.schema_version, "understudy.capture_import.classification_dataset.v1");
+      assert.equal(dataset.schema_version, "understudy.capture_import.classification_dataset.v2");
       assert.equal(dataset.local_only, true);
       assert.equal(dataset.network_required, false);
       assert.equal(dataset.mapping_confirmation, "caller-provided");
@@ -2138,7 +2153,19 @@ class ScoreWithFeedback:
       assert.deepEqual(dataset.mapping, {
         input_columns: ["merchant", "description", "amount"],
         label_column: "category",
+        group_column: "merchant",
         text_template: "named-fields-v1",
+      });
+      assert.deepEqual(dataset.split_policy, {
+        name: "deterministic-stratified-group-aware-v2",
+        allocation: "per-label-deterministic-group-greedy-v1",
+        group_key: "merchant",
+        group_normalization: "casefold-reference-stripping-v1",
+        no_group_overlap: true,
+        target_train_ratio: 0.7,
+        target_dev_ratio: 0.15,
+        target_holdout_ratio: 0.15,
+        holdout_reserved_for_final_validation: true,
       });
       assert.deepEqual(dataset.labels, labels);
       assert.equal(dataset.splits.train.row_count, 60);
@@ -2153,9 +2180,17 @@ class ScoreWithFeedback:
       assert.equal(new Set(allIds).size, 90);
       for (const rowsForSplit of Object.values(splitRows)) {
         assert.deepEqual([...new Set(rowsForSplit.map((row) => row.label))].sort(), labels);
-        assert.ok(rowsForSplit.every((row) => row.schema_version === "understudy.classification_example.v1"));
+        assert.ok(rowsForSplit.every((row) => row.schema_version === "understudy.classification_example.v2"));
+        assert.ok(rowsForSplit.every((row) => /^[a-f0-9]{24}$/.test(row.group_id)));
         assert.ok(rowsForSplit.every((row) => row.text.includes("merchant:")));
       }
+      const splitGroups = Object.fromEntries(Object.entries(splitRows).map(([name, split]) => [
+        name,
+        new Set(split.map((row) => row.group_id)),
+      ]));
+      assert.equal([...splitGroups.train].some((group) => splitGroups.dev.has(group)), false);
+      assert.equal([...splitGroups.train].some((group) => splitGroups.holdout.has(group)), false);
+      assert.equal([...splitGroups.dev].some((group) => splitGroups.holdout.has(group)), false);
       const repeated = run(args);
       assert.equal(repeated.status, 0, repeated.stderr);
       const repeatedDataset = JSON.parse(repeated.stdout);
