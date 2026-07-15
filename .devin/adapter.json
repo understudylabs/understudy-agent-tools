@@ -1,6 +1,6 @@
 {
   "name": "understudy-devin-adapter",
-  "version": "0.6.18",
+  "version": "0.6.19",
   "skills": "./skills",
   "discovery": "AGENTS.md rule injection + knowledge notes"
 }
