@@ -1,0 +1,140 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://understudylabs.com/schemas/understudy.verifier_handoff.v1.schema.json",
+  "title": "understudy.verifier_handoff.v1",
+  "description": "The RL-handoff packet written to .understudy/verifier-handoff/handoff.json by prepare-verifier-handoff. Stage 0 records the confirmed need (the later stages refuse to run without it); stage 2 appends the package location, conformance status, return-eval command, and pinned reward definition. Most fields are nullable so a packet can be started at stage 0 and enriched per stage. Producers may add extra fields; consumers must ignore fields they do not understand. This packet is a local artifact — it must never contain prompts, traces, source files, keys, or secrets.",
+  "type": "object",
+  "required": ["schema_version", "workload_id"],
+  "additionalProperties": true,
+  "properties": {
+    "schema_version": {
+      "const": "understudy.verifier_handoff.v1",
+      "description": "Version stamp for this packet shape."
+    },
+    "workload_id": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Identifier of the workload being made partner-ready."
+    },
+    "owner": {
+      "type": ["string", "null"],
+      "description": "Who owns the workload/decision (a role or handle, not private contact data)."
+    },
+    "source_refs": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Paths or ids of the local evidence this packet is grounded in (workload card, claim packet, scored-rollout artifacts). References only — never inline contents."
+    },
+    "evidence_level": {
+      "type": ["string", "null"],
+      "description": "Evidence rung reached before the handoff decision (e.g. frozen-eval, a-b-compare, optimized-prompt, holdout-validated)."
+    },
+    "why_rl_required": {
+      "type": ["string", "null"],
+      "description": "Why evaluation, A/B comparison, and local prompt/route optimization cannot satisfy the need — i.e. what requires learned policy training. Stage 0's confirmed-need record."
+    },
+    "reward_summary": {
+      "type": ["string", "null"],
+      "description": "Summary of the validator or reward signal (axes, dense vs strict, rewardability verdict)."
+    },
+    "environment_shape": {
+      "type": ["string", "null"],
+      "description": "Shape of the environment: one or more of stateless, stateful, tool-use, browser, code, simulation."
+    },
+    "splits": {
+      "type": ["object", "null"],
+      "properties": {
+        "boundary": {
+          "type": ["string", "null"],
+          "description": "The train/dev/holdout boundary in force (e.g. 'seed-7: train 18 / dev 6 / holdout 6')."
+        },
+        "splits_sha256": {
+          "type": ["string", "null"],
+          "description": "sha256 of the frozen split contract (matches capture-evidence splits_sha256)."
+        },
+        "contamination": {
+          "enum": ["clean", "contaminated", "unknown", null],
+          "description": "Whether the RL train pool has been verified to exclude frozen dev/holdout rows (curate-trajectories contamination report)."
+        }
+      },
+      "additionalProperties": true,
+      "description": "Train/dev/holdout boundary and contamination status."
+    },
+    "data_class": {
+      "type": ["string", "null"],
+      "description": "Sensitivity class of the workload data (e.g. synthetic, internal, customer)."
+    },
+    "upload_boundary": {
+      "type": ["string", "null"],
+      "description": "What may leave the machine for the partner engagement, stated explicitly (e.g. 'env module + synthetic fixtures only; no captures')."
+    },
+    "budget": {
+      "type": ["object", "null"],
+      "properties": {
+        "cap_usd": {
+          "type": ["number", "null"],
+          "minimum": 0,
+          "description": "Approved spend ceiling for the hosted run. Null when not yet set."
+        },
+        "approval": {
+          "enum": ["approved", "pending", "denied", null],
+          "description": "Approval status for the hosted engagement."
+        }
+      },
+      "additionalProperties": true,
+      "description": "Budget cap and approval status."
+    },
+    "fallback_route": {
+      "type": ["string", "null"],
+      "description": "What ships if hosted training is not approved or fails (e.g. 'stay on incumbent route at 100%')."
+    },
+    "recommended_partner": {
+      "type": ["string", "null"],
+      "description": "Recommended partner path — Prime Intellect Verifiers unless the evidence packet suggests another public partner is a better fit."
+    },
+    "package": {
+      "type": ["object", "null"],
+      "properties": {
+        "location": {
+          "type": ["string", "null"],
+          "description": "Local path of the packaged Verifiers-compatible module (e.g. .understudy/verifier-env/pi_verifiers_env.py)."
+        },
+        "conformance": {
+          "enum": ["pass", "fail", null],
+          "description": "Trainer-free conformance check result. fail blocks the handoff."
+        },
+        "conformance_rollouts": {
+          "type": ["integer", "null"],
+          "minimum": 0,
+          "description": "N rollouts executed by the conformance check."
+        },
+        "oracle_score": {
+          "type": ["number", "null"],
+          "description": "The seeded oracle trajectory's score from the conformance run (must match its expected value)."
+        },
+        "return_eval_command": {
+          "type": ["string", "null"],
+          "description": "The exact command that re-scores a returned policy on the frozen holdout (refuses on holdout-hash mismatch)."
+        },
+        "reward_kind": {
+          "enum": ["terminal", "shaped", null],
+          "description": "Pinned reward definition: terminal fractional final-state score by default; any shaping explicit and optional."
+        },
+        "scorer_ref": {
+          "type": ["string", "null"],
+          "description": "Reference to the local scorer imported as the single source of truth (so remote_reward == local_reward by construction)."
+        }
+      },
+      "additionalProperties": true,
+      "description": "Stage-2 additions: package location, conformance status, the exact return-eval command, and the pinned reward definition."
+    },
+    "created_at": {
+      "type": ["string", "null"],
+      "description": "ISO 8601 timestamp for when the packet was first written."
+    },
+    "updated_at": {
+      "type": ["string", "null"],
+      "description": "ISO 8601 timestamp for the latest stage update."
+    }
+  }
+}
