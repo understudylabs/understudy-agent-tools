@@ -132,6 +132,18 @@ url = "https://api.understudylabs.com/v1"
 key = "UNDERSTUDY_API_KEY"
 ```
 
+**The change under test includes the client's request shape.** A regression
+can live entirely in how the app *builds* requests — step logic
+(`prepareStep`/`maxSteps`), `tool_choice`, and on which turn
+`response_format` rides — with the model and route unchanged. Real failure
+mode: a step-0 that offers tools with `tool_choice: "auto"` and no schema
+lets the model answer early as free text ~25% of the time, while every
+schema-carrying call succeeds. The candidate arm must replay the **candidate
+client shape**, not just the candidate model: harvest the task set from
+captures of the *new* code path (or mirror its step/`tool_choice`/schema
+placement in the env), or the gate will pass a client-side change it never
+actually exercised.
+
 **Addressing the candidate arm before any dial changes.** The incumbent arm
 is easy — call the workload's current route. For the candidate there are two
 options, by what the change actually is:
