@@ -1,10 +1,11 @@
 @import "tailwindcss";
+@custom-variant dark (&:where(.dark, .dark *));
 
 /* ----------------------------------------------------------------------------
  * understudy — native token system
  * Canonical brand tokens (paper/ink/ink-muted/rule/stamp) + native surface tiers
- * + a sanctioned status exception (ok/warn/idle/bad). Dark default; light via
- * [data-theme="light"] or system (data-sys). Reviewed on /design.
+ * + a sanctioned status exception (ok/warn/idle/bad). The desktop is always
+ * dark so its native chrome, controls, and animated persona remain coherent.
  * -------------------------------------------------------------------------- */
 @theme {
   --color-paper: var(--c-paper);
@@ -90,26 +91,6 @@
     --sans: var(--font-sans);
     --mono: var(--font-mono);
     color-scheme: dark;
-  }
-
-  /* light: explicit choice, or follows the OS when theme is "system" */
-  :root[data-theme="light"],
-  :root[data-theme="system"][data-sys="light"] {
-    --c-paper: #f5f2ed;
-    --c-window: #efece6;
-    --c-content: #f5f2ed;
-    --c-card: #ffffff;
-    --c-hover: #eceae4;
-    --c-overlay: rgba(0, 0, 0, 0.5);
-    --c-ink: #0a0a0a;
-    --c-ink-muted: #6b6862;
-    --c-rule: rgba(0, 0, 0, 0.1);
-    --c-rule-strong: rgba(0, 0, 0, 0.16);
-    --c-stamp: #b24a2e;
-    --c-ok: #2da44e;
-    --c-warn: #bf8700;
-    --c-bad: #cf222e;
-    color-scheme: light;
   }
 
   * {
@@ -2889,16 +2870,11 @@ select,
 /* ---------- GEPA optimization pane ---------- */
 .gepa-root {
   /* Chart mark colors. Best/front pair validated for CVD separation and
-     3:1 surface contrast in both modes (dataviz six checks). */
+     3:1 contrast on the dark desktop surface (dataviz six checks). */
   --gepa-best: var(--c-stamp);
   --gepa-front: #3987e5;
   --gepa-other: var(--c-ink-muted);
 }
-:root[data-theme="light"] .gepa-root,
-:root[data-theme="system"][data-sys="light"] .gepa-root {
-  --gepa-front: #2a78d6;
-}
-
 .gepa-demo-pill {
   display: inline-block;
   margin-left: 8px;

@@ -3,6 +3,17 @@ import { readFile } from "node:fs/promises";
 import test from "node:test";
 
 const cssPath = new URL("../apps/homescreen/app/globals.css", import.meta.url);
+const layoutPath = new URL("../apps/homescreen/app/layout.tsx", import.meta.url);
+const designPath = new URL("../apps/homescreen/app/design/page.tsx", import.meta.url);
+const themePath = new URL("../apps/homescreen/app/lib/theme.tsx", import.meta.url);
+const personaPath = new URL(
+  "../apps/homescreen/components/ai-elements/persona.tsx",
+  import.meta.url,
+);
+const tauriConfigPath = new URL(
+  "../apps/homescreen/src-tauri/tauri.conf.json",
+  import.meta.url,
+);
 const chatPath = new URL("../apps/homescreen/app/components/ChatPane.tsx", import.meta.url);
 const sidebarPath = new URL("../apps/homescreen/app/components/Sidebar.tsx", import.meta.url);
 const pagePath = new URL("../apps/homescreen/app/page.tsx", import.meta.url);
@@ -212,6 +223,28 @@ test("desktop omits the always-on-top pin and its capability", async () => {
   assert.doesNotMatch(page, /PinIcon|PinOffIcon|titlebar-pin/);
   assert.doesNotMatch(css, /\.titlebar-pin/);
   assert.doesNotMatch(permissions, /core:window:allow-set-always-on-top/);
+});
+
+test("desktop stays dark and keeps the animated persona white", async () => {
+  const [layout, css, design, persona, tauriConfig] = await Promise.all([
+    readFile(layoutPath, "utf8"),
+    readFile(cssPath, "utf8"),
+    readFile(designPath, "utf8"),
+    readFile(personaPath, "utf8"),
+    readFile(tauriConfigPath, "utf8"),
+  ]);
+
+  assert.match(layout, /className=\{`\$\{plexMono\.variable\} dark`\}/);
+  assert.match(layout, /data-theme="dark"/);
+  assert.doesNotMatch(layout, /ThemeProvider|understudy-theme|data-sys|prefers-color-scheme/);
+  assert.match(css, /@custom-variant dark/);
+  assert.match(css, /color-scheme:\s*dark/);
+  assert.doesNotMatch(css, /data-theme="light"|data-theme="system"|color-scheme:\s*light/);
+  assert.doesNotMatch(design, /useTheme|setTheme|theme toggle|>light<|>system</);
+  assert.match(persona, /viewModelInstanceColor\.setRgb\(255, 255, 255\)/);
+  assert.doesNotMatch(persona, /getCurrentTheme|MutationObserver|prefers-color-scheme/);
+  assert.equal(JSON.parse(tauriConfig).app.windows[0].theme, "Dark");
+  await assert.rejects(readFile(themePath, "utf8"), { code: "ENOENT" });
 });
 
 test("desktop offers an explicit signed update check from macOS menus", async () => {
