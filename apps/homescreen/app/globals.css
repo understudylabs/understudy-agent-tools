@@ -2220,7 +2220,34 @@ select,
     flex-basis 260ms cubic-bezier(0.2, 0.7, 0.2, 1),
     min-height 260ms cubic-bezier(0.2, 0.7, 0.2, 1);
 }
+.persona-stage::before {
+  content: "";
+  position: absolute;
+  z-index: 0;
+  width: min(55vh, 438px);
+  height: min(55vh, 438px);
+  border: 1px solid transparent;
+  border-radius: 50%;
+  opacity: 0;
+  pointer-events: none;
+  transform: scale(0.94);
+  transition: border-color 180ms ease, box-shadow 180ms ease,
+    opacity 180ms ease, transform 180ms ease;
+}
+.persona-stage.workload-drop-active::before {
+  border-color: color-mix(in srgb, var(--mb-cyan) 54%, transparent);
+  box-shadow: 0 0 32px color-mix(in srgb, var(--mb-cyan) 16%, transparent),
+    inset 0 0 26px color-mix(in srgb, var(--mb-cyan) 8%, transparent);
+  opacity: 1;
+  animation: workload-intake-ring 1.5s ease-in-out infinite;
+}
+.persona-stage.workload-drop-compiling::before {
+  border-color: color-mix(in srgb, var(--mb-cyan) 72%, transparent);
+  animation-duration: 1.05s;
+}
 .persona-halo {
+  position: relative;
+  z-index: 1;
   grid-area: 1 / 1;
   width: min(52vh, 420px);
   height: min(52vh, 420px);
@@ -2264,6 +2291,8 @@ select,
   animation-duration: 16s;
 }
 .persona-stamp {
+  position: relative;
+  z-index: 1;
   grid-area: 1 / 1;
   width: min(32vh, 240px);
   height: min(32vh, 240px);
@@ -2289,18 +2318,9 @@ select,
   flex: 0 0 48px;
   min-height: 48px;
 }
-.ai-chat.has-workload .persona-stage {
-  height: 48px;
-  flex: 0 0 48px;
-  min-height: 48px;
-}
-.ai-chat.has-workload .persona-halo {
-  width: 42px;
-  height: 42px;
-}
-.ai-chat.has-workload .persona-stamp {
-  width: 34px;
-  height: 34px;
+.ai-chat.has-messages .persona-stage::before {
+  width: 50px;
+  height: 50px;
 }
 .ai-chat.has-messages .persona-halo {
   width: 42px;
@@ -2590,12 +2610,23 @@ select,
     transform: rotate(-360deg);
   }
 }
+@keyframes workload-intake-ring {
+  0%, 100% {
+    opacity: 0.52;
+    transform: scale(0.96);
+  }
+  50% {
+    opacity: 1;
+    transform: scale(1.02);
+  }
+}
 @media (prefers-reduced-motion: reduce) {
   .sidekick-persona-orbit,
   .sidekick-persona-halo,
   .chat-scroll-live-dot,
   .chat-message-enter,
-  .chat-nav-action-progress {
+  .chat-nav-action-progress,
+  .persona-stage.workload-drop-active::before {
     animation: none;
   }
   [data-slot="message-scroller-button"].chat-scroll-tracker,
@@ -2674,28 +2705,33 @@ select,
   line-height: 1.4;
   padding: 5px 0;
 }
-.workload-drop-overlay {
+.workload-drop-status {
   position: absolute;
-  z-index: 50;
-  inset: calc(var(--titlebar-h) + 8px) 24px 24px;
+  z-index: 2;
+  bottom: clamp(8px, 3vh, 28px);
+  left: 50%;
   display: grid;
-  place-content: center;
-  gap: 6px;
-  border: 1px solid color-mix(in srgb, var(--mb-cyan) 70%, var(--border));
-  border-radius: 18px;
-  background: color-mix(in srgb, var(--bg) 88%, transparent);
-  color: var(--text-2);
+  gap: 4px;
+  width: min(420px, calc(100% - 32px));
+  color: var(--text-3);
   font-family: var(--mono);
-  font-size: 11px;
+  font-size: 10px;
+  letter-spacing: 0.02em;
   text-align: center;
-  backdrop-filter: blur(18px);
+  transform: translateX(-50%);
   pointer-events: none;
 }
-.workload-drop-overlay-title {
+.workload-drop-status strong {
   color: var(--mb-cyan);
   font-family: var(--sans);
-  font-size: 18px;
-  font-weight: 650;
+  font-size: 14px;
+  font-weight: 620;
+  letter-spacing: normal;
+}
+.ai-chat.has-messages .workload-drop-status {
+  top: 54px;
+  bottom: auto;
+  width: min(360px, calc(100vw - 64px));
 }
 .workload-draft {
   display: flex;

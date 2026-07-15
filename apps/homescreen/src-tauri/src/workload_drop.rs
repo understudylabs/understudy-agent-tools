@@ -1,6 +1,15 @@
 use std::path::PathBuf;
 
+use serde::Serialize;
 use serde_json::Value;
+use tauri::ipc::Channel;
+
+#[derive(Clone, Serialize)]
+#[serde(tag = "type", rename_all = "snake_case")]
+pub enum WorkloadDropEvent {
+    Validating,
+    Compiling,
+}
 
 fn validate_compile_result(value: Value) -> Result<Value, String> {
     if !value.is_object() {
@@ -29,7 +38,8 @@ fn bounded_detail(stderr: &[u8]) -> String {
     detail.chars().take(800).collect()
 }
 
-fn compile(path: String) -> Result<Value, String> {
+fn compile(path: String, on_event: &Channel<WorkloadDropEvent>) -> Result<Value, String> {
+    let _ = on_event.send(WorkloadDropEvent::Validating);
     let trimmed = path.trim();
     if trimmed.is_empty() {
         return Err("Drop one local file or folder.".into());
@@ -44,6 +54,7 @@ fn compile(path: String) -> Result<Value, String> {
     // The public CLI owns discovery, privacy boundaries, scan limits, and the
     // durable Workload Card. Desktop only passes one exact local path and
     // renders the bounded JSON result.
+    let _ = on_event.send(WorkloadDropEvent::Compiling);
     let output = crate::bin::command("understudy")
         .args(["capture-import", "compile", "--source"])
         .arg(&canonical)
@@ -66,8 +77,11 @@ fn compile(path: String) -> Result<Value, String> {
 }
 
 #[tauri::command]
-pub async fn compile_dropped_workload(path: String) -> Result<Value, String> {
-    tauri::async_runtime::spawn_blocking(move || compile(path))
+pub async fn compile_dropped_workload(
+    path: String,
+    on_event: Channel<WorkloadDropEvent>,
+) -> Result<Value, String> {
+    tauri::async_runtime::spawn_blocking(move || compile(path, &on_event))
         .await
         .map_err(|error| format!("The workload compiler stopped unexpectedly: {error}"))?
 }
@@ -105,5 +119,17 @@ mod tests {
         let input = vec![b'x'; 2_000];
         assert_eq!(bounded_detail(&input).chars().count(), 800);
         assert_eq!(bounded_detail(b"\n"), "No diagnostic was returned.");
+    }
+
+    #[test]
+    fn serializes_truthful_phase_events() {
+        assert_eq!(
+            serde_json::to_value(WorkloadDropEvent::Validating).unwrap(),
+            json!({ "type": "validating" })
+        );
+        assert_eq!(
+            serde_json::to_value(WorkloadDropEvent::Compiling).unwrap(),
+            json!({ "type": "compiling" })
+        );
     }
 }

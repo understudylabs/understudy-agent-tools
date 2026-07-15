@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useRef, useState } from "react";
+import { useEffect, useMemo, useReducer, useRef, useState } from "react";
 import { Channel, invoke, isTauri } from "@tauri-apps/api/core";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
 import {
@@ -38,7 +38,11 @@ import {
   PromptInputSubmit,
   PromptInputTextarea,
 } from "@/components/ai-elements/prompt-input";
-import { Persona, type PersonaState } from "@/components/ai-elements/persona";
+import {
+  Persona,
+  type PersonaColor,
+  type PersonaState,
+} from "@/components/ai-elements/persona";
 import {
   Tool,
   ToolContent,
@@ -66,6 +70,13 @@ import {
   ChatStreamBatcher,
   type ChatStreamPatch,
 } from "../lib/chat-stream-batcher.mjs";
+import {
+  INITIAL_WORKLOAD_DROP_PHASE,
+  isWorkloadDropBusy,
+  workloadDropPersonaState,
+  workloadDropReducer,
+  workloadDropStatus,
+} from "../lib/workload-drop-state.mjs";
 import { ModelCardDrawer } from "./ModelCardDrawer";
 import type { FileUIPart } from "ai";
 import { ArrowDownIcon } from "lucide-react";
@@ -120,6 +131,7 @@ type DroppedWorkload = {
   payload_read: false;
   workload_card_path: string;
 };
+type WorkloadDropEvent = { type: "validating" | "compiling" };
 
 const CLOUD_SUPERVISOR_FALLBACK_NOTICE =
   "Tried to hand off to a larger cloud model, but it is unavailable. Continuing with the local model.";
@@ -180,6 +192,10 @@ const CLOUD_MODEL: ModelChoice = {
   slotId: null,
   active: true,
 };
+
+const PERSONA_WHITE: PersonaColor = { red: 255, green: 255, blue: 255 };
+const PERSONA_CYAN: PersonaColor = { red: 103, green: 232, blue: 249 };
+const PERSONA_ERROR: PersonaColor = { red: 248, green: 113, blue: 113 };
 
 function compactBytes(bytes: number): string {
   if (bytes < 1_024) return `${bytes} B`;
@@ -362,8 +378,10 @@ export function ChatPane({
   const [introThinking, setIntroThinking] = useState(true);
   const [sidekickEvents, setSidekickEvents] = useState<SidekickEvent[]>([]);
   const [sessionHydrated, setSessionHydrated] = useState(!initialSession.restore);
-  const [dropHovering, setDropHovering] = useState(false);
-  const [dropRunning, setDropRunning] = useState(false);
+  const [dropPhase, dispatchDrop] = useReducer(
+    workloadDropReducer,
+    INITIAL_WORKLOAD_DROP_PHASE,
+  );
   const [droppedWorkload, setDroppedWorkload] = useState<DroppedWorkload | null>(null);
   const [pacingMessageIndex, setPacingMessageIndex] = useState<number | null>(null);
   const [pacedRevealed, setPacedRevealed] = useState<number | null>(null);
@@ -376,6 +394,9 @@ export function ChatPane({
   const streamPacer = useRef<StreamPacer | null>(null);
   const streamPacerGeneration = useRef(0);
   const streamBatcher = useRef<ChatStreamBatcher | null>(null);
+  const dropHovering = dropPhase === "hovering";
+  const dropRunning = isWorkloadDropBusy(dropPhase);
+  const dropStatus = workloadDropStatus(dropPhase);
 
   const applyAssistantPatch = (patch: ChatStreamPatch) => {
     setMessages((current) => {
@@ -418,7 +439,7 @@ export function ChatPane({
     dropRequestGeneration.current += 1;
     dropInFlight.current = false;
     setDroppedWorkload(null);
-    setDropRunning(false);
+    dispatchDrop({ type: "reset" });
   };
 
   const startStreamPacer = (messageIndex: number) => {
@@ -529,35 +550,46 @@ export function ChatPane({
     void getCurrentWebview()
       .onDragDropEvent((event) => {
         if (event.payload.type === "enter" || event.payload.type === "over") {
-          setDropHovering(true);
+          dispatchDrop({ type: "drag_enter" });
           return;
         }
         if (event.payload.type === "leave") {
-          setDropHovering(false);
+          dispatchDrop({ type: "drag_leave" });
           return;
         }
 
-        setDropHovering(false);
         const paths = event.payload.paths;
-        if (paths.length !== 1) {
-          setErr("Drop one file or folder at a time so each Workload Card has a clear source.");
-          return;
-        }
         if (dropInFlight.current) {
           setNotice("The current dropped workload is still being compiled locally.");
+          return;
+        }
+        dispatchDrop({ type: "drop_received" });
+        if (paths.length !== 1) {
+          dispatchDrop({ type: "failed" });
+          setErr("Drop one file or folder at a time so each Workload Card has a clear source.");
           return;
         }
         dropInFlight.current = true;
         const requestGeneration = dropRequestGeneration.current + 1;
         dropRequestGeneration.current = requestGeneration;
-        setDropRunning(true);
         setDroppedWorkload(null);
         setErr(null);
-        setNotice("Creating a local metadata-only Workload Card…");
-        void invoke<DroppedWorkload>("compile_dropped_workload", { path: paths[0] })
+        setNotice(null);
+        const channel = new Channel<WorkloadDropEvent>();
+        channel.onmessage = (message) => {
+          if (disposed || dropRequestGeneration.current !== requestGeneration) return;
+          dispatchDrop({
+            type: message.type === "validating" ? "validation_started" : "compilation_started",
+          });
+        };
+        void invoke<DroppedWorkload>("compile_dropped_workload", {
+          path: paths[0],
+          onEvent: channel,
+        })
           .then((result) => {
             if (disposed || dropRequestGeneration.current !== requestGeneration) return;
             setDroppedWorkload(result);
+            dispatchDrop({ type: "succeeded" });
             setNotice(
               result.truncated
                 ? "Workload draft created at the safety limit; no file contents were read."
@@ -565,12 +597,14 @@ export function ChatPane({
             );
           })
           .catch((error) => {
-            if (!disposed && dropRequestGeneration.current === requestGeneration) setErr(String(error));
+            if (!disposed && dropRequestGeneration.current === requestGeneration) {
+              dispatchDrop({ type: "failed" });
+              setErr(String(error));
+            }
           })
           .finally(() => {
             if (dropRequestGeneration.current !== requestGeneration) return;
             dropInFlight.current = false;
-            if (!disposed) setDropRunning(false);
           });
       })
       .then((stop) => {
@@ -981,7 +1015,8 @@ export function ChatPane({
     selectedChoice.route === "local" &&
     (selectedChoice.loading || thinkingPending?.slotId === selectedChoice.slotId);
 
-  const personaState: PersonaState = personaLoading
+  const dropPersonaState = workloadDropPersonaState(dropPhase) as PersonaState | null;
+  const personaState: PersonaState = dropPersonaState ?? (personaLoading
     ? "thinking"
     : introThinking && messages.length === 0 && !input.trim()
     ? "thinking"
@@ -991,7 +1026,12 @@ export function ChatPane({
       : "thinking"
     : input.trim()
       ? "listening"
-      : "idle";
+      : "idle");
+  const personaColor = dropPhase === "failed"
+    ? PERSONA_ERROR
+    : dropHovering || dropRunning
+      ? PERSONA_CYAN
+      : PERSONA_WHITE;
   const latestSupervisorEvent = sidekickEvents.find(
     (event) => event.mode === "supervision",
   );
@@ -1023,17 +1063,18 @@ export function ChatPane({
       className={
         "chat ai-chat" +
         (messages.length > 0 ? " has-messages" : "") +
-        (dropRunning || droppedWorkload ? " has-workload" : "") +
         (streaming ? " is-streaming" : "")
       }
     >
-      {dropHovering && (
-        <div className="workload-drop-overlay" role="status">
-          <div className="workload-drop-overlay-title">Drop one file or folder</div>
-          <div>Metadata only · stays on this Mac</div>
-        </div>
-      )}
-      <div className={"persona-stage" + (personaReady ? " persona-ready" : "")} aria-hidden="true">
+      <div
+        className={
+          "persona-stage" +
+          (personaReady ? " persona-ready" : "") +
+          (dropHovering || dropRunning ? " workload-drop-active" : "") +
+          ` workload-drop-${dropPhase}`
+        }
+        aria-busy={dropRunning || undefined}
+      >
         <img
           key={`stamp-${personaCycle}`}
           className="persona-stamp"
@@ -1045,12 +1086,19 @@ export function ChatPane({
           key={personaCycle}
           variant="halo"
           state={personaState}
+          color={personaColor}
           className={
             "persona-halo" +
             (streaming && latestSupervisorEvent ? " supervised" : "")
           }
           onReady={() => setPersonaReady(true)}
         />
+        {dropStatus && (
+          <div className="workload-drop-status" role="status" aria-live="polite">
+            <strong>{dropStatus.title}</strong>
+            <span>{dropStatus.detail}</span>
+          </div>
+        )}
       </div>
       <MessageScrollerProvider
         key={sessionId}
@@ -1166,7 +1214,9 @@ export function ChatPane({
               {dropRunning || !droppedWorkload ? (
                 <div className="workload-draft-loading">
                   <span />
-                  Building a bounded local Workload Card…
+                  {dropPhase === "validating"
+                    ? "Validating one local path…"
+                    : "Building a bounded local Workload Card…"}
                 </div>
               ) : (
                 <>
@@ -1198,7 +1248,14 @@ export function ChatPane({
                     >
                       Review next steps
                     </button>
-                    <button type="button" className="btn ghost" onClick={() => setDroppedWorkload(null)}>
+                    <button
+                      type="button"
+                      className="btn ghost"
+                      onClick={() => {
+                        setDroppedWorkload(null);
+                        dispatchDrop({ type: "reset" });
+                      }}
+                    >
                       Dismiss
                     </button>
                   </div>
