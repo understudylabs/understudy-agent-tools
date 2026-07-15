@@ -198,7 +198,9 @@ describe("install.sh", () => {
         join(root, "lab"),
       ],
       {
-        cwd: process.cwd(),
+        // Run outside this repository so a contributor's repo-local Git
+        // identity cannot override the temporary global config under HOME.
+        cwd: home,
         input: script,
         encoding: "utf8",
         env: {
