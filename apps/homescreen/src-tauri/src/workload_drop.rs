@@ -54,6 +54,38 @@ fn validate_csv_inspection_result(value: Value) -> Result<Value, String> {
     Ok(value)
 }
 
+fn validate_classification_dataset_result(value: Value) -> Result<Value, String> {
+    if !value.is_object() {
+        return Err("The Understudy CLI returned an invalid classification dataset.".into());
+    }
+    if value.get("schema_version").and_then(Value::as_str)
+        != Some("understudy.capture_import.classification_dataset.v1")
+        || value.get("local_only").and_then(Value::as_bool) != Some(true)
+        || value.get("network_required").and_then(Value::as_bool) != Some(false)
+        || value.get("mapping_confirmation").and_then(Value::as_str) != Some("caller-provided")
+        || value
+            .get("source_rows_persisted_as_transformed_examples")
+            .and_then(Value::as_bool)
+            != Some(true)
+    {
+        return Err(
+            "The classification dataset did not preserve its explicit local-only boundary.".into(),
+        );
+    }
+    for field in [
+        "dataset_id",
+        "source_sha256",
+        "mapping_sha256",
+        "splits",
+        "manifest_path",
+    ] {
+        if value.get(field).is_none() {
+            return Err(format!("The classification dataset omitted {field}."));
+        }
+    }
+    Ok(value)
+}
+
 fn bounded_detail(stderr: &[u8]) -> String {
     let detail = String::from_utf8_lossy(stderr).trim().to_string();
     if detail.is_empty() {
@@ -162,6 +194,76 @@ pub async fn inspect_dropped_csv(path: String, artifact_root: String) -> Result<
         .map_err(|error| format!("The CSV inspector stopped unexpectedly: {error}"))?
 }
 
+fn prepare_classification(
+    path: String,
+    artifact_root: String,
+    input_columns: Vec<String>,
+    label_column: String,
+) -> Result<Value, String> {
+    let canonical = PathBuf::from(path.trim())
+        .canonicalize()
+        .map_err(|error| format!("The CSV is unavailable: {error}"))?;
+    let canonical_artifact_root = PathBuf::from(artifact_root.trim())
+        .canonicalize()
+        .map_err(|error| format!("The workload artifact root is unavailable: {error}"))?;
+    if !canonical.is_file()
+        || canonical
+            .extension()
+            .and_then(|extension| extension.to_str())
+            .map(|extension| !extension.eq_ignore_ascii_case("csv"))
+            .unwrap_or(true)
+        || !canonical_artifact_root.join("workload-card.json").is_file()
+        || !canonical_artifact_root
+            .join("csv-inspection.json")
+            .is_file()
+    {
+        return Err("Prepare training data from the current inspected CSV.".into());
+    }
+    if input_columns.is_empty() || input_columns.len() > 127 || label_column.trim().is_empty() {
+        return Err("Choose one label and at least one bounded input column.".into());
+    }
+
+    let mut command = crate::bin::command("understudy");
+    command
+        .args(["capture-import", "prepare-classification", "--source"])
+        .arg(&canonical)
+        .arg("--artifact-root")
+        .arg(&canonical_artifact_root)
+        .arg("--label-column")
+        .arg(label_column.trim());
+    for column in input_columns {
+        command.arg("--input-column").arg(column);
+    }
+    let output = command.arg("--json").output().map_err(|error| {
+        format!(
+            "Could not run the Understudy CLI ({error}). Open Status to repair the CLI, then prepare the dataset again."
+        )
+    })?;
+    if !output.status.success() {
+        return Err(format!(
+            "The Understudy CLI could not prepare this dataset. {}",
+            bounded_detail(&output.stderr)
+        ));
+    }
+    let value = serde_json::from_slice::<Value>(&output.stdout)
+        .map_err(|_| "The Understudy CLI returned malformed dataset JSON.".to_string())?;
+    validate_classification_dataset_result(value)
+}
+
+#[tauri::command]
+pub async fn prepare_dropped_csv_classification(
+    path: String,
+    artifact_root: String,
+    input_columns: Vec<String>,
+    label_column: String,
+) -> Result<Value, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        prepare_classification(path, artifact_root, input_columns, label_column)
+    })
+    .await
+    .map_err(|error| format!("The dataset preparer stopped unexpectedly: {error}"))?
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -224,6 +326,39 @@ mod tests {
         assert!(validate_csv_inspection_result(unsafe_result)
             .unwrap_err()
             .contains("statistics-only"));
+    }
+
+    #[test]
+    fn accepts_only_explicit_local_classification_datasets() {
+        let valid = json!({
+            "schema_version": "understudy.capture_import.classification_dataset.v1",
+            "dataset_id": "dataset",
+            "source_sha256": "source",
+            "mapping_sha256": "mapping",
+            "splits": {},
+            "manifest_path": "/tmp/manifest.json",
+            "local_only": true,
+            "network_required": false,
+            "mapping_confirmation": "caller-provided",
+            "source_rows_persisted_as_transformed_examples": true
+        });
+        assert!(validate_classification_dataset_result(valid).is_ok());
+
+        let unsafe_result = json!({
+            "schema_version": "understudy.capture_import.classification_dataset.v1",
+            "dataset_id": "dataset",
+            "source_sha256": "source",
+            "mapping_sha256": "mapping",
+            "splits": {},
+            "manifest_path": "/tmp/manifest.json",
+            "local_only": false,
+            "network_required": true,
+            "mapping_confirmation": "inferred",
+            "source_rows_persisted_as_transformed_examples": true
+        });
+        assert!(validate_classification_dataset_result(unsafe_result)
+            .unwrap_err()
+            .contains("local-only"));
     }
 
     #[test]

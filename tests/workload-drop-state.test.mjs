@@ -57,6 +57,15 @@ test("explicit CSV inspection is a truthful thinking phase", () => {
   assert.equal(workloadDropReducer("failed", { type: "inspection_started" }), "inspecting");
 });
 
+test("classification dataset preparation stays busy until local splits exist", () => {
+  let phase = workloadDropReducer("ready", { type: "dataset_started" });
+  assert.equal(phase, "preparing_dataset");
+  assert.equal(workloadDropPersonaState(phase), "thinking");
+  assert.match(workloadDropStatus(phase)?.detail ?? "", /train, dev, and holdout/);
+  phase = workloadDropReducer(phase, { type: "dataset_succeeded" });
+  assert.equal(phase, "ready");
+});
+
 test("out-of-order completion cannot mark an idle lifecycle ready", () => {
   assert.equal(workloadDropReducer("idle", { type: "succeeded" }), "idle");
   assert.equal(workloadDropReducer("ready", { type: "failed" }), "ready");

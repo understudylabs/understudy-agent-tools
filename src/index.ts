@@ -6,6 +6,7 @@ import {
   buildWorkloadCard,
   compileCaptureImport,
   inspectCaptureCsv,
+  prepareCaptureClassificationDataset,
   previewCaptureImport,
   scanCaptureImport,
 } from "./capture-import.js";
@@ -296,6 +297,10 @@ function parseNonNegativeNumber(value: string): number {
   return parsed;
 }
 
+function collectRepeated(value: string, previous: string[]): string[] {
+  return [...previous, value];
+}
+
 function registerCaptureImportCommands(program: Command): void {
   const captureImport = program
     .command("capture-import")
@@ -351,6 +356,39 @@ function registerCaptureImportCommands(program: Command): void {
       console.log(`mapping: ${result.recommended_mapping.label_column ?? "label confirmation required"}`);
       console.log(`artifact: ${result.artifact_path}`);
       console.log("payload_read: true (local only; source rows were not copied)");
+    });
+
+  captureImport
+    .command("prepare-classification")
+    .description("Transform an inspected CSV into deterministic local train, dev, and holdout JSONL")
+    .requiredOption("--source <path>", "Inspected local CSV file")
+    .requiredOption("--artifact-root <path>", "Existing private artifact root from capture-import compile")
+    .requiredOption("--label-column <name>", "Caller-confirmed label column")
+    .option("--input-column <name>", "Caller-confirmed input column; repeat for multiple columns", collectRepeated, [])
+    .option("--json", "Output JSON")
+    .action((options: {
+      source: string;
+      artifactRoot: string;
+      labelColumn: string;
+      inputColumn: string[];
+      json?: boolean;
+    }) => {
+      const result = prepareCaptureClassificationDataset(
+        options.source,
+        options.artifactRoot,
+        options.inputColumn,
+        options.labelColumn,
+      );
+      if (commandJsonEnabled(program, options)) {
+        console.log(JSON.stringify(result, null, 2));
+        return;
+      }
+      console.log(`capture-import prepare-classification: ${result.row_count} row(s)`);
+      console.log(
+        `splits: train ${result.splits.train.row_count}, dev ${result.splits.dev.row_count}, holdout ${result.splits.holdout.row_count}`,
+      );
+      console.log(`manifest: ${result.manifest_path}`);
+      console.log("local_only: true (transformed examples were persisted locally)");
     });
 
   captureImport

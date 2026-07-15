@@ -307,6 +307,7 @@ pub fn run() {
             tool_proof::desktop_tool_proof_prepare,
             workload_drop::compile_dropped_workload,
             workload_drop::inspect_dropped_csv,
+            workload_drop::prepare_dropped_csv_classification,
             commands::sidekick_decisions,
             commands::sidekick_events,
             commands::sidekick_session_summaries,

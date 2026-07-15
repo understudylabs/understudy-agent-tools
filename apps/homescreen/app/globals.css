@@ -2833,6 +2833,85 @@ select,
   font-size: 11px;
   line-height: 1.45;
 }
+.workload-mapping {
+  display: grid;
+  gap: 8px;
+  margin-top: 4px;
+  padding: 9px;
+  border: 1px solid var(--border);
+  border-radius: 9px;
+  background: color-mix(in srgb, var(--bg) 38%, transparent);
+}
+.workload-mapping label,
+.workload-mapping-inputs {
+  display: grid;
+  gap: 5px;
+}
+.workload-mapping label > span,
+.workload-mapping-inputs > span {
+  color: var(--text-3);
+  font-family: var(--mono);
+  font-size: 9px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+.workload-mapping select {
+  min-width: 0;
+  height: 30px;
+  padding: 0 28px 0 9px;
+  border: 1px solid var(--border);
+  border-radius: 7px;
+  background: var(--surface);
+  color: var(--text);
+  font-size: 11px;
+}
+.workload-mapping-inputs > div {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 5px;
+  max-height: 92px;
+  overflow-y: auto;
+}
+.workload-mapping-inputs button {
+  padding: 4px 7px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--text-3);
+  font-family: var(--mono);
+  font-size: 9px;
+  cursor: pointer;
+}
+.workload-mapping-inputs button.selected {
+  border-color: color-mix(in srgb, var(--mb-cyan) 55%, var(--border));
+  background: color-mix(in srgb, var(--mb-cyan) 11%, transparent);
+  color: var(--mb-cyan);
+}
+.workload-mapping-inputs button:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+.workload-mapping small,
+.workload-dataset-ready small {
+  color: var(--text-3);
+  font-size: 10px;
+  line-height: 1.4;
+}
+.workload-dataset-ready {
+  display: grid;
+  gap: 3px;
+  margin-top: 4px;
+  padding: 9px 10px;
+  border: 1px solid color-mix(in srgb, var(--mb-cyan) 32%, var(--border));
+  border-radius: 9px;
+  background: color-mix(in srgb, var(--mb-cyan) 6%, transparent);
+  color: var(--text-2);
+  font-size: 11px;
+}
+.workload-dataset-ready strong {
+  color: var(--mb-cyan);
+  font-size: 12px;
+}
 .workload-draft-actions {
   display: flex;
   flex: 0 0 auto;
