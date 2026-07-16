@@ -19,6 +19,10 @@ const trainingHaloPath = new URL(
   "../apps/homescreen/app/components/TrainingHalo.tsx",
   import.meta.url,
 );
+const evaluationRadarPath = new URL(
+  "../apps/homescreen/app/components/EvaluationRadar.tsx",
+  import.meta.url,
+);
 const csvTrainingPlanPath = new URL(
   "../apps/homescreen/app/components/CsvTrainingPlan.tsx",
   import.meta.url,
@@ -534,8 +538,8 @@ test("desktop compiles one dropped path through the bounded public CLI", async (
   assert.match(chat, /<CsvTrainingPlan/);
   assert.match(trainingPlan, /Understand/);
   assert.match(trainingPlan, /Local ModernBERT/);
-  assert.match(trainingPlan, /Held-out macro-F1/);
-  assert.match(trainingPlan, /Compare with the TF-IDF baseline/);
+  assert.match(trainingPlan, /Works across every category/);
+  assert.match(trainingPlan, /Compare with a simple baseline on separate test examples/);
   assert.match(chat, /groupColumn: mappingGroupColumn/);
   assert.match(chat, /Choose a reference column/);
   assert.match(chat, /mappingLabelColumn && !mappingGroupColumn/);
@@ -625,12 +629,21 @@ test("desktop compiles one dropped path through the bounded public CLI", async (
   assert.match(css, /prefers-reduced-motion: reduce[\s\S]*?\.local-training-example-stream/);
   assert.match(training, /cancellationRequested\.current \|\| message\.toLowerCase\(\)\.includes\("cancel"\)/);
   assert.match(training, /predict_local_classification/);
-  assert.match(training, /TF-IDF \{percent\(state\.result\.linear_baseline\.accuracy\)\}/);
+  assert.match(training, /compare_local_classification_with_frontier/);
+  assert.match(training, /Compare with GLM 5\.2 on the same/);
+  assert.match(training, /Only held-out test examples are sent through Understudy/);
+  assert.match(training, /confirmSpend: true/);
+  assert.match(training, /budgetUsd: 1/);
+  assert.match(training, /Fireworks publishes zero data retention/);
+  assert.match(training, /Maximum approved spend: \$1\.00/);
+  assert.match(training, /<EvaluationRadar/);
+  assert.match(training, /frontierComparison\.heldout\.weakest_classes\[0\] && state\.result\.heldout\.weakest_classes\[0\]/);
+  assert.match(training, /baselineAccuracy=\{state\.result\.linear_baseline\.accuracy\}/);
   assert.match(training, /state\.result\.heldout\.macro_f1/);
   assert.match(training, /state\.result\.heldout\.latency_ms_p50/);
   assert.match(training, /state\.result\.model\.size_bytes/);
   assert.match(training, /Notable failures/);
-  assert.match(training, /Weakest categories/);
+  assert.match(training, /Hardest categories/);
   assert.match(training, /Try a new example/);
   assert.match(training, /window\.setInterval/);
   assert.doesNotMatch(training, /Math\.random/);
@@ -640,6 +653,26 @@ test("desktop compiles one dropped path through the bounded public CLI", async (
   assert.match(trainingState, /This dataset is too easy to show model value/);
   assert.match(trainingState, /Low confidence—review this prediction/);
   assert.doesNotMatch(trainingState, /percentage|percent/);
+  assert.match(bridge, /compare-classification-frontier/);
+  assert.match(bridge, /"--confirm-remote"/);
+  assert.match(bridge, /"--confirm-spend"/);
+  assert.match(bridge, /"--budget-usd"/);
+  assert.match(bridge, /approved_budget_usd/);
+  assert.match(bridge, /attributed_cost_usd/);
+  assert.match(bridge, /exact_same_holdout/);
+  const radar = await readFile(evaluationRadarPath, "utf8");
+  assert.match(radar, /Same held-out examples/);
+  assert.match(radar, /Local model versus/);
+  assert.match(radar, /Correct answers/);
+  assert.match(radar, /Across categories/);
+  assert.match(radar, /Hardest category/);
+  assert.match(radar, /Fast response/);
+  assert.match(radar, /Your local model/);
+  assert.match(radar, /Cloud required/);
+  assert.match(radar, /this comparison/);
+  assert.match(radar, /same examples/);
+  assert.match(radar, /aria-label="Local and frontier comparison dimensions"/);
+  assert.doesNotMatch(radar, />F1<|"F1"/);
   assert.equal(
     parity.features.find((feature) => feature.id === "drop-to-workload-compilation")?.status,
     "shipped",

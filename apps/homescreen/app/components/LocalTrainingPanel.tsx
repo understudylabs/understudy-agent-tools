@@ -14,6 +14,7 @@ import {
   type LocalTrainingEvent,
   type LocalTrainingState,
 } from "../lib/local-training-state.mjs";
+import { EvaluationRadar } from "./EvaluationRadar";
 import type { TrainingHaloVisual } from "./TrainingHalo";
 
 const MODERN_BERT_MODEL = "answerdotai/ModernBERT-base";
@@ -110,6 +111,53 @@ type ClassificationTrainingPreview = {
   }[];
 };
 
+type FrontierComparison = {
+  schema_version: "understudy.capture_import.frontier_classification.v1";
+  comparison_id: string;
+  status: "completed";
+  run_id: string;
+  requested_model: string;
+  served_model: string;
+  exact_same_holdout: true;
+  holdout_sha256: string;
+  row_count: number;
+  data_boundary: {
+    user_confirmed_remote_comparison: true;
+    training_examples_uploaded: false;
+    holdout_examples_uploaded: true;
+    retention_expectation: string;
+  };
+  heldout: {
+    accuracy: number;
+    macro_f1: number;
+    latency_ms_p50: number;
+    failure_count: number;
+    weakest_classes: {
+      label: string;
+      recall: number;
+      f1: number;
+      support: number;
+    }[];
+  };
+  spend: {
+    user_confirmed_spend: true;
+    approved_budget_usd: number;
+    estimated_max_cost_usd: number;
+    attributed_cost_usd: number;
+    pricing_source: string;
+    pricing_checked_at: string;
+  };
+  artifact_path: string;
+};
+
+type FrontierComparisonEvent = {
+  type: "phase";
+  phase: "preparing" | "comparing" | "measuring" | "saving";
+  current?: number;
+  total?: number;
+  message?: string;
+};
+
 type Props = {
   datasetManifestPath: string;
   modelName: string;
@@ -120,12 +168,6 @@ type Props = {
 
 function percent(value: number): string {
   return `${(value * 100).toFixed(1)}%`;
-}
-
-function compactBytes(bytes: number): string {
-  if (bytes < 1_024 * 1_024) return `${Math.round(bytes / 1_024)} KB`;
-  if (bytes < 1_024 * 1_024 * 1_024) return `${(bytes / (1_024 * 1_024)).toFixed(0)} MB`;
-  return `${(bytes / (1_024 * 1_024 * 1_024)).toFixed(1)} GB`;
 }
 
 function runId(): string {
@@ -162,6 +204,10 @@ export function LocalTrainingPanel({
   const [prediction, setPrediction] = useState<ClassificationPrediction | null>(null);
   const [predictionError, setPredictionError] = useState<string | null>(null);
   const [predicting, setPredicting] = useState(false);
+  const [frontierComparison, setFrontierComparison] = useState<FrontierComparison | null>(null);
+  const [frontierEvent, setFrontierEvent] = useState<FrontierComparisonEvent | null>(null);
+  const [frontierError, setFrontierError] = useState<string | null>(null);
+  const [comparingFrontier, setComparingFrontier] = useState(false);
   const [trainingPreview, setTrainingPreview] = useState<ClassificationTrainingPreview | null>(null);
   const [trainingPreviewIndex, setTrainingPreviewIndex] = useState(0);
   const [previousTrainingPreviewIndex, setPreviousTrainingPreviewIndex] = useState<number | null>(null);
@@ -224,6 +270,10 @@ export function LocalTrainingPanel({
     setPredictionText("");
     setPrediction(null);
     setPredictionError(null);
+    setFrontierComparison(null);
+    setFrontierEvent(null);
+    setFrontierError(null);
+    setComparingFrontier(false);
     setTrainingPreview(null);
     setTrainingPreviewIndex(0);
     trainingPreviewIndexRef.current = 0;
@@ -282,6 +332,10 @@ export function LocalTrainingPanel({
     cancellationRequested.current = false;
     setPrediction(null);
     setPredictionError(null);
+    setFrontierComparison(null);
+    setFrontierEvent(null);
+    setFrontierError(null);
+    setComparingFrontier(false);
     setTrainingPreview(null);
     setTrainingPreviewIndex(0);
     trainingPreviewIndexRef.current = 0;
@@ -381,6 +435,46 @@ export function LocalTrainingPanel({
       .then(setPrediction)
       .catch((error) => setPredictionError(String(error)))
       .finally(() => setPredicting(false));
+  };
+
+  const compareWithFrontier = () => {
+    if (!state.result || comparingFrontier) return;
+    const requestGeneration = generation.current;
+    const localRunId = state.result.run_id;
+    setComparingFrontier(true);
+    setFrontierComparison(null);
+    setFrontierError(null);
+    setFrontierEvent({
+      type: "phase",
+      phase: "preparing",
+      message: "Verifying the exact held-out examples used for the local score.",
+    });
+    const channel = new Channel<FrontierComparisonEvent>();
+    channel.onmessage = (event) => {
+      if (generation.current === requestGeneration) setFrontierEvent(event);
+    };
+    void invoke<FrontierComparison>("compare_local_classification_with_frontier", {
+      runManifestPath: state.result.manifest_path,
+      modelId: "glm-5.2",
+      confirmRemote: true,
+      confirmSpend: true,
+      budgetUsd: 1,
+      onEvent: channel,
+    })
+      .then((result) => {
+        if (generation.current !== requestGeneration) return;
+        if (result.run_id !== localRunId || !result.exact_same_holdout) {
+          throw new Error("The frontier result did not match this local run.");
+        }
+        setFrontierComparison(result);
+        setFrontierEvent(null);
+      })
+      .catch((error) => {
+        if (generation.current === requestGeneration) setFrontierError(String(error));
+      })
+      .finally(() => {
+        if (generation.current === requestGeneration) setComparingFrontier(false);
+      });
   };
 
   if (state.phase === "idle") {
@@ -485,8 +579,8 @@ export function LocalTrainingPanel({
     <div className="local-training-result">
       <div className="local-training-result-heading">
         <div>
-          <strong>Local classifier evaluated</strong>
-          <small>Held-out rows share no normalized {state.result.split_evidence.group_key} groups with training.</small>
+          <strong>Your model is ready to review</strong>
+          <small>Test examples were kept separate from training examples.</small>
         </div>
         <span>{(state.result.timings_ms.total / 1_000).toFixed(1)}s</span>
       </div>
@@ -494,23 +588,61 @@ export function LocalTrainingPanel({
         <strong>{verdict.title}</strong>
         <small>{verdict.detail}</small>
       </div>
-      <div className="local-training-metrics" aria-label="Held-out evaluation">
-        <div><span>Accuracy</span><b>{percent(state.result.heldout.accuracy)}</b><small>TF-IDF {percent(state.result.linear_baseline.accuracy)}</small></div>
-        <div><span>Macro-F1</span><b>{percent(state.result.heldout.macro_f1)}</b><small>TF-IDF {percent(state.result.linear_baseline.macro_f1)}</small></div>
-        <div><span>Latency</span><b>{state.result.heldout.latency_ms_p50.toFixed(1)} ms</b><small>median local inference</small></div>
-        <div><span>Model</span><b>{compactBytes(state.result.model.size_bytes)}</b><small>{state.result.model.resolved_id}</small></div>
-      </div>
+      {!frontierComparison && (
+        <div className="frontier-comparison-prompt" aria-live="polite" aria-busy={comparingFrontier}>
+          <div>
+            <span>Frontier reference</span>
+            <strong>Compare with GLM 5.2 on the same {state.result.heldout.row_count.toLocaleString()} test examples</strong>
+            <small>
+              Only held-out test examples are sent through Understudy; training examples stay on this Mac. Fireworks publishes zero data retention for GLM 5.2. Maximum approved spend: $1.00.
+            </small>
+            {frontierEvent?.message && <p>{frontierEvent.message}</p>}
+            {frontierEvent?.current !== undefined && frontierEvent.total !== undefined && (
+              <code>{frontierEvent.current} of {frontierEvent.total} comparison batches</code>
+            )}
+            {frontierError && <em>{frontierError}</em>}
+          </div>
+          <button type="button" className="btn primary" onClick={compareWithFrontier} disabled={comparingFrontier}>
+            {comparingFrontier ? "Comparing…" : frontierError ? "Try frontier again · max $1" : "Compare with GLM 5.2 · max $1"}
+          </button>
+        </div>
+      )}
+      {frontierComparison && frontierComparison.heldout.weakest_classes[0] && state.result.heldout.weakest_classes[0] && (
+        <EvaluationRadar
+          accuracy={state.result.heldout.accuracy}
+          macroF1={state.result.heldout.macro_f1}
+          baselineAccuracy={state.result.linear_baseline.accuracy}
+          baselineMacroF1={state.result.linear_baseline.macro_f1}
+          weakestClass={state.result.heldout.weakest_classes[0]}
+          latencyMs={state.result.heldout.latency_ms_p50}
+          modelSizeBytes={state.result.model.size_bytes}
+          failureCount={state.result.heldout.failure_count}
+          rowCount={state.result.heldout.row_count}
+          completedRuns={1}
+          requiredRuns={2}
+          frontier={{
+            name: "GLM 5.2",
+            accuracy: frontierComparison.heldout.accuracy,
+            macroF1: frontierComparison.heldout.macro_f1,
+            weakestClass: frontierComparison.heldout.weakest_classes[0],
+            latencyMs: frontierComparison.heldout.latency_ms_p50,
+            failureCount: frontierComparison.heldout.failure_count,
+            rowCount: frontierComparison.row_count,
+            costUsd: frontierComparison.spend.attributed_cost_usd,
+          }}
+        />
+      )}
       <div className="local-training-failures">
         <strong>Notable failures</strong>
         {state.result.heldout.failure_count === 0 ? (
-          <small>No errors in {state.result.heldout.row_count} held-out rows.</small>
+          <small>No mistakes in {state.result.heldout.row_count} test examples.</small>
         ) : (
           <>
             {state.result.heldout.failures.slice(0, 3).map((failure) => (
               <span key={failure.example_id}>{failure.expected_label} → {failure.predicted_label}</span>
             ))}
             <small>
-              {state.result.heldout.failure_count} of {state.result.heldout.row_count} held-out rows
+              {state.result.heldout.failure_count} mistakes in {state.result.heldout.row_count} test examples
               {state.result.heldout.failures_truncated ? " · showing a bounded sample" : ""}
             </small>
           </>
@@ -518,10 +650,10 @@ export function LocalTrainingPanel({
       </div>
       {state.result.heldout.weakest_classes.length > 0 && (
         <div className="local-training-weakest">
-          <strong>Weakest categories</strong>
+          <strong>Hardest categories</strong>
           {state.result.heldout.weakest_classes.slice(0, 3).map((category) => (
             <span key={category.label}>
-              {category.label} · {percent(category.recall)} recall · {category.support} rows
+              {category.label} · found {percent(category.recall)} · {category.support} test examples
             </span>
           ))}
         </div>

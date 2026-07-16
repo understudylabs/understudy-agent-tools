@@ -39,6 +39,20 @@ pub enum ClassificationTrainingEvent {
     },
 }
 
+#[derive(Clone, Debug, Serialize)]
+#[serde(tag = "type", rename_all = "snake_case")]
+pub enum FrontierComparisonEvent {
+    Phase {
+        phase: String,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        current: Option<u64>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        total: Option<u64>,
+        #[serde(skip_serializing_if = "Option::is_none")]
+        message: Option<String>,
+    },
+}
+
 static TRAINING_CANCELLATIONS: OnceLock<Mutex<HashMap<String, Arc<AtomicBool>>>> = OnceLock::new();
 
 fn training_cancellations() -> &'static Mutex<HashMap<String, Arc<AtomicBool>>> {
@@ -572,6 +586,177 @@ fn validate_training_phase(
     })
 }
 
+fn validate_frontier_comparison_result(value: Value, run_id: &str) -> Result<Value, String> {
+    if value.get("schema_version").and_then(Value::as_str)
+        != Some("understudy.capture_import.frontier_classification.v1")
+        || value.get("status").and_then(Value::as_str) != Some("completed")
+        || value.get("run_id").and_then(Value::as_str) != Some(run_id)
+        || value.get("exact_same_holdout").and_then(Value::as_bool) != Some(true)
+        || value.get("requested_model").and_then(Value::as_str)
+            != value.get("served_model").and_then(Value::as_str)
+    {
+        return Err("The frontier comparison did not preserve the exact-run evidence.".into());
+    }
+    let row_count = value
+        .get("row_count")
+        .and_then(Value::as_u64)
+        .filter(|count| (1..=2_000).contains(count))
+        .ok_or_else(|| "The frontier comparison has an invalid bounded row count.".to_string())?;
+    let holdout_sha256 = value
+        .get("holdout_sha256")
+        .and_then(Value::as_str)
+        .filter(|hash| hash.len() == 64 && hash.bytes().all(|byte| byte.is_ascii_hexdigit()))
+        .ok_or_else(|| "The frontier comparison omitted its holdout hash.".to_string())?;
+    let heldout = value
+        .get("heldout")
+        .and_then(Value::as_object)
+        .ok_or_else(|| "The frontier comparison omitted held-out scores.".to_string())?;
+    for field in ["accuracy", "macro_f1"] {
+        let metric = heldout.get(field).and_then(Value::as_f64).unwrap_or(-1.0);
+        if !(0.0..=1.0).contains(&metric) {
+            return Err(format!("The frontier comparison has an invalid {field}."));
+        }
+    }
+    if heldout
+        .get("latency_ms_p50")
+        .and_then(Value::as_f64)
+        .filter(|latency| latency.is_finite() && *latency >= 0.0)
+        .is_none()
+        || heldout
+            .get("failure_count")
+            .and_then(Value::as_u64)
+            .filter(|count| *count <= row_count)
+            .is_none()
+        || heldout
+            .get("failures")
+            .and_then(Value::as_array)
+            .filter(|failures| failures.len() <= 25)
+            .is_none()
+    {
+        return Err("The frontier comparison has invalid latency or failure evidence.".into());
+    }
+    let weakest = heldout
+        .get("weakest_classes")
+        .and_then(Value::as_array)
+        .filter(|rows| !rows.is_empty() && rows.len() <= 5)
+        .ok_or_else(|| "The frontier comparison omitted weakest-category evidence.".to_string())?;
+    for category in weakest {
+        if category.get("label").and_then(Value::as_str).is_none()
+            || category.get("support").and_then(Value::as_u64).is_none()
+        {
+            return Err("The frontier comparison has invalid category evidence.".into());
+        }
+        require_metric(category, &["recall"])?;
+        require_metric(category, &["f1"])?;
+    }
+    let boundary = value
+        .get("data_boundary")
+        .and_then(Value::as_object)
+        .ok_or_else(|| "The frontier comparison omitted its data boundary.".to_string())?;
+    if boundary
+        .get("user_confirmed_remote_comparison")
+        .and_then(Value::as_bool)
+        != Some(true)
+        || boundary
+            .get("training_examples_uploaded")
+            .and_then(Value::as_bool)
+            != Some(false)
+        || boundary
+            .get("holdout_examples_uploaded")
+            .and_then(Value::as_bool)
+            != Some(true)
+        || boundary
+            .get("retention_expectation")
+            .and_then(Value::as_str)
+            .filter(|value| !value.is_empty())
+            .is_none()
+    {
+        return Err("The frontier comparison returned an invalid consent boundary.".into());
+    }
+    let spend = value
+        .get("spend")
+        .and_then(Value::as_object)
+        .ok_or_else(|| "The frontier comparison omitted its spend evidence.".to_string())?;
+    let approved_budget = spend
+        .get("approved_budget_usd")
+        .and_then(Value::as_f64)
+        .filter(|value| value.is_finite() && *value > 0.0 && *value <= 100.0)
+        .ok_or_else(|| "The frontier comparison has an invalid approved budget.".to_string())?;
+    let estimated_max = spend
+        .get("estimated_max_cost_usd")
+        .and_then(Value::as_f64)
+        .filter(|value| value.is_finite() && *value >= 0.0 && *value <= approved_budget)
+        .ok_or_else(|| "The frontier comparison exceeded its spend preflight.".to_string())?;
+    let attributed = spend
+        .get("attributed_cost_usd")
+        .and_then(Value::as_f64)
+        .filter(|value| value.is_finite() && *value >= 0.0 && *value <= approved_budget)
+        .ok_or_else(|| "The frontier comparison returned invalid attributed spend.".to_string())?;
+    if spend.get("user_confirmed_spend").and_then(Value::as_bool) != Some(true)
+        || spend
+            .get("input_usd_per_million_tokens")
+            .and_then(Value::as_f64)
+            .filter(|value| value.is_finite() && *value > 0.0)
+            .is_none()
+        || spend
+            .get("output_usd_per_million_tokens")
+            .and_then(Value::as_f64)
+            .filter(|value| value.is_finite() && *value > 0.0)
+            .is_none()
+        || spend
+            .get("pricing_source")
+            .and_then(Value::as_str)
+            .filter(|value| value.starts_with("https://fireworks.ai/"))
+            .is_none()
+        || spend
+            .get("pricing_checked_at")
+            .and_then(Value::as_str)
+            .filter(|value| !value.is_empty())
+            .is_none()
+        || estimated_max < attributed
+    {
+        return Err("The frontier comparison returned invalid spend evidence.".into());
+    }
+    if value
+        .get("artifact_path")
+        .and_then(Value::as_str)
+        .filter(|path| !path.is_empty())
+        .is_none()
+        || holdout_sha256.is_empty()
+    {
+        return Err("The frontier comparison omitted its immutable artifact path.".into());
+    }
+    Ok(value)
+}
+
+fn validate_frontier_phase(value: &Value) -> Result<FrontierComparisonEvent, String> {
+    if value.get("type").and_then(Value::as_str) != Some("phase") {
+        return Err("The frontier comparator returned an invalid phase event.".into());
+    }
+    let phase = value
+        .get("phase")
+        .and_then(Value::as_str)
+        .filter(|phase| ["preparing", "comparing", "measuring", "saving"].contains(phase))
+        .ok_or_else(|| "The frontier comparator returned an unknown phase.".to_string())?;
+    let current = value.get("current").and_then(Value::as_u64);
+    let total = value.get("total").and_then(Value::as_u64);
+    if current
+        .zip(total)
+        .is_some_and(|(current, total)| total == 0 || current > total)
+    {
+        return Err("The frontier comparator returned invalid measured progress.".into());
+    }
+    Ok(FrontierComparisonEvent::Phase {
+        phase: phase.to_string(),
+        current,
+        total,
+        message: value
+            .get("message")
+            .and_then(Value::as_str)
+            .map(|message| message.chars().take(240).collect()),
+    })
+}
+
 fn read_bounded(mut reader: impl Read) -> String {
     let mut retained = Vec::new();
     let mut buffer = [0_u8; 4_096];
@@ -950,6 +1135,155 @@ pub fn cancel_local_classification_training(run_id: String) -> Result<Value, Str
     };
     cancelled.store(true, Ordering::Release);
     Ok(serde_json::json!({ "status": "cancelling", "run_id": run_id }))
+}
+
+fn run_frontier_comparison(
+    run_manifest_path: String,
+    model_id: String,
+    confirm_remote: bool,
+    confirm_spend: bool,
+    budget_usd: f64,
+    on_event: &Channel<FrontierComparisonEvent>,
+) -> Result<Value, String> {
+    if !confirm_remote {
+        return Err(
+            "Confirm that held-out examples may be sent to GLM 5.2. Training examples stay on this Mac."
+                .into(),
+        );
+    }
+    if !confirm_spend || !budget_usd.is_finite() || budget_usd <= 0.0 || budget_usd > 100.0 {
+        return Err(
+            "Confirm a positive frontier spend cap of at most $100 before comparing.".into(),
+        );
+    }
+    let canonical_manifest = PathBuf::from(run_manifest_path.trim())
+        .canonicalize()
+        .map_err(|error| format!("The local training run is unavailable: {error}"))?;
+    if !canonical_manifest.is_file() {
+        return Err("Choose a completed local training run.".into());
+    }
+    let run_manifest = std::fs::read(&canonical_manifest)
+        .map_err(|error| format!("The local training run could not be read: {error}"))?;
+    let run_manifest = serde_json::from_slice::<Value>(&run_manifest)
+        .map_err(|_| "The local training run is malformed.".to_string())?;
+    let run_id = run_manifest
+        .get("run_id")
+        .and_then(Value::as_str)
+        .ok_or_else(|| "The local training run omitted its id.".to_string())?
+        .to_string();
+    validate_classification_training_result(run_manifest, &run_id)?;
+
+    let mut child = crate::bin::command("understudy")
+        .args([
+            "capture-import",
+            "compare-classification-frontier",
+            "--run-manifest",
+        ])
+        .arg(&canonical_manifest)
+        .arg("--model")
+        .arg(&model_id)
+        .arg("--confirm-remote")
+        .arg("--confirm-spend")
+        .arg("--budget-usd")
+        .arg(budget_usd.to_string())
+        .arg("--jsonl")
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .map_err(|error| format!("Could not start the frontier comparison: {error}"))?;
+    let stdout = child
+        .stdout
+        .take()
+        .ok_or_else(|| "The frontier comparator did not expose progress output.".to_string())?;
+    let stderr = child
+        .stderr
+        .take()
+        .ok_or_else(|| "The frontier comparator did not expose diagnostic output.".to_string())?;
+    let stderr_reader = std::thread::spawn(move || read_bounded(stderr));
+    let mut result = None;
+    let mut protocol_error = None;
+    for line in BufReader::new(stdout).lines() {
+        let line =
+            line.map_err(|_| "The frontier comparator progress stream stopped.".to_string())?;
+        if line.trim().is_empty() {
+            continue;
+        }
+        let value = match serde_json::from_str::<Value>(&line) {
+            Ok(value) => value,
+            Err(_) => {
+                protocol_error =
+                    Some("The frontier comparator returned malformed progress JSON.".into());
+                break;
+            }
+        };
+        match value.get("type").and_then(Value::as_str) {
+            Some("phase") => match validate_frontier_phase(&value) {
+                Ok(event) => {
+                    let _ = on_event.send(event);
+                }
+                Err(error) => {
+                    protocol_error = Some(error);
+                    break;
+                }
+            },
+            Some("result") => {
+                let Some(payload) = value.get("result").cloned() else {
+                    protocol_error = Some("The frontier comparator omitted its result.".into());
+                    break;
+                };
+                match validate_frontier_comparison_result(payload, &run_id) {
+                    Ok(value) => result = Some(value),
+                    Err(error) => {
+                        protocol_error = Some(error);
+                        break;
+                    }
+                }
+            }
+            _ => {
+                protocol_error = Some("The frontier comparator returned an unknown event.".into());
+                break;
+            }
+        }
+    }
+    if let Some(error) = protocol_error {
+        terminate_training_child(&mut child);
+        let _ = stderr_reader.join();
+        return Err(error);
+    }
+    let status = child
+        .wait()
+        .map_err(|error| format!("Could not finish the frontier comparison: {error}"))?;
+    let detail = stderr_reader
+        .join()
+        .unwrap_or_else(|_| "No diagnostic was returned.".into());
+    if !status.success() {
+        return Err(format!("Frontier comparison failed. {detail}"));
+    }
+    result.ok_or_else(|| "Frontier comparison finished without a validated result.".into())
+}
+
+#[tauri::command]
+pub async fn compare_local_classification_with_frontier(
+    run_manifest_path: String,
+    model_id: String,
+    confirm_remote: bool,
+    confirm_spend: bool,
+    budget_usd: f64,
+    on_event: Channel<FrontierComparisonEvent>,
+) -> Result<Value, String> {
+    let model_id = safe_identifier(&model_id, "frontier model id")?;
+    tauri::async_runtime::spawn_blocking(move || {
+        run_frontier_comparison(
+            run_manifest_path,
+            model_id,
+            confirm_remote,
+            confirm_spend,
+            budget_usd,
+            &on_event,
+        )
+    })
+    .await
+    .map_err(|error| format!("The frontier comparator stopped unexpectedly: {error}"))?
 }
 
 fn validate_classification_prediction(value: Value, run_id: &str) -> Result<Value, String> {
@@ -1367,6 +1701,64 @@ mod tests {
             validate_classification_training_result(unsafe_result, "desktop-run-123")
                 .unwrap_err()
                 .contains("group-isolated")
+        );
+    }
+
+    #[test]
+    fn accepts_only_consent_safe_budgeted_frontier_evidence() {
+        let valid = json!({
+            "schema_version": "understudy.capture_import.frontier_classification.v1",
+            "run_id": "desktop-run-123",
+            "status": "completed",
+            "requested_model": "glm-5.2",
+            "served_model": "glm-5.2",
+            "exact_same_holdout": true,
+            "holdout_sha256": "a".repeat(64),
+            "row_count": 20,
+            "data_boundary": {
+                "user_confirmed_remote_comparison": true,
+                "training_examples_uploaded": false,
+                "holdout_examples_uploaded": true,
+                "retention_expectation": "Fireworks-published zero data retention"
+            },
+            "heldout": {
+                "accuracy": 0.9,
+                "macro_f1": 0.8,
+                "latency_ms_p50": 120.0,
+                "failure_count": 2,
+                "failures": [],
+                "weakest_classes": [
+                    { "label": "travel", "recall": 0.7, "f1": 0.75, "support": 10 }
+                ]
+            },
+            "spend": {
+                "user_confirmed_spend": true,
+                "approved_budget_usd": 1.0,
+                "estimated_max_cost_usd": 0.5,
+                "attributed_cost_usd": 0.02,
+                "input_usd_per_million_tokens": 1.4,
+                "output_usd_per_million_tokens": 4.4,
+                "pricing_source": "https://fireworks.ai/models/fireworks/glm-5p2",
+                "pricing_checked_at": "2026-07-16"
+            },
+            "artifact_path": "/tmp/frontier.json"
+        });
+        assert!(validate_frontier_comparison_result(valid.clone(), "desktop-run-123").is_ok());
+
+        let mut no_spend_consent = valid.clone();
+        no_spend_consent["spend"]["user_confirmed_spend"] = json!(false);
+        assert!(
+            validate_frontier_comparison_result(no_spend_consent, "desktop-run-123")
+                .unwrap_err()
+                .contains("spend evidence")
+        );
+
+        let mut over_budget = valid;
+        over_budget["spend"]["attributed_cost_usd"] = json!(1.01);
+        assert!(
+            validate_frontier_comparison_result(over_budget, "desktop-run-123")
+                .unwrap_err()
+                .contains("attributed spend")
         );
     }
 

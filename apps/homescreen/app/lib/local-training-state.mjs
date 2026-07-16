@@ -145,7 +145,7 @@ export function localTrainingVerdict(result) {
     return {
       tone: "neutral",
       title: "This dataset is too easy to show model value",
-      detail: "The deterministic TF-IDF baseline already scores 100% on the group-isolated holdout. Use a harder or more varied dataset before choosing a model.",
+      detail: "A simple baseline already gets at least 99% of the separate test examples right. Use a harder or more varied dataset before choosing a model.",
     };
   }
   switch (result.verdict.status) {
@@ -153,19 +153,19 @@ export function localTrainingVerdict(result) {
       return {
         tone: "positive",
         title: "Promising, needs another run",
-        detail: result.verdict.reason,
+        detail: "It beat the simple baseline and worked across every category. Repeat the test once before relying on it.",
       };
     case "improved_not_ready":
       return {
         tone: "caution",
         title: "Improved, not ready",
-        detail: result.verdict.reason,
+        detail: "It beat the simple baseline, but it still misses too many examples in at least one category.",
       };
     default:
       return {
         tone: "caution",
         title: "No model value yet",
-        detail: result.verdict.reason,
+        detail: "The trained model did not beat the much simpler baseline on the separate test examples.",
       };
   }
 }

@@ -1,12 +1,13 @@
 "use client";
 import { Button } from "../components/ui/Button";
+import { EvaluationRadar } from "../components/EvaluationRadar";
 
 const variants = ["primary", "secondary", "ghost", "danger", "link"] as const;
 
 export default function DesignPage() {
   return (
     <div style={{ background: "var(--color-window)", minHeight: "100vh", color: "var(--color-ink)" }}>
-      <div style={{ maxWidth: 880, margin: "0 auto", padding: "40px 32px 80px" }}>
+      <div style={{ maxWidth: 1120, margin: "0 auto", padding: "40px 32px 80px" }}>
         {/* header */}
         <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 8 }}>
           <div style={{ marginLeft: "auto", fontFamily: "var(--font-mono)", fontSize: 11, textTransform: "uppercase", letterSpacing: "0.18em", color: "var(--color-ink-muted)" }}>
@@ -14,8 +15,33 @@ export default function DesignPage() {
           </div>
         </div>
         <p style={{ color: "var(--color-ink-muted)", fontSize: 13, margin: "0 0 28px" }}>
-          Reference atom — Button — on the native token system. Lock the look, then systematize.
+          Production components on the native token system.
         </p>
+
+        <SectionTitle>evaluation radar · public SMS example</SectionTitle>
+        <EvaluationRadar
+          accuracy={0.9948519948519948}
+          macroF1={0.9883231643172733}
+          baselineAccuracy={0.9846}
+          baselineMacroF1={0.9656}
+          weakestClass={{ label: "spam", recall: 0.9697, support: 99 }}
+          latencyMs={32.7}
+          modelSizeBytes={602_052_062}
+          failureCount={4}
+          rowCount={777}
+          completedRuns={1}
+          requiredRuns={2}
+          frontier={{
+            name: "GLM 5.2",
+            accuracy: 0.9948519948519948,
+            macroF1: 0.9884240636453026,
+            weakestClass: { label: "spam", recall: 0.979798, support: 99 },
+            latencyMs: 657.3,
+            failureCount: 4,
+            rowCount: 777,
+            costUsd: 0.02,
+          }}
+        />
 
         {/* accent reference */}
         <Surface>
@@ -60,6 +86,7 @@ export default function DesignPage() {
             </span>
           </Row>
         </Surface>
+
       </div>
     </div>
   );
