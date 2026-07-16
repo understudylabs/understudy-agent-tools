@@ -1,6 +1,6 @@
 [package]
 name = "understudy"
-version = "0.3.26"
+version = "0.3.27"
 description = "Understudy Desktop"
 authors = ["Understudy Labs"]
 edition = "2021"

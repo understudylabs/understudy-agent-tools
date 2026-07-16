@@ -1,7 +1,7 @@
 {
   "name": "understudy-desktop",
   "private": true,
-  "version": "0.3.26",
+  "version": "0.3.27",
   "scripts": {
     "dev": "next dev -p 1420",
     "build": "next build",
