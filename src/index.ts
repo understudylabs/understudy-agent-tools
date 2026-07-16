@@ -16,6 +16,11 @@ import {
   startLocalClassifierTraining,
 } from "./local-classifier/index.js";
 import {
+  getLocalClassifierRun,
+  listLocalClassifierRuns,
+  updateLocalClassifierRun,
+} from "./local-classifier/registry.js";
+import {
   compareClassifierWithFrontier,
   DEFAULT_FRONTIER_CLASSIFIER_BUDGET_USD,
   DEFAULT_FRONTIER_CLASSIFIER_MODEL,
@@ -509,6 +514,67 @@ function registerCaptureImportCommands(program: Command): void {
       console.log(`prediction: ${prediction.label}`);
       console.log(`confidence: ${(prediction.scores[0]?.score ?? 0).toFixed(4)}`);
       console.log("local_only: true (input text was not retained)");
+    });
+
+  captureImport
+    .command("list-classification-runs")
+    .description("List durable local classifier runs without reading training examples")
+    .option("--capture-root <path>", "Private capture-import root; defaults under ~/.understudy")
+    .option("--archived", "List archived runs instead of active runs")
+    .option("--limit <count>", "Maximum runs to return", parsePositiveInteger, 100)
+    .option("--json", "Output JSON")
+    .action((options: { captureRoot?: string; archived?: boolean; limit: number; json?: boolean }) => {
+      const runs = listLocalClassifierRuns({
+        captureRoot: options.captureRoot,
+        archived: Boolean(options.archived),
+        limit: options.limit,
+      });
+      if (commandJsonEnabled(program, options)) {
+        console.log(JSON.stringify(runs, null, 2));
+        return;
+      }
+      if (runs.length === 0) {
+        console.log(options.archived ? "No archived local classifiers." : "No local classifiers yet.");
+        return;
+      }
+      for (const run of runs) {
+        const accuracy = run.evaluation ? `${(run.evaluation.accuracy * 100).toFixed(1)}% correct` : run.run_status;
+        console.log(`${run.display_name}\t${accuracy}\t${run.manifest_path}`);
+      }
+    });
+
+  captureImport
+    .command("classification-run")
+    .description("Read or update rename/archive metadata for one immutable local classifier run")
+    .requiredOption("--run-manifest <path>", "Local classification run manifest")
+    .option("--name <name>", "Human-readable local display name")
+    .option("--archive", "Hide this run from the active model list")
+    .option("--restore", "Return this run to the active model list")
+    .option("--json", "Output JSON")
+    .action((options: {
+      runManifest: string;
+      name?: string;
+      archive?: boolean;
+      restore?: boolean;
+      json?: boolean;
+    }) => {
+      if (options.archive && options.restore) {
+        throw new Error("Choose either --archive or --restore, not both.");
+      }
+      const changed = options.name !== undefined || options.archive || options.restore;
+      const run = changed
+        ? updateLocalClassifierRun({
+          runManifestPath: options.runManifest,
+          displayName: options.name,
+          archived: options.archive ? true : options.restore ? false : undefined,
+        })
+        : getLocalClassifierRun(options.runManifest);
+      if (commandJsonEnabled(program, options)) {
+        console.log(JSON.stringify(run, null, 2));
+        return;
+      }
+      console.log(`${run.display_name}: ${run.run_status}${run.archived_at ? " (archived)" : ""}`);
+      console.log(`manifest: ${run.manifest_path}`);
     });
 
   captureImport

@@ -59,6 +59,159 @@ fn training_cancellations() -> &'static Mutex<HashMap<String, Arc<AtomicBool>>> 
     TRAINING_CANCELLATIONS.get_or_init(|| Mutex::new(HashMap::new()))
 }
 
+fn validate_classification_run_summary(value: &Value) -> Result<(), String> {
+    if value.get("schema_version").and_then(Value::as_str)
+        != Some("understudy.local_classifier.registry.v1")
+        || value.get("kind").and_then(Value::as_str) != Some("classifier")
+        || value.get("local_only").and_then(Value::as_bool) != Some(true)
+        || !matches!(
+            value.get("run_status").and_then(Value::as_str),
+            Some("completed" | "failed" | "cancelled")
+        )
+    {
+        return Err("The local classifier registry returned an invalid run summary.".into());
+    }
+    for field in [
+        "model_id",
+        "run_id",
+        "display_name",
+        "generated_at",
+        "updated_at",
+        "manifest_path",
+    ] {
+        let Some(text) = value.get(field).and_then(Value::as_str) else {
+            return Err(format!("The local classifier registry omitted {field}."));
+        };
+        if text.trim().is_empty() || text.len() > 4_096 {
+            return Err(format!(
+                "The local classifier registry returned an invalid {field}."
+            ));
+        }
+    }
+    if value
+        .get("display_name")
+        .and_then(Value::as_str)
+        .unwrap()
+        .chars()
+        .count()
+        > 80
+    {
+        return Err("The local classifier registry returned an invalid display name.".into());
+    }
+    if !matches!(
+        value.get("archived_at"),
+        Some(Value::Null | Value::String(_))
+    ) {
+        return Err("The local classifier registry returned invalid archive state.".into());
+    }
+    let status = value
+        .get("run_status")
+        .and_then(Value::as_str)
+        .expect("run status was validated above");
+    if status == "completed" {
+        let model = value
+            .get("model")
+            .and_then(Value::as_object)
+            .ok_or_else(|| "The completed classifier omitted its local model.".to_string())?;
+        if model
+            .get("requested_id")
+            .and_then(Value::as_str)
+            .filter(|text| !text.is_empty() && text.len() <= 4_096)
+            .is_none()
+            || model
+                .get("resolved_id")
+                .and_then(Value::as_str)
+                .filter(|text| !text.is_empty() && text.len() <= 4_096)
+                .is_none()
+            || model
+                .get("path")
+                .and_then(Value::as_str)
+                .filter(|text| !text.is_empty() && text.len() <= 4_096)
+                .is_none()
+            || model.get("size_bytes").and_then(Value::as_u64).is_none()
+            || model
+                .get("label_count")
+                .and_then(Value::as_u64)
+                .filter(|count| (2..=100_000).contains(count))
+                .is_none()
+            || model.get("available").and_then(Value::as_bool).is_none()
+        {
+            return Err("The completed classifier returned invalid model evidence.".into());
+        }
+        let evaluation = value
+            .get("evaluation")
+            .and_then(Value::as_object)
+            .ok_or_else(|| "The completed classifier omitted its evaluation.".to_string())?;
+        let row_count = evaluation
+            .get("row_count")
+            .and_then(Value::as_u64)
+            .filter(|count| *count > 0)
+            .ok_or_else(|| {
+                "The completed classifier returned an invalid holdout size.".to_string()
+            })?;
+        for field in ["accuracy", "macro_f1"] {
+            let score = evaluation
+                .get(field)
+                .and_then(Value::as_f64)
+                .filter(|score| score.is_finite() && (0.0..=1.0).contains(score));
+            if score.is_none() {
+                return Err(format!(
+                    "The completed classifier returned an invalid {field}."
+                ));
+            }
+        }
+        if evaluation
+            .get("latency_ms_p50")
+            .and_then(Value::as_f64)
+            .filter(|latency| latency.is_finite() && *latency >= 0.0)
+            .is_none()
+            || evaluation
+                .get("failure_count")
+                .and_then(Value::as_u64)
+                .filter(|count| *count <= row_count)
+                .is_none()
+            || evaluation
+                .get("verdict")
+                .and_then(Value::as_str)
+                .filter(|verdict| {
+                    matches!(*verdict, "not_better" | "improved_not_ready" | "promising")
+                })
+                .is_none()
+            || !value.get("failure").is_some_and(Value::is_null)
+        {
+            return Err("The completed classifier returned invalid evaluation evidence.".into());
+        }
+    } else if !value.get("model").is_some_and(Value::is_null)
+        || !value.get("evaluation").is_some_and(Value::is_null)
+        || value
+            .get("failure")
+            .and_then(Value::as_object)
+            .and_then(|failure| failure.get("code"))
+            .and_then(Value::as_str)
+            .filter(|code| !code.is_empty() && code.len() <= 4_096)
+            .is_none()
+    {
+        return Err("The terminal classifier returned contradictory evidence.".into());
+    }
+    Ok(())
+}
+
+fn validate_classification_run_list(value: Value, archived: bool) -> Result<Value, String> {
+    let runs = value
+        .as_array()
+        .ok_or_else(|| "The local classifier registry returned malformed JSON.".to_string())?;
+    if runs.len() > 1_000 {
+        return Err("The local classifier registry exceeded its bounded result limit.".into());
+    }
+    for run in runs {
+        validate_classification_run_summary(run)?;
+        if run.get("archived_at").is_some_and(Value::is_string) != archived {
+            return Err("The local classifier registry mixed active and archived runs.".into());
+        }
+    }
+    Ok(value)
+}
+
 fn validate_compile_result(value: Value) -> Result<Value, String> {
     if !value.is_object() {
         return Err("The Understudy CLI returned an invalid workload result.".into());
@@ -1378,6 +1531,123 @@ pub async fn predict_local_classification(
         .map_err(|error| format!("The local classifier stopped unexpectedly: {error}"))?
 }
 
+fn list_classification_runs(archived: bool, limit: u64) -> Result<Value, String> {
+    if !(1..=1_000).contains(&limit) {
+        return Err("Local classifier run limit must be between 1 and 1,000.".into());
+    }
+    let mut command = crate::bin::command("understudy");
+    command.args(["capture-import", "list-classification-runs", "--limit"]);
+    command.arg(limit.to_string());
+    if archived {
+        command.arg("--archived");
+    }
+    let output = command.arg("--json").output().map_err(|error| {
+        format!(
+            "Could not read the local classifier registry ({error}). Open Status to repair the CLI."
+        )
+    })?;
+    if !output.status.success() {
+        return Err(format!(
+            "The Understudy CLI could not read local classifiers. {}",
+            bounded_detail(&output.stderr)
+        ));
+    }
+    let value = serde_json::from_slice::<Value>(&output.stdout).map_err(|_| {
+        "The Understudy CLI returned malformed classifier registry JSON.".to_string()
+    })?;
+    validate_classification_run_list(value, archived)
+}
+
+#[tauri::command]
+pub async fn list_local_classification_runs(
+    archived: Option<bool>,
+    limit: Option<u64>,
+) -> Result<Value, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        list_classification_runs(archived.unwrap_or(false), limit.unwrap_or(100))
+    })
+    .await
+    .map_err(|error| format!("The local classifier registry stopped unexpectedly: {error}"))?
+}
+
+fn update_classification_run(
+    run_manifest_path: String,
+    display_name: Option<String>,
+    archived: Option<bool>,
+) -> Result<Value, String> {
+    let canonical = PathBuf::from(run_manifest_path.trim())
+        .canonicalize()
+        .map_err(|error| format!("The local classifier run is unavailable: {error}"))?;
+    if !canonical.is_file()
+        || canonical.file_name().and_then(|name| name.to_str()) != Some("run-manifest.json")
+    {
+        return Err("Choose a local classifier run manifest.".into());
+    }
+    if display_name.is_none() && archived.is_none() {
+        return Err("Choose a new name, archive state, or both.".into());
+    }
+    let mut command = crate::bin::command("understudy");
+    command
+        .args(["capture-import", "classification-run", "--run-manifest"])
+        .arg(&canonical);
+    if let Some(name) = display_name {
+        let name = name.trim();
+        if name.is_empty() || name.chars().count() > 80 || name.chars().any(char::is_control) {
+            return Err(
+                "Classifier display name must contain 1 to 80 printable characters.".into(),
+            );
+        }
+        command.arg("--name").arg(name);
+    }
+    if let Some(archived) = archived {
+        command.arg(if archived { "--archive" } else { "--restore" });
+    }
+    let output = command.arg("--json").output().map_err(|error| {
+        format!(
+            "Could not update the local classifier registry ({error}). Open Status to repair the CLI."
+        )
+    })?;
+    if !output.status.success() {
+        return Err(format!(
+            "The Understudy CLI could not update this classifier. {}",
+            bounded_detail(&output.stderr)
+        ));
+    }
+    let value = serde_json::from_slice::<Value>(&output.stdout).map_err(|_| {
+        "The Understudy CLI returned malformed classifier registry JSON.".to_string()
+    })?;
+    validate_classification_run_summary(&value)?;
+    let returned_manifest = value
+        .get("manifest_path")
+        .and_then(Value::as_str)
+        .ok_or_else(|| "The local classifier registry omitted its manifest path.".to_string())?;
+    let returned_manifest = PathBuf::from(returned_manifest)
+        .canonicalize()
+        .map_err(|_| "The local classifier registry returned an unavailable run.".to_string())?;
+    if returned_manifest != canonical {
+        return Err("The local classifier registry updated a different run.".into());
+    }
+    if value.get("archived_at").is_some_and(Value::is_string) != archived.unwrap_or(false)
+        && archived.is_some()
+    {
+        return Err("The local classifier registry returned the wrong archive state.".into());
+    }
+    Ok(value)
+}
+
+#[tauri::command]
+pub async fn update_local_classification_run(
+    run_manifest_path: String,
+    display_name: Option<String>,
+    archived: Option<bool>,
+) -> Result<Value, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        update_classification_run(run_manifest_path, display_name, archived)
+    })
+    .await
+    .map_err(|error| format!("The local classifier registry stopped unexpectedly: {error}"))?
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1468,6 +1738,68 @@ mod tests {
         assert!(validate_compile_result(unsafe_result)
             .unwrap_err()
             .contains("metadata-only"));
+    }
+
+    #[test]
+    fn accepts_only_bounded_local_classifier_registry_summaries() {
+        let active = json!({
+            "schema_version": "understudy.local_classifier.registry.v1",
+            "model_id": "classifier.desktop-run-123",
+            "kind": "classifier",
+            "run_id": "desktop-run-123",
+            "display_name": "Spam detector",
+            "run_status": "completed",
+            "archived_at": null,
+            "generated_at": "2026-07-16T12:00:00.000Z",
+            "updated_at": "2026-07-16T12:00:00.000Z",
+            "local_only": true,
+            "manifest_path": "/tmp/run-manifest.json",
+            "model": {
+                "requested_id": "answerdotai/ModernBERT-base",
+                "resolved_id": "answerdotai/ModernBERT-base",
+                "path": "/tmp/model",
+                "size_bytes": 123,
+                "label_count": 2,
+                "available": true
+            },
+            "evaluation": {
+                "row_count": 20,
+                "accuracy": 0.9,
+                "macro_f1": 0.875,
+                "latency_ms_p50": 12.5,
+                "failure_count": 2,
+                "verdict": "promising"
+            },
+            "timing_ms": 1000,
+            "failure": null
+        });
+        assert!(validate_classification_run_summary(&active).is_ok());
+        assert!(validate_classification_run_list(json!([active.clone()]), false).is_ok());
+
+        let mut remote = active.clone();
+        remote["local_only"] = json!(false);
+        assert!(validate_classification_run_summary(&remote)
+            .unwrap_err()
+            .contains("invalid run summary"));
+
+        let mut incomplete = active.clone();
+        incomplete["model"] = Value::Null;
+        assert!(validate_classification_run_summary(&incomplete)
+            .unwrap_err()
+            .contains("omitted its local model"));
+
+        let mut unicode = active.clone();
+        unicode["display_name"] = json!("🧠".repeat(80));
+        assert!(validate_classification_run_summary(&unicode).is_ok());
+        unicode["display_name"] = json!("🧠".repeat(81));
+        assert!(validate_classification_run_summary(&unicode).is_err());
+
+        let mut archived = active;
+        archived["archived_at"] = json!("2026-07-16T13:00:00.000Z");
+        assert!(validate_classification_run_list(json!([archived.clone()]), true).is_ok());
+        assert!(validate_classification_run_list(json!([archived]), false)
+            .unwrap_err()
+            .contains("mixed active and archived"));
     }
 
     #[test]
