@@ -78,6 +78,18 @@ function runFixture({ runId = "desktop-run-1", status = "completed", generatedAt
 describe("local classifier run registry", () => {
   it("discovers completed local runs without copying label values into the summary", () => {
     const data = runFixture();
+    const repeatPath = join(data.runRoot, "evaluations", "repeat-1", "evaluation.json");
+    mkdirSync(join(data.runRoot, "evaluations", "repeat-1"), { recursive: true });
+    writeFileSync(repeatPath, `${JSON.stringify({
+      schema_version: "understudy.local_classifier.repeat_evaluation.v1",
+      run_id: "desktop-run-1",
+      model_id: "classifier.desktop-run-1",
+      generated_at: "2026-07-16T13:00:00.000Z",
+      local_only: true,
+      data_boundary: { dataset_uploaded: false, telemetry_sent: false },
+      verdict: { status: "reproduced" },
+      artifact_path: repeatPath,
+    }, null, 2)}\n`);
     const runs = listLocalClassifierRuns({ captureRoot: data.captureRoot });
 
     assert.equal(runs.length, 1);
@@ -95,6 +107,12 @@ describe("local classifier run registry", () => {
     assert.equal(runs[0].model.available, true);
     assert.equal(runs[0].evaluation.accuracy, 0.9);
     assert.equal(runs[0].evaluation.failure_count, 2);
+    assert.deepEqual(runs[0].repeat_validation, {
+      count: 1,
+      latest_at: "2026-07-16T13:00:00.000Z",
+      latest_status: "reproduced",
+      latest_artifact_path: repeatPath,
+    });
     assert.doesNotMatch(JSON.stringify(runs), /synthetic-a|synthetic-b/);
   });
 

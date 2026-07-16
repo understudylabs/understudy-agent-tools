@@ -21,6 +21,10 @@ import {
   updateLocalClassifierRun,
 } from "./local-classifier/registry.js";
 import {
+  exportLocalClassifierPredictions,
+  repeatLocalClassifierEvaluation,
+} from "./local-classifier/lifecycle.js";
+import {
   compareClassifierWithFrontier,
   DEFAULT_FRONTIER_CLASSIFIER_BUDGET_USD,
   DEFAULT_FRONTIER_CLASSIFIER_MODEL,
@@ -514,6 +518,75 @@ function registerCaptureImportCommands(program: Command): void {
       console.log(`prediction: ${prediction.label}`);
       console.log(`confidence: ${(prediction.scores[0]?.score ?? 0).toFixed(4)}`);
       console.log("local_only: true (input text was not retained)");
+    });
+
+  captureImport
+    .command("repeat-classification-evaluation")
+    .description("Re-run a saved classifier on its exact immutable holdout and persist new evidence")
+    .requiredOption("--run-manifest <path>", "Completed local classification run manifest")
+    .option("--evaluation-id <id>", "Immutable repeat-evaluation identifier")
+    .option("--runtime-root <path>", "Content-addressed local lifecycle runtime root")
+    .option("--max-length <tokens>", "Maximum input token length", parsePositiveInteger)
+    .option("--json", "Output JSON")
+    .action((options: {
+      runManifest: string;
+      evaluationId?: string;
+      runtimeRoot?: string;
+      maxLength?: number;
+      json?: boolean;
+    }) => {
+      const result = repeatLocalClassifierEvaluation({
+        runManifestPath: options.runManifest,
+        evaluationId: options.evaluationId,
+        runtimeRoot: options.runtimeRoot,
+        maxLength: options.maxLength,
+      });
+      if (commandJsonEnabled(program, options)) {
+        console.log(JSON.stringify(result, null, 2));
+        return;
+      }
+      console.log(`repeat evaluation: ${result.verdict.status}`);
+      console.log(`correct answers: ${(result.repeat.accuracy * 100).toFixed(1)}%`);
+      console.log(`artifact: ${result.artifact_path}`);
+      console.log("local_only: true (holdout examples were not uploaded)");
+    });
+
+  captureImport
+    .command("export-classification-predictions")
+    .description("Append local classifier labels to a bounded CSV and write an evidence sidecar")
+    .requiredOption("--run-manifest <path>", "Completed local classification run manifest")
+    .option("--source <path>", "CSV/TSV to label; defaults to the original training source")
+    .option("--input-column <columns...>", "Source columns to combine; defaults to the confirmed training mapping")
+    .option("--output <path>", "Destination CSV; defaults under the immutable local run")
+    .option("--runtime-root <path>", "Content-addressed local lifecycle runtime root")
+    .option("--max-length <tokens>", "Maximum input token length", parsePositiveInteger)
+    .option("--json", "Output JSON")
+    .action((options: {
+      runManifest: string;
+      source?: string;
+      inputColumn?: string[];
+      output?: string;
+      runtimeRoot?: string;
+      maxLength?: number;
+      json?: boolean;
+    }) => {
+      const result = exportLocalClassifierPredictions({
+        runManifestPath: options.runManifest,
+        sourcePath: options.source,
+        inputColumns: options.inputColumn,
+        outputPath: options.output,
+        runtimeRoot: options.runtimeRoot,
+        maxLength: options.maxLength,
+      });
+      if (commandJsonEnabled(program, options)) {
+        console.log(JSON.stringify(result, null, 2));
+        return;
+      }
+      console.log(`prediction export: ${result.predicted_row_count.toLocaleString()} labeled row(s)`);
+      if (result.skipped_row_count > 0) console.log(`skipped empty rows: ${result.skipped_row_count.toLocaleString()}`);
+      console.log(`output: ${result.output_path}`);
+      console.log(`evidence: ${result.manifest_path}`);
+      console.log("local_only: true (source and predictions were not uploaded)");
     });
 
   captureImport

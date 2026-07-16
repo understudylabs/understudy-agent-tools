@@ -24,6 +24,7 @@ const MAX_CAPTURE_ROOTS = 2_000;
 const MAX_DATASETS_PER_CAPTURE = 2_000;
 const MAX_RUNS_PER_DATASET = 2_000;
 const MAX_SCANNED_RUNS = 10_000;
+const MAX_REPEAT_EVALUATIONS = 1_000;
 const COMPLETED_VERDICTS = new Set(["not_better", "improved_not_ready", "promising"]);
 
 type RunStatus = "completed" | "failed" | "cancelled";
@@ -91,6 +92,12 @@ export type LocalClassifierRunSummary = {
     latency_ms_p50: number;
     failure_count: number;
     verdict: string;
+  };
+  repeat_validation: null | {
+    count: number;
+    latest_at: string;
+    latest_status: "reproduced" | "drift_detected";
+    latest_artifact_path: string;
   };
   timing_ms: number | null;
   failure: null | { code: string; message: string };
@@ -184,6 +191,42 @@ function readLifecycle(manifestPath: string, runId: string, generatedAt: string)
   return value as LifecycleRecord;
 }
 
+function readRepeatValidation(manifestPath: string, runId: string): LocalClassifierRunSummary["repeat_validation"] {
+  const root = join(dirname(manifestPath), "evaluations");
+  if (!existsSync(root) || !statSync(root).isDirectory()) return null;
+  const evidence = readdirSync(root, { withFileTypes: true })
+    .filter((entry) => entry.isDirectory() && !entry.name.startsWith("."))
+    .sort((left, right) => left.name.localeCompare(right.name))
+    .slice(0, MAX_REPEAT_EVALUATIONS)
+    .map((entry) => join(root, entry.name, "evaluation.json"))
+    .filter((path) => existsSync(path) && statSync(path).isFile())
+    .map((path) => {
+      const value = parseJson(path);
+      if (!isRecord(value) || value.schema_version !== "understudy.local_classifier.repeat_evaluation.v1" ||
+          value.run_id !== runId || value.model_id !== `classifier.${runId}` || value.local_only !== true ||
+          !isNonEmptyString(value.generated_at) || Number.isNaN(Date.parse(value.generated_at)) ||
+          !isRecord(value.data_boundary) || value.data_boundary.dataset_uploaded !== false ||
+          value.data_boundary.telemetry_sent !== false || !isRecord(value.verdict) ||
+          !["reproduced", "drift_detected"].includes(String(value.verdict.status)) ||
+          resolve(String(value.artifact_path)) !== resolve(path)) {
+        throw new Error(`Repeat-evaluation evidence for ${runId} is malformed.`);
+      }
+      return {
+        generatedAt: value.generated_at as string,
+        status: value.verdict.status as "reproduced" | "drift_detected",
+        path: resolve(path),
+      };
+    });
+  if (evidence.length === 0) return null;
+  evidence.sort((left, right) => right.generatedAt.localeCompare(left.generatedAt) || right.path.localeCompare(left.path));
+  return {
+    count: evidence.length,
+    latest_at: evidence[0].generatedAt,
+    latest_status: evidence[0].status,
+    latest_artifact_path: evidence[0].path,
+  };
+}
+
 function summary(path: string): LocalClassifierRunSummary {
   const { manifest, runId, status } = validateManifest(path);
   const generatedAt = String(manifest.generated_at);
@@ -266,6 +309,7 @@ function summary(path: string): LocalClassifierRunSummary {
     manifest_path: resolve(path),
     model,
     evaluation,
+    repeat_validation: status === "completed" ? readRepeatValidation(path, runId) : null,
     timing_ms: isFiniteNonNegative(manifest.timings_ms?.total) ? manifest.timings_ms.total : null,
     failure,
   };
