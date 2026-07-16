@@ -407,6 +407,7 @@ export function ChatPane({
   onHistoryChanged,
   onStreamingChange,
   onTrainingChange,
+  onNeedsSignIn,
 }: {
   resetToken: number;
   activeSessionId: string | null;
@@ -415,6 +416,7 @@ export function ChatPane({
   onHistoryChanged?: () => void;
   onStreamingChange?: (streaming: boolean) => void;
   onTrainingChange?: (active: boolean) => void;
+  onNeedsSignIn?: () => void;
 }) {
   const [initialSession] = useState(() => {
     const restore = activeSessionId !== null;
@@ -430,6 +432,7 @@ export function ChatPane({
   const [notice, setNotice] = useState<string | null>(null);
   const [choices, setChoices] = useState<ModelChoice[]>([CLOUD_MODEL]);
   const [selectedModel, setSelectedModel] = useState<string | null>(null);
+  const [gatewaySignedIn, setGatewaySignedIn] = useState<boolean | null>(null);
   const [thinkingPending, setThinkingPending] = useState<{ slotId: number; thinking: boolean } | null>(null);
   const [personaReady, setPersonaReady] = useState(false);
   const [personaCycle, setPersonaCycle] = useState(0);
@@ -592,11 +595,13 @@ export function ChatPane({
 
   const refreshModels = async () => {
     try {
-      const [residency, snapshots, anthropicStatus] = await Promise.all([
+      const [residency, snapshots, anthropicStatus, accountStatus] = await Promise.all([
         invoke<ResidencySnapshot>("get_residency"),
         invoke<SnapshotModel[]>("list_snapshot_models"),
         invoke<AnthropicStatus>("anthropic_status").catch(() => ({ present: false, source: null })),
+        invoke<{ signed_in?: boolean }>("account_status").catch(() => ({ signed_in: false })),
       ]);
+      setGatewaySignedIn(Boolean(accountStatus.signed_in));
       const anthropic: ModelChoice[] = anthropicStatus.present
         ? (await invoke<AnthropicModel[]>("anthropic_models").catch(() => [])).map((model) => ({
             id: `anthropic:${model.id}`,
@@ -641,6 +646,7 @@ export function ChatPane({
         return resolved.selectedId;
       });
     } catch {
+      setGatewaySignedIn(false);
       setChoices((current) =>
         current.length === 1 && current[0]?.id === CLOUD_MODEL.id ? current : [CLOUD_MODEL],
       );
@@ -893,15 +899,26 @@ export function ChatPane({
   const send = async (text: string, files: FileUIPart[] = []) => {
     const clean = text.trim();
     if ((!clean && files.length === 0) || streaming) return;
-    setInput("");
     setErr(null);
     setNotice(null);
 
     const choice = selectedChoice;
+    if (choice.route === "cloud") {
+      const signedIn = gatewaySignedIn ?? Boolean(
+        (await invoke<{ signed_in?: boolean }>("account_status").catch(() => ({ signed_in: false }))).signed_in,
+      );
+      setGatewaySignedIn(signedIn);
+      if (!signedIn) {
+        setNotice("Sign in to use GLM 5.2, or choose the private local model after it finishes downloading.");
+        onNeedsSignIn?.();
+        return;
+      }
+    }
     if (choice.route === "local" && choice.slotId == null) {
       setErr("No local model is warm. Open Serving, warm a local model slot, then send again.");
       return;
     }
+    setInput("");
     if (choice.route === "local" && !choice.active) {
       setErr("The selected local model is still loading. Try again in a moment.");
       return;

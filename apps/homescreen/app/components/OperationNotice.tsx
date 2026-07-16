@@ -28,6 +28,9 @@ type OperationNoticeProps = {
   actionLabel?: string | null;
   actionDisabled?: boolean;
   onAction?: () => void;
+  secondaryActionLabel?: string | null;
+  secondaryActionDisabled?: boolean;
+  onSecondaryAction?: () => void;
   dismissLabel: string;
   dismissDisabled?: boolean;
   onDismiss: () => void;
@@ -44,6 +47,9 @@ export function OperationNotice({
   actionLabel,
   actionDisabled = false,
   onAction,
+  secondaryActionLabel,
+  secondaryActionDisabled = false,
+  onSecondaryAction,
   dismissLabel,
   dismissDisabled = false,
   onDismiss,
@@ -88,6 +94,16 @@ export function OperationNotice({
         ) : null}
       </div>
       <div className="operation-notice-actions">
+        {secondaryActionLabel && onSecondaryAction ? (
+          <button
+            type="button"
+            className="operation-notice-action is-secondary"
+            disabled={secondaryActionDisabled}
+            onClick={onSecondaryAction}
+          >
+            {secondaryActionLabel}
+          </button>
+        ) : null}
         {actionLabel && onAction ? (
           <button
             type="button"
