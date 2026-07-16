@@ -629,6 +629,9 @@ test("desktop compiles one dropped path through the bounded public CLI", async (
   assert.match(css, /prefers-reduced-motion: reduce[\s\S]*?\.local-training-example-stream/);
   assert.match(training, /cancellationRequested\.current \|\| message\.toLowerCase\(\)\.includes\("cancel"\)/);
   assert.match(training, /predict_local_classification/);
+  assert.match(training, /compare_local_classification_with_frontier/);
+  assert.match(training, /Compare with GLM 5\.2 on the same/);
+  assert.match(training, /Only held-out test examples are sent through Understudy/);
   assert.match(training, /<EvaluationRadar/);
   assert.match(training, /baselineAccuracy=\{state\.result\.linear_baseline\.accuracy\}/);
   assert.match(training, /state\.result\.heldout\.macro_f1/);
@@ -645,15 +648,21 @@ test("desktop compiles one dropped path through the bounded public CLI", async (
   assert.match(trainingState, /This dataset is too easy to show model value/);
   assert.match(trainingState, /Low confidence—review this prediction/);
   assert.doesNotMatch(trainingState, /percentage|percent/);
+  assert.match(bridge, /compare-classification-frontier/);
+  assert.match(bridge, /"--confirm-remote"/);
+  assert.match(bridge, /exact_same_holdout/);
   const radar = await readFile(evaluationRadarPath, "utf8");
-  assert.match(radar, /See the tradeoffs before you choose/);
+  assert.match(radar, /Same held-out examples/);
+  assert.match(radar, /Local model versus/);
   assert.match(radar, /Correct answers/);
   assert.match(radar, /Across categories/);
   assert.match(radar, /Hardest category/);
-  assert.match(radar, /Test confidence/);
-  assert.match(radar, /simple baseline/);
-  assert.match(radar, /repeat once before relying on it/);
-  assert.match(radar, /aria-label="Evaluation dimensions"/);
+  assert.match(radar, /Fast response/);
+  assert.match(radar, /Your local model/);
+  assert.match(radar, /Cloud required/);
+  assert.match(radar, /same examples/);
+  assert.match(radar, /aria-label="Local and frontier comparison dimensions"/);
+  assert.doesNotMatch(radar, />F1<|"F1"/);
   assert.equal(
     parity.features.find((feature) => feature.id === "drop-to-workload-compilation")?.status,
     "shipped",

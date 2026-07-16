@@ -15,6 +15,10 @@ import {
   predictLocalClassifier,
   startLocalClassifierTraining,
 } from "./local-classifier/index.js";
+import {
+  compareClassifierWithFrontier,
+  DEFAULT_FRONTIER_CLASSIFIER_MODEL,
+} from "./local-classifier/frontier.js";
 import { planRouteDecision } from "./route-decision.js";
 import { buildValueReport } from "./value-report.js";
 import { type AgentPlatformAdapter, agentPlatformAdapters, findAgentPlatformAdapter } from "./agent-platforms.js";
@@ -496,6 +500,44 @@ function registerCaptureImportCommands(program: Command): void {
       console.log(`prediction: ${prediction.label}`);
       console.log(`confidence: ${(prediction.scores[0]?.score ?? 0).toFixed(4)}`);
       console.log("local_only: true (input text was not retained)");
+    });
+
+  captureImport
+    .command("compare-classification-frontier")
+    .description("Compare a completed local classifier with a frontier model on the exact same holdout")
+    .requiredOption("--run-manifest <path>", "Completed local classification run manifest")
+    .option("--model <id>", "Frontier catalog model", DEFAULT_FRONTIER_CLASSIFIER_MODEL)
+    .option(
+      "--confirm-remote",
+      "Confirm held-out examples may be sent to the named managed frontier model; training examples remain local",
+    )
+    .option("--jsonl", "Stream machine-readable phase and terminal result events")
+    .option("--json", "Output the terminal comparison artifact as JSON")
+    .action(async (options: {
+      runManifest: string;
+      model: string;
+      confirmRemote?: boolean;
+      jsonl?: boolean;
+      json?: boolean;
+    }) => {
+      const result = await compareClassifierWithFrontier({
+        runManifestPath: options.runManifest,
+        modelId: options.model,
+        confirmRemote: Boolean(options.confirmRemote),
+        onEvent: options.jsonl ? (event) => console.log(JSON.stringify(event)) : undefined,
+      });
+      if (options.jsonl) {
+        console.log(JSON.stringify({ type: "result", result }));
+        return;
+      }
+      if (commandJsonEnabled(program, options)) {
+        console.log(JSON.stringify(result, null, 2));
+        return;
+      }
+      console.log(`capture-import compare-classification-frontier: ${result.requested_model}`);
+      console.log(`same holdout: ${result.row_count} row(s), ${result.holdout_sha256}`);
+      console.log(`correct answers: ${(result.heldout.accuracy * 100).toFixed(1)}%`);
+      console.log(`artifact: ${result.artifact_path}`);
     });
 
   captureImport

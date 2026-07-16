@@ -6,34 +6,45 @@ type WeakestClass = {
   support: number;
 };
 
+type FrontierEvidence = {
+  name: string;
+  accuracy: number;
+  macroF1: number;
+  weakestClass: WeakestClass;
+  latencyMs: number;
+  failureCount: number;
+  rowCount: number;
+};
+
 type Props = {
   accuracy: number;
   macroF1: number;
   baselineAccuracy: number;
   baselineMacroF1: number;
-  weakestClass?: WeakestClass;
+  weakestClass: WeakestClass;
   latencyMs: number;
   modelSizeBytes: number;
+  failureCount: number;
+  rowCount: number;
   completedRuns: number;
   requiredRuns: number;
+  frontier: FrontierEvidence;
 };
 
 type Dimension = {
   id: string;
   label: string;
-  value: string;
-  reference: string;
-  score: number;
-  needsReview: boolean;
+  localValue: string;
+  frontierValue: string;
+  localScore: number;
+  frontierScore: number;
+  winner: "local" | "frontier" | "tie";
 };
 
-const MAX_SCORE = 1.2;
-const MINIMUM_CLASS_RECALL = 0.5;
-const LATENCY_REFERENCE_MS = 100;
-const MODEL_SIZE_REFERENCE_BYTES = 1_024 * 1_024 * 1_024;
+const FAST_RESPONSE_REFERENCE_MS = 100;
 
-function percent(value: number): string {
-  return `${(value * 100).toFixed(1)}%`;
+function percent(value: number, digits = 1): string {
+  return `${(value * 100).toFixed(digits)}%`;
 }
 
 function compactBytes(bytes: number): string {
@@ -41,14 +52,19 @@ function compactBytes(bytes: number): string {
   return `${(bytes / (1_024 * 1_024 * 1_024)).toFixed(1)} GB`;
 }
 
-function higherIsBetter(value: number, reference: number): number {
-  if (!Number.isFinite(value) || !Number.isFinite(reference) || reference <= 0) return 0;
-  return Math.min(MAX_SCORE, Math.max(0, value / reference));
+function qualityScore(value: number): number {
+  return Math.min(1, Math.max(0, value));
 }
 
-function lowerIsBetter(value: number, reference: number): number {
-  if (!Number.isFinite(value) || !Number.isFinite(reference) || value <= 0 || reference <= 0) return 0;
-  return Math.min(MAX_SCORE, Math.max(0, reference / value));
+function speedScore(latencyMs: number): number {
+  if (!Number.isFinite(latencyMs) || latencyMs <= 0) return 0;
+  return Math.min(1, FAST_RESPONSE_REFERENCE_MS / latencyMs);
+}
+
+function winner(local: number, frontier: number, lowerIsBetter = false): Dimension["winner"] {
+  if (Math.abs(local - frontier) < 1e-9) return "tie";
+  if (lowerIsBetter) return local < frontier ? "local" : "frontier";
+  return local > frontier ? "local" : "frontier";
 }
 
 function point(index: number, count: number, radius: number, center: number): [number, number] {
@@ -56,18 +72,18 @@ function point(index: number, count: number, radius: number, center: number): [n
   return [center + Math.cos(angle) * radius, center + Math.sin(angle) * radius];
 }
 
-function polygonPoints(dimensions: Dimension[], radius: number, center: number): string {
+function polygonPoints(dimensions: Dimension[], key: "localScore" | "frontierScore", radius: number, center: number): string {
   return dimensions
     .map((dimension, index) => {
-      const [x, y] = point(index, dimensions.length, radius * (dimension.score / MAX_SCORE), center);
+      const [x, y] = point(index, dimensions.length, radius * dimension[key], center);
       return `${x.toFixed(1)},${y.toFixed(1)}`;
     })
     .join(" ");
 }
 
-function referencePoints(count: number, radius: number, center: number): string {
+function ringPoints(count: number, radius: number, center: number): string {
   return Array.from({ length: count }, (_, index) => {
-    const [x, y] = point(index, count, radius / MAX_SCORE, center);
+    const [x, y] = point(index, count, radius, center);
     return `${x.toFixed(1)},${y.toFixed(1)}`;
   }).join(" ");
 }
@@ -80,127 +96,155 @@ export function EvaluationRadar({
   weakestClass,
   latencyMs,
   modelSizeBytes,
+  failureCount,
+  rowCount,
   completedRuns,
   requiredRuns,
+  frontier,
 }: Props) {
-  const weakestRecall = weakestClass?.recall ?? 0;
   const dimensions: Dimension[] = [
     {
       id: "accuracy",
       label: "Correct answers",
-      value: percent(accuracy),
-      reference: `simple baseline ${percent(baselineAccuracy)}`,
-      score: higherIsBetter(accuracy, baselineAccuracy),
-      needsReview: accuracy <= baselineAccuracy,
+      localValue: percent(accuracy, 2),
+      frontierValue: percent(frontier.accuracy, 2),
+      localScore: qualityScore(accuracy),
+      frontierScore: qualityScore(frontier.accuracy),
+      winner: winner(accuracy, frontier.accuracy),
     },
     {
-      id: "macro-f1",
+      id: "across-categories",
       label: "Across categories",
-      value: percent(macroF1),
-      reference: `simple baseline ${percent(baselineMacroF1)}`,
-      score: higherIsBetter(macroF1, baselineMacroF1),
-      needsReview: macroF1 <= baselineMacroF1,
+      localValue: percent(macroF1, 2),
+      frontierValue: percent(frontier.macroF1, 2),
+      localScore: qualityScore(macroF1),
+      frontierScore: qualityScore(frontier.macroF1),
+      winner: winner(macroF1, frontier.macroF1),
     },
     {
-      id: "weakest-recall",
+      id: "hardest-category",
       label: "Hardest category",
-      value: percent(weakestRecall),
-      reference: weakestClass
-        ? `${weakestClass.label} · minimum ${percent(MINIMUM_CLASS_RECALL)}`
-        : `minimum ${percent(MINIMUM_CLASS_RECALL)}`,
-      score: higherIsBetter(weakestRecall, MINIMUM_CLASS_RECALL),
-      needsReview: weakestRecall < MINIMUM_CLASS_RECALL,
+      localValue: `${percent(weakestClass.recall)} · ${weakestClass.label}`,
+      frontierValue: `${percent(frontier.weakestClass.recall)} · ${frontier.weakestClass.label}`,
+      localScore: qualityScore(weakestClass.recall),
+      frontierScore: qualityScore(frontier.weakestClass.recall),
+      winner: winner(weakestClass.recall, frontier.weakestClass.recall),
     },
     {
-      id: "latency",
-      label: "Response time",
-      value: `${latencyMs.toFixed(1)} ms`,
-      reference: `reference ≤ ${LATENCY_REFERENCE_MS} ms`,
-      score: lowerIsBetter(latencyMs, LATENCY_REFERENCE_MS),
-      needsReview: latencyMs > LATENCY_REFERENCE_MS,
-    },
-    {
-      id: "model-size",
-      label: "Space on disk",
-      value: compactBytes(modelSizeBytes),
-      reference: `reference ≤ ${compactBytes(MODEL_SIZE_REFERENCE_BYTES)}`,
-      score: lowerIsBetter(modelSizeBytes, MODEL_SIZE_REFERENCE_BYTES),
-      needsReview: modelSizeBytes > MODEL_SIZE_REFERENCE_BYTES,
-    },
-    {
-      id: "evidence",
-      label: "Test confidence",
-      value: `${completedRuns} of ${requiredRuns} checks`,
-      reference: "repeat once before relying on it",
-      score: higherIsBetter(completedRuns, requiredRuns),
-      needsReview: completedRuns < requiredRuns,
+      id: "response-time",
+      label: "Fast response",
+      localValue: `${latencyMs.toFixed(1)} ms`,
+      frontierValue: `${frontier.latencyMs.toFixed(0)} ms`,
+      localScore: speedScore(latencyMs),
+      frontierScore: speedScore(frontier.latencyMs),
+      winner: winner(latencyMs, frontier.latencyMs, true),
     },
   ];
-
+  const localWins = dimensions.filter((dimension) => dimension.winner === "local").length;
+  const frontierWins = dimensions.filter((dimension) => dimension.winner === "frontier").length;
+  const ties = dimensions.filter((dimension) => dimension.winner === "tie").length;
+  const sameEvidence = rowCount === frontier.rowCount;
   const size = 520;
   const center = size / 2;
   const radius = 166;
-  const candidatePoints = polygonPoints(dimensions, radius, center);
+  const localPoints = polygonPoints(dimensions, "localScore", radius, center);
+  const frontierPoints = polygonPoints(dimensions, "frontierScore", radius, center);
   const summary = dimensions
-    .map((dimension) => `${dimension.label}: ${dimension.value}, ${dimension.reference}`)
+    .map((dimension) => `${dimension.label}: local ${dimension.localValue}, ${frontier.name} ${dimension.frontierValue}`)
     .join(". ");
 
   return (
     <section className="evaluation-radar" aria-labelledby="evaluation-radar-title">
       <header>
         <div>
-          <span>Decision surface</span>
-          <h3 id="evaluation-radar-title">See the tradeoffs before you choose</h3>
+          <span>Same held-out examples</span>
+          <h3 id="evaluation-radar-title">Local model versus {frontier.name}</h3>
+          <p>
+            Local leads {localWins} · {frontier.name} leads {frontierWins}
+            {ties > 0 ? ` · ${ties} tied` : ""}
+          </p>
         </div>
         <div className="evaluation-radar-legend" aria-label="Chart legend">
-          <span><i className="candidate" aria-hidden="true" />This model</span>
-          <span><i className="reference" aria-hidden="true" />What good looks like</span>
+          <span><i className="local" aria-hidden="true" />Your local model</span>
+          <span><i className="frontier" aria-hidden="true" />{frontier.name}</span>
         </div>
       </header>
       <div className="evaluation-radar-layout">
         <figure>
           <svg viewBox={`0 0 ${size} ${size}`} role="img" aria-labelledby="evaluation-radar-svg-title evaluation-radar-svg-desc">
-            <title id="evaluation-radar-svg-title">Model evaluation radar</title>
-            <desc id="evaluation-radar-svg-desc">{summary}. Points inside the dashed comparison ring need review.</desc>
-            {[0.4, 0.7, 1, 1.2].map((level) => (
+            <title id="evaluation-radar-svg-title">Local and frontier model comparison radar</title>
+            <desc id="evaluation-radar-svg-desc">{summary}. Farther from the center is better.</desc>
+            {[0.25, 0.5, 0.75, 1].map((level) => (
               <polygon
                 key={level}
-                className={level === 1 ? "evaluation-radar-reference" : "evaluation-radar-grid"}
-                points={referencePoints(dimensions.length, radius * level, center)}
+                className="evaluation-radar-grid"
+                points={ringPoints(dimensions.length, radius * level, center)}
               />
             ))}
-            <polygon className="evaluation-radar-candidate" points={candidatePoints} />
             {dimensions.map((dimension, index) => {
               const [x, y] = point(index, dimensions.length, radius, center);
-              const [dotX, dotY] = point(index, dimensions.length, radius * (dimension.score / MAX_SCORE), center);
-              const [labelX, labelY] = point(index, dimensions.length, radius + 38, center);
+              const [labelX, labelY] = point(index, dimensions.length, radius + 42, center);
               const anchor = Math.abs(labelX - center) < 12 ? "middle" : labelX > center ? "start" : "end";
               return (
                 <g key={dimension.id}>
                   <line className="evaluation-radar-axis" x1={center} y1={center} x2={x} y2={y} />
-                  <circle
-                    className={dimension.needsReview ? "evaluation-radar-dot is-review" : "evaluation-radar-dot"}
-                    cx={dotX}
-                    cy={dotY}
-                    r="5"
-                  />
                   <text className="evaluation-radar-label" x={labelX} y={labelY} textAnchor={anchor} dominantBaseline="middle">
                     {dimension.label}
                   </text>
                 </g>
               );
             })}
+            <polygon className="evaluation-radar-frontier" points={frontierPoints} />
+            <polygon className="evaluation-radar-local" points={localPoints} />
+            {dimensions.flatMap((dimension, index) => {
+              const [localX, localY] = point(index, dimensions.length, radius * dimension.localScore, center);
+              const [frontierX, frontierY] = point(index, dimensions.length, radius * dimension.frontierScore, center);
+              return [
+                <circle key={`${dimension.id}-frontier`} className="evaluation-radar-dot frontier" cx={frontierX} cy={frontierY} r="5" />,
+                <circle key={`${dimension.id}-local`} className="evaluation-radar-dot local" cx={localX} cy={localY} r="5" />,
+              ];
+            })}
           </svg>
-          <figcaption>Inside the dashed ring needs review. Raw values stay visible beside the chart.</figcaption>
+          <figcaption>
+            Farther out is better. Quality uses the exact score; speed uses a 100 ms local-response reference.
+          </figcaption>
         </figure>
-        <div className="evaluation-radar-dimensions" aria-label="Evaluation dimensions">
+        <div className="evaluation-radar-dimensions" aria-label="Local and frontier comparison dimensions">
           {dimensions.map((dimension) => (
-            <div key={dimension.id} className={dimension.needsReview ? "is-review" : ""}>
+            <div key={dimension.id}>
               <span>{dimension.label}</span>
-              <strong>{dimension.value}</strong>
-              <small>{dimension.reference}</small>
+              <div>
+                <strong>{dimension.localValue}</strong>
+                <small>Your local model{dimension.winner === "local" ? " · better" : ""}</small>
+              </div>
+              <div>
+                <strong>{dimension.frontierValue}</strong>
+                <small>{frontier.name}{dimension.winner === "frontier" ? " · better" : ""}</small>
+              </div>
             </div>
           ))}
+        </div>
+      </div>
+      <div className="evaluation-radar-tradeoffs" aria-label="Practical tradeoffs">
+        <div>
+          <span>Your local model</span>
+          <strong>{failureCount} mistakes · {compactBytes(modelSizeBytes)}</strong>
+          <small>Works offline · examples stay on this Mac</small>
+        </div>
+        <div>
+          <span>{frontier.name}</span>
+          <strong>{frontier.failureCount} mistakes · no download</strong>
+          <small>Cloud required · held-out examples were sent remotely</small>
+        </div>
+        <div>
+          <span>Basic text model</span>
+          <strong>{percent(baselineAccuracy)} correct</strong>
+          <small>{percent(baselineMacroF1)} across categories</small>
+        </div>
+        <div>
+          <span>Evidence</span>
+          <strong>{sameEvidence ? `${rowCount.toLocaleString()} same examples` : "Comparison mismatch"}</strong>
+          <small>{completedRuns} of {requiredRuns} repeat checks complete</small>
         </div>
       </div>
     </section>

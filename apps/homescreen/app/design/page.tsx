@@ -20,15 +20,26 @@ export default function DesignPage() {
 
         <SectionTitle>evaluation radar · public SMS example</SectionTitle>
         <EvaluationRadar
-          accuracy={0.9949}
-          macroF1={0.9883}
+          accuracy={0.9948519948519948}
+          macroF1={0.9883231643172733}
           baselineAccuracy={0.9846}
           baselineMacroF1={0.9656}
           weakestClass={{ label: "spam", recall: 0.9697, support: 99 }}
           latencyMs={32.7}
           modelSizeBytes={602_052_062}
+          failureCount={4}
+          rowCount={777}
           completedRuns={1}
           requiredRuns={2}
+          frontier={{
+            name: "GLM 5.2",
+            accuracy: 0.9948519948519948,
+            macroF1: 0.9884240636453026,
+            weakestClass: { label: "spam", recall: 0.979798, support: 99 },
+            latencyMs: 657.3,
+            failureCount: 4,
+            rowCount: 777,
+          }}
         />
 
         {/* accent reference */}

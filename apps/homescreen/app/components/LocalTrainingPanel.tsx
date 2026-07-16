@@ -111,6 +111,44 @@ type ClassificationTrainingPreview = {
   }[];
 };
 
+type FrontierComparison = {
+  schema_version: "understudy.capture_import.frontier_classification.v1";
+  comparison_id: string;
+  status: "completed";
+  run_id: string;
+  requested_model: string;
+  served_model: string;
+  exact_same_holdout: true;
+  holdout_sha256: string;
+  row_count: number;
+  data_boundary: {
+    user_confirmed_remote_comparison: true;
+    training_examples_uploaded: false;
+    holdout_examples_uploaded: true;
+  };
+  heldout: {
+    accuracy: number;
+    macro_f1: number;
+    latency_ms_p50: number;
+    failure_count: number;
+    weakest_classes: {
+      label: string;
+      recall: number;
+      f1: number;
+      support: number;
+    }[];
+  };
+  artifact_path: string;
+};
+
+type FrontierComparisonEvent = {
+  type: "phase";
+  phase: "preparing" | "comparing" | "measuring" | "saving";
+  current?: number;
+  total?: number;
+  message?: string;
+};
+
 type Props = {
   datasetManifestPath: string;
   modelName: string;
@@ -157,6 +195,10 @@ export function LocalTrainingPanel({
   const [prediction, setPrediction] = useState<ClassificationPrediction | null>(null);
   const [predictionError, setPredictionError] = useState<string | null>(null);
   const [predicting, setPredicting] = useState(false);
+  const [frontierComparison, setFrontierComparison] = useState<FrontierComparison | null>(null);
+  const [frontierEvent, setFrontierEvent] = useState<FrontierComparisonEvent | null>(null);
+  const [frontierError, setFrontierError] = useState<string | null>(null);
+  const [comparingFrontier, setComparingFrontier] = useState(false);
   const [trainingPreview, setTrainingPreview] = useState<ClassificationTrainingPreview | null>(null);
   const [trainingPreviewIndex, setTrainingPreviewIndex] = useState(0);
   const [previousTrainingPreviewIndex, setPreviousTrainingPreviewIndex] = useState<number | null>(null);
@@ -219,6 +261,10 @@ export function LocalTrainingPanel({
     setPredictionText("");
     setPrediction(null);
     setPredictionError(null);
+    setFrontierComparison(null);
+    setFrontierEvent(null);
+    setFrontierError(null);
+    setComparingFrontier(false);
     setTrainingPreview(null);
     setTrainingPreviewIndex(0);
     trainingPreviewIndexRef.current = 0;
@@ -277,6 +323,10 @@ export function LocalTrainingPanel({
     cancellationRequested.current = false;
     setPrediction(null);
     setPredictionError(null);
+    setFrontierComparison(null);
+    setFrontierEvent(null);
+    setFrontierError(null);
+    setComparingFrontier(false);
     setTrainingPreview(null);
     setTrainingPreviewIndex(0);
     trainingPreviewIndexRef.current = 0;
@@ -376,6 +426,44 @@ export function LocalTrainingPanel({
       .then(setPrediction)
       .catch((error) => setPredictionError(String(error)))
       .finally(() => setPredicting(false));
+  };
+
+  const compareWithFrontier = () => {
+    if (!state.result || comparingFrontier) return;
+    const requestGeneration = generation.current;
+    const localRunId = state.result.run_id;
+    setComparingFrontier(true);
+    setFrontierComparison(null);
+    setFrontierError(null);
+    setFrontierEvent({
+      type: "phase",
+      phase: "preparing",
+      message: "Verifying the exact held-out examples used for the local score.",
+    });
+    const channel = new Channel<FrontierComparisonEvent>();
+    channel.onmessage = (event) => {
+      if (generation.current === requestGeneration) setFrontierEvent(event);
+    };
+    void invoke<FrontierComparison>("compare_local_classification_with_frontier", {
+      runManifestPath: state.result.manifest_path,
+      modelId: "glm-5.2",
+      confirmRemote: true,
+      onEvent: channel,
+    })
+      .then((result) => {
+        if (generation.current !== requestGeneration) return;
+        if (result.run_id !== localRunId || !result.exact_same_holdout) {
+          throw new Error("The frontier result did not match this local run.");
+        }
+        setFrontierComparison(result);
+        setFrontierEvent(null);
+      })
+      .catch((error) => {
+        if (generation.current === requestGeneration) setFrontierError(String(error));
+      })
+      .finally(() => {
+        if (generation.current === requestGeneration) setComparingFrontier(false);
+      });
   };
 
   if (state.phase === "idle") {
@@ -489,17 +577,49 @@ export function LocalTrainingPanel({
         <strong>{verdict.title}</strong>
         <small>{verdict.detail}</small>
       </div>
-      <EvaluationRadar
-        accuracy={state.result.heldout.accuracy}
-        macroF1={state.result.heldout.macro_f1}
-        baselineAccuracy={state.result.linear_baseline.accuracy}
-        baselineMacroF1={state.result.linear_baseline.macro_f1}
-        weakestClass={state.result.heldout.weakest_classes[0]}
-        latencyMs={state.result.heldout.latency_ms_p50}
-        modelSizeBytes={state.result.model.size_bytes}
-        completedRuns={1}
-        requiredRuns={2}
-      />
+      {!frontierComparison && (
+        <div className="frontier-comparison-prompt" aria-live="polite" aria-busy={comparingFrontier}>
+          <div>
+            <span>Frontier reference</span>
+            <strong>Compare with GLM 5.2 on the same {state.result.heldout.row_count.toLocaleString()} test examples</strong>
+            <small>
+              Only held-out test examples are sent through Understudy. Training examples stay on this Mac. Cloud charges may apply.
+            </small>
+            {frontierEvent?.message && <p>{frontierEvent.message}</p>}
+            {frontierEvent?.current !== undefined && frontierEvent.total !== undefined && (
+              <code>{frontierEvent.current} of {frontierEvent.total} comparison batches</code>
+            )}
+            {frontierError && <em>{frontierError}</em>}
+          </div>
+          <button type="button" className="btn primary" onClick={compareWithFrontier} disabled={comparingFrontier}>
+            {comparingFrontier ? "Comparing…" : frontierError ? "Try frontier again" : "Compare with GLM 5.2"}
+          </button>
+        </div>
+      )}
+      {frontierComparison && frontierComparison.heldout.weakest_classes[0] && (
+        <EvaluationRadar
+          accuracy={state.result.heldout.accuracy}
+          macroF1={state.result.heldout.macro_f1}
+          baselineAccuracy={state.result.linear_baseline.accuracy}
+          baselineMacroF1={state.result.linear_baseline.macro_f1}
+          weakestClass={state.result.heldout.weakest_classes[0]}
+          latencyMs={state.result.heldout.latency_ms_p50}
+          modelSizeBytes={state.result.model.size_bytes}
+          failureCount={state.result.heldout.failure_count}
+          rowCount={state.result.heldout.row_count}
+          completedRuns={1}
+          requiredRuns={2}
+          frontier={{
+            name: "GLM 5.2",
+            accuracy: frontierComparison.heldout.accuracy,
+            macroF1: frontierComparison.heldout.macro_f1,
+            weakestClass: frontierComparison.heldout.weakest_classes[0],
+            latencyMs: frontierComparison.heldout.latency_ms_p50,
+            failureCount: frontierComparison.heldout.failure_count,
+            rowCount: frontierComparison.row_count,
+          }}
+        />
+      )}
       <div className="local-training-failures">
         <strong>Notable failures</strong>
         {state.result.heldout.failure_count === 0 ? (

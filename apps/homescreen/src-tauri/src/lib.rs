@@ -335,6 +335,7 @@ pub fn run() {
             workload_drop::local_classification_training_examples,
             workload_drop::start_local_classification_training,
             workload_drop::cancel_local_classification_training,
+            workload_drop::compare_local_classification_with_frontier,
             workload_drop::predict_local_classification,
             commands::sidekick_decisions,
             commands::sidekick_events,
