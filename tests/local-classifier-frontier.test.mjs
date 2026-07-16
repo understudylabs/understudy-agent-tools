@@ -88,14 +88,17 @@ function frontierFetch({ servedModel = "glm-5.2", spamLabel = "ham" } = {}) {
       example_id: example.example_id,
       label: example.example_id === "example-spam" ? spamLabel : "ham",
     }));
-    return new Response(JSON.stringify({
-      model: servedModel,
-      choices: [{ message: { content: `\`\`\`json\n${JSON.stringify({ predictions })}\n\`\`\`` } }],
-      usage: { prompt_tokens: 20, completion_tokens: 8 },
-    }), {
+    const content = `\`\`\`json\n${JSON.stringify({ predictions })}\n\`\`\``;
+    const split = Math.ceil(content.length / 2);
+    const stream = [
+      { model: servedModel, choices: [{ delta: { content: content.slice(0, split) } }] },
+      { choices: [{ delta: { content: content.slice(split) } }] },
+      { choices: [{ delta: {} }], usage: { prompt_tokens: 20, completion_tokens: 8 } },
+    ].map((chunk) => `data: ${JSON.stringify(chunk)}\n\n`).join("") + "data: [DONE]\n\n";
+    return new Response(stream, {
       status: 200,
       headers: {
-        "content-type": "application/json",
+        "content-type": "text/event-stream",
         "x-understudy-effective-model": servedModel,
         "x-understudy-mode": "managed",
         "x-understudy-route": "primary",
@@ -205,7 +208,8 @@ describe("frontier classification comparison", () => {
     assert.equal(result.spend.pricing_checked_at, "2026-07-16");
     assert.equal(requests.length, 3, "one quality batch plus two real latency probes");
     assert.ok(requests.every((request) => request.model === "glm-5.2"));
-    assert.ok(requests.every((request) => request.chat_template_kwargs.thinking === false));
+    assert.ok(requests.every((request) => request.stream === true));
+    assert.ok(requests.every((request) => !("chat_template_kwargs" in request)));
     assert.ok(requests.every((request) => !JSON.stringify(request).includes("training-only-sentinel")));
     assert.ok(events.some((event) => event.phase === "comparing"));
     assert.ok(events.some((event) => event.phase === "measuring"));
