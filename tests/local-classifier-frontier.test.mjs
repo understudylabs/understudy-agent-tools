@@ -114,10 +114,29 @@ describe("frontier classification comparison", () => {
       compareClassifierWithFrontier({
         runManifestPath: data.runManifestPath,
         confirmRemote: false,
+        confirmSpend: true,
+        budgetUsd: 1,
         auth: fakeAuth,
         fetchImpl,
       }),
       /requires --confirm-remote/,
+    );
+    assert.equal(requests.length, 0);
+  });
+
+  it("requires explicit spend consent and a positive hard budget before reading the run", async () => {
+    const data = fixture();
+    const { fetchImpl, requests } = frontierFetch();
+    await assert.rejects(
+      compareClassifierWithFrontier({
+        runManifestPath: data.runManifestPath,
+        confirmRemote: true,
+        confirmSpend: false,
+        budgetUsd: 1,
+        auth: fakeAuth,
+        fetchImpl,
+      }),
+      /requires --confirm-spend and a positive --budget-usd cap of at most \$100/,
     );
     assert.equal(requests.length, 0);
   });
@@ -138,6 +157,8 @@ describe("frontier classification comparison", () => {
       compareClassifierWithFrontier({
         runManifestPath: data.runManifestPath,
         confirmRemote: true,
+        confirmSpend: true,
+        budgetUsd: 1,
         auth: fakeAuth,
         fetchImpl,
       }),
@@ -153,6 +174,8 @@ describe("frontier classification comparison", () => {
     const result = await compareClassifierWithFrontier({
       runManifestPath: data.runManifestPath,
       confirmRemote: true,
+      confirmSpend: true,
+      budgetUsd: 1,
       auth: fakeAuth,
       fetchImpl,
       concurrency: 1,
@@ -172,6 +195,14 @@ describe("frontier classification comparison", () => {
     assert.equal(result.heldout.failures.length, 1);
     assert.equal(result.data_boundary.training_examples_uploaded, false);
     assert.equal(result.data_boundary.holdout_examples_uploaded, true);
+    assert.match(result.data_boundary.retention_expectation, /zero data retention/);
+    assert.equal(result.spend.user_confirmed_spend, true);
+    assert.equal(result.spend.approved_budget_usd, 1);
+    assert.ok(result.spend.estimated_max_cost_usd <= result.spend.approved_budget_usd);
+    assert.ok(result.spend.attributed_cost_usd > 0);
+    assert.equal(result.spend.input_usd_per_million_tokens, 1.4);
+    assert.equal(result.spend.output_usd_per_million_tokens, 4.4);
+    assert.equal(result.spend.pricing_checked_at, "2026-07-16");
     assert.equal(requests.length, 3, "one quality batch plus two real latency probes");
     assert.ok(requests.every((request) => request.model === "glm-5.2"));
     assert.ok(requests.every((request) => request.chat_template_kwargs.thinking === false));
@@ -182,6 +213,29 @@ describe("frontier classification comparison", () => {
     assert.deepEqual(JSON.parse(readFileSync(result.artifact_path, "utf8")), result);
   });
 
+  it("fails closed before fetch when the conservative estimate exceeds the approved cap", async () => {
+    const data = fixture();
+    const { fetchImpl, requests } = frontierFetch();
+    await assert.rejects(
+      compareClassifierWithFrontier({
+        runManifestPath: data.runManifestPath,
+        confirmRemote: true,
+        confirmSpend: true,
+        budgetUsd: 0.000001,
+        fetchImpl,
+      }),
+      /above the approved \$0\.000001 cap\. No remote request was sent/,
+    );
+    assert.equal(requests.length, 0);
+    const comparisonRoot = join(dirname(data.runManifestPath), "frontier-comparisons", "glm-5.2");
+    const failures = readdirSync(comparisonRoot).filter((name) => name.endsWith(".failed.json"));
+    assert.equal(failures.length, 1);
+    const failure = JSON.parse(readFileSync(join(comparisonRoot, failures[0]), "utf8"));
+    assert.equal(failure.status, "failed");
+    assert.equal(failure.spend_preflight.approved_budget_usd, 0.000001);
+    assert.ok(failure.spend_preflight.estimated_max_cost_usd > 0.000001);
+  });
+
   it("fails closed and persists terminal evidence when the gateway serves a different model", async () => {
     const data = fixture();
     const { fetchImpl } = frontierFetch({ servedModel: "not-glm" });
@@ -189,6 +243,8 @@ describe("frontier classification comparison", () => {
       compareClassifierWithFrontier({
         runManifestPath: data.runManifestPath,
         confirmRemote: true,
+        confirmSpend: true,
+        budgetUsd: 1,
         auth: fakeAuth,
         fetchImpl,
       }),

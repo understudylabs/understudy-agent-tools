@@ -17,6 +17,7 @@ import {
 } from "./local-classifier/index.js";
 import {
   compareClassifierWithFrontier,
+  DEFAULT_FRONTIER_CLASSIFIER_BUDGET_USD,
   DEFAULT_FRONTIER_CLASSIFIER_MODEL,
 } from "./local-classifier/frontier.js";
 import { planRouteDecision } from "./route-decision.js";
@@ -306,6 +307,14 @@ function parseNonNegativeNumber(value: string): number {
   return parsed;
 }
 
+function parsePositiveNumber(value: string): number {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed) || parsed <= 0) {
+    throw new Error(`Expected a positive number, got: ${value}`);
+  }
+  return parsed;
+}
+
 function collectRepeated(value: string, previous: string[]): string[] {
   return [...previous, value];
 }
@@ -511,12 +520,24 @@ function registerCaptureImportCommands(program: Command): void {
       "--confirm-remote",
       "Confirm held-out examples may be sent to the named managed frontier model; training examples remain local",
     )
+    .option(
+      "--confirm-spend",
+      "Confirm paid frontier inference within the explicit --budget-usd cap",
+    )
+    .option(
+      "--budget-usd <usd>",
+      "Hard maximum approved frontier spend in USD",
+      parsePositiveNumber,
+      DEFAULT_FRONTIER_CLASSIFIER_BUDGET_USD,
+    )
     .option("--jsonl", "Stream machine-readable phase and terminal result events")
     .option("--json", "Output the terminal comparison artifact as JSON")
     .action(async (options: {
       runManifest: string;
       model: string;
       confirmRemote?: boolean;
+      confirmSpend?: boolean;
+      budgetUsd: number;
       jsonl?: boolean;
       json?: boolean;
     }) => {
@@ -524,6 +545,8 @@ function registerCaptureImportCommands(program: Command): void {
         runManifestPath: options.runManifest,
         modelId: options.model,
         confirmRemote: Boolean(options.confirmRemote),
+        confirmSpend: Boolean(options.confirmSpend),
+        budgetUsd: options.budgetUsd,
         onEvent: options.jsonl ? (event) => console.log(JSON.stringify(event)) : undefined,
       });
       if (options.jsonl) {
@@ -537,6 +560,7 @@ function registerCaptureImportCommands(program: Command): void {
       console.log(`capture-import compare-classification-frontier: ${result.requested_model}`);
       console.log(`same holdout: ${result.row_count} row(s), ${result.holdout_sha256}`);
       console.log(`correct answers: ${(result.heldout.accuracy * 100).toFixed(1)}%`);
+      console.log(`frontier spend: $${result.spend.attributed_cost_usd.toFixed(4)} (approved cap $${result.spend.approved_budget_usd.toFixed(2)})`);
       console.log(`artifact: ${result.artifact_path}`);
     });
 

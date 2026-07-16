@@ -39,6 +39,7 @@ export default function DesignPage() {
             latencyMs: 657.3,
             failureCount: 4,
             rowCount: 777,
+            costUsd: 0.02,
           }}
         />
 

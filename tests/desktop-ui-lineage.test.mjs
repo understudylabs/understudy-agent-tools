@@ -632,6 +632,10 @@ test("desktop compiles one dropped path through the bounded public CLI", async (
   assert.match(training, /compare_local_classification_with_frontier/);
   assert.match(training, /Compare with GLM 5\.2 on the same/);
   assert.match(training, /Only held-out test examples are sent through Understudy/);
+  assert.match(training, /confirmSpend: true/);
+  assert.match(training, /budgetUsd: 1/);
+  assert.match(training, /Fireworks publishes zero data retention/);
+  assert.match(training, /Maximum approved spend: \$1\.00/);
   assert.match(training, /<EvaluationRadar/);
   assert.match(training, /baselineAccuracy=\{state\.result\.linear_baseline\.accuracy\}/);
   assert.match(training, /state\.result\.heldout\.macro_f1/);
@@ -650,6 +654,10 @@ test("desktop compiles one dropped path through the bounded public CLI", async (
   assert.doesNotMatch(trainingState, /percentage|percent/);
   assert.match(bridge, /compare-classification-frontier/);
   assert.match(bridge, /"--confirm-remote"/);
+  assert.match(bridge, /"--confirm-spend"/);
+  assert.match(bridge, /"--budget-usd"/);
+  assert.match(bridge, /approved_budget_usd/);
+  assert.match(bridge, /attributed_cost_usd/);
   assert.match(bridge, /exact_same_holdout/);
   const radar = await readFile(evaluationRadarPath, "utf8");
   assert.match(radar, /Same held-out examples/);
@@ -660,6 +668,7 @@ test("desktop compiles one dropped path through the bounded public CLI", async (
   assert.match(radar, /Fast response/);
   assert.match(radar, /Your local model/);
   assert.match(radar, /Cloud required/);
+  assert.match(radar, /this comparison/);
   assert.match(radar, /same examples/);
   assert.match(radar, /aria-label="Local and frontier comparison dimensions"/);
   assert.doesNotMatch(radar, />F1<|"F1"/);

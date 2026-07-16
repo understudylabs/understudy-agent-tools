@@ -665,8 +665,57 @@ fn validate_frontier_comparison_result(value: Value, run_id: &str) -> Result<Val
             .get("holdout_examples_uploaded")
             .and_then(Value::as_bool)
             != Some(true)
+        || boundary
+            .get("retention_expectation")
+            .and_then(Value::as_str)
+            .filter(|value| !value.is_empty())
+            .is_none()
     {
         return Err("The frontier comparison returned an invalid consent boundary.".into());
+    }
+    let spend = value
+        .get("spend")
+        .and_then(Value::as_object)
+        .ok_or_else(|| "The frontier comparison omitted its spend evidence.".to_string())?;
+    let approved_budget = spend
+        .get("approved_budget_usd")
+        .and_then(Value::as_f64)
+        .filter(|value| value.is_finite() && *value > 0.0 && *value <= 100.0)
+        .ok_or_else(|| "The frontier comparison has an invalid approved budget.".to_string())?;
+    let estimated_max = spend
+        .get("estimated_max_cost_usd")
+        .and_then(Value::as_f64)
+        .filter(|value| value.is_finite() && *value >= 0.0 && *value <= approved_budget)
+        .ok_or_else(|| "The frontier comparison exceeded its spend preflight.".to_string())?;
+    let attributed = spend
+        .get("attributed_cost_usd")
+        .and_then(Value::as_f64)
+        .filter(|value| value.is_finite() && *value >= 0.0 && *value <= approved_budget)
+        .ok_or_else(|| "The frontier comparison returned invalid attributed spend.".to_string())?;
+    if spend.get("user_confirmed_spend").and_then(Value::as_bool) != Some(true)
+        || spend
+            .get("input_usd_per_million_tokens")
+            .and_then(Value::as_f64)
+            .filter(|value| value.is_finite() && *value > 0.0)
+            .is_none()
+        || spend
+            .get("output_usd_per_million_tokens")
+            .and_then(Value::as_f64)
+            .filter(|value| value.is_finite() && *value > 0.0)
+            .is_none()
+        || spend
+            .get("pricing_source")
+            .and_then(Value::as_str)
+            .filter(|value| value.starts_with("https://fireworks.ai/"))
+            .is_none()
+        || spend
+            .get("pricing_checked_at")
+            .and_then(Value::as_str)
+            .filter(|value| !value.is_empty())
+            .is_none()
+        || estimated_max < attributed
+    {
+        return Err("The frontier comparison returned invalid spend evidence.".into());
     }
     if value
         .get("artifact_path")
@@ -1092,12 +1141,19 @@ fn run_frontier_comparison(
     run_manifest_path: String,
     model_id: String,
     confirm_remote: bool,
+    confirm_spend: bool,
+    budget_usd: f64,
     on_event: &Channel<FrontierComparisonEvent>,
 ) -> Result<Value, String> {
     if !confirm_remote {
         return Err(
             "Confirm that held-out examples may be sent to GLM 5.2. Training examples stay on this Mac."
                 .into(),
+        );
+    }
+    if !confirm_spend || !budget_usd.is_finite() || budget_usd <= 0.0 || budget_usd > 100.0 {
+        return Err(
+            "Confirm a positive frontier spend cap of at most $100 before comparing.".into(),
         );
     }
     let canonical_manifest = PathBuf::from(run_manifest_path.trim())
@@ -1127,6 +1183,9 @@ fn run_frontier_comparison(
         .arg("--model")
         .arg(&model_id)
         .arg("--confirm-remote")
+        .arg("--confirm-spend")
+        .arg("--budget-usd")
+        .arg(budget_usd.to_string())
         .arg("--jsonl")
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
@@ -1208,11 +1267,20 @@ pub async fn compare_local_classification_with_frontier(
     run_manifest_path: String,
     model_id: String,
     confirm_remote: bool,
+    confirm_spend: bool,
+    budget_usd: f64,
     on_event: Channel<FrontierComparisonEvent>,
 ) -> Result<Value, String> {
     let model_id = safe_identifier(&model_id, "frontier model id")?;
     tauri::async_runtime::spawn_blocking(move || {
-        run_frontier_comparison(run_manifest_path, model_id, confirm_remote, &on_event)
+        run_frontier_comparison(
+            run_manifest_path,
+            model_id,
+            confirm_remote,
+            confirm_spend,
+            budget_usd,
+            &on_event,
+        )
     })
     .await
     .map_err(|error| format!("The frontier comparator stopped unexpectedly: {error}"))?
@@ -1633,6 +1701,64 @@ mod tests {
             validate_classification_training_result(unsafe_result, "desktop-run-123")
                 .unwrap_err()
                 .contains("group-isolated")
+        );
+    }
+
+    #[test]
+    fn accepts_only_consent_safe_budgeted_frontier_evidence() {
+        let valid = json!({
+            "schema_version": "understudy.capture_import.frontier_classification.v1",
+            "run_id": "desktop-run-123",
+            "status": "completed",
+            "requested_model": "glm-5.2",
+            "served_model": "glm-5.2",
+            "exact_same_holdout": true,
+            "holdout_sha256": "a".repeat(64),
+            "row_count": 20,
+            "data_boundary": {
+                "user_confirmed_remote_comparison": true,
+                "training_examples_uploaded": false,
+                "holdout_examples_uploaded": true,
+                "retention_expectation": "Fireworks-published zero data retention"
+            },
+            "heldout": {
+                "accuracy": 0.9,
+                "macro_f1": 0.8,
+                "latency_ms_p50": 120.0,
+                "failure_count": 2,
+                "failures": [],
+                "weakest_classes": [
+                    { "label": "travel", "recall": 0.7, "f1": 0.75, "support": 10 }
+                ]
+            },
+            "spend": {
+                "user_confirmed_spend": true,
+                "approved_budget_usd": 1.0,
+                "estimated_max_cost_usd": 0.5,
+                "attributed_cost_usd": 0.02,
+                "input_usd_per_million_tokens": 1.4,
+                "output_usd_per_million_tokens": 4.4,
+                "pricing_source": "https://fireworks.ai/models/fireworks/glm-5p2",
+                "pricing_checked_at": "2026-07-16"
+            },
+            "artifact_path": "/tmp/frontier.json"
+        });
+        assert!(validate_frontier_comparison_result(valid.clone(), "desktop-run-123").is_ok());
+
+        let mut no_spend_consent = valid.clone();
+        no_spend_consent["spend"]["user_confirmed_spend"] = json!(false);
+        assert!(
+            validate_frontier_comparison_result(no_spend_consent, "desktop-run-123")
+                .unwrap_err()
+                .contains("spend evidence")
+        );
+
+        let mut over_budget = valid;
+        over_budget["spend"]["attributed_cost_usd"] = json!(1.01);
+        assert!(
+            validate_frontier_comparison_result(over_budget, "desktop-run-123")
+                .unwrap_err()
+                .contains("attributed spend")
         );
     }
 

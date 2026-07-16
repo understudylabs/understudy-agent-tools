@@ -125,6 +125,7 @@ type FrontierComparison = {
     user_confirmed_remote_comparison: true;
     training_examples_uploaded: false;
     holdout_examples_uploaded: true;
+    retention_expectation: string;
   };
   heldout: {
     accuracy: number;
@@ -137,6 +138,14 @@ type FrontierComparison = {
       f1: number;
       support: number;
     }[];
+  };
+  spend: {
+    user_confirmed_spend: true;
+    approved_budget_usd: number;
+    estimated_max_cost_usd: number;
+    attributed_cost_usd: number;
+    pricing_source: string;
+    pricing_checked_at: string;
   };
   artifact_path: string;
 };
@@ -448,6 +457,8 @@ export function LocalTrainingPanel({
       runManifestPath: state.result.manifest_path,
       modelId: "glm-5.2",
       confirmRemote: true,
+      confirmSpend: true,
+      budgetUsd: 1,
       onEvent: channel,
     })
       .then((result) => {
@@ -583,7 +594,7 @@ export function LocalTrainingPanel({
             <span>Frontier reference</span>
             <strong>Compare with GLM 5.2 on the same {state.result.heldout.row_count.toLocaleString()} test examples</strong>
             <small>
-              Only held-out test examples are sent through Understudy. Training examples stay on this Mac. Cloud charges may apply.
+              Only held-out test examples are sent through Understudy; training examples stay on this Mac. Fireworks publishes zero data retention for GLM 5.2. Maximum approved spend: $1.00.
             </small>
             {frontierEvent?.message && <p>{frontierEvent.message}</p>}
             {frontierEvent?.current !== undefined && frontierEvent.total !== undefined && (
@@ -592,7 +603,7 @@ export function LocalTrainingPanel({
             {frontierError && <em>{frontierError}</em>}
           </div>
           <button type="button" className="btn primary" onClick={compareWithFrontier} disabled={comparingFrontier}>
-            {comparingFrontier ? "Comparing…" : frontierError ? "Try frontier again" : "Compare with GLM 5.2"}
+            {comparingFrontier ? "Comparing…" : frontierError ? "Try frontier again · max $1" : "Compare with GLM 5.2 · max $1"}
           </button>
         </div>
       )}
@@ -617,6 +628,7 @@ export function LocalTrainingPanel({
             latencyMs: frontierComparison.heldout.latency_ms_p50,
             failureCount: frontierComparison.heldout.failure_count,
             rowCount: frontierComparison.row_count,
+            costUsd: frontierComparison.spend.attributed_cost_usd,
           }}
         />
       )}

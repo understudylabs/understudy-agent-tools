@@ -13,17 +13,27 @@ import { assertCustomerScope, resolveAuth } from "../internal/http.js";
 export const FRONTIER_CLASSIFICATION_SCHEMA = "understudy.capture_import.frontier_classification.v1";
 export const FRONTIER_CLASSIFICATION_FAILURE_SCHEMA = "understudy.capture_import.frontier_classification_failure.v1";
 export const DEFAULT_FRONTIER_CLASSIFIER_MODEL = "glm-5.2";
+export const DEFAULT_FRONTIER_CLASSIFIER_BUDGET_USD = 1;
+
+const FRONTIER_PRICING = {
+  inputUsdPerMillionTokens: 1.4,
+  outputUsdPerMillionTokens: 4.4,
+  source: "https://fireworks.ai/models/fireworks/glm-5p2",
+  checkedAt: "2026-07-16",
+} as const;
 
 const RUN_SCHEMA = "understudy.capture_import.classification_run.v1";
 const MAX_HOLDOUT_BYTES = 16 * 1024 * 1024;
 const MAX_HOLDOUT_ROWS = 2_000;
 const MAX_TEXT_CHARACTERS = 4_000;
-const MAX_LABELS = 50;
+const MAX_LABELS = 128;
 const CHUNK_SIZE = 40;
 const MAX_CONCURRENCY = 4;
 const REQUEST_TIMEOUT_MS = 90_000;
-const MAX_COMPLETION_TOKENS = 4_096;
+const QUALITY_MAX_COMPLETION_TOKENS = 4_096;
+const LATENCY_MAX_COMPLETION_TOKENS = 256;
 const LATENCY_SAMPLE_COUNT = 5;
+const MAX_FRONTIER_BUDGET_USD = 100;
 const MODEL_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._/-]{0,127}$/;
 
 export type FrontierClassificationPhase = "preparing" | "comparing" | "measuring" | "saving";
@@ -51,7 +61,8 @@ export type FrontierClassificationResult = {
     user_confirmed_remote_comparison: true;
     training_examples_uploaded: false;
     holdout_examples_uploaded: true;
-    destination: "Understudy managed frontier model";
+    destination: "Understudy managed GLM 5.2 on Fireworks";
+    retention_expectation: "Fireworks-published zero data retention; Understudy comparison evidence excludes holdout text";
   };
   heldout: {
     accuracy: number;
@@ -84,6 +95,16 @@ export type FrontierClassificationResult = {
     request_count: number;
     request_ids: Array<string | null>;
   };
+  spend: {
+    user_confirmed_spend: true;
+    approved_budget_usd: number;
+    estimated_max_cost_usd: number;
+    attributed_cost_usd: number;
+    input_usd_per_million_tokens: number;
+    output_usd_per_million_tokens: number;
+    pricing_source: string;
+    pricing_checked_at: string;
+  };
   gateway: {
     modes: string[];
     routes: string[];
@@ -95,6 +116,8 @@ export type CompareClassifierWithFrontierOptions = {
   runManifestPath: string;
   modelId?: string;
   confirmRemote: boolean;
+  confirmSpend: boolean;
+  budgetUsd: number;
   concurrency?: number;
   auth?: ReturnType<typeof resolveAuth>;
   fetchImpl?: typeof fetch;
@@ -128,6 +151,27 @@ type GatewayChunkResult = {
   servedModel: string;
   mode: string | null;
   route: string | null;
+};
+
+type GatewayRequest = {
+  model: string;
+  stream: false;
+  temperature: 0;
+  max_tokens: number;
+  chat_template_kwargs: { thinking: false; enable_thinking: false };
+  messages: Array<{ role: "system" | "user"; content: string }>;
+};
+
+type BudgetPreflight = {
+  approved_budget_usd: number;
+  estimated_max_cost_usd: number;
+  estimated_input_token_upper_bound: number;
+  reserved_output_tokens: number;
+  request_count: number;
+  input_usd_per_million_tokens: number;
+  output_usd_per_million_tokens: number;
+  pricing_source: string;
+  pricing_checked_at: string;
 };
 
 function sha256(value: string | Buffer): string {
@@ -262,10 +306,91 @@ function requestSignal(parent?: AbortSignal): { signal: AbortSignal; dispose: ()
   };
 }
 
+function buildGatewayRequest(
+  rows: HoldoutRow[],
+  labels: string[],
+  modelId: string,
+  maxCompletionTokens: number,
+): GatewayRequest {
+  return {
+    model: modelId,
+    stream: false,
+    temperature: 0,
+    max_tokens: maxCompletionTokens,
+    chat_template_kwargs: { thinking: false, enable_thinking: false },
+    messages: [
+      {
+        role: "system",
+        content: `Classify every input into exactly one allowed label. Return only JSON: {"predictions":[{"example_id":"...","label":"..."}]}. Preserve every example_id exactly, return one prediction per input, and use only these labels: ${labels.join(", ")}.`,
+      },
+      {
+        role: "user",
+        content: JSON.stringify({
+          examples: rows.map(({ example_id, text }) => ({ example_id, text })),
+        }),
+      },
+    ],
+  };
+}
+
+function costUsd(inputTokens: number, outputTokens: number): number {
+  return (
+    (inputTokens * FRONTIER_PRICING.inputUsdPerMillionTokens) +
+    (outputTokens * FRONTIER_PRICING.outputUsdPerMillionTokens)
+  ) / 1_000_000;
+}
+
+function formatUsdCap(value: number): string {
+  return `$${value.toFixed(value < 0.01 ? 6 : 2)}`;
+}
+
+function buildBudgetPreflight(
+  qualityChunks: HoldoutRow[][],
+  latencySamples: HoldoutRow[],
+  labels: string[],
+  modelId: string,
+  budgetUsd: number,
+): BudgetPreflight {
+  const requests = [
+    ...qualityChunks.map((rows) => buildGatewayRequest(
+      rows,
+      labels,
+      modelId,
+      QUALITY_MAX_COMPLETION_TOKENS,
+    )),
+    ...latencySamples.map((row) => buildGatewayRequest(
+      [row],
+      labels,
+      modelId,
+      LATENCY_MAX_COMPLETION_TOKENS,
+    )),
+  ];
+  // One UTF-8 byte per input token is intentionally conservative. The output
+  // side reserves every requested completion token, even though valid JSON is
+  // normally much shorter.
+  const estimatedInputTokenUpperBound = requests.reduce(
+    (sum, request) => sum + Buffer.byteLength(JSON.stringify(request), "utf8"),
+    0,
+  );
+  const reservedOutputTokens = requests.reduce((sum, request) => sum + request.max_tokens, 0);
+  return {
+    approved_budget_usd: budgetUsd,
+    estimated_max_cost_usd: costUsd(estimatedInputTokenUpperBound, reservedOutputTokens),
+    estimated_input_token_upper_bound: estimatedInputTokenUpperBound,
+    reserved_output_tokens: reservedOutputTokens,
+    request_count: requests.length,
+    input_usd_per_million_tokens: FRONTIER_PRICING.inputUsdPerMillionTokens,
+    output_usd_per_million_tokens: FRONTIER_PRICING.outputUsdPerMillionTokens,
+    pricing_source: FRONTIER_PRICING.source,
+    pricing_checked_at: FRONTIER_PRICING.checkedAt,
+  };
+}
+
 async function callGateway(
   rows: HoldoutRow[],
   labels: string[],
   modelId: string,
+  maxCompletionTokens: number,
   fetchImpl: typeof fetch,
   auth: ReturnType<typeof resolveAuth>,
   signal?: AbortSignal,
@@ -281,25 +406,7 @@ async function callGateway(
         "content-type": "application/json",
         accept: "application/json",
       },
-      body: JSON.stringify({
-        model: modelId,
-        stream: false,
-        temperature: 0,
-        max_tokens: MAX_COMPLETION_TOKENS,
-        chat_template_kwargs: { thinking: false, enable_thinking: false },
-        messages: [
-          {
-            role: "system",
-            content: `Classify every input into exactly one allowed label. Return only JSON: {"predictions":[{"example_id":"...","label":"..."}]}. Preserve every example_id exactly, return one prediction per input, and use only these labels: ${labels.join(", ")}.`,
-          },
-          {
-            role: "user",
-            content: JSON.stringify({
-              examples: rows.map(({ example_id, text }) => ({ example_id, text })),
-            }),
-          },
-        ],
-      }),
+      body: JSON.stringify(buildGatewayRequest(rows, labels, modelId, maxCompletionTokens)),
       signal: scopedSignal.signal,
     });
     const body = await response.text();
@@ -406,12 +513,22 @@ export async function compareClassifierWithFrontier(
       "Frontier comparison requires --confirm-remote after disclosing that held-out examples leave this Mac. Training examples remain local.",
     );
   }
+  if (!options.confirmSpend || !Number.isFinite(options.budgetUsd) || options.budgetUsd <= 0 ||
+      options.budgetUsd > MAX_FRONTIER_BUDGET_USD) {
+    throw new Error(
+      `Frontier comparison requires --confirm-spend and a positive --budget-usd cap of at most $${MAX_FRONTIER_BUDGET_USD} before any remote request.`,
+    );
+  }
   const modelId = options.modelId ?? DEFAULT_FRONTIER_CLASSIFIER_MODEL;
   if (!MODEL_ID_PATTERN.test(modelId)) throw new Error("The frontier model id is invalid.");
+  if (modelId !== DEFAULT_FRONTIER_CLASSIFIER_MODEL) {
+    throw new Error(`Spend-safe frontier comparison currently supports only ${DEFAULT_FRONTIER_CLASSIFIER_MODEL}.`);
+  }
   const now = options.now ?? new Date();
   const comparisonId = `frontier-${randomUUID()}`;
   let verified: VerifiedRun | null = null;
   let artifactPath: string | null = null;
+  let budgetPreflight: BudgetPreflight | null = null;
   try {
     options.onEvent?.({
       type: "phase",
@@ -424,6 +541,24 @@ export async function compareClassifierWithFrontier(
     const chunks: HoldoutRow[][] = [];
     for (let start = 0; start < verified.rows.length; start += CHUNK_SIZE) {
       chunks.push(verified.rows.slice(start, start + CHUNK_SIZE));
+    }
+    const latencySamples = verified.rows.length <= LATENCY_SAMPLE_COUNT
+      ? verified.rows
+      : Array.from({ length: LATENCY_SAMPLE_COUNT }, (_, index) =>
+        verified!.rows[Math.floor(index * (verified!.rows.length - 1) / (LATENCY_SAMPLE_COUNT - 1))]!,
+      );
+    const spendPreflight = buildBudgetPreflight(
+      chunks,
+      latencySamples,
+      verified.labels,
+      modelId,
+      options.budgetUsd,
+    );
+    budgetPreflight = spendPreflight;
+    if (spendPreflight.estimated_max_cost_usd > options.budgetUsd) {
+      throw new Error(
+        `The conservative frontier estimate is ${formatUsdCap(spendPreflight.estimated_max_cost_usd)}, above the approved ${formatUsdCap(options.budgetUsd)} cap. No remote request was sent.`,
+      );
     }
     const auth = options.auth ?? resolveAuth();
     const fetchImpl = options.fetchImpl ?? fetch;
@@ -447,6 +582,7 @@ export async function compareClassifierWithFrontier(
           chunks[chunkIndex]!,
           verified!.labels,
           modelId,
+          QUALITY_MAX_COMPLETION_TOKENS,
           fetchImpl,
           auth,
           options.signal,
@@ -471,11 +607,6 @@ export async function compareClassifierWithFrontier(
       current: 0,
       total: Math.min(LATENCY_SAMPLE_COUNT, verified.rows.length),
     });
-    const latencySamples = verified.rows.length <= LATENCY_SAMPLE_COUNT
-      ? verified.rows
-      : Array.from({ length: LATENCY_SAMPLE_COUNT }, (_, index) =>
-        verified!.rows[Math.floor(index * (verified!.rows.length - 1) / (LATENCY_SAMPLE_COUNT - 1))]!,
-      );
     const latencyMs: number[] = [];
     const latencyResults: GatewayChunkResult[] = [];
     for (let index = 0; index < latencySamples.length; index += 1) {
@@ -484,6 +615,7 @@ export async function compareClassifierWithFrontier(
         [latencySamples[index]!],
         verified.labels,
         modelId,
+        LATENCY_MAX_COMPLETION_TOKENS,
         fetchImpl,
         auth,
         options.signal,
@@ -505,6 +637,8 @@ export async function compareClassifierWithFrontier(
       message: "Saving immutable local comparison evidence.",
     });
     const allResults = [...chunkResults, ...latencyResults];
+    const promptTokens = allResults.reduce((sum, row) => sum + row.promptTokens, 0);
+    const completionTokens = allResults.reduce((sum, row) => sum + row.completionTokens, 0);
     const result: FrontierClassificationResult = {
       schema_version: FRONTIER_CLASSIFICATION_SCHEMA,
       comparison_id: comparisonId,
@@ -520,7 +654,8 @@ export async function compareClassifierWithFrontier(
         user_confirmed_remote_comparison: true,
         training_examples_uploaded: false,
         holdout_examples_uploaded: true,
-        destination: "Understudy managed frontier model",
+        destination: "Understudy managed GLM 5.2 on Fireworks",
+        retention_expectation: "Fireworks-published zero data retention; Understudy comparison evidence excludes holdout text",
       },
       heldout: computeHeldout(
         verified.rows,
@@ -528,10 +663,20 @@ export async function compareClassifierWithFrontier(
         median(latencyMs),
       ),
       usage: {
-        prompt_tokens: allResults.reduce((sum, row) => sum + row.promptTokens, 0),
-        completion_tokens: allResults.reduce((sum, row) => sum + row.completionTokens, 0),
+        prompt_tokens: promptTokens,
+        completion_tokens: completionTokens,
         request_count: allResults.length,
         request_ids: allResults.map((row) => row.requestId),
+      },
+      spend: {
+        user_confirmed_spend: true,
+        approved_budget_usd: spendPreflight.approved_budget_usd,
+        estimated_max_cost_usd: spendPreflight.estimated_max_cost_usd,
+        attributed_cost_usd: costUsd(promptTokens, completionTokens),
+        input_usd_per_million_tokens: FRONTIER_PRICING.inputUsdPerMillionTokens,
+        output_usd_per_million_tokens: FRONTIER_PRICING.outputUsdPerMillionTokens,
+        pricing_source: FRONTIER_PRICING.source,
+        pricing_checked_at: FRONTIER_PRICING.checkedAt,
       },
       gateway: {
         modes: [...new Set(allResults.flatMap((row) => row.mode ? [row.mode] : []))].sort(),
@@ -554,6 +699,7 @@ export async function compareClassifierWithFrontier(
         exact_same_holdout: true,
         holdout_sha256: verified.holdoutSha256,
         row_count: verified.rows.length,
+        spend_preflight: budgetPreflight,
         error: error instanceof Error ? error.message.slice(0, 800) : String(error).slice(0, 800),
         artifact_path: failurePath,
       });

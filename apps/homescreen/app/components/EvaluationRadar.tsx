@@ -14,6 +14,7 @@ type FrontierEvidence = {
   latencyMs: number;
   failureCount: number;
   rowCount: number;
+  costUsd: number;
 };
 
 type Props = {
@@ -50,6 +51,12 @@ function percent(value: number, digits = 1): string {
 function compactBytes(bytes: number): string {
   if (bytes < 1_024 * 1_024 * 1_024) return `${(bytes / (1_024 * 1_024)).toFixed(0)} MB`;
   return `${(bytes / (1_024 * 1_024 * 1_024)).toFixed(1)} GB`;
+}
+
+function compactUsd(value: number): string {
+  if (!Number.isFinite(value) || value < 0) return "cost unavailable";
+  if (value < 0.01) return `<$0.01`;
+  return `$${value.toFixed(2)}`;
 }
 
 function qualityScore(value: number): number {
@@ -233,8 +240,8 @@ export function EvaluationRadar({
         </div>
         <div>
           <span>{frontier.name}</span>
-          <strong>{frontier.failureCount} mistakes · no download</strong>
-          <small>Cloud required · held-out examples were sent remotely</small>
+          <strong>{frontier.failureCount} mistakes · {compactUsd(frontier.costUsd)} this comparison</strong>
+          <small>Cloud required · held-out examples sent with published zero data retention</small>
         </div>
         <div>
           <span>Basic text model</span>
