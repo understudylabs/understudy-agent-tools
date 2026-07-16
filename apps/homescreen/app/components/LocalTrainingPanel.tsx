@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useReducer, useRef, useState } from "react";
+import { useCallback, useEffect, useReducer, useRef, useState } from "react";
 import { Channel, invoke } from "@tauri-apps/api/core";
 import {
   INITIAL_LOCAL_TRAINING_STATE,
@@ -9,10 +9,12 @@ import {
   localTrainingPhaseCopy,
   localTrainingProgress,
   localTrainingReducer,
+  localTrainingTiming,
   localTrainingVerdict,
   type LocalTrainingEvent,
   type LocalTrainingState,
 } from "../lib/local-training-state.mjs";
+import type { TrainingHaloVisual } from "./TrainingHalo";
 
 const MODERN_BERT_MODEL = "answerdotai/ModernBERT-base";
 
@@ -93,9 +95,27 @@ type ClassificationPrediction = {
   local_only: true;
 };
 
+type ClassificationTrainingPreview = {
+  dataset_id: string;
+  split: "train";
+  row_count: number;
+  local_only: true;
+  verified_split_sha256: string;
+  examples: {
+    example_id: string;
+    row_number: number;
+    text: string;
+    label: string;
+    truncated: boolean;
+  }[];
+};
+
 type Props = {
   datasetManifestPath: string;
+  modelName: string;
+  autoStart?: boolean;
   onActiveChange?: (active: boolean) => void;
+  onVisualChange?: (visual: TrainingHaloVisual | null) => void;
 };
 
 function percent(value: number): string {
@@ -112,7 +132,28 @@ function runId(): string {
   return `desktop-${crypto.randomUUID()}`;
 }
 
-export function LocalTrainingPanel({ datasetManifestPath, onActiveChange }: Props) {
+function compactDuration(milliseconds: number): string {
+  const seconds = Math.max(0, Math.round(milliseconds / 1_000));
+  if (seconds < 60) return `${seconds}s`;
+  const minutes = Math.floor(seconds / 60);
+  const remainder = seconds % 60;
+  return remainder === 0 ? `${minutes}m` : `${minutes}m ${remainder}s`;
+}
+
+function completionClock(timestamp: number): string {
+  return new Intl.DateTimeFormat(undefined, {
+    hour: "numeric",
+    minute: "2-digit",
+  }).format(new Date(timestamp));
+}
+
+export function LocalTrainingPanel({
+  datasetManifestPath,
+  modelName,
+  autoStart = false,
+  onActiveChange,
+  onVisualChange,
+}: Props) {
   const [state, dispatch] = useReducer(
     localTrainingReducer<ClassificationTrainingRun>,
     INITIAL_LOCAL_TRAINING_STATE as LocalTrainingState<ClassificationTrainingRun>,
@@ -121,37 +162,118 @@ export function LocalTrainingPanel({ datasetManifestPath, onActiveChange }: Prop
   const [prediction, setPrediction] = useState<ClassificationPrediction | null>(null);
   const [predictionError, setPredictionError] = useState<string | null>(null);
   const [predicting, setPredicting] = useState(false);
+  const [trainingPreview, setTrainingPreview] = useState<ClassificationTrainingPreview | null>(null);
+  const [trainingPreviewIndex, setTrainingPreviewIndex] = useState(0);
+  const [previousTrainingPreviewIndex, setPreviousTrainingPreviewIndex] = useState<number | null>(null);
+  const [haloProgress, setHaloProgress] = useState({ epochs: 3, completedEpochs: 0 });
+  const [clockMs, setClockMs] = useState(() => Date.now());
   const generation = useRef(0);
   const activeRunId = useRef<string | null>(null);
   const cancellationRequested = useRef(false);
+  const autoStartedManifest = useRef<string | null>(null);
+  const trainingPreviewIndexRef = useRef(0);
+  const previewFadeTimer = useRef<number | null>(null);
+  const runStartedAt = useRef<number | null>(null);
+  const trainingStartedAt = useRef<number | null>(null);
+  const lastEpochCompletedAt = useRef<number | null>(null);
   const active = isLocalTrainingActive(state);
   const phaseCopy = localTrainingPhaseCopy(state.phase);
   const measuredProgress = localTrainingProgress(state.event);
+  const timing = localTrainingTiming({
+    phase: state.phase,
+    event: state.event,
+    runStartedAt: runStartedAt.current,
+    trainingStartedAt: trainingStartedAt.current,
+    lastEpochCompletedAt: lastEpochCompletedAt.current,
+    nowMs: clockMs,
+  });
 
   useEffect(() => {
     onActiveChange?.(active);
   }, [active, onActiveChange]);
 
-  useEffect(() => () => onActiveChange?.(false), [onActiveChange]);
+  useEffect(() => () => {
+    onActiveChange?.(false);
+    onVisualChange?.(null);
+  }, [onActiveChange, onVisualChange]);
+
+  useEffect(() => {
+    if (state.phase === "idle" || state.phase === "failed" || state.phase === "cancelled") {
+      onVisualChange?.(null);
+      return;
+    }
+    const phase = state.phase === "cancelling" ? "training" : state.phase;
+    onVisualChange?.({
+      phase,
+      epochs: haloProgress.epochs,
+      completedEpochs: state.phase === "completed" ? haloProgress.epochs : haloProgress.completedEpochs,
+      stepFraction: null,
+      modelName,
+      done: state.phase === "completed",
+    });
+  }, [haloProgress, modelName, onVisualChange, state.phase]);
 
   useEffect(() => {
     generation.current += 1;
     const run = activeRunId.current;
     activeRunId.current = null;
     cancellationRequested.current = false;
+    autoStartedManifest.current = null;
     if (run) void invoke("cancel_local_classification_training", { runId: run });
     dispatch({ type: "reset" });
     setPredictionText("");
     setPrediction(null);
     setPredictionError(null);
+    setTrainingPreview(null);
+    setTrainingPreviewIndex(0);
+    trainingPreviewIndexRef.current = 0;
+    setPreviousTrainingPreviewIndex(null);
+    setHaloProgress({ epochs: 3, completedEpochs: 0 });
+    runStartedAt.current = null;
+    trainingStartedAt.current = null;
+    lastEpochCompletedAt.current = null;
+    setClockMs(Date.now());
+    if (previewFadeTimer.current !== null) window.clearTimeout(previewFadeTimer.current);
   }, [datasetManifestPath]);
 
   useEffect(() => () => {
     const run = activeRunId.current;
     if (run) void invoke("cancel_local_classification_training", { runId: run });
+    if (previewFadeTimer.current !== null) window.clearTimeout(previewFadeTimer.current);
   }, []);
 
-  const startTraining = () => {
+  useEffect(() => {
+    if (!active) return;
+    setClockMs(Date.now());
+    const timer = window.setInterval(() => setClockMs(Date.now()), 1_000);
+    return () => window.clearInterval(timer);
+  }, [active]);
+
+  useEffect(() => {
+    if (!active || state.phase === "cancelling" || (trainingPreview?.examples.length ?? 0) < 2) return;
+    if (window.matchMedia("(prefers-reduced-motion: reduce)").matches) return;
+    const interval = window.setInterval(() => {
+      const current = trainingPreviewIndexRef.current;
+      const next = (current + 1) % trainingPreview!.examples.length;
+      setPreviousTrainingPreviewIndex(current);
+      trainingPreviewIndexRef.current = next;
+      setTrainingPreviewIndex(next);
+      if (previewFadeTimer.current !== null) window.clearTimeout(previewFadeTimer.current);
+      previewFadeTimer.current = window.setTimeout(() => {
+        setPreviousTrainingPreviewIndex(null);
+        previewFadeTimer.current = null;
+      }, 1_100);
+    }, 3_600);
+    return () => {
+      window.clearInterval(interval);
+      if (previewFadeTimer.current !== null) {
+        window.clearTimeout(previewFadeTimer.current);
+        previewFadeTimer.current = null;
+      }
+    };
+  }, [active, state.phase, trainingPreview]);
+
+  const startTraining = useCallback(() => {
     if (active) return;
     const id = runId();
     const requestGeneration = generation.current + 1;
@@ -160,10 +282,53 @@ export function LocalTrainingPanel({ datasetManifestPath, onActiveChange }: Prop
     cancellationRequested.current = false;
     setPrediction(null);
     setPredictionError(null);
+    setTrainingPreview(null);
+    setTrainingPreviewIndex(0);
+    trainingPreviewIndexRef.current = 0;
+    setPreviousTrainingPreviewIndex(null);
+    setHaloProgress({ epochs: 3, completedEpochs: 0 });
+    const startedAt = Date.now();
+    runStartedAt.current = startedAt;
+    trainingStartedAt.current = null;
+    lastEpochCompletedAt.current = null;
+    setClockMs(startedAt);
     dispatch({ type: "start", runId: id });
+    void invoke<ClassificationTrainingPreview>("local_classification_training_examples", {
+      manifestPath: datasetManifestPath,
+    })
+      .then((preview) => {
+        if (generation.current === requestGeneration && preview.local_only && preview.split === "train") {
+          setTrainingPreview(preview);
+        }
+      })
+      .catch(() => {
+        // A preview is supporting context, never a reason to block or misrepresent the real training run.
+      });
     const channel = new Channel<LocalTrainingEvent>();
     channel.onmessage = (event) => {
-      if (generation.current === requestGeneration) dispatch({ type: "phase", event });
+      if (generation.current !== requestGeneration) return;
+      const receivedAt = Date.now();
+      if (event.phase === "training") {
+        if (trainingStartedAt.current === null) trainingStartedAt.current = receivedAt;
+        if (Number.isSafeInteger(event.current) && event.current! > 0) {
+          lastEpochCompletedAt.current = receivedAt;
+        }
+      }
+      setClockMs(receivedAt);
+      if (
+        event.phase === "training" &&
+        Number.isSafeInteger(event.total) &&
+        event.total! > 0 &&
+        Number.isSafeInteger(event.current)
+      ) {
+        setHaloProgress({
+          epochs: event.total!,
+          completedEpochs: Math.min(event.total!, Math.max(0, event.current!)),
+        });
+      } else if (event.phase === "evaluating" || event.phase === "saving") {
+        setHaloProgress((current) => ({ ...current, completedEpochs: current.epochs }));
+      }
+      dispatch({ type: "phase", event });
     };
     void invoke<ClassificationTrainingRun>("start_local_classification_training", {
       manifestPath: datasetManifestPath,
@@ -186,7 +351,16 @@ export function LocalTrainingPanel({ datasetManifestPath, onActiveChange }: Prop
           ? { type: "cancelled" }
           : { type: "failed", error: message });
       });
-  };
+  }, [active, datasetManifestPath]);
+
+  useEffect(() => {
+    if (!autoStart || state.phase !== "idle" || autoStartedManifest.current === datasetManifestPath) return;
+    const timer = window.setTimeout(() => {
+      autoStartedManifest.current = datasetManifestPath;
+      startTraining();
+    }, 0);
+    return () => window.clearTimeout(timer);
+  }, [autoStart, datasetManifestPath, startTraining, state.phase]);
 
   const cancelTraining = () => {
     if (!activeRunId.current || !active) return;
@@ -210,6 +384,7 @@ export function LocalTrainingPanel({ datasetManifestPath, onActiveChange }: Prop
   };
 
   if (state.phase === "idle") {
+    if (autoStart) return null;
     return (
       <div className="local-training-start">
         <button type="button" className="btn primary" onClick={startTraining}>
@@ -220,17 +395,68 @@ export function LocalTrainingPanel({ datasetManifestPath, onActiveChange }: Prop
   }
 
   if (active && phaseCopy) {
+    const trainingExample = trainingPreview && trainingPreview.examples.length > 0
+      ? trainingPreview.examples[trainingPreviewIndex % trainingPreview.examples.length]
+      : null;
+    const previousTrainingExample = trainingPreview && previousTrainingPreviewIndex !== null
+      ? trainingPreview.examples[previousTrainingPreviewIndex % trainingPreview.examples.length]
+      : null;
+    const renderedExamples = [
+      ...(previousTrainingExample ? [{ example: previousTrainingExample, leaving: true }] : []),
+      ...(trainingExample ? [{ example: trainingExample, leaving: false }] : []),
+    ];
     return (
       <div className="local-training-running" aria-live="polite" aria-busy="true">
-        <span className="local-training-pulse" aria-hidden="true" />
-        <div>
-          <strong>{phaseCopy[0]}</strong>
-          <small>{state.event?.message || phaseCopy[1]}</small>
-          {measuredProgress && <code>{measuredProgress}</code>}
+        <div className="local-training-status">
+          <span className="local-training-pulse" aria-hidden="true" />
+          <div className="local-training-status-copy">
+            <strong>{phaseCopy[0]}</strong>
+            <small>{state.event?.message || phaseCopy[1]}</small>
+            {measuredProgress && <code>{measuredProgress}</code>}
+            {timing && (
+              <div className="local-training-timing" aria-label="Measured training timing">
+                <span>Elapsed <b>{compactDuration(timing.elapsedMs)}</b></span>
+                {state.phase === "training" && timing.measuring && (
+                  <span>ETA <b>measuring first epoch</b></span>
+                )}
+                {state.phase === "training" && timing.paceMs !== null && timing.remainingMs !== null && timing.completionAt !== null && (
+                  <>
+                    <span>Pace <b>{compactDuration(timing.paceMs)} / epoch</b></span>
+                    <span>Training left <b>about {compactDuration(timing.remainingMs)}</b></span>
+                    <span>Training done <b>about {completionClock(timing.completionAt)}</b></span>
+                  </>
+                )}
+              </div>
+            )}
+          </div>
+          <button type="button" className="btn ghost" onClick={cancelTraining} disabled={state.phase === "cancelling"}>
+            {state.phase === "cancelling" ? "Stopping…" : "Cancel"}
+          </button>
         </div>
-        <button type="button" className="btn ghost" onClick={cancelTraining} disabled={state.phase === "cancelling"}>
-          {state.phase === "cancelling" ? "Stopping…" : "Cancel"}
-        </button>
+        {renderedExamples.length > 0 && trainingPreview && (
+          <div
+            className="local-training-example-stream"
+            aria-label="Verified local training example"
+            aria-live="off"
+          >
+            {renderedExamples.map(({ example, leaving }) => (
+              <div
+                key={`${state.runId}:${example.example_id}:${leaving ? "out" : "in"}`}
+                className={`local-training-example${leaving ? " is-leaving" : " is-entering"}`}
+              >
+                <span>
+                  Verified training example · split row {example.row_number.toLocaleString()}
+                </span>
+                <p>{example.text}</p>
+                <div>
+                  <small>Target</small>
+                  <strong>{example.label}</strong>
+                </div>
+                <small>Verified training split · stays on this Mac</small>
+              </div>
+            ))}
+          </div>
+        )}
       </div>
     );
   }
@@ -307,10 +533,10 @@ export function LocalTrainingPanel({ datasetManifestPath, onActiveChange }: Prop
           predict();
         }}
       >
-        <label htmlFor={`expense-${state.result.run_id}`}>Try a new expense</label>
+        <label htmlFor={`example-${state.result.run_id}`}>Try a new example</label>
         <div>
           <input
-            id={`expense-${state.result.run_id}`}
+            id={`example-${state.result.run_id}`}
             value={predictionText}
             maxLength={4_000}
             onChange={(event) => {
@@ -318,7 +544,7 @@ export function LocalTrainingPanel({ datasetManifestPath, onActiveChange }: Prop
               setPrediction(null);
               setPredictionError(null);
             }}
-            placeholder="e.g. ACME Coffee · client meeting · $18.40"
+            placeholder="Enter new text for this classifier"
           />
           <button type="submit" className="btn primary" disabled={!predictionText.trim() || predicting}>
             {predicting ? "Classifying…" : "Classify"}

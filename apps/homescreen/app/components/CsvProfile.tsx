@@ -40,7 +40,12 @@ export function CsvProfile({
         <i aria-hidden="true">·</i>
         <span>{columns.length} columns</span>
       </div>
-      <div className="csv-profile-columns" role="group" aria-label="Local CSV column profile">
+      <div
+        className={`csv-profile-columns${columns.length <= 4 ? " is-sparse" : ""}`}
+        role="group"
+        aria-label="Local CSV column profile"
+        style={{ "--sparse-column-count": Math.max(1, columns.length) } as CSSProperties}
+      >
         {columns.map((column, columnIndex) => (
           <button
             type="button"

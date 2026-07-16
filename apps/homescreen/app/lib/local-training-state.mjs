@@ -77,14 +77,58 @@ export function localTrainingProgress(event) {
   return [epoch, measured].filter(Boolean).join(" · ") || null;
 }
 
+export function localTrainingTiming({
+  phase,
+  event,
+  runStartedAt,
+  trainingStartedAt,
+  lastEpochCompletedAt,
+  nowMs,
+}) {
+  if (!Number.isFinite(runStartedAt) || !Number.isFinite(nowMs) || nowMs < runStartedAt) return null;
+  const elapsedMs = nowMs - runStartedAt;
+  const timing = {
+    elapsedMs,
+    paceMs: null,
+    remainingMs: null,
+    completionAt: null,
+    measuring: false,
+  };
+  if (phase !== "training") return timing;
+
+  const current = Number.isSafeInteger(event?.current) ? event.current : 0;
+  const total = Number.isSafeInteger(event?.total) && event.total > 0 ? event.total : null;
+  if (
+    !Number.isFinite(trainingStartedAt) ||
+    !Number.isFinite(lastEpochCompletedAt) ||
+    lastEpochCompletedAt <= trainingStartedAt ||
+    current < 1 ||
+    total === null ||
+    current > total
+  ) {
+    return { ...timing, measuring: true };
+  }
+
+  const paceMs = (lastEpochCompletedAt - trainingStartedAt) / current;
+  const trainingElapsedMs = Math.max(0, nowMs - trainingStartedAt);
+  const remainingMs = Math.max(0, paceMs * total - trainingElapsedMs);
+  return {
+    ...timing,
+    paceMs,
+    remainingMs,
+    completionAt: nowMs + remainingMs,
+    measuring: false,
+  };
+}
+
 export function localTrainingPhaseCopy(phase) {
   switch (phase) {
     case "preparing":
       return ["Preparing", "Checking the local runtime and group-isolated splits"];
     case "downloading":
-      return ["Downloading", "Fetching the reusable base model; your data stays on this Mac"];
+      return ["Loading model", "Reusing cached runtime and weights; only missing files download"];
     case "training":
-      return ["Training", "Teaching a local expense classifier from the training split"];
+      return ["Training", "Teaching a local classifier from the verified training split"];
     case "evaluating":
       return ["Evaluating", "Comparing the trained model with the baseline on untouched rows"];
     case "saving":

@@ -52,3 +52,20 @@ A separate crop was not needed: the sidebar is legible at full resolution in the
 - [x] Confirm the cached default local model is running and selected.
 
 final result: passed
+
+## Local classifier training progress
+
+- Source visual truth: Fable training flow at `http://localhost:1423/cedar/flows/training`
+- Reference capture: `outputs/training-design-qa/reference-training-1180x820.png`
+- Native capture: `eb95f01c-8835-49bd-b5d4-a53ed860e243-screenshot.png`
+- Combined comparison: `outputs/training-design-qa/comparison-reference-native.png`
+- Viewport: 1180 x 820 logical pixels at 2x native scale
+- State: native Tauri app, ModernBERT epoch 2 of 3, verified local SMS training split
+
+The production view retains the reference's Rive halo as the dominant progress signal, its sparse dark composition, cyan/mint/violet state grammar, and a single cancel action. It adds only truthful operational evidence: measured epoch progress, elapsed time, completed-epoch pace, approximate remaining training time, and a local clock forecast. The forecast remains hidden until the first epoch completes; preparation and evaluation never fabricate a percentage or ETA.
+
+The rotating copy is explicitly labeled as a verified example from the immutable local training split and names its split row without implying that it is the trainer's current row. Sequential fade-out and fade-in timing prevents simultaneous text collisions. Chat-model startup, download, and repair notices are suppressed while dataset preparation or classifier training is active, then return afterward only when the underlying issue still exists.
+
+Native proof completed end to end in 352.2 seconds and produced 99.0% held-out accuracy, 97.6% macro-F1, and a 26.2 ms median local inference result. The combined reference/native comparison shows the halo, hierarchy, status row, example stream, and composer fully visible above the fold with no clipping or overlap.
+
+final result: passed

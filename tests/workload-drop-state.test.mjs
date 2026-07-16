@@ -16,6 +16,7 @@ import {
   localTrainingPhaseCopy,
   localTrainingProgress,
   localTrainingReducer,
+  localTrainingTiming,
   localTrainingVerdict,
 } from "../apps/homescreen/app/lib/local-training-state.mjs";
 
@@ -123,6 +124,38 @@ test("local training follows only real runner phases and measured progress", () 
   assert.equal(state.phase, "training");
   assert.equal(localTrainingProgress(state.event), "Epoch 2 · 10 of 25");
   assert.equal(localTrainingProgress({ phase: "training" }), null);
+});
+
+test("training ETA waits for a measured epoch and uses completed-epoch pace", () => {
+  assert.deepEqual(localTrainingTiming({
+    phase: "training",
+    event: { phase: "training", current: 0, total: 3 },
+    runStartedAt: 1_000,
+    trainingStartedAt: 2_000,
+    lastEpochCompletedAt: null,
+    nowMs: 12_000,
+  }), {
+    elapsedMs: 11_000,
+    paceMs: null,
+    remainingMs: null,
+    completionAt: null,
+    measuring: true,
+  });
+
+  assert.deepEqual(localTrainingTiming({
+    phase: "training",
+    event: { phase: "training", current: 1, total: 3 },
+    runStartedAt: 1_000,
+    trainingStartedAt: 2_000,
+    lastEpochCompletedAt: 62_000,
+    nowMs: 72_000,
+  }), {
+    elapsedMs: 71_000,
+    paceMs: 60_000,
+    remainingMs: 110_000,
+    completionAt: 182_000,
+    measuring: false,
+  });
 });
 
 test("cancelling a local run cannot be overwritten by a late success", () => {

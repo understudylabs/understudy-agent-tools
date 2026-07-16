@@ -332,6 +332,7 @@ pub fn run() {
             workload_drop::compile_dropped_workload,
             workload_drop::inspect_dropped_csv,
             workload_drop::prepare_dropped_csv_classification,
+            workload_drop::local_classification_training_examples,
             workload_drop::start_local_classification_training,
             workload_drop::cancel_local_classification_training,
             workload_drop::predict_local_classification,

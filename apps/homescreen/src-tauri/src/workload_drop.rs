@@ -8,7 +8,13 @@ use std::time::Duration;
 
 use serde::Serialize;
 use serde_json::Value;
+use sha2::{Digest, Sha256};
 use tauri::ipc::Channel;
+
+const TRAINING_PREVIEW_LIMIT: usize = 8;
+const TRAINING_PREVIEW_MAX_BYTES: usize = 64 * 1024 * 1024;
+const TRAINING_PREVIEW_TEXT_CHARS: usize = 240;
+const TRAINING_PREVIEW_LABEL_CHARS: usize = 80;
 
 #[derive(Clone, Serialize)]
 #[serde(tag = "type", rename_all = "snake_case")]
@@ -738,6 +744,171 @@ fn run_classification_training(
     result.ok_or_else(|| "Local training finished without a validated result.".into())
 }
 
+fn bounded_training_preview_value(value: &str, max_characters: usize) -> (String, bool) {
+    let normalized = value.split_whitespace().collect::<Vec<_>>().join(" ");
+    let truncated = normalized.chars().count() > max_characters;
+    let mut bounded = normalized.chars().take(max_characters).collect::<String>();
+    if truncated {
+        bounded.push('…');
+    }
+    (bounded, truncated)
+}
+
+fn classification_training_examples(manifest_path: String) -> Result<Value, String> {
+    let canonical_manifest = PathBuf::from(manifest_path.trim())
+        .canonicalize()
+        .map_err(|error| format!("The prepared dataset is unavailable: {error}"))?;
+    if !canonical_manifest.is_file()
+        || canonical_manifest
+            .file_name()
+            .and_then(|value| value.to_str())
+            != Some("dataset-manifest.json")
+    {
+        return Err("Choose the current prepared classification dataset.".into());
+    }
+    let manifest_bytes = std::fs::read(&canonical_manifest)
+        .map_err(|error| format!("The prepared dataset manifest could not be read: {error}"))?;
+    let manifest = serde_json::from_slice::<Value>(&manifest_bytes)
+        .map_err(|_| "The prepared dataset manifest is malformed.".to_string())?;
+    validate_classification_dataset_result(manifest.clone())?;
+
+    let manifest_recorded_path = manifest
+        .get("manifest_path")
+        .and_then(Value::as_str)
+        .ok_or_else(|| "The prepared dataset omitted its manifest path.".to_string())?;
+    let canonical_recorded_path = PathBuf::from(manifest_recorded_path)
+        .canonicalize()
+        .map_err(|error| format!("The recorded dataset manifest is unavailable: {error}"))?;
+    if canonical_recorded_path != canonical_manifest {
+        return Err(
+            "The prepared dataset manifest path does not match the selected dataset.".into(),
+        );
+    }
+
+    let artifact_root = manifest
+        .get("artifact_root")
+        .and_then(Value::as_str)
+        .ok_or_else(|| "The prepared dataset omitted its artifact root.".to_string())?;
+    let canonical_artifact_root = PathBuf::from(artifact_root)
+        .canonicalize()
+        .map_err(|error| format!("The prepared dataset root is unavailable: {error}"))?;
+    if canonical_manifest.parent() != Some(canonical_artifact_root.as_path()) {
+        return Err("The prepared dataset manifest is outside its immutable artifact root.".into());
+    }
+
+    let train = manifest
+        .get("splits")
+        .and_then(|value| value.get("train"))
+        .ok_or_else(|| "The prepared dataset omitted its training split.".to_string())?;
+    let dataset_id = manifest
+        .get("dataset_id")
+        .and_then(Value::as_str)
+        .filter(|value| !value.trim().is_empty())
+        .ok_or_else(|| "The prepared dataset omitted its immutable id.".to_string())?;
+    let train_path = train
+        .get("path")
+        .and_then(Value::as_str)
+        .ok_or_else(|| "The prepared dataset omitted the training split path.".to_string())?;
+    let canonical_train_path = PathBuf::from(train_path)
+        .canonicalize()
+        .map_err(|error| format!("The training split is unavailable: {error}"))?;
+    if !canonical_train_path.is_file()
+        || !canonical_train_path.starts_with(&canonical_artifact_root)
+        || canonical_train_path
+            .file_name()
+            .and_then(|value| value.to_str())
+            != Some("train.jsonl")
+    {
+        return Err("The training split is outside the prepared dataset.".into());
+    }
+
+    let row_count = train
+        .get("row_count")
+        .and_then(Value::as_u64)
+        .and_then(|value| usize::try_from(value).ok())
+        .filter(|value| (1..=50_000).contains(value))
+        .ok_or_else(|| "The training split has an invalid bounded row count.".to_string())?;
+    let expected_sha256 = train
+        .get("sha256")
+        .and_then(Value::as_str)
+        .filter(|value| value.len() == 64 && value.bytes().all(|byte| byte.is_ascii_hexdigit()))
+        .ok_or_else(|| "The training split omitted its immutable hash.".to_string())?;
+    let train_size = std::fs::metadata(&canonical_train_path)
+        .map_err(|error| format!("The training split metadata could not be read: {error}"))?
+        .len();
+    if train_size > TRAINING_PREVIEW_MAX_BYTES as u64 {
+        return Err("The training split exceeds the bounded preview limit.".into());
+    }
+    let train_bytes = std::fs::read(&canonical_train_path)
+        .map_err(|error| format!("The training split could not be read: {error}"))?;
+    let actual_sha256 = format!("{:x}", Sha256::digest(&train_bytes));
+    if !actual_sha256.eq_ignore_ascii_case(expected_sha256) {
+        return Err("The training split changed after preparation.".into());
+    }
+    let train_text = std::str::from_utf8(&train_bytes)
+        .map_err(|_| "The training split is not valid UTF-8 JSONL.".to_string())?;
+    let rows = train_text.lines().collect::<Vec<_>>();
+    if rows.len() != row_count {
+        return Err("The training split row count does not match its immutable manifest.".into());
+    }
+
+    let sample_count = TRAINING_PREVIEW_LIMIT.min(row_count);
+    let mut examples = Vec::with_capacity(sample_count);
+    for sample_index in 0..sample_count {
+        let row_index = sample_index * row_count / sample_count;
+        let row = serde_json::from_str::<Value>(rows[row_index])
+            .map_err(|_| "A sampled training row is malformed.".to_string())?;
+        let example_id = row
+            .get("example_id")
+            .and_then(Value::as_str)
+            .filter(|value| value.len() == 24 && value.bytes().all(|byte| byte.is_ascii_hexdigit()))
+            .ok_or_else(|| "A sampled training row omitted its immutable id.".to_string())?;
+        if row.get("schema_version").and_then(Value::as_str)
+            != Some("understudy.classification_example.v2")
+        {
+            return Err("A sampled training row has an unsupported schema.".into());
+        }
+        let text = row
+            .get("text")
+            .and_then(Value::as_str)
+            .ok_or_else(|| "A sampled training row omitted its input.".to_string())?;
+        let label = row
+            .get("label")
+            .and_then(Value::as_str)
+            .ok_or_else(|| "A sampled training row omitted its target.".to_string())?;
+        let (text, truncated) = bounded_training_preview_value(text, TRAINING_PREVIEW_TEXT_CHARS);
+        let (label, _) = bounded_training_preview_value(label, TRAINING_PREVIEW_LABEL_CHARS);
+        if text.is_empty() || label.is_empty() {
+            return Err("A sampled training row is empty after normalization.".into());
+        }
+        examples.push(serde_json::json!({
+            "example_id": example_id,
+            "row_number": row_index + 1,
+            "text": text,
+            "label": label,
+            "truncated": truncated
+        }));
+    }
+
+    Ok(serde_json::json!({
+        "dataset_id": dataset_id,
+        "split": "train",
+        "row_count": row_count,
+        "examples": examples,
+        "local_only": true,
+        "verified_split_sha256": actual_sha256
+    }))
+}
+
+#[tauri::command]
+pub async fn local_classification_training_examples(
+    manifest_path: String,
+) -> Result<Value, String> {
+    tauri::async_runtime::spawn_blocking(move || classification_training_examples(manifest_path))
+        .await
+        .map_err(|error| format!("The training preview stopped unexpectedly: {error}"))?
+}
+
 #[tauri::command]
 pub async fn start_local_classification_training(
     manifest_path: String,
@@ -878,6 +1049,70 @@ mod tests {
     use super::*;
     use serde_json::json;
 
+    fn training_preview_fixture() -> (PathBuf, PathBuf) {
+        let unique = std::time::SystemTime::now()
+            .duration_since(std::time::UNIX_EPOCH)
+            .unwrap()
+            .as_nanos();
+        let root = std::env::temp_dir().join(format!(
+            "understudy-training-preview-{}-{unique}",
+            std::process::id()
+        ));
+        std::fs::create_dir_all(&root).unwrap();
+        let train_path = root.join("train.jsonl");
+        let rows = (0..10)
+            .map(|index| {
+                let text = if index == 0 {
+                    format!("{} end", "long input ".repeat(40))
+                } else {
+                    format!("Merchant {index} monthly expense")
+                };
+                serde_json::to_string(&json!({
+                    "schema_version": "understudy.classification_example.v2",
+                    "example_id": format!("{index:024x}"),
+                    "text": text,
+                    "label": if index % 2 == 0 { "  office   supplies " } else { "travel" }
+                }))
+                .unwrap()
+            })
+            .collect::<Vec<_>>()
+            .join("\n");
+        std::fs::write(&train_path, rows.as_bytes()).unwrap();
+        let train_sha256 = format!("{:x}", Sha256::digest(rows.as_bytes()));
+        let manifest_path = root.join("dataset-manifest.json");
+        let manifest = json!({
+            "schema_version": "understudy.capture_import.classification_dataset.v2",
+            "dataset_id": "dataset-preview-test",
+            "source_sha256": "source",
+            "mapping_sha256": "mapping",
+            "manifest_path": manifest_path,
+            "artifact_root": root,
+            "local_only": true,
+            "network_required": false,
+            "mapping_confirmation": "caller-provided",
+            "source_rows_persisted_as_transformed_examples": true,
+            "split_policy": {
+                "name": "deterministic-stratified-group-aware-v2",
+                "group_key": "merchant",
+                "group_normalization": "casefold-reference-stripping-v1",
+                "no_group_overlap": true
+            },
+            "splits": {
+                "train": {
+                    "path": train_path,
+                    "row_count": 10,
+                    "sha256": train_sha256
+                }
+            }
+        });
+        std::fs::write(
+            &manifest_path,
+            serde_json::to_vec_pretty(&manifest).unwrap(),
+        )
+        .unwrap();
+        (manifest_path, root)
+    }
+
     #[test]
     fn accepts_only_local_metadata_results() {
         let valid = json!({
@@ -985,6 +1220,42 @@ mod tests {
         assert!(validate_classification_dataset_result(unsafe_result)
             .unwrap_err()
             .contains("local-only"));
+    }
+
+    #[test]
+    fn previews_only_verified_bounded_rows_from_the_local_training_split() {
+        let (manifest_path, root) = training_preview_fixture();
+        let preview =
+            classification_training_examples(manifest_path.display().to_string()).unwrap();
+
+        assert_eq!(preview["dataset_id"], "dataset-preview-test");
+        assert_eq!(preview["split"], "train");
+        assert_eq!(preview["row_count"], 10);
+        assert_eq!(preview["local_only"], true);
+        let examples = preview["examples"].as_array().unwrap();
+        assert_eq!(examples.len(), TRAINING_PREVIEW_LIMIT);
+        assert_eq!(examples[0]["row_number"], 1);
+        assert_eq!(examples[0]["label"], "office supplies");
+        assert_eq!(examples[0]["truncated"], true);
+        assert!(
+            examples[0]["text"].as_str().unwrap().chars().count()
+                <= TRAINING_PREVIEW_TEXT_CHARS + 1
+        );
+
+        std::fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn rejects_training_rows_that_changed_after_dataset_preparation() {
+        let (manifest_path, root) = training_preview_fixture();
+        let train_path = root.join("train.jsonl");
+        std::fs::write(&train_path, b"tampered\n").unwrap();
+
+        let error =
+            classification_training_examples(manifest_path.display().to_string()).unwrap_err();
+        assert!(error.contains("changed after preparation"));
+
+        std::fs::remove_dir_all(root).unwrap();
     }
 
     #[test]

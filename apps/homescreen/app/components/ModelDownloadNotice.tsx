@@ -62,7 +62,7 @@ function fallbackModelName(modelId: string) {
   return modelId.split("/").at(-1) || modelId;
 }
 
-export function ModelDownloadNotice() {
+export function ModelDownloadNotice({ quiet = false }: { quiet?: boolean }) {
   const [rows, setRows] = useState<DownloadProgress[]>([]);
   const [models, setModels] = useState<SnapshotModel[]>([]);
   const [residency, setResidency] = useState<ResidencySnapshot>({ slots: [] });
@@ -199,10 +199,10 @@ export function ModelDownloadNotice() {
   });
 
   useEffect(() => {
-    if (!isTauri() || !shouldAutoPrepare) return;
+    if (!isTauri() || quiet || !shouldAutoPrepare) return;
     const timer = window.setTimeout(() => void prepareStarter(), 1_500);
     return () => window.clearTimeout(timer);
-  }, [prepareStarter, shouldAutoPrepare]);
+  }, [prepareStarter, quiet, shouldAutoPrepare]);
 
   useEffect(() => {
     const state = starterSlot?.state ?? null;
@@ -232,6 +232,11 @@ export function ModelDownloadNotice() {
   });
   const starterLoading = starterSlot?.state === "loading";
   const starterRunning = starterSlot?.state === "running";
+
+  // Classifier training is a focused, memory-sensitive flow. The chat model's
+  // independent download/startup lifecycle continues to be polled, but it must
+  // not compete for attention or auto-start while that flow is on screen.
+  if (quiet) return null;
 
   if (!row && !offerStarterDownload && !prepareBusy && !starterLoading && !prepareError && !starterReadyVisible) {
     return null;
