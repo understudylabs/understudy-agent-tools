@@ -583,8 +583,14 @@ test("desktop compiles one dropped path through the bounded public CLI", async (
   assert.match(trainingHalo, /distilled from ModernBERT · yours/);
   assert.match(css, /\.ai-chat\.has-workload \.persona-stage/);
   assert.match(css, /\.csv-profile-columns/);
-  assert.match(css, /\.csv-profile-columns\.is-sparse/);
+  assert.match(css, /\.csv-profile-columns\.is-spacious/);
+  assert.match(css, /--profile-column-count/);
   assert.match(css, /\.csv-training-plan/);
+  assert.match(chat, /const trainingPlanVisible = Boolean/);
+  assert.match(chat, /trainingPlanVisible \? \(/);
+  assert.match(chat, /className="ai-chat-composer training-plan-action"/);
+  assert.match(chat, /className="btn primary training-plan-submit"/);
+  assert.doesNotMatch(chat, /className="csv-analysis-proposal"[\s\S]{0,300}<button/);
   assert.match(css, /@keyframes csv-profile-enter/);
   assert.match(persona, /viewModelInstanceColor\.setRgb\(color\.red, color\.green, color\.blue\)/);
   assert.doesNotMatch(chat, /Review next steps|workloadReviewPrompt/);

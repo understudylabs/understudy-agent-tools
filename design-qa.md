@@ -69,3 +69,18 @@ The rotating copy is explicitly labeled as a verified example from the immutable
 Native proof completed end to end in 352.2 seconds and produced 99.0% held-out accuracy, 97.6% macro-F1, and a 26.2 ms median local inference result. The combined reference/native comparison shows the halo, hierarchy, status row, example stream, and composer fully visible above the fold with no clipping or overlap.
 
 final result: passed
+
+## CSV training-plan single action
+
+- Reference: `<local-attachment>/CleanShot 2026-07-16 at 10.42.00@2x.png`
+- Implementation capture: `outputs/training-plan-single-action.png`
+- Viewport: 1280 x 720
+- State: five-column CSV profile, `brand_intent_new` selected, training plan ready
+
+Five cards now divide the available profile width evenly (`198px` each at the QA viewport). Every visible column label fits without ellipsis; measured `scrollWidth` equals `clientWidth` for all five. Long training-plan copy wraps instead of truncating. The in-panel training button is gone, and the normal chat composer becomes one `640px`-wide `Train for brand_intent_new` action while the plan is awaiting confirmation.
+
+The existing dark palette, cyan primary action, spacing, borders, typography, and staggered column entrance are preserved. The first capture occurred before the existing `440ms` maximum entrance delay; the implementation evidence was recaptured after the cards settled.
+
+No P0, P1, or P2 visual or interaction issues remain in this state.
+
+final result: passed

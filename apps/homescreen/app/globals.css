@@ -3027,26 +3027,30 @@ select,
 }
 .csv-profile-columns {
   display: grid;
-  grid-template-columns: repeat(8, minmax(0, 1fr));
+  grid-template-columns: repeat(var(--profile-column-count, 8), minmax(0, 1fr));
   gap: 8px;
 }
-.csv-profile-columns.is-sparse {
-  grid-template-columns: repeat(var(--sparse-column-count), minmax(190px, 260px));
-  justify-content: start;
+.csv-profile-columns.is-spacious {
+  justify-content: stretch;
   gap: 12px;
 }
-.csv-profile-columns.is-sparse .csv-profile-column {
+.csv-profile-columns.is-spacious .csv-profile-column {
   min-height: 142px;
   padding: 14px;
 }
-.csv-profile-columns.is-sparse .csv-profile-glyph {
+.csv-profile-columns.is-spacious .csv-profile-glyph {
   height: 58px;
   margin-bottom: 12px;
 }
-.csv-profile-columns.is-sparse .csv-profile-column > strong {
+.csv-profile-columns.is-spacious .csv-profile-column > strong {
+  overflow: visible;
   font-size: 11px;
+  line-height: 1.25;
+  overflow-wrap: anywhere;
+  text-overflow: clip;
+  white-space: normal;
 }
-.csv-profile-columns.is-sparse .csv-profile-column > small {
+.csv-profile-columns.is-spacious .csv-profile-column > small {
   font-size: 10px;
 }
 @keyframes csv-profile-enter {
@@ -3177,19 +3181,17 @@ select,
   text-transform: uppercase;
 }
 .csv-training-plan-step > strong {
-  overflow: hidden;
   color: var(--text);
   font-size: 12px;
   font-weight: 620;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
 }
 .csv-training-plan-step > small {
-  overflow: hidden;
   color: var(--text-3);
   font-size: 10px;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  line-height: 1.35;
+  overflow-wrap: anywhere;
 }
 .csv-analysis-step-label,
 .workload-training-heading > span {
@@ -3232,6 +3234,7 @@ select,
   white-space: normal;
 }
 .csv-analysis-proposal .btn.primary,
+.training-plan-action .btn.primary,
 .local-training-start .btn.primary,
 .local-training-predict .btn.primary {
   border-color: color-mix(in srgb, var(--mb-cyan) 45%, transparent);
@@ -3241,9 +3244,21 @@ select,
   white-space: nowrap;
 }
 .csv-analysis-proposal .btn.primary:hover:not(:disabled),
+.training-plan-action .btn.primary:hover:not(:disabled),
 .local-training-start .btn.primary:hover:not(:disabled),
 .local-training-predict .btn.primary:hover:not(:disabled) {
   background: var(--mb-cyan);
+}
+.training-plan-action {
+  padding-top: 6px;
+}
+.training-plan-submit {
+  width: 100%;
+  min-height: 48px;
+  justify-content: center;
+  border-radius: 14px;
+  font-size: 14px;
+  font-weight: 650;
 }
 .csv-analysis-group-choice {
   display: flex;

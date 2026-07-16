@@ -1201,6 +1201,18 @@ export function ChatPane({
           : selectedTargetColumn.unique_ratio > 0.5
             ? "More than half of the target values are unique; choose a more reusable category."
             : null;
+  const trainingPlanVisible = Boolean(
+    csvInspection && droppedWorkload && !classificationDataset && !dropRunning,
+  );
+  const trainingPlanBlocked =
+    !csvInspection ||
+    !mappingLabelColumn ||
+    !mappingGroupColumn ||
+    mappingInputColumns.length === 0 ||
+    mappingLabelColumn === mappingGroupColumn ||
+    Boolean(selectedTargetBlockReason) ||
+    csvInspection.training_readiness.status === "needs_data" ||
+    csvInspection.training_readiness.status === "needs_cleanup";
   const latestSupervisorEvent = sidekickEvents.find(
     (event) => event.mode === "supervision",
   );
@@ -1439,22 +1451,6 @@ export function ChatPane({
                       />
                       <div className="csv-analysis-proposal">
                         <strong>{mappingLabelColumn ? `Predict ${mappingLabelColumn}` : "Choose what to predict"}</strong>
-                        <button
-                          type="button"
-                          className="btn primary"
-                          disabled={
-                            !mappingLabelColumn ||
-                            !mappingGroupColumn ||
-                            mappingInputColumns.length === 0 ||
-                            mappingLabelColumn === mappingGroupColumn ||
-                            Boolean(selectedTargetBlockReason) ||
-                            csvInspection.training_readiness.status === "needs_data" ||
-                            csvInspection.training_readiness.status === "needs_cleanup"
-                          }
-                          onClick={prepareDroppedClassification}
-                        >
-                          {mappingLabelColumn ? `Train for ${mappingLabelColumn}` : "Choose a target"}
-                        </button>
                       </div>
                       {selectedTargetBlockReason ? (
                         <p className="csv-analysis-caution" role="status">
@@ -1540,69 +1536,82 @@ export function ChatPane({
         </MessageScroller>
       </MessageScrollerProvider>
 
-      <div className="ai-chat-composer">
-        <PromptInput
-          accept="image/*"
-          multiple
-          maxFiles={4}
-          maxFileSize={8 * 1024 * 1024}
-          onError={(error) => setErr(error.message)}
-          onSubmit={(message) => send(message.text, message.files)}
-          className="border-rule bg-card"
-        >
-          <div className="composer-row">
-            <PromptInputActionMenu>
-              <PromptInputActionMenuTrigger tooltip="Add image or file" />
-              <PromptInputActionMenuContent>
-                <PromptInputActionAddAttachments label="Add image or file" />
-                <PromptInputActionMenuItem onSelect={() => setClassifierLibraryOpen(true)}>
-                  <LibraryBigIcon aria-hidden="true" />
-                  Trained models
-                </PromptInputActionMenuItem>
-              </PromptInputActionMenuContent>
-            </PromptInputActionMenu>
-            <ModelPicker
-              choices={choices}
-              selected={selectedChoice}
-              onSelect={(id) => {
-                selectedModelUserOwned.current = true;
-                setSelectedModel(id);
-              }}
-              onConnectAnthropic={connectAnthropic}
-              thinkingDisabled={streaming}
-              thinkingLoading={
-                selectedChoice.route === "local" && thinkingPending?.slotId === selectedChoice.slotId
-              }
-              onThinkingToggle={setThinking}
-            />
-            <ModelCardDrawer
-              modelId={selectedChoice.route === "local" ? selectedChoice.modelId : selectedChoice.id}
-              label={selectedChoice.label}
-              route={selectedChoice.route}
-              runtime={{
-                slotId: selectedChoice.route === "local" ? selectedChoice.slotId : undefined,
-                active: selectedChoice.active,
-                loading: selectedChoice.route === "local" ? selectedChoice.loading : false,
-                thinking: selectedChoice.route === "local" ? selectedChoice.thinking : false,
-              }}
-            />
-            <PromptInputBody className="composer-row-body">
-              <PromptInputTextarea
-                value={input}
-                onChange={(e) => setInput(e.target.value)}
-                placeholder="Ask Understudy..."
-                disabled={streaming}
+      {trainingPlanVisible ? (
+        <div className="ai-chat-composer training-plan-action">
+          <button
+            type="button"
+            className="btn primary training-plan-submit"
+            disabled={trainingPlanBlocked}
+            onClick={prepareDroppedClassification}
+          >
+            {mappingLabelColumn ? `Train for ${mappingLabelColumn}` : "Choose a target"}
+          </button>
+        </div>
+      ) : (
+        <div className="ai-chat-composer">
+          <PromptInput
+            accept="image/*"
+            multiple
+            maxFiles={4}
+            maxFileSize={8 * 1024 * 1024}
+            onError={(error) => setErr(error.message)}
+            onSubmit={(message) => send(message.text, message.files)}
+            className="border-rule bg-card"
+          >
+            <div className="composer-row">
+              <PromptInputActionMenu>
+                <PromptInputActionMenuTrigger tooltip="Add image or file" />
+                <PromptInputActionMenuContent>
+                  <PromptInputActionAddAttachments label="Add image or file" />
+                  <PromptInputActionMenuItem onSelect={() => setClassifierLibraryOpen(true)}>
+                    <LibraryBigIcon aria-hidden="true" />
+                    Trained models
+                  </PromptInputActionMenuItem>
+                </PromptInputActionMenuContent>
+              </PromptInputActionMenu>
+              <ModelPicker
+                choices={choices}
+                selected={selectedChoice}
+                onSelect={(id) => {
+                  selectedModelUserOwned.current = true;
+                  setSelectedModel(id);
+                }}
+                onConnectAnthropic={connectAnthropic}
+                thinkingDisabled={streaming}
+                thinkingLoading={
+                  selectedChoice.route === "local" && thinkingPending?.slotId === selectedChoice.slotId
+                }
+                onThinkingToggle={setThinking}
               />
-            </PromptInputBody>
-            <PromptInputSubmit
-              className="composer-submit"
-              status={streaming ? "streaming" : err ? "error" : "ready"}
-              onStop={stopStreaming}
-              disabled={!streaming && (!input.trim() || (selectedChoice.route === "local" && !selectedChoice.active))}
-            />
-          </div>
-        </PromptInput>
-      </div>
+              <ModelCardDrawer
+                modelId={selectedChoice.route === "local" ? selectedChoice.modelId : selectedChoice.id}
+                label={selectedChoice.label}
+                route={selectedChoice.route}
+                runtime={{
+                  slotId: selectedChoice.route === "local" ? selectedChoice.slotId : undefined,
+                  active: selectedChoice.active,
+                  loading: selectedChoice.route === "local" ? selectedChoice.loading : false,
+                  thinking: selectedChoice.route === "local" ? selectedChoice.thinking : false,
+                }}
+              />
+              <PromptInputBody className="composer-row-body">
+                <PromptInputTextarea
+                  value={input}
+                  onChange={(e) => setInput(e.target.value)}
+                  placeholder="Ask Understudy..."
+                  disabled={streaming}
+                />
+              </PromptInputBody>
+              <PromptInputSubmit
+                className="composer-submit"
+                status={streaming ? "streaming" : err ? "error" : "ready"}
+                onStop={stopStreaming}
+                disabled={!streaming && (!input.trim() || (selectedChoice.route === "local" && !selectedChoice.active))}
+              />
+            </div>
+          </PromptInput>
+        </div>
+      )}
       <LocalClassifierLibraryDialog open={classifierLibraryOpen} onOpenChange={setClassifierLibraryOpen} />
     </div>
   );
