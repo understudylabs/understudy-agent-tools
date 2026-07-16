@@ -14,6 +14,7 @@ import {
   type LocalTrainingEvent,
   type LocalTrainingState,
 } from "../lib/local-training-state.mjs";
+import { EvaluationRadar } from "./EvaluationRadar";
 import type { TrainingHaloVisual } from "./TrainingHalo";
 
 const MODERN_BERT_MODEL = "answerdotai/ModernBERT-base";
@@ -120,12 +121,6 @@ type Props = {
 
 function percent(value: number): string {
   return `${(value * 100).toFixed(1)}%`;
-}
-
-function compactBytes(bytes: number): string {
-  if (bytes < 1_024 * 1_024) return `${Math.round(bytes / 1_024)} KB`;
-  if (bytes < 1_024 * 1_024 * 1_024) return `${(bytes / (1_024 * 1_024)).toFixed(0)} MB`;
-  return `${(bytes / (1_024 * 1_024 * 1_024)).toFixed(1)} GB`;
 }
 
 function runId(): string {
@@ -485,8 +480,8 @@ export function LocalTrainingPanel({
     <div className="local-training-result">
       <div className="local-training-result-heading">
         <div>
-          <strong>Local classifier evaluated</strong>
-          <small>Held-out rows share no normalized {state.result.split_evidence.group_key} groups with training.</small>
+          <strong>Your model is ready to review</strong>
+          <small>Test examples were kept separate from training examples.</small>
         </div>
         <span>{(state.result.timings_ms.total / 1_000).toFixed(1)}s</span>
       </div>
@@ -494,23 +489,28 @@ export function LocalTrainingPanel({
         <strong>{verdict.title}</strong>
         <small>{verdict.detail}</small>
       </div>
-      <div className="local-training-metrics" aria-label="Held-out evaluation">
-        <div><span>Accuracy</span><b>{percent(state.result.heldout.accuracy)}</b><small>TF-IDF {percent(state.result.linear_baseline.accuracy)}</small></div>
-        <div><span>Macro-F1</span><b>{percent(state.result.heldout.macro_f1)}</b><small>TF-IDF {percent(state.result.linear_baseline.macro_f1)}</small></div>
-        <div><span>Latency</span><b>{state.result.heldout.latency_ms_p50.toFixed(1)} ms</b><small>median local inference</small></div>
-        <div><span>Model</span><b>{compactBytes(state.result.model.size_bytes)}</b><small>{state.result.model.resolved_id}</small></div>
-      </div>
+      <EvaluationRadar
+        accuracy={state.result.heldout.accuracy}
+        macroF1={state.result.heldout.macro_f1}
+        baselineAccuracy={state.result.linear_baseline.accuracy}
+        baselineMacroF1={state.result.linear_baseline.macro_f1}
+        weakestClass={state.result.heldout.weakest_classes[0]}
+        latencyMs={state.result.heldout.latency_ms_p50}
+        modelSizeBytes={state.result.model.size_bytes}
+        completedRuns={1}
+        requiredRuns={2}
+      />
       <div className="local-training-failures">
         <strong>Notable failures</strong>
         {state.result.heldout.failure_count === 0 ? (
-          <small>No errors in {state.result.heldout.row_count} held-out rows.</small>
+          <small>No mistakes in {state.result.heldout.row_count} test examples.</small>
         ) : (
           <>
             {state.result.heldout.failures.slice(0, 3).map((failure) => (
               <span key={failure.example_id}>{failure.expected_label} → {failure.predicted_label}</span>
             ))}
             <small>
-              {state.result.heldout.failure_count} of {state.result.heldout.row_count} held-out rows
+              {state.result.heldout.failure_count} mistakes in {state.result.heldout.row_count} test examples
               {state.result.heldout.failures_truncated ? " · showing a bounded sample" : ""}
             </small>
           </>
@@ -518,10 +518,10 @@ export function LocalTrainingPanel({
       </div>
       {state.result.heldout.weakest_classes.length > 0 && (
         <div className="local-training-weakest">
-          <strong>Weakest categories</strong>
+          <strong>Hardest categories</strong>
           {state.result.heldout.weakest_classes.slice(0, 3).map((category) => (
             <span key={category.label}>
-              {category.label} · {percent(category.recall)} recall · {category.support} rows
+              {category.label} · found {percent(category.recall)} · {category.support} test examples
             </span>
           ))}
         </div>

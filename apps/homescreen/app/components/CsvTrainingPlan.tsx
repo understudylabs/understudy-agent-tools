@@ -37,8 +37,8 @@ export function CsvTrainingPlan({
       </div>
       <div className="csv-training-plan-step" role="listitem">
         <span>Prove</span>
-        <strong>Held-out macro-F1</strong>
-        <small>Compare with the TF-IDF baseline</small>
+        <strong>Works across every category</strong>
+        <small>Compare with a simple baseline on separate test examples</small>
       </div>
     </div>
   );

@@ -19,6 +19,10 @@ const trainingHaloPath = new URL(
   "../apps/homescreen/app/components/TrainingHalo.tsx",
   import.meta.url,
 );
+const evaluationRadarPath = new URL(
+  "../apps/homescreen/app/components/EvaluationRadar.tsx",
+  import.meta.url,
+);
 const csvTrainingPlanPath = new URL(
   "../apps/homescreen/app/components/CsvTrainingPlan.tsx",
   import.meta.url,
@@ -534,8 +538,8 @@ test("desktop compiles one dropped path through the bounded public CLI", async (
   assert.match(chat, /<CsvTrainingPlan/);
   assert.match(trainingPlan, /Understand/);
   assert.match(trainingPlan, /Local ModernBERT/);
-  assert.match(trainingPlan, /Held-out macro-F1/);
-  assert.match(trainingPlan, /Compare with the TF-IDF baseline/);
+  assert.match(trainingPlan, /Works across every category/);
+  assert.match(trainingPlan, /Compare with a simple baseline on separate test examples/);
   assert.match(chat, /groupColumn: mappingGroupColumn/);
   assert.match(chat, /Choose a reference column/);
   assert.match(chat, /mappingLabelColumn && !mappingGroupColumn/);
@@ -625,12 +629,13 @@ test("desktop compiles one dropped path through the bounded public CLI", async (
   assert.match(css, /prefers-reduced-motion: reduce[\s\S]*?\.local-training-example-stream/);
   assert.match(training, /cancellationRequested\.current \|\| message\.toLowerCase\(\)\.includes\("cancel"\)/);
   assert.match(training, /predict_local_classification/);
-  assert.match(training, /TF-IDF \{percent\(state\.result\.linear_baseline\.accuracy\)\}/);
+  assert.match(training, /<EvaluationRadar/);
+  assert.match(training, /baselineAccuracy=\{state\.result\.linear_baseline\.accuracy\}/);
   assert.match(training, /state\.result\.heldout\.macro_f1/);
   assert.match(training, /state\.result\.heldout\.latency_ms_p50/);
   assert.match(training, /state\.result\.model\.size_bytes/);
   assert.match(training, /Notable failures/);
-  assert.match(training, /Weakest categories/);
+  assert.match(training, /Hardest categories/);
   assert.match(training, /Try a new example/);
   assert.match(training, /window\.setInterval/);
   assert.doesNotMatch(training, /Math\.random/);
@@ -640,6 +645,15 @@ test("desktop compiles one dropped path through the bounded public CLI", async (
   assert.match(trainingState, /This dataset is too easy to show model value/);
   assert.match(trainingState, /Low confidence—review this prediction/);
   assert.doesNotMatch(trainingState, /percentage|percent/);
+  const radar = await readFile(evaluationRadarPath, "utf8");
+  assert.match(radar, /See the tradeoffs before you choose/);
+  assert.match(radar, /Correct answers/);
+  assert.match(radar, /Across categories/);
+  assert.match(radar, /Hardest category/);
+  assert.match(radar, /Test confidence/);
+  assert.match(radar, /simple baseline/);
+  assert.match(radar, /repeat once before relying on it/);
+  assert.match(radar, /aria-label="Evaluation dimensions"/);
   assert.equal(
     parity.features.find((feature) => feature.id === "drop-to-workload-compilation")?.status,
     "shipped",

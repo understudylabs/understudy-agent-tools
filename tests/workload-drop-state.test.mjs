@@ -193,7 +193,7 @@ test("one-run verdict copy is cautious and flags saturated datasets", () => {
   }), {
     tone: "caution",
     title: "Improved, not ready",
-    detail: "Weak classes remain.",
+    detail: "It beat the simple baseline, but it still misses too many examples in at least one category.",
   });
   assert.equal(localTrainingVerdict({
     linear_baseline: { accuracy: 1, macro_f1: 1 },
