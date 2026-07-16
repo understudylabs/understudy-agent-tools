@@ -155,10 +155,9 @@ type GatewayChunkResult = {
 
 type GatewayRequest = {
   model: string;
-  stream: false;
+  stream: true;
   temperature: 0;
   max_tokens: number;
-  chat_template_kwargs: { thinking: false; enable_thinking: false };
   messages: Array<{ role: "system" | "user"; content: string }>;
 };
 
@@ -314,10 +313,9 @@ function buildGatewayRequest(
 ): GatewayRequest {
   return {
     model: modelId,
-    stream: false,
+    stream: true,
     temperature: 0,
     max_tokens: maxCompletionTokens,
-    chat_template_kwargs: { thinking: false, enable_thinking: false },
     messages: [
       {
         role: "system",
@@ -331,6 +329,74 @@ function buildGatewayRequest(
       },
     ],
   };
+}
+
+async function readGatewayStream(response: Response): Promise<{
+  content: string;
+  promptTokens: number;
+  completionTokens: number;
+  servedModel: string | null;
+}> {
+  if (!response.body) throw new Error("frontier gateway returned an empty stream.");
+  const reader = response.body.getReader();
+  const decoder = new TextDecoder();
+  let buffer = "";
+  let content = "";
+  let promptTokens = 0;
+  let completionTokens = 0;
+  let servedModel: string | null = null;
+  let finished = false;
+
+  const consumeLine = (rawLine: string) => {
+    const line = rawLine.endsWith("\r") ? rawLine.slice(0, -1) : rawLine;
+    if (!line.startsWith("data:")) return;
+    const payload = line.slice("data:".length).trimStart();
+    if (!payload) return;
+    if (payload === "[DONE]") {
+      finished = true;
+      return;
+    }
+    let chunk: unknown;
+    try {
+      chunk = JSON.parse(payload) as unknown;
+    } catch {
+      throw new Error("frontier gateway returned malformed stream JSON.");
+    }
+    if (!isRecord(chunk)) throw new Error("frontier gateway returned a malformed stream event.");
+    if (isRecord(chunk.error)) {
+      const message = typeof chunk.error.message === "string" ? chunk.error.message : "unknown error";
+      throw new Error(`frontier gateway stream failed: ${message}`);
+    }
+    if (typeof chunk.model === "string" && chunk.model) servedModel = chunk.model;
+    const choices = Array.isArray(chunk.choices) ? chunk.choices : [];
+    const first = choices[0];
+    if (isRecord(first) && isRecord(first.delta) && typeof first.delta.content === "string") {
+      content += first.delta.content;
+    }
+    const usage = isRecord(chunk.usage) ? chunk.usage : {};
+    promptTokens = usageCount(usage.prompt_tokens ?? usage.input_tokens) || promptTokens;
+    completionTokens = usageCount(usage.completion_tokens ?? usage.output_tokens) || completionTokens;
+  };
+  const consumeAvailableLines = () => {
+    const lines = buffer.split("\n");
+    buffer = lines.pop() ?? "";
+    for (const line of lines) consumeLine(line);
+  };
+
+  try {
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      buffer += decoder.decode(value, { stream: true });
+      consumeAvailableLines();
+    }
+    buffer += decoder.decode();
+    if (buffer) consumeLine(buffer);
+  } finally {
+    reader.releaseLock();
+  }
+  if (!finished) throw new Error("frontier gateway stream ended before its terminal event.");
+  return { content, promptTokens, completionTokens, servedModel };
 }
 
 function costUsd(inputTokens: number, outputTokens: number): number {
@@ -404,28 +470,25 @@ async function callGateway(
       headers: {
         authorization: `Bearer ${auth.token}`,
         "content-type": "application/json",
-        accept: "application/json",
+        accept: "text/event-stream",
       },
       body: JSON.stringify(buildGatewayRequest(rows, labels, modelId, maxCompletionTokens)),
       signal: scopedSignal.signal,
     });
-    const body = await response.text();
     if (!response.ok) {
+      const body = await response.text();
       throw new Error(`frontier gateway returned ${response.status}: ${body.slice(0, 400)}`);
     }
-    const envelope = JSON.parse(body) as Record<string, unknown>;
-    const choices = Array.isArray(envelope.choices) ? envelope.choices : [];
-    const first = choices[0] as { message?: { content?: unknown } } | undefined;
-    const content = first?.message?.content;
+    const stream = await readGatewayStream(response);
     const servedModel = response.headers.get("x-understudy-effective-model") ??
-      (typeof envelope.model === "string" ? envelope.model : null);
+      stream.servedModel;
     if (servedModel !== modelId) {
       throw new Error(`requested ${modelId}, but the gateway served ${String(servedModel)}`);
     }
-    if (typeof content !== "string" || content.length === 0) {
+    if (!stream.content) {
       throw new Error("frontier model returned no classifications");
     }
-    const parsed = JSON.parse(stripJsonFence(content)) as unknown;
+    const parsed = JSON.parse(stripJsonFence(stream.content)) as unknown;
     if (!isRecord(parsed) || !Array.isArray(parsed.predictions) || parsed.predictions.length !== rows.length) {
       throw new Error("frontier model returned the wrong prediction count");
     }
@@ -440,11 +503,10 @@ async function callGateway(
       seen.add(prediction.example_id);
       return { example_id: prediction.example_id, label: prediction.label };
     });
-    const usage = isRecord(envelope.usage) ? envelope.usage : {};
     return {
       predictions,
-      promptTokens: usageCount(usage.prompt_tokens ?? usage.input_tokens),
-      completionTokens: usageCount(usage.completion_tokens ?? usage.output_tokens),
+      promptTokens: stream.promptTokens,
+      completionTokens: stream.completionTokens,
       requestId: response.headers.get("x-understudy-request-id"),
       servedModel,
       mode: response.headers.get("x-understudy-mode"),

@@ -699,7 +699,7 @@ const TRAINING_PHASES: [&str; 5] = [
 
 fn safe_identifier(value: &str, name: &str) -> Result<String, String> {
     let value = value.trim();
-    if value.len() < 8
+    if value.is_empty()
         || value.len() > 128
         || !value
             .bytes()
@@ -2519,6 +2519,16 @@ mod tests {
                 .unwrap_err()
                 .contains("attributed spend")
         );
+    }
+
+    #[test]
+    fn accepts_the_configured_frontier_model_id() {
+        assert_eq!(
+            safe_identifier("glm-5.2", "frontier model id").as_deref(),
+            Ok("glm-5.2"),
+        );
+        assert!(safe_identifier("", "frontier model id").is_err());
+        assert!(safe_identifier("glm 5.2", "frontier model id").is_err());
     }
 
     #[test]
