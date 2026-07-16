@@ -52,6 +52,10 @@ type DefaultLocalModelPreparation = {
   state: string;
 };
 
+type AccountStatus = {
+  signed_in?: boolean;
+};
+
 function formatBytes(bytes: number) {
   if (bytes < 1024 * 1024) return `${Math.max(0, bytes / 1024).toFixed(0)} KB`;
   if (bytes < 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
@@ -62,7 +66,15 @@ function fallbackModelName(modelId: string) {
   return modelId.split("/").at(-1) || modelId;
 }
 
-export function ModelDownloadNotice({ quiet = false }: { quiet?: boolean }) {
+export function ModelDownloadNotice({
+  quiet = false,
+  starterDownloadRequest = 0,
+  onOpenAccount,
+}: {
+  quiet?: boolean;
+  starterDownloadRequest?: number;
+  onOpenAccount?: (downloadAfterSignIn: boolean) => void;
+}) {
   const [rows, setRows] = useState<DownloadProgress[]>([]);
   const [models, setModels] = useState<SnapshotModel[]>([]);
   const [residency, setResidency] = useState<ResidencySnapshot>({ slots: [] });
@@ -73,6 +85,8 @@ export function ModelDownloadNotice({ quiet = false }: { quiet?: boolean }) {
   const [prepareError, setPrepareError] = useState<string | null>(null);
   const [starterPromptDismissed, setStarterPromptDismissed] = useState(false);
   const [starterReadyVisible, setStarterReadyVisible] = useState(false);
+  const [signedIn, setSignedIn] = useState<boolean | null>(null);
+  const [setupPromptDismissed, setSetupPromptDismissed] = useState(false);
   const initialized = useRef(false);
   const starterPrepareAttempted = useRef(false);
   const starterPrepareInFlight = useRef(false);
@@ -81,6 +95,7 @@ export function ModelDownloadNotice({ quiet = false }: { quiet?: boolean }) {
   const dismissed = useRef(new Set<string>());
   const hideTimer = useRef<number | null>(null);
   const starterHideTimer = useRef<number | null>(null);
+  const observedDownloadRequest = useRef(starterDownloadRequest);
 
   const clearHideTimer = useCallback(() => {
     if (hideTimer.current !== null) {
@@ -133,10 +148,12 @@ export function ModelDownloadNotice({ quiet = false }: { quiet?: boolean }) {
       invoke<DownloadProgress[]>("list_snapshot_downloads"),
       invoke<SnapshotModel[]>("list_snapshot_models"),
       invoke<ResidencySnapshot>("get_residency"),
+      invoke<AccountStatus>("account_status").catch(() => ({ signed_in: false })),
     ])
-      .then(([nextRows, nextModels, nextResidency]) => {
+      .then(([nextRows, nextModels, nextResidency, account]) => {
         setModels(nextModels);
         setResidency(nextResidency);
+        setSignedIn(Boolean(account.signed_in));
         ingest(nextRows);
       })
       .catch(() => {});
@@ -191,6 +208,27 @@ export function ModelDownloadNotice({ quiet = false }: { quiet?: boolean }) {
     }
   }, [refresh, starter?.id]);
 
+  const startStarterDownload = useCallback(async () => {
+    if (!starter?.id || actionBusy) return;
+    setActionBusy(true);
+    setActionError(null);
+    try {
+      await invoke("start_snapshot_download", { modelId: starter.id });
+      await refresh();
+    } catch (error) {
+      setActionError({ id: `starter:${starter.id}`, message: String(error) });
+    } finally {
+      setActionBusy(false);
+    }
+  }, [actionBusy, refresh, starter?.id]);
+
+  useEffect(() => {
+    if (starterDownloadRequest === observedDownloadRequest.current) return;
+    observedDownloadRequest.current = starterDownloadRequest;
+    setSetupPromptDismissed(true);
+    void startStarterDownload();
+  }, [startStarterDownload, starterDownloadRequest]);
+
   const shouldAutoPrepare = shouldPrepareStarter({
     starter,
     slots: residency.slots,
@@ -237,6 +275,39 @@ export function ModelDownloadNotice({ quiet = false }: { quiet?: boolean }) {
   // independent download/startup lifecycle continues to be polled, but it must
   // not compete for attention or auto-start while that flow is on screen.
   if (quiet) return null;
+
+  const needsFirstRunSetup =
+    signedIn === false &&
+    !starter?.cached &&
+    !starterLoading &&
+    !starterRunning &&
+    !row &&
+    !setupPromptDismissed;
+
+  if (needsFirstRunSetup) {
+    const starterLabel = starter?.short_name || starter?.name || "Understudy Small";
+    return (
+      <OperationNotice
+        className="model-download-notice first-run-setup-notice"
+        state="idle"
+        icon="download"
+        title="Set up Understudy"
+        message="Sign in for GLM 5.2 now and prepare private local chat"
+        meta={starter ? `${starterLabel} · ${starter.approx_gb.toFixed(1)} GB one-time download` : "GLM 5.2 · Understudy account"}
+        actionLabel="Set up"
+        actionDisabled={!onOpenAccount}
+        onAction={() => onOpenAccount?.(Boolean(starter))}
+        secondaryActionLabel={starter ? (actionBusy ? "Starting…" : "Local only") : null}
+        secondaryActionDisabled={actionBusy}
+        onSecondaryAction={() => {
+          setSetupPromptDismissed(true);
+          void startStarterDownload();
+        }}
+        dismissLabel="Not now"
+        onDismiss={() => setSetupPromptDismissed(true)}
+      />
+    );
+  }
 
   if (!row && !offerStarterDownload && !prepareBusy && !starterLoading && !prepareError && !starterReadyVisible) {
     return null;
@@ -302,14 +373,7 @@ export function ModelDownloadNotice({ quiet = false }: { quiet?: boolean }) {
           meta={starter.incomplete ? "Resume download · partial files kept" : "One-time download · stays on this Mac"}
           actionLabel={actionBusy ? "Starting…" : starterDownloadError ? "Retry" : starter.incomplete ? "Resume" : "Download"}
           actionDisabled={actionBusy}
-          onAction={() => {
-            setActionBusy(true);
-            setActionError(null);
-            invoke("start_snapshot_download", { modelId: starter.id })
-              .then(() => refresh())
-              .catch((error) => setActionError({ id: `starter:${starter.id}`, message: String(error) }))
-              .finally(() => setActionBusy(false));
-          }}
+          onAction={() => void startStarterDownload()}
           dismissLabel="Dismiss starter model download"
           onDismiss={() => setStarterPromptDismissed(true)}
         />

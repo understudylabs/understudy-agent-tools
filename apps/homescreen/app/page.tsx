@@ -32,6 +32,11 @@ export default function Page() {
   const [chatTrainingActive, setChatTrainingActive] = useState(false);
   const [activeChatSessionId, setActiveChatSessionId] = useState<string | null>(null);
   const [requestedChatSession, setRequestedChatSession] = useState<ChatSessionRequest | null>(null);
+  const [starterDownloadRequest, setStarterDownloadRequest] = useState(0);
+  const [signInIntent, setSignInIntent] = useState<{
+    returnToChat: boolean;
+    downloadAfterSignIn: boolean;
+  } | null>(null);
   const status = useStatus();
   const connected = status.snap?.connected ?? false;
 
@@ -154,6 +159,20 @@ export default function Page() {
     setChatResetToken((token) => token + 1);
   };
 
+  const openFirstRunSignIn = useCallback((downloadAfterSignIn: boolean) => {
+    setSignInIntent({ returnToChat: true, downloadAfterSignIn });
+    setPane("account");
+  }, []);
+
+  const finishSignIn = useCallback(() => {
+    if (!signInIntent) return;
+    if (signInIntent.downloadAfterSignIn) {
+      setStarterDownloadRequest((request) => request + 1);
+    }
+    if (signInIntent.returnToChat) setPane("chat");
+    setSignInIntent(null);
+  }, [signInIntent]);
+
   // Inbound: a coding agent (via the local server) can drive the GUI to a pane.
   useEffect(() => {
     if (!isTauri()) return;
@@ -230,7 +249,11 @@ export default function Page() {
       <DownloadQrButton />
       <div className="operation-notice-stack">
         <RuntimeRepairPrompt quiet={chatTrainingActive} />
-        <ModelDownloadNotice quiet={chatTrainingActive} />
+        <ModelDownloadNotice
+          quiet={chatTrainingActive}
+          starterDownloadRequest={starterDownloadRequest}
+          onOpenAccount={openFirstRunSignIn}
+        />
       </div>
       <Sidebar
         active={pane}
@@ -267,13 +290,19 @@ export default function Page() {
             onHistoryChanged={refreshChatHistory}
             onStreamingChange={setChatStreaming}
             onTrainingChange={setChatTrainingActive}
+            onNeedsSignIn={() => openFirstRunSignIn(false)}
           />
         )}
         {pane === "models" && <ModelsPane />}
         {pane === "capture" && <CapturePane />}
         {pane === "rlm" && <RlmPane />}
         {isTrainingPane(pane) && <TrainingPane section={pane} />}
-        {pane === "account" && <AccountPane />}
+        {pane === "account" && (
+          <AccountPane
+            onSignedIn={signInIntent ? finishSignIn : undefined}
+            prioritizeSignIn={Boolean(signInIntent)}
+          />
+        )}
         {pane === "usage" && <UsagePane status={status} />}
         {pane === "traces" && <TracesPane />}
       </main>

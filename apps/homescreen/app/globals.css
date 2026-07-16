@@ -4173,6 +4173,15 @@ select,
   font-size: 10px;
   white-space: nowrap;
 }
+.operation-notice-action.is-secondary {
+  border-color: var(--border);
+  background: transparent;
+  color: var(--text-2);
+}
+.operation-notice-action.is-secondary:hover:not(:disabled) {
+  border-color: color-mix(in srgb, var(--mb-cyan) 26%, var(--border));
+  color: var(--text);
+}
 .operation-notice-action:hover:not(:disabled) {
   border-color: var(--mb-cyan);
 }

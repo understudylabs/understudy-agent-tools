@@ -45,6 +45,10 @@ const modelDownloadNoticePath = new URL(
   "../apps/homescreen/app/components/ModelDownloadNotice.tsx",
   import.meta.url,
 );
+const accountPanePath = new URL(
+  "../apps/homescreen/app/components/AccountPane.tsx",
+  import.meta.url,
+);
 const runtimeRepairLibPath = new URL(
   "../apps/homescreen/app/lib/runtime-repair.ts",
   import.meta.url,
@@ -357,11 +361,13 @@ test("desktop offers an explicit signed update check from macOS menus", async ()
 });
 
 test("desktop has one shared managed-operation notice surface", async () => {
-  const [page, prompt, operationNotice, downloadNotice, repair, bootstrap, native] = await Promise.all([
+  const [page, prompt, operationNotice, downloadNotice, accountPane, chat, repair, bootstrap, native] = await Promise.all([
     readFile(pagePath, "utf8"),
     readFile(runtimeRepairPromptPath, "utf8"),
     readFile(operationNoticePath, "utf8"),
     readFile(modelDownloadNoticePath, "utf8"),
+    readFile(accountPanePath, "utf8"),
+    readFile(chatPath, "utf8"),
     readFile(runtimeRepairLibPath, "utf8"),
     readFile(
       new URL("../apps/homescreen/src-tauri/src/bootstrap.rs", import.meta.url),
@@ -372,7 +378,7 @@ test("desktop has one shared managed-operation notice surface", async () => {
 
   assert.match(page, /<RuntimeRepairPrompt quiet=\{chatTrainingActive\}\s*\/>/);
   assert.match(prompt, /if \(quiet \|\| !prompt\) return null/);
-  assert.match(page, /<ModelDownloadNotice quiet=\{chatTrainingActive\}\s*\/>/);
+  assert.match(page, /<ModelDownloadNotice[\s\S]*?quiet=\{chatTrainingActive\}[\s\S]*?onOpenAccount=\{openFirstRunSignIn\}[\s\S]*?\/>/);
   assert.match(downloadNotice, /if \(quiet\) return null/);
   assert.match(downloadNotice, /quiet \|\| !shouldAutoPrepare/);
   assert.match(page, /className="operation-notice-stack"/);
@@ -408,6 +414,25 @@ test("desktop has one shared managed-operation notice surface", async () => {
   assert.match(downloadNotice, /One-time download · stays on this Mac/);
   assert.match(downloadNotice, /Starting local model/);
   assert.match(downloadNotice, /Selected for chat/);
+  assert.match(downloadNotice, /title="Set up Understudy"/);
+  assert.match(downloadNotice, /Sign in for GLM 5\.2 now and prepare private local chat/);
+  assert.match(downloadNotice, /secondaryActionLabel=\{starter \? \(actionBusy \? "Starting…" : "Local only"\) : null\}/);
+  assert.match(downloadNotice, /starterDownloadRequest/);
+  assert.match(operationNotice, /secondaryActionLabel/);
+  assert.match(page, /downloadAfterSignIn/);
+  assert.match(page, /setStarterDownloadRequest\(\(request\) => request \+ 1\)/);
+  assert.match(accountPane, /onSignedIn\?\.\(\)/);
+  assert.match(accountPane, /prioritizeSignIn \? signInCard : null/);
+  assert.match(accountPane, /Use GLM 5\.2 immediately while Understudy prepares private local chat/);
+  assert.match(page, /prioritizeSignIn=\{Boolean\(signInIntent\)\}/);
+  assert.match(chat, /gatewaySignedIn \?\? Boolean\(/);
+  assert.match(chat, /invoke<\{ signed_in\?: boolean \}>\("account_status"\)/);
+  assert.match(chat, /if \(!signedIn\)/);
+  assert.match(chat, /onNeedsSignIn\?\.\(\)/);
+  const sendStart = chat.indexOf("const send = async");
+  const localLoadingGuard = chat.indexOf('if (choice.route === "local" && !choice.active)', sendStart);
+  const draftClear = chat.indexOf('setInput("");', sendStart);
+  assert.ok(localLoadingGuard > sendStart && draftClear > localLoadingGuard);
   assert.match(native, /commands::prepare_default_local_model/);
   assert.match(repair, /understudy models runtime repair/);
   assert.match(repair, /understudy runtime repair/);
