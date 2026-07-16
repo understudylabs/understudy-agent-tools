@@ -4886,7 +4886,7 @@ select,
 
 .classifier-library-terminal {
   padding: 12px;
-  border: 1px solid color-mix(in srgb, var(--warning) 35%, var(--border));
+  border: 1px solid color-mix(in srgb, var(--c-warn) 35%, var(--border));
   border-radius: 9px;
 }
 
