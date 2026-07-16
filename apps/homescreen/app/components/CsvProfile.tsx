@@ -41,10 +41,12 @@ export function CsvProfile({
         <span>{columns.length} columns</span>
       </div>
       <div
-        className={`csv-profile-columns${columns.length <= 4 ? " is-sparse" : ""}`}
+        className={`csv-profile-columns${columns.length <= 6 ? " is-spacious" : ""}`}
         role="group"
         aria-label="Local CSV column profile"
-        style={{ "--sparse-column-count": Math.max(1, columns.length) } as CSSProperties}
+        style={{
+          "--profile-column-count": Math.max(1, Math.min(columns.length, 8)),
+        } as CSSProperties}
       >
         {columns.map((column, columnIndex) => (
           <button
