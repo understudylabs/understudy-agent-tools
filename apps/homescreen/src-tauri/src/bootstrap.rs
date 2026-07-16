@@ -1,4 +1,3 @@
-use crate::account;
 use crate::bin;
 use crate::models::{self, SnapshotInfo};
 use futures_util::StreamExt;
@@ -25,7 +24,7 @@ pub struct ToolStatus {
     pub detail: String,
 }
 
-const MIN_UNDERSTUDY_CLI_VERSION: &str = "0.6.24";
+const MIN_UNDERSTUDY_CLI_VERSION: &str = "0.6.25";
 
 #[derive(Serialize, Clone)]
 pub struct BootstrapStatus {
@@ -166,7 +165,10 @@ pub fn status() -> BootstrapStatus {
             &["--help"],
         ),
         mlx: mlx_status(),
-        account_connected: account::status().is_ok(),
+        // Account availability is a native credential read. Do not call the
+        // bundled CLI from this diagnostic snapshot: bootstrap status may be
+        // refreshed repeatedly while the Status pane is open.
+        account_connected: crate::creds::resolve().is_some(),
         models_dir: models_dir().to_string_lossy().into_owned(),
         local_models: models::list(),
         snapshots,

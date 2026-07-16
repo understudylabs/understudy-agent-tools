@@ -361,7 +361,7 @@ test("desktop offers an explicit signed update check from macOS menus", async ()
 });
 
 test("desktop has one shared managed-operation notice surface", async () => {
-  const [page, prompt, operationNotice, downloadNotice, accountPane, chat, repair, bootstrap, native] = await Promise.all([
+  const [page, prompt, operationNotice, downloadNotice, accountPane, chat, repair, bootstrap, account, native] = await Promise.all([
     readFile(pagePath, "utf8"),
     readFile(runtimeRepairPromptPath, "utf8"),
     readFile(operationNoticePath, "utf8"),
@@ -371,6 +371,10 @@ test("desktop has one shared managed-operation notice surface", async () => {
     readFile(runtimeRepairLibPath, "utf8"),
     readFile(
       new URL("../apps/homescreen/src-tauri/src/bootstrap.rs", import.meta.url),
+      "utf8",
+    ),
+    readFile(
+      new URL("../apps/homescreen/src-tauri/src/account.rs", import.meta.url),
       "utf8",
     ),
     readFile(tauriLibPath, "utf8"),
@@ -427,6 +431,11 @@ test("desktop has one shared managed-operation notice surface", async () => {
   assert.match(page, /prioritizeSignIn=\{Boolean\(signInIntent\)\}/);
   assert.match(chat, /gatewaySignedIn \?\? Boolean\(/);
   assert.match(chat, /invoke<\{ signed_in\?: boolean \}>\("account_status"\)/);
+  assert.doesNotMatch(
+    account,
+    /run_json\(&\["status",\s*"--json"\]\)/,
+    "the frequently-polled account status path must not cold-start the bundled CLI",
+  );
   assert.match(chat, /if \(!signedIn\)/);
   assert.match(chat, /onNeedsSignIn\?\.\(\)/);
   const sendStart = chat.indexOf("const send = async");
