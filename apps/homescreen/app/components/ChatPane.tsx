@@ -33,6 +33,7 @@ import {
   PromptInputActionAddAttachments,
   PromptInputActionMenu,
   PromptInputActionMenuContent,
+  PromptInputActionMenuItem,
   PromptInputActionMenuTrigger,
   PromptInputBody,
   PromptInputSubmit,
@@ -82,9 +83,10 @@ import { ModelCardDrawer } from "./ModelCardDrawer";
 import { CsvProfile } from "./CsvProfile";
 import { CsvTrainingPlan } from "./CsvTrainingPlan";
 import { LocalTrainingPanel } from "./LocalTrainingPanel";
+import { LocalClassifierLibraryDialog } from "./LocalClassifierLibraryDialog";
 import { TrainingHalo, type TrainingHaloVisual } from "./TrainingHalo";
 import type { FileUIPart } from "ai";
-import { ArrowDownIcon } from "lucide-react";
+import { ArrowDownIcon, LibraryBigIcon } from "lucide-react";
 
 type Role = "user" | "assistant";
 type ToolTrace = {
@@ -446,6 +448,7 @@ export function ChatPane({
   const [classificationDataset, setClassificationDataset] = useState<ClassificationDataset | null>(null);
   const [localTrainingActive, setLocalTrainingActive] = useState(false);
   const [trainingHaloVisual, setTrainingHaloVisual] = useState<TrainingHaloVisual | null>(null);
+  const [classifierLibraryOpen, setClassifierLibraryOpen] = useState(false);
   const [pacingMessageIndex, setPacingMessageIndex] = useState<number | null>(null);
   const [pacedRevealed, setPacedRevealed] = useState<number | null>(null);
   const [animatedMessageId, setAnimatedMessageId] = useState<string | null>(null);
@@ -1552,6 +1555,10 @@ export function ChatPane({
               <PromptInputActionMenuTrigger tooltip="Add image or file" />
               <PromptInputActionMenuContent>
                 <PromptInputActionAddAttachments label="Add image or file" />
+                <PromptInputActionMenuItem onSelect={() => setClassifierLibraryOpen(true)}>
+                  <LibraryBigIcon aria-hidden="true" />
+                  Trained models
+                </PromptInputActionMenuItem>
               </PromptInputActionMenuContent>
             </PromptInputActionMenu>
             <ModelPicker
@@ -1596,6 +1603,7 @@ export function ChatPane({
           </div>
         </PromptInput>
       </div>
+      <LocalClassifierLibraryDialog open={classifierLibraryOpen} onOpenChange={setClassifierLibraryOpen} />
     </div>
   );
 }

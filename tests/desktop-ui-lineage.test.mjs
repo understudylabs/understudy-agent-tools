@@ -15,6 +15,10 @@ const tauriConfigPath = new URL(
   import.meta.url,
 );
 const chatPath = new URL("../apps/homescreen/app/components/ChatPane.tsx", import.meta.url);
+const classifierLibraryPath = new URL(
+  "../apps/homescreen/app/components/LocalClassifierLibraryDialog.tsx",
+  import.meta.url,
+);
 const trainingHaloPath = new URL(
   "../apps/homescreen/app/components/TrainingHalo.tsx",
   import.meta.url,
@@ -677,6 +681,30 @@ test("desktop compiles one dropped path through the bounded public CLI", async (
     parity.features.find((feature) => feature.id === "drop-to-workload-compilation")?.status,
     "shipped",
   );
+});
+
+test("trained-model library is restart-safe and stays separate from chat models", async () => {
+  const [chat, library, css, tauri] = await Promise.all([
+    readFile(chatPath, "utf8"),
+    readFile(classifierLibraryPath, "utf8"),
+    readFile(cssPath, "utf8"),
+    readFile(tauriLibPath, "utf8"),
+  ]);
+
+  assert.match(chat, /PromptInputActionMenuItem[\s\S]*?Trained models/);
+  assert.match(library, /"list_local_classification_runs"/);
+  assert.match(library, /"update_local_classification_run"/);
+  assert.match(library, /"predict_local_classification"/);
+  assert.match(library, /revealItemInDir/);
+  assert.match(library, /They never appear in the chat-model picker/);
+  assert.match(library, /Correct answers/);
+  assert.match(library, /Separate test examples/);
+  assert.match(library, /Archived/);
+  assert.match(library, /source rows will not be copied|Local task models saved on this Mac/);
+  assert.doesNotMatch(library, /training examples|raw rows|source payload/i);
+  assert.match(css, /\.classifier-library-dialog/);
+  assert.match(tauri, /workload_drop::list_local_classification_runs/);
+  assert.match(tauri, /workload_drop::update_local_classification_run/);
 });
 
 test("desktop model downloads are app-owned, pausable, and resumable", async () => {
