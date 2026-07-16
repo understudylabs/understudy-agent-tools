@@ -44,6 +44,20 @@ export function localTrainingReducer<Result>(
 ): LocalTrainingState<Result>;
 export function isLocalTrainingActive(state: LocalTrainingState): boolean;
 export function localTrainingProgress(event: LocalTrainingEvent | null): string | null;
+export function localTrainingTiming(input: {
+  phase: LocalTrainingPhase;
+  event: LocalTrainingEvent | null;
+  runStartedAt: number | null;
+  trainingStartedAt: number | null;
+  lastEpochCompletedAt: number | null;
+  nowMs: number;
+}): {
+  elapsedMs: number;
+  paceMs: number | null;
+  remainingMs: number | null;
+  completionAt: number | null;
+  measuring: boolean;
+} | null;
 export function localTrainingPhaseCopy(phase: LocalTrainingPhase): [string, string] | null;
 export function localTrainingVerdict(result: {
   linear_baseline: { accuracy: number; macro_f1: number };

@@ -196,7 +196,7 @@ def train(request_path: Path) -> None:
     phase_times["preparing"] = (time.perf_counter() - mark) * 1000
 
     mark = time.perf_counter()
-    phase(run_id, "downloading", "Resolving the pinned local training runtime and model weights.")
+    phase(run_id, "downloading", "Loading the pinned local training runtime and model weights; cached files are reused.")
     os.environ.setdefault("HF_HUB_DISABLE_TELEMETRY", "1")
     os.environ.setdefault("TRANSFORMERS_NO_ADVISORY_WARNINGS", "1")
     os.environ.setdefault("DO_NOT_TRACK", "1")

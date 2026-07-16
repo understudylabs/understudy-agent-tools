@@ -59,7 +59,7 @@ const IDLE_PROGRESS: RepairProgress = {
   startedAt: null,
 };
 
-export function RuntimeRepairPrompt() {
+export function RuntimeRepairPrompt({ quiet = false }: { quiet?: boolean }) {
   const [prompt, setPrompt] = useState<RepairPrompt | null>(null);
   const [progress, setProgress] = useState<RepairProgress>(IDLE_PROGRESS);
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
@@ -397,7 +397,7 @@ export function RuntimeRepairPrompt() {
     }
   };
 
-  if (!prompt) return null;
+  if (quiet || !prompt) return null;
   const title =
     progress.status === "running"
       ? "Updating Understudy"

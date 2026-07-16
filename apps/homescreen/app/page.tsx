@@ -29,6 +29,7 @@ export default function Page() {
   const [chatHistoryError, setChatHistoryError] = useState<string | null>(null);
   const [chatArchiveBusy, setChatArchiveBusy] = useState<string | null>(null);
   const [chatStreaming, setChatStreaming] = useState(false);
+  const [chatTrainingActive, setChatTrainingActive] = useState(false);
   const [activeChatSessionId, setActiveChatSessionId] = useState<string | null>(null);
   const [requestedChatSession, setRequestedChatSession] = useState<ChatSessionRequest | null>(null);
   const status = useStatus();
@@ -228,8 +229,8 @@ export default function Page() {
       )}
       <DownloadQrButton />
       <div className="operation-notice-stack">
-        <RuntimeRepairPrompt />
-        <ModelDownloadNotice />
+        <RuntimeRepairPrompt quiet={chatTrainingActive} />
+        <ModelDownloadNotice quiet={chatTrainingActive} />
       </div>
       <Sidebar
         active={pane}
@@ -265,6 +266,7 @@ export default function Page() {
             onSessionChange={handleChatSessionChange}
             onHistoryChanged={refreshChatHistory}
             onStreamingChange={setChatStreaming}
+            onTrainingChange={setChatTrainingActive}
           />
         )}
         {pane === "models" && <ModelsPane />}
