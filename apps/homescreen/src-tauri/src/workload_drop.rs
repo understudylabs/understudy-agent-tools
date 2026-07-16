@@ -92,7 +92,8 @@ fn validate_classification_run_summary(value: &Value) -> Result<(), String> {
         .get("display_name")
         .and_then(Value::as_str)
         .unwrap()
-        .len()
+        .chars()
+        .count()
         > 80
     {
         return Err("The local classifier registry returned an invalid display name.".into());
@@ -1786,6 +1787,12 @@ mod tests {
         assert!(validate_classification_run_summary(&incomplete)
             .unwrap_err()
             .contains("omitted its local model"));
+
+        let mut unicode = active.clone();
+        unicode["display_name"] = json!("🧠".repeat(80));
+        assert!(validate_classification_run_summary(&unicode).is_ok());
+        unicode["display_name"] = json!("🧠".repeat(81));
+        assert!(validate_classification_run_summary(&unicode).is_err());
 
         let mut archived = active;
         archived["archived_at"] = json!("2026-07-16T13:00:00.000Z");

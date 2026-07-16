@@ -26,7 +26,14 @@ function runFixture({ runId = "desktop-run-1", status = "completed", generatedAt
   const root = mkdtempSync(join(tmpdir(), "understudy-classifier-registry-"));
   roots.push(root);
   const captureRoot = join(root, "capture-imports");
-  const runRoot = join(captureRoot, "capture-a", "training-runs", runId);
+  const runRoot = join(
+    captureRoot,
+    "capture-a",
+    "classification",
+    "1234567890abcdef",
+    "training-runs",
+    runId,
+  );
   const modelPath = join(runRoot, "model");
   mkdirSync(modelPath, { recursive: true });
   writeFileSync(join(modelPath, "weights.bin"), "synthetic weights only");
@@ -127,9 +134,18 @@ describe("local classifier run registry", () => {
 
   it("rejects unsafe names and invalid list bounds", () => {
     const data = runFixture();
+    const unicodeName = "🧠".repeat(80);
+    assert.equal(updateLocalClassifierRun({
+      runManifestPath: data.manifestPath,
+      displayName: unicodeName,
+    }).display_name, unicodeName);
     assert.throws(() => updateLocalClassifierRun({
       runManifestPath: data.manifestPath,
       displayName: "bad\nname",
+    }), /printable characters/);
+    assert.throws(() => updateLocalClassifierRun({
+      runManifestPath: data.manifestPath,
+      displayName: "🧠".repeat(81),
     }), /printable characters/);
     assert.throws(() => updateLocalClassifierRun({ runManifestPath: data.manifestPath }), /Choose a new display name/);
     assert.throws(() => listLocalClassifierRuns({ captureRoot: data.captureRoot, limit: 0 }), /between 1 and 1,000/);

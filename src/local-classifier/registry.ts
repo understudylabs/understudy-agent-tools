@@ -17,7 +17,9 @@ const REGISTRY_SCHEMA = "understudy.local_classifier.registry.v1";
 const LIFECYCLE_SCHEMA = "understudy.local_classifier.lifecycle.v1";
 const RUN_ID_PATTERN = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/;
 const MAX_CAPTURE_ROOTS = 2_000;
-const MAX_RUNS_PER_CAPTURE = 2_000;
+const MAX_DATASETS_PER_CAPTURE = 2_000;
+const MAX_RUNS_PER_DATASET = 2_000;
+const MAX_SCANNED_RUNS = 10_000;
 const COMPLETED_VERDICTS = new Set(["not_better", "improved_not_ready", "promising"]);
 
 type RunStatus = "completed" | "failed" | "cancelled";
@@ -114,6 +116,10 @@ function isFiniteNonNegative(value: unknown): value is number {
   return typeof value === "number" && Number.isFinite(value) && value >= 0;
 }
 
+function characterCount(value: string): number {
+  return Array.from(value).length;
+}
+
 function isSafeNonNegativeInteger(value: unknown): value is number {
   return Number.isSafeInteger(value) && Number(value) >= 0;
 }
@@ -165,7 +171,7 @@ function readLifecycle(manifestPath: string, runId: string, generatedAt: string)
   }
   const value = parseJson(path);
   if (!isRecord(value) || value.schema_version !== LIFECYCLE_SCHEMA || value.run_id !== runId ||
-      !isNonEmptyString(value.display_name) || value.display_name.length > 80 ||
+      !isNonEmptyString(value.display_name) || characterCount(value.display_name) > 80 ||
       !(value.archived_at === null || (isNonEmptyString(value.archived_at) && !Number.isNaN(Date.parse(value.archived_at)))) ||
       !isNonEmptyString(value.updated_at) || Number.isNaN(Date.parse(value.updated_at))) {
     throw new Error(`The lifecycle record for ${runId} is malformed.`);
@@ -264,17 +270,23 @@ export function listLocalClassifierRuns(
     throw new Error("Classification run list limit must be between 1 and 1,000.");
   }
   const runs: LocalClassifierRunSummary[] = [];
-  for (const capturePath of childDirectories(captureRoot, MAX_CAPTURE_ROOTS)) {
-    const trainingRoot = join(capturePath, "training-runs");
-    for (const runPath of childDirectories(trainingRoot, MAX_RUNS_PER_CAPTURE)) {
-      const manifestPath = join(runPath, "run-manifest.json");
-      if (!existsSync(manifestPath) || !statSync(manifestPath).isFile()) continue;
-      try {
-        const item = summary(manifestPath);
-        if (Boolean(item.archived_at) === Boolean(options.archived)) runs.push(item);
-      } catch {
-        // Registry discovery is resilient to an unrelated corrupt or partial
-        // directory. Opening a specific run still fails closed with the exact error.
+  let scannedRuns = 0;
+  captures: for (const capturePath of childDirectories(captureRoot, MAX_CAPTURE_ROOTS)) {
+    const classificationRoot = join(capturePath, "classification");
+    for (const datasetPath of childDirectories(classificationRoot, MAX_DATASETS_PER_CAPTURE)) {
+      const trainingRoot = join(datasetPath, "training-runs");
+      for (const runPath of childDirectories(trainingRoot, MAX_RUNS_PER_DATASET)) {
+        scannedRuns += 1;
+        if (scannedRuns > MAX_SCANNED_RUNS) break captures;
+        const manifestPath = join(runPath, "run-manifest.json");
+        if (!existsSync(manifestPath) || !statSync(manifestPath).isFile()) continue;
+        try {
+          const item = summary(manifestPath);
+          if (Boolean(item.archived_at) === Boolean(options.archived)) runs.push(item);
+        } catch {
+          // Registry discovery is resilient to an unrelated corrupt or partial
+          // directory. Opening a specific run still fails closed with the exact error.
+        }
       }
     }
   }
@@ -304,7 +316,7 @@ export function updateLocalClassifierRun(
   let displayName = current.display_name;
   if (options.displayName !== undefined) {
     displayName = options.displayName.trim();
-    if (displayName.length < 1 || displayName.length > 80 || /[\u0000-\u001f\u007f]/.test(displayName)) {
+    if (characterCount(displayName) < 1 || characterCount(displayName) > 80 || /[\u0000-\u001f\u007f]/.test(displayName)) {
       throw new Error("Classifier display name must contain 1 to 80 printable characters.");
     }
   }
