@@ -461,10 +461,15 @@ function median(values: number[]): number {
   return sorted[Math.floor(sorted.length / 2)]!;
 }
 
-function computeHeldout(rows: HoldoutRow[], predictions: Prediction[], latencyMsP50: number) {
+function computeHeldout(
+  rows: HoldoutRow[],
+  predictions: Prediction[],
+  labels: string[],
+  latencyMsP50: number,
+) {
   const predictedById = new Map(predictions.map((prediction) => [prediction.example_id, prediction.label]));
-  const labels = [...new Set(rows.map((row) => row.label))].sort();
-  const counts = Object.fromEntries(labels.map((label) => [label, { support: 0, found: 0, predicted: 0 }]));
+  const orderedLabels = [...labels].sort();
+  const counts = Object.fromEntries(orderedLabels.map((label) => [label, { support: 0, found: 0, predicted: 0 }]));
   const failures: Array<{ example_id: string; expected_label: string; predicted_label: string }> = [];
   let correct = 0;
   for (const row of rows) {
@@ -483,7 +488,7 @@ function computeHeldout(rows: HoldoutRow[], predictions: Prediction[], latencyMs
       });
     }
   }
-  const perClass = labels.map((label) => {
+  const perClass = orderedLabels.map((label) => {
     const count = counts[label]!;
     const precision = count.predicted > 0 ? count.found / count.predicted : 0;
     const recall = count.support > 0 ? count.found / count.support : 0;
@@ -660,6 +665,7 @@ export async function compareClassifierWithFrontier(
       heldout: computeHeldout(
         verified.rows,
         chunkResults.flatMap((chunk) => chunk.predictions),
+        verified.labels,
         median(latencyMs),
       ),
       usage: {

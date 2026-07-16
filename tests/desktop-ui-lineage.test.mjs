@@ -637,6 +637,7 @@ test("desktop compiles one dropped path through the bounded public CLI", async (
   assert.match(training, /Fireworks publishes zero data retention/);
   assert.match(training, /Maximum approved spend: \$1\.00/);
   assert.match(training, /<EvaluationRadar/);
+  assert.match(training, /frontierComparison\.heldout\.weakest_classes\[0\] && state\.result\.heldout\.weakest_classes\[0\]/);
   assert.match(training, /baselineAccuracy=\{state\.result\.linear_baseline\.accuracy\}/);
   assert.match(training, /state\.result\.heldout\.macro_f1/);
   assert.match(training, /state\.result\.heldout\.latency_ms_p50/);

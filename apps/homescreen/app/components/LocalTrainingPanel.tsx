@@ -607,7 +607,7 @@ export function LocalTrainingPanel({
           </button>
         </div>
       )}
-      {frontierComparison && frontierComparison.heldout.weakest_classes[0] && (
+      {frontierComparison && frontierComparison.heldout.weakest_classes[0] && state.result.heldout.weakest_classes[0] && (
         <EvaluationRadar
           accuracy={state.result.heldout.accuracy}
           macroF1={state.result.heldout.macro_f1}

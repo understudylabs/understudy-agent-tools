@@ -78,7 +78,7 @@ function fixture() {
   return { root, rows, holdoutPath, runManifestPath };
 }
 
-function frontierFetch({ servedModel = "glm-5.2" } = {}) {
+function frontierFetch({ servedModel = "glm-5.2", spamLabel = "ham" } = {}) {
   const requests = [];
   const fetchImpl = async (_url, init) => {
     const request = JSON.parse(init.body);
@@ -86,7 +86,7 @@ function frontierFetch({ servedModel = "glm-5.2" } = {}) {
     const examples = JSON.parse(request.messages[1].content).examples;
     const predictions = examples.map((example) => ({
       example_id: example.example_id,
-      label: example.example_id === "example-spam" ? "ham" : "ham",
+      label: example.example_id === "example-spam" ? spamLabel : "ham",
     }));
     return new Response(JSON.stringify({
       model: servedModel,
@@ -211,6 +211,36 @@ describe("frontier classification comparison", () => {
     assert.ok(events.some((event) => event.phase === "measuring"));
     assert.ok(existsSync(result.artifact_path));
     assert.deepEqual(JSON.parse(readFileSync(result.artifact_path, "utf8")), result);
+  });
+
+  it("scores a valid predicted category that has no correct answers in the holdout", async () => {
+    const data = fixture();
+    const manifest = JSON.parse(readFileSync(data.runManifestPath, "utf8"));
+    manifest.model.labels.push("other");
+    writeFileSync(data.runManifestPath, `${JSON.stringify(manifest, null, 2)}\n`);
+    const { fetchImpl } = frontierFetch({ spamLabel: "other" });
+    const result = await compareClassifierWithFrontier({
+      runManifestPath: data.runManifestPath,
+      confirmRemote: true,
+      confirmSpend: true,
+      budgetUsd: 1,
+      auth: fakeAuth,
+      fetchImpl,
+      concurrency: 1,
+    });
+
+    assert.equal(result.heldout.accuracy, 0.5);
+    assert.equal(result.heldout.macro_f1, 1 / 3);
+    assert.equal(result.heldout.per_class.length, 3);
+    assert.deepEqual(
+      result.heldout.per_class.find((row) => row.label === "other"),
+      { label: "other", precision: 0, recall: 0, f1: 0, support: 0 },
+    );
+    assert.deepEqual(result.heldout.failures[0], {
+      example_id: "example-spam",
+      expected_label: "spam",
+      predicted_label: "other",
+    });
   });
 
   it("fails closed before fetch when the conservative estimate exceeds the approved cap", async () => {
