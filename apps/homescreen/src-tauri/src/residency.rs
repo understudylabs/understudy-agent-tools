@@ -436,6 +436,15 @@ impl Residency {
         Ok(matches!(r.state, SlotState::Warm))
     }
 
+    fn is_warming_or_warm(&self, slot_id: u32) -> anyhow::Result<bool> {
+        let inner = locked(&self.inner);
+        let r = inner
+            .iter()
+            .find(|r| r.id == slot_id)
+            .ok_or_else(|| anyhow::anyhow!("slot not found: {slot_id}"))?;
+        Ok(matches!(r.state, SlotState::Loading | SlotState::Warm))
+    }
+
     pub fn remove(&self, slot_id: u32) -> anyhow::Result<()> {
         let mut inner = locked(&self.inner);
         if let Some(idx) = inner.iter().position(|r| r.id == slot_id) {
@@ -497,6 +506,13 @@ impl Residency {
     /// Warm a slot: enforce a conservative runtime budget, spawn mlx_vlm.server,
     /// and poll until ready. Heavy checkpoints are exclusive by construction.
     pub fn warm(&self, app: &AppHandle, slot_id: u32) -> anyhow::Result<()> {
+        // Warm is an idempotent, single-flight operation. Startup restoration,
+        // the Desktop starter notice, and agent-facing APIs can all request the
+        // same slot around launch. Joining an existing load is success, not an
+        // actionable error, and avoids repeating the runtime probe.
+        if self.is_warming_or_warm(slot_id)? {
+            return Ok(());
+        }
         let runtime = crate::models::mlx_runtime_status();
         if !runtime.available {
             emit_mlx_repair(app, &runtime.detail);
@@ -513,11 +529,8 @@ impl Residency {
                 .iter()
                 .find(|r| r.id == slot_id)
                 .ok_or_else(|| anyhow::anyhow!("slot not found: {slot_id}"))?;
-            if matches!(r.state, SlotState::Warm) {
+            if matches!(r.state, SlotState::Warm | SlotState::Loading) {
                 return Ok(());
-            }
-            if matches!(r.state, SlotState::Loading) {
-                anyhow::bail!("slot {slot_id} is already loading");
             }
             if r.model_path.is_none() {
                 anyhow::bail!("slot has no model assigned");
@@ -565,6 +578,12 @@ impl Residency {
                 .iter_mut()
                 .find(|r| r.id == slot_id)
                 .ok_or_else(|| anyhow::anyhow!("slot not found: {slot_id}"))?;
+            // A second caller may have won the race while this caller was
+            // doing memory and manifest preflight. Do not spawn another
+            // server or compete for the same port.
+            if matches!(r.state, SlotState::Warm | SlotState::Loading) {
+                return Ok(());
+            }
             let port = r.port.unwrap_or_else(|| self.alloc_port());
             r.port = Some(port);
             r.state = SlotState::Loading;
@@ -1045,6 +1064,21 @@ mod tests {
         assert_eq!(residency.used_gb_locked(&inner, Some(2)), 22.8);
         drop(inner);
         assert_eq!(residency.snapshot().used_gb, 45.6);
+    }
+
+    #[test]
+    fn warming_or_warm_slots_are_single_flight() {
+        let residency = Residency::new(64);
+        {
+            let mut inner = locked(&residency.inner);
+            inner.push(resident(1, SlotState::Loading, 4.0));
+            inner.push(resident(2, SlotState::Warm, 4.0));
+            inner.push(resident(3, SlotState::Stopped, 4.0));
+        }
+
+        assert!(residency.is_warming_or_warm(1).unwrap());
+        assert!(residency.is_warming_or_warm(2).unwrap());
+        assert!(!residency.is_warming_or_warm(3).unwrap());
     }
 
     #[test]
