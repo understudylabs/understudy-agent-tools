@@ -11,6 +11,7 @@ import {
   listLocalClassifierRuns,
   updateLocalClassifierRun,
 } from "../dist/local-classifier/registry.js";
+import { modelIdentityTint } from "../dist/model-identity.js";
 
 const roots = [];
 
@@ -81,6 +82,12 @@ describe("local classifier run registry", () => {
 
     assert.equal(runs.length, 1);
     assert.equal(runs[0].model_id, "classifier.desktop-run-1");
+    assert.equal(runs[0].identity.id, "classifier.desktop-run-1");
+    assert.equal(runs[0].identity.display_name, "desktop-run-1");
+    assert.equal(runs[0].identity.lineage.requested_base_model_id, "answerdotai/ModernBERT-base");
+    assert.equal(runs[0].identity.artifact.available, true);
+    assert.equal(runs[0].identity.certification.status, "evaluated");
+    assert.deepEqual(runs[0].identity.tint, modelIdentityTint("classifier.desktop-run-1"));
     assert.equal(runs[0].display_name, "desktop-run-1");
     assert.equal(runs[0].run_status, "completed");
     assert.equal(runs[0].local_only, true);
@@ -102,6 +109,8 @@ describe("local classifier run registry", () => {
     });
 
     assert.equal(archived.display_name, "Spam detector");
+    assert.equal(archived.identity.display_name, "Spam detector");
+    assert.deepEqual(archived.identity.tint, modelIdentityTint("classifier.desktop-run-1"));
     assert.equal(archived.archived_at, "2026-07-16T13:00:00.000Z");
     assert.deepEqual(readFileSync(data.manifestPath), immutableBefore);
     assert.equal(listLocalClassifierRuns({ captureRoot: data.captureRoot }).length, 0);
@@ -117,6 +126,7 @@ describe("local classifier run registry", () => {
     });
     assert.equal(restored.archived_at, null);
     assert.equal(restored.display_name, "Spam detector");
+    assert.deepEqual(restored.identity.tint, archived.identity.tint);
     assert.equal(listLocalClassifierRuns({ captureRoot: data.captureRoot }).length, 1);
   });
 
@@ -126,6 +136,8 @@ describe("local classifier run registry", () => {
     assert.equal(run.run_status, "failed");
     assert.equal(run.model, null);
     assert.equal(run.failure.code, "failed");
+    assert.equal(run.identity.certification.status, "terminal");
+    assert.equal(run.identity.artifact.path, null);
 
     writeFileSync(join(failed.runRoot, "lifecycle.json"), "{}\n");
     assert.equal(listLocalClassifierRuns({ captureRoot: failed.captureRoot }).length, 0);

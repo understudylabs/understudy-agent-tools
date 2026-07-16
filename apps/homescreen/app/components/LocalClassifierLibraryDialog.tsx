@@ -23,6 +23,24 @@ type LocalClassifierRun = {
   schema_version: "understudy.local_classifier.registry.v1";
   model_id: string;
   kind: "classifier";
+  identity: {
+    schema_version: "understudy.model_identity.v1";
+    id: string;
+    kind: "classifier";
+    display_name: string;
+    tint: { palette_id: string; rgb: [number, number, number]; css: string };
+    lineage: {
+      training_run_id: string;
+      requested_base_model_id: string | null;
+      resolved_base_model_id: string | null;
+    };
+    artifact: { path: string | null; size_bytes: number | null; available: boolean };
+    certification: {
+      status: "evaluated" | "files_unavailable" | "terminal";
+      local_only: true;
+      evaluated_at: string | null;
+    };
+  };
   run_id: string;
   display_name: string;
   run_status: RunStatus;
@@ -57,6 +75,7 @@ type ClassificationPrediction = {
   label: string;
   scores: { label: string; score: number }[];
   model_id: string;
+  base_model_id: string;
   local_only: true;
 };
 
@@ -223,8 +242,9 @@ export function LocalClassifierLibraryDialog({
                 type="button"
                 aria-current={run.run_id === selected?.run_id ? "true" : undefined}
                 onClick={() => setSelectedRunId(run.run_id)}
+                style={{ "--model-identity-tint": run.identity.tint.css } as React.CSSProperties}
               >
-                <strong>{run.display_name}</strong>
+                <strong><i aria-hidden="true" />{run.display_name}</strong>
                 <span>{runStatus(run)} · {compactDate(run.updated_at)}</span>
                 {run.evaluation && <small>{(run.evaluation.accuracy * 100).toFixed(1)}% correct</small>}
               </button>
@@ -235,9 +255,9 @@ export function LocalClassifierLibraryDialog({
             {selected ? (
               <>
                 <div className="classifier-library-title-row">
-                  <div>
+                  <div style={{ "--model-identity-tint": selected.identity.tint.css } as React.CSSProperties}>
                     <span>{runStatus(selected)}</span>
-                    <h3>{selected.display_name}</h3>
+                    <h3><i aria-hidden="true" />{selected.display_name}</h3>
                   </div>
                   <button type="button" className="btn ghost" onClick={() => setRenameOpen((value) => !value)} disabled={busy}>
                     <PencilIcon aria-hidden="true" /> Rename

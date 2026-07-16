@@ -4758,12 +4758,26 @@ select,
 }
 
 .classifier-library-list strong {
+  display: flex;
+  align-items: center;
+  gap: 7px;
   overflow: hidden;
   color: var(--text);
   font-size: 12px;
   font-weight: 590;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.classifier-library-list strong > i,
+.classifier-library-title-row h3 > i {
+  display: block;
+  width: 7px;
+  height: 7px;
+  flex: 0 0 7px;
+  border-radius: 999px;
+  background: var(--model-identity-tint, var(--mb-cyan));
+  box-shadow: 0 0 10px color-mix(in srgb, var(--model-identity-tint, var(--mb-cyan)) 52%, transparent);
 }
 
 .classifier-library-list span,
@@ -4818,6 +4832,9 @@ select,
 }
 
 .classifier-library-title-row h3 {
+  display: flex;
+  align-items: center;
+  gap: 8px;
   overflow: hidden;
   margin: 0;
   color: var(--text);

@@ -11,6 +11,10 @@ import {
 import { dirname, join, resolve } from "node:path";
 
 import { globalConfigDir } from "../config/paths.js";
+import {
+  createClassifierModelIdentity,
+  type CanonicalModelIdentity,
+} from "../model-identity.js";
 
 const RUN_SCHEMA = "understudy.capture_import.classification_run.v1";
 const REGISTRY_SCHEMA = "understudy.local_classifier.registry.v1";
@@ -63,6 +67,7 @@ export type LocalClassifierRunSummary = {
   schema_version: typeof REGISTRY_SCHEMA;
   model_id: string;
   kind: "classifier";
+  identity: CanonicalModelIdentity;
   run_id: string;
   display_name: string;
   run_status: RunStatus;
@@ -233,10 +238,24 @@ function summary(path: string): LocalClassifierRunSummary {
   if (status !== "completed" && failure === null) {
     throw new Error("The terminal local classifier run omitted its failure evidence.");
   }
+  const modelId = `classifier.${runId}`;
+  const identity = createClassifierModelIdentity({
+    modelId,
+    displayName: lifecycle.display_name,
+    runId,
+    requestedBaseModelId: model?.requested_id ?? null,
+    resolvedBaseModelId: model?.resolved_id ?? null,
+    artifactPath: model?.path ?? null,
+    artifactSizeBytes: model?.size_bytes ?? null,
+    artifactAvailable: model?.available ?? false,
+    runStatus: status,
+    evaluatedAt: status === "completed" ? generatedAt : null,
+  });
   return {
     schema_version: REGISTRY_SCHEMA,
-    model_id: `classifier.${runId}`,
+    model_id: modelId,
     kind: "classifier",
+    identity,
     run_id: runId,
     display_name: lifecycle.display_name,
     run_status: status,

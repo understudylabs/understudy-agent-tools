@@ -93,6 +93,7 @@ type ClassificationPrediction = {
   label: string;
   scores: { label: string; score: number }[];
   model_id: string;
+  base_model_id: string;
   local_only: true;
 };
 
@@ -254,10 +255,11 @@ export function LocalTrainingPanel({
       epochs: haloProgress.epochs,
       completedEpochs: state.phase === "completed" ? haloProgress.epochs : haloProgress.completedEpochs,
       stepFraction: null,
+      modelId: `classifier.${state.runId}`,
       modelName,
       done: state.phase === "completed",
     });
-  }, [haloProgress, modelName, onVisualChange, state.phase]);
+  }, [haloProgress, modelName, onVisualChange, state.phase, state.runId]);
 
   useEffect(() => {
     generation.current += 1;
@@ -686,7 +688,7 @@ export function LocalTrainingPanel({
           <output>
             <strong>{prediction.label}</strong>
             {topScore && <span>{percent(topScore.score)} confidence</span>}
-            <small>Predicted locally with {prediction.model_id}</small>
+            <small>Predicted locally with {modelName}</small>
             {confidenceWarning && <em>{confidenceWarning}</em>}
           </output>
         )}

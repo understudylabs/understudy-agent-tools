@@ -572,7 +572,8 @@ test("desktop compiles one dropped path through the bounded public CLI", async (
   assert.match(css, /@keyframes workload-intake-ring/);
   assert.match(css, /prefers-reduced-motion: reduce[\s\S]*?\.persona-stage\.workload-drop-active::before/);
   assert.match(chat, /<TrainingHalo/);
-  assert.match(trainingHalo, /export function identityTint/);
+  assert.match(trainingHalo, /modelIdentityTint\(visual\.modelId\)/);
+  assert.match(training, /modelId: `classifier\.\$\{state\.runId\}`/);
   assert.match(trainingHalo, /const AMBER/);
   assert.match(trainingHalo, /const VIOLET/);
   assert.match(trainingHalo, /const GREEN/);
