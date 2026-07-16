@@ -429,6 +429,10 @@ test("desktop has one shared managed-operation notice surface", async () => {
   assert.match(chat, /invoke<\{ signed_in\?: boolean \}>\("account_status"\)/);
   assert.match(chat, /if \(!signedIn\)/);
   assert.match(chat, /onNeedsSignIn\?\.\(\)/);
+  const sendStart = chat.indexOf("const send = async");
+  const localLoadingGuard = chat.indexOf('if (choice.route === "local" && !choice.active)', sendStart);
+  const draftClear = chat.indexOf('setInput("");', sendStart);
+  assert.ok(localLoadingGuard > sendStart && draftClear > localLoadingGuard);
   assert.match(native, /commands::prepare_default_local_model/);
   assert.match(repair, /understudy models runtime repair/);
   assert.match(repair, /understudy runtime repair/);

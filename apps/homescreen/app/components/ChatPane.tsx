@@ -918,11 +918,11 @@ export function ChatPane({
       setErr("No local model is warm. Open Serving, warm a local model slot, then send again.");
       return;
     }
-    setInput("");
     if (choice.route === "local" && !choice.active) {
       setErr("The selected local model is still loading. Try again in a moment.");
       return;
     }
+    setInput("");
 
     let attachments: ChatAttachment[] = [];
     if (files.length > 0) {
