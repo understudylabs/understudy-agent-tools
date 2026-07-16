@@ -6,26 +6,19 @@ import {
   type PersonaColor,
   type PersonaState,
 } from "@/components/ai-elements/persona";
+import { modelIdentityTint } from "../../../../src/model-identity";
 
 type Rgb = [number, number, number];
 
 const AMBER: Rgb = [242, 179, 76];
 const VIOLET: Rgb = [167, 139, 250];
 const GREEN: Rgb = [110, 231, 160];
-const IDENTITY_PALETTE: Rgb[] = [
-  [158, 219, 211],
-  [103, 232, 249],
-  [167, 139, 250],
-  [242, 179, 76],
-  [217, 119, 87],
-  [244, 114, 182],
-];
-
 export type TrainingHaloVisual = {
   phase: "preparing" | "downloading" | "training" | "evaluating" | "saving" | "completed";
   epochs: number;
   completedEpochs: number;
   stepFraction: number | null;
+  modelId: string;
   modelName: string;
   done: boolean;
 };
@@ -43,15 +36,6 @@ export function learnColor(progress: number): Rgb {
   return clamped < 0.5
     ? mixRgb(AMBER, VIOLET, clamped * 2)
     : mixRgb(VIOLET, GREEN, (clamped - 0.5) * 2);
-}
-
-export function identityTint(name: string): Rgb {
-  let hash = 2_166_136_261;
-  for (let index = 0; index < name.length; index += 1) {
-    hash ^= name.charCodeAt(index);
-    hash = Math.imul(hash, 16_777_619);
-  }
-  return IDENTITY_PALETTE[(hash >>> 0) % IDENTITY_PALETTE.length];
 }
 
 function toPersonaColor([red, green, blue]: Rgb): PersonaColor {
@@ -75,7 +59,7 @@ export function TrainingHalo({
   const [birthTint, setBirthTint] = useState<Rgb | null>(null);
   const epochs = Math.max(1, visual.epochs);
   const completedEpochs = Math.min(epochs, Math.max(0, visual.completedEpochs));
-  const identity = useMemo(() => identityTint(visual.modelName), [visual.modelName]);
+  const identity = useMemo(() => modelIdentityTint(visual.modelId).rgb, [visual.modelId]);
 
   useEffect(() => {
     if (!visual.done) {

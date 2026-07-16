@@ -154,6 +154,8 @@ describe("local classifier training backend", () => {
     assert.equal(prediction.schema_version, "understudy.capture_import.classification_prediction.v1");
     assert.equal(prediction.text_sha256, sha256(text));
     assert.equal(prediction.label, "meals");
+    assert.equal(prediction.model_id, "classifier.expense-demo");
+    assert.equal(prediction.base_model_id, result.model.resolved_id);
     assert.equal(prediction.local_only, true);
     assert.doesNotMatch(JSON.stringify(prediction), /new cafe/);
     assert.equal(existsSync(join(dirname(result.manifest_path), ".prediction-requests")), false);

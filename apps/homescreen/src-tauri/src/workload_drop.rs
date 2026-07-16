@@ -59,6 +59,144 @@ fn training_cancellations() -> &'static Mutex<HashMap<String, Arc<AtomicBool>>> 
     TRAINING_CANCELLATIONS.get_or_init(|| Mutex::new(HashMap::new()))
 }
 
+fn expected_model_identity_tint(model_id: &str) -> (&'static str, [u64; 3]) {
+    const PALETTE: [(&str, [u64; 3]); 6] = [
+        ("mint", [158, 219, 211]),
+        ("cyan", [103, 232, 249]),
+        ("violet", [167, 139, 250]),
+        ("amber", [242, 179, 76]),
+        ("clay", [217, 119, 87]),
+        ("rose", [244, 114, 182]),
+    ];
+    let mut hash = 2_166_136_261_u32;
+    for code_unit in model_id.encode_utf16() {
+        hash ^= u32::from(code_unit);
+        hash = hash.wrapping_mul(16_777_619);
+    }
+    PALETTE[hash as usize % PALETTE.len()]
+}
+
+fn validate_classifier_identity(value: &Value, status: &str) -> Result<(), String> {
+    let identity = value
+        .get("identity")
+        .and_then(Value::as_object)
+        .ok_or_else(|| "The local classifier registry omitted canonical identity.".to_string())?;
+    let model_id = value
+        .get("model_id")
+        .and_then(Value::as_str)
+        .expect("model id is validated before identity");
+    let run_id = value
+        .get("run_id")
+        .and_then(Value::as_str)
+        .expect("run id is validated before identity");
+    let display_name = value
+        .get("display_name")
+        .and_then(Value::as_str)
+        .expect("display name is validated before identity");
+    if identity.get("schema_version").and_then(Value::as_str)
+        != Some("understudy.model_identity.v1")
+        || identity.get("kind").and_then(Value::as_str) != Some("classifier")
+        || identity.get("id").and_then(Value::as_str) != Some(model_id)
+        || identity.get("display_name").and_then(Value::as_str) != Some(display_name)
+        || model_id != format!("classifier.{run_id}")
+    {
+        return Err(
+            "The local classifier registry returned inconsistent canonical identity.".into(),
+        );
+    }
+
+    let tint = identity
+        .get("tint")
+        .and_then(Value::as_object)
+        .ok_or_else(|| "The local classifier identity omitted its tint.".to_string())?;
+    let (palette_id, rgb) = expected_model_identity_tint(model_id);
+    let returned_rgb = tint
+        .get("rgb")
+        .and_then(Value::as_array)
+        .filter(|channels| channels.len() == 3)
+        .and_then(|channels| {
+            Some([
+                channels[0].as_u64()?,
+                channels[1].as_u64()?,
+                channels[2].as_u64()?,
+            ])
+        });
+    let expected_css = format!("rgb({} {} {})", rgb[0], rgb[1], rgb[2]);
+    if tint.get("palette_id").and_then(Value::as_str) != Some(palette_id)
+        || returned_rgb != Some(rgb)
+        || tint.get("css").and_then(Value::as_str) != Some(expected_css.as_str())
+    {
+        return Err("The local classifier identity returned a non-canonical tint.".into());
+    }
+
+    let lineage = identity
+        .get("lineage")
+        .and_then(Value::as_object)
+        .ok_or_else(|| "The local classifier identity omitted lineage.".to_string())?;
+    if lineage.get("training_run_id").and_then(Value::as_str) != Some(run_id) {
+        return Err("The local classifier identity returned inconsistent lineage.".into());
+    }
+    let artifact = identity
+        .get("artifact")
+        .and_then(Value::as_object)
+        .ok_or_else(|| "The local classifier identity omitted artifact evidence.".to_string())?;
+    let certification = identity
+        .get("certification")
+        .and_then(Value::as_object)
+        .ok_or_else(|| "The local classifier identity omitted certification.".to_string())?;
+    if certification.get("local_only").and_then(Value::as_bool) != Some(true) {
+        return Err("The local classifier identity returned non-local certification.".into());
+    }
+
+    if status == "completed" {
+        let model = value
+            .get("model")
+            .and_then(Value::as_object)
+            .expect("completed model is validated before identity");
+        let available = model
+            .get("available")
+            .and_then(Value::as_bool)
+            .expect("model availability is validated before identity");
+        let expected_certification = if available {
+            "evaluated"
+        } else {
+            "files_unavailable"
+        };
+        if lineage.get("requested_base_model_id") != model.get("requested_id")
+            || lineage.get("resolved_base_model_id") != model.get("resolved_id")
+            || artifact.get("path") != model.get("path")
+            || artifact.get("size_bytes") != model.get("size_bytes")
+            || artifact.get("available").and_then(Value::as_bool) != Some(available)
+            || certification.get("status").and_then(Value::as_str) != Some(expected_certification)
+            || certification
+                .get("evaluated_at")
+                .and_then(Value::as_str)
+                .filter(|timestamp| !timestamp.is_empty() && timestamp.len() <= 128)
+                .is_none()
+        {
+            return Err(
+                "The local classifier identity returned contradictory completion evidence.".into(),
+            );
+        }
+    } else if !lineage
+        .get("requested_base_model_id")
+        .is_some_and(Value::is_null)
+        || !lineage
+            .get("resolved_base_model_id")
+            .is_some_and(Value::is_null)
+        || !artifact.get("path").is_some_and(Value::is_null)
+        || !artifact.get("size_bytes").is_some_and(Value::is_null)
+        || artifact.get("available").and_then(Value::as_bool) != Some(false)
+        || certification.get("status").and_then(Value::as_str) != Some("terminal")
+        || !certification
+            .get("evaluated_at")
+            .is_some_and(Value::is_null)
+    {
+        return Err("The terminal classifier identity returned contradictory evidence.".into());
+    }
+    Ok(())
+}
+
 fn validate_classification_run_summary(value: &Value) -> Result<(), String> {
     if value.get("schema_version").and_then(Value::as_str)
         != Some("understudy.local_classifier.registry.v1")
@@ -193,7 +331,7 @@ fn validate_classification_run_summary(value: &Value) -> Result<(), String> {
     {
         return Err("The terminal classifier returned contradictory evidence.".into());
     }
-    Ok(())
+    validate_classifier_identity(value, status)
 }
 
 fn validate_classification_run_list(value: Value, archived: bool) -> Result<Value, String> {
@@ -1439,14 +1577,20 @@ pub async fn compare_local_classification_with_frontier(
     .map_err(|error| format!("The frontier comparator stopped unexpectedly: {error}"))?
 }
 
-fn validate_classification_prediction(value: Value, run_id: &str) -> Result<Value, String> {
+fn validate_classification_prediction(
+    value: Value,
+    run_id: &str,
+    base_model_id: &str,
+) -> Result<Value, String> {
+    let expected_model_id = format!("classifier.{run_id}");
     if value.get("schema_version").and_then(Value::as_str)
         != Some("understudy.capture_import.classification_prediction.v1")
         || value.get("run_id").and_then(Value::as_str) != Some(run_id)
         || value.get("local_only").and_then(Value::as_bool) != Some(true)
         || value.get("label").and_then(Value::as_str).is_none()
         || value.get("text_sha256").and_then(Value::as_str).is_none()
-        || value.get("model_id").and_then(Value::as_str).is_none()
+        || value.get("model_id").and_then(Value::as_str) != Some(expected_model_id.as_str())
+        || value.get("base_model_id").and_then(Value::as_str) != Some(base_model_id)
     {
         return Err("The local classifier returned an invalid prediction.".into());
     }
@@ -1483,6 +1627,13 @@ fn predict_classification(run_manifest_path: String, text: String) -> Result<Val
         .get("run_id")
         .and_then(Value::as_str)
         .ok_or_else(|| "The local training run omitted its id.".to_string())?;
+    let base_model_id = run_manifest
+        .get("model")
+        .and_then(Value::as_object)
+        .and_then(|model| model.get("resolved_id"))
+        .and_then(Value::as_str)
+        .ok_or_else(|| "The local training run omitted its base model.".to_string())?
+        .to_string();
     validate_classification_training_result(run_manifest.clone(), run_id)?;
     let text = text.trim();
     if text.is_empty() || text.chars().count() > 4_000 {
@@ -1518,7 +1669,7 @@ fn predict_classification(run_manifest_path: String, text: String) -> Result<Val
     }
     let value = serde_json::from_slice::<Value>(&output.stdout)
         .map_err(|_| "The local classifier returned malformed JSON.".to_string())?;
-    validate_classification_prediction(value, run_id)
+    validate_classification_prediction(value, run_id, &base_model_id)
 }
 
 #[tauri::command]
@@ -1746,6 +1897,32 @@ mod tests {
             "schema_version": "understudy.local_classifier.registry.v1",
             "model_id": "classifier.desktop-run-123",
             "kind": "classifier",
+            "identity": {
+                "schema_version": "understudy.model_identity.v1",
+                "id": "classifier.desktop-run-123",
+                "kind": "classifier",
+                "display_name": "Spam detector",
+                "tint": {
+                    "palette_id": "cyan",
+                    "rgb": [103, 232, 249],
+                    "css": "rgb(103 232 249)"
+                },
+                "lineage": {
+                    "training_run_id": "desktop-run-123",
+                    "requested_base_model_id": "answerdotai/ModernBERT-base",
+                    "resolved_base_model_id": "answerdotai/ModernBERT-base"
+                },
+                "artifact": {
+                    "path": "/tmp/model",
+                    "size_bytes": 123,
+                    "available": true
+                },
+                "certification": {
+                    "status": "evaluated",
+                    "local_only": true,
+                    "evaluated_at": "2026-07-16T12:00:00.000Z"
+                }
+            },
             "run_id": "desktop-run-123",
             "display_name": "Spam detector",
             "run_status": "completed",
@@ -1790,9 +1967,17 @@ mod tests {
 
         let mut unicode = active.clone();
         unicode["display_name"] = json!("🧠".repeat(80));
+        unicode["identity"]["display_name"] = unicode["display_name"].clone();
         assert!(validate_classification_run_summary(&unicode).is_ok());
         unicode["display_name"] = json!("🧠".repeat(81));
+        unicode["identity"]["display_name"] = unicode["display_name"].clone();
         assert!(validate_classification_run_summary(&unicode).is_err());
+
+        let mut drifted_tint = active.clone();
+        drifted_tint["identity"]["tint"]["palette_id"] = json!("clay");
+        assert!(validate_classification_run_summary(&drifted_tint)
+            .unwrap_err()
+            .contains("non-canonical tint"));
 
         let mut archived = active;
         archived["archived_at"] = json!("2026-07-16T13:00:00.000Z");
@@ -2102,12 +2287,23 @@ mod tests {
             "text_sha256": "abc",
             "label": "travel",
             "scores": [{ "label": "travel", "score": 0.8 }],
-            "model_id": "answerdotai/ModernBERT-base",
+            "model_id": "classifier.desktop-run-123",
+            "base_model_id": "answerdotai/ModernBERT-base",
             "local_only": true
         });
-        assert!(validate_classification_prediction(valid.clone(), "desktop-run-123").is_ok());
+        assert!(validate_classification_prediction(
+            valid.clone(),
+            "desktop-run-123",
+            "answerdotai/ModernBERT-base"
+        )
+        .is_ok());
         let mut unsafe_result = valid;
         unsafe_result["local_only"] = json!(false);
-        assert!(validate_classification_prediction(unsafe_result, "desktop-run-123").is_err());
+        assert!(validate_classification_prediction(
+            unsafe_result,
+            "desktop-run-123",
+            "answerdotai/ModernBERT-base"
+        )
+        .is_err());
     }
 }

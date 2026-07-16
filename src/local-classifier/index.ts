@@ -183,6 +183,7 @@ export type ClassificationPrediction = {
   label: string;
   scores: Array<{ label: string; score: number }>;
   model_id: string;
+  base_model_id: string;
   latency_ms: number;
   local_only: true;
 };
@@ -1037,7 +1038,14 @@ function validatePrediction(value: unknown, run: ClassificationTrainingRunManife
       Math.abs(total - 1) > 0.001 || value.label !== (value.scores[0] as Record<string, unknown>).label) {
     throw new Error("Classifier prediction scores are not normalized and ranked.");
   }
-  return value as ClassificationPrediction;
+  const runtimePrediction = value as Omit<ClassificationPrediction, "model_id" | "base_model_id"> & {
+    model_id: string;
+  };
+  return {
+    ...runtimePrediction,
+    model_id: `classifier.${run.run_id}`,
+    base_model_id: runtimePrediction.model_id,
+  };
 }
 
 export function predictLocalClassifier(options: PredictLocalClassifierOptions): ClassificationPrediction {
