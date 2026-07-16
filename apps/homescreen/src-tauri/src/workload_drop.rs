@@ -242,6 +242,39 @@ fn validate_classification_run_summary(value: &Value) -> Result<(), String> {
     ) {
         return Err("The local classifier registry returned invalid archive state.".into());
     }
+    if let Some(repeat) = value.get("repeat_validation") {
+        if !repeat.is_null() {
+            let repeat = repeat.as_object().ok_or_else(|| {
+                "The local classifier registry returned invalid repeat-validation evidence."
+                    .to_string()
+            })?;
+            if repeat
+                .get("count")
+                .and_then(Value::as_u64)
+                .filter(|count| (1..=1_000).contains(count))
+                .is_none()
+                || repeat
+                    .get("latest_at")
+                    .and_then(Value::as_str)
+                    .filter(|text| !text.is_empty() && text.len() <= 128)
+                    .is_none()
+                || !matches!(
+                    repeat.get("latest_status").and_then(Value::as_str),
+                    Some("reproduced" | "drift_detected")
+                )
+                || repeat
+                    .get("latest_artifact_path")
+                    .and_then(Value::as_str)
+                    .filter(|text| !text.is_empty() && text.len() <= 4_096)
+                    .is_none()
+            {
+                return Err(
+                    "The local classifier registry returned invalid repeat-validation evidence."
+                        .into(),
+                );
+            }
+        }
+    }
     let status = value
         .get("run_status")
         .and_then(Value::as_str)
@@ -1612,7 +1645,10 @@ fn validate_classification_prediction(
     Ok(value)
 }
 
-fn predict_classification(run_manifest_path: String, text: String) -> Result<Value, String> {
+pub(crate) fn predict_classification(
+    run_manifest_path: String,
+    text: String,
+) -> Result<Value, String> {
     let canonical_manifest = PathBuf::from(run_manifest_path.trim())
         .canonicalize()
         .map_err(|error| format!("The local training run is unavailable: {error}"))?;
@@ -1682,7 +1718,7 @@ pub async fn predict_local_classification(
         .map_err(|error| format!("The local classifier stopped unexpectedly: {error}"))?
 }
 
-fn list_classification_runs(archived: bool, limit: u64) -> Result<Value, String> {
+pub(crate) fn list_classification_runs(archived: bool, limit: u64) -> Result<Value, String> {
     if !(1..=1_000).contains(&limit) {
         return Err("Local classifier run limit must be between 1 and 1,000.".into());
     }
@@ -1797,6 +1833,212 @@ pub async fn update_local_classification_run(
     })
     .await
     .map_err(|error| format!("The local classifier registry stopped unexpectedly: {error}"))?
+}
+
+fn completed_run_manifest(run_manifest_path: &str) -> Result<PathBuf, String> {
+    let canonical = PathBuf::from(run_manifest_path.trim())
+        .canonicalize()
+        .map_err(|error| format!("The local classifier run is unavailable: {error}"))?;
+    if !canonical.is_file()
+        || canonical.file_name().and_then(|name| name.to_str()) != Some("run-manifest.json")
+    {
+        return Err("Choose a completed local classifier run manifest.".into());
+    }
+    let raw = std::fs::read(&canonical)
+        .map_err(|error| format!("The local classifier run could not be read: {error}"))?;
+    let manifest = serde_json::from_slice::<Value>(&raw)
+        .map_err(|_| "The local classifier run is malformed.".to_string())?;
+    let run_id = manifest
+        .get("run_id")
+        .and_then(Value::as_str)
+        .ok_or_else(|| "The local classifier run omitted its id.".to_string())?
+        .to_string();
+    validate_classification_training_result(manifest, &run_id)?;
+    Ok(canonical)
+}
+
+fn validate_repeat_classification_evaluation(value: Value) -> Result<Value, String> {
+    if value.get("schema_version").and_then(Value::as_str)
+        != Some("understudy.local_classifier.repeat_evaluation.v1")
+        || value.get("local_only").and_then(Value::as_bool) != Some(true)
+        || value
+            .get("data_boundary")
+            .and_then(Value::as_object)
+            .and_then(|boundary| boundary.get("dataset_uploaded"))
+            .and_then(Value::as_bool)
+            != Some(false)
+        || value
+            .get("data_boundary")
+            .and_then(Value::as_object)
+            .and_then(|boundary| boundary.get("telemetry_sent"))
+            .and_then(Value::as_bool)
+            != Some(false)
+        || !matches!(
+            value
+                .get("verdict")
+                .and_then(Value::as_object)
+                .and_then(|verdict| verdict.get("status"))
+                .and_then(Value::as_str),
+            Some("reproduced" | "drift_detected")
+        )
+    {
+        return Err("The repeat evaluation returned invalid local evidence.".into());
+    }
+    for field in ["run_id", "model_id", "generated_at", "artifact_path"] {
+        if value
+            .get(field)
+            .and_then(Value::as_str)
+            .filter(|text| !text.is_empty() && text.len() <= 4_096)
+            .is_none()
+        {
+            return Err(format!("The repeat evaluation omitted {field}."));
+        }
+    }
+    let repeat = value
+        .get("repeat")
+        .and_then(Value::as_object)
+        .ok_or_else(|| "The repeat evaluation omitted its measured result.".to_string())?;
+    for score in ["accuracy", "macro_f1"] {
+        if repeat
+            .get(score)
+            .and_then(Value::as_f64)
+            .filter(|value| value.is_finite() && (0.0..=1.0).contains(value))
+            .is_none()
+        {
+            return Err(format!("The repeat evaluation returned invalid {score}."));
+        }
+    }
+    Ok(value)
+}
+
+fn repeat_classification_evaluation(run_manifest_path: String) -> Result<Value, String> {
+    let canonical = completed_run_manifest(&run_manifest_path)?;
+    let output = crate::bin::command("understudy")
+        .args([
+            "capture-import",
+            "repeat-classification-evaluation",
+            "--run-manifest",
+        ])
+        .arg(&canonical)
+        .arg("--json")
+        .output()
+        .map_err(|error| {
+            format!(
+                "Could not repeat this classifier evaluation ({error}). Open Status to repair the CLI."
+            )
+        })?;
+    if !output.status.success() {
+        return Err(format!(
+            "The repeat evaluation failed. {}",
+            bounded_detail(&output.stderr)
+        ));
+    }
+    let value = serde_json::from_slice::<Value>(&output.stdout)
+        .map_err(|_| "The repeat evaluation returned malformed JSON.".to_string())?;
+    validate_repeat_classification_evaluation(value)
+}
+
+#[tauri::command]
+pub async fn repeat_local_classification_evaluation(
+    run_manifest_path: String,
+) -> Result<Value, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        repeat_classification_evaluation(run_manifest_path)
+    })
+    .await
+    .map_err(|error| format!("The repeat evaluation stopped unexpectedly: {error}"))?
+}
+
+fn validate_classification_prediction_export(value: Value) -> Result<Value, String> {
+    if value.get("schema_version").and_then(Value::as_str)
+        != Some("understudy.local_classifier.prediction_export.v1")
+        || value.get("local_only").and_then(Value::as_bool) != Some(true)
+        || value
+            .get("data_boundary")
+            .and_then(Value::as_object)
+            .and_then(|boundary| boundary.get("dataset_uploaded"))
+            .and_then(Value::as_bool)
+            != Some(false)
+        || value
+            .get("data_boundary")
+            .and_then(Value::as_object)
+            .and_then(|boundary| boundary.get("telemetry_sent"))
+            .and_then(Value::as_bool)
+            != Some(false)
+    {
+        return Err("The prediction export returned invalid local evidence.".into());
+    }
+    let row_count = value
+        .get("row_count")
+        .and_then(Value::as_u64)
+        .filter(|count| *count <= 10_000)
+        .ok_or_else(|| "The prediction export returned an invalid row count.".to_string())?;
+    let predicted = value
+        .get("predicted_row_count")
+        .and_then(Value::as_u64)
+        .filter(|count| *count <= row_count)
+        .ok_or_else(|| "The prediction export returned an invalid labeled count.".to_string())?;
+    let skipped = value
+        .get("skipped_row_count")
+        .and_then(Value::as_u64)
+        .filter(|count| *count <= row_count)
+        .ok_or_else(|| "The prediction export returned an invalid skipped count.".to_string())?;
+    if predicted + skipped != row_count {
+        return Err("The prediction export row counts do not reconcile.".into());
+    }
+    for field in [
+        "run_id",
+        "model_id",
+        "source_path",
+        "output_path",
+        "manifest_path",
+    ] {
+        if value
+            .get(field)
+            .and_then(Value::as_str)
+            .filter(|text| !text.is_empty() && text.len() <= 4_096)
+            .is_none()
+        {
+            return Err(format!("The prediction export omitted {field}."));
+        }
+    }
+    Ok(value)
+}
+
+fn export_classification_predictions(run_manifest_path: String) -> Result<Value, String> {
+    let canonical = completed_run_manifest(&run_manifest_path)?;
+    let output = crate::bin::command("understudy")
+        .args([
+            "capture-import",
+            "export-classification-predictions",
+            "--run-manifest",
+        ])
+        .arg(&canonical)
+        .arg("--json")
+        .output()
+        .map_err(|error| {
+            format!("Could not export local predictions ({error}). Open Status to repair the CLI.")
+        })?;
+    if !output.status.success() {
+        return Err(format!(
+            "The prediction export failed. {}",
+            bounded_detail(&output.stderr)
+        ));
+    }
+    let value = serde_json::from_slice::<Value>(&output.stdout)
+        .map_err(|_| "The prediction export returned malformed JSON.".to_string())?;
+    validate_classification_prediction_export(value)
+}
+
+#[tauri::command]
+pub async fn export_local_classification_predictions(
+    run_manifest_path: String,
+) -> Result<Value, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        export_classification_predictions(run_manifest_path)
+    })
+    .await
+    .map_err(|error| format!("The prediction export stopped unexpectedly: {error}"))?
 }
 
 #[cfg(test)]

@@ -986,6 +986,10 @@ function readCsvForTraining(source: string): { bytes: Buffer; headers: string[];
   return readDelimitedTable(source);
 }
 
+export function readCaptureDelimitedTable(sourceInput: string): { bytes: Buffer; headers: string[]; rows: string[][] } {
+  return readDelimitedTable(resolve(sourceInput));
+}
+
 function readDelimitedTable(source: string): { bytes: Buffer; headers: string[]; rows: string[][] } {
   const bytes = readFileSync(source);
   if (bytes.length > MAX_CSV_BYTES) {

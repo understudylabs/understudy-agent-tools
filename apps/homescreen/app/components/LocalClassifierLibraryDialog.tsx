@@ -6,8 +6,10 @@ import { revealItemInDir } from "@tauri-apps/plugin-opener";
 import {
   ArchiveIcon,
   ArchiveRestoreIcon,
+  FileDownIcon,
   FolderOpenIcon,
   PencilIcon,
+  RefreshCcwIcon,
 } from "lucide-react";
 import {
   Dialog,
@@ -65,6 +67,12 @@ type LocalClassifierRun = {
     failure_count: number;
     verdict: string;
   };
+  repeat_validation: null | {
+    count: number;
+    latest_at: string;
+    latest_status: "reproduced" | "drift_detected";
+    latest_artifact_path: string;
+  };
   timing_ms: number | null;
   failure: null | { code: string; message: string };
 };
@@ -77,6 +85,19 @@ type ClassificationPrediction = {
   model_id: string;
   base_model_id: string;
   local_only: true;
+};
+
+type RepeatEvaluation = {
+  schema_version: "understudy.local_classifier.repeat_evaluation.v1";
+  verdict: { status: "reproduced" | "drift_detected"; reason: string };
+  artifact_path: string;
+};
+
+type PredictionExport = {
+  schema_version: "understudy.local_classifier.prediction_export.v1";
+  predicted_row_count: number;
+  skipped_row_count: number;
+  output_path: string;
 };
 
 function compactBytes(bytes: number): string {
@@ -113,6 +134,7 @@ export function LocalClassifierLibraryDialog({
   const [displayName, setDisplayName] = useState("");
   const [predictionText, setPredictionText] = useState("");
   const [prediction, setPrediction] = useState<ClassificationPrediction | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
   const requestGeneration = useRef(0);
 
   const selected = useMemo(
@@ -161,6 +183,7 @@ export function LocalClassifierLibraryDialog({
     setRenameOpen(false);
     setPredictionText("");
     setPrediction(null);
+    setNotice(null);
   }, [selected?.run_id, selected?.display_name]);
 
   const updateRun = async (update: { displayName?: string; archived?: boolean }) => {
@@ -208,6 +231,44 @@ export function LocalClassifierLibraryDialog({
       await revealItemInDir(selected.model?.available ? selected.model.path : selected.manifest_path);
     } catch (revealError) {
       setError(String(revealError));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const repeatEvaluation = async () => {
+    if (!selected?.model?.available || busy) return;
+    setBusy(true);
+    setError(null);
+    setNotice(null);
+    try {
+      const result = await invoke<RepeatEvaluation>("repeat_local_classification_evaluation", {
+        runManifestPath: selected.manifest_path,
+      });
+      setNotice(result.verdict.status === "reproduced"
+        ? "Quality rechecked on the same saved test examples — result reproduced."
+        : "The saved model changed on the same test examples. Review the new evidence before use.");
+      await loadRuns(archived, selected.run_id);
+    } catch (repeatError) {
+      setError(String(repeatError));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const exportPredictions = async () => {
+    if (!selected?.model?.available || busy) return;
+    setBusy(true);
+    setError(null);
+    setNotice(null);
+    try {
+      const result = await invoke<PredictionExport>("export_local_classification_predictions", {
+        runManifestPath: selected.manifest_path,
+      });
+      setNotice(`${result.predicted_row_count.toLocaleString()} rows labeled locally. The CSV is ready.`);
+      await revealItemInDir(result.output_path);
+    } catch (exportError) {
+      setError(String(exportError));
     } finally {
       setBusy(false);
     }
@@ -284,12 +345,22 @@ export function LocalClassifierLibraryDialog({
                 )}
 
                 {selected.evaluation && selected.model ? (
-                  <div className="classifier-library-facts">
-                    <div><span>Correct answers</span><strong>{(selected.evaluation.accuracy * 100).toFixed(1)}%</strong></div>
-                    <div><span>Separate test examples</span><strong>{selected.evaluation.row_count.toLocaleString()}</strong></div>
-                    <div><span>Local response</span><strong>{selected.evaluation.latency_ms_p50.toFixed(1)} ms</strong></div>
-                    <div><span>Space on disk</span><strong>{compactBytes(selected.model.size_bytes)}</strong></div>
-                  </div>
+                  <>
+                    <div className="classifier-library-facts">
+                      <div><span>Correct answers</span><strong>{(selected.evaluation.accuracy * 100).toFixed(1)}%</strong></div>
+                      <div><span>Separate test examples</span><strong>{selected.evaluation.row_count.toLocaleString()}</strong></div>
+                      <div><span>Local response</span><strong>{selected.evaluation.latency_ms_p50.toFixed(1)} ms</strong></div>
+                      <div><span>Space on disk</span><strong>{compactBytes(selected.model.size_bytes)}</strong></div>
+                    </div>
+                    {selected.repeat_validation && (
+                      <p className={`classifier-library-validation ${selected.repeat_validation.latest_status}`}>
+                        {selected.repeat_validation.latest_status === "reproduced"
+                          ? `Quality reproduced ${selected.repeat_validation.count === 1 ? "once" : `${selected.repeat_validation.count} times`}`
+                          : "Latest quality recheck changed"}
+                        <span> · {compactDate(selected.repeat_validation.latest_at)}</span>
+                      </p>
+                    )}
+                  </>
                 ) : (
                   <div className="classifier-library-terminal">
                     <strong>{runStatus(selected)}</strong>
@@ -332,6 +403,16 @@ export function LocalClassifierLibraryDialog({
                 )}
 
                 <div className="classifier-library-actions">
+                  {selected.run_status === "completed" && selected.model?.available && (
+                    <>
+                      <button type="button" className="btn ghost" onClick={() => void repeatEvaluation()} disabled={busy}>
+                        <RefreshCcwIcon aria-hidden="true" /> Re-check quality
+                      </button>
+                      <button type="button" className="btn ghost" onClick={() => void exportPredictions()} disabled={busy}>
+                        <FileDownIcon aria-hidden="true" /> Export labeled CSV
+                      </button>
+                    </>
+                  )}
                   <button type="button" className="btn ghost" onClick={() => void reveal()} disabled={busy}>
                     <FolderOpenIcon aria-hidden="true" /> Show files
                   </button>
@@ -345,6 +426,7 @@ export function LocalClassifierLibraryDialog({
                     {archived ? "Restore" : "Archive"}
                   </button>
                 </div>
+                {notice && <p className="classifier-library-notice" role="status">{notice}</p>}
                 {error && <p className="classifier-library-error" role="alert">{error}</p>}
               </>
             ) : !loading && (

@@ -339,6 +339,8 @@ pub fn run() {
             workload_drop::predict_local_classification,
             workload_drop::list_local_classification_runs,
             workload_drop::update_local_classification_run,
+            workload_drop::repeat_local_classification_evaluation,
+            workload_drop::export_local_classification_predictions,
             commands::sidekick_decisions,
             commands::sidekick_events,
             commands::sidekick_session_summaries,

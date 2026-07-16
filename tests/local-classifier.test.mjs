@@ -11,9 +11,14 @@ import {
   startLocalClassifierTraining,
   trainLocalClassifier,
 } from "../dist/local-classifier/index.js";
+import {
+  exportLocalClassifierPredictions,
+  repeatLocalClassifierEvaluation,
+} from "../dist/local-classifier/lifecycle.js";
 
 const roots = [];
 const fakeRunner = resolve("tests/fixtures/local-classifier-fake-runner.mjs");
+const fakeLifecycleRunner = resolve("tests/fixtures/local-classifier-lifecycle-fake-runner.mjs");
 
 afterEach(() => {
   for (const root of roots.splice(0)) rmSync(root, { recursive: true, force: true });
@@ -27,6 +32,9 @@ function fixture({ schema = "understudy.capture_import.classification_dataset.v2
   const root = mkdtempSync(join(tmpdir(), "understudy-local-classifier-"));
   roots.push(root);
   const labels = ["meals", "travel"];
+  const sourcePath = join(root, "expenses.csv");
+  const sourceContent = "merchant,description,label\nmerchant-a,lunch,meals\nmerchant-b,flight,travel\n";
+  writeFileSync(sourcePath, sourceContent);
   const splits = {};
   const groupNames = {
     train: ["merchant-a", "merchant-b"],
@@ -52,8 +60,15 @@ function fixture({ schema = "understudy.capture_import.classification_dataset.v2
   const manifest = {
     schema_version: schema,
     dataset_id: "dataset-test-v2",
-    source_sha256: "a".repeat(64),
+    source_path: sourcePath,
+    source_sha256: sha256(sourceContent),
     mapping_sha256: "b".repeat(64),
+    mapping: {
+      input_columns: ["merchant", "description"],
+      label_column: "label",
+      group_column: "merchant",
+      text_template: "named-fields-v1",
+    },
     labels,
     split_policy: {
       name: "deterministic-stratified-group-aware-v2",
@@ -65,7 +80,7 @@ function fixture({ schema = "understudy.capture_import.classification_dataset.v2
     artifact_root: artifactRoot,
   };
   writeFileSync(manifestPath, `${JSON.stringify(manifest, null, 2)}\n`);
-  return { root, artifactRoot, manifestPath, manifest };
+  return { root, artifactRoot, manifestPath, manifest, sourcePath, sourceContent };
 }
 
 describe("local classifier training backend", () => {
@@ -159,6 +174,38 @@ describe("local classifier training backend", () => {
     assert.equal(prediction.local_only, true);
     assert.doesNotMatch(JSON.stringify(prediction), /new cafe/);
     assert.equal(existsSync(join(dirname(result.manifest_path), ".prediction-requests")), false);
+
+    const repeat = repeatLocalClassifierEvaluation({
+      runManifestPath: result.manifest_path,
+      evaluationId: "repeat-test-1",
+      runtimeRoot,
+      runnerOverride: { command: process.execPath, args: [fakeLifecycleRunner] },
+      now: new Date("2026-07-15T13:00:00.000Z"),
+    });
+    assert.equal(repeat.verdict.status, "reproduced");
+    assert.equal(repeat.comparison.matches_initial_metrics, true);
+    assert.equal(repeat.repeat.predictions_sha256.length, 64);
+    assert.equal(JSON.parse(readFileSync(repeat.artifact_path, "utf8")).evaluation_id, "repeat-test-1");
+    assert.throws(() => repeatLocalClassifierEvaluation({
+      runManifestPath: result.manifest_path,
+      evaluationId: "repeat-test-1",
+      runtimeRoot,
+      runnerOverride: { command: process.execPath, args: [fakeLifecycleRunner] },
+    }), /Refusing to overwrite|EEXIST/);
+
+    const exported = exportLocalClassifierPredictions({
+      runManifestPath: result.manifest_path,
+      runtimeRoot,
+      runnerOverride: { command: process.execPath, args: [fakeLifecycleRunner] },
+      now: new Date("2026-07-15T14:00:00.000Z"),
+    });
+    assert.equal(exported.predicted_row_count, 2);
+    assert.equal(exported.skipped_row_count, 0);
+    assert.equal(exported.model_id, "classifier.expense-demo");
+    const exportedCsv = readFileSync(exported.output_path, "utf8");
+    assert.match(exportedCsv, /understudy_label,understudy_confidence,understudy_model_id/);
+    assert.match(exportedCsv, /meals,0\.800000,classifier\.expense-demo/);
+    assert.equal(JSON.parse(readFileSync(exported.manifest_path, "utf8")).source_sha256, sha256(data.sourceContent));
 
     const runtimePack = join(runtimeRoot, "runtime-packs", readdirSync(join(runtimeRoot, "runtime-packs"))[0]);
     const runtimeSpecPath = join(runtimePack, "runtime-spec.json");
