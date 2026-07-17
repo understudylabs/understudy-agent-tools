@@ -205,25 +205,53 @@ Source projects (engineering facts — renderer/registry/GRPO support, env API):
 - Prime Intellect `prime-rl` — https://github.com/PrimeIntellect-ai/prime-rl ;
   `renderers` — https://github.com/PrimeIntellect-ai/renderers ;
   vLLM model registry — https://github.com/vllm-project/vllm
+- RLM rollout harness — https://github.com/PrimeIntellect-ai/rlm-harness
+  (installed by verifiers' built-in `RLMHarness`); RLM research library —
+  https://github.com/alexzhang13/rlm ; Prime's RLM write-up —
+  https://www.primeintellect.ai/blog/rlm
 - Public reproduction on this task: OpenPipe ART·E blog —
   https://openpipe.ai/blog/art-e-mail-agent
 
 Measured on an internal synthetic workload, 2026-04-29, and on an ART·E
 Qwen-14B recreation, 2026-06-07.
 
-## Local research setup
+## RLM implementations: which repo for which job
 
-Keep external research repos and generated artifacts out of the public package:
+Two independent MIT implementations of the RLM idea exist, and they are not
+forks of each other (verified via the GitHub API, 2026-07-14). Pick by job:
+
+- **Training path (default): verifiers' built-in `RLMHarness`.** As of
+  verifiers `0.2.0`, the v1 API ships an RLM harness
+  (`verifiers/v1/harnesses/rlm/`) that installs
+  `github.com/PrimeIntellect-ai/rlm-harness` — Prime Intellect's minimal CLI
+  rollout agent ("only for RL training") — into the runtime itself; no local
+  clone needed. The same config family drives eval and prime-rl training, and
+  every sub-model call routes through the interception endpoint so the whole
+  recursion lands in the trace. Alex Zhang (the idea's author) contributed
+  commits to it and publicly recommends it for training RLMs. Config surface
+  (source-verified against the `0.2.0` tag): `version` — a git ref, default
+  `main`, **pin a commit for reproducibility**; `max_depth` (`RLM_MAX_DEPTH`,
+  default 0 = no sub-agents); `skills` — built-ins `edit`/`search`; the tool
+  set is fixed (`ipython`; `disabled_tools` is rejected); taskset `Toolset`s
+  arrive as MCP servers and become pre-imported IPython skills;
+  `summarize_at_tokens` — auto-compaction threshold, an int or a `(lo, hi)`
+  range drawn per task group (seeded by task index, so a task's rollouts share
+  one threshold — a controlled compaction ablation). Each run writes a session
+  `meta.json` whose numeric metrics (compactions, ipython input size,
+  programmatic tool-call counts) surface as trace metrics. Note the repo was
+  renamed from `PrimeIntellect-ai/rlm` — the old URL only works via redirect.
+- **Inference / research library: `alexzhang13/rlm`** (`pip install rlms`) —
+  the original implementation behind the paper (arXiv:2512.24601): the `RLM`
+  class as a drop-in `completion()`, trajectory logger + visualizer, multiple
+  REPL sandboxes. Its `training/` directory remains a worked example that
+  exposes `rlm.RLM` as a v0-era `verifiers` environment for prime-rl, but the
+  maintained rollout path for training is the harness above. For local
+  research:
 
 ```sh
 mkdir -p .understudy/research
 git clone https://github.com/alexzhang13/rlm.git .understudy/research/rlm
 ```
-
-The RLM repo's `training/` directory exposes `rlm.RLM` as a `verifiers`
-environment and is designed to plug into Prime Intellect `prime-rl`. Treat that
-repo as a research dependency until a local smoke proves the workflow belongs in
-Understudy docs or golden-path fixtures.
 
 Do not vendor RLM, Prime Intellect, or generated Python environments into this
 repo. Public Understudy skills can point to setup commands and artifact shapes;

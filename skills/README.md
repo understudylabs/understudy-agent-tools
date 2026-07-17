@@ -87,7 +87,12 @@ group it belongs to.
   builds a seeded, synthetic, scorable environment (AutomationBench /
   verifiers style) plus final-state validator so any candidate model can run a
   captured agentic workload end-to-end and be judged on outcome — a recorded
-  replay cannot host a different model's trajectory.
+  replay cannot host a different model's trajectory. Its traces→env cookbook
+  ([`references/cookbook-traces-to-env.md`](design-simulated-environment/references/cookbook-traces-to-env.md))
+  and copyable smoke-tested scaffold
+  ([`examples/event-categorizer/`](design-simulated-environment/examples/event-categorizer/README.md))
+  take a developer from captured traces or existing tests to a runnable
+  verifiers environment without starting blank.
 
 ## Local Models
 
@@ -205,6 +210,14 @@ shows headroom, no hosted RL until the local arms plateau.
   execution. The managed-catalog vs BYO provider-key decision (with all
   key-safety rules) is in
   [`references/frontier-keys.md`](use-understudy-gateway/references/frontier-keys.md).
+- [`simulate-before-launch`](simulate-before-launch/SKILL.md) is the offline
+  gate between "a change exists" and "traffic moves": it replays the frozen
+  task set through the production serving path with a proposed model-level
+  change applied (model swap, route, prompt, playbook), scores quality plus
+  output-contract axes (structured-output compliance, tool-call validity)
+  over repeated rollouts to catch intermittent failures, and emits the
+  launch verdict `ramp-and-verify`'s pre-ramp gate consumes. Includes the
+  proactive pre-commit-style hook recipes.
 - [`ramp-and-verify`](ramp-and-verify/SKILL.md) owns the last mile after a
   route decision: pre-ramp repeat-replay stability gates, a staged traffic
   ladder (5% → 25% → 100%) on the gateway dial with explicit approval per

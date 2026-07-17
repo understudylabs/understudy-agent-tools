@@ -152,6 +152,11 @@ Identify the developer's current stage and load exactly one:
   [`../ingest-traces/SKILL.md`](../ingest-traces/SKILL.md) and its fleet
   lenses (`references/profile-captures.md` for structure/cost,
   `references/lotus-semantic-triage.md` for content-level bulk triage).
+  When the source is Desktop supervisor interventions, first run
+  `understudy desktop supervision export --reviewed-only --json`; use its
+  content-addressed correction-pair JSONL as the local input and inspect the
+  accompanying attribution metrics. Unreviewed pairs may support error
+  analysis, but are not human-approved training labels.
 - **Inference / routing / capture / auth / deploy** — Understudy inference,
   gateway trace capture, project/key management, model A/B via route traffic %,
   `understudy run`, or registering an improved route →
@@ -161,6 +166,11 @@ Identify the developer's current stage and load exactly one:
   provider keys, or skipping remote frontier calls →
   [`../use-understudy-gateway/SKILL.md`](../use-understudy-gateway/SKILL.md)
   and its frontier-keys lens (`references/frontier-keys.md`).
+- **Pre-launch change gate** — a model-level change (model swap, route change,
+  prompt or playbook edit) is about to ship and the developer wants an offline
+  verdict first: "will this work in prod", "run a simulator before I flip
+  traffic", "gate model changes like a pre-commit check" →
+  [`../simulate-before-launch/SKILL.md`](../simulate-before-launch/SKILL.md).
 - **Production ramp / rollback** — a route decision exists and live traffic
   must move safely: "ramp this route", "move 25% of traffic to the new model",
   "did the route change regress anything", "roll this back", "prove the

@@ -43,12 +43,35 @@ Identify the source shape first:
   existing tooling (`aws s3`, `rclone`, `wrangler`); pull to a local staging
   dir.
 - **Provider log export**: JSONL/CSV of historical calls.
-- **Understudy capture export**: gateway capture files. Note the access
-  limits: `captures export <request-id>` exports **one request at a time**,
-  writes metadata only unless run with `--include-payload --yes` (payloads may
-  contain prompts/completions), and platform-side bulk export requires
-  elevated platform-administrator access — plan on per-request exports or ask
-  your platform administrator for a bulk dump.
+- **Understudy frozen cohort**: select only workload-scoped, redacted capture
+  metadata, review the summary, freeze the exact references, and materialize
+  that auditable cohort locally:
+
+  ```sh
+  understudy evals create --project <slug> --workload <name> \
+    --last 14d --name <name>
+  ```
+
+  The command shows how many eligible captures it found and asks before it
+  freezes or downloads anything. Use `--yes` for non-interactive automation.
+  Use the lower-level commands when the developer needs to inspect or edit the
+  redacted selection before freezing it:
+
+  ```sh
+  understudy evals catalog --project <slug> --workload <name> \
+    --from <iso> --to <iso> --limit 50 --seed <seed> \
+    --out .understudy/evals/catalog.json --json
+  understudy evals cohort create --project <slug> --workload <name> \
+    --from-catalog .understudy/evals/catalog.json --name <name> --json
+  understudy evals cohort export <cohort-id> --project <slug> \
+    --workload <name> --out .understudy/evals/<cohort-id> --yes
+  ```
+
+  The catalog contains metadata and content hashes, never prompt/response
+  bodies. The export is limited to the immutable cohort, verifies every
+  downloaded body against its server-recorded SHA-256, and writes no signed
+  URLs to disk. Do not bypass this with a project-wide R2 dump when the hosted
+  cohort API is available.
   Captures may carry either `workload_id` or the older `placement_id` — read
   both.
 

@@ -45,6 +45,8 @@ pub struct SnapshotInfo {
     #[serde(default)]
     pub cached: bool,
     #[serde(default)]
+    pub incomplete: bool,
+    #[serde(default)]
     pub path: Option<String>,
     #[serde(default)]
     pub manifest: bool,
@@ -54,12 +56,35 @@ pub struct SnapshotInfo {
 pub struct MlxRuntimeStatus {
     pub available: bool,
     pub command: String,
+    pub installed_version: Option<String>,
+    pub managed: bool,
     pub detail: String,
+}
+
+#[derive(Deserialize)]
+struct ManagedMlxRuntimeStatus {
+    healthy: bool,
+    runtime_version: String,
+    server_binary: String,
+    detail: String,
+}
+
+fn parse_managed_mlx_status(raw: &str) -> Result<MlxRuntimeStatus, serde_json::Error> {
+    let status = serde_json::from_str::<ManagedMlxRuntimeStatus>(raw)?;
+    Ok(MlxRuntimeStatus {
+        available: status.healthy,
+        command: status.server_binary,
+        installed_version: Some(status.runtime_version),
+        managed: true,
+        detail: status.detail,
+    })
 }
 
 /// The port the MLX server binds — matches Understudy's configured local base URL.
 pub const MLX_PORT: u16 = 8089;
 pub const LOCAL_BASE_URL: &str = "http://127.0.0.1:8089/v1";
+const MIN_CONTEXT_WINDOW_TOKENS: u64 = 1_024;
+const MAX_CONTEXT_WINDOW_TOKENS: u64 = 2_000_000;
 
 /// Marker dropped at the start of a snapshot download and removed only after
 /// every file has landed and verified. While it exists the snapshot must not
@@ -76,6 +101,26 @@ pub fn models_dir() -> Option<PathBuf> {
     }
     let home = std::env::var_os("HOME")?;
     Some(PathBuf::from(home).join(".understudy").join("models"))
+}
+
+/// Read the provider's native attention window from a local MLX model config.
+/// The conversation runtime keeps this separate from its smaller logical
+/// compaction boundary so long inputs remain possible without letting every
+/// multi-turn session grow raw KV state to the model maximum.
+pub fn context_window_tokens(model_path: &str) -> Option<u64> {
+    let raw = std::fs::read_to_string(Path::new(model_path).join("config.json")).ok()?;
+    let config: serde_json::Value = serde_json::from_str(&raw).ok()?;
+    [
+        "/text_config/max_position_embeddings",
+        "/max_position_embeddings",
+        "/model_config/max_position_embeddings",
+        "/text_config/context_length",
+        "/context_length",
+        "/n_ctx",
+    ]
+    .into_iter()
+    .find_map(|pointer| config.pointer(pointer).and_then(serde_json::Value::as_u64))
+    .filter(|tokens| (MIN_CONTEXT_WINDOW_TOKENS..=MAX_CONTEXT_WINDOW_TOKENS).contains(tokens))
 }
 
 /// Live model catalog served by the snapshot service.
@@ -249,6 +294,7 @@ pub fn snapshots() -> Vec<SnapshotInfo> {
             continue;
         };
         row.cached = snapshot_ready(&dir);
+        row.incomplete = dir.join(INCOMPLETE_MARKER).exists();
         row.manifest = dir.join("understudy.serving.json").exists();
         if row.cached {
             row.path = Some(dir.to_string_lossy().into_owned());
@@ -258,22 +304,33 @@ pub fn snapshots() -> Vec<SnapshotInfo> {
 }
 
 pub fn mlx_runtime_status() -> MlxRuntimeStatus {
-    let command = crate::bin::mlx_server();
-    match crate::bin::command("mlx_vlm.server").arg("--help").output() {
-        Ok(out) if out.status.success() => MlxRuntimeStatus {
-            available: true,
-            command,
-            detail: "mlx_vlm.server is available".to_string(),
+    let fallback_command = crate::bin::mlx_server();
+    match crate::bin::command("understudy")
+        .args(["models", "runtime", "status", "--json"])
+        .output()
+    {
+        // `models runtime status` may exit non-zero while unhealthy but still
+        // emits the complete JSON diagnosis. Parse stdout regardless of exit.
+        Ok(out) => match parse_managed_mlx_status(&String::from_utf8_lossy(&out.stdout)) {
+            Ok(status) => status,
+            Err(error) => MlxRuntimeStatus {
+                available: false,
+                command: fallback_command,
+                installed_version: None,
+                managed: false,
+                detail: format!(
+                    "Understudy CLI does not expose a compatible managed MLX/VLM runtime ({error}); update the CLI, then run `understudy models runtime repair`"
+                ),
+            },
         },
-        Ok(out) => MlxRuntimeStatus {
+        Err(error) => MlxRuntimeStatus {
             available: false,
-            command,
-            detail: String::from_utf8_lossy(&out.stderr).trim().to_string(),
-        },
-        Err(err) => MlxRuntimeStatus {
-            available: false,
-            command,
-            detail: err.to_string(),
+            command: fallback_command,
+            installed_version: None,
+            managed: false,
+            detail: format!(
+                "Understudy CLI is unavailable ({error}); install or update it, then run `understudy models runtime repair`"
+            ),
         },
     }
 }
@@ -295,6 +352,19 @@ fn dir_size_gb(p: &Path) -> f32 {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn managed_mlx_status_preserves_cli_binary_and_version() {
+        let status = parse_managed_mlx_status(
+            r#"{"healthy":true,"runtime_version":"0.6.4+abc","server_binary":"/managed/mlx_vlm.server","detail":"ready"}"#,
+        )
+        .unwrap();
+        assert!(status.available);
+        assert!(status.managed);
+        assert_eq!(status.command, "/managed/mlx_vlm.server");
+        assert_eq!(status.installed_version.as_deref(), Some("0.6.4+abc"));
+        assert_eq!(status.detail, "ready");
+    }
 
     fn temp_snapshot_dir(tag: &str) -> PathBuf {
         let dir = std::env::temp_dir().join(format!(
@@ -322,6 +392,48 @@ mod tests {
         std::fs::remove_file(dir.join(INCOMPLETE_MARKER)).unwrap();
         assert!(snapshot_ready(&dir));
         let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn reads_nested_and_top_level_native_context_windows() {
+        let nested = temp_snapshot_dir("nested-context-window");
+        std::fs::write(
+            nested.join("config.json"),
+            r#"{"text_config":{"max_position_embeddings":262144}}"#,
+        )
+        .unwrap();
+        assert_eq!(
+            context_window_tokens(nested.to_str().unwrap()),
+            Some(262_144)
+        );
+        let top_level = temp_snapshot_dir("top-level-context-window");
+        std::fs::write(
+            top_level.join("config.json"),
+            r#"{"max_position_embeddings":131072}"#,
+        )
+        .unwrap();
+        assert_eq!(
+            context_window_tokens(top_level.to_str().unwrap()),
+            Some(131_072),
+        );
+        let _ = std::fs::remove_dir_all(nested);
+        let _ = std::fs::remove_dir_all(top_level);
+    }
+
+    #[test]
+    fn rejects_missing_malformed_and_implausible_context_windows() {
+        let missing = temp_snapshot_dir("missing-context-window");
+        std::fs::write(missing.join("config.json"), "{}").unwrap();
+        assert_eq!(context_window_tokens(missing.to_str().unwrap()), None);
+        let too_large = temp_snapshot_dir("large-context-window");
+        std::fs::write(
+            too_large.join("config.json"),
+            r#"{"max_position_embeddings":3000000}"#,
+        )
+        .unwrap();
+        assert_eq!(context_window_tokens(too_large.to_str().unwrap()), None);
+        let _ = std::fs::remove_dir_all(missing);
+        let _ = std::fs::remove_dir_all(too_large);
     }
 
     #[test]

@@ -1,0 +1,106 @@
+{
+  "format": "understudy-runtime-conformance-evidence-summary-v1",
+  "generated_at": "2026-07-12T05:32:26.448Z",
+  "source_report_sha256": "601be6e6f7a065263762398fd8c6091f4c623a540c8b23a7f1d19db6185bcf47",
+  "source_report_mode": "0600",
+  "environment": {
+    "network_mode": "offline",
+    "hf_hub_offline": true,
+    "transformers_offline": true,
+    "hf_datasets_offline": true,
+    "provider_listener": "loopback-only"
+  },
+  "runtime": {
+    "backend": "pi",
+    "mlx_vlm_version": "0.6.4+bc3461b13a63",
+    "mlx_vlm_commit": "bc3461b13a636d7cb8213b0008d885a9965f1e69",
+    "python": "3.13.13",
+    "model": "gemma-4-e2b-it-qat-mlx-vlm-understudy",
+    "supervisor_mode": "deterministic_fixture",
+    "malformed_tool_mode": "deterministic_fixture",
+    "compaction_mode": "deterministic_fixture"
+  },
+  "result": {
+    "passed": 8,
+    "failed": 0,
+    "complete": true,
+    "eligible_for_promotion": true
+  },
+  "scenarios": [
+    {
+      "id": "basic-chat",
+      "status": "passed",
+      "run_id": "conformance-pi-basic-chat-1783834343015-66108",
+      "provider_usage": { "input_tokens": 131, "output_tokens": 24, "total_tokens": 155 }
+    },
+    {
+      "id": "offline-image",
+      "status": "passed",
+      "run_id": "conformance-pi-offline-image-1783834343015-66108",
+      "image": {
+        "attachment_id": "9983e1746b56623a77f5ecf58c9a95eb30c4c3c2a79de7efad45038d9f57603f",
+        "media_type": "image/png",
+        "byte_count": 75
+      },
+      "provider_usage": { "input_tokens": 394, "output_tokens": 25, "total_tokens": 419 }
+    },
+    {
+      "id": "tool-round",
+      "status": "passed",
+      "run_id": "conformance-pi-tool-round-1783834343015-66108",
+      "tool_calls": 1,
+      "tool_results": 1,
+      "provider_usage_total_tokens": 421
+    },
+    {
+      "id": "malformed-tool-call",
+      "status": "passed",
+      "run_id": "conformance-pi-malformed-tool-call-1783834343015-66108",
+      "raw_arguments": "{bad",
+      "parse_error_preserved": true,
+      "tool_result_ok": false,
+      "provider_usage_total_tokens": 30
+    },
+    {
+      "id": "supervisor-takeover",
+      "status": "passed",
+      "run_id": "conformance-pi-supervisor-takeover-1783834343015-66108",
+      "marker_id": "conformance-pi-supervisor-takeover-1783834343015-66108:intervention:0",
+      "reason": "Frozen conformance forced intervention.",
+      "student_usage": { "source": "unavailable", "complete": false },
+      "supervisor_usage": { "input_tokens": 1, "output_tokens": 1, "total_tokens": 2 },
+      "teacher_usage": { "input_tokens": 268, "output_tokens": 49, "total_tokens": 317 }
+    },
+    {
+      "id": "long-chat-compaction",
+      "status": "passed",
+      "run_id": "conformance-pi-long-chat-compaction-1783834343015-66108",
+      "compaction": {
+        "source_message_count": 18,
+        "retained_message_count": 6,
+        "estimated_tokens_before": 1043,
+        "estimated_tokens_after": 463,
+        "runtime_estimated_tokens_after": 463
+      }
+    },
+    {
+      "id": "restart-resume",
+      "status": "passed",
+      "run_id": "conformance-pi-restart-resume-1783834343015-66108",
+      "provider_usage": { "input_tokens": 164, "output_tokens": 28, "total_tokens": 192 }
+    },
+    {
+      "id": "cancellation",
+      "status": "passed",
+      "run_id": "conformance-pi-cancellation-1783834343015-66108",
+      "stage": "model_stream",
+      "reason": "frozen_conformance_cancel",
+      "usage": { "source": "unavailable", "complete": false }
+    }
+  ],
+  "limitations": [
+    "The deterministic supervisor fixture proves takeover mechanics, not semantic judge quality.",
+    "The deterministic bounded summary proves compaction mechanics, not model-generated summary quality.",
+    "Providers may not emit final usage for interrupted or cancelled streams; missing usage is not attributed as zero."
+  ]
+}

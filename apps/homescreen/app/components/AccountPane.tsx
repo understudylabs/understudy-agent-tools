@@ -12,7 +12,13 @@ const APP_ICONS: { id: AppIconId; label: string; src: string }[] = [
   { id: "paper", label: "Paper", src: "/brand/app-icons/paper.png" },
 ];
 
-export function AccountPane() {
+export function AccountPane({
+  onSignedIn,
+  prioritizeSignIn = false,
+}: {
+  onSignedIn?: () => void;
+  prioritizeSignIn?: boolean;
+} = {}) {
   const [status, setStatus] = useState<Any | null>(null);
   const [keys, setKeys] = useState<Any | null>(null);
   const [platforms, setPlatforms] = useState<Any[] | null>(null);
@@ -80,6 +86,7 @@ export function AccountPane() {
       setCode("");
       setCodeSent(false);
       refresh();
+      onSignedIn?.();
     } catch (e) {
       setErr(String(e));
     } finally {
@@ -107,6 +114,25 @@ export function AccountPane() {
     }
   };
 
+  const signInCard = (
+    <div className="card account-sign-in-card">
+      <div className="card-title" style={{ marginBottom: 4 }}>Sign in / create account</div>
+      <div className="card-sub" style={{ marginBottom: 10 }}>
+        Use GLM 5.2 immediately while Understudy prepares private local chat.
+      </div>
+      <div className="chat-input" style={{ padding: 0 }}>
+        <input className="assign-select" style={{ flex: 1 }} placeholder="you@example.com" value={email} onChange={(e) => setEmail(e.target.value)} />
+        <button className="btn primary" disabled={busy || !email.includes("@")} onClick={sendCode}>{busy ? "…" : "Send code"}</button>
+      </div>
+      {codeSent && (
+        <div className="chat-input" style={{ padding: 0, marginTop: 8 }}>
+          <input className="assign-select" style={{ flex: 1 }} placeholder="one-time code" value={code} onChange={(e) => setCode(e.target.value)} />
+          <button className="btn primary" disabled={busy || !code.trim()} onClick={signIn}>Sign in</button>
+        </div>
+      )}
+    </div>
+  );
+
   return (
     <>
       <div className="pane-head">
@@ -115,6 +141,7 @@ export function AccountPane() {
       </div>
       <div className="pane-body">
         {err && <div className="card err">{err}</div>}
+        {!signedIn && prioritizeSignIn ? signInCard : null}
 
         <div className="card">
           <div className="card-title" style={{ marginBottom: 4 }}>App icon</div>
@@ -148,19 +175,7 @@ export function AccountPane() {
         )}
 
         {!signedIn ? (
-          <div className="card">
-            <div className="card-title" style={{ marginBottom: 8 }}>Sign in / create account</div>
-            <div className="chat-input" style={{ padding: 0 }}>
-              <input className="assign-select" style={{ flex: 1 }} placeholder="you@example.com" value={email} onChange={(e) => setEmail(e.target.value)} />
-              <button className="btn primary" disabled={busy || !email.includes("@")} onClick={sendCode}>{busy ? "…" : "Send code"}</button>
-            </div>
-            {codeSent && (
-              <div className="chat-input" style={{ padding: 0, marginTop: 8 }}>
-                <input className="assign-select" style={{ flex: 1 }} placeholder="one-time code" value={code} onChange={(e) => setCode(e.target.value)} />
-                <button className="btn primary" disabled={busy || !code.trim()} onClick={signIn}>Sign in</button>
-              </div>
-            )}
-          </div>
+          prioritizeSignIn ? null : signInCard
         ) : (
           <>
             <div className="card">

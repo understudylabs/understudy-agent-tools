@@ -417,6 +417,61 @@ describe("install.sh", () => {
     assert.match(readFileSync(calls, "utf8"), /plugin marketplace add /);
   });
 
+  it("resolves the npm package symlink before registering the Codex marketplace", () => {
+    const script = readFileSync("install.sh", "utf8");
+    const home = join(root, "home");
+    const bin = join(root, "bin");
+    const npmRoot = join(root, "npm-root");
+    const packageLink = join(npmRoot, "@understudylabs", "understudy-agent-tools");
+    const calls = join(root, "codex-realpath-calls.txt");
+    mkdirSync(dirname(packageLink), { recursive: true });
+    mkdirSync(bin, { recursive: true });
+    symlinkSync(process.cwd(), packageLink, "dir");
+    writeFileSync(
+      join(bin, "npm"),
+      `#!/usr/bin/env bash\nif [[ "$*" == "root -g" ]]; then printf '%s\\n' "${npmRoot}"; exit 0; fi\nexit 1\n`,
+    );
+    writeFileSync(
+      join(bin, "codex"),
+      `#!/usr/bin/env bash\nprintf '%s\\n' "$*" >> "${calls}"\nexit 0\n`,
+    );
+    chmodSync(join(bin, "npm"), 0o755);
+    chmodSync(join(bin, "codex"), 0o755);
+
+    const result = spawnSync(
+      "bash",
+      [
+        "-s",
+        "--",
+        "--non-interactive",
+        "--only-step",
+        "2",
+        "--agents",
+        "codex",
+        "--no-launch-agent",
+        "--lab",
+        join(root, "lab"),
+      ],
+      {
+        cwd: process.cwd(),
+        input: script,
+        encoding: "utf8",
+        env: {
+          ...process.env,
+          CI: "1",
+          HOME: home,
+          PATH: `${bin}:${process.env.PATH}`,
+          UNDERSTUDY_INSTALL_LOG_DIR: join(root, "logs"),
+        },
+      },
+    );
+
+    assert.equal(result.status, 0, result.stderr || result.stdout);
+    const callsText = readFileSync(calls, "utf8");
+    assert.ok(callsText.includes(`plugin marketplace add ${process.cwd()}`));
+    assert.equal(callsText.includes(packageLink), false);
+  });
+
   it("links the OpenCode skills when explicitly requested", () => {
     const script = readFileSync("install.sh", "utf8");
     const home = join(root, "home");

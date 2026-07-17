@@ -52,7 +52,10 @@ node dist/bin.js status --json
 ## Pre-ramp gates (all must pass)
 
 1. **Frozen-eval verdict exists** — a sweep/optimization result on frozen
-   splits with the incumbent baseline recorded.
+   splits with the incumbent baseline recorded, or a `pass` launch verdict
+   from [`../simulate-before-launch/SKILL.md`](../simulate-before-launch/SKILL.md)
+   for the specific change being ramped (its contract axes — schema validity,
+   tool-call validity — are the same ones step 3 verifies from captures).
 2. **Repeat-replay stability.** Re-run the candidate on the frozen rows N
    times (default 3) and bucket each row: all-repeats-match / some / none
    (the procedure lives in
@@ -133,6 +136,9 @@ recommended next action.
   repeat-replay stability procedure and dispositions.
 - [`../compare-model-sweep/SKILL.md`](../compare-model-sweep/SKILL.md) — the
   frozen-eval verdict required by the pre-ramp gate.
+- [`../simulate-before-launch/SKILL.md`](../simulate-before-launch/SKILL.md) —
+  the offline launch verdict for a single proposed change (the other producer
+  gate 1 accepts).
 - [`../optimize-workload/SKILL.md`](../optimize-workload/SKILL.md) — the
   claim-packet contract for any measured savings statement.
 - [`../check-routing-health/SKILL.md`](../check-routing-health/SKILL.md) —

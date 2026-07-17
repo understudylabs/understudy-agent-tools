@@ -1,5 +1,5 @@
 "use client";
-import { invoke } from "@tauri-apps/api/core";
+import { invoke, isTauri } from "@tauri-apps/api/core";
 import { listen } from "@tauri-apps/api/event";
 import { useCallback, useEffect, useState } from "react";
 
@@ -62,6 +62,7 @@ export function useStatus(): StatusController {
   }, []);
 
   useEffect(() => {
+    if (!isTauri()) return;
     refresh();
     const unsubStatus = listen<StatusSnapshot>("status-changed", (e) => setSnap(e.payload));
     const unsubRes = listen("residency-changed", () => refresh());

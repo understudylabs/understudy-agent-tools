@@ -1,14 +1,41 @@
 import { Command } from "commander";
 import { existsSync, readdirSync, readFileSync } from "node:fs";
-import { dirname, join, relative, resolve } from "node:path";
-import { fileURLToPath } from "node:url";
+import { join, relative, resolve } from "node:path";
 import { runUnderstandCheck, runUnderstandWorkloadCard } from "./understand.js";
-import { buildWorkloadCard, previewCaptureImport, scanCaptureImport } from "./capture-import.js";
+import {
+  buildWorkloadCard,
+  compileCaptureImport,
+  inspectCaptureCsv,
+  prepareCaptureClassificationDataset,
+  previewCaptureImport,
+  scanCaptureImport,
+} from "./capture-import.js";
+import {
+  DEFAULT_CLASSIFIER_MODEL,
+  predictLocalClassifier,
+  startLocalClassifierTraining,
+} from "./local-classifier/index.js";
+import {
+  getLocalClassifierRun,
+  listLocalClassifierRuns,
+  updateLocalClassifierRun,
+} from "./local-classifier/registry.js";
+import {
+  exportLocalClassifierPredictions,
+  repeatLocalClassifierEvaluation,
+} from "./local-classifier/lifecycle.js";
+import {
+  compareClassifierWithFrontier,
+  DEFAULT_FRONTIER_CLASSIFIER_BUDGET_USD,
+  DEFAULT_FRONTIER_CLASSIFIER_MODEL,
+} from "./local-classifier/frontier.js";
 import { planRouteDecision } from "./route-decision.js";
 import { buildValueReport } from "./value-report.js";
 import { type AgentPlatformAdapter, agentPlatformAdapters, findAgentPlatformAdapter } from "./agent-platforms.js";
 import { registerCapturesCommand } from "./commands/captures.js";
+import { registerEvalsCommand } from "./commands/evals.js";
 import { registerDaemonCommand } from "./commands/daemon.js";
+import { registerDesktopCommand } from "./commands/desktop.js";
 import { registerDoctorCommand } from "./commands/doctor.js";
 import { registerGatewayCommand } from "./commands/gateway.js";
 import { registerKeysCommand } from "./commands/keys.js";
@@ -18,6 +45,7 @@ import { registerModelsCommand } from "./commands/models.js";
 import { registerProjectsCommand } from "./commands/projects.js";
 import { registerRoutesCommand } from "./commands/routes.js";
 import { registerRunCommand } from "./commands/run.js";
+import { registerRuntimeCommand } from "./commands/runtime.js";
 import { registerSetupCodeCommand } from "./commands/setup-code.js";
 import { registerSetupCommand } from "./commands/setup.js";
 import { registerStatusCommand } from "./commands/status.js";
@@ -26,8 +54,9 @@ import { registerWorkloadsCommand } from "./commands/workloads.js";
 import { registerExperimentsCommands, registerNextCommand } from "./commands/experiments.js";
 import { daemonStatus } from "./internal/daemon.js";
 import { readCliVersion, readManifestVersions } from "./internal/version.js";
+import { installedPackageRoot } from "./internal/package-root.js";
 
-export const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
+export const repoRoot = installedPackageRoot();
 
 type SkillSummary = {
   name: string;
@@ -222,7 +251,7 @@ async function printDoctorJson(): Promise<void> {
     "README.md",
     "LICENSE",
     "package.json",
-    "src/index.ts",
+    "dist/index.js",
     "skills/understudy/SKILL.md",
   ];
   const missing = required.filter((path) => !existsSync(join(repoRoot, path)));
@@ -288,18 +317,31 @@ function parseNonNegativeNumber(value: string): number {
   return parsed;
 }
 
+function parsePositiveNumber(value: string): number {
+  const parsed = Number(value);
+  if (!Number.isFinite(parsed) || parsed <= 0) {
+    throw new Error(`Expected a positive number, got: ${value}`);
+  }
+  return parsed;
+}
+
+function collectRepeated(value: string, previous: string[]): string[] {
+  return [...previous, value];
+}
+
 function registerCaptureImportCommands(program: Command): void {
   const captureImport = program
     .command("capture-import")
-    .description("Scan and preview local import candidates using metadata only");
+    .description("Compile local import candidates and explicitly inspect approved data");
 
   captureImport
     .command("scan")
     .description("Scan a local repo for capture/import source metadata")
     .option("--repo <path>", "Repository to scan", ".")
+    .option("--source <path>", "Exact file or directory to scan inside the repository")
     .option("--json", "Output JSON")
-    .action((options: { repo: string; json?: boolean }) => {
-      const manifest = scanCaptureImport(options.repo);
+    .action((options: { repo: string; source?: string; json?: boolean }) => {
+      const manifest = scanCaptureImport(options.repo, new Date(), options.source);
       if (commandJsonEnabled(program, options)) {
         console.log(JSON.stringify(manifest, null, 2));
         return;
@@ -307,6 +349,359 @@ function registerCaptureImportCommands(program: Command): void {
       console.log(`capture-import scan: ${manifest.source_count} metadata-only sources`);
       console.log(`manifest: ${relative(process.cwd(), join(resolve(options.repo), ".understudy/capture-import/capture-sources.json"))}`);
       console.log(`redaction: ${manifest.redaction_manifest_path}`);
+    });
+
+  captureImport
+    .command("compile")
+    .description("Compile one dropped local file or directory into a metadata-only Workload Card")
+    .requiredOption("--source <path>", "Local file or directory to compile")
+    .option("--output-root <path>", "Private local artifact root; defaults under ~/.understudy")
+    .option("--json", "Output JSON")
+    .action((options: { source: string; outputRoot?: string; json?: boolean }) => {
+      const result = compileCaptureImport(options.source, new Date(), options.outputRoot);
+      if (commandJsonEnabled(program, options)) {
+        console.log(JSON.stringify(result, null, 2));
+        return;
+      }
+      console.log(`capture-import compile: ${result.source_count} source(s) from ${result.source_name}`);
+      console.log(`workload card: ${result.workload_card_path}`);
+      console.log("payload_read: false");
+    });
+
+  captureImport
+    .command("inspect-csv")
+    .description("Read one bounded local delimited table and write a statistics-only training inspection")
+    .requiredOption("--source <path>", "Local CSV, TSV, tab, text, or extensionless table to inspect")
+    .requiredOption("--artifact-root <path>", "Existing private artifact root from capture-import compile")
+    .option("--json", "Output JSON")
+    .action((options: { source: string; artifactRoot: string; json?: boolean }) => {
+      const result = inspectCaptureCsv(options.source, options.artifactRoot);
+      if (commandJsonEnabled(program, options)) {
+        console.log(JSON.stringify(result, null, 2));
+        return;
+      }
+      console.log(`capture-import inspect-csv: ${result.row_count} row(s), ${result.column_count} column(s)`);
+      console.log(`mapping: ${result.recommended_mapping.label_column ?? "label confirmation required"}`);
+      console.log(`artifact: ${result.artifact_path}`);
+      console.log("payload_read: true (local only; source rows were not copied)");
+    });
+
+  captureImport
+    .command("prepare-classification")
+    .description("Transform an inspected table into deterministic local train, dev, and holdout JSONL")
+    .requiredOption("--source <path>", "Inspected local delimited table")
+    .requiredOption("--artifact-root <path>", "Existing private artifact root from capture-import compile")
+    .requiredOption("--label-column <name>", "Caller-confirmed label column")
+    .requiredOption("--group-column <name>", "Caller-confirmed merchant, payee, or description leakage group")
+    .option("--input-column <name>", "Caller-confirmed input column; repeat for multiple columns", collectRepeated, [])
+    .option("--json", "Output JSON")
+    .action((options: {
+      source: string;
+      artifactRoot: string;
+      labelColumn: string;
+      groupColumn: string;
+      inputColumn: string[];
+      json?: boolean;
+    }) => {
+      const result = prepareCaptureClassificationDataset(
+        options.source,
+        options.artifactRoot,
+        options.inputColumn,
+        options.labelColumn,
+        options.groupColumn,
+      );
+      if (commandJsonEnabled(program, options)) {
+        console.log(JSON.stringify(result, null, 2));
+        return;
+      }
+      console.log(`capture-import prepare-classification: ${result.row_count} row(s)`);
+      console.log(
+        `splits: train ${result.splits.train.row_count}, dev ${result.splits.dev.row_count}, holdout ${result.splits.holdout.row_count}`,
+      );
+      console.log(`manifest: ${result.manifest_path}`);
+      console.log("local_only: true (transformed examples were persisted locally)");
+    });
+
+  captureImport
+    .command("train-classification")
+    .description("Fine-tune and evaluate a local text classifier from a prepared dataset")
+    .requiredOption("--manifest <path>", "Prepared classification dataset manifest")
+    .requiredOption("--run-id <id>", "Immutable local training run identifier")
+    .option("--output-root <path>", "Private local training-run root")
+    .option("--runtime-root <path>", "Content-addressed local training runtime root")
+    .option("--model <id>", "Hugging Face sequence-classification model", DEFAULT_CLASSIFIER_MODEL)
+    .option("--model-revision <revision>", "Pinned model revision")
+    .option("--epochs <count>", "Training epochs", parsePositiveInteger)
+    .option("--batch-size <count>", "Training batch size", parsePositiveInteger)
+    .option("--learning-rate <rate>", "Training learning rate", parseNonNegativeNumber)
+    .option("--max-length <tokens>", "Maximum input token length", parsePositiveInteger)
+    .option("--max-runtime-ms <milliseconds>", "Terminal runtime timeout", parsePositiveInteger)
+    .option("--jsonl", "Stream machine-readable phase and terminal result events")
+    .option("--json", "Output the terminal run manifest as JSON")
+    .action(async (options: {
+      manifest: string;
+      runId: string;
+      outputRoot?: string;
+      runtimeRoot?: string;
+      model: string;
+      modelRevision?: string;
+      epochs?: number;
+      batchSize?: number;
+      learningRate?: number;
+      maxLength?: number;
+      maxRuntimeMs?: number;
+      jsonl?: boolean;
+      json?: boolean;
+    }) => {
+      const job = startLocalClassifierTraining({
+        datasetManifestPath: options.manifest,
+        runId: options.runId,
+        outputRoot: options.outputRoot,
+        runtimeRoot: options.runtimeRoot,
+        modelId: options.model,
+        modelRevision: options.modelRevision,
+        epochs: options.epochs,
+        batchSize: options.batchSize,
+        learningRate: options.learningRate,
+        maxLength: options.maxLength,
+        maxRuntimeMs: options.maxRuntimeMs,
+        onEvent: options.jsonl ? (event) => console.log(JSON.stringify(event)) : undefined,
+      });
+      const result = await job.completion;
+      if (options.jsonl) {
+        if (result.status !== "completed") process.exitCode = 1;
+        return;
+      }
+      if (commandJsonEnabled(program, options)) {
+        console.log(JSON.stringify(result, null, 2));
+        if (result.status !== "completed") process.exitCode = 1;
+      } else if (result.status === "completed") {
+        console.log(`capture-import train-classification: ${result.verdict?.status ?? "completed"}`);
+        console.log(`heldout macro-F1: ${result.heldout?.macro_f1.toFixed(4) ?? "unavailable"}`);
+        console.log(`manifest: ${result.manifest_path}`);
+      } else {
+        console.error(result.error?.message ?? `Local training ended with status ${result.status}.`);
+        process.exitCode = 1;
+      }
+    });
+
+  captureImport
+    .command("predict-classification")
+    .description("Run a completed local classifier without retaining the input text")
+    .requiredOption("--run-manifest <path>", "Completed local classification run manifest")
+    .option("--text <text>", "New local text to classify; visible to local process inspection")
+    .option("--text-stdin", "Read new local text from stdin without exposing it in process arguments")
+    .option("--runtime-root <path>", "Content-addressed local training runtime root")
+    .option("--max-length <tokens>", "Maximum input token length", parsePositiveInteger)
+    .option("--json", "Output JSON")
+    .action((options: {
+      runManifest: string;
+      text?: string;
+      textStdin?: boolean;
+      runtimeRoot?: string;
+      maxLength?: number;
+      json?: boolean;
+    }) => {
+      if (Boolean(options.text) === Boolean(options.textStdin)) {
+        throw new Error("Choose exactly one of --text or --text-stdin.");
+      }
+      const text = options.textStdin ? readFileSync(0, "utf8") : options.text!;
+      const prediction = predictLocalClassifier({
+        runManifestPath: options.runManifest,
+        text,
+        runtimeRoot: options.runtimeRoot,
+        maxLength: options.maxLength,
+      });
+      if (commandJsonEnabled(program, options)) {
+        console.log(JSON.stringify(prediction, null, 2));
+        return;
+      }
+      console.log(`prediction: ${prediction.label}`);
+      console.log(`confidence: ${(prediction.scores[0]?.score ?? 0).toFixed(4)}`);
+      console.log("local_only: true (input text was not retained)");
+    });
+
+  captureImport
+    .command("repeat-classification-evaluation")
+    .description("Re-run a saved classifier on its exact immutable holdout and persist new evidence")
+    .requiredOption("--run-manifest <path>", "Completed local classification run manifest")
+    .option("--evaluation-id <id>", "Immutable repeat-evaluation identifier")
+    .option("--runtime-root <path>", "Content-addressed local lifecycle runtime root")
+    .option("--max-length <tokens>", "Maximum input token length", parsePositiveInteger)
+    .option("--json", "Output JSON")
+    .action((options: {
+      runManifest: string;
+      evaluationId?: string;
+      runtimeRoot?: string;
+      maxLength?: number;
+      json?: boolean;
+    }) => {
+      const result = repeatLocalClassifierEvaluation({
+        runManifestPath: options.runManifest,
+        evaluationId: options.evaluationId,
+        runtimeRoot: options.runtimeRoot,
+        maxLength: options.maxLength,
+      });
+      if (commandJsonEnabled(program, options)) {
+        console.log(JSON.stringify(result, null, 2));
+        return;
+      }
+      console.log(`repeat evaluation: ${result.verdict.status}`);
+      console.log(`correct answers: ${(result.repeat.accuracy * 100).toFixed(1)}%`);
+      console.log(`artifact: ${result.artifact_path}`);
+      console.log("local_only: true (holdout examples were not uploaded)");
+    });
+
+  captureImport
+    .command("export-classification-predictions")
+    .description("Append local classifier labels to a bounded CSV and write an evidence sidecar")
+    .requiredOption("--run-manifest <path>", "Completed local classification run manifest")
+    .option("--source <path>", "CSV/TSV to label; defaults to the original training source")
+    .option("--input-column <columns...>", "Source columns to combine; defaults to the confirmed training mapping")
+    .option("--output <path>", "Destination CSV; defaults under the immutable local run")
+    .option("--runtime-root <path>", "Content-addressed local lifecycle runtime root")
+    .option("--max-length <tokens>", "Maximum input token length", parsePositiveInteger)
+    .option("--json", "Output JSON")
+    .action((options: {
+      runManifest: string;
+      source?: string;
+      inputColumn?: string[];
+      output?: string;
+      runtimeRoot?: string;
+      maxLength?: number;
+      json?: boolean;
+    }) => {
+      const result = exportLocalClassifierPredictions({
+        runManifestPath: options.runManifest,
+        sourcePath: options.source,
+        inputColumns: options.inputColumn,
+        outputPath: options.output,
+        runtimeRoot: options.runtimeRoot,
+        maxLength: options.maxLength,
+      });
+      if (commandJsonEnabled(program, options)) {
+        console.log(JSON.stringify(result, null, 2));
+        return;
+      }
+      console.log(`prediction export: ${result.predicted_row_count.toLocaleString()} labeled row(s)`);
+      if (result.skipped_row_count > 0) console.log(`skipped empty rows: ${result.skipped_row_count.toLocaleString()}`);
+      console.log(`output: ${result.output_path}`);
+      console.log(`evidence: ${result.manifest_path}`);
+      console.log("local_only: true (source and predictions were not uploaded)");
+    });
+
+  captureImport
+    .command("list-classification-runs")
+    .description("List durable local classifier runs without reading training examples")
+    .option("--capture-root <path>", "Private capture-import root; defaults under ~/.understudy")
+    .option("--archived", "List archived runs instead of active runs")
+    .option("--limit <count>", "Maximum runs to return", parsePositiveInteger, 100)
+    .option("--json", "Output JSON")
+    .action((options: { captureRoot?: string; archived?: boolean; limit: number; json?: boolean }) => {
+      const runs = listLocalClassifierRuns({
+        captureRoot: options.captureRoot,
+        archived: Boolean(options.archived),
+        limit: options.limit,
+      });
+      if (commandJsonEnabled(program, options)) {
+        console.log(JSON.stringify(runs, null, 2));
+        return;
+      }
+      if (runs.length === 0) {
+        console.log(options.archived ? "No archived local classifiers." : "No local classifiers yet.");
+        return;
+      }
+      for (const run of runs) {
+        const accuracy = run.evaluation ? `${(run.evaluation.accuracy * 100).toFixed(1)}% correct` : run.run_status;
+        console.log(`${run.display_name}\t${accuracy}\t${run.manifest_path}`);
+      }
+    });
+
+  captureImport
+    .command("classification-run")
+    .description("Read or update rename/archive metadata for one immutable local classifier run")
+    .requiredOption("--run-manifest <path>", "Local classification run manifest")
+    .option("--name <name>", "Human-readable local display name")
+    .option("--archive", "Hide this run from the active model list")
+    .option("--restore", "Return this run to the active model list")
+    .option("--json", "Output JSON")
+    .action((options: {
+      runManifest: string;
+      name?: string;
+      archive?: boolean;
+      restore?: boolean;
+      json?: boolean;
+    }) => {
+      if (options.archive && options.restore) {
+        throw new Error("Choose either --archive or --restore, not both.");
+      }
+      const changed = options.name !== undefined || options.archive || options.restore;
+      const run = changed
+        ? updateLocalClassifierRun({
+          runManifestPath: options.runManifest,
+          displayName: options.name,
+          archived: options.archive ? true : options.restore ? false : undefined,
+        })
+        : getLocalClassifierRun(options.runManifest);
+      if (commandJsonEnabled(program, options)) {
+        console.log(JSON.stringify(run, null, 2));
+        return;
+      }
+      console.log(`${run.display_name}: ${run.run_status}${run.archived_at ? " (archived)" : ""}`);
+      console.log(`manifest: ${run.manifest_path}`);
+    });
+
+  captureImport
+    .command("compare-classification-frontier")
+    .description("Compare a completed local classifier with a frontier model on the exact same holdout")
+    .requiredOption("--run-manifest <path>", "Completed local classification run manifest")
+    .option("--model <id>", "Frontier catalog model", DEFAULT_FRONTIER_CLASSIFIER_MODEL)
+    .option(
+      "--confirm-remote",
+      "Confirm held-out examples may be sent to the named managed frontier model; training examples remain local",
+    )
+    .option(
+      "--confirm-spend",
+      "Confirm paid frontier inference within the explicit --budget-usd cap",
+    )
+    .option(
+      "--budget-usd <usd>",
+      "Hard maximum approved frontier spend in USD",
+      parsePositiveNumber,
+      DEFAULT_FRONTIER_CLASSIFIER_BUDGET_USD,
+    )
+    .option("--jsonl", "Stream machine-readable phase and terminal result events")
+    .option("--json", "Output the terminal comparison artifact as JSON")
+    .action(async (options: {
+      runManifest: string;
+      model: string;
+      confirmRemote?: boolean;
+      confirmSpend?: boolean;
+      budgetUsd: number;
+      jsonl?: boolean;
+      json?: boolean;
+    }) => {
+      const result = await compareClassifierWithFrontier({
+        runManifestPath: options.runManifest,
+        modelId: options.model,
+        confirmRemote: Boolean(options.confirmRemote),
+        confirmSpend: Boolean(options.confirmSpend),
+        budgetUsd: options.budgetUsd,
+        onEvent: options.jsonl ? (event) => console.log(JSON.stringify(event)) : undefined,
+      });
+      if (options.jsonl) {
+        console.log(JSON.stringify({ type: "result", result }));
+        return;
+      }
+      if (commandJsonEnabled(program, options)) {
+        console.log(JSON.stringify(result, null, 2));
+        return;
+      }
+      console.log(`capture-import compare-classification-frontier: ${result.requested_model}`);
+      console.log(`same holdout: ${result.row_count} row(s), ${result.holdout_sha256}`);
+      console.log(`correct answers: ${(result.heldout.accuracy * 100).toFixed(1)}%`);
+      console.log(`frontier spend: $${result.spend.attributed_cost_usd.toFixed(4)} (approved cap $${result.spend.approved_budget_usd.toFixed(2)})`);
+      console.log(`artifact: ${result.artifact_path}`);
     });
 
   captureImport
@@ -441,6 +836,7 @@ export function buildProgram(): Command {
 
   registerDoctorCommand(program, printDoctorJson);
   registerDaemonCommand(program);
+  registerDesktopCommand(program);
 
   registerLoginCommand(program);
   registerLogoutCommand(program);
@@ -450,11 +846,13 @@ export function buildProgram(): Command {
   registerProjectsCommand(program);
   registerWorkloadsCommand(program);
   registerCapturesCommand(program);
+  registerEvalsCommand(program);
   registerGatewayCommand(program);
   registerRoutesCommand(program);
   registerSetupCommand(program);
   registerSetupCodeCommand(program);
   registerRunCommand(program);
+  registerRuntimeCommand(program);
 
   const understand = program
     .command("capture-evidence")

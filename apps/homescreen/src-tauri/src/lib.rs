@@ -1,12 +1,15 @@
 mod aa;
 mod account;
-mod anthropic;
 mod agent_card;
 mod agent_ops;
+mod anthropic;
 mod bin;
 mod bootstrap;
 mod chat;
+mod chat_attachments;
 mod commands;
+mod conversation_runtime;
+mod conversation_sidecar;
 mod creds;
 mod custom_evals;
 mod db;
@@ -21,10 +24,20 @@ mod rlm;
 mod route_policy;
 mod server;
 mod sidecar;
+mod supervision_export;
+mod supervision_review;
+mod supervision_tiebreaker;
+mod tool_proof;
+mod workload_drop;
 
-use tauri::menu::{Menu, MenuItem, PredefinedMenuItem};
+use std::time::{Duration, Instant};
+use tauri::menu::{Menu, MenuBuilder, MenuItem, PredefinedMenuItem, SubmenuBuilder};
 use tauri::tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent};
-use tauri::Manager;
+use tauri::{Emitter, Manager};
+
+const CHECK_FOR_UPDATES_MENU_ID: &str = "check-for-updates";
+const CHECK_FOR_UPDATES_TRAY_ID: &str = "tray-check-for-updates";
+const CHECK_FOR_UPDATES_EVENT: &str = "check-for-updates";
 
 fn show_window(app: &tauri::AppHandle) {
     if let Some(w) = app.get_webview_window("main") {
@@ -33,17 +46,73 @@ fn show_window(app: &tauri::AppHandle) {
     }
 }
 
+fn request_update_check(app: &tauri::AppHandle) {
+    show_window(app);
+    let _ = app.emit(CHECK_FOR_UPDATES_EVENT, ());
+}
+
+#[tauri::command]
+fn restart_app(app: tauri::AppHandle) {
+    app.restart();
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     tauri::Builder::default()
         .plugin(tauri_plugin_opener::init())
+        .menu(|app| {
+            let app_menu = SubmenuBuilder::new(app, "Understudy")
+                .about(None)
+                .text(CHECK_FOR_UPDATES_MENU_ID, "Check for Updates…")
+                .separator()
+                .services()
+                .separator()
+                .hide()
+                .hide_others()
+                .show_all()
+                .separator()
+                .quit()
+                .build()?;
+            let edit_menu = SubmenuBuilder::new(app, "Edit")
+                .undo()
+                .redo()
+                .separator()
+                .cut()
+                .copy()
+                .paste()
+                .select_all()
+                .build()?;
+            let window_menu = SubmenuBuilder::new(app, "Window")
+                .minimize()
+                .fullscreen()
+                .separator()
+                .bring_all_to_front()
+                .build()?;
+            MenuBuilder::new(app)
+                .items(&[&app_menu, &edit_menu, &window_menu])
+                .build()
+        })
+        .on_menu_event(|app, event| {
+            if event.id().as_ref() == CHECK_FOR_UPDATES_MENU_ID {
+                request_update_check(app);
+            }
+        })
         .setup(|app| {
+            let setup_started = Instant::now();
+            #[cfg(desktop)]
+            app.handle()
+                .plugin(tauri_plugin_updater::Builder::new().build())?;
+
             let data_dir = app.path().app_data_dir().expect("app data dir resolved");
 
+            let machine_started = Instant::now();
             let machine = metrics::detect_machine();
             let residency = residency::Residency::new(machine.memory_gb);
+            let machine_ms = machine_started.elapsed().as_millis();
 
+            let db_started = Instant::now();
             let db = db::Db::open(data_dir).expect("understudy database opened");
+            let db_ms = db_started.elapsed().as_millis();
             app.manage(db);
             app.manage(metrics::MetricsReader::new());
             app.manage(machine);
@@ -53,26 +122,59 @@ pub fn run() {
             app.manage(agent_ops::Downloads::new());
             app.manage(agent_ops::BenchRuns::new());
 
-            // Re-warm the previously-warm model set (background-safe).
+            // Paint the shell before process reconciliation or model re-warm.
+            // This is background work, but starting it during the first frame
+            // still competes for CPU and can make macOS report the app as
+            // unresponsive on slower machines.
             let handle = app.handle().clone();
             tauri::async_runtime::spawn(async move {
-                if let Some(r) = handle.try_state::<residency::Residency>() {
-                    r.inner().restore(&handle);
-                }
+                tokio::time::sleep(Duration::from_millis(500)).await;
+                let restore_handle = handle.clone();
+                let _ = tauri::async_runtime::spawn_blocking(move || {
+                    if let Some(r) = restore_handle.try_state::<residency::Residency>() {
+                        r.inner().restore(&restore_handle);
+                    }
+                })
+                .await;
             });
 
             // Refresh the model catalog from the snapshot service in the
             // background; snapshots() serves the bundled fallback until (and
             // unless) a live catalog lands.
             tauri::async_runtime::spawn(async {
+                tokio::time::sleep(Duration::from_millis(1_500)).await;
                 let _ = models::refresh_catalog().await;
             });
 
             // Local API server (HTTP + MCP + A2A) for coding agents.
             server::start(app.handle().clone());
 
+            // The CLI-owned runtime may survive an app restart, while the
+            // Desktop tool credential is bound to the current local API.
+            // Reconcile that binding quietly at launch so a healthy runtime
+            // never becomes a user-facing repair chore.
+            let runtime_handle = app.handle().clone();
+            tauri::async_runtime::spawn(async move {
+                tokio::time::sleep(Duration::from_millis(900)).await;
+                match conversation_sidecar::ensure_agent_ready(runtime_handle.clone()).await {
+                    Ok(()) => {
+                        let _ = runtime_handle.emit("conversation-runtime-ready", ());
+                    }
+                    Err(error) => {
+                        eprintln!("understudy runtime: automatic reconnect failed: {error}");
+                    }
+                }
+            });
+
             // Menu-bar tray.
             let show = MenuItem::with_id(app, "show", "Show Understudy", true, None::<&str>)?;
+            let updates = MenuItem::with_id(
+                app,
+                CHECK_FOR_UPDATES_TRAY_ID,
+                "Check for Updates…",
+                true,
+                None::<&str>,
+            )?;
             let conn = MenuItem::with_id(
                 app,
                 "connect",
@@ -87,9 +189,13 @@ pub fn run() {
                 true,
                 None::<&str>,
             )?;
-            let sep = PredefinedMenuItem::separator(app)?;
+            let update_sep = PredefinedMenuItem::separator(app)?;
+            let quit_sep = PredefinedMenuItem::separator(app)?;
             let quit = MenuItem::with_id(app, "quit", "Quit Understudy", true, None::<&str>)?;
-            let menu = Menu::with_items(app, &[&show, &conn, &disc, &sep, &quit])?;
+            let menu = Menu::with_items(
+                app,
+                &[&show, &updates, &update_sep, &conn, &disc, &quit_sep, &quit],
+            )?;
 
             let icon = app
                 .default_window_icon()
@@ -102,6 +208,7 @@ pub fn run() {
                 .menu(&menu)
                 .on_menu_event(|app, event| match event.id.as_ref() {
                     "show" => show_window(app),
+                    CHECK_FOR_UPDATES_TRAY_ID => request_update_check(app),
                     "connect" => {
                         let _ = bin::command("moraine").arg("up").status();
                     }
@@ -123,10 +230,18 @@ pub fn run() {
                 })
                 .build(app)?;
 
+            eprintln!(
+                "understudy startup: setup-ready={}ms machine={}ms db={}ms",
+                setup_started.elapsed().as_millis(),
+                machine_ms,
+                db_ms,
+            );
+
             Ok(())
         })
         .invoke_handler(tauri::generate_handler![
             commands::get_status,
+            commands::runtime_cache_health,
             commands::anthropic_models,
             commands::anthropic_status,
             commands::anthropic_key_set,
@@ -134,13 +249,18 @@ pub fn run() {
             commands::disconnect,
             commands::list_models,
             commands::list_snapshot_models,
+            commands::prepare_default_local_model,
             commands::mlx_runtime_status,
             commands::set_app_icon,
             commands::bootstrap_status,
+            commands::desktop_health,
             commands::install_uv,
             commands::install_mlx_runtime,
             commands::install_understudy_agent_tools,
-            commands::download_snapshot_model,
+            commands::start_snapshot_download,
+            commands::list_snapshot_downloads,
+            commands::snapshot_download_status,
+            commands::cancel_snapshot_download,
             commands::get_residency,
             commands::add_slot,
             commands::assign_slot,
@@ -177,6 +297,16 @@ pub fn run() {
             commands::export_automationbench_handoff,
             commands::chat_runs,
             commands::chat_route_metrics,
+            commands::chat_session_latest,
+            commands::chat_sessions_list,
+            commands::chat_session_get,
+            commands::chat_session_save,
+            commands::chat_session_archive,
+            commands::chat_session_restore,
+            commands::chat_sessions_archive_all,
+            chat_attachments::chat_attachments_store,
+            chat_attachments::chat_attachments_hydrate,
+            chat_attachments::chat_attachments_delete_session,
             commands::run_fusion_benchmark,
             commands::run_fusion_benchmark_matrix,
             commands::run_fusion_benchmark_matrix_live,
@@ -188,6 +318,29 @@ pub fn run() {
             commands::sidekick_runs,
             commands::sidekick_metrics,
             commands::set_sidekick_run_feedback,
+            commands::record_supervisor_feedback,
+            commands::supervisor_feedback_for_session,
+            supervision_review::supervision_review_queue,
+            supervision_tiebreaker::supervision_tiebreaker_status,
+            supervision_tiebreaker::supervision_tiebreaker_set_route,
+            supervision_tiebreaker::supervision_tiebreaker_set_enabled,
+            supervision_tiebreaker::supervision_tiebreaker_analyze,
+            supervision_tiebreaker::record_tiebreaker_feedback,
+            tool_proof::desktop_tool_proof_run,
+            tool_proof::desktop_tool_proof_list,
+            tool_proof::desktop_tool_proof_prepare,
+            workload_drop::compile_dropped_workload,
+            workload_drop::inspect_dropped_csv,
+            workload_drop::prepare_dropped_csv_classification,
+            workload_drop::local_classification_training_examples,
+            workload_drop::start_local_classification_training,
+            workload_drop::cancel_local_classification_training,
+            workload_drop::compare_local_classification_with_frontier,
+            workload_drop::predict_local_classification,
+            workload_drop::list_local_classification_runs,
+            workload_drop::update_local_classification_run,
+            workload_drop::repeat_local_classification_evaluation,
+            workload_drop::export_local_classification_predictions,
             commands::sidekick_decisions,
             commands::sidekick_events,
             commands::sidekick_session_summaries,
@@ -196,15 +349,25 @@ pub fn run() {
             commands::get_setting,
             commands::set_setting,
             commands::server_info,
+            conversation_sidecar::conversation_runtime_start,
+            conversation_sidecar::conversation_runtime_repair,
+            conversation_sidecar::conversation_runtime_cancel,
             rlm::rlm_demo_catalog,
             rlm::rlm_plan,
             rlm::run_rlm_live,
             chat::chat_stream,
+            restart_app,
         ])
         .build(tauri::generate_context!())
         .expect("error while running tauri application")
-        .run(|_app, event| {
+        .run(|app, event| {
             if let tauri::RunEvent::Exit = event {
+                // A normal quit owns server teardown. If the app crashes,
+                // residency restore reaps only exact orphaned path+port
+                // matches before it can warm another model.
+                if let Some(residency) = app.try_state::<residency::Residency>() {
+                    residency.shutdown();
+                }
                 // Graceful shutdown: the agent card must not keep
                 // advertising a dead pid as a healthy local daemon.
                 agent_card::mark_stopped();

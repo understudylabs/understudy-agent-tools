@@ -1,12 +1,12 @@
 {
   "$schema": "https://schema.tauri.app/config/2",
   "productName": "Understudy",
-  "version": "0.2.5",
+  "version": "0.3.28",
   "identifier": "com.homescreen.app",
   "build": {
-    "beforeDevCommand": "bun run dev",
+    "beforeDevCommand": "node ../../scripts/build-desktop-cli.mjs && bun run dev",
     "devUrl": "http://localhost:1420",
-    "beforeBuildCommand": "bun run build",
+    "beforeBuildCommand": "node ../../scripts/build-desktop-cli.mjs && bun run build",
     "frontendDist": "../out"
   },
   "app": {
@@ -21,7 +21,8 @@
           "x": 17,
           "y": 25
         },
-        "acceptFirstMouse": true
+        "acceptFirstMouse": true,
+        "theme": "Dark"
       }
     ],
     "security": {
@@ -30,6 +31,7 @@
   },
   "bundle": {
     "active": true,
+    "createUpdaterArtifacts": true,
     "targets": "all",
     "icon": [
       "icons/32x32.png",
@@ -38,5 +40,13 @@
       "icons/icon.icns",
       "icons/icon.ico"
     ]
+  },
+  "plugins": {
+    "updater": {
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IERBMTQ1NDRFRDI5NUExNUYKUldSZm9aWFNUbFFVMm5scWwwSHhOaWRpYlNJZVVKMGxSaDgybDUyUHRYOVU2aDhocXlVWlpYdXcK",
+      "endpoints": [
+        "https://github.com/understudylabs/understudy-agent-tools/releases/latest/download/latest.json"
+      ]
+    }
   }
 }

@@ -59,12 +59,15 @@ route for compliance. For pure remote inference/routing use
 Before spawning your own MLX server, check for the desktop app's local daemon:
 read `~/.understudy/agent-card.json` and trust its `app` block only after a
 pid check on `app.pid` and a health probe of `<app.base_url>/health`
-(`understudy daemon status` does exactly this; schema in
+(`understudy daemon status` does exactly this; then run
+`understudy desktop capabilities`; schema in
 [`../onboard/reference.md`](../onboard/reference.md)). A running app already
 manages warm model slots (`app.warm_models`, each an OpenAI-compatible
 endpoint on its own port) and exposes warm/cool/assign, downloads, benchmarks,
-and chat over its authenticated HTTP + MCP server — reuse those slots instead
-of standing up a second server against the same weights and memory budget.
+and canonical image chat over its authenticated REST + CLI + MCP surface. Use
+`understudy desktop chat --slot <id> ...` so the turn gets an exact `run_id`,
+streamed runtime events, cancellation, and immutable replay; do not drive the
+GUI or stand up a second server against the same weights and memory budget.
 
 ## Flow
 

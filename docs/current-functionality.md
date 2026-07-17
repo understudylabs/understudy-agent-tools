@@ -11,7 +11,7 @@ for:
 | --- | --- | --- |
 | Public spine | `spine`, `skills` | Kept in TypeScript. |
 | Local workload discovery | `demo scan`, `demo plan`, `workload-discovery scan`, `workload-discovery plan` | Restored as metadata-only `capture-evidence check` and `capture-evidence workload-card`; old `understand` remains a compatibility alias. |
-| Capture/import | `capture-import scan`, `capture-import preview`, `capture-import workload-card` | Restored in TypeScript as metadata-only local scan, bounded preview, and workload-card artifacts. |
+| Capture/import | `capture-import scan`, `capture-import preview`, `capture-import workload-card`, `capture-import compile` | Restored in TypeScript as metadata-only local scan, bounded preview, exact file/folder compilation, and workload-card artifacts. |
 | Route decision | `route-decision plan --workload-card ...` | Restored in TypeScript. Emits the JSON contract from `docs/route-decision-packet-template.md` with conservative evaluate-first routes only. |
 | Value report | `value report` | Restored in TypeScript. Emits conservative value reports only from measured evidence or explicit overrides. |
 | Validate/optimize proof gates | Python helper scripts under `skills/optimize-workload/scripts/` | Restored as deterministic TypeScript gates plus `uv`-orchestrated optimizer adapters. Python remains runtime-only for GEPA/DSPy packages. |
@@ -46,6 +46,7 @@ understudy routes clear classify --project rehearsal
 understudy routes rollback classify --project rehearsal
 understudy setup-code --client openai --file src/client.ts --json
 understudy capture-import scan --repo .
+understudy capture-import compile --source ./local-file-or-folder --json
 understudy capture-import preview --repo . --limit 10
 understudy capture-import workload-card --repo .
 understudy capture-evidence check --repo .
@@ -54,7 +55,7 @@ understudy route-decision plan --workload-card .understudy/workload-discovery/wo
 understudy skills --search gepa
 understudy optimize-workload check --repo .
 understudy optimize-workload dry-run --repo .
-understudy optimize-workload adapter run --repo . --adapter dspy-gepa --samples samples.json --input-keys question --output-keys answer --model gpt-4o-mini --execute
+understudy optimize-workload adapter run --repo . --adapter dspy-gepa --samples samples.json --input-keys question --output-keys answer --model gpt-4o-mini --budget-usd <approved-usd> --input-usd-per-million <input-price> --output-usd-per-million <output-price> --execute
 understudy optimize-workload adapter run --repo . --adapter eval-input-gepa --manifest eval-input-manifest.json --execute
 understudy value report --workload-card .understudy/workload-discovery/workload-card.json --route-decision .understudy/route-decision/route-decision-packet.json --requests-per-month 10000
 ```
@@ -78,9 +79,13 @@ or read prompt/eval payloads. They write metadata artifacts to:
 
 The capture/import commands are also local-only and metadata-first. `scan`
 records candidate paths, kinds, extensions, byte sizes, and detection evidence
-for likely eval fixtures, golden fixtures, `.jsonl`, `.csv`, prompt files, app
-routes, and provider traces. It does not persist file contents, prompts,
-messages, completions, traces, or secret values.
+for likely eval fixtures, golden fixtures, structured data, documents,
+spreadsheets, source files, media, app routes, and provider traces. `compile`
+accepts one exact file or directory, scans at most 5,000 files, records at most
+1,000 source entries, and writes an isolated Workload Card under
+`~/.understudy/capture-imports/` for desktop or CLI review without modifying the
+dropped source. Neither command persists file contents, prompts, messages, completions,
+traces, or secret values.
 
 ```text
 .understudy/capture-import/capture-sources.json
@@ -147,7 +152,14 @@ exposed through
 authenticated Understudy gateway key, passes it into the local `uv` runtime as
 environment, configures DSPy against the gateway, runs train/dev rows only,
 excludes holdout, and writes `.understudy/optimize-workload/candidate.json`
-plus `proof-packet.json`.
+plus `proof-packet.json`. Live execution requires `--budget-usd`,
+`--input-usd-per-million`, and `--output-usd-per-million` before auth is
+resolved. The runtime disables client-side retries, shares one cumulative spend
+ledger across DSPy LM copies, and reserves a conservative per-call upper bound
+before provider execution. Missing usage, usage beyond the reservation, or a
+next call that could cross the cap produces an owner-only terminal run state
+instead of continuing. Recorded cost is attribution under the supplied token
+prices, not the provider's final bill.
 
 The generic adapter registry is exposed through
 `optimize-workload adapter run`. The first registry-backed non-DSPy adapter

@@ -109,8 +109,12 @@ validator kinds in [`reference.md`](reference.md):
    `optimize-workload adapter run --adapter <name> ... --execute`.
    `eval-input-gepa` runs upstream GEPA locally without provider calls unless a
    model-backed path is explicitly selected. `adapter run --adapter dspy-gepa
-   --execute` resolves the Understudy API key, passes it to the child process
-   through environment only, and runs train/dev rows through the gateway. GEPA's
+   --execute` additionally requires an approved dollar cap and explicit input
+   and output token prices before it resolves the Understudy API key. It passes
+   auth to the child process through environment only, disables client-side
+   retries, and reserves each request against one cumulative price-basis ledger before
+   running train/dev rows through the gateway. Treat the resulting attribution
+   as a conservative cap under the supplied prices, not a provider invoice. GEPA's
    edge is natural-language feedback: the metric must return a diagnosis of
    *why* each failing row failed and what to change, not a bare score — bland
    feedback wastes the optimizer. For an agentic workload this means the
@@ -123,7 +127,8 @@ validator kinds in [`reference.md`](reference.md):
    [`../../docs/optimize-workload-contract.md`](../../docs/optimize-workload-contract.md)
    for adapter, metric feedback, and claim packet details.
 6. When GEPA is available and explicitly approved, run train/dev-only and
-   record the command, model/deployment, metric-call budget, seed, selected
+   record the command, model/deployment, metric-call budget, dollar cap, token
+   price basis, reserved upper bound, attributed usage, seed, selected
    candidate, rejected variants when available, and whether provider calls were
    made through Understudy.
 7. Freeze the candidate before any holdout validation.
