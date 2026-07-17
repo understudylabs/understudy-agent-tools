@@ -35,6 +35,7 @@ import {
   enforceShellToolCall,
   piCommandGuardExtension,
 } from "./command-guard.js";
+import { packagePath } from "../../internal/package-root.js";
 
 function runtimeHome(): string {
   return resolve(
@@ -597,6 +598,7 @@ async function createPiRuntimeSession(options: {
       .filter(Boolean)
       .join("\n\n") ||
     "You are the Understudy conversation runtime. Use only explicitly provided tools.";
+  const understudyRootSkill = packagePath("skills", "understudy", "SKILL.md");
   const resourceLoader = new DefaultResourceLoader({
     cwd,
     agentDir: join(root, "agent"),
@@ -615,6 +617,11 @@ async function createPiRuntimeSession(options: {
     // Keep user/project extensions disabled. Inline runtime extensions above
     // still load, so the safety boundary is deterministic and app-owned.
     noExtensions: true,
+    // The packaged Understudy orchestrator is the one preinstalled skill.
+    // `noSkills` keeps project/user skills disabled while additional paths
+    // remain loadable by Pi. The app-owned system prompt tells the model to
+    // disclose specialist instructions through the restricted CLI tool.
+    additionalSkillPaths: [understudyRootSkill],
     noSkills: true,
     noPromptTemplates: true,
     noThemes: true,

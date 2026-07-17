@@ -15,6 +15,10 @@ import {
   type LocalTrainingState,
 } from "../lib/local-training-state.mjs";
 import { EvaluationRadar } from "./EvaluationRadar";
+import {
+  RemoteTrainingPanel,
+  type RemoteTrainingCapabilities,
+} from "./RemoteTrainingPanel";
 import type { TrainingHaloVisual } from "./TrainingHalo";
 
 const MODERN_BERT_MODEL = "answerdotai/ModernBERT-base";
@@ -167,6 +171,13 @@ type Props = {
   onVisualChange?: (visual: TrainingHaloVisual | null) => void;
 };
 
+type RemoteCapabilitiesEnvelope = {
+  schema_version: "understudy.remote_training.capabilities.v1";
+  enabled: boolean;
+  reason?: string;
+  capabilities?: RemoteTrainingCapabilities;
+};
+
 function percent(value: number): string {
   return `${(value * 100).toFixed(1)}%`;
 }
@@ -213,6 +224,11 @@ export function LocalTrainingPanel({
   const [trainingPreviewIndex, setTrainingPreviewIndex] = useState(0);
   const [previousTrainingPreviewIndex, setPreviousTrainingPreviewIndex] = useState<number | null>(null);
   const [haloProgress, setHaloProgress] = useState({ epochs: 3, completedEpochs: 0 });
+  const [remoteCapabilityState, setRemoteCapabilityState] = useState<"checking" | "available" | "unavailable">("checking");
+  const [remoteCapabilities, setRemoteCapabilities] = useState<RemoteTrainingCapabilities | null>(null);
+  const [remoteActive, setRemoteActive] = useState(false);
+  const [remoteVisual, setRemoteVisual] = useState<TrainingHaloVisual | null>(null);
+  const [forceLocal, setForceLocal] = useState(false);
   const [clockMs, setClockMs] = useState(() => Date.now());
   const generation = useRef(0);
   const activeRunId = useRef<string | null>(null);
@@ -223,7 +239,8 @@ export function LocalTrainingPanel({
   const runStartedAt = useRef<number | null>(null);
   const trainingStartedAt = useRef<number | null>(null);
   const lastEpochCompletedAt = useRef<number | null>(null);
-  const active = isLocalTrainingActive(state);
+  const localActive = isLocalTrainingActive(state);
+  const active = localActive || remoteActive;
   const phaseCopy = localTrainingPhaseCopy(state.phase);
   const measuredProgress = localTrainingProgress(state.event);
   const timing = localTrainingTiming({
@@ -245,6 +262,10 @@ export function LocalTrainingPanel({
   }, [onActiveChange, onVisualChange]);
 
   useEffect(() => {
+    if (remoteVisual) {
+      onVisualChange?.(remoteVisual);
+      return;
+    }
     if (state.phase === "idle" || state.phase === "failed" || state.phase === "cancelled") {
       onVisualChange?.(null);
       return;
@@ -259,7 +280,7 @@ export function LocalTrainingPanel({
       modelName,
       done: state.phase === "completed",
     });
-  }, [haloProgress, modelName, onVisualChange, state.phase, state.runId]);
+  }, [haloProgress, modelName, onVisualChange, remoteVisual, state.phase, state.runId]);
 
   useEffect(() => {
     generation.current += 1;
@@ -281,11 +302,39 @@ export function LocalTrainingPanel({
     trainingPreviewIndexRef.current = 0;
     setPreviousTrainingPreviewIndex(null);
     setHaloProgress({ epochs: 3, completedEpochs: 0 });
+    setRemoteActive(false);
+    setRemoteVisual(null);
+    setForceLocal(false);
     runStartedAt.current = null;
     trainingStartedAt.current = null;
     lastEpochCompletedAt.current = null;
     setClockMs(Date.now());
     if (previewFadeTimer.current !== null) window.clearTimeout(previewFadeTimer.current);
+  }, [datasetManifestPath]);
+
+  useEffect(() => {
+    let cancelled = false;
+    setRemoteCapabilityState("checking");
+    setRemoteCapabilities(null);
+    void invoke<RemoteCapabilitiesEnvelope>("remote_training_capabilities")
+      .then((envelope) => {
+        if (cancelled) return;
+        const hasProvider = envelope.enabled && envelope.capabilities?.providers.some(
+          (provider) => provider.enabled && provider.model_profiles.length > 0,
+        );
+        if (hasProvider && envelope.capabilities) {
+          setRemoteCapabilities(envelope.capabilities);
+          setRemoteCapabilityState("available");
+        } else {
+          setRemoteCapabilityState("unavailable");
+        }
+      })
+      .catch(() => {
+        if (!cancelled) setRemoteCapabilityState("unavailable");
+      });
+    return () => {
+      cancelled = true;
+    };
   }, [datasetManifestPath]);
 
   useEffect(() => () => {
@@ -410,13 +459,19 @@ export function LocalTrainingPanel({
   }, [active, datasetManifestPath]);
 
   useEffect(() => {
-    if (!autoStart || state.phase !== "idle" || autoStartedManifest.current === datasetManifestPath) return;
+    if (
+      !autoStart ||
+      state.phase !== "idle" ||
+      remoteCapabilityState === "checking" ||
+      (remoteCapabilityState === "available" && !forceLocal) ||
+      autoStartedManifest.current === datasetManifestPath
+    ) return;
     const timer = window.setTimeout(() => {
       autoStartedManifest.current = datasetManifestPath;
       startTraining();
     }, 0);
     return () => window.clearTimeout(timer);
-  }, [autoStart, datasetManifestPath, startTraining, state.phase]);
+  }, [autoStart, datasetManifestPath, forceLocal, remoteCapabilityState, startTraining, state.phase]);
 
   const cancelTraining = () => {
     if (!activeRunId.current || !active) return;
@@ -480,6 +535,22 @@ export function LocalTrainingPanel({
   };
 
   if (state.phase === "idle") {
+    if (remoteCapabilityState === "checking" && autoStart) return null;
+    if (remoteCapabilityState === "available" && remoteCapabilities && !forceLocal) {
+      return (
+        <RemoteTrainingPanel
+          datasetManifestPath={datasetManifestPath}
+          modelName={modelName}
+          capabilities={remoteCapabilities}
+          onTrainLocal={() => {
+            setForceLocal(true);
+            startTraining();
+          }}
+          onActiveChange={setRemoteActive}
+          onVisualChange={setRemoteVisual}
+        />
+      );
+    }
     if (autoStart) return null;
     return (
       <div className="local-training-start">
@@ -596,7 +667,7 @@ export function LocalTrainingPanel({
             <span>Frontier reference</span>
             <strong>Compare with GLM 5.2 on the same {state.result.heldout.row_count.toLocaleString()} test examples</strong>
             <small>
-              Only held-out test examples are sent through Understudy; training examples stay on this Mac. Fireworks publishes zero data retention for GLM 5.2. Maximum approved spend: $1.00.
+              Only held-out test examples are sent through Understudy; training examples stay on this Mac. The active inference vendor remains behind Understudy's authenticated service boundary. Maximum approved spend: $1.00.
             </small>
             {frontierEvent?.message && <p>{frontierEvent.message}</p>}
             {frontierEvent?.current !== undefined && frontierEvent.total !== undefined && (
