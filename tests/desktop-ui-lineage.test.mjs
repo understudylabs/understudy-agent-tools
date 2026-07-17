@@ -679,7 +679,8 @@ test("desktop compiles one dropped path through the bounded public CLI", async (
   assert.match(training, /Only held-out test examples are sent through Understudy/);
   assert.match(training, /confirmSpend: true/);
   assert.match(training, /budgetUsd: 1/);
-  assert.match(training, /Fireworks publishes zero data retention/);
+  assert.match(training, /active inference vendor remains behind Understudy's authenticated service boundary/);
+  assert.doesNotMatch(training, /Fireworks/);
   assert.match(training, /Maximum approved spend: \$1\.00/);
   assert.match(training, /<EvaluationRadar/);
   assert.match(training, /frontierComparison\.heldout\.weakest_classes\[0\] && state\.result\.heldout\.weakest_classes\[0\]/);
