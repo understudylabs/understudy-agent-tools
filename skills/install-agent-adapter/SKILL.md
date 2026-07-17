@@ -48,10 +48,21 @@ Platform details live in [`reference.md`](reference.md):
   or open a new TUI session.
 - Hermes Agent: register a stable `~/.understudy/skills` symlink in
   `skills.external_dirs` (`~/.hermes/config.yaml`), then run `/reload-skills`.
-- Devin: the CLI is installed globally via npm; Devin reads `AGENTS.md` and
-  accesses the shared `skills/` tree directly from the cloned repo.
+- Devin: the public installer builds the GitHub source and links the CLI
+  globally; Devin reads `AGENTS.md` and accesses the shared `skills/` tree
+  directly from the cloned repo.
 
 ## Procedure
+
+For a full Understudy update, rerun the public installer first. It refreshes
+the managed GitHub checkout, rebuilds the CLI, and then reinstalls adapters:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/UnderstudyLabs/understudy-agent-tools/main/install.sh | bash
+```
+
+The platform steps below refresh skill discovery for an existing checkout.
+They do not pull or build new source on their own.
 
 1. Resolve the repo root:
 

@@ -29,8 +29,14 @@ curl -fsSL https://raw.githubusercontent.com/UnderstudyLabs/understudy-agent-too
 ```
 
 The installer sets up the CLI, asks which coding agents to attach to (Claude
-Code, Cursor, Codex, OpenCode, Hermes Agent, all, or CLI-only), and — if you
-pick Claude Code — opens it in the current directory. Then, in Claude Code:
+Code, Cursor, Codex, OpenCode, Hermes Agent, all, or CLI-only), and opens the
+selected agent when it can. It installs from the current GitHub `main`
+branch: the script clones the source into
+`~/.understudy/agent-tools/source/understudy-agent-tools`,
+builds the CLI locally, and links the `understudy` command. You do not
+need a published npm package.
+
+Then, in Claude Code:
 
 ```text
 /reload-plugins
@@ -79,14 +85,22 @@ npm run build
 node dist/bin.js --help
 ```
 
-After package publication:
+</details>
+
+## Update Understudy
+
+Rerun the same installer. It replaces the managed GitHub checkout with the
+current `main` branch, rebuilds the CLI, and refreshes the selected agent
+adapters and skills:
 
 ```bash
-npm install -g @understudylabs/understudy-agent-tools
-understudy spine
+curl -fsSL https://raw.githubusercontent.com/UnderstudyLabs/understudy-agent-tools/main/install.sh | bash
 ```
 
-</details>
+The [`install-agent-adapter`](skills/install-agent-adapter/SKILL.md) skill
+repairs or refreshes how an agent discovers the existing skills. It does not
+update the underlying checkout by itself. Platforms may still require a
+plugin reload, window reload, restart, or new session after an update.
 
 ## What it does
 
@@ -158,7 +172,7 @@ the agent-run install/update/verify flow for every platform.
 | Codex | Autodetected when `codex` is on `PATH`; registers the local Codex marketplace from `.agents/plugins/marketplace.json`. | Run `/plugins`, choose `understudy-skills`, install or enable `understudy`, then start a new thread if needed. |
 | OpenCode | Autodetected when `opencode` is on `PATH` or OpenCode config/data exists; links the shared skills into `~/.config/opencode/skills`. | Restart OpenCode or open a new TUI session, then run `/understudy-onboard`. |
 | Hermes Agent | Autodetected when `hermes` is on `PATH` or `~/.hermes` exists; registers a stable `~/.understudy/skills` symlink in `skills.external_dirs`. | Run `/reload-skills` (or start a new `hermes` session), then `/onboard` or ask Hermes to use the Understudy onboarding skill. |
-| Devin | Autodetected when the `DEVIN` or `DEVIN_SESSION_ID` env var is set or `~/.devin` exists; the CLI is installed globally via npm. | Ask Devin: *Use the Understudy onboarding skill for this project.* |
+| Devin | Autodetected when the `DEVIN` or `DEVIN_SESSION_ID` env var is set or `~/.devin` exists; the installer builds the GitHub source and links the CLI globally. | Ask Devin: *Use the Understudy onboarding skill for this project.* |
 
 Every path is local-only: installing an adapter does not authenticate, upload
 data, download model weights, or make provider calls.
@@ -395,9 +409,9 @@ PY
 <summary><b>Devin — install as a global CLI</b></summary>
 
 Devin is a cloud-based coding agent: each session boots from a snapshot, so the
-install surface is a global CLI rather than a local plugin registration. Until
-the npm package is published, the public installer clones the reviewed GitHub
-source, builds it, and globally links the CLI. Devin reads `AGENTS.md` as an
+install surface is a global CLI rather than a local plugin registration. The
+public installer clones the reviewed GitHub source, builds it, and globally
+links the CLI. Devin reads `AGENTS.md` as an
 injected repository rule and accesses the shared [`skills/`](skills/) tree
 directly from that checkout.
 [`.devin/adapter.json`](.devin/adapter.json) is an Understudy version/staleness
