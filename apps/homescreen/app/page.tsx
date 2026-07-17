@@ -11,6 +11,7 @@ import { ChatPane } from "./components/ChatPane";
 import { TracesPane } from "./components/TracesPane";
 import { AccountPane } from "./components/AccountPane";
 import { UsagePane } from "./components/UsagePane";
+import { MonitorPane } from "./components/MonitorPane";
 import { DownloadQrButton } from "./components/DownloadQrButton";
 import { isTrainingPane, TrainingPane } from "./components/TrainingPane";
 import { RlmPane } from "./components/RlmPane";
@@ -181,6 +182,7 @@ export default function Page() {
       "chat",
       "models",
       "account",
+      "monitor",
       "rlm",
     ];
     const hidden = [
@@ -304,6 +306,7 @@ export default function Page() {
           />
         )}
         {pane === "usage" && <UsagePane status={status} />}
+        {pane === "monitor" && <MonitorPane onOpenAccount={() => setPane("account")} />}
         {pane === "traces" && <TracesPane />}
       </main>
     </div>

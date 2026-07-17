@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import {
+  ActivityIcon,
   ArchiveIcon,
   ArchiveRestoreIcon,
   ArrowLeftIcon,
@@ -24,6 +25,7 @@ export type PaneId =
   | "capture"
   | "account"
   | "usage"
+  | "monitor"
   | "traces"
   | "rlm"
   | "training-evals"
@@ -217,6 +219,13 @@ export function Sidebar({
       </Dialog>
 
       <div className="nav-spacer" />
+      <button
+        className={"nav-monitor" + (active === "monitor" ? " active" : "")}
+        onClick={() => onSelect("monitor")}
+      >
+        <ActivityIcon className="nav-icon" aria-hidden="true" size={16} strokeWidth={1.7} />
+        <span>Monitor</span>
+      </button>
       <button
         className={"nav-account" + (active === "account" ? " active" : "")}
         onClick={() => onSelect("account")}

@@ -19,6 +19,7 @@ mod mcp;
 mod metrics;
 mod models;
 mod moraine;
+mod reporting;
 mod residency;
 mod rlm;
 mod route_policy;
@@ -282,6 +283,8 @@ pub fn run() {
             commands::account_login_send,
             commands::account_login_code,
             commands::account_logout,
+            reporting::reporting_projects,
+            reporting::reporting_snapshot,
             commands::knowledge_dossiers,
             gepa::gepa_demo_run,
             gepa::gepa_load_run,
