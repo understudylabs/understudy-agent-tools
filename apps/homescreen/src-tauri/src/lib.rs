@@ -19,6 +19,7 @@ mod mcp;
 mod metrics;
 mod models;
 mod moraine;
+mod remote_training;
 mod residency;
 mod rlm;
 mod route_policy;
@@ -341,6 +342,12 @@ pub fn run() {
             workload_drop::update_local_classification_run,
             workload_drop::repeat_local_classification_evaluation,
             workload_drop::export_local_classification_predictions,
+            remote_training::remote_training_capabilities,
+            remote_training::prepare_remote_classification_training,
+            remote_training::existing_remote_classification_training,
+            remote_training::start_remote_classification_training,
+            remote_training::remote_training_poll,
+            remote_training::cancel_remote_training,
             commands::sidekick_decisions,
             commands::sidekick_events,
             commands::sidekick_session_summaries,

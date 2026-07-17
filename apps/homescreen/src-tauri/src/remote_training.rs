@@ -1,0 +1,1340 @@
+use reqwest::{Client, Method, Url};
+use serde::{Deserialize, Serialize};
+use serde_json::{json, Value};
+use sha2::{Digest, Sha256};
+use std::collections::{HashMap, HashSet};
+use std::fs::{self, OpenOptions};
+use std::io::Write;
+use std::path::{Path, PathBuf};
+use std::time::Duration;
+use tauri::ipc::Channel;
+use tokio_util::io::ReaderStream;
+
+const DATASET_SCHEMA: &str = "understudy.capture_import.classification_dataset.v2";
+const PLAN_SCHEMA: &str = "understudy.remote_training.plan.v1";
+const RUN_SCHEMA: &str = "understudy.remote_training.run.v1";
+const API_SCHEMA: &str = "understudy-train-v1";
+const DEFAULT_TRAIN_API_BASE: &str = "https://train.understudylabs.com/api/train/v1";
+const MAX_MANIFEST_BYTES: u64 = 1_048_576;
+// Keep the first remote-training slice bounded. Split conversion is deliberately
+// local and currently buffers one source split at a time, so a multi-gigabyte
+// ceiling would turn a friendly desktop flow into memory pressure.
+const MAX_SPLIT_BYTES: u64 = 256 * 1024 * 1024;
+
+#[derive(Debug, Clone, Deserialize)]
+struct DatasetManifest {
+    schema_version: String,
+    dataset_id: String,
+    source_sha256: String,
+    mapping_sha256: String,
+    local_only: bool,
+    network_required: bool,
+    mapping_confirmation: String,
+    labels: Vec<String>,
+    mapping: DatasetMapping,
+    split_policy: SplitPolicy,
+    splits: DatasetSplits,
+    artifact_root: String,
+    manifest_path: String,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+struct DatasetMapping {
+    group_column: String,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+struct SplitPolicy {
+    name: String,
+    group_normalization: String,
+    no_group_overlap: bool,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+struct DatasetSplits {
+    train: DatasetSplit,
+    dev: DatasetSplit,
+    holdout: DatasetSplit,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+struct DatasetSplit {
+    path: String,
+    row_count: u64,
+    sha256: String,
+}
+
+#[derive(Debug, Clone, Deserialize)]
+struct ClassificationExample {
+    schema_version: String,
+    example_id: String,
+    group_id: String,
+    text: String,
+    label: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct RemoteArtifact {
+    artifact_role: String,
+    path: String,
+    file_name: String,
+    row_count: u64,
+    sha256: String,
+    size_bytes: u64,
+    content_type: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct RemoteTrainingPlan {
+    schema_version: String,
+    plan_id: String,
+    created_at: String,
+    source_manifest_path: String,
+    source_dataset_id: String,
+    workload_name: String,
+    provider: String,
+    base_model: String,
+    output_model_name: String,
+    frontier_model: String,
+    labels: Vec<String>,
+    group_field: String,
+    split_hash: String,
+    artifacts: Vec<RemoteArtifact>,
+    epochs: u64,
+    lora_rank: u64,
+    max_context_length: u64,
+    maximum_spend_usd: f64,
+    maximum_runtime_seconds: u64,
+    maximum_eval_examples: u64,
+    minimum_accuracy: f64,
+    minimum_improvement_over_base: f64,
+    plan_path: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+struct RemoteTrainingRun {
+    schema_version: String,
+    run_id: String,
+    plan_path: String,
+    status_url: String,
+    events_url: String,
+    run_token: String,
+    next_after: i64,
+    run_manifest_path: String,
+}
+
+fn remote_training_enabled() -> bool {
+    std::env::var("UNDERSTUDY_REMOTE_TRAINING_EXPERIMENT")
+        .ok()
+        .is_some_and(|value| value == "true")
+}
+
+fn train_api_base() -> Result<Url, String> {
+    let raw = std::env::var("UNDERSTUDY_TRAIN_API_BASE")
+        .unwrap_or_else(|_| DEFAULT_TRAIN_API_BASE.to_string());
+    let trimmed = raw.trim_end_matches('/');
+    let url = Url::parse(&format!("{trimmed}/"))
+        .map_err(|_| "The remote training API URL is invalid.".to_string())?;
+    let local_http =
+        url.scheme() == "http" && matches!(url.host_str(), Some("127.0.0.1" | "localhost"));
+    if url.scheme() != "https" && !local_http {
+        return Err("Remote training requires HTTPS, except on localhost.".into());
+    }
+    if !url.username().is_empty() || url.password().is_some() {
+        return Err("The remote training API URL cannot contain credentials.".into());
+    }
+    Ok(url)
+}
+
+fn api_url(path: &str) -> Result<Url, String> {
+    train_api_base()?
+        .join(path.trim_start_matches('/'))
+        .map_err(|_| "The remote training API path is invalid.".to_string())
+}
+
+fn api_credentials() -> Result<crate::creds::ResolvedCredentials, String> {
+    crate::creds::resolve()
+        .ok_or_else(|| "Sign in to Understudy before starting private remote training.".to_string())
+}
+
+fn client() -> Result<Client, String> {
+    Client::builder()
+        .connect_timeout(Duration::from_secs(10))
+        .timeout(Duration::from_secs(60))
+        .user_agent(concat!("Understudy-Desktop/", env!("CARGO_PKG_VERSION")))
+        .build()
+        .map_err(|_| "Could not initialize the remote training connection.".to_string())
+}
+
+async fn api_json(method: Method, url: Url, body: Option<&Value>) -> Result<Value, String> {
+    let credentials = api_credentials()?;
+    let mut request = client()?
+        .request(method, url)
+        .bearer_auth(credentials.api_key)
+        .header("accept", "application/json");
+    if let Some(body) = body {
+        request = request.json(body);
+    }
+    let response = request
+        .send()
+        .await
+        .map_err(|_| "The remote training service could not be reached.".to_string())?;
+    let status = response.status();
+    let bytes = response
+        .bytes()
+        .await
+        .map_err(|_| "The remote training service returned an unreadable response.".to_string())?;
+    let value = serde_json::from_slice::<Value>(&bytes)
+        .map_err(|_| format!("The remote training service returned malformed JSON ({status})."))?;
+    if !status.is_success() {
+        let message = value
+            .get("error")
+            .and_then(|error| error.get("message"))
+            .and_then(Value::as_str)
+            .or_else(|| value.get("message").and_then(Value::as_str))
+            .unwrap_or("The remote training request was rejected.");
+        return Err(message.chars().take(500).collect());
+    }
+    Ok(value)
+}
+
+#[tauri::command]
+pub async fn remote_training_capabilities() -> Result<Value, String> {
+    if !remote_training_enabled() {
+        return Ok(json!({
+            "schema_version": "understudy.remote_training.capabilities.v1",
+            "enabled": false,
+            "reason": "Remote training is an off-by-default experiment."
+        }));
+    }
+    if crate::creds::resolve().is_none() {
+        return Ok(json!({
+            "schema_version": "understudy.remote_training.capabilities.v1",
+            "enabled": false,
+            "reason": "Sign in to Understudy to use private remote training."
+        }));
+    }
+    let capabilities = api_json(Method::GET, api_url("capabilities")?, None).await?;
+    Ok(json!({
+        "schema_version": "understudy.remote_training.capabilities.v1",
+        "enabled": true,
+        "capabilities": capabilities
+    }))
+}
+
+#[tauri::command]
+pub async fn prepare_remote_classification_training(
+    manifest_path: String,
+    provider: String,
+    base_model: String,
+    frontier_model: String,
+    maximum_spend_usd: f64,
+) -> Result<Value, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        prepare_remote_plan(
+            &manifest_path,
+            &provider,
+            &base_model,
+            &frontier_model,
+            maximum_spend_usd,
+        )
+    })
+    .await
+    .map_err(|error| format!("Remote training preparation stopped unexpectedly: {error}"))?
+}
+
+#[tauri::command]
+pub async fn existing_remote_classification_training(
+    manifest_path: String,
+) -> Result<Option<Value>, String> {
+    tauri::async_runtime::spawn_blocking(move || find_existing_run(&manifest_path))
+        .await
+        .map_err(|error| format!("Remote training recovery stopped unexpectedly: {error}"))?
+}
+
+fn find_existing_run(manifest_path: &str) -> Result<Option<Value>, String> {
+    let canonical_manifest = PathBuf::from(manifest_path.trim())
+        .canonicalize()
+        .map_err(|_| "The prepared dataset is unavailable.".to_string())?;
+    if fs::metadata(&canonical_manifest)
+        .map_err(|_| "The prepared dataset is unavailable.".to_string())?
+        .len()
+        > MAX_MANIFEST_BYTES
+    {
+        return Err("The prepared dataset manifest is unexpectedly large.".into());
+    }
+    let manifest: DatasetManifest = serde_json::from_slice(
+        &fs::read(&canonical_manifest)
+            .map_err(|_| "The prepared dataset could not be read.".to_string())?,
+    )
+    .map_err(|_| "The prepared dataset manifest is malformed.".to_string())?;
+    validate_manifest(&manifest, &canonical_manifest)?;
+    let artifact_root = PathBuf::from(&manifest.artifact_root)
+        .canonicalize()
+        .map_err(|_| "The prepared dataset artifact root is unavailable.".to_string())?;
+    let remote_root = artifact_root.join("remote-training");
+    if !remote_root.is_dir() {
+        return Ok(None);
+    }
+
+    let mut candidates = fs::read_dir(&remote_root)
+        .map_err(|_| "Saved remote training runs could not be inspected.".to_string())?
+        .filter_map(Result::ok)
+        .filter_map(|entry| {
+            let run_path = entry.path().join("run.json");
+            let modified = run_path.metadata().ok()?.modified().ok()?;
+            Some((modified, run_path))
+        })
+        .collect::<Vec<_>>();
+    candidates.sort_by(|left, right| right.0.cmp(&left.0));
+    candidates.truncate(500);
+
+    for (_, run_path) in candidates {
+        let Some(run_path) = run_path.to_str() else {
+            continue;
+        };
+        let Ok(run) = read_run(run_path) else {
+            continue;
+        };
+        let Ok(plan_path) = PathBuf::from(&run.plan_path).canonicalize() else {
+            continue;
+        };
+        if !plan_path.starts_with(&remote_root) {
+            continue;
+        }
+        let Ok(plan_bytes) = fs::read(&plan_path) else {
+            continue;
+        };
+        let Ok(plan) = serde_json::from_slice::<RemoteTrainingPlan>(&plan_bytes) else {
+            continue;
+        };
+        if plan.schema_version != PLAN_SCHEMA
+            || PathBuf::from(&plan.source_manifest_path)
+                .canonicalize()
+                .ok()
+                .as_deref()
+                != Some(canonical_manifest.as_path())
+        {
+            continue;
+        }
+        return serde_json::to_value(run)
+            .map(Some)
+            .map_err(|_| "The saved remote run could not be returned.".to_string());
+    }
+    Ok(None)
+}
+
+fn prepare_remote_plan(
+    manifest_path: &str,
+    provider: &str,
+    base_model: &str,
+    frontier_model: &str,
+    maximum_spend_usd: f64,
+) -> Result<Value, String> {
+    if !matches!(provider, "fake" | "fireworks") {
+        return Err("Choose an available remote training provider.".into());
+    }
+    for (name, value) in [
+        ("base model", base_model),
+        ("frontier model", frontier_model),
+    ] {
+        if value.trim().is_empty() || value.chars().count() > 240 {
+            return Err(format!("The {name} is invalid."));
+        }
+    }
+    if !maximum_spend_usd.is_finite() || maximum_spend_usd <= 0.0 || maximum_spend_usd > 100.0 {
+        return Err("The remote training budget must be between $0 and $100.".into());
+    }
+
+    let canonical_manifest = PathBuf::from(manifest_path.trim())
+        .canonicalize()
+        .map_err(|error| format!("The prepared dataset is unavailable: {error}"))?;
+    if fs::metadata(&canonical_manifest)
+        .map_err(|error| format!("The prepared dataset is unavailable: {error}"))?
+        .len()
+        > MAX_MANIFEST_BYTES
+    {
+        return Err("The prepared dataset manifest is unexpectedly large.".into());
+    }
+    let manifest: DatasetManifest = serde_json::from_slice(
+        &fs::read(&canonical_manifest)
+            .map_err(|error| format!("The prepared dataset could not be read: {error}"))?,
+    )
+    .map_err(|_| "The prepared dataset manifest is malformed.".to_string())?;
+    validate_manifest(&manifest, &canonical_manifest)?;
+    let artifact_root = PathBuf::from(&manifest.artifact_root)
+        .canonicalize()
+        .map_err(|_| "The prepared dataset artifact root is unavailable.".to_string())?;
+
+    let mut groups_by_split: HashMap<&str, HashSet<String>> = HashMap::new();
+    let mut verified_rows: HashMap<&str, Vec<ClassificationExample>> = HashMap::new();
+    for (name, split) in [
+        ("train", &manifest.splits.train),
+        ("validation", &manifest.splits.dev),
+        ("heldout", &manifest.splits.holdout),
+    ] {
+        let rows = verify_split(split, &artifact_root, &manifest.labels)?;
+        groups_by_split.insert(name, rows.iter().map(|row| row.group_id.clone()).collect());
+        verified_rows.insert(name, rows);
+    }
+    for (left, right) in [
+        ("train", "validation"),
+        ("train", "heldout"),
+        ("validation", "heldout"),
+    ] {
+        if groups_by_split[left]
+            .iter()
+            .any(|group| groups_by_split[right].contains(group))
+        {
+            return Err(format!(
+                "The prepared dataset has leakage-group overlap between {left} and {right}."
+            ));
+        }
+    }
+
+    let plan_id = random_uuid()?;
+    let plan_root = artifact_root.join("remote-training").join(&plan_id);
+    create_private_directory(&plan_root)?;
+    let instruction = format!(
+        "Classify the user's text. Reply with exactly one label from this list: {}.",
+        manifest.labels.join(", ")
+    );
+    let mut artifacts = Vec::new();
+    for role in ["train", "validation", "heldout"] {
+        let rows = verified_rows
+            .remove(role)
+            .ok_or_else(|| format!("The {role} split is unavailable."))?;
+        let file_name = format!("{role}.jsonl");
+        let path = plan_root.join(&file_name);
+        let mut content = String::new();
+        for row in &rows {
+            let transformed = if role == "heldout" {
+                json!({ "input": row.text, "target": row.label })
+            } else {
+                json!({
+                    "messages": [
+                        { "role": "system", "content": instruction },
+                        { "role": "user", "content": row.text },
+                        { "role": "assistant", "content": row.label }
+                    ]
+                })
+            };
+            content.push_str(
+                &serde_json::to_string(&transformed)
+                    .map_err(|_| "A remote training row could not be encoded.".to_string())?,
+            );
+            content.push('\n');
+        }
+        write_private_new(&path, content.as_bytes())?;
+        artifacts.push(RemoteArtifact {
+            artifact_role: role.to_string(),
+            path: path.display().to_string(),
+            file_name,
+            row_count: rows.len() as u64,
+            sha256: sha256_bytes(content.as_bytes()),
+            size_bytes: content.len() as u64,
+            content_type: "application/x-ndjson".to_string(),
+        });
+    }
+    let split_hash = sha256_bytes(
+        artifacts
+            .iter()
+            .map(|artifact| artifact.sha256.as_str())
+            .collect::<Vec<_>>()
+            .join("\0")
+            .as_bytes(),
+    );
+    let plan_path = plan_root.join("plan.json");
+    let output_model_name = format!("understudy-{}", safe_model_segment(&manifest.dataset_id));
+    let plan = RemoteTrainingPlan {
+        schema_version: PLAN_SCHEMA.to_string(),
+        plan_id,
+        created_at: timestamp(),
+        source_manifest_path: canonical_manifest.display().to_string(),
+        source_dataset_id: manifest.dataset_id.clone(),
+        workload_name: format!(
+            "classification-{}",
+            safe_model_segment(&manifest.dataset_id)
+        ),
+        provider: provider.to_string(),
+        base_model: base_model.to_string(),
+        output_model_name,
+        frontier_model: frontier_model.to_string(),
+        labels: manifest.labels.clone(),
+        group_field: manifest.mapping.group_column.clone(),
+        split_hash,
+        artifacts,
+        epochs: 3,
+        lora_rank: 16,
+        max_context_length: 4_096,
+        maximum_spend_usd,
+        maximum_runtime_seconds: 7_200,
+        maximum_eval_examples: 200,
+        minimum_accuracy: 0.80,
+        minimum_improvement_over_base: 0.02,
+        plan_path: plan_path.display().to_string(),
+    };
+    write_private_new(
+        &plan_path,
+        &serde_json::to_vec_pretty(&plan)
+            .map_err(|_| "The remote training plan could not be encoded.".to_string())?,
+    )?;
+    serde_json::to_value(plan)
+        .map_err(|_| "The remote training plan could not be returned.".to_string())
+}
+
+fn validate_manifest(manifest: &DatasetManifest, path: &Path) -> Result<(), String> {
+    if manifest.schema_version != DATASET_SCHEMA
+        || !manifest.local_only
+        || manifest.network_required
+        || manifest.mapping_confirmation != "caller-provided"
+    {
+        return Err(
+            "Prepare a fresh local-only classification dataset before remote training.".into(),
+        );
+    }
+    let declared_path = PathBuf::from(&manifest.manifest_path)
+        .canonicalize()
+        .map_err(|_| "The dataset's declared manifest path is unavailable.".to_string())?;
+    if declared_path != path {
+        return Err("The dataset manifest path does not match the selected file.".into());
+    }
+    if !valid_hash(&manifest.source_sha256)
+        || !valid_hash(&manifest.mapping_sha256)
+        || manifest.dataset_id.is_empty()
+        || manifest.dataset_id.len() > 128
+        || manifest.labels.len() < 2
+        || manifest.labels.len() > 512
+        || manifest
+            .labels
+            .iter()
+            .any(|label| label.trim().is_empty() || label.chars().count() > 160)
+    {
+        return Err("The dataset manifest has invalid immutable metadata or labels.".into());
+    }
+    if manifest.split_policy.name != "deterministic-stratified-group-aware-v2"
+        || manifest.split_policy.group_normalization != "casefold-reference-stripping-v1"
+        || !manifest.split_policy.no_group_overlap
+        || manifest.mapping.group_column.trim().is_empty()
+    {
+        return Err("Remote training requires the verified group-aware split policy.".into());
+    }
+    Ok(())
+}
+
+fn verify_split(
+    split: &DatasetSplit,
+    artifact_root: &Path,
+    labels: &[String],
+) -> Result<Vec<ClassificationExample>, String> {
+    if split.row_count == 0 || !valid_hash(&split.sha256) {
+        return Err("A prepared dataset split has invalid immutable evidence.".into());
+    }
+    let path = PathBuf::from(&split.path)
+        .canonicalize()
+        .map_err(|_| "A prepared dataset split is unavailable.".to_string())?;
+    if !path.starts_with(artifact_root) {
+        return Err("A prepared dataset split escaped its private artifact root.".into());
+    }
+    let metadata =
+        fs::metadata(&path).map_err(|_| "A prepared dataset split is unavailable.".to_string())?;
+    if !metadata.is_file() || metadata.len() == 0 || metadata.len() > MAX_SPLIT_BYTES {
+        return Err("A prepared dataset split has an unsupported size.".into());
+    }
+    let bytes = fs::read(&path)
+        .map_err(|error| format!("A prepared dataset split could not be read: {error}"))?;
+    if sha256_bytes(&bytes) != split.sha256 {
+        return Err("A prepared dataset split changed after local preparation.".into());
+    }
+    let content = std::str::from_utf8(&bytes)
+        .map_err(|_| "A prepared dataset split is not UTF-8 JSONL.".to_string())?;
+    let allowed_labels: HashSet<&str> = labels.iter().map(String::as_str).collect();
+    let rows = content
+        .lines()
+        .filter(|line| !line.trim().is_empty())
+        .enumerate()
+        .map(|(index, line)| {
+            let row: ClassificationExample = serde_json::from_str(line)
+                .map_err(|_| format!("Prepared split row {} is malformed.", index + 1))?;
+            if row.schema_version != "understudy.classification_example.v2"
+                || row.example_id.trim().is_empty()
+                || row.group_id.trim().is_empty()
+                || row.text.trim().is_empty()
+                || !allowed_labels.contains(row.label.as_str())
+            {
+                return Err(format!(
+                    "Prepared split row {} does not match the verified classification schema.",
+                    index + 1
+                ));
+            }
+            Ok(row)
+        })
+        .collect::<Result<Vec<_>, String>>()?;
+    if rows.len() as u64 != split.row_count {
+        return Err("A prepared dataset split row count changed after preparation.".into());
+    }
+    Ok(rows)
+}
+
+#[tauri::command]
+pub async fn start_remote_classification_training(
+    plan_path: String,
+    confirm_upload: bool,
+    confirm_spend: bool,
+    confirm_temporary_deployment: bool,
+    on_event: Channel<Value>,
+) -> Result<Value, String> {
+    if !remote_training_enabled() {
+        return Err("Remote training is disabled in this Desktop build.".into());
+    }
+    if !confirm_upload || !confirm_spend {
+        return Err("Confirm the exact upload and maximum spend before remote training.".into());
+    }
+    let plan = read_verified_plan(&plan_path)?;
+    let capabilities = api_json(Method::GET, api_url("capabilities")?, None).await?;
+    validate_capabilities(&capabilities, &plan)?;
+    send_event(
+        &on_event,
+        "preparing",
+        0,
+        plan.artifacts.len() as u64,
+        "Re-verifying the exact approved artifacts on this Mac.",
+    );
+    let mut uploads = Vec::new();
+    let mut uploaded_pathnames = Vec::new();
+    let result = async {
+        for (index, artifact) in plan.artifacts.iter().enumerate() {
+            verify_remote_artifact(artifact)?;
+            send_event(
+                &on_event,
+                "uploading",
+                index as u64,
+                plan.artifacts.len() as u64,
+                &format!("Uploading the approved {} split.", artifact.artifact_role),
+            );
+            let intent = api_json(
+                Method::POST,
+                api_url("upload-intents")?,
+                Some(&json!({
+                    "schema_version": API_SCHEMA,
+                    "artifact_role": artifact.artifact_role,
+                    "file_name": artifact.file_name,
+                    "sha256": artifact.sha256,
+                    "size_bytes": artifact.size_bytes,
+                    "content_type": artifact.content_type
+                })),
+            )
+            .await?;
+            upload_artifact(artifact, &intent).await?;
+            let upload = intent
+                .get("upload")
+                .cloned()
+                .ok_or_else(|| "The training service omitted the upload reference.".to_string())?;
+            if let Some(pathname) = upload.get("pathname").and_then(Value::as_str) {
+                uploaded_pathnames.push(pathname.to_string());
+            }
+            uploads.push(upload);
+            send_event(
+                &on_event,
+                "uploading",
+                (index + 1) as u64,
+                plan.artifacts.len() as u64,
+                &format!("Uploaded the approved {} split.", artifact.artifact_role),
+            );
+        }
+        let request_id = random_uuid()?;
+        let run = api_json(
+            Method::POST,
+            api_url("runs")?,
+            Some(&json!({
+                "schema_version": API_SCHEMA,
+                "request_id": request_id,
+                "workload_name": plan.workload_name,
+                "task": {
+                    "kind": "text_classification",
+                    "input_field": "input",
+                    "target_field": "target",
+                    "labels": plan.labels
+                },
+                "provider": plan.provider,
+                "base_model": plan.base_model,
+                "output_model_name": plan.output_model_name,
+                "uploads": uploads,
+                "split": {
+                    "train_rows": artifact_rows(&plan, "train")?,
+                    "validation_rows": artifact_rows(&plan, "validation")?,
+                    "heldout_rows": artifact_rows(&plan, "heldout")?,
+                    "split_hash": plan.split_hash,
+                    "group_field": plan.group_field
+                },
+                "training": {
+                    "epochs": plan.epochs,
+                    "lora_rank": plan.lora_rank,
+                    "max_context_length": plan.max_context_length
+                },
+                "budget": {
+                    "max_usd": plan.maximum_spend_usd,
+                    "max_runtime_seconds": plan.maximum_runtime_seconds,
+                    "max_eval_examples": plan.maximum_eval_examples
+                },
+                "promotion": {
+                    "minimum_accuracy": plan.minimum_accuracy,
+                    "minimum_improvement_over_base": plan.minimum_improvement_over_base,
+                    "compare_to_frontier": true,
+                    "frontier_model": plan.frontier_model
+                },
+                "consent": {
+                    "approved_at": timestamp(),
+                    "upload_confirmed": true,
+                    "train_confirmed": true,
+                    "deploy_for_evaluation_confirmed": confirm_temporary_deployment,
+                    "approved_artifact_sha256": plan.artifacts
+                        .iter()
+                        .map(|artifact| artifact.sha256.clone())
+                        .collect::<Vec<_>>()
+                }
+            })),
+        )
+        .await?;
+        let record = persist_run(&plan, &run)?;
+        send_event(
+            &on_event,
+            "queued",
+            1,
+            1,
+            "The durable remote training workflow is queued.",
+        );
+        serde_json::to_value(record)
+            .map_err(|_| "The remote training run could not be returned.".to_string())
+    }
+    .await;
+
+    if result.is_err() && !uploaded_pathnames.is_empty() {
+        let _ = api_json(
+            Method::DELETE,
+            api_url("uploads")?,
+            Some(&json!({
+                "schema_version": API_SCHEMA,
+                "pathnames": uploaded_pathnames
+            })),
+        )
+        .await;
+    }
+    result
+}
+
+fn read_verified_plan(path: &str) -> Result<RemoteTrainingPlan, String> {
+    let canonical = PathBuf::from(path.trim())
+        .canonicalize()
+        .map_err(|_| "The remote training plan is unavailable.".to_string())?;
+    let plan: RemoteTrainingPlan = serde_json::from_slice(
+        &fs::read(&canonical)
+            .map_err(|_| "The remote training plan could not be read.".to_string())?,
+    )
+    .map_err(|_| "The remote training plan is malformed.".to_string())?;
+    if plan.schema_version != PLAN_SCHEMA
+        || PathBuf::from(&plan.plan_path)
+            .canonicalize()
+            .ok()
+            .as_deref()
+            != Some(canonical.as_path())
+        || !matches!(plan.provider.as_str(), "fake" | "fireworks")
+        || plan.artifacts.len() != 3
+        || plan.maximum_spend_usd <= 0.0
+        || plan.maximum_spend_usd > 100.0
+    {
+        return Err("The remote training plan failed its immutable boundary checks.".into());
+    }
+    let mut roles = HashSet::new();
+    for artifact in &plan.artifacts {
+        roles.insert(artifact.artifact_role.as_str());
+        verify_remote_artifact(artifact)?;
+    }
+    if roles != HashSet::from(["train", "validation", "heldout"]) {
+        return Err("The remote training plan must contain three distinct split artifacts.".into());
+    }
+    Ok(plan)
+}
+
+fn verify_remote_artifact(artifact: &RemoteArtifact) -> Result<(), String> {
+    let path = PathBuf::from(&artifact.path)
+        .canonicalize()
+        .map_err(|_| format!("The {} artifact is unavailable.", artifact.artifact_role))?;
+    let plan_root = path
+        .parent()
+        .ok_or_else(|| "A remote training artifact has no private root.".to_string())?;
+    if plan_root
+        .file_name()
+        .and_then(|value| value.to_str())
+        .is_none()
+        || plan_root
+            .parent()
+            .and_then(Path::file_name)
+            .and_then(|value| value.to_str())
+            != Some("remote-training")
+    {
+        return Err("A remote training artifact escaped its private plan root.".into());
+    }
+    let bytes = fs::read(&path)
+        .map_err(|_| format!("The {} artifact could not be read.", artifact.artifact_role))?;
+    if bytes.len() as u64 != artifact.size_bytes || sha256_bytes(&bytes) != artifact.sha256 {
+        return Err(format!(
+            "The {} artifact changed after approval.",
+            artifact.artifact_role
+        ));
+    }
+    if bytes.iter().filter(|byte| **byte == b'\n').count() as u64 != artifact.row_count {
+        return Err(format!(
+            "The {} artifact row count changed after approval.",
+            artifact.artifact_role
+        ));
+    }
+    Ok(())
+}
+
+fn validate_capabilities(value: &Value, plan: &RemoteTrainingPlan) -> Result<(), String> {
+    if value.get("schema_version").and_then(Value::as_str) != Some(API_SCHEMA)
+        || value
+            .get("privacy")
+            .and_then(|privacy| privacy.get("private_uploads"))
+            .and_then(Value::as_bool)
+            != Some(true)
+        || value
+            .get("privacy")
+            .and_then(|privacy| privacy.get("raw_rows_in_telemetry"))
+            .and_then(Value::as_bool)
+            != Some(false)
+    {
+        return Err("The remote training service did not confirm its privacy contract.".into());
+    }
+    let provider = value
+        .get("providers")
+        .and_then(Value::as_array)
+        .and_then(|providers| {
+            providers
+                .iter()
+                .find(|provider| provider.get("id").and_then(Value::as_str) == Some(&plan.provider))
+        })
+        .ok_or_else(|| "The planned remote training provider is unavailable.".to_string())?;
+    if provider.get("enabled").and_then(Value::as_bool) != Some(true)
+        || !provider
+            .get("base_models")
+            .and_then(Value::as_array)
+            .is_some_and(|models| {
+                models
+                    .iter()
+                    .any(|model| model.as_str() == Some(&plan.base_model))
+            })
+    {
+        return Err("The planned provider or base model is disabled.".into());
+    }
+    let max_budget = value
+        .get("limits")
+        .and_then(|limits| limits.get("max_budget_usd"))
+        .and_then(Value::as_f64)
+        .unwrap_or(0.0);
+    if plan.maximum_spend_usd > max_budget {
+        return Err("The approved budget exceeds the current service limit.".into());
+    }
+    Ok(())
+}
+
+async fn upload_artifact(artifact: &RemoteArtifact, intent: &Value) -> Result<(), String> {
+    if intent.get("schema_version").and_then(Value::as_str) != Some(API_SCHEMA)
+        || intent.get("method").and_then(Value::as_str) != Some("PUT")
+        || intent
+            .get("upload")
+            .and_then(|upload| upload.get("sha256"))
+            .and_then(Value::as_str)
+            != Some(&artifact.sha256)
+    {
+        return Err("The training service returned an invalid upload intent.".into());
+    }
+    let url = intent
+        .get("presigned_url")
+        .and_then(Value::as_str)
+        .and_then(|value| Url::parse(value).ok())
+        .filter(|url| url.scheme() == "https")
+        .ok_or_else(|| "The training service returned an unsafe upload URL.".to_string())?;
+    let file = tokio::fs::File::open(&artifact.path)
+        .await
+        .map_err(|_| format!("The {} artifact is unavailable.", artifact.artifact_role))?;
+    let mut request = client()?
+        .put(url)
+        .header("content-length", artifact.size_bytes)
+        .body(reqwest::Body::wrap_stream(ReaderStream::new(file)));
+    if let Some(headers) = intent.get("required_headers").and_then(Value::as_object) {
+        for (name, value) in headers {
+            let header_name = reqwest::header::HeaderName::from_bytes(name.as_bytes())
+                .map_err(|_| "The upload intent contained an invalid header name.".to_string())?;
+            let header_value = value.as_str().ok_or_else(|| {
+                "The upload intent contained an invalid header value.".to_string()
+            })?;
+            request = request.header(header_name, header_value);
+        }
+    }
+    let response = request.send().await.map_err(|_| {
+        format!(
+            "The {} artifact upload was interrupted.",
+            artifact.artifact_role
+        )
+    })?;
+    if !response.status().is_success() {
+        return Err(format!(
+            "The {} artifact upload failed ({}).",
+            artifact.artifact_role,
+            response.status()
+        ));
+    }
+    Ok(())
+}
+
+fn persist_run(plan: &RemoteTrainingPlan, value: &Value) -> Result<RemoteTrainingRun, String> {
+    if value.get("schema_version").and_then(Value::as_str) != Some(API_SCHEMA)
+        || value.get("status").and_then(Value::as_str) != Some("queued")
+    {
+        return Err("The training service returned an invalid run receipt.".into());
+    }
+    let plan_root = PathBuf::from(&plan.plan_path)
+        .parent()
+        .ok_or_else(|| "The remote training plan has no private root.".to_string())?
+        .to_path_buf();
+    let run_path = plan_root.join("run.json");
+    let record = RemoteTrainingRun {
+        schema_version: RUN_SCHEMA.to_string(),
+        run_id: required_string(value, "run_id")?,
+        plan_path: plan.plan_path.clone(),
+        status_url: required_string(value, "status_url")?,
+        events_url: required_string(value, "events_url")?,
+        run_token: required_string(value, "run_token")?,
+        next_after: -1,
+        run_manifest_path: run_path.display().to_string(),
+    };
+    validate_control_plane_url(&record.status_url)?;
+    validate_control_plane_url(&record.events_url)?;
+    write_private_new(
+        &run_path,
+        &serde_json::to_vec_pretty(&record)
+            .map_err(|_| "The remote run receipt could not be encoded.".to_string())?,
+    )?;
+    Ok(record)
+}
+
+#[tauri::command]
+pub async fn remote_training_poll(run_manifest_path: String) -> Result<Value, String> {
+    let mut run = read_run(&run_manifest_path)?;
+    let events_url = Url::parse(&run.events_url)
+        .map_err(|_| "The saved remote event URL is invalid.".to_string())?;
+    let mut events_url = events_url;
+    events_url
+        .query_pairs_mut()
+        .append_pair("after", &run.next_after.to_string());
+    let events = run_api_json(Method::GET, events_url, &run.run_token, None).await?;
+    if let Some(next_after) = events.get("next_after").and_then(Value::as_i64) {
+        run.next_after = next_after;
+        replace_private_json(Path::new(&run.run_manifest_path), &run)?;
+    }
+    let status = run_api_json(
+        Method::GET,
+        Url::parse(&run.status_url)
+            .map_err(|_| "The saved remote status URL is invalid.".to_string())?,
+        &run.run_token,
+        None,
+    )
+    .await?;
+    Ok(json!({
+        "schema_version": "understudy.remote_training.poll.v1",
+        "run_id": run.run_id,
+        "events": events.get("events").cloned().unwrap_or_else(|| json!([])),
+        "status": status,
+        "run_manifest_path": run.run_manifest_path
+    }))
+}
+
+#[tauri::command]
+pub async fn cancel_remote_training(run_manifest_path: String) -> Result<Value, String> {
+    let run = read_run(&run_manifest_path)?;
+    let action_url = format!("{}/actions", run.status_url.trim_end_matches('/'));
+    run_api_json(
+        Method::POST,
+        Url::parse(&action_url)
+            .map_err(|_| "The saved remote action URL is invalid.".to_string())?,
+        &run.run_token,
+        Some(&json!({ "action": "cancel" })),
+    )
+    .await
+}
+
+async fn run_api_json(
+    method: Method,
+    url: Url,
+    run_token: &str,
+    body: Option<&Value>,
+) -> Result<Value, String> {
+    validate_control_plane_url(url.as_str())?;
+    let credentials = api_credentials()?;
+    let mut request = client()?
+        .request(method, url)
+        .bearer_auth(credentials.api_key)
+        .header("x-understudy-train-run-token", run_token)
+        .header("accept", "application/json");
+    if let Some(body) = body {
+        request = request.json(body);
+    }
+    let response = request
+        .send()
+        .await
+        .map_err(|_| "The remote training service could not be reached.".to_string())?;
+    let status = response.status();
+    let value = response
+        .json::<Value>()
+        .await
+        .map_err(|_| "The remote training service returned malformed JSON.".to_string())?;
+    if !status.is_success() {
+        return Err(value
+            .get("error")
+            .and_then(|error| error.get("message"))
+            .and_then(Value::as_str)
+            .unwrap_or("The remote training request was rejected.")
+            .chars()
+            .take(500)
+            .collect());
+    }
+    Ok(value)
+}
+
+fn read_run(path: &str) -> Result<RemoteTrainingRun, String> {
+    let canonical = PathBuf::from(path.trim())
+        .canonicalize()
+        .map_err(|_| "The remote training run is unavailable.".to_string())?;
+    let run: RemoteTrainingRun = serde_json::from_slice(
+        &fs::read(&canonical)
+            .map_err(|_| "The remote training run could not be read.".to_string())?,
+    )
+    .map_err(|_| "The remote training run is malformed.".to_string())?;
+    if run.schema_version != RUN_SCHEMA
+        || run.run_token.len() < 32
+        || PathBuf::from(&run.run_manifest_path)
+            .canonicalize()
+            .ok()
+            .as_deref()
+            != Some(canonical.as_path())
+    {
+        return Err("The remote training run failed its local integrity checks.".into());
+    }
+    validate_control_plane_url(&run.status_url)?;
+    validate_control_plane_url(&run.events_url)?;
+    Ok(run)
+}
+
+fn validate_control_plane_url(value: &str) -> Result<(), String> {
+    let url = Url::parse(value)
+        .map_err(|_| "The remote training service returned an invalid URL.".to_string())?;
+    let base = train_api_base()?;
+    if url.scheme() != base.scheme()
+        || url.host_str() != base.host_str()
+        || url.port_or_known_default() != base.port_or_known_default()
+        || !url.path().starts_with(base.path())
+    {
+        return Err("The remote training service returned an unexpected control-plane URL.".into());
+    }
+    Ok(())
+}
+
+fn required_string(value: &Value, key: &str) -> Result<String, String> {
+    value
+        .get(key)
+        .and_then(Value::as_str)
+        .filter(|value| !value.is_empty() && value.chars().count() <= 2_048)
+        .map(str::to_string)
+        .ok_or_else(|| format!("The training service omitted {key}."))
+}
+
+fn artifact_rows(plan: &RemoteTrainingPlan, role: &str) -> Result<u64, String> {
+    plan.artifacts
+        .iter()
+        .find(|artifact| artifact.artifact_role == role)
+        .map(|artifact| artifact.row_count)
+        .ok_or_else(|| format!("The remote training plan omitted {role}."))
+}
+
+fn send_event(channel: &Channel<Value>, phase: &str, current: u64, total: u64, message: &str) {
+    let _ = channel.send(json!({
+        "type": "phase",
+        "phase": phase,
+        "current": current,
+        "total": total,
+        "message": message
+    }));
+}
+
+fn safe_model_segment(value: &str) -> String {
+    let mut output = value
+        .chars()
+        .map(|character| {
+            if character.is_ascii_alphanumeric() {
+                character.to_ascii_lowercase()
+            } else {
+                '-'
+            }
+        })
+        .collect::<String>();
+    while output.contains("--") {
+        output = output.replace("--", "-");
+    }
+    output.trim_matches('-').chars().take(48).collect()
+}
+
+fn valid_hash(value: &str) -> bool {
+    value.len() == 64
+        && value
+            .bytes()
+            .all(|byte| byte.is_ascii_digit() || (b'a'..=b'f').contains(&byte))
+}
+
+fn sha256_bytes(value: &[u8]) -> String {
+    format!("{:x}", Sha256::digest(value))
+}
+
+fn random_uuid() -> Result<String, String> {
+    let mut bytes = [0_u8; 16];
+    getrandom::getrandom(&mut bytes)
+        .map_err(|_| "Secure randomness is unavailable for the training run.".to_string())?;
+    bytes[6] = (bytes[6] & 0x0f) | 0x40;
+    bytes[8] = (bytes[8] & 0x3f) | 0x80;
+    Ok(format!(
+        "{:08x}-{:04x}-{:04x}-{:04x}-{:012x}",
+        u32::from_be_bytes(bytes[0..4].try_into().unwrap()),
+        u16::from_be_bytes(bytes[4..6].try_into().unwrap()),
+        u16::from_be_bytes(bytes[6..8].try_into().unwrap()),
+        u16::from_be_bytes(bytes[8..10].try_into().unwrap()),
+        u64::from_be_bytes([
+            0, 0, bytes[10], bytes[11], bytes[12], bytes[13], bytes[14], bytes[15]
+        ])
+    ))
+}
+
+fn timestamp() -> String {
+    chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true)
+}
+
+fn create_private_directory(path: &Path) -> Result<(), String> {
+    fs::create_dir_all(path).map_err(|error| {
+        format!("Could not create the private remote training directory: {error}")
+    })?;
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::PermissionsExt;
+        fs::set_permissions(path, fs::Permissions::from_mode(0o700))
+            .map_err(|error| format!("Could not protect the remote training directory: {error}"))?;
+    }
+    Ok(())
+}
+
+fn write_private_new(path: &Path, bytes: &[u8]) -> Result<(), String> {
+    let mut options = OpenOptions::new();
+    options.write(true).create_new(true);
+    #[cfg(unix)]
+    {
+        use std::os::unix::fs::OpenOptionsExt;
+        options.mode(0o600);
+    }
+    let mut file = options
+        .open(path)
+        .map_err(|error| format!("Could not create a private training artifact: {error}"))?;
+    file.write_all(bytes)
+        .map_err(|error| format!("Could not write a private training artifact: {error}"))?;
+    file.sync_all()
+        .map_err(|error| format!("Could not finish a private training artifact: {error}"))?;
+    Ok(())
+}
+
+fn replace_private_json(path: &Path, value: &impl Serialize) -> Result<(), String> {
+    let temporary = path.with_extension("json.tmp");
+    if temporary.exists() {
+        fs::remove_file(&temporary)
+            .map_err(|_| "Could not replace the local remote-training state.".to_string())?;
+    }
+    write_private_new(
+        &temporary,
+        &serde_json::to_vec_pretty(value)
+            .map_err(|_| "The local remote-training state could not be encoded.".to_string())?,
+    )?;
+    fs::rename(&temporary, path)
+        .map_err(|_| "Could not replace the local remote-training state.".to_string())
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+    use std::time::{SystemTime, UNIX_EPOCH};
+
+    fn fixture() -> (PathBuf, PathBuf) {
+        let root = std::env::temp_dir().join(format!(
+            "understudy-remote-training-test-{}-{}",
+            std::process::id(),
+            SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        fs::create_dir_all(&root).unwrap();
+        let labels = vec!["ham".to_string(), "spam".to_string()];
+        let mut splits = serde_json::Map::new();
+        for (name, offset) in [("train", 0), ("dev", 10), ("holdout", 20)] {
+            let content = (0..6)
+                .map(|index| {
+                    serde_json::to_string(&json!({
+                        "schema_version": "understudy.classification_example.v2",
+                        "example_id": format!("{name}-{index}"),
+                        "group_id": format!("group-{}", offset + index),
+                        "text": format!("Message {}", offset + index),
+                        "label": labels[index % labels.len()]
+                    }))
+                    .unwrap()
+                })
+                .collect::<Vec<_>>()
+                .join("\n")
+                + "\n";
+            let path = root.join(format!("{name}.jsonl"));
+            fs::write(&path, &content).unwrap();
+            splits.insert(
+                name.to_string(),
+                json!({
+                    "path": path,
+                    "row_count": 6,
+                    "sha256": sha256_bytes(content.as_bytes())
+                }),
+            );
+        }
+        let manifest_path = root.join("dataset-manifest.json");
+        let manifest = json!({
+            "schema_version": DATASET_SCHEMA,
+            "dataset_id": "sms-intent-test",
+            "source_sha256": "a".repeat(64),
+            "mapping_sha256": "b".repeat(64),
+            "local_only": true,
+            "network_required": false,
+            "mapping_confirmation": "caller-provided",
+            "labels": labels,
+            "mapping": { "group_column": "sender" },
+            "split_policy": {
+                "name": "deterministic-stratified-group-aware-v2",
+                "group_normalization": "casefold-reference-stripping-v1",
+                "no_group_overlap": true
+            },
+            "splits": splits,
+            "artifact_root": root,
+            "manifest_path": manifest_path
+        });
+        fs::write(
+            &manifest_path,
+            serde_json::to_vec_pretty(&manifest).unwrap(),
+        )
+        .unwrap();
+        (manifest_path, root)
+    }
+
+    #[test]
+    fn prepares_private_chat_and_heldout_artifacts_without_uploading() {
+        let (manifest_path, root) = fixture();
+        let value = prepare_remote_plan(
+            manifest_path.to_str().unwrap(),
+            "fake",
+            "understudy/fake-gemma",
+            "glm-5.2",
+            3.0,
+        )
+        .unwrap();
+        let plan: RemoteTrainingPlan = serde_json::from_value(value).unwrap();
+        assert_eq!(plan.artifacts.len(), 3);
+        let train = fs::read_to_string(
+            &plan
+                .artifacts
+                .iter()
+                .find(|artifact| artifact.artifact_role == "train")
+                .unwrap()
+                .path,
+        )
+        .unwrap();
+        assert!(train.contains("\"messages\""));
+        assert!(!train.contains("\"group_id\""));
+        let heldout = fs::read_to_string(
+            &plan
+                .artifacts
+                .iter()
+                .find(|artifact| artifact.artifact_role == "heldout")
+                .unwrap()
+                .path,
+        )
+        .unwrap();
+        assert!(heldout.contains("\"input\""));
+        assert!(heldout.contains("\"target\""));
+        assert!(read_verified_plan(&plan.plan_path).is_ok());
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn detects_artifact_changes_after_local_approval() {
+        let (manifest_path, root) = fixture();
+        let value = prepare_remote_plan(
+            manifest_path.to_str().unwrap(),
+            "fake",
+            "understudy/fake-gemma",
+            "glm-5.2",
+            3.0,
+        )
+        .unwrap();
+        let plan: RemoteTrainingPlan = serde_json::from_value(value).unwrap();
+        fs::write(&plan.artifacts[0].path, b"changed\n").unwrap();
+        let error = read_verified_plan(&plan.plan_path).unwrap_err();
+        assert!(
+            error.contains("changed after approval"),
+            "unexpected tamper error: {error}"
+        );
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn recovers_the_latest_durable_run_from_the_dataset_root() {
+        let (manifest_path, root) = fixture();
+        let value = prepare_remote_plan(
+            manifest_path.to_str().unwrap(),
+            "fake",
+            "understudy/fake-gemma",
+            "glm-5.2",
+            3.0,
+        )
+        .unwrap();
+        let plan: RemoteTrainingPlan = serde_json::from_value(value).unwrap();
+        let run_path = PathBuf::from(&plan.plan_path)
+            .parent()
+            .unwrap()
+            .join("run.json");
+        let status_url = train_api_base()
+            .unwrap()
+            .join("runs/00000000-0000-4000-8000-000000000001")
+            .unwrap()
+            .to_string();
+        let run = RemoteTrainingRun {
+            schema_version: RUN_SCHEMA.to_string(),
+            run_id: "00000000-0000-4000-8000-000000000001".to_string(),
+            plan_path: plan.plan_path,
+            status_url: status_url.clone(),
+            events_url: format!("{status_url}/events"),
+            run_token: "x".repeat(48),
+            next_after: -1,
+            run_manifest_path: run_path.display().to_string(),
+        };
+        write_private_new(&run_path, &serde_json::to_vec_pretty(&run).unwrap()).unwrap();
+
+        let recovered = find_existing_run(manifest_path.to_str().unwrap())
+            .unwrap()
+            .unwrap();
+        assert_eq!(
+            recovered.get("run_id").and_then(Value::as_str),
+            Some("00000000-0000-4000-8000-000000000001")
+        );
+        fs::remove_dir_all(root).unwrap();
+    }
+}
