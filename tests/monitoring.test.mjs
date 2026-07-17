@@ -5,6 +5,7 @@ import {
   cacheReusePercent,
   displayModelName,
   monitoringState,
+  snapshotForSelection,
   topModelRows,
 } from "../apps/homescreen/app/lib/monitoring.mjs";
 
@@ -100,4 +101,11 @@ test("model labels hide provider routing namespaces", () => {
   assert.equal(displayModelName("accounts/vendor/models/glm-5p2"), "glm-5p2");
   assert.equal(displayModelName("zai-org/glm-5.2"), "glm-5.2");
   assert.equal(displayModelName("gemma-4-12b-it"), "gemma-4-12b-it");
+});
+
+test("monitor snapshots render only for the selected project and window", () => {
+  const snapshot = { project_id: "project-a", window: "12h", health: "green" };
+  assert.equal(snapshotForSelection(snapshot, "project-a", "12h"), snapshot);
+  assert.equal(snapshotForSelection(snapshot, "project-b", "12h"), null);
+  assert.equal(snapshotForSelection(snapshot, "project-a", "24h"), null);
 });

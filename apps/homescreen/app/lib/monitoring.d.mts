@@ -63,3 +63,9 @@ export function cacheReusePercent(summary?: {
 export function topModelRows<T extends { cost_usd?: number }>(rows?: T[], limit?: number): T[];
 
 export function displayModelName(value?: unknown): string;
+
+export function snapshotForSelection<T extends { project_id?: string; window?: string }>(
+  snapshot: T | null | undefined,
+  projectId: string,
+  window: string,
+): T | null;

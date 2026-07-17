@@ -14,6 +14,7 @@ import {
   cacheReusePercent,
   displayModelName,
   monitoringState,
+  snapshotForSelection,
   topModelRows,
 } from "../lib/monitoring.mjs";
 
@@ -249,16 +250,17 @@ export function MonitorPane({ onOpenAccount }: { onOpenAccount: () => void }) {
     return () => globalThis.clearInterval(timer);
   }, [loadSnapshot, projectId, window]);
 
-  const state = useMemo(() => monitoringState(snapshot?.health), [snapshot]);
+  const visibleSnapshot = snapshotForSelection(snapshot, projectId, window);
+  const state = useMemo(() => monitoringState(visibleSnapshot?.health), [visibleSnapshot]);
   const workloads = useMemo(
-    () => buildWorkloadRows(snapshot?.routing.workloads, snapshot?.health.providers),
-    [snapshot],
+    () => buildWorkloadRows(visibleSnapshot?.routing.workloads, visibleSnapshot?.health.providers),
+    [visibleSnapshot],
   );
   const models = useMemo(
-    () => topModelRows(snapshot?.usage_by_model?.rows ?? [], 6),
-    [snapshot],
+    () => topModelRows(visibleSnapshot?.usage_by_model?.rows ?? [], 6),
+    [visibleSnapshot],
   );
-  const reuse = cacheReusePercent(snapshot?.billing?.summary);
+  const reuse = cacheReusePercent(visibleSnapshot?.billing?.summary);
   const maxModelCost = Math.max(0, ...models.map((model) => model.cost_usd));
   const selectedProject = projects.find((project) => project.id === projectId);
 
@@ -324,13 +326,13 @@ export function MonitorPane({ onOpenAccount }: { onOpenAccount: () => void }) {
         </div>
       </header>
 
-      {loading && !snapshot ? (
+      {loading && !visibleSnapshot ? (
         <div className="monitor-loading" aria-live="polite">
           <span className="monitor-loading-ring" aria-hidden="true" />
           <strong>Checking production traffic…</strong>
           <span>Routing and health first; spend follows independently.</span>
         </div>
-      ) : error && !snapshot ? (
+      ) : error && !visibleSnapshot ? (
         <div className="monitor-blocked" role="alert">
           <AlertTriangleIcon aria-hidden="true" size={20} />
           <div>
@@ -341,7 +343,7 @@ export function MonitorPane({ onOpenAccount }: { onOpenAccount: () => void }) {
             <button type="button" onClick={onOpenAccount}>Sign in</button>
           )}
         </div>
-      ) : snapshot ? (
+      ) : visibleSnapshot ? (
         <>
           <section className={`monitor-verdict ${state.tone}`} aria-live="polite">
             <div className="monitor-verdict-icon">
@@ -356,11 +358,11 @@ export function MonitorPane({ onOpenAccount }: { onOpenAccount: () => void }) {
               <h2>{state.label}</h2>
               <p>{state.detail}</p>
             </div>
-            <time dateTime={snapshot.fetched_at}>Updated {relativeTime(snapshot.fetched_at)}</time>
+            <time dateTime={visibleSnapshot.fetched_at}>Updated {relativeTime(visibleSnapshot.fetched_at)}</time>
           </section>
 
           {error && <div className="monitor-stale" role="status">Showing the last local snapshot. {error}</div>}
-          {snapshot.warnings.length > 0 && (
+          {visibleSnapshot.warnings.length > 0 && (
             <div className="monitor-warning" role="status">
               Traffic health is current. Some spend context is unavailable.
             </div>
@@ -369,12 +371,12 @@ export function MonitorPane({ onOpenAccount }: { onOpenAccount: () => void }) {
           <section className="monitor-metrics" aria-label="Production summary">
             <article>
               <span>Requests</span>
-              <strong>{count.format(snapshot.health.total_requests)}</strong>
+              <strong>{count.format(visibleSnapshot.health.total_requests)}</strong>
               <small>Selected project</small>
             </article>
             <article>
               <span>Estimated spend</span>
-              <strong>{snapshot.billing ? money.format(snapshot.billing.summary.estimated_cost_usd) : "—"}</strong>
+              <strong>{visibleSnapshot.billing ? money.format(visibleSnapshot.billing.summary.estimated_cost_usd) : "—"}</strong>
               <small>All org projects</small>
             </article>
             <article className={state.errors > 0 ? "attention" : ""}>

@@ -129,3 +129,10 @@ export function displayModelName(value) {
   const segments = path.split(/[/:]/).filter(Boolean);
   return segments.at(-1) || raw;
 }
+
+export function snapshotForSelection(snapshot, projectId, window) {
+  if (!snapshot) return null;
+  return snapshot.project_id === projectId && snapshot.window === window
+    ? snapshot
+    : null;
+}
