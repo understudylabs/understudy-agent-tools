@@ -84,3 +84,19 @@ The existing dark palette, cyan primary action, spacing, borders, typography, an
 No P0, P1, or P2 visual or interaction issues remain in this state.
 
 final result: passed
+
+## Message scroller reader position
+
+- Date: 2026-07-17
+- Reference: shadcn/ui Base Message Scroller, “Tracking the reader’s position”
+- Prototype: http://localhost:1426/design
+- Viewport: 1280 x 720
+- Compared state: transcript outline open at turn 1 of 4
+
+The right-edge trigger remains a quiet stack of small turn ticks, with the current turn in cyan. The outline floats beside the transcript without changing message layout or moving the composer, and follows the existing Understudy typography, spacing, borders, and dark palette. All four turns remain readable and directly selectable; no clipped labels, broken borders, or unintended horizontal overflow were observed.
+
+The rail is a native button with a descriptive turn-position label. Each outline item is a native button, the active turn exposes `aria-current="location"`, and selecting an item uses the scroller's own smooth `scrollToMessage` behavior. The existing “Turn X of Y / Latest” control remains available for returning to the live edge. Reduced-motion mode removes decorative transitions.
+
+One visibility subscription drives the rail and existing position control. The transcript retains `content-visibility: auto` and an intrinsic-size placeholder. Streaming transcript updates cannot rerender the controls unless turn anchors or streaming state change. The quiet rail renders at most 12 sampled ticks for long conversations while keeping the first, current, and final turns represented; the full outline mounts only while its hover or focus surface is open.
+
+final result: passed
