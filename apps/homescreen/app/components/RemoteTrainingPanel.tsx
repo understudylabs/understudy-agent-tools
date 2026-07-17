@@ -5,10 +5,15 @@ import { Channel, invoke } from "@tauri-apps/api/core";
 import type { TrainingHaloVisual } from "./TrainingHalo";
 
 export type RemoteTrainingProvider = {
-  id: "fake" | "fireworks";
+  id: "fake" | "managed";
   enabled: boolean;
   label: string;
-  base_models: string[];
+  model_profiles: Array<{
+    id: "understudy/auto" | "understudy/fast" | "understudy/balanced" | "understudy/quality";
+    label: string;
+    summary: string;
+    recommended: boolean;
+  }>;
 };
 
 export type RemoteTrainingCapabilities = {
@@ -38,8 +43,8 @@ type RemoteArtifact = {
 type RemotePlan = {
   schema_version: "understudy.remote_training.plan.v1";
   plan_id: string;
-  provider: "fake" | "fireworks";
-  base_model: string;
+  provider: "fake" | "managed";
+  model_profile: RemoteTrainingProvider["model_profiles"][number]["id"];
   frontier_model: string;
   output_model_name: string;
   artifacts: RemoteArtifact[];
@@ -82,7 +87,6 @@ type HumanMetric = {
 
 type RemoteResult = {
   outcome: "promoted" | "needs_work" | "failed" | "cancelled";
-  provider: "fake" | "fireworks";
   output_model?: string;
   endpoint?: string;
   spend_usd: number;
@@ -126,17 +130,12 @@ function bytes(value: number): string {
 }
 
 function providerDefault(providers: RemoteTrainingProvider[]): RemoteTrainingProvider {
-  return providers.find((provider) => provider.id === "fireworks") ?? providers[0];
+  return providers.find((provider) => provider.id === "managed") ?? providers[0];
 }
 
-function baseModelDefault(provider: RemoteTrainingProvider): string {
-  return provider.base_models.find((model) => model.endsWith("/gemma-4-26b-a4b-it"))
-    ?? provider.base_models.find((model) => model.includes("/gemma-4-"))
-    ?? provider.base_models[0];
-}
-
-function modelLabel(model: string): string {
-  return model.split("/").at(-1)?.replaceAll("-", " ") ?? model;
+function profileDefault(provider: RemoteTrainingProvider) {
+  return provider.model_profiles.find((profile) => profile.recommended)
+    ?? provider.model_profiles[0];
 }
 
 function visualPhase(phase: string): TrainingHaloVisual["phase"] {
@@ -155,10 +154,14 @@ export function RemoteTrainingPanel({
   onVisualChange,
 }: Props) {
   const providers = useMemo(
-    () => capabilities.providers.filter((provider) => provider.enabled && provider.base_models.length > 0),
+    () => capabilities.providers.filter((provider) => provider.enabled && provider.model_profiles.length > 0),
     [capabilities.providers],
   );
-  const [providerId, setProviderId] = useState<RemoteTrainingProvider["id"]>(() => providerDefault(providers).id);
+  const [providerId] = useState<RemoteTrainingProvider["id"]>(() => providerDefault(providers).id);
+  const initialProvider = providerDefault(providers);
+  const [profileId, setProfileId] = useState<RemoteTrainingProvider["model_profiles"][number]["id"]>(
+    () => profileDefault(initialProvider).id,
+  );
   const [stage, setStage] = useState<Stage>("recovering");
   const [plan, setPlan] = useState<RemotePlan | null>(null);
   const [run, setRun] = useState<RemoteRunReceipt | null>(null);
@@ -172,7 +175,8 @@ export function RemoteTrainingPanel({
   const polling = useRef(false);
   const stopped = useRef(false);
   const provider = providers.find((candidate) => candidate.id === providerId) ?? providers[0];
-  const baseModel = provider ? baseModelDefault(provider) : "";
+  const profile = provider?.model_profiles.find((candidate) => candidate.id === profileId)
+    ?? (provider ? profileDefault(provider) : undefined);
   const active = stage === "preparing" || stage === "starting" || stage === "running";
   const latestEvent = events.at(-1);
 
@@ -248,11 +252,12 @@ export function RemoteTrainingPanel({
     if (!provider || stage !== "choice") return;
     setStage("preparing");
     setError(null);
-    const maximumSpend = Math.min(provider.id === "fake" ? 1 : 3, capabilities.limits.max_budget_usd);
+    if (!profile) return;
+    const maximumSpend = Math.min(provider.id === "fake" ? 1 : 500, capabilities.limits.max_budget_usd);
     void invoke<RemotePlan>("prepare_remote_classification_training", {
       manifestPath: datasetManifestPath,
       provider: provider.id,
-      baseModel,
+      modelProfile: profile.id,
       frontierModel: "glm-5.2",
       maximumSpendUsd: maximumSpend,
     })
@@ -264,7 +269,7 @@ export function RemoteTrainingPanel({
         setError(String(cause));
         setStage("failed");
       });
-  }, [baseModel, capabilities.limits.max_budget_usd, datasetManifestPath, provider, stage]);
+  }, [capabilities.limits.max_budget_usd, datasetManifestPath, profile, provider, stage]);
 
   const poll = useCallback(async (receipt: RemoteRunReceipt) => {
     if (polling.current || stopped.current) return;
@@ -342,15 +347,15 @@ export function RemoteTrainingPanel({
           <strong>Train a larger model without tying up this Mac</strong>
           <small>Understudy prepares everything locally first. Nothing uploads until you review the exact artifacts and budget.</small>
         </div>
-        {providers.length > 1 && (
+        {provider && provider.model_profiles.length > 1 && (
           <label>
-            <span>Provider</span>
-            <select value={providerId} onChange={(event) => setProviderId(event.target.value as RemoteTrainingProvider["id"])}>
-              {providers.map((candidate) => <option key={candidate.id} value={candidate.id}>{candidate.label}</option>)}
+            <span>Model</span>
+            <select value={profile?.id} onChange={(event) => setProfileId(event.target.value as typeof profileId)}>
+              {provider.model_profiles.map((candidate) => <option key={candidate.id} value={candidate.id}>{candidate.label}</option>)}
             </select>
           </label>
         )}
-        {provider && <small>Selected model · {modelLabel(baseModel)}</small>}
+        {profile && <small>{profile.summary}</small>}
         <div className="remote-training-actions">
           <button type="button" className="btn primary" onClick={prepare}>
             {provider?.id === "fake" ? "Try the no-spend cloud proof" : "Review remote training"}
@@ -384,7 +389,7 @@ export function RemoteTrainingPanel({
         </div>
         <div className="remote-training-consent">
           <label><input type="checkbox" checked={confirmUpload} onChange={(event) => setConfirmUpload(event.target.checked)} /><span>Upload only these three private split artifacts.</span></label>
-          <label><input type="checkbox" checked={confirmSpend} onChange={(event) => setConfirmSpend(event.target.checked)} /><span>Train with {provider?.label}; stop when its reported estimate reaches ${plan.maximum_spend_usd.toFixed(2)}.</span></label>
+          <label><input type="checkbox" checked={confirmSpend} onChange={(event) => setConfirmSpend(event.target.checked)} /><span>Use Understudy managed training; stop when its reported estimate reaches ${plan.maximum_spend_usd.toFixed(2)}.</span></label>
           <label><input type="checkbox" checked={confirmDeployment} onChange={(event) => setConfirmDeployment(event.target.checked)} /><span>Create a temporary endpoint for held-out comparison, then always remove it.</span></label>
         </div>
         <div className="remote-training-actions">
@@ -430,7 +435,7 @@ export function RemoteTrainingPanel({
           : { eyebrow: "Run ended", title: "Remote training did not complete" };
     return (
       <div className={`remote-training-result ${result.outcome}`}>
-        <div><span>{terminalCopy.eyebrow}</span><strong>{terminalCopy.title}</strong><small>Provider-reported training cost: ${result.spend_usd.toFixed(2)}</small></div>
+        <div><span>{terminalCopy.eyebrow}</span><strong>{terminalCopy.title}</strong><small>Reported training cost: ${result.spend_usd.toFixed(2)}</small></div>
         <div className="remote-training-metrics">
           {result.metrics.map((metric) => <article key={metric.id}><span>{metric.label}</span><strong>{metric.display_value}</strong><small>{metric.explanation}</small></article>)}
         </div>

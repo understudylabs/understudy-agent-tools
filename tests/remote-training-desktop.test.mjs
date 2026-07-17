@@ -32,8 +32,11 @@ test("remote training remains an off-by-default explicit-consent experiment", as
   assert.match(panel, /remote_training_poll/);
   assert.match(panel, /cancel_remote_training/);
   assert.match(panel, /Where it still fails/);
-  assert.match(panel, /gemma-4-26b-a4b-it/);
-  assert.match(panel, /provider\.id === "fireworks"/);
+  assert.match(panel, /understudy\/auto/);
+  assert.match(panel, /provider\.id === "managed"/);
+  assert.doesNotMatch(panel, /fireworks/i);
+  assert.doesNotMatch(panel, /gemma-4/i);
+  assert.match(native, /"model_profiles"/);
 
   assert.match(localPanel, /remote_training_capabilities/);
   assert.match(localPanel, /remoteCapabilityState === "available" && !forceLocal/);

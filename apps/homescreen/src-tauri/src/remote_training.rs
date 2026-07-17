@@ -11,7 +11,7 @@ use tauri::ipc::Channel;
 use tokio_util::io::ReaderStream;
 
 const DATASET_SCHEMA: &str = "understudy.capture_import.classification_dataset.v2";
-const PLAN_SCHEMA: &str = "understudy.remote_training.plan.v1";
+const PLAN_SCHEMA: &str = "understudy.remote_training.plan.v2";
 const RUN_SCHEMA: &str = "understudy.remote_training.run.v1";
 const API_SCHEMA: &str = "understudy-train-v1";
 const DEFAULT_TRAIN_API_BASE: &str = "https://train.understudylabs.com/api/train/v1";
@@ -94,7 +94,7 @@ struct RemoteTrainingPlan {
     source_dataset_id: String,
     workload_name: String,
     provider: String,
-    base_model: String,
+    model_profile: String,
     output_model_name: String,
     frontier_model: String,
     labels: Vec<String>,
@@ -227,7 +227,7 @@ pub async fn remote_training_capabilities() -> Result<Value, String> {
 pub async fn prepare_remote_classification_training(
     manifest_path: String,
     provider: String,
-    base_model: String,
+    model_profile: String,
     frontier_model: String,
     maximum_spend_usd: f64,
 ) -> Result<Value, String> {
@@ -235,7 +235,7 @@ pub async fn prepare_remote_classification_training(
         prepare_remote_plan(
             &manifest_path,
             &provider,
-            &base_model,
+            &model_profile,
             &frontier_model,
             maximum_spend_usd,
         )
@@ -328,23 +328,29 @@ fn find_existing_run(manifest_path: &str) -> Result<Option<Value>, String> {
 fn prepare_remote_plan(
     manifest_path: &str,
     provider: &str,
-    base_model: &str,
+    model_profile: &str,
     frontier_model: &str,
     maximum_spend_usd: f64,
 ) -> Result<Value, String> {
-    if !matches!(provider, "fake" | "fireworks") {
+    if !matches!(provider, "fake" | "managed") {
         return Err("Choose an available remote training provider.".into());
     }
+    if !matches!(
+        model_profile,
+        "understudy/auto" | "understudy/fast" | "understudy/balanced" | "understudy/quality"
+    ) {
+        return Err("Choose an available Understudy training profile.".into());
+    }
     for (name, value) in [
-        ("base model", base_model),
+        ("training profile", model_profile),
         ("frontier model", frontier_model),
     ] {
         if value.trim().is_empty() || value.chars().count() > 240 {
             return Err(format!("The {name} is invalid."));
         }
     }
-    if !maximum_spend_usd.is_finite() || maximum_spend_usd <= 0.0 || maximum_spend_usd > 100.0 {
-        return Err("The remote training budget must be between $0 and $100.".into());
+    if !maximum_spend_usd.is_finite() || maximum_spend_usd <= 0.0 || maximum_spend_usd > 500.0 {
+        return Err("The remote training budget must be between $0 and $500.".into());
     }
 
     let canonical_manifest = PathBuf::from(manifest_path.trim())
@@ -470,7 +476,7 @@ fn prepare_remote_plan(
             safe_model_segment(&manifest.dataset_id)
         ),
         provider: provider.to_string(),
-        base_model: base_model.to_string(),
+        model_profile: model_profile.to_string(),
         output_model_name,
         frontier_model: frontier_model.to_string(),
         labels: manifest.labels.clone(),
@@ -670,7 +676,7 @@ pub async fn start_remote_classification_training(
                     "labels": plan.labels
                 },
                 "provider": plan.provider,
-                "base_model": plan.base_model,
+                "model_profile": plan.model_profile,
                 "output_model_name": plan.output_model_name,
                 "uploads": uploads,
                 "split": {
@@ -751,10 +757,10 @@ fn read_verified_plan(path: &str) -> Result<RemoteTrainingPlan, String> {
             .ok()
             .as_deref()
             != Some(canonical.as_path())
-        || !matches!(plan.provider.as_str(), "fake" | "fireworks")
+        || !matches!(plan.provider.as_str(), "fake" | "managed")
         || plan.artifacts.len() != 3
         || plan.maximum_spend_usd <= 0.0
-        || plan.maximum_spend_usd > 100.0
+        || plan.maximum_spend_usd > 500.0
     {
         return Err("The remote training plan failed its immutable boundary checks.".into());
     }
@@ -837,15 +843,15 @@ fn validate_capabilities(value: &Value, plan: &RemoteTrainingPlan) -> Result<(),
         .ok_or_else(|| "The planned remote training provider is unavailable.".to_string())?;
     if provider.get("enabled").and_then(Value::as_bool) != Some(true)
         || !provider
-            .get("base_models")
+            .get("model_profiles")
             .and_then(Value::as_array)
-            .is_some_and(|models| {
-                models
-                    .iter()
-                    .any(|model| model.as_str() == Some(&plan.base_model))
+            .is_some_and(|profiles| {
+                profiles.iter().any(|profile| {
+                    profile.get("id").and_then(Value::as_str) == Some(&plan.model_profile)
+                })
             })
     {
-        return Err("The planned provider or base model is disabled.".into());
+        return Err("The planned Understudy training profile is unavailable.".into());
     }
     let max_budget = value
         .get("limits")
@@ -1269,7 +1275,7 @@ mod tests {
         let value = prepare_remote_plan(
             manifest_path.to_str().unwrap(),
             "fake",
-            "understudy/fake-gemma",
+            "understudy/auto",
             "glm-5.2",
             3.0,
         )
@@ -1298,7 +1304,9 @@ mod tests {
         .unwrap();
         assert!(heldout.contains("\"input\""));
         assert!(heldout.contains("\"target\""));
-        assert!(plan.output_model_name.starts_with("understudy-sms-intent-test-"));
+        assert!(plan
+            .output_model_name
+            .starts_with("understudy-sms-intent-test-"));
         assert!(plan.output_model_name.len() <= 64);
         assert!(read_verified_plan(&plan.plan_path).is_ok());
         fs::remove_dir_all(root).unwrap();
@@ -1311,7 +1319,7 @@ mod tests {
             prepare_remote_plan(
                 manifest_path.to_str().unwrap(),
                 "fake",
-                "understudy/fake-gemma",
+                "understudy/auto",
                 "glm-5.2",
                 3.0,
             )
@@ -1322,7 +1330,7 @@ mod tests {
             prepare_remote_plan(
                 manifest_path.to_str().unwrap(),
                 "fake",
-                "understudy/fake-gemma",
+                "understudy/auto",
                 "glm-5.2",
                 3.0,
             )
@@ -1339,7 +1347,7 @@ mod tests {
         let value = prepare_remote_plan(
             manifest_path.to_str().unwrap(),
             "fake",
-            "understudy/fake-gemma",
+            "understudy/auto",
             "glm-5.2",
             3.0,
         )
@@ -1360,7 +1368,7 @@ mod tests {
         let value = prepare_remote_plan(
             manifest_path.to_str().unwrap(),
             "fake",
-            "understudy/fake-gemma",
+            "understudy/auto",
             "glm-5.2",
             3.0,
         )

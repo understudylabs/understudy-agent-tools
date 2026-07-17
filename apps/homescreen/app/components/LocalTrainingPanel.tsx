@@ -320,7 +320,7 @@ export function LocalTrainingPanel({
       .then((envelope) => {
         if (cancelled) return;
         const hasProvider = envelope.enabled && envelope.capabilities?.providers.some(
-          (provider) => provider.enabled && provider.base_models.length > 0,
+          (provider) => provider.enabled && provider.model_profiles.length > 0,
         );
         if (hasProvider && envelope.capabilities) {
           setRemoteCapabilities(envelope.capabilities);
@@ -667,7 +667,7 @@ export function LocalTrainingPanel({
             <span>Frontier reference</span>
             <strong>Compare with GLM 5.2 on the same {state.result.heldout.row_count.toLocaleString()} test examples</strong>
             <small>
-              Only held-out test examples are sent through Understudy; training examples stay on this Mac. Fireworks publishes zero data retention for GLM 5.2. Maximum approved spend: $1.00.
+              Only held-out test examples are sent through Understudy; training examples stay on this Mac. The active inference vendor remains behind Understudy's authenticated service boundary. Maximum approved spend: $1.00.
             </small>
             {frontierEvent?.message && <p>{frontierEvent.message}</p>}
             {frontierEvent?.current !== undefined && frontierEvent.total !== undefined && (
