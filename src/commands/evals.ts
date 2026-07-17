@@ -108,7 +108,7 @@ export function registerEvalsCommand(program: Command): void {
     .requiredOption("--name <name>", "Cohort name.")
     .option("--description <text>", "Why these captures were selected.")
     .option("--last <duration>", "Recent window, such as 14d or 12h (max 31d).", "14d")
-    .option("--limit <n>", "Candidate limit, max 500.", "50")
+    .option("--limit <n>", "Candidate limit, max 100.", "50")
     .option("--seed <seed>", "Deterministic sample seed.", "understudy-eval-catalog-v1")
     .option("--requested-model <id>", "Filter by requested model.")
     .option("--served-model <id>", "Filter by served model.")
@@ -126,7 +126,7 @@ export function registerEvalsCommand(program: Command): void {
     .description("List redacted capture candidates for one workload.")
     .requiredOption("--from <iso>", "Inclusive ISO-8601 window start.")
     .requiredOption("--to <iso>", "Exclusive ISO-8601 window end (max 31 days).")
-    .option("--limit <n>", "Candidate limit, max 500.", "50")
+    .option("--limit <n>", "Candidate limit, max 100.", "50")
     .option("--seed <seed>", "Deterministic sample seed.", "understudy-eval-catalog-v1")
     .option("--requested-model <id>", "Filter by requested model.")
     .option("--served-model <id>", "Filter by served model.")
@@ -353,13 +353,18 @@ async function downloadExport(exportData: z.infer<typeof CohortExportSchema>, wo
   const outputDir = resolve(out);
   mkdirSync(outputDir, { recursive: true });
   const files: Array<{ request_id: string; path: string; content_sha256: string }> = [];
+  const fileNames = new Set<string>();
   for (const capture of exportData.captures) {
     const download = await fetch(capture.url, { headers: { Accept: "application/x-ndjson" } });
     if (!download.ok) throw new Error(`Capture ${capture.request_id} download failed with status ${download.status}.`);
     const bytes = new Uint8Array(await download.arrayBuffer());
     const digest = createHash("sha256").update(bytes).digest("hex");
     if (digest !== capture.content_sha256) throw new Error(`Capture ${capture.request_id} failed SHA-256 verification.`);
-    const fileName = `${safeFileStem(capture.request_id)}.jsonl`;
+    const stem = safeFileStem(capture.request_id);
+    let fileName = `${stem}.jsonl`;
+    if (fileNames.has(fileName)) fileName = `${stem}-${capture.content_sha256.slice(0, 12)}.jsonl`;
+    if (fileNames.has(fileName)) throw new Error(`Capture ${capture.request_id} collides with another local filename.`);
+    fileNames.add(fileName);
     writeFileSync(join(outputDir, fileName), bytes);
     files.push({ request_id: capture.request_id, path: fileName, content_sha256: digest });
   }
@@ -390,8 +395,8 @@ function parseIsoOption(name: string, value: string): string {
 
 function parseLimit(value: string): number {
   const limit = Number(value);
-  if (!Number.isInteger(limit) || limit < 1 || limit > 500) {
-    throw new Error(`Expected --limit between 1 and 500, got: ${value}`);
+  if (!Number.isInteger(limit) || limit < 1 || limit > 100) {
+    throw new Error(`Expected --limit between 1 and 100, got: ${value}`);
   }
   return limit;
 }
