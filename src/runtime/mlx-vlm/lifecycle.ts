@@ -10,7 +10,8 @@ import {
 } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
-import { fileURLToPath } from "node:url";
+
+import { packagePath } from "../../internal/package-root.js";
 
 export const MLX_VLM_COMMIT = "bc3461b13a636d7cb8213b0008d885a9965f1e69";
 export const MLX_VLM_SOURCE = `git+https://github.com/Blaizzy/mlx-vlm.git@${MLX_VLM_COMMIT}`;
@@ -71,9 +72,7 @@ function paths() {
 }
 
 export function mlxVlmConstraintsPath(): string {
-  return fileURLToPath(
-    new URL("../../../runtime-assets/mlx-vlm-constraints.txt", import.meta.url),
-  );
+  return packagePath("runtime-assets", "mlx-vlm-constraints.txt");
 }
 
 function constraintsSha256(): string {

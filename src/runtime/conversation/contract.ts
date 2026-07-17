@@ -8,7 +8,7 @@ export const CONFORMANCE_SCHEMA =
 export const RUNTIME_ID = "understudy-conversation-sidecar";
 export const VERCEL_RUNTIME_ID = "vercel-ai-sdk";
 export const PI_RUNTIME_ID = "pi-agent-session";
-export const RUNTIME_VERSION = "0.3.4";
+export const RUNTIME_VERSION = "0.3.28";
 
 export function piNodeSupported(version = process.versions.node): boolean {
   const [major, minor] = version.split(".").map(Number);
@@ -104,6 +104,16 @@ export const runtimeRequestSchema = z
   })
   .strict()
   .superRefine((request, context) => {
+    if (
+      request.provider_context_window_tokens != null &&
+      request.provider_context_window_tokens < request.context_window_tokens
+    ) {
+      context.addIssue({
+        code: z.ZodIssueCode.custom,
+        path: ["provider_context_window_tokens"],
+        message: "provider context window must be at least the logical context window",
+      });
+    }
     if (request.supervision && request.runtime_backend !== "pi") {
       context.addIssue({
         code: z.ZodIssueCode.custom,
@@ -370,7 +380,7 @@ export function validateRuntimeTrace(values: readonly unknown[]): RuntimeEventEn
   const runtimeId = requiredString(first, "runtime_id");
   const eventIds = new Set<string>();
   const pendingTools = new Map<string, string>();
-  const interruptMarkers = new Set<string>();
+  const interventionMarkers = new Set<string>();
   const interruptedMarkers = new Set<string>();
   let terminalSeen = false;
 
@@ -399,6 +409,23 @@ export function validateRuntimeTrace(values: readonly unknown[]): RuntimeEventEn
     if (["message", "delta", "reasoning_delta"].includes(event)) {
       requiredString(data, "role", `${event}.role`);
       if (typeof data.text !== "string") throw new Error(`${event}.text must be a string`);
+      if (event === "message" && "logical_context_window_tokens" in data) {
+        const logical = nonNegativeInteger(
+          data,
+          "logical_context_window_tokens",
+          "message.logical_context_window_tokens",
+        );
+        const provider = nonNegativeInteger(
+          data,
+          "provider_context_window_tokens",
+          "message.provider_context_window_tokens",
+        );
+        if (logical < 1_024 || provider < logical) {
+          throw new Error(
+            "message context windows require provider >= logical >= 1024 tokens",
+          );
+        }
+      }
     } else if (event === "tool_call") {
       const callId = requiredString(data, "call_id", "tool_call.call_id");
       const name = requiredString(data, "name", "tool_call.name");
@@ -420,6 +447,7 @@ export function validateRuntimeTrace(values: readonly unknown[]): RuntimeEventEn
       if (!("result" in data)) throw new Error("tool_result.result is required");
     } else if (event === "usage") {
       requiredString(data, "role", "usage.role");
+      requiredString(data, "model", "usage.model");
       const source = requiredString(data, "source", "usage.source");
       if (!["provider", "estimated", "unavailable"].includes(source)) {
         throw new Error(`unknown usage source ${source}`);
@@ -464,6 +492,11 @@ export function validateRuntimeTrace(values: readonly unknown[]): RuntimeEventEn
       }
     } else if (event === "supervisor_verdict") {
       const verdict = requiredString(data, "verdict", "supervisor_verdict.verdict");
+      requiredString(
+        data,
+        "supervisor_model",
+        "supervisor_verdict.supervisor_model",
+      );
       if (!["continue", "interrupt", "stop", "nudge"].includes(verdict)) {
         throw new Error(`unknown supervisor verdict ${verdict}`);
       }
@@ -471,16 +504,95 @@ export function validateRuntimeTrace(values: readonly unknown[]): RuntimeEventEn
       if (!["model", "policy", "human"].includes(source)) {
         throw new Error(`unknown supervisor verdict source ${source}`);
       }
+      if ("decision_phase" in data && data.decision_phase != null) {
+        const phase = requiredString(
+          data,
+          "decision_phase",
+          "supervisor_verdict.decision_phase",
+        );
+        if (!["streaming", "final"].includes(phase)) {
+          throw new Error(`unknown supervisor verdict decision_phase ${phase}`);
+        }
+      }
       if (["interrupt", "nudge"].includes(verdict)) {
         requiredString(data, "reason", "supervisor_verdict.reason");
       }
-      if (verdict === "interrupt") {
-        interruptMarkers.add(requiredString(data, "marker_id", "supervisor_verdict.marker_id"));
+      if ("handoff_target" in data && data.handoff_target != null) {
+        const target = requiredString(
+          data,
+          "handoff_target",
+          "supervisor_verdict.handoff_target",
+        );
+        if (!["local", "remote"].includes(target)) {
+          throw new Error(`unknown supervisor verdict handoff_target ${target}`);
+        }
+      }
+      if ("failure_kind" in data && data.failure_kind != null) {
+        const failureKind = requiredString(
+          data,
+          "failure_kind",
+          "supervisor_verdict.failure_kind",
+        );
+        if (!["unavailable", "invalid_response", "policy_degrade"].includes(failureKind)) {
+          throw new Error(`unknown supervisor verdict failure_kind ${failureKind}`);
+        }
+        requiredString(data, "error", "supervisor_verdict.error");
+        if (failureKind === "unavailable") {
+          if (verdict !== "continue") {
+            throw new Error("an unavailable supervisor must degrade to continue");
+          }
+          requiredString(
+            data,
+            "handoff_target",
+            "supervisor_verdict.handoff_target",
+          );
+        }
+      }
+      if ("probabilities" in data && data.probabilities != null) {
+        const probabilities = record(
+          data.probabilities,
+          "supervisor_verdict.probabilities",
+        );
+        if (Object.keys(probabilities).length === 0) {
+          throw new Error("supervisor_verdict.probabilities cannot be empty");
+        }
+        for (const [name, value] of Object.entries(probabilities)) {
+          if (!["continue", "interrupt", "stop", "nudge"].includes(name)) {
+            throw new Error(`unknown supervisor verdict probability key ${name}`);
+          }
+          if (typeof value !== "number" || !Number.isFinite(value)) {
+            throw new Error(`supervisor_verdict.probabilities.${name} must be finite`);
+          }
+        }
+      }
+      if ("probability_kind" in data && data.probability_kind != null) {
+        const kind = requiredString(
+          data,
+          "probability_kind",
+          "supervisor_verdict.probability_kind",
+        );
+        if (kind !== "logprob") {
+          throw new Error(`unknown supervisor verdict probability_kind ${kind}`);
+        }
+        const probabilities = record(
+          data.probabilities,
+          "supervisor_verdict.probabilities",
+        );
+        for (const [name, value] of Object.entries(probabilities)) {
+          if ((value as number) > 0) {
+            throw new Error(`supervisor_verdict logprob ${name} must be at most zero`);
+          }
+        }
+      }
+      if (verdict === "interrupt" || verdict === "nudge") {
+        interventionMarkers.add(
+          requiredString(data, "marker_id", "supervisor_verdict.marker_id"),
+        );
       }
     } else if (event === "student_interruption") {
       const marker = requiredString(data, "marker_id", "student_interruption.marker_id");
       requiredString(data, "reason", "student_interruption.reason");
-      if (!interruptMarkers.has(marker)) {
+      if (!interventionMarkers.has(marker)) {
         throw new Error(`student interruption ${marker} has no supervisor verdict`);
       }
       interruptedMarkers.add(marker);

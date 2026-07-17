@@ -17,6 +17,11 @@ contact channel listed on the organization profile.
 - Use redacted presence checks only.
 - Treat `.env*`, shell history, local credential files, and provider config as
   non-release material.
+- Treat the Tauri updater private key as permanent production signing material.
+  Keep its durable backup in the production secrets vault and its automation
+  copy only in the protected GitHub `desktop-release` environment; never write
+  it to a checkout or repository variable, and publish only its public key.
+  Losing or rotating it strands clients that trust the embedded public key.
 - If a secret appears in output or a committed file, stop and rotate it before
   continuing.
 
@@ -30,11 +35,37 @@ contact channel listed on the organization profile.
 - Public release checks should inspect built packages for ignored docs, env
   files, private paths, and secret-shaped strings.
 
+## Release Automation
+
+Normal Desktop releases use the protected GitHub `desktop-release`
+environment. Apple credentials, the base64 PKCS#12 Developer ID identity, and
+the Tauri updater private key are encrypted environment secrets. The workflow
+imports both keys into runner-temporary paths, deletes them in an `always()`
+cleanup step, and publishes only after it re-downloads and verifies the draft
+release assets. Maintainers must not paste signing material into workflow
+dispatch inputs, logs, repository variables, or committed files.
+
 ## Local Artifact Safety
 
 `.understudy/` is local runtime output. It can contain workload metadata and may
 eventually contain private payloads. Do not commit it unless a specific public
 fixture is intentionally synthetic and reviewed.
+
+Supervision correction exports are content-addressed local evidence. The CLI
+writes them with owner-only permissions on Unix and refuses to replace an
+existing path with different content. They contain raw prompts and outputs, so
+they remain private artifacts even when their SHA-256 hashes are safe to share.
+
+Remote supervision advisories use the same private-artifact posture. Consent is
+bound to the exact provider/project/workload route; a route change disables the
+feature until the user explicitly enables it again. The CLI rejects a response
+whose served model does not exactly match the provider contract, persists the
+mismatch as error evidence, and never treats that response as a recommendation.
+
+Desktop image attachments live under private app data, outside `.understudy/`.
+The app accepts only bounded PNG, JPEG, WebP, and GIF bytes with matching file
+signatures. Filenames never select filesystem paths: session directories are
+hashed and stored filenames are derived from verified SHA-256 content IDs.
 
 ## Agent Tool Execution
 

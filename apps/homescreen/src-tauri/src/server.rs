@@ -101,6 +101,11 @@ pub fn router(ctx: Ctx) -> Router {
         .route("/v1/metrics/chat-routes", get(chat_route_metrics))
         .route("/v1/models", get(models))
         .route("/v1/models/catalog", get(snapshots))
+        .route("/v1/classifiers", get(agent_classifiers))
+        .route(
+            "/v1/classifiers/:model_id/predict",
+            post(agent_classifier_predict),
+        )
         .route("/v1/residency", get(residency))
         .route("/v1/residency/slots", post(residency_add_slot))
         .route("/v1/residency/assign", post(residency_assign))
@@ -117,6 +122,10 @@ pub fn router(ctx: Ctx) -> Router {
         )
         .route("/v1/runs/:run_id/cancel", post(agent_run_cancel))
         .route("/v1/runs/:run_id/events", get(agent_run_events))
+        .route(
+            "/v1/supervision/corrections",
+            get(agent_supervision_corrections),
+        )
         .route("/v1/feedback/supervisor", post(agent_supervisor_feedback))
         // agent fronts
         .route("/mcp", post(mcp))
@@ -256,7 +265,7 @@ async fn agent_capabilities(
 fn agent_capabilities_value() -> Value {
     json!({
         "schema_version": "understudy.desktop_api.v2",
-        "api_version": "2.1.0",
+        "api_version": "2.3.0",
         "event_schema": crate::conversation_runtime::EVENT_SCHEMA,
         "runtime": {
             "id": "understudy-conversation-runtime",
@@ -268,18 +277,22 @@ fn agent_capabilities_value() -> Value {
             "exact_run_cancellation": true,
             "persisted_run_events": true,
             "supervisor_feedback": true,
+            "supervision_correction_export": true,
             "local_supervision": true,
             "fully_offline_local_models": true,
             "model_inventory": true,
             "model_downloads": true,
             "model_residency": true,
             "migration_observation": true,
+            "local_task_models": true,
         },
         "endpoints": {
             "status": "/v1/status",
             "migration_status": "/v1/metrics/chat-routes",
             "models": "/v1/models",
             "model_catalog": "/v1/models/catalog",
+            "classifiers": "/v1/classifiers",
+            "classifier_predict": "/v1/classifiers/{model_id}/predict",
             "residency": "/v1/residency",
             "residency_add_slot": "/v1/residency/slots",
             "residency_assign": "/v1/residency/assign",
@@ -293,6 +306,7 @@ fn agent_capabilities_value() -> Value {
             "cancel_run": "/v1/runs/{run_id}/cancel",
             "run_events": "/v1/runs/{run_id}/events",
             "supervisor_feedback": "/v1/feedback/supervisor",
+            "supervision_corrections": "/v1/supervision/corrections",
         }
     })
 }
@@ -348,18 +362,63 @@ async fn agent_conversation_turn(
         },
     )
     .map_err(|error| (StatusCode::BAD_REQUEST, error))?;
+    let model = request
+        .get("model")
+        .and_then(Value::as_str)
+        .ok_or_else(|| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "conversation runtime request is missing its model".to_string(),
+            )
+        })?
+        .to_string();
+    let supervised = request.get("supervision").is_some();
+    let prompt_tokens = crate::chat::agent_runtime_prompt_tokens(&request);
     let reservation = crate::conversation_sidecar::reserve_agent_run(&session_id, &run_id)
         .map_err(|error| (StatusCode::CONFLICT, error))?;
 
     let (events_tx, events_rx) =
         tokio::sync::mpsc::unbounded_channel::<crate::conversation_runtime::RuntimeEventEnvelope>();
     let app = ctx.app.clone();
+    let run_id_for_task = run_id.clone();
+    let session_id_for_task = session_id.clone();
     tauri::async_runtime::spawn(async move {
-        if let Err((error, _)) =
-            crate::conversation_sidecar::execute_agent_run(&app, request, &events_tx, reservation)
-                .await
+        let started = std::time::Instant::now();
+        match crate::conversation_sidecar::execute_agent_run(&app, request, &events_tx, reservation)
+            .await
         {
-            eprintln!("understudy desktop API conversation run failed: {error}");
+            Ok(result) => crate::chat::record_agent_runtime_run(
+                &app,
+                &run_id_for_task,
+                &session_id_for_task,
+                &model,
+                supervised,
+                Some(&result),
+                prompt_tokens,
+                started.elapsed().as_millis() as u64,
+                "ok",
+                None,
+            ),
+            Err((error, _)) => {
+                let status = if crate::conversation_sidecar::is_runtime_cancellation(&error) {
+                    "cancelled"
+                } else {
+                    "error"
+                };
+                crate::chat::record_agent_runtime_run(
+                    &app,
+                    &run_id_for_task,
+                    &session_id_for_task,
+                    &model,
+                    supervised,
+                    None,
+                    prompt_tokens,
+                    started.elapsed().as_millis() as u64,
+                    status,
+                    Some(error.clone()),
+                );
+                eprintln!("understudy desktop API conversation run failed: {error}");
+            }
         }
     });
 
@@ -474,17 +533,135 @@ async fn agent_supervisor_feedback(
     Ok(Json(json!({ "ok": true })))
 }
 
+#[derive(serde::Deserialize)]
+struct SupervisionCorrectionsQuery {
+    #[serde(default)]
+    reviewed_only: bool,
+}
+
+async fn agent_supervision_corrections(
+    State(ctx): State<Ctx>,
+    h: HeaderMap,
+    Query(query): Query<SupervisionCorrectionsQuery>,
+) -> Result<Response, (StatusCode, String)> {
+    auth(&ctx, &h)?;
+    let app = ctx.app.clone();
+    let packet = blocking(move || {
+        crate::supervision_export::supervision_export_packet(&app, query.reviewed_only)
+    })
+    .await?;
+    let mut response = Json(packet).into_response();
+    response.headers_mut().insert(
+        header::CACHE_CONTROL,
+        HeaderValue::from_static("private, no-store"),
+    );
+    Ok(response)
+}
+
 async fn status(State(ctx): State<Ctx>, h: HeaderMap) -> Result<Json<Value>, (StatusCode, String)> {
     auth(&ctx, &h)?;
     // get_status can probe `moraine status` on a cold cache — keep it off
     // the axum workers.
     let app = ctx.app.clone();
-    let snapshot = blocking(move || Ok::<_, String>(crate::commands::get_status(app))).await?;
+    let snapshot =
+        blocking(move || Ok::<_, String>(crate::commands::status_snapshot(&app))).await?;
     Ok(Json(json!(snapshot)))
 }
 async fn models(State(ctx): State<Ctx>, h: HeaderMap) -> Result<Json<Value>, (StatusCode, String)> {
     auth(&ctx, &h)?;
     Ok(Json(json!(crate::commands::list_models())))
+}
+
+fn classifier_manifest_for_model(registry: &Value, model_id: &str) -> Result<String, String> {
+    let runs = registry
+        .as_array()
+        .ok_or_else(|| "The local classifier registry returned malformed JSON.".to_string())?;
+    let run = runs
+        .iter()
+        .find(|run| run.get("model_id").and_then(Value::as_str) == Some(model_id))
+        .ok_or_else(|| format!("unknown local classifier: {model_id}"))?;
+    if run.get("run_status").and_then(Value::as_str) != Some("completed")
+        || run
+            .get("model")
+            .and_then(Value::as_object)
+            .and_then(|model| model.get("available"))
+            .and_then(Value::as_bool)
+            != Some(true)
+    {
+        return Err(format!("local classifier is not ready: {model_id}"));
+    }
+    run.get("manifest_path")
+        .and_then(Value::as_str)
+        .map(str::to_string)
+        .ok_or_else(|| "The local classifier registry omitted its manifest path.".to_string())
+}
+
+fn public_classifier_registry(mut registry: Value) -> Result<Value, String> {
+    let runs = registry
+        .as_array_mut()
+        .ok_or_else(|| "The local classifier registry returned malformed JSON.".to_string())?;
+    for run in runs {
+        let Some(run) = run.as_object_mut() else {
+            return Err("The local classifier registry returned malformed JSON.".into());
+        };
+        run.remove("manifest_path");
+        if let Some(model) = run.get_mut("model").and_then(Value::as_object_mut) {
+            model.remove("path");
+        }
+        if let Some(artifact) = run
+            .get_mut("identity")
+            .and_then(Value::as_object_mut)
+            .and_then(|identity| identity.get_mut("artifact"))
+            .and_then(Value::as_object_mut)
+        {
+            artifact.remove("path");
+        }
+        if let Some(repeat) = run
+            .get_mut("repeat_validation")
+            .and_then(Value::as_object_mut)
+        {
+            repeat.remove("latest_artifact_path");
+        }
+    }
+    Ok(registry)
+}
+
+async fn agent_classifiers(
+    State(ctx): State<Ctx>,
+    h: HeaderMap,
+) -> Result<Json<Value>, (StatusCode, String)> {
+    auth(&ctx, &h)?;
+    let registry =
+        blocking(|| crate::workload_drop::list_classification_runs(false, 1_000)).await?;
+    Ok(Json(
+        public_classifier_registry(registry).map_err(|error| (StatusCode::BAD_GATEWAY, error))?,
+    ))
+}
+
+#[derive(serde::Deserialize)]
+struct AgentClassifierPredictBody {
+    text: String,
+}
+
+async fn agent_classifier_predict(
+    State(ctx): State<Ctx>,
+    Path(model_id): Path<String>,
+    h: HeaderMap,
+    Json(body): Json<AgentClassifierPredictBody>,
+) -> Result<Json<Value>, (StatusCode, String)> {
+    auth(&ctx, &h)?;
+    validate_agent_id(&model_id, "model_id")?;
+    let lookup_model_id = model_id.clone();
+    let manifest = blocking(move || {
+        let registry = crate::workload_drop::list_classification_runs(false, 1_000)?;
+        classifier_manifest_for_model(&registry, &lookup_model_id)
+    })
+    .await
+    .map_err(|(_, error)| (StatusCode::NOT_FOUND, error))?;
+    let text = body.text;
+    let prediction =
+        blocking(move || crate::workload_drop::predict_classification(manifest, text)).await?;
+    Ok(Json(prediction))
 }
 async fn snapshots(
     State(ctx): State<Ctx>,
@@ -531,8 +708,8 @@ struct ConversationRuntimeToolRequest {
 }
 
 /// Authenticated executor used by the CLI-owned runtime. Keeping this a thin
-/// adapter guarantees Pi and the one-release Rust fallback expose the exact
-/// same desktop tools and residency semantics.
+/// adapter guarantees Pi exposes the exact same desktop tools and residency
+/// semantics.
 async fn conversation_runtime_tool(
     State(ctx): State<Ctx>,
     h: HeaderMap,
@@ -1112,7 +1289,7 @@ fn run_benchmark_properties(with_candidates: bool) -> Value {
     let mut props = json!({
         "run_id": { "type": "string", "description": "Run id; generated when omitted." },
         "suite": { "type": "string", "enum": ["routing-smoke", "local-comparison", "full-matrix", "automationbench-proxy"] },
-        "modes": { "type": "array", "items": { "type": "string", "enum": ["main-only", "sidekick-advisory", "sidekick-parallel", "sidekick-routing"] } },
+        "modes": { "type": "array", "items": { "type": "string", "enum": ["main-only"], "description": "Canonical Pi runtime. Legacy sidekick modes remain readable in historical evidence but cannot be scheduled." } },
         "task_ids": { "type": "array", "items": { "type": "string" } },
         "dry_run": { "type": "boolean", "description": "Default true: plan without spending tokens." },
         "record_skips": { "type": "boolean" }
@@ -1138,6 +1315,18 @@ fn tools() -> Vec<Value> {
         ("status", "Local runtime status: services, warm slots, metrics.", empty_schema()),
         ("list_models", "List locally cached models.", empty_schema()),
         ("list_snapshot_models", "Bundled local MLX snapshot catalog.", empty_schema()),
+        ("list_task_models", "List completed local task classifiers without exposing filesystem paths.", empty_schema()),
+        (
+            "classify_with_model",
+            "Classify one text example with a completed local task model. Input stays on this Mac and is not retained.",
+            obj_schema(
+                json!({
+                    "model_id": { "type": "string", "description": "Canonical classifier id from list_task_models, such as classifier.my-run." },
+                    "text": { "type": "string", "minLength": 1, "maxLength": 4000 }
+                }),
+                &["model_id", "text"],
+            ),
+        ),
         ("residency", "Warm-slot residency (which models are loaded).", empty_schema()),
         ("knowledge_dossiers", "Bundled public per-model dossiers.", empty_schema()),
         ("local_benchmarks", "Local live benchmark rows.", empty_schema()),
@@ -1233,7 +1422,7 @@ fn tools() -> Vec<Value> {
                 json!({
                     "run_id": { "type": "string" },
                     "capture_run_id": { "type": "string", "description": "Per-attempt id joining this row to canonical runtime evidence." },
-                    "runtime_backend": { "type": "string", "description": "Runtime that executed the attempt, such as pi, native-rust, or external." },
+                    "runtime_backend": { "type": "string", "description": "Runtime that executed the attempt, such as pi or external. Historical rows may contain native-rust." },
                     "task_id": { "type": "string" },
                     "mode": { "type": "string" },
                     "model": { "type": "string" },
@@ -1347,9 +1536,28 @@ async fn call_tool(ctx: &Ctx, name: &str, args: &Value) -> Result<Value, String>
     use crate::commands as c;
     let app = ctx.app.clone();
     Ok(match name {
-        "status" => json!(call_blocking(move || Ok::<_, String>(c::get_status(app))).await?),
+        "status" => json!(call_blocking(move || Ok::<_, String>(c::status_snapshot(&app))).await?),
         "list_models" => json!(c::list_models()),
         "list_snapshot_models" => json!(c::list_snapshot_models()),
+        "list_task_models" => {
+            let registry =
+                call_blocking(|| crate::workload_drop::list_classification_runs(false, 1_000))
+                    .await?;
+            public_classifier_registry(registry)?
+        }
+        "classify_with_model" => {
+            let model_id = required_str(args, "model_id")?;
+            let text = required_str(args, "text")?;
+            validate_agent_id(&model_id, "model_id").map_err(|(_, error)| error)?;
+            let lookup_model_id = model_id.clone();
+            let manifest = call_blocking(move || {
+                let registry = crate::workload_drop::list_classification_runs(false, 1_000)?;
+                classifier_manifest_for_model(&registry, &lookup_model_id)
+            })
+            .await?;
+            call_blocking(move || crate::workload_drop::predict_classification(manifest, text))
+                .await?
+        }
         "residency" => json!(c::get_residency(app)),
         "add_slot" => {
             let slot_id = call_blocking(move || c::add_slot(app)).await?;
@@ -1668,7 +1876,21 @@ mod tests {
     fn agent_capabilities_advertise_the_versioned_control_plane() {
         let capabilities = agent_capabilities_value();
         assert_eq!(capabilities["schema_version"], "understudy.desktop_api.v2");
-        assert_eq!(capabilities["api_version"], "2.1.0");
+        assert_eq!(capabilities["api_version"], "2.3.0");
+        assert_eq!(capabilities["features"]["local_task_models"], true);
+        assert_eq!(capabilities["endpoints"]["classifiers"], "/v1/classifiers");
+        assert_eq!(
+            capabilities["endpoints"]["classifier_predict"],
+            "/v1/classifiers/{model_id}/predict"
+        );
+        assert_eq!(
+            capabilities["features"]["supervision_correction_export"],
+            true
+        );
+        assert_eq!(
+            capabilities["endpoints"]["supervision_corrections"],
+            "/v1/supervision/corrections"
+        );
         assert_eq!(
             capabilities["event_schema"],
             crate::conversation_runtime::EVENT_SCHEMA
@@ -1746,6 +1968,7 @@ mod tests {
         assert_eq!(required_of("start_model_download"), ["model_id"]);
         assert_eq!(required_of("cancel_model_download"), ["download_id"]);
         assert_eq!(required_of("chat_completion"), ["slot_id", "prompt"]);
+        assert_eq!(required_of("classify_with_model"), ["model_id", "text"]);
         let chat = tools
             .iter()
             .find(|tool| tool["name"] == "chat_completion")
@@ -1772,5 +1995,29 @@ mod tests {
         // Args-optional tools stay unconstrained.
         assert!(required_of("run_fusion_benchmark").is_empty());
         assert!(required_of("list_traces").is_empty());
+    }
+
+    #[test]
+    fn task_model_api_resolves_canonical_identity_and_hides_local_paths() {
+        let registry = json!([{
+            "model_id": "classifier.demo-run",
+            "run_status": "completed",
+            "manifest_path": "/private/run-manifest.json",
+            "model": { "available": true, "path": "/private/model" },
+            "identity": { "artifact": { "available": true, "path": "/private/model" } },
+            "repeat_validation": { "latest_artifact_path": "/private/evaluation.json" }
+        }]);
+        assert_eq!(
+            classifier_manifest_for_model(&registry, "classifier.demo-run").unwrap(),
+            "/private/run-manifest.json"
+        );
+        assert!(classifier_manifest_for_model(&registry, "classifier.missing").is_err());
+        let public = public_classifier_registry(registry).unwrap();
+        assert!(public[0].get("manifest_path").is_none());
+        assert!(public[0]["model"].get("path").is_none());
+        assert!(public[0]["identity"]["artifact"].get("path").is_none());
+        assert!(public[0]["repeat_validation"]
+            .get("latest_artifact_path")
+            .is_none());
     }
 }

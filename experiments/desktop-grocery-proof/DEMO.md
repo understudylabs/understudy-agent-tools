@@ -2,25 +2,54 @@
 
 This script is for an engineering or applied-AI buyer evaluating whether a
 smaller open-weight model can safely handle part of an existing workload. It
-uses synthetic tasks and local models only. The purpose is to show the
-replacement loop and its evidence, not to claim production readiness from
-three examples.
+uses synthetic tasks and local models by default, with an optional explicitly
+approved hosted-incumbent route. The purpose is to show the replacement loop
+and its evidence, not to claim production readiness from three examples.
 
 ## Before the call
 
-Run Understudy Desktop 0.3.2+ with an Understudy E2B slot and 26B slot warm.
-Confirm that agents can discover the app, then create a fresh proof:
+Run the current Understudy Desktop with at least two local model slots warm.
+Confirm that agents can discover the app, then create a fresh proof. The runner
+selects the smallest warm model as the student and the largest warm model as
+the main/teacher, so the demo has no machine-specific slot ids:
 
 ```sh
 understudy desktop capabilities
 understudy desktop status --json
-node experiments/desktop-grocery-proof/run.mjs \
-  --student-slot 9 \
-  --teacher-slot 5
+node experiments/desktop-grocery-proof/run.mjs
 ```
 
 Keep the resulting proof directory open. Do not use customer prompts, traces,
 or credentials in the demo.
+
+Before a pilot decision, run the 30-task promotion suite rather than
+extrapolating from the three-task demo:
+
+```sh
+node experiments/desktop-grocery-proof/run.mjs \
+  --suite promotion
+```
+
+If reusing an existing proof, derive a report with the current renderer instead
+of trusting a report file produced by older code:
+
+```sh
+PROOF=~/.understudy/proofs/grocery-marketplace/<proof-id>
+REPORT=$(node experiments/desktop-grocery-proof/run.mjs \
+  --report-from "$PROOF" | jq -r .outputDir)
+```
+
+This does not run a model, contact a provider, alter the proof, or add a
+migration-cohort turn.
+
+If the buyer wants their hosted incumbent in the comparison, configure the
+fourth route before the call using the approval-gated command in `README.md`.
+Verify the model id and current token prices with them. Never improvise prices
+or infer consent from an existing key.
+
+Open the fresh proof's `report.html`, or `$REPORT/report.html` when reusing
+evidence. It is the buyer-facing decision packet; keep the JSONL files behind
+it for drill-down rather than making the terminal the demo.
 
 ## 0-3 minutes: state the decision
 
@@ -43,25 +72,30 @@ support, cancellation, replay, and supervisor feedback.
 
 ## 3-8 minutes: show one runtime, multiple routes
 
-Explain the three frozen routes:
+Explain the three default frozen routes using the model ids recorded in the
+new proof summary:
 
-1. E2B alone;
-2. 26B alone;
-3. E2B working first while 26B supervises.
+1. the smallest warm local model alone;
+2. the largest warm local model alone;
+3. the smaller model working first while the larger model supervises.
 
-The same three tasks run through every route: codebase analysis, cart
-substitution, and operations classification. The suite hash prevents a route
-from receiving an easier slice.
+If configured, add the fourth route: the hosted incumbent, executed by Pi with
+the same run identity, canonical events, and deterministic scorer.
+
+The smoke uses one task per workflow: codebase analysis, cart substitution,
+and operations classification. The promotion gate uses 10 frozen tasks per
+workflow. The suite hash prevents a route from receiving an easier slice.
 
 ```sh
 PROOF=$(find ~/.understudy/proofs/grocery-marketplace \
   -mindepth 1 -maxdepth 1 -type d | sort | tail -1)
-jq '{proof_id, suite_sha256, task_count, run_count, slots}' "$PROOF/summary.json"
+jq '{proof_id, suite_sha256, task_count, run_count, slots, incumbent}' "$PROOF/summary.json"
 ```
 
 ## 8-15 minutes: make the comparison legible
 
-Show only the buyer-facing fields:
+Start with the report's route comparison and per-task recommendations. If the
+buyer wants the underlying numbers, show only these fields:
 
 ```sh
 jq '.by_mode | with_entries(.value |= {
@@ -70,21 +104,17 @@ jq '.by_mode | with_entries(.value |= {
   mean_field_accuracy,
   mean_latency_ms,
   total_tokens,
+  cost_usd,
   supervisor_missed_errors,
   mean_small_model_output_share,
   mean_supervisor_token_overhead
 })' "$PROOF/summary.json"
 ```
 
-For the measured synthetic slice, the expected story is:
-
-- E2B handles cart substitution and operations classification.
-- 26B handles all three tasks.
-- E2B is faster, but misses the required atomic inventory fix.
-- Supervision retains the E2B answer and the 26B judge misses that known error.
-
-Do not hide the miss. It is the strongest product moment: Understudy tells the
-team that supervision is not yet safe for code analysis instead of turning an
+Do not memorize or pre-script a winning route. State the result in the fresh
+report, including any incumbent miss, supervisor miss, false positive, or
+unsuccessful correction. That is the strongest product moment: Understudy tells
+the team where a smaller or supervised route is unsafe instead of turning an
 architecture idea into an unsupported savings claim.
 
 ## 15-22 minutes: inspect the failed judgment
@@ -104,6 +134,7 @@ Call out:
 
 - one exact `run_id` across the trace;
 - stable verdict/intervention marker IDs;
+- the supervisor's recorded reason and chosen-verdict first-token probability;
 - separate student and supervisor token counts;
 - the student partial and any teacher continuation remain separate;
 - a human can label a missed intervention without rewriting history.
@@ -111,6 +142,10 @@ Call out:
 The question changes from “should we trust small models?” to “which workload
 clusters have enough evidence to route, supervise, improve, or keep on the
 incumbent?”
+
+Do not call the first-token probability a calibrated correctness score. A
+confident missed error is evidence that the judge needs work, not evidence that
+the rejected student was safe.
 
 ## 22-27 minutes: show deployment safety
 
@@ -151,3 +186,14 @@ required to learn whether the opportunity is real.
   owner-only evidence, cached offline models, and explicit remote-route consent.
 - Product or finance: emphasize measured route coverage and avoided migration
   risk; do not extrapolate savings until the buyer's frozen slice is scored.
+
+For the applied-AI handoff, run:
+
+```sh
+understudy desktop supervision prepare-proof --proof <proof-directory> --json
+```
+
+Call out the provenance line explicitly: deterministic evaluator judgments are
+not human labels, the frozen promotion proof remains evaluation-only, and GEPA
+handoff preparation makes no provider call. Only a separately frozen
+development/train proof can produce optimizer samples.

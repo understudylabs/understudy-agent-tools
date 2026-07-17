@@ -181,6 +181,15 @@ pub struct ChatSessionRow {
 }
 
 #[derive(Serialize, Clone)]
+pub struct ChatSessionSummaryRow {
+    pub session_id: String,
+    pub title: String,
+    pub message_count: u64,
+    pub updated_at: String,
+    pub archived_at: Option<String>,
+}
+
+#[derive(Serialize, Clone)]
 pub struct SidekickRunRow {
     pub id: u64,
     pub session_id: String,
@@ -254,12 +263,6 @@ pub struct SidekickSessionSummaryRow {
     pub has_memory: bool,
     pub memory_preview: Option<String>,
     pub updated_at: String,
-}
-
-#[derive(Clone, Copy, Debug, Default)]
-pub struct SidekickFeedbackSummary {
-    pub useful: u64,
-    pub misses: u64,
 }
 
 #[derive(Serialize, Clone)]
@@ -416,7 +419,8 @@ fn migrate(conn: &Connection) -> Result<()> {
                 session_id TEXT PRIMARY KEY,
                 schema     TEXT NOT NULL,
                 messages   TEXT NOT NULL,
-                updated_at TEXT NOT NULL
+                updated_at TEXT NOT NULL,
+                archived_at TEXT
             );
             CREATE TABLE IF NOT EXISTS chat_runs (
                 id                INTEGER PRIMARY KEY,
@@ -556,6 +560,7 @@ fn migrate(conn: &Connection) -> Result<()> {
         "ALTER TABLE supervisor_feedback ADD COLUMN marker_id TEXT",
         "ALTER TABLE supervisor_feedback ADD COLUMN intervention_at INTEGER",
         "ALTER TABLE supervisor_feedback ADD COLUMN correct_action TEXT",
+        "ALTER TABLE chat_sessions ADD COLUMN archived_at TEXT",
     ];
     for sql in ALTERS {
         apply_alter(conn, sql)?;
@@ -563,6 +568,11 @@ fn migrate(conn: &Connection) -> Result<()> {
     conn.execute(
         "CREATE UNIQUE INDEX IF NOT EXISTS supervisor_feedback_marker_id
          ON supervisor_feedback(marker_id)",
+        [],
+    )?;
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS chat_sessions_archive_updated
+         ON chat_sessions(schema, archived_at, updated_at DESC)",
         [],
     )?;
     Ok(())
@@ -1114,7 +1124,7 @@ impl Db {
         let conn = self.conn()?;
         let mut stmt = conn.prepare(
             "SELECT session_id, schema, messages, updated_at
-             FROM chat_sessions WHERE schema=?1
+             FROM chat_sessions WHERE schema=?1 AND archived_at IS NULL
              ORDER BY updated_at DESC, rowid DESC LIMIT 1",
         )?;
         let mut rows = stmt.query([schema])?;
@@ -1129,39 +1139,93 @@ impl Db {
         }))
     }
 
-    // Mirrors the sidekick_runs column list; not restructured to avoid churn.
-    #[allow(clippy::too_many_arguments)]
-    pub fn record_sidekick_run(
-        &self,
-        session_id: &str,
-        mode: &str,
-        task: &str,
-        model: Option<&str>,
-        content: Option<&str>,
-        elapsed_ms: Option<u64>,
-        tool_calls: u64,
-        session_messages: u64,
-        escalated: bool,
-    ) -> Result<()> {
+    pub fn chat_session(&self, session_id: &str, schema: &str) -> Result<Option<ChatSessionRow>> {
         let conn = self.conn()?;
-        conn.execute(
-            "INSERT INTO sidekick_runs (
-                session_id, mode, task, model, content, elapsed_ms, tool_calls, session_messages, escalated, run_at
-             ) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10)",
-            rusqlite::params![
-                session_id,
-                mode,
-                task,
-                model,
-                content,
-                elapsed_ms.map(|m| m as i64),
-                tool_calls as i64,
-                session_messages as i64,
-                escalated as i64,
-                now_iso(),
-            ],
+        let mut stmt = conn.prepare(
+            "SELECT session_id, schema, messages, updated_at
+             FROM chat_sessions WHERE session_id=?1 AND schema=?2 LIMIT 1",
         )?;
-        Ok(())
+        let mut rows = stmt.query(rusqlite::params![session_id, schema])?;
+        let Some(row) = rows.next()? else {
+            return Ok(None);
+        };
+        Ok(Some(ChatSessionRow {
+            session_id: row.get(0)?,
+            schema: row.get(1)?,
+            messages: row.get(2)?,
+            updated_at: row.get(3)?,
+        }))
+    }
+
+    pub fn list_chat_sessions(
+        &self,
+        schema: &str,
+        limit: u32,
+        archived: bool,
+    ) -> Result<Vec<ChatSessionSummaryRow>> {
+        let conn = self.conn()?;
+        let mut stmt = conn.prepare(
+            "SELECT session_id,
+                    substr(CAST(COALESCE(json_extract(messages, '$[0].content'), '') AS TEXT), 1, 160),
+                    COALESCE(json_array_length(messages), 0),
+                    updated_at,
+                    archived_at
+             FROM chat_sessions
+             WHERE schema=?1
+               AND COALESCE(json_array_length(messages), 0) > 0
+               AND ((?2 = 1 AND archived_at IS NOT NULL)
+                    OR (?2 = 0 AND archived_at IS NULL))
+             ORDER BY CASE WHEN ?2 = 1 THEN archived_at ELSE updated_at END DESC, rowid DESC
+             LIMIT ?3",
+        )?;
+        let rows = stmt.query_map(
+            rusqlite::params![schema, archived as i64, limit.clamp(1, 100)],
+            |row| {
+                Ok(ChatSessionSummaryRow {
+                    session_id: row.get(0)?,
+                    title: row.get(1)?,
+                    message_count: row.get(2)?,
+                    updated_at: row.get(3)?,
+                    archived_at: row.get(4)?,
+                })
+            },
+        )?;
+        Ok(rows.collect::<rusqlite::Result<Vec<_>>>()?)
+    }
+
+    pub fn archive_chat_session(&self, session_id: &str, schema: &str) -> Result<bool> {
+        let conn = self.conn()?;
+        let changed = conn.execute(
+            "UPDATE chat_sessions
+             SET archived_at=?3
+             WHERE session_id=?1 AND schema=?2 AND archived_at IS NULL",
+            rusqlite::params![session_id, schema, now_iso()],
+        )?;
+        Ok(changed > 0)
+    }
+
+    pub fn restore_chat_session(&self, session_id: &str, schema: &str) -> Result<bool> {
+        let conn = self.conn()?;
+        let changed = conn.execute(
+            "UPDATE chat_sessions
+             SET archived_at=NULL, updated_at=?3
+             WHERE session_id=?1 AND schema=?2 AND archived_at IS NOT NULL",
+            rusqlite::params![session_id, schema, now_iso()],
+        )?;
+        Ok(changed > 0)
+    }
+
+    pub fn archive_all_chat_sessions(&self, schema: &str) -> Result<u64> {
+        let conn = self.conn()?;
+        let changed = conn.execute(
+            "UPDATE chat_sessions
+             SET archived_at=?2
+             WHERE schema=?1
+               AND archived_at IS NULL
+               AND COALESCE(json_array_length(messages), 0) > 0",
+            rusqlite::params![schema, now_iso()],
+        )?;
+        Ok(changed as u64)
     }
 
     pub fn list_sidekick_runs(&self, limit: u32) -> Result<Vec<SidekickRunRow>> {
@@ -1269,116 +1333,31 @@ impl Db {
             .map_err(Into::into)
     }
 
-    pub fn sidekick_feedback_summary(&self, limit: u32) -> Result<SidekickFeedbackSummary> {
+    /// All explicit supervisor judgments, used only for the local review and
+    /// export joins. The immutable runtime journal remains the evidence source.
+    pub fn list_supervisor_feedback(&self) -> Result<Vec<SupervisorFeedbackRow>> {
         let conn = self.conn()?;
-        let (useful, misses): (i64, i64) = conn.query_row(
-            "SELECT
-                COALESCE(SUM(CASE WHEN accepted=1 THEN 1 ELSE 0 END), 0),
-                COALESCE(SUM(CASE WHEN accepted=0 THEN 1 ELSE 0 END), 0)
-             FROM (
-                SELECT accepted FROM sidekick_runs
-                WHERE mode='parallel' AND accepted IS NOT NULL
-                ORDER BY id DESC LIMIT ?1
-             )",
-            [limit.clamp(1, 100) as i64],
-            |r| Ok((r.get(0)?, r.get(1)?)),
+        let mut stmt = conn.prepare(
+            "SELECT id, session_id, run_id, marker_id, intervention_at, stage,
+                    helpful, correct_action, justification, created_at
+             FROM supervisor_feedback ORDER BY id",
         )?;
-        Ok(SidekickFeedbackSummary {
-            useful: useful.max(0) as u64,
-            misses: misses.max(0) as u64,
-        })
-    }
-
-    /// Atomically claim unconsumed handoffs: the SELECT and the consumed=1
-    /// marks commit together so concurrent consumers can't double-inject the
-    /// same handoff. A failed turn should hand claims back via
-    /// [`Db::unconsume_sidekick_handoffs`].
-    pub fn consume_sidekick_handoffs(
-        &self,
-        session_id: &str,
-        limit: u32,
-    ) -> Result<Vec<SidekickRunRow>> {
-        let mut conn = self.conn()?;
-        let tx = conn.transaction_with_behavior(TransactionBehavior::Immediate)?;
-        let mut stmt = tx.prepare(
-            "SELECT id, session_id, mode, task, model, content, elapsed_ms, tool_calls, session_messages, escalated, accepted, consumed, run_at
-             FROM sidekick_runs
-             WHERE session_id=?1 AND mode='parallel' AND consumed=0 AND content IS NOT NULL
-             ORDER BY id ASC LIMIT ?2",
-        )?;
-        let rows = stmt.query_map(
-            rusqlite::params![session_id, limit.clamp(1, 5) as i64],
-            |r| {
-                Ok(SidekickRunRow {
-                    id: r.get::<_, i64>(0)? as u64,
-                    session_id: r.get(1)?,
-                    mode: r.get(2)?,
-                    task: r.get(3)?,
-                    model: r.get(4)?,
-                    content: r.get(5)?,
-                    elapsed_ms: r.get::<_, Option<i64>>(6)?.map(|m| m as u64),
-                    tool_calls: r.get::<_, i64>(7)? as u64,
-                    session_messages: r.get::<_, i64>(8)? as u64,
-                    escalated: r.get::<_, i64>(9)? != 0,
-                    accepted: r.get::<_, Option<i64>>(10)?.map(|v| v != 0),
-                    consumed: r.get::<_, i64>(11)? != 0,
-                    run_at: r.get(12)?,
-                })
-            },
-        )?;
-        let out = rows
-            .collect::<rusqlite::Result<Vec<_>>>()
-            .map_err(anyhow::Error::from)?;
-        drop(stmt);
-        for row in &out {
-            tx.execute(
-                "UPDATE sidekick_runs SET consumed=1 WHERE id=?1",
-                [row.id as i64],
-            )?;
-        }
-        tx.commit()?;
-        Ok(out)
-    }
-
-    /// Hand claimed handoffs back (turn failed before the findings were used).
-    pub fn unconsume_sidekick_handoffs(&self, ids: &[u64]) -> Result<()> {
-        if ids.is_empty() {
-            return Ok(());
-        }
-        let mut conn = self.conn()?;
-        let tx = conn.transaction_with_behavior(TransactionBehavior::Immediate)?;
-        for id in ids {
-            tx.execute(
-                "UPDATE sidekick_runs SET consumed=0 WHERE id=?1",
-                [*id as i64],
-            )?;
-        }
-        tx.commit()?;
-        Ok(())
-    }
-
-    pub fn record_sidekick_decision(
-        &self,
-        session_id: &str,
-        route: &str,
-        prompt_excerpt: &str,
-        eligible: bool,
-        reason: &str,
-    ) -> Result<()> {
-        let conn = self.conn()?;
-        conn.execute(
-            "INSERT INTO sidekick_decisions (session_id, route, prompt_excerpt, eligible, reason, created_at)
-             VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
-            rusqlite::params![
-                session_id,
-                route,
-                prompt_excerpt,
-                eligible as i64,
-                reason,
-                now_iso(),
-            ],
-        )?;
-        Ok(())
+        let rows = stmt.query_map([], |row| {
+            Ok(SupervisorFeedbackRow {
+                id: row.get::<_, i64>(0)? as u64,
+                session_id: row.get(1)?,
+                run_id: row.get(2)?,
+                marker_id: row.get(3)?,
+                intervention_at: row.get::<_, Option<i64>>(4)?.map(|value| value as u64),
+                stage: row.get(5)?,
+                helpful: row.get::<_, i64>(6)? != 0,
+                correct_action: row.get(7)?,
+                justification: row.get(8)?,
+                created_at: row.get(9)?,
+            })
+        })?;
+        rows.collect::<rusqlite::Result<Vec<_>>>()
+            .map_err(Into::into)
     }
 
     pub fn list_sidekick_decisions(&self, limit: u32) -> Result<Vec<SidekickDecisionRow>> {
@@ -1436,105 +1415,6 @@ impl Db {
         })?;
         rows.collect::<rusqlite::Result<Vec<_>>>()
             .map_err(Into::into)
-    }
-
-    pub fn list_sidekick_events_for_session(
-        &self,
-        session_id: &str,
-        limit: u32,
-    ) -> Result<Vec<SidekickEventRow>> {
-        let conn = self.conn()?;
-        let mut stmt = conn.prepare(
-            "SELECT id, session_id, mode, stage, detail, created_at
-             FROM sidekick_events
-             WHERE session_id=?1
-             ORDER BY id DESC LIMIT ?2",
-        )?;
-        let rows = stmt.query_map(
-            rusqlite::params![session_id, limit.clamp(1, 50) as i64],
-            |r| {
-                Ok(SidekickEventRow {
-                    id: r.get::<_, i64>(0)? as u64,
-                    session_id: r.get(1)?,
-                    mode: r.get(2)?,
-                    stage: r.get(3)?,
-                    detail: r.get(4)?,
-                    created_at: r.get(5)?,
-                })
-            },
-        )?;
-        rows.collect::<rusqlite::Result<Vec<_>>>()
-            .map_err(Into::into)
-    }
-
-    pub fn load_sidekick_session(&self, session_key: &str) -> Result<Option<String>> {
-        let conn = self.conn()?;
-        match conn.query_row(
-            "SELECT messages FROM sidekick_sessions WHERE session_key=?1",
-            [session_key],
-            |r| r.get::<_, String>(0),
-        ) {
-            Ok(messages) => Ok(Some(messages)),
-            Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
-            Err(err) => Err(err.into()),
-        }
-    }
-
-    pub fn save_sidekick_session(
-        &self,
-        session_key: &str,
-        session_id: &str,
-        model: &str,
-        messages: &str,
-    ) -> Result<()> {
-        let conn = self.conn()?;
-        let parsed_messages =
-            serde_json::from_str::<Vec<serde_json::Value>>(messages).unwrap_or_default();
-        let message_count = parsed_messages.len() as i64;
-        let memory = parsed_messages.iter().find_map(|message| {
-            let role = message.get("role").and_then(|v| v.as_str());
-            let content = message.get("content").and_then(|v| v.as_str())?;
-            if role == Some("system") && content.starts_with("Sidekick compacted memory:") {
-                Some(content.to_string())
-            } else {
-                None
-            }
-        });
-        let compacted_count = memory
-            .as_ref()
-            .map(|value| {
-                value
-                    .lines()
-                    .filter(|line| line.trim_start().starts_with("- "))
-                    .count() as i64
-            })
-            .unwrap_or(0);
-        conn.execute(
-            "INSERT INTO sidekick_sessions(
-                session_key, session_id, model, messages, message_count, compacted_count, memory,
-                updated_at
-             )
-             VALUES(?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8)
-             ON CONFLICT(session_key) DO UPDATE SET
-                session_id=excluded.session_id,
-                model=excluded.model,
-                messages=excluded.messages,
-                message_count=excluded.message_count,
-                compacted_count=excluded.compacted_count,
-                memory=excluded.memory,
-                updated_at=excluded.updated_at",
-            rusqlite::params![
-                session_key,
-                session_id,
-                model,
-                messages,
-                message_count,
-                compacted_count,
-                memory,
-                now_iso()
-            ],
-        )?;
-        Ok(())
     }
 
     pub fn list_sidekick_session_summaries(
@@ -1621,6 +1501,38 @@ mod tests {
     }
 
     #[test]
+    fn migrate_adds_archive_state_to_existing_chat_history() {
+        let conn = Connection::open_in_memory().expect("open in-memory db");
+        conn.execute_batch(
+            "CREATE TABLE chat_sessions (
+                session_id TEXT PRIMARY KEY,
+                schema TEXT NOT NULL,
+                messages TEXT NOT NULL,
+                updated_at TEXT NOT NULL
+            );
+            INSERT INTO chat_sessions(session_id, schema, messages, updated_at)
+            VALUES ('existing', 'desktop-chat-v2', '[{\"role\":\"user\",\"content\":\"keep me\"}]', '2026-07-15T00:00:00Z');",
+        )
+        .expect("create legacy chat table");
+
+        migrate(&conn).expect("migrate existing chat history");
+        let archived_at: Option<String> = conn
+            .query_row(
+                "SELECT archived_at FROM chat_sessions WHERE session_id='existing'",
+                [],
+                |row| row.get(0),
+            )
+            .expect("read migrated archive column");
+        assert!(archived_at.is_none());
+
+        migrate(&conn).expect("repeat migration");
+        let count: u64 = conn
+            .query_row("SELECT COUNT(*) FROM chat_sessions", [], |row| row.get(0))
+            .expect("preserve existing chat row");
+        assert_eq!(count, 1);
+    }
+
+    #[test]
     fn chat_run_round_trips_canonical_identity_and_backend() {
         let (dir, db) = temp_db("chat-runtime-identity");
         db.record_chat_run(&ChatRunInput {
@@ -1685,6 +1597,115 @@ mod tests {
     }
 
     #[test]
+    fn chat_session_history_lists_non_empty_chats_and_loads_exact_session() {
+        let (dir, db) = temp_db("chat-session-history");
+        db.save_active_chat_session("empty", "desktop-chat-v2", "[]")
+            .unwrap();
+        db.save_active_chat_session(
+            "first",
+            "desktop-chat-v2",
+            r#"[{"role":"user","content":"Plan the launch"},{"role":"assistant","content":"Okay"}]"#,
+        )
+        .unwrap();
+        db.save_active_chat_session(
+            "second",
+            "desktop-chat-v2",
+            r#"[{"role":"user","content":"Review the benchmark"}]"#,
+        )
+        .unwrap();
+
+        let summaries = db.list_chat_sessions("desktop-chat-v2", 20, false).unwrap();
+        assert_eq!(summaries.len(), 2);
+        assert_eq!(summaries[0].session_id, "second");
+        assert_eq!(summaries[0].title, "Review the benchmark");
+        assert_eq!(summaries[0].message_count, 1);
+        assert!(summaries[0].archived_at.is_none());
+        assert_eq!(summaries[1].title, "Plan the launch");
+
+        let exact = db
+            .chat_session("first", "desktop-chat-v2")
+            .unwrap()
+            .unwrap();
+        assert!(exact.messages.contains("Plan the launch"));
+        assert!(db
+            .chat_session("missing", "desktop-chat-v2")
+            .unwrap()
+            .is_none());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn chat_session_archive_is_reversible_and_hidden_from_active_history() {
+        let (dir, db) = temp_db("chat-session-archive");
+        db.save_active_chat_session(
+            "first",
+            "desktop-chat-v2",
+            r#"[{"role":"user","content":"Keep this conversation"}]"#,
+        )
+        .unwrap();
+        db.save_active_chat_session(
+            "second",
+            "desktop-chat-v2",
+            r#"[{"role":"user","content":"Archive this conversation"}]"#,
+        )
+        .unwrap();
+
+        assert!(db
+            .archive_chat_session("second", "desktop-chat-v2")
+            .unwrap());
+        assert!(!db
+            .archive_chat_session("second", "desktop-chat-v2")
+            .unwrap());
+
+        let active = db.list_chat_sessions("desktop-chat-v2", 20, false).unwrap();
+        assert_eq!(active.len(), 1);
+        assert_eq!(active[0].session_id, "first");
+        assert_eq!(
+            db.latest_chat_session("desktop-chat-v2")
+                .unwrap()
+                .unwrap()
+                .session_id,
+            "first"
+        );
+
+        let archived = db.list_chat_sessions("desktop-chat-v2", 20, true).unwrap();
+        assert_eq!(archived.len(), 1);
+        assert_eq!(archived[0].session_id, "second");
+        assert!(archived[0].archived_at.is_some());
+        assert!(db
+            .chat_session("second", "desktop-chat-v2")
+            .unwrap()
+            .is_some());
+
+        assert!(db
+            .restore_chat_session("second", "desktop-chat-v2")
+            .unwrap());
+        assert!(db
+            .list_chat_sessions("desktop-chat-v2", 20, true)
+            .unwrap()
+            .is_empty());
+        assert_eq!(
+            db.list_chat_sessions("desktop-chat-v2", 20, false)
+                .unwrap()
+                .len(),
+            2
+        );
+
+        assert_eq!(db.archive_all_chat_sessions("desktop-chat-v2").unwrap(), 2);
+        assert!(db
+            .list_chat_sessions("desktop-chat-v2", 20, false)
+            .unwrap()
+            .is_empty());
+        assert_eq!(
+            db.list_chat_sessions("desktop-chat-v2", 20, true)
+                .unwrap()
+                .len(),
+            2
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
     fn fusion_benchmark_rows_round_trip_eval_result_columns() {
         let (dir, db) = temp_db("fusion-eval-cols");
         db.record_fusion_benchmark(&FusionBenchmarkInput {
@@ -1725,57 +1746,6 @@ mod tests {
         assert_eq!(row.cost_basis.as_deref(), Some("local-zero-marginal-cost"));
         assert_eq!(row.harness_sha256.as_deref(), Some("a".repeat(64).as_str()));
         assert_eq!(row.split_sha256, None);
-        let _ = std::fs::remove_dir_all(&dir);
-    }
-
-    #[test]
-    fn concurrent_consumers_never_double_claim_handoffs() {
-        let (dir, db) = temp_db("claim");
-        let db = std::sync::Arc::new(db);
-        for i in 0..8 {
-            db.record_sidekick_run(
-                "s",
-                "parallel",
-                &format!("task {i}"),
-                Some("model"),
-                Some("finding"),
-                Some(5),
-                1,
-                3,
-                false,
-            )
-            .unwrap();
-        }
-
-        let handles: Vec<_> = (0..4)
-            .map(|_| {
-                let db = db.clone();
-                std::thread::spawn(move || {
-                    let mut claimed = vec![];
-                    loop {
-                        let rows = db.consume_sidekick_handoffs("s", 5).unwrap();
-                        if rows.is_empty() {
-                            break;
-                        }
-                        claimed.extend(rows.into_iter().map(|row| row.id));
-                    }
-                    claimed
-                })
-            })
-            .collect();
-        let mut all: Vec<u64> = handles
-            .into_iter()
-            .flat_map(|handle| handle.join().unwrap())
-            .collect();
-        all.sort_unstable();
-        let claims = all.len();
-        all.dedup();
-        assert_eq!(claims, all.len(), "a handoff was claimed by two consumers");
-        assert_eq!(all.len(), 8, "every handoff is claimed exactly once");
-
-        // Handing claims back makes them consumable again (failed-turn path).
-        db.unconsume_sidekick_handoffs(&all).unwrap();
-        assert_eq!(db.consume_sidekick_handoffs("s", 5).unwrap().len(), 5);
         let _ = std::fs::remove_dir_all(&dir);
     }
 
@@ -1828,6 +1798,9 @@ mod tests {
             rows[0].justification.as_deref(),
             Some("changed after review")
         );
+        let all_rows = db.list_supervisor_feedback().unwrap();
+        assert_eq!(all_rows.len(), 1);
+        assert_eq!(all_rows[0].marker_id, rows[0].marker_id);
         let _ = std::fs::remove_dir_all(&dir);
     }
 

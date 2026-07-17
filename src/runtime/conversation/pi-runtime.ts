@@ -174,6 +174,13 @@ function zeroUsage() {
   };
 }
 
+const MAX_LENGTH_CONTINUATIONS = 2;
+const LENGTH_CONTINUATION_PROMPT = [
+  "Finish the original user request now.",
+  "Continue from exactly where the visible response stopped and do not repeat earlier prose.",
+  "Use the tool results already in context; call another tool only if it is required to answer.",
+].join(" ");
+
 /**
  * Pi uses `reserveTokens` both as the compaction trigger headroom and as the
  * summary generation budget. Its upstream default is tuned for coding-agent
@@ -352,7 +359,14 @@ async function emitInputEvidence(
       byte_count: bytes.byteLength,
     });
   }
-  await writer.emit("message", { role: "user", text: latest.content, model: null });
+  await writer.emit("message", {
+    role: "user",
+    text: latest.content,
+    model: null,
+    logical_context_window_tokens: request.context_window_tokens,
+    provider_context_window_tokens:
+      request.provider_context_window_tokens ?? request.context_window_tokens,
+  });
 }
 
 function attachCanonicalAdapter(
@@ -370,6 +384,13 @@ function attachCanonicalAdapter(
 ) {
   let chain = Promise.resolve();
   let terminalEmitted = false;
+  let lastAssistantStopReason:
+    | "stop"
+    | "length"
+    | "toolUse"
+    | "error"
+    | "aborted"
+    | undefined;
   let emittedTextDelta = false;
   let compactionSourceMessages = 0;
   const rawToolArguments = new Map<string, string>();
@@ -431,6 +452,7 @@ function attachCanonicalAdapter(
         result: event.result,
       });
     } else if (event.type === "message_end" && event.message.role === "assistant") {
+      lastAssistantStopReason = event.message.stopReason;
       enqueue(
         "usage",
         usageData(
@@ -488,6 +510,17 @@ function attachCanonicalAdapter(
     enqueue,
     flush: () => chain,
     terminalEmitted: () => terminalEmitted,
+    lastAssistantStopReason: () => lastAssistantStopReason,
+    enqueueTerminalError: (code: string, message: string, recoverable: boolean) => {
+      if (terminalEmitted) return;
+      terminalEmitted = true;
+      enqueue("error", {
+        stage: "model_stream",
+        code,
+        message,
+        recoverable,
+      });
+    },
   };
 }
 
@@ -499,6 +532,10 @@ export function teacherContinuationBoundary(partial: string, firstDelta: string)
 
 export function teacherOutputMode(studentCompleted: boolean): "append" | "replace" {
   return studentCompleted ? "replace" : "append";
+}
+
+export function shouldResumeNudgedStudent(studentCompleted: boolean): boolean {
+  return !studentCompleted;
 }
 
 async function createPiRuntimeSession(options: {
@@ -624,8 +661,19 @@ type SupervisorDecision = {
   probabilities?: Record<string, number>;
   raw?: string;
   error?: string;
+  failureKind?: "unavailable" | "invalid_response" | "policy_degrade";
+  handoffTarget?: "local" | "remote";
   usage: Record<string, unknown>;
 };
+
+export function supervisorHandoffTarget(
+  target: RuntimeProviderTarget,
+): "local" | "remote" {
+  const hostname = new URL(target.base_url).hostname;
+  return ["127.0.0.1", "localhost", "::1", "[::1]"].includes(hostname)
+    ? "local"
+    : "remote";
+}
 
 function unavailableSupervisorUsage(model: string): Record<string, unknown> {
   return {
@@ -759,12 +807,14 @@ async function checkSupervisor(
   partial: string,
   signal?: AbortSignal,
 ): Promise<SupervisorDecision> {
-  const targetUrl = requireSafeProviderTargetUrl(config.supervisor, request.allow_remote);
   const headers: Record<string, string> = { "content-type": "application/json" };
   if (process.env.UNDERSTUDY_RUNTIME_API_KEY) {
     headers.authorization = `Bearer ${process.env.UNDERSTUDY_RUNTIME_API_KEY}`;
   }
+  let handoffTarget: SupervisorDecision["handoffTarget"];
   try {
+    handoffTarget = supervisorHandoffTarget(config.supervisor);
+    const targetUrl = requireSafeProviderTargetUrl(config.supervisor, request.allow_remote);
     const response = await fetch(chatCompletionsUrl(targetUrl), {
       method: "POST",
       signal,
@@ -804,6 +854,8 @@ async function checkSupervisor(
     const complete = [input, output, total].every(Number.isFinite);
     return {
       ...parsed,
+      failureKind: parsed.error ? "invalid_response" : undefined,
+      handoffTarget,
       probabilities: verdictLogprobs(payload),
       usage: complete
         ? {
@@ -824,6 +876,8 @@ async function checkSupervisor(
     return {
       verdict: "continue",
       error: safeErrorMessage(error),
+      failureKind: "unavailable",
+      handoffTarget,
       usage: unavailableSupervisorUsage(config.supervisor.model),
     };
   }
@@ -831,21 +885,27 @@ async function checkSupervisor(
 
 function verdictEventData(
   decision: SupervisorDecision,
+  supervisorModel: string,
   boundaryOrdinal: number,
   afterChars: number,
+  decisionPhase: "streaming" | "final",
   markerId?: string,
 ): Record<string, unknown> {
   return {
     verdict: decision.verdict,
     source: "model",
+    supervisor_model: supervisorModel,
     marker_id: markerId,
     reason: decision.reason,
     probabilities: decision.probabilities,
     probability_kind: decision.probabilities ? "logprob" : undefined,
     boundary_ordinal: boundaryOrdinal,
     after_chars: afterChars,
+    decision_phase: decisionPhase,
     raw: decision.raw,
     error: decision.error,
+    failure_kind: decision.failureKind,
+    handoff_target: decision.handoffTarget,
   };
 }
 
@@ -918,9 +978,12 @@ async function runSupervisedStudentSegment(options: {
           if (abortSignal?.aborted) return;
           if (result.verdict === "nudge" && !options.allowNudge) {
             result = {
+              ...result,
               verdict: "continue",
+              reason: undefined,
+              probabilities: undefined,
               error: "nudge budget exhausted; degraded to continue",
-              usage: result.usage,
+              failureKind: "policy_degrade",
             };
           }
           const intervention = result.verdict === "interrupt" || result.verdict === "nudge";
@@ -932,9 +995,22 @@ async function runSupervisedStudentSegment(options: {
           );
           adapter.enqueue(
             "supervisor_verdict",
-            verdictEventData(result, thisBoundary, afterChars, currentMarker),
+            verdictEventData(
+              result,
+              config.supervisor.model,
+              thisBoundary,
+              afterChars,
+              "streaming",
+              currentMarker,
+            ),
           );
           adapter.enqueue("usage", result.usage);
+          if (result.failureKind === "unavailable") {
+            // One failed handoff is enough evidence for this segment. Keep the
+            // student running, but do not repeatedly call an offline judge at
+            // every later boundary.
+            decision = result;
+          }
           if (result.verdict !== "continue") {
             decision = result;
             markerId = currentMarker;
@@ -1022,9 +1098,12 @@ async function runSupervisedStudentSegment(options: {
       }
       if (finalDecision.verdict === "nudge" && !options.allowNudge) {
         finalDecision = {
+          ...finalDecision,
           verdict: "continue",
+          reason: undefined,
+          probabilities: undefined,
           error: "nudge budget exhausted; degraded to continue",
-          usage: finalDecision.usage,
+          failureKind: "policy_degrade",
         };
       }
       const intervention =
@@ -1038,7 +1117,14 @@ async function runSupervisedStudentSegment(options: {
       );
       await writer.emit(
         "supervisor_verdict",
-        verdictEventData(finalDecision, thisBoundary, afterChars, markerId),
+        verdictEventData(
+          finalDecision,
+          config.supervisor.model,
+          thisBoundary,
+          afterChars,
+          "final",
+          markerId,
+        ),
       );
       await writer.emit("usage", finalDecision.usage);
       decision = finalDecision;
@@ -1178,7 +1264,10 @@ async function runPiSupervisedConversation(
     if (segment.terminal || segment.decision.verdict === "continue" || segment.decision.verdict === "stop") {
       return;
     }
-    if (segment.decision.verdict === "nudge") {
+    if (
+      segment.decision.verdict === "nudge" &&
+      shouldResumeNudgedStudent(segment.studentCompleted)
+    ) {
       markerOrdinal += 1;
       nudges += 1;
       messages = [
@@ -1196,7 +1285,7 @@ async function runPiSupervisedConversation(
     const markerId = segment.markerId;
     const reason = segment.decision.reason;
     if (!markerId || !reason) {
-      throw new Error("interrupt verdict lost its marker or reason");
+      throw new Error("intervention verdict lost its marker or reason");
     }
     await writer.emit("student_interruption", {
       marker_id: markerId,
@@ -1239,6 +1328,8 @@ export async function runPiConversation(
     messages: request.messages,
     persistent: true,
   });
+  let lengthContinuationAttempts = 0;
+  let lengthContinuationFailure: unknown;
   const adapter = attachCanonicalAdapter(session, request, writer, {
     abortReason: () => abortSignal?.reason,
   });
@@ -1270,10 +1361,53 @@ export async function runPiConversation(
         "Keep the checkpoint concise. Preserve exact user constraints, named facts, tool results, unresolved work, and decisions needed for the next response. Copy every named label or identifier and the sentence it names verbatim; do not shorten or paraphrase named facts. Keep each label adjacent to its fact so later references remain resolvable.",
       );
     }
-    await session.prompt(latest.content, {
-      images: imageContent(latest),
-      expandPromptTemplates: false,
-    });
+    try {
+      await session.prompt(latest.content, {
+        images: imageContent(latest),
+        expandPromptTemplates: false,
+      });
+    } catch (error) {
+      lengthContinuationFailure = error;
+    }
+    while (
+      !abortSignal?.aborted &&
+      adapter.lastAssistantStopReason() === "length" &&
+      lengthContinuationAttempts < MAX_LENGTH_CONTINUATIONS
+    ) {
+      lengthContinuationAttempts += 1;
+      try {
+        // Start a fresh Pi prompt only after the previous run has settled. This
+        // lets Pi compact first; queueing a follow-up from message_end would be
+        // consumed before its post-run compaction check and could overflow the
+        // same context a second time.
+        await session.prompt(LENGTH_CONTINUATION_PROMPT, {
+          expandPromptTemplates: false,
+        });
+        lengthContinuationFailure = undefined;
+      } catch (error) {
+        lengthContinuationFailure = error;
+      }
+    }
+    if (lengthContinuationFailure && !adapter.terminalEmitted()) {
+      if (adapter.lastAssistantStopReason() === "length") {
+        adapter.enqueueTerminalError(
+          "pi_length_continuation_failed",
+          safeErrorMessage(lengthContinuationFailure),
+          true,
+        );
+      } else {
+        throw lengthContinuationFailure;
+      }
+    } else if (
+      adapter.lastAssistantStopReason() === "length" &&
+      !adapter.terminalEmitted()
+    ) {
+      adapter.enqueueTerminalError(
+        "pi_length_continuation_exhausted",
+        `Provider stopped at its output limit after ${lengthContinuationAttempts} continuation attempts.`,
+        true,
+      );
+    }
   } catch (error) {
     if (!adapter.terminalEmitted()) {
       await writer.emit(

@@ -1,13 +1,14 @@
 "use client";
-import { Channel, invoke } from "@tauri-apps/api/core";
+import { invoke } from "@tauri-apps/api/core";
 import { useEffect, useMemo, useState } from "react";
-import type { StatusController, ServiceState, SlotView } from "../lib/useStatus";
+import type { StatusController, ServiceState } from "../lib/useStatus";
 import { ResidencyPanel } from "./ResidencyPanel";
 
 type ToolStatus = {
   id: string;
   label: string;
   installed: boolean;
+  update_available: boolean;
   command: string;
   detail: string;
 };
@@ -18,6 +19,7 @@ type SnapshotModel = {
   name: string;
   approx_gb: number;
   cached: boolean;
+  incomplete: boolean;
   default_rung: boolean;
 };
 
@@ -32,73 +34,51 @@ type BootstrapStatus = {
   snapshots: SnapshotModel[];
 };
 
-type DownloadEvent =
-  | { type: "Log"; message: string }
-  | { type: "File"; name: string; downloaded: number; total?: number | null }
-  | { type: "Done"; dest: string; files: number }
-  | { type: "Error"; message: string };
-
-type SidekickRun = {
-  id: number;
-  session_id: string;
-  mode: string;
-  task: string;
-  model?: string | null;
-  content?: string | null;
-  elapsed_ms?: number | null;
-  tool_calls: number;
-  session_messages: number;
-  escalated: boolean;
-  accepted?: boolean | null;
-  consumed: boolean;
-  run_at: string;
+type DownloadProgress = {
+  id: string;
+  model_id: string;
+  status: "running" | "done" | "error" | "cancelled";
+  planned_files: number;
+  files: Record<string, { downloaded: number; total?: number | null }>;
+  downloaded_bytes: number;
+  resumed_bytes: number;
+  total_bytes?: number | null;
+  error?: string | null;
+  resumable: boolean;
+  logs: string[];
 };
 
-type SidekickDecision = {
-  id: number;
-  session_id: string;
-  route: string;
-  prompt_excerpt: string;
-  eligible: boolean;
-  reason: string;
-  created_at: string;
-};
+function formatBytes(bytes: number) {
+  if (bytes < 1024 * 1024) return `${Math.max(0, bytes / 1024).toFixed(0)} KB`;
+  if (bytes < 1024 * 1024 * 1024) return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+  return `${(bytes / (1024 * 1024 * 1024)).toFixed(1)} GB`;
+}
 
-type SidekickEvent = {
-  id: number;
-  session_id: string;
-  mode: string;
-  stage: string;
-  detail: string;
-  created_at: string;
-};
+function downloadPct(row?: DownloadProgress) {
+  return row?.total_bytes ? (row.downloaded_bytes / row.total_bytes) * 100 : null;
+}
 
-type SidekickMetrics = {
-  rows: number;
-  parallel_rows: number;
-  consumed_rows: number;
-  escalated_rows: number;
-  useful_rows: number;
-  miss_rows: number;
-  pending_feedback_rows: number;
-  avg_elapsed_ms?: number | null;
-  avg_tool_calls?: number | null;
-  handoff_rate?: number | null;
-  escalation_rate?: number | null;
-  useful_rate?: number | null;
-};
+function downloadDetail(row: DownloadProgress | undefined, fallback: string, incomplete = false) {
+  if (!row) return incomplete ? `Interrupted download · Resume keeps verified partial files · ${fallback}` : fallback;
+  const pct = downloadPct(row);
+  const progress = `${formatBytes(row.downloaded_bytes)}${row.total_bytes ? ` / ${formatBytes(row.total_bytes)}` : ""}`;
+  if (row.status === "running") {
+    const resumed = row.resumed_bytes > 0 ? ` · resumed ${formatBytes(row.resumed_bytes)}` : "";
+    return `${progress}${pct == null ? "" : ` · ${pct.toFixed(0)}%`}${resumed}`;
+  }
+  if (row.status === "error") {
+    return `Paused after an error · ${row.error || "Retry to continue"} · partial files are kept`;
+  }
+  if (row.status === "cancelled") return `Paused at ${progress} · Resume keeps partial files`;
+  return `Downloaded ${row.planned_files || Object.keys(row.files).length} files`;
+}
 
 export function StatusPane({ status }: { status: StatusController }) {
   const { snap, busy, connect, disconnect } = status;
   const [bootstrap, setBootstrap] = useState<BootstrapStatus | null>(null);
   const [action, setAction] = useState<string | null>(null);
-  const [download, setDownload] = useState<{ model: string; label: string; pct: number | null } | null>(null);
+  const [downloads, setDownloads] = useState<DownloadProgress[]>([]);
   const [bootErr, setBootErr] = useState<string | null>(null);
-  const [parallelSidekick, setParallelSidekick] = useState(false);
-  const [sidekickRuns, setSidekickRuns] = useState<SidekickRun[]>([]);
-  const [sidekickDecisions, setSidekickDecisions] = useState<SidekickDecision[]>([]);
-  const [sidekickEvents, setSidekickEvents] = useState<SidekickEvent[]>([]);
-  const [sidekickMetrics, setSidekickMetrics] = useState<SidekickMetrics | null>(null);
 
   const refreshBootstrap = () => {
     invoke<BootstrapStatus>("bootstrap_status")
@@ -109,54 +89,23 @@ export function StatusPane({ status }: { status: StatusController }) {
       .catch((e) => setBootErr(String(e)));
   };
 
+  const refreshDownloads = () => {
+    invoke<DownloadProgress[]>("list_snapshot_downloads")
+      .then(setDownloads)
+      .catch((e) => setBootErr(String(e)));
+  };
+
   useEffect(() => {
     refreshBootstrap();
     const timer = setInterval(refreshBootstrap, 5000);
     return () => clearInterval(timer);
   }, []);
 
-  const refreshSidekickRuns = () => {
-    invoke<SidekickRun[]>("sidekick_runs", { limit: 5 })
-      .then(setSidekickRuns)
-      .catch(() => setSidekickRuns([]));
-    invoke<SidekickDecision[]>("sidekick_decisions", { limit: 3 })
-      .then(setSidekickDecisions)
-      .catch(() => setSidekickDecisions([]));
-    invoke<SidekickEvent[]>("sidekick_events", { limit: 4 })
-      .then(setSidekickEvents)
-      .catch(() => setSidekickEvents([]));
-    invoke<SidekickMetrics>("sidekick_metrics", { limit: 100 })
-      .then(setSidekickMetrics)
-      .catch(() => setSidekickMetrics(null));
-  };
-
   useEffect(() => {
-    invoke<string | null>("get_setting", { key: "sidekick.parallel" })
-      .then((value) => setParallelSidekick(value !== "off"))
-      .catch(() => setParallelSidekick(true));
-    refreshSidekickRuns();
-    const timer = setInterval(refreshSidekickRuns, 5000);
+    refreshDownloads();
+    const timer = setInterval(refreshDownloads, 1000);
     return () => clearInterval(timer);
   }, []);
-
-  async function setParallelLane(next: boolean) {
-    setParallelSidekick(next);
-    try {
-      await invoke("set_setting", { key: "sidekick.parallel", value: next ? "on" : "off" });
-    } catch (e) {
-      setParallelSidekick(!next);
-      setBootErr(String(e));
-    }
-  }
-
-  async function markSidekickRun(runId: number, accepted: boolean | null) {
-    try {
-      await invoke("set_sidekick_run_feedback", { runId, accepted });
-      refreshSidekickRuns();
-    } catch (e) {
-      setBootErr(String(e));
-    }
-  }
 
   const model = useMemo(() => {
     const rows = bootstrap?.snapshots ?? [];
@@ -166,20 +115,7 @@ export function StatusPane({ status }: { status: StatusController }) {
       rows[0]
     );
   }, [bootstrap]);
-  const sidekickModel = useMemo(() => {
-    const rows = bootstrap?.snapshots ?? [];
-    return (
-      rows.find((row) => row.short_name === "understudy-small") ??
-      rows.find((row) => row.id.includes("e2b") && row.id.endsWith("-understudy"))
-    );
-  }, [bootstrap]);
-  const sidekickSlot = useMemo(() => {
-    const slots = snap?.residency.slots ?? [];
-    return slots.find((slot) => {
-      const id = slot.model_id ?? "";
-      return id.includes("understudy-small") || id.includes("e2b");
-    });
-  }, [snap]);
+  const defaultDownload = model ? downloadFor(model.id) : undefined;
 
   async function runInstall(id: "install_uv" | "install_moraine" | "install_mlx_runtime" | "install_understudy_agent_tools") {
     setAction(id);
@@ -195,56 +131,34 @@ export function StatusPane({ status }: { status: StatusController }) {
     }
   }
 
-  async function downloadModel(modelId: string) {
-    const ch = new Channel<DownloadEvent>();
-    setDownload({ model: modelId, label: "Starting download", pct: null });
+  function downloadFor(modelId: string) {
+    return (
+      downloads.find((row) => row.model_id === modelId && row.status === "running") ??
+      downloads.find((row) => row.model_id === modelId)
+    );
+  }
+
+  async function downloadModel(modelId: string): Promise<boolean> {
     setBootErr(null);
-    ch.onmessage = (msg) => {
-      if (msg.type === "Log") setDownload((prev) => prev && { ...prev, label: msg.message });
-      if (msg.type === "File") {
-        const pct = msg.total ? (msg.downloaded / msg.total) * 100 : null;
-        setDownload({ model: modelId, label: msg.name, pct });
-      }
-      if (msg.type === "Done") {
-        setDownload({ model: modelId, label: `Downloaded ${msg.files} files`, pct: 100 });
-        refreshBootstrap();
-        status.refresh();
-        setTimeout(() => setDownload(null), 1800);
-      }
-      if (msg.type === "Error") {
-        setBootErr(msg.message);
-        setDownload(null);
-      }
-    };
     try {
-      await invoke("download_snapshot_model", { modelId, onEvent: ch });
+      const downloadId = await invoke<string>("start_snapshot_download", { modelId });
+      refreshDownloads();
+      return true;
     } catch (e) {
       setBootErr(String(e));
-      setDownload(null);
+      refreshDownloads();
+      return false;
     }
   }
 
-  async function setupSidekick() {
-    if (!sidekickModel) return;
-    setAction("setup_sidekick");
+  async function cancelDownload(downloadId: string) {
     setBootErr(null);
     try {
-      if (!sidekickModel.cached) {
-        await downloadModel(sidekickModel.id);
-      }
-      const slotId =
-        sidekickSlot?.id ??
-        (await invoke<number>("add_slot"));
-      if (sidekickSlot?.model_id !== sidekickModel.id) {
-        await invoke("assign_slot", { slotId, modelId: sidekickModel.id });
-      }
-      await invoke("warm_slot", { slotId });
+      await invoke("cancel_snapshot_download", { downloadId });
+      refreshDownloads();
       refreshBootstrap();
-      status.refresh();
     } catch (e) {
       setBootErr(String(e));
-    } finally {
-      setAction(null);
     }
   }
 
@@ -257,9 +171,8 @@ export function StatusPane({ status }: { status: StatusController }) {
     );
   }
 
-  const { machine, metrics, residency, services, connected } = snap;
+  const { machine, metrics, services, connected } = snap;
   const memPct = metrics.mem_total_gb ? (metrics.mem_used_gb / metrics.mem_total_gb) * 100 : 0;
-  const warm = residency.slots.filter((s) => s.state === "running");
 
   return (
     <>
@@ -305,117 +218,6 @@ export function StatusPane({ status }: { status: StatusController }) {
 
         <ResidencyPanel status={status} />
 
-        {sidekickModel && (
-          <div className={"card sidekick-lane-card" + (sidekickSlot?.state === "running" ? " active" : "")}>
-            <div className="card-row" style={{ marginBottom: 10 }}>
-              <div>
-                <div className="card-title">Sidekick lane</div>
-                <div className="card-sub">Small local helper for delegated read-only subtasks.</div>
-              </div>
-              <span className="metric">{sidekickSlot?.port ? `:${sidekickSlot.port}` : sidekickSlot?.state ?? "not warm"}</span>
-            </div>
-            <SetupRow
-              title={sidekickModel.short_name ?? sidekickModel.id}
-              detail={
-                download?.model === sidekickModel.id
-                  ? `${download.label}${download.pct == null ? "" : ` · ${download.pct.toFixed(0)}%`}`
-                  : sidekickSlot
-                    ? `${sidekickSlot.state} · ${sidekickModel.name} · ${sidekickModel.approx_gb} GB`
-                    : `${sidekickModel.cached ? "cached" : "not cached"} · ${sidekickModel.name} · ${sidekickModel.approx_gb} GB`
-              }
-              done={sidekickSlot?.state === "running"}
-              busy={action === "setup_sidekick" || download?.model === sidekickModel.id || sidekickSlot?.state === "loading"}
-              action={sidekickSlot?.state === "running" ? undefined : setupSidekick}
-              actionLabel={sidekickModel.cached || sidekickSlot ? "Warm" : "Download + warm"}
-              pct={download?.model === sidekickModel.id ? download.pct : undefined}
-            />
-            <ToggleRow
-              title="Parallel sidekick"
-              detail="Default background lane for eligible read-only checks; main keeps judgment and final review."
-              on={parallelSidekick}
-              disabled={sidekickSlot?.state !== "running"}
-              onToggle={() => setParallelLane(!parallelSidekick)}
-            />
-            {sidekickDecisions[0] && (
-              <div className="sidekick-policy-row">
-                <span className={"dot " + (sidekickDecisions[0].eligible ? "running" : "stopped")} />
-                <div>
-                  <div className="svc-name">
-                    Policy · {sidekickDecisions[0].eligible ? "delegated" : "kept main"}
-                  </div>
-                  <div className="svc-desc">
-                    {sidekickDecisions[0].reason} · {sidekickDecisions[0].prompt_excerpt}
-                  </div>
-                </div>
-              </div>
-            )}
-            {sidekickEvents.length > 0 && (
-              <div className="sidekick-event-list">
-                {sidekickEvents.map((event) => (
-                  <div className="sidekick-event" key={event.id}>
-                    <span className={"dot " + (event.stage === "finished" ? "running" : event.stage === "error" ? "stopped" : "loading")} />
-                    <div>
-                      <div className="svc-name">{event.mode} · {event.stage}</div>
-                      <div className="svc-desc">{event.detail}</div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-            {sidekickMetrics && sidekickMetrics.rows > 0 && (
-              <div className="sidekick-policy-row">
-                <span className="dot running" />
-                <div>
-                  <div className="svc-name">Metrics · {sidekickMetrics.rows} recent runs</div>
-                  <div className="svc-desc">
-                    {sidekickMetrics.handoff_rate == null ? "—" : `${Math.round(sidekickMetrics.handoff_rate * 100)}%`} handed off ·{" "}
-                    {sidekickMetrics.useful_rate == null ? "no feedback" : `${Math.round(sidekickMetrics.useful_rate * 100)}% useful`} ·{" "}
-                    {sidekickMetrics.escalation_rate == null ? "—" : `${Math.round(sidekickMetrics.escalation_rate * 100)}%`} escalated ·{" "}
-                    {sidekickMetrics.avg_elapsed_ms == null ? "—" : `${(sidekickMetrics.avg_elapsed_ms / 1000).toFixed(1)}s`} avg ·{" "}
-                    {sidekickMetrics.avg_tool_calls == null ? "—" : `${sidekickMetrics.avg_tool_calls.toFixed(1)}`} tools
-                  </div>
-                </div>
-              </div>
-            )}
-            {sidekickRuns.length > 0 && (
-              <div className="sidekick-run-list">
-                {sidekickRuns.map((run, index) => (
-                  <div className="sidekick-run" key={`${run.run_at}-${index}`}>
-                    <div>
-                      <div className="svc-name">
-                        {run.mode}
-                        {run.mode === "parallel" ? run.consumed ? " · handed off" : " · queued" : ""}
-                        {run.escalated ? " · escalated" : ""}
-                      </div>
-                      <div className="svc-desc">{run.task}</div>
-                    </div>
-                    <div className="sidekick-run-meta">
-                      <span className="svc-state">
-                        {run.elapsed_ms ? `${(run.elapsed_ms / 1000).toFixed(1)}s` : "—"} · {run.tool_calls} tools
-                        {run.accepted === true ? " · useful" : run.accepted === false ? " · miss" : ""}
-                      </span>
-                      <div className="run-feedback" aria-label="Sidekick run feedback">
-                        <button
-                          className={"mini-btn" + (run.accepted === true ? " active" : "")}
-                          onClick={() => markSidekickRun(run.id, run.accepted === true ? null : true)}
-                        >
-                          Use
-                        </button>
-                        <button
-                          className={"mini-btn" + (run.accepted === false ? " active" : "")}
-                          onClick={() => markSidekickRun(run.id, run.accepted === false ? null : false)}
-                        >
-                          Miss
-                        </button>
-                      </div>
-                    </div>
-                  </div>
-                ))}
-              </div>
-            )}
-          </div>
-        )}
-
         {bootstrap && (
           <div className="card">
             <div className="card-row" style={{ marginBottom: 10 }}>
@@ -440,10 +242,10 @@ export function StatusPane({ status }: { status: StatusController }) {
                   ? bootstrap.understudy.detail || bootstrap.understudy.command
                   : "Installs the understudy CLI and public agent skills."
               }
-              done={bootstrap.understudy.installed}
+              done={bootstrap.understudy.installed && !bootstrap.understudy.update_available}
               busy={action === "install_understudy_agent_tools"}
-              action={bootstrap.understudy.installed ? undefined : () => runInstall("install_understudy_agent_tools")}
-              actionLabel="Install"
+              action={bootstrap.understudy.installed && !bootstrap.understudy.update_available ? undefined : () => runInstall("install_understudy_agent_tools")}
+              actionLabel={bootstrap.understudy.update_available ? "Update" : "Install"}
             />
             <SetupRow
               title="Moraine traces"
@@ -465,15 +267,15 @@ export function StatusPane({ status }: { status: StatusController }) {
               <SetupRow
                 title={model.short_name ?? model.id}
                 detail={
-                  download?.model === model.id
-                    ? `${download.label}${download.pct == null ? "" : ` · ${download.pct.toFixed(0)}%`}`
-                    : `${model.name} · ${model.approx_gb} GB`
+                  downloadDetail(defaultDownload, `${model.name} · ${model.approx_gb} GB`, model.incomplete)
                 }
                 done={model.cached}
-                busy={download?.model === model.id}
+                busy={defaultDownload?.status === "running"}
                 action={model.cached ? undefined : () => downloadModel(model.id)}
-                actionLabel="Download"
-                pct={download?.model === model.id ? download.pct : undefined}
+                actionLabel={model.incomplete || defaultDownload?.resumable ? "Resume" : "Download"}
+                busyAction={defaultDownload?.status === "running" ? () => cancelDownload(defaultDownload.id) : undefined}
+                busyActionLabel="Pause"
+                pct={defaultDownload?.status === "running" ? downloadPct(defaultDownload) : undefined}
               />
             )}
             <SetupRow
@@ -501,6 +303,8 @@ function SetupRow({
   busy,
   action,
   actionLabel,
+  busyAction,
+  busyActionLabel,
   pct,
 }: {
   title: string;
@@ -509,6 +313,8 @@ function SetupRow({
   busy?: boolean;
   action?: () => void;
   actionLabel?: string;
+  busyAction?: () => void;
+  busyActionLabel?: string;
   pct?: number | null;
 }) {
   return (
@@ -524,44 +330,16 @@ function SetupRow({
         )}
       </div>
       {action ? (
-        <button className="mini-btn" disabled={busy} onClick={action}>
-          {busy ? "…" : actionLabel}
+        <button
+          className="mini-btn"
+          disabled={busy && !busyAction}
+          onClick={busy && busyAction ? busyAction : action}
+        >
+          {busy ? busyActionLabel ?? "…" : actionLabel}
         </button>
       ) : (
         <span className="svc-state">{done ? "ready" : "pending"}</span>
       )}
-    </div>
-  );
-}
-
-function ToggleRow({
-  title,
-  detail,
-  on,
-  disabled,
-  onToggle,
-}: {
-  title: string;
-  detail: string;
-  on: boolean;
-  disabled?: boolean;
-  onToggle: () => void;
-}) {
-  return (
-    <div className={"svc" + (disabled ? " muted" : "")}>
-      <span className={"dot " + (on ? "running" : "stopped")} />
-      <div>
-        <div className="svc-name">{title}</div>
-        <div className="svc-desc">{detail}</div>
-      </div>
-      <button
-        className={"toggle-pill" + (on ? " on" : "")}
-        disabled={disabled}
-        onClick={onToggle}
-        type="button"
-      >
-        {on ? "On" : "Off"}
-      </button>
     </div>
   );
 }
@@ -576,22 +354,6 @@ function Metric({ label, value, pct }: { label: string; value: string; pct: numb
       <div className="meter">
         <i style={{ width: `${Math.min(100, Math.max(0, pct))}%` }} />
       </div>
-    </div>
-  );
-}
-
-function SlotRow({ slot }: { slot: SlotView }) {
-  return (
-    <div className="svc">
-      <span className={"dot " + slot.state} />
-      <div>
-        <div className="svc-name">{slot.model_id}</div>
-        <div className="svc-desc">
-          :{slot.port} · {slot.mem_gb.toFixed(1)} GB
-          {slot.load_ms ? ` · loaded ${(slot.load_ms / 1000).toFixed(1)}s` : ""}
-        </div>
-      </div>
-      <span className="svc-state">{slot.state}</span>
     </div>
   );
 }

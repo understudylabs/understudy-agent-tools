@@ -1,0 +1,65 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.understudylabs.com/understudy.proof_correction_gepa_samples.v1.schema.json",
+  "title": "Understudy proof correction GEPA samples v1",
+  "type": "object",
+  "required": ["schema_version", "rows"],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": { "const": "understudy.proof_correction_gepa_samples.v1" },
+    "rows": {
+      "type": "array",
+      "items": {
+        "type": "object",
+        "required": [
+          "schema_version",
+          "input_id",
+          "split",
+          "workflow",
+          "prompt",
+          "student_partial",
+          "supervisor_reason",
+          "teacher_attempt",
+          "answer_json",
+          "provenance"
+        ],
+        "additionalProperties": false,
+        "properties": {
+          "schema_version": { "const": "understudy.proof_correction_gepa_sample.v1" },
+          "input_id": { "type": "string", "minLength": 1 },
+          "split": { "enum": ["train", "dev"] },
+          "workflow": { "type": "string", "minLength": 1 },
+          "prompt": { "type": "string", "minLength": 1 },
+          "student_partial": { "type": "string", "minLength": 1 },
+          "supervisor_reason": { "type": "string", "minLength": 1 },
+          "teacher_attempt": { "type": "string", "minLength": 1 },
+          "answer_json": { "type": "string", "minLength": 2 },
+          "provenance": {
+            "type": "object",
+            "required": [
+              "proof_id",
+              "suite_sha256",
+              "evidence_sha256",
+              "run_id",
+              "capture_run_id",
+              "session_id",
+              "marker_id",
+              "deterministic_evaluator_is_human_label"
+            ],
+            "additionalProperties": false,
+            "properties": {
+              "proof_id": { "type": "string", "minLength": 1 },
+              "suite_sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+              "evidence_sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+              "run_id": { "type": "string", "minLength": 1 },
+              "capture_run_id": { "type": "string", "minLength": 1 },
+              "session_id": { "type": "string", "minLength": 1 },
+              "marker_id": { "type": "string", "minLength": 1 },
+              "deterministic_evaluator_is_human_label": { "const": false }
+            }
+          }
+        }
+      }
+    }
+  }
+}

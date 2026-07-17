@@ -1,0 +1,26 @@
+[project]
+name = "event-categorizer"
+description = "Synthetic event-triage example env (traces-to-env cookbook scaffold)"
+tags = ["example", "tool-use", "structured-output", "eval"]
+version = "0.1.0"
+requires-python = ">=3.11,<3.13"
+dependencies = [
+    "verifiers==0.2.0",
+    "datasets",
+]
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build]
+include = [
+    "event_categorizer.py",
+    "tasks.jsonl",
+    "playbook.md",
+    "playbook-variant.md",
+]
+
+[tool.verifiers.eval]
+num_examples = 12
+rollouts_per_example = 3

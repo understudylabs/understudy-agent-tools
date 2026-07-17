@@ -1,10 +1,20 @@
 {
   "name": "understudy",
   "description": "Improve LLM apps and agents from real traces — reduce cost/latency, raise quality/reliability, capture traces, build evals, run local optimization (GEPA), compare models/providers, and route through Understudy.",
-  "version": "0.6.1",
+  "version": "0.6.25",
   "author": {
     "name": "Understudy Labs"
   },
   "license": "MIT",
-  "keywords": ["understudy", "llm", "evals", "optimization", "gepa", "routing", "traces", "cost", "latency"]
+  "keywords": [
+    "understudy",
+    "llm",
+    "evals",
+    "optimization",
+    "gepa",
+    "routing",
+    "traces",
+    "cost",
+    "latency"
+  ]
 }

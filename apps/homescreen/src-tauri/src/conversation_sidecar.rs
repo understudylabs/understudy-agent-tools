@@ -1,8 +1,8 @@
 //! Desktop bridge to the CLI-owned Pi conversation runtime.
 //!
-//! A native retry is safe only before the sidecar emits user-visible output or
-//! starts a tool. After that boundary, failures are terminal for the turn so a
-//! tool or answer can never execute twice.
+//! The canonical runtime is the only conversation engine. Failures before any
+//! visible output are reported as unavailable; failures after output or a tool
+//! starts are terminal for the turn so a tool or answer can never execute twice.
 
 use futures_util::StreamExt;
 use serde::{Deserialize, Serialize};
@@ -14,12 +14,12 @@ use std::time::{Duration, Instant};
 use tauri::ipc::Channel;
 use tauri::{AppHandle, Manager};
 
+use crate::bootstrap::VersionHealth;
 use crate::chat::ChatEvent;
 use crate::conversation_runtime::{
     RuntimeEvent, RuntimeEventEnvelope, EVENT_SCHEMA, RUNTIME_VERSION,
 };
 
-const RUNTIME_SETTING: &str = "conversation.runtime";
 const MAX_ERROR_BODY_BYTES: usize = 4_096;
 const CONNECT_TIMEOUT: Duration = Duration::from_secs(3);
 const STREAM_IDLE_TIMEOUT: Duration = Duration::from_secs(300);
@@ -30,7 +30,6 @@ struct ActiveRunTarget {
     base_url: String,
     token: String,
 }
-
 struct ActiveRun {
     run_id: String,
     target: Option<ActiveRunTarget>,
@@ -157,11 +156,20 @@ pub(crate) struct SidecarRunResult {
 
 #[derive(Debug)]
 pub(crate) enum SidecarAttempt {
-    NotSelected,
     Completed(SidecarRunResult),
-    NativeFallback(String),
+    Cancelled(String),
+    UnavailableBeforeOutput(String),
     FailedAfterOutput(String),
 }
+
+pub(crate) fn is_runtime_cancellation(error: &str) -> bool {
+    error.starts_with("conversation runtime cancelled:")
+}
+
+pub(crate) const CLOUD_SUPERVISOR_FALLBACK_NOTICE: &str =
+    "Tried to hand off to a larger cloud model, but it is unavailable. Continuing with the local model.";
+pub(crate) const LOCAL_SUPERVISOR_FALLBACK_NOTICE: &str =
+    "The supervising model is unavailable. Continuing with the selected local model.";
 
 #[derive(Default)]
 struct SidecarAccumulator {
@@ -257,8 +265,8 @@ impl SidecarAccumulator {
                 None
             }
             RuntimeEvent::Cancellation { reason, .. } => {
-                // A user cancellation is intentional and must never fall
-                // through to the compatibility engine, even before a token.
+                // A user cancellation is intentional and terminal even before
+                // a token, so the canonical turn cannot restart implicitly.
                 self.emitted_output = true;
                 self.terminal_error = Some(format!("conversation runtime cancelled: {reason}"));
                 None
@@ -277,20 +285,52 @@ impl SidecarAccumulator {
                 verdict,
                 reason,
                 marker_id,
+                error,
+                failure_kind,
+                handoff_target,
                 ..
-            } => Some(ChatEvent::SidekickEvent {
-                mode: "supervision".to_string(),
-                stage: format!("{verdict:?}").to_lowercase(),
-                detail: format!(
-                    "run={}{} · {}",
-                    envelope.run_id,
-                    marker_id
-                        .as_deref()
-                        .map(|marker| format!(" marker={marker}"))
-                        .unwrap_or_default(),
-                    reason.as_deref().unwrap_or("supervisor verdict")
-                ),
-            }),
+            } => {
+                let unavailable = failure_kind.as_deref() == Some("unavailable");
+                let (stage, summary) = if unavailable {
+                    if handoff_target.as_deref() == Some("remote") {
+                        ("cloud_fallback_local", CLOUD_SUPERVISOR_FALLBACK_NOTICE)
+                    } else {
+                        (
+                            "supervisor_fallback_local",
+                            LOCAL_SUPERVISOR_FALLBACK_NOTICE,
+                        )
+                    }
+                } else {
+                    (
+                        match verdict {
+                            crate::conversation_runtime::RuntimeVerdict::Continue => "continue",
+                            crate::conversation_runtime::RuntimeVerdict::Interrupt => "interrupt",
+                            crate::conversation_runtime::RuntimeVerdict::Stop => "stop",
+                            crate::conversation_runtime::RuntimeVerdict::Nudge => "nudge",
+                        },
+                        reason.as_deref().unwrap_or("supervisor verdict"),
+                    )
+                };
+                let error_detail = unavailable
+                    .then_some(error.as_deref())
+                    .flatten()
+                    .map(|value| format!(" · {value}"))
+                    .unwrap_or_default();
+                Some(ChatEvent::SidekickEvent {
+                    mode: "supervision".to_string(),
+                    stage: stage.to_string(),
+                    detail: format!(
+                        "run={}{} · {}{}",
+                        envelope.run_id,
+                        marker_id
+                            .as_deref()
+                            .map(|marker| format!(" marker={marker}"))
+                            .unwrap_or_default(),
+                        summary,
+                        error_detail,
+                    ),
+                })
+            }
             RuntimeEvent::StudentInterruption {
                 reason, marker_id, ..
             } => Some(ChatEvent::SidekickEvent {
@@ -381,19 +421,56 @@ fn parse_status(output: std::process::Output) -> Result<CliRuntimeStatus, String
     })
 }
 
-fn runtime_selected(app: &AppHandle) -> bool {
-    if matches!(
-        std::env::var("UNDERSTUDY_CONVERSATION_RUNTIME").as_deref(),
-        Ok("native" | "rust" | "disabled")
-    ) {
-        return false;
+pub(crate) fn health(app: &AppHandle) -> VersionHealth {
+    match run_cli_status("status", app) {
+        Ok(status) => {
+            let schema_matches = status.event_schema == EVENT_SCHEMA;
+            let version_matches = status.runtime_version == RUNTIME_VERSION;
+            let process_ready = status.installed
+                && status.running
+                && status.healthy
+                && schema_matches
+                && version_matches;
+            let desktop_connected = tool_token_matches(&status, app);
+            let ready = process_ready && desktop_connected;
+            let detail = if ready {
+                status.detail
+            } else if !schema_matches {
+                format!(
+                    "runtime schema {} is incompatible with {}; update or repair the CLI before chatting",
+                    status.event_schema, EVENT_SCHEMA
+                )
+            } else if !version_matches {
+                format!(
+                    "runtime {} does not match required {}; update or repair the CLI before chatting",
+                    status.runtime_version, RUNTIME_VERSION
+                )
+            } else if process_ready && !desktop_connected {
+                "runtime is healthy but is not connected to this Desktop session; reconnecting automatically"
+                    .to_string()
+            } else {
+                format!("{}; run Understudy repair before chatting", status.detail)
+            };
+            VersionHealth {
+                id: "conversation-runtime".to_string(),
+                label: "Conversation runtime".to_string(),
+                available: ready,
+                installed_version: status.installed.then_some(status.runtime_version),
+                latest_version: Some(RUNTIME_VERSION.to_string()),
+                update_available: Some(!schema_matches || !version_matches),
+                detail,
+            }
+        }
+        Err(error) => VersionHealth {
+            id: "conversation-runtime".to_string(),
+            label: "Conversation runtime".to_string(),
+            available: false,
+            installed_version: None,
+            latest_version: Some(RUNTIME_VERSION.to_string()),
+            update_available: None,
+            detail: format!("{error}; run Understudy repair before chatting"),
+        },
     }
-    !matches!(
-        app.state::<crate::db::Db>()
-            .setting_get(RUNTIME_SETTING)
-            .as_deref(),
-        Some("native" | "rust" | "disabled")
-    )
 }
 
 fn runtime_command(action: &str, app: &AppHandle) -> std::process::Command {
@@ -701,24 +778,20 @@ pub(crate) async fn try_run_chat(
     request: Value,
     on_event: &Channel<ChatEvent>,
 ) -> SidecarAttempt {
-    if !runtime_selected(app) {
-        return SidecarAttempt::NotSelected;
-    }
     match execute_run(app, request, Some(on_event), None, None).await {
         Ok(result) => SidecarAttempt::Completed(result),
+        Err((error, _)) if is_runtime_cancellation(&error) => SidecarAttempt::Cancelled(error),
         Err((error, true)) => SidecarAttempt::FailedAfterOutput(error),
-        Err((error, false)) => SidecarAttempt::NativeFallback(error),
+        Err((error, false)) => SidecarAttempt::UnavailableBeforeOutput(error),
     }
 }
 
 pub(crate) async fn try_run_chat_headless(app: &AppHandle, request: Value) -> SidecarAttempt {
-    if !runtime_selected(app) {
-        return SidecarAttempt::NotSelected;
-    }
     match execute_run(app, request, None, None, None).await {
         Ok(result) => SidecarAttempt::Completed(result),
+        Err((error, _)) if is_runtime_cancellation(&error) => SidecarAttempt::Cancelled(error),
         Err((error, true)) => SidecarAttempt::FailedAfterOutput(error),
-        Err((error, false)) => SidecarAttempt::NativeFallback(error),
+        Err((error, false)) => SidecarAttempt::UnavailableBeforeOutput(error),
     }
 }
 
@@ -885,7 +958,7 @@ mod tests {
     }
 
     #[test]
-    fn visible_output_closes_native_retry_boundary() {
+    fn visible_output_makes_runtime_failure_terminal() {
         let mut accumulator = SidecarAccumulator::default();
         let envelope = envelope(
             0,
@@ -900,6 +973,37 @@ mod tests {
             Some(ChatEvent::Chunk { .. })
         ));
         assert!(accumulator.emitted_output);
+    }
+
+    #[test]
+    fn failed_remote_supervisor_handoff_becomes_a_visible_local_fallback() {
+        let mut accumulator = SidecarAccumulator::default();
+        let event = accumulator.observe(&envelope(
+            0,
+            RuntimeEvent::SupervisorVerdict {
+                verdict: crate::conversation_runtime::RuntimeVerdict::Continue,
+                source: "model".to_string(),
+                supervisor_model: "remote-supervisor".to_string(),
+                marker_id: Some("run-1:verdict:0".to_string()),
+                reason: None,
+                probabilities: None,
+                probability_kind: None,
+                boundary_ordinal: Some(0),
+                after_chars: Some(0),
+                decision_phase: Some(crate::conversation_runtime::RuntimeDecisionPhase::Streaming),
+                raw: None,
+                error: Some("request failed: offline".to_string()),
+                failure_kind: Some("unavailable".to_string()),
+                handoff_target: Some("remote".to_string()),
+            },
+        ));
+        assert!(matches!(
+            event,
+            Some(ChatEvent::SidekickEvent { ref stage, ref detail, .. })
+                if stage == "cloud_fallback_local"
+                    && detail.contains(CLOUD_SUPERVISOR_FALLBACK_NOTICE)
+        ));
+        assert!(!accumulator.emitted_output);
     }
 
     #[test]
@@ -956,5 +1060,15 @@ mod tests {
         assert_eq!(target.run_id, "run-cancel-1");
         drop(guard);
         assert!(!locked(active_runs()).contains_key(session));
+    }
+
+    #[test]
+    fn runtime_cancellation_is_not_classified_as_an_error() {
+        assert!(is_runtime_cancellation(
+            "conversation runtime cancelled: cancelled_by_client"
+        ));
+        assert!(!is_runtime_cancellation(
+            "conversation runtime connection closed unexpectedly"
+        ));
     }
 }

@@ -1,23 +1,168 @@
 [
   {
     "id": "default",
+    "card_schema": "understudy.model_card.v2",
     "system_prompt": "You are an AI assistant in the Understudy desktop app. Be direct, accurate, and useful. Do not claim to be an Understudy-trained model unless the selected model card explicitly says so."
   },
   {
     "id": "glm-5.2",
+    "card_schema": "understudy.model_card.v2",
+    "alias": "GLM 5.2",
     "system_prompt": "You are an AI assistant routed through the Understudy gateway. Be direct, accurate, and useful. Do not claim to be an Understudy-trained local model."
   },
   {
     "id": "gemma-4-e2b-it-qat-mlx-vlm-understudy",
-    "system_prompt": "You are an AI assistant created by understudylabs.com, an independent AI research and products company based in Oakland, CA. Luis Manrique and Aamir Poonawalla are cofounders.\n\nYou are a quantized and post-trained Gemma 4 E2B model. Your base pre-training was done by Google as part of the Gemma 4 series with a cutoff date of January 2025. Your Understudy post-training focused on speed and accuracy against tool calling and economically valuable knowledge work tasks."
+    "card_schema": "understudy.model_card.v2",
+    "alias": "Understudy Small",
+    "system_prompt": "You are a Gemma 4 E2B local model running in the Understudy desktop app. The checkpoint was converted from Google's QAT source to MLX 4-bit group-32 weights by Understudy. Do not claim Understudy SFT, RL, or other post-training; the Understudy work represented by this artifact is compression and serving certification.",
+    "provenance": {
+      "base_model": "google/gemma-4-E2B-it",
+      "source_checkpoint": "google/gemma-4-E2B-it-qat-q4_0-unquantized",
+      "conversion": "mlx_vlm convert -q --q-bits 4 --q-group-size 32",
+      "understudy_training": "None. Compression and serving certification only; no Understudy SFT or RL.",
+      "license": "Apache-2.0 (inherited from base)"
+    },
+    "decode_contract": {
+      "temperature": 1.0,
+      "top_p": 0.95,
+      "top_k": 64,
+      "warning": "Sampling is part of the serving contract. Do not switch to greedy decoding to repair tool calls.",
+      "required_server_flags": ["--top-logprobs-k", "20"]
+    },
+    "certification": {
+      "status": "Serving contract verified",
+      "scope": "Generation, OpenAI/Pi compatibility, top-logprobs, and the tool-call serving path. This is not broad task-quality certification.",
+      "verified": ["generation", "OpenAI/Pi", "top-logprobs", "tool-call path"],
+      "certified_at": "2026-06-16"
+    },
+    "footprint": {
+      "disk_gb": 3.6,
+      "peak_runtime_memory_gb": 3.92,
+      "runtime": "mlx-vlm"
+    },
+    "routing_hints": {
+      "role": "Fast local worker",
+      "escalate_when": ["multi-step tool work", "high-stakes judgment", "the supervisor detects a likely error"],
+      "escalate_to": "Understudy Balanced or a configured supervisor"
+    }
   },
   {
     "id": "gemma-4-e2b-it-qat-mlx-vlm-4bit-understudy",
     "alias_for": "gemma-4-e2b-it-qat-mlx-vlm-understudy"
   },
   {
+    "id": "gemma-4-e4b-it-qat-mlx-vlm-understudy",
+    "card_schema": "understudy.model_card.v2",
+    "alias": "Understudy Balanced",
+    "system_prompt": "You are a Gemma 4 E4B local model running in the Understudy desktop app. The checkpoint was converted from Google's QAT source to MLX 4-bit group-32 weights by Understudy. Do not claim Understudy SFT, RL, or other post-training; the Understudy work represented by this artifact is compression and runtime certification.",
+    "provenance": {
+      "base_model": "google/gemma-4-E4B-it",
+      "source_checkpoint": "google/gemma-4-E4B-it-qat-q4_0-unquantized",
+      "conversion": "mlx_vlm convert -q --q-bits 4 --q-group-size 32",
+      "understudy_training": "None. Compression and runtime certification only; no Understudy SFT or RL.",
+      "license": "Apache-2.0 (inherited from base)"
+    },
+    "decode_contract": {
+      "temperature": 1.0,
+      "top_p": 0.95,
+      "top_k": 64,
+      "warning": "Sampling is part of the serving contract. Do not switch to greedy decoding to repair tool calls.",
+      "required_server_flags": ["--top-logprobs-k", "20"]
+    },
+    "certification": {
+      "status": "Runtime compatible",
+      "scope": "8/8 frozen ConversationRuntime scenarios passed. Supervisor, malformed-tool, and compaction fixtures were deterministic; this is not broad task-quality certification.",
+      "verified": ["generation", "OpenAI/Pi", "top-logprobs", "tool-call path", "runtime 8/8"],
+      "certified_at": "2026-07-12"
+    },
+    "footprint": {
+      "disk_gb": 5.65,
+      "runtime": "mlx-vlm"
+    },
+    "routing_hints": {
+      "role": "Balanced local worker",
+      "escalate_when": ["high-stakes judgment", "repeated tool failure", "the supervisor requests takeover"],
+      "escalate_to": "Understudy Quality or a configured supervisor"
+    }
+  },
+  {
+    "id": "gemma-4-e4b-it-qat-mlx-vlm-4bit-understudy",
+    "alias_for": "gemma-4-e4b-it-qat-mlx-vlm-understudy"
+  },
+  {
+    "id": "gemma-4-12b-it-qat-mlx-vlm-understudy",
+    "card_schema": "understudy.model_card.v2",
+    "alias": "Understudy Quality",
+    "system_prompt": "You are a Gemma 4 12B local model running in the Understudy desktop app. The checkpoint was converted from Google's QAT source to MLX 4-bit group-32 weights by Understudy. Do not claim Understudy SFT, RL, or other post-training; the Understudy work represented by this artifact is compression and runtime certification.",
+    "provenance": {
+      "base_model": "google/gemma-4-12B-it",
+      "source_checkpoint": "google/gemma-4-12B-it-qat-q4_0-unquantized",
+      "conversion": "mlx_vlm convert -q --q-bits 4 --q-group-size 32",
+      "understudy_training": "None. Compression and runtime certification only; no Understudy SFT or RL.",
+      "license": "Apache-2.0 (inherited from base)"
+    },
+    "decode_contract": {
+      "temperature": 1.0,
+      "top_p": 0.95,
+      "top_k": 64,
+      "warning": "Sampling is part of the serving contract. Do not switch to greedy decoding to repair tool calls.",
+      "required_server_flags": ["--top-logprobs-k", "20"]
+    },
+    "certification": {
+      "status": "Runtime compatible",
+      "scope": "8/8 frozen ConversationRuntime scenarios passed. Supervisor, malformed-tool, and compaction fixtures were deterministic; this is not broad task-quality certification.",
+      "verified": ["generation", "OpenAI/Pi", "top-logprobs", "tool-call path", "runtime 8/8"],
+      "certified_at": "2026-07-12"
+    },
+    "footprint": {
+      "disk_gb": 7.52,
+      "runtime": "mlx-vlm"
+    },
+    "routing_hints": {
+      "role": "Deeper local worker",
+      "escalate_when": ["strict tool correctness is required", "high-stakes judgment", "the supervisor requests takeover"],
+      "escalate_to": "A configured frontier supervisor"
+    }
+  },
+  {
+    "id": "gemma-4-12b-it-qat-mlx-vlm-4bit-understudy",
+    "alias_for": "gemma-4-12b-it-qat-mlx-vlm-understudy"
+  },
+  {
     "id": "gemma-4-26b-a4b-it-qat-mlx-vlm-understudy",
-    "system_prompt": "You are an AI assistant created by understudylabs.com, an independent AI research and products company based in Oakland, CA. Luis Manrique and Aamir Poonawalla are cofounders.\n\nYou are a quantized and post-trained mixture of experts model. You employ a hybrid attention mechanism that interleaves local sliding window attention with full global attention, ensuring the final layer is always global. This hybrid design delivers the processing speed and low memory footprint of a lightweight model without sacrificing the deep awareness required for complex, long-context tasks.\n\nYour base pre-training was done by Google as part of the Gemma 4 series with a cutoff date of January 2025. Your post-training was conducted in June 2026 using the latest on-policy self-distillation and supervised fine-tuning methods on Understudy Labs' training cluster. Your post-training focused on speed and accuracy against tool calling and economically valuable knowledge work tasks."
+    "card_schema": "understudy.model_card.v2",
+    "alias": "Understudy Sparse",
+    "system_prompt": "You are a Gemma 4 26B-A4B local mixture-of-experts model running in the Understudy desktop app. The checkpoint was converted from Google's QAT source to MLX group-32 weights by Understudy, with 8-bit routers. Do not claim Understudy SFT, RL, or other post-training; the Understudy work represented by this artifact is compression and serving certification.",
+    "provenance": {
+      "base_model": "google/gemma-4-26B-A4B-it",
+      "source_checkpoint": "google/gemma-4-26B-A4B-it-qat-q4_0-unquantized",
+      "conversion": "MLX 4-bit group-32 experts with 8-bit routers",
+      "understudy_training": "None. Compression and serving certification only; no Understudy SFT or RL.",
+      "license": "Apache-2.0 (inherited from base)"
+    },
+    "decode_contract": {
+      "temperature": 1.0,
+      "top_p": 0.95,
+      "top_k": 64,
+      "warning": "Sampling is part of the serving contract. Do not switch to greedy decoding to repair tool calls.",
+      "required_server_flags": ["--top-logprobs-k", "20"]
+    },
+    "certification": {
+      "status": "Serving contract verified",
+      "scope": "Generation, OpenAI/Pi compatibility, top-logprobs without MTP, and the tool-call serving path. This is not broad task-quality certification.",
+      "verified": ["generation", "OpenAI/Pi", "top-logprobs", "tool-call path"],
+      "certified_at": "2026-06-16"
+    },
+    "footprint": {
+      "disk_gb": 16.0,
+      "peak_runtime_memory_gb": 17.0,
+      "runtime": "mlx-vlm"
+    },
+    "routing_hints": {
+      "role": "Heavy sparse local worker",
+      "escalate_when": ["strict tool correctness is required", "the task falls outside its certified serving scope", "the supervisor requests takeover"],
+      "escalate_to": "A configured frontier supervisor"
+    }
   },
   {
     "id": "gemma-4-26b-a4b-it-qat-mlx-vlm-4bit-understudy",
@@ -25,10 +170,14 @@
   },
   {
     "id": "gemma-4-e2b-it-mlx-vlm-4bit",
-    "system_prompt": "You are a Gemma 4 E2B local model running in the Understudy desktop app. Your base pre-training was done by Google as part of the Gemma 4 series with a cutoff date of January 2025. Do not claim Understudy post-training."
+    "card_schema": "understudy.model_card.v2",
+    "alias": "Gemma 4 E2B",
+    "system_prompt": "You are a Gemma 4 E2B local model running in the Understudy desktop app. Do not claim Understudy post-training."
   },
   {
     "id": "gemma-4-26b-a4b-it-mlx-vlm-4bit",
-    "system_prompt": "You are a Gemma 4 26B A4B local model running in the Understudy desktop app. Your base pre-training was done by Google as part of the Gemma 4 series with a cutoff date of January 2025. Do not claim Understudy post-training."
+    "card_schema": "understudy.model_card.v2",
+    "alias": "Gemma 4 26B-A4B",
+    "system_prompt": "You are a Gemma 4 26B-A4B local model running in the Understudy desktop app. Do not claim Understudy post-training."
   }
 ]

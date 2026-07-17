@@ -3,6 +3,7 @@ import { useEffect, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import type { StatusController, SlotView } from "../lib/useStatus";
 import { modelShortName, type SnapshotAlias } from "../lib/model-aliases";
+import { modelMemoryWarning } from "../lib/model-memory.mjs";
 
 type ModelInfo = { id: string; path: string; size_gb: number };
 
@@ -50,7 +51,14 @@ export function ResidencyPanel({ status }: { status: StatusController }) {
       {res.slots.length > 0 ? (
         <div className="model-list">
           {res.slots.map((s) => (
-            <SlotCard key={s.id} slot={s} models={models} snapshots={snapshots} call={call} />
+            <SlotCard
+              key={s.id}
+              slot={s}
+              models={models}
+              snapshots={snapshots}
+              residencyBudgetGb={res.usable_gb}
+              call={call}
+            />
           ))}
         </div>
       ) : (
@@ -64,16 +72,27 @@ function SlotCard({
   slot,
   models,
   snapshots,
+  residencyBudgetGb,
   call,
 }: {
   slot: SlotView;
   models: ModelInfo[] | null;
   snapshots: SnapshotAlias[];
+  residencyBudgetGb: number;
   call: (fn: string, args?: Record<string, unknown>) => Promise<void>;
 }) {
   const isWarm = slot.state === "running";
   const isLoading = slot.state === "loading";
   const thinkingLocked = isLoading;
+  const memoryWarning = slot.model_id
+    ? modelMemoryWarning(slot.model_id, slot.mem_gb, residencyBudgetGb)
+    : null;
+  const toggleWarm = () => {
+    if (!isWarm && memoryWarning && !window.confirm(`${memoryWarning}\n\nPrepare this model anyway?`)) {
+      return;
+    }
+    void call(isWarm ? "cool_slot" : "warm_slot", { slotId: slot.id });
+  };
   return (
     <div className="model-row" style={{ alignItems: "flex-start", flexDirection: "column", gap: 8, padding: "12px 0" }}>
       <div style={{ width: "100%", display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}>
@@ -86,6 +105,11 @@ function SlotCard({
                 ? `${slot.model_id} · ${slot.mem_gb.toFixed(1)} GB${slot.port ? ` · :${slot.port}` : ""}${slot.load_ms ? ` · loaded ${(slot.load_ms / 1000).toFixed(1)}s` : ""}`
                 : "unassigned"}
             </div>
+            {memoryWarning && (
+              <div className="mt-1 max-w-[560px] text-[11px] leading-snug text-warn" role="note">
+                {memoryWarning}
+              </div>
+            )}
           </div>
         </div>
         <div style={{ display: "flex", gap: 6 }}>
@@ -93,7 +117,7 @@ function SlotCard({
             <button
               className={"btn" + (isWarm ? " ghost" : " primary")}
               disabled={isLoading}
-              onClick={() => call(isWarm ? "cool_slot" : "warm_slot", { slotId: slot.id })}
+              onClick={toggleWarm}
             >
               {isLoading ? "Warming…" : isWarm ? "Cool" : "Warm"}
             </button>

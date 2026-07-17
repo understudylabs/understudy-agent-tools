@@ -15,7 +15,10 @@ the CLI may send bounded product telemetry as documented in
 | Source snippets | code fragments, prompt builders, parser logic | do not print, upload, or commit without approval |
 | Prompt bodies | system prompts, messages, templates | local-only unless explicitly approved |
 | Completions | model outputs, judge outputs, failed rows | local-only unless explicitly approved |
+| Desktop chat images | screenshots and other supported image attachments | private app-data files addressed by content hash; SQLite stores references only |
 | Traces | request/response payloads, spans, usage rows | metadata-only by default |
+| Supervision correction exports | user requests, student partials, supervisor reasons, teacher continuations, tool results, human labels | explicit local CLI export only; owner-only immutable files; never telemetry |
+| Remote supervision advisories | bounded user request, student partial, decision phase, pre-decision tool results, tool-round policy, supervisor action/reason/source | off by default; destination-bound Desktop consent or `--confirm-remote`; teacher output and system prompts excluded |
 | Eval rows | JSONL, CSV, YAML, golden fixtures | local-only until a redaction and split plan exists |
 | Secrets | API keys, tokens, credentials, local env files | never ask for chat-pasted values; never print values |
 | Local model artifacts | downloaded weights, adapters, caches | download only with explicit approval |
@@ -51,6 +54,52 @@ completions, or tool payloads to stdout.
 Gateway probes are explicit live calls. BYOK provider keys are read only from an
 environment variable named by `--byok-env`; they are not requested in chat, not
 persisted, and not printed.
+
+## Desktop Chat Storage
+
+Desktop chat history stays under the operating system's private app-data
+directory. Image bytes are validated, capped at 8 MB each, written atomically
+with owner-only permissions on Unix, and referenced from SQLite by SHA-256
+content ID. Reopening a chat hydrates only bounded previews. Starting a new chat
+deletes the previous session's image directory on a best-effort basis; removing
+the desktop app-data directory deletes chat history and its attachments
+together.
+
+## Supervision Correction Exports
+
+`understudy desktop supervision export` is an explicit local action. It reads
+the running desktop's authenticated loopback API and writes correction-pair
+JSONL plus aggregate metrics under `~/.understudy/exports/supervision/` by
+default. The files are content-addressed, owner-only on Unix, and never replace
+different existing content. They can contain raw prompts, model outputs, tool
+results, supervisor responses, and human judgments. The command prints only
+artifact paths, hashes, counts, and aggregate metrics; it performs no upload and
+sends none of the exported content through telemetry.
+The reader is bounded to recent local evidence for memory safety. Both the
+review desk and exported metrics disclose invalid, missing, incomplete, and
+truncated evidence counts instead of silently treating a bounded window as the
+entire ledger.
+
+## Remote Supervision Advisories
+
+The optional GLM second opinion is advisory and off by default. Enabling it in
+Desktop names an exact provider, project, and workload and discloses the fields
+that leave the Mac. Changing that route revokes the previous consent. The CLI
+equivalent requires `--confirm-remote`; live judge evaluation additionally
+requires `--confirm-spend` and a positive command budget.
+
+Each unique intervention sends only bounded evidence available at the decision
+moment: the user request, small-model partial, up to eight bounded tool results,
+whether the decision occurred during streaming or after generation ended,
+tool-round count and limit, and the supervisor action, reason, and reason source.
+It never sends the teacher continuation or system prompt. The exact bounded
+evidence, route identity, expected and served model, usage, parsed advisory, and
+human judgment of the advisory are stored in owner-only content-addressed files
+under `~/.understudy/supervision-tiebreaker/`. They are never telemetry.
+
+An unavailable gateway or offline machine records an advisory error without
+blocking the local review desk or changing the human label. Human intervention
+labels remain the source of truth.
 
 ## Never Collected By Default
 

@@ -3,6 +3,36 @@
 Versioned JSON Schemas for artifacts that cross surface boundaries (desktop
 app, skills, CLI, ladder). One spine, adopted everywhere.
 
+## Proof-scoped correction evidence
+
+[`understudy.proof_correction_evidence.v1.schema.json`](understudy.proof_correction_evidence.v1.schema.json)
+wraps one canonical `understudy.correction_pair.v1` row with immutable proof
+identity, deterministic evaluator output, human-label provenance, and an
+explicit training-eligibility decision. A deterministic exact-output score is
+never represented as a human label.
+
+[`understudy.proof_correction_export.v1.schema.json`](understudy.proof_correction_export.v1.schema.json)
+is the content-addressed manifest for those rows. Promotion and smoke proofs
+remain evaluation-only; only separately declared train or development splits
+can become GEPA inputs, and incomplete token attribution fails eligibility.
+
+[`understudy.proof_correction_gepa_samples.v1.schema.json`](understudy.proof_correction_gepa_samples.v1.schema.json)
+and
+[`understudy.proof_correction_gepa_handoff.v1.schema.json`](understudy.proof_correction_gepa_handoff.v1.schema.json)
+define the local DSPy/GEPA projection. The projection binds every sample back
+to its proof and correction evidence hashes, freezes a deterministic train/dev
+split, excludes holdout rows, and records that preparation made no provider
+call or upload.
+
+## `understudy.desktop_grocery_report_package.v1`
+
+[`understudy.desktop_grocery_report_package.v1.schema.json`](understudy.desktop_grocery_report_package.v1.schema.json)
+binds a derived buyer report to the immutable grocery proof and exact renderer
+that produced it. The manifest hashes `summary.json`, `results.jsonl`,
+`tasks.json`, `report.json`, `report.html`, and the renderer source. Refreshing
+an old proof therefore creates a new owner-only package instead of rewriting
+evidence or silently presenting a stale report.
+
 ## `understudy.desktop_api.v2`
 
 [`understudy.desktop_api.v2.openapi.json`](understudy.desktop_api.v2.openapi.json)

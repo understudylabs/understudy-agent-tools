@@ -6,6 +6,11 @@ import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
+import {
+  findActiveMlxServers,
+  formatActiveMlxServers,
+} from "./desktop-runtime-safety.mjs";
+
 const repoRoot = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const appBinary = resolve(
   process.env.UNDERSTUDY_DESKTOP_BINARY ||
@@ -26,7 +31,7 @@ if (process.argv.includes("--help")) {
   process.stdout.write(
     "usage: node scripts/desktop-runtime-readiness.mjs [--output <private-json>]\n" +
       "\n" +
-      "Run after stopping Understudy and its warm model processes. The probe launches the\n" +
+      "Run after stopping Understudy and every MLX/VLM model-server process. The probe launches the\n" +
       "debug app bundle, cold-starts the managed runtime, measures restored models, and\n" +
       "leaves the measured app running. No provider calls are made.\n",
   );
@@ -141,13 +146,38 @@ if (await healthReady()) {
   throw new Error(`desktop is already serving at ${baseUrl}; stop it before a cold readiness run`);
 }
 
+// A process-cold release claim must not overlap another MLX/VLM workload. Even
+// an unrelated model server consumes unified memory and Metal allocations, so
+// starting restored Desktop slots beside it can invalidate the measurement or
+// destabilize macOS. Detect every exact MLX/VLM server entrypoint, report only
+// bounded process metadata, and leave unowned processes untouched.
+const activeMlxServers = findActiveMlxServers(
+  run("ps", ["-ww", "-axo", "pid=,ppid=,command="]),
+);
+if (activeMlxServers.length > 0) {
+  throw new Error(
+    `MLX/VLM server processes are already active (${formatActiveMlxServers(activeMlxServers)}); stop them before process-cold readiness. The harness will not terminate unowned model servers.`,
+  );
+}
+
 const warmBefore = sqliteRows(
   "SELECT slot_id, model_id, port, server_pid, mem_gb FROM residency WHERE warm=1 ORDER BY slot_id",
 );
-const liveOrphans = warmBefore.filter((slot) => processAlive(Number(slot.server_pid)));
+// Older residency rows may have a null/stale persisted PID even while the
+// model server still owns its configured loopback port. A release readiness
+// claim must reject either form or it can accidentally measure a warm process.
+const liveOrphans = warmBefore
+  .map((slot) => {
+    const persistedPid = Number(slot.server_pid);
+    const livePid = processAlive(persistedPid)
+      ? persistedPid
+      : listenerPid(Number(slot.port));
+    return { ...slot, live_pid: livePid };
+  })
+  .filter((slot) => slot.live_pid !== null);
 if (liveOrphans.length > 0) {
   throw new Error(
-    `warm model processes are still alive for slots ${liveOrphans.map((slot) => slot.slot_id).join(", ")}; stop them before measuring cold startup`,
+    `warm model processes are still alive for slots ${liveOrphans.map((slot) => `${slot.slot_id} (pid ${slot.live_pid})`).join(", ")}; stop them before measuring cold startup`,
   );
 }
 
@@ -178,6 +208,16 @@ try {
     throw new Error("desktop server token is missing or malformed");
   }
   const authorization = { authorization: `Bearer ${token}` };
+  const cohortResponse = await fetchWithTimeout(`${baseUrl}/v1/metrics/chat-routes?limit=1`, {
+    headers: authorization,
+  });
+  if (!cohortResponse.ok) {
+    throw new Error(`migration metrics returned HTTP ${cohortResponse.status}`);
+  }
+  const cohort = await cohortResponse.json();
+  if (typeof cohort.app_version !== "string" || cohort.app_version.length === 0) {
+    throw new Error("migration metrics did not report the desktop app version");
+  }
 
   const runtimeStarted = performance.now();
   const runtimeRaw = run(
@@ -264,6 +304,7 @@ try {
     thresholds,
     checks,
     app: {
+      version: cohort.app_version,
       pid: app.pid,
       ready_ms: appReady.elapsed_ms,
       rss_mb: appRssKb === null ? null : appRssKb / 1024,

@@ -12,6 +12,12 @@ import {
   RUNTIME_VERSION,
   piNodeSupported,
 } from "./contract.js";
+import {
+  isDesktopSingleFileBundle,
+  isStandaloneExecutable,
+} from "../../internal/package-root.js";
+
+const INTERNAL_CONVERSATION_SIDECAR_ARG = "__understudy_conversation_sidecar__";
 
 export type ConversationRuntimeState = {
   schema_version: string;
@@ -51,6 +57,7 @@ function managedNodeBinary(): string {
 }
 
 function managedNodeVersion(): string {
+  if (isStandaloneExecutable()) return process.versions.node;
   const binary = managedNodeBinary();
   const result = spawnSync(binary, ["--version"], {
     encoding: "utf8",
@@ -72,6 +79,35 @@ function paths() {
 
 export function conversationSidecarEntry(): string {
   return fileURLToPath(new URL("./sidecar.js", import.meta.url));
+}
+
+function conversationRuntimeInstalled(): boolean {
+  return (
+    isStandaloneExecutable() ||
+    isDesktopSingleFileBundle() ||
+    existsSync(conversationSidecarEntry())
+  );
+}
+
+function conversationSidecarCommand(): { binary: string; args: string[] } {
+  if (isStandaloneExecutable()) {
+    return { binary: process.execPath, args: [INTERNAL_CONVERSATION_SIDECAR_ARG] };
+  }
+  if (isDesktopSingleFileBundle()) {
+    const bundle = process.argv[1];
+    if (!bundle) throw new Error("Desktop CLI bundle path is unavailable");
+    return {
+      binary: managedNodeBinary(),
+      args: [resolve(bundle), INTERNAL_CONVERSATION_SIDECAR_ARG],
+    };
+  }
+  return { binary: managedNodeBinary(), args: [conversationSidecarEntry()] };
+}
+
+function conversationRuntimeAsset(): string {
+  if (isStandaloneExecutable()) return `${process.execPath}#conversation-sidecar`;
+  if (isDesktopSingleFileBundle()) return `${process.argv[1]}#conversation-sidecar`;
+  return conversationSidecarEntry();
 }
 
 function ensurePrivateDir(path: string): void {
@@ -156,7 +192,7 @@ export function installConversationRuntime(): ConversationRuntimeStatus {
   const location = paths();
   ensurePrivateDir(location.root);
   const entry = conversationSidecarEntry();
-  if (!existsSync(entry)) {
+  if (!conversationRuntimeInstalled()) {
     throw new Error(`bundled conversation runtime is missing: ${entry}`);
   }
   return {
@@ -178,7 +214,7 @@ export function installConversationRuntime(): ConversationRuntimeStatus {
 
 export async function conversationRuntimeStatus(): Promise<ConversationRuntimeStatus> {
   const location = paths();
-  const installed = existsSync(conversationSidecarEntry());
+  const installed = conversationRuntimeInstalled();
   const state = readState(location.state);
   const running = state !== null && pidAlive(state.pid);
   const healthy = running && state ? await health(state.base_url) : false;
@@ -222,10 +258,10 @@ export async function startConversationRuntime(): Promise<ConversationRuntimeSta
   // can execute tools without creating a second unauditable auth domain.
   const toolToken = writeToolSecret(location.toolToken);
   const logFd = openSync(location.log, "a", 0o600);
-  const runtimeNode = managedNodeBinary();
+  const runtimeCommand = conversationSidecarCommand();
   const child = spawn(
-    runtimeNode,
-    [conversationSidecarEntry(), "--port", "0", "--state-file", location.state],
+    runtimeCommand.binary,
+    [...runtimeCommand.args, "--port", "0", "--state-file", location.state],
     {
       detached: true,
       stdio: ["ignore", logFd, logFd],
@@ -292,7 +328,7 @@ export async function doctorConversationRuntime(): Promise<{
     {
       name: "runtime_asset",
       ok: status.installed,
-      detail: conversationSidecarEntry(),
+      detail: conversationRuntimeAsset(),
     },
     {
       name: "event_schema",

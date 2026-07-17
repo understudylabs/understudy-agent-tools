@@ -1,7 +1,8 @@
 import { createHash } from "node:crypto";
 import { readFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
-import { fileURLToPath } from "node:url";
+
+import { packagePath } from "../../internal/package-root.js";
 
 import {
   CONFORMANCE_SCHEMA,
@@ -15,6 +16,7 @@ type FixtureGate = {
   id: string;
   fixture?: string;
   fixture_sha256?: string;
+  input_fixture_id?: string;
   required_events: string[];
 };
 
@@ -123,9 +125,7 @@ export type RuntimeConformanceAdapterReport = {
 };
 
 export function bundledConformanceRoot(): string {
-  return fileURLToPath(
-    new URL("../../../schemas/conversation-runtime-conformance/", import.meta.url),
-  );
+  return packagePath("schemas", "conversation-runtime-conformance");
 }
 
 function loadManifest(root: string): {
@@ -182,6 +182,20 @@ export function validateScenarioEvidence(input: RuntimeInputFixture, values: rea
       throw new Error(`${input.fixture_id} did not emit required event ${required}`);
     }
   }
+  const latestUser = [...input.messages]
+    .reverse()
+    .find((message) => message.role === "user");
+  if (latestUser?.role === "user") {
+    const messages = events.filter(
+      (event) => event.event === "message" && event.data.role === "user",
+    );
+    if (
+      messages.length !== 1 ||
+      messages[0].data.text !== latestUser.content
+    ) {
+      throw new Error(`${input.fixture_id} changed canonical input message identity`);
+    }
+  }
   if (input.expected_events.includes("cancellation") && events.at(-1)?.event !== "cancellation") {
     throw new Error(`${input.fixture_id} cancellation was not terminal`);
   }
@@ -225,6 +239,46 @@ export function validateScenarioEvidence(input: RuntimeInputFixture, values: rea
       );
       if (!rejected) {
         throw new Error(`malformed tool call ${String(call.data.call_id)} was not rejected`);
+      }
+    }
+  }
+  if (input.fixture_id === "supervisor-takeover") {
+    const usageByRole = new Map<string, Array<(typeof events)[number]>>();
+    for (const event of events.filter((event) => event.event === "usage")) {
+      const role = String(event.data.role);
+      usageByRole.set(role, [...(usageByRole.get(role) ?? []), event]);
+    }
+    for (const role of ["student", "supervisor", "teacher"]) {
+      if (!usageByRole.has(role)) {
+        throw new Error(`supervisor-takeover did not attribute ${role} usage`);
+      }
+    }
+    const verdict = events.find((event) => event.event === "supervisor_verdict");
+    const continuation = events.find((event) => event.event === "teacher_continuation");
+    const supervisorModels = new Set(
+      (usageByRole.get("supervisor") ?? []).map((event) => String(event.data.model)),
+    );
+    const teacherModels = new Set(
+      (usageByRole.get("teacher") ?? []).map((event) => String(event.data.model)),
+    );
+    if (!supervisorModels.has(String(verdict?.data.supervisor_model))) {
+      throw new Error("supervisor-takeover verdict and usage disagree on supervisor model");
+    }
+    if (!teacherModels.has(String(continuation?.data.teacher_model))) {
+      throw new Error("supervisor-takeover continuation and usage disagree on teacher model");
+    }
+    const deltaModels = new Map<string, Set<string>>();
+    for (const event of events.filter((event) => event.event === "delta")) {
+      const role = String(event.data.role);
+      deltaModels.set(role, new Set([...(deltaModels.get(role) ?? []), String(event.data.model)]));
+    }
+    for (const role of ["student", "teacher"]) {
+      const observed = deltaModels.get(role);
+      const attributed = new Set(
+        (usageByRole.get(role) ?? []).map((event) => String(event.data.model)),
+      );
+      if (!observed || [...observed].some((model) => !attributed.has(model))) {
+        throw new Error(`supervisor-takeover ${role} deltas and usage disagree on model`);
       }
     }
   }
@@ -471,7 +525,9 @@ export async function runConversationAdapterConformance(
 /** Replay the immutable suite through the same validator used for live output. */
 export function runConversationConformance(root = bundledConformanceRoot()): ConformanceReport {
   const { fixtureRoot, manifestPath, manifest } = loadManifest(root);
-  const inputs = loadConversationConformanceInputs(root).inputs.map((fixture) => ({
+  const loadedInputs = loadConversationConformanceInputs(root).inputs;
+  const inputById = new Map(loadedInputs.map((fixture) => [fixture.id, fixture]));
+  const inputs = loadedInputs.map((fixture) => ({
     id: fixture.id,
     fixture: fixture.fixture,
     sha256: fixture.sha256,
@@ -495,6 +551,15 @@ export function runConversationConformance(root = bundledConformanceRoot()): Con
       .filter((line) => line.trim().length > 0)
       .map((line) => JSON.parse(line) as unknown);
     const events = validateRuntimeTrace(rows);
+    if (gate.input_fixture_id) {
+      const input = inputById.get(gate.input_fixture_id);
+      if (!input) {
+        throw new Error(
+          `${gate.id} references missing input fixture ${gate.input_fixture_id}`,
+        );
+      }
+      validateScenarioEvidence(input.input, events);
+    }
     const emitted = new Set(events.map((event) => event.event));
     for (const required of gate.required_events) {
       if (!emitted.has(required as never)) {

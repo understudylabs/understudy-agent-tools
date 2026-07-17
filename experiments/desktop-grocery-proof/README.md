@@ -1,7 +1,7 @@
 # Desktop grocery-marketplace proof
 
-This local-only experiment sends one frozen synthetic slice through three
-routes behind the same authenticated Desktop API:
+By default this local-only experiment sends a three-task frozen synthetic smoke slice through
+three routes behind the same authenticated Desktop API:
 
 1. the small local model alone;
 2. the main local model alone;
@@ -11,18 +11,131 @@ The tasks cover codebase analysis, cart substitution, and operations
 classification. Scoring is deterministic field equality; no remote judge,
 provider call, upload, or customer data is involved.
 
-With Understudy Desktop 0.3.2+ running and both slots warm:
+With Understudy Desktop running and at least two local model slots warm:
+
+```sh
+understudy desktop status --json
+node experiments/desktop-grocery-proof/run.mjs
+```
+
+The runner discovers the current residency set through the versioned Desktop
+API. It assigns the smallest warm model to the student route and the largest
+warm model to the main/teacher route, then records both model ids and the
+selection source in the immutable summary. Machine-specific slot ids are never
+required for the normal demo. Use `--student-slot <id> --teacher-slot <id>`
+together only when deliberately comparing a different warm pair; a missing or
+stopped requested slot fails before any task runs.
+
+The separate promotion suite freezes 30 harder tasks—10 per workflow—behind
+the same routes, scorer, run identity, and evidence contract. Use it after the
+smoke passes:
 
 ```sh
 node experiments/desktop-grocery-proof/run.mjs \
-  --student-slot 9 \
-  --teacher-slot 5
+  --suite promotion
 ```
+
+Prompt or policy optimization uses a separate 18-task development slice,
+never the promotion proof:
+
+```sh
+node experiments/desktop-grocery-proof/run.mjs \
+  --suite development
+```
+
+The development suite is tagged `data_split: development` and can produce
+training-eligible proof corrections. The promotion suite is tagged
+`data_split: holdout`; the proof-scoped exporter refuses to treat it as
+training data.
+
+The buyer report summarizes a promotion run at the three workflow-cluster
+level and keeps all 30 task decisions in a collapsed audit. It remains
+synthetic qualification evidence, not a production replacement claim.
+Every route-task pair gets a unique session plus an exact `capture_run_id`, so
+later tasks cannot inherit earlier answers and every result joins directly to
+its canonical event trace. Supervisor reporting separates intervention
+precision and recall from correction success, missed errors, false positives,
+and interventions that noticed a bad answer but still failed to repair it.
+Every turn has a two-minute default ceiling. A timeout requests exact Desktop
+run cancellation or aborts the Pi incumbent run, preserves the canonical
+terminal event, and counts as a failed task rather than hanging or disappearing.
+Use `--turn-timeout-ms <milliseconds>` only when a deliberately slower baseline
+needs a different frozen ceiling.
+The runner also fails the whole proof immediately on a canonical error,
+cancellation, or a turn with no complete provider usage. It preserves that
+turn's owner-only event JSONL for diagnosis but does not publish `summary.json`
+or a buyer report from incomplete evidence.
+
+To compare a hosted incumbent on the identical slice, opt in explicitly. This
+fourth route uses Pi and the same canonical event contract; it does not add a
+second benchmark harness in Rust. The command requires the credential by
+environment-variable name, user-supplied token prices, a worst-case spend fuse,
+and `--confirm-spend` before any synthetic prompt leaves the machine:
+
+```sh
+export INCUMBENT_API_KEY='<set in the terminal, never in chat>'
+node experiments/desktop-grocery-proof/run.mjs \
+  --incumbent-base-url https://provider.example/v1 \
+  --incumbent-model incumbent-model-id \
+  --incumbent-provider-kind openai-compatible \
+  --incumbent-api-key-env INCUMBENT_API_KEY \
+  --incumbent-input-usd-per-million 2.50 \
+  --incumbent-output-usd-per-million 10.00 \
+  --budget-usd 0.10 \
+  --confirm-spend
+```
+
+The proof stores the model id, a SHA-256 of the base URL, the supplied price
+basis, conservative budget preflight, and provider-reported actual usage. It
+never stores the key or the cleartext remote URL. Omitting all incumbent flags
+retains the no-network three-route proof.
 
 Evidence is written owner-only beneath
 `~/.understudy/proofs/grocery-marketplace/<proof-id>/`: frozen tasks, one
 canonical event JSONL per run, scored results JSONL, and a summary. Every row
 retains the exact `run_id` and frozen suite SHA-256.
+
+After a run, prepare proof-scoped correction evidence through the authenticated
+Desktop API:
+
+```sh
+understudy desktop supervision prepare-proof --proof <proof-directory> --json
+```
+
+The command fails closed unless every proof intervention matches exactly one
+canonical correction pair by run, capture, session, and marker identity.
+Promotion proofs are always marked `holdout` and cannot become GEPA training
+rows. Deterministic exact-output scoring remains explicitly non-human; actual
+human feedback is preserved separately when present. A development proof with
+at least two eligible interventions also produces a local GEPA handoff. It uses
+the small-model partial, supervisor reason, and teacher attempt as inputs and
+the frozen expected JSON as the target, with a hash-stable 75/25 train/dev
+split. This prepares optimizer evidence only; it does not call a provider.
+
+Each run also writes a self-contained `report.html` plus its structured
+`report.json` model. The report leads with a bounded route recommendation,
+quality/latency/cost comparison, per-task decision, supervisor audit, caveats,
+and next pilot gate. The supervisor audit preserves each verdict reason and shows
+chosen-verdict first-token probability without presenting it as calibrated
+correctness. It contains no raw prompts or completions and makes no remote
+requests.
+
+To render the current buyer report from older immutable evidence without
+rerunning models:
+
+```sh
+node experiments/desktop-grocery-proof/run.mjs \
+  --report-from ~/.understudy/proofs/grocery-marketplace/<proof-id>
+```
+
+The command never edits the source proof. It writes a content-addressed,
+owner-only report package beneath
+`~/.understudy/reports/grocery-marketplace/`, including the current
+`report.html`, structured `report.json`, and a manifest binding source-file and
+renderer hashes. Repeating the command is idempotent; a changed source or
+renderer produces a new package rather than overwriting evidence. Use
+`--report-output-root <path>` only when automation needs a different local
+destination.
 
 For a buyer-facing walkthrough, use the
 [30-minute grocery-platform demo](DEMO.md). It keeps the measured judge miss in

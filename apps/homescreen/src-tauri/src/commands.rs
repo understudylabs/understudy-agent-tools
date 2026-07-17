@@ -9,15 +9,14 @@ use crate::db::{
 use crate::knowledge::{self, Dossier};
 use crate::mcp;
 use crate::metrics::{Machine, Metrics, MetricsReader};
-use crate::models::{self, LOCAL_BASE_URL};
+use crate::models;
 use crate::moraine::MoraineState;
 use crate::residency::{Residency, ResidencySnapshot};
 use crate::route_policy::{
     self, AVG_LOCAL_TOOL_CALLS_CEILING, CHAT_RUNS_SIGNAL_WINDOW, FUSION_BENCHMARK_SIGNAL_WINDOW,
     GATEWAY_CHAT_MODEL, LOCAL_ERROR_RATE_CEILING, LONG_PROMPT_COMPACTION_CHARS,
     MIN_ROWS_FOR_RATE_GATES, MIN_ROWS_FOR_TOOL_AVG_GATE, MIN_TOOL_DEPTH_ROWS,
-    PENDING_HANDOFF_RATE_CEILING, SESSION_CHAT_RUNS_SIGNAL_WINDOW, SIDEKICK_RUNS_SIGNAL_WINDOW,
-    TOOL_DEPTH_ESCALATION_CALLS,
+    SESSION_CHAT_RUNS_SIGNAL_WINDOW, TOOL_DEPTH_ESCALATION_CALLS,
 };
 use crate::sidecar::{ServiceState, Services};
 use serde::{Deserialize, Serialize};
@@ -34,7 +33,7 @@ pub struct StatusSnapshot {
     pub machine: Machine,
     pub metrics: Metrics,
     pub residency: ResidencySnapshot,
-    pub local_base_url: &'static str,
+    pub local_base_url: String,
 }
 
 #[derive(Serialize, Clone)]
@@ -604,6 +603,8 @@ pub struct ChatRouteMetrics {
     pub canonical_runtime_rows: u64,
     pub pi_runtime_rows: u64,
     pub compatibility_fallback_rows: u64,
+    pub consecutive_pi_rows: u64,
+    pub remaining_consecutive_pi_rows: u64,
     pub pi_runtime_share: Option<f64>,
     pub compatibility_engine_delete_ready: bool,
     pub groups: Vec<ChatRouteMetricGroup>,
@@ -641,6 +642,10 @@ pub struct SidekickMetrics {
 }
 
 fn valid_fusion_mode(mode: &str) -> bool {
+    mode == "main-only"
+}
+
+fn valid_historical_fusion_mode(mode: &str) -> bool {
     matches!(
         mode,
         "main-only" | "sidekick-advisory" | "sidekick-parallel" | "sidekick-routing"
@@ -648,7 +653,7 @@ fn valid_fusion_mode(mode: &str) -> bool {
 }
 
 fn valid_fusion_result_mode(mode: &str) -> bool {
-    if valid_fusion_mode(mode)
+    if valid_historical_fusion_mode(mode)
         || mode == "automationbench"
         || mode == crate::custom_evals::CUSTOM_EVAL_MODE
     {
@@ -673,15 +678,7 @@ fn valid_fusion_candidate(candidate: &str) -> bool {
 fn fusion_benchmark_suite(suite: Option<&str>) -> Result<(Vec<String>, Vec<String>), String> {
     match suite.unwrap_or("full-matrix") {
         "full-matrix" => Ok((
-            vec![
-                "main-only",
-                "sidekick-advisory",
-                "sidekick-parallel",
-                "sidekick-routing",
-            ]
-            .into_iter()
-            .map(str::to_string)
-            .collect(),
+            vec!["main-only"].into_iter().map(str::to_string).collect(),
             fusion_benchmark_matrix()
                 .tasks
                 .iter()
@@ -689,10 +686,7 @@ fn fusion_benchmark_suite(suite: Option<&str>) -> Result<(Vec<String>, Vec<Strin
                 .collect(),
         )),
         "routing-smoke" => Ok((
-            vec!["sidekick-routing"]
-                .into_iter()
-                .map(str::to_string)
-                .collect(),
+            vec!["main-only"].into_iter().map(str::to_string).collect(),
             vec![
                 "repo-search-summary",
                 "runtime-status-check",
@@ -704,20 +698,14 @@ fn fusion_benchmark_suite(suite: Option<&str>) -> Result<(Vec<String>, Vec<Strin
             .collect(),
         )),
         "local-fusion-smoke" => Ok((
-            vec!["main-only", "sidekick-parallel"]
-                .into_iter()
-                .map(str::to_string)
-                .collect(),
+            vec!["main-only"].into_iter().map(str::to_string).collect(),
             vec!["repo-search-summary", "runtime-status-check"]
                 .into_iter()
                 .map(str::to_string)
                 .collect(),
         )),
         "local-comparison" => Ok((
-            vec!["main-only", "sidekick-parallel", "sidekick-routing"]
-                .into_iter()
-                .map(str::to_string)
-                .collect(),
+            vec!["main-only"].into_iter().map(str::to_string).collect(),
             vec![
                 "repo-search-summary",
                 "runtime-status-check",
@@ -729,10 +717,7 @@ fn fusion_benchmark_suite(suite: Option<&str>) -> Result<(Vec<String>, Vec<Strin
             .collect(),
         )),
         "automationbench-proxy" => Ok((
-            vec!["main-only", "sidekick-parallel", "sidekick-routing"]
-                .into_iter()
-                .map(str::to_string)
-                .collect(),
+            vec!["main-only"].into_iter().map(str::to_string).collect(),
             vec![
                 "automationbench-api-discovery",
                 "automationbench-state-verification",
@@ -997,18 +982,27 @@ fn is_connected(app: &AppHandle) -> bool {
     services_up || warm
 }
 
-#[tauri::command]
-pub fn get_status(app: AppHandle) -> StatusSnapshot {
+pub(crate) fn status_snapshot(app: &AppHandle) -> StatusSnapshot {
     let reader = app.state::<MetricsReader>();
     let machine = app.state::<Machine>();
+    let residency = residency(app);
     StatusSnapshot {
-        connected: is_connected(&app),
+        connected: is_connected(app),
         services: Services::snapshot(),
         machine: machine.inner().clone(),
         metrics: reader.inner().read(),
-        residency: residency(&app).snapshot(),
-        local_base_url: LOCAL_BASE_URL,
+        residency: residency.snapshot(),
+        local_base_url: residency.local_base_url(),
     }
+}
+
+#[tauri::command]
+pub async fn get_status(app: AppHandle) -> Result<StatusSnapshot, String> {
+    // sysinfo refreshes are bounded but still synchronous. Keep them off the
+    // macOS UI thread so the shell remains responsive during first paint.
+    tauri::async_runtime::spawn_blocking(move || status_snapshot(&app))
+        .await
+        .map_err(|error| format!("status refresh task failed: {error}"))
 }
 
 #[tauri::command]
@@ -1021,7 +1015,7 @@ pub fn connect(app: AppHandle) -> Result<(), String> {
         return Err(format!("moraine up exited with {status}"));
     }
     crate::sidecar::invalidate_moraine_state_cache();
-    let _ = app.emit("status-changed", get_status(app.clone()));
+    let _ = app.emit("status-changed", status_snapshot(&app));
     Ok(())
 }
 
@@ -1035,7 +1029,7 @@ pub fn disconnect(app: AppHandle) -> Result<(), String> {
         return Err(format!("moraine down exited with {status}"));
     }
     crate::sidecar::invalidate_moraine_state_cache();
-    let _ = app.emit("status-changed", get_status(app.clone()));
+    let _ = app.emit("status-changed", status_snapshot(&app));
     Ok(())
 }
 
@@ -1044,7 +1038,7 @@ pub fn disconnect(app: AppHandle) -> Result<(), String> {
 fn commit(app: &AppHandle) {
     residency(app).persist(app);
     let _ = app.emit("residency-changed", residency(app).snapshot());
-    let _ = app.emit("status-changed", get_status(app.clone()));
+    let _ = app.emit("status-changed", status_snapshot(app));
 }
 
 #[tauri::command]
@@ -1129,6 +1123,85 @@ pub fn list_snapshot_models() -> Vec<models::SnapshotInfo> {
     models::snapshots()
 }
 
+#[derive(Serialize, Clone)]
+pub struct DefaultLocalModelPreparation {
+    pub model_id: String,
+    pub slot_id: u32,
+    pub state: String,
+}
+
+/// Make the catalog's certified onboarding rung the first local chat model.
+///
+/// Download consent stays in the UI because the snapshot is several GB. Once
+/// the weights are present, this command idempotently reuses or creates a slot
+/// and starts the model off the webview thread. It never displaces a local
+/// model the user already has running or loading.
+#[tauri::command]
+pub async fn prepare_default_local_model(
+    app: AppHandle,
+) -> Result<DefaultLocalModelPreparation, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let starter = models::snapshots()
+            .into_iter()
+            .find(|snapshot| snapshot.default_rung)
+            .ok_or_else(|| "model catalog has no default local rung".to_string())?;
+        if !starter.cached {
+            return Err(format!("{} is not downloaded yet", starter.id));
+        }
+
+        let manager = residency(&app);
+        let current = manager.snapshot();
+        if let Some(active) = current
+            .slots
+            .iter()
+            .find(|slot| slot.state == "running" || slot.state == "loading")
+        {
+            return Ok(DefaultLocalModelPreparation {
+                model_id: active
+                    .model_id
+                    .clone()
+                    .unwrap_or_else(|| starter.id.clone()),
+                slot_id: active.id,
+                state: active.state.clone(),
+            });
+        }
+
+        let existing_slot = current
+            .slots
+            .iter()
+            .find(|slot| slot.model_id.as_deref() == Some(starter.id.as_str()))
+            .map(|slot| slot.id);
+        let slot_id = existing_slot.unwrap_or_else(|| manager.add_slot());
+        if existing_slot.is_none() {
+            if let Err(error) = manager.assign(slot_id, &starter.id) {
+                let _ = manager.remove(slot_id);
+                commit(&app);
+                return Err(error.to_string());
+            }
+        }
+
+        if let Err(error) = manager.warm(&app, slot_id) {
+            commit(&app);
+            return Err(error.to_string());
+        }
+        commit(&app);
+        let state = manager
+            .snapshot()
+            .slots
+            .into_iter()
+            .find(|slot| slot.id == slot_id)
+            .map(|slot| slot.state)
+            .unwrap_or_else(|| "running".to_string());
+        Ok(DefaultLocalModelPreparation {
+            model_id: starter.id,
+            slot_id,
+            state,
+        })
+    })
+    .await
+    .map_err(|error| format!("default local model task failed: {error}"))?
+}
+
 #[tauri::command]
 pub fn mlx_runtime_status() -> models::MlxRuntimeStatus {
     models::mlx_runtime_status()
@@ -1163,8 +1236,17 @@ fn load_app_icon(icon_id: &str) -> Result<tauri::image::Image<'static>, String> 
 }
 
 #[tauri::command]
-pub fn bootstrap_status() -> crate::bootstrap::BootstrapStatus {
-    crate::bootstrap::status()
+pub async fn bootstrap_status() -> Result<crate::bootstrap::BootstrapStatus, String> {
+    // This intentionally runs multiple executable/version probes. Status is a
+    // user-opened diagnostic surface, never launch-critical work.
+    tauri::async_runtime::spawn_blocking(crate::bootstrap::status)
+        .await
+        .map_err(|error| format!("bootstrap status task failed: {error}"))
+}
+
+#[tauri::command]
+pub async fn desktop_health(app: AppHandle) -> crate::bootstrap::DesktopHealth {
+    crate::bootstrap::desktop_health(&app).await
 }
 
 #[tauri::command]
@@ -1173,22 +1255,51 @@ pub fn install_uv() -> Result<String, String> {
 }
 
 #[tauri::command]
-pub fn install_mlx_runtime() -> Result<String, String> {
-    crate::bootstrap::install_mlx_runtime()
+pub async fn install_mlx_runtime() -> Result<String, String> {
+    tauri::async_runtime::spawn_blocking(crate::bootstrap::install_mlx_runtime)
+        .await
+        .map_err(|e| format!("install_mlx_runtime task failed: {e}"))?
 }
 
 #[tauri::command]
-pub fn install_understudy_agent_tools() -> Result<String, String> {
-    crate::bootstrap::install_understudy_agent_tools()
+pub async fn install_understudy_agent_tools(app: AppHandle) -> Result<String, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        crate::bootstrap::install_understudy_agent_tools(&app)
+    })
+    .await
+    .map_err(|e| format!("install_understudy_agent_tools task failed: {e}"))?
+}
+
+/// Start the same background download registry exposed to agents. The UI
+/// polls this app-level task instead of owning a Channel-bound future,
+/// so navigating away cannot cancel or forget a multi-hour model pull.
+#[tauri::command]
+pub fn start_snapshot_download(app: AppHandle, model_id: String) -> Result<String, String> {
+    crate::agent_ops::start_model_download(&app, model_id)
 }
 
 #[tauri::command]
-pub async fn download_snapshot_model(
+pub fn list_snapshot_downloads(app: AppHandle) -> Vec<crate::agent_ops::DownloadProgress> {
+    app.state::<crate::agent_ops::Downloads>().list()
+}
+
+#[tauri::command]
+pub fn snapshot_download_status(
     app: AppHandle,
-    model_id: String,
-    on_event: Channel<crate::bootstrap::DownloadEvent>,
-) -> Result<(), String> {
-    crate::bootstrap::download_model(app, model_id, on_event).await
+    download_id: String,
+) -> Result<crate::agent_ops::DownloadProgress, String> {
+    app.state::<crate::agent_ops::Downloads>()
+        .get(&download_id)
+        .ok_or_else(|| format!("unknown download id: {download_id}"))
+}
+
+#[tauri::command]
+pub fn cancel_snapshot_download(
+    app: AppHandle,
+    download_id: String,
+) -> Result<crate::agent_ops::DownloadProgress, String> {
+    app.state::<crate::agent_ops::Downloads>()
+        .cancel(&download_id)
 }
 
 // ----- moraine / traces (MCP) -----
@@ -1298,7 +1409,7 @@ pub fn start_moraine(app: AppHandle) -> Result<(), String> {
         return Err(format!("moraine up exited with {status}"));
     }
     crate::sidecar::invalidate_moraine_state_cache();
-    let _ = app.emit("status-changed", get_status(app.clone()));
+    let _ = app.emit("status-changed", status_snapshot(&app));
     Ok(())
 }
 
@@ -1312,7 +1423,7 @@ pub fn stop_moraine(app: AppHandle) -> Result<(), String> {
         return Err(format!("moraine down exited with {status}"));
     }
     crate::sidecar::invalidate_moraine_state_cache();
-    let _ = app.emit("status-changed", get_status(app.clone()));
+    let _ = app.emit("status-changed", status_snapshot(&app));
     Ok(())
 }
 
@@ -1369,15 +1480,15 @@ pub fn fusion_benchmark_matrix() -> FusionBenchmarkMatrix {
             FusionBenchmarkSuite {
                 id: "local-fusion-smoke",
                 label: "Local Fusion smoke",
-                description: "Fast local-only check comparing the main lane against the sidekick lane.",
-                modes: vec!["main-only", "sidekick-parallel"],
+                description: "Fast canonical-runtime smoke on local-friendly tasks.",
+                modes: vec!["main-only"],
                 task_ids: vec!["repo-search-summary", "runtime-status-check"],
             },
             FusionBenchmarkSuite {
                 id: "routing-smoke",
                 label: "Routing smoke",
-                description: "Small policy smoke for sidekick routing and gateway escalation.",
-                modes: vec!["sidekick-routing"],
+                description: "Small canonical-runtime subset for route-sensitive tasks.",
+                modes: vec!["main-only"],
                 task_ids: vec![
                     "repo-search-summary",
                     "runtime-status-check",
@@ -1388,8 +1499,8 @@ pub fn fusion_benchmark_matrix() -> FusionBenchmarkMatrix {
             FusionBenchmarkSuite {
                 id: "local-comparison",
                 label: "Local comparison",
-                description: "Compare main local against parallel sidekick and routing on local-friendly tasks.",
-                modes: vec!["main-only", "sidekick-parallel", "sidekick-routing"],
+                description: "Compare canonical candidates on the same local-friendly tasks.",
+                modes: vec!["main-only"],
                 task_ids: vec![
                     "repo-search-summary",
                     "runtime-status-check",
@@ -1400,20 +1511,15 @@ pub fn fusion_benchmark_matrix() -> FusionBenchmarkMatrix {
             FusionBenchmarkSuite {
                 id: "full-matrix",
                 label: "Full matrix",
-                description: "Run every bundled Fusion task across every harness mode.",
-                modes: vec![
-                    "main-only",
-                    "sidekick-advisory",
-                    "sidekick-parallel",
-                    "sidekick-routing",
-                ],
+                description: "Run every bundled Fusion task through the canonical runtime.",
+                modes: vec!["main-only"],
                 task_ids: vec![],
             },
             FusionBenchmarkSuite {
                 id: "automationbench-proxy",
                 label: "AutomationBench proxy",
                 description: "Directional local proxy for AutomationBench-style SaaS workflow/tool-state tasks before the external verifier run.",
-                modes: vec!["main-only", "sidekick-parallel", "sidekick-routing"],
+                modes: vec!["main-only"],
                 task_ids: vec![
                     "automationbench-api-discovery",
                     "automationbench-state-verification",
@@ -1449,23 +1555,8 @@ pub fn fusion_benchmark_matrix() -> FusionBenchmarkMatrix {
         modes: vec![
             FusionBenchmarkMode {
                 id: "main-only",
-                label: "Main only",
-                description: "Run the selected main model with sidekick disabled.",
-            },
-            FusionBenchmarkMode {
-                id: "sidekick-advisory",
-                label: "Sidekick advisory",
-                description: "Allow explicit delegate_to_sidekick tool calls only.",
-            },
-            FusionBenchmarkMode {
-                id: "sidekick-parallel",
-                label: "Sidekick parallel",
-                description: "Enable non-visual background sidekick on eligible prompts.",
-            },
-            FusionBenchmarkMode {
-                id: "sidekick-routing",
-                label: "Sidekick + routing",
-                description: "Enable parallel sidekick plus feedback-aware routing policy.",
+                label: "Canonical runtime",
+                description: "Run the selected candidate through Pi; supervision is configured by the runtime rather than a parallel Rust harness.",
             },
         ],
         tasks: vec![
@@ -1602,8 +1693,10 @@ pub fn fusion_route_recommendation_with_persist(
     let local_ready = main_slot
         .as_ref()
         .is_some_and(|slot| slot.state == "running");
-    let sidekick = residency(&app).sidekick_endpoint(main_slot.as_ref().map(|slot| slot.id));
-    let sidekick_ready = sidekick.is_some();
+    // The Rust parallel-sidekick scheduler is retired. Keep compatibility
+    // fields in the response and persisted rows, but never advertise an
+    // executable sidekick route from the active recommendation endpoint.
+    let sidekick_ready = false;
     let gateway_ready = crate::chat::gateway_credentials_available();
     let local_mem_gb = snapshot
         .slots
@@ -1617,30 +1710,7 @@ pub fn fusion_route_recommendation_with_persist(
     let class = route_policy::classify_prompt(prompt);
     let (mechanical, judgment, complex) = (class.mechanical(), class.judgment, class.complex);
 
-    let metrics = sidekick_metrics(app.clone(), Some(SIDEKICK_RUNS_SIGNAL_WINDOW)).ok();
     let route_signals = chat_route_signals(&app, request.session_id.as_deref());
-    let low_usefulness = metrics.as_ref().is_some_and(|m| {
-        let parallel_feedback = m.parallel_useful_rows + m.parallel_miss_rows;
-        let (feedback_rows, useful_rate) = if parallel_feedback >= MIN_ROWS_FOR_RATE_GATES {
-            (parallel_feedback, m.parallel_useful_rate)
-        } else {
-            (m.useful_rows + m.miss_rows, m.useful_rate)
-        };
-        route_policy::usefulness_low(feedback_rows, useful_rate)
-    });
-    let high_escalation = metrics.as_ref().is_some_and(|m| {
-        let escalation_rate = if m.parallel_rows >= MIN_ROWS_FOR_RATE_GATES {
-            m.parallel_escalation_rate
-        } else {
-            m.escalation_rate
-        };
-        route_policy::escalation_high(m.rows, escalation_rate)
-    });
-    let pending_sidekick_handoffs = metrics.as_ref().is_some_and(|m| {
-        m.parallel_rows >= MIN_ROWS_FOR_RATE_GATES
-            && m.parallel_pending_handoff_rate
-                .is_some_and(|rate| rate > PENDING_HANDOFF_RATE_CEILING)
-    });
     let local_unhealthy = route_signals.local_rows >= MIN_ROWS_FOR_RATE_GATES
         && route_signals
             .local_error_rate
@@ -1650,18 +1720,7 @@ pub fn fusion_route_recommendation_with_persist(
             route_signals.local_tool_rows >= MIN_ROWS_FOR_TOOL_AVG_GATE
                 && avg >= AVG_LOCAL_TOOL_CALLS_CEILING
         });
-    let sidekick_slow = route_policy::sidekick_latency_high(
-        route_signals.sidekick_rows,
-        route_signals.avg_sidekick_elapsed_ms,
-        route_signals.avg_local_elapsed_ms,
-    );
-    let sidekick_benchmark_low = route_policy::sidekick_benchmark_low(
-        route_signals.sidekick_benchmark_rows,
-        route_signals.sidekick_benchmark_score,
-    );
-    let upgrade_sidekick = sidekick_ready
-        && (high_escalation || sidekick_slow || sidekick_benchmark_low)
-        && !low_usefulness;
+    let upgrade_sidekick = false;
     let session_compaction_boundary = route_signals.session_compacted_rows > 0;
     let long_prompt = prompt.len() > LONG_PROMPT_COMPACTION_CHARS;
     // Compaction is per-conversation state: a compaction in some other
@@ -1672,15 +1731,9 @@ pub fn fusion_route_recommendation_with_persist(
         current_route,
         class,
         local_ready,
-        sidekick_ready,
         gateway_ready,
-        low_usefulness,
-        high_escalation,
-        pending_sidekick_handoffs,
         local_unhealthy,
         local_tool_depth_high,
-        sidekick_slow,
-        sidekick_benchmark_low,
         session_compaction_boundary,
         long_prompt,
         session_last_compaction_reason: route_signals.session_last_compaction_reason.as_deref(),
@@ -1693,15 +1746,9 @@ pub fn fusion_route_recommendation_with_persist(
     );
 
     let main_model = main_slot.and_then(|slot| slot.model_id);
-    let sidekick_model = sidekick.map(|(_, _, _, model_id)| model_id);
+    let sidekick_model: Option<String> = None;
     let gateway_model = gateway_ready.then(|| GATEWAY_CHAT_MODEL.to_string());
-    let policy_class = route_policy::fusion_policy_class(
-        route,
-        use_sidekick,
-        escalate_gateway,
-        upgrade_sidekick,
-        &reason,
-    );
+    let policy_class = route_policy::fusion_policy_class(route, escalate_gateway, &reason);
     let signals = json!({
         "mechanical": mechanical,
         "judgment": judgment,
@@ -1709,13 +1756,13 @@ pub fn fusion_route_recommendation_with_persist(
         "local_ready": local_ready,
         "sidekick_ready": sidekick_ready,
         "gateway_ready": gateway_ready,
-        "low_usefulness": low_usefulness,
-        "high_escalation": high_escalation,
-        "pending_sidekick_handoffs": pending_sidekick_handoffs,
+        "low_usefulness": false,
+        "high_escalation": false,
+        "pending_sidekick_handoffs": false,
         "local_unhealthy": local_unhealthy,
         "local_tool_depth_high": local_tool_depth_high,
-        "sidekick_slow": sidekick_slow,
-        "sidekick_benchmark_low": sidekick_benchmark_low,
+        "sidekick_slow": false,
+        "sidekick_benchmark_low": false,
         "upgrade_sidekick": upgrade_sidekick,
         "session_compaction_boundary": session_compaction_boundary,
         "compaction_boundary": compaction_boundary,
@@ -1734,21 +1781,7 @@ pub fn fusion_route_recommendation_with_persist(
             "avg_local_elapsed_ms": route_signals.avg_local_elapsed_ms,
             "avg_sidekick_elapsed_ms": route_signals.avg_sidekick_elapsed_ms,
         },
-        "sidekick_metrics": metrics.as_ref().map(|m| json!({
-            "rows": m.rows,
-            "session_rows": m.session_rows,
-            "memory_session_rows": m.memory_session_rows,
-            "parallel_rows": m.parallel_rows,
-            "useful_rate": m.useful_rate,
-            "parallel_useful_rate": m.parallel_useful_rate,
-            "escalation_rate": m.escalation_rate,
-            "parallel_escalation_rate": m.parallel_escalation_rate,
-            "parallel_pending_handoff_rows": m.parallel_pending_handoff_rows,
-            "parallel_pending_handoff_rate": m.parallel_pending_handoff_rate,
-            "handoff_rate": m.handoff_rate,
-            "parallel_handoff_rate": m.parallel_handoff_rate,
-            "avg_compacted_entries": m.avg_compacted_entries,
-        })),
+        "sidekick_metrics": Value::Null,
     });
     let recommendation = FusionRouteRecommendation {
         schema_version: "understudy.fusion_route_recommendation.v1",
@@ -2300,7 +2333,8 @@ pub fn chat_runs(app: AppHandle, limit: Option<u32>) -> Result<Vec<ChatRunRow>, 
         .map_err(|e| e.to_string())
 }
 
-const DESKTOP_CHAT_SESSION_SCHEMA: &str = "understudy-desktop-chat-session-v1";
+const DESKTOP_CHAT_SESSION_SCHEMA: &str = "understudy-desktop-chat-session-v2";
+const LEGACY_DESKTOP_CHAT_SESSION_SCHEMA: &str = "understudy-desktop-chat-session-v1";
 const MAX_PERSISTED_CHAT_BYTES: usize = 48 * 1024 * 1024;
 const MAX_PERSISTED_CHAT_MESSAGES: usize = 500;
 
@@ -2311,25 +2345,110 @@ pub struct DesktopChatSession {
     updated_at: String,
 }
 
-#[tauri::command]
-pub fn chat_session_latest(app: AppHandle) -> Result<Option<DesktopChatSession>, String> {
-    let Some(row) = app
-        .state::<crate::db::Db>()
-        .latest_chat_session(DESKTOP_CHAT_SESSION_SCHEMA)
-        .map_err(|error| error.to_string())?
-    else {
-        return Ok(None);
-    };
-    if row.schema != DESKTOP_CHAT_SESSION_SCHEMA {
-        return Ok(None);
-    }
+fn desktop_chat_session_from_row(
+    row: crate::db::ChatSessionRow,
+) -> Result<DesktopChatSession, String> {
     let messages = serde_json::from_str(&row.messages)
         .map_err(|error| format!("saved chat transcript is invalid: {error}"))?;
-    Ok(Some(DesktopChatSession {
+    Ok(DesktopChatSession {
         session_id: row.session_id,
         messages,
         updated_at: row.updated_at,
+    })
+}
+
+#[tauri::command]
+pub fn chat_session_latest(app: AppHandle) -> Result<Option<DesktopChatSession>, String> {
+    let db = app.state::<crate::db::Db>();
+    let row = db
+        .latest_chat_session(DESKTOP_CHAT_SESSION_SCHEMA)
+        .map_err(|error| error.to_string())?;
+    let (session_id, messages, updated_at) = if let Some(row) = row {
+        let messages = serde_json::from_str(&row.messages)
+            .map_err(|error| format!("saved chat transcript is invalid: {error}"))?;
+        (row.session_id, messages, row.updated_at)
+    } else {
+        let Some(legacy) = db
+            .latest_chat_session(LEGACY_DESKTOP_CHAT_SESSION_SCHEMA)
+            .map_err(|error| error.to_string())?
+        else {
+            return Ok(None);
+        };
+        let messages: Value = serde_json::from_str(&legacy.messages)
+            .map_err(|error| format!("saved legacy chat transcript is invalid: {error}"))?;
+        let messages =
+            crate::chat_attachments::migrate_legacy_messages(&app, &legacy.session_id, &messages)?;
+        let encoded = serde_json::to_string(&messages).map_err(|error| error.to_string())?;
+        db.save_active_chat_session(&legacy.session_id, DESKTOP_CHAT_SESSION_SCHEMA, &encoded)
+            .map_err(|error| error.to_string())?;
+        (legacy.session_id, messages, chrono::Utc::now().to_rfc3339())
+    };
+    Ok(Some(DesktopChatSession {
+        session_id,
+        messages,
+        updated_at,
     }))
+}
+
+#[tauri::command]
+pub fn chat_sessions_list(
+    app: AppHandle,
+    limit: Option<u32>,
+    archived: Option<bool>,
+) -> Result<Vec<crate::db::ChatSessionSummaryRow>, String> {
+    // Preserve the v1-to-v2 migration now that cold launches no longer reopen
+    // the newest chat automatically.
+    let _ = chat_session_latest(app.clone())?;
+    app.state::<crate::db::Db>()
+        .list_chat_sessions(
+            DESKTOP_CHAT_SESSION_SCHEMA,
+            limit.unwrap_or(30),
+            archived.unwrap_or(false),
+        )
+        .map_err(|error| error.to_string())
+}
+
+fn validate_chat_session_id(session_id: &str) -> Result<(), String> {
+    if session_id.trim().is_empty() || session_id.len() > 200 {
+        return Err("invalid chat session id".to_string());
+    }
+    Ok(())
+}
+
+#[tauri::command]
+pub fn chat_session_archive(app: AppHandle, session_id: String) -> Result<bool, String> {
+    validate_chat_session_id(&session_id)?;
+    app.state::<crate::db::Db>()
+        .archive_chat_session(&session_id, DESKTOP_CHAT_SESSION_SCHEMA)
+        .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+pub fn chat_session_restore(app: AppHandle, session_id: String) -> Result<bool, String> {
+    validate_chat_session_id(&session_id)?;
+    app.state::<crate::db::Db>()
+        .restore_chat_session(&session_id, DESKTOP_CHAT_SESSION_SCHEMA)
+        .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+pub fn chat_sessions_archive_all(app: AppHandle) -> Result<u64, String> {
+    app.state::<crate::db::Db>()
+        .archive_all_chat_sessions(DESKTOP_CHAT_SESSION_SCHEMA)
+        .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+pub fn chat_session_get(
+    app: AppHandle,
+    session_id: String,
+) -> Result<Option<DesktopChatSession>, String> {
+    validate_chat_session_id(&session_id)?;
+    app.state::<crate::db::Db>()
+        .chat_session(&session_id, DESKTOP_CHAT_SESSION_SCHEMA)
+        .map_err(|error| error.to_string())?
+        .map(desktop_chat_session_from_row)
+        .transpose()
 }
 
 #[tauri::command]
@@ -2338,9 +2457,7 @@ pub fn chat_session_save(
     session_id: String,
     messages: Value,
 ) -> Result<(), String> {
-    if session_id.trim().is_empty() || session_id.len() > 200 {
-        return Err("invalid chat session id".to_string());
-    }
+    validate_chat_session_id(&session_id)?;
     let Some(items) = messages.as_array() else {
         return Err("chat transcript must be an array".to_string());
     };
@@ -2370,22 +2487,31 @@ pub fn chat_route_metrics(app: AppHandle, limit: Option<u32>) -> Result<ChatRout
 
 fn chat_route_metrics_for_rows(rows: Vec<ChatRunRow>, observed_row_limit: u32) -> ChatRouteMetrics {
     const REQUIRED_CANONICAL_RUNTIME_ROWS: u64 = 100;
-    // Count only the compatibility release cohort. Older development and
-    // migrated rows remain preserved in SQLite, but cannot poison or falsely
-    // satisfy the 100-run Rust deletion gate.
+    // The deletion cohort is the latest 100 canonical turns from this exact
+    // app/runtime release. Older development rows remain preserved in SQLite,
+    // while an early compatibility probe naturally ages out only after 100
+    // newer Pi turns. `list_chat_runs` supplies newest-first rows.
     let rows: Vec<_> = rows
         .into_iter()
         .filter(|row| {
             row.app_version == env!("CARGO_PKG_VERSION")
                 && row.runtime_version == crate::conversation_runtime::RUNTIME_VERSION
+                && row.run_id.is_some()
         })
+        .take(REQUIRED_CANONICAL_RUNTIME_ROWS as usize)
         .collect();
-    let canonical_runtime_rows = rows.iter().filter(|row| row.run_id.is_some()).count() as u64;
+    let canonical_runtime_rows = rows.len() as u64;
     let pi_runtime_rows = rows
         .iter()
-        .filter(|row| row.run_id.is_some() && row.runtime_backend == "pi")
+        .filter(|row| row.runtime_backend == "pi")
         .count() as u64;
     let compatibility_fallback_rows = canonical_runtime_rows.saturating_sub(pi_runtime_rows);
+    let consecutive_pi_rows = rows
+        .iter()
+        .take_while(|row| row.runtime_backend == "pi")
+        .count() as u64;
+    let remaining_consecutive_pi_rows =
+        REQUIRED_CANONICAL_RUNTIME_ROWS.saturating_sub(consecutive_pi_rows);
     let pi_runtime_share = (canonical_runtime_rows > 0)
         .then_some(pi_runtime_rows as f64 / canonical_runtime_rows as f64);
     let mut groups: std::collections::BTreeMap<(String, String), Vec<ChatRunRow>> =
@@ -2442,6 +2568,8 @@ fn chat_route_metrics_for_rows(rows: Vec<ChatRunRow>, observed_row_limit: u32) -
         canonical_runtime_rows,
         pi_runtime_rows,
         compatibility_fallback_rows,
+        consecutive_pi_rows,
+        remaining_consecutive_pi_rows,
         pi_runtime_share,
         compatibility_engine_delete_ready: canonical_runtime_rows
             >= REQUIRED_CANONICAL_RUNTIME_ROWS
@@ -3350,32 +3478,60 @@ mod tests {
     }
 
     #[test]
-    fn migration_gate_counts_only_the_current_release_cohort() {
-        let mut rows = vec![migration_row("native-rust", "legacy", "legacy"); 50];
-        rows.extend(vec![
-            migration_row(
-                "pi",
-                env!("CARGO_PKG_VERSION"),
-                crate::conversation_runtime::RUNTIME_VERSION,
-            );
-            100
-        ]);
+    fn migration_gate_uses_the_latest_hundred_current_release_turns() {
+        let pi = migration_row(
+            "pi",
+            env!("CARGO_PKG_VERSION"),
+            crate::conversation_runtime::RUNTIME_VERSION,
+        );
+        let fallback = migration_row(
+            "native-rust",
+            env!("CARGO_PKG_VERSION"),
+            crate::conversation_runtime::RUNTIME_VERSION,
+        );
+        let mut rows = vec![pi.clone(); 100];
+        rows.extend(vec![fallback.clone(); 2]);
+        rows.extend(vec![migration_row("native-rust", "legacy", "legacy"); 50]);
+
         let ready = chat_route_metrics_for_rows(rows.clone(), 250);
         assert_eq!(ready.canonical_runtime_rows, 100);
         assert_eq!(ready.pi_runtime_rows, 100);
         assert_eq!(ready.compatibility_fallback_rows, 0);
+        assert_eq!(ready.consecutive_pi_rows, 100);
+        assert_eq!(ready.remaining_consecutive_pi_rows, 0);
         assert_eq!(ready.remaining_canonical_runtime_rows, 0);
         assert!(ready.compatibility_engine_delete_ready);
 
-        rows.push(migration_row(
+        rows.insert(0, fallback);
+        let blocked = chat_route_metrics_for_rows(rows, 250);
+        assert_eq!(blocked.canonical_runtime_rows, 100);
+        assert_eq!(blocked.pi_runtime_rows, 99);
+        assert_eq!(blocked.compatibility_fallback_rows, 1);
+        assert_eq!(blocked.consecutive_pi_rows, 0);
+        assert_eq!(blocked.remaining_consecutive_pi_rows, 100);
+        assert!(!blocked.compatibility_engine_delete_ready);
+    }
+
+    #[test]
+    fn migration_gate_reports_the_clean_pi_streak_separately_from_volume() {
+        let pi = migration_row(
+            "pi",
+            env!("CARGO_PKG_VERSION"),
+            crate::conversation_runtime::RUNTIME_VERSION,
+        );
+        let fallback = migration_row(
             "native-rust",
             env!("CARGO_PKG_VERSION"),
             crate::conversation_runtime::RUNTIME_VERSION,
-        ));
-        let fallback = chat_route_metrics_for_rows(rows, 250);
-        assert_eq!(fallback.canonical_runtime_rows, 101);
-        assert_eq!(fallback.compatibility_fallback_rows, 1);
-        assert!(!fallback.compatibility_engine_delete_ready);
+        );
+        let rows = vec![pi, fallback.clone(), fallback];
+        let metrics = chat_route_metrics_for_rows(rows, 250);
+        assert_eq!(metrics.canonical_runtime_rows, 3);
+        assert_eq!(metrics.pi_runtime_rows, 1);
+        assert_eq!(metrics.compatibility_fallback_rows, 2);
+        assert_eq!(metrics.remaining_canonical_runtime_rows, 97);
+        assert_eq!(metrics.consecutive_pi_rows, 1);
+        assert_eq!(metrics.remaining_consecutive_pi_rows, 99);
     }
 
     #[test]
