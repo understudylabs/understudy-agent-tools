@@ -1818,6 +1818,35 @@ class ScoreWithFeedback:
     });
   });
 
+  it("creates and downloads a recent eval cohort in one command", async () => {
+    await withHostedFixture(async ({ home, repo, requests }) => {
+      const env = { HOME: home, USERPROFILE: home };
+      const outputDir = join(repo, ".understudy", "evals", "model-parity");
+      const created = await runWithEnvAsync([
+        "--json", "evals", "create", "--project", "rehearsal", "--workload", "classify",
+        "--last", "7d", "--name", "model-parity", "--out", outputDir, "--yes",
+      ], env, repo);
+      assert.equal(created.status, 0, created.stderr);
+      const payload = JSON.parse(created.stdout);
+      assert.equal(payload.cohort.id, "evc_123");
+      assert.equal(payload.materialized.count, 1);
+      assert.match(readFileSync(join(outputDir, "req_123.jsonl"), "utf8"), /SECRET_PROMPT/);
+      assert.doesNotMatch(created.stdout, /SECRET_PROMPT|SECRET_COMPLETION/);
+
+      const catalogRequest = requests.find((entry) => entry.path.includes("eval-capture-catalog"));
+      const catalogUrl = new URL(`http://fixture${catalogRequest.path}${catalogRequest.search}`);
+      const windowMs = Date.parse(catalogUrl.searchParams.get("to")) - Date.parse(catalogUrl.searchParams.get("from"));
+      assert.equal(windowMs, 7 * 24 * 60 * 60 * 1000);
+
+      const blocked = await runWithEnvAsync([
+        "--json", "evals", "create", "--project", "rehearsal", "--workload", "classify",
+        "--name", "blocked",
+      ], env, repo);
+      assert.notEqual(blocked.status, 0);
+      assert.match(blocked.stderr, /JSON mode cannot prompt/);
+    });
+  });
+
   it("runs gateway health and probes without printing secrets", async () => {
     await withHostedFixture(async ({ home, repo, gatewayUrl, requests }) => {
       const env = { HOME: home, USERPROFILE: home, UPSTREAM_TEST_KEY: "provider_secret_value" };

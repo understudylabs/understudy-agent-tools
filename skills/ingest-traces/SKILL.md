@@ -44,8 +44,18 @@ Identify the source shape first:
   dir.
 - **Provider log export**: JSONL/CSV of historical calls.
 - **Understudy frozen cohort**: select only workload-scoped, redacted capture
-  metadata; review it; freeze the exact references; then materialize that
-  auditable cohort locally:
+  metadata, review the summary, freeze the exact references, and materialize
+  that auditable cohort locally:
+
+  ```sh
+  understudy evals create --project <slug> --workload <name> \
+    --last 14d --name <name>
+  ```
+
+  The command shows how many eligible captures it found and asks before it
+  freezes or downloads anything. Use `--yes` for non-interactive automation.
+  Use the lower-level commands when the developer needs to inspect or edit the
+  redacted selection before freezing it:
 
   ```sh
   understudy evals catalog --project <slug> --workload <name> \

@@ -1,6 +1,7 @@
 import { createHash } from "node:crypto";
 import { mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { dirname, join, resolve } from "node:path";
+import { confirm } from "@inquirer/prompts";
 import { Command } from "commander";
 import kleur from "kleur";
 import { z } from "zod";
@@ -82,10 +83,44 @@ interface CohortExportOpts extends WorkloadOpts {
   out: string;
   yes?: boolean;
 }
+interface GuidedCreateOpts extends WorkloadOpts {
+  name: string;
+  description?: string;
+  last: string;
+  limit: string;
+  seed: string;
+  requestedModel?: string;
+  servedModel?: string;
+  statusCode?: string;
+  requiresTools?: boolean;
+  requiresStructuredOutput?: boolean;
+  out?: string;
+  download: boolean;
+  yes?: boolean;
+}
 
 export function registerEvalsCommand(program: Command): void {
   const evals = program.command("evals")
     .description("Select, freeze, and materialize workload-scoped evaluation cohorts.");
+
+  addWorkloadOptions(evals.command("create")
+    .description("Create a frozen eval set from a recent workload window.")
+    .requiredOption("--name <name>", "Cohort name.")
+    .option("--description <text>", "Why these captures were selected.")
+    .option("--last <duration>", "Recent window, such as 14d or 12h (max 31d).", "14d")
+    .option("--limit <n>", "Candidate limit, max 500.", "50")
+    .option("--seed <seed>", "Deterministic sample seed.", "understudy-eval-catalog-v1")
+    .option("--requested-model <id>", "Filter by requested model.")
+    .option("--served-model <id>", "Filter by served model.")
+    .option("--status-code <code>", "Filter by HTTP status code.")
+    .option("--requires-tools", "Require a trace containing tools.")
+    .option("--requires-structured-output", "Require structured output.")
+    .option("--out <directory>", "Destination directory (default: .understudy/evals/<name>).")
+    .option("--no-download", "Freeze the cohort without downloading trace bodies.")
+    .option("--yes", "Approve freezing and local trace download without prompting."))
+    .action(async function (this: Command, opts: GuidedCreateOpts) {
+      await runAction(this, () => runGuidedCreate(this, opts));
+    });
 
   addWorkloadOptions(evals.command("catalog")
     .description("List redacted capture candidates for one workload.")
@@ -137,24 +172,67 @@ async function resolveContext(opts: WorkloadOpts) {
   return { project, workload, base };
 }
 
-async function runCatalog(cmd: Command, opts: CatalogOpts): Promise<void> {
-  const limit = Number(opts.limit);
-  if (!Number.isInteger(limit) || limit < 1 || limit > 500) {
-    throw new Error(`Expected --limit between 1 and 500, got: ${opts.limit}`);
+async function runGuidedCreate(cmd: Command, opts: GuidedCreateOpts): Promise<void> {
+  if (isJsonMode(cmd) && !opts.yes) {
+    throw new Error("JSON mode cannot prompt. Re-run with --yes to approve freezing and local trace download.");
   }
-  if (opts.statusCode !== undefined) {
-    const status = Number(opts.statusCode);
-    if (!Number.isInteger(status) || status < 100 || status > 599) {
-      throw new Error(`Expected --status-code between 100 and 599, got: ${opts.statusCode}`);
+  const windowMs = parseDuration(opts.last);
+  const to = new Date();
+  const from = new Date(to.getTime() - windowMs);
+  const catalog = await fetchCatalog(opts, from.toISOString(), to.toISOString());
+  if (catalog.response.captures.length === 0) {
+    throw new Error(`No eligible captures found for ${catalog.workload.name} in the last ${opts.last}.`);
+  }
+
+  if (!isJsonMode(cmd)) {
+    printCatalogSummary(catalog.workload.name, catalog.response.captures);
+  }
+  if (!opts.yes) {
+    const approved = await confirm({
+      message: `Freeze these ${catalog.response.captures.length} captures as “${opts.name}”?`,
+      default: true,
+    });
+    if (!approved) throw new Error("Cohort creation cancelled.");
+  }
+
+  const cohort = await createCohort(catalog, opts.name, opts.description);
+  let materialized: Awaited<ReturnType<typeof materializeCohort>> | undefined;
+  let shouldDownload = opts.download;
+  if (shouldDownload) {
+    if (!opts.yes) {
+      shouldDownload = await confirm({
+        message: "Download trace bodies locally? They may contain prompts, completions, and tool payloads.",
+        default: false,
+      });
     }
   }
+  if (shouldDownload) {
+    materialized = await materializeCohort(catalog, cohort.id, opts.out ?? join(".understudy", "evals", safeFileStem(opts.name)));
+  }
+
+  const payload = {
+    ok: true,
+    project_id: catalog.project.projectId,
+    workload_id: catalog.workload.id,
+    selection: catalog.response.selection,
+    cohort,
+    materialized,
+  };
+  if (isJsonMode(cmd)) process.stdout.write(`${JSON.stringify(payload)}\n`);
+  else {
+    process.stdout.write(`${kleur.green("✓")} Froze cohort ${cohort.id} (${cohort.capture_count} captures).\n`);
+    if (materialized) {
+      process.stdout.write(`${kleur.green("✓")} Materialized verified traces at ${materialized.output}\n`);
+      process.stdout.write(`${kleur.yellow("warning")}: files may contain prompts, completions, or tool payloads\n`);
+    }
+  }
+}
+
+async function fetchCatalog(opts: Omit<CatalogOpts, "from" | "to">, from: string, to: string) {
+  const limit = parseLimit(opts.limit);
+  validateStatusCode(opts.statusCode);
   const { project, workload, base } = await resolveContext(opts);
-  const params = new URLSearchParams({
-    from: parseIsoOption("--from", opts.from),
-    to: parseIsoOption("--to", opts.to),
-    limit: String(limit),
-    sample_seed: opts.seed,
-  });
+  const params = new URLSearchParams({ from, to, limit: String(limit), sample_seed: opts.seed });
   if (opts.requestedModel) params.set("requested_model", opts.requestedModel);
   if (opts.servedModel) params.set("served_model", opts.servedModel);
   if (opts.statusCode) params.set("status_code", opts.statusCode);
@@ -164,10 +242,54 @@ async function runCatalog(cmd: Command, opts: CatalogOpts): Promise<void> {
     { url: `${base}/eval-capture-catalog?${params}`, orgId: project.auth.orgId },
     CatalogResponseSchema,
   );
+  return { project, workload, base, response: response.data };
+}
+
+async function createCohort(
+  context: Awaited<ReturnType<typeof fetchCatalog>>,
+  name: string,
+  description?: string,
+) {
+  const response = await request({
+    url: `${context.base}/eval-cohorts`, method: "POST", orgId: context.project.auth.orgId,
+    body: {
+      name,
+      selection: { source: "explicit_capture_references", description, sampling_seed: context.response.selection.sample_seed },
+      captures: context.response.captures.map(({ capture_key, request_id, content_sha256 }) => ({ capture_key, request_id, content_sha256 })),
+    },
+  }, CohortSchema);
+  return response.data;
+}
+
+async function materializeCohort(
+  context: Awaited<ReturnType<typeof fetchCatalog>>,
+  cohortId: string,
+  out: string,
+) {
+  const response = await request(
+    { url: `${context.base}/eval-cohorts/${encodeURIComponent(cohortId)}/export`, method: "POST", body: {}, orgId: context.project.auth.orgId },
+    CohortExportSchema,
+  );
+  return downloadExport(response.data, context.workload.id, out);
+}
+
+function printCatalogSummary(workloadName: string, captures: z.infer<typeof CatalogItemSchema>[]): void {
+  const models = new Set(captures.map((capture) => capture.served_model));
+  const errors = captures.filter((capture) => capture.status_code >= 400).length;
+  const tools = captures.filter((capture) => capture.has_tools).length;
+  process.stdout.write(`Found ${captures.length} eligible captures for ${workloadName}: ${models.size} served model(s), ${errors} error(s), ${tools} with tools.\n`);
+}
+
+async function runCatalog(cmd: Command, opts: CatalogOpts): Promise<void> {
+  const { project, workload, response } = await fetchCatalog(
+    opts,
+    parseIsoOption("--from", opts.from),
+    parseIsoOption("--to", opts.to),
+  );
   const payload = {
     project_id: project.projectId,
     workload_id: workload.id,
-    ...response.data,
+    ...response,
   };
   if (opts.out) {
     writeJson(opts.out, payload);
@@ -219,10 +341,19 @@ async function runCohortExport(cmd: Command, cohortId: string, opts: CohortExpor
     { url: `${base}/eval-cohorts/${encodeURIComponent(cohortId)}/export`, method: "POST", body: {}, orgId: project.auth.orgId },
     CohortExportSchema,
   );
-  const outputDir = resolve(opts.out);
+  const payload = await downloadExport(response.data, workload.id, opts.out);
+  if (isJsonMode(cmd)) process.stdout.write(`${JSON.stringify({ ok: true, ...payload })}\n`);
+  else {
+    process.stdout.write(`${kleur.green("✓")} Materialized ${payload.count} frozen captures at ${payload.output}\n`);
+    process.stdout.write(`${kleur.yellow("warning")}: files may contain prompts, completions, or tool payloads\n`);
+  }
+}
+
+async function downloadExport(exportData: z.infer<typeof CohortExportSchema>, workloadId: string, out: string) {
+  const outputDir = resolve(out);
   mkdirSync(outputDir, { recursive: true });
   const files: Array<{ request_id: string; path: string; content_sha256: string }> = [];
-  for (const capture of response.data.captures) {
+  for (const capture of exportData.captures) {
     const download = await fetch(capture.url, { headers: { Accept: "application/x-ndjson" } });
     if (!download.ok) throw new Error(`Capture ${capture.request_id} download failed with status ${download.status}.`);
     const bytes = new Uint8Array(await download.arrayBuffer());
@@ -235,19 +366,14 @@ async function runCohortExport(cmd: Command, cohortId: string, opts: CohortExpor
   const localManifest = join(outputDir, "cohort-manifest.json");
   writeJson(localManifest, {
     schema_version: "understudy.eval-cohort-materialization.v1",
-    cohort_id: response.data.cohort_id,
-    cohort_sha256: response.data.cohort_sha256,
-    workload_id: workload.id,
+    cohort_id: exportData.cohort_id,
+    cohort_sha256: exportData.cohort_sha256,
+    workload_id: workloadId,
     capture_count: files.length,
     privacy: { local_only: true, upload_performed: false },
     captures: files,
   });
-  const payload = { ok: true, output: outputDir, manifest: localManifest, count: files.length, cohort_sha256: response.data.cohort_sha256 };
-  if (isJsonMode(cmd)) process.stdout.write(`${JSON.stringify(payload)}\n`);
-  else {
-    process.stdout.write(`${kleur.green("✓")} Materialized ${files.length} frozen captures at ${outputDir}\n`);
-    process.stdout.write(`${kleur.yellow("warning")}: files may contain prompts, completions, or tool payloads\n`);
-  }
+  return { output: outputDir, manifest: localManifest, count: files.length, cohort_sha256: exportData.cohort_sha256 };
 }
 
 function writeJson(path: string, value: unknown): void {
@@ -260,6 +386,33 @@ function parseIsoOption(name: string, value: string): string {
   const date = new Date(value);
   if (Number.isNaN(date.getTime())) throw new Error(`${name} must be an ISO-8601 timestamp.`);
   return date.toISOString();
+}
+
+function parseLimit(value: string): number {
+  const limit = Number(value);
+  if (!Number.isInteger(limit) || limit < 1 || limit > 500) {
+    throw new Error(`Expected --limit between 1 and 500, got: ${value}`);
+  }
+  return limit;
+}
+
+function validateStatusCode(value?: string): void {
+  if (value === undefined) return;
+  const status = Number(value);
+  if (!Number.isInteger(status) || status < 100 || status > 599) {
+    throw new Error(`Expected --status-code between 100 and 599, got: ${value}`);
+  }
+}
+
+function parseDuration(value: string): number {
+  const match = /^(\d+)(h|d)$/.exec(value);
+  if (!match) throw new Error("--last must be a duration such as 12h or 14d.");
+  const amount = Number(match[1]);
+  const durationMs = amount * (match[2] === "d" ? 86_400_000 : 3_600_000);
+  if (amount < 1 || durationMs > 31 * 86_400_000) {
+    throw new Error("--last must be between 1h and 31d.");
+  }
+  return durationMs;
 }
 
 function safeFileStem(value: string): string {
