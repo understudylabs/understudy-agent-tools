@@ -287,7 +287,7 @@ fn find_existing_run(manifest_path: &str) -> Result<Option<Value>, String> {
             Some((modified, run_path))
         })
         .collect::<Vec<_>>();
-    candidates.sort_by(|left, right| right.0.cmp(&left.0));
+    candidates.sort_by_key(|candidate| std::cmp::Reverse(candidate.0));
     candidates.truncate(500);
 
     for (_, run_path) in candidates {
