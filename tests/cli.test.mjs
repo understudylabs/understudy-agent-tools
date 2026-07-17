@@ -143,6 +143,10 @@ async function withHostedFixture(fn) {
       res.writeHead(status, { "content-type": "application/json", ...headers });
       res.end(JSON.stringify(value));
     };
+    const sendBytes = (status, value, headers = {}) => {
+      res.writeHead(status, { "content-type": "application/x-ndjson", ...headers });
+      res.end(value);
+    };
 
     if (req.method === "GET" && url.pathname === "/healthz") return send(200, { ok: true });
     if (req.method === "GET" && url.pathname === "/admin/v1/orgs/org_1/projects") return send(200, { projects: state.projects, cursor: null });
@@ -174,6 +178,60 @@ async function withHostedFixture(fn) {
     if (req.method === "GET" && url.pathname === "/admin/v1/orgs/org_1/projects/proj_1/workloads/usp_classify/captures") return send(200, { captures: state.captures, truncated: false, cursor: null });
     if (req.method === "GET" && url.pathname === "/admin/v1/orgs/org_1/projects/proj_1/captures/req_123") return send(200, { capture: state.captures[0] });
     if (req.method === "GET" && url.pathname === "/admin/v1/orgs/org_1/projects/proj_1/workloads/usp_classify/captures/req_123") return send(200, { capture: state.captures[0] });
+    const evalBase = "/admin/v1/orgs/org_1/projects/proj_1/workloads/usp_classify";
+    const rawCapture = `${JSON.stringify(state.captures[0])}\n`;
+    const rawCaptureSha = createHash("sha256").update(rawCapture).digest("hex");
+    if (req.method === "GET" && url.pathname === `${evalBase}/eval-capture-catalog`) {
+      return send(200, {
+        captures: [{
+          capture_key: "org_1/proj_1/key_1/2026/06/07/req_123.jsonl",
+          request_id: "req_123",
+          content_sha256: rawCaptureSha,
+          captured_at: "2026-06-07T00:00:00Z",
+          provider: "anthropic",
+          requested_model: "claude-test",
+          served_model: "claude-test-upstream",
+          status_code: 200,
+          latency_ms: 42,
+          has_tools: true,
+          has_structured_output: true,
+        }],
+        selection: {
+          from: url.searchParams.get("from"),
+          to: url.searchParams.get("to"),
+          limit: Number(url.searchParams.get("limit")),
+          sample_seed: url.searchParams.get("sample_seed"),
+          requested_model: null,
+          served_model: null,
+          status_code: null,
+          requires_tools: url.searchParams.get("requires_tools") === "true",
+          requires_structured_output: url.searchParams.get("requires_structured_output") === "true",
+        },
+      });
+    }
+    if (req.method === "POST" && url.pathname === `${evalBase}/eval-cohorts`) {
+      return send(201, {
+        id: "evc_123",
+        org_id: "org_1",
+        project_id: "proj_1",
+        workload_id: "usp_classify",
+        name: body.name,
+        selection: body.selection,
+        capture_count: body.captures.length,
+        cohort_sha256: "a".repeat(64),
+        created_at: "2026-06-07T01:00:00Z",
+      });
+    }
+    if (req.method === "POST" && url.pathname === `${evalBase}/eval-cohorts/evc_123/export`) {
+      return send(201, {
+        export_id: "eve_123",
+        cohort_id: "evc_123",
+        cohort_sha256: "a".repeat(64),
+        expires_at: "2026-06-07T02:00:00Z",
+        captures: [{ request_id: "req_123", content_sha256: rawCaptureSha, url: `${gatewayUrl}/eval-capture-req_123` }],
+      });
+    }
+    if (req.method === "GET" && url.pathname === "/eval-capture-req_123") return sendBytes(200, rawCapture);
     if (req.method === "POST" && (url.pathname === "/v1/messages" || url.pathname === "/v1/chat/completions")) return send(200, { ok: true, content: "SECRET_COMPLETION" }, { "x-understudy-request-id": "req_probe" });
     return send(404, { message: `${req.method} ${url.pathname}` });
   });
@@ -1713,6 +1771,50 @@ class ScoreWithFeedback:
       const blockedJson = await runWithEnvAsync(["--json", "captures", "export", "req_123", "--out", join(repo, "full-json.json"), "--include-payload"], env, repo);
       assert.notEqual(blockedJson.status, 0, "json mode must still require --yes for payload export");
       assert.match(blockedJson.stderr, /may contain prompts\/completions/);
+    });
+  });
+
+  it("selects, freezes, and materializes a workload-scoped eval cohort", async () => {
+    await withHostedFixture(async ({ home, repo, requests }) => {
+      const env = { HOME: home, USERPROFILE: home };
+      const catalogPath = join(repo, ".understudy", "evals", "catalog.json");
+      const catalog = await runWithEnvAsync([
+        "--json", "evals", "catalog", "--project", "rehearsal", "--workload", "classify",
+        "--from", "2026-06-01T00:00:00Z", "--to", "2026-06-08T00:00:00Z",
+        "--limit", "50", "--seed", "cedar-july", "--requires-tools", "--out", catalogPath,
+      ], env, repo);
+      assert.equal(catalog.status, 0, catalog.stderr);
+      assert.doesNotMatch(catalog.stdout, /SECRET_PROMPT|SECRET_COMPLETION/);
+      assert.equal(JSON.parse(catalog.stdout).captures[0].request_id, "req_123");
+      assert.doesNotMatch(readFileSync(catalogPath, "utf8"), /SECRET_PROMPT|SECRET_COMPLETION/);
+
+      const create = await runWithEnvAsync([
+        "--json", "evals", "cohort", "create", "--project", "rehearsal", "--workload", "classify",
+        "--from-catalog", catalogPath, "--name", "cedar-july",
+      ], env, repo);
+      assert.equal(create.status, 0, create.stderr);
+      assert.equal(JSON.parse(create.stdout).cohort.id, "evc_123");
+      const createRequest = requests.find((entry) => entry.path.endsWith("/eval-cohorts") && entry.method === "POST");
+      assert.equal(createRequest.body.captures[0].request_id, "req_123");
+
+      const blocked = await runWithEnvAsync([
+        "evals", "cohort", "export", "evc_123", "--project", "rehearsal", "--workload", "classify",
+        "--out", join(repo, ".understudy", "evals", "evc_123"),
+      ], env, repo);
+      assert.notEqual(blocked.status, 0);
+      assert.match(blocked.stderr, /Re-run with --yes/);
+
+      const outputDir = join(repo, ".understudy", "evals", "evc_123");
+      const exported = await runWithEnvAsync([
+        "--json", "evals", "cohort", "export", "evc_123", "--project", "rehearsal", "--workload", "classify",
+        "--out", outputDir, "--yes",
+      ], env, repo);
+      assert.equal(exported.status, 0, exported.stderr);
+      assert.match(readFileSync(join(outputDir, "req_123.jsonl"), "utf8"), /SECRET_PROMPT/);
+      const manifest = JSON.parse(readFileSync(join(outputDir, "cohort-manifest.json"), "utf8"));
+      assert.equal(manifest.cohort_id, "evc_123");
+      assert.equal(manifest.privacy.local_only, true);
+      assert.doesNotMatch(JSON.stringify(manifest), /https?:\/\//);
     });
   });
 
