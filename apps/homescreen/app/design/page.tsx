@@ -1,8 +1,29 @@
 "use client";
 import { Button } from "../components/ui/Button";
 import { EvaluationRadar } from "../components/EvaluationRadar";
+import { ChatScrollControls } from "../components/ChatScrollControls";
+import {
+  MessageScroller,
+  MessageScrollerContent,
+  MessageScrollerItem,
+  MessageScrollerProvider,
+  MessageScrollerViewport,
+} from "../components/base-ui/message-scroller";
 
 const variants = ["primary", "secondary", "ghost", "danger", "link"] as const;
+const transcriptDemo = [
+  { id: "outline-1", role: "user", content: "What changed in the latest training run?" },
+  { id: "outline-2", role: "assistant", content: "The held-out errors dropped, with the largest improvement on ambiguous merchant names. The model still needs another run before promotion." },
+  { id: "outline-3", role: "user", content: "Where does it still fail?" },
+  { id: "outline-4", role: "assistant", content: "Most remaining misses are rare categories with fewer than twenty examples. Travel and subscriptions are the two weakest groups." },
+  { id: "outline-5", role: "user", content: "How does it compare with the cloud model?" },
+  { id: "outline-6", role: "assistant", content: "It matches the cloud model on common categories, responds much faster locally, and trails on the smallest categories. The next sweep should target those failure areas." },
+  { id: "outline-7", role: "user", content: "What should we do next?" },
+  { id: "outline-8", role: "assistant", content: "Add examples for the two weakest groups, repeat the same frozen holdout, and promote only if the gains survive a second run." },
+] as const;
+const transcriptAnchors = transcriptDemo
+  .filter((message) => message.role === "user")
+  .map((message) => ({ id: message.id, label: message.content }));
 
 export default function DesignPage() {
   return (
@@ -42,6 +63,48 @@ export default function DesignPage() {
             costUsd: 0.02,
           }}
         />
+
+        <SectionTitle>message scroller · reader position</SectionTitle>
+        <div
+          style={{
+            height: 420,
+            marginBottom: 28,
+            overflow: "hidden",
+            border: "1px solid var(--color-rule)",
+            borderRadius: 12,
+            background: "var(--color-card)",
+          }}
+        >
+          <MessageScrollerProvider
+            autoScroll
+            defaultScrollPosition="start"
+            scrollPreviousItemPeek={48}
+          >
+            <MessageScroller>
+              <MessageScrollerViewport>
+                <MessageScrollerContent className="gap-5 px-5 pb-12 pt-5">
+                  {transcriptDemo.map((message) => (
+                    <MessageScrollerItem
+                      key={message.id}
+                      messageId={message.id}
+                      scrollAnchor={message.role === "user"}
+                    >
+                      <div
+                        className={`chat-msg ${message.role} group flex w-full flex-col gap-2 ${message.role === "user" ? "is-user ml-auto max-w-[80%] justify-end" : "is-assistant max-w-[92%]"}`}
+                      >
+                        <div className="chat-role">{message.role === "user" ? "You" : "Understudy"}</div>
+                        <div className="flex w-fit min-w-0 max-w-full flex-col gap-2 overflow-hidden text-sm group-[.is-user]:ml-auto group-[.is-user]:rounded-lg group-[.is-user]:bg-secondary group-[.is-user]:px-4 group-[.is-user]:py-3 group-[.is-user]:text-foreground group-[.is-assistant]:text-foreground">
+                          {message.content}
+                        </div>
+                      </div>
+                    </MessageScrollerItem>
+                  ))}
+                </MessageScrollerContent>
+              </MessageScrollerViewport>
+              <ChatScrollControls anchors={transcriptAnchors} streaming={false} />
+            </MessageScroller>
+          </MessageScrollerProvider>
+        </div>
 
         {/* accent reference */}
         <Surface>

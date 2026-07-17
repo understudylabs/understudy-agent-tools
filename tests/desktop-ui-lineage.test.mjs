@@ -15,6 +15,14 @@ const tauriConfigPath = new URL(
   import.meta.url,
 );
 const chatPath = new URL("../apps/homescreen/app/components/ChatPane.tsx", import.meta.url);
+const messageScrollerPath = new URL(
+  "../apps/homescreen/app/components/base-ui/message-scroller.tsx",
+  import.meta.url,
+);
+const chatScrollControlsPath = new URL(
+  "../apps/homescreen/app/components/ChatScrollControls.tsx",
+  import.meta.url,
+);
 const classifierLibraryPath = new URL(
   "../apps/homescreen/app/components/LocalClassifierLibraryDialog.tsx",
   import.meta.url,
@@ -244,21 +252,30 @@ test("reading pace is quiet, optional, and safe across teacher replacement", asy
 });
 
 test("chat streaming batches paint work and only animates compositor-safe properties", async () => {
-  const [chat, css, batcher] = await Promise.all([
+  const [chat, css, batcher, messageScroller, scrollControls] = await Promise.all([
     readFile(chatPath, "utf8"),
     readFile(cssPath, "utf8"),
     readFile(streamBatcherPath, "utf8"),
+    readFile(messageScrollerPath, "utf8"),
+    readFile(chatScrollControlsPath, "utf8"),
   ]);
 
   assert.match(chat, /new ChatStreamBatcher\(applyAssistantPatch/);
   assert.match(chat, /streamBatcher\.current\?\.flush\(\)/);
   assert.match(chat, /requestAnimationFrame\(\(\) =>/);
-  assert.match(chat, /useMessageScrollerVisibility/);
+  assert.match(scrollControls, /const \{ scrollToMessage \} = useMessageScroller\(\)/);
+  assert.match(scrollControls, /useMessageScrollerVisibility/);
+  assert.match(scrollControls, /scrollToMessage\(anchor\.id,/);
+  assert.match(scrollControls, /maximumTicks = 12/);
+  assert.match(scrollControls, /sameTurnAnchors\(previous\.anchors, next\.anchors\)/);
   assert.match(chat, /defaultScrollPosition="last-anchor"/);
   assert.match(chat, /messageId=\{messageId\}/);
   assert.match(chat, /className=\{messageId === animatedMessageId \? "chat-message-enter" : undefined\}/);
+  assert.match(messageScroller, /\[content-visibility:auto\]/);
+  assert.match(messageScroller, /\[contain-intrinsic-size:auto_10rem\]/);
   assert.match(batcher, /this\.#scheduled = this\.#schedule\(\(\) =>/);
   assert.match(css, /@keyframes chat-message-enter\s*\{[\s\S]*?opacity:[\s\S]*?transform:/);
+  assert.match(css, /\.chat-scroll-outline-tick/);
   const animationRule = css.match(/@keyframes chat-message-enter\s*\{[\s\S]*?\n\}/)?.[0] ?? "";
   assert.doesNotMatch(animationRule, /height|margin|padding/);
   assert.match(css, /prefers-reduced-motion: reduce[\s\S]*?\.chat-message-enter/);

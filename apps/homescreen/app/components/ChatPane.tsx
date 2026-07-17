@@ -5,12 +5,10 @@ import { Channel, invoke, isTauri } from "@tauri-apps/api/core";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
 import {
   MessageScroller,
-  MessageScrollerButton,
   MessageScrollerContent,
   MessageScrollerItem,
   MessageScrollerProvider,
   MessageScrollerViewport,
-  useMessageScrollerVisibility,
 } from "@/app/components/base-ui/message-scroller";
 import {
   Message,
@@ -85,8 +83,9 @@ import { CsvTrainingPlan } from "./CsvTrainingPlan";
 import { LocalTrainingPanel } from "./LocalTrainingPanel";
 import { LocalClassifierLibraryDialog } from "./LocalClassifierLibraryDialog";
 import { TrainingHalo, type TrainingHaloVisual } from "./TrainingHalo";
+import { ChatScrollControls } from "./ChatScrollControls";
 import type { FileUIPart } from "ai";
-import { ArrowDownIcon, LibraryBigIcon } from "lucide-react";
+import { LibraryBigIcon } from "lucide-react";
 
 type Role = "user" | "assistant";
 type ToolTrace = {
@@ -366,36 +365,6 @@ function ChatToolTrace({ tool }: { tool: ToolTrace }) {
         )}
       </ToolContent>
     </Tool>
-  );
-}
-
-function ChatScrollTracker({
-  anchorIds,
-  streaming,
-}: {
-  anchorIds: string[];
-  streaming: boolean;
-}) {
-  const { currentAnchorId, visibleMessageIds } = useMessageScrollerVisibility();
-  if (anchorIds.length === 0) return null;
-
-  const anchorIndex = currentAnchorId ? anchorIds.indexOf(currentAnchorId) : -1;
-  const currentTurn = Math.max(0, anchorIndex) + 1;
-  const visibleLabel = `${visibleMessageIds.length} message${visibleMessageIds.length === 1 ? "" : "s"} visible`;
-
-  return (
-    <MessageScrollerButton
-      className="chat-scroll-tracker"
-      aria-label={`Turn ${currentTurn} of ${anchorIds.length}. ${visibleLabel}. Jump to latest.`}
-      title="Jump to latest"
-    >
-      {streaming && <span className="chat-scroll-live-dot" aria-hidden="true" />}
-      <span className="chat-scroll-turn">Turn {currentTurn} of {anchorIds.length}</span>
-      <span className="chat-scroll-latest">
-        Latest
-        <ArrowDownIcon aria-hidden="true" size={13} strokeWidth={2} />
-      </span>
-    </MessageScrollerButton>
   );
 }
 
@@ -1251,8 +1220,13 @@ export function ChatPane({
     })),
     [messages, sessionId],
   );
-  const turnAnchorIds = useMemo(
-    () => transcriptRows.filter((row) => row.message.role === "user").map((row) => row.id),
+  const turnAnchors = useMemo(
+    () => transcriptRows
+      .filter((row) => row.message.role === "user")
+      .map((row, index) => ({
+        id: row.id,
+        label: row.message.content.replace(/\s+/g, " ").trim() || `Turn ${index + 1}`,
+      })),
     [transcriptRows],
   );
 
@@ -1549,7 +1523,7 @@ export function ChatPane({
           )}
             </MessageScrollerContent>
           </MessageScrollerViewport>
-          <ChatScrollTracker anchorIds={turnAnchorIds} streaming={streaming} />
+          <ChatScrollControls anchors={turnAnchors} streaming={streaming} />
         </MessageScroller>
       </MessageScrollerProvider>
 
