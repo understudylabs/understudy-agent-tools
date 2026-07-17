@@ -20,16 +20,20 @@ test("remote training remains an off-by-default explicit-consent experiment", as
   assert.match(native, /sha256_bytes\(&bytes\) != artifact\.sha256/);
   assert.match(native, /leakage-group overlap/);
   assert.match(native, /raw_rows_in_telemetry/);
+  assert.match(native, /max_upload_bytes/);
   assert.match(native, /Method::DELETE,[\s\S]*api_url\("uploads"\)/);
   assert.match(native, /existing_remote_classification_training/);
 
   assert.match(panel, /Nothing uploads until you review the exact artifacts and budget/);
   assert.match(panel, /Upload only these three private split artifacts/);
-  assert.match(panel, /never spend more than/);
+  assert.match(panel, /reported estimate reaches/);
   assert.match(panel, /temporary endpoint for held-out comparison/);
+  assert.match(panel, /then always remove it/);
   assert.match(panel, /remote_training_poll/);
   assert.match(panel, /cancel_remote_training/);
   assert.match(panel, /Where it still fails/);
+  assert.match(panel, /gemma-4-26b-a4b-it/);
+  assert.match(panel, /provider\.id === "fireworks"/);
 
   assert.match(localPanel, /remote_training_capabilities/);
   assert.match(localPanel, /remoteCapabilityState === "available" && !forceLocal/);

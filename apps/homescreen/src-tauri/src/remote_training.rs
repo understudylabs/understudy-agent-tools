@@ -19,7 +19,8 @@ const MAX_MANIFEST_BYTES: u64 = 1_048_576;
 // Keep the first remote-training slice bounded. Split conversion is deliberately
 // local and currently buffers one source split at a time, so a multi-gigabyte
 // ceiling would turn a friendly desktop flow into memory pressure.
-const MAX_SPLIT_BYTES: u64 = 256 * 1024 * 1024;
+const MAX_SPLIT_BYTES: u64 = 150 * 1024 * 1024;
+const MAX_REMOTE_ARTIFACT_BYTES: u64 = 150 * 1024 * 1024;
 
 #[derive(Debug, Clone, Deserialize)]
 struct DatasetManifest {
@@ -425,6 +426,12 @@ fn prepare_remote_plan(
             );
             content.push('\n');
         }
+        if content.len() as u64 > MAX_REMOTE_ARTIFACT_BYTES {
+            let _ = fs::remove_dir_all(&plan_root);
+            return Err(format!(
+                "The prepared {role} artifact is larger than the remote training upload limit."
+            ));
+        }
         write_private_new(&path, content.as_bytes())?;
         artifacts.push(RemoteArtifact {
             artifact_role: role.to_string(),
@@ -445,7 +452,13 @@ fn prepare_remote_plan(
             .as_bytes(),
     );
     let plan_path = plan_root.join("plan.json");
-    let output_model_name = format!("understudy-{}", safe_model_segment(&manifest.dataset_id));
+    let dataset_segment = safe_model_segment(&manifest.dataset_id);
+    if dataset_segment.is_empty() {
+        let _ = fs::remove_dir_all(&plan_root);
+        return Err("The dataset name cannot form a safe remote model name.".into());
+    }
+    let model_segment = dataset_segment.chars().take(42).collect::<String>();
+    let output_model_name = format!("understudy-{model_segment}-{}", &plan_id[..8]);
     let plan = RemoteTrainingPlan {
         schema_version: PLAN_SCHEMA.to_string(),
         plan_id,
@@ -783,6 +796,12 @@ fn verify_remote_artifact(artifact: &RemoteArtifact) -> Result<(), String> {
             artifact.artifact_role
         ));
     }
+    if artifact.size_bytes > MAX_REMOTE_ARTIFACT_BYTES {
+        return Err(format!(
+            "The {} artifact is larger than the remote training upload limit.",
+            artifact.artifact_role
+        ));
+    }
     if bytes.iter().filter(|byte| **byte == b'\n').count() as u64 != artifact.row_count {
         return Err(format!(
             "The {} artifact row count changed after approval.",
@@ -835,6 +854,19 @@ fn validate_capabilities(value: &Value, plan: &RemoteTrainingPlan) -> Result<(),
         .unwrap_or(0.0);
     if plan.maximum_spend_usd > max_budget {
         return Err("The approved budget exceeds the current service limit.".into());
+    }
+    let max_upload_bytes = value
+        .get("limits")
+        .and_then(|limits| limits.get("max_upload_bytes"))
+        .and_then(Value::as_u64)
+        .unwrap_or(0);
+    if max_upload_bytes == 0
+        || plan
+            .artifacts
+            .iter()
+            .any(|artifact| artifact.size_bytes > max_upload_bytes)
+    {
+        return Err("A prepared artifact exceeds the current service upload limit.".into());
     }
     Ok(())
 }
@@ -1167,16 +1199,12 @@ fn replace_private_json(path: &Path, value: &impl Serialize) -> Result<(), Strin
 #[cfg(test)]
 mod tests {
     use super::*;
-    use std::time::{SystemTime, UNIX_EPOCH};
 
     fn fixture() -> (PathBuf, PathBuf) {
         let root = std::env::temp_dir().join(format!(
             "understudy-remote-training-test-{}-{}",
             std::process::id(),
-            SystemTime::now()
-                .duration_since(UNIX_EPOCH)
-                .unwrap()
-                .as_nanos()
+            random_uuid().unwrap()
         ));
         fs::create_dir_all(&root).unwrap();
         let labels = vec!["ham".to_string(), "spam".to_string()];
@@ -1270,7 +1298,38 @@ mod tests {
         .unwrap();
         assert!(heldout.contains("\"input\""));
         assert!(heldout.contains("\"target\""));
+        assert!(plan.output_model_name.starts_with("understudy-sms-intent-test-"));
+        assert!(plan.output_model_name.len() <= 64);
         assert!(read_verified_plan(&plan.plan_path).is_ok());
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn repeated_plans_use_distinct_provider_model_names() {
+        let (manifest_path, root) = fixture();
+        let first: RemoteTrainingPlan = serde_json::from_value(
+            prepare_remote_plan(
+                manifest_path.to_str().unwrap(),
+                "fake",
+                "understudy/fake-gemma",
+                "glm-5.2",
+                3.0,
+            )
+            .unwrap(),
+        )
+        .unwrap();
+        let second: RemoteTrainingPlan = serde_json::from_value(
+            prepare_remote_plan(
+                manifest_path.to_str().unwrap(),
+                "fake",
+                "understudy/fake-gemma",
+                "glm-5.2",
+                3.0,
+            )
+            .unwrap(),
+        )
+        .unwrap();
+        assert_ne!(first.output_model_name, second.output_model_name);
         fs::remove_dir_all(root).unwrap();
     }
 

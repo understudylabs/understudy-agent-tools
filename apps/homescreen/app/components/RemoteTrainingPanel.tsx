@@ -126,7 +126,17 @@ function bytes(value: number): string {
 }
 
 function providerDefault(providers: RemoteTrainingProvider[]): RemoteTrainingProvider {
-  return providers.find((provider) => provider.id === "fake") ?? providers[0];
+  return providers.find((provider) => provider.id === "fireworks") ?? providers[0];
+}
+
+function baseModelDefault(provider: RemoteTrainingProvider): string {
+  return provider.base_models.find((model) => model.endsWith("/gemma-4-26b-a4b-it"))
+    ?? provider.base_models.find((model) => model.includes("/gemma-4-"))
+    ?? provider.base_models[0];
+}
+
+function modelLabel(model: string): string {
+  return model.split("/").at(-1)?.replaceAll("-", " ") ?? model;
 }
 
 function visualPhase(phase: string): TrainingHaloVisual["phase"] {
@@ -162,6 +172,7 @@ export function RemoteTrainingPanel({
   const polling = useRef(false);
   const stopped = useRef(false);
   const provider = providers.find((candidate) => candidate.id === providerId) ?? providers[0];
+  const baseModel = provider ? baseModelDefault(provider) : "";
   const active = stage === "preparing" || stage === "starting" || stage === "running";
   const latestEvent = events.at(-1);
 
@@ -241,7 +252,7 @@ export function RemoteTrainingPanel({
     void invoke<RemotePlan>("prepare_remote_classification_training", {
       manifestPath: datasetManifestPath,
       provider: provider.id,
-      baseModel: provider.base_models[0],
+      baseModel,
       frontierModel: "glm-5.2",
       maximumSpendUsd: maximumSpend,
     })
@@ -253,7 +264,7 @@ export function RemoteTrainingPanel({
         setError(String(cause));
         setStage("failed");
       });
-  }, [capabilities.limits.max_budget_usd, datasetManifestPath, provider, stage]);
+  }, [baseModel, capabilities.limits.max_budget_usd, datasetManifestPath, provider, stage]);
 
   const poll = useCallback(async (receipt: RemoteRunReceipt) => {
     if (polling.current || stopped.current) return;
@@ -328,7 +339,7 @@ export function RemoteTrainingPanel({
       <div className="remote-training-choice">
         <div>
           <span>Experimental cloud training</span>
-          <strong>Train a larger Gemma without tying up this Mac</strong>
+          <strong>Train a larger model without tying up this Mac</strong>
           <small>Understudy prepares everything locally first. Nothing uploads until you review the exact artifacts and budget.</small>
         </div>
         {providers.length > 1 && (
@@ -339,6 +350,7 @@ export function RemoteTrainingPanel({
             </select>
           </label>
         )}
+        {provider && <small>Selected model · {modelLabel(baseModel)}</small>}
         <div className="remote-training-actions">
           <button type="button" className="btn primary" onClick={prepare}>
             {provider?.id === "fake" ? "Try the no-spend cloud proof" : "Review remote training"}
@@ -372,8 +384,8 @@ export function RemoteTrainingPanel({
         </div>
         <div className="remote-training-consent">
           <label><input type="checkbox" checked={confirmUpload} onChange={(event) => setConfirmUpload(event.target.checked)} /><span>Upload only these three private split artifacts.</span></label>
-          <label><input type="checkbox" checked={confirmSpend} onChange={(event) => setConfirmSpend(event.target.checked)} /><span>Train with {provider?.label}; never spend more than ${plan.maximum_spend_usd.toFixed(2)}.</span></label>
-          <label><input type="checkbox" checked={confirmDeployment} onChange={(event) => setConfirmDeployment(event.target.checked)} /><span>Create a temporary endpoint for held-out comparison, then remove it unless the model earns promotion.</span></label>
+          <label><input type="checkbox" checked={confirmSpend} onChange={(event) => setConfirmSpend(event.target.checked)} /><span>Train with {provider?.label}; stop when its reported estimate reaches ${plan.maximum_spend_usd.toFixed(2)}.</span></label>
+          <label><input type="checkbox" checked={confirmDeployment} onChange={(event) => setConfirmDeployment(event.target.checked)} /><span>Create a temporary endpoint for held-out comparison, then always remove it.</span></label>
         </div>
         <div className="remote-training-actions">
           <button type="button" className="btn primary" disabled={!confirmUpload || !confirmSpend || !confirmDeployment} onClick={start}>Upload & train · max ${plan.maximum_spend_usd.toFixed(2)}</button>
@@ -409,14 +421,21 @@ export function RemoteTrainingPanel({
   }
 
   if (stage === "terminal" && result) {
+    const terminalCopy = result.outcome === "promoted"
+      ? { eyebrow: "Ready to use", title: "This model earned promotion" }
+      : result.outcome === "needs_work"
+        ? { eyebrow: "Review complete", title: "This model needs another pass" }
+        : result.outcome === "cancelled"
+          ? { eyebrow: "Stopped safely", title: "Remote training was cancelled" }
+          : { eyebrow: "Run ended", title: "Remote training did not complete" };
     return (
       <div className={`remote-training-result ${result.outcome}`}>
-        <div><span>{result.outcome === "promoted" ? "Ready to use" : "Review complete"}</span><strong>{result.outcome === "promoted" ? "This model earned promotion" : "This model needs another pass"}</strong><small>Actual provider spend: ${result.spend_usd.toFixed(2)}</small></div>
+        <div><span>{terminalCopy.eyebrow}</span><strong>{terminalCopy.title}</strong><small>Provider-reported training cost: ${result.spend_usd.toFixed(2)}</small></div>
         <div className="remote-training-metrics">
           {result.metrics.map((metric) => <article key={metric.id}><span>{metric.label}</span><strong>{metric.display_value}</strong><small>{metric.explanation}</small></article>)}
         </div>
         {result.failures.length > 0 && <div className="remote-training-failures"><strong>Where it still fails</strong>{result.failures.slice(0, 3).map((failure, index) => <p key={index}>{failure.expected} expected · {failure.actual} returned · {failure.input_summary}</p>)}</div>}
-        {result.outcome === "promoted" && result.endpoint && <div className="remote-training-endpoint"><span>Private endpoint</span><code>{result.endpoint}</code></div>}
+        {result.outcome === "promoted" && result.output_model && <div className="remote-training-endpoint"><span>Private trained model</span><code>{result.output_model}</code>{result.endpoint && <small>Serving is active through the authenticated Understudy endpoint.</small>}</div>}
         <div className="remote-training-actions"><button type="button" className="btn ghost" onClick={() => { setPlan(null); setRun(null); setEvents([]); setResult(null); setError(null); setStage("choice"); }}>Start another run</button></div>
       </div>
     );
