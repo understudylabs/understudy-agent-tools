@@ -1,0 +1,75 @@
+import type { Command } from "commander";
+
+import {
+  DEFAULT_LOCAL_SFT_MODEL,
+  LOCAL_SFT_MAX_RUNTIME_SECONDS,
+  startLocalSftTraining,
+} from "../local-sft/index.js";
+import { isJsonMode, runAction } from "../internal/output.js";
+
+type LocalSftOptions = {
+  plan: string;
+  runId: string;
+  model: string;
+  outputRoot?: string;
+  runtimeRoot?: string;
+  maxRuntimeSeconds: string;
+  jsonl?: boolean;
+};
+
+export function registerTrainingCommand(program: Command): void {
+  const training = program.command("training")
+    .description("Execute immutable evaluator-backed training plans.");
+
+  training.command("run-local-sft")
+    .description("Run a supported chat SFT recipe locally with MLX and zero provider spend.")
+    .requiredOption("--plan <path>", "Portable Understudy training plan.")
+    .requiredOption("--run-id <id>", "Immutable local training run identifier.")
+    .option("--model <id>", "Cached MLX model id or local model path.", DEFAULT_LOCAL_SFT_MODEL)
+    .option("--output-root <path>", "Private local training-run root.")
+    .option("--runtime-root <path>", "Content-addressed local training runtime root.")
+    .option(
+      "--max-runtime-seconds <seconds>",
+      "Fail-closed terminal runtime limit, capped at 900 seconds.",
+      String(LOCAL_SFT_MAX_RUNTIME_SECONDS),
+    )
+    .option("--jsonl", "Stream machine-readable phase and terminal result events.")
+    .action(async function (this: Command, options: LocalSftOptions) {
+      await runAction(this, async () => {
+        const maximumSeconds = Number(options.maxRuntimeSeconds);
+        if (!Number.isInteger(maximumSeconds)) {
+          throw new Error("--max-runtime-seconds must be an integer.");
+        }
+        const job = startLocalSftTraining({
+          planPath: options.plan,
+          runId: options.runId,
+          modelId: options.model,
+          outputRoot: options.outputRoot,
+          runtimeRoot: options.runtimeRoot,
+          maxRuntimeSeconds: maximumSeconds,
+          onEvent: options.jsonl
+            ? (event) => process.stdout.write(`${JSON.stringify(event)}\n`)
+            : undefined,
+        });
+        const cancel = () => job.cancel();
+        process.once("SIGINT", cancel);
+        process.once("SIGTERM", cancel);
+        try {
+          const result = await job.completion;
+          if (options.jsonl) return;
+          if (isJsonMode(this)) {
+            process.stdout.write(`${JSON.stringify(result, null, 2)}\n`);
+            return;
+          }
+          process.stdout.write(
+            `local SFT: ${result.outcome} (${result.baseline.correct}/${result.baseline.examples} -> `
+              + `${result.heldout.correct}/${result.heldout.examples}, $0, ${result.runtime.elapsed_seconds.toFixed(1)}s)\n`,
+          );
+          process.stdout.write(`receipt: ${result.manifest_path}\n`);
+        } finally {
+          process.off("SIGINT", cancel);
+          process.off("SIGTERM", cancel);
+        }
+      });
+    });
+}

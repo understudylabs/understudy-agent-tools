@@ -46,6 +46,7 @@ import { registerProjectsCommand } from "./commands/projects.js";
 import { registerRoutesCommand } from "./commands/routes.js";
 import { registerRunCommand } from "./commands/run.js";
 import { registerRuntimeCommand } from "./commands/runtime.js";
+import { registerTrainingCommand } from "./commands/training.js";
 import { registerSetupCodeCommand } from "./commands/setup-code.js";
 import { registerSetupCommand } from "./commands/setup.js";
 import { registerStatusCommand } from "./commands/status.js";
@@ -853,6 +854,7 @@ export function buildProgram(): Command {
   registerSetupCodeCommand(program);
   registerRunCommand(program);
   registerRuntimeCommand(program);
+  registerTrainingCommand(program);
 
   const understand = program
     .command("capture-evidence")
