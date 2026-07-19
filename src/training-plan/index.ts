@@ -99,20 +99,21 @@ function objectRow(line: string, role: string, index: number): Record<string, un
   return row as Record<string, unknown>;
 }
 
-function validAssistantTarget(row: Record<string, unknown>): boolean {
+function assistantTarget(row: Record<string, unknown>): string | null {
   const messages = row.messages;
-  if (!Array.isArray(messages) || messages.length < 2) return false;
+  if (!Array.isArray(messages) || messages.length < 2) return null;
   const answer = messages.at(-1);
-  return Boolean(
+  return (
     answer && typeof answer === "object" && !Array.isArray(answer)
       && (answer as { role?: unknown }).role === "assistant"
-      && typeof (answer as { content?: unknown }).content === "string",
-  );
+      && typeof (answer as { content?: unknown }).content === "string"
+  ) ? (answer as { content: string }).content : null;
 }
 
 function validateArtifactRows(
   artifact: PortableTrainingArtifact & { path: string },
   recipe: PortableTrainingRecipe,
+  labels: readonly string[],
 ): void {
   const lines = readFileSync(artifact.path, "utf8").split("\n").filter(Boolean);
   if (lines.length !== artifact.row_count) {
@@ -121,8 +122,12 @@ function validateArtifactRows(
   for (const [index, line] of lines.entries()) {
     const row = objectRow(line, artifact.artifact_role, index);
     if (recipe.datasetFormat === "openai_chat_messages") {
-      if (!validAssistantTarget(row)) {
+      const target = assistantTarget(row);
+      if (target === null) {
         throw new Error(`${artifact.artifact_role} row ${index + 1} has no assistant target.`);
+      }
+      if (recipe.evaluator === "gsm8k_final_answer" && !/####\s*-?[\d,]+/.test(target)) {
+        throw new Error(`${artifact.artifact_role} row ${index + 1} has no GSM8K final answer.`);
       }
       continue;
     }
@@ -130,8 +135,17 @@ function validateArtifactRows(
       if (typeof row.input !== "string" || typeof row.target !== "string") {
         throw new Error(`${artifact.artifact_role} row ${index + 1} is not an evaluator row.`);
       }
-    } else if (!validAssistantTarget(row)) {
-      throw new Error(`${artifact.artifact_role} row ${index + 1} has no assistant target.`);
+      if (!labels.includes(row.target)) {
+        throw new Error(`${artifact.artifact_role} row ${index + 1} names an unknown label.`);
+      }
+    } else {
+      const target = assistantTarget(row);
+      if (target === null) {
+        throw new Error(`${artifact.artifact_role} row ${index + 1} has no assistant target.`);
+      }
+      if (!labels.includes(target)) {
+        throw new Error(`${artifact.artifact_role} row ${index + 1} names an unknown label.`);
+      }
     }
   }
 }
@@ -168,7 +182,7 @@ export function verifyPortableTrainingPlan(pathInput: string): VerifiedPortableT
       throw new Error(`${artifact.artifact_role} artifact changed after plan approval.`);
     }
     const verified = { ...artifact, path: artifactPath };
-    validateArtifactRows(verified, recipe);
+    validateArtifactRows(verified, recipe, plan.labels);
     artifacts[artifact.artifact_role] = verified;
   }
   for (const role of ["train", "validation", "heldout"] as const) {

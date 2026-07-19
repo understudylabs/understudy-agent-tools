@@ -151,13 +151,16 @@ function backendContract(
       },
     };
   }
+  const compatible = plan.recipe_id === "gsm8k_chat_sft_v1";
   return {
-    compatible: true,
-    adapter_implemented: false,
+    compatible,
+    adapter_implemented: compatible,
     execution_ready: false,
     blocked_reasons: [
-      "The Tinker executor has not yet been ported into this public CLI.",
-      "A live model catalog and renderer round-trip are required before upload consent.",
+      ...(!compatible ? [`Recipe ${plan.recipe_id} has no Tinker executor.`] : []),
+      ...(compatible ? [
+        "Execution readiness requires a fresh live model catalog, TINKER_API_KEY, upload consent, and spend consent.",
+      ] : []),
     ],
     model_resolution: {
       strategy: "provider_live_catalog",
@@ -166,17 +169,18 @@ function backendContract(
     },
     execution: {
       transport: "tinker_python_sdk",
+      command: "understudy training run-tinker-sft",
       service_preflight: "ServiceClient.get_server_capabilities_async",
-      training_client: "ServiceClient.create_lora_training_client",
+      training_client: "ServiceClient.create_lora_training_client_async",
       dataset_conversion: "conversation_to_datum",
       loss_mask: "last_assistant_message",
       evaluator: recipe.evaluator,
-      checkpoint_contract: "training_state_plus_sampler_weights",
+      checkpoint_contract: "one_hour_sampler_weights",
     },
     cleanup: {
       required: true,
-      checkpoint_ttl_seconds: 86_400,
-      provider_resources: ["training_state", "sampler_weights"],
+      checkpoint_ttl_seconds: 3_600,
+      provider_resources: ["sampler_weights"],
       verified_by: "tinker run receipt",
     },
   };
