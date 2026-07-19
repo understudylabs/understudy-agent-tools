@@ -11,6 +11,7 @@ import {
   clusterColor,
   harnessColor,
   hashJitter,
+  langColor,
   type ColorMode,
   type SearchPayload,
   type SearchResult,
@@ -138,6 +139,8 @@ export default function TimelineClient() {
   const [hiddenHarness, setHiddenHarness] = useState<Set<string>>(new Set());
   const [colorMode, setColorMode] = useState<ColorMode>("harness");
   const [hiddenClusters, setHiddenClusters] = useState<Set<number>>(new Set());
+  const [hiddenLangs, setHiddenLangs] = useState<Set<string>>(new Set());
+  const [langCounts, setLangCounts] = useState<Array<{ lang: string; sessions: number }>>([]);
 
   const [query, setQuery] = useState("");
   const [search, setSearch] = useState<SearchPayload | null>(null);
@@ -164,6 +167,14 @@ export default function TimelineClient() {
     fetch("/api/timeline/commits")
       .then((r) => (r.ok ? r.json() : Promise.reject(new Error(`${r.status}`))))
       .then((d: CommitsPayload) => setCommitDays(d.days ?? []))
+      .catch(() => {});
+  }, []);
+
+  // language layer (data/langs.sqlite via API; empty payload when absent)
+  useEffect(() => {
+    fetch("/api/timeline/languages")
+      .then((r) => (r.ok ? r.json() : Promise.reject(new Error(`${r.status}`))))
+      .then((d: { langs: Array<{ lang: string; sessions: number }> }) => setLangCounts(d.langs ?? []))
       .catch(() => {});
   }, []);
 
@@ -331,12 +342,14 @@ export default function TimelineClient() {
   );
   const dayX = useCallback((day: number) => view.offsetPx + day * view.pxPerDay, [view]);
 
-  // shared visibility: harness hiding always, cluster hiding in task mode
+  // shared visibility: harness hiding always, cluster hiding in task mode,
+  // language hiding in language mode
   const isVisible = useCallback(
     (p: TimelinePoint) =>
       !hiddenHarness.has(p.s.harness) &&
-      !(colorMode === "task" && p.s.clusterId != null && hiddenClusters.has(p.s.clusterId)),
-    [hiddenHarness, colorMode, hiddenClusters],
+      !(colorMode === "task" && p.s.clusterId != null && hiddenClusters.has(p.s.clusterId)) &&
+      !(colorMode === "language" && p.s.lang != null && hiddenLangs.has(p.s.lang)),
+    [hiddenHarness, colorMode, hiddenClusters, hiddenLangs],
   );
 
   // nearest visible point in screen space (Points raycast thresholds are awkward)
@@ -488,6 +501,15 @@ export default function TimelineClient() {
     });
   }, []);
 
+  const toggleLang = useCallback((lang: string) => {
+    setHiddenLangs((prev) => {
+      const next = new Set(prev);
+      if (next.has(lang)) next.delete(lang);
+      else next.add(lang);
+      return next;
+    });
+  }, []);
+
   const ticks = useMemo(
     () => (points.length ? computeTicks(view, day0, size.width) : []),
     [points.length, view, day0, size.width],
@@ -554,7 +576,7 @@ export default function TimelineClient() {
         {/* color-mode segmented control */}
         <span className="mono text-[11px] text-ink-muted">color:</span>
         <div className="mono flex items-center rounded-full border border-rule text-[11px] mr-2">
-          {(["harness", "task"] as const).map((m) => (
+          {(["harness", "task", "language"] as const).map((m) => (
             <button
               key={m}
               onClick={() => setColorMode(m)}
@@ -582,7 +604,7 @@ export default function TimelineClient() {
               />
             ))}
           </>
-        ) : (
+        ) : colorMode === "task" ? (
           <>
             <span className="mono text-[11px] text-ink-muted mr-1">task</span>
             {clusters.length === 0 && (
@@ -595,6 +617,22 @@ export default function TimelineClient() {
                 color={clusterColor(c.id)}
                 active={!hiddenClusters.has(c.id)}
                 onClick={() => toggleCluster(c.id)}
+              />
+            ))}
+          </>
+        ) : (
+          <>
+            <span className="mono text-[11px] text-ink-muted mr-1">language</span>
+            {langCounts.length === 0 && (
+              <span className="mono text-[11px] text-ink-muted/60">no language data yet</span>
+            )}
+            {langCounts.map((l) => (
+              <Chip
+                key={l.lang}
+                label={`${l.lang} · ${l.sessions}`}
+                color={langColor(l.lang)}
+                active={!hiddenLangs.has(l.lang)}
+                onClick={() => toggleLang(l.lang)}
               />
             ))}
           </>
@@ -648,6 +686,7 @@ export default function TimelineClient() {
               hiddenHarness={hiddenHarness}
               colorMode={colorMode}
               hiddenClusters={hiddenClusters}
+              hiddenLangs={hiddenLangs}
             />
           )}
           {!data && !error && (
@@ -887,6 +926,12 @@ export default function TimelineClient() {
             </div>
             <div className="text-ink-muted">
               {hover.point.s.events.toLocaleString()} events · {hover.point.s.turns} turns
+              {hover.point.s.lang && (
+                <>
+                  {" · "}
+                  <span style={{ color: langColor(hover.point.s.lang) }}>{hover.point.s.lang}</span>
+                </>
+              )}
             </div>
             {hover.point.s.label && (
               <div style={{ color: clusterColor(hover.point.s.clusterId) }}>
@@ -939,6 +984,56 @@ export default function TimelineClient() {
                 </>
               )}
             </dl>
+
+            {/* language + tooling stack (langs.sqlite; absent = block hidden) */}
+            {detail?.langs && detail.langs.length > 0 && (
+              <div className="mt-5">
+                <div className="mono text-[11px] text-ink-muted mb-1.5">stack</div>
+                {(() => {
+                  const total = detail.langs!.reduce((a, l) => a + l.files, 0) || 1;
+                  return (
+                    <>
+                      <div className="flex h-1.5 w-full overflow-hidden rounded-full">
+                        {detail.langs!.map((l) => (
+                          <div
+                            key={l.lang}
+                            style={{
+                              width: `${(100 * l.files) / total}%`,
+                              background: langColor(l.lang),
+                              opacity: 0.85,
+                            }}
+                          />
+                        ))}
+                      </div>
+                      <div className="mono mt-2 grid grid-cols-2 gap-x-4 gap-y-1 text-[10px]">
+                        {detail.langs!.map((l) => (
+                          <div key={l.lang} className="flex items-center gap-1.5">
+                            <span
+                              className="inline-block h-1.5 w-1.5 shrink-0 rounded-full"
+                              style={{ background: langColor(l.lang) }}
+                            />
+                            <span className="text-ink">{l.lang}</span>
+                            <span className="ml-auto text-ink-muted">{l.files}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </>
+                  );
+                })()}
+                {detail.tools && detail.tools.length > 0 && (
+                  <div className="mt-2.5 flex flex-wrap gap-1.5">
+                    {detail.tools.map((t) => (
+                      <span
+                        key={t.tool}
+                        className="mono rounded-full border border-rule px-2 py-0.5 text-[10px] text-ink-muted"
+                      >
+                        {t.tool} <span className="text-ink-muted/60">×{t.uses}</span>
+                      </span>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
 
             <div className="mt-5">
               <div className="mono text-[11px] text-ink-muted mb-1.5">summary</div>

@@ -13,6 +13,8 @@ export type TimelineSession = {
   label?: string;
   cluster?: string;
   clusterId?: number;
+  // language layer (langs.sqlite) — dominant language by file count
+  lang?: string;
 };
 
 export type TimelinePayload = {
@@ -37,9 +39,12 @@ export type SessionDetail = {
   scan_summary?: string;
   cluster?: string;
   clusterId?: number;
+  // language layer (langs.sqlite)
+  langs?: Array<{ lang: string; files: number }>;
+  tools?: Array<{ tool: string; uses: number }>;
 };
 
-export type ColorMode = "harness" | "task";
+export type ColorMode = "harness" | "task" | "language";
 
 // cluster palette — cycled by clusterId in task color mode
 export const CLUSTER_PALETTE = [
@@ -58,6 +63,29 @@ export const UNSCANNED_COLOR = "#4b4d52";
 export function clusterColor(clusterId: number | undefined): string {
   if (clusterId == null) return UNSCANNED_COLOR;
   return CLUSTER_PALETTE[((clusterId % CLUSTER_PALETTE.length) + CLUSTER_PALETTE.length) % CLUSTER_PALETTE.length];
+}
+
+// language color mode: fixed assignments for the big languages, cycle for the
+// rest, dim ink for sessions with no file-tool data
+export const LANGUAGE_COLORS: Record<string, string> = {
+  TypeScript: "#67e8f9", // cyan
+  Python: "#f2b34c", // amber
+  Rust: "#d97757", // clay
+  JavaScript: "#f2f2f0",
+  Markdown: "#9b9da3", // ink-muted
+  Config: "#a78bfa", // violet
+  Shell: "#9edbd3", // mint
+};
+export const LANGUAGE_CYCLE = ["#6ee7a0", "#d7623e", "#e7e8ea", "#c9a2f5", "#7dd3fc"];
+export const NO_LANG_COLOR = "#4b4d52";
+
+export function langColor(lang: string | undefined): string {
+  if (!lang) return NO_LANG_COLOR;
+  const fixed = LANGUAGE_COLORS[lang];
+  if (fixed) return fixed;
+  let h = 0;
+  for (let i = 0; i < lang.length; i++) h = (Math.imul(h, 31) + lang.charCodeAt(i)) >>> 0;
+  return LANGUAGE_CYCLE[h % LANGUAGE_CYCLE.length];
 }
 
 export type SearchResult = { id: string; field: string; snippet: string };

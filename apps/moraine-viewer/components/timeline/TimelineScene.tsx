@@ -7,6 +7,7 @@ import {
   FALLBACK_COLOR,
   HARNESS_COLORS,
   clusterColor,
+  langColor,
   type ColorMode,
   type TimelinePoint,
   type ViewState,
@@ -30,8 +31,9 @@ interface SceneProps {
   lanes: LaneLayout;
   matches: Set<string> | null; // null = no active search
   hiddenHarness: Set<string>;
-  colorMode: ColorMode; // harness colors vs task-cluster colors
+  colorMode: ColorMode; // harness vs task-cluster vs language colors
   hiddenClusters: Set<number>; // task-mode visibility (clusterId)
+  hiddenLangs: Set<string>; // language-mode visibility (dominant lang; "" = no data)
 }
 
 const PROJECT = /* glsl */ `
@@ -149,8 +151,9 @@ function Field({ points, propsRef }: { points: TimelinePoint[]; propsRef: React.
     hidden: Set<string> | null;
     colorMode: ColorMode | null;
     hiddenClusters: Set<number> | null;
+    hiddenLangs: Set<string> | null;
     buf: object | null; // which buffer set the write landed on — rebuilt buffers start all-invisible
-  }>({ matches: null, hidden: null, colorMode: null, hiddenClusters: null, buf: null });
+  }>({ matches: null, hidden: null, colorMode: null, hiddenClusters: null, hiddenLangs: null, buf: null });
 
   // static per-point buffers (rebuilt only when the dataset changes)
   const pointBuf = useMemo(() => {
@@ -238,7 +241,7 @@ function Field({ points, propsRef }: { points: TimelinePoint[]; propsRef: React.
   const tailUniforms = useMemo(makeUniforms, []);
 
   useFrame((state, delta) => {
-    const { view, width, height, lanes, matches, hiddenHarness, colorMode, hiddenClusters } =
+    const { view, width, height, lanes, matches, hiddenHarness, colorMode, hiddenClusters, hiddenLangs } =
       propsRef.current;
 
     // match/visibility/color rewrites only when the sets (or the buffer set —
@@ -249,24 +252,29 @@ function Field({ points, propsRef }: { points: TimelinePoint[]; propsRef: React.
       applied.hidden !== hiddenHarness ||
       applied.colorMode !== colorMode ||
       applied.hiddenClusters !== hiddenClusters ||
+      applied.hiddenLangs !== hiddenLangs ||
       applied.buf !== pointBuf
     ) {
       applied.matches = matches;
       applied.hidden = hiddenHarness;
       applied.colorMode = colorMode;
       applied.hiddenClusters = hiddenClusters;
+      applied.hiddenLangs = hiddenLangs;
       applied.buf = pointBuf;
 
       const c = new THREE.Color();
       const colorOf = (p: TimelinePoint) =>
         colorMode === "task"
           ? clusterColor(p.s.clusterId)
-          : (HARNESS_COLORS[p.s.harness] ?? FALLBACK_COLOR);
-      // harness hiding always collapses the lane; task mode additionally
-      // hides points whose cluster chip is toggled off
+          : colorMode === "language"
+            ? langColor(p.s.lang)
+            : (HARNESS_COLORS[p.s.harness] ?? FALLBACK_COLOR);
+      // harness hiding always collapses the lane; task mode additionally hides
+      // points whose cluster chip is toggled off; language mode likewise by lang
       const visibleOf = (p: TimelinePoint) =>
         hiddenHarness.has(p.s.harness) ||
-        (colorMode === "task" && p.s.clusterId != null && hiddenClusters.has(p.s.clusterId))
+        (colorMode === "task" && p.s.clusterId != null && hiddenClusters.has(p.s.clusterId)) ||
+        (colorMode === "language" && p.s.lang != null && hiddenLangs.has(p.s.lang))
           ? 0
           : 1;
 

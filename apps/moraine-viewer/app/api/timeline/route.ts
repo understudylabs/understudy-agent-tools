@@ -2,6 +2,7 @@ import type { NextRequest } from "next/server";
 import { chQuery } from "@/lib/clickhouse";
 import type { TimelineSession } from "@/components/timeline/types";
 import { readScanMap } from "./scan-db";
+import { readDominantLangMap, readSessionLangs, readSessionTools } from "./langs-db";
 
 // GET /api/timeline            → { sessions, meta }  (all non-sentinel sessions)
 // GET /api/timeline?session=id → { session }         (detail incl. session_summary)
@@ -54,8 +55,12 @@ export async function GET(request: NextRequest) {
     }
     const r = rows[0];
     const scan = readScanMap().get(r.session_id);
+    const langs = readSessionLangs(r.session_id, 6);
+    const tools = readSessionTools(r.session_id, 8);
     return Response.json({
       session: {
+        ...(langs.length ? { langs } : {}),
+        ...(tools.length ? { tools } : {}),
         ...(scan?.label ? { label: scan.label } : {}),
         ...(scan?.summary ? { scan_summary: scan.summary } : {}),
         ...(scan?.cluster ? { cluster: scan.cluster } : {}),
@@ -86,8 +91,10 @@ export async function GET(request: NextRequest) {
   );
 
   const scanMap = readScanMap();
+  const langMap = readDominantLangMap();
   const sessions: TimelineSession[] = rows.map((r) => {
     const scan = scanMap.get(r.session_id);
+    const lang = langMap.get(r.session_id);
     return {
       id: r.session_id,
       harness: r.harness || "unknown",
@@ -100,6 +107,7 @@ export async function GET(request: NextRequest) {
       ...(scan?.label ? { label: scan.label } : {}),
       ...(scan?.cluster ? { cluster: scan.cluster } : {}),
       ...(scan?.clusterId != null ? { clusterId: scan.clusterId } : {}),
+      ...(lang ? { lang } : {}),
     };
   });
 
