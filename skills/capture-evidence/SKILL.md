@@ -112,7 +112,10 @@ enough provenance for another agent to repeat the step without guessing.
    An uncovered important stratum blocks a whole-workload conclusion; a failed
    read-then-write sentinel is a harness bug until proven otherwise. Keep a
    redacted local review packet with the coverage matrix, representative rows,
-   counterexamples, scorer rationale, and exact artifact/log refs.
+   counterexamples, scorer rationale, the data-sufficiency plan and stopping
+   evidence, and exact artifact/log refs. Treat pilot sizes as minimums, never
+   caps: when conclusions remain unstable or important strata are underfilled,
+   collect more rows instead of increasing confidence in the prose.
 5. Freeze splits.
    Write `splits.json` with train/dev/holdout names, sizes, source refs,
    deterministic split seed or frozen row ids, the per-stratum counts from the

@@ -128,13 +128,16 @@ single-output optimization does not need a tool environment.
    state and emits a request log.
 
 5. **Run the incumbent baseline before optimizing.** Execute the frozen harness
-   on train/dev or a small sanctioned sample, write per-task results, and bind
+   on the sanctioned train/dev set, write per-task results, and bind
    `harness_sha256`, `metric_sha256`, and `splits_sha256` into `baseline.json`.
    Confirm coverage across completed-execution strata, including rare or
    high-consequence tool paths, and inspect the actual trajectories behind at
    least one pass, each reported failure class, each surprising delta, and a
    counterexample to the proposed headline. Do not optimize until the baseline
-   is measured and those checks pass.
+   is measured and those checks pass. A smaller pilot may validate plumbing, but
+   it is not the baseline evidence. Expand the cohort whenever estimates remain
+   unstable, important strata are underfilled, or review discovers new failure
+   classes.
 
 6. **Attribute the multi-turn gap before intervening.** Read the rollouts, not
    just the final score, and tag where reward is lost: wrong tool/endpoint,

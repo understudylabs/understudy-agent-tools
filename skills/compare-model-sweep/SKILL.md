@@ -57,6 +57,8 @@ comparison.
    no-op. For local MLX, prefer verified filesystem paths or Understudy snapshot
    aliases over arbitrary Hugging Face ids. Apply the shared gates in
    [`../capture-evidence/references/evaluation-evidence-gates.md`](../capture-evidence/references/evaluation-evidence-gates.md).
+   The smoke row proves only that the harness runs; it provides no model-quality
+   evidence.
 
 4. **Run the frozen matrix.** Call the same harness once per candidate with the
    same rows, split, tool-access mode, prompt, seed, and export path. Keep each
@@ -108,8 +110,11 @@ comparison.
    ship route, build retrieval/tooling, run GEPA, climb local model, or use remote.
    Candidate quality cells must come from measured rows or say `not run`;
    plausible projections are never substitutes. Include the coverage matrix and
-   a redacted row-review packet. Use a visualization only when it answers a
-   named decision question better than the results table.
+   a redacted row-review packet. If the result is unstable across batches,
+   underpowered for the material difference, or still exposing new failure
+   classes, expand the frozen matrix before recommending a route. Use a
+   visualization only when it answers a named decision question better than the
+   results table.
 
 ## Harness Pattern
 

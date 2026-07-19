@@ -8,6 +8,10 @@ test("evaluation evidence standard covers coverage, conformance, rows, and claim
   const standard = read("skills/capture-evidence/references/evaluation-evidence-gates.md");
 
   assert.match(standard, /completed execution/i);
+  assert.match(standard, /minimums, never caps/i);
+  assert.match(standard, /prefer using more of\s+it/i);
+  assert.match(standard, /data-sufficiency plan/i);
+  assert.match(standard, /stable under another meaningful increment/i);
   assert.match(standard, /uncovered important stratum blocks a whole-workload conclusion/i);
   assert.match(standard, /read-then-write/i);
   assert.match(standard, /intermediate read\/tool call as a no-op/i);
@@ -15,6 +19,7 @@ test("evaluation evidence standard covers coverage, conformance, rows, and claim
   assert.match(standard, /scorer\/rubric error, harness\/parser error/i);
   assert.match(standard, /not run/i);
   assert.match(standard, /Decorative charts/i);
+  assert.doesNotMatch(standard, /2[–-]10|up to 10|roughly 10/i);
 });
 
 test("decision skills enforce the shared evaluation evidence gates", () => {

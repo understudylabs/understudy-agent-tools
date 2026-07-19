@@ -20,14 +20,29 @@ Build a coverage matrix before sampling. The rows should include:
 Classify by the **completed execution** when input metadata does not reliably
 predict complexity. Do not call a sample representative merely because it was
 random. Confirm the matrix with the developer and ask whether important hard
-cases are missing. For a small pilot, aim for roughly 10 reviewable examples per
-important stratum when they exist; otherwise report the actual count and keep
-the uncertainty visible.
+cases are missing.
+
+Treat initial row counts as minimums, never caps. Size the evaluation for the
+decision risk, observed variance and failure rate, important-stratum coverage,
+and the smallest material difference the developer needs to detect. A small
+pilot validates plumbing and exposes new strata; it does not establish model
+parity or route readiness. When data is available locally, prefer using more of
+it over making a stronger assumption from a convenient subset. Include every
+available rare or high-consequence case when tractable.
 
 An uncovered important stratum blocks a whole-workload conclusion. Continue on
 the covered strata if useful, but scope every statement to them. Expand the
 capture, join executions back to local traces, or create a clearly labeled
 synthetic case before making a broader claim.
+
+Write a data-sufficiency plan before the full run. Continue adding rows when a
+material result changes across incremental batches, uncertainty remains wider
+than the decision tolerance, a stratum is underfilled, errors cluster, or review
+keeps discovering new failure classes. Stop only when the named decision is
+stable under another meaningful increment, important strata meet their planned
+precision or exhaustive-review rule, and the remaining uncertainty is explicit.
+If more data is unavailable, narrow or defer the conclusion rather than lowering
+the evidence bar silently.
 
 ## 2. Harness-conformance gate
 
@@ -51,16 +66,22 @@ harness and invalidate conclusions from affected runs before blaming the model.
 ## 3. Qualitative row-review gate
 
 Before interpreting recall, no-op rate, pass rate, or a surprising delta,
-inspect the smallest useful set of actual local rows. Each review row should
-show the redacted input or task id, expected outcome, candidate output or full
-trajectory, validator result, and scorer rationale.
+inspect actual local rows and expand the review as uncertainty or heterogeneity
+appears. Each review row should show the redacted input or task id, expected
+outcome, candidate output or full trajectory, validator result, and scorer
+rationale.
 
-At minimum inspect:
+The following are starting requirements, not a maximum:
 
 - one passing row;
 - one failing row for each failure class used in the conclusion;
 - one row behind every surprising or material aggregate delta;
 - one counterexample that could disprove the proposed headline.
+
+Then review additional random and stratified batches until the data-sufficiency
+stopping rule above passes. Review all failures when tractable; otherwise sample
+each failure class deeply enough to distinguish a systematic problem from an
+isolated row. A handful of attractive examples cannot support a broad claim.
 
 For free-text or semantic outputs, check whether different wording is
 equivalent before calling it a recall failure. For agentic runs, inspect the
@@ -82,7 +103,9 @@ Match the language to the evidence:
 
 A first optimization pass on a narrow cohort is a probe for headroom and
 overfitting. Do not widen the conclusion until a frozen candidate holds on a
-balanced sealed holdout.
+balanced sealed holdout sized for the decision. If the holdout is too small to
+separate practical parity from a material regression, collect more data before
+recommending a route change.
 
 ## 5. Review packet and presentation gate
 
@@ -90,8 +113,8 @@ Give the developer a spot-check path before recommending action. The local
 packet should contain:
 
 - the coverage matrix and uncovered strata;
-- 2–10 redacted examples per important stratum when available, including
-  failures and counterexamples;
+- a decision-sized stratified review set, including failures and
+  counterexamples, plus counts and links for the full evaluated cohort;
 - baseline and candidate outputs or trajectories side by side;
 - scorer rationale and failure classification;
 - exact run, task, artifact, and log references for deeper inspection.
@@ -99,4 +122,6 @@ packet should contain:
 Prefer a compact table and links to measured artifacts. Add a visualization
 only when it answers a named decision question better than the table; label the
 question and the source fields it uses. Decorative charts, animated mock runs,
-or projected candidate cells do not belong in an evidence report.
+or projected candidate cells do not belong in an evidence report. Pagination or
+summary pages may make a large packet usable, but must not reduce the underlying
+evaluation or hide its failures.

@@ -69,7 +69,9 @@ validator kinds in [`reference.md`](reference.md):
   [`../capture-evidence/references/evaluation-evidence-gates.md`](../capture-evidence/references/evaluation-evidence-gates.md).
   Do not optimize a narrow easy cohort as though it represents the workload.
   Inspect the real rows behind the baseline headline and confirm important hard
-  strata have train/dev and sealed-holdout representation.
+  strata have train/dev and sealed-holdout representation. Treat a small pilot
+  as a plumbing check only; if uncertainty, variance, or new failure classes
+  remain material, collect more data before optimizing or recommending a route.
 
 - **Headroom** — `baseline.json` must show failing-but-promptable rows. No
   incumbent failures → nothing to optimize. A strong model fails them too →
