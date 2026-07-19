@@ -26,6 +26,57 @@ const MAX_SPLIT_BYTES: u64 = 150 * 1024 * 1024;
 const MAX_REMOTE_ARTIFACT_BYTES: u64 = 150 * 1024 * 1024;
 const MAX_RECIPE_INSPECTION_BYTES: u64 = 32 * 1024 * 1024;
 
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum PortableRecipeShape {
+    TextClassification,
+    ChatSft,
+}
+
+#[derive(Debug, Clone, Copy)]
+struct PortableRecipeDefinition {
+    id: &'static str,
+    use_case: &'static str,
+    task_kind: &'static str,
+    method: &'static str,
+    evaluator: &'static str,
+    dataset_format: &'static str,
+    shape: PortableRecipeShape,
+    mlx_local: bool,
+}
+
+// This is an explicit capability registry, not a fixture switch. Adding a new
+// use case means registering its portable contract and evaluator here, then
+// implementing only the dataset normalizer/evaluator that makes it trustworthy.
+// Backend compilation and immutable plan validation consume the same metadata.
+const PORTABLE_RECIPES: &[PortableRecipeDefinition] = &[
+    PortableRecipeDefinition {
+        id: "text_classification_exact_label_v1",
+        use_case: "classification",
+        task_kind: "text_classification",
+        method: "sft",
+        evaluator: "exact_label",
+        dataset_format: "classification_sft_with_exact_label_holdout",
+        shape: PortableRecipeShape::TextClassification,
+        mlx_local: false,
+    },
+    PortableRecipeDefinition {
+        id: "gsm8k_chat_sft_v1",
+        use_case: "grade_school_math_reasoning",
+        task_kind: "chat_sft",
+        method: "sft",
+        evaluator: "gsm8k_final_answer",
+        dataset_format: "openai_chat_messages",
+        shape: PortableRecipeShape::ChatSft,
+        mlx_local: true,
+    },
+];
+
+fn portable_recipe(recipe_id: &str) -> Option<&'static PortableRecipeDefinition> {
+    PORTABLE_RECIPES
+        .iter()
+        .find(|recipe| recipe.id == recipe_id)
+}
+
 static LOCAL_SFT_CANCELLATIONS: OnceLock<Mutex<HashMap<String, Arc<AtomicBool>>>> = OnceLock::new();
 
 fn local_sft_cancellations() -> &'static Mutex<HashMap<String, Arc<AtomicBool>>> {
@@ -53,6 +104,7 @@ struct TrainingRecipeInspection {
     local_only: bool,
     payload_read: bool,
     detected_use_case: String,
+    recipe_id: Option<String>,
     task_kind: String,
     method: String,
     evaluator: Option<String>,
@@ -63,6 +115,35 @@ struct TrainingRecipeInspection {
     reasons: Vec<String>,
     warnings: Vec<String>,
     inspection_duration_ms: u64,
+}
+
+struct TrainingRecipeMatch {
+    detected_use_case: &'static str,
+    recipe_id: Option<String>,
+    task_kind: &'static str,
+    method: &'static str,
+    evaluator: Option<String>,
+    confidence: String,
+    ready: bool,
+    reasons: Vec<String>,
+}
+
+fn supported_recipe_match(
+    recipe_id: &'static str,
+    confidence: String,
+    reason: &'static str,
+) -> TrainingRecipeMatch {
+    let recipe = portable_recipe(recipe_id).expect("the built-in recipe must be registered");
+    TrainingRecipeMatch {
+        detected_use_case: recipe.use_case,
+        recipe_id: Some(recipe.id.to_string()),
+        task_kind: recipe.task_kind,
+        method: recipe.method,
+        evaluator: Some(recipe.evaluator.to_string()),
+        confidence,
+        ready: true,
+        reasons: vec![reason.to_string()],
+    }
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -414,79 +495,75 @@ fn inspect_training_recipe(path: &str) -> Result<Value, String> {
     }
 
     let ratio = |count: u64| count as f64 / evidence.total_rows as f64;
-    let (detected_use_case, task_kind, method, evaluator, confidence, ready, reasons) = if ratio(
-        evidence.gsm8k_rows,
-    ) >= 0.8
-    {
-        (
-                "grade_school_math_reasoning",
-                "chat_sft",
-                "sft",
-                Some("gsm8k_final_answer".to_string()),
-                confidence_for_ratio(ratio(evidence.gsm8k_rows)),
-                true,
-                vec!["Most rows are either public GSM8K `question`/`answer` examples or chat examples whose final assistant answer contains a GSM8K-style `####` numeric result.".to_string()],
-            )
+    let detected = if ratio(evidence.gsm8k_rows) >= 0.8 {
+        supported_recipe_match(
+            "gsm8k_chat_sft_v1",
+            confidence_for_ratio(ratio(evidence.gsm8k_rows)),
+            "Most rows are either public GSM8K `question`/`answer` examples or chat examples whose final assistant answer contains a GSM8K-style `####` numeric result.",
+        )
     } else if ratio(evidence.preference_rows) >= 0.8 {
-        (
-            "preference_optimization",
-            "preference_pairs",
-            "dpo",
-            None,
-            confidence_for_ratio(ratio(evidence.preference_rows)),
-            false,
-            vec!["Most rows contain chosen and rejected responses.".to_string()],
-        )
+        TrainingRecipeMatch {
+            detected_use_case: "preference_optimization",
+            recipe_id: None,
+            task_kind: "preference_pairs",
+            method: "dpo",
+            evaluator: None,
+            confidence: confidence_for_ratio(ratio(evidence.preference_rows)),
+            ready: false,
+            reasons: vec!["Most rows contain chosen and rejected responses.".to_string()],
+        }
     } else if ratio(evidence.tool_trace_rows) >= 0.5 {
-        (
-            "agentic_tool_use",
-            "tool_trajectory",
-            "sft_or_rl",
-            None,
-            confidence_for_ratio(ratio(evidence.tool_trace_rows)),
-            false,
-            vec!["The chat examples contain tool calls or tool-role results.".to_string()],
-        )
+        TrainingRecipeMatch {
+            detected_use_case: "agentic_tool_use",
+            recipe_id: None,
+            task_kind: "tool_trajectory",
+            method: "sft_or_rl",
+            evaluator: None,
+            confidence: confidence_for_ratio(ratio(evidence.tool_trace_rows)),
+            ready: false,
+            reasons: vec!["The chat examples contain tool calls or tool-role results.".to_string()],
+        }
     } else if ratio(evidence.multimodal_rows) >= 0.5 {
-        (
-            "vision_language",
-            "multimodal_chat_sft",
-            "sft",
-            None,
-            confidence_for_ratio(ratio(evidence.multimodal_rows)),
-            false,
-            vec!["The chat examples contain structured multimodal content.".to_string()],
-        )
+        TrainingRecipeMatch {
+            detected_use_case: "vision_language",
+            recipe_id: None,
+            task_kind: "multimodal_chat_sft",
+            method: "sft",
+            evaluator: None,
+            confidence: confidence_for_ratio(ratio(evidence.multimodal_rows)),
+            ready: false,
+            reasons: vec!["The chat examples contain structured multimodal content.".to_string()],
+        }
     } else if ratio(evidence.classification_rows) >= 0.8 {
-        (
-            "text_classification",
-            "text_classification",
-            "sft",
-            Some("exact_label".to_string()),
+        supported_recipe_match(
+            "text_classification_exact_label_v1",
             confidence_for_ratio(ratio(evidence.classification_rows)),
-            true,
-            vec!["Most rows contain string input and target fields.".to_string()],
+            "Most rows contain string input and target fields.",
         )
     } else if ratio(evidence.chat_rows) >= 0.8 {
-        (
-                "general_chat",
-                "chat_sft",
-                "sft",
-                None,
-                confidence_for_ratio(ratio(evidence.chat_rows)),
-                false,
-                vec!["Most rows use OpenAI-compatible chat messages, but no trustworthy evaluator was detected.".to_string()],
-            )
+        TrainingRecipeMatch {
+            detected_use_case: "general_chat",
+            recipe_id: None,
+            task_kind: "chat_sft",
+            method: "sft",
+            evaluator: None,
+            confidence: confidence_for_ratio(ratio(evidence.chat_rows)),
+            ready: false,
+            reasons: vec!["Most rows use OpenAI-compatible chat messages, but no trustworthy evaluator was detected.".to_string()],
+        }
     } else {
-        (
-            "unknown",
-            "unknown",
-            "unknown",
-            None,
-            "low".to_string(),
-            false,
-            vec!["The rows do not consistently match a supported training recipe.".to_string()],
-        )
+        TrainingRecipeMatch {
+            detected_use_case: "unknown",
+            recipe_id: None,
+            task_kind: "unknown",
+            method: "unknown",
+            evaluator: None,
+            confidence: "low".to_string(),
+            ready: false,
+            reasons: vec![
+                "The rows do not consistently match a supported training recipe.".to_string(),
+            ],
+        }
     };
     let mut warnings = Vec::new();
     if evidence.invalid_rows > 0 {
@@ -495,7 +572,7 @@ fn inspect_training_recipe(path: &str) -> Result<Value, String> {
             evidence.invalid_rows
         ));
     }
-    if !ready {
+    if !detected.ready {
         warnings.push(
             "Understudy needs a task-specific held-out evaluator before this recipe can train or promote a model."
                 .to_string(),
@@ -507,15 +584,16 @@ fn inspect_training_recipe(path: &str) -> Result<Value, String> {
         source_sha256: sha256_bytes(&bytes),
         local_only: true,
         payload_read: true,
-        detected_use_case: detected_use_case.to_string(),
-        task_kind: task_kind.to_string(),
-        method: method.to_string(),
-        evaluator,
-        confidence,
-        ready,
+        detected_use_case: detected.detected_use_case.to_string(),
+        recipe_id: detected.recipe_id,
+        task_kind: detected.task_kind.to_string(),
+        method: detected.method.to_string(),
+        evaluator: detected.evaluator,
+        confidence: detected.confidence,
+        ready: detected.ready,
         requires_confirmation: true,
         evidence,
-        reasons,
+        reasons: detected.reasons,
         warnings,
         inspection_duration_ms: elapsed_millis(started),
     };
@@ -920,6 +998,30 @@ fn validate_remote_plan_options(
     Ok(())
 }
 
+fn managed_task_payload(
+    plan: &RemoteTrainingPlan,
+    recipe: &PortableRecipeDefinition,
+) -> Result<Value, String> {
+    match recipe.shape {
+        PortableRecipeShape::ChatSft => Ok(json!({
+            "kind": recipe.task_kind,
+            "message_format": recipe.dataset_format,
+            "evaluator": recipe.evaluator
+        })),
+        PortableRecipeShape::TextClassification => {
+            if plan.labels.len() < 2 {
+                return Err("The classification recipe needs at least two labels.".into());
+            }
+            Ok(json!({
+                "kind": recipe.task_kind,
+                "input_field": "input",
+                "target_field": "target",
+                "labels": plan.labels
+            }))
+        }
+    }
+}
+
 fn prepare_gsm8k_plan(
     source_path: &str,
     artifact_root: &str,
@@ -1094,22 +1196,16 @@ fn compile_backend_compatibility(plan_path: &str) -> Result<Value, String> {
         .evaluator
         .clone()
         .ok_or_else(|| "The remote training plan has no held-out evaluator.".to_string())?;
-    let (use_case, dataset_format) = match plan.recipe_id.as_str() {
-        "text_classification_exact_label_v1" => (
-            "classification",
-            "classification_sft_with_exact_label_holdout",
-        ),
-        "gsm8k_chat_sft_v1" => ("grade_school_math_reasoning", "openai_chat_messages"),
-        _ => return Err("The remote training plan has no portable backend recipe.".into()),
-    };
-    let mlx_compatible = plan.recipe_id == "gsm8k_chat_sft_v1";
+    let recipe = portable_recipe(&plan.recipe_id)
+        .ok_or_else(|| "The remote training plan has no portable backend recipe.".to_string())?;
+    let mlx_compatible = recipe.mlx_local;
     let backends = vec![
         json!({
             "id": "mlx-local",
             "compatible": mlx_compatible,
             "execution_ready": mlx_compatible && cfg!(all(target_os = "macos", target_arch = "aarch64")),
             "recipe": "sft_lora",
-            "dataset_format": dataset_format,
+            "dataset_format": recipe.dataset_format,
             "loss_mask": "assistant_only",
             "evaluator": evaluator,
             "checkpoint_contract": "local_lora_adapter_plus_evaluator_receipt",
@@ -1120,7 +1216,7 @@ fn compile_backend_compatibility(plan_path: &str) -> Result<Value, String> {
             "compatible": true,
             "execution_ready": false,
             "recipe": "managed_supervised_fine_tuning",
-            "dataset_format": dataset_format,
+            "dataset_format": recipe.dataset_format,
             "loss_mask": "assistant_only",
             "evaluator": evaluator,
             "checkpoint_contract": "lora_model_plus_ephemeral_evaluation_deployment",
@@ -1149,7 +1245,7 @@ fn compile_backend_compatibility(plan_path: &str) -> Result<Value, String> {
         "split_hash": plan.split_hash,
         "objective": "sft",
         "modality": "text",
-        "use_case": use_case,
+        "use_case": recipe.use_case,
         "evaluator": evaluator,
         "local_only": true,
         "provider_called": false,
@@ -1343,7 +1439,9 @@ fn run_local_sft(
         .canonicalize()
         .map_err(|_| "The portable training plan is unavailable.".to_string())?;
     let plan = read_verified_plan(canonical_plan.to_string_lossy().as_ref())?;
-    if plan.recipe_id != "gsm8k_chat_sft_v1" {
+    let recipe = portable_recipe(&plan.recipe_id)
+        .ok_or_else(|| "The portable plan names an unregistered recipe.".to_string())?;
+    if !recipe.mlx_local {
         return Err("The local MLX backend does not support this recipe yet.".into());
     }
     let mut child = crate::bin::command("understudy")
@@ -1681,20 +1779,9 @@ pub async fn start_remote_classification_training(
             );
         }
         let request_id = random_uuid()?;
-        let task = match plan.recipe_id.as_str() {
-            "gsm8k_chat_sft_v1" => json!({
-                "kind": "chat_sft",
-                "message_format": "openai_chat_messages",
-                "evaluator": "gsm8k_final_answer"
-            }),
-            "text_classification_exact_label_v1" => json!({
-                "kind": "text_classification",
-                "input_field": "input",
-                "target_field": "target",
-                "labels": plan.labels
-            }),
-            _ => return Err("The training plan names an unsupported recipe.".into()),
-        };
+        let recipe = portable_recipe(&plan.recipe_id)
+            .ok_or_else(|| "The training plan names an unsupported recipe.".to_string())?;
+        let task = managed_task_payload(&plan, recipe)?;
         let run = api_json(
             Method::POST,
             api_url("runs")?,
@@ -1779,20 +1866,21 @@ fn read_verified_plan(path: &str) -> Result<RemoteTrainingPlan, String> {
             .map_err(|_| "The remote training plan could not be read.".to_string())?,
     )
     .map_err(|_| "The remote training plan is malformed.".to_string())?;
+    let recipe = portable_recipe(&plan.recipe_id)
+        .ok_or_else(|| "The remote training plan names an unregistered recipe.".to_string())?;
+    let recipe_shape_valid = match recipe.shape {
+        PortableRecipeShape::TextClassification => plan.labels.len() >= 2,
+        PortableRecipeShape::ChatSft => plan.labels.is_empty(),
+    };
     if plan.schema_version != PLAN_SCHEMA
         || PathBuf::from(&plan.plan_path)
             .canonicalize()
             .ok()
             .as_deref()
             != Some(canonical.as_path())
-        || !((plan.recipe_id == "text_classification_exact_label_v1"
-            && plan.task_kind == "text_classification"
-            && plan.evaluator.as_deref() == Some("exact_label")
-            && plan.labels.len() >= 2)
-            || (plan.recipe_id == "gsm8k_chat_sft_v1"
-                && plan.task_kind == "chat_sft"
-                && plan.evaluator.as_deref() == Some("gsm8k_final_answer")
-                && plan.labels.is_empty()))
+        || plan.task_kind != recipe.task_kind
+        || plan.evaluator.as_deref() != Some(recipe.evaluator)
+        || !recipe_shape_valid
         || plan.artifacts.len() != 3
         || plan.maximum_spend_usd <= 0.0
         || plan.maximum_spend_usd > 500.0
@@ -2352,6 +2440,10 @@ mod tests {
             Some("grade_school_math_reasoning")
         );
         assert_eq!(
+            inspection.get("recipe_id").and_then(Value::as_str),
+            Some("gsm8k_chat_sft_v1")
+        );
+        assert_eq!(
             inspection.get("task_kind").and_then(Value::as_str),
             Some("chat_sft")
         );
@@ -2547,6 +2639,7 @@ mod tests {
             inspection.get("detected_use_case").and_then(Value::as_str),
             Some("preference_optimization")
         );
+        assert!(inspection.get("recipe_id").is_some_and(Value::is_null));
         assert_eq!(
             inspection.get("method").and_then(Value::as_str),
             Some("dpo")
