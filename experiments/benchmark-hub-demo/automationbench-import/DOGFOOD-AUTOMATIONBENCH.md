@@ -80,17 +80,21 @@ budget. Pricing assumptions in `NOTES.md`. Rows projected with
 | --- | --- | --- | --- | --- |
 | claude-sonnet-4-6 | 1/12 (8.3%) | 0.409 | $13.54 (list price) | 92 s |
 | gemma-4-31b-it | 1/12 (8.3%) | 0.429 | $0.54 (demo pricing) | 128 s |
+| glm-5.2 | 1/12 (8.3%) | 0.475 | $3.77 (demo pricing) | 138 s |
 
 Per-domain mean partial_credit (2 tasks each; strict passes in bold):
 
-| Domain | sonnet | gemma |
-| --- | --- | --- |
-| sales | 0.40 | 0.40 |
-| marketing | **0.86** (1 pass) | 0.52 |
-| operations | 0.47 | 0.57 |
-| support | 0.32 | **0.79** (1 pass) |
-| finance | 0.40 | 0.30 |
-| hr | 0.00 | 0.00 |
+| Domain | sonnet | gemma | glm-5.2 |
+| --- | --- | --- | --- |
+| sales | 0.40 | 0.40 | 0.40 |
+| marketing | **0.86** (1 pass) | 0.52 | 0.62 |
+| operations | 0.47 | 0.57 | 0.57 |
+| support | 0.32 | **0.79** (1 pass) | **0.76** (1 pass) |
+| finance | 0.40 | 0.30 | 0.50 |
+| hr | 0.00 | 0.00 | 0.00 |
+
+The glm-5.2 arm was added 2026-07-19 (plan asked for glm-5.1; the gateway now
+serves glm-5.2 — see NOTES.md for its demo pricing assumption).
 
 Context: upstream's own 600-task leaderboard has frontier models at 24–30%
 strict, so single-digit strict pass on a hard 12-task slice with one rollout

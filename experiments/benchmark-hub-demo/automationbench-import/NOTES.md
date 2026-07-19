@@ -8,6 +8,12 @@
   computed by the harness from explicit `--input-cost 0.0000001
   --output-cost 0.0000004` overrides — i.e. a **$0.10 in / $0.40 out per Mtok
   demo assumption**, not a real invoice figure.
+- **glm-5.2 cost**: the plan called for glm-5.1, but the gateway's `/v1/models`
+  now lists **glm-5.2** (no 5.1), so that id was run. The gateway publishes no
+  pricing endpoint; cost was computed by the harness from explicit
+  `--input-cost 0.0000006 --output-cost 0.0000022` overrides — i.e. a
+  **$0.60 in / $2.20 out per Mtok demo assumption** (GLM-4.x-era open list
+  pricing ballpark), not a real invoice figure.
 - **latency_ms** on rows is the harness's accumulated per-task model wall time
   (`model_time_s * 1000`), i.e. time spent inside model calls across the whole
   agentic rollout — not a single-call latency.

@@ -21,9 +21,9 @@ const repoRoot = path.resolve(here, "..", "..", "..");
 const { normalizeTraceRecord, extractBranches, projectBranchesToEvalRows } =
   await import(path.join(repoRoot, "dist", "benchmark.js"));
 
-const [exportPath, model, runId] = process.argv.slice(2);
+const [exportPath, model, runId, route = "understudy-gateway"] = process.argv.slice(2);
 if (!exportPath || !model || !runId) {
-  console.error("usage: node project-rows.mjs <export.json> <model> <run_id>");
+  console.error("usage: node project-rows.mjs <export.json> <model> <run_id> [route]");
   process.exit(1);
 }
 
@@ -51,7 +51,7 @@ const branches = extractBranches(nodes);
 const rows = projectBranchesToEvalRows(manifest, branches, {
   runId,
   model,
-  route: "understudy-gateway",
+  route,
 }).map((row) => {
   const t = perTask.get(row.task_id);
   if (!t) return row;
