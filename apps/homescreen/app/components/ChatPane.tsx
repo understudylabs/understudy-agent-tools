@@ -82,6 +82,7 @@ import { ModelCardDrawer } from "./ModelCardDrawer";
 import { CsvProfile } from "./CsvProfile";
 import { CsvTrainingPlan } from "./CsvTrainingPlan";
 import { LocalTrainingPanel } from "./LocalTrainingPanel";
+import { RemoteTrainingPanel, type RemotePlan } from "./RemoteTrainingPanel";
 import { LocalClassifierLibraryDialog } from "./LocalClassifierLibraryDialog";
 import { TrainingHalo, type TrainingHaloVisual } from "./TrainingHalo";
 import { ChatScrollControls } from "./ChatScrollControls";
@@ -206,22 +207,6 @@ type TrainingRecipeInspection = {
   };
   reasons: string[];
   warnings: string[];
-};
-type RemoteRecipePlan = {
-  schema_version: "understudy.remote_training.plan.v2";
-  plan_id: string;
-  task_kind: "chat_sft";
-  evaluator: "gsm8k_final_answer";
-  provider: "fake";
-  output_model_name: string;
-  artifacts: Array<{
-    artifact_role: "train" | "validation" | "heldout";
-    row_count: number;
-    size_bytes: number;
-    sha256: string;
-  }>;
-  maximum_spend_usd: number;
-  plan_path: string;
 };
 type ClassificationDataset = {
   schema_version: "understudy.capture_import.classification_dataset.v2";
@@ -469,7 +454,7 @@ export function ChatPane({
   const [droppedWorkload, setDroppedWorkload] = useState<DroppedWorkload | null>(null);
   const [csvInspection, setCsvInspection] = useState<CsvInspection | null>(null);
   const [trainingRecipe, setTrainingRecipe] = useState<TrainingRecipeInspection | null>(null);
-  const [remoteRecipePlan, setRemoteRecipePlan] = useState<RemoteRecipePlan | null>(null);
+  const [remoteRecipePlan, setRemoteRecipePlan] = useState<RemotePlan | null>(null);
   const [mappingInputColumns, setMappingInputColumns] = useState<string[]>([]);
   const [mappingLabelColumn, setMappingLabelColumn] = useState("");
   const [mappingGroupColumn, setMappingGroupColumn] = useState("");
@@ -591,7 +576,7 @@ export function ChatPane({
     setRemoteRecipePlan(null);
     setErr(null);
     dispatchDrop({ type: "dataset_started" });
-    void invoke<RemoteRecipePlan>("prepare_remote_gsm8k_training", {
+    void invoke<RemotePlan>("prepare_remote_gsm8k_training", {
       sourcePath: droppedWorkload.source_path,
       artifactRoot: droppedWorkload.artifact_root,
       expectedSourceSha256: trainingRecipe.source_sha256,
@@ -1538,19 +1523,13 @@ export function ChatPane({
                     </p>
                     {trainingRecipe.ready ? (
                       remoteRecipePlan ? (
-                        <>
-                          <p>Local plan ready · no files uploaded · no provider called.</p>
-                          <div className="remote-training-artifacts">
-                            {remoteRecipePlan.artifacts.map((artifact) => (
-                              <div key={artifact.artifact_role}>
-                                <strong>{artifact.artifact_role}</strong>
-                                <span>{artifact.row_count.toLocaleString()} rows · {compactBytes(artifact.size_bytes)}</span>
-                                <code>{artifact.sha256.slice(0, 12)}</code>
-                              </div>
-                            ))}
-                          </div>
-                          <small>The next gate is the no-spend fake-provider run. Managed upload and training remain separately consented.</small>
-                        </>
+                        <RemoteTrainingPanel
+                          preparedPlan={remoteRecipePlan}
+                          modelName="GSM8K reasoning model"
+                          onBack={() => setRemoteRecipePlan(null)}
+                          onActiveChange={setLocalTrainingActive}
+                          onVisualChange={setTrainingHaloVisual}
+                        />
                       ) : (
                         <button type="button" className="btn primary" onClick={prepareDetectedRecipe}>
                           Prepare no-spend plan
@@ -1560,9 +1539,11 @@ export function ChatPane({
                       <p>{trainingRecipe.warnings[0]}</p>
                     )}
                   </div>
-                  <button type="button" className="btn ghost workload-generic-dismiss" onClick={resetDroppedWorkload}>
-                    Dismiss
-                  </button>
+                  {!localTrainingActive && (
+                    <button type="button" className="btn ghost workload-generic-dismiss" onClick={resetDroppedWorkload}>
+                      Dismiss
+                    </button>
+                  )}
                 </>
               ) : csvInspection && droppedWorkload ? (
                 <>

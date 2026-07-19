@@ -571,6 +571,40 @@ pub async fn existing_remote_classification_training(
         .map_err(|error| format!("Remote training recovery stopped unexpectedly: {error}"))?
 }
 
+#[tauri::command]
+pub async fn existing_remote_training(plan_path: String) -> Result<Option<Value>, String> {
+    tauri::async_runtime::spawn_blocking(move || find_existing_run_for_plan(&plan_path))
+        .await
+        .map_err(|error| format!("Remote training recovery stopped unexpectedly: {error}"))?
+}
+
+fn find_existing_run_for_plan(plan_path: &str) -> Result<Option<Value>, String> {
+    let plan = read_verified_plan(plan_path)?;
+    let canonical_plan = PathBuf::from(&plan.plan_path)
+        .canonicalize()
+        .map_err(|_| "The remote training plan is unavailable.".to_string())?;
+    let run_path = canonical_plan
+        .parent()
+        .ok_or_else(|| "The remote training plan has no private root.".to_string())?
+        .join("run.json");
+    if !run_path.is_file() {
+        return Ok(None);
+    }
+    let run = read_run(
+        run_path
+            .to_str()
+            .ok_or_else(|| "The saved remote run path is invalid.".to_string())?,
+    )?;
+    if PathBuf::from(&run.plan_path).canonicalize().ok().as_deref()
+        != Some(canonical_plan.as_path())
+    {
+        return Err("The saved remote run does not match this training plan.".into());
+    }
+    serde_json::to_value(run)
+        .map(Some)
+        .map_err(|_| "The saved remote run could not be returned.".to_string())
+}
+
 fn find_existing_run(manifest_path: &str) -> Result<Option<Value>, String> {
     let canonical_manifest = PathBuf::from(manifest_path.trim())
         .canonicalize()
@@ -1087,6 +1121,24 @@ fn verify_split(
         return Err("A prepared dataset split row count changed after preparation.".into());
     }
     Ok(rows)
+}
+
+#[tauri::command]
+pub async fn start_remote_training(
+    plan_path: String,
+    confirm_upload: bool,
+    confirm_spend: bool,
+    confirm_temporary_deployment: bool,
+    on_event: Channel<Value>,
+) -> Result<Value, String> {
+    start_remote_classification_training(
+        plan_path,
+        confirm_upload,
+        confirm_spend,
+        confirm_temporary_deployment,
+        on_event,
+    )
+    .await
 }
 
 #[tauri::command]
@@ -2030,6 +2082,7 @@ mod tests {
         )
         .unwrap();
         let plan: RemoteTrainingPlan = serde_json::from_value(value).unwrap();
+        let plan_path = plan.plan_path.clone();
         let run_path = PathBuf::from(&plan.plan_path)
             .parent()
             .unwrap()
@@ -2042,7 +2095,7 @@ mod tests {
         let run = RemoteTrainingRun {
             schema_version: RUN_SCHEMA.to_string(),
             run_id: "00000000-0000-4000-8000-000000000001".to_string(),
-            plan_path: plan.plan_path,
+            plan_path: plan_path.clone(),
             status_url: status_url.clone(),
             events_url: format!("{status_url}/events"),
             run_token: "x".repeat(48),
@@ -2056,6 +2109,11 @@ mod tests {
             .unwrap();
         assert_eq!(
             recovered.get("run_id").and_then(Value::as_str),
+            Some("00000000-0000-4000-8000-000000000001")
+        );
+        let recovered_by_plan = find_existing_run_for_plan(&plan_path).unwrap().unwrap();
+        assert_eq!(
+            recovered_by_plan.get("run_id").and_then(Value::as_str),
             Some("00000000-0000-4000-8000-000000000001")
         );
         fs::remove_dir_all(root).unwrap();
