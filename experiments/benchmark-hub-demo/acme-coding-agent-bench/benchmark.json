@@ -1,0 +1,91 @@
+{
+  "schema_version": "understudy.benchmark.v1",
+  "benchmark_id": "acme-coding-agent-bench",
+  "name": "Acme coding-agent benchmark",
+  "description": "Derived from 412 captured coding-agent traces; 3 induced categories.",
+  "created_at": "2026-07-19T00:00:00Z",
+  "provenance": {
+    "origin": "derived-from-traces",
+    "source_refs": [".understudy/ingest/acme-2026-07/workload-card.json"],
+    "imported_from": null
+  },
+  "taxonomy": [
+    {
+      "category_id": "multi-file-refactor",
+      "name": "Multi-file refactor",
+      "difficulty": "hard",
+      "derived_from": {
+        "tool_signature": ["read", "edit", "bash"],
+        "intent_summary": "rename/move symbols across modules with tests green",
+        "source_trace_ids": ["trace-0041", "trace-0187"]
+      }
+    },
+    {
+      "category_id": "test-repair",
+      "name": "Failing-test repair",
+      "difficulty": "medium",
+      "derived_from": {
+        "tool_signature": ["read", "bash"],
+        "intent_summary": "make a red test pass without weakening the assertion",
+        "source_trace_ids": ["trace-0022"]
+      }
+    }
+  ],
+  "tasks": [
+    {
+      "task_id": "refactor-001",
+      "category_id": "multi-file-refactor",
+      "seed": 7,
+      "genesis": "replayed",
+      "generator_ref": null,
+      "split": "holdout",
+      "gold": { "kind": "final-state", "ref": "env://acme_bench/gold/refactor-001" }
+    },
+    {
+      "task_id": "refactor-101",
+      "category_id": "multi-file-refactor",
+      "seed": 101,
+      "genesis": "synthesized",
+      "generator_ref": "env://acme_bench/generators/refactor.py",
+      "split": "train",
+      "gold": { "kind": "final-state", "ref": "env://acme_bench/gold/refactor-101" }
+    },
+    {
+      "task_id": "testfix-001",
+      "category_id": "test-repair",
+      "seed": 3,
+      "genesis": "synthesized",
+      "generator_ref": "env://acme_bench/generators/testfix.py",
+      "split": "dev",
+      "gold": null
+    }
+  ],
+  "environment": {
+    "format": "verifiers.v1",
+    "package_ref": ".understudy/benchmarks/acme-coding-agent-bench/env",
+    "package_sha256": "0000000000000000000000000000000000000000000000000000000000000000",
+    "tool_surface": ["read", "edit", "bash"],
+    "runtime": "docker",
+    "verifiers_version_pin": "==0.2.0"
+  },
+  "verifier": {
+    "kind": "final-state",
+    "strict_metric": "task_completed_correctly",
+    "dense_metric": "partial_credit",
+    "replayable": true
+  },
+  "splits": {
+    "boundary": "seed-7: train 18 / dev 6 / holdout 6",
+    "splits_sha256": "1111111111111111111111111111111111111111111111111111111111111111",
+    "contamination": "clean"
+  },
+  "linked_eval": {
+    "eval_id": "acme-capture-eval-2026-07",
+    "splits_sha256": "1111111111111111111111111111111111111111111111111111111111111111"
+  },
+  "results_contract": {
+    "row_schema": "understudy.eval_result.v1",
+    "trace_artifact": "traces.jsonl",
+    "branch_projection": "one row per root-to-leaf branch"
+  }
+}
