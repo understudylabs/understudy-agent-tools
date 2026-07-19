@@ -130,7 +130,13 @@ export function QualityCostScatter({
   const plotH = H - PAD.top - PAD.bottom;
 
   const xPos = (x: number) => plotLeft + ((Math.log10(x) - lo) / Math.max(hi - lo, 0.01)) * plotW;
-  const yPos = (y: number) => PAD.top + (1 - y) * plotH;
+  // y-domain scales to the data: low-scoring benchmarks (e.g. 8% strict) get
+  // headroom-fitted axes instead of a squashed band at the bottom of 0–100%.
+  const yDataMax = points.length ? Math.max(...points.map((p) => p.y)) : 1;
+  const yStep = [0.0125, 0.025, 0.05, 0.125, 0.25].find((s) => yDataMax * 1.15 <= s * 4) ?? 0.25;
+  const yTop = yStep * 4;
+  const yTicks = [0, 1, 2, 3, 4].map((i) => i * yStep);
+  const yPos = (y: number) => PAD.top + (1 - y / yTop) * plotH;
 
   // Step value frontier: best score at each cost, walking left → right.
   // Gutter (≈$0) arms are cheapest by definition and seed the frontier.
@@ -194,11 +200,11 @@ export function QualityCostScatter({
           </radialGradient>
         </defs>
         {/* y gridlines + labels */}
-        {[0, 0.25, 0.5, 0.75, 1].map((t) => (
+        {yTicks.map((t) => (
           <g key={t}>
             <line x1={PAD.left} x2={W - PAD.right} y1={yPos(t)} y2={yPos(t)} stroke={GRID} />
             <text x={PAD.left - 6} y={yPos(t) + 3} textAnchor="end" fill={MUTED} className="mono" fontSize="9">
-              {Math.round(t * 100)}%
+              {Number.isInteger(t * 100) ? t * 100 : (t * 100).toFixed(2).replace(/0$/, "")}%
             </text>
           </g>
         ))}
