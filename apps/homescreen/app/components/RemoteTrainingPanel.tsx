@@ -18,7 +18,7 @@ export type RemoteTrainingProvider = {
 
 export type RemoteTrainingCapabilities = {
   schema_version: "understudy-train-v1";
-  service: "train.understudylabs.com";
+  service: "understudy-train-api";
   providers: RemoteTrainingProvider[];
   limits: {
     max_active_runs_per_org: 1;
@@ -189,7 +189,9 @@ export function RemoteTrainingPanel(props: Props) {
   const capabilities = props.capabilities ?? null;
   const { modelName, onActiveChange, onVisualChange } = props;
   const providers = useMemo(
-    () => capabilities?.providers.filter((provider) => provider.enabled && provider.model_profiles.length > 0) ?? [],
+    () => capabilities?.providers.filter(
+      (provider) => provider.id === "managed" && provider.enabled && provider.model_profiles.length > 0,
+    ) ?? [],
     [capabilities],
   );
   const initialProvider = providerDefault(providers);

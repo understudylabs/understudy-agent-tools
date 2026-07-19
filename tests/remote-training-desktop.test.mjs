@@ -29,6 +29,8 @@ test("remote training uses live capabilities with explicit upload and spend cons
   assert.match(native, /understudy training run-tinker-sft/);
   assert.match(native, /tinker_python_sdk/);
   assert.match(native, /one_hour_sampler_weights/);
+  assert.match(native, /fn managed_capabilities/);
+  assert.match(native, /value\["providers"\] = json!\(\[managed\]\)/);
   assert.match(native, /gsm8k_public_rows/);
   assert.match(native, /public_gsm8k_messages/);
   assert.match(native, /understudy\.remote_training\.recipe_inspection\.v1/);
@@ -59,6 +61,7 @@ test("remote training uses live capabilities with explicit upload and spend cons
   assert.match(panel, /Where it still fails/);
   assert.match(panel, /understudy\/auto/);
   assert.match(panel, /provider\.id === "managed"/);
+  assert.match(panel, /provider\.id === "managed" && provider\.enabled/);
   assert.doesNotMatch(panel, /fireworks/i);
   assert.doesNotMatch(panel, /gemma-4/i);
   assert.match(native, /"model_profiles"/);

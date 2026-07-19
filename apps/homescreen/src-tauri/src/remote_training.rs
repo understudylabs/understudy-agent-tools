@@ -327,6 +327,27 @@ async fn api_json(method: Method, url: Url, body: Option<&Value>) -> Result<Valu
     Ok(value)
 }
 
+fn managed_capabilities(mut value: Value) -> Result<Value, String> {
+    if value.get("schema_version").and_then(Value::as_str) != Some(API_SCHEMA) {
+        return Err(
+            "The remote training service returned an unsupported capability contract.".into(),
+        );
+    }
+    let managed = value
+        .get("providers")
+        .and_then(Value::as_array)
+        .and_then(|providers| {
+            providers
+                .iter()
+                .find(|provider| provider.get("id").and_then(Value::as_str) == Some("managed"))
+        })
+        .filter(|provider| provider.get("enabled").and_then(Value::as_bool) == Some(true))
+        .cloned()
+        .ok_or_else(|| "The real managed training provider is unavailable.".to_string())?;
+    value["providers"] = json!([managed]);
+    Ok(value)
+}
+
 #[tauri::command]
 pub async fn remote_training_capabilities() -> Result<Value, String> {
     if crate::creds::resolve().is_none() {
@@ -336,7 +357,8 @@ pub async fn remote_training_capabilities() -> Result<Value, String> {
             "reason": "Sign in to Understudy to use private remote training."
         }));
     }
-    let capabilities = api_json(Method::GET, api_url("capabilities")?, None).await?;
+    let capabilities =
+        managed_capabilities(api_json(Method::GET, api_url("capabilities")?, None).await?)?;
     Ok(json!({
         "schema_version": "understudy.remote_training.capabilities.v1",
         "enabled": true,
@@ -2402,6 +2424,35 @@ mod tests {
         )
         .unwrap();
         (manifest_path, root)
+    }
+
+    #[test]
+    fn capabilities_never_expose_non_managed_providers() {
+        let capabilities = managed_capabilities(json!({
+            "schema_version": API_SCHEMA,
+            "service": "understudy-train-api",
+            "providers": [
+                { "id": "legacy-test-provider", "enabled": true, "model_profiles": [{ "id": "understudy/auto" }] },
+                { "id": "managed", "enabled": true, "model_profiles": [{ "id": "understudy/auto" }] }
+            ],
+            "limits": { "max_budget_usd": 1, "max_upload_bytes": 1 },
+            "privacy": { "private_uploads": true, "raw_rows_in_telemetry": false }
+        }))
+        .unwrap();
+        let providers = capabilities
+            .get("providers")
+            .and_then(Value::as_array)
+            .unwrap();
+        assert_eq!(providers.len(), 1);
+        assert_eq!(
+            providers[0].get("id").and_then(Value::as_str),
+            Some("managed")
+        );
+        assert!(managed_capabilities(json!({
+            "schema_version": API_SCHEMA,
+            "providers": [{ "id": "legacy-test-provider", "enabled": true }]
+        }))
+        .is_err());
     }
 
     #[test]
