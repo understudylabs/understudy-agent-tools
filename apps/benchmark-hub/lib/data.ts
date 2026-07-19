@@ -1,7 +1,7 @@
 import "server-only";
 import fs from "node:fs";
 import path from "node:path";
-import type { BenchmarkFlag, BenchmarkManifest, EvalRow, EvidenceWarning, HubEntry } from "./types";
+import type { BenchmarkFlag, BenchmarkManifest, BenchmarkVersion, EvalRow, EvidenceWarning, HubEntry } from "./types";
 
 /**
  * Data-dir contract:
@@ -108,6 +108,11 @@ function loadEntryFromDir(dir: string, source: HubEntry["source"], slug: string,
   const flags = readJsonl<BenchmarkFlag>(path.join(dir, "flags.jsonl")).filter(
     (f) => f?.schema_version === "understudy.benchmark_flag.v1",
   );
+  // versions.jsonl (optional, newest last): split-freeze / contamination
+  // history. Viewer-side convention — candidate for benchmark.v1.1.
+  const versions = readJsonl<BenchmarkVersion>(path.join(dir, "versions.jsonl")).filter(
+    (v) => typeof v?.created_at === "string",
+  );
 
   return {
     slug,
@@ -120,6 +125,7 @@ function loadEntryFromDir(dir: string, source: HubEntry["source"], slug: string,
     traceFiles,
     flags,
     warnings: computeWarnings(manifest),
+    versions,
   };
 }
 
@@ -142,6 +148,7 @@ function loadFixtureEntry(file: string): HubEntry | null {
     traceFiles: [],
     flags: [],
     warnings: computeWarnings(manifest),
+    versions: [],
   };
 }
 

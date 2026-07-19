@@ -103,6 +103,17 @@ export type BenchmarkFlag = {
   status: "open" | "resolved";
 };
 
+/**
+ * One line of an optional versions.jsonl next to benchmark.json (newest last).
+ * Viewer-side convention for now — candidate for benchmark.v1.1.
+ */
+export type BenchmarkVersion = {
+  created_at: string;
+  splits_sha256: string | null;
+  contamination: "clean" | "contaminated" | "unknown" | null;
+  note?: string | null;
+};
+
 export type EvidenceWarning = {
   kind: "contamination" | "no-linked-eval" | "no-license" | "no-splits";
   label: string;
@@ -123,4 +134,6 @@ export type HubEntry = {
   traceFiles: string[];
   flags: BenchmarkFlag[];
   warnings: EvidenceWarning[];
+  /** Split-freeze history from versions.jsonl (oldest first); [] if absent. */
+  versions: BenchmarkVersion[];
 };
