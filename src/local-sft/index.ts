@@ -7,68 +7,26 @@ import {
   mkdirSync,
   readFileSync,
   readdirSync,
-  realpathSync,
   statSync,
   writeFileSync,
 } from "node:fs";
 import { homedir } from "node:os";
 import { dirname, join, resolve } from "node:path";
-import { z } from "zod";
 
 import { localSftEvaluationRuntimeSource } from "./runtime-source.js";
+import {
+  type VerifiedPortableTrainingPlan,
+  verifyPortableTrainingPlan,
+} from "../training-plan/index.js";
 
 export const DEFAULT_LOCAL_SFT_MODEL = "mlx-community/Qwen3-0.6B-4bit";
 export const LOCAL_SFT_RUNTIME_PACKAGES = ["mlx-lm==0.31.3"] as const;
 export const LOCAL_SFT_MAX_RUNTIME_SECONDS = 15 * 60;
 
-const PLAN_SCHEMA = "understudy.training.plan.v1";
 const RUN_SCHEMA = "understudy.local_sft.run.v1";
 const EVALUATION_SCHEMA = "understudy.local_sft.evaluation.v1";
-const MAX_ARTIFACT_BYTES = 150 * 1024 * 1024;
 const MAX_STDIO_BYTES = 1024 * 1024;
 const RUN_ID = /^[A-Za-z0-9][A-Za-z0-9._-]{0,127}$/;
-
-const ArtifactSchema = z.object({
-  artifact_role: z.enum(["train", "validation", "heldout"]),
-  path: z.string().min(1),
-  file_name: z.string().min(1).max(160),
-  row_count: z.number().int().positive().max(100_000),
-  sha256: z.string().regex(/^[a-f0-9]{64}$/),
-  size_bytes: z.number().int().positive().max(MAX_ARTIFACT_BYTES),
-  content_type: z.string().min(1),
-});
-
-const PortablePlanSchema = z.object({
-  schema_version: z.literal(PLAN_SCHEMA),
-  plan_id: z.string().uuid(),
-  created_at: z.string().min(1),
-  source_manifest_path: z.string().min(1),
-  source_dataset_id: z.string().min(1),
-  workload_name: z.string().min(1),
-  recipe_id: z.string().min(1),
-  task_kind: z.string().min(1),
-  evaluator: z.string().min(1),
-  model_profile: z.string().min(1),
-  output_model_name: z.string().min(1),
-  frontier_model: z.string().min(1),
-  labels: z.array(z.string()),
-  group_field: z.string().min(1),
-  split_hash: z.string().regex(/^[a-f0-9]{64}$/),
-  artifacts: z.array(ArtifactSchema).length(3),
-  epochs: z.number().int().positive(),
-  lora_rank: z.number().int().positive(),
-  max_context_length: z.number().int().positive(),
-  maximum_spend_usd: z.number().positive(),
-  maximum_runtime_seconds: z.number().int().positive(),
-  maximum_eval_examples: z.number().int().positive(),
-  minimum_accuracy: z.number().min(0).max(1),
-  minimum_improvement_over_base: z.number().min(0).max(1),
-  preparation_duration_ms: z.number().nonnegative().optional(),
-  plan_path: z.string().min(1),
-});
-
-type PortablePlan = z.infer<typeof PortablePlanSchema>;
-type PortableArtifact = z.infer<typeof ArtifactSchema>;
 
 type RecipeDefinition = {
   taskKind: "chat_sft";
@@ -227,12 +185,7 @@ export type LocalSftTrainingJob = {
   cancel: () => void;
 };
 
-type VerifiedPlan = {
-  plan: PortablePlan;
-  path: string;
-  root: string;
-  artifacts: Record<"train" | "validation" | "heldout", PortableArtifact & { path: string }>;
-};
+type VerifiedPlan = VerifiedPortableTrainingPlan;
 
 type RuntimePack = {
   runtimePath: string;
@@ -258,64 +211,6 @@ function writePrivateExclusive(path: string, value: string | Buffer): void {
 function appendPrivateJsonl(path: string, value: unknown): void {
   writeFileSync(path, `${JSON.stringify(value)}\n`, { flag: "a", mode: 0o600 });
   if (process.platform !== "win32") chmodSync(path, 0o600);
-}
-
-function artifactRows(artifact: PortableArtifact & { path: string }, recipe: RecipeDefinition): void {
-  const lines = readFileSync(artifact.path, "utf8").split("\n").filter(Boolean);
-  if (lines.length !== artifact.row_count) {
-    throw new Error(`${artifact.artifact_role} row count changed after plan approval.`);
-  }
-  for (const [index, line] of lines.entries()) {
-    const row = JSON.parse(line) as unknown;
-    if (!row || typeof row !== "object" || Array.isArray(row)) {
-      throw new Error(`${artifact.artifact_role} row ${index + 1} is not an object.`);
-    }
-    const messages = (row as { messages?: unknown }).messages;
-    if (recipe.datasetFormat !== "openai_chat_messages" || !Array.isArray(messages) || messages.length < 2) {
-      throw new Error(`${artifact.artifact_role} row ${index + 1} does not match the recipe format.`);
-    }
-    const answer = messages.at(-1);
-    if (!answer || typeof answer !== "object" || Array.isArray(answer) ||
-        (answer as { role?: unknown }).role !== "assistant" ||
-        typeof (answer as { content?: unknown }).content !== "string") {
-      throw new Error(`${artifact.artifact_role} row ${index + 1} has no assistant target.`);
-    }
-  }
-}
-
-function verifyPlan(pathInput: string): VerifiedPlan {
-  const path = realpathSync(resolve(pathInput));
-  const plan = PortablePlanSchema.parse(JSON.parse(readFileSync(path, "utf8")));
-  if (realpathSync(resolve(plan.plan_path)) !== path) {
-    throw new Error("Training plan path does not match the selected immutable plan.");
-  }
-  const recipe = localSftRecipeRegistry[plan.recipe_id];
-  if (!recipe || plan.task_kind !== recipe.taskKind || plan.evaluator !== recipe.evaluator) {
-    throw new Error(`The local MLX backend does not support recipe ${plan.recipe_id}.`);
-  }
-  const root = dirname(path);
-  const artifacts = {} as VerifiedPlan["artifacts"];
-  for (const artifact of plan.artifacts) {
-    if (artifacts[artifact.artifact_role]) throw new Error("Training plan contains duplicate artifact roles.");
-    const artifactPath = realpathSync(resolve(artifact.path));
-    if (dirname(artifactPath) !== root || artifact.file_name !== `${artifact.artifact_role}.jsonl`) {
-      throw new Error(`${artifact.artifact_role} artifact escaped the immutable plan root.`);
-    }
-    const bytes = readFileSync(artifactPath);
-    if (bytes.length !== artifact.size_bytes || sha256(bytes) !== artifact.sha256) {
-      throw new Error(`${artifact.artifact_role} artifact changed after plan approval.`);
-    }
-    const verified = { ...artifact, path: artifactPath };
-    artifactRows(verified, recipe);
-    artifacts[artifact.artifact_role] = verified;
-  }
-  for (const role of ["train", "validation", "heldout"] as const) {
-    if (!artifacts[role]) throw new Error(`Training plan omitted the ${role} artifact.`);
-  }
-  const splitHash = sha256([artifacts.train, artifacts.validation, artifacts.heldout]
-    .map((artifact) => artifact.sha256).join("\0"));
-  if (splitHash !== plan.split_hash) throw new Error("Training split hash changed after plan approval.");
-  return { plan, path, root, artifacts };
 }
 
 function prepareRuntimePack(rootInput: string, packages: readonly string[]): RuntimePack {
@@ -483,8 +378,11 @@ export function startLocalSftTraining(options: StartLocalSftTrainingOptions): Lo
   if (!options._runnerOverrideForTests && (process.platform !== "darwin" || process.arch !== "arm64")) {
     throw new Error("The mlx-local backend requires Apple Silicon.");
   }
-  const verified = verifyPlan(options.planPath);
+  const verified = verifyPortableTrainingPlan(options.planPath);
   const recipe = localSftRecipeRegistry[verified.plan.recipe_id];
+  if (!recipe || verified.plan.task_kind !== recipe.taskKind || verified.plan.evaluator !== recipe.evaluator) {
+    throw new Error(`The local MLX backend does not support recipe ${verified.plan.recipe_id}.`);
+  }
   const modelId = options.modelId ?? DEFAULT_LOCAL_SFT_MODEL;
   const maximumSeconds = Math.min(
     LOCAL_SFT_MAX_RUNTIME_SECONDS,

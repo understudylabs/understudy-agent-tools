@@ -139,7 +139,7 @@ describe("portable local SFT backend", () => {
       planPath: unsupported.planPath,
       runId: "unsupported",
       _runnerOverrideForTests: { command: process.execPath, args: [deterministicRunner] },
-    }), /does not support recipe/);
+    }), /unsupported recipe|does not support recipe/);
 
     const tampered = portablePlan();
     writeFileSync(tampered.artifacts[0].path, "{}\n");

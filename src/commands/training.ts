@@ -5,6 +5,10 @@ import {
   LOCAL_SFT_MAX_RUNTIME_SECONDS,
   startLocalSftTraining,
 } from "../local-sft/index.js";
+import {
+  compileTrainingBackend,
+  TrainingBackendIdSchema,
+} from "../training-backends/index.js";
 import { isJsonMode, runAction } from "../internal/output.js";
 
 type LocalSftOptions = {
@@ -17,9 +21,42 @@ type LocalSftOptions = {
   jsonl?: boolean;
 };
 
+type CompileBackendOptions = {
+  plan: string;
+  backend: string;
+  output?: string;
+};
+
 export function registerTrainingCommand(program: Command): void {
   const training = program.command("training")
     .description("Execute immutable evaluator-backed training plans.");
+
+  training.command("compile-backend")
+    .description("Compile one portable plan for a real backend without uploading or spending.")
+    .requiredOption("--plan <path>", "Portable Understudy training plan.")
+    .requiredOption("--backend <id>", "Backend: mlx-local, fireworks, or tinker.")
+    .option("--output <path>", "Private compile receipt inside the plan root.")
+    .action(async function (this: Command, options: CompileBackendOptions) {
+      await runAction(this, async () => {
+        const receipt = compileTrainingBackend({
+          planPath: options.plan,
+          backend: TrainingBackendIdSchema.parse(options.backend),
+          outputPath: options.output,
+        });
+        if (isJsonMode(this)) {
+          process.stdout.write(`${JSON.stringify(receipt, null, 2)}\n`);
+          return;
+        }
+        const status = receipt.execution_ready
+          ? "ready"
+          : receipt.adapter_implemented
+            ? "implemented; live preflight required"
+            : "not implemented";
+        process.stdout.write(`${receipt.backend}: ${status}\n`);
+        process.stdout.write("provider calls: 0 · uploads: 0 · spend: $0\n");
+        process.stdout.write(`receipt: ${receipt.receipt_path}\n`);
+      });
+    });
 
   training.command("run-local-sft")
     .description("Run a supported chat SFT recipe locally with MLX and zero provider spend.")
