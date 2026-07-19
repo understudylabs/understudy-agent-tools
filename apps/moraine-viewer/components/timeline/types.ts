@@ -9,6 +9,10 @@ export type TimelineSession = {
   turns: number;
   start: number; // unix seconds
   end: number; // unix seconds
+  // Stage-2 scan (sqlite) — present once the scan has reached this session
+  label?: string;
+  cluster?: string;
+  clusterId?: number;
 };
 
 export type TimelinePayload = {
@@ -28,7 +32,33 @@ export type SessionDetail = {
   origin_cwd: string;
   start: number;
   end: number;
+  // Stage-2 scan (sqlite)
+  label?: string;
+  scan_summary?: string;
+  cluster?: string;
+  clusterId?: number;
 };
+
+export type ColorMode = "harness" | "task";
+
+// cluster palette — cycled by clusterId in task color mode
+export const CLUSTER_PALETTE = [
+  "#d97757", // --model-clay
+  "#9edbd3", // --model-mint
+  "#f2b34c", // --model-amber
+  "#a78bfa", // --model-violet
+  "#67e8f9", // --model-cyan
+  "#6ee7a0", // --state-promoted
+  "#f2f2f0",
+  "#d7623e", // --stamp
+];
+// unscanned sessions in task mode: neutral dim ink
+export const UNSCANNED_COLOR = "#4b4d52";
+
+export function clusterColor(clusterId: number | undefined): string {
+  if (clusterId == null) return UNSCANNED_COLOR;
+  return CLUSTER_PALETTE[((clusterId % CLUSTER_PALETTE.length) + CLUSTER_PALETTE.length) % CLUSTER_PALETTE.length];
+}
 
 export type SearchResult = { id: string; field: string; snippet: string };
 

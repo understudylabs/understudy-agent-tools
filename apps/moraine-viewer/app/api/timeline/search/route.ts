@@ -1,6 +1,7 @@
 import type { NextRequest } from "next/server";
 import { chQuery } from "@/lib/clickhouse";
 import type { SearchResult } from "@/components/timeline/types";
+import { searchScan } from "../scan-db";
 
 // GET /api/timeline/search?q=… → { q, count, ids, results }
 // Case-insensitive server-side match over mcp_open_sessions FINAL
@@ -63,11 +64,29 @@ export async function GET(request: NextRequest) {
          OR session_slug ILIKE ${pat})`,
   );
 
+  // Stage-2 scan matches (sqlite label/summary), unioned with ClickHouse hits
+  const scanHits = searchScan(q);
+  const chIds = new Set(rows.map((r) => r.session_id));
+
   const ids = rows.map((r) => r.session_id);
   const results: SearchResult[] = rows.slice(0, 40).map((r) => ({
     id: r.session_id,
     ...snippetFor(r, q),
   }));
+
+  const lower = q.toLowerCase();
+  for (const hit of scanHits) {
+    if (chIds.has(hit.session_id)) continue;
+    ids.push(hit.session_id);
+    if (results.length >= 40) continue;
+    const labelHit = (hit.label ?? "").toLowerCase().includes(lower);
+    const src = labelHit ? hit.label ?? "" : hit.summary ?? "";
+    results.push({
+      id: hit.session_id,
+      field: labelHit ? "label" : "scan",
+      snippet: src.replace(/\s+/g, " ").trim().slice(0, SNIPPET_LEN),
+    });
+  }
 
   return Response.json({ q, count: ids.length, ids, results });
 }

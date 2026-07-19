@@ -8,8 +8,10 @@ import {
   FALLBACK_COLOR,
   HARNESS_COLORS,
   LANE_ORDER,
+  clusterColor,
   harnessColor,
   hashJitter,
+  type ColorMode,
   type SearchPayload,
   type SearchResult,
   type SessionDetail,
@@ -23,6 +25,9 @@ const MIN_PX_PER_DAY = 1.5;
 const MIN_LANE_FRACTION = 0.05; // lanes under 5% of all sessions start collapsed
 const MAX_PX_PER_DAY = 900;
 const AXIS_H = 36; // px reserved for the date axis
+const STRIP_H = 28; // px commit strip above the axis
+const COMMIT_COLOR = "110, 231, 160"; // --state-promoted #6ee7a0 rgb
+const COMMIT_STEPS = [0.18, 0.35, 0.6, 0.9]; // heatmap opacities by quantile
 
 function fmtDate(unix: number): string {
   return new Date(unix * 1000).toISOString().slice(0, 10);
@@ -117,6 +122,10 @@ function Chip({
 
 type HoverInfo = { point: TimelinePoint; clientX: number; clientY: number };
 
+type CommitDay = { d: string; c: number };
+type CommitsPayload = { days: CommitDay[]; total: number; mapped: number };
+type DayCommit = { hash7: string; repo: string; subject: string; ts: number; sessions: string[] };
+
 export default function TimelineClient() {
   const wrapRef = useRef<HTMLDivElement>(null);
   const [data, setData] = useState<TimelinePayload | null>(null);
@@ -127,10 +136,16 @@ export default function TimelineClient() {
   const [selected, setSelected] = useState<TimelineSession | null>(null);
   const [detail, setDetail] = useState<SessionDetail | null>(null);
   const [hiddenHarness, setHiddenHarness] = useState<Set<string>>(new Set());
+  const [colorMode, setColorMode] = useState<ColorMode>("harness");
+  const [hiddenClusters, setHiddenClusters] = useState<Set<number>>(new Set());
 
   const [query, setQuery] = useState("");
   const [search, setSearch] = useState<SearchPayload | null>(null);
   const [searching, setSearching] = useState(false);
+
+  const [commitDays, setCommitDays] = useState<CommitDay[]>([]);
+  const [commitHover, setCommitHover] = useState<{ d: string; c: number; clientX: number; clientY: number } | null>(null);
+  const [commitPopover, setCommitPopover] = useState<{ d: string; x: number; commits: DayCommit[] | null } | null>(null);
 
   const dragRef = useRef<{ x: number; offset: number; moved: boolean } | null>(null);
   const cancelAnimRef = useRef<() => void>(() => {});
@@ -142,6 +157,14 @@ export default function TimelineClient() {
       .then((r) => (r.ok ? r.json() : Promise.reject(new Error(`api/timeline ${r.status}`))))
       .then((d: TimelinePayload) => setData(d))
       .catch((e) => setError(String(e)));
+  }, []);
+
+  // commit layer (data/commits.sqlite via API; empty payload when absent)
+  useEffect(() => {
+    fetch("/api/timeline/commits")
+      .then((r) => (r.ok ? r.json() : Promise.reject(new Error(`${r.status}`))))
+      .then((d: CommitsPayload) => setCommitDays(d.days ?? []))
+      .catch(() => {});
   }, []);
 
   // harnesses: canonical order first, then any strays from the data
@@ -156,6 +179,18 @@ export default function TimelineClient() {
     const counts = new Map<string, number>();
     for (const s of data?.sessions ?? []) counts.set(s.harness, (counts.get(s.harness) ?? 0) + 1);
     return counts;
+  }, [data]);
+
+  // clusters present in the data (task color mode chips), by descending count
+  const clusters = useMemo(() => {
+    const map = new Map<number, { id: number; name: string; count: number }>();
+    for (const s of data?.sessions ?? []) {
+      if (s.clusterId == null) continue;
+      const e = map.get(s.clusterId) ?? { id: s.clusterId, name: s.cluster ?? `cluster ${s.clusterId}`, count: 0 };
+      e.count++;
+      map.set(s.clusterId, e);
+    }
+    return [...map.values()].sort((a, b) => b.count - a.count);
   }, [data]);
 
   // sparse lanes start hidden so the field isn't mostly empty rows; the chips
@@ -284,7 +319,7 @@ export default function TimelineClient() {
   // lane pixel layout (shared between shader uniforms, labels, and picking)
   const laneLayout = useMemo<LaneLayout>(() => {
     const top = 12;
-    const usable = Math.max(1, size.height - AXIS_H - top - 8);
+    const usable = Math.max(1, size.height - AXIS_H - STRIP_H - top - 8);
     const gap = usable / Math.max(1, lanesList.length);
     return { top, gap, jitterAmp: gap * 0.3 };
   }, [size.height, lanesList.length]);
@@ -295,6 +330,14 @@ export default function TimelineClient() {
     [laneLayout],
   );
   const dayX = useCallback((day: number) => view.offsetPx + day * view.pxPerDay, [view]);
+
+  // shared visibility: harness hiding always, cluster hiding in task mode
+  const isVisible = useCallback(
+    (p: TimelinePoint) =>
+      !hiddenHarness.has(p.s.harness) &&
+      !(colorMode === "task" && p.s.clusterId != null && hiddenClusters.has(p.s.clusterId)),
+    [hiddenHarness, colorMode, hiddenClusters],
+  );
 
   // nearest visible point in screen space (Points raycast thresholds are awkward)
   const nearest = useCallback(
@@ -307,7 +350,7 @@ export default function TimelineClient() {
       let best: TimelinePoint | null = null;
       let bestDist = 11;
       for (const p of points) {
-        if (hiddenHarness.has(p.s.harness)) continue;
+        if (!isVisible(p)) continue;
         const d = Math.hypot(dayX(p.day) - px, laneY(p.lane, p.jitter) - py);
         if (d < bestDist) {
           bestDist = d;
@@ -316,7 +359,7 @@ export default function TimelineClient() {
       }
       return best;
     },
-    [points, hiddenHarness, dayX, laneY],
+    [points, isVisible, dayX, laneY],
   );
 
   const onPointerDown = useCallback((e: React.PointerEvent) => {
@@ -436,14 +479,70 @@ export default function TimelineClient() {
     });
   }, []);
 
+  const toggleCluster = useCallback((id: number) => {
+    setHiddenClusters((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id);
+      else next.add(id);
+      return next;
+    });
+  }, []);
+
   const ticks = useMemo(
     () => (points.length ? computeTicks(view, day0, size.width) : []),
     [points.length, view, day0, size.width],
   );
 
-  const visibleCount = useMemo(
-    () => points.filter((p) => !hiddenHarness.has(p.s.harness)).length,
-    [points, hiddenHarness],
+  const visibleCount = useMemo(() => points.filter(isVisible).length, [points, isVisible]);
+
+  // commit strip cells: same x mapping as everything else (day since day0)
+  const commitCells = useMemo(() => {
+    if (!commitDays.length || !day0) return [];
+    return commitDays.map((r) => ({
+      ...r,
+      day: (Date.parse(`${r.d}T00:00:00Z`) / 1000 - day0) / DAY,
+    }));
+  }, [commitDays, day0]);
+
+  // GitHub-heatmap semantics: 4 intensity steps by count quantiles (nonzero days)
+  const commitOpacity = useMemo(() => {
+    const counts = commitDays.map((r) => r.c).sort((a, b) => a - b);
+    if (!counts.length) return () => 0;
+    const q = (p: number) => counts[Math.min(counts.length - 1, Math.floor(p * counts.length))];
+    const t = [q(0.25), q(0.5), q(0.75)];
+    return (c: number) =>
+      c <= 0 ? 0 : c <= t[0] ? COMMIT_STEPS[0] : c <= t[1] ? COMMIT_STEPS[1] : c <= t[2] ? COMMIT_STEPS[2] : COMMIT_STEPS[3];
+  }, [commitDays]);
+
+  const openCommitDay = useCallback((d: string, x: number) => {
+    setCommitPopover((prev) => (prev?.d === d ? null : { d, x, commits: null }));
+  }, []);
+  useEffect(() => {
+    if (!commitPopover || commitPopover.commits !== null) return;
+    let stale = false;
+    fetch(`/api/timeline/commits?day=${encodeURIComponent(commitPopover.d)}`)
+      .then((r) => (r.ok ? r.json() : Promise.reject(new Error(`${r.status}`))))
+      .then((d: { commits: DayCommit[] }) => {
+        if (!stale) setCommitPopover((prev) => (prev?.d === commitPopover.d ? { ...prev, commits: d.commits ?? [] } : prev));
+      })
+      .catch(() => {});
+    return () => {
+      stale = true;
+    };
+  }, [commitPopover]);
+
+  // clicking a commit with mapped sessions flies to its trace
+  const flyToSession = useCallback(
+    (ids: string[]) => {
+      for (const id of ids) {
+        const p = points.find((pt) => pt.s.id === id);
+        if (p) {
+          flyToPointRef.current(p);
+          return;
+        }
+      }
+    },
+    [points],
   );
 
   const selectedPoint = selected ? points.find((p) => p.s.id === selected.id) : null;
@@ -452,16 +551,54 @@ export default function TimelineClient() {
     <div className="flex-1 flex flex-col min-h-0">
       {/* filter chips */}
       <div className="flex flex-wrap items-center gap-2 px-6 py-3 border-b border-rule">
-        <span className="mono text-[11px] text-ink-muted mr-1">harness</span>
-        {allHarnesses.map((h) => (
-          <Chip
-            key={h}
-            label={`${h} · ${harnessCounts.get(h) ?? 0}`}
-            color={HARNESS_COLORS[h] ?? FALLBACK_COLOR}
-            active={!hiddenHarness.has(h)}
-            onClick={() => toggleHarness(h)}
-          />
-        ))}
+        {/* color-mode segmented control */}
+        <span className="mono text-[11px] text-ink-muted">color:</span>
+        <div className="mono flex items-center rounded-full border border-rule text-[11px] mr-2">
+          {(["harness", "task"] as const).map((m) => (
+            <button
+              key={m}
+              onClick={() => setColorMode(m)}
+              className="px-2.5 py-1 rounded-full transition-colors"
+              style={{
+                color: colorMode === m ? "var(--ink-bright)" : "var(--ink-muted)",
+                background: colorMode === m ? "var(--hover, rgba(255,255,255,0.06))" : "transparent",
+                transitionTimingFunction: "var(--ease)",
+              }}
+            >
+              {m}
+            </button>
+          ))}
+        </div>
+        {colorMode === "harness" ? (
+          <>
+            <span className="mono text-[11px] text-ink-muted mr-1">harness</span>
+            {allHarnesses.map((h) => (
+              <Chip
+                key={h}
+                label={`${h} · ${harnessCounts.get(h) ?? 0}`}
+                color={HARNESS_COLORS[h] ?? FALLBACK_COLOR}
+                active={!hiddenHarness.has(h)}
+                onClick={() => toggleHarness(h)}
+              />
+            ))}
+          </>
+        ) : (
+          <>
+            <span className="mono text-[11px] text-ink-muted mr-1">task</span>
+            {clusters.length === 0 && (
+              <span className="mono text-[11px] text-ink-muted/60">no clusters yet</span>
+            )}
+            {clusters.map((c) => (
+              <Chip
+                key={c.id}
+                label={`${c.name} · ${c.count}`}
+                color={clusterColor(c.id)}
+                active={!hiddenClusters.has(c.id)}
+                onClick={() => toggleCluster(c.id)}
+              />
+            ))}
+          </>
+        )}
         <span className="mono text-[11px] text-ink-muted ml-auto">
           {visibleCount}/{data?.meta.count ?? "…"} sessions
         </span>
@@ -509,6 +646,8 @@ export default function TimelineClient() {
               lanes={laneLayout}
               matches={matches}
               hiddenHarness={hiddenHarness}
+              colorMode={colorMode}
+              hiddenClusters={hiddenClusters}
             />
           )}
           {!data && !error && (
@@ -523,7 +662,7 @@ export default function TimelineClient() {
           )}
 
           {/* selection ring */}
-          {selectedPoint && !hiddenHarness.has(selectedPoint.s.harness) && (
+          {selectedPoint && isVisible(selectedPoint) && (
             <div
               className="pointer-events-none absolute breath rounded-full border"
               style={{
@@ -589,6 +728,99 @@ export default function TimelineClient() {
             )}
           </div>
 
+          {/* commit strip — a bottom row above the date axis, same x mapping */}
+          {commitCells.length > 0 && (
+            <div
+              className="absolute left-0 right-0 z-10 overflow-hidden"
+              style={{
+                bottom: AXIS_H,
+                height: STRIP_H,
+                borderTop: "1px solid rgba(255,255,255,0.06)",
+                background: "rgba(11,12,14,0.4)",
+              }}
+              onPointerDown={(e) => e.stopPropagation()}
+              onPointerMove={(e) => e.stopPropagation()}
+              onPointerUp={(e) => e.stopPropagation()}
+              onPointerLeave={() => setCommitHover(null)}
+            >
+              {commitCells.map((cell) => {
+                const x = view.offsetPx + cell.day * view.pxPerDay;
+                if (x < -view.pxPerDay || x > size.width + view.pxPerDay) return null;
+                const w = Math.max(2, view.pxPerDay - (view.pxPerDay >= 4 ? 1 : 0));
+                return (
+                  <div
+                    key={cell.d}
+                    className="absolute cursor-pointer"
+                    style={{
+                      left: x,
+                      top: 7,
+                      width: w,
+                      height: STRIP_H - 13,
+                      borderRadius: 1,
+                      background: `rgba(${COMMIT_COLOR}, ${commitOpacity(cell.c)})`,
+                    }}
+                    onPointerMove={(e) => {
+                      e.stopPropagation();
+                      setCommitHover({ d: cell.d, c: cell.c, clientX: e.clientX, clientY: e.clientY });
+                    }}
+                    onPointerLeave={() => setCommitHover(null)}
+                    onClick={() => openCommitDay(cell.d, x)}
+                  />
+                );
+              })}
+              <div className="mono pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-[9px] tracking-wide text-ink-muted/70">
+                commits
+              </div>
+            </div>
+          )}
+
+          {/* commit day popover */}
+          {commitPopover && (
+            <div
+              className="mono absolute z-30 w-[380px] max-h-[40vh] overflow-y-auto rounded-[8px] border border-rule bg-window/95 backdrop-blur text-[10px]"
+              style={{
+                bottom: AXIS_H + STRIP_H + 6,
+                left: Math.max(8, Math.min(commitPopover.x - 100, size.width - 396)),
+              }}
+              onPointerDown={(e) => e.stopPropagation()}
+            >
+              <div className="flex items-center justify-between border-b border-rule px-3 py-2 text-ink-muted">
+                <span>
+                  {commitPopover.d} · {commitPopover.commits ? `${commitPopover.commits.length} commits` : "loading…"}
+                </span>
+                <button
+                  onClick={() => setCommitPopover(null)}
+                  className="text-ink-muted hover:text-ink-bright transition-colors"
+                  aria-label="close commits"
+                >
+                  ×
+                </button>
+              </div>
+              {commitPopover.commits?.map((c) => {
+                const hasTrace = c.sessions.length > 0;
+                return (
+                  <button
+                    key={c.hash7}
+                    disabled={!hasTrace}
+                    onClick={() => {
+                      if (!hasTrace) return;
+                      flyToSession(c.sessions);
+                      setCommitPopover(null);
+                    }}
+                    className={`block w-full border-b border-rule px-3 py-1.5 text-left last:border-b-0 transition-colors ${
+                      hasTrace ? "hover:bg-hover cursor-pointer" : "cursor-default"
+                    }`}
+                  >
+                    <span className="text-ink-muted/70">{c.hash7}</span>{" "}
+                    <span style={{ color: "#6ee7a0", opacity: 0.8 }}>{c.repo}</span>{" "}
+                    <span className="text-ink">{c.subject}</span>
+                    {hasTrace && <span className="text-ink-muted"> · in trace</span>}
+                  </button>
+                );
+              })}
+            </div>
+          )}
+
           {/* date axis */}
           <div className="pointer-events-none absolute bottom-0 left-0 right-0 z-10 h-9 border-t border-rule bg-field/70">
             {ticks.map((t, i) => (
@@ -609,10 +841,31 @@ export default function TimelineClient() {
           </div>
 
           {/* hint */}
-          <div className="mono pointer-events-none absolute bottom-12 left-4 z-10 text-[10px] text-ink-muted/70">
+          <div
+            className="mono pointer-events-none absolute left-4 z-10 text-[10px] text-ink-muted/70"
+            style={{ bottom: AXIS_H + (commitCells.length ? STRIP_H : 0) + 12 }}
+          >
             drag to pan · wheel to zoom time · hover points · click for detail
           </div>
         </div>
+
+        {/* commit cell tooltip */}
+        {commitHover && (
+          <div
+            className="mono pointer-events-none fixed z-50 rounded-lg border border-rule px-3 py-2 text-[11px] leading-relaxed"
+            style={{
+              left: commitHover.clientX + 14,
+              top: commitHover.clientY - 40,
+              background: "rgba(11,12,14,0.92)",
+            }}
+          >
+            <span className="text-ink-bright">{commitHover.d}</span>
+            <span className="text-ink-muted">
+              {" · "}
+              {commitHover.c} commit{commitHover.c === 1 ? "" : "s"}
+            </span>
+          </div>
+        )}
 
         {/* hover tooltip */}
         {hover && (
@@ -635,6 +888,11 @@ export default function TimelineClient() {
             <div className="text-ink-muted">
               {hover.point.s.events.toLocaleString()} events · {hover.point.s.turns} turns
             </div>
+            {hover.point.s.label && (
+              <div style={{ color: clusterColor(hover.point.s.clusterId) }}>
+                {hover.point.s.label}
+              </div>
+            )}
           </div>
         )}
 
@@ -694,6 +952,29 @@ export default function TimelineClient() {
                 <div className="mono text-[11px] text-ink-muted">no summary projected</div>
               )}
             </div>
+
+            {(detail?.label || selected.label || detail?.scan_summary) && (
+              <div className="mt-5">
+                <div className="mono text-[11px] text-ink-muted mb-1.5">scanned by gemma</div>
+                {(detail?.label || selected.label) && (
+                  <span
+                    className="mono inline-block text-[11px] px-2.5 py-1 rounded-full border mb-2"
+                    style={{
+                      borderColor: clusterColor(detail?.clusterId ?? selected.clusterId),
+                      color: "var(--ink-bright)",
+                      background: `${clusterColor(detail?.clusterId ?? selected.clusterId)}1a`,
+                    }}
+                  >
+                    {detail?.label ?? selected.label}
+                  </span>
+                )}
+                {detail?.scan_summary && (
+                  <p className="text-[13px] leading-relaxed text-ink whitespace-pre-wrap">
+                    {detail.scan_summary}
+                  </p>
+                )}
+              </div>
+            )}
 
             <div className="mt-5">
               <div className="mono text-[11px] text-ink-muted mb-1.5">trace</div>

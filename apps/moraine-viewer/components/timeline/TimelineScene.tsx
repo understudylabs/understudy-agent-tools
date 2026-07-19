@@ -6,6 +6,8 @@ import * as THREE from "three";
 import {
   FALLBACK_COLOR,
   HARNESS_COLORS,
+  clusterColor,
+  type ColorMode,
   type TimelinePoint,
   type ViewState,
 } from "./types";
@@ -28,6 +30,8 @@ interface SceneProps {
   lanes: LaneLayout;
   matches: Set<string> | null; // null = no active search
   hiddenHarness: Set<string>;
+  colorMode: ColorMode; // harness colors vs task-cluster colors
+  hiddenClusters: Set<number>; // task-mode visibility (clusterId)
 }
 
 const PROJECT = /* glsl */ `
@@ -143,8 +147,10 @@ function Field({ points, propsRef }: { points: TimelinePoint[]; propsRef: React.
   const appliedRef = useRef<{
     matches: Set<string> | null;
     hidden: Set<string> | null;
+    colorMode: ColorMode | null;
+    hiddenClusters: Set<number> | null;
     buf: object | null; // which buffer set the write landed on — rebuilt buffers start all-invisible
-  }>({ matches: null, hidden: null, buf: null });
+  }>({ matches: null, hidden: null, colorMode: null, hiddenClusters: null, buf: null });
 
   // static per-point buffers (rebuilt only when the dataset changes)
   const pointBuf = useMemo(() => {
@@ -232,31 +238,66 @@ function Field({ points, propsRef }: { points: TimelinePoint[]; propsRef: React.
   const tailUniforms = useMemo(makeUniforms, []);
 
   useFrame((state, delta) => {
-    const { view, width, height, lanes, matches, hiddenHarness } = propsRef.current;
+    const { view, width, height, lanes, matches, hiddenHarness, colorMode, hiddenClusters } =
+      propsRef.current;
 
-    // match/visibility rewrites only when the sets change identity
+    // match/visibility/color rewrites only when the sets (or the buffer set —
+    // rebuilt attributes start zeroed) change identity
     const applied = appliedRef.current;
-    if (applied.matches !== matches || applied.hidden !== hiddenHarness || applied.buf !== pointBuf) {
+    if (
+      applied.matches !== matches ||
+      applied.hidden !== hiddenHarness ||
+      applied.colorMode !== colorMode ||
+      applied.hiddenClusters !== hiddenClusters ||
+      applied.buf !== pointBuf
+    ) {
       applied.matches = matches;
       applied.hidden = hiddenHarness;
+      applied.colorMode = colorMode;
+      applied.hiddenClusters = hiddenClusters;
       applied.buf = pointBuf;
+
+      const c = new THREE.Color();
+      const colorOf = (p: TimelinePoint) =>
+        colorMode === "task"
+          ? clusterColor(p.s.clusterId)
+          : (HARNESS_COLORS[p.s.harness] ?? FALLBACK_COLOR);
+      // harness hiding always collapses the lane; task mode additionally
+      // hides points whose cluster chip is toggled off
+      const visibleOf = (p: TimelinePoint) =>
+        hiddenHarness.has(p.s.harness) ||
+        (colorMode === "task" && p.s.clusterId != null && hiddenClusters.has(p.s.clusterId))
+          ? 0
+          : 1;
+
       points.forEach((p, i) => {
         pointBuf.match[i] = matches?.has(p.s.id) ? 1 : 0;
-        pointBuf.visible[i] = hiddenHarness.has(p.s.harness) ? 0 : 1;
+        pointBuf.visible[i] = visibleOf(p);
+        c.set(colorOf(p));
+        pointBuf.color[i * 3] = c.r;
+        pointBuf.color[i * 3 + 1] = c.g;
+        pointBuf.color[i * 3 + 2] = c.b;
       });
       (pointGeom.getAttribute("aMatch") as THREE.BufferAttribute).needsUpdate = true;
       (pointGeom.getAttribute("aVisible") as THREE.BufferAttribute).needsUpdate = true;
+      (pointGeom.getAttribute("aColor") as THREE.BufferAttribute).needsUpdate = true;
 
       tailBuf.sessions.forEach((p, i) => {
         const m = matches?.has(p.s.id) ? 1 : 0;
-        const v = hiddenHarness.has(p.s.harness) ? 0 : 1;
-        tailBuf.match[i * 2] = m;
-        tailBuf.match[i * 2 + 1] = m;
-        tailBuf.visible[i * 2] = v;
-        tailBuf.visible[i * 2 + 1] = v;
+        const v = visibleOf(p);
+        c.set(colorOf(p));
+        for (const k of [0, 1]) {
+          const vi = i * 2 + k;
+          tailBuf.match[vi] = m;
+          tailBuf.visible[vi] = v;
+          tailBuf.color[vi * 3] = c.r;
+          tailBuf.color[vi * 3 + 1] = c.g;
+          tailBuf.color[vi * 3 + 2] = c.b;
+        }
       });
       (tailGeom.getAttribute("aMatch") as THREE.BufferAttribute).needsUpdate = true;
       (tailGeom.getAttribute("aVisible") as THREE.BufferAttribute).needsUpdate = true;
+      (tailGeom.getAttribute("aColor") as THREE.BufferAttribute).needsUpdate = true;
     }
 
     // ease the search dim in/out (motion carries meaning, nothing louder)

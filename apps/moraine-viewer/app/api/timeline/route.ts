@@ -1,6 +1,7 @@
 import type { NextRequest } from "next/server";
 import { chQuery } from "@/lib/clickhouse";
 import type { TimelineSession } from "@/components/timeline/types";
+import { readScanMap } from "./scan-db";
 
 // GET /api/timeline            → { sessions, meta }  (all non-sentinel sessions)
 // GET /api/timeline?session=id → { session }         (detail incl. session_summary)
@@ -52,8 +53,13 @@ export async function GET(request: NextRequest) {
       return Response.json({ error: "session not found" }, { status: 404 });
     }
     const r = rows[0];
+    const scan = readScanMap().get(r.session_id);
     return Response.json({
       session: {
+        ...(scan?.label ? { label: scan.label } : {}),
+        ...(scan?.summary ? { scan_summary: scan.summary } : {}),
+        ...(scan?.cluster ? { cluster: scan.cluster } : {}),
+        ...(scan?.clusterId != null ? { clusterId: scan.clusterId } : {}),
         session_id: r.session_id,
         title: r.title,
         harness: r.harness,
@@ -79,16 +85,23 @@ export async function GET(request: NextRequest) {
      WHERE first_event_time > '2001-01-01'`,
   );
 
-  const sessions: TimelineSession[] = rows.map((r) => ({
-    id: r.session_id,
-    harness: r.harness || "unknown",
-    mode: r.mode || "unknown",
-    title: r.title,
-    events: r.total_events,
-    turns: r.total_turns,
-    start: Number(r.start_s),
-    end: Number(r.end_s),
-  }));
+  const scanMap = readScanMap();
+  const sessions: TimelineSession[] = rows.map((r) => {
+    const scan = scanMap.get(r.session_id);
+    return {
+      id: r.session_id,
+      harness: r.harness || "unknown",
+      mode: r.mode || "unknown",
+      title: r.title,
+      events: r.total_events,
+      turns: r.total_turns,
+      start: Number(r.start_s),
+      end: Number(r.end_s),
+      ...(scan?.label ? { label: scan.label } : {}),
+      ...(scan?.cluster ? { cluster: scan.cluster } : {}),
+      ...(scan?.clusterId != null ? { clusterId: scan.clusterId } : {}),
+    };
+  });
 
   const harnesses = [...new Set(sessions.map((s) => s.harness))].sort();
 
