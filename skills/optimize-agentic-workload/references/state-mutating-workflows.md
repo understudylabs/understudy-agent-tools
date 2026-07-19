@@ -359,8 +359,9 @@ Compare:
 - total token cost per task
 - API call count and retry count
 
-Pick the cheapest model that stays within the approved regression band and does
-not increase unsafe side effects. If both models fail the same invariant, the
+Pick the model with the best expected outcome under the approved regression,
+latency, spend, and safety constraints. Show the tradeoff rather than silently
+optimizing for the lowest price. If both models fail the same invariant, the
 next intervention is prompt/tool-description repair, not another blind model
 swap.
 
@@ -416,7 +417,7 @@ candidate prompt or patch as evidence, and restore external benchmark files
 before claiming a result. If you own the harness, add `--system-prompt-file` or
 an equivalent per-suite override.
 
-## Failure Modes And Cheapest Interventions
+## Failure Modes And Likely High-Leverage Interventions
 
 | Failure mode | Evidence | First intervention |
 | --- | --- | --- |

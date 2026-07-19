@@ -144,7 +144,7 @@ When one environment-backed or tool-calling run failed and the question is
 separates environment evidence from model-visible evidence, reconstructs
 reads/writes before the first mutation, classifies the failure (retrieval,
 authority precedence, format, ID resolution, parser, harness), and recommends
-the cheapest fix before training.
+the highest-leverage fix supported by the failure evidence before training.
 
 ## References
 

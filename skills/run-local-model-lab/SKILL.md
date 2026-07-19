@@ -10,11 +10,12 @@ metadata:
 
 # Run Local Model Lab
 
-Run a local model against an existing Understudy workload/eval to see whether it
-is good enough before spending on hosted providers or routing remote traffic.
-Local inference is $0, private, and the only legal path under ZDR / SOC2 /
-local-only constraints — so it is the cheapest rung of the ladder. Same-family
-models (e.g. local Gemma 4 → remote Gemma 4 31B via the gateway) graduate cleanly.
+Run a local model against an existing Understudy workload/eval to determine the
+best route for the objective. Local inference is $0 and private, and it may be
+the only legal path under ZDR / SOC2 / local-only constraints, but do not use a
+weak local result to avoid an informative remote anchor when remote evaluation
+is allowed and could change the decision. Same-family models (e.g. local Gemma 4
+→ remote Gemma 4 31B via the gateway) graduate cleanly.
 
 **Apple Silicon + MLX only.** On Macs, MLX is the native local path — quantized
 open weights against unified memory at the best tokens/sec, no GPU drivers, no
@@ -81,10 +82,12 @@ GUI or stand up a second server against the same weights and memory budget.
    Silicon? This skill does not apply — local serving here is MLX-only.)
    See [`../../docs/background-ops.md`](../../docs/background-ops.md) for the
    background-launch and poll-readiness mechanics.
-2. **Pick a candidate tier** (candidate chooser + hardware-fit guidance in [`reference.md`](reference.md)):
-   choose the smallest model that is reasonable for the task, not the smallest
-   model available. If a ladder climb or prior local gap report already exists,
-   use it to decide
+2. **Pick a candidate tier** (candidate chooser + hardware-fit guidance in
+   [`reference.md`](reference.md)):
+   choose the model most likely to answer the route question within the hardware
+   and time available. If uncertainty is high, include a stronger anchor early
+   rather than serially exhausting weak rungs. If a ladder climb or prior local
+   gap report already exists, use it to decide
    whether to score the current rung, climb to a larger local model, or skip to
    hybrid/remote.
    - Tiny smoke — E2B / E4B class (fast, on-device; routing/triage/easy cases).
@@ -127,7 +130,8 @@ GUI or stand up a second server against the same weights and memory budget.
    blaming the model.
 4. **Compare against remote.** Score the local candidate vs the remote route
    (gateway / Lilac / frontier) on the objective:
-   - Local wins if it is *good enough* and cheaper / faster / private.
+   - Local wins if it best satisfies the agreed quality, cost, latency, and
+     privacy objective.
    - Remote wins if the quality gap blocks shipping, or local ops cost exceeds
      provider spend at the real volume.
    - Hybrid if local handles triage / extraction / routing and remote handles
@@ -142,6 +146,8 @@ GUI or stand up a second server against the same weights and memory budget.
 
 Make cost/availability/spec claims from fresh data (HF / official model cards /
 the gateway catalog), never from memory — label assumptions.
+Follow [`../understudy/reference.md`](../understudy/reference.md) → Outcome-first
+spend posture when choosing between a longer local run and a paid remote anchor.
 
 ## Output Standard
 

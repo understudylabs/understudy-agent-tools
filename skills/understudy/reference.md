@@ -37,6 +37,32 @@ Do not ask anything the repo answers. Surface what you found instead.
 A single change often moves several at once (e.g. a prompt that stops retries
 cuts both cost and latency) — measure all affected axes, not just the target.
 
+## Outcome-first spend posture
+
+Optimize for solving the named problem under hard constraints, not for the
+smallest bill or experiment by default. Spend and compute are decision axes;
+they become the primary objective only when the developer says so.
+
+For any paid or long-running path:
+
+1. Recommend the plan with the highest expected progress toward the objective.
+2. State its spend envelope, wall-clock, data boundary, evidence produced, and
+   confidence or decision it should unlock.
+3. When useful, show a cheaper diagnostic and a faster or higher-confidence
+   alternative, with the capability each option gives up or adds.
+4. Ask once for the named bounded plan. Continue within that approved envelope;
+   ask again only before expanding spend, data scope, production impact, or
+   another hard boundary.
+5. If the plan is inconclusive, say what more data, stronger model, extra
+   compute, or wider experiment is likely to resolve. Recommend that next step
+   when its expected value exceeds its cost.
+
+Stop only when the objective is met, another action is unlikely to change the
+decision, a hard constraint or approved envelope is reached, or the user chooses
+to stop. A cheap inconclusive run is evidence, not completion. Reuse prior
+evidence when it already answers the same question; outcome-first is not license
+for redundant spend.
+
 ## Constraints (detect, respect, gate)
 
 Detect from the repo and the developer: SOC 2, ZDR, local-only, data-retention
@@ -85,8 +111,9 @@ a current source is not a claim — it's a guess.
 
 ## Deploy and compare
 
-Keep the baseline reproducible. Apply the smallest viable change — prefer config
-or a workload route over editing hardcoded call sites. Register/route the improved
+Keep the baseline reproducible. Apply the smallest coherent change that fully
+addresses the measured cause — prefer config or a workload route over editing
+hardcoded call sites when either solves it. Register/route the improved
 behavior through the inference layer when appropriate (gateway route + traffic %),
 or write a local deployment artifact / `understudy.yaml` in local-only mode.
 Always include rollback steps, run comparison evals, show before/after metrics,
@@ -125,6 +152,10 @@ Produce this for every completed improvement attempt:
 - Make pricing/availability claims without current data.
 - Deploy production changes without approval.
 - Bury or omit regressions.
+- Default to the cheapest or smallest action without comparing expected
+  progress, time-to-answer, and confidence.
+- Treat an inconclusive smoke, weak candidate, or underpowered run as the end of
+  the job when more data or compute would likely resolve the question.
 
 ## Examples
 

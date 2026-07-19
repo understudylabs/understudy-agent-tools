@@ -15,10 +15,11 @@ enough to choose well. This skill is acquisition + curation + education; to scor
 a local model against a workload, use
 [`../run-local-model-lab/SKILL.md`](../run-local-model-lab/SKILL.md).
 
-The habit this skill installs: **start with the smallest model that could work,
-cache it, prove the loop, and only step up when an eval says you must.** Small
-local models are free, private, and instant to iterate on; big quality lives one
-`understudy` route away when you actually need it.
+The habit this skill installs: **use a small verified model to prove the local
+loop, then choose the workload candidate from task fit, evidence, hardware, and
+time.** The bootstrap model is not a route recommendation. Skip directly to a
+stronger rung when a weak-model sequence would delay the answer; big quality
+lives one `understudy` route away when you need it.
 
 ## Safety Gates
 
@@ -60,11 +61,13 @@ or a second download of the same weights.
 1. **Inventory.** List installed runtimes and already-cached models, and report
    free disk. (`ollama list`; Hugging Face cache scan; MLX/LM Studio dirs — see
    [`reference.md`](reference.md).) Surface total disk used by weights.
-2. **Pick the smallest viable American model.** For onboarding on Apple Silicon,
-   be prescriptive: start with Understudy's verified
-   `google/gemma-4-e2b-it` MLX-VLM 4-bit snapshot, then climb only when the
-   head-to-head or eval says the rung is too weak. Match later goals and
-   hardware to a tier, biased small (full ladder + hardware rule-of-thumb in
+2. **Separate the bootstrap model from the workload candidate.** For onboarding
+   on Apple Silicon, be prescriptive: start with Understudy's verified
+   `google/gemma-4-e2b-it` MLX-VLM 4-bit snapshot as the fast product smoke. It
+   is not the default workload recommendation. Pick the workload model from task
+   fit, evidence, hardware, and time; skip directly to a stronger rung when a
+   small model is unlikely to answer the question. Match goals and hardware to a
+   tier (full ladder + hardware rule-of-thumb in
    [`reference.md`](reference.md) and
    [`../../docs/open-model-spotlight.md`](../../docs/open-model-spotlight.md)):
    - **Gemma 4** (Google) — verified E2B first; E4B/12B to climb; 26B-MoE / 31B

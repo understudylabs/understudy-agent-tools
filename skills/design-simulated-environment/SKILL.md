@@ -55,9 +55,11 @@ criteria (recall / precision / policy — not just cost/speed).
 
 ## Safety Gates
 
-- **Synthetic data only.** Seed the environment with invented entities and a small
-  hand-written fixture. Never embed customer transcripts, records, names, or IDs —
-  the simulated env is committable precisely because it contains none.
+- **Synthetic data only.** Seed the environment with invented entities. A small
+  hand-written fixture may validate the mechanics, but a workload claim needs a
+  scalable, decision-sized generated suite. Never embed customer transcripts,
+  records, names, or IDs — the simulated env is committable precisely because
+  it contains none.
 - **No live side effects.** Tools mutate in-memory state, never real systems.
 - Keep the captured customer traces local; use them only to *infer the shape* you
   simulate.
@@ -65,15 +67,17 @@ criteria (recall / precision / policy — not just cost/speed).
 ## Recipe
 
 1. **Seed synthetic state.** For the default env, use the built-in synthetic
-   inbox/ticket/project-board fixture. For a workload-specific env, use a few
-   records of each entity the workload touches
-   (deals, contacts, activities, a short transcript), small enough to read.
+   inbox/ticket/project-board fixture. For a workload-specific env, generate
+   enough records and tasks to cover common, rare, and high-consequence entity
+   and action combinations. Keep individual cases readable while scaling the
+   suite; follow the data-sufficiency rules in
+   [`../capture-evidence/references/evaluation-evidence-gates.md`](../capture-evidence/references/evaluation-evidence-gates.md).
 2. **Implement the tools by intent, leniently.** Group the real tool catalog into
    read / transform / write classes (from understand-workload). For each class,
    return a plausible result from the seeded state. Be tolerant of arg/name
    variants (e.g. accept a tool called with or without an `mcp__…` prefix) so a
    candidate's reasonable-but-different call still gets a useful answer.
-3. **Define the gold + a validator.** Write the small set of correct outcomes the
+3. **Define the gold + a validator.** Write the complete correct outcomes each
    task implies (the observations/records a perfect run would write), each with the
    keys/values that must appear. Score the candidate's *final written state* vs gold
    → recall, precision, and any policy checks. The validator is the metric, not the

@@ -55,7 +55,7 @@ If the workload is still not understood, route to
 [`understand-workload`](../../understand-workload/SKILL.md). If there is no
 resettable harness or metric, route to
 [`capture-evidence`](../../capture-evidence/SKILL.md). If prompt GEPA is the
-cheapest live-rollout intervention, route to
+highest-leverage live-rollout intervention for the named objective, route to
 [`optimize-workload`](../../optimize-workload/SKILL.md).
 
 ## Flow
@@ -66,8 +66,9 @@ cheapest live-rollout intervention, route to
    unexplained final-state edits, brittle chain-of-thought shortcuts, or
    impossible recovery from a corrupted prefix.
 
-2. **Prove local headroom first.** On a tiny train/dev slice, compare at least
-   three local conditions:
+2. **Prove local headroom first.** Use a small train/dev slice only to verify the
+   mechanics, then expand to a decision-sized cohort. Compare at least three
+   local conditions:
    - blind student: `x` only;
    - shortcut teacher: `x + c`, allowed to use the answer key directly;
    - pedagogical teacher: `x + c`, but required to output steps derivable from
@@ -119,7 +120,10 @@ cheapest live-rollout intervention, route to
 
 ## Local MLX rung order
 
-For Apple Silicon, prefer the smallest working local rung:
+For Apple Silicon, start with the rung most likely to resolve the named
+uncertainty. Lower-complexity rungs are useful when they can answer it quickly;
+skip directly to a weight update or hosted handoff when existing evidence shows
+that another local smoke will not change the decision:
 
 - **Prompt/template proof**: serve the local model and generate blind,
   shortcut, and pedagogical rollouts. This is the fastest proof of headroom.

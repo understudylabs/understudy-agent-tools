@@ -26,6 +26,13 @@ This skill estimates and recommends. It never provisions, rents, or spends —
 those are explicit, separate user actions. **Prices and features drift — verify
 on the provider's live pricing page before any spend.**
 
+Optimize the recommendation for reaching the workload objective, not for the
+lowest sticker price. Present the recommended outcome-sized plan first, then a
+cheaper diagnostic and a faster or higher-confidence option when useful. State
+what each buys in capability, confidence, and time-to-answer; follow
+[`../understudy/reference.md`](../understudy/reference.md) → Outcome-first spend
+posture.
+
 ## When to use
 
 - "How long will fine-tuning / SFT / an RL run take on my Mac vs a rented GPU?"
@@ -127,10 +134,12 @@ To *improve* a workload's hit rate rather than just price it, see
 ### Decide local vs cloud
 
 Present **local vs cloud side by side**: wall-clock and dollars for each, with
-the band and the dominant assumption. Recommend local when it's free and the
-wall-clock is tolerable; recommend cloud when local wall-clock is the blocker
-(typical for RL training and large-scale rollouts — the Understudy local-SFT /
-cloud-RL split). When the answer is cloud, continue to the routing below.
+the band and the dominant assumption. Recommend the route with the best expected
+progress under the real time, quality, and budget constraints—not local merely
+because its marginal dollar cost is zero. Cloud is often the correct answer when
+local wall-clock, capacity, or iteration speed blocks the objective (typical for
+RL training and large-scale rollouts — the Understudy local-SFT / cloud-RL
+split). When the answer is cloud, continue to the routing below.
 
 ## The routing decision
 

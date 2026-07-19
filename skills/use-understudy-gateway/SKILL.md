@@ -288,9 +288,10 @@ Domain depth in [`reference.md`](reference.md):
   metadata; redact; skip upload in local-only / restricted (ZDR) modes; produce a
   trace inventory (defer call-site discovery to
   [`../capture-evidence/SKILL.md`](../capture-evidence/SKILL.md)).
-- **Deploy and compare** — reproducible baseline, smallest route/config change
-  via the workloads API (or a local `understudy.yaml`), rollback, comparison
-  evals, before/after metrics, surfaced regressions.
+- **Deploy and compare** — reproducible baseline, smallest coherent route/config
+  change that solves the measured cause via the workloads API (or a local
+  `understudy.yaml`), rollback, comparison evals, before/after metrics, surfaced
+  regressions.
 
 For route selection and the fresh-pricing rule, see
 [`../understudy/reference.md`](../understudy/reference.md); for measured claims,

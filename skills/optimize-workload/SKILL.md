@@ -16,9 +16,12 @@ split-safe.
 
 ## Safety Gates
 
-Default to the cheapest path that still reaches an optimization outcome — not to
-zero spend (a skipped improvement has real opportunity cost). Get the
-developer's explicit approval before any upload, hosted run, or provider spend.
+Default to the intervention with the highest expected progress toward the
+objective under hard constraints, not the cheapest rung. State the expected
+quality gain, time, spend envelope, and evidence before execution; follow
+[`../understudy/reference.md`](../understudy/reference.md) → Outcome-first spend
+posture. Get explicit approval before any upload, hosted run, or provider spend;
+one approval may cover a named bounded optimization plan.
 
 Do not run live provider calls, hosted jobs, model downloads, uploads,
 benchmark submissions, or training without a named surface, capped spend or
@@ -64,6 +67,15 @@ of optimizing.
 Confirm these before spending GEPA budget — full detail, model defaults, and
 validator kinds in [`reference.md`](reference.md):
 
+- **Evidence gates** — apply the coverage, harness-conformance, qualitative
+  row-review, and claim-strength gates in
+  [`../capture-evidence/references/evaluation-evidence-gates.md`](../capture-evidence/references/evaluation-evidence-gates.md).
+  Do not optimize a narrow easy cohort as though it represents the workload.
+  Inspect the real rows behind the baseline headline and confirm important hard
+  strata have train/dev and sealed-holdout representation. Treat a small pilot
+  as a plumbing check only; if uncertainty, variance, or new failure classes
+  remain material, collect more data before optimizing or recommending a route.
+
 - **Headroom** — `baseline.json` must show failing-but-promptable rows. No
   incumbent failures → nothing to optimize. A strong model fails them too →
   task beyond frontier; stop.
@@ -91,14 +103,15 @@ validator kinds in [`reference.md`](reference.md):
 1. Inspect the required artifacts and confirm they describe the same workload.
 2. Re-state the metric, validator, split boundary, incumbent score, latency
    basis, cost basis if available, and failure taxonomy.
-3. Select the cheapest intervention that matches the observed failure mode:
+3. Select the highest-leverage intervention that matches the observed failure mode:
    prompt repair, parser/schema repair, context trimming, route change,
    candidate model comparison, or GEPA. When the complaint is cost (not
    quality) and inputs dominate the bill, check prompt-cache structure first —
    it's often the cheapest lever of all:
    [`references/prompt-cache-optimization.md`](references/prompt-cache-optimization.md).
-   Pick the cheapest *target* that matches
-   the failure too — see [`reference.md`](reference.md) → Optimization-Target
+   Prefer the lowest-cost *target* only among options expected to resolve the
+   failure; do not spend several weak iterations avoiding a stronger model or
+   broader experiment. See [`reference.md`](reference.md) → Optimization-Target
    Menu for the full list. For an agentic workload, treat latency
    and cost per rollout as first-class objectives alongside the rubric score —
    tool-call count, redundant calls, and wasted context are common, optimizable
@@ -134,6 +147,10 @@ validator kinds in [`reference.md`](reference.md):
 7. Freeze the candidate before any holdout validation.
 8. Run holdout only once the candidate is frozen, and record score, failures,
    latency basis, cost basis, fallback route, demotion trigger, and caveats.
+   Inspect the actual rows behind material deltas before naming a win. A narrow
+   first pass that improves train/dev but regresses holdout is an overfitting
+   diagnosis, not evidence to iterate on the sealed rows; expand or rebalance a
+   new split contract and start a fresh experiment.
 
 The home of record for an optimization run is the **active experiment**
 directory (see the Experiment section of

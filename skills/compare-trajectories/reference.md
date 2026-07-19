@@ -6,9 +6,11 @@ Loaded on demand from `SKILL.md`.
 
 The section in `SKILL.md` gives the rule; this is the working detail.
 
-1. **Choose N.** Default 3 full re-runs of the candidate on the same frozen
-   rows, same harness, same decoding settings. Raise N only when the per-run
-   cost is trivial; below N=3 the borderline bucket is meaningless.
+1. **Choose N adaptively.** Start with 3 full re-runs of the candidate on the
+   same frozen rows, harness, and decoding settings to validate mechanics. Add
+   meaningful batches until the instability estimate is stable within the
+   decision tolerance, especially near the serving threshold or when strata
+   differ. Cost informs the disclosed plan; it is not a reason to freeze N at 3.
 2. **Bucket per task** by comparing the scored outcome (and, for tool-call
    workloads, the tool-call sequence) across runs:
    - **all-repeats-match** — deterministic for this workload's purposes.
