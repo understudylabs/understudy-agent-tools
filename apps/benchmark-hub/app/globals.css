@@ -1,0 +1,24 @@
+@import "tailwindcss";
+
+/* understudy token system — subset of apps/homescreen/app/globals.css */
+@theme {
+  --color-paper: #0e0f12;
+  --color-card: #141519;
+  --color-hover: #1c1e25;
+  --color-ink: #e7e8ea;
+  --color-ink-muted: #9b9da3;
+  --color-rule: rgba(255, 255, 255, 0.08);
+  --color-rule-strong: rgba(255, 255, 255, 0.14);
+  --color-stamp: #d7623e;
+  --color-ok: #4ade80;
+  --color-warn: #fbbf24;
+  --color-bad: #f87171;
+  --font-mono: ui-monospace, "SF Mono", Menlo, monospace;
+  --font-sans: -apple-system, BlinkMacSystemFont, "SF Pro Text", system-ui, sans-serif;
+}
+
+body {
+  background: var(--color-paper);
+  color: var(--color-ink);
+  font-family: var(--font-sans);
+}
