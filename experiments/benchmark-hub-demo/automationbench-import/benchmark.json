@@ -1,46 +1,672 @@
 {
   "schema_version": "understudy.benchmark.v1",
   "benchmark_id": "automationbench-import",
-  "name": "AutomationBench (imported)",
-  "description": "Zapier AutomationBench public split, converted to benchmark.v1.",
-  "created_at": "2026-07-19T00:00:00Z",
+  "name": "AutomationBench (imported subset)",
+  "description": "Representative 48-task subset (8 per domain) of the 600-task zapier/AutomationBench public split: seeded simulated-SaaS business workflows scored by assertion-based final-state checks.",
+  "created_at": "2026-07-19T17:33:22Z",
   "provenance": {
     "origin": "imported",
     "source_refs": [],
     "imported_from": {
       "format": "automationbench",
-      "ref": "zapier/AutomationBench",
-      "version": "main@2026-07",
-      "license": null
+      "ref": "github.com/zapier/AutomationBench",
+      "version": "a321764ace3cfbe42289e6a13abef2f0f4f56fad",
+      "license": "MIT"
     }
   },
   "taxonomy": [
-    { "category_id": "crm", "name": "CRM workflows", "difficulty": null, "derived_from": null }
+    {
+      "category_id": "sales",
+      "name": "Sales workflows",
+      "difficulty": null,
+      "derived_from": null
+    },
+    {
+      "category_id": "marketing",
+      "name": "Marketing workflows",
+      "difficulty": null,
+      "derived_from": null
+    },
+    {
+      "category_id": "operations",
+      "name": "Operations workflows",
+      "difficulty": null,
+      "derived_from": null
+    },
+    {
+      "category_id": "support",
+      "name": "Support workflows",
+      "difficulty": null,
+      "derived_from": null
+    },
+    {
+      "category_id": "finance",
+      "name": "Finance workflows",
+      "difficulty": null,
+      "derived_from": null
+    },
+    {
+      "category_id": "hr",
+      "name": "Hr workflows",
+      "difficulty": null,
+      "derived_from": null
+    }
   ],
   "tasks": [
     {
-      "task_id": "crm-042",
-      "category_id": "crm",
-      "seed": 42,
+      "task_id": "sales.multi_hop_lookup",
+      "category_id": "sales",
+      "seed": 501,
       "genesis": "imported",
       "generator_ref": null,
       "split": "none",
-      "gold": { "kind": "final-state", "ref": "env://automationbench/gold/crm-042" }
+      "gold": {
+        "kind": "final-state",
+        "ref": "github.com/zapier/AutomationBench@a321764ace3cfbe42289e6a13abef2f0f4f56fad:automationbench/domains/sales/tasks.py#sales.multi_hop_lookup"
+      }
+    },
+    {
+      "task_id": "sales.negative_selection",
+      "category_id": "sales",
+      "seed": 503,
+      "genesis": "imported",
+      "generator_ref": null,
+      "split": "none",
+      "gold": {
+        "kind": "final-state",
+        "ref": "github.com/zapier/AutomationBench@a321764ace3cfbe42289e6a13abef2f0f4f56fad:automationbench/domains/sales/tasks.py#sales.negative_selection"
+      }
+    },
+    {
+      "task_id": "sales.recency_selection",
+      "category_id": "sales",
+      "seed": 504,
+      "genesis": "imported",
+      "generator_ref": null,
+      "split": "none",
+      "gold": {
+        "kind": "final-state",
+        "ref": "github.com/zapier/AutomationBench@a321764ace3cfbe42289e6a13abef2f0f4f56fad:automationbench/domains/sales/tasks.py#sales.recency_selection"
+      }
+    },
+    {
+      "task_id": "sales.priority_selection",
+      "category_id": "sales",
+      "seed": 506,
+      "genesis": "imported",
+      "generator_ref": null,
+      "split": "none",
+      "gold": {
+        "kind": "final-state",
+        "ref": "github.com/zapier/AutomationBench@a321764ace3cfbe42289e6a13abef2f0f4f56fad:automationbench/domains/sales/tasks.py#sales.priority_selection"
+      }
+    },
+    {
+      "task_id": "sales.format_ambiguity",
+      "category_id": "sales",
+      "seed": 511,
+      "genesis": "imported",
+      "generator_ref": null,
+      "split": "none",
+      "gold": {
+        "kind": "final-state",
+        "ref": "github.com/zapier/AutomationBench@a321764ace3cfbe42289e6a13abef2f0f4f56fad:automationbench/domains/sales/tasks.py#sales.format_ambiguity"
+      }
+    },
+    {
+      "task_id": "sales.implicit_rules",
+      "category_id": "sales",
+      "seed": 513,
+      "genesis": "imported",
+      "generator_ref": null,
+      "split": "none",
+      "gold": {
+        "kind": "final-state",
+        "ref": "github.com/zapier/AutomationBench@a321764ace3cfbe42289e6a13abef2f0f4f56fad:automationbench/domains/sales/tasks.py#sales.implicit_rules"
+      }
+    },
+    {
+      "task_id": "sales.cross_reference_validation",
+      "category_id": "sales",
+      "seed": 514,
+      "genesis": "imported",
+      "generator_ref": null,
+      "split": "none",
+      "gold": {
+        "kind": "final-state",
+        "ref": "github.com/zapier/AutomationBench@a321764ace3cfbe42289e6a13abef2f0f4f56fad:automationbench/domains/sales/tasks.py#sales.cross_reference_validation"
+      }
+    },
+    {
+      "task_id": "sales.soft_matching",
+      "category_id": "sales",
+      "seed": 515,
+      "genesis": "imported",
+      "generator_ref": null,
+      "split": "none",
+      "gold": {
+        "kind": "final-state",
+        "ref": "github.com/zapier/AutomationBench@a321764ace3cfbe42289e6a13abef2f0f4f56fad:automationbench/domains/sales/tasks.py#sales.soft_matching"
+      }
+    },
+    {
+      "task_id": "marketing.social_engagement_response",
+      "category_id": "marketing",
+      "seed": 1003,
+      "genesis": "imported",
+      "generator_ref": null,
+      "split": "none",
+      "gold": {
+        "kind": "final-state",
+        "ref": "github.com/zapier/AutomationBench@a321764ace3cfbe42289e6a13abef2f0f4f56fad:automationbench/domains/marketing/tasks.py#marketing.social_engagement_response"
+      }
+    },
+    {
+      "task_id": "marketing.lead_enrichment",
+      "category_id": "marketing",
+      "seed": 1006,
+      "genesis": "imported",
+      "generator_ref": null,
+      "split": "none",
+      "gold": {
+        "kind": "final-state",
+        "ref": "github.com/zapier/AutomationBench@a321764ace3cfbe42289e6a13abef2f0f4f56fad:automationbench/domains/marketing/tasks.py#marketing.lead_enrichment"
+      }
+    },
+    {
+      "task_id": "marketing.contact_data_cleanup",
+      "category_id": "marketing",
+      "seed": 1008,
+      "genesis": "imported",
+      "generator_ref": null,
+      "split": "none",
+      "gold": {
+        "kind": "final-state",
+        "ref": "github.com/zapier/AutomationBench@a321764ace3cfbe42289e6a13abef2f0f4f56fad:automationbench/domains/marketing/tasks.py#marketing.contact_data_cleanup"
+      }
+    },
+    {
+      "task_id": "marketing.ad_performance_review",
+      "category_id": "marketing",
+      "seed": 1011,
+      "genesis": "imported",
+      "generator_ref": null,
+      "split": "none",
+      "gold": {
+        "kind": "final-state",
+        "ref": "github.com/zapier/AutomationBench@a321764ace3cfbe42289e6a13abef2f0f4f56fad:automationbench/domains/marketing/tasks.py#marketing.ad_performance_review"
+      }
+    },
+    {
+      "task_id": "marketing.ad_platform_audit",
+      "category_id": "marketing",
+      "seed": 1012,
+      "genesis": "imported",
+      "generator_ref": null,
+      "split": "none",
+      "gold": {
+        "kind": "final-state",
+        "ref": "github.com/zapier/AutomationBench@a321764ace3cfbe42289e6a13abef2f0f4f56fad:automationbench/domains/marketing/tasks.py#marketing.ad_platform_audit"
+      }
+    },
+    {
+      "task_id": "marketing.conversion_tracking",
+      "category_id": "marketing",
+      "seed": 1013,
+      "genesis": "imported",
+      "generator_ref": null,
+      "split": "none",
+      "gold": {
+        "kind": "final-state",
+        "ref": "github.com/zapier/AutomationBench@a321764ace3cfbe42289e6a13abef2f0f4f56fad:automationbench/domains/marketing/tasks.py#marketing.conversion_tracking"
+      }
+    },
+    {
+      "task_id": "marketing.campaign_launch_checklist",
+      "category_id": "marketing",
+      "seed": 1016,
+      "genesis": "imported",
+      "generator_ref": null,
+      "split": "none",
+      "gold": {
+        "kind": "final-state",
+        "ref": "github.com/zapier/AutomationBench@a321764ace3cfbe42289e6a13abef2f0f4f56fad:automationbench/domains/marketing/tasks.py#marketing.campaign_launch_checklist"
+      }
+    },
+    {
+      "task_id": "marketing.influencer_outreach",
+      "category_id": "marketing",
+      "seed": 1022,
+      "genesis": "imported",
+      "generator_ref": null,
+      "split": "none",
+      "gold": {
+        "kind": "final-state",
+        "ref": "github.com/zapier/AutomationBench@a321764ace3cfbe42289e6a13abef2f0f4f56fad:automationbench/domains/marketing/tasks.py#marketing.influencer_outreach"
+      }
+    },
+    {
+      "task_id": "operations.asana_fire_drill",
+      "category_id": "operations",
+      "seed": 1201,
+      "genesis": "imported",
+      "generator_ref": null,
+      "split": "none",
+      "gold": {
+        "kind": "final-state",
+        "ref": "github.com/zapier/AutomationBench@a321764ace3cfbe42289e6a13abef2f0f4f56fad:automationbench/domains/operations/tasks.py#operations.asana_fire_drill"
+      }
+    },
+    {
+      "task_id": "operations.trello_basecamp_compliance",
+      "category_id": "operations",
+      "seed": 1202,
+      "genesis": "imported",
+      "generator_ref": null,
+      "split": "none",
+      "gold": {
+        "kind": "final-state",
+        "ref": "github.com/zapier/AutomationBench@a321764ace3cfbe42289e6a13abef2f0f4f56fad:automationbench/domains/operations/tasks.py#operations.trello_basecamp_compliance"
+      }
+    },
+    {
+      "task_id": "operations.monday_email_update",
+      "category_id": "operations",
+      "seed": 1203,
+      "genesis": "imported",
+      "generator_ref": null,
+      "split": "none",
+      "gold": {
+        "kind": "final-state",
+        "ref": "github.com/zapier/AutomationBench@a321764ace3cfbe42289e6a13abef2f0f4f56fad:automationbench/domains/operations/tasks.py#operations.monday_email_update"
+      }
+    },
+    {
+      "task_id": "operations.jira_confluence_incident",
+      "category_id": "operations",
+      "seed": 1204,
+      "genesis": "imported",
+      "generator_ref": null,
+      "split": "none",
+      "gold": {
+        "kind": "final-state",
+        "ref": "github.com/zapier/AutomationBench@a321764ace3cfbe42289e6a13abef2f0f4f56fad:automationbench/domains/operations/tasks.py#operations.jira_confluence_incident"
+      }
+    },
+    {
+      "task_id": "operations.drive_notion_archive",
+      "category_id": "operations",
+      "seed": 1205,
+      "genesis": "imported",
+      "generator_ref": null,
+      "split": "none",
+      "gold": {
+        "kind": "final-state",
+        "ref": "github.com/zapier/AutomationBench@a321764ace3cfbe42289e6a13abef2f0f4f56fad:automationbench/domains/operations/tasks.py#operations.drive_notion_archive"
+      }
+    },
+    {
+      "task_id": "operations.calendar_airtable_maintenance",
+      "category_id": "operations",
+      "seed": 1206,
+      "genesis": "imported",
+      "generator_ref": null,
+      "split": "none",
+      "gold": {
+        "kind": "final-state",
+        "ref": "github.com/zapier/AutomationBench@a321764ace3cfbe42289e6a13abef2f0f4f56fad:automationbench/domains/operations/tasks.py#operations.calendar_airtable_maintenance"
+      }
+    },
+    {
+      "task_id": "operations.pipefy_vendor_onboarding",
+      "category_id": "operations",
+      "seed": 1207,
+      "genesis": "imported",
+      "generator_ref": null,
+      "split": "none",
+      "gold": {
+        "kind": "final-state",
+        "ref": "github.com/zapier/AutomationBench@a321764ace3cfbe42289e6a13abef2f0f4f56fad:automationbench/domains/operations/tasks.py#operations.pipefy_vendor_onboarding"
+      }
+    },
+    {
+      "task_id": "operations.asana_safety_walk_log",
+      "category_id": "operations",
+      "seed": 1208,
+      "genesis": "imported",
+      "generator_ref": null,
+      "split": "none",
+      "gold": {
+        "kind": "final-state",
+        "ref": "github.com/zapier/AutomationBench@a321764ace3cfbe42289e6a13abef2f0f4f56fad:automationbench/domains/operations/tasks.py#operations.asana_safety_walk_log"
+      }
+    },
+    {
+      "task_id": "support.zendesk_sf_case_sync",
+      "category_id": "support",
+      "seed": 1401,
+      "genesis": "imported",
+      "generator_ref": null,
+      "split": "none",
+      "gold": {
+        "kind": "final-state",
+        "ref": "github.com/zapier/AutomationBench@a321764ace3cfbe42289e6a13abef2f0f4f56fad:automationbench/domains/support/tasks.py#support.zendesk_sf_case_sync"
+      }
+    },
+    {
+      "task_id": "support.helpscout_jira_bugs",
+      "category_id": "support",
+      "seed": 1404,
+      "genesis": "imported",
+      "generator_ref": null,
+      "split": "none",
+      "gold": {
+        "kind": "final-state",
+        "ref": "github.com/zapier/AutomationBench@a321764ace3cfbe42289e6a13abef2f0f4f56fad:automationbench/domains/support/tasks.py#support.helpscout_jira_bugs"
+      }
+    },
+    {
+      "task_id": "support.gorgias_order_lookup",
+      "category_id": "support",
+      "seed": 1405,
+      "genesis": "imported",
+      "generator_ref": null,
+      "split": "none",
+      "gold": {
+        "kind": "final-state",
+        "ref": "github.com/zapier/AutomationBench@a321764ace3cfbe42289e6a13abef2f0f4f56fad:automationbench/domains/support/tasks.py#support.gorgias_order_lookup"
+      }
+    },
+    {
+      "task_id": "support.zoho_sf_enrichment",
+      "category_id": "support",
+      "seed": 1409,
+      "genesis": "imported",
+      "generator_ref": null,
+      "split": "none",
+      "gold": {
+        "kind": "final-state",
+        "ref": "github.com/zapier/AutomationBench@a321764ace3cfbe42289e6a13abef2f0f4f56fad:automationbench/domains/support/tasks.py#support.zoho_sf_enrichment"
+      }
+    },
+    {
+      "task_id": "support.zendesk_maintenance_notify",
+      "category_id": "support",
+      "seed": 1410,
+      "genesis": "imported",
+      "generator_ref": null,
+      "split": "none",
+      "gold": {
+        "kind": "final-state",
+        "ref": "github.com/zapier/AutomationBench@a321764ace3cfbe42289e6a13abef2f0f4f56fad:automationbench/domains/support/tasks.py#support.zendesk_maintenance_notify"
+      }
+    },
+    {
+      "task_id": "support.intercom_demo_scheduling",
+      "category_id": "support",
+      "seed": 1412,
+      "genesis": "imported",
+      "generator_ref": null,
+      "split": "none",
+      "gold": {
+        "kind": "final-state",
+        "ref": "github.com/zapier/AutomationBench@a321764ace3cfbe42289e6a13abef2f0f4f56fad:automationbench/domains/support/tasks.py#support.intercom_demo_scheduling"
+      }
+    },
+    {
+      "task_id": "support.helpscout_weekly_report",
+      "category_id": "support",
+      "seed": 1413,
+      "genesis": "imported",
+      "generator_ref": null,
+      "split": "none",
+      "gold": {
+        "kind": "final-state",
+        "ref": "github.com/zapier/AutomationBench@a321764ace3cfbe42289e6a13abef2f0f4f56fad:automationbench/domains/support/tasks.py#support.helpscout_weekly_report"
+      }
+    },
+    {
+      "task_id": "support.zendesk_hubspot_org_sync",
+      "category_id": "support",
+      "seed": 1414,
+      "genesis": "imported",
+      "generator_ref": null,
+      "split": "none",
+      "gold": {
+        "kind": "final-state",
+        "ref": "github.com/zapier/AutomationBench@a321764ace3cfbe42289e6a13abef2f0f4f56fad:automationbench/domains/support/tasks.py#support.zendesk_hubspot_org_sync"
+      }
+    },
+    {
+      "task_id": "finance.invoice_email_extract",
+      "category_id": "finance",
+      "seed": 4001,
+      "genesis": "imported",
+      "generator_ref": null,
+      "split": "none",
+      "gold": {
+        "kind": "final-state",
+        "ref": "github.com/zapier/AutomationBench@a321764ace3cfbe42289e6a13abef2f0f4f56fad:automationbench/domains/finance/tasks.py#finance.invoice_email_extract"
+      }
+    },
+    {
+      "task_id": "finance.expense_anomaly_detection",
+      "category_id": "finance",
+      "seed": 4002,
+      "genesis": "imported",
+      "generator_ref": null,
+      "split": "none",
+      "gold": {
+        "kind": "final-state",
+        "ref": "github.com/zapier/AutomationBench@a321764ace3cfbe42289e6a13abef2f0f4f56fad:automationbench/domains/finance/tasks.py#finance.expense_anomaly_detection"
+      }
+    },
+    {
+      "task_id": "finance.overdue_invoice_followup",
+      "category_id": "finance",
+      "seed": 4003,
+      "genesis": "imported",
+      "generator_ref": null,
+      "split": "none",
+      "gold": {
+        "kind": "final-state",
+        "ref": "github.com/zapier/AutomationBench@a321764ace3cfbe42289e6a13abef2f0f4f56fad:automationbench/domains/finance/tasks.py#finance.overdue_invoice_followup"
+      }
+    },
+    {
+      "task_id": "finance.weekly_expense_summary",
+      "category_id": "finance",
+      "seed": 4004,
+      "genesis": "imported",
+      "generator_ref": null,
+      "split": "none",
+      "gold": {
+        "kind": "final-state",
+        "ref": "github.com/zapier/AutomationBench@a321764ace3cfbe42289e6a13abef2f0f4f56fad:automationbench/domains/finance/tasks.py#finance.weekly_expense_summary"
+      }
+    },
+    {
+      "task_id": "finance.timesheet_to_invoice",
+      "category_id": "finance",
+      "seed": 4005,
+      "genesis": "imported",
+      "generator_ref": null,
+      "split": "none",
+      "gold": {
+        "kind": "final-state",
+        "ref": "github.com/zapier/AutomationBench@a321764ace3cfbe42289e6a13abef2f0f4f56fad:automationbench/domains/finance/tasks.py#finance.timesheet_to_invoice"
+      }
+    },
+    {
+      "task_id": "finance.po_email_logging",
+      "category_id": "finance",
+      "seed": 4006,
+      "genesis": "imported",
+      "generator_ref": null,
+      "split": "none",
+      "gold": {
+        "kind": "final-state",
+        "ref": "github.com/zapier/AutomationBench@a321764ace3cfbe42289e6a13abef2f0f4f56fad:automationbench/domains/finance/tasks.py#finance.po_email_logging"
+      }
+    },
+    {
+      "task_id": "finance.slack_receipt_capture",
+      "category_id": "finance",
+      "seed": 4007,
+      "genesis": "imported",
+      "generator_ref": null,
+      "split": "none",
+      "gold": {
+        "kind": "final-state",
+        "ref": "github.com/zapier/AutomationBench@a321764ace3cfbe42289e6a13abef2f0f4f56fad:automationbench/domains/finance/tasks.py#finance.slack_receipt_capture"
+      }
+    },
+    {
+      "task_id": "finance.invoice_reconciliation",
+      "category_id": "finance",
+      "seed": 4008,
+      "genesis": "imported",
+      "generator_ref": null,
+      "split": "none",
+      "gold": {
+        "kind": "final-state",
+        "ref": "github.com/zapier/AutomationBench@a321764ace3cfbe42289e6a13abef2f0f4f56fad:automationbench/domains/finance/tasks.py#finance.invoice_reconciliation"
+      }
+    },
+    {
+      "task_id": "hr.offboarding_automation",
+      "category_id": "hr",
+      "seed": 5004,
+      "genesis": "imported",
+      "generator_ref": null,
+      "split": "none",
+      "gold": {
+        "kind": "final-state",
+        "ref": "github.com/zapier/AutomationBench@a321764ace3cfbe42289e6a13abef2f0f4f56fad:automationbench/domains/hr/tasks.py#hr.offboarding_automation"
+      }
+    },
+    {
+      "task_id": "hr.training_compliance",
+      "category_id": "hr",
+      "seed": 5005,
+      "genesis": "imported",
+      "generator_ref": null,
+      "split": "none",
+      "gold": {
+        "kind": "final-state",
+        "ref": "github.com/zapier/AutomationBench@a321764ace3cfbe42289e6a13abef2f0f4f56fad:automationbench/domains/hr/tasks.py#hr.training_compliance"
+      }
+    },
+    {
+      "task_id": "hr.performance_feedback_logging",
+      "category_id": "hr",
+      "seed": 5007,
+      "genesis": "imported",
+      "generator_ref": null,
+      "split": "none",
+      "gold": {
+        "kind": "final-state",
+        "ref": "github.com/zapier/AutomationBench@a321764ace3cfbe42289e6a13abef2f0f4f56fad:automationbench/domains/hr/tasks.py#hr.performance_feedback_logging"
+      }
+    },
+    {
+      "task_id": "hr.job_posting_distribution",
+      "category_id": "hr",
+      "seed": 5008,
+      "genesis": "imported",
+      "generator_ref": null,
+      "split": "none",
+      "gold": {
+        "kind": "final-state",
+        "ref": "github.com/zapier/AutomationBench@a321764ace3cfbe42289e6a13abef2f0f4f56fad:automationbench/domains/hr/tasks.py#hr.job_posting_distribution"
+      }
+    },
+    {
+      "task_id": "hr.job_board_monitoring",
+      "category_id": "hr",
+      "seed": 5009,
+      "genesis": "imported",
+      "generator_ref": null,
+      "split": "none",
+      "gold": {
+        "kind": "final-state",
+        "ref": "github.com/zapier/AutomationBench@a321764ace3cfbe42289e6a13abef2f0f4f56fad:automationbench/domains/hr/tasks.py#hr.job_board_monitoring"
+      }
+    },
+    {
+      "task_id": "hr.interview_scheduling",
+      "category_id": "hr",
+      "seed": 5010,
+      "genesis": "imported",
+      "generator_ref": null,
+      "split": "none",
+      "gold": {
+        "kind": "final-state",
+        "ref": "github.com/zapier/AutomationBench@a321764ace3cfbe42289e6a13abef2f0f4f56fad:automationbench/domains/hr/tasks.py#hr.interview_scheduling"
+      }
+    },
+    {
+      "task_id": "hr.salary_band_audit",
+      "category_id": "hr",
+      "seed": 5011,
+      "genesis": "imported",
+      "generator_ref": null,
+      "split": "none",
+      "gold": {
+        "kind": "final-state",
+        "ref": "github.com/zapier/AutomationBench@a321764ace3cfbe42289e6a13abef2f0f4f56fad:automationbench/domains/hr/tasks.py#hr.salary_band_audit"
+      }
+    },
+    {
+      "task_id": "hr.pto_balance_alert",
+      "category_id": "hr",
+      "seed": 5012,
+      "genesis": "imported",
+      "generator_ref": null,
+      "split": "none",
+      "gold": {
+        "kind": "final-state",
+        "ref": "github.com/zapier/AutomationBench@a321764ace3cfbe42289e6a13abef2f0f4f56fad:automationbench/domains/hr/tasks.py#hr.pto_balance_alert"
+      }
     }
   ],
   "environment": {
-    "format": "verifiers.v1",
-    "package_ref": ".understudy/benchmarks/automationbench-import/env",
+    "format": "verifiers.v0",
+    "package_ref": "github.com/zapier/AutomationBench@a321764ace3cfbe42289e6a13abef2f0f4f56fad (also: prime env install zapier/AutomationBench)",
     "package_sha256": null,
-    "tool_surface": ["salesforce", "gmail", "sheets"],
+    "tool_surface": [
+      "airtable",
+      "asana",
+      "basecamp3",
+      "confluence",
+      "gmail",
+      "google",
+      "gorgias",
+      "helpscout",
+      "hubspot",
+      "intercom",
+      "jira",
+      "linkedin",
+      "monday",
+      "notion",
+      "pipefy",
+      "quickbooks",
+      "recruitee",
+      "salesforce",
+      "slack",
+      "trello",
+      "twitter",
+      "zendesk",
+      "zoho"
+    ],
     "runtime": "subprocess",
-    "verifiers_version_pin": "==0.2.0"
+    "verifiers_version_pin": ">=0.1.12.dev2"
   },
   "verifier": {
     "kind": "final-state",
     "strict_metric": "task_completed_correctly",
     "dense_metric": "partial_credit",
-    "replayable": null
+    "replayable": false
   },
   "splits": {
     "boundary": null,
