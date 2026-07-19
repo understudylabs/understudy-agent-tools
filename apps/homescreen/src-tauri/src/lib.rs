@@ -346,6 +346,7 @@ pub fn run() {
             remote_training::inspect_remote_training_recipe,
             remote_training::prepare_remote_classification_training,
             remote_training::prepare_remote_gsm8k_training,
+            remote_training::compile_remote_training_backends,
             remote_training::existing_remote_training,
             remote_training::existing_remote_classification_training,
             remote_training::start_remote_training,

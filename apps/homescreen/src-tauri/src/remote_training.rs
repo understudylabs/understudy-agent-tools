@@ -6,13 +6,14 @@ use std::collections::{HashMap, HashSet};
 use std::fs::{self, OpenOptions};
 use std::io::Write;
 use std::path::{Path, PathBuf};
-use std::time::Duration;
+use std::time::{Duration, Instant};
 use tauri::ipc::Channel;
 
 const DATASET_SCHEMA: &str = "understudy.capture_import.classification_dataset.v2";
 const PLAN_SCHEMA: &str = "understudy.remote_training.plan.v2";
 const RUN_SCHEMA: &str = "understudy.remote_training.run.v1";
 const API_SCHEMA: &str = "understudy-train-v1";
+const BACKEND_COMPATIBILITY_SCHEMA: &str = "understudy.remote_training.backend_compatibility.v1";
 const DEFAULT_TRAIN_API_BASE: &str = "https://train.understudylabs.com/api/train/v1";
 const MAX_MANIFEST_BYTES: u64 = 1_048_576;
 // Keep the first remote-training slice bounded. Split conversion is deliberately
@@ -27,6 +28,7 @@ struct TrainingRecipeEvidence {
     total_rows: u64,
     chat_rows: u64,
     gsm8k_rows: u64,
+    gsm8k_public_rows: u64,
     classification_rows: u64,
     preference_rows: u64,
     tool_trace_rows: u64,
@@ -51,6 +53,7 @@ struct TrainingRecipeInspection {
     evidence: TrainingRecipeEvidence,
     reasons: Vec<String>,
     warnings: Vec<String>,
+    inspection_duration_ms: u64,
 }
 
 #[derive(Debug, Clone, Deserialize)]
@@ -144,6 +147,8 @@ struct RemoteTrainingPlan {
     maximum_eval_examples: u64,
     minimum_accuracy: f64,
     minimum_improvement_over_base: f64,
+    #[serde(default)]
+    preparation_duration_ms: u64,
     plan_path: String,
 }
 
@@ -309,6 +314,15 @@ pub async fn prepare_remote_gsm8k_training(
 }
 
 #[tauri::command]
+pub async fn compile_remote_training_backends(plan_path: String) -> Result<Value, String> {
+    tauri::async_runtime::spawn_blocking(move || compile_backend_compatibility(&plan_path))
+        .await
+        .map_err(|error| {
+            format!("Backend compatibility compilation stopped unexpectedly: {error}")
+        })?
+}
+
+#[tauri::command]
 pub async fn inspect_remote_training_recipe(path: String) -> Result<Value, String> {
     tauri::async_runtime::spawn_blocking(move || inspect_training_recipe(&path))
         .await
@@ -316,6 +330,7 @@ pub async fn inspect_remote_training_recipe(path: String) -> Result<Value, Strin
 }
 
 fn inspect_training_recipe(path: &str) -> Result<Value, String> {
+    let started = Instant::now();
     let canonical = PathBuf::from(path.trim())
         .canonicalize()
         .map_err(|_| "The dropped training dataset is unavailable.".to_string())?;
@@ -335,6 +350,7 @@ fn inspect_training_recipe(path: &str) -> Result<Value, String> {
         total_rows: 0,
         chat_rows: 0,
         gsm8k_rows: 0,
+        gsm8k_public_rows: 0,
         classification_rows: 0,
         preference_rows: 0,
         tool_trace_rows: 0,
@@ -358,6 +374,11 @@ fn inspect_training_recipe(path: &str) -> Result<Value, String> {
         }
         if has_preference_pair(object) {
             evidence.preference_rows += 1;
+        }
+        if public_gsm8k_messages(object).is_some() {
+            evidence.gsm8k_rows += 1;
+            evidence.gsm8k_public_rows += 1;
+            continue;
         }
         let Some(messages) = object.get("messages").and_then(Value::as_array) else {
             continue;
@@ -399,7 +420,7 @@ fn inspect_training_recipe(path: &str) -> Result<Value, String> {
                 Some("gsm8k_final_answer".to_string()),
                 confidence_for_ratio(ratio(evidence.gsm8k_rows)),
                 true,
-                vec!["Most rows are chat examples whose final assistant answer contains a GSM8K-style `####` numeric result.".to_string()],
+                vec!["Most rows are either public GSM8K `question`/`answer` examples or chat examples whose final assistant answer contains a GSM8K-style `####` numeric result.".to_string()],
             )
     } else if ratio(evidence.preference_rows) >= 0.8 {
         (
@@ -491,6 +512,7 @@ fn inspect_training_recipe(path: &str) -> Result<Value, String> {
         evidence,
         reasons,
         warnings,
+        inspection_duration_ms: elapsed_millis(started),
     };
     serde_json::to_value(inspection)
         .map_err(|_| "The training recipe inspection could not be returned.".to_string())
@@ -532,6 +554,37 @@ fn valid_chat_messages(messages: &[Value]) -> bool {
 fn has_preference_pair(row: &serde_json::Map<String, Value>) -> bool {
     (row.get("chosen").is_some() && row.get("rejected").is_some())
         || (row.get("preferred").is_some() && row.get("non_preferred").is_some())
+}
+
+fn public_gsm8k_messages(row: &serde_json::Map<String, Value>) -> Option<Vec<Value>> {
+    let question = row.get("question")?.as_str()?.trim();
+    let answer = row.get("answer")?.as_str()?.trim();
+    if question.is_empty() || !has_gsm8k_final_answer(answer) {
+        return None;
+    }
+    Some(vec![
+        json!({ "role": "user", "content": question }),
+        json!({ "role": "assistant", "content": answer }),
+    ])
+}
+
+fn normalized_gsm8k_messages(row: &Value) -> Option<Vec<Value>> {
+    let object = row.as_object()?;
+    if let Some(messages) = public_gsm8k_messages(object) {
+        return Some(messages);
+    }
+    let messages = object.get("messages")?.as_array()?;
+    if !valid_chat_messages(messages)
+        || !messages
+            .last()
+            .and_then(Value::as_object)
+            .and_then(|message| message.get("content"))
+            .and_then(Value::as_str)
+            .is_some_and(has_gsm8k_final_answer)
+    {
+        return None;
+    }
+    Some(messages.clone())
 }
 
 fn message_has_tool_content(message: &Value) -> bool {
@@ -684,6 +737,7 @@ fn prepare_remote_plan(
     frontier_model: &str,
     maximum_spend_usd: f64,
 ) -> Result<Value, String> {
+    let started = Instant::now();
     validate_remote_plan_options(provider, model_profile, frontier_model, maximum_spend_usd)?;
     let canonical_manifest = PathBuf::from(manifest_path.trim())
         .canonicalize()
@@ -825,6 +879,7 @@ fn prepare_remote_plan(
         maximum_eval_examples: 200,
         minimum_accuracy: 0.80,
         minimum_improvement_over_base: 0.02,
+        preparation_duration_ms: elapsed_millis(started),
         plan_path: plan_path.display().to_string(),
     };
     write_private_new(
@@ -874,6 +929,7 @@ fn prepare_gsm8k_plan(
     frontier_model: &str,
     maximum_spend_usd: f64,
 ) -> Result<Value, String> {
+    let started = Instant::now();
     validate_remote_plan_options(provider, model_profile, frontier_model, maximum_spend_usd)?;
     if !valid_hash(expected_source_sha256) {
         return Err("The detected source hash is invalid.".into());
@@ -906,19 +962,12 @@ fn prepare_gsm8k_plan(
     {
         let row: Value = serde_json::from_str(line)
             .map_err(|_| format!("GSM8K row {} is malformed.", index + 1))?;
-        let messages = row
-            .get("messages")
-            .and_then(Value::as_array)
-            .filter(|messages| valid_chat_messages(messages))
-            .ok_or_else(|| format!("GSM8K row {} has invalid chat messages.", index + 1))?;
-        let final_answer = messages
-            .last()
-            .and_then(Value::as_object)
-            .and_then(|message| message.get("content"))
-            .and_then(Value::as_str)
-            .filter(|answer| has_gsm8k_final_answer(answer))
-            .ok_or_else(|| format!("GSM8K row {} has no `####` numeric answer.", index + 1))?;
-        let _ = final_answer;
+        let messages = normalized_gsm8k_messages(&row).ok_or_else(|| {
+            format!(
+                "GSM8K row {} must contain public `question`/`answer` fields or valid chat messages ending with a `####` numeric answer.",
+                index + 1
+            )
+        })?;
         let prompt = serde_json::to_vec(&messages[..messages.len() - 1])
             .map_err(|_| format!("GSM8K row {} could not be normalized.", index + 1))?;
         let prompt_hash = sha256_bytes(&prompt);
@@ -928,7 +977,9 @@ fn prepare_gsm8k_plan(
                 index + 1
             ));
         }
-        rows.push((prompt_hash, line.trim().to_string()));
+        let normalized = serde_json::to_string(&json!({ "messages": messages }))
+            .map_err(|_| format!("GSM8K row {} could not be normalized.", index + 1))?;
+        rows.push((prompt_hash, normalized));
     }
     if rows.len() < 20 {
         return Err("GSM8K remote training needs at least 20 valid, distinct examples.".into());
@@ -1019,6 +1070,7 @@ fn prepare_gsm8k_plan(
         maximum_eval_examples: heldout_rows.min(200),
         minimum_accuracy: 0.20,
         minimum_improvement_over_base: 0.02,
+        preparation_duration_ms: elapsed_millis(started),
         plan_path: plan_path.display().to_string(),
     };
     write_private_new(
@@ -1028,6 +1080,90 @@ fn prepare_gsm8k_plan(
     )?;
     serde_json::to_value(plan)
         .map_err(|_| "The GSM8K remote training plan could not be returned.".to_string())
+}
+
+fn compile_backend_compatibility(plan_path: &str) -> Result<Value, String> {
+    let started = Instant::now();
+    let plan = read_verified_plan(plan_path)?;
+    let canonical_plan = PathBuf::from(plan_path.trim())
+        .canonicalize()
+        .map_err(|_| "The remote training plan is unavailable.".to_string())?;
+    let plan_bytes = fs::read(&canonical_plan)
+        .map_err(|_| "The remote training plan could not be read.".to_string())?;
+    let plan_sha256 = sha256_bytes(&plan_bytes);
+    let evaluator = plan
+        .evaluator
+        .clone()
+        .ok_or_else(|| "The remote training plan has no held-out evaluator.".to_string())?;
+    let (use_case, dataset_format) = match plan.task_kind.as_str() {
+        "text_classification" => (
+            "classification",
+            "classification_sft_with_exact_label_holdout",
+        ),
+        "chat_sft" if evaluator == "gsm8k_final_answer" => {
+            ("grade_school_math_reasoning", "openai_chat_messages")
+        }
+        _ => return Err("The remote training plan has no portable backend recipe.".into()),
+    };
+    let backends = vec![
+        json!({
+            "id": "fake",
+            "compatible": true,
+            "execution_ready": true,
+            "recipe": "service_workflow_proof",
+            "dataset_format": dataset_format,
+            "loss_mask": "assistant_only",
+            "evaluator": evaluator,
+            "checkpoint_contract": "synthetic",
+            "execution_gate": "explicit_upload_consent"
+        }),
+        json!({
+            "id": "fireworks",
+            "compatible": true,
+            "execution_ready": false,
+            "recipe": "managed_supervised_fine_tuning",
+            "dataset_format": dataset_format,
+            "loss_mask": "assistant_only",
+            "evaluator": evaluator,
+            "checkpoint_contract": "lora_model_plus_ephemeral_evaluation_deployment",
+            "execution_gate": "live_model_catalog_provider_entitlement_upload_consent_and_budget"
+        }),
+        json!({
+            "id": "tinker",
+            "compatible": true,
+            "execution_ready": false,
+            "recipe": "sft_lora",
+            "dataset_format": "messages_rendered_to_tokenized_datum",
+            "loss_mask": "assistant_only",
+            "evaluator": evaluator,
+            "checkpoint_contract": "training_state_plus_sampler_weights",
+            "execution_gate": "desktop_service_adapter_live_model_catalog_renderer_preflight_upload_consent_and_budget"
+        }),
+    ];
+    let artifact_path = canonical_plan
+        .parent()
+        .ok_or_else(|| "The remote training plan has no private root.".to_string())?
+        .join("backend-compatibility.json");
+    let proof = json!({
+        "schema_version": BACKEND_COMPATIBILITY_SCHEMA,
+        "plan_id": plan.plan_id,
+        "plan_sha256": plan_sha256,
+        "split_hash": plan.split_hash,
+        "objective": "sft",
+        "modality": "text",
+        "use_case": use_case,
+        "evaluator": evaluator,
+        "local_only": true,
+        "provider_called": false,
+        "upload_performed": false,
+        "spend_usd": 0.0,
+        "plan_preparation_duration_ms": plan.preparation_duration_ms,
+        "compile_duration_ms": elapsed_millis(started),
+        "artifact_path": artifact_path,
+        "backends": backends
+    });
+    replace_private_json(&artifact_path, &proof)?;
+    Ok(proof)
 }
 
 fn validate_manifest(manifest: &DatasetManifest, path: &Path) -> Result<(), String> {
@@ -1727,6 +1863,10 @@ fn timestamp() -> String {
     chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true)
 }
 
+fn elapsed_millis(started: Instant) -> u64 {
+    u64::try_from(started.elapsed().as_millis()).unwrap_or(u64::MAX)
+}
+
 fn create_private_directory(path: &Path) -> Result<(), String> {
     fs::create_dir_all(path).map_err(|error| {
         format!("Could not create the private remote training directory: {error}")
@@ -1759,18 +1899,22 @@ fn write_private_new(path: &Path, bytes: &[u8]) -> Result<(), String> {
 }
 
 fn replace_private_json(path: &Path, value: &impl Serialize) -> Result<(), String> {
-    let temporary = path.with_extension("json.tmp");
-    if temporary.exists() {
-        fs::remove_file(&temporary)
-            .map_err(|_| "Could not replace the local remote-training state.".to_string())?;
-    }
+    // React development mode and recovery can legitimately request the same
+    // local proof at the same time. A fixed `.tmp` name lets those requests
+    // delete or rename each other's file, so each writer gets a private temp.
+    let temporary = path.with_extension(format!("json.{}.tmp", random_uuid()?));
     write_private_new(
         &temporary,
         &serde_json::to_vec_pretty(value)
             .map_err(|_| "The local remote-training state could not be encoded.".to_string())?,
     )?;
-    fs::rename(&temporary, path)
-        .map_err(|_| "Could not replace the local remote-training state.".to_string())
+    if let Err(error) = fs::rename(&temporary, path) {
+        let _ = fs::remove_file(&temporary);
+        return Err(format!(
+            "Could not replace the local remote-training state: {error}"
+        ));
+    }
+    Ok(())
 }
 
 #[cfg(test)]
@@ -1882,6 +2026,146 @@ mod tests {
             inspection.get("local_only").and_then(Value::as_bool),
             Some(true)
         );
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn detects_and_normalizes_public_gsm8k_question_answer_rows() {
+        let preflight_started = Instant::now();
+        let root = std::env::temp_dir().join(format!(
+            "understudy-public-gsm8k-test-{}-{}",
+            std::process::id(),
+            random_uuid().unwrap()
+        ));
+        fs::create_dir_all(&root).unwrap();
+        fs::write(root.join("workload-card.json"), b"{}\n").unwrap();
+        let source = root.join("gsm8k-public.jsonl");
+        let content = (0..100)
+            .map(|index| {
+                serde_json::to_string(&json!({
+                    "question": format!("If Sam has {index} apples and gets 2 more, how many apples does Sam have?"),
+                    "answer": format!("Sam adds the two apples. #### {}", index + 2)
+                }))
+                .unwrap()
+            })
+            .collect::<Vec<_>>()
+            .join("\n")
+            + "\n";
+        fs::write(&source, &content).unwrap();
+
+        let inspection = inspect_training_recipe(source.to_str().unwrap()).unwrap();
+        assert!(inspection
+            .get("inspection_duration_ms")
+            .and_then(Value::as_u64)
+            .is_some_and(|duration| duration < 5_000));
+        assert_eq!(
+            inspection.get("detected_use_case").and_then(Value::as_str),
+            Some("grade_school_math_reasoning")
+        );
+        assert_eq!(inspection.get("ready").and_then(Value::as_bool), Some(true));
+        assert_eq!(
+            inspection
+                .get("evidence")
+                .and_then(|evidence| evidence.get("gsm8k_public_rows"))
+                .and_then(Value::as_u64),
+            Some(100)
+        );
+
+        let plan: RemoteTrainingPlan = serde_json::from_value(
+            prepare_gsm8k_plan(
+                source.to_str().unwrap(),
+                root.to_str().unwrap(),
+                &sha256_bytes(content.as_bytes()),
+                "fake",
+                "understudy/auto",
+                "glm-5.2",
+                1.0,
+            )
+            .unwrap(),
+        )
+        .unwrap();
+        assert!(plan.preparation_duration_ms < 5_000);
+        assert_eq!(artifact_rows(&plan, "train").unwrap(), 70);
+        assert_eq!(artifact_rows(&plan, "validation").unwrap(), 15);
+        assert_eq!(artifact_rows(&plan, "heldout").unwrap(), 15);
+        for artifact in &plan.artifacts {
+            let first = fs::read_to_string(&artifact.path)
+                .unwrap()
+                .lines()
+                .next()
+                .map(|line| serde_json::from_str::<Value>(line).unwrap())
+                .unwrap();
+            assert!(first.get("messages").is_some_and(Value::is_array));
+            assert!(first.get("question").is_none());
+            assert!(first.get("answer").is_none());
+        }
+        assert!(read_verified_plan(&plan.plan_path).is_ok());
+        let compiled = (0..2)
+            .map(|_| {
+                let plan_path = plan.plan_path.clone();
+                std::thread::spawn(move || compile_backend_compatibility(&plan_path))
+            })
+            .map(|request| request.join().unwrap().unwrap())
+            .collect::<Vec<_>>();
+        let compatibility = compiled.first().unwrap();
+        assert!(compatibility
+            .get("compile_duration_ms")
+            .and_then(Value::as_u64)
+            .is_some_and(|duration| duration < 5_000));
+        assert_eq!(
+            compatibility.get("schema_version").and_then(Value::as_str),
+            Some(BACKEND_COMPATIBILITY_SCHEMA)
+        );
+        assert_eq!(
+            compatibility.get("plan_sha256").and_then(Value::as_str),
+            Some(sha256_bytes(&fs::read(&plan.plan_path).unwrap()).as_str())
+        );
+        assert_eq!(
+            compatibility.get("split_hash").and_then(Value::as_str),
+            Some(plan.split_hash.as_str())
+        );
+        assert_eq!(
+            compatibility
+                .get("provider_called")
+                .and_then(Value::as_bool),
+            Some(false)
+        );
+        assert_eq!(
+            compatibility
+                .get("upload_performed")
+                .and_then(Value::as_bool),
+            Some(false)
+        );
+        let backends = compatibility
+            .get("backends")
+            .and_then(Value::as_array)
+            .unwrap();
+        for backend_id in ["fireworks", "tinker"] {
+            let backend = backends
+                .iter()
+                .find(|backend| backend.get("id").and_then(Value::as_str) == Some(backend_id))
+                .unwrap();
+            assert_eq!(
+                backend.get("compatible").and_then(Value::as_bool),
+                Some(true)
+            );
+            assert_eq!(
+                backend.get("evaluator").and_then(Value::as_str),
+                Some("gsm8k_final_answer")
+            );
+            assert_eq!(
+                backend.get("execution_ready").and_then(Value::as_bool),
+                Some(false)
+            );
+        }
+        assert!(preflight_started.elapsed() < Duration::from_secs(5));
+        assert!(PathBuf::from(
+            compatibility
+                .get("artifact_path")
+                .and_then(Value::as_str)
+                .unwrap()
+        )
+        .is_file());
         fs::remove_dir_all(root).unwrap();
     }
 

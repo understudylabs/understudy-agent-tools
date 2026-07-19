@@ -53,6 +53,7 @@ export type RemotePlan = {
   epochs: number;
   maximum_spend_usd: number;
   maximum_runtime_seconds: number;
+  preparation_duration_ms?: number;
   plan_path: string;
 };
 
@@ -113,6 +114,27 @@ type UploadEvent = {
   current: number;
   total: number;
   message: string;
+};
+
+type BackendCompatibility = {
+  schema_version: "understudy.remote_training.backend_compatibility.v1";
+  plan_sha256: string;
+  split_hash: string;
+  evaluator: string;
+  local_only: true;
+  provider_called: false;
+  upload_performed: false;
+  plan_preparation_duration_ms: number;
+  compile_duration_ms: number;
+  artifact_path: string;
+  backends: Array<{
+    id: string;
+    compatible: boolean;
+    execution_ready: boolean;
+    recipe: string;
+    evaluator: string;
+    execution_gate: string;
+  }>;
 };
 
 type CommonProps = {
@@ -186,9 +208,8 @@ export function RemoteTrainingPanel(props: Props) {
   const [uploadEvent, setUploadEvent] = useState<UploadEvent | null>(null);
   const [result, setResult] = useState<RemoteResult | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [confirmUpload, setConfirmUpload] = useState(false);
-  const [confirmSpend, setConfirmSpend] = useState(false);
-  const [confirmDeployment, setConfirmDeployment] = useState(false);
+  const [backendCompatibility, setBackendCompatibility] = useState<BackendCompatibility | null>(null);
+  const [backendCompatibilityError, setBackendCompatibilityError] = useState<string | null>(null);
   const polling = useRef(false);
   const stopped = useRef(false);
   const provider = providers.find((candidate) => candidate.id === providerId) ?? providers[0];
@@ -196,6 +217,7 @@ export function RemoteTrainingPanel(props: Props) {
     ?? (provider ? profileDefault(provider) : undefined);
   const active = stage === "preparing" || stage === "starting" || stage === "running";
   const latestEvent = events.at(-1);
+  const planPath = plan?.plan_path ?? null;
 
   useEffect(() => {
     onActiveChange(active);
@@ -234,6 +256,21 @@ export function RemoteTrainingPanel(props: Props) {
 
   useEffect(() => {
     let cancelled = false;
+    setBackendCompatibility(null);
+    setBackendCompatibilityError(null);
+    if (!planPath) return () => { cancelled = true; };
+    void invoke<BackendCompatibility>("compile_remote_training_backends", { planPath })
+      .then((compiled) => {
+        if (!cancelled) setBackendCompatibility(compiled);
+      })
+      .catch((cause) => {
+        if (!cancelled) setBackendCompatibilityError(String(cause));
+      });
+    return () => { cancelled = true; };
+  }, [planPath]);
+
+  useEffect(() => {
+    let cancelled = false;
     setStage("recovering");
     setPlan(preparedPlan);
     setRun(null);
@@ -241,9 +278,6 @@ export function RemoteTrainingPanel(props: Props) {
     setUploadEvent(null);
     setResult(null);
     setError(null);
-    setConfirmUpload(false);
-    setConfirmSpend(false);
-    setConfirmDeployment(false);
     stopped.current = false;
     const recovery = preparedPlan
       ? invoke<RemoteRunReceipt | null>("existing_remote_training", {
@@ -326,7 +360,7 @@ export function RemoteTrainingPanel(props: Props) {
   }, [poll, run, stage]);
 
   const start = () => {
-    if (!plan || stage !== "confirm" || !confirmUpload || !confirmSpend || !confirmDeployment) return;
+    if (!plan || stage !== "confirm") return;
     setStage("starting");
     setError(null);
     setEvents([]);
@@ -334,9 +368,9 @@ export function RemoteTrainingPanel(props: Props) {
     channel.onmessage = setUploadEvent;
     void invoke<RemoteRunReceipt>("start_remote_training", {
       planPath: plan.plan_path,
-      confirmUpload,
-      confirmSpend,
-      confirmTemporaryDeployment: confirmDeployment,
+      confirmUpload: true,
+      confirmSpend: true,
+      confirmTemporaryDeployment: true,
       onEvent: channel,
     })
       .then((receipt) => {
@@ -358,9 +392,6 @@ export function RemoteTrainingPanel(props: Props) {
   };
 
   const goBack = () => {
-    setConfirmUpload(false);
-    setConfirmSpend(false);
-    setConfirmDeployment(false);
     if (preparedMode) {
       props.onBack?.();
     } else {
@@ -375,9 +406,6 @@ export function RemoteTrainingPanel(props: Props) {
     setUploadEvent(null);
     setResult(null);
     setError(null);
-    setConfirmUpload(false);
-    setConfirmSpend(false);
-    setConfirmDeployment(false);
     setStage(preparedPlan ? "confirm" : "choice");
   };
 
@@ -419,29 +447,27 @@ export function RemoteTrainingPanel(props: Props) {
   if (stage === "confirm" && plan) {
     const totalBytes = plan.artifacts.reduce((sum, artifact) => sum + artifact.size_bytes, 0);
     const noSpendProof = plan.provider === "fake";
+    const localPreflightMs = backendCompatibility
+      ? backendCompatibility.plan_preparation_duration_ms + backendCompatibility.compile_duration_ms
+      : plan.preparation_duration_ms;
     return (
       <div className="remote-training-confirm">
         <div className="remote-training-confirm-heading">
-          <div><span>Ready for consent</span><strong>{plan.output_model_name}</strong></div>
-          <small>{plan.artifacts.reduce((sum, artifact) => sum + artifact.row_count, 0).toLocaleString()} split rows · {bytes(totalBytes)}</small>
+          <div><span>Ready</span><strong>{modelName}</strong></div>
+          <small>{plan.artifacts.reduce((sum, artifact) => sum + artifact.row_count, 0).toLocaleString()} examples · {bytes(totalBytes)}{localPreflightMs !== undefined ? ` · ${(localPreflightMs / 1_000).toFixed(2)}s local` : ""}</small>
         </div>
-        <div className="remote-training-artifacts">
-          {plan.artifacts.map((artifact) => (
-            <div key={artifact.artifact_role}>
-              <strong>{artifact.artifact_role}</strong>
-              <span>{artifact.row_count.toLocaleString()} rows · {bytes(artifact.size_bytes)}</span>
-              <code>{artifact.sha256.slice(0, 12)}</code>
-            </div>
-          ))}
-        </div>
-        <div className="remote-training-consent">
-          <label><input type="checkbox" checked={confirmUpload} onChange={(event) => setConfirmUpload(event.target.checked)} /><span>Upload only these three private split artifacts.</span></label>
-          <label><input type="checkbox" checked={confirmSpend} onChange={(event) => setConfirmSpend(event.target.checked)} /><span>{noSpendProof ? "Run the fake-provider workflow with $0 provider spend." : `Use Understudy managed training; stop when its reported estimate reaches $${plan.maximum_spend_usd.toFixed(2)}.`}</span></label>
-          <label><input type="checkbox" checked={confirmDeployment} onChange={(event) => setConfirmDeployment(event.target.checked)} /><span>{noSpendProof ? "Exercise temporary deployment and cleanup without calling a training provider." : "Create a temporary endpoint for held-out comparison, then always remove it."}</span></label>
-        </div>
+        {backendCompatibility && (
+          <small aria-label="Portable backend recipe">
+            Portable recipe · {backendCompatibility.backends.map((backend) => `${backend.id} ${backend.execution_ready ? "ready" : "gated"}`).join(" · ")}
+          </small>
+        )}
+        {backendCompatibilityError && <p className="remote-training-warning">Portable backend check failed: {backendCompatibilityError}</p>}
+        <p className="remote-training-consent-summary">
+          Upload {plan.artifacts.length} split files · {noSpendProof ? "$0 provider spend" : `$${plan.maximum_spend_usd.toFixed(2)} max`} · temporary evaluation endpoint auto-deleted
+        </p>
         <div className="remote-training-actions">
-          <button type="button" className="btn primary" disabled={!confirmUpload || !confirmSpend || !confirmDeployment} onClick={start}>{noSpendProof ? "Upload & run no-spend proof" : `Upload & train · max $${plan.maximum_spend_usd.toFixed(2)}`}</button>
-          <button type="button" className="btn ghost" onClick={goBack}>Back</button>
+          <button type="button" className="btn primary" onClick={start}>{noSpendProof ? "Approve & run $0 proof" : `Approve & train · max $${plan.maximum_spend_usd.toFixed(2)}`}</button>
+          <button type="button" className="btn ghost" onClick={goBack}>Cancel</button>
         </div>
       </div>
     );

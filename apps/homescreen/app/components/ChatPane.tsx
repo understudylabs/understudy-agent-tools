@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useReducer, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react";
 import { Channel, invoke, isTauri } from "@tauri-apps/api/core";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
 import {
@@ -199,6 +199,7 @@ type TrainingRecipeInspection = {
     total_rows: number;
     chat_rows: number;
     gsm8k_rows: number;
+    gsm8k_public_rows: number;
     classification_rows: number;
     preference_rows: number;
     tool_trace_rows: number;
@@ -207,6 +208,7 @@ type TrainingRecipeInspection = {
   };
   reasons: string[];
   warnings: string[];
+  inspection_duration_ms?: number;
 };
 type ClassificationDataset = {
   schema_version: "understudy.capture_import.classification_dataset.v2";
@@ -562,7 +564,7 @@ export function ChatPane({
     dispatchDrop({ type: "inspection_succeeded" });
   };
 
-  const prepareDetectedRecipe = () => {
+  const prepareDetectedRecipe = useCallback(() => {
     if (
       !droppedWorkload
       || !trainingRecipe
@@ -598,7 +600,11 @@ export function ChatPane({
       .finally(() => {
         if (dropRequestGeneration.current === requestGeneration) dropInFlight.current = false;
       });
-  };
+  }, [droppedWorkload, trainingRecipe]);
+
+  useEffect(() => {
+    if (!remoteRecipePlan && trainingRecipe?.ready) prepareDetectedRecipe();
+  }, [prepareDetectedRecipe, remoteRecipePlan, trainingRecipe?.ready]);
 
   const prepareDroppedClassification = () => {
     if (
@@ -1501,26 +1507,14 @@ export function ChatPane({
                 </div>
               ) : trainingRecipe && droppedWorkload ? (
                 <>
-                  <div className="csv-analysis-step-label csv-analysis-step-structure">1 · detected use case</div>
                   <div className="workload-generic-summary">
                     <strong>{trainingUseCaseLabel(trainingRecipe.detected_use_case)}</strong>
                     <small>
-                      {trainingRecipe.confidence} confidence · {trainingRecipe.evidence.total_rows.toLocaleString()} rows · {trainingRecipe.method.toUpperCase()}
+                      {trainingRecipe.evidence.total_rows.toLocaleString()} examples · {trainingRecipe.method.toUpperCase()} · {trainingRecipe.evaluator?.replaceAll("_", " ") ?? "evaluator needed"}
+                      {Number.isFinite(trainingRecipe.inspection_duration_ms) ? ` · ${((trainingRecipe.inspection_duration_ms ?? 0) / 1_000).toFixed(2)}s local` : ""}
                     </small>
                   </div>
-                  <div className="csv-analysis-step-label">2 · proposed recipe</div>
                   <div className="csv-analysis-next">
-                    <div className="csv-analysis-proposal">
-                      <strong>{trainingRecipe.task_kind.replaceAll("_", " ")}</strong>
-                      <small>
-                        {trainingRecipe.evaluator
-                          ? `Held-out evaluator · ${trainingRecipe.evaluator.replaceAll("_", " ")}`
-                          : "Choose or define a held-out evaluator before training"}
-                      </small>
-                    </div>
-                    <p className="csv-analysis-caution" role="status">
-                      {trainingRecipe.reasons[0]}
-                    </p>
                     {trainingRecipe.ready ? (
                       remoteRecipePlan ? (
                         <RemoteTrainingPanel
@@ -1531,9 +1525,10 @@ export function ChatPane({
                           onVisualChange={setTrainingHaloVisual}
                         />
                       ) : (
-                        <button type="button" className="btn primary" onClick={prepareDetectedRecipe}>
-                          Prepare no-spend plan
-                        </button>
+                        <div className="remote-training-state" role="status" aria-live="polite">
+                          <strong>Preparing the best-fit recipe</strong>
+                          <small>Splitting and verifying locally. Nothing is uploaded.</small>
+                        </div>
                       )
                     ) : (
                       <p>{trainingRecipe.warnings[0]}</p>
@@ -1691,9 +1686,9 @@ export function ChatPane({
           >
             <div className="composer-row">
               <PromptInputActionMenu>
-                <PromptInputActionMenuTrigger tooltip="Add image or file" />
+                <PromptInputActionMenuTrigger tooltip="Add image" />
                 <PromptInputActionMenuContent>
-                  <PromptInputActionAddAttachments label="Add image or file" />
+                  <PromptInputActionAddAttachments label="Add image" />
                   <PromptInputActionMenuItem onSelect={() => setClassifierLibraryOpen(true)}>
                     <LibraryBigIcon aria-hidden="true" />
                     Trained models
