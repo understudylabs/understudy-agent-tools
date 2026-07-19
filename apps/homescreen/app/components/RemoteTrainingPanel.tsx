@@ -47,7 +47,7 @@ export type RemotePlan = {
   task_kind: "text_classification" | "chat_sft";
   evaluator?: string | null;
   model_profile: RemoteTrainingProvider["model_profiles"][number]["id"];
-  frontier_model: string;
+  frontier_model?: string | null;
   output_model_name: string;
   artifacts: RemoteArtifact[];
   epochs: number;
@@ -156,7 +156,7 @@ type ClassificationProps = CommonProps & {
 
 type PreparedPlanProps = CommonProps & {
   preparedPlan: RemotePlan;
-  onBack: () => void;
+  onBack?: () => void;
   datasetManifestPath?: never;
   capabilities?: never;
   onTrainLocal?: never;
@@ -313,7 +313,6 @@ export function RemoteTrainingPanel(props: Props) {
     void invoke<RemotePlan>("prepare_remote_classification_training", {
       manifestPath: datasetManifestPath,
       modelProfile: profile.id,
-      frontierModel: "glm-5.2",
       maximumSpendUsd: maximumSpend,
     })
       .then((prepared) => {
@@ -508,8 +507,10 @@ export function RemoteTrainingPanel(props: Props) {
       <div><strong>Remote training did not start</strong><small>{error ?? "The local dataset is intact and no further work will run."}</small></div>
       <div className="remote-training-actions">
         <button type="button" className="btn primary" onClick={resetRun}>Try again</button>
-        {preparedMode
+        {preparedMode && props.onBack
           ? <button type="button" className="btn ghost" onClick={props.onBack}>Back to recipe</button>
+          : preparedMode
+            ? null
           : <button type="button" className="btn ghost" onClick={props.onTrainLocal}>Train on this Mac</button>}
       </div>
     </div>

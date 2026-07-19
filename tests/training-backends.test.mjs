@@ -121,6 +121,47 @@ describe("portable training backend compiler", () => {
     assert.equal(tinker.cleanup.checkpoint_ttl_seconds, 3600);
   });
 
+  it("derives backend compatibility from the recipe registry instead of a GSM8K branch", () => {
+    const fixture = portablePlan();
+    for (const artifact of fixture.artifacts) {
+      const rows = artifact.artifact_role === "heldout"
+        ? [
+            { input: "Where is my order?", target: "shipping" },
+            { input: "Why was I charged?", target: "billing" },
+            { input: "Track my parcel", target: "shipping" },
+          ]
+        : [
+            { messages: [{ role: "user", content: "Where is my order?" }, { role: "assistant", content: "shipping" }] },
+            { messages: [{ role: "user", content: "Why was I charged?" }, { role: "assistant", content: "billing" }] },
+            { messages: [{ role: "user", content: "Track my parcel" }, { role: "assistant", content: "shipping" }] },
+          ];
+      const content = `${rows.map(JSON.stringify).join("\n")}\n`;
+      writeFileSync(artifact.path, content);
+      artifact.row_count = rows.length;
+      artifact.sha256 = sha256(content);
+      artifact.size_bytes = Buffer.byteLength(content);
+    }
+    Object.assign(fixture.plan, {
+      recipe_id: "text_classification_exact_label_v1",
+      task_kind: "text_classification",
+      evaluator: "exact_label",
+      labels: ["billing", "shipping"],
+      group_field: "input_sha256",
+      split_hash: sha256(fixture.artifacts.map((artifact) => artifact.sha256).join("\0")),
+    });
+    delete fixture.plan.frontier_model;
+    writeFileSync(fixture.planPath, `${JSON.stringify(fixture.plan, null, 2)}\n`);
+
+    const mlx = compileTrainingBackend({ planPath: fixture.planPath, backend: "mlx-local" });
+    const managed = compileTrainingBackend({ planPath: fixture.planPath, backend: "fireworks" });
+    const tinker = compileTrainingBackend({ planPath: fixture.planPath, backend: "tinker" });
+    assert.equal(mlx.compatible, false);
+    assert.equal(managed.compatible, true);
+    assert.equal(managed.execution.task.kind, "text_classification");
+    assert.deepEqual(managed.execution.task.labels, ["billing", "shipping"]);
+    assert.equal(tinker.compatible, false);
+  });
+
   it("fails before compilation when an approved artifact changes", () => {
     const fixture = portablePlan();
     writeFileSync(fixture.artifacts[0].path, "{}\n");

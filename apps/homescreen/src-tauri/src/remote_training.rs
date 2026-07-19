@@ -2,7 +2,7 @@ use reqwest::{Client, Method, Url};
 use serde::{Deserialize, Serialize};
 use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
-use std::collections::{HashMap, HashSet};
+use std::collections::{BTreeMap, BTreeSet, HashMap, HashSet};
 use std::fs::{self, OpenOptions};
 use std::io::{BufRead, BufReader, Read, Write};
 use std::path::{Path, PathBuf};
@@ -42,6 +42,8 @@ struct PortableRecipeDefinition {
     dataset_format: &'static str,
     shape: PortableRecipeShape,
     mlx_local: bool,
+    managed_fireworks: bool,
+    tinker: bool,
 }
 
 // This is an explicit capability registry, not a fixture switch. Adding a new
@@ -58,6 +60,8 @@ const PORTABLE_RECIPES: &[PortableRecipeDefinition] = &[
         dataset_format: "classification_sft_with_exact_label_holdout",
         shape: PortableRecipeShape::TextClassification,
         mlx_local: false,
+        managed_fireworks: true,
+        tinker: false,
     },
     PortableRecipeDefinition {
         id: "gsm8k_chat_sft_v1",
@@ -68,6 +72,8 @@ const PORTABLE_RECIPES: &[PortableRecipeDefinition] = &[
         dataset_format: "openai_chat_messages",
         shape: PortableRecipeShape::ChatSft,
         mlx_local: true,
+        managed_fireworks: true,
+        tinker: true,
     },
 ];
 
@@ -224,7 +230,8 @@ struct RemoteTrainingPlan {
     evaluator: Option<String>,
     model_profile: String,
     output_model_name: String,
-    frontier_model: String,
+    #[serde(default, skip_serializing_if = "Option::is_none")]
+    frontier_model: Option<String>,
     labels: Vec<String>,
     group_field: String,
     split_hash: String,
@@ -370,42 +377,66 @@ pub async fn remote_training_capabilities() -> Result<Value, String> {
 pub async fn prepare_remote_classification_training(
     manifest_path: String,
     model_profile: String,
-    frontier_model: String,
     maximum_spend_usd: f64,
 ) -> Result<Value, String> {
     tauri::async_runtime::spawn_blocking(move || {
-        prepare_remote_plan(
-            &manifest_path,
-            &model_profile,
-            &frontier_model,
-            maximum_spend_usd,
-        )
+        prepare_remote_plan(&manifest_path, &model_profile, maximum_spend_usd)
     })
     .await
     .map_err(|error| format!("Remote training preparation stopped unexpectedly: {error}"))?
 }
 
 #[tauri::command]
-pub async fn prepare_remote_gsm8k_training(
+pub async fn prepare_remote_training_recipe(
     source_path: String,
     artifact_root: String,
     expected_source_sha256: String,
+    recipe_id: String,
     model_profile: String,
-    frontier_model: String,
     maximum_spend_usd: f64,
 ) -> Result<Value, String> {
     tauri::async_runtime::spawn_blocking(move || {
-        prepare_gsm8k_plan(
+        prepare_training_recipe(
             &source_path,
             &artifact_root,
             &expected_source_sha256,
+            &recipe_id,
             &model_profile,
-            &frontier_model,
             maximum_spend_usd,
         )
     })
     .await
-    .map_err(|error| format!("GSM8K training preparation stopped unexpectedly: {error}"))?
+    .map_err(|error| format!("Training recipe preparation stopped unexpectedly: {error}"))?
+}
+
+fn prepare_training_recipe(
+    source_path: &str,
+    artifact_root: &str,
+    expected_source_sha256: &str,
+    recipe_id: &str,
+    model_profile: &str,
+    maximum_spend_usd: f64,
+) -> Result<Value, String> {
+    let recipe = portable_recipe(recipe_id)
+        .ok_or_else(|| format!("The detected recipe {recipe_id} is not registered."))?;
+    match recipe.shape {
+        PortableRecipeShape::ChatSft => prepare_chat_sft_plan(
+            source_path,
+            artifact_root,
+            expected_source_sha256,
+            recipe,
+            model_profile,
+            maximum_spend_usd,
+        ),
+        PortableRecipeShape::TextClassification => prepare_classification_source_plan(
+            source_path,
+            artifact_root,
+            expected_source_sha256,
+            recipe,
+            model_profile,
+            maximum_spend_usd,
+        ),
+    }
 }
 
 #[tauri::command]
@@ -679,6 +710,16 @@ fn normalized_gsm8k_messages(row: &Value) -> Option<Vec<Value>> {
     Some(messages.clone())
 }
 
+fn normalized_chat_sft_messages(
+    recipe: &PortableRecipeDefinition,
+    row: &Value,
+) -> Option<Vec<Value>> {
+    match recipe.evaluator {
+        "gsm8k_final_answer" => normalized_gsm8k_messages(row),
+        _ => None,
+    }
+}
+
 fn message_has_tool_content(message: &Value) -> bool {
     let Some(object) = message.as_object() else {
         return false;
@@ -825,11 +866,10 @@ fn find_existing_run(manifest_path: &str) -> Result<Option<Value>, String> {
 fn prepare_remote_plan(
     manifest_path: &str,
     model_profile: &str,
-    frontier_model: &str,
     maximum_spend_usd: f64,
 ) -> Result<Value, String> {
     let started = Instant::now();
-    validate_remote_plan_options(model_profile, frontier_model, maximum_spend_usd)?;
+    validate_remote_plan_options(model_profile, maximum_spend_usd)?;
     let canonical_manifest = PathBuf::from(manifest_path.trim())
         .canonicalize()
         .map_err(|error| format!("The prepared dataset is unavailable: {error}"))?;
@@ -957,7 +997,7 @@ fn prepare_remote_plan(
         evaluator: Some("exact_label".to_string()),
         model_profile: model_profile.to_string(),
         output_model_name,
-        frontier_model: frontier_model.to_string(),
+        frontier_model: None,
         labels: manifest.labels.clone(),
         group_field: manifest.mapping.group_column.clone(),
         split_hash,
@@ -982,24 +1022,15 @@ fn prepare_remote_plan(
         .map_err(|_| "The remote training plan could not be returned.".to_string())
 }
 
-fn validate_remote_plan_options(
-    model_profile: &str,
-    frontier_model: &str,
-    maximum_spend_usd: f64,
-) -> Result<(), String> {
+fn validate_remote_plan_options(model_profile: &str, maximum_spend_usd: f64) -> Result<(), String> {
     if !matches!(
         model_profile,
         "understudy/auto" | "understudy/fast" | "understudy/balanced" | "understudy/quality"
     ) {
         return Err("Choose an available Understudy training profile.".into());
     }
-    for (name, value) in [
-        ("training profile", model_profile),
-        ("frontier model", frontier_model),
-    ] {
-        if value.trim().is_empty() || value.chars().count() > 240 {
-            return Err(format!("The {name} is invalid."));
-        }
+    if model_profile.trim().is_empty() || model_profile.chars().count() > 240 {
+        return Err("The training profile is invalid.".into());
     }
     if !maximum_spend_usd.is_finite() || maximum_spend_usd <= 0.0 || maximum_spend_usd > 500.0 {
         return Err("The remote training budget must be between $0 and $500.".into());
@@ -1031,16 +1062,253 @@ fn managed_task_payload(
     }
 }
 
-fn prepare_gsm8k_plan(
+fn prepare_classification_source_plan(
     source_path: &str,
     artifact_root: &str,
     expected_source_sha256: &str,
+    recipe: &PortableRecipeDefinition,
     model_profile: &str,
-    frontier_model: &str,
     maximum_spend_usd: f64,
 ) -> Result<Value, String> {
     let started = Instant::now();
-    validate_remote_plan_options(model_profile, frontier_model, maximum_spend_usd)?;
+    validate_remote_plan_options(model_profile, maximum_spend_usd)?;
+    if recipe.shape != PortableRecipeShape::TextClassification {
+        return Err("The detected recipe is not a classification recipe.".into());
+    }
+    if !valid_hash(expected_source_sha256) {
+        return Err("The detected source hash is invalid.".into());
+    }
+    let canonical_source = PathBuf::from(source_path.trim())
+        .canonicalize()
+        .map_err(|_| "The detected classification dataset is unavailable.".to_string())?;
+    let canonical_root = PathBuf::from(artifact_root.trim())
+        .canonicalize()
+        .map_err(|_| "The local workload root is unavailable.".to_string())?;
+    if !canonical_root.is_dir() || !canonical_root.join("workload-card.json").is_file() {
+        return Err("Prepare this dropped workload locally before training.".into());
+    }
+    let bytes = fs::read(&canonical_source).map_err(|_| {
+        "The detected classification dataset could not be read locally.".to_string()
+    })?;
+    if bytes.is_empty() || bytes.len() as u64 > MAX_REMOTE_ARTIFACT_BYTES {
+        return Err("The detected classification dataset has an unsupported size.".into());
+    }
+    if sha256_bytes(&bytes) != expected_source_sha256 {
+        return Err("The dropped dataset changed after recipe detection.".into());
+    }
+    let text = std::str::from_utf8(&bytes)
+        .map_err(|_| "The detected classification dataset must be UTF-8 JSONL.".to_string())?;
+    let mut rows_by_label = BTreeMap::<String, Vec<(String, String)>>::new();
+    let mut input_hashes = HashSet::new();
+    for (index, line) in text
+        .lines()
+        .filter(|line| !line.trim().is_empty())
+        .enumerate()
+    {
+        let row: Value = serde_json::from_str(line)
+            .map_err(|_| format!("Classification row {} is malformed.", index + 1))?;
+        let object = row
+            .as_object()
+            .ok_or_else(|| format!("Classification row {} is not an object.", index + 1))?;
+        let input = object
+            .get("input")
+            .and_then(Value::as_str)
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .ok_or_else(|| format!("Classification row {} has no input.", index + 1))?;
+        let target = object
+            .get("target")
+            .and_then(Value::as_str)
+            .map(str::trim)
+            .filter(|value| !value.is_empty() && value.chars().count() <= 160)
+            .ok_or_else(|| format!("Classification row {} has an invalid target.", index + 1))?;
+        let input_hash = sha256_bytes(input.as_bytes());
+        if !input_hashes.insert(input_hash.clone()) {
+            return Err(format!(
+                "Classification row {} duplicates an input and could leak across splits.",
+                index + 1
+            ));
+        }
+        rows_by_label
+            .entry(target.to_string())
+            .or_default()
+            .push((input_hash, input.to_string()));
+    }
+    let total_rows = rows_by_label.values().map(Vec::len).sum::<usize>();
+    if total_rows < 20 {
+        return Err("Classification training needs at least 20 valid, distinct examples.".into());
+    }
+    if !(2..=512).contains(&rows_by_label.len()) {
+        return Err("Classification training needs between 2 and 512 labels.".into());
+    }
+    if let Some((label, _)) = rows_by_label.iter().find(|(_, rows)| rows.len() < 3) {
+        return Err(format!(
+            "Label {label:?} needs at least three examples for train, validation, and held-out evaluation."
+        ));
+    }
+
+    let mut split_rows = BTreeMap::<&str, Vec<(String, String, String)>>::from([
+        ("train", Vec::new()),
+        ("validation", Vec::new()),
+        ("heldout", Vec::new()),
+    ]);
+    for (label, mut rows) in rows_by_label {
+        rows.sort_by(|left, right| left.0.cmp(&right.0));
+        let train_count = (rows.len() * 70 / 100).clamp(1, rows.len() - 2);
+        let validation_count = (rows.len() * 15 / 100)
+            .max(1)
+            .min(rows.len() - train_count - 1);
+        for (index, (input_hash, input)) in rows.into_iter().enumerate() {
+            let role = if index < train_count {
+                "train"
+            } else if index < train_count + validation_count {
+                "validation"
+            } else {
+                "heldout"
+            };
+            split_rows
+                .get_mut(role)
+                .expect("the classification split must exist")
+                .push((input_hash, input, label.clone()));
+        }
+    }
+    for rows in split_rows.values_mut() {
+        rows.sort_by(|left, right| left.0.cmp(&right.0));
+    }
+
+    let plan_id = random_uuid()?;
+    let plan_root = canonical_root.join("remote-training").join(&plan_id);
+    create_private_directory(&plan_root)?;
+    let labels = split_rows
+        .values()
+        .flatten()
+        .map(|(_, _, label)| label.clone())
+        .collect::<BTreeSet<String>>()
+        .into_iter()
+        .collect::<Vec<_>>();
+    let instruction = format!(
+        "Classify the user's text. Reply with exactly one label from this list: {}.",
+        labels.join(", ")
+    );
+    let mut artifacts = Vec::new();
+    for role in ["train", "validation", "heldout"] {
+        let rows = split_rows
+            .remove(role)
+            .expect("the classification split must exist");
+        let file_name = format!("{role}.jsonl");
+        let path = plan_root.join(&file_name);
+        let mut content = String::new();
+        for (_, input, target) in &rows {
+            let transformed = if role == "heldout" {
+                json!({ "input": input, "target": target })
+            } else {
+                json!({
+                    "messages": [
+                        { "role": "system", "content": instruction },
+                        { "role": "user", "content": input },
+                        { "role": "assistant", "content": target }
+                    ]
+                })
+            };
+            content.push_str(
+                &serde_json::to_string(&transformed).map_err(|_| {
+                    "A classification training row could not be encoded.".to_string()
+                })?,
+            );
+            content.push('\n');
+        }
+        if content.len() as u64 > MAX_REMOTE_ARTIFACT_BYTES {
+            let _ = fs::remove_dir_all(&plan_root);
+            return Err(format!(
+                "The prepared {role} artifact exceeds the local safety limit."
+            ));
+        }
+        write_private_new(&path, content.as_bytes())?;
+        artifacts.push(RemoteArtifact {
+            artifact_role: role.to_string(),
+            path: path.display().to_string(),
+            file_name,
+            row_count: rows.len() as u64,
+            sha256: sha256_bytes(content.as_bytes()),
+            size_bytes: content.len() as u64,
+            content_type: "application/x-ndjson".to_string(),
+        });
+    }
+    let split_hash = sha256_bytes(
+        artifacts
+            .iter()
+            .map(|artifact| artifact.sha256.as_str())
+            .collect::<Vec<_>>()
+            .join("\0")
+            .as_bytes(),
+    );
+    let dataset_id = canonical_source
+        .file_stem()
+        .and_then(|name| name.to_str())
+        .map(safe_model_segment)
+        .filter(|name| !name.is_empty())
+        .unwrap_or_else(|| "classification".to_string());
+    let output_model_name = format!(
+        "understudy-{}-{}",
+        dataset_id.chars().take(42).collect::<String>(),
+        &plan_id[..8]
+    );
+    let heldout_rows = artifacts
+        .iter()
+        .find(|artifact| artifact.artifact_role == "heldout")
+        .map(|artifact| artifact.row_count)
+        .unwrap_or(5);
+    let plan_path = plan_root.join("plan.json");
+    let plan = RemoteTrainingPlan {
+        schema_version: PLAN_SCHEMA.to_string(),
+        plan_id,
+        created_at: timestamp(),
+        source_manifest_path: canonical_source.display().to_string(),
+        source_dataset_id: dataset_id.clone(),
+        workload_name: format!("{}-{dataset_id}", safe_model_segment(recipe.use_case)),
+        recipe_id: recipe.id.to_string(),
+        task_kind: recipe.task_kind.to_string(),
+        evaluator: Some(recipe.evaluator.to_string()),
+        model_profile: model_profile.to_string(),
+        output_model_name,
+        frontier_model: None,
+        labels,
+        group_field: "input_sha256".to_string(),
+        split_hash,
+        artifacts,
+        epochs: 3,
+        lora_rank: 16,
+        max_context_length: 4_096,
+        maximum_spend_usd,
+        maximum_runtime_seconds: 900,
+        maximum_eval_examples: heldout_rows.min(200),
+        minimum_accuracy: 0.80,
+        minimum_improvement_over_base: 0.02,
+        preparation_duration_ms: elapsed_millis(started),
+        plan_path: plan_path.display().to_string(),
+    };
+    write_private_new(
+        &plan_path,
+        &serde_json::to_vec_pretty(&plan)
+            .map_err(|_| "The classification training plan could not be encoded.".to_string())?,
+    )?;
+    serde_json::to_value(plan)
+        .map_err(|_| "The classification training plan could not be returned.".to_string())
+}
+
+fn prepare_chat_sft_plan(
+    source_path: &str,
+    artifact_root: &str,
+    expected_source_sha256: &str,
+    recipe: &PortableRecipeDefinition,
+    model_profile: &str,
+    maximum_spend_usd: f64,
+) -> Result<Value, String> {
+    let started = Instant::now();
+    validate_remote_plan_options(model_profile, maximum_spend_usd)?;
+    if recipe.shape != PortableRecipeShape::ChatSft {
+        return Err("The detected recipe is not a chat SFT recipe.".into());
+    }
     if !valid_hash(expected_source_sha256) {
         return Err("The detected source hash is invalid.".into());
     }
@@ -1072,27 +1340,28 @@ fn prepare_gsm8k_plan(
     {
         let row: Value = serde_json::from_str(line)
             .map_err(|_| format!("GSM8K row {} is malformed.", index + 1))?;
-        let messages = normalized_gsm8k_messages(&row).ok_or_else(|| {
+        let messages = normalized_chat_sft_messages(recipe, &row).ok_or_else(|| {
             format!(
-                "GSM8K row {} must contain public `question`/`answer` fields or valid chat messages ending with a `####` numeric answer.",
-                index + 1
+                "Row {} does not satisfy the {} evaluator contract.",
+                index + 1,
+                recipe.evaluator,
             )
         })?;
         let prompt = serde_json::to_vec(&messages[..messages.len() - 1])
-            .map_err(|_| format!("GSM8K row {} could not be normalized.", index + 1))?;
+            .map_err(|_| format!("Chat SFT row {} could not be normalized.", index + 1))?;
         let prompt_hash = sha256_bytes(&prompt);
         if !prompt_hashes.insert(prompt_hash.clone()) {
             return Err(format!(
-                "GSM8K row {} duplicates a prompt and could leak across splits.",
+                "Chat SFT row {} duplicates a prompt and could leak across splits.",
                 index + 1
             ));
         }
         let normalized = serde_json::to_string(&json!({ "messages": messages }))
-            .map_err(|_| format!("GSM8K row {} could not be normalized.", index + 1))?;
+            .map_err(|_| format!("Chat SFT row {} could not be normalized.", index + 1))?;
         rows.push((prompt_hash, normalized));
     }
     if rows.len() < 20 {
-        return Err("GSM8K remote training needs at least 20 valid, distinct examples.".into());
+        return Err("Chat SFT training needs at least 20 valid, distinct examples.".into());
     }
     rows.sort_by(|left, right| left.0.cmp(&right.0));
     let train_end = rows.len() * 70 / 100;
@@ -1103,7 +1372,7 @@ fn prepare_gsm8k_plan(
         ("heldout", &rows[validation_end..]),
     ];
     if splits.iter().any(|(_, rows)| rows.len() < 3) {
-        return Err("GSM8K remote training could not produce three useful held-out splits.".into());
+        return Err("Chat SFT training could not produce three useful held-out splits.".into());
     }
 
     let plan_id = random_uuid()?;
@@ -1161,13 +1430,13 @@ fn prepare_gsm8k_plan(
         created_at: timestamp(),
         source_manifest_path: canonical_source.display().to_string(),
         source_dataset_id: dataset_id.clone(),
-        workload_name: format!("gsm8k-{dataset_id}"),
-        recipe_id: "gsm8k_chat_sft_v1".to_string(),
-        task_kind: "chat_sft".to_string(),
-        evaluator: Some("gsm8k_final_answer".to_string()),
+        workload_name: format!("{}-{dataset_id}", safe_model_segment(recipe.use_case)),
+        recipe_id: recipe.id.to_string(),
+        task_kind: recipe.task_kind.to_string(),
+        evaluator: Some(recipe.evaluator.to_string()),
         model_profile: model_profile.to_string(),
         output_model_name,
-        frontier_model: frontier_model.to_string(),
+        frontier_model: None,
         labels: Vec::new(),
         group_field: "prompt_sha256".to_string(),
         split_hash,
@@ -1186,10 +1455,10 @@ fn prepare_gsm8k_plan(
     write_private_new(
         &plan_path,
         &serde_json::to_vec_pretty(&plan)
-            .map_err(|_| "The GSM8K remote training plan could not be encoded.".to_string())?,
+            .map_err(|_| "The chat SFT training plan could not be encoded.".to_string())?,
     )?;
     serde_json::to_value(plan)
-        .map_err(|_| "The GSM8K remote training plan could not be returned.".to_string())
+        .map_err(|_| "The chat SFT training plan could not be returned.".to_string())
 }
 
 fn compile_backend_compatibility(plan_path: &str) -> Result<Value, String> {
@@ -1208,6 +1477,8 @@ fn compile_backend_compatibility(plan_path: &str) -> Result<Value, String> {
     let recipe = portable_recipe(&plan.recipe_id)
         .ok_or_else(|| "The remote training plan has no portable backend recipe.".to_string())?;
     let mlx_compatible = recipe.mlx_local;
+    let managed_compatible = recipe.managed_fireworks;
+    let tinker_compatible = recipe.tinker;
     let backends = vec![
         json!({
             "id": "mlx-local",
@@ -1225,8 +1496,8 @@ fn compile_backend_compatibility(plan_path: &str) -> Result<Value, String> {
         }),
         json!({
             "id": "fireworks",
-            "compatible": true,
-            "adapter_implemented": true,
+            "compatible": managed_compatible,
+            "adapter_implemented": managed_compatible,
             "execution_ready": false,
             "transport": "understudy_managed_train_api_v1",
             "command": "start_remote_training",
@@ -1239,8 +1510,8 @@ fn compile_backend_compatibility(plan_path: &str) -> Result<Value, String> {
         }),
         json!({
             "id": "tinker",
-            "compatible": plan.recipe_id == "gsm8k_chat_sft_v1",
-            "adapter_implemented": plan.recipe_id == "gsm8k_chat_sft_v1",
+            "compatible": tinker_compatible,
+            "adapter_implemented": tinker_compatible,
             "execution_ready": false,
             "transport": "tinker_python_sdk",
             "command": "understudy training run-tinker-sft",
@@ -1798,6 +2069,19 @@ pub async fn start_remote_classification_training(
         let recipe = portable_recipe(&plan.recipe_id)
             .ok_or_else(|| "The training plan names an unsupported recipe.".to_string())?;
         let task = managed_task_payload(&plan, recipe)?;
+        let promotion = match plan.frontier_model.as_deref() {
+            Some(frontier_model) => json!({
+                "minimum_accuracy": plan.minimum_accuracy,
+                "minimum_improvement_over_base": plan.minimum_improvement_over_base,
+                "compare_to_frontier": true,
+                "frontier_model": frontier_model
+            }),
+            None => json!({
+                "minimum_accuracy": plan.minimum_accuracy,
+                "minimum_improvement_over_base": plan.minimum_improvement_over_base,
+                "compare_to_frontier": false
+            }),
+        };
         let run = api_json(
             Method::POST,
             api_url("runs")?,
@@ -1827,12 +2111,7 @@ pub async fn start_remote_classification_training(
                     "max_runtime_seconds": plan.maximum_runtime_seconds,
                     "max_eval_examples": plan.maximum_eval_examples
                 },
-                "promotion": {
-                    "minimum_accuracy": plan.minimum_accuracy,
-                    "minimum_improvement_over_base": plan.minimum_improvement_over_base,
-                    "compare_to_frontier": true,
-                    "frontier_model": plan.frontier_model
-                },
+                "promotion": promotion,
                 "consent": {
                     "approved_at": timestamp(),
                     "upload_confirmed": true,
@@ -2505,6 +2784,73 @@ mod tests {
     }
 
     #[test]
+    fn dispatches_detected_classification_through_the_same_portable_recipe_path() {
+        let root = std::env::temp_dir().join(format!(
+            "understudy-classification-recipe-test-{}-{}",
+            std::process::id(),
+            random_uuid().unwrap()
+        ));
+        fs::create_dir_all(&root).unwrap();
+        fs::write(root.join("workload-card.json"), b"{}\n").unwrap();
+        let source = root.join("public-intents.jsonl");
+        let content = (0..24)
+            .map(|index| {
+                serde_json::to_string(&json!({
+                    "input": format!("Public support request {index}"),
+                    "target": if index % 2 == 0 { "billing" } else { "shipping" }
+                }))
+                .unwrap()
+            })
+            .collect::<Vec<_>>()
+            .join("\n")
+            + "\n";
+        fs::write(&source, &content).unwrap();
+
+        let inspection = inspect_training_recipe(source.to_str().unwrap()).unwrap();
+        assert_eq!(
+            inspection.get("recipe_id").and_then(Value::as_str),
+            Some("text_classification_exact_label_v1")
+        );
+        let plan: RemoteTrainingPlan = serde_json::from_value(
+            prepare_training_recipe(
+                source.to_str().unwrap(),
+                root.to_str().unwrap(),
+                &sha256_bytes(content.as_bytes()),
+                inspection.get("recipe_id").and_then(Value::as_str).unwrap(),
+                "understudy/auto",
+                1.0,
+            )
+            .unwrap(),
+        )
+        .unwrap();
+        assert_eq!(plan.task_kind, "text_classification");
+        assert_eq!(plan.evaluator.as_deref(), Some("exact_label"));
+        assert_eq!(plan.labels, vec!["billing", "shipping"]);
+        assert_eq!(artifact_rows(&plan, "train").unwrap(), 16);
+        assert_eq!(artifact_rows(&plan, "validation").unwrap(), 2);
+        assert_eq!(artifact_rows(&plan, "heldout").unwrap(), 6);
+        assert_eq!(plan.maximum_runtime_seconds, 900);
+        assert!(plan.frontier_model.is_none());
+
+        let compatibility = compile_backend_compatibility(&plan.plan_path).unwrap();
+        let backends = compatibility
+            .get("backends")
+            .and_then(Value::as_array)
+            .unwrap();
+        let compatible = |id: &str| {
+            backends
+                .iter()
+                .find(|backend| backend.get("id").and_then(Value::as_str) == Some(id))
+                .and_then(|backend| backend.get("compatible"))
+                .and_then(Value::as_bool)
+        };
+        assert_eq!(compatible("mlx-local"), Some(false));
+        assert_eq!(compatible("fireworks"), Some(true));
+        assert_eq!(compatible("tinker"), Some(false));
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
     fn detects_and_normalizes_public_gsm8k_question_answer_rows() {
         let preflight_started = Instant::now();
         let root = std::env::temp_dir().join(format!(
@@ -2547,12 +2893,12 @@ mod tests {
         );
 
         let plan: RemoteTrainingPlan = serde_json::from_value(
-            prepare_gsm8k_plan(
+            prepare_chat_sft_plan(
                 source.to_str().unwrap(),
                 root.to_str().unwrap(),
                 &sha256_bytes(content.as_bytes()),
+                portable_recipe("gsm8k_chat_sft_v1").unwrap(),
                 "understudy/auto",
-                "glm-5.2",
                 1.0,
             )
             .unwrap(),
@@ -2737,12 +3083,12 @@ mod tests {
             + "\n";
         fs::write(&source, &content).unwrap();
         let plan: RemoteTrainingPlan = serde_json::from_value(
-            prepare_gsm8k_plan(
+            prepare_chat_sft_plan(
                 source.to_str().unwrap(),
                 root.to_str().unwrap(),
                 &sha256_bytes(content.as_bytes()),
+                portable_recipe("gsm8k_chat_sft_v1").unwrap(),
                 "understudy/auto",
-                "glm-5.2",
                 1.0,
             )
             .unwrap(),
@@ -2767,13 +3113,8 @@ mod tests {
     #[test]
     fn prepares_private_chat_and_heldout_artifacts_without_uploading() {
         let (manifest_path, root) = fixture();
-        let value = prepare_remote_plan(
-            manifest_path.to_str().unwrap(),
-            "understudy/auto",
-            "glm-5.2",
-            3.0,
-        )
-        .unwrap();
+        let value =
+            prepare_remote_plan(manifest_path.to_str().unwrap(), "understudy/auto", 3.0).unwrap();
         let plan: RemoteTrainingPlan = serde_json::from_value(value).unwrap();
         assert_eq!(plan.artifacts.len(), 3);
         let train = fs::read_to_string(
@@ -2810,23 +3151,11 @@ mod tests {
     fn repeated_plans_use_distinct_provider_model_names() {
         let (manifest_path, root) = fixture();
         let first: RemoteTrainingPlan = serde_json::from_value(
-            prepare_remote_plan(
-                manifest_path.to_str().unwrap(),
-                "understudy/auto",
-                "glm-5.2",
-                3.0,
-            )
-            .unwrap(),
+            prepare_remote_plan(manifest_path.to_str().unwrap(), "understudy/auto", 3.0).unwrap(),
         )
         .unwrap();
         let second: RemoteTrainingPlan = serde_json::from_value(
-            prepare_remote_plan(
-                manifest_path.to_str().unwrap(),
-                "understudy/auto",
-                "glm-5.2",
-                3.0,
-            )
-            .unwrap(),
+            prepare_remote_plan(manifest_path.to_str().unwrap(), "understudy/auto", 3.0).unwrap(),
         )
         .unwrap();
         assert_ne!(first.output_model_name, second.output_model_name);
@@ -2836,13 +3165,8 @@ mod tests {
     #[test]
     fn detects_artifact_changes_after_local_approval() {
         let (manifest_path, root) = fixture();
-        let value = prepare_remote_plan(
-            manifest_path.to_str().unwrap(),
-            "understudy/auto",
-            "glm-5.2",
-            3.0,
-        )
-        .unwrap();
+        let value =
+            prepare_remote_plan(manifest_path.to_str().unwrap(), "understudy/auto", 3.0).unwrap();
         let plan: RemoteTrainingPlan = serde_json::from_value(value).unwrap();
         fs::write(&plan.artifacts[0].path, b"changed\n").unwrap();
         let error = read_verified_plan(&plan.plan_path).unwrap_err();
@@ -2856,13 +3180,8 @@ mod tests {
     #[test]
     fn recovers_the_latest_durable_run_from_the_dataset_root() {
         let (manifest_path, root) = fixture();
-        let value = prepare_remote_plan(
-            manifest_path.to_str().unwrap(),
-            "understudy/auto",
-            "glm-5.2",
-            3.0,
-        )
-        .unwrap();
+        let value =
+            prepare_remote_plan(manifest_path.to_str().unwrap(), "understudy/auto", 3.0).unwrap();
         let plan: RemoteTrainingPlan = serde_json::from_value(value).unwrap();
         let plan_path = plan.plan_path.clone();
         let run_path = PathBuf::from(&plan.plan_path)

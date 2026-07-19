@@ -85,8 +85,8 @@ function backendContract(
   platform: NodeJS.Platform,
   architecture: string,
 ): Pick<BackendCompileReceipt, "compatible" | "adapter_implemented" | "execution_ready" | "blocked_reasons" | "model_resolution" | "execution" | "cleanup"> {
+  const compatible = recipe.supportedBackends.includes(backend);
   if (backend === "mlx-local") {
-    const compatible = plan.recipe_id === "gsm8k_chat_sft_v1";
     const runtimeReady = platform === "darwin" && architecture === "arm64";
     return {
       compatible,
@@ -116,11 +116,14 @@ function backendContract(
   }
   if (backend === "fireworks") {
     return {
-      compatible: true,
-      adapter_implemented: true,
+      compatible,
+      adapter_implemented: compatible,
       execution_ready: false,
       blocked_reasons: [
-        "Execution readiness requires an authenticated live capability check, upload consent, and spend consent.",
+        ...(!compatible ? [`Recipe ${plan.recipe_id} has no managed Fireworks executor.`] : []),
+        ...(compatible ? [
+          "Execution readiness requires an authenticated live capability check, upload consent, and spend consent.",
+        ] : []),
       ],
       model_resolution: {
         strategy: "managed_live_catalog",
@@ -151,7 +154,6 @@ function backendContract(
       },
     };
   }
-  const compatible = plan.recipe_id === "gsm8k_chat_sft_v1";
   return {
     compatible,
     adapter_implemented: compatible,

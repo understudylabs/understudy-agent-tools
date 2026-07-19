@@ -28,7 +28,7 @@ export const PortableTrainingPlanSchema = z.object({
   evaluator: z.string().min(1),
   model_profile: z.string().min(1),
   output_model_name: z.string().min(1),
-  frontier_model: z.string().min(1),
+  frontier_model: z.string().min(1).optional(),
   labels: z.array(z.string()),
   group_field: z.string().min(1),
   split_hash: z.string().regex(/^[a-f0-9]{64}$/),
@@ -53,6 +53,7 @@ export type PortableTrainingRecipe = {
   evaluator: "exact_label" | "gsm8k_final_answer";
   datasetFormat: "classification_sft_with_exact_label_holdout" | "openai_chat_messages";
   method: "sft_lora";
+  supportedBackends: readonly ("mlx-local" | "fireworks" | "tinker")[];
 };
 
 export const portableTrainingRecipeRegistry: Readonly<Record<string, PortableTrainingRecipe>> = Object.freeze({
@@ -61,12 +62,14 @@ export const portableTrainingRecipeRegistry: Readonly<Record<string, PortableTra
     evaluator: "exact_label",
     datasetFormat: "classification_sft_with_exact_label_holdout",
     method: "sft_lora",
+    supportedBackends: Object.freeze(["fireworks"] as const),
   }),
   gsm8k_chat_sft_v1: Object.freeze({
     taskKind: "chat_sft",
     evaluator: "gsm8k_final_answer",
     datasetFormat: "openai_chat_messages",
     method: "sft_lora",
+    supportedBackends: Object.freeze(["mlx-local", "fireworks", "tinker"] as const),
   }),
 });
 

@@ -38,7 +38,10 @@ test("remote training uses live capabilities with explicit upload and spend cons
   assert.match(native, /preference_optimization/);
   assert.match(native, /agentic_tool_use/);
   assert.match(native, /vision_language/);
-  assert.match(native, /prepare_remote_gsm8k_training/);
+  assert.match(native, /prepare_remote_training_recipe/);
+  assert.match(native, /prepare_training_recipe/);
+  assert.match(native, /prepare_classification_source_plan/);
+  assert.doesNotMatch(native, /pub async fn prepare_remote_gsm8k_training/);
   assert.match(native, /duplicates a prompt and could leak across splits/);
   assert.match(native, /dropped dataset changed after recipe detection/i);
 
@@ -67,7 +70,11 @@ test("remote training uses live capabilities with explicit upload and spend cons
   assert.match(native, /"model_profiles"/);
   const chat = await read("apps/homescreen/app/components/ChatPane.tsx");
   assert.match(chat, /inspect_remote_training_recipe/);
-  assert.match(chat, /prepare_remote_gsm8k_training/);
+  assert.match(chat, /prepare_remote_training_recipe/);
+  assert.match(chat, /recipeId: trainingRecipe\.recipe_id/);
+  assert.match(chat, /backend\.id === "mlx-local" && backend\.compatible && backend\.execution_ready/);
+  assert.doesNotMatch(chat, /trainingRecipe\.evaluator !== "gsm8k_final_answer"/);
+  assert.doesNotMatch(chat, /GSM8K reasoning model|frontierModel:\s*"glm-5\.2"/);
   assert.match(chat, /if \(!remoteRecipePlan && trainingRecipe\?\.ready\) prepareDetectedRecipe\(\)/);
   assert.doesNotMatch(chat, /Prepare no-spend plan/);
   assert.match(chat, /<LocalSftTrainingPanel/);
@@ -93,7 +100,8 @@ test("remote training uses live capabilities with explicit upload and spend cons
   assert.match(tauriLib, /remote_training::existing_remote_training/);
   assert.match(tauriLib, /remote_training::compile_remote_training_backends/);
   assert.match(tauriLib, /remote_training::inspect_remote_training_recipe/);
-  assert.match(tauriLib, /remote_training::prepare_remote_gsm8k_training/);
+  assert.match(tauriLib, /remote_training::prepare_remote_training_recipe/);
+  assert.doesNotMatch(tauriLib, /remote_training::prepare_remote_gsm8k_training/);
   assert.match(tauriLib, /remote_training::start_local_sft_training/);
   assert.match(tauriLib, /remote_training::cancel_local_sft_training/);
 });

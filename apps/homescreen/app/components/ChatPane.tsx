@@ -194,6 +194,7 @@ type TrainingRecipeInspection = {
   local_only: true;
   payload_read: true;
   detected_use_case: string;
+  recipe_id: string | null;
   task_kind: string;
   method: string;
   evaluator: string | null;
@@ -214,6 +215,13 @@ type TrainingRecipeInspection = {
   reasons: string[];
   warnings: string[];
   inspection_duration_ms?: number;
+};
+type RecipeBackendCompatibility = {
+  backends: Array<{
+    id: "mlx-local" | "fireworks" | "tinker";
+    compatible: boolean;
+    execution_ready: boolean;
+  }>;
 };
 type ClassificationDataset = {
   schema_version: "understudy.capture_import.classification_dataset.v2";
@@ -322,6 +330,7 @@ function trainingUseCaseLabel(useCase: string): string {
     preference_optimization: "Preference optimization",
     agentic_tool_use: "Agent and tool use",
     vision_language: "Vision-language tuning",
+    classification: "Text classification",
     text_classification: "Text classification",
     general_chat: "General chat",
   } as Record<string, string>)[useCase] ?? "Custom training workload";
@@ -470,6 +479,7 @@ export function ChatPane({
   const [trainingRecipe, setTrainingRecipe] = useState<TrainingRecipeInspection | null>(null);
   const [remoteRecipePlan, setRemoteRecipePlan] = useState<RemotePlan | null>(null);
   const [recipeBackend, setRecipeBackend] = useState<"local" | "managed">("local");
+  const [recipeLocalAvailable, setRecipeLocalAvailable] = useState(false);
   const [mappingInputColumns, setMappingInputColumns] = useState<string[]>([]);
   const [mappingLabelColumn, setMappingLabelColumn] = useState("");
   const [mappingGroupColumn, setMappingGroupColumn] = useState("");
@@ -543,6 +553,7 @@ export function ChatPane({
     setTrainingRecipe(null);
     setRemoteRecipePlan(null);
     setRecipeBackend("local");
+    setRecipeLocalAvailable(false);
     setMappingInputColumns([]);
     setMappingLabelColumn("");
     setMappingGroupColumn("");
@@ -583,7 +594,7 @@ export function ChatPane({
       !droppedWorkload
       || !trainingRecipe
       || !trainingRecipe.ready
-      || trainingRecipe.evaluator !== "gsm8k_final_answer"
+      || !trainingRecipe.recipe_id
       || dropInFlight.current
     ) return;
     dropInFlight.current = true;
@@ -591,18 +602,28 @@ export function ChatPane({
     dropRequestGeneration.current = requestGeneration;
     setRemoteRecipePlan(null);
     setRecipeBackend("local");
+    setRecipeLocalAvailable(false);
     setErr(null);
     dispatchDrop({ type: "dataset_started" });
-    void invoke<RemotePlan>("prepare_remote_gsm8k_training", {
+    void invoke<RemotePlan>("prepare_remote_training_recipe", {
       sourcePath: droppedWorkload.source_path,
       artifactRoot: droppedWorkload.artifact_root,
       expectedSourceSha256: trainingRecipe.source_sha256,
+      recipeId: trainingRecipe.recipe_id,
       modelProfile: "understudy/auto",
-      frontierModel: "glm-5.2",
       maximumSpendUsd: 1,
     })
-      .then((plan) => {
+      .then(async (plan) => {
         if (dropRequestGeneration.current !== requestGeneration) return;
+        const compatibility = await invoke<RecipeBackendCompatibility>("compile_remote_training_backends", {
+          planPath: plan.plan_path,
+        });
+        if (dropRequestGeneration.current !== requestGeneration) return;
+        const localAvailable = compatibility.backends.some(
+          (backend) => backend.id === "mlx-local" && backend.compatible && backend.execution_ready,
+        );
+        setRecipeLocalAvailable(localAvailable);
+        setRecipeBackend(localAvailable ? "local" : "managed");
         setRemoteRecipePlan(plan);
         dispatchDrop({ type: "dataset_succeeded" });
       })
@@ -625,7 +646,7 @@ export function ChatPane({
     void invoke<RemoteTrainingCapabilitiesEnvelope>("remote_training_capabilities")
       .then((envelope) => {
         const available = envelope.enabled && envelope.capabilities?.providers.some(
-          (provider) => provider.enabled && provider.model_profiles.length > 0,
+          (provider) => provider.id === "managed" && provider.enabled && provider.model_profiles.length > 0,
         );
         if (!available) {
           setErr(envelope.reason ?? "Cloud training is unavailable in this Desktop build.");
@@ -1541,20 +1562,22 @@ export function ChatPane({
                     {trainingRecipe.ready ? (
                       remoteRecipePlan ? (
                         <>
-                          <div hidden={recipeBackend === "managed"}>
-                            <LocalSftTrainingPanel
-                              plan={remoteRecipePlan}
-                              modelName="GSM8K reasoning model"
-                              onTrainRemote={openManagedRecipeTraining}
-                              onActiveChange={setLocalTrainingActive}
-                              onVisualChange={setTrainingHaloVisual}
-                            />
-                          </div>
+                          {recipeLocalAvailable && (
+                            <div hidden={recipeBackend === "managed"}>
+                              <LocalSftTrainingPanel
+                                plan={remoteRecipePlan}
+                                modelName={`${trainingUseCaseLabel(trainingRecipe.detected_use_case)} model`}
+                                onTrainRemote={openManagedRecipeTraining}
+                                onActiveChange={setLocalTrainingActive}
+                                onVisualChange={setTrainingHaloVisual}
+                              />
+                            </div>
+                          )}
                           {recipeBackend === "managed" && (
                             <RemoteTrainingPanel
                               preparedPlan={remoteRecipePlan}
-                              modelName="GSM8K reasoning model"
-                              onBack={() => setRecipeBackend("local")}
+                              modelName={`${trainingUseCaseLabel(trainingRecipe.detected_use_case)} model`}
+                              onBack={recipeLocalAvailable ? () => setRecipeBackend("local") : undefined}
                               onActiveChange={setLocalTrainingActive}
                               onVisualChange={setTrainingHaloVisual}
                             />
