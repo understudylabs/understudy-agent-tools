@@ -82,6 +82,7 @@ budget. Pricing assumptions in `NOTES.md`. Rows projected with
 | gemma-4-31b-it | 1/12 (8.3%) | 0.429 | $0.54 (demo pricing) | 128 s |
 | glm-5.2 | 1/12 (8.3%) | 0.475 | $3.77 (demo pricing) | 138 s |
 | gemma-4-e2b (Spark, self-hosted) | 0/12 (0%) | 0.000 | $0 (self-hosted) | 12.5 s |
+| nemotron-3-nano (Spark, self-hosted) | 0/12 (0%) | 0.179 | $0 (self-hosted) | 2533 s |
 
 Per-domain mean partial_credit (2 tasks each; strict passes in bold):
 
@@ -97,13 +98,12 @@ Per-domain mean partial_credit (2 tasks each; strict passes in bold):
 The glm-5.2 arm was added 2026-07-19 (plan asked for glm-5.1; the gateway now
 serves glm-5.2 — see NOTES.md for its demo pricing assumption).
 
-A fifth arm (nvidia/nemotron-3-nano, self-hosted vLLM on the Spark cluster)
-was attempted 2026-07-19 but not completed: the reasoning model averaged
-~12-20 min per task through the harness (3/12 tasks after ~60 min, running
-mean partial_credit 0.139) and the run was killed by the operator's
-10-minute background-task timeout with no partial export saved. To finish
-it, rerun the same 12-task `auto-bench` invocation detached (`nohup`, no
-harness timeout) against the bravo endpoint and budget ~3-4 h.
+The nemotron-3-nano arm (self-hosted vLLM on the Spark cluster) needed two
+attempts: the first run was killed at 3/12 by a 10-minute background-task
+timeout; the nohup-detached rerun completed all 12 rollouts in 2 h 43 m
+wall (~816 s/task mean, 2533 s p50 model time — a reasoning model burning
+long chains through 50-step rollouts). 0/12 strict, 0.179 mean
+partial_credit, cost $0 (self-hosted, see NOTES.md).
 
 Context: upstream's own 600-task leaderboard has frontier models at 24–30%
 strict, so single-digit strict pass on a hard 12-task slice with one rollout
