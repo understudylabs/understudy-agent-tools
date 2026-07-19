@@ -97,6 +97,14 @@ Per-domain mean partial_credit (2 tasks each; strict passes in bold):
 The glm-5.2 arm was added 2026-07-19 (plan asked for glm-5.1; the gateway now
 serves glm-5.2 — see NOTES.md for its demo pricing assumption).
 
+A fifth arm (nvidia/nemotron-3-nano, self-hosted vLLM on the Spark cluster)
+was attempted 2026-07-19 but not completed: the reasoning model averaged
+~12-20 min per task through the harness (3/12 tasks after ~60 min, running
+mean partial_credit 0.139) and the run was killed by the operator's
+10-minute background-task timeout with no partial export saved. To finish
+it, rerun the same 12-task `auto-bench` invocation detached (`nohup`, no
+harness timeout) against the bravo endpoint and budget ~3-4 h.
+
 Context: upstream's own 600-task leaderboard has frontier models at 24–30%
 strict, so single-digit strict pass on a hard 12-task slice with one rollout
 is in-family, and the sample is far too small to rank the two arms — the
