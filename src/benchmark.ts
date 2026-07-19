@@ -24,7 +24,7 @@ const IMPORT_FORMATS = ["verifiers.v1", "verifiers.v0", "harbor", "inspect_ai", 
 const TASK_GENESIS = ["replayed", "synthesized", "imported"];
 const TASK_SPLITS = ["train", "dev", "holdout", "none"];
 const GOLD_KINDS = ["final-state", "rubric", "reference"];
-const ENV_FORMATS = ["verifiers.v1"];
+const ENV_FORMATS = ["verifiers.v1", "verifiers.v0"];
 const VERIFIER_KINDS = ["final-state", "reward-fns", "rubric-judge"];
 
 /**

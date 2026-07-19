@@ -162,8 +162,8 @@
       "additionalProperties": true,
       "properties": {
         "format": {
-          "enum": ["verifiers.v1"],
-          "description": "Executable form. Exactly one supported today; the enum widens if the compile target ever changes."
+          "enum": ["verifiers.v1", "verifiers.v0"],
+          "description": "Executable form. verifiers.v1 is the compile target; verifiers.v0 admits envs still on the frozen v0 API of the pinned library (e.g. vf-eval scaffolds) so a manifest never has to misstate its executable form. The enum widens only if the compile target changes."
         },
         "package_ref": {
           "type": "string",
