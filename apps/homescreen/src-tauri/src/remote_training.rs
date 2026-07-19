@@ -258,12 +258,6 @@ struct RemoteTrainingRun {
     run_manifest_path: String,
 }
 
-fn remote_training_enabled() -> bool {
-    std::env::var("UNDERSTUDY_REMOTE_TRAINING_EXPERIMENT")
-        .ok()
-        .is_some_and(|value| value == "true")
-}
-
 fn train_api_base() -> Result<Url, String> {
     let raw = std::env::var("UNDERSTUDY_TRAIN_API_BASE")
         .unwrap_or_else(|_| DEFAULT_TRAIN_API_BASE.to_string());
@@ -335,13 +329,6 @@ async fn api_json(method: Method, url: Url, body: Option<&Value>) -> Result<Valu
 
 #[tauri::command]
 pub async fn remote_training_capabilities() -> Result<Value, String> {
-    if !remote_training_enabled() {
-        return Ok(json!({
-            "schema_version": "understudy.remote_training.capabilities.v1",
-            "enabled": false,
-            "reason": "Remote training is an off-by-default experiment."
-        }));
-    }
     if crate::creds::resolve().is_none() {
         return Ok(json!({
             "schema_version": "understudy.remote_training.capabilities.v1",
@@ -1203,7 +1190,10 @@ fn compile_backend_compatibility(plan_path: &str) -> Result<Value, String> {
         json!({
             "id": "mlx-local",
             "compatible": mlx_compatible,
+            "adapter_implemented": mlx_compatible,
             "execution_ready": mlx_compatible && cfg!(all(target_os = "macos", target_arch = "aarch64")),
+            "transport": "bundled_understudy_cli",
+            "command": "understudy training run-local-sft",
             "recipe": "sft_lora",
             "dataset_format": recipe.dataset_format,
             "loss_mask": "assistant_only",
@@ -1214,7 +1204,10 @@ fn compile_backend_compatibility(plan_path: &str) -> Result<Value, String> {
         json!({
             "id": "fireworks",
             "compatible": true,
+            "adapter_implemented": true,
             "execution_ready": false,
+            "transport": "understudy_managed_train_api_v1",
+            "command": "start_remote_training",
             "recipe": "managed_supervised_fine_tuning",
             "dataset_format": recipe.dataset_format,
             "loss_mask": "assistant_only",
@@ -1224,14 +1217,18 @@ fn compile_backend_compatibility(plan_path: &str) -> Result<Value, String> {
         }),
         json!({
             "id": "tinker",
-            "compatible": true,
+            "compatible": plan.recipe_id == "gsm8k_chat_sft_v1",
+            "adapter_implemented": plan.recipe_id == "gsm8k_chat_sft_v1",
             "execution_ready": false,
+            "transport": "tinker_python_sdk",
+            "command": "understudy training run-tinker-sft",
             "recipe": "sft_lora",
             "dataset_format": "messages_rendered_to_tokenized_datum",
-            "loss_mask": "assistant_only",
+            "loss_mask": "last_assistant_message",
             "evaluator": evaluator,
-            "checkpoint_contract": "training_state_plus_sampler_weights",
-            "execution_gate": "desktop_service_adapter_live_model_catalog_renderer_preflight_upload_consent_and_budget"
+            "checkpoint_contract": "one_hour_sampler_weights",
+            "checkpoint_ttl_seconds": 3_600,
+            "execution_gate": "live_model_catalog_current_price_basis_tinker_api_key_upload_consent_and_budget"
         }),
     ];
     let artifact_path = canonical_plan
@@ -1720,9 +1717,6 @@ pub async fn start_remote_classification_training(
     confirm_temporary_deployment: bool,
     on_event: Channel<Value>,
 ) -> Result<Value, String> {
-    if !remote_training_enabled() {
-        return Err("Remote training is disabled in this Desktop build.".into());
-    }
     if !confirm_upload || !confirm_spend {
         return Err("Confirm the exact upload and maximum spend before remote training.".into());
     }
@@ -2599,7 +2593,23 @@ mod tests {
                 backend.get("execution_ready").and_then(Value::as_bool),
                 Some(false)
             );
+            assert_eq!(
+                backend.get("adapter_implemented").and_then(Value::as_bool),
+                Some(true)
+            );
         }
+        let tinker = backends
+            .iter()
+            .find(|backend| backend.get("id").and_then(Value::as_str) == Some("tinker"))
+            .unwrap();
+        assert_eq!(
+            tinker.get("command").and_then(Value::as_str),
+            Some("understudy training run-tinker-sft")
+        );
+        assert_eq!(
+            tinker.get("checkpoint_ttl_seconds").and_then(Value::as_u64),
+            Some(3_600)
+        );
         assert!(preflight_started.elapsed() < Duration::from_secs(5));
         assert!(PathBuf::from(
             compatibility

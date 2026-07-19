@@ -82,7 +82,11 @@ import { ModelCardDrawer } from "./ModelCardDrawer";
 import { CsvProfile } from "./CsvProfile";
 import { CsvTrainingPlan } from "./CsvTrainingPlan";
 import { LocalTrainingPanel } from "./LocalTrainingPanel";
-import { RemoteTrainingPanel, type RemotePlan } from "./RemoteTrainingPanel";
+import {
+  RemoteTrainingPanel,
+  type RemotePlan,
+  type RemoteTrainingCapabilities,
+} from "./RemoteTrainingPanel";
 import { LocalSftTrainingPanel } from "./LocalSftTrainingPanel";
 import { LocalClassifierLibraryDialog } from "./LocalClassifierLibraryDialog";
 import { TrainingHalo, type TrainingHaloVisual } from "./TrainingHalo";
@@ -323,6 +327,13 @@ function trainingUseCaseLabel(useCase: string): string {
   } as Record<string, string>)[useCase] ?? "Custom training workload";
 }
 
+type RemoteTrainingCapabilitiesEnvelope = {
+  schema_version: "understudy.remote_training.capabilities.v1";
+  enabled: boolean;
+  reason?: string;
+  capabilities?: RemoteTrainingCapabilities;
+};
+
 function trainedModelName(sourceName: string, labelColumn: string): string {
   const sourceStem = sourceName.replace(/\.[^.]+$/, "").replace(/(?:^|[-_])dataset(?:$|[-_])/gi, "-");
   const normalized = `${sourceStem}-${labelColumn}`
@@ -458,6 +469,7 @@ export function ChatPane({
   const [csvInspection, setCsvInspection] = useState<CsvInspection | null>(null);
   const [trainingRecipe, setTrainingRecipe] = useState<TrainingRecipeInspection | null>(null);
   const [remoteRecipePlan, setRemoteRecipePlan] = useState<RemotePlan | null>(null);
+  const [recipeBackend, setRecipeBackend] = useState<"local" | "managed">("local");
   const [mappingInputColumns, setMappingInputColumns] = useState<string[]>([]);
   const [mappingLabelColumn, setMappingLabelColumn] = useState("");
   const [mappingGroupColumn, setMappingGroupColumn] = useState("");
@@ -530,6 +542,7 @@ export function ChatPane({
     setCsvInspection(null);
     setTrainingRecipe(null);
     setRemoteRecipePlan(null);
+    setRecipeBackend("local");
     setMappingInputColumns([]);
     setMappingLabelColumn("");
     setMappingGroupColumn("");
@@ -577,6 +590,7 @@ export function ChatPane({
     const requestGeneration = dropRequestGeneration.current + 1;
     dropRequestGeneration.current = requestGeneration;
     setRemoteRecipePlan(null);
+    setRecipeBackend("local");
     setErr(null);
     dispatchDrop({ type: "dataset_started" });
     void invoke<RemotePlan>("prepare_remote_gsm8k_training", {
@@ -605,6 +619,22 @@ export function ChatPane({
   useEffect(() => {
     if (!remoteRecipePlan && trainingRecipe?.ready) prepareDetectedRecipe();
   }, [prepareDetectedRecipe, remoteRecipePlan, trainingRecipe?.ready]);
+
+  const openManagedRecipeTraining = useCallback(() => {
+    setErr(null);
+    void invoke<RemoteTrainingCapabilitiesEnvelope>("remote_training_capabilities")
+      .then((envelope) => {
+        const available = envelope.enabled && envelope.capabilities?.providers.some(
+          (provider) => provider.enabled && provider.model_profiles.length > 0,
+        );
+        if (!available) {
+          setErr(envelope.reason ?? "Cloud training is unavailable in this Desktop build.");
+          return;
+        }
+        setRecipeBackend("managed");
+      })
+      .catch((cause) => setErr(`Cloud training is unavailable: ${String(cause)}`));
+  }, []);
 
   const prepareDroppedClassification = () => {
     if (
@@ -1510,12 +1540,26 @@ export function ChatPane({
                   <div className="csv-analysis-next">
                     {trainingRecipe.ready ? (
                       remoteRecipePlan ? (
-                        <LocalSftTrainingPanel
-                          plan={remoteRecipePlan}
-                          modelName="GSM8K reasoning model"
-                          onActiveChange={setLocalTrainingActive}
-                          onVisualChange={setTrainingHaloVisual}
-                        />
+                        <>
+                          <div hidden={recipeBackend === "managed"}>
+                            <LocalSftTrainingPanel
+                              plan={remoteRecipePlan}
+                              modelName="GSM8K reasoning model"
+                              onTrainRemote={openManagedRecipeTraining}
+                              onActiveChange={setLocalTrainingActive}
+                              onVisualChange={setTrainingHaloVisual}
+                            />
+                          </div>
+                          {recipeBackend === "managed" && (
+                            <RemoteTrainingPanel
+                              preparedPlan={remoteRecipePlan}
+                              modelName="GSM8K reasoning model"
+                              onBack={() => setRecipeBackend("local")}
+                              onActiveChange={setLocalTrainingActive}
+                              onVisualChange={setTrainingHaloVisual}
+                            />
+                          )}
+                        </>
                       ) : (
                         <div className="remote-training-state" role="status" aria-live="polite">
                           <strong>Preparing {trainingUseCaseLabel(trainingRecipe.detected_use_case)}</strong>

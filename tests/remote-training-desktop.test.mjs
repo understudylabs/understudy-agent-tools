@@ -5,7 +5,7 @@ import test from "node:test";
 const root = new URL("../", import.meta.url);
 const read = (path) => readFile(new URL(path, root), "utf8");
 
-test("remote training remains an off-by-default explicit-consent experiment", async () => {
+test("remote training uses live capabilities with explicit upload and spend consent", async () => {
   const [native, panel, localPanel, localSftPanel, tauriLib] = await Promise.all([
     read("apps/homescreen/src-tauri/src/remote_training.rs"),
     read("apps/homescreen/app/components/RemoteTrainingPanel.tsx"),
@@ -14,8 +14,8 @@ test("remote training remains an off-by-default explicit-consent experiment", as
     read("apps/homescreen/src-tauri/src/lib.rs"),
   ]);
 
-  assert.match(native, /UNDERSTUDY_REMOTE_TRAINING_EXPERIMENT/);
-  assert.match(native, /Remote training is an off-by-default experiment/);
+  assert.doesNotMatch(native, /UNDERSTUDY_REMOTE_TRAINING_EXPERIMENT/);
+  assert.doesNotMatch(native, /off-by-default experiment/);
   assert.match(native, /if !confirm_upload \|\| !confirm_spend/);
   assert.match(native, /confirm_temporary_deployment/);
   assert.match(native, /sha256_bytes\(&bytes\) != artifact\.sha256/);
@@ -26,6 +26,9 @@ test("remote training remains an off-by-default explicit-consent experiment", as
   assert.match(native, /existing_remote_classification_training/);
   assert.match(native, /existing_remote_training/);
   assert.match(native, /compile_remote_training_backends/);
+  assert.match(native, /understudy training run-tinker-sft/);
+  assert.match(native, /tinker_python_sdk/);
+  assert.match(native, /one_hour_sampler_weights/);
   assert.match(native, /gsm8k_public_rows/);
   assert.match(native, /public_gsm8k_messages/);
   assert.match(native, /understudy\.remote_training\.recipe_inspection\.v1/);
@@ -65,12 +68,17 @@ test("remote training remains an off-by-default explicit-consent experiment", as
   assert.match(chat, /if \(!remoteRecipePlan && trainingRecipe\?\.ready\) prepareDetectedRecipe\(\)/);
   assert.doesNotMatch(chat, /Prepare no-spend plan/);
   assert.match(chat, /<LocalSftTrainingPanel/);
+  assert.match(chat, /recipeBackend === "managed"/);
+  assert.match(chat, /<RemoteTrainingPanel/);
+  assert.match(chat, /openManagedRecipeTraining/);
+  assert.match(chat, /remote_training_capabilities/);
   assert.match(chat, /plan=\{remoteRecipePlan\}/);
   assert.match(chat, /onActiveChange=\{setLocalTrainingActive\}/);
   assert.match(localSftPanel, /start_local_sft_training/);
   assert.match(localSftPanel, /compile_remote_training_backends/);
   assert.match(localSftPanel, /Training locally · \$0/);
   assert.match(localSftPanel, /Offline · no upload/);
+  assert.match(localSftPanel, /Try cloud · \$\{plan\.maximum_spend_usd\.toFixed\(2\)\} max/);
   assert.doesNotMatch(localSftPanel, /fireworks|fake endpoint/i);
 
   assert.match(localPanel, /remote_training_capabilities/);

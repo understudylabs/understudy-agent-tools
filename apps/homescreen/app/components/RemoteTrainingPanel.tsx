@@ -130,7 +130,10 @@ type BackendCompatibility = {
   backends: Array<{
     id: string;
     compatible: boolean;
+    adapter_implemented: boolean;
     execution_ready: boolean;
+    transport: string;
+    command: string;
     recipe: string;
     evaluator: string;
     execution_gate: string;

@@ -34,6 +34,7 @@ type LocalSftResult = {
 type Props = {
   plan: RemotePlan;
   modelName: string;
+  onTrainRemote?: () => void;
   onActiveChange: (active: boolean) => void;
   onVisualChange: (visual: TrainingHaloVisual | null) => void;
 };
@@ -42,7 +43,7 @@ function displayScore(score: number): string {
   return `${(score * 100).toFixed(1)}%`;
 }
 
-export function LocalSftTrainingPanel({ plan, modelName, onActiveChange, onVisualChange }: Props) {
+export function LocalSftTrainingPanel({ plan, modelName, onTrainRemote, onActiveChange, onVisualChange }: Props) {
   const [attempt, setAttempt] = useState(0);
   const [phase, setPhase] = useState<LocalSftPhaseEvent | null>(null);
   const [result, setResult] = useState<LocalSftResult | null>(null);
@@ -163,6 +164,7 @@ export function LocalSftTrainingPanel({ plan, modelName, onActiveChange, onVisua
           <small>Offline · no upload · receipt {result.manifest_path}</small>
         </details>
         <div className="remote-training-actions">
+          {onTrainRemote && <button type="button" className="btn primary" onClick={onTrainRemote}>Try cloud · ${plan.maximum_spend_usd.toFixed(2)} max</button>}
           <button type="button" className="btn ghost" onClick={() => setAttempt((value) => value + 1)}>Run again</button>
         </div>
       </div>
@@ -173,7 +175,8 @@ export function LocalSftTrainingPanel({ plan, modelName, onActiveChange, onVisua
     <div className="remote-training-state failed" role="alert">
       <div><strong>Local training stopped</strong><small>{error ?? "The immutable plan is intact."}</small></div>
       <div className="remote-training-actions">
-        <button type="button" className="btn primary" onClick={() => setAttempt((value) => value + 1)}>Try again</button>
+        {onTrainRemote && <button type="button" className="btn primary" onClick={onTrainRemote}>Try cloud · ${plan.maximum_spend_usd.toFixed(2)} max</button>}
+        <button type="button" className="btn ghost" onClick={() => setAttempt((value) => value + 1)}>Try again</button>
       </div>
     </div>
   );
