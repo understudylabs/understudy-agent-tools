@@ -147,12 +147,16 @@ export function QualityCostScatter({
     }
   }
   let frontierPath = "";
+  let frontierArea = "";
   if (frontier.length > 0) {
     frontierPath = `M ${frontier[0].px} ${frontier[0].py}`;
     for (let i = 1; i < frontier.length; i++) {
       frontierPath += ` H ${frontier[i].px} V ${frontier[i].py}`;
     }
     frontierPath += ` H ${W - PAD.right}`;
+    // Evidence gradient: area under the frontier (accent 18% → transparent,
+    // stops centralized in globals.css as --grad-frontier-top).
+    frontierArea = `${frontierPath} V ${H - PAD.bottom} H ${frontier[0].px} Z`;
   }
 
   // log ticks at powers of 10
@@ -177,6 +181,18 @@ export function QualityCostScatter({
         frontier
       </p>
       <svg viewBox={`0 0 ${W} ${H}`} className="lb-chart" role="img" aria-label="Quality versus cost scatter plot">
+        <defs>
+          {/* Area under the value frontier — accent wash, gone by the baseline */}
+          <linearGradient id="qc-frontier-fill" x1="0" y1="0" x2="0" y2="1">
+            <stop offset="0" stopColor="var(--grad-frontier-top)" />
+            <stop offset="1" stopColor="var(--accent)" stopOpacity="0" />
+          </linearGradient>
+          {/* Tiny radial highlight overlaid on every scatter dot */}
+          <radialGradient id="qc-dot-sheen" cx="0.35" cy="0.3" r="0.65">
+            <stop offset="0" stopColor="var(--chart-dot-sheen)" />
+            <stop offset="1" stopColor="#fff" stopOpacity="0" />
+          </radialGradient>
+        </defs>
         {/* y gridlines + labels */}
         {[0, 0.25, 0.5, 0.75, 1].map((t) => (
           <g key={t}>
@@ -212,7 +228,8 @@ export function QualityCostScatter({
             </text>
           </g>
         )}
-        {/* value frontier */}
+        {/* value frontier (+ evidence area fill beneath it) */}
+        {frontierArea && <path d={frontierArea} fill="url(#qc-frontier-fill)" stroke="none" />}
         {frontierPath && <path d={frontierPath} fill="none" stroke={ACCENT} strokeWidth="1.5" strokeDasharray="5 3" opacity="0.85" />}
         {/* marks */}
         {ordered.map((p) => {
@@ -223,6 +240,8 @@ export function QualityCostScatter({
               {/* oversize hit target */}
               <circle cx={p.px} cy={yPos(p.y)} r={14} fill="transparent" />
               <circle cx={p.px} cy={yPos(p.y)} r={isHover ? 6 : 5} fill={color} stroke="var(--surface)" strokeWidth="2" />
+              {/* radial sheen on top of the series color (identity unchanged) */}
+              <circle cx={p.px} cy={yPos(p.y)} r={isHover ? 6 : 5} fill="url(#qc-dot-sheen)" pointerEvents="none" />
               {isHover && (
                 <text x={p.px + 9} y={yPos(p.y) + 15} fill={MUTED} className="mono" fontSize="9">
                   {formatScore(p.y)} ·{" "}
@@ -298,7 +317,8 @@ export function CostRanked({ summaries }: { summaries: ModelSummary[] }) {
               <span className="track">
                 <span
                   className="fill"
-                  style={{ display: "block", width: `${Math.max((v / max) * 100, 1.5)}%`, background: color }}
+                  // along-the-bar gradient lives in globals.css, keyed off --bar-color
+                  style={{ display: "block", width: `${Math.max((v / max) * 100, 1.5)}%`, "--bar-color": color } as React.CSSProperties}
                 />
               </span>
               <span className="val">{v < 1e-6 ? "≈$0" : formatCost(v)}</span>

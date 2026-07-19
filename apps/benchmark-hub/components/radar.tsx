@@ -70,6 +70,28 @@ export function CategoryRadar({
           role="img"
           aria-label="Category profile radar chart"
         >
+          <defs>
+            {/* Evidence gradients: polygon fill fades to transparent toward the
+                center; per-slot edge alphas (--radar-edge-alpha-*) live in
+                globals.css and step down so overlapping arms stay legible. */}
+            {shown.map((s, si) => (
+              <radialGradient
+                key={s.model}
+                id={`radar-fill-${si}`}
+                gradientUnits="userSpaceOnUse"
+                cx={CX}
+                cy={CY}
+                r={R}
+              >
+                <stop offset="0" stopColor={seriesColor(s.model, allModels)} stopOpacity="0" />
+                <stop
+                  offset="1"
+                  stopColor={seriesColor(s.model, allModels)}
+                  style={{ stopOpacity: `var(--radar-edge-alpha-${si + 1})` }}
+                />
+              </radialGradient>
+            ))}
+          </defs>
           {[0.25, 0.5, 0.75, 1].map((t) => (
             <polygon
               key={t}
@@ -101,15 +123,14 @@ export function CategoryRadar({
           {shown.map((s, si) => {
             const color = seriesColor(s.model, allModels);
             const pts = categories.map((c, i) => pt(i, R * (s.perCategory[c.category_id] ?? 0)).join(",")).join(" ");
-            // Identical traces overlap; vary opacity + dash per slot so all stay visible.
+            // Identical traces overlap; vary edge alpha (via the gradient defs)
+            // + dash per slot so all stay visible.
             const dash = ["", "6 4", "2 4"][si] || "";
-            const fillOpacity = [0.14, 0.09, 0.06][si] ?? 0.06;
             return (
               <g key={s.model}>
                 <polygon
                   points={pts}
-                  fill={color}
-                  fillOpacity={fillOpacity}
+                  fill={`url(#radar-fill-${si})`}
                   stroke={color}
                   strokeWidth="2"
                   strokeDasharray={dash || undefined}

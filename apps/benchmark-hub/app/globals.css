@@ -52,6 +52,48 @@
   --series-3: #d55181;
   --series-4: #c98500;
   --series-overflow: #9b9da3;
+
+  /*
+   * ---- Gradient system (restrained; every gradient has one job) ----
+   * All accent-derived stops key off --accent via color-mix so the temporary
+   * ?accent= preview switch re-keys them for free. Everything here is STATIC —
+   * no animated gradients, so prefers-reduced-motion needs no special-casing.
+   *
+   *  --grad-field        page atmosphere: barely-there vertical wash so the
+   *                      field doesn't read as flat dead black (#000 → #0B0C0E)
+   *  --glow-page         page atmosphere: radial accent glow anchored to the
+   *                      top of the detail page, behind header + stat strip
+   *                      (accent ≤5% alpha, gone within ~600px; never sits
+   *                      under body text above ~6% alpha → AA unchanged)
+   *  --grad-card-edge    card depth: 1px top-edge highlight (white 7% → clear
+   *                      at the corners), the "lit from above" cue
+   *  --grad-card         card depth: faint vertical surface gradient on
+   *                      card/stat-strip surfaces (white 2% → clear)
+   *  --grad-card-edge-hover / --grad-card-hover  same two, slightly brighter
+   *  --glow-rail         attention: soft left-edge accent glow on the active
+   *                      anchor-rail item (accent 14% → clear rightward)
+   *  --grad-chip-accent  attention: 1-stop vertical gradient on solid accent
+   *                      chips (accent → accent mixed 12% toward black)
+   *  --grad-frontier-top evidence: top stop of the area fill under the value-
+   *                      frontier line (accent 18% → transparent, SVG defs)
+   *  --chart-dot-sheen   evidence: tiny radial highlight on scatter dots
+   *  --radar-edge-alpha-1..3  evidence: outer-edge alpha per radar slot
+   *                      (polygon fill fades to transparent toward center;
+   *                      steps preserve legibility of overlapping arms)
+   */
+  --grad-field: linear-gradient(to bottom, #000000, #0b0c0e);
+  --glow-page: radial-gradient(ellipse 720px 600px at 50% 0, color-mix(in srgb, var(--accent) 5%, transparent), transparent 70%);
+  --grad-card-edge: linear-gradient(to right, transparent, rgba(255, 255, 255, 0.07) 25% 75%, transparent);
+  --grad-card: linear-gradient(to bottom, rgba(255, 255, 255, 0.02), rgba(255, 255, 255, 0) 55%);
+  --grad-card-edge-hover: linear-gradient(to right, transparent, rgba(255, 255, 255, 0.1) 25% 75%, transparent);
+  --grad-card-hover: linear-gradient(to bottom, rgba(255, 255, 255, 0.035), rgba(255, 255, 255, 0) 55%);
+  --glow-rail: linear-gradient(to right, color-mix(in srgb, var(--accent) 14%, transparent), transparent 75%);
+  --grad-chip-accent: linear-gradient(to bottom, var(--accent), color-mix(in srgb, var(--accent) 88%, #000));
+  --grad-frontier-top: color-mix(in srgb, var(--accent) 18%, transparent);
+  --chart-dot-sheen: rgba(255, 255, 255, 0.3);
+  --radar-edge-alpha-1: 0.16;
+  --radar-edge-alpha-2: 0.1;
+  --radar-edge-alpha-3: 0.07;
 }
 
 /*
@@ -116,6 +158,7 @@ html[data-accent="mint"] {
 body {
   -webkit-font-smoothing: antialiased;
   background: var(--ground);
+  background-image: var(--grad-field); /* field never reads flat dead black */
   color: var(--ink);
   font-family: var(--sans);
   font-size: 15px;
@@ -126,6 +169,43 @@ body {
 a {
   color: var(--accent);
   text-decoration: none;
+}
+
+/* Card surface depth: 1px top-edge highlight + faint vertical wash on every
+   card-class surface. Hairline borders stay; hover brightens both a touch.
+   (.lb-tbl-scroll takes only the edge highlight — a vertical wash under a
+   scrolling table with a sticky header would read as banding.) */
+.lb-card,
+.ent-stat,
+.lb-tl {
+  background-image: var(--grad-card-edge), var(--grad-card);
+  background-repeat: no-repeat;
+  background-size: 100% 1px, 100% 100%;
+}
+.lb-card:hover,
+.ent-stat:hover,
+.lb-tl:hover {
+  background-image: var(--grad-card-edge-hover), var(--grad-card-hover);
+}
+.lb-tbl-scroll {
+  background-image: var(--grad-card-edge);
+  background-repeat: no-repeat;
+  background-size: 100% 1px;
+}
+
+/* Detail-page atmosphere: radial accent glow anchored behind the header/stat
+   strip; fades out within ~600px. Static, pointer-transparent, behind text. */
+.ent-page {
+  position: relative;
+}
+.ent-page::before {
+  background: var(--glow-page);
+  content: "";
+  height: 600px;
+  inset: 0 0 auto 0;
+  pointer-events: none;
+  position: absolute;
+  z-index: -1;
 }
 
 /* ---- LiveBench component classes (from their shipped CSS, verbatim where possible) ---- */
@@ -436,7 +516,8 @@ a {
   border-color: var(--accent);
 }
 .lb-chip[aria-pressed="true"] {
-  background: var(--accent);
+  background: var(--accent); /* fallback if color-mix unsupported */
+  background-image: var(--grad-chip-accent);
   color: var(--on-accent);
   font-weight: 600;
 }
@@ -707,6 +788,10 @@ a {
 .lb-bar .fill {
   border-radius: 5px;
   height: 100%;
+  /* Evidence gradient: along-the-bar, series color → ~80%-lightness variant
+     at the value end. --bar-color is set inline per row; rounded caps kept. */
+  background: var(--bar-color);
+  background-image: linear-gradient(to right, var(--bar-color), color-mix(in oklab, var(--bar-color) 80%, white));
 }
 .lb-bar .val {
   font-feature-settings: "tnum";
@@ -946,7 +1031,8 @@ a {
   color: var(--ink);
 }
 .ent-rail a[aria-current="true"] {
-  background: var(--accent-soft);
+  background: var(--accent-soft); /* fallback if color-mix unsupported */
+  background: var(--glow-rail);
   border-left-color: var(--accent);
   color: var(--accent);
   font-weight: 600;

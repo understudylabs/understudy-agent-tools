@@ -104,7 +104,7 @@ export default async function BenchmarkDetail({ params }: { params: Promise<{ sl
   );
 
   return (
-    <div>
+    <div className="ent-page">
       {/* Entity header — one subject, quiet chrome */}
       <header className="ent-head">
         <p className="lb-eyebrow" style={{ marginBottom: 10 }}>
