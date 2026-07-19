@@ -1,10 +1,12 @@
-import type { BenchmarkVersion } from "@/lib/types";
-import { cn } from "@/lib/utils";
+"use client";
 
-const CONTAM_STYLE: Record<string, string> = {
-  clean: "text-ok",
-  contaminated: "text-bad",
-  unknown: "text-warn",
+import { useState } from "react";
+import type { BenchmarkVersion } from "@/lib/types";
+
+const CONTAM_LABEL: Record<string, string> = {
+  clean: "clean",
+  contaminated: "CONTAMINATED",
+  unknown: "contamination unknown",
 };
 
 function shortHash(sha: string | null): string {
@@ -12,53 +14,73 @@ function shortHash(sha: string | null): string {
 }
 
 /**
- * Horizontal split-freeze history strip (versions.jsonl, newest last).
- * Each dot carries its short splits_sha256 + contamination verdict inline;
- * the current version is the ringed dot.
+ * LiveBench-style release-timeline card over versions.jsonl (newest last).
+ * Blue dots = past freezes, green-ringed dot = current freeze; clicking a
+ * dot inspects that freeze. Reused as the split-freeze evidence strip.
  */
-export function VersionTimeline({ versions }: { versions: BenchmarkVersion[] }) {
+export function VersionTimeline({
+  versions,
+  label = "release",
+}: {
+  versions: BenchmarkVersion[];
+  label?: string;
+}) {
+  const [sel, setSel] = useState<number | null>(null);
   if (versions.length === 0) {
     return (
-      <div className="rounded-md border border-rule bg-card p-4 text-sm text-ink-muted">
-        No versions.jsonl next to benchmark.json — split-freeze history unavailable. One line per freeze:{" "}
-        <code className="font-mono">{`{created_at, splits_sha256, contamination, note}`}</code>, newest last.
+      <div className="lb-tl">
+        <div className="lb-tl-head">
+          <span className="lab">{label}</span>
+        </div>
+        <div className="lb-tl-note">
+          No versions.jsonl next to benchmark.json — split-freeze history unavailable. One line per freeze:{" "}
+          <code className="mono">{`{created_at, splits_sha256, contamination, note}`}</code>, newest last.
+        </div>
       </div>
     );
   }
+  const latest = versions.length - 1;
+  const i = sel ?? latest;
+  const v = versions[i];
+  const date = (idx: number) => versions[idx].created_at.slice(0, 10);
+  const pos = (idx: number) => (versions.length === 1 ? 100 : (idx / latest) * 100);
+
   return (
-    <div className="overflow-x-auto rounded-lg border border-rule bg-card p-5">
-      <div className="relative flex min-w-fit items-start gap-0">
-        {versions.map((v, i) => {
-          const isCurrent = i === versions.length - 1;
-          const date = v.created_at.slice(0, 10);
-          return (
-            <div key={i} className="group relative flex min-w-[170px] flex-1 flex-col items-start pr-6">
-              {/* connector */}
-              {i < versions.length - 1 && (
-                <div className="absolute left-3 right-0 top-[5px] h-px bg-rule-strong" aria-hidden />
-              )}
-              {/* dot; current = ringed */}
-              <span
-                title={`${v.created_at}\nsplits_sha256: ${v.splits_sha256 ?? "null"}\ncontamination: ${v.contamination ?? "unknown"}${v.note ? "\n" + v.note : ""}`}
-                className={cn(
-                  "relative z-10 mb-2 inline-block h-[11px] w-[11px] rounded-full",
-                  isCurrent ? "bg-stamp ring-2 ring-stamp/40 ring-offset-2 ring-offset-card" : "bg-ink-muted",
-                )}
-              />
-              <span className="font-mono text-[11px] text-ink">{date}</span>
-              <span className="font-mono text-[11px] text-ink-muted">{shortHash(v.splits_sha256)}</span>
-              <span className={cn("font-mono text-[11px]", CONTAM_STYLE[v.contamination ?? "unknown"])}>
-                {v.contamination ?? "unknown"}
-              </span>
-              {v.note && (
-                <span className="mt-1 hidden max-w-[220px] text-[11px] leading-4 text-ink-muted group-hover:block">
-                  {v.note}
-                </span>
-              )}
-              {isCurrent && <span className="mt-1 font-mono text-[10px] uppercase tracking-wide text-stamp">current</span>}
-            </div>
-          );
-        })}
+    <div className="lb-tl">
+      <div className="lb-tl-head">
+        <span className="lab">{label}</span>
+        <span className="date">{date(i)}</span>
+      </div>
+      <div className="lb-rail">
+        <div className="lb-rail-line" aria-hidden />
+        <div className="lb-rail-prog" style={{ width: `${pos(i)}%` }} aria-hidden />
+        {versions.map((ver, idx) => (
+          <button
+            key={idx}
+            className={`lb-dot ${idx === latest ? "active" : idx <= i ? "done" : ""}`}
+            style={{ left: `${pos(idx)}%` }}
+            onClick={() => setSel(idx === latest ? null : idx)}
+            title={`${ver.created_at}\nsplits_sha256: ${ver.splits_sha256 ?? "null"}\ncontamination: ${ver.contamination ?? "unknown"}${ver.note ? "\n" + ver.note : ""}`}
+            aria-label={`Freeze ${date(idx)}`}
+          />
+        ))}
+      </div>
+      <div className="lb-tl-ends">
+        <span>{date(0)}</span>
+        <span>{date(latest)}</span>
+      </div>
+      <div className="lb-tl-note mono">
+        Showing <b>{date(i)}</b>
+        {i === latest ? (
+          <>
+            {" "}
+            — the latest freeze. <span className="lb-live-dot" aria-hidden /> live
+          </>
+        ) : (
+          " — a past freeze."
+        )}{" "}
+        · splits {shortHash(v.splits_sha256)} · {CONTAM_LABEL[v.contamination ?? "unknown"] ?? v.contamination}
+        {v.note ? <> · {v.note}</> : null}
       </div>
     </div>
   );

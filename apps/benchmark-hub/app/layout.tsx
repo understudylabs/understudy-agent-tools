@@ -9,16 +9,30 @@ export const metadata: Metadata = {
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html lang="en">
+    <html lang="en" data-theme="light">
       <body className="min-h-screen antialiased">
-        <header className="border-b border-rule px-6 py-4 flex items-baseline gap-3">
-          <Link href="/" className="font-mono text-sm tracking-wide text-stamp font-semibold">
-            understudy
-          </Link>
-          <span className="text-ink text-sm font-medium">Benchmark Hub</span>
-          <span className="text-ink-muted text-xs">local · single-user · evidence-first</span>
-        </header>
-        <main className="mx-auto max-w-6xl px-6 py-8">{children}</main>
+        <nav className="lb-nav">
+          <div className="lb-nav-in">
+            <Link href="/" className="lb-brand">
+              <span className="lb-pulse" aria-hidden />
+              Understudy
+              <span className="tag">LOCAL</span>
+            </Link>
+            <div className="lb-links mono">
+              <Link href="/">Hub</Link>
+              <a href="#insights">Insights</a>
+              <a href="#evidence">Evidence</a>
+              <a href="#docs">Docs</a>
+            </div>
+          </div>
+        </nav>
+        <main className="lb-wrap">{children}</main>
+        <footer className="lb-footer" id="docs">
+          <div className="lb-wrap">
+            <span>Understudy · benchmark hub · local, single-user, evidence-first</span>
+            <span className="mono">Overall = mean of category averages · cost = cost per successful task</span>
+          </div>
+        </footer>
       </body>
     </html>
   );

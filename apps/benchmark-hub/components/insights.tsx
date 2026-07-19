@@ -3,15 +3,15 @@
 import { useMemo, useState } from "react";
 import { formatCost, formatLatency, formatScore } from "@/lib/scores";
 import type { ModelSummary } from "@/lib/scores";
-import { cn } from "@/lib/utils";
+import type { BenchmarkManifest } from "@/lib/types";
 
 /**
- * Colorblind-safe categorical slots (dataviz skill reference palette, dark
- * steps, validated all-pairs against surface #141519). Fixed order, assigned
- * to arms by alphabetical model name — color follows the entity, never rank.
+ * Per-model categorical slots (LiveBench colors dots per org; we color per
+ * model/arm). Validated against white surface. Fixed order, assigned by
+ * alphabetical model name — color follows the entity, never rank.
  */
-export const SERIES = ["#3987e5", "#008300", "#d55181", "#c98500"];
-const OVERFLOW = "#898781";
+export const SERIES = ["#c15f3c", "#10a37f", "#4258ff", "#7c3aed"];
+const OVERFLOW = "#8a99b5";
 
 export function seriesColor(model: string, allModels: string[]): string {
   const idx = [...allModels].sort().indexOf(model);
@@ -25,35 +25,91 @@ const H = 320;
 const PAD = { top: 16, right: 24, bottom: 40, left: 48 };
 const GUTTER_W = 56; // pinned "≈$0 (local)" band at the left edge
 
+const GRID = "#e4e9f2";
+const MUTED = "#5a6b85";
+const ACCENT = "#2f54eb";
+
+/** Score getter for the active cost-view scope (Overall or one category). */
+function scopedScore(s: ModelSummary, scope: string | null): number | null {
+  return scope ? (s.perCategory[scope] ?? null) : s.overall;
+}
+
+/**
+ * Insights block: "COST VIEW" scope chips + two side-by-side cards
+ * (quality-vs-cost scatter with value frontier; cost-ranked bars).
+ */
+export function InsightsSection({
+  manifest,
+  summaries,
+}: {
+  manifest: BenchmarkManifest;
+  summaries: ModelSummary[];
+}) {
+  const [scope, setScope] = useState<string | null>(null);
+  return (
+    <div>
+      <div className="lb-cats" style={{ marginTop: 18 }}>
+        <span className="lb-cats-label">Cost view</span>
+        <button className="lb-chip" aria-pressed={scope == null} onClick={() => setScope(null)}>
+          Overall
+        </button>
+        {manifest.taxonomy.map((c) => (
+          <button
+            key={c.category_id}
+            className="lb-chip"
+            aria-pressed={scope === c.category_id}
+            onClick={() => setScope((cur) => (cur === c.category_id ? null : c.category_id))}
+          >
+            {c.name ?? c.category_id}
+          </button>
+        ))}
+      </div>
+      <div className="lb-ins-grid" style={{ marginTop: 0 }}>
+        <QualityCostScatter summaries={summaries} scope={scope} />
+        <CostRanked summaries={summaries} />
+      </div>
+    </div>
+  );
+}
+
 /**
  * Quality-vs-cost scatter: strict score (y) vs cost-per-successful-task
  * (x, log). Zero/near-zero-cost arms (local routes) render in a pinned
  * "≈$0 (local)" gutter band instead of being dropped from the log axis.
  * A step "value frontier" line traces the best score at each cost.
  */
-export function QualityCostScatter({ summaries }: { summaries: ModelSummary[] }) {
+export function QualityCostScatter({
+  summaries,
+  scope = null,
+}: {
+  summaries: ModelSummary[];
+  scope?: string | null;
+}) {
   const [xMode, setXMode] = useState<XMode>("cost");
   const [hover, setHover] = useState<string | null>(null);
 
   const points = useMemo(() => {
     const usable = summaries.filter(
-      (s) => s.overall != null && (xMode === "cost" ? s.totalCost != null : s.p50LatencyMs != null),
+      (s) => scopedScore(s, scope) != null && (xMode === "cost" ? s.totalCost != null : s.p50LatencyMs != null),
     );
     return usable.map((s) => ({
       model: s.model,
-      y: s.overall as number,
+      y: scopedScore(s, scope) as number,
       x: xMode === "cost" ? (s.costPerSuccess ?? 0) : (s.p50LatencyMs as number),
       route: s.route,
     }));
-  }, [summaries, xMode]);
+  }, [summaries, xMode, scope]);
 
   const allModels = summaries.map((s) => s.model);
 
   if (points.length === 0) {
     return (
-      <div className="rounded-md border border-rule bg-card p-4 text-sm text-ink-muted">
-        No arms carry {xMode === "cost" ? "cost" : "latency"} data yet — rows need a numeric{" "}
-        <code className="font-mono">{xMode === "cost" ? "cost" : "latency_ms"}</code> field.
+      <div className="lb-card">
+        <h3>Quality vs. cost</h3>
+        <div className="lb-state">
+          No arms carry {xMode === "cost" ? "cost" : "latency"} data yet — rows need a numeric{" "}
+          <code className="mono">{xMode === "cost" ? "cost" : "latency_ms"}</code> field.
+        </div>
       </div>
     );
   }
@@ -97,7 +153,7 @@ export function QualityCostScatter({ summaries }: { summaries: ModelSummary[] })
     frontierPath += ` H ${W - PAD.right}`;
   }
 
-  // log ticks at powers of 10 (and halves when the range is narrow)
+  // log ticks at powers of 10
   const ticks: number[] = [];
   for (let e = Math.floor(lo); e <= Math.ceil(hi); e++) {
     const v = Math.pow(10, e);
@@ -105,32 +161,25 @@ export function QualityCostScatter({ summaries }: { summaries: ModelSummary[] })
   }
 
   return (
-    <div className="rounded-lg border border-rule bg-card p-4">
-      <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
-        <div className="font-mono text-[11px] uppercase tracking-wide text-ink-muted">
-          strict score vs {xMode === "cost" ? "cost per successful task (log)" : "p50 latency (log)"}
-        </div>
-        <div className="flex gap-1.5">
-          {(["cost", "latency"] as XMode[]).map((m) => (
-            <button
-              key={m}
-              onClick={() => setXMode(m)}
-              className={cn(
-                "rounded-full border px-2.5 py-0.5 font-mono text-[11px]",
-                xMode === m ? "border-stamp/60 bg-stamp/10 text-stamp" : "border-rule-strong text-ink-muted hover:text-ink",
-              )}
-            >
-              {m === "cost" ? "x: cost / success" : "x: p50 latency"}
-            </button>
-          ))}
-        </div>
+    <div className="lb-card">
+      <div className="lb-card-tools" style={{ float: "right", display: "flex", gap: 6 }}>
+        {(["cost", "latency"] as XMode[]).map((m) => (
+          <button key={m} className="lb-chip" aria-pressed={xMode === m} onClick={() => setXMode(m)}>
+            {m === "cost" ? "x: cost / success" : "x: p50 latency"}
+          </button>
+        ))}
       </div>
-      <svg viewBox={`0 0 ${W} ${H}`} className="w-full" role="img" aria-label="Quality versus cost scatter plot">
+      <h3>Quality vs. cost</h3>
+      <p className="ch-sub">
+        Strict score vs {xMode === "cost" ? "cost per successful task (log x)" : "p50 latency (log x)"} · dashed line = value
+        frontier
+      </p>
+      <svg viewBox={`0 0 ${W} ${H}`} className="lb-chart" role="img" aria-label="Quality versus cost scatter plot">
         {/* y gridlines + labels */}
         {[0, 0.25, 0.5, 0.75, 1].map((t) => (
           <g key={t}>
-            <line x1={PAD.left} x2={W - PAD.right} y1={yPos(t)} y2={yPos(t)} stroke="rgba(255,255,255,0.06)" />
-            <text x={PAD.left - 6} y={yPos(t) + 3} textAnchor="end" className="fill-ink-muted font-mono" fontSize="9">
+            <line x1={PAD.left} x2={W - PAD.right} y1={yPos(t)} y2={yPos(t)} stroke={GRID} />
+            <text x={PAD.left - 6} y={yPos(t) + 3} textAnchor="end" fill={MUTED} className="mono" fontSize="9">
               {Math.round(t * 100)}%
             </text>
           </g>
@@ -138,8 +187,8 @@ export function QualityCostScatter({ summaries }: { summaries: ModelSummary[] })
         {/* x ticks */}
         {ticks.map((v) => (
           <g key={v}>
-            <line x1={xPos(v)} x2={xPos(v)} y1={PAD.top} y2={H - PAD.bottom} stroke="rgba(255,255,255,0.06)" />
-            <text x={xPos(v)} y={H - PAD.bottom + 14} textAnchor="middle" className="fill-ink-muted font-mono" fontSize="9">
+            <line x1={xPos(v)} x2={xPos(v)} y1={PAD.top} y2={H - PAD.bottom} stroke={GRID} />
+            <text x={xPos(v)} y={H - PAD.bottom + 14} textAnchor="middle" fill={MUTED} className="mono" fontSize="9">
               {xMode === "cost" ? formatCost(v) : formatLatency(v)}
             </text>
           </g>
@@ -152,23 +201,17 @@ export function QualityCostScatter({ summaries }: { summaries: ModelSummary[] })
               y={PAD.top}
               width={GUTTER_W}
               height={plotH}
-              fill="rgba(255,255,255,0.03)"
-              stroke="rgba(255,255,255,0.10)"
+              fill="#f6f8fc"
+              stroke="#d4dbea"
               strokeDasharray="3 3"
             />
-            <text
-              x={PAD.left + GUTTER_W / 2}
-              y={H - PAD.bottom + 14}
-              textAnchor="middle"
-              className="fill-ink-muted font-mono"
-              fontSize="9"
-            >
+            <text x={PAD.left + GUTTER_W / 2} y={H - PAD.bottom + 14} textAnchor="middle" fill={MUTED} className="mono" fontSize="9">
               ≈$0 (local)
             </text>
           </g>
         )}
         {/* value frontier */}
-        {frontierPath && <path d={frontierPath} fill="none" stroke="#d7623e" strokeWidth="1.5" strokeDasharray="5 3" opacity="0.8" />}
+        {frontierPath && <path d={frontierPath} fill="none" stroke={ACCENT} strokeWidth="1.5" strokeDasharray="5 3" opacity="0.85" />}
         {/* marks */}
         {ordered.map((p) => {
           const color = seriesColor(p.model, allModels);
@@ -177,12 +220,9 @@ export function QualityCostScatter({ summaries }: { summaries: ModelSummary[] })
             <g key={p.model} onMouseEnter={() => setHover(p.model)} onMouseLeave={() => setHover(null)}>
               {/* oversize hit target */}
               <circle cx={p.px} cy={yPos(p.y)} r={14} fill="transparent" />
-              <circle cx={p.px} cy={yPos(p.y)} r={isHover ? 6 : 5} fill={color} stroke="#141519" strokeWidth="2" />
-              <text x={p.px + 9} y={yPos(p.y) + 3} className="fill-ink font-mono" fontSize="10">
-                {p.model}
-              </text>
+              <circle cx={p.px} cy={yPos(p.y)} r={isHover ? 6 : 5} fill={color} stroke="#fff" strokeWidth="2" />
               {isHover && (
-                <text x={p.px + 9} y={yPos(p.y) + 15} className="fill-ink-muted font-mono" fontSize="9">
+                <text x={p.px + 9} y={yPos(p.y) + 15} fill={MUTED} className="mono" fontSize="9">
                   {formatScore(p.y)} ·{" "}
                   {xMode === "cost" ? (p.x < EPS ? "≈$0" : formatCost(p.x) + "/success") : formatLatency(p.x)}
                 </text>
@@ -190,10 +230,80 @@ export function QualityCostScatter({ summaries }: { summaries: ModelSummary[] })
             </g>
           );
         })}
-        <text x={W - PAD.right} y={H - 4} textAnchor="end" className="fill-ink-muted font-mono" fontSize="9">
+        <text x={W - PAD.right} y={H - 4} textAnchor="end" fill={MUTED} className="mono" fontSize="9">
           — value frontier (best score at each {xMode === "cost" ? "cost" : "latency"})
         </text>
       </svg>
+      <div className="lb-legend">
+        {allModels.map((m) => (
+          <span key={m} className="li">
+            <span className="sw" style={{ background: seriesColor(m, allModels) }} />
+            {m}
+          </span>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+/** "Cost, ranked" — horizontal cost-per-success bars, one row per arm. */
+export function CostRanked({ summaries }: { summaries: ModelSummary[] }) {
+  const allModels = summaries.map((s) => s.model);
+  const withCost = useMemo(
+    () =>
+      summaries
+        .filter((s) => s.totalCost != null)
+        .sort((a, b) => (a.costPerSuccess ?? 0) - (b.costPerSuccess ?? 0)),
+    [summaries],
+  );
+  const [shown, setShown] = useState<string[]>(withCost.slice(0, 8).map((s) => s.model));
+  const hidden = withCost.filter((s) => !shown.includes(s.model));
+  const rows = withCost.filter((s) => shown.includes(s.model));
+  const max = Math.max(...rows.map((s) => s.costPerSuccess ?? 0), 1e-9);
+
+  return (
+    <div className="lb-card">
+      <h3>Cost, ranked</h3>
+      <p className="ch-sub">Cost per successful task, cheapest first · ≈$0 = local route</p>
+      <div className="lb-bar-add">
+        <select
+          className="lb-org-select"
+          value=""
+          onChange={(e) => e.target.value && setShown((cur) => [...cur, e.target.value])}
+          disabled={hidden.length === 0}
+          aria-label="Add a model"
+        >
+          <option value="">Add a model…</option>
+          {hidden.map((s) => (
+            <option key={s.model} value={s.model}>
+              {s.model}
+            </option>
+          ))}
+        </select>
+      </div>
+      {rows.length === 0 ? (
+        <div className="lb-state">No arms carry cost data yet.</div>
+      ) : (
+        rows.map((s) => {
+          const color = seriesColor(s.model, allModels);
+          const v = s.costPerSuccess ?? 0;
+          return (
+            <div key={s.model} className="lb-bar">
+              <span className="name">
+                <span className="lb-mdot" style={{ background: color }} />
+                {s.model}
+              </span>
+              <span className="track">
+                <span
+                  className="fill"
+                  style={{ display: "block", width: `${Math.max((v / max) * 100, 1.5)}%`, background: color }}
+                />
+              </span>
+              <span className="val">{v < 1e-6 ? "≈$0" : formatCost(v)}</span>
+            </div>
+          );
+        })
+      )}
     </div>
   );
 }

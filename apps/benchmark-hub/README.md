@@ -3,6 +3,17 @@
 A local, single-user "Environments Hub + leaderboard" viewer over
 `understudy.benchmark.v1` manifests and `understudy.eval_result.v1` rows.
 
+## Theme
+
+The current visual language deliberately mimics [livebench.ai](https://livebench.ai)
+(light theme, mono data labels, indigo accent, release-timeline rail) — this is
+**intentional and temporary**. All design tokens are centralized in one place:
+the CSS custom properties (`:root` + Tailwind `@theme`) at the top of
+`app/globals.css`, with the component classes (`.lb-*`) below them consuming
+only those variables. Swapping the Understudy design language back in means
+editing that one file. Token values were extracted from LiveBench's shipped
+stylesheet (`static/css/main.201be9d4.css`).
+
 ## Run
 
 ```sh
@@ -14,13 +25,15 @@ bun run build      # production check
 
 ## Screens
 
-- **Hub index (`/`)** — card grid of discovered benchmarks with origin badges
+- **Hub index (`/`)** — hero + release timeline (union of all split freezes),
+  then a card grid of discovered benchmarks with origin badges
   and first-class evidence warnings (contamination unknown/contaminated, no
   linked production eval, unverified import license, no split discipline).
 - **Benchmark detail (`/b/<slug>`)** — numbered sections (01 Leaderboard,
   02 Insights, 03 Evidence, 04 Taxonomy, 05 Tasks, 06 Open flags):
-  - **Leaderboard** — sortable, holdout-default split filter, exclude-flagged
-    toggle; per-arm **cost / success** (Σ cost ÷ scored rows ÷ mean strict
+  - **Leaderboard** — sortable, holdout-default split filter; model search,
+    local-only / show-route / exclude-flagged toggle chips; per-arm
+    **cost p/ successful task** (Σ cost ÷ scored rows ÷ mean strict
     score, div-by-zero guarded) and **p50 latency** columns; category chips
     that re-scope the view to one category; click a row for an inline
     per-category strict/dense/row-count breakdown; route badges
@@ -29,7 +42,9 @@ bun run build      # production check
   - **Insights** — strict score vs cost-per-successful-task scatter (log x)
     with a step "value frontier" line; zero-cost local arms render in a pinned
     "≈$0 (local)" gutter band instead of being dropped; toggle x to p50
-    latency. A "Category profile" radar compares 2–3 selected arms across
+    latency; "COST VIEW" chips re-scope the y score to one category. A
+    "Cost, ranked" card shows per-arm cost bars (cheapest first, add-a-model
+    select). A "Category profile" radar compares 2–3 selected arms across
     categories (only when ≥3 categories have scored rows).
   - **Evidence** — horizontal split-freeze timeline from `versions.jsonl`
     (short `splits_sha256` hash + contamination verdict per dot; current
