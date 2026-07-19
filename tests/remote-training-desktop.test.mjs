@@ -42,6 +42,11 @@ test("remote training remains an off-by-default explicit-consent experiment", as
   assert.doesNotMatch(panel, /fireworks/i);
   assert.doesNotMatch(panel, /gemma-4/i);
   assert.match(native, /"model_profiles"/);
+  const chat = await read("apps/homescreen/app/components/ChatPane.tsx");
+  assert.match(chat, /inspect_remote_training_recipe/);
+  assert.match(chat, /detected use case/);
+  assert.match(chat, /Held-out evaluator/);
+  assert.match(chat, /before any upload or spend/);
 
   assert.match(localPanel, /remote_training_capabilities/);
   assert.match(localPanel, /remoteCapabilityState === "available" && !forceLocal/);

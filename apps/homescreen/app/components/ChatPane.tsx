@@ -73,6 +73,7 @@ import {
   INITIAL_WORKLOAD_DROP_PHASE,
   isWorkloadDropBusy,
   shouldInspectDroppedTable,
+  shouldInspectTrainingRecipe,
   workloadDropPersonaState,
   workloadDropReducer,
   workloadDropStatus,
@@ -180,6 +181,32 @@ type CsvInspection = {
   };
   artifact_path: string;
 };
+type TrainingRecipeInspection = {
+  schema_version: "understudy.remote_training.recipe_inspection.v1";
+  source_path: string;
+  source_sha256: string;
+  local_only: true;
+  payload_read: true;
+  detected_use_case: string;
+  task_kind: string;
+  method: string;
+  evaluator: string | null;
+  confidence: "high" | "medium" | "low";
+  ready: boolean;
+  requires_confirmation: true;
+  evidence: {
+    total_rows: number;
+    chat_rows: number;
+    gsm8k_rows: number;
+    classification_rows: number;
+    preference_rows: number;
+    tool_trace_rows: number;
+    multimodal_rows: number;
+    invalid_rows: number;
+  };
+  reasons: string[];
+  warnings: string[];
+};
 type ClassificationDataset = {
   schema_version: "understudy.capture_import.classification_dataset.v2";
   dataset_id: string;
@@ -279,6 +306,17 @@ function compactBytes(bytes: number): string {
   if (bytes < 1_024) return `${bytes} B`;
   if (bytes < 1_024 * 1_024) return `${(bytes / 1_024).toFixed(1)} KB`;
   return `${(bytes / (1_024 * 1_024)).toFixed(1)} MB`;
+}
+
+function trainingUseCaseLabel(useCase: string): string {
+  return ({
+    grade_school_math_reasoning: "Grade-school math reasoning",
+    preference_optimization: "Preference optimization",
+    agentic_tool_use: "Agent and tool use",
+    vision_language: "Vision-language tuning",
+    text_classification: "Text classification",
+    general_chat: "General chat",
+  } as Record<string, string>)[useCase] ?? "Custom training workload";
 }
 
 function trainedModelName(sourceName: string, labelColumn: string): string {
@@ -414,6 +452,7 @@ export function ChatPane({
   );
   const [droppedWorkload, setDroppedWorkload] = useState<DroppedWorkload | null>(null);
   const [csvInspection, setCsvInspection] = useState<CsvInspection | null>(null);
+  const [trainingRecipe, setTrainingRecipe] = useState<TrainingRecipeInspection | null>(null);
   const [mappingInputColumns, setMappingInputColumns] = useState<string[]>([]);
   const [mappingLabelColumn, setMappingLabelColumn] = useState("");
   const [mappingGroupColumn, setMappingGroupColumn] = useState("");
@@ -484,6 +523,7 @@ export function ChatPane({
     dropInFlight.current = false;
     setDroppedWorkload(null);
     setCsvInspection(null);
+    setTrainingRecipe(null);
     setMappingInputColumns([]);
     setMappingLabelColumn("");
     setMappingGroupColumn("");
@@ -508,6 +548,15 @@ export function ChatPane({
     });
     if (dropRequestGeneration.current !== requestGeneration) return;
     applyCsvInspection(result);
+  };
+
+  const inspectTrainingRecipe = async (workload: DroppedWorkload, requestGeneration: number) => {
+    const result = await invoke<TrainingRecipeInspection>("inspect_remote_training_recipe", {
+      path: workload.source_path,
+    });
+    if (dropRequestGeneration.current !== requestGeneration) return;
+    setTrainingRecipe(result);
+    dispatchDrop({ type: "inspection_succeeded" });
   };
 
   const prepareDroppedClassification = () => {
@@ -705,7 +754,11 @@ export function ChatPane({
             if (disposed || dropRequestGeneration.current !== requestGeneration) return;
             setDroppedWorkload(result);
             const inspectTable = shouldInspectDroppedTable(result);
-            if (inspectTable) {
+            const inspectRecipe = shouldInspectTrainingRecipe(result);
+            if (inspectRecipe) {
+              dispatchDrop({ type: "inspection_started" });
+              await inspectTrainingRecipe(result, requestGeneration);
+            } else if (inspectTable) {
               dispatchDrop({ type: "inspection_started" });
               try {
                 await inspectCsvWorkload(result, requestGeneration);
@@ -1405,6 +1458,38 @@ export function ChatPane({
                       ? "Creating group-isolated train, dev, and holdout splits…"
                     : "Understanding this file…"}
                 </div>
+              ) : trainingRecipe && droppedWorkload ? (
+                <>
+                  <div className="csv-analysis-step-label csv-analysis-step-structure">1 · detected use case</div>
+                  <div className="workload-generic-summary">
+                    <strong>{trainingUseCaseLabel(trainingRecipe.detected_use_case)}</strong>
+                    <small>
+                      {trainingRecipe.confidence} confidence · {trainingRecipe.evidence.total_rows.toLocaleString()} rows · {trainingRecipe.method.toUpperCase()}
+                    </small>
+                  </div>
+                  <div className="csv-analysis-step-label">2 · proposed recipe</div>
+                  <div className="csv-analysis-next">
+                    <div className="csv-analysis-proposal">
+                      <strong>{trainingRecipe.task_kind.replaceAll("_", " ")}</strong>
+                      <small>
+                        {trainingRecipe.evaluator
+                          ? `Held-out evaluator · ${trainingRecipe.evaluator.replaceAll("_", " ")}`
+                          : "Choose or define a held-out evaluator before training"}
+                      </small>
+                    </div>
+                    <p className="csv-analysis-caution" role="status">
+                      {trainingRecipe.reasons[0]}
+                    </p>
+                    {trainingRecipe.ready ? (
+                      <p>Recipe preflight passed locally. Confirm the recommendation before any upload or spend.</p>
+                    ) : (
+                      <p>{trainingRecipe.warnings[0]}</p>
+                    )}
+                  </div>
+                  <button type="button" className="btn ghost workload-generic-dismiss" onClick={resetDroppedWorkload}>
+                    Dismiss
+                  </button>
+                </>
               ) : csvInspection && droppedWorkload ? (
                 <>
                   {!classificationDataset ? (
