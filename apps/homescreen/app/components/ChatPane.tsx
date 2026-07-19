@@ -207,6 +207,22 @@ type TrainingRecipeInspection = {
   reasons: string[];
   warnings: string[];
 };
+type RemoteRecipePlan = {
+  schema_version: "understudy.remote_training.plan.v2";
+  plan_id: string;
+  task_kind: "chat_sft";
+  evaluator: "gsm8k_final_answer";
+  provider: "fake";
+  output_model_name: string;
+  artifacts: Array<{
+    artifact_role: "train" | "validation" | "heldout";
+    row_count: number;
+    size_bytes: number;
+    sha256: string;
+  }>;
+  maximum_spend_usd: number;
+  plan_path: string;
+};
 type ClassificationDataset = {
   schema_version: "understudy.capture_import.classification_dataset.v2";
   dataset_id: string;
@@ -453,6 +469,7 @@ export function ChatPane({
   const [droppedWorkload, setDroppedWorkload] = useState<DroppedWorkload | null>(null);
   const [csvInspection, setCsvInspection] = useState<CsvInspection | null>(null);
   const [trainingRecipe, setTrainingRecipe] = useState<TrainingRecipeInspection | null>(null);
+  const [remoteRecipePlan, setRemoteRecipePlan] = useState<RemoteRecipePlan | null>(null);
   const [mappingInputColumns, setMappingInputColumns] = useState<string[]>([]);
   const [mappingLabelColumn, setMappingLabelColumn] = useState("");
   const [mappingGroupColumn, setMappingGroupColumn] = useState("");
@@ -524,6 +541,7 @@ export function ChatPane({
     setDroppedWorkload(null);
     setCsvInspection(null);
     setTrainingRecipe(null);
+    setRemoteRecipePlan(null);
     setMappingInputColumns([]);
     setMappingLabelColumn("");
     setMappingGroupColumn("");
@@ -557,6 +575,44 @@ export function ChatPane({
     if (dropRequestGeneration.current !== requestGeneration) return;
     setTrainingRecipe(result);
     dispatchDrop({ type: "inspection_succeeded" });
+  };
+
+  const prepareDetectedRecipe = () => {
+    if (
+      !droppedWorkload
+      || !trainingRecipe
+      || !trainingRecipe.ready
+      || trainingRecipe.evaluator !== "gsm8k_final_answer"
+      || dropInFlight.current
+    ) return;
+    dropInFlight.current = true;
+    const requestGeneration = dropRequestGeneration.current + 1;
+    dropRequestGeneration.current = requestGeneration;
+    setRemoteRecipePlan(null);
+    setErr(null);
+    dispatchDrop({ type: "dataset_started" });
+    void invoke<RemoteRecipePlan>("prepare_remote_gsm8k_training", {
+      sourcePath: droppedWorkload.source_path,
+      artifactRoot: droppedWorkload.artifact_root,
+      expectedSourceSha256: trainingRecipe.source_sha256,
+      provider: "fake",
+      modelProfile: "understudy/auto",
+      frontierModel: "glm-5.2",
+      maximumSpendUsd: 1,
+    })
+      .then((plan) => {
+        if (dropRequestGeneration.current !== requestGeneration) return;
+        setRemoteRecipePlan(plan);
+        dispatchDrop({ type: "dataset_succeeded" });
+      })
+      .catch((error) => {
+        if (dropRequestGeneration.current !== requestGeneration) return;
+        setErr(String(error));
+        dispatchDrop({ type: "failed" });
+      })
+      .finally(() => {
+        if (dropRequestGeneration.current === requestGeneration) dropInFlight.current = false;
+      });
   };
 
   const prepareDroppedClassification = () => {
@@ -1481,7 +1537,25 @@ export function ChatPane({
                       {trainingRecipe.reasons[0]}
                     </p>
                     {trainingRecipe.ready ? (
-                      <p>Recipe preflight passed locally. Confirm the recommendation before any upload or spend.</p>
+                      remoteRecipePlan ? (
+                        <>
+                          <p>Local plan ready · no files uploaded · no provider called.</p>
+                          <div className="remote-training-artifacts">
+                            {remoteRecipePlan.artifacts.map((artifact) => (
+                              <div key={artifact.artifact_role}>
+                                <strong>{artifact.artifact_role}</strong>
+                                <span>{artifact.row_count.toLocaleString()} rows · {compactBytes(artifact.size_bytes)}</span>
+                                <code>{artifact.sha256.slice(0, 12)}</code>
+                              </div>
+                            ))}
+                          </div>
+                          <small>The next gate is the no-spend fake-provider run. Managed upload and training remain separately consented.</small>
+                        </>
+                      ) : (
+                        <button type="button" className="btn primary" onClick={prepareDetectedRecipe}>
+                          Prepare no-spend plan
+                        </button>
+                      )
                     ) : (
                       <p>{trainingRecipe.warnings[0]}</p>
                     )}

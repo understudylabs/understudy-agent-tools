@@ -49,7 +49,10 @@ test("remote training remains an off-by-default explicit-consent experiment", as
   assert.match(chat, /inspect_remote_training_recipe/);
   assert.match(chat, /detected use case/);
   assert.match(chat, /Held-out evaluator/);
-  assert.match(chat, /before any upload or spend/);
+  assert.match(chat, /Managed upload and training remain separately consented/);
+  assert.match(chat, /prepare_remote_gsm8k_training/);
+  assert.match(chat, /Prepare no-spend plan/);
+  assert.match(chat, /no files uploaded · no provider called/);
 
   assert.match(localPanel, /remote_training_capabilities/);
   assert.match(localPanel, /remoteCapabilityState === "available" && !forceLocal/);
