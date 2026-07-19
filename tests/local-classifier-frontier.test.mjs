@@ -78,7 +78,7 @@ function fixture() {
   return { root, rows, holdoutPath, runManifestPath };
 }
 
-function frontierFetch({ servedModel = "glm-5.2", spamLabel = "ham" } = {}) {
+function frontierFetch({ servedModel = "glm-5.2", spamLabel = "ham", emptyResponseAt } = {}) {
   const requests = [];
   const fetchImpl = async (_url, init) => {
     const request = JSON.parse(init.body);
@@ -88,7 +88,7 @@ function frontierFetch({ servedModel = "glm-5.2", spamLabel = "ham" } = {}) {
       example_id: example.example_id,
       label: example.example_id === "example-spam" ? spamLabel : "ham",
     }));
-    const content = `\`\`\`json\n${JSON.stringify({ predictions })}\n\`\`\``;
+    const content = emptyResponseAt === requests.length ? "" : `\`\`\`json\n${JSON.stringify({ predictions })}\n\`\`\``;
     const split = Math.ceil(content.length / 2);
     const stream = [
       { model: servedModel, choices: [{ delta: { content: content.slice(0, split) } }] },
@@ -195,6 +195,7 @@ describe("frontier classification comparison", () => {
     assert.equal(result.row_count, 2);
     assert.equal(result.heldout.accuracy, 0.5);
     assert.equal(result.heldout.failure_count, 1);
+    assert.deepEqual(result.heldout.latency_samples, { requested: 2, completed: 2, failures: [] });
     assert.equal(result.heldout.failures.length, 1);
     assert.equal(result.data_boundary.training_examples_uploaded, false);
     assert.equal(result.data_boundary.holdout_examples_uploaded, true);
@@ -215,6 +216,28 @@ describe("frontier classification comparison", () => {
     assert.ok(events.some((event) => event.phase === "measuring"));
     assert.ok(existsSync(result.artifact_path));
     assert.deepEqual(JSON.parse(readFileSync(result.artifact_path, "utf8")), result);
+  });
+
+  it("keeps completed quality evidence when an auxiliary latency sample is empty", async () => {
+    const data = fixture();
+    const { fetchImpl, requests } = frontierFetch({ emptyResponseAt: 2 });
+    const result = await compareClassifierWithFrontier({
+      runManifestPath: data.runManifestPath,
+      confirmRemote: true,
+      confirmSpend: true,
+      budgetUsd: 1,
+      auth: fakeAuth,
+      fetchImpl,
+      concurrency: 1,
+    });
+
+    assert.equal(result.heldout.accuracy, 0.5);
+    assert.equal(requests.length, 3);
+    assert.deepEqual(result.heldout.latency_samples, {
+      requested: 2,
+      completed: 1,
+      failures: ["frontier model returned no classifications"],
+    });
   });
 
   it("scores a valid predicted category that has no correct answers in the holdout", async () => {

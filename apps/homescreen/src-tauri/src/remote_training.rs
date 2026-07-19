@@ -8,7 +8,6 @@ use std::io::Write;
 use std::path::{Path, PathBuf};
 use std::time::Duration;
 use tauri::ipc::Channel;
-use tokio_util::io::ReaderStream;
 
 const DATASET_SCHEMA: &str = "understudy.capture_import.classification_dataset.v2";
 const PLAN_SCHEMA: &str = "understudy.remote_training.plan.v2";
@@ -894,13 +893,23 @@ async fn upload_artifact(artifact: &RemoteArtifact, intent: &Value) -> Result<()
         .and_then(|value| Url::parse(value).ok())
         .filter(|url| url.scheme() == "https")
         .ok_or_else(|| "The training service returned an unsafe upload URL.".to_string())?;
-    let file = tokio::fs::File::open(&artifact.path)
+    // Vercel Blob's signed PUT endpoint can acknowledge a chunked reqwest
+    // stream while persisting an empty object. The control plane caps remote
+    // artifacts, so send one fixed-size body to make the signed byte-length
+    // assertion unambiguous.
+    let body = tokio::fs::read(&artifact.path)
         .await
         .map_err(|_| format!("The {} artifact is unavailable.", artifact.artifact_role))?;
+    if body.len() as u64 != artifact.size_bytes {
+        return Err(format!(
+            "The {} artifact changed before upload.",
+            artifact.artifact_role
+        ));
+    }
     let mut request = client()?
         .put(url)
         .header("content-length", artifact.size_bytes)
-        .body(reqwest::Body::wrap_stream(ReaderStream::new(file)));
+        .body(body);
     if let Some(headers) = intent.get("required_headers").and_then(Value::as_object) {
         for (name, value) in headers {
             let header_name = reqwest::header::HeaderName::from_bytes(name.as_bytes())
