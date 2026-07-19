@@ -163,11 +163,6 @@ type Props = ClassificationProps | PreparedPlanProps;
 
 type Stage = "recovering" | "choice" | "preparing" | "confirm" | "starting" | "running" | "terminal" | "failed";
 
-function bytes(value: number): string {
-  if (value < 1024 * 1024) return `${Math.max(1, Math.round(value / 1024))} KB`;
-  return `${(value / (1024 * 1024)).toFixed(1)} MB`;
-}
-
 function providerDefault(providers: RemoteTrainingProvider[]): RemoteTrainingProvider | undefined {
   return providers.find((provider) => provider.id === "managed") ?? providers[0];
 }
@@ -208,7 +203,7 @@ export function RemoteTrainingPanel(props: Props) {
   const [uploadEvent, setUploadEvent] = useState<UploadEvent | null>(null);
   const [result, setResult] = useState<RemoteResult | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [backendCompatibility, setBackendCompatibility] = useState<BackendCompatibility | null>(null);
+  const [, setBackendCompatibility] = useState<BackendCompatibility | null>(null);
   const [backendCompatibilityError, setBackendCompatibilityError] = useState<string | null>(null);
   const polling = useRef(false);
   const stopped = useRef(false);
@@ -391,14 +386,6 @@ export function RemoteTrainingPanel(props: Props) {
       .catch((cause) => setError(String(cause)));
   };
 
-  const goBack = () => {
-    if (preparedMode) {
-      props.onBack?.();
-    } else {
-      setStage("choice");
-    }
-  };
-
   const resetRun = () => {
     setPlan(preparedPlan);
     setRun(null);
@@ -445,37 +432,24 @@ export function RemoteTrainingPanel(props: Props) {
   }
 
   if (stage === "confirm" && plan) {
-    const totalBytes = plan.artifacts.reduce((sum, artifact) => sum + artifact.size_bytes, 0);
     const noSpendProof = plan.provider === "fake";
-    const localPreflightMs = backendCompatibility
-      ? backendCompatibility.plan_preparation_duration_ms + backendCompatibility.compile_duration_ms
-      : plan.preparation_duration_ms;
+    const exampleCount = plan.artifacts.reduce((sum, artifact) => sum + artifact.row_count, 0);
+    const actionLabel = noSpendProof
+      ? "Upload & run"
+      : `Upload & train · $${plan.maximum_spend_usd.toFixed(2)} max`;
     return (
       <div className="remote-training-confirm">
         <div className="remote-training-confirm-heading">
-          <div><span>Ready</span><strong>{noSpendProof ? "$0 proof" : modelName}</strong></div>
-          <small>{plan.artifacts.reduce((sum, artifact) => sum + artifact.row_count, 0).toLocaleString()} examples</small>
+          <div><strong>{modelName}</strong></div>
+          <small>{exampleCount.toLocaleString()} examples · {noSpendProof ? "$0" : `$${plan.maximum_spend_usd.toFixed(2)} max`}</small>
         </div>
         {backendCompatibilityError && <p className="remote-training-warning">Portable backend check failed: {backendCompatibilityError}</p>}
         <p className="remote-training-consent-summary">
-          Uploads {plan.artifacts.length} split files · {noSpendProof ? "no provider spend" : `$${plan.maximum_spend_usd.toFixed(2)} max`} · deletes the evaluation endpoint
+          {plan.artifacts.length} private splits · endpoint auto-deletes
         </p>
         <div className="remote-training-actions">
-          <button type="button" className="btn primary" onClick={start}>{noSpendProof ? "Run proof" : `Train · max $${plan.maximum_spend_usd.toFixed(2)}`}</button>
-          <button type="button" className="btn ghost" onClick={goBack}>Cancel</button>
+          <button type="button" className="btn primary" onClick={start}>{actionLabel}</button>
         </div>
-        <details className="remote-training-details">
-          <summary>Details</summary>
-          <small>
-            {modelName} · {bytes(totalBytes)}
-            {localPreflightMs !== undefined ? ` · ${(localPreflightMs / 1_000).toFixed(2)}s local` : ""}
-          </small>
-          {backendCompatibility && (
-            <small aria-label="Portable backend recipe">
-              {backendCompatibility.backends.map((backend) => `${backend.id} ${backend.execution_ready ? "ready" : "gated"}`).join(" · ")}
-            </small>
-          )}
-        </details>
       </div>
     );
   }
@@ -491,18 +465,19 @@ export function RemoteTrainingPanel(props: Props) {
       <div className="remote-training-running" aria-live="polite" aria-busy="true">
         <div>
           <span className="local-training-pulse" aria-hidden="true" />
-          <div><strong>{latestEvent?.phase === "training" ? "Training remotely" : latestEvent?.phase === "evaluation" ? "Proving the model" : "Starting remote training"}</strong><small>{status}</small>{progress && <code>{progress}</code>}</div>
+          <div><strong>{latestEvent?.phase === "training" ? "Training" : latestEvent?.phase === "evaluation" ? "Evaluating" : "Starting"}</strong><small>{progress ?? status}</small></div>
           {run && <button type="button" className="btn ghost" onClick={cancel}>Cancel</button>}
         </div>
-        {latestEvent?.eve && latestEvent.eve.decision !== "observe" && (
-          <details className="remote-training-details"><summary>Details</summary><small>Eve chose to {latestEvent.eve.decision.replace("_", " ")} · {latestEvent.eve.reason_code}</small></details>
-        )}
         {error && <p className="remote-training-warning">{error}</p>}
       </div>
     );
   }
 
   if (stage === "terminal" && result) {
+    const primaryMetric = result.metrics.find((metric) => metric.id === "improvement_over_base")
+      ?? result.metrics.find((metric) => metric.id === "correct_answers")
+      ?? result.metrics[0];
+    const secondaryMetrics = result.metrics.filter((metric) => metric !== primaryMetric);
     const terminalCopy = result.outcome === "promoted"
       ? { eyebrow: "Ready to use", title: "This model earned promotion" }
       : result.outcome === "needs_work"
@@ -513,11 +488,15 @@ export function RemoteTrainingPanel(props: Props) {
     return (
       <div className={`remote-training-result ${result.outcome}`}>
         <div><span>{terminalCopy.eyebrow}</span><strong>{terminalCopy.title}</strong><small>Reported training cost: ${result.spend_usd.toFixed(2)}</small></div>
-        <div className="remote-training-metrics">
-          {result.metrics.map((metric) => <article key={metric.id}><span>{metric.label}</span><strong>{metric.display_value}</strong><small>{metric.explanation}</small></article>)}
-        </div>
-        {result.failures.length > 0 && <div className="remote-training-failures"><strong>Where it still fails</strong>{result.failures.slice(0, 3).map((failure, index) => <p key={index}>{failure.expected} expected · {failure.actual} returned · {failure.input_summary}</p>)}</div>}
-        {result.outcome === "promoted" && result.output_model && <div className="remote-training-endpoint"><span>Private trained model</span><code>{result.output_model}</code>{result.endpoint && <small>Serving is active through the authenticated Understudy endpoint.</small>}</div>}
+        {primaryMetric && <div className="remote-training-metrics"><article><span>{primaryMetric.label}</span><strong>{primaryMetric.display_value}</strong></article></div>}
+        {(secondaryMetrics.length > 0 || result.failures.length > 0 || result.output_model) && (
+          <details className="remote-training-details">
+            <summary>Run details</summary>
+            {secondaryMetrics.length > 0 && <div className="remote-training-metrics">{secondaryMetrics.map((metric) => <article key={metric.id}><span>{metric.label}</span><strong>{metric.display_value}</strong><small>{metric.explanation}</small></article>)}</div>}
+            {result.failures.length > 0 && <div className="remote-training-failures"><strong>Where it still fails</strong>{result.failures.slice(0, 3).map((failure, index) => <p key={index}>{failure.expected} expected · {failure.actual} returned · {failure.input_summary}</p>)}</div>}
+            {result.output_model && <div className="remote-training-endpoint"><span>Private trained model</span><code>{result.output_model}</code>{result.endpoint && <small>Serving is active through the authenticated Understudy endpoint.</small>}</div>}
+          </details>
+        )}
         <div className="remote-training-actions"><button type="button" className="btn ghost" onClick={resetRun}>Start another run</button></div>
       </div>
     );

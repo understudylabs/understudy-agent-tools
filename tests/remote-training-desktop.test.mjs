@@ -37,19 +37,18 @@ test("remote training remains an off-by-default explicit-consent experiment", as
   assert.match(native, /dropped dataset changed after recipe detection/i);
 
   assert.match(panel, /Nothing uploads until you review the exact artifacts and budget/);
-  assert.match(panel, /Uploads \{plan\.artifacts\.length\} split files/);
-  assert.match(panel, /deletes the evaluation endpoint/);
+  assert.match(panel, /\{plan\.artifacts\.length\} private splits · endpoint auto-deletes/);
   assert.match(panel, /remote_training_poll/);
   assert.match(panel, /cancel_remote_training/);
   assert.match(panel, /start_remote_training/);
   assert.match(panel, /existing_remote_training/);
   assert.match(panel, /compile_remote_training_backends/);
-  assert.match(panel, /Portable backend recipe/);
   assert.match(panel, /preparedPlan/);
-  assert.match(panel, /Run proof/);
+  assert.match(panel, /Upload & run/);
   assert.doesNotMatch(panel, /Approve & run/);
-  assert.match(panel, /<summary>Details<\/summary>/);
-  assert.match(panel, /no provider spend/);
+  assert.doesNotMatch(panel, /<summary>Details<\/summary>/);
+  assert.match(panel, /<summary>Run details<\/summary>/);
+  assert.match(panel, /private splits · endpoint auto-deletes/);
   assert.doesNotMatch(panel, /type="checkbox"/);
   assert.match(panel, /Where it still fails/);
   assert.match(panel, /understudy\/auto/);
@@ -66,7 +65,8 @@ test("remote training remains an off-by-default explicit-consent experiment", as
   assert.match(chat, /onActiveChange=\{setLocalTrainingActive\}/);
 
   assert.match(localPanel, /remote_training_capabilities/);
-  assert.match(localPanel, /remoteCapabilityState === "available" && !forceLocal/);
+  assert.doesNotMatch(localPanel, /remoteCapabilityState === "available" && !forceLocal/);
+  assert.match(localPanel, /if \(autoStart\) return null;[\s\S]*?remoteCapabilityState === "available"/);
   assert.match(panel, /Train on this Mac/);
   assert.match(tauriLib, /remote_training::start_remote_classification_training/);
   assert.match(tauriLib, /remote_training::start_remote_training/);
