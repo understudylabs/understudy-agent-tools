@@ -6,20 +6,12 @@ import type { BenchmarkManifest, EvalRow, TaskSplit } from "@/lib/types";
 import { RouteBadge } from "@/components/badges";
 import { cn } from "@/lib/utils";
 
-type SortKey =
-  | "model"
-  | "overall"
-  | "costPerSuccess"
-  | "p50"
-  | "tasks"
-  | "unscored"
-  | "errors"
-  | `cat:${string}`;
+type SortKey = "model" | "overall" | "costPerSuccess" | "p50" | "tasks";
 
 /** Numeric column ids used for top-3 shading. */
-type ShadeCol = "overall" | "costPerSuccess" | "p50" | `cat:${string}`;
+type ShadeCol = "overall" | "costPerSuccess" | "p50";
 
-/** Top-3 per-column cell fills (light indigo, LiveBench-style). */
+/** Top-3 per-column cell fills — accent tints rederived for the dark field. */
 const SHADES = ["var(--shade-1)", "var(--shade-2)", "var(--shade-3)"];
 
 export function Leaderboard({
@@ -39,7 +31,6 @@ export function Leaderboard({
   const [split, setSplit] = useState<TaskSplit | "all">(splitsExist ? "holdout" : "all");
   const [sortKey, setSortKey] = useState<SortKey>("overall");
   const [sortDesc, setSortDesc] = useState(true);
-  const [category, setCategory] = useState<string | null>(null);
   const [expanded, setExpanded] = useState<Set<string>>(new Set());
 
   const summaries = useMemo(() => {
@@ -54,13 +45,10 @@ export function Leaderboard({
     }
     const value = (s: (typeof list)[number]): number | string => {
       if (sortKey === "model") return s.model;
-      if (sortKey === "overall") return (category ? s.perCategory[category] : s.overall) ?? -1;
+      if (sortKey === "overall") return s.overall ?? -1;
       if (sortKey === "costPerSuccess") return s.costPerSuccess ?? Number.POSITIVE_INFINITY;
       if (sortKey === "p50") return s.p50LatencyMs ?? Number.POSITIVE_INFINITY;
-      if (sortKey === "tasks") return s.taskCount;
-      if (sortKey === "unscored") return s.unscoredCount;
-      if (sortKey === "errors") return s.errorCount;
-      return s.perCategory[sortKey.slice(4)] ?? -1;
+      return s.taskCount;
     };
     list.sort((a, b) => {
       const va = value(a);
@@ -69,7 +57,7 @@ export function Leaderboard({
       return sortDesc ? -c : c;
     });
     return list;
-  }, [manifest, rows, flaggedTaskIds, excludeFlagged, localOnly, search, split, sortKey, sortDesc, category]);
+  }, [manifest, rows, flaggedTaskIds, excludeFlagged, localOnly, search, split, sortKey, sortDesc]);
 
   // Top-3 shading per numeric column. Lower is better for cost + latency.
   const topRanks = useMemo(() => {
@@ -83,12 +71,11 @@ export function Leaderboard({
       vals.slice(0, 3).forEach((x, i) => m.set(x.model, i));
       ranks.set(col, m);
     };
-    rank("overall", (s) => (category ? s.perCategory[category] : s.overall), false);
+    rank("overall", (s) => s.overall, false);
     rank("costPerSuccess", (s) => s.costPerSuccess, true);
     rank("p50", (s) => s.p50LatencyMs, true);
-    for (const c of manifest.taxonomy) rank(`cat:${c.category_id}`, (s) => s.perCategory[c.category_id], false);
     return ranks;
-  }, [summaries, manifest.taxonomy, category]);
+  }, [summaries]);
 
   const shade = (col: ShadeCol, model: string): React.CSSProperties => {
     const r = topRanks.get(col)?.get(model);
@@ -124,10 +111,7 @@ export function Leaderboard({
     </button>
   );
 
-  const visibleCategories = category
-    ? manifest.taxonomy.filter((c) => c.category_id === category)
-    : manifest.taxonomy;
-  const nCols = 8 + visibleCategories.length;
+  const nCols = 6;
   const denseMetric = manifest.verifier.dense_metric;
 
   return (
@@ -159,25 +143,6 @@ export function Leaderboard({
           <option value="none">split: none</option>
         </select>
       </div>
-      {/* Category chips: re-scope the columns to one category's view. */}
-      {manifest.taxonomy.length > 1 && (
-        <div className="lb-cats">
-          <span className="lb-cats-label">Category</span>
-          <button className="lb-chip" aria-pressed={category == null} onClick={() => setCategory(null)}>
-            All
-          </button>
-          {manifest.taxonomy.map((c) => (
-            <button
-              key={c.category_id}
-              className="lb-chip"
-              aria-pressed={category === c.category_id}
-              onClick={() => setCategory((cur) => (cur === c.category_id ? null : c.category_id))}
-            >
-              {c.name ?? c.category_id}
-            </button>
-          ))}
-        </div>
-      )}
       {splitsExist && split !== "holdout" && (
         <div className="lb-warn mb-3 text-xs">
           <span className="lab">Non-holdout view</span> — numbers may be optimizer-touched.
@@ -195,13 +160,10 @@ export function Leaderboard({
               <tr>
                 <th aria-label="expand" />
                 {header("model", "Model", { left: true })}
-                {header("overall", category ? `${category} (strict)` : "Overall")}
+                {header("overall", "Overall")}
+                {header("costPerSuccess", "Cost p/ success")}
                 {header("p50", "P50 latency")}
-                {visibleCategories.map((c) => header(`cat:${c.category_id}`, c.name ?? c.category_id))}
                 {header("tasks", "Tasks")}
-                {header("unscored", "Unscored")}
-                {header("errors", "Errors")}
-                {header("costPerSuccess", "Cost p/ successful task", { className: "lb-cost-col" })}
               </tr>
             </thead>
             <tbody>
@@ -220,34 +182,39 @@ export function Leaderboard({
                         </span>
                       </td>
                       <td className="lb-ovr" style={shade("overall", s.model)}>
-                        {formatScore(category ? s.perCategory[category] : s.overall)}
+                        {formatScore(s.overall)}
+                      </td>
+                      <td className={s.costPerSuccess == null ? "na" : undefined} style={shade("costPerSuccess", s.model)}>
+                        {formatCost(s.costPerSuccess)}
                       </td>
                       <td style={shade("p50", s.model)} className={s.p50LatencyMs == null ? "na" : undefined}>
                         {formatLatency(s.p50LatencyMs)}
                       </td>
-                      {visibleCategories.map((c) => (
-                        <td
-                          key={c.category_id}
-                          style={shade(`cat:${c.category_id}`, s.model)}
-                          className={s.perCategory[c.category_id] == null ? "na" : undefined}
-                        >
-                          {formatScore(s.perCategory[c.category_id])}
-                        </td>
-                      ))}
                       <td>{s.taskCount}</td>
-                      <td className={s.unscoredCount === 0 ? "na" : undefined}>{s.unscoredCount}</td>
-                      <td className={s.errorCount === 0 ? "na" : undefined} style={s.errorCount > 0 ? { color: "var(--bad)" } : undefined}>
-                        {s.errorCount}
-                      </td>
-                      <td className={cn("lb-cost-col", s.costPerSuccess == null && "na")} style={shade("costPerSuccess", s.model)}>
-                        {formatCost(s.costPerSuccess)}
-                      </td>
                     </tr>
                     {isOpen && (
                       <tr className="lb-detail">
                         <td colSpan={nCols}>
                           <div className="lb-detail-in">
                             <div className="lb-det-grid">
+                              {/* Run quality — moved out of the main columns */}
+                              <div className="lb-det-cat">
+                                <div className="h">Run quality</div>
+                                <div className="lb-subt">
+                                  <span className="n">scored rows</span>
+                                  <span className="v">{s.scoredCount}</span>
+                                </div>
+                                <div className="lb-subt">
+                                  <span className="n">unscored</span>
+                                  <span className="v">{s.unscoredCount}</span>
+                                </div>
+                                <div className="lb-subt">
+                                  <span className="n">errors</span>
+                                  <span className="v" style={s.errorCount > 0 ? { color: "var(--bad)" } : undefined}>
+                                    {s.errorCount}
+                                  </span>
+                                </div>
+                              </div>
                               {manifest.taxonomy.map((c) => {
                                 const d = s.categoryDetail[c.category_id];
                                 return (
@@ -286,6 +253,7 @@ export function Leaderboard({
         <span className="lb-foot-note !mt-0">{"// cost p/ successful task = Σ cost ÷ scored rows ÷ mean strict score; blank when rows carry no cost or score is 0"}</span>
         <span className="lb-foot-note !mt-0">{"// dense metric: " + (denseMetric ?? "none declared in manifest")}</span>
         <span className="lb-foot-note !mt-0">{"// shading marks the top 3 per column (score: higher better; cost + latency: lower better)"}</span>
+        <span className="lb-foot-note !mt-0">{"// per-category scores, unscored counts, and errors live in the row expansion (▸)"}</span>
         <span className="lb-foot-note !mt-0">
           {excludeFlagged
             ? `// flagged tasks are EXCLUDED right now (${flaggedTaskIds.length} open task flags)`

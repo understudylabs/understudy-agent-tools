@@ -14,9 +14,10 @@ export default function HubIndex() {
 
   return (
     <div>
-      <section className="lb-hero">
+      {/* wave-2′: hero shrinks one step — the entity page is the primary surface now */}
+      <section className="lb-hero" style={{ paddingTop: 34 }}>
         <p className="lb-eyebrow">Local evidence-first benchmark hub</p>
-        <h1>Your workloads, benchmarked.</h1>
+        <h1 style={{ fontSize: "clamp(24px, 3.6vw, 36px)" }}>Your workloads, benchmarked.</h1>
         <p className="sub">
           Manifests, frozen splits, and eval rows from your own machine — no upload, no account.{" "}
           <b>Every number here is backed by local, auditable evidence.</b>
