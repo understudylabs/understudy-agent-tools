@@ -1032,7 +1032,7 @@ fn validate_remote_plan_options(model_profile: &str, maximum_spend_usd: f64) -> 
     if model_profile.trim().is_empty() || model_profile.chars().count() > 240 {
         return Err("The training profile is invalid.".into());
     }
-    if !maximum_spend_usd.is_finite() || maximum_spend_usd <= 0.0 || maximum_spend_usd > 500.0 {
+    if !maximum_spend_usd.is_finite() || !(0.0..=500.0).contains(&maximum_spend_usd) {
         return Err("The remote training budget must be between $0 and $500.".into());
     }
     Ok(())
@@ -2014,6 +2014,9 @@ pub async fn start_remote_classification_training(
         return Err("Confirm the exact upload and maximum spend before remote training.".into());
     }
     let plan = read_verified_plan(&plan_path)?;
+    if plan.maximum_spend_usd <= 0.0 {
+        return Err("Select cloud training to fetch and approve the live spend limit.".into());
+    }
     let capabilities = api_json(Method::GET, api_url("capabilities")?, None).await?;
     validate_capabilities(&capabilities, &plan)?;
     send_event(
@@ -2177,7 +2180,7 @@ fn read_verified_plan(path: &str) -> Result<RemoteTrainingPlan, String> {
         || plan.evaluator.as_deref() != Some(recipe.evaluator)
         || !recipe_shape_valid
         || plan.artifacts.len() != 3
-        || plan.maximum_spend_usd <= 0.0
+        || plan.maximum_spend_usd < 0.0
         || plan.maximum_spend_usd > 500.0
     {
         return Err("The remote training plan failed its immutable boundary checks.".into());
@@ -2899,12 +2902,13 @@ mod tests {
                 &sha256_bytes(content.as_bytes()),
                 portable_recipe("gsm8k_chat_sft_v1").unwrap(),
                 "understudy/auto",
-                1.0,
+                0.0,
             )
             .unwrap(),
         )
         .unwrap();
         assert!(plan.preparation_duration_ms < 5_000);
+        assert_eq!(plan.maximum_spend_usd, 0.0);
         assert_eq!(artifact_rows(&plan, "train").unwrap(), 70);
         assert_eq!(artifact_rows(&plan, "validation").unwrap(), 15);
         assert_eq!(artifact_rows(&plan, "heldout").unwrap(), 15);

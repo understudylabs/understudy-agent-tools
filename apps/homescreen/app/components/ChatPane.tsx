@@ -83,6 +83,7 @@ import { CsvProfile } from "./CsvProfile";
 import { CsvTrainingPlan } from "./CsvTrainingPlan";
 import { LocalTrainingPanel } from "./LocalTrainingPanel";
 import {
+  maximumManagedTrainingSpend,
   RemoteTrainingPanel,
   type RemotePlan,
   type RemoteTrainingCapabilities,
@@ -611,7 +612,7 @@ export function ChatPane({
       expectedSourceSha256: trainingRecipe.source_sha256,
       recipeId: trainingRecipe.recipe_id,
       modelProfile: "understudy/auto",
-      maximumSpendUsd: 1,
+      maximumSpendUsd: 0,
     })
       .then(async (plan) => {
         if (dropRequestGeneration.current !== requestGeneration) return;
@@ -623,7 +624,7 @@ export function ChatPane({
           (backend) => backend.id === "mlx-local" && backend.compatible && backend.execution_ready,
         );
         setRecipeLocalAvailable(localAvailable);
-        setRecipeBackend(localAvailable ? "local" : "managed");
+        setRecipeBackend("local");
         setRemoteRecipePlan(plan);
         dispatchDrop({ type: "dataset_succeeded" });
       })
@@ -644,18 +645,35 @@ export function ChatPane({
   const openManagedRecipeTraining = useCallback(() => {
     setErr(null);
     void invoke<RemoteTrainingCapabilitiesEnvelope>("remote_training_capabilities")
-      .then((envelope) => {
-        const available = envelope.enabled && envelope.capabilities?.providers.some(
+      .then(async (envelope) => {
+        const capabilities = envelope.enabled ? envelope.capabilities : undefined;
+        const available = capabilities?.providers.some(
           (provider) => provider.id === "managed" && provider.enabled && provider.model_profiles.length > 0,
         );
-        if (!available) {
+        if (!available || !capabilities) {
           setErr(envelope.reason ?? "Cloud training is unavailable in this Desktop build.");
           return;
         }
+        if (!droppedWorkload || !trainingRecipe?.ready || !trainingRecipe.recipe_id || !remoteRecipePlan) {
+          setErr("Prepare this dropped dataset locally before cloud training.");
+          return;
+        }
+        const maximumSpendUsd = maximumManagedTrainingSpend(capabilities);
+        const plan = remoteRecipePlan.maximum_spend_usd === maximumSpendUsd
+          ? remoteRecipePlan
+          : await invoke<RemotePlan>("prepare_remote_training_recipe", {
+              sourcePath: droppedWorkload.source_path,
+              artifactRoot: droppedWorkload.artifact_root,
+              expectedSourceSha256: trainingRecipe.source_sha256,
+              recipeId: trainingRecipe.recipe_id,
+              modelProfile: "understudy/auto",
+              maximumSpendUsd,
+            });
+        setRemoteRecipePlan(plan);
         setRecipeBackend("managed");
       })
       .catch((cause) => setErr(`Cloud training is unavailable: ${String(cause)}`));
-  }, []);
+  }, [droppedWorkload, remoteRecipePlan, trainingRecipe]);
 
   const prepareDroppedClassification = () => {
     if (
@@ -1572,6 +1590,11 @@ export function ChatPane({
                                 onVisualChange={setTrainingHaloVisual}
                               />
                             </div>
+                          )}
+                          {!recipeLocalAvailable && recipeBackend === "local" && (
+                            <button type="button" className="btn primary" onClick={openManagedRecipeTraining}>
+                              Try cloud
+                            </button>
                           )}
                           {recipeBackend === "managed" && (
                             <RemoteTrainingPanel

@@ -121,6 +121,9 @@ function backendContract(
       execution_ready: false,
       blocked_reasons: [
         ...(!compatible ? [`Recipe ${plan.recipe_id} has no managed Fireworks executor.`] : []),
+        ...(compatible && plan.maximum_spend_usd === 0 ? [
+          "No remote spend is approved in this local-only plan; select cloud training to fetch a live cap.",
+        ] : []),
         ...(compatible ? [
           "Execution readiness requires an authenticated live capability check, upload consent, and spend consent.",
         ] : []),
@@ -160,6 +163,9 @@ function backendContract(
     execution_ready: false,
     blocked_reasons: [
       ...(!compatible ? [`Recipe ${plan.recipe_id} has no Tinker executor.`] : []),
+      ...(compatible && plan.maximum_spend_usd === 0 ? [
+        "No remote spend is approved in this local-only plan; select Tinker and approve a live cap.",
+      ] : []),
       ...(compatible ? [
         "Execution readiness requires a fresh live model catalog, TINKER_API_KEY, upload consent, and spend consent.",
       ] : []),

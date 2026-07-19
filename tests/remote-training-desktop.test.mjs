@@ -65,6 +65,8 @@ test("remote training uses live capabilities with explicit upload and spend cons
   assert.match(panel, /understudy\/auto/);
   assert.match(panel, /provider\.id === "managed"/);
   assert.match(panel, /provider\.id === "managed" && provider\.enabled/);
+  assert.match(panel, /maximumManagedTrainingSpend\(capabilities\)/);
+  assert.doesNotMatch(panel, /Math\.min\(1, capabilities\.limits\.max_budget_usd\)/);
   assert.doesNotMatch(panel, /fireworks/i);
   assert.doesNotMatch(panel, /gemma-4/i);
   assert.match(native, /"model_profiles"/);
@@ -82,13 +84,18 @@ test("remote training uses live capabilities with explicit upload and spend cons
   assert.match(chat, /<RemoteTrainingPanel/);
   assert.match(chat, /openManagedRecipeTraining/);
   assert.match(chat, /remote_training_capabilities/);
+  assert.match(chat, /maximumManagedTrainingSpend\(capabilities\)/);
+  assert.match(chat, /maximumSpendUsd:\s*0/);
+  assert.doesNotMatch(chat, /maximumSpendUsd:\s*1/);
+  assert.match(chat, /setRecipeBackend\("local"\)/);
   assert.match(chat, /plan=\{remoteRecipePlan\}/);
   assert.match(chat, /onActiveChange=\{setLocalTrainingActive\}/);
   assert.match(localSftPanel, /start_local_sft_training/);
   assert.match(localSftPanel, /compile_remote_training_backends/);
   assert.match(localSftPanel, /Training locally · \$0/);
   assert.match(localSftPanel, /Offline · no upload/);
-  assert.match(localSftPanel, /Try cloud · \$\{plan\.maximum_spend_usd\.toFixed\(2\)\} max/);
+  assert.match(localSftPanel, /Try cloud<\/button>/);
+  assert.doesNotMatch(localSftPanel, /plan\.maximum_spend_usd\.toFixed/);
   assert.doesNotMatch(localSftPanel, /fireworks|fake endpoint/i);
 
   assert.match(localPanel, /remote_training_capabilities/);

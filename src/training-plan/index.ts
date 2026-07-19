@@ -36,7 +36,7 @@ export const PortableTrainingPlanSchema = z.object({
   epochs: z.number().int().positive(),
   lora_rank: z.number().int().positive(),
   max_context_length: z.number().int().positive(),
-  maximum_spend_usd: z.number().positive().max(500),
+  maximum_spend_usd: z.number().nonnegative().max(500),
   maximum_runtime_seconds: z.number().int().positive(),
   maximum_eval_examples: z.number().int().positive(),
   minimum_accuracy: z.number().min(0).max(1),

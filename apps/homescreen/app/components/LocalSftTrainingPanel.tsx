@@ -164,7 +164,7 @@ export function LocalSftTrainingPanel({ plan, modelName, onTrainRemote, onActive
           <small>Offline · no upload · receipt {result.manifest_path}</small>
         </details>
         <div className="remote-training-actions">
-          {onTrainRemote && <button type="button" className="btn primary" onClick={onTrainRemote}>Try cloud · ${plan.maximum_spend_usd.toFixed(2)} max</button>}
+          {onTrainRemote && <button type="button" className="btn primary" onClick={onTrainRemote}>Try cloud</button>}
           <button type="button" className="btn ghost" onClick={() => setAttempt((value) => value + 1)}>Run again</button>
         </div>
       </div>
@@ -175,7 +175,7 @@ export function LocalSftTrainingPanel({ plan, modelName, onTrainRemote, onActive
     <div className="remote-training-state failed" role="alert">
       <div><strong>Local training stopped</strong><small>{error ?? "The immutable plan is intact."}</small></div>
       <div className="remote-training-actions">
-        {onTrainRemote && <button type="button" className="btn primary" onClick={onTrainRemote}>Try cloud · ${plan.maximum_spend_usd.toFixed(2)} max</button>}
+        {onTrainRemote && <button type="button" className="btn primary" onClick={onTrainRemote}>Try cloud</button>}
         <button type="button" className="btn ghost" onClick={() => setAttempt((value) => value + 1)}>Try again</button>
       </div>
     </div>

@@ -32,6 +32,14 @@ export type RemoteTrainingCapabilities = {
   };
 };
 
+export function maximumManagedTrainingSpend(capabilities: RemoteTrainingCapabilities): number {
+  const maximumSpend = capabilities.limits.max_budget_usd;
+  if (!Number.isFinite(maximumSpend) || maximumSpend <= 0) {
+    throw new Error("Cloud training did not advertise a valid spend limit.");
+  }
+  return maximumSpend;
+}
+
 type RemoteArtifact = {
   artifact_role: "train" | "validation" | "heldout";
   file_name: string;
@@ -309,7 +317,7 @@ export function RemoteTrainingPanel(props: Props) {
     setStage("preparing");
     setError(null);
     if (!profile) return;
-    const maximumSpend = Math.min(1, capabilities.limits.max_budget_usd);
+    const maximumSpend = maximumManagedTrainingSpend(capabilities);
     void invoke<RemotePlan>("prepare_remote_classification_training", {
       manifestPath: datasetManifestPath,
       modelProfile: profile.id,

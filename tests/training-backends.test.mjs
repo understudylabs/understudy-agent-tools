@@ -17,7 +17,7 @@ function sha256(value) {
   return createHash("sha256").update(value).digest("hex");
 }
 
-function portablePlan() {
+function portablePlan(maximumSpendUsd = 1) {
   const root = mkdtempSync(join(tmpdir(), "understudy-backend-compile-"));
   roots.push(root);
   const artifacts = ["train", "validation", "heldout"].map((role) => {
@@ -61,7 +61,7 @@ function portablePlan() {
     epochs: 1,
     lora_rank: 32,
     max_context_length: 512,
-    maximum_spend_usd: 1,
+    maximum_spend_usd: maximumSpendUsd,
     maximum_runtime_seconds: 900,
     maximum_eval_examples: 3,
     minimum_accuracy: 0.2,
@@ -160,6 +160,26 @@ describe("portable training backend compiler", () => {
     assert.equal(managed.execution.task.kind, "text_classification");
     assert.deepEqual(managed.execution.task.labels, ["billing", "shipping"]);
     assert.equal(tinker.compatible, false);
+  });
+
+  it("keeps a dropped local plan at zero remote spend until a backend is selected", () => {
+    const fixture = portablePlan(0);
+    const mlx = compileTrainingBackend({
+      planPath: fixture.planPath,
+      backend: "mlx-local",
+      platform: "darwin",
+      architecture: "arm64",
+    });
+    const managed = compileTrainingBackend({ planPath: fixture.planPath, backend: "fireworks" });
+    const tinker = compileTrainingBackend({ planPath: fixture.planPath, backend: "tinker" });
+
+    assert.equal(mlx.execution_ready, true);
+    assert.equal(managed.execution_ready, false);
+    assert.equal(tinker.execution_ready, false);
+    assert.equal(managed.budget.approved_max_usd, 0);
+    assert.equal(tinker.budget.approved_max_usd, 0);
+    assert.match(managed.blocked_reasons.join(" "), /No remote spend is approved/);
+    assert.match(tinker.blocked_reasons.join(" "), /No remote spend is approved/);
   });
 
   it("fails before compilation when an approved artifact changes", () => {
