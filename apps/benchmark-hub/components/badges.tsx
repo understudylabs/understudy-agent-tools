@@ -48,6 +48,7 @@ export function FlagBadge({ count, resolved }: { count: number; resolved?: boole
  */
 export function RouteBadge({ route }: { route: string | null }) {
   if (!route) return null;
+  // wave-2: mint (the "local" badge marks the candidate arm)
   if (route === "local") return <span className="opn">local</span>;
   return (
     <span className="opn" style={{ borderColor: "var(--accent)", color: "var(--accent)" }}>

@@ -69,7 +69,7 @@ export default async function TaskInspector({
         </div>
         <div className="mt-4 flex flex-col gap-2">
           {openFlags.map((f, i) => (
-            <div key={i} className="lb-warn text-xs" style={{ borderColor: "#f0c4bd", background: "#fff8f6", color: "var(--bad)" }}>
+            <div key={i} className="lb-warn text-xs" style={{ borderColor: "var(--bad-border)", background: "var(--bad-bg)", color: "var(--bad)" }}>
               <span className="mono">{f.reason}</span> — {f.note}{" "}
               <span className="mono text-faint">{f.created_at}</span>
             </div>

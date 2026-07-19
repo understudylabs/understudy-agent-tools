@@ -1,64 +1,69 @@
 @import "tailwindcss";
 
 /*
- * LiveBench-mimic theme (intentional, temporary).
+ * Understudy design language v2.0 — wave 1: foundation tokens + type.
  *
- * Design tokens below are lifted from livebench.ai's shipped stylesheet
- * (static/css/main.201be9d4.css, :root block) — ground/surface/ink/muted/
- * faint/accent/accent-soft/live/border/border-strong/radius/shadows and the
- * sans + mono font stacks are their exact values. Everything is centralized
- * here so the Understudy design language can be swapped back in by editing
- * this file only.
+ * Values come from understudy-design/tokens/{primitives,semantic}.json
+ * (LIGHT mode). The component classes below (`.lb-*`, layout kept from the
+ * LiveBench structural clone) consume only these variables; waves 2-5 add
+ * the model palette, glyphs, motion, and dark mode.
  *
- * The Tailwind @theme keeps the app's original token *names* (paper, card,
- * ink, ink-muted, rule, stamp, ok, warn, bad) pointed at LiveBench values so
- * existing utility classes restyle without markup churn.
+ * The Tailwind @theme keeps the app's token *names* (paper, card, ink,
+ * ink-muted, rule, stamp, ok, warn, bad) so existing utility classes restyle
+ * without markup churn.
  */
 
 :root {
-  --ground: #f6f8fc;
-  --surface: #fff;
-  --ink: #14213d;
-  --muted: #5a6b85;
-  --faint: #8a99b5;
-  --accent: #2f54eb;
-  --accent-soft: #eaf0ff;
-  --live: #12b886;
-  --border: #e4e9f2;
-  --border-strong: #d4dbea;
-  --radius: 10px;
-  --radius-sm: 8px;
-  --shadow-sm: 0 1px 3px #14213d0f;
-  --shadow-md: 0 6px 24px #14213d14;
-  --sans: system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
-  --mono: ui-monospace, "SF Mono", "Cascadia Code", Menlo, Consolas, monospace;
-  /* Understudy-only extras (not in LiveBench's sheet), tuned for the light theme */
-  --warn-ink: #8a6116;
-  --warn-border: #ecd9a8;
-  --warn-bg: #fffcf5;
-  --bad: #c0392b;
-  /* Top-3 per-column shading (audit: light indigo cell fills) */
-  --shade-1: #dfe4fb;
-  --shade-2: #e8ecfc;
-  --shade-3: #f1f3fd;
+  --ground: #f5f2ed; /* paper */
+  --surface: #ffffff; /* card */
+  --hover: #eceae4;
+  --ink: #0a0a0a;
+  --muted: #6b6862; /* inkMuted */
+  --faint: rgba(10, 10, 10, 0.45); /* derived tertiary ink (no v2 token; parity with clone's faint) */
+  --accent: #b24a2e; /* stamp */
+  --accent-soft: rgba(178, 74, 46, 0.09); /* stamp tint (was LiveBench #eaf0ff) */
+  --live: #2da44e; /* state okLight */
+  --border: rgba(0, 0, 0, 0.1); /* rule */
+  --border-strong: rgba(0, 0, 0, 0.16); /* ruleStrong */
+  --radius: 12px; /* card */
+  --radius-sm: 8px; /* control */
+  --radius-panel: 16px;
+  --radius-pill: 999px;
+  --shadow-sm: 0 1px 3px rgba(10, 10, 10, 0.05);
+  --shadow-md: 0 6px 24px rgba(10, 10, 10, 0.07);
+  --sans: var(--font-plex-sans, "IBM Plex Sans"), -apple-system, BlinkMacSystemFont, "SF Pro Text", system-ui, sans-serif;
+  --mono: var(--font-plex-mono, "IBM Plex Mono"), ui-monospace, "SF Mono", Menlo, monospace;
+  /* State tints derived from semantic warnLight/badLight */
+  --warn-ink: #8a6200; /* warnLight #BF8700 darkened for AA text */
+  --warn-border: rgba(191, 135, 0, 0.35);
+  --warn-bg: rgba(191, 135, 0, 0.06);
+  --bad: #cf222e; /* badLight */
+  --bad-border: rgba(207, 34, 46, 0.3);
+  --bad-bg: rgba(207, 34, 46, 0.05);
+  /* Row-detail inset surface (was LiveBench #fbfcfe) */
+  --detail-bg: #fbfaf7;
+  /* Top-3 per-column shading — stamp clay at low alpha (was indigo tints) */
+  --shade-1: rgba(178, 74, 46, 0.16);
+  --shade-2: rgba(178, 74, 46, 0.1);
+  --shade-3: rgba(178, 74, 46, 0.05);
 }
 
 @theme {
-  --color-paper: #f6f8fc;
+  --color-paper: #f5f2ed;
   --color-card: #ffffff;
-  --color-hover: #f3f6ff;
-  --color-ink: #14213d;
-  --color-ink-muted: #5a6b85;
-  --color-faint: #8a99b5;
-  --color-rule: #e4e9f2;
-  --color-rule-strong: #d4dbea;
-  --color-stamp: #2f54eb; /* accent (was Understudy clay) */
-  --color-accent-soft: #eaf0ff;
-  --color-ok: #12b886;
-  --color-warn: #8a6116;
-  --color-bad: #c0392b;
-  --font-mono: ui-monospace, "SF Mono", "Cascadia Code", Menlo, Consolas, monospace;
-  --font-sans: system-ui, -apple-system, "Segoe UI", Roboto, Helvetica, Arial, sans-serif;
+  --color-hover: #eceae4;
+  --color-ink: #0a0a0a;
+  --color-ink-muted: #6b6862;
+  --color-faint: rgba(10, 10, 10, 0.45);
+  --color-rule: rgba(0, 0, 0, 0.1);
+  --color-rule-strong: rgba(0, 0, 0, 0.16);
+  --color-stamp: #b24a2e;
+  --color-accent-soft: rgba(178, 74, 46, 0.09);
+  --color-ok: #2da44e;
+  --color-warn: #8a6200;
+  --color-bad: #cf222e;
+  --font-mono: var(--font-plex-mono, "IBM Plex Mono"), ui-monospace, "SF Mono", Menlo, monospace;
+  --font-sans: var(--font-plex-sans, "IBM Plex Sans"), -apple-system, BlinkMacSystemFont, "SF Pro Text", system-ui, sans-serif;
 }
 
 * {
@@ -97,7 +102,7 @@ a {
 .lb-nav {
   -webkit-backdrop-filter: blur(10px);
   backdrop-filter: blur(10px);
-  background: #f6f8fcdb;
+  background: rgba(245, 242, 237, 0.86); /* paper @ .86 */
   border-bottom: 1px solid var(--border);
   position: sticky;
   top: 0;
@@ -130,13 +135,13 @@ a {
 }
 @keyframes lb-pulse {
   0% {
-    box-shadow: 0 0 0 0 #12b98680;
+    box-shadow: 0 0 0 0 rgba(45, 164, 78, 0.5);
   }
   70% {
-    box-shadow: 0 0 0 7px #12b98600;
+    box-shadow: 0 0 0 7px rgba(45, 164, 78, 0);
   }
   to {
-    box-shadow: 0 0 0 0 #12b98600;
+    box-shadow: 0 0 0 0 rgba(45, 164, 78, 0);
   }
 }
 .lb-brand .tag {
@@ -285,7 +290,7 @@ a {
 .lb-dot.active {
   background: var(--surface);
   border-color: var(--live);
-  box-shadow: 0 0 0 4px #12b9862e;
+  box-shadow: 0 0 0 4px rgba(45, 164, 78, 0.18);
 }
 .lb-tl-ends {
   color: var(--faint);
@@ -483,7 +488,7 @@ a {
   cursor: pointer;
 }
 .lb-tbl tbody tr.row:hover td {
-  background: #f3f6ff;
+  background: var(--hover);
 }
 .lb-rank {
   color: var(--faint);
@@ -500,6 +505,7 @@ a {
   white-space: nowrap;
 }
 .opn {
+  /* wave-2: mint — "local" route badge marks the candidate arm */
   border: 1px solid var(--live);
   border-radius: 4px;
   color: var(--live);
@@ -537,7 +543,7 @@ a {
   transform: rotate(90deg);
 }
 .lb-detail td {
-  background: #fbfcfe;
+  background: var(--detail-bg);
   border-bottom: 1px solid var(--border);
   padding: 0;
 }

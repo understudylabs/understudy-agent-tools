@@ -25,9 +25,9 @@ const H = 320;
 const PAD = { top: 16, right: 24, bottom: 40, left: 48 };
 const GUTTER_W = 56; // pinned "≈$0 (local)" band at the left edge
 
-const GRID = "#e4e9f2";
-const MUTED = "#5a6b85";
-const ACCENT = "#2f54eb";
+const GRID = "var(--border)";
+const MUTED = "var(--muted)";
+const ACCENT = "var(--accent)"; // stamp — dashed value-frontier line
 
 /** Score getter for the active cost-view scope (Overall or one category). */
 function scopedScore(s: ModelSummary, scope: string | null): number | null {
@@ -201,8 +201,8 @@ export function QualityCostScatter({
               y={PAD.top}
               width={GUTTER_W}
               height={plotH}
-              fill="#f6f8fc"
-              stroke="#d4dbea"
+              fill="var(--ground)"
+              stroke="var(--border-strong)"
               strokeDasharray="3 3"
             />
             <text x={PAD.left + GUTTER_W / 2} y={H - PAD.bottom + 14} textAnchor="middle" fill={MUTED} className="mono" fontSize="9">
@@ -220,7 +220,7 @@ export function QualityCostScatter({
             <g key={p.model} onMouseEnter={() => setHover(p.model)} onMouseLeave={() => setHover(null)}>
               {/* oversize hit target */}
               <circle cx={p.px} cy={yPos(p.y)} r={14} fill="transparent" />
-              <circle cx={p.px} cy={yPos(p.y)} r={isHover ? 6 : 5} fill={color} stroke="#fff" strokeWidth="2" />
+              <circle cx={p.px} cy={yPos(p.y)} r={isHover ? 6 : 5} fill={color} stroke="var(--surface)" strokeWidth="2" />
               {isHover && (
                 <text x={p.px + 9} y={yPos(p.y) + 15} fill={MUTED} className="mono" fontSize="9">
                   {formatScore(p.y)} ·{" "}

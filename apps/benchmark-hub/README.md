@@ -5,14 +5,14 @@ A local, single-user "Environments Hub + leaderboard" viewer over
 
 ## Theme
 
-The current visual language deliberately mimics [livebench.ai](https://livebench.ai)
-(light theme, mono data labels, indigo accent, release-timeline rail) — this is
-**intentional and temporary**. All design tokens are centralized in one place:
-the CSS custom properties (`:root` + Tailwind `@theme`) at the top of
-`app/globals.css`, with the component classes (`.lb-*`) below them consuming
-only those variables. Swapping the Understudy design language back in means
-editing that one file. Token values were extracted from LiveBench's shipped
-stylesheet (`static/css/main.201be9d4.css`).
+The app wears the **Understudy design language v2.0 foundation** (wave 1):
+warm paper/ink/stamp light-mode tokens and IBM Plex Sans/Mono type from
+`understudy-design/tokens/{primitives,semantic}.json`, applied over the
+LiveBench-derived layout/structure (`.lb-*` classes). All design tokens are
+centralized in the CSS custom properties (`:root` + Tailwind `@theme`) at the
+top of `app/globals.css`; the component classes consume only those variables.
+Waves 2–5 are pending: model/series palette (incl. mint for candidate/winner
+states), glyphs, motion, and dark mode.
 
 ## Run
 

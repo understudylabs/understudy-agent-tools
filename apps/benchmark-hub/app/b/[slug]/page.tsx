@@ -80,7 +80,7 @@ export default async function BenchmarkDetail({ params }: { params: Promise<{ sl
         <div className="mt-4 flex flex-col gap-3">
           <WarningList warnings={entry.warnings} />
           {benchmarkFlagged && (
-            <div className="lb-warn text-xs" style={{ borderColor: "#f0c4bd", background: "#fff8f6", color: "var(--bad)" }}>
+            <div className="lb-warn text-xs" style={{ borderColor: "var(--bad-border)", background: "var(--bad-bg)", color: "var(--bad)" }}>
               <span className="lab">Flagged</span> — this benchmark has an open whole-benchmark flag.
             </div>
           )}
