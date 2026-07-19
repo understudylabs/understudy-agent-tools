@@ -7,11 +7,13 @@ import type { BenchmarkManifest } from "@/lib/types";
 
 /**
  * Per-model categorical slots (LiveBench colors dots per org; we color per
- * model/arm). Validated against white surface. Fixed order, assigned by
- * alphabetical model name — color follows the entity, never rank.
+ * model/arm). Values live in globals.css as --series-* — dark-band steps
+ * validated all-pairs against #141519 and #000000 (dataviz validator).
+ * Fixed order, assigned by alphabetical model name — color follows the
+ * entity, never rank.
  */
-export const SERIES = ["#c15f3c", "#10a37f", "#4258ff", "#7c3aed"];
-const OVERFLOW = "#8a99b5";
+export const SERIES = ["var(--series-1)", "var(--series-2)", "var(--series-3)", "var(--series-4)"];
+const OVERFLOW = "var(--series-overflow)";
 
 export function seriesColor(model: string, allModels: string[]): string {
   const idx = [...allModels].sort().indexOf(model);

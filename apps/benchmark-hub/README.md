@@ -5,14 +5,15 @@ A local, single-user "Environments Hub + leaderboard" viewer over
 
 ## Theme
 
-The app wears the **Understudy design language v2.0 foundation** (wave 1):
-warm paper/ink/stamp light-mode tokens and IBM Plex Sans/Mono type from
-`understudy-design/tokens/{primitives,semantic}.json`, applied over the
-LiveBench-derived layout/structure (`.lb-*` classes). All design tokens are
-centralized in the CSS custom properties (`:root` + Tailwind `@theme`) at the
-top of `app/globals.css`; the component classes consume only those variables.
-Waves 2–5 are pending: model/series palette (incl. mint for candidate/winner
-states), glyphs, motion, and dark mode.
+The app wears the **Understudy design language v2.0 DARK FIELD** (wave 2′):
+black-field/card/stamp-dark tokens and IBM Plex Sans/Mono type from
+`understudy-design/tokens/{primitives,semantic}.json`. The benchmark detail
+page is an OpenRouter-style entity page (header + stat strip + sticky anchor
+rail). All design tokens are centralized in the CSS custom properties
+(`:root` + Tailwind `@theme`) at the top of `app/globals.css`; the component
+classes consume only those variables. A **temporary** accent preview switch
+(`?accent=stamp|cyan|mint`, default stamp) is wired through `middleware.ts`
+→ root layout → `data-accent` on `<html>`; remove once an accent is chosen.
 
 ## Run
 

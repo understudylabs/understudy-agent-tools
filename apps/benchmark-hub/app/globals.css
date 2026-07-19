@@ -1,12 +1,13 @@
 @import "tailwindcss";
 
 /*
- * Understudy design language v2.0 — wave 1: foundation tokens + type.
+ * Understudy design language v2.0 — wave 2′: DARK FIELD foundation.
  *
- * Values come from understudy-design/tokens/{primitives,semantic}.json
- * (LIGHT mode). The component classes below (`.lb-*`, layout kept from the
- * LiveBench structural clone) consume only these variables; waves 2-5 add
- * the model palette, glyphs, motion, and dark mode.
+ * Values come from understudy-design/tokens/{primitives,semantic}.json,
+ * DARK column: field #000000 page ground, card #141519 surfaces, stamp dark
+ * #D7623E accent, okDark/warnDark/badDark states. All tints (top-N shading,
+ * warn/bad banners, chip fills) are rederived for dark and validated ≥ AA
+ * against #141519 and #000000 with the dataviz palette validator.
  *
  * The Tailwind @theme keeps the app's token *names* (paper, card, ink,
  * ink-muted, rule, stamp, ok, warn, bad) so existing utility classes restyle
@@ -14,54 +15,96 @@
  */
 
 :root {
-  --ground: #f5f2ed; /* paper */
-  --surface: #ffffff; /* card */
-  --hover: #eceae4;
-  --ink: #0a0a0a;
-  --muted: #6b6862; /* inkMuted */
-  --faint: rgba(10, 10, 10, 0.45); /* derived tertiary ink (no v2 token; parity with clone's faint) */
-  --accent: #b24a2e; /* stamp */
-  --accent-soft: rgba(178, 74, 46, 0.09); /* stamp tint (was LiveBench #eaf0ff) */
-  --live: #2da44e; /* state okLight */
-  --border: rgba(0, 0, 0, 0.1); /* rule */
-  --border-strong: rgba(0, 0, 0, 0.16); /* ruleStrong */
+  --ground: #000000; /* dark.field — page ground */
+  --surface: #141519; /* dark.card */
+  --hover: #1c1e25; /* dark.hover */
+  --ink: #e7e8ea; /* dark.ink */
+  --ink-bright: #f2f2f0; /* dark.inkBright — key data */
+  --muted: #9b9da3; /* dark.inkMuted */
+  --faint: rgba(231, 232, 234, 0.45); /* derived tertiary ink */
+  --live: #3fb950; /* state okDark */
+  --border: rgba(255, 255, 255, 0.08); /* dark.rule */
+  --border-strong: rgba(255, 255, 255, 0.14); /* dark.ruleStrong */
   --radius: 12px; /* card */
   --radius-sm: 8px; /* control */
   --radius-panel: 16px;
   --radius-pill: 999px;
-  --shadow-sm: 0 1px 3px rgba(10, 10, 10, 0.05);
-  --shadow-md: 0 6px 24px rgba(10, 10, 10, 0.07);
+  --shadow-sm: 0 1px 3px rgba(0, 0, 0, 0.5);
+  --shadow-md: 0 6px 24px rgba(0, 0, 0, 0.6);
   --sans: var(--font-plex-sans, "IBM Plex Sans"), -apple-system, BlinkMacSystemFont, "SF Pro Text", system-ui, sans-serif;
   --mono: var(--font-plex-mono, "IBM Plex Mono"), ui-monospace, "SF Mono", Menlo, monospace;
-  /* State tints derived from semantic warnLight/badLight */
-  --warn-ink: #8a6200; /* warnLight #BF8700 darkened for AA text */
-  --warn-border: rgba(191, 135, 0, 0.35);
-  --warn-bg: rgba(191, 135, 0, 0.06);
-  --bad: #cf222e; /* badLight */
-  --bad-border: rgba(207, 34, 46, 0.3);
-  --bad-bg: rgba(207, 34, 46, 0.05);
-  /* Row-detail inset surface (was LiveBench #fbfcfe) */
-  --detail-bg: #fbfaf7;
-  /* Top-3 per-column shading — stamp clay at low alpha (was indigo tints) */
-  --shade-1: rgba(178, 74, 46, 0.16);
-  --shade-2: rgba(178, 74, 46, 0.1);
-  --shade-3: rgba(178, 74, 46, 0.05);
+  /* State tints derived from semantic warnDark/badDark (AA on card + field:
+     warn 7.23:1, bad 5.44:1 vs #141519) */
+  --warn-ink: #d29922; /* warnDark */
+  --warn-border: rgba(210, 153, 34, 0.4);
+  --warn-bg: rgba(210, 153, 34, 0.08);
+  --bad: #f85149; /* badDark */
+  --bad-border: rgba(248, 81, 73, 0.4);
+  --bad-bg: rgba(248, 81, 73, 0.08);
+  /* Row-detail inset surface — dark.content (a step below card) */
+  --detail-bg: #0e0f12;
+  /* Chart series — brand-agnostic categorical steps chosen for the dark band
+     (OKLCH L 0.48–0.67), validated all-pairs vs #141519 AND #000000 with the
+     dataviz validator (worst adjacent CVD ΔE 6.9 → floor band; secondary
+     encoding present: legend + hover labels + surface ring on marks). */
+  --series-1: #3987e5;
+  --series-2: #008300;
+  --series-3: #d55181;
+  --series-4: #c98500;
+  --series-overflow: #9b9da3;
+}
+
+/*
+ * TEMPORARY accent preview switch (?accent=stamp|cyan|mint).
+ * middleware.ts copies the query param into the x-accent-preview header;
+ * app/layout.tsx reads it and stamps data-accent on <html>. Chrome accent
+ * (active chips, links, selected rail item, timeline current dot, sort
+ * arrows, frontier line) reads --accent; filled-accent text reads
+ * --on-accent. Dark ink #0A0A0A on every accent for AA (stamp 5.38:1,
+ * cyan 13.66:1, mint 12.75:1 — white on stamp is only 3.68:1, so stamp
+ * takes dark ink too). Remove once an accent is chosen.
+ */
+html,
+html[data-accent="stamp"] {
+  --accent: #d7623e; /* stamp dark — 4.96:1 vs card, 5.71:1 vs field */
+  --on-accent: #0a0a0a;
+  --accent-soft: rgba(215, 98, 62, 0.14);
+  --shade-1: rgba(215, 98, 62, 0.3);
+  --shade-2: rgba(215, 98, 62, 0.18);
+  --shade-3: rgba(215, 98, 62, 0.09);
+}
+html[data-accent="cyan"] {
+  --accent: #67e8f9;
+  --on-accent: #0a0a0a;
+  --accent-soft: rgba(103, 232, 249, 0.12);
+  --shade-1: rgba(103, 232, 249, 0.26);
+  --shade-2: rgba(103, 232, 249, 0.16);
+  --shade-3: rgba(103, 232, 249, 0.08);
+}
+html[data-accent="mint"] {
+  --accent: #9edbd3;
+  --on-accent: #0a0a0a;
+  --accent-soft: rgba(158, 219, 211, 0.12);
+  --shade-1: rgba(158, 219, 211, 0.26);
+  --shade-2: rgba(158, 219, 211, 0.16);
+  --shade-3: rgba(158, 219, 211, 0.08);
 }
 
 @theme {
-  --color-paper: #f5f2ed;
-  --color-card: #ffffff;
-  --color-hover: #eceae4;
-  --color-ink: #0a0a0a;
-  --color-ink-muted: #6b6862;
-  --color-faint: rgba(10, 10, 10, 0.45);
-  --color-rule: rgba(0, 0, 0, 0.1);
-  --color-rule-strong: rgba(0, 0, 0, 0.16);
-  --color-stamp: #b24a2e;
-  --color-accent-soft: rgba(178, 74, 46, 0.09);
-  --color-ok: #2da44e;
-  --color-warn: #8a6200;
-  --color-bad: #cf222e;
+  --color-paper: #000000;
+  --color-card: #141519;
+  --color-hover: #1c1e25;
+  --color-ink: #e7e8ea;
+  --color-ink-bright: #f2f2f0;
+  --color-ink-muted: #9b9da3;
+  --color-faint: rgba(231, 232, 234, 0.45);
+  --color-rule: rgba(255, 255, 255, 0.08);
+  --color-rule-strong: rgba(255, 255, 255, 0.14);
+  --color-stamp: var(--accent);
+  --color-accent-soft: var(--accent-soft);
+  --color-ok: #3fb950;
+  --color-warn: #d29922;
+  --color-bad: #f85149;
   --font-mono: var(--font-plex-mono, "IBM Plex Mono"), ui-monospace, "SF Mono", Menlo, monospace;
   --font-sans: var(--font-plex-sans, "IBM Plex Sans"), -apple-system, BlinkMacSystemFont, "SF Pro Text", system-ui, sans-serif;
 }
@@ -102,7 +145,7 @@ a {
 .lb-nav {
   -webkit-backdrop-filter: blur(10px);
   backdrop-filter: blur(10px);
-  background: rgba(245, 242, 237, 0.86); /* paper @ .86 */
+  background: rgba(0, 0, 0, 0.78); /* field @ .78 */
   border-bottom: 1px solid var(--border);
   position: sticky;
   top: 0;
@@ -135,13 +178,13 @@ a {
 }
 @keyframes lb-pulse {
   0% {
-    box-shadow: 0 0 0 0 rgba(45, 164, 78, 0.5);
+    box-shadow: 0 0 0 0 rgba(63, 185, 80, 0.5);
   }
   70% {
-    box-shadow: 0 0 0 7px rgba(45, 164, 78, 0);
+    box-shadow: 0 0 0 7px rgba(63, 185, 80, 0);
   }
   to {
-    box-shadow: 0 0 0 0 rgba(45, 164, 78, 0);
+    box-shadow: 0 0 0 0 rgba(63, 185, 80, 0);
   }
 }
 .lb-brand .tag {
@@ -290,7 +333,7 @@ a {
 .lb-dot.active {
   background: var(--surface);
   border-color: var(--live);
-  box-shadow: 0 0 0 4px rgba(45, 164, 78, 0.18);
+  box-shadow: 0 0 0 4px rgba(63, 185, 80, 0.25);
 }
 .lb-tl-ends {
   color: var(--faint);
@@ -394,7 +437,7 @@ a {
 }
 .lb-chip[aria-pressed="true"] {
   background: var(--accent);
-  color: #fff;
+  color: var(--on-accent);
   font-weight: 600;
 }
 .lb-cats {
@@ -590,9 +633,10 @@ a {
 
 /* Insights */
 .lb-ins-grid {
+  /* wave-2′: entity page stacks insight cards single-column */
   display: grid;
   gap: 18px;
-  grid-template-columns: 1.05fr 0.95fr;
+  grid-template-columns: 1fr;
   margin-top: 24px;
 }
 .lb-card {
@@ -768,12 +812,203 @@ a {
   justify-content: space-between;
 }
 
+/* ---- Entity page (OpenRouter-style benchmark detail, wave 2′) ---- */
+
+.ent-head {
+  border-bottom: 1px solid var(--border);
+  padding: 30px 0 20px;
+}
+.ent-title-row {
+  align-items: center;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 12px;
+}
+.ent-head h1 {
+  color: var(--ink-bright);
+  font-size: clamp(26px, 3.6vw, 38px);
+  font-weight: 800;
+  letter-spacing: -0.02em;
+  line-height: 1.08;
+  margin: 0;
+}
+.ent-flag-slot {
+  margin-left: auto;
+}
+.ent-id {
+  align-items: center;
+  color: var(--muted);
+  display: flex;
+  font-family: var(--mono);
+  font-size: 12.5px;
+  gap: 8px;
+  margin-top: 8px;
+}
+.ent-copy {
+  background: none;
+  border: 1px solid var(--border-strong);
+  border-radius: var(--radius-sm);
+  color: var(--muted);
+  cursor: pointer;
+  font-family: var(--mono);
+  font-size: 10.5px;
+  padding: 2px 8px;
+  transition: 0.15s;
+}
+.ent-copy:hover {
+  border-color: var(--accent);
+  color: var(--ink);
+}
+.ent-desc {
+  color: var(--muted);
+  font-size: 15px;
+  margin: 10px 0 0;
+  max-width: 88ch;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap; /* one line of prose, by design */
+}
+
+/* Stat strip — 5 flat cards, absorbs the old warning banners */
+.ent-stats {
+  display: grid;
+  gap: 10px;
+  grid-template-columns: repeat(5, minmax(0, 1fr));
+  margin: 20px 0 8px;
+}
+.ent-stat {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  padding: 12px 14px;
+}
+.ent-stat .lab {
+  color: var(--muted);
+  display: block;
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+}
+.ent-stat .val {
+  color: var(--ink-bright);
+  display: block;
+  font-family: var(--mono);
+  font-feature-settings: "tnum";
+  font-size: 22px;
+  font-weight: 700;
+  line-height: 1.2;
+  margin-top: 6px;
+}
+.ent-stat .sub {
+  color: var(--muted);
+  display: block;
+  font-family: var(--mono);
+  font-size: 11px;
+  margin-top: 3px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.ent-stat .warnline {
+  color: var(--warn-ink);
+  display: block;
+  font-family: var(--mono);
+  font-size: 10.5px;
+  margin-top: 4px;
+}
+
+/* Two-column body: sticky anchor rail + sections */
+.ent-layout {
+  align-items: start;
+  display: grid;
+  gap: 40px;
+  grid-template-columns: 168px minmax(0, 1fr);
+  padding-bottom: 60px;
+}
+.ent-rail {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  padding-top: 34px;
+  position: sticky;
+  top: 58px;
+}
+.ent-rail a {
+  border-left: 2px solid transparent;
+  border-radius: 0 7px 7px 0;
+  color: var(--muted);
+  font-size: 13.5px;
+  padding: 6px 12px;
+  transition: 0.15s;
+}
+.ent-rail a:hover {
+  color: var(--ink);
+}
+.ent-rail a[aria-current="true"] {
+  background: var(--accent-soft);
+  border-left-color: var(--accent);
+  color: var(--accent);
+  font-weight: 600;
+}
+.ent-sec {
+  border-bottom: 1px solid var(--border);
+  padding: 34px 0;
+  scroll-margin-top: 64px;
+}
+.ent-sec:last-child {
+  border-bottom: none;
+}
+.ent-sec h2 {
+  font-size: 19px;
+  font-weight: 700;
+  letter-spacing: -0.01em;
+  margin: 0;
+}
+.ent-sec .exp {
+  color: var(--muted);
+  font-size: 13.5px;
+  line-height: 1.5;
+  margin: 6px 0 0;
+  max-width: 72ch;
+}
+
 @media (max-width: 900px) {
   .lb-ins-grid {
     grid-template-columns: 1fr;
   }
   .lb-radar-wrap {
     grid-template-columns: 1fr;
+  }
+  .ent-stats {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+  /* Rail collapses to horizontal pills */
+  .ent-layout {
+    display: block;
+  }
+  .ent-rail {
+    -webkit-backdrop-filter: blur(8px);
+    backdrop-filter: blur(8px);
+    background: rgba(0, 0, 0, 0.82);
+    border-bottom: 1px solid var(--border);
+    flex-direction: row;
+    gap: 8px;
+    overflow-x: auto;
+    padding: 10px 2px;
+    top: 46px;
+    z-index: 40;
+  }
+  .ent-rail a {
+    border: 1px solid var(--border-strong);
+    border-radius: 999px;
+    flex: none;
+    font-size: 12px;
+    padding: 5px 12px;
+  }
+  .ent-rail a[aria-current="true"] {
+    background: var(--accent-soft);
+    border-color: var(--accent);
   }
 }
 @media (prefers-reduced-motion: reduce) {
