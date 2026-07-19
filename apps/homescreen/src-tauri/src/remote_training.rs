@@ -10,7 +10,7 @@ use std::time::{Duration, Instant};
 use tauri::ipc::Channel;
 
 const DATASET_SCHEMA: &str = "understudy.capture_import.classification_dataset.v2";
-const PLAN_SCHEMA: &str = "understudy.remote_training.plan.v2";
+const PLAN_SCHEMA: &str = "understudy.training.plan.v1";
 const RUN_SCHEMA: &str = "understudy.remote_training.run.v1";
 const API_SCHEMA: &str = "understudy-train-v1";
 const BACKEND_COMPATIBILITY_SCHEMA: &str = "understudy.remote_training.backend_compatibility.v1";
@@ -127,11 +127,11 @@ struct RemoteTrainingPlan {
     source_manifest_path: String,
     source_dataset_id: String,
     workload_name: String,
+    recipe_id: String,
     #[serde(default = "default_classification_task_kind")]
     task_kind: String,
     #[serde(default)]
     evaluator: Option<String>,
-    provider: String,
     model_profile: String,
     output_model_name: String,
     frontier_model: String,
@@ -270,7 +270,6 @@ pub async fn remote_training_capabilities() -> Result<Value, String> {
 #[tauri::command]
 pub async fn prepare_remote_classification_training(
     manifest_path: String,
-    provider: String,
     model_profile: String,
     frontier_model: String,
     maximum_spend_usd: f64,
@@ -278,7 +277,6 @@ pub async fn prepare_remote_classification_training(
     tauri::async_runtime::spawn_blocking(move || {
         prepare_remote_plan(
             &manifest_path,
-            &provider,
             &model_profile,
             &frontier_model,
             maximum_spend_usd,
@@ -293,7 +291,6 @@ pub async fn prepare_remote_gsm8k_training(
     source_path: String,
     artifact_root: String,
     expected_source_sha256: String,
-    provider: String,
     model_profile: String,
     frontier_model: String,
     maximum_spend_usd: f64,
@@ -303,7 +300,6 @@ pub async fn prepare_remote_gsm8k_training(
             &source_path,
             &artifact_root,
             &expected_source_sha256,
-            &provider,
             &model_profile,
             &frontier_model,
             maximum_spend_usd,
@@ -732,13 +728,12 @@ fn find_existing_run(manifest_path: &str) -> Result<Option<Value>, String> {
 
 fn prepare_remote_plan(
     manifest_path: &str,
-    provider: &str,
     model_profile: &str,
     frontier_model: &str,
     maximum_spend_usd: f64,
 ) -> Result<Value, String> {
     let started = Instant::now();
-    validate_remote_plan_options(provider, model_profile, frontier_model, maximum_spend_usd)?;
+    validate_remote_plan_options(model_profile, frontier_model, maximum_spend_usd)?;
     let canonical_manifest = PathBuf::from(manifest_path.trim())
         .canonicalize()
         .map_err(|error| format!("The prepared dataset is unavailable: {error}"))?;
@@ -861,9 +856,9 @@ fn prepare_remote_plan(
             "classification-{}",
             safe_model_segment(&manifest.dataset_id)
         ),
+        recipe_id: "text_classification_exact_label_v1".to_string(),
         task_kind: "text_classification".to_string(),
         evaluator: Some("exact_label".to_string()),
-        provider: provider.to_string(),
         model_profile: model_profile.to_string(),
         output_model_name,
         frontier_model: frontier_model.to_string(),
@@ -892,14 +887,10 @@ fn prepare_remote_plan(
 }
 
 fn validate_remote_plan_options(
-    provider: &str,
     model_profile: &str,
     frontier_model: &str,
     maximum_spend_usd: f64,
 ) -> Result<(), String> {
-    if provider != "managed" {
-        return Err("Choose an available remote training provider.".into());
-    }
     if !matches!(
         model_profile,
         "understudy/auto" | "understudy/fast" | "understudy/balanced" | "understudy/quality"
@@ -924,13 +915,12 @@ fn prepare_gsm8k_plan(
     source_path: &str,
     artifact_root: &str,
     expected_source_sha256: &str,
-    provider: &str,
     model_profile: &str,
     frontier_model: &str,
     maximum_spend_usd: f64,
 ) -> Result<Value, String> {
     let started = Instant::now();
-    validate_remote_plan_options(provider, model_profile, frontier_model, maximum_spend_usd)?;
+    validate_remote_plan_options(model_profile, frontier_model, maximum_spend_usd)?;
     if !valid_hash(expected_source_sha256) {
         return Err("The detected source hash is invalid.".into());
     }
@@ -1052,9 +1042,9 @@ fn prepare_gsm8k_plan(
         source_manifest_path: canonical_source.display().to_string(),
         source_dataset_id: dataset_id.clone(),
         workload_name: format!("gsm8k-{dataset_id}"),
+        recipe_id: "gsm8k_chat_sft_v1".to_string(),
         task_kind: "chat_sft".to_string(),
         evaluator: Some("gsm8k_final_answer".to_string()),
-        provider: provider.to_string(),
         model_profile: model_profile.to_string(),
         output_model_name,
         frontier_model: frontier_model.to_string(),
@@ -1062,11 +1052,11 @@ fn prepare_gsm8k_plan(
         group_field: "prompt_sha256".to_string(),
         split_hash,
         artifacts,
-        epochs: 3,
-        lora_rank: 16,
-        max_context_length: 4_096,
+        epochs: 1,
+        lora_rank: 32,
+        max_context_length: 512,
         maximum_spend_usd,
-        maximum_runtime_seconds: 7_200,
+        maximum_runtime_seconds: 900,
         maximum_eval_examples: heldout_rows.min(200),
         minimum_accuracy: 0.20,
         minimum_improvement_over_base: 0.02,
@@ -1095,17 +1085,29 @@ fn compile_backend_compatibility(plan_path: &str) -> Result<Value, String> {
         .evaluator
         .clone()
         .ok_or_else(|| "The remote training plan has no held-out evaluator.".to_string())?;
-    let (use_case, dataset_format) = match plan.task_kind.as_str() {
-        "text_classification" => (
+    let (use_case, dataset_format) = match plan.recipe_id.as_str() {
+        "text_classification_exact_label_v1" => (
             "classification",
             "classification_sft_with_exact_label_holdout",
         ),
-        "chat_sft" if evaluator == "gsm8k_final_answer" => {
+        "gsm8k_chat_sft_v1" => {
             ("grade_school_math_reasoning", "openai_chat_messages")
         }
         _ => return Err("The remote training plan has no portable backend recipe.".into()),
     };
+    let mlx_compatible = plan.recipe_id == "gsm8k_chat_sft_v1";
     let backends = vec![
+        json!({
+            "id": "mlx-local",
+            "compatible": mlx_compatible,
+            "execution_ready": mlx_compatible && cfg!(all(target_os = "macos", target_arch = "aarch64")),
+            "recipe": "sft_lora",
+            "dataset_format": dataset_format,
+            "loss_mask": "assistant_only",
+            "evaluator": evaluator,
+            "checkpoint_contract": "local_lora_adapter_plus_evaluator_receipt",
+            "execution_gate": "apple_silicon_cached_model_and_offline_runtime"
+        }),
         json!({
             "id": "fireworks",
             "compatible": true,
@@ -1333,21 +1335,19 @@ pub async fn start_remote_classification_training(
             );
         }
         let request_id = random_uuid()?;
-        let task = if plan.task_kind == "chat_sft"
-            && plan.evaluator.as_deref() == Some("gsm8k_final_answer")
-        {
-            json!({
-                "kind": "chat_sft",
-                "message_format": "openai_chat_messages",
-                "evaluator": "gsm8k_final_answer"
-            })
-        } else {
-            json!({
-                "kind": "text_classification",
-                "input_field": "input",
-                "target_field": "target",
-                "labels": plan.labels
-            })
+        let task = match plan.recipe_id.as_str() {
+            "gsm8k_chat_sft_v1" => json!({
+                    "kind": "chat_sft",
+                    "message_format": "openai_chat_messages",
+                    "evaluator": "gsm8k_final_answer"
+                }),
+            "text_classification_exact_label_v1" => json!({
+                    "kind": "text_classification",
+                    "input_field": "input",
+                    "target_field": "target",
+                    "labels": plan.labels
+                }),
+            _ => return Err("The training plan names an unsupported recipe.".into()),
         };
         let run = api_json(
             Method::POST,
@@ -1357,7 +1357,7 @@ pub async fn start_remote_classification_training(
                 "request_id": request_id,
                 "workload_name": plan.workload_name,
                 "task": task,
-                "provider": plan.provider,
+                "provider": "managed",
                 "model_profile": plan.model_profile,
                 "output_model_name": plan.output_model_name,
                 "uploads": uploads,
@@ -1439,9 +1439,12 @@ fn read_verified_plan(path: &str) -> Result<RemoteTrainingPlan, String> {
             .ok()
             .as_deref()
             != Some(canonical.as_path())
-        || plan.provider != "managed"
-        || !((plan.task_kind == "text_classification" && plan.labels.len() >= 2)
-            || (plan.task_kind == "chat_sft"
+        || !((plan.recipe_id == "text_classification_exact_label_v1"
+                && plan.task_kind == "text_classification"
+                && plan.evaluator.as_deref() == Some("exact_label")
+                && plan.labels.len() >= 2)
+            || (plan.recipe_id == "gsm8k_chat_sft_v1"
+                && plan.task_kind == "chat_sft"
                 && plan.evaluator.as_deref() == Some("gsm8k_final_answer")
                 && plan.labels.is_empty()))
         || plan.artifacts.len() != 3
@@ -1524,7 +1527,7 @@ fn validate_capabilities(value: &Value, plan: &RemoteTrainingPlan) -> Result<(),
         .and_then(|providers| {
             providers
                 .iter()
-                .find(|provider| provider.get("id").and_then(Value::as_str) == Some(&plan.provider))
+                .find(|provider| provider.get("id").and_then(Value::as_str) == Some("managed"))
         })
         .ok_or_else(|| "The planned remote training provider is unavailable.".to_string())?;
     if provider.get("enabled").and_then(Value::as_bool) != Some(true)
@@ -2065,7 +2068,6 @@ mod tests {
                 source.to_str().unwrap(),
                 root.to_str().unwrap(),
                 &sha256_bytes(content.as_bytes()),
-                "managed",
                 "understudy/auto",
                 "glm-5.2",
                 1.0,
@@ -2129,6 +2131,19 @@ mod tests {
             .get("backends")
             .and_then(Value::as_array)
             .unwrap();
+        let mlx = backends
+            .iter()
+            .find(|backend| backend.get("id").and_then(Value::as_str) == Some("mlx-local"))
+            .unwrap();
+        assert_eq!(mlx.get("compatible").and_then(Value::as_bool), Some(true));
+        assert_eq!(
+            mlx.get("execution_ready").and_then(Value::as_bool),
+            Some(cfg!(all(target_os = "macos", target_arch = "aarch64")))
+        );
+        assert_eq!(
+            mlx.get("checkpoint_contract").and_then(Value::as_str),
+            Some("local_lora_adapter_plus_evaluator_receipt")
+        );
         for backend_id in ["fireworks", "tinker"] {
             let backend = backends
                 .iter()
@@ -2226,7 +2241,6 @@ mod tests {
                 source.to_str().unwrap(),
                 root.to_str().unwrap(),
                 &sha256_bytes(content.as_bytes()),
-                "managed",
                 "understudy/auto",
                 "glm-5.2",
                 1.0,
@@ -2255,7 +2269,6 @@ mod tests {
         let (manifest_path, root) = fixture();
         let value = prepare_remote_plan(
             manifest_path.to_str().unwrap(),
-            "managed",
             "understudy/auto",
             "glm-5.2",
             3.0,
@@ -2299,7 +2312,6 @@ mod tests {
         let first: RemoteTrainingPlan = serde_json::from_value(
             prepare_remote_plan(
                 manifest_path.to_str().unwrap(),
-                "managed",
                 "understudy/auto",
                 "glm-5.2",
                 3.0,
@@ -2310,7 +2322,6 @@ mod tests {
         let second: RemoteTrainingPlan = serde_json::from_value(
             prepare_remote_plan(
                 manifest_path.to_str().unwrap(),
-                "managed",
                 "understudy/auto",
                 "glm-5.2",
                 3.0,
@@ -2327,7 +2338,6 @@ mod tests {
         let (manifest_path, root) = fixture();
         let value = prepare_remote_plan(
             manifest_path.to_str().unwrap(),
-            "managed",
             "understudy/auto",
             "glm-5.2",
             3.0,
@@ -2348,7 +2358,6 @@ mod tests {
         let (manifest_path, root) = fixture();
         let value = prepare_remote_plan(
             manifest_path.to_str().unwrap(),
-            "managed",
             "understudy/auto",
             "glm-5.2",
             3.0,

@@ -582,7 +582,6 @@ export function ChatPane({
       sourcePath: droppedWorkload.source_path,
       artifactRoot: droppedWorkload.artifact_root,
       expectedSourceSha256: trainingRecipe.source_sha256,
-      provider: "managed",
       modelProfile: "understudy/auto",
       frontierModel: "glm-5.2",
       maximumSpendUsd: 1,

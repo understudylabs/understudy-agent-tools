@@ -41,11 +41,11 @@ type RemoteArtifact = {
 };
 
 export type RemotePlan = {
-  schema_version: "understudy.remote_training.plan.v2";
+  schema_version: "understudy.training.plan.v1";
   plan_id: string;
+  recipe_id: string;
   task_kind: "text_classification" | "chat_sft";
   evaluator?: string | null;
-  provider: "managed";
   model_profile: RemoteTrainingProvider["model_profiles"][number]["id"];
   frontier_model: string;
   output_model_name: string;
@@ -191,7 +191,7 @@ export function RemoteTrainingPanel(props: Props) {
   );
   const initialProvider = providerDefault(providers);
   const [providerId] = useState<RemoteTrainingProvider["id"]>(
-    () => preparedPlan?.provider ?? initialProvider?.id ?? "managed",
+    () => initialProvider?.id ?? "managed",
   );
   const [profileId, setProfileId] = useState<RemoteTrainingProvider["model_profiles"][number]["id"]>(
     () => preparedPlan?.model_profile ?? profileDefault(initialProvider)?.id ?? "understudy/auto",
@@ -307,7 +307,6 @@ export function RemoteTrainingPanel(props: Props) {
     const maximumSpend = Math.min(1, capabilities.limits.max_budget_usd);
     void invoke<RemotePlan>("prepare_remote_classification_training", {
       manifestPath: datasetManifestPath,
-      provider: provider.id,
       modelProfile: profile.id,
       frontierModel: "glm-5.2",
       maximumSpendUsd: maximumSpend,
