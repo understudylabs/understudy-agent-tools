@@ -1,4 +1,5 @@
 import assert from "node:assert/strict";
+import { spawnSync } from "node:child_process";
 import { createHash, randomUUID } from "node:crypto";
 import { mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
@@ -6,6 +7,7 @@ import { join, resolve } from "node:path";
 import { afterEach, describe, it } from "node:test";
 
 import { startLocalSftTraining } from "../dist/local-sft/index.js";
+import { localSftEvaluationRuntimeSource } from "../dist/local-sft/runtime-source.js";
 
 const roots = [];
 const deterministicRunner = resolve("tests/fixtures/local-sft-deterministic-runner.mjs");
@@ -77,6 +79,14 @@ function portablePlan(overrides = {}) {
 }
 
 describe("portable local SFT backend", () => {
+  it("ships syntactically valid embedded Python", () => {
+    const check = spawnSync("python3", ["-c", "import sys; compile(sys.stdin.read(), 'evaluate.py', 'exec')"], {
+      input: localSftEvaluationRuntimeSource,
+      encoding: "utf8",
+    });
+    assert.equal(check.status, 0, check.stderr);
+  });
+
   it("executes a recipe-derived plan and saves evaluator, privacy, runtime, and cost evidence", async () => {
     const fixture = portablePlan();
     const events = [];

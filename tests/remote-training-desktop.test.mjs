@@ -6,10 +6,11 @@ const root = new URL("../", import.meta.url);
 const read = (path) => readFile(new URL(path, root), "utf8");
 
 test("remote training remains an off-by-default explicit-consent experiment", async () => {
-  const [native, panel, localPanel, tauriLib] = await Promise.all([
+  const [native, panel, localPanel, localSftPanel, tauriLib] = await Promise.all([
     read("apps/homescreen/src-tauri/src/remote_training.rs"),
     read("apps/homescreen/app/components/RemoteTrainingPanel.tsx"),
     read("apps/homescreen/app/components/LocalTrainingPanel.tsx"),
+    read("apps/homescreen/app/components/LocalSftTrainingPanel.tsx"),
     read("apps/homescreen/src-tauri/src/lib.rs"),
   ]);
 
@@ -63,8 +64,14 @@ test("remote training remains an off-by-default explicit-consent experiment", as
   assert.match(chat, /prepare_remote_gsm8k_training/);
   assert.match(chat, /if \(!remoteRecipePlan && trainingRecipe\?\.ready\) prepareDetectedRecipe\(\)/);
   assert.doesNotMatch(chat, /Prepare no-spend plan/);
-  assert.match(chat, /preparedPlan=\{remoteRecipePlan\}/);
+  assert.match(chat, /<LocalSftTrainingPanel/);
+  assert.match(chat, /plan=\{remoteRecipePlan\}/);
   assert.match(chat, /onActiveChange=\{setLocalTrainingActive\}/);
+  assert.match(localSftPanel, /start_local_sft_training/);
+  assert.match(localSftPanel, /compile_remote_training_backends/);
+  assert.match(localSftPanel, /Training locally · \$0/);
+  assert.match(localSftPanel, /Offline · no upload/);
+  assert.doesNotMatch(localSftPanel, /fireworks|fake endpoint/i);
 
   assert.match(localPanel, /remote_training_capabilities/);
   assert.doesNotMatch(localPanel, /remoteCapabilityState === "available" && !forceLocal/);
@@ -76,4 +83,6 @@ test("remote training remains an off-by-default explicit-consent experiment", as
   assert.match(tauriLib, /remote_training::compile_remote_training_backends/);
   assert.match(tauriLib, /remote_training::inspect_remote_training_recipe/);
   assert.match(tauriLib, /remote_training::prepare_remote_gsm8k_training/);
+  assert.match(tauriLib, /remote_training::start_local_sft_training/);
+  assert.match(tauriLib, /remote_training::cancel_local_sft_training/);
 });

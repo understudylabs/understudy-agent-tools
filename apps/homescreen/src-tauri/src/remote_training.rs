@@ -4,8 +4,11 @@ use serde_json::{json, Value};
 use sha2::{Digest, Sha256};
 use std::collections::{HashMap, HashSet};
 use std::fs::{self, OpenOptions};
-use std::io::Write;
+use std::io::{BufRead, BufReader, Read, Write};
 use std::path::{Path, PathBuf};
+use std::process::Stdio;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::{Arc, Mutex, OnceLock};
 use std::time::{Duration, Instant};
 use tauri::ipc::Channel;
 
@@ -22,6 +25,12 @@ const MAX_MANIFEST_BYTES: u64 = 1_048_576;
 const MAX_SPLIT_BYTES: u64 = 150 * 1024 * 1024;
 const MAX_REMOTE_ARTIFACT_BYTES: u64 = 150 * 1024 * 1024;
 const MAX_RECIPE_INSPECTION_BYTES: u64 = 32 * 1024 * 1024;
+
+static LOCAL_SFT_CANCELLATIONS: OnceLock<Mutex<HashMap<String, Arc<AtomicBool>>>> = OnceLock::new();
+
+fn local_sft_cancellations() -> &'static Mutex<HashMap<String, Arc<AtomicBool>>> {
+    LOCAL_SFT_CANCELLATIONS.get_or_init(|| Mutex::new(HashMap::new()))
+}
 
 #[derive(Debug, Clone, Serialize)]
 struct TrainingRecipeEvidence {
@@ -1090,9 +1099,7 @@ fn compile_backend_compatibility(plan_path: &str) -> Result<Value, String> {
             "classification",
             "classification_sft_with_exact_label_holdout",
         ),
-        "gsm8k_chat_sft_v1" => {
-            ("grade_school_math_reasoning", "openai_chat_messages")
-        }
+        "gsm8k_chat_sft_v1" => ("grade_school_math_reasoning", "openai_chat_messages"),
         _ => return Err("The remote training plan has no portable backend recipe.".into()),
     };
     let mlx_compatible = plan.recipe_id == "gsm8k_chat_sft_v1";
@@ -1155,6 +1162,345 @@ fn compile_backend_compatibility(plan_path: &str) -> Result<Value, String> {
     });
     replace_private_json(&artifact_path, &proof)?;
     Ok(proof)
+}
+
+fn valid_local_run_id(value: &str) -> bool {
+    !value.is_empty()
+        && value.len() <= 128
+        && value.bytes().enumerate().all(|(index, byte)| {
+            byte.is_ascii_alphanumeric() || (index > 0 && b"._-".contains(&byte))
+        })
+}
+
+fn read_local_sft_diagnostic(mut reader: impl Read) -> String {
+    let mut retained = Vec::new();
+    let mut buffer = [0_u8; 4_096];
+    loop {
+        match reader.read(&mut buffer) {
+            Ok(0) | Err(_) => break,
+            Ok(count) => {
+                retained.extend_from_slice(&buffer[..count]);
+                if retained.len() > 8_192 {
+                    retained.drain(..retained.len() - 8_192);
+                }
+            }
+        }
+    }
+    String::from_utf8_lossy(&retained)
+        .chars()
+        .filter(|character| !character.is_control() || matches!(character, '\n' | '\t'))
+        .take(2_000)
+        .collect()
+}
+
+fn terminate_local_sft_child(child: &mut std::process::Child) {
+    #[cfg(unix)]
+    {
+        let _ = std::process::Command::new("/bin/kill")
+            .arg("-TERM")
+            .arg(child.id().to_string())
+            .status();
+        for _ in 0..50 {
+            if child.try_wait().ok().flatten().is_some() {
+                return;
+            }
+            std::thread::sleep(Duration::from_millis(100));
+        }
+    }
+    let _ = child.kill();
+    let _ = child.wait();
+}
+
+fn validate_local_sft_phase(value: &Value, run_id: &str) -> Result<(), String> {
+    let phase = value
+        .get("phase")
+        .and_then(Value::as_str)
+        .unwrap_or_default();
+    let message = value
+        .get("message")
+        .and_then(Value::as_str)
+        .unwrap_or_default();
+    if value.get("run_id").and_then(Value::as_str) != Some(run_id)
+        || !matches!(
+            phase,
+            "preparing" | "baseline" | "training" | "evaluating" | "saving"
+        )
+        || message.is_empty()
+        || message.chars().count() > 500
+        || value.get("current").is_some_and(|item| !item.is_u64())
+        || value.get("total").is_some_and(|item| !item.is_u64())
+    {
+        return Err("The local SFT runner returned invalid progress evidence.".into());
+    }
+    Ok(())
+}
+
+fn validate_local_sft_result(
+    value: Value,
+    run_id: &str,
+    plan: &RemoteTrainingPlan,
+    canonical_plan: &Path,
+) -> Result<Value, String> {
+    let heldout_sha256 = plan
+        .artifacts
+        .iter()
+        .find(|artifact| artifact.artifact_role == "heldout")
+        .map(|artifact| artifact.sha256.as_str())
+        .ok_or_else(|| "The portable plan omitted its held-out split.".to_string())?;
+    let elapsed_seconds = value
+        .pointer("/runtime/elapsed_seconds")
+        .and_then(Value::as_f64)
+        .unwrap_or(f64::INFINITY);
+    if value.get("schema_version").and_then(Value::as_str) != Some("understudy.local_sft.run.v1")
+        || value.get("run_id").and_then(Value::as_str) != Some(run_id)
+        || value.get("status").and_then(Value::as_str) != Some("completed")
+        || value.get("plan_id").and_then(Value::as_str) != Some(plan.plan_id.as_str())
+        || value.get("recipe_id").and_then(Value::as_str) != Some(plan.recipe_id.as_str())
+        || value.get("evaluator").and_then(Value::as_str) != plan.evaluator.as_deref()
+        || value.get("backend").and_then(Value::as_str) != Some("mlx-local")
+        || value
+            .pointer("/baseline/heldout_sha256")
+            .and_then(Value::as_str)
+            != Some(heldout_sha256)
+        || value
+            .pointer("/heldout/heldout_sha256")
+            .and_then(Value::as_str)
+            != Some(heldout_sha256)
+        || value
+            .pointer("/dataset/heldout_sha256")
+            .and_then(Value::as_str)
+            != Some(heldout_sha256)
+        || value.pointer("/cost/actual_usd").and_then(Value::as_f64) != Some(0.0)
+        || value
+            .pointer("/cost/provider_spend_incurred")
+            .and_then(Value::as_bool)
+            != Some(false)
+        || value
+            .pointer("/privacy/local_process_only")
+            .and_then(Value::as_bool)
+            != Some(true)
+        || value
+            .pointer("/privacy/provider_upload_performed")
+            .and_then(Value::as_bool)
+            != Some(false)
+        || value
+            .pointer("/privacy/remote_job_created")
+            .and_then(Value::as_bool)
+            != Some(false)
+        || value
+            .pointer("/privacy/telemetry_sent")
+            .and_then(Value::as_bool)
+            != Some(false)
+        || value
+            .pointer("/runtime/network_policy")
+            .and_then(Value::as_str)
+            != Some("offline")
+        || value
+            .pointer("/runtime/within_runtime_limit")
+            .and_then(Value::as_bool)
+            != Some(true)
+        || !elapsed_seconds.is_finite()
+        || elapsed_seconds > 900.0
+    {
+        return Err(
+            "The local SFT result failed its evaluator, privacy, cost, or runtime contract.".into(),
+        );
+    }
+    let reported_plan = value
+        .get("plan_path")
+        .and_then(Value::as_str)
+        .and_then(|path| PathBuf::from(path).canonicalize().ok());
+    if reported_plan.as_deref() != Some(canonical_plan) {
+        return Err("The local SFT result does not belong to the selected plan.".into());
+    }
+    let manifest = value
+        .get("manifest_path")
+        .and_then(Value::as_str)
+        .and_then(|path| PathBuf::from(path).canonicalize().ok())
+        .ok_or_else(|| "The local SFT result omitted its durable receipt.".to_string())?;
+    let expected_parent = canonical_plan
+        .parent()
+        .ok_or_else(|| "The portable plan has no private artifact root.".to_string())?
+        .join("local-runs")
+        .join(run_id)
+        .canonicalize()
+        .map_err(|_| "The local SFT receipt root is unavailable.".to_string())?;
+    if manifest.file_name().and_then(|value| value.to_str()) != Some("run.json")
+        || manifest.parent() != Some(expected_parent.as_path())
+    {
+        return Err("The local SFT receipt escaped the selected plan root.".into());
+    }
+    Ok(value)
+}
+
+fn run_local_sft(
+    plan_path: String,
+    run_id: String,
+    on_event: &Channel<Value>,
+    cancelled: Arc<AtomicBool>,
+) -> Result<Value, String> {
+    let canonical_plan = PathBuf::from(plan_path.trim())
+        .canonicalize()
+        .map_err(|_| "The portable training plan is unavailable.".to_string())?;
+    let plan = read_verified_plan(canonical_plan.to_string_lossy().as_ref())?;
+    if plan.recipe_id != "gsm8k_chat_sft_v1" {
+        return Err("The local MLX backend does not support this recipe yet.".into());
+    }
+    let mut child = crate::bin::command("understudy")
+        .args(["training", "run-local-sft", "--plan"])
+        .arg(&canonical_plan)
+        .arg("--run-id")
+        .arg(&run_id)
+        .arg("--jsonl")
+        .stdout(Stdio::piped())
+        .stderr(Stdio::piped())
+        .spawn()
+        .map_err(|error| {
+            format!("Could not start local SFT ({error}). Repair the runtime, then try again.")
+        })?;
+    let stdout = child
+        .stdout
+        .take()
+        .ok_or_else(|| "The local SFT runner omitted progress output.".to_string())?;
+    let stderr = child
+        .stderr
+        .take()
+        .ok_or_else(|| "The local SFT runner omitted diagnostic output.".to_string())?;
+    let stderr_reader = std::thread::spawn(move || read_local_sft_diagnostic(stderr));
+    let (line_tx, line_rx) = std::sync::mpsc::channel();
+    let stdout_reader = std::thread::spawn(move || {
+        for line in BufReader::new(stdout).lines() {
+            if line_tx.send(line).is_err() {
+                break;
+            }
+        }
+    });
+    let mut result = None;
+    let mut protocol_error = None;
+    loop {
+        if cancelled.load(Ordering::Acquire) {
+            terminate_local_sft_child(&mut child);
+            let _ = stdout_reader.join();
+            let _ = stderr_reader.join();
+            return Err("Local SFT was cancelled. The immutable plan is still available.".into());
+        }
+        match line_rx.recv_timeout(Duration::from_millis(100)) {
+            Ok(Ok(line)) => {
+                if line.trim().is_empty() {
+                    continue;
+                }
+                let value = match serde_json::from_str::<Value>(&line) {
+                    Ok(value) => value,
+                    Err(_) => {
+                        protocol_error =
+                            Some("The local SFT runner returned malformed progress JSON.".into());
+                        break;
+                    }
+                };
+                match value.get("type").and_then(Value::as_str) {
+                    Some("phase") => match validate_local_sft_phase(&value, &run_id) {
+                        Ok(()) => {
+                            let _ = on_event.send(value);
+                        }
+                        Err(error) => {
+                            protocol_error = Some(error);
+                            break;
+                        }
+                    },
+                    Some("result") => {
+                        let Some(payload) = value.get("result").cloned() else {
+                            protocol_error =
+                                Some("The local SFT runner omitted its result.".into());
+                            break;
+                        };
+                        match validate_local_sft_result(payload, &run_id, &plan, &canonical_plan) {
+                            Ok(value) => result = Some(value),
+                            Err(error) => {
+                                protocol_error = Some(error);
+                                break;
+                            }
+                        }
+                    }
+                    _ => {
+                        protocol_error =
+                            Some("The local SFT runner returned an unknown event.".into());
+                        break;
+                    }
+                }
+            }
+            Ok(Err(_)) | Err(std::sync::mpsc::RecvTimeoutError::Disconnected) => break,
+            Err(std::sync::mpsc::RecvTimeoutError::Timeout) => match child.try_wait() {
+                Ok(Some(_)) => break,
+                Ok(None) => {}
+                Err(error) => {
+                    protocol_error = Some(format!("Could not monitor local SFT: {error}"));
+                    break;
+                }
+            },
+        }
+    }
+    if let Some(error) = protocol_error {
+        terminate_local_sft_child(&mut child);
+        let _ = stdout_reader.join();
+        let _ = stderr_reader.join();
+        return Err(error);
+    }
+    let status = child
+        .wait()
+        .map_err(|error| format!("Could not finish local SFT: {error}"))?;
+    let _ = stdout_reader.join();
+    let detail = stderr_reader
+        .join()
+        .unwrap_or_else(|_| "No diagnostic was returned.".into());
+    if !status.success() {
+        return Err(format!("Local SFT failed. {detail}"));
+    }
+    result.ok_or_else(|| "Local SFT finished without a validated evaluator receipt.".into())
+}
+
+#[tauri::command]
+pub async fn start_local_sft_training(
+    plan_path: String,
+    run_id: String,
+    on_event: Channel<Value>,
+) -> Result<Value, String> {
+    if !valid_local_run_id(&run_id) {
+        return Err("The local SFT run id is invalid.".into());
+    }
+    let cancelled = Arc::new(AtomicBool::new(false));
+    {
+        let mut runs = local_sft_cancellations()
+            .lock()
+            .map_err(|_| "The local SFT registry is unavailable.".to_string())?;
+        if !runs.is_empty() {
+            return Err("Another local SFT job is already active.".into());
+        }
+        runs.insert(run_id.clone(), cancelled.clone());
+    }
+    let cleanup_run_id = run_id.clone();
+    let joined = tauri::async_runtime::spawn_blocking(move || {
+        run_local_sft(plan_path, run_id, &on_event, cancelled)
+    })
+    .await;
+    if let Ok(mut runs) = local_sft_cancellations().lock() {
+        runs.remove(&cleanup_run_id);
+    }
+    joined.map_err(|error| format!("The local SFT runner stopped unexpectedly: {error}"))?
+}
+
+#[tauri::command]
+pub fn cancel_local_sft_training(run_id: String) -> Result<Value, String> {
+    if !valid_local_run_id(&run_id) {
+        return Err("The local SFT run id is invalid.".into());
+    }
+    let runs = local_sft_cancellations()
+        .lock()
+        .map_err(|_| "The local SFT registry is unavailable.".to_string())?;
+    let Some(cancelled) = runs.get(&run_id) else {
+        return Ok(json!({ "status": "idle", "run_id": run_id }));
+    };
+    cancelled.store(true, Ordering::Release);
+    Ok(json!({ "status": "cancelling", "run_id": run_id }))
 }
 
 fn validate_manifest(manifest: &DatasetManifest, path: &Path) -> Result<(), String> {
@@ -1337,16 +1683,16 @@ pub async fn start_remote_classification_training(
         let request_id = random_uuid()?;
         let task = match plan.recipe_id.as_str() {
             "gsm8k_chat_sft_v1" => json!({
-                    "kind": "chat_sft",
-                    "message_format": "openai_chat_messages",
-                    "evaluator": "gsm8k_final_answer"
-                }),
+                "kind": "chat_sft",
+                "message_format": "openai_chat_messages",
+                "evaluator": "gsm8k_final_answer"
+            }),
             "text_classification_exact_label_v1" => json!({
-                    "kind": "text_classification",
-                    "input_field": "input",
-                    "target_field": "target",
-                    "labels": plan.labels
-                }),
+                "kind": "text_classification",
+                "input_field": "input",
+                "target_field": "target",
+                "labels": plan.labels
+            }),
             _ => return Err("The training plan names an unsupported recipe.".into()),
         };
         let run = api_json(
@@ -1440,9 +1786,9 @@ fn read_verified_plan(path: &str) -> Result<RemoteTrainingPlan, String> {
             .as_deref()
             != Some(canonical.as_path())
         || !((plan.recipe_id == "text_classification_exact_label_v1"
-                && plan.task_kind == "text_classification"
-                && plan.evaluator.as_deref() == Some("exact_label")
-                && plan.labels.len() >= 2)
+            && plan.task_kind == "text_classification"
+            && plan.evaluator.as_deref() == Some("exact_label")
+            && plan.labels.len() >= 2)
             || (plan.recipe_id == "gsm8k_chat_sft_v1"
                 && plan.task_kind == "chat_sft"
                 && plan.evaluator.as_deref() == Some("gsm8k_final_answer")

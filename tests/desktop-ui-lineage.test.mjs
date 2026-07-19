@@ -633,7 +633,8 @@ test("desktop compiles one dropped path through the bounded public CLI", async (
   assert.match(trainingHalo, /stepFraction: number \| null/);
   assert.match(trainingHalo, /className="training-halo-active is-indeterminate"/);
   assert.match(trainingHalo, /window\.setTimeout[\s\S]*?1_400/);
-  assert.match(trainingHalo, /distilled from ModernBERT · yours/);
+  assert.match(trainingHalo, /trained locally · yours/);
+  assert.doesNotMatch(trainingHalo, /distilled from ModernBERT/);
   assert.match(css, /\.ai-chat\.has-workload \.persona-stage/);
   assert.match(css, /\.csv-profile-columns/);
   assert.match(css, /\.csv-profile-columns\.is-spacious/);

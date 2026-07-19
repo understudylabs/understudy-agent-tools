@@ -83,6 +83,7 @@ import { CsvProfile } from "./CsvProfile";
 import { CsvTrainingPlan } from "./CsvTrainingPlan";
 import { LocalTrainingPanel } from "./LocalTrainingPanel";
 import { RemoteTrainingPanel, type RemotePlan } from "./RemoteTrainingPanel";
+import { LocalSftTrainingPanel } from "./LocalSftTrainingPanel";
 import { LocalClassifierLibraryDialog } from "./LocalClassifierLibraryDialog";
 import { TrainingHalo, type TrainingHaloVisual } from "./TrainingHalo";
 import { ChatScrollControls } from "./ChatScrollControls";
@@ -1509,10 +1510,9 @@ export function ChatPane({
                   <div className="csv-analysis-next">
                     {trainingRecipe.ready ? (
                       remoteRecipePlan ? (
-                        <RemoteTrainingPanel
-                          preparedPlan={remoteRecipePlan}
+                        <LocalSftTrainingPanel
+                          plan={remoteRecipePlan}
                           modelName="GSM8K reasoning model"
-                          onBack={() => setRemoteRecipePlan(null)}
                           onActiveChange={setLocalTrainingActive}
                           onVisualChange={setTrainingHaloVisual}
                         />

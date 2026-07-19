@@ -44,6 +44,12 @@ def prompt_tokens(tokenizer: Any, messages: list[dict[str, str]]) -> list[int]:
             add_generation_prompt=True,
             enable_thinking=False,
         )
+    except TypeError:
+        return tokenizer.apply_chat_template(
+            messages,
+            tokenize=True,
+            add_generation_prompt=True,
+        )
 
 
 def example_tokens(tokenizer: Any, messages: list[dict[str, str]]) -> list[int]:
@@ -86,12 +92,6 @@ def preflight(tokenizer: Any, request: dict[str, Any]) -> None:
             rows += 1
         if rows != artifact["row_count"]:
             raise ValueError(f"{artifact['artifact_role']} row count changed after plan approval")
-    except TypeError:
-        return tokenizer.apply_chat_template(
-            messages,
-            tokenize=True,
-            add_generation_prompt=True,
-        )
 
 
 def evaluate(request: dict[str, Any]) -> dict[str, Any]:
