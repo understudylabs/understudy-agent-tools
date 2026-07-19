@@ -28,6 +28,9 @@ test("remote training remains an off-by-default explicit-consent experiment", as
   assert.match(native, /preference_optimization/);
   assert.match(native, /agentic_tool_use/);
   assert.match(native, /vision_language/);
+  assert.match(native, /prepare_remote_gsm8k_training/);
+  assert.match(native, /duplicates a prompt and could leak across splits/);
+  assert.match(native, /dropped dataset changed after recipe detection/i);
 
   assert.match(panel, /Nothing uploads until you review the exact artifacts and budget/);
   assert.match(panel, /Upload only these three private split artifacts/);
@@ -53,4 +56,5 @@ test("remote training remains an off-by-default explicit-consent experiment", as
   assert.match(panel, /Train on this Mac/);
   assert.match(tauriLib, /remote_training::start_remote_classification_training/);
   assert.match(tauriLib, /remote_training::inspect_remote_training_recipe/);
+  assert.match(tauriLib, /remote_training::prepare_remote_gsm8k_training/);
 });

@@ -124,6 +124,10 @@ struct RemoteTrainingPlan {
     source_manifest_path: String,
     source_dataset_id: String,
     workload_name: String,
+    #[serde(default = "default_classification_task_kind")]
+    task_kind: String,
+    #[serde(default)]
+    evaluator: Option<String>,
     provider: String,
     model_profile: String,
     output_model_name: String,
@@ -141,6 +145,10 @@ struct RemoteTrainingPlan {
     minimum_accuracy: f64,
     minimum_improvement_over_base: f64,
     plan_path: String,
+}
+
+fn default_classification_task_kind() -> String {
+    "text_classification".to_string()
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -273,6 +281,31 @@ pub async fn prepare_remote_classification_training(
     })
     .await
     .map_err(|error| format!("Remote training preparation stopped unexpectedly: {error}"))?
+}
+
+#[tauri::command]
+pub async fn prepare_remote_gsm8k_training(
+    source_path: String,
+    artifact_root: String,
+    expected_source_sha256: String,
+    provider: String,
+    model_profile: String,
+    frontier_model: String,
+    maximum_spend_usd: f64,
+) -> Result<Value, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        prepare_gsm8k_plan(
+            &source_path,
+            &artifact_root,
+            &expected_source_sha256,
+            &provider,
+            &model_profile,
+            &frontier_model,
+            maximum_spend_usd,
+        )
+    })
+    .await
+    .map_err(|error| format!("GSM8K training preparation stopped unexpectedly: {error}"))?
 }
 
 #[tauri::command]
@@ -617,27 +650,7 @@ fn prepare_remote_plan(
     frontier_model: &str,
     maximum_spend_usd: f64,
 ) -> Result<Value, String> {
-    if !matches!(provider, "fake" | "managed") {
-        return Err("Choose an available remote training provider.".into());
-    }
-    if !matches!(
-        model_profile,
-        "understudy/auto" | "understudy/fast" | "understudy/balanced" | "understudy/quality"
-    ) {
-        return Err("Choose an available Understudy training profile.".into());
-    }
-    for (name, value) in [
-        ("training profile", model_profile),
-        ("frontier model", frontier_model),
-    ] {
-        if value.trim().is_empty() || value.chars().count() > 240 {
-            return Err(format!("The {name} is invalid."));
-        }
-    }
-    if !maximum_spend_usd.is_finite() || maximum_spend_usd <= 0.0 || maximum_spend_usd > 500.0 {
-        return Err("The remote training budget must be between $0 and $500.".into());
-    }
-
+    validate_remote_plan_options(provider, model_profile, frontier_model, maximum_spend_usd)?;
     let canonical_manifest = PathBuf::from(manifest_path.trim())
         .canonicalize()
         .map_err(|error| format!("The prepared dataset is unavailable: {error}"))?;
@@ -760,6 +773,8 @@ fn prepare_remote_plan(
             "classification-{}",
             safe_model_segment(&manifest.dataset_id)
         ),
+        task_kind: "text_classification".to_string(),
+        evaluator: Some("exact_label".to_string()),
         provider: provider.to_string(),
         model_profile: model_profile.to_string(),
         output_model_name,
@@ -785,6 +800,200 @@ fn prepare_remote_plan(
     )?;
     serde_json::to_value(plan)
         .map_err(|_| "The remote training plan could not be returned.".to_string())
+}
+
+fn validate_remote_plan_options(
+    provider: &str,
+    model_profile: &str,
+    frontier_model: &str,
+    maximum_spend_usd: f64,
+) -> Result<(), String> {
+    if !matches!(provider, "fake" | "managed") {
+        return Err("Choose an available remote training provider.".into());
+    }
+    if !matches!(
+        model_profile,
+        "understudy/auto" | "understudy/fast" | "understudy/balanced" | "understudy/quality"
+    ) {
+        return Err("Choose an available Understudy training profile.".into());
+    }
+    for (name, value) in [
+        ("training profile", model_profile),
+        ("frontier model", frontier_model),
+    ] {
+        if value.trim().is_empty() || value.chars().count() > 240 {
+            return Err(format!("The {name} is invalid."));
+        }
+    }
+    if !maximum_spend_usd.is_finite() || maximum_spend_usd <= 0.0 || maximum_spend_usd > 500.0 {
+        return Err("The remote training budget must be between $0 and $500.".into());
+    }
+    Ok(())
+}
+
+fn prepare_gsm8k_plan(
+    source_path: &str,
+    artifact_root: &str,
+    expected_source_sha256: &str,
+    provider: &str,
+    model_profile: &str,
+    frontier_model: &str,
+    maximum_spend_usd: f64,
+) -> Result<Value, String> {
+    validate_remote_plan_options(provider, model_profile, frontier_model, maximum_spend_usd)?;
+    if !valid_hash(expected_source_sha256) {
+        return Err("The detected source hash is invalid.".into());
+    }
+    let canonical_source = PathBuf::from(source_path.trim())
+        .canonicalize()
+        .map_err(|_| "The detected GSM8K dataset is unavailable.".to_string())?;
+    let canonical_root = PathBuf::from(artifact_root.trim())
+        .canonicalize()
+        .map_err(|_| "The local workload root is unavailable.".to_string())?;
+    if !canonical_root.is_dir() || !canonical_root.join("workload-card.json").is_file() {
+        return Err("Prepare this dropped workload locally before training.".into());
+    }
+    let bytes = fs::read(&canonical_source)
+        .map_err(|_| "The detected GSM8K dataset could not be read locally.".to_string())?;
+    if bytes.is_empty() || bytes.len() as u64 > MAX_REMOTE_ARTIFACT_BYTES {
+        return Err("The detected GSM8K dataset has an unsupported size.".into());
+    }
+    if sha256_bytes(&bytes) != expected_source_sha256 {
+        return Err("The dropped dataset changed after recipe detection.".into());
+    }
+    let text = std::str::from_utf8(&bytes)
+        .map_err(|_| "The detected GSM8K dataset must be UTF-8 JSONL.".to_string())?;
+    let mut rows = Vec::<(String, String)>::new();
+    let mut prompt_hashes = HashSet::new();
+    for (index, line) in text
+        .lines()
+        .filter(|line| !line.trim().is_empty())
+        .enumerate()
+    {
+        let row: Value = serde_json::from_str(line)
+            .map_err(|_| format!("GSM8K row {} is malformed.", index + 1))?;
+        let messages = row
+            .get("messages")
+            .and_then(Value::as_array)
+            .filter(|messages| valid_chat_messages(messages))
+            .ok_or_else(|| format!("GSM8K row {} has invalid chat messages.", index + 1))?;
+        let final_answer = messages
+            .last()
+            .and_then(Value::as_object)
+            .and_then(|message| message.get("content"))
+            .and_then(Value::as_str)
+            .filter(|answer| has_gsm8k_final_answer(answer))
+            .ok_or_else(|| format!("GSM8K row {} has no `####` numeric answer.", index + 1))?;
+        let _ = final_answer;
+        let prompt = serde_json::to_vec(&messages[..messages.len() - 1])
+            .map_err(|_| format!("GSM8K row {} could not be normalized.", index + 1))?;
+        let prompt_hash = sha256_bytes(&prompt);
+        if !prompt_hashes.insert(prompt_hash.clone()) {
+            return Err(format!(
+                "GSM8K row {} duplicates a prompt and could leak across splits.",
+                index + 1
+            ));
+        }
+        rows.push((prompt_hash, line.trim().to_string()));
+    }
+    if rows.len() < 20 {
+        return Err("GSM8K remote training needs at least 20 valid, distinct examples.".into());
+    }
+    rows.sort_by(|left, right| left.0.cmp(&right.0));
+    let train_end = rows.len() * 70 / 100;
+    let validation_end = train_end + rows.len() * 15 / 100;
+    let splits = [
+        ("train", &rows[..train_end]),
+        ("validation", &rows[train_end..validation_end]),
+        ("heldout", &rows[validation_end..]),
+    ];
+    if splits.iter().any(|(_, rows)| rows.len() < 3) {
+        return Err("GSM8K remote training could not produce three useful held-out splits.".into());
+    }
+
+    let plan_id = random_uuid()?;
+    let plan_root = canonical_root.join("remote-training").join(&plan_id);
+    create_private_directory(&plan_root)?;
+    let mut artifacts = Vec::new();
+    for (role, split_rows) in splits {
+        let file_name = format!("{role}.jsonl");
+        let path = plan_root.join(&file_name);
+        let content = split_rows
+            .iter()
+            .map(|(_, row)| row.as_str())
+            .collect::<Vec<_>>()
+            .join("\n")
+            + "\n";
+        write_private_new(&path, content.as_bytes())?;
+        artifacts.push(RemoteArtifact {
+            artifact_role: role.to_string(),
+            path: path.display().to_string(),
+            file_name,
+            row_count: split_rows.len() as u64,
+            sha256: sha256_bytes(content.as_bytes()),
+            size_bytes: content.len() as u64,
+            content_type: "application/x-ndjson".to_string(),
+        });
+    }
+    let split_hash = sha256_bytes(
+        artifacts
+            .iter()
+            .map(|artifact| artifact.sha256.as_str())
+            .collect::<Vec<_>>()
+            .join("\0")
+            .as_bytes(),
+    );
+    let dataset_id = canonical_source
+        .file_stem()
+        .and_then(|name| name.to_str())
+        .map(safe_model_segment)
+        .filter(|name| !name.is_empty())
+        .unwrap_or_else(|| "gsm8k".to_string());
+    let output_model_name = format!(
+        "understudy-{}-{}",
+        dataset_id.chars().take(42).collect::<String>(),
+        &plan_id[..8]
+    );
+    let heldout_rows = artifacts
+        .iter()
+        .find(|artifact| artifact.artifact_role == "heldout")
+        .map(|artifact| artifact.row_count)
+        .unwrap_or(5);
+    let plan_path = plan_root.join("plan.json");
+    let plan = RemoteTrainingPlan {
+        schema_version: PLAN_SCHEMA.to_string(),
+        plan_id,
+        created_at: timestamp(),
+        source_manifest_path: canonical_source.display().to_string(),
+        source_dataset_id: dataset_id.clone(),
+        workload_name: format!("gsm8k-{dataset_id}"),
+        task_kind: "chat_sft".to_string(),
+        evaluator: Some("gsm8k_final_answer".to_string()),
+        provider: provider.to_string(),
+        model_profile: model_profile.to_string(),
+        output_model_name,
+        frontier_model: frontier_model.to_string(),
+        labels: Vec::new(),
+        group_field: "prompt_sha256".to_string(),
+        split_hash,
+        artifacts,
+        epochs: 3,
+        lora_rank: 16,
+        max_context_length: 4_096,
+        maximum_spend_usd,
+        maximum_runtime_seconds: 7_200,
+        maximum_eval_examples: heldout_rows.min(200),
+        minimum_accuracy: 0.20,
+        minimum_improvement_over_base: 0.02,
+        plan_path: plan_path.display().to_string(),
+    };
+    write_private_new(
+        &plan_path,
+        &serde_json::to_vec_pretty(&plan)
+            .map_err(|_| "The GSM8K remote training plan could not be encoded.".to_string())?,
+    )?;
+    serde_json::to_value(plan)
+        .map_err(|_| "The GSM8K remote training plan could not be returned.".to_string())
 }
 
 fn validate_manifest(manifest: &DatasetManifest, path: &Path) -> Result<(), String> {
@@ -947,6 +1156,22 @@ pub async fn start_remote_classification_training(
             );
         }
         let request_id = random_uuid()?;
+        let task = if plan.task_kind == "chat_sft"
+            && plan.evaluator.as_deref() == Some("gsm8k_final_answer")
+        {
+            json!({
+                "kind": "chat_sft",
+                "message_format": "openai_chat_messages",
+                "evaluator": "gsm8k_final_answer"
+            })
+        } else {
+            json!({
+                "kind": "text_classification",
+                "input_field": "input",
+                "target_field": "target",
+                "labels": plan.labels
+            })
+        };
         let run = api_json(
             Method::POST,
             api_url("runs")?,
@@ -954,12 +1179,7 @@ pub async fn start_remote_classification_training(
                 "schema_version": API_SCHEMA,
                 "request_id": request_id,
                 "workload_name": plan.workload_name,
-                "task": {
-                    "kind": "text_classification",
-                    "input_field": "input",
-                    "target_field": "target",
-                    "labels": plan.labels
-                },
+                "task": task,
                 "provider": plan.provider,
                 "model_profile": plan.model_profile,
                 "output_model_name": plan.output_model_name,
@@ -1043,6 +1263,10 @@ fn read_verified_plan(path: &str) -> Result<RemoteTrainingPlan, String> {
             .as_deref()
             != Some(canonical.as_path())
         || !matches!(plan.provider.as_str(), "fake" | "managed")
+        || !((plan.task_kind == "text_classification" && plan.labels.len() >= 2)
+            || (plan.task_kind == "chat_sft"
+                && plan.evaluator.as_deref() == Some("gsm8k_final_answer")
+                && plan.labels.is_empty()))
         || plan.artifacts.len() != 3
         || plan.maximum_spend_usd <= 0.0
         || plan.maximum_spend_usd > 500.0
@@ -1645,6 +1869,59 @@ mod tests {
             inspection.get("ready").and_then(Value::as_bool),
             Some(false)
         );
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn compiles_detected_gsm8k_into_immutable_chat_splits() {
+        let root = std::env::temp_dir().join(format!(
+            "understudy-gsm8k-plan-test-{}-{}",
+            std::process::id(),
+            random_uuid().unwrap()
+        ));
+        fs::create_dir_all(&root).unwrap();
+        fs::write(root.join("workload-card.json"), b"{}\n").unwrap();
+        let source = root.join("gsm8k.jsonl");
+        let content = (0..100)
+            .map(|index| {
+                serde_json::to_string(&json!({
+                    "messages": [
+                        { "role": "user", "content": format!("What is {index} plus 2?") },
+                        { "role": "assistant", "content": format!("Add two. #### {}", index + 2) }
+                    ]
+                }))
+                .unwrap()
+            })
+            .collect::<Vec<_>>()
+            .join("\n")
+            + "\n";
+        fs::write(&source, &content).unwrap();
+        let plan: RemoteTrainingPlan = serde_json::from_value(
+            prepare_gsm8k_plan(
+                source.to_str().unwrap(),
+                root.to_str().unwrap(),
+                &sha256_bytes(content.as_bytes()),
+                "fake",
+                "understudy/auto",
+                "glm-5.2",
+                1.0,
+            )
+            .unwrap(),
+        )
+        .unwrap();
+
+        assert_eq!(plan.task_kind, "chat_sft");
+        assert_eq!(plan.evaluator.as_deref(), Some("gsm8k_final_answer"));
+        assert_eq!(artifact_rows(&plan, "train").unwrap(), 70);
+        assert_eq!(artifact_rows(&plan, "validation").unwrap(), 15);
+        assert_eq!(artifact_rows(&plan, "heldout").unwrap(), 15);
+        assert!(plan.labels.is_empty());
+        assert!(read_verified_plan(&plan.plan_path).is_ok());
+        for artifact in &plan.artifacts {
+            let body = fs::read_to_string(&artifact.path).unwrap();
+            assert!(body.contains("\"messages\""));
+            assert!(!body.contains("\"input\""));
+        }
         fs::remove_dir_all(root).unwrap();
     }
 
