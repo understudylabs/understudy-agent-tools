@@ -897,7 +897,7 @@ fn validate_remote_plan_options(
     frontier_model: &str,
     maximum_spend_usd: f64,
 ) -> Result<(), String> {
-    if !matches!(provider, "fake" | "managed") {
+    if provider != "managed" {
         return Err("Choose an available remote training provider.".into());
     }
     if !matches!(
@@ -1106,17 +1106,6 @@ fn compile_backend_compatibility(plan_path: &str) -> Result<Value, String> {
         _ => return Err("The remote training plan has no portable backend recipe.".into()),
     };
     let backends = vec![
-        json!({
-            "id": "fake",
-            "compatible": true,
-            "execution_ready": true,
-            "recipe": "service_workflow_proof",
-            "dataset_format": dataset_format,
-            "loss_mask": "assistant_only",
-            "evaluator": evaluator,
-            "checkpoint_contract": "synthetic",
-            "execution_gate": "explicit_upload_consent"
-        }),
         json!({
             "id": "fireworks",
             "compatible": true,
@@ -1450,7 +1439,7 @@ fn read_verified_plan(path: &str) -> Result<RemoteTrainingPlan, String> {
             .ok()
             .as_deref()
             != Some(canonical.as_path())
-        || !matches!(plan.provider.as_str(), "fake" | "managed")
+        || plan.provider != "managed"
         || !((plan.task_kind == "text_classification" && plan.labels.len() >= 2)
             || (plan.task_kind == "chat_sft"
                 && plan.evaluator.as_deref() == Some("gsm8k_final_answer")
@@ -2076,7 +2065,7 @@ mod tests {
                 source.to_str().unwrap(),
                 root.to_str().unwrap(),
                 &sha256_bytes(content.as_bytes()),
-                "fake",
+                "managed",
                 "understudy/auto",
                 "glm-5.2",
                 1.0,
@@ -2237,7 +2226,7 @@ mod tests {
                 source.to_str().unwrap(),
                 root.to_str().unwrap(),
                 &sha256_bytes(content.as_bytes()),
-                "fake",
+                "managed",
                 "understudy/auto",
                 "glm-5.2",
                 1.0,
@@ -2266,7 +2255,7 @@ mod tests {
         let (manifest_path, root) = fixture();
         let value = prepare_remote_plan(
             manifest_path.to_str().unwrap(),
-            "fake",
+            "managed",
             "understudy/auto",
             "glm-5.2",
             3.0,
@@ -2310,7 +2299,7 @@ mod tests {
         let first: RemoteTrainingPlan = serde_json::from_value(
             prepare_remote_plan(
                 manifest_path.to_str().unwrap(),
-                "fake",
+                "managed",
                 "understudy/auto",
                 "glm-5.2",
                 3.0,
@@ -2321,7 +2310,7 @@ mod tests {
         let second: RemoteTrainingPlan = serde_json::from_value(
             prepare_remote_plan(
                 manifest_path.to_str().unwrap(),
-                "fake",
+                "managed",
                 "understudy/auto",
                 "glm-5.2",
                 3.0,
@@ -2338,7 +2327,7 @@ mod tests {
         let (manifest_path, root) = fixture();
         let value = prepare_remote_plan(
             manifest_path.to_str().unwrap(),
-            "fake",
+            "managed",
             "understudy/auto",
             "glm-5.2",
             3.0,
@@ -2359,7 +2348,7 @@ mod tests {
         let (manifest_path, root) = fixture();
         let value = prepare_remote_plan(
             manifest_path.to_str().unwrap(),
-            "fake",
+            "managed",
             "understudy/auto",
             "glm-5.2",
             3.0,

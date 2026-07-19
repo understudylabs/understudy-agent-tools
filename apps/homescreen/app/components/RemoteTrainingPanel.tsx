@@ -5,7 +5,7 @@ import { Channel, invoke } from "@tauri-apps/api/core";
 import type { TrainingHaloVisual } from "./TrainingHalo";
 
 export type RemoteTrainingProvider = {
-  id: "fake" | "managed";
+  id: "managed";
   enabled: boolean;
   label: string;
   model_profiles: Array<{
@@ -45,7 +45,7 @@ export type RemotePlan = {
   plan_id: string;
   task_kind: "text_classification" | "chat_sft";
   evaluator?: string | null;
-  provider: "fake" | "managed";
+  provider: "managed";
   model_profile: RemoteTrainingProvider["model_profiles"][number]["id"];
   frontier_model: string;
   output_model_name: string;
@@ -164,7 +164,7 @@ type Props = ClassificationProps | PreparedPlanProps;
 type Stage = "recovering" | "choice" | "preparing" | "confirm" | "starting" | "running" | "terminal" | "failed";
 
 function providerDefault(providers: RemoteTrainingProvider[]): RemoteTrainingProvider | undefined {
-  return providers.find((provider) => provider.id === "managed") ?? providers[0];
+  return providers.find((provider) => provider.id === "managed");
 }
 
 function profileDefault(provider: RemoteTrainingProvider | undefined) {
@@ -191,7 +191,7 @@ export function RemoteTrainingPanel(props: Props) {
   );
   const initialProvider = providerDefault(providers);
   const [providerId] = useState<RemoteTrainingProvider["id"]>(
-    () => preparedPlan?.provider ?? initialProvider?.id ?? "fake",
+    () => preparedPlan?.provider ?? initialProvider?.id ?? "managed",
   );
   const [profileId, setProfileId] = useState<RemoteTrainingProvider["model_profiles"][number]["id"]>(
     () => preparedPlan?.model_profile ?? profileDefault(initialProvider)?.id ?? "understudy/auto",
@@ -304,7 +304,7 @@ export function RemoteTrainingPanel(props: Props) {
     setStage("preparing");
     setError(null);
     if (!profile) return;
-    const maximumSpend = Math.min(provider.id === "fake" ? 1 : 500, capabilities.limits.max_budget_usd);
+    const maximumSpend = Math.min(1, capabilities.limits.max_budget_usd);
     void invoke<RemotePlan>("prepare_remote_classification_training", {
       manifestPath: datasetManifestPath,
       provider: provider.id,
@@ -419,7 +419,7 @@ export function RemoteTrainingPanel(props: Props) {
         {profile && <small>{profile.summary}</small>}
         <div className="remote-training-actions">
           <button type="button" className="btn primary" onClick={prepare}>
-            {provider?.id === "fake" ? "Try the no-spend cloud proof" : "Review remote training"}
+            Review remote training
           </button>
           <button type="button" className="btn ghost" onClick={props.onTrainLocal}>Train on this Mac</button>
         </div>
@@ -432,16 +432,13 @@ export function RemoteTrainingPanel(props: Props) {
   }
 
   if (stage === "confirm" && plan) {
-    const noSpendProof = plan.provider === "fake";
     const exampleCount = plan.artifacts.reduce((sum, artifact) => sum + artifact.row_count, 0);
-    const actionLabel = noSpendProof
-      ? "Upload & run"
-      : `Upload & train · $${plan.maximum_spend_usd.toFixed(2)} max`;
+    const actionLabel = `Upload & train · $${plan.maximum_spend_usd.toFixed(2)} max`;
     return (
       <div className="remote-training-confirm">
         <div className="remote-training-confirm-heading">
           <div><strong>{modelName}</strong></div>
-          <small>{exampleCount.toLocaleString()} examples · {noSpendProof ? "$0" : `$${plan.maximum_spend_usd.toFixed(2)} max`}</small>
+          <small>{exampleCount.toLocaleString()} examples · ${plan.maximum_spend_usd.toFixed(2)} max</small>
         </div>
         {backendCompatibilityError && <p className="remote-training-warning">Portable backend check failed: {backendCompatibilityError}</p>}
         <p className="remote-training-consent-summary">

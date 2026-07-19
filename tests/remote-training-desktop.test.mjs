@@ -44,7 +44,9 @@ test("remote training remains an off-by-default explicit-consent experiment", as
   assert.match(panel, /existing_remote_training/);
   assert.match(panel, /compile_remote_training_backends/);
   assert.match(panel, /preparedPlan/);
-  assert.match(panel, /Upload & run/);
+  assert.match(panel, /Upload & train/);
+  assert.doesNotMatch(panel, /fake/);
+  assert.doesNotMatch(native, /"fake"/);
   assert.doesNotMatch(panel, /Approve & run/);
   assert.doesNotMatch(panel, /<summary>Details<\/summary>/);
   assert.match(panel, /<summary>Run details<\/summary>/);
