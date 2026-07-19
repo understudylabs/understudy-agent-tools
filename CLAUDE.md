@@ -12,7 +12,7 @@ before doing anything else:
 
 - **A user who wants to *use* Understudy** — improve an LLM app, cut cost, run a
   local model, pick a route. **Install the plugin first** (the
-  [`install-plugin`](skills/install-plugin/SKILL.md) skill), then run the
+  [`install-agent-adapter`](skills/install-agent-adapter/SKILL.md) skill), then run the
   [`onboard`](skills/onboard/SKILL.md) skill. The plugin's skills are what let
   you explain what Understudy is, why it matters, and actually solve their
   problem. Don't try to wing it from the source tree.
@@ -21,6 +21,14 @@ before doing anything else:
 
 When in doubt, assume the first. Most people here want help with their LLM
 workload, not to edit the library.
+
+## Skill Library Entry Point
+
+The skill library lives in [`skills/`](skills/). Start with the orchestrator
+[`understudy`](skills/understudy/SKILL.md); the full index is
+[`skills/README.md`](skills/README.md). Claude Code discovers the same tree via
+the local marketplace (`.claude-plugin/`) - do not mirror skills under
+`.claude/skills/` in this repo.
 
 ## How to behave
 
