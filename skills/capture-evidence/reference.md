@@ -167,6 +167,12 @@ prior runs scored 0/12 (see `SKILL.md` → Required Checks step 3).
 - If no captured data exists, build a clearly-labeled **synthetic fixture** (see
   Acquire-fresh) and mark every synthetic result as such.
 
+Before calling the set representative, apply the coverage matrix, completed-run
+classification, hard-case minimums, qualitative row review, and claim-strength
+rules in
+[`references/evaluation-evidence-gates.md`](references/evaluation-evidence-gates.md).
+Random sampling alone does not establish coverage.
+
 ### Define metrics aligned to the objective
 
 Set the primary metric to the value lens and write it into `metric.json` with the

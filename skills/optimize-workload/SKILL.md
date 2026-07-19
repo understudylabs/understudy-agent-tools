@@ -64,6 +64,13 @@ of optimizing.
 Confirm these before spending GEPA budget — full detail, model defaults, and
 validator kinds in [`reference.md`](reference.md):
 
+- **Evidence gates** — apply the coverage, harness-conformance, qualitative
+  row-review, and claim-strength gates in
+  [`../capture-evidence/references/evaluation-evidence-gates.md`](../capture-evidence/references/evaluation-evidence-gates.md).
+  Do not optimize a narrow easy cohort as though it represents the workload.
+  Inspect the real rows behind the baseline headline and confirm important hard
+  strata have train/dev and sealed-holdout representation.
+
 - **Headroom** — `baseline.json` must show failing-but-promptable rows. No
   incumbent failures → nothing to optimize. A strong model fails them too →
   task beyond frontier; stop.
@@ -134,6 +141,10 @@ validator kinds in [`reference.md`](reference.md):
 7. Freeze the candidate before any holdout validation.
 8. Run holdout only once the candidate is frozen, and record score, failures,
    latency basis, cost basis, fallback route, demotion trigger, and caveats.
+   Inspect the actual rows behind material deltas before naming a win. A narrow
+   first pass that improves train/dev but regresses holdout is an overfitting
+   diagnosis, not evidence to iterate on the sealed rows; expand or rebalance a
+   new split contract and start a fresh experiment.
 
 The home of record for an optimization run is the **active experiment**
 directory (see the Experiment section of

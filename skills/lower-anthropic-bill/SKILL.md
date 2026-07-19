@@ -74,8 +74,13 @@ before estimating hotspots from bill data.
    `cache_read_input_tokens`.
 6. **Rank the opportunity ledger.** Group findings by route and estimate
    addressable spend only from explicit volume, usage exports, or clearly labeled
-   synthetic assumptions. Include confidence: `high`, `medium`, `unknown`, or
-   `pending eval`.
+   synthetic assumptions. Rank by addressable spend × confidence × expected
+   implementation leverage so a small, easy tail item does not displace the
+   concentrated cost center. Include confidence: `high`, `medium`, `unknown`, or
+   `pending eval`. When value depends on who or what consumes an output now or
+   later, do not invent a universal taxonomy: expose the candidate segments and
+   let the developer drill into representative rows before labeling work as
+   low-value or removable.
 7. **Pick candidate interventions.** Try the cheapest evidence path first:
    cache fix, batch move, max-token/output tightening, older or cheaper
    Anthropic model, local/open-weight candidate, OpenAI route, then GEPA prompt

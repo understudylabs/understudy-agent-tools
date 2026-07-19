@@ -105,11 +105,20 @@ enough provenance for another agent to repeat the step without guessing.
    forbidden-write avoidance, unnecessary calls/retries, schema validity, and
    recoverable errors as separate axes before collapsing to an overall score.
    If the metric or validator is unclear, stop and ask one concrete question.
-4. Freeze splits.
+4. Pass the evaluation evidence gates.
+   Build and confirm the coverage matrix, run harness-conformance sentinels,
+   and inspect actual scored rows before interpreting aggregate results. Follow
+   [`references/evaluation-evidence-gates.md`](references/evaluation-evidence-gates.md).
+   An uncovered important stratum blocks a whole-workload conclusion; a failed
+   read-then-write sentinel is a harness bug until proven otherwise. Keep a
+   redacted local review packet with the coverage matrix, representative rows,
+   counterexamples, scorer rationale, and exact artifact/log refs.
+5. Freeze splits.
    Write `splits.json` with train/dev/holdout names, sizes, source refs,
-   deterministic split seed or frozen row ids, and an explicit "no holdout
-   mutation" note.
-5. Rerun the incumbent baseline.
+   deterministic split seed or frozen row ids, the per-stratum counts from the
+   coverage matrix, uncovered strata, and an explicit "no holdout mutation"
+   note.
+6. Rerun the incumbent baseline.
    Use the frozen harness, metric, validator, and splits to rerun the current
    incumbent route. Write `baseline.json` with command, timestamp, split used,
    sample size, score, latency basis, cost basis if available, failures, and

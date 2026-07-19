@@ -49,10 +49,14 @@ comparison.
 
    For remote Understudy candidates, run `understudy models list --json`;
    prefer managed-catalog ids unless BYO provider-direct behavior is required.
-3. **Run a smoke row first.** Each candidate must complete one row without
-   connection errors, empty responses, or bad model aliases. For local MLX, prefer
-   verified filesystem paths or Understudy snapshot aliases over arbitrary
-   Hugging Face ids.
+3. **Run conformance smoke first.** Each candidate must complete one row without
+   connection errors, empty responses, or bad model aliases. For agentic
+   workloads, also run a synthetic read-then-write sentinel through the exact
+   driver and parser: execute the read, append its result, continue, execute the
+   write, and score final state. Never score an intermediate tool call as a
+   no-op. For local MLX, prefer verified filesystem paths or Understudy snapshot
+   aliases over arbitrary Hugging Face ids. Apply the shared gates in
+   [`../capture-evidence/references/evaluation-evidence-gates.md`](../capture-evidence/references/evaluation-evidence-gates.md).
 
 4. **Run the frozen matrix.** Call the same harness once per candidate with the
    same rows, split, tool-access mode, prompt, seed, and export path. Keep each
@@ -89,6 +93,12 @@ comparison.
    spend, and keep judge-scored quality as its own column — never silently
    blended with a programmatic metric.
 
+   Before explaining any aggregate delta, inspect the actual rows behind one
+   pass, each reported failure class, each surprising delta, and a counterexample
+   to the proposed conclusion. Distinguish model behavior from equivalent
+   free-text wording, scorer/rubric errors, labels, and harness/parser failures.
+   Scope conclusions to represented coverage strata.
+
 6. **Compute the frontier.** A candidate is dominated when another candidate has
    equal or better quality and equal or lower cost and latency, with no worse
    error rate or safety result. Write `pareto.json` with dominated reasons.
@@ -96,6 +106,10 @@ comparison.
 7. **Report the decision.** Write `report.md` with the top frontier candidates,
    the cheapest acceptable model at the agreed quality floor, and the next action:
    ship route, build retrieval/tooling, run GEPA, climb local model, or use remote.
+   Candidate quality cells must come from measured rows or say `not run`;
+   plausible projections are never substitutes. Include the coverage matrix and
+   a redacted row-review packet. Use a visualization only when it answers a
+   named decision question better than the results table.
 
 ## Harness Pattern
 
@@ -147,3 +161,5 @@ If the verdict supports changing production traffic, hand off to
 [`../ramp-and-verify/SKILL.md`](../ramp-and-verify/SKILL.md): add the provider,
 set the route, and ramp staged traffic gated by the same production validator
 the sweep used.
+
+Detailed row-review packet guidance lives in [`reference.md`](reference.md).

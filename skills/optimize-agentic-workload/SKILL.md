@@ -105,6 +105,13 @@ single-output optimization does not need a tool environment.
    `.understudy/capture-evidence/` artifact contract — each reference documents
    the env → artifact bridge for its shape.
 
+   Before using model scores, pass the shared evaluation evidence gates in
+   [`../capture-evidence/references/evaluation-evidence-gates.md`](../capture-evidence/references/evaluation-evidence-gates.md).
+   In particular, run a synthetic read-then-write trajectory through the exact
+   driver for every model family. The driver must append the read result,
+   continue the loop, execute the terminal write, and score final state; an
+   intermediate tool call is never a no-op verdict.
+
 3. **Define multi-objective success.** Quality is a per-criterion LLM-judge or
    final-state rubric that returns natural-language *why/what-to-change*
    feedback, not a bare score. Latency and cost come from the rollout records
@@ -123,7 +130,11 @@ single-output optimization does not need a tool environment.
 5. **Run the incumbent baseline before optimizing.** Execute the frozen harness
    on train/dev or a small sanctioned sample, write per-task results, and bind
    `harness_sha256`, `metric_sha256`, and `splits_sha256` into `baseline.json`.
-   Do not optimize until the baseline is measured.
+   Confirm coverage across completed-execution strata, including rare or
+   high-consequence tool paths, and inspect the actual trajectories behind at
+   least one pass, each reported failure class, each surprising delta, and a
+   counterexample to the proposed headline. Do not optimize until the baseline
+   is measured and those checks pass.
 
 6. **Attribute the multi-turn gap before intervening.** Read the rollouts, not
    just the final score, and tag where reward is lost: wrong tool/endpoint,
