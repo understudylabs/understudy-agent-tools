@@ -14,6 +14,13 @@
   `--input-cost 0.0000006 --output-cost 0.0000022` overrides — i.e. a
   **$0.60 in / $2.20 out per Mtok demo assumption** (GLM-4.x-era open list
   pricing ballpark), not a real invoice figure.
+- **Spark arms (`route: "spark"`, cost 0)**: gemma-4-e2b and
+  nvidia/nemotron-3-nano ran against already-running vLLM endpoints on the
+  DGX Spark cluster (SSH local port-forwards to `understudy-alpha` /
+  `understudy-bravo`), not through the gateway. Cost is recorded as **$0**
+  because self-hosted serving on owned hardware has zero marginal per-token
+  cost; power/amortization is not modeled. Latency/tokens are real
+  (`--input-cost 0 --output-cost 0` so the harness reports $0 too).
 - **latency_ms** on rows is the harness's accumulated per-task model wall time
   (`model_time_s * 1000`), i.e. time spent inside model calls across the whole
   agentic rollout — not a single-call latency.

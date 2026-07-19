@@ -81,6 +81,7 @@ budget. Pricing assumptions in `NOTES.md`. Rows projected with
 | claude-sonnet-4-6 | 1/12 (8.3%) | 0.409 | $13.54 (list price) | 92 s |
 | gemma-4-31b-it | 1/12 (8.3%) | 0.429 | $0.54 (demo pricing) | 128 s |
 | glm-5.2 | 1/12 (8.3%) | 0.475 | $3.77 (demo pricing) | 138 s |
+| gemma-4-e2b (Spark, self-hosted) | 0/12 (0%) | 0.000 | $0 (self-hosted) | 12.5 s |
 
 Per-domain mean partial_credit (2 tasks each; strict passes in bold):
 
