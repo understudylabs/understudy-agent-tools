@@ -31,13 +31,15 @@ spend, or model downloads after explicit approval in the current thread.
    code path, profile the dataset/traces, and confirm the task meaning with the
    user.
 5. Capture or locate real traces.
-6. Build or improve a small, meaningful eval harness; rerun the incumbent
-   baseline.
+6. Build or improve a decision-sized, representative eval harness; rerun the
+   incumbent baseline.
 7. Run local optimization against eval failures.
 8. Compare candidate vs baseline on the objective.
-9. Recommend the most efficient route — harness, model, supplier, gateway/
-   inference-layer route, deployment approach.
-10. Implement the selected route safely (smallest viable change).
+9. Recommend the best route for the stated objective — harness, model, supplier,
+   gateway/inference-layer route, deployment approach — with cost and time
+   transparent.
+10. Implement the selected route safely with the smallest coherent change that
+    fully addresses the measured cause.
 11. Produce an Understudy Agent Improvement Report the developer can review.
 
 ## Frame every job
@@ -59,10 +61,11 @@ Keep these six separate and explicit — say them back before acting:
 - Measure before optimizing.
 - Optimize before routing.
 - Compare before deploying.
-- Ask before spending money or uploading data.
+- Recommend an outcome-sized plan with cost, time, data scope, and expected
+  evidence; ask before spending money or uploading data.
 
 Show partial findings early ("found 3 LLM call sites"; "app uses LiteLLM, so
-gateway insertion is low-risk"; "no evals — I'll build a small harness first";
+gateway insertion is low-risk"; "no evals — I'll build a decision-sized harness";
 "stated ZDR constraint blocks hosted upload unless approved").
 
 ## Engagement & pacing
@@ -259,12 +262,13 @@ harness/metric/split/baseline creates false progress.
 When the goal is "train an understudy" / "can a local model do this?", the
 orchestrator owns the ladder — sequence workers, don't reimplement them:
 
-1. **Smallest reasonable rung first.** Pick the smallest local model plausibly
-   reasonable for the task class (easy classification/extraction → Gemma 4 E2B
-   first; coding/structured generation → E2B feel-test then E4B/12B; tool-use →
-   E2B only if the tool surface can be bounded; long-context/high-recall →
-   expect hybrid or remote). Never start at the smallest model blindly, and
-   never evaluate `*-assistant` drafter checkpoints as standalone candidates.
+1. **Best-fit rung first.** Pick the local model most likely to answer the task
+   question within the available hardware and time (easy classification/
+   extraction → Gemma 4 E2B first; coding/structured generation → E2B feel-test
+   then E4B/12B; tool-use → E2B only if the tool surface can be bounded;
+   long-context/high-recall → start with a stronger local or remote anchor).
+   Never start at the smallest model blindly, and never evaluate `*-assistant`
+   drafter checkpoints as standalone candidates.
    Use [`../manage-local-models/SKILL.md`](../manage-local-models/SKILL.md) and
    [`../run-local-model-lab/SKILL.md`](../run-local-model-lab/SKILL.md).
 2. **Optional frontier head-to-head** for calibration — use
@@ -292,11 +296,15 @@ orchestrator owns the ladder — sequence workers, don't reimplement them:
 
 ## Safety Gates
 
-Default to the cheapest path that still reaches an outcome — not to zero spend (a
-skipped improvement has real opportunity cost). Require explicit confirmation for
-any action that uploads data, spends money, changes credentials, deploys
-behavior, or alters a production route — unless the developer has configured
-unattended mode.
+Default to the path with the highest expected progress toward the stated
+objective under the developer's hard constraints. Make spend, wall-clock, data
+scope, expected evidence, and alternatives visible; do not silently choose the
+weakest model, smallest cohort, or narrowest intervention because it is cheap.
+Follow the outcome-first spend posture in [`reference.md`](reference.md). Require
+explicit confirmation for any action that uploads data, spends money, changes
+credentials, deploys behavior, or alters a production route — unless the
+developer has configured unattended mode. One confirmation may cover a named,
+bounded run plan; ask again before expanding its envelope.
 
 Do not ask the developer to register, authenticate, paste secrets, or configure
 provider keys before the local evidence loop has found a concrete need. When that

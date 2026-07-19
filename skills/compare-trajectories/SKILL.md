@@ -122,12 +122,16 @@ behavioral verdict here, learnability cut there.
 
 A single run per model can mistake sampling noise for a behavioral gap. Before
 classifying gaps — and always before a candidate graduates toward live traffic
-— re-run the candidate on the same frozen rows N times (default 3): all repeats
+— re-run the candidate on the same frozen rows in incremental batches. Three
+repeats are a plumbing smoke, not a universal N; size the replay for the agreed
+instability tolerance and expand near the threshold. Then classify: all repeats
 match → stable; some → borderline; none → stochastic (exclude from gap
 classification and the warm-start yield). Above ~5% unstable, fix decoding
 (temperature, seed) or downgrade verdicts to directional-only. The dispositions
 feed the pre-ramp gate in [`../ramp-and-verify/SKILL.md`](../ramp-and-verify/SKILL.md)
 (stable → serve, borderline → shadow, stochastic → incumbent fallback).
+Use the data-sufficiency stopping rule in
+[`../capture-evidence/references/evaluation-evidence-gates.md`](../capture-evidence/references/evaluation-evidence-gates.md).
 
 ## Token-logprob lens
 

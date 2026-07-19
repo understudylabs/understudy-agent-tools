@@ -130,9 +130,9 @@ Turn the opportunity into a local dataset the harness can run against:
 ## Eval-harness discovery + build
 
 A baseline is only trustworthy if it runs against a real, repeatable eval. Reuse
-before you build, then build the smallest meaningful harness that scores the
-target behavior. Tie everything to the artifact contract so the next worker can
-trust it by hash.
+before you build, then build the simplest harness that completely scores the
+target behavior on a decision-sized cohort. Tie everything to the artifact
+contract so the next worker can trust it by hash.
 
 ### Discover existing tests/evals
 

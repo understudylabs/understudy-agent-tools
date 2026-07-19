@@ -23,8 +23,10 @@ and route candidates. Do not edit code during the audit.
   paths, secrets, or private notes without explicit approval for that exact
   action.
 - No provider spend without a named surface, model, data class, row count, and
-  dollar cap. Token-counting, cache probes, OpenAI migration tests, and GEPA
-  reflection all need approval if they call a provider.
+  dollar envelope. Token-counting, cache probes, OpenAI migration tests, and
+  GEPA reflection all need approval if they call a provider. Recommend the
+  decision-sized test and explain its expected savings, time, and confidence;
+  one approval may cover the named bounded test matrix.
 - No silent source edits. Adding `cache_control`, changing model strings,
   rewriting prompts, or adding an OpenAI route is a follow-up change after the
   audit report is reviewed.
@@ -81,10 +83,15 @@ before estimating hotspots from bill data.
    later, do not invent a universal taxonomy: expose the candidate segments and
    let the developer drill into representative rows before labeling work as
    low-value or removable.
-7. **Pick candidate interventions.** Try the cheapest evidence path first:
-   cache fix, batch move, max-token/output tightening, older or cheaper
-   Anthropic model, local/open-weight candidate, OpenAI route, then GEPA prompt
-   repair. Route model comparisons to
+7. **Pick candidate interventions.** Start with the intervention offering the
+   largest expected addressable savings at sufficient quality and confidence.
+   Consider cache fixes, batch moves, max-token/output tightening, older or
+   cheaper Anthropic models, local/open-weight candidates, OpenAI routes, and
+   GEPA prompt repair in the order supported by the opportunity ledger—not a
+   fixed cheapest-first ladder. Prefer the lower-cost test only when alternatives
+   have comparable expected information value. Follow
+   [`../understudy/reference.md`](../understudy/reference.md) → Outcome-first
+   spend posture. Route model comparisons to
    [`../compare-model-sweep/SKILL.md`](../compare-model-sweep/SKILL.md) and GEPA
    to [`../optimize-workload/SKILL.md`](../optimize-workload/SKILL.md).
 8. **Stop at the audit unless asked to implement.** If the developer chooses a

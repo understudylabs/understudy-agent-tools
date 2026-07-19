@@ -13,7 +13,7 @@ metadata:
 Use this worker when the question is not "can one model pass this eval?" but
 "which candidate sits on the useful frontier for this workload?" The skill runs
 one frozen harness across a candidate matrix, records each run, and emits a
-small Pareto report an agent can use for route decisions.
+decision-ready Pareto report an agent can use for route decisions.
 
 Prefer this after [`../understand-workload/SKILL.md`](../understand-workload/SKILL.md),
 [`../optimize-agentic-workload/SKILL.md`](../optimize-agentic-workload/SKILL.md), or
@@ -27,6 +27,13 @@ submissions, uploads, or new model downloads. Local cached model runs are fine
 when the user has already approved the local harness. Never mix private traces or
 customer data into a public sweep report; use synthetic, anonymized, or local-only
 artifacts.
+
+Recommend a candidate matrix sized to resolve the objective, including a strong
+anchor when it could change the decision. Present expected spend and wall-clock
+before the run and follow
+[`../understudy/reference.md`](../understudy/reference.md) → Outcome-first spend
+posture. Do not omit the informative candidate merely to keep the first sweep
+cheap; one bounded approval may cover the whole named matrix.
 
 Do not claim a model is cheaper, faster, or better unless the sweep used the same
 rows, harness, metric, tool-access mode, prompt, seed, and state reset for every
@@ -106,7 +113,7 @@ comparison.
    error rate or safety result. Write `pareto.json` with dominated reasons.
 
 7. **Report the decision.** Write `report.md` with the top frontier candidates,
-   the cheapest acceptable model at the agreed quality floor, and the next action:
+   the best route for the agreed objective and constraints, and the next action:
    ship route, build retrieval/tooling, run GEPA, climb local model, or use remote.
    Candidate quality cells must come from measured rows or say `not run`;
    plausible projections are never substitutes. Include the coverage matrix and
@@ -153,10 +160,11 @@ When the sweep informs a real route decision, also write the report as a
   total cost, cost per unit of work the business counts (per deal, per ticket,
   per call — not per token), and the cost ratio vs the incumbent;
 - caching basis per row (see step 5) and any other comparability caveats;
-- where the residual failures cluster, as named patterns with the cheapest fix
-  per pattern (prompt line, decode/format fix, decomposition, route fallback);
+- where the residual failures cluster, as named patterns with the
+  highest-leverage supported fix per pattern (prompt line, decode/format fix,
+  decomposition, route fallback);
 - a staged recommendation: the drop-in safe swap, the parallel pilot, and the
-  cheap iteration, rather than one all-or-nothing verdict;
+  highest-information iteration, rather than one all-or-nothing verdict;
 - a scope line: what fraction of the workload's total LLM cost this step
   represents, and what's next if the approach extends;
 - one headline the finance owner can multiply by volume ("saves ~$X per

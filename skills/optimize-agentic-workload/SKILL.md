@@ -43,11 +43,14 @@ shows the agent must *learn stateful behavior*.
 
 ## Safety Gates
 
-Default to the cheapest path that still reaches a decision — not to zero spend
-(a skipped improvement has real opportunity cost). Get the developer's explicit
-approval before any upload, hosted run, or provider spend, including every live
-tool call, live SaaS API call, credential change, production write, and every
-gateway eval run.
+Default to the path with the highest expected progress toward the multi-objective
+decision under hard constraints, not the cheapest rung. State the expected
+quality, latency, safety, time, and spend tradeoffs; follow
+[`../understudy/reference.md`](../understudy/reference.md) → Outcome-first spend
+posture. Get explicit approval before any upload, hosted run, provider spend,
+live SaaS API access, credential change, or production write. One approval may
+cover the named tool calls and gateway evals inside a bounded run plan; ask again
+before expanding it.
 
 Prefer local mocks, seeded fixtures, recorded schemas, and synthetic business
 data. Do not run live provider calls, tool calls, hosted jobs, model downloads,
@@ -146,11 +149,13 @@ single-output optimization does not need a tool environment.
    forbidden or missing writes, or non-termination. Single-turn /
    next-tool-call imitation scores are a *leading indicator only* — they cannot
    see result-propagation, recovery, or termination, which exist only inside
-   the running environment. Let the attribution pick the **cheapest rung that
-   closes the gap**, in order: output-contract repair (prefill / format /
-   parser / schema) → tool-access or endpoint-catalog repair → model A/B →
-   prompt / GEPA (automatic prompt evolution) → distillation → RL. Often the
-   gap is format or argument-fidelity, not planning, and a cheap rung wins.
+   the running environment. Let the attribution pick the **highest-leverage rung
+   likely to close the gap**: output-contract repair (prefill / format / parser /
+   schema), tool-access or endpoint-catalog repair, model A/B, prompt / GEPA
+   (automatic prompt evolution), distillation, or RL. Use the cheaper rung first
+   only when evidence says it can solve the attributed failure; skip directly to
+   a stronger model or broader intervention when weak iterations would only
+   delay the answer.
 
 7. **PRIMARY intervention — model A/B via the CLI.** This is the main move:
 

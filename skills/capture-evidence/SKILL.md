@@ -15,14 +15,17 @@ for the workload, or when any core artifact is missing, stale, ambiguous, or
 untrusted.
 
 The OSS loop does not require registration, auth, provider keys, an Understudy
-account, or hosted gateway access. Do the smallest local pass that turns the
-workload into auditable artifacts.
+account, or hosted gateway access. Do a sufficient local pass that turns the
+workload into auditable artifacts and can answer the named decision.
 
 ## Safety Gates
 
-Default to the cheapest path that still reaches an optimization outcome — not to
-zero spend (a skipped improvement has real opportunity cost). Get the
-developer's explicit approval before any upload, hosted run, or provider spend.
+Default to the evidence plan most likely to resolve the decision under the
+developer's constraints, not the cheapest or smallest pass. Make cost, time,
+scope, and expected confidence visible; use
+[`../understudy/reference.md`](../understudy/reference.md) → Outcome-first spend
+posture. Get the developer's explicit approval before any upload, hosted run, or
+provider spend; one approval may cover a named bounded run plan.
 
 Follow the repo public boundary in
 [`../../docs/privacy-and-data-boundaries.md`](../../docs/privacy-and-data-boundaries.md).
@@ -181,7 +184,8 @@ claim savings in this worker. Its job is to make the next validation step
 possible.
 
 If any artifact cannot be created, write down the missing input, the attempted
-local command or inspection, and the next smallest action.
+local command or inspection, and the next action most likely to unblock the
+decision, with its cost and scope.
 
 ## Output Standard
 

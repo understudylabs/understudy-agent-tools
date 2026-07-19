@@ -94,7 +94,7 @@ on-policy state coverage (no exposure-bias gap). Arms O/P here train on teacher 
   curve, not the endpoint.
 - **Orchestration:** smoke budget must exceed arm guards; per-row try/except in data-gen (one
   router 500 shouldn't abort the build); retry serve calls; `caffeinate -i` + JSON checkpoints +
-  cheapest-arm-first for overnight runs.
+  highest-information-arm-first within the approved overnight envelope.
 
 ## Kernels (runnable, in `examples/`)
 

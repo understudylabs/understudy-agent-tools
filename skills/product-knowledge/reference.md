@@ -26,8 +26,8 @@ Understudy optimizes the complete production route, not only a model ID:
 3. Optimize the harness or prompt before escalating to training.
 4. Compare candidate models and suppliers against the incumbent or frontier route.
 5. Train only when the evidence supports it.
-6. Deploy the cheapest route that clears the quality gate, while retaining a control
-   slice and a fallback.
+6. Deploy the route that best satisfies the declared objective and constraints,
+   while retaining a control slice and a fallback.
 
 The route can include the prompt, tools, policy, model, compression, supplier,
 gateway, and deployment shape. Understudy should make the quality, latency, cost,

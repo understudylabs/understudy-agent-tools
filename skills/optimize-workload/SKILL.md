@@ -16,9 +16,12 @@ split-safe.
 
 ## Safety Gates
 
-Default to the cheapest path that still reaches an optimization outcome — not to
-zero spend (a skipped improvement has real opportunity cost). Get the
-developer's explicit approval before any upload, hosted run, or provider spend.
+Default to the intervention with the highest expected progress toward the
+objective under hard constraints, not the cheapest rung. State the expected
+quality gain, time, spend envelope, and evidence before execution; follow
+[`../understudy/reference.md`](../understudy/reference.md) → Outcome-first spend
+posture. Get explicit approval before any upload, hosted run, or provider spend;
+one approval may cover a named bounded optimization plan.
 
 Do not run live provider calls, hosted jobs, model downloads, uploads,
 benchmark submissions, or training without a named surface, capped spend or
@@ -100,14 +103,15 @@ validator kinds in [`reference.md`](reference.md):
 1. Inspect the required artifacts and confirm they describe the same workload.
 2. Re-state the metric, validator, split boundary, incumbent score, latency
    basis, cost basis if available, and failure taxonomy.
-3. Select the cheapest intervention that matches the observed failure mode:
+3. Select the highest-leverage intervention that matches the observed failure mode:
    prompt repair, parser/schema repair, context trimming, route change,
    candidate model comparison, or GEPA. When the complaint is cost (not
    quality) and inputs dominate the bill, check prompt-cache structure first —
    it's often the cheapest lever of all:
    [`references/prompt-cache-optimization.md`](references/prompt-cache-optimization.md).
-   Pick the cheapest *target* that matches
-   the failure too — see [`reference.md`](reference.md) → Optimization-Target
+   Prefer the lowest-cost *target* only among options expected to resolve the
+   failure; do not spend several weak iterations avoiding a stronger model or
+   broader experiment. See [`reference.md`](reference.md) → Optimization-Target
    Menu for the full list. For an agentic workload, treat latency
    and cost per rollout as first-class objectives alongside the rubric score —
    tool-call count, redundant calls, and wasted context are common, optimizable
