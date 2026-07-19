@@ -1,0 +1,13 @@
+{"id":"m-r001-g-1","parents":[],"task_id":"refactor-001","role":"system","content":"You are a coding agent. Rename UserStore to AccountStore across the repo; keep tests green."}
+{"id":"m-r001-g-2","parents":["m-r001-g-1"],"task_id":"refactor-001","role":"assistant","content":"Grepping for UserStore usages across src/."}
+{"id":"m-r001-g-3","parents":["m-r001-g-2"],"task_id":"refactor-001","role":"tool","content":"12 matches in 4 files."}
+{"id":"m-r001-g-4","parents":["m-r001-g-3"],"task_id":"refactor-001","role":"assistant","content":"Applied renames in store.ts, api.ts, hooks.ts, tests. Running test suite."}
+{"id":"m-r001-g-5","parents":["m-r001-g-4"],"task_id":"refactor-001","role":"tool","content":"48 tests passed.","reward":1,"metrics":{"task_completed_correctly":1,"partial_credit":1}}
+{"id":"m-r001-g-4b","parents":["m-r001-g-3"],"task_id":"refactor-001","role":"assistant","content":"Alternative branch: rename only in store.ts first, then re-check.","reward":0,"metrics":{"task_completed_correctly":0,"partial_credit":0.3}}
+{"id":"m-r101-g-1","parents":[],"task_id":"refactor-101","role":"system","content":"Move the pricing module into packages/billing and fix imports."}
+{"id":"m-r101-g-2","parents":["m-r101-g-1"],"task_id":"refactor-101","role":"assistant","content":"Moving files with git mv; updating import paths."}
+{"id":"m-r101-g-3","parents":["m-r101-g-2"],"task_id":"refactor-101","role":"tool","content":"tsc: 6 unresolved imports remain."}
+{"id":"m-r101-g-4","parents":["m-r101-g-3"],"task_id":"refactor-101","role":"assistant","content":"Fixed 4 of 6; ran out of turns.","reward":0,"metrics":{"task_completed_correctly":0,"partial_credit":0.4}}
+{"id":"m-t001-g-1","parents":[],"task_id":"testfix-001","role":"system","content":"tests/order.spec.ts is red: make it pass without weakening the assertion."}
+{"id":"m-t001-g-2","parents":["m-t001-g-1"],"task_id":"testfix-001","role":"assistant","content":"Root cause: rounding in computeTotal. Patched to banker's rounding."}
+{"id":"m-t001-g-3","parents":["m-t001-g-2"],"task_id":"testfix-001","role":"tool","content":"order.spec.ts green. No gold contract for this task; unscored."}
