@@ -153,3 +153,14 @@ Adoption contract:
   (`splits.splits_sha256`, `contamination`). Imported public benchmarks start
   `contamination: "unknown"` with a null `linked_eval` — viewers must render
   both as visible evidence warnings, never as first-class evidence.
+
+## `understudy.benchmark_flag.v1`
+
+[`understudy.benchmark_flag.v1.schema.json`](understudy.benchmark_flag.v1.schema.json)
+is one human quality flag against a benchmark or one of its tasks: reason enum
+(`bad-gold`, `ambiguous`, `leakage`, `too-easy`, `broken-env`, `other`), a
+free-text note, and an `open`/`resolved` status. Flags live as one JSON object
+per line in a `flags.jsonl` file next to the benchmark's `benchmark.json`
+manifest. `task_id: null` flags the whole benchmark. Viewers (e.g.
+`apps/benchmark-hub`) badge flagged units everywhere they appear and let
+leaderboards exclude open-flagged tasks; only `open` flags affect exclusion.
