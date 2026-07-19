@@ -1,12 +1,24 @@
 import Link from "next/link";
 import { notFound } from "next/navigation";
 import { getEntry } from "@/lib/data";
-import { categoryScoreSummary, formatScore } from "@/lib/scores";
+import { categoryScoreSummary, computeLeaderboard, formatScore } from "@/lib/scores";
 import { FlagBadge, OriginBadge, SourceBadge, WarningList, Badge } from "@/components/badges";
 import { FlagForm } from "@/components/flag-form";
 import { Leaderboard } from "@/components/leaderboard";
+import { QualityCostScatter } from "@/components/insights";
+import { CategoryRadar } from "@/components/radar";
+import { VersionTimeline } from "@/components/version-timeline";
 
 export const dynamic = "force-dynamic";
+
+function SectionHeading({ n, title }: { n: string; title: string }) {
+  return (
+    <h2 className="mb-4 flex items-baseline gap-2.5 text-sm font-semibold">
+      <span className="font-mono text-xs font-normal text-stamp">{n}</span>
+      {title}
+    </h2>
+  );
+}
 
 function Panel({ title, children }: { title: string; children: React.ReactNode }) {
   return (
@@ -35,9 +47,18 @@ export default async function BenchmarkDetail({ params }: { params: Promise<{ sl
   const flaggedTaskIds = [...new Set(openFlags.filter((f) => f.task_id).map((f) => f.task_id as string))];
   const benchmarkFlagged = openFlags.some((f) => f.task_id === null);
   const catScores = categoryScoreSummary(m, entry.rows);
+  // All-split summaries for the insights charts (cost/latency aggregate over
+  // the full run; flagged tasks stay excluded like the leaderboard default).
+  const insightSummaries = computeLeaderboard(m, entry.rows, {
+    excludeTaskIds: new Set(flaggedTaskIds),
+    split: "all",
+  });
+  const scoredCategories = m.taxonomy.filter((c) =>
+    insightSummaries.some((s) => (s.categoryDetail[c.category_id]?.rowCount ?? 0) > 0),
+  ).length;
 
   return (
-    <div className="flex flex-col gap-8">
+    <div className="flex flex-col gap-12">
       <div>
         <Link href="/" className="text-xs text-ink-muted hover:text-ink">← all benchmarks</Link>
         <div className="mt-2 flex flex-wrap items-center gap-2">
@@ -62,12 +83,27 @@ export default async function BenchmarkDetail({ params }: { params: Promise<{ sl
       </div>
 
       <section>
-        <h2 className="mb-3 text-sm font-semibold">Leaderboard</h2>
+        <SectionHeading n="01" title="Leaderboard" />
         <Leaderboard manifest={m} rows={entry.rows} flaggedTaskIds={flaggedTaskIds} />
       </section>
 
       <section>
-        <h2 className="mb-3 text-sm font-semibold">Taxonomy</h2>
+        <SectionHeading n="02" title="Insights" />
+        <div className="flex flex-col gap-4">
+          <QualityCostScatter summaries={insightSummaries} />
+          {scoredCategories >= 3 && insightSummaries.length >= 2 && (
+            <CategoryRadar manifest={m} summaries={insightSummaries} />
+          )}
+        </div>
+      </section>
+
+      <section>
+        <SectionHeading n="03" title="Evidence — split-freeze history" />
+        <VersionTimeline versions={entry.versions} />
+      </section>
+
+      <section>
+        <SectionHeading n="04" title="Taxonomy" />
         <div className="grid grid-cols-1 gap-3 md:grid-cols-2">
           {m.taxonomy.map((c) => (
             <div key={c.category_id} className="rounded-lg border border-rule bg-card p-3">
@@ -95,7 +131,7 @@ export default async function BenchmarkDetail({ params }: { params: Promise<{ sl
       </section>
 
       <section>
-        <h2 className="mb-3 text-sm font-semibold">Tasks</h2>
+        <SectionHeading n="05" title="Tasks" />
         <div className="overflow-x-auto rounded-lg border border-rule">
           <table className="w-full border-collapse bg-card text-sm">
             <thead className="border-b border-rule font-mono text-[11px] text-ink-muted">
@@ -130,7 +166,7 @@ export default async function BenchmarkDetail({ params }: { params: Promise<{ sl
 
       {openFlags.length > 0 && (
         <section>
-          <h2 className="mb-3 text-sm font-semibold">Open flags</h2>
+          <SectionHeading n="06" title="Open flags" />
           <div className="flex flex-col gap-2">
             {openFlags.map((f, i) => (
               <div key={i} className="rounded-md border border-bad/30 bg-card px-3 py-2 text-xs">

@@ -42,6 +42,18 @@ export function FlagBadge({ count, resolved }: { count: number; resolved?: boole
   );
 }
 
+const ROUTE_STYLES: Record<string, string> = {
+  local: "text-ok border-ok/40 bg-ok/10",
+  gateway: "text-stamp border-stamp/40 bg-stamp/10",
+  byo: "text-ink-muted border-rule-strong",
+};
+
+/** LiveBench-"open"-style route badge on arm names (local | gateway | byo). */
+export function RouteBadge({ route }: { route: string | null }) {
+  if (!route) return null;
+  return <Badge className={cn("px-1.5 py-0 text-[10px]", ROUTE_STYLES[route] ?? "text-ink-muted")}>{route}</Badge>;
+}
+
 export function WarningList({ warnings, compact }: { warnings: EvidenceWarning[]; compact?: boolean }) {
   if (warnings.length === 0) return null;
   return (

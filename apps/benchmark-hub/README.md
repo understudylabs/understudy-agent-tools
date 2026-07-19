@@ -17,10 +17,23 @@ bun run build      # production check
 - **Hub index (`/`)** — card grid of discovered benchmarks with origin badges
   and first-class evidence warnings (contamination unknown/contaminated, no
   linked production eval, unverified import license, no split discipline).
-- **Benchmark detail (`/b/<slug>`)** — leaderboard (sortable, holdout-default
-  split filter, exclude-flagged toggle), taxonomy with per-category difficulty
-  and score summary, task table, provenance/environment/verifier panels,
-  flagging.
+- **Benchmark detail (`/b/<slug>`)** — numbered sections (01 Leaderboard,
+  02 Insights, 03 Evidence, 04 Taxonomy, 05 Tasks, 06 Open flags):
+  - **Leaderboard** — sortable, holdout-default split filter, exclude-flagged
+    toggle; per-arm **cost / success** (Σ cost ÷ scored rows ÷ mean strict
+    score, div-by-zero guarded) and **p50 latency** columns; category chips
+    that re-scope the view to one category; click a row for an inline
+    per-category strict/dense/row-count breakdown; route badges
+    (local | gateway | byo) from rows' `route`; top-3-per-column shading;
+    `//`-style footnotes stating the formulas in force.
+  - **Insights** — strict score vs cost-per-successful-task scatter (log x)
+    with a step "value frontier" line; zero-cost local arms render in a pinned
+    "≈$0 (local)" gutter band instead of being dropped; toggle x to p50
+    latency. A "Category profile" radar compares 2–3 selected arms across
+    categories (only when ≥3 categories have scored rows).
+  - **Evidence** — horizontal split-freeze timeline from `versions.jsonl`
+    (short `splits_sha256` hash + contamination verdict per dot; current
+    version ringed).
 - **Task inspector (`/b/<slug>/task/<task_id>`)** — manifest entry, eval rows
   across runs/models, and trace-branch drill-down (root-to-leaf message paths
   from `traces*.jsonl`; graceful empty state otherwise).
@@ -42,6 +55,17 @@ Each benchmark is a directory containing:
   rows (one JSON object per line)
 - `traces*.jsonl` — optional message-DAG evidence for the task inspector
 - `flags.jsonl` — optional/created `understudy.benchmark_flag.v1` lines
+- `versions.jsonl` — optional split-freeze history, one
+  `{created_at, splits_sha256, contamination, note}` per line, newest last.
+  **Viewer-side convention for now — candidate for `benchmark.v1.1`** (the
+  schema itself still has a single `splits.splits_sha256`).
+
+Rows may carry `cost` (USD per rollout) and `latency_ms` extension fields —
+`eval_result.v1` allows extra keys. For the real event-categorizer demo run,
+`experiments/benchmark-hub-demo/event-categorizer-starter/enrich-rows.mjs`
+projects these from the raw vf-eval `results.jsonl` (wall-clock timing and
+token_usage × per-MTok pricing: claude-sonnet-4-6 at $3/$15 list; the
+gemma-4-31b-it gateway rate is a documented demo assumption of $0.10/$0.40).
 
 ## Flagging
 
