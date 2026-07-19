@@ -453,22 +453,29 @@ export function RemoteTrainingPanel(props: Props) {
     return (
       <div className="remote-training-confirm">
         <div className="remote-training-confirm-heading">
-          <div><span>Ready</span><strong>{modelName}</strong></div>
-          <small>{plan.artifacts.reduce((sum, artifact) => sum + artifact.row_count, 0).toLocaleString()} examples · {bytes(totalBytes)}{localPreflightMs !== undefined ? ` · ${(localPreflightMs / 1_000).toFixed(2)}s local` : ""}</small>
+          <div><span>Ready</span><strong>{noSpendProof ? "$0 proof" : modelName}</strong></div>
+          <small>{plan.artifacts.reduce((sum, artifact) => sum + artifact.row_count, 0).toLocaleString()} examples</small>
         </div>
-        {backendCompatibility && (
-          <small aria-label="Portable backend recipe">
-            Portable recipe · {backendCompatibility.backends.map((backend) => `${backend.id} ${backend.execution_ready ? "ready" : "gated"}`).join(" · ")}
-          </small>
-        )}
         {backendCompatibilityError && <p className="remote-training-warning">Portable backend check failed: {backendCompatibilityError}</p>}
         <p className="remote-training-consent-summary">
-          Upload {plan.artifacts.length} split files · {noSpendProof ? "$0 provider spend" : `$${plan.maximum_spend_usd.toFixed(2)} max`} · temporary evaluation endpoint auto-deleted
+          Uploads {plan.artifacts.length} split files · {noSpendProof ? "no provider spend" : `$${plan.maximum_spend_usd.toFixed(2)} max`} · deletes the evaluation endpoint
         </p>
         <div className="remote-training-actions">
-          <button type="button" className="btn primary" onClick={start}>{noSpendProof ? "Approve & run $0 proof" : `Approve & train · max $${plan.maximum_spend_usd.toFixed(2)}`}</button>
+          <button type="button" className="btn primary" onClick={start}>{noSpendProof ? "Run proof" : `Train · max $${plan.maximum_spend_usd.toFixed(2)}`}</button>
           <button type="button" className="btn ghost" onClick={goBack}>Cancel</button>
         </div>
+        <details className="remote-training-details">
+          <summary>Details</summary>
+          <small>
+            {modelName} · {bytes(totalBytes)}
+            {localPreflightMs !== undefined ? ` · ${(localPreflightMs / 1_000).toFixed(2)}s local` : ""}
+          </small>
+          {backendCompatibility && (
+            <small aria-label="Portable backend recipe">
+              {backendCompatibility.backends.map((backend) => `${backend.id} ${backend.execution_ready ? "ready" : "gated"}`).join(" · ")}
+            </small>
+          )}
+        </details>
       </div>
     );
   }
@@ -488,12 +495,9 @@ export function RemoteTrainingPanel(props: Props) {
           {run && <button type="button" className="btn ghost" onClick={cancel}>Cancel</button>}
         </div>
         {latestEvent?.eve && latestEvent.eve.decision !== "observe" && (
-          <p>Eve chose to {latestEvent.eve.decision.replace("_", " ")} · {latestEvent.eve.reason_code}</p>
+          <details className="remote-training-details"><summary>Details</summary><small>Eve chose to {latestEvent.eve.decision.replace("_", " ")} · {latestEvent.eve.reason_code}</small></details>
         )}
         {error && <p className="remote-training-warning">{error}</p>}
-        <ol>
-          {events.slice(-4).map((event, index) => <li key={`${event.sequence ?? index}:${event.type ?? event.phase}`}>{event.message}</li>)}
-        </ol>
       </div>
     );
   }

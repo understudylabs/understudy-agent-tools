@@ -1507,13 +1507,6 @@ export function ChatPane({
                 </div>
               ) : trainingRecipe && droppedWorkload ? (
                 <>
-                  <div className="workload-generic-summary">
-                    <strong>{trainingUseCaseLabel(trainingRecipe.detected_use_case)}</strong>
-                    <small>
-                      {trainingRecipe.evidence.total_rows.toLocaleString()} examples · {trainingRecipe.method.toUpperCase()} · {trainingRecipe.evaluator?.replaceAll("_", " ") ?? "evaluator needed"}
-                      {Number.isFinite(trainingRecipe.inspection_duration_ms) ? ` · ${((trainingRecipe.inspection_duration_ms ?? 0) / 1_000).toFixed(2)}s local` : ""}
-                    </small>
-                  </div>
                   <div className="csv-analysis-next">
                     {trainingRecipe.ready ? (
                       remoteRecipePlan ? (
@@ -1526,8 +1519,8 @@ export function ChatPane({
                         />
                       ) : (
                         <div className="remote-training-state" role="status" aria-live="polite">
-                          <strong>Preparing the best-fit recipe</strong>
-                          <small>Splitting and verifying locally. Nothing is uploaded.</small>
+                          <strong>Preparing {trainingUseCaseLabel(trainingRecipe.detected_use_case)}</strong>
+                          <small>Splitting and checking locally.</small>
                         </div>
                       )
                     ) : (

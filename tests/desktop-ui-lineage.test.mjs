@@ -462,8 +462,10 @@ test("desktop has one shared managed-operation notice surface", async () => {
   assert.match(native, /commands::prepare_default_local_model/);
   assert.match(repair, /understudy models runtime repair/);
   assert.match(repair, /understudy runtime repair/);
-  assert.match(repair, /Runtime reconnecting/);
-  assert.match(repair, /Reconnect now/);
+  assert.match(repair, /reconnecting automatically/);
+  assert.match(repair, /if \(reconnecting\) return null/);
+  assert.match(prompt, /automaticRuntimeRepairAttempted/);
+  assert.match(prompt, /conversation_runtime_repair/);
   assert.match(repair, /Reinstall Understudy Desktop/);
   assert.match(repair, /Install update/);
   assert.match(repair, /Automatic update stopped/);

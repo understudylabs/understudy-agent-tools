@@ -37,8 +37,8 @@ test("remote training remains an off-by-default explicit-consent experiment", as
   assert.match(native, /dropped dataset changed after recipe detection/i);
 
   assert.match(panel, /Nothing uploads until you review the exact artifacts and budget/);
-  assert.match(panel, /Upload \{plan\.artifacts\.length\} split files/);
-  assert.match(panel, /temporary evaluation endpoint auto-deleted/);
+  assert.match(panel, /Uploads \{plan\.artifacts\.length\} split files/);
+  assert.match(panel, /deletes the evaluation endpoint/);
   assert.match(panel, /remote_training_poll/);
   assert.match(panel, /cancel_remote_training/);
   assert.match(panel, /start_remote_training/);
@@ -46,8 +46,10 @@ test("remote training remains an off-by-default explicit-consent experiment", as
   assert.match(panel, /compile_remote_training_backends/);
   assert.match(panel, /Portable backend recipe/);
   assert.match(panel, /preparedPlan/);
-  assert.match(panel, /Approve & run \$0 proof/);
-  assert.match(panel, /\$0 provider spend/);
+  assert.match(panel, /Run proof/);
+  assert.doesNotMatch(panel, /Approve & run/);
+  assert.match(panel, /<summary>Details<\/summary>/);
+  assert.match(panel, /no provider spend/);
   assert.doesNotMatch(panel, /type="checkbox"/);
   assert.match(panel, /Where it still fails/);
   assert.match(panel, /understudy\/auto/);
