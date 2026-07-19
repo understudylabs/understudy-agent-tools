@@ -128,3 +128,28 @@ line) and `provenance.eval_results_sha256` is the SHA-256 of that file's bytes
 distinct run ids, split identities, row-level harness/split hashes, and cost
 bases. Skills admit an app export as claim evidence by checking this block;
 see `skills/ramp-and-verify/SKILL.md`.
+
+## `understudy.benchmark.v1`
+
+[`understudy.benchmark.v1.schema.json`](understudy.benchmark.v1.schema.json)
+is the canonical benchmark manifest: a task taxonomy plus seeded task
+instances, bound to one executable environment form (a verifiers-v1
+environment package behind `environment.package_ref`) and one verifier
+contract. Trace-derived, imported (Harbor, AutomationBench, Environments Hub,
+inspect_ai, HF datasets), and hand-authored benchmarks are all first-class in
+the same shape.
+
+Adoption contract:
+
+- The manifest is the durable Understudy-owned artifact; the compiled
+  environment package is disposable and re-targetable. The upstream library
+  pin lives in exactly one place (`environment.verifiers_version_pin`).
+- Runs retain the `traces.jsonl` message DAG as drill-down evidence; each
+  root-to-leaf branch projects to one `understudy.eval_result.v1` row carrying
+  `benchmark_id`, `category_id`, and `trace_ref` as extension fields
+  (`src/benchmark.ts`). Nothing downstream of the projection has to learn
+  DAGs.
+- Split/contamination discipline reuses the `verifier_handoff.v1` contract
+  (`splits.splits_sha256`, `contamination`). Imported public benchmarks start
+  `contamination: "unknown"` with a null `linked_eval` — viewers must render
+  both as visible evidence warnings, never as first-class evidence.
