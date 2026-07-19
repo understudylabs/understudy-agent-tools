@@ -20,6 +20,38 @@ const MAX_MANIFEST_BYTES: u64 = 1_048_576;
 // ceiling would turn a friendly desktop flow into memory pressure.
 const MAX_SPLIT_BYTES: u64 = 150 * 1024 * 1024;
 const MAX_REMOTE_ARTIFACT_BYTES: u64 = 150 * 1024 * 1024;
+const MAX_RECIPE_INSPECTION_BYTES: u64 = 32 * 1024 * 1024;
+
+#[derive(Debug, Clone, Serialize)]
+struct TrainingRecipeEvidence {
+    total_rows: u64,
+    chat_rows: u64,
+    gsm8k_rows: u64,
+    classification_rows: u64,
+    preference_rows: u64,
+    tool_trace_rows: u64,
+    multimodal_rows: u64,
+    invalid_rows: u64,
+}
+
+#[derive(Debug, Clone, Serialize)]
+struct TrainingRecipeInspection {
+    schema_version: String,
+    source_path: String,
+    source_sha256: String,
+    local_only: bool,
+    payload_read: bool,
+    detected_use_case: String,
+    task_kind: String,
+    method: String,
+    evaluator: Option<String>,
+    confidence: String,
+    ready: bool,
+    requires_confirmation: bool,
+    evidence: TrainingRecipeEvidence,
+    reasons: Vec<String>,
+    warnings: Vec<String>,
+}
 
 #[derive(Debug, Clone, Deserialize)]
 struct DatasetManifest {
@@ -241,6 +273,260 @@ pub async fn prepare_remote_classification_training(
     })
     .await
     .map_err(|error| format!("Remote training preparation stopped unexpectedly: {error}"))?
+}
+
+#[tauri::command]
+pub async fn inspect_remote_training_recipe(path: String) -> Result<Value, String> {
+    tauri::async_runtime::spawn_blocking(move || inspect_training_recipe(&path))
+        .await
+        .map_err(|error| format!("Training recipe inspection stopped unexpectedly: {error}"))?
+}
+
+fn inspect_training_recipe(path: &str) -> Result<Value, String> {
+    let canonical = PathBuf::from(path.trim())
+        .canonicalize()
+        .map_err(|_| "The dropped training dataset is unavailable.".to_string())?;
+    let metadata = fs::metadata(&canonical)
+        .map_err(|_| "The dropped training dataset is unavailable.".to_string())?;
+    if !metadata.is_file() {
+        return Err("Choose one JSONL training dataset for recipe detection.".into());
+    }
+    if metadata.len() == 0 || metadata.len() > MAX_RECIPE_INSPECTION_BYTES {
+        return Err("Recipe detection supports JSONL datasets between 1 byte and 32 MB.".into());
+    }
+    let bytes = fs::read(&canonical)
+        .map_err(|_| "The dropped training dataset could not be read locally.".to_string())?;
+    let text = std::str::from_utf8(&bytes)
+        .map_err(|_| "The dropped training dataset must be UTF-8 JSONL.".to_string())?;
+    let mut evidence = TrainingRecipeEvidence {
+        total_rows: 0,
+        chat_rows: 0,
+        gsm8k_rows: 0,
+        classification_rows: 0,
+        preference_rows: 0,
+        tool_trace_rows: 0,
+        multimodal_rows: 0,
+        invalid_rows: 0,
+    };
+    for line in text.lines().filter(|line| !line.trim().is_empty()) {
+        evidence.total_rows += 1;
+        let Ok(row) = serde_json::from_str::<Value>(line) else {
+            evidence.invalid_rows += 1;
+            continue;
+        };
+        let Some(object) = row.as_object() else {
+            evidence.invalid_rows += 1;
+            continue;
+        };
+        if object.get("input").is_some_and(Value::is_string)
+            && object.get("target").is_some_and(Value::is_string)
+        {
+            evidence.classification_rows += 1;
+        }
+        if has_preference_pair(object) {
+            evidence.preference_rows += 1;
+        }
+        let Some(messages) = object.get("messages").and_then(Value::as_array) else {
+            continue;
+        };
+        if !valid_chat_messages(messages) {
+            evidence.invalid_rows += 1;
+            continue;
+        }
+        evidence.chat_rows += 1;
+        if messages.iter().any(message_has_tool_content) {
+            evidence.tool_trace_rows += 1;
+        }
+        if messages.iter().any(message_has_multimodal_content) {
+            evidence.multimodal_rows += 1;
+        }
+        if messages
+            .last()
+            .and_then(Value::as_object)
+            .and_then(|message| message.get("content"))
+            .and_then(Value::as_str)
+            .is_some_and(has_gsm8k_final_answer)
+        {
+            evidence.gsm8k_rows += 1;
+        }
+    }
+    if evidence.total_rows == 0 {
+        return Err("The dropped training dataset has no JSONL rows.".into());
+    }
+
+    let ratio = |count: u64| count as f64 / evidence.total_rows as f64;
+    let (detected_use_case, task_kind, method, evaluator, confidence, ready, reasons) = if ratio(
+        evidence.gsm8k_rows,
+    ) >= 0.8
+    {
+        (
+                "grade_school_math_reasoning",
+                "chat_sft",
+                "sft",
+                Some("gsm8k_final_answer".to_string()),
+                confidence_for_ratio(ratio(evidence.gsm8k_rows)),
+                true,
+                vec!["Most rows are chat examples whose final assistant answer contains a GSM8K-style `####` numeric result.".to_string()],
+            )
+    } else if ratio(evidence.preference_rows) >= 0.8 {
+        (
+            "preference_optimization",
+            "preference_pairs",
+            "dpo",
+            None,
+            confidence_for_ratio(ratio(evidence.preference_rows)),
+            false,
+            vec!["Most rows contain chosen and rejected responses.".to_string()],
+        )
+    } else if ratio(evidence.tool_trace_rows) >= 0.5 {
+        (
+            "agentic_tool_use",
+            "tool_trajectory",
+            "sft_or_rl",
+            None,
+            confidence_for_ratio(ratio(evidence.tool_trace_rows)),
+            false,
+            vec!["The chat examples contain tool calls or tool-role results.".to_string()],
+        )
+    } else if ratio(evidence.multimodal_rows) >= 0.5 {
+        (
+            "vision_language",
+            "multimodal_chat_sft",
+            "sft",
+            None,
+            confidence_for_ratio(ratio(evidence.multimodal_rows)),
+            false,
+            vec!["The chat examples contain structured multimodal content.".to_string()],
+        )
+    } else if ratio(evidence.classification_rows) >= 0.8 {
+        (
+            "text_classification",
+            "text_classification",
+            "sft",
+            Some("exact_label".to_string()),
+            confidence_for_ratio(ratio(evidence.classification_rows)),
+            true,
+            vec!["Most rows contain string input and target fields.".to_string()],
+        )
+    } else if ratio(evidence.chat_rows) >= 0.8 {
+        (
+                "general_chat",
+                "chat_sft",
+                "sft",
+                None,
+                confidence_for_ratio(ratio(evidence.chat_rows)),
+                false,
+                vec!["Most rows use OpenAI-compatible chat messages, but no trustworthy evaluator was detected.".to_string()],
+            )
+    } else {
+        (
+            "unknown",
+            "unknown",
+            "unknown",
+            None,
+            "low".to_string(),
+            false,
+            vec!["The rows do not consistently match a supported training recipe.".to_string()],
+        )
+    };
+    let mut warnings = Vec::new();
+    if evidence.invalid_rows > 0 {
+        warnings.push(format!(
+            "{} row(s) were malformed or had invalid chat messages.",
+            evidence.invalid_rows
+        ));
+    }
+    if !ready {
+        warnings.push(
+            "Understudy needs a task-specific held-out evaluator before this recipe can train or promote a model."
+                .to_string(),
+        );
+    }
+    let inspection = TrainingRecipeInspection {
+        schema_version: "understudy.remote_training.recipe_inspection.v1".to_string(),
+        source_path: canonical.display().to_string(),
+        source_sha256: sha256_bytes(&bytes),
+        local_only: true,
+        payload_read: true,
+        detected_use_case: detected_use_case.to_string(),
+        task_kind: task_kind.to_string(),
+        method: method.to_string(),
+        evaluator,
+        confidence,
+        ready,
+        requires_confirmation: true,
+        evidence,
+        reasons,
+        warnings,
+    };
+    serde_json::to_value(inspection)
+        .map_err(|_| "The training recipe inspection could not be returned.".to_string())
+}
+
+fn confidence_for_ratio(ratio: f64) -> String {
+    if ratio >= 0.95 {
+        "high"
+    } else if ratio >= 0.8 {
+        "medium"
+    } else {
+        "low"
+    }
+    .to_string()
+}
+
+fn valid_chat_messages(messages: &[Value]) -> bool {
+    !messages.is_empty()
+        && messages.iter().all(|message| {
+            let Some(object) = message.as_object() else {
+                return false;
+            };
+            matches!(
+                object.get("role").and_then(Value::as_str),
+                Some("system" | "user" | "assistant" | "tool")
+            ) && (object
+                .get("content")
+                .is_some_and(|content| content.is_string() || content.is_array())
+                || object.contains_key("tool_calls"))
+        })
+        && messages
+            .last()
+            .and_then(Value::as_object)
+            .and_then(|message| message.get("role"))
+            .and_then(Value::as_str)
+            == Some("assistant")
+}
+
+fn has_preference_pair(row: &serde_json::Map<String, Value>) -> bool {
+    (row.get("chosen").is_some() && row.get("rejected").is_some())
+        || (row.get("preferred").is_some() && row.get("non_preferred").is_some())
+}
+
+fn message_has_tool_content(message: &Value) -> bool {
+    let Some(object) = message.as_object() else {
+        return false;
+    };
+    object.get("role").and_then(Value::as_str) == Some("tool")
+        || object.get("tool_calls").is_some_and(Value::is_array)
+}
+
+fn message_has_multimodal_content(message: &Value) -> bool {
+    message
+        .as_object()
+        .and_then(|object| object.get("content"))
+        .is_some_and(Value::is_array)
+}
+
+fn has_gsm8k_final_answer(content: &str) -> bool {
+    let Some((_, suffix)) = content.rsplit_once("####") else {
+        return false;
+    };
+    let answer = suffix.trim().replace(',', "");
+    !answer.is_empty()
+        && answer
+            .strip_prefix('-')
+            .unwrap_or(&answer)
+            .chars()
+            .all(|character| character.is_ascii_digit())
 }
 
 #[tauri::command]
@@ -1276,6 +1562,90 @@ mod tests {
         )
         .unwrap();
         (manifest_path, root)
+    }
+
+    #[test]
+    fn detects_gsm8k_chat_sft_without_uploading() {
+        let root = std::env::temp_dir().join(format!(
+            "understudy-recipe-detection-test-{}-{}",
+            std::process::id(),
+            random_uuid().unwrap()
+        ));
+        fs::create_dir_all(&root).unwrap();
+        let source = root.join("gsm8k.jsonl");
+        let content = (0..10)
+            .map(|index| {
+                serde_json::to_string(&json!({
+                    "messages": [
+                        { "role": "user", "content": format!("What is {index} plus 2?") },
+                        { "role": "assistant", "content": format!("Add two. #### {}", index + 2) }
+                    ]
+                }))
+                .unwrap()
+            })
+            .collect::<Vec<_>>()
+            .join("\n")
+            + "\n";
+        fs::write(&source, content).unwrap();
+
+        let inspection = inspect_training_recipe(source.to_str().unwrap()).unwrap();
+        assert_eq!(
+            inspection.get("detected_use_case").and_then(Value::as_str),
+            Some("grade_school_math_reasoning")
+        );
+        assert_eq!(
+            inspection.get("task_kind").and_then(Value::as_str),
+            Some("chat_sft")
+        );
+        assert_eq!(
+            inspection.get("evaluator").and_then(Value::as_str),
+            Some("gsm8k_final_answer")
+        );
+        assert_eq!(inspection.get("ready").and_then(Value::as_bool), Some(true));
+        assert_eq!(
+            inspection.get("local_only").and_then(Value::as_bool),
+            Some(true)
+        );
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn detects_preference_rows_but_requires_a_backend_evaluator() {
+        let root = std::env::temp_dir().join(format!(
+            "understudy-recipe-detection-test-{}-{}",
+            std::process::id(),
+            random_uuid().unwrap()
+        ));
+        fs::create_dir_all(&root).unwrap();
+        let source = root.join("preferences.jsonl");
+        let content = (0..5)
+            .map(|index| {
+                serde_json::to_string(&json!({
+                    "prompt": format!("Prompt {index}"),
+                    "chosen": "good answer",
+                    "rejected": "bad answer"
+                }))
+                .unwrap()
+            })
+            .collect::<Vec<_>>()
+            .join("\n")
+            + "\n";
+        fs::write(&source, content).unwrap();
+
+        let inspection = inspect_training_recipe(source.to_str().unwrap()).unwrap();
+        assert_eq!(
+            inspection.get("detected_use_case").and_then(Value::as_str),
+            Some("preference_optimization")
+        );
+        assert_eq!(
+            inspection.get("method").and_then(Value::as_str),
+            Some("dpo")
+        );
+        assert_eq!(
+            inspection.get("ready").and_then(Value::as_bool),
+            Some(false)
+        );
+        fs::remove_dir_all(root).unwrap();
     }
 
     #[test]

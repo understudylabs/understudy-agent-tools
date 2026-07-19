@@ -343,6 +343,7 @@ pub fn run() {
             workload_drop::repeat_local_classification_evaluation,
             workload_drop::export_local_classification_predictions,
             remote_training::remote_training_capabilities,
+            remote_training::inspect_remote_training_recipe,
             remote_training::prepare_remote_classification_training,
             remote_training::existing_remote_classification_training,
             remote_training::start_remote_classification_training,
