@@ -154,12 +154,20 @@ models by public id.
    understudy models list --json
    ```
 
-2. Ensure the eval workload has **no route configured**. A route dialed to 0%
-   still counts as configured and prevents request-time catalog resolution.
+2. Ensure the eval workload exists on the gateway, then has **no route
+   configured**. A route dialed to 0% still counts as configured and prevents
+   request-time catalog resolution. Register from the local card if needed,
+   then clear:
 
    ```sh
-   understudy workloads route <workload-id> --project-id <project-id> --clear
+   understudy workloads create --project-id <project-id> \
+     --from-card .understudy/workload-discovery/workload-card.json
+   understudy workloads route <workload-name> --project-id <project-id> --clear
    ```
+
+   Use the card's `workload_name` when set, otherwise its `workload_id`, as
+   `<workload-name>`. Skip create if `understudy workloads list` already shows
+   that name.
 
 3. Run the frozen eval once per catalog model by changing only the request-body
    `model` value. Send `x-understudy-project` and `x-understudy-workload` on
@@ -223,26 +231,39 @@ comparing a workload's quality and cost across the split.
    only if the headers are absent. Exclude runs where the requested and
    effective models disagree.
 
-2. Route a workload to a model at a traffic percentage — a per-request split
-   where that share goes to the routed model and the rest stays on passthrough.
-   Pick a bounded share (e.g. 30%) to keep the comparison small.
+2. Register the local workload card on the gateway if it is not already there.
+   A local `workload-card.json` is only on disk until create runs — routing a
+   card id that was never registered returns not-found.
 
    ```sh
-   understudy workloads route <workload-id> --project-id <project-id> --model-id gemma-4-12b --traffic-pct 30
+   understudy workloads create --project-id <project-id> \
+     --from-card .understudy/workload-discovery/workload-card.json
+   ```
+
+   Skip create when `understudy workloads list` already shows the card's
+   `workload_name` (or `workload_id` when name is null).
+
+3. Route a workload to a model at a traffic percentage — a per-request split
+   where that share goes to the routed model and the rest stays on passthrough.
+   Pick a bounded share (e.g. 30%) to keep the comparison small. Use the same
+   name create used (card `workload_name` or `workload_id`):
+
+   ```sh
+   understudy workloads route <workload-name> --project-id <project-id> --model-id gemma-4-12b --traffic-pct 30
    ```
 
    Clearing the route (`--clear` in place of the model/traffic flags) returns the
    workload to full passthrough. The hosted split semantics are documented at
    [docs.understudylabs.com/concepts/routing](https://docs.understudylabs.com/concepts/routing).
 
-3. Run the eval through the gateway so the routed model serves its share. Any
+4. Run the eval through the gateway so the routed model serves its share. Any
    local command works; an eval harness like a verifiers `vf-eval` run is typical.
 
    ```sh
    understudy run -- vf-eval <eval-id>
    ```
 
-4. Prerequisite for a frontier comparison. For the split to compare the routed
+5. Prerequisite for a frontier comparison. For the split to compare the routed
    model against a frontier model, the non-routed (passthrough) share must have a
    configured managed provider key or BYO key; the managed catalog only resolves
    on no-route workloads. Without passthrough credentials, those non-routed
