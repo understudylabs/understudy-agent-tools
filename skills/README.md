@@ -232,11 +232,13 @@ shows headroom, no hosted RL until the local arms plateau.
 
 ## Public Safety
 
-Default to the cheapest path that still reaches an optimization outcome — not to
-zero spend (a skipped improvement has real opportunity cost). Get explicit
-approval before any upload, hosted run, or provider spend. Public examples
-should use synthetic fixtures, local `.understudy/` artifacts, public provider
-docs, or public open-source projects.
+Default to the path with the highest expected progress toward the stated
+objective under hard constraints, with spend, time, data scope, and expected
+evidence visible. Do not silently choose the weakest model, smallest cohort, or
+narrowest intervention because it is cheap. Get explicit approval before any
+upload, hosted run, or provider spend; one approval may cover a named bounded
+plan. Public examples should use synthetic fixtures, local `.understudy/`
+artifacts, public provider docs, or public open-source projects.
 
 Do not include customer names, domains, raw prompts, raw completions, traces,
 secrets, private notes, internal runbooks, or hosted-control details in public

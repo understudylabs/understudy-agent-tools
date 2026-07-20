@@ -140,18 +140,20 @@ Write capture artifacts under a local path such as
 
 ## Workflow 2 — Deploy and compare
 
-Goal: ship the smallest viable improvement through the inference layer, prove it
-against the baseline, and make rollback and any regression obvious. Confirmation
-rules below apply to every upload, spend, credential, deploy, or route change.
+Goal: ship the smallest coherent improvement that fully addresses the measured
+cause through the inference layer, prove it against the baseline, and make
+rollback and any regression obvious. Confirmation rules below apply to every
+upload, spend, credential, deploy, or route change.
 
 1. **Keep the baseline reproducible.** Pin the incumbent route, the frozen eval
    split, and the captured baseline metrics before changing anything. Reuse the
    `capture-evidence` `baseline.json` contract so the comparison is hash-bound to
    the same harness, metric, and splits.
-2. **Apply the smallest viable change.** Prefer a config or route change over
-   editing hardcoded call sites: a model swap, a routed traffic split, a prompt
-   variant, or a parser fix is usually enough. Editing call sites directly is the
-   last resort and must be reversible.
+2. **Apply the smallest coherent change that solves the cause.** Prefer a config
+   or route change over editing hardcoded call sites when it is sufficient: a
+   model swap, routed traffic split, prompt variant, or parser fix may be enough.
+   Do not preserve an incomplete fix merely to minimize diff size. Editing call
+   sites directly is the last resort and must be reversible.
 3. **Register / route the improved behavior through the inference layer.** Use
    the workloads route API to send a bounded share of traffic to the improved
    model. The app keeps calling the normal gateway path; the control-plane route

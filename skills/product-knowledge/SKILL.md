@@ -7,7 +7,8 @@ description: Use when a user asks what Understudy is, how Understudy Desktop wor
 
 Explain Understudy as local-first infrastructure for improving LLM systems from real work:
 capture traces, run evals, compare model routes, optimize prompts or policies, and promote
-the cheapest route that meets the quality gate.
+the route that best meets the developer's objective across quality, reliability,
+latency, cost, and constraints.
 
 Use this skill for product explanations, onboarding copy, agent-facing help, and UI feature
 descriptions. Keep the answer concrete and tied to product surfaces the user can inspect.
