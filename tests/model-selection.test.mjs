@@ -7,15 +7,15 @@ const cloud = "cloud:glm-5.2";
 const local = "local:7";
 const anthropic = "anthropic:claude-opus";
 
-test("an automatic cold-start cloud fallback yields to the first warm local model", () => {
+test("signed-in GLM remains the automatic first choice when local models are warm", () => {
   assert.deepEqual(
     resolveChatModelSelection({
-      currentId: cloud,
+      currentId: local,
       choiceIds: [local, cloud],
-      preferredLocalId: local,
+      preferredActiveId: cloud,
       userSelected: false,
     }),
-    { selectedId: local, userSelected: false },
+    { selectedId: cloud, userSelected: false },
   );
 });
 
@@ -25,7 +25,7 @@ test("an explicit cloud or Anthropic choice remains sticky while local models re
       resolveChatModelSelection({
         currentId: selectedId,
         choiceIds: [local, cloud, anthropic],
-        preferredLocalId: local,
+        preferredActiveId: cloud,
         userSelected: true,
       }),
       { selectedId, userSelected: true },
@@ -38,19 +38,31 @@ test("a disappeared explicit route falls back safely and releases the sticky cho
     resolveChatModelSelection({
       currentId: "local:missing",
       choiceIds: [local, cloud],
-      preferredLocalId: local,
+      preferredActiveId: cloud,
       userSelected: true,
+    }),
+    { selectedId: cloud, userSelected: false },
+  );
+});
+
+test("the strongest warm local model is the automatic fallback without a signed-in gateway", () => {
+  assert.deepEqual(
+    resolveChatModelSelection({
+      currentId: cloud,
+      choiceIds: [local, cloud],
+      preferredActiveId: local,
+      userSelected: false,
     }),
     { selectedId: local, userSelected: false },
   );
 });
 
-test("cloud remains the automatic fallback while no local model is warm", () => {
+test("the first catalog route is used when no preferred route is active", () => {
   assert.deepEqual(
     resolveChatModelSelection({
-      currentId: cloud,
+      currentId: "local:missing",
       choiceIds: [cloud],
-      preferredLocalId: null,
+      preferredActiveId: null,
       userSelected: false,
     }),
     { selectedId: cloud, userSelected: false },

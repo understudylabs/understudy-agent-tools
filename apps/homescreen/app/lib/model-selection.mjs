@@ -1,19 +1,20 @@
 /**
- * Resolve Chat's selected model while residency catches up after launch.
- * Automatic cloud fallback is temporary; an explicit human choice is sticky.
+ * Resolve Chat's selected model while the active route catalog catches up.
+ * The client supplies its strongest usable route; an explicit human choice is
+ * sticky for as long as that route remains active.
  */
 export function resolveChatModelSelection({
   currentId,
   choiceIds,
-  preferredLocalId,
+  preferredActiveId,
   userSelected,
 }) {
   const currentExists = Boolean(currentId && choiceIds.includes(currentId));
   if (userSelected && currentExists) {
     return { selectedId: currentId, userSelected: true };
   }
-  if (preferredLocalId && choiceIds.includes(preferredLocalId)) {
-    return { selectedId: preferredLocalId, userSelected: false };
+  if (preferredActiveId && choiceIds.includes(preferredActiveId)) {
+    return { selectedId: preferredActiveId, userSelected: false };
   }
   if (currentExists) {
     return { selectedId: currentId, userSelected: false };

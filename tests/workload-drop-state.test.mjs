@@ -5,6 +5,7 @@ import {
   INITIAL_WORKLOAD_DROP_PHASE,
   isWorkloadDropBusy,
   shouldInspectDroppedTable,
+  shouldInspectStructuredDataset,
   shouldInspectTrainingRecipe,
   workloadDropPersonaState,
   workloadDropReducer,
@@ -61,8 +62,8 @@ test("explicit CSV inspection is a truthful thinking phase", () => {
   assert.equal(isWorkloadDropBusy(phase), true);
   assert.equal(workloadDropPersonaState(phase), "thinking");
   assert.deepEqual(workloadDropStatus(phase), {
-    title: "Inspecting training data",
-    detail: "Reading this table locally · source rows will not be copied",
+    title: "Analyzing this dataset",
+    detail: "Decoding locally · Pi receives the content needed to infer the task",
   });
   phase = workloadDropReducer(phase, { type: "inspection_succeeded" });
   assert.equal(phase, "ready");
@@ -106,8 +107,18 @@ test("extensionless and common delimited files enter local table inspection", ()
   }), false);
 });
 
-test("JSONL drops enter local training recipe inspection", () => {
-  for (const source_name of ["gsm8k.jsonl", "preferences.ndjson"]) {
+test("structured datasets and workbooks enter Pi dataset inspection", () => {
+  for (const source_name of [
+    "gsm8k.json",
+    "gsm8k.jsonl",
+    "preferences.ndjson",
+    "training.xls",
+    "training.xlsx",
+    "training.xlsb",
+    "training.xlsm",
+    "training.ods",
+  ]) {
+    assert.equal(shouldInspectStructuredDataset({ source_name, source_type: "file" }), true);
     assert.equal(shouldInspectTrainingRecipe({ source_name, source_type: "file" }), true);
   }
   assert.equal(shouldInspectTrainingRecipe({ source_name: "dataset.csv", source_type: "file" }), false);

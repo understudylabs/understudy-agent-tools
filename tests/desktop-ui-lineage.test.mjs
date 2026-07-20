@@ -309,7 +309,7 @@ test("chat archive is reversible, excludes active history, and never deletes row
   assert.match(native, /commands::chat_sessions_archive_all/);
 });
 
-test("cold-start cloud fallback yields to local without overriding a human choice", async () => {
+test("automatic model selection follows the strongest active route without overriding a human choice", async () => {
   const [chat, selection] = await Promise.all([
     readFile(chatPath, "utf8"),
     readFile(modelSelectionPath, "utf8"),
@@ -319,7 +319,7 @@ test("cold-start cloud fallback yields to local without overriding a human choic
   assert.match(chat, /resolveChatModelSelection/);
   assert.match(chat, /selectedModelUserOwned\.current = true/);
   assert.match(selection, /if \(userSelected && currentExists\)/);
-  assert.match(selection, /preferredLocalId/);
+  assert.match(selection, /preferredActiveId/);
 });
 
 test("desktop omits the always-on-top pin and its capability", async () => {
@@ -620,7 +620,7 @@ test("desktop compiles one dropped path through the bounded public CLI", async (
   assert.match(dropState, /BUSY_PHASES\.has\(phase\)[\s\S]*return "thinking"/);
   assert.match(dropState, /One file or folder · stays on this Mac/);
   assert.match(dropState, /Indexing metadata locally · contents remain unread/);
-  assert.match(dropState, /Reading this table locally · source rows will not be copied/);
+  assert.match(dropState, /Decoding locally · Pi receives the content needed to infer the task/);
   assert.match(dropState, /Writing deterministic train, dev, and holdout examples on this Mac/);
   assert.match(css, /\.persona-stage\.workload-drop-active::before/);
   assert.match(css, /@keyframes workload-intake-ring/);

@@ -1409,44 +1409,49 @@ pub async fn agent_chat(
     }
 }
 
-/// One content-only local Pi turn for metadata analysis. Unlike the general
-/// agent surface this deliberately exposes no tools or executor URL, so a
-/// background proposal lane cannot create filesystem, shell, or live effects.
+/// One content-only Pi turn for dataset analysis. Unlike the general agent
+/// surface this deliberately exposes no tools or executor URL, so a dropped
+/// dataset cannot turn analysis into filesystem, shell, or live effects.
 pub async fn agent_metadata_chat(
     app: &AppHandle,
     mgr: &Residency,
-    slot_id: u32,
+    route: &str,
+    model: Option<&str>,
+    slot_id: Option<u32>,
     session_id: &str,
     prompt: &str,
     max_tokens: u32,
 ) -> Result<BenchmarkChatResult, String> {
     let max_tokens = max_tokens.clamp(1, CHAT_MAX_TOKENS);
     let run_id = crate::conversation_runtime::new_run_id()?;
-    let (port, model_field) = mgr
-        .endpoint(slot_id)
-        .ok_or_else(|| format!("slot {slot_id} is not warm; warm it first"))?;
+    let binding = match route {
+        "cloud" => cloud_route_binding()
+            .ok_or_else(|| "GLM 5.2 requires an active Understudy sign-in.".to_string())?,
+        "anthropic" => anthropic_route_binding(
+            app,
+            model.ok_or_else(|| {
+                "The selected Anthropic route is missing its model id.".to_string()
+            })?,
+        )?,
+        "local" => local_route_binding("local", mgr, slot_id)?,
+        _ => return Err("The selected dataset analysis route is not supported.".into()),
+    };
     let messages = vec![ChatMsg {
         role: "user".to_string(),
         content: prompt.to_string(),
         attachments: vec![],
     }];
     let outbound = vec![
-        json!({ "role": "system", "content": system_prompt_for(&model_field) }),
+        json!({ "role": "system", "content": system_prompt_for(&binding.model_field) }),
         json!({ "role": "user", "content": prompt }),
     ];
-    let binding = RouteBinding {
-        route: "local".to_string(),
-        url: format!("http://127.0.0.1:{port}/v1/chat/completions"),
-        bearer: None,
-        model_field,
-    };
     let mut request = sidecar_run_request(
         app,
         &messages,
         &outbound,
         &binding,
         None,
-        Some(slot_id),
+        (binding.route == "local").then_some(slot_id).flatten(),
         (session_id, &run_id),
     )?;
     request["tools"] = json!([]);

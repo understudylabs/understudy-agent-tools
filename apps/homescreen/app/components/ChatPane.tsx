@@ -73,7 +73,7 @@ import {
   INITIAL_WORKLOAD_DROP_PHASE,
   isWorkloadDropBusy,
   shouldInspectDroppedTable,
-  shouldInspectTrainingRecipe,
+  shouldInspectStructuredDataset,
   workloadDropPersonaState,
   workloadDropReducer,
   workloadDropStatus,
@@ -194,6 +194,15 @@ type TrainingRecipeInspection = {
   source_sha256: string;
   local_only: true;
   payload_read: true;
+  source_format: string;
+  artifact_kind: "dataset" | "benchmark_report";
+  field_names: string[];
+  benchmark: {
+    dataset_name: string;
+    model_name: string | null;
+    score: number;
+    evaluated_examples: number;
+  } | null;
   detected_use_case: string;
   recipe_id: string | null;
   task_kind: string;
@@ -212,6 +221,9 @@ type TrainingRecipeInspection = {
     tool_trace_rows: number;
     multimodal_rows: number;
     invalid_rows: number;
+    duplicate_input_rows: number;
+    conflicting_target_rows: number;
+    unique_target_count: number;
   };
   reasons: string[];
   warnings: string[];
@@ -254,13 +266,24 @@ type TrainingGoalCard = {
 };
 type PiEnvironmentArchitectResult = {
   schema_version: "understudy.environment_architect.pi_result.v1";
-  status: "needs_verifier";
+  status: "analyzed";
   proposal_path: string;
   runtime_backend: "pi";
-  local_only: true;
-  remote_content_shared: false;
+  analysis_route: "cloud" | "anthropic" | "local";
+  analysis_model: string;
+  dataset_summary: string;
+  target_goal: string;
+  source_file_local: true;
+  remote_content_shared: boolean;
   executable: false;
-  blocker: string;
+  next_step: string;
+};
+type PiDatasetAnalysisEvent = {
+  type: "phase";
+  phase: "profiling" | "inferring" | "designing" | "complete";
+  current: number;
+  total: number;
+  message: string;
 };
 type ClassificationDataset = {
   schema_version: "understudy.capture_import.classification_dataset.v2";
@@ -363,9 +386,24 @@ function compactBytes(bytes: number): string {
   return `${(bytes / (1_024 * 1_024)).toFixed(1)} MB`;
 }
 
+function localModelCapabilityScore(choice: LocalModelChoice): number {
+  const sizes = Array.from(choice.modelId.matchAll(/(?:^|[^0-9])(\d+(?:\.\d+)?)b(?:[^a-z0-9]|$)/gi))
+    .map((match) => Number.parseFloat(match[1]))
+    .filter(Number.isFinite);
+  if (sizes.length > 0) return Math.max(...sizes);
+  return ({
+    "understudy-small": 2,
+    "understudy-balanced": 4,
+    "understudy-quality": 12,
+    "understudy-fast": 26,
+  } as Record<string, number>)[choice.label.toLowerCase()] ?? 0;
+}
+
 function trainingUseCaseLabel(useCase: string): string {
   return ({
     grade_school_math_reasoning: "Grade-school math reasoning",
+    model_evaluation: "Model evaluation report",
+    tabular_analysis: "Tabular prediction",
     preference_optimization: "Preference optimization",
     agentic_tool_use: "Agent and tool use",
     vision_language: "Vision-language tuning",
@@ -385,19 +423,20 @@ function AutomaticGoalCard({
   inspection,
   card,
   architect,
-  localArchitectAvailable,
+  architectProgress,
 }: {
   inspection: TrainingRecipeInspection;
   card: TrainingGoalCard | null;
   architect: PiEnvironmentArchitectResult | null;
-  localArchitectAvailable: boolean;
+  architectProgress: PiDatasetAnalysisEvent | null;
 }) {
+  const benchmark = inspection.benchmark;
   const planned = proposedSplitCounts(inspection.evidence.total_rows);
   const splits = card?.splits ?? { ...planned, strategy: "deterministic 70/15/15 proposal", hash: "pending" };
   const evaluator = card?.evaluator ?? inspection.evaluator ?? "Needs a verifier";
   const environmentStatus = card?.environment.status
     ?? architect?.status
-    ?? (inspection.ready ? "proposed" : "needs_verifier");
+    ?? (architectProgress ? "analyzing" : inspection.ready ? "proposed" : "queued");
   return (
     <section className="automatic-goal-card" aria-label="Automatic pre-run Goal Card">
       <div className="automatic-goal-card-heading">
@@ -409,10 +448,10 @@ function AutomaticGoalCard({
       </div>
       <dl className="automatic-goal-card-grid">
         <div><dt>Evaluator</dt><dd>{evaluator}</dd></div>
-        <div><dt>{card ? "Frozen split" : "Planned split"}</dt><dd>{splits.train} train · {splits.validation} validation · {splits.heldout} held-out</dd></div>
-        <div><dt>Promotion</dt><dd>{card ? `≥ ${(card.promotion.minimum_accuracy * 100).toFixed(0)}% · +${(card.promotion.minimum_improvement_over_base * 100).toFixed(0)} pts` : "Blocked until verifier passes"}</dd></div>
-        <div><dt>Backend</dt><dd>{card?.backend.compatible.join(", ") || "Compatibility pending"}</dd></div>
-        <div><dt>Boundary</dt><dd>Local-only · no upload · held-out targets hidden</dd></div>
+        <div><dt>{benchmark ? "Evidence" : card ? "Frozen split" : "Planned split"}</dt><dd>{benchmark ? `${benchmark.evaluated_examples} evaluated · ${(benchmark.score * 100).toFixed(1)}% score` : `${splits.train} train · ${splits.validation} validation · ${splits.heldout} held-out`}</dd></div>
+        <div><dt>Promotion</dt><dd>{benchmark ? "Evaluation imported · training examples still needed" : card ? `≥ ${(card.promotion.minimum_accuracy * 100).toFixed(0)}% · +${(card.promotion.minimum_improvement_over_base * 100).toFixed(0)} pts` : "Pi is designing the verifier"}</dd></div>
+        <div><dt>Backend</dt><dd>{benchmark ? "Evaluation evidence" : card?.backend.compatible.join(", ") || "Compatibility pending"}</dd></div>
+        <div><dt>Analysis</dt><dd>{architect ? `${architect.analysis_model} · ${architect.remote_content_shared ? "content shared" : "on-device"}` : architectProgress?.message ?? "Queued for Pi"}</dd></div>
         <div><dt>Envelope</dt><dd>{card ? `${card.runtime.maximum_seconds}s · $${card.cost.maximum_usd.toFixed(2)} max` : "$0 · no run approved"}</dd></div>
       </dl>
       {card && card.training_preview.length > 0 && (
@@ -427,13 +466,20 @@ function AutomaticGoalCard({
           ))}
         </details>
       )}
-      {!inspection.ready && (
+      {architectProgress && architectProgress.phase !== "complete" ? (
         <p className="automatic-goal-card-note">
-          {architect
-            ? `Canonical Pi drafted a local proposal. ${architect.blocker}`
-            : localArchitectAvailable
-              ? "Canonical Pi is drafting an environment proposal from metadata only; deterministic checks still own execution."
-              : "A warm local model can draft the environment proposal. Remote models will not receive dropped content without explicit consent."}
+          {architectProgress.message} · {architectProgress.current} of {architectProgress.total}
+        </p>
+      ) : architect ? (
+        <p className="automatic-goal-card-note">
+          <strong>{architect.target_goal}</strong> {architect.dataset_summary}
+        </p>
+      ) : !inspection.ready ? (
+        <p className="automatic-goal-card-note">Pi is queued to analyze the dataset and design its verifier.</p>
+      ) : null}
+      {inspection.evidence.duplicate_input_rows > 0 && (
+        <p className="automatic-goal-card-note">
+          Data cleanup · {inspection.evidence.duplicate_input_rows} repeated inputs grouped · {inspection.evidence.conflicting_target_rows} conflicting rows excluded
         </p>
       )}
     </section>
@@ -584,6 +630,7 @@ export function ChatPane({
   const [remoteRecipePlan, setRemoteRecipePlan] = useState<RemotePlan | null>(null);
   const [trainingGoalCard, setTrainingGoalCard] = useState<TrainingGoalCard | null>(null);
   const [environmentArchitect, setEnvironmentArchitect] = useState<PiEnvironmentArchitectResult | null>(null);
+  const [environmentArchitectProgress, setEnvironmentArchitectProgress] = useState<PiDatasetAnalysisEvent | null>(null);
   const [recipeBackend, setRecipeBackend] = useState<"local" | "managed">("local");
   const [recipeLocalAvailable, setRecipeLocalAvailable] = useState(false);
   const [mappingInputColumns, setMappingInputColumns] = useState<string[]>([]);
@@ -662,6 +709,7 @@ export function ChatPane({
     setRemoteRecipePlan(null);
     setTrainingGoalCard(null);
     setEnvironmentArchitect(null);
+    setEnvironmentArchitectProgress(null);
     setRecipeBackend("local");
     setRecipeLocalAvailable(false);
     setMappingInputColumns([]);
@@ -699,6 +747,7 @@ export function ChatPane({
     setTrainingRecipe(result);
     setTrainingGoalCard(null);
     setEnvironmentArchitect(null);
+    setEnvironmentArchitectProgress(null);
     dispatchDrop({ type: "inspection_succeeded" });
   };
 
@@ -888,15 +937,26 @@ export function ChatPane({
         if (slot?.active && slot.thinking === pending.thinking) return null;
         return pending;
       });
-      const next = [...local, CLOUD_MODEL, ...anthropic];
+      const cloudChoice: ModelChoice = {
+        ...CLOUD_MODEL,
+        active: Boolean(accountStatus.signed_in),
+      };
+      const next = [cloudChoice, ...local, ...anthropic];
       setChoices((current) =>
         JSON.stringify(current) === JSON.stringify(next) ? current : next,
       );
       setSelectedModel((current) => {
+        const activeChoices = next.filter((choice) => choice.active);
+        const strongestLocal = local
+          .filter((choice) => choice.active)
+          .sort((left, right) => localModelCapabilityScore(right) - localModelCapabilityScore(left))[0];
+        const preferredActiveId = accountStatus.signed_in
+          ? CLOUD_MODEL.id
+          : strongestLocal?.id ?? anthropic[0]?.id ?? null;
         const resolved = resolveChatModelSelection({
           currentId: current,
-          choiceIds: next.map((choice) => choice.id),
-          preferredLocalId: local[0]?.id ?? null,
+          choiceIds: activeChoices.map((choice) => choice.id),
+          preferredActiveId,
           userSelected: selectedModelUserOwned.current,
         });
         selectedModelUserOwned.current = resolved.userSelected;
@@ -993,8 +1053,8 @@ export function ChatPane({
             if (disposed || dropRequestGeneration.current !== requestGeneration) return;
             setDroppedWorkload(result);
             const inspectTable = shouldInspectDroppedTable(result);
-            const inspectRecipe = shouldInspectTrainingRecipe(result);
-            if (inspectRecipe) {
+            const inspectStructured = shouldInspectStructuredDataset(result);
+            if (inspectStructured) {
               dispatchDrop({ type: "inspection_started" });
               await inspectTrainingRecipe(result, requestGeneration);
             } else if (inspectTable) {
@@ -1158,37 +1218,91 @@ export function ChatPane({
   );
 
   useEffect(() => {
+    const evidence = trainingRecipe
+      ? {
+          sourceSha256: trainingRecipe.source_sha256,
+          detectedUseCase: trainingRecipe.detected_use_case,
+          taskKind: trainingRecipe.task_kind,
+          evaluator: trainingRecipe.evaluator,
+          totalRows: trainingRecipe.evidence.total_rows,
+          sourceFormat: trainingRecipe.source_format,
+          artifactKind: trainingRecipe.artifact_kind,
+          fieldNames: trainingRecipe.field_names,
+        }
+      : csvInspection
+        ? {
+            sourceSha256: csvInspection.source_sha256,
+            detectedUseCase: csvInspection.recommended_mapping.label_column ? "classification" : "tabular_analysis",
+            taskKind: csvInspection.recommended_mapping.label_column ? "text_classification" : "tabular_dataset",
+            evaluator: csvInspection.recommended_mapping.label_column ? "exact_label" : null,
+            totalRows: csvInspection.row_count,
+            sourceFormat: droppedWorkload?.source_name.split(".").pop()?.toLowerCase() ?? "delimited_text",
+            artifactKind: "dataset",
+            fieldNames: csvInspection.columns.map((column) => column.name),
+          }
+        : null;
+    const routeReady = selectedChoice.route === "cloud"
+      ? gatewaySignedIn === true
+      : selectedChoice.route === "local"
+        ? selectedChoice.active && selectedChoice.slotId != null
+        : selectedChoice.active;
+    const analysisModel = selectedChoice.route === "cloud"
+      ? "glm-5.2"
+      : selectedChoice.route === "anthropic"
+        ? selectedChoice.id.replace(/^anthropic:/, "")
+        : selectedChoice.modelId;
+    const attemptKey = evidence ? `${evidence.sourceSha256}:${selectedChoice.id}` : null;
     if (
       !droppedWorkload
-      || !trainingRecipe
-      || trainingRecipe.ready
+      || !evidence
       || environmentArchitect
-      || environmentArchitectAttempted.current === trainingRecipe.source_sha256
-      || selectedChoice.route !== "local"
-      || !selectedChoice.active
-      || dropInFlight.current
+      || !attemptKey
+      || environmentArchitectAttempted.current === attemptKey
+      || !routeReady
     ) return;
-    environmentArchitectAttempted.current = trainingRecipe.source_sha256;
-    const requestGeneration = dropRequestGeneration.current;
+    environmentArchitectAttempted.current = attemptKey;
+    const channel = new Channel<PiDatasetAnalysisEvent>();
+    channel.onmessage = (event) => {
+      if (environmentArchitectAttempted.current === attemptKey) {
+        setEnvironmentArchitectProgress(event);
+      }
+    };
+    setEnvironmentArchitectProgress({
+      type: "phase",
+      phase: "profiling",
+      current: 0,
+      total: 4,
+      message: "Starting Pi dataset analysis",
+    });
     void invoke<PiEnvironmentArchitectResult>("propose_training_environment_with_pi", {
       sourcePath: droppedWorkload.source_path,
       artifactRoot: droppedWorkload.artifact_root,
-      expectedSourceSha256: trainingRecipe.source_sha256,
+      expectedSourceSha256: evidence.sourceSha256,
+      route: selectedChoice.route,
+      model: analysisModel,
       slotId: selectedChoice.slotId,
-      detectedUseCase: trainingRecipe.detected_use_case,
-      taskKind: trainingRecipe.task_kind,
-      evaluator: trainingRecipe.evaluator,
-      totalRows: trainingRecipe.evidence.total_rows,
+      detectedUseCase: evidence.detectedUseCase,
+      taskKind: evidence.taskKind,
+      evaluator: evidence.evaluator,
+      totalRows: evidence.totalRows,
+      sourceFormat: evidence.sourceFormat,
+      artifactKind: evidence.artifactKind,
+      fieldNames: evidence.fieldNames,
+      onEvent: channel,
     })
       .then((result) => {
-        if (dropRequestGeneration.current === requestGeneration) setEnvironmentArchitect(result);
+        if (environmentArchitectAttempted.current === attemptKey) {
+          setEnvironmentArchitect(result);
+          setEnvironmentArchitectProgress(null);
+        }
       })
       .catch((cause) => {
-        if (dropRequestGeneration.current === requestGeneration) {
-          setNotice(`The local environment architect could not finish: ${String(cause)}`);
+        if (environmentArchitectAttempted.current === attemptKey) {
+          setEnvironmentArchitectProgress(null);
+          setNotice(`Pi dataset analysis could not finish: ${String(cause)}`);
         }
       });
-  }, [droppedWorkload, environmentArchitect, selectedChoice, trainingRecipe]);
+  }, [csvInspection, droppedWorkload, environmentArchitect, gatewaySignedIn, selectedChoice, trainingRecipe]);
 
   const send = async (text: string, files: FileUIPart[] = []) => {
     const clean = text.trim();
@@ -1736,7 +1850,7 @@ export function ChatPane({
                     inspection={trainingRecipe}
                     card={trainingGoalCard}
                     architect={environmentArchitect}
-                    localArchitectAvailable={selectedChoice.route === "local" && selectedChoice.active}
+                    architectProgress={environmentArchitectProgress}
                   />
                   <div className="csv-analysis-next">
                     {trainingRecipe.ready ? (
@@ -1775,7 +1889,7 @@ export function ChatPane({
                         </div>
                       )
                     ) : (
-                      <p>{trainingRecipe.warnings[0]}</p>
+                      <p>{environmentArchitectProgress?.message ?? environmentArchitect?.next_step ?? trainingRecipe.reasons[0]}</p>
                     )}
                   </div>
                   {!localTrainingActive && (
@@ -1786,6 +1900,17 @@ export function ChatPane({
                 </>
               ) : csvInspection && droppedWorkload ? (
                 <>
+                  {environmentArchitectProgress && environmentArchitectProgress.phase !== "complete" ? (
+                    <div className="remote-training-state" role="status" aria-live="polite">
+                      <strong>{environmentArchitectProgress.message}</strong>
+                      <small>{environmentArchitectProgress.current} of {environmentArchitectProgress.total}</small>
+                    </div>
+                  ) : environmentArchitect ? (
+                    <div className="csv-analysis-proposal">
+                      <strong>{environmentArchitect.target_goal}</strong>
+                      <p>{environmentArchitect.dataset_summary}</p>
+                    </div>
+                  ) : null}
                   {!classificationDataset ? (
                     <>
                       <div className="csv-analysis-step-label csv-analysis-step-structure">1 · data structure</div>
