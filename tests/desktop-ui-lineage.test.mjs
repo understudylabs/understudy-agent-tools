@@ -470,7 +470,8 @@ test("desktop has one shared managed-operation notice surface", async () => {
   assert.match(repair, /Install update/);
   assert.match(repair, /Automatic update stopped/);
   assert.match(repair, /The CLI is included with Understudy Desktop/);
-  assert.match(repair, /Signed Tauri update/);
+  assert.match(repair, /Signed update/);
+  assert.doesNotMatch(repair, /Tauri update/);
   assert.match(
     repair,
     /github\.com\/understudylabs\/understudy-agent-tools\/releases\/latest/,

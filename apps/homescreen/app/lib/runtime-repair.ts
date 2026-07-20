@@ -149,7 +149,7 @@ export function promptForRepairFailure(prompt: RepairPrompt, error: unknown): Re
 }
 
 export function repairPromptMeta(prompt: RepairPrompt): string {
-  if (prompt.runtime === "desktop") return "Signed Tauri update";
+  if (prompt.runtime === "desktop") return "Signed update";
   if (prompt.runtime === "cli") return "Included with Understudy Desktop";
   return prompt.command;
 }
