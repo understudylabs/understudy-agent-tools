@@ -20,6 +20,7 @@ const MAX_MANIFEST_BYTES: u64 = 1_048_576;
 // ceiling would turn a friendly desktop flow into memory pressure.
 const MAX_SPLIT_BYTES: u64 = 150 * 1024 * 1024;
 const MAX_REMOTE_ARTIFACT_BYTES: u64 = 150 * 1024 * 1024;
+const MAX_REMOTE_TRAINING_BUDGET_USD: f64 = 1_000.0;
 
 #[derive(Debug, Clone, Deserialize)]
 struct DatasetManifest {
@@ -348,8 +349,11 @@ fn prepare_remote_plan(
             return Err(format!("The {name} is invalid."));
         }
     }
-    if !maximum_spend_usd.is_finite() || maximum_spend_usd <= 0.0 || maximum_spend_usd > 500.0 {
-        return Err("The remote training budget must be between $0 and $500.".into());
+    if !maximum_spend_usd.is_finite()
+        || maximum_spend_usd <= 0.0
+        || maximum_spend_usd > MAX_REMOTE_TRAINING_BUDGET_USD
+    {
+        return Err("The remote training budget must be between $0 and $1,000.".into());
     }
 
     let canonical_manifest = PathBuf::from(manifest_path.trim())
@@ -759,7 +763,7 @@ fn read_verified_plan(path: &str) -> Result<RemoteTrainingPlan, String> {
         || !matches!(plan.provider.as_str(), "fake" | "managed")
         || plan.artifacts.len() != 3
         || plan.maximum_spend_usd <= 0.0
-        || plan.maximum_spend_usd > 500.0
+        || plan.maximum_spend_usd > MAX_REMOTE_TRAINING_BUDGET_USD
     {
         return Err("The remote training plan failed its immutable boundary checks.".into());
     }
@@ -1276,6 +1280,28 @@ mod tests {
         )
         .unwrap();
         (manifest_path, root)
+    }
+
+    #[test]
+    fn accepts_the_founder_budget_ceiling_from_live_capabilities() {
+        let (manifest_path, root) = fixture();
+        assert!(prepare_remote_plan(
+            manifest_path.to_str().unwrap(),
+            "fake",
+            "understudy/auto",
+            "glm-5.2",
+            1_000.0,
+        )
+        .is_ok());
+        assert!(prepare_remote_plan(
+            manifest_path.to_str().unwrap(),
+            "fake",
+            "understudy/auto",
+            "glm-5.2",
+            1_000.01,
+        )
+        .is_err());
+        fs::remove_dir_all(root).unwrap();
     }
 
     #[test]
