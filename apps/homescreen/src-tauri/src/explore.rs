@@ -31,7 +31,7 @@ fn is_read_only_clickhouse(sql: &str) -> bool {
                 && head[kw.len()..]
                     .chars()
                     .next()
-                    .map_or(true, |c| !c.is_ascii_alphanumeric() && c != '_')
+                    .is_none_or(|c| !c.is_ascii_alphanumeric() && c != '_')
         })
 }
 
