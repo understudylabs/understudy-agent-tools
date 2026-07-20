@@ -1,6 +1,6 @@
 "use client";
 
-import { ClusterDatum, MODEL_COLORS, PROMOTED_GREEN, QUALITY_FLOOR } from "./types";
+import { ClusterDatum, modelColor, PROMOTED_GREEN, QUALITY_FLOOR } from "./types";
 
 function fmt(n: number): string {
   if (n >= 1e9) return `${(n / 1e9).toFixed(1)}B`;
@@ -39,8 +39,11 @@ export default function SidePanel({
   cluster: ClusterDatum;
   onClose: () => void;
 }) {
+  // measured rows first, each group sorted by quality-per-cost
   const rows = [...cluster.benchmarks].sort(
-    (a, b) => b.quality / b.costMult - a.quality / a.costMult,
+    (a, b) =>
+      Number(b.measured ?? false) - Number(a.measured ?? false) ||
+      b.quality / b.costMult - a.quality / a.costMult,
   );
   const maxLatency = Math.max(...rows.map((r) => r.latencyMs));
   const maxCost = Math.max(...rows.map((r) => r.costMult));
@@ -109,7 +112,7 @@ export default function SidePanel({
         </thead>
         <tbody>
           {rows.map((r) => {
-            const color = MODEL_COLORS[r.model];
+            const color = modelColor(r.model);
             const isWinner = r.model === cluster.winner;
             return (
               <tr
@@ -124,7 +127,7 @@ export default function SidePanel({
                   {isWinner && <span style={{ color: PROMOTED_GREEN }}> ✓</span>}
                   {r.measured && (
                     <span
-                      title={`real ${r.measuredKind ?? "measured"} eval, n=${r.measuredN ?? "?"}`}
+                      title={`real ${r.measuredKind ?? "measured"} eval, n=${r.measuredN ?? "?"}${r.measuredJudge ? `, judge: ${r.measuredJudge}` : ""}`}
                       style={{
                         marginLeft: 6,
                         padding: "0 5px",
@@ -172,7 +175,7 @@ export default function SidePanel({
         }}
       >
         {cluster.benchmarks.some((b) => b.measured)
-          ? "mixed: measured (gemma plan-quality) + synthetic — full execution evals land with verifiers compile. Rows tagged “measured” are real scores; the rest are deterministic placeholders."
+          ? "measured (plan-quality, opus judge) + synthetic — execution evals land with verifiers compile. Rows tagged “measured” are real scores; the rest are deterministic placeholders."
           : "synthetic benchmark data — personal benchmarks land in Stage 4/5. Clusters are real (your events since 2026-06-01); scores are deterministic placeholders."}
       </div>
     </aside>

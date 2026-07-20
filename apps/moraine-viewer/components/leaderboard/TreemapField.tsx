@@ -4,7 +4,7 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { Canvas, useFrame, useThree } from "@react-three/fiber";
 import { Html, Line, Text } from "@react-three/drei";
 import * as THREE from "three";
-import { ClusterDatum, MODEL_COLORS, PROMOTED_GREEN } from "./types";
+import { ClusterDatum, modelColor, PROMOTED_GREEN } from "./types";
 import { Rect, TreemapEntry, insetRect, squarify } from "./treemapLayout";
 
 // IBM Plex Mono (troika needs .woff; matches the .mono CSS token).
@@ -74,7 +74,7 @@ function ModelSubmap({ cluster, rect }: { cluster: ClusterDatum; rect: Rect }) {
     <group position={[0, 0, 0.05]}>
       {cells.map(({ item, rect: r0 }) => {
         const r = insetRect(r0, gap);
-        const color = MODEL_COLORS[item.model];
+        const color = modelColor(item.model);
         const isWinner = item.model === cluster.winner;
         const fs = Math.min(r.h * 0.14, r.w * 0.055, Math.min(rect.w, rect.h) * 0.045);
         const showLabel = r.w > fs * 10 && r.h > fs * 3.2;
@@ -153,7 +153,7 @@ function Cell({
   const r = useMemo(() => insetRect(entry.rect, CELL_GAP), [entry.rect]);
   const [hovered, setHovered] = useState(false);
   const mat = useRef<THREE.MeshBasicMaterial>(null);
-  const color = MODEL_COLORS[c.winner];
+  const color = modelColor(c.winner);
   const borderColor = c.promoted ? PROMOTED_GREEN : color;
 
   useFrame((_, dt) => {

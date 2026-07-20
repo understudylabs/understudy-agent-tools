@@ -73,27 +73,38 @@ function pickWinner(rows: BenchmarkRow[]): BenchmarkRow {
 type MeasuredEval = {
   candidate: string;
   kind: string;
+  judge: string;
   mean: number;
   n: number;
   benchmark: string;
 };
 
-// candidate id used by evalrun.ts → leaderboard model row it measures
-function candidateToModel(candidate: string): CandidateModel | null {
-  if (candidate.startsWith("gemma-4-e2b")) return "gemma-4-e2b-understudy";
-  return (CANDIDATE_MODELS as readonly string[]).includes(candidate)
-    ? (candidate as CandidateModel)
-    : null;
+// candidate id used by evalrun.ts → leaderboard model row id
+function candidateToModel(candidate: string): string {
+  if (candidate.startsWith("local:gemma-4-e2b") || candidate.startsWith("gemma-4-e2b")) {
+    return "gemma-4-e2b-understudy";
+  }
+  return candidate;
 }
 
-function loadMeasuredEvals(): Map<string, MeasuredEval> {
-  const byClusterId = new Map<string, MeasuredEval>();
+// cost/latency priors for measured model rows (quality comes from the eval).
+const MEASURED_PRIORS: Record<string, { cost: number; latency: number }> = {
+  "gemma-4-e2b-understudy": { cost: 0.02, latency: 380 },
+  "gemma-4-31b-it": { cost: 0.08, latency: 900 },
+  "glm-5.2": { cost: 0.25, latency: 1400 },
+  "nemotron-3-super": { cost: 0.06, latency: 800 },
+  "claude-opus-4-8": { cost: 1, latency: 2500 },
+};
+
+function loadMeasuredEvals(): Map<string, MeasuredEval[]> {
+  const byClusterId = new Map<string, MeasuredEval[]>();
   const evalDir = path.join(process.cwd(), "data", "evals");
   if (!existsSync(evalDir)) return byClusterId;
   for (const file of readdirSync(evalDir)) {
-    if (!file.endsWith(".json")) continue;
+    // multi-model sweep files only: <benchmark-slug>__<candidate-slug>.json
+    if (!file.endsWith(".json") || !file.includes("__")) continue;
     try {
-      const slug = file.replace(/\.json$/, "");
+      const slug = file.replace(/\.json$/, "").split("__")[0];
       const ev = JSON.parse(readFileSync(path.join(evalDir, file), "utf8"));
       const draft = JSON.parse(
         readFileSync(path.join(process.cwd(), "data", "benchmarks", `${slug}.json`), "utf8"),
@@ -116,13 +127,21 @@ function loadMeasuredEvals(): Map<string, MeasuredEval> {
       const entry: MeasuredEval = {
         candidate: ev.candidate,
         kind: ev.kind,
+        judge: ev.judge,
         mean: ev.mean,
         n: ev.n,
         benchmark: ev.benchmark,
       };
-      // collision: keep the eval with the larger n
-      const prev = byClusterId.get(best);
-      if (!prev || entry.n > prev.n) byClusterId.set(best, entry);
+      const list = byClusterId.get(best) ?? [];
+      // same model measured twice for a cluster: keep the larger-n eval
+      const model = candidateToModel(entry.candidate);
+      const i = list.findIndex((e) => candidateToModel(e.candidate) === model);
+      if (i >= 0) {
+        if (entry.n > list[i].n) list[i] = entry;
+      } else {
+        list.push(entry);
+      }
+      byClusterId.set(best, list);
     } catch {
       // malformed eval/benchmark file — skip
     }
@@ -182,24 +201,31 @@ export async function GET() {
 
     const clusters: ClusterDatum[] = clusterRows.map((row) => {
       const id = `${row.leaf}::${row.harness}`;
-      const benchmarks = syntheticBenchmarks(id);
-      // real measured eval overrides the synthetic row for its candidate model
-      const measured = measuredEvals.get(id);
-      const model = measured ? candidateToModel(measured.candidate) : null;
-      if (measured && model) {
-        const i = benchmarks.findIndex((b) => b.model === model);
-        if (i >= 0) {
-          benchmarks[i] = {
-            ...benchmarks[i],
-            quality: measured.mean,
-            qualified: measured.mean >= QUALITY_FLOOR,
-            measured: true,
-            measuredKind: measured.kind,
-            measuredN: measured.n,
-          };
-        }
-      }
-      const winner = pickWinner(benchmarks);
+      // measured sweep rows first (actual measured model set), then synthetic
+      // rows for candidate models NOT covered by a measurement — clearly synthetic.
+      const measured = measuredEvals.get(id) ?? [];
+      const measuredRows: BenchmarkRow[] = measured.map((ev) => {
+        const model = candidateToModel(ev.candidate);
+        const p = MEASURED_PRIORS[model] ?? { cost: 0.5, latency: 1500 };
+        return {
+          model,
+          quality: ev.mean,
+          costMult: p.cost,
+          latencyMs: p.latency,
+          qualified: ev.mean >= QUALITY_FLOOR,
+          measured: true,
+          measuredKind: ev.kind,
+          measuredN: ev.n,
+          measuredJudge: ev.judge,
+        };
+      });
+      const measuredModels = new Set(measuredRows.map((r) => r.model));
+      const benchmarks: BenchmarkRow[] = [
+        ...measuredRows,
+        ...syntheticBenchmarks(id).filter((b) => !measuredModels.has(b.model)),
+      ];
+      // winner: prefer measured rows whenever any exist for the cluster
+      const winner = pickWinner(measuredRows.length > 0 ? measuredRows : benchmarks);
       return {
         id,
         label: row.leaf,

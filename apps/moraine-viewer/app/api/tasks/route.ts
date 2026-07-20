@@ -5,9 +5,15 @@
 
 import { existsSync } from "node:fs";
 import path from "node:path";
-import { DatabaseSync } from "node:sqlite";
+import type { DatabaseSync } from "node:sqlite";
 import { chQuery } from "@/lib/clickhouse";
-import { readBenchmarkDraft, readEvalFile } from "./benchmarkFile";
+
+// Loaded at runtime: a static `import { DatabaseSync } from "node:sqlite"`
+// trips the dev bundler's external-module loader ("require is not defined").
+const { DatabaseSync: SqliteDatabase } = process.getBuiltinModule(
+  "node:sqlite",
+) as typeof import("node:sqlite");
+import { readBenchmarkDraft, readEvalFile, readEvalFiles } from "./benchmarkFile";
 
 const PLUMBING = "cli plumbing";
 
@@ -16,7 +22,7 @@ function withDb<T>(file: string, fn: (db: DatabaseSync) => T): T | null {
   if (!existsSync(p)) return null;
   let db: DatabaseSync | null = null;
   try {
-    db = new DatabaseSync(p, { readOnly: true });
+    db = new SqliteDatabase(p, { readOnly: true });
     return fn(db);
   } catch {
     return null;
@@ -55,8 +61,10 @@ export type TaskCluster = {
   topLabels: Array<{ label: string; n: number }>;
   exemplars: TaskExemplar[];
   benchmark: { exists: boolean; instances: number; meanQuality: number } | null;
-  /** real measured eval (scripts/evalrun.ts, plan-quality proxy) if one exists */
+  /** legacy single eval — the local-gemma entry, kept for back-compat */
   eval: { candidate: string; mean: number; n: number; kind: string } | null;
+  /** all real measured evals (scripts/evalrun.ts multi-model sweep) */
+  evals: Array<{ candidate: string; mean: number; n: number; kind: string; judge: string }>;
 };
 
 export async function GET() {
@@ -216,6 +224,13 @@ export async function GET() {
           const e = readEvalFile(agg.name);
           return e ? { candidate: e.candidate, mean: e.mean, n: e.n, kind: e.kind } : null;
         })(),
+        evals: readEvalFiles(agg.name).map((e) => ({
+          candidate: e.candidate,
+          mean: e.mean,
+          n: e.n,
+          kind: e.kind,
+          judge: e.judge,
+        })),
       };
     })
     .sort((a, b) => b.interactiveSessions - a.interactiveSessions || b.sessions - a.sessions);

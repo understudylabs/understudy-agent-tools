@@ -1,7 +1,7 @@
 // Shared server-side helpers for locating personal benchmark drafts written
 // by scripts/benchmark.ts. Not a route file — route.ts exports stay handler-only.
 
-import { existsSync, readFileSync } from "node:fs";
+import { existsSync, readdirSync, readFileSync } from "node:fs";
 import path from "node:path";
 
 export type BenchmarkInstance = {
@@ -64,13 +64,26 @@ export function readBenchmarkDraft(clusterName: string): BenchmarkDraft | null {
   }
 }
 
-// Real measured eval (written by scripts/evalrun.ts) for a cluster, if any.
-export function readEvalFile(clusterName: string): EvalFile | null {
-  const file = path.join(process.cwd(), "data", "evals", `${clusterSlug(clusterName)}.json`);
-  if (!existsSync(file)) return null;
-  try {
-    return JSON.parse(readFileSync(file, "utf8")) as EvalFile;
-  } catch {
-    return null;
+// All real measured evals (written by scripts/evalrun.ts) for a cluster:
+// every data/evals/<slug>__<candidate>.json for this cluster's slug.
+export function readEvalFiles(clusterName: string): EvalFile[] {
+  const dir = path.join(process.cwd(), "data", "evals");
+  if (!existsSync(dir)) return [];
+  const prefix = `${clusterSlug(clusterName)}__`;
+  const out: EvalFile[] = [];
+  for (const file of readdirSync(dir)) {
+    if (!file.startsWith(prefix) || !file.endsWith(".json")) continue;
+    try {
+      out.push(JSON.parse(readFileSync(path.join(dir, file), "utf8")) as EvalFile);
+    } catch {
+      // malformed eval file — skip
+    }
   }
+  return out.sort((a, b) => b.mean - a.mean);
+}
+
+// Back-compat single eval: the local-gemma entry among the measured evals.
+export function readEvalFile(clusterName: string): EvalFile | null {
+  const evals = readEvalFiles(clusterName);
+  return evals.find((e) => e.candidate.startsWith("local:")) ?? null;
 }

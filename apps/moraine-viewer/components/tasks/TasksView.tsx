@@ -29,6 +29,7 @@ type TaskCluster = {
   exemplars: Exemplar[];
   benchmark: { exists: boolean; instances: number; meanQuality: number } | null;
   eval: { candidate: string; mean: number; n: number; kind: string } | null;
+  evals: Array<{ candidate: string; mean: number; n: number; kind: string; judge: string }>;
 };
 
 type Payload = {
@@ -204,12 +205,7 @@ function ClusterCard({ c }: { c: TaskCluster }) {
               {open ? "close benchmark draft ←" : "view benchmark draft →"}
               <span className="text-ink-muted ml-2">
                 {c.benchmark.instances} instances · q {c.benchmark.meanQuality.toFixed(2)}
-                {c.eval && (
-                  <span style={{ color: evalColor(c.eval.mean) }}>
-                    {" "}
-                    · gemma plan-quality: {c.eval.mean.toFixed(2)} (n={c.eval.n})
-                  </span>
-                )}
+                <EvalSummary evals={c.evals ?? []} legacy={c.eval} />
               </span>
             </button>
             {open && <BenchmarkDrawer clusterId={c.id} color={color} />}
@@ -235,6 +231,60 @@ function evalColor(mean: number): string {
   if (mean <= 0.75) return "var(--ink, #e7e8ea)";
   return "var(--state-promoted, #6ee7a0)";
 }
+
+// short display names for sweep candidate ids
+function shortModel(candidate: string): string {
+  if (candidate.startsWith("local:gemma-4-e2b")) return "gemma-e2b";
+  if (candidate.startsWith("gemma-4-31b")) return "gemma-31b";
+  if (candidate.startsWith("claude-opus")) return "opus";
+  if (candidate.startsWith("claude-haiku")) return "haiku";
+  if (candidate.startsWith("nemotron-3-super")) return "nemotron-super";
+  return candidate;
+}
+
+function isFrontier(candidate: string): boolean {
+  return candidate.startsWith("claude-") || candidate.startsWith("gpt-");
+}
+
+type EvalRow = { candidate: string; mean: number; n: number; kind: string; judge: string };
+
+// multi-model sweep summary: best open-weight + frontier side by side.
+function EvalSummary({ evals, legacy }: { evals: EvalRow[]; legacy: EvalRow0 | null }) {
+  if (evals.length === 0) {
+    // legacy single-eval fallback
+    if (!legacy) return null;
+    return (
+      <span className="mono" style={{ color: evalColor(legacy.mean) }}>
+        {" "}
+        · gemma plan-quality: {legacy.mean.toFixed(2)} (n={legacy.n})
+      </span>
+    );
+  }
+  const open = evals.filter((e) => !isFrontier(e.candidate));
+  const frontier = evals.filter((e) => isFrontier(e.candidate));
+  const bestOpen = open.length ? open.reduce((a, b) => (b.mean > a.mean ? b : a)) : null;
+  const bestFrontier = frontier.length ? frontier.reduce((a, b) => (b.mean > a.mean ? b : a)) : null;
+  const judge = shortModel(evals[0].judge);
+  return (
+    <span className="mono">
+      {bestOpen && (
+        <span style={{ color: evalColor(bestOpen.mean) }}>
+          {" "}
+          · {shortModel(bestOpen.candidate)} {bestOpen.mean.toFixed(2)}
+        </span>
+      )}
+      {bestFrontier && (
+        <span style={{ color: evalColor(bestFrontier.mean) }}>
+          {bestOpen ? " · " : " · "}
+          {shortModel(bestFrontier.candidate)} {bestFrontier.mean.toFixed(2)}
+        </span>
+      )}
+      <span className="text-ink-muted"> (judge: {judge})</span>
+    </span>
+  );
+}
+
+type EvalRow0 = { candidate: string; mean: number; n: number; kind: string };
 
 function qualityColor(q: number): string {
   if (q > 0.66) return "var(--ok, #4ade80)";
