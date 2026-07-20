@@ -112,6 +112,12 @@ from the RL train pool.
 Full playbook, worked AutomationBench wiring, and the verified determinism
 caveat: [`references/stage-1-author-env.md`](references/stage-1-author-env.md).
 
+An `understudy.environment_proposal.v1` emitted by the JSONL drop flow is an
+input to this stage, not proof that the stage is complete. Refuse handoff while
+it is `needs_verifier`; revalidate hashes, oracle=1, sentinel rejection,
+deterministic reset, nonconstant reward, no leakage/live effects, and parser
+compatibility before packaging.
+
 ## Stage 2 — Package for the partner
 
 With a conformant reset/step env, package it locally into a Prime Intellect

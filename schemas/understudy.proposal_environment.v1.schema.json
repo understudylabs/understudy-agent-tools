@@ -1,0 +1,181 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://understudylabs.com/schemas/understudy.proposal_environment.v1.schema.json",
+  "title": "Understudy portable environment proposal v1",
+  "description": "A local-first, content-addressed proposal for a task dataset, parser, verifier or reset/step environment, reward, oracle, sentinels, and backend compatibility. A proposal is executable only after deterministic validation; model-authored proposals remain needs_verifier until those gates pass.",
+  "type": "object",
+  "required": ["schema_version", "proposal_id", "created_at", "status", "source", "task_spec", "dataset", "parser", "environment", "reward", "scripted_oracle", "sentinels", "reset_probe", "reward_probe", "backend_compatibility", "privacy", "validation"],
+  "properties": {
+    "schema_version": { "const": "understudy.environment_proposal.v1" },
+    "proposal_id": { "type": "string", "format": "uuid" },
+    "created_at": { "type": "string" },
+    "status": { "enum": ["proposed", "executable", "needs_verifier"] },
+    "source": {
+      "type": "object",
+      "required": ["plan_path", "plan_sha256", "source_sha256", "proposal_lane", "runtime_backend", "remote_content_shared"],
+      "properties": {
+        "plan_path": { "type": ["string", "null"], "minLength": 1 },
+        "plan_sha256": { "anyOf": [{ "$ref": "#/$defs/sha256" }, { "type": "null" }] },
+        "source_sha256": { "$ref": "#/$defs/sha256" },
+        "proposal_lane": { "enum": ["deterministic_registry", "pi_conversation_runtime"] },
+        "runtime_backend": { "enum": ["deterministic", "pi"] },
+        "remote_content_shared": { "const": false }
+      }
+    },
+    "task_spec": {
+      "type": "object",
+      "required": ["task_kind", "objective", "evaluator", "subjective", "input_contract", "output_contract"],
+      "properties": {
+        "task_kind": { "type": "string", "minLength": 1 },
+        "objective": { "type": "string", "minLength": 1 },
+        "evaluator": { "type": "string", "minLength": 1 },
+        "subjective": { "type": "boolean" },
+        "input_contract": { "type": "string", "minLength": 1 },
+        "output_contract": { "type": "string", "minLength": 1 }
+      }
+    },
+    "dataset": {
+      "type": "object",
+      "required": ["adapter_id", "adapter_version", "split_strategy", "split_hash", "splits", "preview_source", "heldout_targets_visible"],
+      "properties": {
+        "split_hash": { "$ref": "#/$defs/sha256" },
+        "adapter_id": { "type": "string", "minLength": 1 },
+        "adapter_version": { "type": "string", "minLength": 1 },
+        "split_strategy": { "type": "string", "minLength": 1 },
+        "splits": {
+          "type": "object",
+          "required": ["train", "validation", "heldout"],
+          "properties": {
+            "train": { "$ref": "#/$defs/split" },
+            "validation": { "$ref": "#/$defs/split" },
+            "heldout": { "$ref": "#/$defs/split" }
+          }
+        },
+        "preview_source": { "const": "train_only" },
+        "heldout_targets_visible": { "const": false }
+      }
+    },
+    "parser": {
+      "type": "object",
+      "required": ["id", "version", "output_contract"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "version": { "type": "string", "minLength": 1 },
+        "output_contract": { "type": "string", "minLength": 1 }
+      }
+    },
+    "environment": {
+      "type": "object",
+      "required": ["kind", "deterministic", "reset_contract", "live_effects", "network_access"],
+      "properties": {
+        "kind": { "enum": ["stateless_verifier", "stateful_reset_step", "needs_verifier"] },
+        "deterministic": { "type": "boolean" },
+        "reset_contract": { "type": "string", "minLength": 1 },
+        "live_effects": { "const": false },
+        "network_access": { "const": false }
+      }
+    },
+    "reward": {
+      "type": "object",
+      "required": ["rubric_id", "rubric_version", "axes", "aggregation", "range", "useful_delta_minimum"],
+      "properties": {
+        "rubric_id": { "type": "string", "minLength": 1 },
+        "rubric_version": { "type": "string", "minLength": 1 },
+        "axes": { "type": "array", "minItems": 1, "items": { "type": "string", "minLength": 1 } },
+        "aggregation": { "type": "string", "minLength": 1 },
+        "range": { "const": [0, 1] },
+        "useful_delta_minimum": { "type": "number", "exclusiveMinimum": 0, "maximum": 1 }
+      }
+    },
+    "scripted_oracle": {
+      "type": "object",
+      "required": ["id", "artifact_sha256", "observed_reward"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "artifact_sha256": { "$ref": "#/$defs/sha256" },
+        "observed_reward": { "type": ["number", "null"], "minimum": 0, "maximum": 1 }
+      }
+    },
+    "sentinels": {
+      "type": "array",
+      "minItems": 4,
+      "items": { "$ref": "#/$defs/sentinel" }
+    },
+    "reset_probe": {
+      "type": "object",
+      "required": ["seed", "first_state_sha256", "second_state_sha256"],
+      "properties": {
+        "seed": { "type": "integer" },
+        "first_state_sha256": { "anyOf": [{ "$ref": "#/$defs/sha256" }, { "type": "null" }] },
+        "second_state_sha256": { "anyOf": [{ "$ref": "#/$defs/sha256" }, { "type": "null" }] }
+      }
+    },
+    "reward_probe": {
+      "type": "object",
+      "required": ["observed_rewards"],
+      "properties": {
+        "observed_rewards": { "type": "array", "items": { "type": "number", "minimum": 0, "maximum": 1 } }
+      }
+    },
+    "backend_compatibility": {
+      "type": "array",
+      "minItems": 1,
+      "items": { "$ref": "#/$defs/backend" }
+    },
+    "privacy": {
+      "type": "object",
+      "required": ["local_only", "uploads", "provider_calls", "live_effects", "training_source_roles", "heldout_target_access"],
+      "properties": {
+        "local_only": { "const": true },
+        "uploads": { "const": false },
+        "provider_calls": { "const": false },
+        "live_effects": { "const": false },
+        "training_source_roles": { "const": ["train"] },
+        "heldout_target_access": { "const": false }
+      }
+    },
+    "validation": {
+      "type": "object",
+      "required": ["schema_version", "executable", "gates", "blockers"],
+      "properties": {
+        "schema_version": { "const": "understudy.environment_validation.v1" },
+        "executable": { "type": "boolean" },
+        "gates": { "type": "object", "additionalProperties": { "type": "boolean" } },
+        "blockers": { "type": "array", "items": { "type": "string", "minLength": 1 } }
+      }
+    }
+  },
+  "$defs": {
+    "sha256": { "type": "string", "pattern": "^[a-f0-9]{64}$" },
+    "split": {
+      "type": "object",
+      "required": ["row_count", "sha256"],
+      "properties": {
+        "row_count": { "type": "integer", "minimum": 0 },
+        "sha256": { "$ref": "#/$defs/sha256" }
+      }
+    },
+    "sentinel": {
+      "type": "object",
+      "required": ["id", "kind", "artifact_sha256", "observed_reward", "maximum_reward", "parser_compatible"],
+      "properties": {
+        "id": { "type": "string", "minLength": 1 },
+        "kind": { "enum": ["empty", "wrong_value", "reward_hacking", "right_answer_wrong_contract"] },
+        "artifact_sha256": { "$ref": "#/$defs/sha256" },
+        "observed_reward": { "type": ["number", "null"], "minimum": 0, "maximum": 1 },
+        "maximum_reward": { "type": "number", "minimum": 0, "maximum": 1 },
+        "parser_compatible": { "type": "boolean" }
+      }
+    },
+    "backend": {
+      "type": "object",
+      "required": ["id", "compatible", "parser_compatible", "reason"],
+      "properties": {
+        "id": { "enum": ["mlx-local", "fireworks", "tinker"] },
+        "compatible": { "type": "boolean" },
+        "parser_compatible": { "type": "boolean" },
+        "reason": { "type": "string", "minLength": 1 }
+      }
+    }
+  }
+}

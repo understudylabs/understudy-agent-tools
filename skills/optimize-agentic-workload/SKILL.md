@@ -115,6 +115,13 @@ single-output optimization does not need a tool environment.
    continue the loop, execute the terminal write, and score final state; an
    intermediate tool call is never a no-op verdict.
 
+   If Desktop produced `understudy.environment_proposal.v1` from a JSONL drop,
+   treat `status: executable` as meaningful only after
+   `understudy training validate-environment-proposal --proposal <path>` passes.
+   A canonical-Pi draft with `status: needs_verifier` is a proposal, not a
+   harness or score; author the missing parser/environment/oracle/sentinels and
+   rerun deterministic validation before any model comparison.
+
 3. **Define multi-objective success.** Quality is a per-criterion LLM-judge or
    final-state rubric that returns natural-language *why/what-to-change*
    feedback, not a bare score. Latency and cost come from the rollout records

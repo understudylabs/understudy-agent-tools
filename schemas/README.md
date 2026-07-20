@@ -3,6 +3,16 @@
 Versioned JSON Schemas for artifacts that cross surface boundaries (desktop
 app, skills, CLI, ladder). One spine, adopted everywhere.
 
+## Portable environment proposals
+
+[`understudy.proposal_environment.v1.schema.json`](understudy.proposal_environment.v1.schema.json)
+binds a task, dataset adapter and split hashes, parser, verifier or stateful
+environment, reward rubric, scripted oracle, reward-hacking sentinels, and
+backend compatibility. Executability is deterministic: hashes, oracle=1,
+sentinel rejection, reset reproducibility, leakage/live-effect boundaries,
+useful nonconstant reward, and parser compatibility must pass. A Pi-authored
+proposal remains `needs_verifier` until those probes exist and pass.
+
 ## Proof-scoped correction evidence
 
 [`understudy.proof_correction_evidence.v1.schema.json`](understudy.proof_correction_evidence.v1.schema.json)
