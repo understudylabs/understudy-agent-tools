@@ -1,0 +1,24 @@
+{
+  "$schema": "https://schema.tauri.app/config/2",
+  "productName": "Understudy Dev (explore 0.3.32)",
+  "identifier": "com.homescreen.dev.explore",
+  "build": {
+    "beforeDevCommand": "node ../../scripts/build-desktop-cli.mjs && bun run dev:explore",
+    "devUrl": "http://localhost:14300"
+  },
+  "app": {
+    "windows": [
+      {
+        "title": "Understudy Dev \u2014 explore-data-phase-a (0.3.32)",
+        "width": 1180,
+        "height": 820,
+        "titleBarStyle": "Overlay",
+        "hiddenTitle": true,
+        "trafficLightPosition": {
+          "x": 17,
+          "y": 24
+        }
+      }
+    ]
+  }
+}

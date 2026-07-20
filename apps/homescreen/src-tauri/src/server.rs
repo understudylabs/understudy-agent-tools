@@ -178,9 +178,10 @@ pub fn start(app: AppHandle) {
             }
         }
     };
-    let port = db
-        .setting_get(PORT_KEY)
+    let port = std::env::var("UNDERSTUDY_SERVER_PORT")
+        .ok()
         .and_then(|p| p.parse().ok())
+        .or_else(|| db.setting_get(PORT_KEY).and_then(|p| p.parse().ok()))
         .unwrap_or(DEFAULT_PORT);
 
     let ctx = Ctx { app, token };
@@ -1819,9 +1820,10 @@ fn is_legacy_token(token: &str) -> bool {
 pub fn info(app: &AppHandle) -> Option<(String, String)> {
     let db = app.try_state::<crate::db::Db>()?;
     let token = db.setting_get(TOKEN_KEY)?;
-    let port = db
-        .setting_get(PORT_KEY)
+    let port = std::env::var("UNDERSTUDY_SERVER_PORT")
+        .ok()
         .and_then(|p| p.parse().ok())
+        .or_else(|| db.setting_get(PORT_KEY).and_then(|p| p.parse().ok()))
         .unwrap_or(DEFAULT_PORT);
     Some((format!("http://127.0.0.1:{port}"), token))
 }

@@ -14,6 +14,12 @@ const nextConfig = {
   reactStrictMode: true,
   // The in-app shell already has native chrome; hide Next's dev-mode badge.
   devIndicators: false,
+  // Dev-only ClickHouse proxy for the Explore pane's browser fallback
+  // (NEXT_PUBLIC_EXPLORE_DEV=1). Rewrites are ignored by `output: "export"`
+  // production builds — the shipped app talks to ClickHouse via Rust invoke.
+  async rewrites() {
+    return [{ source: "/ch-proxy", destination: "http://127.0.0.1:8123/" }];
+  },
 };
 
 export default nextConfig;
