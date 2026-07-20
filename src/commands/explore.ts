@@ -23,7 +23,7 @@ import { Command } from "commander";
 const DEFAULT_LLM_URL = "http://127.0.0.1:8877/v1/chat/completions";
 const LLM_MODEL = "default_model";
 
-function exploreDir(): string {
+export function exploreDir(): string {
   const dir = process.env.UNDERSTUDY_EXPLORE_DIR ?? join(homedir(), ".understudy", "explore");
   mkdirSync(dir, { recursive: true });
   return dir;
@@ -31,11 +31,11 @@ function exploreDir(): string {
 
 // --- ClickHouse (read-only, per-query resource caps as URL params) -------------
 
-function clickhouseUrl(): string {
+export function clickhouseUrl(): string {
   return process.env.MORAINE_CLICKHOUSE_URL ?? "http://127.0.0.1:8123";
 }
 
-async function ch<T>(sql: string): Promise<T[]> {
+export async function ch<T>(sql: string): Promise<T[]> {
   const params =
     "database=moraine&default_format=JSONEachRow" +
     "&max_memory_usage=2000000000&max_threads=4&max_execution_time=30";
@@ -782,7 +782,7 @@ async function runLanguages(): Promise<void> {
 // status — store counts + ClickHouse reachability
 // =================================================================================
 
-function countIn(dbFile: string, sql: string): number | null {
+export function countIn(dbFile: string, sql: string): number | null {
   const path = join(exploreDir(), dbFile);
   if (!existsSync(path)) return null;
   try {
@@ -858,6 +858,29 @@ export function registerExploreCommand(program: Command): void {
     .description("Derive per-session language and tooling stats from file/shell tool events. Writes langs.sqlite.")
     .action(async () => {
       await runLanguages();
+    });
+
+  explore
+    .command("mcp")
+    .description(
+      "Run a stdio MCP server over the local Moraine ClickHouse + explore scan stores " +
+        "(drop-in for Moraine's MCP tool names, enriched with scan labels/clusters).",
+    )
+    .action(async () => {
+      const { runExploreMcpServer } = await import("../explore-mcp.js");
+      await runExploreMcpServer();
+    });
+
+  explore
+    .command("mcp-install")
+    .description(
+      "Register `understudy explore mcp` as the `understudy` MCP server in agent configs, " +
+        "replacing the `moraine` entry (Claude Code: ~/.claude.json). Backs up configs first.",
+    )
+    .option("--dry-run", "Print planned changes without writing.", false)
+    .action(async (opts: { dryRun: boolean }) => {
+      const { runExploreMcpInstall } = await import("../explore-mcp.js");
+      await runExploreMcpInstall({ dryRun: Boolean(opts.dryRun) });
     });
 
   explore

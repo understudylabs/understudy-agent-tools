@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, type ComponentType } from "react";
+import { useEffect, useState, type ComponentType } from "react";
 import dynamic from "next/dynamic";
 
 // Contract (see app/lib/exploreContract.ts, "Explore pane composition"):
@@ -44,8 +44,40 @@ const TranscriptPane = dynamic<TranscriptPaneProps>(
 type ListView = "timeline" | "tasks";
 type ExploreView = ListView | { session: string; from: ListView };
 
+// Server-driven deep link (ui/focus with pane:"explore"): land on a list view
+// or directly on one session transcript. Queued through a module-level
+// pending slot so a focus that arrives while the pane is still mounting is
+// consumed by the shell's mount effect instead of being dropped.
+export type ExploreFocus = { view?: string; session?: string };
+let pendingFocus: ExploreFocus | null = null;
+
+export function requestExploreFocus(focus: ExploreFocus) {
+  pendingFocus = focus;
+  window.dispatchEvent(new CustomEvent<ExploreFocus>("explore-focus", { detail: focus }));
+}
+
+function focusToView(focus: ExploreFocus): ExploreView | null {
+  const from: ListView = focus.view === "tasks" ? "tasks" : "timeline";
+  if (focus.session) return { session: focus.session, from };
+  if (focus.view === "timeline" || focus.view === "tasks") return focus.view;
+  return null;
+}
+
 export function ExploreShell() {
   const [view, setView] = useState<ExploreView>("timeline");
+
+  useEffect(() => {
+    const apply = (focus: ExploreFocus | null) => {
+      pendingFocus = null;
+      const next = focus && focusToView(focus);
+      if (next) setView(next);
+    };
+    if (pendingFocus) apply(pendingFocus);
+    const onFocus = (e: Event) => apply((e as CustomEvent<ExploreFocus>).detail ?? null);
+    window.addEventListener("explore-focus", onFocus);
+    return () => window.removeEventListener("explore-focus", onFocus);
+  }, []);
+
   const sessionId = typeof view === "string" ? null : view.session;
   // list view the breadcrumb returns to (and the sub-nav highlights)
   const listView: ListView = typeof view === "string" ? view : view.from;

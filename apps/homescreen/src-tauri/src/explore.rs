@@ -38,9 +38,10 @@ fn is_read_only_clickhouse(sql: &str) -> bool {
 }
 
 /// Run a read-only query against the local Moraine ClickHouse and return the
-/// raw JSONEachRow response body.
-#[tauri::command]
-pub async fn explore_clickhouse_query(sql: String) -> Result<String, String> {
+/// raw JSONEachRow response body. Shared by the Tauri command and the local
+/// server (REST + MCP): allowlisted statement heads plus ClickHouse-side
+/// memory/thread/time caps.
+pub async fn run_clickhouse_query(sql: String) -> Result<String, String> {
     let sql = sql.trim().trim_end_matches(';').trim().to_string();
     if sql.is_empty() {
         return Err("empty query".into());
@@ -78,6 +79,11 @@ pub async fn explore_clickhouse_query(sql: String) -> Result<String, String> {
     Ok(body)
 }
 
+#[tauri::command]
+pub async fn explore_clickhouse_query(sql: String) -> Result<String, String> {
+    run_clickhouse_query(sql).await
+}
+
 fn sqlite_value_to_json(v: ValueRef<'_>) -> Value {
     match v {
         ValueRef::Null => Value::Null,
@@ -112,9 +118,9 @@ fn run_sqlite_query(path: PathBuf, sql: String, params: Vec<String>) -> Result<S
 }
 
 /// Read-only query over one of the explore side tables
-/// (~/.understudy/explore/{scan,commits,langs}.sqlite).
-#[tauri::command]
-pub async fn explore_sqlite_query(
+/// (~/.understudy/explore/{scan,commits,langs}.sqlite). Shared guarded
+/// helper: named-db allowlist, SELECT-only, read-only open, row cap.
+pub async fn query_sqlite(
     db: String,
     sql: String,
     params: Vec<String>,
@@ -134,9 +140,18 @@ pub async fn explore_sqlite_query(
         .map_err(|e| format!("sqlite task failed: {e}"))?
 }
 
-/// Read a benchmark or eval JSON artifact; `None` when the file is missing.
 #[tauri::command]
-pub async fn explore_read_json(kind: String, name: String) -> Result<Option<String>, String> {
+pub async fn explore_sqlite_query(
+    db: String,
+    sql: String,
+    params: Vec<String>,
+) -> Result<String, String> {
+    query_sqlite(db, sql, params).await
+}
+
+/// Read a benchmark or eval JSON artifact; `None` when the file is missing.
+/// Shared by the Tauri command and the local server.
+pub async fn read_artifact_json(kind: String, name: String) -> Result<Option<String>, String> {
     let dir = match kind.as_str() {
         "benchmark" => "benchmarks",
         "eval" => "evals",
@@ -155,6 +170,11 @@ pub async fn explore_read_json(kind: String, name: String) -> Result<Option<Stri
         Err(e) if e.kind() == std::io::ErrorKind::NotFound => Ok(None),
         Err(e) => Err(format!("read {}: {e}", path.display())),
     }
+}
+
+#[tauri::command]
+pub async fn explore_read_json(kind: String, name: String) -> Result<Option<String>, String> {
+    read_artifact_json(kind, name).await
 }
 
 // ---------------------------------------------------------------------------
@@ -273,14 +293,13 @@ fn run_scan_pipeline(shared: &Mutex<ScanJobInner>, llm_url: &str) -> Result<(), 
 /// Start the scan pipeline against the resident local model. Refuses when a
 /// pipeline is already running or no model is serving. Returns "started"
 /// immediately after the scan child spawns; the remaining stages chain in a
-/// background thread.
-#[tauri::command]
-pub async fn explore_scan_start(
+/// background thread. Shared by the Tauri command and the local server.
+pub fn scan_start(
+    job: &ScanJob,
+    residency: &crate::residency::Residency,
     limit: Option<u32>,
-    job: tauri::State<'_, ScanJob>,
-    residency: tauri::State<'_, crate::residency::Residency>,
 ) -> Result<String, String> {
-    let llm_url = resident_llm_url(&residency)?;
+    let llm_url = resident_llm_url(residency)?;
 
     let mut scan_args = vec!["--llm-url".to_string(), llm_url.clone()];
     if let Some(limit) = limit {
@@ -319,6 +338,15 @@ pub async fn explore_scan_start(
     Ok("started".into())
 }
 
+#[tauri::command]
+pub async fn explore_scan_start(
+    limit: Option<u32>,
+    job: tauri::State<'_, ScanJob>,
+    residency: tauri::State<'_, crate::residency::Residency>,
+) -> Result<String, String> {
+    scan_start(&job, &residency, limit)
+}
+
 fn scanned_sessions_count(path: &Path) -> i64 {
     if !path.exists() {
         return 0;
@@ -333,8 +361,7 @@ fn scanned_sessions_count(path: &Path) -> i64 {
 
 /// Progress snapshot for the scan pipeline:
 /// `{running, stage, error, scannedSessions}`.
-#[tauri::command]
-pub async fn explore_scan_status(job: tauri::State<'_, ScanJob>) -> Result<String, String> {
+pub async fn scan_status(job: &ScanJob) -> Result<String, String> {
     let (running, stage, error) = {
         let g = scan_locked(&job.0);
         (g.running, g.stage.clone(), g.error.clone())
@@ -352,9 +379,13 @@ pub async fn explore_scan_status(job: tauri::State<'_, ScanJob>) -> Result<Strin
     .to_string())
 }
 
-/// Cancel the in-flight scan pipeline (no-op when idle).
 #[tauri::command]
-pub async fn explore_scan_cancel(job: tauri::State<'_, ScanJob>) -> Result<(), String> {
+pub async fn explore_scan_status(job: tauri::State<'_, ScanJob>) -> Result<String, String> {
+    scan_status(&job).await
+}
+
+/// Cancel the in-flight scan pipeline (no-op when idle).
+pub fn scan_cancel(job: &ScanJob) -> Result<(), String> {
     let mut g = scan_locked(&job.0);
     if !g.running {
         return Ok(());
@@ -367,9 +398,14 @@ pub async fn explore_scan_cancel(job: tauri::State<'_, ScanJob>) -> Result<(), S
     Ok(())
 }
 
-/// Availability snapshot for the Explore pane: services + local artifacts.
 #[tauri::command]
-pub async fn explore_status() -> Result<String, String> {
+pub async fn explore_scan_cancel(job: tauri::State<'_, ScanJob>) -> Result<(), String> {
+    scan_cancel(&job)
+}
+
+/// Availability snapshot for the Explore pane: services + local artifacts.
+/// Shared by the Tauri command and the local server.
+pub async fn status_snapshot() -> Result<String, String> {
     let clickhouse_up = async {
         let client = match reqwest::Client::builder()
             .timeout(Duration::from_secs(2))
@@ -408,4 +444,9 @@ pub async fn explore_status() -> Result<String, String> {
         "hasLangs": dir.join("langs.sqlite").exists(),
     });
     Ok(status.to_string())
+}
+
+#[tauri::command]
+pub async fn explore_status() -> Result<String, String> {
+    status_snapshot().await
 }
