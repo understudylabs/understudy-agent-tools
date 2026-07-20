@@ -59,7 +59,7 @@ understudy run -- curl -s \
       "workload_id": "usp_...",
       "display_name": "chat",
       "status": "healthy",                  // "healthy" | "degraded" | "idle"
-      "mode": "managed",                    // dominant provider label; null when idle
+      "mode": "anthropic",                  // dominant provider label; null when idle
       "declared": { "routed": "pin", "split_pct": 30 },
       "requests": 1200,
       "route_shares": { "primary": 0.71, "understudy": 0.28, "fallback": 0.01 },
