@@ -13,6 +13,10 @@ import {
   startTinkerSftTraining,
   TINKER_SFT_MAX_RUNTIME_SECONDS,
 } from "../tinker-sft/index.js";
+import {
+  buildTrainingGoalCard,
+  validateEnvironmentProposal,
+} from "../environment-proposal/index.js";
 import { isJsonMode, runAction } from "../internal/output.js";
 
 type LocalSftOptions = {
@@ -31,6 +35,11 @@ type CompileBackendOptions = {
   output?: string;
 };
 
+type GoalCardOptions = {
+  plan: string;
+  preview: string;
+};
+
 type TinkerSftOptions = {
   plan: string;
   runId: string;
@@ -47,6 +56,51 @@ type TinkerSftOptions = {
 export function registerTrainingCommand(program: Command): void {
   const training = program.command("training")
     .description("Execute immutable evaluator-backed training plans.");
+
+  training.command("goal-card")
+    .description("Render a local pre-run Goal Card and validated environment proposal.")
+    .requiredOption("--plan <path>", "Portable Understudy training plan.")
+    .option("--preview <count>", "Bounded TRAIN-only example preview (0-3).", "0")
+    .action(async function (this: Command, options: GoalCardOptions) {
+      await runAction(this, async () => {
+        const preview = Number(options.preview);
+        if (!Number.isInteger(preview)) throw new Error("--preview must be an integer.");
+        const card = buildTrainingGoalCard(options.plan, preview);
+        if (isJsonMode(this)) {
+          process.stdout.write(`${JSON.stringify(card, null, 2)}\n`);
+          return;
+        }
+        process.stdout.write(`${card.detected_task} · ${card.evaluator}\n`);
+        process.stdout.write(
+          `splits: ${card.splits.train} train · ${card.splits.validation} validation · ${card.splits.heldout} held-out\n`,
+        );
+        process.stdout.write(
+          `promotion: accuracy >= ${card.promotion.minimum_accuracy}; improvement >= ${card.promotion.minimum_improvement_over_base}\n`,
+        );
+        process.stdout.write(
+          `local-only · max $${card.cost.maximum_usd} · ${card.runtime.maximum_seconds}s · held-out targets hidden\n`,
+        );
+        process.stdout.write(`environment: ${card.environment.status} · ${card.environment.proposal_path}\n`);
+      });
+    });
+
+  training.command("validate-environment-proposal")
+    .description("Re-hash and deterministically validate a portable environment proposal.")
+    .requiredOption("--proposal <path>", "Environment proposal JSON artifact.")
+    .action(async function (this: Command, options: { proposal: string }) {
+      await runAction(this, async () => {
+        const validation = validateEnvironmentProposal(options.proposal);
+        if (isJsonMode(this)) {
+          process.stdout.write(`${JSON.stringify(validation, null, 2)}\n`);
+          return;
+        }
+        process.stdout.write(
+          validation.executable
+            ? "environment proposal: executable\n"
+            : `environment proposal: needs verifier (${validation.blockers.join(", ")})\n`,
+        );
+      });
+    });
 
   training.command("compile-backend")
     .description("Compile one portable plan for a real backend without uploading or spending.")

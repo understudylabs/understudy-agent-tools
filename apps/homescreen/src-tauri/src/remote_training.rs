@@ -11,6 +11,7 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::{Arc, Mutex, OnceLock};
 use std::time::{Duration, Instant};
 use tauri::ipc::Channel;
+use tauri::{AppHandle, State};
 
 const DATASET_SCHEMA: &str = "understudy.capture_import.classification_dataset.v2";
 const PLAN_SCHEMA: &str = "understudy.training.plan.v1";
@@ -26,6 +27,9 @@ const MAX_SPLIT_BYTES: u64 = 150 * 1024 * 1024;
 const MAX_REMOTE_ARTIFACT_BYTES: u64 = 150 * 1024 * 1024;
 const MAX_RECIPE_INSPECTION_BYTES: u64 = 32 * 1024 * 1024;
 const MAX_REMOTE_TRAINING_BUDGET_USD: f64 = 1_000.0;
+const ENVIRONMENT_PROPOSAL_SCHEMA: &str = "understudy.environment_proposal.v1";
+const ENVIRONMENT_VALIDATION_SCHEMA: &str = "understudy.environment_validation.v1";
+const MAX_GOAL_CARD_PREVIEW: u64 = 3;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum PortableRecipeShape {
@@ -454,6 +458,276 @@ pub async fn inspect_remote_training_recipe(path: String) -> Result<Value, Strin
     tauri::async_runtime::spawn_blocking(move || inspect_training_recipe(&path))
         .await
         .map_err(|error| format!("Training recipe inspection stopped unexpectedly: {error}"))?
+}
+
+/// Render the CLI-owned Goal Card and deterministic environment validation.
+/// The CLI re-hashes the immutable plan and reads previews from train.jsonl
+/// only; Desktop never opens validation or held-out rows for presentation.
+#[tauri::command]
+pub async fn automatic_training_goal_card(
+    plan_path: String,
+    preview_limit: u64,
+) -> Result<Value, String> {
+    if preview_limit > MAX_GOAL_CARD_PREVIEW {
+        return Err(format!(
+            "Training preview is bounded to {MAX_GOAL_CARD_PREVIEW} examples."
+        ));
+    }
+    tauri::async_runtime::spawn_blocking(move || {
+        let canonical = PathBuf::from(plan_path.trim())
+            .canonicalize()
+            .map_err(|_| "The immutable training plan is unavailable.".to_string())?;
+        let output = crate::bin::command("understudy")
+            .args(["training", "goal-card", "--plan"])
+            .arg(&canonical)
+            .args(["--preview", &preview_limit.to_string(), "--json"])
+            .output()
+            .map_err(|error| format!("Could not run the local Goal Card compiler: {error}"))?;
+        if !output.status.success() {
+            return Err(format!(
+                "The local Goal Card compiler rejected this plan. {}",
+                bounded_process_detail(&output.stderr)
+            ));
+        }
+        let value = serde_json::from_slice::<Value>(&output.stdout)
+            .map_err(|_| "The Goal Card compiler returned malformed JSON.".to_string())?;
+        if value.get("schema_version").and_then(Value::as_str)
+            != Some("understudy.training.goal_card.v1")
+            || value
+                .pointer("/privacy/heldout_targets_visible")
+                .and_then(Value::as_bool)
+                != Some(false)
+            || value
+                .get("training_preview")
+                .and_then(Value::as_array)
+                .is_none_or(|rows| {
+                    rows.len() > preview_limit as usize
+                        || rows.iter().any(|row| {
+                            row.get("source_split").and_then(Value::as_str) != Some("train")
+                        })
+                })
+        {
+            return Err("The Goal Card violated its TRAIN-only preview contract.".into());
+        }
+        Ok(value)
+    })
+    .await
+    .map_err(|error| format!("Goal Card compilation stopped unexpectedly: {error}"))?
+}
+
+fn bounded_process_detail(stderr: &[u8]) -> String {
+    let detail = String::from_utf8_lossy(stderr).trim().to_string();
+    if detail.is_empty() {
+        "No diagnostic was returned.".to_string()
+    } else {
+        detail.chars().take(800).collect()
+    }
+}
+
+fn extract_pi_json(content: &str) -> Value {
+    let trimmed = content.trim();
+    if let Ok(value) = serde_json::from_str::<Value>(trimmed) {
+        return value;
+    }
+    if let Some(start) = trimmed.find('{') {
+        if let Some(end) = trimmed.rfind('}') {
+            if let Ok(value) = serde_json::from_str::<Value>(&trimmed[start..=end]) {
+                return value;
+            }
+        }
+    }
+    json!({
+        "parse_status": "unparseable",
+        "bounded_output": trimmed.chars().take(2_000).collect::<String>()
+    })
+}
+
+/// Run the real canonical Pi conversation runtime against a warm local model.
+/// Only content-free inspection aggregates cross this boundary. The resulting
+/// proposal is always `needs_verifier`; deterministic code, never Pi, owns the
+/// executable gate.
+#[allow(clippy::too_many_arguments)]
+#[tauri::command]
+pub async fn propose_training_environment_with_pi(
+    app: AppHandle,
+    residency: State<'_, crate::residency::Residency>,
+    source_path: String,
+    artifact_root: String,
+    expected_source_sha256: String,
+    slot_id: u32,
+    detected_use_case: String,
+    task_kind: String,
+    evaluator: Option<String>,
+    total_rows: u64,
+) -> Result<Value, String> {
+    if !valid_hash(&expected_source_sha256) || total_rows == 0 {
+        return Err("The environment architect received invalid local inspection evidence.".into());
+    }
+    let canonical_source = PathBuf::from(source_path.trim())
+        .canonicalize()
+        .map_err(|_| "The dropped training dataset is unavailable.".to_string())?;
+    let canonical_root = PathBuf::from(artifact_root.trim())
+        .canonicalize()
+        .map_err(|_| "The local workload root is unavailable.".to_string())?;
+    if !canonical_root.is_dir() || !canonical_root.join("workload-card.json").is_file() {
+        return Err("The environment architect requires the current local Workload Card.".into());
+    }
+    let bytes = fs::read(&canonical_source)
+        .map_err(|_| "The dropped training dataset could not be re-hashed.".to_string())?;
+    if sha256_bytes(&bytes) != expected_source_sha256 {
+        return Err("The dropped dataset changed after local inspection.".into());
+    }
+    if residency.endpoint(slot_id).is_none() {
+        return Err("The local environment architect requires a warm local model slot.".into());
+    }
+
+    let prompt = format!(
+        "Act as an environment architect. Propose, but do not claim to validate, a portable evaluator environment from metadata only. No dropped examples or targets are included. Return one JSON object with concise keys task_spec, dataset_adapter, parser, environment, reward_rubric, scripted_oracle, sentinels, and backend_compatibility. The proposal must be local-only, network-free, resettable, and have no live effects. Detected use case: {detected_use_case}; task kind: {task_kind}; evaluator: {}; row count: {total_rows}. Unsupported or subjective semantics must say needs_verifier. Do not use tools.",
+        evaluator.as_deref().unwrap_or("not detected")
+    );
+    let session_id = format!("environment-architect-{}", &expected_source_sha256[..12]);
+    let result =
+        crate::chat::agent_metadata_chat(&app, &residency, slot_id, &session_id, &prompt, 1_200)
+            .await?;
+    if result.runtime_backend != "pi" {
+        return Err("The environment architect did not execute through canonical Pi.".into());
+    }
+    if result.tool_calls != 0 {
+        return Err(
+            "The metadata-only environment architect unexpectedly attempted a tool call.".into(),
+        );
+    }
+    let pi_notes = extract_pi_json(&result.content);
+    let train = total_rows * 70 / 100;
+    let validation = total_rows * 15 / 100;
+    let heldout = total_rows.saturating_sub(train + validation);
+    let split_hash = sha256_bytes(
+        format!("{expected_source_sha256}\0{train}\0{validation}\0{heldout}").as_bytes(),
+    );
+    let split = |role: &str, row_count: u64| {
+        json!({
+            "row_count": row_count,
+            "sha256": sha256_bytes(format!("{expected_source_sha256}\0{role}\0{row_count}").as_bytes())
+        })
+    };
+    let proposal_id = random_uuid()?;
+    let proposal = json!({
+        "schema_version": ENVIRONMENT_PROPOSAL_SCHEMA,
+        "proposal_id": proposal_id,
+        "created_at": timestamp(),
+        "status": "needs_verifier",
+        "source": {
+            "plan_path": null,
+            "plan_sha256": null,
+            "source_sha256": expected_source_sha256,
+            "proposal_lane": "pi_conversation_runtime",
+            "runtime_backend": "pi",
+            "remote_content_shared": false,
+            "local_model_inference": true,
+            "pi_run_id": result.capture_run_id
+        },
+        "task_spec": {
+            "task_kind": task_kind,
+            "objective": format!("Build a deterministic evaluator for {detected_use_case}."),
+            "evaluator": evaluator.unwrap_or_else(|| "needs_verifier".to_string()),
+            "subjective": true,
+            "input_contract": "metadata-only proposal; adapter not yet verified",
+            "output_contract": "must be authored and parser-tested before execution"
+        },
+        "dataset": {
+            "adapter_id": "pi-proposed-adapter",
+            "adapter_version": "v1",
+            "split_strategy": "deterministic-source-hash-70-15-15-proposal-v1",
+            "split_hash": split_hash,
+            "splits": {
+                "train": split("train", train),
+                "validation": split("validation", validation),
+                "heldout": split("heldout", heldout)
+            },
+            "preview_source": "train_only",
+            "heldout_targets_visible": false
+        },
+        "parser": { "id": "needs-verifier", "version": "v1", "output_contract": "unverified" },
+        "environment": {
+            "kind": "needs_verifier",
+            "deterministic": false,
+            "reset_contract": "must be authored and replay-tested",
+            "live_effects": false,
+            "network_access": false
+        },
+        "reward": {
+            "rubric_id": "needs-verifier",
+            "rubric_version": "v1",
+            "axes": ["correctness", "contract", "side_effect_safety"],
+            "aggregation": "unverified",
+            "range": [0, 1],
+            "useful_delta_minimum": 0.5
+        },
+        "scripted_oracle": {
+            "id": "not-authored",
+            "artifact_sha256": sha256_bytes(b"not-authored-oracle"),
+            "observed_reward": null
+        },
+        "sentinels": (["empty", "wrong_value", "reward_hacking", "right_answer_wrong_contract"].iter().map(|kind| json!({
+            "id": kind,
+            "kind": kind,
+            "artifact_sha256": sha256_bytes(format!("unverified-sentinel-{kind}").as_bytes()),
+            "observed_reward": null,
+            "maximum_reward": 0,
+            "parser_compatible": false
+        })).collect::<Vec<_>>()),
+        "reset_probe": { "seed": 1729, "first_state_sha256": null, "second_state_sha256": null },
+        "reward_probe": { "observed_rewards": [] },
+        "backend_compatibility": (["mlx-local", "fireworks", "tinker"].iter().map(|id| json!({
+            "id": id,
+            "compatible": false,
+            "parser_compatible": false,
+            "reason": "Deterministic parser/environment validation has not passed."
+        })).collect::<Vec<_>>()),
+        "privacy": {
+            "local_only": true,
+            "uploads": false,
+            "provider_calls": false,
+            "live_effects": false,
+            "training_source_roles": ["train"],
+            "heldout_target_access": false
+        },
+        "validation": {
+            "schema_version": ENVIRONMENT_VALIDATION_SCHEMA,
+            "executable": false,
+            "gates": {
+                "schema_and_hashes": false,
+                "oracle_scores_one": false,
+                "sentinels_rejected": false,
+                "deterministic_reset": false,
+                "no_label_leakage": true,
+                "no_live_effects": true,
+                "useful_nonconstant_reward": false,
+                "parser_compatible": false,
+                "objective_is_deterministic": false
+            },
+            "blockers": ["immutable_plan_missing", "oracle_scores_one", "sentinels_rejected", "deterministic_reset", "useful_nonconstant_reward", "parser_compatible", "objective_is_deterministic"]
+        },
+        "architect_notes": pi_notes
+    });
+    let proposal_root = canonical_root.join("environment-proposals");
+    create_private_directory(&proposal_root)?;
+    let proposal_path = proposal_root.join(format!("pi-{proposal_id}.json"));
+    write_private_new(
+        &proposal_path,
+        &serde_json::to_vec_pretty(&proposal)
+            .map_err(|_| "The Pi environment proposal could not be encoded.".to_string())?,
+    )?;
+    Ok(json!({
+        "schema_version": "understudy.environment_architect.pi_result.v1",
+        "status": "needs_verifier",
+        "proposal_path": proposal_path.display().to_string(),
+        "runtime_backend": "pi",
+        "local_only": true,
+        "remote_content_shared": false,
+        "executable": false,
+        "blocker": "Deterministic oracle, sentinel, reset, reward, leakage, and parser gates have not passed."
+    }))
 }
 
 fn inspect_training_recipe(path: &str) -> Result<Value, String> {

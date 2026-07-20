@@ -192,6 +192,14 @@ End with: the seeded fixtures and gold set; the tool classes simulated; the
 validator's axes; the oracle's perfect score; and each candidate model's
 recall/precision/policy + cost/latency — with the local-model gap to close.
 
+When starting from a portable JSONL training plan, first render
+`understudy training goal-card --plan <plan.json> --preview 0` and validate the
+resulting `understudy.environment_proposal.v1` artifact. Increase the preview
+only when useful; it is bounded to three TRAIN rows and never exposes held-out
+targets. Model-authored environment proposals are design input only and remain
+`needs_verifier` until the deterministic oracle, sentinels, reset, leakage,
+live-effect, reward, hash, and parser gates pass.
+
 ## References
 
 - [`references/cookbook-traces-to-env.md`](references/cookbook-traces-to-env.md) — the stage-by-stage recipe from captured traces/tests to a runnable verifiers env (gold policies, tool-stub strategies, contract rubric, playbook-as-argument, validator gates).
