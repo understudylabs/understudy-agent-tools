@@ -72,6 +72,7 @@ const BENCHMARK_MAX_TOKENS: u32 = 384;
 pub(crate) const MAX_TOOL_ROUNDS: usize = 4;
 const CHAT_CONNECT_TIMEOUT_SECS: u64 = 10;
 const CHAT_REQUEST_TIMEOUT_SECS: u64 = 600;
+const METADATA_CHAT_TIMEOUT_SECS: u64 = 45;
 const SMALL_FIRST_SUPERVISOR_PROMPT: &str = "Judge whether the smaller student's partial answer is correct, relevant, safe, and using tools appropriately. INTERRUPT factual errors, invented evidence, wrong tool arguments, irrelevant refusals, or confident claims unsupported by tool results so the teacher can correct them. NUDGE only when a short concrete correction can let the student continue. CONTINUE when the partial is sound, including when a sound answer is complete. Never use STOP for an incorrect, incomplete, irrelevant, or otherwise correctable answer; STOP is reserved for a turn that must end without any teacher response. Give one concise, specific reason for every INTERRUPT or NUDGE.";
 const UNDERSTUDY_DESKTOP_CONTEXT: &str = r#"You are the Understudy Desktop agent for Understudy Labs, founded by Aamir Poonawalla and Luis Manrique. Understudy helps teams improve complete production AI routes -- the harness, model, and supply path -- from real work. It turns traces and expert judgment into workload-specific evals, optimization or training evidence, routing decisions, and specialist models the team can own.
 
@@ -1409,44 +1410,56 @@ pub async fn agent_chat(
     }
 }
 
-/// One content-only local Pi turn for metadata analysis. Unlike the general
-/// agent surface this deliberately exposes no tools or executor URL, so a
-/// background proposal lane cannot create filesystem, shell, or live effects.
+/// One content-only Pi turn for dataset analysis. Unlike the general agent
+/// surface this deliberately exposes no tools or executor URL, so a dropped
+/// dataset cannot turn analysis into filesystem, shell, or live effects.
+pub struct MetadataChatRoute<'a> {
+    pub route: &'a str,
+    pub model: Option<&'a str>,
+    pub slot_id: Option<u32>,
+    pub stream_events: Option<&'a Channel<Value>>,
+}
+
 pub async fn agent_metadata_chat(
     app: &AppHandle,
     mgr: &Residency,
-    slot_id: u32,
+    target: MetadataChatRoute<'_>,
     session_id: &str,
     prompt: &str,
     max_tokens: u32,
 ) -> Result<BenchmarkChatResult, String> {
     let max_tokens = max_tokens.clamp(1, CHAT_MAX_TOKENS);
     let run_id = crate::conversation_runtime::new_run_id()?;
-    let (port, model_field) = mgr
-        .endpoint(slot_id)
-        .ok_or_else(|| format!("slot {slot_id} is not warm; warm it first"))?;
+    let binding = match target.route {
+        "cloud" => cloud_route_binding()
+            .ok_or_else(|| "GLM 5.2 requires an active Understudy sign-in.".to_string())?,
+        "anthropic" => anthropic_route_binding(
+            app,
+            target.model.ok_or_else(|| {
+                "The selected Anthropic route is missing its model id.".to_string()
+            })?,
+        )?,
+        "local" => local_route_binding("local", mgr, target.slot_id)?,
+        _ => return Err("The selected dataset analysis route is not supported.".into()),
+    };
     let messages = vec![ChatMsg {
         role: "user".to_string(),
         content: prompt.to_string(),
         attachments: vec![],
     }];
     let outbound = vec![
-        json!({ "role": "system", "content": system_prompt_for(&model_field) }),
+        json!({ "role": "system", "content": system_prompt_for(&binding.model_field) }),
         json!({ "role": "user", "content": prompt }),
     ];
-    let binding = RouteBinding {
-        route: "local".to_string(),
-        url: format!("http://127.0.0.1:{port}/v1/chat/completions"),
-        bearer: None,
-        model_field,
-    };
     let mut request = sidecar_run_request(
         app,
         &messages,
         &outbound,
         &binding,
         None,
-        Some(slot_id),
+        (binding.route == "local")
+            .then_some(target.slot_id)
+            .flatten(),
         (session_id, &run_id),
     )?;
     request["tools"] = json!([]);
@@ -1456,7 +1469,38 @@ pub async fn agent_metadata_chat(
         .as_object_mut()
         .expect("the Pi request must be an object")
         .remove("tool_executor_url");
-    match crate::conversation_sidecar::try_run_chat_headless(app, request).await {
+    let (runtime_tx, mut runtime_rx) = tokio::sync::mpsc::unbounded_channel();
+    let mut metadata_run = Box::pin(
+        crate::conversation_sidecar::try_run_chat_headless_with_events(app, request, &runtime_tx),
+    );
+    let deadline = tokio::time::sleep(Duration::from_secs(METADATA_CHAT_TIMEOUT_SECS));
+    tokio::pin!(deadline);
+    let attempt = loop {
+        tokio::select! {
+            attempt = &mut metadata_run => break attempt,
+            envelope = runtime_rx.recv() => {
+                let Some(envelope) = envelope else { continue };
+                if let crate::conversation_runtime::RuntimeEvent::Delta { text, .. } = envelope.event {
+                    if !text.is_empty() {
+                        if let Some(channel) = target.stream_events {
+                            let _ = channel.send(json!({
+                                "type": "draft_delta",
+                                "phase": "inferring",
+                                "text": text,
+                            }));
+                        }
+                    }
+                }
+            }
+            _ = &mut deadline => {
+                let _ = crate::conversation_sidecar::conversation_runtime_cancel(session_id.to_string()).await;
+                return Err(format!(
+                    "metadata analysis exceeded {METADATA_CHAT_TIMEOUT_SECS} seconds and was cancelled"
+                ));
+            }
+        }
+    };
+    match attempt {
         crate::conversation_sidecar::SidecarAttempt::Completed(sidecar) => {
             Ok(BenchmarkChatResult {
                 capture_run_id: run_id,

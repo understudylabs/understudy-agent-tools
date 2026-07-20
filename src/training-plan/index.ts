@@ -5,6 +5,7 @@ import { z } from "zod";
 
 export const PORTABLE_TRAINING_PLAN_SCHEMA = "understudy.training.plan.v1";
 export const MAX_PORTABLE_TRAINING_ARTIFACT_BYTES = 150 * 1024 * 1024;
+export const MAX_PORTABLE_TRAINING_SPEND_USD = 1_000;
 
 const ArtifactSchema = z.object({
   artifact_role: z.enum(["train", "validation", "heldout"]),
@@ -36,7 +37,7 @@ export const PortableTrainingPlanSchema = z.object({
   epochs: z.number().int().positive(),
   lora_rank: z.number().int().positive(),
   max_context_length: z.number().int().positive(),
-  maximum_spend_usd: z.number().nonnegative().max(500),
+  maximum_spend_usd: z.number().nonnegative().max(MAX_PORTABLE_TRAINING_SPEND_USD),
   maximum_runtime_seconds: z.number().int().positive(),
   maximum_eval_examples: z.number().int().positive(),
   minimum_accuracy: z.number().min(0).max(1),

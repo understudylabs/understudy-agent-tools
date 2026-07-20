@@ -19,7 +19,7 @@ the CLI may send bounded product telemetry as documented in
 | Traces | request/response payloads, spans, usage rows | metadata-only by default |
 | Supervision correction exports | user requests, student partials, supervisor reasons, teacher continuations, tool results, human labels | explicit local CLI export only; owner-only immutable files; never telemetry |
 | Remote supervision advisories | bounded user request, student partial, decision phase, pre-decision tool results, tool-round policy, supervisor action/reason/source | off by default; destination-bound Desktop consent or `--confirm-remote`; teacher output and system prompts excluded |
-| Eval rows | JSONL, CSV, YAML, golden fixtures | local-only until a redaction and split plan exists |
+| Dataset and eval rows | JSON, JSONL, CSV, spreadsheets, golden fixtures | local-only unless explicitly dropped into Desktop analysis or approved for training |
 | Secrets | API keys, tokens, credentials, local env files | never ask for chat-pasted values; never print values |
 | Local model artifacts | downloaded weights, adapters, caches | download only with explicit approval |
 
@@ -37,6 +37,16 @@ submission, training handoff, or public claim, require:
 
 Configured provider keys are local machine state. They are not permission to
 spend.
+
+## Desktop Dataset Analysis
+
+Dropping one supported dataset into Desktop is the explicit action that starts
+Pi analysis through the active model shown in the model picker. Desktop decodes
+the file locally first. Small datasets may be sent in full; larger text files
+and workbooks are reduced to a deterministic, context-bounded representation
+with field names and representative records. The UI streams the analysis stage
+and names the model used. Dataset analysis does not authorize a hosted training
+job, model deployment, or training budget; those remain separate actions.
 
 ## Trace And Proxy Rules
 

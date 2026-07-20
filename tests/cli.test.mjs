@@ -2173,7 +2173,15 @@ class ScoreWithFeedback:
       assert.equal(inspection.local_only, true);
       assert.equal(inspection.payload_read, true);
       assert.equal(inspection.source_rows_persisted, false);
+      assert.equal(inspection.row_preview_persisted, false);
       assert.equal(inspection.persisted_data, "statistics-and-label-aggregates");
+      assert.equal(inspection.row_preview.length, 2);
+      assert.deepEqual(
+        inspection.row_preview.map((row) => row.values.category),
+        ["meals", "travel"],
+      );
+      const persistedInspection = JSON.parse(readFileSync(inspection.artifact_path, "utf8"));
+      assert.equal("row_preview" in persistedInspection, false);
       assert.equal(inspection.row_count, 5);
       assert.equal(inspection.column_count, 4);
       assert.deepEqual(

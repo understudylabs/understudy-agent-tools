@@ -411,6 +411,7 @@ fn validate_csv_inspection_result(value: Value) -> Result<Value, String> {
         || value.get("local_only").and_then(Value::as_bool) != Some(true)
         || value.get("payload_read").and_then(Value::as_bool) != Some(true)
         || value.get("source_rows_persisted").and_then(Value::as_bool) != Some(false)
+        || value.get("row_preview_persisted").and_then(Value::as_bool) != Some(false)
         || value.get("persisted_data").and_then(Value::as_str)
             != Some("statistics-and-label-aggregates")
     {
@@ -445,6 +446,29 @@ fn validate_csv_inspection_result(value: Value) -> Result<Value, String> {
             })
         {
             return Err("The CSV inspection returned an invalid bounded column profile.".into());
+        }
+    }
+    let preview = value
+        .get("row_preview")
+        .and_then(Value::as_array)
+        .filter(|rows| rows.len() <= 2)
+        .ok_or_else(|| "The CSV inspection omitted its bounded row preview.".to_string())?;
+    for row in preview {
+        if row.get("row_number").and_then(Value::as_u64).is_none()
+            || row
+                .get("values")
+                .and_then(Value::as_object)
+                .filter(|values| {
+                    values.len() <= 128
+                        && values.values().all(|value| {
+                            value
+                                .as_str()
+                                .is_some_and(|text| text.chars().count() <= 800)
+                        })
+                })
+                .is_none()
+        {
+            return Err("The CSV inspection returned an invalid bounded row preview.".into());
         }
     }
     Ok(value)
@@ -2246,7 +2270,12 @@ mod tests {
             "local_only": true,
             "payload_read": true,
             "source_rows_persisted": false,
+            "row_preview_persisted": false,
             "persisted_data": "statistics-and-label-aggregates",
+            "row_preview": [{
+                "row_number": 1,
+                "values": { "category": "ham", "text": "hello" }
+            }],
             "columns": [{
                 "name": "category",
                 "profile_kind": "category",

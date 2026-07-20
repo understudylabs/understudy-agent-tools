@@ -88,10 +88,15 @@ export type CaptureCsvInspection = {
   local_only: true;
   payload_read: true;
   source_rows_persisted: false;
+  row_preview_persisted: false;
   persisted_data: "statistics-and-label-aggregates";
   row_count: number;
   column_count: number;
   duplicate_row_count: number;
+  row_preview: {
+    row_number: number;
+    values: Record<string, string>;
+  }[];
   columns: CaptureCsvColumnSummary[];
   recommended_mapping: {
     label_column: string | null;
@@ -291,6 +296,8 @@ const MAX_CSV_BYTES = 16 * 1024 * 1024;
 const MAX_CSV_ROWS = 50_000;
 const MAX_CSV_COLUMNS = 128;
 const MAX_CSV_FIELD_CHARACTERS = 65_536;
+const MAX_CSV_PREVIEW_ROWS = 2;
+const MAX_CSV_PREVIEW_FIELD_CHARACTERS = 800;
 const MAX_REPORTED_LABELS = 50;
 const MIN_EXAMPLES_PER_CLASS = 20;
 
@@ -631,6 +638,26 @@ export function inspectCaptureCsv(
     ? Math.min(...sortedLabels.map(([, count]) => count))
     : null;
   const duplicateRowCount = rows.length - new Set(rows.map((row) => JSON.stringify(row))).size;
+  const previewIndexes = labelIndex >= 0
+    ? sortedLabels.slice(0, MAX_CSV_PREVIEW_ROWS).map(([label]) =>
+      rows.findIndex((row) => row[labelIndex].trim() === label),
+    )
+    : Array.from({ length: Math.min(MAX_CSV_PREVIEW_ROWS, rows.length) }, (_, index) =>
+      Math.floor(index * Math.max(0, rows.length - 1) / Math.max(1, MAX_CSV_PREVIEW_ROWS - 1)),
+    );
+  const rowPreview = [...new Set(previewIndexes)]
+    .filter((index) => index >= 0)
+    .map((index) => ({
+      row_number: index + 1,
+      values: Object.fromEntries(headers.map((header, columnIndex) => [
+        header,
+        rows[index][columnIndex]
+          .split(/\s+/)
+          .filter(Boolean)
+          .join(" ")
+          .slice(0, MAX_CSV_PREVIEW_FIELD_CHARACTERS),
+      ])),
+    }));
   const reasons: string[] = [];
   const warnings: string[] = [];
   let status: CaptureCsvInspection["training_readiness"]["status"] = "ready";
@@ -689,10 +716,12 @@ export function inspectCaptureCsv(
     local_only: true,
     payload_read: true,
     source_rows_persisted: false,
+    row_preview_persisted: false,
     persisted_data: "statistics-and-label-aggregates",
     row_count: rows.length,
     column_count: headers.length,
     duplicate_row_count: duplicateRowCount,
+    row_preview: rowPreview,
     columns,
     recommended_mapping: {
       label_column: labelCandidate?.name ?? null,
@@ -722,7 +751,8 @@ export function inspectCaptureCsv(
     },
     artifact_path: artifactPath,
   };
-  writeJson(artifactPath, inspection);
+  const { row_preview: _ephemeralPreview, ...persistedInspection } = inspection;
+  writeJson(artifactPath, persistedInspection);
   return inspection;
 }
 

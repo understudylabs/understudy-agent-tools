@@ -35,6 +35,11 @@ export function shouldInspectTrainingRecipe(workload: {
   source_name?: string | null;
 } | null): boolean;
 
+export function shouldInspectStructuredDataset(workload: {
+  source_type?: string | null;
+  source_name?: string | null;
+} | null): boolean;
+
 export function workloadDropReducer(
   phase: WorkloadDropPhase,
   action: WorkloadDropAction,

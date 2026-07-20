@@ -215,7 +215,7 @@ export function ExperimentCompareView({ onReview }: { onReview: () => void }) {
         <article className="experiment-run-card">
           <div className="experiment-kicker">One fair question</div>
           <h2>Can the fast local model replace the main model?</h2>
-          <p>Exact Pi tool traces, frozen tasks, no cloud traffic, and private immutable evidence.</p>
+          <p>Exact Understudy tool traces, frozen tasks, no cloud traffic, and private immutable evidence.</p>
           <label>
             <span>Evidence level</span>
             <select value={suite} onChange={(event) => setSuite(event.target.value as "core" | "hard")} disabled={phase !== "idle"}>

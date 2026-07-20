@@ -30,7 +30,11 @@ export const EnvironmentProposalSchema = z.object({
     source_sha256: Sha256Schema,
     proposal_lane: z.enum(["deterministic_registry", "pi_conversation_runtime"]),
     runtime_backend: z.enum(["deterministic", "pi"]),
-    remote_content_shared: z.literal(false),
+    remote_content_shared: z.boolean(),
+    analysis_route: z.string().min(1).optional(),
+    analysis_model: z.string().min(1).optional(),
+    local_model_inference: z.boolean().optional(),
+    pi_run_ids: z.array(z.string().min(1)).optional(),
   }),
   task_spec: z.object({
     task_kind: z.string().min(1),
@@ -101,12 +105,15 @@ export const EnvironmentProposalSchema = z.object({
     reason: z.string().min(1),
   })).min(1),
   privacy: z.object({
-    local_only: z.literal(true),
+    local_only: z.boolean(),
     uploads: z.literal(false),
-    provider_calls: z.literal(false),
+    provider_calls: z.boolean(),
     live_effects: z.literal(false),
     training_source_roles: z.tuple([z.literal("train")]),
     heldout_target_access: z.literal(false),
+    source_file_local: z.literal(true).optional(),
+    dataset_context_shared_with_active_model: z.boolean().optional(),
+    automatic_training_upload: z.literal(false).optional(),
   }),
   validation: z.object({
     schema_version: z.literal(ENVIRONMENT_VALIDATION_SCHEMA),
@@ -114,6 +121,9 @@ export const EnvironmentProposalSchema = z.object({
     gates: z.record(z.string(), z.boolean()),
     blockers: z.array(z.string()),
   }),
+  pi_draft: z.record(z.string(), z.unknown()).optional(),
+  dataset_analysis_notes: z.record(z.string(), z.unknown()).optional(),
+  architect_notes: z.string().optional(),
 });
 
 export type EnvironmentProposal = z.infer<typeof EnvironmentProposalSchema>;
