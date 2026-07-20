@@ -15,6 +15,21 @@ uses semantic-ish versioning (minor = new skill or new capability, patch = fixes
 
 ## [Unreleased]
 
+### Changed
+
+- **`check-routing-health` now leads with the two new reporting endpoints.**
+  The skill's primary path is `workload-status` (per-workload health with
+  declared config vs observed route shares, `rerouted_pct`, served-model
+  shares, error rate, example request ids) and `usage-summary` (aggregate
+  requests/tokens/cache/cost, `group_by` workload|model|day, windows to 30d).
+  The skill teaches the canonical routing vocabulary (`primary` /
+  `understudy` / `fallback` route outcomes; `pin`/`steer`/`none` declared
+  config; `anthropic`/`openai`/`managed` provider labels), requires grounding
+  every diagnosis in the usage-summary volume ranking, and calls out
+  declared-vs-observed drift (declared split with ~0 observed `understudy`
+  share) as a finding. The legacy `routing-status` / `provider-health` /
+  `status` endpoints stay documented as deprecated for older deployments.
+
 ### Fixed
 
 - **The curl installer can no longer finish looking successful with zero
