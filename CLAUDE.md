@@ -26,9 +26,13 @@ workload, not to edit the library.
 
 The skill library lives in [`skills/`](skills/). Start with the orchestrator
 [`understudy`](skills/understudy/SKILL.md); the full index is
-[`skills/README.md`](skills/README.md). Claude Code discovers the same tree via
-the local marketplace (`.claude-plugin/`) - do not mirror skills under
-`.claude/skills/` in this repo.
+[`skills/README.md`](skills/README.md).
+
+Claude Code can discover the same tree two ways: the local marketplace plugin
+(`.claude-plugin/`), and native skill links under [`.claude/skills/`](.claude/skills/)
+that point back at `skills/` (not copies). Prefer the plugin install path in
+[`AGENTS.md`](AGENTS.md) for end users; the `.claude/skills/` links help agents
+opened on this repo without a plugin install.
 
 ## How to behave
 
