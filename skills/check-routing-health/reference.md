@@ -43,10 +43,13 @@ metrics by hand.
 | `window` | `24h` | Lookback window. Accepts `30m`, `1h`, `6h`, up to `24h`. |
 
 ```sh
-understudy run -- curl -s \
-  -H "Authorization: Bearer \$UNDERSTUDY_API_KEY" \
-  "https://api.understudylabs.com/admin/v1/orgs/<org-id>/projects/<project-id>/workload-status?window=24h"
+understudy run -- sh -c 'curl -s \
+  -H "Authorization: Bearer $UNDERSTUDY_API_KEY" \
+  "https://api.understudylabs.com/admin/v1/orgs/<org-id>/projects/<project-id>/workload-status?window=24h"'
 ```
+
+The `sh -c` wrapper is required: `understudy run` spawns the child without a
+shell, so `$UNDERSTUDY_API_KEY` only expands inside the child shell.
 
 ```jsonc
 {
@@ -89,9 +92,18 @@ understudy run -- curl -s \
 | `error_rate` | 5xx error rate over the window (0..1). |
 | `example_request_ids` | Request ids from failing requests. Look up via `understudy captures get <request-id>` or quote to the team. |
 
-**Drift check (always run it):** `declared.split_pct > 0` with
-`route_shares.understudy ≈ 0` means the declared route is not actually taking
-effect — that is a finding to surface, not noise.
+**Drift check (always run it) — normalize units first.** `declared.split_pct`
+is a 0–100 dial; `route_shares.understudy` and `rerouted_pct` are 0..1 shares.
+Compare `split_pct / 100` against the share, never the raw numbers: declared
+`30` with observed `0.28` is a healthy ramp, not drift. Flag drift when
+`split_pct / 100 − route_shares.understudy` exceeds ~0.1; `split_pct > 0` with
+an observed share of ~0 means the declared route is not actually taking effect
+— that is a finding to surface, not noise.
+
+**Error attribution:** `served_models[]` carries request counts/shares only —
+no per-provider error counts — so a degraded workload's 5xxs cannot be pinned
+on a provider from traffic labels. Report the workload-level `error_rate` plus
+`example_request_ids` and leave provider attribution to the Understudy team.
 
 ## Usage summary
 
@@ -109,9 +121,9 @@ workloads by spend/requests and ground the rest of the diagnosis.
 | `group_by` | — | Comma-separated subset of the server-side allowlist: `workload`, `model`, `day`. |
 
 ```sh
-understudy run -- curl -s \
-  -H "Authorization: Bearer \$UNDERSTUDY_API_KEY" \
-  "https://api.understudylabs.com/admin/v1/orgs/<org-id>/projects/<project-id>/usage-summary?window=7d&group_by=workload,day"
+understudy run -- sh -c 'curl -s \
+  -H "Authorization: Bearer $UNDERSTUDY_API_KEY" \
+  "https://api.understudylabs.com/admin/v1/orgs/<org-id>/projects/<project-id>/usage-summary?window=7d&group_by=workload,day"'
 ```
 
 ```jsonc
@@ -162,9 +174,11 @@ Every error envelope carries `request_id`, and every response carries the
 
 ## Calling without the CLI
 
-The endpoints accept a standard `Authorization: Bearer sk_*` header. Use
-`understudy run` to inject credentials from the CLI's credential store, or
-call directly with the key from `~/.understudy/credentials.json`:
+The endpoints accept a standard `Authorization: Bearer sk_*` header. Prefer
+`understudy run -- sh -c '...'` so credentials come from the CLI's credential
+store (see the examples above). To call curl directly instead, first export
+the key from `~/.understudy/credentials.json` in your own shell — the variable
+below expands in *your* shell, not via `understudy run`:
 
 ```sh
 curl -s -H "Authorization: Bearer $UNDERSTUDY_API_KEY" \

@@ -76,24 +76,28 @@ node dist/bin.js status --json
    to [`../use-understudy-gateway/SKILL.md`](../use-understudy-gateway/SKILL.md).
 
 2. **Ground in volume first.** Before analyzing or recommending anything, pull
-   the usage summary and rank workloads by spend and request count:
+   the usage summary and rank workloads by spend and request count.
+   `understudy run` spawns the child **without a shell**, so wrap the command
+   in `sh -c '...'` — the injected `$UNDERSTUDY_API_KEY` / `$UNDERSTUDY_ORG_ID`
+   only expand inside that child shell (bare `understudy run -- curl` would
+   send the literal string `$UNDERSTUDY_API_KEY` as the bearer):
 
    ```sh
-   understudy run -- curl -s \
-     -H "Authorization: Bearer \$UNDERSTUDY_API_KEY" \
-     "https://api.understudylabs.com/admin/v1/orgs/\$UNDERSTUDY_ORG_ID/projects/<project-id>/usage-summary?window=7d&group_by=workload,day"
+   understudy run -- sh -c 'curl -s \
+     -H "Authorization: Bearer $UNDERSTUDY_API_KEY" \
+     "https://api.understudylabs.com/admin/v1/orgs/$UNDERSTUDY_ORG_ID/projects/<project-id>/usage-summary?window=7d&group_by=workload,day"'
    ```
 
    Every statement you make must be grounded in that volume ranking — lead
    with the workloads that carry the spend and traffic. Do not anchor on
    low-leverage generic advice about workloads that barely run.
 
-3. Pull the unified per-workload view:
+3. Pull the unified per-workload view (same `sh -c` wrapper):
 
    ```sh
-   understudy run -- curl -s \
-     -H "Authorization: Bearer \$UNDERSTUDY_API_KEY" \
-     "https://api.understudylabs.com/admin/v1/orgs/\$UNDERSTUDY_ORG_ID/projects/<project-id>/workload-status?window=24h"
+   understudy run -- sh -c 'curl -s \
+     -H "Authorization: Bearer $UNDERSTUDY_API_KEY" \
+     "https://api.understudylabs.com/admin/v1/orgs/$UNDERSTUDY_ORG_ID/projects/<project-id>/workload-status?window=24h"'
    ```
 
    One row per workload: `status` (healthy | degraded | idle), the declared
@@ -102,13 +106,21 @@ node dist/bin.js status --json
    [`reference.md`](reference.md).
 
 4. Interpret, in priority order of the volume ranking from step 2:
-   - `status: degraded` — the 5xx rate crossed the threshold. Check
-     `served_models[].provider_label` to say which upstream is failing.
-   - **Declared-vs-observed drift is a finding.** If `declared.split_pct > 0`
-     but `route_shares.understudy` is ~0, tell the user plainly: their routing
-     config is declared but not actually taking effect.
+   - `status: degraded` — the 5xx rate crossed the threshold. Report the
+     workload-level `error_rate` and the `example_request_ids`. Do NOT name a
+     failing upstream from `served_models[]` — it carries request shares only,
+     no per-provider error counts, so traffic labels cannot say which provider
+     produced the 5xxs. Leave provider attribution to the Understudy team and
+     quote the request ids.
+   - **Declared-vs-observed drift is a finding — normalize units first.**
+     `declared.split_pct` is 0–100; `route_shares.understudy` is a 0..1 share.
+     Compare `split_pct / 100` against the share — never the raw numbers
+     (declared `30` vs observed `0.28` is healthy, not drift). Flag drift when
+     `split_pct / 100 − route_shares.understudy` exceeds ~0.1; the loudest
+     case is a declared split with an observed share of ~0 — tell the user
+     plainly their routing config is declared but not actually taking effect.
    - `rerouted_pct` (= `route_shares.understudy`) is THE number to watch
-     during a ramp or cutover — compare it against `declared.split_pct`.
+     during a ramp or cutover — compare it against `declared.split_pct / 100`.
    - Non-zero `route_shares.fallback` means routed attempts are failing and
      being recovered — upstream instability on the routed arm.
    - Error rate above ~2% is worth investigating; a workload with
