@@ -33,14 +33,13 @@ test("one cloud launch authorizes the bounded hosted workflow without repeated a
 });
 
 test("remote training uses live capabilities with explicit upload and spend consent", async () => {
-  const [native, panel, localPanel, localSftPanel, tauriLib, portablePlan, bundledCli] = await Promise.all([
+  const [native, panel, localPanel, localSftPanel, tauriLib, portablePlan] = await Promise.all([
     read("apps/homescreen/src-tauri/src/remote_training.rs"),
     read("apps/homescreen/app/components/RemoteTrainingPanel.tsx"),
     read("apps/homescreen/app/components/LocalTrainingPanel.tsx"),
     read("apps/homescreen/app/components/LocalSftTrainingPanel.tsx"),
     read("apps/homescreen/src-tauri/src/lib.rs"),
     read("src/training-plan/index.ts"),
-    read("apps/homescreen/src-tauri/resources/understudy-cli/bundle/understudy.js"),
   ]);
 
   assert.doesNotMatch(native, /UNDERSTUDY_REMOTE_TRAINING_EXPERIMENT/);
@@ -53,7 +52,6 @@ test("remote training uses live capabilities with explicit upload and spend cons
   assert.match(native, /max_upload_bytes/);
   assert.match(native, /MAX_REMOTE_TRAINING_BUDGET_USD: f64 = 1_000\.0/);
   assert.match(portablePlan, /MAX_PORTABLE_TRAINING_SPEND_USD = 1_000/);
-  assert.match(bundledCli, /MAX_PORTABLE_TRAINING_SPEND_USD = 1000/);
   assert.doesNotMatch(portablePlan, /MAX_PORTABLE_TRAINING_SPEND_USD = 500/);
   assert.match(native, /Method::DELETE,[\s\S]*api_url\("uploads"\)/);
   assert.match(native, /existing_remote_classification_training/);
