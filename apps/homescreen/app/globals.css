@@ -3691,25 +3691,15 @@ select,
   text-overflow: ellipsis;
   white-space: nowrap;
 }
-.remote-training-consent {
-  display: grid;
-  gap: 7px;
-  padding: 11px;
+.remote-training-consent-summary {
+  margin: 0;
+  padding: 9px 11px;
   border: 1px solid color-mix(in srgb, #a78bfa 32%, var(--border));
   border-radius: 10px;
   background: color-mix(in srgb, #a78bfa 5%, transparent);
-}
-.remote-training-consent label {
-  display: flex;
-  align-items: flex-start;
-  gap: 9px;
   color: var(--text-2);
   font-size: 11px;
   line-height: 1.45;
-}
-.remote-training-consent input {
-  margin-top: 2px;
-  accent-color: var(--mb-cyan);
 }
 .remote-training-running > div:first-child {
   display: flex;
@@ -3727,13 +3717,24 @@ select,
   font-family: var(--mono);
   font-size: 10px;
 }
-.remote-training-running ol {
+.remote-training-details {
   display: grid;
-  gap: 4px;
+  gap: 5px;
   margin: 0;
-  padding-left: 18px;
+  padding-top: 2px;
   color: var(--text-3);
   font-size: 10px;
+}
+.remote-training-details summary {
+  width: fit-content;
+  cursor: pointer;
+  color: var(--text-3);
+  font-size: 10px;
+}
+.remote-training-details small {
+  display: block;
+  margin-top: 5px;
+  font-family: var(--mono);
 }
 .remote-training-running p,
 .remote-training-failures p {

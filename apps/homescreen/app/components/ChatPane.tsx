@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useMemo, useReducer, useRef, useState } from "react";
+import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react";
 import { Channel, invoke, isTauri } from "@tauri-apps/api/core";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
 import {
@@ -73,6 +73,7 @@ import {
   INITIAL_WORKLOAD_DROP_PHASE,
   isWorkloadDropBusy,
   shouldInspectDroppedTable,
+  shouldInspectTrainingRecipe,
   workloadDropPersonaState,
   workloadDropReducer,
   workloadDropStatus,
@@ -81,6 +82,13 @@ import { ModelCardDrawer } from "./ModelCardDrawer";
 import { CsvProfile } from "./CsvProfile";
 import { CsvTrainingPlan } from "./CsvTrainingPlan";
 import { LocalTrainingPanel } from "./LocalTrainingPanel";
+import {
+  maximumManagedTrainingSpend,
+  RemoteTrainingPanel,
+  type RemotePlan,
+  type RemoteTrainingCapabilities,
+} from "./RemoteTrainingPanel";
+import { LocalSftTrainingPanel } from "./LocalSftTrainingPanel";
 import { LocalClassifierLibraryDialog } from "./LocalClassifierLibraryDialog";
 import { TrainingHalo, type TrainingHaloVisual } from "./TrainingHalo";
 import { ChatScrollControls } from "./ChatScrollControls";
@@ -179,6 +187,42 @@ type CsvInspection = {
     warnings: string[];
   };
   artifact_path: string;
+};
+type TrainingRecipeInspection = {
+  schema_version: "understudy.remote_training.recipe_inspection.v1";
+  source_path: string;
+  source_sha256: string;
+  local_only: true;
+  payload_read: true;
+  detected_use_case: string;
+  recipe_id: string | null;
+  task_kind: string;
+  method: string;
+  evaluator: string | null;
+  confidence: "high" | "medium" | "low";
+  ready: boolean;
+  requires_confirmation: true;
+  evidence: {
+    total_rows: number;
+    chat_rows: number;
+    gsm8k_rows: number;
+    gsm8k_public_rows: number;
+    classification_rows: number;
+    preference_rows: number;
+    tool_trace_rows: number;
+    multimodal_rows: number;
+    invalid_rows: number;
+  };
+  reasons: string[];
+  warnings: string[];
+  inspection_duration_ms?: number;
+};
+type RecipeBackendCompatibility = {
+  backends: Array<{
+    id: "mlx-local" | "fireworks" | "tinker";
+    compatible: boolean;
+    execution_ready: boolean;
+  }>;
 };
 type ClassificationDataset = {
   schema_version: "understudy.capture_import.classification_dataset.v2";
@@ -280,6 +324,25 @@ function compactBytes(bytes: number): string {
   if (bytes < 1_024 * 1_024) return `${(bytes / 1_024).toFixed(1)} KB`;
   return `${(bytes / (1_024 * 1_024)).toFixed(1)} MB`;
 }
+
+function trainingUseCaseLabel(useCase: string): string {
+  return ({
+    grade_school_math_reasoning: "Grade-school math reasoning",
+    preference_optimization: "Preference optimization",
+    agentic_tool_use: "Agent and tool use",
+    vision_language: "Vision-language tuning",
+    classification: "Text classification",
+    text_classification: "Text classification",
+    general_chat: "General chat",
+  } as Record<string, string>)[useCase] ?? "Custom training workload";
+}
+
+type RemoteTrainingCapabilitiesEnvelope = {
+  schema_version: "understudy.remote_training.capabilities.v1";
+  enabled: boolean;
+  reason?: string;
+  capabilities?: RemoteTrainingCapabilities;
+};
 
 function trainedModelName(sourceName: string, labelColumn: string): string {
   const sourceStem = sourceName.replace(/\.[^.]+$/, "").replace(/(?:^|[-_])dataset(?:$|[-_])/gi, "-");
@@ -414,6 +477,10 @@ export function ChatPane({
   );
   const [droppedWorkload, setDroppedWorkload] = useState<DroppedWorkload | null>(null);
   const [csvInspection, setCsvInspection] = useState<CsvInspection | null>(null);
+  const [trainingRecipe, setTrainingRecipe] = useState<TrainingRecipeInspection | null>(null);
+  const [remoteRecipePlan, setRemoteRecipePlan] = useState<RemotePlan | null>(null);
+  const [recipeBackend, setRecipeBackend] = useState<"local" | "managed">("local");
+  const [recipeLocalAvailable, setRecipeLocalAvailable] = useState(false);
   const [mappingInputColumns, setMappingInputColumns] = useState<string[]>([]);
   const [mappingLabelColumn, setMappingLabelColumn] = useState("");
   const [mappingGroupColumn, setMappingGroupColumn] = useState("");
@@ -484,6 +551,10 @@ export function ChatPane({
     dropInFlight.current = false;
     setDroppedWorkload(null);
     setCsvInspection(null);
+    setTrainingRecipe(null);
+    setRemoteRecipePlan(null);
+    setRecipeBackend("local");
+    setRecipeLocalAvailable(false);
     setMappingInputColumns([]);
     setMappingLabelColumn("");
     setMappingGroupColumn("");
@@ -509,6 +580,100 @@ export function ChatPane({
     if (dropRequestGeneration.current !== requestGeneration) return;
     applyCsvInspection(result);
   };
+
+  const inspectTrainingRecipe = async (workload: DroppedWorkload, requestGeneration: number) => {
+    const result = await invoke<TrainingRecipeInspection>("inspect_remote_training_recipe", {
+      path: workload.source_path,
+    });
+    if (dropRequestGeneration.current !== requestGeneration) return;
+    setTrainingRecipe(result);
+    dispatchDrop({ type: "inspection_succeeded" });
+  };
+
+  const prepareDetectedRecipe = useCallback(() => {
+    if (
+      !droppedWorkload
+      || !trainingRecipe
+      || !trainingRecipe.ready
+      || !trainingRecipe.recipe_id
+      || dropInFlight.current
+    ) return;
+    dropInFlight.current = true;
+    const requestGeneration = dropRequestGeneration.current + 1;
+    dropRequestGeneration.current = requestGeneration;
+    setRemoteRecipePlan(null);
+    setRecipeBackend("local");
+    setRecipeLocalAvailable(false);
+    setErr(null);
+    dispatchDrop({ type: "dataset_started" });
+    void invoke<RemotePlan>("prepare_remote_training_recipe", {
+      sourcePath: droppedWorkload.source_path,
+      artifactRoot: droppedWorkload.artifact_root,
+      expectedSourceSha256: trainingRecipe.source_sha256,
+      recipeId: trainingRecipe.recipe_id,
+      modelProfile: "understudy/auto",
+      maximumSpendUsd: 0,
+    })
+      .then(async (plan) => {
+        if (dropRequestGeneration.current !== requestGeneration) return;
+        const compatibility = await invoke<RecipeBackendCompatibility>("compile_remote_training_backends", {
+          planPath: plan.plan_path,
+        });
+        if (dropRequestGeneration.current !== requestGeneration) return;
+        const localAvailable = compatibility.backends.some(
+          (backend) => backend.id === "mlx-local" && backend.compatible && backend.execution_ready,
+        );
+        setRecipeLocalAvailable(localAvailable);
+        setRecipeBackend("local");
+        setRemoteRecipePlan(plan);
+        dispatchDrop({ type: "dataset_succeeded" });
+      })
+      .catch((error) => {
+        if (dropRequestGeneration.current !== requestGeneration) return;
+        setErr(String(error));
+        dispatchDrop({ type: "failed" });
+      })
+      .finally(() => {
+        if (dropRequestGeneration.current === requestGeneration) dropInFlight.current = false;
+      });
+  }, [droppedWorkload, trainingRecipe]);
+
+  useEffect(() => {
+    if (!remoteRecipePlan && trainingRecipe?.ready) prepareDetectedRecipe();
+  }, [prepareDetectedRecipe, remoteRecipePlan, trainingRecipe?.ready]);
+
+  const openManagedRecipeTraining = useCallback(() => {
+    setErr(null);
+    void invoke<RemoteTrainingCapabilitiesEnvelope>("remote_training_capabilities")
+      .then(async (envelope) => {
+        const capabilities = envelope.enabled ? envelope.capabilities : undefined;
+        const available = capabilities?.providers.some(
+          (provider) => provider.id === "managed" && provider.enabled && provider.model_profiles.length > 0,
+        );
+        if (!available || !capabilities) {
+          setErr(envelope.reason ?? "Cloud training is unavailable in this Desktop build.");
+          return;
+        }
+        if (!droppedWorkload || !trainingRecipe?.ready || !trainingRecipe.recipe_id || !remoteRecipePlan) {
+          setErr("Prepare this dropped dataset locally before cloud training.");
+          return;
+        }
+        const maximumSpendUsd = maximumManagedTrainingSpend(capabilities);
+        const plan = remoteRecipePlan.maximum_spend_usd === maximumSpendUsd
+          ? remoteRecipePlan
+          : await invoke<RemotePlan>("prepare_remote_training_recipe", {
+              sourcePath: droppedWorkload.source_path,
+              artifactRoot: droppedWorkload.artifact_root,
+              expectedSourceSha256: trainingRecipe.source_sha256,
+              recipeId: trainingRecipe.recipe_id,
+              modelProfile: "understudy/auto",
+              maximumSpendUsd,
+            });
+        setRemoteRecipePlan(plan);
+        setRecipeBackend("managed");
+      })
+      .catch((cause) => setErr(`Cloud training is unavailable: ${String(cause)}`));
+  }, [droppedWorkload, remoteRecipePlan, trainingRecipe]);
 
   const prepareDroppedClassification = () => {
     if (
@@ -705,7 +870,11 @@ export function ChatPane({
             if (disposed || dropRequestGeneration.current !== requestGeneration) return;
             setDroppedWorkload(result);
             const inspectTable = shouldInspectDroppedTable(result);
-            if (inspectTable) {
+            const inspectRecipe = shouldInspectTrainingRecipe(result);
+            if (inspectRecipe) {
+              dispatchDrop({ type: "inspection_started" });
+              await inspectTrainingRecipe(result, requestGeneration);
+            } else if (inspectTable) {
               dispatchDrop({ type: "inspection_started" });
               try {
                 await inspectCsvWorkload(result, requestGeneration);
@@ -1405,6 +1574,54 @@ export function ChatPane({
                       ? "Creating group-isolated train, dev, and holdout splits…"
                     : "Understanding this file…"}
                 </div>
+              ) : trainingRecipe && droppedWorkload ? (
+                <>
+                  <div className="csv-analysis-next">
+                    {trainingRecipe.ready ? (
+                      remoteRecipePlan ? (
+                        <>
+                          {recipeLocalAvailable && (
+                            <div hidden={recipeBackend === "managed"}>
+                              <LocalSftTrainingPanel
+                                plan={remoteRecipePlan}
+                                modelName={`${trainingUseCaseLabel(trainingRecipe.detected_use_case)} model`}
+                                onTrainRemote={openManagedRecipeTraining}
+                                onActiveChange={setLocalTrainingActive}
+                                onVisualChange={setTrainingHaloVisual}
+                              />
+                            </div>
+                          )}
+                          {!recipeLocalAvailable && recipeBackend === "local" && (
+                            <button type="button" className="btn primary" onClick={openManagedRecipeTraining}>
+                              Try cloud
+                            </button>
+                          )}
+                          {recipeBackend === "managed" && (
+                            <RemoteTrainingPanel
+                              preparedPlan={remoteRecipePlan}
+                              modelName={`${trainingUseCaseLabel(trainingRecipe.detected_use_case)} model`}
+                              onBack={recipeLocalAvailable ? () => setRecipeBackend("local") : undefined}
+                              onActiveChange={setLocalTrainingActive}
+                              onVisualChange={setTrainingHaloVisual}
+                            />
+                          )}
+                        </>
+                      ) : (
+                        <div className="remote-training-state" role="status" aria-live="polite">
+                          <strong>Preparing {trainingUseCaseLabel(trainingRecipe.detected_use_case)}</strong>
+                          <small>Splitting and checking locally.</small>
+                        </div>
+                      )
+                    ) : (
+                      <p>{trainingRecipe.warnings[0]}</p>
+                    )}
+                  </div>
+                  {!localTrainingActive && (
+                    <button type="button" className="btn ghost workload-generic-dismiss" onClick={resetDroppedWorkload}>
+                      Dismiss
+                    </button>
+                  )}
+                </>
               ) : csvInspection && droppedWorkload ? (
                 <>
                   {!classificationDataset ? (
@@ -1551,9 +1768,9 @@ export function ChatPane({
           >
             <div className="composer-row">
               <PromptInputActionMenu>
-                <PromptInputActionMenuTrigger tooltip="Add image or file" />
+                <PromptInputActionMenuTrigger tooltip="Add image" />
                 <PromptInputActionMenuContent>
-                  <PromptInputActionAddAttachments label="Add image or file" />
+                  <PromptInputActionAddAttachments label="Add image" />
                   <PromptInputActionMenuItem onSelect={() => setClassifierLibraryOpen(true)}>
                     <LibraryBigIcon aria-hidden="true" />
                     Trained models

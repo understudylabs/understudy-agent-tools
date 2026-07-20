@@ -462,8 +462,10 @@ test("desktop has one shared managed-operation notice surface", async () => {
   assert.match(native, /commands::prepare_default_local_model/);
   assert.match(repair, /understudy models runtime repair/);
   assert.match(repair, /understudy runtime repair/);
-  assert.match(repair, /Runtime reconnecting/);
-  assert.match(repair, /Reconnect now/);
+  assert.match(repair, /reconnecting automatically/);
+  assert.match(repair, /if \(reconnecting\) return null/);
+  assert.match(prompt, /automaticRuntimeRepairAttempted/);
+  assert.match(prompt, /conversation_runtime_repair/);
   assert.match(repair, /Reinstall Understudy Desktop/);
   assert.match(repair, /Install update/);
   assert.match(repair, /Automatic update stopped/);
@@ -631,7 +633,8 @@ test("desktop compiles one dropped path through the bounded public CLI", async (
   assert.match(trainingHalo, /stepFraction: number \| null/);
   assert.match(trainingHalo, /className="training-halo-active is-indeterminate"/);
   assert.match(trainingHalo, /window\.setTimeout[\s\S]*?1_400/);
-  assert.match(trainingHalo, /distilled from ModernBERT · yours/);
+  assert.match(trainingHalo, /trained locally · yours/);
+  assert.doesNotMatch(trainingHalo, /distilled from ModernBERT/);
   assert.match(css, /\.ai-chat\.has-workload \.persona-stage/);
   assert.match(css, /\.csv-profile-columns/);
   assert.match(css, /\.csv-profile-columns\.is-spacious/);

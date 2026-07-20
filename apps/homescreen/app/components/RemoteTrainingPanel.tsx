@@ -5,7 +5,7 @@ import { Channel, invoke } from "@tauri-apps/api/core";
 import type { TrainingHaloVisual } from "./TrainingHalo";
 
 export type RemoteTrainingProvider = {
-  id: "fake" | "managed";
+  id: "managed";
   enabled: boolean;
   label: string;
   model_profiles: Array<{
@@ -18,7 +18,7 @@ export type RemoteTrainingProvider = {
 
 export type RemoteTrainingCapabilities = {
   schema_version: "understudy-train-v1";
-  service: "train.understudylabs.com";
+  service: "understudy-train-api";
   providers: RemoteTrainingProvider[];
   limits: {
     max_active_runs_per_org: 1;
@@ -32,6 +32,14 @@ export type RemoteTrainingCapabilities = {
   };
 };
 
+export function maximumManagedTrainingSpend(capabilities: RemoteTrainingCapabilities): number {
+  const maximumSpend = capabilities.limits.max_budget_usd;
+  if (!Number.isFinite(maximumSpend) || maximumSpend <= 0) {
+    throw new Error("Cloud training did not advertise a valid spend limit.");
+  }
+  return maximumSpend;
+}
+
 type RemoteArtifact = {
   artifact_role: "train" | "validation" | "heldout";
   file_name: string;
@@ -40,17 +48,20 @@ type RemoteArtifact = {
   size_bytes: number;
 };
 
-type RemotePlan = {
-  schema_version: "understudy.remote_training.plan.v1";
+export type RemotePlan = {
+  schema_version: "understudy.training.plan.v1";
   plan_id: string;
-  provider: "fake" | "managed";
+  recipe_id: string;
+  task_kind: "text_classification" | "chat_sft";
+  evaluator?: string | null;
   model_profile: RemoteTrainingProvider["model_profiles"][number]["id"];
-  frontier_model: string;
+  frontier_model?: string | null;
   output_model_name: string;
   artifacts: RemoteArtifact[];
   epochs: number;
   maximum_spend_usd: number;
   maximum_runtime_seconds: number;
+  preparation_duration_ms?: number;
   plan_path: string;
 };
 
@@ -113,29 +124,63 @@ type UploadEvent = {
   message: string;
 };
 
-type Props = {
-  datasetManifestPath: string;
+type BackendCompatibility = {
+  schema_version: "understudy.remote_training.backend_compatibility.v1";
+  plan_sha256: string;
+  split_hash: string;
+  evaluator: string;
+  local_only: true;
+  provider_called: false;
+  upload_performed: false;
+  plan_preparation_duration_ms: number;
+  compile_duration_ms: number;
+  artifact_path: string;
+  backends: Array<{
+    id: string;
+    compatible: boolean;
+    adapter_implemented: boolean;
+    execution_ready: boolean;
+    transport: string;
+    command: string;
+    recipe: string;
+    evaluator: string;
+    execution_gate: string;
+  }>;
+};
+
+type CommonProps = {
   modelName: string;
-  capabilities: RemoteTrainingCapabilities;
-  onTrainLocal: () => void;
   onActiveChange: (active: boolean) => void;
   onVisualChange: (visual: TrainingHaloVisual | null) => void;
 };
 
+type ClassificationProps = CommonProps & {
+  datasetManifestPath: string;
+  capabilities: RemoteTrainingCapabilities;
+  onTrainLocal: () => void;
+  preparedPlan?: never;
+  onBack?: never;
+};
+
+type PreparedPlanProps = CommonProps & {
+  preparedPlan: RemotePlan;
+  onBack?: () => void;
+  datasetManifestPath?: never;
+  capabilities?: never;
+  onTrainLocal?: never;
+};
+
+type Props = ClassificationProps | PreparedPlanProps;
+
 type Stage = "recovering" | "choice" | "preparing" | "confirm" | "starting" | "running" | "terminal" | "failed";
 
-function bytes(value: number): string {
-  if (value < 1024 * 1024) return `${Math.max(1, Math.round(value / 1024))} KB`;
-  return `${(value / (1024 * 1024)).toFixed(1)} MB`;
+function providerDefault(providers: RemoteTrainingProvider[]): RemoteTrainingProvider | undefined {
+  return providers.find((provider) => provider.id === "managed");
 }
 
-function providerDefault(providers: RemoteTrainingProvider[]): RemoteTrainingProvider {
-  return providers.find((provider) => provider.id === "managed") ?? providers[0];
-}
-
-function profileDefault(provider: RemoteTrainingProvider) {
-  return provider.model_profiles.find((profile) => profile.recommended)
-    ?? provider.model_profiles[0];
+function profileDefault(provider: RemoteTrainingProvider | undefined) {
+  return provider?.model_profiles.find((profile) => profile.recommended)
+    ?? provider?.model_profiles[0];
 }
 
 function visualPhase(phase: string): TrainingHaloVisual["phase"] {
@@ -145,33 +190,34 @@ function visualPhase(phase: string): TrainingHaloVisual["phase"] {
   return "preparing";
 }
 
-export function RemoteTrainingPanel({
-  datasetManifestPath,
-  modelName,
-  capabilities,
-  onTrainLocal,
-  onActiveChange,
-  onVisualChange,
-}: Props) {
+export function RemoteTrainingPanel(props: Props) {
+  const preparedPlan = props.preparedPlan ?? null;
+  const preparedMode = preparedPlan !== null;
+  const datasetManifestPath = props.datasetManifestPath ?? null;
+  const capabilities = props.capabilities ?? null;
+  const { modelName, onActiveChange, onVisualChange } = props;
   const providers = useMemo(
-    () => capabilities.providers.filter((provider) => provider.enabled && provider.model_profiles.length > 0),
-    [capabilities.providers],
+    () => capabilities?.providers.filter(
+      (provider) => provider.id === "managed" && provider.enabled && provider.model_profiles.length > 0,
+    ) ?? [],
+    [capabilities],
   );
-  const [providerId] = useState<RemoteTrainingProvider["id"]>(() => providerDefault(providers).id);
   const initialProvider = providerDefault(providers);
+  const [providerId] = useState<RemoteTrainingProvider["id"]>(
+    () => initialProvider?.id ?? "managed",
+  );
   const [profileId, setProfileId] = useState<RemoteTrainingProvider["model_profiles"][number]["id"]>(
-    () => profileDefault(initialProvider).id,
+    () => preparedPlan?.model_profile ?? profileDefault(initialProvider)?.id ?? "understudy/auto",
   );
   const [stage, setStage] = useState<Stage>("recovering");
-  const [plan, setPlan] = useState<RemotePlan | null>(null);
+  const [plan, setPlan] = useState<RemotePlan | null>(preparedPlan);
   const [run, setRun] = useState<RemoteRunReceipt | null>(null);
   const [events, setEvents] = useState<RemoteTrainingEvent[]>([]);
   const [uploadEvent, setUploadEvent] = useState<UploadEvent | null>(null);
   const [result, setResult] = useState<RemoteResult | null>(null);
   const [error, setError] = useState<string | null>(null);
-  const [confirmUpload, setConfirmUpload] = useState(false);
-  const [confirmSpend, setConfirmSpend] = useState(false);
-  const [confirmDeployment, setConfirmDeployment] = useState(false);
+  const [, setBackendCompatibility] = useState<BackendCompatibility | null>(null);
+  const [backendCompatibilityError, setBackendCompatibilityError] = useState<string | null>(null);
   const polling = useRef(false);
   const stopped = useRef(false);
   const provider = providers.find((candidate) => candidate.id === providerId) ?? providers[0];
@@ -179,6 +225,7 @@ export function RemoteTrainingPanel({
     ?? (provider ? profileDefault(provider) : undefined);
   const active = stage === "preparing" || stage === "starting" || stage === "running";
   const latestEvent = events.at(-1);
+  const planPath = plan?.plan_path ?? null;
 
   useEffect(() => {
     onActiveChange(active);
@@ -217,48 +264,63 @@ export function RemoteTrainingPanel({
 
   useEffect(() => {
     let cancelled = false;
+    setBackendCompatibility(null);
+    setBackendCompatibilityError(null);
+    if (!planPath) return () => { cancelled = true; };
+    void invoke<BackendCompatibility>("compile_remote_training_backends", { planPath })
+      .then((compiled) => {
+        if (!cancelled) setBackendCompatibility(compiled);
+      })
+      .catch((cause) => {
+        if (!cancelled) setBackendCompatibilityError(String(cause));
+      });
+    return () => { cancelled = true; };
+  }, [planPath]);
+
+  useEffect(() => {
+    let cancelled = false;
     setStage("recovering");
-    setPlan(null);
+    setPlan(preparedPlan);
     setRun(null);
     setEvents([]);
     setUploadEvent(null);
     setResult(null);
     setError(null);
-    setConfirmUpload(false);
-    setConfirmSpend(false);
-    setConfirmDeployment(false);
     stopped.current = false;
-    void invoke<RemoteRunReceipt | null>("existing_remote_classification_training", {
-      manifestPath: datasetManifestPath,
-    })
+    const recovery = preparedPlan
+      ? invoke<RemoteRunReceipt | null>("existing_remote_training", {
+          planPath: preparedPlan.plan_path,
+        })
+      : invoke<RemoteRunReceipt | null>("existing_remote_classification_training", {
+          manifestPath: datasetManifestPath,
+        });
+    void recovery
       .then((receipt) => {
         if (cancelled) return;
         if (receipt) {
           setRun(receipt);
           setStage("running");
         } else {
-          setStage("choice");
+          setStage(preparedPlan ? "confirm" : "choice");
         }
       })
       .catch(() => {
-        if (!cancelled) setStage("choice");
+        if (!cancelled) setStage(preparedPlan ? "confirm" : "choice");
       });
     return () => {
       cancelled = true;
     };
-  }, [datasetManifestPath]);
+  }, [datasetManifestPath, preparedPlan]);
 
   const prepare = useCallback(() => {
-    if (!provider || stage !== "choice") return;
+    if (!capabilities || !datasetManifestPath || !provider || stage !== "choice") return;
     setStage("preparing");
     setError(null);
     if (!profile) return;
-    const maximumSpend = Math.min(provider.id === "fake" ? 1 : 500, capabilities.limits.max_budget_usd);
+    const maximumSpend = maximumManagedTrainingSpend(capabilities);
     void invoke<RemotePlan>("prepare_remote_classification_training", {
       manifestPath: datasetManifestPath,
-      provider: provider.id,
       modelProfile: profile.id,
-      frontierModel: "glm-5.2",
       maximumSpendUsd: maximumSpend,
     })
       .then((prepared) => {
@@ -269,7 +331,7 @@ export function RemoteTrainingPanel({
         setError(String(cause));
         setStage("failed");
       });
-  }, [capabilities.limits.max_budget_usd, datasetManifestPath, profile, provider, stage]);
+  }, [capabilities, datasetManifestPath, profile, provider, stage]);
 
   const poll = useCallback(async (receipt: RemoteRunReceipt) => {
     if (polling.current || stopped.current) return;
@@ -304,17 +366,17 @@ export function RemoteTrainingPanel({
   }, [poll, run, stage]);
 
   const start = () => {
-    if (!plan || stage !== "confirm" || !confirmUpload || !confirmSpend || !confirmDeployment) return;
+    if (!plan || stage !== "confirm") return;
     setStage("starting");
     setError(null);
     setEvents([]);
     const channel = new Channel<UploadEvent>();
     channel.onmessage = setUploadEvent;
-    void invoke<RemoteRunReceipt>("start_remote_classification_training", {
+    void invoke<RemoteRunReceipt>("start_remote_training", {
       planPath: plan.plan_path,
-      confirmUpload,
-      confirmSpend,
-      confirmTemporaryDeployment: confirmDeployment,
+      confirmUpload: true,
+      confirmSpend: true,
+      confirmTemporaryDeployment: true,
       onEvent: channel,
     })
       .then((receipt) => {
@@ -335,11 +397,21 @@ export function RemoteTrainingPanel({
       .catch((cause) => setError(String(cause)));
   };
 
+  const resetRun = () => {
+    setPlan(preparedPlan);
+    setRun(null);
+    setEvents([]);
+    setUploadEvent(null);
+    setResult(null);
+    setError(null);
+    setStage(preparedPlan ? "confirm" : "choice");
+  };
+
   if (stage === "recovering") {
     return <div className="remote-training-state" aria-live="polite"><strong>Checking the last remote run</strong><small>Looking only at protected run evidence on this Mac.</small></div>;
   }
 
-  if (stage === "choice") {
+  if (stage === "choice" && !preparedMode) {
     return (
       <div className="remote-training-choice">
         <div>
@@ -358,9 +430,9 @@ export function RemoteTrainingPanel({
         {profile && <small>{profile.summary}</small>}
         <div className="remote-training-actions">
           <button type="button" className="btn primary" onClick={prepare}>
-            {provider?.id === "fake" ? "Try the no-spend cloud proof" : "Review remote training"}
+            Review remote training
           </button>
-          <button type="button" className="btn ghost" onClick={onTrainLocal}>Train on this Mac</button>
+          <button type="button" className="btn ghost" onClick={props.onTrainLocal}>Train on this Mac</button>
         </div>
       </div>
     );
@@ -371,30 +443,20 @@ export function RemoteTrainingPanel({
   }
 
   if (stage === "confirm" && plan) {
-    const totalBytes = plan.artifacts.reduce((sum, artifact) => sum + artifact.size_bytes, 0);
+    const exampleCount = plan.artifacts.reduce((sum, artifact) => sum + artifact.row_count, 0);
+    const actionLabel = `Upload & train · $${plan.maximum_spend_usd.toFixed(2)} max`;
     return (
       <div className="remote-training-confirm">
         <div className="remote-training-confirm-heading">
-          <div><span>Ready for consent</span><strong>{plan.output_model_name}</strong></div>
-          <small>{plan.artifacts.reduce((sum, artifact) => sum + artifact.row_count, 0).toLocaleString()} split rows · {bytes(totalBytes)}</small>
+          <div><strong>{modelName}</strong></div>
+          <small>{exampleCount.toLocaleString()} examples · ${plan.maximum_spend_usd.toFixed(2)} max</small>
         </div>
-        <div className="remote-training-artifacts">
-          {plan.artifacts.map((artifact) => (
-            <div key={artifact.artifact_role}>
-              <strong>{artifact.artifact_role}</strong>
-              <span>{artifact.row_count.toLocaleString()} rows · {bytes(artifact.size_bytes)}</span>
-              <code>{artifact.sha256.slice(0, 12)}</code>
-            </div>
-          ))}
-        </div>
-        <div className="remote-training-consent">
-          <label><input type="checkbox" checked={confirmUpload} onChange={(event) => setConfirmUpload(event.target.checked)} /><span>Upload only these three private split artifacts.</span></label>
-          <label><input type="checkbox" checked={confirmSpend} onChange={(event) => setConfirmSpend(event.target.checked)} /><span>Use Understudy managed training; stop when its reported estimate reaches ${plan.maximum_spend_usd.toFixed(2)}.</span></label>
-          <label><input type="checkbox" checked={confirmDeployment} onChange={(event) => setConfirmDeployment(event.target.checked)} /><span>Create a temporary endpoint for held-out comparison, then always remove it.</span></label>
-        </div>
+        {backendCompatibilityError && <p className="remote-training-warning">Portable backend check failed: {backendCompatibilityError}</p>}
+        <p className="remote-training-consent-summary">
+          {plan.artifacts.length} private splits · endpoint auto-deletes
+        </p>
         <div className="remote-training-actions">
-          <button type="button" className="btn primary" disabled={!confirmUpload || !confirmSpend || !confirmDeployment} onClick={start}>Upload & train · max ${plan.maximum_spend_usd.toFixed(2)}</button>
-          <button type="button" className="btn ghost" onClick={() => setStage("choice")}>Back</button>
+          <button type="button" className="btn primary" onClick={start}>{actionLabel}</button>
         </div>
       </div>
     );
@@ -411,21 +473,19 @@ export function RemoteTrainingPanel({
       <div className="remote-training-running" aria-live="polite" aria-busy="true">
         <div>
           <span className="local-training-pulse" aria-hidden="true" />
-          <div><strong>{latestEvent?.phase === "training" ? "Training remotely" : latestEvent?.phase === "evaluation" ? "Proving the model" : "Starting remote training"}</strong><small>{status}</small>{progress && <code>{progress}</code>}</div>
+          <div><strong>{latestEvent?.phase === "training" ? "Training" : latestEvent?.phase === "evaluation" ? "Evaluating" : "Starting"}</strong><small>{progress ?? status}</small></div>
           {run && <button type="button" className="btn ghost" onClick={cancel}>Cancel</button>}
         </div>
-        {latestEvent?.eve && latestEvent.eve.decision !== "observe" && (
-          <p>Eve chose to {latestEvent.eve.decision.replace("_", " ")} · {latestEvent.eve.reason_code}</p>
-        )}
         {error && <p className="remote-training-warning">{error}</p>}
-        <ol>
-          {events.slice(-4).map((event, index) => <li key={`${event.sequence ?? index}:${event.type ?? event.phase}`}>{event.message}</li>)}
-        </ol>
       </div>
     );
   }
 
   if (stage === "terminal" && result) {
+    const primaryMetric = result.metrics.find((metric) => metric.id === "improvement_over_base")
+      ?? result.metrics.find((metric) => metric.id === "correct_answers")
+      ?? result.metrics[0];
+    const secondaryMetrics = result.metrics.filter((metric) => metric !== primaryMetric);
     const terminalCopy = result.outcome === "promoted"
       ? { eyebrow: "Ready to use", title: "This model earned promotion" }
       : result.outcome === "needs_work"
@@ -436,12 +496,16 @@ export function RemoteTrainingPanel({
     return (
       <div className={`remote-training-result ${result.outcome}`}>
         <div><span>{terminalCopy.eyebrow}</span><strong>{terminalCopy.title}</strong><small>Reported training cost: ${result.spend_usd.toFixed(2)}</small></div>
-        <div className="remote-training-metrics">
-          {result.metrics.map((metric) => <article key={metric.id}><span>{metric.label}</span><strong>{metric.display_value}</strong><small>{metric.explanation}</small></article>)}
-        </div>
-        {result.failures.length > 0 && <div className="remote-training-failures"><strong>Where it still fails</strong>{result.failures.slice(0, 3).map((failure, index) => <p key={index}>{failure.expected} expected · {failure.actual} returned · {failure.input_summary}</p>)}</div>}
-        {result.outcome === "promoted" && result.output_model && <div className="remote-training-endpoint"><span>Private trained model</span><code>{result.output_model}</code>{result.endpoint && <small>Serving is active through the authenticated Understudy endpoint.</small>}</div>}
-        <div className="remote-training-actions"><button type="button" className="btn ghost" onClick={() => { setPlan(null); setRun(null); setEvents([]); setResult(null); setError(null); setStage("choice"); }}>Start another run</button></div>
+        {primaryMetric && <div className="remote-training-metrics"><article><span>{primaryMetric.label}</span><strong>{primaryMetric.display_value}</strong></article></div>}
+        {(secondaryMetrics.length > 0 || result.failures.length > 0 || result.output_model) && (
+          <details className="remote-training-details">
+            <summary>Run details</summary>
+            {secondaryMetrics.length > 0 && <div className="remote-training-metrics">{secondaryMetrics.map((metric) => <article key={metric.id}><span>{metric.label}</span><strong>{metric.display_value}</strong><small>{metric.explanation}</small></article>)}</div>}
+            {result.failures.length > 0 && <div className="remote-training-failures"><strong>Where it still fails</strong>{result.failures.slice(0, 3).map((failure, index) => <p key={index}>{failure.expected} expected · {failure.actual} returned · {failure.input_summary}</p>)}</div>}
+            {result.output_model && <div className="remote-training-endpoint"><span>Private trained model</span><code>{result.output_model}</code>{result.endpoint && <small>Serving is active through the authenticated Understudy endpoint.</small>}</div>}
+          </details>
+        )}
+        <div className="remote-training-actions"><button type="button" className="btn ghost" onClick={resetRun}>Start another run</button></div>
       </div>
     );
   }
@@ -449,7 +513,14 @@ export function RemoteTrainingPanel({
   return (
     <div className="remote-training-state failed" role="alert">
       <div><strong>Remote training did not start</strong><small>{error ?? "The local dataset is intact and no further work will run."}</small></div>
-      <div className="remote-training-actions"><button type="button" className="btn primary" onClick={() => setStage("choice")}>Try again</button><button type="button" className="btn ghost" onClick={onTrainLocal}>Train on this Mac</button></div>
+      <div className="remote-training-actions">
+        <button type="button" className="btn primary" onClick={resetRun}>Try again</button>
+        {preparedMode && props.onBack
+          ? <button type="button" className="btn ghost" onClick={props.onBack}>Back to recipe</button>
+          : preparedMode
+            ? null
+          : <button type="button" className="btn ghost" onClick={props.onTrainLocal}>Train on this Mac</button>}
+      </div>
     </div>
   );
 }

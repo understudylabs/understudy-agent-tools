@@ -11,6 +11,12 @@ export function shouldInspectDroppedTable(workload) {
   return name.length > 0 && !name.includes(".");
 }
 
+export function shouldInspectTrainingRecipe(workload) {
+  if (!workload || workload.source_type !== "file") return false;
+  const name = String(workload.source_name ?? "").trim().toLowerCase();
+  return /\.(?:jsonl|ndjson)$/.test(name);
+}
+
 const BUSY_PHASES = new Set(["validating", "compiling", "inspecting", "preparing_dataset"]);
 
 /**

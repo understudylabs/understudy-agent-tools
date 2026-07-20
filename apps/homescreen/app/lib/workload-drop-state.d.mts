@@ -30,6 +30,11 @@ export function shouldInspectDroppedTable(workload: {
   source_kinds?: Record<string, number> | null;
 } | null): boolean;
 
+export function shouldInspectTrainingRecipe(workload: {
+  source_type?: string | null;
+  source_name?: string | null;
+} | null): boolean;
+
 export function workloadDropReducer(
   phase: WorkloadDropPhase,
   action: WorkloadDropAction,

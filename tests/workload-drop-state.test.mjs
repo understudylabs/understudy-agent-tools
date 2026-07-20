@@ -5,6 +5,7 @@ import {
   INITIAL_WORKLOAD_DROP_PHASE,
   isWorkloadDropBusy,
   shouldInspectDroppedTable,
+  shouldInspectTrainingRecipe,
   workloadDropPersonaState,
   workloadDropReducer,
   workloadDropStatus,
@@ -103,6 +104,14 @@ test("extensionless and common delimited files enter local table inspection", ()
     source_type: "file",
     source_kinds: { document: 1 },
   }), false);
+});
+
+test("JSONL drops enter local training recipe inspection", () => {
+  for (const source_name of ["gsm8k.jsonl", "preferences.ndjson"]) {
+    assert.equal(shouldInspectTrainingRecipe({ source_name, source_type: "file" }), true);
+  }
+  assert.equal(shouldInspectTrainingRecipe({ source_name: "dataset.csv", source_type: "file" }), false);
+  assert.equal(shouldInspectTrainingRecipe({ source_name: "dataset.jsonl", source_type: "directory" }), false);
 });
 
 test("local training follows only real runner phases and measured progress", () => {

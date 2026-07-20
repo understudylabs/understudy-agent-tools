@@ -65,12 +65,26 @@ export function RuntimeRepairPrompt({ quiet = false }: { quiet?: boolean }) {
   const [elapsedSeconds, setElapsedSeconds] = useState(0);
   const successTimer = useRef<number | null>(null);
   const updateCheckInFlight = useRef(false);
+  const automaticRuntimeRepairAttempted = useRef(false);
   const busy = progress.status === "running";
 
   const refreshHealth = useCallback(async (): Promise<DesktopHealth | null> => {
     try {
       const health = await invoke<DesktopHealth>("desktop_health");
-      setPrompt(promptForHealth(health));
+      const nextPrompt = promptForHealth(health);
+      if (
+        nextPrompt?.runtime === "conversation-runtime"
+        && !automaticRuntimeRepairAttempted.current
+      ) {
+        automaticRuntimeRepairAttempted.current = true;
+        setPrompt(null);
+        void invoke("conversation_runtime_repair")
+          .then(() => invoke<DesktopHealth>("desktop_health"))
+          .then((repairedHealth) => setPrompt(promptForHealth(repairedHealth)))
+          .catch((error) => setPrompt(promptForRepairFailure(nextPrompt, error)));
+      } else {
+        setPrompt(nextPrompt);
+      }
       return health;
     } catch {
       // Health is best-effort. Offline startup and the native runtime fallback
@@ -189,7 +203,13 @@ export function RuntimeRepairPrompt({ quiet = false }: { quiet?: boolean }) {
     const unlisten = isTauri()
       ? Promise.all([
           listen<RuntimeRepairRequest>("runtime-repair-needed", (event) => {
-            setPrompt(promptForRuntimeRequest(event.payload));
+            if (event.payload.runtime === "conversation-runtime") {
+              void refreshHealth().then((health) => {
+                if (!health) setPrompt(promptForRuntimeRequest(event.payload));
+              });
+            } else {
+              setPrompt(promptForRuntimeRequest(event.payload));
+            }
           }),
           listen<NativeRepairProgress>("runtime-repair-progress", (event) => {
             setProgress((current) =>

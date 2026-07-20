@@ -125,7 +125,7 @@ export function TrainingHalo({
       style={{ width: size, height: size, "--training-hue": rgbCss(hue) } as React.CSSProperties}
       data-phase={visual.phase}
       aria-label={born
-        ? `${visual.modelName} is ready`
+        ? `${visual.modelName} training complete`
         : visual.done
           ? "Training complete"
           : `Training epoch ${Math.min(epochs, completedEpochs + 1)} of ${epochs}`}
@@ -186,7 +186,7 @@ export function TrainingHalo({
         <div className="training-halo-identity" role="status">
           <i aria-hidden="true" />
           <strong>{visual.modelName}</strong>
-          <span>distilled from ModernBERT · yours</span>
+          <span>trained locally · yours</span>
         </div>
       )}
     </div>

@@ -468,7 +468,6 @@ export function LocalTrainingPanel({
       !autoStart ||
       state.phase !== "idle" ||
       remoteCapabilityState === "checking" ||
-      (remoteCapabilityState === "available" && !forceLocal) ||
       autoStartedManifest.current === datasetManifestPath
     ) return;
     const timer = window.setTimeout(() => {
@@ -541,6 +540,7 @@ export function LocalTrainingPanel({
 
   if (state.phase === "idle") {
     if (remoteCapabilityState === "checking" && autoStart) return null;
+    if (autoStart) return null;
     if (remoteCapabilityState === "available" && remoteCapabilities && !forceLocal) {
       return (
         <RemoteTrainingPanel
@@ -556,7 +556,6 @@ export function LocalTrainingPanel({
         />
       );
     }
-    if (autoStart) return null;
     return (
       <div className="local-training-start">
         <button type="button" className="btn primary" onClick={startTraining}>
