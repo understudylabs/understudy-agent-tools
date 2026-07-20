@@ -25,6 +25,7 @@ const MAX_MANIFEST_BYTES: u64 = 1_048_576;
 const MAX_SPLIT_BYTES: u64 = 150 * 1024 * 1024;
 const MAX_REMOTE_ARTIFACT_BYTES: u64 = 150 * 1024 * 1024;
 const MAX_RECIPE_INSPECTION_BYTES: u64 = 32 * 1024 * 1024;
+const MAX_REMOTE_TRAINING_BUDGET_USD: f64 = 1_000.0;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum PortableRecipeShape {
@@ -1032,8 +1033,10 @@ fn validate_remote_plan_options(model_profile: &str, maximum_spend_usd: f64) -> 
     if model_profile.trim().is_empty() || model_profile.chars().count() > 240 {
         return Err("The training profile is invalid.".into());
     }
-    if !maximum_spend_usd.is_finite() || !(0.0..=500.0).contains(&maximum_spend_usd) {
-        return Err("The remote training budget must be between $0 and $500.".into());
+    if !maximum_spend_usd.is_finite()
+        || !(0.0..=MAX_REMOTE_TRAINING_BUDGET_USD).contains(&maximum_spend_usd)
+    {
+        return Err("The remote training budget must be between $0 and $1,000.".into());
     }
     Ok(())
 }
@@ -2181,7 +2184,7 @@ fn read_verified_plan(path: &str) -> Result<RemoteTrainingPlan, String> {
         || !recipe_shape_valid
         || plan.artifacts.len() != 3
         || plan.maximum_spend_usd < 0.0
-        || plan.maximum_spend_usd > 500.0
+        || plan.maximum_spend_usd > MAX_REMOTE_TRAINING_BUDGET_USD
     {
         return Err("The remote training plan failed its immutable boundary checks.".into());
     }
@@ -2644,6 +2647,12 @@ fn replace_private_json(path: &Path, value: &impl Serialize) -> Result<(), Strin
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    #[test]
+    fn accepts_the_founder_budget_ceiling_from_live_capabilities() {
+        assert!(validate_remote_plan_options("understudy/auto", 1_000.0).is_ok());
+        assert!(validate_remote_plan_options("understudy/auto", 1_000.01).is_err());
+    }
 
     fn fixture() -> (PathBuf, PathBuf) {
         let root = std::env::temp_dir().join(format!(
