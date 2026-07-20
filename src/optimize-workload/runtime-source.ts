@@ -3,7 +3,9 @@ from __future__ import annotations
 
 import argparse
 import json
+import math
 import os
+import threading
 from pathlib import Path
 from typing import Any
 
@@ -34,6 +36,198 @@ def normalize_dspy_model(value: str) -> str:
     if "/" in value:
         return value
     return f"openai/{value}"
+
+
+class SpendBudgetExceeded(RuntimeError):
+    pass
+
+
+class SpendEvidenceError(RuntimeError):
+    pass
+
+
+def positive_float(value: Any, label: str) -> float:
+    parsed = float(value)
+    if not math.isfinite(parsed) or not parsed > 0:
+        raise ValueError(f"{label} must be positive")
+    return parsed
+
+
+def non_negative_float(value: Any, label: str) -> float:
+    parsed = float(value)
+    if not math.isfinite(parsed) or parsed < 0:
+        raise ValueError(f"{label} must be non-negative")
+    return parsed
+
+
+def input_token_ceiling_from_bytes(message_bytes: int, message_count: int) -> int:
+    if message_bytes < 0 or message_count < 0:
+        raise ValueError("message bytes and count must be non-negative")
+    # Byte-level tokenizers cannot emit more tokens than UTF-8 bytes for the
+    # serialized content. The fixed and per-message allowances cover chat
+    # framing, provider wrappers, and DSPy signature material not visible in
+    # the message text. This is intentionally conservative.
+    return message_bytes + 4096 + (64 * message_count)
+
+
+def serialized_message_shape(prompt: str | None, messages: list[dict[str, Any]] | None) -> tuple[int, int]:
+    normalized = messages or [{"role": "user", "content": prompt or ""}]
+    serialized = json.dumps(normalized, ensure_ascii=False, separators=(",", ":"), default=str)
+    return len(serialized.encode("utf-8")), len(normalized)
+
+
+def token_price(input_tokens: int, output_tokens: int, input_usd_per_million: float, output_usd_per_million: float) -> float:
+    return (
+        (input_tokens * input_usd_per_million)
+        + (output_tokens * output_usd_per_million)
+    ) / 1_000_000
+
+
+def usage_token_count(usage: Any, *names: str) -> int | None:
+    for name in names:
+        if isinstance(usage, dict):
+            value = usage.get(name)
+        else:
+            value = getattr(usage, name, None)
+        if isinstance(value, bool):
+            continue
+        if isinstance(value, (int, float)) and value >= 0 and int(value) == value:
+            return int(value)
+    return None
+
+
+def write_owner_only_json(path: Path, payload: dict[str, Any]) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True, mode=0o700)
+    path.parent.chmod(0o700)
+    temporary = path.with_name(f".{path.name}.{os.getpid()}.tmp")
+    encoded = (json.dumps(payload, indent=2, sort_keys=True) + "\n").encode("utf-8")
+    descriptor = os.open(temporary, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    try:
+        with os.fdopen(descriptor, "wb") as handle:
+            handle.write(encoded)
+            handle.flush()
+            os.fsync(handle.fileno())
+    except BaseException:
+        temporary.unlink(missing_ok=True)
+        raise
+    os.replace(temporary, path)
+    path.chmod(0o600)
+
+
+class SpendLedger:
+    def __init__(
+        self,
+        budget_usd: float,
+        input_usd_per_million: float,
+        output_usd_per_million: float,
+    ) -> None:
+        self.budget_usd = positive_float(budget_usd, "budget_usd")
+        self.input_usd_per_million = non_negative_float(
+            input_usd_per_million,
+            "input_usd_per_million",
+        )
+        self.output_usd_per_million = non_negative_float(
+            output_usd_per_million,
+            "output_usd_per_million",
+        )
+        if self.input_usd_per_million == 0 and self.output_usd_per_million == 0:
+            raise ValueError("at least one token price must be non-zero")
+        self.reserved_upper_bound_usd = 0.0
+        self.attributed_cost_usd = 0.0
+        self.calls_attempted = 0
+        self.calls_completed = 0
+        self.usage_complete = True
+        self.entries: list[dict[str, Any]] = []
+        self._lock = threading.Lock()
+
+    def __deepcopy__(self, memo: dict[int, Any]) -> SpendLedger:
+        # DSPy copies LMs for rollout variants. Every copy must share the same
+        # process-wide ledger or a copied optimizer could bypass the cap.
+        return self
+
+    def projected_reservation(self, input_token_ceiling: int, output_token_ceiling: int) -> float:
+        return token_price(
+            input_token_ceiling,
+            output_token_ceiling,
+            self.input_usd_per_million,
+            self.output_usd_per_million,
+        )
+
+    def reserve(self, input_token_ceiling: int, output_token_ceiling: int) -> int:
+        projected = self.projected_reservation(input_token_ceiling, output_token_ceiling)
+        with self._lock:
+            next_total = self.reserved_upper_bound_usd + projected
+            if next_total > self.budget_usd + 1e-12:
+                raise SpendBudgetExceeded("next-call-reservation-exceeds-budget")
+            self.calls_attempted += 1
+            call_id = self.calls_attempted
+            self.reserved_upper_bound_usd = next_total
+            self.entries.append({
+                "call_id": call_id,
+                "status": "reserved",
+                "input_token_ceiling": input_token_ceiling,
+                "output_token_ceiling": output_token_ceiling,
+                "reserved_upper_bound_usd": projected,
+            })
+            return call_id
+
+    def mark_error(self, call_id: int) -> None:
+        with self._lock:
+            self.entries[call_id - 1]["status"] = "provider-error-billing-ambiguous"
+            self.usage_complete = False
+
+    def complete(self, call_id: int, response: Any) -> None:
+        usage = getattr(response, "usage", None)
+        input_tokens = usage_token_count(usage, "prompt_tokens", "input_tokens")
+        output_tokens = usage_token_count(usage, "completion_tokens", "output_tokens")
+        with self._lock:
+            entry = self.entries[call_id - 1]
+            if input_tokens is None or output_tokens is None:
+                entry["status"] = "usage-missing"
+                self.usage_complete = False
+                raise SpendEvidenceError("provider-usage-missing")
+            if (
+                input_tokens > int(entry["input_token_ceiling"])
+                or output_tokens > int(entry["output_token_ceiling"])
+            ):
+                entry["status"] = "usage-exceeds-reservation"
+                self.usage_complete = False
+                raise SpendEvidenceError("provider-usage-exceeds-reservation")
+            attributed = token_price(
+                input_tokens,
+                output_tokens,
+                self.input_usd_per_million,
+                self.output_usd_per_million,
+            )
+            entry.update({
+                "status": "complete",
+                "input_tokens": input_tokens,
+                "output_tokens": output_tokens,
+                "attributed_cost_usd": attributed,
+            })
+            self.calls_completed += 1
+            self.attributed_cost_usd += attributed
+
+    def evidence(self) -> dict[str, Any]:
+        with self._lock:
+            return {
+                "approved_budget_usd": self.budget_usd,
+                "reserved_upper_bound_usd": self.reserved_upper_bound_usd,
+                "attributed_cost_usd": self.attributed_cost_usd,
+                "calls_attempted": self.calls_attempted,
+                "calls_completed": self.calls_completed,
+                "usage_complete": self.usage_complete,
+                "client_num_retries": 0,
+                "provider_invoice_verified": False,
+                "price_basis": {
+                    "source": "user-supplied",
+                    "input_usd_per_million": self.input_usd_per_million,
+                    "output_usd_per_million": self.output_usd_per_million,
+                    "scope": "token-price-attribution-not-provider-invoice",
+                },
+                "reservations_are_cumulative": True,
+                "entries": [dict(entry) for entry in self.entries],
+            }
 
 
 def split_train_dev(rows: list[dict[str, Any]], split_key: str, train_split: str, dev_split: str) -> tuple[list[dict[str, Any]], list[dict[str, Any]], int]:
@@ -69,8 +263,115 @@ def exact_match_feedback(output_keys: list[str], gold: Any, pred: Any) -> Any:
     return ScoreWithFeedback(score=score, feedback=feedback)
 
 
-def dspy_gepa(args: argparse.Namespace) -> None:
+def dspy_run_state_path(args: argparse.Namespace) -> Path:
+    return Path(args.repo) / ".understudy" / "optimize-workload" / "dspy-gepa" / "run-state.json"
+
+
+def write_dspy_run_state(
+    args: argparse.Namespace,
+    ledger: SpendLedger,
+    status: str,
+    reason: str | None,
+) -> None:
+    evidence = ledger.evidence()
+    write_owner_only_json(dspy_run_state_path(args), {
+        "schema_version": "understudy.dspy_gepa_run_state.v1",
+        "status": status,
+        "reason": reason,
+        "adapter": "dspy-gepa",
+        "model": args.model,
+        "provider_calls": evidence["calls_attempted"] > 0,
+        "optimizer_execution": True,
+        "spend_evidence": evidence,
+    })
+
+
+def emit_dspy_failure(
+    args: argparse.Namespace,
+    ledger: SpendLedger,
+    status: str,
+    reason: str,
+    exit_code: int,
+) -> None:
+    write_dspy_run_state(args, ledger, status, reason)
+    evidence = ledger.evidence()
+    emit({
+        "schema_version": "understudy.dspy_gepa_adapter.v1",
+        "status": status,
+        "reason": reason,
+        "adapter": "dspy-gepa",
+        "model": args.model,
+        "provider_calls": evidence["calls_attempted"] > 0,
+        "optimizer_execution": True,
+        "spend_evidence": evidence,
+        "run_state_path": ".understudy/optimize-workload/dspy-gepa/run-state.json",
+    })
+    raise SystemExit(exit_code)
+
+
+def _dspy_gepa_execute(args: argparse.Namespace, ledger: SpendLedger) -> None:
     import dspy
+
+    class BudgetedLM(dspy.LM):
+        def __init__(self, *lm_args: Any, spend_ledger: SpendLedger, **lm_kwargs: Any) -> None:
+            self._spend_ledger = spend_ledger
+            super().__init__(*lm_args, **lm_kwargs)
+
+        def _output_token_ceiling(self, call_kwargs: dict[str, Any]) -> int:
+            value = (
+                call_kwargs.get("max_tokens")
+                or call_kwargs.get("max_completion_tokens")
+                or self.kwargs.get("max_tokens")
+                or self.kwargs.get("max_completion_tokens")
+            )
+            if isinstance(value, bool) or not isinstance(value, (int, float)):
+                raise ValueError("LM call is missing a numeric output-token ceiling")
+            parsed = int(value)
+            if parsed <= 0 or parsed != value:
+                raise ValueError("LM output-token ceiling must be a positive integer")
+            return parsed
+
+        def _reserve_call(
+            self,
+            prompt: str | None,
+            messages: list[dict[str, Any]] | None,
+            call_kwargs: dict[str, Any],
+        ) -> int:
+            message_bytes, message_count = serialized_message_shape(prompt, messages)
+            return self._spend_ledger.reserve(
+                input_token_ceiling_from_bytes(message_bytes, message_count),
+                self._output_token_ceiling(call_kwargs),
+            )
+
+        def forward(
+            self,
+            prompt: str | None = None,
+            messages: list[dict[str, Any]] | None = None,
+            **kwargs: Any,
+        ) -> Any:
+            call_id = self._reserve_call(prompt, messages, kwargs)
+            try:
+                response = super().forward(prompt=prompt, messages=messages, **kwargs)
+            except BaseException:
+                self._spend_ledger.mark_error(call_id)
+                raise
+            self._spend_ledger.complete(call_id, response)
+            return response
+
+        async def aforward(
+            self,
+            prompt: str | None = None,
+            messages: list[dict[str, Any]] | None = None,
+            **kwargs: Any,
+        ) -> Any:
+            call_id = self._reserve_call(prompt, messages, kwargs)
+            try:
+                response = await super().aforward(prompt=prompt, messages=messages, **kwargs)
+            except BaseException:
+                self._spend_ledger.mark_error(call_id)
+                raise
+            self._spend_ledger.complete(call_id, response)
+            return response
 
     api_key = os.environ.get("UNDERSTUDY_API_KEY")
     gateway_url = os.environ.get("UNDERSTUDY_GATEWAY_URL")
@@ -88,12 +389,14 @@ def dspy_gepa(args: argparse.Namespace) -> None:
         if missing:
             raise ValueError(f"sample row is missing keys: {', '.join(missing)}")
 
-    lm = dspy.LM(
+    lm = BudgetedLM(
         normalize_dspy_model(args.model),
+        spend_ledger=ledger,
         api_key=api_key,
         api_base=normalize_gateway_url(gateway_url),
         max_tokens=int(args.max_tokens),
         cache=False,
+        num_retries=0,
     )
     dspy.configure(lm=lm)
     signature = dspy.Signature(f"{', '.join(input_keys)} -> {', '.join(output_keys)}")
@@ -121,6 +424,7 @@ def dspy_gepa(args: argparse.Namespace) -> None:
     )
     optimized = teleprompter.compile(student, trainset=trainset, valset=devset)
 
+    spend_evidence = ledger.evidence()
     candidate = {
         "schema_version": "understudy.dspy_gepa_candidate.v1",
         "adapter": "dspy-gepa",
@@ -135,33 +439,36 @@ def dspy_gepa(args: argparse.Namespace) -> None:
         "baseline_first_score": float(baseline_feedback.score),
         "baseline_first_feedback": baseline_feedback.feedback,
         "optimized_program_class": optimized.__class__.__name__,
+        "spend_evidence": spend_evidence,
     }
     optimize_dir = Path(args.repo) / ".understudy" / "optimize-workload"
     optimize_dir.mkdir(parents=True, exist_ok=True)
     candidate_path = optimize_dir / "candidate.json"
     proof_path = optimize_dir / "proof-packet.json"
-    candidate_path.write_text(json.dumps(candidate, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    write_owner_only_json(candidate_path, candidate)
     proof = {
         "schema_version": "understudy.optimize-workload.proof.v1",
         "mode": "dspy-gepa",
         "status": "candidate-created",
         "backend": "uv-gepa",
         "adapter": "dspy-gepa",
-        "provider_calls": True,
+        "provider_calls": spend_evidence["calls_attempted"] > 0,
         "live_optimizer_execution": True,
         "package_installs": True,
         "holdout_accessed_during_optimization": False,
         "train_count": len(trainset),
         "dev_count": len(devset),
         "candidate": ".understudy/optimize-workload/candidate.json",
+        "spend_evidence": spend_evidence,
     }
-    proof_path.write_text(json.dumps(proof, indent=2, sort_keys=True) + "\n", encoding="utf-8")
+    write_owner_only_json(proof_path, proof)
+    write_dspy_run_state(args, ledger, "candidate-created", None)
     emit({
         "schema_version": "understudy.dspy_gepa_adapter.v1",
         "status": "candidate-created",
         "adapter": "dspy-gepa",
         "model": args.model,
-        "provider_calls": True,
+        "provider_calls": spend_evidence["calls_attempted"] > 0,
         "optimizer_execution": True,
         "auth_source": os.environ.get("UNDERSTUDY_AUTH_SOURCE", "unknown"),
         "gateway_url_configured": True,
@@ -172,7 +479,37 @@ def dspy_gepa(args: argparse.Namespace) -> None:
         "max_metric_calls": int(args.max_metric_calls),
         "candidate_path": ".understudy/optimize-workload/candidate.json",
         "proof_packet_path": ".understudy/optimize-workload/proof-packet.json",
+        "run_state_path": ".understudy/optimize-workload/dspy-gepa/run-state.json",
+        "spend_evidence": spend_evidence,
     })
+
+
+def dspy_gepa(args: argparse.Namespace) -> None:
+    ledger = SpendLedger(
+        args.budget_usd,
+        args.input_usd_per_million,
+        args.output_usd_per_million,
+    )
+    try:
+        _dspy_gepa_execute(args, ledger)
+    except SpendBudgetExceeded:
+        emit_dspy_failure(
+            args,
+            ledger,
+            "budget-blocked",
+            "next-call-reservation-exceeds-budget",
+            4,
+        )
+    except SpendEvidenceError as error:
+        emit_dspy_failure(args, ledger, "spend-evidence-error", str(error), 5)
+    except KeyboardInterrupt:
+        emit_dspy_failure(args, ledger, "cancelled", "optimizer-cancelled", 130)
+    except ImportError:
+        emit_dspy_failure(args, ledger, "error", "runtime-dependency-error", 3)
+    except ValueError:
+        emit_dspy_failure(args, ledger, "error", "invalid-runtime-input", 3)
+    except Exception:
+        emit_dspy_failure(args, ledger, "error", "optimizer-execution-failed", 3)
 
 
 def load_json_or_jsonl(path: Path) -> Any:
@@ -457,6 +794,46 @@ def eval_input_gepa(args: argparse.Namespace) -> None:
     })
 
 
+def budget_preflight(args: argparse.Namespace) -> None:
+    ledger = SpendLedger(
+        args.budget_usd,
+        args.input_usd_per_million,
+        args.output_usd_per_million,
+    )
+    message_bytes = int(args.message_bytes)
+    message_count = int(args.message_count)
+    output_token_ceiling = int(args.max_tokens)
+    call_count = int(args.call_count)
+    if output_token_ceiling <= 0 or call_count <= 0:
+        raise ValueError("max_tokens and call_count must be positive")
+    input_token_ceiling = input_token_ceiling_from_bytes(message_bytes, message_count)
+    projected = ledger.projected_reservation(input_token_ceiling, output_token_ceiling)
+    allowed = True
+    try:
+        for _ in range(call_count):
+            ledger.reserve(input_token_ceiling, output_token_ceiling)
+    except SpendBudgetExceeded:
+        allowed = False
+    evidence = ledger.evidence()
+    emit({
+        "schema_version": "understudy.dspy_gepa_budget_preflight.v1",
+        "status": "allowed" if allowed else "budget-blocked",
+        "allowed": allowed,
+        "provider_calls": False,
+        "approved_budget_usd": ledger.budget_usd,
+        "input_token_ceiling": input_token_ceiling,
+        "output_token_ceiling": output_token_ceiling,
+        "projected_per_call_reservation_usd": projected,
+        "projected_requested_reservations_usd": projected * call_count,
+        "requested_call_count": call_count,
+        "simulated_reservation_count": evidence["calls_attempted"],
+        "reserved_upper_bound_usd": evidence["reserved_upper_bound_usd"],
+        "price_basis": evidence["price_basis"],
+    })
+    if not allowed:
+        raise SystemExit(4)
+
+
 def main() -> None:
     parser = argparse.ArgumentParser()
     sub = parser.add_subparsers(dest="command", required=True)
@@ -473,6 +850,9 @@ def main() -> None:
     dspy_gepa_parser.add_argument("--train-split", default="train")
     dspy_gepa_parser.add_argument("--dev-split", default="dev")
     dspy_gepa_parser.add_argument("--max-tokens", default="256")
+    dspy_gepa_parser.add_argument("--budget-usd", required=True)
+    dspy_gepa_parser.add_argument("--input-usd-per-million", required=True)
+    dspy_gepa_parser.add_argument("--output-usd-per-million", required=True)
     dspy_gepa_parser.set_defaults(func=dspy_gepa)
 
     eval_input_gepa_parser = sub.add_parser("eval-input-gepa")
@@ -486,6 +866,16 @@ def main() -> None:
     eval_input_gepa_parser.add_argument("--reflection-minibatch-size", default="1")
     eval_input_gepa_parser.add_argument("--model", default=None)
     eval_input_gepa_parser.set_defaults(func=eval_input_gepa)
+
+    budget_preflight_parser = sub.add_parser("budget-preflight")
+    budget_preflight_parser.add_argument("--message-bytes", required=True)
+    budget_preflight_parser.add_argument("--message-count", required=True)
+    budget_preflight_parser.add_argument("--max-tokens", required=True)
+    budget_preflight_parser.add_argument("--call-count", default="1")
+    budget_preflight_parser.add_argument("--budget-usd", required=True)
+    budget_preflight_parser.add_argument("--input-usd-per-million", required=True)
+    budget_preflight_parser.add_argument("--output-usd-per-million", required=True)
+    budget_preflight_parser.set_defaults(func=budget_preflight)
 
     args = parser.parse_args()
     args.func(args)

@@ -1,0 +1,21 @@
+{
+  "schema_version": "understudy-conversation-runtime-input-v1",
+  "fixture_id": "offline-image",
+  "role": "primary",
+  "messages": [
+    {
+      "role": "user",
+      "content": "Describe the attached two-by-two image using only the local runtime.",
+      "attachments": [
+        {
+          "id": "9983e1746b56623a77f5ecf58c9a95eb30c4c3c2a79de7efad45038d9f57603f",
+          "filename": "two-by-two.png",
+          "media_type": "image/png",
+          "data_url": "data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAIAAAD91JpzAAAAEklEQVR4nGNUcEhgYGBgYgADAAjqAMQuSECmAAAAAElFTkSuQmCC"
+        }
+      ]
+    }
+  ],
+  "tools": [],
+  "expected_events": ["image_attachment", "message", "delta", "usage"]
+}

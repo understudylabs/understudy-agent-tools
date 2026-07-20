@@ -34,11 +34,38 @@ the model terms accepted + an `HF_TOKEN` (a token authorizes a download; it is
 not approval to download). Pick the lightest runtime that fits; each exposes an
 OpenAI-compatible endpoint, so the frozen eval just swaps `base_url`.
 
-### llama.cpp — cross-platform, single binary, best for sandboxes (pulls weights itself)
+### Preflight — Python and runtime versions (do this first)
+
+Gemma 4 and other modern model types need current runtimes. macOS system
+Python is often 3.9 and will silently install an old `mlx-lm` that fails with
+`ValueError: Model type gemma4 not supported`.
 
 ```bash
-brew install llama.cpp                 # macOS; else build from source / package mgr
-export HF_TOKEN=...                     # only for gated repos; never commit it
+# 1. Refuse system Python < 3.10 for MLX installs (matches PyPI requires-python)
+python3 -c 'import sys; assert sys.version_info >= (3, 10), sys.version'
+# If that raises AssertionError: do NOT `pip install` into system Python. Bootstrap with uv:
+uv venv --python 3.13 .understudy/venvs/mlx
+# 2. Pin packages that actually know gemma4 (mlx-lm >= 0.30; use >= 0.31 in practice)
+uv pip install --python .understudy/venvs/mlx/bin/python \
+  'mlx-lm>=0.31' 'mlx-vlm>=0.6.2' 'huggingface_hub[cli]>=0.27'
+# 3. Confirm before serving
+.understudy/venvs/mlx/bin/python -c 'import mlx_lm; print(mlx_lm.__version__)'
+```
+
+Never run bare `pip install mlx-lm` / `pip install mlx-vlm` against system
+Python on macOS. An unpinned install on 3.9 resolves to `mlx-lm` 0.29.x, which
+does not support Gemma 4.
+
+### llama.cpp — cross-platform, single binary, best for sandboxes (pulls weights itself)
+
+Gemma 4 GGUF needs a llama.cpp build from **after Gemma 4's April 2026
+release**. Stale brew bottles fail with
+`unknown model architecture: 'gemma4'`. Upgrade before serving:
+
+```bash
+brew install llama.cpp && brew upgrade llama.cpp   # macOS; else build from source / package mgr
+llama-server --version                              # confirm a post-Gemma-4 build
+export HF_TOKEN=...                                 # only for gated repos; never commit it
 # downloads the GGUF from HF and serves OpenAI-compatible at :8080/v1
 llama-server -hf unsloth/gemma-4-E4B-it-GGUF:Q4_K_M --port 8080 --jinja
 # Nemotron 3 Nano — smallest gen-3 is the 4B dense; 30B-A3B is the MoE:
@@ -46,15 +73,22 @@ llama-server -hf unsloth/gemma-4-E4B-it-GGUF:Q4_K_M --port 8080 --jinja
 #   llama-server -hf unsloth/Nemotron-3-Nano-30B-A3B-GGUF:Q4_K_M --port 8080 --jinja
 ```
 
+If `gemma4` is still unknown after upgrade, build from current
+[llama.cpp](https://github.com/ggml-org/llama.cpp) `master` rather than an
+older package.
+
 ### MLX — Apple Silicon native (best throughput on a Mac)
 
 ```bash
-pip install mlx-vlm                      # or: uv pip install mlx-vlm
-# pull the official Understudy snapshot first, then serve OpenAI-compatible.
-# The certified QAT `-understudy` rungs are the primary lab models:
-cd /path/to/understudy-agent-tools/skills/manage-local-models
+# Use the preflight venv above — never system pip.
+VENV=.understudy/venvs/mlx/bin
+# Text-only / mlx-community quants (e.g. gemma-4-31b-it-8bit):
+$VENV/python -m mlx_lm.server --model mlx-community/gemma-4-31b-it-8bit --port 8080
+# Understudy certified QAT snapshots use mlx-vlm (multimodal serving path):
 understudy models pull gemma-4-e2b-it-qat-mlx-vlm-understudy
-python -m mlx_vlm.server --model ~/.understudy/models/gemma-4-e2b-it-qat-mlx-vlm-understudy --port 8080 --top-logprobs-k 20
+$VENV/python -m mlx_vlm.server \
+  --model ~/.understudy/models/gemma-4-e2b-it-qat-mlx-vlm-understudy \
+  --port 8080 --top-logprobs-k 20
 # E4B tier: official target gemma-4-e4b-it-qat-mlx-vlm-understudy (pending
 # publication); interim verified rung: gemma-4-e4b-it-mlx-vlm-4bit
 # Nemotron 3 Nano on MLX: mlx-community/NVIDIA-Nemotron-3-Nano-30B-A3B-4bit
@@ -62,9 +96,9 @@ python -m mlx_vlm.server --model ~/.understudy/models/gemma-4-e2b-it-qat-mlx-vlm
 
 Prefer the `-understudy` suffixed snapshot ids in this lab — they are the
 certified QAT conversions Understudy trains and stands behind (each ships an
-`understudy.serving.json` with the exact serve flags). Fall back to a vanilla
-`-mlx-vlm-4bit` snapshot only when the `-understudy` rung for that tier is not
-yet published (provenance and smoke-test details:
+`understudy.serving.json` with the exact serve flags). Do not silently replace
+one with a vanilla artifact when a catalog or download error occurs; surface
+the mismatch and repair the supported rung (provenance and smoke-test details:
 [`../manage-local-models/reference.md`](../manage-local-models/reference.md)).
 
 (Ollama / LM Studio also serve OpenAI-compatible if a developer already runs one,
@@ -136,7 +170,7 @@ availability, license, checkpoint format, and runtime support before use.
 
 | Candidate class | Use when | Notes |
 | --- | --- | --- |
-| E2B / E4B | Router, triage, extraction, easy classification, edge/mobile, audio-first smoke tests | Smallest Gemma 4 rungs. Good for cheap local iteration and compliance-constrained routing. Use the 4-bit snapshots for speed/size; when quantization may be the bottleneck, convert a BF16 rung locally or compare against the published `gemma-4-12b-it-mlx-vlm-bf16`. |
+| E2B / E4B | Router, triage, extraction, easy classification, edge/mobile, audio-first smoke tests | Smallest supported Gemma 4 rungs. Use the certified QAT snapshots; when quantization may be the bottleneck, make a deliberate local BF16 conversion for the diagnostic. |
 | 12B | Main laptop eval, multimodal/audio tasks, stronger reasoning without workstation hardware | Google announced Gemma 4 12B on 2026-06-03 as a unified encoder-free multimodal model designed for laptops with 16GB VRAM or unified memory. |
 | 26B A4B MoE | Strong local text/image candidate on serious desktop/workstation hardware | Treat as the local quality/latency sweet spot when the runtime and memory fit. MoE active parameters do not remove the need to fit the checkpoint/KV cache. |
 | 31B dense | Maximum local quality when hardware is available, or remote graduation target | Prefer remote/gateway if local ops friction or memory pressure slows the experiment. |
@@ -214,6 +248,11 @@ Write a small JSON record per run:
 
 ## Anti-patterns
 
+- Installing unpinned `mlx-lm` / `mlx-vlm` into macOS system Python 3.9 —
+  resolves to pre-Gemma-4 packages and fails with `Model type gemma4 not
+  supported`. Always use `uv venv --python 3.13` and pin `mlx-lm>=0.31`.
+- Serving Gemma 4 GGUF with a stale llama.cpp (`unknown model architecture:
+  'gemma4'`) — upgrade or rebuild before blaming the weights.
 - Treating a local model as free without measuring setup time, hardware
   contention, latency, and maintenance.
 - Comparing local and remote runs with different prompts, tools, eval rows, or

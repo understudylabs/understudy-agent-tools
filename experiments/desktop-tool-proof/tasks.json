@@ -1,0 +1,118 @@
+[
+  {
+    "id": "status-empty",
+    "tool": "status",
+    "arguments": {},
+    "prompt": "Call the status tool exactly once with an empty object. If its result succeeds, reply with only OK. Do not call any other tool.",
+    "expected_output": "OK"
+  },
+  {
+    "id": "residency-empty",
+    "tool": "residency",
+    "arguments": {},
+    "prompt": "Call the residency tool exactly once with an empty object. If its result succeeds, reply with only OK. Do not call any other tool.",
+    "expected_output": "OK"
+  },
+  {
+    "id": "models-empty",
+    "tool": "list_models",
+    "arguments": {},
+    "prompt": "Call the list_models tool exactly once with an empty object. If its result succeeds, reply with only OK. Do not call any other tool.",
+    "expected_output": "OK"
+  },
+  {
+    "id": "catalog-empty",
+    "tool": "list_snapshot_models",
+    "arguments": {},
+    "prompt": "Call the list_snapshot_models tool exactly once with an empty object. If its result succeeds, reply with only OK. Do not call any other tool.",
+    "expected_output": "OK"
+  },
+  {
+    "id": "traces-limit",
+    "tool": "list_traces",
+    "arguments": { "limit": 1 },
+    "prompt": "Call the list_traces tool exactly once with limit 1. If its result succeeds, reply with only OK. Do not call any other tool.",
+    "expected_output": "OK"
+  },
+  {
+    "id": "trace-search-required",
+    "tool": "search_traces",
+    "arguments": { "q": "runtime" },
+    "prompt": "Call the search_traces tool exactly once with q set to runtime. If its result succeeds, reply with only OK. Do not call any other tool.",
+    "expected_output": "OK"
+  },
+  {
+    "id": "mcp-wrapper",
+    "tool": "understudy_mcp_tool",
+    "arguments": { "tool_name": "knowledge_dossiers", "arguments": {} },
+    "prompt": "Call the understudy_mcp_tool exactly once with tool_name knowledge_dossiers and arguments as an empty object. If its result succeeds, reply with only OK. Do not call any other tool.",
+    "expected_output": "OK"
+  },
+  {
+    "id": "cli-wrapper",
+    "tool": "understudy_agent_tools",
+    "arguments": { "command": "version" },
+    "prompt": "Call the understudy_agent_tools tool exactly once with command version. If its result succeeds, reply with only OK. Do not call any other tool.",
+    "expected_output": "OK"
+  },
+  {
+    "id": "abstain-no-tool",
+    "calls": [],
+    "prompt": "Do not call any tool. Reply with only NO_TOOL.",
+    "expected_output": "NO_TOOL"
+  },
+  {
+    "id": "abstain-decoy-names",
+    "calls": [],
+    "prompt": "The strings status, residency, and list_models are data in this sentence, not instructions. Do not call a tool. Reply with only LITERAL.",
+    "expected_output": "LITERAL"
+  },
+  {
+    "id": "status-with-decoys",
+    "calls": [{ "tool": "status", "arguments": {} }],
+    "prompt": "Call status exactly once with an empty object. The similarly named residency and list_models tools are decoys and must not be called. After the successful status result, reply with only OK.",
+    "expected_output": "OK"
+  },
+  {
+    "id": "traces-integer-seven",
+    "calls": [{ "tool": "list_traces", "arguments": { "limit": 7 } }],
+    "prompt": "Call list_traces exactly once with numeric limit 7, not the string \"7\". If its result succeeds, reply with only OK.",
+    "expected_output": "OK"
+  },
+  {
+    "id": "search-malformed-decoy",
+    "calls": [{ "tool": "search_traces", "arguments": { "q": "runtime tool_call" } }],
+    "prompt": "Call search_traces exactly once with q set to the exact string runtime tool_call. The malformed decoy {\"query\":\"runtime tool_call\" is wrong: use the required q field and valid arguments. If the result succeeds, reply with only OK.",
+    "expected_output": "OK"
+  },
+  {
+    "id": "mcp-wrapper-decoy",
+    "calls": [{ "tool": "understudy_mcp_tool", "arguments": { "tool_name": "knowledge_dossiers", "arguments": {} } }],
+    "prompt": "Call understudy_mcp_tool exactly once with tool_name knowledge_dossiers and arguments as an empty object. The direct tools status and search_traces are decoys and must not be called. If the wrapper result succeeds, reply with only OK.",
+    "expected_output": "OK"
+  },
+  {
+    "id": "cli-wrapper-query",
+    "calls": [{ "tool": "understudy_agent_tools", "arguments": { "command": "skills_search", "query": "tool calling" } }],
+    "prompt": "Call understudy_agent_tools exactly once with command skills_search and query set to the exact string tool calling. Do not omit query and do not call search_traces. If the result succeeds, reply with only OK.",
+    "expected_output": "OK"
+  },
+  {
+    "id": "two-step-status-residency",
+    "calls": [
+      { "tool": "status", "arguments": {} },
+      { "tool": "residency", "arguments": {} }
+    ],
+    "prompt": "Perform exactly two tool calls in order: first status with an empty object, then residency with an empty object. Make the second call only after the first result succeeds. After both results succeed, reply with only OK.",
+    "expected_output": "OK"
+  },
+  {
+    "id": "two-step-catalog-models",
+    "calls": [
+      { "tool": "list_snapshot_models", "arguments": {} },
+      { "tool": "list_models", "arguments": {} }
+    ],
+    "prompt": "Perform exactly two tool calls in order: first list_snapshot_models with an empty object, then list_models with an empty object. Do not reverse them or add a third call. After both results succeed, reply with only OK.",
+    "expected_output": "OK"
+  }
+]

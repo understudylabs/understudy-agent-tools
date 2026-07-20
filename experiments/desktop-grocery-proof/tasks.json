@@ -1,0 +1,38 @@
+[
+  {
+    "id": "codebase-analysis",
+    "workflow": "codebase-analysis",
+    "workflow_title": "Codebase analysis",
+    "title": "Inventory concurrency review",
+    "prompt": "Review this synthetic grocery inventory code. Return only one minified JSON object with exactly the keys bug, affected_sku, and fix. Allowed bug values: lost_update or none. Allowed fix values: atomic_conditional_decrement, mutex, or none.\n\nasync function reserve(sku) {\n  const current = await db.get(sku);\n  if (current.available > 0) {\n    await db.set(sku, { available: current.available - 1 });\n  }\n}\nawait Promise.all([reserve(\"APPLE-1\"), reserve(\"APPLE-1\")]);",
+    "expected": {
+      "bug": "lost_update",
+      "affected_sku": "APPLE-1",
+      "fix": "atomic_conditional_decrement"
+    }
+  },
+  {
+    "id": "cart-substitution",
+    "workflow": "cart-assistant",
+    "workflow_title": "Cart assistant",
+    "title": "Constrained cart substitution",
+    "prompt": "Choose a substitute for a synthetic grocery cart. Return only one minified JSON object with exactly the keys substitute_sku, quantity, and reason_code. The shopper needs two 32 oz cartons, is vegan, has a severe peanut allergy, and accepts at most a $1.00 increase per carton. The unavailable original costs $4.99. Candidates: OAT-32={vegan:true,allergens:[],size_oz:32,stock:2,price:5.49}; DAIRY-32={vegan:false,allergens:[],size_oz:32,stock:8,price:4.49}; PB-OAT-32={vegan:true,allergens:[peanut],size_oz:32,stock:6,price:4.99}; OAT-16={vegan:true,allergens:[],size_oz:16,stock:4,price:2.99}. Allowed reason_code values: exact_constraint_match or no_safe_substitute.",
+    "expected": {
+      "substitute_sku": "OAT-32",
+      "quantity": 2,
+      "reason_code": "exact_constraint_match"
+    }
+  },
+  {
+    "id": "ops-classification",
+    "workflow": "ops-classification",
+    "workflow_title": "Operations classification",
+    "title": "Order exception classification",
+    "prompt": "Classify three synthetic grocery order exceptions. Return only one minified JSON object whose keys are order-17, order-18, and order-19. Allowed values: cold_chain, fraud_review, courier_delay, or no_action. Rules: temperature above 41F for more than 30 minutes => cold_chain; at least 5 payment retries plus billing mismatch => fraud_review; courier more than 20 minutes late while food remains safe => courier_delay. Events: order-17 temperature=46F duration=38m; order-18 payment_retries=6 billing_mismatch=true; order-19 courier_late=25m food_safe=true.",
+    "expected": {
+      "order-17": "cold_chain",
+      "order-18": "fraud_review",
+      "order-19": "courier_delay"
+    }
+  }
+]

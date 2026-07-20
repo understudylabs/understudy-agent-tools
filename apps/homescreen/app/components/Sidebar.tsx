@@ -1,4 +1,21 @@
-import type { ReactNode } from "react";
+"use client";
+
+import { useState } from "react";
+import {
+  ArchiveIcon,
+  ArchiveRestoreIcon,
+  ArrowLeftIcon,
+  MessageSquareIcon,
+} from "lucide-react";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/app/components/base-ui/dialog";
+import { chatHistoryTime, type ChatSessionSummary } from "../lib/chat-history";
 
 export type PaneId =
   | "status"
@@ -16,155 +33,195 @@ export type PaneId =
   | "training-rl"
   | "training-jobs";
 
-const ICONS: Record<PaneId, ReactNode> = {
-  status: (
-    <svg viewBox="0 0 16 16" fill="none" className="nav-icon">
-      <path d="M1 8h3l2-5 3 10 2-5h4" stroke="currentColor" strokeWidth="1.4" strokeLinejoin="round" strokeLinecap="round" />
-    </svg>
-  ),
-  chat: (
-    <svg viewBox="0 0 16 16" fill="none" className="nav-icon">
-      <path d="M2 3h12v8H6l-3 3v-3H2z" stroke="currentColor" strokeWidth="1.4" strokeLinejoin="round" />
-    </svg>
-  ),
-  models: (
-    <svg viewBox="0 0 16 16" fill="none" className="nav-icon">
-      <rect x="2" y="2" width="5" height="5" rx="1" stroke="currentColor" strokeWidth="1.3" />
-      <rect x="9" y="2" width="5" height="5" rx="1" stroke="currentColor" strokeWidth="1.3" />
-      <rect x="2" y="9" width="5" height="5" rx="1" stroke="currentColor" strokeWidth="1.3" />
-      <rect x="9" y="9" width="5" height="5" rx="1" stroke="currentColor" strokeWidth="1.3" />
-    </svg>
-  ),
-  capture: (
-    <svg viewBox="0 0 16 16" fill="none" className="nav-icon">
-      <path d="M2.5 4.5h4l1.2-1.5h5.8v9.5h-11z" stroke="currentColor" strokeWidth="1.3" strokeLinejoin="round" />
-      <path d="M5 8h6M8 5.5v5" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" opacity=".72" />
-    </svg>
-  ),
-  rlm: (
-    // Fan-out tree: one root, three workers, one reduce.
-    <svg viewBox="0 0 16 16" fill="none" className="nav-icon">
-      <circle cx="8" cy="2.8" r="1.6" stroke="currentColor" strokeWidth="1.2" />
-      <circle cx="3" cy="8" r="1.5" stroke="currentColor" strokeWidth="1.2" />
-      <circle cx="8" cy="8" r="1.5" stroke="currentColor" strokeWidth="1.2" />
-      <circle cx="13" cy="8" r="1.5" stroke="currentColor" strokeWidth="1.2" />
-      <circle cx="8" cy="13.2" r="1.6" stroke="currentColor" strokeWidth="1.2" />
-      <path d="M7 4 4 6.7M8 4.4V6.5M9 4l3 2.7M4 9.2l3 2.8M8 9.5v2.1M12 9.2l-3 2.8" stroke="currentColor" strokeWidth="1.1" strokeLinecap="round" />
-    </svg>
-  ),
-  "training-evals": (
-    <svg viewBox="0 0 16 16" fill="none" className="nav-icon">
-      <path d="M2 11.5 5.5 8l2 2 5-5" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" strokeLinejoin="round" />
-      <path d="M2 14h12" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" />
-    </svg>
-  ),
-  "training-optimization": (
-    <svg viewBox="0 0 16 16" fill="none" className="nav-icon">
-      <path d="M3 12.5c2.7 0 2.7-9 5-9s2.3 9 5 9" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" />
-      <path d="M2 8h12" stroke="currentColor" strokeWidth="1.2" strokeLinecap="round" opacity=".65" />
-    </svg>
-  ),
-  "training-datasets": (
-    <svg viewBox="0 0 16 16" fill="none" className="nav-icon">
-      <ellipse cx="8" cy="3.5" rx="5" ry="1.8" stroke="currentColor" strokeWidth="1.3" />
-      <path d="M3 3.5v4c0 1 2.2 1.8 5 1.8s5-.8 5-1.8v-4M3 7.5v4c0 1 2.2 1.8 5 1.8s5-.8 5-1.8v-4" stroke="currentColor" strokeWidth="1.3" />
-    </svg>
-  ),
-  "training-finetuning": (
-    <svg viewBox="0 0 16 16" fill="none" className="nav-icon">
-      <path d="M3 13h10M5 13V5.5L8 3l3 2.5V13" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" strokeLinejoin="round" />
-      <path d="M6.5 8h3" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" />
-    </svg>
-  ),
-  "training-rl": (
-    <svg viewBox="0 0 16 16" fill="none" className="nav-icon">
-      <path d="M2.5 12.5 8 3l5.5 9.5H2.5Z" stroke="currentColor" strokeWidth="1.3" strokeLinejoin="round" />
-      <path d="M8 7v2.2M8 11.5h.01" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
-    </svg>
-  ),
-  "training-jobs": (
-    <svg viewBox="0 0 16 16" fill="none" className="nav-icon">
-      <path d="M3 4h10M3 8h10M3 12h6" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
-    </svg>
-  ),
-  account: (
-    <svg viewBox="0 0 16 16" fill="none" className="nav-icon">
-      <circle cx="8" cy="5.5" r="2.5" stroke="currentColor" strokeWidth="1.3" />
-      <path d="M3 14c.7-2.5 2.7-4 5-4s4.3 1.5 5 4" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" />
-    </svg>
-  ),
-  usage: (
-    <svg viewBox="0 0 16 16" fill="none" className="nav-icon">
-      <path d="M2 13V3M2 13h12M5 13V9M8 13V6M11 13V8" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
-    </svg>
-  ),
-  traces: (
-    <svg viewBox="0 0 16 16" fill="none" className="nav-icon">
-      <path d="M2 3h12M2 8h12M2 13h8" stroke="currentColor" strokeWidth="1.4" strokeLinecap="round" />
-    </svg>
-  ),
-};
-
-const SERVING_NAV: { id: PaneId; label: string }[] = [
-  { id: "chat", label: "Chat" },
-  { id: "status", label: "Status" },
-  { id: "capture", label: "Capture" },
-  { id: "models", label: "Models" },
-  { id: "rlm", label: "RLM" },
-  { id: "traces", label: "Traces" },
-  { id: "usage", label: "Usage" },
-];
-
-const TRAINING_NAV: { id: PaneId; label: string }[] = [
-  { id: "training-evals", label: "Evals" },
-  { id: "training-optimization", label: "Optimization" },
-  { id: "training-datasets", label: "Datasets" },
-  { id: "training-finetuning", label: "Fine-tuning" },
-  { id: "training-rl", label: "RL" },
-  { id: "training-jobs", label: "Jobs" },
-];
+const AccountIcon = () => (
+  <svg viewBox="0 0 16 16" fill="none" className="nav-icon" aria-hidden="true">
+    <circle cx="8" cy="5.5" r="2.5" stroke="currentColor" strokeWidth="1.3" />
+    <path d="M3 14c.7-2.5 2.7-4 5-4s4.3 1.5 5 4" stroke="currentColor" strokeWidth="1.3" strokeLinecap="round" />
+  </svg>
+);
 
 export function Sidebar({
   active,
   onSelect,
   connected,
+  sessions,
+  archivedSessions,
+  activeSessionId,
+  historyLoading,
+  historyError,
+  archiveBusy,
+  archiveActiveDisabled,
+  onSelectSession,
+  onArchiveSession,
+  onRestoreSession,
+  onArchiveAll,
 }: {
   active: PaneId;
   onSelect: (id: PaneId) => void;
   connected: boolean;
+  sessions: ChatSessionSummary[];
+  archivedSessions: ChatSessionSummary[];
+  activeSessionId: string | null;
+  historyLoading: boolean;
+  historyError: string | null;
+  archiveBusy: string | null;
+  archiveActiveDisabled: boolean;
+  onSelectSession: (sessionId: string) => void;
+  onArchiveSession: (sessionId: string) => Promise<boolean>;
+  onRestoreSession: (sessionId: string) => Promise<boolean>;
+  onArchiveAll: () => Promise<boolean>;
 }) {
+  const [showArchived, setShowArchived] = useState(false);
+  const [archiveAllOpen, setArchiveAllOpen] = useState(false);
+  const visibleSessions = showArchived ? archivedSessions : sessions;
+
   return (
     <aside className="sidebar">
-      <div className="nav-section">Serving</div>
-      {SERVING_NAV.map((n) => (
-        <div
-          key={n.id}
-          className={"nav-item" + (active === n.id ? " active" : "")}
-          onClick={() => onSelect(n.id)}
+      <div className="chat-nav-heading">
+        <div className="nav-section">{showArchived ? "Archived" : "Chats"}</div>
+        <button
+          type="button"
+          className="chat-nav-view-toggle"
+          onClick={() => setShowArchived((value) => !value)}
+          aria-label={showArchived ? "Back to chats" : "View archived chats"}
+          title={showArchived ? "Back to chats" : "View archived chats"}
         >
-          {ICONS[n.id]}
-          {n.label}
-        </div>
-      ))}
+          {showArchived ? (
+            <ArrowLeftIcon aria-hidden="true" size={14} strokeWidth={1.8} />
+          ) : (
+            <ArchiveIcon aria-hidden="true" size={14} strokeWidth={1.8} />
+          )}
+          <span>{showArchived ? "Chats" : archivedSessions.length || ""}</span>
+        </button>
+      </div>
 
-      <div className="nav-section">Training</div>
-      {TRAINING_NAV.map((n) => (
-        <div
-          key={n.id}
-          className={"nav-item" + (active === n.id ? " active" : "")}
-          onClick={() => onSelect(n.id)}
-        >
-          {ICONS[n.id]}
-          {n.label}
+      {historyError && (
+        <div className="chat-nav-error" role="alert">
+          {historyError}
         </div>
-      ))}
+      )}
+
+      <nav
+        className="chat-nav-list"
+        aria-label={showArchived ? "Archived chats" : "Recent chats"}
+        aria-busy={historyLoading}
+      >
+        {historyLoading && visibleSessions.length === 0 ? (
+          <div className="chat-nav-empty">Loading chats…</div>
+        ) : visibleSessions.length === 0 ? (
+          showArchived ? <div className="chat-nav-empty">No archived chats.</div> : null
+        ) : (
+          visibleSessions.map((session) => {
+            const isActive = active === "chat" && activeSessionId === session.session_id;
+            const actionDisabled =
+              archiveBusy !== null || (!showArchived && isActive && archiveActiveDisabled);
+            const actionLabel = showArchived ? "Restore chat" : "Archive chat";
+            return (
+              <div
+                key={session.session_id}
+                className={"chat-nav-item" + (isActive ? " active" : "")}
+              >
+                <button
+                  type="button"
+                  className="chat-nav-open"
+                  onClick={async () => {
+                    if (showArchived) {
+                      if (await onRestoreSession(session.session_id)) setShowArchived(false);
+                    } else {
+                      onSelectSession(session.session_id);
+                    }
+                  }}
+                  title={session.title}
+                  disabled={archiveBusy !== null}
+                >
+                  <MessageSquareIcon className="nav-icon" aria-hidden="true" size={16} strokeWidth={1.6} />
+                  <span className="chat-nav-copy">
+                    <span className="chat-nav-title">
+                      {session.title.trim().replace(/\s+/g, " ") || "Untitled chat"}
+                    </span>
+                    <span className="chat-nav-time">
+                      {chatHistoryTime(showArchived ? session.archived_at ?? session.updated_at : session.updated_at)}
+                    </span>
+                  </span>
+                </button>
+                <button
+                  type="button"
+                  className="chat-nav-action"
+                  aria-label={`${actionLabel}: ${session.title || "Untitled chat"}`}
+                  title={
+                    !showArchived && isActive && archiveActiveDisabled
+                      ? "Stop the response before archiving"
+                      : actionLabel
+                  }
+                  disabled={actionDisabled}
+                  onClick={async () => {
+                    const completed = showArchived
+                      ? await onRestoreSession(session.session_id)
+                      : await onArchiveSession(session.session_id);
+                    if (completed && showArchived) setShowArchived(false);
+                  }}
+                >
+                  {archiveBusy === session.session_id ? (
+                    <span className="chat-nav-action-progress" aria-hidden="true" />
+                  ) : showArchived ? (
+                    <ArchiveRestoreIcon aria-hidden="true" size={15} strokeWidth={1.8} />
+                  ) : (
+                    <ArchiveIcon aria-hidden="true" size={15} strokeWidth={1.8} />
+                  )}
+                </button>
+              </div>
+            );
+          })
+        )}
+      </nav>
+
+      {!showArchived && sessions.length > 0 && (
+        <button
+          type="button"
+          className="chat-nav-archive-all"
+          onClick={() => setArchiveAllOpen(true)}
+          disabled={archiveBusy !== null || archiveActiveDisabled}
+        >
+          <ArchiveIcon aria-hidden="true" size={14} strokeWidth={1.8} />
+          Archive all chats
+        </button>
+      )}
+
+      <Dialog open={archiveAllOpen} onOpenChange={setArchiveAllOpen}>
+        <DialogContent className="chat-archive-dialog">
+          <DialogHeader>
+            <DialogTitle>Archive all chats?</DialogTitle>
+            <DialogDescription>
+              They will disappear from the sidebar but remain on this Mac. You can restore them anytime.
+            </DialogDescription>
+          </DialogHeader>
+          <DialogFooter>
+            <button type="button" className="btn ghost" onClick={() => setArchiveAllOpen(false)}>
+              Cancel
+            </button>
+            <button
+              type="button"
+              className="btn primary"
+              disabled={archiveBusy !== null}
+              onClick={async () => {
+                if (await onArchiveAll()) {
+                  setArchiveAllOpen(false);
+                  setShowArchived(true);
+                }
+              }}
+            >
+              {archiveBusy === "all" ? "Archiving…" : "Archive all"}
+            </button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       <div className="nav-spacer" />
       <button
         className={"nav-account" + (active === "account" ? " active" : "")}
         onClick={() => onSelect("account")}
       >
-        {ICONS.account}
+        <AccountIcon />
         <span className="nav-account-copy">
           <span>Account</span>
           <span className="nav-account-status">

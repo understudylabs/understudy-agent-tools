@@ -100,7 +100,8 @@ command or handoff.
   confounds with prevention, corpus/training defaults, and the verdict
   thresholds.
 - [`../optimize-workload/SKILL.md`](../optimize-workload/SKILL.md) — the
-  cheaper no-weight rung; always first.
+  no-weight rung; use first when failure attribution says prompt or contract
+  repair can close the gap, otherwise proceed to the capacity-changing path.
 - [`../local-distillation-lab/SKILL.md`](../local-distillation-lab/SKILL.md) —
   local training arms and the weight-update proof discipline.
 - [`../curate-trajectories/SKILL.md`](../curate-trajectories/SKILL.md) — split

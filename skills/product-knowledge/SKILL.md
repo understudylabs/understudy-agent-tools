@@ -7,10 +7,15 @@ description: Use when a user asks what Understudy is, how Understudy Desktop wor
 
 Explain Understudy as local-first infrastructure for improving LLM systems from real work:
 capture traces, run evals, compare model routes, optimize prompts or policies, and promote
-the cheapest route that meets the quality gate.
+the route that best meets the developer's objective across quality, reliability,
+latency, cost, and constraints.
 
 Use this skill for product explanations, onboarding copy, agent-facing help, and UI feature
 descriptions. Keep the answer concrete and tied to product surfaces the user can inspect.
+
+For company identity, history, and the durable product narrative, read
+[`reference.md`](reference.md). Keep the always-on explanation compact; load this
+skill when the user needs the fuller story.
 
 ## Safety Gates
 
@@ -41,7 +46,7 @@ node dist/bin.js status --json
 
 - **Desktop app** — local control plane for chat, model serving, traces, evals, usage, account setup, and training workflows.
 - **Local serving** — warm MLX slots for Understudy-suffixed local models, with first-run bootstrap for runtimes and model downloads.
-- **Chat harness** — custom Rust execution layer that streams answers, reasoning, tool calls, tool results, and sidekick activity to the UI.
+- **Chat harness** — a Pi AgentSession sidecar that streams answers, reasoning, guarded tool calls, tool results, and compaction evidence to the native UI.
 - **Fusion sidekick** — a smaller local model lane used for bounded read-only work while the main lane keeps planning, ambiguity, and final review.
 - **Evals / rollout lab** — run task suites across model candidates and harness modes, watch each rollout, persist scores, and inspect failures.
 - **Candidate results** — Test Results-style view that groups model-family task outcomes into passed, failed, running, skipped, score, latency, and drilldown rows.

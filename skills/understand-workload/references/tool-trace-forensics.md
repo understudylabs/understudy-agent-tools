@@ -128,16 +128,20 @@ a structured norm.
 - `scorer_harness_issue` — the scorer assertion conflicts with visible task
   requirements or hides an impossible dependency.
 
-## Recommend the Cheapest Fix
+## Recommend the Highest-Leverage Fix
 
-Prefer read-only exploration policy, endpoint retrieval changes,
-authority-precedence prompt repair, ID-resolution rules, parser/schema repair,
-verifier changes, or route fallback before training. Training is appropriate
-only when the trace shows the model had the needed evidence and still failed a
-learnable decision repeatedly.
+Choose the intervention that addresses the measured failure with the highest
+expected progress toward the objective. Read-only exploration policy, endpoint
+retrieval changes, authority-precedence prompt repair, ID-resolution rules,
+parser/schema repair, verifier changes, or route fallback often beat training
+when the model never received usable evidence. Training is appropriate when the
+trace shows the model had the needed evidence and still failed a learnable
+decision repeatedly. State the expected cost, time, evidence, and confidence of
+the recommendation instead of making low spend the default objective.
 
-When the diagnosis is retrieval/planning, test a small prompt/policy repair
-before training:
+When the diagnosis is retrieval/planning, test a decision-sized prompt/policy
+repair before training. A small pilot may validate mechanics, but expand it
+until the result is stable enough for the named decision:
 
 ```text
 Read-only first.
@@ -179,7 +183,8 @@ verdict:
 - label: evidence
 
 ## Fix
-cheapest fix:
+recommended intervention:
+cost, time, and evidence:
 why not training yet:
 counterfactual result:
 remaining risk:

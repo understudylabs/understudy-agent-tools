@@ -3,6 +3,7 @@ import { useEffect, useMemo, useState } from "react";
 import { invoke } from "@tauri-apps/api/core";
 import { curatedBenchmarks, curatedRoutes, type MarketEntry, type Provider } from "../lib/catalog";
 import { Button } from "./ui/Button";
+import { modelMemoryWarning } from "../lib/model-memory.mjs";
 
 type Dossier = {
   id: string;
@@ -172,6 +173,9 @@ export function ModelsPane() {
     snapshots.find((s) => s.name === selected) ??
     snapshots.find((s) => selectedLower === s.id.toLowerCase() || selectedLower === s.name.toLowerCase()) ??
     null;
+  const snapshotMemoryWarning = snapshot
+    ? modelMemoryWarning(snapshot.id, snapshot.approx_gb, null)
+    : null;
   const aaRow = aa?.find((a) => a.name.toLowerCase().includes(firstWord)) ?? null;
   const selectedRoute =
     marketRows.find((r) => r.display_name === selected) ??
@@ -231,6 +235,11 @@ export function ModelsPane() {
               <Tag>{snapshot.cached ? "cached" : "not cached"}</Tag>
               <Tag>{snapshot.manifest ? "manifest" : "manifest pending"}</Tag>
             </div>
+            {snapshotMemoryWarning && (
+              <div className="mb-2 text-[11px] leading-snug text-warn" role="note">
+                {snapshotMemoryWarning}
+              </div>
+            )}
             <pre className="whitespace-pre-wrap font-sans text-[13px] leading-relaxed text-ink">{snapshot.notes}</pre>
             <KV k="model id">{snapshot.id}</KV>
             {snapshot.short_name && <KV k="short name">{snapshot.short_name}</KV>}

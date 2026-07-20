@@ -43,11 +43,14 @@ shows the agent must *learn stateful behavior*.
 
 ## Safety Gates
 
-Default to the cheapest path that still reaches a decision — not to zero spend
-(a skipped improvement has real opportunity cost). Get the developer's explicit
-approval before any upload, hosted run, or provider spend, including every live
-tool call, live SaaS API call, credential change, production write, and every
-gateway eval run.
+Default to the path with the highest expected progress toward the multi-objective
+decision under hard constraints, not the cheapest rung. State the expected
+quality, latency, safety, time, and spend tradeoffs; follow
+[`../understudy/reference.md`](../understudy/reference.md) → Outcome-first spend
+posture. Get explicit approval before any upload, hosted run, provider spend,
+live SaaS API access, credential change, or production write. One approval may
+cover the named tool calls and gateway evals inside a bounded run plan; ask again
+before expanding it.
 
 Prefer local mocks, seeded fixtures, recorded schemas, and synthetic business
 data. Do not run live provider calls, tool calls, hosted jobs, model downloads,
@@ -105,6 +108,20 @@ single-output optimization does not need a tool environment.
    `.understudy/capture-evidence/` artifact contract — each reference documents
    the env → artifact bridge for its shape.
 
+   Before using model scores, pass the shared evaluation evidence gates in
+   [`../capture-evidence/references/evaluation-evidence-gates.md`](../capture-evidence/references/evaluation-evidence-gates.md).
+   In particular, run a synthetic read-then-write trajectory through the exact
+   driver for every model family. The driver must append the read result,
+   continue the loop, execute the terminal write, and score final state; an
+   intermediate tool call is never a no-op verdict.
+
+   If Desktop produced `understudy.environment_proposal.v1` from a JSONL drop,
+   treat `status: executable` as meaningful only after
+   `understudy training validate-environment-proposal --proposal <path>` passes.
+   A canonical-Pi draft with `status: needs_verifier` is a proposal, not a
+   harness or score; author the missing parser/environment/oracle/sentinels and
+   rerun deterministic validation before any model comparison.
+
 3. **Define multi-objective success.** Quality is a per-criterion LLM-judge or
    final-state rubric that returns natural-language *why/what-to-change*
    feedback, not a bare score. Latency and cost come from the rollout records
@@ -121,9 +138,16 @@ single-output optimization does not need a tool environment.
    state and emits a request log.
 
 5. **Run the incumbent baseline before optimizing.** Execute the frozen harness
-   on train/dev or a small sanctioned sample, write per-task results, and bind
+   on the sanctioned train/dev set, write per-task results, and bind
    `harness_sha256`, `metric_sha256`, and `splits_sha256` into `baseline.json`.
-   Do not optimize until the baseline is measured.
+   Confirm coverage across completed-execution strata, including rare or
+   high-consequence tool paths, and inspect the actual trajectories behind at
+   least one pass, each reported failure class, each surprising delta, and a
+   counterexample to the proposed headline. Do not optimize until the baseline
+   is measured and those checks pass. A smaller pilot may validate plumbing, but
+   it is not the baseline evidence. Expand the cohort whenever estimates remain
+   unstable, important strata are underfilled, or review discovers new failure
+   classes.
 
 6. **Attribute the multi-turn gap before intervening.** Read the rollouts, not
    just the final score, and tag where reward is lost: wrong tool/endpoint,
@@ -132,11 +156,13 @@ single-output optimization does not need a tool environment.
    forbidden or missing writes, or non-termination. Single-turn /
    next-tool-call imitation scores are a *leading indicator only* — they cannot
    see result-propagation, recovery, or termination, which exist only inside
-   the running environment. Let the attribution pick the **cheapest rung that
-   closes the gap**, in order: output-contract repair (prefill / format /
-   parser / schema) → tool-access or endpoint-catalog repair → model A/B →
-   prompt / GEPA (automatic prompt evolution) → distillation → RL. Often the
-   gap is format or argument-fidelity, not planning, and a cheap rung wins.
+   the running environment. Let the attribution pick the **highest-leverage rung
+   likely to close the gap**: output-contract repair (prefill / format / parser /
+   schema), tool-access or endpoint-catalog repair, model A/B, prompt / GEPA
+   (automatic prompt evolution), distillation, or RL. Use the cheaper rung first
+   only when evidence says it can solve the attributed failure; skip directly to
+   a stronger model or broader intervention when weak iterations would only
+   delay the answer.
 
 7. **PRIMARY intervention — model A/B via the CLI.** This is the main move:
 

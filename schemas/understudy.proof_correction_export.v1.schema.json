@@ -1,0 +1,82 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://schemas.understudylabs.com/understudy.proof_correction_export.v1.schema.json",
+  "title": "Understudy proof correction export manifest v1",
+  "type": "object",
+  "required": [
+    "schema_version",
+    "source",
+    "source_pair_count",
+    "expected_intervention_count",
+    "exported_row_count",
+    "training_eligible_count",
+    "human_reviewed_count",
+    "deterministic_only_count",
+    "outcomes",
+    "files",
+    "optimizer_boundary",
+    "upload_performed"
+  ],
+  "additionalProperties": false,
+  "properties": {
+    "schema_version": { "const": "understudy.proof_correction_export.v1" },
+    "source": {
+      "type": "object",
+      "required": [
+        "proof_id",
+        "suite_id",
+        "suite_sha256",
+        "summary_sha256",
+        "results_sha256",
+        "tasks_sha256",
+        "data_split"
+      ]
+    },
+    "source_pair_count": { "type": "integer", "minimum": 0 },
+    "expected_intervention_count": { "type": "integer", "minimum": 0 },
+    "exported_row_count": { "type": "integer", "minimum": 0 },
+    "training_eligible_count": { "type": "integer", "minimum": 0 },
+    "human_reviewed_count": { "type": "integer", "minimum": 0 },
+    "deterministic_only_count": { "type": "integer", "minimum": 0 },
+    "outcomes": {
+      "type": "object",
+      "required": [
+        "correct_intervention",
+        "unsuccessful_intervention",
+        "false_positive_intervention"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "correct_intervention": { "type": "integer", "minimum": 0 },
+        "unsuccessful_intervention": { "type": "integer", "minimum": 0 },
+        "false_positive_intervention": { "type": "integer", "minimum": 0 }
+      }
+    },
+    "files": {
+      "type": "object",
+      "required": ["evidence_jsonl_sha256"],
+      "additionalProperties": false,
+      "properties": {
+        "evidence_jsonl_sha256": {
+          "type": "string",
+          "pattern": "^[a-f0-9]{64}$"
+        }
+      }
+    },
+    "optimizer_boundary": {
+      "type": "object",
+      "required": [
+        "holdout_rows_are_training_eligible",
+        "recommended_method",
+        "next_action"
+      ],
+      "additionalProperties": false,
+      "properties": {
+        "holdout_rows_are_training_eligible": { "const": false },
+        "recommended_method": { "const": "gepa_prompt_policy_first" },
+        "next_action": { "type": "string", "minLength": 1 }
+      }
+    },
+    "upload_performed": { "const": false }
+  }
+}

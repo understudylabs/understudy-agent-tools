@@ -109,9 +109,10 @@ export const DEFAULT_CATALOG_URL = "https://models.understudylabs.com/catalog";
 export const CATALOG_SCHEMA_VERSION = "understudy.model_catalog.v1";
 const CATALOG_TIMEOUT_MS = 5000;
 
-// Offline fallback table. Kept in sync with the set of snapshots that are
-// actually pullable from models.understudylabs.com (verified against R2
-// 2026-07-01). The live /catalog endpoint supersedes this when reachable.
+// Offline fallback table. Kept in sync with the certified snapshots that are
+// complete in R2 (verified 2026-07-12). The live /catalog endpoint supersedes
+// this table when reachable; diagnostic or incomplete artifacts do not belong
+// in the public fallback.
 export const VERIFIED_SNAPSHOT_MODELS: Record<string, SnapshotModelInfo> = {
   "gemma-4-e2b-it-qat-mlx-vlm-understudy": {
     sessionUrl: "https://models.understudylabs.com/session?model=gemma-4-e2b-it-qat-mlx-vlm-understudy&ttl=21600",
@@ -128,62 +129,33 @@ export const VERIFIED_SNAPSHOT_MODELS: Record<string, SnapshotModelInfo> = {
     notes:
       "Default onboarding rung. QAT-derived 4-bit at group_size=32. Certified generation, OpenAI-compatible serving, logprobs+top_logprobs, and tool_calls at the prescribed decode.",
   },
-  "gemma-4-e2b-it-mlx-vlm-4bit": {
-    sessionUrl: "https://models.understudylabs.com/session?model=gemma-4-e2b-it-mlx-vlm-4bit&ttl=21600",
-    destName: "gemma-4-e2b-it-mlx-vlm-4bit",
-    name: "Gemma 4 E2B IT MLX-VLM 4-bit",
-    approxGb: 3.3,
+  "gemma-4-e4b-it-qat-mlx-vlm-understudy": {
+    sessionUrl: "https://models.understudylabs.com/session?model=gemma-4-e4b-it-qat-mlx-vlm-understudy&ttl=21600",
+    destName: "gemma-4-e4b-it-qat-mlx-vlm-understudy",
+    name: "Gemma 4 E4B IT QAT -> MLX 4-bit (group_size=32), Understudy",
+    approxGb: 5.6,
     loader: "mlx_vlm",
-    certified: false,
-    family: "gemma-4",
-    tier: "e2b",
-    quant: "4bit",
-    notes:
-      "Vanilla non-QAT bf16 -> MLX 4-bit. Diagnostic rung for isolating quantization artifacts against the QAT default.",
-  },
-  "gemma-4-e4b-it-mlx-vlm-4bit": {
-    sessionUrl: "https://models.understudylabs.com/session?model=gemma-4-e4b-it-mlx-vlm-4bit&ttl=21600",
-    destName: "gemma-4-e4b-it-mlx-vlm-4bit",
-    name: "Gemma 4 E4B IT MLX-VLM 4-bit",
-    approxGb: 4.8,
-    loader: "mlx_vlm",
-    certified: false,
+    shortName: "understudy-balanced",
+    certified: true,
     family: "gemma-4",
     tier: "e4b",
-    quant: "4bit",
+    quant: "qat-4bit-g32",
+    notes:
+      "First capability climb from the 2B default. Certified on the frozen text, image, tool, cancellation, restart, supervision, and compaction suite.",
   },
-  "gemma-4-12b-it-mlx-vlm-4bit": {
-    sessionUrl: "https://models.understudylabs.com/session?model=gemma-4-12b-it-mlx-vlm-4bit&ttl=21600",
-    destName: "gemma-4-12b-it-mlx-vlm-4bit",
-    name: "Gemma 4 12B IT MLX-VLM 4-bit",
-    approxGb: 6.3,
+  "gemma-4-12b-it-qat-mlx-vlm-understudy": {
+    sessionUrl: "https://models.understudylabs.com/session?model=gemma-4-12b-it-qat-mlx-vlm-understudy&ttl=21600",
+    destName: "gemma-4-12b-it-qat-mlx-vlm-understudy",
+    name: "Gemma 4 12B IT QAT -> MLX 4-bit (group_size=32), Understudy",
+    approxGb: 7.5,
     loader: "mlx_vlm",
-    certified: false,
+    shortName: "understudy-quality",
+    certified: true,
     family: "gemma-4",
     tier: "12b",
-    quant: "4bit",
-  },
-  "gemma-4-12b-it-mlx-vlm-bf16": {
-    sessionUrl: "https://models.understudylabs.com/session?model=gemma-4-12b-it-mlx-vlm-bf16&ttl=21600",
-    destName: "gemma-4-12b-it-mlx-vlm-bf16",
-    name: "Gemma 4 12B IT MLX-VLM BF16",
-    approxGb: 22,
-    loader: "mlx_vlm",
-    certified: false,
-    family: "gemma-4",
-    tier: "12b",
-    quant: "bf16",
-  },
-  "gemma-4-26b-a4b-it-mlx-vlm-bf16": {
-    sessionUrl: "https://models.understudylabs.com/session?model=gemma-4-26b-a4b-it-mlx-vlm-bf16&ttl=21600",
-    destName: "gemma-4-26b-a4b-it-mlx-vlm-bf16",
-    name: "Gemma 4 26B A4B IT MLX-VLM BF16",
-    approxGb: 52,
-    loader: "mlx_vlm",
-    certified: false,
-    family: "gemma-4",
-    tier: "26b-a4b",
-    quant: "bf16",
+    quant: "qat-4bit-g32",
+    notes:
+      "Dense quality rung for high-memory Apple Silicon. Certified on the frozen text, image, tool, cancellation, restart, supervision, and compaction suite.",
   },
   "gemma-4-26b-a4b-it-qat-mlx-vlm-understudy": {
     sessionUrl: "https://models.understudylabs.com/session?model=gemma-4-26b-a4b-it-qat-mlx-vlm-understudy&ttl=21600",
@@ -196,39 +168,8 @@ export const VERIFIED_SNAPSHOT_MODELS: Record<string, SnapshotModelInfo> = {
     family: "gemma-4",
     tier: "26b-a4b",
     quant: "qat-4bit-g32",
-  },
-  "gemma-4-31b-it-mlx-vlm-bf16": {
-    sessionUrl: "https://models.understudylabs.com/session?model=gemma-4-31b-it-mlx-vlm-bf16&ttl=21600",
-    destName: "gemma-4-31b-it-mlx-vlm-bf16",
-    name: "Gemma 4 31B IT MLX-VLM BF16",
-    approxGb: 62,
-    loader: "mlx_vlm",
-    certified: false,
-    family: "gemma-4",
-    tier: "31b",
-    quant: "bf16",
-  },
-  "diffusiongemma-26b-a4b-it-mlx-vlm-4bit": {
-    sessionUrl: "https://models.understudylabs.com/session?model=diffusiongemma-26b-a4b-it-mlx-vlm-4bit&ttl=21600",
-    destName: "diffusiongemma-26b-a4b-it-mlx-vlm-4bit",
-    name: "DiffusionGemma 26B A4B IT MLX-VLM 4-bit",
-    approxGb: 16,
-    loader: "mlx_vlm",
-    certified: false,
-    family: "diffusiongemma",
-    tier: "26b-a4b",
-    quant: "4bit",
-  },
-  "diffusiongemma-26b-a4b-it-mlx-vlm-bf16": {
-    sessionUrl: "https://models.understudylabs.com/session?model=diffusiongemma-26b-a4b-it-mlx-vlm-bf16&ttl=21600",
-    destName: "diffusiongemma-26b-a4b-it-mlx-vlm-bf16",
-    name: "DiffusionGemma 26B A4B IT MLX-VLM BF16",
-    approxGb: 52,
-    loader: "mlx_vlm",
-    certified: false,
-    family: "diffusiongemma",
-    tier: "26b-a4b",
-    quant: "bf16",
+    notes:
+      "Sparse fast-quality rung with 4B active parameters and 8-bit routers. Certified generation, OpenAI-compatible serving, logprobs, and tool calls.",
   },
 };
 

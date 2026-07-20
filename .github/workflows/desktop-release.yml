@@ -1,0 +1,321 @@
+name: Desktop Release
+
+on:
+  workflow_dispatch:
+    inputs:
+      mode:
+        description: Validate credentials, or build and publish the current version
+        required: true
+        type: choice
+        default: validate
+        options:
+          - validate
+          - release
+
+permissions:
+  checks: read
+  contents: write
+
+concurrency:
+  group: desktop-production-release
+  cancel-in-progress: false
+
+jobs:
+  release:
+    name: Sign, notarize, and publish
+    runs-on: macos-15
+    timeout-minutes: 90
+    environment: desktop-release
+
+    steps:
+      - name: Refuse non-main releases
+        if: github.ref != 'refs/heads/main'
+        run: |
+          echo "Desktop releases must run from main, not ${GITHUB_REF}." >&2
+          exit 1
+
+      - name: Check out the exact release commit
+        uses: actions/checkout@df4cb1c069e1874edd31b4311f1884172cec0e10 # v6
+        with:
+          fetch-depth: 0
+
+      - name: Set up Node 22.23.0
+        uses: actions/setup-node@249970729cb0ef3589644e2896645e5dc5ba9c38 # v6
+        with:
+          node-version: 22.23.0
+          cache: npm
+
+      - name: Require green CI for the exact release commit
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          checks="$RUNNER_TEMP/release-check-runs.json"
+          gh api \
+            "repos/$GITHUB_REPOSITORY/commits/$GITHUB_SHA/check-runs?per_page=100" \
+            > "$checks"
+          for name in gates rust
+          do
+            if ! jq -e \
+              --arg name "$name" \
+              '[.check_runs[] | select(.name == $name and .conclusion == "success")] | length > 0' \
+              "$checks" >/dev/null
+            then
+              echo "Required ${name} check is not successful for ${GITHUB_SHA}." >&2
+              jq -r \
+                --arg name "$name" \
+                '.check_runs[] | select(.name == $name) | [.name, .status, (.conclusion // "")] | @tsv' \
+                "$checks" >&2
+              exit 1
+            fi
+          done
+
+      - name: Validate the exact release source
+        run: |
+          git fetch --no-tags origin main:refs/remotes/origin/main
+          npm run desktop:release-check -- --stage source
+
+      - name: Set up Bun 1.3.14
+        if: inputs.mode == 'release'
+        uses: oven-sh/setup-bun@0c5077e51419868618aeaa5fe8019c62421857d6 # v2
+        with:
+          bun-version: 1.3.14
+
+      - name: Set up Rust
+        if: inputs.mode == 'release'
+        uses: dtolnay/rust-toolchain@4be7066ada62dd38de10e7b70166bc74ed198c30 # stable
+
+      - name: Install locked dependencies
+        if: inputs.mode == 'release'
+        run: |
+          npm ci
+          bun install --cwd apps/homescreen --frozen-lockfile
+
+      - name: Validate release credentials
+        env:
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+        run: |
+          for name in \
+            APPLE_CERTIFICATE \
+            APPLE_CERTIFICATE_PASSWORD \
+            APPLE_ID \
+            APPLE_PASSWORD \
+            APPLE_SIGNING_IDENTITY \
+            APPLE_TEAM_ID \
+            TAURI_SIGNING_PRIVATE_KEY
+          do
+            if [[ -z "${!name:-}" ]]; then
+              echo "The desktop-release environment is missing ${name}." >&2
+              exit 1
+            fi
+          done
+
+      - name: Import the Apple signing identity
+        env:
+          APPLE_CERTIFICATE: ${{ secrets.APPLE_CERTIFICATE }}
+          APPLE_CERTIFICATE_PASSWORD: ${{ secrets.APPLE_CERTIFICATE_PASSWORD }}
+          TAURI_SIGNING_PRIVATE_KEY: ${{ secrets.TAURI_SIGNING_PRIVATE_KEY }}
+        run: |
+          keychain="$RUNNER_TEMP/understudy-signing.keychain-db"
+          keychain_password="$(openssl rand -hex 32)"
+          certificate="$RUNNER_TEMP/understudy-developer-id.p12"
+          updater_key="$RUNNER_TEMP/understudy-updater.key"
+          echo "::add-mask::$keychain_password"
+          printf '%s' "$APPLE_CERTIFICATE" | base64 -D > "$certificate"
+          printf '%s' "$TAURI_SIGNING_PRIVATE_KEY" > "$updater_key"
+          chmod 600 "$certificate" "$updater_key"
+          security create-keychain -p "$keychain_password" "$keychain"
+          security set-keychain-settings -lut 21600 "$keychain"
+          security unlock-keychain -p "$keychain_password" "$keychain"
+          security default-keychain -s "$keychain"
+          security import "$certificate" \
+            -k "$keychain" \
+            -P "$APPLE_CERTIFICATE_PASSWORD" \
+            -T /usr/bin/codesign \
+            -T /usr/bin/security
+          security set-key-partition-list \
+            -S apple-tool:,apple:,codesign: \
+            -s -k "$keychain_password" "$keychain"
+          security find-identity -v -p codesigning "$keychain"
+          {
+            echo "UNDERSTUDY_RELEASE_KEYCHAIN=$keychain"
+            echo "UNDERSTUDY_UPDATER_KEY=$updater_key"
+            echo "TAURI_SIGNING_PRIVATE_KEY=$updater_key"
+          } >> "$GITHUB_ENV"
+
+      - name: Validate Apple notarization credentials
+        env:
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          history="$RUNNER_TEMP/notary-history.json"
+          xcrun notarytool history \
+            --apple-id "$APPLE_ID" \
+            --password "$APPLE_PASSWORD" \
+            --team-id "$APPLE_TEAM_ID" \
+            --output-format json > "$history"
+          jq -e '.history | type == "array"' "$history" >/dev/null
+
+      - name: Build signed Desktop artifacts
+        if: inputs.mode == 'release'
+        working-directory: apps/homescreen
+        env:
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ""
+        run: bun run tauri build --bundles app,dmg
+
+      - name: Notarize and staple the app
+        if: inputs.mode == 'release'
+        env:
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          version="$(node -p "require('./apps/homescreen/package.json').version")"
+          app="$PWD/apps/homescreen/src-tauri/target/release/bundle/macos/Understudy.app"
+          app_zip="$RUNNER_TEMP/Understudy-${version}.app.zip"
+          ditto -c -k --keepParent "$app" "$app_zip"
+          xcrun notarytool submit "$app_zip" \
+            --apple-id "$APPLE_ID" \
+            --password "$APPLE_PASSWORD" \
+            --team-id "$APPLE_TEAM_ID" \
+            --wait --output-format json
+          xcrun stapler staple "$app"
+
+      - name: Rebuild and sign the updater archive
+        if: inputs.mode == 'release'
+        env:
+          TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ""
+        run: |
+          app="$PWD/apps/homescreen/src-tauri/target/release/bundle/macos/Understudy.app"
+          updater="$PWD/apps/homescreen/src-tauri/target/release/bundle/macos/Understudy.app.tar.gz"
+          rm -f "$updater" "${updater}.sig"
+          tar -czf "$updater" -C "$(dirname "$app")" "$(basename "$app")"
+          (
+            cd apps/homescreen
+            env -u TAURI_SIGNING_PRIVATE_KEY bun run tauri signer sign \
+              --private-key-path "$UNDERSTUDY_UPDATER_KEY" \
+              "$updater"
+          )
+          npm run desktop:updater-manifest
+          npm run desktop:release-check -- --stage signed
+
+      - name: Notarize and staple the DMG
+        if: inputs.mode == 'release'
+        env:
+          APPLE_ID: ${{ secrets.APPLE_ID }}
+          APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
+          APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
+        run: |
+          version="$(node -p "require('./apps/homescreen/package.json').version")"
+          app="$PWD/apps/homescreen/src-tauri/target/release/bundle/macos/Understudy.app"
+          dmg="$PWD/apps/homescreen/src-tauri/target/release/bundle/dmg/Understudy_${version}_aarch64.dmg"
+          dmg_stage="$RUNNER_TEMP/understudy-dmg-stage"
+          mkdir "$dmg_stage"
+          ditto "$app" "$dmg_stage/Understudy.app"
+          ln -s /Applications "$dmg_stage/Applications"
+          xcrun stapler validate "$dmg_stage/Understudy.app"
+          rm -f "$dmg"
+          hdiutil create \
+            -volname Understudy \
+            -fs HFS+ \
+            -srcfolder "$dmg_stage" \
+            -ov \
+            -format UDZO \
+            "$dmg"
+          codesign --force --sign "$APPLE_SIGNING_IDENTITY" --timestamp "$dmg"
+          xcrun notarytool submit "$dmg" \
+            --apple-id "$APPLE_ID" \
+            --password "$APPLE_PASSWORD" \
+            --team-id "$APPLE_TEAM_ID" \
+            --wait --output-format json
+          xcrun stapler staple "$dmg"
+          npm run desktop:release-check -- --stage notarized
+
+      - name: Upload a draft and verify the public bytes
+        if: inputs.mode == 'release'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          version="$(node -p "require('./apps/homescreen/package.json').version")"
+          tag="desktop-v${version}-mvp"
+          commit="$(git rev-parse HEAD)"
+          dmg="$PWD/apps/homescreen/src-tauri/target/release/bundle/dmg/Understudy_${version}_aarch64.dmg"
+          updater="$PWD/apps/homescreen/src-tauri/target/release/bundle/macos/Understudy.app.tar.gz"
+          updater_sig="${updater}.sig"
+          updater_manifest="$(dirname "$updater")/latest.json"
+          download_dir="$RUNNER_TEMP/downloaded-release"
+          mkdir -p "$download_dir"
+          gh release create "$tag" \
+            "$dmg" "$updater" "$updater_sig" "$updater_manifest" \
+            --repo "$GITHUB_REPOSITORY" \
+            --target "$commit" \
+            --title "Understudy Desktop v${version}" \
+            --generate-notes \
+            --draft
+          gh release download "$tag" \
+            --repo "$GITHUB_REPOSITORY" \
+            --pattern "Understudy_${version}_aarch64.dmg" \
+            --pattern "Understudy.app.tar.gz" \
+            --pattern "Understudy.app.tar.gz.sig" \
+            --pattern "latest.json" \
+            --dir "$download_dir"
+          downloaded="$download_dir/Understudy_${version}_aarch64.dmg"
+          test "$(shasum -a 256 "$dmg" | awk '{print $1}')" = \
+            "$(shasum -a 256 "$downloaded" | awk '{print $1}')"
+          test "$(shasum -a 256 "$updater" | awk '{print $1}')" = \
+            "$(shasum -a 256 "$download_dir/Understudy.app.tar.gz" | awk '{print $1}')"
+          cmp "$updater_sig" "$download_dir/Understudy.app.tar.gz.sig"
+          cmp "$updater_manifest" "$download_dir/latest.json"
+          xcrun stapler validate "$downloaded"
+          spctl --assess \
+            --type open \
+            --context context:primary-signature \
+            --verbose=2 \
+            "$downloaded"
+          mounted_dmg="$RUNNER_TEMP/downloaded-dmg"
+          mkdir "$mounted_dmg"
+          detach_downloaded_dmg() {
+            hdiutil detach "$mounted_dmg" >/dev/null 2>&1 || true
+          }
+          trap detach_downloaded_dmg EXIT
+          hdiutil attach "$downloaded" \
+            -nobrowse \
+            -readonly \
+            -mountpoint "$mounted_dmg"
+          xcrun stapler validate "$mounted_dmg/Understudy.app"
+          codesign --verify --deep --strict --verbose=2 "$mounted_dmg/Understudy.app"
+          spctl --assess --type execute --verbose=2 "$mounted_dmg/Understudy.app"
+          detach_downloaded_dmg
+          trap - EXIT
+
+      - name: Publish the verified release
+        if: inputs.mode == 'release'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          version="$(node -p "require('./apps/homescreen/package.json').version")"
+          tag="desktop-v${version}-mvp"
+          gh release edit "$tag" \
+            --repo "$GITHUB_REPOSITORY" \
+            --draft=false \
+            --latest
+          echo "### Understudy Desktop ${version}" >> "$GITHUB_STEP_SUMMARY"
+          echo "Published https://github.com/${GITHUB_REPOSITORY}/releases/tag/${tag}" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Remove temporary signing material
+        if: always()
+        run: |
+          rm -f \
+            "$RUNNER_TEMP/understudy-developer-id.p12" \
+            "$RUNNER_TEMP/understudy-updater.key"
+          if [[ -n "${UNDERSTUDY_RELEASE_KEYCHAIN:-}" ]]; then
+            security delete-keychain "$UNDERSTUDY_RELEASE_KEYCHAIN" || true
+          fi

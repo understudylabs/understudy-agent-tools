@@ -22,8 +22,25 @@ and what it costs, *before* running it. The user decides with that in hand.
   Starting it now."
 
 If you don't know the rate, measure a small sample first (a 3-task smoke), report
-the per-unit cost/time, then project the full run. Label projections as
-projections.
+the per-unit cost/time, then project the decision-sized run. Label projections
+as projections. The smoke estimates throughput and spend; it is not a reason to
+shrink the evidence plan or stop early.
+
+## 1a. Recommend the outcome-sized plan
+
+Optimize for resolving the developer's objective under their real constraints,
+not for minimizing spend in isolation. Present the recommended plan first with
+its expected outcome, wall-clock, spend envelope, and evidence it will produce.
+When useful, show a cheaper diagnostic and a faster or higher-confidence option
+beside it, but do not make the weakest option the default merely because it is
+cheap.
+
+One approval may cover a named, bounded batch or run plan. Do not interrupt for
+permission before every call inside that envelope. Before exceeding it, explain
+what the extra spend is expected to resolve and ask for the expansion. If the
+current evidence cannot answer the question, recommend more data, a stronger
+model, more compute, or a broader experiment plainly instead of hiding the
+tradeoff behind cautious prose.
 
 ## 2. Background the slow thing — first
 
@@ -108,4 +125,8 @@ If there's no profile yet, run [`onboard`](../skills/onboard/SKILL.md) first.
 - Going silent during a background run instead of doing analysis.
 - Doing the interactive interview *after* the download instead of during it.
 - Re-asking for information already in the profile or already on disk.
+- Treating the cheapest action as the recommendation without comparing expected
+  progress, time-to-answer, and confidence.
+- Stopping at a smoke test, weak model, or convenient cohort when the result
+  cannot answer the user's question.
 - Claiming a cost/latency/quality win without measured before/after evidence.

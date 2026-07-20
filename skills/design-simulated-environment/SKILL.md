@@ -55,9 +55,11 @@ criteria (recall / precision / policy — not just cost/speed).
 
 ## Safety Gates
 
-- **Synthetic data only.** Seed the environment with invented entities and a small
-  hand-written fixture. Never embed customer transcripts, records, names, or IDs —
-  the simulated env is committable precisely because it contains none.
+- **Synthetic data only.** Seed the environment with invented entities. A small
+  hand-written fixture may validate the mechanics, but a workload claim needs a
+  scalable, decision-sized generated suite. Never embed customer transcripts,
+  records, names, or IDs — the simulated env is committable precisely because
+  it contains none.
 - **No live side effects.** Tools mutate in-memory state, never real systems.
 - Keep the captured customer traces local; use them only to *infer the shape* you
   simulate.
@@ -65,15 +67,17 @@ criteria (recall / precision / policy — not just cost/speed).
 ## Recipe
 
 1. **Seed synthetic state.** For the default env, use the built-in synthetic
-   inbox/ticket/project-board fixture. For a workload-specific env, use a few
-   records of each entity the workload touches
-   (deals, contacts, activities, a short transcript), small enough to read.
+   inbox/ticket/project-board fixture. For a workload-specific env, generate
+   enough records and tasks to cover common, rare, and high-consequence entity
+   and action combinations. Keep individual cases readable while scaling the
+   suite; follow the data-sufficiency rules in
+   [`../capture-evidence/references/evaluation-evidence-gates.md`](../capture-evidence/references/evaluation-evidence-gates.md).
 2. **Implement the tools by intent, leniently.** Group the real tool catalog into
    read / transform / write classes (from understand-workload). For each class,
    return a plausible result from the seeded state. Be tolerant of arg/name
    variants (e.g. accept a tool called with or without an `mcp__…` prefix) so a
    candidate's reasonable-but-different call still gets a useful answer.
-3. **Define the gold + a validator.** Write the small set of correct outcomes the
+3. **Define the gold + a validator.** Write the complete correct outcomes each
    task implies (the observations/records a perfect run would write), each with the
    keys/values that must appear. Score the candidate's *final written state* vs gold
    → recall, precision, and any policy checks. The validator is the metric, not the
@@ -105,6 +109,13 @@ Two checks beyond the scripted oracle, before any model score is trusted:
   score near 0 — the precision and forbidden-write axes are what keep recall
   un-gameable. A validator that hasn't rejected a sentinel has not been
   tested.
+- **The right-answer-wrong-contract sentinel.** A run whose *content* is
+  correct but whose *shape* breaks the caller — the canonical case is the
+  gold answer as valid JSON wrapped in markdown fences, which leaves an
+  SDK's parsed `.object` undefined while every quality axis passes. Quality
+  must stay high and a separate contract axis must read 0 — proving the
+  validator separates "right answer" from "parseable in production"
+  (implementation in the example env's `smoke.py`).
 
 ## Running it as a real `verifiers` env
 
@@ -112,8 +123,11 @@ One env, many uses: the *same* `verifiers` Environment serves eval, RL training,
 synthetic-data generation, and agent-harness experimentation ("playgrounds for RL
 training, evaluation benchmarking, synthetic data generation, and agent-harness
 experimentation" — Prime Intellect, https://www.primeintellect.ai/blog/environments).
-That's why building it well — and validating it cheaply via eval *before* any GPU —
-pays off across all of them.
+Run as an offline gate it is also the replay surface for
+[`../simulate-before-launch/SKILL.md`](../simulate-before-launch/SKILL.md) —
+judging a proposed model/prompt change before traffic moves. That's why building
+it well — and validating it cheaply via eval *before* any GPU — pays off across
+all of them.
 
 **Four LEGO blocks (dataset · parser · rubric · rollout).** A `verifiers` env snaps
 together from four independently-swappable pieces (Will Brown / Prime Intellect):
@@ -138,8 +152,18 @@ When you swap the model brick, re-check the parser/renderer.
 
 When the env is built as an actual `verifiers` Environment (the form
 [`prepare-verifier-handoff`'s authoring and packaging stages](../prepare-verifier-handoff/references/stage-1-author-env.md) consume),
-these API facts save real trial — verified against the `verifiers` library v0.1.14
-(https://github.com/PrimeIntellect-ai/verifiers ; APIs move, re-check the pin):
+these API facts save real trial — re-verified against the `verifiers` `0.2.0`
+source, 2026-07-14 (https://github.com/PrimeIntellect-ai/verifiers ; APIs move,
+re-check the pin). Pin exactly `verifiers==0.2.0`: the tag and `main` diverged
+within days of release. Note `0.2.0` ships **two API generations** — everything
+below is the **v0 API**, still exported and working but frozen upstream
+(deprecated, no new features); new upstream work lands in the `verifiers.v1`
+Taskset/Harness/Runtime namespace (landscape notes in
+[`reference.md`](reference.md)). Never mix v0 and v1 in one environment.
+Don't start from a blank file: the traces→env recipe is
+[`references/cookbook-traces-to-env.md`](references/cookbook-traces-to-env.md)
+and the copyable, smoke-tested scaffold is
+[`examples/event-categorizer/`](examples/event-categorizer/README.md):
 
 - `vf.ToolEnv(tools=[fns], max_turns=, **kwargs)` — `dataset`, `rubric`,
   `system_prompt` pass through `**kwargs` to `MultiTurnEnv`; tools are plain
@@ -158,8 +182,9 @@ these API facts save real trial — verified against the `verifiers` library v0.
   and pass a verifiers **`ClientConfig`** (a raw `openai.OpenAI` raises
   "Unsupported client type"): `ClientConfig(client_type="openai_chat_completions",
   api_key_var="<ENV_VAR_NAME>", api_base_url="<…/v1>")` — `api_key_var` is the
-  env-var *name* (default `PRIME_API_KEY`). Pointed at the Understudy gateway this
-  runs a full rollout+reward eval on CPU for pennies — strong pre-GPU validation.
+  env-var *name* (default `PRIME_API_KEY`); `extra_headers` carries per-route
+  headers. Pointed at the Understudy gateway this runs a full rollout+reward
+  eval on CPU for pennies — strong pre-GPU validation.
 
 ## Output Standard
 
@@ -167,10 +192,21 @@ End with: the seeded fixtures and gold set; the tool classes simulated; the
 validator's axes; the oracle's perfect score; and each candidate model's
 recall/precision/policy + cost/latency — with the local-model gap to close.
 
+When starting from a portable JSONL training plan, first render
+`understudy training goal-card --plan <plan.json> --preview 0` and validate the
+resulting `understudy.environment_proposal.v1` artifact. Increase the preview
+only when useful; it is bounded to three TRAIN rows and never exposes held-out
+targets. Model-authored environment proposals are design input only and remain
+`needs_verifier` until the deterministic oracle, sentinels, reset, leakage,
+live-effect, reward, hash, and parser gates pass.
+
 ## References
 
+- [`references/cookbook-traces-to-env.md`](references/cookbook-traces-to-env.md) — the stage-by-stage recipe from captured traces/tests to a runnable verifiers env (gold policies, tool-stub strategies, contract rubric, playbook-as-argument, validator gates).
+- [`examples/event-categorizer/`](examples/event-categorizer/README.md) — complete synthetic scaffold: env module, tasks, swappable playbooks, capture converter, and an offline `smoke.py` verified against `verifiers==0.2.0`.
 - [`../understand-workload/SKILL.md`](../understand-workload/SKILL.md) — produces the shape this simulates.
 - [`../recursive-language-model/SKILL.md`](../recursive-language-model/SKILL.md) — the harness that lifts a small model's score in this env.
 - [`../optimize-agentic-workload/SKILL.md`](../optimize-agentic-workload/SKILL.md) — the agentic-workload metric axes and final-state validation.
 - [`../prepare-verifier-handoff/references/stage-1-author-env.md`](../prepare-verifier-handoff/references/stage-1-author-env.md) — inverts this batch-scored env into a `reset`/`step` MDP when the workload needs RL (the direct next rung before a hosted handoff).
 - [`../prepare-verifier-handoff/SKILL.md`](../prepare-verifier-handoff/SKILL.md) — when the env should graduate to a hosted RL/verifiers partner.
+- [`../simulate-before-launch/SKILL.md`](../simulate-before-launch/SKILL.md) — runs this env as the offline ship/no-ship gate for a proposed model or prompt change.

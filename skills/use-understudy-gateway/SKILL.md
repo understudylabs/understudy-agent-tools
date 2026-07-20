@@ -120,9 +120,23 @@ node dist/bin.js status --json
    understudy run -- <local command>
    ```
 
-6. Monitor the command output and local artifacts. For optimization work, route
-   back to [`../optimize-workload/SKILL.md`](../optimize-workload/SKILL.md) once
-   the run has produced candidate/proof evidence.
+   **Run this as a background task — do not block the agent thread on it.**
+   Eval runs can take minutes to hours depending on row count and model latency.
+   Send it to the background immediately and move on to other work. See
+   [`../../docs/background-ops.md`](../../docs/background-ops.md) for the
+   shell patterns and how to tail the log and check the exit code.
+
+6. Monitor the command output and local artifacts by tailing the log rather than
+   blocking the agent. While the run is in flight, advance the loop steps that
+   don't depend on its output: cost-model the candidate models, pull benchmark
+   context for the comparison, and scaffold the evidence artifacts
+   ([`../understudy/reference.md`](../understudy/reference.md) § "Understudy
+   Agent Improvement Report"). Surface a notification when the run completes;
+   do not silently continue. For route work, route back to
+   [`../optimize-workload/SKILL.md`](../optimize-workload/SKILL.md) once the run
+   has produced candidate/proof evidence. See
+   [`../../docs/background-ops.md`](../../docs/background-ops.md) for the exact
+   tail/poll and exit-code patterns.
 
 ## Keyless catalog sweep
 
@@ -274,9 +288,10 @@ Domain depth in [`reference.md`](reference.md):
   metadata; redact; skip upload in local-only / restricted (ZDR) modes; produce a
   trace inventory (defer call-site discovery to
   [`../capture-evidence/SKILL.md`](../capture-evidence/SKILL.md)).
-- **Deploy and compare** — reproducible baseline, smallest route/config change
-  via the workloads API (or a local `understudy.yaml`), rollback, comparison
-  evals, before/after metrics, surfaced regressions.
+- **Deploy and compare** — reproducible baseline, smallest coherent route/config
+  change that solves the measured cause via the workloads API (or a local
+  `understudy.yaml`), rollback, comparison evals, before/after metrics, surfaced
+  regressions.
 
 For route selection and the fresh-pricing rule, see
 [`../understudy/reference.md`](../understudy/reference.md); for measured claims,

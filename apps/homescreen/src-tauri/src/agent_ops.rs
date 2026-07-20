@@ -40,12 +40,15 @@ pub struct DownloadProgress {
     /// running | done | error | cancelled
     pub status: String,
     pub started_at: String,
+    pub planned_files: usize,
     pub files: BTreeMap<String, FileProgress>,
     pub downloaded_bytes: u64,
+    pub resumed_bytes: u64,
     /// Sum of known totals; None until every seen file reports a total.
     pub total_bytes: Option<u64>,
     pub dest: Option<String>,
     pub error: Option<String>,
+    pub resumable: bool,
     pub logs: Vec<String>,
 }
 
@@ -56,11 +59,14 @@ impl DownloadProgress {
             model_id: model_id.to_string(),
             status: "running".to_string(),
             started_at: now_iso(),
+            planned_files: 0,
             files: BTreeMap::new(),
             downloaded_bytes: 0,
+            resumed_bytes: 0,
             total_bytes: None,
             dest: None,
             error: None,
+            resumable: false,
             logs: vec![],
         }
     }
@@ -78,6 +84,11 @@ pub fn apply_download_event(progress: &mut DownloadProgress, event: &Value) {
         return;
     }
     match event.get("type").and_then(|t| t.as_str()) {
+        Some("Plan") => {
+            progress.planned_files =
+                event.get("files").and_then(Value::as_u64).unwrap_or(0) as usize;
+            progress.total_bytes = event.get("total").and_then(Value::as_u64);
+        }
         Some("Log") => {
             if let Some(message) = event.get("message").and_then(|m| m.as_str()) {
                 progress.logs.push(message.to_string());
@@ -86,6 +97,30 @@ pub fn apply_download_event(progress: &mut DownloadProgress, event: &Value) {
                     progress.logs.drain(..drop);
                 }
             }
+        }
+        Some("Resume") => {
+            let Some(name) = event.get("name").and_then(Value::as_str) else {
+                return;
+            };
+            let bytes = event.get("bytes").and_then(Value::as_u64).unwrap_or(0);
+            let total = event.get("total").and_then(Value::as_u64);
+            progress.files.insert(
+                name.to_string(),
+                FileProgress {
+                    downloaded: bytes,
+                    total,
+                },
+            );
+            progress.resumed_bytes = progress.resumed_bytes.saturating_add(bytes);
+            progress.downloaded_bytes = progress.files.values().map(|f| f.downloaded).sum();
+            if progress.planned_files == 0 {
+                progress.total_bytes = progress
+                    .files
+                    .values()
+                    .map(|file| file.total)
+                    .sum::<Option<u64>>();
+            }
+            progress.resumable = true;
         }
         Some("File") => {
             let Some(name) = event.get("name").and_then(|n| n.as_str()) else {
@@ -100,14 +135,17 @@ pub fn apply_download_event(progress: &mut DownloadProgress, event: &Value) {
                 .files
                 .insert(name.to_string(), FileProgress { downloaded, total });
             progress.downloaded_bytes = progress.files.values().map(|f| f.downloaded).sum();
-            progress.total_bytes = progress
-                .files
-                .values()
-                .map(|f| f.total)
-                .sum::<Option<u64>>();
+            if progress.planned_files == 0 {
+                progress.total_bytes = progress
+                    .files
+                    .values()
+                    .map(|f| f.total)
+                    .sum::<Option<u64>>();
+            }
         }
         Some("Done") => {
             progress.status = "done".to_string();
+            progress.resumable = false;
             progress.dest = event
                 .get("dest")
                 .and_then(|d| d.as_str())
@@ -115,6 +153,7 @@ pub fn apply_download_event(progress: &mut DownloadProgress, event: &Value) {
         }
         Some("Error") => {
             progress.status = "error".to_string();
+            progress.resumable = true;
             progress.error = event
                 .get("message")
                 .and_then(|m| m.as_str())
@@ -211,6 +250,7 @@ impl Downloads {
                     Err(err) => {
                         entry.progress.status = "error".to_string();
                         entry.progress.error = Some(err);
+                        entry.progress.resumable = true;
                     }
                 }
             }
@@ -232,6 +272,7 @@ impl Downloads {
             handle.abort();
         }
         entry.progress.status = "cancelled".to_string();
+        entry.progress.resumable = true;
         Ok(entry.progress.clone())
     }
 
@@ -474,6 +515,28 @@ mod tests {
     }
 
     #[test]
+    fn plan_and_resume_keep_stable_whole_download_progress() {
+        let mut p = DownloadProgress::new("dl-1", "model-x");
+        apply_download_event(
+            &mut p,
+            &json!({ "type": "Plan", "files": 3, "total": 1_000 }),
+        );
+        apply_download_event(
+            &mut p,
+            &json!({ "type": "Resume", "name": "weights.safetensors", "bytes": 400, "total": 900 }),
+        );
+        apply_download_event(
+            &mut p,
+            &json!({ "type": "File", "name": "weights.safetensors", "downloaded": 650, "total": 900 }),
+        );
+        assert_eq!(p.planned_files, 3);
+        assert_eq!(p.total_bytes, Some(1_000));
+        assert_eq!(p.downloaded_bytes, 650);
+        assert_eq!(p.resumed_bytes, 400);
+        assert!(p.resumable);
+    }
+
+    #[test]
     fn total_is_unknown_until_every_file_reports_one() {
         let mut p = DownloadProgress::new("dl-1", "model-x");
         apply_download_event(
@@ -557,6 +620,7 @@ mod tests {
         let id = downloads.begin("model-x").unwrap();
         let cancelled = downloads.cancel(&id).expect("running download cancels");
         assert_eq!(cancelled.status, "cancelled");
+        assert!(cancelled.resumable);
         let err = downloads.cancel(&id).expect_err("already terminal");
         assert!(err.contains("not running"), "{err}");
         assert!(downloads.cancel("dl-missing").is_err());

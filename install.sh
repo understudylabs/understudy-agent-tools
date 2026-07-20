@@ -959,6 +959,16 @@ install_codex_plugin() {
     return 0
   fi
 
+  # npm installs this package through a symlink into the durable source
+  # checkout. Codex currently misclassifies that symlink as a Git marketplace
+  # and injects a ref, which it then rejects for the local source. Hand Codex
+  # the physical directory so local marketplace registration stays local.
+  if ! repo="$(cd "$repo" && pwd -P)"; then
+    say "Could not resolve the Codex marketplace source directory."
+    adapter_prereq_missing "codex" "the marketplace source could not be resolved"
+    return 0
+  fi
+
   say "Registering the Understudy Codex marketplace from $repo."
   if codex plugin marketplace add "$repo" >>"$LOG_FILE" 2>&1; then
     ok "Understudy Codex marketplace registered."

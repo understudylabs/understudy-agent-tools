@@ -1,6 +1,6 @@
 {
   "name": "@understudylabs/understudy-agent-tools",
-  "version": "0.6.0",
+  "version": "0.6.29",
   "description": "Public Understudy agent tools CLI and skill library.",
   "type": "module",
   "bin": {
@@ -20,40 +20,59 @@
     "!.devin/skills",
     "install.sh",
     "dist",
+    "runtime-assets",
     "skills",
     "schemas",
     "docs",
+    "experiments/desktop-tool-proof",
     "README.md",
     "AGENTS.md",
     "LICENSE",
     "!**/__pycache__",
     "!**/*.pyc",
+    "!**/examples",
     "!**/*.py"
   ],
   "scripts": {
-    "build": "rm -rf dist && tsc -p tsconfig.build.json",
+    "build": "rm -rf dist && tsc -p tsconfig.build.json && node scripts/ensure-bin-mode.mjs",
     "clean": "rm -rf dist",
+    "desktop:bundle-cli": "node scripts/build-desktop-cli.mjs",
+    "desktop:bundle-cli:smoke": "node scripts/desktop-cli-smoke.mjs --build",
+    "desktop:dev-status": "node scripts/desktop-dev-status.mjs",
+    "desktop:e2e": "npm run build && node scripts/desktop-e2e-harness.mjs",
+    "desktop:release-check": "node scripts/desktop-release-check.mjs",
+    "desktop:release-plan": "node scripts/desktop-release-plan.mjs",
+    "desktop:updater-manifest": "node scripts/desktop-updater-manifest.mjs",
     "prepare": "npm run build",
     "package:smoke": "node scripts/package-smoke.mjs",
+    "runtime:compaction-soak": "npm run build && node scripts/runtime-compaction-soak.mjs",
+    "runtime:desktop-readiness": "npm run build && node scripts/desktop-runtime-readiness.mjs",
     "skills:validate": "node scripts/validate-public-skills.mjs --repo",
     "test": "node --test tests/*.test.mjs",
     "typecheck": "tsc --noEmit",
     "check": "npm run build && npm run typecheck && npm test && npm run skills:validate && npm run package:smoke"
   },
   "dependencies": {
+    "@ai-sdk/openai-compatible": "2.0.59",
     "@anthropic-ai/sdk": "^0.102.0",
+    "@earendil-works/pi-ai": "0.80.6",
+    "@earendil-works/pi-coding-agent": "0.80.6",
     "@inquirer/prompts": "^8.4.3",
+    "ai": "6.0.224",
     "commander": "^14.0.3",
     "kleur": "^4.1.5",
     "openai": "^6.42.0",
     "zod": "^4.4.3"
   },
   "devDependencies": {
+    "@types/json-schema": "7.0.15",
     "@types/node": "^24.3.0",
+    "@modelcontextprotocol/sdk": "1.29.0",
+    "undici-types": "7.16.0",
     "typescript": "^5.7.3"
   },
   "engines": {
-    "node": ">=20.6.0"
+    "node": ">=22.19.0"
   },
   "license": "MIT"
 }

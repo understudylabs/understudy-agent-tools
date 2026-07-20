@@ -100,17 +100,20 @@ band, and the candidate route. A small live comparison only when replay can't
 answer the economic question (and only under the approval gate). Inference for
 evaluation follows the same Understudy-first default as optimization.
 
-**Optimize (cheapest intervention first).** Climb the evidence ladder: prompt
-prefill/repair → parser/schema repair → context trimming → route/candidate
-swap → GEPA. Confirm metric, incumbent route, split boundaries, sample size, and
-failure taxonomy first; run the smallest dry-run before any paid step; match the
-intervention to the *observed* failure class, not a guess.
+**Optimize (highest-leverage intervention first).** Consider prompt
+prefill/repair, parser/schema repair, context trimming, route/candidate swap, and
+GEPA according to the observed failure class. Confirm metric, incumbent route,
+split boundaries, sample size, and failure taxonomy first; use a dry-run to
+validate mechanics before any paid step, not to substitute for the full plan.
 
 ## Optimization-Target Menu
 
 The ladder above is *how* you change. This menu is *what* you change. Before
-spending budget, pick the **cheapest target that matches the observed failure
-mode** — changing a tool description is far cheaper than swapping the model.
+spending budget, pick the **target most likely to resolve the observed failure
+mode**. When multiple targets have comparable likelihood, prefer the cheaper and
+more reversible one; otherwise choose the stronger intervention and disclose the
+cost. Changing a tool description may be better than swapping the model when the
+failure is actually in tool guidance.
 State the chosen target and the failure mode it addresses in the run artifact:
 
 - **System prompt** — instructions, role, constraints applied to every call.
@@ -121,8 +124,9 @@ State the chosen target and the failure mode it addresses in the run artifact:
   bad-argument, or redundant-call failures in an agentic workload.
 - **Routing policy** — which model/route a request takes. For failures
   concentrated on a request class a different route handles better.
-- **Model choice** — the student model itself. Higher commitment; only after
-  cheaper targets stall and headroom remains.
+- **Model choice** — the student model itself. Use early when capacity or
+  capability evidence makes weaker prompt-only iterations unlikely to close the
+  gap.
 - **Context-window strategy** — what gets packed and trimmed. For truncation,
   lost-in-the-middle, or cost-from-bloat failures.
 - **Retrieval parameters** — top-k, chunking, reranking, query construction. For
@@ -175,7 +179,8 @@ Three ways to optimize, picked by commitment and workload shape:
 3. **Program lane (opt-in).** The agent can scaffold a reusable DSPy program
    from local samples using the program-scaffold pattern, verify parity, then
    run the approval-gated `adapter run --adapter dspy-gepa --execute` path
-   against the Understudy gateway. Full GEPA optimization over that program is
+   against the Understudy gateway with an explicit dollar cap and input/output
+   token-price basis. Full GEPA optimization over that program is
    gated by parity: the scaffolded program must reproduce the incumbent
    baseline before optimization, or you optimize a reconstruction that diverges
    from production.

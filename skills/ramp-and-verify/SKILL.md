@@ -52,10 +52,15 @@ node dist/bin.js status --json
 ## Pre-ramp gates (all must pass)
 
 1. **Frozen-eval verdict exists** — a sweep/optimization result on frozen
-   splits with the incumbent baseline recorded.
-2. **Repeat-replay stability.** Re-run the candidate on the frozen rows N
-   times (default 3) and bucket each row: all-repeats-match / some / none
-   (the procedure lives in
+   splits with the incumbent baseline recorded, or a `pass` launch verdict
+   from [`../simulate-before-launch/SKILL.md`](../simulate-before-launch/SKILL.md)
+   for the specific change being ramped (its contract axes — schema validity,
+   tool-call validity — are the same ones step 3 verifies from captures).
+2. **Repeat-replay stability.** Re-run the candidate on the frozen rows in
+   incremental batches. Three repeats may serve as a plumbing smoke, but size N
+   for the agreed instability tolerance and increase it when results sit near
+   the threshold or vary across batches. Bucket each row: all-repeats-match /
+   some / none (the procedure lives in
    [`../compare-trajectories/SKILL.md`](../compare-trajectories/SKILL.md)).
    Rows that never repeat are stochastic pockets — assign each a disposition:
    **fallback** (route to incumbent), **shadow** (observe, don't serve), or
@@ -97,9 +102,11 @@ At each tier:
    error/status-code rate, latency distribution, schema/parse validity of
    outputs, and token/cost per call. The routed cohort must hold the lab
    quality bar on whatever the workload's validator can score from captures.
-4. **Spot-check determinism.** Re-run a small sample of routed rows against
-   the candidate; if repeats disagree materially more than the pre-ramp
-   measurement, stop the ramp and re-diagnose.
+4. **Check determinism on a decision-sized stratified set.** Re-run routed rows
+   against the candidate, expanding the set when variance, rare strata, or
+   failures remain uncertain. If repeats disagree materially more than the
+   pre-ramp measurement, stop the ramp and re-diagnose. Follow
+   [`../capture-evidence/references/evaluation-evidence-gates.md`](../capture-evidence/references/evaluation-evidence-gates.md).
 5. **Advance or roll back.** Advance only when the tier window is clean.
    Rollback triggers — any one fires `understudy routes rollback` (or
    `routes clear`) immediately: error rate or schema-validity regression vs
@@ -133,6 +140,9 @@ recommended next action.
   repeat-replay stability procedure and dispositions.
 - [`../compare-model-sweep/SKILL.md`](../compare-model-sweep/SKILL.md) — the
   frozen-eval verdict required by the pre-ramp gate.
+- [`../simulate-before-launch/SKILL.md`](../simulate-before-launch/SKILL.md) —
+  the offline launch verdict for a single proposed change (the other producer
+  gate 1 accepts).
 - [`../optimize-workload/SKILL.md`](../optimize-workload/SKILL.md) — the
   claim-packet contract for any measured savings statement.
 - [`../check-routing-health/SKILL.md`](../check-routing-health/SKILL.md) —

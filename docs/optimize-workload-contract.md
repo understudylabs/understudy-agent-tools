@@ -124,7 +124,7 @@ Future TypeScript commands should follow this behavior:
 
 ```bash
 understudy optimize-workload dry-run --repo .
-understudy optimize-workload adapter run --repo . --adapter dspy-gepa --samples samples.json --input-keys question --output-keys answer --model gpt-4o-mini --execute
+understudy optimize-workload adapter run --repo . --adapter dspy-gepa --samples samples.json --input-keys question --output-keys answer --model gpt-4o-mini --budget-usd <approved-usd> --input-usd-per-million <input-price> --output-usd-per-million <output-price> --execute
 understudy optimize-workload adapter run --repo . --adapter eval-input-gepa --manifest eval-input-manifest.json --execute
 ```
 
@@ -141,10 +141,14 @@ Required behavior:
 - Rubric scoring and DSPy scaffold/parity: keep as skill/reference guidance
   guidance unless a concrete adapter needs executable support.
 - DSPy GEPA adapter: expose through `adapter run`, require `--execute`, require
-  an explicit model/deployment, resolve the Understudy API key without printing
-  it, pass auth only through the child environment, run train/dev rows only,
-  exclude holdout rows, and write a candidate/proof packet with
-  `provider_calls: true`.
+  an explicit model/deployment, positive dollar cap, and non-zero user-supplied
+  token-price basis before resolving auth. Pass auth only through the child
+  environment, disable client-side retries, and reserve a conservative
+  price-basis upper bound before every request. Stop before a reservation could cross the
+  cap; fail closed when usage is missing or exceeds the reservation. Run
+  train/dev rows only, exclude holdout rows, and write owner-only candidate,
+  proof, and terminal run-state artifacts with reservation and attribution
+  evidence. The attribution is not a provider-invoice claim.
 - Eval-input GEPA adapter: require `--execute`, read a local manifest with
   `rows`, `inputs`, or `inputs_path`, support exact-match label and tool-call
   objectives, invoke upstream `gepa.optimize` through `uv`, run train/dev rows

@@ -1,15 +1,34 @@
 "use client";
 import { Button } from "../components/ui/Button";
-import { useTheme, type Theme } from "../lib/theme";
+import { EvaluationRadar } from "../components/EvaluationRadar";
+import { ChatScrollControls } from "../components/ChatScrollControls";
+import {
+  MessageScroller,
+  MessageScrollerContent,
+  MessageScrollerItem,
+  MessageScrollerProvider,
+  MessageScrollerViewport,
+} from "../components/base-ui/message-scroller";
 
 const variants = ["primary", "secondary", "ghost", "danger", "link"] as const;
+const transcriptDemo = [
+  { id: "outline-1", role: "user", content: "What changed in the latest training run?" },
+  { id: "outline-2", role: "assistant", content: "The held-out errors dropped, with the largest improvement on ambiguous merchant names. The model still needs another run before promotion." },
+  { id: "outline-3", role: "user", content: "Where does it still fail?" },
+  { id: "outline-4", role: "assistant", content: "Most remaining misses are rare categories with fewer than twenty examples. Travel and subscriptions are the two weakest groups." },
+  { id: "outline-5", role: "user", content: "How does it compare with the cloud model?" },
+  { id: "outline-6", role: "assistant", content: "It matches the cloud model on common categories, responds much faster locally, and trails on the smallest categories. The next sweep should target those failure areas." },
+  { id: "outline-7", role: "user", content: "What should we do next?" },
+  { id: "outline-8", role: "assistant", content: "Add examples for the two weakest groups, repeat the same frozen holdout, and promote only if the gains survive a second run." },
+] as const;
+const transcriptAnchors = transcriptDemo
+  .filter((message) => message.role === "user")
+  .map((message) => ({ id: message.id, label: message.content }));
 
 export default function DesignPage() {
-  const { theme, setTheme } = useTheme();
-
   return (
     <div style={{ background: "var(--color-window)", minHeight: "100vh", color: "var(--color-ink)" }}>
-      <div style={{ maxWidth: 880, margin: "0 auto", padding: "40px 32px 80px" }}>
+      <div style={{ maxWidth: 1120, margin: "0 auto", padding: "40px 32px 80px" }}>
         {/* header */}
         <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 8 }}>
           <div style={{ marginLeft: "auto", fontFamily: "var(--font-mono)", fontSize: 11, textTransform: "uppercase", letterSpacing: "0.18em", color: "var(--color-ink-muted)" }}>
@@ -17,24 +36,78 @@ export default function DesignPage() {
           </div>
         </div>
         <p style={{ color: "var(--color-ink-muted)", fontSize: 13, margin: "0 0 28px" }}>
-          Reference atom — Button — on the native token system. Lock the look, then systematize.
+          Production components on the native token system.
         </p>
 
-        {/* theme toggle */}
+        <SectionTitle>evaluation radar · public SMS example</SectionTitle>
+        <EvaluationRadar
+          accuracy={0.9948519948519948}
+          macroF1={0.9883231643172733}
+          baselineAccuracy={0.9846}
+          baselineMacroF1={0.9656}
+          weakestClass={{ label: "spam", recall: 0.9697, support: 99 }}
+          latencyMs={32.7}
+          modelSizeBytes={602_052_062}
+          failureCount={4}
+          rowCount={777}
+          completedRuns={1}
+          requiredRuns={2}
+          frontier={{
+            name: "GLM 5.2",
+            accuracy: 0.9948519948519948,
+            macroF1: 0.9884240636453026,
+            weakestClass: { label: "spam", recall: 0.979798, support: 99 },
+            latencyMs: 657.3,
+            failureCount: 4,
+            rowCount: 777,
+            costUsd: 0.02,
+          }}
+        />
+
+        <SectionTitle>message scroller · reader position</SectionTitle>
+        <div
+          style={{
+            height: 420,
+            marginBottom: 28,
+            overflow: "hidden",
+            border: "1px solid var(--color-rule)",
+            borderRadius: 12,
+            background: "var(--color-card)",
+          }}
+        >
+          <MessageScrollerProvider
+            autoScroll
+            defaultScrollPosition="start"
+            scrollPreviousItemPeek={48}
+          >
+            <MessageScroller>
+              <MessageScrollerViewport>
+                <MessageScrollerContent className="gap-5 px-5 pb-12 pt-5">
+                  {transcriptDemo.map((message) => (
+                    <MessageScrollerItem
+                      key={message.id}
+                      messageId={message.id}
+                      scrollAnchor={message.role === "user"}
+                    >
+                      <div
+                        className={`chat-msg ${message.role} group flex w-full flex-col gap-2 ${message.role === "user" ? "is-user ml-auto max-w-[80%] justify-end" : "is-assistant max-w-[92%]"}`}
+                      >
+                        <div className="chat-role">{message.role === "user" ? "You" : "Understudy"}</div>
+                        <div className="flex w-fit min-w-0 max-w-full flex-col gap-2 overflow-hidden text-sm group-[.is-user]:ml-auto group-[.is-user]:rounded-lg group-[.is-user]:bg-secondary group-[.is-user]:px-4 group-[.is-user]:py-3 group-[.is-user]:text-foreground group-[.is-assistant]:text-foreground">
+                          {message.content}
+                        </div>
+                      </div>
+                    </MessageScrollerItem>
+                  ))}
+                </MessageScrollerContent>
+              </MessageScrollerViewport>
+              <ChatScrollControls anchors={transcriptAnchors} streaming={false} />
+            </MessageScroller>
+          </MessageScrollerProvider>
+        </div>
+
+        {/* accent reference */}
         <Surface>
-          <Row label="theme">
-            <Seg>
-              {(["dark", "system", "light"] as Theme[]).map((t) => (
-                <button
-                  key={t}
-                  onClick={() => setTheme(t)}
-                  className={theme === t ? "active" : ""}
-                >
-                  {t}
-                </button>
-              ))}
-            </Seg>
-          </Row>
           <Row label="accent">
             <Swatch name="stamp" />
             <Swatch name="ok" />
@@ -76,13 +149,8 @@ export default function DesignPage() {
             </span>
           </Row>
         </Surface>
-      </div>
 
-      <style>{`
-        .seg { display:inline-flex; background:var(--color-card); border:1px solid var(--color-rule); border-radius:8px; padding:2px; gap:2px; }
-        .seg button { background:transparent; border:none; color:var(--color-ink-muted); font:inherit; font-size:12px; padding:4px 10px; border-radius:6px; cursor:pointer; text-transform:capitalize; }
-        .seg button.active { background:var(--color-hover); color:var(--color-ink); }
-      `}</style>
+      </div>
     </div>
   );
 }
@@ -131,10 +199,6 @@ function SectionTitle({ children }: { children: React.ReactNode }) {
       {children}
     </div>
   );
-}
-
-function Seg({ children }: { children: React.ReactNode }) {
-  return <div className="seg">{children}</div>;
 }
 
 function Swatch({ name }: { name: string }) {

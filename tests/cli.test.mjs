@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { spawn, spawnSync } from "node:child_process";
 import { createHash } from "node:crypto";
-import { existsSync, mkdtempSync, mkdirSync, readFileSync, realpathSync, rmSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, mkdirSync, readFileSync, realpathSync, rmSync, statSync, writeFileSync } from "node:fs";
 import { createServer } from "node:http";
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
@@ -9,6 +9,7 @@ import { describe, it } from "node:test";
 
 const cli = ["node", resolve("dist/bin.js")];
 const uvAvailable = spawnSync("uv", ["--version"], { encoding: "utf8" }).status === 0;
+const pythonAvailable = spawnSync("python3", ["--version"], { encoding: "utf8" }).status === 0;
 
 // Ambient Understudy credentials (a developer's shell, a CI secret) must not
 // leak into spawned CLIs — fixtures provide their own.
@@ -142,6 +143,10 @@ async function withHostedFixture(fn) {
       res.writeHead(status, { "content-type": "application/json", ...headers });
       res.end(JSON.stringify(value));
     };
+    const sendBytes = (status, value, headers = {}) => {
+      res.writeHead(status, { "content-type": "application/x-ndjson", ...headers });
+      res.end(value);
+    };
 
     if (req.method === "GET" && url.pathname === "/healthz") return send(200, { ok: true });
     if (req.method === "GET" && url.pathname === "/admin/v1/orgs/org_1/projects") return send(200, { projects: state.projects, cursor: null });
@@ -173,6 +178,60 @@ async function withHostedFixture(fn) {
     if (req.method === "GET" && url.pathname === "/admin/v1/orgs/org_1/projects/proj_1/workloads/usp_classify/captures") return send(200, { captures: state.captures, truncated: false, cursor: null });
     if (req.method === "GET" && url.pathname === "/admin/v1/orgs/org_1/projects/proj_1/captures/req_123") return send(200, { capture: state.captures[0] });
     if (req.method === "GET" && url.pathname === "/admin/v1/orgs/org_1/projects/proj_1/workloads/usp_classify/captures/req_123") return send(200, { capture: state.captures[0] });
+    const evalBase = "/admin/v1/orgs/org_1/projects/proj_1/workloads/usp_classify";
+    const rawCapture = `${JSON.stringify(state.captures[0])}\n`;
+    const rawCaptureSha = createHash("sha256").update(rawCapture).digest("hex");
+    if (req.method === "GET" && url.pathname === `${evalBase}/eval-capture-catalog`) {
+      return send(200, {
+        captures: [{
+          capture_key: "org_1/proj_1/key_1/2026/06/07/req_123.jsonl",
+          request_id: "req_123",
+          content_sha256: rawCaptureSha,
+          captured_at: "2026-06-07T00:00:00Z",
+          provider: "anthropic",
+          requested_model: "claude-test",
+          served_model: "claude-test-upstream",
+          status_code: 200,
+          latency_ms: 42,
+          has_tools: true,
+          has_structured_output: true,
+        }],
+        selection: {
+          from: url.searchParams.get("from"),
+          to: url.searchParams.get("to"),
+          limit: Number(url.searchParams.get("limit")),
+          sample_seed: url.searchParams.get("sample_seed"),
+          requested_model: null,
+          served_model: null,
+          status_code: null,
+          requires_tools: url.searchParams.get("requires_tools") === "true",
+          requires_structured_output: url.searchParams.get("requires_structured_output") === "true",
+        },
+      });
+    }
+    if (req.method === "POST" && url.pathname === `${evalBase}/eval-cohorts`) {
+      return send(201, {
+        id: "evc_123",
+        org_id: "org_1",
+        project_id: "proj_1",
+        workload_id: "usp_classify",
+        name: body.name,
+        selection: body.selection,
+        capture_count: body.captures.length,
+        cohort_sha256: "a".repeat(64),
+        created_at: "2026-06-07T01:00:00Z",
+      });
+    }
+    if (req.method === "POST" && url.pathname === `${evalBase}/eval-cohorts/evc_123/export`) {
+      return send(201, {
+        export_id: "eve_123",
+        cohort_id: "evc_123",
+        cohort_sha256: "a".repeat(64),
+        expires_at: "2026-06-07T02:00:00Z",
+        captures: [{ request_id: "req_123", content_sha256: rawCaptureSha, url: `${gatewayUrl}/eval-capture-req_123` }],
+      });
+    }
+    if (req.method === "GET" && url.pathname === "/eval-capture-req_123") return sendBytes(200, rawCapture);
     if (req.method === "POST" && (url.pathname === "/v1/messages" || url.pathname === "/v1/chat/completions")) return send(200, { ok: true, content: "SECRET_COMPLETION" }, { "x-understudy-request-id": "req_probe" });
     return send(404, { message: `${req.method} ${url.pathname}` });
   });
@@ -934,6 +993,380 @@ describe("understudy CLI", () => {
       assert.equal(payload.optimizer_execution, false);
     }));
 
+  it("requires a hard budget and price basis before resolving live DSPy auth", () =>
+    withOptimizerFixtureRepo(({ repo, samplesPath }) => {
+      const result = run([
+        "optimize-workload",
+        "adapter",
+        "run",
+        "--repo",
+        repo,
+        "--adapter",
+        "dspy-gepa",
+        "--samples",
+        samplesPath,
+        "--input-keys",
+        "question",
+        "--output-keys",
+        "answer",
+        "--model",
+        "synthetic-deployment",
+        "--execute",
+      ]);
+      assert.notEqual(result.status, 0);
+      assert.match(result.stderr, /--budget-usd is required/);
+      assert.doesNotMatch(result.stderr, /login|gateway|api key|uv run/i);
+    }));
+
+  it("rejects a zero DSPy price basis before auth or provider execution", () =>
+    withOptimizerFixtureRepo(({ repo, samplesPath }) => {
+      const result = run([
+        "optimize-workload",
+        "adapter",
+        "run",
+        "--repo",
+        repo,
+        "--adapter",
+        "dspy-gepa",
+        "--samples",
+        samplesPath,
+        "--input-keys",
+        "question",
+        "--output-keys",
+        "answer",
+        "--model",
+        "synthetic-deployment",
+        "--budget-usd",
+        "1",
+        "--input-usd-per-million",
+        "0",
+        "--output-usd-per-million",
+        "0",
+        "--execute",
+      ]);
+      assert.notEqual(result.status, 0);
+      assert.match(result.stderr, /non-zero input or output price basis/);
+      assert.doesNotMatch(result.stderr, /login|gateway|api key|uv run/i);
+    }));
+
+  it("preflights cumulative DSPy reservations without importing DSPy or calling a provider", { skip: !pythonAvailable }, () =>
+    withOptimizerFixtureRepo(({ repo, samplesPath }) => {
+      const scaffold = run([
+        "optimize-workload",
+        "adapter",
+        "run",
+        "--repo",
+        repo,
+        "--adapter",
+        "dspy-gepa",
+        "--samples",
+        samplesPath,
+        "--input-keys",
+        "question",
+        "--output-keys",
+        "answer",
+        "--model",
+        "synthetic-deployment",
+      ]);
+      assert.equal(scaffold.status, 1);
+      const runtime = join(repo, ".understudy", "optimize-workload", "uv-runtime", "optimizer_runtime.py");
+      const common = [
+        runtime,
+        "budget-preflight",
+        "--message-bytes",
+        "1000",
+        "--message-count",
+        "1",
+        "--max-tokens",
+        "256",
+        "--input-usd-per-million",
+        "1",
+        "--output-usd-per-million",
+        "2",
+      ];
+      const allowed = spawnSync("python3", [...common, "--call-count", "1", "--budget-usd", "0.01"], {
+        encoding: "utf8",
+      });
+      assert.equal(allowed.status, 0, allowed.stderr);
+      const allowedPayload = JSON.parse(allowed.stdout);
+      assert.equal(allowedPayload.allowed, true);
+      assert.equal(allowedPayload.provider_calls, false);
+      assert.equal(allowedPayload.input_token_ceiling, 5160);
+      assert.equal(allowedPayload.simulated_reservation_count, 1);
+      assert.equal(allowedPayload.price_basis.scope, "token-price-attribution-not-provider-invoice");
+
+      const blocked = spawnSync("python3", [...common, "--call-count", "2", "--budget-usd", "0.01"], {
+        encoding: "utf8",
+      });
+      assert.equal(blocked.status, 4, blocked.stderr);
+      const blockedPayload = JSON.parse(blocked.stdout);
+      assert.equal(blockedPayload.allowed, false);
+      assert.equal(blockedPayload.status, "budget-blocked");
+      assert.equal(blockedPayload.provider_calls, false);
+      assert.equal(blockedPayload.requested_call_count, 2);
+      assert.equal(blockedPayload.simulated_reservation_count, 1);
+      assert.ok(blockedPayload.reserved_upper_bound_usd <= blockedPayload.approved_budget_usd);
+    }));
+
+  it("blocks before the first DSPy provider call and persists terminal spend evidence", { skip: !pythonAvailable }, () =>
+    withOptimizerFixtureRepo(({ repo, samplesPath }) => {
+      const scaffold = run([
+        "optimize-workload",
+        "adapter",
+        "run",
+        "--repo",
+        repo,
+        "--adapter",
+        "dspy-gepa",
+        "--samples",
+        samplesPath,
+        "--input-keys",
+        "question",
+        "--output-keys",
+        "answer",
+        "--model",
+        "synthetic-deployment",
+      ]);
+      assert.equal(scaffold.status, 1);
+      const runtime = join(repo, ".understudy", "optimize-workload", "uv-runtime", "optimizer_runtime.py");
+      const stubDir = join(repo, "python-stubs");
+      const sentinel = join(repo, "provider-was-called");
+      mkdirSync(stubDir, { recursive: true });
+      writeFileSync(join(stubDir, "dspy.py"), `
+import os
+
+configured_lm = None
+
+def configure(lm):
+    global configured_lm
+    configured_lm = lm
+
+class LM:
+    def __init__(self, model, max_tokens=None, **kwargs):
+        self.model = model
+        self.kwargs = {"max_tokens": max_tokens}
+    def __call__(self, prompt=None, messages=None, **kwargs):
+        return self.forward(prompt=prompt, messages=messages, **kwargs)
+    def forward(self, prompt=None, messages=None, **kwargs):
+        with open(os.environ["PROVIDER_SENTINEL"], "w", encoding="utf-8") as handle:
+            handle.write("called")
+        raise AssertionError("provider boundary reached")
+
+class Signature:
+    def __init__(self, value):
+        self.value = value
+
+class Example:
+    def __init__(self, **kwargs):
+        self.__dict__.update(kwargs)
+    def with_inputs(self, *keys):
+        return self
+
+class Predict:
+    def __init__(self, signature):
+        self.signature = signature
+    def __call__(self, **kwargs):
+        return configured_lm(prompt=str(kwargs))
+
+class ChainOfThought(Predict):
+    pass
+`, "utf8");
+      const result = spawnSync("python3", [
+        runtime,
+        "dspy-gepa",
+        "--repo",
+        repo,
+        "--samples",
+        samplesPath,
+        "--input-keys",
+        "question",
+        "--output-keys",
+        "answer",
+        "--model",
+        "synthetic-deployment",
+        "--max-tokens",
+        "256",
+        "--budget-usd",
+        "0.000001",
+        "--input-usd-per-million",
+        "1",
+        "--output-usd-per-million",
+        "2",
+      ], {
+        encoding: "utf8",
+        env: {
+          ...baseEnv,
+          PYTHONPATH: stubDir,
+          PROVIDER_SENTINEL: sentinel,
+          UNDERSTUDY_API_KEY: "fixture-key",
+          UNDERSTUDY_GATEWAY_URL: "http://127.0.0.1:9",
+        },
+      });
+      assert.equal(result.status, 4, result.stderr);
+      assert.equal(existsSync(sentinel), false);
+      const payload = JSON.parse(result.stdout);
+      assert.equal(payload.status, "budget-blocked");
+      assert.equal(payload.reason, "next-call-reservation-exceeds-budget");
+      assert.equal(payload.provider_calls, false);
+      assert.equal(payload.spend_evidence.calls_attempted, 0);
+      assert.equal(payload.spend_evidence.reserved_upper_bound_usd, 0);
+
+      const runStatePath = join(repo, ".understudy", "optimize-workload", "dspy-gepa", "run-state.json");
+      const runState = JSON.parse(readFileSync(runStatePath, "utf8"));
+      assert.equal(runState.status, "budget-blocked");
+      assert.equal(runState.provider_calls, false);
+      assert.equal(statSync(runStatePath).mode & 0o777, 0o600);
+    }));
+
+  it("shares one metered ledger across DSPy LM copies and disables retries", { skip: !pythonAvailable }, () =>
+    withOptimizerFixtureRepo(({ repo, samplesPath }) => {
+      const scaffold = run([
+        "optimize-workload",
+        "adapter",
+        "run",
+        "--repo",
+        repo,
+        "--adapter",
+        "dspy-gepa",
+        "--samples",
+        samplesPath,
+        "--input-keys",
+        "question",
+        "--output-keys",
+        "answer",
+        "--model",
+        "synthetic-deployment",
+      ]);
+      assert.equal(scaffold.status, 1);
+      const runtime = join(repo, ".understudy", "optimize-workload", "uv-runtime", "optimizer_runtime.py");
+      const stubRoot = join(repo, "metered-python-stubs");
+      const dspyRoot = join(stubRoot, "dspy");
+      const gepaRoot = join(dspyRoot, "teleprompt", "gepa");
+      const sentinel = join(repo, "provider-call-count");
+      mkdirSync(gepaRoot, { recursive: true });
+      writeFileSync(join(dspyRoot, "__init__.py"), `
+import copy
+import os
+from types import SimpleNamespace
+
+configured_lm = None
+
+def configure(lm):
+    global configured_lm
+    configured_lm = lm
+
+class LM:
+    def __init__(self, model, max_tokens=None, num_retries=3, **kwargs):
+        self.model = model
+        self.kwargs = {"max_tokens": max_tokens}
+        self.num_retries = num_retries
+    def __call__(self, prompt=None, messages=None, **kwargs):
+        return self.forward(prompt=prompt, messages=messages, **kwargs)
+    def forward(self, prompt=None, messages=None, **kwargs):
+        if self.num_retries != 0:
+            raise AssertionError("retries were not disabled")
+        with open(os.environ["PROVIDER_SENTINEL"], "a", encoding="utf-8") as handle:
+            handle.write("called\\n")
+        return SimpleNamespace(usage={"prompt_tokens": 10, "completion_tokens": 5})
+
+class Signature:
+    def __init__(self, value):
+        self.value = value
+
+class Example:
+    def __init__(self, **kwargs):
+        self.__dict__.update(kwargs)
+    def with_inputs(self, *keys):
+        return self
+
+class Predict:
+    def __init__(self, signature):
+        self.signature = signature
+    def __call__(self, **kwargs):
+        configured_lm.forward(prompt=str(kwargs))
+        return SimpleNamespace(answer="a1")
+
+class ChainOfThought(Predict):
+    pass
+
+class GEPA:
+    def __init__(self, reflection_lm=None, **kwargs):
+        self.reflection_lm = reflection_lm
+    def compile(self, student, trainset=None, valset=None):
+        copied = copy.deepcopy(self.reflection_lm)
+        copied.forward(prompt="reflection")
+        return student
+`, "utf8");
+      writeFileSync(join(dspyRoot, "teleprompt", "__init__.py"), "", "utf8");
+      writeFileSync(join(gepaRoot, "__init__.py"), "", "utf8");
+      writeFileSync(join(gepaRoot, "gepa_utils.py"), `
+class ScoreWithFeedback:
+    def __init__(self, score, feedback):
+        self.score = score
+        self.feedback = feedback
+`, "utf8");
+      const result = spawnSync("python3", [
+        runtime,
+        "dspy-gepa",
+        "--repo",
+        repo,
+        "--samples",
+        samplesPath,
+        "--input-keys",
+        "question",
+        "--output-keys",
+        "answer",
+        "--model",
+        "synthetic-deployment",
+        "--max-metric-calls",
+        "2",
+        "--max-tokens",
+        "256",
+        "--budget-usd",
+        "0.02",
+        "--input-usd-per-million",
+        "1",
+        "--output-usd-per-million",
+        "2",
+      ], {
+        encoding: "utf8",
+        env: {
+          ...baseEnv,
+          PYTHONPATH: stubRoot,
+          PROVIDER_SENTINEL: sentinel,
+          UNDERSTUDY_API_KEY: "fixture-key",
+          UNDERSTUDY_GATEWAY_URL: "http://127.0.0.1:9",
+          UNDERSTUDY_AUTH_SOURCE: "fixture",
+        },
+      });
+      assert.equal(result.status, 0, result.stderr);
+      assert.equal(readFileSync(sentinel, "utf8").trim().split("\n").length, 2);
+      const payload = JSON.parse(result.stdout);
+      assert.equal(payload.status, "candidate-created");
+      assert.equal(payload.provider_calls, true);
+      assert.equal(payload.spend_evidence.calls_attempted, 2);
+      assert.equal(payload.spend_evidence.calls_completed, 2);
+      assert.equal(payload.spend_evidence.usage_complete, true);
+      assert.equal(payload.spend_evidence.client_num_retries, 0);
+      assert.equal(payload.spend_evidence.provider_invoice_verified, false);
+      assert.equal(payload.spend_evidence.attributed_cost_usd, 0.00004);
+      assert.equal(payload.spend_evidence.entries.length, 2);
+      assert.ok(
+        payload.spend_evidence.attributed_cost_usd
+          < payload.spend_evidence.reserved_upper_bound_usd,
+      );
+
+      const candidatePath = join(repo, ".understudy", "optimize-workload", "candidate.json");
+      const proofPath = join(repo, ".understudy", "optimize-workload", "proof-packet.json");
+      const runStatePath = join(repo, ".understudy", "optimize-workload", "dspy-gepa", "run-state.json");
+      for (const artifactPath of [candidatePath, proofPath, runStatePath]) {
+        assert.equal(statSync(artifactPath).mode & 0o777, 0o600);
+      }
+      const proof = JSON.parse(readFileSync(proofPath, "utf8"));
+      assert.equal(proof.holdout_accessed_during_optimization, false);
+      assert.equal(proof.spend_evidence.calls_completed, 2);
+    }));
+
   it("blocks a registry optimizer adapter unless execution is explicit", () =>
     withOptimizerFixtureRepo(({ repo, evalInputManifestPath }) => {
       const result = run([
@@ -1086,6 +1519,50 @@ describe("understudy CLI", () => {
       assert.equal(report.candidate.quality_delta, null);
       assert.match(report.caveats.join("\n"), /Do not publish savings/);
     }));
+
+  it("reports the hashed conversation-runtime conformance suite", () => {
+    const result = run(["--json", "runtime", "conformance"]);
+    assert.equal(result.status, 0, result.stderr);
+    const report = JSON.parse(result.stdout);
+    assert.equal(report.passed, true);
+    assert.deepEqual(
+      report.inputs.map((input) => input.id),
+      [
+        "basic-chat",
+        "offline-image",
+        "tool-round",
+        "malformed-tool-call",
+        "supervisor-takeover",
+        "long-chat-compaction",
+        "restart-resume",
+        "cancellation",
+      ],
+    );
+    assert.equal(report.gates.length, 5);
+  });
+
+  it("requires a provider target for executable runtime conformance", () => {
+    const result = run(["runtime", "conformance", "--backend", "pi"]);
+    assert.notEqual(result.status, 0);
+    assert.match(result.stderr, /requires --base-url and --model/);
+  });
+
+  it("does not let manual aliases override a desktop slot identity", () => {
+    const result = run([
+      "runtime",
+      "conformance",
+      "--backend",
+      "pi",
+      "--slot",
+      "7",
+      "--base-url",
+      "http://127.0.0.1:8096/v1",
+      "--model",
+      "understudy-small",
+    ]);
+    assert.notEqual(result.status, 0);
+    assert.match(result.stderr, /--slot resolves --base-url and --model/);
+  });
 
   it("rejects removed full runtime commands", () => {
     const result = run(["gateway", "--port", "23333"]);
@@ -1294,6 +1771,79 @@ describe("understudy CLI", () => {
       const blockedJson = await runWithEnvAsync(["--json", "captures", "export", "req_123", "--out", join(repo, "full-json.json"), "--include-payload"], env, repo);
       assert.notEqual(blockedJson.status, 0, "json mode must still require --yes for payload export");
       assert.match(blockedJson.stderr, /may contain prompts\/completions/);
+    });
+  });
+
+  it("selects, freezes, and materializes a workload-scoped eval cohort", async () => {
+    await withHostedFixture(async ({ home, repo, requests }) => {
+      const env = { HOME: home, USERPROFILE: home };
+      const catalogPath = join(repo, ".understudy", "evals", "catalog.json");
+      const catalog = await runWithEnvAsync([
+        "--json", "evals", "catalog", "--project", "rehearsal", "--workload", "classify",
+        "--from", "2026-06-01T00:00:00Z", "--to", "2026-06-08T00:00:00Z",
+        "--limit", "50", "--seed", "cedar-july", "--requires-tools", "--out", catalogPath,
+      ], env, repo);
+      assert.equal(catalog.status, 0, catalog.stderr);
+      assert.doesNotMatch(catalog.stdout, /SECRET_PROMPT|SECRET_COMPLETION/);
+      assert.equal(JSON.parse(catalog.stdout).captures[0].request_id, "req_123");
+      assert.doesNotMatch(readFileSync(catalogPath, "utf8"), /SECRET_PROMPT|SECRET_COMPLETION/);
+
+      const create = await runWithEnvAsync([
+        "--json", "evals", "cohort", "create", "--project", "rehearsal", "--workload", "classify",
+        "--from-catalog", catalogPath, "--name", "cedar-july",
+      ], env, repo);
+      assert.equal(create.status, 0, create.stderr);
+      assert.equal(JSON.parse(create.stdout).cohort.id, "evc_123");
+      const createRequest = requests.find((entry) => entry.path.endsWith("/eval-cohorts") && entry.method === "POST");
+      assert.equal(createRequest.body.captures[0].request_id, "req_123");
+
+      const blocked = await runWithEnvAsync([
+        "evals", "cohort", "export", "evc_123", "--project", "rehearsal", "--workload", "classify",
+        "--out", join(repo, ".understudy", "evals", "evc_123"),
+      ], env, repo);
+      assert.notEqual(blocked.status, 0);
+      assert.match(blocked.stderr, /Re-run with --yes/);
+
+      const outputDir = join(repo, ".understudy", "evals", "evc_123");
+      const exported = await runWithEnvAsync([
+        "--json", "evals", "cohort", "export", "evc_123", "--project", "rehearsal", "--workload", "classify",
+        "--out", outputDir, "--yes",
+      ], env, repo);
+      assert.equal(exported.status, 0, exported.stderr);
+      assert.match(readFileSync(join(outputDir, "req_123.jsonl"), "utf8"), /SECRET_PROMPT/);
+      const manifest = JSON.parse(readFileSync(join(outputDir, "cohort-manifest.json"), "utf8"));
+      assert.equal(manifest.cohort_id, "evc_123");
+      assert.equal(manifest.privacy.local_only, true);
+      assert.doesNotMatch(JSON.stringify(manifest), /https?:\/\//);
+    });
+  });
+
+  it("creates and downloads a recent eval cohort in one command", async () => {
+    await withHostedFixture(async ({ home, repo, requests }) => {
+      const env = { HOME: home, USERPROFILE: home };
+      const outputDir = join(repo, ".understudy", "evals", "model-parity");
+      const created = await runWithEnvAsync([
+        "--json", "evals", "create", "--project", "rehearsal", "--workload", "classify",
+        "--last", "7d", "--name", "model-parity", "--out", outputDir, "--yes",
+      ], env, repo);
+      assert.equal(created.status, 0, created.stderr);
+      const payload = JSON.parse(created.stdout);
+      assert.equal(payload.cohort.id, "evc_123");
+      assert.equal(payload.materialized.count, 1);
+      assert.match(readFileSync(join(outputDir, "req_123.jsonl"), "utf8"), /SECRET_PROMPT/);
+      assert.doesNotMatch(created.stdout, /SECRET_PROMPT|SECRET_COMPLETION/);
+
+      const catalogRequest = requests.find((entry) => entry.path.includes("eval-capture-catalog"));
+      const catalogUrl = new URL(`http://fixture${catalogRequest.path}${catalogRequest.search}`);
+      const windowMs = Date.parse(catalogUrl.searchParams.get("to")) - Date.parse(catalogUrl.searchParams.get("from"));
+      assert.equal(windowMs, 7 * 24 * 60 * 60 * 1000);
+
+      const blocked = await runWithEnvAsync([
+        "--json", "evals", "create", "--project", "rehearsal", "--workload", "classify",
+        "--name", "blocked",
+      ], env, repo);
+      assert.notEqual(blocked.status, 0);
+      assert.match(blocked.stderr, /JSON mode cannot prompt/);
     });
   });
 
@@ -1542,6 +2092,371 @@ describe("understudy CLI", () => {
       assert.equal(packet.schema_version, "understudy.route_decision_packet.v1");
       assert.equal(packet.constraints.data_class, "source-metadata-only");
     }));
+
+  it("compiles one dropped file into an isolated metadata-only Workload Card", () => {
+    const root = mkdtempSync(join(tmpdir(), "understudy-drop-file-"));
+    try {
+      const source = join(root, "customer-payload.unknown");
+      writeFileSync(source, "payload must stay unread\n");
+      const outputRoot = join(root, "artifacts");
+      const result = run(["capture-import", "compile", "--source", source, "--output-root", outputRoot, "--json"]);
+      assert.equal(result.status, 0, result.stderr);
+      assert.ok(!result.stdout.includes("payload must stay unread"));
+
+      const compiled = JSON.parse(result.stdout);
+      assert.equal(compiled.source_name, "customer-payload.unknown");
+      assert.equal(compiled.source_type, "file");
+      assert.equal(compiled.source_count, 1);
+      assert.equal(compiled.source_kinds["local-file"], 1);
+      assert.equal(compiled.local_only, true);
+      assert.equal(compiled.payload_read, false);
+      assert.match(compiled.workload_card_path, /artifacts\/[a-f0-9]{12}\/workload-card\.json$/);
+
+      const card = JSON.parse(readFileSync(compiled.workload_card_path, "utf8"));
+      assert.equal(card.schema_version, "understudy.workload_card.v1");
+      assert.equal(card.mode, "local-only");
+      assert.equal(card.source_path, source);
+      assert.equal(card.evaluation_inputs[0].kind, "local-file");
+      if (process.platform !== "win32") {
+        assert.equal(statSync(compiled.artifact_root).mode & 0o777, 0o700);
+        assert.equal(statSync(compiled.workload_card_path).mode & 0o777, 0o600);
+      }
+
+      const repeated = run(["capture-import", "compile", "--source", source, "--output-root", outputRoot, "--json"]);
+      assert.equal(repeated.status, 0, repeated.stderr);
+      assert.notEqual(JSON.parse(repeated.stdout).artifact_root, compiled.artifact_root);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it("inspects an explicitly approved CSV locally without copying source rows", () => {
+    const root = mkdtempSync(join(tmpdir(), "understudy-csv-inspection-"));
+    try {
+      const source = join(root, "expenses.csv");
+      writeFileSync(
+        source,
+        [
+          "merchant,description,amount,category",
+          'PRIVATE_COFFEE,"team breakfast, west",24.80,meals',
+          "Harbor Air,customer visit flight,412.15,travel",
+          "Paper Finch,printer paper,37.40,office_supplies",
+          "PRIVATE_COFFEE,candidate interview coffee,18.25,meals",
+          "Metro Cab,airport transfer,56.00,travel",
+        ].join("\n"),
+      );
+      const outputRoot = join(root, "artifacts");
+      const compiledResult = run([
+        "capture-import",
+        "compile",
+        "--source",
+        source,
+        "--output-root",
+        outputRoot,
+        "--json",
+      ]);
+      assert.equal(compiledResult.status, 0, compiledResult.stderr);
+      const compiled = JSON.parse(compiledResult.stdout);
+
+      const result = run([
+        "capture-import",
+        "inspect-csv",
+        "--source",
+        source,
+        "--artifact-root",
+        compiled.artifact_root,
+        "--json",
+      ]);
+      assert.equal(result.status, 0, result.stderr);
+      const inspection = JSON.parse(result.stdout);
+      assert.equal(inspection.schema_version, "understudy.capture_import.csv_inspection.v1");
+      assert.equal(inspection.local_only, true);
+      assert.equal(inspection.payload_read, true);
+      assert.equal(inspection.source_rows_persisted, false);
+      assert.equal(inspection.persisted_data, "statistics-and-label-aggregates");
+      assert.equal(inspection.row_count, 5);
+      assert.equal(inspection.column_count, 4);
+      assert.deepEqual(
+        inspection.columns.map((column) => column.profile_kind),
+        ["text", "text", "number", "category"],
+      );
+      assert.ok(inspection.columns.every((column) =>
+        column.profile_bars.length > 0 &&
+        column.profile_bars.length <= 12 &&
+        column.profile_bars.every((bar) => bar >= 0 && bar <= 1)));
+      assert.match(inspection.source_sha256, /^[a-f0-9]{64}$/);
+      assert.equal(inspection.recommended_mapping.label_column, "category");
+      assert.equal(inspection.recommended_mapping.confidence, "high");
+      assert.deepEqual(inspection.recommended_mapping.input_columns, ["merchant", "description", "amount"]);
+      assert.equal(inspection.recommended_mapping.group_column, "merchant");
+      assert.deepEqual(inspection.label_distribution, [
+        { value: "meals", count: 2 },
+        { value: "travel", count: 2 },
+        { value: "office_supplies", count: 1 },
+      ]);
+      assert.equal(inspection.training_readiness.ready, false);
+      assert.equal(inspection.training_readiness.status, "needs_data");
+      assert.equal(inspection.training_readiness.minimum_examples_per_class, 1);
+      assert.deepEqual(inspection.training_readiness.warnings, []);
+
+      const saved = readFileSync(inspection.artifact_path, "utf8");
+      assert.ok(!saved.includes("PRIVATE_COFFEE"));
+      assert.ok(!saved.includes("team breakfast"));
+      const prepare = run([
+        "capture-import",
+        "prepare-classification",
+        "--source",
+        source,
+        "--artifact-root",
+        compiled.artifact_root,
+        "--input-column",
+        "merchant",
+        "--input-column",
+        "description",
+        "--label-column",
+        "category",
+        "--group-column",
+        "merchant",
+        "--json",
+      ]);
+      assert.notEqual(prepare.status, 0);
+      assert.match(prepare.stderr, /Each class needs at least 20 rows/);
+      if (process.platform !== "win32") {
+        assert.equal(statSync(inspection.artifact_path).mode & 0o777, 0o600);
+      }
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it("recognizes a headerless extensionless tab dataset after an explicit drop", () => {
+    const root = mkdtempSync(join(tmpdir(), "understudy-tabular-inspection-"));
+    try {
+      const source = join(root, "SMSSpamCollection");
+      const rows = Array.from({ length: 48 }, (_, index) => {
+        const first = String.fromCharCode(97 + Math.floor(index / 26));
+        const second = String.fromCharCode(97 + (index % 26));
+        return `${index % 2 === 0 ? "ham" : "spam"}\tmessage token ${first}${second} for local classification`;
+      });
+      writeFileSync(source, [...rows, rows[0], "ham\t!!!"].join("\n"));
+      const outputRoot = join(root, "artifacts");
+      const compiledResult = run([
+        "capture-import", "compile", "--source", source, "--output-root", outputRoot, "--json",
+      ]);
+      assert.equal(compiledResult.status, 0, compiledResult.stderr);
+      const compiled = JSON.parse(compiledResult.stdout);
+      assert.equal(compiled.source_kinds["local-file"], 1);
+      assert.equal(compiled.payload_read, false);
+
+      const inspectionResult = run([
+        "capture-import", "inspect-csv", "--source", source,
+        "--artifact-root", compiled.artifact_root, "--json",
+      ]);
+      assert.equal(inspectionResult.status, 0, inspectionResult.stderr);
+      const inspection = JSON.parse(inspectionResult.stdout);
+      assert.equal(inspection.row_count, 50);
+      assert.equal(inspection.duplicate_row_count, 1);
+      assert.deepEqual(inspection.columns.map((column) => column.name), ["label", "text"]);
+      assert.equal(inspection.recommended_mapping.label_column, "label");
+      assert.deepEqual(inspection.recommended_mapping.input_columns, ["text"]);
+      assert.equal(inspection.recommended_mapping.group_column, "text");
+      assert.equal(inspection.training_readiness.ready, true);
+      assert.match(inspection.training_readiness.warnings.join(" "), /duplicate row.*will be removed/);
+
+      const preparedResult = run([
+        "capture-import", "prepare-classification", "--source", source,
+        "--artifact-root", compiled.artifact_root,
+        "--input-column", "text", "--label-column", "label", "--group-column", "text", "--json",
+      ]);
+      assert.equal(preparedResult.status, 0, preparedResult.stderr);
+      const prepared = JSON.parse(preparedResult.stdout);
+      assert.equal(prepared.source_row_count, 50);
+      assert.equal(prepared.duplicate_rows_removed, 1);
+      assert.equal(prepared.unusable_rows_removed, 1);
+      assert.equal(prepared.row_count, 48);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it("prepares deterministic stratified classification splits from a confirmed mapping", () => {
+    const root = mkdtempSync(join(tmpdir(), "understudy-classification-dataset-"));
+    try {
+      const source = join(root, "expenses.csv");
+      const labels = ["meals", "office_supplies", "travel"];
+      const merchantGroups = ["alder", "birch", "cedar", "dogwood", "elm", "fir"];
+      const rows = Array.from({ length: 90 }, (_, index) => {
+        const label = labels[index % labels.length];
+        const merchant = merchantGroups[Math.floor(index / labels.length) % merchantGroups.length];
+        return `${label}-${merchant},expense ${index},${(index + 1).toFixed(2)},${label}`;
+      });
+      writeFileSync(source, ["merchant,description,amount,category", ...rows].join("\n"));
+      const outputRoot = join(root, "artifacts");
+      const compiledResult = run([
+        "capture-import", "compile", "--source", source, "--output-root", outputRoot, "--json",
+      ]);
+      assert.equal(compiledResult.status, 0, compiledResult.stderr);
+      const compiled = JSON.parse(compiledResult.stdout);
+      const inspectionResult = run([
+        "capture-import", "inspect-csv", "--source", source, "--artifact-root", compiled.artifact_root, "--json",
+      ]);
+      assert.equal(inspectionResult.status, 0, inspectionResult.stderr);
+      assert.equal(JSON.parse(inspectionResult.stdout).training_readiness.ready, true);
+
+      const args = [
+        "capture-import",
+        "prepare-classification",
+        "--source",
+        source,
+        "--artifact-root",
+        compiled.artifact_root,
+        "--input-column",
+        "merchant",
+        "--input-column",
+        "description",
+        "--input-column",
+        "amount",
+        "--label-column",
+        "category",
+        "--group-column",
+        "merchant",
+        "--json",
+      ];
+      const result = run(args);
+      assert.equal(result.status, 0, result.stderr);
+      const dataset = JSON.parse(result.stdout);
+      assert.equal(dataset.schema_version, "understudy.capture_import.classification_dataset.v2");
+      assert.equal(dataset.local_only, true);
+      assert.equal(dataset.network_required, false);
+      assert.equal(dataset.mapping_confirmation, "caller-provided");
+      assert.equal(dataset.source_rows_persisted_as_transformed_examples, true);
+      assert.equal(dataset.row_count, 90);
+      assert.deepEqual(dataset.mapping, {
+        input_columns: ["merchant", "description", "amount"],
+        label_column: "category",
+        group_column: "merchant",
+        text_template: "named-fields-v1",
+      });
+      assert.deepEqual(dataset.split_policy, {
+        name: "deterministic-stratified-group-aware-v2",
+        allocation: "per-label-deterministic-group-greedy-v1",
+        group_key: "merchant",
+        group_normalization: "casefold-reference-stripping-v1",
+        no_group_overlap: true,
+        target_train_ratio: 0.7,
+        target_dev_ratio: 0.15,
+        target_holdout_ratio: 0.15,
+        holdout_reserved_for_final_validation: true,
+      });
+      assert.deepEqual(dataset.labels, labels);
+      assert.equal(dataset.splits.train.row_count, 60);
+      assert.equal(dataset.splits.dev.row_count, 15);
+      assert.equal(dataset.splits.holdout.row_count, 15);
+
+      const splitRows = Object.fromEntries(Object.entries(dataset.splits).map(([name, split]) => [
+        name,
+        readFileSync(split.path, "utf8").trim().split("\n").map(JSON.parse),
+      ]));
+      const allIds = Object.values(splitRows).flat().map((row) => row.example_id);
+      assert.equal(new Set(allIds).size, 90);
+      for (const rowsForSplit of Object.values(splitRows)) {
+        assert.deepEqual([...new Set(rowsForSplit.map((row) => row.label))].sort(), labels);
+        assert.ok(rowsForSplit.every((row) => row.schema_version === "understudy.classification_example.v2"));
+        assert.ok(rowsForSplit.every((row) => /^[a-f0-9]{24}$/.test(row.group_id)));
+        assert.ok(rowsForSplit.every((row) => row.text.includes("merchant:")));
+      }
+      const splitGroups = Object.fromEntries(Object.entries(splitRows).map(([name, split]) => [
+        name,
+        new Set(split.map((row) => row.group_id)),
+      ]));
+      assert.equal([...splitGroups.train].some((group) => splitGroups.dev.has(group)), false);
+      assert.equal([...splitGroups.train].some((group) => splitGroups.holdout.has(group)), false);
+      assert.equal([...splitGroups.dev].some((group) => splitGroups.holdout.has(group)), false);
+      const repeated = run(args);
+      assert.equal(repeated.status, 0, repeated.stderr);
+      const repeatedDataset = JSON.parse(repeated.stdout);
+      assert.equal(repeatedDataset.dataset_id, dataset.dataset_id);
+      assert.equal(repeatedDataset.splits.train.sha256, dataset.splits.train.sha256);
+      assert.equal(repeatedDataset.splits.dev.sha256, dataset.splits.dev.sha256);
+      assert.equal(repeatedDataset.splits.holdout.sha256, dataset.splits.holdout.sha256);
+
+      writeFileSync(source, ["merchant,description,amount,category", ...rows, "late,row,1.00,meals"].join("\n"));
+      const changed = run(args);
+      assert.notEqual(changed.status, 0);
+      assert.match(changed.stderr, /changed after inspection/);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it("fails closed on malformed CSV rows and unsupported payloads", () => {
+    const root = mkdtempSync(join(tmpdir(), "understudy-csv-invalid-"));
+    try {
+      const artifactRoot = join(root, "artifacts");
+      mkdirSync(artifactRoot);
+      const malformed = join(root, "malformed.csv");
+      writeFileSync(malformed, "input,category\none,yes\ntwo\n");
+      const malformedResult = run([
+        "capture-import",
+        "inspect-csv",
+        "--source",
+        malformed,
+        "--artifact-root",
+        artifactRoot,
+        "--json",
+      ]);
+      assert.notEqual(malformedResult.status, 0);
+      assert.match(malformedResult.stderr, /record 3 has 1 fields; expected 2/);
+      assert.equal(existsSync(join(artifactRoot, "csv-inspection.json")), false);
+
+      const text = join(root, "not-table.bin");
+      writeFileSync(text, "input,label\none,yes\n");
+      const textResult = run([
+        "capture-import",
+        "inspect-csv",
+        "--source",
+        text,
+        "--artifact-root",
+        artifactRoot,
+        "--json",
+      ]);
+      assert.notEqual(textResult.status, 0);
+      assert.match(textResult.stderr, /supports \.csv, \.tsv, \.tab, \.txt, or extensionless files/);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it("bounds a dropped directory and classifies broad local source material", () => {
+    const root = mkdtempSync(join(tmpdir(), "understudy-drop-directory-"));
+    try {
+      mkdirSync(join(root, "node_modules"), { recursive: true });
+      writeFileSync(join(root, "00-brief.pdf"), "not read");
+      writeFileSync(join(root, "01-scores.xlsx"), "not read");
+      writeFileSync(join(root, "02-worker.rs"), "not read");
+      writeFileSync(join(root, "03-raw.unknown"), "not read");
+      writeFileSync(join(root, "node_modules", "ignored.ts"), "not scanned");
+      for (let index = 0; index < 1_001; index += 1) {
+        writeFileSync(join(root, `sample-${String(index).padStart(4, "0")}.txt`), "x");
+      }
+
+      const outputRoot = join(root, "artifacts");
+      const result = run(["capture-import", "compile", "--source", root, "--output-root", outputRoot, "--json"]);
+      assert.equal(result.status, 0, result.stderr);
+      const compiled = JSON.parse(result.stdout);
+      assert.equal(compiled.source_type, "directory");
+      assert.equal(compiled.scanned_file_count, 1_005);
+      assert.equal(compiled.source_count, 1_000);
+      assert.equal(compiled.truncated, true);
+      assert.ok(compiled.source_kinds.document > 0);
+      assert.equal(compiled.source_kinds.spreadsheet, 1);
+      assert.equal(compiled.source_kinds["source-file"], 1);
+      assert.equal(compiled.source_kinds["local-file"], 1);
+      assert.ok(!result.stdout.includes("node_modules"));
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
 });
 
 describe("two-phase email login", () => {

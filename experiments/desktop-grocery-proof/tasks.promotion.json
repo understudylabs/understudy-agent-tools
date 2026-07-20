@@ -1,0 +1,242 @@
+[
+  {
+    "id": "code-lost-update-inventory",
+    "workflow": "codebase-analysis",
+    "workflow_title": "Codebase analysis",
+    "title": "Concurrent inventory reservation",
+    "prompt": "Review this synthetic grocery inventory code. Return only one minified JSON object with exactly the keys bug, affected_entity, and fix. Allowed bug values: lost_update, stale_write, missing_idempotency, double_charge, or none. Allowed fix values: atomic_conditional_decrement, compare_and_swap, idempotency_key, unique_constraint, mutex, or none.\n\nasync function reserve(sku) { const current = await db.get(sku); if (current.available > 0) await db.set(sku, { available: current.available - 1 }); }\nawait Promise.all([reserve(\"APPLE-1\"), reserve(\"APPLE-1\")]);",
+    "expected": { "bug": "lost_update", "affected_entity": "APPLE-1", "fix": "atomic_conditional_decrement" }
+  },
+  {
+    "id": "code-stale-price-write",
+    "workflow": "codebase-analysis",
+    "workflow_title": "Codebase analysis",
+    "title": "Stale catalog price update",
+    "prompt": "Review this synthetic grocery catalog code. Return only one minified JSON object with exactly the keys bug, affected_entity, and fix. Allowed bug values: lost_update, stale_write, missing_idempotency, double_charge, or none. Allowed fix values: atomic_conditional_decrement, compare_and_swap, idempotency_key, unique_constraint, mutex, or none. Two workers read product version 7. Worker A writes price 5.49 and version 8. Worker B, still holding version 7, later writes price 4.99 without checking the version. Identify the primary bug and fix for SKU OAT-32.",
+    "expected": { "bug": "stale_write", "affected_entity": "OAT-32", "fix": "compare_and_swap" }
+  },
+  {
+    "id": "code-webhook-idempotency",
+    "workflow": "codebase-analysis",
+    "workflow_title": "Codebase analysis",
+    "title": "Retried payment webhook",
+    "prompt": "Review this synthetic grocery payment handler. Return only one minified JSON object with exactly the keys bug, affected_entity, and fix. Allowed bug values: lost_update, stale_write, missing_idempotency, double_charge, or none. Allowed fix values: atomic_conditional_decrement, compare_and_swap, idempotency_key, unique_constraint, mutex, or none.\n\nasync function onPaid(event) { await ledger.credit(event.order_id, event.amount); return { ok: true }; }\nThe provider retries event evt-204 after a timeout, and the handler has no event-id check. The affected entity is evt-204.",
+    "expected": { "bug": "missing_idempotency", "affected_entity": "evt-204", "fix": "idempotency_key" }
+  },
+  {
+    "id": "code-duplicate-order-insert",
+    "workflow": "codebase-analysis",
+    "workflow_title": "Codebase analysis",
+    "title": "Concurrent order creation",
+    "prompt": "Review this synthetic grocery order code. Return only one minified JSON object with exactly the keys bug, affected_entity, and fix. Allowed bug values: lost_update, stale_write, missing_idempotency, double_charge, or none. Allowed fix values: atomic_conditional_decrement, compare_and_swap, idempotency_key, unique_constraint, mutex, or none.\n\nif (!(await orders.exists(request.order_id))) { await orders.insert(request); }\nTwo workers handle order-88 concurrently and the table has no uniqueness constraint.",
+    "expected": { "bug": "missing_idempotency", "affected_entity": "order-88", "fix": "unique_constraint" }
+  },
+  {
+    "id": "code-mutex-protected-reservation",
+    "workflow": "codebase-analysis",
+    "workflow_title": "Codebase analysis",
+    "title": "Mutex-protected reservation",
+    "prompt": "Review this synthetic grocery inventory code. Return only one minified JSON object with exactly the keys bug, affected_entity, and fix. Allowed bug values: lost_update, stale_write, missing_idempotency, double_charge, or none. Allowed fix values: atomic_conditional_decrement, compare_and_swap, idempotency_key, unique_constraint, mutex, or none.\n\nawait locks.withKey(\"BANANA-2\", async () => { const current = await db.get(\"BANANA-2\"); if (current.available > 0) await db.set(\"BANANA-2\", { available: current.available - 1 }); });",
+    "expected": { "bug": "none", "affected_entity": "BANANA-2", "fix": "none" }
+  },
+  {
+    "id": "code-atomic-sql-decrement",
+    "workflow": "codebase-analysis",
+    "workflow_title": "Codebase analysis",
+    "title": "Atomic SQL inventory decrement",
+    "prompt": "Review this synthetic grocery inventory query. Return only one minified JSON object with exactly the keys bug, affected_entity, and fix. Allowed bug values: lost_update, stale_write, missing_idempotency, double_charge, or none. Allowed fix values: atomic_conditional_decrement, compare_and_swap, idempotency_key, unique_constraint, mutex, or none.\n\nUPDATE inventory SET available = available - 2 WHERE sku = 'RICE-5' AND available >= 2;\nThe caller succeeds only when exactly one row is updated.",
+    "expected": { "bug": "none", "affected_entity": "RICE-5", "fix": "none" }
+  },
+  {
+    "id": "code-cache-refresh-race",
+    "workflow": "codebase-analysis",
+    "workflow_title": "Codebase analysis",
+    "title": "Out-of-order cache refresh",
+    "prompt": "Review this synthetic grocery availability cache flow. Return only one minified JSON object with exactly the keys bug, affected_entity, and fix. Allowed bug values: lost_update, stale_write, missing_idempotency, double_charge, or none. Allowed fix values: atomic_conditional_decrement, compare_and_swap, idempotency_key, unique_constraint, mutex, or none. Refresh A reads version 12, refresh B reads version 13 and writes it, then refresh A overwrites the cache without a version check. The affected entity is STORE-4.",
+    "expected": { "bug": "stale_write", "affected_entity": "STORE-4", "fix": "compare_and_swap" }
+  },
+  {
+    "id": "code-coupon-redemption-race",
+    "workflow": "codebase-analysis",
+    "workflow_title": "Codebase analysis",
+    "title": "Concurrent coupon redemption",
+    "prompt": "Review this synthetic grocery promotion code. Return only one minified JSON object with exactly the keys bug, affected_entity, and fix. Allowed bug values: lost_update, stale_write, missing_idempotency, double_charge, or none. Allowed fix values: atomic_conditional_decrement, compare_and_swap, idempotency_key, unique_constraint, mutex, or none.\n\nconst coupon = await db.get(\"SAVE10\"); if (coupon.remaining > 0) await db.set(\"SAVE10\", { remaining: coupon.remaining - 1 });\nTwo checkouts execute concurrently.",
+    "expected": { "bug": "lost_update", "affected_entity": "SAVE10", "fix": "atomic_conditional_decrement" }
+  },
+  {
+    "id": "code-charge-before-record",
+    "workflow": "codebase-analysis",
+    "workflow_title": "Codebase analysis",
+    "title": "Charge retry after partial failure",
+    "prompt": "Review this synthetic grocery checkout code. Return only one minified JSON object with exactly the keys bug, affected_entity, and fix. Allowed bug values: lost_update, stale_write, missing_idempotency, double_charge, or none. Allowed fix values: atomic_conditional_decrement, compare_and_swap, idempotency_key, unique_constraint, mutex, or none.\n\nawait payments.charge(order.total); await orders.markPaid(order.id);\nThe process crashes after the charge for order-91, then the whole function retries with no payment idempotency key.",
+    "expected": { "bug": "double_charge", "affected_entity": "order-91", "fix": "idempotency_key" }
+  },
+  {
+    "id": "code-unique-order-upsert",
+    "workflow": "codebase-analysis",
+    "workflow_title": "Codebase analysis",
+    "title": "Idempotent order upsert",
+    "prompt": "Review this synthetic grocery order write. Return only one minified JSON object with exactly the keys bug, affected_entity, and fix. Allowed bug values: lost_update, stale_write, missing_idempotency, double_charge, or none. Allowed fix values: atomic_conditional_decrement, compare_and_swap, idempotency_key, unique_constraint, mutex, or none. The orders table has UNIQUE(order_id), and the handler inserts order-105 with ON CONFLICT(order_id) DO NOTHING.",
+    "expected": { "bug": "none", "affected_entity": "order-105", "fix": "none" }
+  },
+  {
+    "id": "cart-vegan-allergy-match",
+    "workflow": "cart-assistant",
+    "workflow_title": "Cart assistant",
+    "title": "Vegan allergy-safe milk substitution",
+    "prompt": "Choose a substitute for a synthetic grocery cart. Return only one minified JSON object with exactly the keys substitute_sku, quantity, and reason_code. Allowed reason_code values: exact_constraint_match or no_safe_substitute. Need two 32 oz cartons; vegan; severe peanut allergy; at most $1.00 more than the $4.99 original. Candidates: OAT-32={vegan:true,allergens:[],size_oz:32,stock:2,price:5.49}; DAIRY-32={vegan:false,allergens:[],size_oz:32,stock:8,price:4.49}; PB-OAT-32={vegan:true,allergens:[peanut],size_oz:32,stock:6,price:4.99}.",
+    "expected": { "substitute_sku": "OAT-32", "quantity": 2, "reason_code": "exact_constraint_match" }
+  },
+  {
+    "id": "cart-no-gluten-safe-bread",
+    "workflow": "cart-assistant",
+    "workflow_title": "Cart assistant",
+    "title": "No safe gluten-free bread",
+    "prompt": "Choose a substitute for a synthetic grocery cart. Return only one minified JSON object with exactly the keys substitute_sku, quantity, and reason_code. Allowed reason_code values: exact_constraint_match or no_safe_substitute. Need one gluten-free 20 oz loaf, severe sesame allergy, stock at least 1, price at most $7.00. Candidates: GF-SESAME={gluten_free:true,allergens:[sesame],size_oz:20,stock:4,price:6.49}; WHEAT-20={gluten_free:false,allergens:[],size_oz:20,stock:8,price:4.49}; GF-16={gluten_free:true,allergens:[],size_oz:16,stock:3,price:5.99}.",
+    "expected": { "substitute_sku": "none", "quantity": 0, "reason_code": "no_safe_substitute" }
+  },
+  {
+    "id": "cart-size-equivalent-yogurt",
+    "workflow": "cart-assistant",
+    "workflow_title": "Cart assistant",
+    "title": "Equivalent yogurt pack size",
+    "prompt": "Choose a substitute for a synthetic grocery cart. Return only one minified JSON object with exactly the keys substitute_sku, quantity, and reason_code. Allowed reason_code values: exact_constraint_match or no_safe_substitute. Need 24 oz total plain unsweetened yogurt, dairy allowed, stock sufficient, total price at most $7.00. Candidates: YOG-24={plain:true,sweetened:false,size_oz:24,stock:0,price:5.99}; YOG-12={plain:true,sweetened:false,size_oz:12,stock:2,price:3.25}; VAN-24={plain:false,sweetened:true,size_oz:24,stock:4,price:5.49}.",
+    "expected": { "substitute_sku": "YOG-12", "quantity": 2, "reason_code": "exact_constraint_match" }
+  },
+  {
+    "id": "cart-low-sodium-broth",
+    "workflow": "cart-assistant",
+    "workflow_title": "Cart assistant",
+    "title": "Low-sodium broth substitution",
+    "prompt": "Choose a substitute for a synthetic grocery cart. Return only one minified JSON object with exactly the keys substitute_sku, quantity, and reason_code. Allowed reason_code values: exact_constraint_match or no_safe_substitute. Need three 32 oz vegetable broths, vegan, sodium at most 140 mg per serving, price at most $4.50, stock at least 3. Candidates: VEG-LOW={vegan:true,sodium_mg:120,size_oz:32,stock:3,price:4.25}; CHICKEN-LOW={vegan:false,sodium_mg:110,size_oz:32,stock:6,price:3.99}; VEG-REG={vegan:true,sodium_mg:480,size_oz:32,stock:8,price:3.49}.",
+    "expected": { "substitute_sku": "VEG-LOW", "quantity": 3, "reason_code": "exact_constraint_match" }
+  },
+  {
+    "id": "cart-kosher-stock-shortage",
+    "workflow": "cart-assistant",
+    "workflow_title": "Cart assistant",
+    "title": "Kosher stock shortfall",
+    "prompt": "Choose a substitute for a synthetic grocery cart. Return only one minified JSON object with exactly the keys substitute_sku, quantity, and reason_code. Allowed reason_code values: exact_constraint_match or no_safe_substitute. Need four identical 15 oz canned beans, kosher certified, no substitutions across SKUs, stock at least 4. Candidates: BEAN-K={kosher:true,size_oz:15,stock:3,price:1.49}; BEAN-NK={kosher:false,size_oz:15,stock:10,price:1.19}; BEAN-K-30={kosher:true,size_oz:30,stock:2,price:2.79}.",
+    "expected": { "substitute_sku": "none", "quantity": 0, "reason_code": "no_safe_substitute" }
+  },
+  {
+    "id": "cart-sugar-free-cereal",
+    "workflow": "cart-assistant",
+    "workflow_title": "Cart assistant",
+    "title": "Sugar-free cereal substitution",
+    "prompt": "Choose a substitute for a synthetic grocery cart. Return only one minified JSON object with exactly the keys substitute_sku, quantity, and reason_code. Allowed reason_code values: exact_constraint_match or no_safe_substitute. Need one cereal box between 12 and 16 oz, zero added sugar, nut-free, price at most $6.00. Candidates: ZERO-14={added_sugar_g:0,allergens:[],size_oz:14,stock:4,price:5.49}; KETO-12={added_sugar_g:0,allergens:[almond],size_oz:12,stock:5,price:5.99}; OAT-18={added_sugar_g:0,allergens:[],size_oz:18,stock:6,price:4.99}.",
+    "expected": { "substitute_sku": "ZERO-14", "quantity": 1, "reason_code": "exact_constraint_match" }
+  },
+  {
+    "id": "cart-organic-egg-budget",
+    "workflow": "cart-assistant",
+    "workflow_title": "Cart assistant",
+    "title": "Organic egg budget ceiling",
+    "prompt": "Choose a substitute for a synthetic grocery cart. Return only one minified JSON object with exactly the keys substitute_sku, quantity, and reason_code. Allowed reason_code values: exact_constraint_match or no_safe_substitute. Need one dozen organic cage-free eggs, price at most $6.50, stock at least 1. Candidates: ORG-CF-12={organic:true,cage_free:true,count:12,stock:2,price:6.29}; ORG-12={organic:true,cage_free:false,count:12,stock:5,price:5.99}; CF-12={organic:false,cage_free:true,count:12,stock:8,price:4.49}.",
+    "expected": { "substitute_sku": "ORG-CF-12", "quantity": 1, "reason_code": "exact_constraint_match" }
+  },
+  {
+    "id": "cart-frozen-delivery-window",
+    "workflow": "cart-assistant",
+    "workflow_title": "Cart assistant",
+    "title": "Frozen item delivery constraint",
+    "prompt": "Choose a substitute for a synthetic grocery cart. Return only one minified JSON object with exactly the keys substitute_sku, quantity, and reason_code. Allowed reason_code values: exact_constraint_match or no_safe_substitute. Need two 16 oz frozen berry bags, frozen-chain eligible for a two-hour route, no added sugar, stock at least 2. Candidates: BERRY-FROZEN={frozen_chain:true,max_route_hours:3,added_sugar:false,size_oz:16,stock:2}; BERRY-CHILL={frozen_chain:false,max_route_hours:4,added_sugar:false,size_oz:16,stock:6}; BERRY-SWEET={frozen_chain:true,max_route_hours:3,added_sugar:true,size_oz:16,stock:5}.",
+    "expected": { "substitute_sku": "BERRY-FROZEN", "quantity": 2, "reason_code": "exact_constraint_match" }
+  },
+  {
+    "id": "cart-halal-protein",
+    "workflow": "cart-assistant",
+    "workflow_title": "Cart assistant",
+    "title": "Halal protein substitution",
+    "prompt": "Choose a substitute for a synthetic grocery cart. Return only one minified JSON object with exactly the keys substitute_sku, quantity, and reason_code. Allowed reason_code values: exact_constraint_match or no_safe_substitute. Need two 1 lb ground-protein packs, halal certified, beef or turkey only, price at most $8.00 per pack, stock at least 2. Candidates: TURKEY-H={halal:true,protein:turkey,weight_lb:1,stock:2,price:7.49}; BEEF-NH={halal:false,protein:beef,weight_lb:1,stock:6,price:6.99}; CHICKEN-H={halal:true,protein:chicken,weight_lb:1,stock:5,price:5.99}.",
+    "expected": { "substitute_sku": "TURKEY-H", "quantity": 2, "reason_code": "exact_constraint_match" }
+  },
+  {
+    "id": "cart-baby-formula-exact",
+    "workflow": "cart-assistant",
+    "workflow_title": "Cart assistant",
+    "title": "Exact baby formula requirement",
+    "prompt": "Choose a substitute for a synthetic grocery cart. Return only one minified JSON object with exactly the keys substitute_sku, quantity, and reason_code. Allowed reason_code values: exact_constraint_match or no_safe_substitute. Need one 20 oz hypoallergenic infant formula; substitutions must be hypoallergenic and infant stage 1; stock at least 1. Candidates: HA-STAGE2={hypoallergenic:true,stage:2,size_oz:20,stock:3}; SENSITIVE-1={hypoallergenic:false,stage:1,size_oz:20,stock:4}; HA-1-12={hypoallergenic:true,stage:1,size_oz:12,stock:2}.",
+    "expected": { "substitute_sku": "none", "quantity": 0, "reason_code": "no_safe_substitute" }
+  },
+  {
+    "id": "ops-mixed-critical",
+    "workflow": "ops-classification",
+    "workflow_title": "Operations classification",
+    "title": "Mixed critical exceptions",
+    "prompt": "Classify three synthetic grocery order exceptions. Return only one minified JSON object whose keys are order-201, order-202, and order-203. Allowed values: cold_chain, fraud_review, courier_delay, or no_action. Rules in priority order: temperature above 41F for more than 30 minutes => cold_chain; otherwise at least 5 payment retries plus billing mismatch => fraud_review; otherwise courier more than 20 minutes late while food remains safe => courier_delay; otherwise no_action. Events: order-201 temperature=46F duration=38m; order-202 payment_retries=6 billing_mismatch=true; order-203 courier_late=25m food_safe=true.",
+    "expected": { "order-201": "cold_chain", "order-202": "fraud_review", "order-203": "courier_delay" }
+  },
+  {
+    "id": "ops-boundary-no-action",
+    "workflow": "ops-classification",
+    "workflow_title": "Operations classification",
+    "title": "Threshold boundary handling",
+    "prompt": "Classify three synthetic grocery order exceptions. Return only one minified JSON object whose keys are order-204, order-205, and order-206. Allowed values: cold_chain, fraud_review, courier_delay, or no_action. Rules in priority order: temperature above 41F for more than 30 minutes => cold_chain; otherwise at least 5 payment retries plus billing mismatch => fraud_review; otherwise courier more than 20 minutes late while food remains safe => courier_delay; otherwise no_action. Events: order-204 temperature=41F duration=45m; order-205 payment_retries=4 billing_mismatch=true; order-206 courier_late=20m food_safe=true.",
+    "expected": { "order-204": "no_action", "order-205": "no_action", "order-206": "no_action" }
+  },
+  {
+    "id": "ops-priority-cold-chain",
+    "workflow": "ops-classification",
+    "workflow_title": "Operations classification",
+    "title": "Cold-chain priority",
+    "prompt": "Classify three synthetic grocery order exceptions. Return only one minified JSON object whose keys are order-207, order-208, and order-209. Allowed values: cold_chain, fraud_review, courier_delay, or no_action. Rules in priority order: temperature above 41F for more than 30 minutes => cold_chain; otherwise at least 5 payment retries plus billing mismatch => fraud_review; otherwise courier more than 20 minutes late while food remains safe => courier_delay; otherwise no_action. Events: order-207 temperature=48F duration=35m payment_retries=7 billing_mismatch=true; order-208 temperature=44F duration=31m courier_late=50m food_safe=false; order-209 temperature=40F duration=60m payment_retries=5 billing_mismatch=true.",
+    "expected": { "order-207": "cold_chain", "order-208": "cold_chain", "order-209": "fraud_review" }
+  },
+  {
+    "id": "ops-fraud-conjunction",
+    "workflow": "ops-classification",
+    "workflow_title": "Operations classification",
+    "title": "Fraud rule conjunction",
+    "prompt": "Classify three synthetic grocery order exceptions. Return only one minified JSON object whose keys are order-210, order-211, and order-212. Allowed values: cold_chain, fraud_review, courier_delay, or no_action. Rules in priority order: temperature above 41F for more than 30 minutes => cold_chain; otherwise at least 5 payment retries plus billing mismatch => fraud_review; otherwise courier more than 20 minutes late while food remains safe => courier_delay; otherwise no_action. Events: order-210 payment_retries=5 billing_mismatch=true; order-211 payment_retries=8 billing_mismatch=false; order-212 payment_retries=2 billing_mismatch=true.",
+    "expected": { "order-210": "fraud_review", "order-211": "no_action", "order-212": "no_action" }
+  },
+  {
+    "id": "ops-courier-food-safety",
+    "workflow": "ops-classification",
+    "workflow_title": "Operations classification",
+    "title": "Courier delay safety condition",
+    "prompt": "Classify three synthetic grocery order exceptions. Return only one minified JSON object whose keys are order-213, order-214, and order-215. Allowed values: cold_chain, fraud_review, courier_delay, or no_action. Rules in priority order: temperature above 41F for more than 30 minutes => cold_chain; otherwise at least 5 payment retries plus billing mismatch => fraud_review; otherwise courier more than 20 minutes late while food remains safe => courier_delay; otherwise no_action. Events: order-213 courier_late=21m food_safe=true; order-214 courier_late=45m food_safe=false; order-215 courier_late=19m food_safe=true.",
+    "expected": { "order-213": "courier_delay", "order-214": "no_action", "order-215": "no_action" }
+  },
+  {
+    "id": "ops-duration-threshold",
+    "workflow": "ops-classification",
+    "workflow_title": "Operations classification",
+    "title": "Cold-chain duration threshold",
+    "prompt": "Classify three synthetic grocery order exceptions. Return only one minified JSON object whose keys are order-216, order-217, and order-218. Allowed values: cold_chain, fraud_review, courier_delay, or no_action. Rules in priority order: temperature above 41F for more than 30 minutes => cold_chain; otherwise at least 5 payment retries plus billing mismatch => fraud_review; otherwise courier more than 20 minutes late while food remains safe => courier_delay; otherwise no_action. Events: order-216 temperature=42F duration=30m; order-217 temperature=42F duration=31m; order-218 temperature=41F duration=31m.",
+    "expected": { "order-216": "no_action", "order-217": "cold_chain", "order-218": "no_action" }
+  },
+  {
+    "id": "ops-priority-fraud-over-delay",
+    "workflow": "ops-classification",
+    "workflow_title": "Operations classification",
+    "title": "Fraud priority over courier delay",
+    "prompt": "Classify three synthetic grocery order exceptions. Return only one minified JSON object whose keys are order-219, order-220, and order-221. Allowed values: cold_chain, fraud_review, courier_delay, or no_action. Rules in priority order: temperature above 41F for more than 30 minutes => cold_chain; otherwise at least 5 payment retries plus billing mismatch => fraud_review; otherwise courier more than 20 minutes late while food remains safe => courier_delay; otherwise no_action. Events: order-219 payment_retries=6 billing_mismatch=true courier_late=35m food_safe=true; order-220 payment_retries=6 billing_mismatch=false courier_late=35m food_safe=true; order-221 payment_retries=5 billing_mismatch=true courier_late=10m food_safe=true.",
+    "expected": { "order-219": "fraud_review", "order-220": "courier_delay", "order-221": "fraud_review" }
+  },
+  {
+    "id": "ops-clean-orders",
+    "workflow": "ops-classification",
+    "workflow_title": "Operations classification",
+    "title": "Clean order batch",
+    "prompt": "Classify three synthetic grocery order exceptions. Return only one minified JSON object whose keys are order-222, order-223, and order-224. Allowed values: cold_chain, fraud_review, courier_delay, or no_action. Rules in priority order: temperature above 41F for more than 30 minutes => cold_chain; otherwise at least 5 payment retries plus billing mismatch => fraud_review; otherwise courier more than 20 minutes late while food remains safe => courier_delay; otherwise no_action. Events: order-222 temperature=38F duration=50m; order-223 payment_retries=1 billing_mismatch=false; order-224 courier_late=8m food_safe=true.",
+    "expected": { "order-222": "no_action", "order-223": "no_action", "order-224": "no_action" }
+  },
+  {
+    "id": "ops-missing-safe-flag",
+    "workflow": "ops-classification",
+    "workflow_title": "Operations classification",
+    "title": "Incomplete courier evidence",
+    "prompt": "Classify three synthetic grocery order exceptions. Return only one minified JSON object whose keys are order-225, order-226, and order-227. Allowed values: cold_chain, fraud_review, courier_delay, or no_action. Rules in priority order: temperature above 41F for more than 30 minutes => cold_chain; otherwise at least 5 payment retries plus billing mismatch => fraud_review; otherwise courier more than 20 minutes late while food remains safe=true => courier_delay; otherwise no_action. Events: order-225 courier_late=30m food_safe=unknown; order-226 courier_late=30m food_safe=true; order-227 courier_late=30m food_safe=false.",
+    "expected": { "order-225": "no_action", "order-226": "courier_delay", "order-227": "no_action" }
+  },
+  {
+    "id": "ops-multi-signal-final",
+    "workflow": "ops-classification",
+    "workflow_title": "Operations classification",
+    "title": "Multi-signal priority audit",
+    "prompt": "Classify three synthetic grocery order exceptions. Return only one minified JSON object whose keys are order-228, order-229, and order-230. Allowed values: cold_chain, fraud_review, courier_delay, or no_action. Rules in priority order: temperature above 41F for more than 30 minutes => cold_chain; otherwise at least 5 payment retries plus billing mismatch => fraud_review; otherwise courier more than 20 minutes late while food remains safe => courier_delay; otherwise no_action. Events: order-228 temperature=43F duration=45m payment_retries=9 billing_mismatch=true courier_late=60m food_safe=false; order-229 temperature=40F duration=45m payment_retries=7 billing_mismatch=true courier_late=60m food_safe=true; order-230 temperature=40F duration=45m payment_retries=2 billing_mismatch=false courier_late=60m food_safe=true.",
+    "expected": { "order-228": "cold_chain", "order-229": "fraud_review", "order-230": "courier_delay" }
+  }
+]

@@ -200,9 +200,10 @@ The main lever is swapping the policy model with tools held fixed. Procedure:
 
 3. Read quality from the rubric and latency/cost from the `ToolEnv` rollout
    metadata. Tabulate quality vs latency vs cost across candidates.
-4. Pick the model you would ship under the `acceptable_regression` band: usually
-   the cheapest/fastest model whose quality stays within band, not the absolute
-   top-quality model.
+4. Pick the model you would ship for the named objective under the
+   `acceptable_regression` band. Compare expected quality, latency, spend, and
+   confidence explicitly; do not make the lowest-cost model the default when a
+   stronger or faster model would materially improve the outcome.
 5. Clear routes you are done with:
 
    ```sh
@@ -223,7 +224,7 @@ Inference defaults to Understudy after explicit approval via
 the developer prefers. Keep provider, model, budget, and data class in the local
 run artifact before any live call.
 
-## Secondary Intervention: GEPA the Cheap Model's Prompt
+## Secondary Intervention: GEPA a Promising Model's Prompt
 
 If a cheaper model wins latency/cost but trails on quality, optimize its prompt
 to close the gap while keeping the win. GEPA is train/dev-only and feeds on the
@@ -232,8 +233,9 @@ precondition. Hand the actual run to
 [`../../optimize-workload/SKILL.md`](../../optimize-workload/SKILL.md):
 
 - it refuses stale artifacts (hash check) and never touches holdout;
-- it climbs the cheapest-intervention ladder (prompt prefill/repair → context
-  trimming → route swap → GEPA);
+- it ranks interventions by expected progress toward the objective (prompt
+  prefill/repair, context trimming, route swap, or GEPA) and states their
+  cost/time tradeoffs;
 - it requires `claim.json` before any savings statement.
 
 For an agentic loop, useful prompt targets are: when to stop searching (turn

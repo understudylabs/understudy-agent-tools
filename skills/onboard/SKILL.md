@@ -25,8 +25,9 @@ profile schema, interview bank, tooling-detection table — is in
 ## Safety Gates
 
 - **Download approval + size cap.** Name the exact model, quantization, and disk
-  size, and get a quick yes before pulling weights. Default to the *smallest*
-  American open model that gives a real win.
+  size, and get a quick yes before pulling weights. Default to the smallest
+  verified American open model that gives a real onboarding win, and label it
+  as a bootstrap model rather than a workload recommendation.
 - **Local-first, no upload.** Profiling, interview answers, and the model run
   entirely on the machine. The profile is local; it holds preferences and
   detected tooling — never secrets, keys, or customer data.
@@ -71,13 +72,11 @@ and build an opportunity ledger before any code edits or provider calls.
    `~/.understudy/models/gemma-4-e2b-it-qat-mlx-vlm-understudy` and logs progress/ETA under
    `~/.understudy/agent-tools/logs/`. If the MLX runtime is missing, the slow
    step is *install MLX + pull* — get one quick approval, then background it.
-   **Check the session URL before promising the pull**: if it answers
-   `{"error":"unknown model"}`, the QAT snapshot has not been published to the
-   snapshot service yet — fall back to the published vanilla
-   `gemma-4-e2b-it-mlx-vlm-4bit` (about 3.3 GB, same family and serving stack)
-   and say it is an interim stand-in for the official Understudy rung; only
-   reach for `mlx-community/gemma-3-1b-it-4bit` when disk/RAM is severely
-   constrained. Then immediately move on; do not watch the bar.
+   Read `understudy models snapshots` before promising the pull. If the live
+   catalog and bundled certified fallback disagree with the session endpoint,
+   surface the mismatch and offer the CLI repair flow; do not silently install
+   a vanilla or third-party model. Then immediately move on; do not watch the
+   bar.
 
 2. **Profile the machine (while it downloads).** Detect OS/chip (Apple Silicon
    vs CUDA), RAM / unified memory, free disk. State what fits locally. This is

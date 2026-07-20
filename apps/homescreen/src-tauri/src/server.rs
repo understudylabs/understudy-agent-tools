@@ -11,8 +11,9 @@
 // run on the Tauri async runtime.
 
 use axum::{
+    body::{Body, Bytes},
     extract::{Path, Query, Request, State},
-    http::{HeaderMap, StatusCode},
+    http::{header, HeaderMap, HeaderValue, StatusCode},
     middleware::Next,
     response::{IntoResponse, Response},
     routing::{get, post},
@@ -24,6 +25,7 @@ use tauri::{AppHandle, Emitter, Manager};
 const DEFAULT_PORT: u16 = 17790;
 const TOKEN_KEY: &str = "server_token";
 const PORT_KEY: &str = "server_port";
+const AGENT_CHAT_BODY_LIMIT: usize = 44 * 1024 * 1024;
 
 #[derive(Clone)]
 pub struct Ctx {
@@ -82,6 +84,10 @@ pub fn router(ctx: Ctx) -> Router {
         .route("/api/fusion/run-active", get(fusion_run_active))
         .route("/api/fusion/run-cancel", post(fusion_run_cancel))
         .route("/api/chat/completion", post(chat_completion))
+        .route(
+            "/api/conversation-runtime/tool",
+            post(conversation_runtime_tool),
+        )
         .route("/api/sidekick/metrics", get(sidekick_metrics))
         .route("/api/sidekick/sessions", get(sidekick_session_summaries))
         .route("/api/profile/:id", get(profile))
@@ -89,6 +95,38 @@ pub fn router(ctx: Ctx) -> Router {
         .route("/api/traces/search", get(traces_search))
         .route("/api/traces/:id", get(traces_open))
         .route("/api/ui/focus", post(ui_focus))
+        // Stable versioned aliases for the CLI and third-party desktop agents.
+        .route("/v1/capabilities", get(agent_capabilities))
+        .route("/v1/status", get(status))
+        .route("/v1/metrics/chat-routes", get(chat_route_metrics))
+        .route("/v1/models", get(models))
+        .route("/v1/models/catalog", get(snapshots))
+        .route("/v1/classifiers", get(agent_classifiers))
+        .route(
+            "/v1/classifiers/:model_id/predict",
+            post(agent_classifier_predict),
+        )
+        .route("/v1/residency", get(residency))
+        .route("/v1/residency/slots", post(residency_add_slot))
+        .route("/v1/residency/assign", post(residency_assign))
+        .route("/v1/residency/warm", post(residency_warm))
+        .route("/v1/residency/cool", post(residency_cool))
+        .route("/v1/residency/remove", post(residency_remove))
+        .route("/v1/downloads", get(downloads_list).post(download_start))
+        .route("/v1/downloads/:id", get(download_status))
+        .route("/v1/downloads/:id/cancel", post(download_cancel))
+        .route(
+            "/v1/conversations/:session_id/turns",
+            post(agent_conversation_turn)
+                .layer(axum::extract::DefaultBodyLimit::max(AGENT_CHAT_BODY_LIMIT)),
+        )
+        .route("/v1/runs/:run_id/cancel", post(agent_run_cancel))
+        .route("/v1/runs/:run_id/events", get(agent_run_events))
+        .route(
+            "/v1/supervision/corrections",
+            get(agent_supervision_corrections),
+        )
+        .route("/v1/feedback/supervisor", post(agent_supervisor_feedback))
         // agent fronts
         .route("/mcp", post(mcp))
         .route("/.well-known/agent.json", get(a2a_card))
@@ -168,6 +206,7 @@ async fn serve(ctx: Ctx, port: u16) {
     };
     // The app is the canonical local daemon: advertise it in the agent card
     // once the server is actually reachable (never the token itself).
+    crate::agent_card::record_api_capability(port, &ctx.token);
     crate::agent_card::record_server_started(port, !ctx.token.is_empty());
     let _ = axum::serve(listener, router(ctx)).await;
 }
@@ -196,19 +235,433 @@ fn token_matches(provided: &str, expected: &str) -> bool {
         == 0
 }
 
+fn validate_agent_id(value: &str, label: &str) -> Result<(), (StatusCode, String)> {
+    if value.is_empty()
+        || value.len() > 200
+        || !value
+            .bytes()
+            .all(|byte| byte.is_ascii_alphanumeric() || matches!(byte, b'-' | b'_' | b'.' | b':'))
+    {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            format!(
+                "{label} must be 1-200 ASCII letters, digits, dots, colons, underscores, or hyphens"
+            ),
+        ));
+    }
+    Ok(())
+}
+
 // ---------------- REST handlers ----------------
+
+async fn agent_capabilities(
+    State(ctx): State<Ctx>,
+    h: HeaderMap,
+) -> Result<Json<Value>, (StatusCode, String)> {
+    auth(&ctx, &h)?;
+    Ok(Json(agent_capabilities_value()))
+}
+
+fn agent_capabilities_value() -> Value {
+    json!({
+        "schema_version": "understudy.desktop_api.v2",
+        "api_version": "2.3.0",
+        "event_schema": crate::conversation_runtime::EVENT_SCHEMA,
+        "runtime": {
+            "id": "understudy-conversation-runtime",
+            "required_version": crate::conversation_runtime::RUNTIME_VERSION,
+        },
+        "features": {
+            "streaming_ndjson": true,
+            "inline_images": true,
+            "exact_run_cancellation": true,
+            "persisted_run_events": true,
+            "supervisor_feedback": true,
+            "supervision_correction_export": true,
+            "local_supervision": true,
+            "fully_offline_local_models": true,
+            "model_inventory": true,
+            "model_downloads": true,
+            "model_residency": true,
+            "migration_observation": true,
+            "local_task_models": true,
+        },
+        "endpoints": {
+            "status": "/v1/status",
+            "migration_status": "/v1/metrics/chat-routes",
+            "models": "/v1/models",
+            "model_catalog": "/v1/models/catalog",
+            "classifiers": "/v1/classifiers",
+            "classifier_predict": "/v1/classifiers/{model_id}/predict",
+            "residency": "/v1/residency",
+            "residency_add_slot": "/v1/residency/slots",
+            "residency_assign": "/v1/residency/assign",
+            "residency_warm": "/v1/residency/warm",
+            "residency_cool": "/v1/residency/cool",
+            "residency_remove": "/v1/residency/remove",
+            "downloads": "/v1/downloads",
+            "download_status": "/v1/downloads/{download_id}",
+            "download_cancel": "/v1/downloads/{download_id}/cancel",
+            "start_turn": "/v1/conversations/{session_id}/turns",
+            "cancel_run": "/v1/runs/{run_id}/cancel",
+            "run_events": "/v1/runs/{run_id}/events",
+            "supervisor_feedback": "/v1/feedback/supervisor",
+            "supervision_corrections": "/v1/supervision/corrections",
+        }
+    })
+}
+
+#[derive(serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct AgentConversationTurnBody {
+    slot_id: u32,
+    supervisor_slot_id: Option<u32>,
+    #[serde(default)]
+    text: String,
+    #[serde(default)]
+    attachments: Vec<crate::chat::AgentChatAttachmentUpload>,
+    run_id: Option<String>,
+    max_tokens: Option<u32>,
+}
+
+async fn agent_conversation_turn(
+    State(ctx): State<Ctx>,
+    Path(session_id): Path<String>,
+    h: HeaderMap,
+    Json(body): Json<AgentConversationTurnBody>,
+) -> Result<Response, (StatusCode, String)> {
+    auth(&ctx, &h)?;
+    validate_agent_id(&session_id, "session_id")?;
+    if body.text.trim().is_empty() && body.attachments.is_empty() {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            "text or at least one image attachment is required".to_string(),
+        ));
+    }
+    let run_id = match body.run_id {
+        Some(run_id) => run_id,
+        None => crate::conversation_runtime::new_run_id()
+            .map_err(|error| (StatusCode::INTERNAL_SERVER_ERROR, error))?,
+    };
+    validate_agent_id(&run_id, "run_id")?;
+    crate::conversation_sidecar::ensure_agent_ready(ctx.app.clone())
+        .await
+        .map_err(|error| (StatusCode::SERVICE_UNAVAILABLE, error))?;
+    let residency = ctx.app.state::<crate::residency::Residency>();
+    let request = crate::chat::agent_sidecar_request(
+        &ctx.app,
+        &residency,
+        crate::chat::AgentSidecarRequest {
+            slot_id: body.slot_id,
+            supervisor_slot_id: body.supervisor_slot_id,
+            session_id: &session_id,
+            run_id: &run_id,
+            prompt: body.text.trim(),
+            attachments: &body.attachments,
+            max_tokens: body.max_tokens,
+        },
+    )
+    .map_err(|error| (StatusCode::BAD_REQUEST, error))?;
+    let model = request
+        .get("model")
+        .and_then(Value::as_str)
+        .ok_or_else(|| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                "conversation runtime request is missing its model".to_string(),
+            )
+        })?
+        .to_string();
+    let supervised = request.get("supervision").is_some();
+    let prompt_tokens = crate::chat::agent_runtime_prompt_tokens(&request);
+    let reservation = crate::conversation_sidecar::reserve_agent_run(&session_id, &run_id)
+        .map_err(|error| (StatusCode::CONFLICT, error))?;
+
+    let (events_tx, events_rx) =
+        tokio::sync::mpsc::unbounded_channel::<crate::conversation_runtime::RuntimeEventEnvelope>();
+    let app = ctx.app.clone();
+    let run_id_for_task = run_id.clone();
+    let session_id_for_task = session_id.clone();
+    tauri::async_runtime::spawn(async move {
+        let started = std::time::Instant::now();
+        match crate::conversation_sidecar::execute_agent_run(&app, request, &events_tx, reservation)
+            .await
+        {
+            Ok(result) => crate::chat::record_agent_runtime_run(
+                &app,
+                &run_id_for_task,
+                &session_id_for_task,
+                &model,
+                supervised,
+                Some(&result),
+                prompt_tokens,
+                started.elapsed().as_millis() as u64,
+                "ok",
+                None,
+            ),
+            Err((error, _)) => {
+                let status = if crate::conversation_sidecar::is_runtime_cancellation(&error) {
+                    "cancelled"
+                } else {
+                    "error"
+                };
+                crate::chat::record_agent_runtime_run(
+                    &app,
+                    &run_id_for_task,
+                    &session_id_for_task,
+                    &model,
+                    supervised,
+                    None,
+                    prompt_tokens,
+                    started.elapsed().as_millis() as u64,
+                    status,
+                    Some(error.clone()),
+                );
+                eprintln!("understudy desktop API conversation run failed: {error}");
+            }
+        }
+    });
+
+    let stream = futures_util::stream::unfold(events_rx, |mut receiver| async move {
+        let event = receiver.recv().await?;
+        let mut line = serde_json::to_vec(&event).unwrap_or_default();
+        line.push(b'\n');
+        Some((
+            Ok::<Bytes, std::convert::Infallible>(Bytes::from(line)),
+            receiver,
+        ))
+    });
+    let mut response = Response::new(Body::from_stream(stream));
+    response.headers_mut().insert(
+        header::CONTENT_TYPE,
+        HeaderValue::from_static("application/x-ndjson; charset=utf-8"),
+    );
+    response
+        .headers_mut()
+        .insert(header::CACHE_CONTROL, HeaderValue::from_static("no-store"));
+    response.headers_mut().insert(
+        "x-understudy-run-id",
+        HeaderValue::from_str(&run_id).map_err(|_| {
+            (
+                StatusCode::BAD_REQUEST,
+                "run_id is not a valid header value".into(),
+            )
+        })?,
+    );
+    response.headers_mut().insert(
+        "x-understudy-session-id",
+        HeaderValue::from_str(&session_id).map_err(|_| {
+            (
+                StatusCode::BAD_REQUEST,
+                "session_id is not a valid header value".into(),
+            )
+        })?,
+    );
+    Ok(response)
+}
+
+async fn agent_run_cancel(
+    State(ctx): State<Ctx>,
+    Path(run_id): Path<String>,
+    h: HeaderMap,
+) -> Result<Json<Value>, (StatusCode, String)> {
+    auth(&ctx, &h)?;
+    validate_agent_id(&run_id, "run_id")?;
+    let cancelled = crate::conversation_sidecar::cancel_run_by_id(&run_id)
+        .await
+        .map_err(|error| (StatusCode::BAD_GATEWAY, error))?;
+    if !cancelled {
+        return Err((StatusCode::NOT_FOUND, "active run not found".to_string()));
+    }
+    Ok(Json(json!({
+        "ok": true,
+        "status": "cancelling",
+        "run_id": run_id,
+    })))
+}
+
+async fn agent_run_events(
+    State(ctx): State<Ctx>,
+    Path(run_id): Path<String>,
+    h: HeaderMap,
+) -> Result<Response, (StatusCode, String)> {
+    auth(&ctx, &h)?;
+    validate_agent_id(&run_id, "run_id")?;
+    let app = ctx.app.clone();
+    let events = tokio::task::spawn_blocking(move || {
+        crate::conversation_runtime::load_persisted_trace(&app, &run_id)
+    })
+    .await
+    .map_err(|error| {
+        (
+            StatusCode::INTERNAL_SERVER_ERROR,
+            format!("read run task failed: {error}"),
+        )
+    })?
+    .map_err(|error| (StatusCode::INTERNAL_SERVER_ERROR, error))?
+    .ok_or_else(|| (StatusCode::NOT_FOUND, "persisted run not found".to_string()))?;
+    let mut body = String::new();
+    for event in events {
+        body.push_str(&serde_json::to_string(&event).map_err(|error| {
+            (
+                StatusCode::INTERNAL_SERVER_ERROR,
+                format!("serialize persisted run: {error}"),
+            )
+        })?);
+        body.push('\n');
+    }
+    let mut response = Response::new(Body::from(body));
+    response.headers_mut().insert(
+        header::CONTENT_TYPE,
+        HeaderValue::from_static("application/x-ndjson; charset=utf-8"),
+    );
+    response.headers_mut().insert(
+        header::CACHE_CONTROL,
+        HeaderValue::from_static("private, no-store"),
+    );
+    Ok(response)
+}
+
+async fn agent_supervisor_feedback(
+    State(ctx): State<Ctx>,
+    h: HeaderMap,
+    Json(feedback): Json<crate::commands::SupervisorFeedbackRequest>,
+) -> Result<Json<Value>, (StatusCode, String)> {
+    auth(&ctx, &h)?;
+    crate::commands::record_supervisor_feedback(ctx.app.clone(), feedback)
+        .map_err(|error| (StatusCode::BAD_REQUEST, error))?;
+    Ok(Json(json!({ "ok": true })))
+}
+
+#[derive(serde::Deserialize)]
+struct SupervisionCorrectionsQuery {
+    #[serde(default)]
+    reviewed_only: bool,
+}
+
+async fn agent_supervision_corrections(
+    State(ctx): State<Ctx>,
+    h: HeaderMap,
+    Query(query): Query<SupervisionCorrectionsQuery>,
+) -> Result<Response, (StatusCode, String)> {
+    auth(&ctx, &h)?;
+    let app = ctx.app.clone();
+    let packet = blocking(move || {
+        crate::supervision_export::supervision_export_packet(&app, query.reviewed_only)
+    })
+    .await?;
+    let mut response = Json(packet).into_response();
+    response.headers_mut().insert(
+        header::CACHE_CONTROL,
+        HeaderValue::from_static("private, no-store"),
+    );
+    Ok(response)
+}
 
 async fn status(State(ctx): State<Ctx>, h: HeaderMap) -> Result<Json<Value>, (StatusCode, String)> {
     auth(&ctx, &h)?;
     // get_status can probe `moraine status` on a cold cache — keep it off
     // the axum workers.
     let app = ctx.app.clone();
-    let snapshot = blocking(move || Ok::<_, String>(crate::commands::get_status(app))).await?;
+    let snapshot =
+        blocking(move || Ok::<_, String>(crate::commands::status_snapshot(&app))).await?;
     Ok(Json(json!(snapshot)))
 }
 async fn models(State(ctx): State<Ctx>, h: HeaderMap) -> Result<Json<Value>, (StatusCode, String)> {
     auth(&ctx, &h)?;
     Ok(Json(json!(crate::commands::list_models())))
+}
+
+fn classifier_manifest_for_model(registry: &Value, model_id: &str) -> Result<String, String> {
+    let runs = registry
+        .as_array()
+        .ok_or_else(|| "The local classifier registry returned malformed JSON.".to_string())?;
+    let run = runs
+        .iter()
+        .find(|run| run.get("model_id").and_then(Value::as_str) == Some(model_id))
+        .ok_or_else(|| format!("unknown local classifier: {model_id}"))?;
+    if run.get("run_status").and_then(Value::as_str) != Some("completed")
+        || run
+            .get("model")
+            .and_then(Value::as_object)
+            .and_then(|model| model.get("available"))
+            .and_then(Value::as_bool)
+            != Some(true)
+    {
+        return Err(format!("local classifier is not ready: {model_id}"));
+    }
+    run.get("manifest_path")
+        .and_then(Value::as_str)
+        .map(str::to_string)
+        .ok_or_else(|| "The local classifier registry omitted its manifest path.".to_string())
+}
+
+fn public_classifier_registry(mut registry: Value) -> Result<Value, String> {
+    let runs = registry
+        .as_array_mut()
+        .ok_or_else(|| "The local classifier registry returned malformed JSON.".to_string())?;
+    for run in runs {
+        let Some(run) = run.as_object_mut() else {
+            return Err("The local classifier registry returned malformed JSON.".into());
+        };
+        run.remove("manifest_path");
+        if let Some(model) = run.get_mut("model").and_then(Value::as_object_mut) {
+            model.remove("path");
+        }
+        if let Some(artifact) = run
+            .get_mut("identity")
+            .and_then(Value::as_object_mut)
+            .and_then(|identity| identity.get_mut("artifact"))
+            .and_then(Value::as_object_mut)
+        {
+            artifact.remove("path");
+        }
+        if let Some(repeat) = run
+            .get_mut("repeat_validation")
+            .and_then(Value::as_object_mut)
+        {
+            repeat.remove("latest_artifact_path");
+        }
+    }
+    Ok(registry)
+}
+
+async fn agent_classifiers(
+    State(ctx): State<Ctx>,
+    h: HeaderMap,
+) -> Result<Json<Value>, (StatusCode, String)> {
+    auth(&ctx, &h)?;
+    let registry =
+        blocking(|| crate::workload_drop::list_classification_runs(false, 1_000)).await?;
+    Ok(Json(
+        public_classifier_registry(registry).map_err(|error| (StatusCode::BAD_GATEWAY, error))?,
+    ))
+}
+
+#[derive(serde::Deserialize)]
+struct AgentClassifierPredictBody {
+    text: String,
+}
+
+async fn agent_classifier_predict(
+    State(ctx): State<Ctx>,
+    Path(model_id): Path<String>,
+    h: HeaderMap,
+    Json(body): Json<AgentClassifierPredictBody>,
+) -> Result<Json<Value>, (StatusCode, String)> {
+    auth(&ctx, &h)?;
+    validate_agent_id(&model_id, "model_id")?;
+    let lookup_model_id = model_id.clone();
+    let manifest = blocking(move || {
+        let registry = crate::workload_drop::list_classification_runs(false, 1_000)?;
+        classifier_manifest_for_model(&registry, &lookup_model_id)
+    })
+    .await
+    .map_err(|(_, error)| (StatusCode::NOT_FOUND, error))?;
+    let text = body.text;
+    let prediction =
+        blocking(move || crate::workload_drop::predict_classification(manifest, text)).await?;
+    Ok(Json(prediction))
 }
 async fn snapshots(
     State(ctx): State<Ctx>,
@@ -238,6 +691,63 @@ where
     F: FnOnce() -> Result<T, String> + Send + 'static,
 {
     blocking_status(f, StatusCode::BAD_REQUEST).await
+}
+
+#[derive(serde::Deserialize)]
+struct ConversationRuntimeToolQuery {
+    slot_id: Option<u32>,
+}
+
+#[derive(serde::Deserialize)]
+struct ConversationRuntimeToolRequest {
+    run_id: String,
+    session_id: String,
+    tool_call_id: String,
+    name: String,
+    arguments: Value,
+}
+
+/// Authenticated executor used by the CLI-owned runtime. Keeping this a thin
+/// adapter guarantees Pi exposes the exact same desktop tools and residency
+/// semantics.
+async fn conversation_runtime_tool(
+    State(ctx): State<Ctx>,
+    h: HeaderMap,
+    Query(query): Query<ConversationRuntimeToolQuery>,
+    Json(request): Json<ConversationRuntimeToolRequest>,
+) -> Result<Json<Value>, (StatusCode, Json<Value>)> {
+    auth(&ctx, &h)
+        .map_err(|(status, error)| (status, Json(json!({ "ok": false, "error": error }))))?;
+    if request.run_id.trim().is_empty()
+        || request.session_id.trim().is_empty()
+        || request.tool_call_id.trim().is_empty()
+        || request.name.trim().is_empty()
+        || request.run_id.len() > 200
+        || request.session_id.len() > 200
+        || request.tool_call_id.len() > 500
+        || request.name.len() > 128
+    {
+        return Err((
+            StatusCode::BAD_REQUEST,
+            Json(json!({ "ok": false, "error": "invalid conversation runtime tool request" })),
+        ));
+    }
+    let result = crate::chat::tool_result(
+        &ctx.app,
+        ctx.app.state::<crate::residency::Residency>().inner(),
+        query.slot_id,
+        &request.session_id,
+        &request.name,
+        &request.arguments,
+    )
+    .await
+    .map_err(|error| {
+        (
+            StatusCode::BAD_REQUEST,
+            Json(json!({ "ok": false, "error": error })),
+        )
+    })?;
+    Ok(Json(json!({ "ok": true, "result": result })))
 }
 
 /// `blocking`, with the caller's error status (trace lookups report 502).
@@ -424,6 +934,7 @@ struct ChatBody {
     prompt: String,
     session_id: Option<String>,
     max_tokens: Option<u32>,
+    capture_run_id: Option<String>,
 }
 
 async fn chat_completion(
@@ -443,6 +954,7 @@ async fn chat_completion(
         &session_id,
         &b.prompt,
         b.max_tokens,
+        b.capture_run_id.as_deref(),
     )
     .await
     .map(|r| Json(json!(r)))
@@ -777,7 +1289,7 @@ fn run_benchmark_properties(with_candidates: bool) -> Value {
     let mut props = json!({
         "run_id": { "type": "string", "description": "Run id; generated when omitted." },
         "suite": { "type": "string", "enum": ["routing-smoke", "local-comparison", "full-matrix", "automationbench-proxy"] },
-        "modes": { "type": "array", "items": { "type": "string", "enum": ["main-only", "sidekick-advisory", "sidekick-parallel", "sidekick-routing"] } },
+        "modes": { "type": "array", "items": { "type": "string", "enum": ["main-only"], "description": "Canonical Pi runtime. Legacy sidekick modes remain readable in historical evidence but cannot be scheduled." } },
         "task_ids": { "type": "array", "items": { "type": "string" } },
         "dry_run": { "type": "boolean", "description": "Default true: plan without spending tokens." },
         "record_skips": { "type": "boolean" }
@@ -803,6 +1315,18 @@ fn tools() -> Vec<Value> {
         ("status", "Local runtime status: services, warm slots, metrics.", empty_schema()),
         ("list_models", "List locally cached models.", empty_schema()),
         ("list_snapshot_models", "Bundled local MLX snapshot catalog.", empty_schema()),
+        ("list_task_models", "List completed local task classifiers without exposing filesystem paths.", empty_schema()),
+        (
+            "classify_with_model",
+            "Classify one text example with a completed local task model. Input stays on this Mac and is not retained.",
+            obj_schema(
+                json!({
+                    "model_id": { "type": "string", "description": "Canonical classifier id from list_task_models, such as classifier.my-run." },
+                    "text": { "type": "string", "minLength": 1, "maxLength": 4000 }
+                }),
+                &["model_id", "text"],
+            ),
+        ),
         ("residency", "Warm-slot residency (which models are loaded).", empty_schema()),
         ("knowledge_dossiers", "Bundled public per-model dossiers.", empty_schema()),
         ("local_benchmarks", "Local live benchmark rows.", empty_schema()),
@@ -897,6 +1421,8 @@ fn tools() -> Vec<Value> {
             obj_schema(
                 json!({
                     "run_id": { "type": "string" },
+                    "capture_run_id": { "type": "string", "description": "Per-attempt id joining this row to canonical runtime evidence." },
+                    "runtime_backend": { "type": "string", "description": "Runtime that executed the attempt, such as pi or external. Historical rows may contain native-rust." },
                     "task_id": { "type": "string" },
                     "mode": { "type": "string" },
                     "model": { "type": "string" },
@@ -935,12 +1461,13 @@ fn tools() -> Vec<Value> {
         // ----- chat -----
         (
             "chat_completion",
-            "Non-streaming chat completion against a warm residency slot (local tool loop included). Warm a slot first.",
+            "Non-streaming canonical-runtime chat completion against a warm residency slot. Returns capture_run_id for immutable evidence correlation; warm a slot first.",
             obj_schema(
                 json!({
                     "slot_id": { "type": "integer", "minimum": 1, "description": "A warm slot from residency." },
                     "prompt": { "type": "string" },
                     "session_id": { "type": "string" },
+                    "capture_run_id": { "type": "string", "minLength": 1, "maxLength": 200, "description": "Optional caller-owned per-attempt evidence id; generated when omitted." },
                     "max_tokens": { "type": "integer", "minimum": 1, "maximum": 8192, "description": "Completion cap; default 2048." }
                 }),
                 &["slot_id", "prompt"],
@@ -1009,9 +1536,28 @@ async fn call_tool(ctx: &Ctx, name: &str, args: &Value) -> Result<Value, String>
     use crate::commands as c;
     let app = ctx.app.clone();
     Ok(match name {
-        "status" => json!(call_blocking(move || Ok::<_, String>(c::get_status(app))).await?),
+        "status" => json!(call_blocking(move || Ok::<_, String>(c::status_snapshot(&app))).await?),
         "list_models" => json!(c::list_models()),
         "list_snapshot_models" => json!(c::list_snapshot_models()),
+        "list_task_models" => {
+            let registry =
+                call_blocking(|| crate::workload_drop::list_classification_runs(false, 1_000))
+                    .await?;
+            public_classifier_registry(registry)?
+        }
+        "classify_with_model" => {
+            let model_id = required_str(args, "model_id")?;
+            let text = required_str(args, "text")?;
+            validate_agent_id(&model_id, "model_id").map_err(|(_, error)| error)?;
+            let lookup_model_id = model_id.clone();
+            let manifest = call_blocking(move || {
+                let registry = crate::workload_drop::list_classification_runs(false, 1_000)?;
+                classifier_manifest_for_model(&registry, &lookup_model_id)
+            })
+            .await?;
+            call_blocking(move || crate::workload_drop::predict_classification(manifest, text))
+                .await?
+        }
         "residency" => json!(c::get_residency(app)),
         "add_slot" => {
             let slot_id = call_blocking(move || c::add_slot(app)).await?;
@@ -1082,6 +1628,7 @@ async fn call_tool(ctx: &Ctx, name: &str, args: &Value) -> Result<Value, String>
                 .get("max_tokens")
                 .and_then(|v| v.as_u64())
                 .map(|x| x as u32);
+            let capture_run_id = args.get("capture_run_id").and_then(|v| v.as_str());
             let residency = app.state::<crate::residency::Residency>();
             json!(
                 crate::chat::agent_chat(
@@ -1090,7 +1637,8 @@ async fn call_tool(ctx: &Ctx, name: &str, args: &Value) -> Result<Value, String>
                     slot_id,
                     &session_id,
                     &prompt,
-                    max_tokens
+                    max_tokens,
+                    capture_run_id
                 )
                 .await?
             )
@@ -1317,6 +1865,74 @@ mod tests {
     }
 
     #[test]
+    fn agent_api_ids_are_bounded_before_reaching_runtime_state() {
+        assert!(validate_agent_id("session-1", "session_id").is_ok());
+        assert!(validate_agent_id("", "session_id").is_err());
+        assert!(validate_agent_id(&"x".repeat(201), "run_id").is_err());
+        assert!(validate_agent_id("bad/slash", "run_id").is_err());
+    }
+
+    #[test]
+    fn agent_capabilities_advertise_the_versioned_control_plane() {
+        let capabilities = agent_capabilities_value();
+        assert_eq!(capabilities["schema_version"], "understudy.desktop_api.v2");
+        assert_eq!(capabilities["api_version"], "2.3.0");
+        assert_eq!(capabilities["features"]["local_task_models"], true);
+        assert_eq!(capabilities["endpoints"]["classifiers"], "/v1/classifiers");
+        assert_eq!(
+            capabilities["endpoints"]["classifier_predict"],
+            "/v1/classifiers/{model_id}/predict"
+        );
+        assert_eq!(
+            capabilities["features"]["supervision_correction_export"],
+            true
+        );
+        assert_eq!(
+            capabilities["endpoints"]["supervision_corrections"],
+            "/v1/supervision/corrections"
+        );
+        assert_eq!(
+            capabilities["event_schema"],
+            crate::conversation_runtime::EVENT_SCHEMA
+        );
+        assert_eq!(capabilities["features"]["local_supervision"], true);
+        assert_eq!(capabilities["features"]["persisted_run_events"], true);
+        assert_eq!(capabilities["features"]["supervisor_feedback"], true);
+        assert_eq!(capabilities["features"]["migration_observation"], true);
+        assert_eq!(capabilities["endpoints"]["status"], "/v1/status");
+        assert_eq!(
+            capabilities["endpoints"]["migration_status"],
+            "/v1/metrics/chat-routes"
+        );
+        assert_eq!(
+            capabilities["endpoints"]["start_turn"],
+            "/v1/conversations/{session_id}/turns"
+        );
+    }
+
+    #[test]
+    fn agent_turn_body_accepts_camel_case_images_and_exact_run_id() {
+        let body: AgentConversationTurnBody = serde_json::from_value(json!({
+            "slotId": 3,
+            "supervisorSlotId": 9,
+            "text": "review this shelf",
+            "runId": "agent-run-3",
+            "maxTokens": 512,
+            "attachments": [{
+                "filename": "shelf.png",
+                "mediaType": "image/png",
+                "dataUrl": "data:image/png;base64,iVBORw0KGgo="
+            }]
+        }))
+        .unwrap();
+        assert_eq!(body.slot_id, 3);
+        assert_eq!(body.supervisor_slot_id, Some(9));
+        assert_eq!(body.run_id.as_deref(), Some("agent-run-3"));
+        assert_eq!(body.attachments.len(), 1);
+        assert_eq!(body.max_tokens, Some(512));
+    }
+
+    #[test]
     fn every_mcp_tool_advertises_a_real_object_schema() {
         let tools = tools();
         assert!(tools.len() >= 30, "tool list unexpectedly small");
@@ -1352,6 +1968,23 @@ mod tests {
         assert_eq!(required_of("start_model_download"), ["model_id"]);
         assert_eq!(required_of("cancel_model_download"), ["download_id"]);
         assert_eq!(required_of("chat_completion"), ["slot_id", "prompt"]);
+        assert_eq!(required_of("classify_with_model"), ["model_id", "text"]);
+        let chat = tools
+            .iter()
+            .find(|tool| tool["name"] == "chat_completion")
+            .expect("chat completion tool exists");
+        assert_eq!(
+            chat["inputSchema"]["properties"]["capture_run_id"]["maxLength"],
+            200
+        );
+        let record = tools
+            .iter()
+            .find(|tool| tool["name"] == "record_fusion_benchmark")
+            .expect("record benchmark tool exists");
+        assert_eq!(
+            record["inputSchema"]["properties"]["runtime_backend"]["type"],
+            "string"
+        );
         assert_eq!(required_of("fusion_route_recommendation"), ["prompt"]);
         assert_eq!(required_of("search_traces"), ["q"]);
         assert_eq!(required_of("open_trace"), ["id"]);
@@ -1362,5 +1995,29 @@ mod tests {
         // Args-optional tools stay unconstrained.
         assert!(required_of("run_fusion_benchmark").is_empty());
         assert!(required_of("list_traces").is_empty());
+    }
+
+    #[test]
+    fn task_model_api_resolves_canonical_identity_and_hides_local_paths() {
+        let registry = json!([{
+            "model_id": "classifier.demo-run",
+            "run_status": "completed",
+            "manifest_path": "/private/run-manifest.json",
+            "model": { "available": true, "path": "/private/model" },
+            "identity": { "artifact": { "available": true, "path": "/private/model" } },
+            "repeat_validation": { "latest_artifact_path": "/private/evaluation.json" }
+        }]);
+        assert_eq!(
+            classifier_manifest_for_model(&registry, "classifier.demo-run").unwrap(),
+            "/private/run-manifest.json"
+        );
+        assert!(classifier_manifest_for_model(&registry, "classifier.missing").is_err());
+        let public = public_classifier_registry(registry).unwrap();
+        assert!(public[0].get("manifest_path").is_none());
+        assert!(public[0]["model"].get("path").is_none());
+        assert!(public[0]["identity"]["artifact"].get("path").is_none());
+        assert!(public[0]["repeat_validation"]
+            .get("latest_artifact_path")
+            .is_none());
     }
 }

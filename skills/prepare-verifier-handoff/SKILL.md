@@ -53,9 +53,11 @@ Check these before doing anything else. Most agentic tool-use work stays local:
   trajectories? Go to
   [`../recursive-language-model/references/pedagogical-training.md`](../recursive-language-model/references/pedagogical-training.md)
   first; this handoff is only for work that still needs external or hosted
-  training. A cheaper local weight-update rung —
+  training. A local weight-update rung —
   [`../local-distillation-lab/SKILL.md`](../local-distillation-lab/SKILL.md) —
-  should also be ruled out first.
+  should be ruled out first when failure attribution says it could solve the
+  residual; do not require a weak local experiment when the evidence already
+  shows the missing capability needs hosted scale or a stronger trainer.
 - **Before** continuing, confirm RL would not be wasted spend: (a) attribute
   the multi-turn rollouts and confirm the residual is **cross-turn reasoning**,
   not format or argument-value (cheaper rungs fix those); (b) the reward is
@@ -82,6 +84,13 @@ Do not start hosted training, verifier execution, model downloads, or partner
 jobs from this repo. Require explicit approval, budget, data class, upload
 boundary, and fallback route before any future hosted action.
 
+Recommend a budget envelope sized for the learning question, with expected
+iterations, wall-clock, return-eval evidence, and the cheaper and accelerated
+alternatives visible. Do not shrink the proposed run until it is unlikely to
+answer the question merely to make the handoff look safer. Follow
+[`../understudy/reference.md`](../understudy/reference.md) → Outcome-first spend
+posture.
+
 Stages 1–2 are local-only engineering: synthetic state only, no live side
 effects, and the frozen dev/holdout rows never enter the RL train pool. Each
 stage reference carries its own specific gates.
@@ -102,6 +111,12 @@ from the RL train pool.
 
 Full playbook, worked AutomationBench wiring, and the verified determinism
 caveat: [`references/stage-1-author-env.md`](references/stage-1-author-env.md).
+
+An `understudy.environment_proposal.v1` emitted by the JSONL drop flow is an
+input to this stage, not proof that the stage is complete. Refuse handoff while
+it is `needs_verifier`; revalidate hashes, oracle=1, sentinel rejection,
+deterministic reset, nonconstant reward, no leakage/live effects, and parser
+compatibility before packaging.
 
 ## Stage 2 — Package for the partner
 
@@ -138,7 +153,11 @@ developer wants a durable artifact:
 .understudy/verifier-handoff/handoff.json
 ```
 
-Recommended fields:
+The packet's JSON Schema is checked in at
+[`../../schemas/understudy.verifier_handoff.v1.schema.json`](../../schemas/understudy.verifier_handoff.v1.schema.json)
+— validate against it before relying on a packet. Like `eval_result.v1` it is
+additive-extensible: producers may add fields; consumers must ignore fields
+they do not understand. Recommended fields:
 
 - `schema_version: "understudy.verifier_handoff.v1"`
 - workload id, owner, and source refs;

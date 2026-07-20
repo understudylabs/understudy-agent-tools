@@ -10,11 +10,12 @@ metadata:
 
 # Run Local Model Lab
 
-Run a local model against an existing Understudy workload/eval to see whether it
-is good enough before spending on hosted providers or routing remote traffic.
-Local inference is $0, private, and the only legal path under ZDR / SOC2 /
-local-only constraints — so it is the cheapest rung of the ladder. Same-family
-models (e.g. local Gemma 4 → remote Gemma 4 31B via the gateway) graduate cleanly.
+Run a local model against an existing Understudy workload/eval to determine the
+best route for the objective. Local inference is $0 and private, and it may be
+the only legal path under ZDR / SOC2 / local-only constraints, but do not use a
+weak local result to avoid an informative remote anchor when remote evaluation
+is allowed and could change the decision. Same-family models (e.g. local Gemma 4
+→ remote Gemma 4 31B via the gateway) graduate cleanly.
 
 **Apple Silicon + MLX only.** On Macs, MLX is the native local path — quantized
 open weights against unified memory at the best tokens/sec, no GPU drivers, no
@@ -59,12 +60,15 @@ route for compliance. For pure remote inference/routing use
 Before spawning your own MLX server, check for the desktop app's local daemon:
 read `~/.understudy/agent-card.json` and trust its `app` block only after a
 pid check on `app.pid` and a health probe of `<app.base_url>/health`
-(`understudy daemon status` does exactly this; schema in
+(`understudy daemon status` does exactly this; then run
+`understudy desktop capabilities`; schema in
 [`../onboard/reference.md`](../onboard/reference.md)). A running app already
 manages warm model slots (`app.warm_models`, each an OpenAI-compatible
 endpoint on its own port) and exposes warm/cool/assign, downloads, benchmarks,
-and chat over its authenticated HTTP + MCP server — reuse those slots instead
-of standing up a second server against the same weights and memory budget.
+and canonical image chat over its authenticated REST + CLI + MCP surface. Use
+`understudy desktop chat --slot <id> ...` so the turn gets an exact `run_id`,
+streamed runtime events, cancellation, and immutable replay; do not drive the
+GUI or stand up a second server against the same weights and memory budget.
 
 ## Flow
 
@@ -72,12 +76,18 @@ of standing up a second server against the same weights and memory budget.
    unified memory / free disk available. Set up the MLX runtime once with `uv`:
    `uv venv .understudy/venvs/mlx && uv pip install --python
    .understudy/venvs/mlx/bin/python 'mlx-lm>=0.31' 'huggingface_hub[cli]>=0.27'`.
-   Do not download weights yet. Surface what you found. (Not on Apple Silicon?
-   This skill does not apply — local serving here is MLX-only.)
-2. **Pick a candidate tier** (candidate chooser + hardware-fit guidance in [`reference.md`](reference.md)):
-   choose the smallest model that is reasonable for the task, not the smallest
-   model available. If a ladder climb or prior local gap report already exists,
-   use it to decide
+   Run the install as a background task — it may pull several hundred MB; do not
+   block the agent on it. While it runs, inventory the hardware and proceed to
+   step 2. Do not download weights yet. Surface what you found. (Not on Apple
+   Silicon? This skill does not apply — local serving here is MLX-only.)
+   See [`../../docs/background-ops.md`](../../docs/background-ops.md) for the
+   background-launch and poll-readiness mechanics.
+2. **Pick a candidate tier** (candidate chooser + hardware-fit guidance in
+   [`reference.md`](reference.md)):
+   choose the model most likely to answer the route question within the hardware
+   and time available. If uncertainty is high, include a stronger anchor early
+   rather than serially exhausting weak rungs. If a ladder climb or prior local
+   gap report already exists, use it to decide
    whether to score the current rung, climb to a larger local model, or skip to
    hybrid/remote.
    - Tiny smoke — E2B / E4B class (fast, on-device; routing/triage/easy cases).
@@ -95,6 +105,16 @@ of standing up a second server against the same weights and memory budget.
    `.understudy/local-model-lab/`, recording: model id, quantization, runtime
    (mlx_lm version), hardware, context length, latency, tokens/sec, and score.
 
+   **Launch `mlx_lm.server` as a background process — do not block on it.**
+   Weight loading can take seconds to several minutes depending on model size and
+   disk speed. Send the server to the background immediately, then poll
+   `http://localhost:8080/v1/models` at 5-second intervals until it responds
+   before running the eval or smoke-test. While the server is loading, advance
+   the steps that don't need it: freeze the eval contract, scaffold the artifact
+   record, and cost-model the remote comparison (step 4). See
+   [`../../docs/background-ops.md`](../../docs/background-ops.md) for the exact
+   shell patterns and poll loop.
+
    **Sampling is part of the contract — per model, not per harness.** Read the
    model's `generation_config.json` and pin `(temperature, top_p/top_k, seed)`
    from it into the run; record them in the artifact. Do not default to
@@ -110,7 +130,8 @@ of standing up a second server against the same weights and memory budget.
    blaming the model.
 4. **Compare against remote.** Score the local candidate vs the remote route
    (gateway / Lilac / frontier) on the objective:
-   - Local wins if it is *good enough* and cheaper / faster / private.
+   - Local wins if it best satisfies the agreed quality, cost, latency, and
+     privacy objective.
    - Remote wins if the quality gap blocks shipping, or local ops cost exceeds
      provider spend at the real volume.
    - Hybrid if local handles triage / extraction / routing and remote handles
@@ -125,6 +146,8 @@ of standing up a second server against the same weights and memory budget.
 
 Make cost/availability/spec claims from fresh data (HF / official model cards /
 the gateway catalog), never from memory — label assumptions.
+Follow [`../understudy/reference.md`](../understudy/reference.md) → Outcome-first
+spend posture when choosing between a longer local run and a paid remote anchor.
 
 ## Output Standard
 
