@@ -15,6 +15,8 @@ export type TimelineSession = {
   clusterId?: number;
   // language layer (langs.sqlite) — dominant language by file count
   lang?: string;
+  // bulk token total (input+output+cache r/w) from events; 0 = none recorded
+  tokens: number;
 };
 
 export type TimelinePayload = {
@@ -44,7 +46,28 @@ export type SessionDetail = {
   tools?: Array<{ tool: string; uses: number }>;
 };
 
-export type ColorMode = "harness" | "task" | "language";
+export type ColorMode = "harness" | "task" | "language" | "cost";
+
+// cost color mode — sequential heat ramp over token-count quantiles
+// (dim ink → amber → stamp → near-white)
+export const COST_RAMP = ["#4b4d52", "#f2b34c", "#d7623e", "#f2f2f0"];
+
+// thresholds = client-side quantiles [q25, q50, q75] over nonzero tokens
+export function costColor(tokens: number, thresholds: number[]): string {
+  if (tokens <= 0 || thresholds.length < 3) return COST_RAMP[0];
+  if (tokens <= thresholds[0]) return COST_RAMP[0];
+  if (tokens <= thresholds[1]) return COST_RAMP[1];
+  if (tokens <= thresholds[2]) return COST_RAMP[2];
+  return COST_RAMP[3];
+}
+
+// compact mono token count: 823 · 4.2k · 1.2M · 3.1B
+export function fmtTokens(t: number): string {
+  if (t < 1000) return String(t);
+  if (t < 1e6) return `${(t / 1e3).toFixed(t < 1e4 ? 1 : 0)}k`;
+  if (t < 1e9) return `${(t / 1e6).toFixed(t < 1e7 ? 1 : 0)}M`;
+  return `${(t / 1e9).toFixed(1)}B`;
+}
 
 // cluster palette — cycled by clusterId in task color mode
 export const CLUSTER_PALETTE = [

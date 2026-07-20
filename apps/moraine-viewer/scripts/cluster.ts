@@ -11,9 +11,12 @@ const db = new Database(new URL("../data/scan.sqlite", import.meta.url).pathname
 db.run(`CREATE TABLE IF NOT EXISTS clusters (id INTEGER PRIMARY KEY, name TEXT UNIQUE)`);
 db.run(`CREATE TABLE IF NOT EXISTS cluster_map (label TEXT PRIMARY KEY, cluster_id INTEGER)`);
 
-const labels = db
+// deterministic plumbing labels get their own pinned cluster — never blended
+// into real work clusters
+const PINNED = ["cli command"];
+const labels = (db
   .query("SELECT label, COUNT(*) c FROM session_scan GROUP BY label ORDER BY c DESC")
-  .all() as { label: string; c: number }[];
+  .all() as { label: string; c: number }[]).filter((l) => !PINNED.includes(l.label));
 if (!labels.length) {
   console.log("no labels yet — run scan.ts first");
   process.exit(0);
@@ -65,29 +68,80 @@ parsed.clusters.forEach((c, i) => {
     assigned.add(l.toLowerCase().trim());
   }
 });
-// singletons + anything the model forgot: assign by word overlap with cluster
-// names and member labels; no match → "other"
+// singletons + anything the model forgot: batched LLM assignment against the
+// canonical cluster list; stemmed word overlap as fallback; last resort "other"
 const STOP = new Set(["and", "the", "of", "for", "a", "an", "in", "on", "with", "to", "&"]);
-const words = (s: string) => s.toLowerCase().split(/[^a-z]+/).filter((w) => w.length > 2 && !STOP.has(w));
+const stem = (w: string) => w.replace(/(ing|ment|tion|s)$/, "");
+const words = (s: string) =>
+  s.toLowerCase().split(/[^a-z]+/).filter((w) => w.length > 2 && !STOP.has(w)).map(stem);
+const clusterNames = parsed.clusters.map((c) => c.name.toLowerCase().trim().slice(0, 40));
 const clusterVocab = parsed.clusters.map((c) => {
   const v = new Set<string>(words(c.name));
   for (const l of c.labels) for (const w of words(l)) v.add(w);
   return v;
 });
-const otherId = parsed.clusters.length;
-let overlapAssigned = 0, toOther = 0;
-const missed = labels.filter((l) => !assigned.has(l.label));
-for (const l of missed) {
-  let best = -1, bestScore = 0;
-  clusterVocab.forEach((v, i) => {
-    const score = words(l.label).filter((w) => v.has(w)).length;
-    if (score > bestScore) { bestScore = score; best = i; }
+
+async function assignBatch(batch: string[]): Promise<Map<string, number>> {
+  const res = await fetch(LLM, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({
+      model: "default_model",
+      temperature: 0.1,
+      max_tokens: 8000,
+      messages: [
+        {
+          role: "system",
+          content:
+            `Assign each task label to the best-fitting cluster. Clusters (use the index): ` +
+            clusterNames.map((n, i) => `${i}=${n}`).join(", ") +
+            `. Respond ONLY with JSON: {"assignments": {"<label>": <cluster index>, ...}} covering every label.`,
+        },
+        { role: "user", content: batch.join("\n") },
+      ],
+    }),
   });
-  if (best >= 0) { insMap.run(l.label, best); overlapAssigned++; }
-  else { insMap.run(l.label, otherId); toOther++; }
+  const out = new Map<string, number>();
+  if (!res.ok) return out;
+  const jj = (await res.json()) as { choices: { message: { content: string } }[] };
+  const mm = (jj.choices[0]?.message?.content ?? "").match(/\{[\s\S]*\}/);
+  if (!mm) return out;
+  try {
+    const a = (JSON.parse(mm[0]) as { assignments?: Record<string, number> }).assignments ?? {};
+    for (const [label, idx] of Object.entries(a)) {
+      if (Number.isInteger(idx) && idx >= 0 && idx < clusterNames.length) out.set(label.toLowerCase().trim(), idx);
+    }
+  } catch { /* fall through to overlap */ }
+  return out;
+}
+
+const otherId = parsed.clusters.length;
+const missed = labels.filter((l) => !assigned.has(l.label));
+let llmAssigned = 0, overlapAssigned = 0, toOther = 0;
+const BATCH = 40;
+for (let i = 0; i < missed.length; i += BATCH) {
+  const batch = missed.slice(i, i + BATCH);
+  const byLlm = await assignBatch(batch.map((l) => l.label));
+  for (const l of batch) {
+    const idx = byLlm.get(l.label);
+    if (idx !== undefined) { insMap.run(l.label, idx); llmAssigned++; continue; }
+    let best = -1, bestScore = 0;
+    clusterVocab.forEach((v, ci) => {
+      const score = words(l.label).filter((w) => v.has(w)).length;
+      if (score > bestScore) { bestScore = score; best = ci; }
+    });
+    if (best >= 0) { insMap.run(l.label, best); overlapAssigned++; }
+    else { insMap.run(l.label, otherId); toOther++; }
+  }
+  console.log(`assigned ${Math.min(i + BATCH, missed.length)}/${missed.length} stragglers`);
 }
 if (toOther) insCluster.run(otherId, "other");
-console.log(`${overlapAssigned} labels assigned by word overlap, ${toOther} → "other"`);
+console.log(`${llmAssigned} by LLM, ${overlapAssigned} by stemmed overlap, ${toOther} → "other"`);
+
+// pinned plumbing cluster, after everything else
+const pinnedId = otherId + 1;
+insCluster.run(pinnedId, "cli plumbing");
+for (const l of PINNED) insMap.run(l, pinnedId);
 
 const report = db
   .query(`

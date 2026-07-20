@@ -33,8 +33,14 @@ db.run(`CREATE TABLE IF NOT EXISTS session_scan (
   label TEXT, summary TEXT,
   digest TEXT, model TEXT, scanned_at TEXT DEFAULT (datetime('now'))
 )`);
+for (const col of ["interactive INTEGER DEFAULT 1", "user_messages INTEGER DEFAULT 0", "sub_events INTEGER DEFAULT 0"]) {
+  try { db.run(`ALTER TABLE session_scan ADD COLUMN ${col}`); } catch { /* exists */ }
+}
 
-interface Sess { session_id: string; harness: string; total_events: number; origin_cwd: string; mode: string }
+interface Sess {
+  session_id: string; harness: string; total_events: number; origin_cwd: string; mode: string;
+  user_messages: number;
+}
 
 const done = new Set(
   (db.query("SELECT session_id FROM session_scan").all() as { session_id: string }[]).map((r) => r.session_id),
@@ -42,10 +48,15 @@ const done = new Set(
 
 const sessions = (
   await ch<Sess>(`
-    SELECT session_id, harness, toUInt32(total_events) AS total_events, origin_cwd, mode
+    SELECT session_id, harness, toUInt32(total_events) AS total_events, origin_cwd, mode,
+      toUInt32(user_messages) AS user_messages
     FROM mcp_open_sessions FINAL
-    WHERE total_events >= 10 AND first_event_time > toDateTime64('2001-01-01 00:00:00', 3)
+    WHERE total_events >= 5 AND first_event_time > toDateTime64('2001-01-01 00:00:00', 3)
       AND mode != 'mcp_internal'
+      -- interactive work only: a human sent multiple messages, and it isn't a
+      -- giant machine-generated rollout stream
+      AND user_messages >= 1
+      AND total_events <= 3000
     ORDER BY last_event_time DESC
     LIMIT ${LIMIT}
   `)
@@ -106,8 +117,12 @@ async function labelOf(digest: string): Promise<{ label: string; summary: string
         {
           role: "system",
           content:
-            "You label coding-agent sessions. Given a session digest, respond with ONLY a JSON object: " +
-            '{"label": "<2-4 word task type, lowercase, reusable across similar sessions (e.g. \\"fix failing tests\\", \\"data pipeline work\\", \\"ui prototyping\\", \\"model evaluation\\", \\"repo exploration\\")>", "summary": "<1-2 sentence summary of what happened>"}',
+            "You label coding-agent sessions by their PURPOSE — what the user was trying to accomplish, " +
+            "not how the session started. Agents always begin by reading/exploring the repo; that is never " +
+            "the task itself, so labels like \"repo exploration\" are wrong unless understanding the code was " +
+            "the user's entire goal. The last assistant message usually reveals the outcome — weight it heavily. " +
+            "Respond with ONLY a JSON object: " +
+            '{"label": "<2-4 word task type, lowercase, reusable across similar sessions (e.g. \\"fix failing tests\\", \\"data pipeline work\\", \\"ui prototyping\\", \\"model evaluation\\", \\"release management\\")>", "summary": "<1-2 sentence summary: what was accomplished and how it ended>"}',
         },
         { role: "user", content: digest },
       ],
@@ -126,8 +141,25 @@ async function labelOf(digest: string): Promise<{ label: string; summary: string
 }
 
 const insert = db.prepare(
-  "INSERT OR REPLACE INTO session_scan (session_id, harness, events, label, summary, digest, model) VALUES (?, ?, ?, ?, ?, ?, ?)",
+  "INSERT OR REPLACE INTO session_scan (session_id, harness, events, label, summary, digest, model, interactive, user_messages, sub_events) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
 );
+
+// slash-command invocations (/usage, /doctor, …) are CLI plumbing, not tasks —
+// label them deterministically, skip the model, and mark non-interactive
+function slashCommandOf(digest: string): string | null {
+  const userLines = digest.split("\n").filter((l) => /^user\[\d+\]:/.test(l));
+  if (!userLines.length) return null;
+  const meaningful = userLines.filter((l) => !l.includes("<local-command-caveat>"));
+  if (!meaningful.length || !meaningful.every((l) => l.includes("<command-name>"))) return null;
+  return meaningful[0].match(/<command-name>([^<]+)<\/command-name>/)?.[1]?.trim() ?? "/unknown";
+}
+
+async function subEventsOf(sessionId: string): Promise<number> {
+  const r = await ch<{ n: string }>(
+    `SELECT toString(countIf(is_substream = 1)) AS n FROM events WHERE session_id = '${sessionId}'`,
+  );
+  return Number(r[0]?.n ?? 0);
+}
 
 let ok = 0, failed = 0;
 const t0 = Date.now();
@@ -136,9 +168,15 @@ await Promise.all(
   Array.from({ length: CONCURRENCY }, async () => {
     for (let s = queue.shift(); s; s = queue.shift()) {
       try {
-        const digest = await digestOf(s);
+        const [digest, subEvents] = await Promise.all([digestOf(s), subEventsOf(s.session_id)]);
+        const cmd = slashCommandOf(digest);
+        if (cmd) {
+          insert.run(s.session_id, s.harness, s.total_events, "cli command", `Slash-command invocation: ${cmd}`, digest, "deterministic", 0, s.user_messages, subEvents);
+          ok++;
+          continue;
+        }
         const { label, summary } = await labelOf(digest);
-        insert.run(s.session_id, s.harness, s.total_events, label, summary, digest, "gemma-4-e2b-qat-understudy");
+        insert.run(s.session_id, s.harness, s.total_events, label, summary, digest, "gemma-4-e2b-qat-understudy", 1, s.user_messages, subEvents);
         ok++;
         if (ok % 20 === 0) {
           const rate = ok / ((Date.now() - t0) / 1000);

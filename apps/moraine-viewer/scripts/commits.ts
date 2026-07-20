@@ -117,20 +117,55 @@ const sessions = await ch<Sess>(`
 `);
 console.log(`${sessions.length} sessions from clickhouse`);
 
+// each commit attributes to its single BEST session — most specific path match
+// wins (exact cwd beats repo prefix), then smallest time distance to session
+// end; all other window matches are kept as secondary "related" edges
+db.run(`CREATE TABLE IF NOT EXISTS commit_sessions_related (
+  hash TEXT, session_id TEXT, PRIMARY KEY (hash, session_id)
+)`);
+db.run("DELETE FROM commit_sessions");
+db.run("DELETE FROM commit_sessions_related");
 const insertMap = db.prepare("INSERT OR IGNORE INTO commit_sessions (hash, session_id) VALUES (?, ?)");
+const insertRelated = db.prepare("INSERT OR IGNORE INTO commit_sessions_related (hash, session_id) VALUES (?, ?)");
 const prefixed = (a: string, b: string) =>
   a === b || b.startsWith(a.endsWith("/") ? a : a + "/") || a.startsWith(b.endsWith("/") ? b : b + "/");
 
-const mapped = new Set<string>();
+// the same hash can be harvested from several worktrees — attribute it once,
+// but let every worktree path it was seen in compete for the match
+const reposByHash = new Map<string, Set<string>>();
+for (const c of mine) {
+  if (!reposByHash.has(c.hash)) reposByHash.set(c.hash, new Set());
+  reposByHash.get(c.hash)!.add(c.repo);
+}
+const uniqMine = [...new Map(mine.map((c) => [c.hash, c])).values()];
 const txMap = db.transaction(() => {
-  for (const c of mine) {
+  for (const c of uniqMine) {
+    let best: Sess | null = null;
+    let bestSpec = -1;
+    let bestDt = Infinity;
+    const related: Sess[] = [];
+    const repos = reposByHash.get(c.hash) ?? new Set([c.repo]);
     for (const s of sessions) {
       const start = Number(s.start_s);
       const end = Number(s.end_s);
-      if (!prefixed(c.repo, s.ocwd)) continue;
+      let spec = -1;
+      for (const repo of repos) {
+        if (!prefixed(repo, s.ocwd)) continue;
+        // specificity: exact worktree match beats repo-prefix containment
+        const candidate = s.ocwd === repo ? 1e9 : Math.min(s.ocwd.length, repo.length);
+        if (candidate > spec) spec = candidate;
+      }
+      if (spec < 0) continue;
       if (c.ts < start - 300 || c.ts > end + 1800) continue;
-      insertMap.run(c.hash, s.sid);
-      mapped.add(c.hash);
+      related.push(s);
+      const dt = Math.abs(c.ts - end);
+      if (spec > bestSpec || (spec === bestSpec && dt < bestDt)) {
+        best = s; bestSpec = spec; bestDt = dt;
+      }
+    }
+    if (best) {
+      insertMap.run(c.hash, best.sid);
+      for (const s of related) if (s.sid !== best.sid) insertRelated.run(c.hash, s.sid);
     }
   }
 });

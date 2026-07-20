@@ -7,6 +7,7 @@ import {
   FALLBACK_COLOR,
   HARNESS_COLORS,
   clusterColor,
+  costColor,
   langColor,
   type ColorMode,
   type TimelinePoint,
@@ -34,6 +35,8 @@ interface SceneProps {
   colorMode: ColorMode; // harness vs task-cluster vs language colors
   hiddenClusters: Set<number>; // task-mode visibility (clusterId)
   hiddenLangs: Set<string>; // language-mode visibility (dominant lang; "" = no data)
+  liveIds: Set<string>; // sessions active in the last 120s — breathing pulse
+  costThresholds: number[]; // [q25, q50, q75] over nonzero tokens (cost mode)
 }
 
 const PROJECT = /* glsl */ `
@@ -63,7 +66,9 @@ const POINT_VERT = /* glsl */ `
   attribute vec3 aColor;
   attribute float aMatch;
   attribute float aVisible;
+  attribute float aLive;
   uniform float uDpr;
+  uniform float uTime; // seconds — drives the live breathing pulse
   uniform float uSearch; // 0 = no search, 1 = search active (animated)
   uniform float uSizeScale; // grows with time-zoom so dots stay findable
   varying vec3 vColor;
@@ -73,10 +78,14 @@ const POINT_VERT = /* glsl */ `
     vColor = aColor;
     // non-matches sink to ~0.12 opacity while a search is live
     float searchDim = mix(1.0, mix(0.12, 1.0, aMatch), uSearch);
-    vAlpha = aVisible * searchDim;
+    // live sessions breathe: 5.2s period, eased sine (breath = activity)
+    float breath = 0.5 - 0.5 * cos(uTime * ${(2 * Math.PI / 5.2).toFixed(6)});
+    breath = breath * breath * (3.0 - 2.0 * breath); // smoothstep ease
+    vAlpha = aVisible * searchDim * mix(1.0, 0.72 + 0.5 * breath, aLive);
     gl_Position = toClip(toPx(aDay, aLane, aJitter));
     if (aVisible < 0.5) gl_Position = vec4(2.0, 2.0, 2.0, 1.0); // cull offscreen
     float boost = 1.0 + 0.4 * aMatch * uSearch; // matches enlarge slightly
+    boost *= 1.0 + 0.45 * breath * aLive; // live pulse also swells the dot
     gl_PointSize = clamp(aSize * boost * uSizeScale, 1.5, 64.0) * uDpr;
   }
 `;
@@ -135,6 +144,7 @@ function makeUniforms() {
     uJitterAmp: { value: 28 },
     uSearch: { value: 0 },
     uSizeScale: { value: 1 },
+    uTime: { value: 0 },
     uDpr: { value: 1 },
   };
 }
@@ -152,8 +162,10 @@ function Field({ points, propsRef }: { points: TimelinePoint[]; propsRef: React.
     colorMode: ColorMode | null;
     hiddenClusters: Set<number> | null;
     hiddenLangs: Set<string> | null;
+    live: Set<string> | null;
+    costThresholds: number[] | null;
     buf: object | null; // which buffer set the write landed on — rebuilt buffers start all-invisible
-  }>({ matches: null, hidden: null, colorMode: null, hiddenClusters: null, hiddenLangs: null, buf: null });
+  }>({ matches: null, hidden: null, colorMode: null, hiddenClusters: null, hiddenLangs: null, live: null, costThresholds: null, buf: null });
 
   // static per-point buffers (rebuilt only when the dataset changes)
   const pointBuf = useMemo(() => {
@@ -174,7 +186,7 @@ function Field({ points, propsRef }: { points: TimelinePoint[]; propsRef: React.
       color[i * 3 + 1] = c.g;
       color[i * 3 + 2] = c.b;
     });
-    return { day, lane, jitter, size, color, match: new Float32Array(n), visible: new Float32Array(n) };
+    return { day, lane, jitter, size, color, match: new Float32Array(n), visible: new Float32Array(n), live: new Float32Array(n) };
   }, [points]);
 
   // tail segments: 2 verts per long session
@@ -212,6 +224,7 @@ function Field({ points, propsRef }: { points: TimelinePoint[]; propsRef: React.
     g.setAttribute("aColor", new THREE.BufferAttribute(b.color, 3));
     g.setAttribute("aMatch", new THREE.BufferAttribute(b.match, 1));
     g.setAttribute("aVisible", new THREE.BufferAttribute(b.visible, 1));
+    g.setAttribute("aLive", new THREE.BufferAttribute(b.live, 1));
     return g;
   }, [pointBuf, points.length]);
 
@@ -241,7 +254,7 @@ function Field({ points, propsRef }: { points: TimelinePoint[]; propsRef: React.
   const tailUniforms = useMemo(makeUniforms, []);
 
   useFrame((state, delta) => {
-    const { view, width, height, lanes, matches, hiddenHarness, colorMode, hiddenClusters, hiddenLangs } =
+    const { view, width, height, lanes, matches, hiddenHarness, colorMode, hiddenClusters, hiddenLangs, liveIds, costThresholds } =
       propsRef.current;
 
     // match/visibility/color rewrites only when the sets (or the buffer set —
@@ -253,6 +266,8 @@ function Field({ points, propsRef }: { points: TimelinePoint[]; propsRef: React.
       applied.colorMode !== colorMode ||
       applied.hiddenClusters !== hiddenClusters ||
       applied.hiddenLangs !== hiddenLangs ||
+      applied.live !== liveIds ||
+      applied.costThresholds !== costThresholds ||
       applied.buf !== pointBuf
     ) {
       applied.matches = matches;
@@ -260,6 +275,8 @@ function Field({ points, propsRef }: { points: TimelinePoint[]; propsRef: React.
       applied.colorMode = colorMode;
       applied.hiddenClusters = hiddenClusters;
       applied.hiddenLangs = hiddenLangs;
+      applied.live = liveIds;
+      applied.costThresholds = costThresholds;
       applied.buf = pointBuf;
 
       const c = new THREE.Color();
@@ -268,9 +285,12 @@ function Field({ points, propsRef }: { points: TimelinePoint[]; propsRef: React.
           ? clusterColor(p.s.clusterId)
           : colorMode === "language"
             ? langColor(p.s.lang)
-            : (HARNESS_COLORS[p.s.harness] ?? FALLBACK_COLOR);
+            : colorMode === "cost"
+              ? costColor(p.s.tokens, costThresholds)
+              : (HARNESS_COLORS[p.s.harness] ?? FALLBACK_COLOR);
       // harness hiding always collapses the lane; task mode additionally hides
       // points whose cluster chip is toggled off; language mode likewise by lang
+      // (cost mode: harness hiding only)
       const visibleOf = (p: TimelinePoint) =>
         hiddenHarness.has(p.s.harness) ||
         (colorMode === "task" && p.s.clusterId != null && hiddenClusters.has(p.s.clusterId)) ||
@@ -281,6 +301,7 @@ function Field({ points, propsRef }: { points: TimelinePoint[]; propsRef: React.
       points.forEach((p, i) => {
         pointBuf.match[i] = matches?.has(p.s.id) ? 1 : 0;
         pointBuf.visible[i] = visibleOf(p);
+        pointBuf.live[i] = liveIds.has(p.s.id) ? 1 : 0;
         c.set(colorOf(p));
         pointBuf.color[i * 3] = c.r;
         pointBuf.color[i * 3 + 1] = c.g;
@@ -289,6 +310,7 @@ function Field({ points, propsRef }: { points: TimelinePoint[]; propsRef: React.
       (pointGeom.getAttribute("aMatch") as THREE.BufferAttribute).needsUpdate = true;
       (pointGeom.getAttribute("aVisible") as THREE.BufferAttribute).needsUpdate = true;
       (pointGeom.getAttribute("aColor") as THREE.BufferAttribute).needsUpdate = true;
+      (pointGeom.getAttribute("aLive") as THREE.BufferAttribute).needsUpdate = true;
 
       tailBuf.sessions.forEach((p, i) => {
         const m = matches?.has(p.s.id) ? 1 : 0;
@@ -328,6 +350,7 @@ function Field({ points, propsRef }: { points: TimelinePoint[]; propsRef: React.
       u.uLaneGap.value = lanes.gap;
       u.uJitterAmp.value = lanes.jitterAmp;
       u.uSearch.value = searchRef.current;
+      if (u.uTime) u.uTime.value = state.clock.elapsedTime;
       // ~1x at the fitted overview (~14 px/day), up to 4x at day-level zoom
       u.uSizeScale.value = Math.min(4, Math.max(0.8, Math.pow(view.pxPerDay / 14, 0.45)));
     }

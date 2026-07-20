@@ -3,12 +3,15 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import TimelineScene, { type LaneLayout } from "./TimelineScene";
 import TracePreview from "./TracePreview";
+import { sessionHref } from "../session/sessionHref";
 import {
+  COST_RAMP,
   DAY,
   FALLBACK_COLOR,
   HARNESS_COLORS,
   LANE_ORDER,
   clusterColor,
+  fmtTokens,
   harnessColor,
   hashJitter,
   langColor,
@@ -35,6 +38,11 @@ function fmtDate(unix: number): string {
 }
 function fmtDateTime(unix: number): string {
   return new Date(unix * 1000).toISOString().slice(0, 16).replace("T", " ");
+}
+function fmtAgo(s: number): string {
+  if (s < 60) return `${s}s`;
+  if (s < 3600) return `${Math.round(s / 60)}m`;
+  return `${Math.round(s / 3600)}h`;
 }
 
 type Tick = { x: number; label: string; major: boolean };
@@ -146,6 +154,9 @@ export default function TimelineClient() {
   const [search, setSearch] = useState<SearchPayload | null>(null);
   const [searching, setSearching] = useState(false);
 
+  const [liveIds, setLiveIds] = useState<Set<string>>(new Set());
+  const [health, setHealth] = useState<{ lastEventAgoS: number; ingesting: boolean } | null>(null);
+
   const [commitDays, setCommitDays] = useState<CommitDay[]>([]);
   const [commitHover, setCommitHover] = useState<{ d: string; c: number; clientX: number; clientY: number } | null>(null);
   const [commitPopover, setCommitPopover] = useState<{ d: string; x: number; commits: DayCommit[] | null } | null>(null);
@@ -178,6 +189,40 @@ export default function TimelineClient() {
       .catch(() => {});
   }, []);
 
+  // live "now" marker + ingest health: one shared 30s poll timer.
+  // keep the Set's identity stable when membership hasn't changed — the scene's
+  // applied-ref buffer rewrite keys on identity
+  useEffect(() => {
+    const tick = () => {
+      fetch("/api/timeline/live")
+        .then((r) => (r.ok ? r.json() : Promise.reject(new Error(`${r.status}`))))
+        .then((d: { now: number; ids: string[] }) => {
+          setLiveIds((prev) =>
+            prev.size === d.ids.length && d.ids.every((id) => prev.has(id)) ? prev : new Set(d.ids),
+          );
+        })
+        .catch(() => {});
+      fetch("/api/timeline/health")
+        .then((r) => (r.ok ? r.json() : Promise.reject(new Error(`${r.status}`))))
+        .then((d: { lastEventAgoS: number; ingesting: boolean }) => setHealth(d))
+        .catch(() => {});
+    };
+    tick();
+    const t = setInterval(tick, 30_000);
+    return () => clearInterval(t);
+  }, []);
+
+  // cost mode thresholds: quantiles over nonzero token totals (log-heat ramp)
+  const costThresholds = useMemo(() => {
+    const toks = (data?.sessions ?? [])
+      .map((s) => s.tokens)
+      .filter((t) => t > 0)
+      .sort((a, b) => a - b);
+    if (!toks.length) return [0, 0, 0];
+    const q = (p: number) => toks[Math.min(toks.length - 1, Math.floor(p * toks.length))];
+    return [q(0.25), q(0.5), q(0.75)];
+  }, [data]);
+
   // harnesses: canonical order first, then any strays from the data
   const allHarnesses = useMemo(() => {
     const seen = new Set(data?.meta.harnesses ?? []);
@@ -203,6 +248,17 @@ export default function TimelineClient() {
     }
     return [...map.values()].sort((a, b) => b.count - a.count);
   }, [data]);
+
+  // plumbing (CodexBar /usage probes etc.) starts hidden in task mode so the
+  // real work distribution reads; its chip stays one click away
+  const autoHidPlumbing = useRef(false);
+  useEffect(() => {
+    if (autoHidPlumbing.current) return;
+    const plumbing = clusters.find((c) => c.name === "cli plumbing");
+    if (!plumbing) return;
+    autoHidPlumbing.current = true;
+    setHiddenClusters((prev) => new Set([...prev, plumbing.id]));
+  }, [clusters]);
 
   // sparse lanes start hidden so the field isn't mostly empty rows; the chips
   // still show them (with counts) and one click brings the lane back
@@ -576,7 +632,7 @@ export default function TimelineClient() {
         {/* color-mode segmented control */}
         <span className="mono text-[11px] text-ink-muted">color:</span>
         <div className="mono flex items-center rounded-full border border-rule text-[11px] mr-2">
-          {(["harness", "task", "language"] as const).map((m) => (
+          {(["harness", "task", "language", "cost"] as const).map((m) => (
             <button
               key={m}
               onClick={() => setColorMode(m)}
@@ -620,6 +676,18 @@ export default function TimelineClient() {
               />
             ))}
           </>
+        ) : colorMode === "cost" ? (
+          <>
+            {/* no chips in cost mode — a tiny sequential legend instead */}
+            <span className="mono text-[11px] text-ink-muted mr-1">tokens</span>
+            <span className="mono flex items-center gap-1 text-[10px] text-ink-muted">
+              low
+              {COST_RAMP.map((c) => (
+                <span key={c} className="inline-block h-1.5 w-4 rounded-[2px]" style={{ background: c }} />
+              ))}
+              high
+            </span>
+          </>
         ) : (
           <>
             <span className="mono text-[11px] text-ink-muted mr-1">language</span>
@@ -639,7 +707,16 @@ export default function TimelineClient() {
         )}
         <span className="mono text-[11px] text-ink-muted ml-auto">
           {visibleCount}/{data?.meta.count ?? "…"} sessions
+          {liveIds.size > 0 && <span style={{ color: "#6ee7a0" }}> · {liveIds.size} live</span>}
         </span>
+        {health && (
+          <span
+            className="mono text-[10px]"
+            style={{ color: health.ingesting ? "var(--ink-muted)" : "#f85149" }}
+          >
+            {health.ingesting ? "ingest current" : "ingest stale"} · last event {fmtAgo(health.lastEventAgoS)} ago
+          </span>
+        )}
       </div>
 
       {/* field */}
@@ -687,6 +764,8 @@ export default function TimelineClient() {
               colorMode={colorMode}
               hiddenClusters={hiddenClusters}
               hiddenLangs={hiddenLangs}
+              liveIds={liveIds}
+              costThresholds={costThresholds}
             />
           )}
           {!data && !error && (
@@ -926,6 +1005,7 @@ export default function TimelineClient() {
             </div>
             <div className="text-ink-muted">
               {hover.point.s.events.toLocaleString()} events · {hover.point.s.turns} turns
+              {hover.point.s.tokens > 0 && <> · {fmtTokens(hover.point.s.tokens)} tok</>}
               {hover.point.s.lang && (
                 <>
                   {" · "}
@@ -967,6 +1047,12 @@ export default function TimelineClient() {
               <dd>{selected.turns}</dd>
               <dt className="text-ink-muted">events</dt>
               <dd>{selected.events.toLocaleString()}</dd>
+              {selected.tokens > 0 && (
+                <>
+                  <dt className="text-ink-muted">tokens</dt>
+                  <dd>{fmtTokens(selected.tokens)}</dd>
+                </>
+              )}
               {detail && (
                 <>
                   <dt className="text-ink-muted">tool calls</dt>
@@ -1076,12 +1162,18 @@ export default function TimelineClient() {
               <TracePreview sessionId={selected.id} />
             </div>
 
-            <div className="mt-5">
+            <div className="mt-5 flex gap-4">
+              <a
+                href={sessionHref(selected.id)}
+                className="mono text-[11px] text-ink-bright underline decoration-rule underline-offset-4 hover:text-ink transition-colors"
+              >
+                full transcript →
+              </a>
               <a
                 href={`/anatomy?session=${encodeURIComponent(selected.id)}`}
                 className="mono text-[11px] text-ink-muted underline decoration-rule underline-offset-4 hover:text-ink-bright transition-colors"
               >
-                open in anatomy →
+                anatomy →
               </a>
             </div>
           </aside>

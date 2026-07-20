@@ -80,15 +80,24 @@ export async function GET(request: NextRequest) {
     });
   }
 
-  const rows = await chQuery<SessionRow>(
-    `SELECT session_id, harness, mode, title,
-            toUInt32(total_events) AS total_events,
-            toUInt32(total_turns) AS total_turns,
-            toString(toUnixTimestamp(first_event_time)) AS start_s,
-            toString(toUnixTimestamp(last_event_time)) AS end_s
-     FROM mcp_open_sessions FINAL
-     WHERE first_event_time > '2001-01-01'`,
-  );
+  const [rows, tokenRows] = await Promise.all([
+    chQuery<SessionRow>(
+      `SELECT session_id, harness, mode, title,
+              toUInt32(total_events) AS total_events,
+              toUInt32(total_turns) AS total_turns,
+              toString(toUnixTimestamp(first_event_time)) AS start_s,
+              toString(toUnixTimestamp(last_event_time)) AS end_s
+       FROM mcp_open_sessions FINAL
+       WHERE first_event_time > '2001-01-01'`,
+    ),
+    // bulk token totals (cost color mode) — UInt64 sums arrive as strings
+    chQuery<{ sid: string; tok: string }>(
+      `SELECT session_id AS sid,
+              toString(sum(input_tokens) + sum(output_tokens) + sum(cache_read_tokens) + sum(cache_write_tokens)) AS tok
+       FROM events WHERE event_ts > '2026-01-01' GROUP BY session_id`,
+    ),
+  ]);
+  const tokenMap = new Map(tokenRows.map((r) => [r.sid, Number(r.tok)]));
 
   const scanMap = readScanMap();
   const langMap = readDominantLangMap();
@@ -104,6 +113,7 @@ export async function GET(request: NextRequest) {
       turns: r.total_turns,
       start: Number(r.start_s),
       end: Number(r.end_s),
+      tokens: tokenMap.get(r.session_id) ?? 0,
       ...(scan?.label ? { label: scan.label } : {}),
       ...(scan?.cluster ? { cluster: scan.cluster } : {}),
       ...(scan?.clusterId != null ? { clusterId: scan.clusterId } : {}),
