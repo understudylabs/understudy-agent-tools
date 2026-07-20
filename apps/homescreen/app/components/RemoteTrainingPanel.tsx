@@ -573,7 +573,7 @@ export function RemoteTrainingPanel(props: Props) {
         </div>
         {backendCompatibilityError && <p className="remote-training-warning">Portable backend check failed: {backendCompatibilityError}</p>}
         <p className="remote-training-consent-summary">
-          {plan.artifacts.length} private splits · endpoint auto-deletes · ${plan.maximum_spend_usd.toLocaleString(undefined, { style: "currency", currency: "USD", maximumFractionDigits: 0 })} budget guardrail
+          {plan.artifacts.length} private splits · endpoint auto-deletes · {plan.maximum_spend_usd.toLocaleString(undefined, { style: "currency", currency: "USD", maximumFractionDigits: 0 })} budget guardrail
         </p>
         <div className="remote-training-actions">
           <button type="button" className="btn primary" onClick={start}>Upload & train</button>
