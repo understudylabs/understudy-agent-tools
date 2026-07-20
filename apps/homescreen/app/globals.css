@@ -3101,6 +3101,13 @@ select,
   gap: 8px;
   padding: 0 0 8px;
 }
+.workload-analysis.has-remote-training {
+  width: min(100%, 1180px);
+  gap: 0;
+}
+.workload-analysis.has-remote-training .csv-analysis-next {
+  border-top: 0;
+}
 .automatic-goal-card {
   display: grid;
   gap: 20px;
@@ -3161,6 +3168,31 @@ select,
   border-radius: 13px;
   background: color-mix(in srgb, var(--c-window) 94%, transparent);
   animation: analysis-card-enter 240ms var(--motion-ease) both;
+}
+.structured-data-field-histogram {
+  display: flex;
+  align-items: end;
+  gap: 4px;
+  height: 46px;
+  margin-bottom: 9px;
+  border-bottom: 1px dashed color-mix(in srgb, var(--text) 14%, transparent);
+}
+.structured-data-field-histogram i {
+  flex: 1 1 0;
+  min-width: 4px;
+  max-width: 24px;
+  border-radius: 3px 3px 0 0;
+  background: color-mix(in srgb, var(--text) 52%, transparent);
+  opacity: 0.56;
+  transform-origin: bottom;
+  animation: structured-profile-bar-enter 320ms var(--motion-ease) both;
+}
+.structured-data-field-grid article[data-role="input"] .structured-data-field-histogram i { background: var(--model-cyan); }
+.structured-data-field-grid article[data-role="target"] .structured-data-field-histogram i { background: var(--model-violet); }
+.structured-data-field-grid article[data-role="preference"] .structured-data-field-histogram i { background: var(--model-amber); }
+@keyframes structured-profile-bar-enter {
+  from { opacity: 0; transform: scaleY(0.08); }
+  to { opacity: 0.62; transform: scaleY(1); }
 }
 .structured-data-field-grid article:nth-child(2),
 .automatic-goal-card-preview article:nth-child(2) { animation-delay: 35ms; }
@@ -4382,15 +4414,103 @@ select,
   font-size: 11px;
   line-height: 1.45;
 }
-.remote-training-running > div:first-child {
+.remote-training-running > div:first-child,
+.remote-training-running > header {
   display: flex;
   align-items: center;
   gap: 12px;
 }
-.remote-training-running > div:first-child > div {
+.remote-training-running > div:first-child > div,
+.remote-training-running > header > div {
   display: grid;
   flex: 1 1 auto;
   gap: 3px;
+}
+.remote-training-run-view {
+  gap: 22px;
+  min-height: 310px;
+  margin-top: 0;
+  padding: 26px;
+  overflow: hidden;
+  border: 1px solid color-mix(in srgb, var(--model-cyan) 32%, var(--border));
+  border-radius: 16px;
+  background: color-mix(in srgb, var(--c-content) 94%, transparent);
+  animation: settle var(--motion-settle) var(--motion-ease) both;
+}
+.remote-training-run-view header > div > span {
+  color: var(--model-cyan);
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: 0.11em;
+  text-transform: uppercase;
+}
+.remote-training-run-view header strong {
+  font-size: 22px;
+  font-weight: 620;
+}
+.remote-training-example-window {
+  position: relative;
+  overflow: hidden;
+  margin-inline: -26px;
+  padding: 8px 0 12px;
+  mask-image: linear-gradient(90deg, transparent, black 8%, black 92%, transparent);
+}
+.remote-training-example-window > header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 18px;
+  padding: 0 34px 10px;
+  color: var(--text-3);
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: 0.05em;
+}
+.remote-training-example-track {
+  display: flex;
+  width: max-content;
+  gap: 14px;
+  padding-inline: 26px;
+  animation: remote-training-example-page 360ms cubic-bezier(0.22, 1, 0.36, 1) both;
+  will-change: transform;
+}
+.remote-training-example-track > article {
+  display: grid;
+  flex: 0 0 min(430px, 72vw);
+  min-height: 154px;
+  gap: 9px;
+  align-content: start;
+  padding: 18px;
+  border: 1px solid color-mix(in srgb, var(--model-cyan) 22%, var(--border));
+  border-radius: 13px;
+  background: color-mix(in srgb, var(--c-window) 92%, transparent);
+}
+.remote-training-example-track article > span,
+.remote-training-example-track article > small {
+  color: var(--model-mint);
+  font-family: var(--mono);
+  font-size: 10px;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+.remote-training-example-track article > p {
+  display: -webkit-box;
+  margin: 0;
+  overflow: hidden;
+  color: var(--text-2);
+  font-size: 14px;
+  line-height: 1.55;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 4;
+}
+@keyframes remote-training-example-page {
+  from { opacity: 0; transform: translate3d(32px, 0, 0); }
+  to { opacity: 1; transform: translate3d(0, 0, 0); }
+}
+@media (prefers-reduced-motion: reduce) {
+  .remote-training-example-track {
+    animation: none;
+  }
 }
 .remote-training-running code,
 .remote-training-endpoint code {
@@ -4460,7 +4580,8 @@ select,
     grid-template-columns: 1fr;
   }
   .remote-training-confirm-heading,
-  .remote-training-running > div:first-child {
+  .remote-training-running > div:first-child,
+  .remote-training-running > header {
     align-items: stretch;
     flex-direction: column;
   }

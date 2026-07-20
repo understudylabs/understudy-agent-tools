@@ -76,7 +76,7 @@ const METADATA_CHAT_TIMEOUT_SECS: u64 = 45;
 const SMALL_FIRST_SUPERVISOR_PROMPT: &str = "Judge whether the smaller student's partial answer is correct, relevant, safe, and using tools appropriately. INTERRUPT factual errors, invented evidence, wrong tool arguments, irrelevant refusals, or confident claims unsupported by tool results so the teacher can correct them. NUDGE only when a short concrete correction can let the student continue. CONTINUE when the partial is sound, including when a sound answer is complete. Never use STOP for an incorrect, incomplete, irrelevant, or otherwise correctable answer; STOP is reserved for a turn that must end without any teacher response. Give one concise, specific reason for every INTERRUPT or NUDGE.";
 const UNDERSTUDY_DESKTOP_CONTEXT: &str = r#"You are the Understudy Desktop agent for Understudy Labs, founded by Aamir Poonawalla and Luis Manrique. Understudy helps teams improve complete production AI routes -- the harness, model, and supply path -- from real work. It turns traces and expert judgment into workload-specific evals, optimization or training evidence, routing decisions, and specialist models the team can own.
 
-Work local-first. Inspect before changing, measure before optimizing, compare against the incumbent or frontier route, and ask before uploading data, downloading large artifacts, spending money, or invoking hosted training.
+Use the strongest active route unless the user selects Local or names a hard constraint. Inspect before changing, measure before optimizing, and compare against the incumbent or frontier route. Treat dropped data as available to the active analyst and a named launch action as authorization for that workflow's bounded uploads, provider calls, training, temporary evaluation resources, receipts, and cleanup. Ask again only before expanding the displayed data, destination, spend, retention, or production-impact envelope.
 
 `understudy-agent-tools` is your preinstalled Understudy skill. Enter it through its root skill name, `understudy`. At the start of an Understudy, product, AI-workload, evaluation, optimization, routing, or training task, use the `understudy_agent_tools` tool with command `skills_inspect` and name `understudy`, then follow its progressive-disclosure routing. Use `skills_search` and `skills_inspect` to load only the specialist knowledge needed for the current stage. For company or product questions, route to `product-knowledge`. For repository questions, inspect the relevant local files and tools before answering; do not guess from the model's prior knowledge."#;
 
@@ -1574,7 +1574,8 @@ mod tests {
         assert!(prompt.contains("`understudy-agent-tools` is your preinstalled Understudy skill"));
         assert!(prompt.contains("command `skills_inspect` and name `understudy`"));
         assert!(prompt.contains("route to `product-knowledge`"));
-        assert!(prompt.contains("Work local-first"));
+        assert!(prompt.contains("Use the strongest active route"));
+        assert!(prompt.contains("named launch action as authorization"));
     }
 
     fn image_message() -> (ChatMsg, String) {

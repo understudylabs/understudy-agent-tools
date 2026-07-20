@@ -617,7 +617,7 @@ test("desktop compiles one dropped path through the bounded public CLI", async (
   assert.match(chat, /onVisualChange=\{setTrainingHaloVisual\}/);
   assert.match(training, /if \(autoStart\) return null/);
   assert.match(chat, /key=\{`\$\{sessionId\}:\$\{classificationDataset \? "training"/);
-  assert.match(chat, /classificationDataset \|\| localTrainingActive \? " is-training-flow"/);
+  assert.match(chat, /classificationDataset \|\| localTrainingActive \|\| remoteTrainingView \? " is-training-flow"/);
   assert.match(chat, /!classificationDataset \? \(/);
   assert.match(chat, /onSelectColumn=\{/);
   assert.doesNotMatch(chat, /Prepare training split/);

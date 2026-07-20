@@ -40,10 +40,8 @@ export function maximumManagedTrainingSpend(capabilities: RemoteTrainingCapabili
   return maximumSpend;
 }
 
-const DEFAULT_MANAGED_TRAINING_SPEND_USD = 3;
-
 export function recommendedManagedTrainingSpend(capabilities: RemoteTrainingCapabilities): number {
-  return Math.min(DEFAULT_MANAGED_TRAINING_SPEND_USD, maximumManagedTrainingSpend(capabilities));
+  return maximumManagedTrainingSpend(capabilities);
 }
 
 type RemoteArtifact = {
@@ -93,6 +91,7 @@ type RemoteTrainingEvent = {
   schema_version?: "understudy-train-v1";
   sequence?: number;
   type?: string;
+  occurred_at?: string;
   phase: "queued" | "upload" | "training" | "evaluation" | "deployment" | "cleanup" | "terminal" | string;
   message: string;
   progress?: {
@@ -104,6 +103,13 @@ type RemoteTrainingEvent = {
     decision: "observe" | "retry" | "wait" | "ask_user" | "stop";
     reason_code: string;
   };
+};
+
+type RemoteTrainingExampleSet = {
+  schema_version: "understudy.remote_training.example_stream.v1";
+  total: number;
+  truncated: boolean;
+  examples: Array<{ input: string; target: string | null }>;
 };
 
 type HumanMetric = {
@@ -123,7 +129,7 @@ type RemoteResult = {
   reserved_spend_usd?: number;
   reconciled_spend_usd?: number | null;
   provider_error?: {
-    phase: "training" | "deployment" | "adapter" | "evaluation";
+    phase: "upload" | "training" | "deployment" | "adapter" | "evaluation";
     resource_id: string;
     resource: string;
     status: string;
@@ -194,6 +200,8 @@ type CommonProps = {
   modelName: string;
   onActiveChange: (active: boolean) => void;
   onVisualChange: (visual: TrainingHaloVisual | null) => void;
+  onRunViewChange?: (engaged: boolean) => void;
+  trainingExamples?: Array<{ input: string; target: string | null }>;
 };
 
 type ClassificationProps = CommonProps & {
@@ -216,6 +224,23 @@ type Props = ClassificationProps | PreparedPlanProps;
 
 type Stage = "recovering" | "choice" | "preparing" | "confirm" | "starting" | "running" | "terminal" | "failed";
 
+function RunElapsed({ startedAt }: { startedAt: number | null }) {
+  const [elapsedSeconds, setElapsedSeconds] = useState(0);
+
+  useEffect(() => {
+    if (startedAt === null) {
+      setElapsedSeconds(0);
+      return;
+    }
+    const update = () => setElapsedSeconds(Math.max(0, Math.floor((Date.now() - startedAt) / 1_000)));
+    update();
+    const timer = window.setInterval(update, 1_000);
+    return () => window.clearInterval(timer);
+  }, [startedAt]);
+
+  return startedAt === null ? null : <> · {elapsedSeconds}s elapsed</>;
+}
+
 function providerDefault(providers: RemoteTrainingProvider[]): RemoteTrainingProvider | undefined {
   return providers.find((provider) => provider.id === "managed");
 }
@@ -237,7 +262,7 @@ export function RemoteTrainingPanel(props: Props) {
   const preparedMode = preparedPlan !== null;
   const datasetManifestPath = props.datasetManifestPath ?? null;
   const capabilities = props.capabilities ?? null;
-  const { modelName, onActiveChange, onVisualChange } = props;
+  const { modelName, onActiveChange, onRunViewChange, onVisualChange } = props;
   const providers = useMemo(
     () => capabilities?.providers.filter(
       (provider) => provider.id === "managed" && provider.enabled && provider.model_profiles.length > 0,
@@ -257,7 +282,11 @@ export function RemoteTrainingPanel(props: Props) {
   const [events, setEvents] = useState<RemoteTrainingEvent[]>([]);
   const [uploadEvent, setUploadEvent] = useState<UploadEvent | null>(null);
   const [result, setResult] = useState<RemoteResult | null>(null);
+  const [runExamples, setRunExamples] = useState<RemoteTrainingExampleSet | null>(null);
+  const [runExampleCursor, setRunExampleCursor] = useState(0);
+  const [runStartedAt, setRunStartedAt] = useState<number | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [submitted, setSubmitted] = useState(false);
   const [, setBackendCompatibility] = useState<BackendCompatibility | null>(null);
   const [backendCompatibilityError, setBackendCompatibilityError] = useState<string | null>(null);
   const polling = useRef(false);
@@ -266,12 +295,46 @@ export function RemoteTrainingPanel(props: Props) {
   const profile = provider?.model_profiles.find((candidate) => candidate.id === profileId)
     ?? (provider ? profileDefault(provider) : undefined);
   const active = stage === "preparing" || stage === "starting" || stage === "running";
+  const runViewEngaged = submitted && (stage === "starting" || stage === "running" || stage === "terminal" || stage === "failed");
   const latestEvent = events.at(-1);
   const planPath = plan?.plan_path ?? null;
 
   useEffect(() => {
+    let cancelled = false;
+    if (!runViewEngaged || !planPath) {
+      setRunExamples(null);
+      setRunExampleCursor(0);
+      return () => { cancelled = true; };
+    }
+    void invoke<RemoteTrainingExampleSet>("remote_training_examples", { planPath })
+      .then((stream) => {
+        if (!cancelled) {
+          setRunExamples(stream);
+          setRunExampleCursor(0);
+        }
+      })
+      .catch(() => {
+        if (!cancelled) setRunExamples(null);
+      });
+    return () => { cancelled = true; };
+  }, [planPath, runViewEngaged]);
+
+  useEffect(() => {
+    const count = runExamples?.examples.length ?? 0;
+    if ((stage !== "starting" && stage !== "running") || count <= 6) return;
+    const timer = window.setInterval(() => {
+      setRunExampleCursor((cursor) => cursor + 6 >= count ? 0 : cursor + 6);
+    }, 1_600);
+    return () => window.clearInterval(timer);
+  }, [runExamples, stage]);
+
+  useEffect(() => {
     onActiveChange(active);
   }, [active, onActiveChange]);
+
+  useEffect(() => {
+    onRunViewChange?.(runViewEngaged);
+  }, [onRunViewChange, runViewEngaged]);
 
   useEffect(() => {
     if (!active && !(stage === "terminal" && result?.outcome === "promoted")) {
@@ -301,8 +364,9 @@ export function RemoteTrainingPanel(props: Props) {
   useEffect(() => () => {
     stopped.current = true;
     onActiveChange(false);
+    onRunViewChange?.(false);
     onVisualChange(null);
-  }, [onActiveChange, onVisualChange]);
+  }, [onActiveChange, onRunViewChange, onVisualChange]);
 
   useEffect(() => {
     let cancelled = false;
@@ -327,7 +391,9 @@ export function RemoteTrainingPanel(props: Props) {
     setEvents([]);
     setUploadEvent(null);
     setResult(null);
+    setRunStartedAt(null);
     setError(null);
+    setSubmitted(false);
     stopped.current = false;
     const recovery = preparedPlan
       ? invoke<RemoteRunReceipt | null>("existing_remote_training", {
@@ -340,6 +406,7 @@ export function RemoteTrainingPanel(props: Props) {
       .then((receipt) => {
         if (cancelled) return;
         if (receipt) {
+          setSubmitted(true);
           setRun(receipt);
           setStage("running");
         } else {
@@ -415,6 +482,9 @@ export function RemoteTrainingPanel(props: Props) {
 
   const start = () => {
     if (!plan || stage !== "confirm") return;
+    onRunViewChange?.(true);
+    setSubmitted(true);
+    setRunStartedAt(Date.now());
     setStage("starting");
     setError(null);
     setEvents([]);
@@ -441,16 +511,19 @@ export function RemoteTrainingPanel(props: Props) {
   const cancel = () => {
     if (!run) return;
     void invoke("cancel_remote_training", { runManifestPath: run.run_manifest_path })
-      .then(() => setError("Stop requested. Eve is preserving cleanup before the run ends."))
+      .then(() => setError("Stop requested. Understudy is preserving cleanup before the run ends."))
       .catch((cause) => setError(String(cause)));
   };
 
   const resetRun = () => {
+    onRunViewChange?.(false);
+    setSubmitted(false);
     setPlan(preparedPlan);
     setRun(null);
     setEvents([]);
     setUploadEvent(null);
     setResult(null);
+    setRunStartedAt(null);
     setError(null);
     setStage(preparedPlan ? "confirm" : "choice");
   };
@@ -492,19 +565,18 @@ export function RemoteTrainingPanel(props: Props) {
 
   if (stage === "confirm" && plan) {
     const exampleCount = plan.artifacts.reduce((sum, artifact) => sum + artifact.row_count, 0);
-    const actionLabel = `Upload & train · $${plan.maximum_spend_usd.toFixed(2)} max`;
     return (
       <div className="remote-training-confirm">
         <div className="remote-training-confirm-heading">
           <div><strong>{modelName}</strong></div>
-          <small>{exampleCount.toLocaleString()} examples · ${plan.maximum_spend_usd.toFixed(2)} max</small>
+          <small>{exampleCount.toLocaleString()} examples</small>
         </div>
         {backendCompatibilityError && <p className="remote-training-warning">Portable backend check failed: {backendCompatibilityError}</p>}
         <p className="remote-training-consent-summary">
-          {plan.artifacts.length} private splits · endpoint auto-deletes
+          {plan.artifacts.length} private splits · endpoint auto-deletes · {plan.maximum_spend_usd.toLocaleString(undefined, { style: "currency", currency: "USD", maximumFractionDigits: 0 })} budget guardrail
         </p>
         <div className="remote-training-actions">
-          <button type="button" className="btn primary" onClick={start}>{actionLabel}</button>
+          <button type="button" className="btn primary" onClick={start}>Upload & train</button>
         </div>
       </div>
     );
@@ -517,13 +589,48 @@ export function RemoteTrainingPanel(props: Props) {
       : latestEvent?.progress
         ? `${latestEvent.progress.completed} of ${latestEvent.progress.total} ${latestEvent.progress.unit}`
         : null;
+    const phaseTitle = latestEvent?.phase === "training"
+      ? "Training"
+      : latestEvent?.phase === "evaluation"
+        ? "Evaluating"
+        : latestEvent?.phase === "deployment"
+          ? "Preparing your model"
+          : latestEvent?.phase === "cleanup"
+            ? "Finishing safely"
+            : "Starting";
+    const fallbackExamples = props.trainingExamples?.filter((example) => example.input.trim()).slice(0, 6) ?? [];
+    const sourceExamples = runExamples?.examples.length ? runExamples.examples : fallbackExamples;
+    const examples = sourceExamples.slice(runExampleCursor, runExampleCursor + 6);
+    const streamStart = sourceExamples.length > 0 ? Math.min(runExampleCursor + 1, sourceExamples.length) : 0;
+    const streamEnd = sourceExamples.length > 0 ? Math.min(runExampleCursor + examples.length, sourceExamples.length) : 0;
     return (
-      <div className="remote-training-running" aria-live="polite" aria-busy="true">
-        <div>
+      <div className="remote-training-running remote-training-run-view" aria-live="polite" aria-busy="true">
+        <header>
           <span className="local-training-pulse" aria-hidden="true" />
-          <div><strong>{latestEvent?.phase === "training" ? "Training" : latestEvent?.phase === "evaluation" ? "Evaluating" : "Starting"}</strong><small>{progress ?? status}</small></div>
+          <div>
+            <span>Remote training</span>
+            <strong>{phaseTitle}</strong>
+            <small>{progress ?? status}<RunElapsed startedAt={runStartedAt} /></small>
+          </div>
           {run && <button type="button" className="btn ghost" onClick={cancel}>Cancel</button>}
-        </div>
+        </header>
+        {examples.length > 0 && (
+          <div className="remote-training-example-window" aria-label="Actual prepared training examples">
+            <header>
+              <span>Actual train split · {streamStart.toLocaleString()}–{streamEnd.toLocaleString()} of {(runExamples?.total ?? sourceExamples.length).toLocaleString()}</span>
+              <small>Local display order; the provider may shuffle batches</small>
+            </header>
+            <div className="remote-training-example-track" key={runExampleCursor}>
+              {examples.map((example, index) => (
+                <article key={`${runExampleCursor + index}-${example.input.slice(0, 32)}`}>
+                  <span>Training example {(runExampleCursor + index + 1).toLocaleString()}</span>
+                  <p>{example.input}</p>
+                  {example.target && <small>Expected · {example.target}</small>}
+                </article>
+              ))}
+            </div>
+          </div>
+        )}
         {error && <p className="remote-training-warning">{error}</p>}
       </div>
     );

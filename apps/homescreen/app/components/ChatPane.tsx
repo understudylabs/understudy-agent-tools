@@ -202,6 +202,12 @@ type TrainingRecipeInspection = {
   source_format: string;
   artifact_kind: "dataset" | "benchmark_report";
   field_names: string[];
+  field_profiles: Array<{
+    name: string;
+    unique_count: number;
+    profile_kind: "number" | "category" | "text";
+    profile_bars: number[];
+  }>;
   row_preview: Array<{ input: string; target: string | null }>;
   benchmark: {
     dataset_name: string;
@@ -667,6 +673,7 @@ function StructuredDataProfile({
   inspection: TrainingRecipeInspection;
 }) {
   const visibleFields = inspection.field_names.slice(0, 8);
+  const profiles = new Map((inspection.field_profiles ?? []).map((profile) => [profile.name, profile]));
   const hiddenFieldCount = Math.max(0, inspection.field_names.length - visibleFields.length);
   return (
     <section className="structured-data-profile" aria-label="Detected dataset structure">
@@ -679,10 +686,22 @@ function StructuredDataProfile({
       <div className="structured-data-field-grid">
         {visibleFields.map((field) => {
           const role = structuredFieldRole(field);
+          const profile = profiles.get(field);
           return (
             <article key={field} data-role={role}>
+              <div className="structured-data-field-histogram" aria-hidden="true">
+                {(profile?.profile_bars.length ? profile.profile_bars : [1]).map((bar, index) => (
+                  <i key={`${field}:${index}`} style={{ height: `${Math.max(5, Math.min(100, bar * 100))}%` }} />
+                ))}
+              </div>
               <strong>{field}</strong>
-              <small>{role === "context" ? "observed field" : `${role} candidate`}</small>
+              <small>
+                {role === "context"
+                  ? profile?.profile_kind === "category"
+                    ? `${profile.unique_count.toLocaleString()} sampled kinds`
+                    : profile?.profile_kind ?? "observed field"
+                  : `${role} candidate`}
+              </small>
             </article>
           );
         })}
@@ -1065,6 +1084,7 @@ export function ChatPane({
   const [mappingGroupColumn, setMappingGroupColumn] = useState("");
   const [classificationDataset, setClassificationDataset] = useState<ClassificationDataset | null>(null);
   const [localTrainingActive, setLocalTrainingActive] = useState(false);
+  const [remoteTrainingView, setRemoteTrainingView] = useState(false);
   const [trainingHaloVisual, setTrainingHaloVisual] = useState<TrainingHaloVisual | null>(null);
   const [classifierLibraryOpen, setClassifierLibraryOpen] = useState(false);
   const [pacingMessageIndex, setPacingMessageIndex] = useState<number | null>(null);
@@ -1152,6 +1172,7 @@ export function ChatPane({
     setMappingGroupColumn("");
     setClassificationDataset(null);
     setLocalTrainingActive(false);
+    setRemoteTrainingView(false);
     setTrainingHaloVisual(null);
     dispatchDrop({ type: "reset" });
   };
@@ -2148,7 +2169,7 @@ export function ChatPane({
         "chat ai-chat" +
         (messages.length > 0 ? " has-messages" : "") +
         (dropRunning || droppedWorkload ? " has-workload" : "") +
-        (dropPhase === "preparing_dataset" || classificationDataset || localTrainingActive ? " is-training-flow" : "") +
+        (dropPhase === "preparing_dataset" || classificationDataset || localTrainingActive || remoteTrainingView ? " is-training-flow" : "") +
         (streaming ? " is-streaming" : "")
       }
     >
@@ -2309,7 +2330,7 @@ export function ChatPane({
               className="workload-scroller-item"
             >
               <section
-                className={`workload-analysis${classificationDataset ? " has-local-training" : ""}`}
+                className={`workload-analysis${classificationDataset ? " has-local-training" : ""}${remoteTrainingView ? " has-remote-training" : ""}`}
               >
               {(!droppedWorkload || (dropRunning && (!csvInspection || dropPhase === "preparing_dataset"))) ? (
                 <DatasetAnalysisLoadingTemplate
@@ -2332,12 +2353,12 @@ export function ChatPane({
                       onConfirm={() => setDatasetProfileConfirmed(true)}
                     />
                   ) : <>
-                    <button
+                    {!remoteTrainingView && <button
                       type="button"
                       className="btn ghost dataset-flow-back"
                       onClick={() => setDatasetProfileConfirmed(false)}
-                    >Back to data profile</button>
-                    <AutomaticGoalCard
+                    >Back to data profile</button>}
+                    {!remoteTrainingView && <AutomaticGoalCard
                       inspection={trainingRecipe}
                       card={trainingGoalCard}
                       architect={environmentArchitect}
@@ -2349,7 +2370,7 @@ export function ChatPane({
                       trainingBackend={recipeBackend}
                       localTrainingAvailable={recipeLocalAvailable}
                       onTrainingBackendChange={setRecipeBackend}
-                    />
+                    />}
                     <div className="csv-analysis-next">
                       {trainingRecipe.ready && remoteRecipePlan ? <>
                         {recipeLocalAvailable && (
@@ -2386,18 +2407,22 @@ export function ChatPane({
                             modelName={`${trainingUseCaseLabel(trainingRecipe.detected_use_case)} model`}
                             onBack={recipeLocalAvailable ? () => setRecipeBackend("local") : undefined}
                             onActiveChange={setLocalTrainingActive}
+                            onRunViewChange={setRemoteTrainingView}
                             onVisualChange={setTrainingHaloVisual}
+                            trainingExamples={trainingRecipe.row_preview}
                           />
                         )}
                       </> : (
                         <div className="remote-training-state" role="status" aria-live="polite">
-                          <strong>Preparing {trainingUseCaseLabel(trainingRecipe.detected_use_case)}</strong>
-                          <small>Splitting and checking locally.</small>
+                          <strong>{environmentArchitectProgress ? "Understudy is checking the training plan" : `Preparing ${trainingUseCaseLabel(trainingRecipe.detected_use_case)}`}</strong>
+                          <small>{environmentArchitectProgress?.message ?? (environmentArchitect
+                            ? "The verifier draft is ready, but this task still needs an executable portable recipe. No upload or spend has started."
+                            : "Profiling and splitting locally. No upload or spend has started.")}</small>
                         </div>
                       )}
                     </div>
                   </>}
-                  {!localTrainingActive && (
+                  {!localTrainingActive && !remoteTrainingView && (
                     <button type="button" className="btn ghost workload-generic-dismiss" onClick={resetDroppedWorkload}>
                       Dismiss
                     </button>

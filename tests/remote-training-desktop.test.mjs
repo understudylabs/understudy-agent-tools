@@ -5,13 +5,41 @@ import test from "node:test";
 const root = new URL("../", import.meta.url);
 const read = (path) => readFile(new URL(path, root), "utf8");
 
+test("one cloud launch authorizes the bounded hosted workflow without repeated approval gates", async () => {
+  const [agentPrompt, orchestrator, gateway, privacy, proposals, routeDecision] = await Promise.all([
+    read("apps/homescreen/src-tauri/src/chat.rs"),
+    read("skills/understudy/SKILL.md"),
+    read("skills/use-understudy-gateway/SKILL.md"),
+    read("docs/privacy-and-data-boundaries.md"),
+    read("docs/environment-proposals.md"),
+    read("src/route-decision.ts"),
+  ]);
+
+  for (const policy of [agentPrompt, orchestrator, gateway, privacy, proposals]) {
+    assert.match(policy, /launch|activat/i);
+    assert.match(policy, /upload/i);
+    assert.match(policy, /provider/i);
+    assert.match(policy, /cleanup/i);
+  }
+  assert.match(agentPrompt, /named launch action as authorization/);
+  assert.match(orchestrator, /Do not add dry-run or[\s\S]*phase-by-phase approval gates/);
+  assert.match(gateway, /Do not pause for another confirmation between those phases/);
+  assert.match(privacy, /without another prompt/);
+  assert.match(proposals, /No second\s+confirmation is required/);
+  assert.match(routeDecision, /kind: "understudy"/);
+  assert.match(routeDecision, /model: "auto"/);
+  assert.doesNotMatch(routeDecision, /local-only until explicit approval/);
+  assert.doesNotMatch(agentPrompt, /Work local-first/);
+});
+
 test("remote training uses live capabilities with explicit upload and spend consent", async () => {
-  const [native, panel, localPanel, localSftPanel, tauriLib] = await Promise.all([
+  const [native, panel, localPanel, localSftPanel, tauriLib, portablePlan] = await Promise.all([
     read("apps/homescreen/src-tauri/src/remote_training.rs"),
     read("apps/homescreen/app/components/RemoteTrainingPanel.tsx"),
     read("apps/homescreen/app/components/LocalTrainingPanel.tsx"),
     read("apps/homescreen/app/components/LocalSftTrainingPanel.tsx"),
     read("apps/homescreen/src-tauri/src/lib.rs"),
+    read("src/training-plan/index.ts"),
   ]);
 
   assert.doesNotMatch(native, /UNDERSTUDY_REMOTE_TRAINING_EXPERIMENT/);
@@ -22,6 +50,9 @@ test("remote training uses live capabilities with explicit upload and spend cons
   assert.match(native, /leakage-group overlap/);
   assert.match(native, /raw_rows_in_telemetry/);
   assert.match(native, /max_upload_bytes/);
+  assert.match(native, /MAX_REMOTE_TRAINING_BUDGET_USD: f64 = 1_000\.0/);
+  assert.match(portablePlan, /MAX_PORTABLE_TRAINING_SPEND_USD = 1_000/);
+  assert.doesNotMatch(portablePlan, /MAX_PORTABLE_TRAINING_SPEND_USD = 500/);
   assert.match(native, /Method::DELETE,[\s\S]*api_url\("uploads"\)/);
   assert.match(native, /existing_remote_classification_training/);
   assert.match(native, /existing_remote_training/);
@@ -77,6 +108,10 @@ test("remote training uses live capabilities with explicit upload and spend cons
   assert.match(panel, /compile_remote_training_backends/);
   assert.match(panel, /preparedPlan/);
   assert.match(panel, /Upload & train/);
+  assert.doesNotMatch(panel, /Upload & train · \$/);
+  assert.match(panel, /budget guardrail/);
+  assert.match(panel, /remote-training-example-track/);
+  assert.match(panel, /trainingExamples/);
   assert.doesNotMatch(panel, /fake/);
   assert.doesNotMatch(native, /"fake"/);
   assert.doesNotMatch(panel, /Approve & run/);
@@ -96,7 +131,9 @@ test("remote training uses live capabilities with explicit upload and spend cons
   assert.match(panel, /provider\.id === "managed"/);
   assert.match(panel, /provider\.id === "managed" && provider\.enabled/);
   assert.match(panel, /recommendedManagedTrainingSpend\(capabilities\)/);
-  assert.match(panel, /DEFAULT_MANAGED_TRAINING_SPEND_USD = 3/);
+  assert.match(panel, /return maximumManagedTrainingSpend\(capabilities\)/);
+  assert.match(panel, /remote_training_examples/);
+  assert.match(native, /understudy\.remote_training\.example_stream\.v1/);
   assert.match(panel, /remoteTrainingArtifactLimitError/);
   assert.doesNotMatch(panel, /fireworks/i);
   assert.doesNotMatch(panel, /gemma-4/i);
@@ -163,6 +200,9 @@ test("remote training uses live capabilities with explicit upload and spend cons
   assert.match(chat, /setRecipeBackend\("local"\)/);
   assert.match(chat, /plan=\{remoteRecipePlan\}/);
   assert.match(chat, /onActiveChange=\{setLocalTrainingActive\}/);
+  assert.match(chat, /onRunViewChange=\{setRemoteTrainingView\}/);
+  assert.match(chat, /trainingExamples=\{trainingRecipe\.row_preview\}/);
+  assert.match(chat, /!remoteTrainingView && <AutomaticGoalCard/);
   assert.match(localSftPanel, /start_local_sft_training/);
   assert.match(localSftPanel, /compile_remote_training_backends/);
   assert.match(localSftPanel, /Training locally · \$0/);

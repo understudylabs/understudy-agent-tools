@@ -149,10 +149,10 @@ function buildCandidateRoutes(card: WorkloadCard): CandidateRoute[] {
   return [
     {
       route_id: "route-001",
-      kind: "local",
-      provider: null,
-      model: null,
-      why_try: "Evaluate the incumbent locally first before recommending hosted, provider, or Understudy routes.",
+      kind: "understudy",
+      provider: "understudy",
+      model: "auto",
+      why_try: "Use Understudy managed cloud to select the strongest cost-efficient compatible model.",
       approval_required: false,
       pricing_source: null,
       supplier_profile: null,
@@ -180,7 +180,7 @@ export function planRouteDecision(workloadCardPath: string, output?: string): { 
     constraints: {
       workload_shape: stringArray(card.workload_shape),
       privacy_boundary:
-        optionalString(requirements.privacy_boundary) ?? "local-only until explicit approval",
+        optionalString(requirements.privacy_boundary) ?? "workflow-bound cloud unless Local is selected",
       data_class: optionalString(card.data_class) ?? "source-metadata-only",
       context_budget_tokens: optionalNumber(requirements.context_budget_tokens),
       latency_target_ms: optionalNumber(requirements.latency_target_ms),
@@ -195,7 +195,7 @@ export function planRouteDecision(workloadCardPath: string, output?: string): { 
     },
     candidate_routes: buildCandidateRoutes(card),
     recommended_next_command: "understudy optimize-workload check --repo .",
-    approval_required_before: ["live model calls", "model downloads", "uploads", "hosted jobs"],
+    approval_required_before: ["expanding data, destination, spend, retention, or production impact"],
   };
   const outputPath = resolve(output ?? join(dirname(resolvedPath), "..", "route-decision", "route-decision-packet.json"));
   mkdirSync(dirname(outputPath), { recursive: true });

@@ -779,7 +779,10 @@ describe("understudy CLI", () => {
         readFileSync(join(repo, ".understudy", "workload-discovery", "workload-card.json"), "utf8"),
       );
       assert.equal(artifact.schema_version, "understudy.workload_card.v1");
-      assert.equal(artifact.route_requirements.privacy_boundary, "local-only until explicit approval");
+      assert.equal(
+        artifact.route_requirements.privacy_boundary,
+        "workflow-bound cloud unless Local is selected",
+      );
     }));
 
   it("plans a route decision packet from a valid workload card", () =>
@@ -794,11 +797,15 @@ describe("understudy CLI", () => {
       assert.equal(payload.schema_version, "understudy.route_decision_packet.v1");
       assert.equal(payload.workload_card, cardPath);
       assert.equal(payload.decision, "evaluate-first");
-      assert.equal(payload.constraints.privacy_boundary, "local-only until explicit approval");
+      assert.equal(
+        payload.constraints.privacy_boundary,
+        "workflow-bound cloud unless Local is selected",
+      );
       assert.equal(payload.constraints.data_class, "source-metadata-only");
       assert.equal(payload.readiness.local_runner_fit, "likely");
       assert.deepEqual(payload.readiness.pricing_sources_checked, []);
-      assert.equal(payload.candidate_routes[0].kind, "local");
+      assert.equal(payload.candidate_routes[0].kind, "understudy");
+      assert.equal(payload.candidate_routes[0].model, "auto");
       assert.equal(payload.candidate_routes[0].approval_required, false);
       assert.match(payload.recommended_next_command, /understudy optimize-workload check/);
       const saved = JSON.parse(readFileSync(join(repo, ".understudy", "route-decision", "route-decision-packet.json"), "utf8"));
