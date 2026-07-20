@@ -2688,6 +2688,20 @@ pub async fn remote_training_poll(run_manifest_path: String) -> Result<Value, St
         None,
     )
     .await?;
+    if matches!(
+        status.get("workflow_status").and_then(Value::as_str),
+        Some("completed" | "failed" | "cancelled")
+    ) {
+        if let Some(result) = status.get("result") {
+            let result_path = PathBuf::from(&run.run_manifest_path)
+                .parent()
+                .ok_or_else(|| {
+                    "The remote training run has no private result directory.".to_string()
+                })?
+                .join("result.json");
+            replace_private_json(&result_path, result)?;
+        }
+    }
     Ok(json!({
         "schema_version": "understudy.remote_training.poll.v1",
         "run_id": run.run_id,
