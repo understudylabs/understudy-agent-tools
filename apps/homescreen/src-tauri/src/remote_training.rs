@@ -32,10 +32,12 @@ const MAX_RECIPE_FIELD_NAMES: usize = 128;
 const MAX_DATASET_ANALYSIS_CONTEXT_CHARS: usize = 8_000;
 const MAX_DATASET_ANALYSIS_SAMPLE_ROWS: usize = 3;
 const MAX_DATASET_ANALYSIS_STRING_CHARS: usize = 600;
+const MAX_FIELD_PROFILE_SAMPLE_ROWS: usize = 4_096;
 const MAX_REMOTE_TRAINING_BUDGET_USD: f64 = 1_000.0;
 const ENVIRONMENT_PROPOSAL_SCHEMA: &str = "understudy.environment_proposal.v1";
 const ENVIRONMENT_VALIDATION_SCHEMA: &str = "understudy.environment_validation.v1";
 const MAX_GOAL_CARD_PREVIEW: u64 = 3;
+const MAX_REMOTE_TRAINING_EXAMPLE_STREAM: usize = 50_000;
 
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum PortableRecipeShape {
@@ -126,6 +128,7 @@ struct TrainingRecipeInspection {
     source_format: String,
     artifact_kind: String,
     field_names: Vec<String>,
+    field_profiles: Vec<TrainingRecipeFieldProfile>,
     row_preview: Vec<TrainingRecipeRowPreview>,
     benchmark: Option<BenchmarkReportSummary>,
     detected_use_case: String,
@@ -140,6 +143,14 @@ struct TrainingRecipeInspection {
     reasons: Vec<String>,
     warnings: Vec<String>,
     inspection_duration_ms: u64,
+}
+
+#[derive(Debug, Clone, Serialize)]
+struct TrainingRecipeFieldProfile {
+    name: String,
+    unique_count: u64,
+    profile_kind: String,
+    profile_bars: Vec<f64>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -549,6 +560,96 @@ pub async fn automatic_training_goal_card(
     })
     .await
     .map_err(|error| format!("Goal Card compilation stopped unexpectedly: {error}"))?
+}
+
+fn remote_training_example_preview(row: &Value) -> Option<TrainingRecipeRowPreview> {
+    let object = row.as_object()?;
+    if let Some(messages) = object.get("messages").and_then(Value::as_array) {
+        let input = messages
+            .iter()
+            .rev()
+            .filter_map(Value::as_object)
+            .find(|message| message.get("role").and_then(Value::as_str) == Some("user"))
+            .and_then(|message| message.get("content"))
+            .map(|content| {
+                content
+                    .as_str()
+                    .map(str::to_string)
+                    .unwrap_or_else(|| content.to_string())
+            })?;
+        let target = messages
+            .iter()
+            .rev()
+            .filter_map(Value::as_object)
+            .find(|message| message.get("role").and_then(Value::as_str) == Some("assistant"))
+            .and_then(|message| message.get("content"))
+            .map(|content| {
+                content
+                    .as_str()
+                    .map(str::to_string)
+                    .unwrap_or_else(|| content.to_string())
+            });
+        return Some(TrainingRecipeRowPreview {
+            input: bounded_preview_text(&input),
+            target: target.map(|value| bounded_preview_text(&value)),
+        });
+    }
+    let input = object.get("input").or_else(|| object.get("text"))?;
+    let input = input
+        .as_str()
+        .map(str::to_string)
+        .unwrap_or_else(|| input.to_string());
+    let target = object
+        .get("target")
+        .or_else(|| object.get("label"))
+        .map(|value| {
+            value
+                .as_str()
+                .map(str::to_string)
+                .unwrap_or_else(|| value.to_string())
+        });
+    Some(TrainingRecipeRowPreview {
+        input: bounded_preview_text(&input),
+        target: target.map(|value| bounded_preview_text(&value)),
+    })
+}
+
+#[tauri::command]
+pub async fn remote_training_examples(plan_path: String) -> Result<Value, String> {
+    tauri::async_runtime::spawn_blocking(move || {
+        let plan = read_verified_plan(&plan_path)?;
+        let train = plan
+            .artifacts
+            .iter()
+            .find(|artifact| artifact.artifact_role == "train")
+            .ok_or_else(|| "The prepared train split is unavailable.".to_string())?;
+        let file = fs::File::open(&train.path)
+            .map_err(|_| "The prepared train split could not be opened.".to_string())?;
+        let mut examples = Vec::new();
+        for (index, line) in BufReader::new(file).lines().enumerate() {
+            if examples.len() == MAX_REMOTE_TRAINING_EXAMPLE_STREAM {
+                break;
+            }
+            let line =
+                line.map_err(|_| format!("Training example {} could not be read.", index + 1))?;
+            if line.trim().is_empty() {
+                continue;
+            }
+            let row: Value = serde_json::from_str(&line)
+                .map_err(|_| format!("Training example {} is malformed.", index + 1))?;
+            if let Some(preview) = remote_training_example_preview(&row) {
+                examples.push(preview);
+            }
+        }
+        Ok(json!({
+            "schema_version": "understudy.remote_training.example_stream.v1",
+            "total": train.row_count,
+            "truncated": train.row_count as usize > examples.len(),
+            "examples": examples,
+        }))
+    })
+    .await
+    .map_err(|error| format!("Training example stream stopped unexpectedly: {error}"))?
 }
 
 fn bounded_process_detail(stderr: &[u8]) -> String {
@@ -1474,6 +1575,7 @@ fn inspect_training_recipe(path: &str) -> Result<Value, String> {
         .map_err(|_| "The dropped training dataset could not be read locally.".to_string())?;
     let parsed = parse_structured_dataset(&canonical, &bytes)?;
     let row_preview = training_recipe_row_preview(&parsed.rows);
+    let field_profiles = training_recipe_field_profiles(&parsed.rows, &parsed.field_names);
     let mut evidence = TrainingRecipeEvidence {
         total_rows: 0,
         chat_rows: 0,
@@ -1675,6 +1777,7 @@ fn inspect_training_recipe(path: &str) -> Result<Value, String> {
         source_format: parsed.source_format,
         artifact_kind: parsed.artifact_kind,
         field_names: parsed.field_names,
+        field_profiles,
         row_preview,
         benchmark: parsed.benchmark,
         detected_use_case: detected.detected_use_case.to_string(),
@@ -1843,6 +1946,113 @@ fn training_recipe_row_preview(rows: &[Value]) -> Vec<TrainingRecipeRowPreview> 
         }
     }
     previews
+}
+
+fn profile_scalar(value: &Value) -> Option<String> {
+    match value {
+        Value::Null => None,
+        Value::String(value) => {
+            let value = value.trim();
+            (!value.is_empty()).then(|| value.to_string())
+        }
+        Value::Bool(value) => Some(value.to_string()),
+        Value::Number(value) => Some(value.to_string()),
+        value => Some(value.to_string()),
+    }
+}
+
+fn normalized_profile_bars(mut counts: Vec<usize>) -> Vec<f64> {
+    let maximum = counts.iter().copied().max().unwrap_or(0);
+    if maximum == 0 {
+        return vec![1.0];
+    }
+    counts
+        .drain(..)
+        .map(|count| count as f64 / maximum as f64)
+        .collect()
+}
+
+fn binned_profile_bars(values: &[f64]) -> Vec<f64> {
+    const BIN_COUNT: usize = 8;
+    if values.is_empty() {
+        return vec![1.0];
+    }
+    let minimum = values.iter().copied().fold(f64::INFINITY, f64::min);
+    let maximum = values.iter().copied().fold(f64::NEG_INFINITY, f64::max);
+    if !minimum.is_finite() || !maximum.is_finite() || (maximum - minimum).abs() < f64::EPSILON {
+        return vec![1.0];
+    }
+    let mut counts = vec![0usize; BIN_COUNT];
+    for value in values {
+        let ratio = ((*value - minimum) / (maximum - minimum)).clamp(0.0, 1.0);
+        let index = ((ratio * BIN_COUNT as f64).floor() as usize).min(BIN_COUNT - 1);
+        counts[index] += 1;
+    }
+    normalized_profile_bars(counts)
+}
+
+fn training_recipe_field_profiles(
+    rows: &[Value],
+    field_names: &[String],
+) -> Vec<TrainingRecipeFieldProfile> {
+    let sample_count = rows.len().min(MAX_FIELD_PROFILE_SAMPLE_ROWS);
+    field_names
+        .iter()
+        .take(8)
+        .map(|field| {
+            let mut frequencies = HashMap::<String, usize>::new();
+            let mut numeric_values = Vec::new();
+            let mut text_lengths = Vec::new();
+            for index in 0..sample_count {
+                let row_index = if sample_count <= 1 {
+                    0
+                } else {
+                    index * (rows.len() - 1) / (sample_count - 1)
+                };
+                let Some(value) = rows[row_index].as_object().and_then(|row| row.get(field)) else {
+                    continue;
+                };
+                let Some(rendered) = profile_scalar(value) else {
+                    continue;
+                };
+                *frequencies.entry(rendered.clone()).or_default() += 1;
+                text_lengths.push(rendered.chars().count() as f64);
+                if let Some(number) = value.as_f64().or_else(|| {
+                    value
+                        .as_str()
+                        .and_then(|text| text.trim().parse::<f64>().ok())
+                }) {
+                    if number.is_finite() {
+                        numeric_values.push(number);
+                    }
+                }
+            }
+            let populated = text_lengths.len();
+            let numeric_ratio = if populated == 0 {
+                0.0
+            } else {
+                numeric_values.len() as f64 / populated as f64
+            };
+            let category = populated > 0
+                && (frequencies.len() <= 32 || frequencies.len() as f64 / populated as f64 <= 0.05);
+            let (profile_kind, profile_bars) = if numeric_ratio >= 0.9 {
+                ("number", binned_profile_bars(&numeric_values))
+            } else if category {
+                let mut counts = frequencies.values().copied().collect::<Vec<_>>();
+                counts.sort_unstable_by(|left, right| right.cmp(left));
+                counts.truncate(8);
+                ("category", normalized_profile_bars(counts))
+            } else {
+                ("text", binned_profile_bars(&text_lengths))
+            };
+            TrainingRecipeFieldProfile {
+                name: field.clone(),
+                unique_count: frequencies.len() as u64,
+                profile_kind: profile_kind.to_string(),
+                profile_bars,
+            }
+        })
+        .collect()
 }
 
 fn public_gsm8k_messages(row: &serde_json::Map<String, Value>) -> Option<Vec<Value>> {
@@ -4194,6 +4404,15 @@ mod tests {
             .get("field_names")
             .and_then(Value::as_array)
             .is_some_and(|fields| !fields.is_empty()));
+        assert!(inspection
+            .get("field_profiles")
+            .and_then(Value::as_array)
+            .is_some_and(|profiles| profiles.iter().all(|profile| {
+                profile
+                    .get("profile_bars")
+                    .and_then(Value::as_array)
+                    .is_some_and(|bars| !bars.is_empty())
+            })));
     }
 
     #[test]
@@ -4265,6 +4484,15 @@ mod tests {
             inspection.get("recipe_id").and_then(Value::as_str),
             Some("text_classification_exact_label_v1")
         );
+        let profiles = inspection
+            .get("field_profiles")
+            .and_then(Value::as_array)
+            .unwrap();
+        assert_eq!(profiles.len(), 2);
+        assert!(profiles.iter().all(|profile| profile
+            .get("profile_bars")
+            .and_then(Value::as_array)
+            .is_some_and(|bars| !bars.is_empty())));
         let plan: RemoteTrainingPlan = serde_json::from_value(
             prepare_training_recipe(
                 source.to_str().unwrap(),

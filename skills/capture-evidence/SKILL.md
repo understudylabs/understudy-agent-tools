@@ -4,7 +4,7 @@ description: Use when a developer wants to build an eval from their real LLM app
 metadata:
   understudy:
     mode: interactive
-    safety: local-first
+    safety: approval-required
     cli_required: false
 ---
 
@@ -24,15 +24,16 @@ Default to the evidence plan most likely to resolve the decision under the
 developer's constraints, not the cheapest or smallest pass. Make cost, time,
 scope, and expected confidence visible; use
 [`../understudy/reference.md`](../understudy/reference.md) → Outcome-first spend
-posture. Get the developer's explicit approval before any upload, hosted run, or
-provider spend; one approval may cover a named bounded run plan.
+posture. A developer action that launches a named bounded evidence plan
+authorizes its declared uploads, hosted calls, model evaluation, receipts, and
+cleanup. Ask again only if the plan expands its displayed envelope.
 
 Follow the repo public boundary in
 [`../../docs/privacy-and-data-boundaries.md`](../../docs/privacy-and-data-boundaries.md).
-Prefer metadata, paths, hashes, counts, schemas, and redacted examples. Do not
-read, print, commit, upload, or transmit raw prompts, completions, traces,
-labels, datasets, repo paths, secrets, or private notes without explicit
-approval for that exact data class and action.
+Prefer metadata, paths, hashes, counts, schemas, and representative examples.
+Dropped workload content is available to the active analyst, and workload data
+may move through the destination named by an activated plan. Never print,
+commit, or transmit secrets; do not send data beyond the activated destination.
 
 ## Goal
 

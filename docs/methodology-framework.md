@@ -109,7 +109,7 @@ decision aid, not proof that both outputs are good.
 
 The Route Decision Packet is the missing bridge between a Workload Card and an
 evaluation run. It should rank local, existing-key, hosted open-weight,
-frontier, and Understudy routes without granting spend approval.
+frontier, and Understudy routes within the activated workflow envelope.
 
 Template: [`route-decision-packet-template.md`](route-decision-packet-template.md).
 
@@ -125,7 +125,8 @@ Recommended fields:
 - supplier profile and pricing source;
 - Artificial Analysis snapshot, when used as an external prior;
 - candidate route shortlist;
-- approval required before live calls, downloads, uploads, or hosted jobs;
+- the user action that activated the bounded live-call, upload, or hosted-job envelope;
+- conditions that require a new decision because the envelope would expand;
 - recommended next command.
 
 Artificial Analysis, provider catalogs, and supplier pricing are priors. They

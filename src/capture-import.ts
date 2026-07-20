@@ -240,7 +240,7 @@ export type WorkloadCard = {
   promotion_gate: null;
   fallback_route: null;
   route_requirements: {
-    privacy_boundary: "local-only until explicit approval";
+    privacy_boundary: "workflow-bound cloud unless Local is selected";
     latency_target_ms: null;
     structured_output_required: boolean;
     tool_calling_required: boolean;
@@ -466,7 +466,7 @@ export function buildWorkloadCard(repoInput: string, now = new Date(), outputDir
     promotion_gate: null,
     fallback_route: null,
     route_requirements: {
-      privacy_boundary: "local-only until explicit approval",
+      privacy_boundary: "workflow-bound cloud unless Local is selected",
       latency_target_ms: null,
       structured_output_required: manifest.sources.some((source) => source.kind === "jsonl-data" || source.kind === "app-route"),
       tool_calling_required: manifest.sources.some((source) => source.kind === "provider-trace"),
@@ -478,10 +478,9 @@ export function buildWorkloadCard(repoInput: string, now = new Date(), outputDir
       holdout_reserved_for_final_validation: true,
     },
     approval_gates: [
-      "reading source, prompts, traces, eval rows, or customer data",
-      "running live model calls",
-      "downloading local models",
-      "submitting hosted benchmarks or training jobs",
+      "expanding the activated data classes or destination",
+      "increasing the activated spend or retention envelope",
+      "adding production writes not shown in the activated plan",
     ],
     discovery: {
       generated_at: now.toISOString(),

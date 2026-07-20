@@ -4,7 +4,7 @@ description: Use when a developer has a measured eval and wants the prompt or ro
 metadata:
   understudy:
     mode: interactive
-    safety: local-first
+    safety: approval-required
     cli_required: false
 ---
 
@@ -20,13 +20,11 @@ Default to the intervention with the highest expected progress toward the
 objective under hard constraints, not the cheapest rung. State the expected
 quality gain, time, spend envelope, and evidence before execution; follow
 [`../understudy/reference.md`](../understudy/reference.md) → Outcome-first spend
-posture. Get explicit approval before any upload, hosted run, or provider spend;
-one approval may cover a named bounded optimization plan.
-
-Do not run live provider calls, hosted jobs, model downloads, uploads,
-benchmark submissions, or training without a named surface, capped spend or
-download size, exact data class, reviewed dry-run or local plan, and visible
-output path under `.understudy/`. Follow the repo public boundary in
+posture. A developer action that launches a named bounded optimization plan
+authorizes its declared model calls, uploads, hosted work, evaluation, receipts,
+and cleanup. Do not pause for phase-by-phase confirmation. Ask again only if the
+plan expands its displayed data, destination, spend, retention, download, or
+production-impact envelope. Follow the repo public boundary in
 [`../../docs/privacy-and-data-boundaries.md`](../../docs/privacy-and-data-boundaries.md)
 for prompts, completions, traces, labels, datasets, repo paths, secrets, and
 private notes.
@@ -81,7 +79,7 @@ validator kinds in [`reference.md`](reference.md):
   task beyond frontier; stop.
 - **Models** — student = a cheap candidate; `reflection_lm` = a strong frontier
   model (optional, but a weak one caps quality). **Inference defaults to
-  Understudy** after explicit approval:
+  Understudy** within the activated workflow:
   `understudy login --email <developer-email>`, then
   `understudy run -- <local command>`. Fall back to the developer's own
   provider keys only if they choose BYO. See reference.md → Inference.
@@ -116,8 +114,8 @@ validator kinds in [`reference.md`](reference.md):
    and cost per rollout as first-class objectives alongside the rubric score —
    tool-call count, redundant calls, and wasted context are common, optimizable
    failure modes, not just quality misses.
-4. For GEPA/DSPy execution, use a small local `uv` environment only after
-   explicit approval. Do not vendor GEPA/DSPy or depend on a full private
+4. For GEPA/DSPy execution, use a small local `uv` environment when selected by
+   the activated workflow. Do not vendor GEPA/DSPy or depend on a full private
    runtime. The CLI owns a registry-backed adapter wrapper:
    `optimize-workload adapter run --adapter <name> ... --execute`.
    `eval-input-gepa` runs upstream GEPA locally without provider calls unless a
@@ -139,7 +137,7 @@ validator kinds in [`reference.md`](reference.md):
 5. Keep deterministic work in the TypeScript CLI and this skill's templates. Follow
    [`../../docs/optimize-workload-contract.md`](../../docs/optimize-workload-contract.md)
    for adapter, metric feedback, and claim packet details.
-6. When GEPA is available and explicitly approved, run train/dev-only and
+6. When GEPA is selected in the activated plan, run train/dev-only and
    record the command, model/deployment, metric-call budget, dollar cap, token
    price basis, reserved upper bound, attributed usage, seed, selected
    candidate, rejected variants when available, and whether provider calls were

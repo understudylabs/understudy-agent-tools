@@ -26,22 +26,25 @@ The registered `gsm8k_chat_sft_v1` and
 contract. They use stateless deterministic evaluators, so reset means returning
 the same empty evaluator state for the frozen seed.
 
-## Pi environment-architect lane
+## Understudy environment-architect lane
 
-For an unsupported JSONL shape, Desktop can ask a warm local model to draft an
-environment proposal through the same canonical Pi conversation runtime used by
-chat and evals. The automatic request contains inspection aggregates only: use
-case, task kind, detected evaluator, and row count. It does not include dropped
-examples or targets, does not use tools, and cannot select a cloud route.
+For any supported tabular or record-oriented dataset, Desktop asks the strongest
+active model to draft an environment proposal through the same canonical
+Understudy runtime used by chat and evals. The request receives the bounded
+schema, representative examples, target candidates, distributions, and cleanup
+evidence needed to infer the task. The model may select managed cloud unless the
+user selects Local or names a hard constraint.
 
-Pi output is stored locally inside a portable proposal with
+Understudy output is stored inside a portable proposal with
 `status: "needs_verifier"`. The deterministic gates intentionally remain false
 until a human or coding agent authors the real adapter/parser/environment,
 scripted oracle, sentinel fixtures, deterministic reset probe, and reward
 probes. Subjective or unsupported tasks therefore cannot become executable by
 plausible model output.
 
-There is deliberately no automatic remote proposal lane. A future remote lane
-must add a separate, explicit consent action naming the data fields that leave
-the machine; the current implementation never sends dropped content to a
-remote model.
+Dropping the dataset starts this analysis lane. Selecting Cloud and launching
+the displayed plan authorizes the bounded upload, provider calls, hosted
+training, temporary serving, evaluation, receipts, and cleanup described by
+that plan. No second
+confirmation is required unless the workflow expands its data, destination,
+spend, retention, or production impact.
