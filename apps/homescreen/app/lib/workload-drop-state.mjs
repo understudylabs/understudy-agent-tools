@@ -14,7 +14,8 @@ export function shouldInspectDroppedTable(workload) {
 export function shouldInspectStructuredDataset(workload) {
   if (!workload || workload.source_type !== "file") return false;
   const name = String(workload.source_name ?? "").trim().toLowerCase();
-  return /\.(?:json|jsonl|ndjson|xls|xlsx|xlsb|xlsm|ods)$/.test(name);
+  return /\.(?:csv|tsv|tab|txt|json|jsonl|ndjson|xls|xlsx|xlsb|xlsm|ods)$/.test(name)
+    || (name.length > 0 && !name.includes("."));
 }
 
 // Compatibility alias for older Desktop lineage checks and integrations.
@@ -87,7 +88,7 @@ export function workloadDropStatus(phase) {
     case "inspecting":
       return {
         title: "Analyzing this dataset",
-        detail: "Decoding locally · Pi receives the content needed to infer the task",
+        detail: "Decoding locally · Understudy is inferring the task",
       };
     case "preparing_dataset":
       return {

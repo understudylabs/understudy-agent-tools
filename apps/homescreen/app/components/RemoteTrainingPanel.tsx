@@ -40,6 +40,12 @@ export function maximumManagedTrainingSpend(capabilities: RemoteTrainingCapabili
   return maximumSpend;
 }
 
+const DEFAULT_MANAGED_TRAINING_SPEND_USD = 3;
+
+export function recommendedManagedTrainingSpend(capabilities: RemoteTrainingCapabilities): number {
+  return Math.min(DEFAULT_MANAGED_TRAINING_SPEND_USD, maximumManagedTrainingSpend(capabilities));
+}
+
 type RemoteArtifact = {
   artifact_role: "train" | "validation" | "heldout";
   file_name: string;
@@ -64,6 +70,18 @@ export type RemotePlan = {
   preparation_duration_ms?: number;
   plan_path: string;
 };
+
+export function remoteTrainingArtifactLimitError(
+  plan: RemotePlan,
+  capabilities: RemoteTrainingCapabilities,
+): string | null {
+  const oversized = plan.artifacts
+    .filter((artifact) => artifact.size_bytes > capabilities.limits.max_upload_bytes)
+    .sort((left, right) => right.size_bytes - left.size_bytes)[0];
+  if (!oversized) return null;
+  const formatMiB = (bytes: number) => `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+  return `${oversized.artifact_role} split is ${formatMiB(oversized.size_bytes)}; cloud training currently accepts ${formatMiB(capabilities.limits.max_upload_bytes)} per split.`;
+}
 
 type RemoteRunReceipt = {
   schema_version: "understudy.remote_training.run.v1";
@@ -341,13 +359,19 @@ export function RemoteTrainingPanel(props: Props) {
     setStage("preparing");
     setError(null);
     if (!profile) return;
-    const maximumSpend = maximumManagedTrainingSpend(capabilities);
+    const maximumSpend = recommendedManagedTrainingSpend(capabilities);
     void invoke<RemotePlan>("prepare_remote_classification_training", {
       manifestPath: datasetManifestPath,
       modelProfile: profile.id,
       maximumSpendUsd: maximumSpend,
     })
       .then((prepared) => {
+        const artifactLimitError = remoteTrainingArtifactLimitError(prepared, capabilities);
+        if (artifactLimitError) {
+          setError(artifactLimitError);
+          setStage("failed");
+          return;
+        }
         setPlan(prepared);
         setStage("confirm");
       })

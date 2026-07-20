@@ -190,6 +190,12 @@ test("public desktop preserves the reviewed Train interaction language", async (
   assert.match(css, /understudy-agent@3f025022/);
   assert.match(css, /--mb-cyan:\s*#67e8f9/);
   assert.match(css, /--mb-mint:\s*#9edbd3/);
+  assert.match(css, /--model-clay:\s*#d97757/);
+  assert.match(css, /--model-amber:\s*#f2b34c/);
+  assert.match(css, /--model-violet:\s*#a78bfa/);
+  assert.match(css, /--model-cyan:\s*#67e8f9/);
+  assert.match(css, /\.automatic-goal-card-preview article p\s*\{[\s\S]*?font-size:\s*14px/);
+  assert.match(css, /\.csv-analysis-next > \.btn\.primary[\s\S]*?background:\s*color-mix\(in srgb, var\(--mb-cyan\)/);
   assert.match(
     css,
     /::selection\s*\{[\s\S]*?background:\s*color-mix\(in srgb, var\(--mb-cyan\) 68%, transparent\);/,
@@ -348,7 +354,8 @@ test("desktop stays dark and keeps the animated persona white by default", async
     readFile(tauriConfigPath, "utf8"),
   ]);
 
-  assert.match(layout, /className=\{`\$\{plexMono\.variable\} dark`\}/);
+  assert.match(layout, /IBM_Plex_Mono, IBM_Plex_Sans/);
+  assert.match(layout, /className=\{`\$\{plexMono\.variable\} \$\{plexSans\.variable\} dark`\}/);
   assert.match(layout, /data-theme="dark"/);
   assert.doesNotMatch(layout, /ThemeProvider|understudy-theme|data-sys|prefers-color-scheme/);
   assert.match(css, /@custom-variant dark/);
@@ -591,7 +598,9 @@ test("desktop compiles one dropped path through the bounded public CLI", async (
   assert.match(chat, /rowCount=\{csvInspection\.row_count\}/);
   assert.match(chat, /prepare_dropped_csv_classification/);
   assert.match(chat, /1 · data structure/);
-  assert.match(chat, /2 · confirm the training plan/);
+  assert.match(chat, /3 · confirm the training plan/);
+  assert.match(chat, /structuredFieldRole/);
+  assert.match(chat, /structured-data-field-grid/);
   assert.match(chat, /Train for \$\{mappingLabelColumn\}/);
   assert.match(chat, /<CsvTrainingPlan/);
   assert.match(trainingPlan, /Understand/);
@@ -620,7 +629,7 @@ test("desktop compiles one dropped path through the bounded public CLI", async (
   assert.match(dropState, /BUSY_PHASES\.has\(phase\)[\s\S]*return "thinking"/);
   assert.match(dropState, /One file or folder · stays on this Mac/);
   assert.match(dropState, /Indexing metadata locally · contents remain unread/);
-  assert.match(dropState, /Decoding locally · Pi receives the content needed to infer the task/);
+  assert.match(dropState, /Decoding locally · Understudy is inferring the task/);
   assert.match(dropState, /Writing deterministic train, dev, and holdout examples on this Mac/);
   assert.match(css, /\.persona-stage\.workload-drop-active::before/);
   assert.match(css, /@keyframes workload-intake-ring/);
@@ -641,6 +650,9 @@ test("desktop compiles one dropped path through the bounded public CLI", async (
   assert.match(css, /\.csv-profile-columns\.is-spacious/);
   assert.match(css, /--profile-column-count/);
   assert.match(css, /\.csv-training-plan/);
+  assert.match(css, /\.csv-analysis-pi/);
+  assert.match(css, /\.csv-analysis-loading-template/);
+  assert.match(chat, /TableExampleCards/);
   assert.match(chat, /const trainingPlanVisible = Boolean/);
   assert.match(chat, /trainingPlanVisible \? \(/);
   assert.match(chat, /className="ai-chat-composer training-plan-action"/);
@@ -663,6 +675,7 @@ test("desktop compiles one dropped path through the bounded public CLI", async (
   assert.match(bridge, /understudy\.capture_import\.classification_run\.v1/);
   assert.match(bridge, /verified_no_group_overlap/);
   assert.match(bridge, /source_rows_persisted/);
+  assert.match(bridge, /row_preview_persisted/);
   assert.match(bridge, /statistics-and-label-aggregates/);
   assert.match(bridge, /value\.get\("local_only"\)/);
   assert.match(bridge, /value\.get\("payload_read"\)/);
@@ -671,6 +684,9 @@ test("desktop compiles one dropped path through the bounded public CLI", async (
   assert.match(compiler, /const MAX_CSV_BYTES = 16 \* 1024 \* 1024/);
   assert.match(compiler, /payload_read: false/);
   assert.match(compiler, /source_rows_persisted: false/);
+  assert.match(compiler, /row_preview_persisted: false/);
+  assert.match(compiler, /row_preview: rowPreview/);
+  assert.match(compiler, /row_preview: _ephemeralPreview/);
   assert.match(compiler, /source_sha256/);
   assert.match(compiler, /deterministic-stratified-group-aware-v2/);
   assert.match(compiler, /holdout_reserved_for_final_validation: true/);

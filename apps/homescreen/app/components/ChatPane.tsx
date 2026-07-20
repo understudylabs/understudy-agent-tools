@@ -83,7 +83,8 @@ import { CsvProfile } from "./CsvProfile";
 import { CsvTrainingPlan } from "./CsvTrainingPlan";
 import { LocalTrainingPanel } from "./LocalTrainingPanel";
 import {
-  maximumManagedTrainingSpend,
+  recommendedManagedTrainingSpend,
+  remoteTrainingArtifactLimitError,
   RemoteTrainingPanel,
   type RemotePlan,
   type RemoteTrainingCapabilities,
@@ -158,6 +159,10 @@ type CsvInspection = {
   row_count: number;
   column_count: number;
   duplicate_row_count: number;
+  row_preview: Array<{
+    row_number: number;
+    values: Record<string, string>;
+  }>;
   columns: {
     name: string;
     non_empty_count: number;
@@ -197,6 +202,7 @@ type TrainingRecipeInspection = {
   source_format: string;
   artifact_kind: "dataset" | "benchmark_report";
   field_names: string[];
+  row_preview: Array<{ input: string; target: string | null }>;
   benchmark: {
     dataset_name: string;
     model_name: string | null;
@@ -273,18 +279,28 @@ type PiEnvironmentArchitectResult = {
   analysis_model: string;
   dataset_summary: string;
   target_goal: string;
+  environment_summary: string;
+  validation_summary: string;
+  plan_check: {
+    status: "passed" | "warnings";
+    checked_fields: number;
+    warnings: string[];
+    advisory: true;
+  };
   source_file_local: true;
   remote_content_shared: boolean;
   executable: false;
   next_step: string;
 };
-type PiDatasetAnalysisEvent = {
-  type: "phase";
-  phase: "profiling" | "inferring" | "designing" | "complete";
-  current: number;
-  total: number;
-  message: string;
-};
+type PiDatasetAnalysisEvent =
+  | {
+      type: "phase";
+      phase: "profiling" | "inferring" | "checking" | "complete";
+      current: number;
+      total: number;
+      message: string;
+    }
+  | { type: "draft_delta"; phase: "inferring"; text: string };
 type ClassificationDataset = {
   schema_version: "understudy.capture_import.classification_dataset.v2";
   dataset_id: string;
@@ -419,64 +435,459 @@ function proposedSplitCounts(total: number) {
   return { train, validation, heldout: Math.max(0, total - train - validation) };
 }
 
+const PI_ANALYSIS_STAGES = [
+  { phase: "profiling", label: "Profile data", detail: "Rows and fields" },
+  { phase: "inferring", label: "Infer plan", detail: "Understudy" },
+  { phase: "checking", label: "Check plan", detail: "Advisory" },
+  { phase: "complete", label: "Ready", detail: "Your decision" },
+] as const;
+
+function streamedJsonString(draft: string, key: string): string | null {
+  const match = draft.match(new RegExp(`"${key}"\\s*:\\s*"((?:\\\\.|[^"\\\\])*)"`));
+  if (!match) return null;
+  try {
+    return JSON.parse(`"${match[1]}"`);
+  } catch {
+    return match[1];
+  }
+}
+
+function GoalCardSkeleton({ width = "full" }: { width?: "short" | "medium" | "full" }) {
+  return <span className={`automatic-goal-card-skeleton is-${width}`} aria-hidden="true" />;
+}
+
+function PiAnalysisElapsed({ active }: { active: boolean }) {
+  const [elapsedSeconds, setElapsedSeconds] = useState(0);
+
+  useEffect(() => {
+    if (!active) {
+      setElapsedSeconds(0);
+      return;
+    }
+    const startedAt = Date.now();
+    const update = () => setElapsedSeconds(Math.floor((Date.now() - startedAt) / 1_000));
+    update();
+    const timer = window.setInterval(update, 1_000);
+    return () => window.clearInterval(timer);
+  }, [active]);
+
+  if (!active) return null;
+  const minutes = Math.floor(elapsedSeconds / 60);
+  const seconds = String(elapsedSeconds % 60).padStart(2, "0");
+  return <time className="pi-analysis-elapsed" aria-label={`${elapsedSeconds} seconds elapsed`}>{minutes}:{seconds} elapsed</time>;
+}
+
+function PiAnalysisRail({
+  architect,
+  progress,
+  error,
+}: {
+  architect: PiEnvironmentArchitectResult | null;
+  progress: PiDatasetAnalysisEvent | null;
+  error?: string | null;
+}) {
+  const phaseProgress = progress?.type === "phase" ? progress : null;
+  const stageCurrent = architect
+    ? PI_ANALYSIS_STAGES.length
+    : phaseProgress
+      ? Math.max(1, phaseProgress.current)
+      : 0;
+  return (
+    <ol className="automatic-goal-card-stages" aria-label="Dataset analysis progress">
+      {PI_ANALYSIS_STAGES.map((stage, index) => {
+        const number = index + 1;
+        const state = error && number === stageCurrent
+          ? "error"
+          : architect || number < stageCurrent
+          ? "complete"
+          : number === stageCurrent
+            ? "active"
+            : "pending";
+        return (
+          <li
+            key={stage.phase}
+            data-state={state}
+            aria-current={state === "active" ? "step" : undefined}
+          >
+            <span>{number.toString().padStart(2, "0")}</span>
+            <div><strong>{stage.label}</strong><small>{stage.detail}</small></div>
+          </li>
+        );
+      })}
+    </ol>
+  );
+}
+
+function PiDesignCards({
+  architect,
+  progress,
+  draft,
+  error,
+  onRetry,
+}: {
+  architect: PiEnvironmentArchitectResult | null;
+  progress: PiDatasetAnalysisEvent | null;
+  draft: string;
+  error?: string | null;
+  onRetry?: () => void;
+}) {
+  const phaseProgress = progress?.type === "phase" ? progress : null;
+  const active = Boolean(phaseProgress && phaseProgress.phase !== "complete" && !error);
+  const streamedTarget = streamedJsonString(draft, "target_goal");
+  const streamedDataset = streamedJsonString(draft, "dataset_summary");
+  const streamedEnvironment = streamedJsonString(draft, "environment");
+  const streamedValidation = streamedJsonString(draft, "validation_plan");
+  const hasDraft = Boolean(draft);
+  return (
+    <section className="automatic-goal-card-design" aria-live="polite">
+      <header>
+        <div><span>Understudy environment</span><strong>Target and verifier</strong></div>
+        <small>
+          {error
+            ? "Analysis stopped"
+            : phaseProgress?.message
+              ?? (architect
+                ? architect.plan_check.status === "passed"
+                  ? "Required decisions checked"
+                  : "Draft ready with advisory warnings"
+                : "Waiting for Understudy")}
+          <PiAnalysisElapsed active={active} />
+        </small>
+      </header>
+      {error ? (
+        <div className="automatic-goal-card-error" role="alert">
+          <strong>Understudy needs another pass</strong>
+          <p>{error}</p>
+          {onRetry && <button type="button" onClick={onRetry}>Retry analysis</button>}
+        </div>
+      ) : <div>
+        <article>
+          <span>Target goal</span>
+          {architect || streamedTarget || streamedDataset ? <>
+            <strong>{architect?.target_goal ?? streamedTarget ?? "Inferring the target…"}</strong>
+            <p>{architect?.dataset_summary ?? streamedDataset ?? "Reading representative examples…"}</p>
+          </> : <><GoalCardSkeleton width="medium" /><GoalCardSkeleton /><GoalCardSkeleton width="medium" /></>}
+        </article>
+        <article>
+          <span>Verifier design</span>
+          {architect || streamedEnvironment || streamedValidation ? <>
+            <strong>{architect?.environment_summary ?? streamedEnvironment ?? "Drafting the verifier…"}</strong>
+            <p>{architect?.validation_summary ?? streamedValidation ?? "The check is advisory; you can continue with the draft."}</p>
+          </> : <><GoalCardSkeleton width="short" /><GoalCardSkeleton /><GoalCardSkeleton width="full" /></>}
+        </article>
+      </div>}
+      {!architect && hasDraft && !error && (
+        <p className="automatic-goal-card-draft-status">Draft streaming · continue anytime while Understudy checks it.</p>
+      )}
+    </section>
+  );
+}
+
+function TableExampleCards({
+  rows,
+  inputColumns,
+  labelColumn,
+}: {
+  rows: CsvInspection["row_preview"];
+  inputColumns: string[];
+  labelColumn: string | null;
+}) {
+  return (
+    <section className="automatic-goal-card-preview csv-analysis-examples" aria-label="Dataset examples">
+      <header>
+        <div><span>Dataset evidence</span><strong>Example rows</strong></div>
+        <small>{rows.length} shown · updates with the target card</small>
+      </header>
+      <div className="automatic-goal-card-preview-grid">
+        {rows.map((row, index) => {
+          const visibleInputs = inputColumns.length > 0
+            ? inputColumns
+            : Object.keys(row.values).filter((field) => field !== labelColumn);
+          const input = visibleInputs
+            .map((field) => `${field}: ${row.values[field] ?? ""}`)
+            .filter((field) => !field.endsWith(": "))
+            .join(" · ");
+          const target = labelColumn ? row.values[labelColumn] : null;
+          return (
+            <article key={`${row.row_number}:${index}`}>
+              <header>
+                <span>Row {row.row_number.toLocaleString()}</span>
+                <small>{target ? <>Expected · <b>{target}</b></> : "Target being inferred"}</small>
+              </header>
+              <p>{input || "No populated input fields in this row."}</p>
+            </article>
+          );
+        })}
+      </div>
+    </section>
+  );
+}
+
+function DatasetAnalysisLoadingTemplate({ message }: { message: string }) {
+  const progress: PiDatasetAnalysisEvent = {
+    type: "phase",
+    phase: "profiling",
+    current: 1,
+    total: 4,
+    message,
+  };
+  return (
+    <section className="csv-analysis-loading-template" role="status" aria-live="polite" aria-busy="true">
+      <header>
+        <div><span>1 · data structure</span><strong>Understanding your data</strong></div>
+        <small>{message}</small>
+      </header>
+      <PiAnalysisRail architect={null} progress={progress} />
+      <div className="csv-analysis-loading-columns" aria-hidden="true">
+        {[0, 1].map((index) => (
+          <article key={index}>
+            <GoalCardSkeleton width="short" />
+            <GoalCardSkeleton />
+            <GoalCardSkeleton width="medium" />
+          </article>
+        ))}
+      </div>
+    </section>
+  );
+}
+
+function structuredFieldRole(fieldName: string): "input" | "target" | "preference" | "context" {
+  const normalized = fieldName.toLowerCase().replace(/[^a-z0-9]+/g, "_");
+  if (/(^|_)(chosen|rejected|preferred|preference)(_|$)/.test(normalized)) return "preference";
+  if (/(^|_)(label|target|answer|expected|output|completion|response)(_|$)/.test(normalized)) return "target";
+  if (/(^|_)(prompt|question|input|instruction|text|message|messages)(_|$)/.test(normalized)) return "input";
+  return "context";
+}
+
+function StructuredDataProfile({
+  sourceName,
+  inspection,
+}: {
+  sourceName: string;
+  inspection: TrainingRecipeInspection;
+}) {
+  const visibleFields = inspection.field_names.slice(0, 8);
+  const hiddenFieldCount = Math.max(0, inspection.field_names.length - visibleFields.length);
+  return (
+    <section className="structured-data-profile" aria-label="Detected dataset structure">
+      <header>
+        <strong>{sourceName.replace(/\.[^.]+$/, "")}</strong>
+        <span>
+          {inspection.evidence.total_rows.toLocaleString()} rows · {inspection.field_names.length.toLocaleString()} fields
+        </span>
+      </header>
+      <div className="structured-data-field-grid">
+        {visibleFields.map((field) => {
+          const role = structuredFieldRole(field);
+          return (
+            <article key={field} data-role={role}>
+              <strong>{field}</strong>
+              <small>{role === "context" ? "observed field" : `${role} candidate`}</small>
+            </article>
+          );
+        })}
+      </div>
+      {hiddenFieldCount > 0 && <small className="structured-data-more">+ {hiddenFieldCount} more fields</small>}
+    </section>
+  );
+}
+
+function StructuredTrainingExamples({
+  inspection,
+  card,
+}: {
+  inspection: TrainingRecipeInspection;
+  card: TrainingGoalCard | null;
+}) {
+  const preview = inspection.row_preview.length > 0
+    ? inspection.row_preview
+    : card?.training_preview ?? [];
+  return (
+    <section className="automatic-goal-card-preview" aria-label="Training examples">
+      <header>
+        <div><span>Dataset evidence</span><strong>Source examples</strong></div>
+        <small>{preview.length > 0 ? `${preview.length} shown · before splitting` : "No readable examples found"}</small>
+      </header>
+      <div className="automatic-goal-card-preview-grid">
+        {preview.length > 0 ? preview.map((row, index) => (
+          <article key={`${index}:${row.input}`}>
+            <header>
+              <span>Example {String(index + 1).padStart(2, "0")}</span>
+              <small>{row.target ? <>Expected · <b>{row.target}</b></> : "Target being inferred"}</small>
+            </header>
+            <p>{row.input}</p>
+          </article>
+        )) : (
+          <article className="automatic-goal-card-preview-empty" role="alert">
+            <strong>Understudy could not decode representative rows.</strong>
+            <p>Check the delimiter or workbook sheet, then drop the dataset again.</p>
+          </article>
+        )}
+      </div>
+    </section>
+  );
+}
+
+function StructuredDatasetProfilePage({
+  sourceName,
+  inspection,
+  card,
+  ready,
+  onConfirm,
+}: {
+  sourceName: string;
+  inspection: TrainingRecipeInspection;
+  card: TrainingGoalCard | null;
+  ready: boolean;
+  onConfirm: () => void;
+}) {
+  return (
+    <section className="automatic-goal-card structured-dataset-profile-page" aria-label="Review dataset profile">
+      <div className="csv-analysis-step-label csv-analysis-step-structure">1 · data structure</div>
+      <StructuredDataProfile sourceName={sourceName} inspection={inspection} />
+      {!inspection.benchmark && <StructuredTrainingExamples inspection={inspection} card={card} />}
+      <div className="dataset-profile-confirm">
+        <div>
+          <strong>Does this look like the data you meant to train on?</strong>
+          <small>Confirming starts Understudy analysis and builds the training plan.</small>
+        </div>
+        <button type="button" className="btn primary" disabled={!ready} onClick={onConfirm}>
+          {ready ? "Yes, analyze this dataset" : "Finishing the dataset profile…"}
+        </button>
+      </div>
+    </section>
+  );
+}
+
+function StructuredTrainingPlan({
+  inspection,
+  card,
+  backend,
+  localAvailable,
+  onBackendChange,
+}: {
+  inspection: TrainingRecipeInspection;
+  card: TrainingGoalCard | null;
+  backend: "local" | "managed";
+  localAvailable: boolean;
+  onBackendChange: (backend: "local" | "managed") => void;
+}) {
+  const planned = proposedSplitCounts(inspection.evidence.total_rows);
+  const splits = card?.splits ?? planned;
+  const evaluator = card?.evaluator ?? inspection.evaluator ?? "Understudy verifier draft";
+  const targetField = inspection.field_names.find((field) => structuredFieldRole(field) === "target");
+  return (
+    <div className="csv-training-plan structured-training-plan" role="list" aria-label="Proposed training plan">
+      <div className="csv-training-plan-step" role="listitem">
+        <span>Understand</span>
+        <strong>{trainingUseCaseLabel(inspection.detected_use_case)}</strong>
+        <small>{inspection.evidence.total_rows.toLocaleString()} rows · {inspection.field_names.length.toLocaleString()} fields</small>
+        {targetField && <em className="training-target-badge">Target · {targetField}</em>}
+      </div>
+      <div className="csv-training-plan-step" role="listitem">
+        <span>Train</span>
+        <strong>{backend === "managed" ? "Cloud · Understudy auto" : `Local · ${inspection.method.replaceAll("_", " ")}`}</strong>
+        <small>{backend === "managed" ? "Cost-efficient model selected automatically" : `${splits.train.toLocaleString()} train · ${splits.validation.toLocaleString()} validation`}</small>
+        <div className="training-backend-choice" role="radiogroup" aria-label="Training backend">
+          <button type="button" role="radio" aria-checked={backend === "managed"} onClick={() => onBackendChange("managed")}>Cloud</button>
+          <button
+            type="button"
+            role="radio"
+            aria-checked={backend === "local"}
+            disabled={!localAvailable}
+            title={localAvailable ? "Train on this Mac" : "No compatible local trainer is ready"}
+            onClick={() => onBackendChange("local")}
+          >Local</button>
+        </div>
+      </div>
+      <div className="csv-training-plan-step" role="listitem">
+        <span>Prove</span>
+        <strong>{evaluator.replaceAll("_", " ")}</strong>
+        <small>{splits.heldout.toLocaleString()} held-out examples · compare with base</small>
+      </div>
+    </div>
+  );
+}
+
 function AutomaticGoalCard({
   inspection,
   card,
   architect,
   architectProgress,
+  architectDraft,
+  architectError,
+  onRetryArchitect,
+  analysisModelLabel,
+  trainingBackend,
+  localTrainingAvailable,
+  onTrainingBackendChange,
 }: {
   inspection: TrainingRecipeInspection;
   card: TrainingGoalCard | null;
   architect: PiEnvironmentArchitectResult | null;
   architectProgress: PiDatasetAnalysisEvent | null;
+  architectDraft: string;
+  architectError: string | null;
+  onRetryArchitect: () => void;
+  analysisModelLabel: string;
+  trainingBackend: "local" | "managed";
+  localTrainingAvailable: boolean;
+  onTrainingBackendChange: (backend: "local" | "managed") => void;
 }) {
-  const benchmark = inspection.benchmark;
-  const planned = proposedSplitCounts(inspection.evidence.total_rows);
-  const splits = card?.splits ?? { ...planned, strategy: "deterministic 70/15/15 proposal", hash: "pending" };
-  const evaluator = card?.evaluator ?? inspection.evaluator ?? "Needs a verifier";
-  const environmentStatus = card?.environment.status
-    ?? architect?.status
-    ?? (architectProgress ? "analyzing" : inspection.ready ? "proposed" : "queued");
+  const analysisIsLive = Boolean(
+    architectProgress?.type === "phase"
+      && architectProgress.phase !== "complete"
+      && !architectError,
+  );
+  const environmentStatus = architectError
+    ? "analysis_error"
+    : analysisIsLive
+    ? "pi_live"
+    : card?.environment.status ?? architect?.status ?? (inspection.ready ? "proposed" : "queued");
+  const statusLabel = ({
+    pi_live: "Understudy live",
+    executable: "Ready to test",
+    analyzed: "Draft ready",
+    needs_verifier: "Needs verifier",
+    analysis_error: "Needs retry",
+    proposed: "Proposed",
+    queued: "Queued",
+  } as Record<string, string>)[environmentStatus] ?? environmentStatus.replaceAll("_", " ");
   return (
-    <section className="automatic-goal-card" aria-label="Automatic pre-run Goal Card">
-      <div className="automatic-goal-card-heading">
-        <div>
-          <span>Goal Card · automatic</span>
-          <strong>{trainingUseCaseLabel(inspection.detected_use_case)}</strong>
+    <section
+      className="automatic-goal-card structured-dataset-analysis"
+      aria-label="Dataset understanding and training plan"
+      aria-busy={analysisIsLive}
+    >
+      <div className="csv-analysis-step-label">2 · Understudy analysis</div>
+      <div className="csv-analysis-pi">
+        <div className="automatic-goal-card-heading structured-analysis-heading">
+          <div>
+            <span>{analysisModelLabel} · live analysis</span>
+            <strong>{trainingUseCaseLabel(inspection.detected_use_case)}</strong>
+          </div>
+          <em data-status={environmentStatus}>
+            {analysisIsLive && <i aria-hidden="true" />}
+            {statusLabel}
+          </em>
         </div>
-        <em data-status={environmentStatus}>{environmentStatus.replace("_", " ")}</em>
+        <PiAnalysisRail architect={architect} progress={architectProgress} error={architectError} />
+        <PiDesignCards
+          architect={architect}
+          progress={architectProgress}
+          draft={architectDraft}
+          error={architectError}
+          onRetry={onRetryArchitect}
+        />
       </div>
-      <dl className="automatic-goal-card-grid">
-        <div><dt>Evaluator</dt><dd>{evaluator}</dd></div>
-        <div><dt>{benchmark ? "Evidence" : card ? "Frozen split" : "Planned split"}</dt><dd>{benchmark ? `${benchmark.evaluated_examples} evaluated · ${(benchmark.score * 100).toFixed(1)}% score` : `${splits.train} train · ${splits.validation} validation · ${splits.heldout} held-out`}</dd></div>
-        <div><dt>Promotion</dt><dd>{benchmark ? "Evaluation imported · training examples still needed" : card ? `≥ ${(card.promotion.minimum_accuracy * 100).toFixed(0)}% · +${(card.promotion.minimum_improvement_over_base * 100).toFixed(0)} pts` : "Pi is designing the verifier"}</dd></div>
-        <div><dt>Backend</dt><dd>{benchmark ? "Evaluation evidence" : card?.backend.compatible.join(", ") || "Compatibility pending"}</dd></div>
-        <div><dt>Analysis</dt><dd>{architect ? `${architect.analysis_model} · ${architect.remote_content_shared ? "content shared" : "on-device"}` : architectProgress?.message ?? "Queued for Pi"}</dd></div>
-        <div><dt>Envelope</dt><dd>{card ? `${card.runtime.maximum_seconds}s · $${card.cost.maximum_usd.toFixed(2)} max` : "$0 · no run approved"}</dd></div>
-      </dl>
-      {card && card.training_preview.length > 0 && (
-        <details className="automatic-goal-card-preview">
-          <summary>Preview {card.training_preview.length} TRAINING example{card.training_preview.length === 1 ? "" : "s"}</summary>
-          {card.training_preview.map((row, index) => (
-            <div key={`${index}:${row.input}`}>
-              <span>TRAIN {index + 1}</span>
-              <p>{row.input}</p>
-              <small>{row.target}</small>
-            </div>
-          ))}
-        </details>
-      )}
-      {architectProgress && architectProgress.phase !== "complete" ? (
-        <p className="automatic-goal-card-note">
-          {architectProgress.message} · {architectProgress.current} of {architectProgress.total}
-        </p>
-      ) : architect ? (
-        <p className="automatic-goal-card-note">
-          <strong>{architect.target_goal}</strong> {architect.dataset_summary}
-        </p>
-      ) : !inspection.ready ? (
-        <p className="automatic-goal-card-note">Pi is queued to analyze the dataset and design its verifier.</p>
-      ) : null}
+      <div className="csv-analysis-step-label">3 · confirm the training plan</div>
+      <StructuredTrainingPlan
+        inspection={inspection}
+        card={card}
+        backend={trainingBackend}
+        localAvailable={localTrainingAvailable}
+        onBackendChange={onTrainingBackendChange}
+      />
       {inspection.evidence.duplicate_input_rows > 0 && (
         <p className="automatic-goal-card-note">
           Data cleanup · {inspection.evidence.duplicate_input_rows} repeated inputs grouped · {inspection.evidence.conflicting_target_rows} conflicting rows excluded
@@ -502,6 +913,17 @@ function trainedModelName(sourceName: string, labelColumn: string): string {
     .slice(0, 42)
     .replace(/-+$/g, "");
   return normalized || "understudy-model";
+}
+
+function piDatasetAnalysisFailure(cause: unknown): string {
+  const detail = String(cause);
+  if (detail.includes("pi_length_continuation_exhausted") || detail.includes("output limit")) {
+    return "The draft exceeded its response budget. Retry asks Understudy for a shorter structured answer.";
+  }
+  if (detail.includes("exceeded 90 seconds") || detail.includes("timed out")) {
+    return "The active model did not finish within 45 seconds. Retry starts a fresh bounded pass.";
+  }
+  return "The active model stopped before the verifier draft was complete. Retry starts a fresh pass.";
 }
 
 function cleanReasoningText(text: string) {
@@ -628,10 +1050,15 @@ export function ChatPane({
   const [csvInspection, setCsvInspection] = useState<CsvInspection | null>(null);
   const [trainingRecipe, setTrainingRecipe] = useState<TrainingRecipeInspection | null>(null);
   const [remoteRecipePlan, setRemoteRecipePlan] = useState<RemotePlan | null>(null);
+  const [datasetProfileConfirmed, setDatasetProfileConfirmed] = useState(false);
+  const [remoteRecipeEligibilityError, setRemoteRecipeEligibilityError] = useState<string | null>(null);
   const [trainingGoalCard, setTrainingGoalCard] = useState<TrainingGoalCard | null>(null);
   const [environmentArchitect, setEnvironmentArchitect] = useState<PiEnvironmentArchitectResult | null>(null);
   const [environmentArchitectProgress, setEnvironmentArchitectProgress] = useState<PiDatasetAnalysisEvent | null>(null);
-  const [recipeBackend, setRecipeBackend] = useState<"local" | "managed">("local");
+  const [environmentArchitectDraft, setEnvironmentArchitectDraft] = useState("");
+  const [environmentArchitectError, setEnvironmentArchitectError] = useState<string | null>(null);
+  const [environmentArchitectRetry, setEnvironmentArchitectRetry] = useState(0);
+  const [recipeBackend, setRecipeBackend] = useState<"local" | "managed">("managed");
   const [recipeLocalAvailable, setRecipeLocalAvailable] = useState(false);
   const [mappingInputColumns, setMappingInputColumns] = useState<string[]>([]);
   const [mappingLabelColumn, setMappingLabelColumn] = useState("");
@@ -648,6 +1075,8 @@ export function ChatPane({
   const dropInFlight = useRef(false);
   const dropRequestGeneration = useRef(0);
   const environmentArchitectAttempted = useRef<string | null>(null);
+  const environmentArchitectDraftRef = useRef("");
+  const environmentArchitectDraftFrame = useRef<number | null>(null);
   const selectedModelUserOwned = useRef(false);
   const streamPacer = useRef<StreamPacer | null>(null);
   const streamPacerGeneration = useRef(0);
@@ -707,10 +1136,16 @@ export function ChatPane({
     setCsvInspection(null);
     setTrainingRecipe(null);
     setRemoteRecipePlan(null);
+    setDatasetProfileConfirmed(false);
+    setRemoteRecipeEligibilityError(null);
     setTrainingGoalCard(null);
     setEnvironmentArchitect(null);
     setEnvironmentArchitectProgress(null);
-    setRecipeBackend("local");
+    setEnvironmentArchitectDraft("");
+    environmentArchitectDraftRef.current = "";
+    setEnvironmentArchitectError(null);
+    setEnvironmentArchitectRetry(0);
+    setRecipeBackend("managed");
     setRecipeLocalAvailable(false);
     setMappingInputColumns([]);
     setMappingLabelColumn("");
@@ -746,8 +1181,14 @@ export function ChatPane({
     environmentArchitectAttempted.current = null;
     setTrainingRecipe(result);
     setTrainingGoalCard(null);
+    setDatasetProfileConfirmed(false);
+    setRemoteRecipeEligibilityError(null);
     setEnvironmentArchitect(null);
     setEnvironmentArchitectProgress(null);
+    setEnvironmentArchitectDraft("");
+    environmentArchitectDraftRef.current = "";
+    setEnvironmentArchitectError(null);
+    setEnvironmentArchitectRetry(0);
     dispatchDrop({ type: "inspection_succeeded" });
   };
 
@@ -763,7 +1204,8 @@ export function ChatPane({
     const requestGeneration = dropRequestGeneration.current + 1;
     dropRequestGeneration.current = requestGeneration;
     setRemoteRecipePlan(null);
-    setRecipeBackend("local");
+    setRemoteRecipeEligibilityError(null);
+    setRecipeBackend("managed");
     setRecipeLocalAvailable(false);
     setErr(null);
     dispatchDrop({ type: "dataset_started" });
@@ -777,23 +1219,58 @@ export function ChatPane({
     })
       .then(async (plan) => {
         if (dropRequestGeneration.current !== requestGeneration) return;
-        const compatibility = await invoke<RecipeBackendCompatibility>("compile_remote_training_backends", {
-          planPath: plan.plan_path,
-        });
-        if (dropRequestGeneration.current !== requestGeneration) return;
-        const goalCard = await invoke<TrainingGoalCard>("automatic_training_goal_card", {
-          planPath: plan.plan_path,
-          previewLimit: 2,
-        });
+        const [compatibility, goalCard] = await Promise.all([
+          invoke<RecipeBackendCompatibility>("compile_remote_training_backends", {
+            planPath: plan.plan_path,
+          }),
+          invoke<TrainingGoalCard>("automatic_training_goal_card", {
+            planPath: plan.plan_path,
+            previewLimit: 2,
+          }),
+        ]);
         if (dropRequestGeneration.current !== requestGeneration) return;
         const localAvailable = compatibility.backends.some(
           (backend) => backend.id === "mlx-local" && backend.compatible && backend.execution_ready,
         );
         setRecipeLocalAvailable(localAvailable);
-        setRecipeBackend("local");
+        setRecipeBackend("managed");
         setRemoteRecipePlan(plan);
         setTrainingGoalCard(goalCard);
         dispatchDrop({ type: "dataset_succeeded" });
+
+        try {
+          const envelope = await invoke<RemoteTrainingCapabilitiesEnvelope>("remote_training_capabilities");
+          if (dropRequestGeneration.current !== requestGeneration) return;
+          const capabilities = envelope.enabled ? envelope.capabilities : undefined;
+          const managedAvailable = capabilities?.providers.some(
+            (provider) => provider.id === "managed" && provider.enabled && provider.model_profiles.length > 0,
+          );
+          if (!capabilities || !managedAvailable) {
+            setRemoteRecipeEligibilityError(envelope.reason ?? "Cloud training is unavailable in this Desktop build.");
+            return;
+          }
+          const artifactLimitError = remoteTrainingArtifactLimitError(plan, capabilities);
+          if (artifactLimitError) {
+            setRemoteRecipeEligibilityError(artifactLimitError);
+            return;
+          }
+          const maximumSpendUsd = recommendedManagedTrainingSpend(capabilities);
+          const pricedPlan = await invoke<RemotePlan>("prepare_remote_training_recipe", {
+            sourcePath: droppedWorkload.source_path,
+            artifactRoot: droppedWorkload.artifact_root,
+            expectedSourceSha256: trainingRecipe.source_sha256,
+            recipeId: trainingRecipe.recipe_id,
+            modelProfile: "understudy/auto",
+            maximumSpendUsd,
+          });
+          if (dropRequestGeneration.current !== requestGeneration) return;
+          setRemoteRecipePlan(pricedPlan);
+          setRemoteRecipeEligibilityError(null);
+        } catch (cause) {
+          if (dropRequestGeneration.current === requestGeneration) {
+            setRemoteRecipeEligibilityError(`Cloud readiness check failed: ${String(cause)}`);
+          }
+        }
       })
       .catch((error) => {
         if (dropRequestGeneration.current !== requestGeneration) return;
@@ -810,42 +1287,9 @@ export function ChatPane({
   }, [prepareDetectedRecipe, remoteRecipePlan, trainingRecipe?.ready]);
 
   const openManagedRecipeTraining = useCallback(() => {
-    setErr(null);
-    void invoke<RemoteTrainingCapabilitiesEnvelope>("remote_training_capabilities")
-      .then(async (envelope) => {
-        const capabilities = envelope.enabled ? envelope.capabilities : undefined;
-        const available = capabilities?.providers.some(
-          (provider) => provider.id === "managed" && provider.enabled && provider.model_profiles.length > 0,
-        );
-        if (!available || !capabilities) {
-          setErr(envelope.reason ?? "Cloud training is unavailable in this Desktop build.");
-          return;
-        }
-        if (!droppedWorkload || !trainingRecipe?.ready || !trainingRecipe.recipe_id || !remoteRecipePlan) {
-          setErr("Prepare this dropped dataset locally before cloud training.");
-          return;
-        }
-        const maximumSpendUsd = maximumManagedTrainingSpend(capabilities);
-        const plan = remoteRecipePlan.maximum_spend_usd === maximumSpendUsd
-          ? remoteRecipePlan
-          : await invoke<RemotePlan>("prepare_remote_training_recipe", {
-              sourcePath: droppedWorkload.source_path,
-              artifactRoot: droppedWorkload.artifact_root,
-              expectedSourceSha256: trainingRecipe.source_sha256,
-              recipeId: trainingRecipe.recipe_id,
-              modelProfile: "understudy/auto",
-              maximumSpendUsd,
-            });
-        const goalCard = await invoke<TrainingGoalCard>("automatic_training_goal_card", {
-          planPath: plan.plan_path,
-          previewLimit: 2,
-        });
-        setRemoteRecipePlan(plan);
-        setTrainingGoalCard(goalCard);
-        setRecipeBackend("managed");
-      })
-      .catch((cause) => setErr(`Cloud training is unavailable: ${String(cause)}`));
-  }, [droppedWorkload, remoteRecipePlan, trainingRecipe]);
+    setRecipeBackend("managed");
+    if (remoteRecipeEligibilityError) setErr(remoteRecipeEligibilityError);
+  }, [remoteRecipeEligibilityError]);
 
   const prepareDroppedClassification = () => {
     if (
@@ -1056,7 +1500,12 @@ export function ChatPane({
             const inspectStructured = shouldInspectStructuredDataset(result);
             if (inspectStructured) {
               dispatchDrop({ type: "inspection_started" });
-              await inspectTrainingRecipe(result, requestGeneration);
+              try {
+                await inspectTrainingRecipe(result, requestGeneration);
+              } catch (error) {
+                if (!inspectTable) throw error;
+                await inspectCsvWorkload(result, requestGeneration);
+              }
             } else if (inspectTable) {
               dispatchDrop({ type: "inspection_started" });
               try {
@@ -1217,6 +1666,16 @@ export function ChatPane({
     [choices, selectedModel],
   );
 
+  const retryEnvironmentArchitect = () => {
+    environmentArchitectAttempted.current = null;
+    setEnvironmentArchitect(null);
+    setEnvironmentArchitectProgress(null);
+    setEnvironmentArchitectDraft("");
+    environmentArchitectDraftRef.current = "";
+    setEnvironmentArchitectError(null);
+    setEnvironmentArchitectRetry((attempt) => attempt + 1);
+  };
+
   useEffect(() => {
     const evidence = trainingRecipe
       ? {
@@ -1236,7 +1695,9 @@ export function ChatPane({
             taskKind: csvInspection.recommended_mapping.label_column ? "text_classification" : "tabular_dataset",
             evaluator: csvInspection.recommended_mapping.label_column ? "exact_label" : null,
             totalRows: csvInspection.row_count,
-            sourceFormat: droppedWorkload?.source_name.split(".").pop()?.toLowerCase() ?? "delimited_text",
+            sourceFormat: droppedWorkload?.source_name.includes(".")
+              ? droppedWorkload.source_name.split(".").pop()?.toLowerCase() ?? "delimited_text"
+              : "delimited_text",
             artifactKind: "dataset",
             fieldNames: csvInspection.columns.map((column) => column.name),
           }
@@ -1251,20 +1712,31 @@ export function ChatPane({
       : selectedChoice.route === "anthropic"
         ? selectedChoice.id.replace(/^anthropic:/, "")
         : selectedChoice.modelId;
-    const attemptKey = evidence ? `${evidence.sourceSha256}:${selectedChoice.id}` : null;
+    const attemptKey = evidence ? `${evidence.sourceSha256}:${selectedChoice.id}:${environmentArchitectRetry}` : null;
     if (
       !droppedWorkload
       || !evidence
+      || !datasetProfileConfirmed
       || environmentArchitect
       || !attemptKey
       || environmentArchitectAttempted.current === attemptKey
       || !routeReady
     ) return;
     environmentArchitectAttempted.current = attemptKey;
+    setEnvironmentArchitectError(null);
     const channel = new Channel<PiDatasetAnalysisEvent>();
     channel.onmessage = (event) => {
-      if (environmentArchitectAttempted.current === attemptKey) {
+      if (environmentArchitectAttempted.current !== attemptKey) return;
+      if (event.type === "phase") {
         setEnvironmentArchitectProgress(event);
+        return;
+      }
+      environmentArchitectDraftRef.current += event.text;
+      if (environmentArchitectDraftFrame.current === null) {
+        environmentArchitectDraftFrame.current = window.requestAnimationFrame(() => {
+          environmentArchitectDraftFrame.current = null;
+          setEnvironmentArchitectDraft(environmentArchitectDraftRef.current);
+        });
       }
     };
     setEnvironmentArchitectProgress({
@@ -1272,7 +1744,7 @@ export function ChatPane({
       phase: "profiling",
       current: 0,
       total: 4,
-      message: "Starting Pi dataset analysis",
+      message: "Starting Understudy dataset analysis",
     });
     void invoke<PiEnvironmentArchitectResult>("propose_training_environment_with_pi", {
       sourcePath: droppedWorkload.source_path,
@@ -1294,15 +1766,16 @@ export function ChatPane({
         if (environmentArchitectAttempted.current === attemptKey) {
           setEnvironmentArchitect(result);
           setEnvironmentArchitectProgress(null);
+          setEnvironmentArchitectDraft(environmentArchitectDraftRef.current);
+          setEnvironmentArchitectError(null);
         }
       })
       .catch((cause) => {
         if (environmentArchitectAttempted.current === attemptKey) {
-          setEnvironmentArchitectProgress(null);
-          setNotice(`Pi dataset analysis could not finish: ${String(cause)}`);
+          setEnvironmentArchitectError(piDatasetAnalysisFailure(cause));
         }
       });
-  }, [csvInspection, droppedWorkload, environmentArchitect, gatewaySignedIn, selectedChoice, trainingRecipe]);
+  }, [csvInspection, datasetProfileConfirmed, droppedWorkload, environmentArchitect, environmentArchitectRetry, gatewaySignedIn, selectedChoice, trainingRecipe]);
 
   const send = async (text: string, files: FileUIPart[] = []) => {
     const clean = text.trim();
@@ -1722,9 +2195,10 @@ export function ChatPane({
       </div>
       <MessageScrollerProvider
         key={`${sessionId}:${classificationDataset ? "training" : droppedWorkload ? "workload" : "chat"}`}
-        autoScroll
+        autoScroll={!droppedWorkload}
         defaultScrollPosition="last-anchor"
         scrollEdgeThreshold={24}
+        scrollMargin={droppedWorkload ? 24 : 0}
         scrollPreviousItemPeek={56}
       >
         <MessageScroller className="min-h-0 flex-1">
@@ -1829,69 +2303,100 @@ export function ChatPane({
             </MessageScrollerItem>
           )}
           {(dropRunning || droppedWorkload) && (
-            <MessageScrollerItem messageId={`${sessionId}:workload`}>
+            <MessageScrollerItem
+              messageId={`${sessionId}:workload`}
+              scrollAnchor
+              className="workload-scroller-item"
+            >
               <section
                 className={`workload-analysis${classificationDataset ? " has-local-training" : ""}`}
               >
               {(!droppedWorkload || (dropRunning && (!csvInspection || dropPhase === "preparing_dataset"))) ? (
-                <div className="workload-analysis-loading" role="status" aria-live="polite">
-                  <span />
-                  {dropPhase === "validating"
+                <DatasetAnalysisLoadingTemplate
+                  message={dropPhase === "validating"
                     ? "Checking this file locally…"
                     : dropPhase === "inspecting"
                       ? "Reading its shape and columns…"
-                    : dropPhase === "preparing_dataset"
-                      ? "Creating group-isolated train, dev, and holdout splits…"
-                    : "Understanding this file…"}
-                </div>
+                      : dropPhase === "preparing_dataset"
+                        ? "Creating group-isolated train, dev, and holdout splits…"
+                        : "Understanding this file…"}
+                />
               ) : trainingRecipe && droppedWorkload ? (
                 <>
-                  <AutomaticGoalCard
-                    inspection={trainingRecipe}
-                    card={trainingGoalCard}
-                    architect={environmentArchitect}
-                    architectProgress={environmentArchitectProgress}
-                  />
-                  <div className="csv-analysis-next">
-                    {trainingRecipe.ready ? (
-                      remoteRecipePlan ? (
-                        <>
-                          {recipeLocalAvailable && (
-                            <div hidden={recipeBackend === "managed"}>
-                              <LocalSftTrainingPanel
-                                plan={remoteRecipePlan}
-                                modelName={`${trainingUseCaseLabel(trainingRecipe.detected_use_case)} model`}
-                                onTrainRemote={openManagedRecipeTraining}
-                                onActiveChange={setLocalTrainingActive}
-                                onVisualChange={setTrainingHaloVisual}
-                              />
-                            </div>
-                          )}
-                          {!recipeLocalAvailable && recipeBackend === "local" && (
-                            <button type="button" className="btn primary" onClick={openManagedRecipeTraining}>
-                              Try cloud
-                            </button>
-                          )}
-                          {recipeBackend === "managed" && (
-                            <RemoteTrainingPanel
-                              preparedPlan={remoteRecipePlan}
+                  {!datasetProfileConfirmed ? (
+                    <StructuredDatasetProfilePage
+                      sourceName={droppedWorkload.source_name}
+                      inspection={trainingRecipe}
+                      card={trainingGoalCard}
+                      ready={Boolean(trainingRecipe.row_preview.length > 0)}
+                      onConfirm={() => setDatasetProfileConfirmed(true)}
+                    />
+                  ) : <>
+                    <button
+                      type="button"
+                      className="btn ghost dataset-flow-back"
+                      onClick={() => setDatasetProfileConfirmed(false)}
+                    >Back to data profile</button>
+                    <AutomaticGoalCard
+                      inspection={trainingRecipe}
+                      card={trainingGoalCard}
+                      architect={environmentArchitect}
+                      architectProgress={environmentArchitectProgress}
+                      architectDraft={environmentArchitectDraft}
+                      architectError={environmentArchitectError}
+                      onRetryArchitect={retryEnvironmentArchitect}
+                      analysisModelLabel={selectedChoice.label}
+                      trainingBackend={recipeBackend}
+                      localTrainingAvailable={recipeLocalAvailable}
+                      onTrainingBackendChange={setRecipeBackend}
+                    />
+                    <div className="csv-analysis-next">
+                      {trainingRecipe.ready && remoteRecipePlan ? <>
+                        {recipeLocalAvailable && (
+                          <div hidden={recipeBackend === "managed"}>
+                            <LocalSftTrainingPanel
+                              plan={remoteRecipePlan}
                               modelName={`${trainingUseCaseLabel(trainingRecipe.detected_use_case)} model`}
-                              onBack={recipeLocalAvailable ? () => setRecipeBackend("local") : undefined}
+                              onTrainRemote={openManagedRecipeTraining}
                               onActiveChange={setLocalTrainingActive}
                               onVisualChange={setTrainingHaloVisual}
                             />
-                          )}
-                        </>
-                      ) : (
+                          </div>
+                        )}
+                        {!recipeLocalAvailable && recipeBackend === "local" && (
+                          <button type="button" className="btn primary" onClick={openManagedRecipeTraining}>
+                            Try cloud
+                          </button>
+                        )}
+                        {recipeBackend === "managed" && remoteRecipeEligibilityError && (
+                          <div className="remote-training-state failed" role="alert">
+                            <strong>Cloud training is not ready for this dataset</strong>
+                            <small>{remoteRecipeEligibilityError}</small>
+                          </div>
+                        )}
+                        {recipeBackend === "managed" && !remoteRecipeEligibilityError && remoteRecipePlan.maximum_spend_usd <= 0 && (
+                          <div className="remote-training-state" role="status" aria-live="polite" aria-busy="true">
+                            <strong>Checking cloud capacity</strong>
+                            <small>Matching split sizes and a cost-efficient model before you approve an upload.</small>
+                          </div>
+                        )}
+                        {recipeBackend === "managed" && !remoteRecipeEligibilityError && remoteRecipePlan.maximum_spend_usd > 0 && (
+                          <RemoteTrainingPanel
+                            preparedPlan={remoteRecipePlan}
+                            modelName={`${trainingUseCaseLabel(trainingRecipe.detected_use_case)} model`}
+                            onBack={recipeLocalAvailable ? () => setRecipeBackend("local") : undefined}
+                            onActiveChange={setLocalTrainingActive}
+                            onVisualChange={setTrainingHaloVisual}
+                          />
+                        )}
+                      </> : (
                         <div className="remote-training-state" role="status" aria-live="polite">
                           <strong>Preparing {trainingUseCaseLabel(trainingRecipe.detected_use_case)}</strong>
                           <small>Splitting and checking locally.</small>
                         </div>
-                      )
-                    ) : (
-                      <p>{environmentArchitectProgress?.message ?? environmentArchitect?.next_step ?? trainingRecipe.reasons[0]}</p>
-                    )}
-                  </div>
+                      )}
+                    </div>
+                  </>}
                   {!localTrainingActive && (
                     <button type="button" className="btn ghost workload-generic-dismiss" onClick={resetDroppedWorkload}>
                       Dismiss
@@ -1900,17 +2405,6 @@ export function ChatPane({
                 </>
               ) : csvInspection && droppedWorkload ? (
                 <>
-                  {environmentArchitectProgress && environmentArchitectProgress.phase !== "complete" ? (
-                    <div className="remote-training-state" role="status" aria-live="polite">
-                      <strong>{environmentArchitectProgress.message}</strong>
-                      <small>{environmentArchitectProgress.current} of {environmentArchitectProgress.total}</small>
-                    </div>
-                  ) : environmentArchitect ? (
-                    <div className="csv-analysis-proposal">
-                      <strong>{environmentArchitect.target_goal}</strong>
-                      <p>{environmentArchitect.dataset_summary}</p>
-                    </div>
-                  ) : null}
                   {!classificationDataset ? (
                     <>
                       <div className="csv-analysis-step-label csv-analysis-step-structure">1 · data structure</div>
@@ -1935,7 +2429,27 @@ export function ChatPane({
                           setClassificationDataset(null);
                         }}
                       />
-                      <div className="csv-analysis-step-label">2 · confirm the training plan</div>
+                      <TableExampleCards
+                        rows={csvInspection.row_preview ?? []}
+                        inputColumns={mappingInputColumns}
+                        labelColumn={mappingLabelColumn}
+                      />
+                      <div className="csv-analysis-step-label">2 · Understudy analysis</div>
+                      <div className="csv-analysis-pi">
+                        <PiAnalysisRail
+                          architect={environmentArchitect}
+                          progress={environmentArchitectProgress}
+                          error={environmentArchitectError}
+                        />
+                        <PiDesignCards
+                          architect={environmentArchitect}
+                          progress={environmentArchitectProgress}
+                          draft={environmentArchitectDraft}
+                          error={environmentArchitectError}
+                          onRetry={retryEnvironmentArchitect}
+                        />
+                      </div>
+                      <div className="csv-analysis-step-label">3 · confirm the training plan</div>
                       <div className="csv-analysis-next">
                       <CsvTrainingPlan
                         rowCount={csvInspection.row_count}

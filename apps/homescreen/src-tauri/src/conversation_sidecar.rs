@@ -795,6 +795,19 @@ pub(crate) async fn try_run_chat_headless(app: &AppHandle, request: Value) -> Si
     }
 }
 
+pub(crate) async fn try_run_chat_headless_with_events(
+    app: &AppHandle,
+    request: Value,
+    runtime_events: &tokio::sync::mpsc::UnboundedSender<RuntimeEventEnvelope>,
+) -> SidecarAttempt {
+    match execute_run(app, request, None, Some(runtime_events), None).await {
+        Ok(result) => SidecarAttempt::Completed(result),
+        Err((error, _)) if is_runtime_cancellation(&error) => SidecarAttempt::Cancelled(error),
+        Err((error, true)) => SidecarAttempt::FailedAfterOutput(error),
+        Err((error, false)) => SidecarAttempt::UnavailableBeforeOutput(error),
+    }
+}
+
 pub(crate) async fn ensure_agent_ready(app: AppHandle) -> Result<(), String> {
     tokio::task::spawn_blocking(move || ensure_ready(&app).map(|_| ()))
         .await

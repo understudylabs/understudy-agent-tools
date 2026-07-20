@@ -38,6 +38,9 @@ regex-lite = "0.1"
 # Pure-Rust readers for dropped Excel/OpenDocument workbooks. Pi receives a
 # context-bounded decoded representation rather than opaque workbook bytes.
 calamine = "0.36"
+# Bounded, quote-aware decoding for dropped CSV/TSV datasets. File format
+# selects only the parser; route and training backend remain user decisions.
+csv = "1"
 
 [target.'cfg(any(target_os = "macos", windows, target_os = "linux"))'.dependencies]
 tauri-plugin-updater = "2.10.1"

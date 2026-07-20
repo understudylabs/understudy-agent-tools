@@ -63,7 +63,7 @@ test("explicit CSV inspection is a truthful thinking phase", () => {
   assert.equal(workloadDropPersonaState(phase), "thinking");
   assert.deepEqual(workloadDropStatus(phase), {
     title: "Analyzing this dataset",
-    detail: "Decoding locally · Pi receives the content needed to infer the task",
+    detail: "Decoding locally · Understudy is inferring the task",
   });
   phase = workloadDropReducer(phase, { type: "inspection_succeeded" });
   assert.equal(phase, "ready");
@@ -107,7 +107,7 @@ test("extensionless and common delimited files enter local table inspection", ()
   }), false);
 });
 
-test("structured datasets and workbooks enter Pi dataset inspection", () => {
+test("structured datasets and workbooks enter Understudy dataset inspection", () => {
   for (const source_name of [
     "gsm8k.json",
     "gsm8k.jsonl",
@@ -121,7 +121,7 @@ test("structured datasets and workbooks enter Pi dataset inspection", () => {
     assert.equal(shouldInspectStructuredDataset({ source_name, source_type: "file" }), true);
     assert.equal(shouldInspectTrainingRecipe({ source_name, source_type: "file" }), true);
   }
-  assert.equal(shouldInspectTrainingRecipe({ source_name: "dataset.csv", source_type: "file" }), false);
+  assert.equal(shouldInspectTrainingRecipe({ source_name: "dataset.csv", source_type: "file" }), true);
   assert.equal(shouldInspectTrainingRecipe({ source_name: "dataset.jsonl", source_type: "directory" }), false);
 });
 
