@@ -1,6 +1,6 @@
 {
   "name": "understudy-hermes-adapter",
-  "version": "0.6.29",
+  "version": "0.6.30",
   "skills": "./skills",
   "register": "skills.external_dirs in ~/.hermes/config.yaml"
 }
