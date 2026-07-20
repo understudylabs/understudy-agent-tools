@@ -214,7 +214,21 @@ jobs:
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         run: |
           version="$(node -p "require('./apps/homescreen/package.json').version")"
+          app="$PWD/apps/homescreen/src-tauri/target/release/bundle/macos/Understudy.app"
           dmg="$PWD/apps/homescreen/src-tauri/target/release/bundle/dmg/Understudy_${version}_aarch64.dmg"
+          dmg_stage="$RUNNER_TEMP/understudy-dmg-stage"
+          mkdir "$dmg_stage"
+          ditto "$app" "$dmg_stage/Understudy.app"
+          ln -s /Applications "$dmg_stage/Applications"
+          xcrun stapler validate "$dmg_stage/Understudy.app"
+          rm -f "$dmg"
+          hdiutil create \
+            -volname Understudy \
+            -fs HFS+ \
+            -srcfolder "$dmg_stage" \
+            -ov \
+            -format UDZO \
+            "$dmg"
           xcrun notarytool submit "$dmg" \
             --apple-id "$APPLE_ID" \
             --password "$APPLE_PASSWORD" \
@@ -264,6 +278,21 @@ jobs:
             --context context:primary-signature \
             --verbose=2 \
             "$downloaded"
+          mounted_dmg="$RUNNER_TEMP/downloaded-dmg"
+          mkdir "$mounted_dmg"
+          detach_downloaded_dmg() {
+            hdiutil detach "$mounted_dmg" >/dev/null 2>&1 || true
+          }
+          trap detach_downloaded_dmg EXIT
+          hdiutil attach "$downloaded" \
+            -nobrowse \
+            -readonly \
+            -mountpoint "$mounted_dmg"
+          xcrun stapler validate "$mounted_dmg/Understudy.app"
+          codesign --verify --deep --strict --verbose=2 "$mounted_dmg/Understudy.app"
+          spctl --assess --type execute --verbose=2 "$mounted_dmg/Understudy.app"
+          detach_downloaded_dmg
+          trap - EXIT
 
       - name: Publish the verified release
         if: inputs.mode == 'release'
