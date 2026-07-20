@@ -3843,6 +3843,18 @@ select,
 .remote-training-state.failed small {
   color: var(--warning) !important;
 }
+.remote-training-diagnostic {
+  display: grid;
+  gap: 3px;
+  margin: 0;
+  padding: 9px 11px;
+  border: 1px solid color-mix(in srgb, var(--warning) 28%, var(--border));
+  border-radius: 9px;
+  background: color-mix(in srgb, var(--warning) 4%, transparent);
+}
+.remote-training-diagnostic strong {
+  font-size: 11px;
+}
 .remote-training-result.promoted {
   border-color: color-mix(in srgb, var(--success) 42%, var(--border));
 }

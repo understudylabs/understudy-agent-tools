@@ -101,6 +101,30 @@ type RemoteResult = {
   output_model?: string;
   endpoint?: string;
   spend_usd: number;
+  estimated_spend_usd?: number;
+  reserved_spend_usd?: number;
+  reconciled_spend_usd?: number | null;
+  provider_error?: {
+    phase: "training" | "deployment" | "adapter" | "evaluation";
+    resource_id: string;
+    resource: string;
+    status: string;
+    code?: string;
+    message?: string;
+  };
+  terminal_error?: {
+    phase: "queued" | "upload" | "training" | "deployment" | "adapter" | "evaluation" | "cleanup";
+    code: string;
+    message: string;
+  };
+  cleanup_attempts?: Array<{
+    resource_kind: "training_job" | "adapter" | "deployment" | "model" | "datasets" | "uploads";
+    resource_id: string;
+    attempts: number;
+    outcome: "removed_or_absent" | "pending";
+    error?: string;
+  }>;
+  cleanup_pending?: Array<"training_job" | "adapter" | "deployment" | "model" | "datasets" | "uploads">;
   metrics: HumanMetric[];
   failures: { input_summary: string; expected: string; actual: string }[];
 };
@@ -493,13 +517,31 @@ export function RemoteTrainingPanel(props: Props) {
         : result.outcome === "cancelled"
           ? { eyebrow: "Stopped safely", title: "Remote training was cancelled" }
           : { eyebrow: "Run ended", title: "Remote training did not complete" };
+    const diagnostic = result.provider_error
+      ? {
+          title: `${result.provider_error.phase} failed · ${result.provider_error.code ?? result.provider_error.status}`,
+          message: result.provider_error.message ?? result.terminal_error?.message ?? "The provider stopped this resource.",
+        }
+      : result.terminal_error
+        ? { title: `${result.terminal_error.phase} failed · ${result.terminal_error.code}`, message: result.terminal_error.message }
+        : result.outcome === "failed"
+          ? { title: "No detailed diagnostic", message: "This run predates detailed failure receipts. New runs preserve the provider error here and on this Mac." }
+          : null;
+    const hasSpendBreakdown = result.estimated_spend_usd !== undefined
+      || result.reserved_spend_usd !== undefined
+      || result.reconciled_spend_usd !== undefined;
+    const hasCleanupDetails = (result.cleanup_attempts?.length ?? 0) > 0 || (result.cleanup_pending?.length ?? 0) > 0;
     return (
       <div className={`remote-training-result ${result.outcome}`}>
-        <div><span>{terminalCopy.eyebrow}</span><strong>{terminalCopy.title}</strong><small>Reported training cost: ${result.spend_usd.toFixed(2)}</small></div>
+        <div><span>{terminalCopy.eyebrow}</span><strong>{terminalCopy.title}</strong><small>{result.reconciled_spend_usd != null ? "Provider spend" : "Budget accounted"}: ${result.spend_usd.toFixed(2)}</small></div>
+        {diagnostic && <p className="remote-training-diagnostic"><strong>{diagnostic.title}</strong><small>{diagnostic.message}</small></p>}
         {primaryMetric && <div className="remote-training-metrics"><article><span>{primaryMetric.label}</span><strong>{primaryMetric.display_value}</strong></article></div>}
-        {(secondaryMetrics.length > 0 || result.failures.length > 0 || result.output_model) && (
+        {(secondaryMetrics.length > 0 || result.failures.length > 0 || result.output_model || result.provider_error || hasSpendBreakdown || hasCleanupDetails) && (
           <details className="remote-training-details">
             <summary>Run details</summary>
+            {hasSpendBreakdown && <small>Estimate ${result.estimated_spend_usd?.toFixed(2) ?? "—"} · reserve ${result.reserved_spend_usd?.toFixed(2) ?? "—"} · reconciled {result.reconciled_spend_usd == null ? "pending" : `$${result.reconciled_spend_usd.toFixed(2)}`}</small>}
+            {result.provider_error && <small>Provider {result.provider_error.status} · {result.provider_error.resource_id}</small>}
+            {hasCleanupDetails && <small>{result.cleanup_pending?.length ? `Cleanup pending: ${result.cleanup_pending.join(", ")}` : "Cleanup complete"}</small>}
             {secondaryMetrics.length > 0 && <div className="remote-training-metrics">{secondaryMetrics.map((metric) => <article key={metric.id}><span>{metric.label}</span><strong>{metric.display_value}</strong><small>{metric.explanation}</small></article>)}</div>}
             {result.failures.length > 0 && <div className="remote-training-failures"><strong>Where it still fails</strong>{result.failures.slice(0, 3).map((failure, index) => <p key={index}>{failure.expected} expected · {failure.actual} returned · {failure.input_summary}</p>)}</div>}
             {result.output_model && <div className="remote-training-endpoint"><span>Private trained model</span><code>{result.output_model}</code>{result.endpoint && <small>Serving is active through the authenticated Understudy endpoint.</small>}</div>}
