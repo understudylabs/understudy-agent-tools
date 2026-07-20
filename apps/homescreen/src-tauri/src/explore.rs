@@ -5,8 +5,10 @@
 //! (SQLite side tables + benchmark/eval JSON files).
 
 use std::net::{SocketAddr, TcpStream};
-use std::path::PathBuf;
-use std::time::Duration;
+use std::path::{Path, PathBuf};
+use std::process::{Child, Stdio};
+use std::sync::{Arc, Mutex, MutexGuard};
+use std::time::{Duration, Instant};
 
 use rusqlite::{types::ValueRef, OpenFlags};
 use serde_json::{json, Map, Value};
@@ -36,9 +38,10 @@ fn is_read_only_clickhouse(sql: &str) -> bool {
 }
 
 /// Run a read-only query against the local Moraine ClickHouse and return the
-/// raw JSONEachRow response body.
-#[tauri::command]
-pub async fn explore_clickhouse_query(sql: String) -> Result<String, String> {
+/// raw JSONEachRow response body. Shared by the Tauri command and the local
+/// server (REST + MCP): allowlisted statement heads plus ClickHouse-side
+/// memory/thread/time caps.
+pub async fn run_clickhouse_query(sql: String) -> Result<String, String> {
     let sql = sql.trim().trim_end_matches(';').trim().to_string();
     if sql.is_empty() {
         return Err("empty query".into());
@@ -76,6 +79,11 @@ pub async fn explore_clickhouse_query(sql: String) -> Result<String, String> {
     Ok(body)
 }
 
+#[tauri::command]
+pub async fn explore_clickhouse_query(sql: String) -> Result<String, String> {
+    run_clickhouse_query(sql).await
+}
+
 fn sqlite_value_to_json(v: ValueRef<'_>) -> Value {
     match v {
         ValueRef::Null => Value::Null,
@@ -110,9 +118,9 @@ fn run_sqlite_query(path: PathBuf, sql: String, params: Vec<String>) -> Result<S
 }
 
 /// Read-only query over one of the explore side tables
-/// (~/.understudy/explore/{scan,commits,langs}.sqlite).
-#[tauri::command]
-pub async fn explore_sqlite_query(
+/// (~/.understudy/explore/{scan,commits,langs}.sqlite). Shared guarded
+/// helper: named-db allowlist, SELECT-only, read-only open, row cap.
+pub async fn query_sqlite(
     db: String,
     sql: String,
     params: Vec<String>,
@@ -132,9 +140,18 @@ pub async fn explore_sqlite_query(
         .map_err(|e| format!("sqlite task failed: {e}"))?
 }
 
-/// Read a benchmark or eval JSON artifact; `None` when the file is missing.
 #[tauri::command]
-pub async fn explore_read_json(kind: String, name: String) -> Result<Option<String>, String> {
+pub async fn explore_sqlite_query(
+    db: String,
+    sql: String,
+    params: Vec<String>,
+) -> Result<String, String> {
+    query_sqlite(db, sql, params).await
+}
+
+/// Read a benchmark or eval JSON artifact; `None` when the file is missing.
+/// Shared by the Tauri command and the local server.
+pub async fn read_artifact_json(kind: String, name: String) -> Result<Option<String>, String> {
     let dir = match kind.as_str() {
         "benchmark" => "benchmarks",
         "eval" => "evals",
@@ -155,9 +172,240 @@ pub async fn explore_read_json(kind: String, name: String) -> Result<Option<Stri
     }
 }
 
-/// Availability snapshot for the Explore pane: services + local artifacts.
 #[tauri::command]
-pub async fn explore_status() -> Result<String, String> {
+pub async fn explore_read_json(kind: String, name: String) -> Result<Option<String>, String> {
+    read_artifact_json(kind, name).await
+}
+
+// ---------------------------------------------------------------------------
+// Scan pipeline — the "scan my history" button runs the bundled
+// `understudy explore` CLI (scan → cluster → languages → commits) as a
+// managed child process against the app's resident local model.
+
+#[derive(Default)]
+struct ScanJobInner {
+    running: bool,
+    cancelled: bool,
+    stage: Option<String>,
+    error: Option<String>,
+    started_at: Option<Instant>,
+    child: Option<Child>,
+}
+
+/// Managed state for the single in-flight explore scan pipeline.
+#[derive(Default)]
+pub struct ScanJob(Arc<Mutex<ScanJobInner>>);
+
+fn scan_locked(m: &Mutex<ScanJobInner>) -> MutexGuard<'_, ScanJobInner> {
+    m.lock().unwrap_or_else(|e| e.into_inner())
+}
+
+/// Chat-completions URL of the app's resident local model server.
+/// Deterministically prefers the lowest warm port, mirroring
+/// `Residency::local_base_url`, but errors when nothing is serving instead
+/// of advertising the fresh-install default port.
+fn resident_llm_url(residency: &crate::residency::Residency) -> Result<String, String> {
+    let snapshot = residency.snapshot();
+    let port = snapshot
+        .slots
+        .iter()
+        .filter(|s| s.state == "running")
+        .filter_map(|s| s.port)
+        .min()
+        .ok_or_else(|| {
+            "no local model is serving — start a local model first (Models pane)".to_string()
+        })?;
+    Ok(format!("http://127.0.0.1:{port}/v1/chat/completions"))
+}
+
+fn spawn_stage(stage: &str, extra: &[String]) -> Result<Child, String> {
+    let mut cmd = crate::bin::command("understudy");
+    cmd.arg("explore").arg(stage).args(extra);
+    cmd.stdin(Stdio::null())
+        .stdout(Stdio::null())
+        .stderr(Stdio::null());
+    cmd.spawn()
+        .map_err(|e| format!("spawn `understudy explore {stage}`: {e}"))
+}
+
+/// Poll the current child to completion. Ok(true) = stage succeeded,
+/// Ok(false) = cancelled (child already reaped), Err = stage failed.
+fn wait_stage(shared: &Mutex<ScanJobInner>, stage: &str) -> Result<bool, String> {
+    loop {
+        std::thread::sleep(Duration::from_millis(400));
+        let mut g = scan_locked(shared);
+        if g.cancelled {
+            if let Some(child) = g.child.as_mut() {
+                let _ = child.kill();
+                let _ = child.wait();
+            }
+            g.child = None;
+            return Ok(false);
+        }
+        let Some(child) = g.child.as_mut() else {
+            return Ok(false);
+        };
+        match child.try_wait() {
+            Ok(None) => {}
+            Ok(Some(status)) => {
+                g.child = None;
+                if status.success() {
+                    return Ok(true);
+                }
+                return Err(format!("`understudy explore {stage}` exited with {status}"));
+            }
+            Err(e) => {
+                g.child = None;
+                return Err(format!("`understudy explore {stage}` wait failed: {e}"));
+            }
+        }
+    }
+}
+
+/// Runs after the scan child was spawned by `explore_scan_start`: wait for it,
+/// then chain the remaining stages sequentially.
+fn run_scan_pipeline(shared: &Mutex<ScanJobInner>, llm_url: &str) -> Result<(), String> {
+    if !wait_stage(shared, "scan")? {
+        return Ok(()); // cancelled
+    }
+    let stages: [(&str, Vec<String>); 3] = [
+        ("cluster", vec!["--llm-url".into(), llm_url.to_string()]),
+        ("languages", Vec::new()),
+        ("commits", Vec::new()),
+    ];
+    for (stage, extra) in stages {
+        {
+            let mut g = scan_locked(shared);
+            if g.cancelled {
+                return Ok(());
+            }
+            let child = spawn_stage(stage, &extra)?;
+            g.stage = Some(stage.to_string());
+            g.child = Some(child);
+        }
+        if !wait_stage(shared, stage)? {
+            return Ok(());
+        }
+    }
+    Ok(())
+}
+
+/// Start the scan pipeline against the resident local model. Refuses when a
+/// pipeline is already running or no model is serving. Returns "started"
+/// immediately after the scan child spawns; the remaining stages chain in a
+/// background thread. Shared by the Tauri command and the local server.
+pub fn scan_start(
+    job: &ScanJob,
+    residency: &crate::residency::Residency,
+    limit: Option<u32>,
+) -> Result<String, String> {
+    let llm_url = resident_llm_url(residency)?;
+
+    let mut scan_args = vec!["--llm-url".to_string(), llm_url.clone()];
+    if let Some(limit) = limit {
+        scan_args.push("--limit".into());
+        scan_args.push(limit.to_string());
+    }
+
+    {
+        let mut g = scan_locked(&job.0);
+        if g.running {
+            return Err("a scan is already running".into());
+        }
+        let child = spawn_stage("scan", &scan_args)?;
+        g.running = true;
+        g.cancelled = false;
+        g.error = None;
+        g.stage = Some("scan".into());
+        g.started_at = Some(Instant::now());
+        g.child = Some(child);
+    }
+
+    let shared = job.0.clone();
+    std::thread::spawn(move || {
+        let outcome = run_scan_pipeline(&shared, &llm_url);
+        let mut g = scan_locked(&shared);
+        g.running = false;
+        g.stage = None;
+        g.child = None;
+        if let Err(e) = outcome {
+            if !g.cancelled {
+                g.error = Some(e);
+            }
+        }
+    });
+
+    Ok("started".into())
+}
+
+#[tauri::command]
+pub async fn explore_scan_start(
+    limit: Option<u32>,
+    job: tauri::State<'_, ScanJob>,
+    residency: tauri::State<'_, crate::residency::Residency>,
+) -> Result<String, String> {
+    scan_start(&job, &residency, limit)
+}
+
+fn scanned_sessions_count(path: &Path) -> i64 {
+    if !path.exists() {
+        return 0;
+    }
+    let Ok(conn) = rusqlite::Connection::open_with_flags(path, OpenFlags::SQLITE_OPEN_READ_ONLY)
+    else {
+        return 0;
+    };
+    conn.query_row("SELECT COUNT(*) FROM session_scan", [], |r| r.get(0))
+        .unwrap_or(0)
+}
+
+/// Progress snapshot for the scan pipeline:
+/// `{running, stage, error, scannedSessions}`.
+pub async fn scan_status(job: &ScanJob) -> Result<String, String> {
+    let (running, stage, error) = {
+        let g = scan_locked(&job.0);
+        (g.running, g.stage.clone(), g.error.clone())
+    };
+    let path = explore_dir()?.join("scan.sqlite");
+    let scanned = tauri::async_runtime::spawn_blocking(move || scanned_sessions_count(&path))
+        .await
+        .unwrap_or(0);
+    Ok(json!({
+        "running": running,
+        "stage": stage,
+        "error": error,
+        "scannedSessions": scanned,
+    })
+    .to_string())
+}
+
+#[tauri::command]
+pub async fn explore_scan_status(job: tauri::State<'_, ScanJob>) -> Result<String, String> {
+    scan_status(&job).await
+}
+
+/// Cancel the in-flight scan pipeline (no-op when idle).
+pub fn scan_cancel(job: &ScanJob) -> Result<(), String> {
+    let mut g = scan_locked(&job.0);
+    if !g.running {
+        return Ok(());
+    }
+    g.cancelled = true;
+    g.error = None;
+    if let Some(child) = g.child.as_mut() {
+        let _ = child.kill();
+    }
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn explore_scan_cancel(job: tauri::State<'_, ScanJob>) -> Result<(), String> {
+    scan_cancel(&job)
+}
+
+/// Availability snapshot for the Explore pane: services + local artifacts.
+/// Shared by the Tauri command and the local server.
+pub async fn status_snapshot() -> Result<String, String> {
     let clickhouse_up = async {
         let client = match reqwest::Client::builder()
             .timeout(Duration::from_secs(2))
@@ -196,4 +444,9 @@ pub async fn explore_status() -> Result<String, String> {
         "hasLangs": dir.join("langs.sqlite").exists(),
     });
     Ok(status.to_string())
+}
+
+#[tauri::command]
+pub async fn explore_status() -> Result<String, String> {
+    status_snapshot().await
 }

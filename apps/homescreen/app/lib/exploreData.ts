@@ -109,6 +109,37 @@ async function sq<T = Record<string, unknown>>(
   return JSON.parse(raw) as T[];
 }
 
+// ---------------------------------------------------------------------------
+// scan pipeline (the "scan my history" button) — desktop-only: the Rust side
+// spawns the bundled `understudy explore` CLI against the resident model.
+
+export type ScanStatus = {
+  running: boolean;
+  stage: string | null;
+  error: string | null;
+  scannedSessions: number;
+};
+
+function assertScanDesktop(): void {
+  if (!isDesktop()) throw new Error("scanning requires the desktop app");
+}
+
+export async function startScan(limit?: number): Promise<void> {
+  assertScanDesktop();
+  await invoke<string>("explore_scan_start", { limit: limit ?? null });
+}
+
+export async function fetchScanStatus(): Promise<ScanStatus> {
+  assertScanDesktop();
+  const raw = await invoke<string>("explore_scan_status");
+  return JSON.parse(raw) as ScanStatus;
+}
+
+export async function cancelScan(): Promise<void> {
+  assertScanDesktop();
+  await invoke("explore_scan_cancel");
+}
+
 function escCh(s: string): string {
   return s.replace(/\\/g, "\\\\").replace(/'/g, "\\'");
 }
@@ -732,6 +763,325 @@ export async function fetchExploreStatus(): Promise<ExploreStatus> {
   }
   const raw = await invoke<string>("explore_status");
   return JSON.parse(raw) as ExploreStatus;
+}
+
+// ---------------------------------------------------------------------------
+// tasks catalog — clusters as benchmark candidates (ported from the
+// moraine-viewer /api/tasks route + benchmarkFile.ts, now fully client-side
+// over the invoke adapters). Every sqlite source degrades gracefully when
+// missing; ClickHouse failure → token totals stay 0.
+
+const PLUMBING_CLUSTER = "cli plumbing";
+
+// Eval files on disk are named <slug>__<candidate>.json and are NOT
+// enumerable through explore_read_json — so we probe the known sweep
+// candidates (scripts/evalrun.ts writes exactly these) and keep what exists.
+const KNOWN_EVAL_CANDIDATES = [
+  "local-gemma-4-e2b-qat-understudy",
+  "gemma-4-31b-it",
+  "glm-5-2",
+  "nemotron-3-super",
+  "claude-opus-4-8",
+];
+
+export interface TaskExemplar {
+  session_id: string;
+  label: string | null;
+  summary: string | null;
+  events: number;
+}
+
+export interface TaskEvalRow {
+  candidate: string;
+  mean: number;
+  n: number;
+  kind: string;
+  judge: string;
+}
+
+export interface TaskCluster {
+  id: number;
+  name: string;
+  sessions: number;
+  interactiveSessions: number;
+  totalEvents: number;
+  totalTokens: number;
+  commits: number;
+  topLanguages: Array<{ lang: string; files: number }>;
+  topTools: Array<{ tool: string; uses: number }>;
+  topLabels: Array<{ label: string; n: number }>;
+  exemplars: TaskExemplar[];
+  benchmark: { exists: boolean; instances: number; meanQuality: number } | null;
+  /** legacy single eval — the local-gemma entry, kept for back-compat */
+  eval: { candidate: string; mean: number; n: number; kind: string } | null;
+  /** all real measured evals (multi-model sweep) */
+  evals: TaskEvalRow[];
+}
+
+export interface TasksPayload {
+  clusters: TaskCluster[];
+  plumbing: { sessions: number; note: string } | null;
+}
+
+export interface BenchmarkInstance {
+  instance_id: string;
+  session_id: string;
+  split: "train" | "dev" | "holdout";
+  prompt: string;
+  context: {
+    project: string;
+    harness: string;
+    tools_used: string[];
+    label: string | null;
+    summary: string | null;
+  };
+  reference: {
+    final_assistant: string;
+    commits: string[];
+    events: number;
+  };
+  quality: number;
+}
+
+export interface BenchmarkDraft {
+  benchmark: string;
+  version: string;
+  created: string;
+  cluster: { id: number; name: string };
+  counts: { instances: number; train: number; dev: number; holdout: number; dropped: number };
+  mean_quality: number;
+  split_hash_seed: string;
+  instances: BenchmarkInstance[];
+}
+
+interface EvalFile {
+  benchmark: string;
+  candidate: string;
+  kind: string;
+  judge: string;
+  createdAt: string;
+  results: Array<{ instance_id: string; score: number; reason: string; candidate_chars: number }>;
+  mean: number;
+  n: number;
+}
+
+export function clusterSlug(name: string): string {
+  return name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
+}
+
+// explore_read_json invoke: ~/.understudy/explore/{benchmarks,evals}/<name>.json
+// (Rust sanitizes name to [A-Za-z0-9._-]; the "__" in eval names passes).
+async function readExploreJson<T>(kind: "benchmark" | "eval", name: string): Promise<T | null> {
+  assertDesktop();
+  if (!isDesktop() && DEV_FALLBACK) return null; // no browser path to the JSON dirs
+  try {
+    const raw = await invoke<string | null>("explore_read_json", { kind, name });
+    if (!raw) return null;
+    return JSON.parse(raw) as T;
+  } catch {
+    return null;
+  }
+}
+
+export async function fetchBenchmarkDraft(clusterName: string): Promise<BenchmarkDraft | null> {
+  return readExploreJson<BenchmarkDraft>("benchmark", clusterSlug(clusterName));
+}
+
+async function readClusterEvals(clusterName: string): Promise<EvalFile[]> {
+  const slug = clusterSlug(clusterName);
+  const reads = await Promise.all(
+    KNOWN_EVAL_CANDIDATES.map((cand) => readExploreJson<EvalFile>("eval", `${slug}__${cand}`)),
+  );
+  return reads.filter((e): e is EvalFile => e != null).sort((a, b) => b.mean - a.mean);
+}
+
+type TaskScanRow = {
+  session_id: string;
+  events: number;
+  label: string | null;
+  summary: string | null;
+  interactive: number;
+  cluster_id: number | null;
+  cluster_name: string | null;
+};
+
+export async function fetchTasks(): Promise<TasksPayload> {
+  // scan: session → cluster + label + events + interactivity
+  let scanRows: TaskScanRow[];
+  try {
+    scanRows = await sq<TaskScanRow>(
+      "scan",
+      `SELECT s.session_id, COALESCE(s.events, 0) AS events, s.label, s.summary,
+              COALESCE(s.interactive, 1) AS interactive,
+              m.cluster_id AS cluster_id, c.name AS cluster_name
+       FROM session_scan s
+       LEFT JOIN cluster_map m ON m.label = s.label
+       LEFT JOIN clusters c ON c.id = m.cluster_id`,
+    );
+  } catch {
+    // scan/cluster tables absent — no catalog yet
+    return { clusters: [], plumbing: null };
+  }
+  if (scanRows.length === 0) return { clusters: [], plumbing: null };
+
+  // commits: session → distinct commit hashes; langs/tools per session;
+  // token sums per session (UInt64 arrives as string; alias ≠ column names)
+  const commitMap = new Map<string, string[]>();
+  const langMap = new Map<string, Array<{ lang: string; files: number }>>();
+  const toolMap = new Map<string, Array<{ tool: string; uses: number }>>();
+  const tokenMap = new Map<string, number>();
+  await Promise.all([
+    (async () => {
+      try {
+        const rows = await sq<{ hash: string; session_id: string }>(
+          "commits",
+          `SELECT hash, session_id FROM commit_sessions`,
+        );
+        for (const r of rows) {
+          const list = commitMap.get(r.session_id);
+          if (list) list.push(r.hash);
+          else commitMap.set(r.session_id, [r.hash]);
+        }
+      } catch { /* commits.sqlite absent */ }
+    })(),
+    (async () => {
+      try {
+        const rows = await sq<{ session_id: string; lang: string; files: number }>(
+          "langs",
+          `SELECT session_id, lang, files FROM session_langs`,
+        );
+        for (const r of rows) {
+          const list = langMap.get(r.session_id) ?? [];
+          list.push({ lang: r.lang, files: Number(r.files) });
+          langMap.set(r.session_id, list);
+        }
+      } catch { /* langs.sqlite absent */ }
+    })(),
+    (async () => {
+      try {
+        const rows = await sq<{ session_id: string; tool: string; uses: number }>(
+          "langs",
+          `SELECT session_id, tool, uses FROM session_tools`,
+        );
+        for (const r of rows) {
+          const list = toolMap.get(r.session_id) ?? [];
+          list.push({ tool: r.tool, uses: Number(r.uses) });
+          toolMap.set(r.session_id, list);
+        }
+      } catch { /* session_tools absent */ }
+    })(),
+    (async () => {
+      try {
+        const rows = await ch<{ sid: string; tok: string }>(
+          `SELECT session_id AS sid,
+                  toString(sum(input_tokens) + sum(output_tokens) + sum(cache_read_tokens) + sum(cache_write_tokens)) AS tok
+           FROM events WHERE event_ts > '2026-01-01' GROUP BY session_id`,
+        );
+        for (const r of rows) tokenMap.set(r.sid, Number(r.tok));
+      } catch { /* ClickHouse down — token totals stay 0 */ }
+    })(),
+  ]);
+
+  // group by cluster; 'cli plumbing' is excluded from cards, kept as footnote
+  type Agg = { id: number; name: string; rows: TaskScanRow[] };
+  const byCluster = new Map<number, Agg>();
+  let plumbingSessions = 0;
+  for (const r of scanRows) {
+    if (r.cluster_id == null || !r.cluster_name) continue;
+    if (r.cluster_name === PLUMBING_CLUSTER) {
+      plumbingSessions++;
+      continue;
+    }
+    const agg =
+      byCluster.get(Number(r.cluster_id)) ??
+      { id: Number(r.cluster_id), name: r.cluster_name, rows: [] };
+    agg.rows.push(r);
+    byCluster.set(Number(r.cluster_id), agg);
+  }
+
+  const clusters: TaskCluster[] = await Promise.all(
+    [...byCluster.values()].map(async (agg) => {
+      const langs = new Map<string, number>();
+      const tools = new Map<string, number>();
+      const labels = new Map<string, number>();
+      let totalEvents = 0;
+      let totalTokens = 0;
+      let interactiveSessions = 0;
+      const commitHashes = new Set<string>();
+      for (const r of agg.rows) {
+        totalEvents += Number(r.events);
+        totalTokens += tokenMap.get(r.session_id) ?? 0;
+        if (Number(r.interactive)) interactiveSessions++;
+        if (r.label) labels.set(r.label, (labels.get(r.label) ?? 0) + 1);
+        for (const h of commitMap.get(r.session_id) ?? []) commitHashes.add(h);
+        for (const l of langMap.get(r.session_id) ?? [])
+          langs.set(l.lang, (langs.get(l.lang) ?? 0) + l.files);
+        for (const t of toolMap.get(r.session_id) ?? [])
+          tools.set(t.tool, (tools.get(t.tool) ?? 0) + t.uses);
+      }
+      const exemplars: TaskExemplar[] = agg.rows
+        .filter((r) => Number(r.interactive))
+        .sort((a, b) => Number(b.events) - Number(a.events))
+        .slice(0, 3)
+        .map((r) => ({
+          session_id: r.session_id,
+          label: r.label,
+          summary: r.summary ? r.summary.slice(0, 200) : null,
+          events: Number(r.events),
+        }));
+      const [draft, evalFiles] = await Promise.all([
+        fetchBenchmarkDraft(agg.name),
+        readClusterEvals(agg.name),
+      ]);
+      const legacy = evalFiles.find((e) => e.candidate.startsWith("local:")) ?? null;
+      return {
+        id: agg.id,
+        name: agg.name,
+        sessions: agg.rows.length,
+        interactiveSessions,
+        totalEvents,
+        totalTokens,
+        commits: commitHashes.size,
+        topLanguages: [...langs.entries()]
+          .map(([lang, files]) => ({ lang, files }))
+          .sort((a, b) => b.files - a.files || a.lang.localeCompare(b.lang))
+          .slice(0, 3),
+        topTools: [...tools.entries()]
+          .map(([tool, uses]) => ({ tool, uses }))
+          .sort((a, b) => b.uses - a.uses || a.tool.localeCompare(b.tool))
+          .slice(0, 5),
+        topLabels: [...labels.entries()]
+          .map(([label, n]) => ({ label, n }))
+          .sort((a, b) => b.n - a.n || a.label.localeCompare(b.label))
+          .slice(0, 5),
+        exemplars,
+        benchmark: draft
+          ? { exists: true, instances: draft.counts.instances, meanQuality: draft.mean_quality }
+          : null,
+        eval: legacy
+          ? { candidate: legacy.candidate, mean: legacy.mean, n: legacy.n, kind: legacy.kind }
+          : null,
+        evals: evalFiles.map((e) => ({
+          candidate: e.candidate,
+          mean: e.mean,
+          n: e.n,
+          kind: e.kind,
+          judge: e.judge,
+        })),
+      };
+    }),
+  );
+  clusters.sort(
+    (a, b) => b.interactiveSessions - a.interactiveSessions || b.sessions - a.sessions,
+  );
+
+  return {
+    clusters,
+    plumbing: {
+      sessions: plumbingSessions,
+      note: "non-interactive cli plumbing — excluded from benchmark candidacy",
+    },
+  };
 }
 
 // ---------------------------------------------------------------------------

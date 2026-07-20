@@ -34,6 +34,7 @@ import { buildValueReport } from "./value-report.js";
 import { type AgentPlatformAdapter, agentPlatformAdapters, findAgentPlatformAdapter } from "./agent-platforms.js";
 import { registerCapturesCommand } from "./commands/captures.js";
 import { registerEvalsCommand } from "./commands/evals.js";
+import { registerExploreCommand } from "./commands/explore.js";
 import { registerDaemonCommand } from "./commands/daemon.js";
 import { registerDesktopCommand } from "./commands/desktop.js";
 import { registerDoctorCommand } from "./commands/doctor.js";
@@ -848,6 +849,7 @@ export function buildProgram(): Command {
   registerWorkloadsCommand(program);
   registerCapturesCommand(program);
   registerEvalsCommand(program);
+  registerExploreCommand(program);
   registerGatewayCommand(program);
   registerRoutesCommand(program);
   registerSetupCommand(program);

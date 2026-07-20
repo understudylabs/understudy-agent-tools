@@ -8,17 +8,24 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import TimelineScene, { type LaneLayout } from "./TimelineScene";
 import TracePreview from "./TracePreview";
+import EmptyState from "../EmptyState";
 import {
+  cancelScan,
   fetchCommits,
   fetchCommitsDay,
+  fetchExploreStatus,
   fetchHealth,
   fetchLanguages,
   fetchLive,
+  fetchScanStatus,
   fetchSessionDetail,
   fetchTimeline,
   searchTimeline,
+  startScan,
+  type ScanStatus,
   type SessionDetail,
 } from "@/app/lib/exploreData";
+import type { ExploreStatus } from "@/app/lib/exploreContract";
 import {
   COST_RAMP,
   DAY,
@@ -145,6 +152,20 @@ function Chip({
 
 type HoverInfo = { point: TimelinePoint; clientX: number; clientY: number };
 
+// fixed-position tooltip placement: right of the cursor normally, flipped to
+// the left within FLIP_PX of the right window edge; clamped vertically
+const FLIP_PX = 280;
+function tooltipPos(clientX: number, clientY: number): React.CSSProperties {
+  const flip = typeof window !== "undefined" && clientX > window.innerWidth - FLIP_PX;
+  const maxTop = typeof window !== "undefined" ? window.innerHeight - 140 : Infinity;
+  return {
+    ...(flip
+      ? { right: window.innerWidth - clientX + 14 }
+      : { left: clientX + 14 }),
+    top: Math.max(8, Math.min(clientY + 14, maxTop)),
+  };
+}
+
 type CommitDay = { d: string; c: number };
 type DayCommit = { hash7: string; repo: string; subject: string; ts: number; sessions: string[] };
 
@@ -184,10 +205,79 @@ export default function TimelinePane({
   const viewRef = useRef(view);
   viewRef.current = view;
 
-  useEffect(() => {
+  const [status, setStatus] = useState<ExploreStatus | null>(null);
+  const [scanBannerDismissed, setScanBannerDismissed] = useState(false);
+  const [scan, setScan] = useState<ScanStatus | null>(null);
+  const [scanError, setScanError] = useState<string | null>(null);
+  const prevScanRunning = useRef(false);
+
+  // initial load; on failure (or an empty store) fetch explore_status so the
+  // empty state can distinguish "moraine down" from "up but no traces yet"
+  const loadTimeline = useCallback(() => {
+    setError(null);
     fetchTimeline()
-      .then((d) => setData(d))
-      .catch((e) => setError(String(e)));
+      .then((d) => {
+        setData(d);
+        fetchExploreStatus()
+          .then(setStatus)
+          .catch(() => {});
+      })
+      .catch((e) => {
+        setError(String(e));
+        fetchExploreStatus()
+          .then(setStatus)
+          .catch(() => setStatus(null));
+      });
+  }, []);
+
+  useEffect(() => {
+    loadTimeline();
+  }, [loadTimeline]);
+
+  // scan pipeline status: poll every 5s (cheap local invoke) so an app- or
+  // CLI-started scan surfaces as a progress banner; when a run we watched
+  // finishes cleanly, reload the timeline so labels/clusters appear.
+  useEffect(() => {
+    let alive = true;
+    const tick = () => {
+      fetchScanStatus()
+        .then((s) => {
+          if (!alive) return;
+          if (prevScanRunning.current && !s.running && !s.error) {
+            loadTimeline();
+          }
+          prevScanRunning.current = s.running;
+          setScan(s);
+        })
+        .catch(() => {}); // browser dev / desktop hiccup: keep last state
+    };
+    tick();
+    const id = setInterval(tick, 5000);
+    return () => {
+      alive = false;
+      clearInterval(id);
+    };
+  }, [loadTimeline]);
+
+  const onStartScan = useCallback(() => {
+    setScanError(null);
+    startScan()
+      .then(() => {
+        prevScanRunning.current = true;
+        setScan((prev) => ({
+          running: true,
+          stage: "scan",
+          error: null,
+          scannedSessions: prev?.scannedSessions ?? 0,
+        }));
+      })
+      .catch((e) => setScanError(String(e)));
+  }, []);
+
+  const onCancelScan = useCallback(() => {
+    cancelScan().catch(() => {});
+    prevScanRunning.current = false;
+    setScan((prev) => (prev ? { ...prev, running: false } : prev));
   }, []);
 
   // commit layer (commits.sqlite via adapter; empty payload when absent)
@@ -754,6 +844,60 @@ export default function TimelinePane({
         )}
       </div>
 
+      {/* scan banner: progress while a pipeline runs (even when hasScan=true),
+          error with retry, or the unscanned call-to-action */}
+      {scan?.running ? (
+        <div className="mono flex items-center gap-3 border-b border-rule px-6 py-1.5 text-[10px] text-ink-muted">
+          <span>
+            scanning… stage {scan.stage ?? "…"} · {scan.scannedSessions} sessions labeled
+          </span>
+          <button
+            onClick={onCancelScan}
+            className="ml-auto text-ink-muted/60 transition-colors hover:text-ink-bright"
+            aria-label="cancel scan"
+          >
+            ×
+          </button>
+        </div>
+      ) : scanError || scan?.error ? (
+        <div className="mono flex items-center gap-3 border-b border-rule px-6 py-1.5 text-[10px]" style={{ color: "#f85149" }}>
+          <span>scan failed: {scanError ?? scan?.error}</span>
+          <button
+            onClick={onStartScan}
+            className="text-ink-muted transition-colors hover:text-ink-bright"
+          >
+            retry →
+          </button>
+          <button
+            onClick={() => {
+              setScanError(null);
+              setScan((prev) => (prev ? { ...prev, error: null } : prev));
+            }}
+            className="ml-auto text-ink-muted/60 transition-colors hover:text-ink-bright"
+            aria-label="dismiss scan banner"
+          >
+            ×
+          </button>
+        </div>
+      ) : data && data.sessions.length > 0 && status && !status.hasScan && !scanBannerDismissed ? (
+        <div className="mono flex items-center gap-3 border-b border-rule px-6 py-1.5 text-[10px] text-ink-muted">
+          <span>sessions unlabeled — run the scan pipeline to get task labels &amp; clusters</span>
+          <button
+            onClick={onStartScan}
+            className="text-ink-bright transition-colors hover:opacity-80"
+          >
+            scan my history →
+          </button>
+          <button
+            onClick={() => setScanBannerDismissed(true)}
+            className="ml-auto text-ink-muted/60 transition-colors hover:text-ink-bright"
+            aria-label="dismiss scan banner"
+          >
+            ×
+          </button>
+        </div>
+      ) : null}
+
       {/* field */}
       <div className="relative flex-1 min-h-0 flex">
         <div
@@ -809,10 +953,17 @@ export default function TimelinePane({
               reading the moraine…
             </div>
           )}
-          {error && (
-            <div className="mono flex h-full items-center justify-center text-xs text-[#f85149]">
-              couldn&apos;t reach clickhouse — {error}
-            </div>
+          {error &&
+            (status?.clickhouseUp ? (
+              // clickhouse is reachable but the query itself failed — surface it
+              <div className="mono flex h-full items-center justify-center text-xs text-[#f85149]">
+                couldn&apos;t read the timeline — {error}
+              </div>
+            ) : (
+              <EmptyState variant="moraine-down" detail={error} onRetry={loadTimeline} />
+            ))}
+          {data && data.sessions.length === 0 && (
+            <EmptyState variant="no-traces" onRetry={loadTimeline} />
           )}
 
           {/* selection ring */}
@@ -1008,8 +1159,7 @@ export default function TimelinePane({
           <div
             className="mono pointer-events-none fixed z-50 rounded-lg border border-rule px-3 py-2 text-[11px] leading-relaxed"
             style={{
-              left: commitHover.clientX + 14,
-              top: commitHover.clientY - 40,
+              ...tooltipPos(commitHover.clientX, commitHover.clientY - 54),
               background: "rgba(11,12,14,0.92)",
             }}
           >
@@ -1026,8 +1176,7 @@ export default function TimelinePane({
           <div
             className="mono pointer-events-none fixed z-50 max-w-xs rounded-lg border border-rule px-3 py-2 text-[11px] leading-relaxed"
             style={{
-              left: hover.clientX + 14,
-              top: hover.clientY + 14,
+              ...tooltipPos(hover.clientX, hover.clientY),
               background: "rgba(11,12,14,0.92)",
             }}
           >

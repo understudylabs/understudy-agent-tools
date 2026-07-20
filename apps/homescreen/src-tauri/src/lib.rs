@@ -123,6 +123,9 @@ pub fn run() {
             // download progress + the single-flight benchmark run gate.
             app.manage(agent_ops::Downloads::new());
             app.manage(agent_ops::BenchRuns::new());
+            // Single-flight explore scan pipeline (Explore pane's
+            // "scan my history" button).
+            app.manage(explore::ScanJob::default());
 
             // Paint the shell before process reconciliation or model re-warm.
             // This is background work, but starting it during the first frame
@@ -376,6 +379,9 @@ pub fn run() {
             explore::explore_sqlite_query,
             explore::explore_read_json,
             explore::explore_status,
+            explore::explore_scan_start,
+            explore::explore_scan_status,
+            explore::explore_scan_cancel,
             chat::chat_stream,
             restart_app,
         ])
