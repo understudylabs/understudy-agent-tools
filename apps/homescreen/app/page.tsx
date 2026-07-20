@@ -14,6 +14,7 @@ import { UsagePane } from "./components/UsagePane";
 import { DownloadQrButton } from "./components/DownloadQrButton";
 import { isTrainingPane, TrainingPane } from "./components/TrainingPane";
 import { RlmPane } from "./components/RlmPane";
+import { ExploreShell } from "./components/explore/ExploreShell";
 import { RuntimeRepairPrompt } from "./components/RuntimeRepairPrompt";
 import { ModelDownloadNotice } from "./components/ModelDownloadNotice";
 import { useStatus } from "./lib/useStatus";
@@ -182,6 +183,7 @@ export default function Page() {
       "models",
       "account",
       "rlm",
+      "explore",
     ];
     const hidden = [
       "capture",
@@ -296,6 +298,7 @@ export default function Page() {
         {pane === "models" && <ModelsPane />}
         {pane === "capture" && <CapturePane />}
         {pane === "rlm" && <RlmPane />}
+        {pane === "explore" && <ExploreShell />}
         {isTrainingPane(pane) && <TrainingPane section={pane} />}
         {pane === "account" && (
           <AccountPane

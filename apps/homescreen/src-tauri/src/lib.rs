@@ -13,6 +13,7 @@ mod conversation_sidecar;
 mod creds;
 mod custom_evals;
 mod db;
+mod explore;
 mod gepa;
 mod knowledge;
 mod mcp;
@@ -371,6 +372,10 @@ pub fn run() {
             rlm::rlm_demo_catalog,
             rlm::rlm_plan,
             rlm::run_rlm_live,
+            explore::explore_clickhouse_query,
+            explore::explore_sqlite_query,
+            explore::explore_read_json,
+            explore::explore_status,
             chat::chat_stream,
             restart_app,
         ])

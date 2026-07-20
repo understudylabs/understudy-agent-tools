@@ -6985,3 +6985,42 @@ select,
   .experiment-run-card,
   .experiment-result-card { min-height: 440px; }
 }
+
+/* ----------------------------------------------------------------------------
+ * Explore Data — WebGL viewer palette (timeline + session transcript scenes).
+ * Additive only. NOTE: --hover already exists above (alias of --c-hover,
+ * same #1c1e25 value) and is intentionally NOT redefined here.
+ * -------------------------------------------------------------------------- */
+:root {
+  --field: #000000;
+  --rule: rgba(255, 255, 255, 0.08);
+  --ink: #e7e8ea;
+  --ink-bright: #f2f2f0;
+  --ink-muted: #9b9da3;
+  --card: #141519;
+  --window: #0b0c0e;
+  --stamp: #d7623e;
+  --model-house: #ffffff;
+  --model-clay: #d97757;
+  --model-mint: #9edbd3;
+  --model-amber: #f2b34c;
+  --model-violet: #a78bfa;
+  --model-cyan: #67e8f9;
+  --state-promoted: #6ee7a0;
+}
+
+@keyframes breath {
+  0% { opacity: 0.55; }
+  50% { opacity: 1; }
+  100% { opacity: 0.55; }
+}
+.breath {
+  animation: breath 5.2s cubic-bezier(0.2, 0.7, 0.2, 1) infinite;
+}
+
+/* No existing `.mono` utility in this sheet; components use var(--mono) /
+ * var(--font-mono) inline. Provide the class the explore panes expect. */
+.mono {
+  font-family: var(--font-mono, "IBM Plex Mono", monospace);
+}
+/* end Explore Data viewer palette */
