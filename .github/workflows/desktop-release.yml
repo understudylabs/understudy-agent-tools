@@ -211,6 +211,7 @@ jobs:
         env:
           APPLE_ID: ${{ secrets.APPLE_ID }}
           APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         run: |
           version="$(node -p "require('./apps/homescreen/package.json').version")"
@@ -229,6 +230,7 @@ jobs:
             -ov \
             -format UDZO \
             "$dmg"
+          codesign --force --sign "$APPLE_SIGNING_IDENTITY" --timestamp "$dmg"
           xcrun notarytool submit "$dmg" \
             --apple-id "$APPLE_ID" \
             --password "$APPLE_PASSWORD" \

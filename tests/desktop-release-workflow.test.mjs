@@ -69,6 +69,14 @@ test("Desktop release automation keeps every trust gate before publication", () 
   assert.match(workflow, /notarytool submit "\$dmg"/);
   assert.match(workflow, /hdiutil create/);
   assert.match(workflow, /-srcfolder "\$dmg_stage"/);
+  assert.match(
+    workflow,
+    /codesign --force --sign "\$APPLE_SIGNING_IDENTITY" --timestamp "\$dmg"/,
+  );
+  assert.match(
+    workflow,
+    /- name: Notarize and staple the DMG[\s\S]*?APPLE_SIGNING_IDENTITY: \$\{\{ secrets\.APPLE_SIGNING_IDENTITY \}\}[\s\S]*?codesign --force/,
+  );
   assert.match(workflow, /stapler validate "\$dmg_stage\/Understudy\.app"/);
   assert.ok(
     workflow.indexOf('stapler staple "$app"') <

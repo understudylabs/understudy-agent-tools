@@ -153,6 +153,7 @@ xcrun stapler validate "$dmg_stage/Understudy.app"
 rm -f "$dmg"
 hdiutil create -volname Understudy -fs HFS+ -srcfolder "$dmg_stage" \
   -ov -format UDZO "$dmg"
+codesign --force --sign "$APPLE_SIGNING_IDENTITY" --timestamp "$dmg"
 xcrun notarytool submit "$dmg" \
   --keychain-profile "$APPLE_NOTARY_KEYCHAIN_PROFILE" \
   --wait --output-format json
