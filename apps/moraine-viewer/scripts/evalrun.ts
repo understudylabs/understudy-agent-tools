@@ -19,7 +19,7 @@ import path from "node:path";
 
 const LOCAL_URL = "http://127.0.0.1:8877/v1/chat/completions";
 const GATEWAY_URL = "https://api.understudylabs.com/v1/chat/completions";
-const KIND = "plan-quality-v1";
+const KIND = "plan-quality-v3";
 const TIMEOUT_MS = 30_000;
 const RETRIES = 2;
 
@@ -27,6 +27,7 @@ type Instance = {
   instance_id: string;
   split: "train" | "dev" | "holdout";
   prompt: string;
+  context?: { project?: string; harness?: string; tools_used?: string[]; opening?: string };
   reference: { final_assistant: string; commits: string[]; events: number };
   quality: number;
 };
@@ -168,17 +169,29 @@ async function main() {
     `${slug}: ${dev.length} dev instances (candidate=${candidate}, judge=${judge}, kind=${KIND})`,
   );
 
+  // --rejudge: reuse stored candidate answers from the existing file (free judge iterations)
+  const rejudge = process.argv.includes("--rejudge");
+  const priorAnswers = new Map<string, string>();
+  if (rejudge && existsSync(outFile)) {
+    const prior = JSON.parse(readFileSync(outFile, "utf8")) as {
+      results?: Array<{ instance_id: string; answer?: string }>;
+    };
+    for (const r of prior.results ?? []) if (r.answer) priorAnswers.set(r.instance_id, r.answer);
+    console.log(`rejudge: ${priorAnswers.size} stored answers available`);
+  }
+
   const results: Array<{
     instance_id: string;
     score: number;
     reason: string;
     candidate_chars: number;
+    answer: string; // stored so judge rubrics can iterate without re-generating
   }> = [];
   for (const [idx, inst] of dev.entries()) {
     const tag = `[${idx + 1}/${dev.length}] ${inst.instance_id}`;
     try {
       // (a) candidate pass — plan-quality: the model cannot execute tools here.
-      const answer = await chat(
+      const answer = priorAnswers.get(inst.instance_id) ?? await chat(
         candidateEp,
         [
           {
@@ -186,7 +199,15 @@ async function main() {
             content:
               "You are a coding agent asked to do this task. Describe concretely how you would accomplish it: the steps, tools/commands, and what the final outcome/deliverable would be.",
           },
-          { role: "user", content: inst.prompt },
+          {
+            role: "user",
+            content: [
+              inst.prompt,
+              inst.context?.opening
+                ? `\n---\nCONTEXT — the project is ${inst.context.project ?? "?"}; here is what the agent saw at the start of this session:\n${inst.context.opening}`
+                : "",
+            ].join(""),
+          },
         ],
         2500,
         0.3,
@@ -199,15 +220,16 @@ async function main() {
           {
             role: "system",
             content:
-              'You are a strict evaluator. Score 0-10 whether the candidate\'s plan would plausibly produce the reference outcome. Respond ONLY with JSON: {"score": n, "reason": "<1 sentence>"}',
+              "You evaluate coding-agent plans. The candidate saw ONLY the task prompt — it could not see the repository, prior conversation, or the recorded outcome, so do NOT penalize missing knowledge of specifics it had no way to know. Score the plan on: (a) is it a competent, concrete expert approach to the prompt as written, and (b) is it directionally consistent with the reference outcome (same kind of work, no contradictions)? Calibration anchors: 9-10 = expert-level, concrete, fully consistent with the reference direction; 7-8 = solid approach, minor gaps; 5-6 = reasonable but generic; 3-4 = partially misreads the task; 0-2 = wrong task or incoherent. Respond ONLY with JSON: {\"score\": n, \"reason\": \"<1 sentence>\"}",
           },
           {
             role: "user",
             content: [
               `ORIGINAL TASK PROMPT:\n${inst.prompt}`,
+              inst.context?.opening ? `SESSION OPENING CONTEXT (both candidate and original agent saw this):\n${inst.context.opening}` : "",
               `REFERENCE OUTCOME (what actually shipped):\nFinal assistant message: ${inst.reference.final_assistant || "(none)"}\nCommits shipped: ${inst.reference.commits.length ? inst.reference.commits.join("; ") : "(none)"}`,
               `CANDIDATE'S PLAN:\n${answer}`,
-              'Score 0-10: would this plan plausibly produce the reference outcome? Respond ONLY JSON {"score": n, "reason": "<1 sentence>"}.',
+              'Score 0-10 per the rubric (competent approach + directional consistency; do not demand clairvoyance of specifics). Respond ONLY JSON {"score": n, "reason": "<1 sentence>"}.',
             ].join("\n\n"),
           },
         ],
@@ -220,7 +242,7 @@ async function main() {
         continue;
       }
       const score = Math.min(1, Math.max(0, parsed.score / 10));
-      results.push({ instance_id: inst.instance_id, score, reason: parsed.reason, candidate_chars: answer.length });
+      results.push({ instance_id: inst.instance_id, score, reason: parsed.reason, candidate_chars: answer.length, answer: answer.slice(0, 8000) });
       console.log(`${tag} — score ${score.toFixed(2)} (${parsed.reason})`);
     } catch (err) {
       console.log(`${tag} — error: ${err instanceof Error ? err.message : err}`);

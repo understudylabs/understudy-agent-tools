@@ -147,6 +147,7 @@ interface Instance {
     tools_used: string[];
     label: string | null;
     summary: string | null;
+    opening: string; // the session's first tool interactions — what the agent saw
   };
   reference: {
     final_assistant: string;
@@ -170,7 +171,7 @@ async function buildInstance(m: Member): Promise<Instance | null> {
       substring(${TEXT_EXPR}, 1, ${PROMPT_CAP}) AS t
     FROM mcp_open_events
     WHERE session_id = '${m.session_id}'
-      AND event_type IN ('user_input', 'assistant_response', 'tool_call')
+      AND event_type IN ('user_input', 'assistant_response', 'tool_call', 'tool_response')
       AND event_uid IN (
         SELECT event_uid FROM events WHERE session_id = '${m.session_id}' AND is_substream = 0
       )
@@ -201,6 +202,28 @@ async function buildInstance(m: Member): Promise<Instance | null> {
 
   const commits = commitsBySession.get(m.session_id) ?? [];
 
+  // Opening context: what the agent saw at the start of the session — the
+  // first tool interactions after the prompt, so a candidate's plan can be
+  // specifically right or wrong instead of unavoidably generic.
+  const promptIdx = rows.findIndex((r) => r.event_type === "user_input" && r.t.trim() === prompt);
+  const openingParts: string[] = [];
+  let openingChars = 0;
+  for (const r of rows.slice(promptIdx + 1)) {
+    if (openingParts.length >= 14 || openingChars > 2400) break;
+    const text = r.t.replace(/\s+/g, " ").trim();
+    if (!text) continue;
+    let line: string | null = null;
+    if (r.event_type === "tool_call") line = `→ ${r.name || "tool"}: ${text.slice(0, 200)}`;
+    else if (r.event_type === "tool_response") line = `← ${r.name || "tool"}: ${text.slice(0, 220)}`;
+    else if (r.event_type === "assistant_response" && openingParts.length < 2)
+      line = `assistant: ${text.slice(0, 260)}`;
+    if (line) {
+      openingParts.push(line);
+      openingChars += line.length;
+    }
+  }
+  const opening = openingParts.join("\n");
+
   // Quality heuristic 0-1: substantive prompt, a real final answer, shipped commits.
   let quality = 0;
   if (prompt.length > 80) quality += 0.4;
@@ -221,6 +244,7 @@ async function buildInstance(m: Member): Promise<Instance | null> {
       tools_used: tools,
       label: m.label,
       summary: m.summary,
+      opening,
     },
     reference: {
       final_assistant: finalAssistant,
@@ -262,7 +286,7 @@ const meanQuality = instances.length
 
 const draft = {
   benchmark: `personal.${slug}`,
-  version: "benchmark.v1-draft",
+  version: "benchmark.v1-draft2",
   created: args.get("--now") ?? new Date().toISOString(),
   cluster: { id: cluster.id, name: cluster.name },
   counts,
