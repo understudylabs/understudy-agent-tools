@@ -67,11 +67,21 @@ test("Desktop release automation keeps every trust gate before publication", () 
   assert.match(workflow, /desktop:updater-manifest/);
   assert.match(workflow, /desktop:release-check -- --stage signed/);
   assert.match(workflow, /notarytool submit "\$dmg"/);
+  assert.match(workflow, /hdiutil create/);
+  assert.match(workflow, /-srcfolder "\$dmg_stage"/);
+  assert.match(workflow, /stapler validate "\$dmg_stage\/Understudy\.app"/);
+  assert.ok(
+    workflow.indexOf('stapler staple "$app"') <
+      workflow.indexOf('-srcfolder "$dmg_stage"'),
+  );
   assert.match(workflow, /desktop:release-check -- --stage notarized/);
   assert.match(workflow, /gh release create/);
   assert.match(workflow, /--draft/);
   assert.match(workflow, /gh release download/);
   assert.match(workflow, /xcrun stapler validate "\$downloaded"/);
+  assert.match(workflow, /xcrun stapler validate "\$mounted_dmg\/Understudy\.app"/);
+  assert.match(workflow, /codesign --verify --deep --strict/);
+  assert.match(workflow, /spctl --assess --type execute/);
   assert.match(workflow, /spctl --assess/);
   assert.ok(workflow.indexOf("gh release download") < workflow.indexOf("gh release edit"));
 });

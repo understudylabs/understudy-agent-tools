@@ -120,9 +120,10 @@ cd ../..
 ```
 
 The build inherits `APPLE_SIGNING_IDENTITY` and `TAURI_SIGNING_PRIVATE_KEY`.
-Submit both the app and DMG to Apple. Staple the app before rebuilding and
-re-signing the updater archive so an offline update contains the notarization
-ticket; then generate the static `latest.json` contract:
+Submit both the app and DMG to Apple. Staple the app before rebuilding either
+distribution container so both an offline update and an app copied from the DMG
+contain the app notarization ticket; then generate the static `latest.json`
+contract:
 
 ```sh
 version="$(node -p "require('./apps/homescreen/package.json').version")"
@@ -145,6 +146,13 @@ bun run tauri signer sign \
 cd ../..
 npm run desktop:updater-manifest
 npm run desktop:release-check -- --stage signed
+dmg_stage="$(mktemp -d)"
+ditto "$app" "$dmg_stage/Understudy.app"
+ln -s /Applications "$dmg_stage/Applications"
+xcrun stapler validate "$dmg_stage/Understudy.app"
+rm -f "$dmg"
+hdiutil create -volname Understudy -fs HFS+ -srcfolder "$dmg_stage" \
+  -ov -format UDZO "$dmg"
 xcrun notarytool submit "$dmg" \
   --keychain-profile "$APPLE_NOTARY_KEYCHAIN_PROFILE" \
   --wait --output-format json
@@ -155,8 +163,9 @@ npm run desktop:release-check -- --stage notarized
 Create a draft release targeted at the exact commit and upload the stapled DMG,
 notarized updater archive, signature, and manifest. Download those assets into a
 new temporary directory and compare their hashes before publishing. Validate
-the downloaded DMG with `stapler` and `spctl`; the uploaded bytes, not the local
-paths, are the public product.
+the downloaded DMG with `stapler` and `spctl`, mount it, and separately validate
+the app ticket and signature inside it; the uploaded bytes, not the local paths,
+are the public product.
 
 ```sh
 tag="desktop-v${version}-mvp"
@@ -186,6 +195,12 @@ cmp "$updater_sig" "$download_dir/Understudy.app.tar.gz.sig"
 cmp "$updater_manifest" "$download_dir/latest.json"
 xcrun stapler validate "$downloaded"
 spctl --assess --type open --context context:primary-signature --verbose=2 "$downloaded"
+mounted_dmg="$(mktemp -d)"
+hdiutil attach "$downloaded" -nobrowse -readonly -mountpoint "$mounted_dmg"
+xcrun stapler validate "$mounted_dmg/Understudy.app"
+codesign --verify --deep --strict --verbose=2 "$mounted_dmg/Understudy.app"
+spctl --assess --type execute --verbose=2 "$mounted_dmg/Understudy.app"
+hdiutil detach "$mounted_dmg"
 gh release edit "$tag" --repo understudylabs/understudy-agent-tools \
   --draft=false --latest
 rm -rf "$updater_key_dir"
