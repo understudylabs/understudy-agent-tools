@@ -114,6 +114,18 @@ function ModelSubmap({ cluster, rect }: { cluster: ClusterDatum; rect: Rect }) {
                 >
                   {`${(item.quality * 100).toFixed(0)}% quality · ${(1 / item.costMult).toFixed(0)}x cheaper`}
                 </Text>
+                {item.measured && (
+                  <Text
+                    font={MONO_FONT}
+                    position={[r.x + fs * 0.6, r.y + r.h - fs * 3.4, 0.01]}
+                    fontSize={fs * 0.75}
+                    color={PROMOTED_GREEN}
+                    anchorX="left"
+                    anchorY="top"
+                  >
+                    {`measured (n=${item.measuredN ?? "?"})`}
+                  </Text>
+                )}
               </>
             )}
           </group>

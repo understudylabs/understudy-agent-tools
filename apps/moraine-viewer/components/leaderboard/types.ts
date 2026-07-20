@@ -32,6 +32,10 @@ export interface BenchmarkRow {
   costMult: number;
   latencyMs: number;
   qualified: boolean;
+  /** true when quality is a REAL measured eval (scripts/evalrun.ts), not synthetic */
+  measured?: boolean;
+  measuredKind?: string;
+  measuredN?: number;
 }
 
 export interface ClusterDatum {

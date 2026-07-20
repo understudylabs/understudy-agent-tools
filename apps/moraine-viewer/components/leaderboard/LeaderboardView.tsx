@@ -143,8 +143,10 @@ export default function LeaderboardView() {
           </span>
         ))}
         <br />
-        <span style={{ color: "var(--state-promoted)" }}>◌</span> promotable at &gt;10x cheaper ·
-        clusters real, benchmark scores synthetic — personal benchmarks land in Stage 4/5
+        <span style={{ color: "var(--state-promoted)" }}>◌</span> promotable at &gt;10x cheaper ·{" "}
+        {data?.clusters.some((c) => c.benchmarks.some((b) => b.measured))
+          ? "mixed: measured (gemma plan-quality) + synthetic — full execution evals land with verifiers compile"
+          : "clusters real, benchmark scores synthetic — personal benchmarks land in Stage 4/5"}
       </footer>
 
       {selected && <SidePanel cluster={selected} onClose={() => setSelectedId(null)} />}

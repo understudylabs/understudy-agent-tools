@@ -7,7 +7,7 @@ import { existsSync } from "node:fs";
 import path from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { chQuery } from "@/lib/clickhouse";
-import { readBenchmarkDraft } from "./benchmarkFile";
+import { readBenchmarkDraft, readEvalFile } from "./benchmarkFile";
 
 const PLUMBING = "cli plumbing";
 
@@ -55,6 +55,8 @@ export type TaskCluster = {
   topLabels: Array<{ label: string; n: number }>;
   exemplars: TaskExemplar[];
   benchmark: { exists: boolean; instances: number; meanQuality: number } | null;
+  /** real measured eval (scripts/evalrun.ts, plan-quality proxy) if one exists */
+  eval: { candidate: string; mean: number; n: number; kind: string } | null;
 };
 
 export async function GET() {
@@ -209,6 +211,10 @@ export async function GET() {
                 meanQuality: draft.mean_quality,
               }
             : null;
+        })(),
+        eval: (() => {
+          const e = readEvalFile(agg.name);
+          return e ? { candidate: e.candidate, mean: e.mean, n: e.n, kind: e.kind } : null;
         })(),
       };
     })

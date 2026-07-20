@@ -1,3 +1,5 @@
+import { existsSync, readdirSync, readFileSync } from "node:fs";
+import path from "node:path";
 import { chQuery } from "@/lib/clickhouse";
 import {
   BenchmarkRow,
@@ -62,6 +64,72 @@ function pickWinner(rows: BenchmarkRow[]): BenchmarkRow {
   return qualified.reduce((a, b) => (b.quality / b.costMult > a.quality / a.costMult ? b : a));
 }
 
+// ---------------------------------------------------------------------------
+// Real measured evals (scripts/evalrun.ts). Each eval file scores dev
+// instances of one task-cluster benchmark; those instances carry the real
+// project/harness they came from, so an eval maps onto the treemap cluster
+// (project-leaf::harness) that dominates its evaluated instances.
+// ---------------------------------------------------------------------------
+type MeasuredEval = {
+  candidate: string;
+  kind: string;
+  mean: number;
+  n: number;
+  benchmark: string;
+};
+
+// candidate id used by evalrun.ts → leaderboard model row it measures
+function candidateToModel(candidate: string): CandidateModel | null {
+  if (candidate.startsWith("gemma-4-e2b")) return "gemma-4-e2b-understudy";
+  return (CANDIDATE_MODELS as readonly string[]).includes(candidate)
+    ? (candidate as CandidateModel)
+    : null;
+}
+
+function loadMeasuredEvals(): Map<string, MeasuredEval> {
+  const byClusterId = new Map<string, MeasuredEval>();
+  const evalDir = path.join(process.cwd(), "data", "evals");
+  if (!existsSync(evalDir)) return byClusterId;
+  for (const file of readdirSync(evalDir)) {
+    if (!file.endsWith(".json")) continue;
+    try {
+      const slug = file.replace(/\.json$/, "");
+      const ev = JSON.parse(readFileSync(path.join(evalDir, file), "utf8"));
+      const draft = JSON.parse(
+        readFileSync(path.join(process.cwd(), "data", "benchmarks", `${slug}.json`), "utf8"),
+      ) as {
+        instances: Array<{ instance_id: string; context: { project: string; harness: string } }>;
+      };
+      // modal project-leaf::harness among the instances this eval actually scored
+      const scored = new Set(ev.results.map((r: { instance_id: string }) => r.instance_id));
+      const counts = new Map<string, number>();
+      for (const inst of draft.instances) {
+        if (!scored.has(inst.instance_id)) continue;
+        const leaf = inst.context.project.split("/").filter(Boolean).pop() ?? "(no-cwd)";
+        const id = `${leaf}::${inst.context.harness}`;
+        counts.set(id, (counts.get(id) ?? 0) + 1);
+      }
+      let best: string | null = null;
+      let bestN = 0;
+      for (const [id, n] of counts) if (n > bestN) [best, bestN] = [id, n];
+      if (!best) continue;
+      const entry: MeasuredEval = {
+        candidate: ev.candidate,
+        kind: ev.kind,
+        mean: ev.mean,
+        n: ev.n,
+        benchmark: ev.benchmark,
+      };
+      // collision: keep the eval with the larger n
+      const prev = byClusterId.get(best);
+      if (!prev || entry.n > prev.n) byClusterId.set(best, entry);
+    } catch {
+      // malformed eval/benchmark file — skip
+    }
+  }
+  return byClusterId;
+}
+
 interface ClusterRow {
   leaf: string;
   harness: string;
@@ -110,9 +178,27 @@ export async function GET() {
       `),
     ]);
 
+    const measuredEvals = loadMeasuredEvals();
+
     const clusters: ClusterDatum[] = clusterRows.map((row) => {
       const id = `${row.leaf}::${row.harness}`;
       const benchmarks = syntheticBenchmarks(id);
+      // real measured eval overrides the synthetic row for its candidate model
+      const measured = measuredEvals.get(id);
+      const model = measured ? candidateToModel(measured.candidate) : null;
+      if (measured && model) {
+        const i = benchmarks.findIndex((b) => b.model === model);
+        if (i >= 0) {
+          benchmarks[i] = {
+            ...benchmarks[i],
+            quality: measured.mean,
+            qualified: measured.mean >= QUALITY_FLOOR,
+            measured: true,
+            measuredKind: measured.kind,
+            measuredN: measured.n,
+          };
+        }
+      }
       const winner = pickWinner(benchmarks);
       return {
         id,

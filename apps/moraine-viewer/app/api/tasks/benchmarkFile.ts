@@ -35,6 +35,17 @@ export type BenchmarkDraft = {
   instances: BenchmarkInstance[];
 };
 
+export type EvalFile = {
+  benchmark: string;
+  candidate: string;
+  kind: string;
+  judge: string;
+  createdAt: string;
+  results: Array<{ instance_id: string; score: number; reason: string; candidate_chars: number }>;
+  mean: number;
+  n: number;
+};
+
 export function clusterSlug(name: string): string {
   return name.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
 }
@@ -48,6 +59,17 @@ export function readBenchmarkDraft(clusterName: string): BenchmarkDraft | null {
   if (!existsSync(file)) return null;
   try {
     return JSON.parse(readFileSync(file, "utf8")) as BenchmarkDraft;
+  } catch {
+    return null;
+  }
+}
+
+// Real measured eval (written by scripts/evalrun.ts) for a cluster, if any.
+export function readEvalFile(clusterName: string): EvalFile | null {
+  const file = path.join(process.cwd(), "data", "evals", `${clusterSlug(clusterName)}.json`);
+  if (!existsSync(file)) return null;
+  try {
+    return JSON.parse(readFileSync(file, "utf8")) as EvalFile;
   } catch {
     return null;
   }

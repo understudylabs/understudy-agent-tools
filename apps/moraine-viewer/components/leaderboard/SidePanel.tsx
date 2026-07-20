@@ -122,6 +122,21 @@ export default function SidePanel({
                 <td style={{ padding: "8px 8px 8px 0" }}>
                   <span style={{ color }}>●</span> {r.model}
                   {isWinner && <span style={{ color: PROMOTED_GREEN }}> ✓</span>}
+                  {r.measured && (
+                    <span
+                      title={`real ${r.measuredKind ?? "measured"} eval, n=${r.measuredN ?? "?"}`}
+                      style={{
+                        marginLeft: 6,
+                        padding: "0 5px",
+                        border: `1px solid ${PROMOTED_GREEN}`,
+                        borderRadius: 3,
+                        color: PROMOTED_GREEN,
+                        fontSize: 10,
+                      }}
+                    >
+                      measured
+                    </span>
+                  )}
                 </td>
                 <td style={{ padding: "8px 8px 8px 0" }}>
                   <div>{(r.quality * 100).toFixed(0)}%</div>
@@ -156,8 +171,9 @@ export default function SidePanel({
           lineHeight: 1.7,
         }}
       >
-        synthetic benchmark data — personal benchmarks land in Stage 4/5. Clusters are real
-        (your events since 2026-06-01); scores are deterministic placeholders.
+        {cluster.benchmarks.some((b) => b.measured)
+          ? "mixed: measured (gemma plan-quality) + synthetic — full execution evals land with verifiers compile. Rows tagged “measured” are real scores; the rest are deterministic placeholders."
+          : "synthetic benchmark data — personal benchmarks land in Stage 4/5. Clusters are real (your events since 2026-06-01); scores are deterministic placeholders."}
       </div>
     </aside>
   );

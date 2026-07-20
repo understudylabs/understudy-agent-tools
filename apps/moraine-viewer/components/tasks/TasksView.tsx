@@ -28,6 +28,7 @@ type TaskCluster = {
   topLabels: Array<{ label: string; n: number }>;
   exemplars: Exemplar[];
   benchmark: { exists: boolean; instances: number; meanQuality: number } | null;
+  eval: { candidate: string; mean: number; n: number; kind: string } | null;
 };
 
 type Payload = {
@@ -203,6 +204,12 @@ function ClusterCard({ c }: { c: TaskCluster }) {
               {open ? "close benchmark draft ←" : "view benchmark draft →"}
               <span className="text-ink-muted ml-2">
                 {c.benchmark.instances} instances · q {c.benchmark.meanQuality.toFixed(2)}
+                {c.eval && (
+                  <span style={{ color: evalColor(c.eval.mean) }}>
+                    {" "}
+                    · gemma plan-quality: {c.eval.mean.toFixed(2)} (n={c.eval.n})
+                  </span>
+                )}
               </span>
             </button>
             {open && <BenchmarkDrawer clusterId={c.id} color={color} />}
@@ -220,6 +227,13 @@ function ClusterCard({ c }: { c: TaskCluster }) {
       </footer>
     </section>
   );
+}
+
+// measured plan-quality eval: amber below 0.5, ink to 0.75, promoted green above
+function evalColor(mean: number): string {
+  if (mean < 0.5) return "var(--warn, #f2b34c)";
+  if (mean <= 0.75) return "var(--ink, #e7e8ea)";
+  return "var(--state-promoted, #6ee7a0)";
 }
 
 function qualityColor(q: number): string {
