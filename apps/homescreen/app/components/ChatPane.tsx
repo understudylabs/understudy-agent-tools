@@ -2415,7 +2415,9 @@ export function ChatPane({
                       </> : (
                         <div className="remote-training-state" role="status" aria-live="polite">
                           <strong>{environmentArchitectProgress ? "Understudy is checking the training plan" : `Preparing ${trainingUseCaseLabel(trainingRecipe.detected_use_case)}`}</strong>
-                          <small>{environmentArchitectProgress?.message ?? (environmentArchitect
+                          <small>{(environmentArchitectProgress?.type === "phase"
+                            ? environmentArchitectProgress.message
+                            : environmentArchitectProgress?.text) ?? (environmentArchitect
                             ? "The verifier draft is ready, but this task still needs an executable portable recipe. No upload or spend has started."
                             : "Profiling and splitting locally. No upload or spend has started.")}</small>
                         </div>
