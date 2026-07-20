@@ -1,0 +1,203 @@
+"use client";
+
+// /tasks — the task catalog: clusters as benchmark candidates (Stage-4 precursor).
+
+import { useEffect, useState } from "react";
+import Link from "next/link";
+import { sessionHref } from "@/components/session/sessionHref";
+import { clusterColor, fmtTokens } from "@/components/timeline/types";
+
+type Exemplar = {
+  session_id: string;
+  label: string | null;
+  summary: string | null;
+  events: number;
+};
+
+type TaskCluster = {
+  id: number;
+  name: string;
+  sessions: number;
+  interactiveSessions: number;
+  totalEvents: number;
+  totalTokens: number;
+  commits: number;
+  topLanguages: Array<{ lang: string; files: number }>;
+  topTools: Array<{ tool: string; uses: number }>;
+  topLabels: Array<{ label: string; n: number }>;
+  exemplars: Exemplar[];
+};
+
+type Payload = {
+  clusters: TaskCluster[];
+  plumbing: { sessions: number; note: string } | null;
+};
+
+export default function TasksView() {
+  const [data, setData] = useState<Payload | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let alive = true;
+    fetch("/api/tasks")
+      .then((r) => {
+        if (!r.ok) throw new Error(`api/tasks ${r.status}`);
+        return r.json() as Promise<Payload>;
+      })
+      .then((d) => alive && setData(d))
+      .catch((e) => alive && setError(String(e)));
+    return () => {
+      alive = false;
+    };
+  }, []);
+
+  if (error) {
+    return <div className="mono text-xs text-ink-muted p-6">failed to load tasks — {error}</div>;
+  }
+  if (!data) {
+    return <div className="mono text-xs text-ink-muted p-6 breath">scanning clusters…</div>;
+  }
+
+  const totals = data.clusters.reduce(
+    (acc, c) => ({
+      interactive: acc.interactive + c.interactiveSessions,
+      tokens: acc.tokens + c.totalTokens,
+      commits: acc.commits + c.commits,
+    }),
+    { interactive: 0, tokens: 0, commits: 0 },
+  );
+
+  return (
+    <div className="px-6 py-8 max-w-6xl mx-auto w-full">
+      <header className="mb-8">
+        <h1 className="mono text-lg text-ink-bright tracking-wide">your tasks</h1>
+        <p className="text-sm text-ink-muted mt-1">
+          the recurring work in your traces — each of these is a personal benchmark waiting to be
+          built
+        </p>
+        <div className="mono text-xs text-ink-muted mt-3 flex gap-5">
+          <span>
+            <span className="text-ink">{totals.interactive}</span> interactive sessions
+          </span>
+          <span>
+            <span className="text-ink">{fmtTokens(totals.tokens)}</span> tokens
+          </span>
+          <span>
+            <span className="text-ink">{totals.commits}</span> commits
+          </span>
+        </div>
+      </header>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+        {data.clusters.map((c) => (
+          <ClusterCard key={c.id} c={c} />
+        ))}
+      </div>
+
+      {data.plumbing && data.plumbing.sessions > 0 && (
+        <p className="mono text-[11px] text-ink-muted/60 mt-8">
+          + {data.plumbing.sessions} sessions of {"'"}cli plumbing{"'"} — {data.plumbing.note}
+        </p>
+      )}
+    </div>
+  );
+}
+
+function ClusterCard({ c }: { c: TaskCluster }) {
+  const color = clusterColor(c.id);
+  return (
+    <section className="border border-rule rounded-[12px] bg-card p-4 flex flex-col gap-3">
+      <header className="flex items-center gap-2">
+        <span
+          className="inline-block w-2.5 h-2.5 rounded-full shrink-0"
+          style={{ background: color }}
+        />
+        <h2 className="mono text-sm text-ink-bright flex-1 truncate">{c.name}</h2>
+        <span className="mono text-xs text-ink-muted">
+          {c.sessions} sessions · {c.interactiveSessions} interactive
+        </span>
+      </header>
+
+      <div className="mono text-xs text-ink-muted flex gap-4 border-b border-rule pb-3">
+        <span>
+          <span className="text-ink">{fmtTokens(c.totalEvents)}</span> events
+        </span>
+        <span>
+          <span className="text-ink">{fmtTokens(c.totalTokens)}</span> tokens
+        </span>
+        <span>
+          <span className="text-ink">{c.commits}</span> commits
+        </span>
+      </div>
+
+      {c.topLanguages.length > 0 && (
+        <div className="flex flex-wrap gap-1.5">
+          {c.topLanguages.map((l) => (
+            <span
+              key={l.lang}
+              className="mono text-[10px] px-1.5 py-0.5 rounded-[4px] border border-rule"
+              style={{ color }}
+            >
+              {l.lang} <span className="text-ink-muted">{l.files}</span>
+            </span>
+          ))}
+        </div>
+      )}
+
+      {c.topTools.length > 0 && (
+        <div className="flex flex-wrap gap-1.5">
+          {c.topTools.map((t) => (
+            <span
+              key={t.tool}
+              className="mono text-[10px] px-1.5 py-0.5 rounded-full bg-hover text-ink-muted"
+            >
+              {t.tool} <span className="text-ink">{fmtTokens(t.uses)}</span>
+            </span>
+          ))}
+        </div>
+      )}
+
+      {c.topLabels.length > 0 && (
+        <ul className="mono text-[11px] text-ink-muted space-y-0.5">
+          {c.topLabels.map((l) => (
+            <li key={l.label} className="flex justify-between gap-3">
+              <span className="truncate">{l.label}</span>
+              <span className="text-ink shrink-0">{l.n}</span>
+            </li>
+          ))}
+        </ul>
+      )}
+
+      {c.exemplars.length > 0 && (
+        <div className="border-t border-rule pt-3 space-y-2">
+          {c.exemplars.map((e) => (
+            <Link
+              key={e.session_id}
+              href={sessionHref(e.session_id)}
+              className="block group"
+            >
+              <div className="mono text-[11px] text-ink group-hover:text-ink-bright transition-colors truncate">
+                {e.label ?? e.session_id}{" "}
+                <span className="text-ink-muted">· {fmtTokens(e.events)} events</span>
+              </div>
+              {e.summary && (
+                <div className="text-[11px] text-ink-muted truncate">{e.summary}</div>
+              )}
+            </Link>
+          ))}
+        </div>
+      )}
+
+      <footer className="border-t border-rule pt-3 mt-auto">
+        <button
+          type="button"
+          disabled
+          title="coming: turn these sessions into a verifiers environment"
+          className="mono text-[11px] text-ink-muted/60 border border-rule rounded-[8px] px-2.5 py-1 cursor-not-allowed"
+        >
+          → build benchmark (stage 4)
+        </button>
+      </footer>
+    </section>
+  );
+}

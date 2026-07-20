@@ -12,14 +12,25 @@ const LONG_TEXT = 2000;
 const TOOL_PREVIEW_LINES = 3;
 const GROUP_AUTOCOLLAPSE = 30;
 
+// live tailing
+const LIVE_WINDOW_MS = 3 * 60 * 1000; // < 3 min since last event => live
+const LIVE_POLL_MS = 5_000;
+const IDLE_POLL_MS = 30_000; // keep a slow pulse so a sleeping session can wake
+const FRESH_FADE_MS = 2_500;
+const FOLLOW_SLACK_PX = 160; // "near bottom" threshold
+
 // ---------- helpers ----------
 
 function fmtInt(n: number): string {
   return n.toLocaleString("en-US");
 }
 
+function parseChTime(t: string): number {
+  return Date.parse(t.replace(" ", "T") + "Z");
+}
+
 function fmtDuration(first: string, last: string): string {
-  const ms = Date.parse(last.replace(" ", "T") + "Z") - Date.parse(first.replace(" ", "T") + "Z");
+  const ms = parseChTime(last) - parseChTime(first);
   if (!Number.isFinite(ms) || ms <= 0) return "—";
   const s = Math.round(ms / 1000);
   if (s < 60) return `${s}s`;
@@ -89,10 +100,12 @@ function EventCard({
   ev,
   highlighted,
   nested,
+  fresh = false,
 }: {
   ev: TranscriptEvent;
   highlighted: boolean;
   nested: boolean;
+  fresh?: boolean;
 }) {
   const collapsedByDefault =
     ev.event_type === "reasoning" ||
@@ -128,6 +141,7 @@ function EventCard({
         padding: nested ? "6px 10px 6px 8px" : "8px 12px 8px 10px",
         opacity: dim ? 0.55 : 1,
         margin: "2px 0",
+        animation: fresh ? "live-fresh 2s var(--ease)" : undefined,
       }}
     >
       <div style={{ display: "flex", alignItems: "baseline", gap: 8, flexWrap: "wrap" }}>
@@ -218,11 +232,13 @@ function SubstreamGroup({
   label,
   events,
   highlightOrder,
+  freshOrders,
 }: {
   runId: string;
   label: string;
   events: TranscriptEvent[];
   highlightOrder: number | null;
+  freshOrders: ReadonlySet<number>;
 }) {
   const containsHighlight = highlightOrder !== null && events.some((e) => e.event_order === highlightOrder);
   const [open, setOpen] = useState(events.length <= GROUP_AUTOCOLLAPSE || containsHighlight);
@@ -246,7 +262,7 @@ function SubstreamGroup({
       {open && (
         <div style={{ marginLeft: 18, borderLeft: "2px solid rgba(167,139,250,0.35)", paddingLeft: 8 }}>
           {events.map((e) => (
-            <EventCard key={e.event_order} ev={e} nested highlighted={e.event_order === highlightOrder} />
+            <EventCard key={e.event_order} ev={e} nested highlighted={e.event_order === highlightOrder} fresh={freshOrders.has(e.event_order)} />
           ))}
         </div>
       )}
@@ -323,6 +339,20 @@ export default function TranscriptClient({
   const [error, setError] = useState<string | null>(null);
   const scrolledRef = useRef(false);
 
+  // live tailing state
+  const [lastEventMs, setLastEventMs] = useState<number | null>(null);
+  const [now, setNow] = useState(() => Date.now());
+  const [freshOrders, setFreshOrders] = useState<ReadonlySet<number>>(new Set());
+  const [following, setFollowing] = useState(true);
+  const eventsRef = useRef<TranscriptEvent[]>([]);
+  const followingRef = useRef(true);
+  const appendedRef = useRef(false);
+  const pollBusyRef = useRef(false);
+
+  useEffect(() => {
+    eventsRef.current = events;
+  }, [events]);
+
   const loadPage = useCallback(
     async (cursor: number) => {
       setLoading(true);
@@ -334,6 +364,9 @@ export default function TranscriptClient({
         setSession(page.session);
         setEvents((prev) => (cursor === 0 ? page.events : [...prev, ...page.events]));
         setNextCursor(page.nextCursor);
+        if (page.lastEventAgoS != null) setLastEventMs(Date.now() - page.lastEventAgoS * 1000);
+        else if (page.lastEventTime) setLastEventMs(parseChTime(page.lastEventTime));
+        setNow(Date.now());
       } catch (e) {
         setError(e instanceof Error ? e.message : String(e));
       } finally {
@@ -346,6 +379,103 @@ export default function TranscriptClient({
   useEffect(() => {
     void loadPage(0);
   }, [loadPage]);
+
+  // ---- live tail polling ----
+  const isLive = lastEventMs !== null && now - lastEventMs < LIVE_WINDOW_MS;
+
+  const poll = useCallback(async () => {
+    // don't burn ClickHouse queries in background tabs
+    if (document.visibilityState !== "visible") return;
+    if (pollBusyRef.current) return;
+    pollBusyRef.current = true;
+    try {
+      const loaded = eventsRef.current;
+      const cursor = loaded.length ? loaded[loaded.length - 1].event_order : 0;
+      const res = await fetch(`/api/session?id=${encodeURIComponent(id)}&cursor=${cursor}&limit=500`);
+      const page = (await res.json()) as TranscriptPage;
+      if (!res.ok) return;
+      setSession(page.session);
+      setNextCursor(page.nextCursor);
+      if (page.lastEventAgoS != null) setLastEventMs(Date.now() - page.lastEventAgoS * 1000);
+        else if (page.lastEventTime) setLastEventMs(parseChTime(page.lastEventTime));
+      setNow(Date.now());
+      const have = new Set(loaded.map((e) => e.event_order));
+      const fresh = page.events.filter((e) => !have.has(e.event_order));
+      if (fresh.length) {
+        appendedRef.current = true;
+        // snapshot "near bottom" BEFORE the new events render (the scroll
+        // listener alone goes stale when content grows under a user who
+        // never scrolled)
+        followingRef.current =
+          window.innerHeight + window.scrollY >=
+          document.documentElement.scrollHeight - FOLLOW_SLACK_PX;
+        setFollowing(followingRef.current);
+        setEvents((prev) => {
+          const seen = new Set(prev.map((e) => e.event_order));
+          return [...prev, ...fresh.filter((e) => !seen.has(e.event_order))];
+        });
+        const orders = fresh.map((e) => e.event_order);
+        setFreshOrders((prev) => new Set([...prev, ...orders]));
+        window.setTimeout(() => {
+          setFreshOrders((prev) => {
+            const next = new Set(prev);
+            for (const o of orders) next.delete(o);
+            return next;
+          });
+        }, FRESH_FADE_MS);
+      }
+    } catch {
+      // transient poll failures are silent; next tick retries
+    } finally {
+      pollBusyRef.current = false;
+    }
+  }, [id]);
+
+  useEffect(() => {
+    // 5s cadence while live, 30s idle heartbeat so a woken session flips back
+    const timer = window.setInterval(() => {
+      setNow(Date.now());
+      void poll();
+    }, isLive ? LIVE_POLL_MS : IDLE_POLL_MS);
+    const onVis = () => {
+      if (document.visibilityState === "visible") void poll();
+    };
+    document.addEventListener("visibilitychange", onVis);
+    return () => {
+      window.clearInterval(timer);
+      document.removeEventListener("visibilitychange", onVis);
+    };
+  }, [isLive, poll]);
+
+  // ---- follow mode ----
+  useEffect(() => {
+    const onScroll = () => {
+      const nearBottom =
+        window.innerHeight + window.scrollY >=
+        document.documentElement.scrollHeight - FOLLOW_SLACK_PX;
+      followingRef.current = nearBottom;
+      setFollowing(nearBottom);
+    };
+    onScroll();
+    window.addEventListener("scroll", onScroll, { passive: true });
+    return () => window.removeEventListener("scroll", onScroll);
+  }, []);
+
+  useEffect(() => {
+    if (!appendedRef.current) return;
+    appendedRef.current = false;
+    if (followingRef.current) {
+      window.scrollTo({ top: document.documentElement.scrollHeight, behavior: "smooth" });
+    }
+  }, [events]);
+
+  const jumpToLive = useCallback(() => {
+    followingRef.current = true;
+    setFollowing(true);
+    window.scrollTo({ top: document.documentElement.scrollHeight, behavior: "smooth" });
+  }, []);
+
+  const idleMinutes = lastEventMs !== null ? Math.max(1, Math.floor((now - lastEventMs) / 60_000)) : null;
 
   // deep link: scroll to and highlight ?event=<event_order> once it exists
   useEffect(() => {
@@ -363,12 +493,20 @@ export default function TranscriptClient({
 
   return (
     <div style={{ maxWidth: 960, margin: "0 auto", padding: "24px 20px 80px" }}>
+      <style>{`@keyframes live-fresh { from { background-color: rgba(110,231,160,0.08); } to { background-color: transparent; } }`}</style>
       {/* header */}
       <header style={{ borderBottom: "1px solid var(--rule)", paddingBottom: 16, marginBottom: 16 }}>
         <div style={{ display: "flex", alignItems: "baseline", gap: 12, flexWrap: "wrap" }}>
           <h1 className="mono" style={{ fontSize: 15, margin: 0, color: "var(--ink-bright)" }}>
             {session?.title || "untitled session"}
           </h1>
+          {isLive ? (
+            <span className="mono breath" style={{ fontSize: 11, color: "#6ee7a0" }}>● live</span>
+          ) : idleMinutes !== null ? (
+            <span className="mono" style={{ fontSize: 11, color: "var(--ink-muted)" }}>
+              idle · last event {idleMinutes}m ago
+            </span>
+          ) : null}
           <a href="/timeline" className="mono" style={{ fontSize: 11, color: "var(--model-mint)", textDecoration: "none" }}>
             view in timeline →
           </a>
@@ -417,11 +555,44 @@ export default function TranscriptClient({
               label={item.label}
               events={item.events}
               highlightOrder={initialEvent}
+              freshOrders={freshOrders}
             />
           );
         }
-        return <EventCard key={item.ev.event_order} ev={item.ev} nested={false} highlighted={item.ev.event_order === initialEvent} />;
+        return (
+          <EventCard
+            key={item.ev.event_order}
+            ev={item.ev}
+            nested={false}
+            highlighted={item.ev.event_order === initialEvent}
+            fresh={freshOrders.has(item.ev.event_order)}
+          />
+        );
       })}
+
+      {/* follow-mode pill */}
+      {isLive && !following && (
+        <button
+          onClick={jumpToLive}
+          className="mono"
+          style={{
+            position: "fixed",
+            bottom: 24,
+            right: 24,
+            zIndex: 20,
+            background: "var(--paper, #111)",
+            border: "1px solid rgba(110,231,160,0.4)",
+            borderRadius: 999,
+            color: "#6ee7a0",
+            fontSize: 11,
+            padding: "6px 14px",
+            cursor: "pointer",
+            boxShadow: "0 2px 12px rgba(0,0,0,0.35)",
+          }}
+        >
+          ↓ following off — jump to live
+        </button>
+      )}
 
       {/* pagination */}
       <div style={{ marginTop: 20, display: "flex", alignItems: "center", gap: 12 }}>

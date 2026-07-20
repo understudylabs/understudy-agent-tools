@@ -32,6 +32,9 @@ export interface SessionMeta {
 export interface TranscriptPage {
   session: SessionMeta;
   events: TranscriptEvent[];
+  latestOrder: number;
+  lastEventTime: string;
+  lastEventAgoS?: number; // server-computed — avoids client tz parsing of ClickHouse local-time strings
   nextCursor: number | null;
   error?: string;
 }

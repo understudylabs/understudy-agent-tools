@@ -76,7 +76,7 @@ export async function GET(request: NextRequest) {
   );
 
   try {
-    const [sessions, rawEvents, models, tokenTotals] = await Promise.all([
+    const [sessions, rawEvents, models, tokenTotals, latestRows] = await Promise.all([
       chQuery<SessionRow>(`
         SELECT
           session_id, title, harness, mode,
@@ -122,6 +122,17 @@ export async function GET(request: NextRequest) {
           ORDER BY event_order ASC, slot DESC, generation DESC
           LIMIT 1 BY event_order
         )
+      `),
+      // Cheap tail probe for live tailing: max event_order + last event time
+      // currently in the projection. A cursor beyond this returns zero rows
+      // from the events query above (event_order > cursor matches nothing).
+      chQuery<{ latest_order: number; last_time: string; ago_s: string }>(`
+        SELECT
+          toUInt32(max(event_order)) AS latest_order,
+          toString(max(event_time)) AS last_time,
+          toInt64(now() - max(event_time)) AS ago_s
+        FROM mcp_open_events
+        WHERE session_id = '${id}'
       `),
     ]);
 
@@ -177,6 +188,9 @@ export async function GET(request: NextRequest) {
         totalTokens: Number(tokenTotals[0]?.total_tokens ?? 0),
       },
       events,
+      latestOrder: latestRows[0]?.latest_order ?? 0,
+      lastEventTime: latestRows[0]?.last_time ?? s.last_event_time,
+      lastEventAgoS: Math.max(0, Number(latestRows[0]?.ago_s ?? 86400)),
       nextCursor:
         events.length === limit ? events[events.length - 1].event_order : null,
     });

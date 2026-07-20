@@ -46,6 +46,21 @@ const done = new Set(
   (db.query("SELECT session_id FROM session_scan").all() as { session_id: string }[]).map((r) => r.session_id),
 );
 
+// commits shipped by a session are a strong signal of what the task actually was
+const commitsBySession = new Map<string, string[]>();
+try {
+  const cdb = new Database(new URL("../data/commits.sqlite", import.meta.url).pathname, { readonly: true });
+  for (const r of cdb
+    .query(
+      "SELECT cs.session_id sid, c.subject subj FROM commit_sessions cs JOIN commits c ON c.hash = cs.hash",
+    )
+    .all() as { sid: string; subj: string }[]) {
+    if (!commitsBySession.has(r.sid)) commitsBySession.set(r.sid, []);
+    commitsBySession.get(r.sid)!.push(r.subj);
+  }
+  cdb.close();
+} catch { /* commits.sqlite absent — digest just omits the line */ }
+
 const sessions = (
   await ch<Sess>(`
     SELECT session_id, harness, toUInt32(total_events) AS total_events, origin_cwd, mode,
@@ -94,9 +109,13 @@ async function digestOf(s: Sess): Promise<string> {
   const tools = [...toolCounts.entries()].sort((a, b) => b[1] - a[1]).slice(0, 8)
     .map(([n, c]) => `${n}×${c}`).join(", ");
   const proj = s.origin_cwd.split("/").filter(Boolean).slice(-2).join("/");
+  const commits = commitsBySession.get(s.session_id) ?? [];
   return [
     `harness: ${s.harness} · mode: ${s.mode} · events: ${s.total_events} · project: ${proj || "?"}`,
     tools ? `tools: ${tools}` : "",
+    commits.length
+      ? `commits shipped (${commits.length}): ${commits.slice(0, 3).map((c) => c.slice(0, 80)).join(" | ")}`
+      : "",
     ...users.map((u, i) => `user[${i}]: ${clean(u.t)}`),
     ...sampledAssistants.map((i) => {
       const pos = i === 0 ? "first" : i === assistants.length - 1 ? "last" : "mid";
