@@ -101,7 +101,7 @@ export async function GET(request: NextRequest) {
           substring(payload_json, 1, ${TEXT_CAP}) AS payload_json,
           toUInt8(length(payload_json) > ${TEXT_CAP}) AS payload_truncated,
           toUInt32(arraySum(mapValues(token_usage_buckets))) AS tokens
-        FROM mcp_open_events FINAL
+        FROM mcp_open_events
         WHERE session_id = '${id}' AND event_order > ${cursor}
         ORDER BY event_order ASC, slot DESC, generation DESC
         LIMIT 1 BY event_order
@@ -109,7 +109,7 @@ export async function GET(request: NextRequest) {
       `),
       chQuery<{ model: string }>(`
         SELECT DISTINCT model
-        FROM events FINAL
+        FROM events
         WHERE session_id = '${id}' AND model != ''
         LIMIT 12
       `),
@@ -117,7 +117,7 @@ export async function GET(request: NextRequest) {
         SELECT toString(sum(arraySum(mapValues(token_usage_buckets)))) AS total_tokens
         FROM (
           SELECT token_usage_buckets
-          FROM mcp_open_events FINAL
+          FROM mcp_open_events
           WHERE session_id = '${id}'
           ORDER BY event_order ASC, slot DESC, generation DESC
           LIMIT 1 BY event_order
@@ -155,7 +155,7 @@ export async function GET(request: NextRequest) {
           toUInt8(max(is_substream)) AS sub,
           anyLast(agent_label) AS label,
           anyLast(agent_run_id) AS run
-        FROM events FINAL
+        FROM events
         WHERE session_id = '${id}'
           AND event_uid IN (${uids.map((u) => `'${u}'`).join(",")})
         GROUP BY event_uid

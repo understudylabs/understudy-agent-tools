@@ -46,7 +46,7 @@ export async function GET(request: NextRequest) {
             + token_usage_buckets['input_text']
             + token_usage_buckets['reasoning']
           ) AS tokens
-        FROM mcp_open_events FINAL
+        FROM mcp_open_events
         WHERE session_id = '${id}'
         ORDER BY event_order ASC, slot DESC, generation DESC
         LIMIT 1 BY event_order
@@ -54,7 +54,7 @@ export async function GET(request: NextRequest) {
       `),
       chQuery<{ model: string }>(`
         SELECT DISTINCT model
-        FROM events FINAL
+        FROM events
         WHERE session_id = '${id}' AND model != ''
         LIMIT 12
       `),

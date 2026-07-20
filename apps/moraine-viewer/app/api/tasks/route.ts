@@ -7,6 +7,7 @@ import { existsSync } from "node:fs";
 import path from "node:path";
 import { DatabaseSync } from "node:sqlite";
 import { chQuery } from "@/lib/clickhouse";
+import { readBenchmarkDraft } from "./benchmarkFile";
 
 const PLUMBING = "cli plumbing";
 
@@ -53,6 +54,7 @@ export type TaskCluster = {
   topTools: Array<{ tool: string; uses: number }>;
   topLabels: Array<{ label: string; n: number }>;
   exemplars: TaskExemplar[];
+  benchmark: { exists: boolean; instances: number; meanQuality: number } | null;
 };
 
 export async function GET() {
@@ -198,6 +200,16 @@ export async function GET() {
           .sort((a, b) => b.n - a.n || a.label.localeCompare(b.label))
           .slice(0, 5),
         exemplars,
+        benchmark: (() => {
+          const draft = readBenchmarkDraft(agg.name);
+          return draft
+            ? {
+                exists: true,
+                instances: draft.counts.instances,
+                meanQuality: draft.mean_quality,
+              }
+            : null;
+        })(),
       };
     })
     .sort((a, b) => b.interactiveSessions - a.interactiveSessions || b.sessions - a.sessions);

@@ -3,6 +3,7 @@
 // /tasks — the task catalog: clusters as benchmark candidates (Stage-4 precursor).
 
 import { useEffect, useState } from "react";
+import type { BenchmarkDraft } from "@/app/api/tasks/benchmarkFile";
 import Link from "next/link";
 import { sessionHref } from "@/components/session/sessionHref";
 import { clusterColor, fmtTokens } from "@/components/timeline/types";
@@ -26,6 +27,7 @@ type TaskCluster = {
   topTools: Array<{ tool: string; uses: number }>;
   topLabels: Array<{ label: string; n: number }>;
   exemplars: Exemplar[];
+  benchmark: { exists: boolean; instances: number; meanQuality: number } | null;
 };
 
 type Payload = {
@@ -105,6 +107,7 @@ export default function TasksView() {
 
 function ClusterCard({ c }: { c: TaskCluster }) {
   const color = clusterColor(c.id);
+  const [open, setOpen] = useState(false);
   return (
     <section className="border border-rule rounded-[12px] bg-card p-4 flex flex-col gap-3">
       <header className="flex items-center gap-2">
@@ -189,15 +192,109 @@ function ClusterCard({ c }: { c: TaskCluster }) {
       )}
 
       <footer className="border-t border-rule pt-3 mt-auto">
-        <button
-          type="button"
-          disabled
-          title="coming: turn these sessions into a verifiers environment"
-          className="mono text-[11px] text-ink-muted/60 border border-rule rounded-[8px] px-2.5 py-1 cursor-not-allowed"
-        >
-          → build benchmark (stage 4)
-        </button>
+        {c.benchmark?.exists ? (
+          <>
+            <button
+              type="button"
+              onClick={() => setOpen((v) => !v)}
+              className="mono text-[11px] border border-rule rounded-[8px] px-2.5 py-1 transition-colors hover:bg-hover"
+              style={{ color }}
+            >
+              {open ? "close benchmark draft ←" : "view benchmark draft →"}
+              <span className="text-ink-muted ml-2">
+                {c.benchmark.instances} instances · q {c.benchmark.meanQuality.toFixed(2)}
+              </span>
+            </button>
+            {open && <BenchmarkDrawer clusterId={c.id} color={color} />}
+          </>
+        ) : (
+          <button
+            type="button"
+            disabled
+            title="coming: turn these sessions into a verifiers environment"
+            className="mono text-[11px] text-ink-muted/60 border border-rule rounded-[8px] px-2.5 py-1 cursor-not-allowed"
+          >
+            → build benchmark (run scripts/benchmark.ts --cluster {c.id})
+          </button>
+        )}
       </footer>
     </section>
+  );
+}
+
+function qualityColor(q: number): string {
+  if (q > 0.66) return "var(--ok, #4ade80)";
+  if (q > 0.33) return "var(--warn, #fbbf24)";
+  return "var(--rule, #555)";
+}
+
+function BenchmarkDrawer({ clusterId, color }: { clusterId: number; color: string }) {
+  const [draft, setDraft] = useState<BenchmarkDraft | null>(null);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    let alive = true;
+    fetch(`/api/tasks/benchmark?cluster=${clusterId}`)
+      .then((r) => {
+        if (!r.ok) throw new Error(`benchmark ${r.status}`);
+        return r.json() as Promise<{ exists: boolean; draft: BenchmarkDraft }>;
+      })
+      .then((d) => alive && setDraft(d.draft))
+      .catch((e) => alive && setError(String(e)));
+    return () => {
+      alive = false;
+    };
+  }, [clusterId]);
+
+  if (error) return <div className="mono text-[11px] text-ink-muted mt-3">failed — {error}</div>;
+  if (!draft) return <div className="mono text-[11px] text-ink-muted mt-3 breath">loading draft…</div>;
+
+  return (
+    <div className="mt-3 border-t border-rule pt-3 space-y-3">
+      <div className="mono text-[10px] text-ink-muted/70">
+        draft — holdout stays sealed; compile to verifiers env is the next stage
+      </div>
+      <div className="mono text-[11px] text-ink-muted flex gap-4">
+        <span>
+          train <span className="text-ink">{draft.counts.train}</span>
+        </span>
+        <span>
+          dev <span className="text-ink">{draft.counts.dev}</span>
+        </span>
+        <span>
+          holdout <span className="text-ink">{draft.counts.holdout}</span>
+        </span>
+        <span>
+          mean q <span style={{ color }}>{draft.mean_quality.toFixed(2)}</span>
+        </span>
+      </div>
+      <ul className="space-y-2">
+        {draft.instances.slice(0, 8).map((inst) => (
+          <li key={inst.instance_id} className="flex items-start gap-2">
+            <span
+              className="inline-block w-1.5 h-1.5 rounded-full mt-1.5 shrink-0"
+              style={{ background: qualityColor(inst.quality) }}
+              title={`quality ${inst.quality}`}
+            />
+            <div className="min-w-0 flex-1">
+              <div className="mono text-[11px] text-ink truncate">
+                {inst.prompt.slice(0, 140)}
+              </div>
+              <div className="mono text-[10px] text-ink-muted flex gap-3">
+                <span>{inst.split}</span>
+                <span>{inst.reference.commits.length} commits</span>
+                <Link
+                  href={sessionHref(inst.session_id)}
+                  className="hover:text-ink-bright transition-colors"
+                  style={{ color }}
+                >
+                  session →
+                </Link>
+              </div>
+            </div>
+          </li>
+        ))}
+      </ul>
+    </div>
   );
 }

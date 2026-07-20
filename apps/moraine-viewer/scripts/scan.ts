@@ -88,7 +88,7 @@ async function digestOf(s: Sess): Promise<string> {
         JSON_VALUE(payload_json, '$.content[0].text') != '', JSON_VALUE(payload_json, '$.content[0].text'),
         JSONExtractString(payload_json, 'input')
       ), 1, 500) AS t
-    FROM mcp_open_events FINAL
+    FROM mcp_open_events
     WHERE session_id = '${s.session_id}' AND event_type IN ('user_input', 'assistant_response', 'tool_call')
       -- subagent chatter skews labels toward what the subagents were told; main stream only
       AND event_uid IN (

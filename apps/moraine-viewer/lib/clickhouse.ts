@@ -10,7 +10,16 @@ export async function chQuery<T = Record<string, unknown>>(sql: string): Promise
   if (!/^(select|show|describe|desc|with)\b/i.test(trimmed)) {
     throw new Error("read-only: only SELECT/SHOW/DESCRIBE queries are allowed");
   }
-  const res = await fetch(`${CLICKHOUSE_URL}/?database=moraine&default_format=JSONEachRow`, {
+  // guardrails: a runaway agent once drove tracked memory to 83GB — every
+  // query from this app is capped so the viewer can never take the box down
+  const settings = new URLSearchParams({
+    database: "moraine",
+    default_format: "JSONEachRow",
+    max_memory_usage: "2000000000", // 2GB per query
+    max_threads: "4",
+    max_execution_time: "30",
+  });
+  const res = await fetch(`${CLICKHOUSE_URL}/?${settings}`, {
     method: "POST",
     body: `${trimmed} FORMAT JSONEachRow`,
     headers: { "Content-Type": "text/plain" },

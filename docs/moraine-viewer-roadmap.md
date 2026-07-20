@@ -96,10 +96,23 @@ catalog everything downstream stands on.
 
 ## Stages
 
-### Stage 0 — Foundation (now)
+### Stage 0 — Foundation ✅ (2026-07-19)
 - [x] Update Moraine 0.7.0 → 0.7.1; keep upstream tracking healthy.
-- [ ] Schema reference for `moraine.events` + session projection (read-only recon).
-- [ ] This roadmap.
+- [x] Schema reference (`docs/moraine-clickhouse-schema.md`).
+- [x] This roadmap.
+
+### Progress log (2026-07-19/20)
+- Stage 1 ✅ — timeline chosen + built: 4 color modes (harness/task/language/cost),
+  search-with-dim, click-to-zoom, commit heat strip, live pulse, ingest health,
+  full lossless transcript at /session/[id] with subagent nesting + live tail.
+  Single control plane; Moraine headless.
+- Stage 2 ✅ (sample→full) — all 6,009 sessions scanned with local Gemma e2b QAT;
+  91% identified as CodexBar /usage probe plumbing (quarantined); 519 real
+  interactive sessions in 11 clusters; MiniLM embeddings + centroid assignment;
+  commit-aware digests; task catalog at /tasks with per-cluster exemplars.
+- Stage 3 (Understudy MCP) — not started; viewer APIs are the de-facto layer.
+- Stage 4 — in progress: benchmark draft builder (cluster → task instances with
+  contamination-safe hash splits, benchmark.v1-draft shape, review UI).
 
 ### Stage 1 — WebGL viewer MVP (Next.js prototype)
 - `apps/moraine-viewer`: Next.js + shadcn + Cedar styling; WebGL via
