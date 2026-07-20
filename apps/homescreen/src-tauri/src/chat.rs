@@ -1409,6 +1409,91 @@ pub async fn agent_chat(
     }
 }
 
+/// One content-only local Pi turn for metadata analysis. Unlike the general
+/// agent surface this deliberately exposes no tools or executor URL, so a
+/// background proposal lane cannot create filesystem, shell, or live effects.
+pub async fn agent_metadata_chat(
+    app: &AppHandle,
+    mgr: &Residency,
+    slot_id: u32,
+    session_id: &str,
+    prompt: &str,
+    max_tokens: u32,
+) -> Result<BenchmarkChatResult, String> {
+    let max_tokens = max_tokens.clamp(1, CHAT_MAX_TOKENS);
+    let run_id = crate::conversation_runtime::new_run_id()?;
+    let (port, model_field) = mgr
+        .endpoint(slot_id)
+        .ok_or_else(|| format!("slot {slot_id} is not warm; warm it first"))?;
+    let messages = vec![ChatMsg {
+        role: "user".to_string(),
+        content: prompt.to_string(),
+        attachments: vec![],
+    }];
+    let outbound = vec![
+        json!({ "role": "system", "content": system_prompt_for(&model_field) }),
+        json!({ "role": "user", "content": prompt }),
+    ];
+    let binding = RouteBinding {
+        route: "local".to_string(),
+        url: format!("http://127.0.0.1:{port}/v1/chat/completions"),
+        bearer: None,
+        model_field,
+    };
+    let mut request = sidecar_run_request(
+        app,
+        &messages,
+        &outbound,
+        &binding,
+        None,
+        Some(slot_id),
+        (session_id, &run_id),
+    )?;
+    request["tools"] = json!([]);
+    request["max_output_tokens"] = json!(max_tokens);
+    request["max_tool_rounds"] = json!(0);
+    request
+        .as_object_mut()
+        .expect("the Pi request must be an object")
+        .remove("tool_executor_url");
+    match crate::conversation_sidecar::try_run_chat_headless(app, request).await {
+        crate::conversation_sidecar::SidecarAttempt::Completed(sidecar) => {
+            Ok(BenchmarkChatResult {
+                capture_run_id: run_id,
+                status: if sidecar.content.trim().is_empty() {
+                    "empty_final".to_string()
+                } else {
+                    "ok".to_string()
+                },
+                runtime_backend: "pi".to_string(),
+                content: sidecar.content,
+                elapsed_ms: sidecar.elapsed_ms,
+                tool_calls: sidecar.tool_calls,
+                prompt_tokens: sidecar_usage_tokens(sidecar.usage.as_ref(), "prompt_tokens")
+                    .unwrap_or_else(|| approximate_messages_tokens(&outbound)),
+                completion_tokens: sidecar_usage_tokens(
+                    sidecar.usage.as_ref(),
+                    "completion_tokens",
+                )
+                .unwrap_or(0),
+                reasoning_tokens: sidecar_usage_tokens(sidecar.usage.as_ref(), "reasoning_tokens")
+                    .unwrap_or(0),
+                compacted: sidecar.compacted,
+                context_tokens_before: sidecar.context_tokens_before,
+            })
+        }
+        crate::conversation_sidecar::SidecarAttempt::FailedAfterOutput(reason) => Err(format!(
+            "conversation runtime stopped after metadata analysis began: {reason}"
+        )),
+        crate::conversation_sidecar::SidecarAttempt::Cancelled(reason) => Err(format!(
+            "conversation runtime metadata analysis cancelled: {reason}"
+        )),
+        crate::conversation_sidecar::SidecarAttempt::UnavailableBeforeOutput(reason) => Err(
+            format!("canonical runtime unavailable before metadata analysis: {reason}"),
+        ),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;

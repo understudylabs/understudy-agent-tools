@@ -224,6 +224,44 @@ type RecipeBackendCompatibility = {
     execution_ready: boolean;
   }>;
 };
+type TrainingGoalCard = {
+  schema_version: "understudy.training.goal_card.v1";
+  detected_task: string;
+  evaluator: string;
+  splits: {
+    strategy: string;
+    hash: string;
+    train: number;
+    validation: number;
+    heldout: number;
+  };
+  promotion: {
+    minimum_accuracy: number;
+    minimum_improvement_over_base: number;
+  };
+  backend: { requested: string; compatible: string[] };
+  privacy: {
+    local_only: true;
+    uploads: false;
+    provider_calls: false;
+    preview_source: "train_only";
+    heldout_targets_visible: false;
+  };
+  runtime: { maximum_seconds: number };
+  cost: { maximum_usd: number };
+  training_preview: Array<{ source_split: "train"; input: string; target: string }>;
+  environment: { proposal_path: string; status: "proposed" | "executable" | "needs_verifier" };
+};
+type PiEnvironmentArchitectResult = {
+  schema_version: "understudy.environment_architect.pi_result.v1";
+  status: "needs_verifier";
+  proposal_path: string;
+  runtime_backend: "pi";
+  local_only: true;
+  remote_content_shared: false;
+  executable: false;
+  blocker: string;
+};
 type ClassificationDataset = {
   schema_version: "understudy.capture_import.classification_dataset.v2";
   dataset_id: string;
@@ -335,6 +373,71 @@ function trainingUseCaseLabel(useCase: string): string {
     text_classification: "Text classification",
     general_chat: "General chat",
   } as Record<string, string>)[useCase] ?? "Custom training workload";
+}
+
+function proposedSplitCounts(total: number) {
+  const train = Math.floor(total * 0.7);
+  const validation = Math.floor(total * 0.15);
+  return { train, validation, heldout: Math.max(0, total - train - validation) };
+}
+
+function AutomaticGoalCard({
+  inspection,
+  card,
+  architect,
+  localArchitectAvailable,
+}: {
+  inspection: TrainingRecipeInspection;
+  card: TrainingGoalCard | null;
+  architect: PiEnvironmentArchitectResult | null;
+  localArchitectAvailable: boolean;
+}) {
+  const planned = proposedSplitCounts(inspection.evidence.total_rows);
+  const splits = card?.splits ?? { ...planned, strategy: "deterministic 70/15/15 proposal", hash: "pending" };
+  const evaluator = card?.evaluator ?? inspection.evaluator ?? "Needs a verifier";
+  const environmentStatus = card?.environment.status
+    ?? architect?.status
+    ?? (inspection.ready ? "proposed" : "needs_verifier");
+  return (
+    <section className="automatic-goal-card" aria-label="Automatic pre-run Goal Card">
+      <div className="automatic-goal-card-heading">
+        <div>
+          <span>Goal Card · automatic</span>
+          <strong>{trainingUseCaseLabel(inspection.detected_use_case)}</strong>
+        </div>
+        <em data-status={environmentStatus}>{environmentStatus.replace("_", " ")}</em>
+      </div>
+      <dl className="automatic-goal-card-grid">
+        <div><dt>Evaluator</dt><dd>{evaluator}</dd></div>
+        <div><dt>{card ? "Frozen split" : "Planned split"}</dt><dd>{splits.train} train · {splits.validation} validation · {splits.heldout} held-out</dd></div>
+        <div><dt>Promotion</dt><dd>{card ? `≥ ${(card.promotion.minimum_accuracy * 100).toFixed(0)}% · +${(card.promotion.minimum_improvement_over_base * 100).toFixed(0)} pts` : "Blocked until verifier passes"}</dd></div>
+        <div><dt>Backend</dt><dd>{card?.backend.compatible.join(", ") || "Compatibility pending"}</dd></div>
+        <div><dt>Boundary</dt><dd>Local-only · no upload · held-out targets hidden</dd></div>
+        <div><dt>Envelope</dt><dd>{card ? `${card.runtime.maximum_seconds}s · $${card.cost.maximum_usd.toFixed(2)} max` : "$0 · no run approved"}</dd></div>
+      </dl>
+      {card && card.training_preview.length > 0 && (
+        <details className="automatic-goal-card-preview">
+          <summary>Preview {card.training_preview.length} TRAINING example{card.training_preview.length === 1 ? "" : "s"}</summary>
+          {card.training_preview.map((row, index) => (
+            <div key={`${index}:${row.input}`}>
+              <span>TRAIN {index + 1}</span>
+              <p>{row.input}</p>
+              <small>{row.target}</small>
+            </div>
+          ))}
+        </details>
+      )}
+      {!inspection.ready && (
+        <p className="automatic-goal-card-note">
+          {architect
+            ? `Canonical Pi drafted a local proposal. ${architect.blocker}`
+            : localArchitectAvailable
+              ? "Canonical Pi is drafting an environment proposal from metadata only; deterministic checks still own execution."
+              : "A warm local model can draft the environment proposal. Remote models will not receive dropped content without explicit consent."}
+        </p>
+      )}
+    </section>
+  );
 }
 
 type RemoteTrainingCapabilitiesEnvelope = {
@@ -479,6 +582,8 @@ export function ChatPane({
   const [csvInspection, setCsvInspection] = useState<CsvInspection | null>(null);
   const [trainingRecipe, setTrainingRecipe] = useState<TrainingRecipeInspection | null>(null);
   const [remoteRecipePlan, setRemoteRecipePlan] = useState<RemotePlan | null>(null);
+  const [trainingGoalCard, setTrainingGoalCard] = useState<TrainingGoalCard | null>(null);
+  const [environmentArchitect, setEnvironmentArchitect] = useState<PiEnvironmentArchitectResult | null>(null);
   const [recipeBackend, setRecipeBackend] = useState<"local" | "managed">("local");
   const [recipeLocalAvailable, setRecipeLocalAvailable] = useState(false);
   const [mappingInputColumns, setMappingInputColumns] = useState<string[]>([]);
@@ -495,6 +600,7 @@ export function ChatPane({
   const observedSessionRequest = useRef<number | null>(null);
   const dropInFlight = useRef(false);
   const dropRequestGeneration = useRef(0);
+  const environmentArchitectAttempted = useRef<string | null>(null);
   const selectedModelUserOwned = useRef(false);
   const streamPacer = useRef<StreamPacer | null>(null);
   const streamPacerGeneration = useRef(0);
@@ -549,10 +655,13 @@ export function ChatPane({
   const resetDroppedWorkload = () => {
     dropRequestGeneration.current += 1;
     dropInFlight.current = false;
+    environmentArchitectAttempted.current = null;
     setDroppedWorkload(null);
     setCsvInspection(null);
     setTrainingRecipe(null);
     setRemoteRecipePlan(null);
+    setTrainingGoalCard(null);
+    setEnvironmentArchitect(null);
     setRecipeBackend("local");
     setRecipeLocalAvailable(false);
     setMappingInputColumns([]);
@@ -586,7 +695,10 @@ export function ChatPane({
       path: workload.source_path,
     });
     if (dropRequestGeneration.current !== requestGeneration) return;
+    environmentArchitectAttempted.current = null;
     setTrainingRecipe(result);
+    setTrainingGoalCard(null);
+    setEnvironmentArchitect(null);
     dispatchDrop({ type: "inspection_succeeded" });
   };
 
@@ -620,12 +732,18 @@ export function ChatPane({
           planPath: plan.plan_path,
         });
         if (dropRequestGeneration.current !== requestGeneration) return;
+        const goalCard = await invoke<TrainingGoalCard>("automatic_training_goal_card", {
+          planPath: plan.plan_path,
+          previewLimit: 2,
+        });
+        if (dropRequestGeneration.current !== requestGeneration) return;
         const localAvailable = compatibility.backends.some(
           (backend) => backend.id === "mlx-local" && backend.compatible && backend.execution_ready,
         );
         setRecipeLocalAvailable(localAvailable);
         setRecipeBackend("local");
         setRemoteRecipePlan(plan);
+        setTrainingGoalCard(goalCard);
         dispatchDrop({ type: "dataset_succeeded" });
       })
       .catch((error) => {
@@ -669,7 +787,12 @@ export function ChatPane({
               modelProfile: "understudy/auto",
               maximumSpendUsd,
             });
+        const goalCard = await invoke<TrainingGoalCard>("automatic_training_goal_card", {
+          planPath: plan.plan_path,
+          previewLimit: 2,
+        });
         setRemoteRecipePlan(plan);
+        setTrainingGoalCard(goalCard);
         setRecipeBackend("managed");
       })
       .catch((cause) => setErr(`Cloud training is unavailable: ${String(cause)}`));
@@ -1033,6 +1156,39 @@ export function ChatPane({
     () => choices.find((choice) => choice.id === selectedModel) ?? choices[0] ?? CLOUD_MODEL,
     [choices, selectedModel],
   );
+
+  useEffect(() => {
+    if (
+      !droppedWorkload
+      || !trainingRecipe
+      || trainingRecipe.ready
+      || environmentArchitect
+      || environmentArchitectAttempted.current === trainingRecipe.source_sha256
+      || selectedChoice.route !== "local"
+      || !selectedChoice.active
+      || dropInFlight.current
+    ) return;
+    environmentArchitectAttempted.current = trainingRecipe.source_sha256;
+    const requestGeneration = dropRequestGeneration.current;
+    void invoke<PiEnvironmentArchitectResult>("propose_training_environment_with_pi", {
+      sourcePath: droppedWorkload.source_path,
+      artifactRoot: droppedWorkload.artifact_root,
+      expectedSourceSha256: trainingRecipe.source_sha256,
+      slotId: selectedChoice.slotId,
+      detectedUseCase: trainingRecipe.detected_use_case,
+      taskKind: trainingRecipe.task_kind,
+      evaluator: trainingRecipe.evaluator,
+      totalRows: trainingRecipe.evidence.total_rows,
+    })
+      .then((result) => {
+        if (dropRequestGeneration.current === requestGeneration) setEnvironmentArchitect(result);
+      })
+      .catch((cause) => {
+        if (dropRequestGeneration.current === requestGeneration) {
+          setNotice(`The local environment architect could not finish: ${String(cause)}`);
+        }
+      });
+  }, [droppedWorkload, environmentArchitect, selectedChoice, trainingRecipe]);
 
   const send = async (text: string, files: FileUIPart[] = []) => {
     const clean = text.trim();
@@ -1576,6 +1732,12 @@ export function ChatPane({
                 </div>
               ) : trainingRecipe && droppedWorkload ? (
                 <>
+                  <AutomaticGoalCard
+                    inspection={trainingRecipe}
+                    card={trainingGoalCard}
+                    architect={environmentArchitect}
+                    localArchitectAvailable={selectedChoice.route === "local" && selectedChoice.active}
+                  />
                   <div className="csv-analysis-next">
                     {trainingRecipe.ready ? (
                       remoteRecipePlan ? (

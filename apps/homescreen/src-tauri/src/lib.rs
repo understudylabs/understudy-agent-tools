@@ -344,6 +344,8 @@ pub fn run() {
             workload_drop::export_local_classification_predictions,
             remote_training::remote_training_capabilities,
             remote_training::inspect_remote_training_recipe,
+            remote_training::automatic_training_goal_card,
+            remote_training::propose_training_environment_with_pi,
             remote_training::prepare_remote_classification_training,
             remote_training::prepare_remote_training_recipe,
             remote_training::compile_remote_training_backends,
