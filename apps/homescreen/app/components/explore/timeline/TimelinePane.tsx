@@ -8,9 +8,11 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import TimelineScene, { type LaneLayout } from "./TimelineScene";
 import TracePreview from "./TracePreview";
+import EmptyState from "../EmptyState";
 import {
   fetchCommits,
   fetchCommitsDay,
+  fetchExploreStatus,
   fetchHealth,
   fetchLanguages,
   fetchLive,
@@ -19,6 +21,7 @@ import {
   searchTimeline,
   type SessionDetail,
 } from "@/app/lib/exploreData";
+import type { ExploreStatus } from "@/app/lib/exploreContract";
 import {
   COST_RAMP,
   DAY,
@@ -145,6 +148,20 @@ function Chip({
 
 type HoverInfo = { point: TimelinePoint; clientX: number; clientY: number };
 
+// fixed-position tooltip placement: right of the cursor normally, flipped to
+// the left within FLIP_PX of the right window edge; clamped vertically
+const FLIP_PX = 280;
+function tooltipPos(clientX: number, clientY: number): React.CSSProperties {
+  const flip = typeof window !== "undefined" && clientX > window.innerWidth - FLIP_PX;
+  const maxTop = typeof window !== "undefined" ? window.innerHeight - 140 : Infinity;
+  return {
+    ...(flip
+      ? { right: window.innerWidth - clientX + 14 }
+      : { left: clientX + 14 }),
+    top: Math.max(8, Math.min(clientY + 14, maxTop)),
+  };
+}
+
 type CommitDay = { d: string; c: number };
 type DayCommit = { hash7: string; repo: string; subject: string; ts: number; sessions: string[] };
 
@@ -184,11 +201,31 @@ export default function TimelinePane({
   const viewRef = useRef(view);
   viewRef.current = view;
 
-  useEffect(() => {
+  const [status, setStatus] = useState<ExploreStatus | null>(null);
+  const [scanBannerDismissed, setScanBannerDismissed] = useState(false);
+
+  // initial load; on failure (or an empty store) fetch explore_status so the
+  // empty state can distinguish "moraine down" from "up but no traces yet"
+  const loadTimeline = useCallback(() => {
+    setError(null);
     fetchTimeline()
-      .then((d) => setData(d))
-      .catch((e) => setError(String(e)));
+      .then((d) => {
+        setData(d);
+        fetchExploreStatus()
+          .then(setStatus)
+          .catch(() => {});
+      })
+      .catch((e) => {
+        setError(String(e));
+        fetchExploreStatus()
+          .then(setStatus)
+          .catch(() => setStatus(null));
+      });
   }, []);
+
+  useEffect(() => {
+    loadTimeline();
+  }, [loadTimeline]);
 
   // commit layer (commits.sqlite via adapter; empty payload when absent)
   useEffect(() => {
@@ -754,6 +791,20 @@ export default function TimelinePane({
         )}
       </div>
 
+      {/* unlabeled-sessions banner (informational; never blocks the timeline) */}
+      {data && data.sessions.length > 0 && status && !status.hasScan && !scanBannerDismissed && (
+        <div className="mono flex items-center gap-3 border-b border-rule px-6 py-1.5 text-[10px] text-ink-muted">
+          <span>sessions unlabeled — run the scan pipeline to get task labels &amp; clusters</span>
+          <button
+            onClick={() => setScanBannerDismissed(true)}
+            className="ml-auto text-ink-muted/60 transition-colors hover:text-ink-bright"
+            aria-label="dismiss scan banner"
+          >
+            ×
+          </button>
+        </div>
+      )}
+
       {/* field */}
       <div className="relative flex-1 min-h-0 flex">
         <div
@@ -809,10 +860,17 @@ export default function TimelinePane({
               reading the moraine…
             </div>
           )}
-          {error && (
-            <div className="mono flex h-full items-center justify-center text-xs text-[#f85149]">
-              couldn&apos;t reach clickhouse — {error}
-            </div>
+          {error &&
+            (status?.clickhouseUp ? (
+              // clickhouse is reachable but the query itself failed — surface it
+              <div className="mono flex h-full items-center justify-center text-xs text-[#f85149]">
+                couldn&apos;t read the timeline — {error}
+              </div>
+            ) : (
+              <EmptyState variant="moraine-down" detail={error} onRetry={loadTimeline} />
+            ))}
+          {data && data.sessions.length === 0 && (
+            <EmptyState variant="no-traces" onRetry={loadTimeline} />
           )}
 
           {/* selection ring */}
@@ -1008,8 +1066,7 @@ export default function TimelinePane({
           <div
             className="mono pointer-events-none fixed z-50 rounded-lg border border-rule px-3 py-2 text-[11px] leading-relaxed"
             style={{
-              left: commitHover.clientX + 14,
-              top: commitHover.clientY - 40,
+              ...tooltipPos(commitHover.clientX, commitHover.clientY - 54),
               background: "rgba(11,12,14,0.92)",
             }}
           >
@@ -1026,8 +1083,7 @@ export default function TimelinePane({
           <div
             className="mono pointer-events-none fixed z-50 max-w-xs rounded-lg border border-rule px-3 py-2 text-[11px] leading-relaxed"
             style={{
-              left: hover.clientX + 14,
-              top: hover.clientY + 14,
+              ...tooltipPos(hover.clientX, hover.clientY),
               background: "rgba(11,12,14,0.92)",
             }}
           >
