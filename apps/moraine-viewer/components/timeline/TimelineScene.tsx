@@ -37,6 +37,7 @@ interface SceneProps {
   hiddenLangs: Set<string>; // language-mode visibility (dominant lang; "" = no data)
   liveIds: Set<string>; // sessions active in the last 120s — breathing pulse
   costThresholds: number[]; // [q25, q50, q75] over nonzero tokens (cost mode)
+  showPlumbing: boolean; // CodexBar probe sessions — hidden in ALL modes by default
 }
 
 const PROJECT = /* glsl */ `
@@ -164,8 +165,9 @@ function Field({ points, propsRef }: { points: TimelinePoint[]; propsRef: React.
     hiddenLangs: Set<string> | null;
     live: Set<string> | null;
     costThresholds: number[] | null;
+    showPlumbing: boolean | null;
     buf: object | null; // which buffer set the write landed on — rebuilt buffers start all-invisible
-  }>({ matches: null, hidden: null, colorMode: null, hiddenClusters: null, hiddenLangs: null, live: null, costThresholds: null, buf: null });
+  }>({ matches: null, hidden: null, colorMode: null, hiddenClusters: null, hiddenLangs: null, live: null, costThresholds: null, showPlumbing: null, buf: null });
 
   // static per-point buffers (rebuilt only when the dataset changes)
   const pointBuf = useMemo(() => {
@@ -254,7 +256,7 @@ function Field({ points, propsRef }: { points: TimelinePoint[]; propsRef: React.
   const tailUniforms = useMemo(makeUniforms, []);
 
   useFrame((state, delta) => {
-    const { view, width, height, lanes, matches, hiddenHarness, colorMode, hiddenClusters, hiddenLangs, liveIds, costThresholds } =
+    const { view, width, height, lanes, matches, hiddenHarness, colorMode, hiddenClusters, hiddenLangs, liveIds, costThresholds, showPlumbing } =
       propsRef.current;
 
     // match/visibility/color rewrites only when the sets (or the buffer set —
@@ -268,6 +270,7 @@ function Field({ points, propsRef }: { points: TimelinePoint[]; propsRef: React.
       applied.hiddenLangs !== hiddenLangs ||
       applied.live !== liveIds ||
       applied.costThresholds !== costThresholds ||
+      applied.showPlumbing !== showPlumbing ||
       applied.buf !== pointBuf
     ) {
       applied.matches = matches;
@@ -277,6 +280,7 @@ function Field({ points, propsRef }: { points: TimelinePoint[]; propsRef: React.
       applied.hiddenLangs = hiddenLangs;
       applied.live = liveIds;
       applied.costThresholds = costThresholds;
+      applied.showPlumbing = showPlumbing;
       applied.buf = pointBuf;
 
       const c = new THREE.Color();
@@ -292,6 +296,7 @@ function Field({ points, propsRef }: { points: TimelinePoint[]; propsRef: React.
       // points whose cluster chip is toggled off; language mode likewise by lang
       // (cost mode: harness hiding only)
       const visibleOf = (p: TimelinePoint) =>
+        (!showPlumbing && p.s.cluster === "cli plumbing") ||
         hiddenHarness.has(p.s.harness) ||
         (colorMode === "task" && p.s.clusterId != null && hiddenClusters.has(p.s.clusterId)) ||
         (colorMode === "language" && p.s.lang != null && hiddenLangs.has(p.s.lang))

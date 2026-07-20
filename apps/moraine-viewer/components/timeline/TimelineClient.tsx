@@ -148,6 +148,7 @@ export default function TimelineClient() {
   const [colorMode, setColorMode] = useState<ColorMode>("harness");
   const [hiddenClusters, setHiddenClusters] = useState<Set<number>>(new Set());
   const [hiddenLangs, setHiddenLangs] = useState<Set<string>>(new Set());
+  const [showPlumbing, setShowPlumbing] = useState(false);
   const [langCounts, setLangCounts] = useState<Array<{ lang: string; sessions: number }>>([]);
 
   const [query, setQuery] = useState("");
@@ -233,9 +234,17 @@ export default function TimelineClient() {
 
   const harnessCounts = useMemo(() => {
     const counts = new Map<string, number>();
-    for (const s of data?.sessions ?? []) counts.set(s.harness, (counts.get(s.harness) ?? 0) + 1);
+    for (const s of data?.sessions ?? []) {
+      if (!showPlumbing && s.cluster === "cli plumbing") continue;
+      counts.set(s.harness, (counts.get(s.harness) ?? 0) + 1);
+    }
     return counts;
-  }, [data]);
+  }, [data, showPlumbing]);
+
+  const plumbingCount = useMemo(
+    () => (data?.sessions ?? []).filter((s) => s.cluster === "cli plumbing").length,
+    [data],
+  );
 
   // clusters present in the data (task color mode chips), by descending count
   const clusters = useMemo(() => {
@@ -266,7 +275,8 @@ export default function TimelineClient() {
   useEffect(() => {
     if (autoHidden.current || !data) return;
     autoHidden.current = true;
-    const minSessions = (data.sessions.length || 1) * MIN_LANE_FRACTION;
+    const realSessions = data.sessions.filter((s) => s.cluster !== "cli plumbing").length;
+    const minSessions = (realSessions || 1) * MIN_LANE_FRACTION;
     const sparse = allHarnesses.filter((h) => (harnessCounts.get(h) ?? 0) < minSessions);
     if (sparse.length) setHiddenHarness(new Set(sparse));
   }, [data, allHarnesses, harnessCounts]);
@@ -402,10 +412,11 @@ export default function TimelineClient() {
   // language hiding in language mode
   const isVisible = useCallback(
     (p: TimelinePoint) =>
+      (showPlumbing || p.s.cluster !== "cli plumbing") &&
       !hiddenHarness.has(p.s.harness) &&
       !(colorMode === "task" && p.s.clusterId != null && hiddenClusters.has(p.s.clusterId)) &&
       !(colorMode === "language" && p.s.lang != null && hiddenLangs.has(p.s.lang)),
-    [hiddenHarness, colorMode, hiddenClusters, hiddenLangs],
+    [showPlumbing, hiddenHarness, colorMode, hiddenClusters, hiddenLangs],
   );
 
   // nearest visible point in screen space (Points raycast thresholds are awkward)
@@ -705,9 +716,24 @@ export default function TimelineClient() {
             ))}
           </>
         )}
-        <span className="mono text-[11px] text-ink-muted ml-auto">
-          {visibleCount}/{data?.meta.count ?? "…"} sessions
-          {liveIds.size > 0 && <span style={{ color: "#6ee7a0" }}> · {liveIds.size} live</span>}
+        <span className="ml-auto flex items-center gap-3">
+          {plumbingCount > 0 && (
+            <button
+              onClick={() => setShowPlumbing((v) => !v)}
+              className="mono text-[10px] px-2 py-0.5 rounded-full border transition-colors"
+              style={{
+                borderColor: showPlumbing ? "var(--ink-muted)" : "var(--rule)",
+                color: showPlumbing ? "var(--ink)" : "rgba(155,157,163,0.5)",
+              }}
+              title="CodexBar /usage probe sessions — hidden by default in every mode"
+            >
+              plumbing · {plumbingCount}
+            </button>
+          )}
+          <span className="mono text-[11px] text-ink-muted">
+            {visibleCount}/{data?.meta.count ?? "…"} sessions
+            {liveIds.size > 0 && <span style={{ color: "#6ee7a0" }}> · {liveIds.size} live</span>}
+          </span>
         </span>
         {health && (
           <span
@@ -766,6 +792,7 @@ export default function TimelineClient() {
               hiddenLangs={hiddenLangs}
               liveIds={liveIds}
               costThresholds={costThresholds}
+              showPlumbing={showPlumbing}
             />
           )}
           {!data && !error && (
