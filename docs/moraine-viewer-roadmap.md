@@ -54,7 +54,7 @@ benchmark, recommend, route)  ←  Rust desktop app (WebGL viewer) + Understudy 
   desktop app (webview) once a direction wins. No Rust compile loop during design.
 - **Prototype home:** `apps/moraine-viewer/` in this repo.
 - **Data for mocks:** real local Moraine data, strictly read-only.
-- **Styling:** Cedar mood board / recent design direction; shadcn components.
+- **Styling:** Understudy design language v2.0; shadcn components.
 
 ## What Moraine gives us today (v0.7.1)
 
@@ -115,7 +115,7 @@ catalog everything downstream stands on.
   contamination-safe hash splits, benchmark.v1-draft shape, review UI).
 
 ### Stage 1 — WebGL viewer MVP (Next.js prototype)
-- `apps/moraine-viewer`: Next.js + shadcn + Cedar styling; WebGL via
+- `apps/moraine-viewer`: Next.js + shadcn + Understudy design-language styling; WebGL via
   react-three-fiber (or regl/deck.gl where instanced 2D wins).
 - Thin read-only API routes → local ClickHouse.
 - Four mock directions on real data, one route each; pick a winner with Luis.
