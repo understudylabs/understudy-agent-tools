@@ -1739,6 +1739,79 @@ class ScoreWithFeedback:
     });
   });
 
+  it("creates a workload from a local workload card", async () => {
+    await withHostedFixture(async ({ home, repo, requests }) => {
+      const env = { HOME: home, USERPROFILE: home };
+      const cardDir = join(repo, ".understudy", "workload-discovery");
+      mkdirSync(cardDir, { recursive: true });
+      const cardPath = join(cardDir, "workload-card.json");
+      writeFileSync(cardPath, `${JSON.stringify({
+        schema_version: "understudy.workload_card.v1",
+        workload_id: "workload-001",
+        workload_name: null,
+      }, null, 2)}\n`);
+
+      const create = await runWithEnvAsync([
+        "--json",
+        "workloads",
+        "create",
+        "--from-card",
+        cardPath,
+        "--project",
+        "rehearsal",
+      ], env, repo);
+      assert.equal(create.status, 0, create.stderr);
+      const created = JSON.parse(create.stdout);
+      assert.equal(created.name, "workload-001");
+      assert.equal(created.id, "usp_workload-001");
+      assert.equal(requests.at(-1).method, "POST");
+      assert.equal(requests.at(-1).path, "/admin/v1/orgs/org_1/projects/proj_1/workloads");
+      assert.deepEqual(requests.at(-1).body, { name: "workload-001", capture_enabled: false });
+
+      const namedCard = join(cardDir, "named-card.json");
+      writeFileSync(namedCard, `${JSON.stringify({
+        schema_version: "understudy.workload_card.v1",
+        workload_id: "workload-001",
+        workload_name: "support_triage",
+      }, null, 2)}\n`);
+      const createNamed = await runWithEnvAsync([
+        "workloads",
+        "create",
+        "--from-card",
+        namedCard,
+        "--capture",
+        "--project",
+        "rehearsal",
+      ], env, repo);
+      assert.equal(createNamed.status, 0, createNamed.stderr);
+      assert.match(createNamed.stdout, /Created workload support_triage/);
+      assert.deepEqual(requests.at(-1).body, { name: "support_triage", capture_enabled: true });
+
+      const both = await runWithEnvAsync([
+        "workloads",
+        "create",
+        "support_triage",
+        "--from-card",
+        cardPath,
+        "--project",
+        "rehearsal",
+      ], env, repo);
+      assert.notEqual(both.status, 0);
+      assert.match(`${both.stderr}${both.stdout}`, /from-card|one source|not both/i);
+
+      const missing = await runWithEnvAsync([
+        "workloads",
+        "create",
+        "--from-card",
+        join(repo, "missing-card.json"),
+        "--project",
+        "rehearsal",
+      ], env, repo);
+      assert.notEqual(missing.status, 0);
+      assert.match(`${missing.stderr}${missing.stdout}`, /missing-card|ENOENT|not found|unreadable|Could not read/i);
+    });
+  });
+
   it("redacts capture payloads by default and writes full payloads only to files", async () => {
     await withHostedFixture(async ({ home, repo }) => {
       const env = { HOME: home, USERPROFILE: home };

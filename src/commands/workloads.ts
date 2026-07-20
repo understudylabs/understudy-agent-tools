@@ -8,6 +8,7 @@ import { trackControlPlaneAction } from "../internal/telemetry.js";
 import {
   listWorkloads,
   parseTrafficPct,
+  readWorkloadCardName,
   resolveWorkload,
   setWorkloadRoute,
   WorkloadSchema,
@@ -22,6 +23,7 @@ interface WorkloadOpts extends ProjectResolutionOptions {}
 
 interface CreateOpts extends WorkloadOpts {
   capture?: boolean;
+  fromCard?: string;
 }
 
 interface UpdateOpts extends WorkloadOpts {
@@ -46,11 +48,12 @@ export function registerWorkloadsCommand(program: Command): void {
       await runAction(this, () => runList(this, opts));
     });
 
-  addProjectOptions(workloads.command("create <name>")
+  addProjectOptions(workloads.command("create [name]")
     .description("Create a workload in a project.")
+    .option("--from-card <path>", "Register a workload using name from a local workload-card.json.")
     .option("--capture", "Enable hosted capture for this workload.")
     .option("--no-capture", "Disable hosted capture for this workload."))
-    .action(async function (this: Command, name: string, opts: CreateOpts) {
+    .action(async function (this: Command, name: string | undefined, opts: CreateOpts) {
       await runAction(this, () => runCreate(this, name, opts));
     });
 
@@ -103,8 +106,15 @@ async function runList(cmd: Command, opts: WorkloadOpts): Promise<void> {
   printWorkloadTable(workloads);
 }
 
-async function runCreate(cmd: Command, name: string, opts: CreateOpts): Promise<void> {
-  validateWorkloadName(name);
+async function runCreate(cmd: Command, name: string | undefined, opts: CreateOpts): Promise<void> {
+  if (name && opts.fromCard) {
+    throw new Error("Pass either a workload name or --from-card, not both.");
+  }
+  const resolvedName = opts.fromCard ? readWorkloadCardName(opts.fromCard) : name;
+  if (!resolvedName) {
+    throw new Error("Pass a workload name or --from-card <path>.");
+  }
+  validateWorkloadName(resolvedName);
   const project = await resolveProject(opts);
   const captureEnabled = Boolean(opts.capture);
   const res = await request(
@@ -112,7 +122,7 @@ async function runCreate(cmd: Command, name: string, opts: CreateOpts): Promise<
       url: `/admin/v1/orgs/${project.auth.orgId}/projects/${encodeURIComponent(project.projectId)}/workloads`,
       orgId: project.auth.orgId,
       method: "POST",
-      body: { name, capture_enabled: captureEnabled },
+      body: { name: resolvedName, capture_enabled: captureEnabled },
     },
     CreateWorkloadResponseSchema,
   );

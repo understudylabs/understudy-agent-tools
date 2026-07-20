@@ -31,6 +31,7 @@ understudy doctor --hosted
 understudy models list --json
 understudy workloads list
 understudy workloads create classify --capture
+understudy workloads create --from-card .understudy/workload-discovery/workload-card.json --project-id <project-id>
 understudy workloads show classify
 understudy workloads update classify --capture off
 understudy workloads route <workload-id> --project-id <project-id> --model-id glm-5.1 --traffic-pct 10

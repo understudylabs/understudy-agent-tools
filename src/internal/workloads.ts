@@ -141,3 +141,35 @@ export function parseTrafficPct(value: string | number | undefined, fallback = 1
   }
   return parsed;
 }
+
+const WorkloadCardNameSchema = z.object({
+  workload_id: z.string().optional().nullable(),
+  workload_name: z.string().optional().nullable(),
+}).passthrough();
+
+/** Resolve a gateway workload name from a local workload-card.json. */
+export function readWorkloadCardName(cardPath: string): string {
+  let raw: string;
+  try {
+    raw = readFileSync(cardPath, "utf8");
+  } catch {
+    throw new Error(`Could not read workload card at ${cardPath}.`);
+  }
+  let parsed: unknown;
+  try {
+    parsed = JSON.parse(raw);
+  } catch {
+    throw new Error(`Invalid JSON in workload card at ${cardPath}.`);
+  }
+  const card = WorkloadCardNameSchema.parse(parsed);
+  const fromName = typeof card.workload_name === "string" ? card.workload_name.trim() : "";
+  const fromId = typeof card.workload_id === "string" ? card.workload_id.trim() : "";
+  const name = fromName || fromId;
+  if (!name) {
+    throw new Error(`Workload card at ${cardPath} has no usable workload_name or workload_id.`);
+  }
+  if (!WORKLOAD_NAME_PATTERN.test(name)) {
+    throw new Error(`Invalid workload name "${name}". Must match /^[a-z0-9][a-z0-9_-]{0,62}$/.`);
+  }
+  return name;
+}
