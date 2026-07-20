@@ -260,7 +260,9 @@ export async function fetchTimeline(): Promise<TimelinePayload> {
       id: r.session_id,
       harness: r.harness || "unknown",
       mode: r.mode || "unknown",
-      title: r.title,
+      // Moraine only gets titles from opencode/cursor; the Gemma scan labeled
+      // everything else — a far better name than "untitled session"
+      title: r.title || scan?.label || "",
       events: r.total_events,
       turns: r.total_turns,
       start: Number(r.start_s),
@@ -321,7 +323,7 @@ export async function fetchSessionDetail(id: string): Promise<SessionDetail | nu
     ...(scan?.cluster ? { cluster: scan.cluster } : {}),
     ...(scan?.clusterId != null ? { clusterId: scan.clusterId } : {}),
     session_id: r.session_id,
-    title: r.title,
+    title: r.title || scan?.label || "",
     harness: r.harness,
     mode: r.mode,
     total_turns: r.total_turns,
@@ -651,10 +653,22 @@ export async function fetchTranscript(
   });
 
   const s = sessions[0];
+  // Moraine titles only exist for opencode/cursor — fall back to the scan label
+  let title = s.title;
+  if (!title) {
+    try {
+      const scan = await sq<{ label: string }>(
+        "scan",
+        "SELECT label FROM session_scan WHERE session_id = ? LIMIT 1",
+        [id],
+      );
+      title = scan[0]?.label ?? "";
+    } catch { /* scan store absent */ }
+  }
   return {
     session: {
       id: s.session_id,
-      title: s.title,
+      title,
       harness: s.harness,
       mode: s.mode,
       turns: s.total_turns,
