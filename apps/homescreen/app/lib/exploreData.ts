@@ -109,6 +109,37 @@ async function sq<T = Record<string, unknown>>(
   return JSON.parse(raw) as T[];
 }
 
+// ---------------------------------------------------------------------------
+// scan pipeline (the "scan my history" button) — desktop-only: the Rust side
+// spawns the bundled `understudy explore` CLI against the resident model.
+
+export type ScanStatus = {
+  running: boolean;
+  stage: string | null;
+  error: string | null;
+  scannedSessions: number;
+};
+
+function assertScanDesktop(): void {
+  if (!isDesktop()) throw new Error("scanning requires the desktop app");
+}
+
+export async function startScan(limit?: number): Promise<void> {
+  assertScanDesktop();
+  await invoke<string>("explore_scan_start", { limit: limit ?? null });
+}
+
+export async function fetchScanStatus(): Promise<ScanStatus> {
+  assertScanDesktop();
+  const raw = await invoke<string>("explore_scan_status");
+  return JSON.parse(raw) as ScanStatus;
+}
+
+export async function cancelScan(): Promise<void> {
+  assertScanDesktop();
+  await invoke("explore_scan_cancel");
+}
+
 function escCh(s: string): string {
   return s.replace(/\\/g, "\\\\").replace(/'/g, "\\'");
 }

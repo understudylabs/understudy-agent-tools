@@ -10,15 +10,19 @@ import TimelineScene, { type LaneLayout } from "./TimelineScene";
 import TracePreview from "./TracePreview";
 import EmptyState from "../EmptyState";
 import {
+  cancelScan,
   fetchCommits,
   fetchCommitsDay,
   fetchExploreStatus,
   fetchHealth,
   fetchLanguages,
   fetchLive,
+  fetchScanStatus,
   fetchSessionDetail,
   fetchTimeline,
   searchTimeline,
+  startScan,
+  type ScanStatus,
   type SessionDetail,
 } from "@/app/lib/exploreData";
 import type { ExploreStatus } from "@/app/lib/exploreContract";
@@ -203,6 +207,9 @@ export default function TimelinePane({
 
   const [status, setStatus] = useState<ExploreStatus | null>(null);
   const [scanBannerDismissed, setScanBannerDismissed] = useState(false);
+  const [scan, setScan] = useState<ScanStatus | null>(null);
+  const [scanError, setScanError] = useState<string | null>(null);
+  const prevScanRunning = useRef(false);
 
   // initial load; on failure (or an empty store) fetch explore_status so the
   // empty state can distinguish "moraine down" from "up but no traces yet"
@@ -226,6 +233,52 @@ export default function TimelinePane({
   useEffect(() => {
     loadTimeline();
   }, [loadTimeline]);
+
+  // scan pipeline status: poll every 5s (cheap local invoke) so an app- or
+  // CLI-started scan surfaces as a progress banner; when a run we watched
+  // finishes cleanly, reload the timeline so labels/clusters appear.
+  useEffect(() => {
+    let alive = true;
+    const tick = () => {
+      fetchScanStatus()
+        .then((s) => {
+          if (!alive) return;
+          if (prevScanRunning.current && !s.running && !s.error) {
+            loadTimeline();
+          }
+          prevScanRunning.current = s.running;
+          setScan(s);
+        })
+        .catch(() => {}); // browser dev / desktop hiccup: keep last state
+    };
+    tick();
+    const id = setInterval(tick, 5000);
+    return () => {
+      alive = false;
+      clearInterval(id);
+    };
+  }, [loadTimeline]);
+
+  const onStartScan = useCallback(() => {
+    setScanError(null);
+    startScan()
+      .then(() => {
+        prevScanRunning.current = true;
+        setScan((prev) => ({
+          running: true,
+          stage: "scan",
+          error: null,
+          scannedSessions: prev?.scannedSessions ?? 0,
+        }));
+      })
+      .catch((e) => setScanError(String(e)));
+  }, []);
+
+  const onCancelScan = useCallback(() => {
+    cancelScan().catch(() => {});
+    prevScanRunning.current = false;
+    setScan((prev) => (prev ? { ...prev, running: false } : prev));
+  }, []);
 
   // commit layer (commits.sqlite via adapter; empty payload when absent)
   useEffect(() => {
@@ -791,10 +844,50 @@ export default function TimelinePane({
         )}
       </div>
 
-      {/* unlabeled-sessions banner (informational; never blocks the timeline) */}
-      {data && data.sessions.length > 0 && status && !status.hasScan && !scanBannerDismissed && (
+      {/* scan banner: progress while a pipeline runs (even when hasScan=true),
+          error with retry, or the unscanned call-to-action */}
+      {scan?.running ? (
+        <div className="mono flex items-center gap-3 border-b border-rule px-6 py-1.5 text-[10px] text-ink-muted">
+          <span>
+            scanning… stage {scan.stage ?? "…"} · {scan.scannedSessions} sessions labeled
+          </span>
+          <button
+            onClick={onCancelScan}
+            className="ml-auto text-ink-muted/60 transition-colors hover:text-ink-bright"
+            aria-label="cancel scan"
+          >
+            ×
+          </button>
+        </div>
+      ) : scanError || scan?.error ? (
+        <div className="mono flex items-center gap-3 border-b border-rule px-6 py-1.5 text-[10px]" style={{ color: "#f85149" }}>
+          <span>scan failed: {scanError ?? scan?.error}</span>
+          <button
+            onClick={onStartScan}
+            className="text-ink-muted transition-colors hover:text-ink-bright"
+          >
+            retry →
+          </button>
+          <button
+            onClick={() => {
+              setScanError(null);
+              setScan((prev) => (prev ? { ...prev, error: null } : prev));
+            }}
+            className="ml-auto text-ink-muted/60 transition-colors hover:text-ink-bright"
+            aria-label="dismiss scan banner"
+          >
+            ×
+          </button>
+        </div>
+      ) : data && data.sessions.length > 0 && status && !status.hasScan && !scanBannerDismissed ? (
         <div className="mono flex items-center gap-3 border-b border-rule px-6 py-1.5 text-[10px] text-ink-muted">
           <span>sessions unlabeled — run the scan pipeline to get task labels &amp; clusters</span>
+          <button
+            onClick={onStartScan}
+            className="text-ink-bright transition-colors hover:opacity-80"
+          >
+            scan my history →
+          </button>
           <button
             onClick={() => setScanBannerDismissed(true)}
             className="ml-auto text-ink-muted/60 transition-colors hover:text-ink-bright"
@@ -803,7 +896,7 @@ export default function TimelinePane({
             ×
           </button>
         </div>
-      )}
+      ) : null}
 
       {/* field */}
       <div className="relative flex-1 min-h-0 flex">
