@@ -24,7 +24,7 @@ pub struct ToolStatus {
     pub detail: String,
 }
 
-const MIN_UNDERSTUDY_CLI_VERSION: &str = "0.6.26";
+const MIN_UNDERSTUDY_CLI_VERSION: &str = "0.6.27";
 
 #[derive(Serialize, Clone)]
 pub struct BootstrapStatus {
