@@ -27,6 +27,7 @@ mod remote_training;
 mod training_api;
 mod training_chat_tools;
 mod training_outcome;
+mod reporting;
 mod residency;
 mod rlm;
 mod scope;
@@ -418,6 +419,8 @@ pub fn run() {
             mgmt::mgmt_billing_balance,
             mgmt::mgmt_workload_create,
             mgmt::mgmt_workload_update,
+            reporting::reporting_workload_status,
+            reporting::reporting_usage_summary,
             chat::chat_stream,
             restart_app,
         ])

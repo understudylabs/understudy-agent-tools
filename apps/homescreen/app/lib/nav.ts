@@ -48,6 +48,8 @@ export const NAV_ITEMS: NavItemDef[] = [
   // The web's project Summary (`/p/[project_slug]`, ActiveView "summary");
   // the desktop scopes by the sidebar Project selector instead of a slug URL.
   { id: "org-project", group: "organization", label: "Project", icon: FolderKanban, pane: "project-summary" },
+  // The web's project-scoped Analytics (`/p/[project_slug]` reporting view).
+  { id: "org-project-analytics", group: "organization", label: "Project Analytics", icon: BarChart3, pane: "project-reporting" },
   // Workload (conditional on scope.workloadId)
   {
     id: "workload-config",

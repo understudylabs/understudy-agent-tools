@@ -25,6 +25,7 @@ export type PaneId =
   | "explore"
   | "workload-config"
   | "project-summary"
+  | "project-reporting"
   | "training-evals"
   | "training-optimization"
   | "training-datasets"

@@ -21,6 +21,7 @@ import { ModelDownloadNotice } from "./components/ModelDownloadNotice";
 import { WorkloadConfigPane } from "./components/WorkloadConfigPane";
 import { OrgSummaryPane } from "./components/OrgSummaryPane";
 import { ProjectSummaryPane } from "./components/ProjectSummaryPane";
+import { ProjectReportingPane } from "./components/ProjectReportingPane";
 import { loadStoredScope, storeScope } from "./components/sidebar/ScopeSwitcher";
 import type { Scope } from "./lib/nav";
 import { useStatus } from "./lib/useStatus";
@@ -228,6 +229,7 @@ export default function Page() {
       "explore",
       "workload-config",
       "project-summary",
+      "project-reporting",
       "training-evals",
       "training-optimization",
       "training-datasets",
@@ -386,6 +388,7 @@ export default function Page() {
             }}
           />
         )}
+        {pane === "project-reporting" && <ProjectReportingPane scope={scope} />}
         {pane === "rlm" && <RlmPane />}
         {pane === "explore" && <ExploreShell />}
         {isTrainingPane(pane) && <TrainingPane section={pane} />}
