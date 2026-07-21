@@ -558,14 +558,14 @@ function PiDesignCards({
   return (
     <section className="automatic-goal-card-design" aria-live="polite">
       <header>
-        <div><span>Understudy environment</span><strong>Target and verifier</strong></div>
+        <div><strong>Target and verifier</strong></div>
         <small>
           {error
             ? "Analysis stopped"
             : phaseProgress?.message
               ?? (architect
                 ? architect.plan_check.status === "passed"
-                  ? "Required decisions checked"
+                  ? null
                   : "Draft ready with advisory warnings"
                 : "Waiting for Understudy")}
           <PiAnalysisElapsed active={active} />
@@ -801,15 +801,42 @@ function StructuredDatasetProfilePage({
   );
 }
 
+function predictionStatement(
+  inspection: TrainingRecipeInspection,
+  targetField: string | undefined,
+  targetGoal: string | null,
+): string | null {
+  if (targetGoal) return targetGoal;
+  if (!targetField) return null;
+  const inputFields = inspection.field_names.filter(
+    (field) => field !== targetField && structuredFieldRole(field) === "input",
+  );
+  let line = inputFields.length > 0
+    ? `Predicting ${targetField} from ${inputFields.join(", ")}`
+    : `Predicting ${targetField}`;
+  const answerCount = inspection.evidence.unique_target_count;
+  if (answerCount > 0) {
+    const samples = [...new Set(
+      inspection.row_preview
+        .map((row) => row.target)
+        .filter((target): target is string => Boolean(target && target.trim())),
+    )].slice(0, 2);
+    line += ` — ${answerCount.toLocaleString()} possible answers${samples.length > 0 ? `: ${samples.join(", ")}` : ""}`;
+  }
+  return `${line}.`;
+}
+
 function StructuredTrainingPlan({
   inspection,
   card,
+  targetGoal,
   backend,
   localAvailable,
   onBackendChange,
 }: {
   inspection: TrainingRecipeInspection;
   card: TrainingGoalCard | null;
+  targetGoal: string | null;
   backend: "local" | "managed";
   localAvailable: boolean;
   onBackendChange: (backend: "local" | "managed") => void;
@@ -818,6 +845,7 @@ function StructuredTrainingPlan({
   const splits = card?.splits ?? planned;
   const evaluator = card?.evaluator ?? inspection.evaluator ?? "Understudy verifier draft";
   const targetField = inspection.field_names.find((field) => structuredFieldRole(field) === "target");
+  const predicting = predictionStatement(inspection, targetField, targetGoal);
   return (
     <div className="csv-training-plan structured-training-plan" role="list" aria-label="Proposed training plan">
       <div className="csv-training-plan-step" role="listitem">
@@ -825,6 +853,7 @@ function StructuredTrainingPlan({
         <strong>{trainingUseCaseLabel(inspection.detected_use_case)}</strong>
         <small>{inspection.evidence.total_rows.toLocaleString()} rows · {inspection.field_names.length.toLocaleString()} fields</small>
         {targetField && <em className="training-target-badge">Target · {targetField}</em>}
+        {predicting && <p className="training-prediction-statement">{predicting}</p>}
       </div>
       <div className="csv-training-plan-step" role="listitem">
         <span>Train</span>
@@ -844,8 +873,8 @@ function StructuredTrainingPlan({
       </div>
       <div className="csv-training-plan-step" role="listitem">
         <span>Prove</span>
-        <strong>{evaluator.replaceAll("_", " ")}</strong>
-        <small>{splits.heldout.toLocaleString()} held-out examples · compare with base</small>
+        <strong>{evaluator === "exact_label" ? "Answers checked against the real labels" : evaluator.replaceAll("_", " ")}</strong>
+        <small>Tested on {splits.heldout.toLocaleString()} examples the model never sees during training — and compared against the untrained model.</small>
       </div>
     </div>
   );
@@ -859,7 +888,6 @@ function AutomaticGoalCard({
   architectDraft,
   architectError,
   onRetryArchitect,
-  analysisModelLabel,
   trainingBackend,
   localTrainingAvailable,
   onTrainingBackendChange,
@@ -871,7 +899,6 @@ function AutomaticGoalCard({
   architectDraft: string;
   architectError: string | null;
   onRetryArchitect: () => void;
-  analysisModelLabel: string;
   trainingBackend: "local" | "managed";
   localTrainingAvailable: boolean;
   onTrainingBackendChange: (backend: "local" | "managed") => void;
@@ -905,7 +932,6 @@ function AutomaticGoalCard({
       <div className="csv-analysis-pi">
         <div className="automatic-goal-card-heading structured-analysis-heading">
           <div>
-            <span>{analysisModelLabel} · live analysis</span>
             <strong>{trainingUseCaseLabel(inspection.detected_use_case)}</strong>
           </div>
           <em data-status={environmentStatus}>
@@ -926,6 +952,7 @@ function AutomaticGoalCard({
       <StructuredTrainingPlan
         inspection={inspection}
         card={card}
+        targetGoal={architect?.target_goal ?? null}
         backend={trainingBackend}
         localAvailable={localTrainingAvailable}
         onBackendChange={onTrainingBackendChange}
@@ -2594,7 +2621,6 @@ export function ChatPane({
                       architectDraft={environmentArchitectDraft}
                       architectError={environmentArchitectError}
                       onRetryArchitect={retryEnvironmentArchitect}
-                      analysisModelLabel={selectedChoice.label}
                       trainingBackend={recipeBackend}
                       localTrainingAvailable={recipeLocalAvailable}
                       onTrainingBackendChange={setRecipeBackend}

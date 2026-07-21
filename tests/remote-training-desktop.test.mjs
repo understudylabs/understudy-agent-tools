@@ -100,7 +100,9 @@ test("remote training uses live capabilities with explicit upload and spend cons
   assert.match(native, /dropped dataset changed after recipe detection/i);
 
   assert.match(panel, /Nothing uploads until you review the exact artifacts and budget/);
-  assert.match(panel, /\{plan\.artifacts\.length\} private splits · endpoint auto-deletes/);
+  assert.match(panel, /What leaves this Mac if you approve/);
+  assert.match(panel, /heldout targets are never uploaded/);
+  assert.match(panel, /hard cap enforced server-side/);
   assert.match(panel, /remote_training_poll/);
   assert.match(panel, /cancel_remote_training/);
   assert.match(panel, /start_remote_training/);
@@ -109,7 +111,6 @@ test("remote training uses live capabilities with explicit upload and spend cons
   assert.match(panel, /preparedPlan/);
   assert.match(panel, /Upload & train/);
   assert.doesNotMatch(panel, /Upload & train · \$/);
-  assert.match(panel, /budget guardrail/);
   assert.match(panel, /remote-training-example-track/);
   assert.match(panel, /trainingExamples/);
   assert.doesNotMatch(panel, /fake/);
@@ -124,7 +125,7 @@ test("remote training uses live capabilities with explicit upload and spend cons
   assert.match(panel, /This run predates detailed failure receipts/);
   assert.match(native, /join\("result\.json"\)/);
   assert.match(native, /matches!\(\*value, "completed" \| "failed" \| "cancelled"\)/);
-  assert.match(panel, /private splits · endpoint auto-deletes/);
+  assert.match(panel, /remote-training-consent-card/);
   assert.doesNotMatch(panel, /type="checkbox"/);
   assert.match(panel, /Where it still fails/);
   assert.match(panel, /understudy\/auto/);

@@ -3946,6 +3946,12 @@ select,
   line-height: 1.45;
   overflow-wrap: anywhere;
 }
+.training-prediction-statement {
+  margin: 4px 0 0;
+  color: var(--text-2);
+  font-size: 11px;
+  line-height: 1.45;
+}
 .training-target-badge {
   width: fit-content;
   margin-top: 3px;
@@ -4403,6 +4409,74 @@ select,
   font-size: 9px;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+.remote-training-consent-card {
+  display: grid;
+  gap: 10px;
+  width: 100%;
+  padding: 14px 18px 15px;
+  border: 1px solid color-mix(in srgb, var(--text) 10%, transparent);
+  border-radius: 11px;
+  background: color-mix(in srgb, var(--c-window) 94%, transparent);
+  text-align: left;
+  animation: analysis-card-enter 260ms var(--motion-ease) both;
+}
+.remote-training-consent-card > header {
+  display: flex;
+  align-items: baseline;
+  justify-content: space-between;
+  gap: 16px;
+  flex-wrap: wrap;
+}
+.remote-training-consent-card > header strong {
+  color: var(--c-ink);
+  font-family: var(--mono);
+  font-size: 13px;
+  font-weight: 500;
+}
+.remote-training-consent-card > header small {
+  color: var(--text-3);
+  font-size: 11px;
+}
+.remote-training-consent-rows {
+  display: grid;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+.remote-training-consent-rows li {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  column-gap: 8px;
+  padding: 6px 0;
+  border-top: 1px solid color-mix(in srgb, var(--text) 7%, transparent);
+  font-size: 12px;
+}
+.remote-training-consent-rows li > code {
+  color: var(--c-ink);
+  font-family: var(--mono);
+  font-size: 11px;
+}
+.remote-training-consent-rows li > span {
+  color: var(--text-3);
+}
+.remote-training-consent-rows li > button {
+  margin-left: auto;
+}
+.remote-training-consent-facts {
+  display: grid;
+  gap: 3px;
+  margin: 0;
+  padding: 8px 0 0;
+  border-top: 1px solid color-mix(in srgb, var(--text) 7%, transparent);
+  list-style: none;
+  color: var(--text-3);
+  font-size: 11px;
+}
+.remote-training-consent-facts code {
+  font-family: var(--mono);
+  font-size: 11px;
 }
 .remote-training-consent-summary {
   margin: 0;

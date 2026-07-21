@@ -1480,7 +1480,7 @@ pub async fn propose_training_environment_with_pi(
         &pi_notes,
         "environment",
         if evaluator.as_deref() == Some("exact_label") {
-            "Exact-label verifier with deterministic held-out evaluation."
+            "The model's answers are checked against the real labels."
         } else {
             "Portable parser and verifier contract proposed by Understudy."
         },
@@ -1488,7 +1488,7 @@ pub async fn propose_training_environment_with_pi(
     let validation_summary = pi_note_summary(
         &pi_notes,
         "validation_plan",
-        "Oracle, negative, leakage, and reward-hacking sentinels must pass before training.",
+        "Before training starts, we run four honesty checks: a known-correct answer must score perfectly, wrong and empty answers must score zero, and the model can never see the held-out answers.",
     );
     let train = total_rows * 70 / 100;
     let validation = total_rows * 15 / 100;
@@ -5505,7 +5505,7 @@ mod tests {
                 "class_balance": { "no": 9193, "yes": 2364 }
             },
             "environment": {
-                "kind": "Exact-label verifier"
+                "kind": "Answers are checked against the real labels"
             }
         });
         assert_eq!(
@@ -5514,7 +5514,7 @@ mod tests {
         );
         assert_eq!(
             pi_note_summary(&notes, "environment", "fallback"),
-            "Exact-label verifier"
+            "Answers are checked against the real labels"
         );
         assert_eq!(pi_note_summary(&notes, "missing", "fallback"), "fallback");
     }

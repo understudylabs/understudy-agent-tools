@@ -276,29 +276,31 @@ function CopyableSha({ sha256 }: { sha256: string }) {
 function ConsentReceipts({ plan }: { plan: RemotePlan }) {
   const totalBytes = plan.artifacts.reduce((sum, artifact) => sum + artifact.size_bytes, 0);
   return (
-    <div className="remote-training-consent-receipts w-full text-left text-[12px]" aria-label="Exactly what leaves this Mac">
-      <strong className="block">What leaves this Mac if you approve</strong>
-      <ul className="m-0 mt-1 grid list-none gap-1 p-0">
+    <section className="remote-training-consent-card" aria-label="Exactly what leaves this Mac">
+      <header>
+        <div><strong>What leaves this Mac if you approve</strong></div>
+        <small>{compactSize(totalBytes)} total upload · heldout targets are never uploaded</small>
+      </header>
+      <ul className="remote-training-consent-rows">
         {plan.artifacts.map((artifact) => (
-          <li key={artifact.file_name} className="flex flex-wrap items-baseline gap-x-2">
-            <code className="font-mono text-[11px]">{artifact.file_name}</code>
-            <span className="text-muted-foreground">
+          <li key={artifact.file_name}>
+            <code>{artifact.file_name}</code>
+            <span>
               {artifact.artifact_role} · {artifact.row_count.toLocaleString()} rows · {compactSize(artifact.size_bytes)}
             </span>
             <CopyableSha sha256={artifact.sha256} />
           </li>
         ))}
       </ul>
-      <ul className="m-0 mt-2 grid list-none gap-0.5 p-0 text-muted-foreground">
-        <li>{compactSize(totalBytes)} total upload · heldout targets are never uploaded</li>
+      <ul className="remote-training-consent-facts">
         <li>
           Max spend {plan.maximum_spend_usd.toLocaleString(undefined, { style: "currency", currency: "USD" })} · hard cap enforced server-side
         </li>
         <li>
-          Output model · <code className="font-mono text-[11px]">{plan.output_model_name}</code>
+          Output model · <code>{plan.output_model_name}</code>
         </li>
       </ul>
-    </div>
+    </section>
   );
 }
 
