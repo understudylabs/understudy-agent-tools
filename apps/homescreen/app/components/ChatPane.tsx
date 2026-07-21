@@ -1561,6 +1561,7 @@ export function ChatPane({
         setNotice(installed.base_ready
           ? `Installed ${installed.name} ${installed.version}.`
           : `Installed ${installed.name} ${installed.version}. Downloading its required base model now…`);
+        dispatchDrop({ type: "reset" });
         setClassifierLibraryOpen(true);
       } catch (error) {
         if (disposed) return;
@@ -1570,6 +1571,7 @@ export function ChatPane({
           compileDroppedPath(path);
           return;
         }
+        dispatchDrop({ type: "failed" });
         setErr(`Model package rejected: ${String(error)}`);
       } finally {
         if (!handedOffToWorkload) dropInFlight.current = false;
