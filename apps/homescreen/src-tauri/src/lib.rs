@@ -1,5 +1,6 @@
 mod aa;
 mod account;
+mod admin;
 mod agent_card;
 mod agent_ops;
 mod anthropic;
@@ -405,6 +406,7 @@ pub fn run() {
             explore::explore_scan_start,
             explore::explore_scan_status,
             explore::explore_scan_cancel,
+            admin::admin_get,
             scope::projects_list,
             scope::workloads_list,
             chat::chat_stream,

@@ -42,7 +42,7 @@ const COMING = "Coming in this migration";
 // Registry: surface id -> pane id (Aamir's ControlPlaneShell labels verbatim).
 export const NAV_ITEMS: NavItemDef[] = [
   // Organization
-  { id: "org-summary", group: "organization", label: "Summary", icon: LayoutDashboard, pane: "status" },
+  { id: "org-summary", group: "organization", label: "Summary", icon: LayoutDashboard, pane: "org-summary" },
   { id: "org-analytics", group: "organization", label: "Analytics", icon: BarChart3, pane: "usage" },
   // Workload (conditional on scope.workloadId)
   {

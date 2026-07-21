@@ -13,6 +13,7 @@ import type { TrainingThreadSummary } from "../lib/training-threads.mjs";
 
 export type PaneId =
   | "status"
+  | "org-summary"
   | "chat"
   | "models"
   | "capture"

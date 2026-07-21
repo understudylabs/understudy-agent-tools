@@ -18,6 +18,7 @@ import { ExploreShell, requestExploreFocus } from "./components/explore/ExploreS
 import { RuntimeRepairPrompt } from "./components/RuntimeRepairPrompt";
 import { ModelDownloadNotice } from "./components/ModelDownloadNotice";
 import { WorkloadConfigPane } from "./components/WorkloadConfigPane";
+import { OrgSummaryPane } from "./components/OrgSummaryPane";
 import { loadStoredScope, storeScope } from "./components/sidebar/ScopeSwitcher";
 import type { Scope } from "./lib/nav";
 import { useStatus } from "./lib/useStatus";
@@ -216,6 +217,7 @@ export default function Page() {
     if (!isTauri()) return;
     const valid: PaneId[] = [
       "status",
+      "org-summary",
       "chat",
       "models",
       "account",
@@ -345,6 +347,14 @@ export default function Page() {
       />
       <main className="content">
         {pane === "status" && <StatusPane status={status} />}
+        {pane === "org-summary" && (
+          <OrgSummaryPane
+            onOpenWorkload={(projectId, workloadId) => {
+              handleScopeChange({ projectId, workloadId });
+              setPane("workload-config");
+            }}
+          />
+        )}
         {pane === "chat" && (
           <ChatPane
             resetToken={chatResetToken}
