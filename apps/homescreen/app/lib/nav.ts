@@ -52,8 +52,6 @@ export const NAV_ITEMS: NavItemDef[] = [
     icon: Settings2,
     pane: "workload-config",
     requiresWorkload: true,
-    disabled: true,
-    disabledReason: COMING,
   },
   { id: "workload-captures", group: "workload", label: "Captures", icon: Inbox, pane: "capture", requiresWorkload: true },
   // Training

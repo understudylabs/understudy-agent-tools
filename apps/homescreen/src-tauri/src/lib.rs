@@ -407,6 +407,9 @@ pub fn run() {
             explore::explore_scan_cancel,
             scope::projects_list,
             scope::workloads_list,
+            scope::workload_config_load,
+            scope::workload_routing_apply,
+            scope::workload_capture_set,
             chat::chat_stream,
             restart_app,
         ])
