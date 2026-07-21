@@ -109,12 +109,22 @@ type PortableTaskModel = {
   base_model_id: string;
   bytes: number;
   top_k: number;
+  base_ready: boolean;
+  base_download_id?: string | null;
 };
 
 type PortablePrediction = {
   prediction: { l3_id: number; l3: string; probability: number };
   top_k: { l3_id: number; l3: string; probability: number }[];
   elapsed_ms: number;
+};
+
+type DownloadProgress = {
+  id: string;
+  model_id: string;
+  status: "running" | "done" | "error" | "cancelled";
+  started_at: string;
+  error?: string | null;
 };
 
 function compactBytes(bytes: number): string {
@@ -157,11 +167,22 @@ export function LocalClassifierLibraryDialog({
   const [portableText, setPortableText] = useState("");
   const [portablePrediction, setPortablePrediction] = useState<PortablePrediction | null>(null);
   const [portableNotice, setPortableNotice] = useState<string | null>(null);
+  const [downloads, setDownloads] = useState<DownloadProgress[]>([]);
   const requestGeneration = useRef(0);
 
   const selected = useMemo(
     () => runs.find((run) => run.run_id === selectedRunId) ?? runs[0] ?? null,
     [runs, selectedRunId],
+  );
+  const selectedPortable = useMemo(
+    () => portableModels.find((model) => `${model.id}@${model.version}` === portableModelKey) ?? null,
+    [portableModelKey, portableModels],
+  );
+  const selectedBaseDownload = useMemo(
+    () => downloads
+      .filter((download) => download.model_id === selectedPortable?.base_model_id)
+      .sort((left, right) => right.started_at.localeCompare(left.started_at))[0] ?? null,
+    [downloads, selectedPortable?.base_model_id],
   );
 
   const loadRuns = useCallback(async (showArchived: boolean, preferredRunId?: string | null) => {
@@ -201,8 +222,12 @@ export function LocalClassifierLibraryDialog({
   }, [archived, loadRuns, open]);
 
   const loadPortableModels = useCallback(async () => {
-    const models = await invoke<PortableTaskModel[]>("list_task_models");
+    const [models, nextDownloads] = await Promise.all([
+      invoke<PortableTaskModel[]>("list_task_models"),
+      invoke<DownloadProgress[]>("list_snapshot_downloads"),
+    ]);
     setPortableModels(models);
+    setDownloads(nextDownloads);
     setPortableModelKey((current) => current || (models[0] ? `${models[0].id}@${models[0].version}` : ""));
   }, []);
 
@@ -221,7 +246,9 @@ export function LocalClassifierLibraryDialog({
       setPortableNotice("Verifying task model…");
       try {
         const installed = await invoke<PortableTaskModel>("install_task_model", { path });
-        setPortableNotice(`Installed ${installed.name} ${installed.version}.`);
+        setPortableNotice(installed.base_ready
+          ? `Installed ${installed.name} ${installed.version}.`
+          : `Installed ${installed.name}. Downloading its required base model now…`);
         await loadPortableModels();
         setPortableModelKey(`${installed.id}@${installed.version}`);
       } catch (installError) {
@@ -232,6 +259,36 @@ export function LocalClassifierLibraryDialog({
     }).then((unlisten) => { dispose = unlisten; });
     return () => dispose?.();
   }, [loadPortableModels, open]);
+
+  useEffect(() => {
+    if (!open || !isTauri() || !downloads.some((download) => download.status === "running")) return;
+    const timer = window.setInterval(() => {
+      void loadPortableModels().catch((loadError) => setPortableNotice(String(loadError)));
+    }, 1_000);
+    return () => window.clearInterval(timer);
+  }, [downloads, loadPortableModels, open]);
+
+  useEffect(() => {
+    if (selectedBaseDownload?.status === "error" || selectedBaseDownload?.status === "cancelled") {
+      setPortableNotice(selectedBaseDownload.error
+        ? `Base-model download stopped: ${selectedBaseDownload.error}`
+        : "Base-model download stopped. You can retry it here.");
+    }
+  }, [selectedBaseDownload?.error, selectedBaseDownload?.status]);
+
+  const retryPortableBase = async () => {
+    if (!selectedPortable || busy) return;
+    setBusy(true);
+    setPortableNotice("Restarting the resumable base-model download…");
+    try {
+      await invoke<string>("start_snapshot_download", { modelId: selectedPortable.base_model_id });
+      await loadPortableModels();
+    } catch (downloadError) {
+      setPortableNotice(`Could not restart the base-model download: ${String(downloadError)}`);
+    } finally {
+      setBusy(false);
+    }
+  };
 
   useEffect(() => {
     setDisplayName(selected?.display_name ?? "");
@@ -381,7 +438,22 @@ export function LocalClassifierLibraryDialog({
                 ))}
               </select>
               <input value={portableText} maxLength={4_000} onChange={(event) => { setPortableText(event.target.value); setPortablePrediction(null); }} placeholder="Try a new example" />
-              <button type="submit" className="btn primary" disabled={busy || !portableText.trim()}>{busy ? "Working…" : "Run locally"}</button>
+              <button
+                type={selectedBaseDownload?.status === "error" || selectedBaseDownload?.status === "cancelled" ? "button" : "submit"}
+                className="btn primary"
+                disabled={busy || (selectedPortable?.base_ready
+                  ? !portableText.trim()
+                  : selectedBaseDownload?.status !== "error" && selectedBaseDownload?.status !== "cancelled")}
+                onClick={selectedBaseDownload?.status === "error" || selectedBaseDownload?.status === "cancelled" ? () => { void retryPortableBase(); } : undefined}
+              >
+                {busy
+                  ? "Working…"
+                  : selectedPortable?.base_ready
+                    ? "Run locally"
+                    : selectedBaseDownload?.status === "error" || selectedBaseDownload?.status === "cancelled"
+                      ? "Retry base download"
+                      : "Downloading base model…"}
+              </button>
             </form>
           ) : <p>No portable models installed yet.</p>}
           {portablePrediction && (

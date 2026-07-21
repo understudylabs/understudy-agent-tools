@@ -87,6 +87,8 @@ pub struct TaskModelInfo {
     pub bytes: u64,
     pub file_count: u64,
     pub top_k: u64,
+    pub base_ready: bool,
+    pub base_download_id: Option<String>,
 }
 
 pub(crate) fn task_models_dir() -> Result<PathBuf, String> {
@@ -116,7 +118,10 @@ pub(crate) fn cached_base_model(id: &str) -> Result<PathBuf, String> {
     let base = crate::models::models_dir()
         .ok_or_else(|| "cannot resolve Understudy model directory".to_string())?
         .join(relative);
-    if !base.is_dir() {
+    if !base.is_dir()
+        || base.join(crate::models::INCOMPLETE_MARKER).exists()
+        || !base.join("config.json").is_file()
+    {
         return Err(format!(
             "required base model is not downloaded: {id}. Download it in Models first"
         ));
@@ -441,6 +446,7 @@ fn validate_bundle(bundle: &Path) -> Result<(TaskModelManifest, u64), String> {
 
 fn info(bundle: &Path, installed: bool) -> Result<TaskModelInfo, String> {
     let (manifest, bytes) = validate_bundle(bundle)?;
+    let base_ready = cached_base_model(&manifest.runtime.base_model.id).is_ok();
     Ok(TaskModelInfo {
         id: manifest.id,
         version: manifest.version,
@@ -454,6 +460,8 @@ fn info(bundle: &Path, installed: bool) -> Result<TaskModelInfo, String> {
         bytes,
         file_count: manifest.files.len() as u64,
         top_k: manifest.scorer.top_k,
+        base_ready,
+        base_download_id: None,
     })
 }
 
@@ -483,11 +491,44 @@ pub fn inspect_task_model(path: String) -> Result<TaskModelInfo, String> {
 }
 
 #[tauri::command]
-pub fn install_task_model(path: String) -> Result<TaskModelInfo, String> {
+pub fn install_task_model(app: tauri::AppHandle, path: String) -> Result<TaskModelInfo, String> {
+    use tauri::Manager;
+
     let source = PathBuf::from(path);
-    install_task_model_to(&source, &task_models_dir()?)
+    let prepared = prepare_bundle(&source)?;
+    let preview = info_with_display_path(&prepared.root, &source, false)?;
+    if !preview.base_ready
+        && !crate::models::snapshots()
+            .iter()
+            .any(|snapshot| snapshot.id == preview.base_model_id)
+    {
+        return Err(format!(
+            "required base model is not available for automatic download: {}",
+            preview.base_model_id
+        ));
+    }
+    let mut installed = install_prepared_task_model_to(&prepared.root, &task_models_dir()?)?;
+    if !installed.base_ready {
+        installed.base_download_id = Some(
+            match crate::agent_ops::start_model_download(&app, installed.base_model_id.clone()) {
+                Ok(download_id) => download_id,
+                Err(error) if error.starts_with("download already in progress") => app
+                    .state::<crate::agent_ops::Downloads>()
+                    .list()
+                    .into_iter()
+                    .find(|download| {
+                        download.model_id == installed.base_model_id && download.status == "running"
+                    })
+                    .map(|download| download.id)
+                    .ok_or(error)?,
+                Err(error) => return Err(error),
+            },
+        );
+    }
+    Ok(installed)
 }
 
+#[cfg(test)]
 fn install_task_model_to(source: &Path, root: &Path) -> Result<TaskModelInfo, String> {
     let prepared = prepare_bundle(source)?;
     install_prepared_task_model_to(&prepared.root, root)
