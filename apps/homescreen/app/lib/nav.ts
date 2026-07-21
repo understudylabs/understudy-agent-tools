@@ -2,6 +2,7 @@ import type { LucideIcon } from "lucide-react";
 import {
   BarChart3,
   Beaker,
+  FolderKanban,
   Boxes,
   CreditCard,
   Compass,
@@ -44,6 +45,9 @@ export const NAV_ITEMS: NavItemDef[] = [
   // Organization
   { id: "org-summary", group: "organization", label: "Summary", icon: LayoutDashboard, pane: "status" },
   { id: "org-analytics", group: "organization", label: "Analytics", icon: BarChart3, pane: "usage" },
+  // The web's project Summary (`/p/[project_slug]`, ActiveView "summary");
+  // the desktop scopes by the sidebar Project selector instead of a slug URL.
+  { id: "org-project", group: "organization", label: "Project", icon: FolderKanban, pane: "project-summary" },
   // Workload (conditional on scope.workloadId)
   {
     id: "workload-config",
