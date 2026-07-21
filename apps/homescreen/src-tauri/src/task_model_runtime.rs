@@ -51,15 +51,10 @@ fn run_blocking(request: RunTaskModelRequest) -> Result<Vec<TaskModelPrediction>
         crate::task_models::installed_task_model(&request.model_id, &request.version)?;
     let base = crate::task_models::cached_base_model(&manifest.runtime.base_model.id)?;
     let python = crate::bin::mlx_python()?;
-    let runner_path = std::env::temp_dir().join(format!(
-        "understudy-task-model-runner-{}-{}.py",
-        std::process::id(),
-        chrono::Utc::now().timestamp_millis()
-    ));
-    std::fs::write(&runner_path, RUNNER)
-        .map_err(|err| format!("cannot prepare task-model runner: {err}"))?;
+    let row_count = request.rows.len();
     let mut child = Command::new(python)
-        .arg(&runner_path)
+        .arg("-c")
+        .arg(RUNNER)
         .arg("--bundle")
         .arg(&bundle)
         .arg("--base-model")
@@ -70,30 +65,31 @@ fn run_blocking(request: RunTaskModelRequest) -> Result<Vec<TaskModelPrediction>
         .stderr(Stdio::piped())
         .spawn()
         .map_err(|err| format!("cannot start task-model runtime: {err}"))?;
-    let input_result = (|| {
-        let mut stdin = child
-            .stdin
-            .take()
-            .ok_or("task-model runtime has no stdin")?;
-        for row in &request.rows {
-            serde_json::to_writer(&mut stdin, row)
+    let mut stdin = child
+        .stdin
+        .take()
+        .ok_or("task-model runtime has no stdin")?;
+    let writer = std::thread::spawn(move || {
+        for row in request.rows {
+            serde_json::to_writer(&mut stdin, &row)
                 .map_err(|err| format!("cannot encode task-model input: {err}"))?;
             stdin
                 .write_all(b"\n")
                 .map_err(|err| format!("cannot write task-model input: {err}"))?;
         }
         Ok::<(), String>(())
-    })();
-    if let Err(err) = input_result {
-        let _ = child.kill();
-        let _ = std::fs::remove_file(&runner_path);
-        return Err(err);
-    }
+    });
+    // Drain stdout and stderr while the writer feeds stdin. Reading only after
+    // every input row is written can deadlock once the child's stdout pipe is
+    // full and the child stops consuming stdin.
     let output = child
         .wait_with_output()
         .map_err(|err| format!("cannot wait for task-model runtime: {err}"));
-    let _ = std::fs::remove_file(&runner_path);
+    let input_result = writer
+        .join()
+        .map_err(|_| "task-model input writer panicked".to_string())?;
     let output = output?;
+    input_result?;
     if !output.status.success() {
         let stderr = String::from_utf8_lossy(&output.stderr);
         return Err(format!(
@@ -112,11 +108,11 @@ fn run_blocking(request: RunTaskModelRequest) -> Result<Vec<TaskModelPrediction>
                 .map_err(|err| format!("invalid task-model output: {err}"))
         })
         .collect::<Result<Vec<_>, _>>()?;
-    if predictions.len() != request.rows.len() {
+    if predictions.len() != row_count {
         return Err(format!(
             "task-model runtime returned {} predictions for {} rows",
             predictions.len(),
-            request.rows.len()
+            row_count
         ));
     }
     Ok(predictions)

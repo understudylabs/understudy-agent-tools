@@ -314,8 +314,7 @@ fn prepare_bundle(source: &Path) -> Result<PreparedBundle, String> {
         for child in fs::read_dir(&payload).map_err(|err| err.to_string())? {
             let child = child.map_err(|err| err.to_string())?.path();
             if child.is_dir()
-                && child.extension().and_then(|value| value.to_str())
-                    == Some("understudy-model")
+                && child.extension().and_then(|value| value.to_str()) == Some("understudy-model")
                 && child.join("manifest.json").is_file()
             {
                 roots.push(child);
@@ -670,7 +669,9 @@ mod tests {
             archive
                 .start_file(format!("{prefix}{relative}"), options)
                 .unwrap();
-            archive.write_all(&fs::read(source.join(relative)).unwrap()).unwrap();
+            archive
+                .write_all(&fs::read(source.join(relative)).unwrap())
+                .unwrap();
         }
         archive.finish().unwrap();
         path
@@ -726,7 +727,10 @@ mod tests {
                 .as_nanos()
         ));
         let inspected = prepare_bundle(&archive).unwrap();
-        assert_eq!(validate_bundle(&inspected.root).unwrap().0.id, "fixture-classifier");
+        assert_eq!(
+            validate_bundle(&inspected.root).unwrap().0.id,
+            "fixture-classifier"
+        );
         drop(inspected);
         let installed = install_task_model_to(&archive, &install_root).unwrap();
         assert!(installed.installed);
