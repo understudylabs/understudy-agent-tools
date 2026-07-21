@@ -17,6 +17,23 @@ uses semantic-ish versioning (minor = new skill or new capability, patch = fixes
 
 ### Added
 
+- **Sign in as yourself, right from the app.** Desktop/runtime 0.3.40 and CLI
+  0.6.37 add browser-based user sign-in (WorkOS AuthKit, PKCE): Account →
+  "Sign in with browser" opens your default browser, and the app picks up the
+  session with no keys to paste. Signed-in users regain workload-scoped
+  capture browsing and get a "signed in as" identity ahead of in-app
+  management edits; the existing org API-key flow keeps working unchanged
+  for headless and reporting-only use.
+- **A calmer, clearer Desktop.** The app now follows the Understudy design
+  language across every pane — mint as the single operational accent (the
+  legacy orange is retired to vendor identity), cyan for live trace flow,
+  violet for search/lineage views, amber for training and data-taking. The
+  sidebar consolidates into Capture / Training / Chats / Manage, opens by
+  default, shows your organization at bottom-left, and the Workloads view is
+  one table with error rate and traffic allocation alongside cost and cache
+  reads. Pane scrolling on tall views works again, and abandoned training
+  runs no longer linger in the sidebar.
+
 - **See and manage your whole Understudy account from the app.** Desktop/runtime
   0.3.39 and CLI 0.6.36 bring the management control plane into Understudy
   Desktop: without leaving the app you can see your organization and project at
