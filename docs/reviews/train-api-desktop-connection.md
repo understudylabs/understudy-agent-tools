@@ -64,16 +64,31 @@ Checklist:
   block.
 - Only the approved plan artifacts are uploaded. Each is re-verified at send
   time:
-  - `verify_remote_artifact()` canonicalizes the path and asserts it lives
-    under a `remote-training/<plan-root>/` private root (path-escape guard),
+  - `verify_remote_artifact()` canonicalizes the path (resolving symlinks
+    before the check) and requires the artifact's grandparent directory to be
+    named `remote-training/` (a `..`/symlink/absolute-path escape guard),
     re-reads bytes and re-checks `sha256` + `size_bytes` + row count against the
     approved plan, and enforces `MAX_REMOTE_ARTIFACT_BYTES` (150 MiB).
+    **Scope note:** this guard checks the directory *name*, not that the path is
+    inside the app's data dir — a plan whose artifacts sit under any
+    `remote-training/` directory passes. See the trust model below.
   - `upload_artifact()` requires the upload-intent `sha256` to equal the
     artifact `sha256`, re-reads the file, and asserts the on-wire body length
     equals the declared `size_bytes` (defeats the Vercel Blob empty-object
     ack).
-- The `consent` payload records `approved_artifact_sha256` for every artifact,
-  so the server can bind the run to exactly the approved bytes.
+- The `consent` payload records `approved_artifact_sha256` for every artifact.
+  **Note:** this value is the plan's own declared `sha256`, not an independent
+  approval-time capture, so the anti-swap guarantee is "the uploaded bytes match
+  the plan's declared hashes," which reduces to the trust model below.
+
+**Trust model (explicit):** the on-disk plan file (`plan.json` and its
+`remote-training/` artifact directory) is trusted — plan integrity rests on the
+plan path self-canonicalizing, not a signature. An attacker with local write
+access to the plan file and its artifacts could alter both the bytes and the
+declared `sha256` and pass every check. This is acceptable because the plan
+lives in the user's own local workspace on their machine (the same trust
+boundary as any local file the app reads); it is NOT a defense against a
+compromised local account.
 - Local inspection/compile steps assert a "local-only"/"statistics-only"
   boundary before anything is eligible for upload
   (dataset/CSV inspection guards).
@@ -110,8 +125,20 @@ Checklist:
 - Capabilities are validated against the plan up front; the model profile and
   provider (`managed`) must be present and enabled.
 - No secrets, dataset rows, prompts, signed URLs, or run tokens are logged
-  (matches the service AGENTS.md "never log" boundary); error strings are
-  truncated to 500 chars.
+  (matches the service AGENTS.md "never log" boundary); the only `eprintln!`
+  calls in the module are inside `#[cfg(test)]`. Server error strings are
+  surfaced to the UI truncated to 500 chars — note these are
+  server-*controlled* text (a compromised control plane picks the wording),
+  but they carry no local secrets.
+- **TLS:** the reqwest client uses default certificate + hostname verification;
+  there is no `danger_accept_invalid_certs`/`danger_accept_invalid_hostnames`
+  anywhere.
+- **Bounded responses:** `read_bounded_json()` caps every control-plane
+  response body at `MAX_CONTROL_PLANE_RESPONSE_BYTES` (8 MiB) — it rejects an
+  oversized declared `Content-Length` and streams chunk-by-chunk so a
+  chunked/streamed body that omits or understates its length is still bounded,
+  closing the memory-exhaustion vector a malicious control plane could
+  otherwise reach within the 60s request timeout.
 
 Checklist:
 - [ ] Every remote step has an explicit failure path; none default to "proceed".
@@ -124,12 +151,44 @@ Checklist:
   `DELETE /uploads` with the uploaded `pathnames` so orphaned blobs are removed.
 - Run/plan state is persisted under the private per-run root (`persist_run`),
   keeping receipts local and canonically bound.
+- **Known limits (best-effort, not exhaustive):** cleanup targets only uploads
+  whose intent returned a `pathname`; an upload-intent without a `pathname`, or
+  a PUT that partially landed under a non-success status, is not tracked and so
+  is not deleted. The `DELETE` result is intentionally ignored (`let _ =`), so a
+  failed cleanup leaves orphaned blobs with no user-visible record. These are
+  cost/hygiene gaps on the provider side, not data-exposure gaps (the blobs are
+  the user's own consented splits in their private store). Follow-up:
+  track untracked/partial uploads and surface a notice when best-effort
+  cleanup fails.
 
 Checklist:
-- [ ] Failed runs clean up their uploads.
+- [ ] Failed runs clean up their uploads (best-effort; see known limits).
 - [ ] Run receipts are stored privately and integrity-bound.
 
 ---
+
+## Adversarial verification
+
+An independent agent tried to refute each claim against the code. The five
+headline claims (transport pinning, auth fail-closed, consent/egress, spend
+bounds, no-secret-logging) held up, including against redirect / host / port /
+path-escape / unicode-IDNA bypass attempts. Three items it flagged have been
+addressed in this PR before sign-off:
+
+- **Response-size DoS (fixed):** control-plane bodies were buffered unbounded
+  (only a 60s timeout limited them). Added `read_bounded_json()` (8 MiB cap,
+  Content-Length + streamed-chunk enforcement) on both response readers.
+- **"Private root" wording (corrected):** the guard checks the directory *name*
+  `remote-training/`, not the app data dir. Doc now states this and the local
+  trust model explicitly.
+- **sha "binding" wording (corrected):** `approved_artifact_sha256` is the
+  plan's own declared hash, so anti-swap reduces to "the local plan file is
+  trusted." Stated plainly.
+- **Userinfo parity (fixed):** `validate_control_plane_url` now rejects embedded
+  credentials in server-returned URLs, matching `train_api_base()`.
+- **Cleanup limits (documented):** best-effort `DELETE /uploads` does not track
+  untracked/partial uploads and ignores its own failure; noted as a cost/hygiene
+  follow-up, not a data-exposure gap.
 
 ## Sign-off
 
