@@ -7883,3 +7883,23 @@ select,
 .workload-health-dot.failing {
   background: var(--model-clay);
 }
+
+/* Model catalog pane (ported from web /models): outline count badge, table. */
+.badge-outline {
+  display: inline-flex;
+  align-items: center;
+  padding: 2px 8px;
+  border: 1px solid var(--border);
+  border-radius: 999px;
+  font-size: 0.62rem;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+  color: var(--text);
+}
+.catalog-table {
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  overflow: hidden;
+  font-size: 0.82rem;
+}

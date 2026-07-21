@@ -15,6 +15,7 @@ export type PaneId =
   | "status"
   | "chat"
   | "models"
+  | "model-catalog"
   | "capture"
   | "account"
   | "usage"

@@ -6,6 +6,7 @@ import {
   CreditCard,
   Compass,
   FlaskConical,
+  HardDrive,
   Inbox,
   KeyRound,
   LayoutDashboard,
@@ -61,7 +62,10 @@ export const NAV_ITEMS: NavItemDef[] = [
   // Chats (Explore is an ordinary row; New chat is rendered separately)
   { id: "chats-explore", group: "sessions", label: "Explore Data", icon: Compass, pane: "explore" },
   // Manage
-  { id: "manage-models", group: "manage", label: "Models", icon: Boxes, pane: "models" },
+  // "Models" is Aamir's catalog surface (web /models). The desktop-native
+  // local model library keeps its own row so it stays reachable from nav.
+  { id: "manage-models", group: "manage", label: "Models", icon: Boxes, pane: "model-catalog" },
+  { id: "manage-local-models", group: "manage", label: "Local models", icon: HardDrive, pane: "models" },
   { id: "manage-api-keys", group: "manage", label: "API keys", icon: KeyRound, pane: "account" },
   { id: "manage-traces", group: "manage", label: "Traces", icon: ScrollText, pane: "traces" },
   { id: "manage-lab", group: "manage", label: "Lab", icon: Beaker, pane: "rlm" },
