@@ -11,6 +11,7 @@ import {
   LayoutDashboard,
   ScrollText,
   Settings2,
+  UserCog,
   Wrench,
 } from "lucide-react";
 import type { PaneId } from "../components/Sidebar";
@@ -65,6 +66,8 @@ export const NAV_ITEMS: NavItemDef[] = [
   { id: "manage-api-keys", group: "manage", label: "API keys", icon: KeyRound, pane: "account" },
   { id: "manage-traces", group: "manage", label: "Traces", icon: ScrollText, pane: "traces" },
   { id: "manage-lab", group: "manage", label: "Lab", icon: Beaker, pane: "rlm" },
+  // Web: footer Account (/settings) + project settings (/p/:slug/settings).
+  { id: "manage-settings", group: "manage", label: "Settings", icon: UserCog, pane: "settings" },
   // Not yet ported from the web control plane (admin/v1 plumbing pending).
   { id: "manage-billing", group: "manage", label: "Billing", icon: CreditCard, pane: null, disabled: true, disabledReason: COMING },
   { id: "manage-setup", group: "manage", label: "Setup", icon: Wrench, pane: null, disabled: true, disabledReason: COMING },

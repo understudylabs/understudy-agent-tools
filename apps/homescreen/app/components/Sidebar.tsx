@@ -22,6 +22,7 @@ export type PaneId =
   | "rlm"
   | "explore"
   | "workload-config"
+  | "settings"
   | "training-evals"
   | "training-optimization"
   | "training-datasets"

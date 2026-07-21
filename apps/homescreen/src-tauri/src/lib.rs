@@ -30,6 +30,7 @@ mod rlm;
 mod scope;
 mod route_policy;
 mod server;
+mod settings;
 mod sidecar;
 mod supervision_export;
 mod supervision_review;
@@ -407,6 +408,9 @@ pub fn run() {
             explore::explore_scan_cancel,
             scope::projects_list,
             scope::workloads_list,
+            settings::settings_projects_list,
+            settings::settings_project_rename,
+            settings::settings_project_delete,
             chat::chat_stream,
             restart_app,
         ])
