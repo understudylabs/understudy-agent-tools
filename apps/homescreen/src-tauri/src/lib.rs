@@ -20,6 +20,7 @@ mod mcp;
 mod metrics;
 mod models;
 mod moraine;
+mod oracle_dispatch;
 mod remote_training;
 mod training_outcome;
 mod residency;
@@ -335,6 +336,8 @@ pub fn run() {
             tool_proof::desktop_tool_proof_run,
             tool_proof::desktop_tool_proof_list,
             tool_proof::desktop_tool_proof_prepare,
+            oracle_dispatch::propose_oracle_task,
+            oracle_dispatch::run_oracle_task,
             workload_drop::compile_dropped_workload,
             workload_drop::inspect_dropped_csv,
             workload_drop::prepare_dropped_csv_classification,
