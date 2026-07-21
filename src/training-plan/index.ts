@@ -51,7 +51,7 @@ export type PortableTrainingArtifact = z.infer<typeof ArtifactSchema>;
 
 export type PortableTrainingRecipe = {
   taskKind: "text_classification" | "chat_sft";
-  evaluator: "exact_label" | "gsm8k_final_answer";
+  evaluator: "exact_label" | "gsm8k_final_answer" | "exact_response";
   datasetFormat: "classification_sft_with_exact_label_holdout" | "openai_chat_messages";
   method: "sft_lora";
   supportedBackends: readonly ("mlx-local" | "fireworks" | "tinker")[];
@@ -68,6 +68,13 @@ export const portableTrainingRecipeRegistry: Readonly<Record<string, PortableTra
   gsm8k_chat_sft_v1: Object.freeze({
     taskKind: "chat_sft",
     evaluator: "gsm8k_final_answer",
+    datasetFormat: "openai_chat_messages",
+    method: "sft_lora",
+    supportedBackends: Object.freeze(["mlx-local", "fireworks", "tinker"] as const),
+  }),
+  chat_sft_exact_response_v1: Object.freeze({
+    taskKind: "chat_sft",
+    evaluator: "exact_response",
     datasetFormat: "openai_chat_messages",
     method: "sft_lora",
     supportedBackends: Object.freeze(["mlx-local", "fireworks", "tinker"] as const),
@@ -132,6 +139,9 @@ function validateArtifactRows(
       }
       if (recipe.evaluator === "gsm8k_final_answer" && !/####\s*-?[\d,]+/.test(target)) {
         throw new Error(`${artifact.artifact_role} row ${index + 1} has no GSM8K final answer.`);
+      }
+      if (recipe.evaluator === "exact_response" && target.trim() === "") {
+        throw new Error(`${artifact.artifact_role} row ${index + 1} has an empty assistant target.`);
       }
       continue;
     }

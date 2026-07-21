@@ -189,6 +189,14 @@ function parserDefinition(verified: VerifiedPortableTrainingPlan): {
       axes: ["exact_match", "parse_contract", "label_policy"],
     };
   }
+  if (verified.recipe.evaluator === "exact_response") {
+    return {
+      id: "exact-response-v1",
+      outputContract: "The assistant reply must exactly equal the reference response after trimming trailing whitespace; no code fences.",
+      objective: "Reproduce the reference assistant response exactly.",
+      axes: ["exact_match", "parse_contract"],
+    };
+  }
   return {
     id: "gsm8k-final-answer-v1",
     outputContract: "A final signed integer introduced by #### after the reasoning.",
@@ -206,33 +214,48 @@ function deterministicEvaluatorProbes(verified: VerifiedPortableTrainingPlan): {
   sentinels: EnvironmentProposal["sentinels"];
   rewards: number[];
 } {
-  const exactLabel = verified.recipe.evaluator === "exact_label";
-  const expected = exactLabel ? verified.plan.labels[0]! : "7";
+  const evaluator = verified.recipe.evaluator;
+  const expected = evaluator === "exact_label"
+    ? verified.plan.labels[0]!
+    : evaluator === "exact_response"
+      ? "reference-response"
+      : "7";
   const parse = (output: string): string | null => {
-    if (exactLabel) {
+    if (evaluator === "exact_label") {
       return verified.plan.labels.includes(output) && output.trim() === output
         ? output
         : null;
+    }
+    if (evaluator === "exact_response") {
+      if (output.includes("```") || output.trim() === "") return null;
+      return output.trimEnd();
     }
     if (output.includes("```") || (output.match(/####/g)?.length ?? 0) !== 1) return null;
     const match = output.match(/####\s*(-?[\d,]+)\s*$/);
     return match?.[1]?.replaceAll(",", "") ?? null;
   };
   const reward = (output: string) => Number(parse(output) === expected);
-  const oracleOutput = exactLabel ? expected : "Scripted arithmetic. #### 7";
-  const probes = exactLabel
+  const oracleOutput = evaluator === "gsm8k_final_answer" ? "Scripted arithmetic. #### 7" : expected;
+  const probes = evaluator === "exact_label"
     ? [
         ["empty", "empty", ""],
         ["wrong-value", "wrong_value", "__wrong_label__"],
         ["reward-hacking", "reward_hacking", verified.plan.labels.join(",")],
         ["right-answer-wrong-contract", "right_answer_wrong_contract", `\`\`\`\n${expected}\n\`\`\``],
       ] as const
-    : [
-        ["empty", "empty", ""],
-        ["wrong-value", "wrong_value", "Reasoning. #### 8"],
-        ["reward-hacking", "reward_hacking", "#### 7\n#### 8"],
-        ["right-answer-wrong-contract", "right_answer_wrong_contract", "```\nReasoning. #### 7\n```"],
-      ] as const;
+    : evaluator === "exact_response"
+      ? ([
+          ["empty", "empty", ""],
+          ["wrong-value", "wrong_value", "not-the-reference"],
+          ["reward-hacking", "reward_hacking", `${expected}${expected}`],
+          ["right-answer-wrong-contract", "right_answer_wrong_contract", `\`\`\`\n${expected}\n\`\`\``],
+        ] as const)
+      : ([
+          ["empty", "empty", ""],
+          ["wrong-value", "wrong_value", "Reasoning. #### 8"],
+          ["reward-hacking", "reward_hacking", "#### 7\n#### 8"],
+          ["right-answer-wrong-contract", "right_answer_wrong_contract", "```\nReasoning. #### 7\n```"],
+        ] as const);
   const sentinels = probes.map(([id, kind, output]) => ({
     id,
     kind,

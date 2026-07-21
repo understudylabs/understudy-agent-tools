@@ -432,6 +432,7 @@ function trainingUseCaseLabel(useCase: string): string {
     classification: "Text classification",
     text_classification: "Text classification",
     general_chat: "General chat",
+    custom_chat_assistant: "Custom chat assistant",
   } as Record<string, string>)[useCase] ?? "Custom training workload";
 }
 
