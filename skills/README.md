@@ -228,7 +228,8 @@ shows headroom, no hosted RL until the local arms plateau.
   self-service diagnostics worker: calls the hosted reporting endpoints
   (org-wide reporting for the spend/requests grounding ranking,
   workload-status for declared-vs-observed routing health, usage-summary for
-  project cache/token detail, the captures metadata list for request ids;
+  project cache-hit share and per-group error rate, the captures metadata
+  list for request ids;
   the legacy routing-status/provider-health/status trio is deprecated) to
   answer "which workloads are routed", "is my route taking effect", "are
   there provider errors", and "is this us?" — without asking the team. Uses

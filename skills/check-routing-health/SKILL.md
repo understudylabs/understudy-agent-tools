@@ -158,9 +158,10 @@ node dist/bin.js status --json
 
 **Project-scoped alternatives.** `usage-summary` remains the detail tool
 within one project when the org-wide view isn't enough: it carries what
-org reporting doesn't — `cache_read_pct`, the cache/token breakdown, a
-per-group `error_rate`, and multi-dimension `group_by` (e.g.
-`workload,day`). See [`reference.md`](reference.md) § Usage summary. The
+org reporting doesn't — the computed `cache_read_pct` share, a per-group
+`error_rate`, and multi-dimension `group_by` (e.g. `workload,day`). Raw
+cache token counts are in both. See [`reference.md`](reference.md) § Usage
+summary. The
 older `routing-status`, `provider-health`, and `status` endpoints still
 exist but are deprecated — see the legacy section of
 [`reference.md`](reference.md). Only fall back to them if `workload-status`

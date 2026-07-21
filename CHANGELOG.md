@@ -57,8 +57,8 @@ uses semantic-ish versioning (minor = new skill or new capability, patch = fixes
   spend/requests ranking, and calls out declared-vs-observed drift (declared
   split with ~0 observed `understudy` share) as a finding. The rest of the
   `sk_*` self-service surface stays documented as project-scoped
-  alternatives: `usage-summary` (cache/token detail, per-group error rate,
-  multi-dimension grouping) and the captures metadata list (request
+  alternatives: `usage-summary` (computed `cache_read_pct`, per-group error
+  rate, multi-dimension grouping) and the captures metadata list (request
   ids/timestamps only — capture content stays behind the dashboard login).
   The legacy `routing-status` / `provider-health` / `status` endpoints stay
   documented as deprecated for older deployments.

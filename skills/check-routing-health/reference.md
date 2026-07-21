@@ -41,8 +41,9 @@ GET /admin/v1/orgs/:org_id/reporting/options
 The grounding endpoint — org-wide usage and customer-cost series across all
 projects in one call. Rank workloads/projects by `customer_cost_usd` and
 `requests` here before any analysis. Usage and cost only: it deliberately
-carries no workload health (that stays on workload-status) and no cache or
-error-rate fields (those stay on the project-scoped usage-summary).
+carries no workload health (that stays on workload-status), no error-rate
+fields, and no computed cache-hit share (those stay on the project-scoped
+endpoints).
 
 | Param | Default | Details |
 |---|---|---|
@@ -57,12 +58,15 @@ understudy run -- sh -c 'curl -s \
   "https://api.understudylabs.com/admin/v1/orgs/$UNDERSTUDY_ORG_ID/reporting?window=7d&group_by=workload"'
 ```
 
-The response carries `totals` (`requests`, `input_tokens`, `output_tokens`,
-`total_tokens`, `customer_cost_usd`) plus a `series` of time-bucket points
-(`bucket` ISO start + the group's `project`/`workload`/`model` labels + the
-same measures). `/options` returns the org's projects and workloads
-(`{id, name}` / `{id, project_id, name}`) for valid filter values. Model
-labels are the same customer-safe labels as everywhere else.
+The response carries `totals` (`requests`, `input_tokens`,
+`cache_read_input_tokens`, `cache_creation_input_tokens`, `output_tokens`,
+`total_tokens`, `customer_cost_usd`) plus a `series` of time-bucket points —
+`bucket` ISO start + the group's `project`/`workload`/`model` labels + the
+same measures, so every bucket row carries the same cache/token/cost fields
+as `totals`. Cache counts are raw token totals; the computed `cache_read_pct`
+share exists only on usage-summary. `/options` returns the org's projects
+and workloads (`{id, name}` / `{id, project_id, name}`) for valid filter
+values. Model labels are the same customer-safe labels as everywhere else.
 
 ## Workload status
 
@@ -150,9 +154,9 @@ GET .../usage-summary?window=7d&group_by=workload,day
 Project-scoped aggregate tokens/cost/cache rollup — no per-request ids, which
 is why it accepts longer windows than workload-status. Grounding now starts
 at [organization reporting](#organization-reporting); reach for usage-summary
-when you need what the org view lacks: `cache_read_pct`, the cache/token
-breakdown, a per-group `error_rate`, or multi-dimension `group_by` (e.g.
-`workload,day`) within one project.
+when you need what the org view lacks: the computed `cache_read_pct` share,
+a per-group `error_rate`, or multi-dimension `group_by` (e.g. `workload,day`)
+within one project.
 
 | Param | Default | Details |
 |---|---|---|
