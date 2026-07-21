@@ -432,7 +432,8 @@ function AgentInstallCard() {
           Run it from the repo you want to optimize. It installs the CLI and
           the Claude Code plugin, then opens Claude Code —{" "}
           <code className="font-mono">/understudy:onboard</code> takes it from
-          there. MIT-licensed:{" "}
+          there. No model downloads, no uploads, no account required.
+          MIT-licensed:{" "}
           <a
             href="https://github.com/understudylabs/understudy-agent-tools"
             target="_blank"
