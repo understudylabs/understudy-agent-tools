@@ -779,7 +779,10 @@ describe("understudy CLI", () => {
         readFileSync(join(repo, ".understudy", "workload-discovery", "workload-card.json"), "utf8"),
       );
       assert.equal(artifact.schema_version, "understudy.workload_card.v1");
-      assert.equal(artifact.route_requirements.privacy_boundary, "local-only until explicit approval");
+      assert.equal(
+        artifact.route_requirements.privacy_boundary,
+        "workflow-bound cloud unless Local is selected",
+      );
     }));
 
   it("plans a route decision packet from a valid workload card", () =>
@@ -794,11 +797,15 @@ describe("understudy CLI", () => {
       assert.equal(payload.schema_version, "understudy.route_decision_packet.v1");
       assert.equal(payload.workload_card, cardPath);
       assert.equal(payload.decision, "evaluate-first");
-      assert.equal(payload.constraints.privacy_boundary, "local-only until explicit approval");
+      assert.equal(
+        payload.constraints.privacy_boundary,
+        "workflow-bound cloud unless Local is selected",
+      );
       assert.equal(payload.constraints.data_class, "source-metadata-only");
       assert.equal(payload.readiness.local_runner_fit, "likely");
       assert.deepEqual(payload.readiness.pricing_sources_checked, []);
-      assert.equal(payload.candidate_routes[0].kind, "local");
+      assert.equal(payload.candidate_routes[0].kind, "understudy");
+      assert.equal(payload.candidate_routes[0].model, "auto");
       assert.equal(payload.candidate_routes[0].approval_required, false);
       assert.match(payload.recommended_next_command, /understudy optimize-workload check/);
       const saved = JSON.parse(readFileSync(join(repo, ".understudy", "route-decision", "route-decision-packet.json"), "utf8"));
@@ -2173,7 +2180,15 @@ class ScoreWithFeedback:
       assert.equal(inspection.local_only, true);
       assert.equal(inspection.payload_read, true);
       assert.equal(inspection.source_rows_persisted, false);
+      assert.equal(inspection.row_preview_persisted, false);
       assert.equal(inspection.persisted_data, "statistics-and-label-aggregates");
+      assert.equal(inspection.row_preview.length, 2);
+      assert.deepEqual(
+        inspection.row_preview.map((row) => row.values.category),
+        ["meals", "travel"],
+      );
+      const persistedInspection = JSON.parse(readFileSync(inspection.artifact_path, "utf8"));
+      assert.equal("row_preview" in persistedInspection, false);
       assert.equal(inspection.row_count, 5);
       assert.equal(inspection.column_count, 4);
       assert.deepEqual(

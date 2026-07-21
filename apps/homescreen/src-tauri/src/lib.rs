@@ -13,6 +13,7 @@ mod conversation_sidecar;
 mod creds;
 mod custom_evals;
 mod db;
+mod explore;
 mod gepa;
 mod knowledge;
 mod mcp;
@@ -122,6 +123,9 @@ pub fn run() {
             // download progress + the single-flight benchmark run gate.
             app.manage(agent_ops::Downloads::new());
             app.manage(agent_ops::BenchRuns::new());
+            // Single-flight explore scan pipeline (Explore pane's
+            // "scan my history" button).
+            app.manage(explore::ScanJob::default());
 
             // Paint the shell before process reconciliation or model re-warm.
             // This is background work, but starting it during the first frame
@@ -345,6 +349,7 @@ pub fn run() {
             remote_training::remote_training_capabilities,
             remote_training::inspect_remote_training_recipe,
             remote_training::automatic_training_goal_card,
+            remote_training::remote_training_examples,
             remote_training::propose_training_environment_with_pi,
             remote_training::prepare_remote_classification_training,
             remote_training::prepare_remote_training_recipe,
@@ -371,6 +376,13 @@ pub fn run() {
             rlm::rlm_demo_catalog,
             rlm::rlm_plan,
             rlm::run_rlm_live,
+            explore::explore_clickhouse_query,
+            explore::explore_sqlite_query,
+            explore::explore_read_json,
+            explore::explore_status,
+            explore::explore_scan_start,
+            explore::explore_scan_status,
+            explore::explore_scan_cancel,
             chat::chat_stream,
             restart_app,
         ])

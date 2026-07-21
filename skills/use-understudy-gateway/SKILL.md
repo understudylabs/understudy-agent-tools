@@ -36,8 +36,11 @@ Do not print, commit, or write `sk_*` values into artifacts. `understudy run`
 injects `UNDERSTUDY_API_KEY`, `UNDERSTUDY_GATEWAY_URL`, and the non-secret
 `UNDERSTUDY_ORG_ID` when known only into the child process environment.
 
-Do not run provider calls, uploads, hosted jobs, or model downloads without the
-developer approving the exact command, data class, and spend or download bound.
+The developer's action that launches a named bounded workflow authorizes its
+declared provider calls, uploads, hosted jobs, evaluation, receipts, and
+cleanup. Do not pause for another confirmation between those phases. Ask again
+only before expanding the displayed data, destination, spend, retention,
+download, credential, or production-impact envelope.
 
 ## Always stream gateway inference
 

@@ -95,6 +95,18 @@ pub fn router(ctx: Ctx) -> Router {
         .route("/api/traces/search", get(traces_search))
         .route("/api/traces/:id", get(traces_open))
         .route("/api/ui/focus", post(ui_focus))
+        // Explore Data pane: read-only warehouse/artifact surfaces + scan job.
+        .route("/api/explore/status", get(explore_status))
+        .route("/api/explore/query", post(explore_query))
+        .route("/api/explore/sqlite", post(explore_sqlite))
+        .route("/api/explore/benchmark/:name", get(explore_benchmark))
+        .route("/api/explore/eval/:name", get(explore_eval))
+        .route(
+            "/api/explore/scan",
+            get(explore_scan_status)
+                .post(explore_scan_start)
+                .delete(explore_scan_cancel),
+        )
         // Stable versioned aliases for the CLI and third-party desktop agents.
         .route("/v1/capabilities", get(agent_capabilities))
         .route("/v1/status", get(status))
@@ -178,9 +190,10 @@ pub fn start(app: AppHandle) {
             }
         }
     };
-    let port = db
-        .setting_get(PORT_KEY)
+    let port = std::env::var("UNDERSTUDY_SERVER_PORT")
+        .ok()
         .and_then(|p| p.parse().ok())
+        .or_else(|| db.setting_get(PORT_KEY).and_then(|p| p.parse().ok()))
         .unwrap_or(DEFAULT_PORT);
 
     let ctx = Ctx { app, token };
@@ -1191,10 +1204,14 @@ async fn traces_open(
 }
 
 /// Inbound: an agent asks the GUI to focus a pane / show something.
+/// `view`/`session` are Explore deep links: land on the timeline or tasks
+/// list, or directly on one session transcript.
 #[derive(serde::Deserialize)]
 struct FocusBody {
     pane: Option<String>,
     model: Option<String>,
+    view: Option<String>,
+    session: Option<String>,
 }
 async fn ui_focus(
     State(ctx): State<Ctx>,
@@ -1202,9 +1219,157 @@ async fn ui_focus(
     Json(b): Json<FocusBody>,
 ) -> Result<Json<Value>, (StatusCode, String)> {
     auth(&ctx, &h)?;
-    let _ = ctx
-        .app
-        .emit("server-focus", json!({ "pane": b.pane, "model": b.model }));
+    let _ = ctx.app.emit(
+        "server-focus",
+        json!({ "pane": b.pane, "model": b.model, "view": b.view, "session": b.session }),
+    );
+    Ok(Json(json!({ "ok": true })))
+}
+
+// ---------------- Explore Data (read-only + scan job) ----------------
+
+async fn explore_status(
+    State(ctx): State<Ctx>,
+    h: HeaderMap,
+) -> Result<Response, (StatusCode, String)> {
+    auth(&ctx, &h)?;
+    let body = crate::explore::status_snapshot()
+        .await
+        .map_err(|e| (StatusCode::BAD_GATEWAY, e))?;
+    Ok(json_string_response(body))
+}
+
+/// The explore helpers already serialize to JSON strings for the GUI; send
+/// them through as `application/json` without a re-parse round trip.
+fn json_string_response(body: String) -> Response {
+    let mut response = Response::new(Body::from(body));
+    response.headers_mut().insert(
+        header::CONTENT_TYPE,
+        HeaderValue::from_static("application/json"),
+    );
+    response
+}
+
+#[derive(serde::Deserialize)]
+struct ExploreQueryBody {
+    sql: String,
+}
+
+async fn explore_query(
+    State(ctx): State<Ctx>,
+    h: HeaderMap,
+    Json(b): Json<ExploreQueryBody>,
+) -> Result<Response, (StatusCode, String)> {
+    auth(&ctx, &h)?;
+    // Guarded proxy: same allowlist + resource caps as the GUI invoke.
+    let body = crate::explore::run_clickhouse_query(b.sql)
+        .await
+        .map_err(|e| (StatusCode::BAD_REQUEST, e))?;
+    // JSONEachRow: newline-delimited JSON objects.
+    let mut response = Response::new(Body::from(body));
+    response.headers_mut().insert(
+        header::CONTENT_TYPE,
+        HeaderValue::from_static("application/x-ndjson; charset=utf-8"),
+    );
+    Ok(response)
+}
+
+#[derive(serde::Deserialize)]
+struct ExploreSqliteBody {
+    db: String,
+    sql: String,
+    #[serde(default)]
+    params: Vec<String>,
+}
+
+async fn explore_sqlite(
+    State(ctx): State<Ctx>,
+    h: HeaderMap,
+    Json(b): Json<ExploreSqliteBody>,
+) -> Result<Response, (StatusCode, String)> {
+    auth(&ctx, &h)?;
+    let body = crate::explore::query_sqlite(b.db, b.sql, b.params)
+        .await
+        .map_err(|e| (StatusCode::BAD_REQUEST, e))?;
+    Ok(json_string_response(body))
+}
+
+async fn explore_read_json(
+    ctx: &Ctx,
+    h: &HeaderMap,
+    kind: &str,
+    name: String,
+) -> Result<Response, (StatusCode, String)> {
+    auth(ctx, h)?;
+    let body = crate::explore::read_artifact_json(kind.to_string(), name)
+        .await
+        .map_err(|e| (StatusCode::BAD_REQUEST, e))?
+        .ok_or_else(|| (StatusCode::NOT_FOUND, format!("{kind} artifact not found")))?;
+    Ok(json_string_response(body))
+}
+
+async fn explore_benchmark(
+    State(ctx): State<Ctx>,
+    h: HeaderMap,
+    Path(name): Path<String>,
+) -> Result<Response, (StatusCode, String)> {
+    explore_read_json(&ctx, &h, "benchmark", name).await
+}
+
+async fn explore_eval(
+    State(ctx): State<Ctx>,
+    h: HeaderMap,
+    Path(name): Path<String>,
+) -> Result<Response, (StatusCode, String)> {
+    explore_read_json(&ctx, &h, "eval", name).await
+}
+
+#[derive(serde::Deserialize, Default)]
+struct ExploreScanBody {
+    limit: Option<u32>,
+}
+
+async fn explore_scan_start(
+    State(ctx): State<Ctx>,
+    h: HeaderMap,
+    body: Option<Json<ExploreScanBody>>,
+) -> Result<Json<Value>, (StatusCode, String)> {
+    auth(&ctx, &h)?;
+    let limit = body.map(|Json(b)| b.limit).unwrap_or(None);
+    let job = ctx.app.state::<crate::explore::ScanJob>();
+    let residency = ctx.app.state::<crate::residency::Residency>();
+    // Spawning the pipeline is quick (no waiting), but it does fork a child
+    // process — keep it off the axum workers like the other process work.
+    let status =
+        crate::explore::scan_start(&job, &residency, limit).map_err(|e| {
+            if e.contains("already running") {
+                (StatusCode::CONFLICT, e)
+            } else {
+                (StatusCode::BAD_REQUEST, e)
+            }
+        })?;
+    Ok(Json(json!({ "ok": true, "status": status })))
+}
+
+async fn explore_scan_status(
+    State(ctx): State<Ctx>,
+    h: HeaderMap,
+) -> Result<Response, (StatusCode, String)> {
+    auth(&ctx, &h)?;
+    let job = ctx.app.state::<crate::explore::ScanJob>();
+    let body = crate::explore::scan_status(&job)
+        .await
+        .map_err(|e| (StatusCode::BAD_GATEWAY, e))?;
+    Ok(json_string_response(body))
+}
+
+async fn explore_scan_cancel(
+    State(ctx): State<Ctx>,
+    h: HeaderMap,
+) -> Result<Json<Value>, (StatusCode, String)> {
+    auth(&ctx, &h)?;
+    let job = ctx.app.state::<crate::explore::ScanJob>();
+    crate::explore::scan_cancel(&job).map_err(|e| (StatusCode::BAD_REQUEST, e))?;
     Ok(Json(json!({ "ok": true })))
 }
 
@@ -1491,12 +1656,36 @@ fn tools() -> Vec<Value> {
         ),
         (
             "ui_focus",
-            "Drive the GUI to a pane.",
+            "Drive the GUI to a pane. For the explore pane, optional view (timeline|tasks) and session (session id) deep-link to a list view or one transcript.",
             obj_schema(
                 json!({
                     "pane": { "type": "string" },
-                    "model": { "type": "string" }
+                    "model": { "type": "string" },
+                    "view": { "type": "string", "enum": ["timeline", "tasks"], "description": "Explore list view to land on." },
+                    "session": { "type": "string", "description": "Moraine session id to open in the explore transcript view." }
                 }),
+                &[],
+            ),
+        ),
+        // ----- Explore Data (local agent-trace warehouse) -----
+        (
+            "explore_status",
+            "Availability of the user's local agent-trace warehouse (Moraine ClickHouse + explore artifacts): services up, data dir, which side tables exist.",
+            empty_schema(),
+        ),
+        (
+            "explore_query",
+            "Query the user's local agent-trace warehouse (Moraine ClickHouse, read-only). SELECT/SHOW/DESCRIBE/WITH only; returns JSONEachRow text.",
+            obj_schema(
+                json!({ "sql": { "type": "string", "description": "Read-only SQL against the moraine database." } }),
+                &["sql"],
+            ),
+        ),
+        (
+            "explore_scan_start",
+            "Start the explore scan pipeline (scan, cluster, languages, commits) against the resident local model. Fails if already running or no local model is serving; poll with explore_status / GET /api/explore/scan.",
+            obj_schema(
+                json!({ "limit": { "type": "integer", "minimum": 1, "description": "Optional cap on sessions to scan." } }),
                 &[],
             ),
         ),
@@ -1752,9 +1941,30 @@ async fn call_tool(ctx: &Ctx, name: &str, args: &Value) -> Result<Value, String>
         "ui_focus" => {
             let _ = app.emit(
                 "server-focus",
-                json!({ "pane": args.get("pane"), "model": args.get("model") }),
+                json!({
+                    "pane": args.get("pane"),
+                    "model": args.get("model"),
+                    "view": args.get("view"),
+                    "session": args.get("session"),
+                }),
             );
             json!({ "ok": true })
+        }
+        "explore_status" => {
+            let body = crate::explore::status_snapshot().await?;
+            serde_json::from_str(&body).map_err(|e| format!("explore status: {e}"))?
+        }
+        "explore_query" => {
+            let sql = required_str(args, "sql")?;
+            let rows = crate::explore::run_clickhouse_query(sql).await?;
+            json!({ "format": "JSONEachRow", "rows": rows })
+        }
+        "explore_scan_start" => {
+            let limit = args.get("limit").and_then(|v| v.as_u64()).map(|x| x as u32);
+            let job = app.state::<crate::explore::ScanJob>();
+            let residency = app.state::<crate::residency::Residency>();
+            let status = crate::explore::scan_start(&job, &residency, limit)?;
+            json!({ "ok": true, "status": status })
         }
         other => return Err(format!("unknown tool: {other}")),
     })
@@ -1819,9 +2029,10 @@ fn is_legacy_token(token: &str) -> bool {
 pub fn info(app: &AppHandle) -> Option<(String, String)> {
     let db = app.try_state::<crate::db::Db>()?;
     let token = db.setting_get(TOKEN_KEY)?;
-    let port = db
-        .setting_get(PORT_KEY)
+    let port = std::env::var("UNDERSTUDY_SERVER_PORT")
+        .ok()
         .and_then(|p| p.parse().ok())
+        .or_else(|| db.setting_get(PORT_KEY).and_then(|p| p.parse().ok()))
         .unwrap_or(DEFAULT_PORT);
     Some((format!("http://127.0.0.1:{port}"), token))
 }

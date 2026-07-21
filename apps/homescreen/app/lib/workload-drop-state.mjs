@@ -11,11 +11,15 @@ export function shouldInspectDroppedTable(workload) {
   return name.length > 0 && !name.includes(".");
 }
 
-export function shouldInspectTrainingRecipe(workload) {
+export function shouldInspectStructuredDataset(workload) {
   if (!workload || workload.source_type !== "file") return false;
   const name = String(workload.source_name ?? "").trim().toLowerCase();
-  return /\.(?:jsonl|ndjson)$/.test(name);
+  return /\.(?:csv|tsv|tab|txt|json|jsonl|ndjson|xls|xlsx|xlsb|xlsm|ods)$/.test(name)
+    || (name.length > 0 && !name.includes("."));
 }
+
+// Compatibility alias for older Desktop lineage checks and integrations.
+export const shouldInspectTrainingRecipe = shouldInspectStructuredDataset;
 
 const BUSY_PHASES = new Set(["validating", "compiling", "inspecting", "preparing_dataset"]);
 
@@ -83,8 +87,8 @@ export function workloadDropStatus(phase) {
       };
     case "inspecting":
       return {
-        title: "Inspecting training data",
-        detail: "Reading this table locally · source rows will not be copied",
+        title: "Analyzing this dataset",
+        detail: "Decoding locally · Understudy is inferring the task",
       };
     case "preparing_dataset":
       return {

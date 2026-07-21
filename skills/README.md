@@ -220,8 +220,8 @@ shows headroom, no hosted RL until the local arms plateau.
   proactive pre-commit-style hook recipes.
 - [`ramp-and-verify`](ramp-and-verify/SKILL.md) owns the last mile after a
   route decision: pre-ramp repeat-replay stability gates, a staged traffic
-  ladder (5% → 25% → 100%) on the gateway dial with explicit approval per
-  tier, routed-vs-passthrough verification from captures at each step,
+  ladder (5% → 25% → 100%) on the gateway dial inside one activated rollout
+  envelope, routed-vs-passthrough verification from captures at each step,
   rollback triggers, and the measured before/after that feeds the claim
   packet.
 - [`check-routing-health`](check-routing-health/SKILL.md) is the read-only
@@ -237,9 +237,9 @@ shows headroom, no hosted RL until the local arms plateau.
 Default to the path with the highest expected progress toward the stated
 objective under hard constraints, with spend, time, data scope, and expected
 evidence visible. Do not silently choose the weakest model, smallest cohort, or
-narrowest intervention because it is cheap. Get explicit approval before any
-upload, hosted run, or provider spend; one approval may cover a named bounded
-plan. Public examples should use synthetic fixtures, local `.understudy/`
+narrowest intervention because it is cheap. A user action that launches a named
+bounded plan authorizes its declared uploads, hosted work, provider calls,
+evaluation, receipts, and cleanup. Public examples should use synthetic fixtures, local `.understudy/`
 artifacts, public provider docs, or public open-source projects.
 
 Do not include customer names, domains, raw prompts, raw completions, traces,

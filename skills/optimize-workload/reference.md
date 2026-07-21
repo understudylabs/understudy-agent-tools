@@ -154,13 +154,13 @@ Two principles hold across every target and lane:
 
 ## Inference Boundary
 
-Optimization may need inference, but the public tools repo must not inspect
-secret values or run provider calls without explicit approval. Use
+Optimization may need inference. Never inspect or print secret values. A named
+activated workflow may run its declared provider calls without repeated
+confirmation. Use
 `understudy login --email <developer-email>` plus
 `understudy run -- <local command>` for the Understudy inference path, or
 record BYO provider-key readiness only as redacted presence/source metadata.
-Keep the selected provider, model, budget, and data class in the local run
-artifact before any live call.
+Keep the selected provider, model, budget, and data class in the run artifact.
 
 ## Optimization Lanes
 

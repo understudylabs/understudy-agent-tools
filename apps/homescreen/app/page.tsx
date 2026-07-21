@@ -14,6 +14,7 @@ import { UsagePane } from "./components/UsagePane";
 import { DownloadQrButton } from "./components/DownloadQrButton";
 import { isTrainingPane, TrainingPane } from "./components/TrainingPane";
 import { RlmPane } from "./components/RlmPane";
+import { ExploreShell, requestExploreFocus } from "./components/explore/ExploreShell";
 import { RuntimeRepairPrompt } from "./components/RuntimeRepairPrompt";
 import { ModelDownloadNotice } from "./components/ModelDownloadNotice";
 import { useStatus } from "./lib/useStatus";
@@ -182,6 +183,7 @@ export default function Page() {
       "models",
       "account",
       "rlm",
+      "explore",
     ];
     const hidden = [
       "capture",
@@ -195,15 +197,26 @@ export default function Page() {
       "training-rl",
       "training-jobs",
     ];
-    const u = listen<{ pane?: string }>("server-focus", (e) => {
-      const requested = e.payload?.pane;
-      const p = (
-        requested === "marketplace" ? "models" :
-        requested && hidden.includes(requested) ? "status" :
-        requested
-      ) as PaneId;
-      if (p && (valid as string[]).includes(p)) setPane(p);
-    });
+    const u = listen<{ pane?: string; view?: string; session?: string }>(
+      "server-focus",
+      (e) => {
+        const requested = e.payload?.pane;
+        const p = (
+          requested === "marketplace" ? "models" :
+          requested && hidden.includes(requested) ? "status" :
+          requested
+        ) as PaneId;
+        if (p && (valid as string[]).includes(p)) setPane(p);
+        // Explore deep link: forward view/session to ExploreShell (queued if
+        // the pane is only mounting on this render).
+        if (p === "explore" && (e.payload?.view || e.payload?.session)) {
+          requestExploreFocus({
+            view: e.payload?.view,
+            session: e.payload?.session,
+          });
+        }
+      },
+    );
     return () => {
       u.then((f) => f());
     };
@@ -296,6 +309,7 @@ export default function Page() {
         {pane === "models" && <ModelsPane />}
         {pane === "capture" && <CapturePane />}
         {pane === "rlm" && <RlmPane />}
+        {pane === "explore" && <ExploreShell />}
         {isTrainingPane(pane) && <TrainingPane section={pane} />}
         {pane === "account" && (
           <AccountPane

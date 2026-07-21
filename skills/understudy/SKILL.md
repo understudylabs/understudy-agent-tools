@@ -4,7 +4,7 @@ description: Use when a developer asks a coding agent to improve an LLM app or a
 metadata:
   understudy:
     mode: automatic
-    safety: local-first
+    safety: approval-required
     cli_required: false
 ---
 
@@ -15,10 +15,11 @@ its developer's LLM system from real traces. This skill is the orchestrator —
 it gives your agent the loop and routes each stage to exactly one worker skill.
 It does not do the work inline.
 
-The loop is local-first: it needs no registration, auth, provider keys, account,
-or hosted gateway to start. Begin from files the developer already has, produce
-auditable local artifacts, and only cross into upload, hosted execution, provider
-spend, or model downloads after explicit approval in the current thread.
+The loop is backend-agnostic: it can begin locally without registration, but the
+default route is the strongest active model and managed cloud execution when the
+developer has not selected Local. A dropped dataset authorizes analysis through
+the active model. Activating a named, bounded cloud workflow authorizes its normal
+uploads, provider calls, temporary resources, evaluation, receipts, and cleanup.
 
 ## The improvement loop
 
@@ -56,13 +57,14 @@ Keep these six separate and explicit — say them back before acting:
 
 ## Default mode
 
-- Local-first.
+- Use the strongest active route; prefer managed cloud unless the developer selects Local or a hard constraint requires it.
 - Inspect before changing.
 - Measure before optimizing.
 - Optimize before routing.
 - Compare before deploying.
 - Recommend an outcome-sized plan with cost, time, data scope, and expected
-  evidence; ask before spending money or uploading data.
+  evidence. Treat the developer's launch action as authorization for that
+  displayed envelope.
 
 Show partial findings early ("found 3 LLM call sites"; "app uses LiteLLM, so
 gateway insertion is low-risk"; "no evals — I'll build a decision-sized harness";
@@ -300,11 +302,13 @@ Default to the path with the highest expected progress toward the stated
 objective under the developer's hard constraints. Make spend, wall-clock, data
 scope, expected evidence, and alternatives visible; do not silently choose the
 weakest model, smallest cohort, or narrowest intervention because it is cheap.
-Follow the outcome-first spend posture in [`reference.md`](reference.md). Require
-explicit confirmation for any action that uploads data, spends money, changes
-credentials, deploys behavior, or alters a production route — unless the
-developer has configured unattended mode. One confirmation may cover a named,
-bounded run plan; ask again before expanding its envelope.
+Follow the outcome-first spend posture in [`reference.md`](reference.md). The
+developer's direct request or activation of a named, bounded workflow is the
+confirmation for its ordinary external writes, uploads, provider calls, spend,
+temporary serving, evaluation, receipts, and cleanup. Do not add dry-run or
+phase-by-phase approval gates. Ask again only before changing credentials,
+writing to production business systems, or expanding the displayed data,
+destination, spend, retention, or production-impact envelope.
 
 Do not ask the developer to register, authenticate, paste secrets, or configure
 provider keys before the local evidence loop has found a concrete need. When that
@@ -312,10 +316,10 @@ need exists, route through `understudy login --email` rather than a pasted key.
 
 Follow the public boundary in
 [`../../docs/privacy-and-data-boundaries.md`](../../docs/privacy-and-data-boundaries.md):
-never upload, print, commit, or transmit prompts, completions, traces, labels,
-datasets, repo paths, secrets, or private notes without explicit approval for
-that exact data class and action. Honor detected constraints (SOC 2, ZDR,
-local-only, approved providers) — see [`reference.md`](reference.md).
+workload content may move through the active model and the provider named by an
+activated workflow. Never print, commit, or transmit secrets, and honor hard
+constraints the developer explicitly selected (SOC 2, ZDR, Local, approved
+providers) — see [`reference.md`](reference.md).
 
 Never claim a cost, latency, quality, or availability win without measured
 before/after evidence, and never make pricing/availability claims from memory —
@@ -412,7 +416,7 @@ End with:
 - artifacts inspected, created, or still missing;
 - result type: evidence-capture, validation, optimization, route-recommendation,
   deployment, or blocked;
-- approval boundary for any upload, spend, hosted execution, or download;
+- activated workflow envelope and any expansion that would require a new decision;
 - one recommended next command or local action.
 
 For a completed improvement, produce the **Understudy Agent Improvement Report**

@@ -5,13 +5,41 @@ import test from "node:test";
 const root = new URL("../", import.meta.url);
 const read = (path) => readFile(new URL(path, root), "utf8");
 
+test("one cloud launch authorizes the bounded hosted workflow without repeated approval gates", async () => {
+  const [agentPrompt, orchestrator, gateway, privacy, proposals, routeDecision] = await Promise.all([
+    read("apps/homescreen/src-tauri/src/chat.rs"),
+    read("skills/understudy/SKILL.md"),
+    read("skills/use-understudy-gateway/SKILL.md"),
+    read("docs/privacy-and-data-boundaries.md"),
+    read("docs/environment-proposals.md"),
+    read("src/route-decision.ts"),
+  ]);
+
+  for (const policy of [agentPrompt, orchestrator, gateway, privacy, proposals]) {
+    assert.match(policy, /launch|activat/i);
+    assert.match(policy, /upload/i);
+    assert.match(policy, /provider/i);
+    assert.match(policy, /cleanup/i);
+  }
+  assert.match(agentPrompt, /named launch action as authorization/);
+  assert.match(orchestrator, /Do not add dry-run or[\s\S]*phase-by-phase approval gates/);
+  assert.match(gateway, /Do not pause for another confirmation between those phases/);
+  assert.match(privacy, /without another prompt/);
+  assert.match(proposals, /No second\s+confirmation is required/);
+  assert.match(routeDecision, /kind: "understudy"/);
+  assert.match(routeDecision, /model: "auto"/);
+  assert.doesNotMatch(routeDecision, /local-only until explicit approval/);
+  assert.doesNotMatch(agentPrompt, /Work local-first/);
+});
+
 test("remote training uses live capabilities with explicit upload and spend consent", async () => {
-  const [native, panel, localPanel, localSftPanel, tauriLib] = await Promise.all([
+  const [native, panel, localPanel, localSftPanel, tauriLib, portablePlan] = await Promise.all([
     read("apps/homescreen/src-tauri/src/remote_training.rs"),
     read("apps/homescreen/app/components/RemoteTrainingPanel.tsx"),
     read("apps/homescreen/app/components/LocalTrainingPanel.tsx"),
     read("apps/homescreen/app/components/LocalSftTrainingPanel.tsx"),
     read("apps/homescreen/src-tauri/src/lib.rs"),
+    read("src/training-plan/index.ts"),
   ]);
 
   assert.doesNotMatch(native, /UNDERSTUDY_REMOTE_TRAINING_EXPERIMENT/);
@@ -22,6 +50,9 @@ test("remote training uses live capabilities with explicit upload and spend cons
   assert.match(native, /leakage-group overlap/);
   assert.match(native, /raw_rows_in_telemetry/);
   assert.match(native, /max_upload_bytes/);
+  assert.match(native, /MAX_REMOTE_TRAINING_BUDGET_USD: f64 = 1_000\.0/);
+  assert.match(portablePlan, /MAX_PORTABLE_TRAINING_SPEND_USD = 1_000/);
+  assert.doesNotMatch(portablePlan, /MAX_PORTABLE_TRAINING_SPEND_USD = 500/);
   assert.match(native, /Method::DELETE,[\s\S]*api_url\("uploads"\)/);
   assert.match(native, /existing_remote_classification_training/);
   assert.match(native, /existing_remote_training/);
@@ -42,14 +73,25 @@ test("remote training uses live capabilities with explicit upload and spend cons
   assert.match(native, /automatic_training_goal_card/);
   assert.match(native, /propose_training_environment_with_pi/);
   assert.match(native, /crate::chat::agent_metadata_chat/);
+  assert.match(native, /<DATA>\{dataset_context\}<\/DATA>/);
+  assert.match(native, /pi_dataset_context/);
+  assert.match(native, /"" \| "csv" \| "tsv" \| "tab" \| "txt"/);
+  assert.match(native, /dataset_context_shared_with_active_model/);
+  assert.match(native, /"status": "analyzed"/);
+  assert.match(native, /"environment_summary": environment_summary/);
+  assert.match(native, /"validation_summary": validation_summary/);
+  assert.match(native, /"inferring",[\s\S]*?agent_metadata_chat\([\s\S]*?"checking",[\s\S]*?pi_plan_check/);
   const chatNative = await read("apps/homescreen/src-tauri/src/chat.rs");
   assert.match(chatNative, /pub async fn agent_metadata_chat/);
   assert.match(chatNative, /request\["tools"\] = json!\(\[\]\)/);
   assert.match(chatNative, /request\["max_tool_rounds"\] = json!\(0\)/);
   assert.match(chatNative, /remove\("tool_executor_url"\)/);
+  assert.match(chatNative, /METADATA_CHAT_TIMEOUT_SECS: u64 = 45/);
+  assert.match(chatNative, /conversation_runtime_cancel\(session_id\.to_string\(\)\)/);
+  assert.match(native, /Return JSON only \(max 400 tokens\)/);
   assert.match(native, /runtime_backend != "pi"/);
-  assert.match(native, /remote_content_shared": false/);
-  assert.match(native, /"status": "needs_verifier"/);
+  assert.match(native, /remote_content_shared": remote_analysis/);
+  assert.match(native, /"status": "proposed"/);
   assert.match(native, /"oracle_scores_one": false/);
   assert.match(native, /prepare_training_recipe/);
   assert.match(native, /prepare_classification_source_plan/);
@@ -66,6 +108,10 @@ test("remote training uses live capabilities with explicit upload and spend cons
   assert.match(panel, /compile_remote_training_backends/);
   assert.match(panel, /preparedPlan/);
   assert.match(panel, /Upload & train/);
+  assert.doesNotMatch(panel, /Upload & train · \$/);
+  assert.match(panel, /budget guardrail/);
+  assert.match(panel, /remote-training-example-track/);
+  assert.match(panel, /trainingExamples/);
   assert.doesNotMatch(panel, /fake/);
   assert.doesNotMatch(native, /"fake"/);
   assert.doesNotMatch(panel, /Approve & run/);
@@ -84,19 +130,56 @@ test("remote training uses live capabilities with explicit upload and spend cons
   assert.match(panel, /understudy\/auto/);
   assert.match(panel, /provider\.id === "managed"/);
   assert.match(panel, /provider\.id === "managed" && provider\.enabled/);
-  assert.match(panel, /maximumManagedTrainingSpend\(capabilities\)/);
-  assert.doesNotMatch(panel, /Math\.min\(1, capabilities\.limits\.max_budget_usd\)/);
+  assert.match(panel, /recommendedManagedTrainingSpend\(capabilities\)/);
+  assert.match(panel, /return maximumManagedTrainingSpend\(capabilities\)/);
+  assert.match(panel, /remote_training_examples/);
+  assert.match(native, /understudy\.remote_training\.example_stream\.v1/);
+  assert.match(panel, /remoteTrainingArtifactLimitError/);
   assert.doesNotMatch(panel, /fireworks/i);
   assert.doesNotMatch(panel, /gemma-4/i);
   assert.match(native, /"model_profiles"/);
   const chat = await read("apps/homescreen/app/components/ChatPane.tsx");
+  const globals = await read("apps/homescreen/app/globals.css");
   assert.match(chat, /inspect_remote_training_recipe/);
   assert.match(chat, /AutomaticGoalCard/);
+  assert.match(chat, /StructuredDataProfile/);
+  assert.match(chat, /StructuredTrainingPlan/);
+  assert.match(chat, /structured-dataset-analysis/);
+  assert.match(chat, /<StructuredDatasetProfilePage[\s\S]*?sourceName=\{droppedWorkload\.source_name\}/);
+  assert.match(chat, /messageId=\{`\$\{sessionId\}:workload`\}[\s\S]*?scrollAnchor[\s\S]*?workload-scroller-item/);
+  assert.match(chat, /autoScroll=\{!droppedWorkload\}/);
+  assert.match(chat, /scrollMargin=\{droppedWorkload \? 24 : 0\}/);
   assert.match(chat, /automatic_training_goal_card/);
   assert.match(chat, /previewLimit: 2/);
   assert.match(chat, /propose_training_environment_with_pi/);
-  assert.match(chat, /selectedChoice\.route !== "local"/);
-  assert.match(chat, /Remote models will not receive dropped content without explicit consent/);
+  assert.match(chat, /new Channel<PiDatasetAnalysisEvent>/);
+  assert.match(chat, /automatic-goal-card-stages/);
+  assert.match(chat, /Dataset analysis progress/);
+  assert.match(chat, /Source examples/);
+  assert.match(chat, /inspection\.row_preview/);
+  assert.match(chat, /No readable examples found/);
+  assert.match(chat, /automatic-goal-card-preview-grid/);
+  assert.match(chat, /automatic-goal-card-skeleton/);
+  assert.match(chat, /PiAnalysisElapsed/);
+  assert.match(chat, /piDatasetAnalysisFailure/);
+  assert.match(chat, /Retry analysis/);
+  assert.match(chat, /environmentArchitectRetry/);
+  assert.match(chat, /TableExampleCards/);
+  assert.match(chat, /2 · Understudy analysis/);
+  assert.match(chat, /3 · confirm the training plan/);
+  assert.match(chat, /<PiAnalysisRail[\s\S]*?<PiDesignCards/);
+  assert.match(chat, /StructuredDatasetProfilePage[\s\S]*?2 · Understudy analysis[\s\S]*?3 · confirm the training plan/);
+  assert.match(chat, /datasetProfileConfirmed/);
+  assert.match(chat, /Yes, analyze this dataset/);
+  assert.match(chat, /!datasetProfileConfirmed/);
+  assert.match(globals, /\.workload-scroller-item[\s\S]*?content-visibility: visible/);
+  assert.match(globals, /\.automatic-goal-card-design > \.automatic-goal-card-error/);
+  assert.match(globals, /\.pi-analysis-elapsed/);
+  assert.match(globals, /\.csv-training-plan-step[\s\S]*?padding: 34px 18px 17px/);
+  assert.match(globals, /@keyframes analysis-card-enter[\s\S]*?transform: translateY/);
+  assert.doesNotMatch(chat, /<details className="automatic-goal-card-preview">/);
+  assert.match(chat, /route: selectedChoice\.route/);
+  assert.match(chat, /progress=\{environmentArchitectProgress\}/);
   assert.match(chat, /prepare_remote_training_recipe/);
   assert.match(chat, /recipeId: trainingRecipe\.recipe_id/);
   assert.match(chat, /backend\.id === "mlx-local" && backend\.compatible && backend\.execution_ready/);
@@ -109,12 +192,17 @@ test("remote training uses live capabilities with explicit upload and spend cons
   assert.match(chat, /<RemoteTrainingPanel/);
   assert.match(chat, /openManagedRecipeTraining/);
   assert.match(chat, /remote_training_capabilities/);
-  assert.match(chat, /maximumManagedTrainingSpend\(capabilities\)/);
+  assert.match(chat, /recommendedManagedTrainingSpend\(capabilities\)/);
+  assert.match(chat, /remoteTrainingArtifactLimitError\(plan, capabilities\)/);
+  assert.doesNotMatch(chat, /Continue to remote training/);
   assert.match(chat, /maximumSpendUsd:\s*0/);
   assert.doesNotMatch(chat, /maximumSpendUsd:\s*1/);
   assert.match(chat, /setRecipeBackend\("local"\)/);
   assert.match(chat, /plan=\{remoteRecipePlan\}/);
   assert.match(chat, /onActiveChange=\{setLocalTrainingActive\}/);
+  assert.match(chat, /onRunViewChange=\{setRemoteTrainingView\}/);
+  assert.match(chat, /trainingExamples=\{trainingRecipe\.row_preview\}/);
+  assert.match(chat, /!remoteTrainingView && <AutomaticGoalCard/);
   assert.match(localSftPanel, /start_local_sft_training/);
   assert.match(localSftPanel, /compile_remote_training_backends/);
   assert.match(localSftPanel, /Training locally · \$0/);

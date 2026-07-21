@@ -4,7 +4,7 @@ description: Use when a developer's agent — a multi-turn tool-calling loop —
 metadata:
   understudy:
     mode: interactive
-    safety: local-first
+    safety: approval-required
     cli_required: true
 ---
 
@@ -47,17 +47,15 @@ Default to the path with the highest expected progress toward the multi-objectiv
 decision under hard constraints, not the cheapest rung. State the expected
 quality, latency, safety, time, and spend tradeoffs; follow
 [`../understudy/reference.md`](../understudy/reference.md) → Outcome-first spend
-posture. Get explicit approval before any upload, hosted run, provider spend,
-live SaaS API access, credential change, or production write. One approval may
-cover the named tool calls and gateway evals inside a bounded run plan; ask again
-before expanding it.
+posture. Launching a named bounded run plan authorizes its declared provider
+calls, uploads, hosted jobs, tool calls, evaluation, receipts, and cleanup. Do
+not pause for phase-by-phase confirmation. Ask again only before expanding its
+displayed data, destination, spend, retention, credentials, or production-write
+scope.
 
-Prefer local mocks, seeded fixtures, recorded schemas, and synthetic business
-data. Do not run live provider calls, tool calls, hosted jobs, model downloads,
-or uploads without a named surface, capped spend, exact data class, a reviewed
-dry-run or local plan, and a visible output path under `.understudy/`. Treat
-write-capable API tokens as production-impacting even when the task looks like
-an eval. Follow the repo public boundary in
+Use seeded fixtures and resettable sandboxes when the decision requires
+repeatability. Treat production writes as a separate envelope from model and
+training writes. Follow the repo public boundary in
 [`../../docs/privacy-and-data-boundaries.md`](../../docs/privacy-and-data-boundaries.md)
 for prompts, completions, tool outputs, traces, datasets, repo paths, and
 secrets. Do not print or commit `sk_*` values; let
@@ -118,7 +116,7 @@ single-output optimization does not need a tool environment.
    If Desktop produced `understudy.environment_proposal.v1` from a JSONL drop,
    treat `status: executable` as meaningful only after
    `understudy training validate-environment-proposal --proposal <path>` passes.
-   A canonical-Pi draft with `status: needs_verifier` is a proposal, not a
+   An Understudy draft with `status: needs_verifier` is a proposal, not a
    harness or score; author the missing parser/environment/oracle/sentinels and
    rerun deterministic validation before any model comparison.
 

@@ -1,10 +1,13 @@
 # Privacy And Data Boundaries
 
-Understudy Agent Tools are local-first by default.
+Understudy Agent Tools are backend-agnostic. Desktop defaults to the strongest
+active model and managed cloud execution unless the user selects Local or a
+hard data constraint requires it.
 
-By default, the CLI and skills do not upload files, call providers, inspect
-secret values, download models, or submit hosted jobs. After authentication,
-the CLI may send bounded product telemetry as documented in
+Dropping data starts analysis through the active model; activating a displayed
+cloud workflow authorizes its bounded uploads, provider calls, hosted jobs,
+temporary resources, evaluation, receipts, and cleanup. After authentication,
+the CLI may also send bounded product telemetry as documented in
 [`telemetry.md`](telemetry.md); set `UNDERSTUDY_TELEMETRY=0` to disable it.
 
 ## Data Classes
@@ -12,31 +15,47 @@ the CLI may send bounded product telemetry as documented in
 | Data class | Examples | Default handling |
 | --- | --- | --- |
 | Source metadata | repo-relative paths, file sizes, signal line numbers | may be written locally under `.understudy/` |
-| Source snippets | code fragments, prompt builders, parser logic | do not print, upload, or commit without approval |
-| Prompt bodies | system prompts, messages, templates | local-only unless explicitly approved |
-| Completions | model outputs, judge outputs, failed rows | local-only unless explicitly approved |
+| Source snippets | code fragments, prompt builders, parser logic | workflow-bound; do not print or commit by default |
+| Prompt bodies | system prompts, messages, templates | available to the active model and named workflow |
+| Completions | model outputs, judge outputs, failed rows | available to the active model and named workflow |
 | Desktop chat images | screenshots and other supported image attachments | private app-data files addressed by content hash; SQLite stores references only |
-| Traces | request/response payloads, spans, usage rows | metadata-only by default |
+| Traces | request/response payloads, spans, usage rows | usable by the active analysis or training workflow |
 | Supervision correction exports | user requests, student partials, supervisor reasons, teacher continuations, tool results, human labels | explicit local CLI export only; owner-only immutable files; never telemetry |
 | Remote supervision advisories | bounded user request, student partial, decision phase, pre-decision tool results, tool-round policy, supervisor action/reason/source | off by default; destination-bound Desktop consent or `--confirm-remote`; teacher output and system prompts excluded |
-| Eval rows | JSONL, CSV, YAML, golden fixtures | local-only until a redaction and split plan exists |
+| Dataset and eval rows | JSON, JSONL, CSV, spreadsheets, golden fixtures | dropping authorizes analysis; launching authorizes the displayed training route |
 | Secrets | API keys, tokens, credentials, local env files | never ask for chat-pasted values; never print values |
 | Local model artifacts | downloaded weights, adapters, caches | download only with explicit approval |
 
 ## Boundary Contract
 
-Before any live provider call, upload, hosted job, model download, benchmark
-submission, training handoff, or public claim, require:
+Before a workflow begins, show or derive:
 
 - exact data class or artifact path;
 - destination provider or hosted surface;
 - budget cap or download size when relevant;
-- dry-run, preview, or local artifact path;
 - retention expectation when the destination documents one;
-- explicit approval in the current thread.
+- the user action that activates the workflow.
 
-Configured provider keys are local machine state. They are not permission to
-spend.
+One approval covers every declared phase of the named bounded workflow. In
+Desktop, activating the final upload-and-train control is that approval; the
+client should proceed through upload, training, temporary serving, evaluation,
+and cleanup without another prompt. A new approval is required only when the
+workflow proposes more data, spend, destinations, retention, or production
+impact than the user approved.
+
+Configured provider keys make the route available. The user's launch action is
+permission to use them within the displayed workflow envelope.
+
+## Desktop Dataset Analysis
+
+Dropping one supported dataset into Desktop is the explicit action that starts
+Understudy analysis through the active model shown in the model picker. Desktop decodes
+the file locally first. Small datasets may be sent in full; larger text files
+and workbooks are reduced to a deterministic, context-bounded representation
+with field names and representative records. The UI streams the analysis stage
+and names the model used. Dataset analysis and training remain distinct product
+stages: dropping starts analysis; the final training action starts the bounded
+hosted run.
 
 ## Trace And Proxy Rules
 

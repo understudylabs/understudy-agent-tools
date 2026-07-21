@@ -34,6 +34,7 @@ import { buildValueReport } from "./value-report.js";
 import { type AgentPlatformAdapter, agentPlatformAdapters, findAgentPlatformAdapter } from "./agent-platforms.js";
 import { registerCapturesCommand } from "./commands/captures.js";
 import { registerEvalsCommand } from "./commands/evals.js";
+import { registerExploreCommand } from "./commands/explore.js";
 import { registerDaemonCommand } from "./commands/daemon.js";
 import { registerDesktopCommand } from "./commands/desktop.js";
 import { registerDoctorCommand } from "./commands/doctor.js";
@@ -216,7 +217,7 @@ function printSpine(): void {
   console.log("understudy-agent-tools");
   console.log("");
   console.log("MVP spine:");
-  console.log("1. skills/understudy/SKILL.md routes the local-first workflow.");
+  console.log("1. skills/understudy/SKILL.md routes the backend-agnostic workflow.");
   console.log("2. skills/capture-evidence/SKILL.md pins harness, metric, splits, and baseline.");
   console.log("3. skills/optimize-workload/SKILL.md validates freshness before optimization claims.");
   console.log("4. skills/use-understudy-gateway/SKILL.md runs authenticated gateway workflows when approved.");
@@ -848,6 +849,7 @@ export function buildProgram(): Command {
   registerWorkloadsCommand(program);
   registerCapturesCommand(program);
   registerEvalsCommand(program);
+  registerExploreCommand(program);
   registerGatewayCommand(program);
   registerRoutesCommand(program);
   registerSetupCommand(program);

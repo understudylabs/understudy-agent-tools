@@ -43,15 +43,17 @@ metadata:
 
 ## Safety Language
 
-Every skill must say what is local-only, which data class it touches, and what
-requires explicit approval. The canonical policy is
+Every skill must say which route and data class it touches, what one user action
+activates the workflow, and which envelope expansions require another decision.
+The canonical policy is
 [`privacy-and-data-boundaries.md`](privacy-and-data-boundaries.md).
 
 Use this standard rule:
 
-> Do not upload source files, prompts, traces, outputs, datasets, repo paths,
-> private notes, provider keys, or secrets unless the developer explicitly
-> approves that exact action in the current thread.
+> A user action that launches a named bounded workflow authorizes its declared
+> uploads, provider calls, hosted jobs, evaluation, receipts, and cleanup. Ask
+> again only before expanding data, destination, spend, retention, credentials,
+> or production impact. Never print, commit, or transmit secret values.
 
 Provider keys are local machine state, not spend approval.
 

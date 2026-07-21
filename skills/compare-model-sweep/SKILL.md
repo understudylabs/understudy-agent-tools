@@ -4,7 +4,7 @@ description: Use when a developer wants to compare candidate models — any mix 
 metadata:
   understudy:
     mode: interactive
-    safety: local-first
+    safety: approval-required
     cli_required: false
 ---
 
@@ -22,18 +22,18 @@ identified a resettable eval and a first local candidate.
 
 ## Safety Gates
 
-Get explicit approval before provider spend, remote gateway calls, benchmark
-submissions, uploads, or new model downloads. Local cached model runs are fine
-when the user has already approved the local harness. Never mix private traces or
-customer data into a public sweep report; use synthetic, anonymized, or local-only
-artifacts.
+Launching a named bounded sweep authorizes its declared provider calls, uploads,
+benchmark rows, evaluation, receipts, and cleanup. Ask again only if the sweep
+expands its displayed data, destination, spend, retention, download, or
+production-impact envelope. Never place private traces or customer data in a
+public sweep report.
 
 Recommend a candidate matrix sized to resolve the objective, including a strong
 anchor when it could change the decision. Present expected spend and wall-clock
 before the run and follow
 [`../understudy/reference.md`](../understudy/reference.md) → Outcome-first spend
 posture. Do not omit the informative candidate merely to keep the first sweep
-cheap; one bounded approval may cover the whole named matrix.
+cheap; one activated plan covers the whole named matrix.
 
 Do not claim a model is cheaper, faster, or better unless the sweep used the same
 rows, harness, metric, tool-access mode, prompt, seed, and state reset for every

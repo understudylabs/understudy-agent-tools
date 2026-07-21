@@ -219,10 +219,10 @@ during the experiment. Configure it through the normal gateway/project setup in
 [`../../use-understudy-gateway/SKILL.md`](../../use-understudy-gateway/SKILL.md);
 this skill does not describe the internal plumbing.
 
-Inference defaults to Understudy after explicit approval via
+Inference defaults to Understudy within the activated workflow via
 `understudy login --email <developer-email>`; BYO provider keys are a fallback if
-the developer prefers. Keep provider, model, budget, and data class in the local
-run artifact before any live call.
+the developer prefers. Keep provider, model, budget, and data class in the run
+artifact.
 
 ## Secondary Intervention: GEPA a Promising Model's Prompt
 

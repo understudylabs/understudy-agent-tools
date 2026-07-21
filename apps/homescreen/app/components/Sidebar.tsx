@@ -26,6 +26,7 @@ export type PaneId =
   | "usage"
   | "traces"
   | "rlm"
+  | "explore"
   | "training-evals"
   | "training-optimization"
   | "training-datasets"
@@ -74,9 +75,81 @@ export function Sidebar({
   const [showArchived, setShowArchived] = useState(false);
   const [archiveAllOpen, setArchiveAllOpen] = useState(false);
   const visibleSessions = showArchived ? archivedSessions : sessions;
+  const inExplore = active === "explore";
+
+  const sectionStyle = (selected: boolean): React.CSSProperties => ({
+    flex: 1,
+    padding: "4px 0",
+    border: "none",
+    borderRadius: 5,
+    cursor: "pointer",
+    fontFamily: "var(--mono)",
+    fontSize: 10.5,
+    letterSpacing: "0.05em",
+    background: selected ? "var(--hover)" : "transparent",
+    color: selected ? "var(--c-ink)" : "var(--c-ink-muted)",
+  });
+
+  const sectionSwitcher = (
+    <div
+      role="tablist"
+      aria-label="Section"
+      style={{
+        display: "flex",
+        gap: 2,
+        margin: "0 8px 8px",
+        padding: 2,
+        borderRadius: 7,
+        border: "1px solid var(--c-rule)",
+        background: "var(--c-window)",
+      }}
+    >
+      <button
+        type="button"
+        role="tab"
+        aria-selected={!inExplore}
+        style={sectionStyle(!inExplore)}
+        onClick={() => onSelect("chat")}
+      >
+        Chat
+      </button>
+      <button
+        type="button"
+        role="tab"
+        aria-selected={inExplore}
+        style={sectionStyle(inExplore)}
+        onClick={() => onSelect("explore")}
+      >
+        Explore Data
+      </button>
+    </div>
+  );
+
+  if (inExplore) {
+    return (
+      <aside className="sidebar">
+        {sectionSwitcher}
+        <div className="nav-spacer" />
+        <button
+          className={"nav-account" + ((active as PaneId) === "account" ? " active" : "")}
+          onClick={() => onSelect("account")}
+        >
+          <AccountIcon />
+          <span className="nav-account-copy">
+            <span>Account</span>
+            <span className="nav-account-status">
+              <span className={"dot" + (connected ? " running" : "")} />
+              {connected ? "Connected" : "Disconnected"}
+            </span>
+          </span>
+        </button>
+      </aside>
+    );
+  }
 
   return (
     <aside className="sidebar">
+      {sectionSwitcher}
       <div className="chat-nav-heading">
         <div className="nav-section">{showArchived ? "Archived" : "Chats"}</div>
         <button

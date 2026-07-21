@@ -1,6 +1,6 @@
 {
   "name": "@understudylabs/understudy-agent-tools",
-  "version": "0.6.29",
+  "version": "0.6.31",
   "description": "Public Understudy agent tools CLI and skill library.",
   "type": "module",
   "bin": {
@@ -58,6 +58,7 @@
     "@earendil-works/pi-ai": "0.80.6",
     "@earendil-works/pi-coding-agent": "0.80.6",
     "@inquirer/prompts": "^8.4.3",
+    "@modelcontextprotocol/sdk": "1.29.0",
     "ai": "6.0.224",
     "commander": "^14.0.3",
     "kleur": "^4.1.5",
@@ -67,7 +68,6 @@
   "devDependencies": {
     "@types/json-schema": "7.0.15",
     "@types/node": "^24.3.0",
-    "@modelcontextprotocol/sdk": "1.29.0",
     "undici-types": "7.16.0",
     "typescript": "^5.7.3"
   },
