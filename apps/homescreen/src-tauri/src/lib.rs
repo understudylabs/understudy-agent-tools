@@ -397,8 +397,10 @@ pub fn run() {
                 if let Some(residency) = app.try_state::<residency::Residency>() {
                     residency.shutdown();
                 }
-                // Graceful shutdown: the agent card must not keep
-                // advertising a dead pid as a healthy local daemon.
+                // Graceful shutdown: the supervisor must record
+                // app_shutdown (not a crash), and the agent card must not
+                // keep advertising a dead pid as a healthy local daemon.
+                server::request_shutdown();
                 agent_card::mark_stopped();
             }
         });

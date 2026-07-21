@@ -20,6 +20,7 @@ use axum::{
     Json, Router,
 };
 use serde_json::{json, Value};
+use std::future::IntoFuture;
 use tauri::{AppHandle, Emitter, Manager};
 
 const DEFAULT_PORT: u16 = 17790;
@@ -161,6 +162,169 @@ async fn auth_mw(State(ctx): State<Ctx>, req: Request, next: Next) -> Response {
     }
 }
 
+// ---------------- supervisor (stop reasons + capped-backoff restart) ----------------
+//
+// The server used to die silently: `serve` returned (bind failure, axum exit,
+// panic on the runtime thread) and nothing recorded why — agent-card.json just
+// flipped `running: false`. The supervisor wraps every exit path in an
+// explicit reason, writes it to the card (`app.stopped_reason`), logs it via
+// the crate's `eprintln!("understudy server: ...")` convention, and restarts
+// with capped exponential backoff unless the exit is terminal (app shutdown,
+// another healthy instance owning the port, or the retry budget is spent).
+// Pure decision logic lives in `supervisor` so it is testable without sockets.
+pub(crate) mod supervisor {
+    use std::time::Duration;
+
+    /// Backoff schedule in seconds; attempts past the end reuse the last cap.
+    pub const BACKOFF_SECS: [u64; 3] = [1, 5, 30];
+    /// Give up (terminal reason recorded) after this many consecutive
+    /// failed restart attempts.
+    pub const MAX_RESTART_ATTEMPTS: u32 = 5;
+    /// A server that stayed healthy this long earns a fresh retry budget.
+    pub const HEALTHY_RESET_SECS: u64 = 60;
+    /// Period of the supervisor's /health self-probe.
+    pub const HEALTH_PROBE_SECS: u64 = 60;
+    /// Consecutive failed self-probes before the server is declared dead.
+    pub const HEALTH_PROBE_FAILURES: u32 = 2;
+
+    /// Why one server incarnation ended. Every exit path maps to exactly one
+    /// of these; the reason string written to agent-card.json derives from it.
+    #[derive(Debug, Clone, PartialEq, Eq)]
+    pub enum ExitKind {
+        /// Bind failed with AddrInUse. `owner_healthy` is true when a probe
+        /// of /health on the port answered "ok" (someone functional owns it);
+        /// `token_accepted` is whether our bearer token worked against it.
+        BindAddrInUse {
+            owner_healthy: bool,
+            token_accepted: bool,
+        },
+        /// Bind failed for any other reason (retryable).
+        BindFailed(String),
+        /// axum::serve returned (Ok or Err) — it should never return.
+        ServeExited(Option<String>),
+        /// The serve task panicked.
+        ServePanicked(String),
+        /// The periodic /health self-probe failed repeatedly.
+        HealthCheckFailed,
+        /// The app asked the server to stop (graceful, never restarted).
+        Shutdown,
+    }
+
+    /// What the supervisor loop should do about an exit.
+    #[derive(Debug, Clone, PartialEq, Eq)]
+    pub enum Decision {
+        /// Record `reason`, sleep `delay`, try again.
+        Retry { delay: Duration, reason: String },
+        /// Record `reason` and stop supervising (terminal).
+        Stop { reason: String },
+    }
+
+    pub fn backoff_delay(attempt: u32) -> Duration {
+        let idx = (attempt as usize).min(BACKOFF_SECS.len() - 1);
+        Duration::from_secs(BACKOFF_SECS[idx])
+    }
+
+    fn reason_for(kind: &ExitKind) -> String {
+        match kind {
+            ExitKind::BindAddrInUse {
+                owner_healthy: true,
+                token_accepted,
+            } => format!(
+                "port_owned_by_other_instance (healthy /health; token {})",
+                if *token_accepted { "accepted" } else { "rejected" }
+            ),
+            ExitKind::BindAddrInUse {
+                owner_healthy: false,
+                ..
+            } => "port_in_use (no healthy owner; likely lingering socket)".into(),
+            ExitKind::BindFailed(err) => format!("bind_failed: {err}"),
+            ExitKind::ServeExited(None) => "server_exited".into(),
+            ExitKind::ServeExited(Some(err)) => format!("server_exited: {err}"),
+            ExitKind::ServePanicked(msg) => format!("server_panicked: {msg}"),
+            ExitKind::HealthCheckFailed => "health_check_failed".into(),
+            ExitKind::Shutdown => "app_shutdown".into(),
+        }
+    }
+
+    /// Tracks consecutive restart attempts and turns each exit into a
+    /// `Decision`. No I/O: the caller supplies the exit kind and the healthy
+    /// uptime of the incarnation that just ended.
+    pub struct Supervisor {
+        attempts: u32,
+        last_reason: Option<String>,
+    }
+
+    impl Supervisor {
+        pub fn new() -> Self {
+            Self {
+                attempts: 0,
+                last_reason: None,
+            }
+        }
+
+        pub fn attempts(&self) -> u32 {
+            self.attempts
+        }
+
+        /// A run that stayed up long enough resets the retry budget.
+        pub fn note_uptime(&mut self, uptime: Duration) {
+            if uptime.as_secs() >= HEALTHY_RESET_SECS {
+                self.attempts = 0;
+            }
+        }
+
+        pub fn on_exit(&mut self, kind: ExitKind) -> Decision {
+            let reason = reason_for(&kind);
+            match kind {
+                // User/app-initiated: never restart.
+                ExitKind::Shutdown => Decision::Stop { reason },
+                // Another functional instance answers on the port: do not
+                // fight over it.
+                ExitKind::BindAddrInUse {
+                    owner_healthy: true,
+                    ..
+                } => Decision::Stop { reason },
+                // Everything else is an unexpected exit: retry with capped
+                // backoff until the budget is spent.
+                _ => {
+                    if self.attempts >= MAX_RESTART_ATTEMPTS {
+                        return Decision::Stop {
+                            reason: format!(
+                                "gave_up_after_{}_attempts (last: {})",
+                                self.attempts,
+                                self.last_reason.as_deref().unwrap_or(&reason)
+                            ),
+                        };
+                    }
+                    let delay = backoff_delay(self.attempts);
+                    self.attempts += 1;
+                    self.last_reason = Some(reason.clone());
+                    Decision::Retry { delay, reason }
+                }
+            }
+        }
+    }
+}
+
+/// Set once the app asks the server to stop; the supervisor records
+/// `app_shutdown` instead of restarting. (Process exit also ends the server
+/// thread; this exists so an explicit stop is never misread as a crash.)
+static SHUTDOWN: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+pub fn request_shutdown() {
+    SHUTDOWN.store(true, std::sync::atomic::Ordering::SeqCst);
+}
+
+fn shutdown_requested() -> bool {
+    SHUTDOWN.load(std::sync::atomic::Ordering::SeqCst)
+}
+
+/// Record + log one server stop reason (single choke point for both).
+fn record_stop(reason: &str) {
+    eprintln!("understudy server: stopped: {reason}");
+    crate::agent_card::record_server_stopped(reason);
+}
+
 /// Resolve (or create) a bearer token + port, then run the server on a dedicated
 /// thread with its own multi-thread runtime so it never blocks the Tauri app.
 pub fn start(app: AppHandle) {
@@ -203,25 +367,165 @@ pub fn start(app: AppHandle) {
             .build()
         {
             Ok(rt) => rt,
-            Err(_) => return,
+            Err(e) => {
+                // Runtime thread death is a stop like any other: record it.
+                record_stop(&format!("runtime_build_failed: {e}"));
+                return;
+            }
         };
-        rt.block_on(serve(ctx, port));
+        rt.block_on(supervise(ctx, port));
     });
 }
 
-async fn serve(ctx: Ctx, port: u16) {
+/// Supervisor loop: run the server, classify every exit, record the reason,
+/// and restart with capped backoff unless the exit is terminal.
+async fn supervise(ctx: Ctx, port: u16) {
+    let mut sup = supervisor::Supervisor::new();
+    loop {
+        if shutdown_requested() {
+            record_stop("app_shutdown");
+            return;
+        }
+        let started = std::time::Instant::now();
+        let exit = serve_once(&ctx, port).await;
+        sup.note_uptime(started.elapsed());
+        match sup.on_exit(exit) {
+            supervisor::Decision::Retry { delay, reason } => {
+                record_stop(&reason);
+                eprintln!(
+                    "understudy server: restarting in {}s (attempt {}/{})",
+                    delay.as_secs(),
+                    sup.attempts(),
+                    supervisor::MAX_RESTART_ATTEMPTS
+                );
+                tokio::time::sleep(delay).await;
+            }
+            supervisor::Decision::Stop { reason } => {
+                record_stop(&reason);
+                return;
+            }
+        }
+    }
+}
+
+/// One server incarnation: bind, serve, and self-probe /health every
+/// `HEALTH_PROBE_SECS`. Returns how it ended; never restarts by itself.
+async fn serve_once(ctx: &Ctx, port: u16) -> supervisor::ExitKind {
     let listener = match tokio::net::TcpListener::bind(("127.0.0.1", port)).await {
         Ok(l) => l,
+        Err(e) if e.kind() == std::io::ErrorKind::AddrInUse => {
+            eprintln!("understudy server: bind {port} failed: {e}");
+            let (owner_healthy, token_accepted) = probe_port_owner(port, &ctx.token).await;
+            return supervisor::ExitKind::BindAddrInUse {
+                owner_healthy,
+                token_accepted,
+            };
+        }
         Err(e) => {
             eprintln!("understudy server: bind {port} failed: {e}");
-            return;
+            return supervisor::ExitKind::BindFailed(e.to_string());
         }
     };
     // The app is the canonical local daemon: advertise it in the agent card
     // once the server is actually reachable (never the token itself).
     crate::agent_card::record_api_capability(port, &ctx.token);
     crate::agent_card::record_server_started(port, !ctx.token.is_empty());
-    let _ = axum::serve(listener, router(ctx)).await;
+
+    let mut serve_task = tokio::spawn(axum::serve(listener, router(ctx.clone())).into_future());
+    let mut probe_failures = 0u32;
+    let mut ticker = tokio::time::interval(std::time::Duration::from_secs(
+        supervisor::HEALTH_PROBE_SECS,
+    ));
+    ticker.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
+    ticker.tick().await; // first tick fires immediately; skip it
+    loop {
+        tokio::select! {
+            joined = &mut serve_task => {
+                return match joined {
+                    Ok(Ok(())) => supervisor::ExitKind::ServeExited(None),
+                    Ok(Err(e)) => supervisor::ExitKind::ServeExited(Some(e.to_string())),
+                    Err(join_err) => {
+                        let msg = if join_err.is_panic() {
+                            match join_err.into_panic().downcast::<String>() {
+                                Ok(s) => *s,
+                                Err(payload) => match payload.downcast::<&'static str>() {
+                                    Ok(s) => (*s).to_string(),
+                                    Err(_) => "unknown panic payload".to_string(),
+                                },
+                            }
+                        } else {
+                            "serve task cancelled".to_string()
+                        };
+                        supervisor::ExitKind::ServePanicked(msg)
+                    }
+                };
+            }
+            _ = ticker.tick() => {
+                if shutdown_requested() {
+                    serve_task.abort();
+                    return supervisor::ExitKind::Shutdown;
+                }
+                if probe_health(port).await {
+                    probe_failures = 0;
+                } else {
+                    probe_failures += 1;
+                    eprintln!(
+                        "understudy server: /health self-probe failed ({probe_failures}/{})",
+                        supervisor::HEALTH_PROBE_FAILURES
+                    );
+                    if probe_failures >= supervisor::HEALTH_PROBE_FAILURES {
+                        serve_task.abort();
+                        return supervisor::ExitKind::HealthCheckFailed;
+                    }
+                }
+            }
+        }
+    }
+}
+
+fn probe_client() -> Option<reqwest::Client> {
+    reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(3))
+        .build()
+        .ok()
+}
+
+/// True when /health on our own port answers "ok".
+async fn probe_health(port: u16) -> bool {
+    let Some(client) = probe_client() else {
+        return false;
+    };
+    match client
+        .get(format!("http://127.0.0.1:{port}/health"))
+        .send()
+        .await
+    {
+        Ok(resp) if resp.status().is_success() => {
+            matches!(resp.text().await.as_deref(), Ok("ok"))
+        }
+        _ => false,
+    }
+}
+
+/// The port was busy: is a healthy instance answering there, and does our
+/// bearer token work against it? (healthy, token_accepted). A healthy owner —
+/// token accepted or not — means we must not fight over the port.
+async fn probe_port_owner(port: u16, token: &str) -> (bool, bool) {
+    if !probe_health(port).await {
+        return (false, false);
+    }
+    let Some(client) = probe_client() else {
+        return (true, false);
+    };
+    let token_accepted = matches!(
+        client
+            .get(format!("http://127.0.0.1:{port}/v1/status"))
+            .bearer_auth(token)
+            .send()
+            .await,
+        Ok(resp) if resp.status() != StatusCode::UNAUTHORIZED
+    );
+    (true, token_accepted)
 }
 
 fn auth(ctx: &Ctx, headers: &HeaderMap) -> Result<(), (StatusCode, String)> {
@@ -2046,6 +2350,127 @@ fn _unused() -> impl IntoResponse {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    // ----- supervisor state machine (pure; no sockets) -----
+
+    use super::supervisor::{backoff_delay, Decision, ExitKind, Supervisor, MAX_RESTART_ATTEMPTS};
+    use std::time::Duration;
+
+    #[test]
+    fn backoff_is_capped_exponential_1_5_30() {
+        assert_eq!(backoff_delay(0), Duration::from_secs(1));
+        assert_eq!(backoff_delay(1), Duration::from_secs(5));
+        assert_eq!(backoff_delay(2), Duration::from_secs(30));
+        // Past the schedule the cap holds.
+        assert_eq!(backoff_delay(3), Duration::from_secs(30));
+        assert_eq!(backoff_delay(100), Duration::from_secs(30));
+    }
+
+    #[test]
+    fn unexpected_exits_retry_then_give_up_with_terminal_reason() {
+        let mut sup = Supervisor::new();
+        for attempt in 0..MAX_RESTART_ATTEMPTS {
+            match sup.on_exit(ExitKind::ServeExited(None)) {
+                Decision::Retry { delay, reason } => {
+                    assert_eq!(delay, backoff_delay(attempt));
+                    assert_eq!(reason, "server_exited");
+                }
+                other => panic!("attempt {attempt} should retry, got {other:?}"),
+            }
+        }
+        match sup.on_exit(ExitKind::ServeExited(None)) {
+            Decision::Stop { reason } => {
+                assert_eq!(
+                    reason,
+                    format!("gave_up_after_{MAX_RESTART_ATTEMPTS}_attempts (last: server_exited)")
+                );
+            }
+            other => panic!("budget spent should stop, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn healthy_uptime_resets_the_retry_budget() {
+        let mut sup = Supervisor::new();
+        for _ in 0..MAX_RESTART_ATTEMPTS {
+            assert!(matches!(
+                sup.on_exit(ExitKind::HealthCheckFailed),
+                Decision::Retry { .. }
+            ));
+        }
+        // A long healthy run wipes the slate; short ones do not.
+        sup.note_uptime(Duration::from_secs(59));
+        assert!(matches!(
+            sup.on_exit(ExitKind::HealthCheckFailed),
+            Decision::Stop { .. }
+        ));
+        sup.note_uptime(Duration::from_secs(60));
+        match sup.on_exit(ExitKind::HealthCheckFailed) {
+            Decision::Retry { delay, reason } => {
+                assert_eq!(delay, backoff_delay(0));
+                assert_eq!(reason, "health_check_failed");
+            }
+            other => panic!("reset budget should retry, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn healthy_foreign_port_owner_is_terminal_not_fought_over() {
+        let mut sup = Supervisor::new();
+        match sup.on_exit(ExitKind::BindAddrInUse {
+            owner_healthy: true,
+            token_accepted: false,
+        }) {
+            Decision::Stop { reason } => {
+                assert!(reason.starts_with("port_owned_by_other_instance"));
+                assert!(reason.contains("token rejected"));
+            }
+            other => panic!("healthy owner should stop, got {other:?}"),
+        }
+        // Same-token owner (a lingering older self) is also terminal, but
+        // distinguishable in the reason.
+        match sup.on_exit(ExitKind::BindAddrInUse {
+            owner_healthy: true,
+            token_accepted: true,
+        }) {
+            Decision::Stop { reason } => assert!(reason.contains("token accepted")),
+            other => panic!("healthy owner should stop, got {other:?}"),
+        }
+        // No healthy owner: the old socket may just be lingering — retry.
+        match sup.on_exit(ExitKind::BindAddrInUse {
+            owner_healthy: false,
+            token_accepted: false,
+        }) {
+            Decision::Retry { reason, .. } => assert!(reason.starts_with("port_in_use")),
+            other => panic!("lingering socket should retry, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn shutdown_never_restarts_and_reasons_carry_detail() {
+        let mut sup = Supervisor::new();
+        assert_eq!(
+            sup.on_exit(ExitKind::Shutdown),
+            Decision::Stop {
+                reason: "app_shutdown".into()
+            }
+        );
+        // Reason strings carry the underlying error detail for debugging.
+        match sup.on_exit(ExitKind::BindFailed("permission denied".into())) {
+            Decision::Retry { reason, .. } => {
+                assert_eq!(reason, "bind_failed: permission denied");
+            }
+            other => panic!("bind failure should retry, got {other:?}"),
+        }
+        match sup.on_exit(ExitKind::ServePanicked("boom".into())) {
+            Decision::Retry { reason, .. } => assert_eq!(reason, "server_panicked: boom"),
+            other => panic!("panic should retry, got {other:?}"),
+        }
+        match sup.on_exit(ExitKind::ServeExited(Some("io error".into()))) {
+            Decision::Retry { reason, .. } => assert_eq!(reason, "server_exited: io error"),
+            other => panic!("serve error should retry, got {other:?}"),
+        }
+    }
 
     #[test]
     fn gen_token_is_64_hex_and_unique() {
