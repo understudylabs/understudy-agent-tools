@@ -2371,18 +2371,23 @@ export function ChatPane({
   // window when the card needs more room; never shrink it.
   useEffect(() => {
     if (!datasetFocusMode || !isTauri()) return;
-    const frame = requestAnimationFrame(() => {
-      const card = document.querySelector(".structured-dataset-profile-page")
-        ?? document.querySelector(".workload-analysis");
-      if (!card) return;
+    const card = document.querySelector(".structured-dataset-profile-page")
+      ?? document.querySelector(".workload-analysis");
+    if (!card) return;
+    let lastRequested = 0;
+    const grow = () => {
       const needed = Math.ceil(card.getBoundingClientRect().height) + 96;
-      if (needed <= window.innerHeight) return;
+      if (needed <= window.innerHeight || needed <= lastRequested) return;
+      lastRequested = needed;
       void getCurrentWindow()
-        .setSize(new LogicalSize(window.innerWidth, Math.min(needed, window.screen.availHeight)))
-        .catch(() => {});
-    });
-    return () => cancelAnimationFrame(frame);
-  }, [datasetFocusMode, trainingRecipe]);
+        .setSize(new LogicalSize(window.innerWidth, Math.min(needed, window.screen.availHeight - 24)))
+        .catch((error) => console.warn("focus-mode window grow failed:", error));
+    };
+    grow();
+    const observer = new ResizeObserver(grow);
+    observer.observe(card);
+    return () => observer.disconnect();
+  }, [datasetFocusMode, trainingRecipe, datasetProfileConfirmed]);
 
   return (
     <div
