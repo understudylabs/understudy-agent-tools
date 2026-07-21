@@ -19,6 +19,13 @@ const PLAN_SCHEMA: &str = "understudy.training.plan.v1";
 const RUN_SCHEMA: &str = "understudy.remote_training.run.v1";
 const API_SCHEMA: &str = "understudy-train-v1";
 const BACKEND_COMPATIBILITY_SCHEMA: &str = "understudy.remote_training.backend_compatibility.v1";
+// Production remote-training control plane. This is the sanctioned default: the
+// desktop connects to `train.understudylabs.com` without requiring an explicit
+// `UNDERSTUDY_TRAIN_API_BASE` override, gated by the completed security and
+// production-readiness review in `docs/reviews/train-api-desktop-connection.md`.
+// The env override remains only for pointing at localhost or a staging host
+// during development; `train_api_base` still fails closed on non-HTTPS,
+// credentialed, or malformed URLs.
 const DEFAULT_TRAIN_API_BASE: &str = "https://train.understudylabs.com/api/train/v1";
 const MAX_MANIFEST_BYTES: u64 = 1_048_576;
 // Keep the first remote-training slice bounded. Split conversion is deliberately
@@ -27,6 +34,10 @@ const MAX_MANIFEST_BYTES: u64 = 1_048_576;
 const MAX_SPLIT_BYTES: u64 = 150 * 1024 * 1024;
 const MAX_REMOTE_ARTIFACT_BYTES: u64 = 150 * 1024 * 1024;
 const MAX_RECIPE_INSPECTION_BYTES: u64 = 32 * 1024 * 1024;
+// Control-plane JSON responses (capabilities, run receipts, status, events)
+// are small; cap the buffered body so a malicious or compromised control
+// plane cannot exhaust memory within the request timeout.
+const MAX_CONTROL_PLANE_RESPONSE_BYTES: usize = 8 * 1024 * 1024;
 const MAX_RECIPE_INSPECTION_ROWS: usize = 250_000;
 const MAX_RECIPE_FIELD_NAMES: usize = 128;
 const MAX_DATASET_ANALYSIS_CONTEXT_CHARS: usize = 8_000;
@@ -329,6 +340,10 @@ struct RemoteTrainingRun {
     run_manifest_path: String,
 }
 
+/// Resolve the remote-training control-plane base URL. Defaults to the reviewed
+/// production host (see `docs/reviews/train-api-desktop-connection.md`); the
+/// `UNDERSTUDY_TRAIN_API_BASE` env var overrides it for localhost/staging only.
+/// Fails closed on non-HTTPS (except localhost), credentialed, or malformed URLs.
 fn train_api_base() -> Result<Url, String> {
     let raw = std::env::var("UNDERSTUDY_TRAIN_API_BASE")
         .unwrap_or_else(|_| DEFAULT_TRAIN_API_BASE.to_string());
@@ -366,6 +381,32 @@ fn client() -> Result<Client, String> {
         .map_err(|_| "Could not initialize the remote training connection.".to_string())
 }
 
+/// Read a control-plane response body, refusing to buffer more than
+/// `MAX_CONTROL_PLANE_RESPONSE_BYTES`. Rejects on a declared `Content-Length`
+/// over the cap and streams chunk-by-chunk so a chunked/streamed body that
+/// omits or lies about its length is still bounded.
+async fn read_bounded_json(response: reqwest::Response) -> Result<Value, String> {
+    if let Some(len) = response.content_length() {
+        if len as usize > MAX_CONTROL_PLANE_RESPONSE_BYTES {
+            return Err("The remote training service returned an oversized response.".to_string());
+        }
+    }
+    let mut buffer: Vec<u8> = Vec::new();
+    let mut stream = response;
+    while let Some(chunk) = stream
+        .chunk()
+        .await
+        .map_err(|_| "The remote training service returned an unreadable response.".to_string())?
+    {
+        if buffer.len() + chunk.len() > MAX_CONTROL_PLANE_RESPONSE_BYTES {
+            return Err("The remote training service returned an oversized response.".to_string());
+        }
+        buffer.extend_from_slice(&chunk);
+    }
+    serde_json::from_slice::<Value>(&buffer)
+        .map_err(|_| "The remote training service returned malformed JSON.".to_string())
+}
+
 async fn api_json(method: Method, url: Url, body: Option<&Value>) -> Result<Value, String> {
     let credentials = api_credentials()?;
     let mut request = client()?
@@ -380,12 +421,7 @@ async fn api_json(method: Method, url: Url, body: Option<&Value>) -> Result<Valu
         .await
         .map_err(|_| "The remote training service could not be reached.".to_string())?;
     let status = response.status();
-    let bytes = response
-        .bytes()
-        .await
-        .map_err(|_| "The remote training service returned an unreadable response.".to_string())?;
-    let value = serde_json::from_slice::<Value>(&bytes)
-        .map_err(|_| format!("The remote training service returned malformed JSON ({status})."))?;
+    let value = read_bounded_json(response).await?;
     if !status.is_success() {
         let message = value
             .get("error")
@@ -4345,10 +4381,7 @@ async fn run_api_json(
         .await
         .map_err(|_| "The remote training service could not be reached.".to_string())?;
     let status = response.status();
-    let value = response
-        .json::<Value>()
-        .await
-        .map_err(|_| "The remote training service returned malformed JSON.".to_string())?;
+    let value = read_bounded_json(response).await?;
     if !status.is_success() {
         return Err(value
             .get("error")
@@ -4390,6 +4423,11 @@ fn validate_control_plane_url(value: &str) -> Result<(), String> {
     let url = Url::parse(value)
         .map_err(|_| "The remote training service returned an invalid URL.".to_string())?;
     let base = train_api_base()?;
+    // Reject embedded credentials for parity with train_api_base(): a
+    // server-returned status/events/actions URL must not carry userinfo.
+    if !url.username().is_empty() || url.password().is_some() {
+        return Err("The remote training service returned a credentialed control-plane URL.".into());
+    }
     if url.scheme() != base.scheme()
         || url.host_str() != base.host_str()
         || url.port_or_known_default() != base.port_or_known_default()
@@ -4581,6 +4619,26 @@ mod tests {
     fn accepts_the_founder_budget_ceiling_from_live_capabilities() {
         assert!(validate_remote_plan_options("understudy/auto", 1_000.0).is_ok());
         assert!(validate_remote_plan_options("understudy/auto", 1_000.01).is_err());
+    }
+
+    #[test]
+    fn control_plane_url_pins_origin_and_rejects_userinfo() {
+        // Same-origin, path under the base prefix: accepted.
+        assert!(validate_control_plane_url(
+            "https://train.understudylabs.com/api/train/v1/runs/abc/events"
+        )
+        .is_ok());
+        // Embedded credentials, even on the right host: rejected.
+        assert!(validate_control_plane_url(
+            "https://user:pass@train.understudylabs.com/api/train/v1/runs/abc"
+        )
+        .is_err());
+        // Cross-origin: rejected.
+        assert!(validate_control_plane_url("https://evil.example.com/api/train/v1/runs/abc").is_err());
+        // Non-HTTPS: rejected.
+        assert!(validate_control_plane_url("http://train.understudylabs.com/api/train/v1/x").is_err());
+        // Path outside the base prefix: rejected.
+        assert!(validate_control_plane_url("https://train.understudylabs.com/evil").is_err());
     }
 
     fn fixture() -> (PathBuf, PathBuf) {
