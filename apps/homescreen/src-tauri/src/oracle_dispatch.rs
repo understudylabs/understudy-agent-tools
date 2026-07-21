@@ -331,14 +331,58 @@ pub struct McpEndpoint {
 pub trait OracleAdapter: Send + Sync {
     fn name(&self) -> &'static str;
     /// Build the headless invocation for `prompt`. `mcp` is injected at
-    /// spawn time only.
-    fn build_command(&self, prompt: &str, mcp: Option<&McpEndpoint>) -> std::process::Command;
+    /// spawn time only, via a 0600 config file whose guard the caller must
+    /// keep alive until the child exits (never via argv).
+    fn build_command(
+        &self,
+        prompt: &str,
+        mcp: Option<&McpEndpoint>,
+    ) -> Result<(std::process::Command, Option<McpConfigGuard>), String>;
     /// Best-effort adapter version for the report.
     fn version(&self) -> Option<String>;
 }
 
+/// Owns the on-disk MCP config (0600) for one oracle spawn; the file holds
+/// the bearer token so it is removed on drop.
+pub struct McpConfigGuard {
+    path: std::path::PathBuf,
+}
+
+impl McpConfigGuard {
+    fn write(config: &Value) -> Result<Self, String> {
+        let path = std::env::temp_dir().join(format!(
+            "understudy-oracle-mcp-{}.json",
+            gen_task_id()
+        ));
+        let mut options = std::fs::OpenOptions::new();
+        options.write(true).create_new(true);
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::OpenOptionsExt;
+            options.mode(0o600);
+        }
+        let mut file = options
+            .open(&path)
+            .map_err(|error| format!("Could not stage the oracle MCP config: {error}"))?;
+        use std::io::Write;
+        file.write_all(config.to_string().as_bytes())
+            .map_err(|error| format!("Could not write the oracle MCP config: {error}"))?;
+        Ok(Self { path })
+    }
+
+    pub fn path(&self) -> &std::path::Path {
+        &self.path
+    }
+}
+
+impl Drop for McpConfigGuard {
+    fn drop(&mut self) {
+        let _ = std::fs::remove_file(&self.path);
+    }
+}
+
 /// Claude Code headless: `claude -p <prompt> --output-format json`, with the
-/// app's MCP endpoint passed as an inline `--mcp-config` JSON server def and
+/// app's MCP endpoint passed as a 0600 `--mcp-config` file path and
 /// `--strict-mcp-config` so no other MCP servers leak into the session.
 pub struct ClaudeCodeAdapter {
     bin: String,
@@ -369,11 +413,16 @@ impl OracleAdapter for ClaudeCodeAdapter {
         "claude-code"
     }
 
-    fn build_command(&self, prompt: &str, mcp: Option<&McpEndpoint>) -> std::process::Command {
+    fn build_command(
+        &self,
+        prompt: &str,
+        mcp: Option<&McpEndpoint>,
+    ) -> Result<(std::process::Command, Option<McpConfigGuard>), String> {
         let mut cmd = std::process::Command::new(&self.bin);
         cmd.arg("-p")
             .arg(prompt)
             .args(["--output-format", "json"]);
+        let mut guard = None;
         if let Some(mcp) = mcp {
             let config = json!({
                 "mcpServers": {
@@ -384,13 +433,17 @@ impl OracleAdapter for ClaudeCodeAdapter {
                     }
                 }
             });
+            // The token must never appear in argv (visible to every local
+            // process via ps); write a 0600 config file and pass its path.
+            let written = McpConfigGuard::write(&config)?;
             cmd.arg("--strict-mcp-config")
                 .arg("--mcp-config")
-                .arg(config.to_string());
+                .arg(written.path());
+            guard = Some(written);
         }
         cmd.env("PATH", crate::bin::runtime_path());
         cmd.stdin(Stdio::null());
-        cmd
+        Ok((cmd, guard))
     }
 
     fn version(&self) -> Option<String> {
@@ -532,8 +585,11 @@ pub fn execute_task(
 
     let started_at = now_iso();
     let started = Instant::now();
-    let mut child = adapter
-        .build_command(&prompt, mcp.as_ref())
+    let (mut command, _config_guard) = adapter.build_command(&prompt, mcp.as_ref()).map_err(|error| {
+        let _ = set_task_status(&mut task, task_path, "failed");
+        error
+    })?;
+    let mut child = command
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .spawn()
@@ -1020,11 +1076,44 @@ mod tests {
 
     #[cfg(all(test, unix))]
     #[test]
+    #[test]
+    fn mcp_token_reaches_a_0600_config_file_and_never_argv() {
+        let endpoint = McpEndpoint {
+            url: "http://127.0.0.1:17790/mcp".into(),
+            token: "sekrit-token-0123456789abcdef0123456789".into(),
+        };
+        let adapter = ClaudeCodeAdapter::with_binary("/usr/bin/true");
+        let (command, guard) = adapter.build_command("probe", Some(&endpoint)).unwrap();
+        let argv: Vec<String> = command
+            .get_args()
+            .map(|arg| arg.to_string_lossy().into_owned())
+            .collect();
+        assert!(
+            argv.iter().all(|arg| !arg.contains(&endpoint.token)),
+            "token must never appear in argv: {argv:?}"
+        );
+        let guard = guard.expect("mcp config guard");
+        let config_path = guard.path().to_path_buf();
+        assert!(argv.iter().any(|arg| arg == &config_path.to_string_lossy()));
+        let contents = fs::read_to_string(&config_path).unwrap();
+        assert!(contents.contains(&endpoint.token));
+        #[cfg(unix)]
+        {
+            use std::os::unix::fs::PermissionsExt;
+            let mode = fs::metadata(&config_path).unwrap().permissions().mode();
+            assert_eq!(mode & 0o777, 0o600, "config file must be 0600");
+        }
+        drop(guard);
+        assert!(!config_path.exists(), "config file must be removed on drop");
+    }
+
+    #[test]
     fn mcp_endpoint_token_is_injected_at_spawn_and_redacted_from_events() {
         let root = temp_root("run-mcp");
-        // The fake echoes its argv, proving the MCP config (with token)
-        // reaches the process — and that streamed lines redact it.
-        let fake = write_fake_oracle(&root, r#"echo "$@""#);
+        // The fake echoes its argv (the config file PATH, not the token) and
+        // dumps the config file contents, proving the token reaches the
+        // process boundary — and that streamed lines redact it.
+        let fake = write_fake_oracle(&root, r#"echo "$@"; for a in "$@"; do case "$a" in *.json) cat "$a";; esac; done"#);
         let task_path = approved_task(&root);
         let token = format!("{}f00d", "c0ffee".repeat(10));
         let adapter = ClaudeCodeAdapter::with_binary(fake.to_string_lossy());
