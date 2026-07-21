@@ -16,7 +16,7 @@ use sha2::{Digest, Sha256};
 use tauri::{AppHandle, Manager};
 
 pub(crate) const EVENT_SCHEMA: &str = "understudy-conversation-runtime-event-v1";
-pub(crate) const RUNTIME_VERSION: &str = "0.3.34";
+pub(crate) const RUNTIME_VERSION: &str = "0.3.35";
 
 #[derive(Clone, Debug, Deserialize, Serialize, PartialEq, Eq)]
 #[serde(rename_all = "snake_case")]

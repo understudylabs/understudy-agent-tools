@@ -1472,6 +1472,9 @@ export function ChatPane({
     let unlisten: (() => void) | null = null;
     void getCurrentWebview()
       .onDragDropEvent((event) => {
+        // The trained-model dialog owns portable model packages while open;
+        // do not also compile them as generic dropped workloads.
+        if (classifierLibraryOpen) return;
         if (event.payload.type === "enter" || event.payload.type === "over") {
           dispatchDrop({ type: "drag_enter" });
           return;
@@ -1568,7 +1571,7 @@ export function ChatPane({
       disposed = true;
       unlisten?.();
     };
-  }, []);
+  }, [classifierLibraryOpen]);
 
   const hydrateSavedMessages = async (
     saved: PersistedChatSession,
