@@ -245,7 +245,7 @@ function Quickstart({
               )}
               <p className="text-xs leading-5 text-[var(--c-ink-muted)]">
                 Browse details on the{" "}
-                <PaneLink onNavigate={onNavigate} pane="models">
+                <PaneLink onNavigate={onNavigate} pane="model-catalog">
                   Models pane
                 </PaneLink>
                 .
@@ -333,7 +333,7 @@ function Quickstart({
                 ? ` · this app is signed in with a key ending ${info.api_key_suffix}`
                 : ""}{" "}
               ·{" "}
-              <PaneLink onNavigate={onNavigate} pane="account">
+              <PaneLink onNavigate={onNavigate} pane="api-keys">
                 manage keys
               </PaneLink>
             </p>
@@ -382,7 +382,7 @@ function Quickstart({
             <Button
               variant="outline"
               size="sm"
-              onClick={() => onNavigate("capture")}
+              onClick={() => onNavigate("captures")}
             >
               Open captures
             </Button>
