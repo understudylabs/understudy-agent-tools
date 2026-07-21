@@ -452,9 +452,15 @@ pub async fn user_login() -> Result<SessionMeta> {
     let pkce = pkce_pair();
     let state = random_urlsafe(24);
 
-    // Loopback bound to 127.0.0.1 ONLY, ephemeral port.
-    let listener =
-        TcpListener::bind((Ipv4Addr::LOCALHOST, 0)).context("bind loopback listener")?;
+    // Loopback bound to 127.0.0.1 ONLY. WorkOS wildcards cover subdomains,
+    // not ports, so the redirect URIs are registered on a fixed port list
+    // (see the "Understudy Desktop" application in the WorkOS dashboard);
+    // try them in order in case one is taken.
+    const LOOPBACK_PORTS: [u16; 3] = [17871, 17872, 17873];
+    let listener = LOOPBACK_PORTS
+        .iter()
+        .find_map(|p| TcpListener::bind((Ipv4Addr::LOCALHOST, *p)).ok())
+        .context("all registered loopback ports (17871-17873) are in use")?;
     let port = listener.local_addr()?.port();
     let redirect_uri = format!("http://127.0.0.1:{port}/callback");
 
