@@ -70,10 +70,12 @@ async fn admin_json(method: Method, path: &str, body: Option<&Value>) -> Result<
 }
 
 /// Projects visible to the signed-in org, plus the org/gateway identity the
-/// settings pane displays. `GET /admin/v1/orgs/:org/projects`.
+/// settings pane displays. `GET /admin/v1/orgs/:org/projects?limit=100` —
+/// the same page size the web's `listOrgProjects` requests (the API's
+/// default is 20, which would silently truncate the project picker).
 #[tauri::command]
 pub async fn settings_projects_list() -> Result<Value, String> {
-    admin_json(Method::GET, "projects", None).await
+    admin_json(Method::GET, "projects?limit=100", None).await
 }
 
 /// Rename a project (display name only; the slug is immutable).
