@@ -30,6 +30,20 @@ uses semantic-ish versioning (minor = new skill or new capability, patch = fixes
 - **Dataset focus mode.** While you prepare and launch a training run, the
   training card becomes the whole window — no sidebars or clutter — and the
   window sizes itself to the content.
+- **One decision at a time.** Training is now a notebook of quick questions —
+  "Does this look like your data?", "Is this the plan you want?" — one card
+  at a time with a progress rail below. Your answered cards stay on screen as
+  a running record, you can go back and change any answer, and the training
+  goal itself is editable, including how accurate the model must be before
+  it counts as done. When rows had to be set aside (empty or conflicting
+  labels), a review card shows you what and why.
+- **Training threads.** Every training run lives in the left-hand sidebar
+  like a chat: active runs resume exactly where you left off — even after
+  quitting the app — and finished runs reopen as a complete, read-only record
+  of every decision you made.
+- **Start Moraine from inside the app.** If the local trace explorer is
+  down, a Start button in the Explore pane brings it back — no terminal
+  needed.
 - **Watch your training run, step by step.** A live timeline shows each
   readiness gate as it is checked (with honest results, not spinners), and once
   training starts you get granular status: a loss curve sparkline, a header
