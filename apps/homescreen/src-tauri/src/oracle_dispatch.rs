@@ -585,9 +585,8 @@ pub fn execute_task(
 
     let started_at = now_iso();
     let started = Instant::now();
-    let (mut command, _config_guard) = adapter.build_command(&prompt, mcp.as_ref()).map_err(|error| {
+    let (mut command, _config_guard) = adapter.build_command(&prompt, mcp.as_ref()).inspect_err(|_| {
         let _ = set_task_status(&mut task, task_path, "failed");
-        error
     })?;
     let mut child = command
         .stdout(Stdio::piped())
@@ -1075,7 +1074,6 @@ mod tests {
     }
 
     #[cfg(all(test, unix))]
-    #[test]
     #[test]
     fn mcp_token_reaches_a_0600_config_file_and_never_argv() {
         let endpoint = McpEndpoint {
