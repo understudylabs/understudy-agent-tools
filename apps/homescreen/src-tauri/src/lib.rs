@@ -332,6 +332,7 @@ pub fn run() {
             custom_evals::run_custom_eval,
             custom_evals::run_custom_eval_live,
             task_model_runtime::run_task_model,
+            task_model_runtime::run_task_model_file,
             task_model_runtime::run_task_model_eval,
             task_models::inspect_task_model,
             task_models::install_task_model,

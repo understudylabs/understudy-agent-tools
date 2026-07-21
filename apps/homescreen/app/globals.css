@@ -2412,6 +2412,11 @@ select,
   border-color: color-mix(in srgb, var(--mb-cyan) 72%, transparent);
   animation-duration: 1.05s;
 }
+.task-model-active .persona-stage::before {
+  border-color: color-mix(in srgb, #f472b6 34%, transparent);
+  box-shadow: 0 0 34px color-mix(in srgb, #f472b6 12%, transparent);
+  opacity: 1;
+}
 .persona-halo {
   position: relative;
   z-index: 1;
@@ -2427,6 +2432,50 @@ select,
     height 260ms cubic-bezier(0.2, 0.7, 0.2, 1),
     opacity 300ms cubic-bezier(0.2, 0.7, 0.2, 1),
     transform 300ms cubic-bezier(0.2, 0.7, 0.2, 1);
+}
+.task-model-active .persona-halo {
+  --pc-tint: #f472b6;
+}
+.active-task-model-badge {
+  position: absolute;
+  z-index: 3;
+  bottom: clamp(6px, 2vh, 20px);
+  left: 50%;
+  display: flex;
+  align-items: center;
+  gap: 7px;
+  max-width: min(420px, calc(100% - 32px));
+  padding: 7px 11px;
+  border: 1px solid color-mix(in srgb, #f472b6 25%, var(--border));
+  border-radius: 999px;
+  background: color-mix(in srgb, var(--surface-1) 86%, transparent);
+  color: var(--text-2);
+  font-size: 11px;
+  transform: translateX(-50%);
+  backdrop-filter: blur(14px);
+}
+.active-task-model-badge:hover {
+  border-color: color-mix(in srgb, #f472b6 48%, var(--border));
+  color: var(--text);
+}
+.active-task-model-badge > span {
+  width: 6px;
+  height: 6px;
+  flex: 0 0 6px;
+  border-radius: 50%;
+  background: #f472b6;
+  box-shadow: 0 0 9px color-mix(in srgb, #f472b6 70%, transparent);
+}
+.active-task-model-badge strong {
+  overflow: hidden;
+  font-weight: 600;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.active-task-model-badge small {
+  color: #f9a8d4;
+  font-family: var(--mono);
+  white-space: nowrap;
 }
 .sidekick-persona-orbit {
   grid-area: 1 / 1;
@@ -2619,6 +2668,61 @@ select,
 .ai-chat.has-messages .persona-stamp {
   width: 34px;
   height: 34px;
+}
+.ai-chat.has-messages .active-task-model-badge {
+  top: 50%;
+  bottom: auto;
+  left: calc(50% + 32px);
+  max-width: min(320px, calc(100vw - 160px));
+  padding: 5px 9px;
+  transform: translateY(-50%);
+}
+.active-task-dropzone {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 16px;
+  margin: 0 4px 8px;
+  padding: 10px 13px;
+  border: 1px dashed color-mix(in srgb, #f472b6 34%, var(--border));
+  border-radius: 12px;
+  background: color-mix(in srgb, #f472b6 4%, var(--surface-1));
+  transition: border-color 160ms ease, background 160ms ease, transform 160ms ease;
+}
+.active-task-dropzone.is-hovering {
+  border-color: #f472b6;
+  background: color-mix(in srgb, #f472b6 10%, var(--surface-1));
+  transform: scale(1.006);
+}
+.active-task-dropzone > div {
+  display: grid;
+  gap: 2px;
+  min-width: 0;
+}
+.active-task-dropzone strong {
+  color: var(--text-2);
+  font-size: 12px;
+  font-weight: 620;
+}
+.active-task-dropzone span,
+.active-task-dropzone small {
+  color: var(--text-3);
+  font-family: var(--mono);
+  font-size: 10px;
+}
+.active-task-dropzone > button {
+  display: grid;
+  flex: 0 0 auto;
+  gap: 1px;
+  padding: 6px 9px;
+  border: 1px solid color-mix(in srgb, #f472b6 22%, var(--border));
+  border-radius: 9px;
+  color: #f9a8d4;
+  font-size: 11px;
+  text-align: right;
+}
+.active-task-dropzone > button:hover {
+  border-color: color-mix(in srgb, #f472b6 52%, var(--border));
 }
 .ai-chat.has-messages.is-streaming .persona-stage {
   height: 36px;
