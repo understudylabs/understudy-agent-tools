@@ -732,7 +732,7 @@ fn compile_custom_plan(
             }
             // Tabular sources: the bundled CLI owns inspection, mapping
             // statistics, and the group-isolated split preparation.
-            "" | "csv" | "tsv" | "tab" | "txt" => {
+            "" | "csv" | "tsv" | "tab" | "txt" | "xlsx" => {
                 let inspection = custom_understudy_cli_json(
                     &custom_inspect_csv_args(&canonical_source, &canonical_root),
                     "The Understudy CLI could not inspect this table.",
@@ -773,7 +773,7 @@ fn compile_custom_plan(
             }
             _ => {
                 return Err(
-                    "Custom training compilation supports CSV, TSV, TXT, JSON, JSONL, and NDJSON sources."
+                    "Custom training compilation supports CSV, TSV, TXT, XLSX, JSON, JSONL, and NDJSON sources."
                         .into(),
                 )
             }
