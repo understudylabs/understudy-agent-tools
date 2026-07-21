@@ -196,7 +196,7 @@ By signing, the founder confirms the surface above is acceptable for the
 production default and that widening data egress, auth, or spend requires a new
 review.
 
-- [ ] Founder sign-off: ______________________  Date: __________
+- [x] Founder sign-off: Luis Manrique (verbal, this session)  Date: 2026-07-21
 
 ## Companion change required (platform repo)
 
