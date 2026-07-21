@@ -593,7 +593,7 @@ test("desktop compiles one dropped path through the bounded public CLI", async (
   assert.match(chat, /const inspectTable = shouldInspectDroppedTable\(result\)/);
   assert.match(chat, /dispatchDrop\(\{ type: "inspection_started" \}\);[\s\S]*await inspectCsvWorkload/);
   assert.match(dropState, /export function shouldInspectDroppedTable/);
-  assert.match(dropState, /\\\.\(\?:csv\|tsv\|tab\)/);
+  assert.match(dropState, /\\\.\(\?:csv\|tsv\|tab\|xlsx\)/);
   assert.match(chat, /<CsvProfile/);
   assert.match(chat, /rowCount=\{csvInspection\.row_count\}/);
   assert.match(chat, /prepare_dropped_csv_classification/);

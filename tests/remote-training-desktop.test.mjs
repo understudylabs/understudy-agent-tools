@@ -123,7 +123,7 @@ test("remote training uses live capabilities with explicit upload and spend cons
   assert.match(panel, /Budget accounted/);
   assert.match(panel, /This run predates detailed failure receipts/);
   assert.match(native, /join\("result\.json"\)/);
-  assert.match(native, /Some\("completed" \| "failed" \| "cancelled"\)/);
+  assert.match(native, /matches!\(\*value, "completed" \| "failed" \| "cancelled"\)/);
   assert.match(panel, /private splits · endpoint auto-deletes/);
   assert.doesNotMatch(panel, /type="checkbox"/);
   assert.match(panel, /Where it still fails/);
