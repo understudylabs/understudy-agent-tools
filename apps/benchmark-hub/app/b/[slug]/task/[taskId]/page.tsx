@@ -27,7 +27,7 @@ export default async function TaskInspector({
   const { slug, taskId: rawTaskId } = await params;
   const taskId = decodeURIComponent(rawTaskId);
   const entry = getEntry(slug);
-  if (!entry) notFound();
+  if (!entry || entry.kind === "invalid") notFound();
   const task = entry.manifest.tasks.find((t) => t.task_id === taskId);
   if (!task) notFound();
 

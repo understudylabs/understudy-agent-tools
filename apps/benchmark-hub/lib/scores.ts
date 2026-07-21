@@ -21,11 +21,11 @@ export type ModelSummary = {
   scoredCount: number;
   unscoredCount: number;
   errorCount: number;
-  /** Σ cost over rows carrying a numeric cost; null when none do. */
+  /** Σ cost over SCORED rows carrying a numeric cost; null when none do. */
   totalCost: number | null;
   /** Σ cost ÷ scored rows ÷ mean strict score; null when undefined (guards ÷0). */
   costPerSuccess: number | null;
-  /** Median latency_ms over rows carrying it. */
+  /** Median latency_ms over scored rows carrying it. */
   p50LatencyMs: number | null;
   /** Normalized route from rows' `route` field. */
   route: RouteKind;
@@ -85,7 +85,9 @@ export function computeLeaderboard(
   for (const row of rows) {
     if (excluded.has(row.task_id)) continue;
     if (splitFilter !== "all") {
-      const split = row.split ?? splits.get(row.task_id) ?? "none";
+      // The manifest's frozen split assignment wins over anything the row
+      // declares; row.split is only trusted for tasks the manifest doesn't know.
+      const split = splits.get(row.task_id) ?? row.split ?? "none";
       if (split !== splitFilter) continue;
     }
     const model = row.model ?? "(unknown model)";
@@ -110,15 +112,20 @@ export function computeLeaderboard(
       categoryDetail[cat.category_id] = { strict, dense: mean(denseVals), rowCount: catScored.length };
     }
 
-    const costs = modelRows.map((r) => r.cost).filter((c): c is number => typeof c === "number" && Number.isFinite(c));
+    // Cost and latency aggregate over the SAME population as scoring: rows
+    // counted in the score denominator (status ok, score present). Rows that
+    // errored or were skipped/unscored contribute to run-quality counts only.
+    const costs = scored.map((r) => r.cost).filter((c): c is number => typeof c === "number" && Number.isFinite(c));
     const totalCost = costs.length > 0 ? costs.reduce((a, b) => a + b, 0) : null;
+    // overall is a per-row micro-average of the strict score over scored rows
+    // (duplicate rows for a task each count once; dedup is out of scope here).
     const overall = mean(scored.map((r) => r.score as number));
     // cost-per-successful-task = Σ cost ÷ scored rows ÷ mean strict score.
     const costPerSuccess =
       totalCost != null && scored.length > 0 && overall != null && overall > 0
         ? totalCost / scored.length / overall
         : null;
-    const latencies = modelRows
+    const latencies = scored
       .map((r) => r.latency_ms)
       .filter((l): l is number => typeof l === "number" && Number.isFinite(l));
     const routes = new Set(modelRows.map((r) => normalizeRoute(r.route)).filter((r): r is Exclude<RouteKind, null> => r != null));
@@ -142,11 +149,16 @@ export function computeLeaderboard(
 }
 
 /** Per-category mean strict score across all models (for the detail taxonomy). */
-export function categoryScoreSummary(manifest: BenchmarkManifest, rows: EvalRow[]): Record<string, { score: number | null; n: number }> {
+export function categoryScoreSummary(
+  manifest: BenchmarkManifest,
+  rows: EvalRow[],
+  excludeTaskIds?: Set<string>,
+): Record<string, { score: number | null; n: number }> {
   const categories = taskCategoryMap(manifest);
+  const pool = excludeTaskIds ? rows.filter((r) => !excludeTaskIds.has(r.task_id)) : rows;
   const out: Record<string, { score: number | null; n: number }> = {};
   for (const cat of manifest.taxonomy) {
-    const scored = rows.filter(
+    const scored = pool.filter(
       (r) => r.status === "ok" && typeof r.score === "number" && (r.category_id ?? categories.get(r.task_id)) === cat.category_id,
     );
     out[cat.category_id] = { score: mean(scored.map((r) => r.score as number)), n: scored.length };

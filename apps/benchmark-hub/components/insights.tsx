@@ -26,6 +26,8 @@ const W = 640;
 const H = 320;
 const PAD = { top: 16, right: 24, bottom: 40, left: 48 };
 const GUTTER_W = 56; // pinned "≈$0 (local)" band at the left edge
+const EPS = 1e-6; // "near-zero spend" threshold for the ≈$0 gutter
+const LAT_FLOOR = 1; // ms — log10(0) guard: latencies clamp to this floor
 
 const GRID = "var(--border)";
 const MUTED = "var(--muted)";
@@ -94,12 +96,22 @@ export function QualityCostScatter({
     const usable = summaries.filter(
       (s) => scopedScore(s, scope) != null && (xMode === "cost" ? s.totalCost != null : s.p50LatencyMs != null),
     );
-    return usable.map((s) => ({
-      model: s.model,
-      y: scopedScore(s, scope) as number,
-      x: xMode === "cost" ? (s.costPerSuccess ?? 0) : (s.p50LatencyMs as number),
-      route: s.route,
-    }));
+    return usable.map((s) => {
+      // costPerSuccess is null for zero-score arms; those plot at their RAW
+      // total cost (they still spent money) as hollow "no successes" dots.
+      const noSuccess = xMode === "cost" && s.costPerSuccess == null;
+      const rawLatency = s.p50LatencyMs as number;
+      return {
+        model: s.model,
+        y: scopedScore(s, scope) as number,
+        // log10(0) guard: latency clamps to a 1ms floor.
+        x: xMode === "cost" ? (s.costPerSuccess ?? (s.totalCost as number)) : Math.max(rawLatency, LAT_FLOOR),
+        clamped: xMode === "latency" && rawLatency < LAT_FLOOR,
+        noSuccess,
+        totalCost: s.totalCost,
+        route: s.route,
+      };
+    });
   }, [summaries, xMode, scope]);
 
   const allModels = summaries.map((s) => s.model);
@@ -116,9 +128,11 @@ export function QualityCostScatter({
     );
   }
 
-  const EPS = 1e-6;
-  const gutterPts = xMode === "cost" ? points.filter((p) => p.x < EPS) : [];
-  const plotPts = points.filter((p) => !gutterPts.includes(p));
+  // Gutter membership requires actual near-zero SPEND (Σ row costs < EPS),
+  // never a null costPerSuccess — a costly zero-score arm must not render as
+  // "≈$0 (local)" nor seed the frontier as cheapest.
+  const gutterPts = xMode === "cost" ? points.filter((p) => (p.totalCost as number) < EPS) : [];
+  const plotPts = points.filter((p) => !gutterPts.includes(p) && p.x > 0);
 
   const xs = plotPts.map((p) => p.x);
   const xMin = xs.length ? Math.min(...xs) : 1;
@@ -139,7 +153,8 @@ export function QualityCostScatter({
   const yPos = (y: number) => PAD.top + (1 - y / yTop) * plotH;
 
   // Step value frontier: best score at each cost, walking left → right.
-  // Gutter (≈$0) arms are cheapest by definition and seed the frontier.
+  // Gutter (≈$0 actual spend) arms are cheapest by definition and seed the
+  // frontier; "no successes" arms never join it.
   const ordered = [
     ...gutterPts.map((p) => ({ ...p, px: plotLeft - GUTTER_W / 2 })),
     ...plotPts.map((p) => ({ ...p, px: xPos(p.x) })).sort((a, b) => a.px - b.px),
@@ -147,11 +162,14 @@ export function QualityCostScatter({
   const frontier: { px: number; py: number }[] = [];
   let best = -1;
   for (const p of ordered) {
+    if (p.noSuccess) continue;
     if (p.y > best) {
       best = p.y;
       frontier.push({ px: p.px, py: yPos(p.y) });
     }
   }
+  // The frontier's trailing step ends at the last REAL point, not the axis edge.
+  const lastRealPx = ordered.length > 0 ? Math.max(...ordered.filter((p) => !p.noSuccess).map((p) => p.px), -1) : -1;
   let frontierPath = "";
   let frontierArea = "";
   if (frontier.length > 0) {
@@ -159,7 +177,7 @@ export function QualityCostScatter({
     for (let i = 1; i < frontier.length; i++) {
       frontierPath += ` H ${frontier[i].px} V ${frontier[i].py}`;
     }
-    frontierPath += ` H ${W - PAD.right}`;
+    if (lastRealPx > frontier[frontier.length - 1].px) frontierPath += ` H ${lastRealPx}`;
     // Evidence gradient: area under the frontier (accent 18% → transparent,
     // stops centralized in globals.css as --grad-frontier-top).
     frontierArea = `${frontierPath} V ${H - PAD.bottom} H ${frontier[0].px} Z`;
@@ -245,13 +263,26 @@ export function QualityCostScatter({
             <g key={p.model} onMouseEnter={() => setHover(p.model)} onMouseLeave={() => setHover(null)}>
               {/* oversize hit target */}
               <circle cx={p.px} cy={yPos(p.y)} r={14} fill="transparent" />
-              <circle cx={p.px} cy={yPos(p.y)} r={isHover ? 6 : 5} fill={color} stroke="var(--surface)" strokeWidth="2" />
-              {/* radial sheen on top of the series color (identity unchanged) */}
-              <circle cx={p.px} cy={yPos(p.y)} r={isHover ? 6 : 5} fill="url(#qc-dot-sheen)" pointerEvents="none" />
+              {p.noSuccess ? (
+                // Hollow dot: real spend, zero successes — off the frontier.
+                <circle cx={p.px} cy={yPos(p.y)} r={isHover ? 6 : 5} fill="var(--surface)" stroke={color} strokeWidth="2" />
+              ) : (
+                <>
+                  <circle cx={p.px} cy={yPos(p.y)} r={isHover ? 6 : 5} fill={color} stroke="var(--surface)" strokeWidth="2" />
+                  {/* radial sheen on top of the series color (identity unchanged) */}
+                  <circle cx={p.px} cy={yPos(p.y)} r={isHover ? 6 : 5} fill="url(#qc-dot-sheen)" pointerEvents="none" />
+                </>
+              )}
               {isHover && (
                 <text x={p.px + 9} y={yPos(p.y) + 15} fill={MUTED} className="mono" fontSize="9">
                   {formatScore(p.y)} ·{" "}
-                  {xMode === "cost" ? (p.x < EPS ? "≈$0" : formatCost(p.x) + "/success") : formatLatency(p.x)}
+                  {xMode === "cost"
+                    ? p.noSuccess
+                      ? formatCost(p.x) + " spent · no successes"
+                      : (p.totalCost as number) < EPS
+                        ? "≈$0"
+                        : formatCost(p.x) + "/success"
+                    : (p.clamped ? "≤" : "") + formatLatency(p.x)}
                 </text>
               )}
             </g>
@@ -280,7 +311,11 @@ export function CostRanked({ summaries }: { summaries: ModelSummary[] }) {
     () =>
       summaries
         .filter((s) => s.totalCost != null)
-        .sort((a, b) => (a.costPerSuccess ?? 0) - (b.costPerSuccess ?? 0)),
+        // null costPerSuccess = no successes: sorts LAST, never "cheapest".
+        .sort(
+          (a, b) =>
+            (a.costPerSuccess ?? Number.POSITIVE_INFINITY) - (b.costPerSuccess ?? Number.POSITIVE_INFINITY),
+        ),
     [summaries],
   );
   const [shown, setShown] = useState<string[]>(withCost.slice(0, 8).map((s) => s.model));
@@ -313,6 +348,7 @@ export function CostRanked({ summaries }: { summaries: ModelSummary[] }) {
       ) : (
         rows.map((s) => {
           const color = seriesColor(s.model, allModels);
+          const noSuccess = s.costPerSuccess == null;
           const v = s.costPerSuccess ?? 0;
           return (
             <div key={s.model} className="lb-bar">
@@ -327,7 +363,7 @@ export function CostRanked({ summaries }: { summaries: ModelSummary[] }) {
                   style={{ display: "block", width: `${Math.max((v / max) * 100, 1.5)}%`, "--bar-color": color } as React.CSSProperties}
                 />
               </span>
-              <span className="val">{v < 1e-6 ? "≈$0" : formatCost(v)}</span>
+              <span className="val">{noSuccess ? "no successes" : v < EPS ? "≈$0" : formatCost(v)}</span>
             </div>
           );
         })

@@ -120,8 +120,34 @@ export type EvidenceWarning = {
   detail: string;
 };
 
+/** Loader diagnostics per entry (rendered as a `//` footnote on the detail page). */
+export type EntryDiagnostics = {
+  /** JSONL lines that failed to parse (rows + flags + versions files). */
+  skippedLines: number;
+  /** Rows dropped for a wrong/missing eval_result schema_version. */
+  droppedRows: number;
+  /** Rows dropped because row.benchmark_id ≠ manifest.benchmark_id. */
+  foreignRows: number;
+  /** Flags dropped because flag.benchmark_id ≠ manifest.benchmark_id. */
+  foreignFlags: number;
+};
+
+/** A directory whose benchmark.json failed validation — rendered, not hidden. */
+export type InvalidHubEntry = {
+  kind: "invalid";
+  slug: string;
+  source: "data-dir" | "demo" | "fixture";
+  dir: string;
+  manifestPath: string;
+  /** Human-readable errors from validateBenchmarkManifest (or JSON parse). */
+  errors: string[];
+};
+
+export type AnyHubEntry = HubEntry | InvalidHubEntry;
+
 /** One benchmark as discovered on disk. */
 export type HubEntry = {
+  kind: "ok";
   /** URL-safe unique key (directory or fixture derived, not benchmark_id). */
   slug: string;
   source: "data-dir" | "demo" | "fixture";
@@ -136,4 +162,6 @@ export type HubEntry = {
   warnings: EvidenceWarning[];
   /** Split-freeze history from versions.jsonl (oldest first); [] if absent. */
   versions: BenchmarkVersion[];
+  /** Loader diagnostics: skipped/dropped/foreign line counts. */
+  diagnostics: EntryDiagnostics;
 };

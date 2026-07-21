@@ -1,12 +1,15 @@
 import Link from "next/link";
 import { loadHub } from "@/lib/data";
+import type { HubEntry, InvalidHubEntry } from "@/lib/types";
 import { FlagBadge, OriginBadge, SourceBadge, WarningList } from "@/components/badges";
 import { VersionTimeline } from "@/components/version-timeline";
 
 export const dynamic = "force-dynamic";
 
 export default function HubIndex() {
-  const entries = loadHub();
+  const allEntries = loadHub();
+  const entries = allEntries.filter((e): e is HubEntry => e.kind === "ok");
+  const invalidEntries = allEntries.filter((e): e is InvalidHubEntry => e.kind === "invalid");
   // Union of every benchmark's split freezes drives the hub-level release rail.
   const allVersions = entries
     .flatMap((e) => e.versions)
@@ -34,7 +37,26 @@ export default function HubIndex() {
           Discovered from BENCHMARK_HUB_DATA_DIR, <code className="mono">.understudy/benchmarks</code>,{" "}
           <code className="mono">experiments/benchmark-hub-demo</code>, and repo fixtures.
         </p>
-        {entries.length === 0 && (
+        {invalidEntries.length > 0 && (
+          <div className="mt-4 flex flex-col gap-3">
+            {invalidEntries.map((entry) => (
+              <div key={entry.slug} className="lb-card" style={{ borderColor: "var(--bad)" }}>
+                <div className="flex flex-wrap items-center gap-2">
+                  <span className="text-[15px] font-bold" style={{ color: "var(--bad)" }}>
+                    Invalid manifest
+                  </span>
+                  <span className="mono text-xs text-ink-muted">{entry.manifestPath}</span>
+                </div>
+                <div className="mono mt-2 flex flex-col gap-0.5 text-xs" style={{ color: "var(--bad)" }}>
+                  {entry.errors.map((err, i) => (
+                    <span key={i}>{"// " + err}</span>
+                  ))}
+                </div>
+              </div>
+            ))}
+          </div>
+        )}
+        {allEntries.length === 0 && (
           <div className="lb-state">
             No benchmarks found. Point BENCHMARK_HUB_DATA_DIR at a directory of benchmark dirs (each with a
             benchmark.json manifest).

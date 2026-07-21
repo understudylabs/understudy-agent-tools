@@ -53,7 +53,7 @@ export default async function RootLayout({ children }: { children: React.ReactNo
         <footer className="lb-footer" id="docs">
           <div className="lb-wrap">
             <span>Understudy · benchmark hub · local, single-user, evidence-first</span>
-            <span className="mono">Overall = mean of category averages · cost = cost per successful task</span>
+            <span className="mono">Overall = mean strict score over scored rows · cost = cost per successful task</span>
           </div>
         </footer>
       </body>

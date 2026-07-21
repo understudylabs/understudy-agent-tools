@@ -33,16 +33,26 @@ function Section({
   id,
   title,
   explainer,
+  scope,
   children,
 }: {
   id: string;
   title: string;
   explainer: string;
+  /** Aggregation scope in force, e.g. "holdout · flagged excluded". */
+  scope?: string;
   children: React.ReactNode;
 }) {
   return (
     <section className="ent-sec" id={id}>
-      <h2>{title}</h2>
+      <h2>
+        {title}
+        {scope && (
+          <span className="mono" style={{ marginLeft: 10, fontSize: 10, fontWeight: 400, color: "var(--muted)" }}>
+            {scope}
+          </span>
+        )}
+      </h2>
       <p className="exp">{explainer}</p>
       {children}
     </section>
@@ -59,11 +69,41 @@ export default async function BenchmarkDetail({ params }: { params: Promise<{ sl
   const { slug } = await params;
   const entry = getEntry(slug);
   if (!entry) notFound();
+  if (entry.kind === "invalid") {
+    return (
+      <div className="ent-page">
+        <header className="ent-head">
+          <p className="lb-eyebrow" style={{ marginBottom: 10 }}>
+            <Link href="/">← All benchmarks</Link>
+          </p>
+          <div className="ent-title-row">
+            <h1>Invalid manifest</h1>
+            <Badge className="border-bad/40 text-bad">invalid</Badge>
+          </div>
+          <div className="ent-id">
+            <span>{entry.manifestPath}</span>
+          </div>
+          <p className="ent-desc">
+            This directory has a benchmark.json that does not validate against understudy.benchmark.v1. Fix the
+            manifest to make the benchmark appear here.
+          </p>
+          <div className="flex flex-col gap-0.5">
+            {entry.errors.map((err, i) => (
+              <span key={i} className="lb-foot-note !mt-0" style={{ color: "var(--bad)" }}>
+                {"// " + err}
+              </span>
+            ))}
+          </div>
+        </header>
+      </div>
+    );
+  }
   const m = entry.manifest;
   const openFlags = entry.flags.filter((f) => f.status === "open");
   const flaggedTaskIds = [...new Set(openFlags.filter((f) => f.task_id).map((f) => f.task_id as string))];
   const benchmarkFlagged = openFlags.some((f) => f.task_id === null);
-  const catScores = categoryScoreSummary(m, entry.rows);
+  // Taxonomy uses the same flag-exclusion discipline as the other sections.
+  const catScores = categoryScoreSummary(m, entry.rows, new Set(flaggedTaskIds));
   // All-split summaries for the insights charts (cost/latency aggregate over
   // the full run; flagged tasks stay excluded like the leaderboard default).
   const insightSummaries = computeLeaderboard(m, entry.rows, {
@@ -126,6 +166,9 @@ export default async function BenchmarkDetail({ params }: { params: Promise<{ sl
         <p className="ent-desc">{m.description}</p>
 
         {/* Stat strip — absorbs the old warning banners */}
+        <span className="mono" style={{ fontSize: 10, color: "var(--muted)" }}>
+          {(stripSplit === "holdout" ? "holdout split" : "all splits") + " · flagged excluded · best arm per stat"}
+        </span>
         <div className="ent-stats">
           <div className="ent-stat">
             <span className="lab">Strict score</span>
@@ -168,6 +211,22 @@ export default async function BenchmarkDetail({ params }: { params: Promise<{ sl
             {"// " + w.label + " — " + w.detail}
           </span>
         ))}
+        {(entry.diagnostics.skippedLines > 0 ||
+          entry.diagnostics.droppedRows > 0 ||
+          entry.diagnostics.foreignRows > 0 ||
+          entry.diagnostics.foreignFlags > 0) && (
+          <span className="lb-foot-note">
+            {"// loader diagnostics: " +
+              entry.diagnostics.skippedLines +
+              " malformed jsonl lines skipped · " +
+              entry.diagnostics.droppedRows +
+              " rows dropped (wrong schema_version) · " +
+              entry.diagnostics.foreignRows +
+              " foreign rows + " +
+              entry.diagnostics.foreignFlags +
+              " foreign flags dropped (benchmark_id mismatch)"}
+          </span>
+        )}
       </header>
 
       {/* Anchor rail + sections */}
@@ -177,6 +236,7 @@ export default async function BenchmarkDetail({ params }: { params: Promise<{ sl
           <Section
             id="leaderboard"
             title="Leaderboard"
+            scope={(hasSplits(m) ? "holdout" : "all splits") + " · flagged excluded (defaults; filters below)"}
             explainer="Every arm with eval rows against this benchmark, scored on the frozen split in force. Expand a row for per-category strict/dense detail and run quality."
           >
             <Leaderboard manifest={m} rows={entry.rows} flaggedTaskIds={flaggedTaskIds} />
@@ -185,6 +245,7 @@ export default async function BenchmarkDetail({ params }: { params: Promise<{ sl
           <Section
             id="insights"
             title="Insights"
+            scope="all splits · flagged excluded"
             explainer="Strict quality against cost and latency across arms. The dashed line is the value frontier — the best score available at each price."
           >
             <InsightsSection manifest={m} summaries={insightSummaries} />
@@ -204,6 +265,7 @@ export default async function BenchmarkDetail({ params }: { params: Promise<{ sl
           <Section
             id="taxonomy"
             title="Taxonomy"
+            scope="all splits · flagged excluded"
             explainer="The categories this benchmark scores, with the mean strict score across all arms. Derived categories carry their source intent and tool signature."
           >
             <div className="mt-5 grid grid-cols-1 gap-3 md:grid-cols-2">
