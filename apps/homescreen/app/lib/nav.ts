@@ -55,7 +55,7 @@ export const NAV_ITEMS: NavItemDef[] = [
     disabled: true,
     disabledReason: COMING,
   },
-  { id: "workload-captures", group: "workload", label: "Captures", icon: Inbox, pane: "capture", requiresWorkload: true },
+  { id: "workload-captures", group: "workload", label: "Captures", icon: Inbox, pane: "captures", requiresWorkload: true },
   // Training
   { id: "training-overview", group: "training", label: "Overview", icon: FlaskConical, pane: "training-jobs" },
   // Chats (Explore is an ordinary row; New chat is rendered separately)

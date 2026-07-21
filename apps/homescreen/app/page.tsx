@@ -7,6 +7,7 @@ import { Sidebar, type PaneId } from "./components/Sidebar";
 import { StatusPane } from "./components/StatusPane";
 import { ModelsPane } from "./components/ModelsPane";
 import { CapturePane } from "./components/CapturePane";
+import { CapturesPane } from "./components/CapturesPane";
 import { ChatPane } from "./components/ChatPane";
 import { TracesPane } from "./components/TracesPane";
 import { AccountPane } from "./components/AccountPane";
@@ -218,6 +219,7 @@ export default function Page() {
       "status",
       "chat",
       "models",
+      "captures",
       "account",
       "rlm",
       "explore",
@@ -361,6 +363,7 @@ export default function Page() {
         )}
         {pane === "models" && <ModelsPane />}
         {pane === "capture" && <CapturePane />}
+        {pane === "captures" && <CapturesPane scope={scope} />}
         {pane === "workload-config" && <WorkloadConfigPane scope={scope} />}
         {pane === "rlm" && <RlmPane />}
         {pane === "explore" && <ExploreShell />}
