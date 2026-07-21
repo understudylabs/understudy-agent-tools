@@ -421,6 +421,9 @@ pub fn run() {
             mgmt::mgmt_workload_update,
             reporting::reporting_workload_status,
             reporting::reporting_usage_summary,
+            scope::workload_config_load,
+            scope::workload_routing_apply,
+            scope::workload_capture_set,
             chat::chat_stream,
             restart_app,
         ])
