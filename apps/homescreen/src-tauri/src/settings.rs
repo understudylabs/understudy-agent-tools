@@ -1,6 +1,5 @@
-//! Settings surface plumbing — the desktop port of the web control plane's
-//! org/project settings pages (`apps/web/app/(control-plane)/settings`,
-//! `apps/web/app/p/[project_slug]/settings` in understudy-platform).
+//! Settings surface plumbing — the desktop port of the hosted control
+//! plane's org/project settings pages.
 //!
 //! Auth: the same `~/.understudy/credentials.json` sk_ key the CLI uses is a
 //! first-class admin credential — `apps/admin-api` validates `sk_` bearers

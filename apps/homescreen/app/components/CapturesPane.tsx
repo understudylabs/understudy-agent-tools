@@ -16,8 +16,7 @@ import {
 } from "../lib/captures.mjs";
 import type { ScanState as GenericScanState } from "../lib/captures.mjs";
 
-// Faithful desktop port of the web control plane's capture surfaces
-// (understudy-platform apps/web):
+// Faithful desktop port of the hosted control plane's capture surfaces:
 //   /p/:slug/logs                         — project capture list + workload filter
 //   /p/:slug/workloads/:id/captures       — workload capture list
 //   /p/:slug/logs/:request_id             — capture detail (meta + raw payload tabs)

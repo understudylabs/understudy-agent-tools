@@ -1,6 +1,6 @@
 /**
- * Pure logic for the Billing pane, ported from the web control plane
- * (understudy-platform `apps/web/lib/billing-format.ts` + the range/label
+ * Pure logic for the Billing pane, ported from the hosted control plane
+ * (the web billing-format helper + the range/label
  * helpers in `dashboard/billing/page.tsx`). The admin API returns dollar
  * amounts already in DOLLARS (e.g. `estimated_cost_usd`, `cost_usd`) —
  * these never divide by 100.

@@ -1,5 +1,4 @@
-// Pure management-surface logic, ported from the web control plane
-// (understudy-platform origin/main):
+// Pure management-surface logic, ported from the hosted control plane:
 //   - deriveOverrideState  <- app/p/[project_slug]/_components/override-state.ts
 //   - routeSummary, totalSpend, availableBalance, balanceDetail,
 //     formatTrendDay, formatExpiry, spendTrendPoints

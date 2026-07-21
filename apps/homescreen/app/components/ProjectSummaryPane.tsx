@@ -1,7 +1,7 @@
 "use client";
 
-// Project Summary — faithful port of the web control plane's
-// `apps/web/app/p/[project_slug]/page.tsx` (understudy-platform origin/main)
+// Project Summary — faithful port of the hosted control plane's
+// project overview page
 // onto the desktop shell: metric strip, 7-day spend trend, credit position,
 // and per-workload cards with a "+ New workload" dialog
 // (NewWorkloadButton.tsx verbatim semantics). Server loaders became the

@@ -1,7 +1,7 @@
 "use client";
 /**
- * Billing pane — faithful port of the web control plane's billing
- * dashboard (understudy-platform `apps/web/app/(control-plane)/dashboard/
+ * Billing pane — faithful port of the hosted control plane's billing
+ * dashboard (the web dashboard/
  * billing/page.tsx` + `AddCreditCard.tsx` + `BillingTrendChart.tsx`).
  *
  * Differences forced by the desktop runtime, not design:

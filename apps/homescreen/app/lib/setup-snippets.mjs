@@ -1,6 +1,6 @@
 /**
  * Snippet builders for the Setup pane — a faithful port of the web control
- * plane's `apps/web/app/setup/byok/byok-snippets.ts` (understudy-platform
+ * plane's BYOK setup snippets (the hosted control plane
  * origin/main), with the gateway base URL parameterized so a non-default
  * `gateway_url` in credentials.json produces runnable snippets.
  *

@@ -1,9 +1,7 @@
 "use client";
 
-// Settings — faithful port of the web control plane's settings surfaces:
-//   apps/web/app/(control-plane)/settings/page.tsx        (org / account)
-//   apps/web/app/p/[project_slug]/settings/*              (project settings)
-// from understudy-platform origin/main. Traditional management UI on the
+// Settings — faithful port of the hosted control plane's settings surfaces
+// (org / account and project settings). Traditional management UI on the
 // app's existing tokens/primitives; server components + server actions
 // become client loaders over Tauri commands (settings.rs → admin/v1 with
 // the credentials.json sk_ key; the key never enters the webview).
@@ -159,6 +157,13 @@ function EndpointsCard({ status }: { status: Any }) {
     typeof status.gateway_url === "string"
       ? status.gateway_url
       : "https://api.understudylabs.com";
+  // Derive the dashboard endpoint from the resolved gateway host rather than
+  // embedding a control-plane URL literal: the gateway's `api.` host maps to
+  // the `app.` dashboard host on the same domain.
+  const dashboard =
+    typeof status.dashboard_url === "string"
+      ? status.dashboard_url
+      : gateway.replace(/\/\/api\./, "//app.");
   return (
     <div className="card">
       <div className="card-title" style={{ marginBottom: 4 }}>Endpoints</div>
@@ -167,7 +172,7 @@ function EndpointsCard({ status }: { status: Any }) {
       </div>
       <div className="settings-field-grid">
         <SettingsField label="gateway (proxy traffic)" value={gateway} />
-        <SettingsField label="dashboard" value="https://app.understudylabs.com" />
+        <SettingsField label="dashboard" value={dashboard} />
       </div>
     </div>
   );

@@ -1,5 +1,5 @@
 // Types for management.mjs plus the admin/v1 wire shapes returned by the
-// mgmt_* Tauri commands (mirrors @understudy/types in understudy-platform).
+// mgmt_* Tauri commands (mirrors the hosted control plane's shared types).
 
 export type Project = {
   id: string;

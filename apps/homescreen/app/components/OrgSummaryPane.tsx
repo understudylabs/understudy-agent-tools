@@ -1,7 +1,7 @@
 "use client";
 
-// Org "Summary" management surface, ported from the web control plane page
-// apps/web/app/(control-plane)/dashboard/page.tsx (understudy-platform).
+// Org "Summary" management surface, ported from the hosted control plane's
+// dashboard page.
 // Deliberately TRADITIONAL: same metric row, spend trend, and workload-card
 // grid. Server-side data loading becomes a client-side fan-out through the
 // `admin_get` Tauri command (app/lib/org-summary.mjs); the sk_ key stays in

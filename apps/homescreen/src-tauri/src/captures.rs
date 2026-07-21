@@ -1,7 +1,7 @@
 //! Gateway capture reads for the management Captures pane.
 //!
-//! Native port of the web control plane's capture data path
-//! (`packages/gateway-client/src/index.ts` in understudy-platform):
+//! Native port of the hosted control plane's capture data path
+//! (the gateway client):
 //!
 //! - `listCaptures`          → GET admin/v1    .../projects/:pid/captures
 //! - `listWorkloadCaptures`  → GET customer/v1 .../projects/:pid/workloads/:wid/captures

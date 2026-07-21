@@ -1,7 +1,6 @@
 //! Billing management surface — admin/v1 reads + Stripe top-up checkout.
 //!
-//! Port of the web control plane's billing dashboard data layer
-//! (understudy-platform `apps/web/app/(control-plane)/dashboard/billing`).
+//! Port of the hosted control plane's billing dashboard data layer.
 //! The web page is a server component holding a WorkOS token; here the
 //! desktop's `sk_` key (resolved by `creds.rs`, never exposed to the
 //! frontend) is a first-class admin credential against

@@ -1,5 +1,5 @@
 // Pure-logic tests for the desktop Captures pane (management migration).
-// Semantics ported from understudy-platform apps/web logs pages + ContinueScan.
+// Semantics ported from the hosted control plane's logs pages + ContinueScan.
 import test from "node:test";
 import assert from "node:assert/strict";
 import {

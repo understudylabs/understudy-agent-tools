@@ -1,5 +1,5 @@
 // Types for reporting-format.mjs plus the reporting API shapes the pane
-// consumes (mirrors understudy-platform packages/types reporting.ts).
+// consumes (mirrors the hosted control plane's reporting types).
 
 export type ServedModelShare = {
   model: string;

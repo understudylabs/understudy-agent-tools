@@ -21,7 +21,7 @@ import {
 function point(overrides = {}) {
   return {
     bucket: "2026-07-18",
-    project: "Cedar",
+    project: "Willow",
     project_id: "proj_a",
     workload: "main",
     workload_id: "wl_a",
@@ -163,7 +163,7 @@ test("sortBreakdown sorts labels lexically and numbers by direction", () => {
   const byLabel = sortBreakdown(rows, { column: "label", direction: "asc" });
   assert.equal(byLabel[0].label, "Aspen");
   const byCostAsc = sortBreakdown(rows, { column: "costUsd", direction: "asc" });
-  assert.equal(byCostAsc[0].label, "Cedar");
+  assert.equal(byCostAsc[0].label, "Willow");
 });
 
 test("toggleSeries returns a fresh set", () => {

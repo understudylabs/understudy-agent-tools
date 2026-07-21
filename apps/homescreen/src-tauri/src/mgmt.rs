@@ -1,9 +1,8 @@
 //! Management (admin/v1) plumbing for the desktop control-plane panes.
 //!
-//! Faithful port of the web control plane's data loaders
-//! (`apps/web/app/p/[project_slug]/_components/project-data.ts`,
-//! `reporting/reporting-data.ts`, `workloads/actions.ts` in
-//! understudy-platform) onto the app's native credentials. The sk_ key from
+//! Faithful port of the hosted control plane's data loaders (project data,
+//! reporting data, and workload actions) onto the app's native credentials.
+//! The sk_ key from
 //! `~/.understudy/credentials.json` is a first-class admin credential on the
 //! read paths (`admin-auth.ts` dispatches on the `sk_` prefix); the key never
 //! leaves this process — the frontend only sees JSON rows.

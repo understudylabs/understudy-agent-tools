@@ -1,8 +1,6 @@
 // Pure logic for the management Captures pane (list + detail), ported from
-// the web control plane (understudy-platform origin/main):
-//   apps/web/app/p/[project_slug]/logs/page.tsx
-//   apps/web/app/p/[project_slug]/logs/[request_id]/page.tsx
-//   apps/web/app/p/[project_slug]/_components/{format.ts,ContinueScan.tsx}
+// the hosted control plane's project logs surfaces (log list, request
+// detail, and the shared format/continue-scan components).
 // Kept as an .mjs module (like training-threads.mjs) so the root
 // `node --test` suite can exercise it without a bundler.
 

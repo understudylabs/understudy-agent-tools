@@ -1,7 +1,7 @@
 "use client";
 
-// Setup pane — the desktop port of the web control plane's `/setup` page
-// (understudy-platform apps/web/app/(control-plane)/setup/page.tsx +
+// Setup pane — the desktop port of the hosted control plane's `/setup` page
+// (the web setup page +
 // app/setup/Quickstart.tsx + components/CopyInstallCommand.tsx). Faithful,
 // traditional: the same five-step quickstart, agent-install card, and
 // request-scoping-header reference, restyled onto the desktop token system.

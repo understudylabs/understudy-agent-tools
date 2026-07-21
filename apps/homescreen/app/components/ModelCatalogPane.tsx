@@ -1,6 +1,5 @@
 "use client";
-// Faithful port of the web control plane's /models page
-// (apps/web/app/(control-plane)/models/page.tsx in understudy-platform):
+// Faithful port of the hosted control plane's /models page:
 // catalog table + "call directly" curl card + "route a workload" pointer.
 // Server component data-fetch becomes a native Tauri command
 // (admin_supported_models) so the sk_ credential never reaches the webview.
