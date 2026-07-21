@@ -5,7 +5,7 @@
   },
   "metadata": {
     "description": "Claude Code skills for improving LLM apps with Understudy — trace, evaluate, optimize, compare, deploy.",
-    "version": "0.6.34"
+    "version": "0.6.35"
   },
   "plugins": [
     {

@@ -557,7 +557,10 @@ test("desktop starts fresh on launch and can reopen an exact Pi session", async 
     chat,
     /const resetDroppedWorkload = \(\) => \{[\s\S]*dropRequestGeneration\.current \+= 1;[\s\S]*dropInFlight\.current = false;[\s\S]*dispatchDrop\(\{ type: "reset" \}\);/,
   );
-  assert.equal(chat.match(/resetDroppedWorkload\(\);/g)?.length, 2);
+  // restartChat + restoreHistorySession detach an open training thread
+  // (leaving it resumable); dismissWorkloadThread and openTrainingThread
+  // reuse the same reset before recording/hydrating the thread.
+  assert.equal(chat.match(/resetDroppedWorkload\(\);/g)?.length, 4);
   assert.match(sidebar, /aria-label=\{showArchived \? "Archived chats" : "Recent chats"\}/);
   assert.doesNotMatch(sidebar, /No saved chats yet/);
   assert.doesNotMatch(page, /aria-label="Chat history"/);
@@ -593,7 +596,8 @@ test("desktop compiles one dropped path through the bounded public CLI", async (
   assert.match(chat, /const inspectTable = shouldInspectDroppedTable\(result\)/);
   assert.match(chat, /dispatchDrop\(\{ type: "inspection_started" \}\);[\s\S]*await inspectCsvWorkload/);
   assert.match(dropState, /export function shouldInspectDroppedTable/);
-  assert.match(dropState, /\\\.\(\?:csv\|tsv\|tab\)/);
+  assert.match(dropState, /NON_TABULAR_EXTENSIONS/);
+  assert.match(chat, /this file is not a supported table/);
   assert.match(chat, /<CsvProfile/);
   assert.match(chat, /rowCount=\{csvInspection\.row_count\}/);
   assert.match(chat, /prepare_dropped_csv_classification/);
@@ -601,7 +605,7 @@ test("desktop compiles one dropped path through the bounded public CLI", async (
   assert.match(chat, /3 · confirm the training plan/);
   assert.match(chat, /structuredFieldRole/);
   assert.match(chat, /structured-data-field-grid/);
-  assert.match(chat, /Train for \$\{mappingLabelColumn\}/);
+  assert.match(chat, /Yes — train for \$\{mappingLabelColumn\}/);
   assert.match(chat, /<CsvTrainingPlan/);
   assert.match(trainingPlan, /Understand/);
   assert.match(trainingPlan, /Local ModernBERT/);
@@ -618,7 +622,7 @@ test("desktop compiles one dropped path through the bounded public CLI", async (
   assert.match(training, /if \(autoStart\) return null/);
   assert.match(chat, /key=\{`\$\{sessionId\}:\$\{classificationDataset \? "training"/);
   assert.match(chat, /classificationDataset \|\| localTrainingActive \|\| remoteTrainingView \? " is-training-flow"/);
-  assert.match(chat, /!classificationDataset \? \(/);
+  assert.match(chat, /focusFlowKind === "data_profile" \? \(/);
   assert.match(chat, /onSelectColumn=\{/);
   assert.doesNotMatch(chat, /Prepare training split/);
   assert.doesNotMatch(chat, /No normalized \{classificationDataset\.split_policy\.group_key\}/);
@@ -653,10 +657,11 @@ test("desktop compiles one dropped path through the bounded public CLI", async (
   assert.match(css, /\.csv-analysis-pi/);
   assert.match(css, /\.csv-analysis-loading-template/);
   assert.match(chat, /TableExampleCards/);
-  assert.match(chat, /const trainingPlanVisible = Boolean/);
-  assert.match(chat, /trainingPlanVisible \? \(/);
-  assert.match(chat, /className="ai-chat-composer training-plan-action"/);
-  assert.match(chat, /className="btn primary training-plan-submit"/);
+  // The plan approval moved from the composer into the focused plan card's
+  // yes/no question (decision-card flow); the same gating and command remain.
+  assert.match(chat, /yesDisabled=\{trainingPlanBlocked/);
+  assert.match(chat, /onYes=\{prepareDroppedClassification\}/);
+  assert.match(chat, /TrainingFlowStepper/);
   assert.doesNotMatch(chat, /className="csv-analysis-proposal"[\s\S]{0,300}<button/);
   assert.match(css, /@keyframes csv-profile-enter/);
   assert.match(persona, /viewModelInstanceColor\.setRgb\(color\.red, color\.green, color\.blue\)/);

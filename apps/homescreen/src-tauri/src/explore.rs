@@ -425,18 +425,22 @@ pub async fn status_snapshot() -> Result<String, String> {
     }
     .await;
 
-    // Moraine's monitor port, same probe moraine.rs uses (skip the slower
-    // binary resolution — the pane only cares whether the service is up).
-    let moraine_up = tauri::async_runtime::spawn_blocking(|| {
+    // Moraine's monitor port, same probe moraine.rs uses. When the port is
+    // down we also resolve the binary (slower — spawns `moraine --version`)
+    // so the pane knows whether a "Start Moraine" button makes sense.
+    let (moraine_up, moraine_installed) = tauri::async_runtime::spawn_blocking(|| {
         let addr: SocketAddr = MONITOR_ADDR.parse().unwrap();
-        TcpStream::connect_timeout(&addr, Duration::from_millis(400)).is_ok()
+        let up = TcpStream::connect_timeout(&addr, Duration::from_millis(400)).is_ok();
+        let installed = up || crate::moraine::binary_installed();
+        (up, installed)
     })
     .await
-    .unwrap_or(false);
+    .unwrap_or((false, false));
 
     let dir = explore_dir()?;
     let status = json!({
         "moraineUp": moraine_up,
+        "moraineInstalled": moraine_installed,
         "clickhouseUp": clickhouse_up,
         "dataDir": dir.to_string_lossy(),
         "hasScan": dir.join("scan.sqlite").exists(),

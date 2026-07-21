@@ -100,7 +100,9 @@ test("remote training uses live capabilities with explicit upload and spend cons
   assert.match(native, /dropped dataset changed after recipe detection/i);
 
   assert.match(panel, /Nothing uploads until you review the exact artifacts and budget/);
-  assert.match(panel, /\{plan\.artifacts\.length\} private splits · endpoint auto-deletes/);
+  assert.match(panel, /What leaves this Mac if you approve/);
+  assert.match(panel, /heldout targets are never uploaded/);
+  assert.match(panel, /hard cap enforced server-side/);
   assert.match(panel, /remote_training_poll/);
   assert.match(panel, /cancel_remote_training/);
   assert.match(panel, /start_remote_training/);
@@ -109,7 +111,6 @@ test("remote training uses live capabilities with explicit upload and spend cons
   assert.match(panel, /preparedPlan/);
   assert.match(panel, /Upload & train/);
   assert.doesNotMatch(panel, /Upload & train · \$/);
-  assert.match(panel, /budget guardrail/);
   assert.match(panel, /remote-training-example-track/);
   assert.match(panel, /trainingExamples/);
   assert.doesNotMatch(panel, /fake/);
@@ -123,8 +124,8 @@ test("remote training uses live capabilities with explicit upload and spend cons
   assert.match(panel, /Budget accounted/);
   assert.match(panel, /This run predates detailed failure receipts/);
   assert.match(native, /join\("result\.json"\)/);
-  assert.match(native, /Some\("completed" \| "failed" \| "cancelled"\)/);
-  assert.match(panel, /private splits · endpoint auto-deletes/);
+  assert.match(native, /matches!\(\*value, "completed" \| "failed" \| "cancelled"\)/);
+  assert.match(panel, /remote-training-consent-card/);
   assert.doesNotMatch(panel, /type="checkbox"/);
   assert.match(panel, /Where it still fails/);
   assert.match(panel, /understudy\/auto/);
@@ -141,7 +142,7 @@ test("remote training uses live capabilities with explicit upload and spend cons
   const chat = await read("apps/homescreen/app/components/ChatPane.tsx");
   const globals = await read("apps/homescreen/app/globals.css");
   assert.match(chat, /inspect_remote_training_recipe/);
-  assert.match(chat, /AutomaticGoalCard/);
+  assert.match(chat, /TrainingFlowStepper/);
   assert.match(chat, /StructuredDataProfile/);
   assert.match(chat, /StructuredTrainingPlan/);
   assert.match(chat, /structured-dataset-analysis/);
@@ -185,7 +186,9 @@ test("remote training uses live capabilities with explicit upload and spend cons
   assert.match(chat, /backend\.id === "mlx-local" && backend\.compatible && backend\.execution_ready/);
   assert.doesNotMatch(chat, /trainingRecipe\.evaluator !== "gsm8k_final_answer"/);
   assert.doesNotMatch(chat, /GSM8K reasoning model|frontierModel:\s*"glm-5\.2"/);
-  assert.match(chat, /if \(!remoteRecipePlan && trainingRecipe\?\.ready\) prepareDetectedRecipe\(\)/);
+  // Reopened read-only training threads are an audit trail; the priced-plan
+  // pipeline must not restart for them.
+  assert.match(chat, /if \(!remoteRecipePlan && trainingRecipe\?\.ready && !threadReadOnly\) prepareDetectedRecipe\(\)/);
   assert.doesNotMatch(chat, /Prepare no-spend plan/);
   assert.match(chat, /<LocalSftTrainingPanel/);
   assert.match(chat, /recipeBackend === "managed"/);
@@ -202,7 +205,8 @@ test("remote training uses live capabilities with explicit upload and spend cons
   assert.match(chat, /onActiveChange=\{setLocalTrainingActive\}/);
   assert.match(chat, /onRunViewChange=\{setRemoteTrainingView\}/);
   assert.match(chat, /trainingExamples=\{trainingRecipe\.row_preview\}/);
-  assert.match(chat, /!remoteTrainingView && <AutomaticGoalCard/);
+  assert.match(chat, /focusFlowKind === "prediction_target"/);
+  assert.match(chat, /createTrainingFlow/);
   assert.match(localSftPanel, /start_local_sft_training/);
   assert.match(localSftPanel, /compile_remote_training_backends/);
   assert.match(localSftPanel, /Training locally · \$0/);

@@ -23,6 +23,15 @@ pub fn resolve(name: &str) -> String {
         if let Some(candidate) = bundled_understudy() {
             return candidate.to_string_lossy().into_owned();
         }
+        // Under `tauri dev`, prefer the repo's freshly built CLI over whatever
+        // stale `understudy` happens to be first on PATH. Release resolution
+        // is unchanged.
+        #[cfg(debug_assertions)]
+        if let Some(candidate) =
+            canonical_candidate(&dev_dist_entry(Path::new(env!("CARGO_MANIFEST_DIR"))))
+        {
+            return candidate.to_string_lossy().into_owned();
+        }
     }
     let supplied = Path::new(name);
     if supplied.components().count() > 1 {
@@ -37,6 +46,19 @@ pub fn resolve(name: &str) -> String {
         }
     }
     name.to_string()
+}
+
+/// The repo-root CLI entry (`dist/bin.js`) derived from this crate's manifest
+/// directory (`apps/homescreen/src-tauri` -> three levels up). Pure path
+/// derivation; existence and canonicalization are the caller's job.
+#[cfg(any(debug_assertions, test))]
+fn dev_dist_entry(manifest_dir: &Path) -> PathBuf {
+    manifest_dir
+        .join("..")
+        .join("..")
+        .join("..")
+        .join("dist")
+        .join("bin.js")
 }
 
 fn canonical_candidate(candidate: &Path) -> Option<PathBuf> {
@@ -285,6 +307,39 @@ mod tests {
         ));
         fs::create_dir_all(&path).expect("temp dir");
         path
+    }
+
+    #[test]
+    fn dev_dist_entry_derives_the_repo_root_cli_from_the_crate_manifest_dir() {
+        // Pure derivation: manifest dir is apps/homescreen/src-tauri, so the
+        // repo root's built CLI is three components up plus dist/bin.js.
+        let derived = dev_dist_entry(Path::new("/repo/apps/homescreen/src-tauri"));
+        assert_eq!(
+            derived,
+            Path::new("/repo/apps/homescreen/src-tauri/../../../dist/bin.js")
+        );
+
+        // And through canonical_candidate it resolves to the real file.
+        let root = temp_dir("dev-dist");
+        let manifest = root.join("apps/homescreen/src-tauri");
+        fs::create_dir_all(&manifest).expect("manifest dir");
+        let dist = root.join("dist");
+        fs::create_dir_all(&dist).expect("dist dir");
+        let entry = dist.join("bin.js");
+        fs::write(&entry, "#!/usr/bin/env node\n").expect("cli entry");
+        assert_eq!(
+            canonical_candidate(&dev_dist_entry(&manifest)),
+            Some(entry.canonicalize().unwrap())
+        );
+
+        // Missing file: derivation still works, resolution yields nothing.
+        let empty = temp_dir("dev-dist-missing");
+        let missing_manifest = empty.join("apps/homescreen/src-tauri");
+        fs::create_dir_all(&missing_manifest).expect("manifest dir");
+        assert_eq!(canonical_candidate(&dev_dist_entry(&missing_manifest)), None);
+
+        fs::remove_dir_all(root).expect("cleanup");
+        fs::remove_dir_all(empty).expect("cleanup");
     }
 
     #[test]

@@ -58,6 +58,7 @@ pub fn record_server_started(port: u16, token_present: bool) {
         app.insert("running".into(), json!(true));
         app.insert("started_at".into(), json!(now_iso()));
         app.insert("stopped_at".into(), Value::Null);
+        app.insert("stopped_reason".into(), Value::Null);
         app.insert("base_url".into(), json!(format!("http://127.0.0.1:{port}")));
         app.insert("port".into(), json!(port));
         app.insert("token_present".into(), json!(token_present));
@@ -130,6 +131,17 @@ pub fn record_warm_models(warm: &[WarmModel]) {
         app.insert("running".into(), json!(true));
         app.insert("pid".into(), json!(std::process::id()));
         app.insert("warm_models".into(), Value::Array(rows));
+    });
+}
+
+/// The local API server stopped (or failed to start) for `reason`. Additive:
+/// records why the server is down without touching any other card field, so
+/// debugging a silent 23:25Z-style death no longer needs log spelunking.
+pub fn record_server_stopped(reason: &str) {
+    update(|app| {
+        app.insert("running".into(), json!(false));
+        app.insert("stopped_at".into(), json!(now_iso()));
+        app.insert("stopped_reason".into(), json!(reason));
     });
 }
 
@@ -323,6 +335,32 @@ mod tests {
             .filter(|e| e.file_name().to_string_lossy().contains(".tmp-"))
             .collect();
         assert!(leftovers.is_empty());
+    }
+
+    #[test]
+    fn stopped_reason_is_recorded_and_cleared_on_restart() {
+        let path = temp_card_path();
+        // A stop writes the reason next to running:false / stopped_at.
+        update_at(&path, |app| {
+            app.insert("running".into(), json!(false));
+            app.insert("stopped_at".into(), json!("2026-07-19T23:25:00Z"));
+            app.insert("stopped_reason".into(), json!("server_panicked: boom"));
+        })
+        .unwrap();
+        let card: Value = serde_json::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
+        assert_eq!(card["app"]["stopped_reason"], "server_panicked: boom");
+        assert_eq!(card["app"]["running"], false);
+        // A successful (re)start clears the stale reason, mirroring
+        // record_server_started.
+        update_at(&path, |app| {
+            app.insert("running".into(), json!(true));
+            app.insert("stopped_at".into(), Value::Null);
+            app.insert("stopped_reason".into(), Value::Null);
+        })
+        .unwrap();
+        let card: Value = serde_json::from_str(&std::fs::read_to_string(&path).unwrap()).unwrap();
+        assert!(card["app"]["stopped_reason"].is_null());
+        assert_eq!(card["app"]["running"], true);
     }
 
     #[test]

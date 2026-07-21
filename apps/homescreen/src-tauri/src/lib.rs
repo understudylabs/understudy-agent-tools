@@ -20,7 +20,11 @@ mod mcp;
 mod metrics;
 mod models;
 mod moraine;
+mod oracle_dispatch;
 mod remote_training;
+mod training_api;
+mod training_chat_tools;
+mod training_outcome;
 mod residency;
 mod rlm;
 mod route_policy;
@@ -281,6 +285,7 @@ pub fn run() {
             commands::open_trace,
             commands::install_moraine,
             commands::start_moraine,
+            moraine::moraine_start,
             commands::stop_moraine,
             commands::account_status,
             commands::account_platforms,
@@ -311,6 +316,10 @@ pub fn run() {
             commands::chat_session_archive,
             commands::chat_session_restore,
             commands::chat_sessions_archive_all,
+            commands::training_thread_save,
+            commands::training_thread_get,
+            commands::training_threads_list,
+            commands::training_thread_archive,
             chat_attachments::chat_attachments_store,
             chat_attachments::chat_attachments_hydrate,
             chat_attachments::chat_attachments_delete_session,
@@ -342,6 +351,8 @@ pub fn run() {
             tool_proof::desktop_tool_proof_run,
             tool_proof::desktop_tool_proof_list,
             tool_proof::desktop_tool_proof_prepare,
+            oracle_dispatch::propose_oracle_task,
+            oracle_dispatch::run_oracle_task,
             workload_drop::compile_dropped_workload,
             workload_drop::inspect_dropped_csv,
             workload_drop::prepare_dropped_csv_classification,
@@ -361,6 +372,7 @@ pub fn run() {
             remote_training::propose_training_environment_with_pi,
             remote_training::prepare_remote_classification_training,
             remote_training::prepare_remote_training_recipe,
+            remote_training::compile_custom_training_plan,
             remote_training::compile_remote_training_backends,
             remote_training::start_local_sft_training,
             remote_training::cancel_local_sft_training,
@@ -370,6 +382,7 @@ pub fn run() {
             remote_training::start_remote_classification_training,
             remote_training::remote_training_poll,
             remote_training::cancel_remote_training,
+            training_outcome::summarize_training_outcome,
             commands::sidekick_decisions,
             commands::sidekick_events,
             commands::sidekick_session_summaries,
@@ -404,8 +417,10 @@ pub fn run() {
                 if let Some(residency) = app.try_state::<residency::Residency>() {
                     residency.shutdown();
                 }
-                // Graceful shutdown: the agent card must not keep
-                // advertising a dead pid as a healthy local daemon.
+                // Graceful shutdown: the supervisor must record
+                // app_shutdown (not a crash), and the agent card must not
+                // keep advertising a dead pid as a healthy local daemon.
+                server::request_shutdown();
                 agent_card::mark_stopped();
             }
         });

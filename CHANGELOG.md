@@ -17,6 +17,45 @@ uses semantic-ish versioning (minor = new skill or new capability, patch = fixes
 
 ### Added
 
+- **Train on your own data, end to end.** Desktop/runtime 0.3.38 and CLI
+  0.6.35 let you drop a spreadsheet (`.xlsx` workbooks now work, alongside CSV
+  and other tables) onto Understudy Desktop and go all the way to a trained
+  model: the app reads your file, proposes a training plan in plain language,
+  and — only after you approve — runs the training in the cloud. Before
+  anything is uploaded or any money is spent, a consent receipts card shows
+  exactly what will leave your machine and what it will cost, and you choose
+  between training locally or in the cloud. Messy data is handled gracefully:
+  empty or ambiguous rows are set aside with a note instead of failing the
+  whole import.
+- **Dataset focus mode.** While you prepare and launch a training run, the
+  training card becomes the whole window — no sidebars or clutter — and the
+  window sizes itself to the content.
+- **One decision at a time.** Training is now a notebook of quick questions —
+  "Does this look like your data?", "Is this the plan you want?" — one card
+  at a time with a progress rail below. Your answered cards stay on screen as
+  a running record, you can go back and change any answer, and the training
+  goal itself is editable, including how accurate the model must be before
+  it counts as done. When rows had to be set aside (empty or conflicting
+  labels), a review card shows you what and why.
+- **Training threads.** Every training run lives in the left-hand sidebar
+  like a chat: active runs resume exactly where you left off — even after
+  quitting the app — and finished runs reopen as a complete, read-only record
+  of every decision you made.
+- **Start Moraine from inside the app.** If the local trace explorer is
+  down, a Start button in the Explore pane brings it back — no terminal
+  needed.
+- **Watch your training run, step by step.** A live timeline shows each
+  readiness gate as it is checked (with honest results, not spinners), and once
+  training starts you get granular status: a loss curve sparkline, a header
+  that names the current phase, and a running plain-language narration of what
+  is happening. When the run finishes, a training outcome summary connects the
+  results back to your evals.
+- **`understudy training doctor`.** One CLI command walks the whole
+  remote-training chain and reports the first broken link, so "why isn't my
+  training working" has a one-step answer.
+- **Sturdier app plumbing.** The Desktop's local API server is now supervised:
+  it reports why it stopped, restarts itself with capped backoff, and
+  health-checks itself, so background features recover without an app restart.
 - **Truthful model cards in Chat.** One quiet info action beside the selected
   model now shows its QAT source, MLX conversion, decode contract, scoped
   certification, footprint, routing hints, and current slot state without

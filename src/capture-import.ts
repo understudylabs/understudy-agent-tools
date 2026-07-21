@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import { chmodSync, existsSync, mkdirSync, readdirSync, readFileSync, realpathSync, statSync, writeFileSync } from "node:fs";
 import { basename, dirname, extname, join, relative, resolve } from "node:path";
 import { globalConfigDir } from "./config/paths.js";
+import { readXlsxRecords } from "./capture-import-xlsx.js";
 
 export type CaptureSourceKind =
   | "eval-fixture"
@@ -78,6 +79,14 @@ export type CaptureCsvColumnSummary = {
   profile_bars: number[];
 };
 
+export type CaptureTrainableTarget = {
+  name: string;
+  distinct_values: string[];
+  distinct_values_truncated: boolean;
+  coverage: number;
+  recommended: boolean;
+};
+
 export type CaptureCsvInspection = {
   schema_version: "understudy.capture_import.csv_inspection.v1";
   generated_at: string;
@@ -110,6 +119,7 @@ export type CaptureCsvInspection = {
     count: number;
   }[];
   label_distribution_truncated: boolean;
+  trainable_targets: CaptureTrainableTarget[];
   training_readiness: {
     ready: boolean;
     status: "ready" | "needs_mapping" | "needs_data" | "needs_cleanup";
@@ -142,6 +152,7 @@ export type CaptureClassificationDataset = {
   source_row_count: number;
   duplicate_rows_removed: number;
   unusable_rows_removed: number;
+  conflicted_group_rows_removed: number;
   row_count: number;
   mapping: {
     input_columns: string[];
@@ -151,6 +162,7 @@ export type CaptureClassificationDataset = {
   };
   labels: string[];
   label_distribution: { value: string; count: number }[];
+  target_backlog: CaptureTrainableTarget[];
   split_policy: {
     name: "deterministic-stratified-group-aware-v2";
     allocation: "per-label-deterministic-group-greedy-v1";
@@ -637,6 +649,31 @@ export function inspectCaptureCsv(
     ? Math.min(...sortedLabels.map(([, count]) => count))
     : null;
   const duplicateRowCount = rows.length - new Set(rows.map((row) => JSON.stringify(row))).size;
+  const trainableTargets: CaptureTrainableTarget[] = columns
+    .map((column, index) => ({ column, index }))
+    .filter(({ column }) =>
+      column.name === labelCandidate?.name ||
+      (column.non_empty_count > 0 &&
+        column.unique_count >= 2 &&
+        column.unique_count <= 100 &&
+        column.unique_ratio <= 0.5),
+    )
+    .map(({ column, index }) => {
+      const valueCounts = new Map<string, number>();
+      for (const row of rows) {
+        const value = row[index].trim();
+        if (value) valueCounts.set(value, (valueCounts.get(value) ?? 0) + 1);
+      }
+      const orderedValues = [...valueCounts.entries()]
+        .sort((left, right) => right[1] - left[1] || left[0].localeCompare(right[0]));
+      return {
+        name: column.name,
+        distinct_values: orderedValues.slice(0, MAX_REPORTED_LABELS).map(([value]) => value),
+        distinct_values_truncated: orderedValues.length > MAX_REPORTED_LABELS,
+        coverage: ratio(column.non_empty_count, rows.length),
+        recommended: column.name === labelCandidate?.name,
+      };
+    });
   const previewIndexes = labelIndex >= 0
     ? sortedLabels.slice(0, MAX_CSV_PREVIEW_ROWS).map(([label]) =>
       rows.findIndex((row) => row[labelIndex].trim() === label),
@@ -673,9 +710,11 @@ export function inspectCaptureCsv(
   } else if (labelCounts.size < 2) {
     status = "needs_data";
     reasons.push("At least two label values are required for classification.");
-  } else if (columns[labelIndex].empty_count > 0) {
+  } else if (columns[labelIndex].empty_count > rows.length * 0.1) {
     status = "needs_cleanup";
-    reasons.push(`${columns[labelIndex].empty_count} row(s) have an empty label.`);
+    reasons.push(
+      `${columns[labelIndex].empty_count} of ${rows.length} row(s) have an empty label; this column looks unlabeled.`,
+    );
   } else if (minimumExamples !== null && minimumExamples < MIN_EXAMPLES_PER_CLASS) {
     status = "needs_data";
     reasons.push(
@@ -690,6 +729,15 @@ export function inspectCaptureCsv(
   }
   if (duplicateRowCount > 0) {
     warnings.push(`${duplicateRowCount} exact duplicate row(s) will be removed before splitting the dataset.`);
+  }
+  if (
+    labelCandidate
+    && columns[labelIndex].empty_count > 0
+    && columns[labelIndex].empty_count <= rows.length * 0.1
+  ) {
+    warnings.push(
+      `${columns[labelIndex].empty_count} row(s) with an empty label will be dropped before splitting.`,
+    );
   }
   if (groupColumn) {
     const groupIndex = headers.indexOf(groupColumn);
@@ -733,6 +781,7 @@ export function inspectCaptureCsv(
       .slice(0, MAX_REPORTED_LABELS)
       .map(([value, count]) => ({ value, count })),
     label_distribution_truncated: sortedLabels.length > MAX_REPORTED_LABELS,
+    trainable_targets: trainableTargets,
     training_readiness: {
       ready: status === "ready",
       status,
@@ -830,22 +879,37 @@ export function prepareCaptureClassificationDataset(
   const groupsByLabel = new Map<string, Map<string, Example[]>>();
   const groupOwners = new Map<string, string>();
   let unusableRowsRemoved = 0;
+  // Groups whose normalized key carries more than one label are ambiguous
+  // training signal; drop them (counted) rather than fail, unless the
+  // conflicts are widespread enough to indicate a wrong group column.
+  const conflictedGroups = new Set<string>();
+  let conflictedRowCount = 0;
+  for (const { row } of uniqueRows) {
+    const label = row[labelIndex].trim();
+    if (!label) continue;
+    const normalizedGroup = normalizeClassificationGroup(row[groupIndex]);
+    if (!normalizedGroup) continue;
+    const groupId = createHash("sha256").update(normalizedGroup).digest("hex").slice(0, 24);
+    const existingOwner = groupOwners.get(groupId);
+    if (existingOwner && existingOwner !== label) conflictedGroups.add(groupId);
+    else groupOwners.set(groupId, label);
+  }
   uniqueRows.forEach(({ row, sourceIndex }) => {
     const label = row[labelIndex].trim();
-    if (!label) throw new Error(`Table record ${sourceIndex + 1} has an empty label.`);
+    if (!label) {
+      unusableRowsRemoved += 1;
+      return;
+    }
     const normalizedGroup = normalizeClassificationGroup(row[groupIndex]);
     if (!normalizedGroup) {
       unusableRowsRemoved += 1;
       return;
     }
     const groupId = createHash("sha256").update(normalizedGroup).digest("hex").slice(0, 24);
-    const existingOwner = groupOwners.get(groupId);
-    if (existingOwner && existingOwner !== label) {
-      throw new Error(
-        `The confirmed leakage group maps to multiple labels (${existingOwner}, ${label}); choose a more specific group column or clean the labels.`,
-      );
+    if (conflictedGroups.has(groupId)) {
+      conflictedRowCount += 1;
+      return;
     }
-    groupOwners.set(groupId, label);
     const text = inputIndexes
       .map((index) => ({ name: headers[index], value: row[index].trim() }))
       .filter(({ value }) => value.length > 0)
@@ -871,6 +935,11 @@ export function prepareCaptureClassificationDataset(
     labelGroups.set(groupId, group);
     groupsByLabel.set(label, labelGroups);
   });
+  if (conflictedRowCount > uniqueRows.length * 0.1) {
+    throw new Error(
+      `${conflictedRowCount} of ${uniqueRows.length} row(s) fall in leakage groups carrying multiple labels; choose a more specific group column or clean the labels.`,
+    );
+  }
   if (groupsByLabel.size < 2) {
     throw new Error("At least two label values are required for classification.");
   }
@@ -985,10 +1054,14 @@ export function prepareCaptureClassificationDataset(
     source_row_count: sourceRowCount,
     duplicate_rows_removed: duplicateRowsRemoved,
     unusable_rows_removed: unusableRowsRemoved,
+    conflicted_group_rows_removed: conflictedRowCount,
     row_count: retainedRowCount,
     mapping,
     labels,
     label_distribution: labels.map((value) => ({ value, count: labelCounts.get(value)! })),
+    target_backlog: (inspection.trainable_targets ?? []).filter(
+      (target) => normalizeHeader(target.name) !== normalizeHeader(labelColumn),
+    ),
     split_policy: {
       name: "deterministic-stratified-group-aware-v2",
       allocation: "per-label-deterministic-group-greedy-v1",
@@ -1024,15 +1097,26 @@ function readDelimitedTable(source: string): { bytes: Buffer; headers: string[];
   if (bytes.length > MAX_CSV_BYTES) {
     throw new Error(`Table exceeds the ${MAX_CSV_BYTES}-byte local preparation limit.`);
   }
-  let text: string;
-  try {
-    text = new TextDecoder("utf-8", { fatal: true }).decode(bytes);
-  } catch {
-    throw new Error("Table must be valid UTF-8 before local inspection.");
+  let records: string[][];
+  if (extname(source).toLowerCase() === ".xlsx") {
+    records = readXlsxRecords(bytes, {
+      maxBytes: MAX_CSV_BYTES,
+      maxRows: MAX_CSV_ROWS,
+      maxColumns: MAX_CSV_COLUMNS,
+      maxFieldCharacters: MAX_CSV_FIELD_CHARACTERS,
+    });
+  } else {
+    let text: string;
+    try {
+      text = new TextDecoder("utf-8", { fatal: true }).decode(bytes);
+    } catch {
+      throw new Error("Table must be valid UTF-8 before local inspection.");
+    }
+    if (text.charCodeAt(0) === 0xfeff) text = text.slice(1);
+    const delimiter = detectTableDelimiter(source, text);
+    records = parseCsvRecordsBounded(text, delimiter);
   }
-  if (text.charCodeAt(0) === 0xfeff) text = text.slice(1);
-  const delimiter = detectTableDelimiter(source, text);
-  const records = parseCsvRecordsBounded(text, delimiter).filter((record) =>
+  records = records.filter((record) =>
     record.some((field) => field.trim().length > 0),
   );
   if (records.length < 2) throw new Error("Table needs at least two non-empty rows.");
@@ -1055,7 +1139,7 @@ function detectTableDelimiter(source: string, text: string): "," | "\t" {
   if (extension === ".tsv" || extension === ".tab") return "\t";
   if (extension === ".csv") return ",";
   if (extension && extension !== ".txt") {
-    throw new Error(`Local table inspection supports .csv, .tsv, .tab, .txt, or extensionless files: ${source}`);
+    throw new Error(`Local table inspection supports .csv, .tsv, .tab, .txt, .xlsx, or extensionless files: ${source}`);
   }
   const lines = text.split(/\r?\n/).filter((line) => line.trim()).slice(0, 20);
   if (lines.length < 2) throw new Error("Table needs at least two non-empty rows.");
@@ -1357,8 +1441,8 @@ function detectKind(path: string): { kind: CaptureSourceKind; evidence: string[]
   if (ext === ".jsonl") {
     return { kind: "jsonl-data", evidence: ["extension:.jsonl"] };
   }
-  if (ext === ".csv") {
-    return { kind: "csv-data", evidence: ["extension:.csv"] };
+  if (ext === ".csv" || ext === ".xlsx") {
+    return { kind: "csv-data", evidence: [`extension:${ext}`] };
   }
   if (name.includes("golden") || normalized.includes("/golden")) {
     return { kind: "golden-fixture", evidence: ["path:golden"] };
@@ -1378,7 +1462,7 @@ function detectKind(path: string): { kind: CaptureSourceKind; evidence: string[]
   if ([".pdf", ".doc", ".docx", ".rtf", ".txt", ".md", ".markdown"].includes(ext)) {
     return { kind: "document", evidence: [`extension:${ext}`] };
   }
-  if ([".xlsx", ".xls", ".ods", ".tsv"].includes(ext)) {
+  if ([".xls", ".ods", ".tsv"].includes(ext)) {
     return { kind: "spreadsheet", evidence: [`extension:${ext}`] };
   }
   if ([".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs", ".py", ".rs", ".go", ".java", ".kt", ".swift", ".rb", ".php", ".c", ".cc", ".cpp", ".h", ".hpp"].includes(ext)) {

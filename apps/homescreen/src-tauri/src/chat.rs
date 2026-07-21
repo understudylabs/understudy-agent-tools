@@ -234,6 +234,69 @@ pub(crate) fn tool_schemas() -> Vec<Value> {
                 }
             }
         }),
+        json!({
+            "type": "function",
+            "function": {
+                "name": "training_runs",
+                "description": "Read the local training runs index for a workload artifact root: run ids, plans, statuses, accuracy, and whether each run already has an outcome.json summary. Use this first when the user asks about past or current training runs.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "artifact_root": { "type": "string", "description": "Absolute path to the workload artifact root that contains runs-index.json." }
+                    },
+                    "required": ["artifact_root"],
+                    "additionalProperties": false
+                }
+            }
+        }),
+        json!({
+            "type": "function",
+            "function": {
+                "name": "training_outcome",
+                "description": "Read the outcome.json summary (gates, failure clusters, next steps) for one training run, or the latest run when run_id is omitted. Use after training_runs to explain how a run went. Aggregate data only; never contains dataset rows.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "artifact_root": { "type": "string", "description": "Absolute path to the workload artifact root that contains runs-index.json." },
+                        "run_id": { "type": "string", "description": "Optional run id from training_runs; defaults to the latest run." }
+                    },
+                    "required": ["artifact_root"],
+                    "additionalProperties": false
+                }
+            }
+        }),
+        json!({
+            "type": "function",
+            "function": {
+                "name": "training_target_backlog",
+                "description": "Read the dataset manifest's target_backlog and the CSV inspection's trainable_targets (statistics only) for a workload artifact root. Use when discussing what to train next.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "artifact_root": { "type": "string", "description": "Absolute path to the dataset root or capture artifact root that holds dataset-manifest.json." }
+                    },
+                    "required": ["artifact_root"],
+                    "additionalProperties": false
+                }
+            }
+        }),
+        json!({
+            "type": "function",
+            "function": {
+                "name": "propose_training_target",
+                "description": "Propose the next training target by writing one small proposal artifact under training-proposals/. The target_name must already be in the dataset's target_backlog (use training_target_backlog first) or the call fails. This never trains or spends anything; the user reviews and acts on the proposal through the normal training flow.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "artifact_root": { "type": "string", "description": "Absolute path to the dataset root or capture artifact root that holds dataset-manifest.json." },
+                        "target_name": { "type": "string", "description": "A column name that appears in the manifest's target_backlog." },
+                        "rationale": { "type": "string", "description": "Why this target is next, grounded in outcomes and backlog statistics. At most 2000 characters." }
+                    },
+                    "required": ["artifact_root", "target_name", "rationale"],
+                    "additionalProperties": false
+                }
+            }
+        }),
     ]
 }
 
@@ -277,6 +340,10 @@ pub(crate) async fn tool_result(
             )
             .await?
         }
+        "training_runs" => crate::training_chat_tools::training_runs(args)?,
+        "training_outcome" => crate::training_chat_tools::training_outcome(args)?,
+        "training_target_backlog" => crate::training_chat_tools::training_target_backlog(args)?,
+        "propose_training_target" => crate::training_chat_tools::propose_training_target(args)?,
         "understudy_mcp_tool" => call_understudy_mcp(app, args).await?,
         "understudy_agent_tools" => call_understudy_cli(args)?,
         other => return Err(format!("unknown tool: {other}")),
