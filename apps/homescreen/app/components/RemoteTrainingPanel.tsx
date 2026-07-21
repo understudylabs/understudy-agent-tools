@@ -3,6 +3,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Channel, invoke } from "@tauri-apps/api/core";
 import type { TrainingHaloVisual } from "./TrainingHalo";
+import { TrainingRunStatus } from "./TrainingRunStatus";
+import {
+  accumulateLossPoints,
+  progressHeadline,
+  type LossPoint,
+} from "../lib/training-run-view.mjs";
 
 export type RemoteTrainingProvider = {
   id: "managed";
@@ -92,17 +98,31 @@ type RemoteTrainingEvent = {
   sequence?: number;
   type?: string;
   occurred_at?: string;
-  phase: "queued" | "upload" | "training" | "evaluation" | "deployment" | "cleanup" | "terminal" | string;
+  phase: "queued" | "upload" | "training" | "provider_queue" | "evaluation" | "deployment" | "cleanup" | "terminal" | string;
   message: string;
   progress?: {
     completed: number;
     total: number;
-    unit: "steps" | "epochs" | "examples" | "seconds";
+    unit: "steps" | "epochs" | "examples" | "seconds" | "percent";
+    epoch?: number;
+    total_epochs?: number;
+    percent?: number;
+    step?: number;
   };
   eve?: {
     decision: "observe" | "retry" | "wait" | "ask_user" | "stop";
     reason_code: string;
   };
+  metrics?: {
+    loss?: Array<{ step: number; value: number }>;
+    learning_rate?: number;
+  };
+  details?: {
+    queue_seconds?: number;
+    estimated_remaining_seconds?: number;
+    elapsed_seconds?: number;
+    estimated_spend_usd?: number;
+  } & Record<string, string | number | boolean | undefined>;
 };
 
 type RemoteTrainingExampleSet = {
@@ -343,6 +363,7 @@ export function RemoteTrainingPanel(props: Props) {
   const [plan, setPlan] = useState<RemotePlan | null>(preparedPlan);
   const [run, setRun] = useState<RemoteRunReceipt | null>(null);
   const [events, setEvents] = useState<RemoteTrainingEvent[]>([]);
+  const [lossPoints, setLossPoints] = useState<LossPoint[]>([]);
   const [uploadEvent, setUploadEvent] = useState<UploadEvent | null>(null);
   const [result, setResult] = useState<RemoteResult | null>(null);
   const [runExamples, setRunExamples] = useState<RemoteTrainingExampleSet | null>(null);
@@ -452,6 +473,7 @@ export function RemoteTrainingPanel(props: Props) {
     setPlan(preparedPlan);
     setRun(null);
     setEvents([]);
+    setLossPoints([]);
     setUploadEvent(null);
     setResult(null);
     setRunStartedAt(null);
@@ -520,6 +542,10 @@ export function RemoteTrainingPanel(props: Props) {
       });
       if (update.events.length > 0) {
         setEvents((current) => [...current, ...update.events].slice(-100));
+        const lossDeltas = update.events.flatMap((event) => event.metrics?.loss ?? []);
+        if (lossDeltas.length > 0) {
+          setLossPoints((current) => accumulateLossPoints(current, lossDeltas));
+        }
       }
       if (update.status.workflow_status === "completed" && update.status.result) {
         setResult(update.status.result);
@@ -551,6 +577,7 @@ export function RemoteTrainingPanel(props: Props) {
     setStage("starting");
     setError(null);
     setEvents([]);
+    setLossPoints([]);
     const channel = new Channel<UploadEvent>();
     channel.onmessage = setUploadEvent;
     void invoke<RemoteRunReceipt>("start_remote_training", {
@@ -584,6 +611,7 @@ export function RemoteTrainingPanel(props: Props) {
     setPlan(preparedPlan);
     setRun(null);
     setEvents([]);
+    setLossPoints([]);
     setUploadEvent(null);
     setResult(null);
     setRunStartedAt(null);
@@ -640,20 +668,14 @@ export function RemoteTrainingPanel(props: Props) {
 
   if (stage === "starting" || stage === "running") {
     const status = uploadEvent?.message ?? latestEvent?.message ?? "The durable training workflow is starting.";
+    const headline = progressHeadline(latestEvent);
+    const phaseTitle = uploadEvent ? "Starting" : headline.title;
     const progress = uploadEvent
       ? `${uploadEvent.current} of ${uploadEvent.total} approved artifacts`
-      : latestEvent?.progress
-        ? `${latestEvent.progress.completed} of ${latestEvent.progress.total} ${latestEvent.progress.unit}`
-        : null;
-    const phaseTitle = latestEvent?.phase === "training"
-      ? "Training"
-      : latestEvent?.phase === "evaluation"
-        ? "Evaluating"
-        : latestEvent?.phase === "deployment"
-          ? "Preparing your model"
-          : latestEvent?.phase === "cleanup"
-            ? "Finishing safely"
-            : "Starting";
+      : headline.detail
+        ?? (latestEvent?.progress
+          ? `${latestEvent.progress.completed} of ${latestEvent.progress.total} ${latestEvent.progress.unit}`
+          : null);
     const fallbackExamples = props.trainingExamples?.filter((example) => example.input.trim()).slice(0, 6) ?? [];
     const sourceExamples = runExamples?.examples.length ? runExamples.examples : fallbackExamples;
     const examples = sourceExamples.slice(runExampleCursor, runExampleCursor + 6);
@@ -670,6 +692,7 @@ export function RemoteTrainingPanel(props: Props) {
           </div>
           {run && <button type="button" className="btn ghost" onClick={cancel}>Cancel</button>}
         </header>
+        <TrainingRunStatus events={events} lossPoints={lossPoints} />
         {examples.length > 0 && (
           <div className="remote-training-example-window" aria-label="Actual prepared training examples">
             <header>
