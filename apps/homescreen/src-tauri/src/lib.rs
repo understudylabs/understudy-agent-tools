@@ -25,6 +25,7 @@ mod remote_training;
 mod training_api;
 mod training_chat_tools;
 mod training_outcome;
+mod reporting;
 mod residency;
 mod rlm;
 mod scope;
@@ -407,6 +408,8 @@ pub fn run() {
             explore::explore_scan_cancel,
             scope::projects_list,
             scope::workloads_list,
+            reporting::reporting_workload_status,
+            reporting::reporting_usage_summary,
             chat::chat_stream,
             restart_app,
         ])

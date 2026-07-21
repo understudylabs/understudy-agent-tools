@@ -18,6 +18,7 @@ import { ExploreShell, requestExploreFocus } from "./components/explore/ExploreS
 import { RuntimeRepairPrompt } from "./components/RuntimeRepairPrompt";
 import { ModelDownloadNotice } from "./components/ModelDownloadNotice";
 import { WorkloadConfigPane } from "./components/WorkloadConfigPane";
+import { ReportingPane } from "./components/ReportingPane";
 import { loadStoredScope, storeScope } from "./components/sidebar/ScopeSwitcher";
 import type { Scope } from "./lib/nav";
 import { useStatus } from "./lib/useStatus";
@@ -222,6 +223,7 @@ export default function Page() {
       "rlm",
       "explore",
       "workload-config",
+      "reporting",
       "training-evals",
       "training-optimization",
       "training-datasets",
@@ -362,6 +364,7 @@ export default function Page() {
         {pane === "models" && <ModelsPane />}
         {pane === "capture" && <CapturePane />}
         {pane === "workload-config" && <WorkloadConfigPane scope={scope} />}
+        {pane === "reporting" && <ReportingPane scope={scope} />}
         {pane === "rlm" && <RlmPane />}
         {pane === "explore" && <ExploreShell />}
         {isTrainingPane(pane) && <TrainingPane section={pane} />}

@@ -61,8 +61,9 @@ function healthDotClass(health: WorkloadSummary["health"]) {
  * Port of the web WorkloadScopeSwitcher semantics:
  * - Project select RESCOPES only (sets projectId, clears workloadId).
  * - Workload picker NAVIGATES (sets workloadId AND pane -> workload-config).
- * Data comes from the `projects_list` / `workloads_list` Tauri stubs; until
- * those return real rows the controls render disabled with a sole-org label.
+ * Data comes from the `projects_list` / `workloads_list` Tauri commands
+ * (admin/v1 reporting options); while signed out they return empty rows and
+ * the controls render disabled with a sole-org label.
  */
 export function ScopeSwitcher({
   scope,
