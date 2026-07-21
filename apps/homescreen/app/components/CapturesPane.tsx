@@ -118,7 +118,10 @@ export function CapturesPane({ scope }: { scope: Scope }) {
           limit: PAGE_SIZE,
         });
         if (seq.current !== token) return;
-        setScan(reducePage(prev, page) as ScanState);
+        const next = reducePage(prev, page) as ScanState;
+        // ContinueScan only auto-hops workload-scoped lists on the web;
+        // the project aggregate shows a manual "Next page" sparse state.
+        setScan(workloadFilter ? next : { ...next, autoContinue: false });
       } catch (e) {
         if (seq.current !== token) return;
         setError(String(e));
@@ -365,7 +368,7 @@ x-understudy-workload = "${filterName ?? "main"}"`}</code>
             </div>
             <div className="captures-pager">
               <button className="btn" type="button" onClick={older} disabled={loading}>
-                Keep searching older captures
+                {workloadFilter ? "Keep searching older captures" : "Next page"}
               </button>
             </div>
           </div>
