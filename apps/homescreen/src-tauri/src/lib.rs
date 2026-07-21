@@ -22,6 +22,7 @@ mod models;
 mod moraine;
 mod oracle_dispatch;
 mod remote_training;
+mod training_chat_tools;
 mod training_outcome;
 mod residency;
 mod rlm;
