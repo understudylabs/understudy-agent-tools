@@ -1,7 +1,7 @@
 {
   "name": "understudy",
   "description": "Improve LLM apps and agents from real traces: capture evidence, build evals, optimize prompts/routes, compare models, run local models, and hand off to Understudy.",
-  "version": "0.6.32",
+  "version": "0.6.33",
   "author": {
     "name": "Understudy Labs"
   },

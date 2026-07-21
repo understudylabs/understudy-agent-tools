@@ -53,6 +53,21 @@ A separate crop was not needed: the sidebar is legible at full resolution in the
 
 final result: passed
 
+## Trained-model installer focus
+
+- Date: 2026-07-20
+- Source: `/var/folders/p8/bn77j4_d6676ws9hw78lqrgh0000gn/T/codex-clipboard-f3da513b-b932-4f9a-84c7-d393eda2caba.png`
+- Native implementation: `/var/folders/p8/bn77j4_d6676ws9hw78lqrgh0000gn/T/orca-computer-use/539923fa-266d-4abd-a7b9-bcbb340e4184-screenshot.png`
+- Viewport: 1180 x 820 logical pixels at 2x native scale
+
+The default view now contains only the customer task: choose an installed classifier, paste customer feedback, and run locally. Model installation guidance remains visible, but implementation details and historical training runs no longer compete with the primary action. The former Active and Archived controls live under a secondary Previous runs view, where their scope is clear.
+
+The native pass confirmed both views are keyboard-accessible and functional. The installed-model screen fits without clipping or internal scrolling, uses the existing dark surfaces and cyan focus language, and keeps the primary action aligned with its input. Previous runs still exposes the full list, selection details, Active and Archived controls, and run actions without changing their behavior.
+
+No actionable P0, P1, or P2 visual or interaction issues remain for this scoped simplification.
+
+final result: passed
+
 ## Local classifier training progress
 
 - Source visual truth: Fable training flow at `http://localhost:1423/cedar/flows/training`

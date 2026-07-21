@@ -780,11 +780,13 @@ test("trained-model library is restart-safe and stays separate from chat models"
   assert.match(library, /\.understudy-model/);
   assert.match(chat, /if \(classifierLibraryOpen\) return/);
   assert.match(library, /revealItemInDir/);
-  assert.match(library, /They never appear in the chat-model picker/);
+  assert.match(library, /Install and run a trained classifier on this Mac/);
+  assert.match(library, /Installed models/);
+  assert.match(library, /Previous runs/);
   assert.match(library, /Correct answers/);
   assert.match(library, /Separate test examples/);
   assert.match(library, /Archived/);
-  assert.match(library, /source rows will not be copied|Local task models saved on this Mac/);
+  assert.match(library, /Understudy verifies it and downloads the matching base automatically/);
   assert.doesNotMatch(library, /training examples|raw rows|source payload/i);
   assert.match(css, /\.classifier-library-dialog/);
   assert.match(tauri, /workload_drop::list_local_classification_runs/);

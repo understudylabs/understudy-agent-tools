@@ -151,6 +151,7 @@ export function LocalClassifierLibraryDialog({
   open: boolean;
   onOpenChange: (open: boolean) => void;
 }) {
+  const [view, setView] = useState<"models" | "runs">("models");
   const [archived, setArchived] = useState(false);
   const [runs, setRuns] = useState<LocalClassifierRun[]>([]);
   const [selectedRunId, setSelectedRunId] = useState<string | null>(null);
@@ -415,47 +416,53 @@ export function LocalClassifierLibraryDialog({
       <DialogContent className="classifier-library-dialog">
         <DialogHeader className="classifier-library-header">
           <DialogTitle>Trained models</DialogTitle>
-          <DialogDescription>Local task models saved on this Mac. They never appear in the chat-model picker.</DialogDescription>
+          <DialogDescription>Install and run a trained classifier on this Mac.</DialogDescription>
         </DialogHeader>
 
         <div className="classifier-library-tabs" aria-label="Trained model views">
-          <button type="button" aria-pressed={!archived} onClick={() => setArchived(false)}>Active</button>
-          <button type="button" aria-pressed={archived} onClick={() => setArchived(true)}>Archived</button>
+          <button type="button" aria-pressed={view === "models"} onClick={() => setView("models")}>Installed models</button>
+          <button type="button" aria-pressed={view === "runs"} onClick={() => setView("runs")}>Previous runs</button>
         </div>
 
-        <section className="classifier-library-portable">
+        {view === "models" && <section className="classifier-library-portable">
           <div>
-            <strong>Portable task models</strong>
-            <span>Drop a <code>.understudy-model</code> or <code>.zip</code> onto this window to verify and install it.</span>
+            <strong>Local classifier</strong>
+            <span>Drop a model file anywhere in Understudy to install it.</span>
           </div>
           {portableModels.length ? (
             <form onSubmit={(event) => { event.preventDefault(); void predictPortable(); }}>
-              <select value={portableModelKey} onChange={(event) => { setPortableModelKey(event.target.value); setPortablePrediction(null); }}>
-                {portableModels.map((model) => (
-                  <option key={`${model.id}@${model.version}`} value={`${model.id}@${model.version}`}>
-                    {model.name} · {model.version}
-                  </option>
-                ))}
-              </select>
-              <input value={portableText} maxLength={4_000} onChange={(event) => { setPortableText(event.target.value); setPortablePrediction(null); }} placeholder="Try a new example" />
+              <label>
+                <span>Model</span>
+                <select value={portableModelKey} onChange={(event) => { setPortableModelKey(event.target.value); setPortablePrediction(null); }}>
+                  {portableModels.map((model) => (
+                    <option key={`${model.id}@${model.version}`} value={`${model.id}@${model.version}`}>
+                      {model.name} · {model.version}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="classifier-library-example">
+                <span>Try an example</span>
+                <input value={portableText} maxLength={4_000} onChange={(event) => { setPortableText(event.target.value); setPortablePrediction(null); }} placeholder="Paste customer feedback" />
+              </label>
               <button
-                type={selectedBaseDownload?.status === "error" || selectedBaseDownload?.status === "cancelled" ? "button" : "submit"}
-                className="btn primary"
-                disabled={busy || (selectedPortable?.base_ready
-                  ? !portableText.trim()
-                  : selectedBaseDownload?.status !== "error" && selectedBaseDownload?.status !== "cancelled")}
-                onClick={selectedBaseDownload?.status === "error" || selectedBaseDownload?.status === "cancelled" ? () => { void retryPortableBase(); } : undefined}
-              >
-                {busy
-                  ? "Working…"
-                  : selectedPortable?.base_ready
-                    ? "Run locally"
-                    : selectedBaseDownload?.status === "error" || selectedBaseDownload?.status === "cancelled"
-                      ? "Retry base download"
-                      : "Downloading base model…"}
-              </button>
+                  type={selectedBaseDownload?.status === "error" || selectedBaseDownload?.status === "cancelled" ? "button" : "submit"}
+                  className="btn primary"
+                  disabled={busy || (selectedPortable?.base_ready
+                    ? !portableText.trim()
+                    : selectedBaseDownload?.status !== "error" && selectedBaseDownload?.status !== "cancelled")}
+                  onClick={selectedBaseDownload?.status === "error" || selectedBaseDownload?.status === "cancelled" ? () => { void retryPortableBase(); } : undefined}
+                >
+                  {busy
+                    ? "Working…"
+                    : selectedPortable?.base_ready
+                      ? "Run locally"
+                      : selectedBaseDownload?.status === "error" || selectedBaseDownload?.status === "cancelled"
+                        ? "Retry download"
+                        : "Downloading base…"}
+                </button>
             </form>
-          ) : <p>No portable models installed yet.</p>}
+          ) : <div className="classifier-library-model-empty"><strong>Drop a model file to get started</strong><span>Understudy verifies it and downloads the matching base automatically.</span></div>}
           {portablePrediction && (
             <output>
               <strong>{portablePrediction.prediction.l3}</strong>
@@ -463,9 +470,14 @@ export function LocalClassifierLibraryDialog({
             </output>
           )}
           {portableNotice && <p role="status">{portableNotice}</p>}
-        </section>
+        </section>}
 
-        <div className="classifier-library-body">
+        {view === "runs" && <>
+          <div className="classifier-library-run-tabs" aria-label="Previous run status">
+            <button type="button" aria-pressed={!archived} onClick={() => setArchived(false)}>Active</button>
+            <button type="button" aria-pressed={archived} onClick={() => setArchived(true)}>Archived</button>
+          </div>
+          <div className="classifier-library-body">
           <nav className="classifier-library-list" aria-label={archived ? "Archived trained models" : "Active trained models"}>
             {loading ? (
               <div className="classifier-library-empty">Reading local runs…</div>
@@ -611,7 +623,8 @@ export function LocalClassifierLibraryDialog({
               </div>
             )}
           </section>
-        </div>
+          </div>
+        </>}
       </DialogContent>
     </Dialog>
   );
