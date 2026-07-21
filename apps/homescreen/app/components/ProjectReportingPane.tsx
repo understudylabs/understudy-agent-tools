@@ -12,14 +12,14 @@ import {
   formatTokens,
   formatUSD,
   totalsFrom,
-} from "../lib/projrep-format.mjs";
+} from "../lib/reporting-format.mjs";
 import type {
   ReportingResult,
   UsageSummaryData,
   UsageWindow,
   WorkloadStatusEntry,
   WorkloadStatusResponse,
-} from "../lib/projrep-format.mjs";
+} from "../lib/reporting-format.mjs";
 
 // Web parity (apps/web .../reporting): status is fixed to the endpoint's
 // max window; usage offers 7d/30d. Poll cadences match the web page and

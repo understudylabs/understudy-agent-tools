@@ -109,7 +109,7 @@ pub async fn billing_overview(from: String, to: String) -> Result<Value, String>
 /// the ledger is credited by Stripe's webhook, not on return.
 #[tauri::command]
 pub async fn billing_topup_checkout(amount_usd: f64) -> Result<String, String> {
-    if !amount_usd.is_finite() || amount_usd < TOPUP_MIN_USD || amount_usd > TOPUP_MAX_USD {
+    if !amount_usd.is_finite() || !(TOPUP_MIN_USD..=TOPUP_MAX_USD).contains(&amount_usd) {
         return Err(format!(
             "Amount must be between ${TOPUP_MIN_USD:.0} and ${TOPUP_MAX_USD:.0}."
         ));
