@@ -1700,17 +1700,23 @@ export function ChatPane({
                 await inspectTrainingRecipe(result, requestGeneration);
               } catch (error) {
                 if (!inspectTable) throw error;
-                await inspectCsvWorkload(result, requestGeneration);
+                try {
+                  await inspectCsvWorkload(result, requestGeneration);
+                } catch {
+                  // Surface the structured inspector's diagnostic, not the
+                  // table fallback's.
+                  throw error;
+                }
               }
             } else if (inspectTable) {
               dispatchDrop({ type: "inspection_started" });
               try {
                 await inspectCsvWorkload(result, requestGeneration);
-              } catch (error) {
-                const extensionless = !result.source_name.includes(".");
-                if (!extensionless) throw error;
+              } catch {
+                // Inspection is a best-effort probe: files the local reader
+                // cannot parse as a table still become a metadata-only card.
                 dispatchDrop({ type: "succeeded" });
-                setNotice("Workload draft created locally; this extensionless file is not a supported table.");
+                setNotice("Workload draft created locally; this file is not a supported table.");
               }
             } else {
               dispatchDrop({ type: "succeeded" });

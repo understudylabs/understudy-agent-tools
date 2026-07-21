@@ -107,6 +107,32 @@ test("extensionless and common delimited files enter local table inspection", ()
   }), false);
 });
 
+test("unfamiliar extensions get one table inspection attempt; obvious non-tables do not", () => {
+  // Formats the reader may support (or grow to support) are attempted:
+  // the parser, not a UI allowlist, decides supportability.
+  for (const source_name of ["events.parquet", "readings.dat", "export.data", "table.psv"]) {
+    assert.equal(shouldInspectDroppedTable({
+      source_name,
+      source_type: "file",
+      source_kinds: { "local-file": 1 },
+    }), true, source_name);
+  }
+  // Clearly non-tabular media, binaries, code, and prose are denied up front.
+  for (const source_name of [
+    "photo.png", "clip.mp4", "archive.zip", "script.py", "component.tsx",
+    "styles.css", "report.pdf", "slides.pptx", "config.yaml",
+  ]) {
+    assert.equal(shouldInspectDroppedTable({
+      source_name,
+      source_type: "file",
+      source_kinds: { "local-file": 1 },
+    }), false, source_name);
+  }
+  // Directories and empty names never enter inspection.
+  assert.equal(shouldInspectDroppedTable({ source_name: "data.parquet", source_type: "directory" }), false);
+  assert.equal(shouldInspectDroppedTable({ source_name: "", source_type: "file" }), false);
+});
+
 test("structured datasets and workbooks enter Understudy dataset inspection", () => {
   for (const source_name of [
     "gsm8k.json",
