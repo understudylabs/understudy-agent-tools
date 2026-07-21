@@ -10,6 +10,9 @@ use std::fs;
 use std::io::Read;
 use std::path::{Component, Path, PathBuf};
 
+const MAX_ARCHIVE_FILES: usize = 10_000;
+const MAX_ARCHIVE_BYTES: u64 = 4 * 1024 * 1024 * 1024;
+
 pub const TASK_MODEL_SCHEMA: &str = "understudy.task_model.v1";
 pub const TASK_MODEL_RUNTIME: &str = "mlx_vlm_classifier_v1";
 
@@ -205,6 +208,139 @@ fn load_manifest(bundle: &Path) -> Result<TaskModelManifest, String> {
     serde_json::from_slice(&bytes).map_err(|err| format!("invalid manifest.json: {err}"))
 }
 
+#[derive(Debug)]
+struct PreparedBundle {
+    root: PathBuf,
+    cleanup: Option<PathBuf>,
+}
+
+impl Drop for PreparedBundle {
+    fn drop(&mut self) {
+        if let Some(path) = &self.cleanup {
+            let _ = fs::remove_dir_all(path);
+        }
+    }
+}
+
+fn prepare_bundle(source: &Path) -> Result<PreparedBundle, String> {
+    let metadata = fs::symlink_metadata(source).map_err(|err| err.to_string())?;
+    if metadata.file_type().is_symlink() {
+        return Err("task model package cannot be a symlink".to_string());
+    }
+    if metadata.is_dir() {
+        return Ok(PreparedBundle {
+            root: source.to_path_buf(),
+            cleanup: None,
+        });
+    }
+    let extension = source
+        .extension()
+        .and_then(|value| value.to_str())
+        .unwrap_or_default();
+    if !metadata.is_file()
+        || !(extension.eq_ignore_ascii_case("zip")
+            || extension.eq_ignore_ascii_case("understudy-model"))
+    {
+        return Err(
+            "task model must be a .zip, a ZIP-backed .understudy-model file, or a .understudy-model directory"
+                .to_string(),
+        );
+    }
+
+    let file = fs::File::open(source).map_err(|err| err.to_string())?;
+    let mut archive = zip::ZipArchive::new(file)
+        .map_err(|err| format!("task model is not a readable ZIP archive: {err}"))?;
+    if archive.len() > MAX_ARCHIVE_FILES {
+        return Err(format!(
+            "task-model archive contains too many entries ({} > {MAX_ARCHIVE_FILES})",
+            archive.len()
+        ));
+    }
+    let temp = std::env::temp_dir().join(format!(
+        "understudy-task-model-{}-{}",
+        std::process::id(),
+        chrono::Utc::now().timestamp_micros()
+    ));
+    let payload = temp.join("payload.understudy-model");
+    fs::create_dir_all(&payload).map_err(|err| err.to_string())?;
+    let extraction_result = (|| {
+        let mut seen = std::collections::HashSet::new();
+        let mut total = 0u64;
+        for index in 0..archive.len() {
+            let mut entry = archive
+                .by_index(index)
+                .map_err(|err| format!("cannot read task-model archive entry: {err}"))?;
+            let relative = entry
+                .enclosed_name()
+                .ok_or_else(|| format!("unsafe archive path: {}", entry.name()))?
+                .to_path_buf();
+            if relative.as_os_str().is_empty() || !seen.insert(relative.clone()) {
+                return Err(format!(
+                    "duplicate or empty archive path: {}",
+                    relative.display()
+                ));
+            }
+            if entry
+                .unix_mode()
+                .is_some_and(|mode| mode & 0o170000 == 0o120000)
+            {
+                return Err(format!(
+                    "task-model archives cannot contain symlinks: {}",
+                    relative.display()
+                ));
+            }
+            total = total
+                .checked_add(entry.size())
+                .ok_or_else(|| "task-model archive size overflow".to_string())?;
+            if total > MAX_ARCHIVE_BYTES {
+                return Err("task-model archive expands beyond 4 GiB".to_string());
+            }
+            let destination = payload.join(&relative);
+            if entry.is_dir() {
+                fs::create_dir_all(&destination).map_err(|err| err.to_string())?;
+                continue;
+            }
+            if let Some(parent) = destination.parent() {
+                fs::create_dir_all(parent).map_err(|err| err.to_string())?;
+            }
+            let mut output = fs::File::create(&destination).map_err(|err| err.to_string())?;
+            std::io::copy(&mut entry, &mut output).map_err(|err| err.to_string())?;
+        }
+
+        let mut roots = Vec::new();
+        if payload.join("manifest.json").is_file() {
+            roots.push(payload.clone());
+        }
+        for child in fs::read_dir(&payload).map_err(|err| err.to_string())? {
+            let child = child.map_err(|err| err.to_string())?.path();
+            if child.is_dir()
+                && child.extension().and_then(|value| value.to_str())
+                    == Some("understudy-model")
+                && child.join("manifest.json").is_file()
+            {
+                roots.push(child);
+            }
+        }
+        if roots.len() != 1 {
+            return Err(format!(
+                "task-model archive must contain exactly one package root; found {}",
+                roots.len()
+            ));
+        }
+        Ok::<PathBuf, String>(roots.remove(0))
+    })();
+    match extraction_result {
+        Ok(root) => Ok(PreparedBundle {
+            root,
+            cleanup: Some(temp),
+        }),
+        Err(err) => {
+            let _ = fs::remove_dir_all(&temp);
+            Err(err)
+        }
+    }
+}
+
 fn validate_bundle(bundle: &Path) -> Result<(TaskModelManifest, u64), String> {
     let manifest = load_manifest(bundle)?;
     if manifest.schema_version != TASK_MODEL_SCHEMA {
@@ -322,6 +458,16 @@ fn info(bundle: &Path, installed: bool) -> Result<TaskModelInfo, String> {
     })
 }
 
+fn info_with_display_path(
+    bundle: &Path,
+    display_path: &Path,
+    installed: bool,
+) -> Result<TaskModelInfo, String> {
+    let mut model = info(bundle, installed)?;
+    model.path = display_path.to_string_lossy().into_owned();
+    Ok(model)
+}
+
 fn copy_regular_file(source: &Path, destination: &Path) -> Result<(), String> {
     if let Some(parent) = destination.parent() {
         fs::create_dir_all(parent).map_err(|err| err.to_string())?;
@@ -332,7 +478,9 @@ fn copy_regular_file(source: &Path, destination: &Path) -> Result<(), String> {
 
 #[tauri::command]
 pub fn inspect_task_model(path: String) -> Result<TaskModelInfo, String> {
-    info(Path::new(&path), false)
+    let source = PathBuf::from(path);
+    let prepared = prepare_bundle(&source)?;
+    info_with_display_path(&prepared.root, &source, false)
 }
 
 #[tauri::command]
@@ -342,6 +490,11 @@ pub fn install_task_model(path: String) -> Result<TaskModelInfo, String> {
 }
 
 fn install_task_model_to(source: &Path, root: &Path) -> Result<TaskModelInfo, String> {
+    let prepared = prepare_bundle(source)?;
+    install_prepared_task_model_to(&prepared.root, root)
+}
+
+fn install_prepared_task_model_to(source: &Path, root: &Path) -> Result<TaskModelInfo, String> {
     let (manifest, _) = validate_bundle(source)?;
     fs::create_dir_all(root).map_err(|err| err.to_string())?;
     let target = root
@@ -412,6 +565,7 @@ pub fn list_task_models() -> Result<Vec<TaskModelInfo>, String> {
 #[cfg(test)]
 mod tests {
     use super::*;
+    use std::io::Write;
     use std::sync::atomic::{AtomicU64, Ordering};
     use std::time::{SystemTime, UNIX_EPOCH};
 
@@ -490,6 +644,38 @@ mod tests {
         root
     }
 
+    fn archive_fixture(source: &Path, extension: &str, nested: bool) -> PathBuf {
+        let path = std::env::temp_dir().join(format!(
+            "understudy-task-model-archive-{}-{}.{}",
+            SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap()
+                .as_nanos(),
+            TEST_NONCE.fetch_add(1, Ordering::Relaxed),
+            extension
+        ));
+        let file = fs::File::create(&path).unwrap();
+        let mut archive = zip::ZipWriter::new(file);
+        let options = zip::write::SimpleFileOptions::default()
+            .compression_method(zip::CompressionMethod::Deflated);
+        let manifest = load_manifest(source).unwrap();
+        let prefix = if nested {
+            "fixture.understudy-model/"
+        } else {
+            ""
+        };
+        for relative in std::iter::once("manifest.json".to_string())
+            .chain(manifest.files.iter().map(|entry| entry.path.clone()))
+        {
+            archive
+                .start_file(format!("{prefix}{relative}"), options)
+                .unwrap();
+            archive.write_all(&fs::read(source.join(relative)).unwrap()).unwrap();
+        }
+        archive.finish().unwrap();
+        path
+    }
+
     #[test]
     fn valid_bundle_is_verified() {
         let root = fixture();
@@ -507,6 +693,67 @@ mod tests {
         let error = validate_bundle(&root).unwrap_err();
         assert!(error.contains("mismatch"));
         fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
+    fn zip_archive_installs_without_manual_extraction() {
+        let source = fixture();
+        let archive = archive_fixture(&source, "zip", true);
+        let install_root = std::env::temp_dir().join(format!(
+            "understudy-task-model-zip-installs-{}",
+            SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        let installed = install_task_model_to(&archive, &install_root).unwrap();
+        assert!(installed.installed);
+        assert_eq!(installed.id, "fixture-classifier");
+        fs::remove_dir_all(source).unwrap();
+        fs::remove_file(archive).unwrap();
+        fs::remove_dir_all(install_root).unwrap();
+    }
+
+    #[test]
+    fn renamed_zip_understudy_model_file_installs() {
+        let source = fixture();
+        let archive = archive_fixture(&source, "understudy-model", false);
+        let install_root = std::env::temp_dir().join(format!(
+            "understudy-task-model-renamed-installs-{}",
+            SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        let inspected = prepare_bundle(&archive).unwrap();
+        assert_eq!(validate_bundle(&inspected.root).unwrap().0.id, "fixture-classifier");
+        drop(inspected);
+        let installed = install_task_model_to(&archive, &install_root).unwrap();
+        assert!(installed.installed);
+        fs::remove_dir_all(source).unwrap();
+        fs::remove_file(archive).unwrap();
+        fs::remove_dir_all(install_root).unwrap();
+    }
+
+    #[test]
+    fn archive_path_traversal_is_rejected() {
+        let path = std::env::temp_dir().join(format!(
+            "understudy-task-model-unsafe-{}.zip",
+            SystemTime::now()
+                .duration_since(UNIX_EPOCH)
+                .unwrap()
+                .as_nanos()
+        ));
+        let file = fs::File::create(&path).unwrap();
+        let mut archive = zip::ZipWriter::new(file);
+        archive
+            .start_file("../manifest.json", zip::write::SimpleFileOptions::default())
+            .unwrap();
+        archive.write_all(b"{}").unwrap();
+        archive.finish().unwrap();
+        let error = prepare_bundle(&path).unwrap_err();
+        assert!(error.contains("unsafe archive path"));
+        fs::remove_file(path).unwrap();
     }
 
     #[test]

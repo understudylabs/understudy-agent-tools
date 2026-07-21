@@ -212,7 +212,10 @@ export function LocalClassifierLibraryDialog({
     let dispose: (() => void) | undefined;
     getCurrentWindow().onDragDropEvent(async (event) => {
       if (event.payload.type !== "drop") return;
-      const path = event.payload.paths.find((candidate) => candidate.endsWith(".understudy-model"));
+      const path = event.payload.paths.find((candidate) => {
+        const lower = candidate.toLowerCase();
+        return lower.endsWith(".understudy-model") || lower.endsWith(".zip");
+      });
       if (!path) return;
       setBusy(true);
       setPortableNotice("Verifying task model…");
@@ -366,7 +369,7 @@ export function LocalClassifierLibraryDialog({
         <section className="classifier-library-portable">
           <div>
             <strong>Portable task models</strong>
-            <span>Drop a <code>.understudy-model</code> onto this window to verify and install it.</span>
+            <span>Drop a <code>.understudy-model</code> or <code>.zip</code> onto this window to verify and install it.</span>
           </div>
           {portableModels.length ? (
             <form onSubmit={(event) => { event.preventDefault(); void predictPortable(); }}>
