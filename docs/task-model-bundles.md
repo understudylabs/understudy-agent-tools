@@ -1,6 +1,6 @@
 # Portable task models
 
-Understudy Desktop can install a task-specific classifier from a `.zip`, a ZIP container renamed to `.understudy-model`, or an unpacked directory ending in `.understudy-model`. Open **Trained models** and drag the downloaded file or directory onto the window. The app safely extracts archives, verifies every included file, and atomically installs the verified package under `~/.understudy/models/task-models/`.
+Understudy Desktop can install a task-specific classifier from a `.zip`, a ZIP container renamed to `.understudy-model`, or an unpacked directory ending in `.understudy-model`. Open **Trained models** and drag the downloaded file or directory onto the window. The app safely extracts archives, verifies every included file, atomically installs the verified package under `~/.understudy/models/task-models/`, and automatically starts the package's required base-model download when it is not already present.
 
 The package contains the small task-specific parts, not another copy of the base model:
 
@@ -19,8 +19,8 @@ example.understudy-model/
 
 ## Test a model
 
-1. Download the base model named by the bundle in Models.
-2. Open **Trained models** and drag in the downloaded `.understudy-model` or `.zip`; no manual extraction is required.
+1. Open **Trained models** and drag in the downloaded `.understudy-model` or `.zip`; no manual extraction is required.
+2. If its base model is not on the Mac yet, leave Understudy open while the resumable download completes.
 3. Choose the installed package, enter an example, and run it locally.
 4. For repeatable scoring, import a CSV or JSONL eval. Each row needs an input and expected answer; the expected answer may be either the detailed taxonomy label id or its exact label text.
 
