@@ -1,5 +1,6 @@
 mod aa;
 mod account;
+mod auth;
 mod admin;
 mod agent_card;
 mod agent_ops;
@@ -297,6 +298,9 @@ pub fn run() {
             moraine::moraine_start,
             commands::stop_moraine,
             commands::account_status,
+            auth::auth_login,
+            auth::auth_logout,
+            auth::auth_session_status,
             commands::account_platforms,
             commands::account_keys,
             commands::account_captures,

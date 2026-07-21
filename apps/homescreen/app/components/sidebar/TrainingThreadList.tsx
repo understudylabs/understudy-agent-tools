@@ -24,10 +24,19 @@ export function TrainingThreadList({
   onSelectThread: (threadId: string) => void;
   onArchiveThread: (threadId: string) => Promise<boolean>;
 }) {
-  if (trainingThreads.length === 0) return null;
+  // "Active" threads whose run stopped updating are abandoned/killed jobs —
+  // hide them rather than showing a forever-"In progress" row. (They remain
+  // dismissible from the Training overview; unparseable timestamps stay shown.)
+  const STALE_ACTIVE_MS = 2 * 60 * 60 * 1000;
+  const visibleThreads = trainingThreads.filter((thread) => {
+    if (thread.status !== "active") return true;
+    const updated = Date.parse(thread.updated_at);
+    return Number.isNaN(updated) || Date.now() - updated < STALE_ACTIVE_MS;
+  });
+  if (visibleThreads.length === 0) return null;
   return (
     <nav className="chat-nav-list training-thread-list" aria-label="Training threads">
-      {trainingThreads.map((thread) => {
+      {visibleThreads.map((thread) => {
         const glyph = trainingThreadStatusGlyph(thread.status);
         const isActive = active === "chat" && activeThreadId === thread.thread_id;
         return (

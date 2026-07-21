@@ -155,7 +155,7 @@ function SummaryView({
           {partialErrors.join("; ")} — their workloads are omitted below.
         </Notice>
       )}
-      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+      <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
         <MetricCard
           label="7-day spend"
           value={metrics.totalSpendUsd === null ? "—" : formatUSD(metrics.totalSpendUsd)}
@@ -248,8 +248,8 @@ function MetricCard({
 
 function Notice({ title, children }: { title: string; children: ReactNode }): ReactNode {
   return (
-    <div className="border border-[var(--color-stamp)]/50 bg-[var(--color-stamp)]/5 p-4 text-sm leading-6">
-      <p className="font-medium text-[var(--color-stamp)]">{title}</p>
+    <div className="border border-[var(--color-warn)]/50 bg-[var(--color-warn)]/5 p-4 text-sm leading-6">
+      <p className="font-medium text-[var(--color-warn)]">{title}</p>
       <div className="mt-1 text-muted-foreground">{children}</div>
     </div>
   );
@@ -373,7 +373,7 @@ function SpendTrend({ rows }: { rows: ReportingSeriesPoint[] }): ReactNode {
         {points.map(([day, cost]) => (
           <div key={day} className="flex h-full min-w-0 flex-1 items-end">
             <div
-              className="w-full rounded-t-sm bg-[var(--color-stamp)]"
+              className="w-full rounded-t-sm bg-[var(--model-mint)]"
               style={{
                 height: `${maximum > 0 ? Math.max((cost / maximum) * 100, 4) : 4}%`,
               }}
@@ -407,7 +407,7 @@ function MiniMetric({ label, value }: { label: string; value: string }): ReactNo
 function SummarySkeleton(): ReactNode {
   return (
     <div className="grid animate-pulse gap-4" aria-label="Loading organization summary">
-      <div className="grid gap-4 md:grid-cols-2 xl:grid-cols-4">
+      <div className="grid grid-cols-2 gap-4 lg:grid-cols-4">
         {[0, 1, 2, 3].map((index) => (
           <div key={index} className="h-28 rounded-xl border border-border bg-muted/30" />
         ))}

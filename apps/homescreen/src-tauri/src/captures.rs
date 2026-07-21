@@ -96,16 +96,23 @@ struct Auth {
     gateway_url: String,
 }
 
-fn resolve_auth() -> Result<Auth, String> {
-    let creds = crate::creds::resolve()
-        .ok_or("Not signed in. Run `understudy login` (or open Account) first.")?;
-    let org_id = creds.org_id.clone().ok_or(
-        "No active organization in ~/.understudy/credentials.json — sign in again to scope one.",
+/// Captures are owner-read surfaces: prefer the WorkOS user token (unlocks
+/// the customer/v1 workload-scoped + detail routes), fall back to the org
+/// `sk_` key (admin/v1 project aggregate only).
+async fn resolve_auth() -> Result<Auth, String> {
+    let gateway_url = crate::creds::resolve()
+        .map(|c| c.gateway_url)
+        .unwrap_or_else(|| crate::creds::DEFAULT_GATEWAY_URL.to_string());
+    let ctx = crate::auth::management_auth(crate::auth::AuthLevel::OwnerRead)
+        .await
+        .map_err(|e| format!("Not signed in ({e}). Open Account to sign in."))?;
+    let org_id = ctx.org_id.ok_or(
+        "No active organization — sign in again to scope one.",
     )?;
     Ok(Auth {
-        api_key: creds.api_key,
+        api_key: ctx.bearer,
         org_id,
-        gateway_url: creds.gateway_url,
+        gateway_url,
     })
 }
 
@@ -146,7 +153,7 @@ pub async fn captures_list(
     cursor: Option<String>,
     limit: Option<u32>,
 ) -> Result<Value, String> {
-    let auth = resolve_auth()?;
+    let auth = resolve_auth().await?;
     let url = list_url(
         &auth.gateway_url,
         &auth.org_id,
@@ -165,7 +172,7 @@ pub async fn capture_get(
     request_id: String,
     workload_id: Option<String>,
 ) -> Result<Value, String> {
-    let auth = resolve_auth()?;
+    let auth = resolve_auth().await?;
     let url = detail_url(
         &auth.gateway_url,
         &auth.org_id,

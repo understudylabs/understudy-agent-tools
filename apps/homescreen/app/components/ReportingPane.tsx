@@ -58,11 +58,11 @@ const ALL = "__all__";
 // Canonical model colors from the app's globals.css (design system v2.0)
 // stand in for the web's --color-chart-1..5.
 const PALETTE = [
-  "var(--model-clay)",
   "var(--model-mint)",
-  "var(--model-amber)",
   "var(--model-violet)",
+  "var(--model-amber)",
   "var(--model-cyan)",
+  "var(--model-clay)",
 ] as const;
 
 export function ReportingPane() {

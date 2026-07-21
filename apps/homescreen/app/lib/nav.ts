@@ -2,16 +2,13 @@ import type { LucideIcon } from "lucide-react";
 import {
   BarChart3,
   Beaker,
-  FolderKanban,
   Boxes,
   CreditCard,
   Compass,
   FlaskConical,
-  HardDrive,
   Inbox,
   KeyRound,
   LayoutDashboard,
-  ScrollText,
   Settings2,
   UserCog,
   Wrench,
@@ -45,32 +42,31 @@ export const NAV_ITEMS: NavItemDef[] = [
   // Organization
   { id: "org-summary", group: "organization", label: "Summary", icon: LayoutDashboard, pane: "org-summary" },
   { id: "org-analytics", group: "organization", label: "Analytics", icon: BarChart3, pane: "reporting" },
-  // The web's project Summary (`/p/[project_slug]`, ActiveView "summary");
-  // the desktop scopes by the sidebar Project selector instead of a slug URL.
-  { id: "org-project", group: "organization", label: "Project", icon: FolderKanban, pane: "project-summary" },
-  // The web's project-scoped Analytics (`/p/[project_slug]` reporting view).
-  { id: "org-project-analytics", group: "organization", label: "Project Analytics", icon: BarChart3, pane: "project-reporting" },
-  // Workload (conditional on scope.workloadId)
+  // The web's project Summary is folded into org Summary on desktop — the
+  // panes were near-duplicates (same metrics/trend/workload cards). The
+  // project-summary pane itself remains reachable by pane id.
+  // The web's project-scoped Analytics (`/p/[project_slug]` reporting view),
+  // presented as the per-workload breakdown.
+  { id: "org-project-analytics", group: "organization", label: "Workloads", icon: BarChart3, pane: "project-reporting" },
+  // Former Workload group, folded into Capture (still gated on a selected workload).
   {
     id: "workload-config",
-    group: "workload",
+    group: "organization",
     label: "Configuration",
     icon: Settings2,
     pane: "workload-config",
     requiresWorkload: true,
   },
-  { id: "workload-captures", group: "workload", label: "Captures", icon: Inbox, pane: "captures", requiresWorkload: true },
+  { id: "workload-captures", group: "organization", label: "Captures", icon: Inbox, pane: "captures", requiresWorkload: true },
   // Training
   { id: "training-overview", group: "training", label: "Overview", icon: FlaskConical, pane: "training-jobs" },
   // Chats (Explore is an ordinary row; New chat is rendered separately)
   { id: "chats-explore", group: "sessions", label: "Explore Data", icon: Compass, pane: "explore" },
   // Manage
   // "Models" is Aamir's catalog surface (web /models). The desktop-native
-  // local model library keeps its own row so it stays reachable from nav.
+  // local model library pane still exists but is reachable only via deep-link.
   { id: "manage-models", group: "manage", label: "Models", icon: Boxes, pane: "model-catalog" },
-  { id: "manage-local-models", group: "manage", label: "Local models", icon: HardDrive, pane: "models" },
   { id: "manage-api-keys", group: "manage", label: "API keys", icon: KeyRound, pane: "api-keys" },
-  { id: "manage-traces", group: "manage", label: "Traces", icon: ScrollText, pane: "traces" },
   { id: "manage-lab", group: "manage", label: "Lab", icon: Beaker, pane: "rlm" },
   // Web: footer Account (/settings) + project settings (/p/:slug/settings).
   { id: "manage-settings", group: "manage", label: "Settings", icon: UserCog, pane: "settings" },

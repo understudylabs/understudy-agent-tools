@@ -395,7 +395,7 @@ function RouteEditor({
         </Button>
       </div>
       {error ? (
-        <p role="alert" className="mt-3 text-sm text-[var(--color-stamp)]">
+        <p role="alert" className="mt-3 text-sm text-[var(--color-bad)]">
           {error}
         </p>
       ) : null}
@@ -457,7 +457,7 @@ function CaptureCard({
           onClick={() => void toggle()}
           className={`inline-flex h-7 w-16 items-center border border-[var(--color-rule)] p-1 text-[0.62rem] font-medium uppercase tracking-[0.12em] transition-colors disabled:opacity-50 ${
             enabled
-              ? "justify-end bg-[color-mix(in_srgb,var(--color-card)_80%,var(--color-stamp)_20%)] text-[var(--color-ink)]"
+              ? "justify-end bg-[color-mix(in_srgb,var(--color-card)_72%,var(--model-mint)_28%)] text-[var(--color-ink)]"
               : "justify-start bg-[var(--color-card)] text-[var(--color-ink-muted)]"
           }`}
         >
@@ -465,7 +465,7 @@ function CaptureCard({
         </button>
       </div>
       {error ? (
-        <p role="alert" className="mt-3 text-sm text-[var(--color-stamp)]">
+        <p role="alert" className="mt-3 text-sm text-[var(--color-bad)]">
           {error}
         </p>
       ) : null}
