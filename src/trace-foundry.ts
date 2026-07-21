@@ -10,7 +10,7 @@ export type FoundryResult = {
   source: string;
   output_dir: string;
   freshness: { max_age_days: number; cutoff_utc: string; newest_capture_utc: string };
-  counts: { source_files: number; captures: number; tasks: number; edges: number; stale_filtered: number };
+  counts: { source_files: number; captures: number; tasks: number; edges: number; stale_filtered: number; invalid_timestamp_filtered: number };
   artifacts: Record<string, string>;
   privacy: { local_only: true; contains_customer_payloads: true; upload_performed: false; provider_called: false };
 };
@@ -28,9 +28,9 @@ const jsonish = (value: unknown): unknown => {
   return current;
 };
 const contentText = (content: unknown): string => typeof content === "string" ? content : Array.isArray(content) ? content.map((b) => asObject(b).text ?? "").join("") : "";
-const iso = (value: unknown): string => {
+const iso = (value: unknown): string | null => {
   const date = new Date(String(value ?? ""));
-  if (Number.isNaN(date.valueOf())) throw new Error(`Capture has no valid timestamp: ${String(value)}`);
+  if (Number.isNaN(date.valueOf())) return null;
   return date.toISOString();
 };
 
@@ -57,9 +57,14 @@ function envelopes(path: string): Obj[] {
 }
 
 function responseProjection(raw: unknown): Obj {
-  if (typeof raw === "string" && raw.includes("data:")) {
-    const events = raw.split(/\r?\n/).filter((line) => line.startsWith("data:") && !line.includes("[DONE]")).flatMap((line) => {
-      try { return [asObject(JSON.parse(line.slice(5).trim()))]; } catch { return []; }
+  let isJson = false;
+  if (typeof raw === "string") {
+    try { JSON.parse(raw.trim()); isJson = true; } catch { /* non-JSON transport */ }
+  }
+  const lines = typeof raw === "string" ? raw.split(/\r?\n/) : [];
+  if (!isJson && lines.some((line) => line.trimStart().startsWith("data:"))) {
+    const events = lines.filter((line) => line.trimStart().startsWith("data:") && !line.includes("[DONE]")).flatMap((line) => {
+      try { return [asObject(JSON.parse(line.trimStart().slice(5).trim()))]; } catch { return []; }
     });
     const toolCalls: Obj[] = [];
     for (const event of events) {
@@ -82,7 +87,7 @@ function responseProjection(raw: unknown): Obj {
   return { encoding: "json", body: parsed as J, tool_calls: calls, stop_reason: object.stop_reason ?? object.stopReason ?? null };
 }
 
-function normalize(envelope: Obj, pointer: string): Obj {
+function normalize(envelope: Obj, pointer: string): Obj | null {
   const version = Number(envelope.schema_version ?? 4);
   if (![2, 3, 4].includes(version)) throw new Error(`Unsupported capture schema_version ${version}`);
   const requestRaw = envelope.customer_request_body ?? envelope.request_body ?? envelope.request;
@@ -91,6 +96,7 @@ function normalize(envelope: Obj, pointer: string): Obj {
   const messages = Array.isArray(request.messages) ? request.messages.map(asObject) : [];
   const tools = Array.isArray(request.tools) ? request.tools.map(asObject) : [];
   const capturedAt = iso(envelope.ts ?? envelope.created_at ?? envelope.uploaded);
+  if (capturedAt === null) return null;
   const captureId = String(envelope.request_id ?? envelope.id ?? hash(envelope).slice(0, 24));
   return {
     schema_version: "understudy.normalized_capture.v1", capture_id: captureId, captured_at: capturedAt,
@@ -163,16 +169,27 @@ function writeJsonl(path: string, rows: Obj[]): void { mkdirSync(resolve(path, "
 export function compileTraceFoundry(sourceInput: string, outputInput: string, maxAgeDays = 3, now = new Date()): FoundryResult {
   if (!Number.isInteger(maxAgeDays) || maxAgeDays <= 0) throw new Error("--max-age-days must be a positive integer");
   const source = resolve(sourceInput), output = resolve(outputInput), files = sourceFiles(source), cutoff = new Date(now.valueOf() - maxAgeDays * 86_400_000);
-  const all = files.flatMap((file) => envelopes(file).map((row, index) => normalize(row, `${relative(source, file) || file}#L${index + 1}`)));
+  const all: Obj[] = [];
+  let invalidTimestampFiltered = 0;
+  for (const file of files) for (const [index, envelope] of envelopes(file).entries()) {
+    const row = normalize(envelope, `${relative(source, file) || file}#L${index + 1}`);
+    if (row === null) invalidTimestampFiltered += 1;
+    else all.push(row);
+  }
   const rows = all.filter((row) => new Date(row.captured_at) >= cutoff);
   if (rows.length === 0) throw new Error(`No captures satisfy --max-age-days ${maxAgeDays}; cutoff ${cutoff.toISOString()}. Refusing to compile a stale benchmark.`);
   const dag = buildDag(rows), tasks = tasksFrom(dag, rows), viewer = join(output, "viewer"), capturesDir = join(viewer, "data", "captures");
   mkdirSync(capturesDir, { recursive: true });
   const captureIndex: Obj = {};
-  for (const row of rows) { const path = join(capturesDir, `${row.capture_id}.json`); writeJson(path, row); captureIndex[row.capture_id] = { path: `data/captures/${row.capture_id}.json`, source: row.source }; }
+  for (const row of rows) {
+    const fileId = hash({ capture_id: row.capture_id, source_sha256: row.source.sha256 }).slice(0, 40);
+    const path = join(capturesDir, `${fileId}.json`);
+    writeJson(path, row);
+    captureIndex[row.capture_id] = { path: `data/captures/${fileId}.json`, source: row.source };
+  }
   writeJsonl(join(output, "normalized-captures.jsonl"), rows); writeJson(join(output, "source-dag.json"), dag); writeJsonl(join(output, "tasks.jsonl"), tasks);
   writeJson(join(output, "benchmark.json"), { schema_version: "understudy.benchmark.v1", status: "machine_compiled_review_pending", executable: false, promotion_blockers: ["human_final_judgment", "sentinel_tests"], tasks: tasks.map((task) => ({ task_id: task.task_id, split: task.split, status: task.status })) });
   writeFileSync(join(viewer, "index.html"), viewerHtml({ tasks, nodes: dag.nodes, captures: captureIndex }), { mode: 0o600 });
-  const result: FoundryResult = { schema_version: "understudy.trace_foundry.v1", source, output_dir: output, freshness: { max_age_days: maxAgeDays, cutoff_utc: cutoff.toISOString(), newest_capture_utc: rows.map((row) => row.captured_at).sort().at(-1) }, counts: { source_files: files.length, captures: rows.length, tasks: tasks.length, edges: dag.edges.length, stale_filtered: all.length - rows.length }, artifacts: { normalized: join(output, "normalized-captures.jsonl"), dag: join(output, "source-dag.json"), tasks: join(output, "tasks.jsonl"), benchmark: join(output, "benchmark.json"), viewer: join(viewer, "index.html") }, privacy: { local_only: true, contains_customer_payloads: true, upload_performed: false, provider_called: false } };
+  const result: FoundryResult = { schema_version: "understudy.trace_foundry.v1", source, output_dir: output, freshness: { max_age_days: maxAgeDays, cutoff_utc: cutoff.toISOString(), newest_capture_utc: rows.map((row) => row.captured_at).sort().at(-1) }, counts: { source_files: files.length, captures: rows.length, tasks: tasks.length, edges: dag.edges.length, stale_filtered: all.length - rows.length, invalid_timestamp_filtered: invalidTimestampFiltered }, artifacts: { normalized: join(output, "normalized-captures.jsonl"), dag: join(output, "source-dag.json"), tasks: join(output, "tasks.jsonl"), benchmark: join(output, "benchmark.json"), viewer: join(viewer, "index.html") }, privacy: { local_only: true, contains_customer_payloads: true, upload_performed: false, provider_called: false } };
   writeJson(join(output, "manifest.json"), result); return result;
 }

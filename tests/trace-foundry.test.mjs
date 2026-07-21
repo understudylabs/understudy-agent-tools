@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtempSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
@@ -16,18 +16,31 @@ test("builds a fresh generic DAG, benchmark, lazy viewer, and raw/parsed inspect
   const source = join(root, ".understudy", "captures"), output = join(root, ".understudy", "benchmarks", "latest");
   mkdirSync(source, { recursive: true });
   const rows = [
-    capture("round-1", "2026-07-20T12:00:00Z", [{ role: "user", content: "Set synthetic record 7 active" }], { content: [{ type: "tool_use", id: "call-1", name: "update-record", input: { id: 7, status: "active" } }], stop_reason: "tool_use" }),
+    capture("round-1", "2026-07-20T12:00:00Z", [{ role: "user", content: "Set synthetic record 7 active" }], { content: [{ type: "tool_use", id: "call-1", name: "update-record", input: { id: 7, status: "active" } }], note: "data:image/png;base64,not-sse", stop_reason: "tool_use" }),
     capture("round-2", "2026-07-20T12:00:01Z", [{ role: "user", content: "Set synthetic record 7 active" }, { role: "assistant", content: [{ type: "tool_use", id: "call-1", name: "update-record", input: { id: 7, status: "active" } }] }, { role: "user", content: [{ type: "tool_result", tool_use_id: "call-1", content: "{\"ok\":true}" }] }], { content: [{ type: "text", text: "Done" }], stop_reason: "end_turn" }),
     capture("stale", "2026-07-01T12:00:00Z", [{ role: "user", content: "Old task" }], { content: [{ type: "text", text: "Old" }], stop_reason: "end_turn" }),
+    capture("missing-time", undefined, [{ role: "user", content: "Malformed timestamp" }], {}),
   ];
   writeFileSync(join(source, "captures.jsonl"), rows.map((row) => JSON.stringify(row)).join("\n") + "\n");
   const result = compileTraceFoundry(source, output, 3, new Date("2026-07-21T12:00:00Z"));
-  assert.equal(result.counts.captures, 2); assert.equal(result.counts.stale_filtered, 1); assert.equal(result.counts.tasks, 1);
+  assert.equal(result.counts.captures, 2); assert.equal(result.counts.stale_filtered, 1); assert.equal(result.counts.invalid_timestamp_filtered, 1); assert.equal(result.counts.tasks, 1);
   const tasks = readFileSync(join(output, "tasks.jsonl"), "utf8");
   assert.match(tasks, /semantic_outcome_not_exact_trajectory/); assert.doesNotMatch(tasks, /Example Customer/);
   const viewer = readFileSync(join(output, "viewer", "index.html"), "utf8");
-  assert.match(viewer, /benchmark orchard/); assert.match(viewer, /Parsed JSON/); assert.match(viewer, />Raw</); assert.match(viewer, /data\/captures\/round-1.json/);
-  assert.ok(readFileSync(join(output, "viewer", "data", "captures", "round-1.json"), "utf8").includes("raw"));
+  assert.match(viewer, /benchmark orchard/); assert.match(viewer, /Parsed JSON/); assert.match(viewer, />Raw</); assert.doesNotMatch(viewer, /data\/captures\/round-1.json/);
+  const captures = readdirSync(join(output, "viewer", "data", "captures"));
+  assert.ok(captures.every((name) => /^[a-f0-9]{40}\.json$/.test(name)));
+  const first = captures.map((name) => JSON.parse(readFileSync(join(output, "viewer", "data", "captures", name), "utf8"))).find((row) => row.capture_id === "round-1");
+  assert.equal(first.response.encoding, "json"); assert.equal(first.response.body.note, "data:image/png;base64,not-sse"); assert.ok(first.raw);
+});
+
+test("does not derive viewer paths from capture-controlled request IDs", () => {
+  const root = mkdtempSync(join(tmpdir(), "understudy-foundry-path-"));
+  const source = join(root, ".understudy", "captures"), output = join(root, ".understudy", "benchmarks", "latest"); mkdirSync(source, { recursive: true });
+  writeFileSync(join(source, "one.json"), JSON.stringify(capture("../../escaped", "2026-07-20T00:00:00Z", [{ role: "user", content: "Safe path" }], {})));
+  compileTraceFoundry(source, output, 3, new Date("2026-07-21T00:00:00Z"));
+  const files = readdirSync(join(output, "viewer", "data", "captures"));
+  assert.equal(files.length, 1); assert.match(files[0], /^[a-f0-9]{40}\.json$/); assert.equal(existsSync(join(output, "viewer", "escaped.json")), false);
 });
 
 test("fails closed when no trace is within the requested window", () => {
