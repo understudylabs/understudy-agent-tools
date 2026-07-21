@@ -348,15 +348,22 @@ export async function inspectDesktopRelease({
   const versionState = inspectDesktopVersions(root);
   const errors = [...versionState.errors];
   let builtCliRuntime = null;
-  try {
-    builtCliRuntime = builtCliRuntimeVersion(root);
-    const runtimeError = builtCliRuntimeVersionError(
-      builtCliRuntime,
-      versionState.versions.rust_runtime,
-    );
-    if (runtimeError) errors.push(runtimeError);
-  } catch (error) {
-    errors.push(`built CLI runtime-version check failed: ${error.message}`);
+  // The built-CLI runtime assertion needs dist/bin.js. It is mandatory in the
+  // signed/notarized stages (the bundle is built by then). In the source stage
+  // — which validates pristine checked-in sources on a fresh CI checkout —
+  // dist/ may not be built yet, so enforce only when it already exists.
+  const builtCliPresent = existsSync(join(root, "dist", "bin.js"));
+  if (stage !== "source" || builtCliPresent) {
+    try {
+      builtCliRuntime = builtCliRuntimeVersion(root);
+      const runtimeError = builtCliRuntimeVersionError(
+        builtCliRuntime,
+        versionState.versions.rust_runtime,
+      );
+      if (runtimeError) errors.push(runtimeError);
+    } catch (error) {
+      errors.push(`built CLI runtime-version check failed: ${error.message}`);
+    }
   }
   let head = null;
   let originMain = null;
