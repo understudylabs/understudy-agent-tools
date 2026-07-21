@@ -1,5 +1,8 @@
 use serde::{Deserialize, Serialize};
+use serde_json::Value;
+use std::fs;
 use std::io::Write;
+use std::path::{Path, PathBuf};
 use std::process::{Command, Stdio};
 use tauri::{AppHandle, Manager};
 
@@ -128,6 +131,251 @@ pub async fn run_task_model(
 }
 
 #[derive(Deserialize)]
+pub struct RunTaskModelFileRequest {
+    pub model_id: String,
+    pub version: String,
+    pub path: String,
+}
+
+#[derive(Serialize)]
+pub struct TaskModelFileRun {
+    pub rows: u64,
+    pub labeled_rows: u64,
+    pub right: u64,
+    pub accuracy: Option<f64>,
+    pub elapsed_ms: u64,
+    pub output_path: String,
+}
+
+#[derive(Clone, Debug)]
+struct ReviewRow {
+    task_id: String,
+    text: String,
+    expected: Option<String>,
+}
+
+fn field<'a>(value: &'a Value, names: &[&str]) -> Option<&'a str> {
+    names
+        .iter()
+        .find_map(|name| value.get(*name).and_then(Value::as_str))
+}
+
+fn read_review_rows(path: &Path) -> Result<Vec<ReviewRow>, String> {
+    let extension = path
+        .extension()
+        .and_then(|value| value.to_str())
+        .unwrap_or("")
+        .to_ascii_lowercase();
+    if matches!(extension.as_str(), "jsonl" | "ndjson") {
+        let content =
+            fs::read_to_string(path).map_err(|err| format!("cannot read test data: {err}"))?;
+        let mut rows = vec![];
+        for (index, line) in content.lines().enumerate() {
+            if line.trim().is_empty() {
+                continue;
+            }
+            let value: Value = serde_json::from_str(line)
+                .map_err(|err| format!("invalid JSON on line {}: {err}", index + 1))?;
+            let text = field(
+                &value,
+                &[
+                    "text", "input", "prompt", "review", "feedback", "comment", "content",
+                    "message",
+                ],
+            )
+            .ok_or_else(|| format!("line {} has no text or input field", index + 1))?;
+            let task_id = field(&value, &["task_id", "id", "row_id"])
+                .map(str::to_string)
+                .unwrap_or_else(|| (index + 1).to_string());
+            let expected = field(
+                &value,
+                &["expected", "label", "l3", "l3_label", "category", "target"],
+            )
+            .map(str::to_string);
+            rows.push(ReviewRow {
+                task_id,
+                text: text.to_string(),
+                expected,
+            });
+        }
+        return Ok(rows);
+    }
+    if !matches!(extension.as_str(), "csv" | "tsv") {
+        return Err("test data must be CSV, TSV, JSONL, or NDJSON".to_string());
+    }
+    let delimiter = if extension == "tsv" { b'\t' } else { b',' };
+    let mut reader = csv::ReaderBuilder::new()
+        .delimiter(delimiter)
+        .from_path(path)
+        .map_err(|err| format!("cannot read test data: {err}"))?;
+    let headers = reader
+        .headers()
+        .map_err(|err| format!("cannot read headers: {err}"))?
+        .clone();
+    let find = |names: &[&str]| {
+        headers.iter().position(|header| {
+            names
+                .iter()
+                .any(|name| header.trim().eq_ignore_ascii_case(name))
+        })
+    };
+    let text_index = find(&[
+        "text",
+        "input",
+        "prompt",
+        "review",
+        "customer_feedback",
+        "feedback",
+        "comment",
+        "content",
+        "body",
+        "message",
+    ])
+    .or_else(|| (!headers.is_empty()).then_some(0))
+    .ok_or_else(|| "test data has no columns".to_string())?;
+    let expected_index = find(&["expected", "label", "l3", "l3_label", "category", "target"]);
+    let id_index = find(&["task_id", "id", "row_id"]);
+    let mut rows = vec![];
+    for (index, record) in reader.records().enumerate() {
+        let record = record.map_err(|err| format!("invalid row {}: {err}", index + 2))?;
+        let text = record.get(text_index).unwrap_or("").trim();
+        if text.is_empty() {
+            return Err(format!("row {} has no text", index + 2));
+        }
+        let task_id = id_index
+            .and_then(|column| record.get(column))
+            .filter(|value| !value.trim().is_empty())
+            .map(str::to_string)
+            .unwrap_or_else(|| (index + 1).to_string());
+        let expected = expected_index
+            .and_then(|column| record.get(column))
+            .map(str::trim)
+            .filter(|value| !value.is_empty())
+            .map(str::to_string);
+        rows.push(ReviewRow {
+            task_id,
+            text: text.to_string(),
+            expected,
+        });
+    }
+    Ok(rows)
+}
+
+fn run_file_blocking(
+    request: RunTaskModelFileRequest,
+    output_root: PathBuf,
+) -> Result<TaskModelFileRun, String> {
+    let source = fs::canonicalize(request.path.trim())
+        .map_err(|err| format!("cannot open test data: {err}"))?;
+    if !source.is_file() {
+        return Err("test data must be one file".to_string());
+    }
+    let rows = read_review_rows(&source)?;
+    if rows.is_empty() {
+        return Err("test data has no rows".to_string());
+    }
+    if rows.len() > 100_000 {
+        return Err("a task-model file run is limited to 100,000 rows".to_string());
+    }
+    let started = std::time::Instant::now();
+    let predictions = run_blocking(RunTaskModelRequest {
+        model_id: request.model_id.clone(),
+        version: request.version.clone(),
+        rows: rows
+            .iter()
+            .map(|row| TaskModelInput {
+                task_id: Some(row.task_id.clone()),
+                text: row.text.clone(),
+            })
+            .collect(),
+    })?;
+    fs::create_dir_all(&output_root)
+        .map_err(|err| format!("cannot create review folder: {err}"))?;
+    let output = output_root.join(format!(
+        "{}-review-{}.csv",
+        request
+            .model_id
+            .replace(|character: char| !character.is_ascii_alphanumeric(), "-"),
+        chrono::Utc::now().timestamp_millis()
+    ));
+    let mut writer = csv::Writer::from_path(&output)
+        .map_err(|err| format!("cannot create review CSV: {err}"))?;
+    writer
+        .write_record([
+            "task_id",
+            "input",
+            "expected",
+            "predicted",
+            "correct",
+            "confidence",
+            "choice_1",
+            "choice_2",
+            "choice_3",
+            "elapsed_ms",
+        ])
+        .map_err(|err| err.to_string())?;
+    let mut labeled = 0u64;
+    let mut right = 0u64;
+    for (row, prediction) in rows.iter().zip(&predictions) {
+        let hit = row.expected.as_ref().map(|expected| {
+            expected == &prediction.prediction.l3_id.to_string()
+                || expected.eq_ignore_ascii_case(prediction.prediction.l3.trim())
+        });
+        if let Some(hit) = hit {
+            labeled += 1;
+            right += u64::from(hit);
+        }
+        let choices = (0..3)
+            .map(|index| {
+                prediction
+                    .top_k
+                    .get(index)
+                    .map(|choice| format!("{} ({:.1}%)", choice.l3, choice.probability * 100.0))
+                    .unwrap_or_default()
+            })
+            .collect::<Vec<_>>();
+        writer
+            .write_record([
+                row.task_id.as_str(),
+                row.text.as_str(),
+                row.expected.as_deref().unwrap_or(""),
+                prediction.prediction.l3.as_str(),
+                hit.map(|value| value.to_string()).as_deref().unwrap_or(""),
+                &format!("{:.6}", prediction.prediction.probability),
+                &choices[0],
+                &choices[1],
+                &choices[2],
+                &prediction.elapsed_ms.to_string(),
+            ])
+            .map_err(|err| err.to_string())?;
+    }
+    writer.flush().map_err(|err| err.to_string())?;
+    Ok(TaskModelFileRun {
+        rows: predictions.len() as u64,
+        labeled_rows: labeled,
+        right,
+        accuracy: (labeled > 0).then_some(right as f64 / labeled as f64),
+        elapsed_ms: started.elapsed().as_millis() as u64,
+        output_path: output.to_string_lossy().into_owned(),
+    })
+}
+
+#[tauri::command]
+pub async fn run_task_model_file(
+    app: AppHandle,
+    request: RunTaskModelFileRequest,
+) -> Result<TaskModelFileRun, String> {
+    let output_root = app
+        .path()
+        .app_data_dir()
+        .map_err(|err| err.to_string())?
+        .join("task-model-reviews");
+    tauri::async_runtime::spawn_blocking(move || run_file_blocking(request, output_root))
+        .await
+        .map_err(|err| format!("task-model file worker failed: {err}"))?
+}
+
+#[derive(Deserialize)]
 pub struct RunTaskModelEvalRequest {
     pub eval_id: String,
     pub model_id: String,
@@ -247,4 +495,54 @@ pub async fn run_task_model_eval(
         },
         elapsed_ms: started.elapsed().as_millis() as u64,
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn test_path(name: &str) -> PathBuf {
+        let (stem, extension) = name.rsplit_once('.').unwrap();
+        std::env::temp_dir().join(format!(
+            "understudy-task-review-{stem}-{}-{}.{}",
+            std::process::id(),
+            chrono::Utc::now().timestamp_nanos_opt().unwrap_or_default(),
+            extension,
+        ))
+    }
+
+    #[test]
+    fn reads_labeled_csv_for_human_review() {
+        let path = test_path("reviews.csv");
+        fs::write(
+            &path,
+            "id,customer_feedback,label\nrow-1,The delivery was late,Delivery timing\n",
+        )
+        .unwrap();
+        let rows = read_review_rows(&path).unwrap();
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0].task_id, "row-1");
+        assert_eq!(rows[0].text, "The delivery was late");
+        assert_eq!(rows[0].expected.as_deref(), Some("Delivery timing"));
+    }
+
+    #[test]
+    fn reads_unlabeled_jsonl_for_prediction_review() {
+        let path = test_path("reviews.jsonl");
+        fs::write(&path, "{\"row_id\":\"r2\",\"review\":\"Great shopper\"}\n").unwrap();
+        let rows = read_review_rows(&path).unwrap();
+        assert_eq!(rows.len(), 1);
+        assert_eq!(rows[0].task_id, "r2");
+        assert_eq!(rows[0].text, "Great shopper");
+        assert_eq!(rows[0].expected, None);
+    }
+
+    #[test]
+    fn rejects_files_without_review_text() {
+        let path = test_path("missing-text.jsonl");
+        fs::write(&path, "{\"label\":\"Delivery timing\"}\n").unwrap();
+        assert!(read_review_rows(&path)
+            .unwrap_err()
+            .contains("no text or input field"));
+    }
 }

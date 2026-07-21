@@ -777,6 +777,13 @@ test("trained-model library is restart-safe and stays separate from chat models"
   assert.match(library, /"list_task_models"/);
   assert.match(library, /"install_task_model"/);
   assert.match(library, /"run_task_model"/);
+  assert.match(chat, /ACTIVE_TASK_MODEL_KEY/);
+  assert.match(chat, /setActiveTaskModel\(taskModel\)/);
+  assert.match(chat, /"run_task_model_file"/);
+  assert.match(chat, /Drop test data to score/);
+  assert.match(chat, /Open review CSV/);
+  assert.match(css, /\.active-task-model-badge/);
+  assert.match(css, /\.active-task-dropzone/);
   assert.match(library, /\.understudy-model/);
   assert.match(chat, /if \(classifierLibraryOpen\) return/);
   assert.match(library, /revealItemInDir/);
