@@ -53,23 +53,39 @@ fn non_empty_env(name: &str) -> Option<String> {
     std::env::var(name).ok().filter(|v| !v.trim().is_empty())
 }
 
-/// env > ~/.understudy/desktop-auth.json. `None` = not configured yet.
+/// env > ~/.understudy/desktop-auth.json > compile-time default.
+/// `None` = not configured yet.
+///
+/// The compile-time default is injected by release CI via
+/// `UNDERSTUDY_WORKOS_CLIENT_ID` / `UNDERSTUDY_AUTHKIT_DOMAIN` at build
+/// time, so the OSS source carries no environment-specific values while
+/// shipped binaries work out of the box. (A public OAuth client id is not
+/// a secret — PKCE is the protection — keeping it out of the repo is about
+/// rotation flexibility, not confidentiality.)
 pub fn client_config() -> Option<AuthClientConfig> {
+    const BAKED_CLIENT_ID: Option<&str> = option_env!("UNDERSTUDY_WORKOS_CLIENT_ID");
+    const BAKED_AUTHKIT_DOMAIN: Option<&str> = option_env!("UNDERSTUDY_AUTHKIT_DOMAIN");
     let from_file = config_file_path()
         .and_then(|p| std::fs::read_to_string(p).ok())
         .and_then(|s| serde_json::from_str::<Value>(&s).ok());
-    let get = |env: &str, key: &str| {
-        non_empty_env(env).or_else(|| {
-            from_file
-                .as_ref()
-                .and_then(|v| v.get(key))
-                .and_then(|v| v.as_str())
-                .map(str::to_string)
-        })
+    let get = |env: &str, key: &str, baked: Option<&str>| {
+        non_empty_env(env)
+            .or_else(|| {
+                from_file
+                    .as_ref()
+                    .and_then(|v| v.get(key))
+                    .and_then(|v| v.as_str())
+                    .map(str::to_string)
+            })
+            .or_else(|| baked.map(str::to_string))
     };
     Some(AuthClientConfig {
-        client_id: get("UNDERSTUDY_WORKOS_CLIENT_ID", "client_id")?,
-        authkit_domain: get("UNDERSTUDY_AUTHKIT_DOMAIN", "authkit_domain")?,
+        client_id: get("UNDERSTUDY_WORKOS_CLIENT_ID", "client_id", BAKED_CLIENT_ID)?,
+        authkit_domain: get(
+            "UNDERSTUDY_AUTHKIT_DOMAIN",
+            "authkit_domain",
+            BAKED_AUTHKIT_DOMAIN,
+        )?,
     })
 }
 

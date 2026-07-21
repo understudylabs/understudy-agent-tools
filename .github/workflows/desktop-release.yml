@@ -168,6 +168,11 @@ jobs:
         env:
           APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ""
+          # Baked into the binary via option_env! (src-tauri/src/auth.rs).
+          # A public OAuth client id, not a secret — repo vars keep it out
+          # of the OSS source while shipped builds sign in out of the box.
+          UNDERSTUDY_WORKOS_CLIENT_ID: ${{ vars.UNDERSTUDY_WORKOS_CLIENT_ID }}
+          UNDERSTUDY_AUTHKIT_DOMAIN: ${{ vars.UNDERSTUDY_AUTHKIT_DOMAIN }}
         run: bun run tauri build --bundles app,dmg
 
       - name: Notarize and staple the app

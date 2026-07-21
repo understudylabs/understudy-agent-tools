@@ -104,7 +104,7 @@ export function Sidebar({
   const activeNavId = paneToNavId(active, activeSessionId, activeThreadId);
 
   // Bottom-left identity: prefer a real org name when the gateway exposes
-  // one; fall back to a shortened org id ("org_01KT…81YX"), then "Account".
+  // one; fall back to a shortened org id ("org_ABCD…WXYZ"), then "Account".
   const [orgLabel, setOrgLabel] = useState<string | null>(null);
   useEffect(() => {
     if (!isTauri()) return;
