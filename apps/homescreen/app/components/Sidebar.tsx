@@ -17,6 +17,7 @@ export type PaneId =
   | "models"
   | "capture"
   | "account"
+  | "api-keys"
   | "usage"
   | "traces"
   | "rlm"

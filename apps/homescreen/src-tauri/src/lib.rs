@@ -27,6 +27,7 @@ mod training_chat_tools;
 mod training_outcome;
 mod residency;
 mod rlm;
+mod admin_api;
 mod scope;
 mod route_policy;
 mod server;
@@ -407,6 +408,9 @@ pub fn run() {
             explore::explore_scan_cancel,
             scope::projects_list,
             scope::workloads_list,
+            admin_api::api_keys_list,
+            admin_api::api_keys_create,
+            admin_api::api_keys_revoke,
             chat::chat_stream,
             restart_app,
         ])

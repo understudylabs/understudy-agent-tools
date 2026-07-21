@@ -62,7 +62,7 @@ export const NAV_ITEMS: NavItemDef[] = [
   { id: "chats-explore", group: "sessions", label: "Explore Data", icon: Compass, pane: "explore" },
   // Manage
   { id: "manage-models", group: "manage", label: "Models", icon: Boxes, pane: "models" },
-  { id: "manage-api-keys", group: "manage", label: "API keys", icon: KeyRound, pane: "account" },
+  { id: "manage-api-keys", group: "manage", label: "API keys", icon: KeyRound, pane: "api-keys" },
   { id: "manage-traces", group: "manage", label: "Traces", icon: ScrollText, pane: "traces" },
   { id: "manage-lab", group: "manage", label: "Lab", icon: Beaker, pane: "rlm" },
   // Not yet ported from the web control plane (admin/v1 plumbing pending).
