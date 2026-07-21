@@ -9,12 +9,12 @@ under `https://api.understudylabs.com/admin/v1/orgs/:org_id/...`.
 Every response (success or error) carries an `x-understudy-request-id` header —
 quote it when reporting a problem to the Understudy team.
 
-The two primary project-scoped endpoints are **workload-status** (per-workload
-health, declared vs observed routing) and **usage-summary** (tokens/cost/cache
-over longer windows). The `sk_*` surface also serves
-[organization reporting](#organization-reporting) (org-wide usage/cost series
-across projects) and a [captures metadata list](#captures-metadata-list)
-(concrete request ids to hand the Understudy team). The three older endpoints
+The primary path is **organization reporting** (org-wide usage/cost ranking
+across all projects — the grounding call) followed by **workload-status**
+(per-workload health, declared vs observed routing). Project-scoped
+**usage-summary** (cache/token detail, per-group error rate) and the
+[captures metadata list](#captures-metadata-list) (concrete request ids to
+hand the Understudy team) complete the surface. The three older endpoints
 are deprecated — see [Legacy endpoints](#legacy-endpoints-deprecated).
 
 ## Vocabulary
@@ -30,6 +30,39 @@ All responses use the canonical vocabulary — use the same words with the user:
 - `understudy-managed` as a served model = a managed model whose catalog
   mapping hasn't synced yet (fail-closed placeholder, not an error).
 - Never say "passthrough", "BYO", or "relay" to users.
+
+## Organization reporting
+
+```
+GET /admin/v1/orgs/:org_id/reporting?window=7d&group_by=workload
+GET /admin/v1/orgs/:org_id/reporting/options
+```
+
+The grounding endpoint — org-wide usage and customer-cost series across all
+projects in one call. Rank workloads/projects by `customer_cost_usd` and
+`requests` here before any analysis. Usage and cost only: it deliberately
+carries no workload health (that stays on workload-status) and no cache or
+error-rate fields (those stay on the project-scoped usage-summary).
+
+| Param | Default | Details |
+|---|---|---|
+| `window` | `7d` | `24h`, `7d`, or `30d`. Or pass `from` AND `to` instead (inclusive UTC dates, `YYYY-MM-DD`, up to 366 days) — `window` is then ignored and the response reports `window: "custom"`; never send `window=custom` yourself. |
+| `granularity` | `hour` / `day` | Defaults to `hour` for ranges up to 48h, `day` beyond. Explicit values: `minute` (ranges up to 24h), `hour` (up to 31d), `day` (up to 366d). |
+| `group_by` | `project` | ONE of `project`, `workload`, `model` (single value, unlike usage-summary). |
+| `project_id`, `workload_id` | — | Optional filters (max 255 chars). |
+
+```sh
+understudy run -- sh -c 'curl -s \
+  -H "Authorization: Bearer $UNDERSTUDY_API_KEY" \
+  "https://api.understudylabs.com/admin/v1/orgs/$UNDERSTUDY_ORG_ID/reporting?window=7d&group_by=workload"'
+```
+
+The response carries `totals` (`requests`, `input_tokens`, `output_tokens`,
+`total_tokens`, `customer_cost_usd`) plus a `series` of time-bucket points
+(`bucket` ISO start + the group's `project`/`workload`/`model` labels + the
+same measures). `/options` returns the org's projects and workloads
+(`{id, name}` / `{id, project_id, name}`) for valid filter values. Model
+labels are the same customer-safe labels as everywhere else.
 
 ## Workload status
 
@@ -114,9 +147,12 @@ on a provider from traffic labels. Report the workload-level `error_rate` plus
 GET .../usage-summary?window=7d&group_by=workload,day
 ```
 
-Aggregate-only tokens/cost/cache rollup — no per-request ids, which is why it
-accepts longer windows than the other endpoints. Use it first to rank
-workloads by spend/requests and ground the rest of the diagnosis.
+Project-scoped aggregate tokens/cost/cache rollup — no per-request ids, which
+is why it accepts longer windows than workload-status. Grounding now starts
+at [organization reporting](#organization-reporting); reach for usage-summary
+when you need what the org view lacks: `cache_read_pct`, the cache/token
+breakdown, a per-group `error_rate`, or multi-dimension `group_by` (e.g.
+`workload,day`) within one project.
 
 | Param | Default | Details |
 |---|---|---|
@@ -162,38 +198,6 @@ understudy run -- sh -c 'curl -s \
 | `cache_read_pct` | `cache_read_input_tokens` over prompt tokens (0..1). Low values on a cacheable workload are a savings lead. |
 | `customer_cost_usd` | What the customer is billed for the group over the window. Rank workloads by this + `requests` before making any recommendation. |
 | `error_rate` | 5xx error rate within the group (0..1). |
-
-## Organization reporting
-
-```
-GET /admin/v1/orgs/:org_id/reporting?window=7d&group_by=project
-GET /admin/v1/orgs/:org_id/reporting/options
-```
-
-Org-wide usage and customer-cost series across all projects — the rollup for
-"which project is the spend in" before drilling into a project's
-usage-summary. Usage and cost only: it deliberately carries no workload
-health (that stays on workload-status).
-
-| Param | Default | Details |
-|---|---|---|
-| `window` | `7d` | `24h`, `7d`, or `30d` — or instead pass `from`/`to` as inclusive UTC dates (`YYYY-MM-DD`), up to 366 days. |
-| `granularity` | — | `minute` (ranges up to 24h), `hour` (up to 31d), `day` (up to 366d). |
-| `group_by` | — | ONE of `project`, `workload`, `model` (single value, unlike usage-summary). |
-| `project_id`, `workload_id` | — | Optional filters. |
-
-```sh
-understudy run -- sh -c 'curl -s \
-  -H "Authorization: Bearer $UNDERSTUDY_API_KEY" \
-  "https://api.understudylabs.com/admin/v1/orgs/$UNDERSTUDY_ORG_ID/reporting?window=7d&group_by=project&granularity=day"'
-```
-
-The response carries `totals` (`requests`, `input_tokens`, `output_tokens`,
-`total_tokens`, `customer_cost_usd`) plus a `series` of time-bucket points
-(`bucket` ISO start + the group's `project`/`workload`/`model` labels + the
-same measures). `/options` returns the org's projects and workloads
-(`{id, name}` / `{id, project_id, name}`) for valid filter values. Model
-labels are the same customer-safe labels as everywhere else.
 
 ## Captures metadata list
 

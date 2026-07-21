@@ -75,25 +75,27 @@ node dist/bin.js status --json
    API path requires the `proj_...` id, not the slug. If not signed in, route
    to [`../use-understudy-gateway/SKILL.md`](../use-understudy-gateway/SKILL.md).
 
-2. **Ground in volume first.** Before analyzing or recommending anything, pull
-   the usage summary and rank workloads by spend and request count.
-   `understudy run` spawns the child **without a shell**, so wrap the command
-   in `sh -c '...'` — the injected `$UNDERSTUDY_API_KEY` / `$UNDERSTUDY_ORG_ID`
-   only expand inside that child shell (bare `understudy run -- curl` would
-   send the literal string `$UNDERSTUDY_API_KEY` as the bearer):
+2. **Ground in volume first — one org-wide call.** Before analyzing or
+   recommending anything, rank workloads by spend and request count across
+   the whole org. `understudy run` spawns the child **without a shell**, so
+   wrap the command in `sh -c '...'` — the injected `$UNDERSTUDY_API_KEY` /
+   `$UNDERSTUDY_ORG_ID` only expand inside that child shell (bare
+   `understudy run -- curl` would send the literal string
+   `$UNDERSTUDY_API_KEY` as the bearer):
 
    ```sh
    understudy run -- sh -c 'curl -s \
      -H "Authorization: Bearer $UNDERSTUDY_API_KEY" \
-     "https://api.understudylabs.com/admin/v1/orgs/$UNDERSTUDY_ORG_ID/projects/<project-id>/usage-summary?window=7d&group_by=workload,day"'
+     "https://api.understudylabs.com/admin/v1/orgs/$UNDERSTUDY_ORG_ID/reporting?window=7d&group_by=workload"'
    ```
 
+   Rank by `customer_cost_usd` and `requests` (`group_by` defaults to
+   `project` — use that first when the org has many projects, then
+   `workload`). For a tight incident window add `granularity=minute` (ranges
+   up to 24h); drill down with the `project_id` / `workload_id` filters.
    Every statement you make must be grounded in that volume ranking — lead
    with the workloads that carry the spend and traffic. Do not anchor on
-   low-leverage generic advice about workloads that barely run. For
-   cross-project "which project is the spend in" questions, start one level
-   up with the org-wide reporting endpoint ([`reference.md`](reference.md)
-   § Organization reporting), then drill into that project's usage-summary.
+   low-leverage generic advice about workloads that barely run.
 
 3. Pull the unified per-workload view (same `sh -c` wrapper):
 
@@ -154,7 +156,12 @@ node dist/bin.js status --json
    [`../ramp-and-verify/SKILL.md`](../ramp-and-verify/SKILL.md) or clear the
    route immediately with `understudy routes clear <workload> --project <project>`.
 
-The older `routing-status`, `provider-health`, and `status` endpoints still
+**Project-scoped alternatives.** `usage-summary` remains the detail tool
+within one project when the org-wide view isn't enough: it carries what
+org reporting doesn't — `cache_read_pct`, the cache/token breakdown, a
+per-group `error_rate`, and multi-dimension `group_by` (e.g.
+`workload,day`). See [`reference.md`](reference.md) § Usage summary. The
+older `routing-status`, `provider-health`, and `status` endpoints still
 exist but are deprecated — see the legacy section of
 [`reference.md`](reference.md). Only fall back to them if `workload-status`
 or `usage-summary` return 404 (an older deployment).

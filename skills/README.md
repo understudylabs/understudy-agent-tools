@@ -226,13 +226,13 @@ shows headroom, no hosted RL until the local arms plateau.
   packet.
 - [`check-routing-health`](check-routing-health/SKILL.md) is the read-only
   self-service diagnostics worker: calls the hosted reporting endpoints
-  (workload-status for declared-vs-observed routing health, usage-summary for
-  tokens/cost/cache ranking, org-wide reporting for cross-project spend, the
-  captures metadata list for request ids; the legacy
-  routing-status/provider-health/status trio is deprecated) to answer "which
-  workloads are routed", "is my route taking effect", "are there provider
-  errors", and "is this us?" — without asking the team. Uses the developer's
-  existing `sk_*` key.
+  (org-wide reporting for the spend/requests grounding ranking,
+  workload-status for declared-vs-observed routing health, usage-summary for
+  project cache/token detail, the captures metadata list for request ids;
+  the legacy routing-status/provider-health/status trio is deprecated) to
+  answer "which workloads are routed", "is my route taking effect", "are
+  there provider errors", and "is this us?" — without asking the team. Uses
+  the developer's existing `sk_*` key.
 
 ## Public Safety
 
