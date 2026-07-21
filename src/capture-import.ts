@@ -152,6 +152,7 @@ export type CaptureClassificationDataset = {
   source_row_count: number;
   duplicate_rows_removed: number;
   unusable_rows_removed: number;
+  conflicted_group_rows_removed: number;
   row_count: number;
   mapping: {
     input_columns: string[];
@@ -878,6 +879,21 @@ export function prepareCaptureClassificationDataset(
   const groupsByLabel = new Map<string, Map<string, Example[]>>();
   const groupOwners = new Map<string, string>();
   let unusableRowsRemoved = 0;
+  // Groups whose normalized key carries more than one label are ambiguous
+  // training signal; drop them (counted) rather than fail, unless the
+  // conflicts are widespread enough to indicate a wrong group column.
+  const conflictedGroups = new Set<string>();
+  let conflictedRowCount = 0;
+  for (const { row } of uniqueRows) {
+    const label = row[labelIndex].trim();
+    if (!label) continue;
+    const normalizedGroup = normalizeClassificationGroup(row[groupIndex]);
+    if (!normalizedGroup) continue;
+    const groupId = createHash("sha256").update(normalizedGroup).digest("hex").slice(0, 24);
+    const existingOwner = groupOwners.get(groupId);
+    if (existingOwner && existingOwner !== label) conflictedGroups.add(groupId);
+    else groupOwners.set(groupId, label);
+  }
   uniqueRows.forEach(({ row, sourceIndex }) => {
     const label = row[labelIndex].trim();
     if (!label) {
@@ -890,13 +906,10 @@ export function prepareCaptureClassificationDataset(
       return;
     }
     const groupId = createHash("sha256").update(normalizedGroup).digest("hex").slice(0, 24);
-    const existingOwner = groupOwners.get(groupId);
-    if (existingOwner && existingOwner !== label) {
-      throw new Error(
-        `The confirmed leakage group maps to multiple labels (${existingOwner}, ${label}); choose a more specific group column or clean the labels.`,
-      );
+    if (conflictedGroups.has(groupId)) {
+      conflictedRowCount += 1;
+      return;
     }
-    groupOwners.set(groupId, label);
     const text = inputIndexes
       .map((index) => ({ name: headers[index], value: row[index].trim() }))
       .filter(({ value }) => value.length > 0)
@@ -922,6 +935,11 @@ export function prepareCaptureClassificationDataset(
     labelGroups.set(groupId, group);
     groupsByLabel.set(label, labelGroups);
   });
+  if (conflictedRowCount > uniqueRows.length * 0.1) {
+    throw new Error(
+      `${conflictedRowCount} of ${uniqueRows.length} row(s) fall in leakage groups carrying multiple labels; choose a more specific group column or clean the labels.`,
+    );
+  }
   if (groupsByLabel.size < 2) {
     throw new Error("At least two label values are required for classification.");
   }
@@ -1036,6 +1054,7 @@ export function prepareCaptureClassificationDataset(
     source_row_count: sourceRowCount,
     duplicate_rows_removed: duplicateRowsRemoved,
     unusable_rows_removed: unusableRowsRemoved,
+    conflicted_group_rows_removed: conflictedRowCount,
     row_count: retainedRowCount,
     mapping,
     labels,
