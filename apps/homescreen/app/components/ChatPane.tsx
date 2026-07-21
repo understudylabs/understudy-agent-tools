@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react";
 import { Channel, invoke, isTauri } from "@tauri-apps/api/core";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
+import { getCurrentWindow, LogicalSize } from "@tauri-apps/api/window";
 import {
   MessageScroller,
   MessageScrollerContent,
@@ -763,15 +764,27 @@ function StructuredDatasetProfilePage({
   card,
   ready,
   onConfirm,
+  onClose,
 }: {
   sourceName: string;
   inspection: TrainingRecipeInspection;
   card: TrainingGoalCard | null;
   ready: boolean;
   onConfirm: () => void;
+  onClose?: () => void;
 }) {
   return (
     <section className="automatic-goal-card structured-dataset-profile-page" aria-label="Review dataset profile">
+      {onClose && (
+        <button
+          type="button"
+          className="dataset-profile-close"
+          aria-label="Close dataset review"
+          onClick={onClose}
+        >
+          ✕
+        </button>
+      )}
       <div className="csv-analysis-step-label csv-analysis-step-structure">1 · data structure</div>
       <StructuredDataProfile sourceName={sourceName} inspection={inspection} />
       {!inspection.benchmark && <StructuredTrainingExamples inspection={inspection} card={card} />}
@@ -917,11 +930,6 @@ function AutomaticGoalCard({
         localAvailable={localTrainingAvailable}
         onBackendChange={onTrainingBackendChange}
       />
-      {inspection.evidence.duplicate_input_rows > 0 && (
-        <p className="automatic-goal-card-note">
-          Data cleanup · {inspection.evidence.duplicate_input_rows} repeated inputs grouped · {inspection.evidence.conflicting_target_rows} conflicting rows excluded
-        </p>
-      )}
     </section>
   );
 }
@@ -2355,6 +2363,27 @@ export function ChatPane({
     [transcriptRows],
   );
 
+  const datasetFocusMode = Boolean(
+    trainingRecipe && droppedWorkload && !dropRunning,
+  );
+
+  // Focus mode: the dataset-review card is the whole surface. Expand the
+  // window when the card needs more room; never shrink it.
+  useEffect(() => {
+    if (!datasetFocusMode || !isTauri()) return;
+    const frame = requestAnimationFrame(() => {
+      const card = document.querySelector(".structured-dataset-profile-page")
+        ?? document.querySelector(".workload-analysis");
+      if (!card) return;
+      const needed = Math.ceil(card.getBoundingClientRect().height) + 96;
+      if (needed <= window.innerHeight) return;
+      void getCurrentWindow()
+        .setSize(new LogicalSize(window.innerWidth, Math.min(needed, window.screen.availHeight)))
+        .catch(() => {});
+    });
+    return () => cancelAnimationFrame(frame);
+  }, [datasetFocusMode, trainingRecipe]);
+
   return (
     <div
       className={
@@ -2362,7 +2391,8 @@ export function ChatPane({
         (messages.length > 0 ? " has-messages" : "") +
         (dropRunning || droppedWorkload ? " has-workload" : "") +
         (dropPhase === "preparing_dataset" || classificationDataset || localTrainingActive || remoteTrainingView ? " is-training-flow" : "") +
-        (streaming ? " is-streaming" : "")
+        (streaming ? " is-streaming" : "") +
+        (datasetFocusMode ? " dataset-focus-mode" : "")
       }
     >
       <div
@@ -2543,6 +2573,7 @@ export function ChatPane({
                       card={trainingGoalCard}
                       ready={Boolean(trainingRecipe.row_preview.length > 0)}
                       onConfirm={() => setDatasetProfileConfirmed(true)}
+                      onClose={resetDroppedWorkload}
                     />
                   ) : <>
                     {!remoteTrainingView && <button

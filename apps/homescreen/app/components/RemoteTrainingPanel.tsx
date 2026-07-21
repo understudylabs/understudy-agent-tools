@@ -625,19 +625,11 @@ export function RemoteTrainingPanel(props: Props) {
   }
 
   if (stage === "confirm" && plan) {
-    const exampleCount = plan.artifacts.reduce((sum, artifact) => sum + artifact.row_count, 0);
     return (
       <div className="remote-training-confirm">
-        <div className="remote-training-confirm-heading">
-          <div><strong>{modelName}</strong></div>
-          <small>{exampleCount.toLocaleString()} examples</small>
-        </div>
         {backendCompatibilityError && <p className="remote-training-warning">Portable backend check failed: {backendCompatibilityError}</p>}
-        <p className="remote-training-consent-summary">
-          {plan.artifacts.length} private splits · endpoint auto-deletes · {plan.maximum_spend_usd.toLocaleString(undefined, { style: "currency", currency: "USD", maximumFractionDigits: 0 })} budget guardrail
-        </p>
         <ConsentReceipts plan={plan} />
-        <div className="remote-training-actions">
+        <div className="remote-training-actions" style={{ justifyContent: "flex-end" }}>
           <button type="button" className="btn primary" onClick={start}>Upload & train</button>
         </div>
       </div>

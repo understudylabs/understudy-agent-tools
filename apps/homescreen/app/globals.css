@@ -7145,3 +7145,37 @@ select,
   font-family: var(--font-mono, "IBM Plex Mono", monospace);
 }
 /* end Explore Data viewer palette */
+
+/* Dataset focus mode: the training card is the whole surface. */
+.dataset-focus-mode .persona-stage,
+.dataset-focus-mode .ai-chat-composer,
+.dataset-focus-mode .workload-generic-dismiss,
+.dataset-focus-mode .dataset-flow-back {
+  display: none;
+}
+.dataset-focus-mode .workload-scroller-item {
+  padding-top: 24px;
+}
+.structured-dataset-profile-page {
+  position: relative;
+}
+.dataset-profile-close {
+  position: absolute;
+  top: 14px;
+  right: 14px;
+  width: 28px;
+  height: 28px;
+  display: grid;
+  place-items: center;
+  border: 1px solid color-mix(in srgb, currentColor 25%, transparent);
+  border-radius: 999px;
+  background: transparent;
+  color: inherit;
+  opacity: 0.65;
+  cursor: pointer;
+  font-size: 12px;
+  line-height: 1;
+}
+.dataset-profile-close:hover {
+  opacity: 1;
+}
