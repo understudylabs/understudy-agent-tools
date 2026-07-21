@@ -2275,6 +2275,13 @@ class ScoreWithFeedback:
       assert.equal(inspection.recommended_mapping.label_column, "label");
       assert.deepEqual(inspection.recommended_mapping.input_columns, ["text"]);
       assert.equal(inspection.recommended_mapping.group_column, "text");
+      assert.deepEqual(inspection.trainable_targets, [{
+        name: "label",
+        distinct_values: ["ham", "spam"],
+        distinct_values_truncated: false,
+        coverage: 1,
+        recommended: true,
+      }]);
       assert.equal(inspection.training_readiness.ready, true);
       assert.match(inspection.training_readiness.warnings.join(" "), /duplicate row.*will be removed/);
 
@@ -2289,6 +2296,77 @@ class ScoreWithFeedback:
       assert.equal(prepared.duplicate_rows_removed, 1);
       assert.equal(prepared.unusable_rows_removed, 1);
       assert.equal(prepared.row_count, 48);
+      assert.deepEqual(prepared.target_backlog, []);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it("surfaces the untrained label-like columns as a target backlog", () => {
+    const root = mkdtempSync(join(tmpdir(), "understudy-target-backlog-"));
+    try {
+      const source = join(root, "query_tagging.csv");
+      const rows = Array.from({ length: 48 }, (_, index) => {
+        const first = String.fromCharCode(97 + Math.floor(index / 26));
+        const second = String.fromCharCode(97 + (index % 26));
+        return [
+          `query token ${first}${second} for tagging`,
+          index % 2 === 0 ? "branded" : "generic",
+          index % 2 === 0 ? "narrow" : "broad",
+          index % 3 === 0 ? "yes" : "no",
+        ].join(",");
+      });
+      writeFileSync(source, ["query,brand_intent_new,specificity_new,sensitive_flag", ...rows].join("\n"));
+      const outputRoot = join(root, "artifacts");
+      const compiled = JSON.parse(run([
+        "capture-import", "compile", "--source", source, "--output-root", outputRoot, "--json",
+      ]).stdout);
+
+      const inspectionResult = run([
+        "capture-import", "inspect-csv", "--source", source,
+        "--artifact-root", compiled.artifact_root, "--json",
+      ]);
+      assert.equal(inspectionResult.status, 0, inspectionResult.stderr);
+      const inspection = JSON.parse(inspectionResult.stdout);
+      assert.deepEqual(
+        inspection.trainable_targets.map((target) => target.name).sort(),
+        ["brand_intent_new", "sensitive_flag", "specificity_new"],
+      );
+      for (const target of inspection.trainable_targets) {
+        assert.equal(target.coverage, 1);
+        assert.equal(target.distinct_values_truncated, false);
+        assert.equal(target.distinct_values.length, 2);
+        assert.equal(target.recommended, target.name === inspection.recommended_mapping.label_column);
+      }
+      assert.equal(
+        inspection.trainable_targets.filter((target) => target.recommended).length,
+        1,
+      );
+      const persistedInspection = JSON.parse(readFileSync(inspection.artifact_path, "utf8"));
+      assert.deepEqual(persistedInspection.trainable_targets, inspection.trainable_targets);
+      assert.ok(!JSON.stringify(inspection.trainable_targets).includes("query token"));
+
+      const preparedResult = run([
+        "capture-import", "prepare-classification", "--source", source,
+        "--artifact-root", compiled.artifact_root,
+        "--input-column", "query",
+        "--label-column", "brand_intent_new",
+        "--group-column", "query", "--json",
+      ]);
+      assert.equal(preparedResult.status, 0, preparedResult.stderr);
+      const prepared = JSON.parse(preparedResult.stdout);
+      assert.equal(prepared.mapping.label_column, "brand_intent_new");
+      assert.deepEqual(
+        prepared.target_backlog.map((target) => target.name).sort(),
+        ["sensitive_flag", "specificity_new"],
+      );
+      for (const target of prepared.target_backlog) {
+        assert.equal(target.distinct_values.length, 2);
+        assert.equal(typeof target.coverage, "number");
+      }
+      const manifest = JSON.parse(readFileSync(prepared.manifest_path, "utf8"));
+      assert.deepEqual(manifest.target_backlog, prepared.target_backlog);
+      assert.ok(!JSON.stringify(manifest.target_backlog).includes("query token"));
     } finally {
       rmSync(root, { recursive: true, force: true });
     }

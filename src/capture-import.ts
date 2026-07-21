@@ -79,6 +79,14 @@ export type CaptureCsvColumnSummary = {
   profile_bars: number[];
 };
 
+export type CaptureTrainableTarget = {
+  name: string;
+  distinct_values: string[];
+  distinct_values_truncated: boolean;
+  coverage: number;
+  recommended: boolean;
+};
+
 export type CaptureCsvInspection = {
   schema_version: "understudy.capture_import.csv_inspection.v1";
   generated_at: string;
@@ -111,6 +119,7 @@ export type CaptureCsvInspection = {
     count: number;
   }[];
   label_distribution_truncated: boolean;
+  trainable_targets: CaptureTrainableTarget[];
   training_readiness: {
     ready: boolean;
     status: "ready" | "needs_mapping" | "needs_data" | "needs_cleanup";
@@ -152,6 +161,7 @@ export type CaptureClassificationDataset = {
   };
   labels: string[];
   label_distribution: { value: string; count: number }[];
+  target_backlog: CaptureTrainableTarget[];
   split_policy: {
     name: "deterministic-stratified-group-aware-v2";
     allocation: "per-label-deterministic-group-greedy-v1";
@@ -638,6 +648,31 @@ export function inspectCaptureCsv(
     ? Math.min(...sortedLabels.map(([, count]) => count))
     : null;
   const duplicateRowCount = rows.length - new Set(rows.map((row) => JSON.stringify(row))).size;
+  const trainableTargets: CaptureTrainableTarget[] = columns
+    .map((column, index) => ({ column, index }))
+    .filter(({ column }) =>
+      column.name === labelCandidate?.name ||
+      (column.non_empty_count > 0 &&
+        column.unique_count >= 2 &&
+        column.unique_count <= 100 &&
+        column.unique_ratio <= 0.5),
+    )
+    .map(({ column, index }) => {
+      const valueCounts = new Map<string, number>();
+      for (const row of rows) {
+        const value = row[index].trim();
+        if (value) valueCounts.set(value, (valueCounts.get(value) ?? 0) + 1);
+      }
+      const orderedValues = [...valueCounts.entries()]
+        .sort((left, right) => right[1] - left[1] || left[0].localeCompare(right[0]));
+      return {
+        name: column.name,
+        distinct_values: orderedValues.slice(0, MAX_REPORTED_LABELS).map(([value]) => value),
+        distinct_values_truncated: orderedValues.length > MAX_REPORTED_LABELS,
+        coverage: ratio(column.non_empty_count, rows.length),
+        recommended: column.name === labelCandidate?.name,
+      };
+    });
   const previewIndexes = labelIndex >= 0
     ? sortedLabels.slice(0, MAX_CSV_PREVIEW_ROWS).map(([label]) =>
       rows.findIndex((row) => row[labelIndex].trim() === label),
@@ -734,6 +769,7 @@ export function inspectCaptureCsv(
       .slice(0, MAX_REPORTED_LABELS)
       .map(([value, count]) => ({ value, count })),
     label_distribution_truncated: sortedLabels.length > MAX_REPORTED_LABELS,
+    trainable_targets: trainableTargets,
     training_readiness: {
       ready: status === "ready",
       status,
@@ -990,6 +1026,9 @@ export function prepareCaptureClassificationDataset(
     mapping,
     labels,
     label_distribution: labels.map((value) => ({ value, count: labelCounts.get(value)! })),
+    target_backlog: (inspection.trainable_targets ?? []).filter(
+      (target) => normalizeHeader(target.name) !== normalizeHeader(labelColumn),
+    ),
     split_policy: {
       name: "deterministic-stratified-group-aware-v2",
       allocation: "per-label-deterministic-group-greedy-v1",
