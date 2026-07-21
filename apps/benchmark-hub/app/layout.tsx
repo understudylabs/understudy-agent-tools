@@ -1,5 +1,4 @@
 import type { Metadata } from "next";
-import { headers } from "next/headers";
 import { IBM_Plex_Mono, IBM_Plex_Sans } from "next/font/google";
 import Link from "next/link";
 import "./globals.css";
@@ -21,20 +20,12 @@ export const metadata: Metadata = {
   description: "Local benchmark hub: manifests, evidence, leaderboards, flags.",
 };
 
-/** TEMPORARY (wave 2′ accent preview): ?accent=stamp|cyan|mint via middleware. */
-const PREVIEW_ACCENTS = new Set(["stamp", "cyan", "mint"]);
-
-export default async function RootLayout({ children }: { children: React.ReactNode }) {
-  const requested = (await headers()).get("x-accent-preview") ?? "stamp";
-  const accent = PREVIEW_ACCENTS.has(requested) ? requested : "stamp";
-
+// The ?accent preview (middleware header bridge) is removed: stamp is the
+// canonical v2.0 accent, stamped statically here. The html[data-accent] CSS
+// blocks in globals.css are untouched (pass 2 decides their fate).
+export default function RootLayout({ children }: { children: React.ReactNode }) {
   return (
-    <html
-      lang="en"
-      data-theme="dark"
-      data-accent={accent}
-      className={`${plexSans.variable} ${plexMono.variable}`}
-    >
+    <html lang="en" data-theme="dark" data-accent="stamp" className={`${plexSans.variable} ${plexMono.variable}`}>
       <body className="min-h-screen antialiased">
         <nav className="lb-nav">
           <div className="lb-nav-in">

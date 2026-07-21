@@ -1,4 +1,5 @@
 import fs from "node:fs";
+import os from "node:os";
 import path from "node:path";
 import { validateBenchmarkManifest } from "./benchmark-core";
 import type {
@@ -15,31 +16,59 @@ import type {
 
 /**
  * Data-dir contract:
- * - BENCHMARK_HUB_DATA_DIR (optional): one directory whose subdirectories are
- *   benchmarks. Each benchmark dir holds benchmark.json (understudy.benchmark.v1),
- *   optional rows-*.jsonl and/or rows/*.jsonl (understudy.eval_result.v1 lines),
- *   optional traces*.jsonl (message DAG evidence), optional flags.jsonl.
- * - Defaults also scanned: <repo>/.understudy/benchmarks,
- *   <repo>/experiments/benchmark-hub-demo, and <repo>/tests/fixtures/benchmark-*.json
- *   mapped as read-only demo entries (fixtures reject flag writes).
+ * - BENCHMARK_HUB_DATA_DIR: colon-separated list of directories whose
+ *   subdirectories are benchmarks. Each benchmark dir holds benchmark.json
+ *   (understudy.benchmark.v1), optional rows-*.jsonl and/or rows/*.jsonl
+ *   (understudy.eval_result.v1 lines), optional traces*.jsonl (message DAG
+ *   evidence), optional flags.jsonl and versions.jsonl.
+ * - When BENCHMARK_HUB_DATA_DIR is unset, ~/.understudy/benchmarks is used.
+ * - Repo demo data is scanned only when BENCHMARK_HUB_DEMO=1 (the dev script
+ *   sets it): <repo>/experiments/benchmark-hub-demo stays writable so the
+ *   flag flow is demoable; <repo>/tests/fixtures/benchmark-*.json map to
+ *   read-only fixture entries (flag writes rejected).
  */
 
 function repoRoot(): string {
-  // app lives at <repo>/apps/benchmark-hub
+  // app lives at <repo>/apps/benchmark-hub — used for demo/fixture scanning only.
   return path.resolve(process.cwd(), "..", "..");
 }
 
 function demoEnabled(): boolean {
-  return true;
+  return process.env.BENCHMARK_HUB_DEMO === "1";
 }
 
 /** Slug prefix → scan root(s), resolved from the environment on every call. */
 function slugRoots(): { prefix: string; root: string; source: HubEntry["source"]; readOnly: boolean }[] {
   const roots: { prefix: string; root: string; source: HubEntry["source"]; readOnly: boolean }[] = [];
-  const envDir = process.env.BENCHMARK_HUB_DATA_DIR;
-  if (envDir) roots.push({ prefix: "data", root: path.resolve(envDir), source: "data-dir", readOnly: false });
-  roots.push({ prefix: "local", root: path.join(repoRoot(), ".understudy", "benchmarks"), source: "data-dir", readOnly: false });
-  roots.push({ prefix: "demo", root: path.join(repoRoot(), "experiments", "benchmark-hub-demo"), source: "demo", readOnly: false });
+  const envDirs = (process.env.BENCHMARK_HUB_DATA_DIR ?? "")
+    .split(":")
+    .map((d) => d.trim())
+    .filter(Boolean);
+  if (envDirs.length > 0) {
+    envDirs.forEach((dir, i) => {
+      roots.push({
+        prefix: i === 0 ? "data" : `data${i + 1}`,
+        root: path.resolve(dir),
+        source: "data-dir",
+        readOnly: false,
+      });
+    });
+  } else {
+    roots.push({
+      prefix: "local",
+      root: path.join(os.homedir(), ".understudy", "benchmarks"),
+      source: "data-dir",
+      readOnly: false,
+    });
+  }
+  if (demoEnabled()) {
+    roots.push({
+      prefix: "demo",
+      root: path.join(repoRoot(), "experiments", "benchmark-hub-demo"),
+      source: "demo",
+      readOnly: false,
+    });
+  }
   return roots;
 }
 

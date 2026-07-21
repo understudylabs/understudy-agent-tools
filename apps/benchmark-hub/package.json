@@ -3,9 +3,10 @@
   "private": true,
   "version": "0.1.0",
   "scripts": {
-    "dev": "next dev -p 1421",
+    "dev": "BENCHMARK_HUB_DEMO=1 next dev -p 1421",
     "build": "next build",
-    "start": "next start -p 1421"
+    "start": "next start -p 1421",
+    "start:demo": "BENCHMARK_HUB_DEMO=1 next start -p 1421"
   },
   "dependencies": {
     "clsx": "^2.1.1",

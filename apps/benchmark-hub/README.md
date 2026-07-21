@@ -11,17 +11,21 @@ black-field/card/stamp-dark tokens and IBM Plex Sans/Mono type from
 page is an OpenRouter-style entity page (header + stat strip + sticky anchor
 rail). All design tokens are centralized in the CSS custom properties
 (`:root` + Tailwind `@theme`) at the top of `app/globals.css`; the component
-classes consume only those variables. A **temporary** accent preview switch
-(`?accent=stamp|cyan|mint`, default stamp) is wired through `middleware.ts`
-→ root layout → `data-accent` on `<html>`; remove once an accent is chosen.
+classes consume only those variables. The temporary `?accent` preview switch
+(middleware → header → `data-accent` bridge) has been **removed**: stamp is
+the canonical v2.0 accent, stamped statically by the root layout. The
+`html[data-accent]` CSS blocks remain in `globals.css` for the styling pass
+to consolidate.
 
 ## Run
 
 ```sh
 cd apps/benchmark-hub
 bun install        # or npm install
-bun run dev        # http://localhost:1421
+bun run dev        # http://localhost:1421 (sets BENCHMARK_HUB_DEMO=1: repo demo data + fixtures)
 bun run build      # production check
+bun run start      # production server, real data dirs only
+bun run start:demo # production server incl. repo demo data
 ```
 
 ## Screens
@@ -56,13 +60,14 @@ bun run build      # production check
 
 ## Data-dir contract
 
-The server-side loader (`lib/data.ts`) scans:
+The server-side loader (`lib/data-core.ts`) scans:
 
-1. `BENCHMARK_HUB_DATA_DIR` (env var), if set
-2. `<repo>/.understudy/benchmarks`
-3. `<repo>/experiments/benchmark-hub-demo` (seeded demo data, writable)
-4. `<repo>/tests/fixtures/benchmark-*.json` — mapped as read-only fixture
-   entries (flag writes rejected)
+1. `BENCHMARK_HUB_DATA_DIR` — a colon-separated list of directories whose
+   subdirectories are benchmarks; when unset, `~/.understudy/benchmarks`
+2. Only when `BENCHMARK_HUB_DEMO=1` (the `dev` and `start:demo` scripts set
+   it): `<repo>/experiments/benchmark-hub-demo` (seeded demo data, writable
+   so the flag flow is demoable) and `<repo>/tests/fixtures/benchmark-*.json`
+   as read-only fixture entries (flag writes rejected)
 
 Each benchmark is a directory containing:
 
@@ -77,11 +82,8 @@ Each benchmark is a directory containing:
   schema itself still has a single `splits.splits_sha256`).
 
 Rows may carry `cost` (USD per rollout) and `latency_ms` extension fields —
-`eval_result.v1` allows extra keys. For the real event-categorizer demo run,
-`experiments/benchmark-hub-demo/event-categorizer-starter/enrich-rows.mjs`
-projects these from the raw vf-eval `results.jsonl` (wall-clock timing and
-token_usage × per-MTok pricing: claude-sonnet-4-6 at $3/$15 list; the
-gemma-4-31b-it gateway rate is a documented demo assumption of $0.10/$0.40).
+`eval_result.v1` allows extra keys. Cost semantics are producer-defined; see
+`NOTES.md` in each demo dir for how its numbers were derived.
 
 ## Flagging
 
