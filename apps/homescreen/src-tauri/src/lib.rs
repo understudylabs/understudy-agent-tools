@@ -30,6 +30,7 @@ mod training_outcome;
 mod reporting;
 mod residency;
 mod rlm;
+mod captures;
 mod scope;
 mod route_policy;
 mod server;
@@ -424,6 +425,8 @@ pub fn run() {
             scope::workload_config_load,
             scope::workload_routing_apply,
             scope::workload_capture_set,
+            captures::captures_list,
+            captures::capture_get,
             chat::chat_stream,
             restart_app,
         ])
