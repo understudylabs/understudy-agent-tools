@@ -36,6 +36,7 @@ mod admin_api;
 mod scope;
 mod route_policy;
 mod server;
+mod setup;
 mod sidecar;
 mod supervision_export;
 mod supervision_review;
@@ -435,6 +436,7 @@ pub fn run() {
             admin_api::api_keys_revoke,
             billing::billing_overview,
             billing::billing_topup_checkout,
+            setup::setup_info,
             chat::chat_stream,
             restart_app,
         ])

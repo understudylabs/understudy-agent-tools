@@ -27,6 +27,7 @@ export type PaneId =
   | "traces"
   | "rlm"
   | "explore"
+  | "setup"
   | "workload-config"
   | "project-summary"
   | "project-reporting"
