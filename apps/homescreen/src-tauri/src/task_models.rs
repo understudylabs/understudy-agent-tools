@@ -342,7 +342,7 @@ pub fn install_task_model(path: String) -> Result<TaskModelInfo, String> {
 }
 
 fn install_task_model_to(source: &Path, root: &Path) -> Result<TaskModelInfo, String> {
-    let (manifest, _) = validate_bundle(&source)?;
+    let (manifest, _) = validate_bundle(source)?;
     fs::create_dir_all(root).map_err(|err| err.to_string())?;
     let target = root
         .join(&manifest.id)
