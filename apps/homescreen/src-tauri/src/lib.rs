@@ -1,8 +1,10 @@
 mod aa;
 mod account;
+mod admin;
 mod agent_card;
 mod agent_ops;
 mod anthropic;
+mod billing;
 mod bin;
 mod bootstrap;
 mod chat;
@@ -18,6 +20,7 @@ mod gepa;
 mod knowledge;
 mod mcp;
 mod metrics;
+mod mgmt;
 mod models;
 mod moraine;
 mod oracle_dispatch;
@@ -25,10 +28,16 @@ mod remote_training;
 mod training_api;
 mod training_chat_tools;
 mod training_outcome;
+mod reporting;
 mod residency;
 mod rlm;
+mod captures;
+mod admin_api;
+mod scope;
 mod route_policy;
 mod server;
+mod setup;
+mod settings;
 mod sidecar;
 mod supervision_export;
 mod supervision_review;
@@ -404,6 +413,34 @@ pub fn run() {
             explore::explore_scan_start,
             explore::explore_scan_status,
             explore::explore_scan_cancel,
+            admin::admin_get,
+            admin::org_reporting,
+            admin::admin_supported_models,
+            scope::projects_list,
+            scope::workloads_list,
+            mgmt::mgmt_projects_list,
+            mgmt::mgmt_workloads_list,
+            mgmt::mgmt_workload_status,
+            mgmt::mgmt_usage_summary,
+            mgmt::mgmt_billing_balance,
+            mgmt::mgmt_workload_create,
+            mgmt::mgmt_workload_update,
+            reporting::reporting_workload_status,
+            reporting::reporting_usage_summary,
+            scope::workload_config_load,
+            scope::workload_routing_apply,
+            scope::workload_capture_set,
+            captures::captures_list,
+            captures::capture_get,
+            admin_api::api_keys_list,
+            admin_api::api_keys_create,
+            admin_api::api_keys_revoke,
+            billing::billing_overview,
+            billing::billing_topup_checkout,
+            setup::setup_info,
+            settings::settings_projects_list,
+            settings::settings_project_rename,
+            settings::settings_project_delete,
             chat::chat_stream,
             restart_app,
         ])

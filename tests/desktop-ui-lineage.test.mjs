@@ -40,6 +40,18 @@ const csvTrainingPlanPath = new URL(
   import.meta.url,
 );
 const sidebarPath = new URL("../apps/homescreen/app/components/Sidebar.tsx", import.meta.url);
+// The management-nav migration split the sidebar into a composition shell
+// plus sidebar/* section components; lineage assertions read the composed
+// sources so moved-but-preserved behavior keeps passing.
+const sidebarSectionPaths = [
+  sidebarPath,
+  new URL("../apps/homescreen/app/components/sidebar/ChatSessionList.tsx", import.meta.url),
+  new URL("../apps/homescreen/app/components/sidebar/TrainingThreadList.tsx", import.meta.url),
+];
+async function readSidebarSources() {
+  const sources = await Promise.all(sidebarSectionPaths.map((p) => readFile(p, "utf8")));
+  return sources.join("\n");
+}
 const pagePath = new URL("../apps/homescreen/app/page.tsx", import.meta.url);
 const runtimeRepairPromptPath = new URL(
   "../apps/homescreen/app/components/RuntimeRepairPrompt.tsx",
@@ -180,7 +192,7 @@ test("public desktop preserves the reviewed Train interaction language", async (
   const [css, chat, sidebar, aliases, statusHook, page, runtimeRepairPrompt] = await Promise.all([
     readFile(cssPath, "utf8"),
     readFile(chatPath, "utf8"),
-    readFile(sidebarPath, "utf8"),
+    readSidebarSources(),
     readFile(modelAliasesPath, "utf8"),
     readFile(statusHookPath, "utf8"),
     readFile(pagePath, "utf8"),
@@ -228,7 +240,9 @@ test("public desktop preserves the reviewed Train interaction language", async (
   );
   assert.match(chat, /msg\.stage === "cloud_fallback_local"/);
 
-  assert.match(sidebar, /<div className="nav-section">\{showArchived \? "Archived" : "Chats"\}<\/div>/);
+  // "Chats" is now the nav group label; the heading only flips to "Archived".
+  assert.match(sidebar, /sessions: "Chats"/);
+  assert.match(sidebar, /<div className="nav-section">\{showArchived \? "Archived" : ""\}<\/div>/);
   assert.match(sidebar, /aria-label=\{showArchived \? "Archived chats" : "Recent chats"\}/);
   assert.match(sidebar, /visibleSessions\.map\(\(session\) =>/);
   assert.match(sidebar, /onSelectSession\(session\.session_id\)/);
@@ -290,7 +304,7 @@ test("chat streaming batches paint work and only animates compositor-safe proper
 test("chat archive is reversible, excludes active history, and never deletes rows", async () => {
   const [page, sidebar, commands, db, native] = await Promise.all([
     readFile(pagePath, "utf8"),
-    readFile(sidebarPath, "utf8"),
+    readSidebarSources(),
     readFile(desktopCommandsPath, "utf8"),
     readFile(desktopDbPath, "utf8"),
     readFile(tauriLibPath, "utf8"),
@@ -537,7 +551,7 @@ test("desktop starts fresh on launch and can reopen an exact Pi session", async 
   const [chat, page, sidebar, commands] = await Promise.all([
     readFile(chatPath, "utf8"),
     readFile(pagePath, "utf8"),
-    readFile(sidebarPath, "utf8"),
+    readSidebarSources(),
     readFile(new URL("../apps/homescreen/src-tauri/src/commands.rs", import.meta.url), "utf8"),
   ]);
 
