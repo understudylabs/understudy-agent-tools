@@ -1,10 +1,12 @@
 import assert from "node:assert/strict";
 import { execFileSync } from "node:child_process";
-import { cpSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { cpSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import test from "node:test";
 import {
+  builtCliRuntimeVersion,
+  builtCliRuntimeVersionError,
   desktopArtifactPaths,
   inspectDesktopRelease,
   inspectDesktopVersions,
@@ -84,6 +86,39 @@ test("desktop release source drift fails closed with every version named", () =>
   }
 });
 
+test("built CLI reports the exact runtime version the desktop app requires", () => {
+  const report = inspectDesktopVersions();
+  assert.deepEqual(report.errors, []);
+  const cliRuntime = builtCliRuntimeVersion(repositoryRoot);
+  assert.equal(cliRuntime, report.versions.rust_runtime);
+  assert.equal(builtCliRuntimeVersionError(cliRuntime, report.versions.rust_runtime), null);
+});
+
+test("a bundled CLI with a drifted runtime version blocks the release", () => {
+  const root = mkdtempSync(join(tmpdir(), "understudy-cli-runtime-drift-"));
+  try {
+    mkdirSync(join(root, "dist"), { recursive: true });
+    writeFileSync(
+      join(root, "dist", "bin.js"),
+      'process.stdout.write(JSON.stringify({ runtime_version: "0.0.1" }));\n',
+    );
+    const cliRuntime = builtCliRuntimeVersion(root);
+    assert.equal(cliRuntime, "0.0.1");
+    assert.match(
+      builtCliRuntimeVersionError(cliRuntime, "0.3.34"),
+      /built CLI reports conversation runtime 0\.0\.1, but the desktop app requires 0\.3\.34/,
+    );
+  } finally {
+    rmSync(root, { recursive: true, force: true });
+  }
+  assert.match(builtCliRuntimeVersionError(null, "0.3.34"), /did not report a runtime version/);
+  assert.match(builtCliRuntimeVersionError("0.3.34", null), /could not read the app's required/);
+  assert.throws(
+    () => builtCliRuntimeVersion(join(tmpdir(), "understudy-no-such-root")),
+    /built CLI is missing/,
+  );
+});
+
 test("runtime releases require a newer distributed CLI sidecar", () => {
   assert.equal(
     runtimeCliAdvancementError({
@@ -143,6 +178,13 @@ test("release history rejects one CLI version for two runtime builds", async () 
     for (const relative of files) {
       cpSync(join(repositoryRoot, relative), paths[relative], { recursive: false });
     }
+    // A stub built CLI that reports the runtime version this synthetic
+    // history lands on, so the built-CLI runtime assertion stays green.
+    mkdirSync(join(root, "dist"), { recursive: true });
+    writeFileSync(
+      join(root, "dist", "bin.js"),
+      `process.stdout.write(JSON.stringify({ runtime_version: "${transitionRuntimeVersion}" }));\n`,
+    );
     git(root, ["init", "--quiet"]);
     git(root, ["config", "user.name", "Understudy Release Test"]);
     git(root, ["config", "user.email", "release-test@invalid.example"]);
