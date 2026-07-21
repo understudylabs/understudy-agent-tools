@@ -463,6 +463,7 @@ mod tests {
             vec![
                 "gemma-4-e2b-it-qat-mlx-vlm-understudy",
                 "gemma-4-e2b-it-mlx-vlm-4bit",
+                "gemma-4-e4b-it-qat-mlx-vlm-understudy",
                 "gemma-4-e4b-it-mlx-vlm-4bit",
                 "gemma-4-12b-it-mlx-vlm-4bit",
                 "gemma-4-12b-it-mlx-vlm-bf16",
@@ -481,8 +482,8 @@ mod tests {
         );
         assert_eq!(
             rows.iter().filter(|r| r.certified == Some(true)).count(),
-            2,
-            "exactly the two understudy conversions are certified"
+            3,
+            "exactly the three understudy conversions are certified"
         );
         assert!(
             rows.iter().all(|r| r.session_url.is_some()),

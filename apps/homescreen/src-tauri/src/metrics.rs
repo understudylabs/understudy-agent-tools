@@ -1,4 +1,6 @@
 use serde::Serialize;
+#[cfg(target_os = "macos")]
+use std::process::Command;
 use std::sync::Mutex;
 use sysinfo::{CpuRefreshKind, MemoryRefreshKind, RefreshKind, System};
 
@@ -17,11 +19,34 @@ pub struct Machine {
     pub memory_gb: u64,
 }
 
+fn total_memory_bytes(sys: &System) -> u64 {
+    let detected = sys.total_memory();
+    if detected > 0 {
+        return detected;
+    }
+    #[cfg(target_os = "macos")]
+    {
+        return Command::new("/usr/sbin/sysctl")
+            .args(["-n", "hw.memsize"])
+            .output()
+            .ok()
+            .filter(|output| output.status.success())
+            .and_then(|output| String::from_utf8(output.stdout).ok())
+            .and_then(|value| value.trim().parse::<u64>().ok())
+            .unwrap_or(0);
+    }
+    #[cfg(not(target_os = "macos"))]
+    0
+}
+
 pub fn detect_machine() -> Machine {
     // A full sysinfo refresh also enumerates every process. Doing that twice in
     // Tauri setup delayed the event loop long enough for macOS to show a
     // beachball. Machine identity only needs CPU and memory facts.
-    let sys = resource_system();
+    let mut sys = resource_system();
+    // `new_with_specifics` may report zero total memory during early macOS
+    // app startup. Force one refresh before sizing the residency budget.
+    sys.refresh_memory();
     let chip = sys
         .cpus()
         .first()
@@ -30,7 +55,7 @@ pub fn detect_machine() -> Machine {
         .unwrap_or_else(|| "Apple Silicon".to_string());
     Machine {
         chip,
-        memory_gb: sys.total_memory() / (1024 * 1024 * 1024),
+        memory_gb: total_memory_bytes(&sys) / (1024 * 1024 * 1024),
     }
 }
 
@@ -71,5 +96,15 @@ impl MetricsReader {
             mem_total_gb: sys.total_memory() as f32 / gib,
             mem_used_gb: sys.used_memory() as f32 / gib,
         }
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn machine_detection_never_reports_zero_memory() {
+        assert!(detect_machine().memory_gb > 0);
     }
 }
