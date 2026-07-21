@@ -450,6 +450,41 @@ select,
   box-shadow: inset 0 0 0 1px color-mix(in srgb, var(--mb-cyan) 22%, transparent);
 }
 
+/* Training threads share the chat-nav layout but keep their kind visible:
+   a status glyph instead of the message icon. active = cyan live dot,
+   completed = mint promotion ring, dismissed = muted. */
+.thread-status-glyph {
+  flex: 0 0 auto;
+  width: 9px;
+  height: 9px;
+  margin: 0 3.5px;
+  border-radius: 50%;
+}
+.thread-status-glyph.active {
+  background: var(--mb-cyan);
+  box-shadow: 0 0 6px color-mix(in srgb, var(--mb-cyan) 65%, transparent);
+  animation: thread-status-live 2.4s ease-in-out infinite;
+}
+.thread-status-glyph.completed {
+  background: transparent;
+  border: 2px solid var(--model-mint);
+}
+.thread-status-glyph.dismissed {
+  background: color-mix(in srgb, var(--text-2) 45%, transparent);
+}
+.training-thread-item .chat-nav-time {
+  text-transform: none;
+}
+@keyframes thread-status-live {
+  0%, 100% { opacity: 1; }
+  50% { opacity: 0.45; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .thread-status-glyph.active {
+    animation: none;
+  }
+}
+
 .chat-nav-action {
   display: grid;
   width: 27px;

@@ -94,6 +94,9 @@ import {
   type TrainingFlowCardKind,
   type TrainingFlowDecisionDetails,
 } from "../lib/training-flow.mjs";
+import { deserializeTrainingFlow } from "../lib/training-flow.mjs";
+import { trainingThreadTitle } from "../lib/training-threads.mjs";
+import type { TrainingThreadRequest, TrainingThreadStatus } from "../lib/training-threads.mjs";
 import { TrainingFlowStepper, TrainingFlowTimeline } from "./TrainingFlowStepper";
 import { ModelCardDrawer } from "./ModelCardDrawer";
 import { CsvProfile } from "./CsvProfile";
@@ -1235,7 +1238,9 @@ export function ChatPane({
   resetToken,
   activeSessionId,
   requestedSession,
+  requestedThread,
   onSessionChange,
+  onTrainingThreadChange,
   onHistoryChanged,
   onStreamingChange,
   onTrainingChange,
@@ -1244,7 +1249,9 @@ export function ChatPane({
   resetToken: number;
   activeSessionId: string | null;
   requestedSession: ChatSessionRequest | null;
+  requestedThread?: TrainingThreadRequest | null;
   onSessionChange?: (sessionId: string) => void;
+  onTrainingThreadChange?: (threadId: string | null) => void;
   onHistoryChanged?: () => void;
   onStreamingChange?: (streaming: boolean) => void;
   onTrainingChange?: (active: boolean) => void;
@@ -1281,6 +1288,16 @@ export function ChatPane({
   const [remoteRecipePlan, setRemoteRecipePlan] = useState<RemotePlan | null>(null);
   const [datasetProfileConfirmed, setDatasetProfileConfirmed] = useState(false);
   const [trainingFlow, setTrainingFlow] = useState<TrainingFlow | null>(null);
+  // Training thread: the persisted identity of this flow. Created the moment
+  // data is dropped (status active) so a mid-flow restart resumes from the
+  // nav; every decision, invalidation, and run-terminal saves it.
+  const [trainingThreadId, setTrainingThreadId] = useState<string | null>(null);
+  const [trainingThreadStatus, setTrainingThreadStatus] = useState<TrainingThreadStatus>("active");
+  // Reopened completed/dismissed threads render their timeline read-only.
+  const [threadReadOnly, setThreadReadOnly] = useState(false);
+  // The thread's artifact_root no longer exists on disk: card bodies cannot
+  // be re-rendered, say so honestly instead of re-running the pipeline.
+  const [threadArtifactMissing, setThreadArtifactMissing] = useState<string | null>(null);
   // Editable goal card: user-corrected goal statement and acceptable-error
   // threshold. The threshold is recorded on the decision; plan preparation
   // does not accept it yet (hardcoded 0.80 server-side) — see the card copy.
@@ -1318,6 +1335,13 @@ export function ChatPane({
   const [animatedMessageId, setAnimatedMessageId] = useState<string | null>(null);
   const observedResetToken = useRef(false);
   const observedSessionRequest = useRef<number | null>(null);
+  const observedThreadRequest = useRef<number | null>(null);
+  // A flow restored from a persisted thread; consumed (instead of creating a
+  // fresh flow) when the re-run inspection lands.
+  const restoredFlowRef = useRef<TrainingFlow | null>(null);
+  // One resume-side re-preparation of the CSV splits per reopened thread.
+  const resumePrepareAttempted = useRef<string | null>(null);
+  const wasTrainingActive = useRef(false);
   const dropInFlight = useRef(false);
   const dropRequestGeneration = useRef(0);
   const environmentArchitectAttempted = useRef<string | null>(null);
@@ -1387,6 +1411,13 @@ export function ChatPane({
     setDroppedWorkload(null);
     setCsvInspection(null);
     setTrainingRecipe(null);
+    setTrainingThreadId(null);
+    setTrainingThreadStatus("active");
+    setThreadReadOnly(false);
+    setThreadArtifactMissing(null);
+    restoredFlowRef.current = null;
+    resumePrepareAttempted.current = null;
+    wasTrainingActive.current = false;
     setRemoteRecipePlan(null);
     setDatasetProfileConfirmed(false);
     setTrainingFlow(null);
@@ -1411,6 +1442,33 @@ export function ChatPane({
     setRemoteTrainingView(false);
     setTrainingHaloVisual(null);
     dispatchDrop({ type: "reset" });
+  };
+
+  const persistTrainingThread = (
+    threadId: string,
+    workload: DroppedWorkload,
+    flow: TrainingFlow | null,
+    status: TrainingThreadStatus,
+  ) =>
+    invoke("training_thread_save", {
+      threadId,
+      title: trainingThreadTitle(workload.source_name, flow),
+      artifactRoot: workload.artifact_root,
+      workload,
+      flow,
+      status,
+    })
+      .then(() => onHistoryChanged?.())
+      .catch(() => {
+        setNotice("This training thread could not be saved for restart; the current step is unaffected.");
+      });
+
+  /** Explicit dismissal: record the muted outcome, then clear the surface. */
+  const dismissWorkloadThread = () => {
+    if (trainingThreadId && droppedWorkload && !threadReadOnly && trainingThreadStatus === "active") {
+      void persistTrainingThread(trainingThreadId, droppedWorkload, trainingFlow, "dismissed");
+    }
+    resetDroppedWorkload();
   };
 
   const applyCsvInspection = (result: CsvInspection) => {
@@ -1545,8 +1603,10 @@ export function ChatPane({
   }, [droppedWorkload, trainingRecipe]);
 
   useEffect(() => {
-    if (!remoteRecipePlan && trainingRecipe?.ready) prepareDetectedRecipe();
-  }, [prepareDetectedRecipe, remoteRecipePlan, trainingRecipe?.ready]);
+    // Read-only reopened threads are an audit trail — never restart the
+    // priced-plan pipeline for them.
+    if (!remoteRecipePlan && trainingRecipe?.ready && !threadReadOnly) prepareDetectedRecipe();
+  }, [prepareDetectedRecipe, remoteRecipePlan, threadReadOnly, trainingRecipe?.ready]);
 
   /**
    * Compile the Pi environment-architect proposal for a Custom training
@@ -1881,6 +1941,15 @@ export function ChatPane({
         const requestGeneration = dropRequestGeneration.current + 1;
         dropRequestGeneration.current = requestGeneration;
         setDroppedWorkload(null);
+        // A new drop always starts a NEW thread; whatever thread was open
+        // stays persisted with the status it already had.
+        setTrainingThreadId(null);
+        setTrainingThreadStatus("active");
+        setThreadReadOnly(false);
+        setThreadArtifactMissing(null);
+        restoredFlowRef.current = null;
+        resumePrepareAttempted.current = null;
+        wasTrainingActive.current = false;
         setCsvInspection(null);
         setMappingInputColumns([]);
         setMappingLabelColumn("");
@@ -1902,6 +1971,11 @@ export function ChatPane({
           .then(async (result) => {
             if (disposed || dropRequestGeneration.current !== requestGeneration) return;
             setDroppedWorkload(result);
+            // Dropping data creates the thread immediately (status active) so
+            // a mid-flow restart can resume this flow from the nav.
+            const threadId = crypto.randomUUID();
+            setTrainingThreadId(threadId);
+            void persistTrainingThread(threadId, result, null, "active");
             const inspectTable = shouldInspectDroppedTable(result);
             const inspectStructured = shouldInspectStructuredDataset(result);
             if (inspectStructured) {
@@ -2093,6 +2167,44 @@ export function ChatPane({
   // only maps existing state into card readiness and answers.
 
   useEffect(() => {
+    // A reopened thread resumes its persisted flow verbatim instead of
+    // starting a fresh one; decision-derived drafts rehydrate from the
+    // recorded decisions so the resumed cards say what was decided.
+    const restored = restoredFlowRef.current;
+    if (restored && (trainingRecipe || csvInspection)) {
+      restoredFlowRef.current = null;
+      setTrainingFlow(restored);
+      const target = restored.cards.find((card) => card.kind === "prediction_target")?.decision;
+      const details = target?.details;
+      const targetDetails = details && typeof details === "object" && !Array.isArray(details)
+        ? details as Record<string, unknown>
+        : null;
+      const targetColumn = typeof targetDetails?.target_column === "string"
+        ? targetDetails.target_column
+        : null;
+      const targetGoal = typeof targetDetails?.target_goal === "string"
+        ? targetDetails.target_goal
+        : null;
+      setGoalDraft(targetGoal);
+      setStructuredTargetChoice(trainingRecipe ? targetColumn : null);
+      setMinAccuracyDraft(
+        typeof targetDetails?.minimum_accuracy === "number" ? targetDetails.minimum_accuracy : null,
+      );
+      setCalibrationVerdicts([]);
+      if (csvInspection && targetColumn) {
+        setMappingLabelColumn(targetColumn);
+        setMappingInputColumns(csvInspection.columns
+          .filter((column) => column.name !== targetColumn && column.non_empty_count > 0)
+          .map((column) => column.name));
+      }
+      if (
+        !threadReadOnly
+        && restored.cards.some((card) => card.kind === "data_profile" && card.decision)
+      ) {
+        setDatasetProfileConfirmed(true);
+      }
+      return;
+    }
     if (trainingRecipe) {
       setTrainingFlow(createTrainingFlow(trainingRecipe.ready
         ? ["data_profile", "prediction_target", "plan", "consent", "run"]
@@ -2107,6 +2219,41 @@ export function ChatPane({
     setMinAccuracyDraft(null);
     setCalibrationVerdicts([]);
   }, [trainingRecipe, csvInspection]);
+
+  // Persist the thread on every flow change (each answered card, each
+  // invalidation) — debounced like the chat transcript save.
+  useEffect(() => {
+    if (!trainingThreadId || !droppedWorkload || !trainingFlow || threadReadOnly) return;
+    const timer = window.setTimeout(() => {
+      void persistTrainingThread(trainingThreadId, droppedWorkload, trainingFlow, trainingThreadStatus);
+    }, 200);
+    return () => window.clearTimeout(timer);
+  }, [trainingThreadId, droppedWorkload, trainingFlow, trainingThreadStatus, threadReadOnly]);
+
+  // Run terminal: the training panel reports inactive after having been
+  // active. Record the run decision on the flow and complete the thread —
+  // the persisted timeline becomes the audit trail.
+  useEffect(() => {
+    if (localTrainingActive) {
+      wasTrainingActive.current = true;
+      return;
+    }
+    if (!wasTrainingActive.current || threadReadOnly) return;
+    wasTrainingActive.current = false;
+    if (!trainingThreadId) return;
+    setTrainingFlow((flow) => {
+      if (!flow || activeFlowCard(flow)?.kind !== "run") return flow;
+      return answerFlowCardModel(flow, "run", {
+        question: "Did the training run finish?",
+        answer: "yes",
+      });
+    });
+    setTrainingThreadStatus("completed");
+  }, [localTrainingActive, threadReadOnly, trainingThreadId]);
+
+  useEffect(() => {
+    onTrainingThreadChange?.(trainingThreadId);
+  }, [onTrainingThreadChange, trainingThreadId]);
 
   // Background work keeps running eagerly; this only surfaces readiness on
   // the upcoming steps of the rail.
@@ -2139,7 +2286,7 @@ export function ChatPane({
     question: string,
     details?: TrainingFlowDecisionDetails,
   ) => {
-    if (!trainingFlow) return;
+    if (!trainingFlow || threadReadOnly) return;
     const active = activeFlowCard(trainingFlow);
     if (!active || active.id !== id) return;
     if (invalidatesLaterAnswers(trainingFlow, id, answer)) {
@@ -2151,7 +2298,7 @@ export function ChatPane({
   };
 
   const navigateTrainingFlowTo = (id: string) => {
-    if (!trainingFlow) return;
+    if (!trainingFlow || threadReadOnly) return;
     if (localTrainingActive || remoteTrainingView) {
       setNotice("Training is running; earlier decisions are locked for this run.");
       return;
@@ -2581,6 +2728,121 @@ export function ChatPane({
     observedSessionRequest.current = requestedSession.requestId;
     void restoreHistorySession(requestedSession.sessionId);
   }, [requestedSession]);
+
+  /**
+   * Reopen a persisted training thread. Completed/dismissed threads render
+   * their full timeline read-only (the audit trail); an active thread
+   * resumes exactly at the flow's active card. Card bodies come from the
+   * workload artifacts at artifact_root — when those have moved or vanished
+   * we say so inline instead of re-running the pipeline.
+   */
+  const openTrainingThread = async (threadId: string) => {
+    if (streaming) {
+      setNotice("Finish or stop the current turn before opening a training thread.");
+      return;
+    }
+    setErr(null);
+    setNotice(null);
+    try {
+      const thread = await invoke<{
+        thread_id: string;
+        title: string;
+        artifact_root: string;
+        artifact_root_present: boolean;
+        workload: DroppedWorkload | null;
+        flow: TrainingFlow | null;
+        status: TrainingThreadStatus;
+      } | null>("training_thread_get", { threadId });
+      if (!thread || !thread.workload) {
+        setNotice("That training thread is no longer available.");
+        return;
+      }
+      let flow: TrainingFlow | null = null;
+      if (thread.flow) {
+        try {
+          flow = deserializeTrainingFlow(JSON.stringify(thread.flow));
+        } catch (error) {
+          setNotice(`This thread's saved decisions could not be read: ${String(error)}`);
+        }
+      }
+      resetStreamPacer();
+      resetDroppedWorkload();
+      const readOnly = thread.status !== "active";
+      setTrainingThreadId(thread.thread_id);
+      setTrainingThreadStatus(thread.status);
+      setThreadReadOnly(readOnly);
+      setDroppedWorkload(thread.workload);
+      if (!readOnly) wasTrainingActive.current = false;
+      if (!thread.artifact_root_present) {
+        // Honest resume: the receipts live at artifact_root. Without them we
+        // show the decision timeline from the saved flow and an inline notice
+        // rather than pretending the card bodies still exist.
+        setThreadArtifactMissing(thread.artifact_root);
+        if (flow) setTrainingFlow(flow);
+        return;
+      }
+      restoredFlowRef.current = flow;
+      const requestGeneration = dropRequestGeneration.current + 1;
+      dropRequestGeneration.current = requestGeneration;
+      const inspectTable = shouldInspectDroppedTable(thread.workload);
+      const inspectStructured = shouldInspectStructuredDataset(thread.workload);
+      if (inspectStructured || inspectTable) {
+        dispatchDrop({ type: "drop_received" });
+        dispatchDrop({ type: "inspection_started" });
+        try {
+          if (inspectStructured) {
+            try {
+              await inspectTrainingRecipe(thread.workload, requestGeneration);
+            } catch (error) {
+              if (!inspectTable) throw error;
+              await inspectCsvWorkload(thread.workload, requestGeneration);
+            }
+          } else {
+            await inspectCsvWorkload(thread.workload, requestGeneration);
+          }
+        } catch (error) {
+          restoredFlowRef.current = null;
+          dispatchDrop({ type: "failed" });
+          setErr(`This thread's workload could not be re-read: ${String(error)}`);
+          if (flow) setTrainingFlow(flow);
+        }
+      } else {
+        restoredFlowRef.current = null;
+        dispatchDrop({ type: "drop_received" });
+        dispatchDrop({ type: "succeeded" });
+        if (flow) setTrainingFlow(flow);
+      }
+    } catch (error) {
+      setNotice(`Training thread could not be opened: ${String(error)}`);
+    }
+  };
+
+  useEffect(() => {
+    if (!requestedThread || observedThreadRequest.current === requestedThread.requestId) return;
+    observedThreadRequest.current = requestedThread.requestId;
+    void openTrainingThread(requestedThread.threadId);
+  }, [requestedThread]);
+
+  // Resuming a CSV thread past its plan decision: the group-isolated splits
+  // are derived state, rebuilt once from the artifacts so the backend and
+  // calibration cards are answerable again.
+  useEffect(() => {
+    if (
+      !trainingThreadId
+      || threadReadOnly
+      || !trainingFlow
+      || !csvInspection
+      || classificationDataset
+      || dropRunning
+      || resumePrepareAttempted.current === trainingThreadId
+    ) return;
+    const planAnswered = trainingFlow.cards.some(
+      (card) => card.kind === "plan" && card.status === "answered",
+    );
+    if (!planAnswered || !mappingLabelColumn || !mappingGroupColumn || mappingInputColumns.length === 0) return;
+    resumePrepareAttempted.current = trainingThreadId;
+    prepareDroppedClassification();
+  }, [trainingThreadId, threadReadOnly, trainingFlow, csvInspection, classificationDataset, dropRunning, mappingLabelColumn, mappingGroupColumn, mappingInputColumns]);
 
   const setThinking = async (thinking: boolean) => {
     if (selectedChoice.route !== "local") return;
@@ -3058,6 +3320,33 @@ export function ChatPane({
                         ? "Creating group-isolated train, dev, and holdout splits…"
                         : "Understanding this file…"}
                 />
+              ) : threadArtifactMissing && droppedWorkload ? (
+                <>
+                  <div className="workload-generic-summary">
+                    <strong title={threadArtifactMissing}>{droppedWorkload.source_name}</strong>
+                    <small>
+                      This thread&apos;s workload artifacts are no longer at{" "}
+                      <code>{threadArtifactMissing}</code> — the decisions below are the saved
+                      record, but their card bodies can&apos;t be re-rendered. Drop the data
+                      again to start a new thread.
+                    </small>
+                  </div>
+                  {trainingFlow && (
+                    <TrainingFlowTimeline
+                      flow={trainingFlow}
+                      onNavigate={navigateTrainingFlowTo}
+                    >
+                      <ThreadReadOnlyNote status={trainingThreadStatus} />
+                    </TrainingFlowTimeline>
+                  )}
+                  <button
+                    type="button"
+                    className="btn ghost workload-generic-dismiss"
+                    onClick={resetDroppedWorkload}
+                  >
+                    Close
+                  </button>
+                </>
               ) : trainingRecipe && droppedWorkload && trainingFlow ? (
                 <>
                   <TrainingFlowTimeline
@@ -3066,7 +3355,9 @@ export function ChatPane({
                     onNavigate={navigateTrainingFlowTo}
                     renderCommitted={renderCommittedStructuredCard}
                   >
-                  {focusFlowKind === "data_profile" ? (
+                  {threadReadOnly ? (
+                    <ThreadReadOnlyNote status={trainingThreadStatus} />
+                  ) : focusFlowKind === "data_profile" ? (
                     <StructuredDatasetProfilePage
                       sourceName={droppedWorkload.source_name}
                       inspection={trainingRecipe}
@@ -3080,7 +3371,7 @@ export function ChatPane({
                           "Does this look like the data you meant to train on?",
                         );
                       }}
-                      onClose={resetDroppedWorkload}
+                      onClose={dismissWorkloadThread}
                     />
                   ) : focusFlowKind === "prediction_target" ? (
                     <section
@@ -3176,7 +3467,7 @@ export function ChatPane({
                           },
                         )}
                         noLabel="No — dismiss"
-                        onNo={resetDroppedWorkload}
+                        onNo={dismissWorkloadThread}
                       />
                     </section>
                   ) : focusFlowKind === "plan" ? (
@@ -3277,7 +3568,7 @@ export function ChatPane({
                         yesDisabled={customCompileResult?.environment_status !== "executable"}
                         onYes={() => answerTrainingFlowCard("compile_gates", "yes", "Did the compile gates pass?")}
                         noLabel="No — dismiss"
-                        onNo={resetDroppedWorkload}
+                        onNo={dismissWorkloadThread}
                       />
                     </section>
                   ) : (
@@ -3340,8 +3631,12 @@ export function ChatPane({
                     onNavigate={navigateTrainingFlowTo}
                   />
                   {!localTrainingActive && !remoteTrainingView && focusFlowKind !== "data_profile" && (
-                    <button type="button" className="btn ghost workload-generic-dismiss" onClick={resetDroppedWorkload}>
-                      Dismiss
+                    <button
+                      type="button"
+                      className="btn ghost workload-generic-dismiss"
+                      onClick={dismissWorkloadThread}
+                    >
+                      {threadReadOnly ? "Close" : "Dismiss"}
                     </button>
                   )}
                 </>
@@ -3353,7 +3648,9 @@ export function ChatPane({
                     onNavigate={navigateTrainingFlowTo}
                     renderCommitted={renderCommittedCsvCard}
                   >
-                  {focusFlowKind === "data_profile" ? (
+                  {threadReadOnly ? (
+                    <ThreadReadOnlyNote status={trainingThreadStatus} />
+                  ) : focusFlowKind === "data_profile" ? (
                     <>
                       <div className="csv-analysis-step-label csv-analysis-step-structure">1 · data structure</div>
                       <CsvProfile
@@ -3395,7 +3692,7 @@ export function ChatPane({
                           );
                         }}
                         noLabel="No — dismiss"
-                        onNo={resetDroppedWorkload}
+                        onNo={dismissWorkloadThread}
                       />
                     </>
                   ) : focusFlowKind === "prediction_target" ? (
@@ -3498,7 +3795,7 @@ export function ChatPane({
                           },
                         )}
                         noLabel="No — dismiss"
-                        onNo={resetDroppedWorkload}
+                        onNo={dismissWorkloadThread}
                       />
                     </>
                   ) : focusFlowKind === "plan" ? (
@@ -3607,9 +3904,9 @@ export function ChatPane({
                   <button
                     type="button"
                     className="btn ghost workload-generic-dismiss"
-                    onClick={resetDroppedWorkload}
+                    onClick={dismissWorkloadThread}
                   >
-                    Dismiss
+                    {threadReadOnly ? "Close" : "Dismiss"}
                   </button>
                 </>
               ) : null}
@@ -3698,6 +3995,23 @@ export function ChatPane({
         </div>
       )}
       <LocalClassifierLibraryDialog open={classifierLibraryOpen} onOpenChange={setClassifierLibraryOpen} />
+    </div>
+  );
+}
+
+/**
+ * Footer for a reopened, no-longer-editable training thread: the timeline
+ * above it is the audit trail — every yes, the receipts, the outcome.
+ */
+function ThreadReadOnlyNote({ status }: { status: TrainingThreadStatus }) {
+  return (
+    <div className="workload-generic-summary training-thread-readonly" role="note">
+      <strong>{status === "completed" ? "Completed training thread" : "Dismissed training thread"}</strong>
+      <small>
+        {status === "completed"
+          ? "This run finished; the decisions above are the saved record. Drop new data to start another thread."
+          : "This thread was dismissed before training; its decisions are kept for reference. Drop new data to start another thread."}
+      </small>
     </div>
   );
 }

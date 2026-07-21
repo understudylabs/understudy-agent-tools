@@ -186,7 +186,9 @@ test("remote training uses live capabilities with explicit upload and spend cons
   assert.match(chat, /backend\.id === "mlx-local" && backend\.compatible && backend\.execution_ready/);
   assert.doesNotMatch(chat, /trainingRecipe\.evaluator !== "gsm8k_final_answer"/);
   assert.doesNotMatch(chat, /GSM8K reasoning model|frontierModel:\s*"glm-5\.2"/);
-  assert.match(chat, /if \(!remoteRecipePlan && trainingRecipe\?\.ready\) prepareDetectedRecipe\(\)/);
+  // Reopened read-only training threads are an audit trail; the priced-plan
+  // pipeline must not restart for them.
+  assert.match(chat, /if \(!remoteRecipePlan && trainingRecipe\?\.ready && !threadReadOnly\) prepareDetectedRecipe\(\)/);
   assert.doesNotMatch(chat, /Prepare no-spend plan/);
   assert.match(chat, /<LocalSftTrainingPanel/);
   assert.match(chat, /recipeBackend === "managed"/);
