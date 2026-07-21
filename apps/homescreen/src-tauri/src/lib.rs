@@ -19,6 +19,7 @@ mod gepa;
 mod knowledge;
 mod mcp;
 mod metrics;
+mod mgmt;
 mod models;
 mod moraine;
 mod oracle_dispatch;
@@ -410,6 +411,13 @@ pub fn run() {
             admin::org_reporting,
             scope::projects_list,
             scope::workloads_list,
+            mgmt::mgmt_projects_list,
+            mgmt::mgmt_workloads_list,
+            mgmt::mgmt_workload_status,
+            mgmt::mgmt_usage_summary,
+            mgmt::mgmt_billing_balance,
+            mgmt::mgmt_workload_create,
+            mgmt::mgmt_workload_update,
             chat::chat_stream,
             restart_app,
         ])

@@ -8093,3 +8093,232 @@ select,
   clip: rect(0 0 0 0);
   white-space: nowrap;
 }
+/* ---- management: project summary (port of web /p/[slug] Summary) ---- */
+.mgmt-grid {
+  display: grid;
+  gap: 14px;
+}
+.mgmt-metric-row {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+}
+.mgmt-two-col {
+  display: grid;
+  gap: 14px;
+  grid-template-columns: minmax(0, 1.65fr) minmax(16rem, 0.7fr);
+}
+@media (max-width: 900px) {
+  .mgmt-two-col {
+    grid-template-columns: minmax(0, 1fr);
+  }
+}
+.mgmt-metric-card {
+  display: grid;
+  gap: 4px;
+}
+.mgmt-metric-label {
+  font-size: 10.5px;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+  color: var(--c-ink-muted);
+}
+.mgmt-metric-value {
+  font-size: 22px;
+  font-weight: 500;
+}
+.mgmt-tabular {
+  font-variant-numeric: tabular-nums;
+}
+.mgmt-card-sub {
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--c-ink-muted);
+  margin: 2px 0 10px;
+}
+.mgmt-card-head {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 10px;
+}
+.mgmt-workload-grid {
+  display: grid;
+  gap: 12px;
+  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
+  margin-top: 10px;
+}
+.mgmt-workload-card {
+  display: grid;
+  gap: 8px;
+  align-content: start;
+}
+.mgmt-workload-title {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+.mgmt-workload-name {
+  font-size: 13px;
+  font-weight: 550;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.mgmt-health-badge {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  text-transform: lowercase;
+}
+.mgmt-mini-metrics {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  margin: 0;
+}
+.mgmt-mini-metric dt {
+  font-size: 10px;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.14em;
+  color: var(--c-ink-muted);
+}
+.mgmt-mini-metric dd {
+  margin: 3px 0 0;
+  font-size: 13px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.mgmt-card-actions {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+}
+.mgmt-trend {
+  display: grid;
+  gap: 8px;
+}
+.mgmt-trend-bars {
+  display: flex;
+  align-items: flex-end;
+  gap: 6px;
+  height: 150px;
+  border-bottom: 1px solid var(--c-rule);
+  padding: 12px 2px 0;
+}
+.mgmt-trend-slot {
+  flex: 1;
+  min-width: 0;
+  height: 100%;
+  display: flex;
+  align-items: flex-end;
+}
+.mgmt-trend-bar {
+  width: 100%;
+  border-radius: 2px 2px 0 0;
+  background: var(--model-clay);
+}
+.mgmt-trend-labels {
+  display: flex;
+  gap: 6px;
+  padding: 0 2px;
+  font-size: 9.5px;
+  color: var(--c-ink-muted);
+}
+.mgmt-trend-labels span {
+  flex: 1;
+  min-width: 0;
+  text-align: center;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.mgmt-trend-max {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 10px;
+  font-size: 11.5px;
+  color: var(--c-ink-muted);
+}
+.mgmt-credit {
+  display: grid;
+  gap: 4px;
+  margin-bottom: 10px;
+}
+.mgmt-credit-amount {
+  font-size: 26px;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+  margin: 0;
+}
+.mgmt-credit-warning {
+  font-size: 11.5px;
+  font-weight: 550;
+  color: var(--model-clay);
+  margin: 0;
+}
+.mgmt-empty {
+  border: 1px dashed var(--c-rule);
+  border-radius: 6px;
+  padding: 18px;
+  font-size: 12.5px;
+  color: var(--c-ink-muted);
+}
+.mgmt-notice {
+  border-color: color-mix(in srgb, var(--model-clay) 40%, transparent);
+  background: color-mix(in srgb, var(--model-clay) 5%, transparent);
+}
+.mgmt-notice-label {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  font-size: 10.5px;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.16em;
+  color: var(--model-clay);
+  margin-bottom: 8px;
+}
+.mgmt-notice-dot {
+  width: 6px;
+  height: 6px;
+  background: var(--model-clay);
+}
+.mgmt-notice-body {
+  font-size: 13px;
+  line-height: 1.6;
+}
+.mgmt-dialog-form {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+.mgmt-dialog-fields {
+  display: grid;
+  gap: 8px;
+}
+.mgmt-field-label {
+  font-size: 12.5px;
+  font-weight: 550;
+}
+.mgmt-checkbox {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 13px;
+  margin-top: 4px;
+}
+.mgmt-form-error {
+  font-size: 12.5px;
+  color: var(--model-clay);
+  margin: 0;
+}
+.mgmt-code {
+  font-family: var(--mono);
+  font-size: 11px;
+}
