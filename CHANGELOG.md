@@ -54,8 +54,13 @@ uses semantic-ish versioning (minor = new skill or new capability, patch = fixes
   config; `anthropic`/`openai`/`managed` provider labels), requires grounding
   every diagnosis in the usage-summary volume ranking, and calls out
   declared-vs-observed drift (declared split with ~0 observed `understudy`
-  share) as a finding. The legacy `routing-status` / `provider-health` /
-  `status` endpoints stay documented as deprecated for older deployments.
+  share) as a finding. The skill also covers the rest of the `sk_*`
+  self-service surface: org-wide reporting (usage/cost series with
+  project/workload/model grouping, plus its filter-options endpoint) and the
+  project captures metadata list (request ids/timestamps only — capture
+  content stays behind the dashboard login). The legacy `routing-status` /
+  `provider-health` / `status` endpoints stay documented as deprecated for
+  older deployments.
 
 ### Fixed
 

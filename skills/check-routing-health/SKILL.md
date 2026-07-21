@@ -90,7 +90,10 @@ node dist/bin.js status --json
 
    Every statement you make must be grounded in that volume ranking — lead
    with the workloads that carry the spend and traffic. Do not anchor on
-   low-leverage generic advice about workloads that barely run.
+   low-leverage generic advice about workloads that barely run. For
+   cross-project "which project is the spend in" questions, start one level
+   up with the org-wide reporting endpoint ([`reference.md`](reference.md)
+   § Organization reporting), then drill into that project's usage-summary.
 
 3. Pull the unified per-workload view (same `sh -c` wrapper):
 
@@ -130,6 +133,17 @@ node dist/bin.js status --json
 
    ```sh
    understudy captures get <request-id> --project <project>
+   ```
+
+   If they are empty (or the team needs more ids), pull recent capture
+   metadata for the project — request ids, timestamps, sizes; metadata only,
+   capture content stays behind the dashboard login
+   ([`reference.md`](reference.md) § Captures metadata list):
+
+   ```sh
+   understudy run -- sh -c 'curl -s \
+     -H "Authorization: Bearer $UNDERSTUDY_API_KEY" \
+     "https://api.understudylabs.com/admin/v1/orgs/$UNDERSTUDY_ORG_ID/projects/<project-id>/captures?limit=25"'
    ```
 
 6. If any call fails or a number looks wrong, capture the
