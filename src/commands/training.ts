@@ -17,6 +17,10 @@ import {
   buildTrainingGoalCard,
   validateEnvironmentProposal,
 } from "../environment-proposal/index.js";
+import {
+  renderTrainingDoctorReport,
+  runTrainingDoctor,
+} from "../training-doctor/index.js";
 import { isJsonMode, runAction } from "../internal/output.js";
 
 type LocalSftOptions = {
@@ -56,6 +60,34 @@ type TinkerSftOptions = {
 export function registerTrainingCommand(program: Command): void {
   const training = program.command("training")
     .description("Execute immutable evaluator-backed training plans.");
+
+  training.command("doctor")
+    .description("Walk the remote-training chain and report the first broken link.")
+    .option("--workload <path>", "Capture-import artifact root (workload-card.json lives here).")
+    .option("--plan <path>", "Start mid-chain at a remote-training plan.json.")
+    .option("--expect-run", "Treat a missing run.json as a broken link.")
+    .action(async function (this: Command, options: {
+      workload?: string;
+      plan?: string;
+      expectRun?: boolean;
+    }) {
+      await runAction(this, async () => {
+        if (Boolean(options.workload) === Boolean(options.plan)) {
+          throw new Error("Pass exactly one of --workload <artifact_root> or --plan <plan.json>.");
+        }
+        const report = await runTrainingDoctor({
+          workloadRoot: options.workload,
+          planPath: options.plan,
+          expectRun: options.expectRun === true,
+        });
+        if (isJsonMode(this)) {
+          process.stdout.write(`${JSON.stringify(report, null, 2)}\n`);
+        } else {
+          process.stdout.write(renderTrainingDoctorReport(report));
+        }
+        if (!report.healthy) process.exitCode = 1;
+      });
+    });
 
   training.command("goal-card")
     .description("Render a local pre-run Goal Card and validated environment proposal.")
