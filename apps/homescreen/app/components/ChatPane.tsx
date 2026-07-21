@@ -79,6 +79,25 @@ import {
   workloadDropReducer,
   workloadDropStatus,
 } from "../lib/workload-drop-state.mjs";
+import {
+  activeCard as activeFlowCard,
+  answerCard as answerFlowCardModel,
+  createTrainingFlow,
+  insertCard,
+  invalidatesLaterAnswers,
+  markCardLoading,
+  markCardReady,
+  navigateToAnswered,
+  type TrainingFlow,
+  type TrainingFlowAnswer,
+  type TrainingFlowCard,
+  type TrainingFlowCardKind,
+  type TrainingFlowDecisionDetails,
+} from "../lib/training-flow.mjs";
+import { deserializeTrainingFlow } from "../lib/training-flow.mjs";
+import { trainingThreadTitle } from "../lib/training-threads.mjs";
+import type { TrainingThreadRequest, TrainingThreadStatus } from "../lib/training-threads.mjs";
+import { TrainingFlowStepper, TrainingFlowTimeline } from "./TrainingFlowStepper";
 import { ModelCardDrawer } from "./ModelCardDrawer";
 import { CsvProfile } from "./CsvProfile";
 import { CsvTrainingPlan } from "./CsvTrainingPlan";
@@ -327,6 +346,9 @@ type ClassificationDataset = {
   mapping_confirmation: "caller-provided";
   source_rows_persisted_as_transformed_examples: true;
   row_count: number;
+  // Rows the preparer excluded; drive the calibration review card.
+  unusable_rows_removed: number;
+  conflicted_group_rows_removed: number;
   mapping: {
     input_columns: string[];
     label_column: string;
@@ -801,6 +823,183 @@ function StructuredDatasetProfilePage({
   );
 }
 
+/**
+ * The yes/no footer every focus card carries: one question, one primary yes,
+ * and an optional scoped "no" alternative. Reuses the confirm styling the
+ * dataset-profile card established.
+ */
+function FlowQuestion({
+  question,
+  hint,
+  yesLabel,
+  yesDisabled,
+  onYes,
+  noLabel,
+  onNo,
+}: {
+  question: string;
+  hint?: string | null;
+  yesLabel: string;
+  yesDisabled?: boolean;
+  onYes: () => void;
+  noLabel?: string;
+  onNo?: () => void;
+}) {
+  return (
+    <div className="dataset-profile-confirm training-flow-question">
+      <div>
+        <strong>{question}</strong>
+        {hint && <small>{hint}</small>}
+      </div>
+      {noLabel && onNo && (
+        <button type="button" className="btn secondary" onClick={onNo}>
+          {noLabel}
+        </button>
+      )}
+      <button type="button" className="btn primary" disabled={yesDisabled} onClick={onYes}>
+        {yesLabel}
+      </button>
+    </div>
+  );
+}
+
+/**
+ * "Acceptable error" line on the goal card: the plan's promotion gate,
+ * human-phrased and editable within sane bounds (50–99%). The value is
+ * recorded on the card decision; plan preparation does not accept it yet.
+ */
+function AcceptableErrorLine({
+  minimumAccuracy,
+  onChange,
+}: {
+  minimumAccuracy: number;
+  onChange: (value: number) => void;
+}) {
+  const percent = Math.round(minimumAccuracy * 100);
+  return (
+    <label className="training-flow-accuracy-line">
+      <span>Must be right at least</span>
+      <input
+        type="number"
+        min={50}
+        max={99}
+        value={percent}
+        onChange={(event) => {
+          const raw = Number(event.target.value);
+          if (!Number.isFinite(raw)) return;
+          onChange(Math.min(0.99, Math.max(0.5, raw / 100)));
+        }}
+      />
+      <span>% of the time on unseen examples.</span>
+    </label>
+  );
+}
+
+/**
+ * One reviewed example on the calibration card. `verdict` is what today's
+ * yes/no UI records; the optional label-choice fields are the
+ * forward-compatible clarification-queue shape — a follow-up feature lets the
+ * user pick the correct label ({choice:"correct", corrected_label, of_labels})
+ * or mark the example ambiguous. All plain JSON, recorded in decision details.
+ */
+type CalibrationVerdict = {
+  group: string;
+  label: string;
+  verdict: "yes" | "no";
+  choice?: "confirm" | "correct" | "ambiguous";
+  corrected_label?: string;
+  of_labels?: string[];
+};
+
+/**
+ * Calibration review: the prepared dataset excluded rows (conflicted leakage
+ * groups and/or unusable rows). Shows the counts, then walks disputed
+ * examples one at a time — sourced from the inspection's row preview, since
+ * the manifest exposes counts only. Verdicts are recorded on the card
+ * decision; they cannot flow back into the dataset yet (see decision details).
+ */
+function CalibrationReviewCard({
+  dataset,
+  samples,
+  verdicts,
+  onVerdict,
+  onConfirm,
+  onChangeTarget,
+}: {
+  dataset: ClassificationDataset;
+  samples: Array<{ group: string; label: string; text: string }>;
+  verdicts: CalibrationVerdict[];
+  onVerdict: (verdict: CalibrationVerdict) => void;
+  onConfirm: (question: string, details: TrainingFlowDecisionDetails) => void;
+  onChangeTarget: () => void;
+}) {
+  const conflicted = dataset.conflicted_group_rows_removed ?? 0;
+  const unusable = dataset.unusable_rows_removed ?? 0;
+  const current = samples[verdicts.length];
+  const countsLine = [
+    conflicted > 0
+      ? `${conflicted.toLocaleString()} row${conflicted === 1 ? " fell" : "s fell"} in ${dataset.mapping.group_column} groups carrying different ${dataset.mapping.label_column} labels`
+      : null,
+    unusable > 0
+      ? `${unusable.toLocaleString()} row${unusable === 1 ? " was" : "s were"} unusable (empty target or inputs)`
+      : null,
+  ].filter(Boolean).join(", and ");
+  const question = `Proceed without the ${(conflicted + unusable).toLocaleString()} excluded rows?`;
+  const confirm = () => onConfirm(question, {
+    conflicted_group_rows_removed: conflicted,
+    unusable_rows_removed: unusable,
+    reviewed_examples: verdicts.map((verdict) => ({ ...verdict })),
+    // The dataset was already split; these verdicts are a record, not yet a
+    // feedback loop into preparation.
+    verdicts_applied: false,
+  });
+  return (
+    <section className="automatic-goal-card structured-dataset-analysis" aria-label="Review excluded rows">
+      <div className="csv-analysis-step-label">Review · rows we excluded</div>
+      <div className="csv-analysis-next">
+        <p className="csv-analysis-note" role="status">
+          {countsLine} — we excluded them before splitting so labels stay consistent.
+        </p>
+        {current ? (
+          <div className="training-flow-calibration-example">
+            <span className="training-flow-timeline-kicker">
+              disputed example {verdicts.length + 1} of {samples.length}
+            </span>
+            <blockquote>{current.text || `(${dataset.mapping.group_column}: ${current.group})`}</blockquote>
+            <FlowQuestion
+              question={`This says “${current.label}” — is that right?`}
+              hint="Your call is recorded with this decision; the excluded rows stay out either way for now."
+              yesLabel="Yes, that label is right"
+              onYes={() => onVerdict({ group: current.group, label: current.label, verdict: "yes", choice: "confirm" })}
+              noLabel="No, that label is wrong"
+              onNo={() => onVerdict({ group: current.group, label: current.label, verdict: "no" })}
+            />
+          </div>
+        ) : (
+          <>
+            {samples.length === 0 && (
+              <p className="csv-analysis-note" role="status">
+                The row-level conflicts aren&apos;t exported by the preparer yet, and none of the
+                disputed rows appear in the local preview — so there&apos;s no sample to show here.
+              </p>
+            )}
+            <FlowQuestion
+              question={question}
+              hint={samples.length > 0
+                ? "Your reviews are recorded with this decision."
+                : "Only the counts are available for this dataset."}
+              yesLabel="Yes, proceed"
+              onYes={confirm}
+              noLabel="No — change target"
+              onNo={onChangeTarget}
+            />
+          </>
+        )}
+      </div>
+    </section>
+  );
+}
+
 function predictionStatement(
   inspection: TrainingRecipeInspection,
   targetField: string | undefined,
@@ -880,28 +1079,23 @@ function StructuredTrainingPlan({
   );
 }
 
-function AutomaticGoalCard({
+/**
+ * The Understudy-analysis heading (use case + live status chip) shared by the
+ * prediction-target focus card. Extracted from the former AutomaticGoalCard,
+ * whose sections now live on separate decision cards.
+ */
+function AnalysisHeading({
   inspection,
   card,
   architect,
   architectProgress,
-  architectDraft,
   architectError,
-  onRetryArchitect,
-  trainingBackend,
-  localTrainingAvailable,
-  onTrainingBackendChange,
 }: {
   inspection: TrainingRecipeInspection;
   card: TrainingGoalCard | null;
   architect: PiEnvironmentArchitectResult | null;
   architectProgress: PiDatasetAnalysisEvent | null;
-  architectDraft: string;
   architectError: string | null;
-  onRetryArchitect: () => void;
-  trainingBackend: "local" | "managed";
-  localTrainingAvailable: boolean;
-  onTrainingBackendChange: (backend: "local" | "managed") => void;
 }) {
   const analysisIsLive = Boolean(
     architectProgress?.type === "phase"
@@ -923,41 +1117,15 @@ function AutomaticGoalCard({
     queued: "Queued",
   } as Record<string, string>)[environmentStatus] ?? environmentStatus.replaceAll("_", " ");
   return (
-    <section
-      className="automatic-goal-card structured-dataset-analysis"
-      aria-label="Dataset understanding and training plan"
-      aria-busy={analysisIsLive}
-    >
-      <div className="csv-analysis-step-label">2 · Understudy analysis</div>
-      <div className="csv-analysis-pi">
-        <div className="automatic-goal-card-heading structured-analysis-heading">
-          <div>
-            <strong>{trainingUseCaseLabel(inspection.detected_use_case)}</strong>
-          </div>
-          <em data-status={environmentStatus}>
-            {analysisIsLive && <i aria-hidden="true" />}
-            {statusLabel}
-          </em>
-        </div>
-        <PiAnalysisRail architect={architect} progress={architectProgress} error={architectError} />
-        <PiDesignCards
-          architect={architect}
-          progress={architectProgress}
-          draft={architectDraft}
-          error={architectError}
-          onRetry={onRetryArchitect}
-        />
+    <div className="automatic-goal-card-heading structured-analysis-heading">
+      <div>
+        <strong>{trainingUseCaseLabel(inspection.detected_use_case)}</strong>
       </div>
-      <div className="csv-analysis-step-label">3 · confirm the training plan</div>
-      <StructuredTrainingPlan
-        inspection={inspection}
-        card={card}
-        targetGoal={architect?.target_goal ?? null}
-        backend={trainingBackend}
-        localAvailable={localTrainingAvailable}
-        onBackendChange={onTrainingBackendChange}
-      />
-    </section>
+      <em data-status={environmentStatus}>
+        {analysisIsLive && <i aria-hidden="true" />}
+        {statusLabel}
+      </em>
+    </div>
   );
 }
 
@@ -1070,7 +1238,9 @@ export function ChatPane({
   resetToken,
   activeSessionId,
   requestedSession,
+  requestedThread,
   onSessionChange,
+  onTrainingThreadChange,
   onHistoryChanged,
   onStreamingChange,
   onTrainingChange,
@@ -1079,7 +1249,9 @@ export function ChatPane({
   resetToken: number;
   activeSessionId: string | null;
   requestedSession: ChatSessionRequest | null;
+  requestedThread?: TrainingThreadRequest | null;
   onSessionChange?: (sessionId: string) => void;
+  onTrainingThreadChange?: (threadId: string | null) => void;
   onHistoryChanged?: () => void;
   onStreamingChange?: (streaming: boolean) => void;
   onTrainingChange?: (active: boolean) => void;
@@ -1115,6 +1287,25 @@ export function ChatPane({
   const [trainingRecipe, setTrainingRecipe] = useState<TrainingRecipeInspection | null>(null);
   const [remoteRecipePlan, setRemoteRecipePlan] = useState<RemotePlan | null>(null);
   const [datasetProfileConfirmed, setDatasetProfileConfirmed] = useState(false);
+  const [trainingFlow, setTrainingFlow] = useState<TrainingFlow | null>(null);
+  // Training thread: the persisted identity of this flow. Created the moment
+  // data is dropped (status active) so a mid-flow restart resumes from the
+  // nav; every decision, invalidation, and run-terminal saves it.
+  const [trainingThreadId, setTrainingThreadId] = useState<string | null>(null);
+  const [trainingThreadStatus, setTrainingThreadStatus] = useState<TrainingThreadStatus>("active");
+  // Reopened completed/dismissed threads render their timeline read-only.
+  const [threadReadOnly, setThreadReadOnly] = useState(false);
+  // The thread's artifact_root no longer exists on disk: card bodies cannot
+  // be re-rendered, say so honestly instead of re-running the pipeline.
+  const [threadArtifactMissing, setThreadArtifactMissing] = useState<string | null>(null);
+  // Editable goal card: user-corrected goal statement and acceptable-error
+  // threshold. The threshold is recorded on the decision; plan preparation
+  // does not accept it yet (hardcoded 0.80 server-side) — see the card copy.
+  const [goalDraft, setGoalDraft] = useState<string | null>(null);
+  const [structuredTargetChoice, setStructuredTargetChoice] = useState<string | null>(null);
+  const [minAccuracyDraft, setMinAccuracyDraft] = useState<number | null>(null);
+  // Calibration review: verdicts on disputed examples, recorded on the card.
+  const [calibrationVerdicts, setCalibrationVerdicts] = useState<CalibrationVerdict[]>([]);
   const [remoteRecipeEligibilityError, setRemoteRecipeEligibilityError] = useState<string | null>(null);
   const [trainingGoalCard, setTrainingGoalCard] = useState<TrainingGoalCard | null>(null);
   const [environmentArchitect, setEnvironmentArchitect] = useState<PiEnvironmentArchitectResult | null>(null);
@@ -1144,6 +1335,13 @@ export function ChatPane({
   const [animatedMessageId, setAnimatedMessageId] = useState<string | null>(null);
   const observedResetToken = useRef(false);
   const observedSessionRequest = useRef<number | null>(null);
+  const observedThreadRequest = useRef<number | null>(null);
+  // A flow restored from a persisted thread; consumed (instead of creating a
+  // fresh flow) when the re-run inspection lands.
+  const restoredFlowRef = useRef<TrainingFlow | null>(null);
+  // One resume-side re-preparation of the CSV splits per reopened thread.
+  const resumePrepareAttempted = useRef<string | null>(null);
+  const wasTrainingActive = useRef(false);
   const dropInFlight = useRef(false);
   const dropRequestGeneration = useRef(0);
   const environmentArchitectAttempted = useRef<string | null>(null);
@@ -1213,8 +1411,16 @@ export function ChatPane({
     setDroppedWorkload(null);
     setCsvInspection(null);
     setTrainingRecipe(null);
+    setTrainingThreadId(null);
+    setTrainingThreadStatus("active");
+    setThreadReadOnly(false);
+    setThreadArtifactMissing(null);
+    restoredFlowRef.current = null;
+    resumePrepareAttempted.current = null;
+    wasTrainingActive.current = false;
     setRemoteRecipePlan(null);
     setDatasetProfileConfirmed(false);
+    setTrainingFlow(null);
     setRemoteRecipeEligibilityError(null);
     setTrainingGoalCard(null);
     setEnvironmentArchitect(null);
@@ -1236,6 +1442,33 @@ export function ChatPane({
     setRemoteTrainingView(false);
     setTrainingHaloVisual(null);
     dispatchDrop({ type: "reset" });
+  };
+
+  const persistTrainingThread = (
+    threadId: string,
+    workload: DroppedWorkload,
+    flow: TrainingFlow | null,
+    status: TrainingThreadStatus,
+  ) =>
+    invoke("training_thread_save", {
+      threadId,
+      title: trainingThreadTitle(workload.source_name, flow),
+      artifactRoot: workload.artifact_root,
+      workload,
+      flow,
+      status,
+    })
+      .then(() => onHistoryChanged?.())
+      .catch(() => {
+        setNotice("This training thread could not be saved for restart; the current step is unaffected.");
+      });
+
+  /** Explicit dismissal: record the muted outcome, then clear the surface. */
+  const dismissWorkloadThread = () => {
+    if (trainingThreadId && droppedWorkload && !threadReadOnly && trainingThreadStatus === "active") {
+      void persistTrainingThread(trainingThreadId, droppedWorkload, trainingFlow, "dismissed");
+    }
+    resetDroppedWorkload();
   };
 
   const applyCsvInspection = (result: CsvInspection) => {
@@ -1370,8 +1603,10 @@ export function ChatPane({
   }, [droppedWorkload, trainingRecipe]);
 
   useEffect(() => {
-    if (!remoteRecipePlan && trainingRecipe?.ready) prepareDetectedRecipe();
-  }, [prepareDetectedRecipe, remoteRecipePlan, trainingRecipe?.ready]);
+    // Read-only reopened threads are an audit trail — never restart the
+    // priced-plan pipeline for them.
+    if (!remoteRecipePlan && trainingRecipe?.ready && !threadReadOnly) prepareDetectedRecipe();
+  }, [prepareDetectedRecipe, remoteRecipePlan, threadReadOnly, trainingRecipe?.ready]);
 
   /**
    * Compile the Pi environment-architect proposal for a Custom training
@@ -1706,6 +1941,15 @@ export function ChatPane({
         const requestGeneration = dropRequestGeneration.current + 1;
         dropRequestGeneration.current = requestGeneration;
         setDroppedWorkload(null);
+        // A new drop always starts a NEW thread; whatever thread was open
+        // stays persisted with the status it already had.
+        setTrainingThreadId(null);
+        setTrainingThreadStatus("active");
+        setThreadReadOnly(false);
+        setThreadArtifactMissing(null);
+        restoredFlowRef.current = null;
+        resumePrepareAttempted.current = null;
+        wasTrainingActive.current = false;
         setCsvInspection(null);
         setMappingInputColumns([]);
         setMappingLabelColumn("");
@@ -1727,6 +1971,11 @@ export function ChatPane({
           .then(async (result) => {
             if (disposed || dropRequestGeneration.current !== requestGeneration) return;
             setDroppedWorkload(result);
+            // Dropping data creates the thread immediately (status active) so
+            // a mid-flow restart can resume this flow from the nav.
+            const threadId = crypto.randomUUID();
+            setTrainingThreadId(threadId);
+            void persistTrainingThread(threadId, result, null, "active");
             const inspectTable = shouldInspectDroppedTable(result);
             const inspectStructured = shouldInspectStructuredDataset(result);
             if (inspectStructured) {
@@ -1912,6 +2161,207 @@ export function ChatPane({
     setEnvironmentArchitectError(null);
     setEnvironmentArchitectRetry((attempt) => attempt + 1);
   };
+
+  // ----- Decision-card flow ("20 questions"): one card at a time. ---------
+  // The flow model (training-flow.mjs) is the serializable contract; ChatPane
+  // only maps existing state into card readiness and answers.
+
+  useEffect(() => {
+    // A reopened thread resumes its persisted flow verbatim instead of
+    // starting a fresh one; decision-derived drafts rehydrate from the
+    // recorded decisions so the resumed cards say what was decided.
+    const restored = restoredFlowRef.current;
+    if (restored && (trainingRecipe || csvInspection)) {
+      restoredFlowRef.current = null;
+      setTrainingFlow(restored);
+      const target = restored.cards.find((card) => card.kind === "prediction_target")?.decision;
+      const details = target?.details;
+      const targetDetails = details && typeof details === "object" && !Array.isArray(details)
+        ? details as Record<string, unknown>
+        : null;
+      const targetColumn = typeof targetDetails?.target_column === "string"
+        ? targetDetails.target_column
+        : null;
+      const targetGoal = typeof targetDetails?.target_goal === "string"
+        ? targetDetails.target_goal
+        : null;
+      setGoalDraft(targetGoal);
+      setStructuredTargetChoice(trainingRecipe ? targetColumn : null);
+      setMinAccuracyDraft(
+        typeof targetDetails?.minimum_accuracy === "number" ? targetDetails.minimum_accuracy : null,
+      );
+      setCalibrationVerdicts([]);
+      if (csvInspection && targetColumn) {
+        setMappingLabelColumn(targetColumn);
+        setMappingInputColumns(csvInspection.columns
+          .filter((column) => column.name !== targetColumn && column.non_empty_count > 0)
+          .map((column) => column.name));
+      }
+      if (
+        !threadReadOnly
+        && restored.cards.some((card) => card.kind === "data_profile" && card.decision)
+      ) {
+        setDatasetProfileConfirmed(true);
+      }
+      return;
+    }
+    if (trainingRecipe) {
+      setTrainingFlow(createTrainingFlow(trainingRecipe.ready
+        ? ["data_profile", "prediction_target", "plan", "consent", "run"]
+        : ["data_profile", "prediction_target", "plan", "compile_gates", "consent", "run"]));
+    } else if (csvInspection) {
+      setTrainingFlow(createTrainingFlow(["data_profile", "prediction_target", "plan", "backend", "run"]));
+    } else {
+      setTrainingFlow(null);
+    }
+    setGoalDraft(null);
+    setStructuredTargetChoice(null);
+    setMinAccuracyDraft(null);
+    setCalibrationVerdicts([]);
+  }, [trainingRecipe, csvInspection]);
+
+  // Persist the thread on every flow change (each answered card, each
+  // invalidation) — debounced like the chat transcript save.
+  useEffect(() => {
+    if (!trainingThreadId || !droppedWorkload || !trainingFlow || threadReadOnly) return;
+    const timer = window.setTimeout(() => {
+      void persistTrainingThread(trainingThreadId, droppedWorkload, trainingFlow, trainingThreadStatus);
+    }, 200);
+    return () => window.clearTimeout(timer);
+  }, [trainingThreadId, droppedWorkload, trainingFlow, trainingThreadStatus, threadReadOnly]);
+
+  // Run terminal: the training panel reports inactive after having been
+  // active. Record the run decision on the flow and complete the thread —
+  // the persisted timeline becomes the audit trail.
+  useEffect(() => {
+    if (localTrainingActive) {
+      wasTrainingActive.current = true;
+      return;
+    }
+    if (!wasTrainingActive.current || threadReadOnly) return;
+    wasTrainingActive.current = false;
+    if (!trainingThreadId) return;
+    setTrainingFlow((flow) => {
+      if (!flow || activeFlowCard(flow)?.kind !== "run") return flow;
+      return answerFlowCardModel(flow, "run", {
+        question: "Did the training run finish?",
+        answer: "yes",
+      });
+    });
+    setTrainingThreadStatus("completed");
+  }, [localTrainingActive, threadReadOnly, trainingThreadId]);
+
+  useEffect(() => {
+    onTrainingThreadChange?.(trainingThreadId);
+  }, [onTrainingThreadChange, trainingThreadId]);
+
+  // Background work keeps running eagerly; this only surfaces readiness on
+  // the upcoming steps of the rail.
+  useEffect(() => {
+    setTrainingFlow((flow) => {
+      if (!flow) return flow;
+      const has = (id: string) => flow.cards.some((card) => card.id === id);
+      let next = flow;
+      if (has("prediction_target")) {
+        if (environmentArchitect) next = markCardReady(next, "prediction_target");
+        else if (environmentArchitectProgress) next = markCardLoading(next, "prediction_target");
+      }
+      if (has("plan")) next = markCardReady(next, "plan");
+      if (has("compile_gates")) {
+        if (customCompileResult) next = markCardReady(next, "compile_gates");
+        else if (customCompileBusy) next = markCardLoading(next, "compile_gates");
+      }
+      if (has("consent")) {
+        if (remoteRecipePlan && remoteRecipePlan.maximum_spend_usd > 0) next = markCardReady(next, "consent");
+        else if (remoteRecipePlan) next = markCardLoading(next, "consent");
+      }
+      if (has("backend") && classificationDataset) next = markCardReady(next, "backend");
+      return next;
+    });
+  }, [environmentArchitect, environmentArchitectProgress, customCompileResult, customCompileBusy, remoteRecipePlan, classificationDataset]);
+
+  const answerTrainingFlowCard = (
+    id: string,
+    answer: TrainingFlowAnswer,
+    question: string,
+    details?: TrainingFlowDecisionDetails,
+  ) => {
+    if (!trainingFlow || threadReadOnly) return;
+    const active = activeFlowCard(trainingFlow);
+    if (!active || active.id !== id) return;
+    if (invalidatesLaterAnswers(trainingFlow, id, answer)) {
+      if (!window.confirm("Changing this answer resets the steps after it. Continue?")) return;
+      setClassificationDataset(null);
+      setCsvBackend(null);
+    }
+    setTrainingFlow(answerFlowCardModel(trainingFlow, id, { question, answer, details }));
+  };
+
+  const navigateTrainingFlowTo = (id: string) => {
+    if (!trainingFlow || threadReadOnly) return;
+    if (localTrainingActive || remoteTrainingView) {
+      setNotice("Training is running; earlier decisions are locked for this run.");
+      return;
+    }
+    const card = trainingFlow.cards.find((existing) => existing.id === id);
+    if (card?.status !== "answered") return;
+    setTrainingFlow(navigateToAnswered(trainingFlow, id));
+  };
+
+  // Approval happens inside the training panels (their own consent buttons);
+  // when a run actually starts, record the consent answer and move focus to
+  // the run card.
+  useEffect(() => {
+    if (!localTrainingActive && !remoteTrainingView) return;
+    setTrainingFlow((flow) => {
+      if (!flow || activeFlowCard(flow)?.kind !== "consent") return flow;
+      return answerFlowCardModel(flow, "consent", {
+        question: "Approve this upload and spend?",
+        answer: "yes",
+      });
+    });
+  }, [localTrainingActive, remoteTrainingView]);
+
+  // CSV flow: the plan's "yes" kicks off local split preparation; the answer
+  // lands when the splits exist. If the preparer excluded rows (conflicted
+  // leakage groups or unusable rows), a calibration review card slots in
+  // right after the plan; otherwise the backend question takes focus.
+  useEffect(() => {
+    if (!classificationDataset) return;
+    const excludedRows = (classificationDataset.conflicted_group_rows_removed ?? 0)
+      + (classificationDataset.unusable_rows_removed ?? 0);
+    setCalibrationVerdicts([]);
+    setTrainingFlow((flow) => {
+      if (!flow || activeFlowCard(flow)?.kind !== "plan") return flow;
+      let next = flow;
+      if (excludedRows > 0) next = insertCard(next, "calibration");
+      next = answerFlowCardModel(next, "plan", {
+        question: "Is this the plan you want?",
+        answer: "yes",
+      });
+      // A re-prepared dataset (e.g. new target) may have nothing to review
+      // even though an earlier prepare inserted the card — skip it cleanly.
+      if (excludedRows === 0 && activeFlowCard(next)?.kind === "calibration") {
+        next = answerFlowCardModel(next, "calibration", {
+          question: "Review the rows excluded during preparation?",
+          answer: { choice: "confirm" },
+          details: { excluded_rows: 0, note: "No rows were excluded this time." },
+        });
+      }
+      return next;
+    });
+  }, [classificationDataset]);
+
+  useEffect(() => {
+    if (!csvBackend) return;
+    setTrainingFlow((flow) => {
+      if (!flow || activeFlowCard(flow)?.kind !== "backend") return flow;
+      return answerFlowCardModel(flow, "backend", {
+        question: "Where should this train?",
+        answer: csvBackend === "managed" ? "cloud" : "local",
+      });
+    });
+  }, [csvBackend]);
 
   useEffect(() => {
     const evidence = trainingRecipe
@@ -2279,6 +2729,121 @@ export function ChatPane({
     void restoreHistorySession(requestedSession.sessionId);
   }, [requestedSession]);
 
+  /**
+   * Reopen a persisted training thread. Completed/dismissed threads render
+   * their full timeline read-only (the audit trail); an active thread
+   * resumes exactly at the flow's active card. Card bodies come from the
+   * workload artifacts at artifact_root — when those have moved or vanished
+   * we say so inline instead of re-running the pipeline.
+   */
+  const openTrainingThread = async (threadId: string) => {
+    if (streaming) {
+      setNotice("Finish or stop the current turn before opening a training thread.");
+      return;
+    }
+    setErr(null);
+    setNotice(null);
+    try {
+      const thread = await invoke<{
+        thread_id: string;
+        title: string;
+        artifact_root: string;
+        artifact_root_present: boolean;
+        workload: DroppedWorkload | null;
+        flow: TrainingFlow | null;
+        status: TrainingThreadStatus;
+      } | null>("training_thread_get", { threadId });
+      if (!thread || !thread.workload) {
+        setNotice("That training thread is no longer available.");
+        return;
+      }
+      let flow: TrainingFlow | null = null;
+      if (thread.flow) {
+        try {
+          flow = deserializeTrainingFlow(JSON.stringify(thread.flow));
+        } catch (error) {
+          setNotice(`This thread's saved decisions could not be read: ${String(error)}`);
+        }
+      }
+      resetStreamPacer();
+      resetDroppedWorkload();
+      const readOnly = thread.status !== "active";
+      setTrainingThreadId(thread.thread_id);
+      setTrainingThreadStatus(thread.status);
+      setThreadReadOnly(readOnly);
+      setDroppedWorkload(thread.workload);
+      if (!readOnly) wasTrainingActive.current = false;
+      if (!thread.artifact_root_present) {
+        // Honest resume: the receipts live at artifact_root. Without them we
+        // show the decision timeline from the saved flow and an inline notice
+        // rather than pretending the card bodies still exist.
+        setThreadArtifactMissing(thread.artifact_root);
+        if (flow) setTrainingFlow(flow);
+        return;
+      }
+      restoredFlowRef.current = flow;
+      const requestGeneration = dropRequestGeneration.current + 1;
+      dropRequestGeneration.current = requestGeneration;
+      const inspectTable = shouldInspectDroppedTable(thread.workload);
+      const inspectStructured = shouldInspectStructuredDataset(thread.workload);
+      if (inspectStructured || inspectTable) {
+        dispatchDrop({ type: "drop_received" });
+        dispatchDrop({ type: "inspection_started" });
+        try {
+          if (inspectStructured) {
+            try {
+              await inspectTrainingRecipe(thread.workload, requestGeneration);
+            } catch (error) {
+              if (!inspectTable) throw error;
+              await inspectCsvWorkload(thread.workload, requestGeneration);
+            }
+          } else {
+            await inspectCsvWorkload(thread.workload, requestGeneration);
+          }
+        } catch (error) {
+          restoredFlowRef.current = null;
+          dispatchDrop({ type: "failed" });
+          setErr(`This thread's workload could not be re-read: ${String(error)}`);
+          if (flow) setTrainingFlow(flow);
+        }
+      } else {
+        restoredFlowRef.current = null;
+        dispatchDrop({ type: "drop_received" });
+        dispatchDrop({ type: "succeeded" });
+        if (flow) setTrainingFlow(flow);
+      }
+    } catch (error) {
+      setNotice(`Training thread could not be opened: ${String(error)}`);
+    }
+  };
+
+  useEffect(() => {
+    if (!requestedThread || observedThreadRequest.current === requestedThread.requestId) return;
+    observedThreadRequest.current = requestedThread.requestId;
+    void openTrainingThread(requestedThread.threadId);
+  }, [requestedThread]);
+
+  // Resuming a CSV thread past its plan decision: the group-isolated splits
+  // are derived state, rebuilt once from the artifacts so the backend and
+  // calibration cards are answerable again.
+  useEffect(() => {
+    if (
+      !trainingThreadId
+      || threadReadOnly
+      || !trainingFlow
+      || !csvInspection
+      || classificationDataset
+      || dropRunning
+      || resumePrepareAttempted.current === trainingThreadId
+    ) return;
+    const planAnswered = trainingFlow.cards.some(
+      (card) => card.kind === "plan" && card.status === "answered",
+    );
+    if (!planAnswered || !mappingLabelColumn || !mappingGroupColumn || mappingInputColumns.length === 0) return;
+    resumePrepareAttempted.current = trainingThreadId;
+    prepareDroppedClassification();
+  }, [trainingThreadId, threadReadOnly, trainingFlow, csvInspection, classificationDataset, dropRunning, mappingLabelColumn, mappingGroupColumn, mappingInputColumns]);
+
   const setThinking = async (thinking: boolean) => {
     if (selectedChoice.route !== "local") return;
     setErr(null);
@@ -2347,9 +2912,6 @@ export function ChatPane({
     && selectedTargetColumn.empty_count > 0
     ? `${selectedTargetColumn.empty_count} row(s) without a target value will be dropped before training.`
     : null;
-  const trainingPlanVisible = Boolean(
-    csvInspection && droppedWorkload && !classificationDataset && !dropRunning,
-  );
   const trainingPlanBlocked =
     !csvInspection ||
     !mappingLabelColumn ||
@@ -2394,11 +2956,173 @@ export function ChatPane({
     trainingRecipe && droppedWorkload && !dropRunning,
   );
 
+  const focusFlowKind: TrainingFlowCardKind | null =
+    (trainingFlow ? activeFlowCard(trainingFlow)?.kind : null) ?? null;
+  const structuredTargetField = trainingRecipe?.field_names.find(
+    (field) => structuredFieldRole(field) === "target",
+  );
+  const structuredPredicting = trainingRecipe
+    ? predictionStatement(
+        trainingRecipe,
+        structuredTargetChoice ?? structuredTargetField,
+        goalDraft ?? environmentArchitect?.target_goal ?? null,
+      )
+    : null;
+  const architectDraftTarget = streamedJsonString(environmentArchitectDraft, "target_goal");
+  // Acceptable error: the plan's promotion gate, human-phrased and editable
+  // within sane bounds. Plan preparation does not accept this input yet — the
+  // edit is recorded on the card decision (see the decision details).
+  const effectiveMinAccuracy = Math.min(
+    0.99,
+    Math.max(0.5, minAccuracyDraft ?? trainingGoalCard?.promotion.minimum_accuracy ?? 0.8),
+  );
+  // Disputed examples for the calibration card, sourced from what IS exposed
+  // client-side: the inspection's row preview. The manifest only reports
+  // counts (conflicted_group_rows_removed / unusable_rows_removed); row-level
+  // conflicted examples are not exported by prepare yet, so this sample can
+  // be empty even when the counts are not.
+  const calibrationSamples = useMemo(() => {
+    if (!csvInspection || !mappingLabelColumn || !mappingGroupColumn) return [];
+    const byGroup = new Map<string, Map<string, Record<string, string>>>();
+    for (const row of csvInspection.row_preview ?? []) {
+      const group = (row.values[mappingGroupColumn] ?? "").trim().toLowerCase();
+      const label = (row.values[mappingLabelColumn] ?? "").trim();
+      if (!group || !label) continue;
+      const labels = byGroup.get(group) ?? new Map<string, Record<string, string>>();
+      if (!labels.has(label)) labels.set(label, row.values);
+      byGroup.set(group, labels);
+    }
+    const samples: Array<{ group: string; label: string; text: string }> = [];
+    for (const [group, labels] of byGroup) {
+      if (labels.size < 2) continue;
+      for (const [label, values] of labels) {
+        const text = mappingInputColumns
+          .map((column) => values[column])
+          .filter((value) => value && value.trim())
+          .join(" · ");
+        samples.push({ group, label, text });
+        if (samples.length >= 5) return samples;
+      }
+    }
+    return samples;
+  }, [csvInspection, mappingLabelColumn, mappingGroupColumn, mappingInputColumns]);
+  const flowSummaries = useMemo(() => {
+    const rows = trainingRecipe?.evidence.total_rows ?? csvInspection?.row_count ?? null;
+    const targetField = trainingRecipe
+      ? structuredTargetChoice
+        ?? trainingRecipe.field_names.find((field) => structuredFieldRole(field) === "target")
+      : mappingLabelColumn || null;
+    const chosenBackend = trainingRecipe
+      ? recipeBackend
+      : csvBackend ?? "managed";
+    return {
+      data_profile: rows != null ? `Data confirmed · ${rows.toLocaleString()} rows` : "Data confirmed",
+      prediction_target: targetField ? `Target · ${targetField}` : "Target confirmed",
+      plan: `Plan approved · ${chosenBackend === "managed" ? "cloud" : "local"}`,
+      calibration: classificationDataset
+        ? `Excluded rows reviewed · ${((classificationDataset.conflicted_group_rows_removed ?? 0) + (classificationDataset.unusable_rows_removed ?? 0)).toLocaleString()}`
+        : "Excluded rows reviewed",
+      compile_gates: "Gates passed",
+      backend: csvBackend === "managed" ? "Cloud training" : "Local training",
+      consent: "Upload and spend approved",
+      run: "Training running",
+    } as Record<string, string>;
+  }, [trainingRecipe, csvInspection, mappingLabelColumn, recipeBackend, csvBackend, structuredTargetChoice, classificationDataset]);
+
+  // Condensed committed bodies for answered timeline cards. Display-only —
+  // the timeline renders them inert; kinds whose active surface is a live,
+  // effectful panel (consent, run, backend) stay summary-only.
+  const renderCommittedStructuredCard = (card: TrainingFlowCard) => {
+    if (!trainingRecipe || !droppedWorkload) return null;
+    switch (card.kind) {
+      case "data_profile":
+        return <StructuredDataProfile sourceName={droppedWorkload.source_name} inspection={trainingRecipe} />;
+      case "prediction_target":
+        return (
+          <PiDesignCards
+            architect={environmentArchitect}
+            progress={environmentArchitectProgress}
+            draft={environmentArchitectDraft}
+          />
+        );
+      case "plan":
+        return (
+          <StructuredTrainingPlan
+            inspection={trainingRecipe}
+            card={trainingGoalCard}
+            targetGoal={goalDraft?.trim() || environmentArchitect?.target_goal || null}
+            backend={recipeBackend}
+            localAvailable={recipeLocalAvailable}
+            onBackendChange={() => {}}
+          />
+        );
+      case "compile_gates":
+        return (
+          <CustomTrainingCompileCard
+            phases={customCompilePhases}
+            busy={false}
+            result={customCompileResult}
+            error={customCompileError}
+            onRetry={() => {}}
+            waitingForMapping={false}
+            onCompile={null}
+          />
+        );
+      default:
+        return null;
+    }
+  };
+  const renderCommittedCsvCard = (card: TrainingFlowCard) => {
+    if (!csvInspection || !droppedWorkload) return null;
+    switch (card.kind) {
+      case "data_profile":
+        return (
+          <CsvProfile
+            sourceName={droppedWorkload.source_name}
+            rowCount={csvInspection.row_count}
+            columns={csvInspection.columns}
+            highlightedColumn={mappingLabelColumn}
+            onSelectColumn={() => {}}
+          />
+        );
+      case "prediction_target":
+        return (
+          <div className="csv-analysis-proposal">
+            <strong>{mappingLabelColumn ? `Predict ${mappingLabelColumn}` : "Target confirmed"}</strong>
+          </div>
+        );
+      case "plan":
+        return (
+          <CsvTrainingPlan
+            rowCount={csvInspection.row_count}
+            labelCount={selectedTargetColumn?.unique_count ?? null}
+            inputColumns={mappingInputColumns}
+            labelColumn={mappingLabelColumn}
+            groupColumn={mappingGroupColumn}
+          />
+        );
+      case "calibration":
+        return classificationDataset ? (
+          <p className="csv-analysis-note">
+            {((classificationDataset.conflicted_group_rows_removed ?? 0)
+              + (classificationDataset.unusable_rows_removed ?? 0)).toLocaleString()} excluded
+            row(s) reviewed — they stay out of training and evaluation.
+          </p>
+        ) : null;
+      default:
+        return null;
+    }
+  };
+
   // Focus mode: the dataset-review card is the whole surface. Expand the
   // window when the card needs more room; never shrink it.
   useEffect(() => {
     if (!datasetFocusMode || !isTauri()) return;
-    const card = document.querySelector(".structured-dataset-profile-page")
+    // Measure the ACTIVE card region, not the whole timeline: answered
+    // chapters scroll within the timeline; only the live question drives
+    // window growth (capped as before, never shrinking).
+    const card = document.querySelector(".training-flow-timeline-active")
+      ?? document.querySelector(".structured-dataset-profile-page")
       ?? document.querySelector(".workload-analysis");
     if (!card) return;
     let lastRequested = 0;
@@ -2414,7 +3138,7 @@ export function ChatPane({
     const observer = new ResizeObserver(grow);
     observer.observe(card);
     return () => observer.disconnect();
-  }, [datasetFocusMode, trainingRecipe, datasetProfileConfirmed]);
+  }, [datasetFocusMode, trainingRecipe, datasetProfileConfirmed, focusFlowKind]);
 
   return (
     <div
@@ -2596,40 +3320,190 @@ export function ChatPane({
                         ? "Creating group-isolated train, dev, and holdout splits…"
                         : "Understanding this file…"}
                 />
-              ) : trainingRecipe && droppedWorkload ? (
+              ) : threadArtifactMissing && droppedWorkload ? (
                 <>
-                  {!datasetProfileConfirmed ? (
+                  <div className="workload-generic-summary">
+                    <strong title={threadArtifactMissing}>{droppedWorkload.source_name}</strong>
+                    <small>
+                      This thread&apos;s workload artifacts are no longer at{" "}
+                      <code>{threadArtifactMissing}</code> — the decisions below are the saved
+                      record, but their card bodies can&apos;t be re-rendered. Drop the data
+                      again to start a new thread.
+                    </small>
+                  </div>
+                  {trainingFlow && (
+                    <TrainingFlowTimeline
+                      flow={trainingFlow}
+                      onNavigate={navigateTrainingFlowTo}
+                    >
+                      <ThreadReadOnlyNote status={trainingThreadStatus} />
+                    </TrainingFlowTimeline>
+                  )}
+                  <button
+                    type="button"
+                    className="btn ghost workload-generic-dismiss"
+                    onClick={resetDroppedWorkload}
+                  >
+                    Close
+                  </button>
+                </>
+              ) : trainingRecipe && droppedWorkload && trainingFlow ? (
+                <>
+                  <TrainingFlowTimeline
+                    flow={trainingFlow}
+                    summaries={flowSummaries}
+                    onNavigate={navigateTrainingFlowTo}
+                    renderCommitted={renderCommittedStructuredCard}
+                  >
+                  {threadReadOnly ? (
+                    <ThreadReadOnlyNote status={trainingThreadStatus} />
+                  ) : focusFlowKind === "data_profile" ? (
                     <StructuredDatasetProfilePage
                       sourceName={droppedWorkload.source_name}
                       inspection={trainingRecipe}
                       card={trainingGoalCard}
                       ready={Boolean(trainingRecipe.row_preview.length > 0)}
-                      onConfirm={() => setDatasetProfileConfirmed(true)}
-                      onClose={resetDroppedWorkload}
+                      onConfirm={() => {
+                        setDatasetProfileConfirmed(true);
+                        answerTrainingFlowCard(
+                          "data_profile",
+                          "yes",
+                          "Does this look like the data you meant to train on?",
+                        );
+                      }}
+                      onClose={dismissWorkloadThread}
                     />
-                  ) : <>
-                    {!remoteTrainingView && <button
-                      type="button"
-                      className="btn ghost dataset-flow-back"
-                      onClick={() => setDatasetProfileConfirmed(false)}
-                    >Back to data profile</button>}
-                    {!remoteTrainingView && <AutomaticGoalCard
-                      inspection={trainingRecipe}
-                      card={trainingGoalCard}
-                      architect={environmentArchitect}
-                      architectProgress={environmentArchitectProgress}
-                      architectDraft={environmentArchitectDraft}
-                      architectError={environmentArchitectError}
-                      onRetryArchitect={retryEnvironmentArchitect}
-                      trainingBackend={recipeBackend}
-                      localTrainingAvailable={recipeLocalAvailable}
-                      onTrainingBackendChange={setRecipeBackend}
-                    />}
-                    <div className="csv-analysis-next">
-                      {!trainingRecipe.ready
-                        && !remoteTrainingView
-                        && (environmentArchitect || customCompileBusy || customCompileResult || customCompileError) && (
-                        <>
+                  ) : focusFlowKind === "prediction_target" ? (
+                    <section
+                      className="automatic-goal-card structured-dataset-analysis"
+                      aria-label="Confirm the prediction target"
+                    >
+                      <div className="csv-analysis-step-label">2 · Understudy analysis</div>
+                      <div className="csv-analysis-pi">
+                        <AnalysisHeading
+                          inspection={trainingRecipe}
+                          card={trainingGoalCard}
+                          architect={environmentArchitect}
+                          architectProgress={environmentArchitectProgress}
+                          architectError={environmentArchitectError}
+                        />
+                        <PiAnalysisRail
+                          architect={environmentArchitect}
+                          progress={environmentArchitectProgress}
+                          error={environmentArchitectError}
+                        />
+                        <PiDesignCards
+                          architect={environmentArchitect}
+                          progress={environmentArchitectProgress}
+                          draft={environmentArchitectDraft}
+                          error={environmentArchitectError}
+                          onRetry={retryEnvironmentArchitect}
+                        />
+                      </div>
+                      <label className="training-flow-goal-edit">
+                        <span>Goal — edit until it says what you actually want</span>
+                        <textarea
+                          value={goalDraft
+                            ?? environmentArchitect?.target_goal
+                            ?? structuredPredicting
+                            ?? ""}
+                          placeholder="Understudy is still inferring the goal…"
+                          onChange={(event) => setGoalDraft(event.target.value)}
+                        />
+                      </label>
+                      <label className="csv-analysis-group-choice">
+                        <span>Target column</span>
+                        <select
+                          value={structuredTargetChoice ?? structuredTargetField ?? ""}
+                          onChange={(event) => setStructuredTargetChoice(event.target.value)}
+                        >
+                          {trainingRecipe.field_names.map((field) => (
+                            <option key={field} value={field}>{field}</option>
+                          ))}
+                        </select>
+                      </label>
+                      {structuredTargetChoice && structuredTargetChoice !== structuredTargetField && (
+                        <p className="csv-analysis-note" role="status">
+                          Recorded on this decision — recipe datasets don&apos;t re-derive their
+                          fields yet, so the plan below still trains on {structuredTargetField}.
+                        </p>
+                      )}
+                      <AcceptableErrorLine
+                        minimumAccuracy={effectiveMinAccuracy}
+                        onChange={setMinAccuracyDraft}
+                      />
+                      <FlowQuestion
+                        question={structuredPredicting
+                          ? `${structuredPredicting.replace(/\.$/, "")} — is that right?`
+                          : "Is this the target you want the model to predict?"}
+                        hint={environmentArchitect || architectDraftTarget
+                          ? "Edit the goal or threshold above, then confirm to move on to the training plan."
+                          : "Preparing the target… Understudy is still analyzing this dataset."}
+                        yesLabel={environmentArchitect || architectDraftTarget
+                          ? "Yes, that's the goal"
+                          : "Preparing the target…"}
+                        yesDisabled={!environmentArchitect && !architectDraftTarget}
+                        onYes={() => answerTrainingFlowCard(
+                          "prediction_target",
+                          // The (possibly edited) goal IS the answer: changing
+                          // it and confirming invalidates later steps.
+                          goalDraft?.trim()
+                            || environmentArchitect?.target_goal
+                            || structuredPredicting
+                            || "yes",
+                          "What should the model learn to do?",
+                          {
+                            target_goal: goalDraft?.trim()
+                              || environmentArchitect?.target_goal
+                              || structuredPredicting
+                              || null,
+                            target_column: structuredTargetChoice ?? structuredTargetField ?? null,
+                            target_column_applied: !structuredTargetChoice
+                              || structuredTargetChoice === structuredTargetField,
+                            minimum_accuracy: effectiveMinAccuracy,
+                            // Plan preparation hardcodes 0.80 server-side; the
+                            // edited gate is recorded here until it can flow in.
+                            minimum_accuracy_applied: false,
+                          },
+                        )}
+                        noLabel="No — dismiss"
+                        onNo={dismissWorkloadThread}
+                      />
+                    </section>
+                  ) : focusFlowKind === "plan" ? (
+                    <section
+                      className="automatic-goal-card structured-dataset-analysis"
+                      aria-label="Confirm the training plan"
+                    >
+                      <div className="csv-analysis-step-label">3 · confirm the training plan</div>
+                      <StructuredTrainingPlan
+                        inspection={trainingRecipe}
+                        card={trainingGoalCard}
+                        targetGoal={goalDraft?.trim() || environmentArchitect?.target_goal || null}
+                        backend={recipeBackend}
+                        localAvailable={recipeLocalAvailable}
+                        onBackendChange={setRecipeBackend}
+                      />
+                      <FlowQuestion
+                        question="Is this the plan you want?"
+                        hint="Switch Cloud or Local above before answering."
+                        yesLabel="Yes, use this plan"
+                        onYes={() => answerTrainingFlowCard(
+                          "plan",
+                          recipeBackend === "managed" ? "cloud" : "local",
+                          "Is this the plan you want?",
+                        )}
+                        noLabel="No — change target"
+                        onNo={() => navigateTrainingFlowTo("prediction_target")}
+                      />
+                    </section>
+                  ) : focusFlowKind === "compile_gates" ? (
+                    <section
+                      className="automatic-goal-card structured-dataset-analysis"
+                      aria-label="Compile gates"
+                    >
+                      <div className="csv-analysis-step-label">4 · compile gates</div>
+                      <div className="csv-analysis-next">
                           {csvInspection && !customCompileBusy && !customCompileResult && (
                             <div className="custom-compile-mapping flex flex-wrap gap-3">
                               <label className="csv-analysis-group-choice">
@@ -2680,8 +3554,25 @@ export function ChatPane({
                             ))}
                             onCompile={csvInspection ? compileCustomTrainingPlan : null}
                           />
-                        </>
-                      )}
+                      </div>
+                      <FlowQuestion
+                        question="Did the compile gates pass?"
+                        hint={customCompileResult?.environment_status === "executable"
+                          ? "The plan compiled into an executable local environment."
+                          : customCompileError
+                            ? "Retry the compile above, or dismiss this dataset."
+                            : "Compiling locally — no upload or spend has started."}
+                        yesLabel={customCompileResult?.environment_status === "executable"
+                          ? "Yes, continue to approval"
+                          : "Waiting for the gates…"}
+                        yesDisabled={customCompileResult?.environment_status !== "executable"}
+                        onYes={() => answerTrainingFlowCard("compile_gates", "yes", "Did the compile gates pass?")}
+                        noLabel="No — dismiss"
+                        onNo={dismissWorkloadThread}
+                      />
+                    </section>
+                  ) : (
+                    <div className="csv-analysis-next">
                       {(trainingRecipe.ready || customCompileResult?.environment_status === "executable") && remoteRecipePlan ? <>
                         {recipeLocalAvailable && (
                           <div hidden={recipeBackend === "managed"}>
@@ -2722,7 +3613,7 @@ export function ChatPane({
                             trainingExamples={trainingRecipe.row_preview}
                           />
                         )}
-                      </> : (environmentArchitect || customCompileBusy || customCompileResult || customCompileError) && !trainingRecipe.ready ? null : (
+                      </> : (
                         <div className="remote-training-state" role="status" aria-live="polite">
                           <strong>{environmentArchitectProgress ? "Understudy is checking the training plan" : `Preparing ${trainingUseCaseLabel(trainingRecipe.detected_use_case)}`}</strong>
                           <small>{(environmentArchitectProgress?.type === "phase"
@@ -2732,16 +3623,34 @@ export function ChatPane({
                         </div>
                       )}
                     </div>
-                  </>}
-                  {!localTrainingActive && !remoteTrainingView && (
-                    <button type="button" className="btn ghost workload-generic-dismiss" onClick={resetDroppedWorkload}>
-                      Dismiss
+                  )}
+                  </TrainingFlowTimeline>
+                  <TrainingFlowStepper
+                    flow={trainingFlow}
+                    summaries={flowSummaries}
+                    onNavigate={navigateTrainingFlowTo}
+                  />
+                  {!localTrainingActive && !remoteTrainingView && focusFlowKind !== "data_profile" && (
+                    <button
+                      type="button"
+                      className="btn ghost workload-generic-dismiss"
+                      onClick={dismissWorkloadThread}
+                    >
+                      {threadReadOnly ? "Close" : "Dismiss"}
                     </button>
                   )}
                 </>
-              ) : csvInspection && droppedWorkload ? (
+              ) : csvInspection && droppedWorkload && trainingFlow ? (
                 <>
-                  {!classificationDataset ? (
+                  <TrainingFlowTimeline
+                    flow={trainingFlow}
+                    summaries={flowSummaries}
+                    onNavigate={navigateTrainingFlowTo}
+                    renderCommitted={renderCommittedCsvCard}
+                  >
+                  {threadReadOnly ? (
+                    <ThreadReadOnlyNote status={trainingThreadStatus} />
+                  ) : focusFlowKind === "data_profile" ? (
                     <>
                       <div className="csv-analysis-step-label csv-analysis-step-structure">1 · data structure</div>
                       <CsvProfile
@@ -2770,6 +3679,24 @@ export function ChatPane({
                         inputColumns={mappingInputColumns}
                         labelColumn={mappingLabelColumn}
                       />
+                      <FlowQuestion
+                        question="Does this look like the data you meant to train on?"
+                        hint="Confirming starts Understudy analysis and builds the training plan."
+                        yesLabel="Yes, analyze this dataset"
+                        onYes={() => {
+                          setDatasetProfileConfirmed(true);
+                          answerTrainingFlowCard(
+                            "data_profile",
+                            "yes",
+                            "Does this look like the data you meant to train on?",
+                          );
+                        }}
+                        noLabel="No — dismiss"
+                        onNo={dismissWorkloadThread}
+                      />
+                    </>
+                  ) : focusFlowKind === "prediction_target" ? (
+                    <>
                       <div className="csv-analysis-step-label">2 · Understudy analysis</div>
                       <div className="csv-analysis-pi">
                         <PiAnalysisRail
@@ -2785,18 +3712,29 @@ export function ChatPane({
                           onRetry={retryEnvironmentArchitect}
                         />
                       </div>
-                      <div className="csv-analysis-step-label">3 · confirm the training plan</div>
                       <div className="csv-analysis-next">
-                      <CsvTrainingPlan
-                        rowCount={csvInspection.row_count}
-                        labelCount={selectedTargetColumn?.unique_count ?? null}
-                        inputColumns={mappingInputColumns}
-                        labelColumn={mappingLabelColumn}
-                        groupColumn={mappingGroupColumn}
-                      />
                       <div className="csv-analysis-proposal">
                         <strong>{mappingLabelColumn ? `Predict ${mappingLabelColumn}` : "Choose what to predict"}</strong>
                       </div>
+                      <label className="csv-analysis-group-choice">
+                        <span>Target column</span>
+                        <select
+                          value={mappingLabelColumn}
+                          onChange={(event) => {
+                            const label = event.target.value;
+                            setMappingLabelColumn(label);
+                            setMappingInputColumns(csvInspection.columns
+                              .filter((column) => column.name !== label && column.non_empty_count > 0)
+                              .map((column) => column.name));
+                            setClassificationDataset(null);
+                          }}
+                        >
+                          <option value="">Choose what to predict</option>
+                          {csvInspection.columns.map((column) => (
+                            <option key={column.name} value={column.name}>{column.name}</option>
+                          ))}
+                        </select>
+                      </label>
                       {selectedTargetBlockReason ? (
                         <p className="csv-analysis-caution" role="status">
                           {selectedTargetBlockReason}
@@ -2832,9 +3770,67 @@ export function ChatPane({
                           </select>
                         </label>
                       )}
+                      <AcceptableErrorLine
+                        minimumAccuracy={effectiveMinAccuracy}
+                        onChange={setMinAccuracyDraft}
+                      />
                       </div>
+                      <FlowQuestion
+                        question={mappingLabelColumn
+                          ? `Predict ${mappingLabelColumn} from ${mappingInputColumns.length.toLocaleString()} input column${mappingInputColumns.length === 1 ? "" : "s"} — is that right?`
+                          : "What should the model predict?"}
+                        hint="Change the target or reference column above before answering."
+                        yesLabel="Yes, that's the target"
+                        yesDisabled={trainingPlanBlocked}
+                        onYes={() => answerTrainingFlowCard(
+                          "prediction_target",
+                          mappingLabelColumn,
+                          `Predict ${mappingLabelColumn} — is that right?`,
+                          {
+                            target_column: mappingLabelColumn,
+                            minimum_accuracy: effectiveMinAccuracy,
+                            // Split preparation doesn't take a promotion gate;
+                            // recorded here until it can flow into prepare.
+                            minimum_accuracy_applied: false,
+                          },
+                        )}
+                        noLabel="No — dismiss"
+                        onNo={dismissWorkloadThread}
+                      />
                     </>
-                  ) : (
+                  ) : focusFlowKind === "plan" ? (
+                    <>
+                      <div className="csv-analysis-step-label">3 · confirm the training plan</div>
+                      <div className="csv-analysis-next">
+                      <CsvTrainingPlan
+                        rowCount={csvInspection.row_count}
+                        labelCount={selectedTargetColumn?.unique_count ?? null}
+                        inputColumns={mappingInputColumns}
+                        labelColumn={mappingLabelColumn}
+                        groupColumn={mappingGroupColumn}
+                      />
+                      </div>
+                      <FlowQuestion
+                        question="Is this the plan you want?"
+                        hint="Yes creates group-isolated train, dev, and holdout splits locally — no upload or spend."
+                        yesLabel={mappingLabelColumn ? `Yes — train for ${mappingLabelColumn}` : "Choose a target first"}
+                        yesDisabled={trainingPlanBlocked || dropRunning}
+                        onYes={prepareDroppedClassification}
+                        noLabel="No — change target"
+                        onNo={() => navigateTrainingFlowTo("prediction_target")}
+                      />
+                    </>
+                  ) : focusFlowKind === "calibration" && classificationDataset ? (
+                    <CalibrationReviewCard
+                      dataset={classificationDataset}
+                      samples={calibrationSamples}
+                      verdicts={calibrationVerdicts}
+                      onVerdict={(verdict) => setCalibrationVerdicts((existing) => [...existing, verdict])}
+                      onConfirm={(question, details) =>
+                        answerTrainingFlowCard("calibration", { choice: "confirm" }, question, details)}
+                      onChangeTarget={() => navigateTrainingFlowTo("prediction_target")}
+                    />
+                  ) : classificationDataset ? (
                     <div className={`workload-dataset-ready${localTrainingActive ? " is-active" : ""}`}>
                       {csvBackend === null ? (
                         <div className="remote-training-state" role="group" aria-label="Choose where to train">
@@ -2889,7 +3885,13 @@ export function ChatPane({
                         />
                       ) : null}
                     </div>
-                  )}
+                  ) : null}
+                  </TrainingFlowTimeline>
+                  <TrainingFlowStepper
+                    flow={trainingFlow}
+                    summaries={flowSummaries}
+                    onNavigate={navigateTrainingFlowTo}
+                  />
                 </>
               ) : droppedWorkload ? (
                 <>
@@ -2902,9 +3904,9 @@ export function ChatPane({
                   <button
                     type="button"
                     className="btn ghost workload-generic-dismiss"
-                    onClick={resetDroppedWorkload}
+                    onClick={dismissWorkloadThread}
                   >
-                    Dismiss
+                    {threadReadOnly ? "Close" : "Dismiss"}
                   </button>
                 </>
               ) : null}
@@ -2927,18 +3929,7 @@ export function ChatPane({
         </MessageScroller>
       </MessageScrollerProvider>
 
-      {trainingPlanVisible ? (
-        <div className="ai-chat-composer training-plan-action">
-          <button
-            type="button"
-            className="btn primary training-plan-submit"
-            disabled={trainingPlanBlocked}
-            onClick={prepareDroppedClassification}
-          >
-            {mappingLabelColumn ? `Train for ${mappingLabelColumn}` : "Choose a target"}
-          </button>
-        </div>
-      ) : (
+      {(
         <div className="ai-chat-composer">
           <PromptInput
             accept="image/*"
@@ -3004,6 +3995,23 @@ export function ChatPane({
         </div>
       )}
       <LocalClassifierLibraryDialog open={classifierLibraryOpen} onOpenChange={setClassifierLibraryOpen} />
+    </div>
+  );
+}
+
+/**
+ * Footer for a reopened, no-longer-editable training thread: the timeline
+ * above it is the audit trail — every yes, the receipts, the outcome.
+ */
+function ThreadReadOnlyNote({ status }: { status: TrainingThreadStatus }) {
+  return (
+    <div className="workload-generic-summary training-thread-readonly" role="note">
+      <strong>{status === "completed" ? "Completed training thread" : "Dismissed training thread"}</strong>
+      <small>
+        {status === "completed"
+          ? "This run finished; the decisions above are the saved record. Drop new data to start another thread."
+          : "This thread was dismissed before training; its decisions are kept for reference. Drop new data to start another thread."}
+      </small>
     </div>
   );
 }

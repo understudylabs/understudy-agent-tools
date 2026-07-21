@@ -130,6 +130,28 @@ export function baselineScorePercent(events) {
   return null;
 }
 
+/**
+ * Pull the TRAINED model's aggregate score out of the event stream, as a
+ * 0–100 percentage, or null while unknown. Mirrors baselineScorePercent for
+ * completed trained/final evaluation events; used to mark the bar-to-beat
+ * strip as cleared once the trained model meets the baseline.
+ * @param {Array<{type?: string, details?: Record<string, string | number | boolean>}>} events
+ * @returns {number | null}
+ */
+export function trainedScorePercent(events) {
+  for (let index = events.length - 1; index >= 0; index -= 1) {
+    const event = events[index];
+    if (event?.type !== "trained_evaluation" && event?.type !== "evaluation") continue;
+    const details = event.details ?? {};
+    if (details.stage !== undefined && details.stage !== "completed") continue;
+    const raw = [details.score, details.aggregate_score, details.accuracy]
+      .find((value) => typeof value === "number" && Number.isFinite(value));
+    if (raw === undefined) continue;
+    return raw <= 1 ? Math.round(raw * 100) : Math.round(raw);
+  }
+  return null;
+}
+
 /** @param {string | undefined} isoTimestamp */
 function narrationTime(isoTimestamp) {
   if (!isoTimestamp) return null;

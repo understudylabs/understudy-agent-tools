@@ -142,7 +142,7 @@ test("remote training uses live capabilities with explicit upload and spend cons
   const chat = await read("apps/homescreen/app/components/ChatPane.tsx");
   const globals = await read("apps/homescreen/app/globals.css");
   assert.match(chat, /inspect_remote_training_recipe/);
-  assert.match(chat, /AutomaticGoalCard/);
+  assert.match(chat, /TrainingFlowStepper/);
   assert.match(chat, /StructuredDataProfile/);
   assert.match(chat, /StructuredTrainingPlan/);
   assert.match(chat, /structured-dataset-analysis/);
@@ -186,7 +186,9 @@ test("remote training uses live capabilities with explicit upload and spend cons
   assert.match(chat, /backend\.id === "mlx-local" && backend\.compatible && backend\.execution_ready/);
   assert.doesNotMatch(chat, /trainingRecipe\.evaluator !== "gsm8k_final_answer"/);
   assert.doesNotMatch(chat, /GSM8K reasoning model|frontierModel:\s*"glm-5\.2"/);
-  assert.match(chat, /if \(!remoteRecipePlan && trainingRecipe\?\.ready\) prepareDetectedRecipe\(\)/);
+  // Reopened read-only training threads are an audit trail; the priced-plan
+  // pipeline must not restart for them.
+  assert.match(chat, /if \(!remoteRecipePlan && trainingRecipe\?\.ready && !threadReadOnly\) prepareDetectedRecipe\(\)/);
   assert.doesNotMatch(chat, /Prepare no-spend plan/);
   assert.match(chat, /<LocalSftTrainingPanel/);
   assert.match(chat, /recipeBackend === "managed"/);
@@ -203,7 +205,8 @@ test("remote training uses live capabilities with explicit upload and spend cons
   assert.match(chat, /onActiveChange=\{setLocalTrainingActive\}/);
   assert.match(chat, /onRunViewChange=\{setRemoteTrainingView\}/);
   assert.match(chat, /trainingExamples=\{trainingRecipe\.row_preview\}/);
-  assert.match(chat, /!remoteTrainingView && <AutomaticGoalCard/);
+  assert.match(chat, /focusFlowKind === "prediction_target"/);
+  assert.match(chat, /createTrainingFlow/);
   assert.match(localSftPanel, /start_local_sft_training/);
   assert.match(localSftPanel, /compile_remote_training_backends/);
   assert.match(localSftPanel, /Training locally · \$0/);

@@ -47,6 +47,7 @@ export type NarrationEvent = {
 };
 
 export function baselineScorePercent(events: NarrationEvent[]): number | null;
+export function trainedScorePercent(events: NarrationEvent[]): number | null;
 
 export function narrationFeed(
   events: NarrationEvent[],

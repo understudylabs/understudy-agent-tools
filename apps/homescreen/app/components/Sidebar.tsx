@@ -16,6 +16,8 @@ import {
   DialogTitle,
 } from "@/app/components/base-ui/dialog";
 import { chatHistoryTime, type ChatSessionSummary } from "../lib/chat-history";
+import { trainingThreadStatusGlyph } from "../lib/training-threads.mjs";
+import type { TrainingThreadSummary } from "../lib/training-threads.mjs";
 
 export type PaneId =
   | "status"
@@ -56,6 +58,10 @@ export function Sidebar({
   onArchiveSession,
   onRestoreSession,
   onArchiveAll,
+  trainingThreads,
+  activeThreadId,
+  onSelectThread,
+  onArchiveThread,
 }: {
   active: PaneId;
   onSelect: (id: PaneId) => void;
@@ -71,6 +77,10 @@ export function Sidebar({
   onArchiveSession: (sessionId: string) => Promise<boolean>;
   onRestoreSession: (sessionId: string) => Promise<boolean>;
   onArchiveAll: () => Promise<boolean>;
+  trainingThreads: TrainingThreadSummary[];
+  activeThreadId: string | null;
+  onSelectThread: (threadId: string) => void;
+  onArchiveThread: (threadId: string) => Promise<boolean>;
 }) {
   const [showArchived, setShowArchived] = useState(false);
   const [archiveAllOpen, setArchiveAllOpen] = useState(false);
@@ -150,6 +160,59 @@ export function Sidebar({
   return (
     <aside className="sidebar">
       {sectionSwitcher}
+      {!showArchived && trainingThreads.length > 0 && (
+        <>
+          <div className="chat-nav-heading">
+            <div className="nav-section">Training</div>
+          </div>
+          <nav className="chat-nav-list training-thread-list" aria-label="Training threads">
+            {trainingThreads.map((thread) => {
+              const glyph = trainingThreadStatusGlyph(thread.status);
+              const isActive = active === "chat" && activeThreadId === thread.thread_id;
+              return (
+                <div
+                  key={thread.thread_id}
+                  className={"chat-nav-item training-thread-item" + (isActive ? " active" : "")}
+                >
+                  <button
+                    type="button"
+                    className="chat-nav-open"
+                    onClick={() => onSelectThread(thread.thread_id)}
+                    title={`${thread.title} · ${glyph.label}`}
+                    disabled={archiveBusy !== null}
+                  >
+                    <span className={glyph.className} aria-label={glyph.label} role="img" />
+                    <span className="chat-nav-copy">
+                      <span className="chat-nav-title">
+                        {thread.title.trim().replace(/\s+/g, " ") || "Untitled training"}
+                      </span>
+                      <span className="chat-nav-time">
+                        {glyph.label} · {chatHistoryTime(thread.updated_at)}
+                      </span>
+                    </span>
+                  </button>
+                  {thread.status === "active" && (
+                    <button
+                      type="button"
+                      className="chat-nav-action"
+                      aria-label={`Dismiss training thread: ${thread.title || "Untitled training"}`}
+                      title="Dismiss training thread"
+                      disabled={archiveBusy !== null}
+                      onClick={() => void onArchiveThread(thread.thread_id)}
+                    >
+                      {archiveBusy === thread.thread_id ? (
+                        <span className="chat-nav-action-progress" aria-hidden="true" />
+                      ) : (
+                        <ArchiveIcon aria-hidden="true" size={15} strokeWidth={1.8} />
+                      )}
+                    </button>
+                  )}
+                </div>
+              );
+            })}
+          </nav>
+        </>
+      )}
       <div className="chat-nav-heading">
         <div className="nav-section">{showArchived ? "Archived" : "Chats"}</div>
         <button

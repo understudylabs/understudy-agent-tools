@@ -19,6 +19,7 @@ import { RuntimeRepairPrompt } from "./components/RuntimeRepairPrompt";
 import { ModelDownloadNotice } from "./components/ModelDownloadNotice";
 import { useStatus } from "./lib/useStatus";
 import type { ChatSessionRequest, ChatSessionSummary } from "./lib/chat-history";
+import type { TrainingThreadRequest, TrainingThreadSummary } from "./lib/training-threads.mjs";
 
 export default function Page() {
   const [pane, setPane] = useState<PaneId>("chat");
@@ -33,6 +34,9 @@ export default function Page() {
   const [chatTrainingActive, setChatTrainingActive] = useState(false);
   const [activeChatSessionId, setActiveChatSessionId] = useState<string | null>(null);
   const [requestedChatSession, setRequestedChatSession] = useState<ChatSessionRequest | null>(null);
+  const [trainingThreads, setTrainingThreads] = useState<TrainingThreadSummary[]>([]);
+  const [activeTrainingThreadId, setActiveTrainingThreadId] = useState<string | null>(null);
+  const [requestedTrainingThread, setRequestedTrainingThread] = useState<TrainingThreadRequest | null>(null);
   const [starterDownloadRequest, setStarterDownloadRequest] = useState(0);
   const [signInIntent, setSignInIntent] = useState<{
     returnToChat: boolean;
@@ -51,12 +55,14 @@ export default function Page() {
     setChatHistoryLoading(true);
     setChatHistoryError(null);
     try {
-      const [activeSessions, archivedSessions] = await Promise.all([
+      const [activeSessions, archivedSessions, threads] = await Promise.all([
         invoke<ChatSessionSummary[]>("chat_sessions_list", { limit: 100, archived: false }),
         invoke<ChatSessionSummary[]>("chat_sessions_list", { limit: 100, archived: true }),
+        invoke<TrainingThreadSummary[]>("training_threads_list", { limit: 100 }).catch(() => []),
       ]);
       setChatHistory(activeSessions);
       setArchivedChatHistory(archivedSessions);
+      setTrainingThreads(threads);
     } catch (error) {
       setChatHistoryError(`Chats could not be loaded: ${String(error)}`);
     } finally {
@@ -141,6 +147,24 @@ export default function Page() {
       setChatArchiveBusy(null);
     }
   }, [activeChatSessionId, chatHistory, chatStreaming, refreshChatHistory, startFreshAfterArchive]);
+
+  const archiveTrainingThread = useCallback(async (threadId: string) => {
+    setChatArchiveBusy(threadId);
+    setChatHistoryError(null);
+    try {
+      const archived = await invoke<boolean>("training_thread_archive", { threadId });
+      if (!archived) {
+        setChatHistoryError("That training thread is already completed or dismissed.");
+      }
+      await refreshChatHistory();
+      return archived;
+    } catch (error) {
+      setChatHistoryError(`Training thread could not be dismissed: ${String(error)}`);
+      return false;
+    } finally {
+      setChatArchiveBusy(null);
+    }
+  }, [refreshChatHistory]);
 
   const handleChatSessionChange = useCallback((sessionId: string) => {
     setActiveChatSessionId(sessionId);
@@ -291,6 +315,16 @@ export default function Page() {
             requestId: (current?.requestId ?? 0) + 1,
           }));
         }}
+        trainingThreads={trainingThreads}
+        activeThreadId={activeTrainingThreadId}
+        onArchiveThread={archiveTrainingThread}
+        onSelectThread={(threadId) => {
+          setPane("chat");
+          setRequestedTrainingThread((current) => ({
+            threadId,
+            requestId: (current?.requestId ?? 0) + 1,
+          }));
+        }}
       />
       <main className="content">
         {pane === "status" && <StatusPane status={status} />}
@@ -299,7 +333,9 @@ export default function Page() {
             resetToken={chatResetToken}
             activeSessionId={activeChatSessionId}
             requestedSession={requestedChatSession}
+            requestedThread={requestedTrainingThread}
             onSessionChange={handleChatSessionChange}
+            onTrainingThreadChange={setActiveTrainingThreadId}
             onHistoryChanged={refreshChatHistory}
             onStreamingChange={setChatStreaming}
             onTrainingChange={setChatTrainingActive}

@@ -38,10 +38,17 @@ export default function EmptyState({
   variant,
   detail,
   onRetry,
+  onStart,
+  starting = false,
+  startError,
 }: {
   variant: "moraine-down" | "no-traces";
   detail?: string;
   onRetry: () => void;
+  /** Present only when the moraine binary is installed — renders "Start Moraine". */
+  onStart?: () => void;
+  starting?: boolean;
+  startError?: string | null;
 }) {
   return (
     <div className="flex h-full items-center justify-center px-8">
@@ -59,6 +66,22 @@ export default function EmptyState({
               <div className="mono mt-2 text-[10px] text-ink-muted/60">if not, install it first</div>
               <CommandBlock cmd="uv tool install moraine-cli && moraine setup" />
             </div>
+            {onStart && (
+              <button
+                onClick={onStart}
+                disabled={starting}
+                className="mono mt-5 rounded-[8px] border border-rule px-3 py-1.5 text-[11px] text-ink transition-colors hover:border-ink-muted/50 hover:text-ink-bright disabled:cursor-default disabled:opacity-60"
+              >
+                {starting ? (
+                  <span className="breath">starting moraine…</span>
+                ) : (
+                  "Start Moraine"
+                )}
+              </button>
+            )}
+            {startError && (
+              <div className="mono mt-3 break-all text-[10px] text-[#f85149]">{startError}</div>
+            )}
             {detail && (
               <div className="mono mt-4 break-all text-[10px] text-ink-muted/40">{detail}</div>
             )}
