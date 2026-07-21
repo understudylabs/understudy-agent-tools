@@ -709,9 +709,11 @@ export function inspectCaptureCsv(
   } else if (labelCounts.size < 2) {
     status = "needs_data";
     reasons.push("At least two label values are required for classification.");
-  } else if (columns[labelIndex].empty_count > 0) {
+  } else if (columns[labelIndex].empty_count > rows.length * 0.1) {
     status = "needs_cleanup";
-    reasons.push(`${columns[labelIndex].empty_count} row(s) have an empty label.`);
+    reasons.push(
+      `${columns[labelIndex].empty_count} of ${rows.length} row(s) have an empty label; this column looks unlabeled.`,
+    );
   } else if (minimumExamples !== null && minimumExamples < MIN_EXAMPLES_PER_CLASS) {
     status = "needs_data";
     reasons.push(
@@ -726,6 +728,15 @@ export function inspectCaptureCsv(
   }
   if (duplicateRowCount > 0) {
     warnings.push(`${duplicateRowCount} exact duplicate row(s) will be removed before splitting the dataset.`);
+  }
+  if (
+    labelCandidate
+    && columns[labelIndex].empty_count > 0
+    && columns[labelIndex].empty_count <= rows.length * 0.1
+  ) {
+    warnings.push(
+      `${columns[labelIndex].empty_count} row(s) with an empty label will be dropped before splitting.`,
+    );
   }
   if (groupColumn) {
     const groupIndex = headers.indexOf(groupColumn);
@@ -869,7 +880,10 @@ export function prepareCaptureClassificationDataset(
   let unusableRowsRemoved = 0;
   uniqueRows.forEach(({ row, sourceIndex }) => {
     const label = row[labelIndex].trim();
-    if (!label) throw new Error(`Table record ${sourceIndex + 1} has an empty label.`);
+    if (!label) {
+      unusableRowsRemoved += 1;
+      return;
+    }
     const normalizedGroup = normalizeClassificationGroup(row[groupIndex]);
     if (!normalizedGroup) {
       unusableRowsRemoved += 1;
