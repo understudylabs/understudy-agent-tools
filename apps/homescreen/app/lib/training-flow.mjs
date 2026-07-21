@@ -11,13 +11,19 @@
 //   }
 //   TrainingFlowCard = {
 //     id: string,                          // stable; equals the kind
-//     kind: "data_profile" | "prediction_target" | "plan" | "compile_gates"
-//         | "backend" | "consent" | "run" | "outcome",
+//     kind: "data_profile" | "prediction_target" | "plan" | "calibration"
+//         | "compile_gates" | "backend" | "consent" | "run" | "outcome",
 //     status: "pending" | "loading" | "ready" | "answered" | "active",
 //     decision: null | {
 //       question: string,                  // the yes/no-shaped question shown
-//       answer: "yes" | "no" | string,     // "yes"/"no" or a scoped value
+//       answer: "yes" | "no" | string      // "yes"/"no", a scoped value, or a
+//             | { choice: "confirm" | "correct" | "ambiguous",
+//                 label?: string,          //   label-choice value object (the
+//                 of_labels?: string[] },  //   clarification-queue shape)
 //       answered_at: string,               // ISO-8601 timestamp
+//       details?: JSONValue,               // optional structured record of the
+//                                          // decision (edited goal, reviewed
+//                                          // examples, …); plain JSON only
 //     },
 //   }
 //
@@ -34,6 +40,10 @@ export const TRAINING_FLOW_KIND_ORDER = Object.freeze([
   "data_profile",
   "prediction_target",
   "plan",
+  // Calibration reviews rows the prepared dataset dropped (conflicted groups,
+  // unusable rows); those counts only exist once prepare has run at the plan
+  // step, so the card's canonical slot is right after "plan".
+  "calibration",
   "compile_gates",
   "backend",
   "consent",
@@ -46,6 +56,7 @@ export const TRAINING_FLOW_KIND_LABELS = Object.freeze({
   data_profile: "Data",
   prediction_target: "Target",
   plan: "Plan",
+  calibration: "Review",
   compile_gates: "Gates",
   backend: "Backend",
   consent: "Approve",
@@ -54,6 +65,27 @@ export const TRAINING_FLOW_KIND_LABELS = Object.freeze({
 });
 
 const UPCOMING_STATUSES = new Set(["pending", "loading", "ready"]);
+
+/**
+ * Structural equality for answers: strings compare as strings, value objects
+ * (e.g. {choice:"correct", label:"spam"}) compare by JSON content regardless
+ * of key order. Answers are plain JSON by contract, so this is total.
+ */
+export function answersEqual(left, right) {
+  if (left === right) return true;
+  if (typeof left !== "object" || typeof right !== "object" || left === null || right === null) {
+    return false;
+  }
+  if (Array.isArray(left) !== Array.isArray(right)) return false;
+  if (Array.isArray(left)) {
+    return left.length === right.length
+      && left.every((value, index) => answersEqual(value, right[index]));
+  }
+  const leftKeys = Object.keys(left).filter((key) => left[key] !== undefined).sort();
+  const rightKeys = Object.keys(right).filter((key) => right[key] !== undefined).sort();
+  return leftKeys.length === rightKeys.length
+    && leftKeys.every((key, index) => key === rightKeys[index] && answersEqual(left[key], right[key]));
+}
 
 function assertKnownKinds(kinds) {
   for (const kind of kinds) {
@@ -103,7 +135,7 @@ export function activeCard(flow) {
 export function invalidatesLaterAnswers(flow, id, answer) {
   const index = cardIndex(flow, id);
   const card = flow.cards[index];
-  if (!card.decision || card.decision.answer === answer) return false;
+  if (!card.decision || answersEqual(card.decision.answer, answer)) return false;
   return flow.cards.slice(index + 1).some((later) => later.decision !== null);
 }
 
@@ -127,10 +159,17 @@ export function answerCard(flow, id, decision) {
   }
   const next = {
     question: decision.question,
-    answer: decision.answer,
+    // Keep the serializable contract honest: answers (which may be
+    // label-choice value objects) must survive JSON verbatim.
+    answer: typeof decision.answer === "object"
+      ? JSON.parse(JSON.stringify(decision.answer))
+      : decision.answer,
     answered_at: decision.answered_at ?? new Date().toISOString(),
   };
-  const sameAnswer = card.decision !== null && card.decision.answer === next.answer;
+  if (decision.details !== undefined) {
+    next.details = JSON.parse(JSON.stringify(decision.details));
+  }
+  const sameAnswer = card.decision !== null && answersEqual(card.decision.answer, next.answer);
   const cards = flow.cards.map((existing, at) => {
     if (at < index) return existing;
     if (at === index) return { ...existing, status: "answered", decision: next };
@@ -141,6 +180,35 @@ export function answerCard(flow, id, decision) {
     (existing, at) => at > index && existing.status !== "answered",
   );
   if (focusAt >= 0) cards[focusAt] = { ...cards[focusAt], status: "active" };
+  return withCards(flow, cards);
+}
+
+/**
+ * Insert an upcoming card whose applicability was only discovered mid-flow
+ * (e.g. "calibration" appears once the prepared dataset reports dropped or
+ * conflicted rows). The card lands at its canonical position as "pending";
+ * a flow that already has the kind is returned unchanged. Inserting at or
+ * before the active card is a caller error — upcoming cards only.
+ */
+export function insertCard(flow, kind) {
+  assertKnownKinds([kind]);
+  if (flow.cards.some((card) => card.kind === kind)) return flow;
+  const rank = TRAINING_FLOW_KIND_ORDER.indexOf(kind);
+  let at = flow.cards.length;
+  for (let index = 0; index < flow.cards.length; index += 1) {
+    if (TRAINING_FLOW_KIND_ORDER.indexOf(flow.cards[index].kind) > rank) {
+      at = index;
+      break;
+    }
+  }
+  const activeAt = flow.cards.findIndex((card) => card.status === "active");
+  if (activeAt >= 0 && at <= activeAt) {
+    throw new TypeError(
+      `Cannot insert ${kind} before the active card; only upcoming cards may be inserted.`,
+    );
+  }
+  const cards = [...flow.cards];
+  cards.splice(at, 0, { id: kind, kind, status: "pending", decision: null });
   return withCards(flow, cards);
 }
 
@@ -206,9 +274,12 @@ export function deserializeTrainingFlow(serialized) {
     }
     if (card.status === "active") activeSeen += 1;
     if (card.decision !== null) {
-      const { question, answer, answered_at } = card.decision;
+      const { question, answer, answered_at, details } = card.decision;
       if (typeof question !== "string" || answer == null || typeof answered_at !== "string") {
         throw new TypeError(`Invalid card decision on ${card.id}.`);
+      }
+      if (details !== undefined && typeof details === "function") {
+        throw new TypeError(`Invalid card decision details on ${card.id}.`);
       }
     }
   }

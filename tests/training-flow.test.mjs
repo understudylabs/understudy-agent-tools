@@ -8,6 +8,7 @@ import {
   answerCard,
   createTrainingFlow,
   deserializeTrainingFlow,
+  insertCard,
   invalidatesLaterAnswers,
   markCardLoading,
   markCardReady,
@@ -159,6 +160,69 @@ test("deserializeTrainingFlow rejects malformed flows", () => {
     cards: [{ id: "run", kind: "run", status: "answered", decision: { answer: "yes" } }],
   };
   assert.throws(() => deserializeTrainingFlow(JSON.stringify(badDecision)), TypeError);
+});
+
+test("decision details are recorded verbatim and survive serialization", () => {
+  let flow = createTrainingFlow(STRUCTURED_KINDS);
+  flow = answerCard(flow, "data_profile", { question: "data?", answer: "yes" });
+  // The editable goal card: the edited goal is the answer; the structured
+  // record (goal, target column, acceptable-error gate) rides in details.
+  flow = answerCard(flow, "prediction_target", {
+    question: "What should the model learn to do?",
+    answer: "Predict the ticket priority from its subject and body.",
+    details: {
+      target_goal: "Predict the ticket priority from its subject and body.",
+      target_column: "priority",
+      minimum_accuracy: 0.85,
+      minimum_accuracy_applied: false,
+    },
+  });
+  assert.equal(flow.cards[1].decision.details.minimum_accuracy, 0.85);
+  const revived = deserializeTrainingFlow(serializeTrainingFlow(flow));
+  assert.deepEqual(revived, flow);
+});
+
+test("editing the goal answer invalidates later steps; same goal restores", () => {
+  let flow = createTrainingFlow(STRUCTURED_KINDS);
+  flow = answerCard(flow, "data_profile", { question: "data?", answer: "yes" });
+  flow = answerCard(flow, "prediction_target", { question: "goal?", answer: "Predict priority." });
+  flow = answerCard(flow, "plan", { question: "plan?", answer: "cloud" });
+  let back = navigateToAnswered(flow, "prediction_target");
+  assert.equal(invalidatesLaterAnswers(back, "prediction_target", "Predict priority."), false);
+  assert.equal(invalidatesLaterAnswers(back, "prediction_target", "Predict severity."), true);
+  back = answerCard(back, "prediction_target", { question: "goal?", answer: "Predict severity." });
+  assert.equal(back.cards[2].decision, null); // plan invalidated
+  assert.equal(activeCard(back).id, "plan");
+});
+
+test("insertCard slots calibration after plan once, preserving state", () => {
+  const csvKinds = ["data_profile", "prediction_target", "plan", "backend", "run"];
+  let flow = createTrainingFlow(csvKinds);
+  flow = answerCard(flow, "data_profile", { question: "data?", answer: "yes" });
+  flow = answerCard(flow, "prediction_target", { question: "target?", answer: "label" });
+  // Plan is active; prepare reported excluded rows → calibration slots in.
+  flow = insertCard(flow, "calibration");
+  assert.deepEqual(
+    flow.cards.map((card) => card.kind),
+    ["data_profile", "prediction_target", "plan", "calibration", "backend", "run"],
+  );
+  assert.equal(flow.cards[3].status, "pending");
+  assert.equal(activeCard(flow).id, "plan"); // untouched
+  assert.equal(flow.cards[0].status, "answered"); // untouched
+  // Idempotent: same flow object back when the kind exists.
+  assert.equal(insertCard(flow, "calibration"), flow);
+  // Answering plan focuses the inserted card.
+  flow = answerCard(flow, "plan", { question: "plan?", answer: "yes" });
+  assert.equal(activeCard(flow).id, "calibration");
+  // Round-trips like any other card.
+  assert.deepEqual(deserializeTrainingFlow(serializeTrainingFlow(flow)), flow);
+});
+
+test("insertCard rejects unknown kinds and slots at or before the active card", () => {
+  const flow = createTrainingFlow(["prediction_target", "run"]); // prediction_target active
+  assert.throws(() => insertCard(flow, "mystery"), TypeError);
+  // data_profile would land before the active card — upcoming cards only.
+  assert.throws(() => insertCard(flow, "data_profile"), TypeError);
 });
 
 test("kind order constant covers every card kind exactly once", () => {

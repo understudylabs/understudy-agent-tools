@@ -83,14 +83,18 @@ import {
   activeCard as activeFlowCard,
   answerCard as answerFlowCardModel,
   createTrainingFlow,
+  insertCard,
   invalidatesLaterAnswers,
   markCardLoading,
   markCardReady,
   navigateToAnswered,
   type TrainingFlow,
+  type TrainingFlowAnswer,
+  type TrainingFlowCard,
   type TrainingFlowCardKind,
+  type TrainingFlowDecisionDetails,
 } from "../lib/training-flow.mjs";
-import { TrainingFlowStepper } from "./TrainingFlowStepper";
+import { TrainingFlowStepper, TrainingFlowTimeline } from "./TrainingFlowStepper";
 import { ModelCardDrawer } from "./ModelCardDrawer";
 import { CsvProfile } from "./CsvProfile";
 import { CsvTrainingPlan } from "./CsvTrainingPlan";
@@ -339,6 +343,9 @@ type ClassificationDataset = {
   mapping_confirmation: "caller-provided";
   source_rows_persisted_as_transformed_examples: true;
   row_count: number;
+  // Rows the preparer excluded; drive the calibration review card.
+  unusable_rows_removed: number;
+  conflicted_group_rows_removed: number;
   mapping: {
     input_columns: string[];
     label_column: string;
@@ -853,6 +860,127 @@ function FlowQuestion({
   );
 }
 
+/**
+ * "Acceptable error" line on the goal card: the plan's promotion gate,
+ * human-phrased and editable within sane bounds (50–99%). The value is
+ * recorded on the card decision; plan preparation does not accept it yet.
+ */
+function AcceptableErrorLine({
+  minimumAccuracy,
+  onChange,
+}: {
+  minimumAccuracy: number;
+  onChange: (value: number) => void;
+}) {
+  const percent = Math.round(minimumAccuracy * 100);
+  return (
+    <label className="training-flow-accuracy-line">
+      <span>Must be right at least</span>
+      <input
+        type="number"
+        min={50}
+        max={99}
+        value={percent}
+        onChange={(event) => {
+          const raw = Number(event.target.value);
+          if (!Number.isFinite(raw)) return;
+          onChange(Math.min(0.99, Math.max(0.5, raw / 100)));
+        }}
+      />
+      <span>% of the time on unseen examples.</span>
+    </label>
+  );
+}
+
+/**
+ * Calibration review: the prepared dataset excluded rows (conflicted leakage
+ * groups and/or unusable rows). Shows the counts, then walks disputed
+ * examples one at a time — sourced from the inspection's row preview, since
+ * the manifest exposes counts only. Verdicts are recorded on the card
+ * decision; they cannot flow back into the dataset yet (see decision details).
+ */
+function CalibrationReviewCard({
+  dataset,
+  samples,
+  verdicts,
+  onVerdict,
+  onConfirm,
+  onChangeTarget,
+}: {
+  dataset: ClassificationDataset;
+  samples: Array<{ group: string; label: string; text: string }>;
+  verdicts: Array<{ group: string; label: string; verdict: "yes" | "no" }>;
+  onVerdict: (verdict: { group: string; label: string; verdict: "yes" | "no" }) => void;
+  onConfirm: (question: string, details: TrainingFlowDecisionDetails) => void;
+  onChangeTarget: () => void;
+}) {
+  const conflicted = dataset.conflicted_group_rows_removed ?? 0;
+  const unusable = dataset.unusable_rows_removed ?? 0;
+  const current = samples[verdicts.length];
+  const countsLine = [
+    conflicted > 0
+      ? `${conflicted.toLocaleString()} row${conflicted === 1 ? " fell" : "s fell"} in ${dataset.mapping.group_column} groups carrying different ${dataset.mapping.label_column} labels`
+      : null,
+    unusable > 0
+      ? `${unusable.toLocaleString()} row${unusable === 1 ? " was" : "s were"} unusable (empty target or inputs)`
+      : null,
+  ].filter(Boolean).join(", and ");
+  const question = `Proceed without the ${(conflicted + unusable).toLocaleString()} excluded rows?`;
+  const confirm = () => onConfirm(question, {
+    conflicted_group_rows_removed: conflicted,
+    unusable_rows_removed: unusable,
+    reviewed_examples: verdicts.map((verdict) => ({ ...verdict })),
+    // The dataset was already split; these verdicts are a record, not yet a
+    // feedback loop into preparation.
+    verdicts_applied: false,
+  });
+  return (
+    <section className="automatic-goal-card structured-dataset-analysis" aria-label="Review excluded rows">
+      <div className="csv-analysis-step-label">Review · rows we excluded</div>
+      <div className="csv-analysis-next">
+        <p className="csv-analysis-note" role="status">
+          {countsLine} — we excluded them before splitting so labels stay consistent.
+        </p>
+        {current ? (
+          <div className="training-flow-calibration-example">
+            <span className="training-flow-timeline-kicker">
+              disputed example {verdicts.length + 1} of {samples.length}
+            </span>
+            <blockquote>{current.text || `(${dataset.mapping.group_column}: ${current.group})`}</blockquote>
+            <FlowQuestion
+              question={`This says “${current.label}” — is that right?`}
+              hint="Your call is recorded with this decision; the excluded rows stay out either way for now."
+              yesLabel="Yes, that label is right"
+              onYes={() => onVerdict({ group: current.group, label: current.label, verdict: "yes" })}
+              noLabel="No, that label is wrong"
+              onNo={() => onVerdict({ group: current.group, label: current.label, verdict: "no" })}
+            />
+          </div>
+        ) : (
+          <>
+            {samples.length === 0 && (
+              <p className="csv-analysis-note" role="status">
+                The row-level conflicts aren&apos;t exported by the preparer yet, and none of the
+                disputed rows appear in the local preview — so there&apos;s no sample to show here.
+              </p>
+            )}
+            <FlowQuestion
+              question={question}
+              hint={samples.length > 0
+                ? "Your reviews are recorded with this decision."
+                : "Only the counts are available for this dataset."}
+              yesLabel="Yes, proceed"
+              onYes={confirm}
+              noLabel="No — change target"
+              onNo={onChangeTarget}
+            />
+          </>
+        )}
+      </div>
+    </section>
+  );
+}
+
 function predictionStatement(
   inspection: TrainingRecipeInspection,
   targetField: string | undefined,
@@ -1137,6 +1265,16 @@ export function ChatPane({
   const [remoteRecipePlan, setRemoteRecipePlan] = useState<RemotePlan | null>(null);
   const [datasetProfileConfirmed, setDatasetProfileConfirmed] = useState(false);
   const [trainingFlow, setTrainingFlow] = useState<TrainingFlow | null>(null);
+  // Editable goal card: user-corrected goal statement and acceptable-error
+  // threshold. The threshold is recorded on the decision; plan preparation
+  // does not accept it yet (hardcoded 0.80 server-side) — see the card copy.
+  const [goalDraft, setGoalDraft] = useState<string | null>(null);
+  const [structuredTargetChoice, setStructuredTargetChoice] = useState<string | null>(null);
+  const [minAccuracyDraft, setMinAccuracyDraft] = useState<number | null>(null);
+  // Calibration review: verdicts on disputed examples, recorded on the card.
+  const [calibrationVerdicts, setCalibrationVerdicts] = useState<
+    Array<{ group: string; label: string; verdict: "yes" | "no" }>
+  >([]);
   const [remoteRecipeEligibilityError, setRemoteRecipeEligibilityError] = useState<string | null>(null);
   const [trainingGoalCard, setTrainingGoalCard] = useState<TrainingGoalCard | null>(null);
   const [environmentArchitect, setEnvironmentArchitect] = useState<PiEnvironmentArchitectResult | null>(null);
@@ -1950,6 +2088,10 @@ export function ChatPane({
     } else {
       setTrainingFlow(null);
     }
+    setGoalDraft(null);
+    setStructuredTargetChoice(null);
+    setMinAccuracyDraft(null);
+    setCalibrationVerdicts([]);
   }, [trainingRecipe, csvInspection]);
 
   // Background work keeps running eagerly; this only surfaces readiness on
@@ -1977,7 +2119,12 @@ export function ChatPane({
     });
   }, [environmentArchitect, environmentArchitectProgress, customCompileResult, customCompileBusy, remoteRecipePlan, classificationDataset]);
 
-  const answerTrainingFlowCard = (id: string, answer: string, question: string) => {
+  const answerTrainingFlowCard = (
+    id: string,
+    answer: TrainingFlowAnswer,
+    question: string,
+    details?: TrainingFlowDecisionDetails,
+  ) => {
     if (!trainingFlow) return;
     const active = activeFlowCard(trainingFlow);
     if (!active || active.id !== id) return;
@@ -1986,7 +2133,7 @@ export function ChatPane({
       setClassificationDataset(null);
       setCsvBackend(null);
     }
-    setTrainingFlow(answerFlowCardModel(trainingFlow, id, { question, answer }));
+    setTrainingFlow(answerFlowCardModel(trainingFlow, id, { question, answer, details }));
   };
 
   const navigateTrainingFlowTo = (id: string) => {
@@ -2015,15 +2162,32 @@ export function ChatPane({
   }, [localTrainingActive, remoteTrainingView]);
 
   // CSV flow: the plan's "yes" kicks off local split preparation; the answer
-  // lands when the splits exist, then the backend question takes focus.
+  // lands when the splits exist. If the preparer excluded rows (conflicted
+  // leakage groups or unusable rows), a calibration review card slots in
+  // right after the plan; otherwise the backend question takes focus.
   useEffect(() => {
     if (!classificationDataset) return;
+    const excludedRows = (classificationDataset.conflicted_group_rows_removed ?? 0)
+      + (classificationDataset.unusable_rows_removed ?? 0);
+    setCalibrationVerdicts([]);
     setTrainingFlow((flow) => {
       if (!flow || activeFlowCard(flow)?.kind !== "plan") return flow;
-      return answerFlowCardModel(flow, "plan", {
+      let next = flow;
+      if (excludedRows > 0) next = insertCard(next, "calibration");
+      next = answerFlowCardModel(next, "plan", {
         question: "Is this the plan you want?",
         answer: "yes",
       });
+      // A re-prepared dataset (e.g. new target) may have nothing to review
+      // even though an earlier prepare inserted the card — skip it cleanly.
+      if (excludedRows === 0 && activeFlowCard(next)?.kind === "calibration") {
+        next = answerFlowCardModel(next, "calibration", {
+          question: "Review the rows excluded during preparation?",
+          answer: { choice: "confirm" },
+          details: { excluded_rows: 0, note: "No rows were excluded this time." },
+        });
+      }
+      return next;
     });
   }, [classificationDataset]);
 
@@ -2522,13 +2686,55 @@ export function ChatPane({
     (field) => structuredFieldRole(field) === "target",
   );
   const structuredPredicting = trainingRecipe
-    ? predictionStatement(trainingRecipe, structuredTargetField, environmentArchitect?.target_goal ?? null)
+    ? predictionStatement(
+        trainingRecipe,
+        structuredTargetChoice ?? structuredTargetField,
+        goalDraft ?? environmentArchitect?.target_goal ?? null,
+      )
     : null;
   const architectDraftTarget = streamedJsonString(environmentArchitectDraft, "target_goal");
+  // Acceptable error: the plan's promotion gate, human-phrased and editable
+  // within sane bounds. Plan preparation does not accept this input yet — the
+  // edit is recorded on the card decision (see the decision details).
+  const effectiveMinAccuracy = Math.min(
+    0.99,
+    Math.max(0.5, minAccuracyDraft ?? trainingGoalCard?.promotion.minimum_accuracy ?? 0.8),
+  );
+  // Disputed examples for the calibration card, sourced from what IS exposed
+  // client-side: the inspection's row preview. The manifest only reports
+  // counts (conflicted_group_rows_removed / unusable_rows_removed); row-level
+  // conflicted examples are not exported by prepare yet, so this sample can
+  // be empty even when the counts are not.
+  const calibrationSamples = useMemo(() => {
+    if (!csvInspection || !mappingLabelColumn || !mappingGroupColumn) return [];
+    const byGroup = new Map<string, Map<string, Record<string, string>>>();
+    for (const row of csvInspection.row_preview ?? []) {
+      const group = (row.values[mappingGroupColumn] ?? "").trim().toLowerCase();
+      const label = (row.values[mappingLabelColumn] ?? "").trim();
+      if (!group || !label) continue;
+      const labels = byGroup.get(group) ?? new Map<string, Record<string, string>>();
+      if (!labels.has(label)) labels.set(label, row.values);
+      byGroup.set(group, labels);
+    }
+    const samples: Array<{ group: string; label: string; text: string }> = [];
+    for (const [group, labels] of byGroup) {
+      if (labels.size < 2) continue;
+      for (const [label, values] of labels) {
+        const text = mappingInputColumns
+          .map((column) => values[column])
+          .filter((value) => value && value.trim())
+          .join(" · ");
+        samples.push({ group, label, text });
+        if (samples.length >= 5) return samples;
+      }
+    }
+    return samples;
+  }, [csvInspection, mappingLabelColumn, mappingGroupColumn, mappingInputColumns]);
   const flowSummaries = useMemo(() => {
     const rows = trainingRecipe?.evidence.total_rows ?? csvInspection?.row_count ?? null;
     const targetField = trainingRecipe
-      ? trainingRecipe.field_names.find((field) => structuredFieldRole(field) === "target")
+      ? structuredTargetChoice
+        ?? trainingRecipe.field_names.find((field) => structuredFieldRole(field) === "target")
       : mappingLabelColumn || null;
     const chosenBackend = trainingRecipe
       ? recipeBackend
@@ -2537,18 +2743,110 @@ export function ChatPane({
       data_profile: rows != null ? `Data confirmed · ${rows.toLocaleString()} rows` : "Data confirmed",
       prediction_target: targetField ? `Target · ${targetField}` : "Target confirmed",
       plan: `Plan approved · ${chosenBackend === "managed" ? "cloud" : "local"}`,
+      calibration: classificationDataset
+        ? `Excluded rows reviewed · ${((classificationDataset.conflicted_group_rows_removed ?? 0) + (classificationDataset.unusable_rows_removed ?? 0)).toLocaleString()}`
+        : "Excluded rows reviewed",
       compile_gates: "Gates passed",
       backend: csvBackend === "managed" ? "Cloud training" : "Local training",
       consent: "Upload and spend approved",
       run: "Training running",
     } as Record<string, string>;
-  }, [trainingRecipe, csvInspection, mappingLabelColumn, recipeBackend, csvBackend]);
+  }, [trainingRecipe, csvInspection, mappingLabelColumn, recipeBackend, csvBackend, structuredTargetChoice, classificationDataset]);
+
+  // Condensed committed bodies for answered timeline cards. Display-only —
+  // the timeline renders them inert; kinds whose active surface is a live,
+  // effectful panel (consent, run, backend) stay summary-only.
+  const renderCommittedStructuredCard = (card: TrainingFlowCard) => {
+    if (!trainingRecipe || !droppedWorkload) return null;
+    switch (card.kind) {
+      case "data_profile":
+        return <StructuredDataProfile sourceName={droppedWorkload.source_name} inspection={trainingRecipe} />;
+      case "prediction_target":
+        return (
+          <PiDesignCards
+            architect={environmentArchitect}
+            progress={environmentArchitectProgress}
+            draft={environmentArchitectDraft}
+          />
+        );
+      case "plan":
+        return (
+          <StructuredTrainingPlan
+            inspection={trainingRecipe}
+            card={trainingGoalCard}
+            targetGoal={goalDraft?.trim() || environmentArchitect?.target_goal || null}
+            backend={recipeBackend}
+            localAvailable={recipeLocalAvailable}
+            onBackendChange={() => {}}
+          />
+        );
+      case "compile_gates":
+        return (
+          <CustomTrainingCompileCard
+            phases={customCompilePhases}
+            busy={false}
+            result={customCompileResult}
+            error={customCompileError}
+            onRetry={() => {}}
+            waitingForMapping={false}
+            onCompile={null}
+          />
+        );
+      default:
+        return null;
+    }
+  };
+  const renderCommittedCsvCard = (card: TrainingFlowCard) => {
+    if (!csvInspection || !droppedWorkload) return null;
+    switch (card.kind) {
+      case "data_profile":
+        return (
+          <CsvProfile
+            sourceName={droppedWorkload.source_name}
+            rowCount={csvInspection.row_count}
+            columns={csvInspection.columns}
+            highlightedColumn={mappingLabelColumn}
+            onSelectColumn={() => {}}
+          />
+        );
+      case "prediction_target":
+        return (
+          <div className="csv-analysis-proposal">
+            <strong>{mappingLabelColumn ? `Predict ${mappingLabelColumn}` : "Target confirmed"}</strong>
+          </div>
+        );
+      case "plan":
+        return (
+          <CsvTrainingPlan
+            rowCount={csvInspection.row_count}
+            labelCount={selectedTargetColumn?.unique_count ?? null}
+            inputColumns={mappingInputColumns}
+            labelColumn={mappingLabelColumn}
+            groupColumn={mappingGroupColumn}
+          />
+        );
+      case "calibration":
+        return classificationDataset ? (
+          <p className="csv-analysis-note">
+            {((classificationDataset.conflicted_group_rows_removed ?? 0)
+              + (classificationDataset.unusable_rows_removed ?? 0)).toLocaleString()} excluded
+            row(s) reviewed — they stay out of training and evaluation.
+          </p>
+        ) : null;
+      default:
+        return null;
+    }
+  };
 
   // Focus mode: the dataset-review card is the whole surface. Expand the
   // window when the card needs more room; never shrink it.
   useEffect(() => {
     if (!datasetFocusMode || !isTauri()) return;
-    const card = document.querySelector(".structured-dataset-profile-page")
+    // Measure the ACTIVE card region, not the whole timeline: answered
+    // chapters scroll within the timeline; only the live question drives
+    // window growth (capped as before, never shrinking).
+    const card = document.querySelector(".training-flow-timeline-active")
+      ?? document.querySelector(".structured-dataset-profile-page")
       ?? document.querySelector(".workload-analysis");
     if (!card) return;
     let lastRequested = 0;
@@ -2564,7 +2862,7 @@ export function ChatPane({
     const observer = new ResizeObserver(grow);
     observer.observe(card);
     return () => observer.disconnect();
-  }, [datasetFocusMode, trainingRecipe, datasetProfileConfirmed]);
+  }, [datasetFocusMode, trainingRecipe, datasetProfileConfirmed, focusFlowKind]);
 
   return (
     <div
@@ -2748,6 +3046,12 @@ export function ChatPane({
                 />
               ) : trainingRecipe && droppedWorkload && trainingFlow ? (
                 <>
+                  <TrainingFlowTimeline
+                    flow={trainingFlow}
+                    summaries={flowSummaries}
+                    onNavigate={navigateTrainingFlowTo}
+                      renderCommitted={renderCommittedStructuredCard}
+                  >
                   {focusFlowKind === "data_profile" ? (
                     <StructuredDatasetProfilePage
                       sourceName={droppedWorkload.source_name}
@@ -2791,21 +3095,71 @@ export function ChatPane({
                           onRetry={retryEnvironmentArchitect}
                         />
                       </div>
+                      <label className="training-flow-goal-edit">
+                        <span>Goal — edit until it says what you actually want</span>
+                        <textarea
+                          value={goalDraft
+                            ?? environmentArchitect?.target_goal
+                            ?? structuredPredicting
+                            ?? ""}
+                          placeholder="Understudy is still inferring the goal…"
+                          onChange={(event) => setGoalDraft(event.target.value)}
+                        />
+                      </label>
+                      <label className="csv-analysis-group-choice">
+                        <span>Target column</span>
+                        <select
+                          value={structuredTargetChoice ?? structuredTargetField ?? ""}
+                          onChange={(event) => setStructuredTargetChoice(event.target.value)}
+                        >
+                          {trainingRecipe.field_names.map((field) => (
+                            <option key={field} value={field}>{field}</option>
+                          ))}
+                        </select>
+                      </label>
+                      {structuredTargetChoice && structuredTargetChoice !== structuredTargetField && (
+                        <p className="csv-analysis-note" role="status">
+                          Recorded on this decision — recipe datasets don&apos;t re-derive their
+                          fields yet, so the plan below still trains on {structuredTargetField}.
+                        </p>
+                      )}
+                      <AcceptableErrorLine
+                        minimumAccuracy={effectiveMinAccuracy}
+                        onChange={setMinAccuracyDraft}
+                      />
                       <FlowQuestion
                         question={structuredPredicting
                           ? `${structuredPredicting.replace(/\.$/, "")} — is that right?`
                           : "Is this the target you want the model to predict?"}
                         hint={environmentArchitect || architectDraftTarget
-                          ? "Yes locks the target and moves on to the training plan."
+                          ? "Edit the goal or threshold above, then confirm to move on to the training plan."
                           : "Preparing the target… Understudy is still analyzing this dataset."}
                         yesLabel={environmentArchitect || architectDraftTarget
-                          ? "Yes, that's right"
+                          ? "Yes, that's the goal"
                           : "Preparing the target…"}
                         yesDisabled={!environmentArchitect && !architectDraftTarget}
                         onYes={() => answerTrainingFlowCard(
                           "prediction_target",
-                          "yes",
-                          structuredPredicting ?? "Is this the target you want the model to predict?",
+                          // The (possibly edited) goal IS the answer: changing
+                          // it and confirming invalidates later steps.
+                          goalDraft?.trim()
+                            || environmentArchitect?.target_goal
+                            || structuredPredicting
+                            || "yes",
+                          "What should the model learn to do?",
+                          {
+                            target_goal: goalDraft?.trim()
+                              || environmentArchitect?.target_goal
+                              || structuredPredicting
+                              || null,
+                            target_column: structuredTargetChoice ?? structuredTargetField ?? null,
+                            target_column_applied: !structuredTargetChoice
+                              || structuredTargetChoice === structuredTargetField,
+                            minimum_accuracy: effectiveMinAccuracy,
+                            // Plan preparation hardcodes 0.80 server-side; the
+                            // edited gate is recorded here until it can flow in.
+                            minimum_accuracy_applied: false,
+                          },
                         )}
                         noLabel="No — dismiss"
                         onNo={resetDroppedWorkload}
@@ -2820,7 +3174,7 @@ export function ChatPane({
                       <StructuredTrainingPlan
                         inspection={trainingRecipe}
                         card={trainingGoalCard}
-                        targetGoal={environmentArchitect?.target_goal ?? null}
+                        targetGoal={goalDraft?.trim() || environmentArchitect?.target_goal || null}
                         backend={recipeBackend}
                         localAvailable={recipeLocalAvailable}
                         onBackendChange={setRecipeBackend}
@@ -2965,6 +3319,7 @@ export function ChatPane({
                       )}
                     </div>
                   )}
+                  </TrainingFlowTimeline>
                   <TrainingFlowStepper
                     flow={trainingFlow}
                     summaries={flowSummaries}
@@ -2978,6 +3333,12 @@ export function ChatPane({
                 </>
               ) : csvInspection && droppedWorkload && trainingFlow ? (
                 <>
+                  <TrainingFlowTimeline
+                    flow={trainingFlow}
+                    summaries={flowSummaries}
+                    onNavigate={navigateTrainingFlowTo}
+                      renderCommitted={renderCommittedCsvCard}
+                  >
                   {focusFlowKind === "data_profile" ? (
                     <>
                       <div className="csv-analysis-step-label csv-analysis-step-structure">1 · data structure</div>
@@ -3098,6 +3459,10 @@ export function ChatPane({
                           </select>
                         </label>
                       )}
+                      <AcceptableErrorLine
+                        minimumAccuracy={effectiveMinAccuracy}
+                        onChange={setMinAccuracyDraft}
+                      />
                       </div>
                       <FlowQuestion
                         question={mappingLabelColumn
@@ -3110,6 +3475,13 @@ export function ChatPane({
                           "prediction_target",
                           mappingLabelColumn,
                           `Predict ${mappingLabelColumn} — is that right?`,
+                          {
+                            target_column: mappingLabelColumn,
+                            minimum_accuracy: effectiveMinAccuracy,
+                            // Split preparation doesn't take a promotion gate;
+                            // recorded here until it can flow into prepare.
+                            minimum_accuracy_applied: false,
+                          },
                         )}
                         noLabel="No — dismiss"
                         onNo={resetDroppedWorkload}
@@ -3137,6 +3509,16 @@ export function ChatPane({
                         onNo={() => navigateTrainingFlowTo("prediction_target")}
                       />
                     </>
+                  ) : focusFlowKind === "calibration" && classificationDataset ? (
+                    <CalibrationReviewCard
+                      dataset={classificationDataset}
+                      samples={calibrationSamples}
+                      verdicts={calibrationVerdicts}
+                      onVerdict={(verdict) => setCalibrationVerdicts((existing) => [...existing, verdict])}
+                      onConfirm={(question, details) =>
+                        answerTrainingFlowCard("calibration", { choice: "confirm" }, question, details)}
+                      onChangeTarget={() => navigateTrainingFlowTo("prediction_target")}
+                    />
                   ) : classificationDataset ? (
                     <div className={`workload-dataset-ready${localTrainingActive ? " is-active" : ""}`}>
                       {csvBackend === null ? (
@@ -3193,6 +3575,7 @@ export function ChatPane({
                       ) : null}
                     </div>
                   ) : null}
+                  </TrainingFlowTimeline>
                   <TrainingFlowStepper
                     flow={trainingFlow}
                     summaries={flowSummaries}

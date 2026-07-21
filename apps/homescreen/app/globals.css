@@ -3415,6 +3415,144 @@ select,
 .training-flow-question .btn.secondary {
   flex: 0 0 auto;
 }
+/* Decision timeline: answered cards stay on screen above the active card —
+   a scrollable lab-notebook column; the active card is the thread's bottom. */
+.training-flow-timeline {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  max-height: min(62vh, 640px);
+  overflow-y: auto;
+  padding-right: 2px;
+}
+/* Frontier connector: the thin lineage line the design explorations draw
+   between records — vertical here, one notebook column. */
+.training-flow-timeline::before {
+  position: absolute;
+  top: 14px;
+  bottom: 14px;
+  left: 3px;
+  width: 1px;
+  background: color-mix(in srgb, var(--model-mint) 22%, transparent);
+  content: "";
+}
+.training-flow-timeline-entry {
+  position: relative;
+  z-index: 1;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-left: 14px;
+  padding: 10px 12px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+  background: color-mix(in srgb, var(--c-window) 92%, transparent);
+}
+/* Committed states resolve toward mint — the design system's promotion
+   semantic (mint-green-ring-and-gate), never cyan or amber. */
+.training-flow-timeline-entry[data-state="complete"] {
+  border-color: color-mix(in srgb, var(--model-mint) 24%, var(--border));
+}
+.training-flow-timeline-entry[data-state="complete"]::before {
+  position: absolute;
+  top: 15px;
+  left: -14px;
+  width: 7px;
+  height: 7px;
+  border: 1px solid color-mix(in srgb, var(--model-mint) 72%, transparent);
+  border-radius: 50%;
+  background: color-mix(in srgb, var(--model-mint) 24%, var(--c-window));
+  content: "";
+}
+/* Condensed committed body: context only — visibly settled, not operable. */
+.training-flow-timeline-body {
+  overflow: hidden;
+  max-height: 200px;
+  pointer-events: none;
+  opacity: 0.62;
+  mask-image: linear-gradient(to bottom, black 75%, transparent);
+}
+.training-flow-timeline-decision {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  margin: -4px -6px;
+  padding: 4px 6px;
+  border: 0;
+  border-radius: 8px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.training-flow-timeline-decision:hover strong,
+.training-flow-timeline-decision:focus-visible strong {
+  text-decoration: underline;
+}
+.training-flow-timeline-decision small {
+  color: color-mix(in srgb, var(--model-mint) 84%, var(--text));
+}
+.training-flow-timeline-kicker {
+  font-size: 10px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  opacity: 0.6;
+}
+.training-flow-timeline-active {
+  position: relative;
+  z-index: 1;
+  margin-left: 14px;
+  scroll-margin-bottom: 8px;
+}
+/* Editable goal card + calibration review */
+.training-flow-goal-edit {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 10px;
+}
+.training-flow-goal-edit textarea {
+  min-height: 56px;
+  padding: 8px 10px;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  resize: vertical;
+}
+.training-flow-accuracy-line {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  margin-top: 8px;
+  font-size: 13px;
+}
+.training-flow-accuracy-line input {
+  width: 64px;
+  padding: 4px 6px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: right;
+}
+.training-flow-calibration-example {
+  margin-top: 10px;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: 10px;
+}
+.training-flow-calibration-example blockquote {
+  margin: 6px 0;
+  padding-left: 10px;
+  border-left: 2px solid var(--border);
+  opacity: 0.85;
+  white-space: pre-wrap;
+}
 .automatic-goal-card-grid {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
