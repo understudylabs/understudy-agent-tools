@@ -17,6 +17,15 @@ uses semantic-ish versioning (minor = new skill or new capability, patch = fixes
 
 ### Added
 
+- **See and manage your whole Understudy account from the app.** Desktop/runtime
+  0.3.39 and CLI 0.6.36 bring the management control plane into Understudy
+  Desktop: without leaving the app you can see your organization and project at
+  a glance, read analytics and reporting on usage, cost, and errors, inspect
+  each workload's configuration and its live traffic dial, browse captures,
+  list your API keys and models, and reach billing, setup, and settings. This
+  first release is view-oriented — it surfaces what your account is doing today
+  in one place, ahead of in-app editing — and it sits alongside the on-your-own-
+  data training work described below, which carries forward unchanged.
 - **Train on your own data, end to end.** Desktop/runtime 0.3.38 and CLI
   0.6.35 let you drop a spreadsheet (`.xlsx` workbooks now work, alongside CSV
   and other tables) onto Understudy Desktop and go all the way to a trained
