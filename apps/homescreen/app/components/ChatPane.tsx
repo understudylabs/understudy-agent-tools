@@ -79,6 +79,18 @@ import {
   workloadDropReducer,
   workloadDropStatus,
 } from "../lib/workload-drop-state.mjs";
+import {
+  activeCard as activeFlowCard,
+  answerCard as answerFlowCardModel,
+  createTrainingFlow,
+  invalidatesLaterAnswers,
+  markCardLoading,
+  markCardReady,
+  navigateToAnswered,
+  type TrainingFlow,
+  type TrainingFlowCardKind,
+} from "../lib/training-flow.mjs";
+import { TrainingFlowStepper } from "./TrainingFlowStepper";
 import { ModelCardDrawer } from "./ModelCardDrawer";
 import { CsvProfile } from "./CsvProfile";
 import { CsvTrainingPlan } from "./CsvTrainingPlan";
@@ -801,6 +813,46 @@ function StructuredDatasetProfilePage({
   );
 }
 
+/**
+ * The yes/no footer every focus card carries: one question, one primary yes,
+ * and an optional scoped "no" alternative. Reuses the confirm styling the
+ * dataset-profile card established.
+ */
+function FlowQuestion({
+  question,
+  hint,
+  yesLabel,
+  yesDisabled,
+  onYes,
+  noLabel,
+  onNo,
+}: {
+  question: string;
+  hint?: string | null;
+  yesLabel: string;
+  yesDisabled?: boolean;
+  onYes: () => void;
+  noLabel?: string;
+  onNo?: () => void;
+}) {
+  return (
+    <div className="dataset-profile-confirm training-flow-question">
+      <div>
+        <strong>{question}</strong>
+        {hint && <small>{hint}</small>}
+      </div>
+      {noLabel && onNo && (
+        <button type="button" className="btn secondary" onClick={onNo}>
+          {noLabel}
+        </button>
+      )}
+      <button type="button" className="btn primary" disabled={yesDisabled} onClick={onYes}>
+        {yesLabel}
+      </button>
+    </div>
+  );
+}
+
 function predictionStatement(
   inspection: TrainingRecipeInspection,
   targetField: string | undefined,
@@ -880,28 +932,23 @@ function StructuredTrainingPlan({
   );
 }
 
-function AutomaticGoalCard({
+/**
+ * The Understudy-analysis heading (use case + live status chip) shared by the
+ * prediction-target focus card. Extracted from the former AutomaticGoalCard,
+ * whose sections now live on separate decision cards.
+ */
+function AnalysisHeading({
   inspection,
   card,
   architect,
   architectProgress,
-  architectDraft,
   architectError,
-  onRetryArchitect,
-  trainingBackend,
-  localTrainingAvailable,
-  onTrainingBackendChange,
 }: {
   inspection: TrainingRecipeInspection;
   card: TrainingGoalCard | null;
   architect: PiEnvironmentArchitectResult | null;
   architectProgress: PiDatasetAnalysisEvent | null;
-  architectDraft: string;
   architectError: string | null;
-  onRetryArchitect: () => void;
-  trainingBackend: "local" | "managed";
-  localTrainingAvailable: boolean;
-  onTrainingBackendChange: (backend: "local" | "managed") => void;
 }) {
   const analysisIsLive = Boolean(
     architectProgress?.type === "phase"
@@ -923,41 +970,15 @@ function AutomaticGoalCard({
     queued: "Queued",
   } as Record<string, string>)[environmentStatus] ?? environmentStatus.replaceAll("_", " ");
   return (
-    <section
-      className="automatic-goal-card structured-dataset-analysis"
-      aria-label="Dataset understanding and training plan"
-      aria-busy={analysisIsLive}
-    >
-      <div className="csv-analysis-step-label">2 · Understudy analysis</div>
-      <div className="csv-analysis-pi">
-        <div className="automatic-goal-card-heading structured-analysis-heading">
-          <div>
-            <strong>{trainingUseCaseLabel(inspection.detected_use_case)}</strong>
-          </div>
-          <em data-status={environmentStatus}>
-            {analysisIsLive && <i aria-hidden="true" />}
-            {statusLabel}
-          </em>
-        </div>
-        <PiAnalysisRail architect={architect} progress={architectProgress} error={architectError} />
-        <PiDesignCards
-          architect={architect}
-          progress={architectProgress}
-          draft={architectDraft}
-          error={architectError}
-          onRetry={onRetryArchitect}
-        />
+    <div className="automatic-goal-card-heading structured-analysis-heading">
+      <div>
+        <strong>{trainingUseCaseLabel(inspection.detected_use_case)}</strong>
       </div>
-      <div className="csv-analysis-step-label">3 · confirm the training plan</div>
-      <StructuredTrainingPlan
-        inspection={inspection}
-        card={card}
-        targetGoal={architect?.target_goal ?? null}
-        backend={trainingBackend}
-        localAvailable={localTrainingAvailable}
-        onBackendChange={onTrainingBackendChange}
-      />
-    </section>
+      <em data-status={environmentStatus}>
+        {analysisIsLive && <i aria-hidden="true" />}
+        {statusLabel}
+      </em>
+    </div>
   );
 }
 
@@ -1115,6 +1136,7 @@ export function ChatPane({
   const [trainingRecipe, setTrainingRecipe] = useState<TrainingRecipeInspection | null>(null);
   const [remoteRecipePlan, setRemoteRecipePlan] = useState<RemotePlan | null>(null);
   const [datasetProfileConfirmed, setDatasetProfileConfirmed] = useState(false);
+  const [trainingFlow, setTrainingFlow] = useState<TrainingFlow | null>(null);
   const [remoteRecipeEligibilityError, setRemoteRecipeEligibilityError] = useState<string | null>(null);
   const [trainingGoalCard, setTrainingGoalCard] = useState<TrainingGoalCard | null>(null);
   const [environmentArchitect, setEnvironmentArchitect] = useState<PiEnvironmentArchitectResult | null>(null);
@@ -1215,6 +1237,7 @@ export function ChatPane({
     setTrainingRecipe(null);
     setRemoteRecipePlan(null);
     setDatasetProfileConfirmed(false);
+    setTrainingFlow(null);
     setRemoteRecipeEligibilityError(null);
     setTrainingGoalCard(null);
     setEnvironmentArchitect(null);
@@ -1913,6 +1936,108 @@ export function ChatPane({
     setEnvironmentArchitectRetry((attempt) => attempt + 1);
   };
 
+  // ----- Decision-card flow ("20 questions"): one card at a time. ---------
+  // The flow model (training-flow.mjs) is the serializable contract; ChatPane
+  // only maps existing state into card readiness and answers.
+
+  useEffect(() => {
+    if (trainingRecipe) {
+      setTrainingFlow(createTrainingFlow(trainingRecipe.ready
+        ? ["data_profile", "prediction_target", "plan", "consent", "run"]
+        : ["data_profile", "prediction_target", "plan", "compile_gates", "consent", "run"]));
+    } else if (csvInspection) {
+      setTrainingFlow(createTrainingFlow(["data_profile", "prediction_target", "plan", "backend", "run"]));
+    } else {
+      setTrainingFlow(null);
+    }
+  }, [trainingRecipe, csvInspection]);
+
+  // Background work keeps running eagerly; this only surfaces readiness on
+  // the upcoming steps of the rail.
+  useEffect(() => {
+    setTrainingFlow((flow) => {
+      if (!flow) return flow;
+      const has = (id: string) => flow.cards.some((card) => card.id === id);
+      let next = flow;
+      if (has("prediction_target")) {
+        if (environmentArchitect) next = markCardReady(next, "prediction_target");
+        else if (environmentArchitectProgress) next = markCardLoading(next, "prediction_target");
+      }
+      if (has("plan")) next = markCardReady(next, "plan");
+      if (has("compile_gates")) {
+        if (customCompileResult) next = markCardReady(next, "compile_gates");
+        else if (customCompileBusy) next = markCardLoading(next, "compile_gates");
+      }
+      if (has("consent")) {
+        if (remoteRecipePlan && remoteRecipePlan.maximum_spend_usd > 0) next = markCardReady(next, "consent");
+        else if (remoteRecipePlan) next = markCardLoading(next, "consent");
+      }
+      if (has("backend") && classificationDataset) next = markCardReady(next, "backend");
+      return next;
+    });
+  }, [environmentArchitect, environmentArchitectProgress, customCompileResult, customCompileBusy, remoteRecipePlan, classificationDataset]);
+
+  const answerTrainingFlowCard = (id: string, answer: string, question: string) => {
+    if (!trainingFlow) return;
+    const active = activeFlowCard(trainingFlow);
+    if (!active || active.id !== id) return;
+    if (invalidatesLaterAnswers(trainingFlow, id, answer)) {
+      if (!window.confirm("Changing this answer resets the steps after it. Continue?")) return;
+      setClassificationDataset(null);
+      setCsvBackend(null);
+    }
+    setTrainingFlow(answerFlowCardModel(trainingFlow, id, { question, answer }));
+  };
+
+  const navigateTrainingFlowTo = (id: string) => {
+    if (!trainingFlow) return;
+    if (localTrainingActive || remoteTrainingView) {
+      setNotice("Training is running; earlier decisions are locked for this run.");
+      return;
+    }
+    const card = trainingFlow.cards.find((existing) => existing.id === id);
+    if (card?.status !== "answered") return;
+    setTrainingFlow(navigateToAnswered(trainingFlow, id));
+  };
+
+  // Approval happens inside the training panels (their own consent buttons);
+  // when a run actually starts, record the consent answer and move focus to
+  // the run card.
+  useEffect(() => {
+    if (!localTrainingActive && !remoteTrainingView) return;
+    setTrainingFlow((flow) => {
+      if (!flow || activeFlowCard(flow)?.kind !== "consent") return flow;
+      return answerFlowCardModel(flow, "consent", {
+        question: "Approve this upload and spend?",
+        answer: "yes",
+      });
+    });
+  }, [localTrainingActive, remoteTrainingView]);
+
+  // CSV flow: the plan's "yes" kicks off local split preparation; the answer
+  // lands when the splits exist, then the backend question takes focus.
+  useEffect(() => {
+    if (!classificationDataset) return;
+    setTrainingFlow((flow) => {
+      if (!flow || activeFlowCard(flow)?.kind !== "plan") return flow;
+      return answerFlowCardModel(flow, "plan", {
+        question: "Is this the plan you want?",
+        answer: "yes",
+      });
+    });
+  }, [classificationDataset]);
+
+  useEffect(() => {
+    if (!csvBackend) return;
+    setTrainingFlow((flow) => {
+      if (!flow || activeFlowCard(flow)?.kind !== "backend") return flow;
+      return answerFlowCardModel(flow, "backend", {
+        question: "Where should this train?",
+        answer: csvBackend === "managed" ? "cloud" : "local",
+      });
+    });
+  }, [csvBackend]);
+
   useEffect(() => {
     const evidence = trainingRecipe
       ? {
@@ -2347,9 +2472,6 @@ export function ChatPane({
     && selectedTargetColumn.empty_count > 0
     ? `${selectedTargetColumn.empty_count} row(s) without a target value will be dropped before training.`
     : null;
-  const trainingPlanVisible = Boolean(
-    csvInspection && droppedWorkload && !classificationDataset && !dropRunning,
-  );
   const trainingPlanBlocked =
     !csvInspection ||
     !mappingLabelColumn ||
@@ -2393,6 +2515,34 @@ export function ChatPane({
   const datasetFocusMode = Boolean(
     trainingRecipe && droppedWorkload && !dropRunning,
   );
+
+  const focusFlowKind: TrainingFlowCardKind | null =
+    (trainingFlow ? activeFlowCard(trainingFlow)?.kind : null) ?? null;
+  const structuredTargetField = trainingRecipe?.field_names.find(
+    (field) => structuredFieldRole(field) === "target",
+  );
+  const structuredPredicting = trainingRecipe
+    ? predictionStatement(trainingRecipe, structuredTargetField, environmentArchitect?.target_goal ?? null)
+    : null;
+  const architectDraftTarget = streamedJsonString(environmentArchitectDraft, "target_goal");
+  const flowSummaries = useMemo(() => {
+    const rows = trainingRecipe?.evidence.total_rows ?? csvInspection?.row_count ?? null;
+    const targetField = trainingRecipe
+      ? trainingRecipe.field_names.find((field) => structuredFieldRole(field) === "target")
+      : mappingLabelColumn || null;
+    const chosenBackend = trainingRecipe
+      ? recipeBackend
+      : csvBackend ?? "managed";
+    return {
+      data_profile: rows != null ? `Data confirmed · ${rows.toLocaleString()} rows` : "Data confirmed",
+      prediction_target: targetField ? `Target · ${targetField}` : "Target confirmed",
+      plan: `Plan approved · ${chosenBackend === "managed" ? "cloud" : "local"}`,
+      compile_gates: "Gates passed",
+      backend: csvBackend === "managed" ? "Cloud training" : "Local training",
+      consent: "Upload and spend approved",
+      run: "Training running",
+    } as Record<string, string>;
+  }, [trainingRecipe, csvInspection, mappingLabelColumn, recipeBackend, csvBackend]);
 
   // Focus mode: the dataset-review card is the whole surface. Expand the
   // window when the card needs more room; never shrink it.
@@ -2596,40 +2746,105 @@ export function ChatPane({
                         ? "Creating group-isolated train, dev, and holdout splits…"
                         : "Understanding this file…"}
                 />
-              ) : trainingRecipe && droppedWorkload ? (
+              ) : trainingRecipe && droppedWorkload && trainingFlow ? (
                 <>
-                  {!datasetProfileConfirmed ? (
+                  {focusFlowKind === "data_profile" ? (
                     <StructuredDatasetProfilePage
                       sourceName={droppedWorkload.source_name}
                       inspection={trainingRecipe}
                       card={trainingGoalCard}
                       ready={Boolean(trainingRecipe.row_preview.length > 0)}
-                      onConfirm={() => setDatasetProfileConfirmed(true)}
+                      onConfirm={() => {
+                        setDatasetProfileConfirmed(true);
+                        answerTrainingFlowCard(
+                          "data_profile",
+                          "yes",
+                          "Does this look like the data you meant to train on?",
+                        );
+                      }}
                       onClose={resetDroppedWorkload}
                     />
-                  ) : <>
-                    {!remoteTrainingView && <button
-                      type="button"
-                      className="btn ghost dataset-flow-back"
-                      onClick={() => setDatasetProfileConfirmed(false)}
-                    >Back to data profile</button>}
-                    {!remoteTrainingView && <AutomaticGoalCard
-                      inspection={trainingRecipe}
-                      card={trainingGoalCard}
-                      architect={environmentArchitect}
-                      architectProgress={environmentArchitectProgress}
-                      architectDraft={environmentArchitectDraft}
-                      architectError={environmentArchitectError}
-                      onRetryArchitect={retryEnvironmentArchitect}
-                      trainingBackend={recipeBackend}
-                      localTrainingAvailable={recipeLocalAvailable}
-                      onTrainingBackendChange={setRecipeBackend}
-                    />}
-                    <div className="csv-analysis-next">
-                      {!trainingRecipe.ready
-                        && !remoteTrainingView
-                        && (environmentArchitect || customCompileBusy || customCompileResult || customCompileError) && (
-                        <>
+                  ) : focusFlowKind === "prediction_target" ? (
+                    <section
+                      className="automatic-goal-card structured-dataset-analysis"
+                      aria-label="Confirm the prediction target"
+                    >
+                      <div className="csv-analysis-step-label">2 · Understudy analysis</div>
+                      <div className="csv-analysis-pi">
+                        <AnalysisHeading
+                          inspection={trainingRecipe}
+                          card={trainingGoalCard}
+                          architect={environmentArchitect}
+                          architectProgress={environmentArchitectProgress}
+                          architectError={environmentArchitectError}
+                        />
+                        <PiAnalysisRail
+                          architect={environmentArchitect}
+                          progress={environmentArchitectProgress}
+                          error={environmentArchitectError}
+                        />
+                        <PiDesignCards
+                          architect={environmentArchitect}
+                          progress={environmentArchitectProgress}
+                          draft={environmentArchitectDraft}
+                          error={environmentArchitectError}
+                          onRetry={retryEnvironmentArchitect}
+                        />
+                      </div>
+                      <FlowQuestion
+                        question={structuredPredicting
+                          ? `${structuredPredicting.replace(/\.$/, "")} — is that right?`
+                          : "Is this the target you want the model to predict?"}
+                        hint={environmentArchitect || architectDraftTarget
+                          ? "Yes locks the target and moves on to the training plan."
+                          : "Preparing the target… Understudy is still analyzing this dataset."}
+                        yesLabel={environmentArchitect || architectDraftTarget
+                          ? "Yes, that's right"
+                          : "Preparing the target…"}
+                        yesDisabled={!environmentArchitect && !architectDraftTarget}
+                        onYes={() => answerTrainingFlowCard(
+                          "prediction_target",
+                          "yes",
+                          structuredPredicting ?? "Is this the target you want the model to predict?",
+                        )}
+                        noLabel="No — dismiss"
+                        onNo={resetDroppedWorkload}
+                      />
+                    </section>
+                  ) : focusFlowKind === "plan" ? (
+                    <section
+                      className="automatic-goal-card structured-dataset-analysis"
+                      aria-label="Confirm the training plan"
+                    >
+                      <div className="csv-analysis-step-label">3 · confirm the training plan</div>
+                      <StructuredTrainingPlan
+                        inspection={trainingRecipe}
+                        card={trainingGoalCard}
+                        targetGoal={environmentArchitect?.target_goal ?? null}
+                        backend={recipeBackend}
+                        localAvailable={recipeLocalAvailable}
+                        onBackendChange={setRecipeBackend}
+                      />
+                      <FlowQuestion
+                        question="Is this the plan you want?"
+                        hint="Switch Cloud or Local above before answering."
+                        yesLabel="Yes, use this plan"
+                        onYes={() => answerTrainingFlowCard(
+                          "plan",
+                          recipeBackend === "managed" ? "cloud" : "local",
+                          "Is this the plan you want?",
+                        )}
+                        noLabel="No — change target"
+                        onNo={() => navigateTrainingFlowTo("prediction_target")}
+                      />
+                    </section>
+                  ) : focusFlowKind === "compile_gates" ? (
+                    <section
+                      className="automatic-goal-card structured-dataset-analysis"
+                      aria-label="Compile gates"
+                    >
+                      <div className="csv-analysis-step-label">4 · compile gates</div>
+                      <div className="csv-analysis-next">
                           {csvInspection && !customCompileBusy && !customCompileResult && (
                             <div className="custom-compile-mapping flex flex-wrap gap-3">
                               <label className="csv-analysis-group-choice">
@@ -2680,8 +2895,25 @@ export function ChatPane({
                             ))}
                             onCompile={csvInspection ? compileCustomTrainingPlan : null}
                           />
-                        </>
-                      )}
+                      </div>
+                      <FlowQuestion
+                        question="Did the compile gates pass?"
+                        hint={customCompileResult?.environment_status === "executable"
+                          ? "The plan compiled into an executable local environment."
+                          : customCompileError
+                            ? "Retry the compile above, or dismiss this dataset."
+                            : "Compiling locally — no upload or spend has started."}
+                        yesLabel={customCompileResult?.environment_status === "executable"
+                          ? "Yes, continue to approval"
+                          : "Waiting for the gates…"}
+                        yesDisabled={customCompileResult?.environment_status !== "executable"}
+                        onYes={() => answerTrainingFlowCard("compile_gates", "yes", "Did the compile gates pass?")}
+                        noLabel="No — dismiss"
+                        onNo={resetDroppedWorkload}
+                      />
+                    </section>
+                  ) : (
+                    <div className="csv-analysis-next">
                       {(trainingRecipe.ready || customCompileResult?.environment_status === "executable") && remoteRecipePlan ? <>
                         {recipeLocalAvailable && (
                           <div hidden={recipeBackend === "managed"}>
@@ -2722,7 +2954,7 @@ export function ChatPane({
                             trainingExamples={trainingRecipe.row_preview}
                           />
                         )}
-                      </> : (environmentArchitect || customCompileBusy || customCompileResult || customCompileError) && !trainingRecipe.ready ? null : (
+                      </> : (
                         <div className="remote-training-state" role="status" aria-live="polite">
                           <strong>{environmentArchitectProgress ? "Understudy is checking the training plan" : `Preparing ${trainingUseCaseLabel(trainingRecipe.detected_use_case)}`}</strong>
                           <small>{(environmentArchitectProgress?.type === "phase"
@@ -2732,16 +2964,21 @@ export function ChatPane({
                         </div>
                       )}
                     </div>
-                  </>}
-                  {!localTrainingActive && !remoteTrainingView && (
+                  )}
+                  <TrainingFlowStepper
+                    flow={trainingFlow}
+                    summaries={flowSummaries}
+                    onNavigate={navigateTrainingFlowTo}
+                  />
+                  {!localTrainingActive && !remoteTrainingView && focusFlowKind !== "data_profile" && (
                     <button type="button" className="btn ghost workload-generic-dismiss" onClick={resetDroppedWorkload}>
                       Dismiss
                     </button>
                   )}
                 </>
-              ) : csvInspection && droppedWorkload ? (
+              ) : csvInspection && droppedWorkload && trainingFlow ? (
                 <>
-                  {!classificationDataset ? (
+                  {focusFlowKind === "data_profile" ? (
                     <>
                       <div className="csv-analysis-step-label csv-analysis-step-structure">1 · data structure</div>
                       <CsvProfile
@@ -2770,6 +3007,24 @@ export function ChatPane({
                         inputColumns={mappingInputColumns}
                         labelColumn={mappingLabelColumn}
                       />
+                      <FlowQuestion
+                        question="Does this look like the data you meant to train on?"
+                        hint="Confirming starts Understudy analysis and builds the training plan."
+                        yesLabel="Yes, analyze this dataset"
+                        onYes={() => {
+                          setDatasetProfileConfirmed(true);
+                          answerTrainingFlowCard(
+                            "data_profile",
+                            "yes",
+                            "Does this look like the data you meant to train on?",
+                          );
+                        }}
+                        noLabel="No — dismiss"
+                        onNo={resetDroppedWorkload}
+                      />
+                    </>
+                  ) : focusFlowKind === "prediction_target" ? (
+                    <>
                       <div className="csv-analysis-step-label">2 · Understudy analysis</div>
                       <div className="csv-analysis-pi">
                         <PiAnalysisRail
@@ -2785,18 +3040,29 @@ export function ChatPane({
                           onRetry={retryEnvironmentArchitect}
                         />
                       </div>
-                      <div className="csv-analysis-step-label">3 · confirm the training plan</div>
                       <div className="csv-analysis-next">
-                      <CsvTrainingPlan
-                        rowCount={csvInspection.row_count}
-                        labelCount={selectedTargetColumn?.unique_count ?? null}
-                        inputColumns={mappingInputColumns}
-                        labelColumn={mappingLabelColumn}
-                        groupColumn={mappingGroupColumn}
-                      />
                       <div className="csv-analysis-proposal">
                         <strong>{mappingLabelColumn ? `Predict ${mappingLabelColumn}` : "Choose what to predict"}</strong>
                       </div>
+                      <label className="csv-analysis-group-choice">
+                        <span>Target column</span>
+                        <select
+                          value={mappingLabelColumn}
+                          onChange={(event) => {
+                            const label = event.target.value;
+                            setMappingLabelColumn(label);
+                            setMappingInputColumns(csvInspection.columns
+                              .filter((column) => column.name !== label && column.non_empty_count > 0)
+                              .map((column) => column.name));
+                            setClassificationDataset(null);
+                          }}
+                        >
+                          <option value="">Choose what to predict</option>
+                          {csvInspection.columns.map((column) => (
+                            <option key={column.name} value={column.name}>{column.name}</option>
+                          ))}
+                        </select>
+                      </label>
                       {selectedTargetBlockReason ? (
                         <p className="csv-analysis-caution" role="status">
                           {selectedTargetBlockReason}
@@ -2833,8 +3099,45 @@ export function ChatPane({
                         </label>
                       )}
                       </div>
+                      <FlowQuestion
+                        question={mappingLabelColumn
+                          ? `Predict ${mappingLabelColumn} from ${mappingInputColumns.length.toLocaleString()} input column${mappingInputColumns.length === 1 ? "" : "s"} — is that right?`
+                          : "What should the model predict?"}
+                        hint="Change the target or reference column above before answering."
+                        yesLabel="Yes, that's the target"
+                        yesDisabled={trainingPlanBlocked}
+                        onYes={() => answerTrainingFlowCard(
+                          "prediction_target",
+                          mappingLabelColumn,
+                          `Predict ${mappingLabelColumn} — is that right?`,
+                        )}
+                        noLabel="No — dismiss"
+                        onNo={resetDroppedWorkload}
+                      />
                     </>
-                  ) : (
+                  ) : focusFlowKind === "plan" ? (
+                    <>
+                      <div className="csv-analysis-step-label">3 · confirm the training plan</div>
+                      <div className="csv-analysis-next">
+                      <CsvTrainingPlan
+                        rowCount={csvInspection.row_count}
+                        labelCount={selectedTargetColumn?.unique_count ?? null}
+                        inputColumns={mappingInputColumns}
+                        labelColumn={mappingLabelColumn}
+                        groupColumn={mappingGroupColumn}
+                      />
+                      </div>
+                      <FlowQuestion
+                        question="Is this the plan you want?"
+                        hint="Yes creates group-isolated train, dev, and holdout splits locally — no upload or spend."
+                        yesLabel={mappingLabelColumn ? `Yes — train for ${mappingLabelColumn}` : "Choose a target first"}
+                        yesDisabled={trainingPlanBlocked || dropRunning}
+                        onYes={prepareDroppedClassification}
+                        noLabel="No — change target"
+                        onNo={() => navigateTrainingFlowTo("prediction_target")}
+                      />
+                    </>
+                  ) : classificationDataset ? (
                     <div className={`workload-dataset-ready${localTrainingActive ? " is-active" : ""}`}>
                       {csvBackend === null ? (
                         <div className="remote-training-state" role="group" aria-label="Choose where to train">
@@ -2889,7 +3192,12 @@ export function ChatPane({
                         />
                       ) : null}
                     </div>
-                  )}
+                  ) : null}
+                  <TrainingFlowStepper
+                    flow={trainingFlow}
+                    summaries={flowSummaries}
+                    onNavigate={navigateTrainingFlowTo}
+                  />
                 </>
               ) : droppedWorkload ? (
                 <>
@@ -2927,18 +3235,7 @@ export function ChatPane({
         </MessageScroller>
       </MessageScrollerProvider>
 
-      {trainingPlanVisible ? (
-        <div className="ai-chat-composer training-plan-action">
-          <button
-            type="button"
-            className="btn primary training-plan-submit"
-            disabled={trainingPlanBlocked}
-            onClick={prepareDroppedClassification}
-          >
-            {mappingLabelColumn ? `Train for ${mappingLabelColumn}` : "Choose a target"}
-          </button>
-        </div>
-      ) : (
+      {(
         <div className="ai-chat-composer">
           <PromptInput
             accept="image/*"

@@ -602,7 +602,7 @@ test("desktop compiles one dropped path through the bounded public CLI", async (
   assert.match(chat, /3 · confirm the training plan/);
   assert.match(chat, /structuredFieldRole/);
   assert.match(chat, /structured-data-field-grid/);
-  assert.match(chat, /Train for \$\{mappingLabelColumn\}/);
+  assert.match(chat, /Yes — train for \$\{mappingLabelColumn\}/);
   assert.match(chat, /<CsvTrainingPlan/);
   assert.match(trainingPlan, /Understand/);
   assert.match(trainingPlan, /Local ModernBERT/);
@@ -619,7 +619,7 @@ test("desktop compiles one dropped path through the bounded public CLI", async (
   assert.match(training, /if \(autoStart\) return null/);
   assert.match(chat, /key=\{`\$\{sessionId\}:\$\{classificationDataset \? "training"/);
   assert.match(chat, /classificationDataset \|\| localTrainingActive \|\| remoteTrainingView \? " is-training-flow"/);
-  assert.match(chat, /!classificationDataset \? \(/);
+  assert.match(chat, /focusFlowKind === "data_profile" \? \(/);
   assert.match(chat, /onSelectColumn=\{/);
   assert.doesNotMatch(chat, /Prepare training split/);
   assert.doesNotMatch(chat, /No normalized \{classificationDataset\.split_policy\.group_key\}/);
@@ -654,10 +654,11 @@ test("desktop compiles one dropped path through the bounded public CLI", async (
   assert.match(css, /\.csv-analysis-pi/);
   assert.match(css, /\.csv-analysis-loading-template/);
   assert.match(chat, /TableExampleCards/);
-  assert.match(chat, /const trainingPlanVisible = Boolean/);
-  assert.match(chat, /trainingPlanVisible \? \(/);
-  assert.match(chat, /className="ai-chat-composer training-plan-action"/);
-  assert.match(chat, /className="btn primary training-plan-submit"/);
+  // The plan approval moved from the composer into the focused plan card's
+  // yes/no question (decision-card flow); the same gating and command remain.
+  assert.match(chat, /yesDisabled=\{trainingPlanBlocked/);
+  assert.match(chat, /onYes=\{prepareDroppedClassification\}/);
+  assert.match(chat, /TrainingFlowStepper/);
   assert.doesNotMatch(chat, /className="csv-analysis-proposal"[\s\S]{0,300}<button/);
   assert.match(css, /@keyframes csv-profile-enter/);
   assert.match(persona, /viewModelInstanceColor\.setRgb\(color\.red, color\.green, color\.blue\)/);

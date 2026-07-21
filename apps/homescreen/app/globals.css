@@ -3387,6 +3387,34 @@ select,
   background: color-mix(in srgb, var(--model-amber) 6%, var(--c-window));
   color: var(--model-amber);
 }
+/* Decision-flow stepper: same numbered-dot rail, one column per decision. */
+.training-flow-stepper {
+  grid-template-columns: repeat(auto-fit, minmax(96px, 1fr));
+  margin-top: 14px;
+}
+.training-flow-step-jump {
+  display: flex;
+  flex: 1;
+  align-items: center;
+  gap: 10px;
+  min-width: 0;
+  margin: -8px -10px;
+  padding: 8px 10px;
+  border: 0;
+  border-radius: 10px;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  text-align: left;
+  cursor: pointer;
+}
+.training-flow-step-jump:hover strong,
+.training-flow-step-jump:focus-visible strong {
+  text-decoration: underline;
+}
+.training-flow-question .btn.secondary {
+  flex: 0 0 auto;
+}
 .automatic-goal-card-grid {
   display: grid;
   grid-template-columns: repeat(3, minmax(0, 1fr));
