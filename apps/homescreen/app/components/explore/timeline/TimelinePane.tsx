@@ -21,6 +21,7 @@ import {
   fetchSessionDetail,
   fetchTimeline,
   searchTimeline,
+  startMoraine,
   startScan,
   type ScanStatus,
   type SessionDetail,
@@ -232,6 +233,25 @@ export default function TimelinePane({
 
   useEffect(() => {
     loadTimeline();
+  }, [loadTimeline]);
+
+  // "Start Moraine" from the down state: invoke spawns `moraine up` detached
+  // and polls the monitor port (~30s), so one in-flight call is enough.
+  const [startingMoraine, setStartingMoraine] = useState(false);
+  const [moraineStartError, setMoraineStartError] = useState<string | null>(null);
+  const onStartMoraine = useCallback(() => {
+    setStartingMoraine(true);
+    setMoraineStartError(null);
+    startMoraine()
+      .then((r) => {
+        if (r.running) {
+          loadTimeline();
+        } else {
+          setMoraineStartError(r.detail || "moraine didn't come up");
+        }
+      })
+      .catch((e) => setMoraineStartError(String(e)))
+      .finally(() => setStartingMoraine(false));
   }, [loadTimeline]);
 
   // scan pipeline status: poll every 5s (cheap local invoke) so an app- or
@@ -960,7 +980,14 @@ export default function TimelinePane({
                 couldn&apos;t read the timeline — {error}
               </div>
             ) : (
-              <EmptyState variant="moraine-down" detail={error} onRetry={loadTimeline} />
+              <EmptyState
+                variant="moraine-down"
+                detail={error}
+                onRetry={loadTimeline}
+                onStart={status?.moraineInstalled ? onStartMoraine : undefined}
+                starting={startingMoraine}
+                startError={moraineStartError}
+              />
             ))}
           {data && data.sessions.length === 0 && (
             <EmptyState variant="no-traces" onRetry={loadTimeline} />

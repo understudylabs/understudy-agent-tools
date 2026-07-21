@@ -283,6 +283,7 @@ pub fn run() {
             commands::open_trace,
             commands::install_moraine,
             commands::start_moraine,
+            moraine::moraine_start,
             commands::stop_moraine,
             commands::account_status,
             commands::account_platforms,

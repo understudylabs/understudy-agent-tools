@@ -13,8 +13,9 @@
 // explore_read_json { kind: "benchmark"|"eval", name: string } -> string|null
 //   Reads ~/.understudy/explore/{benchmarks,evals}/<name>.json (name is
 //   sanitized to [a-z0-9-_.]); null when missing.
-// explore_status {} -> string (JSON: { moraineUp: boolean, clickhouseUp: boolean,
-//   dataDir: string, hasScan: boolean, hasCommits: boolean, hasLangs: boolean })
+// explore_status {} -> string (JSON: { moraineUp: boolean, moraineInstalled: boolean,
+//   clickhouseUp: boolean, dataDir: string, hasScan: boolean, hasCommits: boolean,
+//   hasLangs: boolean })
 
 // ---- frontend adapter surface (exploreData.ts implements over invoke) ----
 export interface TimelineSessionRow {
@@ -109,6 +110,7 @@ export interface TranscriptPage {
 
 export interface ExploreStatus {
   moraineUp: boolean;
+  moraineInstalled: boolean;
   clickhouseUp: boolean;
   dataDir: string;
   hasScan: boolean;

@@ -759,10 +759,27 @@ export async function fetchExploreStatus(): Promise<ExploreStatus> {
     try {
       clickhouseUp = (await (await fetch("/ch-proxy?query=SELECT%201")).text()).trim() === "1";
     } catch { /* down */ }
-    return { moraineUp: clickhouseUp, clickhouseUp, dataDir: "(dev fallback)", hasScan: false, hasCommits: false, hasLangs: false };
+    return { moraineUp: clickhouseUp, moraineInstalled: clickhouseUp, clickhouseUp, dataDir: "(dev fallback)", hasScan: false, hasCommits: false, hasLangs: false };
   }
   const raw = await invoke<string>("explore_status");
   return JSON.parse(raw) as ExploreStatus;
+}
+
+// moraine_start: spawn `moraine up` detached and poll the monitor port
+// (~30s). state === "not_installed" never happens when the pane gated the
+// button on moraineInstalled, but is handled anyway.
+export interface MoraineStartResult {
+  state: "not_installed" | "running" | "failed";
+  running: boolean;
+  detail: string;
+}
+
+export async function startMoraine(): Promise<MoraineStartResult> {
+  assertDesktop();
+  if (!isDesktop() && DEV_FALLBACK) {
+    return { state: "failed", running: false, detail: "starting Moraine requires the desktop app" };
+  }
+  return invoke<MoraineStartResult>("moraine_start");
 }
 
 // ---------------------------------------------------------------------------
