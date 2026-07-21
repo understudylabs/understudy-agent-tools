@@ -115,9 +115,9 @@ export function ApiKeysPane({ onOpenAccount }: { onOpenAccount?: () => void }) {
             </Notice>
           ) : state.phase === "no-org" ? (
             <Notice label="attention">
-              Your credentials name several organizations — the app cannot
-              pick one. Re-run <code>understudy login</code> for the org you
-              want to manage.
+              Your credentials do not name exactly one organization — the
+              app cannot pick one. Re-run <code>understudy login</code> for
+              the org you want to manage.
             </Notice>
           ) : state.phase === "error" ? (
             <Notice label="attention">
