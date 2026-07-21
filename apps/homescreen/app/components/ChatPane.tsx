@@ -89,6 +89,11 @@ import {
   type RemotePlan,
   type RemoteTrainingCapabilities,
 } from "./RemoteTrainingPanel";
+import {
+  CustomTrainingCompileCard,
+  type CustomCompileEvent,
+  type CustomCompileSummary,
+} from "./CustomTrainingCompile";
 import { LocalSftTrainingPanel } from "./LocalSftTrainingPanel";
 import { LocalClassifierLibraryDialog } from "./LocalClassifierLibraryDialog";
 import { TrainingHalo, type TrainingHaloVisual } from "./TrainingHalo";
@@ -307,6 +312,10 @@ type PiDatasetAnalysisEvent =
       message: string;
     }
   | { type: "draft_delta"; phase: "inferring"; text: string };
+type CustomCompileResult = CustomCompileSummary & {
+  plan: RemotePlan;
+  goal_card: TrainingGoalCard;
+};
 type ClassificationDataset = {
   schema_version: "understudy.capture_import.classification_dataset.v2";
   dataset_id: string;
@@ -1078,6 +1087,10 @@ export function ChatPane({
   const [environmentArchitectDraft, setEnvironmentArchitectDraft] = useState("");
   const [environmentArchitectError, setEnvironmentArchitectError] = useState<string | null>(null);
   const [environmentArchitectRetry, setEnvironmentArchitectRetry] = useState(0);
+  const [customCompilePhases, setCustomCompilePhases] = useState<CustomCompileEvent[]>([]);
+  const [customCompileResult, setCustomCompileResult] = useState<CustomCompileResult | null>(null);
+  const [customCompileError, setCustomCompileError] = useState<string | null>(null);
+  const [customCompileBusy, setCustomCompileBusy] = useState(false);
   const [recipeBackend, setRecipeBackend] = useState<"local" | "managed">("managed");
   const [recipeLocalAvailable, setRecipeLocalAvailable] = useState(false);
   const [mappingInputColumns, setMappingInputColumns] = useState<string[]>([]);
@@ -1096,6 +1109,7 @@ export function ChatPane({
   const dropInFlight = useRef(false);
   const dropRequestGeneration = useRef(0);
   const environmentArchitectAttempted = useRef<string | null>(null);
+  const customCompileAttempted = useRef<string | null>(null);
   const environmentArchitectDraftRef = useRef("");
   const environmentArchitectDraftFrame = useRef<number | null>(null);
   const selectedModelUserOwned = useRef(false);
@@ -1153,6 +1167,11 @@ export function ChatPane({
     dropRequestGeneration.current += 1;
     dropInFlight.current = false;
     environmentArchitectAttempted.current = null;
+    customCompileAttempted.current = null;
+    setCustomCompilePhases([]);
+    setCustomCompileResult(null);
+    setCustomCompileError(null);
+    setCustomCompileBusy(false);
     setDroppedWorkload(null);
     setCsvInspection(null);
     setTrainingRecipe(null);
@@ -1201,6 +1220,11 @@ export function ChatPane({
     });
     if (dropRequestGeneration.current !== requestGeneration) return;
     environmentArchitectAttempted.current = null;
+    customCompileAttempted.current = null;
+    setCustomCompilePhases([]);
+    setCustomCompileResult(null);
+    setCustomCompileError(null);
+    setCustomCompileBusy(false);
     setTrainingRecipe(result);
     setTrainingGoalCard(null);
     setDatasetProfileConfirmed(false);
@@ -1307,6 +1331,128 @@ export function ChatPane({
   useEffect(() => {
     if (!remoteRecipePlan && trainingRecipe?.ready) prepareDetectedRecipe();
   }, [prepareDetectedRecipe, remoteRecipePlan, trainingRecipe?.ready]);
+
+  /**
+   * Compile the Pi environment-architect proposal for a Custom training
+   * workload into an executable local plan, then — only when the deterministic
+   * environment reports "executable" — flow into the existing priced-recipe
+   * path (capabilities check + re-preparation with the recommended managed
+   * spend), mirroring prepareDetectedRecipe. Local-only until the user
+   * approves an upload; the compiled plan always starts at $0.
+   */
+  const compileCustomTrainingPlan = useCallback(() => {
+    if (!droppedWorkload || !trainingRecipe || customCompileBusy) return;
+    const requestGeneration = dropRequestGeneration.current;
+    const sourceSha256 = trainingRecipe.source_sha256;
+    customCompileAttempted.current = sourceSha256;
+    setCustomCompileBusy(true);
+    setCustomCompileError(null);
+    setCustomCompilePhases([]);
+    const channel = new Channel<CustomCompileEvent>();
+    channel.onmessage = (event) => {
+      if (dropRequestGeneration.current !== requestGeneration || event.type !== "phase") return;
+      setCustomCompilePhases((current) => [
+        ...current.filter((seen) => seen.phase !== event.phase),
+        event,
+      ]);
+    };
+    const mapping =
+      csvInspection && mappingLabelColumn && mappingGroupColumn && mappingInputColumns.length > 0
+        ? {
+            input_columns: mappingInputColumns,
+            label_column: mappingLabelColumn,
+            group_column: mappingGroupColumn,
+          }
+        : undefined;
+    void invoke<CustomCompileResult>("compile_custom_training_plan", {
+      artifactRoot: droppedWorkload.artifact_root,
+      sourcePath: droppedWorkload.source_path,
+      mapping,
+      modelProfile: "understudy/auto",
+      onEvent: channel,
+    })
+      .then(async (compiled) => {
+        if (dropRequestGeneration.current !== requestGeneration) return;
+        setCustomCompileResult(compiled);
+        setTrainingGoalCard(compiled.goal_card);
+        if (compiled.environment_status !== "executable") return;
+        setRemoteRecipePlan(compiled.plan);
+        setRemoteRecipeEligibilityError(null);
+        try {
+          const [compatibility, envelope] = await Promise.all([
+            invoke<RecipeBackendCompatibility>("compile_remote_training_backends", {
+              planPath: compiled.plan.plan_path,
+            }),
+            invoke<RemoteTrainingCapabilitiesEnvelope>("remote_training_capabilities"),
+          ]);
+          if (dropRequestGeneration.current !== requestGeneration) return;
+          setRecipeLocalAvailable(compatibility.backends.some(
+            (backend) => backend.id === "mlx-local" && backend.compatible && backend.execution_ready,
+          ));
+          setRecipeBackend("managed");
+          const capabilities = envelope.enabled ? envelope.capabilities : undefined;
+          const managedAvailable = capabilities?.providers.some(
+            (provider) => provider.id === "managed" && provider.enabled && provider.model_profiles.length > 0,
+          );
+          if (!capabilities || !managedAvailable) {
+            setRemoteRecipeEligibilityError(envelope.reason ?? "Cloud training is unavailable in this Desktop build.");
+            return;
+          }
+          const artifactLimitError = remoteTrainingArtifactLimitError(compiled.plan, capabilities);
+          if (artifactLimitError) {
+            setRemoteRecipeEligibilityError(artifactLimitError);
+            return;
+          }
+          const maximumSpendUsd = recommendedManagedTrainingSpend(capabilities);
+          const pricedPlan = compiled.dataset_manifest_path
+            ? await invoke<RemotePlan>("prepare_remote_classification_training", {
+                manifestPath: compiled.dataset_manifest_path,
+                modelProfile: "understudy/auto",
+                maximumSpendUsd,
+              })
+            : await invoke<RemotePlan>("prepare_remote_training_recipe", {
+                sourcePath: droppedWorkload.source_path,
+                artifactRoot: droppedWorkload.artifact_root,
+                expectedSourceSha256: sourceSha256,
+                recipeId: compiled.recipe_id,
+                modelProfile: "understudy/auto",
+                maximumSpendUsd,
+              });
+          if (dropRequestGeneration.current !== requestGeneration) return;
+          setRemoteRecipePlan(pricedPlan);
+          setRemoteRecipeEligibilityError(null);
+        } catch (cause) {
+          if (dropRequestGeneration.current === requestGeneration) {
+            setRemoteRecipeEligibilityError(`Cloud readiness check failed: ${String(cause)}`);
+          }
+        }
+      })
+      .catch((cause) => {
+        if (dropRequestGeneration.current !== requestGeneration) return;
+        setCustomCompileError(String(cause));
+      })
+      .finally(() => {
+        if (dropRequestGeneration.current === requestGeneration) setCustomCompileBusy(false);
+      });
+  }, [csvInspection, customCompileBusy, droppedWorkload, mappingGroupColumn, mappingInputColumns, mappingLabelColumn, trainingRecipe]);
+
+  // A landed Pi proposal for a not-yet-executable workload drives compilation
+  // automatically. Tabular sources with a live inspection wait for the user to
+  // confirm the column mapping and press Compile instead.
+  useEffect(() => {
+    if (
+      !environmentArchitect
+      || !droppedWorkload
+      || !trainingRecipe
+      || trainingRecipe.ready
+      || csvInspection
+      || customCompileBusy
+      || customCompileResult
+      || customCompileError
+    ) return;
+    if (customCompileAttempted.current === trainingRecipe.source_sha256) return;
+    compileCustomTrainingPlan();
+  }, [compileCustomTrainingPlan, csvInspection, customCompileBusy, customCompileError, customCompileResult, droppedWorkload, environmentArchitect, trainingRecipe]);
 
   const openManagedRecipeTraining = useCallback(() => {
     setRecipeBackend("managed");
@@ -2373,7 +2519,63 @@ export function ChatPane({
                       onTrainingBackendChange={setRecipeBackend}
                     />}
                     <div className="csv-analysis-next">
-                      {trainingRecipe.ready && remoteRecipePlan ? <>
+                      {!trainingRecipe.ready
+                        && !remoteTrainingView
+                        && (environmentArchitect || customCompileBusy || customCompileResult || customCompileError) && (
+                        <>
+                          {csvInspection && !customCompileBusy && !customCompileResult && (
+                            <div className="custom-compile-mapping flex flex-wrap gap-3">
+                              <label className="csv-analysis-group-choice">
+                                <span>Target column</span>
+                                <select
+                                  value={mappingLabelColumn}
+                                  onChange={(event) => {
+                                    const label = event.target.value;
+                                    setMappingLabelColumn(label);
+                                    setMappingInputColumns(csvInspection.columns
+                                      .filter((column) => column.name !== label && column.non_empty_count > 0)
+                                      .map((column) => column.name));
+                                  }}
+                                >
+                                  <option value="">Choose what to predict</option>
+                                  {csvInspection.columns.map((column) => (
+                                    <option key={column.name} value={column.name}>{column.name}</option>
+                                  ))}
+                                </select>
+                              </label>
+                              <label className="csv-analysis-group-choice">
+                                <span>Reference column</span>
+                                <select
+                                  value={mappingGroupColumn}
+                                  onChange={(event) => setMappingGroupColumn(event.target.value)}
+                                >
+                                  <option value="">Keeps related rows in one split</option>
+                                  {csvInspection.columns
+                                    .filter((column) => column.name !== mappingLabelColumn && column.non_empty_count > 0)
+                                    .map((column) => (
+                                      <option key={column.name} value={column.name}>{column.name}</option>
+                                    ))}
+                                </select>
+                              </label>
+                            </div>
+                          )}
+                          <CustomTrainingCompileCard
+                            phases={customCompilePhases}
+                            busy={customCompileBusy}
+                            result={customCompileResult}
+                            error={customCompileError}
+                            onRetry={compileCustomTrainingPlan}
+                            waitingForMapping={Boolean(csvInspection && (
+                              !mappingLabelColumn
+                              || !mappingGroupColumn
+                              || mappingInputColumns.length === 0
+                              || mappingLabelColumn === mappingGroupColumn
+                            ))}
+                            onCompile={csvInspection ? compileCustomTrainingPlan : null}
+                          />
+                        </>
+                      )}
+                      {(trainingRecipe.ready || customCompileResult?.environment_status === "executable") && remoteRecipePlan ? <>
                         {recipeLocalAvailable && (
                           <div hidden={recipeBackend === "managed"}>
                             <LocalSftTrainingPanel
@@ -2413,14 +2615,13 @@ export function ChatPane({
                             trainingExamples={trainingRecipe.row_preview}
                           />
                         )}
-                      </> : (
+                      </> : (environmentArchitect || customCompileBusy || customCompileResult || customCompileError) && !trainingRecipe.ready ? null : (
                         <div className="remote-training-state" role="status" aria-live="polite">
                           <strong>{environmentArchitectProgress ? "Understudy is checking the training plan" : `Preparing ${trainingUseCaseLabel(trainingRecipe.detected_use_case)}`}</strong>
                           <small>{(environmentArchitectProgress?.type === "phase"
                             ? environmentArchitectProgress.message
-                            : environmentArchitectProgress?.text) ?? (environmentArchitect
-                            ? "The verifier draft is ready, but this task still needs an executable portable recipe. No upload or spend has started."
-                            : "Profiling and splitting locally. No upload or spend has started.")}</small>
+                            : environmentArchitectProgress?.text)
+                            ?? "Profiling and splitting locally. No upload or spend has started."}</small>
                         </div>
                       )}
                     </div>
