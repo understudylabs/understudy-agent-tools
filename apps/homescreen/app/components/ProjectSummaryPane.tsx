@@ -309,7 +309,9 @@ function ProjectSummaryBody({
 
 /** Port of the web `WorkloadHealthBadge` onto the app's health-dot tokens. */
 function WorkloadHealthBadge({ status }: { status?: WorkloadStatusEntry["status"] }) {
-  const label = status ?? "unknown";
+  // Web shows a muted "Not observed" chip when the status read had no
+  // entry for this workload; keep that wording.
+  const label = status ?? "not observed";
   const dot =
     status === "healthy" ? "healthy" : status === "degraded" ? "degraded" : "unknown";
   return (
