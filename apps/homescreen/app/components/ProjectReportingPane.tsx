@@ -171,47 +171,11 @@ export function ProjectReportingPane({ scope }: { scope: Scope }) {
         <div className="card">
           <div className="projrep-card-head">
             <div>
-              <div className="card-title">Workload status</div>
+              <div className="card-title">Workloads</div>
               <p className="projrep-card-sub">
-                Observed traffic over the last {STATUS_WINDOW}. Refreshes
-                every 60s while this window is visible.
-              </p>
-            </div>
-            <UpdatedStamp at={statusFetchedAt} />
-          </div>
-          {status === null ? (
-            <LoadingRows />
-          ) : status.ok ? (
-            status.data.workloads.length === 0 ? (
-              <EmptyState>
-                No workloads yet. Send a request through the gateway and it
-                will show up here within a minute.
-              </EmptyState>
-            ) : (
-              <div className="projrep-status-grid">
-                {status.data.workloads.map((entry) => (
-                  <WorkloadStatusCard key={entry.workload_id} entry={entry} />
-                ))}
-              </div>
-            )
-          ) : (
-            <FetchError
-              what="workload status"
-              error={status.error}
-              requestId={status.request_id}
-              onRetry={() => void refreshStatus()}
-            />
-          )}
-        </div>
-
-        <div className="card">
-          <div className="projrep-card-head">
-            <div>
-              <div className="card-title">Usage</div>
-              <p className="projrep-card-sub">
-                Requests, cost, and cache reads per workload over the last{" "}
-                {usageWindow}. Refreshes every 5 minutes while this window is
-                visible.
+                Requests, cost, cache reads, errors, and traffic allocation
+                per workload over the last {usageWindow}. Refreshes every 5
+                minutes while this window is visible.
               </p>
             </div>
             <div className="projrep-card-actions">
@@ -239,7 +203,10 @@ export function ProjectReportingPane({ scope }: { scope: Scope }) {
               usage.data.byWorkload.length === 0 ? (
                 <EmptyState>No usage in this window yet.</EmptyState>
               ) : (
-                <UsageSection data={usage.data} />
+                <UsageSection
+                  data={usage.data}
+                  statusEntries={status?.ok ? status.data.workloads : []}
+                />
               )
             ) : (
               <FetchError
@@ -347,82 +314,7 @@ function FetchError({
   );
 }
 
-// ---- workload status cards ----
-
-function StatusPill({
-  status,
-}: {
-  status: WorkloadStatusEntry["status"];
-}): ReactNode {
-  return (
-    <span className={`projrep-status-pill ${status}`}>
-      <span aria-hidden="true" className="dot" />
-      {status}
-    </span>
-  );
-}
-
-function WorkloadStatusCard({
-  entry,
-}: {
-  entry: WorkloadStatusEntry;
-}): ReactNode {
-  return (
-    <div className="projrep-workload-card">
-      <div className="projrep-workload-head">
-        <span className="projrep-workload-name">{entry.display_name}</span>
-        <StatusPill status={entry.status} />
-      </div>
-
-      <dl className="projrep-ministats">
-        <MiniStat
-          label="requests"
-          value={entry.requests.toLocaleString("en-US")}
-        />
-        <MiniStat label="error rate" value={formatShare(entry.error_rate)} />
-        <MiniStat
-          label="declared route"
-          value={
-            entry.declared.routed === "none"
-              ? "none"
-              : `${entry.declared.routed} @ ${entry.declared.split_pct}%`
-          }
-        />
-      </dl>
-
-      <RouteShares shares={entry.route_shares} />
-      <ServedModels entry={entry} />
-
-      {entry.last_error_at ? (
-        <div className="projrep-last-error">
-          <span className="muted">
-            last error {formatTimestamp(entry.last_error_at)}
-          </span>
-          {entry.example_request_ids.slice(0, 3).map((id) => (
-            <span key={id} className="projrep-request-id">
-              <code>{id}</code> <CopyId value={id} />
-            </span>
-          ))}
-        </div>
-      ) : null}
-    </div>
-  );
-}
-
-function MiniStat({
-  label,
-  value,
-}: {
-  label: string;
-  value: string;
-}): ReactNode {
-  return (
-    <div className="projrep-ministat">
-      <dt>{label}</dt>
-      <dd>{value}</dd>
-    </div>
-  );
-}
+// ---- usage table (single combined view) ----
 
 /**
  * Observed route outcome shares — canonical vocabulary only
@@ -434,63 +326,57 @@ const ROUTE_SEGMENTS = [
   { key: "fallback", className: "seg-fallback" },
 ] as const;
 
-function RouteShares({
+/** Compact allocation cell: share bar + the nonzero segments as text. */
+function AllocationCell({
   shares,
 }: {
   shares: WorkloadStatusEntry["route_shares"];
 }): ReactNode {
+  const nonzero = ROUTE_SEGMENTS.filter(({ key }) => shares[key] > 0);
   return (
-    <div className="projrep-route-shares">
-      <span className="projrep-label">route shares</span>
-      <div className="projrep-share-bar">
-        {ROUTE_SEGMENTS.map(({ key, className }) =>
-          shares[key] > 0 ? (
-            <div
-              key={key}
-              className={className}
-              style={{ width: `${shares[key] * 100}%` }}
-            />
-          ) : null,
-        )}
-      </div>
-      <div className="projrep-share-legend">
-        {ROUTE_SEGMENTS.map(({ key, className }) => (
-          <span key={key}>
-            <span aria-hidden="true" className={`legend-dot ${className}`} />
-            {key} {formatShare(shares[key])}
-          </span>
+    <div className="projrep-alloc">
+      <div
+        className="projrep-share-bar"
+        title={ROUTE_SEGMENTS.map(
+          ({ key }) => `${key} ${formatShare(shares[key])}`,
+        ).join(" · ")}
+      >
+        {nonzero.map(({ key, className }) => (
+          <div
+            key={key}
+            className={className}
+            style={{ width: `${shares[key] * 100}%` }}
+          />
         ))}
       </div>
+      <span className="projrep-alloc-label">
+        {nonzero.length === 0
+          ? "no traffic"
+          : nonzero
+              .map(({ key }) => `${key} ${formatShare(shares[key])}`)
+              .join(" · ")}
+      </span>
     </div>
   );
 }
 
-function ServedModels({ entry }: { entry: WorkloadStatusEntry }): ReactNode {
-  return (
-    <div className="projrep-served-models">
-      <span className="projrep-label">served models</span>
-      {entry.served_models.length === 0 ? (
-        <span className="muted">no traffic in window</span>
-      ) : (
-        entry.served_models.map((served) => (
-          <div key={served.model} className="projrep-served-row">
-            <code>{served.model}</code>
-            <span className="muted">
-              {served.provider_label} · {formatShare(served.share)}
-            </span>
-          </div>
-        ))
-      )}
-    </div>
-  );
-}
-
-// ---- usage section ----
-
-function UsageSection({ data }: { data: UsageSummaryData }): ReactNode {
+function UsageSection({
+  data,
+  statusEntries,
+}: {
+  data: UsageSummaryData;
+  statusEntries: WorkloadStatusEntry[];
+}): ReactNode {
   const daily = dailySeries(data.byDay);
   const rows = [...data.byWorkload].sort((a, b) => b.requests - a.requests);
   const totals = totalsFrom(rows);
+  // Status entries key by workload id/display name; usage rows carry both.
+  const statusFor = (row: (typeof rows)[number]) =>
+    statusEntries.find(
+      (entry) =>
+        entry.workload_id === row.workload_id ||
+        entry.display_name === row.workload,
+    ) ?? null;
   const maxRequests = Math.max(1, ...daily.map((d) => d.requests));
   return (
     <>
@@ -521,22 +407,35 @@ function UsageSection({ data }: { data: UsageSummaryData }): ReactNode {
             <th className="num">requests</th>
             <th className="num">cost</th>
             <th className="num">cache read</th>
+            <th className="num">error rate</th>
+            <th>allocation</th>
           </tr>
         </thead>
         <tbody>
-          {rows.map((group) => (
-            <tr key={group.workload_id ?? group.workload ?? "unattributed"}>
-              <td>{group.workload ?? group.workload_id ?? "unattributed"}</td>
-              <td className="num">{formatTokens(group.requests)}</td>
-              <td className="num">{formatUSD(group.customer_cost_usd)}</td>
-              <td className="num">{formatShare(group.cache_read_pct)}</td>
-            </tr>
-          ))}
+          {rows.map((group) => {
+            const live = statusFor(group);
+            return (
+              <tr key={group.workload_id ?? group.workload ?? "unattributed"}>
+                <td>{group.workload ?? group.workload_id ?? "unattributed"}</td>
+                <td className="num">{formatTokens(group.requests)}</td>
+                <td className="num">{formatUSD(group.customer_cost_usd)}</td>
+                <td className="num">{formatShare(group.cache_read_pct)}</td>
+                <td className="num">
+                  {live ? formatShare(live.error_rate) : "—"}
+                </td>
+                <td>
+                  {live ? <AllocationCell shares={live.route_shares} /> : "—"}
+                </td>
+              </tr>
+            );
+          })}
           <tr className="totals">
             <td>all workloads</td>
             <td className="num">{formatTokens(totals.requests)}</td>
             <td className="num">{formatUSD(totals.costUsd)}</td>
             <td className="num">{formatShare(cacheReadShare(totals))}</td>
+            <td className="num">—</td>
+            <td>—</td>
           </tr>
         </tbody>
       </table>

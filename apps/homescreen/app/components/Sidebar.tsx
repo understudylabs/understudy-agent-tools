@@ -1,5 +1,7 @@
 "use client";
 
+import { useEffect, useState } from "react";
+import { invoke, isTauri } from "@tauri-apps/api/core";
 import { PlusIcon } from "lucide-react";
 import { TooltipProvider } from "@/app/components/base-ui/tooltip";
 import { NAV_ITEMS, paneToNavId, type NavGroupId, type Scope } from "../lib/nav";
@@ -47,7 +49,7 @@ const AccountIcon = () => (
 );
 
 const GROUP_LABELS: Record<NavGroupId, string> = {
-  organization: "Organization",
+  organization: "Capture",
   workload: "Workload",
   training: "Training",
   sessions: "Chats",
@@ -101,8 +103,26 @@ export function Sidebar({
 }) {
   const activeNavId = paneToNavId(active, activeSessionId, activeThreadId);
 
+  // Bottom-left identity: prefer a real org name when the gateway exposes
+  // one; fall back to a shortened org id ("org_01KT…81YX"), then "Account".
+  const [orgLabel, setOrgLabel] = useState<string | null>(null);
+  useEffect(() => {
+    if (!isTauri()) return;
+    invoke<{ org_name?: string | null; org_id?: string | null }>("account_status")
+      .then((s) => {
+        if (s?.org_name) setOrgLabel(s.org_name);
+        else if (s?.org_id) {
+          const id = s.org_id;
+          setOrgLabel(id.length > 14 ? `${id.slice(0, 8)}…${id.slice(-4)}` : id);
+        }
+      })
+      .catch(() => {});
+  }, [connected]);
+
   const itemsFor = (group: NavGroupId) =>
-    NAV_ITEMS.filter((item) => item.group === group).map((item) => (
+    NAV_ITEMS.filter(
+      (item) => item.group === group && (!item.requiresWorkload || scope.workloadId),
+    ).map((item) => (
       <NavItem
         key={item.id}
         label={item.label}
@@ -129,12 +149,6 @@ export function Sidebar({
         <NavGroup group="organization" label={GROUP_LABELS.organization}>
           {itemsFor("organization")}
         </NavGroup>
-
-        {scope.workloadId && (
-          <NavGroup group="workload" label={GROUP_LABELS.workload}>
-            {itemsFor("workload")}
-          </NavGroup>
-        )}
 
         <NavGroup group="training" label={GROUP_LABELS.training}>
           {itemsFor("training")}
@@ -178,7 +192,7 @@ export function Sidebar({
         >
           <AccountIcon />
           <span className="nav-account-copy">
-            <span>Account</span>
+            <span>{orgLabel ?? "Account"}</span>
             <span className="nav-account-status">
               <span className={"dot" + (connected ? " running" : "")} />
               {connected ? "Connected" : "Disconnected"}

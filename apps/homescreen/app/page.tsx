@@ -35,8 +35,8 @@ import type { ChatSessionRequest, ChatSessionSummary } from "./lib/chat-history"
 import type { TrainingThreadRequest, TrainingThreadSummary } from "./lib/training-threads.mjs";
 
 export default function Page() {
-  const [pane, setPane] = useState<PaneId>("chat");
-  const [railOpen, setRailOpen] = useState(false);
+  const [pane, setPane] = useState<PaneId>("org-summary");
+  const [railOpen, setRailOpen] = useState(true);
   const [scope, setScope] = useState<Scope>({ projectId: null, workloadId: null });
   const [chatResetToken, setChatResetToken] = useState(0);
   const [chatHistory, setChatHistory] = useState<ChatSessionSummary[]>([]);

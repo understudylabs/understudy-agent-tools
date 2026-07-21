@@ -516,7 +516,7 @@ function StepCard({
       <div className="card-row" style={{ alignItems: "flex-start" }}>
         <div>
           <div className="card-title flex items-center gap-3">
-            <span className="flex size-5 shrink-0 items-center justify-center border border-[var(--c-stamp)]/60 text-[0.68rem] text-[var(--c-stamp)]">
+            <span className="flex size-5 shrink-0 items-center justify-center border border-[var(--model-mint)]/60 text-[0.68rem] text-[var(--model-mint)]">
               {step}
             </span>
             {title}
@@ -549,7 +549,7 @@ function PathOption({
       onClick={onSelect}
       className={`grid min-w-0 content-start gap-1 rounded-md border p-4 text-left transition-colors ${
         selected
-          ? "border-[var(--c-stamp)] bg-[var(--c-stamp)]/5"
+          ? "border-[var(--model-mint)] bg-[var(--model-mint)]/5"
           : "border-[var(--border)] hover:border-[var(--c-ink-muted)]"
       }`}
     >
