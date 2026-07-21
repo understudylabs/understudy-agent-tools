@@ -2,6 +2,7 @@ import { createHash } from "node:crypto";
 import { chmodSync, existsSync, mkdirSync, readdirSync, readFileSync, realpathSync, statSync, writeFileSync } from "node:fs";
 import { basename, dirname, extname, join, relative, resolve } from "node:path";
 import { globalConfigDir } from "./config/paths.js";
+import { readXlsxRecords } from "./capture-import-xlsx.js";
 
 export type CaptureSourceKind =
   | "eval-fixture"
@@ -1024,15 +1025,26 @@ function readDelimitedTable(source: string): { bytes: Buffer; headers: string[];
   if (bytes.length > MAX_CSV_BYTES) {
     throw new Error(`Table exceeds the ${MAX_CSV_BYTES}-byte local preparation limit.`);
   }
-  let text: string;
-  try {
-    text = new TextDecoder("utf-8", { fatal: true }).decode(bytes);
-  } catch {
-    throw new Error("Table must be valid UTF-8 before local inspection.");
+  let records: string[][];
+  if (extname(source).toLowerCase() === ".xlsx") {
+    records = readXlsxRecords(bytes, {
+      maxBytes: MAX_CSV_BYTES,
+      maxRows: MAX_CSV_ROWS,
+      maxColumns: MAX_CSV_COLUMNS,
+      maxFieldCharacters: MAX_CSV_FIELD_CHARACTERS,
+    });
+  } else {
+    let text: string;
+    try {
+      text = new TextDecoder("utf-8", { fatal: true }).decode(bytes);
+    } catch {
+      throw new Error("Table must be valid UTF-8 before local inspection.");
+    }
+    if (text.charCodeAt(0) === 0xfeff) text = text.slice(1);
+    const delimiter = detectTableDelimiter(source, text);
+    records = parseCsvRecordsBounded(text, delimiter);
   }
-  if (text.charCodeAt(0) === 0xfeff) text = text.slice(1);
-  const delimiter = detectTableDelimiter(source, text);
-  const records = parseCsvRecordsBounded(text, delimiter).filter((record) =>
+  records = records.filter((record) =>
     record.some((field) => field.trim().length > 0),
   );
   if (records.length < 2) throw new Error("Table needs at least two non-empty rows.");
@@ -1055,7 +1067,7 @@ function detectTableDelimiter(source: string, text: string): "," | "\t" {
   if (extension === ".tsv" || extension === ".tab") return "\t";
   if (extension === ".csv") return ",";
   if (extension && extension !== ".txt") {
-    throw new Error(`Local table inspection supports .csv, .tsv, .tab, .txt, or extensionless files: ${source}`);
+    throw new Error(`Local table inspection supports .csv, .tsv, .tab, .txt, .xlsx, or extensionless files: ${source}`);
   }
   const lines = text.split(/\r?\n/).filter((line) => line.trim()).slice(0, 20);
   if (lines.length < 2) throw new Error("Table needs at least two non-empty rows.");
@@ -1357,8 +1369,8 @@ function detectKind(path: string): { kind: CaptureSourceKind; evidence: string[]
   if (ext === ".jsonl") {
     return { kind: "jsonl-data", evidence: ["extension:.jsonl"] };
   }
-  if (ext === ".csv") {
-    return { kind: "csv-data", evidence: ["extension:.csv"] };
+  if (ext === ".csv" || ext === ".xlsx") {
+    return { kind: "csv-data", evidence: [`extension:${ext}`] };
   }
   if (name.includes("golden") || normalized.includes("/golden")) {
     return { kind: "golden-fixture", evidence: ["path:golden"] };
@@ -1378,7 +1390,7 @@ function detectKind(path: string): { kind: CaptureSourceKind; evidence: string[]
   if ([".pdf", ".doc", ".docx", ".rtf", ".txt", ".md", ".markdown"].includes(ext)) {
     return { kind: "document", evidence: [`extension:${ext}`] };
   }
-  if ([".xlsx", ".xls", ".ods", ".tsv"].includes(ext)) {
+  if ([".xls", ".ods", ".tsv"].includes(ext)) {
     return { kind: "spreadsheet", evidence: [`extension:${ext}`] };
   }
   if ([".ts", ".tsx", ".js", ".jsx", ".mjs", ".cjs", ".py", ".rs", ".go", ".java", ".kt", ".swift", ".rb", ".php", ".c", ".cc", ".cpp", ".h", ".hpp"].includes(ext)) {

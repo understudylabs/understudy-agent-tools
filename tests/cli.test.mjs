@@ -2436,7 +2436,7 @@ class ScoreWithFeedback:
         "--json",
       ]);
       assert.notEqual(textResult.status, 0);
-      assert.match(textResult.stderr, /supports \.csv, \.tsv, \.tab, \.txt, or extensionless files/);
+      assert.match(textResult.stderr, /supports \.csv, \.tsv, \.tab, \.txt, \.xlsx, or extensionless files/);
     } finally {
       rmSync(root, { recursive: true, force: true });
     }
@@ -2464,7 +2464,7 @@ class ScoreWithFeedback:
       assert.equal(compiled.source_count, 1_000);
       assert.equal(compiled.truncated, true);
       assert.ok(compiled.source_kinds.document > 0);
-      assert.equal(compiled.source_kinds.spreadsheet, 1);
+      assert.equal(compiled.source_kinds["csv-data"], 1);
       assert.equal(compiled.source_kinds["source-file"], 1);
       assert.equal(compiled.source_kinds["local-file"], 1);
       assert.ok(!result.stdout.includes("node_modules"));
@@ -2472,7 +2472,143 @@ class ScoreWithFeedback:
       rmSync(root, { recursive: true, force: true });
     }
   });
+
+  it("inspects and prepares a dropped xlsx workbook through the classification path", () => {
+    const root = mkdtempSync(join(tmpdir(), "understudy-xlsx-dataset-"));
+    try {
+      const labels = ["branded", "not_branded"];
+      const sharedItems = [
+        "PROCESSED_QUERY",
+        "brand_intent_new",
+        ...labels,
+      ];
+      const sharedIndex = new Map(sharedItems.map((value, index) => [value, index]));
+      const rows = Array.from({ length: 60 }, (_, index) => {
+        const label = labels[index % labels.length];
+        // Alphabetic tokens: digits would collapse to <number> under group
+        // normalization and make every row the same leakage group.
+        const token = String.fromCharCode(97 + Math.floor(index / 26))
+          + String.fromCharCode(97 + (index % 26));
+        return { query: `query token ${token} <&"'> shoes`, label };
+      });
+      const sheetRows = [
+        `<row r="1"><c r="A1" t="s"><v>0</v></c><c r="B1" t="s"><v>1</v></c></row>`,
+        ...rows.map((row, index) => {
+          const reference = index + 2;
+          const query = row.query
+            .replaceAll("&", "&amp;")
+            .replaceAll("<", "&lt;")
+            .replaceAll(">", "&gt;")
+            .replaceAll('"', "&quot;")
+            .replaceAll("'", "&apos;");
+          return `<row r="${reference}"><c r="A${reference}" t="inlineStr"><is><t>${query}</t></is></c>`
+            + `<c r="B${reference}" t="s"><v>${sharedIndex.get(row.label)}</v></c></row>`;
+        }),
+      ].join("");
+      const workbook = `<?xml version="1.0"?><workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheets><sheet name="queries" sheetId="1" r:id="rId1"/></sheets></workbook>`;
+      const rels = `<?xml version="1.0"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/></Relationships>`;
+      const sheet = `<?xml version="1.0"?><worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetData>${sheetRows}</sheetData></worksheet>`;
+      const shared = `<?xml version="1.0"?><sst xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" count="${sharedItems.length}" uniqueCount="${sharedItems.length}">${sharedItems.map((value) => `<si><t>${value}</t></si>`).join("")}</sst>`;
+      const source = join(root, "query_tagging.xlsx");
+      writeFileSync(source, makeStoredZip([
+        ["xl/workbook.xml", workbook],
+        ["xl/_rels/workbook.xml.rels", rels],
+        ["xl/worksheets/sheet1.xml", sheet],
+        ["xl/sharedStrings.xml", shared],
+      ]));
+
+      const outputRoot = join(root, "artifacts");
+      const compiledResult = run([
+        "capture-import", "compile", "--source", source, "--output-root", outputRoot, "--json",
+      ]);
+      assert.equal(compiledResult.status, 0, compiledResult.stderr);
+      const compiled = JSON.parse(compiledResult.stdout);
+      assert.equal(compiled.source_kinds["csv-data"], 1);
+      assert.equal(compiled.payload_read, false);
+
+      const inspectionResult = run([
+        "capture-import", "inspect-csv", "--source", source,
+        "--artifact-root", compiled.artifact_root, "--json",
+      ]);
+      assert.equal(inspectionResult.status, 0, inspectionResult.stderr);
+      const inspection = JSON.parse(inspectionResult.stdout);
+      assert.equal(inspection.row_count, 60);
+      assert.deepEqual(
+        inspection.columns.map((column) => column.name),
+        ["PROCESSED_QUERY", "brand_intent_new"],
+      );
+      assert.equal(inspection.recommended_mapping.label_column, "brand_intent_new");
+
+      const preparedResult = run([
+        "capture-import", "prepare-classification", "--source", source,
+        "--artifact-root", compiled.artifact_root,
+        "--input-column", "PROCESSED_QUERY",
+        "--label-column", "brand_intent_new",
+        "--group-column", "PROCESSED_QUERY", "--json",
+      ]);
+      assert.equal(preparedResult.status, 0, preparedResult.stderr);
+      const prepared = JSON.parse(preparedResult.stdout);
+      assert.equal(prepared.row_count, 60);
+      assert.deepEqual([...prepared.labels].sort(), labels);
+      assert.ok(prepared.splits.train.row_count >= prepared.splits.holdout.row_count);
+      const trainRows = readFileSync(join(prepared.artifact_root, "train.jsonl"), "utf8")
+        .split("\n").filter(Boolean).map((line) => JSON.parse(line));
+      assert.ok(trainRows.every((row) => labels.includes(row.label)));
+      assert.match(trainRows[0].text, /query token [a-z]{2} <&"'> shoes/);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
 });
+
+// Minimal stored-entry zip writer so xlsx fixtures need no dependencies.
+function makeStoredZip(entries) {
+  const crcTable = new Uint32Array(256).map((_, n) => {
+    let c = n;
+    for (let k = 0; k < 8; k += 1) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1;
+    return c >>> 0;
+  });
+  const crc32 = (buf) => {
+    let crc = 0xffffffff;
+    for (const byte of buf) crc = crcTable[(crc ^ byte) & 0xff] ^ (crc >>> 8);
+    return (crc ^ 0xffffffff) >>> 0;
+  };
+  const locals = [];
+  const centrals = [];
+  let offset = 0;
+  for (const [name, text] of entries) {
+    const data = Buffer.from(text, "utf8");
+    const nameBuf = Buffer.from(name, "utf8");
+    const crc = crc32(data);
+    const local = Buffer.alloc(30);
+    local.writeUInt32LE(0x04034b50, 0);
+    local.writeUInt16LE(20, 4);
+    local.writeUInt32LE(crc, 14);
+    local.writeUInt32LE(data.length, 18);
+    local.writeUInt32LE(data.length, 22);
+    local.writeUInt16LE(nameBuf.length, 26);
+    locals.push(local, nameBuf, data);
+    const central = Buffer.alloc(46);
+    central.writeUInt32LE(0x02014b50, 0);
+    central.writeUInt16LE(20, 4);
+    central.writeUInt16LE(20, 6);
+    central.writeUInt32LE(crc, 16);
+    central.writeUInt32LE(data.length, 20);
+    central.writeUInt32LE(data.length, 24);
+    central.writeUInt16LE(nameBuf.length, 28);
+    central.writeUInt32LE(offset, 42);
+    centrals.push(central, nameBuf);
+    offset += 30 + nameBuf.length + data.length;
+  }
+  const centralBuf = Buffer.concat(centrals);
+  const eocd = Buffer.alloc(22);
+  eocd.writeUInt32LE(0x06054b50, 0);
+  eocd.writeUInt16LE(entries.length, 8);
+  eocd.writeUInt16LE(entries.length, 10);
+  eocd.writeUInt32LE(centralBuf.length, 12);
+  eocd.writeUInt32LE(offset, 16);
+  return Buffer.concat([...locals, centralBuf, eocd]);
+}
 
 describe("two-phase email login", () => {
   function startFakeAuthGateway() {

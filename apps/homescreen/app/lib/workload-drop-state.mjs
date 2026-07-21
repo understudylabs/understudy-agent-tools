@@ -4,7 +4,7 @@ export function shouldInspectDroppedTable(workload) {
   if (!workload || workload.source_type !== "file") return false;
   if ((workload.source_kinds?.["csv-data"] ?? 0) === 1) return true;
   const name = String(workload.source_name ?? "").trim().toLowerCase();
-  if (/\.(?:csv|tsv|tab)$/.test(name)) return true;
+  if (/\.(?:csv|tsv|tab|xlsx)$/.test(name)) return true;
   // Several public datasets ship as extensionless tab-delimited files. An
   // explicit file drop may be probed locally; unsupported extensionless files
   // fall back to the generic metadata-only Workload Card.
