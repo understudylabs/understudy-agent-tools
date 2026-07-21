@@ -6,7 +6,8 @@
     "dev": "BENCHMARK_HUB_DEMO=1 next dev -p 1421",
     "build": "next build",
     "start": "next start -p 1421",
-    "start:demo": "BENCHMARK_HUB_DEMO=1 next start -p 1421"
+    "start:demo": "BENCHMARK_HUB_DEMO=1 next start -p 1421",
+    "test": "tsc -p tests/tsconfig.json && node --test tests/*.test.mjs"
   },
   "dependencies": {
     "clsx": "^2.1.1",
