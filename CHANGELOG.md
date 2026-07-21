@@ -17,8 +17,8 @@ uses semantic-ish versioning (minor = new skill or new capability, patch = fixes
 
 ### Added
 
-- **Train on your own data, end to end.** Desktop/runtime 0.3.36 and CLI
-  0.6.33 let you drop a spreadsheet (`.xlsx` workbooks now work, alongside CSV
+- **Train on your own data, end to end.** Desktop/runtime 0.3.37 and CLI
+  0.6.34 let you drop a spreadsheet (`.xlsx` workbooks now work, alongside CSV
   and other tables) onto Understudy Desktop and go all the way to a trained
   model: the app reads your file, proposes a training plan in plain language,
   and — only after you approve — runs the training in the cloud. Before
