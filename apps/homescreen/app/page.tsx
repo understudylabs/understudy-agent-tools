@@ -11,6 +11,7 @@ import { ChatPane } from "./components/ChatPane";
 import { TracesPane } from "./components/TracesPane";
 import { AccountPane } from "./components/AccountPane";
 import { UsagePane } from "./components/UsagePane";
+import { ReportingPane } from "./components/ReportingPane";
 import { DownloadQrButton } from "./components/DownloadQrButton";
 import { isTrainingPane, TrainingPane } from "./components/TrainingPane";
 import { RlmPane } from "./components/RlmPane";
@@ -220,6 +221,7 @@ export default function Page() {
       "models",
       "account",
       "rlm",
+      "reporting",
       "explore",
       "workload-config",
       "training-evals",
@@ -372,6 +374,7 @@ export default function Page() {
           />
         )}
         {pane === "usage" && <UsagePane status={status} />}
+        {pane === "reporting" && <ReportingPane />}
         {pane === "traces" && <TracesPane />}
       </main>
     </div>

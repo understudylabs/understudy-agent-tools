@@ -7,6 +7,7 @@ mod bin;
 mod bootstrap;
 mod chat;
 mod chat_attachments;
+mod admin;
 mod commands;
 mod conversation_runtime;
 mod conversation_sidecar;
@@ -405,6 +406,7 @@ pub fn run() {
             explore::explore_scan_start,
             explore::explore_scan_status,
             explore::explore_scan_cancel,
+            admin::org_reporting,
             scope::projects_list,
             scope::workloads_list,
             chat::chat_stream,
