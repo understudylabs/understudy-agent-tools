@@ -1470,6 +1470,111 @@ export function ChatPane({
     if (!isTauri()) return;
     let disposed = false;
     let unlisten: (() => void) | null = null;
+    const compileDroppedPath = (path: string) => {
+      if (dropInFlight.current) {
+        setNotice("The current dropped workload is still being compiled locally.");
+        return;
+      }
+      dropInFlight.current = true;
+      dispatchDrop({ type: "drop_received" });
+      const requestGeneration = dropRequestGeneration.current + 1;
+      dropRequestGeneration.current = requestGeneration;
+      setDroppedWorkload(null);
+      setCsvInspection(null);
+      setMappingInputColumns([]);
+      setMappingLabelColumn("");
+      setMappingGroupColumn("");
+      setClassificationDataset(null);
+      setErr(null);
+      setNotice(null);
+      const channel = new Channel<WorkloadDropEvent>();
+      channel.onmessage = (message) => {
+        if (disposed || dropRequestGeneration.current !== requestGeneration) return;
+        dispatchDrop({
+          type: message.type === "validating" ? "validation_started" : "compilation_started",
+        });
+      };
+      void invoke<DroppedWorkload>("compile_dropped_workload", {
+        path,
+        onEvent: channel,
+      })
+        .then(async (result) => {
+          if (disposed || dropRequestGeneration.current !== requestGeneration) return;
+          setDroppedWorkload(result);
+          const inspectTable = shouldInspectDroppedTable(result);
+          const inspectStructured = shouldInspectStructuredDataset(result);
+          if (inspectStructured) {
+            dispatchDrop({ type: "inspection_started" });
+            try {
+              await inspectTrainingRecipe(result, requestGeneration);
+            } catch (error) {
+              if (!inspectTable) throw error;
+              await inspectCsvWorkload(result, requestGeneration);
+            }
+          } else if (inspectTable) {
+            dispatchDrop({ type: "inspection_started" });
+            try {
+              await inspectCsvWorkload(result, requestGeneration);
+            } catch (error) {
+              const extensionless = !result.source_name.includes(".");
+              if (!extensionless) throw error;
+              dispatchDrop({ type: "succeeded" });
+              setNotice("Workload draft created locally; this extensionless file is not a supported table.");
+            }
+          } else {
+            dispatchDrop({ type: "succeeded" });
+            setNotice(
+              result.truncated
+                ? "Workload draft created at the safety limit; no file contents were read."
+                : "Workload draft created locally; no file contents were read.",
+            );
+          }
+        })
+        .catch((error) => {
+          if (!disposed && dropRequestGeneration.current === requestGeneration) {
+            dispatchDrop({ type: "failed" });
+            setErr(String(error));
+          }
+        })
+        .finally(() => {
+          if (dropRequestGeneration.current !== requestGeneration) return;
+          dropInFlight.current = false;
+        });
+    };
+    const installDroppedModel = async (path: string, inspectFirst: boolean) => {
+      if (dropInFlight.current) {
+        setNotice("The current dropped file is still being processed locally.");
+        return;
+      }
+      dropInFlight.current = true;
+      let handedOffToWorkload = false;
+      setErr(null);
+      setNotice(inspectFirst ? "Checking ZIP for a portable task model…" : "Verifying portable task model…");
+      try {
+        if (inspectFirst) await invoke("inspect_task_model", { path });
+        const installed = await invoke<{
+          name: string;
+          version: string;
+          base_ready: boolean;
+        }>("install_task_model", { path });
+        if (disposed) return;
+        setNotice(installed.base_ready
+          ? `Installed ${installed.name} ${installed.version}.`
+          : `Installed ${installed.name} ${installed.version}. Downloading its required base model now…`);
+        setClassifierLibraryOpen(true);
+      } catch (error) {
+        if (disposed) return;
+        if (inspectFirst) {
+          dropInFlight.current = false;
+          handedOffToWorkload = true;
+          compileDroppedPath(path);
+          return;
+        }
+        setErr(`Model package rejected: ${String(error)}`);
+      } finally {
+        if (!handedOffToWorkload) dropInFlight.current = false;
+      }
+    };
     void getCurrentWebview()
       .onDragDropEvent((event) => {
         // The trained-model dialog owns portable model packages while open;
@@ -1495,70 +1600,17 @@ export function ChatPane({
           setErr("Drop one file or folder at a time so each Workload Card has a clear source.");
           return;
         }
-        dropInFlight.current = true;
-        const requestGeneration = dropRequestGeneration.current + 1;
-        dropRequestGeneration.current = requestGeneration;
-        setDroppedWorkload(null);
-        setCsvInspection(null);
-        setMappingInputColumns([]);
-        setMappingLabelColumn("");
-        setMappingGroupColumn("");
-        setClassificationDataset(null);
-        setErr(null);
-        setNotice(null);
-        const channel = new Channel<WorkloadDropEvent>();
-        channel.onmessage = (message) => {
-          if (disposed || dropRequestGeneration.current !== requestGeneration) return;
-          dispatchDrop({
-            type: message.type === "validating" ? "validation_started" : "compilation_started",
-          });
-        };
-        void invoke<DroppedWorkload>("compile_dropped_workload", {
-          path: paths[0],
-          onEvent: channel,
-        })
-          .then(async (result) => {
-            if (disposed || dropRequestGeneration.current !== requestGeneration) return;
-            setDroppedWorkload(result);
-            const inspectTable = shouldInspectDroppedTable(result);
-            const inspectStructured = shouldInspectStructuredDataset(result);
-            if (inspectStructured) {
-              dispatchDrop({ type: "inspection_started" });
-              try {
-                await inspectTrainingRecipe(result, requestGeneration);
-              } catch (error) {
-                if (!inspectTable) throw error;
-                await inspectCsvWorkload(result, requestGeneration);
-              }
-            } else if (inspectTable) {
-              dispatchDrop({ type: "inspection_started" });
-              try {
-                await inspectCsvWorkload(result, requestGeneration);
-              } catch (error) {
-                const extensionless = !result.source_name.includes(".");
-                if (!extensionless) throw error;
-                dispatchDrop({ type: "succeeded" });
-                setNotice("Workload draft created locally; this extensionless file is not a supported table.");
-              }
-            } else {
-              dispatchDrop({ type: "succeeded" });
-              setNotice(
-                result.truncated
-                  ? "Workload draft created at the safety limit; no file contents were read."
-                  : "Workload draft created locally; no file contents were read.",
-              );
-            }
-          })
-          .catch((error) => {
-            if (!disposed && dropRequestGeneration.current === requestGeneration) {
-              dispatchDrop({ type: "failed" });
-              setErr(String(error));
-            }
-          })
-          .finally(() => {
-            if (dropRequestGeneration.current !== requestGeneration) return;
-            dropInFlight.current = false;
-          });
+        const path = paths[0];
+        const lowerPath = path.toLowerCase();
+        if (lowerPath.endsWith(".understudy-model")) {
+          void installDroppedModel(path, false);
+          return;
+        }
+        if (lowerPath.endsWith(".zip")) {
+          void installDroppedModel(path, true);
+          return;
+        }
+        compileDroppedPath(path);
       })
       .then((stop) => {
         if (disposed) stop();
