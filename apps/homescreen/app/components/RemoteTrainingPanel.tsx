@@ -241,6 +241,67 @@ function RunElapsed({ startedAt }: { startedAt: number | null }) {
   return startedAt === null ? null : <> · {elapsedSeconds}s elapsed</>;
 }
 
+function compactSize(bytes: number): string {
+  if (bytes < 1_024) return `${bytes} B`;
+  if (bytes < 1_024 * 1_024) return `${(bytes / 1_024).toFixed(1)} KB`;
+  return `${(bytes / (1_024 * 1_024)).toFixed(1)} MB`;
+}
+
+function CopyableSha({ sha256 }: { sha256: string }) {
+  const [copied, setCopied] = useState(false);
+  return (
+    <button
+      type="button"
+      className="inline-flex items-center gap-1 rounded border border-transparent bg-transparent p-0 font-mono text-[11px] text-muted-foreground hover:underline"
+      title={`Copy full sha256: ${sha256}`}
+      aria-label={`Copy full sha256 ${sha256}`}
+      onClick={() => {
+        void navigator.clipboard?.writeText(sha256).then(() => {
+          setCopied(true);
+          window.setTimeout(() => setCopied(false), 1_600);
+        });
+      }}
+    >
+      <code>{sha256.slice(0, 12)}…</code>
+      <span aria-hidden="true">{copied ? "copied" : "copy"}</span>
+    </button>
+  );
+}
+
+/**
+ * Consent receipts: exactly what leaves this Mac if the user approves.
+ * Everything rendered here comes from the already-prepared local plan —
+ * no additional backend calls.
+ */
+function ConsentReceipts({ plan }: { plan: RemotePlan }) {
+  const totalBytes = plan.artifacts.reduce((sum, artifact) => sum + artifact.size_bytes, 0);
+  return (
+    <div className="remote-training-consent-receipts w-full text-left text-[12px]" aria-label="Exactly what leaves this Mac">
+      <strong className="block">What leaves this Mac if you approve</strong>
+      <ul className="m-0 mt-1 grid list-none gap-1 p-0">
+        {plan.artifacts.map((artifact) => (
+          <li key={artifact.file_name} className="flex flex-wrap items-baseline gap-x-2">
+            <code className="font-mono text-[11px]">{artifact.file_name}</code>
+            <span className="text-muted-foreground">
+              {artifact.artifact_role} · {artifact.row_count.toLocaleString()} rows · {compactSize(artifact.size_bytes)}
+            </span>
+            <CopyableSha sha256={artifact.sha256} />
+          </li>
+        ))}
+      </ul>
+      <ul className="m-0 mt-2 grid list-none gap-0.5 p-0 text-muted-foreground">
+        <li>{compactSize(totalBytes)} total upload · heldout targets are never uploaded</li>
+        <li>
+          Max spend {plan.maximum_spend_usd.toLocaleString(undefined, { style: "currency", currency: "USD" })} · hard cap enforced server-side
+        </li>
+        <li>
+          Output model · <code className="font-mono text-[11px]">{plan.output_model_name}</code>
+        </li>
+      </ul>
+    </div>
+  );
+}
+
 function providerDefault(providers: RemoteTrainingProvider[]): RemoteTrainingProvider | undefined {
   return providers.find((provider) => provider.id === "managed");
 }
@@ -575,6 +636,7 @@ export function RemoteTrainingPanel(props: Props) {
         <p className="remote-training-consent-summary">
           {plan.artifacts.length} private splits · endpoint auto-deletes · {plan.maximum_spend_usd.toLocaleString(undefined, { style: "currency", currency: "USD", maximumFractionDigits: 0 })} budget guardrail
         </p>
+        <ConsentReceipts plan={plan} />
         <div className="remote-training-actions">
           <button type="button" className="btn primary" onClick={start}>Upload & train</button>
         </div>

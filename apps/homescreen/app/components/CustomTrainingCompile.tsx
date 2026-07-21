@@ -1,7 +1,5 @@
 "use client";
 
-import { useState } from "react";
-
 /** Phase events streamed by the `compile_custom_training_plan` Tauri command. */
 export type CustomCompileEvent = {
   type: "phase";
