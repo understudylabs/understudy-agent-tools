@@ -56,7 +56,7 @@ test("Desktop release automation keeps every trust gate before publication", () 
   assert.doesNotMatch(workflow, /cargo test/);
   assert.match(workflow, /notarytool history/);
   assert.match(workflow, /jq -e '\.history \| type == "array"'/);
-  assert.equal([...workflow.matchAll(/if: inputs\.mode == 'release'/g)].length, 9);
+  assert.equal([...workflow.matchAll(/if: inputs\.mode == 'release'/g)].length, 10);
   assert.match(workflow, /notarytool submit "\$app_zip"/);
   assert.match(workflow, /stapler staple "\$app"/);
   assert.match(
@@ -92,4 +92,10 @@ test("Desktop release automation keeps every trust gate before publication", () 
   assert.match(workflow, /spctl --assess --type execute/);
   assert.match(workflow, /spctl --assess/);
   assert.ok(workflow.indexOf("gh release download") < workflow.indexOf("gh release edit"));
+  assert.match(workflow, /Mirror the published DMG to Cloudflare R2/);
+  assert.match(workflow, /CLOUDFLARE_API_TOKEN: \$\{\{ secrets\.CLOUDFLARE_API_TOKEN \}\}/);
+  assert.ok(
+    workflow.indexOf("gh release edit") <
+      workflow.indexOf("Mirror the published DMG to Cloudflare R2"),
+  );
 });
