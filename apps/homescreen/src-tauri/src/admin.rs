@@ -54,8 +54,15 @@ pub fn admin_url(gateway_url: &str, org_id: &str, path: &str) -> Result<Url, Str
         return Err("The organization id is invalid.".into());
     }
     let base = gateway_url.trim_end_matches('/');
-    Url::parse(&format!("{base}/admin/v1/orgs/{org_id}/{path}"))
-        .map_err(|_| "The gateway URL is invalid.".to_string())
+    let url = Url::parse(&format!("{base}/admin/v1/orgs/{org_id}/{path}"))
+        .map_err(|_| "The gateway URL is invalid.".to_string())?;
+    // Defense in depth: the WHATWG parser normalizes percent-encoded dot
+    // segments (`%2e%2e` == `..`), which the string checks above cannot see.
+    // Whatever the parser produced must still live under the org root.
+    if !url.path().starts_with(&format!("/admin/v1/orgs/{org_id}/")) {
+        return Err("Admin path must not contain traversal segments.".into());
+    }
+    Ok(url)
 }
 
 fn client() -> Result<Client, String> {
@@ -136,6 +143,20 @@ mod tests {
             "..",
         ] {
             assert!(validate_admin_path(path).is_err(), "{path} should be rejected");
+        }
+    }
+
+    #[test]
+    fn rejects_percent_encoded_traversal() {
+        for path in [
+            "%2e%2e/%2e%2e/%2e%2e/other-org/secrets",
+            "projects/%2e%2e/%2e%2e/escape",
+            "projects/.%2e/%2e./escape",
+        ] {
+            assert!(
+                admin_url("https://api.understudylabs.com", "org_1", path).is_err(),
+                "{path} should be rejected"
+            );
         }
     }
 
