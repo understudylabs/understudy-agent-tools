@@ -3,6 +3,7 @@
 import { useCallback, useEffect, useMemo, useReducer, useRef, useState } from "react";
 import { Channel, invoke, isTauri } from "@tauri-apps/api/core";
 import { getCurrentWebview } from "@tauri-apps/api/webview";
+import { revealItemInDir } from "@tauri-apps/plugin-opener";
 import {
   MessageScroller,
   MessageScrollerContent,
@@ -388,6 +389,26 @@ type ModelChoice =
 
 type AnthropicModel = { id: string; label: string; detail: string };
 type AnthropicStatus = { present: boolean; source: string | null };
+type ActiveTaskModel = {
+  id: string;
+  version: string;
+  name: string;
+  base_ready: boolean;
+  top_k: number;
+};
+type TaskModelPrediction = {
+  prediction: { l3_id: number; l3: string; probability: number };
+  top_k: Array<{ l3_id: number; l3: string; probability: number }>;
+  elapsed_ms: number;
+};
+type TaskModelFileRun = {
+  rows: number;
+  labeled_rows: number;
+  right: number;
+  accuracy?: number | null;
+  elapsed_ms: number;
+  output_path: string;
+};
 
 const CLOUD_MODEL: ModelChoice = {
   id: "cloud:glm-5.2",
@@ -400,7 +421,9 @@ const CLOUD_MODEL: ModelChoice = {
 
 const PERSONA_WHITE: PersonaColor = { red: 255, green: 255, blue: 255 };
 const PERSONA_CYAN: PersonaColor = { red: 103, green: 232, blue: 249 };
+const PERSONA_TASK: PersonaColor = { red: 244, green: 114, blue: 182 };
 const PERSONA_ERROR: PersonaColor = { red: 248, green: 113, blue: 113 };
+const ACTIVE_TASK_MODEL_KEY = "understudy.active-task-model.v1";
 
 function compactBytes(bytes: number): string {
   if (bytes < 1_024) return `${bytes} B`;
@@ -1087,6 +1110,8 @@ export function ChatPane({
   const [remoteTrainingView, setRemoteTrainingView] = useState(false);
   const [trainingHaloVisual, setTrainingHaloVisual] = useState<TrainingHaloVisual | null>(null);
   const [classifierLibraryOpen, setClassifierLibraryOpen] = useState(false);
+  const [activeTaskModel, setActiveTaskModel] = useState<ActiveTaskModel | null>(null);
+  const [taskModelFileRun, setTaskModelFileRun] = useState<TaskModelFileRun | null>(null);
   const [pacingMessageIndex, setPacingMessageIndex] = useState<number | null>(null);
   const [pacedRevealed, setPacedRevealed] = useState<number | null>(null);
   const [animatedMessageId, setAnimatedMessageId] = useState<string | null>(null);
@@ -1110,6 +1135,25 @@ export function ChatPane({
   }, [dropPhase, localTrainingActive, onTrainingChange]);
 
   useEffect(() => () => onTrainingChange?.(false), [onTrainingChange]);
+
+  useEffect(() => {
+    const stored = window.localStorage.getItem(ACTIVE_TASK_MODEL_KEY);
+    if (!stored) return;
+    let identity: { id?: string; version?: string };
+    try {
+      identity = JSON.parse(stored) as { id?: string; version?: string };
+    } catch {
+      window.localStorage.removeItem(ACTIVE_TASK_MODEL_KEY);
+      return;
+    }
+    invoke<ActiveTaskModel[]>("list_task_models")
+      .then((models) => {
+        const match = models.find((model) => model.id === identity.id && model.version === identity.version);
+        if (match) setActiveTaskModel(match);
+        else window.localStorage.removeItem(ACTIVE_TASK_MODEL_KEY);
+      })
+      .catch(() => undefined);
+  }, []);
 
   const applyAssistantPatch = (patch: ChatStreamPatch) => {
     setMessages((current) => {
@@ -1553,16 +1597,29 @@ export function ChatPane({
       try {
         if (inspectFirst) await invoke("inspect_task_model", { path });
         const installed = await invoke<{
+          id: string;
           name: string;
           version: string;
           base_ready: boolean;
+          top_k: number;
         }>("install_task_model", { path });
         if (disposed) return;
+        const taskModel = {
+          id: installed.id,
+          name: installed.name,
+          version: installed.version,
+          base_ready: installed.base_ready,
+          top_k: installed.top_k,
+        };
+        setActiveTaskModel(taskModel);
+        window.localStorage.setItem(ACTIVE_TASK_MODEL_KEY, JSON.stringify({
+          id: installed.id,
+          version: installed.version,
+        }));
         setNotice(installed.base_ready
-          ? `Installed ${installed.name} ${installed.version}.`
-          : `Installed ${installed.name} ${installed.version}. Downloading its required base model now…`);
+          ? `${installed.name} is active.`
+          : `${installed.name} is active. Downloading its required base model now…`);
         dispatchDrop({ type: "reset" });
-        setClassifierLibraryOpen(true);
       } catch (error) {
         if (disposed) return;
         if (inspectFirst) {
@@ -1575,6 +1632,34 @@ export function ChatPane({
         setErr(`Model package rejected: ${String(error)}`);
       } finally {
         if (!handedOffToWorkload) dropInFlight.current = false;
+      }
+    };
+    const scoreDroppedFile = async (path: string) => {
+      if (!activeTaskModel || dropInFlight.current) return;
+      dropInFlight.current = true;
+      setErr(null);
+      setTaskModelFileRun(null);
+      setNotice(`Scoring test data with ${activeTaskModel.name}…`);
+      try {
+        const result = await invoke<TaskModelFileRun>("run_task_model_file", {
+          request: {
+            model_id: activeTaskModel.id,
+            version: activeTaskModel.version,
+            path,
+          },
+        });
+        if (disposed) return;
+        setTaskModelFileRun(result);
+        setNotice(result.accuracy == null
+          ? `Scored ${result.rows.toLocaleString()} rows for human review.`
+          : `${result.right.toLocaleString()} of ${result.labeled_rows.toLocaleString()} labeled rows matched.`);
+        dispatchDrop({ type: "reset" });
+      } catch (error) {
+        if (disposed) return;
+        dispatchDrop({ type: "failed" });
+        setErr(`Test data could not be scored: ${String(error)}`);
+      } finally {
+        dropInFlight.current = false;
       }
     };
     void getCurrentWebview()
@@ -1612,6 +1697,10 @@ export function ChatPane({
           void installDroppedModel(path, true);
           return;
         }
+        if (activeTaskModel && /\.(?:csv|tsv|jsonl|ndjson)$/.test(lowerPath)) {
+          void scoreDroppedFile(path);
+          return;
+        }
         compileDroppedPath(path);
       })
       .then((stop) => {
@@ -1625,7 +1714,7 @@ export function ChatPane({
       disposed = true;
       unlisten?.();
     };
-  }, [classifierLibraryOpen]);
+  }, [activeTaskModel, classifierLibraryOpen]);
 
   const hydrateSavedMessages = async (
     saved: PersistedChatSession,
@@ -1855,11 +1944,79 @@ export function ChatPane({
       });
   }, [csvInspection, datasetProfileConfirmed, droppedWorkload, environmentArchitect, environmentArchitectRetry, gatewaySignedIn, selectedChoice, trainingRecipe]);
 
+  const runActiveTaskModel = async (clean: string, files: FileUIPart[]) => {
+    if (activeTaskModel) {
+      if (!clean || files.length > 0) {
+        setErr(`${activeTaskModel.name} accepts text only.`);
+        return;
+      }
+      let installed: ActiveTaskModel | undefined;
+      try {
+        const models = await invoke<ActiveTaskModel[]>("list_task_models");
+        installed = models.find((model) => model.id === activeTaskModel.id && model.version === activeTaskModel.version);
+      } catch (cause) {
+        setErr(`Could not check ${activeTaskModel.name}. ${String(cause)}`);
+        return;
+      }
+      if (!installed) {
+        setActiveTaskModel(null);
+        window.localStorage.removeItem(ACTIVE_TASK_MODEL_KEY);
+        setErr(`${activeTaskModel.name} is no longer installed. Drop the model file here to install it again.`);
+        return;
+      }
+      if (!installed.base_ready) {
+        setActiveTaskModel(installed);
+        setNotice(`${activeTaskModel.name} is absorbed. Its base model is still downloading.`);
+        return;
+      }
+      setActiveTaskModel(installed);
+      setInput("");
+      const toSend: Msg[] = [
+        ...messages,
+        { role: "user", content: clean, model: installed.name },
+      ];
+      setAnimatedMessageId(`${sessionId}:message:${messages.length}`);
+      setMessages([...toSend, { role: "assistant", content: "", model: installed.name }]);
+      setStreaming(true);
+      setAssistantSpeaking(false);
+      try {
+        const [result] = await invoke<TaskModelPrediction[]>("run_task_model", {
+          request: {
+            model_id: installed.id,
+            version: installed.version,
+            rows: [{ task_id: `${sessionId}:${messages.length}`, text: clean }],
+          },
+        });
+        if (!result) throw new Error("The classifier returned no prediction.");
+        const top = result.top_k.slice(0, 3);
+        const detail = top.map((choice, index) =>
+          `${index + 1}. ${choice.l3} — ${(choice.probability * 100).toFixed(1)}%`
+        ).join("\n");
+        setMessages([...toSend, {
+          role: "assistant",
+          model: installed.name,
+          content: `**${result.prediction.l3}**\n\n${detail}\n\nRan locally in ${result.elapsed_ms} ms.`,
+        }]);
+      } catch (error) {
+        setErr(String(error));
+        setMessages(toSend);
+      } finally {
+        setStreaming(false);
+        setAssistantSpeaking(false);
+      }
+    }
+  };
+
   const send = async (text: string, files: FileUIPart[] = []) => {
     const clean = text.trim();
     if ((!clean && files.length === 0) || streaming) return;
     setErr(null);
     setNotice(null);
+
+    if (activeTaskModel) {
+      await runActiveTaskModel(clean, files);
+      return;
+    }
 
     const choice = selectedChoice;
     if (choice.route === "cloud") {
@@ -2164,6 +2321,8 @@ export function ChatPane({
     ? PERSONA_ERROR
     : dropHovering || dropRunning || localTrainingActive || classificationDataset
       ? PERSONA_CYAN
+      : activeTaskModel
+        ? PERSONA_TASK
       : PERSONA_WHITE;
   const selectedTargetColumn = csvInspection?.columns.find((column) => column.name === mappingLabelColumn) ?? null;
   const selectedTargetBlockReason = !mappingLabelColumn || !selectedTargetColumn
@@ -2226,6 +2385,7 @@ export function ChatPane({
         "chat ai-chat" +
         (messages.length > 0 ? " has-messages" : "") +
         (dropRunning || droppedWorkload ? " has-workload" : "") +
+        (activeTaskModel ? " task-model-active" : "") +
         (dropPhase === "preparing_dataset" || classificationDataset || localTrainingActive || remoteTrainingView ? " is-training-flow" : "") +
         (streaming ? " is-streaming" : "")
       }
@@ -2270,7 +2430,35 @@ export function ChatPane({
             <span>{dropStatus.detail}</span>
           </div>
         )}
+        {activeTaskModel && !dropStatus && (
+          <button
+            type="button"
+            className="active-task-model-badge"
+            onClick={() => setClassifierLibraryOpen(true)}
+            title="Open trained models"
+          >
+            <span />
+            <strong>{activeTaskModel.name}</strong>
+            <small>{activeTaskModel.base_ready ? "absorbed" : "absorbing…"}</small>
+          </button>
+        )}
       </div>
+      {activeTaskModel && (
+        <section className={"active-task-dropzone" + (dropHovering ? " is-hovering" : "")} aria-label="Test the active classifier">
+          <div>
+            <strong>Drop test data to score</strong>
+            <span>CSV or JSONL · expected labels optional · review stays local</span>
+          </div>
+          {taskModelFileRun && (
+            <button type="button" onClick={() => void revealItemInDir(taskModelFileRun.output_path)}>
+              {taskModelFileRun.accuracy == null
+                ? `${taskModelFileRun.rows.toLocaleString()} predictions`
+                : `${(taskModelFileRun.accuracy * 100).toFixed(1)}% matched`}
+              <small>Open review CSV</small>
+            </button>
+          )}
+        </section>
+      )}
       <MessageScrollerProvider
         key={`${sessionId}:${classificationDataset ? "training" : droppedWorkload ? "workload" : "chat"}`}
         autoScroll={!droppedWorkload}
@@ -2665,7 +2853,10 @@ export function ChatPane({
               <ModelPicker
                 choices={choices}
                 selected={selectedChoice}
+                activeTaskModel={activeTaskModel}
                 onSelect={(id) => {
+                  setActiveTaskModel(null);
+                  window.localStorage.removeItem(ACTIVE_TASK_MODEL_KEY);
                   selectedModelUserOwned.current = true;
                   setSelectedModel(id);
                 }}
@@ -2676,7 +2867,7 @@ export function ChatPane({
                 }
                 onThinkingToggle={setThinking}
               />
-              <ModelCardDrawer
+              {!activeTaskModel && <ModelCardDrawer
                 modelId={selectedChoice.route === "local" ? selectedChoice.modelId : selectedChoice.id}
                 label={selectedChoice.label}
                 route={selectedChoice.route}
@@ -2686,12 +2877,12 @@ export function ChatPane({
                   loading: selectedChoice.route === "local" ? selectedChoice.loading : false,
                   thinking: selectedChoice.route === "local" ? selectedChoice.thinking : false,
                 }}
-              />
+              />}
               <PromptInputBody className="composer-row-body">
                 <PromptInputTextarea
                   value={input}
                   onChange={(e) => setInput(e.target.value)}
-                  placeholder="Ask Understudy..."
+                  placeholder={activeTaskModel ? `Classify with ${activeTaskModel.name}…` : "Ask Understudy..."}
                   disabled={streaming}
                 />
               </PromptInputBody>
@@ -2713,6 +2904,7 @@ export function ChatPane({
 function ModelPicker({
   choices,
   selected,
+  activeTaskModel,
   onSelect,
   onConnectAnthropic,
   thinkingDisabled,
@@ -2721,6 +2913,7 @@ function ModelPicker({
 }: {
   choices: ModelChoice[];
   selected: ModelChoice;
+  activeTaskModel: ActiveTaskModel | null;
   onSelect: (id: string) => void;
   onConnectAnthropic: () => void;
   thinkingDisabled: boolean;
@@ -2735,15 +2928,25 @@ function ModelPicker({
         <button
           type="button"
           className="ai-model-trigger"
-          title={`${selected.label} · ${selected.route}`}
+          title={activeTaskModel ? `${activeTaskModel.name} · task model` : `${selected.label} · ${selected.route}`}
         >
-          <span>{selected.label}</span>
+          <span>{activeTaskModel?.name ?? selected.label}</span>
         </button>
       </ModelSelectorTrigger>
       <ModelSelectorContent>
         <ModelSelectorInput placeholder="Search models..." />
         <ModelSelectorList>
           <ModelSelectorEmpty>No models found.</ModelSelectorEmpty>
+          {activeTaskModel && (
+            <ModelSelectorGroup heading="Active task model">
+              <ModelSelectorItem value={`task:${activeTaskModel.id}@${activeTaskModel.version}`}>
+                <ModelSelectorName>{activeTaskModel.name}</ModelSelectorName>
+                <span className="font-mono text-[11px] text-muted-foreground">
+                  {activeTaskModel.base_ready ? "Runs locally" : "Downloading base model"}
+                </span>
+              </ModelSelectorItem>
+            </ModelSelectorGroup>
+          )}
           <ModelSelectorGroup heading="Serving">
             {choices
               .filter((choice) => choice.route === "local")
