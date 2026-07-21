@@ -26,14 +26,14 @@ fn total_memory_bytes(sys: &System) -> u64 {
     }
     #[cfg(target_os = "macos")]
     {
-        return Command::new("/usr/sbin/sysctl")
+        Command::new("/usr/sbin/sysctl")
             .args(["-n", "hw.memsize"])
             .output()
             .ok()
             .filter(|output| output.status.success())
             .and_then(|output| String::from_utf8(output.stdout).ok())
             .and_then(|value| value.trim().parse::<u64>().ok())
-            .unwrap_or(0);
+            .unwrap_or(0)
     }
     #[cfg(not(target_os = "macos"))]
     0
