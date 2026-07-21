@@ -353,6 +353,7 @@ pub fn run() {
             remote_training::propose_training_environment_with_pi,
             remote_training::prepare_remote_classification_training,
             remote_training::prepare_remote_training_recipe,
+            remote_training::compile_custom_training_plan,
             remote_training::compile_remote_training_backends,
             remote_training::start_local_sft_training,
             remote_training::cancel_local_sft_training,

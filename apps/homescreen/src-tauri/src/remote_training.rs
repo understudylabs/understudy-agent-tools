@@ -88,6 +88,18 @@ const PORTABLE_RECIPES: &[PortableRecipeDefinition] = &[
         managed_fireworks: true,
         tinker: true,
     },
+    PortableRecipeDefinition {
+        id: "chat_sft_exact_response_v1",
+        use_case: "custom_chat_assistant",
+        task_kind: "chat_sft",
+        method: "sft",
+        evaluator: "exact_response",
+        dataset_format: "openai_chat_messages",
+        shape: PortableRecipeShape::ChatSft,
+        mlx_local: true,
+        managed_fireworks: true,
+        tinker: true,
+    },
 ];
 
 fn portable_recipe(recipe_id: &str) -> Option<&'static PortableRecipeDefinition> {
@@ -432,7 +444,7 @@ pub async fn prepare_remote_classification_training(
     maximum_spend_usd: f64,
 ) -> Result<Value, String> {
     tauri::async_runtime::spawn_blocking(move || {
-        prepare_remote_plan(&manifest_path, &model_profile, maximum_spend_usd)
+        prepare_remote_plan(&manifest_path, &model_profile, maximum_spend_usd, None)
     })
     .await
     .map_err(|error| format!("Remote training preparation stopped unexpectedly: {error}"))?
@@ -455,6 +467,7 @@ pub async fn prepare_remote_training_recipe(
             &recipe_id,
             &model_profile,
             maximum_spend_usd,
+            None,
         )
     })
     .await
@@ -468,6 +481,7 @@ fn prepare_training_recipe(
     recipe_id: &str,
     model_profile: &str,
     maximum_spend_usd: f64,
+    requested_output_model_name: Option<&str>,
 ) -> Result<Value, String> {
     let recipe = portable_recipe(recipe_id)
         .ok_or_else(|| format!("The detected recipe {recipe_id} is not registered."))?;
@@ -479,6 +493,7 @@ fn prepare_training_recipe(
             recipe,
             model_profile,
             maximum_spend_usd,
+            requested_output_model_name,
         ),
         PortableRecipeShape::TextClassification => prepare_classification_source_plan(
             source_path,
@@ -487,6 +502,7 @@ fn prepare_training_recipe(
             recipe,
             model_profile,
             maximum_spend_usd,
+            requested_output_model_name,
         ),
     }
 }
@@ -520,46 +536,500 @@ pub async fn automatic_training_goal_card(
             "Training preview is bounded to {MAX_GOAL_CARD_PREVIEW} examples."
         ));
     }
+    tauri::async_runtime::spawn_blocking(move || compile_goal_card(&plan_path, preview_limit))
+        .await
+        .map_err(|error| format!("Goal Card compilation stopped unexpectedly: {error}"))?
+}
+
+/// Synchronous Goal Card compilation shared by the Tauri command and the
+/// custom-workload compile actor. The CLI re-hashes the immutable plan and
+/// owns the deterministic environment proposal; Desktop only validates the
+/// TRAIN-only preview contract on the returned JSON.
+fn compile_goal_card(plan_path: &str, preview_limit: u64) -> Result<Value, String> {
+    if preview_limit > MAX_GOAL_CARD_PREVIEW {
+        return Err(format!(
+            "Training preview is bounded to {MAX_GOAL_CARD_PREVIEW} examples."
+        ));
+    }
+    let canonical = PathBuf::from(plan_path.trim())
+        .canonicalize()
+        .map_err(|_| "The immutable training plan is unavailable.".to_string())?;
+    let output = crate::bin::command("understudy")
+        .args(["training", "goal-card", "--plan"])
+        .arg(&canonical)
+        .args(["--preview", &preview_limit.to_string(), "--json"])
+        .output()
+        .map_err(|error| format!("Could not run the local Goal Card compiler: {error}"))?;
+    if !output.status.success() {
+        return Err(format!(
+            "The local Goal Card compiler rejected this plan. {}",
+            bounded_process_detail(&output.stderr)
+        ));
+    }
+    let value = serde_json::from_slice::<Value>(&output.stdout)
+        .map_err(|_| "The Goal Card compiler returned malformed JSON.".to_string())?;
+    if value.get("schema_version").and_then(Value::as_str)
+        != Some("understudy.training.goal_card.v1")
+        || value
+            .pointer("/privacy/heldout_targets_visible")
+            .and_then(Value::as_bool)
+            != Some(false)
+        || value
+            .get("training_preview")
+            .and_then(Value::as_array)
+            .is_none_or(|rows| {
+                rows.len() > preview_limit as usize
+                    || rows.iter().any(|row| {
+                        row.get("source_split").and_then(Value::as_str) != Some("train")
+                    })
+            })
+    {
+        return Err("The Goal Card violated its TRAIN-only preview contract.".into());
+    }
+    Ok(value)
+}
+
+const CUSTOM_COMPILE_SCHEMA: &str = "understudy.remote_training.custom_compile.v1";
+const CSV_INSPECTION_SCHEMA: &str = "understudy.capture_import.csv_inspection.v1";
+const MAX_CUSTOM_LABELS: u64 = 512;
+const CUSTOM_GOAL_CARD_PREVIEW: u64 = 2;
+
+/// Caller-confirmed (or inspection-recommended) tabular column mapping.
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct CustomColumnMapping {
+    pub input_columns: Vec<String>,
+    pub label_column: String,
+    pub group_column: String,
+}
+
+/// Compile the Pi environment-architect proposal for a custom workload into an
+/// executable deterministic plan. Local-only by construction: every step is
+/// either the bundled CLI or in-process Rust; no uploads, no provider calls,
+/// and the plan starts with a $0 budget (the frontend re-prices later).
+#[tauri::command]
+pub async fn compile_custom_training_plan(
+    artifact_root: String,
+    source_path: String,
+    mapping: Option<CustomColumnMapping>,
+    model_profile: String,
+    output_model_name: Option<String>,
+    on_event: Channel<Value>,
+) -> Result<Value, String> {
     tauri::async_runtime::spawn_blocking(move || {
-        let canonical = PathBuf::from(plan_path.trim())
-            .canonicalize()
-            .map_err(|_| "The immutable training plan is unavailable.".to_string())?;
-        let output = crate::bin::command("understudy")
-            .args(["training", "goal-card", "--plan"])
-            .arg(&canonical)
-            .args(["--preview", &preview_limit.to_string(), "--json"])
-            .output()
-            .map_err(|error| format!("Could not run the local Goal Card compiler: {error}"))?;
-        if !output.status.success() {
-            return Err(format!(
-                "The local Goal Card compiler rejected this plan. {}",
-                bounded_process_detail(&output.stderr)
-            ));
-        }
-        let value = serde_json::from_slice::<Value>(&output.stdout)
-            .map_err(|_| "The Goal Card compiler returned malformed JSON.".to_string())?;
-        if value.get("schema_version").and_then(Value::as_str)
-            != Some("understudy.training.goal_card.v1")
-            || value
-                .pointer("/privacy/heldout_targets_visible")
-                .and_then(Value::as_bool)
-                != Some(false)
-            || value
-                .get("training_preview")
-                .and_then(Value::as_array)
-                .is_none_or(|rows| {
-                    rows.len() > preview_limit as usize
-                        || rows.iter().any(|row| {
-                            row.get("source_split").and_then(Value::as_str) != Some("train")
-                        })
-                })
-        {
-            return Err("The Goal Card violated its TRAIN-only preview contract.".into());
-        }
-        Ok(value)
+        compile_custom_plan(
+            &artifact_root,
+            &source_path,
+            mapping,
+            &model_profile,
+            output_model_name.as_deref(),
+            &on_event,
+        )
     })
     .await
-    .map_err(|error| format!("Goal Card compilation stopped unexpectedly: {error}"))?
+    .map_err(|error| format!("Custom training compilation stopped unexpectedly: {error}"))?
+}
+
+fn compile_custom_plan(
+    artifact_root: &str,
+    source_path: &str,
+    mapping: Option<CustomColumnMapping>,
+    model_profile: &str,
+    output_model_name: Option<&str>,
+    on_event: &Channel<Value>,
+) -> Result<Value, String> {
+    // The plan always compiles at $0: pricing is a later, explicit step.
+    validate_remote_plan_options(model_profile, 0.0)?;
+    let canonical_root = PathBuf::from(artifact_root.trim())
+        .canonicalize()
+        .map_err(|_| "The local workload root is unavailable.".to_string())?;
+    if !canonical_root.is_dir() || !canonical_root.join("workload-card.json").is_file() {
+        return Err("Compile the dropped workload locally before planning training.".into());
+    }
+    let canonical_source = PathBuf::from(source_path.trim())
+        .canonicalize()
+        .map_err(|_| "The dropped training dataset is unavailable.".to_string())?;
+    if !canonical_source.is_file() {
+        return Err("Choose one local source file for training compilation.".into());
+    }
+    send_event(
+        on_event,
+        "inspecting",
+        1,
+        4,
+        "Inspecting the dropped source locally",
+    );
+    let extension = canonical_source
+        .extension()
+        .and_then(|value| value.to_str())
+        .unwrap_or("")
+        .to_ascii_lowercase();
+    let (plan_value, task_kind, dataset_manifest_path, effective_mapping) =
+        match extension.as_str() {
+            // Structured records: the local recipe inspector decides whether
+            // this is chat-shaped JSONL (route through the registered chat SFT
+            // recipe) or classification records (same portable recipe path).
+            "json" | "jsonl" | "ndjson" => {
+                let inspection = inspect_training_recipe(
+                    canonical_source
+                        .to_str()
+                        .ok_or_else(|| "The dropped source path is invalid.".to_string())?,
+                )?;
+                if inspection.get("ready").and_then(Value::as_bool) != Some(true) {
+                    let reasons = inspection
+                        .get("reasons")
+                        .and_then(Value::as_array)
+                        .map(|reasons| {
+                            reasons
+                                .iter()
+                                .filter_map(Value::as_str)
+                                .collect::<Vec<_>>()
+                                .join(" ")
+                        })
+                        .unwrap_or_default();
+                    return Err(format!(
+                        "This source does not match a deterministic training recipe yet. {reasons}"
+                    ));
+                }
+                let recipe_id = inspection
+                    .get("recipe_id")
+                    .and_then(Value::as_str)
+                    .ok_or_else(|| {
+                        "The local inspection did not name a registered recipe.".to_string()
+                    })?
+                    .to_string();
+                let recipe = portable_recipe(&recipe_id).ok_or_else(|| {
+                    format!("The detected recipe {recipe_id} is not registered.")
+                })?;
+                let source_sha256 = inspection
+                    .get("source_sha256")
+                    .and_then(Value::as_str)
+                    .ok_or_else(|| "The local inspection omitted the source hash.".to_string())?
+                    .to_string();
+                send_event(
+                    on_event,
+                    "preparing_splits",
+                    2,
+                    4,
+                    "Normalizing rows into leakage-safe train, validation, and held-out splits",
+                );
+                let plan_value = prepare_training_recipe(
+                    &canonical_source.display().to_string(),
+                    &canonical_root.display().to_string(),
+                    &source_sha256,
+                    &recipe_id,
+                    model_profile,
+                    0.0,
+                    output_model_name,
+                )?;
+                send_event(
+                    on_event,
+                    "planning",
+                    3,
+                    4,
+                    "Immutable local training plan written",
+                );
+                (plan_value, recipe.task_kind.to_string(), None, None)
+            }
+            // Tabular sources: the bundled CLI owns inspection, mapping
+            // statistics, and the group-isolated split preparation.
+            "" | "csv" | "tsv" | "tab" | "txt" => {
+                let inspection = custom_understudy_cli_json(
+                    &custom_inspect_csv_args(&canonical_source, &canonical_root),
+                    "The Understudy CLI could not inspect this table.",
+                )
+                .and_then(validate_custom_csv_inspection)?;
+                let mapping = resolve_custom_mapping(&inspection, mapping)?;
+                send_event(
+                    on_event,
+                    "preparing_splits",
+                    2,
+                    4,
+                    "Preparing deterministic, group-isolated training splits",
+                );
+                let dataset = custom_understudy_cli_json(
+                    &custom_prepare_classification_args(
+                        &canonical_source,
+                        &canonical_root,
+                        &mapping,
+                    ),
+                    "The Understudy CLI could not prepare this dataset.",
+                )?;
+                let manifest_path = validate_custom_dataset_manifest(&dataset)?;
+                send_event(
+                    on_event,
+                    "planning",
+                    3,
+                    4,
+                    "Writing the immutable local training plan",
+                );
+                let plan_value =
+                    prepare_remote_plan(&manifest_path, model_profile, 0.0, output_model_name)?;
+                (
+                    plan_value,
+                    "text_classification".to_string(),
+                    Some(manifest_path),
+                    Some(mapping),
+                )
+            }
+            _ => {
+                return Err(
+                    "Custom training compilation supports CSV, TSV, TXT, JSON, JSONL, and NDJSON sources."
+                        .into(),
+                )
+            }
+        };
+    let plan: RemoteTrainingPlan = serde_json::from_value(plan_value.clone())
+        .map_err(|_| "The compiled training plan is malformed.".to_string())?;
+    if plan.maximum_spend_usd != 0.0 {
+        return Err("The compiled training plan must start with a $0 budget.".into());
+    }
+    send_event(
+        on_event,
+        "compiling",
+        4,
+        4,
+        "Compiling the deterministic Goal Card and environment proposal",
+    );
+    let goal_card = compile_goal_card(&plan.plan_path, CUSTOM_GOAL_CARD_PREVIEW)?;
+    let environment_proposal_path = goal_card
+        .pointer("/environment/proposal_path")
+        .and_then(Value::as_str)
+        .ok_or_else(|| "The Goal Card omitted its environment proposal path.".to_string())?
+        .to_string();
+    let environment_status = goal_card
+        .pointer("/environment/status")
+        .and_then(Value::as_str)
+        .ok_or_else(|| "The Goal Card omitted its environment status.".to_string())?
+        .to_string();
+    Ok(json!({
+        "schema_version": CUSTOM_COMPILE_SCHEMA,
+        "task_kind": task_kind,
+        "recipe_id": plan.recipe_id,
+        "plan": plan_value,
+        "goal_card": goal_card,
+        "environment_proposal_path": environment_proposal_path,
+        "environment_status": environment_status,
+        "dataset_manifest_path": dataset_manifest_path,
+        "mapping": effective_mapping,
+        "local_only": true,
+        "uploads": false,
+        "provider_called": false,
+        "spend_usd": 0.0
+    }))
+}
+
+fn custom_inspect_csv_args(source: &Path, artifact_root: &Path) -> Vec<std::ffi::OsString> {
+    let mut args: Vec<std::ffi::OsString> = vec![
+        "capture-import".into(),
+        "inspect-csv".into(),
+        "--source".into(),
+        source.as_os_str().to_os_string(),
+        "--artifact-root".into(),
+        artifact_root.as_os_str().to_os_string(),
+    ];
+    args.push("--json".into());
+    args
+}
+
+fn custom_prepare_classification_args(
+    source: &Path,
+    artifact_root: &Path,
+    mapping: &CustomColumnMapping,
+) -> Vec<std::ffi::OsString> {
+    let mut args: Vec<std::ffi::OsString> = vec![
+        "capture-import".into(),
+        "prepare-classification".into(),
+        "--source".into(),
+        source.as_os_str().to_os_string(),
+        "--artifact-root".into(),
+        artifact_root.as_os_str().to_os_string(),
+        "--label-column".into(),
+        mapping.label_column.trim().into(),
+        "--group-column".into(),
+        mapping.group_column.trim().into(),
+    ];
+    for column in &mapping.input_columns {
+        args.push("--input-column".into());
+        args.push(column.into());
+    }
+    args.push("--json".into());
+    args
+}
+
+fn custom_understudy_cli_json(
+    args: &[std::ffi::OsString],
+    failure: &str,
+) -> Result<Value, String> {
+    let output = crate::bin::command("understudy")
+        .args(args)
+        .output()
+        .map_err(|error| {
+            format!(
+                "Could not run the Understudy CLI ({error}). Open Status to repair the CLI, then compile again."
+            )
+        })?;
+    if !output.status.success() {
+        return Err(format!(
+            "{failure} {}",
+            bounded_process_detail(&output.stderr)
+        ));
+    }
+    serde_json::from_slice::<Value>(&output.stdout)
+        .map_err(|_| format!("{failure} The CLI returned malformed JSON."))
+}
+
+fn validate_custom_csv_inspection(value: Value) -> Result<Value, String> {
+    if value.get("schema_version").and_then(Value::as_str) != Some(CSV_INSPECTION_SCHEMA)
+        || value.get("local_only").and_then(Value::as_bool) != Some(true)
+        || value.get("payload_read").and_then(Value::as_bool) != Some(true)
+        || value.get("source_rows_persisted").and_then(Value::as_bool) != Some(false)
+        || value.get("row_preview_persisted").and_then(Value::as_bool) != Some(false)
+        || value.get("persisted_data").and_then(Value::as_str)
+            != Some("statistics-and-label-aggregates")
+    {
+        return Err(
+            "The CSV inspection did not preserve its local statistics-only boundary.".into(),
+        );
+    }
+    for field in ["source_sha256", "recommended_mapping", "columns"] {
+        if value.get(field).is_none() {
+            return Err(format!("The CSV inspection omitted {field}."));
+        }
+    }
+    if value
+        .get("row_count")
+        .and_then(Value::as_u64)
+        .is_none_or(|rows| rows == 0)
+    {
+        return Err("The inspected table has no data rows.".into());
+    }
+    Ok(value)
+}
+
+fn custom_inspection_column<'a>(inspection: &'a Value, name: &str) -> Option<&'a Value> {
+    inspection
+        .get("columns")
+        .and_then(Value::as_array)?
+        .iter()
+        .find(|column| column.get("name").and_then(Value::as_str) == Some(name))
+}
+
+/// Resolve the effective column mapping: the caller's confirmed mapping wins,
+/// otherwise the inspection's recommended_mapping. Fails closed on unknown
+/// columns and on label columns whose cardinality cannot be a label set.
+fn resolve_custom_mapping(
+    inspection: &Value,
+    caller: Option<CustomColumnMapping>,
+) -> Result<CustomColumnMapping, String> {
+    let mapping = match caller {
+        Some(mapping) => mapping,
+        None => {
+            let recommended = inspection
+                .get("recommended_mapping")
+                .and_then(Value::as_object)
+                .ok_or_else(|| "The CSV inspection omitted its recommended mapping.".to_string())?;
+            CustomColumnMapping {
+                input_columns: recommended
+                    .get("input_columns")
+                    .and_then(Value::as_array)
+                    .map(|columns| {
+                        columns
+                            .iter()
+                            .filter_map(Value::as_str)
+                            .map(str::to_string)
+                            .collect()
+                    })
+                    .unwrap_or_default(),
+                label_column: recommended
+                    .get("label_column")
+                    .and_then(Value::as_str)
+                    .ok_or_else(|| {
+                        "The inspection could not recommend a label column. Confirm the mapping (input, label, and group columns) and compile again."
+                            .to_string()
+                    })?
+                    .to_string(),
+                group_column: recommended
+                    .get("group_column")
+                    .and_then(Value::as_str)
+                    .ok_or_else(|| {
+                        "The inspection could not recommend a leakage-group column. Confirm the mapping and compile again."
+                            .to_string()
+                    })?
+                    .to_string(),
+            }
+        }
+    };
+    if mapping.input_columns.is_empty()
+        || mapping.input_columns.len() > 127
+        || mapping.label_column.trim().is_empty()
+        || mapping.group_column.trim().is_empty()
+    {
+        return Err(
+            "Choose one label, one leakage group, and at least one bounded input column.".into(),
+        );
+    }
+    if mapping.label_column.trim() == mapping.group_column.trim() {
+        return Err("The label and leakage group must be different columns.".into());
+    }
+    for name in mapping
+        .input_columns
+        .iter()
+        .map(String::as_str)
+        .chain([mapping.label_column.trim(), mapping.group_column.trim()])
+    {
+        if custom_inspection_column(inspection, name).is_none() {
+            return Err(format!(
+                "Column {name:?} is not in the inspected table. Confirm the mapping against the inspection."
+            ));
+        }
+    }
+    let label = custom_inspection_column(inspection, mapping.label_column.trim())
+        .expect("the label column was just verified");
+    let unique = label
+        .get("unique_count")
+        .and_then(Value::as_u64)
+        .ok_or_else(|| "The inspection omitted the label column cardinality.".to_string())?;
+    let row_count = inspection
+        .get("row_count")
+        .and_then(Value::as_u64)
+        .unwrap_or(0);
+    if unique < 2 {
+        return Err(format!(
+            "Label column {:?} has only {unique} distinct value(s); classification needs at least 2 labels.",
+            mapping.label_column
+        ));
+    }
+    if unique > MAX_CUSTOM_LABELS {
+        return Err(format!(
+            "Label column {:?} has {unique} distinct values; classification supports at most {MAX_CUSTOM_LABELS} labels. Pick a lower-cardinality column.",
+            mapping.label_column
+        ));
+    }
+    if row_count >= 5 && unique == row_count {
+        return Err(format!(
+            "Label column {:?} is unique on every row, so it is an identifier, not a label. Pick a repeated category column.",
+            mapping.label_column
+        ));
+    }
+    Ok(mapping)
+}
+
+fn validate_custom_dataset_manifest(value: &Value) -> Result<String, String> {
+    if value.get("schema_version").and_then(Value::as_str) != Some(DATASET_SCHEMA)
+        || value.get("local_only").and_then(Value::as_bool) != Some(true)
+        || value.get("network_required").and_then(Value::as_bool) != Some(false)
+        || value.get("mapping_confirmation").and_then(Value::as_str) != Some("caller-provided")
+    {
+        return Err(
+            "The prepared dataset did not preserve its explicit local-only boundary.".into(),
+        );
+    }
+    value
+        .get("manifest_path")
+        .and_then(Value::as_str)
+        .filter(|path| !path.trim().is_empty())
+        .map(str::to_string)
+        .ok_or_else(|| "The prepared dataset omitted its manifest path.".to_string())
 }
 
 fn remote_training_example_preview(row: &Value) -> Option<TrainingRecipeRowPreview> {
@@ -1720,16 +2190,11 @@ fn inspect_training_recipe(path: &str) -> Result<Value, String> {
             "Most rows contain string input and target fields.",
         )
     } else if ratio(evidence.chat_rows) >= 0.8 {
-        TrainingRecipeMatch {
-            detected_use_case: "general_chat",
-            recipe_id: None,
-            task_kind: "chat_sft",
-            method: "sft",
-            evaluator: None,
-            confidence: confidence_for_ratio(ratio(evidence.chat_rows)),
-            ready: false,
-            reasons: vec!["Most rows use OpenAI-compatible chat messages, but no trustworthy evaluator was detected.".to_string()],
-        }
+        supported_recipe_match(
+            "chat_sft_exact_response_v1",
+            confidence_for_ratio(ratio(evidence.chat_rows)),
+            "Most rows use OpenAI-compatible chat messages ending in an assistant response, so the deterministic exact-response evaluator can score held-out replies.",
+        )
     } else {
         TrainingRecipeMatch {
             detected_use_case: "unknown",
@@ -2092,8 +2557,24 @@ fn normalized_chat_sft_messages(
 ) -> Option<Vec<Value>> {
     match recipe.evaluator {
         "gsm8k_final_answer" => normalized_gsm8k_messages(row),
+        "exact_response" => normalized_exact_response_messages(row),
         _ => None,
     }
+}
+
+fn normalized_exact_response_messages(row: &Value) -> Option<Vec<Value>> {
+    let messages = row.as_object()?.get("messages")?.as_array()?;
+    if !valid_chat_messages(messages)
+        || messages
+            .last()
+            .and_then(Value::as_object)
+            .and_then(|message| message.get("content"))
+            .and_then(Value::as_str)
+            .is_none_or(|content| content.trim().is_empty())
+    {
+        return None;
+    }
+    Some(messages.clone())
 }
 
 fn message_has_tool_content(message: &Value) -> bool {
@@ -2243,6 +2724,7 @@ fn prepare_remote_plan(
     manifest_path: &str,
     model_profile: &str,
     maximum_spend_usd: f64,
+    requested_output_model_name: Option<&str>,
 ) -> Result<Value, String> {
     let started = Instant::now();
     validate_remote_plan_options(model_profile, maximum_spend_usd)?;
@@ -2351,13 +2833,17 @@ fn prepare_remote_plan(
             .as_bytes(),
     );
     let plan_path = plan_root.join("plan.json");
-    let dataset_segment = safe_model_segment(&manifest.dataset_id);
-    if dataset_segment.is_empty() {
-        let _ = fs::remove_dir_all(&plan_root);
-        return Err("The dataset name cannot form a safe remote model name.".into());
-    }
-    let model_segment = dataset_segment.chars().take(42).collect::<String>();
-    let output_model_name = format!("understudy-{model_segment}-{}", &plan_id[..8]);
+    let output_model_name = match resolved_output_model_name(
+        requested_output_model_name,
+        &safe_model_segment(&manifest.dataset_id),
+        &plan_id,
+    ) {
+        Ok(name) => name,
+        Err(error) => {
+            let _ = fs::remove_dir_all(&plan_root);
+            return Err(error);
+        }
+    };
     let plan = RemoteTrainingPlan {
         schema_version: PLAN_SCHEMA.to_string(),
         plan_id,
@@ -2447,6 +2933,7 @@ fn prepare_classification_source_plan(
     recipe: &PortableRecipeDefinition,
     model_profile: &str,
     maximum_spend_usd: f64,
+    requested_output_model_name: Option<&str>,
 ) -> Result<Value, String> {
     let started = Instant::now();
     validate_remote_plan_options(model_profile, maximum_spend_usd)?;
@@ -2620,11 +3107,17 @@ fn prepare_classification_source_plan(
         .map(safe_model_segment)
         .filter(|name| !name.is_empty())
         .unwrap_or_else(|| "classification".to_string());
-    let output_model_name = format!(
-        "understudy-{}-{}",
-        dataset_id.chars().take(42).collect::<String>(),
-        &plan_id[..8]
-    );
+    let output_model_name = match resolved_output_model_name(
+        requested_output_model_name,
+        &dataset_id,
+        &plan_id,
+    ) {
+        Ok(name) => name,
+        Err(error) => {
+            let _ = fs::remove_dir_all(&plan_root);
+            return Err(error);
+        }
+    };
     let heldout_rows = artifacts
         .iter()
         .find(|artifact| artifact.artifact_role == "heldout")
@@ -2675,6 +3168,7 @@ fn prepare_chat_sft_plan(
     recipe: &PortableRecipeDefinition,
     model_profile: &str,
     maximum_spend_usd: f64,
+    requested_output_model_name: Option<&str>,
 ) -> Result<Value, String> {
     let started = Instant::now();
     validate_remote_plan_options(model_profile, maximum_spend_usd)?;
@@ -2785,11 +3279,17 @@ fn prepare_chat_sft_plan(
         .map(safe_model_segment)
         .filter(|name| !name.is_empty())
         .unwrap_or_else(|| "gsm8k".to_string());
-    let output_model_name = format!(
-        "understudy-{}-{}",
-        dataset_id.chars().take(42).collect::<String>(),
-        &plan_id[..8]
-    );
+    let output_model_name = match resolved_output_model_name(
+        requested_output_model_name,
+        &dataset_id,
+        &plan_id,
+    ) {
+        Ok(name) => name,
+        Err(error) => {
+            let _ = fs::remove_dir_all(&plan_root);
+            return Err(error);
+        }
+    };
     let heldout_rows = artifacts
         .iter()
         .find(|artifact| artifact.artifact_role == "heldout")
@@ -3940,6 +4440,37 @@ fn safe_model_segment(value: &str) -> String {
     output.trim_matches('-').chars().take(48).collect()
 }
 
+/// Build the provider-safe output model name. A caller-requested name is
+/// sanitized like every other name segment; the plan id suffix keeps repeated
+/// compilations from colliding at the provider.
+fn resolved_output_model_name(
+    requested: Option<&str>,
+    default_segment: &str,
+    plan_id: &str,
+) -> Result<String, String> {
+    let segment = match requested {
+        Some(name) => {
+            let segment = safe_model_segment(name);
+            if segment.is_empty() {
+                return Err(
+                    "The requested output model name has no safe characters. Use letters, digits, or dashes."
+                        .into(),
+                );
+            }
+            segment
+        }
+        None => default_segment.to_string(),
+    };
+    if segment.is_empty() {
+        return Err("The dataset name cannot form a safe remote model name.".into());
+    }
+    Ok(format!(
+        "understudy-{}-{}",
+        segment.chars().take(42).collect::<String>(),
+        &plan_id[..8]
+    ))
+}
+
 fn valid_hash(value: &str) -> bool {
     value.len() == 64
         && value
@@ -4378,6 +4909,7 @@ mod tests {
                 "text_classification_exact_label_v1",
                 "understudy/auto",
                 0.0,
+                None,
             )
             .unwrap(),
         )
@@ -4440,6 +4972,7 @@ mod tests {
                 inspection.get("recipe_id").and_then(Value::as_str).unwrap(),
                 "understudy/auto",
                 0.0,
+                None,
             )
             .unwrap(),
         )
@@ -4501,6 +5034,7 @@ mod tests {
                 inspection.get("recipe_id").and_then(Value::as_str).unwrap(),
                 "understudy/auto",
                 1.0,
+                None,
             )
             .unwrap(),
         )
@@ -4582,6 +5116,7 @@ mod tests {
                 portable_recipe("gsm8k_chat_sft_v1").unwrap(),
                 "understudy/auto",
                 0.0,
+                None,
             )
             .unwrap(),
         )
@@ -4773,6 +5308,7 @@ mod tests {
                 portable_recipe("gsm8k_chat_sft_v1").unwrap(),
                 "understudy/auto",
                 1.0,
+                None,
             )
             .unwrap(),
         )
@@ -4794,10 +5330,94 @@ mod tests {
     }
 
     #[test]
+    fn registers_custom_chat_sft_exact_response_recipe() {
+        let recipe = portable_recipe("chat_sft_exact_response_v1").unwrap();
+        assert_eq!(recipe.use_case, "custom_chat_assistant");
+        assert_eq!(recipe.task_kind, "chat_sft");
+        assert_eq!(recipe.method, "sft");
+        assert_eq!(recipe.evaluator, "exact_response");
+        assert_eq!(recipe.dataset_format, "openai_chat_messages");
+        assert_eq!(recipe.shape, PortableRecipeShape::ChatSft);
+        assert!(recipe.mlx_local && recipe.managed_fireworks && recipe.tinker);
+    }
+
+    #[test]
+    fn detects_and_compiles_custom_chat_rows_into_exact_response_plan() {
+        let root = std::env::temp_dir().join(format!(
+            "understudy-custom-chat-plan-test-{}-{}",
+            std::process::id(),
+            random_uuid().unwrap()
+        ));
+        fs::create_dir_all(&root).unwrap();
+        fs::write(root.join("workload-card.json"), b"{}\n").unwrap();
+        let source = root.join("assistant.jsonl");
+        let content = (0..100)
+            .map(|index| {
+                serde_json::to_string(&json!({
+                    "messages": [
+                        { "role": "user", "content": format!("Customer question {index}?") },
+                        { "role": "assistant", "content": format!("Reference reply {index}.") }
+                    ]
+                }))
+                .unwrap()
+            })
+            .collect::<Vec<_>>()
+            .join("\n")
+            + "\n";
+        fs::write(&source, &content).unwrap();
+
+        let inspection = inspect_training_recipe(source.to_str().unwrap()).unwrap();
+        assert_eq!(
+            inspection.get("detected_use_case").and_then(Value::as_str),
+            Some("custom_chat_assistant")
+        );
+        assert_eq!(
+            inspection.get("recipe_id").and_then(Value::as_str),
+            Some("chat_sft_exact_response_v1")
+        );
+        assert_eq!(
+            inspection.get("evaluator").and_then(Value::as_str),
+            Some("exact_response")
+        );
+        assert_eq!(inspection.get("ready").and_then(Value::as_bool), Some(true));
+
+        let recipe = portable_recipe("chat_sft_exact_response_v1").unwrap();
+        let plan: RemoteTrainingPlan = serde_json::from_value(
+            prepare_chat_sft_plan(
+                source.to_str().unwrap(),
+                root.to_str().unwrap(),
+                &sha256_bytes(content.as_bytes()),
+                recipe,
+                "understudy/auto",
+                1.0,
+                None,
+            )
+            .unwrap(),
+        )
+        .unwrap();
+        assert_eq!(plan.task_kind, "chat_sft");
+        assert_eq!(plan.evaluator.as_deref(), Some("exact_response"));
+        assert!(plan.labels.is_empty());
+        assert!(read_verified_plan(&plan.plan_path).is_ok());
+
+        let task = managed_task_payload(&plan, recipe).unwrap();
+        assert_eq!(task.get("kind").and_then(Value::as_str), Some("chat_sft"));
+        assert_eq!(
+            task.get("message_format").and_then(Value::as_str),
+            Some("openai_chat_messages")
+        );
+        assert_eq!(
+            task.get("evaluator").and_then(Value::as_str),
+            Some("exact_response")
+        );
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    #[test]
     fn prepares_private_chat_and_heldout_artifacts_without_uploading() {
         let (manifest_path, root) = fixture();
         let value =
-            prepare_remote_plan(manifest_path.to_str().unwrap(), "understudy/auto", 3.0).unwrap();
+            prepare_remote_plan(manifest_path.to_str().unwrap(), "understudy/auto", 3.0, None).unwrap();
         let plan: RemoteTrainingPlan = serde_json::from_value(value).unwrap();
         assert_eq!(plan.artifacts.len(), 3);
         let train = fs::read_to_string(
@@ -4834,11 +5454,11 @@ mod tests {
     fn repeated_plans_use_distinct_provider_model_names() {
         let (manifest_path, root) = fixture();
         let first: RemoteTrainingPlan = serde_json::from_value(
-            prepare_remote_plan(manifest_path.to_str().unwrap(), "understudy/auto", 3.0).unwrap(),
+            prepare_remote_plan(manifest_path.to_str().unwrap(), "understudy/auto", 3.0, None).unwrap(),
         )
         .unwrap();
         let second: RemoteTrainingPlan = serde_json::from_value(
-            prepare_remote_plan(manifest_path.to_str().unwrap(), "understudy/auto", 3.0).unwrap(),
+            prepare_remote_plan(manifest_path.to_str().unwrap(), "understudy/auto", 3.0, None).unwrap(),
         )
         .unwrap();
         assert_ne!(first.output_model_name, second.output_model_name);
@@ -4887,7 +5507,7 @@ mod tests {
     fn detects_artifact_changes_after_local_approval() {
         let (manifest_path, root) = fixture();
         let value =
-            prepare_remote_plan(manifest_path.to_str().unwrap(), "understudy/auto", 3.0).unwrap();
+            prepare_remote_plan(manifest_path.to_str().unwrap(), "understudy/auto", 3.0, None).unwrap();
         let plan: RemoteTrainingPlan = serde_json::from_value(value).unwrap();
         fs::write(&plan.artifacts[0].path, b"changed\n").unwrap();
         let error = read_verified_plan(&plan.plan_path).unwrap_err();
@@ -4902,7 +5522,7 @@ mod tests {
     fn recovers_the_latest_durable_run_from_the_dataset_root() {
         let (manifest_path, root) = fixture();
         let value =
-            prepare_remote_plan(manifest_path.to_str().unwrap(), "understudy/auto", 3.0).unwrap();
+            prepare_remote_plan(manifest_path.to_str().unwrap(), "understudy/auto", 3.0, None).unwrap();
         let plan: RemoteTrainingPlan = serde_json::from_value(value).unwrap();
         let plan_path = plan.plan_path.clone();
         let run_path = PathBuf::from(&plan.plan_path)
@@ -4937,6 +5557,323 @@ mod tests {
         assert_eq!(
             recovered_by_plan.get("run_id").and_then(Value::as_str),
             Some("00000000-0000-4000-8000-000000000001")
+        );
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    fn custom_inspection_fixture() -> Value {
+        json!({
+            "schema_version": CSV_INSPECTION_SCHEMA,
+            "local_only": true,
+            "payload_read": true,
+            "source_rows_persisted": false,
+            "row_preview_persisted": false,
+            "persisted_data": "statistics-and-label-aggregates",
+            "source_sha256": "a".repeat(64),
+            "artifact_path": "/private/csv-inspection.json",
+            "row_count": 100,
+            "columns": [
+                { "name": "message", "unique_count": 98 },
+                { "name": "label", "unique_count": 2 },
+                { "name": "sender", "unique_count": 40 },
+                { "name": "row_id", "unique_count": 100 },
+                { "name": "constant", "unique_count": 1 }
+            ],
+            "recommended_mapping": {
+                "label_column": "label",
+                "input_columns": ["message"],
+                "group_column": "sender",
+                "confidence": "high",
+                "requires_confirmation": true
+            }
+        })
+    }
+
+    #[test]
+    fn custom_mapping_defaults_to_the_inspections_recommendation() {
+        let mapping = resolve_custom_mapping(&custom_inspection_fixture(), None).unwrap();
+        assert_eq!(mapping.input_columns, vec!["message"]);
+        assert_eq!(mapping.label_column, "label");
+        assert_eq!(mapping.group_column, "sender");
+    }
+
+    #[test]
+    fn custom_mapping_prefers_the_callers_confirmed_columns() {
+        let mapping = resolve_custom_mapping(
+            &custom_inspection_fixture(),
+            Some(CustomColumnMapping {
+                input_columns: vec!["message".to_string(), "sender".to_string()],
+                label_column: "label".to_string(),
+                group_column: "row_id".to_string(),
+            }),
+        )
+        .unwrap();
+        assert_eq!(mapping.group_column, "row_id");
+        assert_eq!(mapping.input_columns.len(), 2);
+    }
+
+    #[test]
+    fn custom_mapping_fails_closed_on_missing_recommendation_and_bad_columns() {
+        let mut inspection = custom_inspection_fixture();
+        inspection["recommended_mapping"]["label_column"] = Value::Null;
+        let error = resolve_custom_mapping(&inspection, None).unwrap_err();
+        assert!(error.contains("Confirm the mapping"), "{error}");
+
+        let error = resolve_custom_mapping(
+            &custom_inspection_fixture(),
+            Some(CustomColumnMapping {
+                input_columns: vec!["message".to_string()],
+                label_column: "not_a_column".to_string(),
+                group_column: "sender".to_string(),
+            }),
+        )
+        .unwrap_err();
+        assert!(error.contains("not in the inspected table"), "{error}");
+
+        let error = resolve_custom_mapping(
+            &custom_inspection_fixture(),
+            Some(CustomColumnMapping {
+                input_columns: vec!["message".to_string()],
+                label_column: "label".to_string(),
+                group_column: "label".to_string(),
+            }),
+        )
+        .unwrap_err();
+        assert!(error.contains("must be different"), "{error}");
+    }
+
+    #[test]
+    fn custom_mapping_rejects_unusable_label_cardinality() {
+        let constant = resolve_custom_mapping(
+            &custom_inspection_fixture(),
+            Some(CustomColumnMapping {
+                input_columns: vec!["message".to_string()],
+                label_column: "constant".to_string(),
+                group_column: "sender".to_string(),
+            }),
+        )
+        .unwrap_err();
+        assert!(constant.contains("at least 2 labels"), "{constant}");
+
+        let identifier = resolve_custom_mapping(
+            &custom_inspection_fixture(),
+            Some(CustomColumnMapping {
+                input_columns: vec!["message".to_string()],
+                label_column: "row_id".to_string(),
+                group_column: "sender".to_string(),
+            }),
+        )
+        .unwrap_err();
+        assert!(identifier.contains("identifier, not a label"), "{identifier}");
+
+        let mut inspection = custom_inspection_fixture();
+        inspection["columns"][1]["unique_count"] = json!(9_000);
+        let too_many = resolve_custom_mapping(&inspection, None).unwrap_err();
+        assert!(too_many.contains("at most 512"), "{too_many}");
+    }
+
+    #[test]
+    fn custom_prepare_arguments_bind_every_confirmed_column() {
+        let args = custom_prepare_classification_args(
+            Path::new("/data/table.csv"),
+            Path::new("/workload"),
+            &CustomColumnMapping {
+                input_columns: vec!["message".to_string(), "subject".to_string()],
+                label_column: "label".to_string(),
+                group_column: "sender".to_string(),
+            },
+        );
+        let rendered = args
+            .iter()
+            .map(|arg| arg.to_string_lossy().into_owned())
+            .collect::<Vec<_>>();
+        assert_eq!(
+            rendered,
+            vec![
+                "capture-import",
+                "prepare-classification",
+                "--source",
+                "/data/table.csv",
+                "--artifact-root",
+                "/workload",
+                "--label-column",
+                "label",
+                "--group-column",
+                "sender",
+                "--input-column",
+                "message",
+                "--input-column",
+                "subject",
+                "--json",
+            ]
+        );
+        let inspect = custom_inspect_csv_args(Path::new("/data/table.csv"), Path::new("/workload"));
+        assert_eq!(inspect.first().unwrap().to_string_lossy(), "capture-import");
+        assert_eq!(inspect.last().unwrap().to_string_lossy(), "--json");
+    }
+
+    #[test]
+    fn custom_csv_inspection_validation_holds_the_statistics_only_boundary() {
+        assert!(validate_custom_csv_inspection(custom_inspection_fixture()).is_ok());
+        let mut leaked = custom_inspection_fixture();
+        leaked["source_rows_persisted"] = json!(true);
+        assert!(validate_custom_csv_inspection(leaked)
+            .unwrap_err()
+            .contains("statistics-only boundary"));
+        let mut empty = custom_inspection_fixture();
+        empty["row_count"] = json!(0);
+        assert!(validate_custom_csv_inspection(empty).is_err());
+    }
+
+    #[test]
+    fn custom_dataset_manifest_validation_requires_the_local_only_contract() {
+        let valid = json!({
+            "schema_version": DATASET_SCHEMA,
+            "local_only": true,
+            "network_required": false,
+            "mapping_confirmation": "caller-provided",
+            "manifest_path": "/workload/dataset/dataset-manifest.json"
+        });
+        assert_eq!(
+            validate_custom_dataset_manifest(&valid).unwrap(),
+            "/workload/dataset/dataset-manifest.json"
+        );
+        let mut network = valid.clone();
+        network["network_required"] = json!(true);
+        assert!(validate_custom_dataset_manifest(&network)
+            .unwrap_err()
+            .contains("local-only boundary"));
+        let mut missing = valid;
+        missing["manifest_path"] = Value::Null;
+        assert!(validate_custom_dataset_manifest(&missing).is_err());
+    }
+
+    #[test]
+    fn requested_output_model_names_are_sanitized_and_unique_per_plan() {
+        let plan_id = "0123456789abcdef";
+        assert_eq!(
+            resolved_output_model_name(Some("Support Assistant!"), "fallback", plan_id).unwrap(),
+            "understudy-support-assistant-01234567"
+        );
+        assert_eq!(
+            resolved_output_model_name(None, "fallback", plan_id).unwrap(),
+            "understudy-fallback-01234567"
+        );
+        assert!(resolved_output_model_name(Some("!!!"), "fallback", plan_id).is_err());
+        assert!(resolved_output_model_name(None, "", plan_id).is_err());
+    }
+
+    /// End-to-end custom compile over the chat-shaped JSONL branch. Steps 1-3
+    /// are pure local Rust; the Goal Card step shells the CLI, so this test
+    /// substitutes a fake `understudy` binary through UNDERSTUDY_BIN — the
+    /// same override the harness uses for local development.
+    #[cfg(unix)]
+    #[test]
+    fn compiles_a_custom_chat_workload_end_to_end_with_a_fake_cli() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let root = std::env::temp_dir().join(format!(
+            "understudy-custom-compile-test-{}-{}",
+            std::process::id(),
+            random_uuid().unwrap()
+        ));
+        fs::create_dir_all(&root).unwrap();
+        fs::write(root.join("workload-card.json"), b"{}\n").unwrap();
+        let source = root.join("assistant.jsonl");
+        let content = (0..40)
+            .map(|index| {
+                serde_json::to_string(&json!({
+                    "messages": [
+                        { "role": "user", "content": format!("Custom question {index}?") },
+                        { "role": "assistant", "content": format!("Reference reply {index}.") }
+                    ]
+                }))
+                .unwrap()
+            })
+            .collect::<Vec<_>>()
+            .join("\n")
+            + "\n";
+        fs::write(&source, &content).unwrap();
+
+        let goal_card = serde_json::to_string(&json!({
+            "schema_version": "understudy.training.goal_card.v1",
+            "detected_task": "chat_sft",
+            "evaluator": "exact_response",
+            "privacy": { "heldout_targets_visible": false },
+            "training_preview": [],
+            "environment": {
+                "proposal_path": root.join("environment-proposal.json"),
+                "status": "executable"
+            }
+        }))
+        .unwrap();
+        let fake = root.join("fake-understudy");
+        fs::write(&fake, format!("#!/bin/sh\ncat <<'UNDERSTUDY_EOF'\n{goal_card}\nUNDERSTUDY_EOF\n"))
+            .unwrap();
+        fs::set_permissions(&fake, fs::Permissions::from_mode(0o755)).unwrap();
+        std::env::set_var("UNDERSTUDY_BIN", &fake);
+
+        let events = Arc::new(Mutex::new(Vec::<String>::new()));
+        let observed = events.clone();
+        let channel = Channel::new(move |message: tauri::ipc::InvokeResponseBody| {
+            if let tauri::ipc::InvokeResponseBody::Json(payload) = message {
+                if let Ok(event) = serde_json::from_str::<Value>(&payload) {
+                    if let Some(phase) = event.get("phase").and_then(Value::as_str) {
+                        observed.lock().unwrap().push(phase.to_string());
+                    }
+                }
+            }
+            Ok(())
+        });
+        let result = compile_custom_plan(
+            root.to_str().unwrap(),
+            source.to_str().unwrap(),
+            None,
+            "understudy/auto",
+            Some("Support Assistant"),
+            &channel,
+        );
+        std::env::remove_var("UNDERSTUDY_BIN");
+        let result = result.unwrap();
+
+        assert_eq!(
+            result.get("schema_version").and_then(Value::as_str),
+            Some(CUSTOM_COMPILE_SCHEMA)
+        );
+        assert_eq!(
+            result.get("task_kind").and_then(Value::as_str),
+            Some("chat_sft")
+        );
+        assert_eq!(
+            result.get("recipe_id").and_then(Value::as_str),
+            Some("chat_sft_exact_response_v1")
+        );
+        assert_eq!(
+            result.get("environment_status").and_then(Value::as_str),
+            Some("executable")
+        );
+        assert!(result
+            .get("environment_proposal_path")
+            .and_then(Value::as_str)
+            .is_some_and(|path| path.ends_with("environment-proposal.json")));
+        assert!(result.get("dataset_manifest_path").is_some_and(Value::is_null));
+        assert_eq!(result.get("local_only").and_then(Value::as_bool), Some(true));
+        assert_eq!(result.get("uploads").and_then(Value::as_bool), Some(false));
+        assert_eq!(
+            result.get("provider_called").and_then(Value::as_bool),
+            Some(false)
+        );
+        assert_eq!(result.get("spend_usd").and_then(Value::as_f64), Some(0.0));
+        let plan: RemoteTrainingPlan =
+            serde_json::from_value(result.get("plan").cloned().unwrap()).unwrap();
+        assert_eq!(plan.maximum_spend_usd, 0.0);
+        assert!(plan
+            .output_model_name
+            .starts_with("understudy-support-assistant-"));
+        assert!(read_verified_plan(&plan.plan_path).is_ok());
+        assert_eq!(
+            events.lock().unwrap().as_slice(),
+            ["inspecting", "preparing_splits", "planning", "compiling"]
         );
         fs::remove_dir_all(root).unwrap();
     }
