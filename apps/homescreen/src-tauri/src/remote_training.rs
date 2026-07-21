@@ -19,6 +19,13 @@ const PLAN_SCHEMA: &str = "understudy.training.plan.v1";
 const RUN_SCHEMA: &str = "understudy.remote_training.run.v1";
 const API_SCHEMA: &str = "understudy-train-v1";
 const BACKEND_COMPATIBILITY_SCHEMA: &str = "understudy.remote_training.backend_compatibility.v1";
+// Production remote-training control plane. This is the sanctioned default: the
+// desktop connects to `train.understudylabs.com` without requiring an explicit
+// `UNDERSTUDY_TRAIN_API_BASE` override, gated by the completed security and
+// production-readiness review in `docs/reviews/train-api-desktop-connection.md`.
+// The env override remains only for pointing at localhost or a staging host
+// during development; `train_api_base` still fails closed on non-HTTPS,
+// credentialed, or malformed URLs.
 const DEFAULT_TRAIN_API_BASE: &str = "https://train.understudylabs.com/api/train/v1";
 const MAX_MANIFEST_BYTES: u64 = 1_048_576;
 // Keep the first remote-training slice bounded. Split conversion is deliberately
@@ -329,6 +336,10 @@ struct RemoteTrainingRun {
     run_manifest_path: String,
 }
 
+/// Resolve the remote-training control-plane base URL. Defaults to the reviewed
+/// production host (see `docs/reviews/train-api-desktop-connection.md`); the
+/// `UNDERSTUDY_TRAIN_API_BASE` env var overrides it for localhost/staging only.
+/// Fails closed on non-HTTPS (except localhost), credentialed, or malformed URLs.
 fn train_api_base() -> Result<Url, String> {
     let raw = std::env::var("UNDERSTUDY_TRAIN_API_BASE")
         .unwrap_or_else(|_| DEFAULT_TRAIN_API_BASE.to_string());

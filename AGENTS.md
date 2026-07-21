@@ -102,10 +102,17 @@ OSS from the first commit.
 - No customer data, private traces, secrets, private repo names, or internal
   incident notes.
 - Examples must use synthetic data or small public fixtures.
+- The desktop connects to the production remote-training control plane
+  (`train.understudylabs.com`) as its default. This is no longer experimental:
+  the connection surface has a completed security and production-readiness
+  review in [`docs/reviews/train-api-desktop-connection.md`](docs/reviews/train-api-desktop-connection.md).
+  Do not widen what leaves the machine, the auth model, or the spend caps
+  described there without updating that review.
 
 Read these before extraction, release, or public docs work:
 
 - [`docs/privacy-and-data-boundaries.md`](docs/privacy-and-data-boundaries.md)
+- [`docs/reviews/train-api-desktop-connection.md`](docs/reviews/train-api-desktop-connection.md)
 - [`docs/security.md`](docs/security.md)
 - [`docs/telemetry.md`](docs/telemetry.md)
 - [`docs/oss-release-boundary.md`](docs/oss-release-boundary.md)
