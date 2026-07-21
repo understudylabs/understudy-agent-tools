@@ -33,6 +33,8 @@ mod sidecar;
 mod supervision_export;
 mod supervision_review;
 mod supervision_tiebreaker;
+mod task_model_runtime;
+mod task_models;
 mod tool_proof;
 mod workload_drop;
 
@@ -329,6 +331,11 @@ pub fn run() {
             custom_evals::delete_custom_eval,
             custom_evals::run_custom_eval,
             custom_evals::run_custom_eval_live,
+            task_model_runtime::run_task_model,
+            task_model_runtime::run_task_model_eval,
+            task_models::inspect_task_model,
+            task_models::install_task_model,
+            task_models::list_task_models,
             commands::sidekick_runs,
             commands::sidekick_metrics,
             commands::set_sidekick_run_feedback,

@@ -41,6 +41,9 @@ calamine = "0.36"
 # Bounded, quote-aware decoding for dropped CSV/TSV datasets. File format
 # selects only the parser; route and training backend remain user decisions.
 csv = "1"
+# Portable `.understudy-model` files are ZIP containers. Keep only the
+# deflate reader; bundles never execute archive contents.
+zip = { version = "2.4.2", default-features = false, features = ["deflate"] }
 
 [target.'cfg(any(target_os = "macos", windows, target_os = "linux"))'.dependencies]
 tauri-plugin-updater = "2.10.1"

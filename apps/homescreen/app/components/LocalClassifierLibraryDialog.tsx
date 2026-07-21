@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { invoke, isTauri } from "@tauri-apps/api/core";
+import { getCurrentWindow } from "@tauri-apps/api/window";
 import { revealItemInDir } from "@tauri-apps/plugin-opener";
 import {
   ArchiveIcon,
@@ -100,6 +101,32 @@ type PredictionExport = {
   output_path: string;
 };
 
+type PortableTaskModel = {
+  id: string;
+  version: string;
+  name: string;
+  publisher: string;
+  base_model_id: string;
+  bytes: number;
+  top_k: number;
+  base_ready: boolean;
+  base_download_id?: string | null;
+};
+
+type PortablePrediction = {
+  prediction: { l3_id: number; l3: string; probability: number };
+  top_k: { l3_id: number; l3: string; probability: number }[];
+  elapsed_ms: number;
+};
+
+type DownloadProgress = {
+  id: string;
+  model_id: string;
+  status: "running" | "done" | "error" | "cancelled";
+  started_at: string;
+  error?: string | null;
+};
+
 function compactBytes(bytes: number): string {
   if (bytes < 1024 ** 2) return `${Math.max(1, Math.round(bytes / 1024))} KB`;
   if (bytes < 1024 ** 3) return `${(bytes / 1024 ** 2).toFixed(0)} MB`;
@@ -124,6 +151,7 @@ export function LocalClassifierLibraryDialog({
   open: boolean;
   onOpenChange: (open: boolean) => void;
 }) {
+  const [view, setView] = useState<"models" | "runs">("models");
   const [archived, setArchived] = useState(false);
   const [runs, setRuns] = useState<LocalClassifierRun[]>([]);
   const [selectedRunId, setSelectedRunId] = useState<string | null>(null);
@@ -135,11 +163,27 @@ export function LocalClassifierLibraryDialog({
   const [predictionText, setPredictionText] = useState("");
   const [prediction, setPrediction] = useState<ClassificationPrediction | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  const [portableModels, setPortableModels] = useState<PortableTaskModel[]>([]);
+  const [portableModelKey, setPortableModelKey] = useState("");
+  const [portableText, setPortableText] = useState("");
+  const [portablePrediction, setPortablePrediction] = useState<PortablePrediction | null>(null);
+  const [portableNotice, setPortableNotice] = useState<string | null>(null);
+  const [downloads, setDownloads] = useState<DownloadProgress[]>([]);
   const requestGeneration = useRef(0);
 
   const selected = useMemo(
     () => runs.find((run) => run.run_id === selectedRunId) ?? runs[0] ?? null,
     [runs, selectedRunId],
+  );
+  const selectedPortable = useMemo(
+    () => portableModels.find((model) => `${model.id}@${model.version}` === portableModelKey) ?? null,
+    [portableModelKey, portableModels],
+  );
+  const selectedBaseDownload = useMemo(
+    () => downloads
+      .filter((download) => download.model_id === selectedPortable?.base_model_id)
+      .sort((left, right) => right.started_at.localeCompare(left.started_at))[0] ?? null,
+    [downloads, selectedPortable?.base_model_id],
   );
 
   const loadRuns = useCallback(async (showArchived: boolean, preferredRunId?: string | null) => {
@@ -177,6 +221,75 @@ export function LocalClassifierLibraryDialog({
     }
     void loadRuns(archived);
   }, [archived, loadRuns, open]);
+
+  const loadPortableModels = useCallback(async () => {
+    const [models, nextDownloads] = await Promise.all([
+      invoke<PortableTaskModel[]>("list_task_models"),
+      invoke<DownloadProgress[]>("list_snapshot_downloads"),
+    ]);
+    setPortableModels(models);
+    setDownloads(nextDownloads);
+    setPortableModelKey((current) => current || (models[0] ? `${models[0].id}@${models[0].version}` : ""));
+  }, []);
+
+  useEffect(() => {
+    if (!open || !isTauri()) return;
+    void loadPortableModels().catch((loadError) => setPortableNotice(String(loadError)));
+    let dispose: (() => void) | undefined;
+    getCurrentWindow().onDragDropEvent(async (event) => {
+      if (event.payload.type !== "drop") return;
+      const path = event.payload.paths.find((candidate) => {
+        const lower = candidate.toLowerCase();
+        return lower.endsWith(".understudy-model") || lower.endsWith(".zip");
+      });
+      if (!path) return;
+      setBusy(true);
+      setPortableNotice("Verifying task model…");
+      try {
+        const installed = await invoke<PortableTaskModel>("install_task_model", { path });
+        setPortableNotice(installed.base_ready
+          ? `Installed ${installed.name} ${installed.version}.`
+          : `Installed ${installed.name}. Downloading its required base model now…`);
+        await loadPortableModels();
+        setPortableModelKey(`${installed.id}@${installed.version}`);
+      } catch (installError) {
+        setPortableNotice(`Package rejected: ${String(installError)}`);
+      } finally {
+        setBusy(false);
+      }
+    }).then((unlisten) => { dispose = unlisten; });
+    return () => dispose?.();
+  }, [loadPortableModels, open]);
+
+  useEffect(() => {
+    if (!open || !isTauri() || !downloads.some((download) => download.status === "running")) return;
+    const timer = window.setInterval(() => {
+      void loadPortableModels().catch((loadError) => setPortableNotice(String(loadError)));
+    }, 1_000);
+    return () => window.clearInterval(timer);
+  }, [downloads, loadPortableModels, open]);
+
+  useEffect(() => {
+    if (selectedBaseDownload?.status === "error" || selectedBaseDownload?.status === "cancelled") {
+      setPortableNotice(selectedBaseDownload.error
+        ? `Base-model download stopped: ${selectedBaseDownload.error}`
+        : "Base-model download stopped. You can retry it here.");
+    }
+  }, [selectedBaseDownload?.error, selectedBaseDownload?.status]);
+
+  const retryPortableBase = async () => {
+    if (!selectedPortable || busy) return;
+    setBusy(true);
+    setPortableNotice("Restarting the resumable base-model download…");
+    try {
+      await invoke<string>("start_snapshot_download", { modelId: selectedPortable.base_model_id });
+      await loadPortableModels();
+    } catch (downloadError) {
+      setPortableNotice(`Could not restart the base-model download: ${String(downloadError)}`);
+    } finally {
+      setBusy(false);
+    }
+  };
 
   useEffect(() => {
     setDisplayName(selected?.display_name ?? "");
@@ -218,6 +331,28 @@ export function LocalClassifierLibraryDialog({
       setPrediction(result);
     } catch (predictionError) {
       setError(String(predictionError));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const predictPortable = async () => {
+    const model = portableModels.find((candidate) => `${candidate.id}@${candidate.version}` === portableModelKey);
+    if (!model || !portableText.trim() || busy) return;
+    setBusy(true);
+    setPortablePrediction(null);
+    setPortableNotice(null);
+    try {
+      const [result] = await invoke<PortablePrediction[]>("run_task_model", {
+        request: {
+          model_id: model.id,
+          version: model.version,
+          rows: [{ task_id: "library-preview", text: portableText.trim() }],
+        },
+      });
+      setPortablePrediction(result);
+    } catch (predictionError) {
+      setPortableNotice(String(predictionError));
     } finally {
       setBusy(false);
     }
@@ -281,15 +416,68 @@ export function LocalClassifierLibraryDialog({
       <DialogContent className="classifier-library-dialog">
         <DialogHeader className="classifier-library-header">
           <DialogTitle>Trained models</DialogTitle>
-          <DialogDescription>Local task models saved on this Mac. They never appear in the chat-model picker.</DialogDescription>
+          <DialogDescription>Install and run a trained classifier on this Mac.</DialogDescription>
         </DialogHeader>
 
         <div className="classifier-library-tabs" aria-label="Trained model views">
-          <button type="button" aria-pressed={!archived} onClick={() => setArchived(false)}>Active</button>
-          <button type="button" aria-pressed={archived} onClick={() => setArchived(true)}>Archived</button>
+          <button type="button" aria-pressed={view === "models"} onClick={() => setView("models")}>Installed models</button>
+          <button type="button" aria-pressed={view === "runs"} onClick={() => setView("runs")}>Previous runs</button>
         </div>
 
-        <div className="classifier-library-body">
+        {view === "models" && <section className="classifier-library-portable">
+          <div>
+            <strong>Local classifier</strong>
+            <span>Drop a model file anywhere in Understudy to install it.</span>
+          </div>
+          {portableModels.length ? (
+            <form onSubmit={(event) => { event.preventDefault(); void predictPortable(); }}>
+              <label>
+                <span>Model</span>
+                <select value={portableModelKey} onChange={(event) => { setPortableModelKey(event.target.value); setPortablePrediction(null); }}>
+                  {portableModels.map((model) => (
+                    <option key={`${model.id}@${model.version}`} value={`${model.id}@${model.version}`}>
+                      {model.name} · {model.version}
+                    </option>
+                  ))}
+                </select>
+              </label>
+              <label className="classifier-library-example">
+                <span>Try an example</span>
+                <input value={portableText} maxLength={4_000} onChange={(event) => { setPortableText(event.target.value); setPortablePrediction(null); }} placeholder="Paste customer feedback" />
+              </label>
+              <button
+                  type={selectedBaseDownload?.status === "error" || selectedBaseDownload?.status === "cancelled" ? "button" : "submit"}
+                  className="btn primary"
+                  disabled={busy || (selectedPortable?.base_ready
+                    ? !portableText.trim()
+                    : selectedBaseDownload?.status !== "error" && selectedBaseDownload?.status !== "cancelled")}
+                  onClick={selectedBaseDownload?.status === "error" || selectedBaseDownload?.status === "cancelled" ? () => { void retryPortableBase(); } : undefined}
+                >
+                  {busy
+                    ? "Working…"
+                    : selectedPortable?.base_ready
+                      ? "Run locally"
+                      : selectedBaseDownload?.status === "error" || selectedBaseDownload?.status === "cancelled"
+                        ? "Retry download"
+                        : "Downloading base…"}
+                </button>
+            </form>
+          ) : <div className="classifier-library-model-empty"><strong>Drop a model file to get started</strong><span>Understudy verifies it and downloads the matching base automatically.</span></div>}
+          {portablePrediction && (
+            <output>
+              <strong>{portablePrediction.prediction.l3}</strong>
+              <span>{(portablePrediction.prediction.probability * 100).toFixed(1)}% · {portablePrediction.elapsed_ms} ms</span>
+            </output>
+          )}
+          {portableNotice && <p role="status">{portableNotice}</p>}
+        </section>}
+
+        {view === "runs" && <>
+          <div className="classifier-library-run-tabs" aria-label="Previous run status">
+            <button type="button" aria-pressed={!archived} onClick={() => setArchived(false)}>Active</button>
+            <button type="button" aria-pressed={archived} onClick={() => setArchived(true)}>Archived</button>
+          </div>
+          <div className="classifier-library-body">
           <nav className="classifier-library-list" aria-label={archived ? "Archived trained models" : "Active trained models"}>
             {loading ? (
               <div className="classifier-library-empty">Reading local runs…</div>
@@ -435,7 +623,8 @@ export function LocalClassifierLibraryDialog({
               </div>
             )}
           </section>
-        </div>
+          </div>
+        </>}
       </DialogContent>
     </Dialog>
   );

@@ -81,6 +81,27 @@ uses semantic-ish versioning (minor = new skill or new capability, patch = fixes
   a stable marker, including accepted `continue` and `stop` decisions, so human
   feedback can measure missed errors as well as bad nudges and takeovers.
 
+### Changed
+
+- **`check-routing-health` now leads with the new reporting endpoints.**
+  The skill's primary path is one org-wide grounding call to
+  `/admin/v1/orgs/:org_id/reporting` (usage/cost series across all projects,
+  `group_by` project|workload|model, windows to 30d or custom date ranges to
+  366d) followed by `workload-status` (per-workload health with declared
+  config vs observed route shares, `rerouted_pct`, served-model shares,
+  error rate, example request ids). The skill teaches the canonical routing
+  vocabulary (`primary` / `understudy` / `fallback` route outcomes;
+  `pin`/`steer`/`none` declared config; `anthropic`/`openai`/`managed`
+  provider labels), requires grounding every diagnosis in the org-wide
+  spend/requests ranking, and calls out declared-vs-observed drift (declared
+  split with ~0 observed `understudy` share) as a finding. The rest of the
+  `sk_*` self-service surface stays documented as project-scoped
+  alternatives: `usage-summary` (computed `cache_read_pct`, per-group error
+  rate, multi-dimension grouping) and the captures metadata list (request
+  ids/timestamps only — capture content stays behind the dashboard login).
+  The legacy `routing-status` / `provider-health` / `status` endpoints stay
+  documented as deprecated for older deployments.
+
 ### Fixed
 
 - **Desktop window controls are simpler and updates are easier to verify.**

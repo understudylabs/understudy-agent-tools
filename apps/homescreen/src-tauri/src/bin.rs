@@ -269,6 +269,19 @@ pub fn mlx_server() -> String {
     }
     resolve("mlx_vlm.server")
 }
+pub fn mlx_python() -> Result<String, String> {
+    let server = mlx_server();
+    let launcher = std::fs::read_to_string(&server)
+        .map_err(|err| format!("cannot inspect MLX-VLM runtime at {server}: {err}"))?;
+    let first = launcher.lines().next().unwrap_or_default().trim();
+    let python = first
+        .strip_prefix("#!")
+        .ok_or_else(|| format!("MLX-VLM launcher has no Python shebang: {server}"))?;
+    if !Path::new(python).is_file() {
+        return Err(format!("MLX-VLM Python runtime is missing: {python}"));
+    }
+    Ok(python.to_string())
+}
 pub fn understudy() -> String {
     resolve("understudy")
 }
