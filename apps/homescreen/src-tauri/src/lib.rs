@@ -37,6 +37,7 @@ mod scope;
 mod route_policy;
 mod server;
 mod setup;
+mod settings;
 mod sidecar;
 mod supervision_export;
 mod supervision_review;
@@ -437,6 +438,9 @@ pub fn run() {
             billing::billing_overview,
             billing::billing_topup_checkout,
             setup::setup_info,
+            settings::settings_projects_list,
+            settings::settings_project_rename,
+            settings::settings_project_delete,
             chat::chat_stream,
             restart_app,
         ])

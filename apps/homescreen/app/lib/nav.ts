@@ -13,6 +13,7 @@ import {
   LayoutDashboard,
   ScrollText,
   Settings2,
+  UserCog,
   Wrench,
 } from "lucide-react";
 import type { PaneId } from "../components/Sidebar";
@@ -38,8 +39,6 @@ export type NavItemDef = {
   disabled?: boolean;
   disabledReason?: string;
 };
-
-const COMING = "Coming in this migration";
 
 // Registry: surface id -> pane id (Aamir's ControlPlaneShell labels verbatim).
 export const NAV_ITEMS: NavItemDef[] = [
@@ -73,6 +72,8 @@ export const NAV_ITEMS: NavItemDef[] = [
   { id: "manage-api-keys", group: "manage", label: "API keys", icon: KeyRound, pane: "api-keys" },
   { id: "manage-traces", group: "manage", label: "Traces", icon: ScrollText, pane: "traces" },
   { id: "manage-lab", group: "manage", label: "Lab", icon: Beaker, pane: "rlm" },
+  // Web: footer Account (/settings) + project settings (/p/:slug/settings).
+  { id: "manage-settings", group: "manage", label: "Settings", icon: UserCog, pane: "settings" },
   { id: "manage-billing", group: "manage", label: "Billing", icon: CreditCard, pane: "billing" },
   { id: "manage-setup", group: "manage", label: "Setup", icon: Wrench, pane: "setup" },
 ];

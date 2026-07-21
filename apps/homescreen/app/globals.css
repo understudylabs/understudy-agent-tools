@@ -8277,6 +8277,15 @@ select,
   display: flex;
   align-items: center;
   gap: 10px;
+/* Settings pane (port of the web control plane's settings surfaces).
+   Field label/value mirror the web SettingsField / IdentityField; danger
+   styling uses the stamp/clay accent like the web's --color-stamp cards. */
+.settings-field-grid {
+  display: grid;
+  gap: 14px;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr));
+}
+.settings-field-label {
   font-size: 10.5px;
   font-weight: 500;
   text-transform: uppercase;
@@ -8912,3 +8921,38 @@ select,
 .billing-table .num { text-align: right; font-variant-numeric: tabular-nums; }
 .billing-table .mono { font-family: var(--font-mono, ui-monospace, monospace); }
 .billing-table .muted { color: var(--text-3); }
+  color: var(--c-ink-muted);
+  margin: 0;
+}
+.settings-field-value {
+  display: block;
+  margin-top: 6px;
+  user-select: all;
+  word-break: break-all;
+  border: 1px solid var(--border);
+  border-radius: 8px;
+  background: var(--surface-2, var(--surface));
+  padding: 10px 12px;
+  font-family: var(--mono);
+  font-size: 11.5px;
+  color: var(--text);
+}
+.settings-danger-card {
+  border-color: color-mix(in srgb, var(--c-stamp) 40%, transparent);
+}
+.settings-danger-text {
+  color: var(--c-stamp);
+  font-size: 12px;
+  margin-top: 8px;
+}
+.card-title.settings-danger-text {
+  font-size: 13px;
+  margin-top: 0;
+}
+.settings-danger-btn {
+  border-color: color-mix(in srgb, var(--c-stamp) 50%, transparent);
+  color: var(--c-stamp);
+}
+.settings-danger-btn:hover:not(:disabled) {
+  background: color-mix(in srgb, var(--c-stamp) 10%, transparent);
+}

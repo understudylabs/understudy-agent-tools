@@ -31,6 +31,7 @@ export type PaneId =
   | "workload-config"
   | "project-summary"
   | "project-reporting"
+  | "settings"
   | "training-evals"
   | "training-optimization"
   | "training-datasets"
