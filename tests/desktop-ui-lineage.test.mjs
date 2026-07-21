@@ -774,6 +774,11 @@ test("trained-model library is restart-safe and stays separate from chat models"
   assert.match(library, /"list_local_classification_runs"/);
   assert.match(library, /"update_local_classification_run"/);
   assert.match(library, /"predict_local_classification"/);
+  assert.match(library, /"list_task_models"/);
+  assert.match(library, /"install_task_model"/);
+  assert.match(library, /"run_task_model"/);
+  assert.match(library, /\.understudy-model/);
+  assert.match(chat, /if \(classifierLibraryOpen\) return/);
   assert.match(library, /revealItemInDir/);
   assert.match(library, /They never appear in the chat-model picker/);
   assert.match(library, /Correct answers/);
@@ -784,6 +789,8 @@ test("trained-model library is restart-safe and stays separate from chat models"
   assert.match(css, /\.classifier-library-dialog/);
   assert.match(tauri, /workload_drop::list_local_classification_runs/);
   assert.match(tauri, /workload_drop::update_local_classification_run/);
+  assert.match(tauri, /task_models::install_task_model/);
+  assert.match(tauri, /task_model_runtime::run_task_model/);
 });
 
 test("desktop model downloads are app-owned, pausable, and resumable", async () => {

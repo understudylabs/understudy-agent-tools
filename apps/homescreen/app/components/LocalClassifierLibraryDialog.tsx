@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { invoke, isTauri } from "@tauri-apps/api/core";
+import { getCurrentWindow } from "@tauri-apps/api/window";
 import { revealItemInDir } from "@tauri-apps/plugin-opener";
 import {
   ArchiveIcon,
@@ -100,6 +101,22 @@ type PredictionExport = {
   output_path: string;
 };
 
+type PortableTaskModel = {
+  id: string;
+  version: string;
+  name: string;
+  publisher: string;
+  base_model_id: string;
+  bytes: number;
+  top_k: number;
+};
+
+type PortablePrediction = {
+  prediction: { l3_id: number; l3: string; probability: number };
+  top_k: { l3_id: number; l3: string; probability: number }[];
+  elapsed_ms: number;
+};
+
 function compactBytes(bytes: number): string {
   if (bytes < 1024 ** 2) return `${Math.max(1, Math.round(bytes / 1024))} KB`;
   if (bytes < 1024 ** 3) return `${(bytes / 1024 ** 2).toFixed(0)} MB`;
@@ -135,6 +152,11 @@ export function LocalClassifierLibraryDialog({
   const [predictionText, setPredictionText] = useState("");
   const [prediction, setPrediction] = useState<ClassificationPrediction | null>(null);
   const [notice, setNotice] = useState<string | null>(null);
+  const [portableModels, setPortableModels] = useState<PortableTaskModel[]>([]);
+  const [portableModelKey, setPortableModelKey] = useState("");
+  const [portableText, setPortableText] = useState("");
+  const [portablePrediction, setPortablePrediction] = useState<PortablePrediction | null>(null);
+  const [portableNotice, setPortableNotice] = useState<string | null>(null);
   const requestGeneration = useRef(0);
 
   const selected = useMemo(
@@ -178,6 +200,36 @@ export function LocalClassifierLibraryDialog({
     void loadRuns(archived);
   }, [archived, loadRuns, open]);
 
+  const loadPortableModels = useCallback(async () => {
+    const models = await invoke<PortableTaskModel[]>("list_task_models");
+    setPortableModels(models);
+    setPortableModelKey((current) => current || (models[0] ? `${models[0].id}@${models[0].version}` : ""));
+  }, []);
+
+  useEffect(() => {
+    if (!open || !isTauri()) return;
+    void loadPortableModels().catch((loadError) => setPortableNotice(String(loadError)));
+    let dispose: (() => void) | undefined;
+    getCurrentWindow().onDragDropEvent(async (event) => {
+      if (event.payload.type !== "drop") return;
+      const path = event.payload.paths.find((candidate) => candidate.endsWith(".understudy-model"));
+      if (!path) return;
+      setBusy(true);
+      setPortableNotice("Verifying task model…");
+      try {
+        const installed = await invoke<PortableTaskModel>("install_task_model", { path });
+        setPortableNotice(`Installed ${installed.name} ${installed.version}.`);
+        await loadPortableModels();
+        setPortableModelKey(`${installed.id}@${installed.version}`);
+      } catch (installError) {
+        setPortableNotice(`Package rejected: ${String(installError)}`);
+      } finally {
+        setBusy(false);
+      }
+    }).then((unlisten) => { dispose = unlisten; });
+    return () => dispose?.();
+  }, [loadPortableModels, open]);
+
   useEffect(() => {
     setDisplayName(selected?.display_name ?? "");
     setRenameOpen(false);
@@ -218,6 +270,28 @@ export function LocalClassifierLibraryDialog({
       setPrediction(result);
     } catch (predictionError) {
       setError(String(predictionError));
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const predictPortable = async () => {
+    const model = portableModels.find((candidate) => `${candidate.id}@${candidate.version}` === portableModelKey);
+    if (!model || !portableText.trim() || busy) return;
+    setBusy(true);
+    setPortablePrediction(null);
+    setPortableNotice(null);
+    try {
+      const [result] = await invoke<PortablePrediction[]>("run_task_model", {
+        request: {
+          model_id: model.id,
+          version: model.version,
+          rows: [{ task_id: "library-preview", text: portableText.trim() }],
+        },
+      });
+      setPortablePrediction(result);
+    } catch (predictionError) {
+      setPortableNotice(String(predictionError));
     } finally {
       setBusy(false);
     }
@@ -288,6 +362,33 @@ export function LocalClassifierLibraryDialog({
           <button type="button" aria-pressed={!archived} onClick={() => setArchived(false)}>Active</button>
           <button type="button" aria-pressed={archived} onClick={() => setArchived(true)}>Archived</button>
         </div>
+
+        <section className="classifier-library-portable">
+          <div>
+            <strong>Portable task models</strong>
+            <span>Drop a <code>.understudy-model</code> onto this window to verify and install it.</span>
+          </div>
+          {portableModels.length ? (
+            <form onSubmit={(event) => { event.preventDefault(); void predictPortable(); }}>
+              <select value={portableModelKey} onChange={(event) => { setPortableModelKey(event.target.value); setPortablePrediction(null); }}>
+                {portableModels.map((model) => (
+                  <option key={`${model.id}@${model.version}`} value={`${model.id}@${model.version}`}>
+                    {model.name} · {model.version}
+                  </option>
+                ))}
+              </select>
+              <input value={portableText} maxLength={4_000} onChange={(event) => { setPortableText(event.target.value); setPortablePrediction(null); }} placeholder="Try a new example" />
+              <button type="submit" className="btn primary" disabled={busy || !portableText.trim()}>{busy ? "Working…" : "Run locally"}</button>
+            </form>
+          ) : <p>No portable models installed yet.</p>}
+          {portablePrediction && (
+            <output>
+              <strong>{portablePrediction.prediction.l3}</strong>
+              <span>{(portablePrediction.prediction.probability * 100).toFixed(1)}% · {portablePrediction.elapsed_ms} ms</span>
+            </output>
+          )}
+          {portableNotice && <p role="status">{portableNotice}</p>}
+        </section>
 
         <div className="classifier-library-body">
           <nav className="classifier-library-list" aria-label={archived ? "Archived trained models" : "Active trained models"}>
