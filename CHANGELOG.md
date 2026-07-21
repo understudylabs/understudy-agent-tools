@@ -17,6 +17,31 @@ uses semantic-ish versioning (minor = new skill or new capability, patch = fixes
 
 ### Added
 
+- **Train on your own data, end to end.** Desktop/runtime 0.3.36 and CLI
+  0.6.33 let you drop a spreadsheet (`.xlsx` workbooks now work, alongside CSV
+  and other tables) onto Understudy Desktop and go all the way to a trained
+  model: the app reads your file, proposes a training plan in plain language,
+  and — only after you approve — runs the training in the cloud. Before
+  anything is uploaded or any money is spent, a consent receipts card shows
+  exactly what will leave your machine and what it will cost, and you choose
+  between training locally or in the cloud. Messy data is handled gracefully:
+  empty or ambiguous rows are set aside with a note instead of failing the
+  whole import.
+- **Dataset focus mode.** While you prepare and launch a training run, the
+  training card becomes the whole window — no sidebars or clutter — and the
+  window sizes itself to the content.
+- **Watch your training run, step by step.** A live timeline shows each
+  readiness gate as it is checked (with honest results, not spinners), and once
+  training starts you get granular status: a loss curve sparkline, a header
+  that names the current phase, and a running plain-language narration of what
+  is happening. When the run finishes, a training outcome summary connects the
+  results back to your evals.
+- **`understudy training doctor`.** One CLI command walks the whole
+  remote-training chain and reports the first broken link, so "why isn't my
+  training working" has a one-step answer.
+- **Sturdier app plumbing.** The Desktop's local API server is now supervised:
+  it reports why it stopped, restarts itself with capped backoff, and
+  health-checks itself, so background features recover without an app restart.
 - **Truthful model cards in Chat.** One quiet info action beside the selected
   model now shows its QAT source, MLX conversion, decode contract, scoped
   certification, footprint, routing hints, and current slot state without
