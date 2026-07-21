@@ -1097,6 +1097,9 @@ export function ChatPane({
   const [mappingLabelColumn, setMappingLabelColumn] = useState("");
   const [mappingGroupColumn, setMappingGroupColumn] = useState("");
   const [classificationDataset, setClassificationDataset] = useState<ClassificationDataset | null>(null);
+  const [csvBackend, setCsvBackend] = useState<"local" | "managed" | null>(null);
+  const [csvCloudCapabilities, setCsvCloudCapabilities] = useState<RemoteTrainingCapabilities | null>(null);
+  const [csvCloudError, setCsvCloudError] = useState<string | null>(null);
   const [localTrainingActive, setLocalTrainingActive] = useState(false);
   const [remoteTrainingView, setRemoteTrainingView] = useState(false);
   const [trainingHaloVisual, setTrainingHaloVisual] = useState<TrainingHaloVisual | null>(null);
@@ -1191,6 +1194,9 @@ export function ChatPane({
     setMappingLabelColumn("");
     setMappingGroupColumn("");
     setClassificationDataset(null);
+    setCsvBackend(null);
+    setCsvCloudCapabilities(null);
+    setCsvCloudError(null);
     setLocalTrainingActive(false);
     setRemoteTrainingView(false);
     setTrainingHaloVisual(null);
@@ -1459,6 +1465,25 @@ export function ChatPane({
     if (remoteRecipeEligibilityError) setErr(remoteRecipeEligibilityError);
   }, [remoteRecipeEligibilityError]);
 
+  const chooseCsvCloudTraining = useCallback(async () => {
+    setCsvCloudError(null);
+    try {
+      const envelope = await invoke<RemoteTrainingCapabilitiesEnvelope>("remote_training_capabilities");
+      const capabilities = envelope.enabled ? envelope.capabilities : undefined;
+      const managedAvailable = capabilities?.providers.some(
+        (provider) => provider.id === "managed" && provider.enabled && provider.model_profiles.length > 0,
+      );
+      if (!capabilities || !managedAvailable) {
+        setCsvCloudError(envelope.reason ?? "Cloud training is unavailable in this Desktop build.");
+        return;
+      }
+      setCsvCloudCapabilities(capabilities);
+      setCsvBackend("managed");
+    } catch (error) {
+      setCsvCloudError(String(error));
+    }
+  }, []);
+
   const prepareDroppedClassification = () => {
     if (
       !droppedWorkload ||
@@ -1472,6 +1497,9 @@ export function ChatPane({
     const requestGeneration = dropRequestGeneration.current + 1;
     dropRequestGeneration.current = requestGeneration;
     setClassificationDataset(null);
+    setCsvBackend(null);
+    setCsvCloudCapabilities(null);
+    setCsvCloudError(null);
     setErr(null);
     setNotice(null);
     dispatchDrop({ type: "dataset_started" });
@@ -2256,17 +2284,28 @@ export function ChatPane({
       ? PERSONA_CYAN
       : PERSONA_WHITE;
   const selectedTargetColumn = csvInspection?.columns.find((column) => column.name === mappingLabelColumn) ?? null;
+  // Empty targets are dropped by prepare-classification and reported as
+  // unusable_rows_removed; they only block when so widespread the mapping
+  // itself is suspect.
+  const selectedTargetEmptyShare = selectedTargetColumn && csvInspection!.row_count > 0
+    ? selectedTargetColumn.empty_count / csvInspection!.row_count
+    : 0;
   const selectedTargetBlockReason = !mappingLabelColumn || !selectedTargetColumn
     ? null
     : selectedTargetColumn.unique_count < 2
       ? "Choose a target with at least two repeated categories."
-      : selectedTargetColumn.empty_count > 0
-        ? `${selectedTargetColumn.empty_count} row(s) have no target value.`
+      : selectedTargetEmptyShare > 0.1
+        ? `${selectedTargetColumn.empty_count} of ${csvInspection!.row_count} row(s) have no target value; this column looks unlabeled.`
         : selectedTargetColumn.unique_count === selectedTargetColumn.non_empty_count && csvInspection!.row_count >= 5
           ? "Every target value is unique; choose a reusable category rather than an identifier."
           : selectedTargetColumn.unique_ratio > 0.5
             ? "More than half of the target values are unique; choose a more reusable category."
             : null;
+  const selectedTargetDropNotice = !selectedTargetBlockReason
+    && selectedTargetColumn
+    && selectedTargetColumn.empty_count > 0
+    ? `${selectedTargetColumn.empty_count} row(s) without a target value will be dropped before training.`
+    : null;
   const trainingPlanVisible = Boolean(
     csvInspection && droppedWorkload && !classificationDataset && !dropRunning,
   );
@@ -2694,6 +2733,10 @@ export function ChatPane({
                         <p className="csv-analysis-caution" role="status">
                           {selectedTargetBlockReason}
                         </p>
+                      ) : selectedTargetDropNotice ? (
+                        <p className="csv-analysis-note" role="status">
+                          {selectedTargetDropNotice}
+                        </p>
                       ) : (
                         csvInspection.training_readiness.status === "needs_data" ||
                         csvInspection.training_readiness.status === "needs_cleanup"
@@ -2725,16 +2768,58 @@ export function ChatPane({
                     </>
                   ) : (
                     <div className={`workload-dataset-ready${localTrainingActive ? " is-active" : ""}`}>
-                      <LocalTrainingPanel
-                        datasetManifestPath={classificationDataset.manifest_path}
-                        modelName={trainedModelName(
-                          droppedWorkload.source_name,
-                          classificationDataset.mapping.label_column,
-                        )}
-                        autoStart
-                        onActiveChange={setLocalTrainingActive}
-                        onVisualChange={setTrainingHaloVisual}
-                      />
+                      {csvBackend === null ? (
+                        <div className="remote-training-state" role="group" aria-label="Choose where to train">
+                          <strong>Where should this train?</strong>
+                          <small>
+                            {classificationDataset.row_count.toLocaleString()} rows, {classificationDataset.mapping.label_column} —
+                            local is free on this Mac; cloud is faster for large datasets and needs upload + spend approval.
+                          </small>
+                          {csvCloudError && (
+                            <p className="csv-analysis-caution" role="alert">{csvCloudError}</p>
+                          )}
+                          <div className="csv-analysis-actions">
+                            <button
+                              type="button"
+                              className={`btn ${classificationDataset.row_count < 5000 ? "primary" : "secondary"}`}
+                              onClick={() => setCsvBackend("local")}
+                            >
+                              Train locally (ModernBERT)
+                            </button>
+                            <button
+                              type="button"
+                              className={`btn ${classificationDataset.row_count < 5000 ? "secondary" : "primary"}`}
+                              onClick={() => void chooseCsvCloudTraining()}
+                            >
+                              Train in cloud (Understudy auto)
+                            </button>
+                          </div>
+                        </div>
+                      ) : csvBackend === "local" ? (
+                        <LocalTrainingPanel
+                          datasetManifestPath={classificationDataset.manifest_path}
+                          modelName={trainedModelName(
+                            droppedWorkload.source_name,
+                            classificationDataset.mapping.label_column,
+                          )}
+                          autoStart
+                          onActiveChange={setLocalTrainingActive}
+                          onVisualChange={setTrainingHaloVisual}
+                        />
+                      ) : csvCloudCapabilities ? (
+                        <RemoteTrainingPanel
+                          datasetManifestPath={classificationDataset.manifest_path}
+                          capabilities={csvCloudCapabilities}
+                          onTrainLocal={() => setCsvBackend("local")}
+                          modelName={trainedModelName(
+                            droppedWorkload.source_name,
+                            classificationDataset.mapping.label_column,
+                          )}
+                          onActiveChange={setLocalTrainingActive}
+                          onRunViewChange={setRemoteTrainingView}
+                          onVisualChange={setTrainingHaloVisual}
+                        />
+                      ) : null}
                     </div>
                   )}
                 </>
