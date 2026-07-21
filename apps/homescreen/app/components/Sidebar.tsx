@@ -16,6 +16,7 @@ export type PaneId =
   | "org-summary"
   | "chat"
   | "models"
+  | "model-catalog"
   | "capture"
   | "captures"
   | "account"

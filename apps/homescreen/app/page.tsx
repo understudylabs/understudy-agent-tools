@@ -6,6 +6,7 @@ import { PanelLeftIcon, SquarePenIcon } from "lucide-react";
 import { Sidebar, type PaneId } from "./components/Sidebar";
 import { StatusPane } from "./components/StatusPane";
 import { ModelsPane } from "./components/ModelsPane";
+import { ModelCatalogPane } from "./components/ModelCatalogPane";
 import { CapturePane } from "./components/CapturePane";
 import { CapturesPane } from "./components/CapturesPane";
 import { ChatPane } from "./components/ChatPane";
@@ -226,6 +227,7 @@ export default function Page() {
       "chat",
       "models",
       "captures",
+      "model-catalog",
       "account",
       "api-keys",
       "rlm",
@@ -380,6 +382,7 @@ export default function Page() {
           />
         )}
         {pane === "models" && <ModelsPane />}
+        {pane === "model-catalog" && <ModelCatalogPane />}
         {pane === "capture" && <CapturePane />}
         {pane === "captures" && <CapturesPane scope={scope} />}
         {pane === "workload-config" && <WorkloadConfigPane scope={scope} />}

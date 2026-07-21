@@ -412,6 +412,7 @@ pub fn run() {
             explore::explore_scan_cancel,
             admin::admin_get,
             admin::org_reporting,
+            admin::admin_supported_models,
             scope::projects_list,
             scope::workloads_list,
             mgmt::mgmt_projects_list,
