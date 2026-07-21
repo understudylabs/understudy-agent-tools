@@ -23,6 +23,7 @@ export type PaneId =
   | "api-keys"
   | "usage"
   | "reporting"
+  | "billing"
   | "traces"
   | "rlm"
   | "explore"

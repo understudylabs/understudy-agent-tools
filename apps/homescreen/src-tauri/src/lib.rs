@@ -4,6 +4,7 @@ mod admin;
 mod agent_card;
 mod agent_ops;
 mod anthropic;
+mod billing;
 mod bin;
 mod bootstrap;
 mod chat;
@@ -432,6 +433,8 @@ pub fn run() {
             admin_api::api_keys_list,
             admin_api::api_keys_create,
             admin_api::api_keys_revoke,
+            billing::billing_overview,
+            billing::billing_topup_checkout,
             chat::chat_stream,
             restart_app,
         ])

@@ -73,8 +73,8 @@ export const NAV_ITEMS: NavItemDef[] = [
   { id: "manage-api-keys", group: "manage", label: "API keys", icon: KeyRound, pane: "api-keys" },
   { id: "manage-traces", group: "manage", label: "Traces", icon: ScrollText, pane: "traces" },
   { id: "manage-lab", group: "manage", label: "Lab", icon: Beaker, pane: "rlm" },
+  { id: "manage-billing", group: "manage", label: "Billing", icon: CreditCard, pane: "billing" },
   // Not yet ported from the web control plane (admin/v1 plumbing pending).
-  { id: "manage-billing", group: "manage", label: "Billing", icon: CreditCard, pane: null, disabled: true, disabledReason: COMING },
   { id: "manage-setup", group: "manage", label: "Setup", icon: Wrench, pane: null, disabled: true, disabledReason: COMING },
 ];
 

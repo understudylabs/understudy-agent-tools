@@ -15,6 +15,7 @@ import { AccountPane } from "./components/AccountPane";
 import { ApiKeysPane } from "./components/ApiKeysPane";
 import { UsagePane } from "./components/UsagePane";
 import { ReportingPane } from "./components/ReportingPane";
+import { BillingPane } from "./components/BillingPane";
 import { DownloadQrButton } from "./components/DownloadQrButton";
 import { isTrainingPane, TrainingPane } from "./components/TrainingPane";
 import { RlmPane } from "./components/RlmPane";
@@ -243,7 +244,7 @@ export default function Page() {
       "training-rl",
       "training-jobs",
     ];
-    const hidden = ["capture", "usage", "traces", "training"];
+    const hidden = ["capture", "usage", "billing", "traces", "training"];
     const u = listen<{ pane?: string; view?: string; session?: string }>(
       "server-focus",
       (e) => {
@@ -411,6 +412,7 @@ export default function Page() {
         )}
         {pane === "usage" && <UsagePane status={status} />}
         {pane === "reporting" && <ReportingPane />}
+        {pane === "billing" && <BillingPane />}
         {pane === "traces" && <TracesPane />}
       </main>
     </div>
