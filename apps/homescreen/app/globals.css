@@ -7883,3 +7883,213 @@ select,
 .workload-health-dot.failing {
   background: var(--model-clay);
 }
+
+/* ---------- Organization Analytics (reporting pane) ----------
+   Faithful port of the web control plane's reporting surface; traditional
+   management UI on the app's canonical tokens. */
+.reporting-filters {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+  gap: 12px;
+}
+.reporting-filter {
+  display: grid;
+  gap: 6px;
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text-3);
+}
+.reporting-filter select,
+.reporting-filter input[type="date"] {
+  height: 32px;
+  padding: 0 10px;
+  border: 1px solid var(--border);
+  border-radius: var(--r-control);
+  background: var(--surface-2);
+  color: var(--text);
+  font: inherit;
+  font-size: 13px;
+  font-weight: 400;
+}
+.reporting-toolbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  flex-wrap: wrap;
+  gap: 10px;
+}
+.reporting-metric-tabs {
+  display: inline-flex;
+  gap: 2px;
+  padding: 3px;
+  border: 1px solid var(--border);
+  border-radius: var(--r-control);
+  background: color-mix(in srgb, var(--surface-2) 60%, transparent);
+}
+.reporting-metric-tabs button {
+  padding: 5px 12px;
+  border: 0;
+  border-radius: calc(var(--r-control) - 2px);
+  background: transparent;
+  color: var(--text-3);
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
+.reporting-metric-tabs button:hover { color: var(--text); }
+.reporting-metric-tabs button.active {
+  background: var(--model-clay);
+  color: #fff;
+}
+.reporting-refresh {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 6px 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--r-control);
+  background: var(--surface);
+  color: var(--text-2);
+  font: inherit;
+  font-size: 13px;
+  cursor: pointer;
+}
+.reporting-refresh:hover:not(:disabled) { background: var(--hover); color: var(--text); }
+.reporting-refresh:disabled { opacity: 0.6; cursor: default; }
+.reporting-spin { animation: reporting-spin 1s linear infinite; }
+@keyframes reporting-spin { to { transform: rotate(360deg); } }
+.reporting-metric-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
+  gap: 12px;
+}
+.reporting-metric-card { padding: 14px 16px; }
+.reporting-metric-value {
+  margin-top: 4px;
+  font-size: 22px;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+  color: var(--text);
+}
+.reporting-chart {
+  display: flex;
+  align-items: flex-end;
+  gap: 3px;
+  height: 220px;
+  padding-top: 6px;
+}
+.reporting-chart-col {
+  flex: 1;
+  min-width: 0;
+  display: flex;
+  flex-direction: column;
+  height: 100%;
+}
+.reporting-chart-bar {
+  flex: 1;
+  display: flex;
+  flex-direction: column-reverse;
+  justify-content: flex-start;
+}
+.reporting-chart-seg {
+  width: 100%;
+  min-height: 1px;
+}
+.reporting-chart-seg:last-child { border-radius: 2px 2px 0 0; }
+.reporting-chart-label {
+  margin-top: 6px;
+  font-size: 10px;
+  color: var(--text-3);
+  text-align: center;
+  white-space: nowrap;
+  overflow: hidden;
+}
+.reporting-legend {
+  margin-top: 12px;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 8px;
+}
+.reporting-legend button {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 6px;
+  border: 0;
+  border-radius: var(--r-control);
+  background: transparent;
+  color: var(--text-2);
+  font: inherit;
+  font-size: 12px;
+  cursor: pointer;
+}
+.reporting-legend button:hover { background: var(--hover); color: var(--text); }
+.reporting-legend button.muted {
+  color: var(--text-3);
+  text-decoration: line-through;
+  opacity: 0.6;
+}
+.reporting-swatch {
+  width: 8px;
+  height: 8px;
+  border-radius: 2px;
+  flex: none;
+}
+.reporting-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+.reporting-table th,
+.reporting-table td {
+  padding: 9px 18px;
+  border-top: 1px solid var(--border);
+  text-align: left;
+}
+.reporting-table th {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-3);
+}
+.reporting-table th button {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  border: 0;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+  cursor: pointer;
+}
+.reporting-table th button:hover { color: var(--text); }
+.reporting-table th.num,
+.reporting-table td.num {
+  text-align: right;
+  font-variant-numeric: tabular-nums;
+}
+.reporting-table th.num button { margin-left: auto; }
+.reporting-cell-label { font-weight: 500; color: var(--text); }
+.reporting-empty {
+  padding: 40px 0;
+  margin: 0;
+  text-align: center;
+  font-size: 13px;
+  color: var(--text-3);
+}
+.reporting-failure {
+  border-color: color-mix(in srgb, var(--danger) 40%, var(--border));
+}
+.reporting-request-id {
+  margin-top: 10px;
+  font-family: var(--font-mono, ui-monospace, monospace);
+  font-size: 11px;
+  color: var(--text-3);
+}
+.visually-hidden {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+}

@@ -407,6 +407,7 @@ pub fn run() {
             explore::explore_scan_status,
             explore::explore_scan_cancel,
             admin::admin_get,
+            admin::org_reporting,
             scope::projects_list,
             scope::workloads_list,
             chat::chat_stream,

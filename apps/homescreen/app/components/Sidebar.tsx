@@ -19,6 +19,7 @@ export type PaneId =
   | "capture"
   | "account"
   | "usage"
+  | "reporting"
   | "traces"
   | "rlm"
   | "explore"

@@ -43,7 +43,7 @@ const COMING = "Coming in this migration";
 export const NAV_ITEMS: NavItemDef[] = [
   // Organization
   { id: "org-summary", group: "organization", label: "Summary", icon: LayoutDashboard, pane: "org-summary" },
-  { id: "org-analytics", group: "organization", label: "Analytics", icon: BarChart3, pane: "usage" },
+  { id: "org-analytics", group: "organization", label: "Analytics", icon: BarChart3, pane: "reporting" },
   // Workload (conditional on scope.workloadId)
   {
     id: "workload-config",
