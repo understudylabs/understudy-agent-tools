@@ -310,6 +310,30 @@ jobs:
           echo "### Understudy Desktop ${version}" >> "$GITHUB_STEP_SUMMARY"
           echo "Published https://github.com/${GITHUB_REPOSITORY}/releases/tag/${tag}" >> "$GITHUB_STEP_SUMMARY"
 
+      - name: Mirror the published DMG to Cloudflare R2
+        if: inputs.mode == 'release'
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: 5cca5c86ba359c3dddb773e57e6cd991
+        run: |
+          if [[ -z "${CLOUDFLARE_API_TOKEN:-}" ]]; then
+            echo "The desktop-release environment is missing CLOUDFLARE_API_TOKEN." >&2
+            exit 1
+          fi
+          version="$(node -p "require('./apps/homescreen/package.json').version")"
+          filename="Understudy_${version}_aarch64.dmg"
+          dmg="$PWD/apps/homescreen/src-tauri/target/release/bundle/dmg/$filename"
+          key="desktop/releases/${version}/${filename}"
+          pointer="$RUNNER_TEMP/understudy-desktop-latest.json"
+          npx --yes wrangler@4.95.0 r2 object put "understudy-model-snapshots/$key" \
+            --remote --file "$dmg" --content-type application/x-apple-diskimage
+          jq -n --arg version "$version" --arg key "$key" --arg filename "$filename" \
+            '{version: $version, key: $key, filename: $filename}' > "$pointer"
+          npx --yes wrangler@4.95.0 r2 object put \
+            "understudy-model-snapshots/desktop/releases/latest.json" \
+            --remote --file "$pointer" --content-type application/json
+          echo "Mirrored ${filename} to R2 and advanced desktop/releases/latest.json." >> "$GITHUB_STEP_SUMMARY"
+
       - name: Remove temporary signing material
         if: always()
         run: |
