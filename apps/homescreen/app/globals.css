@@ -4777,6 +4777,21 @@ select,
   background: var(--model-amber);
   transform: translateX(-50%);
 }
+/* Cleared bar: promotion state — resolves to mint (mint-green-ring-and-gate),
+   never amber, once the trained model meets the untrained baseline. */
+.training-run-baseline[data-cleared] > span {
+  color: var(--model-mint);
+}
+.training-run-baseline[data-cleared] .training-run-baseline-track {
+  border-color: color-mix(in srgb, var(--model-mint) 26%, transparent);
+}
+.training-run-baseline[data-cleared] > .training-run-baseline-track > i {
+  background: color-mix(in srgb, var(--model-amber) 55%, var(--surface));
+}
+.training-run-baseline[data-cleared] > .training-run-baseline-track > i.training-run-baseline-trained {
+  background: var(--model-mint);
+  box-shadow: 0 0 8px color-mix(in srgb, var(--model-mint) 55%, transparent);
+}
 .training-run-narration {
   display: grid;
   gap: 5px;

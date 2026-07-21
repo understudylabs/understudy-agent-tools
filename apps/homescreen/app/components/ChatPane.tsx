@@ -893,6 +893,22 @@ function AcceptableErrorLine({
 }
 
 /**
+ * One reviewed example on the calibration card. `verdict` is what today's
+ * yes/no UI records; the optional label-choice fields are the
+ * forward-compatible clarification-queue shape — a follow-up feature lets the
+ * user pick the correct label ({choice:"correct", corrected_label, of_labels})
+ * or mark the example ambiguous. All plain JSON, recorded in decision details.
+ */
+type CalibrationVerdict = {
+  group: string;
+  label: string;
+  verdict: "yes" | "no";
+  choice?: "confirm" | "correct" | "ambiguous";
+  corrected_label?: string;
+  of_labels?: string[];
+};
+
+/**
  * Calibration review: the prepared dataset excluded rows (conflicted leakage
  * groups and/or unusable rows). Shows the counts, then walks disputed
  * examples one at a time — sourced from the inspection's row preview, since
@@ -909,8 +925,8 @@ function CalibrationReviewCard({
 }: {
   dataset: ClassificationDataset;
   samples: Array<{ group: string; label: string; text: string }>;
-  verdicts: Array<{ group: string; label: string; verdict: "yes" | "no" }>;
-  onVerdict: (verdict: { group: string; label: string; verdict: "yes" | "no" }) => void;
+  verdicts: CalibrationVerdict[];
+  onVerdict: (verdict: CalibrationVerdict) => void;
   onConfirm: (question: string, details: TrainingFlowDecisionDetails) => void;
   onChangeTarget: () => void;
 }) {
@@ -951,7 +967,7 @@ function CalibrationReviewCard({
               question={`This says “${current.label}” — is that right?`}
               hint="Your call is recorded with this decision; the excluded rows stay out either way for now."
               yesLabel="Yes, that label is right"
-              onYes={() => onVerdict({ group: current.group, label: current.label, verdict: "yes" })}
+              onYes={() => onVerdict({ group: current.group, label: current.label, verdict: "yes", choice: "confirm" })}
               noLabel="No, that label is wrong"
               onNo={() => onVerdict({ group: current.group, label: current.label, verdict: "no" })}
             />
@@ -1272,9 +1288,7 @@ export function ChatPane({
   const [structuredTargetChoice, setStructuredTargetChoice] = useState<string | null>(null);
   const [minAccuracyDraft, setMinAccuracyDraft] = useState<number | null>(null);
   // Calibration review: verdicts on disputed examples, recorded on the card.
-  const [calibrationVerdicts, setCalibrationVerdicts] = useState<
-    Array<{ group: string; label: string; verdict: "yes" | "no" }>
-  >([]);
+  const [calibrationVerdicts, setCalibrationVerdicts] = useState<CalibrationVerdict[]>([]);
   const [remoteRecipeEligibilityError, setRemoteRecipeEligibilityError] = useState<string | null>(null);
   const [trainingGoalCard, setTrainingGoalCard] = useState<TrainingGoalCard | null>(null);
   const [environmentArchitect, setEnvironmentArchitect] = useState<PiEnvironmentArchitectResult | null>(null);
@@ -3050,7 +3064,7 @@ export function ChatPane({
                     flow={trainingFlow}
                     summaries={flowSummaries}
                     onNavigate={navigateTrainingFlowTo}
-                      renderCommitted={renderCommittedStructuredCard}
+                    renderCommitted={renderCommittedStructuredCard}
                   >
                   {focusFlowKind === "data_profile" ? (
                     <StructuredDatasetProfilePage
@@ -3337,7 +3351,7 @@ export function ChatPane({
                     flow={trainingFlow}
                     summaries={flowSummaries}
                     onNavigate={navigateTrainingFlowTo}
-                      renderCommitted={renderCommittedCsvCard}
+                    renderCommitted={renderCommittedCsvCard}
                   >
                   {focusFlowKind === "data_profile" ? (
                     <>

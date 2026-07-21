@@ -4,6 +4,7 @@ import test from "node:test";
 import {
   accumulateLossPoints,
   baselineScorePercent,
+  trainedScorePercent,
   detectPlateau,
   formatEta,
   formatWait,
@@ -165,4 +166,18 @@ test("sparkline geometry needs two points and labels the latest value", () => {
   assert.deepEqual(first, { x: 0, y: 0 }); // max loss at the top-left
   assert.equal(geometry.at(99), null);
   assert.match(geometry.area, /0,50$/); // area closes along the baseline
+});
+
+test("trainedScorePercent mirrors the baseline reader for trained evaluations", () => {
+  assert.equal(trainedScorePercent([]), null);
+  assert.equal(trainedScorePercent([
+    { type: "baseline_evaluation", details: { stage: "completed", score: 0.66 } },
+  ]), null);
+  assert.equal(trainedScorePercent([
+    { type: "trained_evaluation", details: { stage: "started" } },
+    { type: "trained_evaluation", details: { stage: "completed", score: 0.71 } },
+  ]), 71);
+  assert.equal(trainedScorePercent([
+    { type: "evaluation", details: { stage: "completed", aggregate_score: 84 } },
+  ]), 84);
 });
