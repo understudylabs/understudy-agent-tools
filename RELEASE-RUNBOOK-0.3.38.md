@@ -1,12 +1,12 @@
-# Release Runbook — Understudy Desktop 0.3.37 (CLI 0.6.34)
+# Release Runbook — Understudy Desktop 0.3.38 (CLI 0.6.35)
 
 Everything from "PR #302 merged" to "users receive the update".
 
-> **Why 0.3.37, not 0.3.36:** `desktop-v0.3.36-mvp` was already published from
+> **Why 0.3.38, not 0.3.36:** `desktop-v0.3.36-mvp` was already published from
 > main on 2026-07-21 (PR #301, CLI 0.6.32, marked Latest). This branch carries
-> the next bump: Desktop/runtime **0.3.37**, CLI **0.6.34**. All canonical
+> the next bump: Desktop/runtime **0.3.38**, CLI **0.6.35**. All canonical
 > version sources on this branch were advanced with
-> `node scripts/desktop-release-plan.mjs --desktop-version 0.3.37 --cli-version 0.6.34 --apply`.
+> `node scripts/desktop-release-plan.mjs --desktop-version 0.3.38 --cli-version 0.6.35 --apply`.
 
 ## How releases actually ship (read once)
 
@@ -34,7 +34,7 @@ the .app (`notarytool submit --wait`, `stapler staple`) → rebuilds and signs
 `latest.json` (`npm run desktop:updater-manifest`) → `release-check --stage
 signed` → rebuilds the DMG from the stapled app, codesigns, notarizes, staples
 → `release-check --stage notarized` → creates a **draft** GitHub release
-tagged `desktop-v0.3.37-mvp` with the DMG, `Understudy.app.tar.gz`, its
+tagged `desktop-v0.3.38-mvp` with the DMG, `Understudy.app.tar.gz`, its
 `.sig`, and `latest.json`, re-downloads the public bytes and verifies
 checksums, staple, and Gatekeeper → publishes the release as **latest**.
 
@@ -56,7 +56,7 @@ git checkout main && git pull --ff-only
 git log -1 --oneline
 gh run list --branch main --limit 5
 
-# 2. Source-stage sanity check locally (must print "ok desktop 0.3.37 ..."):
+# 2. Source-stage sanity check locally (must print "ok desktop 0.3.38 ..."):
 npm ci && npm run build
 npm run desktop:release-check
 node scripts/desktop-release-plan.mjs --verify   # errors: []
@@ -71,29 +71,29 @@ gh workflow run "Desktop Release" --ref main -f mode=release
 gh run watch
 ```
 
-Do **not** create the `desktop-v0.3.37-mvp` tag by hand — `gh release create`
+Do **not** create the `desktop-v0.3.38-mvp` tag by hand — `gh release create`
 inside the workflow creates it at the release commit.
 
 ## Verify users actually receive it
 
 ```bash
-# 1. The updater endpoint now serves 0.3.37:
+# 1. The updater endpoint now serves 0.3.38:
 curl -sL https://github.com/understudylabs/understudy-agent-tools/releases/latest/download/latest.json | jq .version
-# expect "0.3.37", platforms["darwin-aarch64"].url pointing at
-# .../desktop-v0.3.37-mvp/Understudy.app.tar.gz, and a non-empty signature.
+# expect "0.3.38", platforms["darwin-aarch64"].url pointing at
+# .../desktop-v0.3.38-mvp/Understudy.app.tar.gz, and a non-empty signature.
 
 # 2. Fresh install: download the DMG from the release page, open it,
 #    drag Understudy to /Applications, launch. Gatekeeper must not warn
 #    (the workflow already asserted stapler + spctl on the public bytes).
-gh release download desktop-v0.3.37-mvp -p 'Understudy_0.3.37_aarch64.dmg' -D /tmp
+gh release download desktop-v0.3.38-mvp -p 'Understudy_0.3.38_aarch64.dmg' -D /tmp
 
 # 3. In-place update: on a machine still running 0.3.36, open Understudy,
-#    menu bar → Check for Updates…  It should offer 0.3.37, download,
+#    menu bar → Check for Updates…  It should offer 0.3.38, download,
 #    verify, install, and relaunch. (Or just wait ≤15 min for the
 #    automatic check.)
 
 # 4. The bundled CLI moved in lockstep: in the updated app the runtime
-#    health check should report CLI 0.6.34 / conversation runtime 0.3.37.
+#    health check should report CLI 0.6.35 / conversation runtime 0.3.38.
 ```
 
 ## If something fails
@@ -105,5 +105,5 @@ gh release download desktop-v0.3.37-mvp -p 'Understudy_0.3.37_aarch64.dmg' -D /t
 - **release-check `--stage signed/notarized` fails inside CI** → the run stops
   before anything is public; nothing to roll back.
 - **Bad release already published** → do not delete history blindly: publish a
-  fixed 0.3.37; the `latest.json` endpoint always tracks the release marked
+  fixed 0.3.38; the `latest.json` endpoint always tracks the release marked
   latest, so shipping the next version is the rollback.
