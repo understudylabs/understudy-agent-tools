@@ -1,5 +1,6 @@
 use serde::{Deserialize, Serialize};
 use serde_json::Value;
+use std::borrow::Cow;
 use std::fs;
 use std::io::Write;
 use std::path::{Path, PathBuf};
@@ -7,6 +8,14 @@ use std::process::{Command, Stdio};
 use tauri::{AppHandle, Manager};
 
 const RUNNER: &str = include_str!("../runtime/task_model_runner.py");
+
+fn spreadsheet_safe(value: &str) -> Cow<'_, str> {
+    if value.starts_with(['=', '+', '-', '@']) {
+        Cow::Owned(format!("'{value}"))
+    } else {
+        Cow::Borrowed(value)
+    }
+}
 
 #[derive(Clone, Debug, Deserialize, Serialize)]
 pub struct TaskModelInput {
@@ -336,15 +345,15 @@ fn run_file_blocking(
             .collect::<Vec<_>>();
         writer
             .write_record([
-                row.task_id.as_str(),
-                row.text.as_str(),
-                row.expected.as_deref().unwrap_or(""),
-                prediction.prediction.l3.as_str(),
+                spreadsheet_safe(row.task_id.as_str()).as_ref(),
+                spreadsheet_safe(row.text.as_str()).as_ref(),
+                spreadsheet_safe(row.expected.as_deref().unwrap_or("")).as_ref(),
+                spreadsheet_safe(prediction.prediction.l3.as_str()).as_ref(),
                 hit.map(|value| value.to_string()).as_deref().unwrap_or(""),
                 &format!("{:.6}", prediction.prediction.probability),
-                &choices[0],
-                &choices[1],
-                &choices[2],
+                spreadsheet_safe(&choices[0]).as_ref(),
+                spreadsheet_safe(&choices[1]).as_ref(),
+                spreadsheet_safe(&choices[2]).as_ref(),
                 &prediction.elapsed_ms.to_string(),
             ])
             .map_err(|err| err.to_string())?;
@@ -544,5 +553,15 @@ mod tests {
         assert!(read_review_rows(&path)
             .unwrap_err()
             .contains("no text or input field"));
+    }
+
+    #[test]
+    fn neutralizes_spreadsheet_formulas_in_review_fields() {
+        assert_eq!(
+            spreadsheet_safe("=HYPERLINK(\"https://example.com\")"),
+            "'=HYPERLINK(\"https://example.com\")"
+        );
+        assert_eq!(spreadsheet_safe("+SUM(1,1)"), "'+SUM(1,1)");
+        assert_eq!(spreadsheet_safe("ordinary feedback"), "ordinary feedback");
     }
 }

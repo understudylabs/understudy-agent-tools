@@ -1950,11 +1950,22 @@ export function ChatPane({
         setErr(`${activeTaskModel.name} accepts text only.`);
         return;
       }
-      const installed = await invoke<ActiveTaskModel[]>("list_task_models")
-        .then((models) => models.find((model) => model.id === activeTaskModel.id && model.version === activeTaskModel.version))
-        .catch(() => undefined);
-      if (!installed?.base_ready) {
-        if (installed) setActiveTaskModel(installed);
+      let installed: ActiveTaskModel | undefined;
+      try {
+        const models = await invoke<ActiveTaskModel[]>("list_task_models");
+        installed = models.find((model) => model.id === activeTaskModel.id && model.version === activeTaskModel.version);
+      } catch (cause) {
+        setErr(`Could not check ${activeTaskModel.name}. ${String(cause)}`);
+        return;
+      }
+      if (!installed) {
+        setActiveTaskModel(null);
+        window.localStorage.removeItem(ACTIVE_TASK_MODEL_KEY);
+        setErr(`${activeTaskModel.name} is no longer installed. Drop the model file here to install it again.`);
+        return;
+      }
+      if (!installed.base_ready) {
+        setActiveTaskModel(installed);
         setNotice(`${activeTaskModel.name} is absorbed. Its base model is still downloading.`);
         return;
       }
