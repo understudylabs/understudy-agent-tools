@@ -53,6 +53,12 @@ Build this only after [`../understand-workload/SKILL.md`](../understand-workload
 has produced the workload's purpose, tool catalog, inputs/outputs, and the success
 criteria (recall / precision / policy — not just cost/speed).
 
+When production traces are the source, first run the generic foundry in
+[`../ingest-traces/SKILL.md`](../ingest-traces/SKILL.md). Its machine proposal,
+source DAG, and human review become the evidence-backed starting point for this
+simulation. Customer names and workload-specific assumptions must never enter
+the generic compiler or viewer.
+
 ## Safety Gates
 
 - **Synthetic data only.** Seed the environment with invented entities. A small
@@ -202,6 +208,9 @@ live-effect, reward, hash, and parser gates pass.
 
 ## References
 
+- [`references/trace-to-benchmark-foundry.md`](references/trace-to-benchmark-foundry.md) — machine-first trace compilation, review, promotion, and diminishing returns.
+- [`references/automationbench-adaptation.md`](references/automationbench-adaptation.md) — reuse canonical stateful-benchmark patterns without losing trace provenance.
+- [`references/resumable-environment-goal.md`](references/resumable-environment-goal.md) — automate trace batches with deterministic resumption and approval gates.
 - [`references/cookbook-traces-to-env.md`](references/cookbook-traces-to-env.md) — the stage-by-stage recipe from captured traces/tests to a runnable verifiers env (gold policies, tool-stub strategies, contract rubric, playbook-as-argument, validator gates).
 - [`examples/event-categorizer/`](examples/event-categorizer/README.md) — complete synthetic scaffold: env module, tasks, swappable playbooks, capture converter, and an offline `smoke.py` verified against `verifiers==0.2.0`.
 - [`../understand-workload/SKILL.md`](../understand-workload/SKILL.md) — produces the shape this simulates.

@@ -33,6 +33,7 @@ import { planRouteDecision } from "./route-decision.js";
 import { buildValueReport } from "./value-report.js";
 import { type AgentPlatformAdapter, agentPlatformAdapters, findAgentPlatformAdapter } from "./agent-platforms.js";
 import { registerCapturesCommand } from "./commands/captures.js";
+import { registerTracesCommand } from "./commands/traces.js";
 import { registerEvalsCommand } from "./commands/evals.js";
 import { registerExploreCommand } from "./commands/explore.js";
 import { registerDaemonCommand } from "./commands/daemon.js";
@@ -848,6 +849,7 @@ export function buildProgram(): Command {
   registerProjectsCommand(program);
   registerWorkloadsCommand(program);
   registerCapturesCommand(program);
+  registerTracesCommand(program);
   registerEvalsCommand(program);
   registerExploreCommand(program);
   registerGatewayCommand(program);
