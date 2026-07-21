@@ -3,6 +3,7 @@ mod account;
 mod agent_card;
 mod agent_ops;
 mod anthropic;
+mod billing;
 mod bin;
 mod bootstrap;
 mod chat;
@@ -407,6 +408,8 @@ pub fn run() {
             explore::explore_scan_cancel,
             scope::projects_list,
             scope::workloads_list,
+            billing::billing_overview,
+            billing::billing_topup_checkout,
             chat::chat_stream,
             restart_app,
         ])

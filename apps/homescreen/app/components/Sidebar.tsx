@@ -18,6 +18,7 @@ export type PaneId =
   | "capture"
   | "account"
   | "usage"
+  | "billing"
   | "traces"
   | "rlm"
   | "explore"

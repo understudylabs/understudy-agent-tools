@@ -7883,3 +7883,169 @@ select,
 .workload-health-dot.failing {
   background: var(--model-clay);
 }
+
+/* ---------- Billing pane (ported from web dashboard/billing) ---------- */
+.billing-periods {
+  display: flex;
+  align-items: center;
+  gap: 2px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  padding: 2px;
+  flex-shrink: 0;
+}
+.billing-period {
+  border: 0;
+  background: transparent;
+  color: var(--text-3);
+  font-size: 12px;
+  font-weight: 500;
+  padding: 4px 10px;
+  border-radius: 4px;
+  cursor: pointer;
+}
+.billing-period:hover { color: var(--text); }
+.billing-period.active {
+  background: var(--hover);
+  color: var(--text);
+}
+.billing-eyebrow {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.16em;
+  color: var(--text-3);
+}
+.billing-headline {
+  font-size: 32px;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+  margin-top: 4px;
+}
+.billing-stat {
+  font-size: 20px;
+  font-weight: 500;
+  font-variant-numeric: tabular-nums;
+  margin-top: 4px;
+}
+.billing-stat-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
+  gap: 14px;
+}
+.billing-token-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(170px, 1fr));
+  gap: 14px;
+}
+.billing-note {
+  font-size: 12px;
+  line-height: 1.5;
+  color: var(--text-3);
+  margin: 12px 0 0;
+}
+.billing-empty {
+  margin-top: 12px;
+  border: 1px dashed var(--border);
+  border-radius: 6px;
+  padding: 18px;
+  font-size: 13px;
+  color: var(--text-3);
+}
+.billing-warning {
+  border-color: color-mix(in srgb, var(--model-amber) 50%, transparent);
+  background: color-mix(in srgb, var(--model-amber) 5%, var(--surface));
+}
+.billing-attention {
+  border-color: color-mix(in srgb, var(--error) 50%, transparent);
+  background: color-mix(in srgb, var(--error) 5%, var(--surface));
+}
+.billing-notice {
+  border-color: color-mix(in srgb, var(--model-mint) 45%, transparent);
+  background: color-mix(in srgb, var(--model-mint) 6%, var(--surface));
+}
+.billing-status {
+  margin: 14px 0 0;
+  font-size: 13px;
+  font-weight: 500;
+}
+.billing-status.warning { color: var(--model-amber); }
+.billing-status.destructive { color: var(--error); }
+.billing-topup-row {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 8px;
+  margin-top: 14px;
+}
+.billing-custom {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+}
+.billing-custom span {
+  position: absolute;
+  left: 10px;
+  color: var(--text-3);
+  font-size: 13px;
+  pointer-events: none;
+}
+.billing-custom input {
+  width: 112px;
+  padding: 6px 8px 6px 22px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  background: var(--surface-2);
+  color: var(--text);
+  font-size: 13px;
+  font-variant-numeric: tabular-nums;
+}
+.billing-custom input[aria-invalid="true"] {
+  border-color: color-mix(in srgb, var(--error) 60%, var(--border));
+}
+.billing-chart {
+  display: block;
+  width: 100%;
+  height: 180px;
+  margin-top: 14px;
+}
+.billing-chart rect {
+  fill: var(--c-stamp);
+  opacity: 0.85;
+}
+.billing-chart rect:hover { opacity: 1; }
+.billing-chart-axis {
+  display: flex;
+  justify-content: space-between;
+  margin-top: 6px;
+  font-size: 11px;
+  color: var(--text-3);
+}
+.billing-table-wrap {
+  margin-top: 12px;
+  border: 1px solid var(--border);
+  border-radius: 6px;
+  overflow: hidden;
+}
+.billing-table {
+  width: 100%;
+  border-collapse: collapse;
+  font-size: 13px;
+}
+.billing-table th {
+  text-align: left;
+  font-size: 10px;
+  font-weight: 500;
+  text-transform: uppercase;
+  letter-spacing: 0.16em;
+  color: var(--text-3);
+  padding: 8px 14px;
+  border-bottom: 1px solid var(--border);
+}
+.billing-table td {
+  padding: 8px 14px;
+  border-bottom: 1px solid var(--border);
+}
+.billing-table tr:last-child td { border-bottom: 0; }
+.billing-table .num { text-align: right; font-variant-numeric: tabular-nums; }
+.billing-table .mono { font-family: var(--font-mono, ui-monospace, monospace); }
+.billing-table .muted { color: var(--text-3); }
