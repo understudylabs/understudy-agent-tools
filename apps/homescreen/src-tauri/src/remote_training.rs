@@ -579,9 +579,9 @@ fn compile_goal_card(plan_path: &str, preview_limit: u64) -> Result<Value, Strin
             .and_then(Value::as_array)
             .is_none_or(|rows| {
                 rows.len() > preview_limit as usize
-                    || rows.iter().any(|row| {
-                        row.get("source_split").and_then(Value::as_str) != Some("train")
-                    })
+                    || rows
+                        .iter()
+                        .any(|row| row.get("source_split").and_then(Value::as_str) != Some("train"))
             })
     {
         return Err("The Goal Card violated its TRAIN-only preview contract.".into());
@@ -663,121 +663,111 @@ fn compile_custom_plan(
         .and_then(|value| value.to_str())
         .unwrap_or("")
         .to_ascii_lowercase();
-    let (plan_value, task_kind, dataset_manifest_path, effective_mapping) =
-        match extension.as_str() {
-            // Structured records: the local recipe inspector decides whether
-            // this is chat-shaped JSONL (route through the registered chat SFT
-            // recipe) or classification records (same portable recipe path).
-            "json" | "jsonl" | "ndjson" => {
-                let inspection = inspect_training_recipe(
-                    canonical_source
-                        .to_str()
-                        .ok_or_else(|| "The dropped source path is invalid.".to_string())?,
-                )?;
-                if inspection.get("ready").and_then(Value::as_bool) != Some(true) {
-                    let reasons = inspection
-                        .get("reasons")
-                        .and_then(Value::as_array)
-                        .map(|reasons| {
-                            reasons
-                                .iter()
-                                .filter_map(Value::as_str)
-                                .collect::<Vec<_>>()
-                                .join(" ")
-                        })
-                        .unwrap_or_default();
-                    return Err(format!(
-                        "This source does not match a deterministic training recipe yet. {reasons}"
-                    ));
-                }
-                let recipe_id = inspection
-                    .get("recipe_id")
-                    .and_then(Value::as_str)
-                    .ok_or_else(|| {
-                        "The local inspection did not name a registered recipe.".to_string()
-                    })?
-                    .to_string();
-                let recipe = portable_recipe(&recipe_id).ok_or_else(|| {
-                    format!("The detected recipe {recipe_id} is not registered.")
-                })?;
-                let source_sha256 = inspection
-                    .get("source_sha256")
-                    .and_then(Value::as_str)
-                    .ok_or_else(|| "The local inspection omitted the source hash.".to_string())?
-                    .to_string();
-                send_event(
-                    on_event,
-                    "preparing_splits",
-                    2,
-                    4,
-                    "Normalizing rows into leakage-safe train, validation, and held-out splits",
-                );
-                let plan_value = prepare_training_recipe(
-                    &canonical_source.display().to_string(),
-                    &canonical_root.display().to_string(),
-                    &source_sha256,
-                    &recipe_id,
-                    model_profile,
-                    0.0,
-                    output_model_name,
-                )?;
-                send_event(
-                    on_event,
-                    "planning",
-                    3,
-                    4,
-                    "Immutable local training plan written",
-                );
-                (plan_value, recipe.task_kind.to_string(), None, None)
-            }
-            // Tabular sources: the bundled CLI owns inspection, mapping
-            // statistics, and the group-isolated split preparation.
-            "" | "csv" | "tsv" | "tab" | "txt" | "xlsx" => {
-                let inspection = custom_understudy_cli_json(
-                    &custom_inspect_csv_args(&canonical_source, &canonical_root),
-                    "The Understudy CLI could not inspect this table.",
-                )
-                .and_then(validate_custom_csv_inspection)?;
-                let mapping = resolve_custom_mapping(&inspection, mapping)?;
-                send_event(
-                    on_event,
-                    "preparing_splits",
-                    2,
-                    4,
-                    "Preparing deterministic, group-isolated training splits",
-                );
-                let dataset = custom_understudy_cli_json(
-                    &custom_prepare_classification_args(
-                        &canonical_source,
-                        &canonical_root,
-                        &mapping,
-                    ),
-                    "The Understudy CLI could not prepare this dataset.",
-                )?;
-                let manifest_path = validate_custom_dataset_manifest(&dataset)?;
-                send_event(
-                    on_event,
-                    "planning",
-                    3,
-                    4,
-                    "Writing the immutable local training plan",
-                );
-                let plan_value =
-                    prepare_remote_plan(&manifest_path, model_profile, 0.0, output_model_name)?;
-                (
-                    plan_value,
-                    "text_classification".to_string(),
-                    Some(manifest_path),
-                    Some(mapping),
-                )
-            }
-            _ => {
-                return Err(
-                    "Custom training compilation supports CSV, TSV, TXT, XLSX, JSON, JSONL, and NDJSON sources."
-                        .into(),
-                )
-            }
-        };
+    // Attempt cascade instead of an extension allowlist: structured-record
+    // sources (JSON/JSONL/NDJSON) route through the local recipe inspector
+    // first — it decides whether this is chat-shaped JSONL (registered chat
+    // SFT recipe) or classification records. Every other file is handed to
+    // the bundled CLI's tabular reader, which is the single source of truth
+    // for supported table formats and reports its own error when a format is
+    // unreadable.
+    let structured_records = matches!(extension.as_str(), "json" | "jsonl" | "ndjson");
+    let (plan_value, task_kind, dataset_manifest_path, effective_mapping) = if structured_records {
+        let inspection = inspect_training_recipe(
+            canonical_source
+                .to_str()
+                .ok_or_else(|| "The dropped source path is invalid.".to_string())?,
+        )?;
+        if inspection.get("ready").and_then(Value::as_bool) != Some(true) {
+            let reasons = inspection
+                .get("reasons")
+                .and_then(Value::as_array)
+                .map(|reasons| {
+                    reasons
+                        .iter()
+                        .filter_map(Value::as_str)
+                        .collect::<Vec<_>>()
+                        .join(" ")
+                })
+                .unwrap_or_default();
+            return Err(format!(
+                "This source does not match a deterministic training recipe yet. {reasons}"
+            ));
+        }
+        let recipe_id = inspection
+            .get("recipe_id")
+            .and_then(Value::as_str)
+            .ok_or_else(|| "The local inspection did not name a registered recipe.".to_string())?
+            .to_string();
+        let recipe = portable_recipe(&recipe_id)
+            .ok_or_else(|| format!("The detected recipe {recipe_id} is not registered."))?;
+        let source_sha256 = inspection
+            .get("source_sha256")
+            .and_then(Value::as_str)
+            .ok_or_else(|| "The local inspection omitted the source hash.".to_string())?
+            .to_string();
+        send_event(
+            on_event,
+            "preparing_splits",
+            2,
+            4,
+            "Normalizing rows into leakage-safe train, validation, and held-out splits",
+        );
+        let plan_value = prepare_training_recipe(
+            &canonical_source.display().to_string(),
+            &canonical_root.display().to_string(),
+            &source_sha256,
+            &recipe_id,
+            model_profile,
+            0.0,
+            output_model_name,
+        )?;
+        send_event(
+            on_event,
+            "planning",
+            3,
+            4,
+            "Immutable local training plan written",
+        );
+        (plan_value, recipe.task_kind.to_string(), None, None)
+    } else {
+        // Tabular sources: the bundled CLI owns inspection, mapping
+        // statistics, and the group-isolated split preparation. Any
+        // non-structured-record file is attempted here; on failure the
+        // CLI's own message names the table formats it supports.
+        let inspection = custom_understudy_cli_json(
+            &custom_inspect_csv_args(&canonical_source, &canonical_root),
+            "The Understudy CLI could not inspect this table.",
+        )
+        .and_then(validate_custom_csv_inspection)?;
+        let mapping = resolve_custom_mapping(&inspection, mapping)?;
+        send_event(
+            on_event,
+            "preparing_splits",
+            2,
+            4,
+            "Preparing deterministic, group-isolated training splits",
+        );
+        let dataset = custom_understudy_cli_json(
+            &custom_prepare_classification_args(&canonical_source, &canonical_root, &mapping),
+            "The Understudy CLI could not prepare this dataset.",
+        )?;
+        let manifest_path = validate_custom_dataset_manifest(&dataset)?;
+        send_event(
+            on_event,
+            "planning",
+            3,
+            4,
+            "Writing the immutable local training plan",
+        );
+        let plan_value =
+            prepare_remote_plan(&manifest_path, model_profile, 0.0, output_model_name)?;
+        (
+            plan_value,
+            "text_classification".to_string(),
+            Some(manifest_path),
+            Some(mapping),
+        )
+    };
     let plan: RemoteTrainingPlan = serde_json::from_value(plan_value.clone())
         .map_err(|_| "The compiled training plan is malformed.".to_string())?;
     if plan.maximum_spend_usd != 0.0 {
@@ -856,10 +846,7 @@ fn custom_prepare_classification_args(
     args
 }
 
-fn custom_understudy_cli_json(
-    args: &[std::ffi::OsString],
-    failure: &str,
-) -> Result<Value, String> {
+fn custom_understudy_cli_json(args: &[std::ffi::OsString], failure: &str) -> Result<Value, String> {
     let output = crate::bin::command("understudy")
         .args(args)
         .output()
@@ -3107,17 +3094,14 @@ fn prepare_classification_source_plan(
         .map(safe_model_segment)
         .filter(|name| !name.is_empty())
         .unwrap_or_else(|| "classification".to_string());
-    let output_model_name = match resolved_output_model_name(
-        requested_output_model_name,
-        &dataset_id,
-        &plan_id,
-    ) {
-        Ok(name) => name,
-        Err(error) => {
-            let _ = fs::remove_dir_all(&plan_root);
-            return Err(error);
-        }
-    };
+    let output_model_name =
+        match resolved_output_model_name(requested_output_model_name, &dataset_id, &plan_id) {
+            Ok(name) => name,
+            Err(error) => {
+                let _ = fs::remove_dir_all(&plan_root);
+                return Err(error);
+            }
+        };
     let heldout_rows = artifacts
         .iter()
         .find(|artifact| artifact.artifact_role == "heldout")
@@ -3279,17 +3263,14 @@ fn prepare_chat_sft_plan(
         .map(safe_model_segment)
         .filter(|name| !name.is_empty())
         .unwrap_or_else(|| "gsm8k".to_string());
-    let output_model_name = match resolved_output_model_name(
-        requested_output_model_name,
-        &dataset_id,
-        &plan_id,
-    ) {
-        Ok(name) => name,
-        Err(error) => {
-            let _ = fs::remove_dir_all(&plan_root);
-            return Err(error);
-        }
-    };
+    let output_model_name =
+        match resolved_output_model_name(requested_output_model_name, &dataset_id, &plan_id) {
+            Ok(name) => name,
+            Err(error) => {
+                let _ = fs::remove_dir_all(&plan_root);
+                return Err(error);
+            }
+        };
     let heldout_rows = artifacts
         .iter()
         .find(|artifact| artifact.artifact_role == "heldout")
@@ -5450,8 +5431,13 @@ mod tests {
     #[test]
     fn prepares_private_chat_and_heldout_artifacts_without_uploading() {
         let (manifest_path, root) = fixture();
-        let value =
-            prepare_remote_plan(manifest_path.to_str().unwrap(), "understudy/auto", 3.0, None).unwrap();
+        let value = prepare_remote_plan(
+            manifest_path.to_str().unwrap(),
+            "understudy/auto",
+            3.0,
+            None,
+        )
+        .unwrap();
         let plan: RemoteTrainingPlan = serde_json::from_value(value).unwrap();
         assert_eq!(plan.artifacts.len(), 3);
         let train = fs::read_to_string(
@@ -5488,11 +5474,23 @@ mod tests {
     fn repeated_plans_use_distinct_provider_model_names() {
         let (manifest_path, root) = fixture();
         let first: RemoteTrainingPlan = serde_json::from_value(
-            prepare_remote_plan(manifest_path.to_str().unwrap(), "understudy/auto", 3.0, None).unwrap(),
+            prepare_remote_plan(
+                manifest_path.to_str().unwrap(),
+                "understudy/auto",
+                3.0,
+                None,
+            )
+            .unwrap(),
         )
         .unwrap();
         let second: RemoteTrainingPlan = serde_json::from_value(
-            prepare_remote_plan(manifest_path.to_str().unwrap(), "understudy/auto", 3.0, None).unwrap(),
+            prepare_remote_plan(
+                manifest_path.to_str().unwrap(),
+                "understudy/auto",
+                3.0,
+                None,
+            )
+            .unwrap(),
         )
         .unwrap();
         assert_ne!(first.output_model_name, second.output_model_name);
@@ -5540,8 +5538,13 @@ mod tests {
     #[test]
     fn detects_artifact_changes_after_local_approval() {
         let (manifest_path, root) = fixture();
-        let value =
-            prepare_remote_plan(manifest_path.to_str().unwrap(), "understudy/auto", 3.0, None).unwrap();
+        let value = prepare_remote_plan(
+            manifest_path.to_str().unwrap(),
+            "understudy/auto",
+            3.0,
+            None,
+        )
+        .unwrap();
         let plan: RemoteTrainingPlan = serde_json::from_value(value).unwrap();
         fs::write(&plan.artifacts[0].path, b"changed\n").unwrap();
         let error = read_verified_plan(&plan.plan_path).unwrap_err();
@@ -5555,8 +5558,13 @@ mod tests {
     #[test]
     fn recovers_the_latest_durable_run_from_the_dataset_root() {
         let (manifest_path, root) = fixture();
-        let value =
-            prepare_remote_plan(manifest_path.to_str().unwrap(), "understudy/auto", 3.0, None).unwrap();
+        let value = prepare_remote_plan(
+            manifest_path.to_str().unwrap(),
+            "understudy/auto",
+            3.0,
+            None,
+        )
+        .unwrap();
         let plan: RemoteTrainingPlan = serde_json::from_value(value).unwrap();
         let plan_path = plan.plan_path.clone();
         let run_path = PathBuf::from(&plan.plan_path)
@@ -5698,7 +5706,10 @@ mod tests {
             }),
         )
         .unwrap_err();
-        assert!(identifier.contains("identifier, not a label"), "{identifier}");
+        assert!(
+            identifier.contains("identifier, not a label"),
+            "{identifier}"
+        );
 
         let mut inspection = custom_inspection_fixture();
         inspection["columns"][1]["unique_count"] = json!(9_000);
@@ -5797,6 +5808,11 @@ mod tests {
         assert!(resolved_output_model_name(None, "", plan_id).is_err());
     }
 
+    /// Tests that override UNDERSTUDY_BIN serialize on this lock: the env
+    /// variable is process-global and the test harness runs in parallel.
+    #[cfg(unix)]
+    static FAKE_CLI_ENV: Mutex<()> = Mutex::new(());
+
     /// End-to-end custom compile over the chat-shaped JSONL branch. Steps 1-3
     /// are pure local Rust; the Goal Card step shells the CLI, so this test
     /// substitutes a fake `understudy` binary through UNDERSTUDY_BIN — the
@@ -5806,6 +5822,7 @@ mod tests {
     fn compiles_a_custom_chat_workload_end_to_end_with_a_fake_cli() {
         use std::os::unix::fs::PermissionsExt;
 
+        let _env = FAKE_CLI_ENV.lock().unwrap();
         let root = std::env::temp_dir().join(format!(
             "understudy-custom-compile-test-{}-{}",
             std::process::id(),
@@ -5842,8 +5859,11 @@ mod tests {
         }))
         .unwrap();
         let fake = root.join("fake-understudy");
-        fs::write(&fake, format!("#!/bin/sh\ncat <<'UNDERSTUDY_EOF'\n{goal_card}\nUNDERSTUDY_EOF\n"))
-            .unwrap();
+        fs::write(
+            &fake,
+            format!("#!/bin/sh\ncat <<'UNDERSTUDY_EOF'\n{goal_card}\nUNDERSTUDY_EOF\n"),
+        )
+        .unwrap();
         fs::set_permissions(&fake, fs::Permissions::from_mode(0o755)).unwrap();
         std::env::set_var("UNDERSTUDY_BIN", &fake);
 
@@ -5890,8 +5910,13 @@ mod tests {
             .get("environment_proposal_path")
             .and_then(Value::as_str)
             .is_some_and(|path| path.ends_with("environment-proposal.json")));
-        assert!(result.get("dataset_manifest_path").is_some_and(Value::is_null));
-        assert_eq!(result.get("local_only").and_then(Value::as_bool), Some(true));
+        assert!(result
+            .get("dataset_manifest_path")
+            .is_some_and(Value::is_null));
+        assert_eq!(
+            result.get("local_only").and_then(Value::as_bool),
+            Some(true)
+        );
         assert_eq!(result.get("uploads").and_then(Value::as_bool), Some(false));
         assert_eq!(
             result.get("provider_called").and_then(Value::as_bool),
@@ -5909,6 +5934,68 @@ mod tests {
             events.lock().unwrap().as_slice(),
             ["inspecting", "preparing_splits", "planning", "compiling"]
         );
+        fs::remove_dir_all(root).unwrap();
+    }
+
+    /// Any non-structured-record extension is attempted through the CLI's
+    /// tabular reader instead of being rejected by a Rust-side allowlist;
+    /// when the CLI cannot read the file, its own diagnostic (which names the
+    /// table formats it supports) is what surfaces to the user.
+    #[cfg(unix)]
+    #[test]
+    fn unknown_extensions_attempt_the_tabular_cli_and_surface_its_error() {
+        use std::os::unix::fs::PermissionsExt;
+
+        let _env = FAKE_CLI_ENV.lock().unwrap();
+        let root = std::env::temp_dir().join(format!(
+            "understudy-custom-compile-cascade-test-{}-{}",
+            std::process::id(),
+            random_uuid().unwrap()
+        ));
+        fs::create_dir_all(&root).unwrap();
+        fs::write(root.join("workload-card.json"), b"{}\n").unwrap();
+        let source = root.join("dataset.parquet");
+        fs::write(&source, b"PAR1 not actually readable here\n").unwrap();
+
+        let fake = root.join("fake-understudy");
+        fs::write(
+            &fake,
+            "#!/bin/sh\necho 'inspect-csv supports CSV, TSV, TXT, and XLSX tables.' >&2\nexit 2\n",
+        )
+        .unwrap();
+        fs::set_permissions(&fake, fs::Permissions::from_mode(0o755)).unwrap();
+        std::env::set_var("UNDERSTUDY_BIN", &fake);
+
+        let events = Arc::new(Mutex::new(Vec::<String>::new()));
+        let observed = events.clone();
+        let channel = Channel::new(move |message: tauri::ipc::InvokeResponseBody| {
+            if let tauri::ipc::InvokeResponseBody::Json(payload) = message {
+                if let Ok(event) = serde_json::from_str::<Value>(&payload) {
+                    if let Some(phase) = event.get("phase").and_then(Value::as_str) {
+                        observed.lock().unwrap().push(phase.to_string());
+                    }
+                }
+            }
+            Ok(())
+        });
+        let error = compile_custom_plan(
+            root.to_str().unwrap(),
+            source.to_str().unwrap(),
+            None,
+            "understudy/auto",
+            None,
+            &channel,
+        )
+        .unwrap_err();
+        std::env::remove_var("UNDERSTUDY_BIN");
+
+        // The CLI's own message is the user-facing diagnostic — no Rust-side
+        // extension allowlist string.
+        assert!(error.contains("The Understudy CLI could not inspect this table."));
+        assert!(error.contains("inspect-csv supports CSV, TSV, TXT, and XLSX tables."));
+        assert!(!error.contains("Custom training compilation supports"));
+        // The phase stream still opens identically before the attempt fails.
+        assert_eq!(events.lock().unwrap().as_slice(), ["inspecting"]);
         fs::remove_dir_all(root).unwrap();
     }
 }
