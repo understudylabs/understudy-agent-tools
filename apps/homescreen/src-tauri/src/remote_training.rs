@@ -4283,18 +4283,40 @@ pub async fn remote_training_poll(run_manifest_path: String) -> Result<Value, St
         None,
     )
     .await?;
-    if matches!(
-        status.get("workflow_status").and_then(Value::as_str),
-        Some("completed" | "failed" | "cancelled")
-    ) {
+    let mut lineage = Value::Null;
+    if let Some(workflow_status) = status
+        .get("workflow_status")
+        .and_then(Value::as_str)
+        .filter(|value| matches!(*value, "completed" | "failed" | "cancelled"))
+    {
         if let Some(result) = status.get("result") {
-            let result_path = PathBuf::from(&run.run_manifest_path)
+            let plan_dir = PathBuf::from(&run.run_manifest_path)
                 .parent()
                 .ok_or_else(|| {
                     "The remote training run has no private result directory.".to_string()
                 })?
-                .join("result.json");
-            replace_private_json(&result_path, result)?;
+                .to_path_buf();
+            replace_private_json(&plan_dir.join("result.json"), result)?;
+            // Eval-spine lineage is additive and best-effort: a lineage write
+            // problem must never make a successful poll look failed.
+            lineage = match fs::read(&run.plan_path)
+                .map_err(|error| format!("The training plan could not be read: {error}"))
+                .and_then(|bytes| {
+                    serde_json::from_slice::<Value>(&bytes)
+                        .map_err(|_| "The training plan is malformed.".to_string())
+                })
+                .and_then(|plan| {
+                    crate::training_outcome::record_run_lineage(
+                        &plan,
+                        result,
+                        &run.run_id,
+                        workflow_status,
+                        &plan_dir,
+                    )
+                }) {
+                Ok(lineage) => lineage,
+                Err(error) => json!({ "error": error }),
+            };
         }
     }
     Ok(json!({
@@ -4302,7 +4324,8 @@ pub async fn remote_training_poll(run_manifest_path: String) -> Result<Value, St
         "run_id": run.run_id,
         "events": events.get("events").cloned().unwrap_or_else(|| json!([])),
         "status": status,
-        "run_manifest_path": run.run_manifest_path
+        "run_manifest_path": run.run_manifest_path,
+        "lineage": lineage
     }))
 }
 
@@ -4502,6 +4525,17 @@ fn random_uuid() -> Result<String, String> {
 
 fn timestamp() -> String {
     chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Millis, true)
+}
+
+/// Timestamp helper shared with the post-training outcome module.
+pub(crate) fn artifact_timestamp() -> String {
+    timestamp()
+}
+
+/// Atomic private JSON replacement shared with the post-training outcome
+/// module (outcome.json, runs-index.json).
+pub(crate) fn replace_private_json_file(path: &Path, value: &impl Serialize) -> Result<(), String> {
+    replace_private_json(path, value)
 }
 
 fn elapsed_millis(started: Instant) -> u64 {

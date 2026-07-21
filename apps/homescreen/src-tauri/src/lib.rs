@@ -21,6 +21,7 @@ mod metrics;
 mod models;
 mod moraine;
 mod remote_training;
+mod training_outcome;
 mod residency;
 mod rlm;
 mod route_policy;
@@ -363,6 +364,7 @@ pub fn run() {
             remote_training::start_remote_classification_training,
             remote_training::remote_training_poll,
             remote_training::cancel_remote_training,
+            training_outcome::summarize_training_outcome,
             commands::sidekick_decisions,
             commands::sidekick_events,
             commands::sidekick_session_summaries,
