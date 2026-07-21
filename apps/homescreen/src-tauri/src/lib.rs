@@ -31,6 +31,7 @@ mod reporting;
 mod residency;
 mod rlm;
 mod captures;
+mod admin_api;
 mod scope;
 mod route_policy;
 mod server;
@@ -427,6 +428,9 @@ pub fn run() {
             scope::workload_capture_set,
             captures::captures_list,
             captures::capture_get,
+            admin_api::api_keys_list,
+            admin_api::api_keys_create,
+            admin_api::api_keys_revoke,
             chat::chat_stream,
             restart_app,
         ])

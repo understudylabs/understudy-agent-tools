@@ -11,6 +11,7 @@ import { CapturesPane } from "./components/CapturesPane";
 import { ChatPane } from "./components/ChatPane";
 import { TracesPane } from "./components/TracesPane";
 import { AccountPane } from "./components/AccountPane";
+import { ApiKeysPane } from "./components/ApiKeysPane";
 import { UsagePane } from "./components/UsagePane";
 import { ReportingPane } from "./components/ReportingPane";
 import { DownloadQrButton } from "./components/DownloadQrButton";
@@ -226,6 +227,7 @@ export default function Page() {
       "models",
       "captures",
       "account",
+      "api-keys",
       "rlm",
       "reporting",
       "explore",
@@ -400,6 +402,9 @@ export default function Page() {
             onSignedIn={signInIntent ? finishSignIn : undefined}
             prioritizeSignIn={Boolean(signInIntent)}
           />
+        )}
+        {pane === "api-keys" && (
+          <ApiKeysPane onOpenAccount={() => setPane("account")} />
         )}
         {pane === "usage" && <UsagePane status={status} />}
         {pane === "reporting" && <ReportingPane />}
