@@ -120,6 +120,11 @@ fn unavailable(reason: String) -> Value {
 /// `GET orgs/:org/projects/:pid/workload-status?window=24h`.
 #[tauri::command]
 pub async fn reporting_workload_status(project_id: String) -> Result<Value, String> {
+    // The frontend is an untrusted caller of this boundary: reject any
+    // project_id that could escape the org root before it enters the path.
+    if let Err(reason) = crate::admin::validate_path_segment(&project_id) {
+        return Ok(unavailable(reason));
+    }
     let api = match AdminApi::resolve() {
         Ok(api) => api,
         Err(reason) => return Ok(unavailable(reason)),
@@ -142,6 +147,9 @@ pub async fn reporting_workload_status(project_id: String) -> Result<Value, Stri
 pub async fn reporting_usage_summary(project_id: String, window: String) -> Result<Value, String> {
     // Re-validate: the frontend is an untrusted caller of this boundary.
     let window = if window == "30d" { "30d" } else { "7d" };
+    if let Err(reason) = crate::admin::validate_path_segment(&project_id) {
+        return Ok(unavailable(reason));
+    }
     let api = match AdminApi::resolve() {
         Ok(api) => api,
         Err(reason) => return Ok(unavailable(reason)),
@@ -162,4 +170,45 @@ pub async fn reporting_usage_summary(project_id: String, window: String) -> Resu
         }),
         (Err(err), _) | (_, Err(err)) => failure(err),
     })
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // A malicious project_id must be rejected before any admin path is built,
+    // so the command never reaches the network (mirrors admin.rs's
+    // rejects_percent_encoded_traversal). We assert the rejection surfaces the
+    // segment-validation message rather than a network/auth error.
+    fn is_rejected(value: &Value) -> bool {
+        value.get("ok").and_then(Value::as_bool) == Some(false)
+            && value
+                .get("error")
+                .and_then(Value::as_str)
+                .is_some_and(|e| e.contains("Path segment"))
+    }
+
+    #[tokio::test]
+    async fn workload_status_rejects_path_traversal() {
+        for bad in [
+            "../secrets",
+            "%2e%2e/%2e%2e/other-org",
+            "proj?window=24h",
+            "proj/workload-status",
+            "proj#frag",
+        ] {
+            let out = reporting_workload_status(bad.to_string()).await.unwrap();
+            assert!(is_rejected(&out), "{bad} should be rejected: {out:?}");
+        }
+    }
+
+    #[tokio::test]
+    async fn usage_summary_rejects_path_traversal() {
+        for bad in ["../secrets", "%2e%2e/escape", "proj?x=1", "proj/y"] {
+            let out = reporting_usage_summary(bad.to_string(), "7d".to_string())
+                .await
+                .unwrap();
+            assert!(is_rejected(&out), "{bad} should be rejected: {out:?}");
+        }
+    }
 }

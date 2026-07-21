@@ -86,6 +86,9 @@ pub async fn settings_project_rename(slug: String, name: String) -> Result<Value
     if name.is_empty() {
         return Err("Project name is required.".to_string());
     }
+    // Untrusted frontend input: reject any slug that could escape the org root
+    // before it enters the mutating admin path.
+    crate::admin::validate_path_segment(&slug)?;
     admin_json(
         Method::PATCH,
         &format!("projects/{slug}"),
@@ -97,5 +100,35 @@ pub async fn settings_project_rename(slug: String, name: String) -> Result<Value
 /// Soft-delete a project. `DELETE /admin/v1/orgs/:org/projects/:slug`.
 #[tauri::command]
 pub async fn settings_project_delete(slug: String) -> Result<Value, String> {
+    // Untrusted frontend input: reject any slug that could escape the org root
+    // before it enters the mutating admin path.
+    crate::admin::validate_path_segment(&slug)?;
     admin_json(Method::DELETE, &format!("projects/{slug}"), None).await
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    // Mutating slug commands must reject traversal/encoded/`?`-bearing slugs
+    // before the admin round-trip (mirrors admin.rs's
+    // rejects_percent_encoded_traversal). Validation runs before any network
+    // call, so a bad slug surfaces the segment-validation Err.
+    #[tokio::test]
+    async fn rename_rejects_path_traversal() {
+        for bad in ["../secrets", "%2e%2e/escape", "slug?x=1", "slug/sub", "slug#f"] {
+            let err = settings_project_rename(bad.to_string(), "New name".to_string())
+                .await
+                .unwrap_err();
+            assert!(err.contains("Path segment"), "{bad} should be rejected: {err}");
+        }
+    }
+
+    #[tokio::test]
+    async fn delete_rejects_path_traversal() {
+        for bad in ["../secrets", "%2e%2e/escape", "slug?x=1", "slug/sub"] {
+            let err = settings_project_delete(bad.to_string()).await.unwrap_err();
+            assert!(err.contains("Path segment"), "{bad} should be rejected: {err}");
+        }
+    }
 }

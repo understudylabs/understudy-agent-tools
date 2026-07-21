@@ -44,6 +44,34 @@ pub fn validate_admin_path(path: &str) -> Result<(), String> {
     Ok(())
 }
 
+/// Validate a single frontend-supplied path segment (a project id or slug)
+/// before it is interpolated into an admin/v1 path. This is the segment-level
+/// counterpart to `validate_admin_path`: callers that build the path
+/// themselves (e.g. `projects/{id}/workload-status`) must run the untrusted
+/// component through here so a `../`, an embedded `?`/`#`, or a percent-encoded
+/// dot segment cannot rewrite the path off the org root.
+pub fn validate_path_segment(segment: &str) -> Result<(), String> {
+    if segment.is_empty() {
+        return Err("Path segment is empty.".into());
+    }
+    if !segment.is_ascii() || segment.chars().any(char::is_whitespace) {
+        return Err("Path segment contains invalid characters.".into());
+    }
+    if segment == "." || segment == ".." {
+        return Err("Path segment must not be a traversal segment.".into());
+    }
+    // A path segment must not carry separators, a query/fragment delimiter, a
+    // scheme, a backslash, or a percent-encoding the URL parser could later
+    // fold back into a `.`/`..` (e.g. `%2e%2e`).
+    if segment
+        .chars()
+        .any(|c| matches!(c, '/' | '\\' | '?' | '#' | ':' | '%'))
+    {
+        return Err("Path segment must not contain path or query delimiters.".into());
+    }
+    Ok(())
+}
+
 /// Build the absolute admin URL for an org-relative path.
 pub fn admin_url(gateway_url: &str, org_id: &str, path: &str) -> Result<Url, String> {
     validate_admin_path(path)?;
@@ -372,6 +400,36 @@ mod tests {
             assert!(
                 admin_url("https://api.understudylabs.com", "org_1", path).is_err(),
                 "{path} should be rejected"
+            );
+        }
+    }
+
+    #[test]
+    fn segment_accepts_plain_ids() {
+        for seg in ["proj_123", "my-project", "abc123", "a.b.c"] {
+            assert!(validate_path_segment(seg).is_ok(), "{seg} should be valid");
+        }
+    }
+
+    #[test]
+    fn segment_rejects_traversal_and_delimiters() {
+        for seg in [
+            "",
+            "..",
+            ".",
+            "../secrets",
+            "a/b",
+            "a\\b",
+            "proj?window=24h",
+            "proj#frag",
+            "proj:1",
+            "%2e%2e",
+            "a%2fb",
+            "proj id",
+        ] {
+            assert!(
+                validate_path_segment(seg).is_err(),
+                "{seg} should be rejected"
             );
         }
     }
