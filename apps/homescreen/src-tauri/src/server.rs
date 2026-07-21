@@ -140,6 +140,37 @@ pub fn router(ctx: Ctx) -> Router {
             get(agent_supervision_corrections),
         )
         .route("/v1/feedback/supervisor", post(agent_supervisor_feedback))
+        // Training harness: the GUI's data and verbs for coding agents.
+        // Artifact-root and run-manifest path params are base64url-encoded
+        // (padding optional); the wrapped Tauri commands own all path
+        // canonicalization, plan boundary checks, and consent gates.
+        .route(
+            "/v1/training/workloads/:artifact_root_b64/chain",
+            get(training_chain),
+        )
+        .route(
+            "/v1/training/workloads/:artifact_root_b64/runs",
+            get(training_runs),
+        )
+        .route(
+            "/v1/training/workloads/:artifact_root_b64/outcome",
+            get(training_outcome),
+        )
+        .route(
+            "/v1/training/workloads/:artifact_root_b64/backlog",
+            get(training_backlog),
+        )
+        .route("/v1/training/compile", post(training_compile))
+        .route("/v1/training/prepare-remote", post(training_prepare_remote))
+        .route("/v1/training/runs", post(training_start_run))
+        .route(
+            "/v1/training/runs/:run_manifest_b64/poll",
+            post(training_poll_run),
+        )
+        .route(
+            "/v1/training/runs/:run_manifest_b64/cancel",
+            post(training_cancel_run),
+        )
         // agent fronts
         .route("/mcp", post(mcp))
         .route("/.well-known/agent.json", get(a2a_card))
@@ -582,7 +613,7 @@ async fn agent_capabilities(
 fn agent_capabilities_value() -> Value {
     json!({
         "schema_version": "understudy.desktop_api.v2",
-        "api_version": "2.3.0",
+        "api_version": "2.4.0",
         "event_schema": crate::conversation_runtime::EVENT_SCHEMA,
         "runtime": {
             "id": "understudy-conversation-runtime",
@@ -602,6 +633,7 @@ fn agent_capabilities_value() -> Value {
             "model_residency": true,
             "migration_observation": true,
             "local_task_models": true,
+            "training_harness": true,
         },
         "endpoints": {
             "status": "/v1/status",
@@ -624,6 +656,15 @@ fn agent_capabilities_value() -> Value {
             "run_events": "/v1/runs/{run_id}/events",
             "supervisor_feedback": "/v1/feedback/supervisor",
             "supervision_corrections": "/v1/supervision/corrections",
+            "training_chain": "/v1/training/workloads/{artifact_root_b64}/chain",
+            "training_runs": "/v1/training/workloads/{artifact_root_b64}/runs",
+            "training_outcome": "/v1/training/workloads/{artifact_root_b64}/outcome",
+            "training_target_backlog": "/v1/training/workloads/{artifact_root_b64}/backlog",
+            "training_compile": "/v1/training/compile",
+            "training_prepare_remote": "/v1/training/prepare-remote",
+            "training_start_run": "/v1/training/runs",
+            "training_poll_run": "/v1/training/runs/{run_manifest_b64}/poll",
+            "training_cancel_run": "/v1/training/runs/{run_manifest_b64}/cancel",
         }
     })
 }
@@ -1677,6 +1718,175 @@ async fn explore_scan_cancel(
     Ok(Json(json!({ "ok": true })))
 }
 
+// ---------------- training harness (/v1/training/*) ----------------
+//
+// Thin adapters over the exact GUI verbs: `training_chat_tools` executors
+// for the reads (pure functions of the filesystem) and the
+// `remote_training` Tauri commands for compile/prepare/dispatch/poll/cancel.
+// Consent and path validation are never re-implemented here — the commands
+// own them (see `training_api.rs`). Responses never contain run tokens; the
+// commands strip them from persisted-run projections already.
+
+fn training_path_param(encoded: &str) -> Result<String, (StatusCode, String)> {
+    crate::training_api::decode_path_param(encoded).map_err(|e| (StatusCode::BAD_REQUEST, e))
+}
+
+async fn training_chain(
+    State(ctx): State<Ctx>,
+    h: HeaderMap,
+    Path(artifact_root_b64): Path<String>,
+) -> Result<Json<Value>, (StatusCode, String)> {
+    auth(&ctx, &h)?;
+    let root = training_path_param(&artifact_root_b64)?;
+    // Shells the bundled CLI (`understudy training doctor --json`); keep it
+    // off the axum workers like the other process work.
+    blocking(move || crate::training_api::doctor_chain(&root))
+        .await
+        .map(Json)
+}
+
+/// Run one of the pure training read executors against a decoded root.
+async fn training_read(
+    ctx: &Ctx,
+    h: &HeaderMap,
+    artifact_root_b64: &str,
+    extra: Value,
+    executor: fn(&Value) -> Result<Value, String>,
+) -> Result<Json<Value>, (StatusCode, String)> {
+    auth(ctx, h)?;
+    let root = training_path_param(artifact_root_b64)?;
+    let mut args = json!({ "artifact_root": root });
+    if let (Some(args), Some(extra)) = (args.as_object_mut(), extra.as_object()) {
+        for (key, value) in extra {
+            args.insert(key.clone(), value.clone());
+        }
+    }
+    blocking(move || executor(&args)).await.map(Json)
+}
+
+async fn training_runs(
+    State(ctx): State<Ctx>,
+    h: HeaderMap,
+    Path(artifact_root_b64): Path<String>,
+) -> Result<Json<Value>, (StatusCode, String)> {
+    training_read(
+        &ctx,
+        &h,
+        &artifact_root_b64,
+        json!({}),
+        crate::training_chat_tools::training_runs,
+    )
+    .await
+}
+
+#[derive(serde::Deserialize)]
+struct TrainingOutcomeQuery {
+    run_id: Option<String>,
+}
+
+async fn training_outcome(
+    State(ctx): State<Ctx>,
+    h: HeaderMap,
+    Path(artifact_root_b64): Path<String>,
+    Query(q): Query<TrainingOutcomeQuery>,
+) -> Result<Json<Value>, (StatusCode, String)> {
+    training_read(
+        &ctx,
+        &h,
+        &artifact_root_b64,
+        json!({ "run_id": q.run_id }),
+        crate::training_chat_tools::training_outcome,
+    )
+    .await
+}
+
+async fn training_backlog(
+    State(ctx): State<Ctx>,
+    h: HeaderMap,
+    Path(artifact_root_b64): Path<String>,
+) -> Result<Json<Value>, (StatusCode, String)> {
+    training_read(
+        &ctx,
+        &h,
+        &artifact_root_b64,
+        json!({}),
+        crate::training_chat_tools::training_target_backlog,
+    )
+    .await
+}
+
+async fn training_compile(
+    State(ctx): State<Ctx>,
+    h: HeaderMap,
+    Json(body): Json<crate::training_api::CompileTrainingBody>,
+) -> Result<Json<Value>, (StatusCode, String)> {
+    auth(&ctx, &h)?;
+    // The command spawn_blocks internally; phase events are collected into
+    // the response's phases[] (no SSE pattern exists on this server).
+    crate::training_api::compile_plan(body)
+        .await
+        .map(Json)
+        .map_err(|e| (StatusCode::BAD_REQUEST, e))
+}
+
+async fn training_prepare_remote(
+    State(ctx): State<Ctx>,
+    h: HeaderMap,
+    Json(body): Json<crate::training_api::PrepareRemoteBody>,
+) -> Result<Json<Value>, (StatusCode, String)> {
+    auth(&ctx, &h)?;
+    crate::remote_training::prepare_remote_classification_training(
+        body.manifest_path,
+        body.model_profile,
+        body.maximum_spend_usd,
+    )
+    .await
+    .map(Json)
+    .map_err(|e| (StatusCode::BAD_REQUEST, e))
+}
+
+/// Dispatch a remote training run. HTTP-only (never projected into MCP):
+/// dispatch uploads data and spends money, so it requires the caller to
+/// state the full consent object in the request body; the wrapped command
+/// rejects anything less.
+async fn training_start_run(
+    State(ctx): State<Ctx>,
+    h: HeaderMap,
+    Json(body): Json<crate::training_api::StartTrainingRunBody>,
+) -> Result<Json<Value>, (StatusCode, String)> {
+    auth(&ctx, &h)?;
+    crate::training_api::start_run(body)
+        .await
+        .map(Json)
+        .map_err(|e| (StatusCode::BAD_REQUEST, e))
+}
+
+async fn training_poll_run(
+    State(ctx): State<Ctx>,
+    h: HeaderMap,
+    Path(run_manifest_b64): Path<String>,
+) -> Result<Json<Value>, (StatusCode, String)> {
+    auth(&ctx, &h)?;
+    let run_manifest_path = training_path_param(&run_manifest_b64)?;
+    crate::remote_training::remote_training_poll(run_manifest_path)
+        .await
+        .map(Json)
+        .map_err(|e| (StatusCode::BAD_GATEWAY, e))
+}
+
+async fn training_cancel_run(
+    State(ctx): State<Ctx>,
+    h: HeaderMap,
+    Path(run_manifest_b64): Path<String>,
+) -> Result<Json<Value>, (StatusCode, String)> {
+    auth(&ctx, &h)?;
+    let run_manifest_path = training_path_param(&run_manifest_b64)?;
+    crate::remote_training::cancel_remote_training(run_manifest_path)
+        .await
+        .map(Json)
+        .map_err(|e| (StatusCode::BAD_GATEWAY, e))
+}
+
 // ---------------- MCP front ----------------
 
 async fn mcp(
@@ -1744,6 +1954,13 @@ fn slot_schema() -> Value {
     obj_schema(
         json!({ "slot_id": { "type": "integer", "minimum": 1, "description": "Residency slot id (see the residency tool)." } }),
         &["slot_id"],
+    )
+}
+
+fn training_artifact_root_schema() -> Value {
+    obj_schema(
+        json!({ "artifact_root": { "type": "string", "description": "Local capture-import artifact root directory." } }),
+        &["artifact_root"],
     )
 }
 
@@ -1969,6 +2186,63 @@ fn tools() -> Vec<Value> {
                     "session": { "type": "string", "description": "Moraine session id to open in the explore transcript view." }
                 }),
                 &[],
+            ),
+        ),
+        // ----- training harness (reads + local-only compile) -----
+        //
+        // Run dispatch (POST /v1/training/runs), prepare-remote, poll, and
+        // cancel are deliberately NOT projected as MCP tools: dispatch
+        // uploads data and spends money behind an explicit consent payload,
+        // and that consent must be stated by the caller on the HTTP request
+        // itself, not synthesized by a model picking tool arguments. The
+        // reads and the $0, upload-free local compile are safe to project.
+        (
+            "training_chain",
+            "Doctor-style state of one workload's training chain (workload card -> dataset manifest -> plan -> environment -> run -> live service): first broken link plus per-link checks. Statistics and statuses only.",
+            training_artifact_root_schema(),
+        ),
+        (
+            "training_runs",
+            "The workload's training runs index, newest first, with per-run outcome availability. Aggregate data only.",
+            training_artifact_root_schema(),
+        ),
+        (
+            "training_outcome",
+            "The outcome.json summary (gates, failure clusters, next steps) for one training run, or the latest when run_id is omitted.",
+            obj_schema(
+                json!({
+                    "artifact_root": { "type": "string", "description": "Local capture-import artifact root directory." },
+                    "run_id": { "type": "string", "description": "Optional run id from training_runs; defaults to the latest run." }
+                }),
+                &["artifact_root"],
+            ),
+        ),
+        (
+            "training_target_backlog",
+            "The dataset manifest's remaining trainable target columns with coverage statistics.",
+            training_artifact_root_schema(),
+        ),
+        (
+            "compile_training_plan",
+            "Compile a dropped source file into an executable local training plan. Local-only: no uploads, no provider calls, and the plan is pinned to a $0 budget; pricing and run dispatch happen later through the consented HTTP flow.",
+            obj_schema(
+                json!({
+                    "artifact_root": { "type": "string", "description": "Local workload root containing workload-card.json." },
+                    "source_path": { "type": "string", "description": "One local source file (jsonl/json/ndjson/csv/xlsx)." },
+                    "mapping": {
+                        "type": "object",
+                        "description": "Confirmed tabular column mapping; omit to use the inspection's recommendation.",
+                        "properties": {
+                            "input_columns": { "type": "array", "items": { "type": "string" } },
+                            "label_column": { "type": "string" },
+                            "group_column": { "type": "string" }
+                        },
+                        "required": ["input_columns", "label_column", "group_column"]
+                    },
+                    "model_profile": { "type": "string", "description": "Model profile; defaults to understudy/auto." },
+                    "output_model_name": { "type": "string" }
+                }),
+                &["artifact_root", "source_path"],
             ),
         ),
         // ----- Explore Data (local agent-trace warehouse) -----
@@ -2254,6 +2528,31 @@ async fn call_tool(ctx: &Ctx, name: &str, args: &Value) -> Result<Value, String>
             );
             json!({ "ok": true })
         }
+        // Training reads: pure filesystem executors, run off the MCP task.
+        // Run dispatch/prepare/poll/cancel stay HTTP-only (consent payload).
+        "training_chain" => {
+            let root = required_str(args, "artifact_root")?;
+            call_blocking(move || crate::training_api::doctor_chain(&root)).await?
+        }
+        "training_runs" => {
+            let args = args.clone();
+            call_blocking(move || crate::training_chat_tools::training_runs(&args)).await?
+        }
+        "training_outcome" => {
+            let args = args.clone();
+            call_blocking(move || crate::training_chat_tools::training_outcome(&args)).await?
+        }
+        "training_target_backlog" => {
+            let args = args.clone();
+            call_blocking(move || crate::training_chat_tools::training_target_backlog(&args))
+                .await?
+        }
+        "compile_training_plan" => {
+            let body =
+                serde_json::from_value::<crate::training_api::CompileTrainingBody>(args.clone())
+                    .map_err(|e| format!("invalid training compile request: {e}"))?;
+            crate::training_api::compile_plan(body).await?
+        }
         "explore_status" => {
             let body = crate::explore::status_snapshot().await?;
             serde_json::from_str(&body).map_err(|e| format!("explore status: {e}"))?
@@ -2512,7 +2811,17 @@ mod tests {
     fn agent_capabilities_advertise_the_versioned_control_plane() {
         let capabilities = agent_capabilities_value();
         assert_eq!(capabilities["schema_version"], "understudy.desktop_api.v2");
-        assert_eq!(capabilities["api_version"], "2.3.0");
+        assert_eq!(capabilities["api_version"], "2.4.0");
+        assert_eq!(capabilities["features"]["training_harness"], true);
+        assert_eq!(
+            capabilities["endpoints"]["training_chain"],
+            "/v1/training/workloads/{artifact_root_b64}/chain"
+        );
+        assert_eq!(capabilities["endpoints"]["training_start_run"], "/v1/training/runs");
+        assert_eq!(
+            capabilities["endpoints"]["training_poll_run"],
+            "/v1/training/runs/{run_manifest_b64}/poll"
+        );
         assert_eq!(capabilities["features"]["local_task_models"], true);
         assert_eq!(capabilities["endpoints"]["classifiers"], "/v1/classifiers");
         assert_eq!(
@@ -2631,6 +2940,55 @@ mod tests {
         // Args-optional tools stay unconstrained.
         assert!(required_of("run_fusion_benchmark").is_empty());
         assert!(required_of("list_traces").is_empty());
+    }
+
+    #[test]
+    fn training_reads_and_compile_are_projected_but_dispatch_stays_http_only() {
+        let tools = tools();
+        let names: Vec<&str> = tools
+            .iter()
+            .filter_map(|tool| tool["name"].as_str())
+            .collect();
+        for projected in [
+            "training_chain",
+            "training_runs",
+            "training_outcome",
+            "training_target_backlog",
+            "compile_training_plan",
+        ] {
+            assert!(names.contains(&projected), "missing MCP tool: {projected}");
+        }
+        // Dispatch/prepare/poll/cancel spend money or touch the remote
+        // control plane behind an explicit consent payload; they must never
+        // appear as MCP tools.
+        for excluded in [
+            "start_remote_training",
+            "start_training_run",
+            "prepare_remote_training",
+            "training_poll",
+            "cancel_remote_training",
+        ] {
+            assert!(!names.contains(&excluded), "MCP must not expose {excluded}");
+        }
+        let required_of = |name: &str| -> Vec<String> {
+            tools
+                .iter()
+                .find(|t| t["name"] == name)
+                .unwrap_or_else(|| panic!("tool {name} exists"))["inputSchema"]["required"]
+                .as_array()
+                .map(|a| {
+                    a.iter()
+                        .filter_map(|v| v.as_str().map(str::to_string))
+                        .collect()
+                })
+                .unwrap_or_default()
+        };
+        assert_eq!(required_of("training_chain"), ["artifact_root"]);
+        assert_eq!(required_of("training_outcome"), ["artifact_root"]);
+        assert_eq!(
+            required_of("compile_training_plan"),
+            ["artifact_root", "source_path"]
+        );
     }
 
     #[test]
