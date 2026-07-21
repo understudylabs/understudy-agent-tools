@@ -1,22 +1,14 @@
 "use client";
 
-import { useState } from "react";
-import {
-  ArchiveIcon,
-  ArchiveRestoreIcon,
-  ArrowLeftIcon,
-  MessageSquareIcon,
-} from "lucide-react";
-import {
-  Dialog,
-  DialogContent,
-  DialogDescription,
-  DialogFooter,
-  DialogHeader,
-  DialogTitle,
-} from "@/app/components/base-ui/dialog";
-import { chatHistoryTime, type ChatSessionSummary } from "../lib/chat-history";
-import { trainingThreadStatusGlyph } from "../lib/training-threads.mjs";
+import { PlusIcon } from "lucide-react";
+import { TooltipProvider } from "@/app/components/base-ui/tooltip";
+import { NAV_ITEMS, paneToNavId, type NavGroupId, type Scope } from "../lib/nav";
+import { NavGroup } from "./sidebar/NavGroup";
+import { NavItem } from "./sidebar/NavItem";
+import { ScopeSwitcher } from "./sidebar/ScopeSwitcher";
+import { TrainingThreadList } from "./sidebar/TrainingThreadList";
+import { ChatSessionList } from "./sidebar/ChatSessionList";
+import type { ChatSessionSummary } from "../lib/chat-history";
 import type { TrainingThreadSummary } from "../lib/training-threads.mjs";
 
 export type PaneId =
@@ -29,6 +21,7 @@ export type PaneId =
   | "traces"
   | "rlm"
   | "explore"
+  | "workload-config"
   | "training-evals"
   | "training-optimization"
   | "training-datasets"
@@ -43,10 +36,21 @@ const AccountIcon = () => (
   </svg>
 );
 
+const GROUP_LABELS: Record<NavGroupId, string> = {
+  organization: "Organization",
+  workload: "Workload",
+  training: "Training",
+  sessions: "Chats",
+  manage: "Manage",
+};
+
 export function Sidebar({
   active,
   onSelect,
   connected,
+  scope,
+  onScopeChange,
+  onNewChat,
   sessions,
   archivedSessions,
   activeSessionId,
@@ -66,6 +70,9 @@ export function Sidebar({
   active: PaneId;
   onSelect: (id: PaneId) => void;
   connected: boolean;
+  scope: Scope;
+  onScopeChange: (scope: Scope) => void;
+  onNewChat: () => void;
   sessions: ChatSessionSummary[];
   archivedSessions: ChatSessionSummary[];
   activeSessionId: string | null;
@@ -82,66 +89,81 @@ export function Sidebar({
   onSelectThread: (threadId: string) => void;
   onArchiveThread: (threadId: string) => Promise<boolean>;
 }) {
-  const [showArchived, setShowArchived] = useState(false);
-  const [archiveAllOpen, setArchiveAllOpen] = useState(false);
-  const visibleSessions = showArchived ? archivedSessions : sessions;
-  const inExplore = active === "explore";
+  const activeNavId = paneToNavId(active, activeSessionId, activeThreadId);
 
-  const sectionStyle = (selected: boolean): React.CSSProperties => ({
-    flex: 1,
-    padding: "4px 0",
-    border: "none",
-    borderRadius: 5,
-    cursor: "pointer",
-    fontFamily: "var(--mono)",
-    fontSize: 10.5,
-    letterSpacing: "0.05em",
-    background: selected ? "var(--hover)" : "transparent",
-    color: selected ? "var(--c-ink)" : "var(--c-ink-muted)",
-  });
+  const itemsFor = (group: NavGroupId) =>
+    NAV_ITEMS.filter((item) => item.group === group).map((item) => (
+      <NavItem
+        key={item.id}
+        label={item.label}
+        icon={item.icon}
+        active={activeNavId === item.id}
+        disabled={item.disabled}
+        disabledReason={item.disabledReason}
+        onSelect={() => {
+          if (item.pane) onSelect(item.pane);
+        }}
+      />
+    ));
 
-  const sectionSwitcher = (
-    <div
-      role="tablist"
-      aria-label="Section"
-      style={{
-        display: "flex",
-        gap: 2,
-        margin: "0 8px 8px",
-        padding: 2,
-        borderRadius: 7,
-        border: "1px solid var(--c-rule)",
-        background: "var(--c-window)",
-      }}
-    >
-      <button
-        type="button"
-        role="tab"
-        aria-selected={!inExplore}
-        style={sectionStyle(!inExplore)}
-        onClick={() => onSelect("chat")}
-      >
-        Chat
-      </button>
-      <button
-        type="button"
-        role="tab"
-        aria-selected={inExplore}
-        style={sectionStyle(inExplore)}
-        onClick={() => onSelect("explore")}
-      >
-        Explore Data
-      </button>
-    </div>
-  );
-
-  if (inExplore) {
-    return (
+  return (
+    <TooltipProvider delayDuration={300}>
       <aside className="sidebar">
-        {sectionSwitcher}
+        <div className="sidebar-brand">Understudy</div>
+        <ScopeSwitcher
+          scope={scope}
+          onScopeChange={onScopeChange}
+          onWorkloadSelected={() => onSelect("workload-config")}
+        />
+
+        <NavGroup group="organization" label={GROUP_LABELS.organization}>
+          {itemsFor("organization")}
+        </NavGroup>
+
+        {scope.workloadId && (
+          <NavGroup group="workload" label={GROUP_LABELS.workload}>
+            {itemsFor("workload")}
+          </NavGroup>
+        )}
+
+        <NavGroup group="training" label={GROUP_LABELS.training}>
+          {itemsFor("training")}
+          <TrainingThreadList
+            active={active}
+            trainingThreads={trainingThreads}
+            activeThreadId={activeThreadId}
+            archiveBusy={archiveBusy}
+            onSelectThread={onSelectThread}
+            onArchiveThread={onArchiveThread}
+          />
+        </NavGroup>
+
+        <NavGroup group="sessions" label={GROUP_LABELS.sessions}>
+          <NavItem label="New chat" icon={PlusIcon} active={false} onSelect={onNewChat} />
+          <ChatSessionList
+            active={active}
+            sessions={sessions}
+            archivedSessions={archivedSessions}
+            activeSessionId={activeSessionId}
+            historyLoading={historyLoading}
+            historyError={historyError}
+            archiveBusy={archiveBusy}
+            archiveActiveDisabled={archiveActiveDisabled}
+            onSelectSession={onSelectSession}
+            onArchiveSession={onArchiveSession}
+            onRestoreSession={onRestoreSession}
+            onArchiveAll={onArchiveAll}
+          />
+          {itemsFor("sessions")}
+        </NavGroup>
+
+        <NavGroup group="manage" label={GROUP_LABELS.manage}>
+          {itemsFor("manage")}
+        </NavGroup>
+
         <div className="nav-spacer" />
         <button
-          className={"nav-account" + ((active as PaneId) === "account" ? " active" : "")}
+          className={"nav-account" + (active === "account" ? " active" : "")}
           onClick={() => onSelect("account")}
         >
           <AccountIcon />
@@ -154,218 +176,6 @@ export function Sidebar({
           </span>
         </button>
       </aside>
-    );
-  }
-
-  return (
-    <aside className="sidebar">
-      {sectionSwitcher}
-      {!showArchived && trainingThreads.length > 0 && (
-        <>
-          <div className="chat-nav-heading">
-            <div className="nav-section">Training</div>
-          </div>
-          <nav className="chat-nav-list training-thread-list" aria-label="Training threads">
-            {trainingThreads.map((thread) => {
-              const glyph = trainingThreadStatusGlyph(thread.status);
-              const isActive = active === "chat" && activeThreadId === thread.thread_id;
-              return (
-                <div
-                  key={thread.thread_id}
-                  className={"chat-nav-item training-thread-item" + (isActive ? " active" : "")}
-                >
-                  <button
-                    type="button"
-                    className="chat-nav-open"
-                    onClick={() => onSelectThread(thread.thread_id)}
-                    title={`${thread.title} · ${glyph.label}`}
-                    disabled={archiveBusy !== null}
-                  >
-                    <span className={glyph.className} aria-label={glyph.label} role="img" />
-                    <span className="chat-nav-copy">
-                      <span className="chat-nav-title">
-                        {thread.title.trim().replace(/\s+/g, " ") || "Untitled training"}
-                      </span>
-                      <span className="chat-nav-time">
-                        {glyph.label} · {chatHistoryTime(thread.updated_at)}
-                      </span>
-                    </span>
-                  </button>
-                  {thread.status === "active" && (
-                    <button
-                      type="button"
-                      className="chat-nav-action"
-                      aria-label={`Dismiss training thread: ${thread.title || "Untitled training"}`}
-                      title="Dismiss training thread"
-                      disabled={archiveBusy !== null}
-                      onClick={() => void onArchiveThread(thread.thread_id)}
-                    >
-                      {archiveBusy === thread.thread_id ? (
-                        <span className="chat-nav-action-progress" aria-hidden="true" />
-                      ) : (
-                        <ArchiveIcon aria-hidden="true" size={15} strokeWidth={1.8} />
-                      )}
-                    </button>
-                  )}
-                </div>
-              );
-            })}
-          </nav>
-        </>
-      )}
-      <div className="chat-nav-heading">
-        <div className="nav-section">{showArchived ? "Archived" : "Chats"}</div>
-        <button
-          type="button"
-          className="chat-nav-view-toggle"
-          onClick={() => setShowArchived((value) => !value)}
-          aria-label={showArchived ? "Back to chats" : "View archived chats"}
-          title={showArchived ? "Back to chats" : "View archived chats"}
-        >
-          {showArchived ? (
-            <ArrowLeftIcon aria-hidden="true" size={14} strokeWidth={1.8} />
-          ) : (
-            <ArchiveIcon aria-hidden="true" size={14} strokeWidth={1.8} />
-          )}
-          <span>{showArchived ? "Chats" : archivedSessions.length || ""}</span>
-        </button>
-      </div>
-
-      {historyError && (
-        <div className="chat-nav-error" role="alert">
-          {historyError}
-        </div>
-      )}
-
-      <nav
-        className="chat-nav-list"
-        aria-label={showArchived ? "Archived chats" : "Recent chats"}
-        aria-busy={historyLoading}
-      >
-        {historyLoading && visibleSessions.length === 0 ? (
-          <div className="chat-nav-empty">Loading chats…</div>
-        ) : visibleSessions.length === 0 ? (
-          showArchived ? <div className="chat-nav-empty">No archived chats.</div> : null
-        ) : (
-          visibleSessions.map((session) => {
-            const isActive = active === "chat" && activeSessionId === session.session_id;
-            const actionDisabled =
-              archiveBusy !== null || (!showArchived && isActive && archiveActiveDisabled);
-            const actionLabel = showArchived ? "Restore chat" : "Archive chat";
-            return (
-              <div
-                key={session.session_id}
-                className={"chat-nav-item" + (isActive ? " active" : "")}
-              >
-                <button
-                  type="button"
-                  className="chat-nav-open"
-                  onClick={async () => {
-                    if (showArchived) {
-                      if (await onRestoreSession(session.session_id)) setShowArchived(false);
-                    } else {
-                      onSelectSession(session.session_id);
-                    }
-                  }}
-                  title={session.title}
-                  disabled={archiveBusy !== null}
-                >
-                  <MessageSquareIcon className="nav-icon" aria-hidden="true" size={16} strokeWidth={1.6} />
-                  <span className="chat-nav-copy">
-                    <span className="chat-nav-title">
-                      {session.title.trim().replace(/\s+/g, " ") || "Untitled chat"}
-                    </span>
-                    <span className="chat-nav-time">
-                      {chatHistoryTime(showArchived ? session.archived_at ?? session.updated_at : session.updated_at)}
-                    </span>
-                  </span>
-                </button>
-                <button
-                  type="button"
-                  className="chat-nav-action"
-                  aria-label={`${actionLabel}: ${session.title || "Untitled chat"}`}
-                  title={
-                    !showArchived && isActive && archiveActiveDisabled
-                      ? "Stop the response before archiving"
-                      : actionLabel
-                  }
-                  disabled={actionDisabled}
-                  onClick={async () => {
-                    const completed = showArchived
-                      ? await onRestoreSession(session.session_id)
-                      : await onArchiveSession(session.session_id);
-                    if (completed && showArchived) setShowArchived(false);
-                  }}
-                >
-                  {archiveBusy === session.session_id ? (
-                    <span className="chat-nav-action-progress" aria-hidden="true" />
-                  ) : showArchived ? (
-                    <ArchiveRestoreIcon aria-hidden="true" size={15} strokeWidth={1.8} />
-                  ) : (
-                    <ArchiveIcon aria-hidden="true" size={15} strokeWidth={1.8} />
-                  )}
-                </button>
-              </div>
-            );
-          })
-        )}
-      </nav>
-
-      {!showArchived && sessions.length > 0 && (
-        <button
-          type="button"
-          className="chat-nav-archive-all"
-          onClick={() => setArchiveAllOpen(true)}
-          disabled={archiveBusy !== null || archiveActiveDisabled}
-        >
-          <ArchiveIcon aria-hidden="true" size={14} strokeWidth={1.8} />
-          Archive all chats
-        </button>
-      )}
-
-      <Dialog open={archiveAllOpen} onOpenChange={setArchiveAllOpen}>
-        <DialogContent className="chat-archive-dialog">
-          <DialogHeader>
-            <DialogTitle>Archive all chats?</DialogTitle>
-            <DialogDescription>
-              They will disappear from the sidebar but remain on this Mac. You can restore them anytime.
-            </DialogDescription>
-          </DialogHeader>
-          <DialogFooter>
-            <button type="button" className="btn ghost" onClick={() => setArchiveAllOpen(false)}>
-              Cancel
-            </button>
-            <button
-              type="button"
-              className="btn primary"
-              disabled={archiveBusy !== null}
-              onClick={async () => {
-                if (await onArchiveAll()) {
-                  setArchiveAllOpen(false);
-                  setShowArchived(true);
-                }
-              }}
-            >
-              {archiveBusy === "all" ? "Archiving…" : "Archive all"}
-            </button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
-
-      <div className="nav-spacer" />
-      <button
-        className={"nav-account" + (active === "account" ? " active" : "")}
-        onClick={() => onSelect("account")}
-      >
-        <AccountIcon />
-        <span className="nav-account-copy">
-          <span>Account</span>
-          <span className="nav-account-status">
-            <span className={"dot" + (connected ? " running" : "")} />
-            {connected ? "Connected" : "Disconnected"}
-          </span>
-        </span>
-      </button>
-    </aside>
+    </TooltipProvider>
   );
 }

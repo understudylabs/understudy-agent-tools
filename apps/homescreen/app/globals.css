@@ -7736,3 +7736,150 @@ select,
 .dataset-profile-close:hover {
   opacity: 1;
 }
+
+/* ===== Management nav shell (Aamir's control-plane scheme, ported) ===== */
+
+.sidebar-brand {
+  font-family: var(--mono);
+  font-size: 12px;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--text);
+  padding: 4px 10px 8px;
+  user-select: none;
+}
+
+.nav-group {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.nav-group-label {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  width: 100%;
+  border: 0;
+  background: transparent;
+  cursor: pointer;
+  font-size: 11px;
+  font-family: var(--mono);
+  text-transform: uppercase;
+  letter-spacing: 0.8px;
+  color: var(--text-3);
+  padding: 12px 10px 6px;
+  text-align: left;
+}
+.nav-group-label:hover,
+.nav-group-label:focus-visible {
+  color: var(--text);
+  outline: none;
+}
+.nav-group-chevron {
+  transition: transform 120ms ease;
+  transform: rotate(-90deg);
+}
+.nav-group-chevron.open {
+  transform: rotate(0deg);
+}
+.nav-group-content {
+  display: grid;
+  gap: 2px;
+  min-height: 0;
+}
+
+.nav-item {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-height: 32px;
+  grid-template-columns: none;
+  padding: 4px 8px;
+  font-size: 12.5px;
+  cursor: pointer;
+}
+.nav-item:disabled {
+  opacity: 0.45;
+  cursor: not-allowed;
+}
+.nav-item-label {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.nav-item-badge {
+  flex: none;
+}
+.nav-item-disabled-wrap {
+  display: block;
+}
+
+.chat-nav-scroll {
+  min-height: 0;
+  max-height: 40vh;
+}
+
+.scope-switcher {
+  display: grid;
+  gap: 4px;
+  padding: 0 8px 6px;
+}
+.scope-switcher-trigger {
+  width: 100%;
+  font-family: var(--mono);
+  font-size: 11.5px;
+  background: var(--c-window);
+  border-color: var(--c-rule);
+  color: var(--c-ink);
+}
+.scope-switcher-workload {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  width: 100%;
+  min-height: 30px;
+  padding: 0 10px;
+  border: 1px solid var(--c-rule);
+  border-radius: var(--r-control);
+  background: var(--c-window);
+  color: var(--c-ink);
+  font-family: var(--mono);
+  font-size: 11.5px;
+  cursor: pointer;
+  text-align: left;
+}
+.scope-switcher-workload:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+.scope-switcher-workload-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.scope-switcher-workload-name.muted {
+  color: var(--c-ink-muted);
+}
+
+/* WorkloadHealthBadge dot: mint=healthy, amber=degraded, clay=failing. */
+.workload-health-dot {
+  flex: none;
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: var(--c-ink-muted);
+}
+.workload-health-dot.healthy {
+  background: var(--model-mint);
+}
+.workload-health-dot.degraded {
+  background: var(--model-amber);
+}
+.workload-health-dot.failing {
+  background: var(--model-clay);
+}

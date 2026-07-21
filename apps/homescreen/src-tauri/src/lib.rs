@@ -27,6 +27,7 @@ mod training_chat_tools;
 mod training_outcome;
 mod residency;
 mod rlm;
+mod scope;
 mod route_policy;
 mod server;
 mod sidecar;
@@ -404,6 +405,8 @@ pub fn run() {
             explore::explore_scan_start,
             explore::explore_scan_status,
             explore::explore_scan_cancel,
+            scope::projects_list,
+            scope::workloads_list,
             chat::chat_stream,
             restart_app,
         ])

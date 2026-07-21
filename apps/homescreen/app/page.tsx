@@ -17,6 +17,9 @@ import { RlmPane } from "./components/RlmPane";
 import { ExploreShell, requestExploreFocus } from "./components/explore/ExploreShell";
 import { RuntimeRepairPrompt } from "./components/RuntimeRepairPrompt";
 import { ModelDownloadNotice } from "./components/ModelDownloadNotice";
+import { WorkloadConfigPane } from "./components/WorkloadConfigPane";
+import { loadStoredScope, storeScope } from "./components/sidebar/ScopeSwitcher";
+import type { Scope } from "./lib/nav";
 import { useStatus } from "./lib/useStatus";
 import type { ChatSessionRequest, ChatSessionSummary } from "./lib/chat-history";
 import type { TrainingThreadRequest, TrainingThreadSummary } from "./lib/training-threads.mjs";
@@ -24,6 +27,7 @@ import type { TrainingThreadRequest, TrainingThreadSummary } from "./lib/trainin
 export default function Page() {
   const [pane, setPane] = useState<PaneId>("chat");
   const [railOpen, setRailOpen] = useState(false);
+  const [scope, setScope] = useState<Scope>({ projectId: null, workloadId: null });
   const [chatResetToken, setChatResetToken] = useState(0);
   const [chatHistory, setChatHistory] = useState<ChatSessionSummary[]>([]);
   const [archivedChatHistory, setArchivedChatHistory] = useState<ChatSessionSummary[]>([]);
@@ -177,6 +181,15 @@ export default function Page() {
     if (railOpen) refreshChatHistory();
   }, [railOpen, refreshChatHistory]);
 
+  useEffect(() => {
+    setScope(loadStoredScope());
+  }, []);
+
+  const handleScopeChange = useCallback((next: Scope) => {
+    setScope(next);
+    storeScope(next);
+  }, []);
+
   const newChat = () => {
     if (pane !== "chat") return;
     setRequestedChatSession(null);
@@ -208,12 +221,7 @@ export default function Page() {
       "account",
       "rlm",
       "explore",
-    ];
-    const hidden = [
-      "capture",
-      "usage",
-      "traces",
-      "training",
+      "workload-config",
       "training-evals",
       "training-optimization",
       "training-datasets",
@@ -221,6 +229,7 @@ export default function Page() {
       "training-rl",
       "training-jobs",
     ];
+    const hidden = ["capture", "usage", "traces", "training"];
     const u = listen<{ pane?: string; view?: string; session?: string }>(
       "server-focus",
       (e) => {
@@ -298,6 +307,14 @@ export default function Page() {
           setPane(next);
         }}
         connected={connected}
+        scope={scope}
+        onScopeChange={handleScopeChange}
+        onNewChat={() => {
+          setPane("chat");
+          setRequestedChatSession(null);
+          setActiveChatSessionId(null);
+          setChatResetToken((token) => token + 1);
+        }}
         sessions={chatHistory}
         archivedSessions={archivedChatHistory}
         activeSessionId={activeChatSessionId}
@@ -344,6 +361,7 @@ export default function Page() {
         )}
         {pane === "models" && <ModelsPane />}
         {pane === "capture" && <CapturePane />}
+        {pane === "workload-config" && <WorkloadConfigPane scope={scope} />}
         {pane === "rlm" && <RlmPane />}
         {pane === "explore" && <ExploreShell />}
         {isTrainingPane(pane) && <TrainingPane section={pane} />}
