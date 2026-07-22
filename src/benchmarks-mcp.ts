@@ -20,13 +20,15 @@ import { Server } from "@modelcontextprotocol/sdk/server/index.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
 import { CallToolRequestSchema, ListToolsRequestSchema } from "@modelcontextprotocol/sdk/types.js";
 import {
+  applyAutoAccepts,
   getEntry,
   loadHub,
   loadTaskSidecars,
   queueOrCancelRun,
   submitReview,
+  submitTaskFeedback,
 } from "./benchmark-hub-core.js";
-import type { AnyHubEntry, EvalRow, FoundryTask, ProposedHubEntry, ReviewDecision } from "./benchmark-hub-types.js";
+import type { AnyHubEntry, CalibrationSummary, EvalRow, FoundryTask, ProposedHubEntry, ReviewDecision } from "./benchmark-hub-types.js";
 import { REVIEW_DECISIONS, taskDisplayName } from "./benchmark-hub-types.js";
 import { isAnomalousEvalRow, liveJournalPath, readRunRequest, runRequestPath, RUN_SPLITS } from "./run-executor.js";
 import { accumulateReplay, type OracleReplay, type ReplayCall } from "./benchmark-replay.js";
@@ -105,6 +107,26 @@ function requireString(args: Obj, key: string): string {
   const v = args[key];
   if (typeof v !== "string" || v.length === 0) throw new ToolError(`${key} (string) is required`);
   return v;
+}
+
+/**
+ * Compact projection of the understudy.calibration.v1 sidecar for tool
+ * outputs (additive): incumbent gate counts plus the trivial-arm floors
+ * (null_agent / spam_agent) when the calibrating run carried those arms.
+ */
+function calibrationOut(calibration: CalibrationSummary | null | undefined): Obj | null {
+  if (!calibration) return null;
+  return {
+    run_id: calibration.run_id,
+    threshold: calibration.threshold,
+    passed_count: calibration.passed_count,
+    failed_count: calibration.failed_count,
+    failed_task_ids: calibration.failed_task_ids,
+    // Additive: trivial-arm floors — floor_exceeded means the benchmark's
+    // contracts are trivially satisfiable and passed_task_ids are suspect.
+    null_floor: calibration.null_floor ?? null,
+    spam_floor: calibration.spam_floor ?? null,
+  };
 }
 
 function requireEntry(slug: string): AnyHubEntry {
@@ -270,6 +292,10 @@ function toolReadBenchmark(args: Obj): unknown {
       dir: entry.dir,
       manifest: entry.foundry,
       review_summary: reviewSummary(entry),
+      // Additive: the auto-accept policy in force (review-policy.json sidecar,
+      // defaults when the file is absent) + the incumbent/trivial calibration.
+      review_policy: entry.reviewPolicy ?? null,
+      calibration: calibrationOut(entry.calibration),
       cross_check_errors: entry.crossCheckErrors,
       tasks: entry.tasks.map((t) => ({
         task_id: t.task_id,
@@ -292,8 +318,10 @@ function toolReadBenchmark(args: Obj): unknown {
     dir: entry.dir,
     manifest: entry.manifest,
     warnings: entry.warnings,
-    // Additive: incumbent-rerun calibration sidecar presence.
+    // Additive: incumbent-rerun calibration sidecar presence + its summary
+    // (incumbent gate counts and trivial-arm floors when arms ran).
     calibration_present: entry.calibration != null,
+    calibration: calibrationOut(entry.calibration),
     tasks: entry.manifest.tasks.map((t) => ({
       task_id: t.task_id,
       split: t.split,
@@ -457,6 +485,33 @@ function toolSubmitReview(args: Obj): unknown {
   return { ok: true, review: result.review };
 }
 
+function toolApplyAutoAccepts(args: Obj): unknown {
+  const slug = requireString(args, "slug");
+  // Shared policy + append (dist/benchmark-hub-core.js) — the exact code
+  // behind the hub's POST /api/reviews/auto ("Apply N auto-accepts" button).
+  // Explicit-invocation semantics: calling this tool IS the user action;
+  // nothing is ever auto-applied on read.
+  const result = applyAutoAccepts(getEntry(slug));
+  if (!result.ok) throw new ToolError(result.error);
+  return {
+    ok: true,
+    applied: result.applied,
+    applied_count: result.applied.length,
+    exceptions: result.exceptions,
+    reviews: result.reviews,
+  };
+}
+
+function toolSubmitFeedback(args: Obj): unknown {
+  const slug = requireString(args, "slug");
+  // Shared validation + append (dist/benchmark-hub-core.js) — the exact code
+  // behind the hub's POST /api/feedback. Records the feedback line and
+  // returns the agent handoff prompt; nothing is executed here.
+  const result = submitTaskFeedback(getEntry(slug), { task_id: args.task_id, feedback: args.feedback });
+  if (!result.ok) throw new ToolError(result.error);
+  return { ok: true, feedback: result.feedback, handoff: result.handoff };
+}
+
 function toolQueueRun(args: Obj): unknown {
   const slug = requireString(args, "slug");
   // Shared validation + queue write (dist/benchmark-hub-core.js +
@@ -485,9 +540,10 @@ function toolRunStatus(args: Obj): unknown {
   const run = existsSync(file) ? readRunRequest(file) : null;
   if (!run) throw new ToolError(`unknown run_id: ${runId}`);
   const rows = entryRows(entry).filter((r) => r.run_id === runId);
-  // Additive: incumbent arm + calibration sidecar presence (promoted entries
-  // carry calibration.json after an incumbent rerun finishes).
-  const calibration = entry.kind === "ok" ? (entry.calibration ?? null) : null;
+  // Additive: incumbent arm + calibration sidecar (both stages carry
+  // calibration.json after an incumbent/trivial-arm run finishes), including
+  // the null/spam trivial-arm floors.
+  const calibration = entry.calibration ?? null;
   return {
     run_id: runId,
     status: run.status,
@@ -497,15 +553,7 @@ function toolRunStatus(args: Obj): unknown {
     models: run.models,
     tasks: run.tasks,
     incumbent_models: run.incumbent_models ?? [],
-    calibration: calibration
-      ? {
-          run_id: calibration.run_id,
-          threshold: calibration.threshold,
-          passed_count: calibration.passed_count,
-          failed_count: calibration.failed_count,
-          failed_task_ids: calibration.failed_task_ids,
-        }
-      : null,
+    calibration: calibrationOut(calibration),
     rows: rowsSummary(rows),
     per_task: [...new Set(rows.map((r) => r.task_id))].sort().map((taskId) => ({ task_id: taskId, ...taskScores(rows, taskId) })),
   };
@@ -596,6 +644,37 @@ export const BENCHMARKS_TOOLS = [
     },
   },
   {
+    name: "apply_auto_accepts",
+    description:
+      "Apply the exception-review auto-accept policy to one PROPOSED benchmark: recompute the classification " +
+      "(review-policy.json bar; defaults min_confidence=high, require_incumbent_pass=true) and append one " +
+      "accept line per clean pending task to reviews.jsonl, stamped source:\"auto\" — the same shared code as " +
+      "the hub's 'Apply N auto-accepts' button. Calling this tool IS the explicit user action; reads never " +
+      "auto-apply. Reversible: newest review line per task wins.",
+    inputSchema: {
+      type: "object",
+      properties: { slug: { type: "string", description: "Slug from list_benchmarks (proposed stage only)." } },
+      required: ["slug"],
+    },
+  },
+  {
+    name: "submit_feedback",
+    description:
+      "Record one understudy.task_feedback.v1 line ('what's wrong with this task') to feedback.jsonl next to " +
+      "the foundry manifest (append-only; proposed benchmarks only) and return the copyable agent-handoff " +
+      "prompt for actually editing the task + regenerating its environment. Nothing is executed here — the " +
+      "same storage-plus-handoff contract as the hub's task feedback box.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        slug: { type: "string" },
+        task_id: { type: "string" },
+        feedback: { type: "string", maxLength: 4000, description: "Reviewer's own words on what is wrong / should change." },
+      },
+      required: ["slug", "task_id", "feedback"],
+    },
+  },
+  {
     name: "queue_run",
     description:
       "Write one understudy.run_request.v1 into <benchmark>/runs/queue/ (validated by the same shared schema " +
@@ -651,6 +730,8 @@ export function callBenchmarksTool(name: string, args: Obj): unknown {
     case "read_rollout": return toolReadRollout(args);
     case "diff_rollouts": return toolDiffRollouts(args);
     case "submit_review": return toolSubmitReview(args);
+    case "apply_auto_accepts": return toolApplyAutoAccepts(args);
+    case "submit_feedback": return toolSubmitFeedback(args);
     case "queue_run": return toolQueueRun(args);
     case "run_status": return toolRunStatus(args);
     default: throw new ToolError(`unknown tool: ${name}`);

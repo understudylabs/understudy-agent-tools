@@ -100,8 +100,8 @@ export type EvalRow = {
   subscores?: Record<string, number | null> | null;
   status: "ok" | "error" | "skipped" | "unscored";
   model?: string | null;
-  /** Additive arm label from the executor: "incumbent" rerun vs "candidate". */
-  arm_kind?: "incumbent" | "candidate" | null;
+  /** Additive arm label from the executor: "incumbent" rerun, "candidate", or a trivial calibration arm ("null_agent" / "spam_agent"). */
+  arm_kind?: "incumbent" | "candidate" | "null_agent" | "spam_agent" | null;
   route?: string | null;
   latency_ms?: number | null;
   created_at?: string | null;
@@ -411,6 +411,8 @@ export type ProposedHubEntry = {
   overview: BenchmarkOverview | null;
   /** understudy.calibration.v1 sidecar from a pre-promotion incumbent rerun, when present (additive). */
   calibration?: CalibrationSummary | null;
+  /** understudy.review_policy.v1 in force (review-policy.json, defaults when absent — additive). */
+  reviewPolicy?: ReviewPolicy;
 };
 
 export type AnyHubEntry = HubEntry | InvalidHubEntry | ProposedHubEntry;
@@ -461,4 +463,41 @@ export type CalibrationSummary = {
   passed_count: number;
   failed_count: number;
   failed_task_ids: string[];
+  /** Additive: null-agent floor (absent when the run carried no null_agent arm). */
+  null_floor?: TrivialFloor;
+  /** Additive: spam-agent floor (absent when the run carried no spam_agent arm). */
+  spam_floor?: TrivialFloor;
+};
+
+/**
+ * Per-benchmark trivial-arm floor (mirrors run-executor's TrivialFloor): the
+ * fraction of selected tasks a do-nothing (null) or ritual-tool-calling
+ * (spam) agent passes at the calibration threshold. floor > the executor's
+ * TRIVIAL_FLOOR_LIMIT stamps floor_exceeded — the benchmark's contracts are
+ * trivially satisfiable and the passing tasks are suspect.
+ */
+export type TrivialFloor = {
+  arm_kind: "null_agent" | "spam_agent";
+  /** passed / selected tasks at the calibration threshold; null when the arm produced no rows. */
+  floor: number | null;
+  /** Every selected task the trivial arm passes — the offending tasks. */
+  passed_task_ids: string[];
+  floor_exceeded: boolean;
+};
+
+/** Machine-confidence enum, ordered high > medium > low. */
+export type MachineConfidence = "high" | "medium" | "low";
+
+/**
+ * understudy.review_policy.v1 — optional review-policy.json sidecar next to
+ * the foundry manifest. Configures the exception-review auto-accept bar;
+ * absent file = the defaults (min_confidence "high", require_incumbent_pass
+ * true), i.e. exactly the pre-policy behavior.
+ */
+export type ReviewPolicy = {
+  schema_version: "understudy.review_policy.v1";
+  /** Lowest machine_confidence that can auto-accept (close_call still always excepts). */
+  min_confidence: MachineConfidence;
+  /** When false, an incumbent calibration failure no longer blocks auto-accept. */
+  require_incumbent_pass: boolean;
 };

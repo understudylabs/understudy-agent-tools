@@ -2,6 +2,7 @@ import Link from "next/link";
 import { notFound } from "next/navigation";
 import { taskDisplayName, type FoundryContractItem, type ProposedHubEntry } from "@/lib/types";
 import { taskProvenance } from "@/lib/data";
+import { trivialPassesForTask } from "@/lib/scores";
 import { Badge, ConfidenceChip, DecisionBadge } from "@/components/badges";
 import { TaskViews } from "@/components/trajectory/task-views";
 import { AuthoredPanel, AuthoredStatementCard } from "@/components/trajectory/authored-panel";
@@ -147,6 +148,16 @@ export function ProposedTaskPage({ entry, taskId }: { entry: ProposedHubEntry; t
         <div className="mt-3 flex flex-wrap items-center gap-2">
           <DecisionBadge decision={review?.decision ?? null} />
           {review?.source === "auto" && <Badge>auto-accepted · override below</Badge>}
+          {/* Suspect signals: incumbent failed its own task, or a trivial
+              (null/spam) agent passes it with no real work. */}
+          {entry.calibration?.failed_task_ids.includes(task.task_id) && (
+            <Badge className="border-bad/40 text-bad">incumbent failed on rerun · suspect</Badge>
+          )}
+          {trivialPassesForTask(entry.calibration, task.task_id).map((f) => (
+            <Badge key={f.armKind} className="border-bad/40 text-bad">
+              {f.label} passes this task · suspect
+            </Badge>
+          ))}
           {task.authored?.difficulty === "easy" && entry.overview?.task_complexity?.[task.task_id]?.frontier && (
             <Badge className="border-bad/40 text-bad">authored easy · frontier-complex</Badge>
           )}

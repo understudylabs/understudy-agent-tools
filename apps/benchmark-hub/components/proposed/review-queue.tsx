@@ -59,12 +59,15 @@ export function ReviewQueue({
   readOnly,
   exceptionsByReason,
   autoAccepts,
+  policyNote,
 }: {
   slug: string;
   readOnly: boolean;
   /** reason → tasks carrying it (a task may appear under several reasons). */
   exceptionsByReason: { reason: string; tasks: QueueTask[] }[];
   autoAccepts: QueueTask[];
+  /** Non-default review-policy.json in force, rendered as a footnote (null = defaults). */
+  policyNote?: string | null;
 }) {
   const router = useRouter();
   const [busy, setBusy] = useState(false);
@@ -100,6 +103,7 @@ export function ReviewQueue({
         Only exceptions need your judgment — everything the machine is confident about collapses into one action
         below. Any auto decision can be overridden per task later (newest review wins).
       </p>
+      {policyNote && <span className="u-foot-note">{"// custom review-policy.json in force: " + policyNote}</span>}
 
       {/* EXCEPTIONS FIRST: the human work, grouped by reason. */}
       {exceptionCount > 0 && (

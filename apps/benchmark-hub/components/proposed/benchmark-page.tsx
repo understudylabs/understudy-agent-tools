@@ -6,6 +6,7 @@ import { Badge, SourceBadge, StageBadge } from "@/components/badges";
 import { EmptyState } from "@/components/empty-state";
 import { TaskTable } from "@/components/task-table";
 import { ReviewQueue, type QueueTask } from "@/components/proposed/review-queue";
+import { CalibrationFloors } from "@/components/calibration-floors";
 
 /**
  * The foundry's promotion blockers for machine-compiled outputs. Mirrored
@@ -157,6 +158,9 @@ export function ProposedBenchmarkPage({ entry }: { entry: ProposedHubEntry }) {
               (selfCheckFailed.length > 5 ? ` … and ${selfCheckFailed.length - 5} more` : "")}
           </span>
         )}
+        {/* Trivial-arm floors from a pre-promotion calibration run: red flag +
+            offending-task links when a null/spam agent clears the 5% limit. */}
+        {entry.calibration && <CalibrationFloors calibration={entry.calibration} slug={entry.slug} />}
         {entry.crossCheckErrors.length > 0 && (
           <span className="u-foot-note" style={{ color: "var(--warn-ink)" }}>
             {"// tasks.jsonl and benchmark.json disagree on task ids: " + entry.crossCheckErrors.join("; ")}
@@ -180,6 +184,12 @@ export function ProposedBenchmarkPage({ entry }: { entry: ProposedHubEntry }) {
             readOnly={entry.readOnly}
             exceptionsByReason={exceptionsByReason}
             autoAccepts={autoAccepts}
+            policyNote={
+              entry.reviewPolicy &&
+              (entry.reviewPolicy.min_confidence !== "high" || !entry.reviewPolicy.require_incumbent_pass)
+                ? `min_confidence ${entry.reviewPolicy.min_confidence} · require_incumbent_pass ${entry.reviewPolicy.require_incumbent_pass}`
+                : null
+            }
           />
 
           <section className="u-sec" id="tasks">

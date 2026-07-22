@@ -26,9 +26,13 @@ import {
   latestReviewByTask as sharedLatestReviewByTask,
   makeBenchmarkReview,
   makeTaskFeedback,
+  meetsConfidenceBar,
   readJsonlFile,
+  readReviewPolicy,
   serializeReviewLine,
   serializeTaskFeedbackLine,
+  DEFAULT_REVIEW_POLICY,
+  type ReviewPolicy,
   type TaskFeedback,
 } from "./benchmark-artifacts.js";
 import {
@@ -336,6 +340,9 @@ export function loadProposedEntryFromDir(
     // Additive: a pre-promotion incumbent rerun's calibration sidecar feeds
     // the exception-review policy (incumbent_failed).
     calibration: loadCalibration(dir, proposalBenchmarkId),
+    // Additive: the auto-accept policy in force (review-policy.json sidecar,
+    // defaults when absent — pre-policy behavior).
+    reviewPolicy: readReviewPolicy(dir),
   };
 }
 
@@ -855,24 +862,28 @@ export type AutoReviewProposal = {
 };
 
 /**
- * The confidence bar for auto-acceptance. machine_confidence is an ordered
- * enum (high > medium > low); a task clears the bar only at "high", and a
- * high-confidence close_call is still treated as low_confidence — the machine
- * itself flagged the boundary as borderline.
+ * The DEFAULT confidence bar for auto-acceptance. machine_confidence is an
+ * ordered enum (high > medium > low); by default a task clears the bar only
+ * at "high". A review-policy.json sidecar (understudy.review_policy.v1) can
+ * lower the bar per benchmark; a close_call is still ALWAYS treated as
+ * low_confidence regardless of policy — the machine itself flagged the
+ * boundary as borderline.
  */
-export const AUTO_ACCEPT_CONFIDENCE_THRESHOLD: FoundryTask["machine_confidence"] = "high";
+export const AUTO_ACCEPT_CONFIDENCE_THRESHOLD: FoundryTask["machine_confidence"] =
+  DEFAULT_REVIEW_POLICY.min_confidence;
 
 /**
  * Pure classification of every PENDING task (tasks whose newest review line,
  * if any, already decided them are skipped — auto-accept never re-decides).
  *
- * AUTO_ACCEPT requires ALL of:
- * - machine_confidence ≥ AUTO_ACCEPT_CONFIDENCE_THRESHOLD and not close_call
+ * The bar comes from the entry's review-policy.json (entry.reviewPolicy,
+ * defaults when absent). AUTO_ACCEPT requires ALL of:
+ * - machine_confidence ≥ policy.min_confidence and not close_call
  *   (else: low_confidence)
  * - the foundry self_check, when stamped, passed (else: self_check_failed;
  *   pre-self-check builds without the block count as clean)
- * - calibration.json absent, or absent for this task, or the incumbent passed
- *   it (else: incumbent_failed)
+ * - when policy.require_incumbent_pass: calibration.json absent, or absent
+ *   for this task, or the incumbent passed it (else: incumbent_failed)
  * - tasks.jsonl and benchmark.json agree on this task id (else: schema_conflict)
  * - no eval row for the task carries an executor anomaly sentinel (else: anomaly)
  *
@@ -880,6 +891,7 @@ export const AUTO_ACCEPT_CONFIDENCE_THRESHOLD: FoundryTask["machine_confidence"]
  * applyAutoAccepts, and only on an explicit user action.
  */
 export function deriveAutoReviewProposals(entry: ProposedHubEntry): AutoReviewProposal[] {
+  const policy: ReviewPolicy = entry.reviewPolicy ?? DEFAULT_REVIEW_POLICY;
   const calibrationByTask = new Map<string, boolean>();
   for (const t of entry.calibration?.tasks ?? []) calibrationByTask.set(t.task_id, t.passed);
   const failedIds = new Set(entry.calibration?.failed_task_ids ?? []);
@@ -889,12 +901,14 @@ export function deriveAutoReviewProposals(entry: ProposedHubEntry): AutoReviewPr
   for (const task of entry.tasks) {
     if (entry.latestReviewByTask[task.task_id]) continue; // already decided (newest-wins)
     const reasons: AutoReviewReason[] = [];
-    if (task.machine_confidence !== AUTO_ACCEPT_CONFIDENCE_THRESHOLD || task.close_call) {
+    if (!meetsConfidenceBar(task.machine_confidence, policy.min_confidence) || task.close_call) {
       reasons.push("low_confidence");
     }
     if (task.self_check != null && task.self_check.ok === false) reasons.push("self_check_failed");
     const calibrated = calibrationByTask.get(task.task_id);
-    if (calibrated === false || failedIds.has(task.task_id)) reasons.push("incumbent_failed");
+    if (policy.require_incumbent_pass && (calibrated === false || failedIds.has(task.task_id))) {
+      reasons.push("incumbent_failed");
+    }
     if (entry.crossCheckErrors.some((e) => e.includes(task.task_id))) reasons.push("schema_conflict");
     if (anomalousTaskIds.has(task.task_id)) reasons.push("anomaly");
     proposals.push({
@@ -929,6 +943,7 @@ export function applyAutoAccepts(entry: AnyHubEntry | null): ApplyAutoAcceptsRes
       status: 403,
     };
   }
+  const policy = entry.reviewPolicy ?? DEFAULT_REVIEW_POLICY;
   const proposals = deriveAutoReviewProposals(entry);
   const reviews: BenchmarkReview[] = [];
   for (const p of proposals) {
@@ -938,7 +953,7 @@ export function applyAutoAccepts(entry: AnyHubEntry | null): ApplyAutoAcceptsRes
         benchmark_id: path.basename(entry.dir),
         task_id: p.task_id,
         decision: "accept",
-        note: "auto-accepted: high machine confidence, self-check clean, no incumbent/schema/anomaly evidence against it",
+        note: `auto-accepted: machine confidence ≥ ${policy.min_confidence}, self-check clean, no ${policy.require_incumbent_pass ? "incumbent/" : ""}schema/anomaly evidence against it`,
         source: "auto",
       }) as BenchmarkReview,
     );
