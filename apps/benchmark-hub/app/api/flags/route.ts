@@ -30,6 +30,12 @@ export async function POST(request: Request) {
   if (!entry || entry.kind === "invalid") {
     return NextResponse.json({ error: "unknown benchmark" }, { status: 404 });
   }
+  if (entry.kind === "proposed") {
+    return NextResponse.json(
+      { error: "flags apply to promoted benchmarks; use /api/reviews for proposed (trace-foundry) tasks" },
+      { status: 400 },
+    );
+  }
   if (entry.readOnly) {
     return NextResponse.json(
       { error: "This entry is read-only (demo/fixture source); flags cannot be written here." },

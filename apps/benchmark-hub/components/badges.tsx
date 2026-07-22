@@ -26,10 +26,58 @@ export function OriginBadge({ origin }: { origin: string }) {
   return <Badge className={ORIGIN_STYLES[origin] ?? "text-ink-muted"}>{label}</Badge>;
 }
 
-export function SourceBadge({ entry }: { entry: HubEntry }) {
+export function SourceBadge({ entry }: { entry: Pick<HubEntry, "source"> }) {
   if (entry.source === "fixture") return <Badge>fixture · read-only</Badge>;
   if (entry.source === "demo") return <Badge>demo</Badge>;
   return null;
+}
+
+/**
+ * Split chip that understands BOTH split enums: promoted benchmark.v1 uses
+ * train/dev/holdout, the foundry's benchmark_task.v1 uses
+ * construction/fit/heldout. Labels render as-is; visual treatment maps the
+ * corresponding pairs to parity (construction≈train, fit≈dev,
+ * heldout≈holdout). Upstream enum reconciliation is tracked for the foundry —
+ * once names converge this collapses to one enum.
+ */
+const SPLIT_STYLES: Record<string, string> = {
+  train: "text-ink-muted",
+  construction: "text-ink-muted",
+  dev: "text-stamp border-stamp/40",
+  fit: "text-stamp border-stamp/40",
+  holdout: "text-ok border-ok/50",
+  heldout: "text-ok border-ok/50",
+  none: "text-faint",
+};
+
+export function SplitChip({ split }: { split: string }) {
+  return <Badge className={SPLIT_STYLES[split] ?? "text-ink-muted"}>{split}</Badge>;
+}
+
+export function ConfidenceChip({ level }: { level: string | null | undefined }) {
+  if (!level) return null;
+  const style =
+    level === "high" ? "text-ok border-ok/50" : level === "low" ? "text-bad border-bad/40" : "text-warn border-warn/40";
+  return <Badge className={style}>{level} confidence</Badge>;
+}
+
+export const DECISION_STYLES: Record<string, string> = {
+  accept: "text-ok border-ok/50",
+  restrict: "text-warn border-warn/40",
+  needs_more: "text-warn border-warn/40",
+  reject: "text-bad border-bad/40",
+};
+
+export function DecisionBadge({ decision }: { decision: string | null | undefined }) {
+  if (!decision) return <Badge>pending review</Badge>;
+  return <Badge className={DECISION_STYLES[decision] ?? ""}>{decision.replace("_", " ")}</Badge>;
+}
+
+/** Lifecycle stage: proposed (foundry output, review pending) vs promoted (benchmark.v1). */
+export function StageBadge({ stage }: { stage: "proposed" | "promoted" }) {
+  return (
+    <Badge className={stage === "proposed" ? "border-warn/40 text-warn" : "text-ink-muted"}>{stage}</Badge>
+  );
 }
 
 export function FlagBadge({ count, resolved }: { count: number; resolved?: boolean }) {
@@ -48,7 +96,6 @@ export function FlagBadge({ count, resolved }: { count: number; resolved?: boole
  */
 export function RouteBadge({ route }: { route: string | null }) {
   if (!route) return null;
-  // wave-2: mint (the "local" badge marks the candidate arm)
   if (route === "local") return <span className="opn">local</span>;
   return (
     <span className="opn" style={{ borderColor: "var(--accent)", color: "var(--accent)" }}>
@@ -62,7 +109,7 @@ export function WarningList({ warnings, compact }: { warnings: EvidenceWarning[]
   return (
     <ul className="flex flex-col gap-2">
       {warnings.map((w) => (
-        <li key={w.kind} className="lb-warn flex items-start gap-2.5 text-xs">
+        <li key={w.kind} className="u-warn flex items-start gap-2.5 text-xs">
           <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
           <span>
             <span className="lab">{w.label}</span>

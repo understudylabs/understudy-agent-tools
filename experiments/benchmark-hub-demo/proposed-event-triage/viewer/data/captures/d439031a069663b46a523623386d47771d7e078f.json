@@ -1,0 +1,118 @@
+{
+  "schema_version": "understudy.normalized_capture.v1",
+  "capture_id": "evt-c-round-1",
+  "captured_at": "2026-07-18T14:05:00.000Z",
+  "source": {
+    "pointer": "captures.jsonl#L8",
+    "sha256": "a80ad780367d2efeb66b1580ab110eff3f997e83bb84d085a41868beb1f68a97"
+  },
+  "scope": {
+    "org_id": null,
+    "project_id": null,
+    "workload_id": null,
+    "workload_name": "synthetic-event-triage"
+  },
+  "routing": {
+    "provider": "synthetic",
+    "requested_model": "synthetic-triage-model",
+    "upstream_model": null
+  },
+  "transport": {
+    "endpoint": "/v1/messages",
+    "status_code": 200,
+    "latency_ms": 420
+  },
+  "request": {
+    "system": "You triage synthetic platform events. Look up the account, open a ticket, and page on-call for P0s.",
+    "messages": [
+      {
+        "role": "user",
+        "content": "{\"source\":\"infra\",\"type\":\"disk_pressure\",\"account_id\":\"acct_733\",\"detail\":\"node at 92% disk on shard-34\"}"
+      }
+    ],
+    "tools": [
+      {
+        "name": "lookup-account",
+        "description": "Fetch a synthetic account record",
+        "input_schema": {
+          "type": "object",
+          "properties": {
+            "account_id": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      {
+        "name": "create-ticket",
+        "description": "Open a synthetic triage ticket",
+        "input_schema": {
+          "type": "object",
+          "properties": {
+            "account_id": {
+              "type": "string"
+            },
+            "priority": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      {
+        "name": "notify-oncall",
+        "description": "Page the synthetic on-call rotation",
+        "input_schema": {
+          "type": "object",
+          "properties": {
+            "ticket_id": {
+              "type": "string"
+            }
+          }
+        }
+      }
+    ],
+    "settings": {
+      "model": "synthetic-triage-model",
+      "max_tokens": 1024
+    }
+  },
+  "response": {
+    "encoding": "json",
+    "body": {
+      "content": [
+        {
+          "type": "tool_use",
+          "id": "call-c1",
+          "name": "create-ticket",
+          "input": {
+            "account_id": "acct_733",
+            "priority": "p1"
+          }
+        }
+      ],
+      "stop_reason": "tool_use"
+    },
+    "tool_calls": [
+      {
+        "id": "call-c1",
+        "name": "create-ticket",
+        "arguments": {
+          "account_id": "acct_733",
+          "priority": "p1"
+        }
+      }
+    ],
+    "stop_reason": "tool_use"
+  },
+  "raw": {
+    "request": "{\"model\":\"synthetic-triage-model\",\"max_tokens\":1024,\"system\":\"You triage synthetic platform events. Look up the account, open a ticket, and page on-call for P0s.\",\"messages\":[{\"role\":\"user\",\"content\":\"{\\\"source\\\":\\\"infra\\\",\\\"type\\\":\\\"disk_pressure\\\",\\\"account_id\\\":\\\"acct_733\\\",\\\"detail\\\":\\\"node at 92% disk on shard-34\\\"}\"}],\"tools\":[{\"name\":\"lookup-account\",\"description\":\"Fetch a synthetic account record\",\"input_schema\":{\"type\":\"object\",\"properties\":{\"account_id\":{\"type\":\"string\"}}}},{\"name\":\"create-ticket\",\"description\":\"Open a synthetic triage ticket\",\"input_schema\":{\"type\":\"object\",\"properties\":{\"account_id\":{\"type\":\"string\"},\"priority\":{\"type\":\"string\"}}}},{\"name\":\"notify-oncall\",\"description\":\"Page the synthetic on-call rotation\",\"input_schema\":{\"type\":\"object\",\"properties\":{\"ticket_id\":{\"type\":\"string\"}}}}]}",
+    "response": "{\"content\":[{\"type\":\"tool_use\",\"id\":\"call-c1\",\"name\":\"create-ticket\",\"input\":{\"account_id\":\"acct_733\",\"priority\":\"p1\"}}],\"stop_reason\":\"tool_use\"}"
+  },
+  "fingerprints": {
+    "group": "da34c9be253d7467bf58e7b9ac7b75a5d2d26f4986a2548072c8166b9959db99",
+    "messages": [
+      "fbc207c7fe7ba9a0e1cfc92f4ec55d9808c01783cd738295a641c4b1138b2014"
+    ],
+    "sequence": "d9bf2fc616a76de8024311979f04093367fa89adfff289069956932c200e98c9"
+  }
+}

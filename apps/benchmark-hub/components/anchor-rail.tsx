@@ -7,7 +7,7 @@ export type RailSection = { id: string; label: string };
 /**
  * OpenRouter-style sticky in-page anchor rail with a scroll-spy highlight.
  * Vertical on wide viewports; collapses to horizontal pills under 900px
- * (see .ent-rail in globals.css). Active section wears the accent.
+ * (see .u-anchor-rail in globals.css). Active section wears the accent.
  */
 export function AnchorRail({ sections }: { sections: RailSection[] }) {
   const [active, setActive] = useState<string>(sections[0]?.id ?? "");
@@ -31,7 +31,7 @@ export function AnchorRail({ sections }: { sections: RailSection[] }) {
   }, [sections]);
 
   return (
-    <nav className="ent-rail" aria-label="Page sections">
+    <nav className="u-anchor-rail" aria-label="Page sections">
       {sections.map((s) => (
         <a key={s.id} href={`#${s.id}`} aria-current={active === s.id ? "true" : undefined} onClick={() => setActive(s.id)}>
           {s.label}

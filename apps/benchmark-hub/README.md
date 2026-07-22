@@ -1,21 +1,46 @@
 # Understudy Benchmark Hub
 
-A local, single-user "Environments Hub + leaderboard" viewer over
-`understudy.benchmark.v1` manifests and `understudy.eval_result.v1` rows.
+A local, single-user "Environments Hub + leaderboard" viewer over the whole
+benchmark lifecycle: **proposed** trace-foundry outputs awaiting human review
+and **promoted** `understudy.benchmark.v1` manifests with
+`understudy.eval_result.v1` rows.
+
+## Lifecycle model
+
+A benchmark directory is one of two stages, dispatched by the loader:
+
+- **proposed** — a `understudy traces build-benchmark` (trace foundry) output
+  dir: `manifest.json` (`understudy.trace_foundry.v1`) + `tasks.jsonl`
+  (`understudy.benchmark_task.v1`) + `source-dag.json` + lazy capture bodies
+  under `viewer/data/captures/`. Machine-compiled, non-executable, every task
+  pending human final judgment. The dir's `benchmark.json` is a known schema
+  name collision (being renamed upstream) and is only cross-checked for task
+  ids, never consumed.
+- **promoted** — a directory with a valid `understudy.benchmark.v1`
+  `benchmark.json` plus rows/traces/flags/versions sidecars.
+
+The hub's entity and task pages serve both stages from one component tree:
+proposed benchmarks get a review-first layout (task inbox, source-DAG
+lineage, provenance + privacy), promoted benchmarks keep the
+leaderboard-first layout. **This replaces the foundry's self-contained
+`viewer/index.html` "benchmark orchard" review viewer** — the orchard's
+information design (task inbox → lineage rail → parsed/raw capture
+inspector → review actions) now lives here in the hub's component and token
+system, with decisions persisted to disk instead of localStorage.
 
 ## Theme
 
-The app wears the **Understudy design language v2.0 DARK FIELD** (wave 2′):
+The app wears the **Understudy design language v2.0 DARK FIELD**:
 black-field/card/stamp-dark tokens and IBM Plex Sans/Mono type from
 `understudy-design/tokens/{primitives,semantic}.json`. The benchmark detail
 page is an OpenRouter-style entity page (header + stat strip + sticky anchor
 rail). All design tokens are centralized in the CSS custom properties
 (`:root` + Tailwind `@theme`) at the top of `app/globals.css`; the component
-classes consume only those variables. The temporary `?accent` preview switch
-(middleware → header → `data-accent` bridge) has been **removed**: stamp is
-the canonical v2.0 accent, stamped statically by the root layout. The
-`html[data-accent]` CSS blocks remain in `globals.css` for the styling pass
-to consolidate.
+classes consume only those variables and share a single `u-` prefix (the
+former `lb-`/`ent-` split is retired). Stamp is the canonical accent, defined
+directly in `:root` — the `?accent` preview switch and the `html[data-accent]`
+indirection are gone. Every screen has a designed empty state: one sentence of
+what it is plus one concrete next action in mono (`u-empty`).
 
 ## Run
 
@@ -54,9 +79,25 @@ bun run start:demo # production server incl. repo demo data
   - **Evidence** — horizontal split-freeze timeline from `versions.jsonl`
     (short `splits_sha256` hash + contamination verdict per dot; current
     version ringed).
-- **Task inspector (`/b/<slug>/task/<task_id>`)** — manifest entry, eval rows
-  across runs/models, and trace-branch drill-down (root-to-leaf message paths
-  from `traces*.jsonl`; graceful empty state otherwise).
+- **Proposed benchmark detail (`/b/<slug>`, stage proposed)** — review-first:
+  stat strip (tasks, awaiting review, accepted/rejected, captures+freshness),
+  Tasks · Lineage · Provenance anchor rail, task inbox (title, split,
+  machine confidence, close-call, review decision), source-DAG lineage rail
+  (rounds by `captured_at`, typed edges with confidence and common-prefix
+  evidence), and provenance (freshness window, filtered counts, per-capture
+  sha256 pointers, privacy card).
+- **Task inspector (`/b/<slug>/task/<task_id>`)** — one component tree for
+  both stages. Promoted tasks: sidecar `tasks*.jsonl` content (question, gold
+  contract, fixtures) as first-class panels, eval rows with subscore chips,
+  and trace-branch drill-down (first 20 branches + count). Proposed tasks:
+  outcome-contract panels (required/preserved/forbidden with per-item tool,
+  observed arguments, matching and confidence chips), world model, machine
+  claims (observed/inferred), a task-scoped lineage strip, the review action
+  bar, and a lazy capture viewer (parsed chat-style request, SSE-reassembled
+  response with tool calls + stop_reason, raw request/response toggle)
+  fetched per round via `GET /api/captures?slug&id` — capture bodies never
+  ship in the RSC payload. Foundry splits (`construction`/`fit`/`heldout`)
+  render with visual parity to `train`/`dev`/`holdout`.
 
 ## Data-dir contract
 
@@ -69,7 +110,7 @@ The server-side loader (`lib/data-core.ts`) scans:
    so the flag flow is demoable) and `<repo>/tests/fixtures/benchmark-*.json`
    as read-only fixture entries (flag writes rejected)
 
-Each benchmark is a directory containing:
+Each **promoted** benchmark is a directory containing:
 
 - `benchmark.json` — required, an `understudy.benchmark.v1` manifest
 - `rows-*.jsonl` and/or `rows/*.jsonl` — optional `understudy.eval_result.v1`
@@ -81,11 +122,27 @@ Each benchmark is a directory containing:
   **Viewer-side convention for now — candidate for `benchmark.v1.1`** (the
   schema itself still has a single `splits.splits_sha256`).
 
+A **proposed** benchmark directory (foundry output) instead contains
+`manifest.json`, `tasks.jsonl`, `source-dag.json`, `normalized-captures.jsonl`,
+`viewer/data/captures/*.json` (lazy bodies), and a hub-written `reviews.jsonl`.
+
 Rows may carry `cost` (USD per rollout) and `latency_ms` extension fields —
 `eval_result.v1` allows extra keys. Cost semantics are producer-defined; see
 `NOTES.md` in each demo dir for how its numbers were derived.
 
-## Flagging
+## Review store (proposed stage)
+
+Review decisions POST to `/api/reviews` and append one
+`understudy.benchmark_review.v1` JSON line (`{schema_version, benchmark_id,
+task_id, decision, note, created_at}`, decision ∈ accept | restrict |
+needs_more | reject, `benchmark_id` = the foundry output dir slug) to an
+append-only `reviews.jsonl` next to the foundry manifest. **Newest line per
+task wins** (superseding by append). The same guards as flags apply:
+read-only entries rejected, decision/task validation, 2000-char note cap, no
+directory rescan on write. Reviewed state renders in the inbox, on the task
+page, and as index-card progress.
+
+## Flagging (promoted stage)
 
 Flags POST to `/api/flags` and append one `understudy.benchmark_flag.v1` JSON
 line to `flags.jsonl` next to the manifest (`task_id: null` = whole benchmark).

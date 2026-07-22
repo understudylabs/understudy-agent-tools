@@ -2,17 +2,25 @@ import fs from "node:fs";
 import os from "node:os";
 import path from "node:path";
 import { validateBenchmarkManifest } from "./benchmark-core";
+import { createHash } from "node:crypto";
 import type {
   AnyHubEntry,
   BenchmarkFlag,
   BenchmarkManifest,
+  BenchmarkReview,
   BenchmarkVersion,
+  CaptureRef,
   EntryDiagnostics,
   EvalRow,
   EvidenceWarning,
+  FoundryManifest,
+  FoundryTask,
   HubEntry,
   InvalidHubEntry,
+  ProposedHubEntry,
+  SourceDag,
 } from "./types";
+import { REVIEW_DECISIONS } from "./types";
 
 /**
  * Data-dir contract:
@@ -130,12 +138,136 @@ export function computeWarnings(manifest: BenchmarkManifest): EvidenceWarning[] 
   return warnings;
 }
 
+/**
+ * A trace-foundry output dir (stage: proposed): manifest.json stamped
+ * understudy.trace_foundry.v1 plus tasks.jsonl. Note the foundry also writes
+ * a benchmark.json stamped "understudy.benchmark.v1" in an INCOMPATIBLE shape
+ * (a known schema-name collision, being renamed upstream) — we never consume
+ * it except to cross-check task ids.
+ */
+export function loadProposedEntryFromDir(
+  dir: string,
+  source: HubEntry["source"],
+  slug: string,
+  readOnly: boolean,
+): ProposedHubEntry | null {
+  const manifestPath = path.join(dir, "manifest.json");
+  let foundry: FoundryManifest;
+  try {
+    foundry = JSON.parse(fs.readFileSync(manifestPath, "utf8"));
+  } catch {
+    return null;
+  }
+  if (foundry?.schema_version !== "understudy.trace_foundry.v1") return null;
+  const tasksPath = path.join(dir, "tasks.jsonl");
+  if (!fs.existsSync(tasksPath)) return null;
+
+  const diagnostics: EntryDiagnostics = { skippedLines: 0, droppedRows: 0, foreignRows: 0, foreignFlags: 0 };
+
+  const tasksRead = readJsonl<FoundryTask>(tasksPath);
+  diagnostics.skippedLines += tasksRead.skipped;
+  const tasks: FoundryTask[] = [];
+  for (const t of tasksRead.items) {
+    if (t?.schema_version !== "understudy.benchmark_task.v1" || typeof t.task_id !== "string") {
+      diagnostics.droppedRows += 1;
+      continue;
+    }
+    tasks.push(t);
+  }
+
+  let dag: SourceDag | null = null;
+  try {
+    const parsed = JSON.parse(fs.readFileSync(path.join(dir, "source-dag.json"), "utf8"));
+    if (parsed?.schema_version === "understudy.source_dag.v1") dag = parsed;
+  } catch {
+    // lineage section renders its empty state
+  }
+
+  // Cross-check task ids against the colliding benchmark.json (only use).
+  const crossCheckErrors: string[] = [];
+  try {
+    const colliding = JSON.parse(fs.readFileSync(path.join(dir, "benchmark.json"), "utf8"));
+    const collidingIds = new Set(
+      (Array.isArray(colliding?.tasks) ? colliding.tasks : []).map((t: { task_id?: string }) => t?.task_id),
+    );
+    for (const t of tasks) {
+      if (!collidingIds.has(t.task_id)) crossCheckErrors.push(`${t.task_id} missing from benchmark.json`);
+    }
+    for (const id of collidingIds) {
+      if (typeof id === "string" && !tasks.some((t) => t.task_id === id)) {
+        crossCheckErrors.push(`${id} in benchmark.json but not tasks.jsonl`);
+      }
+    }
+  } catch {
+    // benchmark.json absent/unreadable — nothing to cross-check
+  }
+
+  // Capture index: pointers only (capture_id, pointer, sha256). Bodies stay
+  // on disk in viewer/data/captures/ and are served lazily by /api/captures.
+  const byId = new Map<string, CaptureRef>();
+  for (const t of tasks) {
+    for (const c of t.source?.captures ?? []) {
+      if (c?.capture_id && !byId.has(c.capture_id)) byId.set(c.capture_id, c);
+    }
+  }
+
+  const reviewsRead = readJsonl<BenchmarkReview>(path.join(dir, "reviews.jsonl"));
+  diagnostics.skippedLines += reviewsRead.skipped;
+  const reviews: BenchmarkReview[] = reviewsRead.items.filter(
+    (r) =>
+      r?.schema_version === "understudy.benchmark_review.v1" &&
+      typeof r.task_id === "string" &&
+      REVIEW_DECISIONS.includes(r.decision),
+  );
+  // Superseding: append-only file, newest line per task wins.
+  const latestReviewByTask: Record<string, BenchmarkReview> = {};
+  for (const r of reviews) latestReviewByTask[r.task_id] = r;
+
+  return {
+    kind: "proposed",
+    slug,
+    source,
+    readOnly,
+    dir,
+    manifestPath,
+    foundry,
+    tasks,
+    dag,
+    captureIndex: [...byId.values()],
+    reviews,
+    latestReviewByTask,
+    diagnostics,
+    crossCheckErrors,
+  };
+}
+
+/**
+ * Resolve the on-disk capture body file for one capture_id of a proposed
+ * entry. The foundry names files hash({capture_id, source_sha256}).slice(0,40)
+ * under viewer/data/captures/ — recompute that name from the (lazy) capture
+ * index instead of trusting any client-supplied path.
+ */
+export function captureFilePath(entry: ProposedHubEntry, captureId: string): string | null {
+  const ref = entry.captureIndex.find((c) => c.capture_id === captureId);
+  if (!ref) return null;
+  const fileId = createHash("sha256")
+    .update(JSON.stringify({ capture_id: ref.capture_id, source_sha256: ref.sha256 }))
+    .digest("hex")
+    .slice(0, 40);
+  return path.join(entry.dir, "viewer", "data", "captures", `${fileId}.json`);
+}
+
 export function loadEntryFromDir(
   dir: string,
   source: HubEntry["source"],
   slug: string,
   readOnly: boolean,
 ): AnyHubEntry | null {
+  // Stage dispatch: a foundry output dir is a proposed benchmark even though
+  // it also contains a (colliding) benchmark.json.
+  const proposed = loadProposedEntryFromDir(dir, source, slug, readOnly);
+  if (proposed) return proposed;
+
   const manifestPath = path.join(dir, "benchmark.json");
   const invalid = (errors: string[]): InvalidHubEntry => ({ kind: "invalid", slug, source, dir, manifestPath, errors });
 
@@ -314,8 +446,30 @@ export function getEntry(slug: string): AnyHubEntry | null {
   const root = slugRoots().find((r) => r.prefix === prefix);
   if (!root) return null;
   const dir = path.join(root.root, name);
-  if (!fs.existsSync(path.join(dir, "benchmark.json"))) return null;
+  if (!fs.existsSync(path.join(dir, "benchmark.json")) && !fs.existsSync(path.join(dir, "manifest.json"))) {
+    return null;
+  }
   return loadEntryFromDir(dir, root.source, slug, root.readOnly);
+}
+
+/**
+ * Sidecar task content for a promoted benchmark: tasks*.jsonl files next to
+ * benchmark.json (question, gold contract, fixtures…), keyed by task_id.
+ */
+export function loadTaskSidecars(entry: HubEntry): Record<string, Record<string, unknown>> {
+  const out: Record<string, Record<string, unknown>> = {};
+  let files: string[] = [];
+  try {
+    files = fs.readdirSync(entry.dir).filter((f) => /^tasks.*\.jsonl$/.test(f)).sort();
+  } catch {
+    return out;
+  }
+  for (const f of files) {
+    for (const item of readJsonl<Record<string, unknown>>(path.join(entry.dir, f)).items) {
+      if (typeof item?.task_id === "string" && !(item.task_id in out)) out[item.task_id] = item;
+    }
+  }
+  return out;
 }
 
 /** Raw trace records for an entry, keyed by file. */
