@@ -30,6 +30,38 @@ export function registerBenchmarksCommand(program: Command): void {
     });
 
   benchmarks
+    .command("evolve <dir>")
+    .description(
+      "GEPA-style prompt evolution over run arms: propose suffixes with an authoring model (fed per-class " +
+        "rejection counts + failed obligations from the run journals), queue prompt_overrides runs on train, " +
+        "select the champion on dev, then verify champion-vs-bare ONCE on the sealed holdout. Queue-only: " +
+        "`understudy runs execute --watch` must be running in another terminal",
+    )
+    .requiredOption("--model <id>", "The base model whose system prompt is being evolved (every arm runs this model)")
+    .option("--author-model <id>", "Gateway model that authors suffix proposals (default: resolveDefaultModel)")
+    .option("--generations <n>", "Evolution generations on the train split (1-6)", "2")
+    .option("--variants <n>", "Suffix variants per generation (2-4)", "3")
+    .option("--rollouts <n>", "Rollouts per task per arm", "1")
+    .option("--budget-runs <n>", "Hard cap on runs queued by this invocation (baseline + generations + dev + holdout)")
+    .option("--no-final", "Skip the holdout run; the result is explicitly UNVERIFIED and never a win")
+    .action(async (dir: string, options: { model: string; authorModel?: string; generations: string; variants: string; rollouts: string; budgetRuns?: string; final: boolean }) => {
+      const { evolvePrompts } = await import("../prompt-evolution.js");
+      const result = await evolvePrompts(dir, {
+        model: options.model,
+        authorModel: options.authorModel,
+        generations: Number(options.generations),
+        variants: Number(options.variants),
+        rolloutsPerTask: Number(options.rollouts),
+        budgetRuns: options.budgetRuns === undefined ? undefined : Number(options.budgetRuns),
+        final: options.final,
+      });
+      console.log(JSON.stringify(result, null, 2));
+      if (result.verdict.verdict !== "win") {
+        console.error(`evolve: verdict is "${result.verdict.verdict}" — do not report a win without a CI-positive holdout run`);
+      }
+    });
+
+  benchmarks
     .command("rigor <dir>")
     .description(
       "Generate rigor-report.md in the benchmark dir: ABC checklist (oracle solvability, null/spam trivial-agent " +
