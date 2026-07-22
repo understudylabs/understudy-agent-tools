@@ -23,3 +23,4 @@ docs/skill-comparison-audit.md
 
 # local staging for external snapshots / incoming worktrees — never shipped
 _incoming/
+.trace-viewer-cache*/

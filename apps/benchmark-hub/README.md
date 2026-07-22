@@ -66,6 +66,32 @@ CSS custom properties (`:root` + Tailwind `@theme`) at the top of
 share a single `u-` prefix. Every screen has a designed empty state: one
 sentence of what it is plus one concrete next action in mono (`u-empty`).
 
+## Trace timelines (embedded trace viewer)
+
+Task inspectors (both stages) offer **Open trace timeline** links wherever the
+task has capture bodies on disk (tasks.jsonl `source.captures` →
+`viewer/data/captures/`). The links hit `GET /api/trace-viewer?slug&task`
+(list mode: one timeline per trace id; captures without trace context share
+one) and `…&file=index.html|trace-data.js`, which lazily builds the viewer
+server-side via the CLI's `renderTraceViewer` (`src/trace-viewer.ts`,
+`understudy traces build-viewer`) into
+`<benchmark-dir>/.trace-viewer-cache/<task-key>/<trace-key>/` — cache-hit
+skips the rebuild; artifacts are owner-only (0600/0700) and stay next to the
+benchmark like every other artifact. `file` is a strict allowlist, `trace`
+must match an enumerated id, and cache paths are keyed by hashes, so no
+client value ever becomes a filesystem path; payloads are served only through
+this route, never embedded in an RSC.
+
+The renderer is imported from the repo's `dist/trace-viewer.js` (the hub
+lives in the same repo); if the dist is missing the route answers 503 with a
+"build the CLI first (`npm run build` at the repo root)" state
+(`UNDERSTUDY_CLI_DIST` overrides the path). Template resolution inside the
+module uses `packagePath()`, which resolves relative to `dist/` itself, so no
+patch was needed. The viewer template implements the same theme contract as
+the hub; it has no query/postMessage theme input (it follows the system
+scheme by default), so the route forwards the hub's `theme` cookie by
+injecting `data-theme` on `<html>` at serve time.
+
 ## Run
 
 ```sh

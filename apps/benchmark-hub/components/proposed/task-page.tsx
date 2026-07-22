@@ -4,6 +4,7 @@ import type { FoundryContractItem, ProposedHubEntry } from "@/lib/types";
 import { Badge, ConfidenceChip, DecisionBadge, SplitChip, StageBadge } from "@/components/badges";
 import { EmptyState } from "@/components/empty-state";
 import { CaptureViewer } from "@/components/proposed/capture-viewer";
+import { TraceTimelineLinks } from "@/components/trace-timeline";
 import { LineageRail } from "@/components/proposed/lineage";
 import { ReviewBar } from "@/components/proposed/review-bar";
 
@@ -163,6 +164,9 @@ export function ProposedTaskPage({ entry, taskId }: { entry: ProposedHubEntry; t
           The underlying evidence — parsed request/response per round, with the preserved raw payloads one toggle
           away. Bodies load lazily from the local store.
         </p>
+        <div className="mt-3">
+          <TraceTimelineLinks slug={entry.slug} taskId={task.task_id} />
+        </div>
         <div className="mt-4">
           {rounds.length === 0 ? (
             <EmptyState what="This task references no captures." />
