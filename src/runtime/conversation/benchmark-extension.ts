@@ -1,8 +1,8 @@
 // Benchmark-lab operator tools for the embedded Pi conversation runtime.
 //
 // The desktop app's in-app chat becomes the self-service operator over the
-// same file-based benchmark/experiment spine the 13-tool benchmarks MCP
-// server exposes to external coding agents. Every tool here delegates to
+// same file-based benchmark/experiment spine the benchmarks MCP server
+// exposes to external coding agents. Every tool here delegates to
 // `callBenchmarksTool` — the exact dispatcher behind `understudy benchmarks
 // mcp` — so validation, append-only ledger discipline, and queue-not-execute
 // semantics are shared byte for byte, never forked. Schemas are cloned from
@@ -64,6 +64,12 @@ export const PI_BENCHMARK_SHARED_TOOLS = [
   "list_experiments",
   "create_experiment",
   "update_experiment",
+  // Workload intake: profile a dropped file/dir and compile a labeled dataset
+  // into a PROPOSED (review-pending, never-executing) benchmark. Both are
+  // local-artifact writers, not spend-adjacent — the executor only ever picks
+  // up runs queued through the guarded queue_run above.
+  "profile_workload",
+  "from_dataset",
 ] as const;
 
 /** Pi-only read tool over the shared rigor derivation (not an MCP tool). */

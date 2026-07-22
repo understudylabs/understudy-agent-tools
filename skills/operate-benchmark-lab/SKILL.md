@@ -71,6 +71,14 @@ MCP registration (Claude Code `~/.claude.json` → `mcpServers`):
 
 ## The lifecycle
 
+0. **Intake (dropped workloads).** When the user drops a folder or file into
+   the chat (or names a local path), `profile_workload` scans it locally
+   (payloads unread, nothing leaves the machine) and lists
+   foundry-consumable dataset candidates. Discuss what the workload is,
+   confirm the dataset and label/input columns with the user, then
+   `from_dataset` compiles it into a PROPOSED benchmark (review-pending,
+   `executable: false`) whose tasks land in the review inbox. Never queue a
+   run from an intake — the user reviews the proposal first (step 2).
 1. **Build.** Captured traces → `understudy traces build-benchmark`, then
    `understudy traces author-tasks` (gateway) for legible task definitions.
    The generated environment already ships the fixtures pre/post split

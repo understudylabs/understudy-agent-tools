@@ -35,6 +35,8 @@ const asObject = (value: unknown): Obj =>
 /* ------------------------------------------------------------------ */
 
 export const TRACE_FOUNDRY_SCHEMA = "understudy.trace_foundry.v1";
+/** Sibling foundry manifest for dataset-derived benchmarks (see dataset-foundry.ts SCHEMA DECISION). */
+export const DATASET_FOUNDRY_SCHEMA = "understudy.dataset_foundry.v1";
 export const BENCHMARK_SCHEMA = "understudy.benchmark.v1";
 /** Pre-promotion machine proposal (post schema-name-collision rename). */
 export const BENCHMARK_PROPOSAL_SCHEMA = "understudy.benchmark_proposal.v1";

@@ -1339,6 +1339,25 @@ impl Db {
         Ok(rows.collect::<rusqlite::Result<Vec<_>>>()?)
     }
 
+    /// Startup reconcile: an "active" thread nobody has touched in
+    /// `stale_after_hours` is an abandoned or crashed flow, not live work —
+    /// mark it dismissed in the store instead of leaving the sidebar to hide
+    /// it cosmetically forever. Returns how many threads transitioned.
+    pub fn reconcile_stale_training_threads(&self, stale_after_hours: i64) -> Result<usize> {
+        let conn = self.conn()?;
+        let cutoff = chrono::Utc::now() - chrono::Duration::hours(stale_after_hours.max(1));
+        let changed = conn.execute(
+            "UPDATE training_threads
+             SET status='dismissed', updated_at=?2
+             WHERE status='active' AND updated_at < ?1",
+            rusqlite::params![
+                cutoff.format("%Y-%m-%dT%H:%M:%SZ").to_string(),
+                now_iso()
+            ],
+        )?;
+        Ok(changed)
+    }
+
     /// Archive = mark dismissed. Completed threads keep their audit-trail
     /// status; only active threads transition.
     pub fn archive_training_thread(&self, thread_id: &str) -> Result<bool> {
@@ -1610,6 +1629,33 @@ mod tests {
         let _ = std::fs::remove_dir_all(&dir);
         let db = Db::open(dir.clone()).expect("open temp db");
         (dir, db)
+    }
+
+    #[test]
+    fn reconcile_dismisses_only_stale_active_threads() {
+        let (dir, db) = temp_db("reconcile-stale");
+        db.save_training_thread("fresh", "fresh", "/tmp/a", "{}", "null", "active")
+            .unwrap();
+        db.save_training_thread("stale", "stale", "/tmp/b", "{}", "null", "active")
+            .unwrap();
+        db.save_training_thread("done", "done", "/tmp/c", "{}", "null", "completed")
+            .unwrap();
+        // Backdate the stale-active and the completed thread past the cutoff.
+        let conn = db.conn().unwrap();
+        conn.execute(
+            "UPDATE training_threads SET updated_at='2020-01-01T00:00:00Z' WHERE thread_id IN ('stale','done')",
+            [],
+        )
+        .unwrap();
+        drop(conn);
+
+        assert_eq!(db.reconcile_stale_training_threads(24).unwrap(), 1);
+        assert_eq!(db.training_thread("stale").unwrap().unwrap().status, "dismissed");
+        assert_eq!(db.training_thread("fresh").unwrap().unwrap().status, "active");
+        assert_eq!(db.training_thread("done").unwrap().unwrap().status, "completed");
+        // Idempotent on the second pass.
+        assert_eq!(db.reconcile_stale_training_threads(24).unwrap(), 0);
+        let _ = std::fs::remove_dir_all(&dir);
     }
 
     #[test]

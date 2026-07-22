@@ -44,6 +44,26 @@ export function shouldInspectStructuredDataset(workload) {
 // Compatibility alias for older Desktop lineage checks and integrations.
 export const shouldInspectTrainingRecipe = shouldInspectStructuredDataset;
 
+/**
+ * The chat message that hands a non-inspectable drop (a directory, or a file
+ * with no deterministic training flow) to the in-chat agent, which carries
+ * the benchmark-lab profile_workload / from_dataset tools. The prompt states
+ * the contract explicitly: profile → discuss → user confirms → proposed
+ * benchmark in the review inbox — the agent never queues a run from a drop.
+ */
+export function workloadHandoffPrompt(workload) {
+  const path = String(workload?.source_path ?? "").trim();
+  const kind = workload?.source_type === "directory" ? "folder" : "file";
+  const scanned = Number(workload?.scanned_file_count ?? 0);
+  const scannedNote = scanned > 0 ? ` (${scanned} file${scanned === 1 ? "" : "s"} scanned locally, contents unread)` : "";
+  return (
+    `I dropped the ${kind} \`${path}\` into the chat${scannedNote}. ` +
+    "Profile it with profile_workload and tell me what this workload appears to be and which labeled dataset files you found. " +
+    "Then help me pick the right dataset and columns, and once I confirm, compile it with from_dataset into a proposed benchmark " +
+    "so I can review its tasks and start a benchmark run. Don't queue any runs until I've reviewed the proposal."
+  );
+}
+
 const BUSY_PHASES = new Set(["validating", "compiling", "inspecting", "preparing_dataset"]);
 
 /**
