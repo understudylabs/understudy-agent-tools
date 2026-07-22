@@ -164,6 +164,20 @@ Adoption contract:
   `contamination: "unknown"` with a null `linked_eval` — viewers must render
   both as visible evidence warnings, never as first-class evidence.
 
+## `understudy.benchmark_review.v1`
+
+[`understudy.benchmark_review.v1.schema.json`](understudy.benchmark_review.v1.schema.json)
+is one human review decision against a machine-proposed benchmark task from
+the trace foundry: decision enum (`accept`, `restrict`, `needs_more`,
+`reject`), a free-text note, and a timestamp. Reviews live as one JSON object
+per line in an append-only `reviews.jsonl` file next to the foundry's
+`manifest.json` (`understudy.trace_foundry.v1`); the newest line per
+`task_id` supersedes older ones. `benchmark_id` is the foundry output
+directory slug, not an `understudy.benchmark.v1` id — proposed benchmarks
+have no promoted manifest yet. Viewers (e.g. `apps/benchmark-hub`) render
+the latest decision everywhere the task appears and count review progress
+from it.
+
 ## `understudy.benchmark_flag.v1`
 
 [`understudy.benchmark_flag.v1.schema.json`](understudy.benchmark_flag.v1.schema.json)
