@@ -30,17 +30,41 @@ system, with decisions persisted to disk instead of localStorage.
 
 ## Theme
 
-The app wears the **Understudy design language v2.0 DARK FIELD**:
-black-field/card/stamp-dark tokens and IBM Plex Sans/Mono type from
-`understudy-design/tokens/{primitives,semantic}.json`. The benchmark detail
-page is an OpenRouter-style entity page (header + stat strip + sticky anchor
-rail). All design tokens are centralized in the CSS custom properties
-(`:root` + Tailwind `@theme`) at the top of `app/globals.css`; the component
-classes consume only those variables and share a single `u-` prefix (the
-former `lb-`/`ent-` split is retired). Stamp is the canonical accent, defined
-directly in `:root` — the `?accent` preview switch and the `html[data-accent]`
-indirection are gone. Every screen has a designed empty state: one sentence of
-what it is plus one concrete next action in mono (`u-empty`).
+The app adopts the **trace-viewer theme contract**
+(`skills/ingest-traces/templates/trace-viewer/index.html`, docs in
+`skills/ingest-traces/references/trace-viewer.md`): the public token tier
+(`--background/--foreground/--card/--popover/--primary/--secondary/--muted/
+--accent/--destructive/--border/--input/--ring`, `--viz-series-1..6`, the
+system `--font-sans`/`--font-mono` stacks, the `--font-size-base` type scale,
+and the `--radius`/`--shadow-sm` scale) is copied verbatim into
+`app/globals.css`, so the hub and the embedded trace viewer are literally
+interchangeable surfaces. Both themes come from `light-dark()`; the default
+is **system** (`color-scheme: light dark`) with a header toggle
+(system → light → dark) that persists a `theme` cookie and renders as
+`<html data-theme="light|dark">` — curl-testable with
+`-H 'Cookie: theme=light'`. Interactive/selected states use contract
+**primary blue** (the former stamp-clay accent is retired); the old internal
+names (`--ground/--surface/--ink/--faint/--series-*`) survive only as a thin
+alias layer onto contract tokens during transition.
+
+**Proposed contract extension — state colors.** The contract has no ok/warn
+tokens, so the hub defines `--ok: light-dark(rgb(22 128 61), rgb(63 185 80))`
+and `--warn: light-dark(rgb(154 103 0), rgb(210 153 34))` (AA ≥ 4.5:1 text
+contrast against both `--background` values; validated with the dataviz
+palette validator) and maps `--bad` to the contract's `--destructive`. If the
+contract grows state colors these should be replaced.
+
+**Known divergence (deliberate):** this drops the Understudy design language
+v2.0 black-field/IBM Plex look in favor of the trace-viewer contract, pending
+reconciliation in the design repo. IBM Plex `next/font` wiring is removed;
+system font stacks are the contract's.
+
+The benchmark detail page remains an OpenRouter-style entity page (header +
+stat strip + sticky anchor rail). All design tokens are centralized in the
+CSS custom properties (`:root` + Tailwind `@theme`) at the top of
+`app/globals.css`; the component classes consume only those variables and
+share a single `u-` prefix. Every screen has a designed empty state: one
+sentence of what it is plus one concrete next action in mono (`u-empty`).
 
 ## Run
 

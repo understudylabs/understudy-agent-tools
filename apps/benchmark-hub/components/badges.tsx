@@ -98,7 +98,7 @@ export function RouteBadge({ route }: { route: string | null }) {
   if (!route) return null;
   if (route === "local") return <span className="opn">local</span>;
   return (
-    <span className="opn" style={{ borderColor: "var(--accent)", color: "var(--accent)" }}>
+    <span className="opn" style={{ borderColor: "var(--primary)", color: "var(--primary)" }}>
       {route}
     </span>
   );

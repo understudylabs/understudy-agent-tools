@@ -110,7 +110,7 @@ export function CategoryRadar({
                   x={lx}
                   y={ly + 3}
                   textAnchor={Math.abs(lx - CX) < 8 ? "middle" : lx > CX ? "start" : "end"}
-                  fill="var(--muted)"
+                  fill="var(--muted-foreground)"
                   className="mono"
                   fontSize="10"
                 >
@@ -138,7 +138,7 @@ export function CategoryRadar({
                 {categories.map((c, i) => {
                   const [x, y] = pt(i, R * (s.perCategory[c.category_id] ?? 0));
                   // Offset coincident vertices slightly so overlapping arms both show.
-                  return <circle key={c.category_id} cx={x} cy={y} r={3.5 - si} fill={color} stroke="var(--surface)" strokeWidth="1.5" />;
+                  return <circle key={c.category_id} cx={x} cy={y} r={3.5 - si} fill={color} stroke="var(--surface-opaque)" strokeWidth="1.5" />;
                 })}
               </g>
             );
