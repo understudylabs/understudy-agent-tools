@@ -350,11 +350,10 @@ fn latest_experiment_record(dir: &Path, experiment_id: &str) -> Option<Value> {
     content
         .lines()
         .filter_map(|line| serde_json::from_str::<Value>(line.trim()).ok())
-        .filter(|row| {
+        .rfind(|row| {
             row.get("schema_version").and_then(Value::as_str) == Some(EXPERIMENT_SCHEMA)
                 && row.get("experiment_id").and_then(Value::as_str) == Some(experiment_id)
         })
-        .next_back()
 }
 
 fn record_has_provider_spend_approval(record: &Value) -> bool {
