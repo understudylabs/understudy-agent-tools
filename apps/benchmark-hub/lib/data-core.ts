@@ -261,6 +261,33 @@ export function captureFilePath(entry: ProposedHubEntry, captureId: string): str
   return path.join(entry.dir, "viewer", "data", "captures", `${fileId}.json`);
 }
 
+/**
+ * Compact task-level provenance for the trimmed rail: capture count plus the
+ * distinct workload names and trace ids observed across the task's capture
+ * bodies. Reads the task's own capture files only (typically ≤ a dozen).
+ */
+export function taskProvenance(
+  entry: ProposedHubEntry,
+  task: FoundryTask,
+): { captureCount: number; workloads: string[]; traceIds: string[] } {
+  const workloads = new Set<string>();
+  const traceIds = new Set<string>();
+  const captures = task.source?.captures ?? [];
+  for (const ref of captures) {
+    const file = captureFilePath(entry, ref.capture_id);
+    if (!file) continue;
+    try {
+      const body = JSON.parse(fs.readFileSync(file, "utf8")) as Record<string, unknown>;
+      const scope = body.scope as Record<string, unknown> | undefined;
+      if (typeof scope?.workload_name === "string" && scope.workload_name) workloads.add(scope.workload_name);
+      if (typeof body.trace_id === "string" && body.trace_id) traceIds.add(body.trace_id);
+    } catch {
+      // pointer-only capture — nothing to add
+    }
+  }
+  return { captureCount: captures.length, workloads: [...workloads].sort(), traceIds: [...traceIds].sort() };
+}
+
 export function loadEntryFromDir(
   dir: string,
   source: HubEntry["source"],

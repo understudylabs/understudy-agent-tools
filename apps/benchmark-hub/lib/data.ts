@@ -14,4 +14,5 @@ export {
   loadProposedEntryFromDir,
   loadTaskSidecars,
   loadTraceRecords,
+  taskProvenance,
 } from "./data-core";

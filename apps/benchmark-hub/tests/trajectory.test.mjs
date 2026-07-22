@@ -19,6 +19,7 @@ import {
   scoreColor,
 } from "./.build/lib/trajectory-core.js";
 import { GET as capturesGET } from "./.build/app/api/captures/route.js";
+import { getEntry, taskProvenance } from "./.build/lib/data-core.js";
 import { GET as rolloutsGET } from "./.build/app/api/rollouts/route.js";
 
 const tmp = fs.mkdtempSync(path.join(os.tmpdir(), "bench-hub-trajectory-"));
@@ -235,6 +236,17 @@ describe("GET /api/captures meta mode", () => {
       assert.equal(typeof e.type, "string");
       assert.ok("common_prefix_messages" in e);
     }
+  });
+});
+
+describe("taskProvenance (compact rail disclosure)", () => {
+  it("counts captures and collects distinct workloads/trace ids from the task's bodies", () => {
+    const entry = getEntry("data--trajectory-demo");
+    assert.equal(entry.kind, "proposed");
+    const prov = taskProvenance(entry, entry.tasks[0]);
+    assert.ok(prov.captureCount >= 1);
+    assert.ok(Array.isArray(prov.workloads));
+    assert.ok(Array.isArray(prov.traceIds));
   });
 });
 
