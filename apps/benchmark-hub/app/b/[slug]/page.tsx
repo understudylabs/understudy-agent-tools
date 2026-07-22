@@ -9,7 +9,7 @@ import {
   formatScore,
   hasSplits,
 } from "@/lib/scores";
-import { OriginBadge, SourceBadge, Badge } from "@/components/badges";
+import { OriginBadge, SourceBadge, SplitChip, StageBadge, Badge } from "@/components/badges";
 import { FlagForm } from "@/components/flag-form";
 import { FlagBadge } from "@/components/badges";
 import { Leaderboard } from "@/components/leaderboard";
@@ -18,6 +18,7 @@ import { CategoryRadar } from "@/components/radar";
 import { VersionTimeline } from "@/components/version-timeline";
 import { AnchorRail } from "@/components/anchor-rail";
 import { CopySlug } from "@/components/copy-slug";
+import { ProposedBenchmarkPage } from "@/components/proposed/benchmark-page";
 
 export const dynamic = "force-dynamic";
 
@@ -44,7 +45,7 @@ function Section({
   children: React.ReactNode;
 }) {
   return (
-    <section className="ent-sec" id={id}>
+    <section className="u-sec" id={id}>
       <h2>
         {title}
         {scope && (
@@ -69,30 +70,35 @@ export default async function BenchmarkDetail({ params }: { params: Promise<{ sl
   const { slug } = await params;
   const entry = getEntry(slug);
   if (!entry) notFound();
+  if (entry.kind === "proposed") return <ProposedBenchmarkPage entry={entry} />;
   if (entry.kind === "invalid") {
     return (
-      <div className="ent-page">
-        <header className="ent-head">
-          <p className="lb-eyebrow" style={{ marginBottom: 10 }}>
+      <div className="u-page">
+        <header className="u-head">
+          <p className="u-eyebrow" style={{ marginBottom: 10 }}>
             <Link href="/">← All benchmarks</Link>
           </p>
-          <div className="ent-title-row">
+          <div className="u-title-row">
             <h1>Invalid manifest</h1>
             <Badge className="border-bad/40 text-bad">invalid</Badge>
           </div>
-          <div className="ent-id">
+          <div className="u-id">
             <span>{entry.manifestPath}</span>
           </div>
-          <p className="ent-desc">
+          <p className="u-desc">
             This directory has a benchmark.json that does not validate against understudy.benchmark.v1. Fix the
             manifest to make the benchmark appear here.
           </p>
           <div className="flex flex-col gap-0.5">
             {entry.errors.map((err, i) => (
-              <span key={i} className="lb-foot-note !mt-0" style={{ color: "var(--bad)" }}>
+              <span key={i} className="u-foot-note !mt-0" style={{ color: "var(--bad)" }}>
                 {"// " + err}
               </span>
             ))}
+          </div>
+          <div className="u-empty" style={{ borderColor: "var(--bad-border)" }}>
+            <p className="what">This directory stays visible (never silently hidden) until its manifest validates.</p>
+            <span className="next">{"fix " + entry.manifestPath + " against schemas/understudy.benchmark.v1.schema.json"}</span>
           </div>
         </header>
       </div>
@@ -144,55 +150,56 @@ export default async function BenchmarkDetail({ params }: { params: Promise<{ sl
   );
 
   return (
-    <div className="ent-page">
+    <div className="u-page">
       {/* Entity header — one subject, quiet chrome */}
-      <header className="ent-head">
-        <p className="lb-eyebrow" style={{ marginBottom: 10 }}>
+      <header className="u-head">
+        <p className="u-eyebrow" style={{ marginBottom: 10 }}>
           <Link href="/">← All benchmarks</Link>
         </p>
-        <div className="ent-title-row">
+        <div className="u-title-row">
           <h1>{m.name ?? m.benchmark_id}</h1>
           <OriginBadge origin={m.provenance.origin} />
+          <StageBadge stage="promoted" />
           <SourceBadge entry={entry} />
           <FlagBadge count={openFlags.length} />
-          <div className="ent-flag-slot">
+          <div className="u-flag-slot">
             <FlagForm slug={entry.slug} taskId={null} readOnly={entry.readOnly} />
           </div>
         </div>
-        <div className="ent-id">
+        <div className="u-id">
           <span>{m.benchmark_id}</span>
           <CopySlug text={m.benchmark_id} />
         </div>
-        <p className="ent-desc">{m.description}</p>
+        <p className="u-desc">{m.description}</p>
 
         {/* Stat strip — absorbs the old warning banners */}
         <span className="mono" style={{ fontSize: 10, color: "var(--muted)" }}>
           {(stripSplit === "holdout" ? "holdout split" : "all splits") + " · flagged excluded · best arm per stat"}
         </span>
-        <div className="ent-stats">
-          <div className="ent-stat">
+        <div className="u-stats">
+          <div className="u-stat">
             <span className="lab">Strict score</span>
             <span className="val">{formatScore(bestArm?.overall)}</span>
             <span className="sub">{bestArm ? bestArm.model : "no scored arms"}</span>
           </div>
-          <div className="ent-stat">
+          <div className="u-stat">
             <span className="lab">Cost p/ success</span>
             <span className="val">
               {bestCost ? ((bestCost.costPerSuccess as number) < 1e-6 ? "≈$0" : formatCost(bestCost.costPerSuccess)) : "—"}
             </span>
             <span className="sub">{bestCost ? `best: ${bestCost.model}` : "no cost data"}</span>
           </div>
-          <div className="ent-stat">
+          <div className="u-stat">
             <span className="lab">P50 latency</span>
             <span className="val">{formatLatency(bestP50?.p50LatencyMs)}</span>
             <span className="sub">{bestP50 ? `best: ${bestP50.model}` : "no latency data"}</span>
           </div>
-          <div className="ent-stat">
+          <div className="u-stat">
             <span className="lab">Tasks</span>
             <span className="val">{m.tasks.length}</span>
             <span className="sub">{splitsSummary || "no tasks"}</span>
           </div>
-          <div className="ent-stat">
+          <div className="u-stat">
             <span className="lab">Contamination</span>
             <span className="val" style={{ color: CONTAM_COLOR[contamination] ?? "var(--warn-ink)" }}>
               {contamination}
@@ -202,12 +209,12 @@ export default async function BenchmarkDetail({ params }: { params: Promise<{ sl
           </div>
         </div>
         {benchmarkFlagged && (
-          <span className="lb-foot-note" style={{ color: "var(--bad)" }}>
+          <span className="u-foot-note" style={{ color: "var(--bad)" }}>
             {"// this benchmark has an open whole-benchmark flag"}
           </span>
         )}
         {otherWarnings.map((w) => (
-          <span key={w.kind} className="lb-foot-note !mt-0" style={{ color: "var(--warn-ink)" }}>
+          <span key={w.kind} className="u-foot-note !mt-0" style={{ color: "var(--warn-ink)" }}>
             {"// " + w.label + " — " + w.detail}
           </span>
         ))}
@@ -215,7 +222,7 @@ export default async function BenchmarkDetail({ params }: { params: Promise<{ sl
           entry.diagnostics.droppedRows > 0 ||
           entry.diagnostics.foreignRows > 0 ||
           entry.diagnostics.foreignFlags > 0) && (
-          <span className="lb-foot-note">
+          <span className="u-foot-note">
             {"// loader diagnostics: " +
               entry.diagnostics.skippedLines +
               " malformed jsonl lines skipped · " +
@@ -230,7 +237,7 @@ export default async function BenchmarkDetail({ params }: { params: Promise<{ sl
       </header>
 
       {/* Anchor rail + sections */}
-      <div className="ent-layout">
+      <div className="u-layout">
         <AnchorRail sections={RAIL} />
         <div>
           <Section
@@ -270,7 +277,7 @@ export default async function BenchmarkDetail({ params }: { params: Promise<{ sl
           >
             <div className="mt-5 grid grid-cols-1 gap-3 md:grid-cols-2">
               {m.taxonomy.map((c) => (
-                <div key={c.category_id} className="lb-card">
+                <div key={c.category_id} className="u-card">
                   <div className="flex items-center gap-2">
                     <span className="text-sm font-bold">{c.name ?? c.category_id}</span>
                     {c.difficulty && <Badge>{c.difficulty}</Badge>}
@@ -299,8 +306,8 @@ export default async function BenchmarkDetail({ params }: { params: Promise<{ sl
             title="Tasks"
             explainer="Every task in the manifest with its category, genesis, split, and gold. Click a task to inspect its eval rows and trace branches."
           >
-            <div className="lb-tbl-scroll mt-5">
-              <table className="lb-tbl w-full">
+            <div className="u-tbl-scroll mt-5">
+              <table className="u-tbl w-full">
                 <thead>
                   <tr>
                     {["task_id", "category", "genesis", "split", "gold", "flags"].map((h) => (
@@ -320,7 +327,7 @@ export default async function BenchmarkDetail({ params }: { params: Promise<{ sl
                         </td>
                         <td className="l">{t.category_id}</td>
                         <td className="l mono text-xs">{t.genesis}</td>
-                        <td className="l mono text-xs">{t.split}</td>
+                        <td className="l"><SplitChip split={t.split} /></td>
                         <td className="l mono text-xs">
                           {t.gold ? t.gold.kind : <span className="text-warn">none (unscored)</span>}
                         </td>

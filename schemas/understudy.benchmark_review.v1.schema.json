@@ -1,0 +1,37 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://understudylabs.com/schemas/understudy.benchmark_review.v1.schema.json",
+  "title": "understudy.benchmark_review.v1",
+  "description": "One human review decision against a machine-proposed benchmark task from the trace foundry. Stored as one JSON object per line in a reviews.jsonl file next to the foundry's manifest.json (understudy.trace_foundry.v1). The file is append-only: the newest line for a task_id supersedes older ones. Producers may add extra fields; consumers must ignore fields they do not understand.",
+  "type": "object",
+  "required": ["schema_version", "benchmark_id", "task_id", "decision", "created_at"],
+  "additionalProperties": true,
+  "properties": {
+    "schema_version": {
+      "const": "understudy.benchmark_review.v1",
+      "description": "Version stamp for this review shape."
+    },
+    "benchmark_id": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Slug of the foundry output directory the reviewed task belongs to (the directory basename). Note: NOT an understudy.benchmark.v1 benchmark_id — proposed benchmarks have no promoted manifest yet."
+    },
+    "task_id": {
+      "type": "string",
+      "minLength": 1,
+      "description": "task_id of the understudy.benchmark_task.v1 line in tasks.jsonl this decision judges."
+    },
+    "decision": {
+      "enum": ["accept", "restrict", "needs_more", "reject"],
+      "description": "Human final judgment: accept (promote as-is), restrict (promote with a narrowed contract), needs_more (more evidence required), reject (never promote)."
+    },
+    "note": {
+      "type": ["string", "null"],
+      "description": "Free-text rationale from the reviewer."
+    },
+    "created_at": {
+      "type": "string",
+      "description": "ISO-8601 timestamp the decision was recorded."
+    }
+  }
+}

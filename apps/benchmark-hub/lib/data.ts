@@ -5,4 +5,13 @@ import "server-only";
  * data-core (no "server-only" import) so the node:test harness can import it
  * directly; app code should import from here.
  */
-export { computeWarnings, getEntry, loadEntryFromDir, loadHub, loadTraceRecords } from "./data-core";
+export {
+  captureFilePath,
+  computeWarnings,
+  getEntry,
+  loadEntryFromDir,
+  loadHub,
+  loadProposedEntryFromDir,
+  loadTaskSidecars,
+  loadTraceRecords,
+} from "./data-core";

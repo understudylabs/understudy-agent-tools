@@ -1,0 +1,116 @@
+{
+  "schema_version": "understudy.normalized_capture.v1",
+  "capture_id": "evt-b-round-1",
+  "captured_at": "2026-07-18T10:30:00.000Z",
+  "source": {
+    "pointer": "captures.jsonl#L6",
+    "sha256": "076530acb31bc5178ab0ea81d64548fd10e58014d2b60c10dbba9e6394a76f59"
+  },
+  "scope": {
+    "org_id": null,
+    "project_id": null,
+    "workload_id": null,
+    "workload_name": "synthetic-event-triage"
+  },
+  "routing": {
+    "provider": "synthetic",
+    "requested_model": "synthetic-triage-model",
+    "upstream_model": null
+  },
+  "transport": {
+    "endpoint": "/v1/messages",
+    "status_code": 200,
+    "latency_ms": 420
+  },
+  "request": {
+    "system": "You triage synthetic platform events. Look up the account, open a ticket, and page on-call for P0s.",
+    "messages": [
+      {
+        "role": "user",
+        "content": "{\"source\":\"billing\",\"type\":\"invoice_question\",\"account_id\":\"acct_112\",\"detail\":\"customer asks why invoice doubled (case 1)\"}"
+      }
+    ],
+    "tools": [
+      {
+        "name": "lookup-account",
+        "description": "Fetch a synthetic account record",
+        "input_schema": {
+          "type": "object",
+          "properties": {
+            "account_id": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      {
+        "name": "create-ticket",
+        "description": "Open a synthetic triage ticket",
+        "input_schema": {
+          "type": "object",
+          "properties": {
+            "account_id": {
+              "type": "string"
+            },
+            "priority": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      {
+        "name": "notify-oncall",
+        "description": "Page the synthetic on-call rotation",
+        "input_schema": {
+          "type": "object",
+          "properties": {
+            "ticket_id": {
+              "type": "string"
+            }
+          }
+        }
+      }
+    ],
+    "settings": {
+      "model": "synthetic-triage-model",
+      "max_tokens": 1024
+    }
+  },
+  "response": {
+    "encoding": "json",
+    "body": {
+      "content": [
+        {
+          "type": "tool_use",
+          "id": "call-b1",
+          "name": "lookup-account",
+          "input": {
+            "account_id": "acct_112"
+          }
+        }
+      ],
+      "stop_reason": "tool_use"
+    },
+    "tool_calls": [
+      {
+        "id": "call-b1",
+        "name": "lookup-account",
+        "arguments": {
+          "account_id": "acct_112"
+        }
+      }
+    ],
+    "stop_reason": "tool_use"
+  },
+  "raw": {
+    "request": "{\"model\":\"synthetic-triage-model\",\"max_tokens\":1024,\"system\":\"You triage synthetic platform events. Look up the account, open a ticket, and page on-call for P0s.\",\"messages\":[{\"role\":\"user\",\"content\":\"{\\\"source\\\":\\\"billing\\\",\\\"type\\\":\\\"invoice_question\\\",\\\"account_id\\\":\\\"acct_112\\\",\\\"detail\\\":\\\"customer asks why invoice doubled (case 1)\\\"}\"}],\"tools\":[{\"name\":\"lookup-account\",\"description\":\"Fetch a synthetic account record\",\"input_schema\":{\"type\":\"object\",\"properties\":{\"account_id\":{\"type\":\"string\"}}}},{\"name\":\"create-ticket\",\"description\":\"Open a synthetic triage ticket\",\"input_schema\":{\"type\":\"object\",\"properties\":{\"account_id\":{\"type\":\"string\"},\"priority\":{\"type\":\"string\"}}}},{\"name\":\"notify-oncall\",\"description\":\"Page the synthetic on-call rotation\",\"input_schema\":{\"type\":\"object\",\"properties\":{\"ticket_id\":{\"type\":\"string\"}}}}]}",
+    "response": "{\"content\":[{\"type\":\"tool_use\",\"id\":\"call-b1\",\"name\":\"lookup-account\",\"input\":{\"account_id\":\"acct_112\"}}],\"stop_reason\":\"tool_use\"}"
+  },
+  "fingerprints": {
+    "group": "e689ddcde7c9ac6eb34efec2a179fe322322b686d0245a82f5e14db758bba3e6",
+    "messages": [
+      "75993e252dd6cdd29282ec3ee4a00efb176f53ddc80ba8cf3939f5a2e60902a4"
+    ],
+    "sequence": "19397cc6175fc831ce243ec93401d19a9e286279a2ac6c34c27167997418fc36"
+  }
+}

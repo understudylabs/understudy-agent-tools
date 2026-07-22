@@ -106,7 +106,7 @@ export function Leaderboard({
   );
 
   const chip = (label: string, on: boolean, toggle: () => void) => (
-    <button className="lb-chip" aria-pressed={on} onClick={toggle}>
+    <button className="u-chip" aria-pressed={on} onClick={toggle}>
       {label}
     </button>
   );
@@ -117,8 +117,8 @@ export function Leaderboard({
   return (
     <div>
       {/* Controls: search + toggle chips + split select */}
-      <div className="lb-controls">
-        <div className="lb-search">
+      <div className="u-controls">
+        <div className="u-search">
           <input
             type="search"
             placeholder="Search models…"
@@ -131,7 +131,7 @@ export function Leaderboard({
         {chip("Show route", showRoute, () => setShowRoute((v) => !v))}
         {chip(`Exclude flagged (${flaggedTaskIds.length})`, excludeFlagged, () => setExcludeFlagged((v) => !v))}
         <select
-          className="lb-org-select"
+          className="u-org-select"
           value={split}
           onChange={(e) => setSplit(e.target.value as TaskSplit | "all")}
           aria-label="Split"
@@ -144,18 +144,31 @@ export function Leaderboard({
         </select>
       </div>
       {splitsExist && split !== "holdout" && (
-        <div className="lb-warn mb-3 text-xs">
+        <div className="u-warn mb-3 text-xs">
           <span className="lab">Non-holdout view</span> — numbers may be optimizer-touched.
         </div>
       )}
       {summaries.length === 0 ? (
-        <div className="lb-state">
-          No eval rows match this filter. Drop rows-*.jsonl (understudy.eval_result.v1) next to benchmark.json, or
-          widen the filters.
-        </div>
+        rows.length === 0 ? (
+          <div className="u-empty">
+            <p className="what">No runs yet — nothing has been evaluated against this benchmark.</p>
+            <span className="next">
+              {"run your harness and drop understudy.eval_result.v1 lines into rows-*.jsonl next to benchmark.json\n" +
+                "e.g. node normalize-and-project.mjs <results.jsonl> <model> <run-id>  # see the demo dir's DOGFOOD.md"}
+            </span>
+          </div>
+        ) : (
+          <div className="u-empty">
+            <p className="what">
+              {rows.length} eval row{rows.length === 1 ? "" : "s"} exist, but none match the current filter — the
+              leaderboard defaults to the frozen holdout split so optimizer-touched numbers never headline.
+            </p>
+            <span className="next">split: all  # or tag rows with split: &quot;holdout&quot;</span>
+          </div>
+        )
       ) : (
-        <div className="lb-tbl-scroll">
-          <table className="lb-tbl w-full">
+        <div className="u-tbl-scroll">
+          <table className="u-tbl w-full">
             <thead>
               <tr>
                 <th aria-label="expand" />
@@ -172,16 +185,16 @@ export function Leaderboard({
                 return (
                   <Fragment key={s.model}>
                     <tr className={cn("row", isOpen && "open")} onClick={() => toggleExpanded(s.model)} aria-expanded={isOpen}>
-                      <td className="lb-rank">
-                        <span className="lb-exp">▸</span>
+                      <td className="u-rank">
+                        <span className="u-exp">▸</span>
                       </td>
                       <td className="l">
-                        <span className="lb-mdl">
+                        <span className="u-mdl">
                           <span className="nm">{s.model}</span>
                           {showRoute && <RouteBadge route={s.route} />}
                         </span>
                       </td>
-                      <td className="lb-ovr" style={shade("overall", s.model)}>
+                      <td className="u-ovr" style={shade("overall", s.model)}>
                         {formatScore(s.overall)}
                       </td>
                       <td className={s.costPerSuccess == null ? "na" : undefined} style={shade("costPerSuccess", s.model)}>
@@ -193,22 +206,22 @@ export function Leaderboard({
                       <td>{s.taskCount}</td>
                     </tr>
                     {isOpen && (
-                      <tr className="lb-detail">
+                      <tr className="u-detail">
                         <td colSpan={nCols}>
-                          <div className="lb-detail-in">
-                            <div className="lb-det-grid">
+                          <div className="u-detail-in">
+                            <div className="u-det-grid">
                               {/* Run quality — moved out of the main columns */}
-                              <div className="lb-det-cat">
+                              <div className="u-det-cat">
                                 <div className="h">Run quality</div>
-                                <div className="lb-subt">
+                                <div className="u-subt">
                                   <span className="n">scored rows</span>
                                   <span className="v">{s.scoredCount}</span>
                                 </div>
-                                <div className="lb-subt">
+                                <div className="u-subt">
                                   <span className="n">unscored</span>
                                   <span className="v">{s.unscoredCount}</span>
                                 </div>
-                                <div className="lb-subt">
+                                <div className="u-subt">
                                   <span className="n">errors</span>
                                   <span className="v" style={s.errorCount > 0 ? { color: "var(--bad)" } : undefined}>
                                     {s.errorCount}
@@ -218,17 +231,17 @@ export function Leaderboard({
                               {manifest.taxonomy.map((c) => {
                                 const d = s.categoryDetail[c.category_id];
                                 return (
-                                  <div key={c.category_id} className="lb-det-cat">
+                                  <div key={c.category_id} className="u-det-cat">
                                     <div className="h">{c.name ?? c.category_id}</div>
-                                    <div className="lb-subt">
+                                    <div className="u-subt">
                                       <span className="n">strict ({manifest.verifier.strict_metric})</span>
                                       <span className="v">{formatScore(d?.strict)}</span>
                                     </div>
-                                    <div className="lb-subt">
+                                    <div className="u-subt">
                                       <span className="n">dense ({denseMetric ?? "n/a"})</span>
                                       <span className="v">{denseMetric ? formatScore(d?.dense) : "—"}</span>
                                     </div>
-                                    <div className="lb-subt">
+                                    <div className="u-subt">
                                       <span className="n">rows</span>
                                       <span className="v">{d?.rowCount ?? 0}</span>
                                     </div>
@@ -249,12 +262,12 @@ export function Leaderboard({
       )}
       {/* Legibility footnotes: state the formulas in force. */}
       <div className="flex flex-col gap-0.5">
-        <span className="lb-foot-note">{"// overall = mean strict score (" + manifest.verifier.strict_metric + ") over scored rows (status ok, score present)"}</span>
-        <span className="lb-foot-note !mt-0">{"// cost p/ successful task = Σ cost ÷ scored rows ÷ mean strict score; blank when rows carry no cost or score is 0"}</span>
-        <span className="lb-foot-note !mt-0">{"// dense metric: " + (denseMetric ?? "none declared in manifest")}</span>
-        <span className="lb-foot-note !mt-0">{"// shading marks the top 3 per column (score: higher better; cost + latency: lower better)"}</span>
-        <span className="lb-foot-note !mt-0">{"// per-category scores, unscored counts, and errors live in the row expansion (▸)"}</span>
-        <span className="lb-foot-note !mt-0">
+        <span className="u-foot-note">{"// overall = mean strict score (" + manifest.verifier.strict_metric + ") over scored rows (status ok, score present)"}</span>
+        <span className="u-foot-note !mt-0">{"// cost p/ successful task = Σ cost ÷ scored rows ÷ mean strict score; blank when rows carry no cost or score is 0"}</span>
+        <span className="u-foot-note !mt-0">{"// dense metric: " + (denseMetric ?? "none declared in manifest")}</span>
+        <span className="u-foot-note !mt-0">{"// shading marks the top 3 per column (score: higher better; cost + latency: lower better)"}</span>
+        <span className="u-foot-note !mt-0">{"// per-category scores, unscored counts, and errors live in the row expansion (▸)"}</span>
+        <span className="u-foot-note !mt-0">
           {excludeFlagged
             ? `// flagged tasks are EXCLUDED right now (${flaggedTaskIds.length} open task flags)`
             : `// flagged tasks are INCLUDED right now (${flaggedTaskIds.length} open task flags)`}

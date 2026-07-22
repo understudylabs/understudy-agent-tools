@@ -1,0 +1,174 @@
+{
+  "schema_version": "understudy.normalized_capture.v1",
+  "capture_id": "evt-a-round-2",
+  "captured_at": "2026-07-18T09:00:04.000Z",
+  "source": {
+    "pointer": "captures.jsonl#L2",
+    "sha256": "09314d04afd9b007363e7ddff02593467e65029f9896c2a7a0d143bdff83f144"
+  },
+  "scope": {
+    "org_id": null,
+    "project_id": null,
+    "workload_id": null,
+    "workload_name": "synthetic-event-triage"
+  },
+  "routing": {
+    "provider": "synthetic",
+    "requested_model": "synthetic-triage-model",
+    "upstream_model": null
+  },
+  "transport": {
+    "endpoint": "/v1/messages",
+    "status_code": 200,
+    "latency_ms": 420
+  },
+  "request": {
+    "system": "You triage synthetic platform events. Look up the account, open a ticket, and page on-call for P0s.",
+    "messages": [
+      {
+        "role": "user",
+        "content": "{\"source\":\"auth\",\"type\":\"login_anomaly\",\"account_id\":\"acct_401\",\"detail\":\"3 logins from new ASN in 10 minutes\"}"
+      },
+      {
+        "role": "assistant",
+        "content": [
+          {
+            "type": "tool_use",
+            "id": "call-a1",
+            "name": "lookup-account",
+            "input": {
+              "account_id": "acct_401"
+            }
+          }
+        ]
+      },
+      {
+        "role": "user",
+        "content": [
+          {
+            "type": "tool_result",
+            "tool_use_id": "call-a1",
+            "content": "{\"plan\":\"enterprise\",\"seats\":480,\"recent_incidents\":1}"
+          }
+        ]
+      }
+    ],
+    "tools": [
+      {
+        "name": "lookup-account",
+        "description": "Fetch a synthetic account record",
+        "input_schema": {
+          "type": "object",
+          "properties": {
+            "account_id": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      {
+        "name": "create-ticket",
+        "description": "Open a synthetic triage ticket",
+        "input_schema": {
+          "type": "object",
+          "properties": {
+            "account_id": {
+              "type": "string"
+            },
+            "priority": {
+              "type": "string"
+            }
+          }
+        }
+      },
+      {
+        "name": "notify-oncall",
+        "description": "Page the synthetic on-call rotation",
+        "input_schema": {
+          "type": "object",
+          "properties": {
+            "ticket_id": {
+              "type": "string"
+            }
+          }
+        }
+      }
+    ],
+    "settings": {
+      "model": "synthetic-triage-model",
+      "max_tokens": 1024
+    }
+  },
+  "response": {
+    "encoding": "sse",
+    "events": [
+      {
+        "type": "content_block_start",
+        "index": 0,
+        "content_block": {
+          "type": "text",
+          "text": ""
+        }
+      },
+      {
+        "type": "content_block_delta",
+        "index": 0,
+        "delta": {
+          "type": "text_delta",
+          "text": "Enterprise account with a prior incident — "
+        }
+      },
+      {
+        "type": "content_block_delta",
+        "index": 0,
+        "delta": {
+          "type": "text_delta",
+          "text": "this is a P0. Opening a ticket."
+        }
+      },
+      {
+        "type": "content_block_start",
+        "index": 1,
+        "content_block": {
+          "type": "tool_use",
+          "id": "call-a2",
+          "name": "create-ticket",
+          "input": {
+            "account_id": "acct_401",
+            "priority": "p0"
+          }
+        }
+      },
+      {
+        "type": "message_delta",
+        "delta": {
+          "stop_reason": "tool_use"
+        }
+      }
+    ],
+    "tool_calls": [
+      {
+        "id": "call-a2",
+        "name": "create-ticket",
+        "arguments": {
+          "account_id": "acct_401",
+          "priority": "p0"
+        }
+      }
+    ],
+    "stop_reason": "tool_use"
+  },
+  "raw": {
+    "request": "{\"model\":\"synthetic-triage-model\",\"max_tokens\":1024,\"system\":\"You triage synthetic platform events. Look up the account, open a ticket, and page on-call for P0s.\",\"messages\":[{\"role\":\"user\",\"content\":\"{\\\"source\\\":\\\"auth\\\",\\\"type\\\":\\\"login_anomaly\\\",\\\"account_id\\\":\\\"acct_401\\\",\\\"detail\\\":\\\"3 logins from new ASN in 10 minutes\\\"}\"},{\"role\":\"assistant\",\"content\":[{\"type\":\"tool_use\",\"id\":\"call-a1\",\"name\":\"lookup-account\",\"input\":{\"account_id\":\"acct_401\"}}]},{\"role\":\"user\",\"content\":[{\"type\":\"tool_result\",\"tool_use_id\":\"call-a1\",\"content\":\"{\\\"plan\\\":\\\"enterprise\\\",\\\"seats\\\":480,\\\"recent_incidents\\\":1}\"}]}],\"tools\":[{\"name\":\"lookup-account\",\"description\":\"Fetch a synthetic account record\",\"input_schema\":{\"type\":\"object\",\"properties\":{\"account_id\":{\"type\":\"string\"}}}},{\"name\":\"create-ticket\",\"description\":\"Open a synthetic triage ticket\",\"input_schema\":{\"type\":\"object\",\"properties\":{\"account_id\":{\"type\":\"string\"},\"priority\":{\"type\":\"string\"}}}},{\"name\":\"notify-oncall\",\"description\":\"Page the synthetic on-call rotation\",\"input_schema\":{\"type\":\"object\",\"properties\":{\"ticket_id\":{\"type\":\"string\"}}}}]}",
+    "response": "data: {\"type\":\"content_block_start\",\"index\":0,\"content_block\":{\"type\":\"text\",\"text\":\"\"}}\n\ndata: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"text_delta\",\"text\":\"Enterprise account with a prior incident — \"}}\n\ndata: {\"type\":\"content_block_delta\",\"index\":0,\"delta\":{\"type\":\"text_delta\",\"text\":\"this is a P0. Opening a ticket.\"}}\n\ndata: {\"type\":\"content_block_start\",\"index\":1,\"content_block\":{\"type\":\"tool_use\",\"id\":\"call-a2\",\"name\":\"create-ticket\",\"input\":{\"account_id\":\"acct_401\",\"priority\":\"p0\"}}}\n\ndata: {\"type\":\"message_delta\",\"delta\":{\"stop_reason\":\"tool_use\"}}\n\ndata: [DONE]\n"
+  },
+  "fingerprints": {
+    "group": "755946630f9a0770d628fb9d210857d8de768a0d118d25328b0a599857a34e37",
+    "messages": [
+      "4d26b33092fd68ed53521b03b3700caf1469f7af254e8206d57762fb73538389",
+      "00a2adc0da4a7b6e7edc4ee23f57251eca78c088117f0639d11992a09f3d1955",
+      "ec01ee942f77f2ff9f63d8e52bf23ca1a2d5ee6cb60f0bd38015f8768fca1079"
+    ],
+    "sequence": "ecd17bd85e75e81c1b2695af6bcf60dd072d65fb23f24d1a4ba73110d128185b"
+  }
+}

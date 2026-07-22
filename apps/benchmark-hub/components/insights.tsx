@@ -52,15 +52,15 @@ export function InsightsSection({
   const [scope, setScope] = useState<string | null>(null);
   return (
     <div>
-      <div className="lb-cats" style={{ marginTop: 18 }}>
-        <span className="lb-cats-label">Cost view</span>
-        <button className="lb-chip" aria-pressed={scope == null} onClick={() => setScope(null)}>
+      <div className="u-cats" style={{ marginTop: 18 }}>
+        <span className="u-cats-label">Cost view</span>
+        <button className="u-chip" aria-pressed={scope == null} onClick={() => setScope(null)}>
           Overall
         </button>
         {manifest.taxonomy.map((c) => (
           <button
             key={c.category_id}
-            className="lb-chip"
+            className="u-chip"
             aria-pressed={scope === c.category_id}
             onClick={() => setScope((cur) => (cur === c.category_id ? null : c.category_id))}
           >
@@ -68,7 +68,7 @@ export function InsightsSection({
           </button>
         ))}
       </div>
-      <div className="lb-ins-grid" style={{ marginTop: 0 }}>
+      <div className="u-ins-grid" style={{ marginTop: 0 }}>
         <QualityCostScatter summaries={summaries} scope={scope} />
         <CostRanked summaries={summaries} />
       </div>
@@ -118,9 +118,9 @@ export function QualityCostScatter({
 
   if (points.length === 0) {
     return (
-      <div className="lb-card">
+      <div className="u-card">
         <h3>Quality vs. cost</h3>
-        <div className="lb-state">
+        <div className="u-state">
           No arms carry {xMode === "cost" ? "cost" : "latency"} data yet — rows need a numeric{" "}
           <code className="mono">{xMode === "cost" ? "cost" : "latency_ms"}</code> field.
         </div>
@@ -191,10 +191,10 @@ export function QualityCostScatter({
   }
 
   return (
-    <div className="lb-card">
-      <div className="lb-card-tools" style={{ float: "right", display: "flex", gap: 6 }}>
+    <div className="u-card">
+      <div className="u-card-tools" style={{ float: "right", display: "flex", gap: 6 }}>
         {(["cost", "latency"] as XMode[]).map((m) => (
-          <button key={m} className="lb-chip" aria-pressed={xMode === m} onClick={() => setXMode(m)}>
+          <button key={m} className="u-chip" aria-pressed={xMode === m} onClick={() => setXMode(m)}>
             {m === "cost" ? "x: cost / success" : "x: p50 latency"}
           </button>
         ))}
@@ -204,7 +204,7 @@ export function QualityCostScatter({
         Strict score vs {xMode === "cost" ? "cost per successful task (log x)" : "p50 latency (log x)"} · dashed line = value
         frontier
       </p>
-      <svg viewBox={`0 0 ${W} ${H}`} className="lb-chart" role="img" aria-label="Quality versus cost scatter plot">
+      <svg viewBox={`0 0 ${W} ${H}`} className="u-chart" role="img" aria-label="Quality versus cost scatter plot">
         <defs>
           {/* Area under the value frontier — accent wash, gone by the baseline */}
           <linearGradient id="qc-frontier-fill" x1="0" y1="0" x2="0" y2="1">
@@ -292,7 +292,7 @@ export function QualityCostScatter({
           — value frontier (best score at each {xMode === "cost" ? "cost" : "latency"})
         </text>
       </svg>
-      <div className="lb-legend">
+      <div className="u-legend">
         {allModels.map((m) => (
           <span key={m} className="li">
             <span className="sw" style={{ background: seriesColor(m, allModels) }} />
@@ -324,12 +324,12 @@ export function CostRanked({ summaries }: { summaries: ModelSummary[] }) {
   const max = Math.max(...rows.map((s) => s.costPerSuccess ?? 0), 1e-9);
 
   return (
-    <div className="lb-card">
+    <div className="u-card">
       <h3>Cost, ranked</h3>
       <p className="ch-sub">Cost per successful task, cheapest first · ≈$0 = local route</p>
-      <div className="lb-bar-add">
+      <div className="u-bar-add">
         <select
-          className="lb-org-select"
+          className="u-org-select"
           value=""
           onChange={(e) => e.target.value && setShown((cur) => [...cur, e.target.value])}
           disabled={hidden.length === 0}
@@ -344,16 +344,16 @@ export function CostRanked({ summaries }: { summaries: ModelSummary[] }) {
         </select>
       </div>
       {rows.length === 0 ? (
-        <div className="lb-state">No arms carry cost data yet.</div>
+        <div className="u-state">No arms carry cost data yet.</div>
       ) : (
         rows.map((s) => {
           const color = seriesColor(s.model, allModels);
           const noSuccess = s.costPerSuccess == null;
           const v = s.costPerSuccess ?? 0;
           return (
-            <div key={s.model} className="lb-bar">
+            <div key={s.model} className="u-bar">
               <span className="name">
-                <span className="lb-mdot" style={{ background: color }} />
+                <span className="u-mdot" style={{ background: color }} />
                 {s.model}
               </span>
               <span className="track">
