@@ -99,7 +99,11 @@ extracts structure from traces and code; the user confirms the task meaning.
    the user can *see* the shape: inputs → system → loop → {read / transform / write}
    → final state. For a multi-turn case, also reconstruct the loop turn-by-turn from
    the (history-carrying) captures — per-request token growth and how context
-   compounds as tool results are appended — and render that too.
+   compounds as tool results are appended — and render that too. When the user
+   wants to inspect the underlying calls interactively, build the private local
+   viewer from
+   [`../ingest-traces/references/trace-viewer.md`](../ingest-traces/references/trace-viewer.md)
+   and keep its payload-bearing output under `.understudy/`.
 
 7. **Q&A discovery — build the understanding WITH the user.** Use `AskUserQuestion`
    to confirm and fill gaps you can't infer from structure alone, e.g.:
