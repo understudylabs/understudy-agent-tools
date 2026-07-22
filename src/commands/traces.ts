@@ -87,8 +87,9 @@ export function registerTracesCommand(program: Command): void {
   traces.command("regenerate-env")
     .description("Rebuild a benchmark's generated verifiers environment in place (after generator fixes); tasks, reviews, and authored blocks are untouched")
     .requiredOption("--benchmark <dir>", "Benchmark output directory")
-    .action((options: { benchmark: string }) => {
-      const result = regenerateEnvironment(resolve(options.benchmark));
+    .option("--guidance <file>", "Rejection-guidance override (understudy.rejection_guidance.v1) written as servers/guidance.json instead of the generated default — the seam for testing guidance variants")
+    .action((options: { benchmark: string; guidance?: string }) => {
+      const result = regenerateEnvironment(resolve(options.benchmark), { guidancePath: options.guidance === undefined ? undefined : resolve(options.guidance) });
       console.log(JSON.stringify(result, null, 2));
     });
 

@@ -51,6 +51,8 @@ export const CALIBRATION_SCHEMA = "understudy.calibration.v1";
 export const AUTHORING_EVENT_SCHEMA = "understudy.authoring_event.v1";
 /** Foundry generation-time structural self-check (manifest.self_check + task.self_check). */
 export const FOUNDRY_SELF_CHECK_SCHEMA = "understudy.foundry_self_check.v1";
+/** Generated servers/guidance.json — rejection-guidance message templates the world loads as data (an optimizable prompt surface). */
+export const REJECTION_GUIDANCE_SCHEMA = "understudy.rejection_guidance.v1";
 /** feedback.jsonl sidecar: free-text "what's wrong with this task" lines (append-only). */
 export const TASK_FEEDBACK_SCHEMA = "understudy.task_feedback.v1";
 /** review-policy.json sidecar: configurable exception-review auto-accept bar. */
