@@ -11,7 +11,7 @@
  * foundry (dist/) — the same contractEntryMet/scoreContract/isMutatingTool
  * the generated environment's scorer uses — never forked.
  */
-import { contractEntryMet, forbiddenEntryViolated, isMutatingTool, scoreContract } from "../../../dist/trace-foundry.js";
+import { anchorArguments, contractEntryMet, forbiddenEntryViolated, isMutatingTool, scoreContract, stateEffectMet } from "../../../dist/trace-foundry.js";
 // Re-exported so route handlers import every dist symbol through this module
 // (one relative path to keep working under the tests' .build output — the
 // apps/dist symlink covers the compiled depth).
@@ -22,7 +22,7 @@ type Obj = Record<string, unknown>;
 
 const asObject = (v: unknown): Obj => (v !== null && typeof v === "object" && !Array.isArray(v) ? (v as Obj) : {});
 
-export type ReplayCall = { id?: string | null; name: string; arguments: unknown };
+export type ReplayCall = { id?: string | null; name: string; arguments: unknown; status?: string };
 
 export type ReplayRequired = {
   /** Entry kind: state_effect | read_obligation | value_propagation | response_obligation. */
@@ -52,12 +52,25 @@ export type ReplayStep = {
 };
 
 export type ReplayVerdict = {
-  recall: number;
-  precision: number;
-  policy: number;
+  /** False when the contract has no required entries — nothing to judge; no vacuous 100%s. */
+  judgeable: boolean;
+  recall: number | null;
+  precision: number | null;
+  policy: number | null;
   strict: number;
-  score: number;
+  score: number | null;
   task_completed_correctly: boolean;
+};
+
+/** One row of the "rules evaluated" disclosure: exactly what each number is made of. */
+export type RuleEvaluation = {
+  kind: string;
+  label: string;
+  /** The matching criterion actually used for this entry. */
+  criterion: string;
+  met: boolean;
+  met_at: number | null;
+  provenance: string | null;
 };
 
 export type OracleReplay = {
@@ -66,6 +79,12 @@ export type OracleReplay = {
   forbidden_values: number;
   steps: ReplayStep[];
   verdict: ReplayVerdict;
+  /** Deterministic transparency: every rule with its criterion + result. */
+  rules_evaluated: RuleEvaluation[];
+  /** precision inputs: each candidate write mapped to the rule it satisfies (or unmapped). */
+  writes_mapped: { step: number; tool: string; mapped_to: number | null }[];
+  /** policy inputs: each forbidden rule and whether it was violated. */
+  forbidden_evaluated: { label: string; violated: boolean }[];
 };
 
 const entryLabel = (rule: Obj): string => {
@@ -107,7 +126,7 @@ export function accumulateReplay(task: Obj, calls: ReplayCall[], finalResponse?:
   const steps: ReplayStep[] = [];
   let violated = false;
   let metCount = 0;
-  const events: { name: string; arguments: unknown }[] = [];
+  const events: { name: string; arguments: unknown; status?: string }[] = [];
   const record = (index: number, tool: string, event: "call" | "final_response", args: unknown, seen: { calls: typeof events; finalResponse?: string | null }): void => {
     const satisfies: number[] = [];
     requiredRules.forEach((rule, i) => {
@@ -130,12 +149,15 @@ export function accumulateReplay(task: Obj, calls: ReplayCall[], finalResponse?:
       satisfies,
       forbidden_violation: forbidden,
       met_count: metCount,
-      // Forbidden violations zero the running credit outright.
-      partial_credit: violated ? 0 : requiredRules.length === 0 ? 1 : metCount / requiredRules.length,
+      // Forbidden violations zero the running credit; zero rules = zero
+      // credit (an empty contract is not judgeable, never a vacuous 1.0).
+      partial_credit: violated || requiredRules.length === 0 ? 0 : metCount / requiredRules.length,
     });
   };
   calls.forEach((call, index) => {
-    events.push({ name: call.name, arguments: call.arguments ?? {} });
+    // A validation-rejected call (status=error) rides along so the shared
+    // scorer can refuse it — rejects stay VISIBLE in the step walk.
+    events.push({ name: call.name, arguments: call.arguments ?? {}, ...(call.status === "error" ? { status: "error" } : {}) });
     record(index, call.name, "call", call.arguments ?? {}, { calls: events });
   });
   if (typeof finalResponse === "string" && finalResponse.length > 0) {
@@ -143,13 +165,64 @@ export function accumulateReplay(task: Obj, calls: ReplayCall[], finalResponse?:
   }
 
   const scored = scoreContract(task, { calls: events, finalResponse: finalResponse ?? "" }) as {
-    recall: number; precision: number; policy: number; strict: number; score: number;
+    judgeable?: boolean; recall: number | null; precision: number | null; policy: number | null; strict: number; score: number | null;
   };
+  const judgeable = scored.judgeable !== false && requiredRules.length > 0;
+
+  // "Show me the rule being evaluated": name the criterion each entry was
+  // matched with, so recall/precision/policy are inspectable, never opaque.
+  const criterionOf = (rule: Obj): string => {
+    const type = String(rule.type ?? "state_effect");
+    if (type === "state_effect") {
+      const semantic = asObject(rule.arguments_semantic);
+      if (Object.keys(anchorArguments(semantic)).length > 0) return "authored arguments_semantic (anchored)";
+      const anchors = anchorArguments(asObject(rule.observed_arguments));
+      return Object.keys(anchors).length > 0
+        ? `anchors of observed arguments (${Object.keys(anchors).join(", ")})`
+        : "tool call with any arguments (no discrete anchors in observed args)";
+    }
+    if (type === "read_obligation") return "authored arguments_semantic (anchored, read)";
+    if (type === "value_propagation") return "value tokens present at destination";
+    if (type === "response_obligation") return `final response: ${String(rule.kind ?? "")}`;
+    return type;
+  };
+  const rulesEvaluated = requiredRules.map((rule, i) => ({
+    kind: String(rule.type ?? "state_effect"),
+    label: entryLabel(rule),
+    criterion: criterionOf(rule),
+    met: required[i].met_at !== null,
+    met_at: required[i].met_at,
+    provenance: typeof rule.provenance === "string" ? rule.provenance : null,
+  }));
+  const stateRules = requiredRules.filter((rule) => String(rule.type ?? "state_effect") === "state_effect");
+  const writesMapped = steps
+    .filter((step) => step.mutating)
+    .map((step) => {
+      const call = { tool: step.tool, arguments: step.arguments };
+      const ruleIndex = requiredRules.findIndex((rule, i) => stateRules.includes(rule) && stateEffectMet(rule, call));
+      return { step: step.index, tool: step.tool, mapped_to: ruleIndex >= 0 ? ruleIndex : null };
+    });
+  const forbiddenEvaluated = forbiddenRules.map((rule) => ({
+    label: String(rule.type ?? "") === "forbidden_value" ? `value "${String(rule.value ?? "")}"` : `tool ${String(rule.tool ?? "")}`,
+    violated: forbiddenEntryViolated(rule, { calls: events, finalResponse: finalResponse ?? "" }) as boolean,
+  }));
+
   return {
     required,
     forbidden_tools: forbiddenTools,
     forbidden_values: forbiddenValues.length,
     steps,
-    verdict: { recall: scored.recall, precision: scored.precision, policy: scored.policy, strict: scored.strict, score: scored.score, task_completed_correctly: scored.strict === 1 },
+    rules_evaluated: rulesEvaluated,
+    writes_mapped: writesMapped,
+    forbidden_evaluated: forbiddenEvaluated,
+    verdict: {
+      judgeable,
+      recall: judgeable ? scored.recall : null,
+      precision: judgeable ? scored.precision : null,
+      policy: judgeable ? scored.policy : null,
+      strict: scored.strict,
+      score: judgeable ? scored.score : null,
+      task_completed_correctly: judgeable && scored.strict === 1,
+    },
   };
 }

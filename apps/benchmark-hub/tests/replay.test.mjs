@@ -68,11 +68,13 @@ describe("accumulateReplay", () => {
     assert.equal(replay.verdict.task_completed_correctly, false);
   });
 
-  it("an empty contract accumulates full partial credit but never passes strict (env-scorer parity)", () => {
+  it("an empty contract is NOT JUDGEABLE: zero partial credit, null metrics, distinct verdict", () => {
     const replay = accumulateReplay(task([]), [{ name: "lookup-record", arguments: {} }]);
-    assert.equal(replay.steps[0].partial_credit, 1);
-    // scoreState deliberately refuses strict=1 when nothing was required —
-    // the replay verdict matches the generated environment exactly.
+    // No vacuous 100%s anywhere — nothing was required, so nothing accumulates.
+    assert.equal(replay.steps[0].partial_credit, 0);
+    assert.equal(replay.verdict.judgeable, false);
+    assert.equal(replay.verdict.recall, null);
+    assert.equal(replay.verdict.score, null);
     assert.equal(replay.verdict.strict, 0);
     assert.equal(replay.verdict.task_completed_correctly, false);
   });

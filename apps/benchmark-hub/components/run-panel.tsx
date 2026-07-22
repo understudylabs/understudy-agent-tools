@@ -13,6 +13,7 @@ type RunRequest = {
   status: "queued" | "running" | "done" | "failed" | "cancelled";
   progress: { completed: number; total: number };
   error?: { class: string; message: string } | null;
+  live?: { journal: string; model: string; task_id: string | null } | null;
 };
 
 const SPLITS = ["holdout", "dev", "train", "all"] as const;
@@ -213,6 +214,11 @@ export function RunPanel({
                 <span className="mono text-[11px] text-ink-muted">
                   {r.progress.completed}/{r.progress.total}
                 </span>
+                {r.status === "running" && r.live && (
+                  <span className="mono text-[11px]" style={{ color: "var(--live)" }}>
+                    ● live: {r.live.model}{r.live.task_id ? ` · ${r.live.task_id}` : ""}
+                  </span>
+                )}
                 {(r.status === "queued" || r.status === "running") && (
                   <button type="button" className="mono text-[11px] text-bad" onClick={() => cancel(r.run_id)}>
                     cancel

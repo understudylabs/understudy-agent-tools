@@ -8,6 +8,9 @@
  */
 export {
   cancelRunRequest,
+  liveJournalPath,
+  readRunRequest,
+  runRequestPath,
   createRunRequest,
   listRunRequests,
   selectTasks,
