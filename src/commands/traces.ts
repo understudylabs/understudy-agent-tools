@@ -1,6 +1,6 @@
 import { Command } from "commander";
 import { join, resolve } from "node:path";
-import { compileTraceFoundry, createTraceReplayPlan, importTraceReviews, promoteTraceBenchmark, runTraceReplays } from "../trace-foundry.js";
+import { compileTraceFoundry, createTraceReplayPlan, importTraceReviews, promoteTraceBenchmark, runTraceReplays, regenerateEnvironment } from "../trace-foundry.js";
 import { serveTraceFoundry } from "../trace-foundry-server.js";
 import { authorOverview, authorTasks, compareAuthoringModels, gatewayClient, resolveDefaultModel, resolveGatewayAuth } from "../trace-author.js";
 import { renderTraceViewer } from "../trace-viewer.js";
@@ -81,6 +81,14 @@ export function registerTracesCommand(program: Command): void {
     .requiredOption("--benchmark <path>", "Benchmark output directory")
     .requiredOption("--reviews <path>", "Exported review JSONL")
     .action((options: { benchmark: string; reviews: string }) => console.log(JSON.stringify(importTraceReviews(resolve(options.benchmark), resolve(options.reviews)), null, 2)));
+  traces.command("regenerate-env")
+    .description("Rebuild a benchmark's generated verifiers environment in place (after generator fixes); tasks, reviews, and authored blocks are untouched")
+    .requiredOption("--benchmark <dir>", "Benchmark output directory")
+    .action((options: { benchmark: string }) => {
+      const result = regenerateEnvironment(resolve(options.benchmark));
+      console.log(JSON.stringify(result, null, 2));
+    });
+
   traces.command("promote")
     .description("Promote a reviewed proposal to an executable understudy.benchmark.v1 (accepted tasks only)")
     .requiredOption("--benchmark <path>", "Benchmark output directory")
