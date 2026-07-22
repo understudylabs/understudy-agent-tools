@@ -21,6 +21,7 @@ import { join, relative, resolve } from "node:path";
 import { spawnSync } from "node:child_process";
 import { buildReplayInvocation, isMutatingTool, scoreState } from "./trace-foundry.js";
 import { COST_PER_MTOKEN, resolveGatewayAuth } from "./trace-author.js";
+import { RUN_EVENT_SCHEMA, appendJournalEntry, serializeJsonlLine, serializeRunEvent } from "./benchmark-artifacts.js";
 
 type Obj = Record<string, any>;
 const asObject = (value: unknown): Obj => (value !== null && typeof value === "object" && !Array.isArray(value) ? (value as Obj) : {});
@@ -218,7 +219,7 @@ export type ArmRunner = (args: {
 }) => Promise<RolloutResult>;
 
 export type RunEvent = {
-  schema_version: "understudy.run_event.v1";
+  schema_version: typeof RUN_EVENT_SCHEMA;
   ts: string;
   run_id: string;
   type: "run_started" | "arm_started" | "rollout" | "rollout_error" | "arm_finished" | "run_finished" | "run_cancelled" | "run_failed";
@@ -233,7 +234,7 @@ export type RunEvent = {
 
 function appendEvent(benchmarkDir: string, event: RunEvent, onEvent?: (event: RunEvent) => void): void {
   mkdirSync(runsDir(benchmarkDir), { recursive: true });
-  appendFileSync(runEventsPath(benchmarkDir), `${JSON.stringify(event)}\n`, { mode: 0o600 });
+  appendFileSync(runEventsPath(benchmarkDir), serializeRunEvent(event), { mode: 0o600 });
   onEvent?.(event);
 }
 
@@ -296,14 +297,14 @@ export async function executeRunRequest(benchmarkDir: string, runId: string, opt
   if (selected.length === 0) {
     request = { ...request, status: "failed", finished_at: now().toISOString(), error: { class: "EmptySelection", message: `no tasks match split=${request.split}` } };
     writeRunRequest(dir, request);
-    appendEvent(dir, { schema_version: "understudy.run_event.v1", ts: now().toISOString(), run_id: runId, type: "run_failed", error: request.error?.message }, options.onEvent);
+    appendEvent(dir, { schema_version: RUN_EVENT_SCHEMA, ts: now().toISOString(), run_id: runId, type: "run_failed", error: request.error?.message }, options.onEvent);
     return request;
   }
 
   const total = request.models.length * selected.length * request.rollouts_per_task;
   request = { ...request, status: "running", started_at: now().toISOString(), progress: { completed: 0, total } };
   writeRunRequest(dir, request);
-  appendEvent(dir, { schema_version: "understudy.run_event.v1", ts: now().toISOString(), run_id: runId, type: "run_started", progress: request.progress }, options.onEvent);
+  appendEvent(dir, { schema_version: RUN_EVENT_SCHEMA, ts: now().toISOString(), run_id: runId, type: "run_started", progress: request.progress }, options.onEvent);
 
   const cancelled = (): boolean => readRunRequest(file)?.status === "cancelled";
   let completed = 0;
@@ -317,7 +318,7 @@ export async function executeRunRequest(benchmarkDir: string, runId: string, opt
   try {
     for (const model of request.models) {
       if (cancelled()) break;
-      appendEvent(dir, { schema_version: "understudy.run_event.v1", ts: now().toISOString(), run_id: runId, type: "arm_started", model }, options.onEvent);
+      appendEvent(dir, { schema_version: RUN_EVENT_SCHEMA, ts: now().toISOString(), run_id: runId, type: "arm_started", model }, options.onEvent);
       const rowsFile = rowsFilePath(dir, runId, model);
       // Live journal for this arm: the world/runner appends tool events the
       // moment they happen; the hub's live endpoint tails it. The path is
@@ -378,12 +379,12 @@ export async function executeRunRequest(benchmarkDir: string, runId: string, opt
             writes: result.writes,
             ...(result.error ? { error: result.error } : {}),
           };
-          appendFileSync(rowsFile, `${JSON.stringify(row)}\n`, { mode: 0o600 });
+          appendFileSync(rowsFile, serializeJsonlLine(row), { mode: 0o600 });
           completed += 1;
           appendEvent(
             dir,
             {
-              schema_version: "understudy.run_event.v1",
+              schema_version: RUN_EVENT_SCHEMA,
               ts: now().toISOString(),
               run_id: runId,
               type: result.status === "error" ? "rollout_error" : "rollout",
@@ -401,7 +402,7 @@ export async function executeRunRequest(benchmarkDir: string, runId: string, opt
         }
       };
       await Promise.all(Array.from({ length: Math.min(concurrency, queue.length) }, () => worker()));
-      appendEvent(dir, { schema_version: "understudy.run_event.v1", ts: now().toISOString(), run_id: runId, type: "arm_finished", model, progress: { completed, total } }, options.onEvent);
+      appendEvent(dir, { schema_version: RUN_EVENT_SCHEMA, ts: now().toISOString(), run_id: runId, type: "arm_finished", model, progress: { completed, total } }, options.onEvent);
       if (armCancelled) break;
     }
   } catch (err) {
@@ -411,20 +412,20 @@ export async function executeRunRequest(benchmarkDir: string, runId: string, opt
     const errorClass = err instanceof Error ? err.constructor.name : "Error";
     request = { ...(readRunRequest(file) ?? request), status: "failed", finished_at: now().toISOString(), progress: { completed, total }, live: null, error: { class: errorClass, message } };
     writeRunRequest(dir, request);
-    appendEvent(dir, { schema_version: "understudy.run_event.v1", ts: now().toISOString(), run_id: runId, type: "run_failed", error: `${errorClass}: ${message}`, progress: { completed, total } }, options.onEvent);
+    appendEvent(dir, { schema_version: RUN_EVENT_SCHEMA, ts: now().toISOString(), run_id: runId, type: "run_failed", error: `${errorClass}: ${message}`, progress: { completed, total } }, options.onEvent);
     return request;
   }
 
   if (cancelled()) {
     request = { ...(readRunRequest(file) ?? request), progress: { completed, total }, live: null };
     writeRunRequest(dir, request);
-    appendEvent(dir, { schema_version: "understudy.run_event.v1", ts: now().toISOString(), run_id: runId, type: "run_cancelled", progress: { completed, total } }, options.onEvent);
+    appendEvent(dir, { schema_version: RUN_EVENT_SCHEMA, ts: now().toISOString(), run_id: runId, type: "run_cancelled", progress: { completed, total } }, options.onEvent);
     return request;
   }
 
   request = { ...(readRunRequest(file) ?? request), status: "done", finished_at: now().toISOString(), progress: { completed, total }, live: null };
   writeRunRequest(dir, request);
-  appendEvent(dir, { schema_version: "understudy.run_event.v1", ts: now().toISOString(), run_id: runId, type: "run_finished", progress: { completed, total } }, options.onEvent);
+  appendEvent(dir, { schema_version: RUN_EVENT_SCHEMA, ts: now().toISOString(), run_id: runId, type: "run_finished", progress: { completed, total } }, options.onEvent);
   return request;
 }
 
@@ -450,10 +451,7 @@ export async function executeQueuedRuns(benchmarkDir: string, options: ExecuteOp
  * spend. Rows are labeled honestly via subscores.runner_oracle = 1.
  */
 export function oracleRunner(): ArmRunner {
-  const journal = (path: string | null, entry: Obj): void => {
-    if (!path) return;
-    try { appendFileSync(path, `${JSON.stringify(entry)}\n`, { mode: 0o600 }); } catch { /* live journal is best-effort */ }
-  };
+  const journal = appendJournalEntry;
   return async ({ task, journalPath }) => {
     const started = Date.now();
     const writes = (asObject(task.outcome_contract).required ?? []).filter((rule: Obj) => String(rule.type ?? "state_effect") === "state_effect").map((rule: Obj) => ({ tool: String(rule.tool), arguments: rule.observed_arguments ?? {} }));

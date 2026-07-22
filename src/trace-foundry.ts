@@ -4,6 +4,7 @@ import { join, relative, resolve } from "node:path";
 import { spawnSync } from "node:child_process";
 import { traceFoundryViewer } from "./trace-foundry-viewer.js";
 import { validateBenchmarkManifest } from "./benchmark.js";
+import { REVIEW_DECISIONS, captureFileId, readReviews, toPortablePath } from "./benchmark-artifacts.js";
 
 type J = null | boolean | number | string | J[] | { [key: string]: J };
 type Obj = Record<string, any>;
@@ -966,7 +967,8 @@ function benchmarkManifestFrom(tasks: Obj[], options: ManifestOptions): Obj {
 }
 
 const ACCEPTING_DECISIONS = ["accept", "restrict"];
-const REVIEW_DECISION_VALUES = ["accept", "restrict", "needs_more", "reject"];
+/** Shared with the hub via dist/benchmark-artifacts.js — never fork the enum. */
+const REVIEW_DECISION_VALUES: readonly string[] = REVIEW_DECISIONS;
 
 /**
  * `understudy traces promote` — the reviewed-proposal → promoted-benchmark
@@ -987,8 +989,7 @@ export function promoteTraceBenchmark(outputInput: string, options: { waiveDagRe
   for (const row of readJsonl(join(output, "review-decisions.jsonl"))) {
     if (typeof row.task_id === "string" && REVIEW_DECISION_VALUES.includes(row.decision)) decisions.set(row.task_id, { decision: row.decision, note: row.note ?? null, reviewed_at: row.reviewed_at ?? row.created_at ?? null, source: "review-decisions.jsonl" });
   }
-  for (const row of readJsonl(join(output, "reviews.jsonl"))) {
-    if (row.schema_version !== "understudy.benchmark_review.v1" || typeof row.task_id !== "string" || !REVIEW_DECISION_VALUES.includes(row.decision)) continue;
+  for (const row of readReviews(join(output, "reviews.jsonl")).reviews) {
     decisions.set(row.task_id, { decision: row.decision, note: row.note ?? null, reviewed_at: row.created_at ?? null, source: "reviews.jsonl" });
   }
   if (decisions.size === 0) throw new Error("Refusing to promote an unreviewed benchmark: no decisions found in reviews.jsonl or review-decisions.jsonl. Review the tasks in the Benchmark Hub (or run `understudy traces import-reviews`) first.");
@@ -1255,7 +1256,9 @@ function writeFoundryArtifacts(ctx: { source: string; output: string; files: str
   mkdirSync(capturesDir, { recursive: true });
   const captureIndex: Obj = {};
   for (const row of rows) {
-    const fileId = hash({ capture_id: row.capture_id, source_sha256: row.source.sha256 }).slice(0, 40);
+    // Shared file-id derivation (dist/benchmark-artifacts.js) — the hub
+    // RECOMPUTES this name from the pointer, so the two must never fork.
+    const fileId = captureFileId({ capture_id: String(row.capture_id), sha256: String(row.source.sha256) });
     const path = join(capturesDir, `${fileId}.json`);
     writeJson(path, row);
     captureIndex[row.capture_id] = { path: `data/captures/${fileId}.json`, source: row.source };
@@ -1283,7 +1286,7 @@ function writeFoundryArtifacts(ctx: { source: string; output: string; files: str
   finalGoal.updated_at = now.toISOString();
   writeJson(join(output, "goal-state.json"), finalGoal);
   appendJsonl(join(output, "goal-events.jsonl"), [{ at: now.toISOString(), action: "finalize", input_hash: finalGoal.input_hash, validation: { dag_valid: dag.valid, oracle_pass: environment.oracle_pass, sentinel_pass: environment.sentinel_pass }, next_action: finalGoal.next_action }]);
-  const result: FoundryResult = { schema_version: "understudy.trace_foundry.v1", source, output_dir: output, freshness: { max_age_days: ctx.maxAgeDays, cutoff_utc: cutoff.toISOString(), newest_capture_utc: rows.map((row) => row.captured_at).sort().at(-1) }, counts: { source_files: files.length, captures: rows.length, tasks: tasks.length, edges: dag.edges.length, stale_filtered: staleFiltered, invalid_timestamp_filtered: invalidTimestampFiltered }, artifacts: { normalized: join(output, "normalized-captures.jsonl"), dag: join(output, "source-dag.json"), tasks: join(output, "tasks.jsonl"), benchmark: join(output, "benchmark.json"), environment: environment.path, ledger: join(output, "capture-ledger.jsonl"), goal: join(output, "goal-state.json"), viewer: join(viewer, "index.html") }, privacy: { local_only: true, contains_customer_payloads: true, upload_performed: false, provider_called: false } };
+  const result: FoundryResult = { schema_version: "understudy.trace_foundry.v1", source, output_dir: output, freshness: { max_age_days: ctx.maxAgeDays, cutoff_utc: cutoff.toISOString(), newest_capture_utc: rows.map((row) => row.captured_at).sort().at(-1) }, counts: { source_files: files.length, captures: rows.length, tasks: tasks.length, edges: dag.edges.length, stale_filtered: staleFiltered, invalid_timestamp_filtered: invalidTimestampFiltered }, artifacts: { normalized: "normalized-captures.jsonl", dag: "source-dag.json", tasks: "tasks.jsonl", benchmark: "benchmark.json", environment: toPortablePath(output, environment.path), ledger: "capture-ledger.jsonl", goal: "goal-state.json", viewer: toPortablePath(output, join(viewer, "index.html")) }, privacy: { local_only: true, contains_customer_payloads: true, upload_performed: false, provider_called: false } };
   writeJson(join(output, "manifest.json"), result); return result;
 }
 
