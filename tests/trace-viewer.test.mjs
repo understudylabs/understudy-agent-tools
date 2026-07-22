@@ -68,7 +68,7 @@ test("renders one selected trace with the reusable prompt and tool viewer", () =
   assert.match(viewer, /System prompt/);
   assert.match(viewer, /Tool invocations/);
   assert.match(viewer, /TRACE_VIEWER_META/);
-  assert.doesNotMatch(viewer, /Cedar|5a7c2ffb/);
+  assert.doesNotMatch(viewer, /"trace-a"|"request-1"|Synthetic project \/ automation/);
 
   const data = readFileSync(join(output, "trace-data.js"), "utf8");
   assert.match(data, /window\.TRACE_VIEWER_META/);
