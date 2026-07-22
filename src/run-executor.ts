@@ -19,7 +19,7 @@ import { appendFileSync, existsSync, mkdirSync, readFileSync, readdirSync, renam
 import { createHash } from "node:crypto";
 import { join, relative, resolve } from "node:path";
 import { spawnSync } from "node:child_process";
-import { buildReplayInvocation, isMutatingTool, scoreContract, scoreState } from "./trace-foundry.js";
+import { buildReplayInvocation, goldFinalResponseFor, isMutatingTool, oracleEventsFor, readCapturesByKey, responseJudgedRequired, scoreContract } from "./trace-foundry.js";
 import { COST_PER_MTOKEN, resolveGatewayAuth } from "./trace-author.js";
 import { BENCHMARK_PROPOSAL_SCHEMA, BENCHMARK_SCHEMA, CALIBRATION_SCHEMA, EVAL_RESULT_SCHEMA, RUN_EVENT_SCHEMA, appendJournalEntry, readJsonlFile, serializeJsonlLine, serializeRunEvent } from "./benchmark-artifacts.js";
 
@@ -270,6 +270,13 @@ export type RolloutResult = {
   tool_call_count?: number | null;
   /** Character count of the final assistant response; null = the runner cannot tell (never treated as empty). */
   final_response_chars?: number | null;
+  /**
+   * Additive oracle diagnostic (oracle runner only): obligation groups whose
+   * gold evidence is missing from the artifacts (e.g. ["response"] when the
+   * captured incumbent final response is not recoverable). Distinguishes
+   * "unverifiable" from "broken" — absent on every other runner's results.
+   */
+  oracle?: { missing_gold: string[] } | null;
   error?: string | null;
 };
 
@@ -590,6 +597,8 @@ export async function executeRunRequest(benchmarkDir: string, runId: string, opt
             writes: result.writes,
             ...(typeof result.tool_call_count === "number" ? { tool_call_count: result.tool_call_count } : {}),
             ...(typeof result.final_response_chars === "number" ? { final_response_chars: result.final_response_chars } : {}),
+            // Additive oracle diagnostic: missing-gold rows render "unverifiable", never a bare fail.
+            ...(result.oracle && result.oracle.missing_gold.length > 0 ? { oracle: result.oracle } : {}),
             // Marked, not dropped: the primary anomaly plus the full list.
             ...(anomalies.length > 0 ? { anomaly: anomalies[0], anomalies } : {}),
             ...(result.error ? { error: result.error } : {}),
@@ -810,21 +819,37 @@ export async function executeQueuedRuns(benchmarkDir: string, options: ExecuteOp
 
 /**
  * Offline validation-oracle runner: deterministic, zero-cost, no provider
- * calls. Replays each task's own outcome contract (the oracle writes) through
- * the SAME scoreState the generated environment uses, so the whole queue →
- * events → rows → leaderboard/replay loop is provable end to end without
- * spend. Rows are labeled honestly via subscores.runner_oracle = 1.
+ * calls. Constructs each task's FULL oracle rollout — the contract's own tool
+ * calls (state effects, read obligations, tool-args value propagations) PLUS
+ * the stored GOLD final response (the captured incumbent's final assistant
+ * text from normalized-captures.jsonl) — and scores it through the SAME
+ * full-contract scorer real arms are judged by (scoreContract), so EVERY
+ * obligation kind is oracle-verified offline, not just state effects.
+ *
+ * A well-formed task must score strict 1. When the gold final response is
+ * missing from the artifacts, response/value obligations cannot be verified:
+ * the row records the additive diagnostic `oracle.missing_gold: ["response"]`
+ * so the hub can render "unverifiable" distinctly from "broken".
+ * Rows are labeled honestly via subscores.runner_oracle = 1.
  */
 export function oracleRunner(): ArmRunner {
   const journal = appendJournalEntry;
-  return async ({ task, journalPath }) => {
+  const capturesCache = new Map<string, Map<string, Obj>>();
+  return async ({ benchmarkDir, task, journalPath }) => {
     const started = Date.now();
-    const writes = (asObject(task.outcome_contract).required ?? []).filter((rule: Obj) => String(rule.type ?? "state_effect") === "state_effect").map((rule: Obj) => ({ tool: String(rule.tool), arguments: rule.observed_arguments ?? {} }));
-    for (const write of writes) {
-      journal(journalPath, { at: Date.now() / 1000, kind: "call", tool: write.tool, write: true, status: "ok", arguments: JSON.stringify(write.arguments).slice(0, 800) });
-      journal(journalPath, { at: Date.now() / 1000, kind: "result", tool: write.tool, status: "ok", content: "{\"ok\": true}" });
+    const sidecar = asObject(task);
+    const calls = oracleEventsFor(sidecar).calls;
+    for (const call of calls) {
+      journal(journalPath, { at: Date.now() / 1000, kind: "call", tool: String(call.tool), write: isMutatingTool(String(call.tool)), status: "ok", arguments: JSON.stringify(call.arguments ?? {}).slice(0, 800) });
+      journal(journalPath, { at: Date.now() / 1000, kind: "result", tool: String(call.tool), status: "ok", content: "{\"ok\": true}" });
     }
-    const scored = asObject(scoreState(asObject(task), writes));
+    if (!capturesCache.has(benchmarkDir)) capturesCache.set(benchmarkDir, readCapturesByKey(benchmarkDir));
+    const gold = goldFinalResponseFor(sidecar, capturesCache.get(benchmarkDir)!);
+    const missingGold = gold === null && responseJudgedRequired(sidecar).length > 0 ? ["response"] : [];
+    const scored = asObject(scoreContract(sidecar, { calls, finalResponse: gold ?? "" }));
+    // The hub replays accumulation from row.writes: keep it the contract's
+    // state effects exactly (the rules the state scorer judges), as before.
+    const writes = ((asObject(sidecar.outcome_contract).required ?? []) as unknown[]).map(asObject).filter((rule) => String(rule.type ?? "state_effect") === "state_effect").map((rule) => ({ tool: String(rule.tool), arguments: rule.observed_arguments ?? {} }));
     return {
       score: Number(scored.strict ?? 0),
       subscores: {
@@ -839,8 +864,9 @@ export function oracleRunner(): ArmRunner {
       latency_ms: Math.max(1, Date.now() - started),
       cost: 0,
       writes,
-      tool_call_count: writes.length,
-      final_response_chars: null,
+      tool_call_count: calls.length,
+      final_response_chars: gold === null ? null : gold.trim().length,
+      ...(missingGold.length > 0 ? { oracle: { missing_gold: missingGold } } : {}),
     };
   };
 }

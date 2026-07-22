@@ -708,6 +708,44 @@ export function scoreContract(task: Obj, events: ContractEvents): Obj {
   return { recall, precision, policy, strict, score: policy === 0 ? 0 : (recall + precision + policy) / 3, met };
 }
 
+/** Required contract entries judged against the FINAL RESPONSE: response obligations plus final-response value propagations. */
+export function responseJudgedRequired(task: Obj): Obj[] {
+  const required: Obj[] = (Array.isArray(asObject(task.outcome_contract).required) ? asObject(task.outcome_contract).required : []).map(asObject);
+  return required.filter((rule) => {
+    const type = String(rule.type ?? "state_effect");
+    return type === "response_obligation" || (type === "value_propagation" && asObject(rule.must_reach).kind === "final_response");
+  });
+}
+
+/**
+ * The GOLD final response for a task: the captured incumbent's final
+ * assistant text, resolved from the task's own source captures (newest node
+ * first). This is the same evidence grounding validated response/value
+ * obligations against at authoring time — the oracle answer for them.
+ * Null = not recoverable from the artifacts (missing capture or empty text).
+ */
+export function goldFinalResponseFor(task: Obj, capturesByKey: Map<string, Obj>): string | null {
+  const nodeIds = (Array.isArray(asObject(task.source).node_ids) ? asObject(task.source).node_ids : []) as unknown[];
+  for (let index = nodeIds.length - 1; index >= 0; index -= 1) {
+    const capture = capturesByKey.get(String(nodeIds[index]));
+    if (!capture) continue;
+    const text = finalResponseText(asObject(capture.response));
+    if (text.trim().length > 0) return text;
+  }
+  return null;
+}
+
+/** capture_key → normalized capture map for one benchmark dir's normalized-captures.jsonl (empty when absent). Older fixtures keyed node_ids by capture_id; both resolve. */
+export function readCapturesByKey(benchmarkDir: string): Map<string, Obj> {
+  const rows = readJsonl(join(resolve(benchmarkDir), "normalized-captures.jsonl"));
+  const byKey = new Map<string, Obj>();
+  for (const row of rows) {
+    if (typeof row.capture_id === "string" && !byKey.has(row.capture_id)) byKey.set(row.capture_id, row);
+    if (typeof row.capture_key === "string") byKey.set(row.capture_key, row);
+  }
+  return byKey;
+}
+
 /**
  * Synthesize the ORACLE event stream a contract's own entries imply — used by
  * offline validation so a contract must be satisfiable by construction.
@@ -853,9 +891,23 @@ const setPath = (obj: Obj, path: string, value: unknown): Obj => {
  * schemas are supplied, an additional enum_violation sentinel proves that a
  * call rejected by observation-tightened validation (out-of-enum value)
  * scores 0.
+ *
+ * `goldFinalResponse` (additive third argument) is the CAPTURED incumbent
+ * final response — the real gold for response/value obligations:
+ *   - undefined → legacy behavior: the oracle response is synthesized from
+ *     the contract's own expected values (self-satisfying by construction).
+ *   - a string → the oracle is scored against the real gold; a contract its
+ *     own captured response cannot satisfy is honestly broken (strict < 1).
+ *   - null → the gold is missing from the artifacts: response-judged
+ *     obligations cannot be verified, so the oracle fails them AND the row
+ *     records `oracle.missing_gold: ["response"]` — distinguishable from a
+ *     broken contract ("unverifiable" vs "broken").
  */
-export function offlineValidationRow(task: Obj, schemas?: Obj): Obj {
+export function offlineValidationRow(task: Obj, schemas?: Obj, goldFinalResponse?: string | null): Obj {
   const oracle = oracleEventsFor(task);
+  const responseJudged = responseJudgedRequired(task);
+  const missingGold = goldFinalResponse === null && responseJudged.length > 0 ? ["response"] : [];
+  if (goldFinalResponse !== undefined) oracle.finalResponse = goldFinalResponse ?? "";
   // wrong_value corrupts the ANCHOR values (the discrete fields matching now
   // keys on). A call whose rule has NO anchors is satisfied by any-args by
   // design, so the sentinel corrupts its TOOL instead — the gate must still
@@ -885,7 +937,8 @@ export function offlineValidationRow(task: Obj, schemas?: Obj): Obj {
       sentinels.enum_violation = scoreContract(task, { calls: enumCalls, finalResponse: oracle.finalResponse });
     }
   }
-  return { task_id: task.task_id, oracle: scoreContract(task, oracle), sentinels };
+  const scored = scoreContract(task, oracle);
+  return { task_id: task.task_id, oracle: missingGold.length > 0 ? { ...scored, missing_gold: missingGold } : scored, sentinels };
 }
 
 /**
@@ -901,7 +954,10 @@ export function refreshOfflineValidation(benchmarkDir: string, tasks: Obj[]): bo
   const validation = asObject(JSON.parse(readFileSync(path, "utf8")));
   const rows = (Array.isArray(validation.tasks) ? validation.tasks : []).map(asObject);
   const byId = new Map(rows.map((row) => [row.task_id, row]));
-  for (const task of tasks) byId.set(task.task_id, offlineValidationRow(task, schemas));
+  // Real-gold verification: score response/value obligations against the
+  // captured incumbent's final response when the captures are on disk.
+  const capturesByKey = readCapturesByKey(resolve(benchmarkDir));
+  for (const task of tasks) byId.set(task.task_id, offlineValidationRow(task, schemas, capturesByKey.size > 0 ? goldFinalResponseFor(task, capturesByKey) : undefined));
   validation.tasks = [...byId.values()];
   writeJson(path, validation);
   return true;
@@ -1357,7 +1413,11 @@ function writeVerifiersEnvironment(output: string, tasks: Obj[], sourceContext: 
   writeFileSync(join(pkg, "__init__.py"), "from understudy_trace_env.environment import load_environment, load_harness, load_taskset\nfrom understudy_trace_env.taskset import TraceTaskset\n\n__all__ = [\"TraceTaskset\", \"load_environment\", \"load_harness\", \"load_taskset\"]\n", { mode: 0o600 });
   writeFileSync(join(servers, "__init__.py"), "", { mode: 0o600 });
   writeFileSync(join(root, "pyproject.toml"), `[project]\nname = "understudy-trace-env"\nversion = "0.1.0"\nrequires-python = ">=3.11,<3.14"\ndependencies = ["verifiers @ git+https://github.com/PrimeIntellect-ai/verifiers.git@${auditedCommit}"]\n\n[build-system]\nrequires = ["hatchling"]\nbuild-backend = "hatchling.build"\n\n[tool.hatch.metadata]\nallow-direct-references = true\n\n[tool.hatch.build.targets.wheel]\npackages = ["understudy_trace_env"]\n`, { mode: 0o600 });
-  const validation = tasks.map((task) => offlineValidationRow(task, validationSchemas));
+  // Response/value obligations are oracle-verified against the CAPTURED
+  // incumbent final response (the real gold) whenever the build has the
+  // normalized captures; without them the legacy synthesized oracle stands.
+  const capturesByKey = new Map<string, Obj>(rows.map((row) => [String(row.capture_key), row]));
+  const validation = tasks.map((task) => offlineValidationRow(task, validationSchemas, capturesByKey.size > 0 ? goldFinalResponseFor(task, capturesByKey) : undefined));
   writeJson(join(root, "offline-validation.json"), { schema_version: "understudy.verifier_validation.v1", verifiers: { api: "v1", audited_commit: auditedCommit }, tasks: validation });
   const packageFiles = [join(root, "pyproject.toml"), join(pkg, "__init__.py"), join(pkg, "environment.py"), join(pkg, "taskset.py"), join(pkg, "servers", "world.py"), join(pkg, "servers", "fixtures.json"), join(pkg, "tasks.json")];
   // Gold-leakage audit over the exact artifacts just written (report-only).

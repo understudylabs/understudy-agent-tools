@@ -692,7 +692,13 @@ export function environmentReadiness(dir: string, taskId: string): { ready: bool
       (t: { task_id?: string }) => t?.task_id === taskId,
     );
     if (!row) return { ready: false, reason: "task has no offline validation entry" };
-    if (row.oracle?.strict !== 1) return { ready: false, reason: "oracle validation does not pass for this task" };
+    if (row.oracle?.strict !== 1) {
+      // Missing-gold is a distinct not-runnable class: the task is
+      // UNVERIFIABLE (gold final response absent from the artifacts), not broken.
+      const missing = Array.isArray(row.oracle?.missing_gold) ? row.oracle.missing_gold : [];
+      if (missing.length > 0) return { ready: false, reason: `oracle unverifiable: gold evidence missing from the artifacts (${missing.join(", ")})` };
+      return { ready: false, reason: "oracle validation does not pass for this task" };
+    }
     return { ready: true, reason: "" };
   } catch {
     return { ready: false, reason: "offline-validation.json missing or unreadable" };
