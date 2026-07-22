@@ -25,6 +25,7 @@ import {
   type CalibrationSummary,
   type TrivialArmKind,
 } from "./run-executor.js";
+import { computeRecoveryOverJournals, readRolloutJournals } from "./rejection-guidance.js";
 
 type Obj = Record<string, any>;
 const asObject = (value: unknown): Obj => (value !== null && typeof value === "object" && !Array.isArray(value) ? (value as Obj) : {});
@@ -242,6 +243,33 @@ export function deriveRigorReport(benchmarkDir: string, now: Date = new Date()):
     });
   } else {
     items.push({ item: "Leakage / contamination audit", status: "UNKNOWN", value: "not checked", detail: "no manifest.json leakage_audit found — rebuild with `understudy traces build-benchmark` (the foundry writes the audit at generation time)" });
+  }
+
+  // Guidance effectiveness: per-rejection-class recovery rate over the
+  // rollout journals (runs/live/*.jsonl). A validation rejection is
+  // "recovered" when a compliant call to the same tool lands within
+  // RECOVERY_WINDOW_CALLS subsequent calls to that tool — the measurable
+  // objective for the rejection-guidance surface (docs/rejection-guidance.md).
+  const journals = readRolloutJournals(dir);
+  if (journals.length === 0) {
+    items.push({ item: "Guidance effectiveness", status: "UNKNOWN", value: "no journals", detail: "no runs/live rollout journals recorded yet — run any arm to measure rejection recovery" });
+  } else {
+    const recovery = computeRecoveryOverJournals(journals);
+    const classSummary = Object.entries(recovery.by_class)
+      .sort(([, a], [, b]) => b.rejections - a.rejections)
+      .map(([kind, stats]) => `${kind}: ${stats.recovered}/${stats.rejections} (${percent(stats.rate)})`)
+      .join(", ");
+    const weakClasses = Object.entries(recovery.by_class).filter(([, stats]) => stats.rejections >= 5 && stats.rate < 0.5);
+    items.push({
+      item: "Guidance effectiveness",
+      status: recovery.total_rejections === 0 ? "PASS" : weakClasses.length > 0 ? "FLAG" : "PASS",
+      value: recovery.total_rejections === 0 ? "0 rejections" : `${recovery.total_recovered}/${recovery.total_rejections} rejections recovered ≤${recovery.window} calls (${percent(recovery.rate)})`,
+      detail: recovery.total_rejections === 0
+        ? `no validation rejections across ${journals.length} journal(s)`
+        : weakClasses.length > 0
+          ? `low-recovery rejection class(es) — a guidance-message target: ${weakClasses.map(([kind, stats]) => `${kind} ${percent(stats.rate)}`).join(", ")}; all classes: ${classSummary}`
+          : classSummary,
+    });
   }
 
   // Honest UNKNOWNs: checks this report does not perform (built separately).
