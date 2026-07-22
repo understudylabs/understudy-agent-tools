@@ -19,7 +19,11 @@ function stringField(source: JsonObject, key: string): string | null {
   return typeof value === "string" && value.length > 0 ? value : null;
 }
 
-const PROVENANCE_ORIGINS = ["derived-from-traces", "imported", "authored"];
+// "derived-from-dataset" is the dataset-foundry origin (labeled JSONL/CSV rows
+// compiled into benchmark tasks) — additive to the trace-derived/imported/
+// authored trio; old manifests never carried it, old readers fall through to
+// their unknown-origin styling.
+const PROVENANCE_ORIGINS = ["derived-from-traces", "derived-from-dataset", "imported", "authored"];
 const IMPORT_FORMATS = ["verifiers.v1", "verifiers.v0", "harbor", "inspect_ai", "automationbench", "hf-dataset", "other"];
 const TASK_GENESIS = ["replayed", "synthesized", "imported"];
 const TASK_SPLITS = ["train", "dev", "holdout", "none"];

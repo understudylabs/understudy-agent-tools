@@ -52,7 +52,7 @@ export type BenchmarkManifest = {
   /** Benchmark-wide incumbent roll-up (additive; absent on pre-incumbent builds). */
   incumbent?: IncumbentInfo | null;
   provenance: {
-    origin: "derived-from-traces" | "imported" | "authored";
+    origin: "derived-from-traces" | "derived-from-dataset" | "imported" | "authored";
     source_refs?: string[];
     imported_from?: {
       format: string;

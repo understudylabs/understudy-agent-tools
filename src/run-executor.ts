@@ -553,6 +553,14 @@ export type RolloutResult = {
   /** Character count of the final assistant response; null = the runner cannot tell (never treated as empty). */
   final_response_chars?: number | null;
   /**
+   * Additive: the final assistant response itself, capped at
+   * FINAL_RESPONSE_EXCERPT_CHARS. Rides the eval row (local artifacts only) so
+   * classification-shaped benchmarks can derive per-class confusion summaries
+   * from rows without re-reading arm trace files. Absent when the runner
+   * cannot tell — never fabricated.
+   */
+  final_response_excerpt?: string | null;
+  /**
    * Additive oracle diagnostic (oracle runner only): obligation groups whose
    * gold evidence is missing from the artifacts (e.g. ["response"] when the
    * captured incumbent final response is not recoverable). Distinguishes
@@ -1033,6 +1041,9 @@ export async function executeRunRequest(benchmarkDir: string, runId: string, opt
             writes: result.writes,
             ...(typeof result.tool_call_count === "number" ? { tool_call_count: result.tool_call_count } : {}),
             ...(typeof result.final_response_chars === "number" ? { final_response_chars: result.final_response_chars } : {}),
+            // Additive: capped final-response text — feeds per-class confusion
+            // summaries on classification benchmarks (local artifacts only).
+            ...(typeof result.final_response_excerpt === "string" ? { final_response_excerpt: result.final_response_excerpt } : {}),
             // Additive override provenance: base model + suffix hash (full
             // text lives in runs/<run_id>-overrides.json, never on rows).
             ...(arm.override ? { prompt_override: { arm_label: arm.override.arm_label, base_model: arm.override.model, system_prompt_suffix_sha256: promptSuffixHash(arm.override.system_prompt_suffix) } } : {}),
@@ -1360,6 +1371,7 @@ export function oracleRunner(): ArmRunner {
       writes,
       tool_call_count: calls.length,
       final_response_chars: gold === null ? null : gold.trim().length,
+      final_response_excerpt: responseExcerpt(gold),
       ...(missingGold.length > 0 ? { oracle: { missing_gold: missingGold } } : {}),
     };
   };
@@ -1371,6 +1383,11 @@ export function oracleRunner(): ArmRunner {
 
 /** The null agent's entire output: deterministic boilerplate, never task-derived. */
 export const NULL_AGENT_FINAL_RESPONSE = "I was unable to complete this task.";
+
+/** Cap for the additive final_response_excerpt row field (enough for any label JSON; never the full transcript). */
+export const FINAL_RESPONSE_EXCERPT_CHARS = 400;
+export const responseExcerpt = (text: string | null | undefined): string | null =>
+  text == null ? null : text.trim().slice(0, FINAL_RESPONSE_EXCERPT_CHARS);
 
 const trivialSubscores = (scored: Obj, label: "runner_null_agent" | "runner_spam_agent" | "runner_majority_class"): Record<string, number> => ({
   final_state: Number(scored.strict ?? 0),
@@ -1401,6 +1418,7 @@ export function nullAgentRunner(): ArmRunner {
       writes: [],
       tool_call_count: 0,
       final_response_chars: NULL_AGENT_FINAL_RESPONSE.length,
+      final_response_excerpt: NULL_AGENT_FINAL_RESPONSE,
     };
   };
 }
@@ -1479,6 +1497,7 @@ export function spamAgentRunner(): ArmRunner {
       writes: calls.filter((call) => isMutatingTool(call.tool)),
       tool_call_count: calls.length,
       final_response_chars: NULL_AGENT_FINAL_RESPONSE.length,
+      final_response_excerpt: NULL_AGENT_FINAL_RESPONSE,
     };
   };
 }
@@ -1565,6 +1584,7 @@ export function majorityClassRunner(): ArmRunner {
       writes: [],
       tool_call_count: 0,
       final_response_chars: response.length,
+      final_response_excerpt: responseExcerpt(response),
     };
   };
 }
@@ -1686,6 +1706,7 @@ export function projectVerifiersTrace(trace: Obj, model: string, options: { loca
       writes,
       tool_call_count: toolCallCount,
       final_response_chars: finalAssistantText === null ? null : finalAssistantText.trim().length,
+      final_response_excerpt: responseExcerpt(finalAssistantText),
       ...(tokensPerSec !== null ? { perf: { tokens_per_sec: tokensPerSec } } : {}),
       error: failed ? String(errors[0]?.type ?? "RolloutError") + ": " + String(errors[0]?.message ?? "rollout not ok").slice(0, 500) : null,
     },
