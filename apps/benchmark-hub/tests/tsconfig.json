@@ -15,6 +15,7 @@
     "../lib/types.ts",
     "../lib/benchmark-core.ts",
     "../lib/scores.ts",
+    "../lib/pareto.ts",
     "../lib/data-core.ts",
     "../app/api/flags/route.ts",
     "../app/api/reviews/route.ts",

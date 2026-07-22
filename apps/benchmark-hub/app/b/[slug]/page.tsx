@@ -23,6 +23,8 @@ import { CopySlug } from "@/components/copy-slug";
 import { ProposedBenchmarkPage } from "@/components/proposed/benchmark-page";
 import { RunPanel } from "@/components/run-panel";
 import { CalibrationFloors } from "@/components/calibration-floors";
+import { ParetoSection } from "@/components/pareto";
+import { projectParetoPoints } from "@/lib/pareto";
 
 export const dynamic = "force-dynamic";
 
@@ -30,6 +32,7 @@ const RAIL = [
   { id: "run", label: "Run" },
   { id: "leaderboard", label: "Leaderboard" },
   { id: "insights", label: "Insights" },
+  { id: "tradeoffs", label: "Trade-offs" },
   { id: "evidence", label: "Evidence" },
   { id: "taxonomy", label: "Taxonomy" },
   { id: "tasks", label: "Tasks" },
@@ -330,6 +333,20 @@ export default async function BenchmarkDetail({ params }: { params: Promise<{ sl
             {scoredCategories >= 3 && insightSummaries.length >= 2 && (
               <CategoryRadar manifest={m} summaries={insightSummaries} />
             )}
+          </Section>
+
+          <Section
+            id="tradeoffs"
+            title="Trade-offs"
+            scope="all splits · flagged excluded · anomalous excluded"
+            explainer="Multi-objective view: quality (with bootstrap CIs) against cost, latency, or throughput. Dashed steps trace the Pareto frontier — the non-dominated arms; trivial calibration arms render as floor reference lines, never as candidates."
+          >
+            <ParetoSection
+              points={projectParetoPoints(entry.rows, {
+                excludeTaskIds: new Set(flaggedTaskIds),
+                benchmarkId: m.benchmark_id,
+              })}
+            />
           </Section>
 
           <Section
