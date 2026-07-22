@@ -1,6 +1,7 @@
 import { Command } from "commander";
 import { join, resolve } from "node:path";
-import { compileTraceFoundry, createTraceReplayPlan, importTraceReviews } from "../trace-foundry.js";
+import { compileTraceFoundry, createTraceReplayPlan, importTraceReviews, runTraceReplays } from "../trace-foundry.js";
+import { serveTraceFoundry } from "../trace-foundry-server.js";
 
 export function registerTracesCommand(program: Command): void {
   const traces = program.command("traces").description("Compile local trace captures into benchmark environments");
@@ -26,4 +27,19 @@ export function registerTracesCommand(program: Command): void {
     .requiredOption("--benchmark <path>", "Benchmark output directory")
     .requiredOption("--model <id...>", "Candidate model IDs; repeat or provide a list")
     .action((options: { benchmark: string; model: string[] }) => console.log(JSON.stringify(createTraceReplayPlan(resolve(options.benchmark), options.model), null, 2)));
+  traces.command("run-replays")
+    .description("Run approved models through the generated Verifiers v1 environment")
+    .requiredOption("--benchmark <path>", "Benchmark output directory")
+    .requiredOption("--model <id...>", "Approved model IDs")
+    .option("--variant <name...>", "Context variants", ["authentic_history"])
+    .option("--max-examples <count>", "Maximum examples per model and variant", "5")
+    .option("--yes", "Approve provider calls for this bounded run", false)
+    .action((options: { benchmark: string; model: string[]; variant: string[]; maxExamples: string; yes: boolean }) => console.log(JSON.stringify(runTraceReplays(resolve(options.benchmark), options.model, options.variant, Number(options.maxExamples), options.yes), null, 2)));
+  traces.command("serve")
+    .description("Serve the local DAG, task, contract, and trace viewer")
+    .requiredOption("--benchmark <path>", "Benchmark output directory")
+    .option("--port <number>", "Local port", "3003")
+    .action((options: { benchmark: string; port: string }) => {
+      const port = Number(options.port); serveTraceFoundry(resolve(options.benchmark), port); console.error(`viewer: http://127.0.0.1:${port}`);
+    });
 }

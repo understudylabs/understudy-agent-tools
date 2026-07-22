@@ -4,6 +4,16 @@ This reference backs the long-form implementation notes in `SKILL.md`.
 
 ## `verifiers` Environment Notes
 
+### Current trace-foundry target (audited 2026-07-21)
+
+New trace-derived environments target the Verifiers v1 Taskset/Harness API at
+commit `cb9c84969186f8a0954b1027320f225e6b6b0afb`. Generate them with
+`understudy traces build-benchmark`; the helper writes and pins the typed
+Taskset, per-rollout State and Toolset, Harness, loaders, canonical benchmark,
+oracle, and sentinels. Smoke-install the generated package against the recorded
+commit. The v0 notes below apply only to the checked-in legacy compatibility
+example and must not guide new environments.
+
 The same `verifiers` environment can serve eval, RL training, synthetic-data
 generation, and agent-harness experimentation. Build it well once, validate it
 cheaply with eval before any GPU run, then reuse the environment across trainer
@@ -21,7 +31,7 @@ These pieces are independently swappable, but parser and renderer compatibility
 must be rechecked when changing model families. That is the failure mode this
 skill is meant to catch before a hosted RL run.
 
-## API Facts To Recheck
+## Legacy v0 API facts
 
 These details were re-verified against the `verifiers` `0.2.0` source
 (2026-07-14) and should be rechecked when the dependency pin changes. Pin

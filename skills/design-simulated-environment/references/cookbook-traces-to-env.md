@@ -1,13 +1,23 @@
 # Cookbook: from prior traces to a verifiers environment
 
-The dead-simple path from "I have traces / tests / a playbook" to "any model
-change runs through a simulator before prod." Every stage has a working
-implementation in
-[`../examples/event-categorizer/`](../examples/event-categorizer/README.md) —
-copy it and swap parts, don't start blank. Pin `verifiers==0.2.0` (v0 API,
-frozen upstream; landscape in [`../reference.md`](../reference.md)).
+The path from "I have traces" to "any model change runs through a simulator
+before prod" is `understudy traces build-benchmark`, followed by review import
+and bounded replays. Use
+[`../../ingest-traces/references/trace-foundry-cli.md`](../../ingest-traces/references/trace-foundry-cli.md).
+The event-categorizer example below is retained only for legacy v0 workloads;
+do not copy it for a new trace-derived environment.
 
 ## The short version (what the agent actually runs)
+
+For new work:
+
+```sh
+understudy traces build-benchmark --source .understudy/captures \
+  --output .understudy/benchmarks/latest --workload <name> \
+  --max-age-days 3 --batch-size 10
+```
+
+The older manual v0 path, for compatibility work only:
 
 ```sh
 cp -r skills/design-simulated-environment/examples/event-categorizer my-workload-env

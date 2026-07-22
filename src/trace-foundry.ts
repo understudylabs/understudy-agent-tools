@@ -1,7 +1,9 @@
 import { createHash } from "node:crypto";
 import { appendFileSync, existsSync, mkdirSync, readFileSync, readdirSync, statSync, writeFileSync } from "node:fs";
 import { join, relative, resolve } from "node:path";
+import { spawnSync } from "node:child_process";
 import { traceFoundryViewer } from "./trace-foundry-viewer.js";
+import { validateBenchmarkManifest } from "./benchmark.js";
 
 type J = null | boolean | number | string | J[] | { [key: string]: J };
 type Obj = Record<string, any>;
@@ -78,7 +80,7 @@ function responseProjection(raw: unknown): Obj {
       if (block.type === "tool_use") toolCalls.push({ id: block.id, name: block.name, arguments: block.input ?? {} });
       for (const choice of Array.isArray(event.choices) ? event.choices : []) {
         for (const callValue of asObject(choice).delta?.tool_calls ?? []) {
-          const call = asObject(callValue), fn = asObject(call.function), key = String(call.id ?? call.index ?? deltas.size);
+          const call = asObject(callValue), fn = asObject(call.function), key = String(call.index ?? call.id ?? deltas.size);
           const prior = deltas.get(key) ?? { id: call.id ?? null, function: { name: "", arguments: "" } };
           const priorFn = asObject(prior.function);
           deltas.set(key, { id: call.id ?? prior.id, function: { name: String(priorFn.name ?? "") + String(fn.name ?? ""), arguments: String(priorFn.arguments ?? "") + String(fn.arguments ?? "") } });
@@ -170,7 +172,9 @@ function toolEvents(captures: Obj[]): Obj[] {
     }
     for (const callValue of capture.response.tool_calls ?? []) { const call = asObject(callValue), fn = asObject(call.function); events.push({ kind: "call", id: call.id, name: call.name ?? fn.name, arguments: call.arguments ?? fn.arguments ?? {} }); }
   }
-  return [...new Map(events.map((event) => [hash(event), event])).values()];
+  const unique = [...new Map(events.map((event) => [hash(event), event])).values()];
+  const calls = new Map(unique.filter((event) => event.kind === "call" && event.id).map((event) => [event.id, event]));
+  return unique.map((event) => event.kind === "result" && calls.has(event.id) ? { ...event, tool: calls.get(event.id)?.name, arguments: calls.get(event.id)?.arguments } : event);
 }
 
 function capabilityFit(candidate: Obj, catalog: Obj[]): Obj {
@@ -184,7 +188,10 @@ function capabilityFit(candidate: Obj, catalog: Obj[]): Obj {
   }).sort((a, b) => b.similarity - a.similarity);
   const best = scored[0];
   if (!best || best.similarity === 0) return { classification: "new_capability", matched_task_id: null, similarity: 0 };
-  if (best.similarity === 1 && best.sameTitle) return { classification: "new_instance", matched_task_id: best.prior.task_id, similarity: 1 };
+  if (best.similarity === 1 && best.sameTitle) {
+    const priorContract = hash(best.prior.outcome_contract?.required ?? []), candidateContract = hash(candidate.outcome_contract?.required ?? []);
+    return { classification: priorContract === candidateContract ? "new_instance" : "contradiction", matched_task_id: best.prior.task_id, similarity: 1, evidence: priorContract === candidateContract ? [] : ["same_intent_and_tools_but_different_required_state"] };
+  }
   if (best.similarity === 1) return { classification: "task_variant", matched_task_id: best.prior.task_id, similarity: 1 };
   return { classification: "environment_extension", matched_task_id: best.prior.task_id, similarity: best.similarity };
 }
@@ -199,7 +206,9 @@ function tasksFrom(dag: Obj, rows: Obj[], catalog: Obj[] = []): Obj[] {
     const required = mutations.map((call) => ({ type: "state_effect", tool: call.name, observed_arguments: call.arguments, matching: "semantic_outcome_not_exact_trajectory", confidence: "medium" }));
     const confidence = required.length > 0 && !events.some((e) => e.status === "error") ? "high" : calls.length > 0 ? "medium" : "low";
     const bucket = Number.parseInt(hash(group.id).slice(0, 8), 16) % 100;
-    const task: Obj = { schema_version: "understudy.benchmark_task.v1", task_id: `task-${group.id.slice(0, 16)}`, execution_group: group.id, title: contentText(first.content).trim().slice(0, 160) || `Trace group ${group.id.slice(0, 8)}`, status: !dag.valid ? "blocked" : confidence === "high" ? "machine_proposed" : "needs_review", split: bucket < 70 ? "construction" : bucket < 90 ? "fit" : "heldout", candidate_boundary: root.capture_key, machine_confidence: confidence, close_call: confidence !== "high" || !dag.valid, tool_surface: [...new Set(calls.map((e) => e.name))].sort(), source: { node_ids: nodes.map((n: Obj) => n.id), edges: dag.edges.filter((e: Obj) => e.execution_group === group.id), captures: nodes.map((n: Obj) => ({ capture_key: n.id, capture_id: n.capture_id, ...n.source })) }, world_model: { status: "machine_proposed", initial_state: { source: "observed_tool_results", materialized: false }, transitions: required }, outcome_contract: { status: "machine_proposed", required, preserved: [], forbidden: [], grading: "final_state_and_obligations" }, claims: [...calls.map((c) => ({ kind: "observed", claim: `tool ${c.name} was called`, source_call_id: c.id })), ...mutations.map((c) => ({ kind: "inferred", claim: `${c.name} appears to mutate state`, confidence: "medium" }))], sentinels: ["noop", "wrong_value", "write_everything", "forbidden_write"], review: { decision: "pending_final_judgment" } };
+    const definitions = captures.flatMap((capture) => capture.request.tools ?? []).map(asObject);
+    const observedResults = events.filter((event) => event.kind === "result" && event.tool);
+    const task: Obj = { schema_version: "understudy.benchmark_task.v1", task_id: `task-${group.id.slice(0, 16)}`, execution_group: group.id, title: contentText(first.content).trim().slice(0, 160) || `Trace group ${group.id.slice(0, 8)}`, status: !dag.valid ? "blocked" : confidence === "high" ? "machine_proposed" : "needs_review", split: bucket < 70 ? "construction" : bucket < 90 ? "fit" : "heldout", candidate_boundary: root.capture_key, machine_confidence: confidence, close_call: confidence !== "high" || !dag.valid, tool_surface: [...new Set(calls.map((e) => e.name))].sort(), tool_definitions: [...new Map(definitions.map((definition) => [definition.name ?? definition.function?.name ?? hash(definition), definition])).values()], source: { node_ids: nodes.map((n: Obj) => n.id), edges: dag.edges.filter((e: Obj) => e.execution_group === group.id), captures: nodes.map((n: Obj) => ({ capture_key: n.id, capture_id: n.capture_id, ...n.source })) }, world_model: { status: "machine_proposed", initial_state: { source: "observed_tool_results", materialized: observedResults.length > 0, observations: observedResults }, transitions: required }, outcome_contract: { status: "machine_proposed", required, preserved: [], forbidden: [], grading: "final_state_and_obligations" }, claims: [...calls.map((c) => ({ kind: "observed", claim: `tool ${c.name} was called`, source_call_id: c.id })), ...mutations.map((c) => ({ kind: "inferred", claim: `${c.name} appears to mutate state`, confidence: "medium" }))], sentinels: ["noop", "wrong_value", "write_everything", "forbidden_write"], review: { decision: "pending_final_judgment" } };
     task.capability_fit = capabilityFit(task, catalog);
     task.task_hash = hash({ title: task.title, tools: task.tool_surface, contract: task.outcome_contract, source: task.source });
     return task;
@@ -223,24 +232,41 @@ function scoreState(task: Obj, writes: Obj[]): Obj {
   return { recall, precision, policy: forbidden, score: (recall + precision + forbidden) / 3 };
 }
 
-function writeVerifiersEnvironment(output: string, tasks: Obj[], systemPrompts: Map<string, unknown>, auditedCommit: string): Obj {
+function writeVerifiersEnvironment(output: string, tasks: Obj[], sourceContext: Map<string, Obj>, auditedCommit: string): Obj {
   const root = join(output, "environment"), pkg = join(root, "understudy_trace_env"), servers = join(pkg, "servers");
   mkdirSync(servers, { recursive: true });
-  const toolNames = [...new Set(tasks.flatMap((task) => task.tool_surface ?? []))].sort();
-  const methods = toolNames.map((name) => `    @vf.tool(name=${JSON.stringify(name)})\n    async def ${pyName(name)}(self, arguments: dict) -> str:\n        \"\"\"Execute one simulated trace-derived tool transition.\"\"\"\n        self.state.writes.append({\"tool\": ${JSON.stringify(name)}, \"arguments\": arguments})\n        return json.dumps({\"ok\": True, \"tool\": ${JSON.stringify(name)}, \"arguments\": arguments})`).join("\n\n");
-  const taskRows = tasks.map((task) => ({ task_id: task.task_id, prompt: task.title, system_prompt: systemPrompts.get(task.task_id) ?? null, split: task.split, outcome_contract: task.outcome_contract, tool_surface: task.tool_surface }));
+  const toolNames = [...new Set<string>(tasks.flatMap((task) => (task.tool_surface ?? []).map(String)))].sort();
+  const observedByTool = new Map<string, Obj>();
+  for (const task of tasks) for (const rule of task.outcome_contract?.required ?? []) if (!observedByTool.has(rule.tool)) observedByTool.set(rule.tool, asObject(rule.observed_arguments));
+  const schemaByTool = new Map<string, Obj>();
+  for (const task of tasks) for (const definitionValue of task.tool_definitions ?? []) { const definition = asObject(definitionValue), fn = asObject(definition.function), name = String(definition.name ?? fn.name ?? ""); if (name && !schemaByTool.has(name)) schemaByTool.set(name, asObject(definition.input_schema ?? fn.parameters)); }
+  const pyType = (value: unknown): string => typeof value === "boolean" ? "bool" : typeof value === "number" ? "float" : Array.isArray(value) ? "list" : value && typeof value === "object" ? "dict" : "str";
+  const schemaType = (schema: Obj, fallback: unknown): string => schema.type === "boolean" ? "bool" : ["number", "integer"].includes(schema.type) ? "float" : schema.type === "array" ? "list" : schema.type === "object" ? "dict" : schema.type === "string" ? "str" : pyType(fallback);
+  const methods = toolNames.map((name) => {
+    const observed = observedByTool.get(name) ?? {}, properties = asObject(schemaByTool.get(name)?.properties);
+    const keys = [...new Set([...Object.keys(properties), ...Object.keys(observed)])];
+    const parameters = keys.map((key) => `${pyName(key)}: ${schemaType(asObject(properties[key]), observed[key])} | None = None`).join(", ");
+    const args = keys.map((key) => `${JSON.stringify(key)}: ${pyName(key)}`).join(", ");
+    const mutating = mutationPrefixes.some((prefix) => name.toLowerCase().startsWith(prefix));
+    return `    @vf.tool(name=${JSON.stringify(name)})\n    async def ${pyName(name)}(self${parameters ? `, ${parameters}` : ""}) -> str:\n        \"\"\"Execute the trace-derived ${name} transition against per-rollout state.\"\"\"\n        event = {\"tool\": ${JSON.stringify(name)}, \"arguments\": {${args}}}\n        self.state.events.append(event)\n${mutating ? "        self.state.writes.append(event)\n" : ""}        return json.dumps({\"ok\": True, **event})`;
+  }).join("\n\n");
+  const fixtures = tasks.flatMap((task) => task.world_model?.initial_state?.observations ?? []).map((result: Obj) => ({ tool: result.tool, arguments: result.arguments ?? {}, status: result.status, content: result.content }));
+  const worldMethods = `    FIXTURES = ${JSON.stringify(fixtures)}\n\n${methods.replaceAll('        return json.dumps({"ok": True, **event})', '        fixture = next((item for item in self.FIXTURES if item.get("tool") == event["tool"] and item.get("arguments") == event["arguments"]), None)\n        return json.dumps(fixture if fixture is not None else {"ok": True, **event})')}`;
+  const taskRows = tasks.map((task) => ({ task_id: task.task_id, prompt: task.title, system_prompt: sourceContext.get(task.task_id)?.system ?? null, source_messages: sourceContext.get(task.task_id)?.messages ?? [], split: task.split === "construction" ? "train" : task.split === "fit" ? "dev" : "holdout", outcome_contract: task.outcome_contract, tool_surface: task.tool_surface }));
   writeJson(join(pkg, "tasks.json"), taskRows);
-  writeFileSync(join(pkg, "servers", "world.py"), `import json\nfrom pydantic import Field\nimport verifiers.v1 as vf\n\nclass WorldState(vf.State):\n    writes: list[dict] = Field(default_factory=list)\n\nclass WorldToolset(vf.Toolset[vf.ToolsetConfig, WorldState]):\n    TOOL_PREFIX = \"\"\n\n${methods || "    pass"}\n\nif __name__ == \"__main__\":\n    WorldToolset.run()\n`, { mode: 0o600 });
-  writeFileSync(join(pkg, "taskset.py"), `import json\nfrom pathlib import Path\nimport verifiers.v1 as vf\nfrom understudy_trace_env.servers.world import WorldState, WorldToolset\n\nROWS = json.loads((Path(__file__).parent / \"tasks.json\").read_text())\n\nclass TraceData(vf.TaskData):\n    task_id: str\n    outcome_contract: dict\n    split: str\n\nclass TraceTask(vf.Task[TraceData, WorldState]):\n    tools = (WorldToolset,)\n\n    @vf.stop\n    async def bounded(self, trace: vf.Trace) -> bool:\n        return trace.num_turns >= 24\n\n    @vf.reward(weight=1.0)\n    async def final_state(self, trace: vf.Trace) -> float:\n        required = self.data.outcome_contract.get(\"required\", [])\n        dumped = trace.model_dump(mode=\"json\")\n        text = json.dumps(dumped, sort_keys=True)\n        if not required:\n            return 1.0\n        return sum(1 for r in required if r.get(\"tool\") in text and json.dumps(r.get(\"observed_arguments\", {}), sort_keys=True)[1:-1] in text) / len(required)\n\nclass TraceConfig(vf.TasksetConfig):\n    split: str = \"construction\"\n    tools: vf.ToolsetConfig = vf.ToolsetConfig()\n\nclass TraceTaskset(vf.Taskset[TraceTask, TraceConfig]):\n    tools = (WorldToolset,)\n    def load(self) -> list[TraceTask]:\n        return [TraceTask(TraceData(idx=i, task_id=r[\"task_id\"], prompt=r[\"prompt\"], system_prompt=r.get(\"system_prompt\"), outcome_contract=r[\"outcome_contract\"], split=r[\"split\"]), self.config.task) for i, r in enumerate(ROWS) if r[\"split\"] == self.config.split]\n`, { mode: 0o600 });
-  writeFileSync(join(pkg, "__init__.py"), "from understudy_trace_env.taskset import TraceTaskset\n\n__all__ = [\"TraceTaskset\"]\n", { mode: 0o600 });
+  writeFileSync(join(pkg, "servers", "world.py"), `import json\nfrom pydantic import Field\nimport verifiers.v1 as vf\n\nclass WorldState(vf.State):\n    events: list[dict] = Field(default_factory=list)\n    writes: list[dict] = Field(default_factory=list)\n\nclass WorldToolset(vf.Toolset[vf.ToolsetConfig, WorldState]):\n    TOOL_PREFIX = \"\"\n\n${worldMethods || "    pass"}\n\nif __name__ == \"__main__\":\n    WorldToolset.run()\n`, { mode: 0o600 });
+  writeFileSync(join(pkg, "taskset.py"), `import json\nfrom pathlib import Path\nimport verifiers.v1 as vf\nfrom understudy_trace_env.servers.world import WorldState, WorldToolset\n\nROWS = json.loads((Path(__file__).parent / \"tasks.json\").read_text())\n\nclass TraceData(vf.TaskData):\n    task_id: str\n    outcome_contract: dict\n    split: str\n\nclass TraceTask(vf.Task[TraceData, WorldState]):\n    @vf.stop\n    async def bounded(self, trace: vf.Trace) -> bool:\n        return trace.num_turns >= 24\n\n    def _matched(self, trace: vf.Trace) -> tuple[int, int]:\n        required = self.data.outcome_contract.get(\"required\", [])\n        text = json.dumps(trace.model_dump(mode=\"json\"), sort_keys=True)\n        matched = sum(1 for r in required if r.get(\"tool\") in text and all(str(v) in text for v in r.get(\"observed_arguments\", {}).values()))\n        return matched, len(required)\n\n    @vf.reward(weight=1.0)\n    async def final_state(self, trace: vf.Trace) -> float:\n        matched, total = self._matched(trace)\n        return float(total > 0 and matched == total)\n\n    @vf.metric\n    async def final_state_partial_credit(self, trace: vf.Trace) -> float:\n        matched, total = self._matched(trace)\n        return matched / max(total, 1)\n\n    async def validate(self, runtime: vf.Runtime) -> bool:\n        required = self.data.outcome_contract.get(\"required\", [])\n        return bool(required) and all(isinstance(r.get(\"tool\"), str) and isinstance(r.get(\"observed_arguments\"), dict) for r in required)\n\nclass TraceConfig(vf.TasksetConfig):\n    split: str = \"train\"\n    context_variant: str = \"authentic_history\"\n    tools: vf.ToolsetConfig = vf.ToolsetConfig()\n\nclass TraceTaskset(vf.Taskset[TraceTask, TraceConfig]):\n    tools = (WorldToolset,)\n    def load(self) -> list[TraceTask]:\n        return [TraceTask(TraceData(idx=i, task_id=r[\"task_id\"], prompt=r[\"prompt\"], system_prompt=r.get(\"system_prompt\"), outcome_contract=r[\"outcome_contract\"], split=r[\"split\"]), self.config.task) for i, r in enumerate(ROWS) if r[\"split\"] == self.config.split]\n`, { mode: 0o600 });
+  writeFileSync(join(pkg, "environment.py"), `import verifiers.v1 as vf\nfrom understudy_trace_env.taskset import TraceConfig, TraceTaskset\n\nclass TraceHarnessConfig(vf.HarnessConfig):\n    max_turns: int = 24\n\nclass TraceHarness(vf.Harness[TraceHarnessConfig]):\n    pass\n\ndef load_taskset(config: TraceConfig) -> TraceTaskset:\n    return TraceTaskset(config=config)\n\ndef load_harness(config: TraceHarnessConfig) -> TraceHarness:\n    return TraceHarness(config=config)\n\ndef load_environment(config: vf.EnvConfig) -> vf.Env:\n    return vf.Env(taskset=vf.load_taskset(config.taskset), harness=vf.load_harness(config.harness))\n`, { mode: 0o600 });
+  writeFileSync(join(pkg, "__init__.py"), "from understudy_trace_env.environment import load_environment, load_harness, load_taskset\nfrom understudy_trace_env.taskset import TraceTaskset\n\n__all__ = [\"TraceTaskset\", \"load_environment\", \"load_harness\", \"load_taskset\"]\n", { mode: 0o600 });
   writeFileSync(join(servers, "__init__.py"), "", { mode: 0o600 });
-  writeFileSync(join(root, "pyproject.toml"), `[project]\nname = "understudy-trace-env"\nversion = "0.1.0"\nrequires-python = ">=3.10"\ndependencies = ["verifiers @ git+https://github.com/PrimeIntellect-ai/verifiers.git@${auditedCommit}"]\n\n[build-system]\nrequires = ["hatchling"]\nbuild-backend = "hatchling.build"\n\n[tool.hatch.build.targets.wheel]\npackages = ["understudy_trace_env"]\n`, { mode: 0o600 });
+  writeFileSync(join(root, "pyproject.toml"), `[project]\nname = "understudy-trace-env"\nversion = "0.1.0"\nrequires-python = ">=3.11,<3.14"\ndependencies = ["verifiers @ git+https://github.com/PrimeIntellect-ai/verifiers.git@${auditedCommit}"]\n\n[build-system]\nrequires = ["hatchling"]\nbuild-backend = "hatchling.build"\n\n[tool.hatch.metadata]\nallow-direct-references = true\n\n[tool.hatch.build.targets.wheel]\npackages = ["understudy_trace_env"]\n`, { mode: 0o600 });
   const validation = tasks.map((task) => {
     const oracleWrites = (task.outcome_contract?.required ?? []).map((rule: Obj) => ({ tool: rule.tool, arguments: rule.observed_arguments }));
     return { task_id: task.task_id, oracle: scoreState(task, oracleWrites), sentinels: { noop: scoreState(task, []), wrong_value: scoreState(task, oracleWrites.map((write: Obj) => ({ ...write, arguments: { __wrong__: true } }))), write_everything: scoreState(task, [...oracleWrites, { tool: "forbidden-extra-write", arguments: {} }]) } };
   });
   writeJson(join(root, "offline-validation.json"), { schema_version: "understudy.verifier_validation.v1", verifiers: { api: "v1", audited_commit: auditedCommit }, tasks: validation });
-  return { path: root, verifiers_api: "v1", audited_commit: auditedCommit, oracle_pass: validation.every((row) => row.oracle.score === 1), sentinel_pass: validation.every((row) => row.sentinels.noop.score < 1 && row.sentinels.wrong_value.score < 1 && row.sentinels.write_everything.score < 1) };
+  const packageFiles = [join(root, "pyproject.toml"), join(pkg, "__init__.py"), join(pkg, "environment.py"), join(pkg, "taskset.py"), join(pkg, "servers", "world.py"), join(pkg, "tasks.json")];
+  return { path: root, package_sha256: hash(packageFiles.map((path) => readFileSync(path, "utf8"))), verifiers_api: "v1", audited_commit: auditedCommit, oracle_pass: validation.every((row) => row.oracle.score === 1), sentinel_pass: validation.every((row) => row.sentinels.noop.score < 1 && row.sentinels.wrong_value.score < 1 && row.sentinels.write_everything.score < 1) };
 }
 
 export function importTraceReviews(outputInput: string, reviewsInput: string): Obj {
@@ -249,6 +275,7 @@ export function importTraceReviews(outputInput: string, reviewsInput: string): O
   for (const review of reviews) {
     if (!byTask.has(review.task_id)) throw new Error(`Unknown reviewed task: ${review.task_id}`);
     if (!["accept", "restrict", "needs_more", "reject"].includes(review.decision)) throw new Error(`Invalid review decision: ${review.decision}`);
+    if (review.task_hash && review.task_hash !== byTask.get(review.task_id)?.task_hash) throw new Error(`Stale review for changed task: ${review.task_id}`);
     review.decision_hash = hash({ task_id: review.task_id, decision: review.decision, restrictions: review.restrictions ?? [], task_hash: byTask.get(review.task_id)?.task_hash });
   }
   writeJsonl(join(output, "review-decisions.jsonl"), reviews);
@@ -256,8 +283,12 @@ export function importTraceReviews(outputInput: string, reviewsInput: string): O
   for (const task of tasks) if (decisions.has(task.task_id)) task.review = decisions.get(task.task_id);
   writeJsonl(tasksPath, tasks);
   const accepted = tasks.filter((task) => ["accept", "restrict"].includes(task.review?.decision)).length;
-  const promotion = accepted === tasks.length ? "human_approved" : "review_pending";
-  const benchmark = asObject(JSON.parse(readFileSync(join(output, "benchmark.json"), "utf8"))); benchmark.status = promotion; benchmark.promotion_blockers = promotion === "human_approved" ? [] : ["human_final_judgment"];
+  const humanApproved = accepted === tasks.length;
+  const benchmark = asObject(JSON.parse(readFileSync(join(output, "benchmark.json"), "utf8")));
+  const blockers = (benchmark.promotion_blockers ?? []).filter((blocker: string) => blocker !== "human_final_judgment");
+  if (!humanApproved) blockers.unshift("human_final_judgment");
+  const promotion = humanApproved && blockers.length === 0 ? "human_approved" : "review_pending";
+  benchmark.status = promotion; benchmark.promotion_blockers = blockers;
   writeJson(join(output, "benchmark.json"), benchmark);
   return { schema_version: "understudy.review_import.v1", reviewed: reviews.length, accepted, total: tasks.length, status: promotion };
 }
@@ -265,8 +296,36 @@ export function importTraceReviews(outputInput: string, reviewsInput: string): O
 export function createTraceReplayPlan(outputInput: string, models: string[]): Obj {
   if (models.length === 0) throw new Error("At least one --model is required");
   const output = resolve(outputInput), tasks = readJsonl(join(output, "tasks.jsonl"));
-  const plan = { schema_version: "understudy.replay_plan.v1", benchmark: join(output, "benchmark.json"), environment: join(output, "environment"), models, variants: ["minimal_context", "authentic_history", "long_history", "distractors", "errors_and_retries", "saturation"], metrics: ["final_state", "preservation", "forbidden_effects", "failures", "retries", "context_tokens", "cost", "latency"], tasks: tasks.map((task) => task.task_id), execution: { approved: false, provider_calls_performed: false } };
-  writeJson(join(output, "replay-plan.json"), plan); return plan;
+  const plan = { schema_version: "understudy.replay_plan.v1", benchmark: join(output, "benchmark.json"), environment: join(output, "environment"), models, variants: ["minimal_context", "authentic_history", "long_history", "distractors", "errors_and_retries", "saturation"], metrics: ["final_state", "preservation", "forbidden_effects", "failures", "retries", "context_tokens", "cost", "latency"], tasks: tasks.map((task) => task.task_id), execution: { approved: false, provider_calls_performed: false }, optimization_ladder: ["baseline", "GEPA_on_train_and_dev", "single_sealed_holdout_eval", "context_policy", "SFT_or_RLM", "RL"] };
+  writeJson(join(output, "replay-plan.json"), plan); writeJson(join(output, "gepa-plan.json"), { schema_version: "understudy.gepa_plan.v1", requires: ["completed_baseline", "trusted_rewards", "sealed_holdout"], optimize_splits: ["train", "dev"], selection_split: "dev", final_split: "holdout", execute: false }); return plan;
+}
+
+export function runTraceReplays(outputInput: string, models: string[], variants: string[], maxExamples: number, confirmed: boolean): Obj {
+  if (!confirmed) throw new Error("Replay execution can call paid model providers; pass --yes to approve the requested models and examples.");
+  if (!Number.isInteger(maxExamples) || maxExamples <= 0) throw new Error("--max-examples must be a positive integer");
+  const output = resolve(outputInput), environment = join(output, "environment"), allowed = new Set(["minimal_context", "authentic_history", "long_history", "distractors", "errors_and_retries", "saturation"]);
+  for (const variant of variants) if (!allowed.has(variant)) throw new Error(`Unknown context variant: ${variant}`);
+  const runs: Obj[] = [], runRoot = join(output, "replays"), taskRowsPath = join(environment, "understudy_trace_env", "tasks.json"), sourceTaskRows = JSON.parse(readFileSync(taskRowsPath, "utf8")) as Obj[]; mkdirSync(runRoot, { recursive: true });
+  const promptFor = (row: Obj, variant: string): unknown => {
+    const messages = row.source_messages ?? [], history = JSON.stringify(messages);
+    if (variant === "minimal_context") return row.prompt;
+    if (["authentic_history", "errors_and_retries"].includes(variant)) return messages.length ? messages : row.prompt;
+    if (variant === "distractors") return `Unrelated archived note: ignore record 999.\n\nCaptured history:\n${history}`;
+    if (variant === "long_history") return `Captured history repeated for retention testing:\n${history}\n${history}`;
+    return `${history}\n`.repeat(8);
+  };
+  for (const model of models) for (const variant of variants) {
+    const started = new Date(), args = ["run", "--project", environment, "eval", "understudy-trace-env", "-m", model, "-n", String(maxExamples), "--env.taskset.context-variant", variant, "--env.taskset.tools.runtime.type", "subprocess"];
+    writeJson(taskRowsPath, sourceTaskRows.map((row) => ({ ...row, prompt: promptFor(row, variant) })));
+    let child: ReturnType<typeof spawnSync>;
+    try { child = spawnSync("uv", args, { cwd: output, encoding: "utf8", env: process.env, maxBuffer: 16 * 1024 * 1024 }); }
+    finally { writeJson(taskRowsPath, sourceTaskRows); }
+    const run = { model, variant, started_at: started.toISOString(), finished_at: new Date().toISOString(), status: child.status === 0 ? "completed" : "error", exit_code: child.status, stdout: child.stdout, stderr: child.stderr };
+    writeJson(join(runRoot, `${hash({ model, variant }).slice(0, 16)}.json`), run); runs.push(run);
+    if (child.error) throw new Error(`Could not start uv/verifiers replay: ${child.error.message}`);
+  }
+  const report = { schema_version: "understudy.replay_run.v1", provider_calls_performed: true, max_examples: maxExamples, runs };
+  writeJson(join(output, "replay-results.json"), report); return report;
 }
 
 export function compileTraceFoundry(sourceInput: string, outputInput: string, maxAgeDays = 3, now = new Date(), options: TraceFoundryOptions = {}): FoundryResult {
@@ -284,7 +343,10 @@ export function compileTraceFoundry(sourceInput: string, outputInput: string, ma
     if (row === null) invalidTimestampFiltered += 1;
     else if (!options.workload || [row.scope.workload_id, row.scope.workload_name].some((value) => String(value ?? "").toLowerCase() === options.workload?.toLowerCase())) all.push(row);
   }
-  const rows = all.filter((row) => new Date(row.captured_at) >= cutoff);
+  const fresh = all.filter((row) => new Date(row.captured_at) >= cutoff);
+  const knownRows = fresh.filter((row) => knownHashes.has(row.source.sha256));
+  const queuedRows = fresh.filter((row) => !knownHashes.has(row.source.sha256));
+  const rows = [...knownRows, ...queuedRows.slice(0, batchSize)];
   if (rows.length === 0) throw new Error(`No captures satisfy --max-age-days ${maxAgeDays}; cutoff ${cutoff.toISOString()}. Refusing to compile a stale benchmark.`);
   const dag = buildDag(rows), tasks = tasksFrom(dag, rows, priorCatalog), viewer = join(output, "viewer"), capturesDir = join(viewer, "data", "captures");
   mkdirSync(capturesDir, { recursive: true });
@@ -298,17 +360,23 @@ export function compileTraceFoundry(sourceInput: string, outputInput: string, ma
   const newLedger = rows.filter((row) => !knownHashes.has(row.source.sha256)).map((row) => ({ source_sha256: row.source.sha256, source_pointer: row.source.pointer, capture_key: row.capture_key, ingested_at: now.toISOString() }));
   appendJsonl(join(output, "capture-ledger.jsonl"), newLedger);
   writeJsonl(join(output, "normalized-captures.jsonl"), rows); writeJson(join(output, "source-dag.json"), dag); writeJsonl(join(output, "tasks.jsonl"), tasks);
-  const environment = writeVerifiersEnvironment(output, tasks, new Map(tasks.map((task) => [task.task_id, rows.find((row) => row.capture_key === task.candidate_boundary)?.request.system ?? null])), "cb9c84969186f8a0954b1027320f225e6b6b0afb");
-  const promotionBlockers = ["human_final_judgment", ...(!dag.valid ? ["source_dag_invalid"] : []), ...(!environment.oracle_pass ? ["oracle_failed"] : []), ...(!environment.sentinel_pass ? ["sentinel_tests"] : [])];
-  writeJson(join(output, "benchmark.json"), { schema_version: "understudy.benchmark.v1", status: "machine_compiled_review_pending", executable: true, promotion_blockers: promotionBlockers, verifiers: environment, tasks: tasks.map((task) => ({ task_id: task.task_id, split: task.split, status: task.status, task_hash: task.task_hash, capability_fit: task.capability_fit })) });
-  writeFileSync(join(viewer, "index.html"), traceFoundryViewer({ tasks, nodes: dag.nodes, issues: dag.issues, captures: captureIndex }), { mode: 0o600 });
+  const environment = writeVerifiersEnvironment(output, tasks, new Map(tasks.map((task) => { const row = rows.find((candidate) => candidate.capture_key === task.candidate_boundary); return [task.task_id, { system: row?.request.system ?? null, messages: row?.request.messages ?? [] }]; })), "cb9c84969186f8a0954b1027320f225e6b6b0afb");
+  const heldoutNovel = tasks.some((task) => task.split === "heldout" && ["new_capability", "environment_extension"].includes(task.capability_fit.classification));
+  const promotionBlockers = ["human_final_judgment", ...(!dag.valid ? ["source_dag_invalid"] : []), ...(!environment.oracle_pass ? ["oracle_failed"] : []), ...(!environment.sentinel_pass ? ["sentinel_tests"] : []), ...(heldoutNovel ? ["heldout_novel_semantics"] : [])];
+  const categoryByTask = new Map(tasks.map((task) => [task.task_id, `cap-${hash(task.tool_surface).slice(0, 12)}`]));
+  const taxonomy = [...new Map(tasks.map((task) => [categoryByTask.get(task.task_id), { category_id: categoryByTask.get(task.task_id), name: task.tool_surface.join(" + ") || "tool-free task", description: task.title, difficulty: task.close_call ? "hard" : "medium", derived_from: { tool_signature: task.tool_surface, intent_summary: task.title, source_trace_ids: task.source.node_ids } }])).values()];
+  const benchmark = { schema_version: "understudy.benchmark.v1", benchmark_id: `trace-${hash({ source, workload: options.workload ?? null }).slice(0, 16)}`, name: options.workload ? `${options.workload} trace benchmark` : "Trace-derived benchmark", description: "Machine-compiled from a source-history DAG with human final judgment.", created_at: now.toISOString(), provenance: { origin: "derived-from-traces", source_refs: [relative(output, join(output, "capture-ledger.jsonl")), relative(output, join(output, "source-dag.json"))] }, taxonomy, tasks: tasks.map((task) => ({ task_id: task.task_id, category_id: categoryByTask.get(task.task_id), seed: Number.parseInt(task.task_hash.slice(0, 8), 16), genesis: "replayed", split: task.split === "construction" ? "train" : task.split === "fit" ? "dev" : "holdout", gold: task.split === "heldout" && heldoutNovel ? null : { kind: "final-state", ref: `tasks.jsonl#${task.task_id}` }, status: task.status, task_hash: task.task_hash, capability_fit: task.capability_fit })), environment: { format: "verifiers.v1", package_ref: "environment", package_sha256: environment.package_sha256, tool_surface: [...new Set(tasks.flatMap((task) => task.tool_surface))].sort(), runtime: "subprocess", verifiers_version_pin: environment.audited_commit }, verifier: { kind: "final-state", strict_metric: "task_completed_correctly", dense_metric: "final_state_partial_credit", replayable: true }, splits: { boundary: "stable task hash: train 70 / dev 20 / holdout 10", splits_sha256: hash(tasks.map((task) => [task.task_id, task.split])), contamination: heldoutNovel ? "unknown" : "clean" }, linked_eval: null, results_contract: { row_schema: "understudy.eval_result.v1", trace_artifact: "traces.jsonl", branch_projection: "one_eval_row_per_root_to_leaf_branch" }, status: "machine_compiled_review_pending", executable: true, promotion_blockers: promotionBlockers };
+  const manifestErrors = validateBenchmarkManifest(benchmark);
+  if (manifestErrors.length > 0) throw new Error(`Generated benchmark manifest is invalid: ${manifestErrors.join("; ")}`);
+  writeJson(join(output, "benchmark.json"), benchmark);
+  writeFileSync(join(viewer, "index.html"), traceFoundryViewer({ tasks, nodes: dag.nodes, issues: dag.issues, captures: captureIndex, benchmark: { splits: benchmark.splits, promotion_blockers: benchmark.promotion_blockers, environment: benchmark.environment } }), { mode: 0o600 });
   const classifications = tasks.reduce((counts: Obj, task) => { const key = task.capability_fit.classification; counts[key] = (counts[key] ?? 0) + 1; return counts; }, {});
   const reuse = ((classifications.new_instance ?? 0) + (classifications.task_variant ?? 0)) / Math.max(tasks.length, 1);
   const priorGoal = existsSync(join(output, "goal-state.json")) ? asObject(JSON.parse(readFileSync(join(output, "goal-state.json"), "utf8"))) : {};
-  const batch = { index: Number(priorGoal.batch_index ?? 0) + 1, size: Math.min(batchSize, newLedger.length), new_captures: newLedger.length, classifications, clean_reuse_rate: reuse, new_semantic_rate: (classifications.new_capability ?? 0) / Math.max(tasks.length, 1), unresolved_high_impact_contradictions: classifications.contradiction ?? 0 };
+  const batch = { index: Number(priorGoal.batch_index ?? 0) + 1, size: newLedger.length, new_captures: newLedger.length, queued_captures: Math.max(0, queuedRows.length - newLedger.length), classifications, clean_reuse_rate: reuse, new_semantic_rate: (classifications.new_capability ?? 0) / Math.max(tasks.length, 1), unresolved_high_impact_contradictions: classifications.contradiction ?? 0 };
   const recent = [...(priorGoal.recent_batches ?? []), batch].slice(-2), diminishing = recent.length === 2 && recent.every((item: Obj) => item.clean_reuse_rate >= 0.9 && item.new_semantic_rate < 0.05 && item.unresolved_high_impact_contradictions === 0);
-  const goalState = { schema_version: "understudy.environment_goal.v1", status: diminishing ? "maintenance" : "constructing", batch_index: batch.index, batch_size: batchSize, recent_batches: recent, next_action: promotionBlockers.length ? "review_close_calls_and_resolve_blockers" : "prepare_replays", input_hash: hash(rows.map((row) => row.source.sha256)), updated_at: now.toISOString() };
+  const goalState = { schema_version: "understudy.environment_goal.v1", status: batch.queued_captures > 0 ? "constructing" : diminishing ? "maintenance" : "reviewing", batch_index: batch.index, batch_size: batchSize, recent_batches: recent, next_action: batch.queued_captures > 0 ? "compile_next_batch" : promotionBlockers.length ? "review_close_calls_and_resolve_blockers" : "prepare_replays", input_hash: hash(rows.map((row) => row.source.sha256)), updated_at: now.toISOString() };
   writeJson(join(output, "goal-state.json"), goalState); appendJsonl(join(output, "goal-events.jsonl"), [{ at: now.toISOString(), action: "compile", input_hash: goalState.input_hash, batch, validation: { dag_valid: dag.valid, oracle_pass: environment.oracle_pass, sentinel_pass: environment.sentinel_pass }, next_action: goalState.next_action }]);
-  const result: FoundryResult = { schema_version: "understudy.trace_foundry.v1", source, output_dir: output, freshness: { max_age_days: maxAgeDays, cutoff_utc: cutoff.toISOString(), newest_capture_utc: rows.map((row) => row.captured_at).sort().at(-1) }, counts: { source_files: files.length, captures: rows.length, tasks: tasks.length, edges: dag.edges.length, stale_filtered: all.length - rows.length, invalid_timestamp_filtered: invalidTimestampFiltered }, artifacts: { normalized: join(output, "normalized-captures.jsonl"), dag: join(output, "source-dag.json"), tasks: join(output, "tasks.jsonl"), benchmark: join(output, "benchmark.json"), environment: environment.path, ledger: join(output, "capture-ledger.jsonl"), goal: join(output, "goal-state.json"), viewer: join(viewer, "index.html") }, privacy: { local_only: true, contains_customer_payloads: true, upload_performed: false, provider_called: false } };
+  const result: FoundryResult = { schema_version: "understudy.trace_foundry.v1", source, output_dir: output, freshness: { max_age_days: maxAgeDays, cutoff_utc: cutoff.toISOString(), newest_capture_utc: rows.map((row) => row.captured_at).sort().at(-1) }, counts: { source_files: files.length, captures: rows.length, tasks: tasks.length, edges: dag.edges.length, stale_filtered: all.length - fresh.length, invalid_timestamp_filtered: invalidTimestampFiltered }, artifacts: { normalized: join(output, "normalized-captures.jsonl"), dag: join(output, "source-dag.json"), tasks: join(output, "tasks.jsonl"), benchmark: join(output, "benchmark.json"), environment: environment.path, ledger: join(output, "capture-ledger.jsonl"), goal: join(output, "goal-state.json"), viewer: join(viewer, "index.html") }, privacy: { local_only: true, contains_customer_payloads: true, upload_performed: false, provider_called: false } };
   writeJson(join(output, "manifest.json"), result); return result;
 }
