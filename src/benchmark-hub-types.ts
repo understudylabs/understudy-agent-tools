@@ -189,6 +189,8 @@ export type BenchmarkReview = {
   decision: ReviewDecision;
   note: string;
   created_at: string;
+  /** Additive: "auto" = hub auto-accept policy (user-triggered apply); absent/"human" = review bar. */
+  source?: "auto" | "human";
 };
 
 /** understudy.trace_foundry.v1 manifest.json (subset the hub renders). */
@@ -407,6 +409,8 @@ export type ProposedHubEntry = {
   crossCheckErrors: string[];
   /** benchmark-overview.json (understudy.benchmark_overview.v1) when the --overview pass has run. */
   overview: BenchmarkOverview | null;
+  /** understudy.calibration.v1 sidecar from a pre-promotion incumbent rerun, when present (additive). */
+  calibration?: CalibrationSummary | null;
 };
 
 export type AnyHubEntry = HubEntry | InvalidHubEntry | ProposedHubEntry;

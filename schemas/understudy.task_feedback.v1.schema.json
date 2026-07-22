@@ -1,0 +1,42 @@
+{
+  "$schema": "https://json-schema.org/draft/2020-12/schema",
+  "$id": "https://understudylabs.com/schemas/understudy.task_feedback.v1.schema.json",
+  "title": "understudy.task_feedback.v1",
+  "description": "One free-text 'what is wrong with this task' line against a machine-proposed benchmark task. Stored as one JSON object per line in a feedback.jsonl file next to the foundry's manifest.json (understudy.trace_foundry.v1), append-only. The hub only records the feedback and surfaces a copyable agent handoff (referencing `understudy traces regenerate-env`); a coding agent, the benchmarks MCP surface, or a future daemon verb consumes open lines to modify the task. Producers may add extra fields; consumers must ignore fields they do not understand.",
+  "type": "object",
+  "required": ["schema_version", "benchmark_id", "task_id", "feedback", "created_at", "status"],
+  "additionalProperties": true,
+  "properties": {
+    "schema_version": {
+      "const": "understudy.task_feedback.v1",
+      "description": "Version stamp for this feedback shape."
+    },
+    "benchmark_id": {
+      "type": "string",
+      "minLength": 1,
+      "description": "Slug of the foundry output directory the task belongs to (the directory basename). Note: NOT an understudy.benchmark.v1 benchmark_id — proposed benchmarks have no promoted manifest yet. No absolute paths are recorded (portability rule)."
+    },
+    "task_id": {
+      "type": "string",
+      "minLength": 1,
+      "description": "task_id of the understudy.benchmark_task.v1 line in tasks.jsonl this feedback targets."
+    },
+    "feedback": {
+      "type": "string",
+      "minLength": 1,
+      "description": "The reviewer's own words describing what is wrong with the task or how it should change."
+    },
+    "created_at": {
+      "type": "string",
+      "description": "ISO-8601 timestamp the feedback was recorded."
+    },
+    "source": {
+      "type": "string",
+      "description": "Producing surface: 'hub' for the review UI; agents may append with their own label."
+    },
+    "status": {
+      "enum": ["open", "addressed"],
+      "description": "Lifecycle for a consumer verb: open (awaiting an agent edit) or addressed (a consumer edited the task and appended a superseding line). Append-only file; the newest line per task_id wins."
+    }
+  }
+}
