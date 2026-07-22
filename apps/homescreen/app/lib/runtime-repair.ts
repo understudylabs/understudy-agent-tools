@@ -113,17 +113,12 @@ export function promptForHealth(health: DesktopHealth): RepairPrompt | null {
     const reconnecting = health.conversation_runtime.detail.includes(
       "reconnecting automatically",
     );
+    if (reconnecting) return null;
     const prompt = promptForRuntimeRequest({
       ...CONVERSATION_RUNTIME_REPAIR_REQUEST,
       reason: health.conversation_runtime.detail || CONVERSATION_RUNTIME_REPAIR_REQUEST.reason,
     });
-    return reconnecting
-      ? {
-          ...prompt,
-          title: "Runtime reconnecting",
-          actionLabel: "Reconnect now",
-        }
-      : prompt;
+    return prompt;
   }
   return null;
 }
@@ -154,7 +149,7 @@ export function promptForRepairFailure(prompt: RepairPrompt, error: unknown): Re
 }
 
 export function repairPromptMeta(prompt: RepairPrompt): string {
-  if (prompt.runtime === "desktop") return "Signed Tauri update";
+  if (prompt.runtime === "desktop") return "Signed update";
   if (prompt.runtime === "cli") return "Included with Understudy Desktop";
   return prompt.command;
 }

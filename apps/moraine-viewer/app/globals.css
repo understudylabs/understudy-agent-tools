@@ -1,0 +1,76 @@
+@import "tailwindcss";
+
+/* Understudy design language v2.0 tokens (from ~/Developer/understudy/understudy-design).
+   Dark "field" surface by default — this viewer borrows the mood-board grammar. */
+:root {
+  --field: #000000;
+  --paper: #141311;
+  --window: #0b0c0e;
+  --card: #141519;
+  --hover: #1c1e25;
+  --ink: #e7e8ea;
+  --ink-bright: #f2f2f0;
+  --ink-muted: #9b9da3;
+  --stamp: #d7623e;
+  --rule: rgba(255, 255, 255, 0.08);
+
+  --model-house: #ffffff;
+  --model-clay: #d97757;
+  --model-mint: #9edbd3;
+  --model-amber: #f2b34c;
+  --model-violet: #a78bfa;
+  --model-cyan: #67e8f9;
+  --state-promoted: #6ee7a0;
+  --state-ok: #3fb950;
+  --state-warn: #d29922;
+  --state-bad: #f85149;
+
+  --radius-id: 4px;
+  --radius-control: 8px;
+  --radius-card: 12px;
+  --radius-panel: 16px;
+
+  --ease: cubic-bezier(0.2, 0.7, 0.2, 1);
+  --dur-control: 160ms;
+  --dur-settle: 600ms;
+}
+
+@theme inline {
+  --color-field: var(--field);
+  --color-paper: var(--paper);
+  --color-window: var(--window);
+  --color-card: var(--card);
+  --color-hover: var(--hover);
+  --color-ink: var(--ink);
+  --color-ink-bright: var(--ink-bright);
+  --color-ink-muted: var(--ink-muted);
+  --color-stamp: var(--stamp);
+  --color-rule: var(--rule);
+  --color-clay: var(--model-clay);
+  --color-mint: var(--model-mint);
+  --color-amber: var(--model-amber);
+  --color-violet: var(--model-violet);
+  --color-cyan: var(--model-cyan);
+  --color-promoted: var(--state-promoted);
+  --font-sans: "IBM Plex Sans", ui-sans-serif, system-ui, sans-serif;
+  --font-mono: "IBM Plex Mono", ui-monospace, SFMono-Regular, Menlo, monospace;
+}
+
+body {
+  background: var(--field);
+  color: var(--ink);
+  font-family: var(--font-sans);
+}
+
+.mono {
+  font-family: var(--font-mono);
+}
+
+/* breath = activity (design language: motion carries meaning) */
+@keyframes breath {
+  0%, 100% { opacity: 0.55; }
+  50% { opacity: 1; }
+}
+.breath {
+  animation: breath 5.2s var(--ease) infinite;
+}

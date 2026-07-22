@@ -40,6 +40,18 @@ const csvTrainingPlanPath = new URL(
   import.meta.url,
 );
 const sidebarPath = new URL("../apps/homescreen/app/components/Sidebar.tsx", import.meta.url);
+// The management-nav migration split the sidebar into a composition shell
+// plus sidebar/* section components; lineage assertions read the composed
+// sources so moved-but-preserved behavior keeps passing.
+const sidebarSectionPaths = [
+  sidebarPath,
+  new URL("../apps/homescreen/app/components/sidebar/ChatSessionList.tsx", import.meta.url),
+  new URL("../apps/homescreen/app/components/sidebar/TrainingThreadList.tsx", import.meta.url),
+];
+async function readSidebarSources() {
+  const sources = await Promise.all(sidebarSectionPaths.map((p) => readFile(p, "utf8")));
+  return sources.join("\n");
+}
 const pagePath = new URL("../apps/homescreen/app/page.tsx", import.meta.url);
 const runtimeRepairPromptPath = new URL(
   "../apps/homescreen/app/components/RuntimeRepairPrompt.tsx",
@@ -180,7 +192,7 @@ test("public desktop preserves the reviewed Train interaction language", async (
   const [css, chat, sidebar, aliases, statusHook, page, runtimeRepairPrompt] = await Promise.all([
     readFile(cssPath, "utf8"),
     readFile(chatPath, "utf8"),
-    readFile(sidebarPath, "utf8"),
+    readSidebarSources(),
     readFile(modelAliasesPath, "utf8"),
     readFile(statusHookPath, "utf8"),
     readFile(pagePath, "utf8"),
@@ -190,6 +202,12 @@ test("public desktop preserves the reviewed Train interaction language", async (
   assert.match(css, /understudy-agent@3f025022/);
   assert.match(css, /--mb-cyan:\s*#67e8f9/);
   assert.match(css, /--mb-mint:\s*#9edbd3/);
+  assert.match(css, /--model-clay:\s*#d97757/);
+  assert.match(css, /--model-amber:\s*#f2b34c/);
+  assert.match(css, /--model-violet:\s*#a78bfa/);
+  assert.match(css, /--model-cyan:\s*#67e8f9/);
+  assert.match(css, /\.automatic-goal-card-preview article p\s*\{[\s\S]*?font-size:\s*14px/);
+  assert.match(css, /\.csv-analysis-next > \.btn\.primary[\s\S]*?background:\s*color-mix\(in srgb, var\(--mb-cyan\)/);
   assert.match(
     css,
     /::selection\s*\{[\s\S]*?background:\s*color-mix\(in srgb, var\(--mb-cyan\) 68%, transparent\);/,
@@ -222,7 +240,9 @@ test("public desktop preserves the reviewed Train interaction language", async (
   );
   assert.match(chat, /msg\.stage === "cloud_fallback_local"/);
 
-  assert.match(sidebar, /<div className="nav-section">\{showArchived \? "Archived" : "Chats"\}<\/div>/);
+  // "Chats" is now the nav group label; the heading only flips to "Archived".
+  assert.match(sidebar, /sessions: "Chats"/);
+  assert.match(sidebar, /<div className="nav-section">\{showArchived \? "Archived" : ""\}<\/div>/);
   assert.match(sidebar, /aria-label=\{showArchived \? "Archived chats" : "Recent chats"\}/);
   assert.match(sidebar, /visibleSessions\.map\(\(session\) =>/);
   assert.match(sidebar, /onSelectSession\(session\.session_id\)/);
@@ -284,7 +304,7 @@ test("chat streaming batches paint work and only animates compositor-safe proper
 test("chat archive is reversible, excludes active history, and never deletes rows", async () => {
   const [page, sidebar, commands, db, native] = await Promise.all([
     readFile(pagePath, "utf8"),
-    readFile(sidebarPath, "utf8"),
+    readSidebarSources(),
     readFile(desktopCommandsPath, "utf8"),
     readFile(desktopDbPath, "utf8"),
     readFile(tauriLibPath, "utf8"),
@@ -309,7 +329,7 @@ test("chat archive is reversible, excludes active history, and never deletes row
   assert.match(native, /commands::chat_sessions_archive_all/);
 });
 
-test("cold-start cloud fallback yields to local without overriding a human choice", async () => {
+test("automatic model selection follows the strongest active route without overriding a human choice", async () => {
   const [chat, selection] = await Promise.all([
     readFile(chatPath, "utf8"),
     readFile(modelSelectionPath, "utf8"),
@@ -319,7 +339,7 @@ test("cold-start cloud fallback yields to local without overriding a human choic
   assert.match(chat, /resolveChatModelSelection/);
   assert.match(chat, /selectedModelUserOwned\.current = true/);
   assert.match(selection, /if \(userSelected && currentExists\)/);
-  assert.match(selection, /preferredLocalId/);
+  assert.match(selection, /preferredActiveId/);
 });
 
 test("desktop omits the always-on-top pin and its capability", async () => {
@@ -348,7 +368,8 @@ test("desktop stays dark and keeps the animated persona white by default", async
     readFile(tauriConfigPath, "utf8"),
   ]);
 
-  assert.match(layout, /className=\{`\$\{plexMono\.variable\} dark`\}/);
+  assert.match(layout, /IBM_Plex_Mono, IBM_Plex_Sans/);
+  assert.match(layout, /className=\{`\$\{plexMono\.variable\} \$\{plexSans\.variable\} dark`\}/);
   assert.match(layout, /data-theme="dark"/);
   assert.doesNotMatch(layout, /ThemeProvider|understudy-theme|data-sys|prefers-color-scheme/);
   assert.match(css, /@custom-variant dark/);
@@ -462,13 +483,16 @@ test("desktop has one shared managed-operation notice surface", async () => {
   assert.match(native, /commands::prepare_default_local_model/);
   assert.match(repair, /understudy models runtime repair/);
   assert.match(repair, /understudy runtime repair/);
-  assert.match(repair, /Runtime reconnecting/);
-  assert.match(repair, /Reconnect now/);
+  assert.match(repair, /reconnecting automatically/);
+  assert.match(repair, /if \(reconnecting\) return null/);
+  assert.match(prompt, /automaticRuntimeRepairAttempted/);
+  assert.match(prompt, /conversation_runtime_repair/);
   assert.match(repair, /Reinstall Understudy Desktop/);
   assert.match(repair, /Install update/);
   assert.match(repair, /Automatic update stopped/);
   assert.match(repair, /The CLI is included with Understudy Desktop/);
-  assert.match(repair, /Signed Tauri update/);
+  assert.match(repair, /Signed update/);
+  assert.doesNotMatch(repair, /Tauri update/);
   assert.match(
     repair,
     /github\.com\/understudylabs\/understudy-agent-tools\/releases\/latest/,
@@ -527,7 +551,7 @@ test("desktop starts fresh on launch and can reopen an exact Pi session", async 
   const [chat, page, sidebar, commands] = await Promise.all([
     readFile(chatPath, "utf8"),
     readFile(pagePath, "utf8"),
-    readFile(sidebarPath, "utf8"),
+    readSidebarSources(),
     readFile(new URL("../apps/homescreen/src-tauri/src/commands.rs", import.meta.url), "utf8"),
   ]);
 
@@ -547,7 +571,10 @@ test("desktop starts fresh on launch and can reopen an exact Pi session", async 
     chat,
     /const resetDroppedWorkload = \(\) => \{[\s\S]*dropRequestGeneration\.current \+= 1;[\s\S]*dropInFlight\.current = false;[\s\S]*dispatchDrop\(\{ type: "reset" \}\);/,
   );
-  assert.equal(chat.match(/resetDroppedWorkload\(\);/g)?.length, 2);
+  // restartChat + restoreHistorySession detach an open training thread
+  // (leaving it resumable); dismissWorkloadThread and openTrainingThread
+  // reuse the same reset before recording/hydrating the thread.
+  assert.equal(chat.match(/resetDroppedWorkload\(\);/g)?.length, 4);
   assert.match(sidebar, /aria-label=\{showArchived \? "Archived chats" : "Recent chats"\}/);
   assert.doesNotMatch(sidebar, /No saved chats yet/);
   assert.doesNotMatch(page, /aria-label="Chat history"/);
@@ -583,13 +610,16 @@ test("desktop compiles one dropped path through the bounded public CLI", async (
   assert.match(chat, /const inspectTable = shouldInspectDroppedTable\(result\)/);
   assert.match(chat, /dispatchDrop\(\{ type: "inspection_started" \}\);[\s\S]*await inspectCsvWorkload/);
   assert.match(dropState, /export function shouldInspectDroppedTable/);
-  assert.match(dropState, /\\\.\(\?:csv\|tsv\|tab\)/);
+  assert.match(dropState, /NON_TABULAR_EXTENSIONS/);
+  assert.match(chat, /this file is not a supported table/);
   assert.match(chat, /<CsvProfile/);
   assert.match(chat, /rowCount=\{csvInspection\.row_count\}/);
   assert.match(chat, /prepare_dropped_csv_classification/);
   assert.match(chat, /1 · data structure/);
-  assert.match(chat, /2 · confirm the training plan/);
-  assert.match(chat, /Train for \$\{mappingLabelColumn\}/);
+  assert.match(chat, /3 · confirm the training plan/);
+  assert.match(chat, /structuredFieldRole/);
+  assert.match(chat, /structured-data-field-grid/);
+  assert.match(chat, /Yes — train for \$\{mappingLabelColumn\}/);
   assert.match(chat, /<CsvTrainingPlan/);
   assert.match(trainingPlan, /Understand/);
   assert.match(trainingPlan, /Local ModernBERT/);
@@ -605,8 +635,8 @@ test("desktop compiles one dropped path through the bounded public CLI", async (
   assert.match(chat, /onVisualChange=\{setTrainingHaloVisual\}/);
   assert.match(training, /if \(autoStart\) return null/);
   assert.match(chat, /key=\{`\$\{sessionId\}:\$\{classificationDataset \? "training"/);
-  assert.match(chat, /classificationDataset \|\| localTrainingActive \? " is-training-flow"/);
-  assert.match(chat, /!classificationDataset \? \(/);
+  assert.match(chat, /classificationDataset \|\| localTrainingActive \|\| remoteTrainingView \? " is-training-flow"/);
+  assert.match(chat, /focusFlowKind === "data_profile" \? \(/);
   assert.match(chat, /onSelectColumn=\{/);
   assert.doesNotMatch(chat, /Prepare training split/);
   assert.doesNotMatch(chat, /No normalized \{classificationDataset\.split_policy\.group_key\}/);
@@ -617,7 +647,7 @@ test("desktop compiles one dropped path through the bounded public CLI", async (
   assert.match(dropState, /BUSY_PHASES\.has\(phase\)[\s\S]*return "thinking"/);
   assert.match(dropState, /One file or folder · stays on this Mac/);
   assert.match(dropState, /Indexing metadata locally · contents remain unread/);
-  assert.match(dropState, /Reading this table locally · source rows will not be copied/);
+  assert.match(dropState, /Decoding locally · Understudy is inferring the task/);
   assert.match(dropState, /Writing deterministic train, dev, and holdout examples on this Mac/);
   assert.match(css, /\.persona-stage\.workload-drop-active::before/);
   assert.match(css, /@keyframes workload-intake-ring/);
@@ -631,16 +661,21 @@ test("desktop compiles one dropped path through the bounded public CLI", async (
   assert.match(trainingHalo, /stepFraction: number \| null/);
   assert.match(trainingHalo, /className="training-halo-active is-indeterminate"/);
   assert.match(trainingHalo, /window\.setTimeout[\s\S]*?1_400/);
-  assert.match(trainingHalo, /distilled from ModernBERT · yours/);
+  assert.match(trainingHalo, /trained locally · yours/);
+  assert.doesNotMatch(trainingHalo, /distilled from ModernBERT/);
   assert.match(css, /\.ai-chat\.has-workload \.persona-stage/);
   assert.match(css, /\.csv-profile-columns/);
   assert.match(css, /\.csv-profile-columns\.is-spacious/);
   assert.match(css, /--profile-column-count/);
   assert.match(css, /\.csv-training-plan/);
-  assert.match(chat, /const trainingPlanVisible = Boolean/);
-  assert.match(chat, /trainingPlanVisible \? \(/);
-  assert.match(chat, /className="ai-chat-composer training-plan-action"/);
-  assert.match(chat, /className="btn primary training-plan-submit"/);
+  assert.match(css, /\.csv-analysis-pi/);
+  assert.match(css, /\.csv-analysis-loading-template/);
+  assert.match(chat, /TableExampleCards/);
+  // The plan approval moved from the composer into the focused plan card's
+  // yes/no question (decision-card flow); the same gating and command remain.
+  assert.match(chat, /yesDisabled=\{trainingPlanBlocked/);
+  assert.match(chat, /onYes=\{prepareDroppedClassification\}/);
+  assert.match(chat, /TrainingFlowStepper/);
   assert.doesNotMatch(chat, /className="csv-analysis-proposal"[\s\S]{0,300}<button/);
   assert.match(css, /@keyframes csv-profile-enter/);
   assert.match(persona, /viewModelInstanceColor\.setRgb\(color\.red, color\.green, color\.blue\)/);
@@ -659,6 +694,7 @@ test("desktop compiles one dropped path through the bounded public CLI", async (
   assert.match(bridge, /understudy\.capture_import\.classification_run\.v1/);
   assert.match(bridge, /verified_no_group_overlap/);
   assert.match(bridge, /source_rows_persisted/);
+  assert.match(bridge, /row_preview_persisted/);
   assert.match(bridge, /statistics-and-label-aggregates/);
   assert.match(bridge, /value\.get\("local_only"\)/);
   assert.match(bridge, /value\.get\("payload_read"\)/);
@@ -667,6 +703,9 @@ test("desktop compiles one dropped path through the bounded public CLI", async (
   assert.match(compiler, /const MAX_CSV_BYTES = 16 \* 1024 \* 1024/);
   assert.match(compiler, /payload_read: false/);
   assert.match(compiler, /source_rows_persisted: false/);
+  assert.match(compiler, /row_preview_persisted: false/);
+  assert.match(compiler, /row_preview: rowPreview/);
+  assert.match(compiler, /row_preview: _ephemeralPreview/);
   assert.match(compiler, /source_sha256/);
   assert.match(compiler, /deterministic-stratified-group-aware-v2/);
   assert.match(compiler, /holdout_reserved_for_final_validation: true/);
@@ -754,16 +793,32 @@ test("trained-model library is restart-safe and stays separate from chat models"
   assert.match(library, /"list_local_classification_runs"/);
   assert.match(library, /"update_local_classification_run"/);
   assert.match(library, /"predict_local_classification"/);
+  assert.match(library, /"list_task_models"/);
+  assert.match(library, /"install_task_model"/);
+  assert.match(library, /"run_task_model"/);
+  assert.match(chat, /ACTIVE_TASK_MODEL_KEY/);
+  assert.match(chat, /setActiveTaskModel\(taskModel\)/);
+  assert.match(chat, /"run_task_model_file"/);
+  assert.match(chat, /Drop test data to score/);
+  assert.match(chat, /Open review CSV/);
+  assert.match(css, /\.active-task-model-badge/);
+  assert.match(css, /\.active-task-dropzone/);
+  assert.match(library, /\.understudy-model/);
+  assert.match(chat, /if \(classifierLibraryOpen\) return/);
   assert.match(library, /revealItemInDir/);
-  assert.match(library, /They never appear in the chat-model picker/);
+  assert.match(library, /Install and run a trained classifier on this Mac/);
+  assert.match(library, /Installed models/);
+  assert.match(library, /Previous runs/);
   assert.match(library, /Correct answers/);
   assert.match(library, /Separate test examples/);
   assert.match(library, /Archived/);
-  assert.match(library, /source rows will not be copied|Local task models saved on this Mac/);
+  assert.match(library, /Understudy verifies it and downloads the matching base automatically/);
   assert.doesNotMatch(library, /training examples|raw rows|source payload/i);
   assert.match(css, /\.classifier-library-dialog/);
   assert.match(tauri, /workload_drop::list_local_classification_runs/);
   assert.match(tauri, /workload_drop::update_local_classification_run/);
+  assert.match(tauri, /task_models::install_task_model/);
+  assert.match(tauri, /task_model_runtime::run_task_model/);
 });
 
 test("desktop model downloads are app-owned, pausable, and resumable", async () => {

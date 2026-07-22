@@ -779,7 +779,10 @@ describe("understudy CLI", () => {
         readFileSync(join(repo, ".understudy", "workload-discovery", "workload-card.json"), "utf8"),
       );
       assert.equal(artifact.schema_version, "understudy.workload_card.v1");
-      assert.equal(artifact.route_requirements.privacy_boundary, "local-only until explicit approval");
+      assert.equal(
+        artifact.route_requirements.privacy_boundary,
+        "workflow-bound cloud unless Local is selected",
+      );
     }));
 
   it("plans a route decision packet from a valid workload card", () =>
@@ -794,11 +797,15 @@ describe("understudy CLI", () => {
       assert.equal(payload.schema_version, "understudy.route_decision_packet.v1");
       assert.equal(payload.workload_card, cardPath);
       assert.equal(payload.decision, "evaluate-first");
-      assert.equal(payload.constraints.privacy_boundary, "local-only until explicit approval");
+      assert.equal(
+        payload.constraints.privacy_boundary,
+        "workflow-bound cloud unless Local is selected",
+      );
       assert.equal(payload.constraints.data_class, "source-metadata-only");
       assert.equal(payload.readiness.local_runner_fit, "likely");
       assert.deepEqual(payload.readiness.pricing_sources_checked, []);
-      assert.equal(payload.candidate_routes[0].kind, "local");
+      assert.equal(payload.candidate_routes[0].kind, "understudy");
+      assert.equal(payload.candidate_routes[0].model, "auto");
       assert.equal(payload.candidate_routes[0].approval_required, false);
       assert.match(payload.recommended_next_command, /understudy optimize-workload check/);
       const saved = JSON.parse(readFileSync(join(repo, ".understudy", "route-decision", "route-decision-packet.json"), "utf8"));
@@ -2173,7 +2180,15 @@ class ScoreWithFeedback:
       assert.equal(inspection.local_only, true);
       assert.equal(inspection.payload_read, true);
       assert.equal(inspection.source_rows_persisted, false);
+      assert.equal(inspection.row_preview_persisted, false);
       assert.equal(inspection.persisted_data, "statistics-and-label-aggregates");
+      assert.equal(inspection.row_preview.length, 2);
+      assert.deepEqual(
+        inspection.row_preview.map((row) => row.values.category),
+        ["meals", "travel"],
+      );
+      const persistedInspection = JSON.parse(readFileSync(inspection.artifact_path, "utf8"));
+      assert.equal("row_preview" in persistedInspection, false);
       assert.equal(inspection.row_count, 5);
       assert.equal(inspection.column_count, 4);
       assert.deepEqual(
@@ -2260,6 +2275,13 @@ class ScoreWithFeedback:
       assert.equal(inspection.recommended_mapping.label_column, "label");
       assert.deepEqual(inspection.recommended_mapping.input_columns, ["text"]);
       assert.equal(inspection.recommended_mapping.group_column, "text");
+      assert.deepEqual(inspection.trainable_targets, [{
+        name: "label",
+        distinct_values: ["ham", "spam"],
+        distinct_values_truncated: false,
+        coverage: 1,
+        recommended: true,
+      }]);
       assert.equal(inspection.training_readiness.ready, true);
       assert.match(inspection.training_readiness.warnings.join(" "), /duplicate row.*will be removed/);
 
@@ -2274,6 +2296,77 @@ class ScoreWithFeedback:
       assert.equal(prepared.duplicate_rows_removed, 1);
       assert.equal(prepared.unusable_rows_removed, 1);
       assert.equal(prepared.row_count, 48);
+      assert.deepEqual(prepared.target_backlog, []);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
+
+  it("surfaces the untrained label-like columns as a target backlog", () => {
+    const root = mkdtempSync(join(tmpdir(), "understudy-target-backlog-"));
+    try {
+      const source = join(root, "query_tagging.csv");
+      const rows = Array.from({ length: 48 }, (_, index) => {
+        const first = String.fromCharCode(97 + Math.floor(index / 26));
+        const second = String.fromCharCode(97 + (index % 26));
+        return [
+          `query token ${first}${second} for tagging`,
+          index % 2 === 0 ? "branded" : "generic",
+          index % 2 === 0 ? "narrow" : "broad",
+          index % 3 === 0 ? "yes" : "no",
+        ].join(",");
+      });
+      writeFileSync(source, ["query,brand_intent_new,specificity_new,sensitive_flag", ...rows].join("\n"));
+      const outputRoot = join(root, "artifacts");
+      const compiled = JSON.parse(run([
+        "capture-import", "compile", "--source", source, "--output-root", outputRoot, "--json",
+      ]).stdout);
+
+      const inspectionResult = run([
+        "capture-import", "inspect-csv", "--source", source,
+        "--artifact-root", compiled.artifact_root, "--json",
+      ]);
+      assert.equal(inspectionResult.status, 0, inspectionResult.stderr);
+      const inspection = JSON.parse(inspectionResult.stdout);
+      assert.deepEqual(
+        inspection.trainable_targets.map((target) => target.name).sort(),
+        ["brand_intent_new", "sensitive_flag", "specificity_new"],
+      );
+      for (const target of inspection.trainable_targets) {
+        assert.equal(target.coverage, 1);
+        assert.equal(target.distinct_values_truncated, false);
+        assert.equal(target.distinct_values.length, 2);
+        assert.equal(target.recommended, target.name === inspection.recommended_mapping.label_column);
+      }
+      assert.equal(
+        inspection.trainable_targets.filter((target) => target.recommended).length,
+        1,
+      );
+      const persistedInspection = JSON.parse(readFileSync(inspection.artifact_path, "utf8"));
+      assert.deepEqual(persistedInspection.trainable_targets, inspection.trainable_targets);
+      assert.ok(!JSON.stringify(inspection.trainable_targets).includes("query token"));
+
+      const preparedResult = run([
+        "capture-import", "prepare-classification", "--source", source,
+        "--artifact-root", compiled.artifact_root,
+        "--input-column", "query",
+        "--label-column", "brand_intent_new",
+        "--group-column", "query", "--json",
+      ]);
+      assert.equal(preparedResult.status, 0, preparedResult.stderr);
+      const prepared = JSON.parse(preparedResult.stdout);
+      assert.equal(prepared.mapping.label_column, "brand_intent_new");
+      assert.deepEqual(
+        prepared.target_backlog.map((target) => target.name).sort(),
+        ["sensitive_flag", "specificity_new"],
+      );
+      for (const target of prepared.target_backlog) {
+        assert.equal(target.distinct_values.length, 2);
+        assert.equal(typeof target.coverage, "number");
+      }
+      const manifest = JSON.parse(readFileSync(prepared.manifest_path, "utf8"));
+      assert.deepEqual(manifest.target_backlog, prepared.target_backlog);
+      assert.ok(!JSON.stringify(manifest.target_backlog).includes("query token"));
     } finally {
       rmSync(root, { recursive: true, force: true });
     }
@@ -2421,7 +2514,7 @@ class ScoreWithFeedback:
         "--json",
       ]);
       assert.notEqual(textResult.status, 0);
-      assert.match(textResult.stderr, /supports \.csv, \.tsv, \.tab, \.txt, or extensionless files/);
+      assert.match(textResult.stderr, /supports \.csv, \.tsv, \.tab, \.txt, \.xlsx, or extensionless files/);
     } finally {
       rmSync(root, { recursive: true, force: true });
     }
@@ -2449,7 +2542,7 @@ class ScoreWithFeedback:
       assert.equal(compiled.source_count, 1_000);
       assert.equal(compiled.truncated, true);
       assert.ok(compiled.source_kinds.document > 0);
-      assert.equal(compiled.source_kinds.spreadsheet, 1);
+      assert.equal(compiled.source_kinds["csv-data"], 1);
       assert.equal(compiled.source_kinds["source-file"], 1);
       assert.equal(compiled.source_kinds["local-file"], 1);
       assert.ok(!result.stdout.includes("node_modules"));
@@ -2457,7 +2550,143 @@ class ScoreWithFeedback:
       rmSync(root, { recursive: true, force: true });
     }
   });
+
+  it("inspects and prepares a dropped xlsx workbook through the classification path", () => {
+    const root = mkdtempSync(join(tmpdir(), "understudy-xlsx-dataset-"));
+    try {
+      const labels = ["branded", "not_branded"];
+      const sharedItems = [
+        "PROCESSED_QUERY",
+        "brand_intent_new",
+        ...labels,
+      ];
+      const sharedIndex = new Map(sharedItems.map((value, index) => [value, index]));
+      const rows = Array.from({ length: 60 }, (_, index) => {
+        const label = labels[index % labels.length];
+        // Alphabetic tokens: digits would collapse to <number> under group
+        // normalization and make every row the same leakage group.
+        const token = String.fromCharCode(97 + Math.floor(index / 26))
+          + String.fromCharCode(97 + (index % 26));
+        return { query: `query token ${token} <&"'> shoes`, label };
+      });
+      const sheetRows = [
+        `<row r="1"><c r="A1" t="s"><v>0</v></c><c r="B1" t="s"><v>1</v></c></row>`,
+        ...rows.map((row, index) => {
+          const reference = index + 2;
+          const query = row.query
+            .replaceAll("&", "&amp;")
+            .replaceAll("<", "&lt;")
+            .replaceAll(">", "&gt;")
+            .replaceAll('"', "&quot;")
+            .replaceAll("'", "&apos;");
+          return `<row r="${reference}"><c r="A${reference}" t="inlineStr"><is><t>${query}</t></is></c>`
+            + `<c r="B${reference}" t="s"><v>${sharedIndex.get(row.label)}</v></c></row>`;
+        }),
+      ].join("");
+      const workbook = `<?xml version="1.0"?><workbook xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" xmlns:r="http://schemas.openxmlformats.org/officeDocument/2006/relationships"><sheets><sheet name="queries" sheetId="1" r:id="rId1"/></sheets></workbook>`;
+      const rels = `<?xml version="1.0"?><Relationships xmlns="http://schemas.openxmlformats.org/package/2006/relationships"><Relationship Id="rId1" Type="http://schemas.openxmlformats.org/officeDocument/2006/relationships/worksheet" Target="worksheets/sheet1.xml"/></Relationships>`;
+      const sheet = `<?xml version="1.0"?><worksheet xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main"><sheetData>${sheetRows}</sheetData></worksheet>`;
+      const shared = `<?xml version="1.0"?><sst xmlns="http://schemas.openxmlformats.org/spreadsheetml/2006/main" count="${sharedItems.length}" uniqueCount="${sharedItems.length}">${sharedItems.map((value) => `<si><t>${value}</t></si>`).join("")}</sst>`;
+      const source = join(root, "query_tagging.xlsx");
+      writeFileSync(source, makeStoredZip([
+        ["xl/workbook.xml", workbook],
+        ["xl/_rels/workbook.xml.rels", rels],
+        ["xl/worksheets/sheet1.xml", sheet],
+        ["xl/sharedStrings.xml", shared],
+      ]));
+
+      const outputRoot = join(root, "artifacts");
+      const compiledResult = run([
+        "capture-import", "compile", "--source", source, "--output-root", outputRoot, "--json",
+      ]);
+      assert.equal(compiledResult.status, 0, compiledResult.stderr);
+      const compiled = JSON.parse(compiledResult.stdout);
+      assert.equal(compiled.source_kinds["csv-data"], 1);
+      assert.equal(compiled.payload_read, false);
+
+      const inspectionResult = run([
+        "capture-import", "inspect-csv", "--source", source,
+        "--artifact-root", compiled.artifact_root, "--json",
+      ]);
+      assert.equal(inspectionResult.status, 0, inspectionResult.stderr);
+      const inspection = JSON.parse(inspectionResult.stdout);
+      assert.equal(inspection.row_count, 60);
+      assert.deepEqual(
+        inspection.columns.map((column) => column.name),
+        ["PROCESSED_QUERY", "brand_intent_new"],
+      );
+      assert.equal(inspection.recommended_mapping.label_column, "brand_intent_new");
+
+      const preparedResult = run([
+        "capture-import", "prepare-classification", "--source", source,
+        "--artifact-root", compiled.artifact_root,
+        "--input-column", "PROCESSED_QUERY",
+        "--label-column", "brand_intent_new",
+        "--group-column", "PROCESSED_QUERY", "--json",
+      ]);
+      assert.equal(preparedResult.status, 0, preparedResult.stderr);
+      const prepared = JSON.parse(preparedResult.stdout);
+      assert.equal(prepared.row_count, 60);
+      assert.deepEqual([...prepared.labels].sort(), labels);
+      assert.ok(prepared.splits.train.row_count >= prepared.splits.holdout.row_count);
+      const trainRows = readFileSync(join(prepared.artifact_root, "train.jsonl"), "utf8")
+        .split("\n").filter(Boolean).map((line) => JSON.parse(line));
+      assert.ok(trainRows.every((row) => labels.includes(row.label)));
+      assert.match(trainRows[0].text, /query token [a-z]{2} <&"'> shoes/);
+    } finally {
+      rmSync(root, { recursive: true, force: true });
+    }
+  });
 });
+
+// Minimal stored-entry zip writer so xlsx fixtures need no dependencies.
+function makeStoredZip(entries) {
+  const crcTable = new Uint32Array(256).map((_, n) => {
+    let c = n;
+    for (let k = 0; k < 8; k += 1) c = c & 1 ? 0xedb88320 ^ (c >>> 1) : c >>> 1;
+    return c >>> 0;
+  });
+  const crc32 = (buf) => {
+    let crc = 0xffffffff;
+    for (const byte of buf) crc = crcTable[(crc ^ byte) & 0xff] ^ (crc >>> 8);
+    return (crc ^ 0xffffffff) >>> 0;
+  };
+  const locals = [];
+  const centrals = [];
+  let offset = 0;
+  for (const [name, text] of entries) {
+    const data = Buffer.from(text, "utf8");
+    const nameBuf = Buffer.from(name, "utf8");
+    const crc = crc32(data);
+    const local = Buffer.alloc(30);
+    local.writeUInt32LE(0x04034b50, 0);
+    local.writeUInt16LE(20, 4);
+    local.writeUInt32LE(crc, 14);
+    local.writeUInt32LE(data.length, 18);
+    local.writeUInt32LE(data.length, 22);
+    local.writeUInt16LE(nameBuf.length, 26);
+    locals.push(local, nameBuf, data);
+    const central = Buffer.alloc(46);
+    central.writeUInt32LE(0x02014b50, 0);
+    central.writeUInt16LE(20, 4);
+    central.writeUInt16LE(20, 6);
+    central.writeUInt32LE(crc, 16);
+    central.writeUInt32LE(data.length, 20);
+    central.writeUInt32LE(data.length, 24);
+    central.writeUInt16LE(nameBuf.length, 28);
+    central.writeUInt32LE(offset, 42);
+    centrals.push(central, nameBuf);
+    offset += 30 + nameBuf.length + data.length;
+  }
+  const centralBuf = Buffer.concat(centrals);
+  const eocd = Buffer.alloc(22);
+  eocd.writeUInt32LE(0x06054b50, 0);
+  eocd.writeUInt16LE(entries.length, 8);
+  eocd.writeUInt16LE(entries.length, 10);
+  eocd.writeUInt32LE(centralBuf.length, 12);
+  eocd.writeUInt32LE(offset, 16);
+  return Buffer.concat([...locals, centralBuf, eocd]);
+}
 
 describe("two-phase email login", () => {
   function startFakeAuthGateway() {

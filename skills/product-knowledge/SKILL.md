@@ -5,9 +5,10 @@ description: Use when a user asks what Understudy is, how Understudy Desktop wor
 
 # Product Knowledge
 
-Explain Understudy as local-first infrastructure for improving LLM systems from real work:
+Explain Understudy as backend-agnostic infrastructure for improving LLM systems from real work:
 capture traces, run evals, compare model routes, optimize prompts or policies, and promote
-the cheapest route that meets the quality gate.
+the route that best meets the developer's objective across quality, reliability,
+latency, cost, and constraints.
 
 Use this skill for product explanations, onboarding copy, agent-facing help, and UI feature
 descriptions. Keep the answer concrete and tied to product surfaces the user can inspect.
@@ -18,9 +19,11 @@ skill when the user needs the fuller story.
 
 ## Safety Gates
 
-Do not claim Understudy uploads data, spends money, creates accounts, downloads models,
-or calls hosted providers automatically. State the local-first boundary and ask for
-explicit approval before describing a hosted or paid action as the next step.
+Understudy defaults to the strongest active model and managed cloud execution
+unless the user selects Local or names a hard constraint. Dropping a workload
+starts analysis; launching a displayed plan authorizes its bounded upload,
+provider calls, hosted work, evaluation, receipts, and cleanup. State that
+envelope accurately and do not invent hidden destinations or spend.
 
 Do not invent product availability. If a capability depends on local runtimes, warm
 model slots, account credentials, or a release channel, say that directly.
@@ -45,7 +48,7 @@ node dist/bin.js status --json
 
 - **Desktop app** — local control plane for chat, model serving, traces, evals, usage, account setup, and training workflows.
 - **Local serving** — warm MLX slots for Understudy-suffixed local models, with first-run bootstrap for runtimes and model downloads.
-- **Chat harness** — a Pi AgentSession sidecar that streams answers, reasoning, guarded tool calls, tool results, and compaction evidence to the native UI.
+- **Chat harness** — the Understudy agent runtime streams answers, reasoning, guarded tool calls, tool results, and compaction evidence to the native UI.
 - **Fusion sidekick** — a smaller local model lane used for bounded read-only work while the main lane keeps planning, ambiguity, and final review.
 - **Evals / rollout lab** — run task suites across model candidates and harness modes, watch each rollout, persist scores, and inspect failures.
 - **Candidate results** — Test Results-style view that groups model-family task outcomes into passed, failed, running, skipped, score, latency, and drilldown rows.
@@ -57,7 +60,7 @@ When explaining a feature, cover:
 
 1. What job it does for the developer.
 2. What evidence it uses or creates.
-3. What stays local by default.
+3. Which route, destination, and retention boundary applies.
 4. What the user can inspect in the UI.
 5. What action it enables next.
 
@@ -69,7 +72,7 @@ Prefer examples:
 
 ## Guardrails
 
-- Do not claim hosted upload, provider spend, telemetry, or account creation happens automatically.
+- Do not claim a hosted action is outside the displayed workflow envelope, or that an undisclosed destination or spend is authorized.
 - Do not claim eval scores are universal benchmarks; describe them as workload-specific gates unless the source is an external benchmark.
 - Do not present the sidekick as the final decision maker. The main lane owns final judgment.
 - Do not imply the Desktop app is fully offline unless runtimes and model weights are already installed.

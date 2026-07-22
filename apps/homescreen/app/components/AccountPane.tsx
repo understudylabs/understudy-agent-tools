@@ -114,6 +114,73 @@ export function AccountPane({
     }
   };
 
+  // WorkOS AuthKit user session (PKCE via system browser). Parallel to the
+  // sk_ org key: identity for management surfaces, not a replacement.
+  const [userSession, setUserSession] = useState<Any | null>(null);
+  const [userBusy, setUserBusy] = useState(false);
+  const refreshUserSession = () => {
+    invoke<Any>("auth_session_status").then(setUserSession).catch(() => {});
+  };
+  useEffect(refreshUserSession, []);
+  const userSignIn = async () => {
+    setUserBusy(true);
+    setErr(null);
+    try {
+      await invoke("auth_login");
+      refreshUserSession();
+    } catch (e) {
+      setErr(String(e));
+    } finally {
+      setUserBusy(false);
+    }
+  };
+  const userSignOut = async () => {
+    setUserBusy(true);
+    try {
+      await invoke("auth_logout");
+      refreshUserSession();
+    } catch (e) {
+      setErr(String(e));
+    } finally {
+      setUserBusy(false);
+    }
+  };
+
+  const userAuthCard = (
+    <div className="card">
+      <div className="card-row">
+        <div>
+          <div className="card-title">User sign-in</div>
+          {userSession?.signed_in ? (
+            <div className="svc-desc">
+              signed in as {String(userSession.email ?? userSession.user_id ?? "")}
+              {userSession.org_id ? ` · ${String(userSession.org_id)}` : ""}
+            </div>
+          ) : (
+            <div className="svc-desc">
+              {userSession?.configured === false
+                ? "Not configured — set UNDERSTUDY_WORKOS_CLIENT_ID and UNDERSTUDY_AUTHKIT_DOMAIN (or ~/.understudy/desktop-auth.json)."
+                : "Sign in with your Understudy account to manage routing, captures, and keys as yourself."}
+            </div>
+          )}
+        </div>
+        {userSession?.signed_in ? (
+          <button className="btn" disabled={userBusy} onClick={userSignOut}>
+            Sign out
+          </button>
+        ) : (
+          <button
+            className="btn primary"
+            disabled={userBusy || userSession?.configured === false}
+            onClick={userSignIn}
+          >
+            {userBusy ? "Waiting for browser…" : "Sign in with browser"}
+          </button>
+        )}
+      </div>
+    </div>
+  );
+
   const signInCard = (
     <div className="card account-sign-in-card">
       <div className="card-title" style={{ marginBottom: 4 }}>Sign in / create account</div>
@@ -142,6 +209,7 @@ export function AccountPane({
       <div className="pane-body">
         {err && <div className="card err">{err}</div>}
         {!signedIn && prioritizeSignIn ? signInCard : null}
+        {userAuthCard}
 
         <div className="card">
           <div className="card-title" style={{ marginBottom: 4 }}>App icon</div>

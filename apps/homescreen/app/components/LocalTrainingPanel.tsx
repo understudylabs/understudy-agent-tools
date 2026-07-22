@@ -136,6 +136,11 @@ type FrontierComparison = {
     accuracy: number;
     macro_f1: number;
     latency_ms_p50: number;
+    latency_samples: {
+      requested: number;
+      completed: number;
+      failures: string[];
+    };
     failure_count: number;
     weakest_classes: {
       label: string;
@@ -463,7 +468,6 @@ export function LocalTrainingPanel({
       !autoStart ||
       state.phase !== "idle" ||
       remoteCapabilityState === "checking" ||
-      (remoteCapabilityState === "available" && !forceLocal) ||
       autoStartedManifest.current === datasetManifestPath
     ) return;
     const timer = window.setTimeout(() => {
@@ -536,6 +540,7 @@ export function LocalTrainingPanel({
 
   if (state.phase === "idle") {
     if (remoteCapabilityState === "checking" && autoStart) return null;
+    if (autoStart) return null;
     if (remoteCapabilityState === "available" && remoteCapabilities && !forceLocal) {
       return (
         <RemoteTrainingPanel
@@ -551,7 +556,6 @@ export function LocalTrainingPanel({
         />
       );
     }
-    if (autoStart) return null;
     return (
       <div className="local-training-start">
         <button type="button" className="btn primary" onClick={startTraining}>
@@ -681,29 +685,36 @@ export function LocalTrainingPanel({
         </div>
       )}
       {frontierComparison && frontierComparison.heldout.weakest_classes[0] && state.result.heldout.weakest_classes[0] && (
-        <EvaluationRadar
-          accuracy={state.result.heldout.accuracy}
-          macroF1={state.result.heldout.macro_f1}
-          baselineAccuracy={state.result.linear_baseline.accuracy}
-          baselineMacroF1={state.result.linear_baseline.macro_f1}
-          weakestClass={state.result.heldout.weakest_classes[0]}
-          latencyMs={state.result.heldout.latency_ms_p50}
-          modelSizeBytes={state.result.model.size_bytes}
-          failureCount={state.result.heldout.failure_count}
-          rowCount={state.result.heldout.row_count}
-          completedRuns={1}
-          requiredRuns={2}
-          frontier={{
-            name: "GLM 5.2",
-            accuracy: frontierComparison.heldout.accuracy,
-            macroF1: frontierComparison.heldout.macro_f1,
-            weakestClass: frontierComparison.heldout.weakest_classes[0],
-            latencyMs: frontierComparison.heldout.latency_ms_p50,
-            failureCount: frontierComparison.heldout.failure_count,
-            rowCount: frontierComparison.row_count,
-            costUsd: frontierComparison.spend.attributed_cost_usd,
-          }}
-        />
+        <>
+          <EvaluationRadar
+            accuracy={state.result.heldout.accuracy}
+            macroF1={state.result.heldout.macro_f1}
+            baselineAccuracy={state.result.linear_baseline.accuracy}
+            baselineMacroF1={state.result.linear_baseline.macro_f1}
+            weakestClass={state.result.heldout.weakest_classes[0]}
+            latencyMs={state.result.heldout.latency_ms_p50}
+            modelSizeBytes={state.result.model.size_bytes}
+            failureCount={state.result.heldout.failure_count}
+            rowCount={state.result.heldout.row_count}
+            completedRuns={1}
+            requiredRuns={2}
+            frontier={{
+              name: "GLM 5.2",
+              accuracy: frontierComparison.heldout.accuracy,
+              macroF1: frontierComparison.heldout.macro_f1,
+              weakestClass: frontierComparison.heldout.weakest_classes[0],
+              latencyMs: frontierComparison.heldout.latency_ms_p50,
+              failureCount: frontierComparison.heldout.failure_count,
+              rowCount: frontierComparison.row_count,
+              costUsd: frontierComparison.spend.attributed_cost_usd,
+            }}
+          />
+          {frontierComparison.heldout.latency_samples.completed < frontierComparison.heldout.latency_samples.requested && (
+            <small>
+              Frontier quality scored on the full held-out set. Latency median uses {frontierComparison.heldout.latency_samples.completed} of {frontierComparison.heldout.latency_samples.requested} responses because some auxiliary probes returned no completion.
+            </small>
+          )}
+        </>
       )}
       <div className="local-training-failures">
         <strong>Notable failures</strong>

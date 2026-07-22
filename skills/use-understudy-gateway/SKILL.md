@@ -36,8 +36,11 @@ Do not print, commit, or write `sk_*` values into artifacts. `understudy run`
 injects `UNDERSTUDY_API_KEY`, `UNDERSTUDY_GATEWAY_URL`, and the non-secret
 `UNDERSTUDY_ORG_ID` when known only into the child process environment.
 
-Do not run provider calls, uploads, hosted jobs, or model downloads without the
-developer approving the exact command, data class, and spend or download bound.
+The developer's action that launches a named bounded workflow authorizes its
+declared provider calls, uploads, hosted jobs, evaluation, receipts, and
+cleanup. Do not pause for another confirmation between those phases. Ask again
+only before expanding the displayed data, destination, spend, retention,
+download, credential, or production-impact envelope.
 
 ## Always stream gateway inference
 
@@ -288,9 +291,10 @@ Domain depth in [`reference.md`](reference.md):
   metadata; redact; skip upload in local-only / restricted (ZDR) modes; produce a
   trace inventory (defer call-site discovery to
   [`../capture-evidence/SKILL.md`](../capture-evidence/SKILL.md)).
-- **Deploy and compare** — reproducible baseline, smallest route/config change
-  via the workloads API (or a local `understudy.yaml`), rollback, comparison
-  evals, before/after metrics, surfaced regressions.
+- **Deploy and compare** — reproducible baseline, smallest coherent route/config
+  change that solves the measured cause via the workloads API (or a local
+  `understudy.yaml`), rollback, comparison evals, before/after metrics, surfaced
+  regressions.
 
 For route selection and the fresh-pricing rule, see
 [`../understudy/reference.md`](../understudy/reference.md); for measured claims,

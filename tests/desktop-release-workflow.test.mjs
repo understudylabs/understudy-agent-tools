@@ -56,7 +56,7 @@ test("Desktop release automation keeps every trust gate before publication", () 
   assert.doesNotMatch(workflow, /cargo test/);
   assert.match(workflow, /notarytool history/);
   assert.match(workflow, /jq -e '\.history \| type == "array"'/);
-  assert.equal([...workflow.matchAll(/if: inputs\.mode == 'release'/g)].length, 9);
+  assert.equal([...workflow.matchAll(/if: inputs\.mode == 'release'/g)].length, 10);
   assert.match(workflow, /notarytool submit "\$app_zip"/);
   assert.match(workflow, /stapler staple "\$app"/);
   assert.match(
@@ -67,11 +67,35 @@ test("Desktop release automation keeps every trust gate before publication", () 
   assert.match(workflow, /desktop:updater-manifest/);
   assert.match(workflow, /desktop:release-check -- --stage signed/);
   assert.match(workflow, /notarytool submit "\$dmg"/);
+  assert.match(workflow, /hdiutil create/);
+  assert.match(workflow, /-srcfolder "\$dmg_stage"/);
+  assert.match(
+    workflow,
+    /codesign --force --sign "\$APPLE_SIGNING_IDENTITY" --timestamp "\$dmg"/,
+  );
+  assert.match(
+    workflow,
+    /- name: Notarize and staple the DMG[\s\S]*?APPLE_SIGNING_IDENTITY: \$\{\{ secrets\.APPLE_SIGNING_IDENTITY \}\}[\s\S]*?codesign --force/,
+  );
+  assert.match(workflow, /stapler validate "\$dmg_stage\/Understudy\.app"/);
+  assert.ok(
+    workflow.indexOf('stapler staple "$app"') <
+      workflow.indexOf('-srcfolder "$dmg_stage"'),
+  );
   assert.match(workflow, /desktop:release-check -- --stage notarized/);
   assert.match(workflow, /gh release create/);
   assert.match(workflow, /--draft/);
   assert.match(workflow, /gh release download/);
   assert.match(workflow, /xcrun stapler validate "\$downloaded"/);
+  assert.match(workflow, /xcrun stapler validate "\$mounted_dmg\/Understudy\.app"/);
+  assert.match(workflow, /codesign --verify --deep --strict/);
+  assert.match(workflow, /spctl --assess --type execute/);
   assert.match(workflow, /spctl --assess/);
   assert.ok(workflow.indexOf("gh release download") < workflow.indexOf("gh release edit"));
+  assert.match(workflow, /Mirror the published DMG to Cloudflare R2/);
+  assert.match(workflow, /CLOUDFLARE_API_TOKEN: \$\{\{ secrets\.CLOUDFLARE_API_TOKEN \}\}/);
+  assert.ok(
+    workflow.indexOf("gh release edit") <
+      workflow.indexOf("Mirror the published DMG to Cloudflare R2"),
+  );
 });

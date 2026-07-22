@@ -8,7 +8,7 @@ export const CONFORMANCE_SCHEMA =
 export const RUNTIME_ID = "understudy-conversation-sidecar";
 export const VERCEL_RUNTIME_ID = "vercel-ai-sdk";
 export const PI_RUNTIME_ID = "pi-agent-session";
-export const RUNTIME_VERSION = "0.3.29";
+export const RUNTIME_VERSION = "0.3.40";
 
 export function piNodeSupported(version = process.versions.node): boolean {
   const [major, minor] = version.split(".").map(Number);

@@ -113,7 +113,7 @@ export function UsagePane({ status }: { status: StatusController }) {
 
 function CacheHealthMetric({ health }: { health: CacheHealth | null }) {
   const value = health?.score_pct == null ? "—" : `${health.score_pct.toFixed(0)}%`;
-  const detail = health?.detail ?? "Cache evidence becomes available after supported Pi turns.";
+  const detail = health?.detail ?? "Cache evidence becomes available after supported Understudy turns.";
   return (
     <div className={`cache-health${health?.alert ? " regressed" : ""}`}>
       <div className="card-row">

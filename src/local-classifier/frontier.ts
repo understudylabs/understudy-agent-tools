@@ -68,6 +68,11 @@ export type FrontierClassificationResult = {
     accuracy: number;
     macro_f1: number;
     latency_ms_p50: number;
+    latency_samples: {
+      requested: number;
+      completed: number;
+      failures: string[];
+    };
     per_class: Array<{
       label: string;
       precision: number;
@@ -676,19 +681,25 @@ export async function compareClassifierWithFrontier(
     });
     const latencyMs: number[] = [];
     const latencyResults: GatewayChunkResult[] = [];
+    const latencyFailures: string[] = [];
     for (let index = 0; index < latencySamples.length; index += 1) {
       const started = performance.now();
-      const result = await callGateway(
-        [latencySamples[index]!],
-        verified.labels,
-        modelId,
-        LATENCY_MAX_COMPLETION_TOKENS,
-        fetchImpl,
-        auth,
-        options.signal,
-      );
-      latencyMs.push(performance.now() - started);
-      latencyResults.push(result);
+      try {
+        const result = await callGateway(
+          [latencySamples[index]!],
+          verified.labels,
+          modelId,
+          LATENCY_MAX_COMPLETION_TOKENS,
+          fetchImpl,
+          auth,
+          options.signal,
+        );
+        latencyMs.push(performance.now() - started);
+        latencyResults.push(result);
+      } catch (error) {
+        if (options.signal?.aborted) throw error;
+        latencyFailures.push(error instanceof Error ? error.message.slice(0, 240) : String(error).slice(0, 240));
+      }
       options.onEvent?.({
         type: "phase",
         phase: "measuring",
@@ -724,12 +735,19 @@ export async function compareClassifierWithFrontier(
         destination: "Understudy managed GLM 5.2 on Fireworks",
         retention_expectation: "Fireworks-published zero data retention; Understudy comparison evidence excludes holdout text",
       },
-      heldout: computeHeldout(
-        verified.rows,
-        chunkResults.flatMap((chunk) => chunk.predictions),
-        verified.labels,
-        median(latencyMs),
-      ),
+      heldout: {
+        ...computeHeldout(
+          verified.rows,
+          chunkResults.flatMap((chunk) => chunk.predictions),
+          verified.labels,
+          median(latencyMs),
+        ),
+        latency_samples: {
+          requested: latencySamples.length,
+          completed: latencyResults.length,
+          failures: latencyFailures,
+        },
+      },
       usage: {
         prompt_tokens: promptTokens,
         completion_tokens: completionTokens,

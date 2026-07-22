@@ -1,8 +1,11 @@
 mod aa;
 mod account;
+mod auth;
+mod admin;
 mod agent_card;
 mod agent_ops;
 mod anthropic;
+mod billing;
 mod bin;
 mod bootstrap;
 mod chat;
@@ -13,21 +16,35 @@ mod conversation_sidecar;
 mod creds;
 mod custom_evals;
 mod db;
+mod explore;
 mod gepa;
 mod knowledge;
 mod mcp;
 mod metrics;
+mod mgmt;
 mod models;
 mod moraine;
+mod oracle_dispatch;
 mod remote_training;
+mod training_api;
+mod training_chat_tools;
+mod training_outcome;
+mod reporting;
 mod residency;
 mod rlm;
+mod captures;
+mod admin_api;
+mod scope;
 mod route_policy;
 mod server;
+mod setup;
+mod settings;
 mod sidecar;
 mod supervision_export;
 mod supervision_review;
 mod supervision_tiebreaker;
+mod task_model_runtime;
+mod task_models;
 mod tool_proof;
 mod workload_drop;
 
@@ -122,6 +139,9 @@ pub fn run() {
             // download progress + the single-flight benchmark run gate.
             app.manage(agent_ops::Downloads::new());
             app.manage(agent_ops::BenchRuns::new());
+            // Single-flight explore scan pipeline (Explore pane's
+            // "scan my history" button).
+            app.manage(explore::ScanJob::default());
 
             // Paint the shell before process reconciliation or model re-warm.
             // This is background work, but starting it during the first frame
@@ -275,8 +295,12 @@ pub fn run() {
             commands::open_trace,
             commands::install_moraine,
             commands::start_moraine,
+            moraine::moraine_start,
             commands::stop_moraine,
             commands::account_status,
+            auth::auth_login,
+            auth::auth_logout,
+            auth::auth_session_status,
             commands::account_platforms,
             commands::account_keys,
             commands::account_captures,
@@ -305,6 +329,10 @@ pub fn run() {
             commands::chat_session_archive,
             commands::chat_session_restore,
             commands::chat_sessions_archive_all,
+            commands::training_thread_save,
+            commands::training_thread_get,
+            commands::training_threads_list,
+            commands::training_thread_archive,
             chat_attachments::chat_attachments_store,
             chat_attachments::chat_attachments_hydrate,
             chat_attachments::chat_attachments_delete_session,
@@ -316,6 +344,12 @@ pub fn run() {
             custom_evals::delete_custom_eval,
             custom_evals::run_custom_eval,
             custom_evals::run_custom_eval_live,
+            task_model_runtime::run_task_model,
+            task_model_runtime::run_task_model_file,
+            task_model_runtime::run_task_model_eval,
+            task_models::inspect_task_model,
+            task_models::install_task_model,
+            task_models::list_task_models,
             commands::sidekick_runs,
             commands::sidekick_metrics,
             commands::set_sidekick_run_feedback,
@@ -330,6 +364,8 @@ pub fn run() {
             tool_proof::desktop_tool_proof_run,
             tool_proof::desktop_tool_proof_list,
             tool_proof::desktop_tool_proof_prepare,
+            oracle_dispatch::propose_oracle_task,
+            oracle_dispatch::run_oracle_task,
             workload_drop::compile_dropped_workload,
             workload_drop::inspect_dropped_csv,
             workload_drop::prepare_dropped_csv_classification,
@@ -343,11 +379,23 @@ pub fn run() {
             workload_drop::repeat_local_classification_evaluation,
             workload_drop::export_local_classification_predictions,
             remote_training::remote_training_capabilities,
+            remote_training::inspect_remote_training_recipe,
+            remote_training::automatic_training_goal_card,
+            remote_training::remote_training_examples,
+            remote_training::propose_training_environment_with_pi,
             remote_training::prepare_remote_classification_training,
+            remote_training::prepare_remote_training_recipe,
+            remote_training::compile_custom_training_plan,
+            remote_training::compile_remote_training_backends,
+            remote_training::start_local_sft_training,
+            remote_training::cancel_local_sft_training,
+            remote_training::existing_remote_training,
             remote_training::existing_remote_classification_training,
+            remote_training::start_remote_training,
             remote_training::start_remote_classification_training,
             remote_training::remote_training_poll,
             remote_training::cancel_remote_training,
+            training_outcome::summarize_training_outcome,
             commands::sidekick_decisions,
             commands::sidekick_events,
             commands::sidekick_session_summaries,
@@ -362,6 +410,41 @@ pub fn run() {
             rlm::rlm_demo_catalog,
             rlm::rlm_plan,
             rlm::run_rlm_live,
+            explore::explore_clickhouse_query,
+            explore::explore_sqlite_query,
+            explore::explore_read_json,
+            explore::explore_status,
+            explore::explore_scan_start,
+            explore::explore_scan_status,
+            explore::explore_scan_cancel,
+            admin::admin_get,
+            admin::org_reporting,
+            admin::admin_supported_models,
+            scope::projects_list,
+            scope::workloads_list,
+            mgmt::mgmt_projects_list,
+            mgmt::mgmt_workloads_list,
+            mgmt::mgmt_workload_status,
+            mgmt::mgmt_usage_summary,
+            mgmt::mgmt_billing_balance,
+            mgmt::mgmt_workload_create,
+            mgmt::mgmt_workload_update,
+            reporting::reporting_workload_status,
+            reporting::reporting_usage_summary,
+            scope::workload_config_load,
+            scope::workload_routing_apply,
+            scope::workload_capture_set,
+            captures::captures_list,
+            captures::capture_get,
+            admin_api::api_keys_list,
+            admin_api::api_keys_create,
+            admin_api::api_keys_revoke,
+            billing::billing_overview,
+            billing::billing_topup_checkout,
+            setup::setup_info,
+            settings::settings_projects_list,
+            settings::settings_project_rename,
+            settings::settings_project_delete,
             chat::chat_stream,
             restart_app,
         ])
@@ -375,8 +458,10 @@ pub fn run() {
                 if let Some(residency) = app.try_state::<residency::Residency>() {
                     residency.shutdown();
                 }
-                // Graceful shutdown: the agent card must not keep
-                // advertising a dead pid as a healthy local daemon.
+                // Graceful shutdown: the supervisor must record
+                // app_shutdown (not a crash), and the agent card must not
+                // keep advertising a dead pid as a healthy local daemon.
+                server::request_shutdown();
                 agent_card::mark_stopped();
             }
         });

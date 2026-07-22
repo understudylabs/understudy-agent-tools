@@ -53,6 +53,47 @@ export function runtimeCliAdvancementError({
   );
 }
 
+export function builtCliRuntimeVersionError(cliRuntimeVersion, appRuntimeVersion) {
+  if (!appRuntimeVersion) return "could not read the app's required runtime version";
+  if (!cliRuntimeVersion) return "built CLI did not report a runtime version";
+  if (cliRuntimeVersion === appRuntimeVersion) return null;
+  return (
+    `built CLI reports conversation runtime ${cliRuntimeVersion}, but the desktop app ` +
+    `requires ${appRuntimeVersion} (conversation_runtime.rs RUNTIME_VERSION)`
+  );
+}
+
+// Query the built CLI exactly the way the desktop app does at health-check
+// time (conversation_sidecar.rs): `understudy runtime status --json`, reading
+// the `runtime_version` field. Uses an isolated runtime home so the check
+// never touches (or depends on) the developer's live runtime state.
+export function builtCliRuntimeVersion(root = repositoryRoot) {
+  const entry = join(root, "dist", "bin.js");
+  if (!existsSync(entry)) {
+    throw new Error(`built CLI is missing (run the build first): ${entry}`);
+  }
+  const runtimeHome = mkdtempSync(join(tmpdir(), "understudy-runtime-version-check-"));
+  try {
+    // Like the app's parse_status, read stdout regardless of exit code: an
+    // installed-but-stopped runtime still reports its version.
+    let stdout;
+    try {
+      stdout = capture(process.execPath, [entry, "runtime", "status", "--json"], root, {
+        ...process.env,
+        UNDERSTUDY_CONVERSATION_RUNTIME_HOME: runtimeHome,
+        UNDERSTUDY_TELEMETRY: "0",
+      });
+    } catch (error) {
+      stdout = error?.stdout?.toString().trim();
+      if (!stdout) throw error;
+    }
+    const status = JSON.parse(stdout);
+    return typeof status.runtime_version === "string" ? status.runtime_version : null;
+  } finally {
+    rmSync(runtimeHome, { recursive: true, force: true });
+  }
+}
+
 function firstMatch(text, pattern, label, errors) {
   const match = text.match(pattern);
   if (!match) {
@@ -306,6 +347,24 @@ export async function inspectDesktopRelease({
   }
   const versionState = inspectDesktopVersions(root);
   const errors = [...versionState.errors];
+  let builtCliRuntime = null;
+  // The built-CLI runtime assertion needs dist/bin.js. It is mandatory in the
+  // signed/notarized stages (the bundle is built by then). In the source stage
+  // — which validates pristine checked-in sources on a fresh CI checkout —
+  // dist/ may not be built yet, so enforce only when it already exists.
+  const builtCliPresent = existsSync(join(root, "dist", "bin.js"));
+  if (stage !== "source" || builtCliPresent) {
+    try {
+      builtCliRuntime = builtCliRuntimeVersion(root);
+      const runtimeError = builtCliRuntimeVersionError(
+        builtCliRuntime,
+        versionState.versions.rust_runtime,
+      );
+      if (runtimeError) errors.push(runtimeError);
+    } catch (error) {
+      errors.push(`built CLI runtime-version check failed: ${error.message}`);
+    }
+  }
   let head = null;
   let originMain = null;
   let clean = null;
@@ -676,6 +735,7 @@ export async function inspectDesktopRelease({
     versions: versionState.versions,
     compatibility: {
       ...versionState.compatibility,
+      built_cli_runtime: builtCliRuntime,
       baseline,
       runtime_transition: runtimeTransition,
     },

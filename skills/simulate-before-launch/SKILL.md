@@ -62,6 +62,11 @@ better — this gate only judges a change, it never optimizes.
    environment from
    [`../design-simulated-environment/SKILL.md`](../design-simulated-environment/SKILL.md)
    (a recorded replay cannot host a different model's trajectory).
+4. **Evaluation evidence gates pass.** Apply
+   [`../capture-evidence/references/evaluation-evidence-gates.md`](../capture-evidence/references/evaluation-evidence-gates.md).
+   Important workload strata must be represented or explicitly excluded from
+   the verdict, agentic drivers must pass the read-then-write sentinel, and the
+   incumbent baseline must have a qualitative row review.
 
 ## The gate
 
@@ -101,6 +106,11 @@ better — this gate only judges a change, it never optimizes.
    (`understudy.launch_verdict.v1`, fields in [`reference.md`](reference.md))
    with both arms' rates, rollout counts, thresholds, and the artifact hash
    triple. Rows land as `understudy.eval_result.v1`.
+   Before issuing it, inspect the actual rollouts behind every material delta
+   and attach a redacted coverage/row-review packet. Quality and pass/fail cells
+   must be measured or say `not run`; never seed a launch report with projected
+   candidate outcomes. Add a visualization only if it answers a named launch
+   question better than the per-axis table.
 6. **Hand off.** `pass` → [`../ramp-and-verify/SKILL.md`](../ramp-and-verify/SKILL.md)
    with the verdict as pre-ramp gate 1. `block` → the failing axis is the
    work item; route to the owning skill

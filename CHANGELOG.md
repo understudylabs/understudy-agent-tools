@@ -17,6 +17,71 @@ uses semantic-ish versioning (minor = new skill or new capability, patch = fixes
 
 ### Added
 
+- **Sign in as yourself, right from the app.** Desktop/runtime 0.3.40 and CLI
+  0.6.37 add browser-based user sign-in (WorkOS AuthKit, PKCE): Account →
+  "Sign in with browser" opens your default browser, and the app picks up the
+  session with no keys to paste. Signed-in users regain workload-scoped
+  capture browsing and get a "signed in as" identity ahead of in-app
+  management edits; the existing org API-key flow keeps working unchanged
+  for headless and reporting-only use.
+- **A calmer, clearer Desktop.** The app now follows the Understudy design
+  language across every pane — mint as the single operational accent (the
+  legacy orange is retired to vendor identity), cyan for live trace flow,
+  violet for search/lineage views, amber for training and data-taking. The
+  sidebar consolidates into Capture / Training / Chats / Manage, opens by
+  default, shows your organization at bottom-left, and the Workloads view is
+  one table with error rate and traffic allocation alongside cost and cache
+  reads. Pane scrolling on tall views works again, and abandoned training
+  runs no longer linger in the sidebar.
+
+- **See and manage your whole Understudy account from the app.** Desktop/runtime
+  0.3.39 and CLI 0.6.36 bring the management control plane into Understudy
+  Desktop: without leaving the app you can see your organization and project at
+  a glance, read analytics and reporting on usage, cost, and errors, inspect
+  each workload's configuration and its live traffic dial, browse captures,
+  list your API keys and models, and reach billing, setup, and settings. This
+  first release is view-oriented — it surfaces what your account is doing today
+  in one place, ahead of in-app editing — and it sits alongside the on-your-own-
+  data training work described below, which carries forward unchanged.
+- **Train on your own data, end to end.** Desktop/runtime 0.3.38 and CLI
+  0.6.35 let you drop a spreadsheet (`.xlsx` workbooks now work, alongside CSV
+  and other tables) onto Understudy Desktop and go all the way to a trained
+  model: the app reads your file, proposes a training plan in plain language,
+  and — only after you approve — runs the training in the cloud. Before
+  anything is uploaded or any money is spent, a consent receipts card shows
+  exactly what will leave your machine and what it will cost, and you choose
+  between training locally or in the cloud. Messy data is handled gracefully:
+  empty or ambiguous rows are set aside with a note instead of failing the
+  whole import.
+- **Dataset focus mode.** While you prepare and launch a training run, the
+  training card becomes the whole window — no sidebars or clutter — and the
+  window sizes itself to the content.
+- **One decision at a time.** Training is now a notebook of quick questions —
+  "Does this look like your data?", "Is this the plan you want?" — one card
+  at a time with a progress rail below. Your answered cards stay on screen as
+  a running record, you can go back and change any answer, and the training
+  goal itself is editable, including how accurate the model must be before
+  it counts as done. When rows had to be set aside (empty or conflicting
+  labels), a review card shows you what and why.
+- **Training threads.** Every training run lives in the left-hand sidebar
+  like a chat: active runs resume exactly where you left off — even after
+  quitting the app — and finished runs reopen as a complete, read-only record
+  of every decision you made.
+- **Start Moraine from inside the app.** If the local trace explorer is
+  down, a Start button in the Explore pane brings it back — no terminal
+  needed.
+- **Watch your training run, step by step.** A live timeline shows each
+  readiness gate as it is checked (with honest results, not spinners), and once
+  training starts you get granular status: a loss curve sparkline, a header
+  that names the current phase, and a running plain-language narration of what
+  is happening. When the run finishes, a training outcome summary connects the
+  results back to your evals.
+- **`understudy training doctor`.** One CLI command walks the whole
+  remote-training chain and reports the first broken link, so "why isn't my
+  training working" has a one-step answer.
+- **Sturdier app plumbing.** The Desktop's local API server is now supervised:
+  it reports why it stopped, restarts itself with capped backoff, and
+  health-checks itself, so background features recover without an app restart.
 - **Truthful model cards in Chat.** One quiet info action beside the selected
   model now shows its QAT source, MLX conversion, decode contract, scoped
   certification, footprint, routing hints, and current slot state without
@@ -41,6 +106,27 @@ uses semantic-ish versioning (minor = new skill or new capability, patch = fixes
 - **Supervisor-decision labeling.** Runtime 0.3.1 gives every supervisor verdict
   a stable marker, including accepted `continue` and `stop` decisions, so human
   feedback can measure missed errors as well as bad nudges and takeovers.
+
+### Changed
+
+- **`check-routing-health` now leads with the new reporting endpoints.**
+  The skill's primary path is one org-wide grounding call to
+  `/admin/v1/orgs/:org_id/reporting` (usage/cost series across all projects,
+  `group_by` project|workload|model, windows to 30d or custom date ranges to
+  366d) followed by `workload-status` (per-workload health with declared
+  config vs observed route shares, `rerouted_pct`, served-model shares,
+  error rate, example request ids). The skill teaches the canonical routing
+  vocabulary (`primary` / `understudy` / `fallback` route outcomes;
+  `pin`/`steer`/`none` declared config; `anthropic`/`openai`/`managed`
+  provider labels), requires grounding every diagnosis in the org-wide
+  spend/requests ranking, and calls out declared-vs-observed drift (declared
+  split with ~0 observed `understudy` share) as a finding. The rest of the
+  `sk_*` self-service surface stays documented as project-scoped
+  alternatives: `usage-summary` (computed `cache_read_pct`, per-group error
+  rate, multi-dimension grouping) and the captures metadata list (request
+  ids/timestamps only — capture content stays behind the dashboard login).
+  The legacy `routing-status` / `provider-health` / `status` endpoints stay
+  documented as deprecated for older deployments.
 
 ### Fixed
 

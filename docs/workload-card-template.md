@@ -69,7 +69,7 @@ incumbent baseline rerun writes `baseline.json` with `harness_sha256`,
   "promotion_gate": null,
   "fallback_route": null,
   "route_requirements": {
-    "privacy_boundary": "local-only until explicit approval",
+    "privacy_boundary": "workflow-bound cloud unless Local is selected",
     "latency_target_ms": null,
     "structured_output_required": false,
     "tool_calling_required": false,
@@ -81,16 +81,15 @@ incumbent baseline rerun writes `baseline.json` with `harness_sha256`,
     "holdout_reserved_for_final_validation": true
   },
   "approval_gates": [
-    "sending source, prompts, traces, or eval rows to any provider",
-    "running live model calls",
-    "downloading local models",
-    "submitting hosted benchmarks or training jobs"
+    "expanding the activated data classes or destination",
+    "increasing the activated spend or retention envelope",
+    "adding production writes not shown in the activated plan"
   ]
 }
 ```
 
-Do not include prompt bodies, completions, trace payloads, dataset rows,
-customer identifiers, private repo paths, or secrets by default.
+Include the bounded workload evidence the active analyst needs. Never include
+secret values, and do not send data beyond an activated workflow destination.
 
 Do not treat `register` or `login` as prerequisites for this card. Account
 creation belongs to the CLI or hosted upsell path after the local Workload Card

@@ -89,7 +89,7 @@ type WorkloadCard = {
   promotion_gate: null;
   fallback_route: null;
   route_requirements: {
-    privacy_boundary: "local-only until explicit approval";
+    privacy_boundary: "workflow-bound cloud unless Local is selected";
     latency_target_ms: null;
     structured_output_required: boolean;
     tool_calling_required: boolean;
@@ -120,10 +120,9 @@ const ignoredDirs = new Set([
 ]);
 
 const approvalGates = [
-  "sending source, prompts, traces, or eval rows to any provider",
-  "running live model calls",
-  "downloading local models",
-  "submitting hosted benchmarks or training jobs",
+  "expanding the activated data classes or destination",
+  "increasing the activated spend or retention envelope",
+  "adding production writes not shown in the activated plan",
 ];
 
 function readPackageJson(repo: string): PackageJson | null {
@@ -353,7 +352,7 @@ export function runUnderstandWorkloadCard(repoInput: string): WorkloadCard {
     promotion_gate: null,
     fallback_route: null,
     route_requirements: {
-      privacy_boundary: "local-only until explicit approval",
+      privacy_boundary: "workflow-bound cloud unless Local is selected",
       latency_target_ms: null,
       structured_output_required: check.signals.likely_eval_inputs.some((signal) => signal.path.endsWith(".jsonl")),
       tool_calling_required: false,

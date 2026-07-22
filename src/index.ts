@@ -33,7 +33,9 @@ import { planRouteDecision } from "./route-decision.js";
 import { buildValueReport } from "./value-report.js";
 import { type AgentPlatformAdapter, agentPlatformAdapters, findAgentPlatformAdapter } from "./agent-platforms.js";
 import { registerCapturesCommand } from "./commands/captures.js";
+import { registerTracesCommand } from "./commands/traces.js";
 import { registerEvalsCommand } from "./commands/evals.js";
+import { registerExploreCommand } from "./commands/explore.js";
 import { registerDaemonCommand } from "./commands/daemon.js";
 import { registerDesktopCommand } from "./commands/desktop.js";
 import { registerDoctorCommand } from "./commands/doctor.js";
@@ -46,6 +48,7 @@ import { registerProjectsCommand } from "./commands/projects.js";
 import { registerRoutesCommand } from "./commands/routes.js";
 import { registerRunCommand } from "./commands/run.js";
 import { registerRuntimeCommand } from "./commands/runtime.js";
+import { registerTrainingCommand } from "./commands/training.js";
 import { registerSetupCodeCommand } from "./commands/setup-code.js";
 import { registerSetupCommand } from "./commands/setup.js";
 import { registerStatusCommand } from "./commands/status.js";
@@ -215,7 +218,7 @@ function printSpine(): void {
   console.log("understudy-agent-tools");
   console.log("");
   console.log("MVP spine:");
-  console.log("1. skills/understudy/SKILL.md routes the local-first workflow.");
+  console.log("1. skills/understudy/SKILL.md routes the backend-agnostic workflow.");
   console.log("2. skills/capture-evidence/SKILL.md pins harness, metric, splits, and baseline.");
   console.log("3. skills/optimize-workload/SKILL.md validates freshness before optimization claims.");
   console.log("4. skills/use-understudy-gateway/SKILL.md runs authenticated gateway workflows when approved.");
@@ -846,13 +849,16 @@ export function buildProgram(): Command {
   registerProjectsCommand(program);
   registerWorkloadsCommand(program);
   registerCapturesCommand(program);
+  registerTracesCommand(program);
   registerEvalsCommand(program);
+  registerExploreCommand(program);
   registerGatewayCommand(program);
   registerRoutesCommand(program);
   registerSetupCommand(program);
   registerSetupCodeCommand(program);
   registerRunCommand(program);
   registerRuntimeCommand(program);
+  registerTrainingCommand(program);
 
   const understand = program
     .command("capture-evidence")

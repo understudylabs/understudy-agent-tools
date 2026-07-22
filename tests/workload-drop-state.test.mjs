@@ -5,6 +5,8 @@ import {
   INITIAL_WORKLOAD_DROP_PHASE,
   isWorkloadDropBusy,
   shouldInspectDroppedTable,
+  shouldInspectStructuredDataset,
+  shouldInspectTrainingRecipe,
   workloadDropPersonaState,
   workloadDropReducer,
   workloadDropStatus,
@@ -60,8 +62,8 @@ test("explicit CSV inspection is a truthful thinking phase", () => {
   assert.equal(isWorkloadDropBusy(phase), true);
   assert.equal(workloadDropPersonaState(phase), "thinking");
   assert.deepEqual(workloadDropStatus(phase), {
-    title: "Inspecting training data",
-    detail: "Reading this table locally · source rows will not be copied",
+    title: "Analyzing this dataset",
+    detail: "Decoding locally · Understudy is inferring the task",
   });
   phase = workloadDropReducer(phase, { type: "inspection_succeeded" });
   assert.equal(phase, "ready");
@@ -103,6 +105,50 @@ test("extensionless and common delimited files enter local table inspection", ()
     source_type: "file",
     source_kinds: { document: 1 },
   }), false);
+});
+
+test("unfamiliar extensions get one table inspection attempt; obvious non-tables do not", () => {
+  // Formats the reader may support (or grow to support) are attempted:
+  // the parser, not a UI allowlist, decides supportability.
+  for (const source_name of ["events.parquet", "readings.dat", "export.data", "table.psv"]) {
+    assert.equal(shouldInspectDroppedTable({
+      source_name,
+      source_type: "file",
+      source_kinds: { "local-file": 1 },
+    }), true, source_name);
+  }
+  // Clearly non-tabular media, binaries, code, and prose are denied up front.
+  for (const source_name of [
+    "photo.png", "clip.mp4", "archive.zip", "script.py", "component.tsx",
+    "styles.css", "report.pdf", "slides.pptx", "config.yaml",
+  ]) {
+    assert.equal(shouldInspectDroppedTable({
+      source_name,
+      source_type: "file",
+      source_kinds: { "local-file": 1 },
+    }), false, source_name);
+  }
+  // Directories and empty names never enter inspection.
+  assert.equal(shouldInspectDroppedTable({ source_name: "data.parquet", source_type: "directory" }), false);
+  assert.equal(shouldInspectDroppedTable({ source_name: "", source_type: "file" }), false);
+});
+
+test("structured datasets and workbooks enter Understudy dataset inspection", () => {
+  for (const source_name of [
+    "gsm8k.json",
+    "gsm8k.jsonl",
+    "preferences.ndjson",
+    "training.xls",
+    "training.xlsx",
+    "training.xlsb",
+    "training.xlsm",
+    "training.ods",
+  ]) {
+    assert.equal(shouldInspectStructuredDataset({ source_name, source_type: "file" }), true);
+    assert.equal(shouldInspectTrainingRecipe({ source_name, source_type: "file" }), true);
+  }
+  assert.equal(shouldInspectTrainingRecipe({ source_name: "dataset.csv", source_type: "file" }), true);
+  assert.equal(shouldInspectTrainingRecipe({ source_name: "dataset.jsonl", source_type: "directory" }), false);
 });
 
 test("local training follows only real runner phases and measured progress", () => {

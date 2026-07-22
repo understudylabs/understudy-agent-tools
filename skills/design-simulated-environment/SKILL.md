@@ -53,11 +53,19 @@ Build this only after [`../understand-workload/SKILL.md`](../understand-workload
 has produced the workload's purpose, tool catalog, inputs/outputs, and the success
 criteria (recall / precision / policy — not just cost/speed).
 
+When production traces are the source, first run the generic foundry in
+[`../ingest-traces/SKILL.md`](../ingest-traces/SKILL.md). Its machine proposal,
+source DAG, and human review become the evidence-backed starting point for this
+simulation. Customer names and workload-specific assumptions must never enter
+the generic compiler or viewer.
+
 ## Safety Gates
 
-- **Synthetic data only.** Seed the environment with invented entities and a small
-  hand-written fixture. Never embed customer transcripts, records, names, or IDs —
-  the simulated env is committable precisely because it contains none.
+- **Synthetic data only.** Seed the environment with invented entities. A small
+  hand-written fixture may validate the mechanics, but a workload claim needs a
+  scalable, decision-sized generated suite. Never embed customer transcripts,
+  records, names, or IDs — the simulated env is committable precisely because
+  it contains none.
 - **No live side effects.** Tools mutate in-memory state, never real systems.
 - Keep the captured customer traces local; use them only to *infer the shape* you
   simulate.
@@ -65,15 +73,17 @@ criteria (recall / precision / policy — not just cost/speed).
 ## Recipe
 
 1. **Seed synthetic state.** For the default env, use the built-in synthetic
-   inbox/ticket/project-board fixture. For a workload-specific env, use a few
-   records of each entity the workload touches
-   (deals, contacts, activities, a short transcript), small enough to read.
+   inbox/ticket/project-board fixture. For a workload-specific env, generate
+   enough records and tasks to cover common, rare, and high-consequence entity
+   and action combinations. Keep individual cases readable while scaling the
+   suite; follow the data-sufficiency rules in
+   [`../capture-evidence/references/evaluation-evidence-gates.md`](../capture-evidence/references/evaluation-evidence-gates.md).
 2. **Implement the tools by intent, leniently.** Group the real tool catalog into
    read / transform / write classes (from understand-workload). For each class,
    return a plausible result from the seeded state. Be tolerant of arg/name
    variants (e.g. accept a tool called with or without an `mcp__…` prefix) so a
    candidate's reasonable-but-different call still gets a useful answer.
-3. **Define the gold + a validator.** Write the small set of correct outcomes the
+3. **Define the gold + a validator.** Write the complete correct outcomes each
    task implies (the observations/records a perfect run would write), each with the
    keys/values that must appear. Score the candidate's *final written state* vs gold
    → recall, precision, and any policy checks. The validator is the metric, not the
@@ -188,8 +198,19 @@ End with: the seeded fixtures and gold set; the tool classes simulated; the
 validator's axes; the oracle's perfect score; and each candidate model's
 recall/precision/policy + cost/latency — with the local-model gap to close.
 
+When starting from a portable JSONL training plan, first render
+`understudy training goal-card --plan <plan.json> --preview 0` and validate the
+resulting `understudy.environment_proposal.v1` artifact. Increase the preview
+only when useful; it is bounded to three TRAIN rows and never exposes held-out
+targets. Model-authored environment proposals are design input only and remain
+`needs_verifier` until the deterministic oracle, sentinels, reset, leakage,
+live-effect, reward, hash, and parser gates pass.
+
 ## References
 
+- [`references/trace-to-benchmark-foundry.md`](references/trace-to-benchmark-foundry.md) — machine-first trace compilation, review, promotion, and diminishing returns.
+- [`references/automationbench-adaptation.md`](references/automationbench-adaptation.md) — reuse canonical stateful-benchmark patterns without losing trace provenance.
+- [`references/resumable-environment-goal.md`](references/resumable-environment-goal.md) — automate trace batches with deterministic resumption and approval gates.
 - [`references/cookbook-traces-to-env.md`](references/cookbook-traces-to-env.md) — the stage-by-stage recipe from captured traces/tests to a runnable verifiers env (gold policies, tool-stub strategies, contract rubric, playbook-as-argument, validator gates).
 - [`examples/event-categorizer/`](examples/event-categorizer/README.md) — complete synthetic scaffold: env module, tasks, swappable playbooks, capture converter, and an offline `smoke.py` verified against `verifiers==0.2.0`.
 - [`../understand-workload/SKILL.md`](../understand-workload/SKILL.md) — produces the shape this simulates.

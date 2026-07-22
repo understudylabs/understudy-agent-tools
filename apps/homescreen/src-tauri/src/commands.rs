@@ -2475,6 +2475,129 @@ pub fn chat_session_save(
         .map_err(|error| error.to_string())
 }
 
+// ----- Training threads: persisted decision-card flows -----------------
+// A training flow (understudy.training_flow.v1) persists like a chat thread:
+// the timeline of decisions IS the thread content, the artifact_root on disk
+// is the workload identity that makes card bodies renderable on reopen.
+
+const MAX_PERSISTED_TRAINING_THREAD_BYTES: usize = 4 * 1024 * 1024;
+
+fn validate_training_thread_id(thread_id: &str) -> Result<(), String> {
+    if thread_id.trim().is_empty() || thread_id.len() > 200 {
+        return Err("invalid training thread id".to_string());
+    }
+    Ok(())
+}
+
+fn validate_training_thread_status(status: &str) -> Result<(), String> {
+    if matches!(status, "active" | "completed" | "dismissed") {
+        Ok(())
+    } else {
+        Err(format!("invalid training thread status: {status}"))
+    }
+}
+
+#[derive(Serialize)]
+pub struct TrainingThread {
+    thread_id: String,
+    title: String,
+    artifact_root: String,
+    /// Whether the workload artifacts still exist where the thread left them.
+    /// A moved/deleted artifact_root is reported honestly, never guessed at.
+    artifact_root_present: bool,
+    workload: Value,
+    flow: Value,
+    status: String,
+    created_at: String,
+    updated_at: String,
+}
+
+#[tauri::command]
+pub fn training_thread_save(
+    app: AppHandle,
+    thread_id: String,
+    title: String,
+    artifact_root: String,
+    workload: Value,
+    flow: Value,
+    status: String,
+) -> Result<(), String> {
+    validate_training_thread_id(&thread_id)?;
+    validate_training_thread_status(&status)?;
+    if title.trim().is_empty() || title.len() > 500 {
+        return Err("invalid training thread title".to_string());
+    }
+    if artifact_root.trim().is_empty() {
+        return Err("training thread needs an artifact_root".to_string());
+    }
+    let workload_json = serde_json::to_string(&workload).map_err(|error| error.to_string())?;
+    let flow_json = serde_json::to_string(&flow).map_err(|error| error.to_string())?;
+    if workload_json.len() + flow_json.len() > MAX_PERSISTED_TRAINING_THREAD_BYTES {
+        return Err("training thread exceeds the 4 MB local resume limit".to_string());
+    }
+    app.state::<crate::db::Db>()
+        .save_training_thread(
+            &thread_id,
+            title.trim(),
+            artifact_root.trim(),
+            &workload_json,
+            &flow_json,
+            &status,
+        )
+        .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+pub fn training_thread_get(
+    app: AppHandle,
+    thread_id: String,
+) -> Result<Option<TrainingThread>, String> {
+    validate_training_thread_id(&thread_id)?;
+    let Some(row) = app
+        .state::<crate::db::Db>()
+        .training_thread(&thread_id)
+        .map_err(|error| error.to_string())?
+    else {
+        return Ok(None);
+    };
+    let workload = serde_json::from_str(&row.workload_json)
+        .map_err(|error| format!("saved training thread workload is invalid: {error}"))?;
+    let flow = serde_json::from_str(&row.flow_json)
+        .map_err(|error| format!("saved training thread flow is invalid: {error}"))?;
+    let artifact_root = std::path::Path::new(&row.artifact_root);
+    let artifact_root_present =
+        artifact_root.is_dir() && artifact_root.join("workload-card.json").is_file();
+    Ok(Some(TrainingThread {
+        thread_id: row.thread_id,
+        title: row.title,
+        artifact_root: row.artifact_root,
+        artifact_root_present,
+        workload,
+        flow,
+        status: row.status,
+        created_at: row.created_at,
+        updated_at: row.updated_at,
+    }))
+}
+
+#[tauri::command]
+pub fn training_threads_list(
+    app: AppHandle,
+    limit: Option<u32>,
+) -> Result<Vec<crate::db::TrainingThreadSummaryRow>, String> {
+    app.state::<crate::db::Db>()
+        .list_training_threads(limit.unwrap_or(30))
+        .map_err(|error| error.to_string())
+}
+
+#[tauri::command]
+pub fn training_thread_archive(app: AppHandle, thread_id: String) -> Result<bool, String> {
+    validate_training_thread_id(&thread_id)?;
+    app.state::<crate::db::Db>()
+        .archive_training_thread(&thread_id)
+        .map_err(|error| error.to_string())
+}
+
 #[tauri::command]
 pub fn chat_route_metrics(app: AppHandle, limit: Option<u32>) -> Result<ChatRouteMetrics, String> {
     let observed_row_limit = limit.unwrap_or(250).clamp(1, 500);

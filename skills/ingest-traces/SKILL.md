@@ -15,8 +15,15 @@ harness can be attached and run. Many workloads arrive the other way around:
 the traces already exist — in an object-store bucket, a provider log export,
 or an Understudy gateway capture export — and the job is to get them into
 local evidence artifacts without leaking anything. This worker does that
-transformation: source → deterministic classification → frozen slices →
-redacted manifests, all on the local machine.
+transformation: local source → normalized captures → source-history DAG →
+machine-proposed benchmark → human judgment, all on the local machine.
+
+## OSS filesystem boundary
+
+This public skill starts with files already present in `.understudy/captures/`
+or another explicitly supplied local directory. It never invokes a privileged
+administrative surface, changes tenant membership, or embeds a vendor-specific
+downloader. Acquisition is a separate producer; this skill owns processing.
 
 ## Safety Gates
 
@@ -91,6 +98,27 @@ bulk semantic-triage playbook in
 
 ## Flow
 
+For multi-turn tool workloads, start the deterministic foundry with:
+
+```sh
+understudy traces build-benchmark \
+  --source .understudy/captures \
+  --output .understudy/benchmarks/latest \
+  --max-age-days 3
+```
+
+This fails closed when no capture falls inside the requested freshness window.
+It writes normalized captures, a source DAG, machine-proposed tasks and outcome
+contracts, a canonical benchmark manifest, and a local Design Language v2
+viewer. The viewer defaults to parsed JSON, retains an explicit Raw view, and
+loads individual private captures lazily from disk.
+
+The machine should make its strongest supported proposal immediately. Human
+review supplies final judgment and focuses on close calls; it does not manually
+author every environment. Captured incumbent behavior is evidence, never the
+sole oracle, and outcome contracts grade semantic final state rather than exact
+trajectory reproduction.
+
 1. **Classify deterministically.** Bucket every trace into workload groups by
    content-based rules, never hand-picking: match on stable markers in the
    request (a system-prompt heading, a template name, an endpoint). Record the
@@ -133,6 +161,10 @@ skill for this workload.
 
 ## References
 
+- [`references/trace-envelopes.md`](references/trace-envelopes.md) — local
+  versioned-envelope decoding, SSE, raw preservation, and freshness.
+- [`references/source-history-dag.md`](references/source-history-dag.md) —
+  fingerprints, retries, branches, folds, mutations, and validation.
 - [`../capture-evidence/SKILL.md`](../capture-evidence/SKILL.md) — owns the
   metric/validator/baseline contract the frozen slices feed.
 - [`references/profile-captures.md`](references/profile-captures.md) —

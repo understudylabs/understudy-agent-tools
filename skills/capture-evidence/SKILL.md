@@ -4,7 +4,7 @@ description: Use when a developer wants to build an eval from their real LLM app
 metadata:
   understudy:
     mode: interactive
-    safety: local-first
+    safety: approval-required
     cli_required: false
 ---
 
@@ -15,21 +15,25 @@ for the workload, or when any core artifact is missing, stale, ambiguous, or
 untrusted.
 
 The OSS loop does not require registration, auth, provider keys, an Understudy
-account, or hosted gateway access. Do the smallest local pass that turns the
-workload into auditable artifacts.
+account, or hosted gateway access. Do a sufficient local pass that turns the
+workload into auditable artifacts and can answer the named decision.
 
 ## Safety Gates
 
-Default to the cheapest path that still reaches an optimization outcome — not to
-zero spend (a skipped improvement has real opportunity cost). Get the
-developer's explicit approval before any upload, hosted run, or provider spend.
+Default to the evidence plan most likely to resolve the decision under the
+developer's constraints, not the cheapest or smallest pass. Make cost, time,
+scope, and expected confidence visible; use
+[`../understudy/reference.md`](../understudy/reference.md) → Outcome-first spend
+posture. A developer action that launches a named bounded evidence plan
+authorizes its declared uploads, hosted calls, model evaluation, receipts, and
+cleanup. Ask again only if the plan expands its displayed envelope.
 
 Follow the repo public boundary in
 [`../../docs/privacy-and-data-boundaries.md`](../../docs/privacy-and-data-boundaries.md).
-Prefer metadata, paths, hashes, counts, schemas, and redacted examples. Do not
-read, print, commit, upload, or transmit raw prompts, completions, traces,
-labels, datasets, repo paths, secrets, or private notes without explicit
-approval for that exact data class and action.
+Prefer metadata, paths, hashes, counts, schemas, and representative examples.
+Dropped workload content is available to the active analyst, and workload data
+may move through the destination named by an activated plan. Never print,
+commit, or transmit secrets; do not send data beyond the activated destination.
 
 ## Goal
 
@@ -105,11 +109,23 @@ enough provenance for another agent to repeat the step without guessing.
    forbidden-write avoidance, unnecessary calls/retries, schema validity, and
    recoverable errors as separate axes before collapsing to an overall score.
    If the metric or validator is unclear, stop and ask one concrete question.
-4. Freeze splits.
+4. Pass the evaluation evidence gates.
+   Build and confirm the coverage matrix, run harness-conformance sentinels,
+   and inspect actual scored rows before interpreting aggregate results. Follow
+   [`references/evaluation-evidence-gates.md`](references/evaluation-evidence-gates.md).
+   An uncovered important stratum blocks a whole-workload conclusion; a failed
+   read-then-write sentinel is a harness bug until proven otherwise. Keep a
+   redacted local review packet with the coverage matrix, representative rows,
+   counterexamples, scorer rationale, the data-sufficiency plan and stopping
+   evidence, and exact artifact/log refs. Treat pilot sizes as minimums, never
+   caps: when conclusions remain unstable or important strata are underfilled,
+   collect more rows instead of increasing confidence in the prose.
+5. Freeze splits.
    Write `splits.json` with train/dev/holdout names, sizes, source refs,
-   deterministic split seed or frozen row ids, and an explicit "no holdout
-   mutation" note.
-5. Rerun the incumbent baseline.
+   deterministic split seed or frozen row ids, the per-stratum counts from the
+   coverage matrix, uncovered strata, and an explicit "no holdout mutation"
+   note.
+6. Rerun the incumbent baseline.
    Use the frozen harness, metric, validator, and splits to rerun the current
    incumbent route. Write `baseline.json` with command, timestamp, split used,
    sample size, score, latency basis, cost basis if available, failures, and
@@ -169,7 +185,8 @@ claim savings in this worker. Its job is to make the next validation step
 possible.
 
 If any artifact cannot be created, write down the missing input, the attempted
-local command or inspection, and the next smallest action.
+local command or inspection, and the next action most likely to unblock the
+decision, with its cost and scope.
 
 ## Output Standard
 

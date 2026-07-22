@@ -168,6 +168,11 @@ jobs:
         env:
           APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
           TAURI_SIGNING_PRIVATE_KEY_PASSWORD: ""
+          # Baked into the binary via option_env! (src-tauri/src/auth.rs).
+          # A public OAuth client id, not a secret — repo vars keep it out
+          # of the OSS source while shipped builds sign in out of the box.
+          UNDERSTUDY_WORKOS_CLIENT_ID: ${{ vars.UNDERSTUDY_WORKOS_CLIENT_ID }}
+          UNDERSTUDY_AUTHKIT_DOMAIN: ${{ vars.UNDERSTUDY_AUTHKIT_DOMAIN }}
         run: bun run tauri build --bundles app,dmg
 
       - name: Notarize and staple the app
@@ -211,10 +216,26 @@ jobs:
         env:
           APPLE_ID: ${{ secrets.APPLE_ID }}
           APPLE_PASSWORD: ${{ secrets.APPLE_PASSWORD }}
+          APPLE_SIGNING_IDENTITY: ${{ secrets.APPLE_SIGNING_IDENTITY }}
           APPLE_TEAM_ID: ${{ secrets.APPLE_TEAM_ID }}
         run: |
           version="$(node -p "require('./apps/homescreen/package.json').version")"
+          app="$PWD/apps/homescreen/src-tauri/target/release/bundle/macos/Understudy.app"
           dmg="$PWD/apps/homescreen/src-tauri/target/release/bundle/dmg/Understudy_${version}_aarch64.dmg"
+          dmg_stage="$RUNNER_TEMP/understudy-dmg-stage"
+          mkdir "$dmg_stage"
+          ditto "$app" "$dmg_stage/Understudy.app"
+          ln -s /Applications "$dmg_stage/Applications"
+          xcrun stapler validate "$dmg_stage/Understudy.app"
+          rm -f "$dmg"
+          hdiutil create \
+            -volname Understudy \
+            -fs HFS+ \
+            -srcfolder "$dmg_stage" \
+            -ov \
+            -format UDZO \
+            "$dmg"
+          codesign --force --sign "$APPLE_SIGNING_IDENTITY" --timestamp "$dmg"
           xcrun notarytool submit "$dmg" \
             --apple-id "$APPLE_ID" \
             --password "$APPLE_PASSWORD" \
@@ -264,6 +285,21 @@ jobs:
             --context context:primary-signature \
             --verbose=2 \
             "$downloaded"
+          mounted_dmg="$RUNNER_TEMP/downloaded-dmg"
+          mkdir "$mounted_dmg"
+          detach_downloaded_dmg() {
+            hdiutil detach "$mounted_dmg" >/dev/null 2>&1 || true
+          }
+          trap detach_downloaded_dmg EXIT
+          hdiutil attach "$downloaded" \
+            -nobrowse \
+            -readonly \
+            -mountpoint "$mounted_dmg"
+          xcrun stapler validate "$mounted_dmg/Understudy.app"
+          codesign --verify --deep --strict --verbose=2 "$mounted_dmg/Understudy.app"
+          spctl --assess --type execute --verbose=2 "$mounted_dmg/Understudy.app"
+          detach_downloaded_dmg
+          trap - EXIT
 
       - name: Publish the verified release
         if: inputs.mode == 'release'
@@ -278,6 +314,30 @@ jobs:
             --latest
           echo "### Understudy Desktop ${version}" >> "$GITHUB_STEP_SUMMARY"
           echo "Published https://github.com/${GITHUB_REPOSITORY}/releases/tag/${tag}" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Mirror the published DMG to Cloudflare R2
+        if: inputs.mode == 'release'
+        env:
+          CLOUDFLARE_API_TOKEN: ${{ secrets.CLOUDFLARE_API_TOKEN }}
+          CLOUDFLARE_ACCOUNT_ID: 5cca5c86ba359c3dddb773e57e6cd991
+        run: |
+          if [[ -z "${CLOUDFLARE_API_TOKEN:-}" ]]; then
+            echo "The desktop-release environment is missing CLOUDFLARE_API_TOKEN." >&2
+            exit 1
+          fi
+          version="$(node -p "require('./apps/homescreen/package.json').version")"
+          filename="Understudy_${version}_aarch64.dmg"
+          dmg="$PWD/apps/homescreen/src-tauri/target/release/bundle/dmg/$filename"
+          key="desktop/releases/${version}/${filename}"
+          pointer="$RUNNER_TEMP/understudy-desktop-latest.json"
+          npx --yes wrangler@4.95.0 r2 object put "understudy-model-snapshots/$key" \
+            --remote --file "$dmg" --content-type application/x-apple-diskimage
+          jq -n --arg version "$version" --arg key "$key" --arg filename "$filename" \
+            '{version: $version, key: $key, filename: $filename}' > "$pointer"
+          npx --yes wrangler@4.95.0 r2 object put \
+            "understudy-model-snapshots/desktop/releases/latest.json" \
+            --remote --file "$pointer" --content-type application/json
+          echo "Mirrored ${filename} to R2 and advanced desktop/releases/latest.json." >> "$GITHUB_STEP_SUMMARY"
 
       - name: Remove temporary signing material
         if: always()

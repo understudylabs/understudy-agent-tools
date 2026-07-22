@@ -25,8 +25,9 @@ profile schema, interview bank, tooling-detection table — is in
 ## Safety Gates
 
 - **Download approval + size cap.** Name the exact model, quantization, and disk
-  size, and get a quick yes before pulling weights. Default to the *smallest*
-  American open model that gives a real win.
+  size, and get a quick yes before pulling weights. Default to the smallest
+  verified American open model that gives a real onboarding win, and label it
+  as a bootstrap model rather than a workload recommendation.
 - **Local-first, no upload.** Profiling, interview answers, and the model run
   entirely on the machine. The profile is local; it holds preferences and
   detected tooling — never secrets, keys, or customer data.

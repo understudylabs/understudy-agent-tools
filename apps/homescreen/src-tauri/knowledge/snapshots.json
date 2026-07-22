@@ -27,6 +27,20 @@
     "session_url": "https://models.understudylabs.com/session?model=gemma-4-e2b-it-mlx-vlm-4bit&ttl=21600"
   },
   {
+    "id": "gemma-4-e4b-it-qat-mlx-vlm-understudy",
+    "name": "Gemma 4 E4B IT QAT MLX 4-bit, Understudy",
+    "approx_gb": 5.6,
+    "loader": "mlx_vlm",
+    "default_rung": false,
+    "short_name": "understudy-balanced",
+    "certified": true,
+    "family": "gemma-4",
+    "tier": "e4b",
+    "quant": "qat-4bit-g32",
+    "notes": "First capability climb from the 2B default. Certified on the frozen text, image, tool, cancellation, restart, supervision, and compaction suite.",
+    "session_url": "https://models.understudylabs.com/session?model=gemma-4-e4b-it-qat-mlx-vlm-understudy&ttl=21600"
+  },
+  {
     "id": "gemma-4-e4b-it-mlx-vlm-4bit",
     "name": "Gemma 4 E4B IT MLX-VLM 4-bit",
     "approx_gb": 4.8,

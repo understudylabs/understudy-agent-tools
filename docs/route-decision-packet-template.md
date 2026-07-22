@@ -16,7 +16,7 @@ existing-key, hosted open-weight, frontier, or Understudy route.
   },
   "constraints": {
     "workload_shape": [],
-    "privacy_boundary": "local-only until explicit approval",
+    "privacy_boundary": "workflow-bound cloud unless Local is selected",
     "data_class": "source-metadata-only",
     "context_budget_tokens": null,
     "latency_target_ms": null,
@@ -44,10 +44,7 @@ existing-key, hosted open-weight, frontier, or Understudy route.
   ],
   "recommended_next_command": "understudy optimize-workload check --repo .",
   "approval_required_before": [
-    "live model calls",
-    "model downloads",
-    "uploads",
-    "hosted jobs"
+    "expanding data, destination, spend, retention, or production impact"
   ]
 }
 ```

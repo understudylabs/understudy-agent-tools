@@ -72,10 +72,11 @@ const BENCHMARK_MAX_TOKENS: u32 = 384;
 pub(crate) const MAX_TOOL_ROUNDS: usize = 4;
 const CHAT_CONNECT_TIMEOUT_SECS: u64 = 10;
 const CHAT_REQUEST_TIMEOUT_SECS: u64 = 600;
+const METADATA_CHAT_TIMEOUT_SECS: u64 = 45;
 const SMALL_FIRST_SUPERVISOR_PROMPT: &str = "Judge whether the smaller student's partial answer is correct, relevant, safe, and using tools appropriately. INTERRUPT factual errors, invented evidence, wrong tool arguments, irrelevant refusals, or confident claims unsupported by tool results so the teacher can correct them. NUDGE only when a short concrete correction can let the student continue. CONTINUE when the partial is sound, including when a sound answer is complete. Never use STOP for an incorrect, incomplete, irrelevant, or otherwise correctable answer; STOP is reserved for a turn that must end without any teacher response. Give one concise, specific reason for every INTERRUPT or NUDGE.";
 const UNDERSTUDY_DESKTOP_CONTEXT: &str = r#"You are the Understudy Desktop agent for Understudy Labs, founded by Aamir Poonawalla and Luis Manrique. Understudy helps teams improve complete production AI routes -- the harness, model, and supply path -- from real work. It turns traces and expert judgment into workload-specific evals, optimization or training evidence, routing decisions, and specialist models the team can own.
 
-Work local-first. Inspect before changing, measure before optimizing, compare against the incumbent or frontier route, and ask before uploading data, downloading large artifacts, spending money, or invoking hosted training.
+Use the strongest active route unless the user selects Local or names a hard constraint. Inspect before changing, measure before optimizing, and compare against the incumbent or frontier route. Treat dropped data as available to the active analyst and a named launch action as authorization for that workflow's bounded uploads, provider calls, training, temporary evaluation resources, receipts, and cleanup. Ask again only before expanding the displayed data, destination, spend, retention, or production-impact envelope.
 
 `understudy-agent-tools` is your preinstalled Understudy skill. Enter it through its root skill name, `understudy`. At the start of an Understudy, product, AI-workload, evaluation, optimization, routing, or training task, use the `understudy_agent_tools` tool with command `skills_inspect` and name `understudy`, then follow its progressive-disclosure routing. Use `skills_search` and `skills_inspect` to load only the specialist knowledge needed for the current stage. For company or product questions, route to `product-knowledge`. For repository questions, inspect the relevant local files and tools before answering; do not guess from the model's prior knowledge."#;
 
@@ -233,6 +234,69 @@ pub(crate) fn tool_schemas() -> Vec<Value> {
                 }
             }
         }),
+        json!({
+            "type": "function",
+            "function": {
+                "name": "training_runs",
+                "description": "Read the local training runs index for a workload artifact root: run ids, plans, statuses, accuracy, and whether each run already has an outcome.json summary. Use this first when the user asks about past or current training runs.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "artifact_root": { "type": "string", "description": "Absolute path to the workload artifact root that contains runs-index.json." }
+                    },
+                    "required": ["artifact_root"],
+                    "additionalProperties": false
+                }
+            }
+        }),
+        json!({
+            "type": "function",
+            "function": {
+                "name": "training_outcome",
+                "description": "Read the outcome.json summary (gates, failure clusters, next steps) for one training run, or the latest run when run_id is omitted. Use after training_runs to explain how a run went. Aggregate data only; never contains dataset rows.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "artifact_root": { "type": "string", "description": "Absolute path to the workload artifact root that contains runs-index.json." },
+                        "run_id": { "type": "string", "description": "Optional run id from training_runs; defaults to the latest run." }
+                    },
+                    "required": ["artifact_root"],
+                    "additionalProperties": false
+                }
+            }
+        }),
+        json!({
+            "type": "function",
+            "function": {
+                "name": "training_target_backlog",
+                "description": "Read the dataset manifest's target_backlog and the CSV inspection's trainable_targets (statistics only) for a workload artifact root. Use when discussing what to train next.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "artifact_root": { "type": "string", "description": "Absolute path to the dataset root or capture artifact root that holds dataset-manifest.json." }
+                    },
+                    "required": ["artifact_root"],
+                    "additionalProperties": false
+                }
+            }
+        }),
+        json!({
+            "type": "function",
+            "function": {
+                "name": "propose_training_target",
+                "description": "Propose the next training target by writing one small proposal artifact under training-proposals/. The target_name must already be in the dataset's target_backlog (use training_target_backlog first) or the call fails. This never trains or spends anything; the user reviews and acts on the proposal through the normal training flow.",
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "artifact_root": { "type": "string", "description": "Absolute path to the dataset root or capture artifact root that holds dataset-manifest.json." },
+                        "target_name": { "type": "string", "description": "A column name that appears in the manifest's target_backlog." },
+                        "rationale": { "type": "string", "description": "Why this target is next, grounded in outcomes and backlog statistics. At most 2000 characters." }
+                    },
+                    "required": ["artifact_root", "target_name", "rationale"],
+                    "additionalProperties": false
+                }
+            }
+        }),
     ]
 }
 
@@ -276,6 +340,10 @@ pub(crate) async fn tool_result(
             )
             .await?
         }
+        "training_runs" => crate::training_chat_tools::training_runs(args)?,
+        "training_outcome" => crate::training_chat_tools::training_outcome(args)?,
+        "training_target_backlog" => crate::training_chat_tools::training_target_backlog(args)?,
+        "propose_training_target" => crate::training_chat_tools::propose_training_target(args)?,
         "understudy_mcp_tool" => call_understudy_mcp(app, args).await?,
         "understudy_agent_tools" => call_understudy_cli(args)?,
         other => return Err(format!("unknown tool: {other}")),
@@ -1409,6 +1477,134 @@ pub async fn agent_chat(
     }
 }
 
+/// One content-only Pi turn for dataset analysis. Unlike the general agent
+/// surface this deliberately exposes no tools or executor URL, so a dropped
+/// dataset cannot turn analysis into filesystem, shell, or live effects.
+pub struct MetadataChatRoute<'a> {
+    pub route: &'a str,
+    pub model: Option<&'a str>,
+    pub slot_id: Option<u32>,
+    pub stream_events: Option<&'a Channel<Value>>,
+}
+
+pub async fn agent_metadata_chat(
+    app: &AppHandle,
+    mgr: &Residency,
+    target: MetadataChatRoute<'_>,
+    session_id: &str,
+    prompt: &str,
+    max_tokens: u32,
+) -> Result<BenchmarkChatResult, String> {
+    let max_tokens = max_tokens.clamp(1, CHAT_MAX_TOKENS);
+    let run_id = crate::conversation_runtime::new_run_id()?;
+    let binding = match target.route {
+        "cloud" => cloud_route_binding()
+            .ok_or_else(|| "GLM 5.2 requires an active Understudy sign-in.".to_string())?,
+        "anthropic" => anthropic_route_binding(
+            app,
+            target.model.ok_or_else(|| {
+                "The selected Anthropic route is missing its model id.".to_string()
+            })?,
+        )?,
+        "local" => local_route_binding("local", mgr, target.slot_id)?,
+        _ => return Err("The selected dataset analysis route is not supported.".into()),
+    };
+    let messages = vec![ChatMsg {
+        role: "user".to_string(),
+        content: prompt.to_string(),
+        attachments: vec![],
+    }];
+    let outbound = vec![
+        json!({ "role": "system", "content": system_prompt_for(&binding.model_field) }),
+        json!({ "role": "user", "content": prompt }),
+    ];
+    let mut request = sidecar_run_request(
+        app,
+        &messages,
+        &outbound,
+        &binding,
+        None,
+        (binding.route == "local")
+            .then_some(target.slot_id)
+            .flatten(),
+        (session_id, &run_id),
+    )?;
+    request["tools"] = json!([]);
+    request["max_output_tokens"] = json!(max_tokens);
+    request["max_tool_rounds"] = json!(0);
+    request
+        .as_object_mut()
+        .expect("the Pi request must be an object")
+        .remove("tool_executor_url");
+    let (runtime_tx, mut runtime_rx) = tokio::sync::mpsc::unbounded_channel();
+    let mut metadata_run = Box::pin(
+        crate::conversation_sidecar::try_run_chat_headless_with_events(app, request, &runtime_tx),
+    );
+    let deadline = tokio::time::sleep(Duration::from_secs(METADATA_CHAT_TIMEOUT_SECS));
+    tokio::pin!(deadline);
+    let attempt = loop {
+        tokio::select! {
+            attempt = &mut metadata_run => break attempt,
+            envelope = runtime_rx.recv() => {
+                let Some(envelope) = envelope else { continue };
+                if let crate::conversation_runtime::RuntimeEvent::Delta { text, .. } = envelope.event {
+                    if !text.is_empty() {
+                        if let Some(channel) = target.stream_events {
+                            let _ = channel.send(json!({
+                                "type": "draft_delta",
+                                "phase": "inferring",
+                                "text": text,
+                            }));
+                        }
+                    }
+                }
+            }
+            _ = &mut deadline => {
+                let _ = crate::conversation_sidecar::conversation_runtime_cancel(session_id.to_string()).await;
+                return Err(format!(
+                    "metadata analysis exceeded {METADATA_CHAT_TIMEOUT_SECS} seconds and was cancelled"
+                ));
+            }
+        }
+    };
+    match attempt {
+        crate::conversation_sidecar::SidecarAttempt::Completed(sidecar) => {
+            Ok(BenchmarkChatResult {
+                capture_run_id: run_id,
+                status: if sidecar.content.trim().is_empty() {
+                    "empty_final".to_string()
+                } else {
+                    "ok".to_string()
+                },
+                runtime_backend: "pi".to_string(),
+                content: sidecar.content,
+                elapsed_ms: sidecar.elapsed_ms,
+                tool_calls: sidecar.tool_calls,
+                prompt_tokens: sidecar_usage_tokens(sidecar.usage.as_ref(), "prompt_tokens")
+                    .unwrap_or_else(|| approximate_messages_tokens(&outbound)),
+                completion_tokens: sidecar_usage_tokens(
+                    sidecar.usage.as_ref(),
+                    "completion_tokens",
+                )
+                .unwrap_or(0),
+                reasoning_tokens: sidecar_usage_tokens(sidecar.usage.as_ref(), "reasoning_tokens")
+                    .unwrap_or(0),
+                compacted: sidecar.compacted,
+                context_tokens_before: sidecar.context_tokens_before,
+            })
+        }
+        crate::conversation_sidecar::SidecarAttempt::FailedAfterOutput(reason) => Err(format!(
+            "conversation runtime stopped after metadata analysis began: {reason}"
+        )),
+        crate::conversation_sidecar::SidecarAttempt::Cancelled(reason) => Err(format!(
+            "conversation runtime metadata analysis cancelled: {reason}"
+        )),
+        crate::conversation_sidecar::SidecarAttempt::UnavailableBeforeOutput(reason) => Err(
+            format!("canonical runtime unavailable before metadata analysis: {reason}"),
+        ),
+    }
+}
+
 #[cfg(test)]
 mod tests {
     use super::*;
@@ -1445,7 +1641,8 @@ mod tests {
         assert!(prompt.contains("`understudy-agent-tools` is your preinstalled Understudy skill"));
         assert!(prompt.contains("command `skills_inspect` and name `understudy`"));
         assert!(prompt.contains("route to `product-knowledge`"));
-        assert!(prompt.contains("Work local-first"));
+        assert!(prompt.contains("Use the strongest active route"));
+        assert!(prompt.contains("named launch action as authorization"));
     }
 
     fn image_message() -> (ChatMsg, String) {

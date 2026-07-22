@@ -189,6 +189,30 @@ pub struct ChatSessionSummaryRow {
     pub archived_at: Option<String>,
 }
 
+/// A persisted training thread: the serialized decision-card flow
+/// (understudy.training_flow.v1) plus the workload identity that makes its
+/// card bodies renderable again (artifact_root on disk).
+#[derive(Serialize, Clone)]
+pub struct TrainingThreadRow {
+    pub thread_id: String,
+    pub title: String,
+    pub artifact_root: String,
+    pub workload_json: String,
+    pub flow_json: String,
+    pub status: String,
+    pub created_at: String,
+    pub updated_at: String,
+}
+
+#[derive(Serialize, Clone)]
+pub struct TrainingThreadSummaryRow {
+    pub thread_id: String,
+    pub title: String,
+    pub status: String,
+    pub created_at: String,
+    pub updated_at: String,
+}
+
 #[derive(Serialize, Clone)]
 pub struct SidekickRunRow {
     pub id: u64,
@@ -422,6 +446,16 @@ fn migrate(conn: &Connection) -> Result<()> {
                 updated_at TEXT NOT NULL,
                 archived_at TEXT
             );
+            CREATE TABLE IF NOT EXISTS training_threads (
+                thread_id     TEXT PRIMARY KEY,
+                title         TEXT NOT NULL,
+                artifact_root TEXT NOT NULL,
+                workload_json TEXT NOT NULL,
+                flow_json     TEXT NOT NULL,
+                status        TEXT NOT NULL,
+                created_at    TEXT NOT NULL,
+                updated_at    TEXT NOT NULL
+            );
             CREATE TABLE IF NOT EXISTS chat_runs (
                 id                INTEGER PRIMARY KEY,
                 run_id            TEXT,
@@ -573,6 +607,11 @@ fn migrate(conn: &Connection) -> Result<()> {
     conn.execute(
         "CREATE INDEX IF NOT EXISTS chat_sessions_archive_updated
          ON chat_sessions(schema, archived_at, updated_at DESC)",
+        [],
+    )?;
+    conn.execute(
+        "CREATE INDEX IF NOT EXISTS training_threads_updated
+         ON training_threads(status, updated_at DESC)",
         [],
     )?;
     Ok(())
@@ -1228,6 +1267,91 @@ impl Db {
         Ok(changed as u64)
     }
 
+    /// Upsert a training thread. `created_at` is set on first insert and
+    /// preserved on every later save; `updated_at` always advances.
+    pub fn save_training_thread(
+        &self,
+        thread_id: &str,
+        title: &str,
+        artifact_root: &str,
+        workload_json: &str,
+        flow_json: &str,
+        status: &str,
+    ) -> Result<()> {
+        let conn = self.conn()?;
+        let now = now_iso();
+        conn.execute(
+            "INSERT INTO training_threads(thread_id, title, artifact_root, workload_json, flow_json, status, created_at, updated_at)
+             VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?7)
+             ON CONFLICT(thread_id) DO UPDATE SET
+                title=excluded.title,
+                artifact_root=excluded.artifact_root,
+                workload_json=excluded.workload_json,
+                flow_json=excluded.flow_json,
+                status=excluded.status,
+                updated_at=excluded.updated_at",
+            rusqlite::params![thread_id, title, artifact_root, workload_json, flow_json, status, now],
+        )?;
+        Ok(())
+    }
+
+    pub fn training_thread(&self, thread_id: &str) -> Result<Option<TrainingThreadRow>> {
+        let conn = self.conn()?;
+        let mut stmt = conn.prepare(
+            "SELECT thread_id, title, artifact_root, workload_json, flow_json, status, created_at, updated_at
+             FROM training_threads WHERE thread_id=?1 LIMIT 1",
+        )?;
+        let mut rows = stmt.query([thread_id])?;
+        let Some(row) = rows.next()? else {
+            return Ok(None);
+        };
+        Ok(Some(TrainingThreadRow {
+            thread_id: row.get(0)?,
+            title: row.get(1)?,
+            artifact_root: row.get(2)?,
+            workload_json: row.get(3)?,
+            flow_json: row.get(4)?,
+            status: row.get(5)?,
+            created_at: row.get(6)?,
+            updated_at: row.get(7)?,
+        }))
+    }
+
+    /// Newest-first thread summaries. Dismissed threads stay listed (muted in
+    /// the nav) so the audit trail remains reachable.
+    pub fn list_training_threads(&self, limit: u32) -> Result<Vec<TrainingThreadSummaryRow>> {
+        let conn = self.conn()?;
+        let mut stmt = conn.prepare(
+            "SELECT thread_id, title, status, created_at, updated_at
+             FROM training_threads
+             ORDER BY updated_at DESC, rowid DESC
+             LIMIT ?1",
+        )?;
+        let rows = stmt.query_map([limit.clamp(1, 100) as i64], |row| {
+            Ok(TrainingThreadSummaryRow {
+                thread_id: row.get(0)?,
+                title: row.get(1)?,
+                status: row.get(2)?,
+                created_at: row.get(3)?,
+                updated_at: row.get(4)?,
+            })
+        })?;
+        Ok(rows.collect::<rusqlite::Result<Vec<_>>>()?)
+    }
+
+    /// Archive = mark dismissed. Completed threads keep their audit-trail
+    /// status; only active threads transition.
+    pub fn archive_training_thread(&self, thread_id: &str) -> Result<bool> {
+        let conn = self.conn()?;
+        let changed = conn.execute(
+            "UPDATE training_threads
+             SET status='dismissed', updated_at=?2
+             WHERE thread_id=?1 AND status='active'",
+            rusqlite::params![thread_id, now_iso()],
+        )?;
+        Ok(changed > 0)
+    }
+
     pub fn list_sidekick_runs(&self, limit: u32) -> Result<Vec<SidekickRunRow>> {
         let conn = self.conn()?;
         let mut stmt = conn.prepare(
@@ -1701,6 +1825,81 @@ mod tests {
                 .unwrap()
                 .len(),
             2
+        );
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn training_thread_round_trips_flow_and_workload_identity() {
+        let (dir, db) = temp_db("training-thread-roundtrip");
+        db.save_training_thread(
+            "thread-1",
+            "tickets.csv → priority",
+            "/tmp/understudy/artifacts/thread-1",
+            r#"{"source_name":"tickets.csv","artifact_root":"/tmp/understudy/artifacts/thread-1"}"#,
+            r#"{"schema_version":"understudy.training_flow.v1","cards":[]}"#,
+            "active",
+        )
+        .unwrap();
+        let row = db.training_thread("thread-1").unwrap().unwrap();
+        assert_eq!(row.title, "tickets.csv → priority");
+        assert_eq!(row.status, "active");
+        assert!(row.flow_json.contains("understudy.training_flow.v1"));
+        assert!(row.workload_json.contains("tickets.csv"));
+        let created_at = row.created_at.clone();
+
+        // Upsert preserves created_at and advances the row content.
+        db.save_training_thread(
+            "thread-1",
+            "tickets.csv → priority",
+            "/tmp/understudy/artifacts/thread-1",
+            r#"{"source_name":"tickets.csv"}"#,
+            r#"{"schema_version":"understudy.training_flow.v1","cards":[{"id":"run"}]}"#,
+            "completed",
+        )
+        .unwrap();
+        let updated = db.training_thread("thread-1").unwrap().unwrap();
+        assert_eq!(updated.created_at, created_at);
+        assert_eq!(updated.status, "completed");
+        assert!(updated.flow_json.contains("run"));
+        assert!(db.training_thread("missing").unwrap().is_none());
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn training_threads_list_newest_first_with_status() {
+        let (dir, db) = temp_db("training-thread-list");
+        db.save_training_thread("older", "a.csv", "/tmp/a", "{}", "null", "completed")
+            .unwrap();
+        db.save_training_thread("newer", "b.csv", "/tmp/b", "{}", "null", "active")
+            .unwrap();
+        let summaries = db.list_training_threads(20).unwrap();
+        assert_eq!(summaries.len(), 2);
+        assert_eq!(summaries[0].thread_id, "newer");
+        assert_eq!(summaries[0].status, "active");
+        assert_eq!(summaries[1].thread_id, "older");
+        assert_eq!(summaries[1].status, "completed");
+        let _ = std::fs::remove_dir_all(&dir);
+    }
+
+    #[test]
+    fn training_thread_archive_dismisses_active_only() {
+        let (dir, db) = temp_db("training-thread-archive");
+        db.save_training_thread("live", "a.csv", "/tmp/a", "{}", "null", "active")
+            .unwrap();
+        db.save_training_thread("done", "b.csv", "/tmp/b", "{}", "null", "completed")
+            .unwrap();
+        assert!(db.archive_training_thread("live").unwrap());
+        assert!(!db.archive_training_thread("live").unwrap());
+        // Completed threads are the audit trail; archive must not relabel them.
+        assert!(!db.archive_training_thread("done").unwrap());
+        assert_eq!(
+            db.training_thread("live").unwrap().unwrap().status,
+            "dismissed"
+        );
+        assert_eq!(
+            db.training_thread("done").unwrap().unwrap().status,
+            "completed"
         );
         let _ = std::fs::remove_dir_all(&dir);
     }

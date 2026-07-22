@@ -1,6 +1,6 @@
 [package]
 name = "understudy"
-version = "0.3.29"
+version = "0.3.40"
 description = "Understudy Desktop"
 authors = ["Understudy Labs"]
 edition = "2021"
@@ -35,6 +35,15 @@ base64 = "0.22"
 # Deterministic regex scoring for build-your-own evals; the -lite build keeps
 # the dependency footprint at a single crate.
 regex-lite = "0.1"
+# Pure-Rust readers for dropped Excel/OpenDocument workbooks. Pi receives a
+# context-bounded decoded representation rather than opaque workbook bytes.
+calamine = "0.36"
+# Bounded, quote-aware decoding for dropped CSV/TSV datasets. File format
+# selects only the parser; route and training backend remain user decisions.
+csv = "1"
+# Portable `.understudy-model` files are ZIP containers. Keep only the
+# deflate reader; bundles never execute archive contents.
+zip = { version = "2.4.2", default-features = false, features = ["deflate"] }
 
 [target.'cfg(any(target_os = "macos", windows, target_os = "linux"))'.dependencies]
 tauri-plugin-updater = "2.10.1"

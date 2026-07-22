@@ -130,9 +130,9 @@ Turn the opportunity into a local dataset the harness can run against:
 ## Eval-harness discovery + build
 
 A baseline is only trustworthy if it runs against a real, repeatable eval. Reuse
-before you build, then build the smallest meaningful harness that scores the
-target behavior. Tie everything to the artifact contract so the next worker can
-trust it by hash.
+before you build, then build the simplest harness that completely scores the
+target behavior on a decision-sized cohort. Tie everything to the artifact
+contract so the next worker can trust it by hash.
 
 ### Discover existing tests/evals
 
@@ -166,6 +166,12 @@ prior runs scored 0/12 (see `SKILL.md` → Required Checks step 3).
   focused 20–50 row set that exposes real failures beats a large bland one.
 - If no captured data exists, build a clearly-labeled **synthetic fixture** (see
   Acquire-fresh) and mark every synthetic result as such.
+
+Before calling the set representative, apply the coverage matrix, completed-run
+classification, hard-case minimums, qualitative row review, and claim-strength
+rules in
+[`references/evaluation-evidence-gates.md`](references/evaluation-evidence-gates.md).
+Random sampling alone does not establish coverage.
 
 ### Define metrics aligned to the objective
 

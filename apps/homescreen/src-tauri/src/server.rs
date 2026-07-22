@@ -20,6 +20,7 @@ use axum::{
     Json, Router,
 };
 use serde_json::{json, Value};
+use std::future::IntoFuture;
 use tauri::{AppHandle, Emitter, Manager};
 
 const DEFAULT_PORT: u16 = 17790;
@@ -95,6 +96,18 @@ pub fn router(ctx: Ctx) -> Router {
         .route("/api/traces/search", get(traces_search))
         .route("/api/traces/:id", get(traces_open))
         .route("/api/ui/focus", post(ui_focus))
+        // Explore Data pane: read-only warehouse/artifact surfaces + scan job.
+        .route("/api/explore/status", get(explore_status))
+        .route("/api/explore/query", post(explore_query))
+        .route("/api/explore/sqlite", post(explore_sqlite))
+        .route("/api/explore/benchmark/:name", get(explore_benchmark))
+        .route("/api/explore/eval/:name", get(explore_eval))
+        .route(
+            "/api/explore/scan",
+            get(explore_scan_status)
+                .post(explore_scan_start)
+                .delete(explore_scan_cancel),
+        )
         // Stable versioned aliases for the CLI and third-party desktop agents.
         .route("/v1/capabilities", get(agent_capabilities))
         .route("/v1/status", get(status))
@@ -127,6 +140,37 @@ pub fn router(ctx: Ctx) -> Router {
             get(agent_supervision_corrections),
         )
         .route("/v1/feedback/supervisor", post(agent_supervisor_feedback))
+        // Training harness: the GUI's data and verbs for coding agents.
+        // Artifact-root and run-manifest path params are base64url-encoded
+        // (padding optional); the wrapped Tauri commands own all path
+        // canonicalization, plan boundary checks, and consent gates.
+        .route(
+            "/v1/training/workloads/:artifact_root_b64/chain",
+            get(training_chain),
+        )
+        .route(
+            "/v1/training/workloads/:artifact_root_b64/runs",
+            get(training_runs),
+        )
+        .route(
+            "/v1/training/workloads/:artifact_root_b64/outcome",
+            get(training_outcome),
+        )
+        .route(
+            "/v1/training/workloads/:artifact_root_b64/backlog",
+            get(training_backlog),
+        )
+        .route("/v1/training/compile", post(training_compile))
+        .route("/v1/training/prepare-remote", post(training_prepare_remote))
+        .route("/v1/training/runs", post(training_start_run))
+        .route(
+            "/v1/training/runs/:run_manifest_b64/poll",
+            post(training_poll_run),
+        )
+        .route(
+            "/v1/training/runs/:run_manifest_b64/cancel",
+            post(training_cancel_run),
+        )
         // agent fronts
         .route("/mcp", post(mcp))
         .route("/.well-known/agent.json", get(a2a_card))
@@ -147,6 +191,169 @@ async fn auth_mw(State(ctx): State<Ctx>, req: Request, next: Next) -> Response {
         Ok(()) => next.run(req).await,
         Err(e) => e.into_response(),
     }
+}
+
+// ---------------- supervisor (stop reasons + capped-backoff restart) ----------------
+//
+// The server used to die silently: `serve` returned (bind failure, axum exit,
+// panic on the runtime thread) and nothing recorded why — agent-card.json just
+// flipped `running: false`. The supervisor wraps every exit path in an
+// explicit reason, writes it to the card (`app.stopped_reason`), logs it via
+// the crate's `eprintln!("understudy server: ...")` convention, and restarts
+// with capped exponential backoff unless the exit is terminal (app shutdown,
+// another healthy instance owning the port, or the retry budget is spent).
+// Pure decision logic lives in `supervisor` so it is testable without sockets.
+pub(crate) mod supervisor {
+    use std::time::Duration;
+
+    /// Backoff schedule in seconds; attempts past the end reuse the last cap.
+    pub const BACKOFF_SECS: [u64; 3] = [1, 5, 30];
+    /// Give up (terminal reason recorded) after this many consecutive
+    /// failed restart attempts.
+    pub const MAX_RESTART_ATTEMPTS: u32 = 5;
+    /// A server that stayed healthy this long earns a fresh retry budget.
+    pub const HEALTHY_RESET_SECS: u64 = 60;
+    /// Period of the supervisor's /health self-probe.
+    pub const HEALTH_PROBE_SECS: u64 = 60;
+    /// Consecutive failed self-probes before the server is declared dead.
+    pub const HEALTH_PROBE_FAILURES: u32 = 2;
+
+    /// Why one server incarnation ended. Every exit path maps to exactly one
+    /// of these; the reason string written to agent-card.json derives from it.
+    #[derive(Debug, Clone, PartialEq, Eq)]
+    pub enum ExitKind {
+        /// Bind failed with AddrInUse. `owner_healthy` is true when a probe
+        /// of /health on the port answered "ok" (someone functional owns it);
+        /// `token_accepted` is whether our bearer token worked against it.
+        BindAddrInUse {
+            owner_healthy: bool,
+            token_accepted: bool,
+        },
+        /// Bind failed for any other reason (retryable).
+        BindFailed(String),
+        /// axum::serve returned (Ok or Err) — it should never return.
+        ServeExited(Option<String>),
+        /// The serve task panicked.
+        ServePanicked(String),
+        /// The periodic /health self-probe failed repeatedly.
+        HealthCheckFailed,
+        /// The app asked the server to stop (graceful, never restarted).
+        Shutdown,
+    }
+
+    /// What the supervisor loop should do about an exit.
+    #[derive(Debug, Clone, PartialEq, Eq)]
+    pub enum Decision {
+        /// Record `reason`, sleep `delay`, try again.
+        Retry { delay: Duration, reason: String },
+        /// Record `reason` and stop supervising (terminal).
+        Stop { reason: String },
+    }
+
+    pub fn backoff_delay(attempt: u32) -> Duration {
+        let idx = (attempt as usize).min(BACKOFF_SECS.len() - 1);
+        Duration::from_secs(BACKOFF_SECS[idx])
+    }
+
+    fn reason_for(kind: &ExitKind) -> String {
+        match kind {
+            ExitKind::BindAddrInUse {
+                owner_healthy: true,
+                token_accepted,
+            } => format!(
+                "port_owned_by_other_instance (healthy /health; token {})",
+                if *token_accepted { "accepted" } else { "rejected" }
+            ),
+            ExitKind::BindAddrInUse {
+                owner_healthy: false,
+                ..
+            } => "port_in_use (no healthy owner; likely lingering socket)".into(),
+            ExitKind::BindFailed(err) => format!("bind_failed: {err}"),
+            ExitKind::ServeExited(None) => "server_exited".into(),
+            ExitKind::ServeExited(Some(err)) => format!("server_exited: {err}"),
+            ExitKind::ServePanicked(msg) => format!("server_panicked: {msg}"),
+            ExitKind::HealthCheckFailed => "health_check_failed".into(),
+            ExitKind::Shutdown => "app_shutdown".into(),
+        }
+    }
+
+    /// Tracks consecutive restart attempts and turns each exit into a
+    /// `Decision`. No I/O: the caller supplies the exit kind and the healthy
+    /// uptime of the incarnation that just ended.
+    pub struct Supervisor {
+        attempts: u32,
+        last_reason: Option<String>,
+    }
+
+    impl Supervisor {
+        pub fn new() -> Self {
+            Self {
+                attempts: 0,
+                last_reason: None,
+            }
+        }
+
+        pub fn attempts(&self) -> u32 {
+            self.attempts
+        }
+
+        /// A run that stayed up long enough resets the retry budget.
+        pub fn note_uptime(&mut self, uptime: Duration) {
+            if uptime.as_secs() >= HEALTHY_RESET_SECS {
+                self.attempts = 0;
+            }
+        }
+
+        pub fn on_exit(&mut self, kind: ExitKind) -> Decision {
+            let reason = reason_for(&kind);
+            match kind {
+                // User/app-initiated: never restart.
+                ExitKind::Shutdown => Decision::Stop { reason },
+                // Another functional instance answers on the port: do not
+                // fight over it.
+                ExitKind::BindAddrInUse {
+                    owner_healthy: true,
+                    ..
+                } => Decision::Stop { reason },
+                // Everything else is an unexpected exit: retry with capped
+                // backoff until the budget is spent.
+                _ => {
+                    if self.attempts >= MAX_RESTART_ATTEMPTS {
+                        return Decision::Stop {
+                            reason: format!(
+                                "gave_up_after_{}_attempts (last: {})",
+                                self.attempts,
+                                self.last_reason.as_deref().unwrap_or(&reason)
+                            ),
+                        };
+                    }
+                    let delay = backoff_delay(self.attempts);
+                    self.attempts += 1;
+                    self.last_reason = Some(reason.clone());
+                    Decision::Retry { delay, reason }
+                }
+            }
+        }
+    }
+}
+
+/// Set once the app asks the server to stop; the supervisor records
+/// `app_shutdown` instead of restarting. (Process exit also ends the server
+/// thread; this exists so an explicit stop is never misread as a crash.)
+static SHUTDOWN: std::sync::atomic::AtomicBool = std::sync::atomic::AtomicBool::new(false);
+
+pub fn request_shutdown() {
+    SHUTDOWN.store(true, std::sync::atomic::Ordering::SeqCst);
+}
+
+fn shutdown_requested() -> bool {
+    SHUTDOWN.load(std::sync::atomic::Ordering::SeqCst)
+}
+
+/// Record + log one server stop reason (single choke point for both).
+fn record_stop(reason: &str) {
+    eprintln!("understudy server: stopped: {reason}");
+    crate::agent_card::record_server_stopped(reason);
 }
 
 /// Resolve (or create) a bearer token + port, then run the server on a dedicated
@@ -178,9 +385,10 @@ pub fn start(app: AppHandle) {
             }
         }
     };
-    let port = db
-        .setting_get(PORT_KEY)
+    let port = std::env::var("UNDERSTUDY_SERVER_PORT")
+        .ok()
         .and_then(|p| p.parse().ok())
+        .or_else(|| db.setting_get(PORT_KEY).and_then(|p| p.parse().ok()))
         .unwrap_or(DEFAULT_PORT);
 
     let ctx = Ctx { app, token };
@@ -190,25 +398,165 @@ pub fn start(app: AppHandle) {
             .build()
         {
             Ok(rt) => rt,
-            Err(_) => return,
+            Err(e) => {
+                // Runtime thread death is a stop like any other: record it.
+                record_stop(&format!("runtime_build_failed: {e}"));
+                return;
+            }
         };
-        rt.block_on(serve(ctx, port));
+        rt.block_on(supervise(ctx, port));
     });
 }
 
-async fn serve(ctx: Ctx, port: u16) {
+/// Supervisor loop: run the server, classify every exit, record the reason,
+/// and restart with capped backoff unless the exit is terminal.
+async fn supervise(ctx: Ctx, port: u16) {
+    let mut sup = supervisor::Supervisor::new();
+    loop {
+        if shutdown_requested() {
+            record_stop("app_shutdown");
+            return;
+        }
+        let started = std::time::Instant::now();
+        let exit = serve_once(&ctx, port).await;
+        sup.note_uptime(started.elapsed());
+        match sup.on_exit(exit) {
+            supervisor::Decision::Retry { delay, reason } => {
+                record_stop(&reason);
+                eprintln!(
+                    "understudy server: restarting in {}s (attempt {}/{})",
+                    delay.as_secs(),
+                    sup.attempts(),
+                    supervisor::MAX_RESTART_ATTEMPTS
+                );
+                tokio::time::sleep(delay).await;
+            }
+            supervisor::Decision::Stop { reason } => {
+                record_stop(&reason);
+                return;
+            }
+        }
+    }
+}
+
+/// One server incarnation: bind, serve, and self-probe /health every
+/// `HEALTH_PROBE_SECS`. Returns how it ended; never restarts by itself.
+async fn serve_once(ctx: &Ctx, port: u16) -> supervisor::ExitKind {
     let listener = match tokio::net::TcpListener::bind(("127.0.0.1", port)).await {
         Ok(l) => l,
+        Err(e) if e.kind() == std::io::ErrorKind::AddrInUse => {
+            eprintln!("understudy server: bind {port} failed: {e}");
+            let (owner_healthy, token_accepted) = probe_port_owner(port, &ctx.token).await;
+            return supervisor::ExitKind::BindAddrInUse {
+                owner_healthy,
+                token_accepted,
+            };
+        }
         Err(e) => {
             eprintln!("understudy server: bind {port} failed: {e}");
-            return;
+            return supervisor::ExitKind::BindFailed(e.to_string());
         }
     };
     // The app is the canonical local daemon: advertise it in the agent card
     // once the server is actually reachable (never the token itself).
     crate::agent_card::record_api_capability(port, &ctx.token);
     crate::agent_card::record_server_started(port, !ctx.token.is_empty());
-    let _ = axum::serve(listener, router(ctx)).await;
+
+    let mut serve_task = tokio::spawn(axum::serve(listener, router(ctx.clone())).into_future());
+    let mut probe_failures = 0u32;
+    let mut ticker = tokio::time::interval(std::time::Duration::from_secs(
+        supervisor::HEALTH_PROBE_SECS,
+    ));
+    ticker.set_missed_tick_behavior(tokio::time::MissedTickBehavior::Delay);
+    ticker.tick().await; // first tick fires immediately; skip it
+    loop {
+        tokio::select! {
+            joined = &mut serve_task => {
+                return match joined {
+                    Ok(Ok(())) => supervisor::ExitKind::ServeExited(None),
+                    Ok(Err(e)) => supervisor::ExitKind::ServeExited(Some(e.to_string())),
+                    Err(join_err) => {
+                        let msg = if join_err.is_panic() {
+                            match join_err.into_panic().downcast::<String>() {
+                                Ok(s) => *s,
+                                Err(payload) => match payload.downcast::<&'static str>() {
+                                    Ok(s) => (*s).to_string(),
+                                    Err(_) => "unknown panic payload".to_string(),
+                                },
+                            }
+                        } else {
+                            "serve task cancelled".to_string()
+                        };
+                        supervisor::ExitKind::ServePanicked(msg)
+                    }
+                };
+            }
+            _ = ticker.tick() => {
+                if shutdown_requested() {
+                    serve_task.abort();
+                    return supervisor::ExitKind::Shutdown;
+                }
+                if probe_health(port).await {
+                    probe_failures = 0;
+                } else {
+                    probe_failures += 1;
+                    eprintln!(
+                        "understudy server: /health self-probe failed ({probe_failures}/{})",
+                        supervisor::HEALTH_PROBE_FAILURES
+                    );
+                    if probe_failures >= supervisor::HEALTH_PROBE_FAILURES {
+                        serve_task.abort();
+                        return supervisor::ExitKind::HealthCheckFailed;
+                    }
+                }
+            }
+        }
+    }
+}
+
+fn probe_client() -> Option<reqwest::Client> {
+    reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(3))
+        .build()
+        .ok()
+}
+
+/// True when /health on our own port answers "ok".
+async fn probe_health(port: u16) -> bool {
+    let Some(client) = probe_client() else {
+        return false;
+    };
+    match client
+        .get(format!("http://127.0.0.1:{port}/health"))
+        .send()
+        .await
+    {
+        Ok(resp) if resp.status().is_success() => {
+            matches!(resp.text().await.as_deref(), Ok("ok"))
+        }
+        _ => false,
+    }
+}
+
+/// The port was busy: is a healthy instance answering there, and does our
+/// bearer token work against it? (healthy, token_accepted). A healthy owner —
+/// token accepted or not — means we must not fight over the port.
+async fn probe_port_owner(port: u16, token: &str) -> (bool, bool) {
+    if !probe_health(port).await {
+        return (false, false);
+    }
+    let Some(client) = probe_client() else {
+        return (true, false);
+    };
+    let token_accepted = matches!(
+        client
+            .get(format!("http://127.0.0.1:{port}/v1/status"))
+            .bearer_auth(token)
+            .send()
+            .await,
+        Ok(resp) if resp.status() != StatusCode::UNAUTHORIZED
+    );
+    (true, token_accepted)
 }
 
 fn auth(ctx: &Ctx, headers: &HeaderMap) -> Result<(), (StatusCode, String)> {
@@ -265,7 +613,7 @@ async fn agent_capabilities(
 fn agent_capabilities_value() -> Value {
     json!({
         "schema_version": "understudy.desktop_api.v2",
-        "api_version": "2.3.0",
+        "api_version": "2.4.0",
         "event_schema": crate::conversation_runtime::EVENT_SCHEMA,
         "runtime": {
             "id": "understudy-conversation-runtime",
@@ -285,6 +633,7 @@ fn agent_capabilities_value() -> Value {
             "model_residency": true,
             "migration_observation": true,
             "local_task_models": true,
+            "training_harness": true,
         },
         "endpoints": {
             "status": "/v1/status",
@@ -307,6 +656,15 @@ fn agent_capabilities_value() -> Value {
             "run_events": "/v1/runs/{run_id}/events",
             "supervisor_feedback": "/v1/feedback/supervisor",
             "supervision_corrections": "/v1/supervision/corrections",
+            "training_chain": "/v1/training/workloads/{artifact_root_b64}/chain",
+            "training_runs": "/v1/training/workloads/{artifact_root_b64}/runs",
+            "training_outcome": "/v1/training/workloads/{artifact_root_b64}/outcome",
+            "training_target_backlog": "/v1/training/workloads/{artifact_root_b64}/backlog",
+            "training_compile": "/v1/training/compile",
+            "training_prepare_remote": "/v1/training/prepare-remote",
+            "training_start_run": "/v1/training/runs",
+            "training_poll_run": "/v1/training/runs/{run_manifest_b64}/poll",
+            "training_cancel_run": "/v1/training/runs/{run_manifest_b64}/cancel",
         }
     })
 }
@@ -1191,10 +1549,14 @@ async fn traces_open(
 }
 
 /// Inbound: an agent asks the GUI to focus a pane / show something.
+/// `view`/`session` are Explore deep links: land on the timeline or tasks
+/// list, or directly on one session transcript.
 #[derive(serde::Deserialize)]
 struct FocusBody {
     pane: Option<String>,
     model: Option<String>,
+    view: Option<String>,
+    session: Option<String>,
 }
 async fn ui_focus(
     State(ctx): State<Ctx>,
@@ -1202,10 +1564,327 @@ async fn ui_focus(
     Json(b): Json<FocusBody>,
 ) -> Result<Json<Value>, (StatusCode, String)> {
     auth(&ctx, &h)?;
-    let _ = ctx
-        .app
-        .emit("server-focus", json!({ "pane": b.pane, "model": b.model }));
+    let _ = ctx.app.emit(
+        "server-focus",
+        json!({ "pane": b.pane, "model": b.model, "view": b.view, "session": b.session }),
+    );
     Ok(Json(json!({ "ok": true })))
+}
+
+// ---------------- Explore Data (read-only + scan job) ----------------
+
+async fn explore_status(
+    State(ctx): State<Ctx>,
+    h: HeaderMap,
+) -> Result<Response, (StatusCode, String)> {
+    auth(&ctx, &h)?;
+    let body = crate::explore::status_snapshot()
+        .await
+        .map_err(|e| (StatusCode::BAD_GATEWAY, e))?;
+    Ok(json_string_response(body))
+}
+
+/// The explore helpers already serialize to JSON strings for the GUI; send
+/// them through as `application/json` without a re-parse round trip.
+fn json_string_response(body: String) -> Response {
+    let mut response = Response::new(Body::from(body));
+    response.headers_mut().insert(
+        header::CONTENT_TYPE,
+        HeaderValue::from_static("application/json"),
+    );
+    response
+}
+
+#[derive(serde::Deserialize)]
+struct ExploreQueryBody {
+    sql: String,
+}
+
+async fn explore_query(
+    State(ctx): State<Ctx>,
+    h: HeaderMap,
+    Json(b): Json<ExploreQueryBody>,
+) -> Result<Response, (StatusCode, String)> {
+    auth(&ctx, &h)?;
+    // Guarded proxy: same allowlist + resource caps as the GUI invoke.
+    let body = crate::explore::run_clickhouse_query(b.sql)
+        .await
+        .map_err(|e| (StatusCode::BAD_REQUEST, e))?;
+    // JSONEachRow: newline-delimited JSON objects.
+    let mut response = Response::new(Body::from(body));
+    response.headers_mut().insert(
+        header::CONTENT_TYPE,
+        HeaderValue::from_static("application/x-ndjson; charset=utf-8"),
+    );
+    Ok(response)
+}
+
+#[derive(serde::Deserialize)]
+struct ExploreSqliteBody {
+    db: String,
+    sql: String,
+    #[serde(default)]
+    params: Vec<String>,
+}
+
+async fn explore_sqlite(
+    State(ctx): State<Ctx>,
+    h: HeaderMap,
+    Json(b): Json<ExploreSqliteBody>,
+) -> Result<Response, (StatusCode, String)> {
+    auth(&ctx, &h)?;
+    let body = crate::explore::query_sqlite(b.db, b.sql, b.params)
+        .await
+        .map_err(|e| (StatusCode::BAD_REQUEST, e))?;
+    Ok(json_string_response(body))
+}
+
+async fn explore_read_json(
+    ctx: &Ctx,
+    h: &HeaderMap,
+    kind: &str,
+    name: String,
+) -> Result<Response, (StatusCode, String)> {
+    auth(ctx, h)?;
+    let body = crate::explore::read_artifact_json(kind.to_string(), name)
+        .await
+        .map_err(|e| (StatusCode::BAD_REQUEST, e))?
+        .ok_or_else(|| (StatusCode::NOT_FOUND, format!("{kind} artifact not found")))?;
+    Ok(json_string_response(body))
+}
+
+async fn explore_benchmark(
+    State(ctx): State<Ctx>,
+    h: HeaderMap,
+    Path(name): Path<String>,
+) -> Result<Response, (StatusCode, String)> {
+    explore_read_json(&ctx, &h, "benchmark", name).await
+}
+
+async fn explore_eval(
+    State(ctx): State<Ctx>,
+    h: HeaderMap,
+    Path(name): Path<String>,
+) -> Result<Response, (StatusCode, String)> {
+    explore_read_json(&ctx, &h, "eval", name).await
+}
+
+#[derive(serde::Deserialize, Default)]
+struct ExploreScanBody {
+    limit: Option<u32>,
+}
+
+async fn explore_scan_start(
+    State(ctx): State<Ctx>,
+    h: HeaderMap,
+    body: Option<Json<ExploreScanBody>>,
+) -> Result<Json<Value>, (StatusCode, String)> {
+    auth(&ctx, &h)?;
+    let limit = body.map(|Json(b)| b.limit).unwrap_or(None);
+    let job = ctx.app.state::<crate::explore::ScanJob>();
+    let residency = ctx.app.state::<crate::residency::Residency>();
+    // Spawning the pipeline is quick (no waiting), but it does fork a child
+    // process — keep it off the axum workers like the other process work.
+    let status =
+        crate::explore::scan_start(&job, &residency, limit).map_err(|e| {
+            if e.contains("already running") {
+                (StatusCode::CONFLICT, e)
+            } else {
+                (StatusCode::BAD_REQUEST, e)
+            }
+        })?;
+    Ok(Json(json!({ "ok": true, "status": status })))
+}
+
+async fn explore_scan_status(
+    State(ctx): State<Ctx>,
+    h: HeaderMap,
+) -> Result<Response, (StatusCode, String)> {
+    auth(&ctx, &h)?;
+    let job = ctx.app.state::<crate::explore::ScanJob>();
+    let body = crate::explore::scan_status(&job)
+        .await
+        .map_err(|e| (StatusCode::BAD_GATEWAY, e))?;
+    Ok(json_string_response(body))
+}
+
+async fn explore_scan_cancel(
+    State(ctx): State<Ctx>,
+    h: HeaderMap,
+) -> Result<Json<Value>, (StatusCode, String)> {
+    auth(&ctx, &h)?;
+    let job = ctx.app.state::<crate::explore::ScanJob>();
+    crate::explore::scan_cancel(&job).map_err(|e| (StatusCode::BAD_REQUEST, e))?;
+    Ok(Json(json!({ "ok": true })))
+}
+
+// ---------------- training harness (/v1/training/*) ----------------
+//
+// Thin adapters over the exact GUI verbs: `training_chat_tools` executors
+// for the reads (pure functions of the filesystem) and the
+// `remote_training` Tauri commands for compile/prepare/dispatch/poll/cancel.
+// Consent and path validation are never re-implemented here — the commands
+// own them (see `training_api.rs`). Responses never contain run tokens; the
+// commands strip them from persisted-run projections already.
+
+fn training_path_param(encoded: &str) -> Result<String, (StatusCode, String)> {
+    crate::training_api::decode_path_param(encoded).map_err(|e| (StatusCode::BAD_REQUEST, e))
+}
+
+async fn training_chain(
+    State(ctx): State<Ctx>,
+    h: HeaderMap,
+    Path(artifact_root_b64): Path<String>,
+) -> Result<Json<Value>, (StatusCode, String)> {
+    auth(&ctx, &h)?;
+    let root = training_path_param(&artifact_root_b64)?;
+    // Shells the bundled CLI (`understudy training doctor --json`); keep it
+    // off the axum workers like the other process work.
+    blocking(move || crate::training_api::doctor_chain(&root))
+        .await
+        .map(Json)
+}
+
+/// Run one of the pure training read executors against a decoded root.
+async fn training_read(
+    ctx: &Ctx,
+    h: &HeaderMap,
+    artifact_root_b64: &str,
+    extra: Value,
+    executor: fn(&Value) -> Result<Value, String>,
+) -> Result<Json<Value>, (StatusCode, String)> {
+    auth(ctx, h)?;
+    let root = training_path_param(artifact_root_b64)?;
+    let mut args = json!({ "artifact_root": root });
+    if let (Some(args), Some(extra)) = (args.as_object_mut(), extra.as_object()) {
+        for (key, value) in extra {
+            args.insert(key.clone(), value.clone());
+        }
+    }
+    blocking(move || executor(&args)).await.map(Json)
+}
+
+async fn training_runs(
+    State(ctx): State<Ctx>,
+    h: HeaderMap,
+    Path(artifact_root_b64): Path<String>,
+) -> Result<Json<Value>, (StatusCode, String)> {
+    training_read(
+        &ctx,
+        &h,
+        &artifact_root_b64,
+        json!({}),
+        crate::training_chat_tools::training_runs,
+    )
+    .await
+}
+
+#[derive(serde::Deserialize)]
+struct TrainingOutcomeQuery {
+    run_id: Option<String>,
+}
+
+async fn training_outcome(
+    State(ctx): State<Ctx>,
+    h: HeaderMap,
+    Path(artifact_root_b64): Path<String>,
+    Query(q): Query<TrainingOutcomeQuery>,
+) -> Result<Json<Value>, (StatusCode, String)> {
+    training_read(
+        &ctx,
+        &h,
+        &artifact_root_b64,
+        json!({ "run_id": q.run_id }),
+        crate::training_chat_tools::training_outcome,
+    )
+    .await
+}
+
+async fn training_backlog(
+    State(ctx): State<Ctx>,
+    h: HeaderMap,
+    Path(artifact_root_b64): Path<String>,
+) -> Result<Json<Value>, (StatusCode, String)> {
+    training_read(
+        &ctx,
+        &h,
+        &artifact_root_b64,
+        json!({}),
+        crate::training_chat_tools::training_target_backlog,
+    )
+    .await
+}
+
+async fn training_compile(
+    State(ctx): State<Ctx>,
+    h: HeaderMap,
+    Json(body): Json<crate::training_api::CompileTrainingBody>,
+) -> Result<Json<Value>, (StatusCode, String)> {
+    auth(&ctx, &h)?;
+    // The command spawn_blocks internally; phase events are collected into
+    // the response's phases[] (no SSE pattern exists on this server).
+    crate::training_api::compile_plan(body)
+        .await
+        .map(Json)
+        .map_err(|e| (StatusCode::BAD_REQUEST, e))
+}
+
+async fn training_prepare_remote(
+    State(ctx): State<Ctx>,
+    h: HeaderMap,
+    Json(body): Json<crate::training_api::PrepareRemoteBody>,
+) -> Result<Json<Value>, (StatusCode, String)> {
+    auth(&ctx, &h)?;
+    crate::remote_training::prepare_remote_classification_training(
+        body.manifest_path,
+        body.model_profile,
+        body.maximum_spend_usd,
+    )
+    .await
+    .map(Json)
+    .map_err(|e| (StatusCode::BAD_REQUEST, e))
+}
+
+/// Dispatch a remote training run. HTTP-only (never projected into MCP):
+/// dispatch uploads data and spends money, so it requires the caller to
+/// state the full consent object in the request body; the wrapped command
+/// rejects anything less.
+async fn training_start_run(
+    State(ctx): State<Ctx>,
+    h: HeaderMap,
+    Json(body): Json<crate::training_api::StartTrainingRunBody>,
+) -> Result<Json<Value>, (StatusCode, String)> {
+    auth(&ctx, &h)?;
+    crate::training_api::start_run(body)
+        .await
+        .map(Json)
+        .map_err(|e| (StatusCode::BAD_REQUEST, e))
+}
+
+async fn training_poll_run(
+    State(ctx): State<Ctx>,
+    h: HeaderMap,
+    Path(run_manifest_b64): Path<String>,
+) -> Result<Json<Value>, (StatusCode, String)> {
+    auth(&ctx, &h)?;
+    let run_manifest_path = training_path_param(&run_manifest_b64)?;
+    crate::remote_training::remote_training_poll(run_manifest_path)
+        .await
+        .map(Json)
+        .map_err(|e| (StatusCode::BAD_GATEWAY, e))
+}
+
+async fn training_cancel_run(
+    State(ctx): State<Ctx>,
+    h: HeaderMap,
+    Path(run_manifest_b64): Path<String>,
+) -> Result<Json<Value>, (StatusCode, String)> {
+    auth(&ctx, &h)?;
+    let run_manifest_path = training_path_param(&run_manifest_b64)?;
+    crate::remote_training::cancel_remote_training(run_manifest_path)
+        .await
+        .map(Json)
+        .map_err(|e| (StatusCode::BAD_GATEWAY, e))
 }
 
 // ---------------- MCP front ----------------
@@ -1275,6 +1954,13 @@ fn slot_schema() -> Value {
     obj_schema(
         json!({ "slot_id": { "type": "integer", "minimum": 1, "description": "Residency slot id (see the residency tool)." } }),
         &["slot_id"],
+    )
+}
+
+fn training_artifact_root_schema() -> Value {
+    obj_schema(
+        json!({ "artifact_root": { "type": "string", "description": "Local capture-import artifact root directory." } }),
+        &["artifact_root"],
     )
 }
 
@@ -1491,12 +2177,93 @@ fn tools() -> Vec<Value> {
         ),
         (
             "ui_focus",
-            "Drive the GUI to a pane.",
+            "Drive the GUI to a pane. For the explore pane, optional view (timeline|tasks) and session (session id) deep-link to a list view or one transcript.",
             obj_schema(
                 json!({
                     "pane": { "type": "string" },
-                    "model": { "type": "string" }
+                    "model": { "type": "string" },
+                    "view": { "type": "string", "enum": ["timeline", "tasks"], "description": "Explore list view to land on." },
+                    "session": { "type": "string", "description": "Moraine session id to open in the explore transcript view." }
                 }),
+                &[],
+            ),
+        ),
+        // ----- training harness (reads + local-only compile) -----
+        //
+        // Run dispatch (POST /v1/training/runs), prepare-remote, poll, and
+        // cancel are deliberately NOT projected as MCP tools: dispatch
+        // uploads data and spends money behind an explicit consent payload,
+        // and that consent must be stated by the caller on the HTTP request
+        // itself, not synthesized by a model picking tool arguments. The
+        // reads and the $0, upload-free local compile are safe to project.
+        (
+            "training_chain",
+            "Doctor-style state of one workload's training chain (workload card -> dataset manifest -> plan -> environment -> run -> live service): first broken link plus per-link checks. Statistics and statuses only.",
+            training_artifact_root_schema(),
+        ),
+        (
+            "training_runs",
+            "The workload's training runs index, newest first, with per-run outcome availability. Aggregate data only.",
+            training_artifact_root_schema(),
+        ),
+        (
+            "training_outcome",
+            "The outcome.json summary (gates, failure clusters, next steps) for one training run, or the latest when run_id is omitted.",
+            obj_schema(
+                json!({
+                    "artifact_root": { "type": "string", "description": "Local capture-import artifact root directory." },
+                    "run_id": { "type": "string", "description": "Optional run id from training_runs; defaults to the latest run." }
+                }),
+                &["artifact_root"],
+            ),
+        ),
+        (
+            "training_target_backlog",
+            "The dataset manifest's remaining trainable target columns with coverage statistics.",
+            training_artifact_root_schema(),
+        ),
+        (
+            "compile_training_plan",
+            "Compile a dropped source file into an executable local training plan. Local-only: no uploads, no provider calls, and the plan is pinned to a $0 budget; pricing and run dispatch happen later through the consented HTTP flow.",
+            obj_schema(
+                json!({
+                    "artifact_root": { "type": "string", "description": "Local workload root containing workload-card.json." },
+                    "source_path": { "type": "string", "description": "One local source file (jsonl/json/ndjson/csv/xlsx)." },
+                    "mapping": {
+                        "type": "object",
+                        "description": "Confirmed tabular column mapping; omit to use the inspection's recommendation.",
+                        "properties": {
+                            "input_columns": { "type": "array", "items": { "type": "string" } },
+                            "label_column": { "type": "string" },
+                            "group_column": { "type": "string" }
+                        },
+                        "required": ["input_columns", "label_column", "group_column"]
+                    },
+                    "model_profile": { "type": "string", "description": "Model profile; defaults to understudy/auto." },
+                    "output_model_name": { "type": "string" }
+                }),
+                &["artifact_root", "source_path"],
+            ),
+        ),
+        // ----- Explore Data (local agent-trace warehouse) -----
+        (
+            "explore_status",
+            "Availability of the user's local agent-trace warehouse (Moraine ClickHouse + explore artifacts): services up, data dir, which side tables exist.",
+            empty_schema(),
+        ),
+        (
+            "explore_query",
+            "Query the user's local agent-trace warehouse (Moraine ClickHouse, read-only). SELECT/SHOW/DESCRIBE/WITH only; returns JSONEachRow text.",
+            obj_schema(
+                json!({ "sql": { "type": "string", "description": "Read-only SQL against the moraine database." } }),
+                &["sql"],
+            ),
+        ),
+        (
+            "explore_scan_start",
+            "Start the explore scan pipeline (scan, cluster, languages, commits) against the resident local model. Fails if already running or no local model is serving; poll with explore_status / GET /api/explore/scan.",
+            obj_schema(
+                json!({ "limit": { "type": "integer", "minimum": 1, "description": "Optional cap on sessions to scan." } }),
                 &[],
             ),
         ),
@@ -1752,9 +2519,55 @@ async fn call_tool(ctx: &Ctx, name: &str, args: &Value) -> Result<Value, String>
         "ui_focus" => {
             let _ = app.emit(
                 "server-focus",
-                json!({ "pane": args.get("pane"), "model": args.get("model") }),
+                json!({
+                    "pane": args.get("pane"),
+                    "model": args.get("model"),
+                    "view": args.get("view"),
+                    "session": args.get("session"),
+                }),
             );
             json!({ "ok": true })
+        }
+        // Training reads: pure filesystem executors, run off the MCP task.
+        // Run dispatch/prepare/poll/cancel stay HTTP-only (consent payload).
+        "training_chain" => {
+            let root = required_str(args, "artifact_root")?;
+            call_blocking(move || crate::training_api::doctor_chain(&root)).await?
+        }
+        "training_runs" => {
+            let args = args.clone();
+            call_blocking(move || crate::training_chat_tools::training_runs(&args)).await?
+        }
+        "training_outcome" => {
+            let args = args.clone();
+            call_blocking(move || crate::training_chat_tools::training_outcome(&args)).await?
+        }
+        "training_target_backlog" => {
+            let args = args.clone();
+            call_blocking(move || crate::training_chat_tools::training_target_backlog(&args))
+                .await?
+        }
+        "compile_training_plan" => {
+            let body =
+                serde_json::from_value::<crate::training_api::CompileTrainingBody>(args.clone())
+                    .map_err(|e| format!("invalid training compile request: {e}"))?;
+            crate::training_api::compile_plan(body).await?
+        }
+        "explore_status" => {
+            let body = crate::explore::status_snapshot().await?;
+            serde_json::from_str(&body).map_err(|e| format!("explore status: {e}"))?
+        }
+        "explore_query" => {
+            let sql = required_str(args, "sql")?;
+            let rows = crate::explore::run_clickhouse_query(sql).await?;
+            json!({ "format": "JSONEachRow", "rows": rows })
+        }
+        "explore_scan_start" => {
+            let limit = args.get("limit").and_then(|v| v.as_u64()).map(|x| x as u32);
+            let job = app.state::<crate::explore::ScanJob>();
+            let residency = app.state::<crate::residency::Residency>();
+            let status = crate::explore::scan_start(&job, &residency, limit)?;
+            json!({ "ok": true, "status": status })
         }
         other => return Err(format!("unknown tool: {other}")),
     })
@@ -1819,9 +2632,10 @@ fn is_legacy_token(token: &str) -> bool {
 pub fn info(app: &AppHandle) -> Option<(String, String)> {
     let db = app.try_state::<crate::db::Db>()?;
     let token = db.setting_get(TOKEN_KEY)?;
-    let port = db
-        .setting_get(PORT_KEY)
+    let port = std::env::var("UNDERSTUDY_SERVER_PORT")
+        .ok()
         .and_then(|p| p.parse().ok())
+        .or_else(|| db.setting_get(PORT_KEY).and_then(|p| p.parse().ok()))
         .unwrap_or(DEFAULT_PORT);
     Some((format!("http://127.0.0.1:{port}"), token))
 }
@@ -1835,6 +2649,127 @@ fn _unused() -> impl IntoResponse {
 #[cfg(test)]
 mod tests {
     use super::*;
+
+    // ----- supervisor state machine (pure; no sockets) -----
+
+    use super::supervisor::{backoff_delay, Decision, ExitKind, Supervisor, MAX_RESTART_ATTEMPTS};
+    use std::time::Duration;
+
+    #[test]
+    fn backoff_is_capped_exponential_1_5_30() {
+        assert_eq!(backoff_delay(0), Duration::from_secs(1));
+        assert_eq!(backoff_delay(1), Duration::from_secs(5));
+        assert_eq!(backoff_delay(2), Duration::from_secs(30));
+        // Past the schedule the cap holds.
+        assert_eq!(backoff_delay(3), Duration::from_secs(30));
+        assert_eq!(backoff_delay(100), Duration::from_secs(30));
+    }
+
+    #[test]
+    fn unexpected_exits_retry_then_give_up_with_terminal_reason() {
+        let mut sup = Supervisor::new();
+        for attempt in 0..MAX_RESTART_ATTEMPTS {
+            match sup.on_exit(ExitKind::ServeExited(None)) {
+                Decision::Retry { delay, reason } => {
+                    assert_eq!(delay, backoff_delay(attempt));
+                    assert_eq!(reason, "server_exited");
+                }
+                other => panic!("attempt {attempt} should retry, got {other:?}"),
+            }
+        }
+        match sup.on_exit(ExitKind::ServeExited(None)) {
+            Decision::Stop { reason } => {
+                assert_eq!(
+                    reason,
+                    format!("gave_up_after_{MAX_RESTART_ATTEMPTS}_attempts (last: server_exited)")
+                );
+            }
+            other => panic!("budget spent should stop, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn healthy_uptime_resets_the_retry_budget() {
+        let mut sup = Supervisor::new();
+        for _ in 0..MAX_RESTART_ATTEMPTS {
+            assert!(matches!(
+                sup.on_exit(ExitKind::HealthCheckFailed),
+                Decision::Retry { .. }
+            ));
+        }
+        // A long healthy run wipes the slate; short ones do not.
+        sup.note_uptime(Duration::from_secs(59));
+        assert!(matches!(
+            sup.on_exit(ExitKind::HealthCheckFailed),
+            Decision::Stop { .. }
+        ));
+        sup.note_uptime(Duration::from_secs(60));
+        match sup.on_exit(ExitKind::HealthCheckFailed) {
+            Decision::Retry { delay, reason } => {
+                assert_eq!(delay, backoff_delay(0));
+                assert_eq!(reason, "health_check_failed");
+            }
+            other => panic!("reset budget should retry, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn healthy_foreign_port_owner_is_terminal_not_fought_over() {
+        let mut sup = Supervisor::new();
+        match sup.on_exit(ExitKind::BindAddrInUse {
+            owner_healthy: true,
+            token_accepted: false,
+        }) {
+            Decision::Stop { reason } => {
+                assert!(reason.starts_with("port_owned_by_other_instance"));
+                assert!(reason.contains("token rejected"));
+            }
+            other => panic!("healthy owner should stop, got {other:?}"),
+        }
+        // Same-token owner (a lingering older self) is also terminal, but
+        // distinguishable in the reason.
+        match sup.on_exit(ExitKind::BindAddrInUse {
+            owner_healthy: true,
+            token_accepted: true,
+        }) {
+            Decision::Stop { reason } => assert!(reason.contains("token accepted")),
+            other => panic!("healthy owner should stop, got {other:?}"),
+        }
+        // No healthy owner: the old socket may just be lingering — retry.
+        match sup.on_exit(ExitKind::BindAddrInUse {
+            owner_healthy: false,
+            token_accepted: false,
+        }) {
+            Decision::Retry { reason, .. } => assert!(reason.starts_with("port_in_use")),
+            other => panic!("lingering socket should retry, got {other:?}"),
+        }
+    }
+
+    #[test]
+    fn shutdown_never_restarts_and_reasons_carry_detail() {
+        let mut sup = Supervisor::new();
+        assert_eq!(
+            sup.on_exit(ExitKind::Shutdown),
+            Decision::Stop {
+                reason: "app_shutdown".into()
+            }
+        );
+        // Reason strings carry the underlying error detail for debugging.
+        match sup.on_exit(ExitKind::BindFailed("permission denied".into())) {
+            Decision::Retry { reason, .. } => {
+                assert_eq!(reason, "bind_failed: permission denied");
+            }
+            other => panic!("bind failure should retry, got {other:?}"),
+        }
+        match sup.on_exit(ExitKind::ServePanicked("boom".into())) {
+            Decision::Retry { reason, .. } => assert_eq!(reason, "server_panicked: boom"),
+            other => panic!("panic should retry, got {other:?}"),
+        }
+        match sup.on_exit(ExitKind::ServeExited(Some("io error".into()))) {
+            Decision::Retry { reason, .. } => assert_eq!(reason, "server_exited: io error"),
+            other => panic!("serve error should retry, got {other:?}"),
+        }
+    }
 
     #[test]
     fn gen_token_is_64_hex_and_unique() {
@@ -1876,7 +2811,17 @@ mod tests {
     fn agent_capabilities_advertise_the_versioned_control_plane() {
         let capabilities = agent_capabilities_value();
         assert_eq!(capabilities["schema_version"], "understudy.desktop_api.v2");
-        assert_eq!(capabilities["api_version"], "2.3.0");
+        assert_eq!(capabilities["api_version"], "2.4.0");
+        assert_eq!(capabilities["features"]["training_harness"], true);
+        assert_eq!(
+            capabilities["endpoints"]["training_chain"],
+            "/v1/training/workloads/{artifact_root_b64}/chain"
+        );
+        assert_eq!(capabilities["endpoints"]["training_start_run"], "/v1/training/runs");
+        assert_eq!(
+            capabilities["endpoints"]["training_poll_run"],
+            "/v1/training/runs/{run_manifest_b64}/poll"
+        );
         assert_eq!(capabilities["features"]["local_task_models"], true);
         assert_eq!(capabilities["endpoints"]["classifiers"], "/v1/classifiers");
         assert_eq!(
@@ -1995,6 +2940,55 @@ mod tests {
         // Args-optional tools stay unconstrained.
         assert!(required_of("run_fusion_benchmark").is_empty());
         assert!(required_of("list_traces").is_empty());
+    }
+
+    #[test]
+    fn training_reads_and_compile_are_projected_but_dispatch_stays_http_only() {
+        let tools = tools();
+        let names: Vec<&str> = tools
+            .iter()
+            .filter_map(|tool| tool["name"].as_str())
+            .collect();
+        for projected in [
+            "training_chain",
+            "training_runs",
+            "training_outcome",
+            "training_target_backlog",
+            "compile_training_plan",
+        ] {
+            assert!(names.contains(&projected), "missing MCP tool: {projected}");
+        }
+        // Dispatch/prepare/poll/cancel spend money or touch the remote
+        // control plane behind an explicit consent payload; they must never
+        // appear as MCP tools.
+        for excluded in [
+            "start_remote_training",
+            "start_training_run",
+            "prepare_remote_training",
+            "training_poll",
+            "cancel_remote_training",
+        ] {
+            assert!(!names.contains(&excluded), "MCP must not expose {excluded}");
+        }
+        let required_of = |name: &str| -> Vec<String> {
+            tools
+                .iter()
+                .find(|t| t["name"] == name)
+                .unwrap_or_else(|| panic!("tool {name} exists"))["inputSchema"]["required"]
+                .as_array()
+                .map(|a| {
+                    a.iter()
+                        .filter_map(|v| v.as_str().map(str::to_string))
+                        .collect()
+                })
+                .unwrap_or_default()
+        };
+        assert_eq!(required_of("training_chain"), ["artifact_root"]);
+        assert_eq!(required_of("training_outcome"), ["artifact_root"]);
+        assert_eq!(
+            required_of("compile_training_plan"),
+            ["artifact_root", "source_path"]
+        );
     }
 
     #[test]

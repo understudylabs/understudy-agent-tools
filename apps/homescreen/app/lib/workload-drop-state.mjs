@@ -1,15 +1,48 @@
 export const INITIAL_WORKLOAD_DROP_PHASE = "idle";
 
+// Extensions that are clearly not tabular data: media, binaries/archives,
+// source code, and prose documents. Everything else is worth one local
+// inspection attempt — the CLI reader is the source of truth for which table
+// formats actually parse, and ChatPane falls back to the metadata-only
+// Workload Card when inspection fails.
+const NON_TABULAR_EXTENSIONS = new Set([
+  // media
+  "png", "jpg", "jpeg", "gif", "webp", "svg", "ico", "heic", "bmp", "tiff",
+  "mp3", "wav", "aiff", "flac", "m4a", "mp4", "mov", "avi", "mkv", "webm",
+  // binaries and archives
+  "zip", "tar", "gz", "tgz", "bz2", "xz", "7z", "rar", "dmg", "pkg", "iso",
+  "exe", "dll", "so", "dylib", "bin", "wasm", "app", "sqlite", "db",
+  // code and config
+  "js", "mjs", "cjs", "ts", "tsx", "jsx", "py", "rs", "go", "java", "kt",
+  "c", "h", "cpp", "hpp", "cc", "swift", "rb", "php", "sh", "zsh", "bash",
+  "css", "scss", "html", "htm", "yaml", "yml", "toml", "ini", "lock",
+  // prose documents
+  "md", "markdown", "rst", "pdf", "doc", "docx", "ppt", "pptx", "rtf",
+]);
+
 export function shouldInspectDroppedTable(workload) {
   if (!workload || workload.source_type !== "file") return false;
   if ((workload.source_kinds?.["csv-data"] ?? 0) === 1) return true;
   const name = String(workload.source_name ?? "").trim().toLowerCase();
-  if (/\.(?:csv|tsv|tab)$/.test(name)) return true;
-  // Several public datasets ship as extensionless tab-delimited files. An
-  // explicit file drop may be probed locally; unsupported extensionless files
-  // fall back to the generic metadata-only Workload Card.
-  return name.length > 0 && !name.includes(".");
+  if (name.length === 0) return false;
+  // Several public datasets ship as extensionless tab-delimited files, and
+  // table formats keep multiplying; any single dropped file that is not
+  // clearly non-tabular gets one local inspection attempt. Files the CLI
+  // cannot read fall back to the generic metadata-only Workload Card.
+  const dot = name.lastIndexOf(".");
+  if (dot < 0) return true;
+  return !NON_TABULAR_EXTENSIONS.has(name.slice(dot + 1));
 }
+
+export function shouldInspectStructuredDataset(workload) {
+  if (!workload || workload.source_type !== "file") return false;
+  const name = String(workload.source_name ?? "").trim().toLowerCase();
+  return /\.(?:csv|tsv|tab|txt|json|jsonl|ndjson|xls|xlsx|xlsb|xlsm|ods)$/.test(name)
+    || (name.length > 0 && !name.includes("."));
+}
+
+// Compatibility alias for older Desktop lineage checks and integrations.
+export const shouldInspectTrainingRecipe = shouldInspectStructuredDataset;
 
 const BUSY_PHASES = new Set(["validating", "compiling", "inspecting", "preparing_dataset"]);
 
@@ -77,8 +110,8 @@ export function workloadDropStatus(phase) {
       };
     case "inspecting":
       return {
-        title: "Inspecting training data",
-        detail: "Reading this table locally · source rows will not be copied",
+        title: "Analyzing this dataset",
+        detail: "Decoding locally · Understudy is inferring the task",
       };
     case "preparing_dataset":
       return {

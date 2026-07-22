@@ -220,23 +220,30 @@ shows headroom, no hosted RL until the local arms plateau.
   proactive pre-commit-style hook recipes.
 - [`ramp-and-verify`](ramp-and-verify/SKILL.md) owns the last mile after a
   route decision: pre-ramp repeat-replay stability gates, a staged traffic
-  ladder (5% → 25% → 100%) on the gateway dial with explicit approval per
-  tier, routed-vs-passthrough verification from captures at each step,
+  ladder (5% → 25% → 100%) on the gateway dial inside one activated rollout
+  envelope, routed-vs-passthrough verification from captures at each step,
   rollback triggers, and the measured before/after that feeds the claim
   packet.
 - [`check-routing-health`](check-routing-health/SKILL.md) is the read-only
   self-service diagnostics worker: calls the hosted reporting endpoints
-  (routing-status, provider-health, compact status) to answer "which
-  workloads are routed", "are there provider errors", and "is this us?" —
-  without asking the team. Uses the developer's existing `sk_*` key.
+  (org-wide reporting for the spend/requests grounding ranking,
+  workload-status for declared-vs-observed routing health, usage-summary for
+  project cache-hit share and per-group error rate, the captures metadata
+  list for request ids;
+  the legacy routing-status/provider-health/status trio is deprecated) to
+  answer "which workloads are routed", "is my route taking effect", "are
+  there provider errors", and "is this us?" — without asking the team. Uses
+  the developer's existing `sk_*` key.
 
 ## Public Safety
 
-Default to the cheapest path that still reaches an optimization outcome — not to
-zero spend (a skipped improvement has real opportunity cost). Get explicit
-approval before any upload, hosted run, or provider spend. Public examples
-should use synthetic fixtures, local `.understudy/` artifacts, public provider
-docs, or public open-source projects.
+Default to the path with the highest expected progress toward the stated
+objective under hard constraints, with spend, time, data scope, and expected
+evidence visible. Do not silently choose the weakest model, smallest cohort, or
+narrowest intervention because it is cheap. A user action that launches a named
+bounded plan authorizes its declared uploads, hosted work, provider calls,
+evaluation, receipts, and cleanup. Public examples should use synthetic fixtures, local `.understudy/`
+artifacts, public provider docs, or public open-source projects.
 
 Do not include customer names, domains, raw prompts, raw completions, traces,
 secrets, private notes, internal runbooks, or hosted-control details in public

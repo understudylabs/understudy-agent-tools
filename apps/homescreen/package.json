@@ -1,15 +1,19 @@
 {
   "name": "understudy-desktop",
   "private": true,
-  "version": "0.3.29",
+  "version": "0.3.40",
   "scripts": {
     "dev": "next dev -p 1420",
     "build": "next build",
     "start": "next start -p 1420",
-    "tauri": "tauri"
+    "tauri": "tauri",
+    "dev:explore": "next dev -p 14300",
+    "tauri:dev:explore": "UNDERSTUDY_SERVER_PORT=17791 tauri dev --config src-tauri/tauri.dev-explore.conf.json"
   },
   "dependencies": {
     "@radix-ui/react-use-controllable-state": "^1.2.3",
+    "@react-three/drei": "^10.7.7",
+    "@react-three/fiber": "^9.6.1",
     "@rive-app/react-webgl2": "^4.29.3",
     "@shadcn/react": "0.2.1",
     "@streamdown/cjk": "^1.0.3",
@@ -34,7 +38,8 @@
     "react-markdown": "^10.1.0",
     "remark-gfm": "^4.0.1",
     "streamdown": "^2.5.0",
-    "tailwind-merge": "^3.6.0"
+    "tailwind-merge": "^3.6.0",
+    "three": "^0.185.1"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4.3.1",
@@ -43,6 +48,7 @@
     "@types/qrcode": "^1.5.6",
     "@types/react": "^19.1.8",
     "@types/react-dom": "^19.1.6",
+    "@types/three": "^0.185.1",
     "tailwindcss": "^4.3.1",
     "typescript": "~5.8.3"
   }

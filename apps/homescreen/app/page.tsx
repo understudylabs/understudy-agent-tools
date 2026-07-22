@@ -6,22 +6,38 @@ import { PanelLeftIcon, SquarePenIcon } from "lucide-react";
 import { Sidebar, type PaneId } from "./components/Sidebar";
 import { StatusPane } from "./components/StatusPane";
 import { ModelsPane } from "./components/ModelsPane";
+import { ModelCatalogPane } from "./components/ModelCatalogPane";
 import { CapturePane } from "./components/CapturePane";
+import { CapturesPane } from "./components/CapturesPane";
 import { ChatPane } from "./components/ChatPane";
 import { TracesPane } from "./components/TracesPane";
 import { AccountPane } from "./components/AccountPane";
+import { ApiKeysPane } from "./components/ApiKeysPane";
 import { UsagePane } from "./components/UsagePane";
+import { ReportingPane } from "./components/ReportingPane";
+import { BillingPane } from "./components/BillingPane";
 import { DownloadQrButton } from "./components/DownloadQrButton";
 import { isTrainingPane, TrainingPane } from "./components/TrainingPane";
 import { RlmPane } from "./components/RlmPane";
+import { ExploreShell, requestExploreFocus } from "./components/explore/ExploreShell";
 import { RuntimeRepairPrompt } from "./components/RuntimeRepairPrompt";
 import { ModelDownloadNotice } from "./components/ModelDownloadNotice";
+import { WorkloadConfigPane } from "./components/WorkloadConfigPane";
+import { OrgSummaryPane } from "./components/OrgSummaryPane";
+import { ProjectSummaryPane } from "./components/ProjectSummaryPane";
+import { ProjectReportingPane } from "./components/ProjectReportingPane";
+import { SetupPane } from "./components/SetupPane";
+import { SettingsPane } from "./components/SettingsPane";
+import { loadStoredScope, storeScope } from "./components/sidebar/ScopeSwitcher";
+import type { Scope } from "./lib/nav";
 import { useStatus } from "./lib/useStatus";
 import type { ChatSessionRequest, ChatSessionSummary } from "./lib/chat-history";
+import type { TrainingThreadRequest, TrainingThreadSummary } from "./lib/training-threads.mjs";
 
 export default function Page() {
-  const [pane, setPane] = useState<PaneId>("chat");
-  const [railOpen, setRailOpen] = useState(false);
+  const [pane, setPane] = useState<PaneId>("org-summary");
+  const [railOpen, setRailOpen] = useState(true);
+  const [scope, setScope] = useState<Scope>({ projectId: null, workloadId: null });
   const [chatResetToken, setChatResetToken] = useState(0);
   const [chatHistory, setChatHistory] = useState<ChatSessionSummary[]>([]);
   const [archivedChatHistory, setArchivedChatHistory] = useState<ChatSessionSummary[]>([]);
@@ -32,6 +48,9 @@ export default function Page() {
   const [chatTrainingActive, setChatTrainingActive] = useState(false);
   const [activeChatSessionId, setActiveChatSessionId] = useState<string | null>(null);
   const [requestedChatSession, setRequestedChatSession] = useState<ChatSessionRequest | null>(null);
+  const [trainingThreads, setTrainingThreads] = useState<TrainingThreadSummary[]>([]);
+  const [activeTrainingThreadId, setActiveTrainingThreadId] = useState<string | null>(null);
+  const [requestedTrainingThread, setRequestedTrainingThread] = useState<TrainingThreadRequest | null>(null);
   const [starterDownloadRequest, setStarterDownloadRequest] = useState(0);
   const [signInIntent, setSignInIntent] = useState<{
     returnToChat: boolean;
@@ -50,12 +69,14 @@ export default function Page() {
     setChatHistoryLoading(true);
     setChatHistoryError(null);
     try {
-      const [activeSessions, archivedSessions] = await Promise.all([
+      const [activeSessions, archivedSessions, threads] = await Promise.all([
         invoke<ChatSessionSummary[]>("chat_sessions_list", { limit: 100, archived: false }),
         invoke<ChatSessionSummary[]>("chat_sessions_list", { limit: 100, archived: true }),
+        invoke<TrainingThreadSummary[]>("training_threads_list", { limit: 100 }).catch(() => []),
       ]);
       setChatHistory(activeSessions);
       setArchivedChatHistory(archivedSessions);
+      setTrainingThreads(threads);
     } catch (error) {
       setChatHistoryError(`Chats could not be loaded: ${String(error)}`);
     } finally {
@@ -141,6 +162,24 @@ export default function Page() {
     }
   }, [activeChatSessionId, chatHistory, chatStreaming, refreshChatHistory, startFreshAfterArchive]);
 
+  const archiveTrainingThread = useCallback(async (threadId: string) => {
+    setChatArchiveBusy(threadId);
+    setChatHistoryError(null);
+    try {
+      const archived = await invoke<boolean>("training_thread_archive", { threadId });
+      if (!archived) {
+        setChatHistoryError("That training thread is already completed or dismissed.");
+      }
+      await refreshChatHistory();
+      return archived;
+    } catch (error) {
+      setChatHistoryError(`Training thread could not be dismissed: ${String(error)}`);
+      return false;
+    } finally {
+      setChatArchiveBusy(null);
+    }
+  }, [refreshChatHistory]);
+
   const handleChatSessionChange = useCallback((sessionId: string) => {
     setActiveChatSessionId(sessionId);
     setRequestedChatSession((current) =>
@@ -151,6 +190,15 @@ export default function Page() {
   useEffect(() => {
     if (railOpen) refreshChatHistory();
   }, [railOpen, refreshChatHistory]);
+
+  useEffect(() => {
+    setScope(loadStoredScope());
+  }, []);
+
+  const handleScopeChange = useCallback((next: Scope) => {
+    setScope(next);
+    storeScope(next);
+  }, []);
 
   const newChat = () => {
     if (pane !== "chat") return;
@@ -178,16 +226,21 @@ export default function Page() {
     if (!isTauri()) return;
     const valid: PaneId[] = [
       "status",
+      "org-summary",
       "chat",
       "models",
+      "captures",
+      "model-catalog",
       "account",
+      "api-keys",
       "rlm",
-    ];
-    const hidden = [
-      "capture",
-      "usage",
-      "traces",
-      "training",
+      "reporting",
+      "explore",
+      "setup",
+      "workload-config",
+      "project-summary",
+      "project-reporting",
+      "settings",
       "training-evals",
       "training-optimization",
       "training-datasets",
@@ -195,15 +248,27 @@ export default function Page() {
       "training-rl",
       "training-jobs",
     ];
-    const u = listen<{ pane?: string }>("server-focus", (e) => {
-      const requested = e.payload?.pane;
-      const p = (
-        requested === "marketplace" ? "models" :
-        requested && hidden.includes(requested) ? "status" :
-        requested
-      ) as PaneId;
-      if (p && (valid as string[]).includes(p)) setPane(p);
-    });
+    const hidden = ["capture", "usage", "billing", "traces", "training"];
+    const u = listen<{ pane?: string; view?: string; session?: string }>(
+      "server-focus",
+      (e) => {
+        const requested = e.payload?.pane;
+        const p = (
+          requested === "marketplace" ? "models" :
+          requested && hidden.includes(requested) ? "status" :
+          requested
+        ) as PaneId;
+        if (p && (valid as string[]).includes(p)) setPane(p);
+        // Explore deep link: forward view/session to ExploreShell (queued if
+        // the pane is only mounting on this render).
+        if (p === "explore" && (e.payload?.view || e.payload?.session)) {
+          requestExploreFocus({
+            view: e.payload?.view,
+            session: e.payload?.session,
+          });
+        }
+      },
+    );
     return () => {
       u.then((f) => f());
     };
@@ -261,6 +326,14 @@ export default function Page() {
           setPane(next);
         }}
         connected={connected}
+        scope={scope}
+        onScopeChange={handleScopeChange}
+        onNewChat={() => {
+          setPane("chat");
+          setRequestedChatSession(null);
+          setActiveChatSessionId(null);
+          setChatResetToken((token) => token + 1);
+        }}
         sessions={chatHistory}
         archivedSessions={archivedChatHistory}
         activeSessionId={activeChatSessionId}
@@ -278,15 +351,35 @@ export default function Page() {
             requestId: (current?.requestId ?? 0) + 1,
           }));
         }}
+        trainingThreads={trainingThreads}
+        activeThreadId={activeTrainingThreadId}
+        onArchiveThread={archiveTrainingThread}
+        onSelectThread={(threadId) => {
+          setPane("chat");
+          setRequestedTrainingThread((current) => ({
+            threadId,
+            requestId: (current?.requestId ?? 0) + 1,
+          }));
+        }}
       />
       <main className="content">
         {pane === "status" && <StatusPane status={status} />}
+        {pane === "org-summary" && (
+          <OrgSummaryPane
+            onOpenWorkload={(projectId, workloadId) => {
+              handleScopeChange({ projectId, workloadId });
+              setPane("workload-config");
+            }}
+          />
+        )}
         {pane === "chat" && (
           <ChatPane
             resetToken={chatResetToken}
             activeSessionId={activeChatSessionId}
             requestedSession={requestedChatSession}
+            requestedThread={requestedTrainingThread}
             onSessionChange={handleChatSessionChange}
+            onTrainingThreadChange={setActiveTrainingThreadId}
             onHistoryChanged={refreshChatHistory}
             onStreamingChange={setChatStreaming}
             onTrainingChange={setChatTrainingActive}
@@ -294,8 +387,25 @@ export default function Page() {
           />
         )}
         {pane === "models" && <ModelsPane />}
+        {pane === "model-catalog" && <ModelCatalogPane />}
         {pane === "capture" && <CapturePane />}
+        {pane === "captures" && <CapturesPane scope={scope} />}
+        {pane === "workload-config" && <WorkloadConfigPane scope={scope} />}
+        {pane === "project-summary" && (
+          <ProjectSummaryPane
+            scope={scope}
+            onScopeChange={handleScopeChange}
+            onOpenWorkload={(projectId, workloadId) => {
+              handleScopeChange({ projectId, workloadId });
+              setPane("workload-config");
+            }}
+          />
+        )}
+        {pane === "project-reporting" && <ProjectReportingPane scope={scope} />}
+        {pane === "setup" && <SetupPane onNavigate={setPane} />}
+        {pane === "settings" && <SettingsPane scope={scope} />}
         {pane === "rlm" && <RlmPane />}
+        {pane === "explore" && <ExploreShell />}
         {isTrainingPane(pane) && <TrainingPane section={pane} />}
         {pane === "account" && (
           <AccountPane
@@ -303,7 +413,12 @@ export default function Page() {
             prioritizeSignIn={Boolean(signInIntent)}
           />
         )}
+        {pane === "api-keys" && (
+          <ApiKeysPane onOpenAccount={() => setPane("account")} />
+        )}
         {pane === "usage" && <UsagePane status={status} />}
+        {pane === "reporting" && <ReportingPane />}
+        {pane === "billing" && <BillingPane />}
         {pane === "traces" && <TracesPane />}
       </main>
     </div>
