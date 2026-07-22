@@ -37,7 +37,16 @@ template to embed a real trace.
 
 The viewer understands Understudy capture envelope aliases for timestamps,
 workloads, models, request bodies, response bodies, and normalized trace rows.
-It renders all values with DOM text nodes rather than capture-controlled HTML.
+It unwraps bounded layers of JSON encoding, reassembles OpenAI- and
+Anthropic-style SSE response events, and reads the normalized response
+projections emitted by `trace-foundry`. It renders all values with DOM text
+nodes rather than capture-controlled HTML.
+
+Rows with missing or unreadable timestamps are skipped so one incomplete
+capture does not hide the rest of a trace. The manifest reports the number as
+`counts.invalid_timestamp_filtered`; if every selected row is invalid, the
+command fails without emitting a misleading empty viewer. Numeric Unix epochs
+in seconds or milliseconds are accepted.
 
 ## Privacy
 

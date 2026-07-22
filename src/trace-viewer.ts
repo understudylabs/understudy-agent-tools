@@ -21,6 +21,7 @@ export type TraceViewerResult = {
     source_files: number;
     captures: number;
     workloads: number;
+    invalid_timestamp_filtered: number;
   };
   artifacts: {
     viewer: string;
@@ -97,20 +98,219 @@ function traceIdFor(row: Obj): string | null {
   return typeof value === "string" && value.trim() ? value.trim() : null;
 }
 
-function viewerCapture(row: Obj): Obj {
+function jsonLayers(value: unknown): unknown {
+  let current = value;
+  for (let index = 0; index < 3 && typeof current === "string"; index += 1) {
+    try {
+      current = JSON.parse(current);
+    } catch {
+      break;
+    }
+  }
+  return current;
+}
+
+function normalizedToolCall(value: unknown): Obj | null {
+  const call = asObject(value);
+  const fn = asObject(call.function);
+  const name = call.name ?? fn.name;
+  if (typeof name !== "string" || !name) return null;
+  return {
+    id: call.id ?? call.tool_call_id ?? null,
+    name,
+    input: jsonLayers(call.input ?? call.arguments ?? fn.arguments ?? {}),
+  };
+}
+
+function responseToolCalls(value: unknown): Obj[] {
+  const body = asObject(value);
+  const calls: Obj[] = [];
+  for (const block of Array.isArray(body.content) ? body.content : []) {
+    const call = normalizedToolCall(block);
+    if (asObject(block).type === "tool_use" && call) calls.push(call);
+  }
+  for (const call of Array.isArray(body.tool_calls) ? body.tool_calls : []) {
+    const normalized = normalizedToolCall(call);
+    if (normalized) calls.push(normalized);
+  }
+  for (const choiceValue of Array.isArray(body.choices) ? body.choices : []) {
+    const message = asObject(asObject(choiceValue).message);
+    for (const call of Array.isArray(message.tool_calls) ? message.tool_calls : []) {
+      const normalized = normalizedToolCall(call);
+      if (normalized) calls.push(normalized);
+    }
+  }
+  return calls;
+}
+
+function deduplicateToolCalls(calls: Obj[]): Obj[] {
+  const byKey = new Map<string, Obj>();
+  for (const call of calls) {
+    const key = String(call.id ?? `${call.name}:${JSON.stringify(call.input)}`);
+    const existing = byKey.get(key);
+    if (!existing || JSON.stringify(call.input).length > JSON.stringify(existing.input).length) {
+      byKey.set(key, call);
+    }
+  }
+  return [...byKey.values()];
+}
+
+function sseEvents(value: string): Obj[] {
+  return value.split(/\r?\n/).flatMap((line) => {
+    const trimmed = line.trimStart();
+    if (!trimmed.startsWith("data:")) return [];
+    const data = trimmed.slice(5).trim();
+    if (!data || data === "[DONE]") return [];
+    try {
+      return [asObject(JSON.parse(data))];
+    } catch {
+      return [];
+    }
+  });
+}
+
+function sseBody(events: Obj[]): { body: Obj; tool_calls: Obj[] } {
+  const anthropicBlocks = new Map<number, Obj>();
+  const anthropicInput = new Map<number, string>();
+  const openAiChoices = new Map<number, { text: string; finish_reason: unknown; tools: Map<number, Obj> }>();
+  let anthropicSeen = false;
+  let openAiSeen = false;
+  let stopReason: unknown = null;
+
+  for (const event of events) {
+    const eventType = String(event.type ?? "");
+    const index = Number(event.index ?? 0);
+    if (eventType === "content_block_start") {
+      anthropicSeen = true;
+      anthropicBlocks.set(index, { ...asObject(event.content_block) });
+    } else if (eventType === "content_block_delta") {
+      anthropicSeen = true;
+      const delta = asObject(event.delta);
+      const block = anthropicBlocks.get(index) ?? { type: delta.type === "input_json_delta" ? "tool_use" : "text" };
+      if (typeof delta.text === "string") block.text = `${String(block.text ?? "")}${delta.text}`;
+      if (typeof delta.partial_json === "string") {
+        anthropicInput.set(index, `${anthropicInput.get(index) ?? ""}${delta.partial_json}`);
+      }
+      anthropicBlocks.set(index, block);
+    } else if (eventType === "message_delta") {
+      stopReason = asObject(event.delta).stop_reason ?? stopReason;
+    }
+
+    for (const choiceValue of Array.isArray(event.choices) ? event.choices : []) {
+      openAiSeen = true;
+      const choice = asObject(choiceValue);
+      const choiceIndex = Number(choice.index ?? 0);
+      const state = openAiChoices.get(choiceIndex) ?? { text: "", finish_reason: null, tools: new Map<number, Obj>() };
+      const delta = asObject(choice.delta);
+      if (typeof delta.content === "string") state.text += delta.content;
+      state.finish_reason = choice.finish_reason ?? state.finish_reason;
+      const toolDeltas = Array.isArray(delta.tool_calls) ? delta.tool_calls : [];
+      toolDeltas.forEach((callValue, position) => {
+        const call = asObject(callValue);
+        const toolIndex = Number(call.index ?? position);
+        const existing = state.tools.get(toolIndex) ?? {};
+        const fn = asObject(call.function);
+        const existingFn = asObject(existing.function);
+        state.tools.set(toolIndex, {
+          ...existing,
+          ...call,
+          id: call.id ?? existing.id,
+          function: {
+            ...existingFn,
+            ...fn,
+            name: fn.name ?? existingFn.name,
+            arguments: `${String(existingFn.arguments ?? "")}${String(fn.arguments ?? "")}`,
+          },
+        });
+      });
+      openAiChoices.set(choiceIndex, state);
+    }
+  }
+
+  if (openAiSeen) {
+    const choices = [...openAiChoices.entries()].sort(([left], [right]) => left - right).map(([index, state]) => ({
+      index,
+      finish_reason: state.finish_reason,
+      message: {
+        role: "assistant",
+        content: state.text || null,
+        tool_calls: [...state.tools.values()],
+      },
+    }));
+    const body = { choices };
+    return { body, tool_calls: responseToolCalls(body) };
+  }
+
+  if (anthropicSeen) {
+    const content = [...anthropicBlocks.entries()].sort(([left], [right]) => left - right).map(([index, block]) => {
+      const partial = anthropicInput.get(index);
+      return partial ? { ...block, input: jsonLayers(partial) } : block;
+    });
+    const body = { content, stop_reason: stopReason };
+    return { body, tool_calls: responseToolCalls(body) };
+  }
+
+  return { body: { events }, tool_calls: [] };
+}
+
+function responseView(value: unknown): Obj {
+  const decoded = jsonLayers(value);
+  const envelope = asObject(decoded);
+  if (envelope.encoding === "sse" || (Array.isArray(envelope.events) && "tool_calls" in envelope)) {
+    const events = Array.isArray(envelope.events) ? envelope.events.map(asObject) : [];
+    const projected = sseBody(events);
+    const supplied = Array.isArray(envelope.tool_calls)
+      ? envelope.tool_calls.map(normalizedToolCall).filter((call): call is Obj => call !== null)
+      : [];
+    return {
+      encoding: "sse",
+      body: projected.body,
+      events,
+      tool_calls: deduplicateToolCalls([...projected.tool_calls, ...supplied]),
+    };
+  }
+  if (typeof decoded === "string" && decoded.split(/\r?\n/).some((line) => line.trimStart().startsWith("data:"))) {
+    const events = sseEvents(decoded);
+    const projected = sseBody(events);
+    return { encoding: "sse", body: projected.body, events, tool_calls: projected.tool_calls };
+  }
+
+  const body = envelope.encoding === "json" && "body" in envelope
+    ? jsonLayers(envelope.body)
+    : decoded;
+  const supplied = envelope.encoding === "json" && Array.isArray(envelope.tool_calls)
+    ? envelope.tool_calls.map(normalizedToolCall).filter((call): call is Obj => call !== null)
+    : [];
+  return {
+    encoding: typeof body === "string" ? "text" : "json",
+    body,
+    tool_calls: deduplicateToolCalls([...responseToolCalls(body), ...supplied]),
+  };
+}
+
+function capturedAt(value: unknown): string | null {
+  const numeric = typeof value === "number"
+    ? value
+    : typeof value === "string" && /^\d+(?:\.\d+)?$/.test(value.trim())
+      ? Number(value)
+      : null;
+  const milliseconds = numeric !== null && numeric < 100_000_000_000 ? numeric * 1_000 : numeric;
+  const date = milliseconds !== null ? new Date(milliseconds) : new Date(String(value ?? ""));
+  return Number.isNaN(date.valueOf()) ? null : date.toISOString();
+}
+
+function viewerCapture(row: Obj): Obj | null {
   const scope = asObject(row.scope);
   const routing = asObject(row.routing);
   const transport = asObject(row.transport);
   const ts = row.ts ?? row.created_at ?? row.captured_at;
-  const capturedAt = new Date(String(ts ?? ""));
-  if (Number.isNaN(capturedAt.valueOf())) {
-    throw new Error(`Capture ${String(row.request_id ?? row.capture_id ?? row.id ?? "unknown")} has no valid timestamp`);
-  }
+  const capturedAtIso = capturedAt(ts);
+  if (capturedAtIso === null) return null;
 
   return {
     ...row,
     request_id: row.request_id ?? row.capture_id ?? row.id,
-    ts: capturedAt.toISOString(),
+    ts: capturedAtIso,
     workload_id: row.workload_id ?? row.placement_id ?? scope.workload_id,
     workload_name: row.workload_name ?? scope.workload_name,
     requested_model: row.requested_model ?? routing.requested_model,
@@ -121,6 +321,7 @@ function viewerCapture(row: Obj): Obj {
     customer_request_body: row.customer_request_body ?? row.request_body ?? row.request,
     upstream_request_body: row.upstream_request_body ?? row.upstream_request,
     response_body: row.response_body ?? row.customer_response_body ?? row.response,
+    response_view: responseView(row.response_body ?? row.customer_response_body ?? row.response),
   };
 }
 
@@ -164,10 +365,15 @@ export function renderTraceViewer(
     throw new Error(`No captures found for trace ID ${selectedTraceId}`);
   }
 
-  const captures = selectedRows.map(viewerCapture).sort((left, right) =>
+  const normalizedRows = selectedRows.map(viewerCapture);
+  const invalidTimestampFiltered = normalizedRows.filter((row) => row === null).length;
+  const captures = normalizedRows.filter((row): row is Obj => row !== null).sort((left, right) =>
     String(left.ts).localeCompare(String(right.ts)) ||
     String(left.request_id ?? "").localeCompare(String(right.request_id ?? ""))
   );
+  if (captures.length === 0) {
+    throw new Error(`No captures with valid timestamps found${selectedTraceId ? ` for trace ID ${selectedTraceId}` : ""}`);
+  }
   const workloads = new Set(captures.map((capture) =>
     String(capture.workload_name ?? capture.workload_id ?? "unknown")
   ));
@@ -192,7 +398,12 @@ export function renderTraceViewer(
     source,
     output_dir: output,
     trace_id: selectedTraceId,
-    counts: { source_files: files.length, captures: captures.length, workloads: workloads.size },
+    counts: {
+      source_files: files.length,
+      captures: captures.length,
+      workloads: workloads.size,
+      invalid_timestamp_filtered: invalidTimestampFiltered,
+    },
     artifacts: { viewer: viewerPath, data: dataPath, manifest: manifestPath },
     privacy: {
       local_only: true,

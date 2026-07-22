@@ -1151,8 +1151,11 @@ body { box-sizing: border-box; padding: 1.25rem; }
     const state = { selected: 0, tab: "conversation" };
 
     const safeParse = (value) => {
-      if (typeof value !== "string") return value ?? null;
-      try { return JSON.parse(value); } catch { return value; }
+      let current = value ?? null;
+      for (let index = 0; index < 3 && typeof current === "string"; index += 1) {
+        try { current = JSON.parse(current); } catch { break; }
+      }
+      return current;
     };
 
     const textValue = (value) => {
@@ -1164,8 +1167,12 @@ body { box-sizing: border-box; padding: 1.25rem; }
     const modelFor = (capture, request, response) =>
       capture.requested_model || capture.upstream_model || request?.model || response?.model || "unknown model";
 
-    const responseToolCalls = (response) => {
-      const calls = [];
+    const responseToolCalls = (response, projectedCalls = []) => {
+      const calls = projectedCalls.map((call) => ({
+        id: call?.id,
+        name: call?.name || "tool",
+        input: safeParse(call?.input),
+      }));
       if (Array.isArray(response?.content)) {
         for (const block of response.content) {
           if (block?.type === "tool_use") calls.push({ id: block.id, name: block.name, input: block.input });
@@ -1182,13 +1189,19 @@ body { box-sizing: border-box; padding: 1.25rem; }
           });
         }
       }
-      return calls;
+      return [...new Map(calls.map((call) => [
+        call.id || `${call.name}:${JSON.stringify(call.input)}`,
+        call,
+      ])).values()];
     };
 
     const normalized = source.map((capture) => {
       const request = safeParse(capture.customer_request_body);
       const upstream = safeParse(capture.upstream_request_body);
-      const response = safeParse(capture.response_body);
+      const responseView = capture.response_view && typeof capture.response_view === "object"
+        ? capture.response_view
+        : { body: safeParse(capture.response_body), tool_calls: [] };
+      const response = safeParse(responseView.body);
       const latency = Number(capture.latency_ms) || 0;
       // Capture envelopes are finalized at response completion, so `ts`
       // is the end of the observed model call. Recover the request start
@@ -1200,12 +1213,13 @@ body { box-sizing: border-box; padding: 1.25rem; }
         request,
         upstream,
         response,
+        rawResponse: capture.response_body,
         started,
         ended,
         latency,
         workload: capture.workload_name || capture.workload_id || "unknown",
         model: modelFor(capture, request, response),
-        calls: responseToolCalls(response),
+        calls: responseToolCalls(response, responseView.tool_calls),
       };
     }).sort((a, b) => a.started - b.started);
 
@@ -1517,10 +1531,11 @@ body { box-sizing: border-box; padding: 1.25rem; }
       delete metadata.customer_request_body;
       delete metadata.upstream_request_body;
       delete metadata.response_body;
+      delete metadata.response_view;
       list.appendChild(detailsBlock("Capture metadata", metadata, true));
       list.appendChild(detailsBlock("Customer request body", item.request, false));
       list.appendChild(detailsBlock("Upstream request body", item.upstream, false));
-      list.appendChild(detailsBlock("Provider response body", item.response, false));
+      list.appendChild(detailsBlock("Provider response body", item.rawResponse, false));
       panel.appendChild(list);
     }
 
