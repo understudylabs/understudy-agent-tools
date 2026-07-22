@@ -131,6 +131,50 @@ export function registerBenchmarksCommand(program: Command): void {
     });
 
   benchmarks
+    .command("from-dataset <file-or-dir>")
+    .description(
+      "Compile a labeled dataset (JSONL/CSV/TSV/XLSX) into a full benchmark dir on the same spine as trace " +
+        "benchmarks: one classification task per row (gold label as a fenced-JSON-tolerant response obligation), " +
+        "GROUPED train/dev/holdout splits with zero group overlap, automatic dedupe + label-conflict quarantine " +
+        "recorded in curation-report.md, a generated verifiers environment whose oracle scores 1.0 by " +
+        "construction, and a recommended run that includes the majority_class floor arm",
+    )
+    .requiredOption("--output <dir>", "Benchmark output directory (created if absent)")
+    .option("--name <name>", "Benchmark display name (default: the dataset file basename)")
+    .option("--label-column <name>", "Gold-label column/key (default: inferred — same heuristics as capture-import inspect-csv)")
+    .option(
+      "--input-column <name>",
+      "Input text column/key (repeatable; default: inferred non-label columns)",
+      (value: string, previous: string[]) => [...previous, value],
+      [] as string[],
+    )
+    .option("--group-column <name>", "Leakage-group column: rows sharing its normalized value never straddle splits (default: the normalized input text)")
+    .option("--taxonomy <file>", "Label taxonomy file (JSON array or one label per line); observed labels must be a subset, missing classes are reported")
+    .option("--system-prompt <text-or-@file>", "System prompt for every task (default: derived prompt listing the taxonomy)")
+    .option("--docs <dir>", "Optional context-docs dir recorded as provenance (never parsed, never model input)")
+    .option("--train <ratio>", "Train split ratio", "0.8")
+    .option("--dev <ratio>", "Dev split ratio", "0.1")
+    .option("--holdout <ratio>", "Holdout split ratio (sealed)", "0.1")
+    .action(async (source: string, options: { output: string; name?: string; labelColumn?: string; inputColumn: string[]; groupColumn?: string; taxonomy?: string; systemPrompt?: string; docs?: string; train: string; dev: string; holdout: string }) => {
+      const { compileDatasetFoundry } = await import("../dataset-foundry.js");
+      const fs = await import("node:fs");
+      const systemPrompt = options.systemPrompt?.startsWith("@") ? fs.readFileSync(options.systemPrompt.slice(1), "utf8") : options.systemPrompt;
+      const result = compileDatasetFoundry(source, options.output, {
+        name: options.name,
+        labelColumn: options.labelColumn,
+        inputColumns: options.inputColumn,
+        groupColumn: options.groupColumn,
+        taxonomyFile: options.taxonomy,
+        systemPrompt,
+        docsDir: options.docs,
+        ratios: { train: Number(options.train), dev: Number(options.dev), holdout: Number(options.holdout) },
+      });
+      console.error(`from-dataset: ${result.counts.tasks} task(s) from ${result.counts.source_rows} row(s) → ${result.output_dir}`);
+      console.error(`curation: ${result.curation.duplicates_removed} duplicate(s) removed, ${result.curation.conflict_rows_quarantined} conflict row(s) quarantined — see curation-report.md`);
+      console.log(JSON.stringify(result, null, 2));
+    });
+
+  benchmarks
     .command("review <dir>")
     .description(
       "Bulk task review over <dir>/reviews.jsonl (append-only, newest per task wins). --accept-all-pending " +

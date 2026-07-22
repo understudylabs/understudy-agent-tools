@@ -604,33 +604,7 @@ export function inspectCaptureCsv(
     }
   });
 
-  const columns = headers.map((name, columnIndex): CaptureCsvColumnSummary => {
-    const values = rows.map((row) => row[columnIndex].trim());
-    const nonEmpty = values.filter(Boolean);
-    const numericCount = nonEmpty.filter(isFiniteNumber).length;
-    const dateCount = nonEmpty.filter(isDateLike).length;
-    const uniqueCount = new Set(nonEmpty).size;
-    const numericRatio = ratio(numericCount, nonEmpty.length);
-    const dateRatio = ratio(dateCount, nonEmpty.length);
-    const profileKind: CaptureCsvColumnSummary["profile_kind"] = dateRatio >= 0.8
-      ? "date"
-      : numericRatio >= 0.8
-        ? "number"
-        : uniqueCount <= Math.max(3, Math.min(14, Math.floor(rows.length / 4)))
-          ? "category"
-          : "text";
-    return {
-      name,
-      non_empty_count: nonEmpty.length,
-      empty_count: rows.length - nonEmpty.length,
-      unique_count: uniqueCount,
-      unique_ratio: ratio(uniqueCount, nonEmpty.length),
-      numeric_count: numericCount,
-      numeric_ratio: numericRatio,
-      profile_kind: profileKind,
-      profile_bars: profileBars(nonEmpty, profileKind),
-    };
-  });
+  const columns = profileTableColumns(headers, rows);
 
   const labelCandidate = chooseLabelColumn(headers, columns);
   const labelIndex = labelCandidate ? headers.indexOf(labelCandidate.name) : -1;
@@ -1086,6 +1060,66 @@ function readCsvForTraining(source: string): { bytes: Buffer; headers: string[];
     throw new Error(`Training dataset preparation requires one delimited text file: ${source}`);
   }
   return readDelimitedTable(source);
+}
+
+/**
+ * Column profiling shared by CSV inspection and the dataset foundry: per-column
+ * emptiness, uniqueness, numeric/date ratios, and a profile kind. Pure.
+ */
+export function profileTableColumns(headers: string[], rows: string[][]): CaptureCsvColumnSummary[] {
+  return headers.map((name, columnIndex): CaptureCsvColumnSummary => {
+    const values = rows.map((row) => (row[columnIndex] ?? "").trim());
+    const nonEmpty = values.filter(Boolean);
+    const numericCount = nonEmpty.filter(isFiniteNumber).length;
+    const dateCount = nonEmpty.filter(isDateLike).length;
+    const uniqueCount = new Set(nonEmpty).size;
+    const numericRatio = ratio(numericCount, nonEmpty.length);
+    const dateRatio = ratio(dateCount, nonEmpty.length);
+    const profileKind: CaptureCsvColumnSummary["profile_kind"] = dateRatio >= 0.8
+      ? "date"
+      : numericRatio >= 0.8
+        ? "number"
+        : uniqueCount <= Math.max(3, Math.min(14, Math.floor(rows.length / 4)))
+          ? "category"
+          : "text";
+    return {
+      name,
+      non_empty_count: nonEmpty.length,
+      empty_count: rows.length - nonEmpty.length,
+      unique_count: uniqueCount,
+      unique_ratio: ratio(uniqueCount, nonEmpty.length),
+      numeric_count: numericCount,
+      numeric_ratio: numericRatio,
+      profile_kind: profileKind,
+      profile_bars: profileBars(nonEmpty, profileKind),
+    };
+  });
+}
+
+export type TableMapping = {
+  columns: CaptureCsvColumnSummary[];
+  label_column: string | null;
+  input_columns: string[];
+  group_column: string | null;
+  confidence: "high" | "low" | "none";
+};
+
+/**
+ * The ONE input/label/group column-inference used by `capture-import
+ * inspect-csv` — exported so `benchmarks from-dataset` reuses the same
+ * heuristics instead of reimplementing them. Pure.
+ */
+export function inferTableMapping(headers: string[], rows: string[][]): TableMapping {
+  const columns = profileTableColumns(headers, rows);
+  const labelCandidate = chooseLabelColumn(headers, columns);
+  const labelIndex = labelCandidate ? headers.indexOf(labelCandidate.name) : -1;
+  return {
+    columns,
+    label_column: labelCandidate?.name ?? null,
+    input_columns: headers.filter((name, index) => index !== labelIndex && columns[index].non_empty_count > 0),
+    group_column: chooseGroupColumn(headers, columns, labelIndex),
+    confidence: labelCandidate?.confidence ?? "none",
+  };
 }
 
 export function readCaptureDelimitedTable(sourceInput: string): { bytes: Buffer; headers: string[]; rows: string[][] } {

@@ -26,6 +26,7 @@ import {
   type TrivialArmKind,
 } from "./run-executor.js";
 import { computeRecoveryOverJournals, readRolloutJournals } from "./rejection-guidance.js";
+import { deriveClassMetrics, isClassificationBenchmark, type ClassMetricsReport } from "./dataset-metrics.js";
 
 type Obj = Record<string, any>;
 const asObject = (value: unknown): Obj => (value !== null && typeof value === "object" && !Array.isArray(value) ? (value as Obj) : {});
@@ -61,6 +62,8 @@ export type RigorReport = {
   tasks: TaskComplexity[];
   anomaly_counts: Record<string, number>;
   row_counts: { total: number; by_arm_kind: Record<string, number> };
+  /** Additive: per-class accuracy/pass@k + confusion summary — present only on classification-shaped (dataset) benchmarks. */
+  class_metrics?: ClassMetricsReport;
 };
 
 const percent = (fraction: number): string => `${(fraction * 100).toFixed(1)}%`;
@@ -174,6 +177,31 @@ export function deriveRigorReport(benchmarkDir: string, now: Date = new Date()):
 
   items.push(floorItem("Null-agent floor", "null_agent", rows, taskIds, threshold));
   items.push(floorItem("Spam-agent floor", "spam_agent", rows, taskIds, threshold));
+
+  // Classification-shaped (dataset) benchmarks: the majority-class floor is
+  // the imbalanced-classifier trap — reported alongside the other floors, and
+  // per-class accuracy/confusion land in the additive class_metrics block.
+  const sidecarTasks = [...sidecars.values()];
+  const classification = isClassificationBenchmark(sidecarTasks);
+  let classMetrics: ClassMetricsReport | undefined;
+  if (classification) {
+    items.push(floorItem("Majority-class floor", "majority_class", rows, taskIds, threshold));
+    classMetrics = deriveClassMetrics(rows, sidecarTasks, manifestTasks, threshold);
+    const labelCounts = new Map<string, number>();
+    for (const task of sidecarTasks) {
+      const rule = asObject((asObject(task.outcome_contract).required ?? [])[0]);
+      const label = String(rule.expected ?? "");
+      if (label) labelCounts.set(label, (labelCounts.get(label) ?? 0) + 1);
+    }
+    const majority = [...labelCounts.entries()].sort((a, b) => b[1] - a[1] || a[0].localeCompare(b[0]))[0];
+    const share = majority === undefined ? 0 : majority[1] / Math.max(sidecarTasks.length, 1);
+    items.push({
+      item: "Class balance",
+      status: share > 0.5 ? "FLAG" : "PASS",
+      value: `${labelCounts.size} classes; majority ${percent(share)}`,
+      detail: majority === undefined ? "no gold labels" : `majority label ${JSON.stringify(majority[0])} covers ${majority[1]}/${sidecarTasks.length} tasks — a model must beat the majority-class floor before accuracy means anything`,
+    });
+  }
 
   // Incumbent calibration from the calibration.json sidecar.
   if (calibration && Array.isArray(calibration.incumbent_models) && calibration.incumbent_models.length > 0) {
@@ -306,6 +334,7 @@ export function deriveRigorReport(benchmarkDir: string, now: Date = new Date()):
     tasks,
     anomaly_counts: anomalyCounts,
     row_counts: { total: rows.length, by_arm_kind: byArmKind },
+    ...(classMetrics !== undefined ? { class_metrics: classMetrics } : {}),
   };
 }
 
@@ -330,13 +359,48 @@ export function renderRigorReport(report: RigorReport): string {
   const armKinds = Object.entries(report.row_counts.by_arm_kind).map(([kind, count]) => `${kind}: ${count}`).join(", ");
   lines.push(`${report.row_counts.total} eval rows${armKinds ? ` (${armKinds})` : ""}.`);
   lines.push("");
+  if (report.class_metrics !== undefined) {
+    const metrics = report.class_metrics;
+    lines.push("## Per-class metrics (classification benchmark)");
+    lines.push("");
+    lines.push(`${metrics.classification_tasks} classification task(s) across ${metrics.labels.length} label(s).`);
+    for (const arm of metrics.arms) {
+      lines.push("");
+      lines.push(`### Arm: ${arm.arm}${arm.arm_kind ? ` (${arm.arm_kind})` : ""}`);
+      lines.push("");
+      lines.push(`Macro accuracy: ${arm.macro_accuracy === null ? "n/a" : percent(arm.macro_accuracy)} · micro accuracy: ${arm.micro_accuracy === null ? "n/a" : percent(arm.micro_accuracy)}.`);
+      lines.push("");
+      lines.push("| Label | Support (train/dev/holdout) | Attempted | Accuracy | pass@k |");
+      lines.push("| --- | --- | ---: | ---: | ---: |");
+      const attempted = arm.labels.filter((row) => row.attempted_tasks > 0);
+      for (const row of attempted.slice(0, 30)) {
+        lines.push(`| ${row.label} | ${row.support.total} (${row.support.train}/${row.support.dev}/${row.support.holdout}) | ${row.attempted_tasks} | ${row.accuracy === null ? "n/a" : percent(row.accuracy)} | ${row.pass_at_k === null ? "n/a" : percent(row.pass_at_k)} |`);
+      }
+      if (attempted.length > 30) lines.push(`| … ${attempted.length - 30} more label(s) | | | | |`);
+      if (arm.confusion.pairs.length > 0) {
+        const misses = arm.confusion.pairs.filter((pair) => pair.gold !== pair.predicted);
+        lines.push("");
+        lines.push(`Confusion (from ${arm.confusion.resolved_rows} resolved response excerpt(s); ${arm.confusion.unresolved_rows} unresolved): top misses:`);
+        for (const pair of misses.slice(0, 10)) lines.push(`- ${pair.gold} → ${pair.predicted} (${pair.count})`);
+        if (misses.length === 0) lines.push("- none — every resolved prediction matched its gold label");
+      }
+    }
+    lines.push("");
+  }
   lines.push("## Per-task contract complexity");
   lines.push("");
+  if (report.class_metrics !== undefined && report.tasks.length > 50) {
+    // Dataset benchmarks carry thousands of uniform one-obligation tasks; a
+    // per-task table would bury the report. Summarize instead.
+    const anomalous = report.tasks.filter((task) => task.anomalous_rows > 0);
+    lines.push(`${report.tasks.length} uniform classification task(s) (one response obligation each); ${anomalous.length} task(s) with anomalous rows${anomalous.length > 0 ? `: ${anomalous.slice(0, 20).map((task) => task.task_id).join(", ")}${anomalous.length > 20 ? ", …" : ""}` : ""}.`);
+  } else {
   lines.push("| Task | Split | Required | By kind | Forbidden | Preserved | Anomalous rows |");
   lines.push("| --- | --- | --- | --- | --- | --- | --- |");
   for (const task of report.tasks) {
     const byKind = Object.entries(task.required_by_kind).map(([kind, count]) => `${kind}: ${count}`).join(", ") || "—";
     lines.push(`| ${task.task_id} | ${task.split} | ${task.required_total} | ${byKind} | ${task.forbidden} | ${task.preserved} | ${task.anomalous_rows} |`);
+  }
   }
   lines.push("");
   lines.push("UNKNOWN rows are honest gaps, not passes: rerun `understudy benchmarks rigor` after the missing runs/audits exist.");
