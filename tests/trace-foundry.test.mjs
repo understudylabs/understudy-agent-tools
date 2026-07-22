@@ -3,7 +3,7 @@ import { existsSync, mkdtempSync, mkdirSync, readFileSync, readdirSync, writeFil
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
-import { compileTraceFoundry } from "../dist/trace-foundry.js";
+import { compileTraceFoundry, createTraceReplayPlan, importTraceReviews } from "../dist/trace-foundry.js";
 
 const capture = (id, ts, messages, response) => ({
   schema_version: 4, request_id: id, ts, workload_name: "synthetic-automation",
@@ -48,4 +48,30 @@ test("fails closed when no trace is within the requested window", () => {
   const source = join(root, ".understudy", "captures"); mkdirSync(source, { recursive: true });
   writeFileSync(join(source, "one.json"), JSON.stringify(capture("old", "2026-07-01T00:00:00Z", [{ role: "user", content: "Old" }], {})));
   assert.throws(() => compileTraceFoundry(source, join(root, ".understudy", "out"), 3, new Date("2026-07-21T00:00:00Z")), /Refusing to compile a stale benchmark/);
+});
+
+test("scopes workloads, preserves upstream requests, emits a resumable v1 environment, and applies review decisions", () => {
+  const root = mkdtempSync(join(tmpdir(), "understudy-foundry-lifecycle-"));
+  const source = join(root, ".understudy", "captures"), output = join(root, ".understudy", "benchmarks", "automation"); mkdirSync(source, { recursive: true });
+  const automation = capture("same-id", "2026-07-20T00:00:00Z", [{ role: "user", content: "Update record" }], { content: [{ type: "tool_use", id: "x", name: "update-record", input: { id: 1, status: "done" } }] });
+  automation.workload_name = "automation"; automation.upstream_request_body = JSON.stringify({ model: "upstream", messages: [] });
+  const other = capture("same-id", "2026-07-20T00:00:01Z", [{ role: "user", content: "Other task" }], {}); other.workload_name = "other";
+  writeFileSync(join(source, "captures.jsonl"), [automation, other].map(JSON.stringify).join("\n") + "\n");
+  const result = compileTraceFoundry(source, output, 3, new Date("2026-07-21T00:00:00Z"), { workload: "automation", batchSize: 10 });
+  assert.equal(result.counts.captures, 1); assert.ok(existsSync(join(output, "capture-ledger.jsonl"))); assert.ok(existsSync(join(output, "goal-state.json")));
+  const normalized = JSON.parse(readFileSync(join(output, "normalized-captures.jsonl"), "utf8")); assert.equal(normalized.upstream_request.model, "upstream"); assert.notEqual(normalized.capture_key, normalized.capture_id);
+  const benchmark = JSON.parse(readFileSync(join(output, "benchmark.json"), "utf8")); assert.equal(benchmark.executable, true); assert.equal(benchmark.verifiers.verifiers_api, "v1"); assert.equal(benchmark.verifiers.oracle_pass, true); assert.equal(benchmark.verifiers.sentinel_pass, true);
+  assert.match(readFileSync(join(output, "environment", "understudy_trace_env", "taskset.py"), "utf8"), /verifiers\.v1/);
+  assert.match(readFileSync(join(output, "viewer", "index.html"), "utf8"), /capability_fit/); assert.match(readFileSync(join(output, "viewer", "index.html"), "utf8"), /upstream_request/);
+  const task = JSON.parse(readFileSync(join(output, "tasks.jsonl"), "utf8")); const reviews = join(root, "reviews.jsonl"); writeFileSync(reviews, JSON.stringify({ task_id: task.task_id, decision: "restrict", restrictions: ["only synthetic state"] }) + "\n");
+  const imported = importTraceReviews(output, reviews); assert.equal(imported.status, "human_approved"); assert.match(readFileSync(join(output, "review-decisions.jsonl"), "utf8"), /decision_hash/);
+  const plan = createTraceReplayPlan(output, ["incumbent", "candidate"]); assert.deepEqual(plan.models, ["incumbent", "candidate"]); assert.ok(plan.variants.includes("errors_and_retries")); assert.equal(plan.execution.provider_calls_performed, false);
+});
+
+test("uses unique capture keys when request ids collide and exposes DAG mutation evidence", () => {
+  const root = mkdtempSync(join(tmpdir(), "understudy-foundry-dag-")), source = join(root, "captures"), output = join(root, "out"); mkdirSync(source, { recursive: true });
+  const first = capture("duplicate", "2026-07-20T00:00:00Z", [{ role: "user", content: "Do it" }, { role: "assistant", content: "A" }], {});
+  const second = capture("duplicate", "2026-07-20T00:00:01Z", [{ role: "user", content: "Do it" }, { role: "assistant", content: "B" }], {});
+  writeFileSync(join(source, "rows.json"), JSON.stringify([first, second])); compileTraceFoundry(source, output, 3, new Date("2026-07-21T00:00:00Z"));
+  const dag = JSON.parse(readFileSync(join(output, "source-dag.json"), "utf8")); assert.equal(new Set(dag.nodes.map((node) => node.id)).size, 2); assert.equal(dag.edges[0].type, "same_depth_mutation");
 });
