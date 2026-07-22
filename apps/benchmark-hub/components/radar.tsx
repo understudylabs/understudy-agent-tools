@@ -59,13 +59,13 @@ export function CategoryRadar({
   const unshown = allModels.filter((m) => !selected.includes(m));
 
   return (
-    <div className="lb-card" style={{ marginTop: 18 }}>
+    <div className="u-card" style={{ marginTop: 18 }}>
       <h3>Category profile</h3>
       <p className="ch-sub">Per-category strict scores for the selected arms</p>
-      <div className="lb-radar-wrap">
+      <div className="u-radar-wrap">
         <svg
           viewBox={`0 0 ${SIZE} ${SIZE}`}
-          className="lb-chart"
+          className="u-chart"
           style={{ maxWidth: 360 }}
           role="img"
           aria-label="Category profile radar chart"
@@ -145,11 +145,11 @@ export function CategoryRadar({
           })}
         </svg>
         <div>
-          <div className="lb-radar-chips">
+          <div className="u-radar-chips">
             {shown.map((s) => {
               const color = seriesColor(s.model, allModels);
               return (
-                <button key={s.model} className="lb-rchip" aria-pressed onClick={() => remove(s.model)}>
+                <button key={s.model} className="u-rchip" aria-pressed onClick={() => remove(s.model)}>
                   <span className="sw" style={{ background: color }} />
                   {s.model}
                   <span aria-hidden style={{ color: "var(--faint)" }}>
@@ -159,7 +159,7 @@ export function CategoryRadar({
               );
             })}
             <select
-              className="lb-radar-add"
+              className="u-radar-add"
               value=""
               onChange={(e) => e.target.value && add(e.target.value)}
               disabled={unshown.length === 0}
@@ -173,7 +173,7 @@ export function CategoryRadar({
               ))}
             </select>
           </div>
-          <p className="lb-foot-note" style={{ marginTop: 12 }}>
+          <p className="u-foot-note" style={{ marginTop: 12 }}>
             Compare any 2–3 models · category averages · ranked by overall
           </p>
           {/* table view of the same data (accessibility) */}

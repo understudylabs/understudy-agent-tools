@@ -143,7 +143,149 @@ export type InvalidHubEntry = {
   errors: string[];
 };
 
-export type AnyHubEntry = HubEntry | InvalidHubEntry;
+/* ---- Proposed stage (trace-foundry output dirs) ---- */
+
+/**
+ * Foundry task splits. Upstream uses construction/fit/heldout where promoted
+ * benchmark.v1 manifests use train/dev/holdout; the split chip component
+ * understands both enums until the naming is reconciled upstream.
+ */
+export type FoundrySplit = "construction" | "fit" | "heldout";
+
+export type ReviewDecision = "accept" | "restrict" | "needs_more" | "reject";
+export const REVIEW_DECISIONS: ReviewDecision[] = ["accept", "restrict", "needs_more", "reject"];
+
+/** understudy.benchmark_review.v1 — one line of reviews.jsonl next to the foundry manifest. Newest line per task_id wins. */
+export type BenchmarkReview = {
+  schema_version: "understudy.benchmark_review.v1";
+  /** Foundry output dir slug (directory basename), NOT a benchmark.v1 benchmark_id. */
+  benchmark_id: string;
+  task_id: string;
+  decision: ReviewDecision;
+  note: string;
+  created_at: string;
+};
+
+/** understudy.trace_foundry.v1 manifest.json (subset the hub renders). */
+export type FoundryManifest = {
+  schema_version: "understudy.trace_foundry.v1";
+  source?: string;
+  freshness: { max_age_days: number; cutoff_utc: string; newest_capture_utc: string };
+  counts: {
+    source_files: number;
+    captures: number;
+    tasks: number;
+    edges: number;
+    stale_filtered: number;
+    invalid_timestamp_filtered: number;
+  };
+  privacy?: {
+    local_only?: boolean;
+    contains_customer_payloads?: boolean;
+    upload_performed?: boolean;
+    provider_called?: boolean;
+  } | null;
+  [key: string]: unknown;
+};
+
+export type FoundryClaim = {
+  kind: "observed" | "inferred";
+  claim: string;
+  confidence?: string | null;
+  source_call_id?: string | null;
+};
+
+export type FoundryContractItem = {
+  type?: string;
+  tool?: string;
+  observed_arguments?: unknown;
+  matching?: string;
+  confidence?: string;
+  [key: string]: unknown;
+};
+
+export type CaptureRef = { capture_id: string; pointer: string; sha256: string };
+
+export type SourceDagEdge = {
+  from: string;
+  to: string;
+  type: "retry" | "prefix_append" | "branch" | "destructive_mutation";
+  execution_group: string;
+  confidence: string;
+  evidence?: { common_prefix_messages?: number } | null;
+};
+
+export type SourceDagNode = {
+  id: string;
+  execution_group: string;
+  captured_at: string;
+  message_count: number;
+  has_error?: boolean;
+  source?: { pointer?: string; sha256?: string } | null;
+};
+
+export type SourceDag = {
+  schema_version: string;
+  nodes: SourceDagNode[];
+  edges: SourceDagEdge[];
+  groups: { id: string; capture_count: number; edge_count: number; roots: string[] }[];
+};
+
+/** understudy.benchmark_task.v1 — one line of tasks.jsonl. */
+export type FoundryTask = {
+  schema_version: "understudy.benchmark_task.v1";
+  task_id: string;
+  execution_group: string;
+  title: string;
+  status: "machine_proposed" | "needs_review";
+  split: FoundrySplit;
+  candidate_boundary: string;
+  machine_confidence: "high" | "medium" | "low";
+  close_call: boolean;
+  tool_surface: string[];
+  outcome_contract: {
+    status?: string;
+    required: FoundryContractItem[];
+    preserved: FoundryContractItem[];
+    forbidden: FoundryContractItem[];
+    grading: string;
+  };
+  world_model: {
+    status?: string;
+    initial_state?: Record<string, unknown>;
+    transitions?: FoundryContractItem[];
+  };
+  source: { node_ids: string[]; edges: SourceDagEdge[]; captures: CaptureRef[] };
+  claims: FoundryClaim[];
+  sentinels: unknown[];
+  review: { decision: string };
+  [key: string]: unknown;
+};
+
+/** A trace-foundry output dir awaiting human review (stage: proposed). */
+export type ProposedHubEntry = {
+  kind: "proposed";
+  slug: string;
+  source: "data-dir" | "demo" | "fixture";
+  readOnly: boolean;
+  dir: string;
+  /** manifest.json (understudy.trace_foundry.v1). */
+  manifestPath: string;
+  foundry: FoundryManifest;
+  tasks: FoundryTask[];
+  dag: SourceDag | null;
+  /** Capture pointers only — bodies stay on disk until /api/captures fetches one. */
+  captureIndex: CaptureRef[];
+  /** All review lines, oldest first (append-only; newest per task wins). */
+  reviews: BenchmarkReview[];
+  /** Latest review per task_id. */
+  latestReviewByTask: Record<string, BenchmarkReview>;
+  diagnostics: EntryDiagnostics;
+  /** task_ids where tasks.jsonl and the colliding benchmark.json disagree. */
+  crossCheckErrors: string[];
+};
+
+export type AnyHubEntry = HubEntry | InvalidHubEntry | ProposedHubEntry;
 
 /** One benchmark as discovered on disk. */
 export type HubEntry = {

@@ -28,11 +28,11 @@ export function VersionTimeline({
   const [sel, setSel] = useState<number | null>(null);
   if (versions.length === 0) {
     return (
-      <div className="lb-tl">
-        <div className="lb-tl-head">
+      <div className="u-tl">
+        <div className="u-tl-head">
           <span className="lab">{label}</span>
         </div>
-        <div className="lb-tl-note">
+        <div className="u-tl-note">
           No versions.jsonl next to benchmark.json — split-freeze history unavailable. One line per freeze:{" "}
           <code className="mono">{`{created_at, splits_sha256, contamination, note}`}</code>, newest last.
         </div>
@@ -46,18 +46,18 @@ export function VersionTimeline({
   const pos = (idx: number) => (versions.length === 1 ? 100 : (idx / latest) * 100);
 
   return (
-    <div className="lb-tl">
-      <div className="lb-tl-head">
+    <div className="u-tl">
+      <div className="u-tl-head">
         <span className="lab">{label}</span>
         <span className="date">{date(i)}</span>
       </div>
-      <div className="lb-rail">
-        <div className="lb-rail-line" aria-hidden />
-        <div className="lb-rail-prog" style={{ width: `${pos(i)}%` }} aria-hidden />
+      <div className="u-tl-rail">
+        <div className="u-tl-rail-line" aria-hidden />
+        <div className="u-tl-rail-prog" style={{ width: `${pos(i)}%` }} aria-hidden />
         {versions.map((ver, idx) => (
           <button
             key={idx}
-            className={`lb-dot ${idx === latest ? "active" : idx <= i ? "done" : ""}`}
+            className={`u-dot ${idx === latest ? "active" : idx <= i ? "done" : ""}`}
             style={{ left: `${pos(idx)}%` }}
             onClick={() => setSel(idx === latest ? null : idx)}
             title={`${ver.created_at}\nsplits_sha256: ${ver.splits_sha256 ?? "null"}\ncontamination: ${ver.contamination ?? "unknown"}${ver.note ? "\n" + ver.note : ""}`}
@@ -65,16 +65,16 @@ export function VersionTimeline({
           />
         ))}
       </div>
-      <div className="lb-tl-ends">
+      <div className="u-tl-ends">
         <span>{date(0)}</span>
         <span>{date(latest)}</span>
       </div>
-      <div className="lb-tl-note mono">
+      <div className="u-tl-note mono">
         Showing <b>{date(i)}</b>
         {i === latest ? (
           <>
             {" "}
-            — the latest freeze. <span className="lb-live-dot" aria-hidden /> live
+            — the latest freeze. <span className="u-live-dot" aria-hidden /> live
           </>
         ) : (
           " — a past freeze."
