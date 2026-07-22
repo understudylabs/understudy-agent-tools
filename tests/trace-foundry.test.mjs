@@ -518,3 +518,106 @@ test("fallback rubric synthesis: structured and unstructured oracle responses", 
   assert.ok(unstructured.length > 0);
   assert.ok(unstructured.every((e) => e.provenance === "fallback_minimal"));
 });
+
+test("tightenSchema: 100% presence with N>=5 promotes; 96% and N<5 do not; enums infer from small closed sets", async () => {
+  const { tightenSchema } = await import("../dist/trace-foundry.js");
+  const base = { inferred: false, required: ["executionId"], properties: { executionId: "string", metadata: "object" } };
+  const call = (status) => ({ executionId: "exec-12345678901234567", metadata: { status, attempt: 1 } });
+  // 27/27 calls carry metadata with a two-value status enum.
+  const tightened = tightenSchema(base, Array.from({ length: 27 }, (_, i) => call(i % 2 ? "skipped" : "completed")));
+  assert.equal(tightened.observed_n, 27);
+  assert.ok(tightened.required_by_observation.includes("metadata"), "unanimous declared-optional property promotes");
+  assert.ok(!tightened.required_by_observation.includes("executionId"), "declared-required properties never duplicate");
+  assert.deepEqual(tightened.enums_by_observation["metadata.status"], ["completed", "skipped"]);
+  assert.deepEqual(tightened.observation_counts["metadata"], [27, 27]);
+  assert.deepEqual(tightened.required, ["executionId"], "declared required is preserved as-is");
+  // 96% presence (24/25) does NOT promote.
+  const mostly = tightenSchema(base, [...Array.from({ length: 24 }, () => call("completed")), { executionId: "exec-12345678901234567" }]);
+  assert.ok(!mostly.required_by_observation.includes("metadata"));
+  // N=4 unanimous does NOT promote (below the observation floor).
+  const few = tightenSchema(base, Array.from({ length: 4 }, () => call("completed")));
+  assert.ok(!few.required_by_observation.includes("metadata"));
+  // >5 distinct values or long prose never become enums.
+  const wide = tightenSchema(base, Array.from({ length: 8 }, (_, i) => ({ executionId: "e", metadata: { status: `state-${i}` } })));
+  assert.equal(wide.enums_by_observation["metadata.status"], undefined);
+  const prose = tightenSchema(base, Array.from({ length: 6 }, () => ({ executionId: "e", metadata: { status: "a long free text status message with many words in it" } })));
+  assert.equal(prose.enums_by_observation["metadata.status"], undefined);
+});
+
+test("validateCallAgainstSchema: observation-tightened rejects with evidence-bearing messages; compliant calls pass", async () => {
+  const { validateCallAgainstSchema } = await import("../dist/trace-foundry.js");
+  const schemas = { "save-execution-summary": {
+    inferred: false, required: ["executionId"], properties: { executionId: "string", metadata: "object" },
+    required_by_observation: ["metadata", "metadata.status"],
+    enums_by_observation: { "metadata.status": ["completed", "skipped"] },
+    observed_n: 27, observation_counts: { metadata: [27, 27], "metadata.status": [27, 27] },
+  } };
+  assert.equal(validateCallAgainstSchema("save-execution-summary", { executionId: "e-1", metadata: { status: "completed" } }, schemas), null);
+  assert.equal(
+    validateCallAgainstSchema("save-execution-summary", { executionId: "e-1" }, schemas),
+    "missing field 'metadata' — required by observed usage (27/27 calls)");
+  assert.equal(
+    validateCallAgainstSchema("save-execution-summary", { executionId: "e-1", metadata: { status: "exploded" } }, schemas),
+    "field 'metadata.status' must be one of [\"completed\",\"skipped\"] — required by observed usage");
+  assert.equal(validateCallAgainstSchema("save-execution-summary", {}, schemas), "missing required field 'executionId'");
+  assert.match(String(validateCallAgainstSchema("unknown-tool", {}, schemas)), /unknown tool/);
+});
+
+test("enum_violation sentinel: a rejected out-of-enum call scores 0 while the oracle stays 1", async () => {
+  const { offlineValidationRow } = await import("../dist/trace-foundry.js");
+  const task = { task_id: "t-enum", outcome_contract: { required: [
+    { type: "state_effect", tool: "save-execution-summary", observed_arguments: { executionId: "exec-12345678901234567", metadata: { status: "completed" } } },
+  ], forbidden: [], grading: "g" } };
+  const schemas = { "save-execution-summary": { required: [], properties: {}, required_by_observation: ["metadata"], enums_by_observation: { "metadata.status": ["completed", "skipped"] }, observed_n: 27, observation_counts: { metadata: [27, 27] } } };
+  const row = offlineValidationRow(task, schemas);
+  assert.equal(row.oracle.strict, 1, "observed usage always passes its own tightened validation");
+  assert.ok(row.sentinels.enum_violation, "enum sentinel emitted when a contract tool carries enums");
+  assert.equal(row.sentinels.enum_violation.strict, 0, "rejected enum-violating call never satisfies the contract");
+  assert.ok(row.sentinels.enum_violation.score < 1);
+  // No enums anywhere: sentinel is not emitted.
+  const plain = offlineValidationRow(task, { "save-execution-summary": { required: [], properties: {} } });
+  assert.equal(plain.sentinels.enum_violation, undefined);
+});
+
+test("compile + regenerate-env: observation tightening lands in schemas.json and the generated world", async () => {
+  const { regenerateEnvironment } = await import("../dist/trace-foundry.js");
+  const root = mkdtempSync(join(tmpdir(), "understudy-foundry-tighten-")), source = join(root, "captures"), output = join(root, "out");
+  mkdirSync(source, { recursive: true });
+  // Six tasks; the DECLARED schema marks metadata optional, yet every observed
+  // save-execution-summary call carries metadata.status in {skipped, completed}.
+  const declaredTool = { name: "save-execution-summary", input_schema: { type: "object", required: ["executionId"], properties: { executionId: { type: "string" }, metadata: { type: "object" } } } };
+  const rows = Array.from({ length: 6 }, (_, i) => ({
+    schema_version: 4, request_id: `c-${i}`, ts: `2026-07-20T0${i}:00:00Z`, workload_name: "synthetic-automation", status_code: 200,
+    customer_request_body: JSON.stringify({ system: "Operate a synthetic automation runner.", messages: [{ role: "user", content: `Handle synthetic execution ${i} of the nightly automation batch` }], tools: [declaredTool] }),
+    response_body: JSON.stringify({ content: [{ type: "tool_use", id: `call-${i}`, name: "save-execution-summary", input: { executionId: `exec-000000000000000${i}`, metadata: { status: i % 2 ? "skipped" : "completed" } } }], stop_reason: "tool_use" }),
+  }));
+  writeFileSync(join(source, "captures.jsonl"), rows.map((row) => JSON.stringify(row)).join("\n") + "\n");
+  compileTraceFoundry(source, output, 3, new Date("2026-07-21T00:00:00Z"));
+  const schemasPath = join(output, "environment", "understudy_trace_env", "servers", "schemas.json");
+  const check = () => {
+    const schemas = JSON.parse(readFileSync(schemasPath, "utf8"));
+    const tool = schemas["save-execution-summary"];
+    assert.equal(tool.observed_n, 6);
+    assert.ok(tool.required_by_observation.includes("metadata"), "metadata promoted from unanimous observation");
+    assert.deepEqual(tool.enums_by_observation["metadata.status"], ["completed", "skipped"]);
+    const world = readFileSync(join(output, "environment", "understudy_trace_env", "servers", "world.py"), "utf8");
+    assert.match(world, /required_by_observation/);
+    assert.match(world, /required by observed usage/);
+    assert.match(world, /enums_by_observation/);
+    assert.match(world, /_rejection_reply/);
+    assert.match(world, /UNDERSTUDY_STRICT_VALIDATION/, "tightening is a documented, defeatable strictness choice");
+  };
+  check();
+  // Rejections are recoverable error events, never writes, never contract satisfaction:
+  const world = readFileSync(join(output, "environment", "understudy_trace_env", "servers", "world.py"), "utf8");
+  assert.match(world, /"status": "error"/);
+  assert.match(world, /if mutating:\n                self\.state\.writes\.append\(event\)/);
+  // regenerate-env recomputes the same stats from normalized-captures.jsonl alone.
+  writeFileSync(schemasPath, "{}\n");
+  const regen = regenerateEnvironment(output);
+  assert.equal(regen.oracle_pass, true);
+  check();
+  const validation = JSON.parse(readFileSync(join(output, "environment", "offline-validation.json"), "utf8"));
+  assert.ok(validation.tasks.every((row) => !row.sentinels.enum_violation || row.sentinels.enum_violation.score < 1), "enum sentinel discriminates offline");
+  assert.ok(validation.tasks.some((row) => row.sentinels.enum_violation), "enum sentinel present for the enum-carrying tool");
+});
