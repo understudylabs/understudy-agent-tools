@@ -94,6 +94,12 @@ injecting `data-theme` on `<html>` at serve time.
 
 ## Run
 
+**Prerequisite:** build the CLI at the repo root first (`npm run build` in the
+repo root). The hub's server modules (`lib/data-core.ts` and friends) import
+the compiled `../../../dist/*.js`; in a clean worktree those files don't exist
+and every page 500s. `bun run dev`/`build` run a preflight
+(`scripts/check-dist.mjs`) that fails fast with this message.
+
 ```sh
 cd apps/benchmark-hub
 bun install        # or npm install

@@ -14,7 +14,7 @@
     "benchmark_id": {
       "type": "string",
       "minLength": 1,
-      "description": "Slug of the foundry output directory the task belongs to (the directory basename). Note: NOT an understudy.benchmark.v1 benchmark_id — proposed benchmarks have no promoted manifest yet. No absolute paths are recorded (portability rule)."
+      "description": "The proposal-stamped benchmark.json's benchmark_id (read at write time) when available, else the foundry output directory basename. Legacy lines recorded the directory basename only — consumers must accept either id when matching a line to a benchmark. No absolute paths are recorded (portability rule)."
     },
     "task_id": {
       "type": "string",

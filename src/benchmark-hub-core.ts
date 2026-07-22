@@ -1052,8 +1052,12 @@ export function submitTaskFeedback(
   if (typeof input.task_id !== "string" || !entry.tasks.some((t) => t.task_id === input.task_id)) {
     return { ok: false, error: "unknown task_id", status: 404 };
   }
+  // Record the proposal-stamped benchmark.json's benchmark_id (the id the
+  // manifest and eval rows carry), read at write time; the directory basename
+  // is only a fallback. Readers accept BOTH — existing feedback.jsonl lines
+  // recorded the dir basename before this reconciliation.
   const feedback = makeTaskFeedback({
-    benchmark_id: path.basename(entry.dir),
+    benchmark_id: readProposalBenchmarkId(entry.dir) ?? path.basename(entry.dir),
     task_id: input.task_id,
     feedback: input.feedback.trim(),
   });

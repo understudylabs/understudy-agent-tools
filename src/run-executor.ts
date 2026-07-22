@@ -1099,6 +1099,10 @@ export type TrivialFloor = {
   /** The offending tasks: every selected task the trivial arm passes. */
   passed_task_ids: string[];
   floor_exceeded: boolean;
+  /** Additive provenance, set when a floor is carried forward from a PRIOR calibration run instead of recomputed by this one. */
+  source_run_id?: string;
+  /** Timestamp (finished_at, else started_at) of the run that actually computed the carried floor. */
+  source_ts?: string | null;
 };
 
 export type CalibrationSummary = {
@@ -1200,6 +1204,40 @@ export function deriveCalibrationSummary(args: {
   };
 }
 
+/**
+ * Carry trivial-arm floors forward across calibration rewrites: a newer
+ * incumbent-only run (no trivial arms) must NOT drop the null/spam/majority
+ * floor blocks a previous calibproof run computed. Any floor this run
+ * recomputed wins; any floor absent from `next` but present in `prior` is
+ * carried with honest provenance (the run_id + timestamp that computed it).
+ */
+export function mergeCalibrationFloors(prior: CalibrationSummary | null, next: CalibrationSummary): CalibrationSummary {
+  if (!prior) return next;
+  const merged: CalibrationSummary = { ...next };
+  for (const key of ["null_floor", "spam_floor", "majority_floor"] as const) {
+    const previous = prior[key];
+    if (merged[key] === undefined && previous !== undefined) {
+      merged[key] = {
+        ...previous,
+        // Preserve the ORIGINAL computing run when the prior block was itself carried.
+        source_run_id: previous.source_run_id ?? prior.run_id,
+        source_ts: previous.source_ts !== undefined ? previous.source_ts : prior.finished_at ?? prior.started_at,
+      };
+    }
+  }
+  return merged;
+}
+
+/** Best-effort read of the prior calibration sidecar (null when absent/unreadable/foreign). */
+function readPriorCalibration(benchmarkDir: string): CalibrationSummary | null {
+  try {
+    const parsed = JSON.parse(readFileSync(calibrationPath(benchmarkDir), "utf8")) as CalibrationSummary;
+    return parsed?.schema_version === CALIBRATION_SCHEMA ? parsed : null;
+  } catch {
+    return null;
+  }
+}
+
 /** Rebuild calibration.json from a finished incumbent run's rows + events. Best-effort: never fails the run. */
 function writeCalibrationSummary(benchmarkDir: string, request: RunRequest, selectedTaskIds: string[]): void {
   try {
@@ -1215,9 +1253,12 @@ function writeCalibrationSummary(benchmarkDir: string, request: RunRequest, sele
       events: readJsonlFile<Obj>(runEventsPath(benchmarkDir)).items,
       trivialArms: request.trivial_arms ?? [],
     });
+    // Floors survive incumbent-only reruns: carry forward the most recent
+    // prior floor blocks (with source provenance) unless this run recomputed them.
+    const merged = mergeCalibrationFloors(readPriorCalibration(benchmarkDir), summary);
     const file = calibrationPath(benchmarkDir);
     const tmp = `${file}.tmp`;
-    writeFileSync(tmp, `${JSON.stringify(summary, null, 2)}\n`, { mode: 0o600 });
+    writeFileSync(tmp, `${JSON.stringify(merged, null, 2)}\n`, { mode: 0o600 });
     renameSync(tmp, file);
   } catch {
     // calibration is a derived sidecar — a write failure must not fail the run
