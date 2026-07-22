@@ -17,6 +17,25 @@ uses semantic-ish versioning (minor = new skill or new capability, patch = fixes
 
 ### Added
 
+- **The benchmark lab comes to the Desktop.** Desktop/runtime 0.3.41 and CLI
+  0.6.38 bridge the app to the benchmark/experiment spine: experiment lineage
+  cards trace every result back to the run, dataset, and prompt that produced
+  it; the drag-drop training flow gains an upload approval gate so nothing
+  leaves your machine without an explicit yes; a benchmark linkage pane shows
+  which benchmark and split each experiment scored against; and the embedded
+  Pi chat gets benchmark tools alongside the new `operate-benchmark-lab`
+  skill for driving the whole lab conversationally.
+- **A tidier sidebar.** New chat is unnested to the top level, clipped and
+  overlapping items are fixed, and leftover UI artifacts are removed.
+- **Smart defaults instead of per-call nagging.** The bundled CLI replaces
+  repeated per-call approval prompts with a one-time trust posture you set
+  once and can revisit.
+- **The full benchmark CLI spine.** `benchmarks from-dataset` turns labeled
+  datasets into first-class benchmarks; the partner report produces the
+  honest benchmark-and-savings deliverable; trivial-agent calibration arms,
+  majority-class floors, and the ABC rigor report keep scores honest; and
+  GEPA-style prompt evolution runs over prompt-override experiment arms.
+
 - **Sign in as yourself, right from the app.** Desktop/runtime 0.3.40 and CLI
   0.6.37 add browser-based user sign-in (WorkOS AuthKit, PKCE): Account →
   "Sign in with browser" opens your default browser, and the app picks up the

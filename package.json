@@ -1,6 +1,6 @@
 {
   "name": "@understudylabs/understudy-agent-tools",
-  "version": "0.6.37",
+  "version": "0.6.38",
   "description": "Public Understudy agent tools CLI and skill library.",
   "type": "module",
   "bin": {
