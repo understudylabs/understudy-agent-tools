@@ -36,7 +36,7 @@ export function ReviewBar({
 
   if (readOnly) {
     return (
-      <span className="lb-foot-note !mt-0">
+      <span className="u-foot-note !mt-0">
         {"// read-only entry (repo fixture) — review decisions cannot be written here"}
       </span>
     );
@@ -64,13 +64,13 @@ export function ReviewBar({
   };
 
   return (
-    <div className="lb-card flex flex-col gap-2.5" style={{ padding: "14px 16px" }}>
+    <div className="u-card flex flex-col gap-2.5" style={{ padding: "14px 16px" }}>
       <div className="flex flex-wrap items-center gap-2">
-        <span className="lb-cats-label">Final judgment</span>
+        <span className="u-cats-label">Final judgment</span>
         {REVIEW_DECISIONS.map((d) => (
           <button
             key={d}
-            className="lb-chip"
+            className="u-chip"
             aria-pressed={decision === d}
             disabled={busy}
             onClick={() => judge(d)}

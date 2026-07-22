@@ -7,7 +7,7 @@ export function CopySlug({ text }: { text: string }) {
   const [copied, setCopied] = useState(false);
   return (
     <button
-      className="ent-copy"
+      className="u-copy"
       aria-label={`Copy ${text}`}
       onClick={async () => {
         try {

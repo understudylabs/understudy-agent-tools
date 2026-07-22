@@ -17,8 +17,8 @@ const BRANCH_RENDER_CAP = 20;
 
 function SectionHead({ n, title }: { n: string; title: string }) {
   return (
-    <div className="lb-sec-head">
-      <span className="lb-sec-no">{n}</span>
+    <div className="u-sec-head">
+      <span className="u-sec-no">{n}</span>
       <h2>{title}</h2>
     </div>
   );
@@ -81,8 +81,8 @@ export default async function TaskInspector({
 
   return (
     <div>
-      <section className="lb-hero" style={{ paddingTop: 34 }}>
-        <p className="lb-eyebrow">
+      <section className="u-hero" style={{ paddingTop: 34 }}>
+        <p className="u-eyebrow">
           <Link href={`/b/${entry.slug}`}>← {entry.manifest.name ?? entry.manifest.benchmark_id}</Link>
         </p>
         {/* Long mono task ids wrap; chips live on their own line below. */}
@@ -98,7 +98,7 @@ export default async function TaskInspector({
         </div>
         <div className="mt-4 flex flex-col gap-2">
           {openFlags.map((f, i) => (
-            <div key={i} className="lb-warn text-xs" style={{ borderColor: "var(--bad-border)", background: "var(--bad-bg)", color: "var(--bad)" }}>
+            <div key={i} className="u-warn text-xs" style={{ borderColor: "var(--bad-border)", background: "var(--bad-bg)", color: "var(--bad)" }}>
               <span className="mono">{f.reason}</span> — {f.note}{" "}
               <span className="mono text-faint">{f.created_at}</span>
             </div>
@@ -107,11 +107,11 @@ export default async function TaskInspector({
         </div>
       </section>
 
-      <section className="lb-section">
+      <section className="u-section">
         <SectionHead n="01" title="Task content" />
         {!sidecar ? (
           <>
-            <p className="lb-sec-sub">
+            <p className="u-sec-sub">
               No tasks*.jsonl sidecar carries content for this task — only the manifest entry below is available.
             </p>
             <pre className="u-pre mt-4" style={{ maxHeight: 300 }}>{JSON.stringify(task, null, 2)}</pre>
@@ -119,24 +119,24 @@ export default async function TaskInspector({
         ) : (
           <div className="mt-4 grid grid-cols-1 gap-3 md:grid-cols-2">
             {sidecar.question != null && (
-              <div className="lb-card">
+              <div className="u-card">
                 <h3>Question</h3>
                 <SidecarValue value={sidecar.question} />
               </div>
             )}
             {sidecar.gold != null && (
-              <div className="lb-card">
+              <div className="u-card">
                 <h3>Gold contract</h3>
                 <SidecarValue value={sidecar.gold} />
               </div>
             )}
             {sidecarExtras.map(([key, value]) => (
-              <div key={key} className="lb-card">
+              <div key={key} className="u-card">
                 <h3>{key}</h3>
                 <SidecarValue value={value} />
               </div>
             ))}
-            <div className="lb-card md:col-span-2">
+            <div className="u-card md:col-span-2">
               <h3>Manifest entry</h3>
               <pre className="u-pre mt-2" style={{ maxHeight: 240 }}>{JSON.stringify(task, null, 2)}</pre>
             </div>
@@ -144,7 +144,7 @@ export default async function TaskInspector({
         )}
       </section>
 
-      <section className="lb-section">
+      <section className="u-section">
         <SectionHead n="02" title={`Eval rows (${rows.length})`} />
         {rows.length === 0 ? (
           <EmptyState
@@ -152,8 +152,8 @@ export default async function TaskInspector({
             next="drop understudy.eval_result.v1 lines into rows-*.jsonl (or rows/*.jsonl) next to benchmark.json"
           />
         ) : (
-          <div className="lb-tbl-scroll mt-4">
-            <table className="lb-tbl w-full">
+          <div className="u-tbl-scroll mt-4">
+            <table className="u-tbl w-full">
               <thead>
                 <tr>
                   {["run_id", "model", "route", "status", "score", "subscores", "trace leaf"].map((h) => (
@@ -195,7 +195,7 @@ export default async function TaskInspector({
         )}
       </section>
 
-      <section className="lb-section" style={{ borderBottom: "none" }}>
+      <section className="u-section" style={{ borderBottom: "none" }}>
         <SectionHead n="03" title="Trace branches" />
         {branchesByFile.length === 0 ? (
           <EmptyState
@@ -205,7 +205,7 @@ export default async function TaskInspector({
         ) : (
           branchesByFile.map(({ file, branches, recordsById }) => (
             <div key={file} className="mt-4 mb-4">
-              <p className="lb-foot-note !mt-0 mb-2">
+              <p className="u-foot-note !mt-0 mb-2">
                 {"// " +
                   file +
                   (branches.length > BRANCH_RENDER_CAP
@@ -214,7 +214,7 @@ export default async function TaskInspector({
               </p>
               <div className="flex flex-col gap-3">
                 {branches.slice(0, BRANCH_RENDER_CAP).map((b, i) => (
-                  <div key={i} className="lb-card">
+                  <div key={i} className="u-card">
                     <div className="mono mb-2 flex items-center gap-3 text-xs text-ink-muted">
                       <span>branch {i + 1}</span>
                       <span>depth {b.path.length}</span>

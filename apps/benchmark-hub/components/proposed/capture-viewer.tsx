@@ -102,12 +102,12 @@ export function CaptureViewer({ slug, rounds }: { slug: string; rounds: Round[] 
   const body = selected ? cache[selected] : undefined;
 
   return (
-    <div className="lb-card" style={{ padding: 0 }}>
+    <div className="u-card" style={{ padding: 0 }}>
       <div className="flex flex-wrap gap-1.5 border-b border-rule p-3">
         {rounds.map((r, i) => (
           <button
             key={r.capture_id}
-            className="lb-chip"
+            className="u-chip"
             aria-pressed={selected === r.capture_id}
             onClick={() => setSelected(r.capture_id)}
           >
@@ -116,13 +116,13 @@ export function CaptureViewer({ slug, rounds }: { slug: string; rounds: Round[] 
         ))}
       </div>
       <div className="flex flex-wrap items-center gap-1.5 border-b border-rule p-3">
-        <button className="lb-chip" aria-pressed={tab === "request" && !raw} onClick={() => { setTab("request"); setRaw(false); }}>
+        <button className="u-chip" aria-pressed={tab === "request" && !raw} onClick={() => { setTab("request"); setRaw(false); }}>
           parsed request
         </button>
-        <button className="lb-chip" aria-pressed={tab === "response" && !raw} onClick={() => { setTab("response"); setRaw(false); }}>
+        <button className="u-chip" aria-pressed={tab === "response" && !raw} onClick={() => { setTab("response"); setRaw(false); }}>
           parsed response
         </button>
-        <button className="lb-chip" aria-pressed={raw} onClick={() => setRaw(true)}>
+        <button className="u-chip" aria-pressed={raw} onClick={() => setRaw(true)}>
           raw {tab}
         </button>
       </div>

@@ -32,12 +32,12 @@ export function ProposedBenchmarkPage({ entry }: { entry: ProposedHubEntry }) {
   const f = entry.foundry;
 
   return (
-    <div className="ent-page">
-      <header className="ent-head">
-        <p className="lb-eyebrow" style={{ marginBottom: 10 }}>
+    <div className="u-page">
+      <header className="u-head">
+        <p className="u-eyebrow" style={{ marginBottom: 10 }}>
           <Link href="/">← All benchmarks</Link>
         </p>
-        <div className="ent-title-row">
+        <div className="u-title-row">
           <h1>{name}</h1>
         </div>
         {/* Chips on their own line — long titles/ids never fight badges */}
@@ -46,56 +46,56 @@ export function ProposedBenchmarkPage({ entry }: { entry: ProposedHubEntry }) {
           <SourceBadge entry={entry} />
           <Badge>machine-compiled · review pending</Badge>
         </div>
-        <p className="ent-desc">
+        <p className="u-desc">
           Compiled from captured traces by the trace foundry. Every task below is a machine proposal — human final
           judgment gates promotion to an executable benchmark.
         </p>
-        <div className="ent-id">
+        <div className="u-id">
           <span>local only · contains customer payloads · no upload performed</span>
         </div>
 
-        <div className="ent-stats">
-          <div className="ent-stat">
+        <div className="u-stats">
+          <div className="u-stat">
             <span className="lab">Tasks</span>
             <span className="val">{total}</span>
             <span className="sub">
               {entry.tasks.filter((t) => t.close_call).length} close call{entry.tasks.filter((t) => t.close_call).length === 1 ? "" : "s"}
             </span>
           </div>
-          <div className="ent-stat">
+          <div className="u-stat">
             <span className="lab">Awaiting review</span>
             <span className="val" style={awaiting > 0 ? { color: "var(--warn-ink)" } : undefined}>
               {awaiting}
             </span>
             <span className="sub">{reviewed} reviewed</span>
           </div>
-          <div className="ent-stat">
+          <div className="u-stat">
             <span className="lab">Accepted</span>
             <span className="val" style={{ color: accepted > 0 ? "var(--live)" : undefined }}>
               {accepted}
             </span>
             <span className="sub">{restricted} restricted · {needsMore} needs more</span>
           </div>
-          <div className="ent-stat">
+          <div className="u-stat">
             <span className="lab">Rejected</span>
             <span className="val" style={{ color: rejected > 0 ? "var(--bad)" : undefined }}>
               {rejected}
             </span>
             <span className="sub">never promoted</span>
           </div>
-          <div className="ent-stat">
+          <div className="u-stat">
             <span className="lab">Captures</span>
             <span className="val">{f.counts.captures}</span>
             <span className="sub">newest {f.freshness.newest_capture_utc.slice(0, 10)}</span>
           </div>
         </div>
         {entry.crossCheckErrors.length > 0 && (
-          <span className="lb-foot-note" style={{ color: "var(--warn-ink)" }}>
+          <span className="u-foot-note" style={{ color: "var(--warn-ink)" }}>
             {"// tasks.jsonl and benchmark.json disagree on task ids: " + entry.crossCheckErrors.join("; ")}
           </span>
         )}
         {entry.diagnostics.skippedLines + entry.diagnostics.droppedRows > 0 && (
-          <span className="lb-foot-note">
+          <span className="u-foot-note">
             {"// loader diagnostics: " +
               entry.diagnostics.skippedLines +
               " malformed jsonl lines skipped · " +
@@ -105,10 +105,10 @@ export function ProposedBenchmarkPage({ entry }: { entry: ProposedHubEntry }) {
         )}
       </header>
 
-      <div className="ent-layout">
+      <div className="u-layout">
         <AnchorRail sections={RAIL} />
         <div>
-          <section className="ent-sec" id="tasks">
+          <section className="u-sec" id="tasks">
             <h2>Task inbox</h2>
             <p className="exp">
               Machine-proposed tasks awaiting final judgment. Click a task to inspect its outcome contract, world
@@ -139,8 +139,8 @@ export function ProposedBenchmarkPage({ entry }: { entry: ProposedHubEntry }) {
                     next="promotion tooling lands upstream; accepted tasks become the promoted benchmark's manifest"
                   />
                 )}
-                <div className="lb-tbl-scroll mt-5">
-                  <table className="lb-tbl w-full">
+                <div className="u-tbl-scroll mt-5">
+                  <table className="u-tbl w-full">
                     <thead>
                       <tr>
                         {["title", "split", "confidence", "close call", "review", "status"].map((h) => (
@@ -182,7 +182,7 @@ export function ProposedBenchmarkPage({ entry }: { entry: ProposedHubEntry }) {
             )}
           </section>
 
-          <section className="ent-sec" id="lineage">
+          <section className="u-sec" id="lineage">
             <h2>Source lineage</h2>
             <p className="exp">
               How the captured rounds relate: each execution group is one traced conversation, ordered by
@@ -201,13 +201,13 @@ export function ProposedBenchmarkPage({ entry }: { entry: ProposedHubEntry }) {
             )}
           </section>
 
-          <section className="ent-sec" id="provenance">
+          <section className="u-sec" id="provenance">
             <h2>Provenance</h2>
             <p className="exp">
               What the foundry read, what it filtered, and what it wrote — every capture pinned by sha256 pointer.
             </p>
             <div className="mt-4 grid grid-cols-1 gap-3 md:grid-cols-2">
-              <div className="lb-card">
+              <div className="u-card">
                 <h3>Freshness window</h3>
                 <div className="mono mt-2 flex flex-col gap-1 text-xs text-ink-muted">
                   <span>max age: {f.freshness.max_age_days} days</span>
@@ -215,7 +215,7 @@ export function ProposedBenchmarkPage({ entry }: { entry: ProposedHubEntry }) {
                   <span>newest capture: {f.freshness.newest_capture_utc}</span>
                 </div>
               </div>
-              <div className="lb-card">
+              <div className="u-card">
                 <h3>Counts</h3>
                 <div className="mono mt-2 flex flex-col gap-1 text-xs text-ink-muted">
                   <span>
@@ -226,7 +226,7 @@ export function ProposedBenchmarkPage({ entry }: { entry: ProposedHubEntry }) {
                   <span>{f.counts.invalid_timestamp_filtered} invalid-timestamp captures filtered</span>
                 </div>
               </div>
-              <div className="lb-card md:col-span-2">
+              <div className="u-card md:col-span-2">
                 <h3>Privacy</h3>
                 <p className="mono mt-2 text-xs text-ink-muted">
                   {[
@@ -238,8 +238,8 @@ export function ProposedBenchmarkPage({ entry }: { entry: ProposedHubEntry }) {
                 </p>
               </div>
             </div>
-            <div className="lb-tbl-scroll mt-4" style={{ maxHeight: "40vh" }}>
-              <table className="lb-tbl w-full">
+            <div className="u-tbl-scroll mt-4" style={{ maxHeight: "40vh" }}>
+              <table className="u-tbl w-full">
                 <thead>
                   <tr>
                     {["capture_id", "pointer", "sha256"].map((h) => (

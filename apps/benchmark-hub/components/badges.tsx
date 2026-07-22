@@ -96,7 +96,6 @@ export function FlagBadge({ count, resolved }: { count: number; resolved?: boole
  */
 export function RouteBadge({ route }: { route: string | null }) {
   if (!route) return null;
-  // wave-2: mint (the "local" badge marks the candidate arm)
   if (route === "local") return <span className="opn">local</span>;
   return (
     <span className="opn" style={{ borderColor: "var(--accent)", color: "var(--accent)" }}>
@@ -110,7 +109,7 @@ export function WarningList({ warnings, compact }: { warnings: EvidenceWarning[]
   return (
     <ul className="flex flex-col gap-2">
       {warnings.map((w) => (
-        <li key={w.kind} className="lb-warn flex items-start gap-2.5 text-xs">
+        <li key={w.kind} className="u-warn flex items-start gap-2.5 text-xs">
           <AlertTriangle className="mt-0.5 h-3.5 w-3.5 shrink-0" />
           <span>
             <span className="lab">{w.label}</span>

@@ -9,7 +9,7 @@ import { ReviewBar } from "@/components/proposed/review-bar";
 
 function ContractList({ title, items, emptyLabel }: { title: string; items: FoundryContractItem[]; emptyLabel: string }) {
   return (
-    <div className="lb-card">
+    <div className="u-card">
       <h3>{title}</h3>
       {items.length === 0 ? (
         <p className="mono mt-2 text-xs text-faint">{emptyLabel}</p>
@@ -48,16 +48,16 @@ export function ProposedTaskPage({ entry, taskId }: { entry: ProposedHubEntry; t
     .map((n) => ({ capture_id: n.id, label: n.id }));
 
   return (
-    <div className="ent-page">
-      <section className="ent-head">
-        <p className="lb-eyebrow" style={{ marginBottom: 10 }}>
+    <div className="u-page">
+      <section className="u-head">
+        <p className="u-eyebrow" style={{ marginBottom: 10 }}>
           <Link href={`/b/${entry.slug}`}>← {entry.dir.split("/").pop()}</Link>
         </p>
         {/* Long mono task ids wrap; chips live on their own line below. */}
         <h1 className="mono" style={{ fontSize: "clamp(18px,2.6vw,28px)", overflowWrap: "anywhere" }}>
           {task.task_id}
         </h1>
-        {task.title && <p className="ent-desc">{task.title}</p>}
+        {task.title && <p className="u-desc">{task.title}</p>}
         <div className="mt-3 flex flex-wrap items-center gap-2">
           <StageBadge stage="proposed" />
           <SplitChip split={task.split} />
@@ -84,12 +84,12 @@ export function ProposedTaskPage({ entry, taskId }: { entry: ProposedHubEntry; t
         </div>
       </section>
 
-      <section className="lb-section">
-        <div className="lb-sec-head">
-          <span className="lb-sec-no">01</span>
+      <section className="u-section">
+        <div className="u-sec-head">
+          <span className="u-sec-no">01</span>
           <h2>Outcome contract</h2>
         </div>
-        <p className="lb-sec-sub">
+        <p className="u-sec-sub">
           Grading is <span className="mono">{task.outcome_contract.grading.replaceAll("_", " ")}</span>: the
           resulting state is judged, never an exact historical trajectory.
         </p>
@@ -100,13 +100,13 @@ export function ProposedTaskPage({ entry, taskId }: { entry: ProposedHubEntry; t
         </div>
       </section>
 
-      <section className="lb-section">
-        <div className="lb-sec-head">
-          <span className="lb-sec-no">02</span>
+      <section className="u-section">
+        <div className="u-sec-head">
+          <span className="u-sec-no">02</span>
           <h2>World model</h2>
         </div>
         <div className="mt-4 grid grid-cols-1 gap-3 md:grid-cols-2">
-          <div className="lb-card">
+          <div className="u-card">
             <h3>Initial state</h3>
             <pre className="u-pre mt-2" style={{ maxHeight: 220 }}>
               {JSON.stringify(task.world_model?.initial_state ?? {}, null, 2)}
@@ -116,9 +116,9 @@ export function ProposedTaskPage({ entry, taskId }: { entry: ProposedHubEntry; t
         </div>
       </section>
 
-      <section className="lb-section">
-        <div className="lb-sec-head">
-          <span className="lb-sec-no">03</span>
+      <section className="u-section">
+        <div className="u-sec-head">
+          <span className="u-sec-no">03</span>
           <h2>Machine claims</h2>
         </div>
         {task.claims.length === 0 ? (
@@ -139,12 +139,12 @@ export function ProposedTaskPage({ entry, taskId }: { entry: ProposedHubEntry; t
         )}
       </section>
 
-      <section className="lb-section">
-        <div className="lb-sec-head">
-          <span className="lb-sec-no">04</span>
+      <section className="u-section">
+        <div className="u-sec-head">
+          <span className="u-sec-no">04</span>
           <h2>Source lineage</h2>
         </div>
-        <p className="lb-sec-sub">The captured rounds this task was assembled from, in capture order.</p>
+        <p className="u-sec-sub">The captured rounds this task was assembled from, in capture order.</p>
         {entry.dag ? (
           <div className="mt-3">
             <LineageRail dag={entry.dag} nodeIds={nodeIds} />
@@ -154,12 +154,12 @@ export function ProposedTaskPage({ entry, taskId }: { entry: ProposedHubEntry; t
         )}
       </section>
 
-      <section className="lb-section" style={{ borderBottom: "none" }}>
-        <div className="lb-sec-head">
-          <span className="lb-sec-no">05</span>
+      <section className="u-section" style={{ borderBottom: "none" }}>
+        <div className="u-sec-head">
+          <span className="u-sec-no">05</span>
           <h2>Captures</h2>
         </div>
-        <p className="lb-sec-sub">
+        <p className="u-sec-sub">
           The underlying evidence — parsed request/response per round, with the preserved raw payloads one toggle
           away. Bodies load lazily from the local store.
         </p>
