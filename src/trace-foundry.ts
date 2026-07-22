@@ -202,7 +202,7 @@ function capabilityFit(candidate: Obj, catalog: Obj[]): Obj {
 /**
  * Title a task from the DISTINCTIVE part of its first user message. Agent
  * prompts are mostly a static context envelope shared by every task in the
- * benchmark (raw truncation titled every Cedar task with the same injected
+ * benchmark (raw truncation titled every task in a real pilot workload with the same injected
  * preamble); the task-specific payload is whatever varies. So: count line
  * frequency across all groups' root messages and title each task with its
  * first sufficiently-rare, human-readable line ("Subject:" lines preferred).
