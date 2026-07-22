@@ -1,0 +1,91 @@
+# Agent operator surface: `understudy benchmarks mcp`
+
+A stdio MCP server that exposes the file-based benchmark artifacts to a
+coding agent, so the agent — not a human clicking through the hub — can
+author, diagnose, and fix a benchmark workload end to end (the Raindrop
+Workshop pattern: put traces and evals inside the agent's tool surface).
+
+```bash
+understudy benchmarks mcp                 # roots: ~/.understudy/benchmarks
+understudy benchmarks mcp --root ./bench  # add extra roots (repeatable)
+```
+
+Claude Code registration (`~/.claude.json` → `mcpServers`):
+
+```json
+{ "understudy-benchmarks": { "type": "stdio", "command": "understudy", "args": ["benchmarks", "mcp"] } }
+```
+
+## What it serves
+
+| Tool | Reads/writes | Shared core |
+| --- | --- | --- |
+| `list_benchmarks` | benchmark dirs under the roots: stage (proposed/promoted), task counts, review summary | `dist/benchmark-hub-core.js` `loadHub` |
+| `read_benchmark` | manifest + task list with latest review decisions and score summaries | same loaders as the hub pages |
+| `read_task` | prompt/statement, outcome contract, world-model summary, review history | `loadTaskSidecars` / foundry `tasks.jsonl` |
+| `read_rollout` | trajectory from `runs/live/<run>-<model>.jsonl` + per-obligation contract scoring | `dist/benchmark-replay.js` `accumulateReplay` (the Replay tab's scorer) |
+| `diff_rollouts` | side-by-side obligations + first tool-call divergence between two runs | same |
+| `submit_review` | appends `understudy.benchmark_review.v1` to `reviews.jsonl` | `submitReview` — the exact validation behind `POST /api/reviews` |
+| `queue_run` | writes `understudy.run_request.v1` into `runs/queue/` — **never executes** | `queueOrCancelRun` — the exact validation behind `POST /api/runs` |
+| `run_status` | request status + row summary as `rows-*.jsonl` land | `run-executor` readers |
+
+Execution stays where it always was: `understudy runs execute --benchmark
+<dir> --watch` (or the daemon) picks queued requests up. The MCP server is a
+pure operator surface over the sidecar files.
+
+## The anti-drift rule this extends
+
+The hub never forks format logic: `apps/benchmark-hub/lib/runs-core.ts`
+re-exports the CLI's compiled `dist/run-executor.js`. This surface extends
+that pattern in the other direction — the loaders and write validation that
+used to live only in the app's `lib/` were lifted into the CLI package:
+
+- `src/benchmark-hub-types.ts` → shimmed by `apps/benchmark-hub/lib/types.ts`
+- `src/benchmark-hub-core.ts` (loaders + `submitReview` + `queueOrCancelRun`)
+  → shimmed by `apps/benchmark-hub/lib/data-core.ts`; the `/api/reviews` and
+  `/api/runs` routes are now thin HTTP maps over these functions
+- `src/benchmark-replay.ts` (`accumulateReplay`) → shimmed by
+  `apps/benchmark-hub/lib/replay-core.ts`
+
+If a sidecar format changes, change it once in `src/` — the hub and the MCP
+server pick it up from the same compiled module.
+
+## The agent loop
+
+The intended improvement cycle, tool by tool:
+
+1. **Find the failure.** `list_benchmarks` → `read_benchmark(slug)` → spot
+   tasks with low mean scores or `needs_more`/`reject` reviews.
+2. **Read the failing rollout.** `read_task(slug, task_id)` for the contract,
+   then `read_rollout(slug, run_id, task_id, model)` — the obligations list
+   shows exactly which required entries never flipped to met, and the event
+   stream shows what the model actually called.
+3. **Diff against the incumbent/oracle.** `diff_rollouts(slug, task_id,
+   run_incumbent, run_candidate)` — `tool_sequence.diverges_at` names the
+   first step where the trajectories part ways; the obligations table shows
+   what the passing run satisfied that the failing one didn't.
+4. **Fix the right thing.** Two cases:
+   - the *task* is wrong (over-tight contract, bad gold, ambiguous prompt):
+     `submit_review(slug, task_id, "needs_more" | "reject", note)` with the
+     evidence, or edit the task/environment in the benchmark dir;
+   - the *system under test* is wrong: edit prompts/code in the workload.
+5. **Re-run.** `queue_run(slug, models, tasks?)` — this only writes the
+   request file; make sure `understudy runs execute --benchmark <dir>
+   --watch` is running.
+6. **Re-check.** Poll `run_status(slug, run_id)` until rows land, then
+   `read_rollout`/`diff_rollouts` against the previous run to confirm the
+   obligation that used to fail now passes — and nothing else regressed.
+
+Repeat until the review ledger says `accept` and the score summary holds
+across models you care about.
+
+## Guardrails
+
+- Reviews are append-only; the newest line per `task_id` wins. Decisions:
+  `accept`, `restrict`, `needs_more`, `reject`.
+- `queue_run` on a *proposed* benchmark accepts exactly one **accepted** task
+  with a validated environment (same gating as the hub); full runs require
+  promotion (`understudy traces promote`).
+- Read-only sources (demo/fixture) reject writes.
+- Journals and row files are read with line caps; malformed lines are skipped,
+  never fatal.
