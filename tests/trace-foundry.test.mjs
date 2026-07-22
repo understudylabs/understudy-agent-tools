@@ -418,7 +418,9 @@ test("offlineValidationRow: obligation contracts pass their own oracle and fail 
 test("refreshOfflineValidation rewrites only the changed tasks' rows", async () => {
   const { refreshOfflineValidation } = await import("../dist/trace-foundry.js");
   const root = mkdtempSync(join(tmpdir(), "understudy-foundry-refresh-")), source = join(root, "captures"), output = join(root, "out"); mkdirSync(source, { recursive: true });
-  writeFileSync(join(source, "one.json"), JSON.stringify(capture("one", "2026-07-20T00:00:00Z", [{ role: "user", content: "Create it" }], { content: [{ type: "tool_use", id: "x", name: "update-record", input: { id: 1, status: "active" } }] })));
+  // The captured final response carries the gold text the widened response
+  // obligation is verified against (real-gold oracle, not self-satisfying).
+  writeFileSync(join(source, "one.json"), JSON.stringify(capture("one", "2026-07-20T00:00:00Z", [{ role: "user", content: "Create it" }], { content: [{ type: "tool_use", id: "x", name: "update-record", input: { id: 1, status: "active" } }, { type: "text", text: "All done." }] })));
   compileTraceFoundry(source, output, 3, new Date("2026-07-21T00:00:00Z"));
   const task = JSON.parse(readFileSync(join(output, "tasks.jsonl"), "utf8"));
   task.outcome_contract.required.push({ type: "response_obligation", kind: "contains_category", expected: "done" });
@@ -427,6 +429,13 @@ test("refreshOfflineValidation rewrites only the changed tasks' rows", async () 
   const row = validation.tasks.find((r) => r.task_id === task.task_id);
   assert.equal(row.oracle.strict, 1);
   assert.equal(row.oracle.met.length, 2, "refreshed row scores the widened contract");
+  assert.equal(row.oracle.missing_gold, undefined, "gold present — no missing-gold diagnostic");
+  // An obligation the CAPTURED gold response cannot satisfy is honestly broken.
+  const broken = { ...task, outcome_contract: { ...task.outcome_contract, required: [...task.outcome_contract.required, { type: "response_obligation", kind: "contains_category", expected: "never-in-the-gold-response" }] } };
+  assert.equal(refreshOfflineValidation(output, [broken]), true);
+  const brokenRow = JSON.parse(readFileSync(join(output, "environment", "offline-validation.json"), "utf8")).tasks.find((r) => r.task_id === task.task_id);
+  assert.equal(brokenRow.oracle.strict, 0);
+  assert.equal(brokenRow.oracle.missing_gold, undefined, "gold present but unsatisfied — broken, not unverifiable");
 });
 
 test("responseProjection extracts OpenAI chat.completion tool calls so their mutations reach the contract", () => {

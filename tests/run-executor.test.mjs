@@ -538,3 +538,77 @@ describe("rollout anomaly sentinels (the silent-zero gate)", () => {
     assert.match(warning.warning, new RegExp(String(cap)));
   });
 });
+
+describe("oracle full-contract coverage (response obligations vs stored gold)", () => {
+  /** Benchmark dir with one task carrying state + response + value obligations; gold optional. */
+  function makeResponseBenchmarkDir({ withGold }) {
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), "run-exec-gold-"));
+    roots.push(dir);
+    fs.writeFileSync(
+      path.join(dir, "benchmark.json"),
+      JSON.stringify({
+        schema_version: "understudy.benchmark.v1",
+        benchmark_id: "gold-bench",
+        provenance: { origin: "derived-from-traces" },
+        taxonomy: [{ category_id: "cat-a" }],
+        tasks: [{ task_id: "t1", category_id: "cat-a", genesis: "replayed", split: "train" }],
+        environment: { format: "verifiers.v1", package_ref: "environment" },
+        verifier: { kind: "final-state", strict_metric: "task_completed_correctly" },
+      }),
+    );
+    const sidecar = {
+      schema_version: "understudy.benchmark_task.v1",
+      task_id: "t1",
+      source: { node_ids: ["cap-1"] },
+      outcome_contract: {
+        required: [
+          { type: "state_effect", tool: "update-record", observed_arguments: { id: "r1" } },
+          { type: "response_obligation", kind: "contains_category", expected: "external_customer" },
+          { type: "value_propagation", source: { kind: "prompt" }, value: "Jordan Doe", must_reach: { kind: "final_response" } },
+        ],
+        preserved: [],
+        forbidden: [],
+        grading: "final_state_and_obligations",
+      },
+    };
+    fs.writeFileSync(path.join(dir, "tasks.jsonl"), JSON.stringify(sidecar) + "\n");
+    if (withGold) {
+      const capture = {
+        schema_version: "understudy.normalized_capture.v1",
+        capture_key: "cap-1",
+        capture_id: "cap-1",
+        response: { body: { content: [{ type: "text", text: "Jordan Doe is an external_customer contact." }] } },
+      };
+      fs.writeFileSync(path.join(dir, "normalized-captures.jsonl"), JSON.stringify(capture) + "\n");
+    }
+    return dir;
+  }
+
+  it("scores 1.0 on EVERY obligation kind when the stored gold final response is present", async () => {
+    const dir = makeResponseBenchmarkDir({ withGold: true });
+    const run = createRunRequest(dir, { benchmark_id: "gold-bench", models: ["oracle"], split: "all", tasks: "all", rollouts_per_task: 1 });
+    const result = await executeRunRequest(dir, run.run_id, { runner: oracleRunner() });
+    assert.equal(result.status, "done");
+    const rows = readRows(dir);
+    assert.equal(rows.length, 1);
+    const row = rows[0];
+    assert.equal(row.status, "ok");
+    assert.equal(row.score, 1, "full-contract oracle strict score (state + response + value)");
+    assert.equal(row.subscores.runner_oracle, 1);
+    assert.equal(row.oracle, undefined, "gold present — no missing-gold diagnostic");
+    assert.ok(row.final_response_chars > 0, "the gold final response is the oracle's response");
+    assert.ok(row.writes.length === 1 && row.writes[0].tool === "update-record", "writes stay the contract's state effects");
+  });
+
+  it("records oracle.missing_gold (unverifiable, not broken) when the gold response is absent from the artifacts", async () => {
+    const dir = makeResponseBenchmarkDir({ withGold: false });
+    const run = createRunRequest(dir, { benchmark_id: "gold-bench", models: ["oracle"], split: "all", tasks: "all", rollouts_per_task: 1 });
+    const result = await executeRunRequest(dir, run.run_id, { runner: oracleRunner() });
+    assert.equal(result.status, "done");
+    const row = readRows(dir)[0];
+    assert.equal(row.status, "ok");
+    assert.equal(row.score, 0, "response obligations cannot be verified without gold — the task flips to not-runnable");
+    assert.deepEqual(row.oracle, { missing_gold: ["response"] }, "distinct diagnostic so the hub renders unverifiable, not broken");
+    assert.equal(row.final_response_chars, undefined, "unknown final response is never persisted as 0 chars");
+  });
+});

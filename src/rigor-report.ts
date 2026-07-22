@@ -138,18 +138,35 @@ export function deriveRigorReport(benchmarkDir: string, now: Date = new Date()):
   const items: RigorItem[] = [];
 
   // Oracle solvability: rows produced by the deterministic oracle runner.
+  // FULL-contract coverage: the oracle runner scores every obligation kind
+  // (state effects + read/response/value obligations) against the contract's
+  // own tool calls plus the stored gold final response. Tasks whose gold is
+  // missing from the artifacts (`row.oracle.missing_gold`) are UNVERIFIABLE —
+  // reported distinctly from oracle-failing ("broken") tasks.
+  const oracleRows = rows.filter((row) => Number(asObject(row.subscores).runner_oracle) === 1);
   const oracleBest = bestScores(rows, (row) => Number(asObject(row.subscores).runner_oracle) === 1);
-  if (oracleBest.size === 0) {
+  const missingGoldTasks = new Set<string>();
+  for (const row of oracleRows) {
+    const missing = asObject(row.oracle).missing_gold;
+    if (Array.isArray(missing) && missing.length > 0) missingGoldTasks.add(String(row.task_id));
+  }
+  if (oracleRows.length === 0) {
     items.push({ item: "Oracle solver", status: "UNKNOWN", value: "not run", detail: "no oracle-runner rows — run `understudy runs execute --runner oracle`" });
   } else {
-    const covered = taskIds.filter((taskId) => oracleBest.has(taskId));
-    const passed = covered.filter((taskId) => (oracleBest.get(taskId) ?? 0) >= threshold);
-    const allPass = covered.length > 0 && passed.length === covered.length && covered.length === taskIds.length;
+    const passed = taskIds.filter((taskId) => (oracleBest.get(taskId) ?? 0) >= threshold);
+    const unverifiable = taskIds.filter((taskId) => missingGoldTasks.has(taskId) && !passed.includes(taskId));
+    const failing = taskIds.filter((taskId) => !passed.includes(taskId) && !unverifiable.includes(taskId));
+    const allPass = passed.length === taskIds.length && taskIds.length > 0;
     items.push({
       item: "Oracle solver",
       status: allPass ? "PASS" : "FLAG",
-      value: `${passed.length}/${taskIds.length} tasks pass`,
-      detail: allPass ? "every task is solvable by its own contract oracle" : `oracle-unsolvable or uncovered tasks: ${taskIds.filter((t) => !passed.includes(t)).join(", ") || "(coverage gap)"}`,
+      value: `${passed.length}/${taskIds.length} tasks pass (full contract)${unverifiable.length > 0 ? `, ${unverifiable.length} unverifiable (missing gold)` : ""}`,
+      detail: allPass
+        ? "every task's full contract (state + response/value obligations) is satisfied by its own oracle rollout"
+        : [
+            unverifiable.length > 0 ? `unverifiable (gold final response missing from artifacts): ${unverifiable.join(", ")}` : "",
+            failing.length > 0 ? `oracle-failing or uncovered tasks: ${failing.join(", ")}` : "",
+          ].filter(Boolean).join("; ") || "(coverage gap)",
     });
   }
 

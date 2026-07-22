@@ -102,12 +102,13 @@ describe("deriveRigorReport", () => {
     const report = deriveRigorReport(dir, new Date("2026-07-22T00:00:00Z"));
     const byItem = Object.fromEntries(report.items.map((i) => [i.item, i]));
 
-    // Oracle solvability: the state-effect oracle passes t1 but honestly
-    // flags t2 (its response_obligation is not oracle-satisfiable by the
-    // offline oracle runner) — a real coverage gap, reported not hidden.
+    // Oracle solvability (full contract): the oracle passes t1; t2 carries a
+    // response_obligation but this dir has no normalized-captures.jsonl, so
+    // its gold final response is missing — reported as UNVERIFIABLE (missing
+    // gold), distinct from a broken contract.
     assert.equal(byItem["Oracle solver"].status, "FLAG");
-    assert.equal(byItem["Oracle solver"].value, "1/2 tasks pass");
-    assert.match(byItem["Oracle solver"].detail, /t2/);
+    assert.equal(byItem["Oracle solver"].value, "1/2 tasks pass (full contract), 1 unverifiable (missing gold)");
+    assert.match(byItem["Oracle solver"].detail, /unverifiable.*t2/);
     // Null agent passes nothing here; spam passes the ritual-satisfiable t1.
     assert.equal(byItem["Null-agent floor"].status, "PASS");
     assert.match(byItem["Null-agent floor"].value, /0\.0% \(0\/2\)/);
