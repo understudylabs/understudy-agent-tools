@@ -205,6 +205,35 @@ export function registerBenchmarksCommand(program: Command): void {
     });
 
   benchmarks
+    .command("report <dir>")
+    .description(
+      "Generate partner-report.md + partner-report.json — the honest client-facing benchmark-and-savings " +
+        "report — from EXISTING artifacts only (rows, calibration, rigor, experiments; no new runs, no " +
+        "network). Floors and 95% CIs always shown; no winner claim on overlapping CIs; savings only when " +
+        "incumbent + candidate cost-per-correct + a monthly volume exist, always labeled EXTRAPOLATED; " +
+        "customer names/emails/domains scrubbed by construction",
+    )
+    .option("--monthly-volume <n>", "Monthly task volume for the EXTRAPOLATED savings projection (overrides manifest.monthly_volume)")
+    .option(
+      "--scrub-name <name>",
+      "Extra customer-name token to scrub (repeatable; dir-slug tokens are scrubbed automatically)",
+      (value: string, previous: string[]) => [...previous, value],
+      [] as string[],
+    )
+    .option("--out <dir>", "Directory to write partner-report.{md,json} into (default: the benchmark dir; use for read-only benchmark dirs)")
+    .action(async (dir: string, options: { monthlyVolume?: string; scrubName: string[]; out?: string }) => {
+      const { writePartnerReport } = await import("../partner-report.js");
+      const { report, markdownPath, jsonPath } = writePartnerReport(dir, {
+        monthlyVolume: options.monthlyVolume === undefined ? undefined : Number(options.monthlyVolume),
+        scrubNames: options.scrubName,
+        outDir: options.out,
+      });
+      console.error(`wrote ${markdownPath}`);
+      console.error(`wrote ${jsonPath}`);
+      console.log(JSON.stringify(report, null, 2));
+    });
+
+  benchmarks
     .command("rigor <dir>")
     .description(
       "Generate rigor-report.md in the benchmark dir: ABC checklist (oracle solvability, null/spam trivial-agent " +

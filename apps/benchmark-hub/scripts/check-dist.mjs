@@ -16,6 +16,8 @@ const required = [
   "benchmark-hub-types.js",
   "benchmark-replay.js",
   "benchmark.js",
+  "bootstrap-ci.js",
+  "partner-report.js",
   "run-executor.js",
   "trace-author.js",
 ].map((f) => resolve(repoRoot, "dist", f));
