@@ -4,7 +4,10 @@ import { NextResponse } from "next/server";
 // Relative imports (not "@/…") so the node:test harness can compile and load
 // this route handler directly; data-core is the server-only-free loader.
 import { getEntry } from "../../../lib/data-core";
-import { REVIEW_DECISIONS, type BenchmarkReview, type ReviewDecision } from "../../../lib/types";
+import { REVIEW_DECISIONS, type ReviewDecision } from "../../../lib/types";
+// The review constructor + line serializer are the CLI's own (dist) — the
+// writer side of reviews.jsonl can never drift from what promote consumes.
+import { makeBenchmarkReview, serializeReviewLine } from "../../../lib/artifacts-core";
 
 export const dynamic = "force-dynamic";
 
@@ -56,15 +59,13 @@ export async function POST(request: Request) {
     return NextResponse.json({ error: "unknown task_id" }, { status: 404 });
   }
 
-  const review: BenchmarkReview = {
-    schema_version: "understudy.benchmark_review.v1",
+  const review = makeBenchmarkReview({
     // The foundry output dir slug (directory basename), not a benchmark.v1 id.
     benchmark_id: path.basename(entry.dir),
     task_id: body.task_id,
     decision: body.decision as ReviewDecision,
-    note: typeof body.note === "string" ? body.note : "",
-    created_at: new Date().toISOString(),
-  };
-  fs.appendFileSync(path.join(entry.dir, "reviews.jsonl"), JSON.stringify(review) + "\n", "utf8");
+    note: body.note,
+  });
+  fs.appendFileSync(path.join(entry.dir, "reviews.jsonl"), serializeReviewLine(review), "utf8");
   return NextResponse.json({ ok: true, review });
 }
