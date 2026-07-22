@@ -16,7 +16,7 @@ type Obj = Record<string, unknown>;
 const asObject = (v: unknown): Obj => (v !== null && typeof v === "object" && !Array.isArray(v) ? (v as Obj) : {});
 
 /** Oracle spine = the LAST capture round with a body (fullest history). */
-function oracleCalls(dir: string, refs: CaptureRef[]): { calls: ReplayCall[]; spineMissing: boolean } {
+function oracleCalls(dir: string, refs: CaptureRef[]): { calls: ReplayCall[]; finalResponse: string; spineMissing: boolean } {
   const bodies: { capturedAt: string; body: Obj }[] = [];
   for (const ref of refs) {
     try {
