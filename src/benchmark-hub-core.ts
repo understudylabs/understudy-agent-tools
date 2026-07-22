@@ -25,8 +25,11 @@ import {
   isBenchmarkReview,
   latestReviewByTask as sharedLatestReviewByTask,
   makeBenchmarkReview,
+  makeTaskFeedback,
   readJsonlFile,
   serializeReviewLine,
+  serializeTaskFeedbackLine,
+  type TaskFeedback,
 } from "./benchmark-artifacts.js";
 import {
   cancelRunRequest,
@@ -330,6 +333,9 @@ export function loadProposedEntryFromDir(
     diagnostics,
     crossCheckErrors,
     overview: loadOverview(dir),
+    // Additive: a pre-promotion incumbent rerun's calibration sidecar feeds
+    // the exception-review policy (incumbent_failed).
+    calibration: loadCalibration(dir, proposalBenchmarkId),
   };
 }
 
@@ -824,4 +830,206 @@ export function queueOrCancelRun(entry: AnyHubEntry | null, body: QueueRunBody):
     calibration_threshold: input.calibration_threshold as number | undefined,
   });
   return { ok: true, run, execute_hint: `understudy runs execute --benchmark ${entry.dir} --watch` };
+}
+
+/* ------------------------------------------------------------------ */
+/* Exception-based review: auto-accept policy + conversational task    */
+/* feedback. NEW exported functions only — nothing above is rewritten. */
+/* ------------------------------------------------------------------ */
+
+/** Machine-readable reasons a pending task needs human judgment. */
+export const AUTO_REVIEW_REASONS = [
+  "low_confidence",
+  "self_check_failed",
+  "incumbent_failed",
+  "schema_conflict",
+  "anomaly",
+] as const;
+export type AutoReviewReason = (typeof AUTO_REVIEW_REASONS)[number];
+
+export type AutoReviewProposal = {
+  task_id: string;
+  verdict: "auto_accept" | "exception";
+  /** Empty for auto_accept; ordered by AUTO_REVIEW_REASONS otherwise. */
+  reasons: AutoReviewReason[];
+};
+
+/**
+ * The confidence bar for auto-acceptance. machine_confidence is an ordered
+ * enum (high > medium > low); a task clears the bar only at "high", and a
+ * high-confidence close_call is still treated as low_confidence — the machine
+ * itself flagged the boundary as borderline.
+ */
+export const AUTO_ACCEPT_CONFIDENCE_THRESHOLD: FoundryTask["machine_confidence"] = "high";
+
+/**
+ * Pure classification of every PENDING task (tasks whose newest review line,
+ * if any, already decided them are skipped — auto-accept never re-decides).
+ *
+ * AUTO_ACCEPT requires ALL of:
+ * - machine_confidence ≥ AUTO_ACCEPT_CONFIDENCE_THRESHOLD and not close_call
+ *   (else: low_confidence)
+ * - the foundry self_check, when stamped, passed (else: self_check_failed;
+ *   pre-self-check builds without the block count as clean)
+ * - calibration.json absent, or absent for this task, or the incumbent passed
+ *   it (else: incumbent_failed)
+ * - tasks.jsonl and benchmark.json agree on this task id (else: schema_conflict)
+ * - no eval row for the task carries an executor anomaly sentinel (else: anomaly)
+ *
+ * Classification only — nothing is written here. Writes happen in
+ * applyAutoAccepts, and only on an explicit user action.
+ */
+export function deriveAutoReviewProposals(entry: ProposedHubEntry): AutoReviewProposal[] {
+  const calibrationByTask = new Map<string, boolean>();
+  for (const t of entry.calibration?.tasks ?? []) calibrationByTask.set(t.task_id, t.passed);
+  const failedIds = new Set(entry.calibration?.failed_task_ids ?? []);
+  const anomalousTaskIds = new Set(entry.rows.filter((r) => r.anomaly != null).map((r) => r.task_id));
+
+  const proposals: AutoReviewProposal[] = [];
+  for (const task of entry.tasks) {
+    if (entry.latestReviewByTask[task.task_id]) continue; // already decided (newest-wins)
+    const reasons: AutoReviewReason[] = [];
+    if (task.machine_confidence !== AUTO_ACCEPT_CONFIDENCE_THRESHOLD || task.close_call) {
+      reasons.push("low_confidence");
+    }
+    if (task.self_check != null && task.self_check.ok === false) reasons.push("self_check_failed");
+    const calibrated = calibrationByTask.get(task.task_id);
+    if (calibrated === false || failedIds.has(task.task_id)) reasons.push("incumbent_failed");
+    if (entry.crossCheckErrors.some((e) => e.includes(task.task_id))) reasons.push("schema_conflict");
+    if (anomalousTaskIds.has(task.task_id)) reasons.push("anomaly");
+    proposals.push({
+      task_id: task.task_id,
+      verdict: reasons.length === 0 ? "auto_accept" : "exception",
+      reasons,
+    });
+  }
+  return proposals;
+}
+
+export type ApplyAutoAcceptsResult =
+  | { ok: true; applied: string[]; exceptions: number; reviews: BenchmarkReview[] }
+  | WriteFailure;
+
+/**
+ * The ONE write path for auto-decisions: recompute the policy against the
+ * entry as loaded and append one `accept` line per AUTO_ACCEPT task, stamped
+ * `source: "auto"` (additive field). Called only from an explicit user action
+ * ("Apply N auto-accepts") — never on page load. Fully reversible: a later
+ * human line for the same task supersedes it (append-only, newest-wins).
+ */
+export function applyAutoAccepts(entry: AnyHubEntry | null): ApplyAutoAcceptsResult {
+  if (!entry || entry.kind === "invalid") return { ok: false, error: "unknown benchmark", status: 404 };
+  if (entry.kind !== "proposed") {
+    return { ok: false, error: "auto-accept only applies to proposed (trace-foundry) benchmarks", status: 400 };
+  }
+  if (entry.readOnly) {
+    return {
+      ok: false,
+      error: "This entry is read-only (demo/fixture source); reviews cannot be written here.",
+      status: 403,
+    };
+  }
+  const proposals = deriveAutoReviewProposals(entry);
+  const reviews: BenchmarkReview[] = [];
+  for (const p of proposals) {
+    if (p.verdict !== "auto_accept") continue;
+    reviews.push(
+      makeBenchmarkReview({
+        benchmark_id: path.basename(entry.dir),
+        task_id: p.task_id,
+        decision: "accept",
+        note: "auto-accepted: high machine confidence, self-check clean, no incumbent/schema/anomaly evidence against it",
+        source: "auto",
+      }) as BenchmarkReview,
+    );
+  }
+  if (reviews.length > 0) {
+    fs.appendFileSync(
+      path.join(entry.dir, "reviews.jsonl"),
+      reviews.map((r) => serializeReviewLine(r)).join(""),
+      "utf8",
+    );
+  }
+  return {
+    ok: true,
+    applied: reviews.map((r) => r.task_id),
+    exceptions: proposals.filter((p) => p.verdict === "exception").length,
+    reviews,
+  };
+}
+
+/** Hard cap on conversational task feedback length (413 above this). */
+export const MAX_FEEDBACK_LENGTH = 4000;
+
+export type SubmitTaskFeedbackInput = { task_id?: unknown; feedback?: unknown };
+export type SubmitTaskFeedbackResult =
+  | { ok: true; feedback: TaskFeedback; handoff: string }
+  | WriteFailure;
+
+/**
+ * Build the copyable agent-handoff prompt for one recorded feedback line. The
+ * hub NEVER executes this itself (architectural boundary: the hub never spawns
+ * model calls or subprocesses) — the user pastes it into their coding agent,
+ * or the benchmarks MCP surface (docs/agent-operator-surface.md) picks it up.
+ * A future daemon verb consumes the same understudy.task_feedback.v1 record.
+ */
+export function buildTaskFeedbackHandoff(dir: string, taskId: string, feedback: string): string {
+  return [
+    `You are modifying one machine-proposed benchmark task in place.`,
+    ``,
+    `Benchmark dir: ${dir}`,
+    `Task: ${taskId}`,
+    ``,
+    `The reviewer says this is wrong with the task:`,
+    `"""`,
+    feedback,
+    `"""`,
+    ``,
+    `1. Read ${path.join(dir, "tasks.jsonl")} and find the line with task_id ${taskId}; also read any`,
+    `   understudy.task_feedback.v1 lines for it in ${path.join(dir, "feedback.jsonl")} for history.`,
+    `2. Edit that task line to address the feedback (title, outcome_contract, world_model, or the`,
+    `   authored block), keeping schema_version understudy.benchmark_task.v1 and the task_id stable.`,
+    `3. Rebuild the generated environment in place (tasks, reviews, and authored blocks are untouched):`,
+    `   understudy traces regenerate-env --benchmark ${dir}`,
+    `4. Confirm ${path.join(dir, "environment", "offline-validation.json")} passes for ${taskId}, then`,
+    `   report exactly what you changed and why it addresses the feedback.`,
+  ].join("\n");
+}
+
+/**
+ * Validate + append one understudy.task_feedback.v1 line to feedback.jsonl
+ * next to the foundry manifest (append-only sidecar; the shared codec is the
+ * writer). Storage + handoff only — the hub never executes the edit.
+ */
+export function submitTaskFeedback(
+  entry: AnyHubEntry | null,
+  input: SubmitTaskFeedbackInput,
+): SubmitTaskFeedbackResult {
+  if (!entry || entry.kind === "invalid") return { ok: false, error: "unknown benchmark", status: 404 };
+  if (entry.kind !== "proposed") {
+    return { ok: false, error: "task feedback only applies to proposed (trace-foundry) benchmarks", status: 400 };
+  }
+  if (entry.readOnly) {
+    return {
+      ok: false,
+      error: "This entry is read-only (demo/fixture source); feedback cannot be written here.",
+      status: 403,
+    };
+  }
+  if (typeof input.feedback !== "string" || input.feedback.trim().length === 0) {
+    return { ok: false, error: "feedback must be a non-empty string", status: 400 };
+  }
+  if (input.feedback.length > MAX_FEEDBACK_LENGTH) {
+    return { ok: false, error: `feedback too long (max ${MAX_FEEDBACK_LENGTH} characters)`, status: 413 };
+  }
+  if (typeof input.task_id !== "string" || !entry.tasks.some((t) => t.task_id === input.task_id)) {
+    return { ok: false, error: "unknown task_id", status: 404 };
+  }
+  const feedback = makeTaskFeedback({
+    benchmark_id: path.basename(entry.dir),
+    task_id: input.task_id,
+    feedback: input.feedback.trim(),
+  });
+  fs.appendFileSync(path.join(entry.dir, "feedback.jsonl"), serializeTaskFeedbackLine(feedback), "utf8");
+  return { ok: true, feedback, handoff: buildTaskFeedbackHandoff(entry.dir, input.task_id, feedback.feedback) };
 }

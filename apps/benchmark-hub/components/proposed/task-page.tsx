@@ -5,6 +5,7 @@ import { taskProvenance } from "@/lib/data";
 import { Badge, ConfidenceChip, DecisionBadge } from "@/components/badges";
 import { TaskViews } from "@/components/trajectory/task-views";
 import { AuthoredPanel, AuthoredStatementCard } from "@/components/trajectory/authored-panel";
+import { TaskFeedbackBox } from "@/components/proposed/task-feedback";
 
 function RequiredEffects({ items }: { items: FoundryContractItem[] }) {
   if (items.length === 0) return <p className="mono mt-2 text-xs text-faint">no required effects proposed</p>;
@@ -145,6 +146,7 @@ export function ProposedTaskPage({ entry, taskId }: { entry: ProposedHubEntry; t
             still shows, and a frontier-complexity contradiction stays loud. */}
         <div className="mt-3 flex flex-wrap items-center gap-2">
           <DecisionBadge decision={review?.decision ?? null} />
+          {review?.source === "auto" && <Badge>auto-accepted · override below</Badge>}
           {task.authored?.difficulty === "easy" && entry.overview?.task_complexity?.[task.task_id]?.frontier && (
             <Badge className="border-bad/40 text-bad">authored easy · frontier-complex</Badge>
           )}
@@ -179,6 +181,19 @@ export function ProposedTaskPage({ entry, taskId }: { entry: ProposedHubEntry; t
       </section>
 
       <AuthoredPanel slug={entry.slug} task={task} review={review} readOnly={entry.readOnly} />
+
+      {/* Conversational edit: the user's words become the task-modification
+          instruction — recorded to feedback.jsonl, executed by THEIR agent
+          via the copyable regenerate-env handoff (the hub never executes). */}
+      <section className="u-section" id="feedback">
+        <div className="u-sec-head">
+          <span className="u-sec-no">03</span>
+          <h2>Fix this task</h2>
+        </div>
+        <div className="mt-4">
+          <TaskFeedbackBox slug={entry.slug} taskId={task.task_id} readOnly={entry.readOnly} />
+        </div>
+      </section>
     </div>
   );
 }

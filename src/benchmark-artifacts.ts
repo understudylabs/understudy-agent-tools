@@ -51,6 +51,8 @@ export const CALIBRATION_SCHEMA = "understudy.calibration.v1";
 export const AUTHORING_EVENT_SCHEMA = "understudy.authoring_event.v1";
 /** Foundry generation-time structural self-check (manifest.self_check + task.self_check). */
 export const FOUNDRY_SELF_CHECK_SCHEMA = "understudy.foundry_self_check.v1";
+/** feedback.jsonl sidecar: free-text "what's wrong with this task" lines (append-only). */
+export const TASK_FEEDBACK_SCHEMA = "understudy.task_feedback.v1";
 
 /* ------------------------------------------------------------------ */
 /* JSONL codec                                                         */
@@ -201,6 +203,13 @@ export type BenchmarkReview = {
   decision: ReviewDecision;
   note: string;
   created_at: string;
+  /**
+   * Additive: who recorded the decision. "auto" = the hub's exception-review
+   * auto-accept policy (applied only on an explicit user click, never on page
+   * load); absent/"human" = a human clicked the review bar. Reversible either
+   * way — the append-only newest-per-task rule is unchanged.
+   */
+  source?: "auto" | "human";
 };
 
 /** The reader-side acceptance test for one reviews.jsonl row. */
@@ -220,6 +229,7 @@ export function makeBenchmarkReview(input: {
   decision: ReviewDecision;
   note?: string | null;
   created_at?: string;
+  source?: "auto" | "human";
 }): BenchmarkReview {
   return {
     schema_version: BENCHMARK_REVIEW_SCHEMA,
@@ -228,6 +238,8 @@ export function makeBenchmarkReview(input: {
     decision: input.decision,
     note: typeof input.note === "string" ? input.note : "",
     created_at: input.created_at ?? new Date().toISOString(),
+    // Additive: omitted entirely when unspecified so legacy lines stay byte-identical.
+    ...(input.source ? { source: input.source } : {}),
   };
 }
 
@@ -246,6 +258,75 @@ export function latestReviewByTask(reviews: BenchmarkReview[]): Record<string, B
   const latest: Record<string, BenchmarkReview> = {};
   for (const review of reviews) latest[review.task_id] = review;
   return latest;
+}
+
+/* ------------------------------------------------------------------ */
+/* Task feedback (<benchmark>/feedback.jsonl — append-only sidecar)    */
+/* ------------------------------------------------------------------ */
+
+/**
+ * understudy.task_feedback.v1 — one free-text "what's wrong with this task"
+ * line from the hub's conversational edit box. The hub only RECORDS the
+ * feedback and hands the user a copyable agent prompt (the hub never
+ * executes); a coding agent — or a future daemon verb — consumes open lines
+ * and runs `understudy traces regenerate-env` after editing the task. No
+ * absolute paths are recorded (portability rule): benchmark_id is the foundry
+ * output dir basename, same convention as reviews.jsonl.
+ */
+export type TaskFeedback = {
+  schema_version: typeof TASK_FEEDBACK_SCHEMA;
+  /** Foundry output dir slug (directory basename), NOT a benchmark.v1 benchmark_id. */
+  benchmark_id: string;
+  task_id: string;
+  /** The reviewer's own words describing what is wrong / should change. */
+  feedback: string;
+  created_at: string;
+  /** Producing surface ("hub" for the review UI; agents may append with their own label). */
+  source: string;
+  /** Lifecycle for a future consumer verb: open → addressed. Append-only file; newest line per task_id wins. */
+  status: "open" | "addressed";
+};
+
+/** Reader-side acceptance test for one feedback.jsonl row. */
+export function isTaskFeedback(row: unknown): row is TaskFeedback {
+  const r = asObject(row);
+  return (
+    r.schema_version === TASK_FEEDBACK_SCHEMA &&
+    typeof r.benchmark_id === "string" &&
+    typeof r.task_id === "string" &&
+    typeof r.feedback === "string" &&
+    (r.status === "open" || r.status === "addressed")
+  );
+}
+
+/** The ONE constructor every feedback producer uses. */
+export function makeTaskFeedback(input: {
+  benchmark_id: string;
+  task_id: string;
+  feedback: string;
+  source?: string;
+  status?: "open" | "addressed";
+  created_at?: string;
+}): TaskFeedback {
+  return {
+    schema_version: TASK_FEEDBACK_SCHEMA,
+    benchmark_id: input.benchmark_id,
+    task_id: input.task_id,
+    feedback: input.feedback,
+    created_at: input.created_at ?? new Date().toISOString(),
+    source: input.source ?? "hub",
+    status: input.status ?? "open",
+  };
+}
+
+export function serializeTaskFeedbackLine(feedback: TaskFeedback): string {
+  return serializeJsonlLine(feedback);
+}
+
+/** Valid feedback rows from a feedback.jsonl file (invalid rows dropped, lines tolerant). */
+export function readTaskFeedback(file: string): { feedback: TaskFeedback[]; skipped: number } {
+  const { items, skipped } = readJsonlFile(file);
+  return { feedback: items.filter(isTaskFeedback), skipped };
 }
 
 /* ------------------------------------------------------------------ */

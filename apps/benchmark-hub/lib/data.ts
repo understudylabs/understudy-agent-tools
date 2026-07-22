@@ -8,6 +8,7 @@ import "server-only";
 export {
   captureFilePath,
   computeWarnings,
+  deriveAutoReviewProposals,
   getEntry,
   loadEntryFromDir,
   loadHub,

@@ -7,7 +7,12 @@
  * app code should import via lib/data.ts.
  */
 export {
+  applyAutoAccepts,
+  AUTO_ACCEPT_CONFIDENCE_THRESHOLD,
+  AUTO_REVIEW_REASONS,
+  buildTaskFeedbackHandoff,
   captureBodyPath,
+  deriveAutoReviewProposals,
   captureFilePath,
   computeWarnings,
   environmentReadiness,
@@ -17,16 +22,23 @@ export {
   loadProposedEntryFromDir,
   loadTaskSidecars,
   loadTraceRecords,
+  MAX_FEEDBACK_LENGTH,
   MAX_REVIEW_NOTE_LENGTH,
   queueOrCancelRun,
   readProposalBenchmarkId,
   submitReview,
+  submitTaskFeedback,
   taskProvenance,
 } from "../../../dist/benchmark-hub-core.js";
 export type {
+  ApplyAutoAcceptsResult,
+  AutoReviewProposal,
+  AutoReviewReason,
   QueueRunBody,
   QueueRunResult,
   SubmitReviewInput,
   SubmitReviewResult,
+  SubmitTaskFeedbackInput,
+  SubmitTaskFeedbackResult,
   WriteFailure,
 } from "../../../dist/benchmark-hub-core.js";

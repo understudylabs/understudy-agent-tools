@@ -1,9 +1,11 @@
 import Link from "next/link";
 import { taskDisplayName, type ProposedHubEntry } from "@/lib/types";
+import { deriveAutoReviewProposals } from "@/lib/data";
 import { complexityLabel } from "@/lib/trajectory-core";
 import { Badge, SourceBadge, StageBadge } from "@/components/badges";
 import { EmptyState } from "@/components/empty-state";
 import { TaskTable } from "@/components/task-table";
+import { ReviewQueue, type QueueTask } from "@/components/proposed/review-queue";
 
 /**
  * The foundry's promotion blockers for machine-compiled outputs. Mirrored
@@ -27,6 +29,27 @@ export function ProposedBenchmarkPage({ entry }: { entry: ProposedHubEntry }) {
   // Generation-time self-check (foundry structural sentinels), stamped on
   // each task; older builds without the block simply show nothing.
   const selfCheckFailed = entry.tasks.filter((t) => t.self_check != null && t.self_check.ok === false);
+
+  // Exception-first review: classify pending tasks server-side (pure policy,
+  // nothing written) and project serializable props for the client queue.
+  const proposals = deriveAutoReviewProposals(entry);
+  const toQueueTask = (taskId: string, reasons: string[]): QueueTask => {
+    const task = entry.tasks.find((t) => t.task_id === taskId);
+    return {
+      taskId,
+      displayName: task ? taskDisplayName(task) : taskId,
+      href: `/b/${entry.slug}/task/${encodeURIComponent(taskId)}`,
+      reasons,
+    };
+  };
+  const autoAccepts = proposals.filter((p) => p.verdict === "auto_accept").map((p) => toQueueTask(p.task_id, []));
+  const exceptions = proposals.filter((p) => p.verdict === "exception");
+  const exceptionsByReason = ["low_confidence", "self_check_failed", "incumbent_failed", "schema_conflict", "anomaly"]
+    .map((reason) => ({
+      reason,
+      tasks: exceptions.filter((p) => p.reasons.includes(reason as (typeof p.reasons)[number])).map((p) => toQueueTask(p.task_id, p.reasons)),
+    }))
+    .filter((g) => g.tasks.length > 0);
 
   return (
     <div className="u-page">
@@ -151,6 +174,14 @@ export function ProposedBenchmarkPage({ entry }: { entry: ProposedHubEntry }) {
       </header>
 
       <div>
+          {/* Exception queue LEADS the page — auto-accepts collapse to one action. */}
+          <ReviewQueue
+            slug={entry.slug}
+            readOnly={entry.readOnly}
+            exceptionsByReason={exceptionsByReason}
+            autoAccepts={autoAccepts}
+          />
+
           <section className="u-sec" id="tasks">
             <h2>Task inbox</h2>
             <p className="exp">
