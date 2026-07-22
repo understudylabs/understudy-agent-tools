@@ -5,7 +5,7 @@ import { complexityLabel } from "@/lib/trajectory-core";
 import { taskProvenance } from "@/lib/data";
 import { Badge, ConfidenceChip, DecisionBadge, SplitChip, StageBadge } from "@/components/badges";
 import { TaskViews } from "@/components/trajectory/task-views";
-import { AuthoredPanel } from "@/components/trajectory/authored-panel";
+import { AuthoredPanel, AuthoredStatementCard } from "@/components/trajectory/authored-panel";
 
 function RequiredEffects({ items }: { items: FoundryContractItem[] }) {
   if (items.length === 0) return <p className="mono mt-2 text-xs text-faint">no required effects proposed</p>;
@@ -166,7 +166,14 @@ export function ProposedTaskPage({ entry, taskId }: { entry: ProposedHubEntry; t
             );
           })()}
         </div>
-        {archetype && (
+        {task.authored?.statement ? (
+          <>
+            <AuthoredStatementCard task={task} />
+            <p className="mt-2">
+              <Link className="mono text-xs" href={`/b/${entry.slug}#narrative`}>full narrative →</Link>
+            </p>
+          </>
+        ) : archetype ? (
           <p className="mt-3 text-xs text-ink-muted" style={{ maxWidth: "70ch" }}>
             <b>{archetype.archetype_title ?? archetype.category_id}</b>
             {archetype.archetype_description ? ` — ${archetype.archetype_description}` : ""}{" "}
@@ -174,7 +181,7 @@ export function ProposedTaskPage({ entry, taskId }: { entry: ProposedHubEntry; t
               full narrative →
             </Link>
           </p>
-        )}
+        ) : null}
       </section>
 
       <section className="u-section">
@@ -182,11 +189,6 @@ export function ProposedTaskPage({ entry, taskId }: { entry: ProposedHubEntry; t
           <span className="u-sec-no">01</span>
           <h2>Trajectory</h2>
         </div>
-        <p className="u-sec-sub">
-          The captured conversation this task was assembled from, flattened to one history — success criteria and the
-          outcome contract on the rail. The Replay tab walks the same trajectory through the deterministic contract
-          scorer.
-        </p>
         <div className="mt-4">
           <TaskViews slug={entry.slug} taskId={task.task_id} rail={rail} />
         </div>

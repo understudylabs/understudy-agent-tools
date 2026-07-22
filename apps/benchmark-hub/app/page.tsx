@@ -62,11 +62,6 @@ export default function HubIndex() {
           <span className="u-sec-no">01</span>
           <h2>Benchmarks</h2>
         </div>
-        <p className="u-sec-sub">
-          Discovered from BENCHMARK_HUB_DATA_DIR (colon-separated dirs; default{" "}
-          <code className="mono">~/.understudy/benchmarks</code>) — plus repo demo data and fixtures when
-          BENCHMARK_HUB_DEMO=1.
-        </p>
         {invalidEntries.length > 0 && (
           <div className="mt-4 flex flex-col gap-3">
             {invalidEntries.map((entry) => (
