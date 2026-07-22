@@ -197,6 +197,12 @@ export type RunRequest = {
    * claim. Capability-gated via requires: ["app_replay"].
    */
   app_replay?: boolean;
+  /**
+   * Additive (absent when unused): the understudy.experiment.v1 experiment_id
+   * this run evaluates. Pure passthrough provenance — rows/events join back
+   * to the experiment via run_id → this request; executors need no capability.
+   */
+  experiment_id?: string;
   /** Additive: the executor that atomically claimed this request (stale-watcher hijack guard). */
   claimed_by?: RunClaim | null;
   /** Additive: recorded when an executor skipped this request because it lacks a required capability. */
@@ -335,6 +341,8 @@ export type RunRequestInput = {
   prompt_overrides?: unknown;
   /** Optional (additive): replay the user's own app per app-harness.json (arm_kind "app_replay"). */
   app_replay?: unknown;
+  /** Optional (additive): understudy.experiment.v1 experiment_id this run evaluates (provenance passthrough). */
+  experiment_id?: unknown;
 };
 
 export const MAX_MODELS_PER_RUN = 8;
@@ -415,6 +423,10 @@ export function validateRunRequestInput(input: RunRequestInput, knownTaskIds: st
   if (timeout !== undefined && (typeof timeout !== "number" || !Number.isFinite(timeout) || timeout <= 0)) {
     errors.push("rollout_timeout_seconds must be a positive number of seconds");
   }
+  const experimentId = input.experiment_id;
+  if (experimentId !== undefined && (typeof experimentId !== "string" || !/^[A-Za-z0-9_.-]+$/.test(experimentId))) {
+    errors.push("experiment_id must be a non-empty string of [A-Za-z0-9_.-]");
+  }
   const appReplay = input.app_replay;
   if (appReplay !== undefined && typeof appReplay !== "boolean") {
     errors.push("app_replay must be a boolean");
@@ -449,7 +461,7 @@ export function validateRunRequestInput(input: RunRequestInput, knownTaskIds: st
 /** Create + persist a queued run request. Caller validates first. */
 export function createRunRequest(
   benchmarkDir: string,
-  input: { benchmark_id: string; models: ModelArmEntry[]; split: RunSplit; tasks: "all" | string[]; rollouts_per_task: number; incumbent_models?: string[]; calibration_threshold?: number; trivial_arms?: TrivialArmKind[]; rollout_timeout_seconds?: number; prompt_overrides?: PromptOverride[]; app_replay?: boolean },
+  input: { benchmark_id: string; models: ModelArmEntry[]; split: RunSplit; tasks: "all" | string[]; rollouts_per_task: number; incumbent_models?: string[]; calibration_threshold?: number; trivial_arms?: TrivialArmKind[]; rollout_timeout_seconds?: number; prompt_overrides?: PromptOverride[]; app_replay?: boolean; experiment_id?: string },
   now: Date = new Date(),
 ): RunRequest {
   // Writers declare the capabilities their feature use depends on, so an old
@@ -486,6 +498,9 @@ export function createRunRequest(
     ...(input.rollout_timeout_seconds !== undefined ? { rollout_timeout_seconds: input.rollout_timeout_seconds } : {}),
     ...(input.prompt_overrides && input.prompt_overrides.length > 0 ? { prompt_overrides: input.prompt_overrides } : {}),
     ...(input.app_replay === true ? { app_replay: true } : {}),
+    // Additive provenance passthrough — no capability entry needed: an old
+    // executor ignoring it changes nothing (rows join via run_id anyway).
+    ...(input.experiment_id !== undefined ? { experiment_id: input.experiment_id } : {}),
     ...(requires.length > 0 ? { requires } : {}),
   };
   writeRunRequest(benchmarkDir, request);

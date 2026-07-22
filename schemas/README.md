@@ -53,6 +53,17 @@ authenticated MCP/CLI from operations not yet versioned in REST.
 `understudy desktop contract --json` prints the packaged document without
 requiring Desktop to be running.
 
+## `understudy.experiment.v1`
+
+[`understudy.experiment.v1.schema.json`](understudy.experiment.v1.schema.json)
+is one experiment-lineage record in a benchmark dir's `experiments.jsonl`
+sidecar (append-only; newest line per `experiment_id` wins): data selection by
+content hash, training method + config with explicit approval gates BEFORE any
+provider spend, the produced artifact, baseline + eval run ids, and the final
+promote/shadow/collect/stop verdict. Runs link back via the run request's
+additive `experiment_id`. See
+[`docs/experiment-lineage.md`](../docs/experiment-lineage.md).
+
 ## `understudy.eval_result.v1`
 
 [`understudy.eval_result.v1.schema.json`](understudy.eval_result.v1.schema.json)
