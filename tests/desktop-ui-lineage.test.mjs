@@ -240,9 +240,9 @@ test("public desktop preserves the reviewed Train interaction language", async (
   );
   assert.match(chat, /msg\.stage === "cloud_fallback_local"/);
 
-  // "Chats" is now the nav group label; the heading only flips to "Archived".
+  // "Chats" is now the nav group label; the heading flips Recent/Archived.
   assert.match(sidebar, /sessions: "Chats"/);
-  assert.match(sidebar, /<div className="nav-section">\{showArchived \? "Archived" : ""\}<\/div>/);
+  assert.match(sidebar, /<div className="nav-section">\{showArchived \? "Archived" : "Recent"\}<\/div>/);
   assert.match(sidebar, /aria-label=\{showArchived \? "Archived chats" : "Recent chats"\}/);
   assert.match(sidebar, /visibleSessions\.map\(\(session\) =>/);
   assert.match(sidebar, /onSelectSession\(session\.session_id\)/);
